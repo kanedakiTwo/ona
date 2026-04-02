@@ -5,7 +5,7 @@
     "buildCommand": "pnpm install"
   },
   "deploy": {
-    "startCommand": "npx tsx apps/api/src/db/migrate.ts && npx tsx apps/api/src/seed/index.ts && npx tsx apps/api/src/index.ts",
+    "startCommand": "./node_modules/.bin/tsx apps/api/src/db/migrate.ts && ./node_modules/.bin/tsx apps/api/src/seed/index.ts && ./node_modules/.bin/tsx apps/api/src/index.ts",
     "restartPolicyType": "ON_FAILURE"
   }
 }

@@ -28,7 +28,7 @@ export function MealSlot({
   function handleLock() {
     lockMeal.mutate({
       menuId,
-      day: String(dayIndex),
+      day: dayIndex,
       meal,
     })
   }
@@ -36,7 +36,7 @@ export function MealSlot({
   function handleRegenerate() {
     regenerateMeal.mutate({
       menuId,
-      day: String(dayIndex),
+      day: dayIndex,
       meal,
     })
   }

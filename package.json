@@ -1,0 +1,17 @@
+{
+  "name": "ona",
+  "private": true,
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "db:generate": "turbo db:generate --filter=@ona/api",
+    "db:migrate": "turbo db:migrate --filter=@ona/api",
+    "db:seed": "turbo db:seed --filter=@ona/api"
+  },
+  "devDependencies": {
+    "turbo": "^2.4",
+    "typescript": "^5.7"
+  },
+  "packageManager": "pnpm@10.33.0"
+}

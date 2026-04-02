@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "echo 'API uses tsx at runtime, no build needed'",
+    "build": "tsc --outDir dist",
     "start": "node dist/index.js",
     "lint": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",

@@ -2,10 +2,10 @@
   "$schema": "https://railway.com/railway.schema.json",
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "npm install -g tsx && pnpm install"
+    "buildCommand": "pnpm install && pnpm --filter @ona/shared build && pnpm --filter @ona/api build"
   },
   "deploy": {
-    "startCommand": "tsx apps/api/src/db/migrate.ts && tsx apps/api/src/seed/index.ts && tsx apps/api/src/index.ts",
+    "startCommand": "node apps/api/dist/db/migrate.js && node apps/api/dist/seed/index.js && node apps/api/dist/index.js",
     "restartPolicyType": "ON_FAILURE"
   }
 }

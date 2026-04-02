@@ -5,7 +5,7 @@
     "buildCommand": "pnpm install --frozen-lockfile"
   },
   "deploy": {
-    "startCommand": "cd apps/api && npx tsx src/db/migrate.ts && npx tsx src/seed/index.ts && npx tsx src/index.ts",
+    "startCommand": "node_modules/.bin/tsx apps/api/src/db/migrate.ts && node_modules/.bin/tsx apps/api/src/seed/index.ts && node_modules/.bin/tsx apps/api/src/index.ts",
     "restartPolicyType": "ON_FAILURE"
   }
 }

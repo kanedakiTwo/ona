@@ -1,0 +1,10 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "NIXPACKS"
+  },
+  "deploy": {
+    "startCommand": "cd apps/api && npx tsx src/db/migrate.ts && npx tsx src/seed/index.ts && npx tsx src/index.ts",
+    "restartPolicyType": "ON_FAILURE"
+  }
+}

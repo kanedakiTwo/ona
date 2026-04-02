@@ -1,5 +1,7 @@
 import express from 'express'
 import cors from 'cors'
+import path from 'path'
+import { fileURLToPath } from 'url'
 import { env } from './config/env.js'
 import { errorHandler } from './middleware/errorHandler.js'
 import authRoutes from './routes/auth.js'
@@ -19,6 +21,10 @@ app.use(cors({
 }))
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
+
+// Static files
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+app.use('/public', express.static(path.join(__dirname, '..', 'public')))
 
 // Routes
 app.use(authRoutes)

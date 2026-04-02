@@ -30,6 +30,7 @@ export function MealSlot({
       menuId,
       day: dayIndex,
       meal,
+      locked: !isLocked,
     })
   }
 

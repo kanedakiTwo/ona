@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { useSearchParams } from 'next/navigation'
 import { ShoppingCart, Check, Package, ClipboardCopy } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import { useShoppingList } from '@/hooks/useShopping'
@@ -22,13 +21,12 @@ function getWeekStart(): string {
 type Tab = 'list' | 'stock'
 
 export default function ShoppingPage() {
-  const searchParams = useSearchParams()
   const { user, isLoading: authLoading } = useAuth()
 
-  const weekStart = searchParams.get('week') ?? getWeekStart()
+  const weekStart = useMemo(() => getWeekStart(), [])
   const { data: menu, isLoading: menuLoading } = useMenu(user?.id, weekStart)
 
-  const menuId = searchParams.get('menuId') ?? menu?.id
+  const menuId = menu?.id
   const { data: shoppingList, isLoading: listLoading } = useShoppingList(menuId)
 
   const [activeTab, setActiveTab] = useState<Tab>('list')

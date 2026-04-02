@@ -68,6 +68,7 @@ export const recipes = pgTable('recipes', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
   authorId: uuid('author_id').references(() => users.id, { onDelete: 'set null' }),
+  imageUrl: text('image_url'),
   prepTime: integer('prep_time'),
   meals: text('meals').array().notNull().default([]),
   seasons: text('seasons').array().notNull().default([]),

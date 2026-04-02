@@ -12,6 +12,7 @@ export interface Recipe {
   id: string
   name: string
   authorId: string | null
+  imageUrl?: string | null
   prepTime?: number
   meals: Meal[]
   seasons: Season[]
@@ -24,6 +25,7 @@ export interface Recipe {
 
 export const createRecipeSchema = z.object({
   name: z.string().min(1),
+  imageUrl: z.string().url().nullable().optional(),
   prepTime: z.number().int().min(1).optional(),
   meals: z.array(z.enum(['breakfast', 'lunch', 'dinner', 'snack'])).min(1),
   seasons: z.array(z.enum(['spring', 'summer', 'autumn', 'winter'])).min(1),

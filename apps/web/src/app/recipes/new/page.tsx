@@ -7,7 +7,8 @@ import { useCreateRecipe } from "@/hooks/useRecipes"
 import { cn } from "@/lib/utils"
 import { Plus, Trash2, ChevronLeft, GripVertical } from "lucide-react"
 import Link from "next/link"
-import type { Meal, Season } from "@ona/shared"
+import { PhotoRecipeUpload } from "@/components/recipes/PhotoRecipeUpload"
+import type { Meal, Season, ExtractedRecipe } from "@ona/shared"
 
 const MEAL_OPTIONS: { value: Meal; label: string }[] = [
   { value: "breakfast", label: "Desayuno" },
@@ -48,8 +49,30 @@ export default function NewRecipePage() {
 
   const [steps, setSteps] = useState<string[]>([""])
 
+  const [photoExtracted, setPhotoExtracted] = useState(false)
+
   const [searchQuery, setSearchQuery] = useState("")
   const [searchingIndex, setSearchingIndex] = useState<number | null>(null)
+
+  function handlePhotoExtracted(data: ExtractedRecipe) {
+    setName(data.name)
+    setPrepTime(data.prepTime ?? "")
+    setSelectedMeals(data.meals)
+    setSelectedSeasons(data.seasons)
+    setTags(data.tags)
+    setSteps(data.steps.length > 0 ? data.steps : [""])
+    setIngredients(
+      data.ingredients.length > 0
+        ? data.ingredients.map((ing) => ({
+            ingredientId: ing.ingredientId ?? "",
+            ingredientName: ing.ingredientName ?? ing.extractedName,
+            quantity: ing.quantity,
+            unit: ing.unit,
+          }))
+        : [{ ingredientId: "", ingredientName: "", quantity: 0, unit: "g" }]
+    )
+    setPhotoExtracted(true)
+  }
 
   function toggleMeal(meal: Meal) {
     setSelectedMeals((prev) =>
@@ -164,6 +187,17 @@ export default function NewRecipePage() {
       </Link>
 
       <h1 className="mt-6 text-3xl font-bold">Nueva receta</h1>
+
+      {/* Photo extraction */}
+      <div className="mt-6">
+        <PhotoRecipeUpload onExtracted={handlePhotoExtracted} />
+      </div>
+
+      {photoExtracted && (
+        <div className="mt-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+          Receta extraida de la foto. Revisa los datos y corrige lo que sea necesario antes de guardar.
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="mt-8 space-y-6">
         {/* Name */}
@@ -302,7 +336,12 @@ export default function NewRecipePage() {
                     updateIngredient(idx, "ingredientName", e.target.value)
                   }
                   placeholder="Ingrediente"
-                  className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
+                  className={cn(
+                    "flex-1 rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-1",
+                    photoExtracted && !ing.ingredientId && ing.ingredientName
+                      ? "border-amber-400 bg-amber-50 focus:border-amber-500 focus:ring-amber-500"
+                      : "border-gray-300 focus:border-black focus:ring-black"
+                  )}
                 />
                 <input
                   type="number"

@@ -1,12 +1,24 @@
 import { Router } from 'express'
 import { eq, and, sql, count, arrayContains } from 'drizzle-orm'
+import multer from 'multer'
 import { db } from '../db/connection.js'
 import { recipes, recipeIngredients, ingredients, userFavorites } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
 import { createRecipeSchema, updateRecipeSchema } from '@ona/shared'
+import { extractRecipeFromImage } from '../services/recipeExtractor.js'
+import { AnthropicProvider } from '../services/providers/anthropic.js'
 
 const router = Router()
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['image/jpeg', 'image/png', 'image/webp']
+    cb(null, allowed.includes(file.mimetype))
+  },
+})
 
 // GET /recipes - list with optional filters
 router.get('/recipes', async (req, res) => {
@@ -36,6 +48,7 @@ router.get('/recipes', async (req, res) => {
         id: recipes.id,
         name: recipes.name,
         authorId: recipes.authorId,
+        imageUrl: recipes.imageUrl,
         prepTime: recipes.prepTime,
         meals: recipes.meals,
         seasons: recipes.seasons,
@@ -120,6 +133,38 @@ router.get('/recipes/:id', async (req, res) => {
   } catch (err) {
     console.error('Get recipe error:', err)
     res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// POST /recipes/extract-from-image - extract recipe from photo (auth required)
+router.post('/recipes/extract-from-image', authMiddleware, upload.single('image'), async (req: AuthRequest, res) => {
+  try {
+    if (!req.file) {
+      res.status(400).json({ error: 'No se ha proporcionado ninguna imagen' })
+      return
+    }
+
+    const provider = new AnthropicProvider()
+    const result = await extractRecipeFromImage(provider, req.file.buffer, req.file.mimetype)
+
+    res.json(result)
+  } catch (err: any) {
+    console.error('Extract recipe from image error:', err)
+
+    if (err.message?.includes('No se pudo identificar')) {
+      res.status(422).json({ error: err.message })
+      return
+    }
+    if (err.status === 429) {
+      res.status(429).json({ error: 'Demasiadas peticiones. Intenta en un momento.' })
+      return
+    }
+    if (err.message?.includes('ANTHROPIC_API_KEY')) {
+      res.status(503).json({ error: 'Servicio de IA no disponible' })
+      return
+    }
+
+    res.status(500).json({ error: 'Error al analizar la imagen' })
   }
 })
 
@@ -276,6 +321,7 @@ router.get('/user/:id/recipes', authMiddleware, async (req: AuthRequest, res) =>
         id: recipes.id,
         name: recipes.name,
         authorId: recipes.authorId,
+        imageUrl: recipes.imageUrl,
         prepTime: recipes.prepTime,
         meals: recipes.meals,
         seasons: recipes.seasons,

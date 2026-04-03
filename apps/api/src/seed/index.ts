@@ -29,6 +29,7 @@ async function seed() {
       .values({
         name: recipe.name,
         authorId: null,
+        imageUrl: recipe.imageUrl ?? null,
         prepTime: recipe.prepTime,
         meals: recipe.meals,
         seasons: recipe.seasons,

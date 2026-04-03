@@ -2,6 +2,7 @@
 
 import { Clock } from "lucide-react"
 import { FavoriteButton } from "@/components/recipes/FavoriteButton"
+import { RecipeSourceBadge } from "@/components/recipes/RecipeSourceBadge"
 import Link from "next/link"
 
 const MEAL_LABELS: Record<string, string> = {
@@ -21,6 +22,7 @@ const SEASON_LABELS: Record<string, string> = {
 interface RecipeCardRecipe {
   id: string
   name: string
+  authorId?: string | null
   prepTime?: number
   meals?: string[]
   seasons?: string[]
@@ -55,6 +57,9 @@ export function RecipeCard({
       )}
 
       <Link href={`/recipes/${recipe.id}`} className="block">
+        <div className="mb-2">
+          <RecipeSourceBadge authorId={recipe.authorId} />
+        </div>
         <h3 className="pr-8 text-sm font-semibold text-gray-900 group-hover:text-black">
           {recipe.name}
         </h3>

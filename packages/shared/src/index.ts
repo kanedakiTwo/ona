@@ -1,7 +1,7 @@
 // Types
 export type { User, UserSettings, DayTemplate, OnboardingAnswers } from './types/user.js'
 export type { Ingredient } from './types/ingredient.js'
-export type { Recipe, RecipeIngredient } from './types/recipe.js'
+export type { Recipe, RecipeIngredient, ExtractedRecipe, ExtractedIngredient } from './types/recipe.js'
 export type { Menu, DayMenu, MealSlot, LockedSlots } from './types/menu.js'
 export type { ShoppingItem, ShoppingList } from './types/shopping.js'
 export type { Macros, Vitamins, Minerals, AminoAcids, FatAcids, CarbTypes, NutrientBalance } from './types/nutrition.js'

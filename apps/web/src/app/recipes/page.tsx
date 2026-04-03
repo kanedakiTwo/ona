@@ -28,6 +28,7 @@ export default function RecipesPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedMeals, setSelectedMeals] = useState<Meal[]>([])
   const [selectedSeason, setSelectedSeason] = useState<Season | "">("")
+  const [sourceFilter, setSourceFilter] = useState<"all" | "ona" | "mine">("all")
 
   // Build filter tags from selected meals + season
   const filterTags = useMemo(() => {
@@ -44,6 +45,15 @@ export default function RecipesPage() {
     search: searchQuery || undefined,
     tags: filterTags,
   })
+
+  const filteredRecipes = useMemo(() => {
+    if (!recipes) return []
+    return recipes.filter((r: any) => {
+      if (sourceFilter === "ona") return r.authorId === null || r.authorId === undefined
+      if (sourceFilter === "mine") return r.authorId != null
+      return true
+    })
+  }, [recipes, sourceFilter])
 
   function toggleMealFilter(meal: Meal) {
     setSelectedMeals((prev) =>
@@ -77,6 +87,28 @@ export default function RecipesPage() {
           onChange={(e) => setSearchQuery(e.target.value)}
           className="w-full rounded-lg border border-gray-300 py-2.5 pl-10 pr-4 text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
         />
+      </div>
+
+      {/* Source filter tabs */}
+      <div className="mt-4 flex gap-1 rounded-lg bg-gray-100 p-1">
+        {([
+          { value: "all" as const, label: "Todas" },
+          { value: "ona" as const, label: "ONA" },
+          { value: "mine" as const, label: "Mis recetas" },
+        ]).map((tab) => (
+          <button
+            key={tab.value}
+            onClick={() => setSourceFilter(tab.value)}
+            className={cn(
+              "flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+              sourceFilter === tab.value
+                ? "bg-white text-black shadow-sm"
+                : "text-gray-500 hover:text-gray-700"
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {/* Filters */}
@@ -133,16 +165,16 @@ export default function RecipesPage() {
       )}
 
       {/* Empty state */}
-      {recipes && recipes.length === 0 && (
+      {recipes && filteredRecipes.length === 0 && (
         <div className="mt-12 rounded-xl border border-dashed border-gray-300 py-12 text-center">
           <p className="text-gray-500">No se encontraron recetas.</p>
         </div>
       )}
 
       {/* Recipe grid */}
-      {recipes && recipes.length > 0 && (
+      {filteredRecipes.length > 0 && (
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {recipes.map((recipe) => (
+          {filteredRecipes.map((recipe: any) => (
             <RecipeCard
               key={recipe.id}
               recipe={recipe}

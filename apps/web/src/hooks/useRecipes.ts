@@ -1,9 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
+import type { ExtractedRecipe } from "@ona/shared"
 
 interface Recipe {
   id: string
   name: string
+  authorId: string | null
   description: string
   ingredients: string[]
   steps: string[]
@@ -44,7 +46,7 @@ export function useCreateRecipe() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (recipe: Omit<Recipe, "id">) =>
+    mutationFn: (recipe: Omit<Recipe, "id" | "authorId">) =>
       api.post<Recipe>("/recipes", recipe),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["recipes"] })
@@ -61,6 +63,19 @@ export function useToggleFavorite() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["recipes"] })
       queryClient.invalidateQueries({ queryKey: ["recipe"] })
+    },
+  })
+}
+
+export function useExtractRecipeFromImage() {
+  return useMutation({
+    mutationFn: async (imageFile: File) => {
+      const formData = new FormData()
+      formData.append("image", imageFile)
+      return api.upload<ExtractedRecipe>(
+        "/recipes/extract-from-image",
+        formData
+      )
     },
   })
 }

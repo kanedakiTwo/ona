@@ -13,6 +13,7 @@
     "db:seed": "tsx src/seed/index.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.82.0",
     "@ona/shared": "workspace:*",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
@@ -20,6 +21,7 @@
     "drizzle-orm": "^0.39.0",
     "express": "^4.21.0",
     "jsonwebtoken": "^9.0.2",
+    "multer": "^2.1.1",
     "pg": "^8.13.0",
     "tsx": "^4.19.0",
     "zod": "^3.24.0"
@@ -29,6 +31,7 @@
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/jsonwebtoken": "^9.0.7",
+    "@types/multer": "^2.1.0",
     "@types/pg": "^8.11.0",
     "drizzle-kit": "^0.30.0",
     "typescript": "^5.7.0",

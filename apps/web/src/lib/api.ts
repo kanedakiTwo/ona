@@ -56,4 +56,28 @@ export const api = {
   delete<T = unknown>(path: string) {
     return apiFetch<T>(path, { method: "DELETE" })
   },
+
+  async upload<T = unknown>(path: string, formData: FormData): Promise<T> {
+    const headers: Record<string, string> = {}
+
+    if (typeof window !== "undefined") {
+      const token = localStorage.getItem("ona_token")
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`
+      }
+    }
+
+    const response = await fetch(`${BASE_URL}${path}`, {
+      method: "POST",
+      headers,
+      body: formData,
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: response.statusText }))
+      throw new Error(error.error ?? error.message ?? `Request failed: ${response.status}`)
+    }
+
+    return response.json() as Promise<T>
+  },
 }

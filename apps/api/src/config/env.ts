@@ -10,4 +10,5 @@ export const env = {
   DATABASE_URL: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/ona',
   JWT_SECRET: process.env.JWT_SECRET || 'ona-dev-secret',
   PORT: parseInt(process.env.API_PORT || '8000', 10),
+  ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
 }

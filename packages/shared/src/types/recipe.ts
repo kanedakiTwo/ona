@@ -39,3 +39,25 @@ export const createRecipeSchema = z.object({
 })
 
 export const updateRecipeSchema = createRecipeSchema.partial()
+
+// ─── Recipe extraction from photo ──────────────────────────
+export interface ExtractedIngredient {
+  extractedName: string
+  ingredientId: string | null
+  ingredientName: string | null
+  quantity: number
+  unit: string
+  matched: boolean
+}
+
+export interface ExtractedRecipe {
+  name: string
+  prepTime: number | null
+  meals: Meal[]
+  seasons: Season[]
+  tags: string[]
+  steps: string[]
+  ingredients: ExtractedIngredient[]
+  unmatchedCount: number
+  warnings: string[]
+}

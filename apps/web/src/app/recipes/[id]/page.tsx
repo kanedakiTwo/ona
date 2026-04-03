@@ -5,6 +5,7 @@ import { useRecipe } from "@/hooks/useRecipes"
 import { useAuth } from "@/lib/auth"
 import { api } from "@/lib/api"
 import { FavoriteButton } from "@/components/recipes/FavoriteButton"
+import { RecipeSourceBadge } from "@/components/recipes/RecipeSourceBadge"
 import { ChevronLeft, Clock, Trash2, Pencil } from "lucide-react"
 import Link from "next/link"
 import { useState } from "react"
@@ -109,7 +110,10 @@ export default function RecipeDetailPage() {
       {/* Header */}
       <div className="mt-6 flex items-start justify-between gap-4">
         <div className="flex-1">
-          <h1 className="text-3xl font-bold">{recipe.name}</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold">{recipe.name}</h1>
+            <RecipeSourceBadge authorId={recipe.authorId} />
+          </div>
           {recipe.prepTime && (
             <div className="mt-2 flex items-center gap-1 text-sm text-gray-500">
               <Clock size={14} />

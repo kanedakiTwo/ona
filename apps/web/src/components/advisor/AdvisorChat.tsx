@@ -151,10 +151,10 @@ export default function AdvisorChat({ userId }: AdvisorChatProps) {
       <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
         {messages.length === 0 && !loading && !voice.isListening && (
           <div className="flex h-full flex-col items-center justify-center gap-4">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#D8F3DC]">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#F2EDE0]">
               <span className="text-3xl">🥗</span>
             </div>
-            <p className="text-center text-[13px] text-[#999999]">
+            <p className="text-center text-[13px] text-[#7A7066]">
               Soy tu asistente de ONA. Escribe o habla.
             </p>
             <div className="flex flex-wrap justify-center gap-2">
@@ -162,7 +162,7 @@ export default function AdvisorChat({ userId }: AdvisorChatProps) {
                 <button
                   key={prompt}
                   onClick={() => handleSend(prompt)}
-                  className="rounded-full border border-[#EEEEEE] px-3 py-1.5 text-[12px] text-[#444444] active:bg-[#F7F7F7]"
+                  className="rounded-full border border-[#DDD6C5] px-3 py-1.5 text-[12px] text-[#4A4239] active:bg-[#F2EDE0]"
                 >
                   {prompt}
                 </button>
@@ -174,21 +174,21 @@ export default function AdvisorChat({ userId }: AdvisorChatProps) {
         {messages.map((msg) => (
           <div key={msg.id} className={`flex gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             {msg.role === 'assistant' && (
-              <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#D8F3DC]">
+              <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#F2EDE0]">
                 <span className="text-sm">🥦</span>
               </div>
             )}
             <div className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed whitespace-pre-line ${
               msg.role === 'user'
-                ? 'rounded-br-md bg-[#2D6A4F] text-white'
-                : 'rounded-bl-md bg-[#F7F7F7] text-[#1A1A1A]'
+                ? 'rounded-br-md bg-[#1A1612] text-[#FFFEFA]'
+                : 'rounded-bl-md bg-[#F2EDE0] text-[#1A1612]'
             }`}>
               {msg.content}
               {/* Tap to replay TTS on assistant messages */}
               {msg.role === 'assistant' && voice.ttsSupported && (
                 <button
                   onClick={() => voice.speak(msg.content)}
-                  className="ml-2 inline-flex items-center text-[#95D5B2] hover:text-[#2D6A4F]"
+                  className="ml-2 inline-flex items-center text-[#C65D38] hover:text-[#1A1612]"
                   aria-label="Escuchar"
                 >
                   <Volume2 size={12} />
@@ -201,14 +201,14 @@ export default function AdvisorChat({ userId }: AdvisorChatProps) {
         {/* Listening indicator */}
         {voice.isListening && (
           <div className="flex justify-end">
-            <div className="flex items-center gap-2 rounded-2xl rounded-br-md bg-[#2D6A4F] px-4 py-3 text-white">
+            <div className="flex items-center gap-2 rounded-2xl rounded-br-md bg-[#1A1612] px-4 py-3 text-[#FFFEFA]">
               <div className="flex items-center gap-1">
-                <span className="h-2 w-2 animate-pulse rounded-full bg-red-400" />
-                <span className="h-3 w-1 animate-pulse rounded-full bg-white/60" style={{ animationDelay: '0ms' }} />
-                <span className="h-4 w-1 animate-pulse rounded-full bg-white/80" style={{ animationDelay: '100ms' }} />
-                <span className="h-2 w-1 animate-pulse rounded-full bg-white/60" style={{ animationDelay: '200ms' }} />
-                <span className="h-5 w-1 animate-pulse rounded-full bg-white/80" style={{ animationDelay: '50ms' }} />
-                <span className="h-3 w-1 animate-pulse rounded-full bg-white/60" style={{ animationDelay: '150ms' }} />
+                <span className="h-2 w-2 animate-pulse rounded-full bg-[#C65D38]" />
+                <span className="h-3 w-1 animate-pulse rounded-full bg-[#FFFEFA]/80" style={{ animationDelay: '0ms' }} />
+                <span className="h-4 w-1 animate-pulse rounded-full bg-[#FFFEFA]/80" style={{ animationDelay: '100ms' }} />
+                <span className="h-2 w-1 animate-pulse rounded-full bg-[#FFFEFA]/80" style={{ animationDelay: '200ms' }} />
+                <span className="h-5 w-1 animate-pulse rounded-full bg-[#FFFEFA]/80" style={{ animationDelay: '50ms' }} />
+                <span className="h-3 w-1 animate-pulse rounded-full bg-[#FFFEFA]/80" style={{ animationDelay: '150ms' }} />
               </div>
               <span className="text-[12px]">
                 {voice.transcript || 'Escuchando...'}
@@ -220,13 +220,13 @@ export default function AdvisorChat({ userId }: AdvisorChatProps) {
         {/* Loading indicator */}
         {loading && (
           <div className="flex gap-2">
-            <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#D8F3DC]">
+            <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#F2EDE0]">
               <span className="text-sm">🥦</span>
             </div>
-            <div className="flex items-center gap-1.5 rounded-2xl bg-[#F7F7F7] px-4 py-3">
-              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#95D5B2]" style={{ animationDelay: '0ms' }} />
-              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#95D5B2]" style={{ animationDelay: '150ms' }} />
-              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#95D5B2]" style={{ animationDelay: '300ms' }} />
+            <div className="flex items-center gap-1.5 rounded-2xl bg-[#F2EDE0] px-4 py-3">
+              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#7A7066]" style={{ animationDelay: '0ms' }} />
+              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#7A7066]" style={{ animationDelay: '150ms' }} />
+              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#7A7066]" style={{ animationDelay: '300ms' }} />
             </div>
           </div>
         )}
@@ -236,13 +236,13 @@ export default function AdvisorChat({ userId }: AdvisorChatProps) {
           <div className="flex justify-center">
             <button
               onClick={voice.stopSpeaking}
-              className="flex items-center gap-2 rounded-full bg-[#D8F3DC] px-4 py-1.5 text-[12px] text-[#2D6A4F]"
+              className="flex items-center gap-2 rounded-full bg-[#F2EDE0] border border-[#DDD6C5] px-4 py-1.5 text-[12px] text-[#1A1612]"
             >
               <div className="flex items-center gap-0.5">
-                <span className="h-2 w-0.5 animate-pulse rounded-full bg-[#2D6A4F]" />
-                <span className="h-3 w-0.5 animate-pulse rounded-full bg-[#2D6A4F]" style={{ animationDelay: '100ms' }} />
-                <span className="h-4 w-0.5 animate-pulse rounded-full bg-[#2D6A4F]" style={{ animationDelay: '50ms' }} />
-                <span className="h-2 w-0.5 animate-pulse rounded-full bg-[#2D6A4F]" style={{ animationDelay: '150ms' }} />
+                <span className="h-2 w-0.5 animate-pulse rounded-full bg-[#C65D38]" />
+                <span className="h-3 w-0.5 animate-pulse rounded-full bg-[#C65D38]" style={{ animationDelay: '100ms' }} />
+                <span className="h-4 w-0.5 animate-pulse rounded-full bg-[#C65D38]" style={{ animationDelay: '50ms' }} />
+                <span className="h-2 w-0.5 animate-pulse rounded-full bg-[#C65D38]" style={{ animationDelay: '150ms' }} />
               </div>
               Hablando... (toca para parar)
             </button>
@@ -253,14 +253,16 @@ export default function AdvisorChat({ userId }: AdvisorChatProps) {
       </div>
 
       {/* Input area */}
-      <div className="border-t border-[#EEEEEE] bg-white px-4 py-3">
+      <div className="border-t border-[#DDD6C5] bg-[#FFFEFA] px-4 py-3">
         <div className="flex items-center gap-2">
           {/* Auto-speak toggle */}
           {voice.ttsSupported && (
             <button
               onClick={() => { setAutoSpeak(!autoSpeak); if (voice.isSpeaking) voice.stopSpeaking() }}
               className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors ${
-                autoSpeak ? 'bg-[#D8F3DC] text-[#2D6A4F]' : 'bg-[#F7F7F7] text-[#999999]'
+                autoSpeak
+                  ? 'bg-[#1A1612] text-[#FFFEFA]'
+                  : 'bg-[#FFFEFA] border border-[#DDD6C5] text-[#1A1612]'
               }`}
               aria-label={autoSpeak ? 'Silenciar respuestas' : 'Activar respuestas por voz'}
             >
@@ -275,7 +277,7 @@ export default function AdvisorChat({ userId }: AdvisorChatProps) {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
             placeholder={voice.isListening ? 'Escuchando...' : 'Escribe o pulsa el micro...'}
-            className="flex-1 rounded-xl border border-[#EEEEEE] bg-[#F7F7F7] px-4 py-2.5 text-[13px] text-[#1A1A1A] focus:border-[#2D6A4F] focus:outline-none"
+            className="flex-1 rounded-full border border-[#DDD6C5] bg-[#F2EDE0] px-4 py-2.5 text-[13px] text-[#1A1612] placeholder:text-[#7A7066] focus:border-[#1A1612] focus:outline-none"
             disabled={loading || voice.isListening}
           />
 
@@ -286,8 +288,8 @@ export default function AdvisorChat({ userId }: AdvisorChatProps) {
               disabled={loading}
               className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-all disabled:opacity-30 ${
                 voice.isListening
-                  ? 'bg-red-500 text-white animate-pulse'
-                  : 'bg-[#D8F3DC] text-[#2D6A4F]'
+                  ? 'bg-[#1A1612] text-[#FFFEFA] animate-pulse'
+                  : 'bg-[#FFFEFA] border border-[#DDD6C5] text-[#1A1612]'
               }`}
               aria-label={voice.isListening ? 'Parar de escuchar' : 'Hablar'}
             >
@@ -299,7 +301,7 @@ export default function AdvisorChat({ userId }: AdvisorChatProps) {
           <button
             onClick={() => handleSend()}
             disabled={!input.trim() || loading || voice.isListening}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#2D6A4F] text-white disabled:opacity-30"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1A1612] text-[#FFFEFA] disabled:opacity-30"
           >
             <Send size={16} />
           </button>

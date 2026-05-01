@@ -53,7 +53,7 @@ export default function ShoppingList({ items, listId }: ShoppingListProps) {
 
   if (items.length === 0) {
     return (
-      <div className="py-12 text-center text-gray-400">
+      <div className="py-12 text-center text-[#7A7066] border border-[#DDD6C5] rounded-lg">
         No hay items en la lista
       </div>
     )
@@ -64,14 +64,18 @@ export default function ShoppingList({ items, listId }: ShoppingListProps) {
       <div className="mb-4 flex items-center justify-between">
         <button
           onClick={() => setShowInStock(!showInStock)}
-          className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+          className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs transition-colors ${
+            showInStock
+              ? 'bg-[#1A1612] border-[#1A1612] text-[#FFFEFA]'
+              : 'bg-[#FFFEFA] border-[#DDD6C5] text-[#1A1612]'
+          }`}
         >
           <Package className="h-4 w-4" />
           {showInStock ? 'Ocultar en stock' : 'Mostrar en stock'}
         </button>
       </div>
 
-      <ul className="divide-y divide-gray-100">
+      <ul className="divide-y divide-[#DDD6C5]">
         {sortedItems.map((item) => (
           <li
             key={item.id}
@@ -83,8 +87,8 @@ export default function ShoppingList({ items, listId }: ShoppingListProps) {
               onClick={() => handleCheck(item.id, item.checked)}
               className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 transition-colors ${
                 item.checked
-                  ? 'border-green-500 bg-green-500 text-white'
-                  : 'border-gray-300 hover:border-gray-400'
+                  ? 'border-[#1A1612] bg-[#1A1612] text-[#FFFEFA]'
+                  : 'border-[#DDD6C5] hover:border-[#7A7066]'
               }`}
               aria-label={item.checked ? 'Desmarcar' : 'Marcar como comprado'}
             >
@@ -95,8 +99,8 @@ export default function ShoppingList({ items, listId }: ShoppingListProps) {
               <span
                 className={`flex items-center gap-1.5 text-sm font-medium ${
                   item.checked || item.inStock
-                    ? 'text-gray-400 line-through'
-                    : 'text-gray-900'
+                    ? 'text-[#7A7066] line-through'
+                    : 'text-[#1A1612]'
                 }`}
               >
                 {item.name}
@@ -109,20 +113,20 @@ export default function ShoppingList({ items, listId }: ShoppingListProps) {
                 )}
               </span>
               {item.category && (
-                <span className="text-xs text-gray-400">{item.category}</span>
+                <span className="text-xs text-[#7A7066]">{item.category}</span>
               )}
             </div>
 
-            <span className="shrink-0 text-sm text-gray-500">
+            <span className="shrink-0 text-sm text-[#7A7066]">
               {item.quantity} {item.unit}
             </span>
 
             <button
               onClick={() => handleStock(item.id, item.inStock)}
-              className={`shrink-0 rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+              className={`shrink-0 rounded-full border px-2 py-1 text-xs font-medium transition-colors ${
                 item.inStock
-                  ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
-                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  ? 'bg-[#F2EDE0] border-[#C65D38] text-[#C65D38]'
+                  : 'border-[#DDD6C5] text-[#7A7066]'
               }`}
               title={item.inStock ? 'Quitar de stock' : 'Marcar en stock'}
             >

@@ -4,6 +4,7 @@ import { Inter, Fraunces, Cormorant_Garamond, JetBrains_Mono } from "next/font/g
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { AuthProvider } from "@/lib/auth"
 import Navbar from "@/components/shared/Navbar"
+import VoiceProvider from "@/components/voice/VoiceProvider"
 import { useState } from "react"
 import { usePathname } from "next/navigation"
 import "./globals.css"
@@ -61,10 +62,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
-            <main className={!isPublicRoute ? "mx-auto max-w-[430px] pb-20" : ""}>
-              {children}
-            </main>
-            {!isPublicRoute && <Navbar />}
+            {isPublicRoute ? (
+              <main>{children}</main>
+            ) : (
+              <VoiceProvider>
+                <main className="mx-auto max-w-[430px] pb-20">
+                  {children}
+                </main>
+                <Navbar />
+              </VoiceProvider>
+            )}
           </AuthProvider>
         </QueryClientProvider>
       </body>

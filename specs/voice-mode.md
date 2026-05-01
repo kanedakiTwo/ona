@@ -2,7 +2,7 @@
 
 Hands-free voice conversation with the assistant, activated by the wake word "Hola Ona" anywhere in the authenticated app.
 
-**Status: planned, not implemented yet.**
+**Status: code complete on `feat/voice-mode`; runtime verification pending (requires Picovoice access key, "Hola Ona" `.ppn` model, and `OPENAI_API_KEY` with `gpt-realtime` access).**
 
 ## User Capabilities
 
@@ -73,11 +73,22 @@ When the conversation context is "step-by-step cooking" (a recipe-step skill is 
 
 ## Source
 
-- _New_ `apps/web/src/hooks/useWakeWord.ts` — Porcupine WASM wrapper
-- _New_ `apps/web/src/hooks/useRealtimeSession.ts` — WebRTC + Realtime API client
-- _New_ `apps/web/src/components/voice/VoiceOverlay.tsx` — full-screen orb UI
-- _New_ `apps/web/src/components/voice/VoiceProvider.tsx` — app-wide always-listening provider mounted in the authed layout
-- _New_ `apps/api/src/routes/realtime.ts` — `POST /realtime/:userId/session` returns ephemeral token + tool schemas
-- _New_ `apps/api/src/services/realtime/tools.ts` — adapts existing assistant skills to Realtime tool schemas
-- _Modified_ `apps/web/src/hooks/useVoice.ts` — kept for the legacy mic button; voice mode supersedes it
-- _Modified_ `apps/web/src/components/advisor/AdvisorChat.tsx` — receives persisted voice-mode turns on overlay close
+- [apps/web/src/hooks/useWakeWord.ts](../apps/web/src/hooks/useWakeWord.ts) — Porcupine WASM wrapper (swap point for openWakeWord)
+- [apps/web/src/hooks/useRealtimeSession.ts](../apps/web/src/hooks/useRealtimeSession.ts) — WebRTC + Realtime API client, tool round-trip, single-shot reconnect
+- [apps/web/src/components/voice/VoiceOverlay.tsx](../apps/web/src/components/voice/VoiceOverlay.tsx) — full-screen orb UI
+- [apps/web/src/components/voice/VoiceProvider.tsx](../apps/web/src/components/voice/VoiceProvider.tsx) — app-wide always-listening provider, silence timer, cooking-mode extension, context cache, top-right indicator
+- [apps/web/src/lib/voiceMessages.ts](../apps/web/src/lib/voiceMessages.ts) — bridge from voice mode to AdvisorChat
+- [apps/api/src/routes/realtime.ts](../apps/api/src/routes/realtime.ts) — `POST /realtime/:userId/session`, `/tool`, `/usage`
+- [apps/api/src/services/realtime/tools.ts](../apps/api/src/services/realtime/tools.ts) — assistant-skills→Realtime-tools adapter and executor
+- [apps/api/src/services/realtime/quota.ts](../apps/api/src/services/realtime/quota.ts) — per-user daily minutes guard
+- [apps/api/src/config/env.ts](../apps/api/src/config/env.ts) — `OPENAI_API_KEY`, `OPENAI_REALTIME_MODEL`, `OPENAI_REALTIME_VOICE`, `REALTIME_DAILY_MINUTES_PER_USER`
+- [apps/web/src/components/advisor/AdvisorChat.tsx](../apps/web/src/components/advisor/AdvisorChat.tsx) — drains voice-mode turns into the chat history; hides mic button while voice mode is on
+- [apps/web/src/app/profile/page.tsx](../apps/web/src/app/profile/page.tsx) — opt-in toggle (Capítulo 04)
+- [apps/web/src/app/layout.tsx](../apps/web/src/app/layout.tsx) — mounts `VoiceProvider` only on authed routes
+- [apps/web/src/hooks/useVoice.ts](../apps/web/src/hooks/useVoice.ts) — legacy Web Speech mic button; superseded by voice mode while it's active
+
+## Required client config
+
+- `NEXT_PUBLIC_PICOVOICE_ACCESS_KEY` — from console.picovoice.ai
+- `apps/web/public/wakewords/hola-ona_es_wasm_v3_0_0.ppn` — wake-word model trained for "Hola Ona"
+- `apps/web/public/wakewords/porcupine_params_es.pv` — Spanish acoustic model (Porcupine docs)

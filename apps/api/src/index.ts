@@ -12,6 +12,7 @@ import menuRoutes from './routes/menus.js'
 import shoppingRoutes from './routes/shopping.js'
 import advisorRoutes from './routes/advisor.js'
 import assistantRoutes from './routes/assistant.js'
+import realtimeRoutes from './routes/realtime.js'
 
 const app = express()
 
@@ -36,6 +37,7 @@ app.use(menuRoutes)
 app.use(shoppingRoutes)
 app.use(advisorRoutes)
 app.use(assistantRoutes)
+app.use(realtimeRoutes)
 
 // Error handler
 app.use(errorHandler)

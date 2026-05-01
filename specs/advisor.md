@@ -65,7 +65,7 @@ The model responds with either a plain text message or a tool call. After the to
 - [Menus](./menus.md) — assistant can read and modify menus
 - [Recipes](./recipes.md) — assistant can search, suggest, and create recipes
 - [Shopping](./shopping.md) — assistant can read the list
-- [Voice Mode](./voice-mode.md) — hands-free conversation with wake word "Hola Ona" (planned, supersedes the button-driven STT/TTS for active conversations)
+- [Voice Mode](./voice-mode.md) — hands-free conversation with wake word "Hola Ona". When the opt-in toggle is on, the legacy mic button in the chat is hidden and conversation turns from the orb overlay are appended to the chat history on close.
 
 ## Hooks (client)
 

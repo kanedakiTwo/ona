@@ -4,6 +4,8 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { Send, Mic, MicOff, Volume2, VolumeX } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useVoice } from '@/hooks/useVoice'
+import { consumeVoiceTurns, subscribeVoiceTurns } from '@/lib/voiceMessages'
+import { useVoiceMode } from '@/components/voice/VoiceProvider'
 
 interface Message {
   id: string
@@ -42,6 +44,28 @@ export default function AdvisorChat({ userId }: AdvisorChatProps) {
       }
     }, []),
   })
+
+  // Hands-free voice mode (wake word + Realtime overlay)
+  const voiceMode = useVoiceMode()
+
+  // Drain any voice-mode turns into the chat history on mount and on new arrivals
+  useEffect(() => {
+    function drain() {
+      const turns = consumeVoiceTurns()
+      if (turns.length === 0) return
+      setMessages(prev => [
+        ...prev,
+        ...turns.map((t, i) => ({
+          id: `v-${Date.now()}-${i}`,
+          role: t.role,
+          content: t.content,
+        })),
+      ])
+    }
+    drain()
+    const unsubscribe = subscribeVoiceTurns(drain)
+    return unsubscribe
+  }, [])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -255,8 +279,8 @@ export default function AdvisorChat({ userId }: AdvisorChatProps) {
             disabled={loading || voice.isListening}
           />
 
-          {/* Mic button */}
-          {voice.sttSupported && (
+          {/* Mic button — hidden when hands-free voice mode is active */}
+          {voice.sttSupported && !voiceMode.enabled && (
             <button
               onClick={handleMicToggle}
               disabled={loading}

@@ -70,9 +70,9 @@ AI chat assistant, function calling, skills (get_todays_menu, search_recipes, sw
 
 ## [Voice Mode](./voice-mode.md)
 
-**Status: planned, not implemented yet.** Hands-free voice conversation, wake word "Hola Ona", always-listening, Picovoice Porcupine (WASM), openWakeWord fallback, OpenAI Realtime API, gpt-realtime, WebRTC, server VAD, semantic VAD, turn detection, barge-in, echo cancellation, ephemeral session token, full-screen voice overlay, animated orb, cooking mode, extended silence timeout, wake lock, conversation persistence, skill/tool calling, opt-in toggle, on-device wake-word detection, Spanish.
+**Status: code complete on `feat/voice-mode`; runtime verification pending.** Hands-free voice conversation, wake word "Hola Ona", always-listening, Picovoice Porcupine (WASM), openWakeWord fallback, OpenAI Realtime API, gpt-realtime, WebRTC, server VAD, turn detection, barge-in, echo cancellation, ephemeral session token, full-screen voice overlay, animated orb, cooking mode, extended silence timeout, conversation persistence into AdvisorChat, skill/tool calling, opt-in toggle (Capítulo 04 del perfil), on-device wake-word detection, daily per-user minutes quota, Spanish.
 
-**Source (planned)**: `apps/web/src/hooks/useWakeWord.ts`, `apps/web/src/hooks/useRealtimeSession.ts`, `apps/web/src/components/voice/`, `apps/api/src/routes/realtime.ts`, `apps/api/src/services/realtime/`
+**Source**: `apps/web/src/hooks/useWakeWord.ts`, `apps/web/src/hooks/useRealtimeSession.ts`, `apps/web/src/components/voice/`, `apps/web/src/lib/voiceMessages.ts`, `apps/api/src/routes/realtime.ts`, `apps/api/src/services/realtime/`
 
 ---
 

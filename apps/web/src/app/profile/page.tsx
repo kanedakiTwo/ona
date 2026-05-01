@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { motion } from 'motion/react'
-import { LogOut, X, Plus, Check } from 'lucide-react'
+import { LogOut, X, Plus, Check, Mic } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
+import { useVoiceMode } from '@/components/voice/VoiceProvider'
 
 interface PhysicalData {
   sex: 'male' | 'female' | ''
@@ -62,6 +63,7 @@ const ACTIVITY_MULTIPLIERS: Record<string, number> = {
 
 export default function ProfilePage() {
   const { user, logout, isLoading: authLoading } = useAuth()
+  const voiceMode = useVoiceMode()
 
   const [physical, setPhysical] = useState<PhysicalData>({
     sex: '', age: '', weight: '', height: '', activity_level: 'moderate',
@@ -378,6 +380,52 @@ export default function ProfilePage() {
           </div>
         </div>
       </section>
+
+      {/* Capitulo 04 — Voz */}
+      {typeof window !== 'undefined' && typeof (window as any).RTCPeerConnection !== 'undefined' && (
+      <section className="px-5 mt-12">
+        <ChapterHeader number="04" title="Modo" italic="manos libres" />
+        <p className="mt-2 text-[12px] text-[#7A7066]">
+          Di "Hola Ona" desde cualquier pantalla y mantén una conversación sin tocar la app.
+          La detección de la palabra ocurre en tu dispositivo: no se envía audio hasta que la activas.
+        </p>
+
+        <div className="mt-5 rounded-2xl bg-[#FFFEFA] border border-[#DDD6C5] p-4">
+          <button
+            type="button"
+            onClick={async () => {
+              const next = !voiceMode.enabled
+              if (next) {
+                try {
+                  await navigator.mediaDevices.getUserMedia({ audio: true }).then(s => s.getTracks().forEach(t => t.stop()))
+                } catch {
+                  alert('Necesito permiso de micrófono para activar el modo voz.')
+                  return
+                }
+              }
+              voiceMode.setEnabled(next)
+            }}
+            className="flex w-full items-center justify-between gap-3"
+            aria-pressed={voiceMode.enabled}
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${voiceMode.enabled ? 'bg-[#2D6A4F] text-white' : 'bg-[#F2EDE0] text-[#7A7066]'}`}>
+                <Mic size={16} />
+              </div>
+              <div className="text-left min-w-0">
+                <div className="text-[13px] font-medium text-[#1A1612]">Activar wake word "Hola Ona"</div>
+                <div className="text-[11px] text-[#7A7066] truncate">
+                  {voiceMode.enabled ? (voiceMode.isWakeListening ? 'Escuchando…' : (voiceMode.wakeError ?? 'Iniciando…')) : 'Desactivado'}
+                </div>
+              </div>
+            </div>
+            <span className={`relative inline-block h-6 w-11 rounded-full transition-colors ${voiceMode.enabled ? 'bg-[#2D6A4F]' : 'bg-[#DDD6C5]'}`}>
+              <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${voiceMode.enabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+            </span>
+          </button>
+        </div>
+      </section>
+      )}
 
       {/* Save bar */}
       <div className="px-5 mt-10 mb-24">

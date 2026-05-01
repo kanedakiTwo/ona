@@ -19,6 +19,7 @@ export interface Recipe {
   tags: string[]
   steps: string[]
   ingredients: RecipeIngredient[]
+  is_favorite?: boolean
   createdAt: Date
   updatedAt: Date
 }

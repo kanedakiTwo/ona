@@ -128,7 +128,11 @@ export default function RecipeDetailPage() {
             </button>
             {user && (
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#FAF6EE]/90 backdrop-blur-sm">
-                <FavoriteButton recipeId={recipe.id} userId={user.id} />
+                <FavoriteButton
+                  recipeId={recipe.id}
+                  userId={user.id}
+                  isFavorite={recipe.is_favorite ?? false}
+                />
               </div>
             )}
           </div>

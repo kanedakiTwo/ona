@@ -1,18 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { enqueue } from "@/lib/pwa/offlineQueue"
-import type { ExtractedRecipe } from "@ona/shared"
-
-interface Recipe {
-  id: string
-  name: string
-  authorId: string | null
-  description: string
-  ingredients: string[]
-  steps: string[]
-  tags: string[]
-  is_favorite?: boolean
-}
+import type { ExtractedRecipe, Recipe } from "@ona/shared"
 
 interface RecipeFilters {
   search?: string
@@ -47,11 +36,24 @@ export function useRecipe(id: string | undefined) {
   })
 }
 
+// Legacy create-recipe payload sent by the new-recipe form. This intentionally
+// does not align 1:1 with the shared Recipe type (the form posts a flat
+// description + string[] ingredients shape). Kept loose here to preserve
+// existing runtime behavior; align with createRecipeSchema in a follow-up.
+interface CreateRecipeInput {
+  name: string
+  description?: string
+  ingredients: string[]
+  steps: string[]
+  tags: string[]
+  is_favorite?: boolean
+}
+
 export function useCreateRecipe() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (recipe: Omit<Recipe, "id" | "authorId">) =>
+    mutationFn: (recipe: CreateRecipeInput) =>
       api.post<Recipe>("/recipes", recipe),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["recipes"] })

@@ -59,7 +59,6 @@ ONA (Opinionated Nutritional Assistant) is a **mobile-first meal planner** for S
 - `POST /menu/generate` does NOT require auth (known quirk, see [menus.md](./specs/menus.md)).
 - Recipe images are served from Next.js `public/images/recipes/`, not from the API. Image URLs in the DB look like `/images/recipes/<slug>.jpg`.
 - The bottom tab bar is fixed at the viewport bottom; app routes use `<main className="mx-auto max-w-[430px] pb-20">` to reserve room.
-- `PublicNavbar` links to `/recetas` (Spanish) but the actual route is `/recipes` — broken link.
 - The shopping list is generated on the **first** GET and persisted; if the menu changes afterwards, the list does NOT regenerate automatically.
 - `useAdvisor` is legacy; new code should use `useAssistant` for chat. The advisor page still calls `useAdvisorSummary` for the nutrition summary.
 
@@ -77,3 +76,34 @@ ONA (Opinionated Nutritional Assistant) is a **mobile-first meal planner** for S
 ## Adding new specs
 
 When introducing a new system (e.g., notifications, admin panel, payments), add a new spec following the format described in [`/Users/alio/.claude/skills/spec/`](file:///Users/alio/.claude/skills/spec/). Keep it under 200 lines. Always add an entry to `specs/index.md` with relevant search keywords.
+
+## Todo Miguel
+
+This is the **single source of truth** for work that's pending on Miguel's side (out of Claude's reach: device tests, asset replacement, manual ops, third-party setup, etc).
+
+**Convention**:
+- Whenever a task finishes but leaves something for Miguel to do, Claude appends it here with a short rationale + concrete acceptance criteria
+- When Miguel reports "I did X" (or equivalent), Claude removes the matching item from this list
+- Keep entries terse: one bullet per item; if it grows, link out to a longer doc
+- Items are roughly ordered by priority (top = next)
+
+**Scope**: Only items that genuinely require Miguel — external account setup, physical device testing, branded artwork, etc. Code work that Claude can do (refactors, bug fixes, page migrations) does NOT belong here; those go in regular tasks.
+
+### Pending
+
+- [ ] **Replace placeholder PWA assets** with real branded artwork — `apps/web/public/icons/*.png` + `apps/web/public/favicon.ico`. Same paths, same sizes; the SW picks up new revisions on next build. Current placeholders are an "ONA" wordmark on cream (generator: `apps/web/scripts/generate-pwa-placeholders.mjs`).
+
+- [ ] **Voice-mode setup in Railway** (OpenAI key already set ✓):
+  - `NEXT_PUBLIC_PICOVOICE_ACCESS_KEY` — get from console.picovoice.ai
+  - Upload the `Hola Ona` `.ppn` wake-word model file (trained at console.picovoice.ai, custom wake-word "Hola Ona")
+  - *(Optional, cost control)* `REALTIME_DAILY_MINUTES_PER_USER` — caps per-user OpenAI Realtime minutes/day. Defaults to 30 if unset.
+
+- [ ] **Device-only manual tests** (the rest is covered by Playwright):
+  - Install: Android Chrome → confirm prompt + home-screen install + standalone launch with cream theme
+  - Install: iOS Safari → follow the bottom-sheet instructions, confirm splash screen + translucent status bar + safe-area-inset respected
+  - Lighthouse PWA category = 100 against the deployed URL (DevTools → Lighthouse)
+  - Wake Lock holds when device is locked via power button (recipe detail → "Empezar a cocinar")
+  - Notification fires at meal time + tap-to-open behavior (profile → opt-in → set time 1 min ahead → leave tab open)
+  - Haptic vibration is perceived (Android only — tap a tab, toggle a favorite, check shopping item)
+  - Native share sheet renders (iOS/Android — recipe detail Share button + shopping export)
+  - Subjective UX feel: page transitions cross-fade (~250ms), swipe-between-tabs gesture (edge resistance, 30% threshold, vertical scroll preserved)

@@ -33,3 +33,24 @@ export const HOUSEHOLD_MULTIPLIER: Record<HouseholdSize, number> = {
   family_with_kids: 4,
   family_no_kids: 3,
 }
+
+// Recipe ingredient units
+// `pizca` and `al_gusto` never scale with diner count
+export const UNITS = ['g', 'ml', 'u', 'cda', 'cdita', 'pizca', 'al_gusto'] as const
+export type Unit = (typeof UNITS)[number]
+
+// Recipe difficulty
+export const DIFFICULTIES = ['easy', 'medium', 'hard'] as const
+export type Difficulty = (typeof DIFFICULTIES)[number]
+
+// Shopping list / ingredient catalog aisle grouping
+export const AISLES = [
+  'produce',
+  'proteinas',
+  'lacteos',
+  'panaderia',
+  'despensa',
+  'congelados',
+  'otros',
+] as const
+export type Aisle = (typeof AISLES)[number]

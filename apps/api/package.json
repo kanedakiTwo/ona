@@ -13,7 +13,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/seed/index.ts",
-    "seed:usda": "tsx src/seed/usda.ts"
+    "seed:usda": "tsx src/seed/usda.ts",
+    "regen:recipes": "tsx scripts/regenerateRecipes.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.82.0",

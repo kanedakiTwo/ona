@@ -1,7 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { z } from "zod"
 import { api } from "@/lib/api"
 import { enqueue } from "@/lib/pwa/offlineQueue"
-import type { ExtractedRecipe, Recipe } from "@ona/shared"
+import { createRecipeSchema } from "@ona/shared"
+import type { ExtractedRecipe, Ingredient, Recipe } from "@ona/shared"
+
+export type CreateRecipeInput = z.infer<typeof createRecipeSchema>
 
 interface RecipeFilters {
   search?: string
@@ -36,19 +40,6 @@ export function useRecipe(id: string | undefined) {
   })
 }
 
-// Legacy create-recipe payload sent by the new-recipe form. This intentionally
-// does not align 1:1 with the shared Recipe type (the form posts a flat
-// description + string[] ingredients shape). Kept loose here to preserve
-// existing runtime behavior; align with createRecipeSchema in a follow-up.
-interface CreateRecipeInput {
-  name: string
-  description?: string
-  ingredients: string[]
-  steps: string[]
-  tags: string[]
-  is_favorite?: boolean
-}
-
 export function useCreateRecipe() {
   const queryClient = useQueryClient()
 
@@ -58,6 +49,18 @@ export function useCreateRecipe() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["recipes"] })
     },
+  })
+}
+
+// All ingredients from the global library. Used by the recipe form's
+// autocomplete picker so users can bind free-text names to the ingredient
+// UUIDs the API expects.
+export function useIngredients() {
+  return useQuery<Ingredient[]>({
+    queryKey: ["ingredients"],
+    // perPage=300 covers the seeded library (~250 entries) in one call.
+    queryFn: () => api.get<Ingredient[]>("/ingredients?perPage=300"),
+    staleTime: 10 * 60 * 1000,
   })
 }
 

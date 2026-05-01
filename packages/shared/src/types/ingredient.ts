@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { AminoAcids, CarbTypes, FatAcids, Minerals, Vitamins } from './nutrition.js'
-import { AISLES, type Aisle, type Season } from '../constants/enums.js'
+import { AISLES, SEASONS, type Aisle, type Season } from '../constants/enums.js'
 
 export interface Ingredient {
   id: string
@@ -42,7 +42,7 @@ export const createIngredientSchema = z.object({
   carbs: z.number().min(0).default(0),
   fat: z.number().min(0).default(0),
   fiber: z.number().min(0).default(0),
-  seasons: z.array(z.enum(['spring', 'summer', 'autumn', 'winter'])).default([]),
+  seasons: z.array(z.enum(SEASONS)).default([]),
   vitamins: z.record(z.number()).default({}),
   minerals: z.record(z.number()).default({}),
   aminoAcids: z.record(z.number()).default({}),

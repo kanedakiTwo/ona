@@ -6,7 +6,6 @@ export type {
   RecipeIngredient,
   RecipeIngredientInput,
   RecipeStep,
-  RecipeStepInput,
   NutritionPerServing,
   CreateRecipeInput,
   UpdateRecipeInput,

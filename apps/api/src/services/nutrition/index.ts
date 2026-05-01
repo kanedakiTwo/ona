@@ -1,8 +1,9 @@
 /**
  * Barrel exports for the nutrition module.
  *
- * Currently re-exports the USDA FoodData Central client. Task 6 will add
- * the per-recipe nutrition aggregator alongside it.
+ * - `usdaClient.ts` — USDA FoodData Central HTTP client (Task 5)
+ * - `aggregate.ts`  — per-recipe nutrition aggregator (Task 6)
+ * - `allergens.ts`  — allergen union + name-based inference (Task 6)
  */
 
 export {
@@ -12,3 +13,19 @@ export {
   type UsdaNutrientProfile,
   type UsdaSearchResult,
 } from './usdaClient.js'
+
+export {
+  aggregateNutrition,
+  type AggregateInput,
+  type AggregateResult,
+  type IngredientCatalogEntry,
+  type SkippedIngredient,
+  type SkippedReason,
+} from './aggregate.js'
+
+export {
+  ALLERGEN_TAGS,
+  allergenUnion,
+  inferAllergenTagsFromName,
+  type AllergenTag,
+} from './allergens.js'

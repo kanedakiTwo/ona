@@ -7,6 +7,7 @@ import Navbar from "@/components/shared/Navbar"
 import OfflineBanner from "@/components/pwa/OfflineBanner"
 import InstallSheet from "@/components/pwa/InstallSheet"
 import { PageTransition } from "@/components/pwa/PageTransition"
+import { SwipeNavigator } from "@/components/pwa/SwipeNavigator"
 import VoiceProvider from "@/components/voice/VoiceProvider"
 import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
@@ -111,7 +112,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <VoiceProvider>
                 <OfflineBanner />
                 <main className="standalone-pt mx-auto max-w-[430px] pb-20">
-                  <PageTransition>{children}</PageTransition>
+                  <SwipeNavigator>
+                    <PageTransition>{children}</PageTransition>
+                  </SwipeNavigator>
                 </main>
                 <Navbar />
                 <InstallSheet />

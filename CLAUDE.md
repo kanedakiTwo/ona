@@ -77,3 +77,22 @@ ONA (Opinionated Nutritional Assistant) is a **mobile-first meal planner** for S
 ## Adding new specs
 
 When introducing a new system (e.g., notifications, admin panel, payments), add a new spec following the format described in [`/Users/alio/.claude/skills/spec/`](file:///Users/alio/.claude/skills/spec/). Keep it under 200 lines. Always add an entry to `specs/index.md` with relevant search keywords.
+
+## Todo Miguel
+
+This is the **single source of truth** for work that's pending on Miguel's side (out of Claude's reach: device tests, asset replacement, manual ops, third-party setup, etc).
+
+**Convention**:
+- Whenever a task finishes but leaves something for Miguel to do, Claude appends it here with a short rationale + concrete acceptance criteria
+- When Miguel reports "I did X" (or equivalent), Claude removes the matching item from this list
+- Keep entries terse: one bullet per item; if it grows, link out to a longer doc
+- Items are roughly ordered by priority (top = next)
+
+### Pending
+
+- [ ] **Replace placeholder PWA assets** with real branded artwork — `apps/web/public/icons/*.png` + `apps/web/public/favicon.ico`. Same paths, same sizes; the SW will pick up the new revisions on next build. Generator script: `apps/web/scripts/generate-pwa-placeholders.mjs` (currently just renders an "ONA" wordmark on cream).
+- [ ] **Run the 10 manual device tests** in [`apps/web/PWA_MANUAL_TESTS.md`](./apps/web/PWA_MANUAL_TESTS.md): Android Chrome install, iOS Safari install, Lighthouse PWA = 100, offline behavior on real device, Wake Lock with locked screen, real notification fire, haptic feel, Web Share native sheet, page transitions perception, swipe-between-tabs feel.
+- [ ] **Voice-mode env vars** in production (Railway): `NEXT_PUBLIC_PICOVOICE_ACCESS_KEY`, the `Hola Ona` `.ppn` wake-word model file, `OPENAI_API_KEY` with `gpt-realtime` access, `REALTIME_DAILY_MINUTES_PER_USER` (default 30 if unset). Without these, the voice overlay falls back gracefully but doesn't activate.
+- [ ] **Fix the broken `/recetas` link in `PublicNavbar`** — the actual route is `/recipes`. One-line fix in [`apps/web/src/components/shared/PublicNavbar.tsx`](./apps/web/src/components/shared/PublicNavbar.tsx) `NAV_LINKS`.
+- [ ] **Migrate legacy "app mode" pages to the editorial design system**: `/menu`, `/shopping`, `/profile`, `/advisor`, `/login` still use the green palette. Tracked in [`specs/design-system.md`](./specs/design-system.md) under "Pages still in App Mode".
+- [ ] **Reconcile `/recipes/new` form payload** with `createRecipeSchema` — the form posts a flat `description` + `string[]` ingredients shape that doesn't match the API contract; works at runtime today but will break the new richer recipe model. See [`specs/recipes.md`](./specs/recipes.md).

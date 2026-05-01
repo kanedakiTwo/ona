@@ -1,0 +1,1 @@
+ALTER TABLE "recipes" ALTER COLUMN "nutrition_per_serving" DROP DEFAULT;

@@ -43,7 +43,7 @@ Each recipe has:
 - `equipment` — string array of tools required (e.g. "horno", "procesador", "batidora")
 - `allergens` — string array (auto-aggregated from ingredients on save; see [Nutrition](./nutrition.md))
 - `notes`, `tips`, `substitutions`, `storage` — long-form text, optional
-- `nutritionPerServing` — cached object: `{ kcal, protein_g, carbs_g, fat_g, fiber_g, salt_g }`. Computed when the recipe is saved
+- `nutritionPerServing` — cached object: `{ kcal, proteinG, carbsG, fatG, fiberG, saltG }`. Computed when the recipe is saved
 - `tags` — public-facing string array, normalized (no internal labels, no `meal`/`difficulty` duplicates)
 - `internalTags` — string array hidden from public UI (e.g. `compartida`, `auto-extracted`)
 - `authorId` — null for system, user id for user-created

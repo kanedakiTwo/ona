@@ -110,8 +110,8 @@ export const recipes = pgTable('recipes', {
   substitutions: text('substitutions'),
   storage: text('storage'),
 
-  /** Cached nutrition per serving — recomputed on every save */
-  nutritionPerServing: jsonb('nutrition_per_serving').$type<NutritionPerServing>().default({} as NutritionPerServing),
+  /** Cached nutrition per serving — recomputed on every save. NULL until first compute. */
+  nutritionPerServing: jsonb('nutrition_per_serving').$type<NutritionPerServing>(),
 
   /** Public-facing tags */
   tags: text('tags').array().default([]),
@@ -139,6 +139,8 @@ export const recipeIngredients = pgTable('recipe_ingredients', {
 }, (table) => [
   index('idx_recipe_ingredients_recipe').on(table.recipeId),
   index('idx_recipe_ingredients_ingredient').on(table.ingredientId),
+  // Sourced from UNITS in @ona/shared at codegen time. If UNITS changes,
+  // re-run `pnpm --filter @ona/api db:generate` to regenerate this CHECK.
   check(
     'recipe_ingredients_unit_check',
     sql.raw(`unit IN (${UNITS.map((u) => `'${u}'`).join(', ')})`),

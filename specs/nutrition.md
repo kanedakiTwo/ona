@@ -4,7 +4,7 @@ Per-ingredient nutrition data, allergen tagging, and recipe-level nutrition aggr
 
 ## User Capabilities
 
-- Users can see per-serving nutrition on every recipe detail page: kcal, protein, carbs, fat, fiber, salt
+- Users can see per-serving nutrition on every recipe detail page: kcal, protein, carbs, fat, fiber, salt (stored as `kcal`, `proteinG`, `carbsG`, `fatG`, `fiberG`, `saltG`)
 - Users can see per-recipe-total nutrition (per-serving × `recipe.servings`)
 - Users can see allergen badges on every recipe (e.g. "gluten", "lactosa", "frutos secos")
 - Users can filter the recipe catalog by absence of allergens (e.g. "sin gluten")

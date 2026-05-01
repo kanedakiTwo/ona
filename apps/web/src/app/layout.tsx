@@ -4,6 +4,7 @@ import { Inter, Fraunces, Cormorant_Garamond, JetBrains_Mono } from "next/font/g
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { AuthProvider } from "@/lib/auth"
 import Navbar from "@/components/shared/Navbar"
+import OfflineBanner from "@/components/pwa/OfflineBanner"
 import VoiceProvider from "@/components/voice/VoiceProvider"
 import { useState } from "react"
 import { usePathname } from "next/navigation"
@@ -97,6 +98,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <main>{children}</main>
             ) : (
               <VoiceProvider>
+                <OfflineBanner />
                 <main className="standalone-pt mx-auto max-w-[430px] pb-20">
                   {children}
                 </main>

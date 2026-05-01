@@ -15,4 +15,5 @@ export const env = {
   OPENAI_REALTIME_MODEL: process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime',
   OPENAI_REALTIME_VOICE: process.env.OPENAI_REALTIME_VOICE || 'marin',
   REALTIME_DAILY_MINUTES_PER_USER: parseInt(process.env.REALTIME_DAILY_MINUTES_PER_USER || '30', 10),
+  USDA_FDC_API_KEY: process.env.USDA_FDC_API_KEY || '',
 }

@@ -254,7 +254,7 @@ export default function ProfilePage() {
               </div>
               <div>
                 <div className="text-[9px] uppercase tracking-[0.2em] text-[#FAF6EE]/50">Gasto diario</div>
-                <div className="mt-1 font-display text-2xl text-[#52B788]">{tdee}<span className="text-sm text-[#52B788]/60 ml-1">kcal</span></div>
+                <div className="mt-1 font-display text-2xl text-[#C65D38]">{tdee}<span className="text-sm text-[#C65D38]/60 ml-1">kcal</span></div>
               </div>
             </div>
           )}
@@ -478,7 +478,7 @@ export default function ProfilePage() {
             aria-pressed={voiceMode.enabled}
           >
             <div className="flex items-center gap-3 min-w-0">
-              <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${voiceMode.enabled ? 'bg-[#2D6A4F] text-white' : 'bg-[#F2EDE0] text-[#7A7066]'}`}>
+              <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${voiceMode.enabled ? 'bg-[#1A1612] text-white' : 'bg-[#F2EDE0] text-[#7A7066]'}`}>
                 <Mic size={16} />
               </div>
               <div className="text-left min-w-0">
@@ -493,7 +493,7 @@ export default function ProfilePage() {
               </div>
             </div>
             <span
-              className={`relative block h-6 w-11 shrink-0 rounded-full transition-colors ${voiceMode.enabled ? 'bg-[#2D6A4F]' : 'bg-[#DDD6C5]'}`}
+              className={`relative block h-6 w-11 shrink-0 rounded-full transition-colors ${voiceMode.enabled ? 'bg-[#1A1612]' : 'bg-[#DDD6C5]'}`}
             >
               <span
                 className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-[left] duration-200 ${voiceMode.enabled ? 'left-[22px]' : 'left-0.5'}`}
@@ -530,7 +530,7 @@ export default function ProfilePage() {
             </div>
             <span
               className={`relative inline-block h-6 w-11 rounded-full transition-colors ${
-                notifEnabled ? 'bg-[#2D6A4F]' : 'bg-[#DDD6C5]'
+                notifEnabled ? 'bg-[#1A1612]' : 'bg-[#DDD6C5]'
               }`}
             >
               <span

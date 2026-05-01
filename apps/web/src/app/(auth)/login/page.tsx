@@ -132,7 +132,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={isSubmitting || !username || !password}
-                className="group flex w-full items-center justify-center gap-2 rounded-full bg-[#1A1612] py-4 text-[13px] font-medium text-[#FAF6EE] transition-all hover:bg-[#2D6A4F] hover:gap-3 disabled:cursor-not-allowed disabled:opacity-40"
+                className="group flex w-full items-center justify-center gap-2 rounded-full bg-[#1A1612] py-4 text-[13px] font-medium text-[#FAF6EE] transition-all hover:bg-[#1A1612] hover:gap-3 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {isSubmitting ? "Entrando..." : "Entrar"}
                 <ArrowRight size={14} className="transition-transform group-hover:translate-x-0.5" />

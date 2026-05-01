@@ -74,7 +74,7 @@ export default function ShoppingPage() {
           </p>
           <Link
             href="/menu"
-            className="mt-6 inline-flex items-center gap-2 rounded-full bg-[#1A1612] px-5 py-2.5 text-[13px] font-medium text-[#FAF6EE] transition-all hover:gap-3 hover:bg-[#2D6A4F]"
+            className="mt-6 inline-flex items-center gap-2 rounded-full bg-[#1A1612] px-5 py-2.5 text-[13px] font-medium text-[#FAF6EE] transition-all hover:gap-3 hover:bg-[#1A1612]"
           >
             <Sparkles size={14} />
             Generar menu

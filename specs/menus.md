@@ -7,12 +7,13 @@ Weekly meal plan generation and management.
 - Users can generate a weekly menu (Monday–Sunday) for the current week with one click
 - Users can navigate between days of the week using a horizontal day strip (WeekStrip)
 - Users can see the day's meals as photo cards (breakfast / lunch / dinner) with the recipe image
-- Users can regenerate a single meal slot (gives a different recipe matching the slot)
-- Users can lock individual meal slots to prevent them from being changed during regeneration
+- Users can regenerate a single meal slot (gives a different recipe matching the slot); the request is queued offline and replays on reconnect
+- Users can lock individual meal slots to prevent them from being changed during regeneration; the lock toggle is queued offline as well
 - Users can regenerate the whole week (re-runs the algorithm; locked slots are preserved)
 - Users can view past menus via `/menu/history`
 - Users can tap a meal photo to open the recipe detail
 - The menu page shows progress: "X de 7 dias con menu" and a percentage bar
+- Users can opt in to local meal-time notifications (breakfast / lunch / snack / dinner times configured in profile `Capítulo 05`) — the app fires a reminder at the chosen times — see [PWA](./pwa.md)
 
 ## Menu Structure
 
@@ -84,6 +85,7 @@ Every generated menu also creates a `menu_logs` row with:
 - [Nutrition](./nutrition.md) — provides the cached per-serving nutrition the algorithm now scores against
 - [Auth](./auth.md) — user profile drives calorie targets and restrictions
 - [Advisor](./advisor.md) — assistant skills can generate, regenerate, and read menus
+- [PWA](./pwa.md) — meal regeneration and slot-lock toggles are wrapped by the offline queue; meal-time notifications are scheduled client-side from saved meal-time preferences
 
 ## Source
 

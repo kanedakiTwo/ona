@@ -15,14 +15,18 @@ interface Recipe {
 
 interface RecipeFilters {
   search?: string
-  tags?: string[]
+  meal?: string
+  season?: string
+  perPage?: number
 }
 
 function buildQueryString(filters?: RecipeFilters): string {
   if (!filters) return ""
   const params = new URLSearchParams()
   if (filters.search) params.set("search", filters.search)
-  if (filters.tags?.length) params.set("tags", filters.tags.join(","))
+  if (filters.meal) params.set("meal", filters.meal)
+  if (filters.season) params.set("season", filters.season)
+  if (filters.perPage) params.set("perPage", String(filters.perPage))
   const qs = params.toString()
   return qs ? `?${qs}` : ""
 }

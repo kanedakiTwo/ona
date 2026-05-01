@@ -8,7 +8,7 @@ interface ShoppingItem {
   unit: string
   category: string
   checked: boolean
-  in_stock: boolean
+  inStock: boolean
 }
 
 interface ShoppingList {
@@ -30,7 +30,7 @@ export function useCheckItem() {
 
   return useMutation({
     mutationFn: (params: { listId: string; itemId: string; checked: boolean }) =>
-      api.put(`/shopping-list/${params.listId}/item/${params.itemId}`, {
+      api.put(`/shopping-list/${params.listId}/item/${params.itemId}/check`, {
         checked: params.checked,
       }),
     onSuccess: () => {
@@ -43,9 +43,9 @@ export function useStockItem() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (params: { listId: string; itemId: string; in_stock: boolean }) =>
-      api.put(`/shopping-list/${params.listId}/item/${params.itemId}`, {
-        in_stock: params.in_stock,
+    mutationFn: (params: { listId: string; itemId: string; inStock: boolean }) =>
+      api.put(`/shopping-list/${params.listId}/item/${params.itemId}/stock`, {
+        inStock: params.inStock,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["shopping-list"] })

@@ -2,57 +2,57 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { motion } from "motion/react"
 import { useAuth } from "@/lib/auth"
-import { cn } from "@/lib/utils"
-import { CalendarDays, ShoppingCart, BookOpen, Activity, User, LogOut } from "lucide-react"
+import { CalendarDays, ShoppingCart, BookOpen, MessageCircle, User } from "lucide-react"
 
 const NAV_ITEMS = [
   { href: "/menu", label: "Menu", icon: CalendarDays },
   { href: "/shopping", label: "Compra", icon: ShoppingCart },
   { href: "/recipes", label: "Recetas", icon: BookOpen },
-  { href: "/advisor", label: "Asesor", icon: Activity },
+  { href: "/advisor", label: "Asesor", icon: MessageCircle },
   { href: "/profile", label: "Perfil", icon: User },
 ]
 
 export default function Navbar() {
-  const { user, logout } = useAuth()
+  const { user } = useAuth()
   const pathname = usePathname()
 
   if (!user) return null
 
   return (
-    <nav className="border-b border-[#EEEEEE] bg-white">
-      <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-        <Link href="/menu" className="text-xl font-bold text-[#2D6A4F] font-[family-name:var(--font-display)]">
-          ONA
-        </Link>
-
-        <div className="flex items-center gap-1">
-          {NAV_ITEMS.map((item) => {
-            const Icon = item.icon
-            const isActive = pathname.startsWith(item.href)
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                  isActive
-                    ? "bg-[#D8F3DC] text-[#2D6A4F]"
-                    : "text-[#444444] hover:text-[#1A1A1A]"
-                )}
-              >
-                <Icon size={16} />
-                <span className="hidden sm:inline">{item.label}</span>
-              </Link>
-            )
-          })}
-          <button
-            onClick={logout}
-            className="ml-2 flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-[#777777] hover:text-[#444444]"
-          >
-            <LogOut size={16} />
-          </button>
+    <nav className="fixed bottom-0 left-0 right-0 z-50 pb-[env(safe-area-inset-bottom)]">
+      <div className="mx-auto max-w-[430px] px-3 pb-3">
+        <div className="relative rounded-full border border-[#DDD6C5] bg-[#FFFEFA]/95 px-2 py-1.5 shadow-[0_8px_32px_-8px_rgba(26,22,18,0.18)] backdrop-blur-md">
+          <div className="flex items-center justify-around">
+            {NAV_ITEMS.map((item) => {
+              const Icon = item.icon
+              const isActive = pathname.startsWith(item.href)
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="relative flex h-12 w-12 items-center justify-center transition-colors active:scale-95"
+                  aria-label={item.label}
+                >
+                  {isActive && (
+                    <motion.div
+                      layoutId="nav-pill"
+                      className="absolute inset-0 rounded-full bg-[#1A1612]"
+                      transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                    />
+                  )}
+                  <Icon
+                    size={19}
+                    strokeWidth={isActive ? 2 : 1.6}
+                    className={`relative z-10 transition-colors ${
+                      isActive ? "text-[#FAF6EE]" : "text-[#7A7066]"
+                    }`}
+                  />
+                </Link>
+              )
+            })}
+          </div>
         </div>
       </div>
     </nav>

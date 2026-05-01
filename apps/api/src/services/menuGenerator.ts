@@ -210,8 +210,9 @@ export async function generateMenu(
     .where(eq(userSettings.userId, userId))
     .limit(1)
 
+  const rawTemplate = customTemplate ?? (settings?.template as DayTemplate[])
   const template: DayTemplate[] =
-    customTemplate ?? (settings?.template as DayTemplate[]) ?? defaultTemplate()
+    rawTemplate && rawTemplate.length > 0 ? rawTemplate : defaultTemplate()
 
   // Fetch all recipes with ingredients
   const allRecipes = await loadRecipesWithIngredients(db)

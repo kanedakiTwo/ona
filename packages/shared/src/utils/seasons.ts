@@ -6,9 +6,10 @@ import type { Season } from '../constants/enums.js'
  */
 export function detectSeason(date: Date = new Date()): Season {
   const month = date.getMonth() // 0-11
-  const seasonIndex = Math.floor(month / 12 * 4) % 4
-  const seasons: Season[] = ['winter', 'spring', 'summer', 'autumn']
-  return seasons[seasonIndex]
+  if (month <= 1 || month === 11) return 'winter'  // Dec, Jan, Feb
+  if (month <= 4) return 'spring'                    // Mar, Apr, May
+  if (month <= 7) return 'summer'                    // Jun, Jul, Aug
+  return 'autumn'                                    // Sep, Oct, Nov
 }
 
 /**

@@ -423,7 +423,7 @@ export const seedRecipes: SeedRecipe[] = [
   },
   {
     name: 'Berenjenas con chermoula',
-    imageUrl: '/public/images/recipes/berenjenas-con-chermoula.jpg',
+    imageUrl: '/images/recipes/berenjenas-con-chermoula.jpg',
     prepTime: 0,
     meals: ['lunch', 'dinner'],
     seasons: ['spring', 'summer', 'autumn', 'winter'],
@@ -514,7 +514,7 @@ export const seedRecipes: SeedRecipe[] = [
   },
   {
     name: 'Muslos de pavo a la catalana',
-    imageUrl: '/public/images/recipes/muslos-de-pavo-a-la-catalana.jpeg',
+    imageUrl: '/images/recipes/muslos-de-pavo-a-la-catalana.jpeg',
     prepTime: 0,
     meals: ['lunch', 'dinner'],
     seasons: ['spring', 'summer', 'autumn', 'winter'],
@@ -524,7 +524,7 @@ export const seedRecipes: SeedRecipe[] = [
   },
   {
     name: 'Pisto (Shakshuka)',
-    imageUrl: '/public/images/recipes/pisto-shakshuka.jpg',
+    imageUrl: '/images/recipes/pisto-shakshuka.jpg',
     prepTime: 0,
     meals: ['lunch', 'dinner'],
     seasons: ['spring', 'summer', 'autumn', 'winter'],
@@ -561,7 +561,7 @@ export const seedRecipes: SeedRecipe[] = [
   },
   {
     name: 'Arroz mexicano',
-    imageUrl: '/public/images/recipes/arroz-mexicano.jpeg',
+    imageUrl: '/images/recipes/arroz-mexicano.jpeg',
     prepTime: 0,
     meals: ['lunch', 'dinner'],
     seasons: ['spring', 'summer', 'autumn', 'winter'],
@@ -607,7 +607,7 @@ export const seedRecipes: SeedRecipe[] = [
   },
   {
     name: 'Cochinita pibil',
-    imageUrl: '/public/images/recipes/cochinita-pibil.jpeg',
+    imageUrl: '/images/recipes/cochinita-pibil.jpeg',
     prepTime: 0,
     meals: ['lunch', 'dinner'],
     seasons: ['spring', 'summer', 'autumn', 'winter'],
@@ -626,7 +626,7 @@ export const seedRecipes: SeedRecipe[] = [
   },
   {
     name: 'Pollo al mole',
-    imageUrl: '/public/images/recipes/pollo-al-mole.jpeg',
+    imageUrl: '/images/recipes/pollo-al-mole.jpeg',
     prepTime: 0,
     meals: ['lunch', 'dinner'],
     seasons: ['spring', 'summer', 'autumn', 'winter'],
@@ -708,7 +708,7 @@ export const seedRecipes: SeedRecipe[] = [
   },
   {
     name: 'Alitas de pollo',
-    imageUrl: '/public/images/recipes/alitas-de-pollo.jpg',
+    imageUrl: '/images/recipes/alitas-de-pollo.jpg',
     prepTime: 0,
     meals: ['lunch', 'dinner'],
     seasons: ['spring', 'summer', 'autumn', 'winter'],

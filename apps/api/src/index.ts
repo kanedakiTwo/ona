@@ -11,6 +11,7 @@ import ingredientRoutes from './routes/ingredients.js'
 import menuRoutes from './routes/menus.js'
 import shoppingRoutes from './routes/shopping.js'
 import advisorRoutes from './routes/advisor.js'
+import assistantRoutes from './routes/assistant.js'
 
 const app = express()
 
@@ -34,6 +35,7 @@ app.use(ingredientRoutes)
 app.use(menuRoutes)
 app.use(shoppingRoutes)
 app.use(advisorRoutes)
+app.use(assistantRoutes)
 
 // Error handler
 app.use(errorHandler)

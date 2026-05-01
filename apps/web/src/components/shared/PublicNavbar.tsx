@@ -1,101 +1,116 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Menu, X } from "lucide-react"
+import { usePathname } from "next/navigation"
+import { ArrowRight, Menu, X } from "lucide-react"
+
+const NAV_LINKS = [
+  { href: "/como-funciona", label: "Como funciona" },
+  { href: "/recetas", label: "Recetas" },
+]
 
 export default function PublicNavbar() {
+  const pathname = usePathname()
   const [scrolled, setScrolled] = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
+  const [open, setOpen] = useState(false)
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 80)
+    const onScroll = () => setScrolled(window.scrollY > 40)
     window.addEventListener("scroll", onScroll, { passive: true })
     return () => window.removeEventListener("scroll", onScroll)
   }, [])
 
-  // Lock body scroll when mobile menu is open
   useEffect(() => {
-    if (menuOpen) {
-      document.body.style.overflow = "hidden"
-    } else {
-      document.body.style.overflow = ""
-    }
+    document.body.style.overflow = open ? "hidden" : ""
     return () => { document.body.style.overflow = "" }
-  }, [menuOpen])
+  }, [open])
 
+  // Home navbar shows transparent over hero, others are solid from start
   return (
-    <nav
-      className={`sticky top-0 z-50 bg-white transition-shadow duration-200 ${
-        scrolled ? "shadow-[0_2px_8px_rgba(0,0,0,0.08)]" : ""
-      }`}
-    >
-      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 md:h-16">
-        {/* Logo */}
-        <Link
-          href="/"
-          className="font-[family-name:var(--font-display)] text-2xl text-[#2D6A4F]"
-        >
-          ONA
-        </Link>
+    <>
+      <nav
+        className={`fixed left-0 right-0 top-0 z-50 transition-all duration-500 ${
+          scrolled || open ? "bg-[#FAF6EE]/90 backdrop-blur-md" : "bg-transparent"
+        }`}
+      >
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5 md:px-10">
+          <Link href="/" className="font-display text-2xl tracking-tight text-[#1A1612]">
+            ONA
+          </Link>
 
-        {/* Desktop links */}
-        <div className="hidden items-center gap-8 md:flex">
-          <Link
-            href="/como-funciona"
-            className="text-base font-medium text-[#1A1A1A] transition-colors hover:text-[#2D6A4F]"
+          <div className="hidden items-center gap-10 text-sm md:flex">
+            {NAV_LINKS.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={`link-reveal ${
+                  pathname === link.href ? "font-medium text-[#1A1612]" : "text-[#4A4239]"
+                }`}
+              >
+                {link.label}
+              </Link>
+            ))}
+            <Link href="/login" className="link-reveal text-[#4A4239]">
+              Entrar
+            </Link>
+            <Link href="/register" className="btn-editorial btn-editorial-primary text-xs">
+              Empezar gratis
+              <ArrowRight size={14} />
+            </Link>
+          </div>
+
+          <button
+            onClick={() => setOpen(!open)}
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-[#DDD6C5] text-[#1A1612] md:hidden"
+            aria-label={open ? "Cerrar menu" : "Abrir menu"}
           >
-            Como funciona
-          </Link>
-          <Link
-            href="/recetas"
-            className="text-base font-medium text-[#1A1A1A] transition-colors hover:text-[#2D6A4F]"
-          >
-            Recetas
-          </Link>
-          <Link href="/register" className="btn-primary btn-s inline-flex items-center">
-            Empezar gratis
-          </Link>
+            {open ? <X size={18} /> : <Menu size={18} />}
+          </button>
         </div>
+      </nav>
 
-        {/* Mobile hamburger */}
-        <button
-          className="flex items-center justify-center md:hidden"
-          onClick={() => setMenuOpen(!menuOpen)}
-          aria-label={menuOpen ? "Cerrar menu" : "Abrir menu"}
-        >
-          {menuOpen ? <X size={24} /> : <Menu size={24} />}
-        </button>
-      </div>
-
-      {/* Mobile fullscreen menu */}
-      {menuOpen && (
-        <div className="fixed inset-0 top-14 z-40 flex flex-col bg-white px-6 pt-8 md:hidden">
-          <Link
-            href="/como-funciona"
-            onClick={() => setMenuOpen(false)}
-            className="border-b border-[#EEEEEE] py-4 text-lg font-medium text-[#1A1A1A]"
-          >
-            Como funciona
-          </Link>
-          <Link
-            href="/recetas"
-            onClick={() => setMenuOpen(false)}
-            className="border-b border-[#EEEEEE] py-4 text-lg font-medium text-[#1A1A1A]"
-          >
-            Recetas
-          </Link>
-          <div className="mt-8">
+      {open && (
+        <div className="fixed inset-0 z-40 flex flex-col bg-[#FAF6EE] pt-24 md:hidden">
+          <div className="flex flex-1 flex-col gap-2 px-6">
+            {NAV_LINKS.map((link, i) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                onClick={() => setOpen(false)}
+                className="border-b border-[#DDD6C5] py-6 font-display text-3xl text-[#1A1612] transition-colors hover:text-[#2D6A4F]"
+                style={{ animation: `fadeUp 0.5s ${i * 0.06}s both cubic-bezier(0.19, 1, 0.22, 1)` }}
+              >
+                {link.label}
+              </Link>
+            ))}
+            <Link
+              href="/login"
+              onClick={() => setOpen(false)}
+              className="border-b border-[#DDD6C5] py-6 font-display text-3xl text-[#4A4239]"
+            >
+              Entrar
+            </Link>
+          </div>
+          <div className="px-6 pb-12">
             <Link
               href="/register"
-              onClick={() => setMenuOpen(false)}
-              className="btn-primary btn-l flex w-full items-center justify-center"
+              onClick={() => setOpen(false)}
+              className="btn-editorial btn-editorial-primary w-full justify-center text-base"
             >
               Empezar gratis
+              <ArrowRight size={16} />
             </Link>
           </div>
         </div>
       )}
-    </nav>
+
+      <style jsx>{`
+        @keyframes fadeUp {
+          from { opacity: 0; transform: translateY(16px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
+    </>
   )
 }

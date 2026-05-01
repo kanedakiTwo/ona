@@ -11,7 +11,7 @@ interface ShoppingItem {
   unit: string
   category: string
   checked: boolean
-  in_stock: boolean
+  inStock: boolean
 }
 
 interface ShoppingListProps {
@@ -26,7 +26,7 @@ export default function ShoppingList({ items, listId }: ShoppingListProps) {
 
   const visibleItems = showInStock
     ? items
-    : items.filter((item) => !item.in_stock)
+    : items.filter((item) => !item.inStock)
 
   const uncheckedItems = visibleItems
     .filter((item) => !item.checked)
@@ -43,7 +43,7 @@ export default function ShoppingList({ items, listId }: ShoppingListProps) {
   }
 
   function handleStock(itemId: string, currentInStock: boolean) {
-    stockItem.mutate({ listId, itemId, in_stock: !currentInStock })
+    stockItem.mutate({ listId, itemId, inStock: !currentInStock })
   }
 
   if (items.length === 0) {
@@ -71,7 +71,7 @@ export default function ShoppingList({ items, listId }: ShoppingListProps) {
           <li
             key={item.id}
             className={`flex items-center gap-3 py-3 ${
-              item.in_stock ? 'opacity-40' : ''
+              item.inStock ? 'opacity-40' : ''
             } ${item.checked ? 'opacity-60' : ''}`}
           >
             <button
@@ -89,7 +89,7 @@ export default function ShoppingList({ items, listId }: ShoppingListProps) {
             <div className="flex-1 min-w-0">
               <span
                 className={`block text-sm font-medium ${
-                  item.checked || item.in_stock
+                  item.checked || item.inStock
                     ? 'text-gray-400 line-through'
                     : 'text-gray-900'
                 }`}
@@ -106,15 +106,15 @@ export default function ShoppingList({ items, listId }: ShoppingListProps) {
             </span>
 
             <button
-              onClick={() => handleStock(item.id, item.in_stock)}
+              onClick={() => handleStock(item.id, item.inStock)}
               className={`shrink-0 rounded-md px-2 py-1 text-xs font-medium transition-colors ${
-                item.in_stock
+                item.inStock
                   ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
                   : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
               }`}
-              title={item.in_stock ? 'Quitar de stock' : 'Marcar en stock'}
+              title={item.inStock ? 'Quitar de stock' : 'Marcar en stock'}
             >
-              {item.in_stock ? 'En stock' : 'Stock'}
+              {item.inStock ? 'En stock' : 'Stock'}
             </button>
           </li>
         ))}

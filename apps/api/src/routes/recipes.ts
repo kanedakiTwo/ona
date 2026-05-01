@@ -27,12 +27,14 @@ router.get('/recipes', async (req, res) => {
     const perPage = Math.min(100, Math.max(1, parseInt(req.query.perPage as string) || 20))
     const meal = req.query.meal as string | undefined
     const season = req.query.season as string | undefined
+    const search = req.query.search as string | undefined
     const offset = (page - 1) * perPage
 
     // Build conditions
     const conditions = []
     if (meal) conditions.push(arrayContains(recipes.meals, [meal]))
     if (season) conditions.push(arrayContains(recipes.seasons, [season]))
+    if (search) conditions.push(sql`lower(${recipes.name}) like ${`%${search.toLowerCase()}%`}`)
 
     const where = conditions.length > 0 ? and(...conditions) : undefined
 

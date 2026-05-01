@@ -8,3 +8,9 @@ dist/
 
 # Git worktrees (isolated workspaces)
 .worktrees/
+
+# Playwright MCP cache
+.playwright-mcp/
+
+# Dev screenshots dropped at repo root
+/*.png

@@ -1,13 +1,10 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
-import { User, Settings, Activity, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { motion } from 'motion/react'
+import { LogOut, X, Plus, Check } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
-
-/* ------------------------------------------------------------------ */
-/*  Types                                                              */
-/* ------------------------------------------------------------------ */
 
 interface PhysicalData {
   sex: 'male' | 'female' | ''
@@ -23,27 +20,19 @@ interface Preferences {
 }
 
 interface MealTemplate {
-  [day: string]: string[] // e.g. { lunes: ['desayuno', 'almuerzo', 'cena'] }
+  [day: string]: string[]
 }
 
-const DAYS = [
-  'lunes',
-  'martes',
-  'miercoles',
-  'jueves',
-  'viernes',
-  'sabado',
-  'domingo',
-] as const
-
+const DAYS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'] as const
+const DAYS_SHORT = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 const MEALS = ['desayuno', 'almuerzo', 'merienda', 'cena'] as const
 
 const ACTIVITY_LABELS: Record<string, string> = {
-  sedentary: 'Sedentario (poco o nada)',
-  light: 'Ligero (1-3 dias/sem)',
-  moderate: 'Moderado (3-5 dias/sem)',
-  active: 'Activo (6-7 dias/sem)',
-  very_active: 'Muy activo (atleta)',
+  sedentary: 'Sedentario',
+  light: 'Ligero',
+  moderate: 'Moderado',
+  active: 'Activo',
+  very_active: 'Muy activo',
 }
 
 const PRIORITY_LABELS: Record<string, string> = {
@@ -54,30 +43,12 @@ const PRIORITY_LABELS: Record<string, string> = {
 }
 
 const COMMON_RESTRICTIONS = [
-  'sin gluten',
-  'sin lactosa',
-  'vegetariano',
-  'vegano',
-  'sin frutos secos',
-  'sin mariscos',
-  'sin huevo',
-  'sin soja',
+  'sin gluten', 'sin lactosa', 'vegetariano', 'vegano',
+  'frutos secos', 'mariscos', 'huevo', 'soja',
 ]
 
-/* ------------------------------------------------------------------ */
-/*  BMR / TDEE helpers                                                 */
-/* ------------------------------------------------------------------ */
-
-function calculateBMR(
-  sex: string,
-  weight: number,
-  height: number,
-  age: number
-): number {
-  // Mifflin-St Jeor
-  if (sex === 'male') {
-    return 10 * weight + 6.25 * height - 5 * age + 5
-  }
+function calculateBMR(sex: string, weight: number, height: number, age: number): number {
+  if (sex === 'male') return 10 * weight + 6.25 * height - 5 * age + 5
   return 10 * weight + 6.25 * height - 5 * age - 161
 }
 
@@ -89,109 +60,66 @@ const ACTIVITY_MULTIPLIERS: Record<string, number> = {
   very_active: 1.9,
 }
 
-/* ------------------------------------------------------------------ */
-/*  Component                                                          */
-/* ------------------------------------------------------------------ */
-
 export default function ProfilePage() {
-  const { user, isLoading: authLoading } = useAuth()
+  const { user, logout, isLoading: authLoading } = useAuth()
 
   const [physical, setPhysical] = useState<PhysicalData>({
-    sex: '',
-    age: '',
-    weight: '',
-    height: '',
-    activity_level: 'moderate',
+    sex: '', age: '', weight: '', height: '', activity_level: 'moderate',
   })
-
   const [preferences, setPreferences] = useState<Preferences>({
-    restrictions: [],
-    priority: 'balanced',
+    restrictions: [], priority: 'balanced',
   })
-
   const [mealTemplate, setMealTemplate] = useState<MealTemplate>(() => {
-    const template: MealTemplate = {}
-    for (const day of DAYS) {
-      template[day] = ['desayuno', 'almuerzo', 'cena']
-    }
-    return template
+    const t: MealTemplate = {}
+    for (const d of DAYS) t[d] = ['desayuno', 'almuerzo', 'cena']
+    return t
   })
-
   const [restrictionInput, setRestrictionInput] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
-  // Load existing data
   useEffect(() => {
     if (!user) return
-
-    api.get<{
-      physical?: PhysicalData
-      preferences?: Preferences
-      meal_template?: MealTemplate
-    }>(`/user/${user.id}/settings`).then((data) => {
-      if (data.physical) setPhysical(data.physical)
-      if (data.preferences) setPreferences(data.preferences)
-      if (data.meal_template) setMealTemplate(data.meal_template)
-    }).catch(() => {
-      // Settings may not exist yet
-    })
+    api.get<any>(`/user/${user.id}/settings`).then((data) => {
+      if (data?.physical) setPhysical(data.physical)
+      if (data?.preferences) setPreferences(data.preferences)
+      if (data?.meal_template) setMealTemplate(data.meal_template)
+    }).catch(() => {})
   }, [user])
 
-  // Calculated values
   const bmr = useMemo(() => {
-    if (!physical.sex || !physical.weight || !physical.height || !physical.age)
-      return null
-    return Math.round(
-      calculateBMR(
-        physical.sex,
-        Number(physical.weight),
-        Number(physical.height),
-        Number(physical.age)
-      )
-    )
-  }, [physical.sex, physical.weight, physical.height, physical.age])
+    if (!physical.sex || !physical.weight || !physical.height || !physical.age) return null
+    return Math.round(calculateBMR(physical.sex, Number(physical.weight), Number(physical.height), Number(physical.age)))
+  }, [physical])
 
   const tdee = useMemo(() => {
     if (!bmr) return null
-    const mult = ACTIVITY_MULTIPLIERS[physical.activity_level] ?? 1.55
-    return Math.round(bmr * mult)
+    return Math.round(bmr * (ACTIVITY_MULTIPLIERS[physical.activity_level] ?? 1.55))
   }, [bmr, physical.activity_level])
 
-  // Handlers
   function addRestriction(value: string) {
-    const trimmed = value.trim().toLowerCase()
-    if (trimmed && !preferences.restrictions.includes(trimmed)) {
-      setPreferences((prev) => ({
-        ...prev,
-        restrictions: [...prev.restrictions, trimmed],
-      }))
+    const t = value.trim().toLowerCase()
+    if (t && !preferences.restrictions.includes(t)) {
+      setPreferences((p) => ({ ...p, restrictions: [...p.restrictions, t] }))
     }
     setRestrictionInput('')
   }
 
   function removeRestriction(value: string) {
-    setPreferences((prev) => ({
-      ...prev,
-      restrictions: prev.restrictions.filter((r) => r !== value),
-    }))
+    setPreferences((p) => ({ ...p, restrictions: p.restrictions.filter((r) => r !== value) }))
   }
 
   function toggleMeal(day: string, meal: string) {
     setMealTemplate((prev) => {
-      const dayMeals = prev[day] ?? []
-      const next = dayMeals.includes(meal)
-        ? dayMeals.filter((m) => m !== meal)
-        : [...dayMeals, meal]
+      const cur = prev[day] ?? []
+      const next = cur.includes(meal) ? cur.filter((m) => m !== meal) : [...cur, meal]
       return { ...prev, [day]: next }
     })
   }
 
   const handleSave = useCallback(async () => {
     if (!user) return
-    setSaving(true)
-    setSaved(false)
-
+    setSaving(true); setSaved(false)
     try {
       await Promise.all([
         api.put(`/user/${user.id}`, {
@@ -201,364 +129,362 @@ export default function ProfilePage() {
           height: physical.height || undefined,
           activity_level: physical.activity_level,
         }),
-        api.put(`/user/${user.id}/settings`, {
-          physical,
-          preferences,
-          meal_template: mealTemplate,
-        }),
+        api.put(`/user/${user.id}/settings`, { physical, preferences, meal_template: mealTemplate }),
       ])
       setSaved(true)
-      setTimeout(() => setSaved(false), 3000)
-    } catch (err) {
-      console.error('Error saving profile:', err)
-    } finally {
-      setSaving(false)
-    }
+      setTimeout(() => setSaved(false), 2500)
+    } catch (e) { console.error(e) }
+    finally { setSaving(false) }
   }, [user, physical, preferences, mealTemplate])
 
-  // Render guards
-  if (authLoading) {
+  if (authLoading || !user) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <p className="text-gray-500">Cargando...</p>
+      <div className="flex min-h-screen items-center justify-center bg-[#FAF6EE]">
+        <div className="text-eyebrow">Cargando...</div>
       </div>
     )
   }
 
-  if (!user) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <p className="text-gray-500">Inicia sesion para ver tu perfil</p>
-      </div>
-    )
-  }
+  const initials = user.username?.charAt(0).toUpperCase() || "U"
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <User className="h-6 w-6 text-gray-700" />
-        <div>
-          <h1 className="text-2xl font-bold">Perfil</h1>
-          <p className="text-sm text-gray-500">{user.email}</p>
+    <div className="bg-[#FAF6EE] min-h-screen pb-12">
+      {/* Editorial header */}
+      <header className="px-5 pt-8 pb-6">
+        <div className="text-eyebrow mb-2">Tu perfil</div>
+        <div className="flex items-end justify-between gap-4">
+          <h1 className="font-display text-[2.4rem] leading-[0.95] text-[#1A1612]">
+            <span className="font-italic italic text-[#C65D38]">Tu</span><br />sello.
+          </h1>
+          <button
+            onClick={logout}
+            className="flex items-center gap-1.5 rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-3 py-1.5 text-[10px] uppercase tracking-[0.15em] text-[#7A7066] hover:border-[#C65D38] hover:text-[#C65D38]"
+          >
+            <LogOut size={12} />
+            Salir
+          </button>
+        </div>
+      </header>
+
+      {/* Identity card */}
+      <div className="px-5">
+        <div className="rounded-2xl bg-[#1A1612] p-5 text-[#FAF6EE]">
+          <div className="flex items-center gap-4">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#C65D38] font-display text-2xl text-[#FAF6EE]">
+              {initials}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-display text-xl truncate">{user.username}</div>
+              <div className="text-[11px] text-[#FAF6EE]/60 truncate">{user.email}</div>
+            </div>
+          </div>
+          {bmr && tdee && (
+            <div className="mt-5 grid grid-cols-2 gap-4 border-t border-[#FAF6EE]/15 pt-4">
+              <div>
+                <div className="text-[9px] uppercase tracking-[0.2em] text-[#FAF6EE]/50">Metabolismo basal</div>
+                <div className="mt-1 font-display text-2xl">{bmr}<span className="text-sm text-[#FAF6EE]/50 ml-1">kcal</span></div>
+              </div>
+              <div>
+                <div className="text-[9px] uppercase tracking-[0.2em] text-[#FAF6EE]/50">Gasto diario</div>
+                <div className="mt-1 font-display text-2xl text-[#52B788]">{tdee}<span className="text-sm text-[#52B788]/60 ml-1">kcal</span></div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* BMR / TDEE display */}
-      {bmr && tdee && (
-        <div className="mt-6 grid grid-cols-2 gap-4">
-          <div className="rounded-xl border border-gray-200 p-4 text-center">
-            <p className="text-xs font-medium text-gray-400 uppercase">
-              Metabolismo basal (BMR)
-            </p>
-            <p className="mt-1 text-2xl font-bold text-gray-900">
-              {bmr}{' '}
-              <span className="text-sm font-normal text-gray-400">kcal</span>
-            </p>
-          </div>
-          <div className="rounded-xl border border-gray-200 p-4 text-center">
-            <p className="text-xs font-medium text-gray-400 uppercase">
-              Gasto diario (TDEE)
-            </p>
-            <p className="mt-1 text-2xl font-bold text-gray-900">
-              {tdee}{' '}
-              <span className="text-sm font-normal text-gray-400">kcal</span>
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Physical data section */}
-      <section className="mt-8">
-        <div className="flex items-center gap-2 mb-4">
-          <Activity className="h-5 w-5 text-gray-600" />
-          <h2 className="text-lg font-semibold">Datos fisicos</h2>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Sexo
-            </label>
-            <select
-              value={physical.sex}
-              onChange={(e) =>
-                setPhysical((p) => ({
-                  ...p,
-                  sex: e.target.value as PhysicalData['sex'],
-                }))
-              }
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-gray-400"
-            >
-              <option value="">Seleccionar</option>
-              <option value="male">Masculino</option>
-              <option value="female">Femenino</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Edad
-            </label>
-            <input
-              type="number"
-              min={1}
-              max={120}
-              value={physical.age}
-              onChange={(e) =>
-                setPhysical((p) => ({
-                  ...p,
-                  age: e.target.value ? Number(e.target.value) : '',
-                }))
-              }
-              placeholder="30"
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-gray-400"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Peso (kg)
-            </label>
-            <input
-              type="number"
-              min={20}
-              max={300}
-              step={0.1}
-              value={physical.weight}
-              onChange={(e) =>
-                setPhysical((p) => ({
-                  ...p,
-                  weight: e.target.value ? Number(e.target.value) : '',
-                }))
-              }
-              placeholder="70"
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-gray-400"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Altura (cm)
-            </label>
-            <input
-              type="number"
-              min={100}
-              max={250}
-              value={physical.height}
-              onChange={(e) =>
-                setPhysical((p) => ({
-                  ...p,
-                  height: e.target.value ? Number(e.target.value) : '',
-                }))
-              }
-              placeholder="175"
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-gray-400"
-            />
-          </div>
-
-          <div className="col-span-2">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Nivel de actividad
-            </label>
-            <select
-              value={physical.activity_level}
-              onChange={(e) =>
-                setPhysical((p) => ({
-                  ...p,
-                  activity_level: e.target.value as PhysicalData['activity_level'],
-                }))
-              }
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-gray-400"
-            >
-              {Object.entries(ACTIVITY_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </section>
-
-      {/* Preferences section */}
-      <section className="mt-10">
-        <div className="flex items-center gap-2 mb-4">
-          <Settings className="h-5 w-5 text-gray-600" />
-          <h2 className="text-lg font-semibold">Preferencias</h2>
-        </div>
-
-        {/* Priority */}
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Prioridad nutricional
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {Object.entries(PRIORITY_LABELS).map(([value, label]) => (
-              <button
-                key={value}
-                onClick={() =>
-                  setPreferences((p) => ({
-                    ...p,
-                    priority: value as Preferences['priority'],
-                  }))
-                }
-                className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-colors ${
-                  preferences.priority === value
-                    ? 'border-black bg-black text-white'
-                    : 'border-gray-200 text-gray-600 hover:border-gray-300'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Restrictions */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Restricciones alimentarias
-          </label>
-
-          {/* Current tags */}
-          <div className="flex flex-wrap gap-2 mb-3">
-            {preferences.restrictions.map((r) => (
-              <span
-                key={r}
-                className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 text-sm text-gray-700"
-              >
-                {r}
-                <button
-                  onClick={() => removeRestriction(r)}
-                  className="ml-0.5 rounded-full p-0.5 hover:bg-gray-200"
+      {/* Capitulo 01 — Datos fisicos */}
+      <section className="px-5 mt-10">
+        <ChapterHeader number="01" title="Datos" italic="fisicos" />
+        <div className="mt-6 space-y-5">
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Sexo">
+              <div className="flex gap-1.5 pt-1">
+                <SexPill
+                  active={physical.sex === 'male'}
+                  onClick={() => setPhysical((p) => ({ ...p, sex: 'male' }))}
                 >
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            ))}
+                  Masculino
+                </SexPill>
+                <SexPill
+                  active={physical.sex === 'female'}
+                  onClick={() => setPhysical((p) => ({ ...p, sex: 'female' }))}
+                >
+                  Femenino
+                </SexPill>
+              </div>
+            </Field>
+            <Field label="Edad">
+              <input
+                type="number" min={1} max={120}
+                value={physical.age}
+                onChange={(e) => setPhysical((p) => ({ ...p, age: e.target.value ? Number(e.target.value) : '' }))}
+                placeholder="—"
+                className="input-line"
+              />
+            </Field>
+            <Field label="Peso · kg">
+              <input
+                type="number" min={20} max={300} step={0.1}
+                value={physical.weight}
+                onChange={(e) => setPhysical((p) => ({ ...p, weight: e.target.value ? Number(e.target.value) : '' }))}
+                placeholder="—"
+                className="input-line"
+              />
+            </Field>
+            <Field label="Altura · cm">
+              <input
+                type="number" min={100} max={250}
+                value={physical.height}
+                onChange={(e) => setPhysical((p) => ({ ...p, height: e.target.value ? Number(e.target.value) : '' }))}
+                placeholder="—"
+                className="input-line"
+              />
+            </Field>
           </div>
 
-          {/* Common suggestions */}
-          <div className="flex flex-wrap gap-1.5 mb-3">
-            {COMMON_RESTRICTIONS.filter(
-              (r) => !preferences.restrictions.includes(r)
-            ).map((r) => (
-              <button
-                key={r}
-                onClick={() => addRestriction(r)}
-                className="rounded-full border border-dashed border-gray-300 px-3 py-1 text-xs text-gray-500 hover:border-gray-400 hover:text-gray-700"
-              >
-                + {r}
-              </button>
-            ))}
-          </div>
-
-          {/* Custom input */}
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={restrictionInput}
-              onChange={(e) => setRestrictionInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  addRestriction(restrictionInput)
-                }
-              }}
-              placeholder="Agregar restriccion personalizada..."
-              className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-gray-400"
-            />
-            <button
-              onClick={() => addRestriction(restrictionInput)}
-              className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
-            >
-              Agregar
-            </button>
+          <div>
+            <Label>Nivel de actividad</Label>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {Object.entries(ACTIVITY_LABELS).map(([value, label]) => (
+                <Pill
+                  key={value}
+                  active={physical.activity_level === value}
+                  onClick={() => setPhysical((p) => ({ ...p, activity_level: value as PhysicalData['activity_level'] }))}
+                >
+                  {label}
+                </Pill>
+              ))}
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Meal template section */}
-      <section className="mt-10">
-        <h2 className="text-lg font-semibold mb-2">Plantilla de comidas</h2>
-        <p className="text-sm text-gray-500 mb-4">
-          Configura que comidas incluir cada dia de la semana.
+      {/* Capitulo 02 — Preferencias */}
+      <section className="px-5 mt-12">
+        <ChapterHeader number="02" title="Tus" italic="preferencias" />
+        <div className="mt-6 space-y-6">
+          <div>
+            <Label>Prioridad nutricional</Label>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {Object.entries(PRIORITY_LABELS).map(([value, label]) => (
+                <Pill
+                  key={value}
+                  active={preferences.priority === value}
+                  onClick={() => setPreferences((p) => ({ ...p, priority: value as Preferences['priority'] }))}
+                >
+                  {label}
+                </Pill>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <Label>Restricciones</Label>
+            {preferences.restrictions.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {preferences.restrictions.map((r) => (
+                  <motion.span
+                    key={r}
+                    layout
+                    initial={{ scale: 0.85, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    className="inline-flex items-center gap-1 rounded-full bg-[#1A1612] pl-3 pr-1.5 py-1 text-[12px] text-[#FAF6EE]"
+                  >
+                    {r}
+                    <button
+                      onClick={() => removeRestriction(r)}
+                      className="ml-0.5 rounded-full p-0.5 hover:bg-[#FAF6EE]/15"
+                      aria-label={`Quitar ${r}`}
+                    >
+                      <X size={11} />
+                    </button>
+                  </motion.span>
+                ))}
+              </div>
+            )}
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {COMMON_RESTRICTIONS.filter((r) => !preferences.restrictions.includes(r)).map((r) => (
+                <button
+                  key={r}
+                  onClick={() => addRestriction(r)}
+                  className="inline-flex items-center gap-1 rounded-full border border-dashed border-[#DDD6C5] bg-transparent px-3 py-1 text-[12px] text-[#7A7066] hover:border-[#1A1612] hover:text-[#1A1612]"
+                >
+                  <Plus size={10} /> {r}
+                </button>
+              ))}
+            </div>
+            <div className="mt-3 flex gap-2">
+              <input
+                type="text"
+                value={restrictionInput}
+                onChange={(e) => setRestrictionInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); addRestriction(restrictionInput) }
+                }}
+                placeholder="Otra restriccion..."
+                className="input-line flex-1"
+              />
+              <button
+                onClick={() => addRestriction(restrictionInput)}
+                disabled={!restrictionInput.trim()}
+                className="rounded-full bg-[#1A1612] px-4 text-[11px] uppercase tracking-[0.12em] text-[#FAF6EE] disabled:opacity-30"
+              >
+                Anadir
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Capitulo 03 — Plantilla semanal */}
+      <section className="px-5 mt-12">
+        <ChapterHeader number="03" title="Plantilla" italic="semanal" />
+        <p className="mt-2 text-[12px] text-[#7A7066]">
+          Que comidas incluye tu menu cada dia.
         </p>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-200">
-                <th className="pb-2 pr-4 text-left font-medium text-gray-500">
-                  Dia
-                </th>
-                {MEALS.map((meal) => (
-                  <th
-                    key={meal}
-                    className="pb-2 px-2 text-center font-medium text-gray-500 capitalize"
-                  >
-                    {meal}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {DAYS.map((day) => (
-                <tr key={day} className="border-b border-gray-100">
-                  <td className="py-2.5 pr-4 font-medium text-gray-700 capitalize">
-                    {day}
-                  </td>
-                  {MEALS.map((meal) => {
-                    const active = (mealTemplate[day] ?? []).includes(meal)
-                    return (
-                      <td key={meal} className="py-2.5 px-2 text-center">
-                        <button
-                          onClick={() => toggleMeal(day, meal)}
-                          className={`h-7 w-7 rounded-md border-2 transition-colors ${
-                            active
-                              ? 'border-black bg-black text-white'
-                              : 'border-gray-200 hover:border-gray-300'
-                          }`}
-                          aria-label={`${meal} el ${day}`}
-                        >
-                          {active && (
-                            <svg
-                              className="mx-auto h-4 w-4"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth={3}
-                            >
-                              <path d="M5 13l4 4L19 7" />
-                            </svg>
-                          )}
-                        </button>
-                      </td>
-                    )
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="mt-5 overflow-hidden rounded-2xl bg-[#FFFEFA] border border-[#DDD6C5]">
+          <div className="grid grid-cols-[auto_1fr_1fr_1fr_1fr]">
+            <div />
+            {MEALS.map((m) => (
+              <div key={m} className="border-l border-[#DDD6C5] py-2.5 text-center text-[9px] uppercase tracking-[0.15em] text-[#7A7066]">
+                {m === 'desayuno' ? 'Des' : m === 'almuerzo' ? 'Com' : m === 'merienda' ? 'Mer' : 'Cen'}
+              </div>
+            ))}
+            {DAYS.map((day, di) => (
+              <div key={day} className="contents">
+                <div className="border-t border-[#DDD6C5] py-3 px-3 flex items-center gap-2">
+                  <span className="font-display text-base text-[#1A1612]">{DAYS_SHORT[di]}</span>
+                  <span className="text-[10px] uppercase tracking-[0.1em] text-[#7A7066] capitalize">{day}</span>
+                </div>
+                {MEALS.map((meal) => {
+                  const active = (mealTemplate[day] ?? []).includes(meal)
+                  return (
+                    <button
+                      key={meal}
+                      onClick={() => toggleMeal(day, meal)}
+                      className={`border-l border-t border-[#DDD6C5] py-3 transition-colors flex items-center justify-center ${
+                        active ? 'bg-[#1A1612] text-[#FAF6EE]' : 'bg-transparent hover:bg-[#F2EDE0]'
+                      }`}
+                      aria-label={`${meal} el ${day}`}
+                    >
+                      {active && <Check size={13} strokeWidth={2.5} />}
+                    </button>
+                  )
+                })}
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
-      {/* Save button */}
-      <div className="mt-10 flex items-center gap-3">
+      {/* Save bar */}
+      <div className="px-5 mt-10 mb-24">
         <button
           onClick={handleSave}
           disabled={saving}
-          className="rounded-lg bg-black px-6 py-2.5 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+          className="flex w-full items-center justify-center gap-2 rounded-full bg-[#1A1612] py-3.5 text-[13px] font-medium text-[#FAF6EE] transition-all hover:bg-[#2D6A4F] disabled:opacity-50"
         >
-          {saving ? 'Guardando...' : 'Guardar cambios'}
+          {saving ? 'Guardando...' : saved ? '✓ Guardado' : 'Guardar cambios'}
         </button>
-        {saved && (
-          <span className="text-sm text-green-600">
-            Cambios guardados correctamente
-          </span>
-        )}
       </div>
+
+      <style jsx>{`
+        :global(.input-line) {
+          width: 100%;
+          background: transparent;
+          border: none;
+          border-bottom: 1px solid #DDD6C5;
+          padding: 0.5rem 0;
+          font-family: inherit;
+          font-size: 14px;
+          color: #1A1612;
+          outline: none;
+          transition: border-color 200ms;
+        }
+        :global(.input-line:focus) {
+          border-bottom-color: #1A1612;
+        }
+        :global(.input-line::placeholder) {
+          color: #A39A8E;
+        }
+      `}</style>
     </div>
+  )
+}
+
+/* ─────────────────────────────────────────── */
+
+function ChapterHeader({ number, title, italic }: { number: string; title: string; italic: string }) {
+  return (
+    <div className="border-b border-[#DDD6C5] pb-3">
+      <div className="text-eyebrow mb-2 text-[#7A7066]">Capitulo {number}</div>
+      <h2 className="font-display text-[1.6rem] leading-tight text-[#1A1612]">
+        {title} <span className="font-italic italic text-[#C65D38]">{italic}</span>
+      </h2>
+    </div>
+  )
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <Label>{label}</Label>
+      <div className="mt-1">{children}</div>
+    </div>
+  )
+}
+
+function Label({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="text-[10px] uppercase tracking-[0.18em] text-[#7A7066]">{children}</div>
+  )
+}
+
+function Pill({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-full border px-3.5 py-1.5 text-[12px] font-medium transition-all active:scale-95 ${
+        active
+          ? 'border-[#1A1612] bg-[#1A1612] text-[#FAF6EE]'
+          : 'border-[#DDD6C5] bg-[#FFFEFA] text-[#4A4239] hover:border-[#1A1612]'
+      }`}
+    >
+      {children}
+    </button>
+  )
+}
+
+function SexPill({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex-1 rounded-full border px-3 py-2 text-[12px] font-medium transition-all active:scale-95 ${
+        active
+          ? 'border-[#1A1612] bg-[#1A1612] text-[#FAF6EE]'
+          : 'border-[#DDD6C5] bg-transparent text-[#7A7066] hover:border-[#1A1612] hover:text-[#1A1612]'
+      }`}
+    >
+      {children}
+    </button>
   )
 }

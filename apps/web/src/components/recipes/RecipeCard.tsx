@@ -2,7 +2,6 @@
 
 import { Clock } from "lucide-react"
 import { FavoriteButton } from "@/components/recipes/FavoriteButton"
-import { RecipeSourceBadge } from "@/components/recipes/RecipeSourceBadge"
 import Link from "next/link"
 
 const MEAL_LABELS: Record<string, string> = {
@@ -12,17 +11,25 @@ const MEAL_LABELS: Record<string, string> = {
   snack: "Snack",
 }
 
-const SEASON_LABELS: Record<string, string> = {
-  spring: "Primavera",
-  summer: "Verano",
-  autumn: "Otono",
-  winter: "Invierno",
+const MEAL_EMOJI: Record<string, string> = {
+  breakfast: "🥣",
+  lunch: "🍲",
+  dinner: "🥗",
+  snack: "🍎",
+}
+
+const MEAL_BG: Record<string, string> = {
+  breakfast: "#FAEEDA",
+  lunch: "#EAF3DE",
+  dinner: "#E6F1FB",
+  snack: "#F3E8FF",
 }
 
 interface RecipeCardRecipe {
   id: string
   name: string
   authorId?: string | null
+  imageUrl?: string | null
   prepTime?: number
   meals?: string[]
   seasons?: string[]
@@ -41,13 +48,14 @@ export function RecipeCard({
   recipe,
   isFavorite,
   userId,
-  onToggleFavorite,
 }: RecipeCardProps) {
+  const mainMeal = recipe.meals?.[0] || "lunch"
+
   return (
-    <div className="group relative rounded-xl border border-gray-200 p-4 transition-colors hover:border-gray-300 hover:shadow-sm">
+    <div className="group relative overflow-hidden rounded-xl bg-white shadow-sm">
       {/* Favorite button */}
       {userId && (
-        <div className="absolute right-3 top-3">
+        <div className="absolute right-2 top-2 z-10">
           <FavoriteButton
             recipeId={recipe.id}
             isFavorite={!!isFavorite}
@@ -57,47 +65,42 @@ export function RecipeCard({
       )}
 
       <Link href={`/recipes/${recipe.id}`} className="block">
-        <div className="mb-2">
-          <RecipeSourceBadge authorId={recipe.authorId} />
+        {/* Image */}
+        {recipe.imageUrl ? (
+          <img
+            src={recipe.imageUrl}
+            alt={recipe.name}
+            className="h-32 w-full object-cover"
+          />
+        ) : (
+          <div
+            className="flex h-32 w-full items-center justify-center"
+            style={{ background: MEAL_BG[mainMeal] || "#f5f5f5" }}
+          >
+            <span className="text-4xl">{MEAL_EMOJI[mainMeal] || "🍽️"}</span>
+          </div>
+        )}
+
+        {/* Info */}
+        <div className="p-3">
+          <h3 className="text-[13px] font-semibold leading-tight text-[#1A1A1A]">
+            {recipe.name}
+          </h3>
+
+          <div className="mt-1.5 flex items-center gap-2">
+            {recipe.prepTime ? (
+              <span className="flex items-center gap-1 text-[11px] text-[#999999]">
+                <Clock size={10} />
+                {recipe.prepTime} min
+              </span>
+            ) : null}
+            {recipe.meals && recipe.meals.length > 0 && (
+              <span className="text-[11px] text-[#999999]">
+                {MEAL_LABELS[recipe.meals[0]] ?? recipe.meals[0]}
+              </span>
+            )}
+          </div>
         </div>
-        <h3 className="pr-8 text-sm font-semibold text-gray-900 group-hover:text-black">
-          {recipe.name}
-        </h3>
-
-        {recipe.prepTime && (
-          <div className="mt-2 flex items-center gap-1 text-xs text-gray-500">
-            <Clock size={12} />
-            <span>{recipe.prepTime} min</span>
-          </div>
-        )}
-
-        {/* Meal tags */}
-        {recipe.meals && recipe.meals.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-1">
-            {recipe.meals.map((meal) => (
-              <span
-                key={meal}
-                className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600"
-              >
-                {MEAL_LABELS[meal] ?? meal}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {/* Season tags */}
-        {recipe.seasons && recipe.seasons.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1">
-            {recipe.seasons.map((season) => (
-              <span
-                key={season}
-                className="rounded-full bg-green-50 px-2 py-0.5 text-xs text-green-700"
-              >
-                {SEASON_LABELS[season] ?? season}
-              </span>
-            ))}
-          </div>
-        )}
       </Link>
     </div>
   )

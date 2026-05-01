@@ -10,7 +10,7 @@ interface ShoppingItem {
   unit: string
   category: string
   checked: boolean
-  in_stock: boolean
+  inStock: boolean
 }
 
 interface StockManagerProps {
@@ -22,12 +22,12 @@ export default function StockManager({ items, listId }: StockManagerProps) {
   const stockItem = useStockItem()
 
   const sortedItems = [...items].sort((a, b) => {
-    if (a.in_stock === b.in_stock) return a.name.localeCompare(b.name)
-    return a.in_stock ? 1 : -1
+    if (a.inStock === b.inStock) return a.name.localeCompare(b.name)
+    return a.inStock ? 1 : -1
   })
 
   function handleToggle(itemId: string, currentInStock: boolean) {
-    stockItem.mutate({ listId, itemId, in_stock: !currentInStock })
+    stockItem.mutate({ listId, itemId, inStock: !currentInStock })
   }
 
   if (items.length === 0) {
@@ -38,7 +38,7 @@ export default function StockManager({ items, listId }: StockManagerProps) {
     )
   }
 
-  const inStockCount = items.filter((i) => i.in_stock).length
+  const inStockCount = items.filter((i) => i.inStock).length
 
   return (
     <div>
@@ -63,16 +63,16 @@ export default function StockManager({ items, listId }: StockManagerProps) {
             </div>
 
             <button
-              onClick={() => handleToggle(item.id, item.in_stock)}
+              onClick={() => handleToggle(item.id, item.inStock)}
               role="switch"
-              aria-checked={item.in_stock}
+              aria-checked={item.inStock}
               className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
-                item.in_stock ? 'bg-amber-500' : 'bg-gray-200'
+                item.inStock ? 'bg-[#2D6A4F]' : 'bg-[#DDDDDD]'
               }`}
             >
               <span
                 className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
-                  item.in_stock ? 'translate-x-5' : 'translate-x-0'
+                  item.inStock ? 'translate-x-5' : 'translate-x-0'
                 }`}
               />
             </button>

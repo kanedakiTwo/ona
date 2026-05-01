@@ -1,21 +1,31 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useParams, usePathname, useRouter } from "next/navigation"
 import { motion } from "motion/react"
 import { useRecipe } from "@/hooks/useRecipes"
 import { useAuth } from "@/lib/auth"
 import { FavoriteButton } from "@/components/recipes/FavoriteButton"
+import { ServingsScaler } from "@/components/recipes/ServingsScaler"
+import { IngredientsSection } from "@/components/recipes/detail/IngredientsSection"
+import { StepsSection } from "@/components/recipes/detail/StepsSection"
+import { NutritionCard } from "@/components/recipes/detail/NutritionCard"
+import { AllergensBadges } from "@/components/recipes/detail/AllergensBadges"
 import { haptic } from "@/lib/pwa/haptics"
 import { share } from "@/lib/pwa/share"
 import { acquireWakeLock, releaseWakeLock } from "@/lib/pwa/wakeLock"
-import { ChevronLeft, ChefHat, Clock, Share2, Users, Sparkles, Zap } from "lucide-react"
+import { ChevronLeft, Clock, Share2, Sparkles, Wrench, Zap } from "lucide-react"
 import Link from "next/link"
+import {
+  householdSizeToDiners,
+  publicTagsOf,
+  timelineString,
+} from "@/lib/recipeView"
 
 const SEASON_LABELS: Record<string, string> = {
   spring: "Primavera",
   summer: "Verano",
-  autumn: "Otono",
+  autumn: "Otoño",
   winter: "Invierno",
 }
 const MEAL_LABELS: Record<string, string> = {
@@ -30,7 +40,27 @@ export default function RecipeDetailPage() {
   const router = useRouter()
   const pathname = usePathname()
   const { user } = useAuth()
-  const { data: recipe, isLoading, error } = useRecipe(params.id)
+
+  const [servings, setServings] = useState<number | null>(null)
+  // Once we know the recipe's authored servings, the scaler "seeds" itself.
+  const seededRef = useRef(false)
+
+  const { data: recipe, isLoading, error } = useRecipe(
+    params.id,
+    servings ?? undefined,
+  )
+
+  // Seed the scaler once the recipe loads. Prefer the user's household
+  // size (clamped to the [1, recipe.servings × 6] range the API accepts);
+  // fall back to the recipe's authored servings.
+  useEffect(() => {
+    if (seededRef.current) return
+    if (!recipe) return
+    const userDiners = householdSizeToDiners(user?.householdSize)
+    const initial = userDiners ?? recipe.servings ?? 2
+    setServings(initial)
+    seededRef.current = true
+  }, [recipe, user?.householdSize])
 
   const [isCooking, setIsCooking] = useState(false)
   const wakeLockRef = useRef<WakeLockSentinel | null>(null)
@@ -49,7 +79,6 @@ export default function RecipeDetailPage() {
   }
 
   useEffect(() => {
-    // Release on unmount or path change
     return () => {
       if (wakeLockRef.current) {
         releaseWakeLock(wakeLockRef.current)
@@ -58,7 +87,32 @@ export default function RecipeDetailPage() {
     }
   }, [pathname])
 
-  if (isLoading) {
+  // ─── Derived state (must be declared before any early return so hook order is stable) ───
+  const tags = useMemo(() => (recipe ? publicTagsOf(recipe) : []), [recipe])
+  const timeLine = useMemo(() => {
+    if (!recipe) return ""
+    return timelineString({
+      prepTime: recipe.prepTime,
+      cookTime: recipe.cookTime,
+      activeTime: recipe.activeTime,
+      totalTime: recipe.totalTime,
+    })
+  }, [recipe])
+
+  if (isLoading || !recipe) {
+    if (error) {
+      return (
+        <div className="min-h-screen bg-[#FAF6EE] px-5 pt-12 text-center">
+          <p className="font-display text-2xl text-[#1A1612]">Receta no encontrada.</p>
+          <button
+            onClick={() => router.back()}
+            className="mt-4 text-sm text-[#2D6A4F] underline"
+          >
+            Volver
+          </button>
+        </div>
+      )
+    }
     return (
       <div className="min-h-screen bg-[#FAF6EE]">
         <div className="aspect-[4/3] w-full bg-[#EFE8D8] animate-pulse" />
@@ -70,22 +124,21 @@ export default function RecipeDetailPage() {
     )
   }
 
-  if (error || !recipe) {
-    return (
-      <div className="min-h-screen bg-[#FAF6EE] px-5 pt-12 text-center">
-        <p className="font-display text-2xl text-[#1A1612]">Receta no encontrada.</p>
-        <button
-          onClick={() => router.back()}
-          className="mt-4 text-sm text-[#2D6A4F] underline"
-        >
-          Volver
-        </button>
-      </div>
-    )
-  }
-
-  const fallbackImg = "https://images.unsplash.com/photo-1490645935967-10de6ba17061?w=1200&q=85&auto=format&fit=crop"
+  const fallbackImg =
+    "https://images.unsplash.com/photo-1490645935967-10de6ba17061?w=1200&q=85&auto=format&fit=crop"
   const img = recipe.imageUrl || fallbackImg
+
+  // The displayed servings on the heading & "Para X" caption: the live
+  // scaler value when seeded, falling back to the recipe's own value.
+  const displayServings = servings ?? recipe.servings
+
+  // Track which "chapter" eyebrow we're on so the page reads as a coherent
+  // narrative even when sections are conditionally rendered.
+  let chapter = 0
+  const nextChapter = (): string => {
+    chapter += 1
+    return String(chapter).padStart(2, "0")
+  }
 
   const handleShare = async () => {
     haptic.light()
@@ -138,7 +191,6 @@ export default function RecipeDetailPage() {
           </div>
         </div>
 
-        {/* Cooking mode badge */}
         {isCooking && (
           <button
             onClick={handleCookingToggle}
@@ -150,7 +202,6 @@ export default function RecipeDetailPage() {
           </button>
         )}
 
-        {/* Decorative side text */}
         <div className="pointer-events-none absolute bottom-6 left-4 text-[10px] uppercase tracking-[0.25em] text-[#FAF6EE]/80">
           ONA · Receta
         </div>
@@ -173,32 +224,41 @@ export default function RecipeDetailPage() {
           <h1 className="font-display text-[2rem] leading-[1.05] tracking-tight text-[#1A1612]">
             {recipe.name}
           </h1>
+          {recipe.yieldText && (
+            <p className="mt-2 font-italic italic text-[14px] text-[#7A7066]">
+              Rinde {recipe.yieldText}
+            </p>
+          )}
         </div>
 
         {/* Meta row */}
-        <div className="flex flex-wrap items-center gap-4 border-y border-[#DDD6C5] py-4 text-[12px] text-[#4A4239]">
-          {recipe.prepTime ? (
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-3 border-y border-[#DDD6C5] py-4 text-[12px] text-[#4A4239]">
+          <ServingsScaler
+            value={displayServings}
+            onChange={setServings}
+            min={1}
+            max={12}
+          />
+          {timeLine && (
             <div className="flex items-center gap-1.5">
               <Clock size={13} className="text-[#7A7066]" />
-              <span>{recipe.prepTime} min</span>
+              <span>{timeLine}</span>
             </div>
-          ) : null}
-          <div className="flex items-center gap-1.5">
-            <Users size={13} className="text-[#7A7066]" />
-            <span>2 personas</span>
-          </div>
+          )}
           {recipe.seasons?.length > 0 && (
             <div className="flex items-center gap-1.5">
               <Sparkles size={13} className="text-[#7A7066]" />
-              <span>{recipe.seasons.map((s: string) => SEASON_LABELS[s] ?? s).join(" · ")}</span>
+              <span>
+                {recipe.seasons.map((s: string) => SEASON_LABELS[s] ?? s).join(" · ")}
+              </span>
             </div>
           )}
         </div>
 
-        {/* Tags */}
-        {recipe.tags?.length > 0 && (
+        {/* Tags (filtered) */}
+        {tags.length > 0 && (
           <div className="mt-6 flex flex-wrap gap-1.5">
-            {recipe.tags.map((tag: string) => (
+            {tags.map((tag) => (
               <span
                 key={tag}
                 className="rounded-full bg-[#F2EDE0] px-2.5 py-1 text-[10px] uppercase tracking-[0.1em] text-[#4A4239]"
@@ -210,96 +270,116 @@ export default function RecipeDetailPage() {
         )}
 
         {/* Ingredients */}
-        <section className="mt-10">
-          <div className="mb-5 flex items-end justify-between">
-            <div>
-              <div className="text-eyebrow text-[#7A7066]">Capitulo 01</div>
-              <h2 className="font-display text-[1.6rem] leading-tight text-[#1A1612]">
-                <span className="font-italic italic">Ingredientes</span>
-              </h2>
-            </div>
-            <span className="text-[10px] uppercase tracking-[0.15em] text-[#7A7066]">
-              Para 2
-            </span>
-          </div>
-
-          <ul className="divide-y divide-dashed divide-[#DDD6C5] border-y border-dashed border-[#DDD6C5]">
-            {recipe.ingredients?.map((ing: any, i: number) => (
-              <motion.li
-                key={i}
-                initial={{ opacity: 0, x: -8 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.4 + i * 0.04, duration: 0.4 }}
-                className="flex items-baseline justify-between py-3"
-              >
-                <span className="text-[15px] text-[#1A1612] capitalize">
-                  {ing.ingredientName ?? ing.name ?? "Ingrediente"}
-                </span>
-                <span className="font-mono text-[11px] tracking-tight text-[#7A7066]">
-                  {ing.quantity}
-                  {ing.unit ?? "g"}
-                </span>
-              </motion.li>
-            ))}
-          </ul>
-        </section>
+        {recipe.ingredients?.length > 0 && (
+          <IngredientsSection
+            ingredients={recipe.ingredients as any}
+            targetServings={displayServings}
+            chapter={nextChapter()}
+          />
+        )}
 
         {/* Steps */}
         {recipe.steps?.length > 0 && (
-          <section className="mt-12">
-            <div className="mb-5 flex items-end justify-between gap-4">
-              <div>
-                <div className="text-eyebrow text-[#7A7066]">Capitulo 02</div>
-                <h2 className="font-display text-[1.6rem] leading-tight text-[#1A1612]">
-                  <span className="font-italic italic">Preparacion</span>
-                </h2>
-              </div>
-              <button
-                onClick={handleCookingToggle}
-                className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-[12px] font-medium transition-all active:scale-95 ${
-                  isCooking
-                    ? "bg-[#C65D38] text-[#FAF6EE]"
-                    : "bg-[#1A1612] text-[#FAF6EE] hover:bg-[#2D6A4F]"
-                }`}
-                aria-pressed={isCooking}
-              >
-                <ChefHat size={13} />
-                {isCooking ? "Salir de cocina" : "Empezar a cocinar"}
-              </button>
-            </div>
+          <StepsSection
+            steps={recipe.steps}
+            ingredients={recipe.ingredients ?? []}
+            chapter={nextChapter()}
+            isCooking={isCooking}
+            onCookingToggle={handleCookingToggle}
+          />
+        )}
 
-            <ol className="space-y-6">
-              {recipe.steps.map((step: string, i: number) => (
-                <motion.li
-                  key={i}
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.5 + i * 0.06, duration: 0.5 }}
-                  className="flex gap-4"
+        {/* Equipment */}
+        {recipe.equipment != null && recipe.equipment.length > 0 && (
+          <section className="mt-12">
+            <div className="mb-4">
+              <div className="text-eyebrow text-[#7A7066]">Capítulo {nextChapter()}</div>
+              <h2 className="font-display text-[1.6rem] leading-tight text-[#1A1612]">
+                <span className="font-italic italic">Equipo</span>
+              </h2>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {recipe.equipment.map((tool) => (
+                <span
+                  key={tool}
+                  className="inline-flex items-center gap-1 rounded-full border border-[#DDD6C5] bg-[#FAF6EE] px-2.5 py-1 text-[11px] text-[#4A4239]"
                 >
-                  <span className="font-display text-[2.5rem] leading-none text-[#C65D38]/30 -mt-1">
-                    {String(i + 1).padStart(2, "0")}
-                  </span>
-                  <p className="flex-1 pt-1 text-[14px] leading-relaxed text-[#1A1612]">
-                    {step}
-                  </p>
-                </motion.li>
+                  <Wrench size={10} className="text-[#7A7066]" />
+                  {tool}
+                </span>
               ))}
-            </ol>
+            </div>
           </section>
         )}
 
-        {/* CTA: add to menu */}
+        {/* Allergens */}
+        {recipe.allergens != null && recipe.allergens.length > 0 && (
+          <AllergensBadges
+            allergens={recipe.allergens}
+            chapter={nextChapter()}
+          />
+        )}
+
+        {/* Nutrition */}
+        {recipe.nutritionPerServing != null && (
+          <NutritionCard
+            nutrition={recipe.nutritionPerServing}
+            chapter={nextChapter()}
+          />
+        )}
+
+        {/* Notes / tips / substitutions / storage. The public detail
+            payload from /recipes/:id strips these per spec; they only
+            show up on author-edit / private views. We render defensively
+            just in case the server starts surfacing them. */}
+        {(recipe.notes || recipe.tips || recipe.substitutions || recipe.storage) && (
+          <section className="mt-12 space-y-6">
+            {recipe.notes && (
+              <div>
+                <div className="text-eyebrow mb-2 text-[#7A7066]">Notas</div>
+                <p className="text-[14px] leading-relaxed text-[#1A1612]">
+                  {recipe.notes}
+                </p>
+              </div>
+            )}
+            {recipe.tips && (
+              <div>
+                <div className="text-eyebrow mb-2 text-[#7A7066]">Trucos</div>
+                <p className="text-[14px] leading-relaxed text-[#1A1612]">
+                  {recipe.tips}
+                </p>
+              </div>
+            )}
+            {recipe.substitutions && (
+              <div>
+                <div className="text-eyebrow mb-2 text-[#7A7066]">Sustituciones</div>
+                <p className="text-[14px] leading-relaxed text-[#1A1612]">
+                  {recipe.substitutions}
+                </p>
+              </div>
+            )}
+            {recipe.storage && (
+              <div>
+                <div className="text-eyebrow mb-2 text-[#7A7066]">Conservación</div>
+                <p className="text-[14px] leading-relaxed text-[#1A1612]">
+                  {recipe.storage}
+                </p>
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* CTA: cook mode */}
         <section className="mt-14 rounded-2xl bg-[#1A1612] p-6 text-[#FAF6EE]">
-          <div className="text-eyebrow mb-2 text-[#95D5B2]">Anadir al menu</div>
+          <div className="text-eyebrow mb-2 text-[#95D5B2]">Modo cocina</div>
           <p className="font-display text-xl leading-tight">
-            ¿Te apetece esta receta <span className="font-italic italic">esta semana</span>?
+            ¿Empezamos con <span className="font-italic italic">{recipe.name}</span>?
           </p>
           <Link
-            href="/menu"
+            href={`/recipes/${recipe.id}/cook?servings=${displayServings}`}
             className="mt-5 inline-flex items-center gap-2 rounded-full bg-[#FAF6EE] px-5 py-2.5 text-[13px] font-medium text-[#1A1612] transition-all hover:gap-3 hover:bg-[#52B788]"
           >
-            Anadir al menu
+            Empezar a cocinar
           </Link>
         </section>
 
@@ -308,7 +388,7 @@ export default function RecipeDetailPage() {
           href="/recipes"
           className="mt-10 flex items-center gap-2 text-[12px] text-[#7A7066] hover:text-[#1A1612]"
         >
-          <ChevronLeft size={14} /> Volver al catalogo
+          <ChevronLeft size={14} /> Volver al catálogo
         </Link>
       </motion.div>
     </div>

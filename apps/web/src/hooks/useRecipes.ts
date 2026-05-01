@@ -28,10 +28,17 @@ export function useRecipes(filters?: RecipeFilters) {
   })
 }
 
-export function useRecipe(id: string | undefined) {
+/**
+ * Fetch a single recipe. When `servings` is supplied (and positive), the
+ * API scales the response per Task 11; the cache key includes `servings`
+ * so changing the scaler triggers a refetch.
+ */
+export function useRecipe(id: string | undefined, servings?: number) {
+  const hasServings = servings != null && Number.isFinite(servings) && servings > 0
+  const qs = hasServings ? `?servings=${servings}` : ""
   return useQuery<Recipe>({
-    queryKey: ["recipe", id],
-    queryFn: () => api.get(`/recipes/${id}`),
+    queryKey: ["recipe", id, hasServings ? servings : null],
+    queryFn: () => api.get(`/recipes/${id}${qs}`),
     enabled: !!id,
   })
 }

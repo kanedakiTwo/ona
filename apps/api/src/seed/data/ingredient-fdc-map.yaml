@@ -1,0 +1,223 @@
+# Ingredient → USDA FoodData Central mapping (curator data).
+#
+# See ingredient-fdc-map.example.yaml for the full format documentation and
+# curator workflow. Re-run `pnpm --filter @ona/api seed:usda` after edits.
+#
+# All fdcIds below were chosen to favour Foundation / SR Legacy entries
+# (per-100 g values). They should be re-verified against the live USDA API by
+# the curator; if a kcal/macro looks wrong the fix is to change the fdcId, not
+# to hand-edit the nutrition columns.
+
+# ─── Vegetables / produce ──────────────────────────────────────────
+- name: cebolla
+  fdcId: 170000          # Onions, raw
+  aisle: produce
+  density: null
+  unitWeight: 110
+  allergenTags: []
+
+- name: ajo
+  fdcId: 169230          # Garlic, raw
+  aisle: produce
+  density: null
+  unitWeight: 5          # 1 diente ≈ 5 g
+  allergenTags: []
+
+- name: tomate
+  fdcId: 170457          # Tomatoes, red, ripe, raw, year round average
+  aisle: produce
+  density: null
+  unitWeight: 150        # tomate medio ≈ 150 g
+  allergenTags: []
+
+- name: zanahoria
+  fdcId: 170393          # Carrots, raw
+  aisle: produce
+  density: null
+  unitWeight: 80
+  allergenTags: []
+
+- name: patata
+  fdcId: 170026          # Potatoes, white, flesh and skin, raw
+  aisle: produce
+  density: null
+  unitWeight: 170
+  allergenTags: []
+
+- name: brocoli
+  fdcId: 170379          # Broccoli, raw
+  aisle: produce
+  density: null
+  unitWeight: 600        # 1 cabeza ≈ 600 g
+  allergenTags: []
+
+- name: coliflor
+  fdcId: 169986          # Cauliflower, raw
+  aisle: produce
+  density: null
+  unitWeight: 800
+  allergenTags: []
+
+- name: calabacin
+  fdcId: 169291          # Squash, summer, zucchini, includes skin, raw
+  aisle: produce
+  density: null
+  unitWeight: 200
+  allergenTags: []
+
+- name: espinacas
+  fdcId: 168462          # Spinach, raw
+  aisle: produce
+  density: null
+  unitWeight: null       # bought by weight, not unit
+  allergenTags: []
+
+- name: pimiento rojo
+  fdcId: 170108          # Peppers, sweet, red, raw
+  aisle: produce
+  density: null
+  unitWeight: 150
+  allergenTags: []
+
+- name: aguacate
+  fdcId: 171705          # Avocados, raw, all commercial varieties
+  aisle: produce
+  density: null
+  unitWeight: 200
+  allergenTags: []
+
+- name: manzana
+  fdcId: 171688          # Apples, raw, with skin
+  aisle: produce
+  density: null
+  unitWeight: 180
+  allergenTags: []
+
+- name: platano
+  fdcId: 173944          # Bananas, ripe and slightly ripe, raw
+  aisle: produce
+  density: null
+  unitWeight: 120
+  allergenTags: []
+
+# ─── Proteínas (carne, pescado, huevo, legumbres secas) ───────────
+- name: pollo
+  fdcId: 171077          # Chicken, broiler or fryers, breast, skinless, boneless, meat only, raw
+  aisle: proteinas
+  density: null
+  unitWeight: null       # cut to weight
+  allergenTags: []
+
+- name: ternera
+  fdcId: 168608          # Beef, grass-fed, ground, raw
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags: []
+
+- name: salmon
+  fdcId: 175167          # Fish, salmon, Atlantic, farmed, raw
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags: [pescado]
+
+- name: atun
+  fdcId: 173706          # Fish, tuna, fresh, bluefin, raw
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags: [pescado]
+
+- name: huevo
+  fdcId: 171287          # Egg, whole, raw, fresh
+  aisle: proteinas
+  density: null
+  unitWeight: 50
+  allergenTags: [huevo]
+
+- name: garbanzos
+  fdcId: 173756          # Chickpeas (garbanzo beans, bengal gram), mature seeds, raw
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+
+- name: lentejas
+  fdcId: 172420          # Lentils, raw
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+
+# ─── Lácteos ──────────────────────────────────────────────────────
+- name: leche entera
+  fdcId: 171265          # Milk, whole, 3.25% milkfat, with added vitamin D
+  aisle: lacteos
+  density: 1.03
+  unitWeight: null
+  allergenTags: [lactosa]
+
+- name: yogur natural
+  fdcId: 171284          # Yogurt, plain, whole milk
+  aisle: lacteos
+  density: null
+  unitWeight: 125        # tarrina individual ≈ 125 g
+  allergenTags: [lactosa]
+
+- name: queso parmesano
+  fdcId: 170848          # Cheese, parmesan, hard
+  aisle: lacteos
+  density: null
+  unitWeight: null
+  allergenTags: [lactosa]
+
+- name: mantequilla
+  fdcId: 173410          # Butter, salted
+  aisle: lacteos
+  density: 0.91
+  unitWeight: null
+  allergenTags: [lactosa]
+
+# ─── Cereales, panadería, despensa ────────────────────────────────
+- name: arroz
+  fdcId: 169756          # Rice, white, long-grain, regular, raw, unenriched
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+
+- name: pasta
+  fdcId: 168927          # Pasta, dry, unenriched
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: [gluten]
+
+- name: avena
+  fdcId: 173904          # Cereals, oats, regular and quick, unenriched, dry
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: [gluten]
+
+- name: harina de trigo
+  fdcId: 168894          # Wheat flour, white, all-purpose, enriched, bleached
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: [gluten]
+
+- name: pan integral
+  fdcId: 172688          # Bread, whole-wheat, commercially prepared
+  aisle: panaderia
+  density: null
+  unitWeight: 30         # 1 rebanada ≈ 30 g
+  allergenTags: [gluten]
+
+- name: aceite de oliva virgen
+  fdcId: 171413          # Oil, olive, salad or cooking
+  aisle: despensa
+  density: 0.91
+  unitWeight: null
+  allergenTags: []

@@ -1,0 +1,56 @@
+# Ingredient → USDA FoodData Central mapping.
+#
+# This file is curator data: it is committed to the repo and is the source of
+# truth for which USDA entry every ingredient row maps to. The seed script
+# (apps/api/src/seed/usda.ts) reads this file and uses it to populate the
+# `ingredients` table.
+#
+# Format: a flat YAML list of objects, one per ingredient. Match is by
+# `name` against `ingredients.name` after running both sides through the
+# `normalize()` helper from apps/api/src/services/recipeLint.ts (lowercase,
+# strip diacritics, strip ñ, collapse whitespace).
+#
+# Fields (all required keys, but `density` and `unitWeight` may be `null`):
+#   - name           Canonical ingredient name (Spanish, lowercase)
+#   - fdcId          USDA FoodData Central id. Prefer Foundation > SR Legacy
+#                    > Survey (FNDDS). Avoid Branded — its values are
+#                    per-serving, not per-100 g, and will explode the
+#                    aggregator.
+#   - aisle          Shopping-list aisle hint. One of: produce, proteinas,
+#                    lacteos, panaderia, despensa, congelados, bebidas, otros
+#   - density        g/ml. Set for liquids and pastes; null for solids.
+#                    Olive oil ≈ 0.91, water = 1.00, milk ≈ 1.03.
+#   - unitWeight     g/unidad. Set when the ingredient is bought "by the
+#                    piece" (1 huevo, 1 cebolla, 1 manzana). Null otherwise.
+#   - allergenTags   EU-labelling allergen tags. Use the helper
+#                    `inferAllergenTagsFromName()` from allergens.ts as a
+#                    starting point, then audit. Empty array `[]` if none.
+#
+# Curator workflow:
+#   1. Find a sensible fdcId on https://fdc.nal.usda.gov/ (or via the script's
+#      embedded `searchByName` if you wire up a small CLI helper).
+#   2. Add an entry for the ingredient to ingredient-fdc-map.yaml.
+#   3. Run `pnpm --filter @ona/api seed:usda`.
+#   4. If the kcal/macros look wrong, the fdcId is probably wrong — pick a
+#      different USDA entry (don't hand-edit the values).
+
+- name: cebolla
+  fdcId: 170000          # Onions, raw (SR Legacy)
+  aisle: produce
+  density: null
+  unitWeight: 110        # medium onion ≈ 110 g
+  allergenTags: []
+
+- name: huevo
+  fdcId: 171287          # Egg, whole, raw, fresh (SR Legacy)
+  aisle: proteinas
+  density: null
+  unitWeight: 50         # 1 huevo M ≈ 50 g
+  allergenTags: [huevo]
+
+- name: aceite de oliva virgen
+  fdcId: 171413          # Oil, olive, salad or cooking (SR Legacy)
+  aisle: despensa
+  density: 0.91          # ≈ 0.91 g/ml
+  unitWeight: null
+  allergenTags: []

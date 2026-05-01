@@ -18,10 +18,10 @@ const MEAL_EMOJI: Record<string, string> = {
 }
 
 const MEAL_BG: Record<string, string> = {
-  breakfast: "#FAEEDA",
-  lunch: "#EAF3DE",
-  dinner: "#E6F1FB",
-  snack: "#F3E8FF",
+  breakfast: "#F2EDE0",
+  lunch: "#EFE8D8",
+  dinner: "#E8E2D3",
+  snack: "#F2EDE0",
 }
 
 interface MealPhotoCardProps {
@@ -44,10 +44,10 @@ export function MealPhotoCard({
   if (!recipeId) {
     return (
       <div
-        className="flex h-24 items-center justify-center rounded-xl border border-dashed border-gray-300"
-        style={{ background: MEAL_BG[meal] || "#f5f5f5" }}
+        className="flex h-24 items-center justify-center rounded-xl border border-dashed border-[#DDD6C5]"
+        style={{ background: MEAL_BG[meal] || "#EFE8D8" }}
       >
-        <p className="text-sm text-gray-400">
+        <p className="text-sm text-[#7A7066]">
           {MEAL_LABELS[meal] || meal} — sin plato
         </p>
       </div>
@@ -67,7 +67,7 @@ export function MealPhotoCard({
         ) : (
           <div
             className="flex h-44 w-full items-center justify-center"
-            style={{ background: MEAL_BG[meal] || "#f5f5f5" }}
+            style={{ background: MEAL_BG[meal] || "#EFE8D8" }}
           >
             <span className="text-5xl">{MEAL_EMOJI[meal] || "🍽️"}</span>
           </div>
@@ -83,7 +83,7 @@ export function MealPhotoCard({
         >
           <RefreshCw
             size={14}
-            className={isRegenerating ? "animate-spin text-gray-500" : "text-gray-600"}
+            className={isRegenerating ? "animate-spin text-[#7A7066]" : "text-[#4A4239]"}
           />
         </button>
       )}

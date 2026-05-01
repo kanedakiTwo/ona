@@ -59,7 +59,6 @@ ONA (Opinionated Nutritional Assistant) is a **mobile-first meal planner** for S
 - `POST /menu/generate` does NOT require auth (known quirk, see [menus.md](./specs/menus.md)).
 - Recipe images are served from Next.js `public/images/recipes/`, not from the API. Image URLs in the DB look like `/images/recipes/<slug>.jpg`.
 - The bottom tab bar is fixed at the viewport bottom; app routes use `<main className="mx-auto max-w-[430px] pb-20">` to reserve room.
-- `PublicNavbar` links to `/recetas` (Spanish) but the actual route is `/recipes` — broken link.
 - The shopping list is generated on the **first** GET and persisted; if the menu changes afterwards, the list does NOT regenerate automatically.
 - `useAdvisor` is legacy; new code should use `useAssistant` for chat. The advisor page still calls `useAdvisorSummary` for the nutrition summary.
 
@@ -88,11 +87,23 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 - Keep entries terse: one bullet per item; if it grows, link out to a longer doc
 - Items are roughly ordered by priority (top = next)
 
+**Scope**: Only items that genuinely require Miguel — external account setup, physical device testing, branded artwork, etc. Code work that Claude can do (refactors, bug fixes, page migrations) does NOT belong here; those go in regular tasks.
+
 ### Pending
 
-- [ ] **Replace placeholder PWA assets** with real branded artwork — `apps/web/public/icons/*.png` + `apps/web/public/favicon.ico`. Same paths, same sizes; the SW will pick up the new revisions on next build. Generator script: `apps/web/scripts/generate-pwa-placeholders.mjs` (currently just renders an "ONA" wordmark on cream).
-- [ ] **Run the 10 manual device tests** in [`apps/web/PWA_MANUAL_TESTS.md`](./apps/web/PWA_MANUAL_TESTS.md): Android Chrome install, iOS Safari install, Lighthouse PWA = 100, offline behavior on real device, Wake Lock with locked screen, real notification fire, haptic feel, Web Share native sheet, page transitions perception, swipe-between-tabs feel.
-- [ ] **Voice-mode env vars** in production (Railway): `NEXT_PUBLIC_PICOVOICE_ACCESS_KEY`, the `Hola Ona` `.ppn` wake-word model file, `OPENAI_API_KEY` with `gpt-realtime` access, `REALTIME_DAILY_MINUTES_PER_USER` (default 30 if unset). Without these, the voice overlay falls back gracefully but doesn't activate.
-- [ ] **Fix the broken `/recetas` link in `PublicNavbar`** — the actual route is `/recipes`. One-line fix in [`apps/web/src/components/shared/PublicNavbar.tsx`](./apps/web/src/components/shared/PublicNavbar.tsx) `NAV_LINKS`.
-- [ ] **Migrate legacy "app mode" pages to the editorial design system**: `/menu`, `/shopping`, `/profile`, `/advisor`, `/login` still use the green palette. Tracked in [`specs/design-system.md`](./specs/design-system.md) under "Pages still in App Mode".
-- [ ] **Reconcile `/recipes/new` form payload** with `createRecipeSchema` — the form posts a flat `description` + `string[]` ingredients shape that doesn't match the API contract; works at runtime today but will break the new richer recipe model. See [`specs/recipes.md`](./specs/recipes.md).
+- [ ] **Replace placeholder PWA assets** with real branded artwork — `apps/web/public/icons/*.png` + `apps/web/public/favicon.ico`. Same paths, same sizes; the SW picks up new revisions on next build. Current placeholders are an "ONA" wordmark on cream (generator: `apps/web/scripts/generate-pwa-placeholders.mjs`).
+
+- [ ] **Voice-mode setup in Railway** (OpenAI key already set ✓):
+  - `NEXT_PUBLIC_PICOVOICE_ACCESS_KEY` — get from console.picovoice.ai
+  - Upload the `Hola Ona` `.ppn` wake-word model file (trained at console.picovoice.ai, custom wake-word "Hola Ona")
+  - *(Optional, cost control)* `REALTIME_DAILY_MINUTES_PER_USER` — caps per-user OpenAI Realtime minutes/day. Defaults to 30 if unset.
+
+- [ ] **Device-only manual tests** (the rest is covered by Playwright):
+  - Install: Android Chrome → confirm prompt + home-screen install + standalone launch with cream theme
+  - Install: iOS Safari → follow the bottom-sheet instructions, confirm splash screen + translucent status bar + safe-area-inset respected
+  - Lighthouse PWA category = 100 against the deployed URL (DevTools → Lighthouse)
+  - Wake Lock holds when device is locked via power button (recipe detail → "Empezar a cocinar")
+  - Notification fires at meal time + tap-to-open behavior (profile → opt-in → set time 1 min ahead → leave tab open)
+  - Haptic vibration is perceived (Android only — tap a tab, toggle a favorite, check shopping item)
+  - Native share sheet renders (iOS/Android — recipe detail Share button + shopping export)
+  - Subjective UX feel: page transitions cross-fade (~250ms), swipe-between-tabs gesture (edge resistance, 30% threshold, vertical scroll preserved)

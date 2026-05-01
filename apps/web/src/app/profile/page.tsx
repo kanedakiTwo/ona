@@ -83,9 +83,11 @@ export default function ProfilePage() {
   useEffect(() => {
     if (!user) return
     api.get<any>(`/user/${user.id}/settings`).then((data) => {
-      if (data?.physical) setPhysical(data.physical)
-      if (data?.preferences) setPreferences(data.preferences)
-      if (data?.meal_template) setMealTemplate(data.meal_template)
+      const blob = data?.template && !Array.isArray(data.template) ? data.template : data
+      if (blob?.physical) setPhysical(blob.physical)
+      if (blob?.preferences) setPreferences(blob.preferences)
+      if (blob?.mealTemplate) setMealTemplate(blob.mealTemplate)
+      else if (blob?.meal_template) setMealTemplate(blob.meal_template)
     }).catch(() => {})
   }, [user])
 
@@ -123,16 +125,36 @@ export default function ProfilePage() {
     if (!user) return
     setSaving(true); setSaved(false)
     try {
-      await Promise.all([
-        api.put(`/user/${user.id}`, {
-          sex: physical.sex || undefined,
-          age: physical.age || undefined,
-          weight: physical.weight || undefined,
-          height: physical.height || undefined,
-          activity_level: physical.activity_level,
-        }),
-        api.put(`/user/${user.id}/settings`, { physical, preferences, meal_template: mealTemplate }),
-      ])
+      const ACTIVITY_MAP: Record<string, 'none' | 'light' | 'moderate' | 'high'> = {
+        sedentary: 'none',
+        light: 'light',
+        moderate: 'moderate',
+        active: 'moderate',
+        very_active: 'high',
+      }
+      const userPayload: Record<string, unknown> = {}
+      if (physical.sex) userPayload.sex = physical.sex
+      if (physical.age !== '' && physical.age != null) userPayload.age = Number(physical.age)
+      if (physical.weight !== '' && physical.weight != null) userPayload.weight = Number(physical.weight)
+      if (physical.height !== '' && physical.height != null) userPayload.height = Number(physical.height)
+      if (physical.activity_level) userPayload.activityLevel = ACTIVITY_MAP[physical.activity_level] ?? 'moderate'
+      if (preferences.restrictions.length > 0) userPayload.restrictions = preferences.restrictions
+      const PRIORITY_MAP: Record<string, 'quick' | 'varied' | 'healthy' | 'cheap'> = {
+        balanced: 'varied',
+        muscle: 'healthy',
+        weight_loss: 'healthy',
+        energy: 'quick',
+      }
+      if (preferences.priority) userPayload.priority = PRIORITY_MAP[preferences.priority] ?? 'varied'
+
+      const calls: Promise<unknown>[] = []
+      if (Object.keys(userPayload).length > 0) {
+        calls.push(api.put(`/user/${user.id}`, userPayload))
+      }
+      calls.push(api.put(`/user/${user.id}/settings`, {
+        template: { physical, preferences, mealTemplate },
+      }))
+      await Promise.all(calls)
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
     } catch (e) { console.error(e) }
@@ -426,8 +448,12 @@ export default function ProfilePage() {
                 </div>
               </div>
             </div>
-            <span className={`relative inline-block h-6 w-11 rounded-full transition-colors ${voiceMode.enabled ? 'bg-[#2D6A4F]' : 'bg-[#DDD6C5]'}`}>
-              <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${voiceMode.enabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+            <span
+              className={`relative block h-6 w-11 shrink-0 rounded-full transition-colors ${voiceMode.enabled ? 'bg-[#2D6A4F]' : 'bg-[#DDD6C5]'}`}
+            >
+              <span
+                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-[left] duration-200 ${voiceMode.enabled ? 'left-[22px]' : 'left-0.5'}`}
+              />
             </span>
           </button>
         </div>

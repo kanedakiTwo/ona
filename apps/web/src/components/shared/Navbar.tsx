@@ -21,7 +21,7 @@ export default function Navbar() {
   if (!user) return null
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 pb-[env(safe-area-inset-bottom)]">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 pb-[max(env(safe-area-inset-bottom),12px)]">
       <div className="mx-auto max-w-[430px] px-3 pb-3">
         <div className="relative rounded-full border border-[#DDD6C5] bg-[#FFFEFA]/95 px-2 py-1.5 shadow-[0_8px_32px_-8px_rgba(26,22,18,0.18)] backdrop-blur-md">
           <div className="flex items-center justify-around">

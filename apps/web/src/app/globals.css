@@ -71,6 +71,14 @@
 
 /* ── Base ──────────────────────────────────────── */
 
+:root {
+  /* iOS / PWA safe-area insets */
+  --safe-top: env(safe-area-inset-top);
+  --safe-bottom: env(safe-area-inset-bottom);
+  --safe-left: env(safe-area-inset-left);
+  --safe-right: env(safe-area-inset-right);
+}
+
 html, body {
   background: var(--color-cream);
   color: var(--color-ink);
@@ -78,6 +86,14 @@ html, body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+}
+
+/* ── PWA standalone-only top padding ────────────── */
+/* Only push content past the iOS status bar in installed PWA mode — in browser mode the URL bar reserves space already */
+@media (display-mode: standalone) {
+  .standalone-pt {
+    padding-top: env(safe-area-inset-top);
+  }
 }
 
 ::selection {

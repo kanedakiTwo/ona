@@ -28,19 +28,11 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk'
-import { mkdir, writeFile } from 'fs/promises'
+import { mkdir } from 'fs/promises'
 import { createWriteStream } from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { z } from 'zod'
 
-import {
-  DIFFICULTIES,
-  MEALS,
-  SEASONS,
-  UNITS,
-  nutritionPerServingSchema,
-} from '@ona/shared'
 import { eq, asc } from 'drizzle-orm'
 import { db, pool } from '../src/db/connection.js'
 import {
@@ -56,6 +48,7 @@ import {
   type CatalogIngredient,
   type RecipeInput,
 } from '../src/services/recipeLint.js'
+import { regenRecipeSchema, type RegenRecipe } from '../src/services/regenSchema.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const OUTPUT_DIR = path.resolve(__dirname, 'output')
@@ -102,61 +95,8 @@ Flags:
 `)
 }
 
-// ─── Regen schema (loosens ingredientRefs to plain strings) ───────
-
-/**
- * The LLM emits ingredient rows with `ingredientId` set to a real catalog UUID
- * (we feed it the catalog), but `ingredientRefs` are temporary inline string
- * ids ("ing_0", "ing_1"...) that the apply script (Task 9) resolves to real
- * recipe_ingredients.id UUIDs once those rows exist.
- *
- * `createRecipeSchema` requires `ingredientRefs` to be UUIDs, so for the
- * regen pipeline we use this slightly looser schema instead.
- */
-const regenIngredientSchema = z.object({
-  ingredientId: z.string().min(1),
-  section: z.string().optional(),
-  quantity: z.number().positive(),
-  unit: z.enum(UNITS),
-  optional: z.boolean().default(false),
-  note: z.string().optional(),
-  displayOrder: z.number().int().min(0).default(0),
-})
-
-const regenStepSchema = z.object({
-  index: z.number().int().min(0),
-  text: z.string().min(1),
-  durationMin: z.number().int().min(0).optional(),
-  temperature: z.number().int().min(-30).max(300).optional(),
-  technique: z.string().optional(),
-  ingredientRefs: z.array(z.string()).default([]),
-})
-
-const regenRecipeSchema = z.object({
-  name: z.string().min(1),
-  imageUrl: z.string().url().nullable().optional(),
-  servings: z.number().int().positive(),
-  yieldText: z.string().optional(),
-  prepTime: z.number().int().min(0).optional(),
-  cookTime: z.number().int().min(0).optional(),
-  activeTime: z.number().int().min(0).optional(),
-  difficulty: z.enum(DIFFICULTIES).default('medium'),
-  meals: z.array(z.enum(MEALS)).min(1),
-  seasons: z.array(z.enum(SEASONS)).default([]),
-  equipment: z.array(z.string()).default([]),
-  notes: z.string().optional(),
-  tips: z.string().optional(),
-  substitutions: z.string().optional(),
-  storage: z.string().optional(),
-  tags: z.array(z.string()).default([]),
-  internalTags: z.array(z.string()).default([]),
-  ingredients: z.array(regenIngredientSchema).min(1),
-  steps: z.array(regenStepSchema).default([]),
-  // Optional, ignored on apply but allowed if the LLM volunteers it
-  nutritionPerServing: nutritionPerServingSchema.nullable().optional(),
-})
-
-type RegenRecipe = z.infer<typeof regenRecipeSchema>
+// Note: regenRecipeSchema lives in src/services/regenSchema.ts so the apply
+// script (Task 9) can re-validate the JSONL with the same loose contract.
 
 // ─── Old-shape recipe (input to the LLM) ──────────────────────────
 

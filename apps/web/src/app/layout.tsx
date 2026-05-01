@@ -5,9 +5,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { AuthProvider } from "@/lib/auth"
 import Navbar from "@/components/shared/Navbar"
 import OfflineBanner from "@/components/pwa/OfflineBanner"
+import InstallSheet from "@/components/pwa/InstallSheet"
 import VoiceProvider from "@/components/voice/VoiceProvider"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
+import { recordVisit } from "@/lib/pwa/installPrompt"
 import "./globals.css"
 
 const inter = Inter({
@@ -61,6 +63,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       })
   )
 
+  useEffect(() => {
+    recordVisit()
+  }, [])
+
   return (
     <html
       lang="es"
@@ -103,6 +109,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   {children}
                 </main>
                 <Navbar />
+                <InstallSheet />
               </VoiceProvider>
             )}
           </AuthProvider>

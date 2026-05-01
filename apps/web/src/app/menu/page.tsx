@@ -1,11 +1,12 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { motion, AnimatePresence } from "motion/react"
 import { useAuth } from "@/lib/auth"
 import { useMenu, useGenerateMenu, useRegenerateMeal } from "@/hooks/useMenu"
 import { haptic } from "@/lib/pwa/haptics"
+import { recordMenuVisit } from "@/lib/pwa/installPrompt"
 import { RefreshCw, Lock, Unlock, Sparkles } from "lucide-react"
 import { useLockMeal } from "@/hooks/useMenu"
 
@@ -44,6 +45,10 @@ export default function MenuPage() {
     const day = now.getDay()
     return day === 0 ? 6 : day - 1
   })
+
+  useEffect(() => {
+    recordMenuVisit()
+  }, [])
 
   const start = useMemo(() => new Date(weekStart + "T00:00:00"), [weekStart])
   const issueNumber = useMemo(() => {

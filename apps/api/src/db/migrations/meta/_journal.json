@@ -8,6 +8,13 @@
       "when": 1775117493536,
       "tag": "0000_smart_jamie_braddock",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1777666191632,
+      "tag": "0001_extend_recipes_schema",
+      "breakpoints": true
     }
   ]
 }

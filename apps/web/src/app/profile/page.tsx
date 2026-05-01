@@ -384,10 +384,13 @@ export default function ProfilePage() {
       {/* Capitulo 04 — Voz */}
       {typeof window !== 'undefined' && typeof (window as any).RTCPeerConnection !== 'undefined' && (
       <section className="px-5 mt-12">
-        <ChapterHeader number="04" title="Modo" italic="manos libres" />
+        <ChapterHeader number="04" title="Modo" italic="voz" />
         <p className="mt-2 text-[12px] text-[#7A7066]">
-          Di "Hola Ona" desde cualquier pantalla y mantén una conversación sin tocar la app.
-          La detección de la palabra ocurre en tu dispositivo: no se envía audio hasta que la activas.
+          Activa el modo voz y aparecerá un botón de micrófono flotante en cualquier pantalla.
+          Tócalo para hablar con Ona en manos libres.{' '}
+          {voiceMode.wakeAvailable
+            ? <>También puedes decir <em>“Hola Ona”</em> y se activa solo.</>
+            : <span className="text-[#A39A8E]">La activación por “Hola Ona” llegará en cuanto se apruebe la cuenta de wake-word.</span>}
         </p>
 
         <div className="mt-5 rounded-2xl bg-[#FFFEFA] border border-[#DDD6C5] p-4">
@@ -413,9 +416,13 @@ export default function ProfilePage() {
                 <Mic size={16} />
               </div>
               <div className="text-left min-w-0">
-                <div className="text-[13px] font-medium text-[#1A1612]">Activar wake word "Hola Ona"</div>
+                <div className="text-[13px] font-medium text-[#1A1612]">Activar modo voz</div>
                 <div className="text-[11px] text-[#7A7066] truncate">
-                  {voiceMode.enabled ? (voiceMode.isWakeListening ? 'Escuchando…' : (voiceMode.wakeError ?? 'Iniciando…')) : 'Desactivado'}
+                  {!voiceMode.enabled
+                    ? 'Desactivado'
+                    : voiceMode.wakeAvailable
+                      ? (voiceMode.isWakeListening ? 'Escuchando “Hola Ona”' : (voiceMode.wakeError ?? 'Iniciando…'))
+                      : 'Activo (toca el micro flotante)'}
                 </div>
               </div>
             </div>

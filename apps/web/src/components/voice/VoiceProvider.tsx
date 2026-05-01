@@ -23,8 +23,10 @@ interface VoiceModeContextValue {
   enabled: boolean
   setEnabled: (v: boolean) => void
   isWakeListening: boolean
+  wakeAvailable: boolean
   isOverlayOpen: boolean
   wakeError: string | null
+  openOverlay: () => void
 }
 
 const VoiceModeContext = createContext<VoiceModeContextValue | undefined>(undefined)
@@ -87,11 +89,15 @@ export default function VoiceProvider({ children }: { children: ReactNode }) {
     session.connect().catch(() => {})
   }, [session])
 
+  const wakeAccessKey = process.env.NEXT_PUBLIC_PICOVOICE_ACCESS_KEY ?? ''
+  const wakeAvailable = wakeAccessKey.length > 0
+
   const wake = useWakeWord({
-    enabled: enabled && !!userId && !overlayOpen,
+    enabled: enabled && wakeAvailable && !!userId && !overlayOpen,
     onDetected: () => {
       if (!overlayOpen) startSession()
     },
+    accessKey: wakeAccessKey,
   })
 
   // Topic reset detection on user transcripts
@@ -154,21 +160,33 @@ export default function VoiceProvider({ children }: { children: ReactNode }) {
     enabled,
     setEnabled,
     isWakeListening: wake.isListening,
+    wakeAvailable,
     isOverlayOpen: overlayOpen,
     wakeError: wake.error,
-  }), [enabled, setEnabled, wake.isListening, overlayOpen, wake.error])
+    openOverlay: () => {
+      if (!overlayOpen && userId) startSession()
+    },
+  }), [enabled, setEnabled, wake.isListening, wakeAvailable, overlayOpen, wake.error, startSession, userId])
 
   return (
     <VoiceModeContext.Provider value={ctxValue}>
       {children}
-      {enabled && wake.isListening && !overlayOpen && (
+      {enabled && !overlayOpen && userId && (
         <button
-          onClick={() => setEnabled(false)}
-          className="fixed top-3 right-3 z-40 flex h-6 w-6 items-center justify-center rounded-full bg-[#2D6A4F]/90 text-white shadow-md backdrop-blur"
-          aria-label="Modo manos libres activo. Toca para desactivar."
-          title="Modo manos libres activo"
+          onClick={() => startSession()}
+          className="fixed top-3 right-3 z-40 flex h-10 w-10 items-center justify-center rounded-full bg-[#2D6A4F] text-white shadow-[0_4px_16px_rgba(45,106,79,0.35)] active:scale-95 transition-transform"
+          aria-label={wake.isListening ? 'Modo voz activo. Toca o di "Hola Ona" para abrir.' : 'Abrir modo voz'}
+          title={wake.isListening ? 'Hola Ona o toca' : 'Abrir modo voz'}
         >
-          <span className="block h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+            <line x1="12" y1="19" x2="12" y2="23" />
+            <line x1="8" y1="23" x2="16" y2="23" />
+          </svg>
+          {wake.isListening && (
+            <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-[#FAF6EE] animate-pulse" />
+          )}
         </button>
       )}
       {overlayOpen && (

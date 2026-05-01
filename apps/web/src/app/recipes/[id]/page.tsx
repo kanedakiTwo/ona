@@ -1,13 +1,15 @@
 "use client"
 
-import { useParams, useRouter } from "next/navigation"
+import { useEffect, useRef, useState } from "react"
+import { useParams, usePathname, useRouter } from "next/navigation"
 import { motion } from "motion/react"
 import { useRecipe } from "@/hooks/useRecipes"
 import { useAuth } from "@/lib/auth"
 import { FavoriteButton } from "@/components/recipes/FavoriteButton"
 import { haptic } from "@/lib/pwa/haptics"
 import { share } from "@/lib/pwa/share"
-import { ChevronLeft, Clock, Share2, Users, Sparkles } from "lucide-react"
+import { acquireWakeLock, releaseWakeLock } from "@/lib/pwa/wakeLock"
+import { ChevronLeft, ChefHat, Clock, Share2, Users, Sparkles, Zap } from "lucide-react"
 import Link from "next/link"
 
 const SEASON_LABELS: Record<string, string> = {
@@ -26,8 +28,35 @@ const MEAL_LABELS: Record<string, string> = {
 export default function RecipeDetailPage() {
   const params = useParams<{ id: string }>()
   const router = useRouter()
+  const pathname = usePathname()
   const { user } = useAuth()
   const { data: recipe, isLoading, error } = useRecipe(params.id)
+
+  const [isCooking, setIsCooking] = useState(false)
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null)
+
+  async function handleCookingToggle() {
+    haptic.medium()
+    if (isCooking) {
+      await releaseWakeLock(wakeLockRef.current)
+      wakeLockRef.current = null
+      setIsCooking(false)
+    } else {
+      const sentinel = await acquireWakeLock()
+      wakeLockRef.current = sentinel
+      setIsCooking(true)
+    }
+  }
+
+  useEffect(() => {
+    // Release on unmount or path change
+    return () => {
+      if (wakeLockRef.current) {
+        releaseWakeLock(wakeLockRef.current)
+        wakeLockRef.current = null
+      }
+    }
+  }, [pathname])
 
   if (isLoading) {
     return (
@@ -104,6 +133,18 @@ export default function RecipeDetailPage() {
             )}
           </div>
         </div>
+
+        {/* Cooking mode badge */}
+        {isCooking && (
+          <button
+            onClick={handleCookingToggle}
+            className="absolute top-16 left-4 flex items-center gap-1.5 rounded-full bg-[#FAF6EE]/90 px-3 py-1.5 text-xs font-medium text-[#1A1612] backdrop-blur-sm shadow-sm transition-transform active:scale-95"
+            aria-label="Pantalla activa, toca para liberar"
+          >
+            <Zap size={12} className="text-[#C65D38]" />
+            Pantalla activa
+          </button>
+        )}
 
         {/* Decorative side text */}
         <div className="pointer-events-none absolute bottom-6 left-4 text-[10px] uppercase tracking-[0.25em] text-[#FAF6EE]/80">
@@ -202,11 +243,25 @@ export default function RecipeDetailPage() {
         {/* Steps */}
         {recipe.steps?.length > 0 && (
           <section className="mt-12">
-            <div className="mb-5">
-              <div className="text-eyebrow text-[#7A7066]">Capitulo 02</div>
-              <h2 className="font-display text-[1.6rem] leading-tight text-[#1A1612]">
-                <span className="font-italic italic">Preparacion</span>
-              </h2>
+            <div className="mb-5 flex items-end justify-between gap-4">
+              <div>
+                <div className="text-eyebrow text-[#7A7066]">Capitulo 02</div>
+                <h2 className="font-display text-[1.6rem] leading-tight text-[#1A1612]">
+                  <span className="font-italic italic">Preparacion</span>
+                </h2>
+              </div>
+              <button
+                onClick={handleCookingToggle}
+                className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-[12px] font-medium transition-all active:scale-95 ${
+                  isCooking
+                    ? "bg-[#C65D38] text-[#FAF6EE]"
+                    : "bg-[#1A1612] text-[#FAF6EE] hover:bg-[#2D6A4F]"
+                }`}
+                aria-pressed={isCooking}
+              >
+                <ChefHat size={13} />
+                {isCooking ? "Salir de cocina" : "Empezar a cocinar"}
+              </button>
             </div>
 
             <ol className="space-y-6">

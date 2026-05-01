@@ -1,8 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { Check, Package } from 'lucide-react'
+import { Check, Clock, Package } from 'lucide-react'
 import { useCheckItem, useStockItem } from '@/hooks/useShopping'
+import { useOnlineStatus } from '@/lib/pwa/useOnlineStatus'
+import { haptic } from '@/lib/pwa/haptics'
 
 interface ShoppingItem {
   id: string
@@ -23,6 +25,7 @@ export default function ShoppingList({ items, listId }: ShoppingListProps) {
   const [showInStock, setShowInStock] = useState(false)
   const checkItem = useCheckItem()
   const stockItem = useStockItem()
+  const { pendingResourceIds } = useOnlineStatus()
 
   const visibleItems = showInStock
     ? items
@@ -39,10 +42,12 @@ export default function ShoppingList({ items, listId }: ShoppingListProps) {
   const sortedItems = [...uncheckedItems, ...checkedItems]
 
   function handleCheck(itemId: string, currentChecked: boolean) {
+    haptic.medium()
     checkItem.mutate({ listId, itemId, checked: !currentChecked })
   }
 
   function handleStock(itemId: string, currentInStock: boolean) {
+    haptic.medium()
     stockItem.mutate({ listId, itemId, inStock: !currentInStock })
   }
 
@@ -88,13 +93,20 @@ export default function ShoppingList({ items, listId }: ShoppingListProps) {
 
             <div className="flex-1 min-w-0">
               <span
-                className={`block text-sm font-medium ${
+                className={`flex items-center gap-1.5 text-sm font-medium ${
                   item.checked || item.inStock
                     ? 'text-gray-400 line-through'
                     : 'text-gray-900'
                 }`}
               >
                 {item.name}
+                {pendingResourceIds.has(item.id) && (
+                  <Clock
+                    size={10}
+                    className="text-ink-soft shrink-0"
+                    aria-label="Pendiente de sincronizar"
+                  />
+                )}
               </span>
               {item.category && (
                 <span className="text-xs text-gray-400">{item.category}</span>

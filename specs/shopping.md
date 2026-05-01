@@ -11,7 +11,8 @@ Weekly shopping list and pantry stock management. Aggregates ingredients across 
 - Items in stock are excluded from the active shopping list
 - Users can switch between two views: "Lista" (shopping list) and "Gestionar stock" (pantry toggle)
 - Users can see items grouped by aisle (produce, carnicería, lácteos, panadería, despensa…) for faster shopping
-- Users can export the active list as plain text to clipboard
+- Users can export the active list as plain text via the native share sheet (Web Share API), with clipboard fallback on browsers without `navigator.share`
+- Check-item and stock-toggle mutations are queued offline (IndexedDB) and replay automatically when the device reconnects; an inline "Pendiente de sincronizar" Clock icon marks items still in the queue — see [PWA](./pwa.md)
 - The page shows progress: "X/Y comprados" and "Z en stock" with a green progress bar
 - A toggle "Mostrar en stock" reveals/hides items already in stock within the list view
 - If no menu exists for the week, the page shows an empty state with a CTA to generate one
@@ -65,12 +66,14 @@ Both toggle endpoints flip the field (no payload value used) and return the full
 - The progress bar uses `(checkedCount + inStockCount) / totalCount`
 - Export format is plain text suitable for paste into messaging apps; it preserves aisle grouping
 - Aisle assignment falls back to `otros` when `ingredient.aisle` is unset; curators are nudged to fill the column
+- Check / stock mutations work offline; the request is held in the PWA queue until reconnect. The local UI updates optimistically and a "Pendiente de sincronizar" indicator shows while pending
 
 ## Related specs
 
 - [Menus](./menus.md) — source of recipes; provides `recipe.servings` for scaling math
 - [Recipes](./recipes.md) — defines `RecipeIngredient` units and `optional` flags
 - [Nutrition](./nutrition.md) — same `density` / `unitWeight` / `aisle` columns on the ingredients catalog drive both shopping aggregation and nutrition
+- [PWA](./pwa.md) — offline mutation queue (check / stock toggles), Web Share for the export action
 
 ## Source
 

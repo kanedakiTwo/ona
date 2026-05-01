@@ -9,11 +9,12 @@ Recipe catalog, recipe detail, and the data needed to actually cook a recipe.
 - Users can filter recipes by meal type (breakfast/lunch/dinner/snack), season, and max prep time
 - Users can open a recipe detail view with hero photo, name, meta, ingredients (grouped), preparation steps, equipment, allergens, nutrition per serving, and notes/tips
 - Users can change the number of diners on the detail view; ingredient quantities scale on the fly
-- Users can favorite/unfavorite a recipe (toggle via heart button)
+- Users can favorite/unfavorite a recipe (toggle via heart button); the toggle is queued offline and replays on reconnect — see [PWA](./pwa.md)
 - Users can create their own recipes (form at `/recipes/new`)
 - Authors can edit and delete their own recipes (not system recipes)
 - Users can extract a recipe from a photo (image upload → AI extraction)
-- Users can start "Cooking mode" from the detail view — see [Cooking Mode](./cooking-mode.md)
+- Users can share a recipe via the native share sheet (Web Share API) from a Share2 button in the detail hero — see [PWA](./pwa.md)
+- Users can start "Cooking mode" from the detail view ("Empezar a cocinar"); while active, a Wake Lock keeps the screen awake and a "Pantalla activa" badge appears (released on tap or navigation) — see [PWA](./pwa.md) and [Cooking Mode](./cooking-mode.md)
 
 ## Recipe Sources
 
@@ -122,6 +123,7 @@ When the user changes the diner count from `recipe.servings` to `target`:
 - [Menus](./menus.md) — recipes are selected for menu slots, scaled to household size
 - [Shopping](./shopping.md) — ingredients aggregate into a unit-aware shopping list
 - [Design System](./design-system.md) — RecipeCard and detail page styling
+- [PWA](./pwa.md) — favorite-toggle offline queue, Web Share button on the detail page, Wake Lock cooking-mode badge
 
 ## Source
 

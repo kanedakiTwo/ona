@@ -71,6 +71,14 @@
 
 /* ── Base ──────────────────────────────────────── */
 
+:root {
+  /* iOS / PWA safe-area insets */
+  --safe-top: env(safe-area-inset-top);
+  --safe-bottom: env(safe-area-inset-bottom);
+  --safe-left: env(safe-area-inset-left);
+  --safe-right: env(safe-area-inset-right);
+}
+
 html, body {
   background: var(--color-cream);
   color: var(--color-ink);
@@ -78,6 +86,14 @@ html, body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+}
+
+/* ── PWA standalone-only top padding ────────────── */
+/* Only push content past the iOS status bar in installed PWA mode — in browser mode the URL bar reserves space already */
+@media (display-mode: standalone) {
+  .standalone-pt {
+    padding-top: env(safe-area-inset-top);
+  }
 }
 
 ::selection {
@@ -436,4 +452,23 @@ html, body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ── PWA: View Transitions API cross-fade ──────── */
+@view-transition {
+  navigation: auto;
+}
+
+::view-transition-old(root) {
+  animation: 220ms cubic-bezier(0.19, 1, 0.22, 1) both fade-out;
+}
+::view-transition-new(root) {
+  animation: 220ms cubic-bezier(0.19, 1, 0.22, 1) both fade-in;
+}
+
+@keyframes fade-out {
+  to { opacity: 0; }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
 }

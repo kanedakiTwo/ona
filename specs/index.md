@@ -78,9 +78,9 @@ AI chat assistant, function calling, skills (get_todays_menu, search_recipes, sw
 
 ## [PWA](./pwa.md)
 
-**Status: planned, not implemented yet.** Native-feeling Progressive Web App: installable (Android + iOS), offline-capable (app shell + viewed recipes), background sync queue for offline mutations, install prompt bottom sheet, haptic feedback (Vibration API), Web Share, Wake Lock for cooking mode, local meal-time Notifications, View Transitions API, motion/react page transitions, swipe between bottom tabs, manifest, service worker (next-pwa / Workbox), apple-touch-icon, splash screens, status bar tinting, safe-area-inset, theme-color per section, maskable icons, monochrome adaptive icon, iOS Safari quirks, "sin conexión" banner.
+Native-feeling Progressive Web App: installable (Android + iOS), offline-capable (app shell + viewed recipes via next-pwa runtime caching), IndexedDB mutation queue replayed on the `online` event, install prompt bottom sheet (3-visit / second-`/menu`-visit gate, 30/365-day dismissal windows), haptic feedback (Vibration API), Web Share (recipe + shopping export), Wake Lock cooking mode, local meal-time Notifications scheduled via `setTimeout`, View Transitions API + motion/react page transitions, SwipeNavigator pan-gesture between bottom tabs, manifest, service worker (next-pwa / Workbox), apple-touch-icon, 8 splash screens, status bar tinting, safe-area-inset CSS variables, dynamic theme-color per section (cream app / ink public), maskable icons, monochrome adaptive icon, iOS Safari quirks, "sin conexión" banner.
 
-**Source (planned)**: `apps/web/public/manifest.webmanifest`, `apps/web/public/icons/`, `apps/web/src/lib/pwa/`, `apps/web/src/components/pwa/`, `apps/web/next.config.ts`
+**Source**: `apps/web/public/manifest.webmanifest`, `apps/web/public/icons/`, `apps/web/src/lib/pwa/`, `apps/web/src/components/pwa/`, `apps/web/next.config.ts`
 
 ---
 

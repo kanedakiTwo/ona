@@ -76,6 +76,17 @@ Defined as classes in `globals.css`:
 
 `--space-1`…`--space-48` (4px → 192px) and `--radius-sm`/`md`/`lg`/`xl`/`full` (4 / 10 / 18 / 28 / 9999). Used in editorial components; mixed with arbitrary `[#hex]` and Tailwind utilities elsewhere.
 
+### Safe-area & section theme-color
+
+`:root` exposes the four iOS safe-area insets as CSS variables that components consume directly:
+
+- `--safe-top` → `env(safe-area-inset-top)`
+- `--safe-bottom` → `env(safe-area-inset-bottom)`
+- `--safe-left` → `env(safe-area-inset-left)`
+- `--safe-right` → `env(safe-area-inset-right)`
+
+The `.standalone-pt` utility applies `padding-top: var(--safe-top)` so content drawn under the translucent iOS status bar is pushed below it (the bottom `Navbar` and offline banner both use these insets). The browser status bar is tinted per section: `theme-color = #FAF6EE` (cream) for app routes, `#1A1612` (ink) for public/landing routes — see [PWA](./pwa.md) for the full installable-app surface.
+
 ## Pages currently in Editorial Mode
 
 - `/` (landing) — hero with parallax, magnetic CTA, masonry steps, marquee
@@ -132,6 +143,7 @@ These have not been migrated to the editorial system yet:
 ## Related specs
 
 - All other specs reference UI components and tokens here
+- [PWA](./pwa.md) — installable shell, safe-area variables, dynamic per-section `theme-color`, View Transitions, swipe gestures, "Sin conexión" banner
 
 ## Source
 

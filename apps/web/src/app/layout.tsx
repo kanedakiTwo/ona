@@ -10,6 +10,7 @@ import VoiceProvider from "@/components/voice/VoiceProvider"
 import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
 import { recordVisit } from "@/lib/pwa/installPrompt"
+import { scheduleMealReminders } from "@/lib/pwa/notifications"
 import "./globals.css"
 
 const inter = Inter({
@@ -65,6 +66,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
   useEffect(() => {
     recordVisit()
+    scheduleMealReminders()
   }, [])
 
   return (

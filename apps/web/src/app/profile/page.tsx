@@ -6,6 +6,16 @@ import { LogOut, X, Plus, Check, Mic } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
 import { useVoiceMode } from '@/components/voice/VoiceProvider'
+import {
+  getEnabled as getNotifEnabled,
+  setEnabled as setNotifEnabledLS,
+  getMealTimes,
+  setMealTimes,
+  requestPermission as requestNotifPermission,
+  scheduleMealReminders,
+  clearAllReminders,
+  type MealTimes,
+} from '@/lib/pwa/notifications'
 
 interface PhysicalData {
   sex: 'male' | 'female' | ''
@@ -79,6 +89,40 @@ export default function ProfilePage() {
   const [restrictionInput, setRestrictionInput] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+
+  const [notifEnabled, setNotifEnabled] = useState(false)
+  const [mealTimes, setLocalMealTimes] = useState<MealTimes>({
+    breakfast: '08:00',
+    lunch: '14:00',
+    dinner: '21:00',
+    snack: '17:00',
+  })
+
+  useEffect(() => {
+    setNotifEnabled(getNotifEnabled())
+    setLocalMealTimes(getMealTimes())
+  }, [])
+
+  async function handleToggleNotif() {
+    if (!notifEnabled) {
+      const perm = await requestNotifPermission()
+      if (perm !== 'granted') return
+      setNotifEnabledLS(true)
+      setNotifEnabled(true)
+      scheduleMealReminders(mealTimes)
+    } else {
+      setNotifEnabledLS(false)
+      setNotifEnabled(false)
+      clearAllReminders()
+    }
+  }
+
+  function handleMealTimeChange(meal: keyof MealTimes, value: string) {
+    const next = { ...mealTimes, [meal]: value }
+    setLocalMealTimes(next)
+    setMealTimes(next)
+    if (notifEnabled) scheduleMealReminders(next)
+  }
 
   useEffect(() => {
     if (!user) return
@@ -426,6 +470,82 @@ export default function ProfilePage() {
         </div>
       </section>
       )}
+
+      {/* Capitulo 05 — Recordatorios */}
+      <section className="px-5 mt-12">
+        <ChapterHeader number="05" title="Recordatorios" italic="de comidas" />
+        <p className="mt-2 text-[12px] text-[#7A7066]">
+          Te avisamos a las horas que prefieras para que no se te pase. Las
+          notificaciones son locales: solo suenan si tienes la app abierta o
+          instalada.
+        </p>
+
+        <div className="mt-5 rounded-2xl bg-[#FFFEFA] border border-[#DDD6C5] p-4">
+          <button
+            type="button"
+            onClick={handleToggleNotif}
+            className="flex w-full items-center justify-between gap-3"
+            aria-pressed={notifEnabled}
+          >
+            <div className="text-left min-w-0">
+              <div className="text-[13px] font-medium text-[#1A1612]">
+                Recibir recordatorios de comidas
+              </div>
+              <div className="text-[11px] text-[#7A7066] truncate">
+                {notifEnabled ? 'Activado' : 'Desactivado'}
+              </div>
+            </div>
+            <span
+              className={`relative inline-block h-6 w-11 rounded-full transition-colors ${
+                notifEnabled ? 'bg-[#2D6A4F]' : 'bg-[#DDD6C5]'
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                  notifEnabled ? 'translate-x-5' : 'translate-x-0.5'
+                }`}
+              />
+            </span>
+          </button>
+
+          {notifEnabled && (
+            <div className="mt-5 grid grid-cols-2 gap-4 border-t border-[#DDD6C5] pt-4">
+              <Field label="Desayuno">
+                <input
+                  type="time"
+                  value={mealTimes.breakfast}
+                  onChange={(e) => handleMealTimeChange('breakfast', e.target.value)}
+                  className="input-line"
+                />
+              </Field>
+              <Field label="Comida">
+                <input
+                  type="time"
+                  value={mealTimes.lunch}
+                  onChange={(e) => handleMealTimeChange('lunch', e.target.value)}
+                  className="input-line"
+                />
+              </Field>
+              <Field label="Merienda">
+                <input
+                  type="time"
+                  value={mealTimes.snack}
+                  onChange={(e) => handleMealTimeChange('snack', e.target.value)}
+                  className="input-line"
+                />
+              </Field>
+              <Field label="Cena">
+                <input
+                  type="time"
+                  value={mealTimes.dinner}
+                  onChange={(e) => handleMealTimeChange('dinner', e.target.value)}
+                  className="input-line"
+                />
+              </Field>
+            </div>
+          )}
+        </div>
+      </section>
 
       {/* Save bar */}
       <div className="px-5 mt-10 mb-24">

@@ -1,7 +1,8 @@
 'use client'
 
-import { Package } from 'lucide-react'
+import { Clock, Package } from 'lucide-react'
 import { useStockItem } from '@/hooks/useShopping'
+import { useOnlineStatus } from '@/lib/pwa/useOnlineStatus'
 
 interface ShoppingItem {
   id: string
@@ -20,6 +21,7 @@ interface StockManagerProps {
 
 export default function StockManager({ items, listId }: StockManagerProps) {
   const stockItem = useStockItem()
+  const { pendingResourceIds } = useOnlineStatus()
 
   const sortedItems = [...items].sort((a, b) => {
     if (a.inStock === b.inStock) return a.name.localeCompare(b.name)
@@ -53,8 +55,15 @@ export default function StockManager({ items, listId }: StockManagerProps) {
         {sortedItems.map((item) => (
           <li key={item.id} className="flex items-center justify-between py-3">
             <div className="min-w-0 flex-1">
-              <span className="block text-sm font-medium text-gray-900">
+              <span className="flex items-center gap-1.5 text-sm font-medium text-gray-900">
                 {item.name}
+                {pendingResourceIds.has(item.id) && (
+                  <Clock
+                    size={10}
+                    className="text-ink-soft shrink-0"
+                    aria-label="Pendiente de sincronizar"
+                  />
+                )}
               </span>
               <span className="text-xs text-gray-400">
                 {item.quantity} {item.unit}

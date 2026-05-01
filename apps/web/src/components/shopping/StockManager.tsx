@@ -3,6 +3,7 @@
 import { Clock, Package } from 'lucide-react'
 import { useStockItem } from '@/hooks/useShopping'
 import { useOnlineStatus } from '@/lib/pwa/useOnlineStatus'
+import { haptic } from '@/lib/pwa/haptics'
 
 interface ShoppingItem {
   id: string
@@ -29,6 +30,7 @@ export default function StockManager({ items, listId }: StockManagerProps) {
   })
 
   function handleToggle(itemId: string, currentInStock: boolean) {
+    haptic.medium()
     stockItem.mutate({ listId, itemId, inStock: !currentInStock })
   }
 

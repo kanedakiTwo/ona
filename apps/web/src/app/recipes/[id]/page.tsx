@@ -5,7 +5,9 @@ import { motion } from "motion/react"
 import { useRecipe } from "@/hooks/useRecipes"
 import { useAuth } from "@/lib/auth"
 import { FavoriteButton } from "@/components/recipes/FavoriteButton"
-import { ChevronLeft, Clock, Users, Sparkles } from "lucide-react"
+import { haptic } from "@/lib/pwa/haptics"
+import { share } from "@/lib/pwa/share"
+import { ChevronLeft, Clock, Share2, Users, Sparkles } from "lucide-react"
 import Link from "next/link"
 
 const SEASON_LABELS: Record<string, string> = {
@@ -56,6 +58,14 @@ export default function RecipeDetailPage() {
   const fallbackImg = "https://images.unsplash.com/photo-1490645935967-10de6ba17061?w=1200&q=85&auto=format&fit=crop"
   const img = recipe.imageUrl || fallbackImg
 
+  const handleShare = async () => {
+    haptic.light()
+    await share({
+      title: recipe.name,
+      url: typeof window !== "undefined" ? window.location.href : undefined,
+    })
+  }
+
   return (
     <div className="bg-[#FAF6EE] min-h-screen">
       {/* Hero image */}
@@ -79,11 +89,20 @@ export default function RecipeDetailPage() {
           >
             <ChevronLeft size={20} />
           </button>
-          {user && (
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#FAF6EE]/90 backdrop-blur-sm">
-              <FavoriteButton recipeId={recipe.id} userId={user.id} />
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleShare}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-[#FAF6EE]/90 text-[#1A1612] backdrop-blur-sm transition-transform active:scale-95"
+              aria-label="Compartir receta"
+            >
+              <Share2 size={18} />
+            </button>
+            {user && (
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#FAF6EE]/90 backdrop-blur-sm">
+                <FavoriteButton recipeId={recipe.id} userId={user.id} />
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Decorative side text */}

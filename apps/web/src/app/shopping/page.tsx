@@ -7,6 +7,8 @@ import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import { useShoppingList, useCheckItem, useStockItem } from '@/hooks/useShopping'
 import { useMenu } from '@/hooks/useMenu'
+import { haptic } from '@/lib/pwa/haptics'
+import { share } from '@/lib/pwa/share'
 
 function getWeekStart(): string {
   const now = new Date()
@@ -34,12 +36,14 @@ export default function ShoppingPage() {
   const inStockCount = items.filter((i) => i.inStock).length
   const progress = totalCount > 0 ? (checkedCount + inStockCount) / totalCount : 0
 
-  function handleExport() {
-    const activeItems = items.filter((i) => !i.inStock && !i.checked)
-    const text = activeItems
-      .map((i) => `· ${i.name} — ${i.quantity}${i.unit}`)
+  async function handleExport() {
+    haptic.light()
+    const lines = items
+      .filter((i) => !i.checked && !i.inStock)
+      .map((i) => `- ${i.name}: ${i.quantity} ${i.unit}`)
       .join('\n')
-    navigator.clipboard.writeText(`Lista de la compra · ONA\nSemana del ${weekStart}\n\n${text}`)
+    const text = `Lista de compra ONA\n\n${lines}`
+    await share({ title: 'Lista de compra ONA', text })
   }
 
   if (authLoading || menuLoading) {

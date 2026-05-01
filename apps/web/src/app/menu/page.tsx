@@ -5,6 +5,7 @@ import Link from "next/link"
 import { motion, AnimatePresence } from "motion/react"
 import { useAuth } from "@/lib/auth"
 import { useMenu, useGenerateMenu, useRegenerateMeal } from "@/hooks/useMenu"
+import { haptic } from "@/lib/pwa/haptics"
 import { RefreshCw, Lock, Unlock, Sparkles } from "lucide-react"
 import { useLockMeal } from "@/hooks/useMenu"
 
@@ -88,6 +89,7 @@ export default function MenuPage() {
 
   function handleGenerate() {
     if (!user) return
+    haptic.medium()
     generateMenu.mutate({ userId: user.id, weekStart })
   }
 
@@ -242,13 +244,14 @@ export default function MenuPage() {
                       meal={meal}
                       index={i}
                       isLocked={isLocked(meal.type)}
-                      onRegenerate={() =>
+                      onRegenerate={() => {
+                        haptic.medium()
                         regenerateMeal.mutate({
                           menuId: menu.id,
                           day: selectedDay,
                           meal: meal.type,
                         })
-                      }
+                      }}
                       onToggleLock={() =>
                         lockMeal.mutate({
                           menuId: menu.id,

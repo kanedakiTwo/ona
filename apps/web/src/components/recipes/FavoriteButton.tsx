@@ -2,6 +2,7 @@
 
 import { useToggleFavorite } from "@/hooks/useRecipes"
 import { useOnlineStatus } from "@/lib/pwa/useOnlineStatus"
+import { haptic } from "@/lib/pwa/haptics"
 import { Clock, Heart } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -23,6 +24,7 @@ export function FavoriteButton({
   function handleToggle(e: React.MouseEvent) {
     e.preventDefault()
     e.stopPropagation()
+    haptic.medium()
     toggleFavorite.mutate({ userId, recipeId })
   }
 

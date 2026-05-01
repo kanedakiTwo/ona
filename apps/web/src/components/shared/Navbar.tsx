@@ -4,6 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { motion } from "motion/react"
 import { useAuth } from "@/lib/auth"
+import { haptic } from "@/lib/pwa/haptics"
 import { CalendarDays, ShoppingCart, BookOpen, MessageCircle, User } from "lucide-react"
 
 const NAV_ITEMS = [
@@ -32,6 +33,9 @@ export default function Navbar() {
                 <Link
                   key={item.href}
                   href={item.href}
+                  onClick={() => {
+                    if (!isActive) haptic.light()
+                  }}
                   className="relative flex h-12 w-12 items-center justify-center transition-colors active:scale-95"
                   aria-label={item.label}
                 >

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Check, Clock, Package } from 'lucide-react'
 import { useCheckItem, useStockItem } from '@/hooks/useShopping'
 import { useOnlineStatus } from '@/lib/pwa/useOnlineStatus'
+import { haptic } from '@/lib/pwa/haptics'
 
 interface ShoppingItem {
   id: string
@@ -41,10 +42,12 @@ export default function ShoppingList({ items, listId }: ShoppingListProps) {
   const sortedItems = [...uncheckedItems, ...checkedItems]
 
   function handleCheck(itemId: string, currentChecked: boolean) {
+    haptic.medium()
     checkItem.mutate({ listId, itemId, checked: !currentChecked })
   }
 
   function handleStock(itemId: string, currentInStock: boolean) {
+    haptic.medium()
     stockItem.mutate({ listId, itemId, inStock: !currentInStock })
   }
 

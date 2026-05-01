@@ -31,10 +31,10 @@ export default function AdvisorPage() {
           </div>
           <div className="flex items-center gap-2">
             <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full rounded-full bg-[#52B788] opacity-40 animate-pulse-soft" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-[#52B788]" />
+              <span className="absolute inline-flex h-full w-full rounded-full bg-[#7A7066] opacity-40 animate-pulse-soft" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-[#7A7066]" />
             </span>
-            <span className="text-[10px] uppercase tracking-[0.15em] text-[#52B788]">En linea</span>
+            <span className="text-[10px] uppercase tracking-[0.15em] text-[#7A7066]">En linea</span>
           </div>
         </div>
       </header>

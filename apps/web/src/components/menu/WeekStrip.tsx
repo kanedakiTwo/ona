@@ -38,7 +38,7 @@ export function WeekStrip({
             <span
               className="text-[11px] font-medium uppercase tracking-[0.05em]"
               style={{
-                color: isToday ? "#2D6A4F" : "var(--color-text-tertiary, #9ca3af)",
+                color: isToday ? "#1A1612" : "#7A7066",
               }}
             >
               {day.label}
@@ -59,10 +59,10 @@ export function WeekStrip({
               className="h-[5px] w-[5px] rounded-full"
               style={{
                 background: isDone
-                  ? "#97C459"
+                  ? "#C65D38"
                   : isToday
-                    ? "#2D6A4F"
-                    : "var(--color-border-tertiary, #d1d5db)",
+                    ? "#1A1612"
+                    : "#DDD6C5",
               }}
             />
           </button>
@@ -79,38 +79,38 @@ function getCircleStyles(
 ): React.CSSProperties {
   if (isToday && isSelected) {
     return {
-      background: "#2D6A4F",
-      border: "2px solid #2D6A4F",
-      color: "white",
-      outline: "2px solid #2D6A4F",
+      background: "#1A1612",
+      border: "2px solid #1A1612",
+      color: "#FFFEFA",
+      outline: "2px solid #1A1612",
       outlineOffset: "2px",
     }
   }
   if (isToday) {
     return {
-      background: "#2D6A4F",
-      border: "2px solid #2D6A4F",
-      color: "white",
+      background: "#1A1612",
+      border: "2px solid #1A1612",
+      color: "#FFFEFA",
     }
   }
   if (isSelected) {
     return {
-      background: "var(--color-bg-secondary, #f3f4f6)",
-      border: "2px solid var(--color-border-secondary, #9ca3af)",
-      color: "var(--color-text-primary, #111827)",
+      background: "#F2EDE0",
+      border: "2px solid #7A7066",
+      color: "#1A1612",
     }
   }
   if (isDone) {
     return {
-      background: "#EAF3DE",
-      border: "2px solid #97C459",
-      color: "#27500A",
+      background: "#F2EDE0",
+      border: "2px solid #DDD6C5",
+      color: "#4A4239",
     }
   }
   // Empty / default
   return {
-    background: "white",
-    border: "2px solid var(--color-border-tertiary, #d1d5db)",
-    color: "var(--color-text-secondary, #6b7280)",
+    background: "#FFFEFA",
+    border: "2px solid #DDD6C5",
+    color: "#7A7066",
   }
 }

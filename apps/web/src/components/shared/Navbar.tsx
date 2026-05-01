@@ -1,10 +1,10 @@
 "use client"
 
-import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { motion } from "motion/react"
 import { useAuth } from "@/lib/auth"
 import { haptic } from "@/lib/pwa/haptics"
+import { TransitionLink } from "@/components/pwa/TransitionLink"
 import { CalendarDays, ShoppingCart, BookOpen, MessageCircle, User } from "lucide-react"
 
 const NAV_ITEMS = [
@@ -30,7 +30,7 @@ export default function Navbar() {
               const Icon = item.icon
               const isActive = pathname.startsWith(item.href)
               return (
-                <Link
+                <TransitionLink
                   key={item.href}
                   href={item.href}
                   onClick={() => {
@@ -53,7 +53,7 @@ export default function Navbar() {
                       isActive ? "text-[#FAF6EE]" : "text-[#7A7066]"
                     }`}
                   />
-                </Link>
+                </TransitionLink>
               )
             })}
           </div>

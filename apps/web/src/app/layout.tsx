@@ -6,6 +6,7 @@ import { AuthProvider } from "@/lib/auth"
 import Navbar from "@/components/shared/Navbar"
 import OfflineBanner from "@/components/pwa/OfflineBanner"
 import InstallSheet from "@/components/pwa/InstallSheet"
+import { PageTransition } from "@/components/pwa/PageTransition"
 import VoiceProvider from "@/components/voice/VoiceProvider"
 import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
@@ -103,12 +104,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
             {isPublicRoute ? (
-              <main>{children}</main>
+              <main>
+                <PageTransition>{children}</PageTransition>
+              </main>
             ) : (
               <VoiceProvider>
                 <OfflineBanner />
                 <main className="standalone-pt mx-auto max-w-[430px] pb-20">
-                  {children}
+                  <PageTransition>{children}</PageTransition>
                 </main>
                 <Navbar />
                 <InstallSheet />

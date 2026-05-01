@@ -58,12 +58,12 @@ export default function MenuHistoryPage() {
 
       {menus && menus.length === 0 && (
         <div className="rounded-xl border border-dashed border-gray-300 py-12 text-center">
-          <p className="text-gray-500">No tienes menus anteriores.</p>
+          <p className="text-gray-500">No tienes menús anteriores.</p>
           <Link
             href="/menu"
             className="mt-4 inline-block rounded-lg bg-black px-6 py-2 text-sm font-medium text-white hover:bg-gray-800"
           >
-            Ir al menu
+            Ir al menú
           </Link>
         </div>
       )}

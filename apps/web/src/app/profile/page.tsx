@@ -398,7 +398,7 @@ export default function ProfilePage() {
                 disabled={!restrictionInput.trim()}
                 className="rounded-full bg-[#1A1612] px-4 text-[11px] uppercase tracking-[0.12em] text-[#FAF6EE] disabled:opacity-30"
               >
-                Anadir
+                Añadir
               </button>
             </div>
           </div>
@@ -409,7 +409,7 @@ export default function ProfilePage() {
       <section className="px-5 mt-12">
         <ChapterHeader number="03" title="Plantilla" italic="semanal" />
         <p className="mt-2 text-[12px] text-[#7A7066]">
-          Que comidas incluye tu menu cada dia.
+          Qué comidas incluye tu menú cada día.
         </p>
 
         <div className="mt-5 overflow-hidden rounded-2xl bg-[#FFFEFA] border border-[#DDD6C5]">

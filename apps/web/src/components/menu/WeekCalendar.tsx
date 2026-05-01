@@ -2,15 +2,9 @@
 
 import type { DayMenu, LockedSlots } from "@ona/shared"
 import { MealSlot } from "@/components/menu/MealSlot"
+import { mealLabel } from "@/lib/labels"
 
 const DAY_LABELS = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"]
-
-const MEAL_LABELS: Record<string, string> = {
-  breakfast: "Desayuno",
-  lunch: "Comida",
-  dinner: "Cena",
-  snack: "Snack",
-}
 
 interface WeekCalendarProps {
   days: DayMenu[]
@@ -64,7 +58,7 @@ export function WeekCalendar({
                 key={`label-${meal}`}
                 className="flex items-center bg-white p-3 text-sm font-medium text-gray-600"
               >
-                {MEAL_LABELS[meal] ?? meal}
+                {mealLabel(meal)}
               </div>
               {days.map((day, dayIndex) => {
                 const slot = day[meal]
@@ -107,7 +101,7 @@ export function WeekCalendar({
                 return (
                   <div key={meal}>
                     <span className="text-xs font-medium text-gray-400">
-                      {MEAL_LABELS[meal] ?? meal}
+                      {mealLabel(meal)}
                     </span>
                     <MealSlot
                       recipeId={slot?.recipeId}

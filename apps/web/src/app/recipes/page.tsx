@@ -7,19 +7,21 @@ import { useAuth } from "@/lib/auth"
 import { Search, Plus, X, SlidersHorizontal } from "lucide-react"
 import Link from "next/link"
 import type { Meal, Season } from "@ona/shared"
+import { MEAL_LABELS, SEASON_LABELS, seasonLabel } from "@/lib/labels"
+import { publicTagsOf } from "@/lib/recipeView"
 
 const MEAL_OPTIONS: { value: Meal; label: string }[] = [
-  { value: "breakfast", label: "Desayuno" },
-  { value: "lunch", label: "Comida" },
-  { value: "dinner", label: "Cena" },
-  { value: "snack", label: "Snack" },
+  { value: "breakfast", label: MEAL_LABELS.breakfast },
+  { value: "lunch", label: MEAL_LABELS.lunch },
+  { value: "dinner", label: MEAL_LABELS.dinner },
+  { value: "snack", label: MEAL_LABELS.snack },
 ]
 
 const SEASON_OPTIONS: { value: Season; label: string }[] = [
-  { value: "spring", label: "Primavera" },
-  { value: "summer", label: "Verano" },
-  { value: "autumn", label: "Otono" },
-  { value: "winter", label: "Invierno" },
+  { value: "spring", label: SEASON_LABELS.spring },
+  { value: "summer", label: SEASON_LABELS.summer },
+  { value: "autumn", label: SEASON_LABELS.autumn },
+  { value: "winter", label: SEASON_LABELS.winter },
 ]
 
 const TIME_OPTIONS = [
@@ -66,7 +68,7 @@ export default function RecipesPage() {
     <div className="bg-[#FAF6EE] min-h-screen">
       {/* Editorial Header */}
       <div className="px-5 pt-8 pb-4">
-        <div className="text-eyebrow mb-2">Catalogo de cocina</div>
+        <div className="text-eyebrow mb-2">Catálogo de cocina</div>
         <div className="flex items-end justify-between gap-4">
           <h1 className="font-display text-[2.5rem] leading-[0.95] tracking-tight text-[#1A1612]">
             <span className="font-italic italic text-[#C65D38]">Buen</span><br />comer.
@@ -74,7 +76,7 @@ export default function RecipesPage() {
           <Link
             href="/recipes/new"
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#1A1612] text-[#FAF6EE] shadow-[0_8px_24px_-8px_rgba(26,22,18,0.4)] transition-transform active:scale-95"
-            aria-label="Anadir receta"
+            aria-label="Añadir receta"
           >
             <Plus size={18} />
           </Link>
@@ -160,7 +162,7 @@ export default function RecipesPage() {
                   </div>
                 </div>
                 <div>
-                  <div className="text-[10px] uppercase tracking-[0.18em] text-[#7A7066] mb-2">Tiempo de preparacion</div>
+                  <div className="text-[10px] uppercase tracking-[0.18em] text-[#7A7066] mb-2">Tiempo de preparación</div>
                   <div className="flex flex-wrap gap-1.5">
                     {TIME_OPTIONS.map((opt) => (
                       <FilterChip
@@ -280,13 +282,8 @@ function EditorialRecipeCard({ recipe, userId: _userId }: { recipe: any; userId?
   const fallbackImg = `https://images.unsplash.com/photo-${recipe.id?.slice(0, 4) === "abcd" ? "1546069901-ba9599a7e63c" : "1490645935967-10de6ba17061"}?w=600&q=80&auto=format&fit=crop`
   const img = recipe.imageUrl || fallbackImg
 
-  const seasonLabel = recipe.seasons?.[0]
-  const seasonMap: Record<string, string> = {
-    spring: "Primavera",
-    summer: "Verano",
-    autumn: "Otono",
-    winter: "Invierno",
-  }
+  const firstSeason = recipe.seasons?.[0]
+  const visibleTags = publicTagsOf(recipe)
 
   return (
     <Link href={`/recipes/${recipe.id}`} className="group block">
@@ -299,14 +296,14 @@ function EditorialRecipeCard({ recipe, userId: _userId }: { recipe: any; userId?
             loading="lazy"
           />
         </div>
-        {recipe.prepTime ? (
+        {recipe.prepTime != null && recipe.prepTime > 0 ? (
           <div className="absolute right-2 top-2 rounded-full bg-[#FAF6EE]/95 px-2 py-0.5 text-[10px] font-medium text-[#1A1612] backdrop-blur-sm">
             {recipe.prepTime}'
           </div>
         ) : null}
-        {seasonLabel && (
+        {firstSeason && (
           <div className="absolute left-2 top-2 rounded-full bg-[#1A1612]/70 px-2 py-0.5 text-[9px] uppercase tracking-[0.15em] text-[#FAF6EE] backdrop-blur-sm">
-            {seasonMap[seasonLabel] ?? seasonLabel}
+            {seasonLabel(firstSeason)}
           </div>
         )}
       </div>
@@ -314,9 +311,9 @@ function EditorialRecipeCard({ recipe, userId: _userId }: { recipe: any; userId?
         <h3 className="font-display text-[15px] leading-tight text-[#1A1612] group-hover:text-[#2D6A4F] transition-colors line-clamp-2">
           {recipe.name}
         </h3>
-        {recipe.tags?.length > 0 && (
+        {visibleTags.length > 0 && (
           <p className="text-[10px] uppercase tracking-[0.15em] text-[#7A7066] truncate">
-            {recipe.tags.slice(0, 2).join(" · ")}
+            {visibleTags.slice(0, 2).join(" · ")}
           </p>
         )}
       </div>

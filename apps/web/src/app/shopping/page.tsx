@@ -67,17 +67,17 @@ export default function ShoppingPage() {
         <div className="mt-12 rounded-2xl border border-dashed border-[#DDD6C5] bg-[#FFFEFA] px-6 py-12 text-center">
           <div className="font-display text-5xl leading-none text-[#C65D38]/30">∅</div>
           <p className="mt-4 font-display text-xl text-[#1A1612]">
-            Necesitas un menu <span className="font-italic italic">primero</span>.
+            Necesitas un menú <span className="font-italic italic">primero</span>.
           </p>
           <p className="mt-2 max-w-xs mx-auto text-[13px] text-[#7A7066]">
-            La lista de la compra sale automatica de tu menu semanal.
+            La lista de la compra sale automática de tu menú semanal.
           </p>
           <Link
             href="/menu"
             className="mt-6 inline-flex items-center gap-2 rounded-full bg-[#1A1612] px-5 py-2.5 text-[13px] font-medium text-[#FAF6EE] transition-all hover:gap-3 hover:bg-[#1A1612]"
           >
             <Sparkles size={14} />
-            Generar menu
+            Generar menú
           </Link>
         </div>
       </div>

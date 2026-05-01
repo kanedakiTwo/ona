@@ -2,13 +2,7 @@
 
 import Link from "next/link"
 import { RefreshCw } from "lucide-react"
-
-const MEAL_LABELS: Record<string, string> = {
-  breakfast: "Desayuno",
-  lunch: "Comida",
-  dinner: "Cena",
-  snack: "Snack",
-}
+import { mealLabel } from "@/lib/labels"
 
 const MEAL_EMOJI: Record<string, string> = {
   breakfast: "🥣",
@@ -48,7 +42,7 @@ export function MealPhotoCard({
         style={{ background: MEAL_BG[meal] || "#EFE8D8" }}
       >
         <p className="text-sm text-[#7A7066]">
-          {MEAL_LABELS[meal] || meal} — sin plato
+          {mealLabel(meal)} — sin plato
         </p>
       </div>
     )
@@ -91,7 +85,7 @@ export function MealPhotoCard({
       {/* Info overlay */}
       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent px-3 pb-3 pt-8">
         <span className="text-[10px] font-medium uppercase tracking-wider text-white/80">
-          {MEAL_LABELS[meal] || meal}
+          {mealLabel(meal)}
         </span>
         <p className="text-[15px] font-medium leading-tight text-white">
           {recipeName || "Receta"}

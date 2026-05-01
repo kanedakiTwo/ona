@@ -78,7 +78,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     >
       <head>
         <title>ONA — El placer de cocinar sin pensar</title>
-        <meta name="description" content="Tu menu semanal listo en 2 minutos. Con la lista de la compra incluida." />
+        <meta name="description" content="Tu menú semanal listo en 2 minutos. Con la lista de la compra incluida." />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 
         {/* PWA manifest + theme */}

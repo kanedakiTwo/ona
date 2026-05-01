@@ -9,19 +9,20 @@ import { Plus, Trash2, ChevronLeft, GripVertical } from "lucide-react"
 import Link from "next/link"
 import { PhotoRecipeUpload } from "@/components/recipes/PhotoRecipeUpload"
 import type { Meal, Season, ExtractedRecipe } from "@ona/shared"
+import { MEAL_LABELS, SEASON_LABELS } from "@/lib/labels"
 
 const MEAL_OPTIONS: { value: Meal; label: string }[] = [
-  { value: "breakfast", label: "Desayuno" },
-  { value: "lunch", label: "Comida" },
-  { value: "dinner", label: "Cena" },
-  { value: "snack", label: "Snack" },
+  { value: "breakfast", label: MEAL_LABELS.breakfast },
+  { value: "lunch", label: MEAL_LABELS.lunch },
+  { value: "dinner", label: MEAL_LABELS.dinner },
+  { value: "snack", label: MEAL_LABELS.snack },
 ]
 
 const SEASON_OPTIONS: { value: Season; label: string }[] = [
-  { value: "spring", label: "Primavera" },
-  { value: "summer", label: "Verano" },
-  { value: "autumn", label: "Otono" },
-  { value: "winter", label: "Invierno" },
+  { value: "spring", label: SEASON_LABELS.spring },
+  { value: "summer", label: SEASON_LABELS.summer },
+  { value: "autumn", label: SEASON_LABELS.autumn },
+  { value: "winter", label: SEASON_LABELS.winter },
 ]
 
 interface IngredientInput {
@@ -218,7 +219,7 @@ export default function NewRecipePage() {
         {/* Prep time */}
         <div>
           <label className="block text-sm font-medium text-gray-700">
-            Tiempo de preparacion (min)
+            Tiempo de preparación (min)
           </label>
           <input
             type="number"
@@ -389,7 +390,7 @@ export default function NewRecipePage() {
             className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-gray-500 hover:text-black"
           >
             <Plus size={14} />
-            Anadir ingrediente
+            Añadir ingrediente
           </button>
         </div>
 
@@ -428,7 +429,7 @@ export default function NewRecipePage() {
             className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-gray-500 hover:text-black"
           >
             <Plus size={14} />
-            Anadir paso
+            Añadir paso
           </button>
         </div>
 

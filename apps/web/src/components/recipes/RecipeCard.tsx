@@ -3,13 +3,7 @@
 import { Clock } from "lucide-react"
 import { FavoriteButton } from "@/components/recipes/FavoriteButton"
 import Link from "next/link"
-
-const MEAL_LABELS: Record<string, string> = {
-  breakfast: "Desayuno",
-  lunch: "Comida",
-  dinner: "Cena",
-  snack: "Snack",
-}
+import { mealLabel } from "@/lib/labels"
 
 const MEAL_EMOJI: Record<string, string> = {
   breakfast: "🥣",
@@ -34,6 +28,7 @@ interface RecipeCardRecipe {
   meals?: string[]
   seasons?: string[]
   tags?: string[]
+  internalTags?: string[]
   is_favorite?: boolean
 }
 
@@ -88,7 +83,7 @@ export function RecipeCard({
           </h3>
 
           <div className="mt-1.5 flex items-center gap-2">
-            {recipe.prepTime ? (
+            {recipe.prepTime != null && recipe.prepTime > 0 ? (
               <span className="flex items-center gap-1 text-[11px] text-[#999999]">
                 <Clock size={10} />
                 {recipe.prepTime} min
@@ -96,7 +91,7 @@ export function RecipeCard({
             ) : null}
             {recipe.meals && recipe.meals.length > 0 && (
               <span className="text-[11px] text-[#999999]">
-                {MEAL_LABELS[recipe.meals[0]] ?? recipe.meals[0]}
+                {mealLabel(recipe.meals[0])}
               </span>
             )}
           </div>

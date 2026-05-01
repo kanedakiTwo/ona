@@ -9,15 +9,10 @@ import { haptic } from "@/lib/pwa/haptics"
 import { recordMenuVisit } from "@/lib/pwa/installPrompt"
 import { RefreshCw, Lock, Unlock, Sparkles } from "lucide-react"
 import { useLockMeal } from "@/hooks/useMenu"
+import { mealLabel } from "@/lib/labels"
 
-const DAY_NAMES = ["Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado", "Domingo"]
+const DAY_NAMES = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
 const DAY_SHORT = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"]
-const MEAL_LABELS: Record<string, string> = {
-  breakfast: "Desayuno",
-  lunch: "Comida",
-  dinner: "Cena",
-  snack: "Snack",
-}
 const MEAL_ORDER = ["breakfast", "lunch", "dinner", "snack"]
 
 function getWeekStart(): string {
@@ -114,7 +109,7 @@ export default function MenuPage() {
       <header className="px-5 pt-8 pb-6">
         <div className="flex items-baseline justify-between">
           <div>
-            <div className="text-eyebrow mb-1">Menu de la semana</div>
+            <div className="text-eyebrow mb-1">Menú de la semana</div>
             <div className="font-italic italic text-[11px] text-[#7A7066]">№ {issueNumber} · {start.getFullYear()}</div>
           </div>
           <div className="text-right">
@@ -173,7 +168,7 @@ export default function MenuPage() {
       {menu && (
         <div className="px-5 py-4">
           <div className="flex items-baseline justify-between text-[11px] uppercase tracking-[0.18em] text-[#7A7066]">
-            <span>{plannedCount} de 7 dias planificados</span>
+            <span>{plannedCount} de 7 días planificados</span>
             <span className="font-italic italic text-[#1A1612] normal-case">
               {Math.round((plannedCount / 7) * 100)}%
             </span>
@@ -195,10 +190,10 @@ export default function MenuPage() {
         <div className="mx-5 mt-8 rounded-2xl border border-dashed border-[#DDD6C5] bg-[#FFFEFA] px-6 py-12 text-center">
           <div className="font-display text-5xl leading-none text-[#C65D38]/30">∅</div>
           <p className="mt-4 font-display text-xl text-[#1A1612]">
-            Tu semana esta <span className="font-italic italic">en blanco</span>.
+            Tu semana está <span className="font-italic italic">en blanco</span>.
           </p>
           <p className="mt-2 max-w-xs mx-auto text-[13px] text-[#7A7066]">
-            Genera tu menu y la lista de la compra sale automatica.
+            Genera tu menú y la lista de la compra sale automática.
           </p>
           <button
             onClick={handleGenerate}
@@ -206,7 +201,7 @@ export default function MenuPage() {
             className="mt-6 inline-flex items-center gap-2 rounded-full bg-[#1A1612] px-5 py-2.5 text-[13px] font-medium text-[#FAF6EE] transition-all hover:gap-3 hover:bg-[#2D6A4F] disabled:opacity-50"
           >
             <Sparkles size={14} />
-            {generateMenu.isPending ? "Generando..." : "Generar mi menu"}
+            {generateMenu.isPending ? "Generando..." : "Generar mi menú"}
           </button>
         </div>
       ) : (
@@ -215,7 +210,7 @@ export default function MenuPage() {
           <div className="px-5 mt-6 flex items-end justify-between">
             <div>
               <div className="text-eyebrow text-[#7A7066]">
-                {todayIndex === selectedDay ? "Hoy" : "Dia"}
+                {todayIndex === selectedDay ? "Hoy" : "Día"}
               </div>
               <h2 className="mt-1 font-display text-[2rem] leading-none text-[#1A1612]">
                 {DAY_NAMES[selectedDay]}
@@ -272,12 +267,12 @@ export default function MenuPage() {
               </AnimatePresence>
             ) : (
               <div className="rounded-2xl border border-dashed border-[#DDD6C5] bg-[#FFFEFA] py-12 text-center">
-                <p className="font-italic italic text-[#7A7066]">Sin platos para este dia.</p>
+                <p className="font-italic italic text-[#7A7066]">Sin platos para este día.</p>
                 <button
                   onClick={handleGenerate}
                   className="mt-3 text-[12px] font-medium text-[#2D6A4F] underline"
                 >
-                  Generar menu
+                  Generar menú
                 </button>
               </div>
             )}
@@ -309,7 +304,7 @@ function EditorialMealCard({
   if (!meal.recipeId) {
     return (
       <div className="rounded-2xl border border-dashed border-[#DDD6C5] bg-[#FFFEFA] p-5">
-        <div className="text-eyebrow text-[#7A7066]">{MEAL_LABELS[meal.type]}</div>
+        <div className="text-eyebrow text-[#7A7066]">{mealLabel(meal.type)}</div>
         <p className="mt-2 font-italic italic text-[#7A7066]">Sin asignar.</p>
       </div>
     )
@@ -336,7 +331,7 @@ function EditorialMealCard({
           {/* Top tags */}
           <div className="absolute inset-x-0 top-0 flex items-start justify-between p-3">
             <div className="rounded-full bg-[#FAF6EE]/95 px-2.5 py-0.5 text-[9px] uppercase tracking-[0.2em] backdrop-blur-sm">
-              {MEAL_LABELS[meal.type]}
+              {mealLabel(meal.type)}
             </div>
             {isLocked && (
               <div className="rounded-full bg-[#C65D38] px-2 py-1 text-[9px] uppercase tracking-[0.15em] text-[#FAF6EE]">

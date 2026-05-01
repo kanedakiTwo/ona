@@ -38,7 +38,7 @@ export function FavoriteButton({
           ? "text-red-500 hover:text-red-600"
           : "text-gray-300 hover:text-red-400"
       )}
-      title={isFavorite ? "Quitar de favoritos" : "Anadir a favoritos"}
+      title={isFavorite ? "Quitar de favoritos" : "Añadir a favoritos"}
     >
       <Heart
         size={18}

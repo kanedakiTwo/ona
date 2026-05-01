@@ -21,19 +21,7 @@ import {
   publicTagsOf,
   timelineString,
 } from "@/lib/recipeView"
-
-const SEASON_LABELS: Record<string, string> = {
-  spring: "Primavera",
-  summer: "Verano",
-  autumn: "Otoño",
-  winter: "Invierno",
-}
-const MEAL_LABELS: Record<string, string> = {
-  breakfast: "Desayuno",
-  lunch: "Comida",
-  dinner: "Cena",
-  snack: "Snack",
-}
+import { MEAL_LABELS, SEASON_LABELS } from "@/lib/labels"
 
 export default function RecipeDetailPage() {
   const params = useParams<{ id: string }>()
@@ -218,7 +206,9 @@ export default function RecipeDetailPage() {
         <div className="mb-6">
           {recipe.meals?.length > 0 && (
             <div className="text-eyebrow mb-3 text-[#C65D38]">
-              {recipe.meals.map((m: string) => MEAL_LABELS[m] ?? m).join(" · ")}
+              {recipe.meals
+                .map((m: string) => MEAL_LABELS[m as keyof typeof MEAL_LABELS] ?? m)
+                .join(" · ")}
             </div>
           )}
           <h1 className="font-display text-[2rem] leading-[1.05] tracking-tight text-[#1A1612]">
@@ -249,7 +239,9 @@ export default function RecipeDetailPage() {
             <div className="flex items-center gap-1.5">
               <Sparkles size={13} className="text-[#7A7066]" />
               <span>
-                {recipe.seasons.map((s: string) => SEASON_LABELS[s] ?? s).join(" · ")}
+                {recipe.seasons
+                  .map((s: string) => SEASON_LABELS[s as keyof typeof SEASON_LABELS] ?? s)
+                  .join(" · ")}
               </span>
             </div>
           )}

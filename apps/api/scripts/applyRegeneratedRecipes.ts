@@ -73,6 +73,7 @@ interface CliArgs {
   input: string
   ignoreWarnings: boolean
   autoCreateMissing: boolean
+  force: boolean
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -81,10 +82,13 @@ function parseArgs(argv: string[]): CliArgs {
     input: DEFAULT_INPUT,
     ignoreWarnings: true, // warnings never block; flag is forward-looking
     autoCreateMissing: true,
+    force: false,
   }
   for (const raw of argv.slice(2)) {
     if (raw === '--dry-run') {
       args.dryRun = true
+    } else if (raw === '--force') {
+      args.force = true
     } else if (raw.startsWith('--ids=')) {
       args.ids = raw
         .slice('--ids='.length)
@@ -723,8 +727,12 @@ async function main(): Promise<void> {
     }
     const resolved = resolution.result
 
-    // 2. Final lint guardrail.
-    const lintResult = lintRecipe(resolved.lintInput, { ingredientCatalog: lintCatalog })
+    // 2. Final lint guardrail. `force` lets QUANTITY_OUT_OF_RANGE pass when
+    // the regen pipeline asked for it (curator dashboard surfaces these).
+    const lintResult = lintRecipe(resolved.lintInput, {
+      ingredientCatalog: lintCatalog,
+      force: args.force,
+    })
     if (!lintResult.ok) {
       skipped++
       console.log(`[skip] ${regen.name} — ${lintResult.errors.length} lint issues`)

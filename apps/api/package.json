@@ -17,6 +17,7 @@
     "seed:usda": "tsx src/seed/usda.ts",
     "expand:catalog": "tsx scripts/expandIngredientCatalog.ts",
     "regen:recipes": "tsx scripts/regenerateRecipes.ts",
+    "repair:regen": "tsx scripts/repairRegenOutput.ts",
     "apply:recipes": "tsx scripts/applyRegeneratedRecipes.ts"
   },
   "dependencies": {

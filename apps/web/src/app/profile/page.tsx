@@ -529,13 +529,13 @@ export default function ProfilePage() {
               </div>
             </div>
             <span
-              className={`relative inline-block h-6 w-11 rounded-full transition-colors ${
+              className={`relative block h-6 w-11 shrink-0 rounded-full transition-colors ${
                 notifEnabled ? 'bg-[#1A1612]' : 'bg-[#DDD6C5]'
               }`}
             >
               <span
-                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
-                  notifEnabled ? 'translate-x-5' : 'translate-x-0.5'
+                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-[left] duration-200 ${
+                  notifEnabled ? 'left-[22px]' : 'left-0.5'
                 }`}
               />
             </span>

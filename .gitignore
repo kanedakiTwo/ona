@@ -22,3 +22,9 @@ apps/web/public/workbox-*.js
 apps/web/public/workbox-*.js.map
 apps/web/public/fallback-*.js
 apps/web/public/fallback-*.js.map
+
+# Playwright artefacts
+apps/web/playwright-report/
+apps/web/test-results/
+apps/web/blob-report/
+apps/web/.last-run.json

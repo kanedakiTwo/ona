@@ -7,7 +7,7 @@ import { ArrowRight, Menu, X } from "lucide-react"
 
 const NAV_LINKS = [
   { href: "/como-funciona", label: "Como funciona" },
-  { href: "/recetas", label: "Recetas" },
+  { href: "/recipes", label: "Recetas" },
 ]
 
 export default function PublicNavbar() {

@@ -35,7 +35,8 @@ export default function VoiceOverlay({
     : status === 'connected' && partialAssistantText ? partialAssistantText
     : status === 'connected' && partialUserText ? partialUserText
     : status === 'connected' ? (lastAssistant ?? 'Te escucho.')
-    : 'Cerrando…'
+    : status === 'error' ? 'No se pudo conectar.'
+    : 'Sesión cerrada.'
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-between bg-[#1A1612] px-6 py-10 text-white">

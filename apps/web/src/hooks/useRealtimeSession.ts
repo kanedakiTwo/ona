@@ -164,33 +164,52 @@ export function useRealtimeSession(options: UseRealtimeSessionOptions): UseRealt
 
   const connect = useCallback(async () => {
     if (status === 'connecting' || status === 'connected') return
+    if (!userId) {
+      setError('Inicia sesión para usar el modo voz.')
+      setStatus('error')
+      return
+    }
     closedRef.current = false
     setError(null)
     setStatus('connecting')
+    console.log('[voice] connect: starting', { userId })
 
     try {
       const session = await api.post<SessionResponse>(`/realtime/${userId}/session`, {})
+      console.log('[voice] connect: session token received', { model: session.model })
       const ephemeralKey = session.client_secret?.value
-      if (!ephemeralKey) throw new Error('No se recibio token efimero.')
+      if (!ephemeralKey) throw new Error('No se recibio token efimero del servidor.')
 
       if (typeof RTCPeerConnection === 'undefined') {
         throw new Error('Tu navegador no soporta WebRTC.')
       }
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error('Tu navegador no soporta acceso al micrófono. Usa HTTPS.')
+      }
       const pc = new RTCPeerConnection()
       pcRef.current = pc
 
+      // Audio element must be in the DOM for iOS Safari to play remote audio
       if (!audioElRef.current) {
         const el = document.createElement('audio')
         el.autoplay = true
+        el.setAttribute('playsinline', '')
+        el.style.display = 'none'
+        document.body.appendChild(el)
         audioElRef.current = el
       }
       pc.ontrack = (e) => {
+        console.log('[voice] ontrack: remote audio attached')
         if (audioElRef.current) {
           audioElRef.current.srcObject = e.streams[0]
+          audioElRef.current.play().catch((err) => {
+            console.warn('[voice] audio play blocked', err?.message)
+          })
         }
       }
       pc.addEventListener('connectionstatechange', () => {
         const state = pc.connectionState
+        console.log('[voice] connectionstatechange', state)
         if ((state === 'failed' || state === 'disconnected') && !closedRef.current) {
           if (!reconnectAttemptedRef.current) {
             reconnectAttemptedRef.current = true
@@ -206,15 +225,31 @@ export function useRealtimeSession(options: UseRealtimeSessionOptions): UseRealt
         }
       })
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      })
+      let stream: MediaStream
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        })
+      } catch (mediaErr: any) {
+        const name = mediaErr?.name ?? ''
+        if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+          throw new Error('Necesito permiso de micrófono. Actívalo en los ajustes del navegador.')
+        }
+        if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+          throw new Error('No detecto un micrófono en este dispositivo.')
+        }
+        if (name === 'NotReadableError') {
+          throw new Error('El micrófono está siendo usado por otra app.')
+        }
+        throw new Error(`Micrófono: ${mediaErr?.message ?? name ?? 'error desconocido'}`)
+      }
       localStreamRef.current = stream
       stream.getTracks().forEach(track => pc.addTrack(track, stream))
+      console.log('[voice] mic stream attached')
 
       const dc = pc.createDataChannel('oai-events')
       dcRef.current = dc
@@ -223,10 +258,11 @@ export function useRealtimeSession(options: UseRealtimeSessionOptions): UseRealt
           const event = JSON.parse(e.data)
           handleEvent(event)
         } catch (err) {
-          console.warn('[realtime] failed to parse event', err)
+          console.warn('[voice] failed to parse event', err)
         }
       })
       dc.addEventListener('open', () => {
+        console.log('[voice] data channel open')
         if (initialContext && initialContext.length > 0) {
           for (const turn of initialContext) {
             sendEvent({
@@ -243,6 +279,7 @@ export function useRealtimeSession(options: UseRealtimeSessionOptions): UseRealt
 
       const offer = await pc.createOffer()
       await pc.setLocalDescription(offer)
+      console.log('[voice] local SDP set, posting to OpenAI realtime')
 
       const sdpResponse = await fetch(`${REALTIME_URL}?model=${encodeURIComponent(session.model)}`, {
         method: 'POST',
@@ -255,7 +292,8 @@ export function useRealtimeSession(options: UseRealtimeSessionOptions): UseRealt
 
       if (!sdpResponse.ok) {
         const text = await sdpResponse.text()
-        throw new Error(`SDP exchange failed: ${sdpResponse.status} ${text}`)
+        console.error('[voice] SDP exchange failed', sdpResponse.status, text)
+        throw new Error(`SDP exchange ${sdpResponse.status}: ${text.slice(0, 120)}`)
       }
 
       const answerSdp = await sdpResponse.text()
@@ -265,7 +303,9 @@ export function useRealtimeSession(options: UseRealtimeSessionOptions): UseRealt
       reconnectAttemptedRef.current = false
       setStatus('connected')
       setLastActivityAt(Date.now())
+      console.log('[voice] connected')
     } catch (err: any) {
+      console.error('[voice] connect failed', err)
       setError(err?.message ?? 'No se pudo conectar a Realtime.')
       setStatus('error')
       disconnect()

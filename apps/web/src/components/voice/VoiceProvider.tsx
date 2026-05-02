@@ -156,6 +156,16 @@ export default function VoiceProvider({ children }: { children: ReactNode }) {
     setSilenceWarning(null)
   }, [session.lastActivityAt])
 
+  // Auto-close overlay if connection died (error / closed). Show error briefly first.
+  useEffect(() => {
+    if (!overlayOpen) return
+    if (session.status !== 'error' && session.status !== 'closed') return
+    const t = setTimeout(() => {
+      setOverlayOpen(false)
+    }, session.error ? 3500 : 1500)
+    return () => clearTimeout(t)
+  }, [overlayOpen, session.status, session.error])
+
   const ctxValue = useMemo<VoiceModeContextValue>(() => ({
     enabled,
     setEnabled,

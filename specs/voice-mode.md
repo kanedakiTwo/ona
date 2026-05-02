@@ -100,5 +100,5 @@ If the Realtime session enters `error` or `closed` state while the overlay is op
 ## Required client config
 
 - `NEXT_PUBLIC_PICOVOICE_ACCESS_KEY` — from console.picovoice.ai
-- `apps/web/public/wakewords/hola-ona_es_wasm_v3_0_0.ppn` — wake-word model trained for "Hola Ona"
-- `apps/web/public/wakewords/porcupine_params_es.pv` — Spanish acoustic model (Porcupine docs)
+- `apps/web/public/wakewords/hola-ona_es_wasm_v4_0_0.ppn` — wake-word model trained for "Hola Ona" (Porcupine WASM v4)
+- `apps/web/public/wakewords/porcupine_params_es.pv` — Spanish acoustic model (downloaded from `Picovoice/porcupine` repo)

@@ -15,7 +15,7 @@ interface UseWakeWordReturn {
   error: string | null
 }
 
-const DEFAULT_KEYWORD_PATH = '/wakewords/hola-ona_es_wasm_v3_0_0.ppn'
+const DEFAULT_KEYWORD_PATH = '/wakewords/hola-ona_es_wasm_v4_0_0.ppn'
 const SPANISH_MODEL_PATH = '/wakewords/porcupine_params_es.pv'
 
 /**

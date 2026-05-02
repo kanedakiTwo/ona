@@ -35,7 +35,7 @@ router.get('/shopping-list/:menuId', async (req: AuthRequest, res) => {
       .where(eq(users.id, menu.userId))
       .limit(1)
 
-    const householdSize = (user?.householdSize as HouseholdSize) ?? 'solo'
+    const householdSize = (user?.householdSize as HouseholdSize) ?? 'couple'
     const days = menu.days as DayMenu[]
 
     // Check if a shopping list already exists for this menu
@@ -146,6 +146,71 @@ router.put('/shopping-list/:listId/item/:itemId/stock', async (req: AuthRequest,
     res.json(updated)
   } catch (err) {
     console.error('Toggle stock error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// POST /shopping-list/:listId/regenerate - rebuild items from the source menu
+router.post('/shopping-list/:listId/regenerate', async (req: AuthRequest, res) => {
+  try {
+    const listId = String(req.params.listId)
+    const userId = req.userId
+
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' })
+      return
+    }
+
+    const [list] = await db
+      .select()
+      .from(shoppingLists)
+      .where(eq(shoppingLists.id, listId))
+      .limit(1)
+
+    if (!list) {
+      res.status(404).json({ error: 'Shopping list not found' })
+      return
+    }
+
+    if (list.userId !== userId) {
+      res.status(403).json({ error: 'Forbidden' })
+      return
+    }
+
+    if (!list.menuId) {
+      res.status(400).json({ error: 'Shopping list has no source menu' })
+      return
+    }
+
+    const [menu] = await db
+      .select()
+      .from(menus)
+      .where(eq(menus.id, list.menuId))
+      .limit(1)
+
+    if (!menu) {
+      res.status(404).json({ error: 'Source menu not found' })
+      return
+    }
+
+    const [user] = await db
+      .select({ householdSize: users.householdSize })
+      .from(users)
+      .where(eq(users.id, menu.userId))
+      .limit(1)
+
+    const householdSize = (user?.householdSize as HouseholdSize) ?? 'couple'
+    const items = await generateShoppingList(menu.days as DayMenu[], householdSize, db)
+
+    const [updated] = await db
+      .update(shoppingLists)
+      .set({ items })
+      .where(eq(shoppingLists.id, listId))
+      .returning()
+
+    res.json(updated)
+  } catch (err) {
+    console.error('Regenerate shopping list error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

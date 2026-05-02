@@ -13,7 +13,7 @@ export type {
   ExtractedIngredient,
 } from './types/recipe.js'
 export type { Menu, DayMenu, MealSlot, LockedSlots } from './types/menu.js'
-export type { ShoppingItem, ShoppingList } from './types/shopping.js'
+export type { ShoppingItem, ShoppingList, BuyableUnit } from './types/shopping.js'
 export type { Macros, Vitamins, Minerals, AminoAcids, FatAcids, CarbTypes, NutrientBalance } from './types/nutrition.js'
 export type {
   Meal,

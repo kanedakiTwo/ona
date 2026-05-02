@@ -29,6 +29,12 @@ app.use(express.urlencoded({ extended: true }))
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 app.use('/public', express.static(path.join(__dirname, '..', 'public')))
 
+// Liveness probe — used by smoke tests and orchestration scripts to detect
+// when the server is ready. Public, no auth, no DB read.
+app.get('/health', (_req, res) => {
+  res.json({ ok: true, ts: new Date().toISOString() })
+})
+
 // Routes
 app.use(authRoutes)
 app.use(userRoutes)

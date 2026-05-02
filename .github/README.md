@@ -4,14 +4,17 @@ Two pieces wire ONA's pre-merge gate and post-deploy verification.
 
 ## 1. The workflow — `.github/workflows/ci.yml`
 
-One file, two jobs:
+One file, three jobs (chained with `needs:`):
 
 | Job | Trigger | What it does |
 |---|---|---|
-| `test` | every PR + push to master | Type-checks API + Web, runs the full Vitest suite (~190 tests, 3 s) |
-| `post-deploy-smoke` | push to master, after `test` passes | Polls Railway until the new build is live (up to 5 min), then asserts the API auth middleware, login route, and web landing/login pages all return the expected HTTP code |
+| `test` | every PR + push to master | Type-checks API + Web, runs the full Vitest unit suite (~260 tests, 3 s) |
+| `smoke` | every PR + push to master, after `test` | Boots a Postgres 15 service container, pushes the Drizzle schema, starts the API in the background, registers a throwaway user, then runs every `*.smoke.ts` file with the resulting `SMOKE_USER_TOKEN` |
+| `post-deploy-smoke` | push to master only, after `test` + `smoke` | Polls Railway until the new build is live (up to 5 min), asserts the API auth middleware, login route, and web landing/login pages return the expected HTTP code |
 
-If the smoke step fails, the workflow turns red — Railway has already deployed but at least the team is notified.
+If `post-deploy-smoke` fails, the workflow turns red — Railway has already deployed but at least the team is notified.
+
+**Local smoke**: `pnpm --filter @ona/api smoke` runs the same orchestration via `apps/api/scripts/test-smoke.sh` against a `docker-compose.test.yml` Postgres on port 5433. Requires Docker Desktop running.
 
 ## 2. Branch protection (GitHub UI step)
 
@@ -25,7 +28,7 @@ Enable:
   - Dismiss stale approvals on push
 - ✅ Require status checks to pass before merging
   - Require branches to be up to date before merging
-  - Status checks: **`Lint + tests`** (the `test` job from `ci.yml`)
+  - Status checks: **`Lint + tests`** and **`Route smoke (Postgres + API)`** (the `test` and `smoke` jobs from `ci.yml`)
 - ✅ Do not allow bypassing the above settings
 
 Once enabled, anyone (including admins, with the last checkbox) is forced to:

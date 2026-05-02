@@ -1,19 +1,32 @@
 import { eq } from 'drizzle-orm'
-import { recipeIngredients, ingredients } from '../db/schema.js'
+import { recipes, recipeIngredients, ingredients } from '../db/schema.js'
 import { ingredientCalories } from '@ona/shared'
-import type { DayMenu } from '@ona/shared'
-
-type DB = Parameters<typeof import('../db/connection.js').db.select>[0] extends undefined
-  ? typeof import('../db/connection.js').db
-  : typeof import('../db/connection.js').db
+import type { DayMenu, NutritionPerServing } from '@ona/shared'
 
 /**
- * Calculate total calories for a recipe by fetching its ingredients from the DB.
+ * Calculate kcal per serving for a recipe.
+ *
+ * Prefers the cached `recipe.nutritionPerServing.kcal` (Task 11 wires this on
+ * every save). Falls back to summing ingredient calories and dividing by
+ * `recipe.servings` for unmapped legacy rows.
  */
 export async function calculateRecipeCaloriesFromDB(
   recipeId: string,
   db: any,
 ): Promise<number> {
+  const [recipe] = await db
+    .select({
+      servings: recipes.servings,
+      nutritionPerServing: recipes.nutritionPerServing,
+    })
+    .from(recipes)
+    .where(eq(recipes.id, recipeId))
+    .limit(1)
+
+  const cached = recipe?.nutritionPerServing as NutritionPerServing | null
+  if (cached?.kcal != null) return cached.kcal
+
+  // Fallback: legacy sum across ingredients / servings → per-serving kcal
   const rows = await db
     .select({
       quantity: recipeIngredients.quantity,
@@ -23,11 +36,14 @@ export async function calculateRecipeCaloriesFromDB(
     .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
     .where(eq(recipeIngredients.recipeId, recipeId))
 
-  return rows.reduce(
+  const total = rows.reduce(
     (sum: number, row: { quantity: number; calories: number }) =>
-      sum + ingredientCalories(row.calories, row.quantity),
+      sum + ingredientCalories(row.calories ?? 0, row.quantity),
     0,
   )
+
+  const servings = recipe?.servings ?? 1
+  return servings > 0 ? total / servings : total
 }
 
 /**

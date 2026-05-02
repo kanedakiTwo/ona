@@ -156,12 +156,17 @@ function buildRandomMenu(
 
 /**
  * Score a menu's fitness. Lower is better.
- * fitness = calorieDeviation + nutrientPercentageDeviation
+ * fitness = calorieDeviation + nutrientPercentageDeviation + unmappedPenalty
+ *
+ * Uses cached `recipe.nutritionPerServing` when available; legacy recipes
+ * (whose nutrition is null) still score but get a small penalty so the
+ * algorithm prefers fully-mapped alternatives.
  */
 async function scoreMenu(
   days: DayMenu[],
   targetCalories: number,
   db: any,
+  unmappedRecipeIds: Set<string>,
 ): Promise<number> {
   const totalCalories = await calculateMenuCaloriesFromDB(days, db)
   const nutrients = await calculateMenuNutrientsFromDB(days, db)
@@ -172,7 +177,17 @@ async function scoreMenu(
   const fatDeviation = normalizeDeviation(TARGET_MACROS.fat, percentages.fat)
   const proteinDeviation = normalizeDeviation(TARGET_MACROS.protein, percentages.protein)
 
-  return calorieDeviation + carbsDeviation + fatDeviation + proteinDeviation
+  // Small penalty per unmapped slot to break ties in favor of recipes with
+  // cached nutrition. Trivial when all recipes are mapped.
+  let unmappedPenalty = 0
+  for (const day of days) {
+    for (const meal of Object.keys(day)) {
+      const slot = day[meal]
+      if (slot?.recipeId && unmappedRecipeIds.has(slot.recipeId)) unmappedPenalty += 0.05
+    }
+  }
+
+  return calorieDeviation + carbsDeviation + fatDeviation + proteinDeviation + unmappedPenalty
 }
 
 /**
@@ -216,6 +231,17 @@ export async function generateMenu(
 
   // Fetch all recipes with ingredients
   const allRecipes = await loadRecipesWithIngredients(db)
+
+  // Identify recipes whose nutritionPerServing isn't cached yet — they get a
+  // tiny fitness penalty so the algorithm prefers fully-mapped alternatives.
+  const nutritionRows = await db
+    .select({ id: recipes.id, nutritionPerServing: recipes.nutritionPerServing })
+    .from(recipes)
+  const unmappedRecipeIds = new Set<string>(
+    nutritionRows
+      .filter((r: any) => !r.nutritionPerServing || (r.nutritionPerServing as any)?.kcal == null)
+      .map((r: any) => r.id),
+  )
 
   // Fetch user favorites
   const favRows = await db
@@ -262,7 +288,7 @@ export async function generateMenu(
     )
     if (!hasRecipes) continue
 
-    const fitness = await scoreMenu(candidateDays, targetCalories, db)
+    const fitness = await scoreMenu(candidateDays, targetCalories, db, unmappedRecipeIds)
 
     if (fitness < bestFitness) {
       bestFitness = fitness

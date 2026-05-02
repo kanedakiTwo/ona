@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
-import { recipeIngredients, ingredients } from '../db/schema.js'
+import { recipes, recipeIngredients, ingredients } from '../db/schema.js'
 import { ingredientNutrients, sumNutrients } from '@ona/shared'
-import type { DayMenu } from '@ona/shared'
+import type { DayMenu, NutritionPerServing } from '@ona/shared'
 
 interface NutrientResult {
   protein: number
@@ -10,13 +10,33 @@ interface NutrientResult {
 }
 
 /**
- * Calculate total nutrients (protein, carbs, fat) for a recipe
- * by fetching its ingredients from the DB and summing weighted by quantity.
+ * Calculate per-serving nutrients (protein, carbs, fat) for a recipe.
+ *
+ * Prefers `recipe.nutritionPerServing` (Task 11 cache). Falls back to ingredient
+ * sum divided by `recipe.servings` for unmapped legacy rows.
  */
 export async function calculateRecipeNutrientsFromDB(
   recipeId: string,
   db: any,
 ): Promise<NutrientResult> {
+  const [recipe] = await db
+    .select({
+      servings: recipes.servings,
+      nutritionPerServing: recipes.nutritionPerServing,
+    })
+    .from(recipes)
+    .where(eq(recipes.id, recipeId))
+    .limit(1)
+
+  const cached = recipe?.nutritionPerServing as NutritionPerServing | null
+  if (cached && cached.proteinG != null) {
+    return {
+      protein: cached.proteinG,
+      carbohydrates: cached.carbsG ?? 0,
+      fat: cached.fatG ?? 0,
+    }
+  }
+
   const rows = await db
     .select({
       quantity: recipeIngredients.quantity,
@@ -33,7 +53,16 @@ export async function calculateRecipeNutrientsFromDB(
       ingredientNutrients(row.protein ?? 0, row.carbs ?? 0, row.fat ?? 0, row.quantity),
   )
 
-  return sumNutrients(items)
+  const total = sumNutrients(items)
+  const servings = recipe?.servings ?? 1
+  if (servings > 0 && servings !== 1) {
+    return {
+      protein: total.protein / servings,
+      carbohydrates: total.carbohydrates / servings,
+      fat: total.fat / servings,
+    }
+  }
+  return total
 }
 
 /**

@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev --port 3000",
     "build": "next build",
+    "postbuild": "cp -r public .next/standalone/apps/web/ && cp -r .next/static .next/standalone/apps/web/.next/",
     "start": "next start",
     "lint": "next lint"
   },

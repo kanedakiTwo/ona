@@ -8,216 +8,857 @@
 # the curator; if a kcal/macro looks wrong the fix is to change the fdcId, not
 # to hand-edit the nutrition columns.
 
-# ─── Vegetables / produce ──────────────────────────────────────────
 - name: cebolla
-  fdcId: 170000          # Onions, raw
+  fdcId: 170000
   aisle: produce
   density: null
   unitWeight: 110
   allergenTags: []
-
 - name: ajo
-  fdcId: 169230          # Garlic, raw
+  fdcId: 169230
   aisle: produce
   density: null
-  unitWeight: 5          # 1 diente ≈ 5 g
+  unitWeight: 5
   allergenTags: []
-
 - name: tomate
-  fdcId: 170457          # Tomatoes, red, ripe, raw, year round average
-  aisle: produce
-  density: null
-  unitWeight: 150        # tomate medio ≈ 150 g
-  allergenTags: []
-
-- name: zanahoria
-  fdcId: 170393          # Carrots, raw
-  aisle: produce
-  density: null
-  unitWeight: 80
-  allergenTags: []
-
-- name: patata
-  fdcId: 170026          # Potatoes, white, flesh and skin, raw
-  aisle: produce
-  density: null
-  unitWeight: 170
-  allergenTags: []
-
-- name: brocoli
-  fdcId: 170379          # Broccoli, raw
-  aisle: produce
-  density: null
-  unitWeight: 600        # 1 cabeza ≈ 600 g
-  allergenTags: []
-
-- name: coliflor
-  fdcId: 169986          # Cauliflower, raw
-  aisle: produce
-  density: null
-  unitWeight: 800
-  allergenTags: []
-
-- name: calabacin
-  fdcId: 169291          # Squash, summer, zucchini, includes skin, raw
-  aisle: produce
-  density: null
-  unitWeight: 200
-  allergenTags: []
-
-- name: espinacas
-  fdcId: 168462          # Spinach, raw
-  aisle: produce
-  density: null
-  unitWeight: null       # bought by weight, not unit
-  allergenTags: []
-
-- name: pimiento rojo
-  fdcId: 170108          # Peppers, sweet, red, raw
+  fdcId: 170457
   aisle: produce
   density: null
   unitWeight: 150
   allergenTags: []
-
-- name: aguacate
-  fdcId: 171705          # Avocados, raw, all commercial varieties
+- name: zanahoria
+  fdcId: 170393
+  aisle: produce
+  density: null
+  unitWeight: 80
+  allergenTags: []
+- name: patata
+  fdcId: 170026
+  aisle: produce
+  density: null
+  unitWeight: 170
+  allergenTags: []
+- name: brocoli
+  fdcId: 170379
+  aisle: produce
+  density: null
+  unitWeight: 600
+  allergenTags: []
+- name: coliflor
+  fdcId: 169986
+  aisle: produce
+  density: null
+  unitWeight: 800
+  allergenTags: []
+- name: calabacin
+  fdcId: 169291
   aisle: produce
   density: null
   unitWeight: 200
   allergenTags: []
-
+- name: espinacas
+  fdcId: 168462
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: pimiento rojo
+  fdcId: 170108
+  aisle: produce
+  density: null
+  unitWeight: 150
+  allergenTags: []
+- name: aguacate
+  fdcId: 171705
+  aisle: produce
+  density: null
+  unitWeight: 200
+  allergenTags: []
 - name: manzana
-  fdcId: 171688          # Apples, raw, with skin
+  fdcId: 171688
   aisle: produce
   density: null
   unitWeight: 180
   allergenTags: []
-
 - name: platano
-  fdcId: 173944          # Bananas, ripe and slightly ripe, raw
+  fdcId: 173944
   aisle: produce
   density: null
   unitWeight: 120
   allergenTags: []
-
-# ─── Proteínas (carne, pescado, huevo, legumbres secas) ───────────
 - name: pollo
-  fdcId: 171077          # Chicken, broiler or fryers, breast, skinless, boneless, meat only, raw
+  fdcId: 171077
   aisle: proteinas
   density: null
-  unitWeight: null       # cut to weight
+  unitWeight: null
   allergenTags: []
-
 - name: ternera
-  fdcId: 168608          # Beef, grass-fed, ground, raw
+  fdcId: 168608
   aisle: proteinas
   density: null
   unitWeight: null
   allergenTags: []
-
 - name: salmon
-  fdcId: 175167          # Fish, salmon, Atlantic, farmed, raw
+  fdcId: 175167
   aisle: proteinas
   density: null
   unitWeight: null
-  allergenTags: [pescado]
-
+  allergenTags:
+    - pescado
 - name: atun
-  fdcId: 173706          # Fish, tuna, fresh, bluefin, raw
+  fdcId: 173706
   aisle: proteinas
   density: null
   unitWeight: null
-  allergenTags: [pescado]
-
+  allergenTags:
+    - pescado
 - name: huevo
-  fdcId: 171287          # Egg, whole, raw, fresh
+  fdcId: 171287
   aisle: proteinas
   density: null
   unitWeight: 50
-  allergenTags: [huevo]
-
+  allergenTags:
+    - huevo
 - name: garbanzos
-  fdcId: 173756          # Chickpeas (garbanzo beans, bengal gram), mature seeds, raw
+  fdcId: 173756
   aisle: despensa
   density: null
   unitWeight: null
   allergenTags: []
-
 - name: lentejas
-  fdcId: 172420          # Lentils, raw
+  fdcId: 172420
   aisle: despensa
   density: null
   unitWeight: null
   allergenTags: []
-
-# ─── Lácteos ──────────────────────────────────────────────────────
 - name: leche entera
-  fdcId: 171265          # Milk, whole, 3.25% milkfat, with added vitamin D
+  fdcId: 171265
   aisle: lacteos
   density: 1.03
   unitWeight: null
-  allergenTags: [lactosa]
-
+  allergenTags:
+    - lactosa
 - name: yogur natural
-  fdcId: 171284          # Yogurt, plain, whole milk
+  fdcId: 171284
   aisle: lacteos
   density: null
-  unitWeight: 125        # tarrina individual ≈ 125 g
-  allergenTags: [lactosa]
-
+  unitWeight: 125
+  allergenTags:
+    - lactosa
 - name: queso parmesano
-  fdcId: 170848          # Cheese, parmesan, hard
+  fdcId: 170848
   aisle: lacteos
   density: null
   unitWeight: null
-  allergenTags: [lactosa]
-
+  allergenTags:
+    - lactosa
 - name: mantequilla
-  fdcId: 173410          # Butter, salted
+  fdcId: 173410
   aisle: lacteos
   density: 0.91
   unitWeight: null
-  allergenTags: [lactosa]
-
-# ─── Cereales, panadería, despensa ────────────────────────────────
+  allergenTags:
+    - lactosa
 - name: arroz
-  fdcId: 169756          # Rice, white, long-grain, regular, raw, unenriched
+  fdcId: 169756
   aisle: despensa
   density: null
   unitWeight: null
   allergenTags: []
-
 - name: pasta
-  fdcId: 168927          # Pasta, dry, unenriched
+  fdcId: 168927
   aisle: despensa
   density: null
   unitWeight: null
-  allergenTags: [gluten]
-
+  allergenTags:
+    - gluten
 - name: avena
-  fdcId: 173904          # Cereals, oats, regular and quick, unenriched, dry
+  fdcId: 173904
   aisle: despensa
   density: null
   unitWeight: null
-  allergenTags: [gluten]
-
+  allergenTags:
+    - gluten
 - name: harina de trigo
-  fdcId: 168894          # Wheat flour, white, all-purpose, enriched, bleached
+  fdcId: 168894
   aisle: despensa
   density: null
   unitWeight: null
-  allergenTags: [gluten]
-
+  allergenTags:
+    - gluten
 - name: pan integral
-  fdcId: 172688          # Bread, whole-wheat, commercially prepared
+  fdcId: 172688
   aisle: panaderia
   density: null
-  unitWeight: 30         # 1 rebanada ≈ 30 g
-  allergenTags: [gluten]
-
+  unitWeight: 30
+  allergenTags:
+    - gluten
 - name: aceite de oliva virgen
-  fdcId: 171413          # Oil, olive, salad or cooking
+  fdcId: 171413
   aisle: despensa
   density: 0.91
   unitWeight: null
   allergenTags: []
+- name: aceite de girasol
+  fdcId: 1750349
+  aisle: despensa
+  density: 0.92
+  unitWeight: null
+  allergenTags: []
+- name: aceitunas negras
+  fdcId: 169095
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: aceitunas verdes
+  fdcId: 169096
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: alcaparras
+  fdcId: 172238
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: almendras
+  fdcId: 170567
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags:
+    - frutos_secos
+- name: avellanas
+  fdcId: 170581
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags:
+    - frutos_secos
+- name: azucar
+  fdcId: 746784
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: caldo de pollo
+  fdcId: 172884
+  aisle: despensa
+  density: 1
+  unitWeight: null
+  allergenTags: []
+- name: caldo de verduras
+  fdcId: 171180
+  aisle: despensa
+  density: 1
+  unitWeight: null
+  allergenTags: []
+- name: canela
+  fdcId: 171320
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: comino
+  fdcId: 170923
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: curcuma
+  fdcId: 172231
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: cuscus
+  fdcId: 169699
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags:
+    - gluten
+- name: fideos
+  fdcId: 169731
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: judias blancas
+  fdcId: 175202
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: judias rojas
+  fdcId: 173744
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: ketchup
+  fdcId: 168556
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: laurel
+  fdcId: 168416
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: levadura
+  fdcId: 175043
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: mayonesa
+  fdcId: 2758986
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: miel
+  fdcId: 169640
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: mostaza
+  fdcId: 326698
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags:
+    - mostaza
+- name: nueces
+  fdcId: 170187
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: nuez moscada
+  fdcId: 171326
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags:
+    - frutos_secos
+- name: oregano
+  fdcId: 171328
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: pasas
+  fdcId: 2758980
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: pasta de tomate
+  fdcId: 2685580
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags:
+    - gluten
+- name: pimenton dulce
+  fdcId: 171329
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: pimenton picante
+  fdcId: 171329
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: pimienta negra
+  fdcId: 170931
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: piñones
+  fdcId: 170591
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: pipas de girasol
+  fdcId: 170562
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: quinoa
+  fdcId: 168874
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: sal
+  fdcId: 173468
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: salsa de soja
+  fdcId: 174278
+  aisle: despensa
+  density: 1.05
+  unitWeight: null
+  allergenTags:
+    - soja
+- name: sesamo
+  fdcId: 170150
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags:
+    - sesamo
+- name: sirope de arce
+  fdcId: 169661
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: tahini
+  fdcId: 168604
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags:
+    - sesamo
+- name: tomate triturado
+  fdcId: 170501
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: vinagre balsamico
+  fdcId: 172241
+  aisle: despensa
+  density: 1.05
+  unitWeight: null
+  allergenTags:
+    - sulfitos
+- name: vinagre de vino
+  fdcId: 172240
+  aisle: despensa
+  density: 1.01
+  unitWeight: null
+  allergenTags:
+    - sulfitos
+- name: vino blanco
+  fdcId: 174837
+  aisle: despensa
+  density: 0.99
+  unitWeight: null
+  allergenTags:
+    - sulfitos
+- name: vino tinto
+  fdcId: 173190
+  aisle: despensa
+  density: 0.99
+  unitWeight: null
+  allergenTags:
+    - sulfitos
+- name: feta
+  fdcId: 173420
+  aisle: lacteos
+  density: null
+  unitWeight: null
+  allergenTags:
+    - lactosa
+- name: leche desnatada
+  fdcId: 169868
+  aisle: lacteos
+  density: 1.03
+  unitWeight: null
+  allergenTags:
+    - lactosa
+- name: mozzarella
+  fdcId: 170845
+  aisle: lacteos
+  density: null
+  unitWeight: null
+  allergenTags:
+    - lactosa
+- name: nata liquida
+  fdcId: 170859
+  aisle: lacteos
+  density: 0.99
+  unitWeight: null
+  allergenTags:
+    - lactosa
+- name: queso cheddar
+  fdcId: 328637
+  aisle: lacteos
+  density: null
+  unitWeight: null
+  allergenTags:
+    - lactosa
+- name: queso de cabra
+  fdcId: 173435
+  aisle: lacteos
+  density: null
+  unitWeight: null
+  allergenTags:
+    - lactosa
+- name: queso fresco
+  fdcId: 172180
+  aisle: lacteos
+  density: null
+  unitWeight: null
+  allergenTags:
+    - lactosa
+- name: queso manchego
+  fdcId: 169081
+  aisle: lacteos
+  density: null
+  unitWeight: null
+  allergenTags:
+    - lactosa
+- name: requeson
+  fdcId: 170851
+  aisle: lacteos
+  density: null
+  unitWeight: null
+  allergenTags:
+    - lactosa
+- name: pan blanco
+  fdcId: 174925
+  aisle: panaderia
+  density: null
+  unitWeight: null
+  allergenTags:
+    - gluten
+- name: acelgas
+  fdcId: 169991
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: albahaca
+  fdcId: 172232
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: apio
+  fdcId: 2346405
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags:
+    - apio
+- name: arandanos
+  fdcId: 2346411
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: berenjena
+  fdcId: 169228
+  aisle: produce
+  density: null
+  unitWeight: 250
+  allergenTags: []
+- name: boniato
+  fdcId: 169303
+  aisle: produce
+  density: null
+  unitWeight: 130
+  allergenTags: []
+- name: calabaza
+  fdcId: 168448
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: champinones
+  fdcId: 169251
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: cilantro
+  fdcId: 169997
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: frambuesas
+  fdcId: 2346410
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: fresa
+  fdcId: 167762
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: guindilla
+  fdcId: 170106
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: guisantes
+  fdcId: 170419
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: jengibre fresco
+  fdcId: 169231
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: judias verdes
+  fdcId: 2346400
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: lechuga
+  fdcId: 2346388
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: lima
+  fdcId: 168155
+  aisle: produce
+  density: null
+  unitWeight: 60
+  allergenTags: []
+- name: limon
+  fdcId: 167747
+  aisle: produce
+  density: null
+  unitWeight: 70
+  allergenTags: []
+- name: mango
+  fdcId: 169910
+  aisle: produce
+  density: null
+  unitWeight: 200
+  allergenTags: []
+- name: melon
+  fdcId: 169092
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: menta
+  fdcId: 173475
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: naranja
+  fdcId: 169103
+  aisle: produce
+  density: null
+  unitWeight: 130
+  allergenTags: []
+- name: pepino
+  fdcId: 169225
+  aisle: produce
+  density: null
+  unitWeight: 200
+  allergenTags: []
+- name: pera
+  fdcId: 169118
+  aisle: produce
+  density: null
+  unitWeight: 175
+  allergenTags: []
+- name: perejil
+  fdcId: 170416
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: pimiento verde
+  fdcId: 170427
+  aisle: produce
+  density: null
+  unitWeight: 120
+  allergenTags: []
+- name: pina
+  fdcId: 2346398
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: puerro
+  fdcId: 169246
+  aisle: produce
+  density: null
+  unitWeight: 90
+  allergenTags: []
+- name: rabanitos
+  fdcId: 169276
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: remolacha
+  fdcId: 2685576
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: romero
+  fdcId: 173473
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: rucula
+  fdcId: 169387
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: sandia
+  fdcId: 167765
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: setas
+  fdcId: 169255
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: tomillo
+  fdcId: 173470
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: bacalao
+  fdcId: 171955
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags:
+    - pescado
+- name: calamares
+  fdcId: 174223
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags:
+    - marisco
+    - moluscos
+- name: cerdo
+  fdcId: 2646168
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: cordero
+  fdcId: 168148
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: costillas de cerdo
+  fdcId: 167895
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: gambas
+  fdcId: 175179
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags:
+    - crustaceos
+    - marisco
+- name: jamon
+  fdcId: 167909
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: mejillones
+  fdcId: 174216
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags:
+    - marisco
+    - moluscos
+- name: merluza
+  fdcId: 171949
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags:
+    - pescado
+- name: pavo
+  fdcId: 171098
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags: []
+- name: pulpo
+  fdcId: 174218
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags:
+    - marisco
+    - moluscos
+- name: sardinas
+  fdcId: 175139
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags:
+    - pescado
+- name: seitan
+  fdcId: 168147
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags:
+    - gluten
+- name: tempeh
+  fdcId: 174272
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags:
+    - soja
+- name: tofu
+  fdcId: 172475
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags:
+    - soja
+- name: trucha
+  fdcId: 173717
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags:
+    - pescado

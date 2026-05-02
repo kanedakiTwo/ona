@@ -57,7 +57,8 @@ import {
   aggregateNutrition,
   type IngredientCatalogEntry,
 } from '../src/services/nutrition/aggregate.js'
-import { allergenUnion } from '../src/services/nutrition/allergens.js'
+import { allergenUnion, inferAllergenTagsFromName } from '../src/services/nutrition/allergens.js'
+import { suggestIngredient } from '../src/services/ingredientAutoCreate.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const OUTPUT_DIR = path.resolve(__dirname, 'output')
@@ -71,6 +72,7 @@ interface CliArgs {
   ids?: string[]
   input: string
   ignoreWarnings: boolean
+  autoCreateMissing: boolean
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -78,6 +80,7 @@ function parseArgs(argv: string[]): CliArgs {
     dryRun: false,
     input: DEFAULT_INPUT,
     ignoreWarnings: true, // warnings never block; flag is forward-looking
+    autoCreateMissing: true,
   }
   for (const raw of argv.slice(2)) {
     if (raw === '--dry-run') {
@@ -92,6 +95,10 @@ function parseArgs(argv: string[]): CliArgs {
       args.input = path.resolve(raw.slice('--input='.length))
     } else if (raw === '--ignore-warnings') {
       args.ignoreWarnings = true
+    } else if (raw === '--auto-create-missing=false') {
+      args.autoCreateMissing = false
+    } else if (raw === '--auto-create-missing=true' || raw === '--auto-create-missing') {
+      args.autoCreateMissing = true
     } else if (raw === '--help' || raw === '-h') {
       printHelp()
       process.exit(0)
@@ -106,10 +113,13 @@ function printHelp(): void {
   console.log(`Usage: apply:recipes [flags]
 
 Flags:
-  --dry-run               Validate + lint + resolve refs + compute nutrition; do NOT touch the DB
-  --ids=A,B,C             Only apply recipes whose name (case-insensitive) is in the list
-  --input=<path>          Override the default JSONL path (default: ${DEFAULT_INPUT})
-  --ignore-warnings       Proceed even if lint emits warnings (default; warnings never block)
+  --dry-run                       Validate + lint + resolve refs + compute nutrition; do NOT touch the DB
+  --ids=A,B,C                     Only apply recipes whose name (case-insensitive) is in the list
+  --input=<path>                  Override the default JSONL path (default: ${DEFAULT_INPUT})
+  --ignore-warnings               Proceed even if lint emits warnings (default; warnings never block)
+  --auto-create-missing=true|false  When true (default), missing ingredients (non-UUID ingredientId or
+                                  unknown UUID) are auto-created via USDA before lint. When false,
+                                  the recipe is skipped — legacy behaviour.
 `)
 }
 
@@ -333,6 +343,112 @@ function resolveRecipe(
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+/**
+ * Pre-pass for `--auto-create-missing`.
+ *
+ * Inspects the regen recipe and, for each ingredientId that is either:
+ *   - not a UUID (i.e. a name like "alcaparras"), or
+ *   - a UUID not present in the live catalog,
+ * tries to auto-create a new ingredients row via USDA (top Foundation/SR
+ * Legacy candidate; stub when nothing matches). Mutates the regen recipe in
+ * place to swap the broken ingredientId for the new UUID, and adds the row
+ * to the catalog so the lint pass sees it.
+ *
+ * Returns a list of warnings (non-fatal); the caller logs them.
+ */
+async function autoCreateMissingForRecipe(
+  regen: RegenRecipe,
+  catalog: FullCatalogRow[],
+  catalogById: Map<string, FullCatalogRow>,
+): Promise<string[]> {
+  const warnings: string[] = []
+  for (const ing of regen.ingredients) {
+    const id = ing.ingredientId
+    const isUuid = UUID_RE.test(id)
+    if (isUuid && catalogById.has(id)) continue
+    if (isUuid) {
+      warnings.push(
+        `[auto-create] ingredientId ${id} (unknown UUID) cannot be auto-created — no name available.`,
+      )
+      continue
+    }
+    const rawName = id.trim()
+    if (rawName.length === 0) continue
+
+    // 1. Existing-name match (case-insensitive).
+    const existingByName = catalog.find(
+      r => r.name.toLowerCase() === rawName.toLowerCase(),
+    )
+    if (existingByName) {
+      ing.ingredientId = existingByName.id
+      warnings.push(
+        `[auto-create] mapped "${rawName}" → existing ingredient ${existingByName.id}.`,
+      )
+      continue
+    }
+
+    // 2. USDA suggest + insert.
+    let bestFdcId: number | null = null
+    let nutrition = { kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, fiberG: 0, saltG: 0 }
+    try {
+      const suggestion = await suggestIngredient(rawName, { limit: 3 })
+      const top =
+        suggestion.candidates.find(
+          c => c.dataType === 'Foundation' || c.dataType === 'SR Legacy',
+        ) ?? suggestion.candidates[0]
+      if (top) {
+        bestFdcId = top.fdcId
+        nutrition = top.per100g
+      } else {
+        warnings.push(`[auto-create] no USDA match for "${rawName}"; saved as stub.`)
+      }
+    } catch (err: any) {
+      warnings.push(
+        `[auto-create] USDA error for "${rawName}": ${err?.message ?? String(err)}; saved as stub.`,
+      )
+    }
+
+    const allergens = inferAllergenTagsFromName(rawName)
+    const [inserted] = await db
+      .insert(ingredientsTable)
+      .values({
+        name: rawName,
+        fdcId: bestFdcId,
+        aisle: null,
+        allergenTags: allergens,
+        calories: nutrition.kcal,
+        protein: nutrition.proteinG,
+        carbs: nutrition.carbsG,
+        fat: nutrition.fatG,
+        fiber: nutrition.fiberG,
+        salt: nutrition.saltG,
+      })
+      .returning()
+
+    const newRow: FullCatalogRow = {
+      id: inserted.id,
+      name: inserted.name,
+      allergenTags: allergens,
+      fdcId: bestFdcId,
+      density: null,
+      unitWeight: null,
+      calories: nutrition.kcal,
+      protein: nutrition.proteinG,
+      carbs: nutrition.carbsG,
+      fat: nutrition.fatG,
+      fiber: nutrition.fiberG,
+      salt: nutrition.saltG,
+    }
+    catalog.push(newRow)
+    catalogById.set(newRow.id, newRow)
+    ing.ingredientId = newRow.id
+    warnings.push(
+      `[auto-create] inserted "${rawName}" as ${newRow.id} (fdc=${bestFdcId ?? 'none'}).`,
+    )
+  }
+  return warnings
+}
+
 /** Compute totalTime from durationMin (if every step has it) or prepTime + cookTime. */
 function computeTotalTime(regen: RegenRecipe): number | null {
   if (regen.steps.length > 0 && regen.steps.every(s => s.durationMin != null)) {
@@ -518,9 +634,10 @@ async function main(): Promise<void> {
     process.exitCode = 1
     return
   }
-  const lintCatalog = buildLintCatalog(fullCatalog)
-  const nutritionCatalog = buildNutritionCatalog(fullCatalog)
-  const allergenCatalog = buildAllergenCatalog(fullCatalog)
+  // Mutable index — autoCreateMissingForRecipe pushes new rows into both.
+  const catalogById = new Map<string, FullCatalogRow>(
+    fullCatalog.map(r => [r.id, r]),
+  )
 
   const idsFilter = args.ids ? new Set(args.ids.map(s => s.toLowerCase())) : null
 
@@ -575,6 +692,22 @@ async function main(): Promise<void> {
     if (idsFilter && !idsFilter.has(regen.name.toLowerCase())) {
       continue
     }
+
+    // 0. Auto-create missing ingredients (--auto-create-missing).
+    if (args.autoCreateMissing && !args.dryRun) {
+      try {
+        const acWarns = await autoCreateMissingForRecipe(regen, fullCatalog, catalogById)
+        for (const w of acWarns) console.log(`         ${w}`)
+      } catch (err: any) {
+        console.warn(
+          `[apply] auto-create pre-pass failed for ${regen.name}: ${err?.message ?? String(err)}`,
+        )
+      }
+    }
+    // Rebuild per-iteration (cheap for ~250 rows; idempotent if no changes).
+    const lintCatalog = buildLintCatalog(fullCatalog)
+    const nutritionCatalog = buildNutritionCatalog(fullCatalog)
+    const allergenCatalog = buildAllergenCatalog(fullCatalog)
 
     // 1. Resolve refs (and mint UUIDs).
     const resolution = resolveRecipe(regen)

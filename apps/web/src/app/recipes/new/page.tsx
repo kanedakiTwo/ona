@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth"
 import { useCreateRecipe, useIngredients } from "@/hooks/useRecipes"
@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils"
 import { Plus, Trash2, ChevronLeft } from "lucide-react"
 import Link from "next/link"
 import { PhotoRecipeUpload } from "@/components/recipes/PhotoRecipeUpload"
+import { IngredientAutocomplete } from "@/components/recipes/IngredientAutocomplete"
 import { createRecipeSchema } from "@ona/shared"
 import type { Meal, Season, ExtractedRecipe, Ingredient } from "@ona/shared"
 import { MEAL_LABELS, SEASON_LABELS } from "@/lib/labels"
@@ -40,15 +41,6 @@ function emptyRow(): IngredientRow {
   return { ingredientName: "", ingredientId: "", quantity: "", unit: "g" }
 }
 
-// Build a fast lookup map: lowercased name -> Ingredient
-function buildIngredientIndex(list: Ingredient[]): Map<string, Ingredient> {
-  const map = new Map<string, Ingredient>()
-  for (const ing of list) {
-    map.set(ing.name.trim().toLowerCase(), ing)
-  }
-  return map
-}
-
 export default function NewRecipePage() {
   const router = useRouter()
   useAuth()
@@ -68,19 +60,8 @@ export default function NewRecipePage() {
   const [steps, setSteps] = useState<string[]>([""])
   const [photoExtracted, setPhotoExtracted] = useState(false)
 
-  // Map from lowercased name -> Ingredient. Memoized for the lifetime of the data.
-  const ingredientIndex = useMemo(
-    () => buildIngredientIndex(ingredientLibrary),
-    [ingredientLibrary]
-  )
-
   // Per-field validation errors surfaced after a submit attempt.
   const [errors, setErrors] = useState<Record<string, string>>({})
-
-  function resolveIngredientId(typedName: string): string {
-    const hit = ingredientIndex.get(typedName.trim().toLowerCase())
-    return hit ? hit.id : ""
-  }
 
   function handlePhotoExtracted(data: ExtractedRecipe) {
     setName(data.name)
@@ -128,13 +109,12 @@ export default function NewRecipePage() {
     setTags(tags.filter((t) => t !== tag))
   }
 
-  function updateIngredientName(idx: number, value: string) {
+  function setRowIngredient(idx: number, ing: Ingredient) {
     const next = [...ingredientRows]
     next[idx] = {
       ...next[idx],
-      ingredientName: value,
-      // Re-resolve ingredientId on every keystroke so the row stays in sync.
-      ingredientId: resolveIngredientId(value),
+      ingredientName: ing.name,
+      ingredientId: ing.id,
     }
     setIngredientRows(next)
   }
@@ -486,38 +466,24 @@ export default function NewRecipePage() {
               escribir y selecciona uno de la lista.
             </p>
 
-            {/* Single shared datalist for all rows */}
-            <datalist id="ingredient-library">
-              {ingredientLibrary.map((ing) => (
-                <option key={ing.id} value={ing.name} />
-              ))}
-            </datalist>
-
             <div className="mt-4 space-y-3">
               {ingredientRows.map((row, idx) => {
                 const hint = ingredientRowHints[idx]
+                const selectedIng = row.ingredientId
+                  ? ingredientLibrary.find((ing) => ing.id === row.ingredientId) ?? null
+                  : null
                 return (
                   <div key={idx} className="flex flex-col gap-1">
                     <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        list="ingredient-library"
-                        value={row.ingredientName}
-                        onChange={(e) =>
-                          updateIngredientName(idx, e.target.value)
-                        }
+                      <IngredientAutocomplete
+                        value={selectedIng}
+                        onSelect={(ing) => setRowIngredient(idx, ing)}
                         placeholder={
                           ingredientsLoading
                             ? "Cargando biblioteca..."
                             : "Ingrediente"
                         }
-                        autoComplete="off"
-                        className={cn(
-                          "flex-1 rounded-lg border bg-[#F2EDE0] px-3 py-2 text-[14px] text-[#1A1612] placeholder:text-[#7A7066] focus:outline-none focus:ring-1",
-                          hint
-                            ? "border-[#C65D38] focus:border-[#C65D38] focus:ring-[#C65D38]"
-                            : "border-[#DDD6C5] focus:border-[#1A1612] focus:ring-[#1A1612]"
-                        )}
+                        hasError={!!hint}
                       />
                       <input
                         type="number"

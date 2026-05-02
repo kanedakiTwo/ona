@@ -580,8 +580,18 @@ export default function ProfilePage() {
         </div>
       </section>
 
+      {/* Curator entry — discreet text link */}
+      <div className="px-5 mt-10">
+        <a
+          href="/curator"
+          className="inline-block text-[11px] uppercase tracking-[0.15em] text-[#7A7066] hover:text-[#C65D38]"
+        >
+          Panel de curaduría →
+        </a>
+      </div>
+
       {/* Save bar */}
-      <div className="px-5 mt-10 mb-24">
+      <div className="px-5 mt-6 mb-24">
         <button
           onClick={handleSave}
           disabled={saving}

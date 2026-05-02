@@ -77,9 +77,11 @@ Warnings are surfaced to the recipe author / curator but do not block saving.
 
 ## Source
 
-- [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts) — `ingredients`, `ingredient_nutrition`, `ingredient_allergens` (or column on `ingredients`)
-- [apps/api/src/services/nutrition/usdaClient.ts](../apps/api/src/services/nutrition/usdaClient.ts) — USDA FDC API client with on-disk cache (new)
-- [apps/api/src/services/nutrition/aggregate.ts](../apps/api/src/services/nutrition/aggregate.ts) — recipe-level aggregation (new)
-- [apps/api/src/services/nutrition/allergens.ts](../apps/api/src/services/nutrition/allergens.ts) — allergen union and mapping helpers (new)
-- [apps/api/src/seed/usda.ts](../apps/api/src/seed/usda.ts) — one-time population script (new)
-- [packages/shared/src/types/nutrition.ts](../packages/shared/src/types/nutrition.ts) (new)
+- [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts) — `ingredients`, `ingredient_nutrition`
+- [apps/api/src/services/nutrition/usdaClient.ts](../apps/api/src/services/nutrition/usdaClient.ts) — USDA FDC API client with on-disk cache
+- [apps/api/src/services/nutrition/aggregate.ts](../apps/api/src/services/nutrition/aggregate.ts) — recipe-level aggregation
+- [apps/api/src/services/nutrition/allergens.ts](../apps/api/src/services/nutrition/allergens.ts) — allergen union and mapping helpers
+- [apps/api/src/services/nutrition/index.ts](../apps/api/src/services/nutrition/index.ts) — public surface re-exports
+- [apps/api/src/seed/usda.ts](../apps/api/src/seed/usda.ts) — one-time population script driven by [seed/data/ingredient-fdc-map.yaml](../apps/api/src/seed/data/ingredient-fdc-map.yaml) and the expanded variant for the 104-staple catalog
+- [apps/api/scripts/expandIngredientCatalog.ts](../apps/api/scripts/expandIngredientCatalog.ts) — USDA-backed draft for 104 staples
+- [packages/shared/src/types/nutrition.ts](../packages/shared/src/types/nutrition.ts)

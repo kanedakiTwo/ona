@@ -24,7 +24,7 @@ Recipe catalog, recipe detail, ingredients, sectioned ingredient groups ("Para l
 
 Hands-free fullscreen cook-along, step-by-step UX, per-step countdown timers, multiple concurrent timers, vibration + chime on timer fire, swipe between steps, ingredient checklist, inline scaled ingredient chips, temperature/technique badges, Wake Lock screen-on, live diner re-scaling inside cooking mode, exits cleanly without mutating the recipe, "Empezar a cocinar" entry point.
 
-**Source (planned)**: `apps/web/src/app/recipes/[id]/cook/page.tsx`, `apps/web/src/components/cooking/`, `apps/web/src/hooks/useWakeLock.ts`, `apps/web/src/hooks/useStepTimers.ts`
+**Source**: `apps/web/src/app/recipes/[id]/cook/page.tsx`, `apps/web/src/components/cooking/` (`CookingShell`, `StepCard`, `StepTimer`, `ChecklistPanel`), `apps/web/src/hooks/useWakeLock.ts`, `apps/web/src/hooks/useStepTimers.ts`
 
 ---
 
@@ -70,7 +70,7 @@ AI chat assistant, function calling, skills (get_todays_menu, search_recipes, sw
 
 ## [Voice Mode](./voice-mode.md)
 
-**Status: code complete on `feat/voice-mode`; runtime verification pending.** Hands-free voice conversation, wake word "Hola Ona", always-listening, Picovoice Porcupine (WASM), openWakeWord fallback, OpenAI Realtime API, gpt-realtime, WebRTC, server VAD, turn detection, barge-in, echo cancellation, ephemeral session token, full-screen voice overlay, animated orb, cooking mode, extended silence timeout, conversation persistence into AdvisorChat, skill/tool calling, opt-in toggle (Capítulo 04 del perfil), on-device wake-word detection, daily per-user minutes quota, Spanish.
+**Status: shipped on master.** Hands-free voice conversation, wake word "Hola Ona" (or floating mic FAB while Picovoice access is missing), always-listening, Picovoice Porcupine (WASM), openWakeWord fallback, OpenAI Realtime API, gpt-realtime, WebRTC, server VAD, turn detection, barge-in, echo cancellation, ephemeral session token, full-screen voice overlay, animated orb, typed Spanish error messages on failure with auto-close, cooking mode, extended silence timeout, conversation persistence into AdvisorChat, skill/tool calling, opt-in toggle (Capítulo 04 del perfil), on-device wake-word detection, daily per-user minutes quota, Spanish.
 
 **Source**: `apps/web/src/hooks/useWakeWord.ts`, `apps/web/src/hooks/useRealtimeSession.ts`, `apps/web/src/components/voice/`, `apps/web/src/lib/voiceMessages.ts`, `apps/api/src/routes/realtime.ts`, `apps/api/src/services/realtime/`
 

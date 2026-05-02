@@ -31,6 +31,30 @@ If the answer to any of these is **yes**, update the relevant spec(s) before fin
 
 If the change introduces a new system not covered by any existing spec (e.g., notifications, admin panel, payments), create a new spec file and add an entry to [`specs/index.md`](./specs/index.md). Keep specs under 200 lines and write from the user's perspective.
 
+### Definition of done — spec gate
+
+**A task is not done until its spec impact has been resolved in the same commit / PR.** Use this checklist before reporting a task complete:
+
+```
+[ ] Did I change anything in apps/api/src/routes/, apps/api/src/services/,
+    apps/web/src/app/, apps/web/src/components/, apps/web/src/hooks/,
+    packages/shared/src/types/, or any DB migration?
+[ ] If yes → I ran the spec table below and updated every spec affected.
+[ ] If a referenced file moved/renamed/disappeared → I fixed `## Source` links.
+[ ] If a behavior the user can observe changed → I rewrote the affected
+    `## User Capabilities` / `## Constraints` lines.
+[ ] If a brand-new system landed → I added a new spec file AND a row to
+    `specs/index.md`.
+[ ] If I deferred the spec on purpose → I left a `TODO(spec):` marker in the
+    relevant spec file AND told the user explicitly in my reply.
+```
+
+The spec gate is **not optional polish at the end of a sprint**. It is part of the task itself. When grouping multiple tasks into one commit, the commit must include the spec edits for every task in the group. A code-only PR that touches user-observable behavior is a bug.
+
+Past failure mode: shipping a feature, then doing a "specs sweep" days later. By then the diff is forgotten and details get lost. The fix is to write specs WHILE the change is fresh — same edit session, same commit.
+
+When in doubt: open `specs/index.md`, grep for keywords related to your change, and verify each match still describes reality.
+
 ## What ONA is
 
 ONA (Opinionated Nutritional Assistant) is a **mobile-first meal planner** for Spanish speakers. It generates a weekly menu from a recipe catalog, produces a shopping list, manages pantry stock, and provides an AI advisor for nutrition questions. The app is currently mid-migration toward an **editorial visual style** (cream/warm-black palette, Fraunces serif, motion/react animations) — see [`specs/design-system.md`](./specs/design-system.md) for which pages are migrated and which still use the legacy "app mode" green palette.

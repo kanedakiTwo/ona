@@ -13,7 +13,16 @@ export interface SkillContext {
 export interface SkillResult {
   data: any
   summary: string // Natural language for Claude to incorporate
-  uiHint?: 'text' | 'menu' | 'recipe' | 'shopping_list' | 'nutrition' | 'confirmation'
+  uiHint?:
+    | 'text'
+    | 'menu'
+    | 'recipe'
+    | 'shopping_list'
+    | 'nutrition'
+    | 'confirmation'
+    | 'cooking_navigate'
+    | 'cooking_timer'
+    | 'cooking_step'
 }
 
 export interface AssistantResponse {

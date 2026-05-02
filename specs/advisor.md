@@ -30,10 +30,26 @@ The assistant can call back-end skills (function calling). Each skill has a name
 - `generate_weekly_menu` — full menu generation for the user
 - `swap_meal` — replace a single meal slot
 - `toggle_favorite` — favorite/unfavorite a recipe
-- `mark_meal_eaten` — log that the user actually ate a meal
+- `mark_meal_eaten` — log that the user actually ate a meal (records `eatenAt` timestamp)
 - `create_recipe` — save a new user recipe
 - `recipe_variation` — generate a variation of a recipe (e.g., dairy-free version)
 - `nutrition_advice` — return advisor summary based on `user_nutrient_balance`
+- `get_pantry_stock` — list ingredients currently flagged `inStock` on the latest shopping list
+- `mark_in_stock` — set/toggle the `inStock` flag of a shopping-list item by name
+- `check_shopping_item` — set/toggle the `checked` flag of a shopping-list item (mark groceries as bought)
+- `get_my_recipes` — list recipes authored by the user (`recipes.authorId = user.id`)
+- `get_menu_history` — list past weeks' menus to answer "when did I last eat X"
+- `scale_recipe` — return ingredient quantities scaled to a different `servings` count without mutating the recipe
+- `evaluate_food_health` — frame "is X healthy?" through the 10-mandamientos KB so the model answers with criterion (not neutral)
+- `suggest_substitution` — frame ingredient substitutions through the philosophy: never propose margarine, refined vegetable oils, artificial sweeteners
+- `get_variety_score` — count distinct ingredients / vegetables / proteins in the current week's menu (principle 7)
+- `get_eating_window` — average first/last eating hour and window length from `eatenAt` timestamps (principle 3)
+- `get_inflammation_index` — heuristic 0–100 score per recipe (or weekly average) combining `nutritionPerServing.fiberG`/`saltG` with keyword penalties for processed ingredients and fryer/steam techniques
+- `start_cooking_mode` — resolve a recipe and emit a `cooking_navigate` hint so the client routes to `/recipes/:id/cook`
+- `set_timer` — emit a `cooking_timer` hint that `CookingShell` consumes via `subscribeCookingCommands` to start a timer at the current step
+- `cooking_step` — emit a `cooking_step` hint with `direction: 'next' | 'previous' | 'repeat'` to advance the cooking shell
+
+The cooking-mode skills (`start_cooking_mode`, `set_timer`, `cooking_step`) are bridged to the `CookingShell` UI via [`apps/web/src/lib/cookingCommands.ts`](../apps/web/src/lib/cookingCommands.ts) — a tiny pub/sub bus subscribed to from `CookingShell`. If no shell is mounted, commands silently drop (the assistant still spoke the confirmation).
 
 The model responds with either a plain text message or a tool call. After the tool runs, the loop continues until the model produces a final message.
 

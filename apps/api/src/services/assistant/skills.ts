@@ -1,13 +1,15 @@
-import { eq, desc, ilike, or } from 'drizzle-orm'
+import { eq, desc, ilike, or, inArray } from 'drizzle-orm'
 import {
   menus,
   recipes,
   recipeIngredients,
+  recipeSteps,
   ingredients,
   userFavorites,
   users,
   userNutrientBalance,
   menuLogs,
+  shoppingLists,
 } from '../../db/schema.js'
 import { nutrientsToPercentages, TARGET_MACROS, detectSeason } from '@ona/shared'
 import type { DayMenu, Meal, NutrientBalance, HouseholdSize } from '@ona/shared'
@@ -604,6 +606,11 @@ const markMealEaten: SkillDefinition = {
     }
 
     days[dayIndex][meal].eaten = eaten
+    if (eaten) {
+      days[dayIndex][meal].eatenAt = new Date().toISOString()
+    } else {
+      delete days[dayIndex][meal].eatenAt
+    }
 
     const [updated] = await db
       .update(menus)
@@ -817,6 +824,622 @@ const nutritionAdvice: SkillDefinition = {
   },
 }
 
+// ─── New skills (expansion 1–13) ────────────────────────────
+
+// Helper: fuzzy-find an item in a shopping_lists.items array by ingredient name
+function findShoppingItem(items: any[], query: string): any | null {
+  const q = query.toLowerCase().trim()
+  if (!q) return null
+  const exact = items.find(i => String(i?.name ?? '').toLowerCase() === q)
+  if (exact) return exact
+  const includes = items.find(i => String(i?.name ?? '').toLowerCase().includes(q))
+  if (includes) return includes
+  const words = q.split(/\s+/).filter(w => w.length >= 3)
+  for (const w of words) {
+    const found = items.find(i => String(i?.name ?? '').toLowerCase().includes(w))
+    if (found) return found
+  }
+  return null
+}
+
+// Helper: rounding bands consistent with services/recipeScaler.ts (kept inline so the
+// skill stays a pure read; if scaler adds units we should mirror them here).
+function scaleRound(raw: number, unit: string): number {
+  if (raw === 0) return 0
+  const u = (unit ?? 'g').toLowerCase()
+  if (u === 'pizca' || u === 'al_gusto') return raw
+  if (u === 'u') return Math.max(1, Math.round(raw))
+  if (u === 'cda' || u === 'cdita') return Math.round(raw * 2) / 2
+  // g / ml: same bands as recipeScaler.ts
+  const bands: ReadonlyArray<readonly [number, number]> = [
+    [5, 0.5], [25, 1], [100, 5], [250, 25], [500, 50], [1000, 100], [5000, 250], [Infinity, 500],
+  ]
+  let step = 500
+  for (const [upper, s] of bands) { if (raw < upper) { step = s; break } }
+  return Math.round(raw / step) * step
+}
+
+// 1. ── get_pantry_stock ────────────────────────────────────
+const getPantryStock: SkillDefinition = {
+  name: 'get_pantry_stock',
+  description: 'Devuelve los ingredientes que el usuario tiene en casa (marcados como "en casa" en la lista de la compra mas reciente). Usa esta skill cuando el usuario pregunte que tiene en la nevera o despensa.',
+  parameters: { type: 'object', properties: {}, required: [] },
+  async handler(_params, ctx) {
+    const { userId, db } = ctx
+    const [list] = await db
+      .select()
+      .from(shoppingLists)
+      .where(eq(shoppingLists.userId, userId))
+      .orderBy(desc(shoppingLists.createdAt))
+      .limit(1)
+    if (!list) {
+      return { data: [], summary: 'Aun no tengo lista de la compra, asi que no se que tienes en casa. Genera un menu para empezar.', uiHint: 'text' }
+    }
+    const items = ((list.items as any[]) ?? []).filter(i => i?.inStock)
+    if (items.length === 0) {
+      return { data: [], summary: 'No tienes nada marcado como en casa. Cuando vayas comprando, marca lo que vas guardando.', uiHint: 'text' }
+    }
+    const names = items.map(i => i.name).slice(0, 30).join(', ')
+    return {
+      data: items,
+      summary: `Tienes en casa: ${names}${items.length > 30 ? '…' : ''}.`,
+      uiHint: 'shopping_list',
+    }
+  },
+}
+
+// 2. ── mark_in_stock ────────────────────────────────────────
+const markInStock: SkillDefinition = {
+  name: 'mark_in_stock',
+  description: 'Marca o desmarca un ingrediente como disponible en casa. Si el usuario dice "tengo X" pasa inStock:true; si dice "se acabo X" o "ya no tengo X" pasa false. Sin parametro inStock alterna.',
+  parameters: {
+    type: 'object',
+    properties: {
+      ingredient: { type: 'string', description: 'Nombre del ingrediente (acepta coincidencia parcial)' },
+      inStock: { type: 'boolean', description: 'true si tiene, false si no. Si se omite, alterna el estado.' },
+    },
+    required: ['ingredient'],
+  },
+  async handler(params: { ingredient: string; inStock?: boolean }, ctx) {
+    const { userId, db } = ctx
+    const [list] = await db
+      .select()
+      .from(shoppingLists)
+      .where(eq(shoppingLists.userId, userId))
+      .orderBy(desc(shoppingLists.createdAt))
+      .limit(1)
+    if (!list) {
+      return { data: null, summary: 'Necesitas tener una lista de la compra activa para gestionar la despensa.', uiHint: 'text' }
+    }
+    const items = ((list.items as any[]) ?? []).slice()
+    const item = findShoppingItem(items, params.ingredient)
+    if (!item) {
+      return { data: null, summary: `No he encontrado "${params.ingredient}" en tu lista. Anadelo manualmente o regenera la lista.`, uiHint: 'text' }
+    }
+    const next = params.inStock != null ? !!params.inStock : !item.inStock
+    item.inStock = next
+    await db.update(shoppingLists).set({ items }).where(eq(shoppingLists.id, list.id))
+    return {
+      data: { name: item.name, inStock: next },
+      summary: next ? `${item.name} marcado como en casa.` : `${item.name} eliminado de la despensa.`,
+      uiHint: 'confirmation',
+    }
+  },
+}
+
+// 3. ── check_shopping_item ─────────────────────────────────
+const checkShoppingItem: SkillDefinition = {
+  name: 'check_shopping_item',
+  description: 'Marca un articulo de la lista de la compra como comprado (o lo desmarca). Util cuando el usuario va por el supermercado en manos libres.',
+  parameters: {
+    type: 'object',
+    properties: {
+      ingredient: { type: 'string', description: 'Nombre del ingrediente (acepta coincidencia parcial)' },
+      checked: { type: 'boolean', description: 'true para marcar como comprado, false para devolver a pendiente. Si se omite, alterna.' },
+    },
+    required: ['ingredient'],
+  },
+  async handler(params: { ingredient: string; checked?: boolean }, ctx) {
+    const { userId, db } = ctx
+    const [list] = await db
+      .select()
+      .from(shoppingLists)
+      .where(eq(shoppingLists.userId, userId))
+      .orderBy(desc(shoppingLists.createdAt))
+      .limit(1)
+    if (!list) {
+      return { data: null, summary: 'No tienes lista de la compra activa.', uiHint: 'text' }
+    }
+    const items = ((list.items as any[]) ?? []).slice()
+    const item = findShoppingItem(items, params.ingredient)
+    if (!item) {
+      return { data: null, summary: `No he encontrado "${params.ingredient}" en tu lista.`, uiHint: 'text' }
+    }
+    const next = params.checked != null ? !!params.checked : !item.checked
+    item.checked = next
+    await db.update(shoppingLists).set({ items }).where(eq(shoppingLists.id, list.id))
+    return {
+      data: { name: item.name, checked: next },
+      summary: next ? `${item.name} marcado como comprado.` : `${item.name} vuelve a la lista.`,
+      uiHint: 'confirmation',
+    }
+  },
+}
+
+// 4. ── get_my_recipes ──────────────────────────────────────
+const getMyRecipes: SkillDefinition = {
+  name: 'get_my_recipes',
+  description: 'Lista las recetas creadas por el usuario (no las del catalogo del sistema). Util cuando dice "mis recetas".',
+  parameters: { type: 'object', properties: {}, required: [] },
+  async handler(_p, ctx) {
+    const { userId, db } = ctx
+    const rows = await db
+      .select({ id: recipes.id, name: recipes.name, meals: recipes.meals, prepTime: recipes.prepTime, servings: recipes.servings })
+      .from(recipes)
+      .where(eq(recipes.authorId, userId))
+      .orderBy(desc(recipes.createdAt))
+      .limit(50)
+    if (rows.length === 0) {
+      return { data: [], summary: 'Aun no has guardado recetas propias. Cuando crees una se quedara aqui.', uiHint: 'text' }
+    }
+    const names = rows.map((r: any) => r.name).join(', ')
+    return { data: rows, summary: `Tienes ${rows.length} receta(s) propia(s): ${names}.`, uiHint: 'recipe' }
+  },
+}
+
+// 5. ── get_menu_history ────────────────────────────────────
+const getMenuHistory: SkillDefinition = {
+  name: 'get_menu_history',
+  description: 'Devuelve los menus pasados del usuario para responder cuando dice "cuando comi X la ultima vez" o "que cocine la semana pasada".',
+  parameters: {
+    type: 'object',
+    properties: {
+      weeks: { type: 'number', description: 'Semanas pasadas a recuperar (1-12, por defecto 4)' },
+    },
+    required: [],
+  },
+  async handler(params: { weeks?: number }, ctx) {
+    const { userId, db } = ctx
+    const limit = Math.max(1, Math.min(12, params.weeks ?? 4))
+    const rows = await db
+      .select({ id: menus.id, weekStart: menus.weekStart, days: menus.days })
+      .from(menus)
+      .where(eq(menus.userId, userId))
+      .orderBy(desc(menus.weekStart))
+      .limit(limit)
+    if (rows.length === 0) {
+      return { data: [], summary: 'No tienes historial de menus.', uiHint: 'text' }
+    }
+    const summary = rows.map((m: any) => {
+      const meals = new Set<string>()
+      for (const d of (m.days as any[]) ?? []) {
+        for (const slot of Object.values(d) as any[]) {
+          if (slot?.recipeName) meals.add(slot.recipeName)
+        }
+      }
+      const list = [...meals].slice(0, 8).join(', ')
+      return `${m.weekStart}: ${list}${meals.size > 8 ? '…' : ''}`
+    }).join(' | ')
+    return { data: rows, summary: `Historial: ${summary}`, uiHint: 'menu' }
+  },
+}
+
+// 6. ── scale_recipe ────────────────────────────────────────
+const scaleRecipeSkill: SkillDefinition = {
+  name: 'scale_recipe',
+  description: 'Reescala los ingredientes de una receta a un numero distinto de comensales. No modifica la receta guardada — solo devuelve las cantidades para el plato de hoy.',
+  parameters: {
+    type: 'object',
+    properties: {
+      recipeName: { type: 'string', description: 'Nombre de la receta' },
+      servings: { type: 'number', description: 'Numero de comensales objetivo (entero positivo)' },
+    },
+    required: ['recipeName', 'servings'],
+  },
+  async handler(params: { recipeName: string; servings: number }, ctx) {
+    const { db } = ctx
+    if (!Number.isFinite(params.servings) || params.servings <= 0) {
+      return { data: null, summary: 'El numero de comensales debe ser positivo.', uiHint: 'text' }
+    }
+    const [recipe] = await db
+      .select()
+      .from(recipes)
+      .where(or(
+        ilike(recipes.name, `%${params.recipeName}%`),
+        ...params.recipeName.split(/\s+/).filter(w => w.length >= 3).map(w => ilike(recipes.name, `%${w}%`)),
+      ))
+      .limit(1)
+    if (!recipe) {
+      return { data: null, summary: `No he encontrado la receta "${params.recipeName}".`, uiHint: 'text' }
+    }
+    const baseServings = (recipe as any).servings || 2
+    const ratio = params.servings / baseServings
+    const riRows = await db
+      .select({
+        ingredientName: ingredients.name,
+        quantity: recipeIngredients.quantity,
+        unit: recipeIngredients.unit,
+        optional: recipeIngredients.optional,
+      })
+      .from(recipeIngredients)
+      .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
+      .where(eq(recipeIngredients.recipeId, (recipe as any).id))
+    const scaled = (riRows as any[]).map(r => ({
+      name: r.ingredientName,
+      quantity: scaleRound((r.quantity as number) * ratio, r.unit ?? 'g'),
+      unit: r.unit ?? 'g',
+      optional: !!r.optional,
+    }))
+    const summary = `${(recipe as any).name} para ${params.servings} comensales (receta original para ${baseServings}): ${scaled.map(s => `${s.name} ${s.quantity}${s.unit}${s.optional ? ' (opcional)' : ''}`).join(', ')}.`
+    return {
+      data: { recipeId: (recipe as any).id, recipeName: (recipe as any).name, servings: params.servings, baseServings, ingredients: scaled },
+      summary,
+      uiHint: 'recipe',
+    }
+  },
+}
+
+// 7. ── evaluate_food_health ────────────────────────────────
+const evaluateFoodHealth: SkillDefinition = {
+  name: 'evaluate_food_health',
+  description: 'Cuando el usuario pregunta si un alimento es saludable (ej. "el zumo es sano", "que tal la avena"), llama a esta skill. Devuelve contexto para que tu (Claude) respondas con criterio segun los principios de ONA — no neutral.',
+  parameters: {
+    type: 'object',
+    properties: {
+      food: { type: 'string', description: 'Alimento o producto que el usuario pregunta' },
+    },
+    required: ['food'],
+  },
+  async handler(params: { food: string }) {
+    return {
+      data: { food: params.food },
+      summary: `Evalua si "${params.food}" es saludable usando los principios de ONA. Considera: 1) carga inflamatoria, 2) impacto en insulina, 3) si esta procesado y por tanto carece de fibra, 4) frecuencia recomendada (la frecuencia importa tanto como el contenido), 5) si es de los alimentos popularmente "saludables" que no lo son (zumos, pan blanco, arroz blanco, aceites vegetales refinados, fruta en exceso fuera de temporada). Da una respuesta corta (2-3 frases) con criterio propio, sin moralizar.`,
+      uiHint: 'nutrition',
+    }
+  },
+}
+
+// 8. ── suggest_substitution ────────────────────────────────
+const suggestSubstitution: SkillDefinition = {
+  name: 'suggest_substitution',
+  description: 'Cuando al usuario le falta un ingrediente o quiere cambiarlo (ej. "no tengo nata, que uso", "como sustituyo el azucar"), llama a esta skill. Tu (Claude) propondras alternativas alineadas con los principios de ONA.',
+  parameters: {
+    type: 'object',
+    properties: {
+      ingredient: { type: 'string', description: 'Ingrediente a sustituir' },
+      recipeName: { type: 'string', description: 'Nombre de la receta (opcional, da contexto)' },
+      restriction: { type: 'string', description: 'Restriccion del usuario (ej: sin lactosa, sin gluten)' },
+    },
+    required: ['ingredient'],
+  },
+  async handler(params: { ingredient: string; recipeName?: string; restriction?: string }, ctx) {
+    const { db } = ctx
+    let recipeContext = ''
+    if (params.recipeName) {
+      const [recipe] = await db
+        .select({ name: recipes.name, allergens: recipes.allergens })
+        .from(recipes)
+        .where(or(
+          ilike(recipes.name, `%${params.recipeName}%`),
+          ...params.recipeName.split(/\s+/).filter(w => w.length >= 3).map(w => ilike(recipes.name, `%${w}%`)),
+        ))
+        .limit(1)
+      if (recipe) {
+        const allergens = ((recipe as any).allergens as string[]) ?? []
+        recipeContext = ` Receta: ${(recipe as any).name}${allergens.length > 0 ? ` (alergenos detectados: ${allergens.join(', ')})` : ''}.`
+      }
+    }
+    return {
+      data: params,
+      summary: `El usuario quiere sustituir "${params.ingredient}"${params.restriction ? ` (restriccion: ${params.restriction})` : ''}.${recipeContext} Sugiere 1-2 alternativas concretas alineadas con los principios de ONA. Importante: NUNCA propongas margarina, aceites vegetales refinados (girasol, soja, maiz, colza), edulcorantes artificiales ni sirope de maiz. Si propon AOVE, ghee, mantequilla, fermentados, frutos secos, semillas, harinas integrales, hueso/caldo casero, fruta entera en lugar de zumo.`,
+      uiHint: 'recipe',
+    }
+  },
+}
+
+// 9. ── get_variety_score ───────────────────────────────────
+const VEG_RE = /(verdura|hoja|espinaca|kale|acelga|brocoli|coliflor|tomate|cebolla|ajo|pimiento|calabac|berenjena|zanahoria|remolacha|esparrago|aguacate|champin|seta|alcachofa|pepino|rucula|canon|lechuga|repollo|col|puerro|apio|nabo|rabano|calabaza|judia_verde|guisante)/i
+const PROT_RE = /(pollo|pavo|ternera|cerdo|cordero|huevo|salmon|atun|sardina|merluza|bacalao|gamba|mejillon|pulpo|tofu|tempeh|legumbre|lenteja|garbanzo|alubia|conejo|pato|trucha|caballa)/i
+
+const getVarietyScore: SkillDefinition = {
+  name: 'get_variety_score',
+  description: 'Calcula la diversidad de ingredientes (con foco en vegetales y proteinas) en el menu actual del usuario. Pilar del principio 7 de ONA: variedad maxima para microbioma resiliente.',
+  parameters: { type: 'object', properties: {}, required: [] },
+  async handler(_p, ctx) {
+    const { userId, db } = ctx
+    const [menu] = await db.select().from(menus).where(eq(menus.userId, userId)).orderBy(desc(menus.createdAt)).limit(1)
+    if (!menu) {
+      return { data: null, summary: 'No tienes menu activo.', uiHint: 'text' }
+    }
+    const recipeIds = new Set<string>()
+    for (const d of (menu.days as any[]) ?? []) {
+      for (const slot of Object.values(d) as any[]) {
+        if (slot?.recipeId) recipeIds.add(slot.recipeId)
+      }
+    }
+    if (recipeIds.size === 0) {
+      return { data: null, summary: 'El menu no tiene recetas asignadas.', uiHint: 'text' }
+    }
+    const ids = [...recipeIds]
+    const riRows = await db
+      .select({ ingredientName: ingredients.name })
+      .from(recipeIngredients)
+      .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
+      .where(inArray(recipeIngredients.recipeId, ids))
+    const distinct = new Set<string>()
+    const veggies = new Set<string>()
+    const proteins = new Set<string>()
+    for (const r of riRows as any[]) {
+      const n = String(r.ingredientName ?? '').toLowerCase().trim()
+      if (!n) continue
+      distinct.add(n)
+      if (VEG_RE.test(n)) veggies.add(n)
+      if (PROT_RE.test(n)) proteins.add(n)
+    }
+    const score = Math.round(Math.min(distinct.size / 35, 1) * 100)
+    const advice = score < 50
+      ? 'Anade verdes oscuros (espinaca, kale) y crucíferas (brocoli, coliflor) para subir.'
+      : score < 80
+        ? 'Buen camino — sigue rotando proteinas distintas (legumbres, pescado azul, huevo).'
+        : 'Excelente variedad — el microbioma te lo agradece.'
+    return {
+      data: { distinctCount: distinct.size, vegetableCount: veggies.size, proteinCount: proteins.size, score, vegetables: [...veggies], proteins: [...proteins] },
+      summary: `Esta semana llevas ${distinct.size} ingredientes distintos (${veggies.size} vegetales, ${proteins.size} proteinas). Score de variedad: ${score}/100. ${advice}`,
+      uiHint: 'nutrition',
+    }
+  },
+}
+
+// 10. ── get_eating_window ──────────────────────────────────
+const getEatingWindow: SkillDefinition = {
+  name: 'get_eating_window',
+  description: 'Calcula la ventana de alimentacion del usuario (primera y ultima comida del dia, longitud media en horas) usando las comidas marcadas como comidas. Importante para el principio 3 de ONA: la frecuencia importa tanto como el contenido.',
+  parameters: {
+    type: 'object',
+    properties: {
+      weeks: { type: 'number', description: 'Semanas a analizar (1-8, por defecto 2)' },
+    },
+    required: [],
+  },
+  async handler(params: { weeks?: number }, ctx) {
+    const { userId, db } = ctx
+    const limit = Math.max(1, Math.min(8, params.weeks ?? 2))
+    const rows = await db
+      .select({ days: menus.days, weekStart: menus.weekStart })
+      .from(menus)
+      .where(eq(menus.userId, userId))
+      .orderBy(desc(menus.weekStart))
+      .limit(limit)
+    if (rows.length === 0) {
+      return { data: null, summary: 'No tengo datos de menus.', uiHint: 'text' }
+    }
+    const dayHours: number[][] = []
+    for (const r of rows as any[]) {
+      const days = (r.days as any[]) ?? []
+      for (const d of days) {
+        const hours: number[] = []
+        for (const slot of Object.values(d) as any[]) {
+          if (slot?.eaten && slot?.eatenAt) {
+            const t = new Date(slot.eatenAt)
+            if (!Number.isNaN(t.valueOf())) hours.push(t.getHours() + t.getMinutes() / 60)
+          }
+        }
+        if (hours.length > 0) dayHours.push(hours)
+      }
+    }
+    if (dayHours.length === 0) {
+      return { data: null, summary: 'Aun no has marcado ninguna comida como comida con hora. Cuando lo hagas podre calcular tu ventana.', uiHint: 'text' }
+    }
+    const widths = dayHours.map(hs => Math.max(...hs) - Math.min(...hs))
+    const avgW = widths.reduce((a, b) => a + b, 0) / widths.length
+    const avgFirst = dayHours.map(hs => Math.min(...hs)).reduce((a, b) => a + b, 0) / dayHours.length
+    const avgLast = dayHours.map(hs => Math.max(...hs)).reduce((a, b) => a + b, 0) / dayHours.length
+    const fmt = (h: number) => `${Math.floor(h).toString().padStart(2, '0')}:${Math.round((h - Math.floor(h)) * 60).toString().padStart(2, '0')}`
+    const advice = avgW > 12
+      ? 'Ventana ancha. Cerrarla a 10h (mover desayuno mas tarde o cenar antes) reduce la insulina cronica.'
+      : avgW < 8
+        ? 'Ventana corta — buena para insulina. Mantenla.'
+        : 'Ventana razonable. Estrecharla un poco mas si quieres ir mas alla.'
+    return {
+      data: { avgWindowHours: Number(avgW.toFixed(2)), avgFirstHour: avgFirst, avgLastHour: avgLast, daysSampled: dayHours.length },
+      summary: `Sobre ${dayHours.length} dia(s) con datos: ventana media ${avgW.toFixed(1)}h (~${fmt(avgFirst)} a ~${fmt(avgLast)}). ${advice}`,
+      uiHint: 'nutrition',
+    }
+  },
+}
+
+// 11. ── get_inflammation_index ────────────────────────────
+const PROCESSED_RE = /(azucar|harina blanca|harina_blanca|aceite girasol|aceite_girasol|aceite soja|aceite_soja|aceite maiz|aceite_maiz|embutido|salchich|bacon|nata industrial|salsa industrial|margarina|edulcorante|sirope|jarabe_maiz|jarabe maiz|fritos)/i
+const WHOLE_RE = /(verdura|hoja|espinaca|kale|acelga|brocoli|coliflor|crucifera|aguacate|aceite oliva|aceite_oliva|aove|ghee|mantequilla|fermentado|chucrut|kimchi|kefir|salmon|sardina|caballa|atun|frutos secos|frutos_secos|nuez|almendra|semilla|legumbre|lenteja|garbanzo|alubia|hueso|caldo)/i
+const FIBER_RE = /(legumbre|lenteja|garbanzo|alubia|frijol|integral|avena|quinoa|chia|lino|psyllium|semilla)/i
+const FRY_RE = /(\bfrit|fritura|deep[ _]fry|empanad|rebozad)/i
+const STEAM_RE = /(\bvapor\b|\bplancha\b|\bhorno\b|hervid|cocer|asad|al horno)/i
+
+async function scoreRecipe(recipe: any, db: any): Promise<{ recipeId: string; name: string; score: number; reasons: string[] }> {
+  let score = 50
+  const reasons: string[] = []
+
+  // Real per-serving signal: fiber boost / kcal density
+  const nps = recipe.nutritionPerServing as any
+  if (nps) {
+    if (typeof nps.fiberG === 'number') {
+      if (nps.fiberG >= 10) { score += 8; reasons.push(`+8 fibra alta (${nps.fiberG.toFixed(0)} g)`) }
+      else if (nps.fiberG <= 2) { score -= 5; reasons.push(`-5 fibra baja (${nps.fiberG.toFixed(0)} g)`) }
+    }
+    if (typeof nps.saltG === 'number' && nps.saltG > 3) {
+      score -= 4; reasons.push(`-4 sal alta (${nps.saltG.toFixed(1)} g)`)
+    }
+  }
+
+  // Ingredient names
+  const riRows = await db
+    .select({ name: ingredients.name })
+    .from(recipeIngredients)
+    .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
+    .where(eq(recipeIngredients.recipeId, recipe.id))
+  for (const r of riRows as any[]) {
+    const n = String(r.name ?? '').toLowerCase()
+    if (!n) continue
+    if (PROCESSED_RE.test(n)) { score -= 5; reasons.push(`-5 procesado: ${n}`) }
+    if (WHOLE_RE.test(n)) { score += 4; reasons.push(`+4 alimento real: ${n}`) }
+    if (FIBER_RE.test(n)) { score += 2; reasons.push(`+2 fibra: ${n}`) }
+  }
+
+  // Steps (techniques)
+  const stepRows = await db
+    .select({ text: recipeSteps.text, technique: recipeSteps.technique })
+    .from(recipeSteps)
+    .where(eq(recipeSteps.recipeId, recipe.id))
+  for (const s of stepRows as any[]) {
+    const t = `${s.text ?? ''} ${s.technique ?? ''}`.toLowerCase()
+    if (FRY_RE.test(t)) { score -= 4; reasons.push('-4 fritura/rebozado') }
+    if (STEAM_RE.test(t)) { score += 3; reasons.push('+3 coccion suave') }
+  }
+
+  return {
+    recipeId: recipe.id,
+    name: recipe.name,
+    score: Math.max(0, Math.min(100, score)),
+    reasons: reasons.slice(0, 6),
+  }
+}
+
+const getInflammationIndex: SkillDefinition = {
+  name: 'get_inflammation_index',
+  description: 'Devuelve un indice antiinflamatorio aproximado (0-100, mas alto = menos inflamatorio) para una receta concreta o el menu de la semana. Combina datos reales de fibra/sal con heuristicas de procesado y tecnica de coccion.',
+  parameters: {
+    type: 'object',
+    properties: {
+      recipeName: { type: 'string', description: 'Nombre de receta. Omitir si quieres el indice del menu semanal.' },
+      weekly: { type: 'boolean', description: 'Si true, calcula media para todas las recetas del menu actual.' },
+    },
+    required: [],
+  },
+  async handler(params: { recipeName?: string; weekly?: boolean }, ctx) {
+    const { userId, db } = ctx
+    if (params.weekly) {
+      const [menu] = await db.select().from(menus).where(eq(menus.userId, userId)).orderBy(desc(menus.createdAt)).limit(1)
+      if (!menu) {
+        return { data: null, summary: 'No tienes menu activo.', uiHint: 'text' }
+      }
+      const ids = new Set<string>()
+      for (const d of (menu.days as any[]) ?? []) {
+        for (const s of Object.values(d) as any[]) if (s?.recipeId) ids.add(s.recipeId)
+      }
+      if (ids.size === 0) {
+        return { data: null, summary: 'El menu no tiene recetas.', uiHint: 'text' }
+      }
+      const recipesData = await db.select().from(recipes).where(inArray(recipes.id, [...ids]))
+      const scores = await Promise.all((recipesData as any[]).map(r => scoreRecipe(r, db)))
+      const avg = scores.length > 0 ? scores.reduce((a, b) => a + b.score, 0) / scores.length : 0
+      const top = [...scores].sort((a, b) => b.score - a.score).slice(0, 3).map(s => `${s.name} (${s.score})`).join(', ')
+      const bottom = [...scores].sort((a, b) => a.score - b.score).slice(0, 3).map(s => `${s.name} (${s.score})`).join(', ')
+      return {
+        data: { average: Math.round(avg), scores },
+        summary: `Indice antiinflamatorio medio del menu: ${Math.round(avg)}/100. Mejores: ${top}. Para revisar: ${bottom}.`,
+        uiHint: 'nutrition',
+      }
+    }
+    if (!params.recipeName) {
+      return { data: null, summary: 'Indica una receta o pasa weekly:true para el menu completo.', uiHint: 'text' }
+    }
+    const [recipe] = await db
+      .select()
+      .from(recipes)
+      .where(or(
+        ilike(recipes.name, `%${params.recipeName}%`),
+        ...params.recipeName.split(/\s+/).filter(w => w.length >= 3).map(w => ilike(recipes.name, `%${w}%`)),
+      ))
+      .limit(1)
+    if (!recipe) {
+      return { data: null, summary: `No he encontrado "${params.recipeName}".`, uiHint: 'text' }
+    }
+    const result = await scoreRecipe(recipe, db)
+    return {
+      data: result,
+      summary: `${result.name}: ${result.score}/100. ${result.reasons.length > 0 ? `Lo que cuenta: ${result.reasons.join('; ')}.` : 'Sin senales fuertes en ningun sentido.'}`,
+      uiHint: 'nutrition',
+    }
+  },
+}
+
+// 12. ── start_cooking_mode ────────────────────────────────
+const startCookingMode: SkillDefinition = {
+  name: 'start_cooking_mode',
+  description: 'Abre el modo cocina paso a paso para una receta. El cliente navega a /recipes/:id/cook al recibir esta respuesta.',
+  parameters: {
+    type: 'object',
+    properties: {
+      recipeName: { type: 'string', description: 'Nombre de la receta' },
+      servings: { type: 'number', description: 'Comensales para el cooking mode (opcional)' },
+    },
+    required: ['recipeName'],
+  },
+  async handler(params: { recipeName: string; servings?: number }, ctx) {
+    const { db } = ctx
+    const [recipe] = await db
+      .select({ id: recipes.id, name: recipes.name })
+      .from(recipes)
+      .where(or(
+        ilike(recipes.name, `%${params.recipeName}%`),
+        ...params.recipeName.split(/\s+/).filter(w => w.length >= 3).map(w => ilike(recipes.name, `%${w}%`)),
+      ))
+      .limit(1)
+    if (!recipe) {
+      return { data: null, summary: `No he encontrado "${params.recipeName}".`, uiHint: 'text' }
+    }
+    return {
+      data: { recipeId: (recipe as any).id, recipeName: (recipe as any).name, servings: params.servings ?? null },
+      summary: `Empezando a cocinar ${(recipe as any).name}.`,
+      uiHint: 'cooking_navigate',
+    }
+  },
+}
+
+// 13. ── set_timer ─────────────────────────────────────────
+const setTimer: SkillDefinition = {
+  name: 'set_timer',
+  description: 'Pone un temporizador de cocina. Solo tiene efecto visible si el usuario esta en el modo cocina; en otros contextos confirma verbalmente.',
+  parameters: {
+    type: 'object',
+    properties: {
+      minutes: { type: 'number', description: 'Minutos del temporizador (0.5 - 180)' },
+      label: { type: 'string', description: 'Etiqueta opcional (ej: "arroz")' },
+    },
+    required: ['minutes'],
+  },
+  async handler(params: { minutes: number; label?: string }) {
+    const m = Math.max(0.5, Math.min(180, Number(params.minutes) || 0))
+    return {
+      data: { minutes: m, label: params.label ?? null },
+      summary: `Temporizador de ${m} min${params.label ? ` para ${params.label}` : ''} en marcha.`,
+      uiHint: 'cooking_timer',
+    }
+  },
+}
+
+// 14. ── cooking_step ──────────────────────────────────────
+const cookingStep: SkillDefinition = {
+  name: 'cooking_step',
+  description: 'Avanza, retrocede o repite el paso actual del modo cocina. Solo tiene efecto visible si el usuario esta en el modo cocina.',
+  parameters: {
+    type: 'object',
+    properties: {
+      direction: { type: 'string', enum: ['next', 'previous', 'repeat'], description: 'Direccion del paso' },
+    },
+    required: ['direction'],
+  },
+  async handler(params: { direction: 'next' | 'previous' | 'repeat' }) {
+    const d = params.direction === 'previous' ? 'previous' : params.direction === 'repeat' ? 'repeat' : 'next'
+    const verb = d === 'next' ? 'Siguiente paso' : d === 'previous' ? 'Paso anterior' : 'Repitiendo el paso actual'
+    return {
+      data: { direction: d },
+      summary: `${verb}.`,
+      uiHint: 'cooking_step',
+    }
+  },
+}
+
 // ─── Exports ────────────────────────────────────────────────
 
 export const skills: SkillDefinition[] = [
@@ -833,6 +1456,21 @@ export const skills: SkillDefinition[] = [
   createRecipe,
   recipeVariation,
   nutritionAdvice,
+  // Expansion 1–13:
+  getPantryStock,
+  markInStock,
+  checkShoppingItem,
+  getMyRecipes,
+  getMenuHistory,
+  scaleRecipeSkill,
+  evaluateFoodHealth,
+  suggestSubstitution,
+  getVarietyScore,
+  getEatingWindow,
+  getInflammationIndex,
+  startCookingMode,
+  setTimer,
+  cookingStep,
 ]
 
 /**

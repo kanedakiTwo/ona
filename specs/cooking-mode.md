@@ -54,10 +54,15 @@ Hands-free, fullscreen step-by-step cooking experience driven from a recipe.
 - Cooking mode does not require auth; any logged-in user with access to a recipe can use it
 - Cooking mode must remain fully usable in landscape and with one hand (large hit targets, primary controls within thumb reach)
 
+## Voice control integration
+
+The assistant can drive the cooking shell hands-free via three skills: `start_cooking_mode` (navigates to `/recipes/:id/cook`), `set_timer` (starts a per-step timer through the existing `useStepTimers` API), and `cooking_step` (advances or repeats the current step). The bridge is a tiny pub/sub bus at [`apps/web/src/lib/cookingCommands.ts`](../apps/web/src/lib/cookingCommands.ts) that `CookingShell` subscribes to on mount; if no shell is active when a command is emitted, it silently drops (the assistant has already spoken the confirmation). Both voice mode (via `useRealtimeSession`) and the text chat (`AdvisorChat`) dispatch on the bus when the assistant returns a `uiHint: 'cooking_*'`.
+
 ## Related specs
 
 - [Recipes](./recipes.md) — the data model that drives cooking mode (`step.durationMin`, `ingredientRefs`, scaling)
-- [Voice Mode](./voice-mode.md) — eventually integrates with cooking mode for "Hola Ona, siguiente paso" hands-free control
+- [Voice Mode](./voice-mode.md) — wakes the orb that issues cooking commands above
+- [Advisor](./advisor.md) — the skills (`start_cooking_mode`, `set_timer`, `cooking_step`) and the bus the shell subscribes to
 - [PWA](./pwa.md) — Wake Lock and Vibration are scoped to PWA-class features
 - [Design System](./design-system.md) — typography and chip styles
 

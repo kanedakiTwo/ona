@@ -1,6 +1,7 @@
 'use client'
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 import { useWakeWord } from '@/hooks/useWakeWord'
 import { useRealtimeSession, type RealtimeTurn } from '@/hooks/useRealtimeSession'
@@ -16,6 +17,10 @@ const MAX_CONTEXT_TURNS = 12
 const COOKING_SKILLS = new Set([
   'get_recipe_details',
   'recipe_variation',
+  'start_cooking_mode',
+  'set_timer',
+  'cooking_step',
+  'scale_recipe',
 ])
 const TOPIC_RESET_PHRASES = ['olvida eso', 'hablemos de otra cosa', 'cambiemos de tema']
 
@@ -39,6 +44,7 @@ export function useVoiceMode() {
 
 export default function VoiceProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
+  const router = useRouter()
   const userId = user?.id ?? ''
 
   const [enabled, setEnabledState] = useState(false)
@@ -62,6 +68,10 @@ export default function VoiceProvider({ children }: { children: ReactNode }) {
   const session = useRealtimeSession({
     userId,
     initialContext: initialContextForSession.current,
+    onCookingNavigate: ({ recipeId, servings }) => {
+      const qs = servings ? `?servings=${servings}` : ''
+      router.push(`/recipes/${recipeId}/cook${qs}`)
+    },
   })
 
   const persistAndClose = useCallback(() => {

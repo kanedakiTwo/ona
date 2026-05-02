@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, apiFetch } from '@/lib/api'
+import { emitCookingCommand } from '@/lib/cookingCommands'
 
 export type RealtimeStatus = 'idle' | 'connecting' | 'connected' | 'error' | 'closed'
 
@@ -13,6 +14,7 @@ export interface RealtimeTurn {
 interface UseRealtimeSessionOptions {
   userId: string
   initialContext?: RealtimeTurn[]
+  onCookingNavigate?: (info: { recipeId: string; recipeName: string; servings: number | null }) => void
 }
 
 interface UseRealtimeSessionReturn {
@@ -37,7 +39,9 @@ interface SessionResponse {
 const REALTIME_URL = 'https://api.openai.com/v1/realtime'
 
 export function useRealtimeSession(options: UseRealtimeSessionOptions): UseRealtimeSessionReturn {
-  const { userId, initialContext } = options
+  const { userId, initialContext, onCookingNavigate } = options
+  const onCookingNavigateRef = useRef(onCookingNavigate)
+  onCookingNavigateRef.current = onCookingNavigate
 
   const [status, setStatus] = useState<RealtimeStatus>('idle')
   const [error, setError] = useState<string | null>(null)
@@ -105,11 +109,25 @@ export function useRealtimeSession(options: UseRealtimeSessionOptions): UseRealt
 
         let outputText: string
         try {
-          const result = await api.post<{ summary?: string; data?: any }>(
+          const result = await api.post<{ summary?: string; data?: any; uiHint?: string }>(
             `/realtime/${userId}/tool`,
             { name, params: parsed },
           )
           outputText = result?.summary ?? JSON.stringify(result?.data ?? {})
+          // Dispatch UI side-effects when the skill emits a cooking-* hint.
+          const hint = result?.uiHint
+          const data = result?.data
+          if (hint === 'cooking_navigate' && data?.recipeId) {
+            onCookingNavigateRef.current?.({
+              recipeId: String(data.recipeId),
+              recipeName: String(data.recipeName ?? ''),
+              servings: typeof data.servings === 'number' ? data.servings : null,
+            })
+          } else if (hint === 'cooking_timer' && typeof data?.minutes === 'number') {
+            emitCookingCommand({ type: 'timer.start', minutes: data.minutes, label: data.label ?? null })
+          } else if (hint === 'cooking_step' && typeof data?.direction === 'string') {
+            emitCookingCommand({ type: 'step.advance', direction: data.direction })
+          }
         } catch (err: any) {
           outputText = `Error ejecutando ${name}: ${err?.message ?? 'desconocido'}`
         }

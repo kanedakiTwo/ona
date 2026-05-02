@@ -1,11 +1,13 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { Send, Mic, MicOff, Volume2, VolumeX } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useVoice } from '@/hooks/useVoice'
 import { consumeVoiceTurns, subscribeVoiceTurns } from '@/lib/voiceMessages'
 import { useVoiceMode } from '@/components/voice/VoiceProvider'
+import { emitCookingCommand } from '@/lib/cookingCommands'
 
 interface Message {
   id: string
@@ -28,6 +30,7 @@ const EXAMPLE_PROMPTS = [
 ]
 
 export default function AdvisorChat({ userId }: AdvisorChatProps) {
+  const router = useRouter()
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -111,6 +114,18 @@ export default function AdvisorChat({ userId }: AdvisorChatProps) {
         uiHint: response.uiHint,
         data: response.data,
       }])
+
+      // Cooking-mode dispatchers (same logic as voice mode tool handler)
+      const hint = response.uiHint
+      const data = response.data
+      if (hint === 'cooking_navigate' && data?.recipeId) {
+        const qs = typeof data.servings === 'number' ? `?servings=${data.servings}` : ''
+        router.push(`/recipes/${data.recipeId}/cook${qs}`)
+      } else if (hint === 'cooking_timer' && typeof data?.minutes === 'number') {
+        emitCookingCommand({ type: 'timer.start', minutes: data.minutes, label: data.label ?? null })
+      } else if (hint === 'cooking_step' && typeof data?.direction === 'string') {
+        emitCookingCommand({ type: 'step.advance', direction: data.direction })
+      }
 
       // Auto-speak the response if enabled
       if (autoSpeak && voice.ttsSupported) {

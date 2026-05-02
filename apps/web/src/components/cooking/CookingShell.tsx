@@ -15,6 +15,7 @@ import { ServingsScaler } from "@/components/recipes/ServingsScaler"
 import { useStepTimers } from "@/hooks/useStepTimers"
 import { useWakeLock } from "@/hooks/useWakeLock"
 import { haptic } from "@/lib/pwa/haptics"
+import { subscribeCookingCommands } from "@/lib/cookingCommands"
 import { StepCard, buildIngredientRefCounts } from "./StepCard"
 import { ChecklistPanel } from "./ChecklistPanel"
 
@@ -126,6 +127,21 @@ export function CookingShell({
     haptic.light()
     setStepIdx(safeIdx + 1)
   }, [safeIdx, totalSteps])
+
+  // Subscribe to assistant-driven cooking commands (voice + text chat).
+  useEffect(() => {
+    const unsubscribe = subscribeCookingCommands((cmd) => {
+      if (cmd.type === 'step.advance') {
+        if (cmd.direction === 'next') goNext()
+        else if (cmd.direction === 'previous') goPrev()
+        // 'repeat' is a no-op — the user just hears the same step again
+      } else if (cmd.type === 'timer.start') {
+        const idx = typeof cmd.stepIndex === 'number' ? cmd.stepIndex : safeIdx
+        timers.start(idx, cmd.minutes)
+      }
+    })
+    return unsubscribe
+  }, [goNext, goPrev, safeIdx, timers])
 
   // Keyboard arrows
   useEffect(() => {

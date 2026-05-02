@@ -36,7 +36,18 @@ export default defineConfig({
   projects: [
     {
       name: 'mobile-chromium',
-      use: { ...devices['Pixel 7'] },
+      use: {
+        ...devices['Pixel 7'],
+        // Provide a fake audio input device + auto-grant getUserMedia so the
+        // voice-mode toggle's permission probe doesn't reject in CI's
+        // headless Chromium (no real microphone).
+        launchOptions: {
+          args: [
+            '--use-fake-ui-for-media-stream',
+            '--use-fake-device-for-media-stream',
+          ],
+        },
+      },
     },
   ],
 })

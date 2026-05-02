@@ -23,21 +23,27 @@ test.beforeEach(async ({ page, context }) => {
 })
 
 test('toggle voice on → FAB visible → tap opens overlay', async ({ page }) => {
+  // The toggle's first click in /profile triggers `getUserMedia({audio:true})`
+  // and shows a native `alert()` if permission is denied. Playwright auto-
+  // dismisses dialogs by default but accepting them up front makes the
+  // failure path observable in the trace.
+  page.on('dialog', (d) => { d.accept().catch(() => {}) })
+
   await page.goto('/profile')
 
   // The toggle lives under "Capítulo 04 — Modo voz" / "Modo manos libres".
-  // Find the toggle button by its accessible label / aria-pressed attribute.
-  const toggle = page.locator('button[aria-pressed]').filter({ hasText: /modo voz|manos libres/i }).first()
-  // If the chapter rendered as expected, the toggle is there.
-  if (await toggle.isVisible({ timeout: 5_000 }).catch(() => false)) {
-    await toggle.click()
-  } else {
-    // Fall back to clicking any "Activar" button we can see on /profile.
-    const activate = page.getByRole('button', { name: /activar/i }).first()
-    if (await activate.isVisible({ timeout: 2_000 }).catch(() => false)) {
-      await activate.click()
-    }
-  }
+  // It's a `<button aria-pressed>` whose text contains the chapter copy.
+  const toggle = page
+    .locator('button[aria-pressed]')
+    .filter({ hasText: /modo voz|manos libres/i })
+    .first()
+  await expect(toggle).toBeVisible({ timeout: 10_000 })
+  await toggle.click()
+
+  // After click, `setEnabled(true)` writes to localStorage and React
+  // re-renders. Wait for `aria-pressed=true` before asserting the FAB so
+  // we don't race the re-render.
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true', { timeout: 5_000 })
 
   // FAB should now be top-right on the same page (and on every authed page).
   const fab = page.getByRole('button', { name: /modo voz|abrir.*voz|hola ona/i })
@@ -51,7 +57,6 @@ test('toggle voice on → FAB visible → tap opens overlay', async ({ page }) =
   // session will then fail to connect (no OpenAI key in CI) and the
   // overlay auto-closes — we just need to see the overlay flicker on.
   await fab.click()
-  // Look for the overlay's "Te escucho" caption or any of its known copy.
   const overlay = page.getByText(/te escucho|conectando|sigo aqu/i)
   await expect(overlay.first()).toBeVisible({ timeout: 10_000 })
 })

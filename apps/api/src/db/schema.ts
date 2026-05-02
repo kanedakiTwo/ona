@@ -118,6 +118,11 @@ export const recipes = pgTable('recipes', {
   /** Hidden from public UI */
   internalTags: text('internal_tags').array().default([]),
 
+  /** Origin URL when imported from an article / YouTube video (null otherwise). */
+  sourceUrl: text('source_url'),
+  /** Provenance enum: 'manual' | 'image' | 'article' | 'youtube'. */
+  sourceType: text('source_type'),
+
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 })

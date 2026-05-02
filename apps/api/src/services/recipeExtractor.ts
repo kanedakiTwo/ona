@@ -31,6 +31,29 @@ export interface VisionProvider {
   extractRecipe(imageBase64: string, mimeType: string): Promise<RawExtractedRecipe>
 }
 
+/**
+ * Hint passed to the text-based extractor so the model can prefer cantidades
+ * stated in the spoken transcript over those in the description, etc.
+ */
+export type TextExtractionHint = 'youtube' | 'article'
+
+/**
+ * Result of asking the LLM to extract a recipe from a text payload (article
+ * body / YouTube transcript). When `isRecipe` is false, the input did not
+ * describe a cookable recipe and `reason` carries a short Spanish explanation
+ * for the user.
+ */
+export type TextExtractionResult =
+  | { isRecipe: true; raw: RawExtractedRecipe }
+  | { isRecipe: false; reason: string }
+
+export interface TextExtractionProvider {
+  extractRecipeFromText(
+    text: string,
+    hint: TextExtractionHint,
+  ): Promise<TextExtractionResult>
+}
+
 const VALID_UNITS = new Set<string>(UNITS as readonly string[])
 const VALID_DIFFICULTIES = new Set<string>(['easy', 'medium', 'hard'])
 
@@ -117,7 +140,13 @@ async function autoCreateMissingIngredient(
   }
 }
 
-async function matchIngredients(
+/**
+ * Resolve raw extracted ingredient names to the catalog. Tries exact match,
+ * containment, and first-word match (≥3 chars). Falls back to USDA-backed
+ * auto-create for the still-unmatched. Used by both the photo extractor and
+ * the URL extractor (see `recipeUrlExtractor.ts`).
+ */
+export async function matchIngredients(
   rawIngredients: { name: string; quantity: number; unit: string }[],
 ): Promise<{ matched: ExtractedIngredient[]; warnings: string[] }> {
   const allIngredients = await db

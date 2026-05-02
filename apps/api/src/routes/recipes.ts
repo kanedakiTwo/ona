@@ -37,6 +37,7 @@ import {
   type RecipeIngredient,
   type RecipeStep,
   type Season,
+  type SourceType,
   type Unit,
 } from '@ona/shared'
 import { extractRecipeFromImage } from '../services/recipeExtractor.js'
@@ -46,6 +47,12 @@ import {
   type RecipeWriteInput,
 } from '../services/recipePersistence.js'
 import { scaleRecipe } from '../services/recipeScaler.js'
+import {
+  extractRecipeFromUrl,
+  NotARecipeError,
+} from '../services/recipeUrlExtractor.js'
+import { NoExtractableContentError } from '../services/sources/youtube.js'
+import { z } from 'zod'
 
 const router = Router()
 
@@ -114,6 +121,8 @@ interface RecipeRow {
   nutritionPerServing: Recipe['nutritionPerServing']
   tags: string[] | null
   internalTags: string[] | null
+  sourceUrl: string | null
+  sourceType: string | null
   createdAt: Date | null
   updatedAt: Date | null
 }
@@ -246,6 +255,8 @@ function toDetailRecipe(
   if (row.cookTime != null) detail.cookTime = row.cookTime
   if (row.activeTime != null) detail.activeTime = row.activeTime
   if (row.totalTime != null) detail.totalTime = row.totalTime
+  if (row.sourceUrl != null) detail.sourceUrl = row.sourceUrl
+  if (row.sourceType != null) detail.sourceType = row.sourceType as SourceType
   // notes/tips/substitutions/storage are intentionally NOT exposed on the
   // public detail payload — see spec "Tag Visibility" / "Display Constraints".
 
@@ -420,6 +431,7 @@ router.post(
         seasons: extracted.seasons,
         tags: extracted.tags ?? [],
         internalTags: ['auto-extracted'],
+        sourceType: 'image',
         ingredients: writeIngredients,
         steps: writeSteps,
       }
@@ -464,6 +476,114 @@ router.post(
       }
 
       res.status(500).json({ error: 'Error al analizar la imagen' })
+    }
+  },
+)
+
+// POST /recipes/extract-from-url — extract from a YouTube video or article URL (auth required).
+const extractFromUrlSchema = z.object({ url: z.string().url() })
+
+router.post(
+  '/recipes/extract-from-url',
+  authMiddleware,
+  async (req: AuthRequest, res) => {
+    try {
+      const parsed = extractFromUrlSchema.safeParse(req.body)
+      if (!parsed.success) {
+        res.status(400).json({ error: 'URL inválida' })
+        return
+      }
+      const { url } = parsed.data
+
+      const provider = new AnthropicProvider()
+      const extracted = await extractRecipeFromUrl(url, { provider })
+
+      const writeIngredients = extracted.ingredients
+        .filter((i) => i.matched && i.ingredientId)
+        .map((i, idx) => ({
+          ingredientId: i.ingredientId as string,
+          quantity: i.quantity,
+          unit: i.unit,
+          displayOrder: idx,
+        }))
+
+      const writeSteps = extracted.steps.map((text, index) => ({ index, text }))
+
+      const writeInput: RecipeWriteInput = {
+        name: extracted.name,
+        servings: extracted.servings ?? 2,
+        prepTime: extracted.prepTime ?? null,
+        cookTime: extracted.cookTime ?? null,
+        difficulty: (extracted.difficulty ?? 'medium') as Difficulty,
+        meals: extracted.meals,
+        seasons: extracted.seasons,
+        tags: extracted.tags ?? [],
+        internalTags: ['auto-extracted', 'from-url'],
+        sourceUrl: extracted.sourceUrl ?? url,
+        sourceType: extracted.sourceType ?? null,
+        ingredients: writeIngredients,
+        steps: writeSteps,
+      }
+
+      const result = await persistRecipe(writeInput, {
+        authorId: req.userId!,
+        // URL imports go through soft lint: lint findings come back as
+        // warnings instead of blocking the save. The user reviews + edits
+        // on the recipe detail page.
+        softLint: true,
+        force: true,
+      })
+      if (!result.ok) {
+        res.status(422).json({
+          errors: result.errors,
+          warnings: result.warnings,
+          extracted,
+        })
+        return
+      }
+
+      const newRow = await fetchRecipeById(result.recipeId)
+      if (!newRow) {
+        res.status(500).json({ error: 'Persisted recipe not retrievable' })
+        return
+      }
+      const [ings, steps] = await Promise.all([
+        fetchIngredientsForRecipes([result.recipeId]),
+        fetchStepsForRecipes([result.recipeId]),
+      ])
+      res.status(201).json({
+        recipe: toDetailRecipe(newRow, ings, steps),
+        warnings: [...result.warnings.map((w) => w.message), ...extracted.warnings],
+      })
+    } catch (err: any) {
+      console.error('Extract recipe from URL error:', err)
+
+      if (err instanceof NotARecipeError) {
+        res.status(422).json({
+          error: 'Esta URL no parece contener una receta cocinable.',
+          reason: err.reason,
+          isRecipe: false,
+        })
+        return
+      }
+      if (err instanceof NoExtractableContentError) {
+        res.status(422).json({ error: err.message })
+        return
+      }
+      if (err.status === 429) {
+        res.status(429).json({ error: 'Demasiadas peticiones. Intenta en un momento.' })
+        return
+      }
+      if (err.message?.includes('ANTHROPIC_API_KEY')) {
+        res.status(503).json({ error: 'Servicio de IA no disponible' })
+        return
+      }
+      if (err.message?.includes('descargar la página')) {
+        res.status(502).json({ error: err.message })
+        return
+      }
+
+      res.status(500).json({ error: 'Error al procesar la URL' })
     }
   },
 )
@@ -642,6 +762,8 @@ router.get('/user/:id/recipes', authMiddleware, async (req: AuthRequest, res) =>
         nutritionPerServing: recipes.nutritionPerServing,
         tags: recipes.tags,
         internalTags: recipes.internalTags,
+        sourceUrl: recipes.sourceUrl,
+        sourceType: recipes.sourceType,
         createdAt: recipes.createdAt,
         updatedAt: recipes.updatedAt,
       })

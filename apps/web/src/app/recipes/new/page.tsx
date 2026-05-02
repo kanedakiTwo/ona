@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils"
 import { Plus, Trash2, ChevronLeft } from "lucide-react"
 import Link from "next/link"
 import { PhotoRecipeUpload } from "@/components/recipes/PhotoRecipeUpload"
+import { UrlRecipeImport } from "@/components/recipes/UrlRecipeImport"
 import { IngredientAutocomplete } from "@/components/recipes/IngredientAutocomplete"
 import { createRecipeSchema } from "@ona/shared"
 import type { Meal, Season, ExtractedRecipe, Ingredient } from "@ona/shared"
@@ -294,6 +295,19 @@ export default function NewRecipePage() {
             necesario antes de guardar.
           </div>
         )}
+
+        {/* URL extraction (article or YouTube) */}
+        <div className="mt-4">
+          <UrlRecipeImport
+            onImported={(recipeId) => router.push(`/recipes/${recipeId}`)}
+          />
+        </div>
+
+        <div className="mt-6 flex items-center gap-3 text-[11px] uppercase tracking-[0.12em] text-[#7A7066]">
+          <span className="h-px flex-1 bg-[#DDD6C5]" />
+          o introduce los datos manualmente
+          <span className="h-px flex-1 bg-[#DDD6C5]" />
+        </div>
 
         <form onSubmit={handleSubmit} className="mt-10 space-y-10" noValidate>
           {/* Name */}

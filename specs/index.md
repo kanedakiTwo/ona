@@ -14,7 +14,7 @@ Registration, login, logout, JWT tokens, session management, onboarding flow, pa
 
 ## [Recipes](./recipes.md)
 
-Recipe catalog, recipe detail, ingredients, sectioned ingredient groups ("Para la masa"), rich steps (text + duration + temperature + technique + ingredient refs), photos (Unsplash + Notion), system vs user recipes, public vs internal tags, favorites, search, meal/season/maxTime filters, servings, diner scaler with culinary rounding, prepTime/cookTime/activeTime/totalTime, difficulty, equipment, allergens, notes/tips/substitutions/storage, yield, nutritionPerServing, AI extraction from photo, hero image, RecipeCard, ServingsScaler.
+Recipe catalog, recipe detail, ingredients, sectioned ingredient groups ("Para la masa"), rich steps (text + duration + temperature + technique + ingredient refs), photos (Unsplash + Notion), system vs user recipes, public vs internal tags, favorites, search, meal/season/maxTime filters, servings, diner scaler with culinary rounding, prepTime/cookTime/activeTime/totalTime, difficulty, equipment, allergens, notes/tips/substitutions/storage, yield, nutritionPerServing, AI extraction from photo, AI extraction from URL (YouTube video or web article via JSON-LD + Readability + Claude), sourceUrl/sourceType, hero image, RecipeCard, ServingsScaler.
 
 **Source**: `apps/api/src/routes/recipes.ts`, `apps/api/src/services/recipeScaler.ts`, `apps/api/src/seed/recipes.ts`, `apps/web/src/app/recipes/`, `apps/web/src/components/recipes/`, `apps/web/src/hooks/useRecipes.ts`, `apps/web/public/images/recipes/`
 

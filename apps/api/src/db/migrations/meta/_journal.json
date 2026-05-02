@@ -22,6 +22,13 @@
       "when": 1777666475884,
       "tag": "0002_white_wiccan",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1777712660410,
+      "tag": "0003_smiling_bromley",
+      "breakpoints": true
     }
   ]
 }

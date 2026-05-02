@@ -13,6 +13,7 @@ Recipe catalog, recipe detail, and the data needed to actually cook a recipe.
 - Users can create their own recipes (form at `/recipes/new`)
 - Authors can edit and delete their own recipes (not system recipes)
 - Users can extract a recipe from a photo (image upload → AI extraction)
+- Users can import a recipe from a URL — either a YouTube video or a web article — via `/recipes/new`. The server fetches the page, tries `schema.org/Recipe` JSON-LD first, falls back to Mozilla Readability + Claude for articles, and uses video description + caption transcript for YouTube. The LLM also classifies whether the content is actually a recipe; non-recipes return a clear Spanish error. The persisted recipe carries `sourceUrl` and `sourceType` so the origin can be displayed and re-extracted later
 - Users can auto-create a missing ingredient from the `/recipes/new` form: if an ingredient name doesn't exist in the catalog, a "Crear nuevo ingrediente" option in the picker opens a modal showing USDA FoodData Central candidates (Foundation/SR Legacy first, Branded filtered out) plus per-100 g nutrition; the user picks one or "Crear sin nutrición". The new row is persisted with full nutrition + inferred allergens and slotted into the recipe form. Same plumbing is reused by the photo extractor and `apply:recipes --auto-create-missing` to avoid skipping recipes whose ingredients are merely absent from the catalog.
 - Users can share a recipe via the native share sheet (Web Share API) from a Share2 button in the detail hero — see [PWA](./pwa.md)
 - Users can start "Cooking mode" from the detail view ("Empezar a cocinar"); while active, a Wake Lock keeps the screen awake and a "Pantalla activa" badge appears (released on tap or navigation) — see [PWA](./pwa.md) and [Cooking Mode](./cooking-mode.md)
@@ -46,7 +47,9 @@ Each recipe has:
 - `notes`, `tips`, `substitutions`, `storage` — long-form text, optional
 - `nutritionPerServing` — cached object: `{ kcal, proteinG, carbsG, fatG, fiberG, saltG }`. Computed when the recipe is saved
 - `tags` — public-facing string array, normalized (no internal labels, no `meal`/`difficulty` duplicates)
-- `internalTags` — string array hidden from public UI (e.g. `compartida`, `auto-extracted`)
+- `internalTags` — string array hidden from public UI (e.g. `compartida`, `auto-extracted`, `from-url`)
+- `sourceUrl` — origin URL when imported from an article / YouTube video (null otherwise)
+- `sourceType` — provenance enum: `manual | image | article | youtube` (null for legacy seeded rows)
 - `authorId` — null for system, user id for user-created
 - `ingredients` — list of recipe-ingredient rows (see below)
 - `steps` — list of step rows (see below)
@@ -107,6 +110,7 @@ When the user changes the diner count from `recipe.servings` to `target`:
 - `GET /user/:id/recipes` (auth) — user's own + favorited recipes
 - `POST /user/:id/recipes/:recipeId/favorite` (auth) — toggle favorite
 - `POST /recipes/extract-from-image` (auth) — AI recipe extraction; output goes through the lint validator before being persisted
+- `POST /recipes/extract-from-url` (auth) — body `{ url }`. Detects YouTube vs article by hostname. Articles try `schema.org/Recipe` JSON-LD, then fall back to Mozilla Readability + Claude. YouTube combines title + description + caption transcript and feeds it to Claude. Same lint-and-persist pipeline as `/extract-from-image`. Returns 422 with `{ isRecipe: false, reason }` when the LLM decides the URL doesn't describe a cookable recipe, and 422 with a Spanish message when a YouTube video has neither captions nor a usable description
 
 ## Constraints
 
@@ -115,6 +119,7 @@ When the user changes the diner count from `recipe.servings` to `target`:
 - `nutritionPerServing` and `allergens` are recomputed automatically on every recipe save — never edited by hand
 - `totalTime` is read-only on the client; clients can edit `prepTime`/`cookTime`/`activeTime`
 - Schema migration is destructive (wipe + reseed acceptable; no production data preservation requirement)
+- v1 of the URL importer cannot process YouTube videos that lack both captions and a recipe-bearing description (no Whisper / yt-dlp / Gemini fallback yet)
 
 ## Related specs
 
@@ -130,6 +135,11 @@ When the user changes the diner count from `recipe.servings` to `target`:
 
 - [apps/api/src/routes/recipes.ts](../apps/api/src/routes/recipes.ts)
 - [apps/api/src/services/recipeExtractor.ts](../apps/api/src/services/recipeExtractor.ts)
+- [apps/api/src/services/recipeUrlExtractor.ts](../apps/api/src/services/recipeUrlExtractor.ts) — URL extraction orchestrator (article + YouTube)
+- [apps/api/src/services/sources/article.ts](../apps/api/src/services/sources/article.ts) — JSON-LD parser + Readability fallback
+- [apps/api/src/services/sources/youtube.ts](../apps/api/src/services/sources/youtube.ts) — video id parser, transcript fetch, prompt composer
+- [apps/api/src/services/sources/sourceType.ts](../apps/api/src/services/sources/sourceType.ts) — URL → 'youtube' | 'article'
+- [apps/web/src/components/recipes/UrlRecipeImport.tsx](../apps/web/src/components/recipes/UrlRecipeImport.tsx) — URL input UI in `/recipes/new`
 - [apps/api/src/services/recipeLint.ts](../apps/api/src/services/recipeLint.ts) — lint validator (new)
 - [apps/api/src/services/recipeScaler.ts](../apps/api/src/services/recipeScaler.ts) — quantity scaling + culinary rounding (new)
 - [apps/api/src/services/ingredientAutoCreate.ts](../apps/api/src/services/ingredientAutoCreate.ts) — USDA-backed auto-create + Levenshtein dedupe (new)

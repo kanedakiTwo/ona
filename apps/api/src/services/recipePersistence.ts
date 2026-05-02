@@ -69,6 +69,7 @@ import type {
   Meal,
   NutritionPerServing,
   Season,
+  SourceType,
   Unit,
 } from '@ona/shared'
 
@@ -122,6 +123,10 @@ export interface RecipeWriteInput {
   storage?: string | null
   tags?: string[]
   internalTags?: string[]
+  /** Origin URL (article / YouTube) — null when not imported from a URL. */
+  sourceUrl?: string | null
+  /** Provenance enum (manual / image / article / youtube). */
+  sourceType?: SourceType | null
   ingredients: RecipeIngredientWriteInput[]
   steps: RecipeStepWriteInput[]
 }
@@ -142,6 +147,15 @@ export interface PersistOptions {
    * apply script passes true.
    */
   preserveExistingImage?: boolean
+  /**
+   * When true, lint errors are downgraded to warnings and the recipe is
+   * persisted anyway. Used by the URL importer where step→ingredient linking
+   * is unknowable (JSON-LD doesn't carry it; free-form LLM output may use
+   * synonyms the fuzzy matcher misses) — the user reviews the saved recipe
+   * and edits to clean it up. Manual saves and the seed pipeline keep
+   * `softLint = false` so they enforce the full ruleset.
+   */
+  softLint?: boolean
 }
 
 export interface PersistOk {
@@ -404,8 +418,16 @@ export async function persistRecipe(
     force: opts.force,
   })
   if (!lintResult.ok) {
-    return { ok: false, errors: lintResult.errors, warnings: lintResult.warnings }
+    if (!opts.softLint) {
+      return { ok: false, errors: lintResult.errors, warnings: lintResult.warnings }
+    }
+    // softLint: errors become warnings, recipe is persisted for user review.
   }
+  // Whether soft or strict, surface every finding (errors+warnings) as warnings
+  // on the response; soft mode just doesn't block.
+  const allWarnings: LintIssue[] = opts.softLint && !lintResult.ok
+    ? [...lintResult.errors, ...lintResult.warnings]
+    : lintResult.warnings
 
   // Compute nutrition + allergens + totalTime.
   const aggregate = aggregateNutrition({
@@ -447,6 +469,8 @@ export async function persistRecipe(
       nutritionPerServing: aggregate.perServing,
       tags: input.tags ?? [],
       internalTags: input.internalTags ?? [],
+      sourceUrl: input.sourceUrl ?? null,
+      sourceType: input.sourceType ?? null,
       updatedAt: new Date(),
     }
 
@@ -514,7 +538,7 @@ export async function persistRecipe(
     ok: true,
     recipeId,
     ingredientRowIds,
-    warnings: lintResult.warnings,
+    warnings: allWarnings,
     nutritionPerServing: aggregate.perServing,
     allergens,
     totalTime,

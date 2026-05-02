@@ -3,10 +3,12 @@ import {
   DIFFICULTIES,
   MEALS,
   SEASONS,
+  SOURCE_TYPES,
   UNITS,
   type Difficulty,
   type Meal,
   type Season,
+  type SourceType,
   type Unit,
 } from '../constants/enums.js'
 
@@ -34,7 +36,13 @@ const recipeIngredientWriteSchema = z.object({
    * Omitted = ungrouped.
    */
   section: z.string().optional(),
-  quantity: z.number().positive(),
+  /**
+   * Quantity must be > 0 for measurable units. For symbolic units
+   * (`pizca`, `al_gusto`) the quantity is ignored downstream — 0 is
+   * accepted so the LLM regen pipeline doesn't get blocked when it emits
+   * a zero "to taste" entry.
+   */
+  quantity: z.number().min(0),
   unit: z.enum(UNITS),
   optional: z.boolean().default(false),
   note: z.string().optional(),
@@ -108,6 +116,11 @@ export interface Recipe {
   /** Hidden from public UI (e.g. "compartida", "auto-extracted") */
   internalTags: string[]
 
+  /** Origin URL when the recipe was imported from an article or YouTube video (null otherwise). */
+  sourceUrl?: string | null
+  /** Provenance hint: how this recipe entered the catalog. */
+  sourceType?: SourceType | null
+
   ingredients: RecipeIngredient[]
   steps: RecipeStep[]
 
@@ -145,6 +158,9 @@ export const createRecipeSchema = z.object({
   tags: z.array(z.string()).default([]),
   internalTags: z.array(z.string()).default([]),
 
+  sourceUrl: z.string().url().nullable().optional(),
+  sourceType: z.enum(SOURCE_TYPES).nullable().optional(),
+
   ingredients: z.array(recipeIngredientWriteSchema).min(1),
   steps: z.array(recipeStepSchema).default([]),
 })
@@ -178,4 +194,7 @@ export interface ExtractedRecipe {
   ingredients: ExtractedIngredient[]
   unmatchedCount: number
   warnings: string[]
+  /** Set by the URL extractor; null/undefined for image and manual sources. */
+  sourceUrl?: string | null
+  sourceType?: SourceType | null
 }

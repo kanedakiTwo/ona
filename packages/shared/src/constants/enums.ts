@@ -43,6 +43,12 @@ export type Unit = (typeof UNITS)[number]
 export const DIFFICULTIES = ['easy', 'medium', 'hard'] as const
 export type Difficulty = (typeof DIFFICULTIES)[number]
 
+// Recipe source provenance — how this recipe entered the catalog.
+// `manual` = typed in via /recipes/new; `image` = photo extractor;
+// `article` / `youtube` = URL extractor.
+export const SOURCE_TYPES = ['manual', 'image', 'article', 'youtube'] as const
+export type SourceType = (typeof SOURCE_TYPES)[number]
+
 // Shopping list / ingredient catalog aisle grouping
 export const AISLES = [
   'produce',

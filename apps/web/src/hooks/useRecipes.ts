@@ -124,3 +124,28 @@ export function useExtractRecipeFromImage() {
     },
   })
 }
+
+/**
+ * Result returned by `POST /recipes/extract-from-url`. The endpoint persists
+ * the recipe directly (mirroring extract-from-image), so we get the saved
+ * detail back together with the lint/match warnings.
+ */
+export interface ExtractRecipeFromUrlResponse {
+  recipe: { id: string; name: string }
+  warnings: string[]
+}
+
+export function useExtractRecipeFromUrl() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (url: string) => {
+      return api.post<ExtractRecipeFromUrlResponse>(
+        "/recipes/extract-from-url",
+        { url }
+      )
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["recipes"] })
+    },
+  })
+}

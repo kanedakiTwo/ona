@@ -33,21 +33,42 @@ export async function registerFreshUser(page: Page): Promise<{ username: string;
   return { username, email, password }
 }
 
-/** Skip onboarding by submitting the minimum required answers. */
+/**
+ * Skip onboarding by hitting the API directly with a sane default body. The
+ * onboarding page is a 5-step form with option-button-driven steps that
+ * each auto-advance on click — automating it through the UI is brittle and
+ * slow. The dedicated `registration-onboarding.spec.ts` exercises the UI
+ * surface (it just asserts we land somewhere valid); every other spec uses
+ * this helper to skip ahead to `/menu` reliably.
+ */
 export async function completeOnboarding(page: Page): Promise<void> {
-  // Onboarding is a multi-step form. We accept any default selection by
-  // clicking the primary CTA repeatedly until we land on /menu.
-  // The exact wording can drift; we keep the button selector loose.
-  for (let i = 0; i < 20; i++) {
-    if (page.url().includes('/menu')) return
-    if (!page.url().includes('/onboarding')) return
-    const cta = page.getByRole('button', { name: /siguiente|continuar|empezar|listo|guardar/i }).last()
-    if (await cta.isVisible().catch(() => false)) {
-      await cta.click().catch(() => {})
-      await page.waitForTimeout(300)
-    } else {
-      // No CTA found — break to avoid an infinite loop.
-      break
-    }
-  }
+  const apiUrl = process.env.API_URL ?? 'http://localhost:8765'
+
+  const token = await page.evaluate(() => localStorage.getItem('ona_token'))
+  const userRaw = await page.evaluate(() => localStorage.getItem('ona_user'))
+  if (!token || !userRaw) return
+  const userId = JSON.parse(userRaw).id as string
+
+  await page.request.post(`${apiUrl}/user/${userId}/onboarding`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: {
+      householdSize: 'solo',
+      cookingFreq: 'daily',
+      restrictions: [],
+      favoriteDishes: ['pasta', 'pollo', 'ensalada'],
+      priority: 'healthy',
+    },
+  })
+
+  // Reflect onboardingDone in the local copy so AuthProvider doesn't bounce
+  // us back to /onboarding on the next navigation.
+  await page.evaluate(() => {
+    const raw = localStorage.getItem('ona_user')
+    if (!raw) return
+    const u = JSON.parse(raw)
+    u.onboardingDone = true
+    localStorage.setItem('ona_user', JSON.stringify(u))
+  })
+
+  await page.goto('/menu')
 }

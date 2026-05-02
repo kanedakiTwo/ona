@@ -30,6 +30,23 @@ export async function apiFetch<T = unknown>(
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: response.statusText }))
+
+    // Stale token (signed by us but for a deleted user, e.g. after a reseed):
+    // wipe local auth and bounce to /login so the user can recover without
+    // every authed request landing on a confusing 500.
+    if (
+      response.status === 401 &&
+      error?.code === 'USER_NOT_FOUND' &&
+      typeof window !== 'undefined'
+    ) {
+      localStorage.removeItem('ona_token')
+      localStorage.removeItem('ona_user')
+      // Avoid a redirect loop if we're already on the login page.
+      if (!window.location.pathname.startsWith('/login')) {
+        window.location.assign('/login')
+      }
+    }
+
     throw new Error(error.error ?? error.message ?? error.detail ?? `Request failed: ${response.status}`)
   }
 

@@ -2,13 +2,20 @@
 
 import { useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { Check, Share2, Package, Sparkles } from 'lucide-react'
+import { Check, Share2, Package, Sparkles, RefreshCw } from 'lucide-react'
 import Link from 'next/link'
+import type { Aisle } from '@ona/shared'
 import { useAuth } from '@/lib/auth'
-import { useShoppingList, useCheckItem, useStockItem } from '@/hooks/useShopping'
+import {
+  useShoppingList,
+  useCheckItem,
+  useStockItem,
+  useRegenerateShoppingList,
+} from '@/hooks/useShopping'
 import { useMenu } from '@/hooks/useMenu'
 import { haptic } from '@/lib/pwa/haptics'
 import { share } from '@/lib/pwa/share'
+import { AISLE_LABELS, AISLE_ORDER, aisleLabel } from '@/lib/labels'
 
 function getWeekStart(): string {
   const now = new Date()
@@ -36,14 +43,33 @@ export default function ShoppingPage() {
   const inStockCount = items.filter((i) => i.inStock).length
   const progress = totalCount > 0 ? (checkedCount + inStockCount) / totalCount : 0
 
+  const regenerate = useRegenerateShoppingList()
+
   async function handleExport() {
     haptic.light()
-    const lines = items
-      .filter((i) => !i.checked && !i.inStock)
-      .map((i) => `- ${i.name}: ${i.quantity} ${i.unit}`)
-      .join('\n')
-    const text = `Lista de compra ONA\n\n${lines}`
+    const buyable = items.filter((i) => !i.checked && !i.inStock)
+    const grouped = groupByAisle(buyable)
+    const sections = AISLE_ORDER.flatMap((aisle) => {
+      const rows = grouped[aisle] ?? []
+      if (rows.length === 0) return []
+      const lines = rows
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((i) => `- ${i.name}: ${i.quantity} ${i.unit}`)
+        .join('\n')
+      return [`## ${AISLE_LABELS[aisle]}`, lines, '']
+    })
+    const text = `Lista de compra ONA\nSemana del ${weekStart}\n\n${sections.join('\n')}`
     await share({ title: 'Lista de compra ONA', text })
+  }
+
+  async function handleRegenerate() {
+    if (!shoppingList?.id) return
+    const ok = window.confirm(
+      '¿Regenerar la lista? Perderás los items marcados.',
+    )
+    if (!ok) return
+    haptic.medium()
+    regenerate.mutate(shoppingList.id)
   }
 
   if (authLoading || menuLoading) {
@@ -89,14 +115,24 @@ export default function ShoppingPage() {
       {/* Editorial header */}
       <header className="px-5 pt-8 pb-5">
         <div className="flex items-baseline justify-between">
-          <div className="text-eyebrow">La logistica</div>
-          <button
-            onClick={handleExport}
-            className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.18em] text-[#7A7066] hover:text-[#1A1612]"
-          >
-            <Share2 size={12} />
-            Compartir
-          </button>
+          <div className="text-eyebrow">La logística</div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleRegenerate}
+              disabled={regenerate.isPending}
+              className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.18em] text-[#7A7066] hover:text-[#1A1612] disabled:opacity-50"
+            >
+              <RefreshCw size={12} className={regenerate.isPending ? 'animate-spin' : ''} />
+              {regenerate.isPending ? 'Regenerando...' : 'Regenerar'}
+            </button>
+            <button
+              onClick={handleExport}
+              className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.18em] text-[#7A7066] hover:text-[#1A1612]"
+            >
+              <Share2 size={12} />
+              Compartir
+            </button>
+          </div>
         </div>
         <h1 className="mt-2 font-display text-[2.4rem] leading-[0.95] text-[#1A1612]">
           <span className="font-italic italic text-[#C65D38]">Lista</span><br />de la compra.
@@ -214,11 +250,36 @@ function TabButton({
   )
 }
 
+function groupByAisle<T extends { aisle?: Aisle | string | null }>(
+  items: T[],
+): Partial<Record<Aisle, T[]>> {
+  const out: Partial<Record<Aisle, T[]>> = {}
+  for (const item of items) {
+    const key = (AISLE_ORDER as readonly string[]).includes(item.aisle as string)
+      ? (item.aisle as Aisle)
+      : ('otros' as Aisle)
+    if (!out[key]) out[key] = []
+    out[key]!.push(item)
+  }
+  return out
+}
+
+function AisleHeader({ aisle }: { aisle: Aisle }) {
+  return (
+    <li className="pt-5 pb-2 first:pt-0">
+      <div className="text-[10px] uppercase tracking-[0.18em] text-[#7A7066]">
+        {aisleLabel(aisle)}
+      </div>
+    </li>
+  )
+}
+
 function BuyList({ items, listId }: { items: any[]; listId: string }) {
   const checkItem = useCheckItem()
   const stockItem = useStockItem()
 
-  const buyable = items.filter((i) => !i.inStock).sort((a, b) => a.name.localeCompare(b.name))
+  const buyable = items.filter((i) => !i.inStock)
+  const grouped = groupByAisle(buyable)
 
   if (buyable.length === 0) {
     return (
@@ -229,25 +290,38 @@ function BuyList({ items, listId }: { items: any[]; listId: string }) {
     )
   }
 
+  let runningIndex = 0
   return (
     <ul className="divide-y divide-dashed divide-[#DDD6C5]">
-      {buyable.map((item, i) => (
-        <ItemRow
-          key={item.id}
-          item={item}
-          index={i}
-          variant="buy"
-          onCheck={() => checkItem.mutate({ listId, itemId: item.id, checked: !item.checked })}
-          onStock={() => stockItem.mutate({ listId, itemId: item.id, inStock: true })}
-        />
-      ))}
+      {AISLE_ORDER.flatMap((aisle) => {
+        const rows = grouped[aisle]
+        if (!rows || rows.length === 0) return []
+        const sorted = [...rows].sort((a, b) => a.name.localeCompare(b.name))
+        return [
+          <AisleHeader key={`hdr-${aisle}`} aisle={aisle} />,
+          ...sorted.map((item) => {
+            const i = runningIndex++
+            return (
+              <ItemRow
+                key={item.id}
+                item={item}
+                index={i}
+                variant="buy"
+                onCheck={() => checkItem.mutate({ listId, itemId: item.id, checked: !item.checked })}
+                onStock={() => stockItem.mutate({ listId, itemId: item.id, inStock: true })}
+              />
+            )
+          }),
+        ]
+      })}
     </ul>
   )
 }
 
 function StockList({ items, listId }: { items: any[]; listId: string }) {
   const stockItem = useStockItem()
-  const inStock = items.filter((i) => i.inStock).sort((a, b) => a.name.localeCompare(b.name))
+  const inStock = items.filter((i) => i.inStock)
+  const grouped = groupByAisle(inStock)
 
   if (inStock.length === 0) {
     return (
@@ -259,18 +333,30 @@ function StockList({ items, listId }: { items: any[]; listId: string }) {
     )
   }
 
+  let runningIndex = 0
   return (
     <ul className="divide-y divide-dashed divide-[#DDD6C5]">
-      {inStock.map((item, i) => (
-        <ItemRow
-          key={item.id}
-          item={item}
-          index={i}
-          variant="stock"
-          onCheck={() => {}}
-          onStock={() => stockItem.mutate({ listId, itemId: item.id, inStock: false })}
-        />
-      ))}
+      {AISLE_ORDER.flatMap((aisle) => {
+        const rows = grouped[aisle]
+        if (!rows || rows.length === 0) return []
+        const sorted = [...rows].sort((a, b) => a.name.localeCompare(b.name))
+        return [
+          <AisleHeader key={`hdr-${aisle}`} aisle={aisle} />,
+          ...sorted.map((item) => {
+            const i = runningIndex++
+            return (
+              <ItemRow
+                key={item.id}
+                item={item}
+                index={i}
+                variant="stock"
+                onCheck={() => {}}
+                onStock={() => stockItem.mutate({ listId, itemId: item.id, inStock: false })}
+              />
+            )
+          }),
+        ]
+      })}
     </ul>
   )
 }
@@ -320,8 +406,7 @@ function ItemRow({
       </div>
 
       <div className="font-mono text-[11px] tracking-tight text-[#7A7066] tabular-nums shrink-0">
-        {item.quantity}
-        {item.unit}
+        {item.quantity} {item.unit}
       </div>
 
       <button

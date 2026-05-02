@@ -1,13 +1,15 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import type { Aisle, BuyableUnit } from "@ona/shared"
 import { api } from "@/lib/api"
 import { enqueue } from "@/lib/pwa/offlineQueue"
 
 interface ShoppingItem {
   id: string
+  ingredientId: string
   name: string
-  quantity: string
-  unit: string
-  category: string
+  quantity: number
+  unit: BuyableUnit
+  aisle: Aisle
   checked: boolean
   inStock: boolean
 }
@@ -61,6 +63,17 @@ export function useCheckItem() {
 
       return api.put(url, body)
     },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
+    },
+  })
+}
+
+export function useRegenerateShoppingList() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (listId: string) =>
+      api.post(`/shopping-list/${listId}/regenerate`, {}),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
     },

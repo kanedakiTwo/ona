@@ -127,15 +127,17 @@ jobs:
             -H 'Content-Type: application/json' \
             -d "{\"username\":\"smoke_${TS}\",\"email\":\"smoke_${TS}@test.local\",\"password\":\"smokepass123\"}")
           TOKEN=$(printf '%s' "$REG" | node -e 'let b="";process.stdin.on("data",c=>b+=c).on("end",()=>{process.stdout.write(JSON.parse(b).token||"")})')
-          UID=$(printf '%s' "$REG" | node -e 'let b="";process.stdin.on("data",c=>b+=c).on("end",()=>{process.stdout.write(JSON.parse(b).user?.id||"")})')
-          if [ -z "$TOKEN" ] || [ -z "$UID" ]; then
+          # NB: cannot use $UID — that name is a readonly bash builtin (the
+          # process owner's numeric UID). Use SMOKE_USERID instead.
+          SMOKE_USERID=$(printf '%s' "$REG" | node -e 'let b="";process.stdin.on("data",c=>b+=c).on("end",()=>{process.stdout.write(JSON.parse(b).user?.id||"")})')
+          if [ -z "$TOKEN" ] || [ -z "$SMOKE_USERID" ]; then
             echo "Register failed. Response: $REG"
             exit 1
           fi
           # Stash for next step (no values in logs).
           echo "::add-mask::$TOKEN"
           echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
-          echo "uid=$UID" >> "$GITHUB_OUTPUT"
+          echo "uid=$SMOKE_USERID" >> "$GITHUB_OUTPUT"
 
       - name: Run smoke vitest suite
         env:

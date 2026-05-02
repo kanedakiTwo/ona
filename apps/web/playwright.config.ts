@@ -7,9 +7,11 @@ import { defineConfig, devices } from '@playwright/test'
  * starts. The orchestration script `apps/web/scripts/test-e2e.sh` (and the
  * `e2e` job in `.github/workflows/ci.yml`) handle that.
  *
- * Mobile-first by design: the only project is iPhone 14 viewport, matching
- * the spec rule in `CLAUDE.md` ("test at 390x844 before declaring UI work
- * done"). Add desktop here later if/when the editorial public site grows.
+ * Mobile-first by design: a Chromium-based mobile preset matching the spec
+ * rule in `CLAUDE.md` ("test at 390x844 before declaring UI work done"). We
+ * use Pixel 7 (Chromium) rather than iPhone 14 because the iPhone preset
+ * pins to WebKit and the CI workflow only installs Chromium to keep the
+ * cache small. Add desktop / WebKit projects later if those become useful.
  */
 
 const WEB_URL = process.env.WEB_URL ?? 'http://localhost:3001'
@@ -34,7 +36,7 @@ export default defineConfig({
   projects: [
     {
       name: 'mobile-chromium',
-      use: { ...devices['iPhone 14'] },
+      use: { ...devices['Pixel 7'] },
     },
   ],
 })

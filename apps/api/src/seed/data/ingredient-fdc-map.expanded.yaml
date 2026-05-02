@@ -1,0 +1,775 @@
+# Draft expansion produced by scripts/expandIngredientCatalog.ts.
+# Curator: review each entry, in particular _usdaDescription, then merge
+# the entries you accept into ingredient-fdc-map.yaml and run seed:usda.
+# Drop the _usdaDescription field after the curator review.
+#
+# Generated: 2026-05-02T07:45:19.338Z
+# Drafts: 104 | Failed: 0
+
+- name: aceite de girasol
+  fdcId: 1750349
+  aisle: despensa
+  density: 0.92
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Oil, sunflower
+- name: aceitunas negras
+  fdcId: 169095
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Olives, ripe, canned (jumbo-super colossal)
+- name: aceitunas verdes
+  fdcId: 169096
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Olives, pickled, canned or bottled, green
+- name: alcaparras
+  fdcId: 172238
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Capers, canned
+- name: almendras
+  fdcId: 170567
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags:
+    - frutos_secos
+  _usdaDescription: Nuts, almonds
+- name: avellanas
+  fdcId: 170581
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags:
+    - frutos_secos
+  _usdaDescription: Nuts, hazelnuts or filberts
+- name: azucar
+  fdcId: 746784
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Sugars, granulated
+- name: caldo de pollo
+  fdcId: 172884
+  aisle: despensa
+  density: 1
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Soup, stock, chicken, home-prepared
+- name: caldo de verduras
+  fdcId: 171180
+  aisle: despensa
+  density: 1
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Soup, SWANSON, vegetable broth
+- name: canela
+  fdcId: 171320
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Spices, cinnamon, ground
+- name: comino
+  fdcId: 170923
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Spices, cumin seed
+- name: curcuma
+  fdcId: 172231
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Spices, turmeric, ground
+- name: cuscus
+  fdcId: 169699
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags:
+    - gluten
+  _usdaDescription: Couscous, dry
+- name: fideos
+  fdcId: 169731
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Noodles, egg, dry, enriched
+- name: judias blancas
+  fdcId: 175202
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Beans, white, mature seeds, raw
+- name: judias rojas
+  fdcId: 173744
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Beans, kidney, red, mature seeds, raw
+- name: ketchup
+  fdcId: 168556
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Catsup
+- name: laurel
+  fdcId: 168416
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Drumstick leaves, raw
+- name: levadura
+  fdcId: 175043
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Leavening agents, yeast, baker's, active dry
+- name: mayonesa
+  fdcId: 2758986
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Mayonnaise, Regular
+- name: miel
+  fdcId: 169640
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Honey
+- name: mostaza
+  fdcId: 326698
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags:
+    - mostaza
+  _usdaDescription: Mustard, prepared, yellow
+- name: nueces
+  fdcId: 170187
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Nuts, walnuts, english
+- name: nuez moscada
+  fdcId: 171326
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags:
+    - frutos_secos
+  _usdaDescription: Spices, nutmeg, ground
+- name: oregano
+  fdcId: 171328
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Spices, oregano, dried
+- name: pasas
+  fdcId: 2758980
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Raisins, dark, seedless
+- name: pasta de tomate
+  fdcId: 2685580
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags:
+    - gluten
+  _usdaDescription: Tomato, paste, canned, without salt added
+- name: pimenton dulce
+  fdcId: 171329
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Spices, paprika
+- name: pimenton picante
+  fdcId: 171329
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Spices, paprika
+- name: pimienta negra
+  fdcId: 170931
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Spices, pepper, black
+- name: piñones
+  fdcId: 170591
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Nuts, pine nuts, dried
+- name: pipas de girasol
+  fdcId: 170562
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Seeds, sunflower seed kernels, dried
+- name: quinoa
+  fdcId: 168874
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Quinoa, uncooked
+- name: sal
+  fdcId: 173468
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Salt, table
+- name: salsa de soja
+  fdcId: 174278
+  aisle: despensa
+  density: 1.05
+  unitWeight: null
+  allergenTags:
+    - soja
+  _usdaDescription: Soy sauce made from soy (tamari)
+- name: sesamo
+  fdcId: 170150
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags:
+    - sesamo
+  _usdaDescription: Seeds, sesame seeds, whole, dried
+- name: sirope de arce
+  fdcId: 169661
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Syrups, maple
+- name: tahini
+  fdcId: 168604
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags:
+    - sesamo
+  _usdaDescription: Seeds, sesame butter, tahini, type of kernels unspecified
+- name: tomate triturado
+  fdcId: 170501
+  aisle: despensa
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Tomatoes, crushed, canned
+- name: vinagre balsamico
+  fdcId: 172241
+  aisle: despensa
+  density: 1.05
+  unitWeight: null
+  allergenTags:
+    - sulfitos
+  _usdaDescription: Vinegar, balsamic
+- name: vinagre de vino
+  fdcId: 172240
+  aisle: despensa
+  density: 1.01
+  unitWeight: null
+  allergenTags:
+    - sulfitos
+  _usdaDescription: Vinegar, red wine
+- name: vino blanco
+  fdcId: 174837
+  aisle: despensa
+  density: 0.99
+  unitWeight: null
+  allergenTags:
+    - sulfitos
+  _usdaDescription: Alcoholic beverage, wine, table, white
+- name: vino tinto
+  fdcId: 173190
+  aisle: despensa
+  density: 0.99
+  unitWeight: null
+  allergenTags:
+    - sulfitos
+  _usdaDescription: Alcoholic beverage, wine, table, red
+- name: feta
+  fdcId: 173420
+  aisle: lacteos
+  density: null
+  unitWeight: null
+  allergenTags:
+    - lactosa
+  _usdaDescription: Cheese, feta
+- name: leche desnatada
+  fdcId: 169868
+  aisle: lacteos
+  density: 1.03
+  unitWeight: null
+  allergenTags:
+    - lactosa
+  _usdaDescription: Milk, fluid, nonfat, calcium fortified (fat free or skim)
+- name: mozzarella
+  fdcId: 170845
+  aisle: lacteos
+  density: null
+  unitWeight: null
+  allergenTags:
+    - lactosa
+  _usdaDescription: Cheese, mozzarella, whole milk
+- name: nata liquida
+  fdcId: 170859
+  aisle: lacteos
+  density: 0.99
+  unitWeight: null
+  allergenTags:
+    - lactosa
+  _usdaDescription: Cream, fluid, heavy whipping
+- name: queso cheddar
+  fdcId: 328637
+  aisle: lacteos
+  density: null
+  unitWeight: null
+  allergenTags:
+    - lactosa
+  _usdaDescription: Cheese, cheddar
+- name: queso de cabra
+  fdcId: 173435
+  aisle: lacteos
+  density: null
+  unitWeight: null
+  allergenTags:
+    - lactosa
+  _usdaDescription: Cheese, goat, soft type
+- name: queso fresco
+  fdcId: 172180
+  aisle: lacteos
+  density: null
+  unitWeight: null
+  allergenTags:
+    - lactosa
+  _usdaDescription: Cheese, cottage, creamed, with fruit
+- name: queso manchego
+  fdcId: 169081
+  aisle: lacteos
+  density: null
+  unitWeight: null
+  allergenTags:
+    - lactosa
+  _usdaDescription: Cheese spread, cream cheese base
+- name: requeson
+  fdcId: 170851
+  aisle: lacteos
+  density: null
+  unitWeight: null
+  allergenTags:
+    - lactosa
+  _usdaDescription: Cheese, ricotta, whole milk
+- name: pan blanco
+  fdcId: 174925
+  aisle: panaderia
+  density: null
+  unitWeight: null
+  allergenTags:
+    - gluten
+  _usdaDescription: Bread, white, commercially prepared, toasted
+- name: acelgas
+  fdcId: 169991
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Chard, swiss, raw
+- name: albahaca
+  fdcId: 172232
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Basil, fresh
+- name: apio
+  fdcId: 2346405
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags:
+    - apio
+  _usdaDescription: Celery, raw
+- name: arandanos
+  fdcId: 2346411
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Blueberries, raw
+- name: berenjena
+  fdcId: 169228
+  aisle: produce
+  density: null
+  unitWeight: 250
+  allergenTags: []
+  _usdaDescription: Eggplant, raw
+- name: boniato
+  fdcId: 169303
+  aisle: produce
+  density: null
+  unitWeight: 130
+  allergenTags: []
+  _usdaDescription: Sweet potato leaves, raw
+- name: calabaza
+  fdcId: 168448
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Pumpkin, raw
+- name: champinones
+  fdcId: 169251
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Mushrooms, white, raw
+- name: cilantro
+  fdcId: 169997
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Coriander (cilantro) leaves, raw
+- name: frambuesas
+  fdcId: 2346410
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Raspberries, raw
+- name: fresa
+  fdcId: 167762
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Strawberries, raw
+- name: guindilla
+  fdcId: 170106
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Peppers, hot chili, red, raw
+- name: guisantes
+  fdcId: 170419
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Peas, green, raw
+- name: jengibre fresco
+  fdcId: 169231
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Ginger root, raw
+- name: judias verdes
+  fdcId: 2346400
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Beans, snap, green, raw
+- name: lechuga
+  fdcId: 2346388
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Lettuce, iceberg, raw
+- name: lima
+  fdcId: 168155
+  aisle: produce
+  density: null
+  unitWeight: 60
+  allergenTags: []
+  _usdaDescription: Limes, raw
+- name: limon
+  fdcId: 167747
+  aisle: produce
+  density: null
+  unitWeight: 70
+  allergenTags: []
+  _usdaDescription: Lemon juice, raw
+- name: mango
+  fdcId: 169910
+  aisle: produce
+  density: null
+  unitWeight: 200
+  allergenTags: []
+  _usdaDescription: Mangos, raw
+- name: melon
+  fdcId: 169092
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Melons, cantaloupe, raw
+- name: menta
+  fdcId: 173475
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Spearmint, fresh
+- name: naranja
+  fdcId: 169103
+  aisle: produce
+  density: null
+  unitWeight: 130
+  allergenTags: []
+  _usdaDescription: Orange peel, raw
+- name: pepino
+  fdcId: 169225
+  aisle: produce
+  density: null
+  unitWeight: 200
+  allergenTags: []
+  _usdaDescription: Cucumber, peeled, raw
+- name: pera
+  fdcId: 169118
+  aisle: produce
+  density: null
+  unitWeight: 175
+  allergenTags: []
+  _usdaDescription: Pears, raw
+- name: perejil
+  fdcId: 170416
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Parsley, fresh
+- name: pimiento verde
+  fdcId: 170427
+  aisle: produce
+  density: null
+  unitWeight: 120
+  allergenTags: []
+  _usdaDescription: Peppers, sweet, green, raw
+- name: pina
+  fdcId: 2346398
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Pineapple, raw
+- name: puerro
+  fdcId: 169246
+  aisle: produce
+  density: null
+  unitWeight: 90
+  allergenTags: []
+  _usdaDescription: Leeks, (bulb and lower leaf-portion), raw
+- name: rabanitos
+  fdcId: 169276
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Radishes, raw
+- name: remolacha
+  fdcId: 2685576
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Beets, raw
+- name: romero
+  fdcId: 173473
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Rosemary, fresh
+- name: rucula
+  fdcId: 169387
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Arugula, raw
+- name: sandia
+  fdcId: 167765
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Watermelon, raw
+- name: setas
+  fdcId: 169255
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Mushrooms, portabella, raw
+- name: tomillo
+  fdcId: 173470
+  aisle: produce
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Thyme, fresh
+- name: bacalao
+  fdcId: 171955
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags:
+    - pescado
+  _usdaDescription: Fish, cod, Atlantic, raw
+- name: calamares
+  fdcId: 174223
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags:
+    - marisco
+    - moluscos
+  _usdaDescription: Mollusks, squid, mixed species, raw
+- name: cerdo
+  fdcId: 2646168
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Pork, loin, boneless, raw
+- name: cordero
+  fdcId: 168148
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Frog legs, raw
+- name: costillas de cerdo
+  fdcId: 167895
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Pork, fresh, loin, country-style ribs, separable lean and fat, raw
+- name: gambas
+  fdcId: 175179
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags:
+    - crustaceos
+    - marisco
+  _usdaDescription: Crustaceans, shrimp, raw
+- name: jamon
+  fdcId: 167909
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: HORMEL, Cure 81 Ham
+- name: mejillones
+  fdcId: 174216
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags:
+    - marisco
+    - moluscos
+  _usdaDescription: Mollusks, mussel, blue, raw
+- name: merluza
+  fdcId: 171949
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags:
+    - pescado
+  _usdaDescription: Fish, bluefish, raw
+- name: pavo
+  fdcId: 171098
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags: []
+  _usdaDescription: Turkey, whole, breast, meat only, raw
+- name: pulpo
+  fdcId: 174218
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags:
+    - marisco
+    - moluscos
+  _usdaDescription: Mollusks, octopus, common, raw
+- name: sardinas
+  fdcId: 175139
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags:
+    - pescado
+  _usdaDescription: Fish, sardine, Atlantic, canned in oil, drained solids with bone
+- name: seitan
+  fdcId: 168147
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags:
+    - gluten
+  _usdaDescription: Vital wheat gluten
+- name: tempeh
+  fdcId: 174272
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags:
+    - soja
+  _usdaDescription: Tempeh
+- name: tofu
+  fdcId: 172475
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags:
+    - soja
+  _usdaDescription: Tofu, raw, firm, prepared with calcium sulfate
+- name: trucha
+  fdcId: 173717
+  aisle: proteinas
+  density: null
+  unitWeight: null
+  allergenTags:
+    - pescado
+  _usdaDescription: Fish, trout, rainbow, farmed, raw

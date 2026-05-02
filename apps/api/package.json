@@ -14,6 +14,7 @@
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/seed/index.ts",
     "seed:usda": "tsx src/seed/usda.ts",
+    "expand:catalog": "tsx scripts/expandIngredientCatalog.ts",
     "regen:recipes": "tsx scripts/regenerateRecipes.ts",
     "apply:recipes": "tsx scripts/applyRegeneratedRecipes.ts"
   },

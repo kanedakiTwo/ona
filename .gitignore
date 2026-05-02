@@ -28,3 +28,6 @@ apps/web/playwright-report/
 apps/web/test-results/
 apps/web/blob-report/
 apps/web/.last-run.json
+
+# Local Claude Code agent state (scheduled tasks, agent caches)
+.claude/

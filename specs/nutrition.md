@@ -81,5 +81,6 @@ Warnings are surfaced to the recipe author / curator but do not block saving.
 - [apps/api/src/services/nutrition/usdaClient.ts](../apps/api/src/services/nutrition/usdaClient.ts) — USDA FDC API client with on-disk cache (new)
 - [apps/api/src/services/nutrition/aggregate.ts](../apps/api/src/services/nutrition/aggregate.ts) — recipe-level aggregation (new)
 - [apps/api/src/services/nutrition/allergens.ts](../apps/api/src/services/nutrition/allergens.ts) — allergen union and mapping helpers (new)
-- [apps/api/src/seed/usda.ts](../apps/api/src/seed/usda.ts) — one-time population script (new)
+- [apps/api/src/seed/usda.ts](../apps/api/src/seed/usda.ts) — one-time population script: reads `ingredient-fdc-map.yaml`, fetches per-100 g nutrition from USDA, writes to the catalog
+- [apps/api/scripts/expandIngredientCatalog.ts](../apps/api/scripts/expandIngredientCatalog.ts) — curator-driven catalog expansion: queries USDA for ~100 common Spanish kitchen staples and writes a draft YAML for review before merging into the main map
 - [packages/shared/src/types/nutrition.ts](../packages/shared/src/types/nutrition.ts) (new)

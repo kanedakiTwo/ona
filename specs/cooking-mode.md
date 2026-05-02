@@ -61,9 +61,12 @@ Hands-free, fullscreen step-by-step cooking experience driven from a recipe.
 - [PWA](./pwa.md) — Wake Lock and Vibration are scoped to PWA-class features
 - [Design System](./design-system.md) — typography and chip styles
 
-## Source (planned)
+## Source
 
 - [apps/web/src/app/recipes/[id]/cook/page.tsx](../apps/web/src/app/recipes/[id]/cook/page.tsx) — cooking mode route
-- [apps/web/src/components/cooking/](../apps/web/src/components/cooking/) — `CookingShell`, `StepCard`, `StepTimer`, `IngredientChip`, `ChecklistPanel`
+- [apps/web/src/components/cooking/CookingShell.tsx](../apps/web/src/components/cooking/CookingShell.tsx) — fullscreen shell, gestures, wake lock, vibration + Web Audio chime on timer expiry
+- [apps/web/src/components/cooking/StepCard.tsx](../apps/web/src/components/cooking/StepCard.tsx) — large-type step view with badges + inline ingredient chips
+- [apps/web/src/components/cooking/StepTimer.tsx](../apps/web/src/components/cooking/StepTimer.tsx) — per-step countdown with pause/resume
+- [apps/web/src/components/cooking/ChecklistPanel.tsx](../apps/web/src/components/cooking/ChecklistPanel.tsx) — full-recipe ingredient checklist drawer
 - [apps/web/src/hooks/useWakeLock.ts](../apps/web/src/hooks/useWakeLock.ts)
 - [apps/web/src/hooks/useStepTimers.ts](../apps/web/src/hooks/useStepTimers.ts)

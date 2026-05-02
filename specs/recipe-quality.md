@@ -69,9 +69,11 @@ Per-ingredient range tables live next to the lint validator. Initial coverage fo
 
 ## Source
 
-- [apps/api/src/services/recipeLint.ts](../apps/api/src/services/recipeLint.ts) — validator (new)
-- [apps/api/src/services/recipeLint.ranges.ts](../apps/api/src/services/recipeLint.ranges.ts) — per-ingredient sanity ranges (new)
-- [apps/api/scripts/regenerateRecipes.ts](../apps/api/scripts/regenerateRecipes.ts) — LLM regeneration entry point (new)
-- [apps/api/scripts/applyRegeneratedRecipes.ts](../apps/api/scripts/applyRegeneratedRecipes.ts) — write reviewed JSONL into DB (new)
-- [apps/api/src/services/recipeExtractor.ts](../apps/api/src/services/recipeExtractor.ts) — calls lint before persisting
+- [apps/api/src/services/recipeLint.ts](../apps/api/src/services/recipeLint.ts) — validator
+- [apps/api/src/services/recipeLint.ranges.ts](../apps/api/src/services/recipeLint.ranges.ts) — per-ingredient sanity ranges
+- [apps/api/src/services/recipePersistence.ts](../apps/api/src/services/recipePersistence.ts) — orchestrator: lint → nutrition aggregate → allergen union → DB write (single canonical save path used by the API route, the photo extractor and the apply script)
+- [apps/api/src/services/regenSchema.ts](../apps/api/src/services/regenSchema.ts) — Zod schema describing the LLM regen JSON output, used by both `regenerateRecipes.ts` to validate the model response and by the apply script to type the JSONL rows
+- [apps/api/scripts/regenerateRecipes.ts](../apps/api/scripts/regenerateRecipes.ts) — LLM regeneration entry point
+- [apps/api/scripts/applyRegeneratedRecipes.ts](../apps/api/scripts/applyRegeneratedRecipes.ts) — write reviewed JSONL into DB; supports `--auto-create-missing` (see [Ingredient Auto-Create](./ingredient-auto-create.md))
+- [apps/api/src/services/recipeExtractor.ts](../apps/api/src/services/recipeExtractor.ts) — photo extractor; feeds output through `recipePersistence`
 - [apps/api/src/seed/recipes.ts](../apps/api/src/seed/recipes.ts) — final lint-validated catalog

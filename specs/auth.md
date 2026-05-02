@@ -19,6 +19,10 @@ User registration, login, and session management for ONA.
 - Until `onboardingDone = true`, the landing page redirects authenticated users to `/onboarding`
 - Onboarding can also collect physical profile data (sex, age, weight, height, activity level) used by the calorie calculator
 
+## Profile data shape
+
+The `users` table holds the canonical scalar fields (`sex`, `age`, `weight`, `height`, `activityLevel`, `householdSize`, `cookingFreq`, `restrictions`, `favoriteDishes`, `priority`, `onboardingDone`). The `user_settings.template` JSONB column stores the richer profile-page state as a single blob: `{ physical, preferences, mealTemplate }`. The `/profile` page reads/writes both: scalar fields go through `PUT /user/:id`, and the rich blob goes through `PUT /user/:id/settings`.
+
 ## Constraints
 
 - Username and email are both unique across users (registration returns 409 if either exists)
@@ -37,9 +41,10 @@ User registration, login, and session management for ONA.
 **Protected** (bottom tab bar, requires auth):
 - `/menu`, `/menu/history`
 - `/shopping`
-- `/recipes`, `/recipes/new`, `/recipes/[id]`
+- `/recipes`, `/recipes/new`, `/recipes/[id]`, `/recipes/[id]/cook`
 - `/advisor`
 - `/profile`
+- `/curator` — catalog dashboard, accessed via discreet link in profile (see [Curator Dashboard](./curator-dashboard.md))
 
 ## Related specs
 

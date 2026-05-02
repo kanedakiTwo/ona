@@ -60,6 +60,14 @@ When the conversation context is "step-by-step cooking" (a recipe-step skill is 
 - **Fallback**: openWakeWord (open source) if Porcupine pricing or licensing becomes a blocker. Requires training a custom model for "Hola Ona".
 - The engine is wrapped behind a small `useWakeWord` hook so swapping providers is local.
 
+## Floating mic FAB (manual entry point)
+
+When voice mode is enabled in the profile but the wake-word engine is not available (no `NEXT_PUBLIC_PICOVOICE_ACCESS_KEY` or `.ppn` model not yet shipped), a small floating mic button appears top-right on every authenticated route. Tapping it opens the voice overlay manually. The FAB also stays visible alongside the wake word once Picovoice access is granted, so the user always has a tappable fallback if the wake word misfires. The toggle copy in `/profile` reads *"Escuchando 'Hola Ona'"* when wake-word is live and *"Activo (toca el micro flotante)"* when it isn't.
+
+## Auto-close on error
+
+If the Realtime session enters `error` or `closed` state while the overlay is open, the overlay shows the typed Spanish error briefly (3.5 s for an explicit error, 1.5 s for a silent close) and then auto-dismisses, returning the user to the underlying screen. This avoids trapping the user behind a frozen "Cerrando…" spinner when network or upstream issues prevent a clean disconnect.
+
 ## Cost guardrails
 
 - Realtime sessions are charged per audio minute. The 20s silence timeout, 10-minute hard cap, and explicit user opt-in are the main guardrails.

@@ -15,7 +15,7 @@ Per-ingredient nutrition data, allergen tagging, and recipe-level nutrition aggr
 Nutrition data is sourced from **USDA FoodData Central (FDC)**, populated once at seed time:
 
 - Each row in the `ingredients` catalog has an `fdcId` mapping it to a USDA Foundation/SR Legacy entry
-- A seed script fetches the per-100 g nutrient profile for each `fdcId` and stores it in `ingredient_nutrition`
+- A seed script fetches the per-100 g nutrient profile for each `fdcId` and writes it directly into the `ingredients` row. There is no separate `ingredient_nutrition` table — the columns `calories`, `protein`, `carbs`, `fat`, `fiber`, `salt` (plus `vitamins`, `minerals`, `aminoAcids`, `fatAcids`, `carbTypes` JSONBs) live on the catalog itself
 - The script caches every fetched response on disk to respect USDA rate limits and to allow re-runs without re-querying
 - Ingredients without a confident USDA match are flagged for manual review and excluded from auto-aggregation until mapped
 
@@ -38,7 +38,7 @@ Allergens are not provided by USDA. Each ingredient has an `allergenTags` string
    - `cda` → 15 g equivalent if `ingredient.density` is missing; else `15 ml × density`
    - `cdita` → 5 g equivalent
    - `pizca` and `al_gusto` are treated as 0 g (negligible)
-2. Multiply each ingredient's grams by its per-100 g nutrient values from `ingredient_nutrition`
+2. Multiply each ingredient's grams by its per-100 g nutrient values from the `ingredients` row
 3. Sum across all ingredients to get totals
 4. Divide by `recipe.servings` to get the per-serving values
 5. Cache the result in `recipe.nutritionPerServing`
@@ -77,7 +77,7 @@ Warnings are surfaced to the recipe author / curator but do not block saving.
 
 ## Source
 
-- [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts) — `ingredients`, `ingredient_nutrition`
+- [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts) — `ingredients` (per-100 g nutrition columns + density/unitWeight/aisle/allergenTags)
 - [apps/api/src/services/nutrition/usdaClient.ts](../apps/api/src/services/nutrition/usdaClient.ts) — USDA FDC API client with on-disk cache
 - [apps/api/src/services/nutrition/aggregate.ts](../apps/api/src/services/nutrition/aggregate.ts) — recipe-level aggregation
 - [apps/api/src/services/nutrition/allergens.ts](../apps/api/src/services/nutrition/allergens.ts) — allergen union and mapping helpers

@@ -132,6 +132,27 @@ async function main() {
     // Always re-lint after the id assignment + ingredient additions —
     // STEP_REF_DANGLING typically resolves once we mint ing_<N> ids.
 
+    // Resolve ORPHAN_INGREDIENT by linking to the last step. The lint
+    // message names the ingredient; we look it up by name on the recipe and
+    // append its `id` to the final step's `ingredientRefs`.
+    for (const err of initialLint.errors) {
+      if (err.code !== 'ORPHAN_INGREDIENT') continue
+      const m = err.message.match(/ingrediente ["']([^"']+)["']/)
+      if (!m) continue
+      const orphanName = normalize(m[1])
+      const orphan = (recipe.ingredients ?? []).find((i: any) => {
+        const cat = catRows.find((c) => c.id === i.ingredientId)
+        return cat ? normalize(cat.name) === orphanName : false
+      })
+      if (!orphan?.id) continue
+      const lastStep = (recipe.steps ?? [])[recipe.steps.length - 1]
+      if (!lastStep) continue
+      lastStep.ingredientRefs = lastStep.ingredientRefs ?? []
+      if (!lastStep.ingredientRefs.includes(orphan.id)) {
+        lastStep.ingredientRefs.push(orphan.id)
+      }
+    }
+
     // Drop step.durationMin if TIME_INCONSISTENT was present.
     if (initialLint.errors.some((e) => e.code === 'TIME_INCONSISTENT')) {
       for (const step of recipe.steps ?? []) {

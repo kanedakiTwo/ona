@@ -13,6 +13,7 @@ Recipe catalog, recipe detail, and the data needed to actually cook a recipe.
 - Users can create their own recipes (form at `/recipes/new`)
 - Authors can edit and delete their own recipes (not system recipes)
 - Users can extract a recipe from a photo (image upload → AI extraction)
+- Users can auto-create a missing ingredient from the `/recipes/new` form: if an ingredient name doesn't exist in the catalog, a "Crear nuevo ingrediente" option in the picker opens a modal showing USDA FoodData Central candidates (Foundation/SR Legacy first, Branded filtered out) plus per-100 g nutrition; the user picks one or "Crear sin nutrición". The new row is persisted with full nutrition + inferred allergens and slotted into the recipe form. Same plumbing is reused by the photo extractor and `apply:recipes --auto-create-missing` to avoid skipping recipes whose ingredients are merely absent from the catalog.
 - Users can share a recipe via the native share sheet (Web Share API) from a Share2 button in the detail hero — see [PWA](./pwa.md)
 - Users can start "Cooking mode" from the detail view ("Empezar a cocinar"); while active, a Wake Lock keeps the screen awake and a "Pantalla activa" badge appears (released on tap or navigation) — see [PWA](./pwa.md) and [Cooking Mode](./cooking-mode.md)
 
@@ -131,6 +132,10 @@ When the user changes the diner count from `recipe.servings` to `target`:
 - [apps/api/src/services/recipeExtractor.ts](../apps/api/src/services/recipeExtractor.ts)
 - [apps/api/src/services/recipeLint.ts](../apps/api/src/services/recipeLint.ts) — lint validator (new)
 - [apps/api/src/services/recipeScaler.ts](../apps/api/src/services/recipeScaler.ts) — quantity scaling + culinary rounding (new)
+- [apps/api/src/services/ingredientAutoCreate.ts](../apps/api/src/services/ingredientAutoCreate.ts) — USDA-backed auto-create + Levenshtein dedupe (new)
+- [apps/api/src/routes/ingredients.ts](../apps/api/src/routes/ingredients.ts) — `GET /ingredients/suggest`, `POST /ingredients/auto-create`
+- [apps/web/src/components/recipes/IngredientAutocomplete.tsx](../apps/web/src/components/recipes/IngredientAutocomplete.tsx) — open ingredient picker + auto-create modal (new)
+- [apps/web/src/hooks/useIngredients.ts](../apps/web/src/hooks/useIngredients.ts) — `useSearchIngredients`, `useSuggestIngredient`, `useAutoCreateIngredient` (new)
 - [apps/api/src/seed/recipes.ts](../apps/api/src/seed/recipes.ts) — regenerated catalog
 - [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts) — `recipes`, `recipe_ingredients`, `recipe_steps`, `ingredients`, `ingredient_nutrition`
 - [apps/web/src/app/recipes/page.tsx](../apps/web/src/app/recipes/page.tsx)

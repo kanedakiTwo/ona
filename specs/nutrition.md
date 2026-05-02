@@ -82,6 +82,6 @@ Warnings are surfaced to the recipe author / curator but do not block saving.
 - [apps/api/src/services/nutrition/aggregate.ts](../apps/api/src/services/nutrition/aggregate.ts) — recipe-level aggregation
 - [apps/api/src/services/nutrition/allergens.ts](../apps/api/src/services/nutrition/allergens.ts) — allergen union and mapping helpers
 - [apps/api/src/services/nutrition/index.ts](../apps/api/src/services/nutrition/index.ts) — public surface re-exports
-- [apps/api/src/seed/usda.ts](../apps/api/src/seed/usda.ts) — one-time population script driven by [seed/data/ingredient-fdc-map.yaml](../apps/api/src/seed/data/ingredient-fdc-map.yaml) and the expanded variant for the 104-staple catalog
-- [apps/api/scripts/expandIngredientCatalog.ts](../apps/api/scripts/expandIngredientCatalog.ts) — USDA-backed draft for 104 staples
+- [apps/api/src/seed/usda.ts](../apps/api/src/seed/usda.ts) — one-time population script: reads `ingredient-fdc-map.yaml`, fetches per-100 g nutrition from USDA, writes to the catalog
+- [apps/api/scripts/expandIngredientCatalog.ts](../apps/api/scripts/expandIngredientCatalog.ts) — curator-driven catalog expansion: queries USDA for ~100 common Spanish kitchen staples and writes a draft YAML for review before merging into the main map
 - [packages/shared/src/types/nutrition.ts](../packages/shared/src/types/nutrition.ts)

@@ -13,6 +13,7 @@ import shoppingRoutes from './routes/shopping.js'
 import advisorRoutes from './routes/advisor.js'
 import assistantRoutes from './routes/assistant.js'
 import realtimeRoutes from './routes/realtime.js'
+import curatorRoutes from './routes/curator.js'
 
 const app = express()
 
@@ -38,6 +39,7 @@ app.use(shoppingRoutes)
 app.use(advisorRoutes)
 app.use(assistantRoutes)
 app.use(realtimeRoutes)
+app.use(curatorRoutes)
 
 // Error handler
 app.use(errorHandler)

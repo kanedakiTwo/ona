@@ -1,5 +1,8 @@
+import { eq } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { ingredients } from '../db/schema.js'
+import { suggestIngredient } from './ingredientAutoCreate.js'
+import { inferAllergenTagsFromName } from './nutrition/allergens.js'
 import type {
   ExtractedRecipe,
   ExtractedIngredient,
@@ -48,14 +51,83 @@ function coerceUnit(raw: string): Unit {
 }
 
 // ─── Ingredient matching ────────────────────────────────────────────
+
+/**
+ * For an unmatched ingredient name, ask USDA for the best Foundation
+ * candidate and persist a new row. On any USDA failure (network, no
+ * matches, rate limit) fall back to a stub row with allergens inferred
+ * from the name and zero nutrition. Returns null only if the DB write
+ * itself fails.
+ */
+async function autoCreateMissingIngredient(
+  rawName: string,
+): Promise<{ id: string; name: string; warning?: string } | null> {
+  const trimmed = rawName.trim()
+  if (!trimmed) return null
+
+  let bestFdcId: number | null = null
+  let nutrition = { kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, fiberG: 0, saltG: 0 }
+  let warning: string | undefined
+
+  try {
+    const suggestion = await suggestIngredient(trimmed, { limit: 3 })
+    const top = suggestion.candidates.find(
+      (c) => c.dataType === 'Foundation' || c.dataType === 'SR Legacy',
+    ) ?? suggestion.candidates[0]
+    if (top) {
+      bestFdcId = top.fdcId
+      nutrition = top.per100g
+    } else {
+      warning = `Sin coincidencias USDA para "${trimmed}"; guardado como stub.`
+    }
+  } catch (err) {
+    warning = `USDA no disponible para "${trimmed}"; guardado como stub.`
+    console.warn('[extractor] auto-create suggest failed:', err)
+  }
+
+  try {
+    const [row] = await db
+      .insert(ingredients)
+      .values({
+        name: trimmed,
+        fdcId: bestFdcId,
+        aisle: null,
+        allergenTags: inferAllergenTagsFromName(trimmed),
+        calories: nutrition.kcal,
+        protein: nutrition.proteinG,
+        carbs: nutrition.carbsG,
+        fat: nutrition.fatG,
+        fiber: nutrition.fiberG,
+        salt: nutrition.saltG,
+      })
+      .returning({ id: ingredients.id, name: ingredients.name })
+    return { id: row.id, name: row.name, warning }
+  } catch (err) {
+    const code = (err as { code?: string })?.code
+    if (code === '23505') {
+      const [hit] = await db
+        .select({ id: ingredients.id, name: ingredients.name })
+        .from(ingredients)
+        .where(eq(ingredients.name, trimmed))
+        .limit(1)
+      if (hit) return { id: hit.id, name: hit.name }
+    }
+    console.error('[extractor] auto-create insert failed:', err)
+    return null
+  }
+}
+
 async function matchIngredients(
   rawIngredients: { name: string; quantity: number; unit: string }[],
-): Promise<ExtractedIngredient[]> {
+): Promise<{ matched: ExtractedIngredient[]; warnings: string[] }> {
   const allIngredients = await db
     .select({ id: ingredients.id, name: ingredients.name })
     .from(ingredients)
 
-  return rawIngredients.map((ext) => {
+  const matched: ExtractedIngredient[] = []
+  const warnings: string[] = []
+
+  for (const ext of rawIngredients) {
     const normalized = ext.name.toLowerCase().trim()
 
     let match = allIngredients.find((i) => i.name.toLowerCase() === normalized)
@@ -75,21 +147,38 @@ async function matchIngredients(
       }
     }
 
-    // Convert the kg → g and l → ml synonyms in quantity to keep the magnitude
-    // sane. (The `coerceUnit` step alone would silently 1000× the recipe.)
     let { quantity } = ext
     const lowerUnit = (ext.unit ?? '').toLowerCase()
     if (lowerUnit === 'kg' || lowerUnit === 'l') quantity = quantity * 1000
 
-    return {
+    if (!match) {
+      const created = await autoCreateMissingIngredient(ext.name)
+      if (created) {
+        allIngredients.push({ id: created.id, name: created.name })
+        if (created.warning) warnings.push(created.warning)
+        matched.push({
+          extractedName: ext.name,
+          ingredientId: created.id,
+          ingredientName: created.name,
+          quantity,
+          unit: coerceUnit(ext.unit),
+          matched: true,
+        })
+        continue
+      }
+    }
+
+    matched.push({
       extractedName: ext.name,
       ingredientId: match?.id ?? null,
       ingredientName: match?.name ?? null,
       quantity,
       unit: coerceUnit(ext.unit),
       matched: !!match,
-    }
-  })
+    })
+  }
+
+  return { matched, warnings }
 }
 
 // ─── Main extraction function ───────────────────────────────────────
@@ -105,7 +194,8 @@ export async function extractRecipeFromImage(
 
   const raw = await provider.extractRecipe(imageBase64, mimeType)
 
-  const matchedIngredients = await matchIngredients(raw.ingredients)
+  const { matched: matchedIngredients, warnings: matchWarnings } =
+    await matchIngredients(raw.ingredients)
 
   const meals = raw.suggestedMeals.filter((m): m is Meal =>
     VALID_MEALS.includes(m as Meal),
@@ -115,7 +205,7 @@ export async function extractRecipeFromImage(
   )
 
   const unmatchedCount = matchedIngredients.filter((i) => !i.matched).length
-  const warnings: string[] = []
+  const warnings: string[] = [...matchWarnings]
   if (unmatchedCount > 0) {
     warnings.push(`${unmatchedCount} ingrediente(s) no encontrado(s) en la base de datos`)
   }

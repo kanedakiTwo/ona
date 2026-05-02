@@ -28,6 +28,22 @@ Hands-free fullscreen cook-along, step-by-step UX, per-step countdown timers, mu
 
 ---
 
+## [Ingredient Auto-Create](./ingredient-auto-create.md)
+
+USDA-backed flow that lets users add a missing ingredient without leaving the recipe form. `GET /ingredients/suggest` returns Foundation/SR Legacy candidates + per-100 g nutrition, `POST /ingredients/auto-create` persists with full nutrition + inferred allergens. Fuzzy dedupe (Levenshtein ≤ 2 on normalized names), Branded entries filtered out, Spanish-to-English query translation, "Crear sin nutrición" escape hatch. Same pipeline reused by the photo extractor and `apply:recipes --auto-create-missing`.
+
+**Source**: `apps/api/src/services/ingredientAutoCreate.ts`, `apps/api/src/routes/ingredients.ts` (`/suggest`, `/auto-create`), `apps/web/src/components/recipes/IngredientAutocomplete.tsx`, `apps/web/src/hooks/useIngredients.ts`
+
+---
+
+## [Curator Dashboard](./curator-dashboard.md)
+
+Read-mostly admin page at `/curator` that exposes every catalog gap a curator must close: ingredients without USDA mapping (`fdcId IS NULL`), missing density/unitWeight, the "otros" aisle bucket, allergen tag suggestions (heuristic > current), recipes with `nutritionPerServing.kcal` falsy + which ingredients block them, and the latest LLM regen output (`regen-failed.jsonl` / `regen-skipped.jsonl`). Each row offers an inline edit (PATCH `/ingredients/:id`) or a "Re-mapear a USDA" modal that reuses the auto-create modal's USDA candidate flow and writes via PATCH `/ingredients/:id/remap`. Discreet entry from the profile page footer.
+
+**Source**: `apps/api/src/routes/curator.ts`, `apps/web/src/app/curator/page.tsx`, `apps/web/src/hooks/useCurator.ts`
+
+---
+
 ## [Nutrition](./nutrition.md)
 
 Per-serving nutrition (kcal, protein, carbs, fat, fiber, salt), per-ingredient catalog with USDA FoodData Central (FDC) mapping via `fdcId`, `ingredient_nutrition` table per 100 g, density (g/ml), unitWeight (g/u), recipe-level aggregation cached on save, allergen tags (gluten, lactosa, huevo, frutos secos, soja, pescado, marisco, sésamo, sulfitos…), "sin gluten" filtering, advisor + menu generator consume real nutrition, USDA seed cache.
@@ -62,9 +78,9 @@ Auto-generated shopping list, unit-aware ingredient aggregation (g/ml/u/cda/cdit
 
 ## [Advisor](./advisor.md)
 
-AI chat assistant, function calling, skills (get_todays_menu, search_recipes, swap_meal, etc.), voice input (speech-to-text), text-to-speech, Spanish, conversation history, useVoice hook, suggested prompts, microphone button.
+AI chat assistant, function calling, 27 skills total: menu/recipe reads (get_todays_menu, get_recipe_details, get_weekly_nutrition, get_shopping_list, suggest_recipes, search_recipes, get_my_recipes, get_menu_history, scale_recipe), mutations (generate_weekly_menu, swap_meal, toggle_favorite, mark_meal_eaten, create_recipe, recipe_variation, mark_in_stock, check_shopping_item), pantry (get_pantry_stock), advice grounded in the 10 mandamientos (nutrition_advice, evaluate_food_health, suggest_substitution, get_variety_score, get_eating_window, get_inflammation_index), and cooking-mode voice control (start_cooking_mode, set_timer, cooking_step). Voice input (speech-to-text), text-to-speech, Spanish, conversation history, useVoice hook, suggested prompts, microphone button.
 
-**Source**: `apps/api/src/routes/assistant.ts`, `apps/api/src/services/assistant/`, `apps/web/src/app/advisor/`, `apps/web/src/components/advisor/`, `apps/web/src/hooks/useVoice.ts`
+**Source**: `apps/api/src/routes/assistant.ts`, `apps/api/src/services/assistant/`, `apps/web/src/app/advisor/`, `apps/web/src/components/advisor/`, `apps/web/src/hooks/useVoice.ts`, `apps/web/src/lib/cookingCommands.ts`
 
 ---
 

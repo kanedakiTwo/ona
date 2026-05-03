@@ -30,6 +30,11 @@ interface Preferences {
   priority: 'balanced' | 'muscle' | 'weight_loss' | 'energy'
 }
 
+interface Household {
+  adults: number
+  kidsCount: number
+}
+
 interface MealTemplate {
   [day: string]: string[]
 }
@@ -81,6 +86,7 @@ export default function ProfilePage() {
   const [preferences, setPreferences] = useState<Preferences>({
     restrictions: [], priority: 'balanced',
   })
+  const [household, setHousehold] = useState<Household>({ adults: 2, kidsCount: 0 })
   const [mealTemplate, setMealTemplate] = useState<MealTemplate>(() => {
     const t: MealTemplate = {}
     for (const d of DAYS) t[d] = ['desayuno', 'almuerzo', 'cena']
@@ -133,6 +139,31 @@ export default function ProfilePage() {
       if (blob?.mealTemplate) setMealTemplate(blob.mealTemplate)
       else if (blob?.meal_template) setMealTemplate(blob.meal_template)
     }).catch(() => {})
+  }, [user])
+
+  // Hydrate household sizing from the user object (already includes
+  // adults + kidsCount after the 0005 migration). Falls back to the
+  // legacy enum until the user re-saves their profile.
+  useEffect(() => {
+    if (!user) return
+    if (typeof user.adults === 'number' && user.adults > 0) {
+      setHousehold({ adults: user.adults, kidsCount: user.kidsCount ?? 0 })
+      return
+    }
+    switch (user.householdSize) {
+      case 'solo':
+        setHousehold({ adults: 1, kidsCount: 0 })
+        break
+      case 'couple':
+        setHousehold({ adults: 2, kidsCount: 0 })
+        break
+      case 'family_no_kids':
+        setHousehold({ adults: 3, kidsCount: 0 })
+        break
+      case 'family_with_kids':
+        setHousehold({ adults: 2, kidsCount: 2 })
+        break
+    }
   }, [user])
 
   const bmr = useMemo(() => {
@@ -190,6 +221,13 @@ export default function ProfilePage() {
         energy: 'quick',
       }
       if (preferences.priority) userPayload.priority = PRIORITY_MAP[preferences.priority] ?? 'varied'
+      // Household sizing — required by the shopping-list scaler.
+      if (Number.isFinite(household.adults) && household.adults >= 1) {
+        userPayload.adults = Math.floor(household.adults)
+      }
+      if (Number.isFinite(household.kidsCount) && household.kidsCount >= 0) {
+        userPayload.kidsCount = Math.floor(household.kidsCount)
+      }
 
       const calls: Promise<unknown>[] = []
       if (Object.keys(userPayload).length > 0) {
@@ -203,7 +241,7 @@ export default function ProfilePage() {
       setTimeout(() => setSaved(false), 2500)
     } catch (e) { console.error(e) }
     finally { setSaving(false) }
-  }, [user, physical, preferences, mealTemplate])
+  }, [user, physical, preferences, household, mealTemplate])
 
   if (authLoading || !user) {
     return (
@@ -332,6 +370,51 @@ export default function ProfilePage() {
       <section className="px-5 mt-12">
         <ChapterHeader number="02" title="Tus" italic="preferencias" />
         <div className="mt-6 space-y-6">
+          <div>
+            <Label>Hogar (para escalar la compra)</Label>
+            <p className="mt-1 text-[11px] italic text-[#7A7066]">
+              Adultos cuenta a partir de 11 años. Niños son 2 a 10. Menores de 2 no cuentan. Cada niño cuenta como media ración.
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-[#DDD6C5] bg-[#FFFEFA] p-3">
+                <div className="text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">Adultos</div>
+                <div className="mt-2 flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setHousehold((h) => ({ ...h, adults: Math.max(1, h.adults - 1) }))}
+                    className="h-8 w-8 rounded-full border border-[#DDD6C5] text-base leading-none hover:border-[#1A1612]"
+                    aria-label="Quitar adulto"
+                  >−</button>
+                  <span className="text-xl font-medium tabular-nums w-6 text-center">{household.adults}</span>
+                  <button
+                    type="button"
+                    onClick={() => setHousehold((h) => ({ ...h, adults: Math.min(20, h.adults + 1) }))}
+                    className="h-8 w-8 rounded-full border border-[#DDD6C5] text-base leading-none hover:border-[#1A1612]"
+                    aria-label="Añadir adulto"
+                  >+</button>
+                </div>
+              </div>
+              <div className="rounded-xl border border-[#DDD6C5] bg-[#FFFEFA] p-3">
+                <div className="text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">Niños 2–10</div>
+                <div className="mt-2 flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setHousehold((h) => ({ ...h, kidsCount: Math.max(0, h.kidsCount - 1) }))}
+                    className="h-8 w-8 rounded-full border border-[#DDD6C5] text-base leading-none hover:border-[#1A1612]"
+                    aria-label="Quitar niño"
+                  >−</button>
+                  <span className="text-xl font-medium tabular-nums w-6 text-center">{household.kidsCount}</span>
+                  <button
+                    type="button"
+                    onClick={() => setHousehold((h) => ({ ...h, kidsCount: Math.min(20, h.kidsCount + 1) }))}
+                    className="h-8 w-8 rounded-full border border-[#DDD6C5] text-base leading-none hover:border-[#1A1612]"
+                    aria-label="Añadir niño"
+                  >+</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div>
             <Label>Prioridad nutricional</Label>
             <div className="mt-2 flex flex-wrap gap-1.5">

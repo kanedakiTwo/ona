@@ -14,7 +14,10 @@ export type ActivityLevel = (typeof ACTIVITY_LEVELS)[number]
 export const SEXES = ['male', 'female'] as const
 export type Sex = (typeof SEXES)[number]
 
-// Household size (onboarding Q1)
+// Household size (legacy onboarding enum — replaced by adults + kidsCount).
+// @deprecated Use `users.adults` + `users.kids_2_to_10` instead. Kept here so
+// the legacy `HOUSEHOLD_MULTIPLIER` table below can still translate stored
+// values during the backfill window.
 export const HOUSEHOLD_SIZES = ['solo', 'couple', 'family_with_kids', 'family_no_kids'] as const
 export type HouseholdSize = (typeof HOUSEHOLD_SIZES)[number]
 
@@ -26,7 +29,10 @@ export type CookingFrequency = (typeof COOKING_FREQUENCIES)[number]
 export const PRIORITIES = ['quick', 'varied', 'healthy', 'cheap'] as const
 export type Priority = (typeof PRIORITIES)[number]
 
-// Household size multiplier for shopping list quantities
+// @deprecated Legacy household-size multiplier. Use
+// `householdMultiplier(adults, kidsCount)` from `utils/household` for new
+// code. Only the migration backfill and the shopping fallback path still
+// reach for this table.
 export const HOUSEHOLD_MULTIPLIER: Record<HouseholdSize, number> = {
   solo: 1,
   couple: 2,

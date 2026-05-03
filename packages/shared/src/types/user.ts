@@ -10,6 +10,17 @@ export interface User {
   weight?: number
   height?: number
   activityLevel: ActivityLevel
+  /**
+   * Number of adults (and children > 10 years) in the household. Drives the
+   * shopping-list multiplier together with `kidsCount`.
+   */
+  adults?: number
+  /**
+   * Number of children aged 2 to 10. Children <2 are not counted; children
+   * >10 are counted as adults. Each kid adds 0.5 portions for shopping.
+   */
+  kidsCount?: number
+  /** @deprecated Use `adults` + `kidsCount`. Kept for legacy reads only. */
   householdSize?: HouseholdSize
   cookingFreq?: CookingFrequency
   restrictions: string[]
@@ -30,7 +41,8 @@ export interface DayTemplate {
 }
 
 export interface OnboardingAnswers {
-  householdSize: HouseholdSize
+  adults: number
+  kidsCount: number
   cookingFreq: CookingFrequency
   restrictions: string[]
   favoriteDishes: string[]
@@ -50,7 +62,8 @@ export const loginSchema = z.object({
 })
 
 export const onboardingSchema = z.object({
-  householdSize: z.enum(['solo', 'couple', 'family_with_kids', 'family_no_kids']),
+  adults: z.number().int().min(1).max(20),
+  kidsCount: z.number().int().min(0).max(20),
   cookingFreq: z.enum(['daily', '3_4_times', 'rarely']),
   restrictions: z.array(z.string()),
   favoriteDishes: z.array(z.string()).min(1).max(5),
@@ -63,6 +76,8 @@ export const updateProfileSchema = z.object({
   weight: z.number().min(20).max(300).optional(),
   height: z.number().min(50).max(250).optional(),
   activityLevel: z.enum(['none', 'light', 'moderate', 'high']).optional(),
+  adults: z.number().int().min(1).max(20).optional(),
+  kidsCount: z.number().int().min(0).max(20).optional(),
   restrictions: z.array(z.string()).optional(),
   priority: z.enum(['quick', 'varied', 'healthy', 'cheap']).optional(),
 })

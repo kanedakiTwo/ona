@@ -37,21 +37,35 @@ export async function loadUserContext(userId: string, db: any): Promise<string> 
     parts.push(`Restricciones: ${user.restrictions.join(', ')}`)
   }
 
-  const householdLabels: Record<string, string> = {
-    solo: 'solo',
-    couple: 'en pareja',
-    family_with_kids: 'familia con ninos',
-    family_no_kids: 'familia sin ninos',
-  }
   const cookingLabels: Record<string, string> = {
     daily: 'cocina a diario',
     '3-4': 'cocina 3-4 veces/semana',
     '1-2': 'cocina 1-2 veces/semana',
     rarely: 'cocina raramente',
   }
-
+  // Render the household as "<adults> adultos + <kidsCount> niños (2–10 años)"
+  // so the assistant can reason about portions per person. Falls back to the
+  // legacy enum label for users who haven't yet updated to the new schema.
+  const legacyHouseholdLabels: Record<string, string> = {
+    solo: 'solo',
+    couple: 'en pareja',
+    family_with_kids: 'familia con ninos',
+    family_no_kids: 'familia sin ninos',
+  }
   const contextParts: string[] = []
-  if (user.householdSize) contextParts.push(householdLabels[user.householdSize] ?? user.householdSize)
+  const adults = (user as { adults?: number | null }).adults
+  const kidsCount = (user as { kidsCount?: number | null }).kidsCount
+  if (typeof adults === 'number' && adults > 0) {
+    const adultsLabel = adults === 1 ? '1 adulto' : `${adults} adultos`
+    if (typeof kidsCount === 'number' && kidsCount > 0) {
+      const kidsLabel = kidsCount === 1 ? '1 niño (2–10 años)' : `${kidsCount} niños (2–10 años)`
+      contextParts.push(`${adultsLabel} + ${kidsLabel}`)
+    } else {
+      contextParts.push(adultsLabel)
+    }
+  } else if (user.householdSize) {
+    contextParts.push(legacyHouseholdLabels[user.householdSize] ?? user.householdSize)
+  }
   if (user.cookingFreq) contextParts.push(cookingLabels[user.cookingFreq] ?? user.cookingFreq)
   if (contextParts.length > 0) {
     parts.push(`Hogar: ${contextParts.join(', ')}`)

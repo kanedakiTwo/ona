@@ -13,6 +13,7 @@ import {
 } from '../../db/schema.js'
 import { nutrientsToPercentages, TARGET_MACROS, detectSeason } from '@ona/shared'
 import type { DayMenu, Meal, NutrientBalance, HouseholdSize } from '@ona/shared'
+import { householdMultiplier, householdSizeToCounts } from '@ona/shared'
 import { generateMenu } from '../menuGenerator.js'
 import { generateShoppingList } from '../shoppingList.js'
 import { findRecipeForSlot, type RecipeWithIngredients } from '../recipeMatcher.js'
@@ -260,13 +261,25 @@ const getShoppingList: SkillDefinition = {
     }
 
     const [user] = await db
-      .select({ householdSize: users.householdSize })
+      .select({
+        adults: users.adults,
+        kidsCount: users.kidsCount,
+        householdSize: users.householdSize,
+      })
       .from(users)
       .where(eq(users.id, userId))
       .limit(1)
 
-    const householdSize = (user?.householdSize as HouseholdSize) ?? 'solo'
-    const items = await generateShoppingList(menu.days as DayMenu[], householdSize, db)
+    let multiplier: number
+    if (user && typeof user.adults === 'number' && user.adults > 0) {
+      multiplier = householdMultiplier(user.adults, user.kidsCount ?? 0)
+    } else {
+      const counts = householdSizeToCounts(
+        (user?.householdSize as HouseholdSize | null | undefined) ?? null,
+      )
+      multiplier = householdMultiplier(counts.adults, counts.kidsCount)
+    }
+    const items = await generateShoppingList(menu.days as DayMenu[], multiplier, db)
 
     const summary = items.length > 0
       ? `Lista de la compra con ${items.length} ingredientes para esta semana.`
@@ -1587,6 +1600,59 @@ const editRecipe: SkillDefinition = {
   },
 }
 
+/**
+ * update_household — set the user's adults + kidsCount (children 2–10 years)
+ * via voice ("ahora somos 2 adultos y un niño", "quítame el niño"). Drives
+ * shopping-list portion sizing immediately.
+ */
+const updateHousehold: SkillDefinition = {
+  name: 'update_household',
+  description:
+    'Actualiza la composición del hogar del usuario: adultos (incluye mayores de 10 años) y número de niños de 2 a 10 años. Los menores de 2 no se cuentan. Se usa para escalar la lista de la compra y las raciones por defecto en las recetas.',
+  parameters: {
+    type: 'object',
+    properties: {
+      adults: {
+        type: 'number',
+        description: 'Número de adultos en el hogar (>=1). Incluye mayores de 10 años.',
+      },
+      kidsCount: {
+        type: 'number',
+        description: 'Niños entre 2 y 10 años (>=0). Cada niño cuenta como 0.5 raciones.',
+      },
+    },
+    required: ['adults', 'kidsCount'],
+  },
+  async handler(
+    params: { adults: number; kidsCount: number },
+    ctx: SkillContext,
+  ): Promise<SkillResult> {
+    const { userId, db } = ctx
+    const adults = Math.max(1, Math.floor(params.adults))
+    const kidsCount = Math.max(0, Math.floor(params.kidsCount))
+
+    await db
+      .update(users)
+      .set({ adults, kidsCount, householdSize: null })
+      .where(eq(users.id, userId))
+
+    const multiplier = householdMultiplier(adults, kidsCount)
+    const adultsLabel = adults === 1 ? '1 adulto' : `${adults} adultos`
+    const kidsLabel =
+      kidsCount === 0
+        ? 'sin niños'
+        : kidsCount === 1
+          ? '1 niño (2-10 años)'
+          : `${kidsCount} niños (2-10 años)`
+
+    return {
+      data: { adults, kidsCount, multiplier },
+      summary: `Hogar actualizado: ${adultsLabel} ${kidsCount > 0 ? `+ ${kidsLabel}` : `(${kidsLabel})`}. Las próximas listas de la compra escalarán a ${multiplier} raciones.`,
+      uiHint: 'confirmation',
+    }
+  },
+}
+
 // ─── Exports ────────────────────────────────────────────────
 
 export const skills: SkillDefinition[] = [
@@ -1620,6 +1686,7 @@ export const skills: SkillDefinition[] = [
   cookingStep,
   // Improvements 2026-05:
   editRecipe,
+  updateHousehold,
 ]
 
 /**

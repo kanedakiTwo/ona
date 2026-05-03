@@ -928,8 +928,8 @@ describe('cooking_step', () => {
 // ─── Sanity: every skill in the export array has at least one test ────────
 
 describe('skill export coverage', () => {
-  it('there are exactly 28 registered skills', () => {
-    expect(skills.length).toBe(28)
+  it('there are exactly 29 registered skills', () => {
+    expect(skills.length).toBe(29)
   })
 
   it('every skill has a unique name', () => {

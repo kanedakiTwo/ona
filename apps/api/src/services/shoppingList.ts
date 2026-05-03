@@ -1,11 +1,9 @@
 import { eq, inArray } from 'drizzle-orm'
 import { recipeIngredients, ingredients, recipes as recipesTable } from '../db/schema.js'
-import { HOUSEHOLD_MULTIPLIER } from '@ona/shared'
 import type {
   Aisle,
   BuyableUnit,
   DayMenu,
-  HouseholdSize,
   ShoppingItem,
   Unit,
 } from '@ona/shared'
@@ -176,15 +174,18 @@ interface ScaledRow {
 /**
  * Generate a shopping list from a menu.
  *
- *   1. Scale each meal's ingredients by `householdSize / recipe.servings`.
+ *   1. Scale each meal's ingredients by `householdMultiplier / recipe.servings`.
  *   2. Drop optional ingredients and `pizca` / `al_gusto`.
  *   3. Merge by ingredientId, converting between units when possible.
  *   4. Round each line to a friendly band.
  *   5. Tag each item with the catalog's `aisle` (fallback `otros`) and sort.
+ *
+ * `householdMultiplier` is `adults + 0.5 × kidsCount` for the user's
+ * household. Callers compute it via `householdMultiplier()` from `@ona/shared`.
  */
 export async function generateShoppingList(
   menuDays: DayMenu[],
-  householdSize: HouseholdSize,
+  householdMultiplier: number,
   db: any,
 ): Promise<ShoppingItem[]> {
   // 1. Collect (recipeId, occurrence count) — a recipe scheduled twice in
@@ -201,7 +202,8 @@ export async function generateShoppingList(
   if (recipeCounts.size === 0) return []
   const recipeIds = [...recipeCounts.keys()]
 
-  const householdMultiplier = HOUSEHOLD_MULTIPLIER[householdSize] ?? 2
+  // householdMultiplier is provided by the caller (adults + 0.5 × kidsCount).
+  // The fallback for legacy/unknown households happens at the route layer.
 
   // 2. Fetch recipe servings + ingredient rows + catalog density/unitWeight/aisle.
   const recipeRows: { id: string; servings: number }[] = await db

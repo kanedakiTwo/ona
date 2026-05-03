@@ -4,6 +4,7 @@
  * (scaling, lint, nutrition) lives in the API layer.
  */
 
+import { householdToDiners } from "@ona/shared"
 import type { Recipe, RecipeIngredient, Unit, HouseholdSize } from "@ona/shared"
 
 // ─── Tag visibility ────────────────────────────────────────────────
@@ -144,16 +145,38 @@ export function allergenLabel(token: string): string {
   return ALLERGEN_LABELS[token.toLowerCase()] ?? token
 }
 
-// ─── Household size → diner count ──────────────────────────────────
+// ─── Household → diner count ───────────────────────────────────────
 
-const HOUSEHOLD_DINERS: Record<HouseholdSize, number> = {
+const LEGACY_HOUSEHOLD_DINERS: Record<HouseholdSize, number> = {
   solo: 1,
   couple: 2,
   family_no_kids: 3,
   family_with_kids: 4,
 }
 
+/**
+ * Resolve the diner count to seed the recipe-detail scaler. Prefers the
+ * authoritative `adults` + `kidsCount` shape; falls back to the legacy
+ * `householdSize` enum for users who haven't yet edited their profile after
+ * the migration. Returns null when nothing is set so callers can fall back
+ * to `recipe.servings`.
+ */
+export function householdToDinersOrNull(input: {
+  adults?: number | null
+  kidsCount?: number | null
+  householdSize?: HouseholdSize | null
+}): number | null {
+  if (typeof input.adults === 'number' && input.adults > 0) {
+    return householdToDiners(input.adults, input.kidsCount ?? 0)
+  }
+  if (input.householdSize) {
+    return LEGACY_HOUSEHOLD_DINERS[input.householdSize] ?? null
+  }
+  return null
+}
+
+/** @deprecated Use `householdToDinersOrNull({ adults, kidsCount, householdSize })`. */
 export function householdSizeToDiners(size?: HouseholdSize | null): number | null {
   if (!size) return null
-  return HOUSEHOLD_DINERS[size] ?? null
+  return LEGACY_HOUSEHOLD_DINERS[size] ?? null
 }

@@ -17,7 +17,7 @@ import { acquireWakeLock, releaseWakeLock } from "@/lib/pwa/wakeLock"
 import { ChevronLeft, Clock, Pencil, Share2, Sparkles, Wrench, Zap } from "lucide-react"
 import Link from "next/link"
 import {
-  householdSizeToDiners,
+  householdToDinersOrNull,
   publicTagsOf,
   timelineString,
 } from "@/lib/recipeView"
@@ -44,7 +44,11 @@ export default function RecipeDetailPage() {
   useEffect(() => {
     if (seededRef.current) return
     if (!recipe) return
-    const userDiners = householdSizeToDiners(user?.householdSize)
+    const userDiners = householdToDinersOrNull({
+      adults: user?.adults,
+      kidsCount: user?.kidsCount,
+      householdSize: user?.householdSize,
+    })
     const initial = userDiners ?? recipe.servings ?? 2
     setServings(initial)
     seededRef.current = true

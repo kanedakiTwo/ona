@@ -4,7 +4,29 @@ import { db } from '../db/connection.js'
 import { menus, shoppingLists, users } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { generateShoppingList } from '../services/shoppingList.js'
-import type { DayMenu, HouseholdSize, ShoppingItem } from '@ona/shared'
+import {
+  householdMultiplier,
+  householdSizeToCounts,
+  type DayMenu,
+  type HouseholdSize,
+  type ShoppingItem,
+} from '@ona/shared'
+
+/** Pull the user's authoritative household sizing, falling back to the legacy
+ * `householdSize` enum if `adults`/`kidsCount` haven't been set yet (e.g. a
+ * user who registered before the migration and hasn't visited /profile to
+ * set the new fields). */
+function multiplierForUser(user: {
+  adults?: number | null
+  kidsCount?: number | null
+  householdSize?: string | null
+}): number {
+  if (typeof user.adults === 'number' && user.adults > 0) {
+    return householdMultiplier(user.adults, user.kidsCount ?? 0)
+  }
+  const counts = householdSizeToCounts(user.householdSize as HouseholdSize | null | undefined)
+  return householdMultiplier(counts.adults, counts.kidsCount)
+}
 
 const router = Router()
 
@@ -28,14 +50,19 @@ router.get('/shopping-list/:menuId', async (req: AuthRequest, res) => {
       return
     }
 
-    // Fetch user for household size
+    // Fetch user for household sizing (prefers adults+kidsCount, falls back
+    // to legacy householdSize until everyone has updated their profile).
     const [user] = await db
-      .select({ householdSize: users.householdSize })
+      .select({
+        adults: users.adults,
+        kidsCount: users.kidsCount,
+        householdSize: users.householdSize,
+      })
       .from(users)
       .where(eq(users.id, menu.userId))
       .limit(1)
 
-    const householdSize = (user?.householdSize as HouseholdSize) ?? 'couple'
+    const multiplier = multiplierForUser(user ?? {})
     const days = menu.days as DayMenu[]
 
     // Check if a shopping list already exists for this menu
@@ -51,7 +78,7 @@ router.get('/shopping-list/:menuId', async (req: AuthRequest, res) => {
     }
 
     // Generate the shopping list
-    const items = await generateShoppingList(days, householdSize, db)
+    const items = await generateShoppingList(days, multiplier, db)
 
     // Save to shopping_lists table
     const [list] = await db
@@ -194,13 +221,17 @@ router.post('/shopping-list/:listId/regenerate', async (req: AuthRequest, res) =
     }
 
     const [user] = await db
-      .select({ householdSize: users.householdSize })
+      .select({
+        adults: users.adults,
+        kidsCount: users.kidsCount,
+        householdSize: users.householdSize,
+      })
       .from(users)
       .where(eq(users.id, menu.userId))
       .limit(1)
 
-    const householdSize = (user?.householdSize as HouseholdSize) ?? 'couple'
-    const items = await generateShoppingList(menu.days as DayMenu[], householdSize, db)
+    const multiplier = multiplierForUser(user ?? {})
+    const items = await generateShoppingList(menu.days as DayMenu[], multiplier, db)
 
     const [updated] = await db
       .update(shoppingLists)

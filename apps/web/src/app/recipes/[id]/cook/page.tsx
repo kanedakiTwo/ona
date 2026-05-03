@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { useRecipe } from "@/hooks/useRecipes"
 import { useAuth } from "@/lib/auth"
-import { householdSizeToDiners } from "@/lib/recipeView"
+import { householdToDinersOrNull } from "@/lib/recipeView"
 import { CookingShell } from "@/components/cooking/CookingShell"
 
 /**
@@ -50,11 +50,15 @@ export default function CookPage() {
   useEffect(() => {
     if (seededRef.current) return
     if (!recipe) return
-    const fromHousehold = householdSizeToDiners(user?.householdSize)
+    const fromHousehold = householdToDinersOrNull({
+      adults: user?.adults,
+      kidsCount: user?.kidsCount,
+      householdSize: user?.householdSize,
+    })
     const initial = fromHousehold ?? recipe.servings ?? 2
     setServings(initial)
     seededRef.current = true
-  }, [recipe, user?.householdSize])
+  }, [recipe, user?.adults, user?.kidsCount, user?.householdSize])
 
   // Keep the URL in sync with the live scaler value so refresh / share
   // preserves the chosen portion size.

@@ -28,7 +28,12 @@ export const users = pgTable('users', {
   height: real('height'),
   activityLevel: text('activity_level').default('none'),
   // Onboarding
+  /** @deprecated Replaced by `adults` + `kidsCount`. Kept while consumers backfill. */
   householdSize: text('household_size'),
+  /** Adults plus children > 10 years (≥ 1). */
+  adults: integer('adults').notNull().default(2),
+  /** Children aged 2 to 10. <2 don't count, >10 count as adults. */
+  kidsCount: integer('kids_2_to_10').notNull().default(0),
   cookingFreq: text('cooking_freq'),
   restrictions: text('restrictions').array().default([]),
   favoriteDishes: text('favorite_dishes').array().default([]),

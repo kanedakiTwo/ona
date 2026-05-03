@@ -18,7 +18,8 @@ const PRESET_RESTRICTIONS = [
 ]
 
 interface OnboardingData {
-  householdSize: string | null
+  adults: number
+  kidsCount: number
   cookingFreq: string | null
   restrictions: string[]
   favoriteDishes: string[]
@@ -33,7 +34,8 @@ export default function OnboardingFlow() {
   const [error, setError] = useState("")
 
   const [data, setData] = useState<OnboardingData>({
-    householdSize: null,
+    adults: 2,
+    kidsCount: 0,
     cookingFreq: null,
     restrictions: [],
     favoriteDishes: ["", "", ""],
@@ -87,7 +89,8 @@ export default function OnboardingFlow() {
 
     try {
       const payload = {
-        householdSize: data.householdSize,
+        adults: data.adults,
+        kidsCount: data.kidsCount,
         cookingFreq: data.cookingFreq,
         restrictions: data.restrictions,
         favoriteDishes: data.favoriteDishes.filter((d) => d.trim() !== ""),
@@ -109,7 +112,7 @@ export default function OnboardingFlow() {
   const canAdvance = () => {
     switch (step) {
       case 1:
-        return data.householdSize !== null
+        return data.adults >= 1 && data.kidsCount >= 0
       case 2:
         return data.cookingFreq !== null
       case 3:
@@ -147,30 +150,75 @@ export default function OnboardingFlow() {
       {/* Step 1: Household size */}
       {step === 1 && (
         <div>
-          <h2 className="text-2xl font-bold">Para cuantos cocinas?</h2>
-          <p className="mt-1 text-sm text-[#777777]">Asi ajustamos las cantidades</p>
-          <div className="mt-6 grid grid-cols-2 gap-3">
-            {[
-              { value: "solo", label: "Solo yo", desc: "1 persona" },
-              { value: "couple", label: "En pareja", desc: "2 personas" },
-              { value: "family_no_kids", label: "Familia sin ninos", desc: "3+ adultos" },
-              { value: "family_with_kids", label: "Familia con ninos", desc: "Con peques" },
-            ].map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => setData({ ...data, householdSize: opt.value })}
-                className={cn(
-                  "rounded-xl border-2 p-4 text-left transition-colors",
-                  data.householdSize === opt.value
-                    ? "border-[#2D6A4F] bg-[#D8F3DC]"
-                    : "border-[#DDDDDD] hover:border-[#95D5B2]"
-                )}
-              >
-                <span className="block text-sm font-medium">{opt.label}</span>
-                <span className="block text-xs text-[#777777]">{opt.desc}</span>
-              </button>
-            ))}
+          <h2 className="text-2xl font-bold">¿Para cuántos cocinas?</h2>
+          <p className="mt-1 text-sm text-[#777777]">
+            Adultos cuenta a partir de 11 años. Niños son los de 2 a 10. Los menores de 2 no cuentan.
+          </p>
+          <div className="mt-6 grid grid-cols-2 gap-4">
+            <div className="rounded-xl border-2 border-[#DDDDDD] p-4">
+              <label className="block text-xs uppercase tracking-[0.12em] text-[#7A7066]">
+                Adultos
+              </label>
+              <div className="mt-2 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setData({ ...data, adults: Math.max(1, data.adults - 1) })
+                  }
+                  className="h-9 w-9 rounded-full border border-[#DDDDDD] text-lg leading-none hover:border-[#1A1612]"
+                  aria-label="Quitar adulto"
+                >
+                  −
+                </button>
+                <span className="text-2xl font-medium tabular-nums w-8 text-center">
+                  {data.adults}
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setData({ ...data, adults: Math.min(20, data.adults + 1) })
+                  }
+                  className="h-9 w-9 rounded-full border border-[#DDDDDD] text-lg leading-none hover:border-[#1A1612]"
+                  aria-label="Añadir adulto"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+            <div className="rounded-xl border-2 border-[#DDDDDD] p-4">
+              <label className="block text-xs uppercase tracking-[0.12em] text-[#7A7066]">
+                Niños 2–10
+              </label>
+              <div className="mt-2 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setData({ ...data, kidsCount: Math.max(0, data.kidsCount - 1) })
+                  }
+                  className="h-9 w-9 rounded-full border border-[#DDDDDD] text-lg leading-none hover:border-[#1A1612]"
+                  aria-label="Quitar niño"
+                >
+                  −
+                </button>
+                <span className="text-2xl font-medium tabular-nums w-8 text-center">
+                  {data.kidsCount}
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setData({ ...data, kidsCount: Math.min(20, data.kidsCount + 1) })
+                  }
+                  className="h-9 w-9 rounded-full border border-[#DDDDDD] text-lg leading-none hover:border-[#1A1612]"
+                  aria-label="Añadir niño"
+                >
+                  +
+                </button>
+              </div>
+            </div>
           </div>
+          <p className="mt-3 text-xs italic text-[#7A7066]">
+            Cada niño cuenta como media ración para la lista de la compra.
+          </p>
         </div>
       )}
 

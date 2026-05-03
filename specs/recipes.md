@@ -149,6 +149,7 @@ When the user changes the diner count from `recipe.servings` to `target`:
 - [apps/web/src/hooks/useIngredients.ts](../apps/web/src/hooks/useIngredients.ts) — `useSearchIngredients`, `useSuggestIngredient`, `useAutoCreateIngredient` (new)
 - [apps/api/src/seed/recipes.ts](../apps/api/src/seed/recipes.ts) — regenerated catalog
 - [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts) — `recipes`, `recipe_ingredients`, `recipe_steps`, `ingredients`, `ingredient_nutrition`
+- [apps/api/scripts/generateRecipeImages.ts](../apps/api/scripts/generateRecipeImages.ts) — bulk hero-image generator: builds an editorial-style prompt per recipe (name + top ingredients + meal hint + cream/warm-light cookbook suffix), calls AiKit's Imagen-fal endpoint (`POST cms.aikit.es/api/free-form-tools/image-generation/generate-imagen-fal`, `Authorization: Bearer aik_…`), downsamples the PNG via sharp to a 1200-px-wide 85-quality JPEG, writes to `apps/web/public/images/recipes/<slug>.jpg`, and updates `recipes.image_url`. Targets system recipes (`author_id IS NULL`) by default; flags: `--dry-run`, `--only=<slug,…>`, `--include-user`, `--concurrency=N`, `--aspect=4:3|1:1|3:4`, `--skip-existing`, `--no-db`
 - [apps/web/src/app/recipes/page.tsx](../apps/web/src/app/recipes/page.tsx)
 - [apps/web/src/app/recipes/[id]/page.tsx](../apps/web/src/app/recipes/[id]/page.tsx)
 - [apps/web/src/components/recipes/](../apps/web/src/components/recipes/)

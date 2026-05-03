@@ -36,6 +36,13 @@
       "when": 1777790799361,
       "tag": "0004_add_voice_transcripts",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1777794119057,
+      "tag": "0005_legal_joseph",
+      "breakpoints": true
     }
   ]
 }

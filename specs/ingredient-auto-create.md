@@ -134,14 +134,14 @@ USDA fetches are sequential to stay within the rate budget. Each extracted recip
 - The es→en translation dictionary lives next to `ingredientAutoCreate.ts`; extending it is a one-line PR. For dishes USDA doesn't recognise, the user always has the "Crear sin nutrición" escape hatch.
 - Branded USDA entries are excluded server-side. The product team chose Foundation/SR Legacy/FNDDS to avoid serving-size confusion; Branded entries store nutrition per arbitrary serving and would corrupt aggregations.
 - Fuzzy dedupe uses normalized form (lowercase + diacritic-stripped) and Levenshtein ≤ 2. "salmon" matches "salmón" (distance 0 after normalization); "atun" matches "atún". This is conservative — false positives are corrected by the curator dashboard later.
-- The endpoint requires auth; only authenticated users (and their server-side flows) can extend the catalog. Curator review of new entries lives in the [Curator Dashboard](./curator-dashboard.md) (when implemented) — a row with `fdcId: null` shows up there as a manual nutrition gap.
+- The endpoint requires auth; only authenticated users (and their server-side flows) can extend the catalog. Admin review of new entries lives in the [Admin Dashboard](./admin-dashboard.md) — a row with `fdcId: null` shows up there as a manual nutrition gap.
 
 ## Related specs
 
 - [Recipes](./recipes.md) — the form that exposes auto-create
 - [Nutrition](./nutrition.md) — same USDA client and per-100 g shape
 - [Recipe Quality](./recipe-quality.md) — the lint validator the auto-create flow protects against
-- [Curator Dashboard](./curator-dashboard.md) — surfaces ingredients with `fdcId: null` for follow-up review
+- [Admin Dashboard](./admin-dashboard.md) — surfaces ingredients with `fdcId: null` for follow-up review
 
 ## Source
 

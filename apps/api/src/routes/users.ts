@@ -25,6 +25,8 @@ router.get('/user/:id', async (req, res) => {
         height: users.height,
         activityLevel: users.activityLevel,
         householdSize: users.householdSize,
+        adults: users.adults,
+        kidsCount: users.kidsCount,
         cookingFreq: users.cookingFreq,
         restrictions: users.restrictions,
         favoriteDishes: users.favoriteDishes,
@@ -70,6 +72,8 @@ router.put('/user/:id', validate(updateProfileSchema), async (req: AuthRequest, 
         height: users.height,
         activityLevel: users.activityLevel,
         householdSize: users.householdSize,
+        adults: users.adults,
+        kidsCount: users.kidsCount,
         cookingFreq: users.cookingFreq,
         restrictions: users.restrictions,
         favoriteDishes: users.favoriteDishes,
@@ -98,12 +102,15 @@ router.post('/user/:id/onboarding', validate(onboardingSchema), async (req: Auth
       return
     }
 
-    const { householdSize, cookingFreq, restrictions, favoriteDishes, priority } = req.body
+    const { adults, kidsCount, cookingFreq, restrictions, favoriteDishes, priority } = req.body
 
     const [updated] = await db
       .update(users)
       .set({
-        householdSize,
+        adults,
+        kidsCount,
+        // Clear the deprecated enum so it doesn't shadow the new fields.
+        householdSize: null,
         cookingFreq,
         restrictions,
         favoriteDishes,
@@ -116,6 +123,8 @@ router.post('/user/:id/onboarding', validate(onboardingSchema), async (req: Auth
         username: users.username,
         email: users.email,
         householdSize: users.householdSize,
+        adults: users.adults,
+        kidsCount: users.kidsCount,
         cookingFreq: users.cookingFreq,
         restrictions: users.restrictions,
         favoriteDishes: users.favoriteDishes,

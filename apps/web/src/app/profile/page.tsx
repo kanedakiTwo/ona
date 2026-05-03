@@ -455,10 +455,11 @@ export default function ProfilePage() {
           Activa el modo voz y aparecerá un botón de micrófono flotante en cualquier pantalla.
           Tócalo para hablar con Ona en manos libres.{' '}
           {voiceMode.wakeAvailable
-            ? <>También puedes decir <em>“Hola Ona”</em> y se activa solo.</>
+            ? <>Si además activas <em>“Hola Ona”</em>, podrás abrir el modo voz sin tocar nada.</>
             : <span className="text-[#A39A8E]">La activación por “Hola Ona” llegará en cuanto se apruebe la cuenta de wake-word.</span>}
         </p>
 
+        {/* Master toggle — voice mode (FAB) */}
         <div className="mt-5 rounded-2xl bg-[#FFFEFA] border border-[#DDD6C5] p-4">
           <button
             type="button"
@@ -484,11 +485,7 @@ export default function ProfilePage() {
               <div className="text-left min-w-0">
                 <div className="text-[13px] font-medium text-[#1A1612]">Activar modo voz</div>
                 <div className="text-[11px] text-[#7A7066] truncate">
-                  {!voiceMode.enabled
-                    ? 'Desactivado'
-                    : voiceMode.wakeAvailable
-                      ? (voiceMode.isWakeListening ? 'Escuchando “Hola Ona”' : (voiceMode.wakeError ?? 'Iniciando…'))
-                      : 'Activo (toca el micro flotante)'}
+                  {voiceMode.enabled ? 'Activo · botón flotante visible' : 'Desactivado'}
                 </div>
               </div>
             </div>
@@ -501,6 +498,39 @@ export default function ProfilePage() {
             </span>
           </button>
         </div>
+
+        {/* Sub-toggle — wake-word listener. Only meaningful when master is on AND Picovoice is configured. */}
+        {voiceMode.enabled && voiceMode.wakeAvailable && (
+          <div className="mt-3 rounded-2xl bg-[#FFFEFA] border border-[#DDD6C5] p-4">
+            <button
+              type="button"
+              onClick={() => voiceMode.setWakeWordEnabled(!voiceMode.wakeWordEnabled)}
+              className="flex w-full items-center justify-between gap-3"
+              aria-pressed={voiceMode.wakeWordEnabled}
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[14px] ${voiceMode.wakeWordEnabled ? 'bg-[#2D6A4F] text-white' : 'bg-[#F2EDE0] text-[#7A7066]'}`}>
+                  〽
+                </div>
+                <div className="text-left min-w-0">
+                  <div className="text-[13px] font-medium text-[#1A1612]">Escuchar “Hola Ona”</div>
+                  <div className="text-[11px] text-[#7A7066] truncate">
+                    {!voiceMode.wakeWordEnabled
+                      ? 'Desactivado · activa para abrir el modo voz por voz'
+                      : (voiceMode.isWakeListening ? 'Escuchando “Hola Ona”' : (voiceMode.wakeError ?? 'Iniciando…'))}
+                  </div>
+                </div>
+              </div>
+              <span
+                className={`relative block h-6 w-11 shrink-0 rounded-full transition-colors ${voiceMode.wakeWordEnabled ? 'bg-[#2D6A4F]' : 'bg-[#DDD6C5]'}`}
+              >
+                <span
+                  className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-[left] duration-200 ${voiceMode.wakeWordEnabled ? 'left-[22px]' : 'left-0.5'}`}
+                />
+              </span>
+            </button>
+          </div>
+        )}
       </section>
       )}
 

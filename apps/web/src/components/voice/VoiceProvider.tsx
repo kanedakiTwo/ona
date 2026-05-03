@@ -9,6 +9,7 @@ import { appendVoiceTurns } from '@/lib/voiceMessages'
 import VoiceOverlay from './VoiceOverlay'
 
 const ENABLED_KEY = 'ona.voice.enabled'
+const WAKEWORD_KEY = 'ona.voice.wakeword.enabled'
 const DEFAULT_SILENCE_MS = 20_000
 const COOKING_SILENCE_MS = 120_000
 const CONTEXT_TTL_MS = 30 * 60_000
@@ -25,8 +26,12 @@ const COOKING_SKILLS = new Set([
 const TOPIC_RESET_PHRASES = ['olvida eso', 'hablemos de otra cosa', 'cambiemos de tema']
 
 interface VoiceModeContextValue {
+  /** Master toggle — when true, voice mode is usable (FAB + manual entry). */
   enabled: boolean
   setEnabled: (v: boolean) => void
+  /** Sub-toggle — when true and wake-word is available, the browser listens for "Hola Ona". */
+  wakeWordEnabled: boolean
+  setWakeWordEnabled: (v: boolean) => void
   isWakeListening: boolean
   wakeAvailable: boolean
   isOverlayOpen: boolean
@@ -48,20 +53,32 @@ export default function VoiceProvider({ children }: { children: ReactNode }) {
   const userId = user?.id ?? ''
 
   const [enabled, setEnabledState] = useState(false)
+  const [wakeWordEnabled, setWakeWordEnabledState] = useState(false)
   const [overlayOpen, setOverlayOpen] = useState(false)
   const [silenceWarning, setSilenceWarning] = useState<string | null>(null)
   const cachedContextRef = useRef<{ turns: RealtimeTurn[]; updatedAt: number }>({ turns: [], updatedAt: 0 })
   const initialContextForSession = useRef<RealtimeTurn[] | undefined>(undefined)
 
   useEffect(() => {
-    const stored = typeof window !== 'undefined' ? localStorage.getItem(ENABLED_KEY) : null
-    setEnabledState(stored === '1')
+    if (typeof window === 'undefined') return
+    setEnabledState(localStorage.getItem(ENABLED_KEY) === '1')
+    setWakeWordEnabledState(localStorage.getItem(WAKEWORD_KEY) === '1')
   }, [])
 
   const setEnabled = useCallback((v: boolean) => {
     setEnabledState(v)
     if (typeof window !== 'undefined') {
       localStorage.setItem(ENABLED_KEY, v ? '1' : '0')
+      // Disabling voice mode also stops the wake-word listener — but we keep
+      // the user's wake-word preference in storage so re-enabling voice
+      // restores their choice.
+    }
+  }, [])
+
+  const setWakeWordEnabled = useCallback((v: boolean) => {
+    setWakeWordEnabledState(v)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(WAKEWORD_KEY, v ? '1' : '0')
     }
   }, [])
 
@@ -103,7 +120,8 @@ export default function VoiceProvider({ children }: { children: ReactNode }) {
   const wakeAvailable = wakeAccessKey.length > 0
 
   const wake = useWakeWord({
-    enabled: enabled && wakeAvailable && !!userId && !overlayOpen,
+    enabled:
+      enabled && wakeWordEnabled && wakeAvailable && !!userId && !overlayOpen,
     onDetected: () => {
       if (!overlayOpen) startSession()
     },
@@ -179,6 +197,8 @@ export default function VoiceProvider({ children }: { children: ReactNode }) {
   const ctxValue = useMemo<VoiceModeContextValue>(() => ({
     enabled,
     setEnabled,
+    wakeWordEnabled,
+    setWakeWordEnabled,
     isWakeListening: wake.isListening,
     wakeAvailable,
     isOverlayOpen: overlayOpen,
@@ -186,7 +206,7 @@ export default function VoiceProvider({ children }: { children: ReactNode }) {
     openOverlay: () => {
       if (!overlayOpen && userId) startSession()
     },
-  }), [enabled, setEnabled, wake.isListening, wakeAvailable, overlayOpen, wake.error, startSession, userId])
+  }), [enabled, setEnabled, wakeWordEnabled, setWakeWordEnabled, wake.isListening, wakeAvailable, overlayOpen, wake.error, startSession, userId])
 
   return (
     <VoiceModeContext.Provider value={ctxValue}>

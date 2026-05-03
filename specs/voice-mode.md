@@ -6,8 +6,12 @@ Hands-free voice conversation with the assistant, activated by the wake word "Ho
 
 ## User Capabilities
 
-- Users can opt in to "Modo manos libres" from their profile/settings (off by default)
-- Once enabled, when Picovoice is configured the app listens for "Hola Ona" on every authenticated route. When Picovoice isn't configured a small mic FAB appears at top-right so users can still open voice mode by tap
+- Users can opt in to "Modo voz" (master toggle) from their profile/settings (off by default). When enabled, a floating mic FAB appears top-right on every authenticated route as the manual entry point
+- When the master toggle is on AND Picovoice is configured, a separate sub-toggle "Escuchar 'Hola Ona'" appears below it. The sub-toggle is independently off by default — users opt in explicitly to "always listening" so the master toggle can stay enabled (FAB visible) without the wake-word burning battery / mic
+- Master OFF → no FAB, no wake-word, nothing listening
+- Master ON + sub OFF → FAB visible, no wake-word (manual entry only)
+- Master ON + sub ON + Picovoice configured → FAB visible **and** the app listens for "Hola Ona"
+- Master ON + sub ON + Picovoice not configured → sub-toggle is hidden; the copy under the master toggle explains the wake-word account is pending
 - Saying "Hola Ona" (or tapping the FAB) opens a full-screen voice overlay (animated orb, no text) and starts a real-time spoken conversation with the assistant
 - Users can speak naturally without pressing any button; the assistant detects when they finish and replies aloud
 - Users can interrupt the assistant mid-sentence (barge-in) — the assistant stops and listens
@@ -62,7 +66,10 @@ When the conversation context is "step-by-step cooking" (a recipe-step skill is 
 
 ## Floating mic FAB (manual entry point)
 
-When voice mode is enabled in the profile but the wake-word engine is not available (no `NEXT_PUBLIC_PICOVOICE_ACCESS_KEY` or `.ppn` model not yet shipped), a small floating mic button appears top-right on every authenticated route. Tapping it opens the voice overlay manually. The FAB also stays visible alongside the wake word once Picovoice access is granted, so the user always has a tappable fallback if the wake word misfires. The toggle copy in `/profile` reads *"Escuchando 'Hola Ona'"* when wake-word is live and *"Activo (toca el micro flotante)"* when it isn't.
+The FAB is the manual entry point and is shown whenever the master "Modo voz" toggle is ON, regardless of whether the wake-word sub-toggle is on. Tapping it opens the voice overlay. This guarantees there is always a way to enter voice mode by tap, even when the user has wake-word turned off or the Picovoice account is unavailable. The status text under each toggle in `/profile` is:
+
+- Master toggle: *"Activo · botón flotante visible"* when on, *"Desactivado"* when off.
+- Wake-word sub-toggle (only rendered when master is on AND `NEXT_PUBLIC_PICOVOICE_ACCESS_KEY` is configured): *"Escuchando 'Hola Ona'"* when listening, *"Iniciando…"* during model load, the typed `wakeError` if Porcupine fails, or *"Desactivado · activa para abrir el modo voz por voz"* when off.
 
 ## Auto-close on error
 

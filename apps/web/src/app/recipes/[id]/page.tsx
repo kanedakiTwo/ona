@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useParams, usePathname, useRouter } from "next/navigation"
 import { motion } from "motion/react"
-import { useRecipe } from "@/hooks/useRecipes"
+import { useCopyRecipe, useRecipe } from "@/hooks/useRecipes"
 import { useAuth } from "@/lib/auth"
 import { FavoriteButton } from "@/components/recipes/FavoriteButton"
 import { ServingsScaler } from "@/components/recipes/ServingsScaler"
@@ -14,7 +14,7 @@ import { AllergensBadges } from "@/components/recipes/detail/AllergensBadges"
 import { haptic } from "@/lib/pwa/haptics"
 import { share } from "@/lib/pwa/share"
 import { acquireWakeLock, releaseWakeLock } from "@/lib/pwa/wakeLock"
-import { ChevronLeft, Clock, Pencil, Share2, Sparkles, Wrench, Zap } from "lucide-react"
+import { BookmarkPlus, ChevronLeft, Clock, Pencil, Share2, Sparkles, Wrench, Zap } from "lucide-react"
 import Link from "next/link"
 import {
   householdToDinersOrNull,
@@ -379,7 +379,7 @@ export default function RecipeDetailPage() {
           </Link>
         </section>
 
-        {/* Author-only: edit / delete affordances */}
+        {/* Author-only: edit affordance */}
         {user && recipe.authorId === user.id && (
           <section className="mt-6 flex items-center gap-3">
             <Link
@@ -392,6 +392,12 @@ export default function RecipeDetailPage() {
           </section>
         )}
 
+        {/* Non-author: "add to mine" affordance — copies the recipe so the
+            user can edit a personal version without touching the original. */}
+        {user && recipe.authorId !== user.id && (
+          <CopyToMineButton recipeId={recipe.id} />
+        )}
+
         {/* Back to catalog */}
         <Link
           href="/recipes"
@@ -401,5 +407,36 @@ export default function RecipeDetailPage() {
         </Link>
       </motion.div>
     </div>
+  )
+}
+
+/* ─────────────────────────────────────────────
+   Copy-to-mine button
+   ───────────────────────────────────────────── */
+function CopyToMineButton({ recipeId }: { recipeId: string }) {
+  const router = useRouter()
+  const copy = useCopyRecipe()
+  const [error, setError] = useState<string | null>(null)
+  return (
+    <section className="mt-6 flex flex-col gap-2">
+      <button
+        type="button"
+        onClick={() => {
+          setError(null)
+          copy.mutate(recipeId, {
+            onSuccess: (created) => router.push(`/recipes/${created.id}`),
+            onError: (err: any) => {
+              setError(err?.message ?? 'No se pudo copiar la receta.')
+            },
+          })
+        }}
+        disabled={copy.isPending}
+        className="inline-flex items-center gap-2 self-start rounded-full border border-[#DDD6C5] bg-[#F2EDE0] px-5 py-2.5 text-[12px] uppercase tracking-[0.12em] text-[#1A1612] transition-all hover:border-[#1A1612] disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        <BookmarkPlus size={14} />
+        {copy.isPending ? 'Añadiendo…' : 'Añadir a mis recetas'}
+      </button>
+      {error && <p className="text-[12px] italic text-[#C65D38]">{error}</p>}
+    </section>
   )
 }

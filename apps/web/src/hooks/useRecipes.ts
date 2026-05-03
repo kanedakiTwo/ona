@@ -60,6 +60,23 @@ export function useCreateRecipe() {
 }
 
 /**
+ * Copy a recipe (system or another user's) into the caller's catalog.
+ * Server clones the row + ingredients + steps with `authorId = me`, remaps
+ * `step.ingredientRefs`, and tags the copy `internalTags: ['copied-from-catalog']`.
+ * Returns the new recipe; caller typically navigates to /recipes/<newId>.
+ */
+export function useCopyRecipe() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (sourceId: string) =>
+      api.post<Recipe>(`/recipes/${sourceId}/copy`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["recipes"] })
+    },
+  })
+}
+
+/**
  * Update an existing recipe (author-only on the server). PUT requires a
  * COMPLETE payload — name, servings, meals, ingredients, steps — so the
  * caller must always send the full edited recipe.

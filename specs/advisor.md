@@ -34,6 +34,7 @@ The assistant can call back-end skills (function calling). Each skill has a name
 - `create_recipe` — save a new user recipe
 - `edit_recipe` — author-only field edits on a user recipe (name, prepTime, cookTime, difficulty, notes, tips). Voice cannot edit ingredients/steps inline; with `openEditor: true` it returns a hint pointing at `/recipes/<id>/edit` so the user can continue in the form
 - `update_household` — set the user's `adults` + `kidsCount` (children 2–10 years; <2 don't count, >10 count as adults). Drives shopping-list portion sizing immediately. Triggered by phrases like "ahora somos 2 adultos y un niño" or "quítame el niño"
+- `add_recipe_to_mine` — copy a system (or another user's) recipe into the caller's catalog so they can edit it. Lookup by `recipeId` or `recipeName` (prefers ONA system matches; refuses if the only matches are recipes the user already owns). Returns the new recipe id + name. Same wire as the `POST /recipes/:id/copy` endpoint surfaced in the UI as "Añadir a mis recetas"
 - `recipe_variation` — generate a variation of a recipe (e.g., dairy-free version)
 - `nutrition_advice` — return advisor summary based on `user_nutrient_balance`
 - `get_pantry_stock` — list ingredients currently flagged `inStock` on the latest shopping list

@@ -15,6 +15,7 @@
 import { Router } from 'express'
 import { eq, and, sql, asc, count, arrayContains, inArray } from 'drizzle-orm'
 import multer from 'multer'
+import crypto from 'crypto'
 import { db } from '../db/connection.js'
 import {
   recipes,
@@ -22,7 +23,16 @@ import {
   recipeSteps,
   ingredients,
   userFavorites,
+  users,
 } from '../db/schema.js'
+import { env } from '../config/env.js'
+import {
+  buildRecipePrompt,
+  generateRecipeImage,
+  writeRecipeImage,
+  AikitNotConfiguredError,
+  AikitGenerationError,
+} from '../services/recipeImageGenerator.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
 import {
@@ -692,6 +702,142 @@ router.put(
   },
 )
 
+// POST /recipes/:id/copy — copy a recipe into the user's catalog (auth required).
+// Used to "Añadir a mis recetas" from the ONA system catalog. Creates a new
+// `recipes` row with `authorId = req.userId` and clones every
+// `recipe_ingredients` and `recipe_steps` row. `step.ingredientRefs` UUIDs
+// are remapped from the source rows to the freshly-minted ones so step → ingredient
+// links stay valid in the copy. The user can edit the copy freely without
+// affecting the source.
+router.post('/recipes/:id/copy', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const sourceId = String(req.params.id)
+
+    const [source] = await db
+      .select()
+      .from(recipes)
+      .where(eq(recipes.id, sourceId))
+      .limit(1)
+    if (!source) {
+      res.status(404).json({ error: 'Recipe not found' })
+      return
+    }
+
+    // Refuse silently if the user already owns this very row (we'd dup their
+    // own recipe). Copying someone else's user recipe is fine — it becomes
+    // theirs from then on.
+    if (source.authorId === req.userId) {
+      res.status(409).json({ error: 'Esta receta ya es tuya.' })
+      return
+    }
+
+    const sourceIngredients = await db
+      .select()
+      .from(recipeIngredients)
+      .where(eq(recipeIngredients.recipeId, sourceId))
+      .orderBy(asc(recipeIngredients.displayOrder))
+
+    const sourceSteps = await db
+      .select()
+      .from(recipeSteps)
+      .where(eq(recipeSteps.recipeId, sourceId))
+      .orderBy(asc(recipeSteps.index))
+
+    // Pre-mint new ingredient row ids and build the old→new map so we can
+    // rewrite `step.ingredientRefs`.
+    const ingRowIdMap = new Map<string, string>()
+    for (const ing of sourceIngredients) {
+      ingRowIdMap.set(ing.id, crypto.randomUUID())
+    }
+
+    const baseInternalTags = (source.internalTags ?? []).filter(
+      (t) => t !== 'compartida' && t !== 'auto-extracted' && t !== 'from-url',
+    )
+    baseInternalTags.push('copied-from-catalog')
+
+    const newRecipeId = await db.transaction(async (tx) => {
+      const [inserted] = await tx
+        .insert(recipes)
+        .values({
+          name: source.name,
+          authorId: req.userId!,
+          imageUrl: source.imageUrl,
+          servings: source.servings,
+          yieldText: source.yieldText,
+          prepTime: source.prepTime,
+          cookTime: source.cookTime,
+          activeTime: source.activeTime,
+          totalTime: source.totalTime,
+          difficulty: source.difficulty ?? 'medium',
+          meals: source.meals ?? [],
+          seasons: source.seasons ?? [],
+          equipment: source.equipment ?? [],
+          allergens: source.allergens ?? [],
+          notes: source.notes,
+          tips: source.tips,
+          substitutions: source.substitutions,
+          storage: source.storage,
+          nutritionPerServing: source.nutritionPerServing,
+          tags: source.tags ?? [],
+          internalTags: baseInternalTags,
+          sourceUrl: source.sourceUrl,
+          // The COPY's provenance is "manual" (user-owned). The fact that it
+          // came from the catalog is captured in `internalTags`.
+          sourceType: 'manual',
+        })
+        .returning({ id: recipes.id })
+
+      if (sourceIngredients.length > 0) {
+        await tx.insert(recipeIngredients).values(
+          sourceIngredients.map((ing, i) => ({
+            id: ingRowIdMap.get(ing.id)!,
+            recipeId: inserted.id,
+            ingredientId: ing.ingredientId,
+            section: ing.section,
+            quantity: ing.quantity,
+            unit: ing.unit,
+            optional: ing.optional,
+            note: ing.note,
+            displayOrder: ing.displayOrder ?? i,
+          })),
+        )
+      }
+
+      if (sourceSteps.length > 0) {
+        await tx.insert(recipeSteps).values(
+          sourceSteps.map((s) => ({
+            recipeId: inserted.id,
+            index: s.index,
+            text: s.text,
+            durationMin: s.durationMin,
+            temperature: s.temperature,
+            technique: s.technique,
+            ingredientRefs: (s.ingredientRefs ?? []).map(
+              (oldId: string) => ingRowIdMap.get(oldId) ?? oldId,
+            ),
+          })),
+        )
+      }
+
+      return inserted.id
+    })
+
+    const newRow = await fetchRecipeById(newRecipeId)
+    if (!newRow) {
+      res.status(500).json({ error: 'Copied recipe not retrievable' })
+      return
+    }
+    const [ings, steps] = await Promise.all([
+      fetchIngredientsForRecipes([newRecipeId]),
+      fetchStepsForRecipes([newRecipeId]),
+    ])
+    res.status(201).json(toDetailRecipe(newRow, ings, steps))
+  } catch (err) {
+    console.error('Copy recipe error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
 // DELETE /recipes/:id — delete (auth required, author only).
 // Cascades to recipe_ingredients and recipe_steps via FK ON DELETE CASCADE.
 router.delete('/recipes/:id', authMiddleware, async (req: AuthRequest, res) => {
@@ -726,6 +872,132 @@ router.delete('/recipes/:id', authMiddleware, async (req: AuthRequest, res) => {
     res.status(500).json({ error: 'Internal server error' })
   }
 })
+
+// POST /recipes/:id/regenerate-image — author-only AI hero photo (auth required).
+//
+// Quota model (per-user, monthly): each user has `image_gen_month_key` (the
+// YYYY-MM the count belongs to) and `image_gen_count`. We do a single atomic
+// UPDATE that bumps the count only if the user is under the limit for the
+// current month — when the month rolls over the count resets to 1 implicitly.
+// If the AiKit call fails *after* we bumped the quota, we decrement so the
+// failed attempt doesn't burn one of the user's 20 monthly slots.
+router.post(
+  '/recipes/:id/regenerate-image',
+  authMiddleware,
+  async (req: AuthRequest, res) => {
+    try {
+      const recipeId = String(req.params.id)
+      const userId = req.userId!
+
+      // 1. Lookup the recipe + verify ownership.
+      const [recipe] = await db
+        .select({
+          id: recipes.id,
+          name: recipes.name,
+          authorId: recipes.authorId,
+          meals: recipes.meals,
+        })
+        .from(recipes)
+        .where(eq(recipes.id, recipeId))
+        .limit(1)
+
+      if (!recipe) {
+        res.status(404).json({ error: 'Recipe not found' })
+        return
+      }
+      if (recipe.authorId !== userId) {
+        // System recipes (authorId null) and other users' recipes both fall here.
+        res.status(403).json({ error: 'Solo el autor puede regenerar la imagen' })
+        return
+      }
+
+      if (!env.AIKIT_API_KEY) {
+        res.status(503).json({ error: 'Generación de imágenes no configurada' })
+        return
+      }
+
+      // 2. Atomic quota bump. Returns the new count if the user was under the
+      //    limit; returns no rows if they were already at it (or over).
+      const monthKey = new Date().toISOString().slice(0, 7) // 'YYYY-MM'
+      const limit = env.IMAGE_GEN_MONTHLY_LIMIT
+      const bumped = await db.execute(sql`
+        UPDATE users SET
+          image_gen_count = CASE
+            WHEN image_gen_month_key = ${monthKey} THEN image_gen_count + 1
+            ELSE 1
+          END,
+          image_gen_month_key = ${monthKey}
+        WHERE id = ${userId}::uuid AND (
+          image_gen_month_key IS DISTINCT FROM ${monthKey}
+          OR image_gen_count < ${limit}
+        )
+        RETURNING image_gen_count
+      `)
+      const newCount = (bumped.rows[0] as { image_gen_count: number } | undefined)?.image_gen_count
+      if (newCount == null) {
+        res.status(429).json({
+          error: 'Has alcanzado tu límite mensual de imágenes generadas con IA',
+          quota: { used: limit, limit, monthKey },
+        })
+        return
+      }
+
+      // 3. Pull the recipe's top ingredients for the prompt. Best-effort —
+      //    if the recipe has no ingredients we still generate something.
+      const ingRows = await db
+        .select({
+          name: ingredients.name,
+          displayOrder: recipeIngredients.displayOrder,
+        })
+        .from(recipeIngredients)
+        .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
+        .where(eq(recipeIngredients.recipeId, recipeId))
+        .orderBy(asc(recipeIngredients.displayOrder))
+        .limit(4)
+
+      const prompt = buildRecipePrompt({
+        name: recipe.name,
+        topIngredients: ingRows.map((r) => r.name),
+        meals: recipe.meals ?? [],
+      })
+
+      // 4. Call AiKit + persist. If anything goes wrong we refund the quota
+      //    so the user doesn't lose a slot to a transient failure.
+      try {
+        const png = await generateRecipeImage(prompt, '4:3')
+        const { imageUrl } = await writeRecipeImage(png, `${recipeId}.jpg`)
+
+        await db
+          .update(recipes)
+          .set({ imageUrl, updatedAt: new Date() })
+          .where(eq(recipes.id, recipeId))
+
+        res.json({
+          imageUrl,
+          quota: { used: newCount, limit, monthKey },
+        })
+      } catch (genErr) {
+        // Refund the quota slot — same conditional shape so we don't go
+        // negative if the user happens to call again concurrently.
+        await db.execute(sql`
+          UPDATE users SET image_gen_count = GREATEST(image_gen_count - 1, 0)
+          WHERE id = ${userId}::uuid AND image_gen_month_key = ${monthKey}
+        `)
+        if (genErr instanceof AikitNotConfiguredError) {
+          res.status(503).json({ error: 'Generación de imágenes no configurada' })
+        } else if (genErr instanceof AikitGenerationError) {
+          console.error('AiKit gen failed:', genErr)
+          res.status(502).json({ error: 'El servicio de imágenes falló. Inténtalo de nuevo.' })
+        } else {
+          throw genErr
+        }
+      }
+    } catch (err) {
+      console.error('regenerate-image error:', err)
+      res.status(500).json({ error: 'Internal server error' })
+    }
+  },
+)
 
 // GET /user/:id/recipes — user's own recipes + favorited recipes (cards).
 router.get('/user/:id/recipes', authMiddleware, async (req: AuthRequest, res) => {

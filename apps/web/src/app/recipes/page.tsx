@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { motion, AnimatePresence } from "motion/react"
 import { useRecipes } from "@/hooks/useRecipes"
 import { useAuth } from "@/lib/auth"
@@ -37,6 +37,22 @@ export default function RecipesPage() {
   const [selectedSeason, setSelectedSeason] = useState<Season | "">("")
   const [maxTime, setMaxTime] = useState<number | "">("")
   const [filtersOpen, setFiltersOpen] = useState(false)
+  /**
+   * Catalog scope filter (per the user's design call):
+   *   - 'all'  : todas las recetas (catálogo ONA + las del usuario, mezcladas — comportamiento histórico)
+   *   - 'mine' : sólo las del usuario actual (`recipe.authorId === user.id`)
+   *   - 'ona'  : sólo las del catálogo ONA (`recipe.authorId === null`)
+   * Persisted in `localStorage` so the choice survives reloads.
+   */
+  const [scope, setScope] = useState<"all" | "mine" | "ona">("all")
+  useEffect(() => {
+    const saved = typeof window !== "undefined" ? localStorage.getItem("ona.recipes.scope") : null
+    if (saved === "all" || saved === "mine" || saved === "ona") setScope(saved)
+  }, [])
+  function setScopeAndPersist(next: "all" | "mine" | "ona") {
+    setScope(next)
+    if (typeof window !== "undefined") localStorage.setItem("ona.recipes.scope", next)
+  }
 
   const { data: recipes, isLoading } = useRecipes({
     search: searchQuery || undefined,
@@ -44,15 +60,17 @@ export default function RecipesPage() {
     perPage: 100,
   })
 
-  // Client-side filtering for season + time
+  // Client-side filtering for season + time + scope
   const filteredRecipes = useMemo(() => {
     if (!recipes) return []
     return recipes.filter((r: any) => {
+      if (scope === "mine" && r.authorId !== user?.id) return false
+      if (scope === "ona" && r.authorId !== null) return false
       if (selectedSeason && !r.seasons?.includes(selectedSeason)) return false
       if (maxTime && r.prepTime && r.prepTime > maxTime) return false
       return true
     })
-  }, [recipes, selectedSeason, maxTime])
+  }, [recipes, selectedSeason, maxTime, scope, user?.id])
 
   const activeFiltersCount =
     (selectedMeal ? 1 : 0) + (selectedSeason ? 1 : 0) + (maxTime ? 1 : 0)
@@ -62,6 +80,7 @@ export default function RecipesPage() {
     setSelectedSeason("")
     setMaxTime("")
     setSearchQuery("")
+    setScopeAndPersist("all")
   }
 
   return (
@@ -80,6 +99,30 @@ export default function RecipesPage() {
           >
             <Plus size={18} />
           </Link>
+        </div>
+      </div>
+
+      {/* Scope segmented control: all / mine / ONA. Persisted in localStorage. */}
+      <div className="px-5 pb-2">
+        <div className="inline-flex rounded-full border border-[#DDD6C5] bg-[#FFFEFA] p-0.5">
+          {(['all', 'mine', 'ona'] as const).map((s) => {
+            const active = scope === s
+            const label = s === 'all' ? 'Todas' : s === 'mine' ? 'Mis recetas' : 'Catálogo ONA'
+            return (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setScopeAndPersist(s)}
+                className={`rounded-full px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] transition-colors ${
+                  active
+                    ? 'bg-[#1A1612] text-[#FAF6EE]'
+                    : 'text-[#7A7066] hover:text-[#1A1612]'
+                }`}
+              >
+                {label}
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -278,12 +321,18 @@ function FilterChip({
   )
 }
 
-function EditorialRecipeCard({ recipe, userId: _userId }: { recipe: any; userId?: string }) {
+function EditorialRecipeCard({ recipe, userId }: { recipe: any; userId?: string }) {
   const fallbackImg = `https://images.unsplash.com/photo-${recipe.id?.slice(0, 4) === "abcd" ? "1546069901-ba9599a7e63c" : "1490645935967-10de6ba17061"}?w=600&q=80&auto=format&fit=crop`
   const img = recipe.imageUrl || fallbackImg
 
   const firstSeason = recipe.seasons?.[0]
   const visibleTags = publicTagsOf(recipe)
+  const ownership: 'mine' | 'ona' | 'other' =
+    recipe.authorId == null
+      ? 'ona'
+      : userId && recipe.authorId === userId
+        ? 'mine'
+        : 'other'
 
   return (
     <Link href={`/recipes/${recipe.id}`} className="group block">
@@ -304,6 +353,21 @@ function EditorialRecipeCard({ recipe, userId: _userId }: { recipe: any; userId?
         {firstSeason && (
           <div className="absolute left-2 top-2 rounded-full bg-[#1A1612]/70 px-2 py-0.5 text-[9px] uppercase tracking-[0.15em] text-[#FAF6EE] backdrop-blur-sm">
             {seasonLabel(firstSeason)}
+          </div>
+        )}
+        {/* Ownership badge — bottom-left so it doesn't collide with prepTime
+            top-right or season top-left. Only "mine" + "ona" get a chip; "other"
+            (someone else's user recipe) is ambiguous in catalog and we leave it
+            unlabelled. */}
+        {ownership !== 'other' && (
+          <div
+            className={`absolute bottom-2 left-2 rounded-full px-2 py-0.5 text-[9px] uppercase tracking-[0.15em] backdrop-blur-sm ${
+              ownership === 'mine'
+                ? 'bg-[#C65D38] text-[#FAF6EE]'
+                : 'bg-[#FAF6EE]/95 text-[#1A1612]'
+            }`}
+          >
+            {ownership === 'mine' ? 'Tuya' : 'ONA'}
           </div>
         )}
       </div>

@@ -94,7 +94,7 @@ Lint validator for recipe data integrity, blocks save on missing ingredients in 
 
 ## [Menus](./menus.md)
 
-Weekly meal planning, menu generation algorithm using cached `nutritionPerServing`, recipe matcher, slot regeneration, meal locking, calorie targets, BMR, season detection, favorites boost, no-repeats, week navigation, WeekStrip, MealPhotoCard, menu history, day index 0-6 (Monday-Sunday), per-recipe servings × householdSize scaling.
+Weekly meal planning, menu generation algorithm using cached `nutritionPerServing`, recipe matcher, slot regeneration, meal locking, calorie targets, BMR, season detection, favorites boost, no-repeats, week navigation, WeekStrip, MealPhotoCard, menu history, day index 0-6 (Monday-Sunday), household-weighted scaling (`adults + 0.5 × kidsCount`).
 
 **Source**: `apps/api/src/routes/menus.ts`, `apps/api/src/services/menuGenerator.ts`, `apps/api/src/services/recipeMatcher.ts`, `apps/web/src/app/menu/`, `apps/web/src/components/menu/`, `apps/web/src/hooks/useMenu.ts`
 
@@ -102,7 +102,7 @@ Weekly meal planning, menu generation algorithm using cached `nutritionPerServin
 
 ## [Shopping](./shopping.md)
 
-Auto-generated shopping list, unit-aware ingredient aggregation (g/ml/u/cda/cdita), unit conversion via `density`/`unitWeight`, aisle grouping (produce/proteínas/lácteos/panadería/despensa/congelados), `recipe.servings` × `householdSize` scaling, optional ingredient handling, regenerate endpoint, check-off items, pantry stock manager, inStock toggle, export to clipboard, list vs stock tabs, progress bar.
+Auto-generated shopping list, unit-aware ingredient aggregation (g/ml/u/cda/cdita), unit conversion via `density`/`unitWeight`, aisle grouping (produce/proteínas/lácteos/panadería/despensa/congelados), household-weighted scaling (`adults + 0.5 × kidsCount`) over `recipe.servings`, optional ingredient handling, regenerate endpoint, check-off items, pantry stock manager, inStock toggle, export to clipboard, list vs stock tabs, progress bar.
 
 **Source**: `apps/api/src/routes/shopping.ts`, `apps/api/src/services/shoppingList.ts`, `apps/web/src/app/shopping/`, `apps/web/src/components/shopping/`, `apps/web/src/hooks/useShopping.ts`
 
@@ -110,7 +110,7 @@ Auto-generated shopping list, unit-aware ingredient aggregation (g/ml/u/cda/cdit
 
 ## [Advisor](./advisor.md)
 
-AI chat assistant, function calling, 29 skills total: menu/recipe reads (get_todays_menu, get_recipe_details, get_weekly_nutrition, get_shopping_list, suggest_recipes, search_recipes, get_my_recipes, get_menu_history, scale_recipe), mutations (generate_weekly_menu, swap_meal, toggle_favorite, mark_meal_eaten, create_recipe, edit_recipe, recipe_variation, mark_in_stock, check_shopping_item, update_household), pantry (get_pantry_stock), advice grounded in the 10 mandamientos (nutrition_advice, evaluate_food_health, suggest_substitution, get_variety_score, get_eating_window, get_inflammation_index), and cooking-mode voice control (start_cooking_mode, set_timer, cooking_step). Voice input (speech-to-text), text-to-speech, Spanish, conversation history, useVoice hook, suggested prompts, microphone button.
+AI chat assistant, function calling, 30 skills total: menu/recipe reads (get_todays_menu, get_recipe_details, get_weekly_nutrition, get_shopping_list, suggest_recipes, search_recipes, get_my_recipes, get_menu_history, scale_recipe), mutations (generate_weekly_menu, swap_meal, toggle_favorite, mark_meal_eaten, create_recipe, edit_recipe, recipe_variation, mark_in_stock, check_shopping_item, update_household, add_recipe_to_mine), pantry (get_pantry_stock), advice grounded in the 10 mandamientos (nutrition_advice, evaluate_food_health, suggest_substitution, get_variety_score, get_eating_window, get_inflammation_index), and cooking-mode voice control (start_cooking_mode, set_timer, cooking_step). Voice input (speech-to-text), text-to-speech, Spanish, conversation history, useVoice hook, suggested prompts, microphone button.
 
 **Source**: `apps/api/src/routes/assistant.ts`, `apps/api/src/services/assistant/`, `apps/web/src/app/advisor/`, `apps/web/src/components/advisor/`, `apps/web/src/hooks/useVoice.ts`, `apps/web/src/lib/cookingCommands.ts`
 

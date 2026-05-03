@@ -1,3 +1,4 @@
+import crypto from 'crypto'
 import { eq, desc, ilike, or, inArray } from 'drizzle-orm'
 import {
   menus,
@@ -1709,6 +1710,176 @@ const updateHousehold: SkillDefinition = {
   },
 }
 
+/**
+ * add_recipe_to_mine — copy a system (or another user's) recipe into the
+ * caller's catalog so they can edit it. Drives the "añade la fabada de ONA
+ * a mis recetas" voice utterance and unlocks the Editar flow on copies.
+ */
+const addRecipeToMine: SkillDefinition = {
+  name: 'add_recipe_to_mine',
+  description:
+    'Copia una receta (del catálogo de ONA o de otro usuario) a las recetas del usuario actual. La copia es totalmente editable. Devuelve el id y el nombre de la nueva receta. Si el usuario nombra una receta que ya es suya, no se duplica.',
+  parameters: {
+    type: 'object',
+    properties: {
+      recipeId: { type: 'string', description: 'UUID de la receta original.' },
+      recipeName: {
+        type: 'string',
+        description: 'Nombre (o parte) de la receta a copiar. Se prefiere el match exacto en el catálogo de ONA.',
+      },
+    },
+    required: [],
+  },
+  async handler(
+    params: { recipeId?: string; recipeName?: string },
+    ctx: SkillContext,
+  ): Promise<SkillResult> {
+    const { userId, db } = ctx
+
+    let source: { id: string; name: string; authorId: string | null } | null = null
+    if (params.recipeId) {
+      const [row] = await db
+        .select({ id: recipes.id, name: recipes.name, authorId: recipes.authorId })
+        .from(recipes)
+        .where(eq(recipes.id, params.recipeId))
+        .limit(1)
+      source = row ?? null
+    } else if (params.recipeName) {
+      const candidates = await db
+        .select({ id: recipes.id, name: recipes.name, authorId: recipes.authorId })
+        .from(recipes)
+        .where(ilike(recipes.name, `%${params.recipeName}%`))
+        .limit(20)
+      // Prefer ONA system recipes for "add to mine" (don't accidentally copy
+      // your own recipe). If only your own match, refuse with a friendly
+      // message.
+      source = candidates.find((c: { authorId: string | null }) => c.authorId === null)
+        ?? candidates.find((c: { authorId: string | null }) => c.authorId !== userId)
+        ?? null
+      const ownsOnly = candidates.length > 0 && candidates.every((c: { authorId: string | null }) => c.authorId === userId)
+      if (!source && ownsOnly) {
+        return {
+          data: null,
+          summary: `"${params.recipeName}" ya está en tus recetas.`,
+          uiHint: 'text',
+        }
+      }
+    }
+
+    if (!source) {
+      return {
+        data: null,
+        summary: params.recipeName
+          ? `No he encontrado la receta "${params.recipeName}" en el catálogo.`
+          : 'Necesito el nombre o el id de la receta que quieres añadir.',
+        uiHint: 'text',
+      }
+    }
+
+    if (source.authorId === userId) {
+      return {
+        data: { recipeId: source.id, name: source.name },
+        summary: `"${source.name}" ya es tuya.`,
+        uiHint: 'text',
+      }
+    }
+
+    // Load child rows + clone in a transaction (mirrors POST /recipes/:id/copy
+    // semantics; we keep the logic local to the skill so the voice path doesn't
+    // depend on the HTTP route).
+    const sourceIngredients = await db
+      .select()
+      .from(recipeIngredients)
+      .where(eq(recipeIngredients.recipeId, source.id))
+
+    const sourceSteps = await db
+      .select()
+      .from(recipeSteps)
+      .where(eq(recipeSteps.recipeId, source.id))
+
+    const ingRowIdMap = new Map<string, string>()
+    for (const ing of sourceIngredients) {
+      ingRowIdMap.set(ing.id, crypto.randomUUID())
+    }
+
+    const [full] = await db.select().from(recipes).where(eq(recipes.id, source.id)).limit(1)
+    const baseInternalTags = (full.internalTags ?? []).filter(
+      (t: string) => t !== 'compartida' && t !== 'auto-extracted' && t !== 'from-url',
+    )
+    baseInternalTags.push('copied-from-catalog')
+
+    const newId = await db.transaction(async (tx: any) => {
+      const [inserted] = await tx
+        .insert(recipes)
+        .values({
+          name: full.name,
+          authorId: userId,
+          imageUrl: full.imageUrl,
+          servings: full.servings,
+          yieldText: full.yieldText,
+          prepTime: full.prepTime,
+          cookTime: full.cookTime,
+          activeTime: full.activeTime,
+          totalTime: full.totalTime,
+          difficulty: full.difficulty ?? 'medium',
+          meals: full.meals ?? [],
+          seasons: full.seasons ?? [],
+          equipment: full.equipment ?? [],
+          allergens: full.allergens ?? [],
+          notes: full.notes,
+          tips: full.tips,
+          substitutions: full.substitutions,
+          storage: full.storage,
+          nutritionPerServing: full.nutritionPerServing,
+          tags: full.tags ?? [],
+          internalTags: baseInternalTags,
+          sourceUrl: full.sourceUrl,
+          sourceType: 'manual',
+        })
+        .returning({ id: recipes.id })
+
+      if (sourceIngredients.length > 0) {
+        await tx.insert(recipeIngredients).values(
+          sourceIngredients.map((ing: any, i: number) => ({
+            id: ingRowIdMap.get(ing.id)!,
+            recipeId: inserted.id,
+            ingredientId: ing.ingredientId,
+            section: ing.section,
+            quantity: ing.quantity,
+            unit: ing.unit,
+            optional: ing.optional,
+            note: ing.note,
+            displayOrder: ing.displayOrder ?? i,
+          })),
+        )
+      }
+
+      if (sourceSteps.length > 0) {
+        await tx.insert(recipeSteps).values(
+          sourceSteps.map((s: any) => ({
+            recipeId: inserted.id,
+            index: s.index,
+            text: s.text,
+            durationMin: s.durationMin,
+            temperature: s.temperature,
+            technique: s.technique,
+            ingredientRefs: (s.ingredientRefs ?? []).map(
+              (oldId: string) => ingRowIdMap.get(oldId) ?? oldId,
+            ),
+          })),
+        )
+      }
+      return inserted.id
+    })
+
+    return {
+      data: { recipeId: newId, name: source.name },
+      summary: `He añadido "${source.name}" a tus recetas. Ya puedes editarla.`,
+      uiHint: 'recipe',
+    }
+  },
+}
+
 // ─── Exports ────────────────────────────────────────────────
 
 export const skills: SkillDefinition[] = [
@@ -1743,6 +1914,7 @@ export const skills: SkillDefinition[] = [
   // Improvements 2026-05:
   editRecipe,
   updateHousehold,
+  addRecipeToMine,
 ]
 
 /**

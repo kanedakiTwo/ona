@@ -4,7 +4,8 @@ Recipe catalog, recipe detail, and the data needed to actually cook a recipe.
 
 ## User Capabilities
 
-- Users can browse the recipe catalog as a 2-column grid of photo cards
+- Users can browse the recipe catalog as a 2-column grid of photo cards. Each card carries an ownership badge: **"ONA"** (system catalog, `authorId = null`) or **"Tuya"** (`authorId = user.id`). Recipes owned by other users render unlabelled. A segmented control above the search bar filters the grid by scope: **Todas** (default), **Mis recetas**, **Catálogo ONA**. The choice persists in `localStorage.ona.recipes.scope`
+- Users can copy a system (or another user's) recipe into their own catalog with the **"Añadir a mis recetas"** button on the recipe detail (visible only when `recipe.authorId !== user.id`). The copy is independent — editing it doesn't affect the original — and inherits ingredients, steps, times, nutrition cache and image. The new row gets `internalTags: ['copied-from-catalog']` and `sourceType: 'manual'`
 - Users can search recipes by name (case-insensitive substring match)
 - Users can filter recipes by meal type (breakfast/lunch/dinner/snack), season, and max prep time
 - Users can open a recipe detail view with hero photo, name, meta, ingredients (grouped), preparation steps, equipment, allergens, nutrition per serving, and notes/tips
@@ -25,11 +26,15 @@ Recipe catalog, recipe detail, and the data needed to actually cook a recipe.
 - Tagged internally with `compartida` (not shown publicly — see *Tag Visibility* below)
 - Curated through the regeneration script (see [Recipe Quality](./recipe-quality.md)); each recipe must pass the lint validator before being seeded
 - Read-only for users (cannot edit or delete)
+- Cards show the **"ONA"** badge in the catalog grid
 
 **User-created recipes** (`authorId = user.id`):
 - Editable and deletable by the author
-- Created via `/recipes/new` or AI extraction from photo
+- Created via `/recipes/new`, AI extraction from photo, AI extraction from URL, or by copying from the ONA catalog (`POST /recipes/:id/copy`)
 - Must pass the same lint rules on save
+- Cards show the **"Tuya"** badge in the catalog grid
+
+**Copied recipes**: when the user taps "Añadir a mis recetas" on a system recipe (or any recipe they don't own), the server clones the row and all child rows (`recipe_ingredients`, `recipe_steps`) with new UUIDs, remaps `step.ingredientRefs` from old → new ingredient row ids, sets `authorId = req.userId`, drops the source's `compartida` / `auto-extracted` / `from-url` internal tags and adds `copied-from-catalog`, sets `sourceType = 'manual'`, and returns the new recipe. The user is then the author of an independent copy.
 
 ## Recipe Model
 
@@ -111,6 +116,7 @@ When the user changes the diner count from `recipe.servings` to `target`:
 - `GET /user/:id/recipes` (auth) — user's own + favorited recipes
 - `POST /user/:id/recipes/:recipeId/favorite` (auth) — toggle favorite
 - `POST /recipes/extract-from-image` (auth) — AI recipe extraction; output goes through the lint validator before being persisted
+- `POST /recipes/:id/copy` (auth) — clone a recipe into the caller's catalog. Refuses with 409 if the user already owns the source. Returns the new recipe
 - `POST /recipes/extract-from-url` (auth) — body `{ url }`. Detects YouTube vs article by hostname. Articles try `schema.org/Recipe` JSON-LD, then fall back to Mozilla Readability + Claude. YouTube combines title + description + caption transcript and feeds it to Claude. Same lint-and-persist pipeline as `/extract-from-image`. Returns 422 with `{ isRecipe: false, reason }` when the LLM decides the URL doesn't describe a cookable recipe, and 422 with a Spanish message when a YouTube video has neither captions nor a usable description
 
 ## Constraints

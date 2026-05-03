@@ -116,6 +116,13 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 
 ### Pending
 
+- [ ] **Run `generateRecipeImages.ts` for the full catalog** to replace the duplicated stock-by-family placeholders with real per-recipe editorial photos.
+  - Smoke test passed on `acelgas-rehogadas` (1968 KB PNG → 172 KB JPEG, on-brand cream/wood/warm-light cookbook style).
+  - Command: `cd apps/api && AIKIT_API_KEY=aik_… npx tsx scripts/generateRecipeImages.ts` (defaults: system recipes only, concurrency 3, aspect 4:3, writes `image_url` in DB).
+  - Use `--only=<slug,…>` to regenerate specific ones, `--dry-run` to preview prompts, `--include-user` if user-authored recipes are also in scope.
+  - Cost: AiKit Imagen-fal × ~87 recipes (check budget under your plan's limits).
+  - After running, commit the new JPEGs in `apps/web/public/images/recipes/` and the migrated DB state (or reseed in prod).
+
 - [ ] **Replace placeholder PWA assets** with real branded artwork — `apps/web/public/icons/*.png` + `apps/web/public/favicon.ico`. Same paths, same sizes; the SW picks up new revisions on next build. Current placeholders are an "ONA" wordmark on cream (generator: `apps/web/scripts/generate-pwa-placeholders.mjs`).
 
 - [ ] **Voice-mode setup in Railway** (OpenAI key already set ✓):

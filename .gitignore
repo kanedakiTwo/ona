@@ -31,3 +31,7 @@ apps/web/.last-run.json
 
 # Local Claude Code agent state (scheduled tasks, agent caches)
 .claude/
+.env.local
+
+# API on-disk caches (USDA, BEDCA, translations)
+apps/api/.cache/

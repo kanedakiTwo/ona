@@ -24,15 +24,22 @@ import {
   type UsdaNutrientProfile,
 } from './nutrition/usdaClient.js'
 import { inferAllergenTagsFromName } from './nutrition/allergens.js'
+import { searchBedca, type BedcaResult } from './nutrition/bedcaClient.js'
+import { translateUsdaDescriptions } from './nutrition/usdaTranslator.js'
 import type { Aisle, NutritionPerServing } from '@ona/shared'
 
 // ─── Public types ────────────────────────────────────────────────
 
 export interface AutoCreateCandidate {
-  fdcId: number
-  /** USDA description (English) */
+  /** USDA fdcId; null for BEDCA-sourced rows */
+  fdcId: number | null
+  /** BEDCA food id; null for USDA-sourced rows */
+  bedcaId: string | null
+  /** Source description (English for USDA, Spanish for BEDCA) */
   description: string
-  /** 'Foundation' | 'SR Legacy' | 'Survey (FNDDS)' (Branded filtered out) */
+  /** Spanish translation of `description` (null if translation skipped/failed) */
+  descriptionEs: string | null
+  /** 'Foundation' | 'SR Legacy' | 'Survey (FNDDS)' | 'BEDCA' */
   dataType: string
   per100g: NutritionPerServing
 }
@@ -46,6 +53,8 @@ export interface AutoCreateSuggestion {
   suggestedAisle: Aisle
   /** Via inferAllergenTagsFromName(name) */
   suggestedAllergens: string[]
+  /** The English query that was actually issued to USDA */
+  queryUsed: string
 }
 
 export interface SuggestOpts {
@@ -53,6 +62,17 @@ export interface SuggestOpts {
   limit?: number
   /** Override the underlying USDA client (tests, mocking) */
   client?: UsdaClient
+  /**
+   * Override the search query. When provided, this string is sent to USDA
+   * verbatim (no es→en translation). Curators use this to refine a poor
+   * automatic translation.
+   */
+  query?: string
+  /**
+   * Skip BEDCA fallback and translation. Used by the test suite to keep
+   * pure unit tests free of network/LLM side effects.
+   */
+  skipFallbacks?: boolean
 }
 
 // ─── ES → EN dictionary ──────────────────────────────────────────
@@ -439,13 +459,30 @@ export async function suggestIngredient(
   const limit = Math.max(1, Math.min(10, opts?.limit ?? 5))
   const client = opts?.client ?? getDefaultClient()
   const normalizedName = normalize(name)
-  const enQuery = translateEsToEn(name)
+
+  // If the curator passed an explicit query, use it verbatim. Otherwise
+  // run the es→en translation as before.
+  const queryOverride = opts?.query?.trim()
+  const enQuery = queryOverride && queryOverride.length > 0
+    ? queryOverride
+    : translateEsToEn(name)
 
   // Ask USDA for a slightly larger pool — we'll filter Branded and re-sort.
-  const search = await client.searchByName(enQuery, {
-    limit: Math.min(20, limit * 3),
-    preferDataTypes: ['Foundation', 'SR Legacy', 'Survey (FNDDS)'],
-  })
+  // USDA can return 4xx for short / weird queries (e.g. "beans" without
+  // qualifier sometimes 400s). On any USDA failure we fall through to
+  // BEDCA + estimation rather than 500ing the whole curator workflow.
+  let search: Awaited<ReturnType<UsdaClient['searchByName']>> = []
+  try {
+    search = await client.searchByName(enQuery, {
+      limit: Math.min(20, limit * 3),
+      preferDataTypes: ['Foundation', 'SR Legacy', 'Survey (FNDDS)'],
+    })
+  } catch (err) {
+    console.warn(
+      `[suggestIngredient] USDA search failed for "${enQuery}":`,
+      (err as Error).message,
+    )
+  }
 
   const filtered = search
     .filter((r) => r.dataType !== 'Branded')
@@ -460,16 +497,62 @@ export async function suggestIngredient(
 
   const candidates: AutoCreateCandidate[] = []
   for (let i = 0; i < filtered.length; i++) {
-    const search = filtered[i]
+    const result = filtered[i]
     const settled = profiles[i]
     if (settled.status !== 'fulfilled') continue
     const profile: UsdaNutrientProfile = settled.value
     candidates.push({
-      fdcId: search.fdcId,
-      description: search.description || profile.description,
-      dataType: search.dataType,
+      fdcId: result.fdcId,
+      bedcaId: null,
+      description: result.description || profile.description,
+      descriptionEs: null,
+      dataType: result.dataType,
       per100g: profile.per100g,
     })
+  }
+
+  // If USDA returned 0 candidates, fall back to BEDCA. The BEDCA shape
+  // already returns Spanish descriptions and per-100 g values together,
+  // so we don't need to translate them — `descriptionEs` mirrors
+  // `description`.
+  if (candidates.length === 0 && !opts?.skipFallbacks) {
+    const bedcaResults = await safeSearchBedca(name, limit)
+    for (const b of bedcaResults) {
+      candidates.push({
+        fdcId: null,
+        bedcaId: b.bedcaId,
+        description: b.description,
+        descriptionEs: b.description,
+        dataType: 'BEDCA',
+        per100g: b.per100g,
+      })
+    }
+  }
+
+  // Translate USDA English descriptions in a single batched Anthropic call.
+  // Cached entries return instantly; only first-time descriptions cost a
+  // network round trip. Failures (or missing API key) leave `descriptionEs`
+  // as null and the UI falls back to the English string.
+  if (!opts?.skipFallbacks) {
+    const usdaIdxs: number[] = []
+    const usdaTexts: string[] = []
+    for (let i = 0; i < candidates.length; i++) {
+      const c = candidates[i]
+      if (c.dataType !== 'BEDCA' && c.descriptionEs == null) {
+        usdaIdxs.push(i)
+        usdaTexts.push(c.description)
+      }
+    }
+    if (usdaTexts.length > 0) {
+      try {
+        const translations = await translateUsdaDescriptions(usdaTexts)
+        for (let k = 0; k < usdaIdxs.length; k++) {
+          candidates[usdaIdxs[k]].descriptionEs = translations[k] ?? null
+        }
+      } catch (err) {
+        console.warn('[suggestIngredient] translation failed:', (err as Error).message)
+      }
+    }
   }
 
   return {
@@ -477,6 +560,20 @@ export async function suggestIngredient(
     candidates,
     suggestedAisle: inferAisleFromEnglishQuery(enQuery),
     suggestedAllergens: inferAllergenTagsFromName(name),
+    queryUsed: enQuery,
+  }
+}
+
+/** Wrap searchBedca so a thrown / hung scrape never crashes the suggestion. */
+async function safeSearchBedca(
+  name: string,
+  limit: number,
+): Promise<BedcaResult[]> {
+  try {
+    return await searchBedca(name, limit)
+  } catch (err) {
+    console.warn('[suggestIngredient] BEDCA fallback failed:', (err as Error).message)
+    return []
   }
 }
 

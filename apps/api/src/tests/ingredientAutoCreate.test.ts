@@ -67,7 +67,7 @@ describe('suggestIngredient', () => {
       profiles: { 1: PROFILE_FOUNDATION, 2: PROFILE_SR, 3: PROFILE_FNDDS },
     })
 
-    const out = await suggestIngredient('alcaparras', { client, limit: 5 })
+    const out = await suggestIngredient('alcaparras', { client, limit: 5, skipFallbacks: true })
 
     expect(out.normalizedName).toBe('alcaparras')
     // Branded must be gone.
@@ -91,19 +91,19 @@ describe('suggestIngredient', () => {
       ],
       profiles: { 1: PROFILE_FOUNDATION },
     })
-    const out = await suggestIngredient('alcaparras', { client })
+    const out = await suggestIngredient('alcaparras', { client, skipFallbacks: true })
     expect(out.suggestedAisle).toBe('despensa')
   })
 
   it('infers allergens from a Spanish name (salmón → pescado)', async () => {
     const client = makeMockClient({ search: [], profiles: {} })
-    const out = await suggestIngredient('salmón', { client })
+    const out = await suggestIngredient('salmón', { client, skipFallbacks: true })
     expect(out.suggestedAllergens).toContain('pescado')
   })
 
   it('returns empty candidates gracefully when USDA finds nothing', async () => {
     const client = makeMockClient({ search: [], profiles: {} })
-    const out = await suggestIngredient('xyzzy-not-real', { client })
+    const out = await suggestIngredient('xyzzy-not-real', { client, skipFallbacks: true })
     expect(out.candidates).toEqual([])
     // Still emits aisle + allergens for the stub fallback path.
     expect(typeof out.suggestedAisle).toBe('string')
@@ -123,8 +123,41 @@ describe('suggestIngredient', () => {
         throw new Error('boom')
       },
     }
-    const out = await suggestIngredient('alcaparras', { client })
+    const out = await suggestIngredient('alcaparras', { client, skipFallbacks: true })
     expect(out.candidates.map(c => c.fdcId)).toEqual([1])
+  })
+
+  it('honours an explicit query override (no es→en translation)', async () => {
+    let receivedQuery: string | null = null
+    const client: UsdaClient = {
+      async searchByName(q: string) {
+        receivedQuery = q
+        return [{ fdcId: 1, description: 'White beans', dataType: 'Foundation' }]
+      },
+      async fetchByFdcId() {
+        return PROFILE_FOUNDATION
+      },
+    }
+    const out = await suggestIngredient('fabes de la granja', {
+      client,
+      skipFallbacks: true,
+      query: 'white beans',
+    })
+    expect(receivedQuery).toBe('white beans')
+    expect(out.queryUsed).toBe('white beans')
+    expect(out.candidates).toHaveLength(1)
+  })
+
+  it('exposes bedcaId/descriptionEs fields with sensible defaults for USDA hits', async () => {
+    const client = makeMockClient({
+      search: [{ fdcId: 1, description: 'Capers, canned', dataType: 'Foundation' }],
+      profiles: { 1: PROFILE_FOUNDATION },
+    })
+    const out = await suggestIngredient('alcaparras', { client, skipFallbacks: true })
+    expect(out.candidates[0].fdcId).toBe(1)
+    expect(out.candidates[0].bedcaId).toBeNull()
+    // Translation skipped → null. The route still ships the raw English.
+    expect(out.candidates[0].descriptionEs).toBeNull()
   })
 })
 

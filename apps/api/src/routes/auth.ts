@@ -67,9 +67,34 @@ router.post('/login', validate(loginSchema), async (req, res) => {
       return
     }
 
+    if (user.suspendedAt) {
+      res.status(403).json({
+        error:
+          'Tu cuenta está suspendida. Contacta con el equipo de ONA si crees que es un error.',
+        code: 'SUSPENDED',
+      })
+      return
+    }
+
+    // Reconcile role from ADMIN_EMAILS on every login. Source of truth is
+    // the env var; admin status survives only if the email is still listed.
+    const desiredRole = env.ADMIN_EMAILS.includes(user.email.toLowerCase())
+      ? 'admin'
+      : 'user'
+    let role = user.role
+    if (role !== desiredRole) {
+      const [updated] = await db
+        .update(users)
+        .set({ role: desiredRole })
+        .where(eq(users.id, user.id))
+        .returning({ role: users.role })
+      role = updated.role
+    }
+
     const token = jwt.sign({ userId: user.id }, env.JWT_SECRET)
 
     const { passwordHash, ...userWithoutPassword } = user
+    userWithoutPassword.role = role
 
     res.json({ token, user: userWithoutPassword })
   } catch (err) {

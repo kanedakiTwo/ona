@@ -1,40 +1,26 @@
 import type { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
 import { eq } from 'drizzle-orm'
+import type { Role } from '@ona/shared'
 import { env } from '../config/env.js'
 import { db } from '../db/connection.js'
 import { users } from '../db/schema.js'
 
 export interface AuthRequest extends Request {
   userId?: string
+  /** Set by `authMiddleware` from a fresh per-request DB read. */
+  user?: { id: string; role: Role; suspendedAt: Date | null }
 }
 
 /**
- * Cache of "user id exists in DB" results so we don't pay an indexed lookup on
- * every authed request. TTL is short enough to invalidate within a minute of a
- * delete; the worst case if a user is deleted while their cache entry is fresh
- * is one extra request that fails with 500/FK — we'd surface that the same way
- * we did before this middleware learned to check existence.
+ * Authenticate the JWT, fetch fresh role + suspension state from DB, and
+ * reject suspended users with `code: 'SUSPENDED'`.
+ *
+ * Per spec: privileged routes are low-volume; freshness > caching, so each
+ * request pays one indexed lookup. The cache from the prior implementation
+ * was removed because role / suspended_at must be live (admin demotions and
+ * suspensions take effect on the next request).
  */
-const userExistsCache = new Map<string, number>()
-const USER_CACHE_TTL_MS = 60_000
-
-async function userIdIsValid(userId: string): Promise<boolean> {
-  const hit = userExistsCache.get(userId)
-  const now = Date.now()
-  if (hit && now - hit < USER_CACHE_TTL_MS) return true
-  const [row] = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1)
-  if (row) {
-    userExistsCache.set(userId, now)
-    return true
-  }
-  return false
-}
-
 export async function authMiddleware(
   req: AuthRequest,
   res: Response,
@@ -55,11 +41,17 @@ export async function authMiddleware(
     return
   }
 
-  // Reject tokens whose user has been deleted (e.g. after a reseed) so callers
-  // get a clean "vuelve a iniciar sesión" path instead of a 500 from a later
-  // FK violation when we try to insert with `author_id = decoded.userId`.
-  const exists = await userIdIsValid(decoded.userId)
-  if (!exists) {
+  const [row] = await db
+    .select({
+      id: users.id,
+      role: users.role,
+      suspendedAt: users.suspendedAt,
+    })
+    .from(users)
+    .where(eq(users.id, decoded.userId))
+    .limit(1)
+
+  if (!row) {
     res.status(401).json({
       error: 'Sesión inválida. Vuelve a iniciar sesión.',
       code: 'USER_NOT_FOUND',
@@ -67,6 +59,39 @@ export async function authMiddleware(
     return
   }
 
-  req.userId = decoded.userId
+  if (row.suspendedAt) {
+    res.status(401).json({
+      error:
+        'Tu cuenta está suspendida. Contacta con el equipo de ONA si crees que es un error.',
+      code: 'SUSPENDED',
+    })
+    return
+  }
+
+  req.userId = row.id
+  req.user = {
+    id: row.id,
+    role: row.role as Role,
+    suspendedAt: row.suspendedAt,
+  }
+  next()
+}
+
+/**
+ * Admin-only gate. Must run AFTER `authMiddleware` — it relies on
+ * `req.user.role` already being set.
+ */
+export function requireAdmin(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): void {
+  if (req.user?.role !== 'admin') {
+    res.status(403).json({
+      error: 'Acceso restringido al equipo de ONA.',
+      code: 'NOT_ADMIN',
+    })
+    return
+  }
   next()
 }

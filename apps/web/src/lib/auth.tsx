@@ -10,10 +10,16 @@ import {
 } from "react"
 import { api } from "@/lib/api"
 
+type Role = 'user' | 'admin'
+
 interface User {
   id: string
   username: string
   email: string
+  /** Authorization role. Server is source of truth; this is decoration for navbar gating. */
+  role: Role
+  /** ISO string set by the admin. While non-null, login is rejected. */
+  suspendedAt?: string | null
   onboardingDone: boolean
   [key: string]: any
 }
@@ -47,7 +53,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (storedToken && storedUser) {
       setToken(storedToken)
       try {
-        setUser(JSON.parse(storedUser))
+        const parsed = JSON.parse(storedUser)
+        // Backfill `role` for users whose cached payload predates the field.
+        if (!parsed.role) parsed.role = 'user'
+        setUser(parsed)
       } catch {
         localStorage.removeItem("ona_token")
         localStorage.removeItem("ona_user")

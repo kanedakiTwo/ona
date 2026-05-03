@@ -38,6 +38,7 @@ When the conversation context is "step-by-step cooking" (a recipe-step skill is 
 - The current spoken turns are mirrored client-side as text (Realtime API streams transcripts) and cached in memory.
 - On overlay close (manual or after idle), the turns are appended to the `/advisor` chat history.
 - The cached context is dropped when the user explicitly changes topic ("hablemos de otra cosa", "olvida eso") or after a long inactivity (e.g., 30 min).
+- Every turn (user + assistant) is also POSTed fire-and-forget to `POST /realtime/:userId/transcript`, persisting in the `voice_transcripts` table. A client-generated UUID groups turns of the same overlay open under one `sessionId`. The most recent skill name (captured when the model emits a `function_call_arguments.done` event) is attached to the very next assistant turn so analysis can correlate skills with model output. Admins review these conversations from `/admin` → "Voz" — see [Admin Dashboard](./admin-dashboard.md).
 
 ## Privacy and permissions
 

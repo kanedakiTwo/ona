@@ -22,6 +22,7 @@ It is intentionally small: **a few sections, no charts, no destructive operation
   - **Output de regen** — collapsible list parsed from `apps/api/scripts/output/regen-failed.jsonl` and `regen-skipped.jsonl`.
   - **Usuarios** — see [User Management](./user-management.md). Sub-tab; lists, suspends, and generates reset password tokens.
   - **Auditoría** — see [Admin Audit Log](./admin-audit-log.md). Sub-tab; reverse-chronological feed of admin actions with filters by admin and action.
+  - **Voz** — sessions list of voice-mode conversations (one row per session) with filters (user search + date range); click a row to drill into all turns of that session in chronological order, each turn tagged with the skill it invoked when applicable. Read-only — no mutations, no audit-log entries on read. Source: [Voice Mode](./voice-mode.md). Backed by `GET /admin/voice-transcripts/sessions` (grouped) and `GET /admin/voice-transcripts` (flat list with `?sessionId=` filter).
 - Every mutation issued from the dashboard generates an entry in `admin_audit_log`.
 
 ## Scope vs My Recipes
@@ -41,6 +42,7 @@ The admin dashboard handles **system recipes only** (`authorId IS NULL`). User-c
 - [Ingredient Auto-Create](./ingredient-auto-create.md) — modal reused for "Mapear a USDA"
 - [User Management](./user-management.md) — sub-tab for users list/suspend/reset
 - [Admin Audit Log](./admin-audit-log.md) — sub-tab for reviewing actions
+- [Voice Mode](./voice-mode.md) — voice transcripts read view consumes the `voice_transcripts` table populated by the voice-mode client
 - [Recipes](./recipes.md) — system recipes are what the dashboard manages
 - [Recipe Quality](./recipe-quality.md) — lint validator output drives the regen sub-section
 - [My Recipes](./my-recipes.md) — the user-scoped equivalent that sits in `/profile`
@@ -53,6 +55,7 @@ The admin dashboard handles **system recipes only** (`authorId IS NULL`). User-c
 - [apps/api/src/services/nutrition/usdaClient.ts](../apps/api/src/services/nutrition/usdaClient.ts)
 - [apps/web/src/app/admin/page.tsx](../apps/web/src/app/admin/page.tsx) — replaces `app/curator/page.tsx`
 - [apps/web/src/app/admin/sections/](../apps/web/src/app/admin/sections/) — section components, replaces `app/curator/sections/`
-- [apps/web/src/hooks/useAdmin.ts](../apps/web/src/hooks/useAdmin.ts) — replaces `useCurator.ts`
+- [apps/web/src/app/admin/sections/VoiceTranscriptsSection.tsx](../apps/web/src/app/admin/sections/VoiceTranscriptsSection.tsx) — sessions list + per-session detail view of voice-mode conversations
+- [apps/web/src/hooks/useAdmin.ts](../apps/web/src/hooks/useAdmin.ts) — replaces `useCurator.ts`; adds `useVoiceTranscriptSessions` + `useVoiceTranscriptTurns`
 - [apps/web/src/app/profile/page.tsx](../apps/web/src/app/profile/page.tsx) — gated "Admin" footer link, only visible when `role === 'admin'`
 - [apps/web/src/app/curator/page.tsx](../apps/web/src/app/curator/page.tsx) — temporary redirect to `/admin`

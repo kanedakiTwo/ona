@@ -273,3 +273,85 @@ export function useAdminAuditLog(filters: AdminAuditLogFilters = {}) {
     staleTime: 10 * 1000,
   })
 }
+
+// ════════════════════════════════════════════════════════════════
+// Voice transcripts (read-only)
+// ════════════════════════════════════════════════════════════════
+
+export interface VoiceTranscriptSession {
+  sessionId: string
+  userId: string
+  username: string | null
+  email: string | null
+  turnCount: number
+  userTurns: number
+  assistantTurns: number
+  startedAt: string
+  endedAt: string
+  skillsUsed: string[]
+}
+
+export interface VoiceTranscriptTurn {
+  id: string
+  userId: string
+  username: string | null
+  email: string | null
+  sessionId: string
+  role: "user" | "assistant"
+  content: string
+  skillUsed: string | null
+  metadata: Record<string, unknown> | null
+  createdAt: string
+}
+
+export interface VoiceSessionsListFilters {
+  userId?: string
+  from?: string
+  to?: string
+  page?: number
+  perPage?: number
+}
+
+export interface VoiceTurnsListFilters {
+  userId?: string
+  sessionId?: string
+  role?: "user" | "assistant"
+  skillUsed?: string
+  from?: string
+  to?: string
+  page?: number
+  perPage?: number
+}
+
+interface PaginatedResponse<T> {
+  rows: T[]
+  total: number
+  page: number
+  perPage: number
+}
+
+export function useVoiceTranscriptSessions(filters: VoiceSessionsListFilters = {}) {
+  return useQuery<PaginatedResponse<VoiceTranscriptSession>>({
+    queryKey: ["admin", "voice-transcripts", "sessions", filters],
+    queryFn: () =>
+      api.get<PaginatedResponse<VoiceTranscriptSession>>(
+        `/admin/voice-transcripts/sessions${buildQuery(filters)}`,
+      ),
+    staleTime: 15 * 1000,
+  })
+}
+
+export function useVoiceTranscriptTurns(
+  filters: VoiceTurnsListFilters,
+  enabled = true,
+) {
+  return useQuery<PaginatedResponse<VoiceTranscriptTurn>>({
+    queryKey: ["admin", "voice-transcripts", "turns", filters],
+    queryFn: () =>
+      api.get<PaginatedResponse<VoiceTranscriptTurn>>(
+        `/admin/voice-transcripts${buildQuery(filters)}`,
+      ),
+    enabled,
+    staleTime: 15 * 1000,
+  })
+}

@@ -45,6 +45,7 @@ import { RecipesSection, RegenSection } from "./sections/RecipeSections"
 import { RemapModal } from "./sections/RemapModal"
 import { UsersSection } from "./sections/UsersSection"
 import { AuditLogSection } from "./sections/AuditLogSection"
+import { VoiceTranscriptsSection } from "./sections/VoiceTranscriptsSection"
 
 type SectionKey =
   | "fdc"
@@ -56,6 +57,7 @@ type SectionKey =
   | "regen"
   | "users"
   | "audit"
+  | "voice"
 
 const SECTIONS: Array<{ key: SectionKey; label: string }> = [
   { key: "fdc", label: "Ingredientes sin USDA" },
@@ -67,6 +69,7 @@ const SECTIONS: Array<{ key: SectionKey; label: string }> = [
   { key: "regen", label: "Output de regen" },
   { key: "users", label: "Usuarios" },
   { key: "audit", label: "Auditoría" },
+  { key: "voice", label: "Voz" },
 ]
 
 export default function AdminPage() {
@@ -127,6 +130,7 @@ export default function AdminPage() {
     regen: regen.data?.length ?? 0,
     users: 0,
     audit: 0,
+    voice: 0,
   }
 
   const isCatalogTab =
@@ -200,7 +204,7 @@ export default function AdminPage() {
               }`}
             >
               {s.label}
-              {s.key !== "users" && s.key !== "audit" && (
+              {s.key !== "users" && s.key !== "audit" && s.key !== "voice" && (
                 <span className="ml-1.5 text-[10px] opacity-60">
                   {counts[s.key]}
                 </span>
@@ -241,6 +245,7 @@ export default function AdminPage() {
         )}
         {active === "users" && <UsersSection />}
         {active === "audit" && <AuditLogSection />}
+        {active === "voice" && <VoiceTranscriptsSection />}
       </main>
 
       {remapTarget && (

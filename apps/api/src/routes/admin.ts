@@ -58,7 +58,9 @@ import {
   recipes,
   recipeIngredients,
   users,
+  voiceTranscripts,
 } from '../db/schema.js'
+import { sql } from 'drizzle-orm'
 import {
   authMiddleware,
   requireAdmin,
@@ -911,6 +913,164 @@ router.post(
       })
     } catch (err) {
       console.error('POST /admin/users/:id/reset-password-token error:', err)
+      res.status(500).json({ error: 'Internal server error' })
+    }
+  },
+)
+
+// ════════════════════════════════════════════════════════════════
+// Voice transcripts (read-only)
+// ════════════════════════════════════════════════════════════════
+//
+// Two read endpoints for analysing voice-mode conversations. Append-only
+// log lives in `voice_transcripts`; both endpoints are admin-gated and never
+// mutate. No audit-log entry on read.
+//
+//   GET /admin/voice-transcripts              — flat list of turns (filterable)
+//   GET /admin/voice-transcripts/sessions     — grouped by sessionId (summary)
+
+const voiceTranscriptsListQuerySchema = z.object({
+  userId: z.string().uuid().optional(),
+  sessionId: z.string().min(1).optional(),
+  role: z.enum(['user', 'assistant']).optional(),
+  skillUsed: z.string().min(1).optional(),
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+  page: z.coerce.number().int().positive().optional(),
+  perPage: z.coerce.number().int().positive().max(200).optional(),
+})
+
+router.get(
+  '/admin/voice-transcripts',
+  authMiddleware,
+  requireAdmin,
+  async (req: AuthRequest, res) => {
+    try {
+      const parsed = voiceTranscriptsListQuerySchema.safeParse(req.query)
+      if (!parsed.success) {
+        res.status(400).json({ error: 'Invalid query', issues: parsed.error.issues })
+        return
+      }
+      const page = parsed.data.page ?? 1
+      const perPage = parsed.data.perPage ?? 50
+
+      const conditions = []
+      if (parsed.data.userId) conditions.push(eq(voiceTranscripts.userId, parsed.data.userId))
+      if (parsed.data.sessionId) conditions.push(eq(voiceTranscripts.sessionId, parsed.data.sessionId))
+      if (parsed.data.role) conditions.push(eq(voiceTranscripts.role, parsed.data.role))
+      if (parsed.data.skillUsed) conditions.push(eq(voiceTranscripts.skillUsed, parsed.data.skillUsed))
+      if (parsed.data.from) conditions.push(gte(voiceTranscripts.createdAt, new Date(parsed.data.from)))
+      if (parsed.data.to) conditions.push(lte(voiceTranscripts.createdAt, new Date(parsed.data.to)))
+      const whereClause = conditions.length > 0 ? and(...conditions) : undefined
+
+      const [{ total }] = await db
+        .select({ total: count() })
+        .from(voiceTranscripts)
+        .where(whereClause)
+
+      // For session detail view we want chronological ascending so turns read
+      // top-to-bottom; for the flat feed (no sessionId filter) we want
+      // newest-first like the audit log. Switch order based on the filter.
+      const orderClause = parsed.data.sessionId
+        ? voiceTranscripts.createdAt
+        : desc(voiceTranscripts.createdAt)
+
+      const rows = await db
+        .select({
+          id: voiceTranscripts.id,
+          userId: voiceTranscripts.userId,
+          username: users.username,
+          email: users.email,
+          sessionId: voiceTranscripts.sessionId,
+          role: voiceTranscripts.role,
+          content: voiceTranscripts.content,
+          skillUsed: voiceTranscripts.skillUsed,
+          metadata: voiceTranscripts.metadata,
+          createdAt: voiceTranscripts.createdAt,
+        })
+        .from(voiceTranscripts)
+        .leftJoin(users, eq(voiceTranscripts.userId, users.id))
+        .where(whereClause)
+        .orderBy(orderClause)
+        .limit(perPage)
+        .offset((page - 1) * perPage)
+
+      res.json({ rows, total: Number(total), page, perPage })
+    } catch (err) {
+      console.error('GET /admin/voice-transcripts error:', err)
+      res.status(500).json({ error: 'Internal server error' })
+    }
+  },
+)
+
+const voiceSessionsListQuerySchema = z.object({
+  userId: z.string().uuid().optional(),
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+  page: z.coerce.number().int().positive().optional(),
+  perPage: z.coerce.number().int().positive().max(200).optional(),
+})
+
+router.get(
+  '/admin/voice-transcripts/sessions',
+  authMiddleware,
+  requireAdmin,
+  async (req: AuthRequest, res) => {
+    try {
+      const parsed = voiceSessionsListQuerySchema.safeParse(req.query)
+      if (!parsed.success) {
+        res.status(400).json({ error: 'Invalid query', issues: parsed.error.issues })
+        return
+      }
+      const page = parsed.data.page ?? 1
+      const perPage = parsed.data.perPage ?? 50
+
+      const conditions = []
+      if (parsed.data.userId) conditions.push(eq(voiceTranscripts.userId, parsed.data.userId))
+      if (parsed.data.from) conditions.push(gte(voiceTranscripts.createdAt, new Date(parsed.data.from)))
+      if (parsed.data.to) conditions.push(lte(voiceTranscripts.createdAt, new Date(parsed.data.to)))
+      const whereClause = conditions.length > 0 ? and(...conditions) : undefined
+
+      // Total = number of distinct sessions matching the filter.
+      const [{ total }] = await db
+        .select({ total: sql<number>`count(distinct ${voiceTranscripts.sessionId})::int` })
+        .from(voiceTranscripts)
+        .where(whereClause)
+
+      // Group by session + user (sessions are scoped to a single user, so the
+      // userId is functionally dependent on sessionId, but we keep it in the
+      // GROUP BY for correctness across DB engines).
+      const rows = await db
+        .select({
+          sessionId: voiceTranscripts.sessionId,
+          userId: voiceTranscripts.userId,
+          username: users.username,
+          email: users.email,
+          turnCount: sql<number>`count(*)::int`,
+          userTurns: sql<number>`count(*) filter (where ${voiceTranscripts.role} = 'user')::int`,
+          assistantTurns: sql<number>`count(*) filter (where ${voiceTranscripts.role} = 'assistant')::int`,
+          startedAt: sql<string>`min(${voiceTranscripts.createdAt})`,
+          endedAt: sql<string>`max(${voiceTranscripts.createdAt})`,
+          skillsUsed: sql<
+            string[]
+          >`coalesce(array_agg(distinct ${voiceTranscripts.skillUsed}) filter (where ${voiceTranscripts.skillUsed} is not null), '{}'::text[])`,
+        })
+        .from(voiceTranscripts)
+        .leftJoin(users, eq(voiceTranscripts.userId, users.id))
+        .where(whereClause)
+        .groupBy(
+          voiceTranscripts.sessionId,
+          voiceTranscripts.userId,
+          users.username,
+          users.email,
+        )
+        .orderBy(sql`max(${voiceTranscripts.createdAt}) desc`)
+        .limit(perPage)
+        .offset((page - 1) * perPage)
+
+      res.json({ rows, total: Number(total), page, perPage })
+    } catch (err) {
+      console.error('GET /admin/voice-transcripts/sessions error:', err)
       res.status(500).json({ error: 'Internal server error' })
     }
   },

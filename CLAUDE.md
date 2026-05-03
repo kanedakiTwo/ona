@@ -116,13 +116,9 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 
 ### Pending
 
-- [ ] **Finish the seed image batch** — paused at 38/87 ([#bp1y89fnh] killed at recipe 38 on 2026-05-03, 49 system recipes left without `image_url`). Resume with `--skip-existing` so the already-paid 38 are skipped: `cd apps/api && AIKIT_API_KEY=aik_… npx tsx scripts/generateRecipeImages.ts --skip-existing`.
+- [ ] **Finish the seed image batch** — paused at 38/87 (49 system recipes still without `image_url`). Resume with `--skip-existing` so the already-paid 38 are skipped: `cd apps/api && AIKIT_API_KEY=aik_… npx tsx scripts/generateRecipeImages.ts --skip-existing`.
 
-- [ ] **Set Railway env vars on `ona-api`** for the user-facing image generator (volume `ona-api-volume` already mounted at `/data` by Claude):
-  - `AIKIT_API_KEY` — the same Bearer token used in dev
-  - `IMAGE_STORAGE_DIR=/data/images/recipes` — writes go to the volume so they survive deploys
-  - `IMAGE_PUBLIC_URL_BASE=https://<ona-api host>/images/recipes` — frontend renders `<img src=…>` directly with this absolute URL (the API serves the volume; ona-web doesn't have these files)
-  - *(Optional)* `IMAGE_GEN_MONTHLY_LIMIT` — defaults to 20 if unset
+- [ ] **End-to-end check on production** after the next `ona-api` deploy: register a fresh user, create a recipe, hit "Regenerar imagen" — confirms the Railway volume writes survive and `IMAGE_PUBLIC_URL_BASE` (`https://ona-api-production.up.railway.app/images/recipes`) actually serves the JPEG. (Volume `ona-api-volume` mounted at `/data` and the three env vars `AIKIT_API_KEY`, `IMAGE_STORAGE_DIR`, `IMAGE_PUBLIC_URL_BASE` are already set on `ona-api` via Railway CLI.)
 
 - [ ] **Replace placeholder PWA assets** with real branded artwork — `apps/web/public/icons/*.png` + `apps/web/public/favicon.ico`. Same paths, same sizes; the SW picks up new revisions on next build. Current placeholders are an "ONA" wordmark on cream (generator: `apps/web/scripts/generate-pwa-placeholders.mjs`).
 

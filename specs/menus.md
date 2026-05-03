@@ -7,7 +7,7 @@ Weekly meal plan generation and management.
 - Users can generate a weekly menu (Monday–Sunday) for the current week with one click
 - Users can navigate between days of the week using a horizontal day strip (WeekStrip)
 - Users can see the day's meals as photo cards (breakfast / lunch / dinner) with the recipe image
-- Users can regenerate a single meal slot (gives a different recipe matching the slot); the request is queued offline and replays on reconnect
+- Users can regenerate a single meal slot two ways from the meal card: **"Aleatorio"** runs the matcher (random recipe matching the slot's season + restrictions), and **"Elegir"** opens a recipe picker sheet (`RecipePickerSheet`) listing the full catalog (system + user-owned recipes, distinguished by an "ONA"/"tuya" badge) with name search; picking one pins it via `PUT /menu/:menuId/day/:day/meal/:meal` with body `{ recipeId }`. The picker does NOT filter by meal type (the user's choice — any recipe can go in any slot). Both paths are queued offline and replay on reconnect; manual picks lose their `recipeId` on offline replay (the server falls back to auto-pick)
 - Users can lock individual meal slots to prevent them from being changed during regeneration; the lock toggle is queued offline as well
 - Users can regenerate the whole week (re-runs the algorithm; locked slots are preserved)
 - Users can view past menus via `/menu/history`

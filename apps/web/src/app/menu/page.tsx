@@ -7,9 +7,10 @@ import { useAuth } from "@/lib/auth"
 import { useMenu, useGenerateMenu, useRegenerateMeal } from "@/hooks/useMenu"
 import { haptic } from "@/lib/pwa/haptics"
 import { recordMenuVisit } from "@/lib/pwa/installPrompt"
-import { RefreshCw, Lock, Unlock, Sparkles } from "lucide-react"
+import { RefreshCw, Lock, Unlock, Sparkles, Replace } from "lucide-react"
 import { useLockMeal } from "@/hooks/useMenu"
 import { mealLabel } from "@/lib/labels"
+import { RecipePickerSheet } from "@/components/menu/RecipePickerSheet"
 
 const DAY_NAMES = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
 const DAY_SHORT = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"]
@@ -243,6 +244,7 @@ export default function MenuPage() {
                       key={meal.type}
                       meal={meal}
                       index={i}
+                      day={selectedDay}
                       isLocked={isLocked(meal.type)}
                       onRegenerate={() => {
                         haptic.medium()
@@ -250,6 +252,15 @@ export default function MenuPage() {
                           menuId: menu.id,
                           day: selectedDay,
                           meal: meal.type,
+                        })
+                      }}
+                      onPickRecipe={(recipe) => {
+                        haptic.medium()
+                        regenerateMeal.mutate({
+                          menuId: menu.id,
+                          day: selectedDay,
+                          meal: meal.type,
+                          recipeId: recipe.id,
                         })
                       }}
                       onToggleLock={() =>
@@ -289,18 +300,23 @@ export default function MenuPage() {
 function EditorialMealCard({
   meal,
   index,
+  day,
   isLocked,
   onRegenerate,
+  onPickRecipe,
   onToggleLock,
   isRegenerating,
 }: {
   meal: { type: string; recipeId?: string; recipeName?: string }
   index: number
+  day: number
   isLocked: boolean
   onRegenerate: () => void
+  onPickRecipe: (r: { id: string; name: string }) => void
   onToggleLock: () => void
   isRegenerating: boolean
 }) {
+  const [pickerOpen, setPickerOpen] = useState(false)
   if (!meal.recipeId) {
     return (
       <div className="rounded-2xl border border-dashed border-[#DDD6C5] bg-[#FFFEFA] p-5">
@@ -362,12 +378,20 @@ function EditorialMealCard({
           {isLocked ? "Fijado" : "Fijar"}
         </button>
         <button
+          onClick={() => setPickerOpen(true)}
+          disabled={isLocked || isRegenerating}
+          className="flex items-center gap-1.5 rounded-full bg-[#F2EDE0] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#1A1612] transition-colors hover:bg-[#1A1612] hover:text-[#FAF6EE] disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <Replace size={11} />
+          Elegir
+        </button>
+        <button
           onClick={onRegenerate}
           disabled={isLocked || isRegenerating}
           className="flex items-center gap-1.5 rounded-full bg-[#F2EDE0] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#1A1612] transition-colors hover:bg-[#1A1612] hover:text-[#FAF6EE] disabled:cursor-not-allowed disabled:opacity-40"
         >
           <RefreshCw size={11} className={isRegenerating ? "animate-spin" : ""} />
-          Cambiar
+          Aleatorio
         </button>
         <Link
           href={`/recipes/${meal.recipeId}`}
@@ -376,6 +400,17 @@ function EditorialMealCard({
           Ver receta →
         </Link>
       </div>
+
+      <RecipePickerSheet
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        title={`${mealLabel(meal.type)} del día`}
+        subtitle={meal.recipeName ? `Ahora: ${meal.recipeName}` : "Sin plato"}
+        onPick={(picked) => {
+          onPickRecipe(picked)
+          setPickerOpen(false)
+        }}
+      />
     </motion.article>
   )
 }

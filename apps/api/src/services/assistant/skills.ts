@@ -435,16 +435,28 @@ const generateWeeklyMenu: SkillDefinition = {
 
 const swapMeal: SkillDefinition = {
   name: 'swap_meal',
-  description: 'Cambia un plato concreto del menu por otro. dayIndex: 0=lunes, 6=domingo. meal: breakfast, lunch o dinner.',
+  description:
+    'Cambia un plato concreto del menu. dayIndex: 0=lunes, 6=domingo. meal: breakfast, lunch o dinner. Si el usuario nombra una receta concreta, pásala en `recipeName` (o `recipeId` si lo conoces) y la receta se asigna directamente sin elegir aleatorio. Si no se nombra, el sistema escoge automáticamente un plato compatible con la temporada y restricciones.',
   parameters: {
     type: 'object',
     properties: {
       dayIndex: { type: 'number', description: 'Indice del dia (0=lunes, 6=domingo)' },
       meal: { type: 'string', description: 'Tipo de comida: breakfast, lunch o dinner' },
+      recipeId: {
+        type: 'string',
+        description: 'UUID de la receta concreta a colocar en ese hueco. Opcional.',
+      },
+      recipeName: {
+        type: 'string',
+        description: 'Nombre (o parte) de la receta concreta. Se buscará por substring case-insensitive. Opcional. Si hay varias coincidencias se prioriza la del usuario sobre las del catálogo de ONA.',
+      },
     },
     required: ['dayIndex', 'meal'],
   },
-  async handler(params: { dayIndex: number; meal: string }, ctx: SkillContext): Promise<SkillResult> {
+  async handler(
+    params: { dayIndex: number; meal: string; recipeId?: string; recipeName?: string },
+    ctx: SkillContext,
+  ): Promise<SkillResult> {
     const { userId, db } = ctx
     const { dayIndex, meal } = params
 
@@ -464,6 +476,50 @@ const swapMeal: SkillDefinition = {
 
     if (dayIndex < 0 || dayIndex >= days.length) {
       return { data: null, summary: 'Indice de dia fuera de rango.', uiHint: 'text' }
+    }
+
+    // Manual override path: if the user (or the model) named a specific
+    // recipe, look it up and place it directly. Prefer recipes the user
+    // owns when matching by name so "mi tortilla" wins over a system one
+    // with the same word.
+    if (params.recipeId || params.recipeName) {
+      let chosen: { id: string; name: string } | null = null
+      if (params.recipeId) {
+        const [row] = await db
+          .select({ id: recipes.id, name: recipes.name })
+          .from(recipes)
+          .where(eq(recipes.id, params.recipeId))
+          .limit(1)
+        chosen = row ?? null
+      } else if (params.recipeName) {
+        const candidates = await db
+          .select({ id: recipes.id, name: recipes.name, authorId: recipes.authorId })
+          .from(recipes)
+          .where(ilike(recipes.name, `%${params.recipeName}%`))
+          .limit(20)
+        const owned = candidates.find((c: { authorId: string | null }) => c.authorId === userId)
+        chosen = owned ?? candidates[0] ?? null
+      }
+      if (!chosen) {
+        return {
+          data: null,
+          summary: `No he encontrado la receta "${params.recipeName ?? params.recipeId}".`,
+          uiHint: 'text',
+        }
+      }
+      days[dayIndex][meal] = { recipeId: chosen.id, recipeName: chosen.name }
+      const [updatedManual] = await db
+        .update(menus)
+        .set({ days })
+        .where(eq(menus.id, menu.id))
+        .returning()
+      const dayNames = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
+      const mealEs = meal === 'breakfast' ? 'desayuno' : meal === 'lunch' ? 'comida' : meal === 'dinner' ? 'cena' : meal
+      return {
+        data: updatedManual,
+        summary: `Hecho. He puesto "${chosen.name}" en el ${mealEs} del ${dayNames[dayIndex]}.`,
+        uiHint: 'menu',
+      }
     }
 
     // Collect used recipe IDs (excluding the one being replaced)

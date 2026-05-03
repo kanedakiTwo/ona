@@ -28,7 +28,7 @@ The assistant can call back-end skills (function calling). Each skill has a name
 - `suggest_recipes` — recommend recipes matching meal/season/restrictions
 - `search_recipes` — search by name substring
 - `generate_weekly_menu` — full menu generation for the user
-- `swap_meal` — replace a single meal slot
+- `swap_meal` — replace a single meal slot. Without a `recipeId`/`recipeName` parameter, runs the matcher (auto-picks). When the user names a recipe ("pon la fabada de mi madre el lunes"), the model passes `recipeName` (or `recipeId` when known) and the skill pins that recipe directly without the matcher. Recipes the user owns win over system recipes when names collide
 - `toggle_favorite` — favorite/unfavorite a recipe
 - `mark_meal_eaten` — log that the user actually ate a meal (records `eatenAt` timestamp)
 - `create_recipe` — save a new user recipe

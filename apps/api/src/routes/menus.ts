@@ -142,6 +142,31 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       return
     }
 
+    // Manual override: if the body carries a `recipeId`, skip the matcher and
+    // pin that recipe directly. This is the path used by the menu UI's
+    // "cambiar plato" picker and by the assistant's swap_meal skill when the
+    // user names a specific recipe.
+    const manualRecipeId = typeof req.body?.recipeId === 'string' ? req.body.recipeId : null
+    if (manualRecipeId) {
+      const [chosen] = await db
+        .select({ id: recipes.id, name: recipes.name })
+        .from(recipes)
+        .where(eq(recipes.id, manualRecipeId))
+        .limit(1)
+      if (!chosen) {
+        res.status(404).json({ error: 'Recipe not found' })
+        return
+      }
+      days[dayIndex][meal] = { recipeId: chosen.id, recipeName: chosen.name }
+      const [updated] = await db
+        .update(menus)
+        .set({ days })
+        .where(eq(menus.id, menuId))
+        .returning()
+      res.json(updated)
+      return
+    }
+
     // Collect used recipe IDs (excluding the one being replaced)
     const usedRecipeIds = new Set<string>()
     for (let d = 0; d < days.length; d++) {

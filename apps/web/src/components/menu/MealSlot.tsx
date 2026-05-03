@@ -1,9 +1,11 @@
 "use client"
 
+import { useState } from "react"
 import { useLockMeal, useRegenerateMeal } from "@/hooks/useMenu"
-import { Pin, RefreshCw } from "lucide-react"
+import { Pin, RefreshCw, Replace } from "lucide-react"
 import { cn } from "@/lib/utils"
 import Link from "next/link"
+import { RecipePickerSheet } from "./RecipePickerSheet"
 
 interface MealSlotProps {
   recipeId?: string
@@ -24,6 +26,7 @@ export function MealSlot({
 }: MealSlotProps) {
   const lockMeal = useLockMeal()
   const regenerateMeal = useRegenerateMeal()
+  const [pickerOpen, setPickerOpen] = useState(false)
 
   function handleLock() {
     lockMeal.mutate({
@@ -40,6 +43,21 @@ export function MealSlot({
       day: dayIndex,
       meal,
     })
+  }
+
+  function handlePickRecipe(picked: { id: string; name: string }) {
+    regenerateMeal.mutate(
+      { menuId, day: dayIndex, meal, recipeId: picked.id },
+      { onSuccess: () => setPickerOpen(false) },
+    )
+  }
+
+  const dayNames = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+  const mealLabels: Record<string, string> = {
+    breakfast: "desayuno",
+    lunch: "comida",
+    dinner: "cena",
+    snack: "snack",
   }
 
   return (
@@ -75,23 +93,33 @@ export function MealSlot({
           )}
           title={isLocked ? "Desbloquear" : "Bloquear"}
         >
-          <Pin
-            size={14}
-            className={isLocked ? "fill-current" : ""}
-          />
+          <Pin size={14} className={isLocked ? "fill-current" : ""} />
+        </button>
+        <button
+          onClick={() => setPickerOpen(true)}
+          disabled={regenerateMeal.isPending || isLocked}
+          className="rounded p-1 text-gray-400 transition-colors hover:text-gray-600 disabled:opacity-30"
+          title="Elegir otro plato"
+        >
+          <Replace size={14} />
         </button>
         <button
           onClick={handleRegenerate}
           disabled={regenerateMeal.isPending || isLocked}
           className="rounded p-1 text-gray-400 transition-colors hover:text-gray-600 disabled:opacity-30"
-          title="Regenerar plato"
+          title="Regenerar plato (aleatorio)"
         >
-          <RefreshCw
-            size={14}
-            className={regenerateMeal.isPending ? "animate-spin" : ""}
-          />
+          <RefreshCw size={14} className={regenerateMeal.isPending ? "animate-spin" : ""} />
         </button>
       </div>
+
+      <RecipePickerSheet
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        title={`${mealLabels[meal] ?? meal} del ${dayNames[dayIndex] ?? "día"}`}
+        subtitle={recipeName ? `Ahora: ${recipeName}` : "Sin plato"}
+        onPick={handlePickRecipe}
+      />
 
       {/* Persistent lock indicator */}
       {isLocked && (

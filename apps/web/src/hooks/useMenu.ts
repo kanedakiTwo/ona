@@ -56,7 +56,13 @@ export function useRegenerateMeal() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (params: { menuId: string; day: number; meal: string }) => {
+    mutationFn: async (params: {
+      menuId: string
+      day: number
+      meal: string
+      /** When provided, the server pins this recipe instead of running the matcher. */
+      recipeId?: string
+    }) => {
       const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}`
 
       if (typeof navigator !== "undefined" && !navigator.onLine) {
@@ -66,19 +72,21 @@ export function useRegenerateMeal() {
           method: "PUT",
           timestamp: Date.now(),
           resourceId: `${params.menuId}-${params.day}-${params.meal}`,
+          // Note: offline manual swaps lose the picked recipeId for now —
+          // the queue replay POSTs without a body and the server picks one.
+          // Acceptable v1 trade-off; proper offline-aware queue-with-body
+          // is a follow-up.
         })
         if (typeof window !== "undefined") {
           window.dispatchEvent(new CustomEvent("ona-queue-changed"))
         }
-        // Synthetic success — the server will regenerate when online; no optimistic
-        // recipe substitution since we don't have a candidate locally.
         return { offline: true } as unknown as Menu
       }
 
-      return api.put<Menu>(url)
+      const body = params.recipeId ? { recipeId: params.recipeId } : undefined
+      return api.put<Menu>(url, body)
     },
     onSuccess: (data) => {
-      // Update cache with the returned updated menu
       if (data?.userId && data?.weekStart) {
         queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
       }

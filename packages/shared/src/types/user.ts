@@ -1,10 +1,17 @@
 import { z } from 'zod'
 import type { ActivityLevel, CookingFrequency, HouseholdSize, Priority, Sex } from '../constants/enums.js'
 
+export const ROLES = ['user', 'admin'] as const
+export type Role = (typeof ROLES)[number]
+
 export interface User {
   id: string
   username: string
   email: string
+  /** Authorization role. `admin` is bootstrapped at login from `ADMIN_EMAILS`. */
+  role: Role
+  /** When set, the account is suspended and login + privileged endpoints reject. */
+  suspendedAt?: Date | null
   sex?: Sex
   age?: number
   weight?: number

@@ -39,8 +39,15 @@ export const users = pgTable('users', {
   favoriteDishes: text('favorite_dishes').array().default([]),
   priority: text('priority'),
   onboardingDone: boolean('onboarding_done').default(false),
+  // Authorization
+  role: text('role').notNull().default('user'),
+  // Suspension (admin gate). NULL = active.
+  suspendedAt: timestamp('suspended_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-})
+}, (table) => [
+  check('users_role_check', sql.raw("role IN ('user','admin')")),
+  index('idx_users_suspended').on(table.suspendedAt),
+])
 
 // ─── 2. user_settings ───────────────────────────────────────
 export const userSettings = pgTable('user_settings', {
@@ -249,4 +256,35 @@ export const voiceTranscripts = pgTable('voice_transcripts', {
 }, (table) => [
   index('idx_voice_transcripts_user_session').on(table.userId, table.sessionId),
   index('idx_voice_transcripts_created').on(table.createdAt),
+])
+
+// ─── 13. password_reset_tokens ──────────────────────────────
+// Single-use opaque tokens. Admin generates one and pastes the link to
+// the user out-of-band; the user trades it in at /reset?token=X.
+export const passwordResetTokens = pgTable('password_reset_tokens', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  token: text('token').notNull().unique(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => [
+  index('idx_password_reset_user').on(table.userId),
+])
+
+// ─── 14. admin_audit_log ────────────────────────────────────
+// Append-only. Every successful admin mutation lands here.
+// Action codes are stable forever — never rename, only add.
+export const adminAuditLog = pgTable('admin_audit_log', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  adminId: uuid('admin_id').notNull().references(() => users.id),
+  action: text('action').notNull(),
+  targetType: text('target_type').notNull(),
+  targetId: text('target_id'),
+  payload: jsonb('payload').notNull().default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('idx_admin_audit_log_created').on(table.createdAt),
+  index('idx_admin_audit_log_admin').on(table.adminId, table.createdAt),
+  index('idx_admin_audit_log_action').on(table.action),
 ])

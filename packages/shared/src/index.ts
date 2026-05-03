@@ -1,5 +1,6 @@
 // Types
-export type { User, UserSettings, DayTemplate, OnboardingAnswers } from './types/user.js'
+export type { User, UserSettings, DayTemplate, OnboardingAnswers, Role } from './types/user.js'
+export { ROLES } from './types/user.js'
 export type { Ingredient } from './types/ingredient.js'
 export type {
   Recipe,

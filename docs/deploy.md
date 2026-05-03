@@ -1,0 +1,133 @@
+# Deploy
+
+ONA runs on Railway in two services + a Postgres:
+
+- `ona-api` — Express API (`apps/api/`)
+- `ona-web` — Next.js frontend (`apps/web/`, prod build via `next build`)
+- `Postgres` — managed Postgres
+
+There is **no GitHub-Railway repo connection**. Deploys are manual via the Railway CLI from your local machine. Both services are configured with **Railpack** (Railway's new builder); legacy `NIXPACKS_*` vars are no longer respected.
+
+## One-time setup per machine
+
+```bash
+brew install railwayapp/railway/railway   # or `npm i -g @railway/cli`
+railway login                              # opens browser, paste-back code
+railway link                               # pick `ona-app` project
+```
+
+## Deploy flow
+
+```bash
+# 1) deploy api
+railway up --service ona-api --detach
+
+# 2) deploy web (do this AFTER api so the new endpoints exist when the new
+#    UI tries to call them)
+railway up --service ona-web --detach
+
+# 3) sanity checks
+curl -sf https://ona-api-production.up.railway.app/health        # → {"ok":true,…}
+curl -s  https://ona-web-production.up.railway.app/recipes/new \
+  | grep -c "Importar desde URL"                                  # → 1
+```
+
+The API runs `pnpm --filter @ona/api db:migrate` on boot (set in `RAILPACK_START_CMD`), so committed Drizzle migrations apply automatically on the next deploy. Each deploy takes 2–4 minutes.
+
+## Required env vars
+
+Both are configured in the Railway dashboard, not committed.
+
+`ona-api` (only the non-obvious ones; the rest are documented in `.env.example`):
+
+| Var | Notes |
+|---|---|
+| `RAILPACK_BUILD_CMD` | `pnpm install && pnpm --filter @ona/shared build && pnpm --filter @ona/api build` |
+| `RAILPACK_START_CMD` | `pnpm --filter @ona/api db:migrate && node apps/api/dist/index.js` |
+| `DATABASE_URL` | Auto-injected via Railway service link to `Postgres` (uses internal hostname) |
+| `JWT_SECRET` | Production secret (do **not** reuse the dev `change-me-in-production`) |
+| `ANTHROPIC_API_KEY` | For photo + URL recipe extraction |
+| `OPENAI_API_KEY` | For Realtime voice mode |
+| `USDA_FDC_API_KEY` | For ingredient auto-create |
+
+`ona-web`:
+
+| Var | Notes |
+|---|---|
+| `RAILPACK_BUILD_CMD` | `pnpm install && pnpm --filter @ona/shared build && pnpm --filter @ona/web build` |
+| `RAILPACK_START_CMD` | `node apps/web/.next/standalone/apps/web/server.js` |
+| `NEXT_PUBLIC_API_URL` | `https://ona-api-production.up.railway.app` (no trailing slash) |
+| `NEXT_PUBLIC_PICOVOICE_ACCESS_KEY` | From <https://console.picovoice.ai>; required for the "Hola Ona" wake word |
+| `PORT` | `3000` |
+
+## Schema migrations
+
+Drizzle migrations live in `apps/api/src/db/migrations/`. Generate them with:
+
+```bash
+pnpm --filter @ona/api db:generate    # after editing apps/api/src/db/schema.ts
+```
+
+Apply them locally with:
+
+```bash
+pnpm --filter @ona/api db:migrate
+```
+
+In production, `db:migrate` runs automatically on every deploy as part of `RAILPACK_START_CMD`. If you ever need to run it manually:
+
+```bash
+DATABASE_URL=$(railway variables --service Postgres --kv | grep ^DATABASE_PUBLIC_URL= | cut -d= -f2-) \
+  pnpm --filter @ona/api db:migrate
+```
+
+The `DATABASE_URL` injected into `ona-api` uses the internal hostname (`postgres.railway.internal`) which only resolves inside Railway's network. To run psql/migrate from your laptop you need the **public URL** instead:
+
+```bash
+railway variables --service Postgres --kv | grep ^DATABASE_PUBLIC_URL=
+# → postgresql://…@interchange.proxy.rlwy.net:26066/railway
+```
+
+## Recipe seed
+
+The seed (`apps/api/src/seed/index.ts`) inserts ingredients (idempotent via `onConflictDoNothing`) and the system recipe catalog. **It is intentionally NOT in `RAILPACK_START_CMD`** because for any system recipe whose `name` matches an existing row, the seed wipes its `recipe_ingredients` and `recipe_steps` and re-inserts them — overriding any local edits curators may have made on `/curator`.
+
+Run it manually only when you've meaningfully changed `apps/api/src/seed/recipes.ts` or `apps/api/src/seed/ingredients.ts`:
+
+```bash
+DATABASE_URL=… pnpm --filter @ona/api db:seed
+```
+
+User-created recipes (`recipes.author_id IS NOT NULL`) and user-owned data (`users`, `user_favorites`, `menus`, `shopping_lists`) are never touched by the seed.
+
+## Troubleshooting
+
+### "No start command detected"
+You're hitting Railway's old Nixpacks builder without Railpack vars. Check that both `RAILPACK_BUILD_CMD` and `RAILPACK_START_CMD` are set on the service (not just the legacy `NIXPACKS_*`).
+
+### Build succeeds but old code keeps serving
+- Check that the latest deploy actually finished (Railway dashboard → service → Deployments).
+- `railway logs --build --service <name>` shows the most recent build.
+- Hit `/health` directly (bypasses the CDN) to see live state.
+- The Fastly edge in front of Railway can cache responses with long TTLs; a fresh deploy invalidates that cache automatically, but client-side service workers (`apps/web/public/sw.js`, generated by `next-pwa` during build) can serve stale chunks. Tell users to hard-refresh + DevTools → Application → Clear site data.
+
+### Migration fails on production with `column "X" contains null values`
+A `NOT NULL` column was added without a `DEFAULT`, and prod has rows that predate that column. Fix forward by editing the migration to use `ADD COLUMN X TYPE NOT NULL DEFAULT <value>` then `ALTER COLUMN X DROP DEFAULT`, OR backfill manually with `psql` against `DATABASE_PUBLIC_URL` before re-running migrate. **Never `DROP TABLE` — `users`, `menus`, and `shopping_lists` all reference `recipes.id` and you'll lose user data.**
+
+If the prod DB is many migrations behind and a backfill is too risky to inline into the migrations folder (because dev DBs don't need it), you can hand-apply equivalent SQL inside a transaction and then mark the migrations as applied:
+
+```sql
+BEGIN;
+-- run the migration SQL with backfill-aware ALTERs
+-- e.g. ALTER TABLE recipes ADD COLUMN servings integer DEFAULT 4 NOT NULL;
+--      ALTER TABLE recipes ALTER COLUMN servings DROP DEFAULT;
+
+-- then record the migration as applied so drizzle skips it next deploy.
+-- Hash is sha256 of the .sql file content, created_at is the `when`
+-- field from apps/api/src/db/migrations/meta/_journal.json.
+INSERT INTO drizzle.__drizzle_migrations(hash, created_at) VALUES
+  ('<sha256-of-0001.sql>', <when-from-journal>);
+COMMIT;
+```
+
+You can verify the hash with `shasum -a 256 apps/api/src/db/migrations/0000_smart_jamie_braddock.sql` — drizzle uses sha256 of the raw file bytes.

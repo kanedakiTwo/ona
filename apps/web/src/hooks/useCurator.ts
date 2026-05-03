@@ -52,7 +52,7 @@ export interface RegenEntry {
 export function useIngredientGaps() {
   return useQuery<IngredientGapsResponse>({
     queryKey: ["curator", "ingredient-gaps"],
-    queryFn: () => api.get<IngredientGapsResponse>("/curator/ingredient-gaps"),
+    queryFn: () => api.get<IngredientGapsResponse>("/admin/ingredient-gaps"),
     staleTime: 30 * 1000,
   })
 }
@@ -60,7 +60,7 @@ export function useIngredientGaps() {
 export function useRecipeGaps() {
   return useQuery<RecipeGapsResponse>({
     queryKey: ["curator", "recipe-gaps"],
-    queryFn: () => api.get<RecipeGapsResponse>("/curator/recipe-gaps"),
+    queryFn: () => api.get<RecipeGapsResponse>("/admin/recipe-gaps"),
     staleTime: 30 * 1000,
   })
 }
@@ -68,7 +68,7 @@ export function useRecipeGaps() {
 export function useRegenOutput() {
   return useQuery<RegenEntry[]>({
     queryKey: ["curator", "regen-output"],
-    queryFn: () => api.get<RegenEntry[]>("/curator/regen-output"),
+    queryFn: () => api.get<RegenEntry[]>("/admin/regen-output"),
     staleTime: 60 * 1000,
   })
 }

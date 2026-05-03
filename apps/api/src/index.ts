@@ -13,7 +13,7 @@ import shoppingRoutes from './routes/shopping.js'
 import advisorRoutes from './routes/advisor.js'
 import assistantRoutes from './routes/assistant.js'
 import realtimeRoutes from './routes/realtime.js'
-import curatorRoutes from './routes/curator.js'
+import adminRoutes from './routes/admin.js'
 
 const app = express()
 
@@ -28,6 +28,20 @@ app.use(express.urlencoded({ extended: true }))
 // Static files
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 app.use('/public', express.static(path.join(__dirname, '..', 'public')))
+
+// Serve generated recipe images from the volume mount in prod (or the
+// `apps/web/public/images/recipes` dir in dev). Filenames include the
+// recipe id, so the bytes for a given URL are stable until regeneration —
+// long-cache + Cache-Control: immutable. The frontend bumps a `?v=<updatedAt>`
+// query when the recipe changes to bust the cache without affecting headers.
+app.use(
+  '/images/recipes',
+  express.static(env.IMAGE_STORAGE_DIR, {
+    fallthrough: false,
+    immutable: true,
+    maxAge: '365d',
+  }),
+)
 
 // Liveness probe — used by smoke tests and orchestration scripts to detect
 // when the server is ready. Public, no auth, no DB read.
@@ -45,7 +59,7 @@ app.use(shoppingRoutes)
 app.use(advisorRoutes)
 app.use(assistantRoutes)
 app.use(realtimeRoutes)
-app.use(curatorRoutes)
+app.use(adminRoutes)
 
 // Error handler
 app.use(errorHandler)

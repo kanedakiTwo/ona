@@ -6,9 +6,18 @@
  * transaction so an audit failure rolls back the mutation. Per spec
  * (`admin-audit-log.md`): "we'd rather refuse a mutation than silently
  * lose its trail."
+ *
+ * `record()` accepts an optional Drizzle transaction client so the audit
+ * row lands in the same tx as the mutation it tracks; without one it falls
+ * back to the global `db` connection.
  */
 import { db } from '../db/connection.js'
 import { adminAuditLog } from '../db/schema.js'
+
+// Loosely-typed tx — Drizzle's transaction helper passes a client with the
+// same `.insert(...)` shape as `db`. We accept anything with that shape so
+// callers can pass either `db` or the inner `tx` from `db.transaction`.
+type DbOrTx = Pick<typeof db, 'insert'>
 
 /**
  * Stable action codes. Add new codes; never rename old ones (renames break
@@ -42,11 +51,17 @@ export interface AuditRecord {
 /**
  * Insert a row into `admin_audit_log`. Returns the inserted id.
  *
- * Throws on insert failure. Callers MUST be inside a DB transaction so an
- * audit failure rolls back the mutation it was tracking.
+ * Throws on insert failure. Callers SHOULD pass `tx` (the Drizzle transaction
+ * client from `db.transaction(async (tx) => {...})`) so an audit failure rolls
+ * back the mutation it was tracking. Without `tx` we fall back to the global
+ * `db` connection — useful in tests and for actions that have no enclosing
+ * transaction.
  */
-export async function record(input: AuditRecord): Promise<string> {
-  const [row] = await db
+export async function record(
+  input: AuditRecord,
+  tx: DbOrTx = db,
+): Promise<string> {
+  const [row] = await tx
     .insert(adminAuditLog)
     .values({
       adminId: input.adminId,

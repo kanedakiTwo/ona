@@ -2,11 +2,13 @@ import { Router } from 'express'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { eq, or } from 'drizzle-orm'
+import { z } from 'zod'
 import { db } from '../db/connection.js'
 import { users } from '../db/schema.js'
 import { validate } from '../middleware/validate.js'
 import { registerSchema, loginSchema } from '@ona/shared'
 import { env } from '../config/env.js'
+import { consumeToken } from '../services/passwordReset.js'
 
 const router = Router()
 
@@ -99,6 +101,43 @@ router.post('/login', validate(loginSchema), async (req, res) => {
     res.json({ token, user: userWithoutPassword })
   } catch (err) {
     console.error('Login error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// POST /auth/reset
+// Public: trades a one-time password-reset token for a new password.
+// Returns 400 with `code: 'TOKEN_INVALID'` if the token is missing,
+// already used, or expired — the same shape regardless of which case so the
+// page never reveals why a token failed.
+const resetSchema = z.object({
+  token: z.string().min(1),
+  password: z.string().min(6),
+})
+
+router.post('/auth/reset', async (req, res) => {
+  try {
+    const parsed = resetSchema.safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json({
+        code: 'INVALID_BODY',
+        error: 'Datos inválidos.',
+        issues: parsed.error.issues,
+      })
+      return
+    }
+
+    await consumeToken(parsed.data.token, parsed.data.password)
+    res.json({ ok: true })
+  } catch (err) {
+    if ((err as { code?: string })?.code === 'TOKEN_INVALID') {
+      res.status(400).json({
+        code: 'TOKEN_INVALID',
+        error: 'El enlace no es válido o ha caducado.',
+      })
+      return
+    }
+    console.error('Reset error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

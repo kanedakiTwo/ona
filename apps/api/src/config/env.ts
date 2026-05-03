@@ -13,7 +13,10 @@ export const env = {
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
   OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
   OPENAI_REALTIME_MODEL: process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime',
-  OPENAI_REALTIME_VOICE: process.env.OPENAI_REALTIME_VOICE || 'marin',
+  // 'coral' is the OpenAI Realtime preset that lands closest to a Castilian
+  // accent (vs. 'marin' which leans Latin-American). The system prompt also
+  // pushes for Spain Spanish on top — see systemPrompt.ts when mode='voice'.
+  OPENAI_REALTIME_VOICE: process.env.OPENAI_REALTIME_VOICE || 'coral',
   REALTIME_DAILY_MINUTES_PER_USER: parseInt(process.env.REALTIME_DAILY_MINUTES_PER_USER || '30', 10),
   USDA_FDC_API_KEY: process.env.USDA_FDC_API_KEY || '',
 }

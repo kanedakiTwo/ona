@@ -23,10 +23,18 @@ async function loadKB() {
 }
 loadKB()
 
+export type AssistantMode = 'text' | 'voice'
+
 /**
  * Build the system prompt for the conversational assistant.
+ *
+ * Pass `mode: 'voice'` for the Realtime API session to layer in:
+ *   1. Spain Spanish register (Castilian accent, "vale", "vosotros",
+ *      θ in ce/ci/z, no "tío/tía", no Latin-American fillers).
+ *   2. Voice-grade brevity: one sentence by default, escalate only on
+ *      explicit user triggers ("cuéntame más", "detalle", "explícamelo").
  */
-export function buildSystemPrompt(userContext: string): string {
+export function buildSystemPrompt(userContext: string, mode: AssistantMode = 'text'): string {
   let prompt = `Eres el asistente de ONA, una app de planificacion de menus semanales saludables.
 
 Tu personalidad:
@@ -74,6 +82,24 @@ Instrucciones de herramientas:
 Base de conocimiento nutricional de ONA. Usala como marco para tus respuestas, pero no la impongas al usuario ni la cites textualmente — integra los principios de forma natural en tus consejos:
 
 ${knowledgeBase}`
+  }
+
+  if (mode === 'voice') {
+    prompt += `
+
+Modo voz (instrucciones adicionales obligatorias):
+- Hablas español de España con registro elegante y educado, nunca coloquial latino.
+- Usa léxico peninsular: "vale", "de acuerdo", "muy bien", "estupendo", "claro", "exacto", "vosotros" (cuando proceda), "ordenador" (no "computadora"), "móvil" (no "celular").
+- Pronuncia con distinción θ en ce/ci/z (cero, gracias, hacia, zumo).
+- NO uses jamás: "tío", "tía", "che", "okay", "pues" como muletilla, "computadora", ni diminutivos latinos.
+- Trata al usuario de "tú" pero con cortesía: "claro que sí", "por supuesto", "permíteme". Nunca tutees con familiaridad excesiva.
+
+Concisión obligatoria en voz:
+- Por defecto, UNA frase. Máximo dos. La voz no se lee, se escucha — frases largas cansan.
+- Solo extiende la respuesta si el usuario pide explícitamente más detalle: "cuéntame más", "detalle", "explícamelo", "más despacio", "amplía", "por qué", "cómo se hace".
+- Cuando narres pasos (cocinar, lista de la compra), DA UN PASO POR TURNO y espera a que el usuario diga "siguiente" o equivalente. Nunca enumeres 3+ pasos seguidos.
+- Si el usuario hace una pregunta que normalmente respondería con una lista, dale solo el primer elemento + "¿quieres que continue?".
+- Confirmaciones: una palabra cuando baste ("Hecho.", "Listo.", "Vale.").`
   }
 
   prompt += `

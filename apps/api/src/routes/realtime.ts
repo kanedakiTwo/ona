@@ -6,6 +6,7 @@ import { loadUserContext } from '../services/assistant/contextLoader.js'
 import { buildSystemPrompt } from '../services/assistant/systemPrompt.js'
 import { getRealtimeTools, executeTool } from '../services/realtime/tools.js'
 import { checkQuota, recordSessionMinutes } from '../services/realtime/quota.js'
+import { voiceTranscripts } from '../db/schema.js'
 
 const router = Router()
 
@@ -37,7 +38,8 @@ router.post('/realtime/:userId/session', async (req: AuthRequest, res) => {
 
   try {
     const userContext = await loadUserContext(userId, db)
-    const instructions = buildSystemPrompt(userContext)
+    // mode='voice' layers in Spain Spanish register + voice-grade brevity.
+    const instructions = buildSystemPrompt(userContext, 'voice')
     const tools = getRealtimeTools()
 
     const upstream = await fetch('https://api.openai.com/v1/realtime/sessions', {
@@ -99,6 +101,50 @@ router.post('/realtime/:userId/tool', async (req: AuthRequest, res) => {
   } catch (err: any) {
     console.error('[realtime] tool execution error:', err.message)
     res.status(500).json({ error: 'Tool execution failed', summary: 'No pude ejecutar esa accion ahora.' })
+  }
+})
+
+// POST /realtime/:userId/transcript — append-only log of a single voice turn
+// (user or assistant). Called by the client after each turn completes. Failures
+// are non-fatal; the client fires-and-forgets so a network blip doesn't break
+// the conversation.
+router.post('/realtime/:userId/transcript', async (req: AuthRequest, res) => {
+  const userId = String(req.params.userId)
+
+  if (req.userId && req.userId !== userId) {
+    res.status(403).json({ error: 'Forbidden' })
+    return
+  }
+
+  const { sessionId, role, content, skillUsed, metadata } = req.body ?? {}
+
+  if (!sessionId || typeof sessionId !== 'string') {
+    res.status(400).json({ error: 'sessionId is required' })
+    return
+  }
+  if (role !== 'user' && role !== 'assistant') {
+    res.status(400).json({ error: "role must be 'user' or 'assistant'" })
+    return
+  }
+  if (!content || typeof content !== 'string') {
+    res.status(400).json({ error: 'content is required' })
+    return
+  }
+
+  try {
+    await db.insert(voiceTranscripts).values({
+      userId,
+      sessionId,
+      role,
+      content,
+      skillUsed: typeof skillUsed === 'string' ? skillUsed : null,
+      metadata: metadata && typeof metadata === 'object' ? metadata : {},
+    })
+    res.json({ ok: true })
+  } catch (err: any) {
+    console.error('[realtime] transcript log error:', err.message)
+    // Don't 500 the client over a logging failure.
+    res.status(202).json({ ok: false, warning: 'transcript_not_logged' })
   }
 })
 

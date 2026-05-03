@@ -59,6 +59,20 @@ export function useRealtimeSession(options: UseRealtimeSessionOptions): UseRealt
   const closedRef = useRef(false)
   const reconnectAttemptedRef = useRef(false)
 
+  // Stable session id for transcript logging — one per overlay open. Survives
+  // reconnects within the same overlay so the conversation reads as a single
+  // session in voice_transcripts.
+  const sessionIdRef = useRef<string>(
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+  )
+
+  // Track which transcript indexes we've already POSTed so React Strict Mode
+  // and concurrent state updates don't double-log.
+  const loggedTurnsRef = useRef<number>(0)
+  const lastToolNameAtTurnRef = useRef<{ idx: number; name: string } | null>(null)
+
   const sendEvent = useCallback((event: any) => {
     const dc = dcRef.current
     if (dc && dc.readyState === 'open') {
@@ -106,6 +120,9 @@ export function useRealtimeSession(options: UseRealtimeSessionOptions): UseRealt
           parsed = event.arguments ? JSON.parse(event.arguments) : {}
         } catch {}
         setLastToolName(name)
+        // Tag the next assistant transcript with this skill name. The
+        // useEffect that logs transcripts consumes and clears it.
+        lastToolNameAtTurnRef.current = { idx: 0, name }
 
         let outputText: string
         try {
@@ -337,6 +354,39 @@ export function useRealtimeSession(options: UseRealtimeSessionOptions): UseRealt
     })
     sendEvent({ type: 'response.create' })
   }, [sendEvent])
+
+  // ── Append-only transcript logging ────────────────────────────────
+  // Every new turn (user or assistant) is POSTed to /realtime/:userId/transcript
+  // for later analysis. Fire-and-forget — a failure here must NOT break the
+  // ongoing conversation. The most recent skill name (captured when the model
+  // emitted a function_call_arguments.done event) is attached to the very next
+  // assistant turn and then consumed.
+  useEffect(() => {
+    if (!userId) return
+    if (transcripts.length <= loggedTurnsRef.current) return
+
+    const fresh = transcripts.slice(loggedTurnsRef.current)
+    loggedTurnsRef.current = transcripts.length
+
+    for (const turn of fresh) {
+      let skillUsed: string | null = null
+      if (turn.role === 'assistant' && lastToolNameAtTurnRef.current) {
+        skillUsed = lastToolNameAtTurnRef.current.name
+        lastToolNameAtTurnRef.current = null
+      }
+      apiFetch(`/realtime/${userId}/transcript`, {
+        method: 'POST',
+        body: {
+          sessionId: sessionIdRef.current,
+          role: turn.role,
+          content: turn.content,
+          skillUsed,
+        },
+      }).catch((err) => {
+        console.warn('[voice] transcript log failed:', err?.message ?? err)
+      })
+    }
+  }, [transcripts, userId])
 
   useEffect(() => {
     return () => disconnect()

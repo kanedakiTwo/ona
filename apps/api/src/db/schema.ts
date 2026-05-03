@@ -220,3 +220,28 @@ export const userNutrientBalance = pgTable('user_nutrient_balance', {
   balance: jsonb('balance').notNull().default({}),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 })
+
+// ─── 12. voice_transcripts ──────────────────────────────────
+// Append-only log of every voice-mode turn (user + assistant), so we can
+// analyse how the assistant performs in conversation: where the model is
+// over-verbose, which skills fire, which user phrasings the model misses.
+//
+// Populated by the client (`useRealtimeSession`) via POST /realtime/:userId/transcript.
+// One row per turn; group by `sessionId` to reconstruct a conversation.
+export const voiceTranscripts = pgTable('voice_transcripts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** Client-generated UUID per overlay open. Multiple turns share one sessionId. */
+  sessionId: text('session_id').notNull(),
+  /** 'user' | 'assistant' — role of the turn being logged. */
+  role: text('role').notNull(),
+  content: text('content').notNull(),
+  /** Skill the assistant invoked during this turn, if any. */
+  skillUsed: text('skill_used'),
+  /** Free-form metadata: model, latency, error, etc. */
+  metadata: jsonb('metadata').default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => [
+  index('idx_voice_transcripts_user_session').on(table.userId, table.sessionId),
+  index('idx_voice_transcripts_created').on(table.createdAt),
+])

@@ -3,7 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useParams, usePathname, useRouter } from "next/navigation"
 import { motion } from "motion/react"
-import { useCopyRecipe, useRecipe } from "@/hooks/useRecipes"
+import {
+  useCopyRecipe,
+  useRecipe,
+  useRegenerateRecipeImage,
+} from "@/hooks/useRecipes"
+import { useUser } from "@/hooks/useUser"
 import { useAuth } from "@/lib/auth"
 import { FavoriteButton } from "@/components/recipes/FavoriteButton"
 import { ServingsScaler } from "@/components/recipes/ServingsScaler"
@@ -118,7 +123,13 @@ export default function RecipeDetailPage() {
 
   const fallbackImg =
     "https://images.unsplash.com/photo-1490645935967-10de6ba17061?w=1200&q=85&auto=format&fit=crop"
-  const img = recipe.imageUrl || fallbackImg
+  // Append `?v=<updatedAt>` so a regenerated image isn't masked by the
+  // browser cache — same URL, new bytes, but the query param refreshes the
+  // entry while keeping the API's long Cache-Control headers in play.
+  const cacheBust = recipe.imageUrl
+    ? `${recipe.imageUrl}${recipe.imageUrl.includes("?") ? "&" : "?"}v=${new Date(recipe.updatedAt).getTime()}`
+    : null
+  const img = cacheBust ?? fallbackImg
 
   // The displayed servings on the heading & "Para X" caption: the live
   // scaler value when seeded, falling back to the recipe's own value.
@@ -379,9 +390,9 @@ export default function RecipeDetailPage() {
           </Link>
         </section>
 
-        {/* Author-only: edit affordance */}
+        {/* Author-only: edit + regenerate-image affordances */}
         {user && recipe.authorId === user.id && (
-          <section className="mt-6 flex items-center gap-3">
+          <section className="mt-6 flex flex-wrap items-center gap-3">
             <Link
               href={`/recipes/${recipe.id}/edit`}
               className="inline-flex items-center gap-2 rounded-full border border-[#DDD6C5] bg-[#F2EDE0] px-5 py-2.5 text-[12px] uppercase tracking-[0.12em] text-[#1A1612] transition-all hover:border-[#1A1612]"
@@ -389,6 +400,7 @@ export default function RecipeDetailPage() {
               <Pencil size={14} />
               Editar receta
             </Link>
+            <RegenerateImageButton recipeId={recipe.id} userId={user.id} />
           </section>
         )}
 
@@ -413,6 +425,46 @@ export default function RecipeDetailPage() {
 /* ─────────────────────────────────────────────
    Copy-to-mine button
    ───────────────────────────────────────────── */
+/* ─────────────────────────────────────────────
+   Regenerate image button (author-only)
+   ───────────────────────────────────────────── */
+function RegenerateImageButton({
+  recipeId,
+  userId,
+}: {
+  recipeId: string
+  userId: string
+}) {
+  const regen = useRegenerateRecipeImage(recipeId, userId)
+  const { data: profile } = useUser(userId)
+  const quota = regen.data?.quota ?? profile?.imageGenQuota
+  const exhausted = quota ? quota.used >= quota.limit : false
+
+  return (
+    <div className="flex flex-col gap-1">
+      <button
+        type="button"
+        onClick={() => regen.mutate()}
+        disabled={regen.isPending || exhausted}
+        className="inline-flex items-center gap-2 rounded-full border border-[#DDD6C5] bg-[#F2EDE0] px-5 py-2.5 text-[12px] uppercase tracking-[0.12em] text-[#1A1612] transition-all hover:border-[#1A1612] disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        <Sparkles size={14} />
+        {regen.isPending ? "Generando…" : "Regenerar imagen"}
+      </button>
+      {quota && !regen.error ? (
+        <span className="text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
+          {quota.used}/{quota.limit} este mes
+        </span>
+      ) : null}
+      {regen.error ? (
+        <span className="text-[11px] italic text-[#C65D38]">
+          {regen.error.message}
+        </span>
+      ) : null}
+    </div>
+  )
+}
+
 function CopyToMineButton({ recipeId }: { recipeId: string }) {
   const router = useRouter()
   const copy = useCopyRecipe()

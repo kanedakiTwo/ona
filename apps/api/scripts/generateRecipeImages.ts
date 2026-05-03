@@ -25,19 +25,24 @@
  *   --no-db                 Generate the JPEGs but don't update the DB row
  *                           (for testing; spec assumes DB is updated).
  */
-import { eq, isNull, and, inArray } from 'drizzle-orm'
-import { config } from 'dotenv'
+import { eq, isNull, inArray } from 'drizzle-orm'
+import { resolve, dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import sharp from 'sharp'
 import { writeFile, mkdir } from 'node:fs/promises'
-import { join, resolve, dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { db, pool } from '../src/db/connection.js'
 import { recipes, recipeIngredients, ingredients } from '../src/db/schema.js'
+import {
+  buildRecipePrompt,
+  generateRecipeImage,
+  type AspectRatio,
+} from '../src/services/recipeImageGenerator.js'
 
-config({ path: resolve(fileURLToPath(import.meta.url), '../../../../.env') })
-
-const AIKIT_BASE = 'https://cms.aikit.es/api/free-form-tools/image-generation'
-const IMAGES_DIR = resolve(
+// The seed script writes filenames keyed by slug (so checked-in JPGs in
+// `apps/web/public/images/recipes/<slug>.jpg` keep their stable URLs); the
+// runtime endpoint writes by recipe id (collision-free, opaque). Both share
+// the prompt builder and AiKit client from `recipeImageGenerator.ts`.
+const SEED_IMAGES_DIR = resolve(
   dirname(fileURLToPath(import.meta.url)),
   '../../../apps/web/public/images/recipes',
 )
@@ -98,67 +103,6 @@ function slugify(name: string): string {
     .replace(/^-+|-+$/g, '')
 }
 
-// ─── Prompt builder ──────────────────────────────────────────────
-
-const STYLE_SUFFIX =
-  'Fotografía editorial cenital estilo libro de cocina. Plato cerámico blanco mate sobre superficie de madera natural o lino crudo color crema. Luz natural cálida lateral y suave. Composición limpia, espacio negativo, paleta cálida (cremas, ocres, terracota), sin texto, sin manos, sin cubiertos en primer plano. Acabado fotográfico realista, profundidad de campo media, alta resolución.'
-
-/** Build the prompt for a single recipe. Keep it under ~700 chars (Imagen does best with focused prompts). */
-function buildPrompt(input: {
-  name: string
-  topIngredients: string[]
-  meals: string[]
-  tags: string[]
-}): string {
-  const ingredientsLine =
-    input.topIngredients.length > 0
-      ? `Ingredientes principales visibles: ${input.topIngredients.join(', ')}.`
-      : ''
-  const mealHint = input.meals.includes('breakfast')
-    ? 'Encuadre tipo desayuno.'
-    : input.meals.includes('snack')
-      ? 'Tamaño de ración pequeña, tipo snack.'
-      : '' // lunch/dinner is the default editorial framing
-  return [
-    `${input.name}.`,
-    ingredientsLine,
-    mealHint,
-    STYLE_SUFFIX,
-  ]
-    .filter((s) => s.length > 0)
-    .join(' ')
-}
-
-// ─── AiKit client ────────────────────────────────────────────────
-
-async function generateImage(
-  apiKey: string,
-  prompt: string,
-  aspect: Flags['aspect'],
-): Promise<Buffer> {
-  const form = new FormData()
-  form.append('prompt', prompt)
-  form.append('aspectRatio', aspect)
-  form.append('numberOfImages', '1')
-
-  const res = await fetch(`${AIKIT_BASE}/generate-imagen-fal`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}` },
-    body: form,
-  })
-
-  if (!res.ok) {
-    let detail = ''
-    try { detail = (await res.text()).slice(0, 300) } catch {}
-    throw new Error(`AiKit ${res.status} ${res.statusText}: ${detail}`)
-  }
-  const ct = res.headers.get('content-type') ?? ''
-  if (!ct.startsWith('image/')) {
-    throw new Error(`Expected image/*, got ${ct}`)
-  }
-  return Buffer.from(await res.arrayBuffer())
-}
-
 // ─── Concurrency-limited map ─────────────────────────────────────
 
 async function pMap<T, R>(
@@ -183,8 +127,10 @@ async function pMap<T, R>(
 
 async function main() {
   const flags = parseFlags(process.argv.slice(2))
-  const apiKey = process.env.AIKIT_API_KEY
-  if (!apiKey && !flags.dryRun) {
+  // The shared service reads AIKIT_API_KEY from `env` at call time; we only
+  // pre-flight the check here so a missing key dies fast instead of after the
+  // first generate() call.
+  if (!process.env.AIKIT_API_KEY && !flags.dryRun) {
     console.error('AIKIT_API_KEY env var is required (unless --dry-run).')
     process.exit(1)
   }
@@ -252,18 +198,17 @@ async function main() {
     `Targets: ${targets.length} recipe(s). dry-run=${flags.dryRun}, concurrency=${flags.concurrency}, aspect=${flags.aspect}.`,
   )
 
-  if (!flags.dryRun) await mkdir(IMAGES_DIR, { recursive: true })
+  if (!flags.dryRun) await mkdir(SEED_IMAGES_DIR, { recursive: true })
 
   let okCount = 0
   let failCount = 0
 
   await pMap(targets, flags.concurrency, async (t, i) => {
     const tag = `[${i + 1}/${targets.length}] ${t.slug}`
-    const prompt = buildPrompt({
+    const prompt = buildRecipePrompt({
       name: t.name,
       topIngredients: t.topIngredients,
       meals: t.meals,
-      tags: t.tags ?? [],
     })
 
     if (flags.dryRun) {
@@ -272,14 +217,16 @@ async function main() {
     }
 
     try {
-      const png = await generateImage(apiKey!, prompt, flags.aspect)
+      const png = await generateRecipeImage(prompt, flags.aspect as AspectRatio)
 
+      // Mirror writeRecipeImage's compression pipeline but force the slug-keyed
+      // path under apps/web/public so the seeded JPGs stay committed to the
+      // repo (vs the runtime endpoint that uses the volume + recipe id).
       const jpg = await sharp(png)
         .resize({ width: 1200, withoutEnlargement: true })
         .jpeg({ quality: 85, mozjpeg: true })
         .toBuffer()
-
-      const outPath = join(IMAGES_DIR, `${t.slug}.jpg`)
+      const outPath = join(SEED_IMAGES_DIR, `${t.slug}.jpg`)
       await writeFile(outPath, jpg)
 
       if (!flags.noDb) {

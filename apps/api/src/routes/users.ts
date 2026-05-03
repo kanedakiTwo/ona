@@ -5,6 +5,7 @@ import { users, userSettings } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
 import { updateProfileSchema, onboardingSchema } from '@ona/shared'
+import { env } from '../config/env.js'
 
 const router = Router()
 
@@ -32,6 +33,8 @@ router.get('/user/:id', async (req, res) => {
         favoriteDishes: users.favoriteDishes,
         priority: users.priority,
         onboardingDone: users.onboardingDone,
+        imageGenMonthKey: users.imageGenMonthKey,
+        imageGenCount: users.imageGenCount,
         createdAt: users.createdAt,
       })
       .from(users)
@@ -43,7 +46,17 @@ router.get('/user/:id', async (req, res) => {
       return
     }
 
-    res.json(user)
+    // Surface the AI-image quota in a stable shape. The raw count is only
+    // meaningful when paired with the current month — return 0 when the
+    // stored key is from a previous month (the next regen will reset it).
+    const monthKey = new Date().toISOString().slice(0, 7)
+    const used = user.imageGenMonthKey === monthKey ? (user.imageGenCount ?? 0) : 0
+    const { imageGenMonthKey: _omit1, imageGenCount: _omit2, ...rest } = user
+
+    res.json({
+      ...rest,
+      imageGenQuota: { used, limit: env.IMAGE_GEN_MONTHLY_LIMIT, monthKey },
+    })
   } catch (err) {
     console.error('Get user error:', err)
     res.status(500).json({ error: 'Internal server error' })

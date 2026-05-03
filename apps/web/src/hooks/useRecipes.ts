@@ -185,3 +185,32 @@ export function useExtractRecipeFromUrl() {
     },
   })
 }
+
+export interface RegenerateImageResponse {
+  imageUrl: string
+  quota: { used: number; limit: number; monthKey: string }
+}
+
+/**
+ * Regenerate the hero photo of an existing recipe via AiKit Imagen-fal.
+ * Author-only; system recipes return 403. The user has a monthly quota
+ * (default 20) — when exhausted the API returns 429 and the mutation
+ * rejects; the caller can read the cap from `useUser().imageGenQuota`.
+ *
+ * On success, both the recipe (so the hero image refreshes) and the
+ * `["user", userId]` query (so the quota counter updates) are invalidated.
+ */
+export function useRegenerateRecipeImage(recipeId: string | undefined, userId?: string) {
+  const queryClient = useQueryClient()
+  return useMutation<RegenerateImageResponse, Error>({
+    mutationFn: async () => {
+      if (!recipeId) throw new Error("Falta el id de la receta")
+      return api.post<RegenerateImageResponse>(`/recipes/${recipeId}/regenerate-image`)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["recipe", recipeId] })
+      queryClient.invalidateQueries({ queryKey: ["recipes"] })
+      if (userId) queryClient.invalidateQueries({ queryKey: ["user", userId] })
+    },
+  })
+}

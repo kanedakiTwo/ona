@@ -3,9 +3,15 @@
 import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
-import { ChevronLeft, Plus, Trash2 } from "lucide-react"
+import { ChevronLeft, Plus, Sparkles, Trash2 } from "lucide-react"
 import { useAuth } from "@/lib/auth"
-import { useIngredients, useRecipe, useUpdateRecipe } from "@/hooks/useRecipes"
+import {
+  useIngredients,
+  useRecipe,
+  useRegenerateRecipeImage,
+  useUpdateRecipe,
+} from "@/hooks/useRecipes"
+import { useUser } from "@/hooks/useUser"
 import { IngredientAutocomplete } from "@/components/recipes/IngredientAutocomplete"
 import { cn } from "@/lib/utils"
 import { createRecipeSchema } from "@ona/shared"
@@ -296,6 +302,12 @@ export default function EditRecipePage() {
             enlazados a la biblioteca para calcular nutrientes.
           </p>
         </div>
+
+        {/* Hero photo — preview + AI regenerate. Outside the form so the
+            generation button doesn't accidentally submit unsaved edits. */}
+        {params.id && user?.id ? (
+          <PhotoSection recipeId={params.id} userId={user.id} />
+        ) : null}
 
         <form onSubmit={handleSubmit} className="mt-10 space-y-10" noValidate>
           {/* Name */}
@@ -656,5 +668,72 @@ export default function EditRecipePage() {
         </form>
       </div>
     </div>
+  )
+}
+
+/* ─────────────────────────────────────────────
+   Photo section — preview + "Regenerar imagen"
+   Lives outside the <form> so its button can't submit it.
+   ───────────────────────────────────────────── */
+function PhotoSection({ recipeId, userId }: { recipeId: string; userId: string }) {
+  const { data: recipe } = useRecipe(recipeId)
+  const { data: profile } = useUser(userId)
+  const regen = useRegenerateRecipeImage(recipeId, userId)
+  const quota = regen.data?.quota ?? profile?.imageGenQuota
+  const exhausted = quota ? quota.used >= quota.limit : false
+
+  const heroSrc = recipe?.imageUrl
+    ? `${recipe.imageUrl}${recipe.imageUrl.includes("?") ? "&" : "?"}v=${
+        new Date(recipe.updatedAt ?? Date.now()).getTime()
+      }`
+    : null
+
+  return (
+    <section className="mt-10">
+      <div className="text-eyebrow text-[#7A7066]">Imagen</div>
+      <h2 className="mt-1 font-display text-[1.5rem] leading-tight text-[#1A1612]">
+        <span className="font-italic italic">Foto</span> de la receta
+      </h2>
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-start">
+        {heroSrc ? (
+          <img
+            src={heroSrc}
+            alt={recipe?.name ?? ""}
+            className="aspect-[4/3] w-full max-w-[260px] rounded-lg object-cover"
+          />
+        ) : (
+          <div className="flex aspect-[4/3] w-full max-w-[260px] items-center justify-center rounded-lg border border-dashed border-[#DDD6C5] bg-[#F2EDE0] text-[12px] uppercase tracking-[0.12em] text-[#7A7066]">
+            Sin foto
+          </div>
+        )}
+        <div className="flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={() => regen.mutate()}
+            disabled={regen.isPending || exhausted}
+            className="inline-flex items-center gap-2 self-start rounded-full border border-[#DDD6C5] bg-[#F2EDE0] px-5 py-2.5 text-[12px] uppercase tracking-[0.12em] text-[#1A1612] transition-all hover:border-[#1A1612] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Sparkles size={14} />
+            {regen.isPending
+              ? "Generando…"
+              : recipe?.imageUrl
+                ? "Regenerar imagen"
+                : "Generar imagen"}
+          </button>
+          {quota && !regen.error ? (
+            <span className="text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
+              {quota.used}/{quota.limit} este mes
+            </span>
+          ) : null}
+          {regen.error ? (
+            <span className="text-[11px] italic text-[#C65D38]">{regen.error.message}</span>
+          ) : null}
+          <p className="max-w-xs text-[11px] leading-relaxed text-[#7A7066]">
+            La imagen se genera con IA a partir del nombre y los ingredientes.
+            Tarda unos segundos.
+          </p>
+        </div>
+      </div>
+    </section>
   )
 }

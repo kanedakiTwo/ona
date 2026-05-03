@@ -43,6 +43,14 @@ export const users = pgTable('users', {
   role: text('role').notNull().default('user'),
   // Suspension (admin gate). NULL = active.
   suspendedAt: timestamp('suspended_at', { withTimezone: true }),
+  /**
+   * AI image-generation quota. `imageGenMonthKey` stores the YYYY-MM that
+   * `imageGenCount` belongs to. On any generation, if the key doesn't match
+   * the current month the count is reset to 1 atomically — stateless monthly
+   * reset, no cron job. See POST /recipes/:id/regenerate-image.
+   */
+  imageGenMonthKey: text('image_gen_month_key'),
+  imageGenCount: integer('image_gen_count').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => [
   check('users_role_check', sql.raw("role IN ('user','admin')")),

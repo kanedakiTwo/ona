@@ -82,7 +82,7 @@ ONA (Opinionated Nutritional Assistant) is a **mobile-first meal planner** for S
 - The `inStock` field is camelCase end-to-end (frontend, API, DB JSONB). Never use `in_stock`.
 - The `GET /recipes` endpoint does not currently return `is_favorite`; favorite state on cards is not persisted across reloads (known limitation, see [recipes.md](./specs/recipes.md)).
 - `POST /menu/generate` does NOT require auth (known quirk, see [menus.md](./specs/menus.md)).
-- Recipe images are served from Next.js `public/images/recipes/`, not from the API. Image URLs in the DB look like `/images/recipes/<slug>.jpg`.
+- Recipe images: **two sources** in production. Seed/system recipes are committed JPGs under `apps/web/public/images/recipes/<slug>.jpg` and served by Next.js (DB stores relative URL `/images/recipes/<slug>.jpg`). User-regenerated images live on the `ona-api-volume` Railway volume mounted at `/data` and are served by the API (DB stores absolute URL `${IMAGE_PUBLIC_URL_BASE}/<recipeId>.jpg`). The frontend renders `<img src=image_url>` and treats both transparently.
 - The bottom tab bar is fixed at the viewport bottom; app routes use `<main className="mx-auto max-w-[430px] pb-20">` to reserve room.
 - The shopping list is generated on the **first** GET and persisted; if the menu changes afterwards, the list does NOT regenerate automatically.
 - `useAdvisor` is legacy; new code should use `useAssistant` for chat. The advisor page still calls `useAdvisorSummary` for the nutrition summary.
@@ -116,12 +116,13 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 
 ### Pending
 
-- [ ] **Run `generateRecipeImages.ts` for the full catalog** to replace the duplicated stock-by-family placeholders with real per-recipe editorial photos.
-  - Smoke test passed on `acelgas-rehogadas` (1968 KB PNG → 172 KB JPEG, on-brand cream/wood/warm-light cookbook style).
-  - Command: `cd apps/api && AIKIT_API_KEY=aik_… npx tsx scripts/generateRecipeImages.ts` (defaults: system recipes only, concurrency 3, aspect 4:3, writes `image_url` in DB).
-  - Use `--only=<slug,…>` to regenerate specific ones, `--dry-run` to preview prompts, `--include-user` if user-authored recipes are also in scope.
-  - Cost: AiKit Imagen-fal × ~87 recipes (check budget under your plan's limits).
-  - After running, commit the new JPEGs in `apps/web/public/images/recipes/` and the migrated DB state (or reseed in prod).
+- [ ] **Finish the seed image batch** — paused at 38/87 ([#bp1y89fnh] killed at recipe 38 on 2026-05-03, 49 system recipes left without `image_url`). Resume with `--skip-existing` so the already-paid 38 are skipped: `cd apps/api && AIKIT_API_KEY=aik_… npx tsx scripts/generateRecipeImages.ts --skip-existing`.
+
+- [ ] **Set Railway env vars on `ona-api`** for the user-facing image generator (volume `ona-api-volume` already mounted at `/data` by Claude):
+  - `AIKIT_API_KEY` — the same Bearer token used in dev
+  - `IMAGE_STORAGE_DIR=/data/images/recipes` — writes go to the volume so they survive deploys
+  - `IMAGE_PUBLIC_URL_BASE=https://<ona-api host>/images/recipes` — frontend renders `<img src=…>` directly with this absolute URL (the API serves the volume; ona-web doesn't have these files)
+  - *(Optional)* `IMAGE_GEN_MONTHLY_LIMIT` — defaults to 20 if unset
 
 - [ ] **Replace placeholder PWA assets** with real branded artwork — `apps/web/public/icons/*.png` + `apps/web/public/favicon.ico`. Same paths, same sizes; the SW picks up new revisions on next build. Current placeholders are an "ONA" wordmark on cream (generator: `apps/web/scripts/generate-pwa-placeholders.mjs`).
 

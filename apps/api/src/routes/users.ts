@@ -1,7 +1,12 @@
 import { Router } from 'express'
-import { eq } from 'drizzle-orm'
+import { eq, ilike } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { users, userSettings } from '../db/schema.js'
+import {
+  recipeIngredients,
+  recipes,
+  users,
+  userSettings,
+} from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
 import { updateProfileSchema, onboardingSchema } from '@ona/shared'
@@ -211,6 +216,118 @@ router.put('/user/:id/settings', async (req: AuthRequest, res) => {
     res.json(result)
   } catch (err) {
     console.error('Update settings error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// GET /user/:id/recipes-curator/gaps
+//
+// Surfaces every recipe the user authored, plus a per-recipe set of "status
+// pills" the UI uses to flag missing data. This powers the "Mis recetas"
+// tab inside `/profile` so users can spot recipes that need a touch-up
+// (no nutrition computed yet, ingredients auto-added by the importer, etc.).
+//
+// The marker `note ILIKE '%añadido automáticamente%'` is the same string
+// the article importer writes when it had to invent a recipe_ingredients
+// row from a free-text reference — flagging that lets the user correct
+// quantities or units before the row pollutes future shopping lists.
+router.get('/user/:id/recipes-curator/gaps', async (req: AuthRequest, res) => {
+  try {
+    const userId = String(req.params.id)
+    if (req.userId !== userId) {
+      res.status(403).json({ error: 'Forbidden' })
+      return
+    }
+
+    const owned = await db
+      .select({
+        id: recipes.id,
+        name: recipes.name,
+        imageUrl: recipes.imageUrl,
+        servings: recipes.servings,
+        totalTime: recipes.totalTime,
+        equipment: recipes.equipment,
+        allergens: recipes.allergens,
+        nutritionPerServing: recipes.nutritionPerServing,
+        updatedAt: recipes.updatedAt,
+      })
+      .from(recipes)
+      .where(eq(recipes.authorId, userId))
+
+    if (owned.length === 0) {
+      res.json({
+        recipes: [],
+        counts: { total: 0, sinNutricion: 0, ingredientesPendientesRevision: 0 },
+      })
+      return
+    }
+
+    // Find auto-added ingredient rows for the recipes we just read. We
+    // pull every flagged row (the table is small) and filter to the
+    // user's recipe ids in memory — keeps the SQL portable.
+    const autoMarker = '%añadido automáticamente%'
+    const recipeIds = new Set(owned.map((r) => r.id))
+    const flagged = await db
+      .selectDistinct({ recipeId: recipeIngredients.recipeId })
+      .from(recipeIngredients)
+      .where(ilike(recipeIngredients.note, autoMarker))
+    const flaggedSet = new Set(
+      flagged.filter((f) => recipeIds.has(f.recipeId)).map((f) => f.recipeId),
+    )
+
+    let sinNutricion = 0
+    let ingredientesPendientesRevision = 0
+
+    const out = owned.map((r) => {
+      const npp = r.nutritionPerServing as { kcal?: number | null } | null
+      const kcal = npp?.kcal ?? null
+      const equipment = (r.equipment as string[] | null) ?? []
+      const allergens = (r.allergens as string[] | null) ?? []
+      const totalTime = r.totalTime
+      const hasAuto = flaggedSet.has(r.id)
+
+      const statusPills: string[] = []
+      if (kcal == null || kcal === 0) {
+        statusPills.push('sin nutrición')
+        sinNutricion++
+      }
+      if (hasAuto) {
+        statusPills.push('ingredientes auto-añadidos')
+        ingredientesPendientesRevision++
+      }
+      if (equipment.length === 0) statusPills.push('sin equipo')
+      if (totalTime == null || totalTime === 0) statusPills.push('sin tiempo')
+
+      return {
+        id: r.id,
+        name: r.name,
+        imageUrl: r.imageUrl,
+        servings: r.servings,
+        kcal: kcal == null || kcal === 0 ? null : kcal,
+        allergens,
+        totalTime,
+        updatedAt: r.updatedAt,
+        statusPills,
+      }
+    })
+
+    // Newest first by updatedAt so users see what they just edited.
+    out.sort((a, b) => {
+      const at = a.updatedAt ? new Date(a.updatedAt).getTime() : 0
+      const bt = b.updatedAt ? new Date(b.updatedAt).getTime() : 0
+      return bt - at
+    })
+
+    res.json({
+      recipes: out,
+      counts: {
+        total: out.length,
+        sinNutricion,
+        ingredientesPendientesRevision,
+      },
+    })
+  } catch (err) {
+    console.error('GET /user/:id/recipes-curator/gaps error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

@@ -16,6 +16,7 @@ import {
   clearAllReminders,
   type MealTimes,
 } from '@/lib/pwa/notifications'
+import { MyRecipesSection } from './sections/MyRecipesSection'
 
 interface PhysicalData {
   sex: 'male' | 'female' | ''
@@ -693,15 +694,28 @@ export default function ProfilePage() {
         </div>
       </section>
 
-      {/* Curator entry — discreet text link */}
-      <div className="px-5 mt-10">
-        <a
-          href="/curator"
-          className="inline-block text-[11px] uppercase tracking-[0.15em] text-[#7A7066] hover:text-[#C65D38]"
-        >
-          Panel de curaduría →
-        </a>
-      </div>
+      {/* Capitulo 06 — Mis recetas */}
+      <section className="px-5 mt-12">
+        <ChapterHeader number="06" title="Mis" italic="recetas" />
+        <p className="mt-2 text-[12px] text-[#7A7066]">
+          Las recetas que has creado tú. Edítalas o elimínalas si ya no las usas.
+        </p>
+        <div className="mt-5">
+          <MyRecipesSection />
+        </div>
+      </section>
+
+      {/* Admin entry — discreet text link, only for admins */}
+      {user?.role === 'admin' && (
+        <div className="px-5 mt-10">
+          <a
+            href="/admin"
+            className="inline-block text-[11px] uppercase tracking-[0.15em] text-[#7A7066] hover:text-[#C65D38]"
+          >
+            Panel de admin →
+          </a>
+        </div>
+      )}
 
       {/* Save bar */}
       <div className="px-5 mt-6 mb-24">

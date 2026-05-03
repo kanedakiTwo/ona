@@ -10,7 +10,7 @@
 
 import { useState } from "react"
 import { aisleLabel, AISLE_ORDER } from "@/lib/labels"
-import { usePatchIngredient } from "@/hooks/useCurator"
+import { usePatchIngredient } from "@/hooks/useAdmin"
 import { Empty } from "./shared"
 
 export function FdcSection({

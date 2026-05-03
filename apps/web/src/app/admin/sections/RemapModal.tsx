@@ -19,7 +19,7 @@ import {
   useEstimateNutrition,
   useSuggestIngredient,
 } from "@/hooks/useIngredients"
-import { useRemapIngredient } from "@/hooks/useCurator"
+import { useRemapIngredient } from "@/hooks/useAdmin"
 import { CandidateCard } from "@/components/recipes/IngredientCandidateCard"
 import { useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"

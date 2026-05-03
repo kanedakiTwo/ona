@@ -59,6 +59,25 @@ export function useCreateRecipe() {
   })
 }
 
+/**
+ * Update an existing recipe (author-only on the server). PUT requires a
+ * COMPLETE payload — name, servings, meals, ingredients, steps — so the
+ * caller must always send the full edited recipe.
+ */
+export function useUpdateRecipe(id: string | undefined) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (recipe: CreateRecipeInput) => {
+      if (!id) throw new Error("recipe id is required to update")
+      return api.put<Recipe>(`/recipes/${id}`, recipe)
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["recipes"] })
+      queryClient.invalidateQueries({ queryKey: ["recipe", data.id] })
+    },
+  })
+}
+
 // All ingredients from the global library. Used by the recipe form's
 // autocomplete picker so users can bind free-text names to the ingredient
 // UUIDs the API expects.

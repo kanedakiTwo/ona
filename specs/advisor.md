@@ -32,6 +32,7 @@ The assistant can call back-end skills (function calling). Each skill has a name
 - `toggle_favorite` — favorite/unfavorite a recipe
 - `mark_meal_eaten` — log that the user actually ate a meal (records `eatenAt` timestamp)
 - `create_recipe` — save a new user recipe
+- `edit_recipe` — author-only field edits on a user recipe (name, prepTime, cookTime, difficulty, notes, tips). Voice cannot edit ingredients/steps inline; with `openEditor: true` it returns a hint pointing at `/recipes/<id>/edit` so the user can continue in the form
 - `recipe_variation` — generate a variation of a recipe (e.g., dairy-free version)
 - `nutrition_advice` — return advisor summary based on `user_nutrient_balance`
 - `get_pantry_stock` — list ingredients currently flagged `inStock` on the latest shopping list

@@ -14,7 +14,7 @@ import { AllergensBadges } from "@/components/recipes/detail/AllergensBadges"
 import { haptic } from "@/lib/pwa/haptics"
 import { share } from "@/lib/pwa/share"
 import { acquireWakeLock, releaseWakeLock } from "@/lib/pwa/wakeLock"
-import { ChevronLeft, Clock, Share2, Sparkles, Wrench, Zap } from "lucide-react"
+import { ChevronLeft, Clock, Pencil, Share2, Sparkles, Wrench, Zap } from "lucide-react"
 import Link from "next/link"
 import {
   householdSizeToDiners,
@@ -374,6 +374,19 @@ export default function RecipeDetailPage() {
             Empezar a cocinar
           </Link>
         </section>
+
+        {/* Author-only: edit / delete affordances */}
+        {user && recipe.authorId === user.id && (
+          <section className="mt-6 flex items-center gap-3">
+            <Link
+              href={`/recipes/${recipe.id}/edit`}
+              className="inline-flex items-center gap-2 rounded-full border border-[#DDD6C5] bg-[#F2EDE0] px-5 py-2.5 text-[12px] uppercase tracking-[0.12em] text-[#1A1612] transition-all hover:border-[#1A1612]"
+            >
+              <Pencil size={14} />
+              Editar receta
+            </Link>
+          </section>
+        )}
 
         {/* Back to catalog */}
         <Link

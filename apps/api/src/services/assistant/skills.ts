@@ -1440,6 +1440,153 @@ const cookingStep: SkillDefinition = {
   },
 }
 
+/**
+ * edit_recipe — author-only metadata edits via voice ("cambia el nombre de mi
+ * tortilla a 'Tortilla de patatas Lacoma'", "mi receta de paella tarda 50
+ * minutos en total"). For full edits (ingredients/steps), the skill responds
+ * with a navigate hint to /recipes/<id>/edit so the realtime overlay can route
+ * the user to the form. Voice does not attempt to rewrite the ingredient list
+ * inline — too error-prone in audio-only context.
+ */
+const editRecipe: SkillDefinition = {
+  name: 'edit_recipe',
+  description:
+    'Edita una receta del usuario. Sólo el autor puede editar (las recetas de ONA con authorId null no son editables). Útil para cambios de nombre, tiempos, dificultad, notas y trucos por voz. Para editar ingredientes o pasos completos sugiere abrir el editor.',
+  parameters: {
+    type: 'object',
+    properties: {
+      recipeId: {
+        type: 'string',
+        description: 'UUID de la receta. Si lo conoces, úsalo. Si no, usa recipeName.',
+      },
+      recipeName: {
+        type: 'string',
+        description: 'Nombre (o parte) de la receta a editar. Se buscará en las recetas del usuario primero.',
+      },
+      name: { type: 'string', description: 'Nuevo nombre' },
+      prepTime: { type: 'number', description: 'Tiempo de preparación en minutos' },
+      cookTime: { type: 'number', description: 'Tiempo de cocción en minutos' },
+      difficulty: { type: 'string', description: 'easy | medium | hard' },
+      notes: { type: 'string', description: 'Notas (texto libre)' },
+      tips: { type: 'string', description: 'Trucos (texto libre)' },
+      openEditor: {
+        type: 'boolean',
+        description: 'Si true, no aplica cambios y devuelve un hint para navegar al editor de ingredientes/pasos.',
+      },
+    },
+    required: [],
+  },
+  async handler(
+    params: {
+      recipeId?: string
+      recipeName?: string
+      name?: string
+      prepTime?: number
+      cookTime?: number
+      difficulty?: string
+      notes?: string
+      tips?: string
+      openEditor?: boolean
+    },
+    ctx: SkillContext,
+  ): Promise<SkillResult> {
+    const { userId, db } = ctx
+
+    // Resolve target recipe — prefer user-owned matches when looking up by name.
+    let target: { id: string; name: string; authorId: string | null } | null = null
+    if (params.recipeId) {
+      const [row] = await db
+        .select({ id: recipes.id, name: recipes.name, authorId: recipes.authorId })
+        .from(recipes)
+        .where(eq(recipes.id, params.recipeId))
+        .limit(1)
+      target = row ?? null
+    } else if (params.recipeName) {
+      // Look in user's own recipes first.
+      const candidates = await db
+        .select({ id: recipes.id, name: recipes.name, authorId: recipes.authorId })
+        .from(recipes)
+        .where(ilike(recipes.name, `%${params.recipeName}%`))
+        .limit(10)
+      target = candidates.find((c: { authorId: string | null }) => c.authorId === userId) ?? null
+    }
+
+    if (!target) {
+      return {
+        data: null,
+        summary: params.recipeName
+          ? `No he encontrado una receta tuya que se llame "${params.recipeName}". Sólo puedes editar las recetas que tú has creado.`
+          : 'Necesito el nombre o el id de la receta que quieres editar.',
+        uiHint: 'text',
+      }
+    }
+
+    if (target.authorId !== userId) {
+      return {
+        data: null,
+        summary: `"${target.name}" es una receta del catálogo de ONA, no tuya. Para hacer cambios, primero añádela a tus recetas y edita la copia.`,
+        uiHint: 'text',
+      }
+    }
+
+    if (params.openEditor) {
+      return {
+        data: { recipeId: target.id, navigateTo: `/recipes/${target.id}/edit` },
+        summary: `Te abro el editor completo de "${target.name}".`,
+        uiHint: 'recipe',
+      }
+    }
+
+    // Apply field-level updates (only the recipe row — no ingredients/steps via voice).
+    const updates: Record<string, unknown> = { updatedAt: new Date() }
+    const changedFields: string[] = []
+
+    if (typeof params.name === 'string' && params.name.trim().length > 0) {
+      updates.name = params.name.trim()
+      changedFields.push('nombre')
+    }
+    if (typeof params.prepTime === 'number' && params.prepTime >= 0) {
+      updates.prepTime = params.prepTime
+      changedFields.push('tiempo de preparación')
+    }
+    if (typeof params.cookTime === 'number' && params.cookTime >= 0) {
+      updates.cookTime = params.cookTime
+      changedFields.push('tiempo de cocción')
+    }
+    if (typeof params.difficulty === 'string') {
+      const d = params.difficulty.toLowerCase()
+      if (d === 'easy' || d === 'medium' || d === 'hard') {
+        updates.difficulty = d
+        changedFields.push('dificultad')
+      }
+    }
+    if (typeof params.notes === 'string') {
+      updates.notes = params.notes.trim() || null
+      changedFields.push('notas')
+    }
+    if (typeof params.tips === 'string') {
+      updates.tips = params.tips.trim() || null
+      changedFields.push('trucos')
+    }
+
+    if (changedFields.length === 0) {
+      return {
+        data: { recipeId: target.id },
+        summary: `Para editar "${target.name}" dime qué quieres cambiar (nombre, tiempo, dificultad, notas, trucos) o pídeme abrir el editor completo.`,
+        uiHint: 'text',
+      }
+    }
+
+    await db.update(recipes).set(updates).where(eq(recipes.id, target.id))
+
+    return {
+      data: { recipeId: target.id, changed: changedFields },
+      summary: `Hecho. He actualizado ${changedFields.join(', ')} en "${target.name}".`,
+      uiHint: 'recipe',
+    }
+  },
+}
+
 // ─── Exports ────────────────────────────────────────────────
 
 export const skills: SkillDefinition[] = [
@@ -1471,6 +1618,8 @@ export const skills: SkillDefinition[] = [
   startCookingMode,
   setTimer,
   cookingStep,
+  // Improvements 2026-05:
+  editRecipe,
 ]
 
 /**

@@ -773,7 +773,7 @@
   unitWeight: null
   allergenTags: []
 - name: cordero
-  fdcId: 168148
+  fdcId: 174370  # Lamb, ground, raw (SR Legacy). Was 168148 (Frog legs, raw) — yaml typo.
   aisle: proteinas
   density: null
   unitWeight: null

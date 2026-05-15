@@ -4,6 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth"
 import { useCreateRecipe, useIngredients } from "@/hooks/useRecipes"
+import { LintFailureError } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { Plus, Trash2, ChevronLeft } from "lucide-react"
 import Link from "next/link"
@@ -233,7 +234,18 @@ export default function NewRecipePage() {
         router.push(`/recipes/${created.id}`)
       },
       onError: (err) => {
-        setErrors({ _form: err.message ?? "Error al crear la receta." })
+        // If the server returned a typed lint failure, route each issue to
+        // the field that produced it. Otherwise fall back to a top-level msg.
+        if (err instanceof LintFailureError) {
+          const next: Record<string, string> = {}
+          for (const issue of err.issues) {
+            const key = issue.path && issue.path.length > 0 ? issue.path : "_form"
+            if (!next[key]) next[key] = issue.message
+          }
+          setErrors(next)
+        } else {
+          setErrors({ _form: err.message ?? "Error al crear la receta." })
+        }
       },
     })
   }
@@ -487,7 +499,13 @@ export default function NewRecipePage() {
 
             <div className="mt-4 space-y-3">
               {ingredientRows.map((row, idx) => {
-                const hint = ingredientRowHints[idx]
+                const localHint = ingredientRowHints[idx]
+                // Server-side lint errors land under keys like
+                // "ingredients[2]" or "ingredients[2].quantity".
+                const serverHint = Object.entries(errors).find(
+                  ([k]) => k === `ingredients[${idx}]` || k.startsWith(`ingredients[${idx}].`),
+                )?.[1]
+                const hint = localHint ?? serverHint
                 const selectedIng = row.ingredientId
                   ? ingredientLibrary.find((ing) => ing.id === row.ingredientId) ?? null
                   : null
@@ -571,29 +589,45 @@ export default function NewRecipePage() {
             </h2>
 
             <div className="mt-4 space-y-3">
-              {steps.map((step, idx) => (
-                <div key={idx} className="flex items-start gap-3">
-                  <span className="font-display mt-1 text-[1.4rem] leading-none text-[#C65D38]/40">
-                    {String(idx + 1).padStart(2, "0")}
-                  </span>
-                  <textarea
-                    value={step}
-                    onChange={(e) => updateStep(idx, e.target.value)}
-                    placeholder={`Paso ${idx + 1}`}
-                    rows={2}
-                    className="flex-1 resize-none rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-3 py-2 text-[14px] leading-relaxed text-[#1A1612] placeholder:text-[#7A7066] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeStep(idx)}
-                    disabled={steps.length <= 1}
-                    className="mt-1 rounded p-1 text-[#7A7066] hover:text-[#C65D38] disabled:opacity-30"
-                    aria-label="Quitar paso"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              ))}
+              {steps.map((step, idx) => {
+                // Server lint paths for steps: "steps[3].text", "steps[3]", etc.
+                const stepHint = Object.entries(errors).find(
+                  ([k]) => k === `steps[${idx}]` || k.startsWith(`steps[${idx}].`),
+                )?.[1]
+                return (
+                  <div key={idx} className="flex flex-col gap-1">
+                    <div className="flex items-start gap-3">
+                      <span className="font-display mt-1 text-[1.4rem] leading-none text-[#C65D38]/40">
+                        {String(idx + 1).padStart(2, "0")}
+                      </span>
+                      <textarea
+                        value={step}
+                        onChange={(e) => updateStep(idx, e.target.value)}
+                        placeholder={`Paso ${idx + 1}`}
+                        rows={2}
+                        className={cn(
+                          "flex-1 resize-none rounded-lg border bg-[#F2EDE0] px-3 py-2 text-[14px] leading-relaxed text-[#1A1612] placeholder:text-[#7A7066] focus:outline-none focus:ring-1",
+                          stepHint
+                            ? "border-[#C65D38] focus:border-[#C65D38] focus:ring-[#C65D38]"
+                            : "border-[#DDD6C5] focus:border-[#1A1612] focus:ring-[#1A1612]",
+                        )}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeStep(idx)}
+                        disabled={steps.length <= 1}
+                        className="mt-1 rounded p-1 text-[#7A7066] hover:text-[#C65D38] disabled:opacity-30"
+                        aria-label="Quitar paso"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                    {stepHint && (
+                      <p className="pl-9 text-[11px] italic text-[#C65D38]">{stepHint}</p>
+                    )}
+                  </div>
+                )
+              })}
             </div>
             <button
               type="button"

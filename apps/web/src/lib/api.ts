@@ -4,6 +4,31 @@ interface FetchOptions extends Omit<RequestInit, "body"> {
   body?: unknown
 }
 
+/** Shape of one lint issue returned by the API on 422 from recipe writes. */
+export interface LintIssuePayload {
+  code: string
+  message: string
+  /** Dot-path into the recipe shape, e.g. 'steps[3].text' or 'ingredients[0]'. Missing for top-level errors. */
+  path?: string
+}
+
+/**
+ * Thrown by `apiFetch` when the server returns 422 with a `{ errors }` array
+ * (POST/PUT /recipes lint failures). Carries the structured issues so the
+ * form can pin each one to its specific row/step.
+ */
+export class LintFailureError extends Error {
+  issues: LintIssuePayload[]
+  constructor(issues: LintIssuePayload[]) {
+    const summary = issues
+      .map((e) => (e.path ? `${e.message} (${e.path})` : e.message))
+      .join(' · ')
+    super(summary)
+    this.name = 'LintFailureError'
+    this.issues = issues
+  }
+}
+
 export async function apiFetch<T = unknown>(
   path: string,
   options: FetchOptions = {}
@@ -45,6 +70,13 @@ export async function apiFetch<T = unknown>(
       if (!window.location.pathname.startsWith('/login')) {
         window.location.assign('/login')
       }
+    }
+
+    // 422 from POST/PUT /recipes carries `{ errors: LintIssue[] }`. Throw a
+    // typed error so the caller can route each issue to the right field
+    // instead of swallowing them as "Request failed: 422".
+    if (Array.isArray(error.errors) && error.errors.length > 0) {
+      throw new LintFailureError(error.errors)
     }
 
     throw new Error(error.error ?? error.message ?? error.detail ?? `Request failed: ${response.status}`)

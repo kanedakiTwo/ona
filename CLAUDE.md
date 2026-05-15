@@ -116,7 +116,7 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 
 ### Pending
 
-- [ ] **Backfill USDA nutrition for the 41 stub ingredients** added during the 2026-05-15 prod recovery. `pnpm --filter @ona/api seed:usda` walks the `ingredients` table and writes USDA per-100 g profiles for any row with an `fdcId` (or attempts a lookup when missing). Until then, recipes using these ingredients (caldo de verduras, salsa de soja, miel, jengibre fresco, etc. — see `git log -p --grep "bulk insert ingredient stubs"`) carry `kcal=0` contributions, so `nutritionPerServing` is under-reported. Spec context: [recipes.md](./specs/recipes.md#seed-pipeline).
+- [ ] **Fix the `cordero` mapping in `ingredient-fdc-map.yaml`** — currently points at FDC 168148 ("Frog legs, raw") which is obviously wrong. Replace with the correct lamb / `Lamb, ground, raw` FDC id and re-run `pnpm seed:usda --only=cordero` followed by `pnpm tsx scripts/recomputeRecipeNutrition.ts --execute` to refresh the cached `Tajín de verduras y cordero` nutrition. (Discovered 2026-05-15 during seed:usda dry-run.)
 
 - [ ] **End-to-end check on production** after the next `ona-api` deploy: register a fresh user, create a recipe, hit "Regenerar imagen" — confirms the Railway volume writes survive and `IMAGE_PUBLIC_URL_BASE` (`https://ona-api-production.up.railway.app/images/recipes`) actually serves the JPEG. (Volume `ona-api-volume` mounted at `/data` and the three env vars `AIKIT_API_KEY`, `IMAGE_STORAGE_DIR`, `IMAGE_PUBLIC_URL_BASE` are already set on `ona-api` via Railway CLI.)
 

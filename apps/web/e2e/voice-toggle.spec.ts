@@ -46,7 +46,12 @@ test('toggle voice on → FAB visible → tap opens overlay', async ({ page }) =
   await expect(toggle).toHaveAttribute('aria-pressed', 'true', { timeout: 5_000 })
 
   // FAB should now be top-right on the same page (and on every authed page).
-  const fab = page.getByRole('button', { name: /modo voz|abrir.*voz|hola ona/i })
+  // Pin to the FAB's exact aria-label (off-state "Abrir modo voz" or on-state
+  // "Modo voz activo..."). The previous regex also matched the /profile toggle
+  // button (which has "modo voz" in its text) and tripped strict-mode.
+  const fab = page.getByRole('button', {
+    name: /^(abrir modo voz|modo voz activo)/i,
+  })
   await expect(fab).toBeVisible({ timeout: 5_000 })
 
   // Navigate to /menu to confirm the FAB stays mounted across routes.

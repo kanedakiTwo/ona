@@ -1,13 +1,13 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { motion, AnimatePresence } from "motion/react"
 import { useAuth } from "@/lib/auth"
 import { useMenu, useGenerateMenu, useRegenerateMeal } from "@/hooks/useMenu"
 import { haptic } from "@/lib/pwa/haptics"
 import { recordMenuVisit } from "@/lib/pwa/installPrompt"
-import { RefreshCw, Lock, Unlock, Sparkles, Replace } from "lucide-react"
+import { ChevronLeft, ChevronRight, RefreshCw, Lock, Unlock, Sparkles, Replace } from "lucide-react"
 import { useLockMeal } from "@/hooks/useMenu"
 import { mealLabel } from "@/lib/labels"
 import { RecipePickerSheet } from "@/components/menu/RecipePickerSheet"
@@ -16,20 +16,107 @@ const DAY_NAMES = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábad
 const DAY_SHORT = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"]
 const MEAL_ORDER = ["breakfast", "lunch", "dinner", "snack"]
 
-function getWeekStart(): string {
-  const now = new Date()
-  const day = now.getDay()
+/** Local-time Monday of `d` as `YYYY-MM-DD`. */
+function mondayOf(d: Date): string {
+  const day = d.getDay()
   const diff = day === 0 ? -6 : 1 - day
-  const monday = new Date(now)
-  monday.setDate(now.getDate() + diff)
+  const monday = new Date(d)
+  monday.setDate(d.getDate() + diff)
   return `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, "0")}-${String(monday.getDate()).padStart(2, "0")}`
 }
 
+function getWeekStart(): string {
+  return mondayOf(new Date())
+}
+
+/** Shift a YYYY-MM-DD by ±weeks (sign matters). Validates and normalises to Monday. */
+function shiftWeek(weekStart: string, deltaWeeks: number): string {
+  const [y, m, d] = weekStart.split("-").map(Number)
+  const next = new Date(y, (m ?? 1) - 1, (d ?? 1))
+  next.setDate(next.getDate() + deltaWeeks * 7)
+  return mondayOf(next)
+}
+
+/** YYYY-MM-DD passed validation? (form + parses to a real date) */
+function isValidWeekStart(s: string | null): s is string {
+  if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false
+  const [y, m, d] = s.split("-").map(Number)
+  const date = new Date(y, m - 1, d)
+  return (
+    date.getFullYear() === y &&
+    date.getMonth() === m - 1 &&
+    date.getDate() === d &&
+    date.getDay() === 1 // must be a Monday
+  )
+}
+
+/** Whole-week delta from current Monday to `weekStart`. Negative = past. */
+function weeksFromNow(weekStart: string): number {
+  const today = new Date(getWeekStart() + "T00:00:00")
+  const target = new Date(weekStart + "T00:00:00")
+  return Math.round((target.getTime() - today.getTime()) / (7 * 24 * 60 * 60 * 1000))
+}
+
+/**
+ * Human-readable label for the chosen week:
+ *   delta 0  → "Esta semana"
+ *   delta 1  → "Próxima semana"
+ *   delta -1 → "Semana pasada"
+ *   delta n  → "En N semanas" / "Hace N semanas"
+ */
+function weekLabel(weekStart: string): string {
+  const d = weeksFromNow(weekStart)
+  if (d === 0) return "Esta semana"
+  if (d === 1) return "Próxima semana"
+  if (d === -1) return "Semana pasada"
+  if (d > 1) return `En ${d} semanas`
+  return `Hace ${-d} semanas`
+}
+
 const MONTHS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+const MONTHS_SHORT = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+
+/** "11–17 may" style range string from a Monday weekStart. */
+function weekRangeShort(weekStart: string): string {
+  const start = new Date(weekStart + "T00:00:00")
+  const end = new Date(start)
+  end.setDate(start.getDate() + 6)
+  const sameMonth = start.getMonth() === end.getMonth()
+  if (sameMonth) {
+    return `${start.getDate()}–${end.getDate()} ${MONTHS_SHORT[start.getMonth()]}`
+  }
+  return `${start.getDate()} ${MONTHS_SHORT[start.getMonth()]} – ${end.getDate()} ${MONTHS_SHORT[end.getMonth()]}`
+}
 
 export default function MenuPage() {
   const { user, isLoading: authLoading } = useAuth()
-  const weekStart = useMemo(() => getWeekStart(), [])
+
+  // Read initial week from `?week=YYYY-MM-DD` so the URL is shareable /
+  // back-forward-able. Defaults to the current Monday. We avoid
+  // `useSearchParams` here for the same reason cook/page.tsx does — it
+  // forces a Suspense boundary at build time and broke a sibling route
+  // in commit 5c1af4c.
+  const [weekStart, setWeekStartState] = useState<string>(() => {
+    if (typeof window === "undefined") return getWeekStart()
+    const raw = new URLSearchParams(window.location.search).get("week")
+    return isValidWeekStart(raw) ? raw : getWeekStart()
+  })
+
+  const setWeekStart = useCallback((next: string) => {
+    setWeekStartState(next)
+    if (typeof window === "undefined") return
+    const url = new URL(window.location.href)
+    if (next === getWeekStart()) {
+      url.searchParams.delete("week") // omit ?week= when on current week → cleaner URL
+    } else {
+      url.searchParams.set("week", next)
+    }
+    window.history.replaceState(null, "", url.toString())
+  }, [])
+
+  const delta = useMemo(() => weeksFromNow(weekStart), [weekStart])
+  const isPastWeek = delta < 0
+  const isCurrentWeek = delta === 0
 
   const { data: menu, isLoading: menuLoading } = useMenu(user?.id, weekStart)
   const generateMenu = useGenerateMenu()
@@ -41,6 +128,19 @@ export default function MenuPage() {
     const day = now.getDay()
     return day === 0 ? 6 : day - 1
   })
+
+  // When the user navigates to a different week, reset the day picker:
+  //   - Current week → land on today
+  //   - Any other week → land on Monday
+  useEffect(() => {
+    if (isCurrentWeek) {
+      const day = new Date().getDay()
+      setSelectedDay(day === 0 ? 6 : day - 1)
+    } else {
+      setSelectedDay(0)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekStart])
 
   useEffect(() => {
     recordMenuVisit()
@@ -125,6 +225,52 @@ export default function MenuPage() {
           <br />
           {user.username}.
         </h1>
+
+        {/* Week selector */}
+        <div className="mt-6 flex items-center justify-between gap-2 rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-2 py-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              haptic.light()
+              setWeekStart(shiftWeek(weekStart, -1))
+            }}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#1A1612] transition-colors hover:bg-[#F2EDE0]"
+            aria-label="Semana anterior"
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <div className="flex flex-1 flex-col items-center text-center">
+            <span className="text-[11px] uppercase tracking-[0.15em] text-[#1A1612]">
+              {weekLabel(weekStart)}
+            </span>
+            <span className="font-italic italic text-[10px] text-[#7A7066]">
+              {weekRangeShort(weekStart)}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              haptic.light()
+              setWeekStart(shiftWeek(weekStart, 1))
+            }}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#1A1612] transition-colors hover:bg-[#F2EDE0]"
+            aria-label="Semana siguiente"
+          >
+            <ChevronRight size={16} />
+          </button>
+          {!isCurrentWeek && (
+            <button
+              type="button"
+              onClick={() => {
+                haptic.light()
+                setWeekStart(getWeekStart())
+              }}
+              className="ml-1 shrink-0 rounded-full bg-[#1A1612] px-3 py-1 text-[10px] uppercase tracking-[0.12em] text-[#FAF6EE]"
+            >
+              Hoy
+            </button>
+          )}
+        </div>
       </header>
 
       {/* Week Strip */}
@@ -191,19 +337,27 @@ export default function MenuPage() {
         <div className="mx-5 mt-8 rounded-2xl border border-dashed border-[#DDD6C5] bg-[#FFFEFA] px-6 py-12 text-center">
           <div className="font-display text-5xl leading-none text-[#C65D38]/30">∅</div>
           <p className="mt-4 font-display text-xl text-[#1A1612]">
-            Tu semana está <span className="font-italic italic">en blanco</span>.
+            {isPastWeek ? (
+              <>Sin menú <span className="font-italic italic">esta semana</span>.</>
+            ) : (
+              <>Tu semana está <span className="font-italic italic">en blanco</span>.</>
+            )}
           </p>
           <p className="mt-2 max-w-xs mx-auto text-[13px] text-[#7A7066]">
-            Genera tu menú y la lista de la compra sale automática.
+            {isPastWeek
+              ? "Esta semana ya pasó. Vuelve a la actual para planificar."
+              : "Genera tu menú y la lista de la compra sale automática."}
           </p>
-          <button
-            onClick={handleGenerate}
-            disabled={generateMenu.isPending}
-            className="mt-6 inline-flex items-center gap-2 rounded-full bg-[#1A1612] px-5 py-2.5 text-[13px] font-medium text-[#FAF6EE] transition-all hover:gap-3 hover:bg-[#2D6A4F] disabled:opacity-50"
-          >
-            <Sparkles size={14} />
-            {generateMenu.isPending ? "Generando..." : "Generar mi menú"}
-          </button>
+          {!isPastWeek && (
+            <button
+              onClick={handleGenerate}
+              disabled={generateMenu.isPending}
+              className="mt-6 inline-flex items-center gap-2 rounded-full bg-[#1A1612] px-5 py-2.5 text-[13px] font-medium text-[#FAF6EE] transition-all hover:gap-3 hover:bg-[#2D6A4F] disabled:opacity-50"
+            >
+              <Sparkles size={14} />
+              {generateMenu.isPending ? "Generando..." : "Generar mi menú"}
+            </button>
+          )}
         </div>
       ) : (
         <>
@@ -217,14 +371,16 @@ export default function MenuPage() {
                 {DAY_NAMES[selectedDay]}
               </h2>
             </div>
-            <button
-              onClick={handleGenerate}
-              disabled={generateMenu.isPending}
-              className="flex items-center gap-1.5 rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#1A1612] transition-colors hover:bg-[#1A1612] hover:text-[#FAF6EE] disabled:opacity-50"
-            >
-              <RefreshCw size={11} className={generateMenu.isPending ? "animate-spin" : ""} />
-              Regenerar semana
-            </button>
+            {!isPastWeek && (
+              <button
+                onClick={handleGenerate}
+                disabled={generateMenu.isPending}
+                className="flex items-center gap-1.5 rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#1A1612] transition-colors hover:bg-[#1A1612] hover:text-[#FAF6EE] disabled:opacity-50"
+              >
+                <RefreshCw size={11} className={generateMenu.isPending ? "animate-spin" : ""} />
+                Regenerar semana
+              </button>
+            )}
           </div>
 
           {/* Meal cards */}
@@ -246,6 +402,7 @@ export default function MenuPage() {
                       index={i}
                       day={selectedDay}
                       isLocked={isLocked(meal.type)}
+                      readOnly={isPastWeek}
                       onRegenerate={() => {
                         haptic.medium()
                         regenerateMeal.mutate({
@@ -279,12 +436,14 @@ export default function MenuPage() {
             ) : (
               <div className="rounded-2xl border border-dashed border-[#DDD6C5] bg-[#FFFEFA] py-12 text-center">
                 <p className="font-italic italic text-[#7A7066]">Sin platos para este día.</p>
-                <button
-                  onClick={handleGenerate}
-                  className="mt-3 text-[12px] font-medium text-[#2D6A4F] underline"
-                >
-                  Generar menú
-                </button>
+                {!isPastWeek && (
+                  <button
+                    onClick={handleGenerate}
+                    className="mt-3 text-[12px] font-medium text-[#2D6A4F] underline"
+                  >
+                    Generar menú
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -302,6 +461,7 @@ function EditorialMealCard({
   index,
   day,
   isLocked,
+  readOnly,
   onRegenerate,
   onPickRecipe,
   onToggleLock,
@@ -311,6 +471,7 @@ function EditorialMealCard({
   index: number
   day: number
   isLocked: boolean
+  readOnly: boolean
   onRegenerate: () => void
   onPickRecipe: (r: { id: string; name: string }) => void
   onToggleLock: () => void
@@ -366,33 +527,37 @@ function EditorialMealCard({
 
       {/* Action row */}
       <div className="flex items-center gap-2 px-3 py-2.5">
-        <button
-          onClick={onToggleLock}
-          className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] transition-colors ${
-            isLocked
-              ? "bg-[#C65D38] text-[#FAF6EE]"
-              : "bg-[#F2EDE0] text-[#1A1612] hover:bg-[#1A1612] hover:text-[#FAF6EE]"
-          }`}
-        >
-          {isLocked ? <Lock size={11} /> : <Unlock size={11} />}
-          {isLocked ? "Fijado" : "Fijar"}
-        </button>
-        <button
-          onClick={() => setPickerOpen(true)}
-          disabled={isLocked || isRegenerating}
-          className="flex items-center gap-1.5 rounded-full bg-[#F2EDE0] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#1A1612] transition-colors hover:bg-[#1A1612] hover:text-[#FAF6EE] disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <Replace size={11} />
-          Elegir
-        </button>
-        <button
-          onClick={onRegenerate}
-          disabled={isLocked || isRegenerating}
-          className="flex items-center gap-1.5 rounded-full bg-[#F2EDE0] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#1A1612] transition-colors hover:bg-[#1A1612] hover:text-[#FAF6EE] disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <RefreshCw size={11} className={isRegenerating ? "animate-spin" : ""} />
-          Aleatorio
-        </button>
+        {!readOnly && (
+          <>
+            <button
+              onClick={onToggleLock}
+              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] transition-colors ${
+                isLocked
+                  ? "bg-[#C65D38] text-[#FAF6EE]"
+                  : "bg-[#F2EDE0] text-[#1A1612] hover:bg-[#1A1612] hover:text-[#FAF6EE]"
+              }`}
+            >
+              {isLocked ? <Lock size={11} /> : <Unlock size={11} />}
+              {isLocked ? "Fijado" : "Fijar"}
+            </button>
+            <button
+              onClick={() => setPickerOpen(true)}
+              disabled={isLocked || isRegenerating}
+              className="flex items-center gap-1.5 rounded-full bg-[#F2EDE0] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#1A1612] transition-colors hover:bg-[#1A1612] hover:text-[#FAF6EE] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Replace size={11} />
+              Elegir
+            </button>
+            <button
+              onClick={onRegenerate}
+              disabled={isLocked || isRegenerating}
+              className="flex items-center gap-1.5 rounded-full bg-[#F2EDE0] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#1A1612] transition-colors hover:bg-[#1A1612] hover:text-[#FAF6EE] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <RefreshCw size={11} className={isRegenerating ? "animate-spin" : ""} />
+              Aleatorio
+            </button>
+          </>
+        )}
         <Link
           href={`/recipes/${meal.recipeId}`}
           className="ml-auto text-[11px] uppercase tracking-[0.12em] text-[#7A7066] hover:text-[#1A1612]"

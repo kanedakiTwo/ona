@@ -4,7 +4,9 @@ Weekly meal plan generation and management.
 
 ## User Capabilities
 
-- Users can generate a weekly menu (Monday–Sunday) for the current week with one click
+- Users can generate a weekly menu (Monday–Sunday) for the current week or any future week with one click
+- Users can navigate forward/back between weeks with arrow buttons in the menu header (or by editing `?week=YYYY-MM-DD` in the URL); a "Hoy" button jumps back to the current week. The header label shows "Esta semana", "Próxima semana", "Dentro de N semanas", or "Hace N semanas" plus the date range. The selected day resets to today (current week) or Monday (any other week) when the user changes week
+- Past weeks are read-only: meal cards stay visible (to review what was planned) but the "Generar mi menú", "Regenerar semana", "Aleatorio", "Elegir", and "Fijar" controls are hidden. The empty state on a past week reads "Sin menú esta semana. Esta semana ya pasó. Vuelve a la actual para planificar." with no Generar button
 - Users can navigate between days of the week using a horizontal day strip (WeekStrip)
 - Users can see the day's meals as photo cards (breakfast / lunch / dinner) with the recipe image
 - Users can regenerate a single meal slot two ways from the meal card: **"Aleatorio"** runs the matcher (random recipe matching the slot's season + restrictions), and **"Elegir"** opens a recipe picker sheet (`RecipePickerSheet`) listing the full catalog (system + user-owned recipes, distinguished by an "ONA"/"tuya" badge) with name search; picking one pins it via `PUT /menu/:menuId/day/:day/meal/:meal` with body `{ recipeId }`. The picker does NOT filter by meal type (the user's choice — any recipe can go in any slot). Both paths are queued offline and replay on reconnect; manual picks lose their `recipeId` on offline replay (the server falls back to auto-pick)

@@ -498,6 +498,7 @@ export default function NewRecipePage() {
                             : "Ingrediente"
                         }
                         hasError={!!hint}
+                        defaultText={row.ingredientName}
                       />
                       <input
                         type="number"

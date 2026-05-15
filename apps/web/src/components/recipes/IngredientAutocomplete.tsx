@@ -36,6 +36,13 @@ interface Props {
   hasError?: boolean
   /** Stable id used for ARIA hooks (multiple rows on the page) */
   inputId?: string
+  /**
+   * Free-form text to show in the input when no `value` is selected — e.g.
+   * the raw name returned by the photo/URL extractor for an ingredient that
+   * didn't match the catalog. Lets the user see what the LLM tried so they
+   * can confirm (via "Crear nuevo"), refine, or pick a similar existing row.
+   */
+  defaultText?: string
 }
 
 function useDebounced<T>(value: T, ms: number): T {
@@ -53,18 +60,24 @@ export function IngredientAutocomplete({
   placeholder,
   hasError,
   inputId,
+  defaultText,
 }: Props) {
-  const [query, setQuery] = useState(value?.name ?? "")
+  const [query, setQuery] = useState(value?.name ?? defaultText ?? "")
   const [open, setOpen] = useState(false)
   const [modalName, setModalName] = useState<string | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Keep input in sync if the parent swaps the selected ingredient.
+  // Keep input in sync if the parent swaps the selected ingredient OR
+  // injects a fresh defaultText (e.g. after the user uploads a new photo).
   useEffect(() => {
     if (value && value.name !== query) {
       setQuery(value.name)
+      return
     }
-  }, [value]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (!value && defaultText && defaultText !== query && query === "") {
+      setQuery(defaultText)
+    }
+  }, [value, defaultText]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const debounced = useDebounced(query, 200)
   const search = useSearchIngredients(debounced)

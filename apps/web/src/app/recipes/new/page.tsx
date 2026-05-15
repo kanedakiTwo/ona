@@ -50,6 +50,7 @@ export default function NewRecipePage() {
     useIngredients()
 
   const [name, setName] = useState("")
+  const [servings, setServings] = useState<number | "">(2)
   const [prepTime, setPrepTime] = useState<number | "">("")
   const [selectedMeals, setSelectedMeals] = useState<Meal[]>([])
   const [selectedSeasons, setSelectedSeasons] = useState<Season[]>([])
@@ -66,6 +67,9 @@ export default function NewRecipePage() {
 
   function handlePhotoExtracted(data: ExtractedRecipe) {
     setName(data.name)
+    if (typeof data.servings === "number" && data.servings > 0) {
+      setServings(data.servings)
+    }
     setPrepTime(data.prepTime ?? "")
     setSelectedMeals(data.meals)
     setSelectedSeasons(data.seasons)
@@ -173,12 +177,18 @@ export default function NewRecipePage() {
         unit: r.unit || "g",
       }))
 
+    const cleanedSteps = steps
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+      .map((text, index) => ({ index, text }))
+
     const payload: Record<string, unknown> = {
       name: name.trim(),
+      servings: typeof servings === "number" && servings > 0 ? servings : 2,
       meals: selectedMeals,
       seasons: selectedSeasons,
       tags,
-      steps: steps.map((s) => s.trim()).filter((s) => s.length > 0),
+      steps: cleanedSteps,
       ingredients: cleanedIngredients,
     }
 
@@ -247,18 +257,6 @@ export default function NewRecipePage() {
       },
     })
   }
-
-  const canSubmit =
-    name.trim().length > 0 &&
-    selectedMeals.length > 0 &&
-    selectedSeasons.length > 0 &&
-    ingredientRows.some(
-      (r) =>
-        r.ingredientName.trim() !== "" &&
-        r.ingredientId !== "" &&
-        typeof r.quantity === "number" &&
-        r.quantity > 0
-    )
 
   return (
     <div className="min-h-screen bg-[#FAF6EE]">
@@ -332,6 +330,33 @@ export default function NewRecipePage() {
             {errors.name && (
               <p className="mt-2 text-[12px] italic text-[#C65D38]">
                 {errors.name}
+              </p>
+            )}
+          </section>
+
+          {/* Servings */}
+          <section>
+            <label className="text-eyebrow text-[#7A7066]">
+              Comensales
+            </label>
+            <div className="mt-2 flex items-baseline gap-2">
+              <input
+                type="number"
+                value={servings}
+                onChange={(e) =>
+                  setServings(e.target.value ? Number(e.target.value) : "")
+                }
+                placeholder="2"
+                min={1}
+                className="w-28 rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-3 py-2 text-[14px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
+              />
+              <span className="text-[12px] uppercase tracking-[0.12em] text-[#7A7066]">
+                personas
+              </span>
+            </div>
+            {errors.servings && (
+              <p className="mt-2 text-[12px] italic text-[#C65D38]">
+                {errors.servings}
               </p>
             )}
           </section>
@@ -602,15 +627,24 @@ export default function NewRecipePage() {
 
           {/* Submit */}
           <div className="flex flex-col gap-3 border-t border-[#DDD6C5] pt-6">
-            {errors._form && (
-              <p className="text-[12px] italic text-[#C65D38]">
-                {errors._form}
-              </p>
+            {Object.keys(errors).length > 0 && (
+              <div className="rounded-lg border border-[#C65D38]/40 bg-[#C65D38]/10 px-4 py-3">
+                <p className="text-[12px] font-medium uppercase tracking-[0.12em] text-[#C65D38]">
+                  Faltan datos:
+                </p>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-[12px] italic text-[#C65D38]">
+                  {Object.entries(errors).map(([key, msg]) => (
+                    <li key={key}>
+                      {key === "_form" ? msg : <><span className="font-medium not-italic">{key}:</span> {msg}</>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
             <div className="flex items-center gap-4">
               <button
                 type="submit"
-                disabled={!canSubmit || createRecipe.isPending}
+                disabled={createRecipe.isPending}
                 className="rounded-full bg-[#1A1612] px-6 py-2.5 text-[12px] font-medium uppercase tracking-[0.12em] text-[#FAF6EE] transition-all hover:bg-[#2D6A4F] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {createRecipe.isPending ? "Guardando..." : "Crear receta"}

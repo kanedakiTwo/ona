@@ -105,7 +105,18 @@ export class AnthropicProvider implements VisionProvider, TextExtractionProvider
       throw new Error('No text response from AI model')
     }
 
-    const parsed = JSON.parse(textBlock.text)
+    // Claude sometimes wraps the JSON in a ```json … ``` fence even when the
+    // prompt explicitly says "sin markdown". Same defensive strip as the
+    // text extractor: try direct parse, then fall back to the first {...}
+    // block in the raw text.
+    let parsed: any
+    try {
+      parsed = JSON.parse(textBlock.text)
+    } catch {
+      const fenced = textBlock.text.match(/\{[\s\S]*\}/)
+      if (!fenced) throw new Error('AI response was not valid JSON')
+      parsed = JSON.parse(fenced[0])
+    }
 
     if (parsed.error) {
       throw new Error(parsed.error)

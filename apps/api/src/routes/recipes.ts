@@ -416,59 +416,10 @@ router.post(
       const provider = new AnthropicProvider()
       const extracted = await extractRecipeFromImage(provider, req.file.buffer, req.file.mimetype)
 
-      // Build a write input. Drop ingredients we couldn't match to the catalog —
-      // they have no ingredientId so they can't be persisted; surface them as a
-      // warning on the response.
-      const writeIngredients = extracted.ingredients
-        .filter((i) => i.matched && i.ingredientId)
-        .map((i, idx) => ({
-          ingredientId: i.ingredientId as string,
-          quantity: i.quantity,
-          unit: i.unit,
-          displayOrder: idx,
-        }))
-
-      // Promote string steps to RecipeStep[] minimally.
-      const writeSteps = extracted.steps.map((text, index) => ({ index, text }))
-
-      const writeInput: RecipeWriteInput = {
-        name: extracted.name,
-        servings: extracted.servings ?? 2,
-        prepTime: extracted.prepTime ?? null,
-        cookTime: extracted.cookTime ?? null,
-        difficulty: (extracted.difficulty ?? 'medium') as Difficulty,
-        meals: extracted.meals,
-        seasons: extracted.seasons,
-        tags: extracted.tags ?? [],
-        internalTags: ['auto-extracted'],
-        sourceType: 'image',
-        ingredients: writeIngredients,
-        steps: writeSteps,
-      }
-
-      const result = await persistRecipe(writeInput, { authorId: req.userId! })
-      if (!result.ok) {
-        res.status(422).json({
-          errors: result.errors,
-          warnings: result.warnings,
-          extracted, // surface so client can show what was read
-        })
-        return
-      }
-
-      const newRow = await fetchRecipeById(result.recipeId)
-      if (!newRow) {
-        res.status(500).json({ error: 'Persisted recipe not retrievable' })
-        return
-      }
-      const [ings, steps] = await Promise.all([
-        fetchIngredientsForRecipes([result.recipeId]),
-        fetchStepsForRecipes([result.recipeId]),
-      ])
-      res.status(201).json({
-        recipe: toDetailRecipe(newRow, ings, steps),
-        warnings: [...result.warnings.map((w) => w.message), ...extracted.warnings],
-      })
+      // Return the extracted draft so the user can review and adjust before
+      // persisting through POST /recipes. Auto-persisting here would skip the
+      // human-in-the-loop step and ship lint warnings the user never saw.
+      res.json(extracted)
     } catch (err: any) {
       console.error('Extract recipe from image error:', err)
 

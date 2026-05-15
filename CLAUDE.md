@@ -116,7 +116,7 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 
 ### Pending
 
-- [ ] **Expand ingredient catalog to recover the 48 unseeded recipes**. After the 2026-05-15 prod dedup (`scripts/dedupSystemRecipes.ts`), prod has 31 unique system recipes — but `pnpm db:seed` skipped 63 of 79 seed recipes because `ingredients` only has ~34 rows and most seed recipes reference ingredients not in the catalog. Run `pnpm --filter @ona/api expand:catalog`, curator-review the YAML at `apps/api/src/seed/data/ingredient-fdc-map.expanded.yaml`, merge into the main map, then re-run seed + `generateRecipeImages.ts --skip-existing`. Until then, the catalog stays at 31 recipes (all with hero images ✅).
+- [ ] **Backfill USDA nutrition for the 41 stub ingredients** added during the 2026-05-15 prod recovery. `pnpm --filter @ona/api seed:usda` walks the `ingredients` table and writes USDA per-100 g profiles for any row with an `fdcId` (or attempts a lookup when missing). Until then, recipes using these ingredients (caldo de verduras, salsa de soja, miel, jengibre fresco, etc. — see `git log -p --grep "bulk insert ingredient stubs"`) carry `kcal=0` contributions, so `nutritionPerServing` is under-reported. Spec context: [recipes.md](./specs/recipes.md#seed-pipeline).
 
 - [ ] **End-to-end check on production** after the next `ona-api` deploy: register a fresh user, create a recipe, hit "Regenerar imagen" — confirms the Railway volume writes survive and `IMAGE_PUBLIC_URL_BASE` (`https://ona-api-production.up.railway.app/images/recipes`) actually serves the JPEG. (Volume `ona-api-volume` mounted at `/data` and the three env vars `AIKIT_API_KEY`, `IMAGE_STORAGE_DIR`, `IMAGE_PUBLIC_URL_BASE` are already set on `ona-api` via Railway CLI.)
 

@@ -17,7 +17,7 @@ Extrae la siguiente informacion en formato JSON:
   "name": "nombre de la receta",
   "prepTime": numero en minutos o null si no se menciona,
   "ingredients": [
-    { "name": "nombre del ingrediente en espanol, singular, minusculas", "quantity": numero, "unit": "g | kg | ml | l | ud | cda | cdta" }
+    { "name": "nombre del ingrediente en espanol, singular, minusculas", "quantity": numero, "unit": "g | kg | ml | l | u | cda | cdita | pizca | al_gusto" }
   ],
   "steps": ["paso 1", "paso 2"],
   "suggestedMeals": ["breakfast | lunch | dinner | snack"],
@@ -25,14 +25,25 @@ Extrae la siguiente informacion en formato JSON:
   "tags": ["etiqueta1", "etiqueta2"]
 }
 
-Reglas:
+Reglas generales:
 - Nombres de ingredientes genericos (ej: "pollo" no "pechuga de pollo deshuesada")
 - Si la cantidad no esta clara, estima para 2 personas
-- Unidades: g, kg, ml, l, ud, cda, cdta
 - Si no puedes determinar tipo de comida, usa ["lunch", "dinner"]
 - Si no puedes determinar temporada, usa las 4 estaciones
 - Devuelve SOLO el JSON, sin texto adicional ni markdown
-- Si la imagen no contiene una receta legible, responde: {"error": "No se pudo identificar una receta en la imagen"}`
+- Si la imagen no contiene una receta legible, responde: {"error": "No se pudo identificar una receta en la imagen"}
+
+Reglas de UNIDADES (criticas, no las inventes):
+- Solidos por peso → g o kg: carnes (pollo, ternera, cordero), pescados, verduras (cebolla, zanahoria, calabacin), frutas no liquidas (manzana en gramos si esta cortada), granos, legumbres, harinas, quesos, frutos secos. NUNCA uses ml para solidos.
+- Liquidos por volumen → ml o l: aceite, agua, caldo, leche, nata, vino, vinagre, salsa de soja, miel cuando esta como liquido, zumo. NUNCA uses g para liquidos.
+- Discretos por unidad → u (no "ud"): huevo, aguacate entero, platano, naranja, limon, diente de ajo, hoja de laurel, rebanada de pan, bote de conserva. Un huevo es "4 u", no "4 g" ni "200 g".
+- Cucharadas y cucharaditas → cda, cdita: especias, condimentos, levadura, polvos de hornear cuando se miden asi.
+- Pizca (sal, pimienta, especias en cantidad minima) o al_gusto (cuando la receta no especifica) son validas.
+
+Reglas de COHERENCIA:
+- NO repitas el mismo ingrediente en varias filas. Si la receta menciona "pimenton dulce" dos veces (una en el adobo, otra para espolvorear), consolida en UNA fila con la cantidad total.
+- Cada ingrediente debe aparecer EXACTAMENTE una vez en el array.
+- Si un ingrediente aparece sin cantidad (ej. "sal al gusto"), usa quantity: 1 con unit: "al_gusto".`
 
 const TEXT_EXTRACTION_PROMPT = `Eres un asistente especializado en extraer recetas a partir de texto (articulos web o transcripciones de videos de cocina).
 Analiza el contenido y decide primero si describe realmente una receta cocinable.
@@ -54,7 +65,7 @@ Si SI es una receta:
   "cookTime": minutos de coccion o null,
   "difficulty": "easy" | "medium" | "hard" | null,
   "ingredients": [
-    { "name": "nombre del ingrediente en espanol, singular, minusculas", "quantity": numero, "unit": "g | kg | ml | l | u | cda | cdita" }
+    { "name": "nombre del ingrediente en espanol, singular, minusculas", "quantity": numero, "unit": "g | kg | ml | l | u | cda | cdita | pizca | al_gusto" }
   ],
   "steps": ["paso 1", "paso 2"],
   "suggestedMeals": ["breakfast | lunch | dinner | snack"],
@@ -62,13 +73,24 @@ Si SI es una receta:
   "tags": ["etiqueta1", "etiqueta2"]
 }
 
-Reglas:
+Reglas generales:
 - Nombres de ingredientes genericos (ej: "pollo" no "pechuga de pollo deshuesada")
 - Si la cantidad no esta clara, estima para 2 personas
-- Unidades: g, kg, ml, l, u, cda, cdita
 - Si no puedes determinar tipo de comida, usa ["lunch", "dinner"]
 - Si no puedes determinar temporada, usa las 4 estaciones
-- Devuelve SOLO el JSON, sin texto adicional ni markdown`
+- Devuelve SOLO el JSON, sin texto adicional ni markdown
+
+Reglas de UNIDADES (criticas, no las inventes):
+- Solidos por peso → g o kg: carnes (pollo, ternera, cordero), pescados, verduras (cebolla, zanahoria, calabacin), frutas no liquidas, granos, legumbres, harinas, quesos, frutos secos. NUNCA uses ml para solidos.
+- Liquidos por volumen → ml o l: aceite, agua, caldo, leche, nata, vino, vinagre, salsa de soja, miel cuando esta como liquido, zumo. NUNCA uses g para liquidos.
+- Discretos por unidad → u (no "ud"): huevo, aguacate entero, platano, naranja, limon, diente de ajo, hoja de laurel, rebanada de pan, bote de conserva. Un huevo es "4 u", no "4 g" ni "200 g".
+- Cucharadas y cucharaditas → cda, cdita: especias, condimentos cuando se miden asi.
+- Pizca (sal, pimienta, especias en cantidad minima) o al_gusto (cuando la receta no especifica) son validas.
+
+Reglas de COHERENCIA:
+- NO repitas el mismo ingrediente en varias filas. Si el texto lo menciona dos veces, consolida en UNA fila con la cantidad total.
+- Cada ingrediente debe aparecer EXACTAMENTE una vez en el array.
+- Si un ingrediente aparece sin cantidad (ej. "sal al gusto"), usa quantity: 1 con unit: "al_gusto".`
 
 export class AnthropicProvider implements VisionProvider, TextExtractionProvider {
   private client: Anthropic

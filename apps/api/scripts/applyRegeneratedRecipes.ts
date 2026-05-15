@@ -74,6 +74,7 @@ interface CliArgs {
   ignoreWarnings: boolean
   autoCreateMissing: boolean
   force: boolean
+  softLint: boolean
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -83,12 +84,15 @@ function parseArgs(argv: string[]): CliArgs {
     ignoreWarnings: true, // warnings never block; flag is forward-looking
     autoCreateMissing: true,
     force: false,
+    softLint: false,
   }
   for (const raw of argv.slice(2)) {
     if (raw === '--dry-run') {
       args.dryRun = true
     } else if (raw === '--force') {
       args.force = true
+    } else if (raw === '--soft-lint') {
+      args.softLint = true
     } else if (raw.startsWith('--ids=')) {
       args.ids = raw
         .slice('--ids='.length)
@@ -734,19 +738,23 @@ async function main(): Promise<void> {
       force: args.force,
     })
     if (!lintResult.ok) {
-      skipped++
-      console.log(`[skip] ${regen.name} — ${lintResult.errors.length} lint issues`)
-      for (const e of lintResult.errors) {
-        console.log(`         ${e.code}: ${e.message}${e.path ? ` (${e.path})` : ''}`)
+      if (!args.softLint) {
+        skipped++
+        console.log(`[skip] ${regen.name} — ${lintResult.errors.length} lint issues`)
+        for (const e of lintResult.errors) {
+          console.log(`         ${e.code}: ${e.message}${e.path ? ` (${e.path})` : ''}`)
+        }
+        if (skippedWriter) {
+          skippedWriter.write({
+            recipe: regen,
+            errors: lintResult.errors,
+            warnings: lintResult.warnings,
+          })
+        }
+        continue
       }
-      if (skippedWriter) {
-        skippedWriter.write({
-          recipe: regen,
-          errors: lintResult.errors,
-          warnings: lintResult.warnings,
-        })
-      }
-      continue
+      // --soft-lint: log errors as warnings and keep going.
+      console.log(`[soft] ${regen.name} — ${lintResult.errors.length} lint issue(s) downgraded to warning`)
     }
 
     // 3. Compute nutrition + allergens + totalTime.

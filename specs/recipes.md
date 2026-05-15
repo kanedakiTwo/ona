@@ -28,6 +28,18 @@ Recipe catalog, recipe detail, and the data needed to actually cook a recipe.
 - Read-only for users (cannot edit or delete)
 - Cards show the **"ONA"** badge in the catalog grid
 
+**Seed pipeline (how the system catalog is populated)**:
+1. `apps/api/src/seed/recipes.ts` declares 79 recipe shells (name + meta). About 16 carry full `ingredients` / `steps` inline; the other 63 are intentional placeholders (`ingredients: []`, `steps: []`) that get filled in by a second pass.
+2. `pnpm --filter @ona/api db:seed` inserts/updates ingredients from `seed/ingredients.ts`, then iterates `seedRecipes`. A recipe is **skipped** when none of its ingredient names resolve in the live `ingredients` table — so the placeholders silently no-op on first seed.
+3. `apps/api/scripts/handAuthoredRecipes.ts` carries the full hand-authored bodies (name + qty + unit + steps + step-ingredient refs) for those 63 plus a handful of extras. It resolves names against the *current* prod catalog, refuses recipes whose ingredients are missing, and appends the resolved JSONL to `apps/api/scripts/output/regen-passed.jsonl`.
+4. `pnpm --filter @ona/api apply:recipes [--soft-lint] [--auto-create-missing] [--dry-run]` reads that JSONL, runs `lintRecipe`, and inserts/updates by case-insensitive name match. `--soft-lint` downgrades `STEP_INGREDIENT_NOT_LISTED` / `ORPHAN_INGREDIENT` errors to warnings (one-off recovery escape hatch — do **not** rely on it in steady state, lint errors should be fixed upstream in the authoring data). `--auto-create-missing` (default true) inserts new ingredient rows via USDA when the JSONL references unknown names (not unknown UUIDs — those can't be recovered).
+5. A real `image_url` for each recipe is either committed under `apps/web/public/images/recipes/<slug>.jpg` (seed assets) or generated on demand via `POST /recipes/:id/regenerate-image` for user copies.
+
+**One-off prod maintenance scripts** (all default to dry-run, take `--execute` to commit):
+- `scripts/dedupSystemRecipes.ts` — collapse duplicate system rows by name, rewriting `menus.days[].recipeId` to the canonical id before deleting.
+- `scripts/linkSeedRecipeImages.ts` — for any system recipe with `image_url IS NULL`, attach `/images/recipes/<slug>.{jpg,jpeg,png,webp}` if a file already exists on disk (avoids re-paying AiKit for already-generated photos).
+- `scripts/fillSeedCatalogGap.ts` — compute the names referenced by `seedRecipes` that are not yet in `ingredients`, try USDA for nutrition, insert (stub when USDA fails). Run before `db:seed` if the catalog is short.
+
 **User-created recipes** (`authorId = user.id`):
 - Editable and deletable by the author
 - Created via `/recipes/new`, AI extraction from photo, AI extraction from URL, or by copying from the ONA catalog (`POST /recipes/:id/copy`)
@@ -158,6 +170,9 @@ When the user changes the diner count from `recipe.servings` to `target`:
 - [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts) — `recipes`, `recipe_ingredients`, `recipe_steps`, `ingredients`, `ingredient_nutrition`
 - [apps/api/src/services/recipeImageGenerator.ts](../apps/api/src/services/recipeImageGenerator.ts) — shared prompt builder + AiKit Imagen-fal client + sharp pipeline. Used by both the bulk script and the `regenerate-image` endpoint
 - [apps/api/scripts/generateRecipeImages.ts](../apps/api/scripts/generateRecipeImages.ts) — bulk hero-image regenerator for the seed (writes slug-keyed JPGs to `apps/web/public/images/recipes/`); flags `--dry-run`, `--only=<slug,…>`, `--include-user`, `--concurrency=N`, `--aspect=4:3|1:1|3:4`, `--skip-existing`, `--no-db`
+- [apps/api/scripts/handAuthoredRecipes.ts](../apps/api/scripts/handAuthoredRecipes.ts) — hand-authored bodies for the seed placeholders; appends to `output/regen-passed.jsonl`
+- [apps/api/scripts/applyRegeneratedRecipes.ts](../apps/api/scripts/applyRegeneratedRecipes.ts) — JSONL → DB applier with lint + auto-create + `--soft-lint` escape hatch
+- [apps/api/scripts/dedupSystemRecipes.ts](../apps/api/scripts/dedupSystemRecipes.ts), [linkSeedRecipeImages.ts](../apps/api/scripts/linkSeedRecipeImages.ts), [fillSeedCatalogGap.ts](../apps/api/scripts/fillSeedCatalogGap.ts) — one-off prod maintenance scripts
 - [apps/web/src/hooks/useRecipes.ts](../apps/web/src/hooks/useRecipes.ts) — `useRegenerateRecipeImage(recipeId, userId)` mutation
 - [apps/web/src/hooks/useUser.ts](../apps/web/src/hooks/useUser.ts) — `useUser(id)` returns the live `imageGenQuota` for the regenerate counters
 - [apps/web/src/app/recipes/page.tsx](../apps/web/src/app/recipes/page.tsx)

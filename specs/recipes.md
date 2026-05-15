@@ -41,6 +41,7 @@ Recipe catalog, recipe detail, and the data needed to actually cook a recipe.
 - `scripts/fillSeedCatalogGap.ts` — compute the names referenced by `seedRecipes` that are not yet in `ingredients`, try USDA for nutrition, insert (stub when USDA fails). Run before `db:seed` if the catalog is short.
 - `scripts/bulkInsertIngredients.ts` — insert stub ingredients (zero nutrition + name-inferred allergens) from a newline-separated stdin list. Used to unblock `handAuthoredRecipes` when the catalog is missing 30+ names at once. Backfill nutrition afterwards with `pnpm seed:usda`.
 - `scripts/recomputeRecipeNutrition.ts` — re-aggregate `recipes.nutrition_per_serving` and `recipes.allergens` from the live `ingredients` + `recipe_ingredients` data. Run after `seed:usda` (or after any catalog edit that changes nutrition) so the cached recipe nutrition isn't stale. Default scope is system recipes only; `--scope=all` includes user recipes.
+- `scripts/insertMappedIngredients.ts` — read `ingredient-fdc-map.yaml`, insert a stub row for every mapping not yet present in the `ingredients` table, then run `seed:usda` to enrich with real USDA nutrition. This is the "yaml is source of truth → propagate to DB" idempotent step the seed pipeline was missing.
 
 **User-created recipes** (`authorId = user.id`):
 - Editable and deletable by the author
@@ -174,7 +175,7 @@ When the user changes the diner count from `recipe.servings` to `target`:
 - [apps/api/scripts/generateRecipeImages.ts](../apps/api/scripts/generateRecipeImages.ts) — bulk hero-image regenerator for the seed (writes slug-keyed JPGs to `apps/web/public/images/recipes/`); flags `--dry-run`, `--only=<slug,…>`, `--include-user`, `--concurrency=N`, `--aspect=4:3|1:1|3:4`, `--skip-existing`, `--no-db`
 - [apps/api/scripts/handAuthoredRecipes.ts](../apps/api/scripts/handAuthoredRecipes.ts) — hand-authored bodies for the seed placeholders; appends to `output/regen-passed.jsonl`
 - [apps/api/scripts/applyRegeneratedRecipes.ts](../apps/api/scripts/applyRegeneratedRecipes.ts) — JSONL → DB applier with lint + auto-create + `--soft-lint` escape hatch
-- [apps/api/scripts/dedupSystemRecipes.ts](../apps/api/scripts/dedupSystemRecipes.ts), [linkSeedRecipeImages.ts](../apps/api/scripts/linkSeedRecipeImages.ts), [fillSeedCatalogGap.ts](../apps/api/scripts/fillSeedCatalogGap.ts), [bulkInsertIngredients.ts](../apps/api/scripts/bulkInsertIngredients.ts), [recomputeRecipeNutrition.ts](../apps/api/scripts/recomputeRecipeNutrition.ts) — one-off prod maintenance scripts
+- [apps/api/scripts/dedupSystemRecipes.ts](../apps/api/scripts/dedupSystemRecipes.ts), [linkSeedRecipeImages.ts](../apps/api/scripts/linkSeedRecipeImages.ts), [fillSeedCatalogGap.ts](../apps/api/scripts/fillSeedCatalogGap.ts), [bulkInsertIngredients.ts](../apps/api/scripts/bulkInsertIngredients.ts), [recomputeRecipeNutrition.ts](../apps/api/scripts/recomputeRecipeNutrition.ts), [insertMappedIngredients.ts](../apps/api/scripts/insertMappedIngredients.ts) — one-off prod maintenance scripts
 - [apps/web/src/hooks/useRecipes.ts](../apps/web/src/hooks/useRecipes.ts) — `useRegenerateRecipeImage(recipeId, userId)` mutation
 - [apps/web/src/hooks/useUser.ts](../apps/web/src/hooks/useUser.ts) — `useUser(id)` returns the live `imageGenQuota` for the regenerate counters
 - [apps/web/src/app/recipes/page.tsx](../apps/web/src/app/recipes/page.tsx)

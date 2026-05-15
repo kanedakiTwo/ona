@@ -38,19 +38,24 @@ test('happy path: fill the form, click Crear, land on the new recipe', async ({ 
   // Seasons: pick "Primavera"
   await page.getByRole('button', { name: /primavera/i }).first().click()
 
-  // Ingredient: type into the autocomplete and pick the first suggestion.
+  // Ingredient: type into the autocomplete and pick the option that
+  // matches what we typed. We have to wait for the debounced search
+  // (200ms) to refresh the dropdown — clicking the literal first <li>
+  // would pick whatever the empty-query fetch returned first (e.g.
+  // "aceite de oliva virgen" alphabetically), which causes the server's
+  // lint to fire ORPHAN_INGREDIENT + STEP_INGREDIENT_NOT_LISTED later.
   const ingredientInput = page.getByPlaceholder(/ingrediente|cargando/i).first()
   await ingredientInput.fill('ajo')
-  // Wait for the open dropdown listbox and click the first matching option.
-  const firstOption = page.locator('ul[role="listbox"] li').first()
-  await firstOption.waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {
-    /* soft skip below */
-  })
-  if (!(await firstOption.isVisible().catch(() => false))) {
-    test.skip(true, 'Catalog has no ingredient matching "ajo" — seed missing.')
+  const ajoOption = page
+    .locator('ul[role="listbox"] li button', { hasText: /^ajo$/i })
+    .first()
+  try {
+    await ajoOption.waitFor({ state: 'visible', timeout: 10_000 })
+  } catch {
+    test.skip(true, 'Catalog has no exact "ajo" match — seed missing or renamed.')
     return
   }
-  await firstOption.click()
+  await ajoOption.click()
 
   // Quantity for that ingredient
   await page.locator('input[placeholder="Cant."]').first().fill('10')

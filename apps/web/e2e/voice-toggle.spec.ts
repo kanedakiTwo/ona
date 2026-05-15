@@ -58,10 +58,14 @@ test('toggle voice on → FAB visible → tap opens overlay', async ({ page }) =
   await page.goto('/menu')
   await expect(fab).toBeVisible({ timeout: 5_000 })
 
-  // Tap the FAB. Expect the orb overlay to appear (z-50 fullscreen). The
-  // session will then fail to connect (no OpenAI key in CI) and the
-  // overlay auto-closes — we just need to see the overlay flicker on.
+  // Tap the FAB. Expect the orb overlay to appear (z-50 fullscreen). In CI
+  // the Realtime session can't reach OpenAI so the overlay can pass through
+  // any of: "Conectando…" → "Te escucho." → "No se pudo conectar." →
+  // "Sesión cerrada." → auto-close. Asserting on a specific phrase is racy;
+  // assert on the overlay container instead (the only `.fixed.inset-0.z-50`
+  // anywhere in the authed app) so the test stays stable regardless of how
+  // far the session got before failing.
   await fab.click()
-  const overlay = page.getByText(/te escucho|conectando|sigo aqu/i)
-  await expect(overlay.first()).toBeVisible({ timeout: 10_000 })
+  const overlay = page.locator('div.fixed.inset-0.z-50').first()
+  await expect(overlay).toBeVisible({ timeout: 10_000 })
 })

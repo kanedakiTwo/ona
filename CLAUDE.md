@@ -55,6 +55,33 @@ Past failure mode: shipping a feature, then doing a "specs sweep" days later. By
 
 When in doubt: open `specs/index.md`, grep for keywords related to your change, and verify each match still describes reality.
 
+### Definition of done — test gate
+
+**A task that touches user-observable behavior is not done until it has a test that would fail if the bug came back.** The lesson of 2026-05-15: three bugs in `/recipes/new` (photo extract shape, empty rows, submit silently doing nothing) all shipped because zero tests covered the create-recipe flow. Use this checklist before reporting a task complete:
+
+```
+[ ] Did I change a user-visible flow (form submit, page render, button
+    click, route handler, schema)?
+[ ] If yes — is there at least ONE test that would fail if my change
+    regressed?
+      - Pure logic / payload builders / validators → unit test in
+        apps/api/src/tests/ (vitest)
+      - API route / DB write / business rule → unit test of the
+        service + (when infra allows) integration test against the route
+      - Multi-step UI / form submit / redirect after action → Playwright
+        spec in apps/web/e2e/ (mobile-chromium viewport)
+[ ] If the change crosses the form↔schema boundary (form payload vs.
+    @ona/shared zod schema) → a contract test exists that runs the form's
+    real payload builder against the schema. Drift between the two is the
+    most common silent-bug class in this repo (see recipeFormContract.test.ts).
+[ ] If I deferred test coverage on purpose → I left a `TODO(test):` marker
+    in the file AND told the user explicitly in my reply.
+```
+
+**Combined with TDD where it pays:** for pure logic (matchers, builders, validators, aggregators) write the failing test first. For exploratory UI work, the test can land in the same commit as the implementation — but it must land. "I'll write tests later" is the same anti-pattern as "I'll update specs later" — both die in the next sprint.
+
+A code-only PR that touches user-observable behavior with no corresponding test is a bug, equivalent to a missing spec update. The spec-gate above and the test-gate here are sibling checks — both run before a task is reported done.
+
 ## What ONA is
 
 ONA (Opinionated Nutritional Assistant) is a **mobile-first meal planner** for Spanish speakers. It generates a weekly menu from a recipe catalog, produces a shopping list, manages pantry stock, and provides an AI advisor for nutrition questions. The app is currently mid-migration toward an **editorial visual style** (cream/warm-black palette, Fraunces serif, motion/react animations) — see [`specs/design-system.md`](./specs/design-system.md) for which pages are migrated and which still use the legacy "app mode" green palette.

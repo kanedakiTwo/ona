@@ -10,7 +10,7 @@ import Link from "next/link"
 import { PhotoRecipeUpload } from "@/components/recipes/PhotoRecipeUpload"
 import { UrlRecipeImport } from "@/components/recipes/UrlRecipeImport"
 import { IngredientAutocomplete } from "@/components/recipes/IngredientAutocomplete"
-import { createRecipeSchema } from "@ona/shared"
+import { buildRecipePayload, createRecipeSchema } from "@ona/shared"
 import type { Meal, Season, ExtractedRecipe, Ingredient } from "@ona/shared"
 import { MEAL_LABELS, SEASON_LABELS } from "@/lib/labels"
 
@@ -163,40 +163,20 @@ export default function NewRecipePage() {
     setSteps(steps.filter((_, i) => i !== idx))
   }
 
-  // Build the schema-shaped payload from form state.
+  // Build the schema-shaped payload from form state. Lives in @ona/shared so
+  // the contract test in apps/api can validate this exact transformer against
+  // createRecipeSchema and prevent silent drift.
   function buildPayload() {
-    const cleanedIngredients = ingredientRows
-      .map((r) => ({
-        ...r,
-        ingredientName: r.ingredientName.trim(),
-      }))
-      .filter((r) => r.ingredientName.length > 0)
-      .map((r) => ({
-        ingredientId: r.ingredientId,
-        quantity: typeof r.quantity === "number" ? r.quantity : 0,
-        unit: r.unit || "g",
-      }))
-
-    const cleanedSteps = steps
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0)
-      .map((text, index) => ({ index, text }))
-
-    const payload: Record<string, unknown> = {
-      name: name.trim(),
-      servings: typeof servings === "number" && servings > 0 ? servings : 2,
-      meals: selectedMeals,
-      seasons: selectedSeasons,
+    return buildRecipePayload({
+      name,
+      servings,
+      prepTime,
+      selectedMeals,
+      selectedSeasons,
       tags,
-      steps: cleanedSteps,
-      ingredients: cleanedIngredients,
-    }
-
-    if (typeof prepTime === "number" && prepTime > 0) {
-      payload.prepTime = prepTime
-    }
-
-    return payload
+      steps,
+      ingredientRows,
+    })
   }
 
   // Surface inline errors per row (e.g. "no encontrado") regardless of submit.

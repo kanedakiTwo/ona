@@ -154,6 +154,74 @@ describe('lintRecipe — errors', () => {
     expect(issue!.path).toBe('steps[0].text')
   })
 
+  it('suppresses catalog siblings when the recipe covers the head (regression 2026-05-16, generic rule)', () => {
+    // Two cases the user proposed as a single rule:
+    //   1. Recipe has "aceite" (generic). Step writes "aceite de oliva" (more
+    //      specific). The catalog has "aceite de oliva virgen", "aceite de
+    //      girasol", etc. None of them should be flagged — the user's
+    //      "aceite" already covers the intent.
+    //   2. Recipe has "aceite de oliva virgen" (specific). Step writes just
+    //      "aceite". No catalog sibling should be flagged.
+    const catalog: CatalogIngredient[] = [
+      { id: 'cat-aceite', name: 'aceite', fdcId: 9000, density: 0.92 },
+      { id: 'cat-aov', name: 'aceite de oliva virgen', fdcId: 9001, density: 0.92 },
+      { id: 'cat-girasol', name: 'aceite de girasol', fdcId: 9010, density: 0.92 },
+      { id: 'cat-coco', name: 'aceite de coco', fdcId: 9012, density: 0.92 },
+      { id: 'cat-pan-int', name: 'pan integral', fdcId: 9002, density: null },
+      { id: 'cat-pan-bl', name: 'pan blanco', fdcId: 9011, density: null },
+      { id: 'cat-vinagre', name: 'vinagre de vino', fdcId: 9020, density: null },
+    ]
+
+    // Case 1: recipe has generic "aceite", step uses specific "aceite de oliva".
+    {
+      const recipe = makeRecipe({
+        ingredients: [
+          { id: 'row-1', ingredientId: 'cat-aceite', quantity: 30, unit: 'ml', displayOrder: 0 },
+        ],
+        steps: [{ index: 0, text: 'Echa el aceite de oliva en la sarten.', durationMin: 1 }],
+      })
+      const result = lintRecipe(recipe, { ingredientCatalog: catalog })
+      const flagged = result.errors
+        .filter(e => e.code === 'STEP_INGREDIENT_NOT_LISTED')
+        .map(e => e.message)
+      expect(flagged).toEqual([])
+    }
+
+    // Case 2: recipe has specific "aceite de oliva virgen", step uses bare "aceite".
+    {
+      const recipe = makeRecipe({
+        ingredients: [
+          { id: 'row-1', ingredientId: 'cat-aov', quantity: 30, unit: 'ml', displayOrder: 0 },
+        ],
+        steps: [{ index: 0, text: 'En una cazuela amplia echa el aceite.', durationMin: 1 }],
+      })
+      const result = lintRecipe(recipe, { ingredientCatalog: catalog })
+      const flagged = result.errors
+        .filter(e => e.code === 'STEP_INGREDIENT_NOT_LISTED')
+        .map(e => e.message)
+      expect(flagged).toEqual([])
+    }
+
+    // Case 3: recipe has NO aceite at all, step writes "vinagre de vino" but
+    // the recipe doesn't list it. This is a legitimate flag — different head.
+    {
+      const recipe = makeRecipe({
+        ingredients: [
+          { id: 'row-1', ingredientId: 'cat-pan-int', quantity: 100, unit: 'g', displayOrder: 0 },
+        ],
+        steps: [
+          { index: 0, text: 'Tuesta el pan.', durationMin: 3 },
+          { index: 1, text: 'Anade el vinagre de vino al final.', durationMin: 1 },
+        ],
+      })
+      const result = lintRecipe(recipe, { ingredientCatalog: catalog })
+      const flagged = result.errors
+        .filter(e => e.code === 'STEP_INGREDIENT_NOT_LISTED')
+        .map(e => e.message)
+      expect(flagged.some(m => m.includes('vinagre de vino'))).toBe(true)
+    }
+  })
+
   it('STEP_INGREDIENT_NOT_LISTED does NOT fire on head-only matches (regression: "aceite" should not pull in "aceite de girasol")', () => {
     // The user wrote "echar el aceite" referring to their own "aceite de
     // oliva virgen". The catalog also has "aceite de girasol", "aceite de

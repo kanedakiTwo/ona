@@ -395,6 +395,26 @@ export function lintRecipe(recipe: RecipeInput, opts: LintOptions): LintResult {
   // Set of catalog ingredient ids attached to this recipe.
   const recipeIngredientIds = new Set(ingredients.map(i => i.ingredientId))
 
+  // Set of head nouns covered by the recipe's own ingredients. We use this
+  // to suppress STEP_INGREDIENT_NOT_LISTED for catalog siblings: if the
+  // recipe already has SOME ingredient whose head is "aceite", then a step
+  // mention of "aceite de girasol" (or any other "aceite *" not in the
+  // recipe) was clearly meant to refer to the user's own aceite. Flagging
+  // every other catalog sibling would be noise.
+  //
+  // This is the formal version of the user's rule on 2026-05-16:
+  //   "if recipe has aceite and step mentions aceite de oliva → no error;
+  //    if recipe has aceite de oliva and step mentions aceite → no error."
+  // Both reduce to: the recipe's head-noun set covers the catalog row's
+  // head, so the user's intent is unambiguous.
+  const recipeHeads = new Set<string>()
+  for (const ing of ingredients) {
+    const indexed = catalog.indexedById.get(ing.ingredientId)
+    if (!indexed) continue
+    const head = indexed.nameTokens[0]
+    if (head && isContentToken(head)) recipeHeads.add(head)
+  }
+
   // Map recipe-ingredient row id → its catalog ingredient id (for ingredientRefs lookup).
   const rowIdToCatalogId = new Map<string, string>()
   for (const ing of ingredients) {
@@ -420,6 +440,11 @@ export function lintRecipe(recipe: RecipeInput, opts: LintOptions): LintResult {
       if (!stepMentionsIngredient(data.tokens, data.stems, data.fullNorm, cat, 'strict')) continue
       if (recipeIngredientIds.has(cat.row.id)) continue
       if (refsCatalogIds.has(cat.row.id)) continue
+      // Suppress siblings: the recipe already covers this head, so the
+      // user's intent for any mention of this head is one of their own
+      // ingredients, not this catalog row.
+      const catHead = cat.nameTokens[0]
+      if (catHead && recipeHeads.has(catHead)) continue
       errors.push({
         code: 'STEP_INGREDIENT_NOT_LISTED',
         message: `El paso ${i + 1} menciona "${cat.row.name}" pero no aparece en los ingredientes ni está vinculado.`,

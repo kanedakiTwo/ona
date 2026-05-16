@@ -194,9 +194,9 @@ export default function NewRecipePage() {
 
   async function handleSubmit(e: React.FormEvent, opts: { force?: boolean } = {}) {
     e.preventDefault()
-    // `force` comes from the button the user actually clicked, NOT from
-    // closure state — onClick fires before submit and updating state via
-    // setAllowForce wouldn't be visible in this same handleSubmit run.
+    // `force` is passed explicitly by each button's onClick — relying on
+    // closure state (allowForce) would read a stale value because state
+    // updates are async vs the click handler that fires before this runs.
     const useForce = !!opts.force
     setErrors({})
 
@@ -308,7 +308,11 @@ export default function NewRecipePage() {
           <span className="h-px flex-1 bg-[#DDD6C5]" />
         </div>
 
-        <form onSubmit={handleSubmit} className="mt-10 space-y-10" noValidate>
+        <form
+          onSubmit={handleSubmit}
+          className="mt-10 space-y-10"
+          noValidate
+        >
           {/* Name */}
           <section>
             <div className="text-eyebrow text-[#7A7066]">Capitulo 01</div>
@@ -676,18 +680,17 @@ export default function NewRecipePage() {
                 type="submit"
                 disabled={createRecipe.isPending}
                 className="rounded-full bg-[#1A1612] px-6 py-2.5 text-[12px] font-medium uppercase tracking-[0.12em] text-[#FAF6EE] transition-all hover:bg-[#2D6A4F] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-                onClick={() => setAllowForce(false)}
               >
-                {createRecipe.isPending && !allowForce ? "Guardando..." : "Crear receta"}
+                {createRecipe.isPending ? "Guardando..." : "Crear receta"}
               </button>
               {allowForce && (
                 <button
                   type="submit"
+                  name="force"
                   disabled={createRecipe.isPending}
                   className="rounded-full border border-[#C65D38] bg-transparent px-6 py-2.5 text-[12px] font-medium uppercase tracking-[0.12em] text-[#C65D38] transition-all hover:bg-[#C65D38] hover:text-[#FAF6EE] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-                  onClick={() => setAllowForce(true)}
                 >
-                  {createRecipe.isPending && allowForce ? "Guardando..." : "Guardar igualmente"}
+                  {createRecipe.isPending ? "Guardando..." : "Guardar igualmente"}
                 </button>
               )}
               <Link

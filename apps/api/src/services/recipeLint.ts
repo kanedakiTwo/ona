@@ -156,12 +156,22 @@ export function levenshtein(a: string, b: string): number {
   return prev[n]
 }
 
-/** Match threshold: ≤ 1 for short tokens, ≤ 2 otherwise. */
+/**
+ * Token-equivalent for step→ingredient matching. Exact match, or — for tokens
+ * long enough to make a typo plausible — Levenshtein distance ≤ 1.
+ *
+ * Earlier this also accepted distance ≤ 2 for tokens ≥ 6 chars; that produced
+ * false positives like "cazuela" → "canela" (the catalog ingredient was never
+ * mentioned in the step, but the lint flagged it anyway). Spanish plurals and
+ * gender are already covered by `stem()` upstream — fuzziness here was paying
+ * for typos but the price was wrong matches on common cooking nouns.
+ */
 function isFuzzyMatch(a: string, b: string): boolean {
   if (a === b) return true
+  if (Math.abs(a.length - b.length) > 1) return false
   const len = Math.max(a.length, b.length)
-  const threshold = len <= 5 ? 1 : 2
-  return levenshtein(a, b) <= threshold
+  if (len < 7) return false
+  return levenshtein(a, b) <= 1
 }
 
 /**

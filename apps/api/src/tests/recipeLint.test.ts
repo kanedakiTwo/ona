@@ -154,6 +154,30 @@ describe('lintRecipe — errors', () => {
     expect(issue!.path).toBe('steps[0].text')
   })
 
+  it('does NOT flag false positives from edit-distance neighbours (regression: "cazuela" ≠ "canela")', () => {
+    // "cazuela" and "canela" differ by 2 edits in 7-char strings — earlier
+    // the threshold of ≤2 fuzzy-matched them and flagged "canela" as missing
+    // from the recipe even though the step only mentioned the cooking pot.
+    // Same family: "pasas" should not match "pasta" / "pasa" / "vasos" etc.
+    const catalog: CatalogIngredient[] = [
+      ...CATALOG,
+      { id: 'cat-canela', name: 'canela', fdcId: 2001, density: null },
+      { id: 'cat-pasas', name: 'pasas', fdcId: 2002, density: null },
+    ]
+    const recipe = makeRecipe({
+      steps: [
+        { index: 0, text: 'En una cazuela amplia echa el aceite. Añade la cebolla.', durationMin: 5, ingredientRefs: ['row-3'] },
+        { index: 1, text: 'Pica la pasta de tomate y mezcla con el pollo.', durationMin: 5, ingredientRefs: ['row-1'] },
+      ],
+    })
+    const result = lintRecipe(recipe, { ingredientCatalog: catalog })
+    const flagged = result.errors
+      .filter(e => e.code === 'STEP_INGREDIENT_NOT_LISTED')
+      .map(e => e.message)
+    expect(flagged.some(m => m.includes('canela'))).toBe(false)
+    expect(flagged.some(m => m.includes('pasas'))).toBe(false)
+  })
+
   it('STEP_INGREDIENT_NOT_LISTED triggers on Spanish plural / inflection', () => {
     // "cebollas" should fuzzy-match "cebolla" via stemming
     const recipe = makeRecipe({

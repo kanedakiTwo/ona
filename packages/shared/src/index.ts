@@ -80,3 +80,5 @@ export type { IngredientRowState, RecipeFormState } from './recipeFormPayload.js
 export { normalizeTerm } from './units/normalize.js'
 export { VOCABULARY, getTermBySynonym } from './units/vocabulary.js'
 export type { VocabularyTerm, UnitFactor } from './units/vocabulary.js'
+export { resolveFromTable } from './units/resolve.js'
+export type { ResolveInput, ResolveResult } from './units/resolve.js'

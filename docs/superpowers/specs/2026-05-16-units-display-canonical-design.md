@@ -5,15 +5,14 @@
 
 ## Problem
 
-ONA recipes currently store each ingredient row as `{ quantity, unit }` where `unit` is the enum `g | kg | ml | l | u | cda | cdita | pizca | al_gusto`. Two consequences:
+ONA recipes currently store each ingredient row as `{ quantity, unit }` where `unit` is the enum `g | ml | u | cda | cdita | pizca | al_gusto` (defined in `packages/shared/src/constants/enums.ts`). Three pain points:
 
-1. **Abstract units in the enum bleed into nutrition.** `aggregateNutrition` only knows how to convert `g | ml | u` with `ingredient.density` / `ingredient.unitWeight`. When a row arrives as `1 cda`, it's silently skipped during nutrition aggregation, so kcal/macros under-report.
-2. **The author's intent is lost.** A recipe that says "1 cda de aceite" gets stored as either:
-   - `quantity=1, unit='cda'` — preserves wording, breaks nutrition.
-   - `quantity=15, unit='ml'` — fixes nutrition, loses the human-readable wording.
-   No middle ground. The user wants both.
-
-Plus a related gap: when a recipe doesn't specify servings, the extractor leaves them at a hard-coded default (`2`) with no signal that it was a guess.
+1. **Abstract conversions are hard-coded in one place and don't extend.** `apps/api/src/services/nutrition/aggregate.ts` carries module-level constants `CDA_ML = 15` and `CDITA_ML = 5` and a `switch` on the literal unit values. `pizca` and `al_gusto` short-circuit to `0 g`. Any new abstract term (`chorro`, `puñado`, `ramita`…) requires a code change to that switch. There is no mechanism for per-ingredient overrides (`puñado de espinacas` ≠ `puñado de almendras` in grams).
+2. **The author's intent is lost.** A recipe that says "1 cda de aceite" can be stored as either:
+   - `quantity=1, unit='cda'` — preserves wording, ties the row to the hard-coded conversion in `aggregate.ts`.
+   - `quantity=15, unit='ml'` — fixes nutrition for any case, loses the human-readable wording.
+   No middle ground. The user wants both — display the author's wording in the UI, compute nutrition + scaling from a canonical value.
+3. **Servings absent ⇒ silent default.** When a recipe doesn't state how many it serves, the extractor leaves the field empty / defaulted to `2` with no signal that it was guessed. The user can't tell explicit from estimated.
 
 ## Goals
 
@@ -35,11 +34,11 @@ Plus a related gap: when a recipe doesn't specify servings, the extractor leaves
 |---|---|---|
 | Q1 | Vocabulary model | Free-form `display_unit` text + canonical `(quantity, unit)` in g/ml/u. |
 | Q2 | Conversion engine | Hybrid: deterministic table for ~22 common terms; LLM fallback for unknown free-form, cached in DB. |
-| Q3 | Schema layout | Add new `display_quantity` + `display_unit` columns; collapse `unit` enum to `g \| kg \| ml \| l \| u`. |
+| Q3 | Schema layout | Add new `display_quantity` + `display_unit` columns; tighten `unit` enum to canonical-only `g \| ml \| u`. (Current enum has `cda \| cdita \| pizca \| al_gusto` mixed in; those move to `display_unit` post-migration.) |
 | Q4 | Servings deduction | Extractor prompts always return `servings` + `servings_confidence: 'explicit' \| 'estimated'`. |
 | Q5 | Scaling | Hybrid: keep abstract display when the scaled quantity matches a culinary fraction; otherwise format canonical. |
 
-## Deterministic vocabulary (22 canonical terms)
+## Deterministic vocabulary (29 canonical terms)
 
 Researched against six Spanish cooking sources (La Española Aceites, Recetas La Masía, MAPFRE Hogar, OCU, Mi guía de cocina, Larousse Cocina). Synonyms cover the common variants and abbreviations encountered in recipe writing.
 
@@ -106,12 +105,13 @@ ALTER TABLE recipe_ingredients
 ALTER TABLE recipe_ingredients DROP CONSTRAINT IF EXISTS recipe_ingredients_unit_check;
 ALTER TABLE recipe_ingredients
   ADD CONSTRAINT recipe_ingredients_unit_check
-  CHECK (unit IN ('g','kg','ml','l','u'));
+  CHECK (unit IN ('g','ml','u'));
 ```
 
-- `quantity` + `unit` are always canonical post-migration.
+- `quantity` + `unit` are always canonical (`g | ml | u`) post-migration.
 - `display_quantity` + `display_unit` are NULL when the original was already canonical.
 - A row with `display_unit` set takes precedence in the UI; nutrition/scaling always uses canonical.
+- The narrower canonical set matches what `aggregate.ts` already supports today. Recipes using kilograms or litres translate to `g`/`ml` at write time (1.5 kg → quantity 1500, unit g; the LLM prompt already handles this in extraction).
 
 ### `recipes`
 
@@ -142,8 +142,8 @@ Cache stores only LLM-resolved and manual-override conversions. Table resolution
 ## Shared types
 
 ```ts
-// packages/shared/src/types/recipe.ts
-export const UNITS = ['g', 'kg', 'ml', 'l', 'u'] as const
+// packages/shared/src/constants/enums.ts
+export const UNITS = ['g', 'ml', 'u'] as const
 export type Unit = (typeof UNITS)[number]
 
 const recipeIngredientWriteSchema = z.object({
@@ -163,7 +163,18 @@ export interface ExtractedRecipe {
   servings: number               // no longer nullable
   servingsConfidence: 'explicit' | 'estimated'
 }
+
+export interface Recipe {
+  // …existing server-read shape
+  servingsConfidence: 'explicit' | 'estimated'
+}
+
+// createRecipeSchema gains the new fields (default 'explicit' for manual writes).
 ```
+
+The new `servingsConfidence` flows: extractor produces it on `ExtractedRecipe`; `persistRecipe` writes it; `toDetailRecipe` returns it on `Recipe`; the form's `buildRecipePayload` carries it.
+
+Existing `recipeFormContract.test.ts` and `recipeFormLintContract.test.ts` are extended to cover the new fields so the form↔schema drift can't recur.
 
 ## Conversion engine
 
@@ -321,7 +332,7 @@ export function formatScaled(input: FormatScaledInput): {
 }
 ```
 
-- Fractions rendered as Unicode-safe ASCII: `1/2`, `1/4`, `1/3`, `2/3`, `3/4`. Mixed: `1 1/2`.
+- Fractions rendered as Unicode-safe ASCII: `1/2`, `1/4`, `1/3`, `2/3`, `3/4`. Mixed: `1 1/2`, `1 1/3`, `2 2/3`. Decimal fractions (`1.33`, `1.66`, `2.33`, `2.66`) in the culinary-clean list are rendered as thirds (`1 1/3`, `1 2/3`, `2 1/3`, `2 2/3`).
 - Canonical rounding by magnitude:
   - `< 1` → 2 decimals (`0.5 g`)
   - `< 10` → 1 decimal (`4.5 g`)
@@ -330,7 +341,7 @@ export function formatScaled(input: FormatScaledInput): {
 
 ## Migration
 
-Drizzle migration `0008_units_display_split.sql` is additive: adds columns + cache table. The constraint tightening to the new enum runs as a separate manual SQL only after backfill confirms zero rows still carry old values.
+Drizzle migration `0008_units_display_split.sql` is additive: adds the two new columns, adds `recipes.servings_confidence`, creates `unit_conversion_cache`. The constraint tightening to the canonical-only enum runs as a separate Drizzle migration `0009_units_canonical_only_check.sql` AFTER the backfill script confirms zero rows still carry abstract values. Splitting the constraint change into its own migration keeps `0008` reversible (`DROP COLUMN` only) and ensures CI can never trip on a half-migrated DB.
 
 Backfill script `apps/api/scripts/migrateUnitsToDisplay.ts`:
 
@@ -349,7 +360,7 @@ Deploy order:
 1. `railway up --service ona-api` applies migration `0008` (additive).
 2. Locally: `tsx scripts/migrateUnitsToDisplay.ts --dry-run` → expect non-zero rows to migrate, zero unresolvable.
 3. `--execute` to commit.
-4. Apply enum-tightening migration `0009` only after step 3 reports a clean run.
+4. Apply enum-tightening migration `0009_units_canonical_only_check.sql` only after step 3 reports a clean run (`apps/api/scripts/migrateUnitsToDisplay.ts --execute` exit code 0, zero rows with `unit IN ('cda','cdita','pizca','al_gusto')`).
 5. Spec gate: update `specs/recipes.md` Ingredient Model section.
 
 ## Test plan
@@ -382,7 +393,11 @@ Deploy order:
 
 2. **Recipe "una pizca de sal" for 4 diners**:
    - DB row: `quantity=0.5, unit='g'`, `display_quantity=1, display_unit='pizca'`.
-   - UI at 8: "2 pizcas de sal" or "1 g de sal" depending on policy threshold (>2× threshold falls back).
+   - UI at 4: "1 pizca de sal".
+   - UI at 8: factor=2 is in the culinary-clean list → "2 pizcas de sal".
+   - UI at 6: factor=1.5 is in the culinary-clean list → "1 1/2 pizcas de sal".
+   - UI at 11: factor=2.75 is in the culinary-clean list → "2 3/4 pizcas de sal".
+   - (Same scaling rule as the abstract-cda case — no separate "2× threshold".)
 
 3. **URL extraction without explicit servings**:
    - LLM returns `servings: 4, servingsConfidence: 'estimated'`.

@@ -236,11 +236,27 @@ function buildCatalogIndex(catalog: CatalogIngredient[]): CatalogIndex {
  *   2. Single-token name fuzzy-matches some token (or its stem) in the text
  *   3. Two-token name fuzzy-matches some bigram in the text
  */
+/**
+ * Two flavours of step→ingredient matching, because the two checks that use
+ * this function have opposite intentions:
+ *
+ *   - `lenient` ("does the recipe's own ingredient get mentioned somewhere?")
+ *     accepts a head-noun match for multi-word names. The user wrote
+ *     "aceite" in step 2; that's enough to consider "aceite de oliva virgen"
+ *     (in the recipe) non-orphan.
+ *
+ *   - `strict` ("does the step also mention catalog ingredients absent from
+ *     the recipe?") refuses head-only matches. Otherwise writing "aceite"
+ *     would simultaneously implicate "aceite de girasol", "aceite de coco",
+ *     etc. as missing ingredients, even though the user clearly meant their
+ *     own aceite.
+ */
 function stepMentionsIngredient(
   textTokens: string[],
   textStems: string[],
   fullNormalizedText: string,
-  cat: CatalogIndex['rows'][number]
+  cat: CatalogIndex['rows'][number],
+  mode: 'lenient' | 'strict' = 'lenient'
 ): boolean {
   if (cat.normName.length === 0) return false
   // Full-name substring at word boundaries (cheap and precise; avoids "sal"
@@ -258,19 +274,18 @@ function stepMentionsIngredient(
   }
 
   // Multi-token names ("aceite de oliva virgen", "pan integral", "salsa de
-  // soja"…): also accept a match on the head noun. Spanish noun phrases put
-  // the head first, and recipe writers typically drop the qualifiers in
-  // running prose ("añade el aceite" → "aceite de oliva virgen"). Without
-  // this, every multi-word ingredient ended up flagged as ORPHAN. We only
-  // honour the head when it's content-bearing (≥ 4 chars, not a Spanish
-  // stop word) so e.g. "salsa" (5) still matches but "sal" (3) wouldn't if
-  // it ever became a multi-token name.
-  const head = cat.nameTokens[0]
-  const headStem = cat.nameStems[0]
-  if (isContentToken(head)) {
-    for (let i = 0; i < textTokens.length; i++) {
-      if (isFuzzyMatch(textTokens[i], head)) return true
-      if (isFuzzyMatch(textStems[i], headStem)) return true
+  // soja"…) in LENIENT mode: also accept a match on the head noun. Spanish
+  // noun phrases put the head first, and recipe writers typically drop the
+  // qualifiers in running prose ("añade el aceite" → "aceite de oliva virgen").
+  // Without this, every multi-word ingredient ended up flagged as ORPHAN.
+  if (mode === 'lenient') {
+    const head = cat.nameTokens[0]
+    const headStem = cat.nameStems[0]
+    if (isContentToken(head)) {
+      for (let i = 0; i < textTokens.length; i++) {
+        if (isFuzzyMatch(textTokens[i], head)) return true
+        if (isFuzzyMatch(textStems[i], headStem)) return true
+      }
     }
   }
 
@@ -283,7 +298,7 @@ function stepMentionsIngredient(
   }
 
   // Names with 3+ tokens: rely on whole-phrase substring (already checked above)
-  // OR the head-token match above.
+  // OR the head-token match above in lenient mode.
   return false
 }
 
@@ -399,7 +414,10 @@ export function lintRecipe(recipe: RecipeInput, opts: LintOptions): LintResult {
       if (catId) refsCatalogIds.add(catId)
     }
     for (const cat of catalog.rows) {
-      if (!stepMentionsIngredient(data.tokens, data.stems, data.fullNorm, cat)) continue
+      // STRICT mode: don't fire on head-only matches. "aceite" in the step
+      // would otherwise pull in every "aceite de X" sibling that the recipe
+      // happens not to list, even when the user clearly meant their own.
+      if (!stepMentionsIngredient(data.tokens, data.stems, data.fullNorm, cat, 'strict')) continue
       if (recipeIngredientIds.has(cat.row.id)) continue
       if (refsCatalogIds.has(cat.row.id)) continue
       errors.push({

@@ -154,6 +154,39 @@ describe('lintRecipe — errors', () => {
     expect(issue!.path).toBe('steps[0].text')
   })
 
+  it('STEP_INGREDIENT_NOT_LISTED does NOT fire on head-only matches (regression: "aceite" should not pull in "aceite de girasol")', () => {
+    // The user wrote "echar el aceite" referring to their own "aceite de
+    // oliva virgen". The catalog also has "aceite de girasol", "aceite de
+    // coco", etc. — none of those should be flagged as missing just because
+    // the step says "aceite".
+    const catalog: CatalogIngredient[] = [
+      { id: 'cat-aov', name: 'aceite de oliva virgen', fdcId: 9001, density: 0.92 },
+      { id: 'cat-girasol', name: 'aceite de girasol', fdcId: 9010, density: 0.92 },
+      { id: 'cat-pan-int', name: 'pan integral', fdcId: 9002, density: null },
+      { id: 'cat-pan-bl', name: 'pan blanco', fdcId: 9011, density: null },
+    ]
+    const recipe = makeRecipe({
+      ingredients: [
+        { id: 'row-1', ingredientId: 'cat-aov', quantity: 30, unit: 'ml', displayOrder: 0 },
+        { id: 'row-2', ingredientId: 'cat-pan-int', quantity: 100, unit: 'g', displayOrder: 1 },
+      ],
+      steps: [
+        { index: 0, text: 'En una cazuela amplia echa el aceite.', durationMin: 1 },
+        { index: 1, text: 'Anade el pan en daditos.', durationMin: 3 },
+      ],
+    })
+    const result = lintRecipe(recipe, { ingredientCatalog: catalog })
+    const flagged = result.errors
+      .filter(e => e.code === 'STEP_INGREDIENT_NOT_LISTED')
+      .map(e => e.message)
+    expect(flagged.some(m => m.includes('aceite de girasol'))).toBe(false)
+    expect(flagged.some(m => m.includes('pan blanco'))).toBe(false)
+    // And the ORPHAN check still passes (head-only match keeps the recipe's
+    // own ingredients off the orphan list).
+    const orphans = result.errors.filter(e => e.code === 'ORPHAN_INGREDIENT')
+    expect(orphans).toEqual([])
+  })
+
   it('matches multi-token ingredient names via head noun (regression: "aceite" mentions "aceite de oliva virgen")', () => {
     // Recipe writers shorten "aceite de oliva virgen" to "aceite", "pan
     // integral" to "pan", "salsa de soja" to "salsa". The lint must not

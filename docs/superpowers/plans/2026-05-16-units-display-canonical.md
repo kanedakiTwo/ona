@@ -102,9 +102,11 @@ displayQuantity: real('display_quantity'),
 displayUnit: text('display_unit'),
 ```
 
-Add new table at end of file:
+Add new table at end of file. Note the `ingredient_id` is nullable (generic cache entries have no specific ingredient) which means we **cannot** put it in a composite primary key — Postgres rejects NULL in PK columns. Instead we use a partial unique index built with `COALESCE` to a sentinel zero-UUID:
+
 ```ts
 export const unitConversionCache = pgTable('unit_conversion_cache', {
+  id: uuid('id').defaultRandom().primaryKey(),
   displayUnit: text('display_unit').notNull(),
   ingredientId: uuid('ingredient_id').references(() => ingredients.id, { onDelete: 'cascade' }),
   gramsPerUnit: real('grams_per_unit'),
@@ -112,10 +114,16 @@ export const unitConversionCache = pgTable('unit_conversion_cache', {
   source: text('source', { enum: ['llm', 'manual'] }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
-  pk: primaryKey({ columns: [t.displayUnit, t.ingredientId] }),
   unitIdx: index('idx_unit_cache_unit').on(t.displayUnit),
+  // NULL-safe uniqueness: same display_unit can have one generic + N per-ingredient rows.
+  uniqKey: uniqueIndex('idx_unit_cache_key').on(
+    t.displayUnit,
+    sql`COALESCE(${t.ingredientId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
+  ),
 }))
 ```
+
+**Update imports** at the top of `schema.ts`. The file already imports `pgTable, uuid, text, integer, real, boolean, timestamp, date, jsonb, uniqueIndex, index, check` — add `sql` from `drizzle-orm` (separate import line) if not already present. Do **not** add `primaryKey` — we use the single-column form `.primaryKey()` on `id`.
 
 - [ ] **Step 2: Generate migration**
 
@@ -180,7 +188,10 @@ describe('synonym lookup', () => {
     ['cucharadita', 'cdita'],
     ['cda.', 'cda'],
     ['cdta', 'cdita'],
-    ['c.s.', 'cda'],          // c.s. with numeric context resolves to cda — see resolver
+    // NOTE: `c.s.` is intentionally NOT in any synonym list. It is contextually
+    // ambiguous (cda when a number precedes it, otherwise cantidad suficiente).
+    // The resolver handles this case explicitly before consulting the synonym
+    // index; the vocabulary itself stays unambiguous.
     ['un puñado', 'puñado'],
     ['atadillo', 'manojo'],
     ['ramillete', 'manojo'],
@@ -947,6 +958,15 @@ ALTER TABLE recipe_ingredients
 ```
 
 - [ ] Update `enums.ts`, regenerate types, fix any TS compile errors that surface.
+
+- [ ] **Grep for stragglers** — find every consumer that pattern-matches on the dropped literals:
+
+```bash
+grep -rn "'cda'\|'cdita'\|'pizca'\|'al_gusto'" apps/api/src apps/web/src packages/shared/src \
+  --include="*.ts" --include="*.tsx" | grep -v "test\.ts\|\.test\.tsx\|migrations/"
+```
+
+Each hit is either: (a) dead code → delete; (b) a place that needs to read `displayUnit` instead → fix. Run `pnpm tsc --noEmit` everywhere as the final safety net.
 
 - [ ] Deploy `ona-api` — migration `0009` applies automatically via `db:migrate`.
 

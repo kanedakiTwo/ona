@@ -154,6 +154,36 @@ describe('lintRecipe — errors', () => {
     expect(issue!.path).toBe('steps[0].text')
   })
 
+  it('matches multi-token ingredient names via head noun (regression: "aceite" mentions "aceite de oliva virgen")', () => {
+    // Recipe writers shorten "aceite de oliva virgen" to "aceite", "pan
+    // integral" to "pan", "salsa de soja" to "salsa". The lint must not
+    // flag these as ORPHAN_INGREDIENT.
+    const catalog: CatalogIngredient[] = [
+      { id: 'cat-aov', name: 'aceite de oliva virgen', fdcId: 9001, density: 0.92 },
+      { id: 'cat-pan', name: 'pan integral', fdcId: 9002, density: null },
+      { id: 'cat-soja', name: 'salsa de soja', fdcId: 9003, density: 1.15 },
+    ]
+    const recipe = makeRecipe({
+      ingredients: [
+        { id: 'row-1', ingredientId: 'cat-aov', quantity: 30, unit: 'ml', displayOrder: 0 },
+        { id: 'row-2', ingredientId: 'cat-pan', quantity: 100, unit: 'g', displayOrder: 1 },
+        { id: 'row-3', ingredientId: 'cat-soja', quantity: 20, unit: 'ml', displayOrder: 2 },
+      ],
+      steps: [
+        { index: 0, text: 'Echa el aceite en la sarten.', durationMin: 1 },
+        { index: 1, text: 'Tuesta el pan.', durationMin: 3 },
+        { index: 2, text: 'Anade la salsa al final.', durationMin: 1 },
+      ],
+    })
+    const result = lintRecipe(recipe, { ingredientCatalog: catalog })
+    const orphans = result.errors
+      .filter(e => e.code === 'ORPHAN_INGREDIENT')
+      .map(e => e.message)
+    expect(orphans.some(m => m.includes('aceite de oliva virgen'))).toBe(false)
+    expect(orphans.some(m => m.includes('pan integral'))).toBe(false)
+    expect(orphans.some(m => m.includes('salsa de soja'))).toBe(false)
+  })
+
   it('does NOT flag false positives from edit-distance neighbours (regression: "cazuela" ≠ "canela")', () => {
     // "cazuela" and "canela" differ by 2 edits in 7-char strings — earlier
     // the threshold of ≤2 fuzzy-matched them and flagged "canela" as missing

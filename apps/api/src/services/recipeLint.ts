@@ -257,6 +257,23 @@ function stepMentionsIngredient(
     return false
   }
 
+  // Multi-token names ("aceite de oliva virgen", "pan integral", "salsa de
+  // soja"…): also accept a match on the head noun. Spanish noun phrases put
+  // the head first, and recipe writers typically drop the qualifiers in
+  // running prose ("añade el aceite" → "aceite de oliva virgen"). Without
+  // this, every multi-word ingredient ended up flagged as ORPHAN. We only
+  // honour the head when it's content-bearing (≥ 4 chars, not a Spanish
+  // stop word) so e.g. "salsa" (5) still matches but "sal" (3) wouldn't if
+  // it ever became a multi-token name.
+  const head = cat.nameTokens[0]
+  const headStem = cat.nameStems[0]
+  if (isContentToken(head)) {
+    for (let i = 0; i < textTokens.length; i++) {
+      if (isFuzzyMatch(textTokens[i], head)) return true
+      if (isFuzzyMatch(textStems[i], headStem)) return true
+    }
+  }
+
   if (cat.nameTokens.length === 2) {
     const [a, b] = cat.nameTokens
     for (let i = 0; i < textTokens.length - 1; i++) {
@@ -265,8 +282,25 @@ function stepMentionsIngredient(
     return false
   }
 
-  // Names with 3+ tokens: rely on whole-phrase substring (already checked above).
+  // Names with 3+ tokens: rely on whole-phrase substring (already checked above)
+  // OR the head-token match above.
   return false
+}
+
+/** Spanish stop words / articles / prepositions that can't be a head noun. */
+const STOP_WORDS = new Set([
+  'de', 'al', 'del', 'la', 'el', 'con', 'sin', 'en', 'a',
+  'los', 'las', 'una', 'uno', 'que', 'por', 'para',
+])
+
+/**
+ * A token worth treating as the head noun of a multi-word ingredient name.
+ * 3 chars minimum so "pan" (head of "pan integral", "pan blanco") still
+ * matches; shorter tokens are almost always Spanish articles or pronouns.
+ */
+function isContentToken(token: string): boolean {
+  if (token.length < 3) return false
+  return !STOP_WORDS.has(token)
 }
 
 /** Substring containment, but only at word boundaries (start/end or whitespace-flanked). */

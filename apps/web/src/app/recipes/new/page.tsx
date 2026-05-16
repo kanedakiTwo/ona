@@ -65,6 +65,9 @@ export default function NewRecipePage() {
 
   // Per-field validation errors surfaced after a submit attempt.
   const [errors, setErrors] = useState<Record<string, string>>({})
+  // Set to true after the server rejects with lint errors. The next click
+  // re-submits with ?force=1 so the user can save the recipe anyway.
+  const [allowForce, setAllowForce] = useState(false)
 
   function handlePhotoExtracted(data: ExtractedRecipe) {
     setName(data.name)
@@ -189,8 +192,12 @@ export default function NewRecipePage() {
     return null
   })
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent, opts: { force?: boolean } = {}) {
     e.preventDefault()
+    // `force` comes from the button the user actually clicked, NOT from
+    // closure state — onClick fires before submit and updating state via
+    // setAllowForce wouldn't be visible in this same handleSubmit run.
+    const useForce = !!opts.force
     setErrors({})
 
     const payload = buildPayload()
@@ -229,13 +236,14 @@ export default function NewRecipePage() {
       return
     }
 
-    createRecipe.mutate(parsed.data, {
+    createRecipe.mutate({ ...parsed.data, force: useForce }, {
       onSuccess: (created) => {
         router.push(`/recipes/${created.id}`)
       },
       onError: (err) => {
         // If the server returned a typed lint failure, route each issue to
-        // the field that produced it. Otherwise fall back to a top-level msg.
+        // the field that produced it AND surface a secondary "Guardar
+        // igualmente" path — these are advisory, not hard blockers.
         if (err instanceof LintFailureError) {
           const next: Record<string, string> = {}
           for (const issue of err.issues) {
@@ -243,6 +251,7 @@ export default function NewRecipePage() {
             if (!next[key]) next[key] = issue.message
           }
           setErrors(next)
+          setAllowForce(true)
         } else {
           setErrors({ _form: err.message ?? "Error al crear la receta." })
         }
@@ -644,7 +653,7 @@ export default function NewRecipePage() {
             {Object.keys(errors).length > 0 && (
               <div className="rounded-lg border border-[#C65D38]/40 bg-[#C65D38]/10 px-4 py-3">
                 <p className="text-[12px] font-medium uppercase tracking-[0.12em] text-[#C65D38]">
-                  Faltan datos:
+                  {allowForce ? "Avisos" : "Faltan datos:"}
                 </p>
                 <ul className="mt-2 list-disc space-y-1 pl-5 text-[12px] italic text-[#C65D38]">
                   {Object.entries(errors).map(([key, msg]) => (
@@ -653,6 +662,13 @@ export default function NewRecipePage() {
                     </li>
                   ))}
                 </ul>
+                {allowForce && (
+                  <p className="mt-3 text-[12px] italic text-[#7A7066]">
+                    Estos avisos no impiden guardar. Corrige y pulsa "Crear
+                    receta" otra vez, o usa "Guardar igualmente" para aceptarlos
+                    tal cual.
+                  </p>
+                )}
               </div>
             )}
             <div className="flex items-center gap-4">
@@ -660,9 +676,20 @@ export default function NewRecipePage() {
                 type="submit"
                 disabled={createRecipe.isPending}
                 className="rounded-full bg-[#1A1612] px-6 py-2.5 text-[12px] font-medium uppercase tracking-[0.12em] text-[#FAF6EE] transition-all hover:bg-[#2D6A4F] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                onClick={() => setAllowForce(false)}
               >
-                {createRecipe.isPending ? "Guardando..." : "Crear receta"}
+                {createRecipe.isPending && !allowForce ? "Guardando..." : "Crear receta"}
               </button>
+              {allowForce && (
+                <button
+                  type="submit"
+                  disabled={createRecipe.isPending}
+                  className="rounded-full border border-[#C65D38] bg-transparent px-6 py-2.5 text-[12px] font-medium uppercase tracking-[0.12em] text-[#C65D38] transition-all hover:bg-[#C65D38] hover:text-[#FAF6EE] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                  onClick={() => setAllowForce(true)}
+                >
+                  {createRecipe.isPending && allowForce ? "Guardando..." : "Guardar igualmente"}
+                </button>
+              )}
               <Link
                 href="/recipes"
                 className="text-[12px] uppercase tracking-[0.12em] text-[#7A7066] hover:text-[#1A1612]"

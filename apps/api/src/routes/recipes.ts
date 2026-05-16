@@ -550,6 +550,10 @@ router.post(
 )
 
 // POST /recipes — create user recipe (auth required, lint-validated).
+// `?force=1` (or body `force: true`) downgrades lint errors to warnings,
+// persists the recipe, and returns it with `warnings` on the response. The
+// `/recipes/new` form uses this two-step: first attempt strict so the user
+// sees inline hints, then "Guardar igualmente" re-submits with force=1.
 router.post(
   '/recipes',
   authMiddleware,
@@ -557,7 +561,11 @@ router.post(
   async (req: AuthRequest, res) => {
     try {
       const body = req.body as RecipeWriteInput
-      const result = await persistRecipe(body, { authorId: req.userId! })
+      const force = req.query.force === '1' || (req.body && (req.body as { force?: unknown }).force === true)
+      const result = await persistRecipe(body, {
+        authorId: req.userId!,
+        softLint: force,
+      })
       if (!result.ok) {
         res.status(422).json({ errors: result.errors, warnings: result.warnings })
         return
@@ -572,7 +580,17 @@ router.post(
         fetchIngredientsForRecipes([result.recipeId]),
         fetchStepsForRecipes([result.recipeId]),
       ])
-      res.status(201).json(toDetailRecipe(newRow, ings, steps))
+      // Surface the soft-lint warnings so the client can show them on the
+      // detail page or via a banner even after a successful save.
+      const warnings = result.warnings.map((w) => ({
+        code: w.code,
+        message: w.message,
+        path: w.path,
+      }))
+      res.status(201).json({
+        ...toDetailRecipe(newRow, ings, steps),
+        warnings,
+      })
     } catch (err) {
       console.error('Create recipe error:', err)
       res.status(500).json({ error: 'Internal server error' })

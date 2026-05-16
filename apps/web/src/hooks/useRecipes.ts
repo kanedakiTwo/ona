@@ -47,12 +47,24 @@ export function useRecipe(id: string | undefined, servings?: number) {
   })
 }
 
+export interface CreateRecipeResponse extends Recipe {
+  /**
+   * Soft-lint warnings surfaced by the server when `force: true` was sent.
+   * Empty on a strict-validated create. The detail page can render these as
+   * advisory notes.
+   */
+  warnings?: Array<{ code: string; message: string; path?: string }>
+}
+
 export function useCreateRecipe() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (recipe: CreateRecipeInput) =>
-      api.post<Recipe>("/recipes", recipe),
+    mutationFn: (recipe: CreateRecipeInput & { force?: boolean }) => {
+      const { force, ...payload } = recipe
+      const url = force ? "/recipes?force=1" : "/recipes"
+      return api.post<CreateRecipeResponse>(url, payload)
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["recipes"] })
     },

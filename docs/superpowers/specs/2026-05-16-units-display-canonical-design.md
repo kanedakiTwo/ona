@@ -311,7 +311,7 @@ factor = userServings / recipe.servings
 
 ### "Culinary clean" definition
 
-A scaled quantity is clean if within ε=0.05 of any value in:
+A scaled quantity is clean if within ε=0.02 of any value in:
 
 ```
 [0.25, 0.33, 0.5, 0.66, 0.75,
@@ -320,7 +320,7 @@ A scaled quantity is clean if within ε=0.05 of any value in:
  3, 3.5, 4, 4.5, 5, 6, 8, 10, 12]
 ```
 
-OR within ε=0.05 of an integer ≥1.
+OR within ε=0.02 of an integer ≥1.
 
 ### Format module
 

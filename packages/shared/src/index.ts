@@ -75,3 +75,12 @@ export type { HouseholdSnapshot } from './utils/household.js'
 
 export { buildRecipePayload } from './recipeFormPayload.js'
 export type { IngredientRowState, RecipeFormState } from './recipeFormPayload.js'
+
+// Units
+export { normalizeTerm } from './units/normalize.js'
+export { VOCABULARY, getTermBySynonym } from './units/vocabulary.js'
+export type { VocabularyTerm, UnitFactor } from './units/vocabulary.js'
+export { resolveFromTable } from './units/resolve.js'
+export type { ResolveInput, ResolveResult } from './units/resolve.js'
+export { formatScaled, formatFraction, formatCanonical, isCulinaryClean } from './units/format.js'
+export type { FormatScaledInput, FormatScaledOutput } from './units/format.js'

@@ -17,7 +17,7 @@ ONA recipes currently store each ingredient row as `{ quantity, unit }` where `u
 ## Goals
 
 1. The UI shows whatever abstract unit the original recipe used (`cda`, `puñado`, `chorrito`, …) without losing fidelity to the author.
-2. Internally every row carries a canonical `(quantity, unit) ∈ (g|kg|ml|l|u)` so nutrition aggregation and serving scaling are always exact.
+2. Internally every row carries a canonical `(quantity, unit) ∈ (g|ml|u)` so nutrition aggregation and serving scaling are always exact. Imperial / kilo / litre values are translated to `g` / `ml` at write time.
 3. Scaling per `userServings` preserves abstract units when the math gives a clean culinary value, falls back to canonical formatted output when it doesn't.
 4. If the original recipe doesn't state servings, the extractor estimates and flags the row so the user can override.
 
@@ -33,7 +33,7 @@ ONA recipes currently store each ingredient row as `{ quantity, unit }` where `u
 | # | Decision | Choice |
 |---|---|---|
 | Q1 | Vocabulary model | Free-form `display_unit` text + canonical `(quantity, unit)` in g/ml/u. |
-| Q2 | Conversion engine | Hybrid: deterministic table for ~22 common terms; LLM fallback for unknown free-form, cached in DB. |
+| Q2 | Conversion engine | Hybrid: deterministic table for ~29 common terms; LLM fallback for unknown free-form, cached in DB. |
 | Q3 | Schema layout | Add new `display_quantity` + `display_unit` columns; tighten `unit` enum to canonical-only `g \| ml \| u`. (Current enum has `cda \| cdita \| pizca \| al_gusto` mixed in; those move to `display_unit` post-migration.) |
 | Q4 | Servings deduction | Extractor prompts always return `servings` + `servings_confidence: 'explicit' \| 'estimated'`. |
 | Q5 | Scaling | Hybrid: keep abstract display when the scaled quantity matches a culinary fraction; otherwise format canonical. |
@@ -182,7 +182,7 @@ Existing `recipeFormContract.test.ts` and `recipeFormLintContract.test.ts` are e
 
 ```
 packages/shared/src/units/
-├── vocabulary.ts        # 22 canonical terms + synonyms + factors
+├── vocabulary.ts        # 29 canonical terms + synonyms + factors
 ├── normalize.ts         # toLowerCase + NFD + strip accents
 ├── resolve.ts           # entry point: (qty, unit, ingredient?) → canonical
 └── format.ts            # canonical → display string for scaling
@@ -361,7 +361,8 @@ Deploy order:
 2. Locally: `tsx scripts/migrateUnitsToDisplay.ts --dry-run` → expect non-zero rows to migrate, zero unresolvable.
 3. `--execute` to commit.
 4. Apply enum-tightening migration `0009_units_canonical_only_check.sql` only after step 3 reports a clean run (`apps/api/scripts/migrateUnitsToDisplay.ts --execute` exit code 0, zero rows with `unit IN ('cda','cdita','pizca','al_gusto')`).
-5. Spec gate: update `specs/recipes.md` Ingredient Model section.
+5. **Delete `CDA_ML`/`CDITA_ML` constants and the abstract-unit branches of the `switch (unit)` in `apps/api/src/services/nutrition/aggregate.ts`** — the aggregator now sees canonical-only units, so the `cda`/`cdita`/`pizca`/`al_gusto` cases are dead code. Done in the same PR as the resolver introduction.
+6. Spec gate: update `specs/recipes.md` Ingredient Model section AND the AI Extraction section (because `servings_confidence` is a new user-visible field surfaced by the extractor).
 
 ## Test plan
 
@@ -369,7 +370,7 @@ Deploy order:
 
 | File | Cases |
 |---|---|
-| `unitsVocabulary.test.ts` | All 22 canonicals resolve via every declared synonym (case + accent permutations). Unknown term returns `null`. |
+| `unitsVocabulary.test.ts` | All 29 canonicals resolve via every declared synonym (case + accent permutations). Unknown term returns `null`. |
 | `unitsResolve.test.ts` | `mlPerUnit` × `density=null` → `(ml, 'ml')`. `mlPerUnit` × `density=0.92` → `(g, 'g')`. `perUnitWeight` uses `ingredient.unitWeight` when set, else default. `symbolic` returns `(0, 'g')`. |
 | `unitsFormat.test.ts` | `formatFraction(1.5) === "1 1/2"`. `formatFraction(0.25) === "1/4"`. `formatCanonical(22.7, 'ml') === "23 ml"`. `formatCanonical(0.5, 'g') === "0.5 g"`. `formatCanonical(237, 'g') === "235 g"`. |
 | `recipeScaler.test.ts` (extended) | factor=1 keeps display verbatim. factor=2 doubles display. factor=1.5 → "1 1/2 cda". factor=1.47 → display dropped, canonical rendered. |
@@ -420,7 +421,7 @@ Deploy order:
 | Backfill fails on rows whose ingredient lacks density | Script logs WARN, leaves row untouched. Constraint tighten runs only after WARN count = 0. |
 | LLM cost runaway | Cache is keyed on normalized `(displayUnit, ingredientId)`; each pair calls LLM at most once. Env var `UNIT_LLM_DAILY_CAP` caps daily calls (default 50). Beyond cap → return stub `(quantity * 1, 'g')` with warning surfaced to user. |
 | Recipe-detail UI breaks pre-migration | `unit + quantity` remain canonical for every row, so any existing reader still works. Display columns are additive. |
-| Migration `DROP CHECK` fails in prod | Step is manual and reversible: re-add the old check constraint. Additive columns survive a rollback. |
+| Migration `0009` (enum tighten) fails in prod | `0009` is a stand-alone Drizzle migration whose only change is `DROP CONSTRAINT … ADD CONSTRAINT … CHECK (unit IN ('g','ml','u'))`. Reversible by running an inverse SQL that re-adds the old check (kept in repo as `apps/api/src/db/migrations/0009_rollback.sql` for emergency use). Additive `0008` survives independently. |
 
 Rollback (destructive): `ALTER TABLE recipe_ingredients DROP COLUMN display_quantity, DROP COLUMN display_unit; DROP TABLE unit_conversion_cache; ALTER TABLE recipes DROP COLUMN servings_confidence;`.
 

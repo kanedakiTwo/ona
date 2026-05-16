@@ -131,7 +131,16 @@ Run from repo root:
 ```bash
 pnpm --filter @ona/api db:generate
 ```
-Expected: a new `apps/api/src/db/migrations/0008_*.sql` file is created. Rename it to `0008_units_display_split.sql` (and update `meta/_journal.json` if Drizzle requires).
+Expected: a new `apps/api/src/db/migrations/0008_<random-slug>.sql` file is created plus a matching entry in `apps/api/src/db/migrations/meta/_journal.json`.
+
+**Do NOT rename the generated SQL file by hand** — Drizzle's journal references it by name; renaming after generation orphans the journal entry and breaks `db:migrate`. If you want a more descriptive name, instead:
+
+```bash
+pnpm --filter @ona/api exec drizzle-kit drop   # interactive: pick 0008 to discard
+# Then edit the schema if needed and re-run db:generate.
+```
+
+Or accept the generated slug — the journal stays consistent and the next migration (`0009`) still increments correctly.
 
 - [ ] **Step 3: Inspect the generated SQL**
 
@@ -255,13 +264,75 @@ export interface VocabularyTerm {
   family: 'volume' | 'mass' | 'discrete' | 'symbolic'
 }
 
+// Note: c.s. is intentionally absent from every synonym list — it's
+// contextually ambiguous and the resolver disambiguates before consulting
+// the index.
 export const VOCABULARY: readonly VocabularyTerm[] = [
-  // Paste the 29 entries exactly as in the spec.
-  // … gota, cdita, cda postre, cda, chorrito, chorro, copa licor, tacita,
-  //   copa vino, taza desayuno, vaso, taza, tazón,
-  //   pizca, pellizco, puñado, manojo,
-  //   diente, terron, nuez, avellana, loncha, rebanada, hoja, ramita, rodaja, unidad,
-  //   al gusto, cantidad suficiente
+  // ── Volumetric (13) ──
+  { canonical: 'gota',          synonyms: ['gota','gotita','gotas','gotitas'],
+    factor: { mlPerUnit: 0.05 }, family: 'volume' },
+  { canonical: 'cdita',         synonyms: ['cdita','cdta','cucharadita','cucharaditas','cucharadita de cafe','cucharadita de te','cuchara de cafe','c.p.','c/p','tsp'],
+    factor: { mlPerUnit: 5 }, family: 'volume' },
+  { canonical: 'cda postre',    synonyms: ['cda postre','cucharada de postre','cuchara de postre'],
+    factor: { mlPerUnit: 10 }, family: 'volume' },
+  { canonical: 'cda',           synonyms: ['cda','cda.','cucharada','cucharadas','cucharada sopera','cuchara sopera','cuchs','tbsp'],
+    factor: { mlPerUnit: 15 }, family: 'volume' },
+  { canonical: 'chorrito',      synonyms: ['chorrito','chorrin','un chorrito'],
+    factor: { mlPerUnit: 10 }, family: 'volume' },
+  { canonical: 'chorro',        synonyms: ['chorro','chorreton','buen chorro'],
+    factor: { mlPerUnit: 30 }, family: 'volume' },
+  { canonical: 'copa licor',    synonyms: ['copa licor','copita','copa pequena'],
+    factor: { mlPerUnit: 50 }, family: 'volume' },
+  { canonical: 'tacita',        synonyms: ['tacita','tacita de cafe','taza de cafe'],
+    factor: { mlPerUnit: 100 }, family: 'volume' },
+  { canonical: 'copa vino',     synonyms: ['copa vino','copa de vino','vaso de vino','vaso pequeno','copa'],
+    factor: { mlPerUnit: 100 }, family: 'volume' },
+  { canonical: 'taza desayuno', synonyms: ['taza desayuno','taza de te','taza chica'],
+    factor: { mlPerUnit: 150 }, family: 'volume' },
+  { canonical: 'vaso',          synonyms: ['vaso','vaso de agua','vaso estandar','vaso normal'],
+    factor: { mlPerUnit: 200 }, family: 'volume' },
+  { canonical: 'taza',          synonyms: ['taza','cup','taza americana','taza reposteria'],
+    factor: { mlPerUnit: 240 }, family: 'volume' },
+  { canonical: 'tazon',         synonyms: ['tazon','bowl','tazon de desayuno'],
+    factor: { mlPerUnit: 250 }, family: 'volume' },
+
+  // ── Mass (4) ──
+  { canonical: 'pizca',         synonyms: ['pizca','pizquita','una pizca','pinch'],
+    factor: { gramsPerUnit: 0.5 }, family: 'mass' },
+  { canonical: 'pellizco',      synonyms: ['pellizco','pellizquito','dash'],
+    factor: { gramsPerUnit: 2 }, family: 'mass' },
+  { canonical: 'puñado',        synonyms: ['punado','puno','punadito','handful'],
+    factor: { gramsPerUnit: 30 }, family: 'mass' },
+  { canonical: 'manojo',        synonyms: ['manojo','atadillo','ramillete','bouquet','bouquet garni'],
+    factor: { gramsPerUnit: 100 }, family: 'mass' },
+
+  // ── Discrete (10) ──
+  { canonical: 'diente',        synonyms: ['diente','dientecillo','diente de ajo'],
+    factor: { perUnitWeight: true, gramsPerUnit: 5 }, family: 'discrete' },
+  { canonical: 'terron',        synonyms: ['terron','cubito','cubito de azucar','sugar cube'],
+    factor: { perUnitWeight: true, gramsPerUnit: 6 }, family: 'discrete' },
+  { canonical: 'nuez',          synonyms: ['nuez','nuez de mantequilla'],
+    factor: { perUnitWeight: true, gramsPerUnit: 20 }, family: 'discrete' },
+  { canonical: 'avellana',      synonyms: ['avellana','avellana de mantequilla'],
+    factor: { perUnitWeight: true, gramsPerUnit: 5 }, family: 'discrete' },
+  { canonical: 'loncha',        synonyms: ['loncha','lonja','tajada','feta','slice'],
+    factor: { perUnitWeight: true, gramsPerUnit: 40 }, family: 'discrete' },
+  { canonical: 'rebanada',      synonyms: ['rebanada','rebanadita','rodaja de pan'],
+    factor: { perUnitWeight: true, gramsPerUnit: 30 }, family: 'discrete' },
+  { canonical: 'hoja',          synonyms: ['hoja','hojita','hojas','hojitas'],
+    factor: { perUnitWeight: true, gramsPerUnit: 0.2 }, family: 'discrete' },
+  { canonical: 'ramita',        synonyms: ['ramita','ramito','rama','sprig'],
+    factor: { perUnitWeight: true, gramsPerUnit: 1.5 }, family: 'discrete' },
+  { canonical: 'rodaja',        synonyms: ['rodaja','ruedita','rodajas','aro','aros'],
+    factor: { perUnitWeight: true, gramsPerUnit: 12 }, family: 'discrete' },
+  { canonical: 'unidad',        synonyms: ['unidad','unidades','u','ud','ud.','pieza','piezas','pza','pieces'],
+    factor: { perUnitWeight: true }, family: 'discrete' },
+
+  // ── Symbolic (2) ──
+  { canonical: 'al gusto',      synonyms: ['al gusto','a gusto','al paladar','q.s.','to taste'],
+    factor: { symbolic: true }, family: 'symbolic' },
+  { canonical: 'cantidad suficiente', synonyms: ['cantidad suficiente','c/s','c.n.','cantidad necesaria'],
+    factor: { symbolic: true }, family: 'symbolic' },
 ]
 
 const SYNONYM_INDEX = new Map<string, VocabularyTerm>()
@@ -295,7 +366,7 @@ export type { VocabularyTerm, UnitFactor } from './units/vocabulary.js'
 pnpm --filter @ona/shared build
 cd apps/api && npx vitest run src/tests/unitsVocabulary.test.ts
 ```
-Expected: PASS for all cases. If "c.s." case fails, see the disambiguation note in the spec — for the unit test we allow `c.s.` → `cda` since the resolver handles the contextual fork at call time.
+Expected: PASS for all cases. The 29-term `expect(VOCABULARY).toHaveLength(29)` assertion + all synonym lookups should be green.
 
 - [ ] **Step 7: Commit**
 
@@ -673,7 +744,8 @@ describe('POST /units/resolve', () => {
 
   it.skipIf(!TOKEN)('unknown term resolves and caches', async () => {
     const url = `${API}/units/resolve`
-    const body = { displayQuantity: 1, displayUnit: 'rodajita generosa', ingredientId: null }
+    // ingredientId is optional — omit it for generic resolutions
+    const body = { displayQuantity: 1, displayUnit: 'rodajita generosa' }
     const r1 = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` }, body: JSON.stringify(body) })
     const j1 = await r1.json()
     expect(['llm', 'cache']).toContain(j1.source)
@@ -690,9 +762,12 @@ describe('POST /units/resolve', () => {
 const schema = z.object({
   displayQuantity: z.number().min(0),
   displayUnit: z.string().min(1).max(40),
-  ingredientId: z.string().uuid().optional(),
+  // Accept both `null` and omission — older clients may send either.
+  ingredientId: z.string().uuid().nullable().optional(),
 })
 ```
+
+The route handler treats `null` and `undefined` identically (both mean "no specific ingredient context").
 
 - [ ] **Step 3: Mount in `apps/api/src/index.ts`**
 
@@ -734,12 +809,28 @@ export const createRecipeSchema = z.object({
 })
 ```
 
-- [ ] **Step 4: Extend `ExtractedRecipe` + `Recipe`**
+- [ ] **Step 4: Audit existing consumers of `ExtractedRecipe.servings`**
+
+Before tightening the type, find every reader that handles the nullable case:
+
+```bash
+grep -rn "extracted\.servings\|\.servings ?? \|extractedRecipe\.servings" apps/ packages/ | grep -v "node_modules"
+```
+
+For each hit, ensure the consumer is OK with a guaranteed `number`. The known sites are:
+- `apps/api/src/routes/recipes.ts` — extract-from-image / extract-from-url handlers
+- `apps/web/src/app/recipes/new/page.tsx` — `handlePhotoExtracted` and URL importer
+- `apps/web/src/components/recipes/PhotoRecipeUpload.tsx`
+- `apps/web/src/components/recipes/UrlRecipeImport.tsx`
+
+Anywhere the code reads `extracted.servings ?? <fallback>`, drop the fallback (the field is now always present).
+
+- [ ] **Step 5: Extend `ExtractedRecipe` + `Recipe`**
 
 ```ts
 export interface ExtractedRecipe {
   // …
-  servings: number  // remove nullable
+  servings: number  // no longer nullable
   servingsConfidence: 'explicit' | 'estimated'
 }
 
@@ -749,9 +840,9 @@ export interface Recipe {
 }
 ```
 
-- [ ] **Step 5: Extend `buildRecipePayload`** to pass through display fields from the form state interface.
+- [ ] **Step 6: Extend `buildRecipePayload`** to pass through display fields from the form state interface.
 
-- [ ] **Step 6: Run tests, expect pass + commit**
+- [ ] **Step 7: Run tests, expect pass + commit**
 
 ```bash
 git commit -m "feat(shared): display fields + servingsConfidence in zod schemas (TDD contract test)"
@@ -803,7 +894,10 @@ For each ingredient the LLM returns both. If the recipe text doesn't use abstrac
 
 - [ ] **Step 3: Update `recipeExtractor.matchIngredients`** to preserve display fields through ingredient matching.
 
-- [ ] **Step 4: Smoke test the extractor** by feeding it a stored recipe fixture text and asserting the extracted shape includes display fields.
+- [ ] **Step 4: Smoke test the extractor.** Add fixture `apps/api/src/tests/fixtures/recipe-with-abstract-units.txt` containing 1-2 paragraphs of Spanish recipe prose that mixes "1 cda de aceite", "una pizca de sal", and a numeric explicit ingredient. Use `AnthropicProvider.extractRecipeFromText` against it (the smoke runs only when `ANTHROPIC_API_KEY` is set, otherwise `it.skipIf`). Assert the result has:
+  - `servings` populated and `servingsConfidence` set
+  - At least one ingredient with both `display.{quantity,unit}` and `canonical.{quantity,unit}` set
+  - `display.unit` is one of the 29 canonical synonyms (normalize before assertion)
 
 - [ ] **Step 5: Commit**
 
@@ -832,7 +926,9 @@ git commit -m "feat(extractor): prompts return servings confidence + display/can
 
 - [ ] React-query `useMutation` around `POST /units/resolve`. Debounce 250 ms. Cache per-form-instance via `useState`.
 
-- [ ] Unit-test against a mocked fetch (no Playwright needed here).
+- [ ] Unit-test against a mocked `fetch`. Test file: `apps/web/src/hooks/useUnitResolver.test.ts`. Note: `apps/web/` does **not** currently have a vitest config — verify with `ls apps/web/vitest.config.*`. If missing, either:
+  - Add a minimal `apps/web/vitest.config.ts` (mirroring `apps/api/vitest.config.ts`) and a `"test": "vitest run"` script in `apps/web/package.json`, OR
+  - Skip the hook unit test for v1 and rely on the Playwright spec (Task 3.5) to exercise the resolver round-trip.
 
 ### Task 3.2 — Display-unit picker in ingredient rows
 
@@ -907,10 +1003,18 @@ git commit -m "chore(units): backfill script migrateUnitsToDisplay (dry-run by d
 
 ### Task 4.2 — Run backfill in prod
 
-- [ ] Local dry-run against prod DB:
+- [ ] **Identify the Postgres service name** on Railway (it may not be the literal "Postgres" — check `docs/deploy.md` and `railway service` output):
 
 ```bash
-PROD_DB=$(railway variables --service Postgres --kv | grep ^DATABASE_PUBLIC_URL= | cut -d= -f2-)
+railway service     # interactive: pick the project's Postgres service
+# OR list services and look for the postgres one
+railway list
+```
+
+- [ ] Local dry-run against prod DB (substitute the actual service name from above for `<pg-service>`):
+
+```bash
+PROD_DB=$(railway variables --service <pg-service> --kv | grep ^DATABASE_PUBLIC_URL= | cut -d= -f2-)
 cd apps/api && DATABASE_URL="$PROD_DB" npx tsx scripts/migrateUnitsToDisplay.ts
 ```
 
@@ -972,24 +1076,47 @@ Each hit is either: (a) dead code → delete; (b) a place that needs to read `di
 
 - [ ] Verify constraint with `psql`.
 
-### Task 4.4 — Delete dead code in `aggregate.ts`
+### Task 4.4 — Delete dead code in `aggregate.ts` AND `recipeScaler.ts`
 
 **Files:**
 - Modify: `apps/api/src/services/nutrition/aggregate.ts`
+- Modify: `apps/api/src/services/recipeScaler.ts`
 - Modify: `apps/api/src/tests/nutritionAggregate.test.ts` (drop tests covering the dead branches)
+- Modify: `apps/api/src/tests/recipeScaler.test.ts` (likewise)
 
-- [ ] Remove `CDA_ML`, `CDITA_ML`, and the `case 'cda' | 'cdita' | 'pizca' | 'al_gusto'` branches of the switch.
+After the `UNITS` enum narrows in Task 4.3, TypeScript will flag every comparison against `'cda'`, `'cdita'`, `'pizca'`, `'al_gusto'` as impossible (`This condition will always return 'false'`). Two files in particular have these patterns:
 
-- [ ] Update tests: any test passing `unit: 'cda'` now feeds canonical instead. If a test was specifically about the old behavior, delete it (it covered dead code).
+**`aggregate.ts`:**
+- Remove module-level constants `CDA_ML = 15` and `CDITA_ML = 5`.
+- Remove the `case 'cda' | 'cdita' | 'pizca' | 'al_gusto'` branches of the unit switch.
 
-- [ ] Run full test suite, fix anything that broke, commit:
+**`recipeScaler.ts`:**
+- Remove `const NON_SCALING = new Set(['pizca', 'al_gusto'])` (near line 77) and the `if (NON_SCALING.has(...))` short-circuit.
+- Remove `if (unit === 'pizca' || unit === 'al_gusto')` branches (near line 112).
+- Remove `if (unit === 'cda' || unit === 'cdita')` branches (near line 130). Scaling on canonical `g | ml | u` is unconditionally linear after this point.
+
+- [ ] **Step 1: Delete the constants + dead branches** in both files.
+
+- [ ] **Step 2: Update tests.** Any test passing `unit: 'cda'` now feeds canonical instead. If a test was specifically about the old abstract behavior, delete it (it covered dead code).
+
+- [ ] **Step 3: Full TS + test sweep** across all workspaces:
 
 ```bash
-git commit -m "chore(nutrition): delete dead abstract-unit branches in aggregate.ts (canonical only)"
+pnpm -r exec tsc --noEmit
+pnpm -r test
+```
+
+Expected: zero TS errors, all tests green. If `tsc` flags `recipeScaler.ts` or `aggregate.ts` for `'This condition will always return false'`, that's a leftover dead branch — delete.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git commit -m "chore(nutrition,scaler): delete dead abstract-unit branches (canonical only)"
 ```
 
 ### Task 4.5 — PR 4 checkpoint + spec finalization
 
+- [ ] Full workspace type-check: `pnpm -r exec tsc --noEmit` — zero errors. This catches anything narrowed-`UNITS` would break that the earlier per-file edits missed.
 - [ ] CI green.
 - [ ] Spec: update Todo Miguel entries in CLAUDE.md if there's a relevant remaining action.
 - [ ] Final smoke: create a recipe, edit it, scale it, all flows work end-to-end with the new model.

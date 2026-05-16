@@ -192,12 +192,15 @@ export default function NewRecipePage() {
     return null
   })
 
-  async function handleSubmit(e: React.FormEvent, opts: { force?: boolean } = {}) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    // `force` is passed explicitly by each button's onClick — relying on
-    // closure state (allowForce) would read a stale value because state
-    // updates are async vs the click handler that fires before this runs.
-    const useForce = !!opts.force
+    // The user picked between two type="submit" buttons. The secondary one
+    // carries name="force"; the primary doesn't. Read that from the native
+    // submitter — relying on closure state (allowForce) would be stale
+    // because state updates are async vs the click handler that fires
+    // before this runs.
+    const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null
+    const useForce = submitter?.name === "force"
     setErrors({})
 
     const payload = buildPayload()

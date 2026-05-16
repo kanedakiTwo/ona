@@ -49,7 +49,7 @@ Researched against six Spanish cooking sources (La Española Aceites, Recetas La
 | `gota` | 0.05 | gotita |
 | `cdita` | 5 | cucharadita, cuchara de café, c.p., c/p, cdt, tsp |
 | `cda postre` | 10 | cucharada de postre |
-| `cda` | 15 | cucharada, cucharada sopera, cuchara sopera, c.s.\*, c/s, tbsp |
+| `cda` | 15 | cucharada, cucharada sopera, cuchara sopera, c.s.\*, tbsp |
 | `chorrito` | 10 | chorrín |
 | `chorro` | 30 | chorretón, buen chorro |
 | `copa licor` | 50 | copita |

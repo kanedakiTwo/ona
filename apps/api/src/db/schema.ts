@@ -143,6 +143,11 @@ export const recipes = pgTable('recipes', {
   /** Provenance enum: 'manual' | 'image' | 'article' | 'youtube'. */
   sourceType: text('source_type'),
 
+  /** How confident was the extractor about the servings count. */
+  servingsConfidence: text('servings_confidence', { enum: ['explicit', 'estimated'] })
+    .notNull()
+    .default('explicit'),
+
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 })
@@ -161,6 +166,10 @@ export const recipeIngredients = pgTable('recipe_ingredients', {
   optional: boolean('optional').notNull().default(false),
   note: text('note'),
   displayOrder: integer('display_order').notNull().default(0),
+  /** Human-readable quantity as the recipe originally stated it (e.g. 1.5 for "1½"). */
+  displayQuantity: real('display_quantity'),
+  /** Human-readable unit as the recipe originally stated it (e.g. "taza", "cucharada"). */
+  displayUnit: text('display_unit'),
 }, (table) => [
   index('idx_recipe_ingredients_recipe').on(table.recipeId),
   index('idx_recipe_ingredients_ingredient').on(table.ingredientId),
@@ -295,4 +304,28 @@ export const adminAuditLog = pgTable('admin_audit_log', {
   index('idx_admin_audit_log_created').on(table.createdAt),
   index('idx_admin_audit_log_admin').on(table.adminId, table.createdAt),
   index('idx_admin_audit_log_action').on(table.action),
+])
+
+// ─── 15. unit_conversion_cache ──────────────────────────────
+// Maps a display unit (e.g. "taza", "cucharada") to canonical grams or ml.
+// Rows are keyed on (display_unit, ingredient_id): a NULL ingredient_id means
+// the conversion is generic (water-density assumption). We use a synthetic uuid
+// PK plus a partial-unique index with COALESCE to handle nullability — Postgres
+// rejects NULL in composite primary keys.
+export const unitConversionCache = pgTable('unit_conversion_cache', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  displayUnit: text('display_unit').notNull(),
+  ingredientId: uuid('ingredient_id').references(() => ingredients.id, { onDelete: 'cascade' }),
+  gramsPerUnit: real('grams_per_unit'),
+  mlPerUnit: real('ml_per_unit'),
+  source: text('source', { enum: ['llm', 'manual'] }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_unit_cache_unit').on(t.displayUnit),
+  // NULL-safe uniqueness: same display_unit can have one generic + N per-ingredient rows.
+  uniqueIndex('idx_unit_cache_key').on(
+    t.displayUnit,
+    sql`COALESCE(${t.ingredientId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
+  ),
+  check('unit_conversion_cache_value_check', sql`${t.gramsPerUnit} IS NOT NULL OR ${t.mlPerUnit} IS NOT NULL`),
 ])

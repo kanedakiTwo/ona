@@ -49,7 +49,7 @@ Researched against six Spanish cooking sources (La Española Aceites, Recetas La
 | `gota` | 0.05 | gotita |
 | `cdita` | 5 | cucharadita, cuchara de café, c.p., c/p, cdt, tsp |
 | `cda postre` | 10 | cucharada de postre |
-| `cda` | 15 | cucharada, cucharada sopera, cuchara sopera, c.s.\*, c/s, tbsp |
+| `cda` | 15 | cucharada, cucharada sopera, cuchara sopera, c.s.\*, tbsp |
 | `chorrito` | 10 | chorrín |
 | `chorro` | 30 | chorretón, buen chorro |
 | `copa licor` | 50 | copita |
@@ -311,7 +311,7 @@ factor = userServings / recipe.servings
 
 ### "Culinary clean" definition
 
-A scaled quantity is clean if within ε=0.05 of any value in:
+A scaled quantity is clean if within ε=0.02 of any value in:
 
 ```
 [0.25, 0.33, 0.5, 0.66, 0.75,
@@ -320,7 +320,7 @@ A scaled quantity is clean if within ε=0.05 of any value in:
  3, 3.5, 4, 4.5, 5, 6, 8, 10, 12]
 ```
 
-OR within ε=0.05 of an integer ≥1.
+OR within ε=0.02 of an integer ≥1.
 
 ### Format module
 

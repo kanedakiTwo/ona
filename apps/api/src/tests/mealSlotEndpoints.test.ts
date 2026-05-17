@@ -6,7 +6,7 @@
  * the validators (meal enum, servings range, null clearing) fails fast.
  */
 import { describe, expect, it } from 'vitest'
-import { MEALS } from '@ona/shared'
+import { MEALS, MEAL_TYPE_TAGS } from '@ona/shared'
 
 // Mirror the route's predicate. Keep this in sync with menus.ts; if the
 // canonical list ever grows, both should grow together.
@@ -29,6 +29,25 @@ function validateServings(raw: unknown): ServingsValidation {
     return { ok: false, reason: 'servings must be an integer between 1 and 24' }
   }
   return { ok: true, value: n }
+}
+
+// Mirror the route's pinnedType predicate. The PATCH /:meal endpoint accepts
+// `{ pinnedType: <tag> | null }`; only members of MEAL_TYPE_TAGS are valid,
+// null clears the pin. Kept here so a regression in the route trips a unit
+// failure before reaching prod.
+type PinnedTypeValidation =
+  | { ok: true; value: string | null }
+  | { ok: false; reason: string }
+
+function validatePinnedType(raw: unknown): PinnedTypeValidation {
+  if (raw === null) return { ok: true, value: null }
+  if (typeof raw !== 'string') {
+    return { ok: false, reason: 'pinnedType must be a string or null' }
+  }
+  if (!(MEAL_TYPE_TAGS as readonly string[]).includes(raw)) {
+    return { ok: false, reason: `pinnedType must be one of: ${MEAL_TYPE_TAGS.join(', ')}` }
+  }
+  return { ok: true, value: raw }
 }
 
 describe('isValidMeal', () => {
@@ -80,5 +99,29 @@ describe('validateServings', () => {
     expect(validateServings('abc').ok).toBe(false)
     expect(validateServings(NaN).ok).toBe(false)
     expect(validateServings(undefined).ok).toBe(false)
+  })
+})
+
+describe('validatePinnedType', () => {
+  it('accepts null as "clear the pin"', () => {
+    expect(validatePinnedType(null)).toEqual({ ok: true, value: null })
+  })
+
+  it('accepts every canonical tag', () => {
+    for (const tag of MEAL_TYPE_TAGS) {
+      expect(validatePinnedType(tag)).toEqual({ ok: true, value: tag })
+    }
+  })
+
+  it('rejects unknown tags (typos, alternate spellings)', () => {
+    expect(validatePinnedType('frijoles').ok).toBe(false)
+    expect(validatePinnedType('Cremas').ok).toBe(false) // case-sensitive on purpose
+    expect(validatePinnedType('').ok).toBe(false)
+  })
+
+  it('rejects non-string values', () => {
+    expect(validatePinnedType(0).ok).toBe(false)
+    expect(validatePinnedType(undefined).ok).toBe(false)
+    expect(validatePinnedType(['cremas']).ok).toBe(false)
   })
 })

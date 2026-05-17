@@ -66,3 +66,38 @@ export const AISLES = [
   'otros',
 ] as const
 export type Aisle = (typeof AISLES)[number]
+
+/**
+ * Canonical "meal type" tags a user can pin to a single slot ("martes cena
+ * cremas", "viernes cena pizza"). Keys are accent-free for matching against
+ * `recipe.tags`; the UI labels (MEAL_TYPE_TAG_LABELS below) carry the
+ * accents. Keep the list small and stable — adding a key is one row of code,
+ * removing one is a migration of every pinned slot.
+ */
+export const MEAL_TYPE_TAGS = [
+  'cremas',
+  'legumbres',
+  'pizza',
+  'asiatico',
+  'mediterraneo',
+  'ensalada',
+  'parrilla',
+  'batch-cooking',
+  'pasta',
+  'arroz',
+] as const
+export type MealTypeTag = (typeof MEAL_TYPE_TAGS)[number]
+
+/** Spanish display labels for the slot-pin chip and the type picker sheet. */
+export const MEAL_TYPE_TAG_LABELS: Record<MealTypeTag, string> = {
+  cremas: 'Cremas',
+  legumbres: 'Legumbres',
+  pizza: 'Pizza',
+  asiatico: 'Asiático',
+  mediterraneo: 'Mediterráneo',
+  ensalada: 'Ensalada',
+  parrilla: 'Parrilla',
+  'batch-cooking': 'Batch cooking',
+  pasta: 'Pasta',
+  arroz: 'Arroz',
+}

@@ -28,6 +28,7 @@ export type {
   Difficulty,
   Aisle,
   SourceType,
+  MealTypeTag,
 } from './constants/enums.js'
 
 // Zod schemas
@@ -56,6 +57,8 @@ export {
   DIFFICULTIES,
   AISLES,
   SOURCE_TYPES,
+  MEAL_TYPE_TAGS,
+  MEAL_TYPE_TAG_LABELS,
 } from './constants/enums.js'
 export { TARGET_MACROS, MACRO_RANGES, ACTIVITY_FACTORS, MENU_GENERATION, EMA_WEIGHTS, MINERALS_RDA, VITAMINS_RDA } from './constants/nutrition.js'
 export { ONA_PRINCIPLES } from './constants/philosophy.js'

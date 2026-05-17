@@ -164,6 +164,7 @@ When the user changes the diner count from `recipe.servings` to `target`:
 - [apps/api/src/services/sources/sourceType.ts](../apps/api/src/services/sources/sourceType.ts) — URL → 'youtube' | 'article'
 - [apps/web/src/components/recipes/UrlRecipeImport.tsx](../apps/web/src/components/recipes/UrlRecipeImport.tsx) — URL input UI in `/recipes/new`
 - [apps/api/src/services/recipeLint.ts](../apps/api/src/services/recipeLint.ts) — lint validator (new)
+- [apps/api/scripts/tagRecipesByType.ts](../apps/api/scripts/tagRecipesByType.ts) — deterministic backfill that adds the `MEAL_TYPE_TAGS` taxonomy (`cremas | legumbres | pizza | asiatico | mediterraneo | ensalada | parrilla | batch-cooking | pasta | arroz`) onto system recipes by name + ingredient heuristics. Runs dry-run by default; `--execute` commits. Idempotent — re-running on already-tagged rows is a no-op. The matcher's `pinnedType` predicate reads these tags so the "Fijar tipo" menu UX has something to filter against.
 - [apps/api/src/services/recipeScaler.ts](../apps/api/src/services/recipeScaler.ts) — quantity scaling + culinary rounding (new)
 - [apps/api/src/services/ingredientAutoCreate.ts](../apps/api/src/services/ingredientAutoCreate.ts) — USDA-backed auto-create + Levenshtein dedupe (new)
 - [apps/api/src/routes/ingredients.ts](../apps/api/src/routes/ingredients.ts) — `GET /ingredients/suggest`, `POST /ingredients/auto-create`

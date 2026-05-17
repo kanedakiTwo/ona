@@ -37,9 +37,11 @@ router.post('/realtime/:userId/session', async (req: AuthRequest, res) => {
   }
 
   try {
+    const requestedMode = req.body?.mode === 'onboarding' ? 'onboarding' : 'voice'
     const userContext = await loadUserContext(userId, db)
-    // mode='voice' layers in Spain Spanish register + voice-grade brevity.
-    const instructions = buildSystemPrompt(userContext, 'voice')
+    // mode='voice' layers in Spain Spanish register + voice-grade brevity;
+    // mode='onboarding' loads the fact-extraction conversation script.
+    const instructions = buildSystemPrompt(userContext, requestedMode)
     const tools = getRealtimeTools()
 
     const upstream = await fetch('https://api.openai.com/v1/realtime/sessions', {

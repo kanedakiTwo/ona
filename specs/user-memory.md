@@ -4,6 +4,7 @@ Typed long-term storage of everything the assistant has learned (or the user has
 
 ## User Capabilities
 
+- Users can run a **voice onboarding** at `/onboarding/voz` — a guided Realtime conversation that walks through every memory key in order (edad, hogar, restricciones, gustos, equipo, tiempo disponible, presupuesto, cocinas preferidas, nivel, horarios, notas libres). The assistant calls `update_memory` after each answer; a progress checklist below the orb shows what's been captured. When the assistant emits the closing line "Listo, ya te conozco." the page auto-redirects to `/menu` after a 2 s grace period
 - Users can see every fact the assistant remembers about them at `/profile/memoria` — grouped by category (Perfil físico, Hogar, Restricciones y gustos, Cocina, Rutina, Otras notas), with a source badge per row (**Tú** verde para datos manuales, **Asistente** terracota para inferidos, **Onboarding** neutral)
 - Users can ask the assistant to remember any preference mid-conversation: "recuerda que no me gusta el cilantro", "tengo freidora de aire", "los lunes no cocino más de 20 minutos", "preferimos cocina mediterránea". The advisor calls the `update_memory` skill and persists the fact with `source: 'inferred'` and confidence 0.8 (or 1.0 if the user is emphatic — "APUNTA…")
 - Users can delete any single fact from the memory page with a confirm dialog (full inline edit lands in the next PR; in the meantime the user can ask the assistant to overwrite a value)
@@ -92,3 +93,5 @@ The `update_memory` skill (declared in `assistant/skills.ts`) takes a `facts: Ar
 - [apps/api/src/tests/userMemoryContract.test.ts](../apps/api/src/tests/userMemoryContract.test.ts) — 19 contract tests
 - [apps/web/src/hooks/useUserMemory.ts](../apps/web/src/hooks/useUserMemory.ts) — TanStack hooks
 - [apps/web/src/app/profile/memoria/page.tsx](../apps/web/src/app/profile/memoria/page.tsx) — read-only viewer (full inline edit lands next)
+- [apps/web/src/app/onboarding/voz/page.tsx](../apps/web/src/app/onboarding/voz/page.tsx) — voice-onboarding landing page; opens a Realtime session with `mode: 'onboarding'` and watches transcripts for the closing line
+- [apps/api/src/services/assistant/systemPrompt.ts](../apps/api/src/services/assistant/systemPrompt.ts) — `AssistantMode = 'text' | 'voice' | 'onboarding'`; the onboarding branch carries the 12-step conversation script

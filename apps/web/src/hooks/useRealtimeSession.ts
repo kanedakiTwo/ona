@@ -15,6 +15,14 @@ interface UseRealtimeSessionOptions {
   userId: string
   initialContext?: RealtimeTurn[]
   onCookingNavigate?: (info: { recipeId: string; recipeName: string; servings: number | null }) => void
+  /**
+   * Session mode. `'voice'` (default) loads the regular advisor instructions;
+   * `'onboarding'` loads a guided fact-extraction prompt that walks the user
+   * through every memory key in a natural conversation, calling
+   * `update_memory` after each answer. The mode is sent to the server when
+   * the ephemeral token is minted.
+   */
+  mode?: 'voice' | 'onboarding'
 }
 
 interface UseRealtimeSessionReturn {
@@ -39,7 +47,7 @@ interface SessionResponse {
 const REALTIME_URL = 'https://api.openai.com/v1/realtime'
 
 export function useRealtimeSession(options: UseRealtimeSessionOptions): UseRealtimeSessionReturn {
-  const { userId, initialContext, onCookingNavigate } = options
+  const { userId, initialContext, onCookingNavigate, mode = 'voice' } = options
   const onCookingNavigateRef = useRef(onCookingNavigate)
   onCookingNavigateRef.current = onCookingNavigate
 
@@ -210,7 +218,7 @@ export function useRealtimeSession(options: UseRealtimeSessionOptions): UseRealt
     console.log('[voice] connect: starting', { userId })
 
     try {
-      const session = await api.post<SessionResponse>(`/realtime/${userId}/session`, {})
+      const session = await api.post<SessionResponse>(`/realtime/${userId}/session`, { mode })
       console.log('[voice] connect: session token received', { model: session.model })
       const ephemeralKey = session.client_secret?.value
       if (!ephemeralKey) throw new Error('No se recibio token efimero del servidor.')

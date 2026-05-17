@@ -713,7 +713,13 @@ export default function ProfilePage() {
           días con poco tiempo… El asistente lo lee antes de cada respuesta
           y lo amplía con lo que le cuentes.
         </p>
-        <div className="mt-5">
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          <a
+            href="/onboarding/voz"
+            className="inline-flex items-center gap-2 rounded-full bg-[#2D6A4F] px-5 py-2.5 text-[12px] uppercase tracking-[0.12em] text-[#FAF6EE] transition-all hover:opacity-90"
+          >
+            🎙️ Onboarding por voz
+          </a>
           <a
             href="/profile/memoria"
             className="inline-flex items-center gap-2 rounded-full border border-[#DDD6C5] bg-[#F2EDE0] px-5 py-2.5 text-[12px] uppercase tracking-[0.12em] text-[#1A1612] transition-all hover:border-[#1A1612]"

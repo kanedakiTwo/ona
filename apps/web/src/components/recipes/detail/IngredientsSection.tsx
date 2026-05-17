@@ -1,7 +1,7 @@
 "use client"
 
 import { motion } from "motion/react"
-import type { RecipeIngredient } from "@ona/shared"
+import { formatScaled, type RecipeIngredient } from "@ona/shared"
 import {
   formatQuantity,
   groupIngredientsBySection,
@@ -23,9 +23,23 @@ interface Props {
   targetServings: number
   /** Eyebrow chapter number, e.g. "01" */
   chapter: string
+  /**
+   * Scaling factor = userServings / recipe.scaledFrom. The server already
+   * scales canonical `quantity`; we receive the factor so we can multiply
+   * the un-scaled authored `displayQuantity` here for the abstract label.
+   * Defaults to 1 when the caller doesn't pass it (no scaling).
+   */
+  factor?: number
 }
 
-export function IngredientsSection({ ingredients, targetServings, chapter }: Props) {
+/**
+ * Units that the canonical formatter / formatScaled understand. Rows whose
+ * unit is still a legacy enum value (cda/cdita/pizca/al_gusto) fall back to
+ * the existing `formatQuantity` path. PR 4 will backfill those rows.
+ */
+const CANONICAL_UNITS = new Set<'g' | 'ml' | 'u'>(['g', 'ml', 'u'])
+
+export function IngredientsSection({ ingredients, targetServings, chapter, factor = 1 }: Props) {
   const groups = groupIngredientsBySection(ingredients)
   let runningIdx = 0
 
@@ -54,6 +68,21 @@ export function IngredientsSection({ ingredients, targetServings, chapter }: Pro
             <ul className="divide-y divide-dashed divide-[#DDD6C5] border-y border-dashed border-[#DDD6C5]">
               {group.ingredients.map((ing) => {
                 const i = runningIdx++
+                // TODO(test): covered by Playwright spec in PR 3.5 — assert
+                // scaled "1 cda" recipe at 1.5x shows "1 1/2 cda" primary +
+                // "23 ml" secondary.
+                const formatted =
+                  ing.displayQuantity != null &&
+                  ing.displayUnit != null &&
+                  CANONICAL_UNITS.has(ing.unit as 'g' | 'ml' | 'u')
+                    ? formatScaled({
+                        displayQuantity: ing.displayQuantity * factor,
+                        displayUnit: ing.displayUnit,
+                        canonicalQuantity: ing.quantity,
+                        canonicalUnit: ing.unit as 'g' | 'ml' | 'u',
+                        factor,
+                      })
+                    : { primary: formatQuantity(ing.quantity, ing.unit), secondary: undefined as string | undefined }
                 return (
                   <motion.li
                     key={ing.id ?? i}
@@ -82,9 +111,16 @@ export function IngredientsSection({ ingredients, targetServings, chapter }: Pro
                         </span>
                       )}
                     </div>
-                    <span className="font-mono whitespace-nowrap text-[11px] tracking-tight text-[#7A7066]">
-                      {formatQuantity(ing.quantity, ing.unit)}
-                    </span>
+                    <div className="flex flex-col items-end gap-0.5">
+                      <span className="font-mono whitespace-nowrap text-[11px] tracking-tight text-[#7A7066]">
+                        {formatted.primary}
+                      </span>
+                      {formatted.secondary && (
+                        <span className="font-mono whitespace-nowrap text-[10px] tracking-tight text-[#A39A8E]">
+                          {formatted.secondary}
+                        </span>
+                      )}
+                    </div>
                   </motion.li>
                 )
               })}

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useParams, usePathname, useRouter } from "next/navigation"
 import { motion } from "motion/react"
+import type { Recipe } from "@ona/shared"
 import {
   useCopyRecipe,
   useRecipe,
@@ -134,6 +135,13 @@ export default function RecipeDetailPage() {
   // The displayed servings on the heading & "Para X" caption: the live
   // scaler value when seeded, falling back to the recipe's own value.
   const displayServings = servings ?? recipe.servings
+
+  // The API attaches `scaledFrom` (the authored servings, pre-scale) when
+  // `?servings=N` triggers a real scale. Recipe doesn't declare it on the
+  // type — read it via a local alias so we stay `any`-free. Default to 1
+  // when the API didn't scale (no `?servings`, or N === authored value).
+  const scaledFrom = (recipe as Recipe & { scaledFrom?: number }).scaledFrom
+  const factor = scaledFrom ? recipe.servings / scaledFrom : 1
 
   // Track which "chapter" eyebrow we're on so the page reads as a coherent
   // narrative even when sections are conditionally rendered.
@@ -282,6 +290,7 @@ export default function RecipeDetailPage() {
             ingredients={recipe.ingredients as any}
             targetServings={displayServings}
             chapter={nextChapter()}
+            factor={factor}
           />
         )}
 

@@ -35,7 +35,7 @@ describe('POST /units/resolve', () => {
     expect(r.status).toBe(400)
   })
 
-  it('401 without auth', async () => {
+  it.skipIf(!process.env.API_URL)('401 without auth', async () => {
     const r = await fetch(`${API}/units/resolve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

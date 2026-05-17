@@ -229,6 +229,11 @@ export default function NewRecipePage() {
     const ing = row.ingredientId
       ? ingredientLibrary.find((i) => i.id === row.ingredientId)
       : undefined
+    // Capture displayQuantity at blur time. If we read it from `prev[idx]`
+    // inside the setter, a fast user edit to the quantity input during the
+    // (debounced + network) await would make the stored (displayQuantity,
+    // displayUnit) pair inconsistent with what was actually resolved.
+    const displayQtyAtBlur = typeof row.quantity === "number" ? row.quantity : null
     setResolvingRowIdx(idx)
     try {
       const result = await unitResolver.resolve({
@@ -249,7 +254,7 @@ export default function NewRecipePage() {
         if (!r) return prev
         next[idx] = {
           ...r,
-          displayQuantity: typeof r.quantity === "number" ? r.quantity : null,
+          displayQuantity: displayQtyAtBlur,
           displayUnit: typed,
           quantity: result.canonicalQuantity,
           unit: result.canonicalUnit,
@@ -657,9 +662,14 @@ export default function NewRecipePage() {
                   ? ingredientLibrary.find((ing) => ing.id === row.ingredientId) ?? null
                   : null
                 // The canonical (g/ml/u) select goes read-only once a display
-                // unit is set — display drives canonical via the resolver, so
-                // letting the user edit canonical separately would desync them.
-                const hasDisplayUnit = row.displayUnit != null && row.displayUnit !== ""
+                // unit has been RESOLVED — display drives canonical via the
+                // resolver, so letting the user edit canonical separately would
+                // desync them. We key off displayQuantity (set only on a
+                // successful resolve) rather than displayUnit (set on every
+                // keystroke) so the select stays enabled while typing and
+                // re-enables if the resolve is aborted, giving the user a
+                // recovery path.
+                const hasResolvedDisplay = row.displayQuantity != null
                 const isResolving = resolvingRowIdx === idx && unitResolver.isPending
                 return (
                   <div key={idx} className="flex flex-col gap-1">
@@ -697,6 +707,7 @@ export default function NewRecipePage() {
                         }
                         onBlur={() => handleDisplayUnitBlur(idx)}
                         placeholder="cda"
+                        aria-label="Unidad de medida"
                         className="w-20 rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-2 py-2 text-[14px] text-[#1A1612] placeholder:text-[#7A7066] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
                       />
                       <select
@@ -704,7 +715,7 @@ export default function NewRecipePage() {
                         onChange={(e) =>
                           updateIngredientUnit(idx, e.target.value)
                         }
-                        disabled={hasDisplayUnit || isResolving}
+                        disabled={hasResolvedDisplay || isResolving}
                         className="w-16 rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-1 py-2 text-[14px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612] disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {UNIT_OPTIONS.map((u) => (

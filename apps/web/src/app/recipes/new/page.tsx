@@ -71,9 +71,11 @@ export default function NewRecipePage() {
 
   function handlePhotoExtracted(data: ExtractedRecipe) {
     setName(data.name)
-    if (typeof data.servings === "number" && data.servings > 0) {
+    if (data.servings > 0) {
       setServings(data.servings)
     }
+    // TODO(units PR 3): wire data.servingsConfidence into form state + show
+    // the "Estimado" badge per spec section "Servings deduction → UI".
     setPrepTime(data.prepTime ?? "")
     setSelectedMeals(data.meals)
     setSelectedSeasons(data.seasons)

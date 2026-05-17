@@ -246,7 +246,8 @@ export async function extractRecipeFromImage(
 
   return {
     name: raw.name,
-    servings: raw.servings ?? null,
+    servings: raw.servings ?? 2,
+    servingsConfidence: raw.servings != null ? 'explicit' : 'estimated',
     prepTime: raw.prepTime,
     cookTime: raw.cookTime ?? null,
     meals: meals.length > 0 ? meals : ['lunch', 'dinner'],

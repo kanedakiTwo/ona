@@ -212,6 +212,9 @@ export class AnthropicProvider implements VisionProvider, TextExtractionProvider
       name: parsed.name || '',
       prepTime: parsed.prepTime ?? null,
       cookTime: parsed.cookTime ?? null,
+      // RawExtractedRecipe.servings is intentionally nullable by design — the LLM
+      // may omit it. recipeExtractor.ts hardens it to `number` (with fallback +
+      // confidence flag) before producing the final ExtractedRecipe contract.
       servings: parsed.servings ?? null,
       difficulty: parsed.difficulty ?? null,
       ingredients: (parsed.ingredients || []).map(

@@ -24,6 +24,16 @@ export interface IngredientRowState {
   quantity: number | ''
   /** One of the catalog units (g/ml/u/cda/cdita/pizca/al_gusto). */
   unit: string
+  /**
+   * Human-readable quantity as entered/extracted (e.g. 2 for "2 cda").
+   * Present only when a display↔canonical conversion applies.
+   */
+  displayQuantity?: number | null
+  /**
+   * Human-readable unit label as entered/extracted (e.g. "cda").
+   * Present only when a display↔canonical conversion applies.
+   */
+  displayUnit?: string | null
 }
 
 /** All form state needed to build the recipe payload. */
@@ -36,6 +46,12 @@ export interface RecipeFormState {
   tags: string[]
   steps: string[]
   ingredientRows: IngredientRowState[]
+  /**
+   * Confidence level for the servings value.
+   * 'explicit' = user/extractor stated servings; 'estimated' = inferred.
+   * Omitting it defaults to 'explicit' in buildRecipePayload.
+   */
+  servingsConfidence?: 'explicit' | 'estimated'
 }
 
 export function buildRecipePayload(form: RecipeFormState): Record<string, unknown> {
@@ -45,11 +61,16 @@ export function buildRecipePayload(form: RecipeFormState): Record<string, unknow
       ingredientName: r.ingredientName.trim(),
     }))
     .filter((r) => r.ingredientName.length > 0)
-    .map((r) => ({
-      ingredientId: r.ingredientId,
-      quantity: typeof r.quantity === 'number' ? r.quantity : 0,
-      unit: r.unit || 'g',
-    }))
+    .map((r) => {
+      const ingredient: Record<string, unknown> = {
+        ingredientId: r.ingredientId,
+        quantity: typeof r.quantity === 'number' ? r.quantity : 0,
+        unit: r.unit || 'g',
+      }
+      if (r.displayQuantity != null) ingredient.displayQuantity = r.displayQuantity
+      if (r.displayUnit != null) ingredient.displayUnit = r.displayUnit
+      return ingredient
+    })
 
   const cleanedSteps = form.steps
     .map((s) => s.trim())
@@ -60,6 +81,7 @@ export function buildRecipePayload(form: RecipeFormState): Record<string, unknow
     name: form.name.trim(),
     servings:
       typeof form.servings === 'number' && form.servings > 0 ? form.servings : 2,
+    servingsConfidence: form.servingsConfidence ?? 'explicit',
     meals: form.selectedMeals,
     seasons: form.selectedSeasons,
     tags: form.tags,

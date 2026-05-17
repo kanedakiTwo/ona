@@ -114,6 +114,8 @@ interface RecipeRow {
   authorId: string | null
   imageUrl: string | null
   servings: number
+  /** DB column added in PR 2 migration; absent on pre-migration rows — default 'explicit'. */
+  servingsConfidence?: 'explicit' | 'estimated' | null
   yieldText: string | null
   prepTime: number | null
   cookTime: number | null
@@ -246,6 +248,7 @@ function toDetailRecipe(
     authorId: row.authorId,
     imageUrl: row.imageUrl ?? null,
     servings: row.servings,
+    servingsConfidence: row.servingsConfidence ?? 'explicit',
     difficulty: ((row.difficulty as Difficulty) ?? 'medium') as Difficulty,
     meals: (row.meals ?? []) as Meal[],
     seasons: (row.seasons ?? []) as Season[],
@@ -472,7 +475,7 @@ router.post(
 
       const writeInput: RecipeWriteInput = {
         name: extracted.name,
-        servings: extracted.servings ?? 2,
+        servings: extracted.servings,
         prepTime: extracted.prepTime ?? null,
         cookTime: extracted.cookTime ?? null,
         difficulty: (extracted.difficulty ?? 'medium') as Difficulty,

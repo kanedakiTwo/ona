@@ -107,6 +107,65 @@ describe('buildRecipePayload — cleaning', () => {
   })
 })
 
+describe('display fields + servingsConfidence (PR 2.3)', () => {
+  it('payload with displayQuantity/displayUnit passes createRecipeSchema', () => {
+    const state = fullState({
+      ingredientRows: [
+        { ingredientId: UUID_A, ingredientName: 'aceite de oliva virgen', quantity: 30, unit: 'ml',
+          displayQuantity: 2, displayUnit: 'cda' },
+      ],
+    })
+    const payload = buildRecipePayload(state)
+    const result = createRecipeSchema.safeParse(payload)
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.ingredients[0]).toMatchObject({
+        ingredientId: UUID_A, quantity: 30, unit: 'ml',
+        displayQuantity: 2, displayUnit: 'cda',
+      })
+    }
+  })
+
+  it('payload without display fields still passes (nullable optional)', () => {
+    const state = fullState({
+      ingredientRows: [
+        { ingredientId: UUID_A, ingredientName: 'aceite', quantity: 30, unit: 'ml' },
+        // no displayQuantity, no displayUnit
+      ],
+    })
+    const payload = buildRecipePayload(state)
+    expect(createRecipeSchema.safeParse(payload).success).toBe(true)
+  })
+
+  it('servingsConfidence defaults to "explicit" when omitted', () => {
+    const state = fullState()  // no servingsConfidence in state
+    const payload = buildRecipePayload(state)
+    const result = createRecipeSchema.safeParse(payload)
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.servingsConfidence).toBe('explicit')
+    }
+  })
+
+  it('servingsConfidence accepts "estimated"', () => {
+    const state = fullState({ servingsConfidence: 'estimated' })
+    const payload = buildRecipePayload(state)
+    const result = createRecipeSchema.safeParse(payload)
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.servingsConfidence).toBe('estimated')
+    }
+  })
+
+  it('servingsConfidence rejects invalid values', () => {
+    const state = fullState()
+    const payload = buildRecipePayload(state)
+    // mutate after build to inject an invalid value
+    ;(payload as { servingsConfidence: unknown }).servingsConfidence = 'guessed'
+    expect(createRecipeSchema.safeParse(payload).success).toBe(false)
+  })
+})
+
 describe('buildRecipePayload — fails the schema only when expected', () => {
   it('fails when name is blank (real validation error)', () => {
     const payload = buildRecipePayload(fullState({ name: '   ' }))

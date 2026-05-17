@@ -11,9 +11,10 @@
  */
 import { useState } from "react"
 import Link from "next/link"
-import { ChevronLeft, Trash2 } from "lucide-react"
+import { ChevronLeft, Pencil, Trash2 } from "lucide-react"
 import { useAuth } from "@/lib/auth"
-import { useUserMemory, useDeleteMemoryFact } from "@/hooks/useUserMemory"
+import { useUserMemory, useUpdateMemory, useDeleteMemoryFact } from "@/hooks/useUserMemory"
+import { MemoryFactEditor } from "@/components/profile/MemoryFactEditor"
 import type { MemoryKey, MemoryFact } from "@ona/shared"
 
 interface Group {
@@ -99,8 +100,10 @@ function formatValue(key: MemoryKey, value: unknown): string {
 export default function MemoryPage() {
   const { user } = useAuth()
   const { data: memory, isLoading } = useUserMemory()
+  const updateMemory = useUpdateMemory()
   const deleteFact = useDeleteMemoryFact()
   const [busyKey, setBusyKey] = useState<MemoryKey | null>(null)
+  const [editingKey, setEditingKey] = useState<MemoryKey | null>(null)
 
   if (!user) {
     return (
@@ -151,47 +154,86 @@ export default function MemoryPage() {
                   <ul className="mt-3 space-y-2">
                     {facts.map(([key, fact]) => {
                       const f = fact as MemoryFact
+                      const k = key as MemoryKey
                       const badge = SOURCE_BADGES[f.source]
+                      const isEditing = editingKey === k
                       return (
                         <li
                           key={key}
-                          className="flex items-start justify-between gap-3 rounded-xl border border-[#DDD6C5] bg-[#FFFEFA] px-4 py-3"
+                          className="rounded-xl border border-[#DDD6C5] bg-[#FFFEFA] px-4 py-3"
                         >
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="text-[13px] font-medium text-[#1A1612]">
-                                {LABELS[key as MemoryKey] ?? key}
-                              </span>
-                              <span
-                                className={`rounded-full px-1.5 py-0.5 text-[9px] uppercase tracking-[0.15em] ${badge.color}`}
-                              >
-                                {badge.label}
-                              </span>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[13px] font-medium text-[#1A1612]">
+                                  {LABELS[k] ?? k}
+                                </span>
+                                <span
+                                  className={`rounded-full px-1.5 py-0.5 text-[9px] uppercase tracking-[0.15em] ${badge.color}`}
+                                >
+                                  {badge.label}
+                                </span>
+                              </div>
+                              {!isEditing ? (
+                                <div className="mt-1 text-[14px] text-[#1A1612]">
+                                  {formatValue(k, f.value)}
+                                </div>
+                              ) : null}
                             </div>
-                            <div className="mt-1 text-[14px] text-[#1A1612]">
-                              {formatValue(key as MemoryKey, f.value)}
-                            </div>
+                            {!isEditing ? (
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingKey(k)}
+                                  className="text-[#1A1612] transition-colors hover:text-[#2D6A4F]"
+                                  aria-label={`Editar ${LABELS[k] ?? k}`}
+                                >
+                                  <Pencil size={14} />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={busyKey === k}
+                                  onClick={() => {
+                                    if (
+                                      typeof window === "undefined" ||
+                                      window.confirm("¿Olvidar este dato?")
+                                    ) {
+                                      setBusyKey(k)
+                                      deleteFact.mutate(
+                                        { key: k },
+                                        { onSettled: () => setBusyKey(null) },
+                                      )
+                                    }
+                                  }}
+                                  className="text-[#C65D38] transition-colors hover:text-[#1A1612] disabled:opacity-40"
+                                  aria-label={`Olvidar ${LABELS[k] ?? k}`}
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            ) : null}
                           </div>
-                          <button
-                            type="button"
-                            disabled={busyKey === key}
-                            onClick={() => {
-                              if (
-                                typeof window === "undefined" ||
-                                window.confirm("¿Olvidar este dato?")
-                              ) {
-                                setBusyKey(key as MemoryKey)
-                                deleteFact.mutate(
-                                  { key: key as MemoryKey },
-                                  { onSettled: () => setBusyKey(null) },
+
+                          {isEditing ? (
+                            <MemoryFactEditor
+                              memoryKey={k}
+                              initial={f.value}
+                              disabled={busyKey === k}
+                              onCancel={() => setEditingKey(null)}
+                              onSave={(next) => {
+                                setBusyKey(k)
+                                updateMemory.mutate(
+                                  { key: k, value: next },
+                                  {
+                                    onSettled: () => {
+                                      setBusyKey(null)
+                                      setEditingKey(null)
+                                    },
+                                  },
                                 )
-                              }
-                            }}
-                            className="text-[#C65D38] transition-colors hover:text-[#1A1612] disabled:opacity-40"
-                            aria-label={`Olvidar ${LABELS[key as MemoryKey] ?? key}`}
-                          >
-                            <Trash2 size={14} />
-                          </button>
+                              }}
+                            />
+                          ) : null}
                         </li>
                       )
                     })}
@@ -215,8 +257,9 @@ export default function MemoryPage() {
         )}
 
         <p className="mt-12 text-[11px] uppercase tracking-[0.12em] text-[#7A7066]">
-          Pronto: edición inline de cada dato. Por ahora puedes pedir al
-          asistente que actualice cualquier preferencia ("recuerda que…").
+          Pulsa el lápiz para editar cualquier dato. También puedes pedírselo
+          al asistente ("recuerda que…"); las dos vías escriben en la misma
+          memoria.
         </p>
       </div>
     </div>

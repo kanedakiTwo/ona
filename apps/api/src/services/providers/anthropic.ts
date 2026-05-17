@@ -15,9 +15,15 @@ Extrae la siguiente informacion en formato JSON:
 
 {
   "name": "nombre de la receta",
+  "servings": 4,
+  "servingsConfidence": "explicit",
   "prepTime": numero en minutos o null si no se menciona,
   "ingredients": [
-    { "name": "nombre del ingrediente en espanol, singular, minusculas", "quantity": numero, "unit": "g | kg | ml | l | u | cda | cdita | pizca | al_gusto" }
+    {
+      "name": "nombre del ingrediente en espanol, singular, minusculas",
+      "display": { "quantity": 1, "unit": "cda" },
+      "canonical": { "quantity": 15, "unit": "ml" }
+    }
   ],
   "steps": ["paso 1", "paso 2"],
   "suggestedMeals": ["breakfast | lunch | dinner | snack"],
@@ -27,23 +33,45 @@ Extrae la siguiente informacion en formato JSON:
 
 Reglas generales:
 - Nombres de ingredientes genericos (ej: "pollo" no "pechuga de pollo deshuesada")
-- Si la cantidad no esta clara, estima para 2 personas
 - Si no puedes determinar tipo de comida, usa ["lunch", "dinner"]
 - Si no puedes determinar temporada, usa las 4 estaciones
 - Devuelve SOLO el JSON, sin texto adicional ni markdown
 - Si la imagen no contiene una receta legible, responde: {"error": "No se pudo identificar una receta en la imagen"}
 
-Reglas de UNIDADES (criticas, no las inventes):
-- Solidos por peso → g o kg: carnes (pollo, ternera, cordero), pescados, verduras (cebolla, zanahoria, calabacin), frutas no liquidas (manzana en gramos si esta cortada), granos, legumbres, harinas, quesos, frutos secos. NUNCA uses ml para solidos.
-- Liquidos por volumen → ml o l: aceite, agua, caldo, leche, nata, vino, vinagre, salsa de soja, miel cuando esta como liquido, zumo. NUNCA uses g para liquidos.
-- Discretos por unidad → u (no "ud"): huevo, aguacate entero, platano, naranja, limon, diente de ajo, hoja de laurel, rebanada de pan, bote de conserva. Un huevo es "4 u", no "4 g" ni "200 g".
-- Cucharadas y cucharaditas → cda, cdita: especias, condimentos, levadura, polvos de hornear cuando se miden asi.
-- Pizca (sal, pimienta, especias en cantidad minima) o al_gusto (cuando la receta no especifica) son validas.
+Campo "servings" OBLIGATORIO:
+- Si la receta dice expresamente "para 4 personas", "rinde 6 raciones", "4 comensales" →
+  { "servings": 4, "servingsConfidence": "explicit" }
+- Si la receta NO lo dice expresamente, ESTIMA basandote en:
+  - La cantidad de la proteina principal (200-250 g por comensal)
+  - Cantidad de carbohidrato (60-80 g de arroz / 80-100 g de pasta crudos por persona)
+  - Volumen total para sopas/cremas (~350 ml por persona)
+  - Si nada de lo anterior aplica, asume 4 personas por defecto
+  Devuelve { "servings": <numero>, "servingsConfidence": "estimated" }
+- servings debe ser un entero positivo entre 1 y 12.
+
+Campo "ingredients" — cada elemento debe tener:
+- "name": nombre generico, singular, minusculas
+- "canonical": SIEMPRE presente, con quantity (numero) + unit en ('g'|'ml'|'u'). Esto
+  es lo que se usa para nutricion y escalado.
+- "display": OPCIONAL, solo si el texto original usa una unidad abstracta como
+  "cucharada", "pizca", "punado", "chorrito", "diente", "rodaja", "ramita", etc.
+  Si esta presente: { quantity (numero), unit (string) }. Si la unidad original
+  ya era canonica (g/ml/u/kg/l), omite "display".
+
+Reglas de conversion:
+- 1 cda = 15 ml; 1 cdita = 5 ml; 1 pizca = 0.5 g; 1 punado = 30 g; 1 chorrito = 10 ml
+- Para discretos (huevo, aguacate, diente, hoja, rodaja, ramita): "canonical.unit": "u"
+  y "canonical.quantity" = numero de unidades. NO conviertas a gramos en el extractor —
+  la base de datos sabe el peso por unidad de cada ingrediente.
+- Para liquidos en abstracto (cucharada de aceite, vaso de leche): canonical va en
+  "ml". El servidor convierte a gramos despues usando la densidad del ingrediente.
+- Kilogramos y litros: traducir a g/ml respectivamente (1.5 kg → 1500 g).
 
 Reglas de COHERENCIA:
 - NO repitas el mismo ingrediente en varias filas. Si la receta menciona "pimenton dulce" dos veces (una en el adobo, otra para espolvorear), consolida en UNA fila con la cantidad total.
 - Cada ingrediente debe aparecer EXACTAMENTE una vez en el array.
-- Si un ingrediente aparece sin cantidad (ej. "sal al gusto"), usa quantity: 1 con unit: "al_gusto".`
+- Si un ingrediente aparece sin cantidad ("sal al gusto"), devuelve
+  canonical: { quantity: 0, unit: "g" } y omite display.`
 
 const TEXT_EXTRACTION_PROMPT = `Eres un asistente especializado en extraer recetas a partir de texto (articulos web o transcripciones de videos de cocina).
 Analiza el contenido y decide primero si describe realmente una receta cocinable.
@@ -60,12 +88,17 @@ Si SI es una receta:
 {
   "isRecipe": true,
   "name": "nombre de la receta",
-  "servings": numero de comensales o null,
+  "servings": 4,
+  "servingsConfidence": "explicit",
   "prepTime": minutos de preparacion o null,
   "cookTime": minutos de coccion o null,
   "difficulty": "easy" | "medium" | "hard" | null,
   "ingredients": [
-    { "name": "nombre del ingrediente en espanol, singular, minusculas", "quantity": numero, "unit": "g | kg | ml | l | u | cda | cdita | pizca | al_gusto" }
+    {
+      "name": "nombre del ingrediente en espanol, singular, minusculas",
+      "display": { "quantity": 1, "unit": "cda" },
+      "canonical": { "quantity": 15, "unit": "ml" }
+    }
   ],
   "steps": ["paso 1", "paso 2"],
   "suggestedMeals": ["breakfast | lunch | dinner | snack"],
@@ -75,22 +108,43 @@ Si SI es una receta:
 
 Reglas generales:
 - Nombres de ingredientes genericos (ej: "pollo" no "pechuga de pollo deshuesada")
-- Si la cantidad no esta clara, estima para 2 personas
 - Si no puedes determinar tipo de comida, usa ["lunch", "dinner"]
 - Si no puedes determinar temporada, usa las 4 estaciones
 - Devuelve SOLO el JSON, sin texto adicional ni markdown
 
-Reglas de UNIDADES (criticas, no las inventes):
-- Solidos por peso → g o kg: carnes (pollo, ternera, cordero), pescados, verduras (cebolla, zanahoria, calabacin), frutas no liquidas, granos, legumbres, harinas, quesos, frutos secos. NUNCA uses ml para solidos.
-- Liquidos por volumen → ml o l: aceite, agua, caldo, leche, nata, vino, vinagre, salsa de soja, miel cuando esta como liquido, zumo. NUNCA uses g para liquidos.
-- Discretos por unidad → u (no "ud"): huevo, aguacate entero, platano, naranja, limon, diente de ajo, hoja de laurel, rebanada de pan, bote de conserva. Un huevo es "4 u", no "4 g" ni "200 g".
-- Cucharadas y cucharaditas → cda, cdita: especias, condimentos cuando se miden asi.
-- Pizca (sal, pimienta, especias en cantidad minima) o al_gusto (cuando la receta no especifica) son validas.
+Campo "servings" OBLIGATORIO:
+- Si la receta dice expresamente "para 4 personas", "rinde 6 raciones", "4 comensales" →
+  { "servings": 4, "servingsConfidence": "explicit" }
+- Si la receta NO lo dice expresamente, ESTIMA basandote en:
+  - La cantidad de la proteina principal (200-250 g por comensal)
+  - Cantidad de carbohidrato (60-80 g de arroz / 80-100 g de pasta crudos por persona)
+  - Volumen total para sopas/cremas (~350 ml por persona)
+  - Si nada de lo anterior aplica, asume 4 personas por defecto
+  Devuelve { "servings": <numero>, "servingsConfidence": "estimated" }
+- servings debe ser un entero positivo entre 1 y 12.
+
+Campo "ingredients" — cada elemento debe tener:
+- "name": nombre generico, singular, minusculas
+- "canonical": SIEMPRE presente, con quantity (numero) + unit en ('g'|'ml'|'u'). Esto
+  es lo que se usa para nutricion y escalado.
+- "display": OPCIONAL, solo si el texto original usa una unidad abstracta como
+  "cucharada", "pizca", "punado", "chorrito", "diente", "rodaja", "ramita", etc.
+  Si esta presente: { quantity (numero), unit (string) }. Si la unidad original
+  ya era canonica (g/ml/u/kg/l), omite "display".
+
+Reglas de conversion:
+- 1 cda = 15 ml; 1 cdita = 5 ml; 1 pizca = 0.5 g; 1 punado = 30 g; 1 chorrito = 10 ml
+- Para discretos (huevo, aguacate, diente, hoja, rodaja, ramita): "canonical.unit": "u"
+  y "canonical.quantity" = numero de unidades. NO conviertas a gramos en el extractor —
+  la base de datos sabe el peso por unidad de cada ingrediente.
+- Para liquidos en abstracto (cucharada de aceite, vaso de leche): canonical va en
+  "ml". El servidor convierte a gramos despues usando la densidad del ingrediente.
+- Kilogramos y litros: traducir a g/ml respectivamente (1.5 kg → 1500 g).
 
 Reglas de COHERENCIA:
 - NO repitas el mismo ingrediente en varias filas. Si el texto lo menciona dos veces, consolida en UNA fila con la cantidad total.
 - Cada ingrediente debe aparecer EXACTAMENTE una vez en el array.
-- Si un ingrediente aparece sin cantidad (ej. "sal al gusto"), usa quantity: 1 con unit: "al_gusto".`
+- Si un ingrediente aparece sin cantidad (ej. "sal al gusto"), usa canonical: { quantity: 0, unit: "g" } y omite display.`
 
 export class AnthropicProvider implements VisionProvider, TextExtractionProvider {
   private client: Anthropic
@@ -144,14 +198,44 @@ export class AnthropicProvider implements VisionProvider, TextExtractionProvider
       throw new Error(parsed.error)
     }
 
+    // Harden servings
+    let servings: number = parsed.servings ?? null
+    let servingsConfidence: 'explicit' | 'estimated' =
+      parsed.servingsConfidence === 'explicit' ? 'explicit' : 'estimated'
+    if (servings == null || !Number.isInteger(servings) || servings < 1) {
+      servings = 4
+      servingsConfidence = 'estimated'
+    }
+    if (servings > 12) {
+      servings = 12
+      servingsConfidence = 'estimated'
+    }
+
     return {
       name: parsed.name || '',
+      servings,
+      servingsConfidence,
       prepTime: parsed.prepTime ?? null,
-      ingredients: (parsed.ingredients || []).map((ing: { name: string; quantity: number; unit: string }) => ({
-        name: ing.name,
-        quantity: ing.quantity || 0,
-        unit: ing.unit || 'g',
-      })),
+      ingredients: (parsed.ingredients || []).map((ing: any) => {
+        // New shape: { name, canonical: {quantity, unit}, display?: {quantity, unit} }
+        if (ing.canonical) {
+          return {
+            name: ing.name,
+            quantity: ing.canonical.quantity || 0,
+            unit: ing.canonical.unit || 'g',
+            displayQuantity: ing.display?.quantity ?? null,
+            displayUnit: ing.display?.unit ?? null,
+          }
+        }
+        // Legacy shape: { name, quantity, unit }
+        return {
+          name: ing.name,
+          quantity: ing.quantity || 0,
+          unit: ing.unit || 'g',
+          displayQuantity: null,
+          displayUnit: null,
+        }
+      }),
       steps: parsed.steps || [],
       suggestedMeals: parsed.suggestedMeals || ['lunch', 'dinner'],
       suggestedSeasons: parsed.suggestedSeasons || ['spring', 'summer', 'autumn', 'winter'],
@@ -208,22 +292,48 @@ export class AnthropicProvider implements VisionProvider, TextExtractionProvider
       }
     }
 
+    // Harden servings
+    let servings: number = parsed.servings ?? null
+    let servingsConfidence: 'explicit' | 'estimated' =
+      parsed.servingsConfidence === 'explicit' ? 'explicit' : 'estimated'
+    if (servings == null || !Number.isInteger(servings) || servings < 1) {
+      servings = 4
+      servingsConfidence = 'estimated'
+    }
+    if (servings > 12) {
+      servings = 12
+      servingsConfidence = 'estimated'
+    }
+
     const raw: RawExtractedRecipe = {
       name: parsed.name || '',
       prepTime: parsed.prepTime ?? null,
       cookTime: parsed.cookTime ?? null,
-      // RawExtractedRecipe.servings is intentionally nullable by design — the LLM
-      // may omit it. recipeExtractor.ts hardens it to `number` (with fallback +
-      // confidence flag) before producing the final ExtractedRecipe contract.
-      servings: parsed.servings ?? null,
+      // Servings already hardened above; stored in raw for the extractor entry
+      // points to apply the same clamping logic uniformly.
+      servings,
+      servingsConfidence,
       difficulty: parsed.difficulty ?? null,
-      ingredients: (parsed.ingredients || []).map(
-        (ing: { name: string; quantity: number; unit: string }) => ({
+      ingredients: (parsed.ingredients || []).map((ing: any) => {
+        // New shape: { name, canonical: {quantity, unit}, display?: {quantity, unit} }
+        if (ing.canonical) {
+          return {
+            name: ing.name,
+            quantity: ing.canonical.quantity || 0,
+            unit: ing.canonical.unit || 'g',
+            displayQuantity: ing.display?.quantity ?? null,
+            displayUnit: ing.display?.unit ?? null,
+          }
+        }
+        // Legacy shape: { name, quantity, unit }
+        return {
           name: ing.name,
           quantity: ing.quantity || 0,
           unit: ing.unit || 'g',
-        }),
-      ),
+          displayQuantity: null,
+          displayUnit: null,
+        }
+      }),
       steps: parsed.steps || [],
       suggestedMeals: parsed.suggestedMeals || ['lunch', 'dinner'],
       suggestedSeasons:

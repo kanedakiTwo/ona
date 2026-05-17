@@ -192,6 +192,12 @@ export interface ExtractedIngredient {
   quantity: number
   unit: Unit
   matched: boolean
+  /** Human-readable quantity as entered/extracted (e.g. 2 for "2 cda").
+   * Null/absent when no display conversion applies. */
+  displayQuantity?: number | null
+  /** Human-readable unit label as entered/extracted (e.g. "cda").
+   * Null/absent when no display conversion applies. */
+  displayUnit?: string | null
 }
 
 export interface ExtractedRecipe {

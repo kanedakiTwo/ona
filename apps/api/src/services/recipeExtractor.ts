@@ -19,8 +19,21 @@ export interface RawExtractedRecipe {
   prepTime: number | null
   cookTime?: number | null
   servings?: number | null
+  /** Confidence level for the servings value. Optional — the extractor entry
+   * points harden it to a non-null value before producing ExtractedRecipe. */
+  servingsConfidence?: 'explicit' | 'estimated' | null
   difficulty?: string | null
-  ingredients: { name: string; quantity: number; unit: string }[]
+  ingredients: {
+    name: string
+    quantity: number
+    unit: string
+    /** Human-readable quantity as extracted (e.g. 2 for "2 cda"). Null when no
+     * display conversion applies (unit was already canonical). */
+    displayQuantity?: number | null
+    /** Human-readable unit label as extracted (e.g. "cda"). Null when no
+     * display conversion applies. */
+    displayUnit?: string | null
+  }[]
   steps: string[]
   suggestedMeals: string[]
   suggestedSeasons: string[]
@@ -145,9 +158,18 @@ async function autoCreateMissingIngredient(
  * containment, and first-word match (≥3 chars). Falls back to USDA-backed
  * auto-create for the still-unmatched. Used by both the photo extractor and
  * the URL extractor (see `recipeUrlExtractor.ts`).
+ *
+ * `displayQuantity` and `displayUnit` are passive fields that ride through
+ * unmodified — the matching logic does not touch them.
  */
 export async function matchIngredients(
-  rawIngredients: { name: string; quantity: number; unit: string }[],
+  rawIngredients: {
+    name: string
+    quantity: number
+    unit: string
+    displayQuantity?: number | null
+    displayUnit?: string | null
+  }[],
 ): Promise<{ matched: ExtractedIngredient[]; warnings: string[] }> {
   const allIngredients = await db
     .select({ id: ingredients.id, name: ingredients.name })
@@ -192,6 +214,8 @@ export async function matchIngredients(
           quantity,
           unit: coerceUnit(ext.unit),
           matched: true,
+          displayQuantity: ext.displayQuantity ?? null,
+          displayUnit: ext.displayUnit ?? null,
         })
         continue
       }
@@ -204,6 +228,8 @@ export async function matchIngredients(
       quantity,
       unit: coerceUnit(ext.unit),
       matched: !!match,
+      displayQuantity: ext.displayQuantity ?? null,
+      displayUnit: ext.displayUnit ?? null,
     })
   }
 
@@ -244,10 +270,23 @@ export async function extractRecipeFromImage(
       ? (raw.difficulty.toLowerCase() as Difficulty)
       : null
 
+  // Harden servings: the provider already clamps, but re-apply here for safety
+  // in case a custom provider omits it.
+  let servings = raw.servings
+  let servingsConfidence: 'explicit' | 'estimated' = raw.servingsConfidence ?? 'estimated'
+  if (servings == null || !Number.isInteger(servings) || servings < 1) {
+    servings = 4
+    servingsConfidence = 'estimated'
+  }
+  if (servings > 12) {
+    servings = 12
+    servingsConfidence = 'estimated'
+  }
+
   return {
     name: raw.name,
-    servings: raw.servings ?? 2,
-    servingsConfidence: raw.servings != null ? 'explicit' : 'estimated',
+    servings,
+    servingsConfidence,
     prepTime: raw.prepTime,
     cookTime: raw.cookTime ?? null,
     meals: meals.length > 0 ? meals : ['lunch', 'dinner'],

@@ -16,19 +16,18 @@ import { unitConversionCache, ingredients } from '../db/schema.js'
 
 const TEST_INGREDIENT_ID = '11111111-1111-1111-1111-111111111111'
 
-beforeEach(async () => {
-  await db.delete(unitConversionCache)
-  // Ensure the test ingredient row exists (idempotent insert).
-  await db.insert(ingredients).values({
-    id: TEST_INGREDIENT_ID,
-    name: 'test ingredient for unit resolver',
-    aisle: null,
-  }).onConflictDoNothing()
-  // Reset any injected client between tests
-  _setLlmClient(null)
-})
-
-describe('resolveUnit', () => {
+describe.skipIf(!process.env.SMOKE_USER_TOKEN)('resolveUnit', () => {
+  beforeEach(async () => {
+    await db.delete(unitConversionCache)
+    // Ensure the test ingredient row exists (idempotent insert).
+    await db.insert(ingredients).values({
+      id: TEST_INGREDIENT_ID,
+      name: 'test ingredient for unit resolver',
+      aisle: null,
+    }).onConflictDoNothing()
+    // Reset any injected client between tests
+    _setLlmClient(null)
+  })
   it('returns from table for "cda" without hitting cache or LLM', async () => {
     const llmSpy = vi.fn()
     _setLlmClient({ call: llmSpy })

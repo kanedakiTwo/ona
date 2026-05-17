@@ -109,4 +109,58 @@ describe('menus route smoke', () => {
       expect([200, 400, 404]).toContain(r.status)
     },
   )
+
+  it.skipIf(!reachable || !TOKEN || !USER_ID)(
+    'POST /menu/:menuId/day/:day/meal/:meal adds a slot the template lacked',
+    async () => {
+      if (!menuId) return
+      // Snack isn't in the default template, so day 0 should be missing it.
+      const r = await fetch(`${API_URL}/menu/${menuId}/day/0/meal/snack`, {
+        method: 'POST',
+        headers: auth(),
+        body: '{}',
+      })
+      // 201 (created) | 404 (no matching snack recipe) | 409 (already there).
+      expect([201, 404, 409]).toContain(r.status)
+    },
+  )
+
+  it.skipIf(!reachable || !TOKEN || !USER_ID)(
+    'PATCH /menu/:menuId/day/:day/meal/:meal updates the diner-count override',
+    async () => {
+      if (!menuId) return
+      const r = await fetch(`${API_URL}/menu/${menuId}/day/0/meal/lunch`, {
+        method: 'PATCH',
+        headers: auth(),
+        body: JSON.stringify({ servings: 4 }),
+      })
+      expect([200, 404]).toContain(r.status)
+      if (r.status === 200) {
+        const body = await r.json()
+        const slot = body.days?.[0]?.lunch
+        if (slot) expect(slot.servings).toBe(4)
+      }
+
+      // Clearing the override with `null` should drop the field.
+      const r2 = await fetch(`${API_URL}/menu/${menuId}/day/0/meal/lunch`, {
+        method: 'PATCH',
+        headers: auth(),
+        body: JSON.stringify({ servings: null }),
+      })
+      expect([200, 404]).toContain(r2.status)
+    },
+  )
+
+  it.skipIf(!reachable || !TOKEN || !USER_ID)(
+    'DELETE /menu/:menuId/day/:day/meal/:meal removes the slot for this week',
+    async () => {
+      if (!menuId) return
+      const r = await fetch(`${API_URL}/menu/${menuId}/day/0/meal/lunch`, {
+        method: 'DELETE',
+        headers: auth(),
+      })
+      // 200 (removed) | 400 (locked) | 404 (already absent).
+      expect([200, 400, 404]).toContain(r.status)
+    },
+  )
 })

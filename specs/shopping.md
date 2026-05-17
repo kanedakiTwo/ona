@@ -31,13 +31,15 @@ Each item in `shopping_lists.items` (JSONB array) has:
 
 ## Aggregation
 
-`generateShoppingList` (server) walks every meal in `menu.days` and, for each recipe:
+`generateShoppingList` (server) walks every slot in `menu.days` and, for each recipe:
 
 1. Looks up the user's household: `users.adults` (≥1, includes anyone over 10 years) and `users.kids_2_to_10` (children aged 2–10). Children under 2 don't count.
-2. Computes the household multiplier as `adults + 0.5 × kidsCount` and then the scaling factor as `multiplier / recipe.servings`
-3. For each `RecipeIngredient`, multiplies `quantity` by that factor
-4. Skips ingredients tagged `optional: true` unless the user opts in (future toggle)
-5. `pizca` and `al_gusto` are dropped from the list (not buyable)
+2. Computes the household multiplier as `adults + 0.5 × kidsCount`. For each slot the **effective diner count** is `slot.servings` if the user set a per-day override on the menu card (see [Menus](./menus.md#manual-slot-shaping-per-week-overrides)), otherwise this household multiplier.
+3. Sums effective diner counts per recipe across the week (`sumDinersByRecipe`): two slots of the same recipe with overrides for 4 and 8 diners aggregate to 12.
+4. Scaling factor per recipe: `aggregatedDiners / recipe.servings`
+5. For each `RecipeIngredient`, multiplies `quantity` by that factor
+6. Skips ingredients tagged `optional: true` unless the user opts in (future toggle)
+7. `pizca` and `al_gusto` are dropped from the list (not buyable)
 
 Then the list aggregator merges items by `ingredientId`:
 

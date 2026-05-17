@@ -4,6 +4,15 @@ import type { Meal } from '../constants/enums.js'
 export interface MealSlot {
   recipeId: string
   recipeName?: string
+  /**
+   * Per-slot diner-count override. When present, this number replaces the
+   * user's household-based default when scaling ingredients for this slot
+   * (e.g. shopping-list aggregation, "Para X" caption on the recipe detail
+   * when entered from the menu). Absent/null = use the user's household
+   * default. The slot is scoped to this week's menu; clearing it on the
+   * next regeneration is the user's responsibility.
+   */
+  servings?: number | null
 }
 
 export interface DayMenu {

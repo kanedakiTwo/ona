@@ -16,6 +16,7 @@ import realtimeRoutes from './routes/realtime.js'
 import adminRoutes from './routes/admin.js'
 import unitsRouter from './routes/units.js'
 import memoryRoutes from './routes/memory.js'
+import householdRoutes, { publicHouseholdRouter } from './routes/households.js'
 
 const app = express()
 
@@ -52,7 +53,11 @@ app.get('/health', (_req, res) => {
 })
 
 // Routes
+// `publicHouseholdRouter` must be mounted BEFORE `userRoutes` — the users
+// router calls `router.use(authMiddleware)` at the top, which would otherwise
+// intercept the public `/invites/:token` preview and return 401.
 app.use(authRoutes)
+app.use(publicHouseholdRouter)
 app.use(userRoutes)
 app.use(recipeRoutes)
 app.use(ingredientRoutes)
@@ -64,6 +69,7 @@ app.use(realtimeRoutes)
 app.use(adminRoutes)
 app.use('/', unitsRouter)
 app.use(memoryRoutes)
+app.use(householdRoutes)
 
 // Error handler
 app.use(errorHandler)

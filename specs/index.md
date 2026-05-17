@@ -12,6 +12,14 @@ Registration, login, logout, JWT tokens, session management, onboarding flow, pa
 
 ---
 
+## [Household](./household.md)
+
+Multi-user "shared household" foundation: every authed user has a `primary_household_id` pointing at a `households` row, with `household_members` (one row per user, role `owner`/`member`/`child`) and `household_invites` (32-hex token, 7-day TTL, public preview at `GET /invites/:token`, authed accept at `POST /invites/:token/accept`). At registration we auto-create a solo household named "Mi casa" with the registrant as owner. Owners can rename, generate/revoke invites, remove members, and leave (auto-promotes the oldest remaining member to owner; auto-creates a new solo household for the leaver). Public preview is mounted on a dedicated router BEFORE `userRoutes` so `router.use(authMiddleware)` doesn't intercept it. `GET /households/me` returns name + members + pendingInvites; `/profile/casa` is the management surface. Scope flip (menus/shopping/favorites/pantry from `user_id` → `household_id`) lands in PR 1 Part B.
+
+**Source**: `apps/api/src/db/schema.ts` (`households`, `household_members`, `household_invites`, `users.primary_household_id`), `apps/api/src/db/migrations/0011_*.sql`, `apps/api/src/services/householdStore.ts`, `apps/api/src/routes/households.ts`, `apps/api/src/routes/auth.ts` (auto-create on register), `apps/api/src/index.ts` (mount order), `apps/web/src/app/profile/casa/page.tsx`, `apps/web/src/app/invites/[token]/page.tsx`
+
+---
+
 ## [User Memory](./user-memory.md)
 
 Typed long-term storage of user preferences (dislikes, equipment, time-available per weekday, weekly budget, cuisine bias, cooking skill, meal times, free-form notes). Stable key registry + per-key Zod schema in `@ona/shared`. `user_memories` table, one row per (user_id, key). Advisor injects a Spanish-language digest into every system prompt; `update_memory` skill lets the assistant write inferred facts mid-conversation ("recuerda que no me gusta el cilantro"). REST: `GET /memory`, `PATCH /memory { key, value | facts: [...] }`, `DELETE /memory/:key`. Profile sub-page `/profile/memoria` lists every fact with source badge (Tú / Asistente / Onboarding). 19 contract tests.

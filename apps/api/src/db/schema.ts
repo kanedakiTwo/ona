@@ -51,6 +51,14 @@ export const users = pgTable('users', {
    */
   imageGenMonthKey: text('image_gen_month_key'),
   imageGenCount: integer('image_gen_count').notNull().default(0),
+  /**
+   * The household this user reads from by default — set automatically on
+   * registration and reassigned when the user joins another household via
+   * invite or leaves their current one. Nullable during the migration
+   * window; the auth middleware will fail with `code: 'NO_HOUSEHOLD'` if
+   * a fully-migrated user somehow lands here without a primary household.
+   */
+  primaryHouseholdId: uuid('primary_household_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => [
   check('users_role_check', sql.raw("role IN ('user','admin')")),
@@ -363,4 +371,60 @@ export const unitConversionCache = pgTable('unit_conversion_cache', {
     sql`COALESCE(${t.ingredientId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
   ),
   check('unit_conversion_cache_value_check', sql`${t.gramsPerUnit} IS NOT NULL OR ${t.mlPerUnit} IS NOT NULL`),
+])
+
+// ─── 16. households ─────────────────────────────────────────
+// Owner of every household-scoped resource (menus, shopping, pantry,
+// favorites, cook_logs, recipe-collection rows). Every user is backfilled
+// into a solo household on first deploy; joining/leaving is via invitation
+// + accept (see `household_invites`). The owner can rename + invite + remove
+// members. Members can leave.
+export const households = pgTable('households', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull().default('Mi casa'),
+  ownerId: uuid('owner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_households_owner').on(t.ownerId),
+])
+
+// ─── 17. household_members ──────────────────────────────────
+// M:N join between users + households. A user can belong to multiple
+// households (e.g., student living at home + new flat); their
+// `users.primary_household_id` decides which one drives every read.
+export const householdMembers = pgTable('household_members', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** 'owner' | 'member' | 'child'. Owner can manage members; children can read everything but can't suspend/invite. */
+  role: text('role').notNull().default('member'),
+  joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_household_member').on(t.householdId, t.userId),
+  index('idx_household_members_user').on(t.userId),
+  check('household_members_role_check', sql.raw("role IN ('owner','member','child')")),
+])
+
+// ─── 18. household_invites ──────────────────────────────────
+// One-time tokens the owner generates and shares manually (mirrors the
+// admin password-reset flow — no email is auto-sent). Token is a 32-char
+// random string; `consumed_at` flips once the recipient accepts.
+export const householdInvites = pgTable('household_invites', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  invitedByUserId: uuid('invited_by_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** Optional preview email so the owner remembers who they invited. */
+  email: text('email'),
+  /** Random 32-char string the recipient pastes into /invites/:token. */
+  token: text('token').notNull(),
+  /** Role the new member assumes on accept. */
+  role: text('role').notNull().default('member'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }),
+  consumedByUserId: uuid('consumed_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_household_invite_token').on(t.token),
+  index('idx_household_invites_household').on(t.householdId),
+  check('household_invites_role_check', sql.raw("role IN ('member','child')")),
 ])

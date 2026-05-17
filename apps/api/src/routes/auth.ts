@@ -36,6 +36,17 @@ router.post('/register', validate(registerSchema), async (req, res) => {
       .values({ username, email, passwordHash })
       .returning()
 
+    // Auto-create a solo household so every authed read has a valid scope.
+    // Falls back silently if the helper can't run (e.g. migration not yet
+    // applied) — the auth middleware will catch the missing primary
+    // household with code: 'NO_HOUSEHOLD' rather than failing register.
+    try {
+      const { createSoloHouseholdForNewUser } = await import('../services/householdStore.js')
+      await createSoloHouseholdForNewUser(user.id)
+    } catch (e) {
+      console.error('[register] solo household creation failed (continuing):', e)
+    }
+
     const token = jwt.sign({ userId: user.id }, env.JWT_SECRET)
     const { passwordHash: _, ...userWithoutPassword } = user
 

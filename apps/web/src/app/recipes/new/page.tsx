@@ -72,6 +72,12 @@ export default function NewRecipePage() {
 
   const [name, setName] = useState("")
   const [servings, setServings] = useState<number | "">(2)
+  // 'explicit' is the default — the user typed the number themselves. Photo /
+  // URL extraction can flip this to 'estimated' (see handlePhotoExtracted);
+  // editing the input flips it back to 'explicit' (see the onChange below).
+  const [servingsConfidence, setServingsConfidence] = useState<
+    "explicit" | "estimated"
+  >("explicit")
   const [prepTime, setPrepTime] = useState<number | "">("")
   const [selectedMeals, setSelectedMeals] = useState<Meal[]>([])
   const [selectedSeasons, setSelectedSeasons] = useState<Season[]>([])
@@ -94,8 +100,10 @@ export default function NewRecipePage() {
     if (data.servings > 0) {
       setServings(data.servings)
     }
-    // TODO(units PR 3): wire data.servingsConfidence into form state + show
-    // the "Estimado" badge per spec section "Servings deduction → UI".
+    // Required field on ExtractedRecipe (no nullability). When the extractor
+    // signals 'estimated', the JSX below renders an "Estimado" badge next to
+    // the servings input.
+    setServingsConfidence(data.servingsConfidence)
     setPrepTime(data.prepTime ?? "")
     setSelectedMeals(data.meals)
     setSelectedSeasons(data.seasons)
@@ -302,6 +310,7 @@ export default function NewRecipePage() {
     return buildRecipePayload({
       name,
       servings,
+      servingsConfidence,
       prepTime,
       selectedMeals,
       selectedSeasons,
@@ -479,9 +488,16 @@ export default function NewRecipePage() {
               <input
                 type="number"
                 value={servings}
-                onChange={(e) =>
+                onChange={(e) => {
                   setServings(e.target.value ? Number(e.target.value) : "")
-                }
+                  // Flip-on-edit per spec: any keystroke in the servings input
+                  // means the user has taken ownership of the value, so the
+                  // "Estimado" hint no longer applies. Guard against a useless
+                  // re-render when already 'explicit'.
+                  if (servingsConfidence === "estimated") {
+                    setServingsConfidence("explicit")
+                  }
+                }}
                 placeholder="2"
                 min={1}
                 className="w-28 rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-3 py-2 text-[14px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
@@ -489,6 +505,15 @@ export default function NewRecipePage() {
               <span className="text-[12px] uppercase tracking-[0.12em] text-[#7A7066]">
                 personas
               </span>
+              {/* TODO(test): covered by Playwright spec in PR 3.5 — assert
+                  "Estimado" badge appears on photo-extracted recipe with
+                  servingsConfidence='estimated' and disappears after editing
+                  the input. */}
+              {servingsConfidence === "estimated" && (
+                <span className="text-[10px] uppercase tracking-[0.12em] italic text-[#C65D38]">
+                  Estimado
+                </span>
+              )}
             </div>
             {errors.servings && (
               <p className="mt-2 text-[12px] italic text-[#C65D38]">

@@ -156,6 +156,7 @@ function buildRandomMenu(
   lockedSlots: LockedSlots,
   existingDays?: DayMenu[],
   bannedRecipeIds?: Set<string>,
+  skippedDays?: Set<number>,
 ): DayMenu[] {
   const usedRecipeIds = new Set<string>()
   const days: DayMenu[] = []
@@ -177,6 +178,13 @@ function buildRandomMenu(
   for (let dayIndex = 0; dayIndex < template.length; dayIndex++) {
     const dayTemplate = template[dayIndex]
     const dayMenu: DayMenu = {}
+
+    // Skip days the user marked "sin cocinar" — slots stay empty, the
+    // user reactivates the day manually if plans change.
+    if (skippedDays?.has(dayIndex)) {
+      days.push(dayMenu)
+      continue
+    }
 
     for (const meal of Object.keys(dayTemplate)) {
       if (!dayTemplate[meal]) continue
@@ -268,6 +276,7 @@ export async function generateMenu(
   lockedSlots: LockedSlots = {},
   existingDays?: DayMenu[],
   bannedRecipeIds?: Set<string>,
+  skippedDays?: Set<number>,
 ): Promise<DayMenu[]> {
   // 1. Fetch user profile
   const [user] = await db
@@ -343,6 +352,7 @@ export async function generateMenu(
       lockedSlots,
       existingDays,
       bannedRecipeIds,
+      skippedDays,
     )
 
     // Verify the menu has at least some recipes
@@ -371,5 +381,6 @@ export async function generateMenu(
     lockedSlots,
     existingDays,
     bannedRecipeIds,
+    skippedDays,
   )
 }

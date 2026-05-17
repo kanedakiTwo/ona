@@ -4,7 +4,7 @@ import { db } from '../db/connection.js'
 import { menus, menuLogs, users } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
-import { generateMenuSchema, lockMealSchema, MEALS } from '@ona/shared'
+import { generateMenuSchema, lockMealSchema, MEALS, MEAL_TYPE_TAGS } from '@ona/shared'
 import type { DayMenu, LockedSlots, Meal, MealSlot } from '@ona/shared'
 import { generateMenu } from '../services/menuGenerator.js'
 import { calculateMenuCaloriesFromDB } from '../services/calorieCalculator.js'
@@ -23,6 +23,7 @@ const router = Router()
  * lenient behavior to avoid breaking clients that already rely on it.
  */
 const MEAL_VALUES = new Set<string>(MEALS)
+const MEAL_TYPE_TAG_VALUES = new Set<string>(MEAL_TYPE_TAGS)
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 function isValidUuid(s: unknown): s is string {
   return typeof s === 'string' && UUID_RE.test(s)
@@ -72,10 +73,36 @@ router.post('/menu/generate', validate(generateMenuSchema), async (req, res) => 
   try {
     const { userId, weekStart, customTemplate } = req.body
 
-    // Generate the menu
-    const days = await generateMenu(userId, weekStart, customTemplate, db)
+    // Preserve the user's manual shaping across regenerate: if a menu for
+    // this week already exists, carry its bannedRecipeIds + skippedDays
+    // into the new generation. The previous menu row stays in the DB as
+    // history; the new row is what the UI reads.
+    const [previous] = await db
+      .select({
+        bannedRecipeIds: menus.bannedRecipeIds,
+        skippedDays: menus.skippedDays,
+      })
+      .from(menus)
+      .where(and(eq(menus.userId, userId), eq(menus.weekStart, weekStart)))
+      .orderBy(desc(menus.createdAt))
+      .limit(1)
+    const carryBanned = new Set<string>(previous?.bannedRecipeIds ?? [])
+    const carrySkipped = new Set<number>(previous?.skippedDays ?? [])
 
-    // Save to menus table
+    // Generate the menu
+    const days = await generateMenu(
+      userId,
+      weekStart,
+      customTemplate,
+      db,
+      {},
+      undefined,
+      carryBanned,
+      carrySkipped,
+    )
+
+    // Save to menus table — carry the lists forward so the matcher honours
+    // them next regeneration too.
     const [menu] = await db
       .insert(menus)
       .values({
@@ -83,6 +110,8 @@ router.post('/menu/generate', validate(generateMenuSchema), async (req, res) => 
         weekStart,
         days,
         locked: {},
+        bannedRecipeIds: [...carryBanned],
+        skippedDays: [...carrySkipped],
       })
       .returning()
 
@@ -208,7 +237,16 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
         res.status(404).json({ error: 'Recipe not found' })
         return
       }
-      days[dayIndex][meal] = { recipeId: chosen.id, recipeName: chosen.name }
+      // Preserve user-set slot metadata (pinnedType, servings) across recipe swap —
+      // the user pinned "cremas", chose a specific recipe; the pin must stay so
+      // the next Aleatorio still respects it.
+      const prev = days[dayIndex]?.[meal]
+      days[dayIndex][meal] = {
+        recipeId: chosen.id,
+        recipeName: chosen.name,
+        ...(prev?.pinnedType ? { pinnedType: prev.pinnedType } : {}),
+        ...(prev?.servings != null ? { servings: prev.servings } : {}),
+      }
       const [updated] = await db
         .update(menus)
         .set({ days })
@@ -282,7 +320,9 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
 
     const season = detectSeason()
 
-    // Find a new recipe for this slot, honouring the week's veto list.
+    // Find a new recipe for this slot, honouring the week's veto list and
+    // the slot's pinned meal type (if any).
+    const existingSlot = (menu.days as DayMenu[])?.[dayIndex]?.[meal]
     const newRecipe = findRecipeForSlot(recipesWithIngredients, {
       meal: meal as Meal,
       season,
@@ -290,15 +330,28 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       restrictions,
       favoriteRecipeIds,
       bannedRecipeIds: new Set(menu.bannedRecipeIds ?? []),
+      pinnedType: existingSlot?.pinnedType ?? null,
     })
 
     if (!newRecipe) {
-      res.status(404).json({ error: 'No matching recipe found for this slot' })
+      if (existingSlot?.pinnedType) {
+        res.status(404).json({
+          error: `No hay recetas etiquetadas como "${existingSlot.pinnedType}" que encajen con este día/temporada. Cambia la etiqueta o quita el pin.`,
+        })
+      } else {
+        res.status(404).json({ error: 'No matching recipe found for this slot' })
+      }
       return
     }
 
-    // Update the menu
-    days[dayIndex][meal] = { recipeId: newRecipe.id, recipeName: newRecipe.name }
+    // Update the menu, preserving user-set metadata (pinnedType, servings)
+    // across the matcher swap so a pinned slot keeps its pin.
+    days[dayIndex][meal] = {
+      recipeId: newRecipe.id,
+      recipeName: newRecipe.name,
+      ...(existingSlot?.pinnedType ? { pinnedType: existingSlot.pinnedType } : {}),
+      ...(existingSlot?.servings != null ? { servings: existingSlot.servings } : {}),
+    }
 
     const [updated] = await db
       .update(menus)
@@ -557,6 +610,22 @@ router.patch('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) 
       }
     }
 
+    // Pinned meal-type tag. Same shape as servings — null clears, a known
+    // tag from @ona/shared sets, unknown rejected with 400.
+    if ('pinnedType' in (req.body ?? {})) {
+      const raw = req.body.pinnedType
+      if (raw === null) {
+        delete slot.pinnedType
+      } else if (typeof raw !== 'string' || !MEAL_TYPE_TAG_VALUES.has(raw)) {
+        res.status(400).json({
+          error: `pinnedType must be one of: ${MEAL_TYPE_TAGS.join(', ')}`,
+        })
+        return
+      } else {
+        slot.pinnedType = raw
+      }
+    }
+
     days[dayIndex][meal] = slot
     const [updated] = await db.update(menus).set({ days }).where(eq(menus.id, menuId)).returning()
     res.json(await hydrateMenuImages(updated))
@@ -684,6 +753,165 @@ router.delete('/menu/:menuId/ban/:recipeId', async (req: AuthRequest, res) => {
     res.json(await hydrateMenuImages(updated))
   } catch (err) {
     console.error('Unban recipe error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// POST /menu/:menuId/day/:day/leftover — clone a previous slot's recipe as
+// a leftover into the target slot. Body `{ sourceDay, sourceMeal, targetMeal }`.
+// Source slot must exist and not itself be a leftover (no chains); target
+// slot must be empty (use DELETE first to clear).
+router.post('/menu/:menuId/day/:day/leftover', async (req: AuthRequest, res) => {
+  try {
+    const menuId = String(req.params.menuId)
+    const targetDay = parseInt(String(req.params.day), 10)
+    const sourceDay = typeof req.body?.sourceDay === 'number' ? req.body.sourceDay : parseInt(String(req.body?.sourceDay), 10)
+    const sourceMeal = String(req.body?.sourceMeal ?? '')
+    const targetMeal = String(req.body?.targetMeal ?? '')
+
+    if (!Number.isFinite(targetDay) || targetDay < 0 || targetDay > 6) {
+      res.status(400).json({ error: 'Invalid day index' })
+      return
+    }
+    if (!Number.isFinite(sourceDay) || sourceDay < 0 || sourceDay > 6) {
+      res.status(400).json({ error: 'Invalid sourceDay' })
+      return
+    }
+    if (!isValidMeal(sourceMeal) || !isValidMeal(targetMeal)) {
+      res.status(400).json({ error: 'Invalid sourceMeal or targetMeal' })
+      return
+    }
+    if (sourceDay === targetDay && sourceMeal === targetMeal) {
+      res.status(400).json({ error: 'Source and target are the same slot' })
+      return
+    }
+
+    const [menu] = await db
+      .select()
+      .from(menus)
+      .where(eq(menus.id, menuId))
+      .limit(1)
+    if (!menu) {
+      res.status(404).json({ error: 'Menu not found' })
+      return
+    }
+    const days = menu.days as DayMenu[]
+
+    const source = days[sourceDay]?.[sourceMeal]
+    if (!source?.recipeId) {
+      res.status(404).json({ error: 'Source slot is empty' })
+      return
+    }
+    if (source.kind === 'leftover') {
+      res.status(400).json({ error: 'Cannot chain leftovers — pick a planned source slot' })
+      return
+    }
+    if (days[targetDay]?.[targetMeal]) {
+      res.status(409).json({ error: 'Target slot is not empty — quita la receta primero' })
+      return
+    }
+
+    if (!days[targetDay]) days[targetDay] = {}
+    days[targetDay][targetMeal] = {
+      recipeId: source.recipeId,
+      recipeName: source.recipeName,
+      kind: 'leftover',
+      leftoverOf: { day: sourceDay, meal: sourceMeal },
+    }
+
+    const [updated] = await db
+      .update(menus)
+      .set({ days })
+      .where(eq(menus.id, menuId))
+      .returning()
+    res.status(201).json(await hydrateMenuImages(updated))
+  } catch (err) {
+    console.error('Leftover error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// POST /menu/:menuId/day/:day/skip — mark a whole day as "sin cocinar".
+//
+// Empties every non-locked slot in that day and appends the day index to
+// `menus.skipped_days`. Whole-week regeneration leaves skipped days empty
+// (the matcher checks the flag before iterating). Unskip via DELETE.
+router.post('/menu/:menuId/day/:day/skip', async (req: AuthRequest, res) => {
+  try {
+    const menuId = String(req.params.menuId)
+    const dayIndex = parseInt(String(req.params.day), 10)
+
+    const [menu] = await db
+      .select()
+      .from(menus)
+      .where(eq(menus.id, menuId))
+      .limit(1)
+    if (!menu) {
+      res.status(404).json({ error: 'Menu not found' })
+      return
+    }
+
+    const days = menu.days as DayMenu[]
+    const locked = (menu.locked as LockedSlots) ?? {}
+
+    if (dayIndex < 0 || dayIndex >= days.length) {
+      res.status(400).json({ error: 'Invalid day index' })
+      return
+    }
+
+    // Empty every non-locked slot in this day.
+    const dayLocks = locked[String(dayIndex)] ?? {}
+    const nextDay: DayMenu = {}
+    for (const meal of Object.keys(days[dayIndex] ?? {})) {
+      if (dayLocks[meal]) nextDay[meal] = days[dayIndex][meal]
+    }
+    days[dayIndex] = nextDay
+
+    const existing = menu.skippedDays ?? []
+    const nextSkipped = existing.includes(dayIndex) ? existing : [...existing, dayIndex].sort((a, b) => a - b)
+
+    const [updated] = await db
+      .update(menus)
+      .set({ days, skippedDays: nextSkipped })
+      .where(eq(menus.id, menuId))
+      .returning()
+    res.json(await hydrateMenuImages(updated))
+  } catch (err) {
+    console.error('Skip day error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// DELETE /menu/:menuId/day/:day/skip — un-skip. Does NOT auto-refill the
+// day's slots; the user adds slots back manually via the existing "+ Añadir
+// comida" affordance or regenerates the whole week.
+router.delete('/menu/:menuId/day/:day/skip', async (req: AuthRequest, res) => {
+  try {
+    const menuId = String(req.params.menuId)
+    const dayIndex = parseInt(String(req.params.day), 10)
+    if (!Number.isFinite(dayIndex) || dayIndex < 0 || dayIndex > 6) {
+      res.status(400).json({ error: 'Invalid day index' })
+      return
+    }
+    const [menu] = await db
+      .select()
+      .from(menus)
+      .where(eq(menus.id, menuId))
+      .limit(1)
+    if (!menu) {
+      res.status(404).json({ error: 'Menu not found' })
+      return
+    }
+
+    const next = (menu.skippedDays ?? []).filter((d) => d !== dayIndex)
+    const [updated] = await db
+      .update(menus)
+      .set({ skippedDays: next })
+      .where(eq(menus.id, menuId))
+      .returning()
+    res.json(await hydrateMenuImages(updated))
+  } catch (err) {
+    console.error('Unskip day error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

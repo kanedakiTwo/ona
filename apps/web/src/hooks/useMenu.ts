@@ -5,6 +5,8 @@ import { enqueue } from "@/lib/pwa/offlineQueue"
 interface MealSlot {
   recipeId: string
   recipeName?: string
+  /** Per-slot diner override (this week only); null/undefined = household default. */
+  servings?: number | null
 }
 
 interface DayMenu {
@@ -85,6 +87,84 @@ export function useRegenerateMeal() {
 
       const body = params.recipeId ? { recipeId: params.recipeId } : undefined
       return api.put<Menu>(url, body)
+    },
+    onSuccess: (data) => {
+      if (data?.userId && data?.weekStart) {
+        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
+      }
+      queryClient.invalidateQueries({ queryKey: ["menu"] })
+    },
+  })
+}
+
+/**
+ * Add a meal slot the user's template didn't include (e.g. a Saturday
+ * breakfast when the saved preferences say "no breakfasts"). Scoped to
+ * THIS week's menu only — does not touch the profile template.
+ *
+ * `recipeId` optional: when omitted the server runs the matcher and picks a
+ * random recipe that fits the slot. POST returns 409 if a slot for that
+ * meal already exists on that day.
+ */
+export function useAddMealSlot() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (params: {
+      menuId: string
+      day: number
+      meal: string
+      recipeId?: string
+    }) => {
+      const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}`
+      const body = params.recipeId ? { recipeId: params.recipeId } : {}
+      return api.post<Menu>(url, body)
+    },
+    onSuccess: (data) => {
+      if (data?.userId && data?.weekStart) {
+        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
+      }
+      queryClient.invalidateQueries({ queryKey: ["menu"] })
+    },
+  })
+}
+
+/**
+ * Remove a slot from this week's menu. The user's template is untouched;
+ * regenerating or running `addMealSlot` later brings the slot back per
+ * the saved preferences. Server returns 400 when the slot is locked.
+ */
+export function useDeleteMealSlot() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (params: { menuId: string; day: number; meal: string }) => {
+      const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}`
+      return api.delete<Menu>(url)
+    },
+    onSuccess: (data) => {
+      if (data?.userId && data?.weekStart) {
+        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
+      }
+      queryClient.invalidateQueries({ queryKey: ["menu"] })
+    },
+  })
+}
+
+/**
+ * Override the diner count for a single slot in this week's menu. Pass
+ * `null` to clear the override and revert to the user's household
+ * default. Server rejects values outside [1, 24].
+ */
+export function useUpdateSlotServings() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (params: {
+      menuId: string
+      day: number
+      meal: string
+      servings: number | null
+    }) => {
+      const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}`
+      return api.patch<Menu>(url, { servings: params.servings })
     },
     onSuccess: (data) => {
       if (data?.userId && data?.weekStart) {

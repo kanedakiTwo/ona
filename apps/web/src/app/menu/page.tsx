@@ -4,11 +4,31 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { motion, AnimatePresence } from "motion/react"
 import { useAuth } from "@/lib/auth"
-import { useMenu, useGenerateMenu, useRegenerateMeal } from "@/hooks/useMenu"
+import {
+  useMenu,
+  useGenerateMenu,
+  useRegenerateMeal,
+  useLockMeal,
+  useAddMealSlot,
+  useDeleteMealSlot,
+  useUpdateSlotServings,
+} from "@/hooks/useMenu"
+import { useUser } from "@/hooks/useUser"
 import { haptic } from "@/lib/pwa/haptics"
 import { recordMenuVisit } from "@/lib/pwa/installPrompt"
-import { ChevronLeft, ChevronRight, RefreshCw, Lock, Unlock, Sparkles, Replace } from "lucide-react"
-import { useLockMeal } from "@/hooks/useMenu"
+import {
+  ChevronLeft,
+  ChevronRight,
+  Lock,
+  Minus,
+  Plus,
+  RefreshCw,
+  Replace,
+  Sparkles,
+  Trash2,
+  Unlock,
+  Users,
+} from "lucide-react"
 import { mealLabel } from "@/lib/labels"
 import { RecipePickerSheet } from "@/components/menu/RecipePickerSheet"
 
@@ -122,6 +142,16 @@ export default function MenuPage() {
   const generateMenu = useGenerateMenu()
   const regenerateMeal = useRegenerateMeal()
   const lockMeal = useLockMeal()
+  const addMealSlot = useAddMealSlot()
+  const deleteMealSlot = useDeleteMealSlot()
+  const updateSlotServings = useUpdateSlotServings()
+  // Live user profile so we can fall back to the household diner count when
+  // a slot doesn't have a per-day servings override.
+  const { data: profile } = useUser(user?.id)
+  const householdDiners =
+    (profile?.adults as number | undefined ?? user?.adults ?? 0) +
+    (profile?.kidsCount as number | undefined ?? user?.kidsCount ?? 0)
+  const defaultDiners = Math.max(1, householdDiners || 2)
 
   const [selectedDay, setSelectedDay] = useState(() => {
     const now = new Date()
@@ -403,6 +433,7 @@ export default function MenuPage() {
                       day={selectedDay}
                       isLocked={isLocked(meal.type)}
                       readOnly={isPastWeek}
+                      defaultDiners={defaultDiners}
                       onRegenerate={() => {
                         haptic.medium()
                         regenerateMeal.mutate({
@@ -428,9 +459,46 @@ export default function MenuPage() {
                           locked: !isLocked(meal.type),
                         })
                       }
+                      onDelete={() => {
+                        haptic.medium()
+                        deleteMealSlot.mutate({
+                          menuId: menu.id,
+                          day: selectedDay,
+                          meal: meal.type,
+                        })
+                      }}
+                      onChangeServings={(servings) => {
+                        updateSlotServings.mutate({
+                          menuId: menu.id,
+                          day: selectedDay,
+                          meal: meal.type,
+                          servings,
+                        })
+                      }}
                       isRegenerating={regenerateMeal.isPending}
                     />
                   ))}
+
+                  {/* "+ Añadir <comida>" affordances for the slots this day
+                      is missing (because the user removed them from the
+                      weekly template, or never had them). Scoped to this
+                      week only — the profile template is untouched. */}
+                  {!isPastWeek && menu?.days?.[selectedDay] ? (
+                    <AddMealsRow
+                      menuId={menu.id}
+                      day={selectedDay}
+                      presentMeals={selectedDayMeals.map((m: any) => m.type)}
+                      onAdd={(meal) => {
+                        haptic.light()
+                        addMealSlot.mutate({
+                          menuId: menu.id,
+                          day: selectedDay,
+                          meal,
+                        })
+                      }}
+                      isAdding={addMealSlot.isPending}
+                    />
+                  ) : null}
                 </motion.div>
               </AnimatePresence>
             ) : (
@@ -462,19 +530,26 @@ function EditorialMealCard({
   day,
   isLocked,
   readOnly,
+  defaultDiners,
   onRegenerate,
   onPickRecipe,
   onToggleLock,
+  onDelete,
+  onChangeServings,
   isRegenerating,
 }: {
-  meal: { type: string; recipeId?: string; recipeName?: string }
+  meal: { type: string; recipeId?: string; recipeName?: string; servings?: number | null }
   index: number
   day: number
   isLocked: boolean
   readOnly: boolean
+  /** Household-derived diner count used when the slot has no override. */
+  defaultDiners: number
   onRegenerate: () => void
   onPickRecipe: (r: { id: string; name: string }) => void
   onToggleLock: () => void
+  onDelete: () => void
+  onChangeServings: (servings: number | null) => void
   isRegenerating: boolean
 }) {
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -526,7 +601,7 @@ function EditorialMealCard({
       </Link>
 
       {/* Action row */}
-      <div className="flex items-center gap-2 px-3 py-2.5">
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2.5">
         {!readOnly && (
           <>
             <button
@@ -556,6 +631,19 @@ function EditorialMealCard({
               <RefreshCw size={11} className={isRegenerating ? "animate-spin" : ""} />
               Aleatorio
             </button>
+            <button
+              onClick={() => {
+                if (typeof window === "undefined" || window.confirm(`¿Quitar ${mealLabel(meal.type).toLowerCase()} de este día?`)) {
+                  onDelete()
+                }
+              }}
+              disabled={isLocked}
+              aria-label="Eliminar este plato del día"
+              className="flex items-center gap-1.5 rounded-full bg-[#F2EDE0] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#C65D38] transition-colors hover:bg-[#C65D38] hover:text-[#FAF6EE] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Trash2 size={11} />
+              Quitar
+            </button>
           </>
         )}
         <Link
@@ -565,6 +653,18 @@ function EditorialMealCard({
           Ver receta →
         </Link>
       </div>
+
+      {/* Per-slot diner override. Stays a separate row from the action chips
+          to keep the touch targets large on mobile, and so the "Solo hoy"
+          caption makes clear this isn't the recipe's authored serving size. */}
+      {!readOnly && (
+        <DinerStepper
+          value={meal.servings ?? null}
+          fallback={defaultDiners}
+          disabled={isLocked}
+          onChange={onChangeServings}
+        />
+      )}
 
       <RecipePickerSheet
         open={pickerOpen}
@@ -577,5 +677,116 @@ function EditorialMealCard({
         }}
       />
     </motion.article>
+  )
+}
+
+/* ─────────────────────────────────────────────
+   Diner stepper for a single slot.
+   `null` value = no override; falls back to `fallback` (household).
+   The "Quitar" affordance reverts to fallback.
+   ───────────────────────────────────────────── */
+function DinerStepper({
+  value,
+  fallback,
+  disabled,
+  onChange,
+}: {
+  value: number | null
+  fallback: number
+  disabled: boolean
+  onChange: (next: number | null) => void
+}) {
+  const effective = value ?? fallback
+  const hasOverride = value != null
+  const clamp = (n: number) => Math.max(1, Math.min(24, n))
+
+  return (
+    <div className="flex items-center justify-between gap-3 border-t border-[#F2EDE0] px-3 py-2">
+      <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.12em] text-[#7A7066]">
+        <Users size={12} />
+        <span>Comensales</span>
+        {hasOverride ? (
+          <span className="rounded-full bg-[#FAF6EE] px-1.5 text-[9px] text-[#C65D38]">solo hoy</span>
+        ) : null}
+      </div>
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          aria-label="Menos comensales"
+          disabled={disabled || effective <= 1}
+          onClick={() => onChange(clamp(effective - 1))}
+          className="flex h-7 w-7 items-center justify-center rounded-full bg-[#F2EDE0] text-[#1A1612] transition-colors hover:bg-[#1A1612] hover:text-[#FAF6EE] disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <Minus size={12} />
+        </button>
+        <span className="min-w-[1.5rem] text-center text-[14px] font-medium tabular-nums text-[#1A1612]">
+          {effective}
+        </span>
+        <button
+          type="button"
+          aria-label="Más comensales"
+          disabled={disabled || effective >= 24}
+          onClick={() => onChange(clamp(effective + 1))}
+          className="flex h-7 w-7 items-center justify-center rounded-full bg-[#F2EDE0] text-[#1A1612] transition-colors hover:bg-[#1A1612] hover:text-[#FAF6EE] disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <Plus size={12} />
+        </button>
+        {hasOverride ? (
+          <button
+            type="button"
+            onClick={() => onChange(null)}
+            disabled={disabled}
+            className="ml-1 text-[10px] uppercase tracking-[0.12em] text-[#7A7066] underline-offset-2 hover:text-[#C65D38] hover:underline disabled:opacity-40"
+          >
+            Quitar
+          </button>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+/* ─────────────────────────────────────────────
+   "+ Añadir <comida>" buttons for the slots this day is missing.
+   Solidifies the manual-vs-AI balance: the user can shape today's plan
+   without touching their saved weekly preferences.
+   ───────────────────────────────────────────── */
+function AddMealsRow({
+  menuId,
+  day,
+  presentMeals,
+  onAdd,
+  isAdding,
+}: {
+  menuId: string
+  day: number
+  presentMeals: string[]
+  onAdd: (meal: string) => void
+  isAdding: boolean
+}) {
+  const missing = MEAL_ORDER.filter((m) => !presentMeals.includes(m))
+  if (missing.length === 0) return null
+
+  return (
+    <div className="rounded-2xl border border-dashed border-[#DDD6C5] bg-[#FFFEFA] px-4 py-3">
+      <div className="text-eyebrow text-[#7A7066]">Añadir comida</div>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        {missing.map((m) => (
+          <button
+            key={m}
+            type="button"
+            disabled={isAdding}
+            onClick={() => onAdd(m)}
+            className="flex items-center gap-1.5 rounded-full bg-[#F2EDE0] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#1A1612] transition-colors hover:bg-[#1A1612] hover:text-[#FAF6EE] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Plus size={11} />
+            {mealLabel(m)}
+          </button>
+        ))}
+      </div>
+      <p className="mt-2 text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
+        Solo afecta a este día / esta semana
+      </p>
+    </div>
   )
 }

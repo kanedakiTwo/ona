@@ -169,6 +169,31 @@ interface ScaledRow {
   unit: Unit
 }
 
+/**
+ * Sum the diner counts for every slot in the week, grouped by recipe id.
+ * Per-slot `servings` overrides win over the household-level fallback; a
+ * recipe scheduled in two slots accumulates both diner counts. Pure
+ * (no DB) so it's the unit-test entry point for shopping-list scaling.
+ */
+export function sumDinersByRecipe(
+  menuDays: DayMenu[],
+  householdMultiplier: number,
+): Map<string, number> {
+  const out = new Map<string, number>()
+  for (const day of menuDays) {
+    for (const meal of Object.keys(day)) {
+      const slot = day[meal as keyof DayMenu]
+      if (!slot?.recipeId) continue
+      const diners =
+        typeof slot.servings === 'number' && slot.servings > 0
+          ? slot.servings
+          : householdMultiplier
+      out.set(slot.recipeId, (out.get(slot.recipeId) ?? 0) + diners)
+    }
+  }
+  return out
+}
+
 // ─── Public API ──────────────────────────────────────────────
 
 /**
@@ -188,19 +213,12 @@ export async function generateShoppingList(
   householdMultiplier: number,
   db: any,
 ): Promise<ShoppingItem[]> {
-  // 1. Collect (recipeId, occurrence count) — a recipe scheduled twice in
-  //    the same week contributes its ingredients twice.
-  const recipeCounts = new Map<string, number>()
-  for (const day of menuDays) {
-    for (const meal of Object.keys(day)) {
-      const slot = day[meal as keyof DayMenu]
-      if (slot?.recipeId) {
-        recipeCounts.set(slot.recipeId, (recipeCounts.get(slot.recipeId) ?? 0) + 1)
-      }
-    }
-  }
-  if (recipeCounts.size === 0) return []
-  const recipeIds = [...recipeCounts.keys()]
+  // 1. Collect (recipeId → total diners across all occurrences this week).
+  // Per-slot `servings` overrides win over the household-level multiplier;
+  // see `sumDinersByRecipe` for the math (extracted for unit testing).
+  const dinersByRecipe = sumDinersByRecipe(menuDays, householdMultiplier)
+  if (dinersByRecipe.size === 0) return []
+  const recipeIds = [...dinersByRecipe.keys()]
 
   // householdMultiplier is provided by the caller (adults + 0.5 × kidsCount).
   // The fallback for legacy/unknown households happens at the route layer.
@@ -250,8 +268,12 @@ export async function generateShoppingList(
 
     const recipeServings = servingsById.get(row.recipeId)
     if (!recipeServings || recipeServings <= 0) continue
-    const factor = householdMultiplier / recipeServings
-    const occurrences = recipeCounts.get(row.recipeId) ?? 1
+    // `totalDiners` already sums every slot's effective diner count for
+    // this recipe (per-slot override or household fallback), so we don't
+    // need a separate `× occurrences` multiplier here.
+    const totalDiners = dinersByRecipe.get(row.recipeId) ?? 0
+    if (totalDiners <= 0) continue
+    const factor = totalDiners / recipeServings
 
     catalogById.set(row.ingredientId, {
       id: row.ingredientId,
@@ -262,7 +284,7 @@ export async function generateShoppingList(
     })
     scaled.push({
       ingredientId: row.ingredientId,
-      quantity: row.quantity * factor * occurrences,
+      quantity: row.quantity * factor,
       unit: row.unit,
     })
   }

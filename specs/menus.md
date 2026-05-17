@@ -10,6 +10,8 @@ Weekly meal plan generation and management.
 - Users can navigate between days of the week using a horizontal day strip (WeekStrip)
 - Users can see the day's meals as photo cards (breakfast / lunch / dinner) with the recipe image
 - Users can regenerate a single meal slot two ways from the meal card: **"Aleatorio"** runs the matcher (random recipe matching the slot's season + restrictions), and **"Elegir"** opens a recipe picker sheet (`RecipePickerSheet`) listing the full catalog (system + user-owned recipes, distinguished by an "ONA"/"tuya" badge) with name search; picking one pins it via `PUT /menu/:menuId/day/:day/meal/:meal` with body `{ recipeId }`. The picker does NOT filter by meal type (the user's choice — any recipe can go in any slot). Both paths are queued offline and replay on reconnect; manual picks lose their `recipeId` on offline replay (the server falls back to auto-pick)
+- Users can shape a single week without touching their weekly preferences: each meal card carries a **"Quitar"** button that removes the slot (`DELETE /menu/:menuId/day/:day/meal/:meal`), and the day view shows a **"+ Añadir <comida>"** row underneath that creates any slot the day is missing (`POST /menu/:menuId/day/:day/meal/:meal`). Both operations are scoped to **this menu only** — the profile's saved `mealTemplate` stays untouched, so regenerating the next week respects the original preferences again
+- Users can override the diner count for one specific slot via a "Comensales −/+/Quitar" stepper on the meal card. The override is persisted on the slot as `servings: number` (`PATCH /menu/:menuId/day/:day/meal/:meal`, body `{ servings: number | null }`); `null` clears it. The shopping-list aggregator (`sumDinersByRecipe` in `shoppingList.ts`) sums per-slot diners across the week so two occurrences of the same recipe with different overrides scale independently. A "solo hoy" pill on the stepper makes the override visible at a glance
 - Users can lock individual meal slots to prevent them from being changed during regeneration; the lock toggle is queued offline as well
 - Users can regenerate the whole week (re-runs the algorithm; locked slots are preserved)
 - Users can view past menus via `/menu/history`
@@ -58,6 +60,16 @@ Then picks one at random from the pool. **Favorites get double weight** — they
 - Applies the same restriction/season/favorites logic
 - Returns 404 if no matching recipe is available
 
+## Manual Slot Shaping (per-week overrides)
+
+The user can adapt one week without editing the saved `mealTemplate`:
+
+- `POST /menu/:menuId/day/:day/meal/:meal` (auth) — add a slot the template didn't include. Optional body `{ recipeId }`; if absent the matcher picks one. Returns **409** when the slot already exists (use PUT to replace it instead), **404** when the matcher can't find a recipe, **201** + the updated menu otherwise.
+- `DELETE /menu/:menuId/day/:day/meal/:meal` (auth) — drop the slot for this week. Refuses with **400** when the slot is locked, **404** when the slot doesn't exist. The user's `mealTemplate` is **not** mutated, so next week starts fresh.
+- `PATCH /menu/:menuId/day/:day/meal/:meal` (auth) — partial update for slot metadata. v1 only honours `{ servings: number | null }`: a positive integer (1–24) sets a per-slot diner-count override, `null` clears it. The override is consumed by the shopping-list aggregator and ignored by the recipe matcher. Returns **400** on out-of-range servings, **404** when the slot is empty.
+
+The recipe matcher and the per-week locks are unaffected by manual shaping.
+
 ## Lock Behavior
 
 `PUT /menu/:menuId/day/:day/meal/:meal/lock` toggles `locked[day][meal]`:
@@ -99,5 +111,5 @@ Every generated menu also creates a `menu_logs` row with:
 - [apps/web/src/app/menu/page.tsx](../apps/web/src/app/menu/page.tsx)
 - [apps/web/src/components/menu/WeekStrip.tsx](../apps/web/src/components/menu/WeekStrip.tsx)
 - [apps/web/src/components/menu/MealPhotoCard.tsx](../apps/web/src/components/menu/MealPhotoCard.tsx)
-- [apps/web/src/hooks/useMenu.ts](../apps/web/src/hooks/useMenu.ts)
+- [apps/web/src/hooks/useMenu.ts](../apps/web/src/hooks/useMenu.ts) — `useGenerateMenu`, `useRegenerateMeal`, `useLockMeal`, `useAddMealSlot`, `useDeleteMealSlot`, `useUpdateSlotServings`
 - [packages/shared/src/types/menu.ts](../packages/shared/src/types/menu.ts)

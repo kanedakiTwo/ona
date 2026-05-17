@@ -12,22 +12,36 @@ import {
   useAddMealSlot,
   useDeleteMealSlot,
   useUpdateSlotServings,
+  useBanRecipe,
+  useUnbanRecipe,
+  useSkipDay,
+  useUnskipDay,
+  useMarkLeftover,
+  useSetSlotPinnedType,
 } from "@/hooks/useMenu"
+import { MEAL_TYPE_TAGS, MEAL_TYPE_TAG_LABELS } from "@ona/shared"
 import { useUser } from "@/hooks/useUser"
 import { haptic } from "@/lib/pwa/haptics"
 import { recordMenuVisit } from "@/lib/pwa/installPrompt"
 import {
+  Ban,
+  CalendarX,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Lock,
   Minus,
+  Pin,
   Plus,
   RefreshCw,
   Replace,
+  RotateCw,
   Sparkles,
+  Tag,
   Trash2,
   Unlock,
   Users,
+  Utensils,
 } from "lucide-react"
 import { mealLabel } from "@/lib/labels"
 import { RecipePickerSheet } from "@/components/menu/RecipePickerSheet"
@@ -145,6 +159,12 @@ export default function MenuPage() {
   const addMealSlot = useAddMealSlot()
   const deleteMealSlot = useDeleteMealSlot()
   const updateSlotServings = useUpdateSlotServings()
+  const banRecipe = useBanRecipe()
+  const unbanRecipe = useUnbanRecipe()
+  const skipDay = useSkipDay()
+  const unskipDay = useUnskipDay()
+  const markLeftover = useMarkLeftover()
+  const setSlotPinnedType = useSetSlotPinnedType()
   // Live user profile so we can fall back to the household diner count when
   // a slot doesn't have a per-day servings override.
   const { data: profile } = useUser(user?.id)
@@ -425,6 +445,30 @@ export default function MenuPage() {
                   transition={{ duration: 0.4, ease: [0.19, 1, 0.22, 1] }}
                   className="space-y-4"
                 >
+                  {/* "Saltar día" toolbar. Only when there's something to
+                      empty AND the day isn't already skipped. */}
+                  {!isPastWeek &&
+                    !(menu?.skippedDays ?? []).includes(selectedDay) &&
+                    selectedDayMeals.length > 0 ? (
+                    <div className="flex items-center justify-end">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (
+                            typeof window === "undefined" ||
+                            window.confirm(`¿Marcar ${DAY_NAMES[selectedDay].toLowerCase()} como sin cocinar?`)
+                          ) {
+                            haptic.medium()
+                            skipDay.mutate({ menuId: menu.id, day: selectedDay })
+                          }
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-full bg-[#F2EDE0] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#7A7066] transition-colors hover:bg-[#1A1612] hover:text-[#FAF6EE]"
+                      >
+                        <CalendarX size={11} />
+                        Saltar día
+                      </button>
+                    </div>
+                  ) : null}
                   {selectedDayMeals.map((meal: any, i: number) => (
                     <EditorialMealCard
                       key={meal.type}
@@ -475,6 +519,27 @@ export default function MenuPage() {
                           servings,
                         })
                       }}
+                      onBan={() => {
+                        if (
+                          typeof window === "undefined" ||
+                          window.confirm(`¿Vetar "${meal.recipeName}" del resto de la semana?`)
+                        ) {
+                          haptic.medium()
+                          banRecipe.mutate({
+                            menuId: menu.id,
+                            recipeId: meal.recipeId,
+                          })
+                        }
+                      }}
+                      onSetPinnedType={(pinnedType) => {
+                        haptic.light()
+                        setSlotPinnedType.mutate({
+                          menuId: menu.id,
+                          day: selectedDay,
+                          meal: meal.type,
+                          pinnedType,
+                        })
+                      }}
                       isRegenerating={regenerateMeal.isPending}
                     />
                   ))}
@@ -501,6 +566,24 @@ export default function MenuPage() {
                   ) : null}
                 </motion.div>
               </AnimatePresence>
+            ) : (menu?.skippedDays ?? []).includes(selectedDay) ? (
+              <div className="rounded-2xl border border-dashed border-[#DDD6C5] bg-[#FFFEFA] py-12 text-center">
+                <CalendarX size={24} className="mx-auto text-[#7A7066]" />
+                <p className="mt-3 font-italic italic text-[#7A7066]">
+                  Día marcado sin cocinar.
+                </p>
+                {!isPastWeek && (
+                  <button
+                    onClick={() => {
+                      haptic.light()
+                      unskipDay.mutate({ menuId: menu.id, day: selectedDay })
+                    }}
+                    className="mt-3 inline-flex items-center gap-1.5 text-[12px] font-medium text-[#2D6A4F] underline"
+                  >
+                    <RotateCw size={11} /> Reactivar día
+                  </button>
+                )}
+              </div>
             ) : (
               <div className="rounded-2xl border border-dashed border-[#DDD6C5] bg-[#FFFEFA] py-12 text-center">
                 <p className="font-italic italic text-[#7A7066]">Sin platos para este día.</p>
@@ -514,6 +597,19 @@ export default function MenuPage() {
                 )}
               </div>
             )}
+
+            {/* "Vetadas esta semana" panel — collapsible, only when there's
+                at least one vetoed recipe. Lets the user un-veto. */}
+            {!isPastWeek && menu && (menu.bannedRecipeIds ?? []).length > 0 ? (
+              <BannedRecipesPanel
+                menuId={menu.id}
+                bannedRecipeIds={menu.bannedRecipeIds ?? []}
+                onUnban={(recipeId) => {
+                  haptic.light()
+                  unbanRecipe.mutate({ menuId: menu.id, recipeId })
+                }}
+              />
+            ) : null}
           </div>
         </>
       )}
@@ -536,9 +632,20 @@ function EditorialMealCard({
   onToggleLock,
   onDelete,
   onChangeServings,
+  onBan,
+  onSetPinnedType,
   isRegenerating,
 }: {
-  meal: { type: string; recipeId?: string; recipeName?: string; servings?: number | null; imageUrl?: string | null }
+  meal: {
+    type: string
+    recipeId?: string
+    recipeName?: string
+    servings?: number | null
+    imageUrl?: string | null
+    pinnedType?: string | null
+    kind?: "planned" | "leftover" | null
+    leftoverOf?: { day: number; meal: string } | null
+  }
   index: number
   day: number
   isLocked: boolean
@@ -550,8 +657,14 @@ function EditorialMealCard({
   onToggleLock: () => void
   onDelete: () => void
   onChangeServings: (servings: number | null) => void
+  /** Vetar la receta para el resto de la semana. */
+  onBan: () => void
+  /** Fijar / desfijar etiqueta de tipo de comida (cremas, pizza, …). */
+  onSetPinnedType: (next: string | null) => void
   isRegenerating: boolean
 }) {
+  const [pinSheetOpen, setPinSheetOpen] = useState(false)
+  const isLeftover = meal.kind === "leftover"
   const [pickerOpen, setPickerOpen] = useState(false)
   if (!meal.recipeId) {
     return (
@@ -594,6 +707,11 @@ function EditorialMealCard({
           </div>
           {/* Bottom recipe name overlay */}
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#1A1612]/80 via-[#1A1612]/40 to-transparent p-4 pt-12">
+            {isLeftover && meal.leftoverOf ? (
+              <div className="mb-1.5 inline-flex items-center gap-1 rounded-full bg-[#C65D38] px-2 py-0.5 text-[9px] uppercase tracking-[0.15em] text-[#FAF6EE]">
+                <Utensils size={10} /> Sobras de {DAY_SHORT[meal.leftoverOf.day]?.toLowerCase()} {mealLabel(meal.leftoverOf.meal).toLowerCase()}
+              </div>
+            ) : null}
             <h3 className="font-display text-xl leading-tight text-[#FAF6EE]">
               {meal.recipeName}
             </h3>
@@ -616,22 +734,49 @@ function EditorialMealCard({
               {isLocked ? <Lock size={11} /> : <Unlock size={11} />}
               {isLocked ? "Fijado" : "Fijar"}
             </button>
-            <button
-              onClick={() => setPickerOpen(true)}
-              disabled={isLocked || isRegenerating}
-              className="flex items-center gap-1.5 rounded-full bg-[#F2EDE0] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#1A1612] transition-colors hover:bg-[#1A1612] hover:text-[#FAF6EE] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <Replace size={11} />
-              Elegir
-            </button>
-            <button
-              onClick={onRegenerate}
-              disabled={isLocked || isRegenerating}
-              className="flex items-center gap-1.5 rounded-full bg-[#F2EDE0] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#1A1612] transition-colors hover:bg-[#1A1612] hover:text-[#FAF6EE] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <RefreshCw size={11} className={isRegenerating ? "animate-spin" : ""} />
-              Aleatorio
-            </button>
+            {/* Leftover slots hide Aleatorio / Elegir / Tag — the recipe is
+                tied to its source slot. They keep Quitar + Comensales. */}
+            {!isLeftover && (
+              <>
+                <button
+                  onClick={() => setPickerOpen(true)}
+                  disabled={isLocked || isRegenerating}
+                  className="flex items-center gap-1.5 rounded-full bg-[#F2EDE0] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#1A1612] transition-colors hover:bg-[#1A1612] hover:text-[#FAF6EE] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Replace size={11} />
+                  Elegir
+                </button>
+                <button
+                  onClick={onRegenerate}
+                  disabled={isLocked || isRegenerating}
+                  className="flex items-center gap-1.5 rounded-full bg-[#F2EDE0] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#1A1612] transition-colors hover:bg-[#1A1612] hover:text-[#FAF6EE] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <RefreshCw size={11} className={isRegenerating ? "animate-spin" : ""} />
+                  Aleatorio
+                </button>
+                <button
+                  onClick={() => setPinSheetOpen(true)}
+                  disabled={isLocked}
+                  className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                    meal.pinnedType
+                      ? "bg-[#2D6A4F] text-[#FAF6EE]"
+                      : "bg-[#F2EDE0] text-[#1A1612] hover:bg-[#1A1612] hover:text-[#FAF6EE]"
+                  }`}
+                >
+                  <Tag size={11} />
+                  {meal.pinnedType ? MEAL_TYPE_TAG_LABELS[meal.pinnedType as keyof typeof MEAL_TYPE_TAG_LABELS] ?? meal.pinnedType : "Tipo"}
+                </button>
+                <button
+                  onClick={onBan}
+                  disabled={isLocked}
+                  aria-label="Vetar esta receta para el resto de la semana"
+                  className="flex items-center gap-1.5 rounded-full bg-[#F2EDE0] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#1A1612] transition-colors hover:bg-[#1A1612] hover:text-[#FAF6EE] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Ban size={11} />
+                  Vetar
+                </button>
+              </>
+            )}
             <button
               onClick={() => {
                 if (typeof window === "undefined" || window.confirm(`¿Quitar ${mealLabel(meal.type).toLowerCase()} de este día?`)) {
@@ -677,7 +822,151 @@ function EditorialMealCard({
           setPickerOpen(false)
         }}
       />
+      <PinTypeSheet
+        open={pinSheetOpen}
+        onClose={() => setPinSheetOpen(false)}
+        current={meal.pinnedType ?? null}
+        onPick={(next) => {
+          onSetPinnedType(next)
+          setPinSheetOpen(false)
+        }}
+      />
     </motion.article>
+  )
+}
+
+/* ─────────────────────────────────────────────
+   Pin meal-type bottom sheet
+   ───────────────────────────────────────────── */
+function PinTypeSheet({
+  open,
+  onClose,
+  current,
+  onPick,
+}: {
+  open: boolean
+  onClose: () => void
+  current: string | null
+  onPick: (next: string | null) => void
+}) {
+  if (!open) return null
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-[#1A1612]/40 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-[430px] rounded-t-3xl bg-[#FAF6EE] p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <div className="text-eyebrow text-[#7A7066]">Fijar tipo</div>
+            <h3 className="mt-1 font-display text-lg text-[#1A1612]">¿Qué tipo de comida?</h3>
+          </div>
+          <button onClick={onClose} aria-label="Cerrar" className="text-[#7A7066]">
+            <ChevronDown size={20} />
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {MEAL_TYPE_TAGS.map((tag) => {
+            const active = tag === current
+            return (
+              <button
+                key={tag}
+                onClick={() => onPick(active ? null : tag)}
+                className={`rounded-full px-4 py-2 text-[12px] uppercase tracking-[0.12em] transition-colors ${
+                  active
+                    ? "bg-[#2D6A4F] text-[#FAF6EE]"
+                    : "bg-[#F2EDE0] text-[#1A1612] hover:bg-[#1A1612] hover:text-[#FAF6EE]"
+                }`}
+              >
+                {MEAL_TYPE_TAG_LABELS[tag]}
+              </button>
+            )
+          })}
+        </div>
+        {current ? (
+          <button
+            onClick={() => onPick(null)}
+            className="mt-4 inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.12em] text-[#7A7066] hover:text-[#1A1612]"
+          >
+            Quitar pin
+          </button>
+        ) : (
+          <p className="mt-4 text-[11px] uppercase tracking-[0.12em] text-[#7A7066]">
+            Aleatorio respetará la etiqueta a partir de ahora
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ─────────────────────────────────────────────
+   "Vetadas esta semana" collapsible panel
+   ───────────────────────────────────────────── */
+function BannedRecipesPanel({
+  menuId,
+  bannedRecipeIds,
+  onUnban,
+}: {
+  menuId: string
+  bannedRecipeIds: string[]
+  onUnban: (recipeId: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  // Tiny name lookup — the cached menu carries names on slots, but vetoed
+  // recipes might not be in any slot. Fetch on demand from /recipes/:id.
+  const [names, setNames] = useState<Record<string, string>>({})
+  useEffect(() => {
+    if (!open) return
+    const missing = bannedRecipeIds.filter((id) => !names[id])
+    if (missing.length === 0) return
+    Promise.all(
+      missing.map((id) =>
+        fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/recipes/${id}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((j) => (j?.name ? [id, j.name as string] : null))
+          .catch(() => null),
+      ),
+    ).then((pairs) => {
+      const fresh: Record<string, string> = {}
+      for (const p of pairs) if (p) fresh[p[0]] = p[1]
+      if (Object.keys(fresh).length > 0) setNames((prev) => ({ ...prev, ...fresh }))
+    })
+  }, [open, bannedRecipeIds, names])
+  return (
+    <div className="mt-6 rounded-2xl border border-[#DDD6C5] bg-[#FFFEFA] p-4">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between text-left"
+      >
+        <span className="flex items-center gap-2 text-[11px] uppercase tracking-[0.12em] text-[#7A7066]">
+          <Ban size={12} />
+          Vetadas esta semana ({bannedRecipeIds.length})
+        </span>
+        <ChevronDown
+          size={16}
+          className={`text-[#7A7066] transition-transform ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+      {open ? (
+        <ul className="mt-3 space-y-2 text-[13px] text-[#1A1612]">
+          {bannedRecipeIds.map((id) => (
+            <li key={id} className="flex items-center justify-between gap-3 border-t border-[#F2EDE0] pt-2 first:border-t-0 first:pt-0">
+              <span>{names[id] ?? "Cargando…"}</span>
+              <button
+                onClick={() => onUnban(id)}
+                className="text-[11px] uppercase tracking-[0.12em] text-[#2D6A4F] hover:text-[#1A1612]"
+              >
+                Levantar veto
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
   )
 }
 

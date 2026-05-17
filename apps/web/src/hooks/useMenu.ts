@@ -7,6 +7,14 @@ interface MealSlot {
   recipeName?: string
   /** Per-slot diner override (this week only); null/undefined = household default. */
   servings?: number | null
+  /** Pinned meal-type tag — matcher restricts Aleatorio/Añadir to recipes with this tag. */
+  pinnedType?: string | null
+  /** `'leftover'` = cloned from another slot (kind:'planned' is the default). */
+  kind?: "planned" | "leftover" | null
+  /** Source slot back-reference when kind === 'leftover'. */
+  leftoverOf?: { day: number; meal: string } | null
+  /** Hydrated by the API from recipes.image_url on every response. */
+  imageUrl?: string | null
 }
 
 interface DayMenu {
@@ -19,6 +27,10 @@ interface Menu {
   weekStart: string
   days: DayMenu[]
   locked: Record<string, Record<string, boolean>>
+  /** Recipe ids vetoed this week — matcher excludes them on regen/Aleatorio/Añadir. */
+  bannedRecipeIds: string[]
+  /** Day indices (0-6) the user marked "sin cocinar". */
+  skippedDays: number[]
   createdAt: string
 }
 
@@ -165,6 +177,136 @@ export function useUpdateSlotServings() {
     }) => {
       const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}`
       return api.patch<Menu>(url, { servings: params.servings })
+    },
+    onSuccess: (data) => {
+      if (data?.userId && data?.weekStart) {
+        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
+      }
+      queryClient.invalidateQueries({ queryKey: ["menu"] })
+    },
+  })
+}
+
+/**
+ * Pin a meal-type tag (cremas, legumbres, pizza, …) onto a slot. The matcher
+ * then restricts every Aleatorio / Añadir pick on this slot to recipes whose
+ * `tags` includes the tag. Pass `null` to clear the pin.
+ */
+export function useSetSlotPinnedType() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (params: {
+      menuId: string
+      day: number
+      meal: string
+      pinnedType: string | null
+    }) => {
+      const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}`
+      return api.patch<Menu>(url, { pinnedType: params.pinnedType })
+    },
+    onSuccess: (data) => {
+      if (data?.userId && data?.weekStart) {
+        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
+      }
+      queryClient.invalidateQueries({ queryKey: ["menu"] })
+    },
+  })
+}
+
+/**
+ * Veto a recipe for the rest of the week. Idempotent: re-banning the same
+ * recipe is a no-op on the server. Pair with `useUnbanRecipe` for "Levantar
+ * veto" in the panel.
+ */
+export function useBanRecipe() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (params: { menuId: string; recipeId: string }) => {
+      return api.post<Menu>(`/menu/${params.menuId}/ban`, {
+        recipeId: params.recipeId,
+      })
+    },
+    onSuccess: (data) => {
+      if (data?.userId && data?.weekStart) {
+        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
+      }
+      queryClient.invalidateQueries({ queryKey: ["menu"] })
+    },
+  })
+}
+
+export function useUnbanRecipe() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (params: { menuId: string; recipeId: string }) => {
+      return api.delete<Menu>(`/menu/${params.menuId}/ban/${params.recipeId}`)
+    },
+    onSuccess: (data) => {
+      if (data?.userId && data?.weekStart) {
+        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
+      }
+      queryClient.invalidateQueries({ queryKey: ["menu"] })
+    },
+  })
+}
+
+/**
+ * Clone a previous slot's recipe as today's "sobras" target. Returns 409 if
+ * the target is non-empty (delete it first) and 400 if the source is itself
+ * already a leftover (no chains).
+ */
+export function useMarkLeftover() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (params: {
+      menuId: string
+      sourceDay: number
+      sourceMeal: string
+      targetDay: number
+      targetMeal: string
+    }) => {
+      const url = `/menu/${params.menuId}/day/${params.targetDay}/leftover`
+      return api.post<Menu>(url, {
+        sourceDay: params.sourceDay,
+        sourceMeal: params.sourceMeal,
+        targetMeal: params.targetMeal,
+      })
+    },
+    onSuccess: (data) => {
+      if (data?.userId && data?.weekStart) {
+        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
+      }
+      queryClient.invalidateQueries({ queryKey: ["menu"] })
+    },
+  })
+}
+
+/**
+ * Mark a whole day "sin cocinar". Empties non-locked slots and persists the
+ * day index on the menu; whole-week regenerate skips the day next time. The
+ * matching `useUnskipDay` only removes the flag — it does NOT auto-refill,
+ * the user adds slots back manually or regenerates.
+ */
+export function useSkipDay() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (params: { menuId: string; day: number }) => {
+      return api.post<Menu>(`/menu/${params.menuId}/day/${params.day}/skip`)
+    },
+    onSuccess: (data) => {
+      if (data?.userId && data?.weekStart) {
+        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
+      }
+      queryClient.invalidateQueries({ queryKey: ["menu"] })
+    },
+  })
+}
+
+export function useUnskipDay() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (params: { menuId: string; day: number }) => {
+      return api.delete<Menu>(`/menu/${params.menuId}/day/${params.day}/skip`)
     },
     onSuccess: (data) => {
       if (data?.userId && data?.weekStart) {

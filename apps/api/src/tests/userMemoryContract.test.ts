@@ -51,6 +51,21 @@ describe('validateMemoryFactValue', () => {
     expect(validateMemoryFactValue('physical.age', '34').ok).toBe(false)
   })
 
+  it('accepts a string-array for nutrition_principles with reasonable length bounds', () => {
+    expect(
+      validateMemoryFactValue('nutrition_principles', [
+        'Prefiero ayuno intermitente 16/8',
+        'No creo en el mito del colesterol — la grasa saturada me sienta bien',
+      ]).ok,
+    ).toBe(true)
+  })
+
+  it('rejects nutrition principles that are too short or way too long', () => {
+    expect(validateMemoryFactValue('nutrition_principles', ['no']).ok).toBe(false)
+    const long = 'a'.repeat(281)
+    expect(validateMemoryFactValue('nutrition_principles', [long]).ok).toBe(false)
+  })
+
   it('accepts a string-array for dislikes / restrictions / equipment / notes', () => {
     expect(validateMemoryFactValue('dislikes', ['cilantro', 'hígado']).ok).toBe(true)
     expect(validateMemoryFactValue('restrictions', ['sin gluten']).ok).toBe(true)
@@ -170,6 +185,23 @@ describe('buildMemoryDigestText', () => {
     expect(out).not.toContain('jueves')
   })
 
+  it('inlines user-authored nutrition principles with an override flag', () => {
+    const memory: UserMemory = {
+      nutrition_principles: {
+        key: 'nutrition_principles',
+        value: ['Ayuno intermitente 16/8', 'La grasa saturada no es el enemigo'],
+        source: 'manual',
+        confidence: 1,
+        updatedAt: '',
+      },
+    }
+    const out = buildMemoryDigestText(memory)
+    expect(out).toContain('Principios nutricionales propios del usuario')
+    expect(out).toContain('RESPÉTALOS')
+    expect(out).toContain('Ayuno intermitente 16/8')
+    expect(out).toContain('La grasa saturada no es el enemigo')
+  })
+
   it('stays under a sane token budget for a maximally populated user', () => {
     // Token estimate: ~4 chars per token, so 2000 chars ≈ 500 tokens. Plenty
     // of headroom inside the 1500-token budget the spec sets.
@@ -192,6 +224,7 @@ describe('buildMemoryDigestText', () => {
           cooking_skill: 'medium',
           meal_times: { breakfast: '08:30', lunch: '14:00', snack: '17:30', dinner: '21:30' },
           notes: ['mi hija no come pescado', 'mejor cocidos los domingos'],
+          nutrition_principles: ['Ayuno intermitente 16/8', 'Sin azúcar refinado'],
         }
         return [
           k,

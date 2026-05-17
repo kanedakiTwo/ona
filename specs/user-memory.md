@@ -4,6 +4,7 @@ Typed long-term storage of everything the assistant has learned (or the user has
 
 ## User Capabilities
 
+- Users can **personalize ONA's nutritional philosophy** at `/profile/creencias`. The page lists ONA's 5 default principles (read-only, informational) and a user-controlled list of custom principles. Each custom principle is a short Spanish sentence (3-280 chars). The advisor's system prompt carries them with an explicit override flag — "RESPÉTALOS aunque entren en conflicto con tus 10 mandamientos por defecto" — so a "creo en el ayuno intermitente" beats any ONA default that suggests otherwise. Add via the page or via voice ("recuerda que sigo dieta cetogénica") through the `update_memory` skill
 - Users can run a **voice onboarding** at `/onboarding/voz` — a guided Realtime conversation that walks through every memory key in order (edad, hogar, restricciones, gustos, equipo, tiempo disponible, presupuesto, cocinas preferidas, nivel, horarios, notas libres). The assistant calls `update_memory` after each answer; a progress checklist below the orb shows what's been captured. When the assistant emits the closing line "Listo, ya te conozco." the page auto-redirects to `/menu` after a 2 s grace period
 - Users can see every fact the assistant remembers about them at `/profile/memoria` — grouped by category (Perfil físico, Hogar, Restricciones y gustos, Cocina, Rutina, Otras notas), with a source badge per row (**Tú** verde para datos manuales, **Asistente** terracota para inferidos, **Onboarding** neutral)
 - Users can ask the assistant to remember any preference mid-conversation: "recuerda que no me gusta el cilantro", "tengo freidora de aire", "los lunes no cocino más de 20 minutos", "preferimos cocina mediterránea". The advisor calls the `update_memory` skill and persists the fact with `source: 'inferred'` and confidence 0.8 (or 1.0 if the user is emphatic — "APUNTA…")
@@ -44,6 +45,7 @@ Stable forever — never rename, only add. Adding a key is a one-line change in 
 | `cooking_skill` | `'easy'\|'medium'\|'advanced'` | |
 | `meal_times` | `{ [breakfast\|lunch\|snack\|dinner]: 'HH:MM' }` | 24h regex-enforced |
 | `notes` | `string[]` | free-form facts ("mi hija no come pescado") |
+| `nutrition_principles` | `string[]` (3..280 chars each) | user-authored beliefs that override ONA's defaults. e.g. `['Ayuno intermitente 16/8', 'Sin azúcar refinado']`. The digest tags them as "RESPÉTALOS aunque entren en conflicto con tus 10 mandamientos por defecto" so the model doesn't try to correct the user against their own beliefs |
 
 ## API
 
@@ -94,4 +96,5 @@ The `update_memory` skill (declared in `assistant/skills.ts`) takes a `facts: Ar
 - [apps/web/src/hooks/useUserMemory.ts](../apps/web/src/hooks/useUserMemory.ts) — TanStack hooks
 - [apps/web/src/app/profile/memoria/page.tsx](../apps/web/src/app/profile/memoria/page.tsx) — read-only viewer (full inline edit lands next)
 - [apps/web/src/app/onboarding/voz/page.tsx](../apps/web/src/app/onboarding/voz/page.tsx) — voice-onboarding landing page; opens a Realtime session with `mode: 'onboarding'` and watches transcripts for the closing line
+- [apps/web/src/app/profile/creencias/page.tsx](../apps/web/src/app/profile/creencias/page.tsx) — nutritional-beliefs editor; shows ONA defaults + lets the user add custom principles
 - [apps/api/src/services/assistant/systemPrompt.ts](../apps/api/src/services/assistant/systemPrompt.ts) — `AssistantMode = 'text' | 'voice' | 'onboarding'`; the onboarding branch carries the 12-step conversation script

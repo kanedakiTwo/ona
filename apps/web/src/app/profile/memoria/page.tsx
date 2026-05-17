@@ -49,6 +49,10 @@ const GROUPS: Group[] = [
     keys: ["time_available", "meal_times", "cuisine_bias"],
   },
   {
+    title: "Creencias nutricionales propias",
+    keys: ["nutrition_principles"],
+  },
+  {
     title: "Otras notas",
     keys: ["notes"],
   },
@@ -71,6 +75,7 @@ const LABELS: Partial<Record<MemoryKey, string>> = {
   meal_times: "Horarios de comidas",
   cuisine_bias: "Preferencias de cocina",
   notes: "Notas del asistente",
+  nutrition_principles: "Principios nutricionales",
 }
 
 const SOURCE_BADGES: Record<MemoryFact["source"], { label: string; color: string }> = {

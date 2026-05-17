@@ -726,6 +726,12 @@ export default function ProfilePage() {
           >
             Ver / editar mi memoria →
           </a>
+          <a
+            href="/profile/creencias"
+            className="inline-flex items-center gap-2 rounded-full border border-[#DDD6C5] bg-[#F2EDE0] px-5 py-2.5 text-[12px] uppercase tracking-[0.12em] text-[#1A1612] transition-all hover:border-[#1A1612]"
+          >
+            Mis creencias nutricionales →
+          </a>
         </div>
       </section>
 

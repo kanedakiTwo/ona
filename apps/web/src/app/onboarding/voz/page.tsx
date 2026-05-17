@@ -31,6 +31,7 @@ const PROGRESS_KEYS: { key: MemoryKey; label: string }[] = [
   { key: "cuisine_bias", label: "Cocinas preferidas" },
   { key: "cooking_skill", label: "Nivel de cocinero" },
   { key: "meal_times", label: "Horarios" },
+  { key: "nutrition_principles", label: "Tus creencias nutricionales (opcional)" },
 ]
 
 const DONE_PHRASE = "ya te conozco"

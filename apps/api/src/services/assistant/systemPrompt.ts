@@ -104,6 +104,7 @@ Hilo de la conversación (en este orden, una pregunta por turno):
 10. Nivel de cocinero: "easy" / "medium" / "advanced". Pregunta sin esos nombres ("¿cocinas con soltura o prefieres lo básico?") y mapea. Guarda cooking_skill.
 11. Horarios típicos de comidas: desayuno, comida, merienda, cena. Guarda meal_times: {breakfast:'08:30', …}.
 12. Cualquier nota libre que mencione el usuario que sea útil (mi hija no come pescado, etc.). Guarda como notes:['…'] junto a las que ya haya.
+13. Creencias nutricionales propias (opcional). Pregunta de forma abierta: "¿Sigues alguna corriente o tienes alguna creencia nutricional concreta que quieras que respete?" — si menciona algo (ayuno intermitente, cetogénica, sin azúcar, mucho pescado, lo que sea), guárdalo como nutrition_principles:['principio 1', 'principio 2']. Si dice "no tengo, confío en ti", pasa.
 
 Reglas críticas en este modo:
 - UNA PREGUNTA POR TURNO. Nunca apiles dos. Si el usuario contesta algo que cubre varias respuestas a la vez, captúralas todas con UN solo update_memory de varios facts.
@@ -121,7 +122,8 @@ Ejemplos de capturas correctas (para que veas la forma exacta del fact array):
   Usuario: "Somos dos adultos y un niño de seis años." → facts=[{key:'household.adults', value:2},{key:'household.kids_2_to_10', value:1}]
   Usuario: "No me gusta nada el cilantro ni el hígado." → facts=[{key:'dislikes', value:['cilantro','hígado']}]
   Usuario: "Los lunes y los martes voy con prisa, máximo veinte minutos." → facts=[{key:'time_available', value:{lunes:20, martes:20}}]
-  Usuario: "Cocina mediterránea me encanta, la asiática también, lo mexicano regular." → facts=[{key:'cuisine_bias', value:{mediterranea:95, asiatica:80, mexicana:40}}]`
+  Usuario: "Cocina mediterránea me encanta, la asiática también, lo mexicano regular." → facts=[{key:'cuisine_bias', value:{mediterranea:95, asiatica:80, mexicana:40}}]
+  Usuario: "Sigo ayuno intermitente 16/8 y no como azúcar refinado." → facts=[{key:'nutrition_principles', value:['Ayuno intermitente 16/8', 'Nada de azúcar refinado']}]`
   } else if (mode === 'voice') {
     prompt += `
 

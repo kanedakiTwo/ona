@@ -705,6 +705,24 @@ export default function ProfilePage() {
         </div>
       </section>
 
+      {/* Capitulo 07 — Memoria del asistente */}
+      <section className="px-5 mt-12">
+        <ChapterHeader number="07" title="Memoria" italic="del asistente" />
+        <p className="mt-2 text-[12px] text-[#7A7066]">
+          Lo que ONA recuerda de ti: gustos, equipo de cocina, presupuesto,
+          días con poco tiempo… El asistente lo lee antes de cada respuesta
+          y lo amplía con lo que le cuentes.
+        </p>
+        <div className="mt-5">
+          <a
+            href="/profile/memoria"
+            className="inline-flex items-center gap-2 rounded-full border border-[#DDD6C5] bg-[#F2EDE0] px-5 py-2.5 text-[12px] uppercase tracking-[0.12em] text-[#1A1612] transition-all hover:border-[#1A1612]"
+          >
+            Ver / editar mi memoria →
+          </a>
+        </div>
+      </section>
+
       {/* Admin entry — discreet text link, only for admins */}
       {user?.role === 'admin' && (
         <div className="px-5 mt-10">

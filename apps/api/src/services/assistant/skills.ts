@@ -1880,6 +1880,88 @@ const addRecipeToMine: SkillDefinition = {
   },
 }
 
+/**
+ * Persist a freshly-learned preference into the user's long-term memory.
+ *
+ * The advisor calls this when the user says "recuerda que…", "apunta que…",
+ * "ya no me gusta…", etc. Source is 'inferred' (confidence 0.8) unless the
+ * user is emphatic ("APUNTA", "GUÁRDATE", "QUE NO SE TE OLVIDE") — then
+ * confidence 1.0. The skill is fire-and-forget from the LLM's perspective;
+ * it returns a one-line Spanish confirmation.
+ */
+const updateMemory: SkillDefinition = {
+  name: 'update_memory',
+  description:
+    'Guarda en la memoria del usuario un dato persistente que mencione en la conversación (disgustos, equipo de cocina, presupuesto, preferencias de cocina, días con poco tiempo, etc.). Llámalo SIEMPRE que el usuario diga "recuerda que…", "ya no me gusta…", "no me apetece nunca…", "tengo / no tengo (electrodoméstico)", "los lunes no cocino", "el presupuesto semanal es…", "preferimos cocina mediterránea". Acepta un array de hechos para cubrir varios cambios en un único turno. Usa claves canónicas: dislikes (array), equipment (array), restrictions (array), weekly_budget_eur (number), cuisine_bias (object cuisine->0..100), time_available (object weekday->minutes), cooking_skill ("easy"|"medium"|"advanced"), meal_times (object meal->"HH:MM"), notes (array), physical.age, physical.weight_kg, physical.height_cm, physical.activity_level, household.adults, household.kids_2_to_10.',
+  parameters: {
+    type: 'object',
+    properties: {
+      facts: {
+        type: 'array',
+        description: 'Hechos a guardar. Cada uno con key + value.',
+        items: {
+          type: 'object',
+          properties: {
+            key: { type: 'string', description: 'Clave canónica.' },
+            value: {
+              description: 'Valor en el formato correcto para la clave (array, número, string, etc).',
+            },
+            confidence: {
+              type: 'number',
+              description: 'Opcional. 0..1. Default 0.8 (inferido). Usa 1 si el usuario lo dijo en mayúsculas o pidió guardarlo explícitamente.',
+            },
+          },
+          required: ['key', 'value'],
+        },
+      },
+    },
+    required: ['facts'],
+  },
+  async handler(
+    params: { facts: Array<{ key: string; value: unknown; confidence?: number }> },
+    ctx: SkillContext,
+  ): Promise<SkillResult> {
+    const { userId } = ctx
+    const { setMemoryBatch, UnknownMemoryKeyError, MemoryValueValidationError } = await import('../userMemoryStore.js')
+    // Forward as a single transaction so a partial failure rolls back.
+    try {
+      // The skill writes source='inferred' so a manual edit from the user
+      // can still override later (manual = 1.0 always overrides inferred).
+      await setMemoryBatch(
+        userId,
+        params.facts.map((f) => ({
+          key: f.key,
+          value: f.value,
+          confidence: typeof f.confidence === 'number' ? f.confidence : 0.8,
+        })),
+        'inferred',
+      )
+    } catch (err) {
+      if (err instanceof UnknownMemoryKeyError) {
+        return {
+          data: null,
+          summary: `No conozco la clave "${err.message.split(':').pop()?.trim()}", no la he guardado.`,
+          uiHint: 'text',
+        }
+      }
+      if (err instanceof MemoryValueValidationError) {
+        return {
+          data: null,
+          summary: `No he podido guardar ${err.key}: ${err.reason}.`,
+          uiHint: 'text',
+        }
+      }
+      throw err
+    }
+    const keys = params.facts.map((f) => f.key).join(', ')
+    return {
+      data: { updated: params.facts.length },
+      summary: `Apuntado. (${keys})`,
+      uiHint: 'confirmation',
+    }
+  },
+}
+
 // ─── Exports ────────────────────────────────────────────────
 
 export const skills: SkillDefinition[] = [
@@ -1915,6 +1997,7 @@ export const skills: SkillDefinition[] = [
   editRecipe,
   updateHousehold,
   addRecipeToMine,
+  updateMemory,
 ]
 
 /**

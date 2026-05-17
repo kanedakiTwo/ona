@@ -12,6 +12,14 @@ Registration, login, logout, JWT tokens, session management, onboarding flow, pa
 
 ---
 
+## [User Memory](./user-memory.md)
+
+Typed long-term storage of user preferences (dislikes, equipment, time-available per weekday, weekly budget, cuisine bias, cooking skill, meal times, free-form notes). Stable key registry + per-key Zod schema in `@ona/shared`. `user_memories` table, one row per (user_id, key). Advisor injects a Spanish-language digest into every system prompt; `update_memory` skill lets the assistant write inferred facts mid-conversation ("recuerda que no me gusta el cilantro"). REST: `GET /memory`, `PATCH /memory { key, value | facts: [...] }`, `DELETE /memory/:key`. Profile sub-page `/profile/memoria` lists every fact with source badge (Tú / Asistente / Onboarding). 19 contract tests.
+
+**Source**: `packages/shared/src/types/userMemory.ts`, `apps/api/src/services/userMemoryStore.ts`, `apps/api/src/routes/memory.ts`, `apps/api/src/services/assistant/contextLoader.ts`, `apps/web/src/hooks/useUserMemory.ts`, `apps/web/src/app/profile/memoria/page.tsx`
+
+---
+
 ## [Recipes](./recipes.md)
 
 Recipe catalog, recipe detail, ingredients, sectioned ingredient groups ("Para la masa"), rich steps (text + duration + temperature + technique + ingredient refs), photos (Unsplash + Notion), system vs user recipes, public vs internal tags, favorites, search, meal/season/maxTime filters, servings, diner scaler with culinary rounding, prepTime/cookTime/activeTime/totalTime, difficulty, equipment, allergens, notes/tips/substitutions/storage, yield, nutritionPerServing, AI extraction from photo (returns ExtractedRecipe draft for review, no auto-persist), AI extraction from URL (YouTube video or web article via JSON-LD + Readability + Claude), AI hero-photo generation (AiKit Imagen-fal, regenerate-image endpoint, monthly per-user quota, Railway volume storage in prod), sourceUrl/sourceType, hero image, RecipeCard, ServingsScaler. Seed pipeline: `seed/recipes.ts` shells + `handAuthoredRecipes.ts` bodies → `regen-passed.jsonl` → `apply:recipes` (with `--soft-lint` / `--auto-create-missing` flags). Prod maintenance one-offs: `dedupSystemRecipes`, `linkSeedRecipeImages`, `fillSeedCatalogGap`.

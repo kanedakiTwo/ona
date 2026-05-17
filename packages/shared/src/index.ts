@@ -14,6 +14,19 @@ export type {
   ExtractedIngredient,
 } from './types/recipe.js'
 export type { Menu, DayMenu, MealSlot, LockedSlots } from './types/menu.js'
+export type {
+  MemoryKey,
+  MemorySource,
+  MemoryFact,
+  UserMemory,
+} from './types/userMemory.js'
+export {
+  MEMORY_KEYS,
+  MEMORY_SOURCES,
+  MEMORY_VALUE_SCHEMAS,
+  validateMemoryFactValue,
+  buildMemoryDigestText,
+} from './types/userMemory.js'
 export type { ShoppingItem, ShoppingList, BuyableUnit } from './types/shopping.js'
 export type { Macros, Vitamins, Minerals, AminoAcids, FatAcids, CarbTypes, NutrientBalance } from './types/nutrition.js'
 export type {

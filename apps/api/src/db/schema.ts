@@ -57,6 +57,29 @@ export const users = pgTable('users', {
   index('idx_users_suspended').on(table.suspendedAt),
 ])
 
+// ─── 1b. user_memories ──────────────────────────────────────
+// Typed fact storage the assistant reads on every skill call. One row per
+// (user_id, key) — upsert semantics. Keys come from `MEMORY_KEYS` in
+// `@ona/shared`; values are JSONB validated against the registry's per-
+// key Zod schema at the route layer. The advisor composes a Spanish
+// digest from these rows and injects it as a cached prompt chunk so
+// every skill call gets the user's profile context.
+export const userMemories = pgTable('user_memories', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  key: text('key').notNull(),
+  value: jsonb('value').notNull(),
+  /** 'onboarding' | 'manual' | 'inferred'. See @ona/shared MEMORY_SOURCES. */
+  source: text('source').notNull().default('manual'),
+  /** 0..1 — lets inferred facts be downgraded vs. manual ones. */
+  confidence: real('confidence').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex('uq_user_memory_user_key').on(table.userId, table.key),
+  index('idx_user_memory_user').on(table.userId),
+])
+
 // ─── 2. user_settings ───────────────────────────────────────
 export const userSettings = pgTable('user_settings', {
   id: uuid('id').primaryKey().defaultRandom(),

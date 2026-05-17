@@ -15,6 +15,7 @@ import assistantRoutes from './routes/assistant.js'
 import realtimeRoutes from './routes/realtime.js'
 import adminRoutes from './routes/admin.js'
 import unitsRouter from './routes/units.js'
+import memoryRoutes from './routes/memory.js'
 
 const app = express()
 
@@ -62,6 +63,7 @@ app.use(assistantRoutes)
 app.use(realtimeRoutes)
 app.use(adminRoutes)
 app.use('/', unitsRouter)
+app.use(memoryRoutes)
 
 // Error handler
 app.use(errorHandler)

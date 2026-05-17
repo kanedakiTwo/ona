@@ -2,6 +2,7 @@ import { eq, desc } from 'drizzle-orm'
 import { users, menus, userNutrientBalance } from '../../db/schema.js'
 import { nutrientsToPercentages, TARGET_MACROS } from '@ona/shared'
 import type { NutrientBalance } from '@ona/shared'
+import { buildMemoryDigest } from '../userMemoryStore.js'
 
 /**
  * Load lightweight user context for the assistant system prompt.
@@ -119,6 +120,13 @@ export async function loadUserContext(userId: string, db: any): Promise<string> 
       `(objetivo: ${TARGET_MACROS.protein}/${TARGET_MACROS.carbohydrates}/${TARGET_MACROS.fat})`
     )
   }
+
+  // ── User memory digest ────────────────────────────────────
+  // Pulled last so it sits at the bottom of the system prompt — closest to
+  // the user's next message, where the model anchors. Empty when the user
+  // hasn't recorded any preferences (no extra noise on the prompt).
+  const memoryDigest = await buildMemoryDigest(userId).catch(() => '')
+  if (memoryDigest) parts.push(memoryDigest)
 
   return parts.join('\n')
 }

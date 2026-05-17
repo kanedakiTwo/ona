@@ -166,7 +166,10 @@ async function createAceiteRecipe(
   await displayInput.fill('cda')
   const [resolveResp] = await Promise.all([
     page.waitForResponse(
-      (r) => /\/units\/resolve\b/.test(r.url()) && r.request().method() === 'POST',
+      (r) =>
+        /\/units\/resolve\b/.test(r.url()) &&
+        r.request().method() === 'POST' &&
+        r.request().postDataJSON()?.displayUnit === 'cda',
       { timeout: 8_000 },
     ),
     displayInput.blur(),
@@ -198,7 +201,9 @@ async function createAceiteRecipe(
 
   // Wait until the detail page has navigated so subsequent tests can
   // start interacting immediately.
-  await page.waitForURL(new RegExp(`/recipes/${created.id}`), { timeout: 15_000 })
+  await page.waitForURL((url) => url.pathname.endsWith(`/recipes/${created.id}`), {
+    timeout: 15_000,
+  })
 
   return {
     recipeId: created.id,
@@ -259,14 +264,28 @@ test('scaling: a 1-cda recipe at 1.5x renders as "1 1/2 cda" with canonical seco
     return
   }
 
-  // Bump scaler from 2 → 3 (factor = 1.5). The component triggers a refetch
-  // via useRecipe(id, 3) so we wait for that response to land.
+  // Bump scaler to 3 (factor = 1.5 against the recipe's servings=2 baseline).
+  //
+  // Why two clicks: completeOnboarding() in _helpers.ts sets
+  // householdSize='solo', which householdToDinersOrNull maps to 1 diner,
+  // so the detail page seeds servings=1 (userDiners ?? recipe.servings ?? 2).
+  // The recipe was created with servings=2 (form default), so we need to
+  // click + twice to reach 3: 1 → 2 → 3. The component triggers a refetch
+  // on each step via useRecipe(id, n).
+  const incButton = page.getByRole('button', { name: /aumentar comensales/i })
+  await Promise.all([
+    page.waitForResponse(
+      (r) => r.url().includes(`/recipes/${created.recipeId}`) && r.url().includes('servings=2'),
+      { timeout: 10_000 },
+    ),
+    incButton.click(),
+  ])
   await Promise.all([
     page.waitForResponse(
       (r) => r.url().includes(`/recipes/${created.recipeId}`) && r.url().includes('servings=3'),
       { timeout: 10_000 },
     ),
-    page.getByRole('button', { name: /aumentar comensales/i }).click(),
+    incButton.click(),
   ])
 
   // Primary: "1 1/2 cda". formatFraction(1.5) → "1 1/2" verbatim (verified

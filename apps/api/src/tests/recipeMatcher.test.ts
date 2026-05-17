@@ -96,6 +96,84 @@ describe('matchRecipes: pinnedType', () => {
   })
 })
 
+describe('matchRecipes: availableEquipment (user_memories.equipment)', () => {
+  const oven = {
+    id: 'rx',
+    name: 'Pollo al horno',
+    meals: ['lunch', 'dinner'],
+    seasons: ['spring', 'summer', 'autumn', 'winter'],
+    tags: [],
+    equipment: ['horno'],
+    ingredients: [{ ingredientId: 'i', ingredientName: 'pollo', quantity: 1, unit: 'u' }],
+  }
+  const stove = { ...oven, id: 'ry', name: 'Estofado', equipment: ['olla express'] }
+  const noeq = { ...oven, id: 'rz', name: 'Ensalada', equipment: [] }
+
+  it('excludes recipes whose required equipment is not in the user-owned set', () => {
+    const out = matchRecipes([oven, stove, noeq], {
+      ...baseOptions,
+      availableEquipment: new Set(['horno']), // user has oven, no pressure cooker
+    })
+    expect(out.map((r) => r.id).sort()).toEqual(['rx', 'rz'])
+  })
+
+  it('is accent-insensitive — "Olla Exprés" set matches "olla express" recipe', () => {
+    const out = matchRecipes([stove], {
+      ...baseOptions,
+      availableEquipment: new Set(['olla express']), // already normalised
+    })
+    expect(out.map((r) => r.id)).toEqual(['ry'])
+  })
+
+  it('treats empty/undefined recipe.equipment as no requirement', () => {
+    const out = matchRecipes([noeq], { ...baseOptions, availableEquipment: new Set(['horno']) })
+    expect(out.map((r) => r.id)).toEqual(['rz'])
+  })
+
+  it('absent or empty availableEquipment is a no-op (user hasn\'t completed onboarding)', () => {
+    const out = matchRecipes([oven, stove, noeq], baseOptions)
+    expect(out.length).toBe(3)
+  })
+})
+
+describe('matchRecipes: maxPrepMinutes (user_memories.time_available[weekday])', () => {
+  const quick = {
+    id: 'q1',
+    name: 'Tostada',
+    meals: ['breakfast', 'lunch'],
+    seasons: ['spring'],
+    tags: [],
+    prepTime: 10,
+    ingredients: [],
+  }
+  const slow = { ...quick, id: 'q2', name: 'Cocido', prepTime: 90 }
+  const unknown = { ...quick, id: 'q3', name: 'Pan crudo', prepTime: undefined }
+
+  it('excludes recipes whose prepTime exceeds the day\'s budget', () => {
+    const out = matchRecipes([quick, slow, unknown], {
+      ...baseOptions,
+      maxPrepMinutes: 30,
+    })
+    // Quick passes (10 ≤ 30); slow fails (90 > 30); unknown passes (no data,
+    // err on inclusion — better one extra question to the user than empty pool)
+    expect(out.map((r) => r.id).sort()).toEqual(['q1', 'q3'])
+  })
+
+  it('treats absent maxPrepMinutes as no-op', () => {
+    const out = matchRecipes([quick, slow, unknown], baseOptions)
+    expect(out.length).toBe(3)
+  })
+
+  it('zero or negative cap is treated as "no cap" (defensive)', () => {
+    expect(
+      matchRecipes([slow], { ...baseOptions, maxPrepMinutes: 0 }).length,
+    ).toBe(1)
+    expect(
+      matchRecipes([slow], { ...baseOptions, maxPrepMinutes: -5 }).length,
+    ).toBe(1)
+  })
+})
+
 describe('matchRecipes: dislikes (user_memories)', () => {
   it('excludes recipes whose ingredients contain a disliked name', () => {
     const out = matchRecipes(RECIPES, {

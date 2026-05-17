@@ -10,7 +10,7 @@ import { generateMenu } from '../services/menuGenerator.js'
 import { calculateMenuCaloriesFromDB } from '../services/calorieCalculator.js'
 import { calculateMenuNutrientsFromDB } from '../services/nutrientCalculator.js'
 import { updateBalance } from '../services/nutrientBalance.js'
-import { findRecipeForSlot, type RecipeWithIngredients } from '../services/recipeMatcher.js'
+import { findRecipeForSlot, normaliseEquipment, type RecipeWithIngredients } from '../services/recipeMatcher.js'
 import { getMemoryForUser } from '../services/userMemoryStore.js'
 import { detectSeason } from '@ona/shared'
 import { recipeIngredients, ingredients, recipes, userFavorites } from '../db/schema.js'
@@ -278,6 +278,15 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
     const memory = await getMemoryForUser(menu.userId).catch(() => null)
     const dislikesValue = memory?.dislikes?.value
     const dislikes: string[] = Array.isArray(dislikesValue) ? (dislikesValue as string[]) : []
+    const equipmentValue = memory?.equipment?.value
+    const availableEquipment = Array.isArray(equipmentValue)
+      ? new Set<string>((equipmentValue as string[]).map(normaliseEquipment))
+      : undefined
+    const timeValue = memory?.time_available?.value as Record<string, number> | undefined
+    const SPANISH_DAY_KEYS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'] as const
+    const maxPrepMinutes = timeValue && typeof timeValue === 'object'
+      ? (timeValue[SPANISH_DAY_KEYS[dayIndex]] ?? null)
+      : null
 
     // Fetch favorites
     const favRows = await db
@@ -318,6 +327,8 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       meals: r.meals ?? [],
       seasons: r.seasons ?? [],
       tags: r.tags ?? [],
+      equipment: r.equipment ?? [],
+      prepTime: r.prepTime ?? null,
       ingredients: ingredientsByRecipe.get(r.id) ?? [],
     }))
 
@@ -335,6 +346,8 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       bannedRecipeIds: new Set(menu.bannedRecipeIds ?? []),
       pinnedType: existingSlot?.pinnedType ?? null,
       dislikes,
+      availableEquipment,
+      maxPrepMinutes,
     })
 
     if (!newRecipe) {
@@ -448,6 +461,15 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
       const memory2 = await getMemoryForUser(menu.userId).catch(() => null)
       const dislikesValue2 = memory2?.dislikes?.value
       const dislikes: string[] = Array.isArray(dislikesValue2) ? (dislikesValue2 as string[]) : []
+      const equipmentValue2 = memory2?.equipment?.value
+      const availableEquipment = Array.isArray(equipmentValue2)
+        ? new Set<string>((equipmentValue2 as string[]).map(normaliseEquipment))
+        : undefined
+      const SPANISH_DAY_KEYS2 = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'] as const
+      const timeValue2 = memory2?.time_available?.value as Record<string, number> | undefined
+      const maxPrepMinutes = timeValue2 && typeof timeValue2 === 'object'
+        ? (timeValue2[SPANISH_DAY_KEYS2[dayIndex]] ?? null)
+        : null
 
       const favRows = await db
         .select({ recipeId: userFavorites.recipeId })
@@ -484,6 +506,8 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
         meals: r.meals ?? [],
         seasons: r.seasons ?? [],
         tags: r.tags ?? [],
+        equipment: r.equipment ?? [],
+        prepTime: r.prepTime ?? null,
         ingredients: ingredientsByRecipe.get(r.id) ?? [],
       }))
 
@@ -495,6 +519,8 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
         favoriteRecipeIds,
         bannedRecipeIds: new Set(menu.bannedRecipeIds ?? []),
         dislikes,
+        availableEquipment,
+        maxPrepMinutes,
       })
       if (!newRecipe) {
         res.status(404).json({ error: 'No matching recipe found for this slot' })

@@ -7,6 +7,10 @@ export interface RecipeWithIngredients {
   meals: string[]
   seasons: string[]
   tags: string[]
+  /** Equipment the recipe needs ('horno', 'freidora', 'olla express'…). Empty / undefined = no equipment requirement. */
+  equipment?: string[]
+  /** Prep time in minutes. Used by the time-budget filter (user_memories.time_available). */
+  prepTime?: number | null
   ingredients: Array<{
     ingredientId: string
     ingredientName: string
@@ -41,6 +45,19 @@ export interface MatcherOptions {
    * are softer than allergens). Empty array / absent is a no-op.
    */
   dislikes?: string[]
+  /**
+   * Kitchen equipment the user owns (lowercased; from user_memories
+   * `equipment`). A recipe is filtered out only when it lists at least
+   * one piece of equipment that's NOT in this set. Empty / absent = no
+   * filter — useful when the user hasn't completed onboarding yet.
+   */
+  availableEquipment?: Set<string>
+  /**
+   * Maximum prep-time minutes allowed for this slot (from user_memories
+   * `time_available[weekday]`, looked up by the route). Recipes whose
+   * `prepTime` exceeds this are excluded. Null/absent = no filter.
+   */
+  maxPrepMinutes?: number | null
 }
 
 /**
@@ -56,7 +73,17 @@ export function matchRecipes(
   recipes: RecipeWithIngredients[],
   options: MatcherOptions,
 ): RecipeWithIngredients[] {
-  const { meal, season, usedRecipeIds, restrictions, bannedRecipeIds, pinnedType, dislikes } = options
+  const {
+    meal,
+    season,
+    usedRecipeIds,
+    restrictions,
+    bannedRecipeIds,
+    pinnedType,
+    dislikes,
+    availableEquipment,
+    maxPrepMinutes,
+  } = options
 
   // Restrictions + dislikes share the same predicate: any ingredient name
   // whose lowercased form contains one of the entries → recipe excluded.
@@ -92,6 +119,24 @@ export function matchRecipes(
       if (hasBlocked) return false
     }
 
+    // 5. Equipment check — every piece of equipment the recipe needs must
+    //    be present in the user's owned set. Recipes with no equipment array
+    //    (= no requirement) pass freely. Comparison is case-insensitive and
+    //    accent-insensitive so "freidora de aire" matches "Freidora de Aire".
+    if (availableEquipment && availableEquipment.size > 0) {
+      const required = recipe.equipment ?? []
+      const ok = required.every((e) => availableEquipment.has(normaliseEquipment(e)))
+      if (!ok) return false
+    }
+
+    // 6. Time-budget check — recipe.prepTime must fit the slot's window.
+    //    Recipes with no prepTime (data gap) pass freely.
+    if (maxPrepMinutes != null && maxPrepMinutes > 0) {
+      if (typeof recipe.prepTime === 'number' && recipe.prepTime > maxPrepMinutes) {
+        return false
+      }
+    }
+
     return true
   })
 }
@@ -122,6 +167,20 @@ export function pickRandom(
 /**
  * Find a matching recipe for a meal slot. Returns undefined if none found.
  */
+/**
+ * Lowercase + strip accents so "Freidora de Aire" matches "freidora de aire"
+ * regardless of how the user or the recipe data is normalised. Used to build
+ * the set passed in `availableEquipment` and to look up each recipe's
+ * `equipment` entries against it.
+ */
+export function normaliseEquipment(s: string): string {
+  return s
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .trim()
+}
+
 export function findRecipeForSlot(
   recipes: RecipeWithIngredients[],
   options: MatcherOptions,

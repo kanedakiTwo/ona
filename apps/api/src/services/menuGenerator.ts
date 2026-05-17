@@ -16,7 +16,7 @@ import {
   MENU_GENERATION,
 } from '@ona/shared'
 import type { DayMenu, DayTemplate, Meal, Season, Sex, ActivityLevel, LockedSlots } from '@ona/shared'
-import { findRecipeForSlot, type RecipeWithIngredients } from './recipeMatcher.js'
+import { findRecipeForSlot, normaliseEquipment, type RecipeWithIngredients } from './recipeMatcher.js'
 import { getMemoryForUser } from './userMemoryStore.js'
 import { calculateRecipeCaloriesFromDB, calculateMenuCaloriesFromDB } from './calorieCalculator.js'
 import { calculateMenuNutrientsFromDB } from './nutrientCalculator.js'
@@ -141,6 +141,8 @@ async function loadRecipesWithIngredients(db: any): Promise<RecipeWithIngredient
     meals: r.meals ?? [],
     seasons: r.seasons ?? [],
     tags: r.tags ?? [],
+    equipment: r.equipment ?? [],
+    prepTime: r.prepTime ?? null,
     ingredients: ingredientsByRecipe.get(r.id) ?? [],
   }))
 }
@@ -148,6 +150,9 @@ async function loadRecipesWithIngredients(db: any): Promise<RecipeWithIngredient
 /**
  * Build a random menu for one iteration.
  */
+// Spanish weekday names in the same Monday→Sunday order the menu uses.
+const WEEKDAY_KEYS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'] as const
+
 function buildRandomMenu(
   template: DayTemplate[],
   allRecipes: RecipeWithIngredients[],
@@ -159,6 +164,8 @@ function buildRandomMenu(
   bannedRecipeIds?: Set<string>,
   skippedDays?: Set<number>,
   dislikes?: string[],
+  availableEquipment?: Set<string>,
+  timeBudgetByDay?: Record<number, number>,
 ): DayMenu[] {
   const usedRecipeIds = new Set<string>()
   const days: DayMenu[] = []
@@ -210,6 +217,8 @@ function buildRandomMenu(
         favoriteRecipeIds,
         bannedRecipeIds,
         dislikes,
+        availableEquipment,
+        maxPrepMinutes: timeBudgetByDay?.[dayIndex] ?? null,
       })
 
       if (recipe) {
@@ -338,11 +347,23 @@ export async function generateMenu(
   // 3. Current season
   const season = detectSeason()
 
-  // 4. Restrictions + dislikes from long-term memory
+  // 4. Restrictions + dislikes + equipment + time-budget from long-term memory
   const restrictions: string[] = user.restrictions ?? []
   const memory = await getMemoryForUser(userId).catch(() => null)
   const dislikesValue = memory?.dislikes?.value
   const dislikes: string[] = Array.isArray(dislikesValue) ? (dislikesValue as string[]) : []
+  const equipmentValue = memory?.equipment?.value
+  const availableEquipment = Array.isArray(equipmentValue)
+    ? new Set<string>((equipmentValue as string[]).map(normaliseEquipment))
+    : undefined
+  const timeValue = memory?.time_available?.value as Record<string, number> | undefined
+  const timeBudgetByDay: Record<number, number> = {}
+  if (timeValue && typeof timeValue === 'object') {
+    for (let i = 0; i < WEEKDAY_KEYS.length; i++) {
+      const v = timeValue[WEEKDAY_KEYS[i]]
+      if (typeof v === 'number' && v > 0) timeBudgetByDay[i] = v
+    }
+  }
 
   // 6. Iterative optimization
   let bestDays: DayMenu[] | null = null
@@ -360,6 +381,8 @@ export async function generateMenu(
       bannedRecipeIds,
       skippedDays,
       dislikes,
+      availableEquipment,
+      timeBudgetByDay,
     )
 
     // Verify the menu has at least some recipes
@@ -390,5 +413,7 @@ export async function generateMenu(
     bannedRecipeIds,
     skippedDays,
     dislikes,
+    availableEquipment,
+    timeBudgetByDay,
   )
 }

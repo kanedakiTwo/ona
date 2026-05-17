@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { eq, and, desc } from 'drizzle-orm'
+import { eq, and, desc, inArray } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { menus, menuLogs, users } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
@@ -25,6 +25,42 @@ const router = Router()
 const MEAL_VALUES = new Set<string>(MEALS)
 function isValidMeal(meal: string): meal is Meal {
   return MEAL_VALUES.has(meal)
+}
+
+/**
+ * Resolve `image_url` for every recipe referenced by the menu and attach it
+ * to each slot. The JSONB only stores recipeId/name — keeping the URL
+ * persisted there would go stale on regenerate-image. Single SELECT for the
+ * whole week.
+ */
+async function hydrateMenuImages<T extends { days: unknown }>(menu: T): Promise<T> {
+  const days = (menu.days as DayMenu[] | null | undefined) ?? []
+  const ids = new Set<string>()
+  for (const day of days) {
+    for (const meal of Object.keys(day)) {
+      const slot = day[meal] as MealSlot | undefined
+      if (slot?.recipeId) ids.add(slot.recipeId)
+    }
+  }
+  if (ids.size === 0) return menu
+  const rows = await db
+    .select({ id: recipes.id, imageUrl: recipes.imageUrl })
+    .from(recipes)
+    .where(inArray(recipes.id, [...ids]))
+  const imageById = new Map(rows.map((r) => [r.id, r.imageUrl]))
+  const hydratedDays = days.map((day) => {
+    const next: DayMenu = {}
+    for (const meal of Object.keys(day)) {
+      const slot = day[meal] as MealSlot | undefined
+      if (slot?.recipeId) {
+        next[meal] = { ...slot, imageUrl: imageById.get(slot.recipeId) ?? null }
+      } else if (slot) {
+        next[meal] = slot
+      }
+    }
+    return next
+  })
+  return { ...menu, days: hydratedDays }
 }
 
 // POST /menu/generate - does NOT require auth (as specified)
@@ -62,7 +98,7 @@ router.post('/menu/generate', validate(generateMenuSchema), async (req, res) => 
     // Update nutrient balance
     await updateBalance(userId, aggregatedNutrients, db)
 
-    res.status(201).json(menu)
+    res.status(201).json(await hydrateMenuImages(menu))
   } catch (err) {
     console.error('Generate menu error:', err)
     res.status(500).json({ error: 'Internal server error' })
@@ -112,7 +148,7 @@ router.get('/menu/:userId/:weekId', async (req: AuthRequest, res) => {
       return
     }
 
-    res.json(menu)
+    res.json(await hydrateMenuImages(menu))
   } catch (err) {
     console.error('Get menu error:', err)
     res.status(500).json({ error: 'Internal server error' })
@@ -174,7 +210,7 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
         .set({ days })
         .where(eq(menus.id, menuId))
         .returning()
-      res.json(updated)
+      res.json(await hydrateMenuImages(updated))
       return
     }
 
@@ -265,7 +301,7 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       .where(eq(menus.id, menuId))
       .returning()
 
-    res.json(updated)
+    res.json(await hydrateMenuImages(updated))
   } catch (err) {
     console.error('Regenerate meal error:', err)
     res.status(500).json({ error: 'Internal server error' })
@@ -403,7 +439,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
 
     days[dayIndex][meal] = { recipeId: chosenId, recipeName: chosenName }
     const [updated] = await db.update(menus).set({ days }).where(eq(menus.id, menuId)).returning()
-    res.status(201).json(updated)
+    res.status(201).json(await hydrateMenuImages(updated))
   } catch (err) {
     console.error('Add meal slot error:', err)
     res.status(500).json({ error: 'Internal server error' })
@@ -455,7 +491,7 @@ router.delete('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res)
 
     delete days[dayIndex][meal]
     const [updated] = await db.update(menus).set({ days }).where(eq(menus.id, menuId)).returning()
-    res.json(updated)
+    res.json(await hydrateMenuImages(updated))
   } catch (err) {
     console.error('Delete meal slot error:', err)
     res.status(500).json({ error: 'Internal server error' })
@@ -517,7 +553,7 @@ router.patch('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) 
 
     days[dayIndex][meal] = slot
     const [updated] = await db.update(menus).set({ days }).where(eq(menus.id, menuId)).returning()
-    res.json(updated)
+    res.json(await hydrateMenuImages(updated))
   } catch (err) {
     console.error('Patch meal slot error:', err)
     res.status(500).json({ error: 'Internal server error' })
@@ -562,7 +598,7 @@ router.put(
         .where(eq(menus.id, menuId))
         .returning()
 
-      res.json(updated)
+      res.json(await hydrateMenuImages(updated))
     } catch (err) {
       console.error('Lock meal error:', err)
       res.status(500).json({ error: 'Internal server error' })

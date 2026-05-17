@@ -538,7 +538,7 @@ function EditorialMealCard({
   onChangeServings,
   isRegenerating,
 }: {
-  meal: { type: string; recipeId?: string; recipeName?: string; servings?: number | null }
+  meal: { type: string; recipeId?: string; recipeName?: string; servings?: number | null; imageUrl?: string | null }
   index: number
   day: number
   isLocked: boolean
@@ -565,6 +565,7 @@ function EditorialMealCard({
   const fallbackImg = `https://images.unsplash.com/photo-${
     ["1490645935967-10de6ba17061", "1546069901-ba9599a7e63c", "1540420773420-3366772f4999", "1556909114-44e3e9399a2c"][index % 4]
   }?w=800&q=80&auto=format&fit=crop`
+  const heroSrc = meal.imageUrl || fallbackImg
 
   return (
     <motion.article
@@ -576,7 +577,7 @@ function EditorialMealCard({
       <Link href={`/recipes/${meal.recipeId}`} className="block">
         <div className="relative aspect-[16/10] overflow-hidden">
           <img
-            src={fallbackImg}
+            src={heroSrc}
             alt={meal.recipeName}
             className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
           />

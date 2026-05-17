@@ -13,6 +13,13 @@ export interface MealSlot {
    * next regeneration is the user's responsibility.
    */
   servings?: number | null
+  /**
+   * Hydrated by the menu API on every response from the joined
+   * `recipes.image_url` column. NOT persisted in the JSONB; resolved per
+   * request so a regenerate-image on the recipe takes effect immediately.
+   * Null when the recipe has no image yet.
+   */
+  imageUrl?: string | null
 }
 
 export interface DayMenu {

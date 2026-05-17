@@ -24,7 +24,7 @@ Weekly meal plan generation and management.
 A menu is stored per-user per-week:
 - `weekStart` is the Monday of the week (`YYYY-MM-DD`)
 - `days` is a 7-element array; each day is `{ breakfast?, lunch?, dinner?, snack? }`
-- Each filled slot is `{ recipeId, recipeName }`
+- Each filled slot is `{ recipeId, recipeName, servings?, imageUrl? }` — `imageUrl` is **not** persisted in the JSONB; the API resolves it per request from the joined `recipes.image_url` so a regenerate-image takes effect on the very next response. `servings` is the optional per-slot diner override.
 - `locked` is a nested object: `{ "<dayIndex>": { "<meal>": true } }`
 
 ## Generation Algorithm

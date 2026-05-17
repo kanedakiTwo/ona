@@ -21,6 +21,18 @@ export interface MatcherOptions {
   usedRecipeIds: Set<string>
   restrictions: string[]
   favoriteRecipeIds: Set<string>
+  /**
+   * Recipes the user vetoed for this week. The matcher filters them out
+   * before season / restriction checks, so a vetoed favourite is still
+   * excluded. Absent / empty set is a no-op (existing call sites stay valid).
+   */
+  bannedRecipeIds?: Set<string>
+  /**
+   * When set, the matcher only returns recipes whose `tags` include this
+   * value. Used by the "Pin meal type to a day" UI (cremas, legumbres,
+   * pizza…). Null / absent means no constraint.
+   */
+  pinnedType?: string | null
 }
 
 /**
@@ -36,11 +48,17 @@ export function matchRecipes(
   recipes: RecipeWithIngredients[],
   options: MatcherOptions,
 ): RecipeWithIngredients[] {
-  const { meal, season, usedRecipeIds, restrictions } = options
+  const { meal, season, usedRecipeIds, restrictions, bannedRecipeIds, pinnedType } = options
 
   const restrictionSet = new Set(restrictions.map((r) => r.toLowerCase()))
 
   return recipes.filter((recipe) => {
+    // 0. Veto wins over everything else — a banned favourite is still out.
+    if (bannedRecipeIds?.has(recipe.id)) return false
+
+    // 0b. Pinned meal type — when set, recipe must carry the tag.
+    if (pinnedType && !recipe.tags.includes(pinnedType)) return false
+
     // 1. Meal type match
     if (!recipe.meals.includes(meal)) return false
 

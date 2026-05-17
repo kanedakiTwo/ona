@@ -81,11 +81,15 @@ Each row:
 - `ingredientId` — references the global ingredient catalog
 - `ingredientName` — denormalized for display
 - `section` — optional string for sub-grouping (e.g. "Para la masa", "Para la salsa"); `null` = ungrouped
-- `quantity` — number
-- `unit` — enum `g | ml | u | cda | cdita | pizca | al_gusto`
+- `quantity` — number; **canonical** value in `g`, `ml`, or `u`. Used for nutrition aggregation, household scaling, and shopping-list math.
+- `unit` — canonical unit enum. **Current DB state**: `g | ml | u | cda | cdita | pizca | al_gusto` (mixed; legacy abstract units `cda | cdita | pizca | al_gusto` will be removed by PR 4 backfill + migration 0009). **New rows always use** `g | ml | u`.
+- `displayQuantity` — optional number; the author's quantity in display units (e.g. `2` for "2 cucharadas"). Null when the recipe was authored directly in canonical units.
+- `displayUnit` — optional free-form string (e.g. `cda`, `puñado`, `chorrito`). One of 29 vocabulary terms or any user-typed label. Null when canonical-only. See [packages/shared/src/units/vocabulary.ts](../packages/shared/src/units/vocabulary.ts) for the 29-term default vocabulary.
 - `optional` — boolean
 - `note` — optional inline note (e.g. "picada fina", "del día anterior")
 - `displayOrder` — integer, controls UI ordering inside its section
+
+**Why two layers?** Authors say "1 cda de aceite" but nutrition and scaling need a numeric base. The recipe form's display-unit picker (`/recipes/new`) calls `POST /units/resolve` to convert the author's wording to canonical (`1 cda` → `15 ml`; with density also → `13.7 g`). The detail page renders `displayQuantity * factor` as the primary label when the scaled value is "culinary clean" (matches a 1/2, 1/3, 1/4, 3/4 fraction or whole), and the canonical figure as muted secondary. When the scaled value isn't culinary clean (e.g. `1 cda × 1.4 = 1.4 cda`), it falls back to canonical-only.
 
 ### Step
 
@@ -104,14 +108,22 @@ The catalog and detail view display only **public** tags. Filtering rules:
 - Tags that duplicate the `meal`, `season`, or `difficulty` fields are excluded (no more "compartida · easy · lunch" leaking)
 - All tags are normalized to the user's display language (Spanish)
 
+## Servings Confidence
+
+Every recipe carries `servingsConfidence`: `'explicit'` (the user or the source stated the diner count) or `'estimated'` (the extractor inferred it from ingredient quantities). The default for manual entry is `'explicit'`; the AI photo/URL extractor returns its own value.
+
+The `/recipes/new` and `/recipes/[id]/edit` forms show a small "Estimado" badge next to the servings input when `servingsConfidence === 'estimated'`. Editing the field flips the state to `'explicit'` (no separate confirmation).
+
+The extractor's prompt is constrained to integers `[1, 12]` and clamped server-side; values outside the range or non-integers are coerced to a default and force `servingsConfidence='estimated'`.
+
 ## Quantity Scaling
 
-When the user changes the diner count from `recipe.servings` to `target`:
-- Each ingredient `quantity` is multiplied by `target / recipe.servings`
-- Counted units (`u`) round to the nearest whole; if the result is non-integer, the UI shows a small note (e.g. "1.5 huevos → redondea a 2")
-- `pizca` and `al_gusto` never scale
-- Mass and volume units round to a culinary-friendly precision (1 g, 5 g, 25 g, 50 g bands depending on magnitude)
-- Step text references via `ingredientRefs` are recomputed at the same scale
+When the user changes the diner count from `recipe.servings` to `target`, factor = target / recipe.servings:
+
+- **Canonical**: `quantity` is multiplied by factor with culinary-friendly rounding (band steps: 1 g, 5 g, 25 g, 50 g depending on magnitude; counted `u` rounds to whole).
+- **Display**: when a row has `displayQuantity` + `displayUnit`, the detail page renders `displayQuantity * factor` as the primary label if it matches a culinary-clean fraction (1, 1/2, 1/3, 2/3, 1/4, 3/4 and combinations). Otherwise the display is hidden and only canonical renders.
+- Step text references via `ingredientRefs` are recomputed at the same scale.
+- Symbolic units (`al gusto`, `cantidad suficiente`) never scale.
 
 ## Display Constraints
 
@@ -130,9 +142,9 @@ When the user changes the diner count from `recipe.servings` to `target`:
 - `DELETE /recipes/:id` (auth, author only)
 - `GET /user/:id/recipes` (auth) — user's own + favorited recipes
 - `POST /user/:id/recipes/:recipeId/favorite` (auth) — toggle favorite
-- `POST /recipes/extract-from-image` (auth) — AI recipe extraction; returns the `ExtractedRecipe` draft (ingredients matched against catalog + warnings) so the user can review and adjust it on `/recipes/new` before saving. The draft is **not** persisted server-side — the user submits the normal `POST /recipes` from the form, which runs the lint validator. Defensive JSON parse tolerates ```json…``` fenced responses from the model
+- `POST /recipes/extract-from-image` (auth) — AI recipe extraction; returns the `ExtractedRecipe` draft (ingredients matched against catalog + warnings) so the user can review and adjust it on `/recipes/new` before saving. The draft is **not** persisted server-side — the user submits the normal `POST /recipes` from the form, which runs the lint validator. Defensive JSON parse tolerates ```json…``` fenced responses from the model. The extractor returns each ingredient as `{name, canonical: {quantity, unit}, display?: {quantity, unit}}` plus a top-level `servings` and `servingsConfidence`. The canonical unit is one of `g | ml | u`; the display fields carry the author's wording when the source named an abstract unit (cda, puñado, …).
 - `POST /recipes/:id/copy` (auth) — clone a recipe into the caller's catalog. Refuses with 409 if the user already owns the source. Returns the new recipe
-- `POST /recipes/extract-from-url` (auth) — body `{ url }`. Detects YouTube vs article by hostname. Articles try `schema.org/Recipe` JSON-LD, then fall back to Mozilla Readability + Claude. YouTube combines title + description + caption transcript and feeds it to Claude. Unlike `/extract-from-image`, this endpoint persists the recipe directly and returns `{ recipe, warnings }` (the frontend then redirects to the detail page). Returns 422 with `{ isRecipe: false, reason }` when the LLM decides the URL doesn't describe a cookable recipe, and 422 with a Spanish message when a YouTube video has neither captions nor a usable description
+- `POST /recipes/extract-from-url` (auth) — body `{ url }`. Detects YouTube vs article by hostname. Articles try `schema.org/Recipe` JSON-LD, then fall back to Mozilla Readability + Claude. YouTube combines title + description + caption transcript and feeds it to Claude. Unlike `/extract-from-image`, this endpoint persists the recipe directly and returns `{ recipe, warnings }` (the frontend then redirects to the detail page). Returns 422 with `{ isRecipe: false, reason }` when the LLM decides the URL doesn't describe a cookable recipe, and 422 with a Spanish message when a YouTube video has neither captions nor a usable description. Same `{name, canonical, display?}` ingredient shape and `servingsConfidence` flag as `/extract-from-image`.
 - `POST /recipes/:id/regenerate-image` (auth, author only) — generate a new editorial-style hero photo via AiKit Imagen-fal. Builds the prompt from `recipe.name` + top 4 ingredients (by `displayOrder`) + a meal-aware framing hint + a fixed cream/wood/warm-light cookbook style suffix; calls `POST cms.aikit.es/api/free-form-tools/image-generation/generate-imagen-fal` with `Authorization: Bearer aik_…`; pipes the PNG through sharp (1200 px wide, JPEG q85 + mozjpeg) and writes to `${IMAGE_STORAGE_DIR}/<recipeId>.jpg`; updates `recipes.image_url` to `${IMAGE_PUBLIC_URL_BASE}/<recipeId>.jpg`. Per-user monthly quota (`IMAGE_GEN_MONTHLY_LIMIT`, default 20) tracked atomically on `users.image_gen_count` + `users.image_gen_month_key`: a single conditional UPDATE bumps the counter only if the user is under the cap and the month matches; mismatched month → reset to 1; cap reached → 429 with `{ quota: { used, limit, monthKey } }` and no AiKit call. Failed generations refund the slot. System recipes (authorId null) and other-user recipes return 403; missing `AIKIT_API_KEY` returns 503. Frontend (`useRegenerateRecipeImage`) renders a "Regenerar imagen" button on the author-side detail page and an "Imagen" section in `/recipes/[id]/edit`; both show a "(X/20 este mes)" counter and append `?v=<updatedAt>` to the hero src to bust the long-cached browser image after each regen
 
 ## Constraints

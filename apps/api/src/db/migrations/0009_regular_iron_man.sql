@@ -1,0 +1,2 @@
+ALTER TABLE "menus" ADD COLUMN "banned_recipe_ids" text[] DEFAULT ARRAY[]::text[] NOT NULL;--> statement-breakpoint
+ALTER TABLE "menus" ADD COLUMN "skipped_days" integer[] DEFAULT ARRAY[]::integer[] NOT NULL;

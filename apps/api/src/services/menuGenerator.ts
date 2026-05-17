@@ -155,6 +155,7 @@ function buildRandomMenu(
   favoriteRecipeIds: Set<string>,
   lockedSlots: LockedSlots,
   existingDays?: DayMenu[],
+  bannedRecipeIds?: Set<string>,
 ): DayMenu[] {
   const usedRecipeIds = new Set<string>()
   const days: DayMenu[] = []
@@ -197,6 +198,7 @@ function buildRandomMenu(
         usedRecipeIds,
         restrictions,
         favoriteRecipeIds,
+        bannedRecipeIds,
       })
 
       if (recipe) {
@@ -265,6 +267,7 @@ export async function generateMenu(
   db: any,
   lockedSlots: LockedSlots = {},
   existingDays?: DayMenu[],
+  bannedRecipeIds?: Set<string>,
 ): Promise<DayMenu[]> {
   // 1. Fetch user profile
   const [user] = await db
@@ -339,6 +342,7 @@ export async function generateMenu(
       favoriteRecipeIds,
       lockedSlots,
       existingDays,
+      bannedRecipeIds,
     )
 
     // Verify the menu has at least some recipes
@@ -366,5 +370,6 @@ export async function generateMenu(
     favoriteRecipeIds,
     lockedSlots,
     existingDays,
+    bannedRecipeIds,
   )
 }

@@ -23,6 +23,10 @@ const router = Router()
  * lenient behavior to avoid breaking clients that already rely on it.
  */
 const MEAL_VALUES = new Set<string>(MEALS)
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+function isValidUuid(s: unknown): s is string {
+  return typeof s === 'string' && UUID_RE.test(s)
+}
 function isValidMeal(meal: string): meal is Meal {
   return MEAL_VALUES.has(meal)
 }
@@ -278,13 +282,14 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
 
     const season = detectSeason()
 
-    // Find a new recipe for this slot
+    // Find a new recipe for this slot, honouring the week's veto list.
     const newRecipe = findRecipeForSlot(recipesWithIngredients, {
       meal: meal as Meal,
       season,
       usedRecipeIds,
       restrictions,
       favoriteRecipeIds,
+      bannedRecipeIds: new Set(menu.bannedRecipeIds ?? []),
     })
 
     if (!newRecipe) {
@@ -428,6 +433,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
         usedRecipeIds,
         restrictions,
         favoriteRecipeIds,
+        bannedRecipeIds: new Set(menu.bannedRecipeIds ?? []),
       })
       if (!newRecipe) {
         res.status(404).json({ error: 'No matching recipe found for this slot' })
@@ -605,5 +611,81 @@ router.put(
     }
   },
 )
+
+// POST /menu/:menuId/ban — veto a recipe for the rest of this week. Append-
+// only set semantics; double-POST is a no-op (idempotent). Body `{ recipeId }`.
+// The matcher excludes vetoed ids from every slot in this menu — Aleatorio,
+// Añadir, whole-week Regenerar. Scope ends with the week — next menu starts
+// with an empty veto list.
+router.post('/menu/:menuId/ban', async (req: AuthRequest, res) => {
+  try {
+    const menuId = String(req.params.menuId)
+    const recipeId = req.body?.recipeId
+    if (!isValidUuid(recipeId)) {
+      res.status(400).json({ error: 'recipeId must be a uuid' })
+      return
+    }
+
+    const [menu] = await db
+      .select()
+      .from(menus)
+      .where(eq(menus.id, menuId))
+      .limit(1)
+    if (!menu) {
+      res.status(404).json({ error: 'Menu not found' })
+      return
+    }
+
+    const existing = menu.bannedRecipeIds ?? []
+    if (existing.includes(recipeId)) {
+      res.json(await hydrateMenuImages(menu))
+      return
+    }
+    const next = [...existing, recipeId]
+    const [updated] = await db
+      .update(menus)
+      .set({ bannedRecipeIds: next })
+      .where(eq(menus.id, menuId))
+      .returning()
+    res.json(await hydrateMenuImages(updated))
+  } catch (err) {
+    console.error('Ban recipe error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// DELETE /menu/:menuId/ban/:recipeId — un-veto. Idempotent: returns the
+// updated menu whether the id was in the list or not.
+router.delete('/menu/:menuId/ban/:recipeId', async (req: AuthRequest, res) => {
+  try {
+    const menuId = String(req.params.menuId)
+    const recipeId = String(req.params.recipeId)
+    if (!isValidUuid(recipeId)) {
+      res.status(400).json({ error: 'recipeId must be a uuid' })
+      return
+    }
+
+    const [menu] = await db
+      .select()
+      .from(menus)
+      .where(eq(menus.id, menuId))
+      .limit(1)
+    if (!menu) {
+      res.status(404).json({ error: 'Menu not found' })
+      return
+    }
+
+    const next = (menu.bannedRecipeIds ?? []).filter((id) => id !== recipeId)
+    const [updated] = await db
+      .update(menus)
+      .set({ bannedRecipeIds: next })
+      .where(eq(menus.id, menuId))
+      .returning()
+    res.json(await hydrateMenuImages(updated))
+  } catch (err) {
+    console.error('Unban recipe error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
 
 export default router

@@ -215,6 +215,18 @@ export const menus = pgTable('menus', {
   weekStart: date('week_start').notNull(),
   days: jsonb('days').notNull(),
   locked: jsonb('locked').default({}),
+  /**
+   * Per-week veto list. The recipe matcher excludes these ids when picking
+   * candidates for any slot in this menu. Scoped to one menu — the user's
+   * profile is unchanged, so next week's menu starts with an empty veto list.
+   */
+  bannedRecipeIds: text('banned_recipe_ids').array().notNull().default(sql`ARRAY[]::text[]`),
+  /**
+   * Day indices (0-6) the user marked as "sin cocinar". Whole-week
+   * regeneration skips these — slots stay empty until the user adds them
+   * back manually.
+   */
+  skippedDays: integer('skipped_days').array().notNull().default(sql`ARRAY[]::integer[]`),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => [
   index('idx_menus_user_week').on(table.userId, table.weekStart),

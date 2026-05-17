@@ -149,7 +149,8 @@ jobs:
             'src/tests/ingredientAutoCreateRoute.smoke.ts' \
             'src/tests/authRoute.smoke.ts' \
             'src/tests/menusRoute.smoke.ts' \
-            'src/tests/shoppingRoute.smoke.ts'
+            'src/tests/shoppingRoute.smoke.ts' \
+            'src/tests/unitResolver.smoke.ts'
 
       - name: Tail API log on failure
         if: failure()

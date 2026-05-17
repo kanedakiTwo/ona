@@ -17,6 +17,7 @@ import {
 } from '@ona/shared'
 import type { DayMenu, DayTemplate, Meal, Season, Sex, ActivityLevel, LockedSlots } from '@ona/shared'
 import { findRecipeForSlot, type RecipeWithIngredients } from './recipeMatcher.js'
+import { getMemoryForUser } from './userMemoryStore.js'
 import { calculateRecipeCaloriesFromDB, calculateMenuCaloriesFromDB } from './calorieCalculator.js'
 import { calculateMenuNutrientsFromDB } from './nutrientCalculator.js'
 
@@ -157,6 +158,7 @@ function buildRandomMenu(
   existingDays?: DayMenu[],
   bannedRecipeIds?: Set<string>,
   skippedDays?: Set<number>,
+  dislikes?: string[],
 ): DayMenu[] {
   const usedRecipeIds = new Set<string>()
   const days: DayMenu[] = []
@@ -207,6 +209,7 @@ function buildRandomMenu(
         restrictions,
         favoriteRecipeIds,
         bannedRecipeIds,
+        dislikes,
       })
 
       if (recipe) {
@@ -335,8 +338,11 @@ export async function generateMenu(
   // 3. Current season
   const season = detectSeason()
 
-  // 4. Restrictions
+  // 4. Restrictions + dislikes from long-term memory
   const restrictions: string[] = user.restrictions ?? []
+  const memory = await getMemoryForUser(userId).catch(() => null)
+  const dislikesValue = memory?.dislikes?.value
+  const dislikes: string[] = Array.isArray(dislikesValue) ? (dislikesValue as string[]) : []
 
   // 6. Iterative optimization
   let bestDays: DayMenu[] | null = null
@@ -353,6 +359,7 @@ export async function generateMenu(
       existingDays,
       bannedRecipeIds,
       skippedDays,
+      dislikes,
     )
 
     // Verify the menu has at least some recipes
@@ -382,5 +389,6 @@ export async function generateMenu(
     existingDays,
     bannedRecipeIds,
     skippedDays,
+    dislikes,
   )
 }

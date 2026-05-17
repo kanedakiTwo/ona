@@ -33,6 +33,14 @@ export interface MatcherOptions {
    * pizza…). Null / absent means no constraint.
    */
   pinnedType?: string | null
+  /**
+   * Lowercased ingredient names the user dislikes (from user_memories
+   * `dislikes`). Functionally identical to `restrictions` — recipes whose
+   * ingredient list contains any of these strings are filtered out — but
+   * separated so the digest / UI can surface them differently (dislikes
+   * are softer than allergens). Empty array / absent is a no-op.
+   */
+  dislikes?: string[]
 }
 
 /**
@@ -48,9 +56,15 @@ export function matchRecipes(
   recipes: RecipeWithIngredients[],
   options: MatcherOptions,
 ): RecipeWithIngredients[] {
-  const { meal, season, usedRecipeIds, restrictions, bannedRecipeIds, pinnedType } = options
+  const { meal, season, usedRecipeIds, restrictions, bannedRecipeIds, pinnedType, dislikes } = options
 
-  const restrictionSet = new Set(restrictions.map((r) => r.toLowerCase()))
+  // Restrictions + dislikes share the same predicate: any ingredient name
+  // whose lowercased form contains one of the entries → recipe excluded.
+  // Dislikes are merged into the same set so the loop stays one O(N×M).
+  const blockedNames = new Set<string>([
+    ...restrictions.map((r) => r.toLowerCase()),
+    ...(dislikes ?? []).map((d) => d.toLowerCase()),
+  ])
 
   return recipes.filter((recipe) => {
     // 0. Veto wins over everything else — a banned favourite is still out.
@@ -68,12 +82,14 @@ export function matchRecipes(
     // 3. No repeats in the week
     if (usedRecipeIds.has(recipe.id)) return false
 
-    // 4. Restriction check - recipe ingredients must not contain restricted items
-    if (restrictionSet.size > 0) {
-      const hasRestricted = recipe.ingredients.some((ing) =>
-        restrictionSet.has(ing.ingredientName.toLowerCase()),
+    // 4. Restriction + dislikes check — exact-match against the lowercased
+    //    ingredient name. Lifted into a single Set above so a user with
+    //    both "sin gluten" + dislikes:['cilantro'] pays one pass.
+    if (blockedNames.size > 0) {
+      const hasBlocked = recipe.ingredients.some((ing) =>
+        blockedNames.has(ing.ingredientName.toLowerCase()),
       )
-      if (hasRestricted) return false
+      if (hasBlocked) return false
     }
 
     return true

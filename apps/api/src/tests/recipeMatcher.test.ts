@@ -96,6 +96,39 @@ describe('matchRecipes: pinnedType', () => {
   })
 })
 
+describe('matchRecipes: dislikes (user_memories)', () => {
+  it('excludes recipes whose ingredients contain a disliked name', () => {
+    const out = matchRecipes(RECIPES, {
+      ...baseOptions,
+      dislikes: ['calabacín'],
+    })
+    expect(out.map((r) => r.id)).not.toContain('r2')
+    expect(out.map((r) => r.id).sort()).toEqual(['r1', 'r3'])
+  })
+
+  it('is case-insensitive', () => {
+    const out = matchRecipes(RECIPES, {
+      ...baseOptions,
+      dislikes: ['CALABACÍN'],
+    })
+    expect(out.map((r) => r.id)).not.toContain('r2')
+  })
+
+  it('treats empty / absent dislikes as a no-op', () => {
+    expect(matchRecipes(RECIPES, { ...baseOptions, dislikes: [] }).length).toBe(3)
+    expect(matchRecipes(RECIPES, baseOptions).length).toBe(3)
+  })
+
+  it('merges with restrictions — a recipe gets dropped if it hits either set', () => {
+    const out = matchRecipes(RECIPES, {
+      ...baseOptions,
+      restrictions: ['lentejas'],
+      dislikes: ['masa'],
+    })
+    expect(out.map((r) => r.id)).toEqual(['r2'])
+  })
+})
+
 describe('matchRecipes: bannedRecipeIds', () => {
   it('excludes recipes whose ids appear in bannedRecipeIds', () => {
     const out = matchRecipes(RECIPES, {

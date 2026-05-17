@@ -11,6 +11,7 @@ import { calculateMenuCaloriesFromDB } from '../services/calorieCalculator.js'
 import { calculateMenuNutrientsFromDB } from '../services/nutrientCalculator.js'
 import { updateBalance } from '../services/nutrientBalance.js'
 import { findRecipeForSlot, type RecipeWithIngredients } from '../services/recipeMatcher.js'
+import { getMemoryForUser } from '../services/userMemoryStore.js'
 import { detectSeason } from '@ona/shared'
 import { recipeIngredients, ingredients, recipes, userFavorites } from '../db/schema.js'
 
@@ -267,14 +268,16 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       }
     }
 
-    // Fetch user for restrictions
+    // Fetch user for restrictions + load dislikes from long-term memory.
     const [user] = await db
       .select({ restrictions: users.restrictions })
       .from(users)
       .where(eq(users.id, menu.userId))
       .limit(1)
-
     const restrictions: string[] = user?.restrictions ?? []
+    const memory = await getMemoryForUser(menu.userId).catch(() => null)
+    const dislikesValue = memory?.dislikes?.value
+    const dislikes: string[] = Array.isArray(dislikesValue) ? (dislikesValue as string[]) : []
 
     // Fetch favorites
     const favRows = await db
@@ -331,6 +334,7 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       favoriteRecipeIds,
       bannedRecipeIds: new Set(menu.bannedRecipeIds ?? []),
       pinnedType: existingSlot?.pinnedType ?? null,
+      dislikes,
     })
 
     if (!newRecipe) {
@@ -441,6 +445,9 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
         .where(eq(users.id, menu.userId))
         .limit(1)
       const restrictions: string[] = user?.restrictions ?? []
+      const memory2 = await getMemoryForUser(menu.userId).catch(() => null)
+      const dislikesValue2 = memory2?.dislikes?.value
+      const dislikes: string[] = Array.isArray(dislikesValue2) ? (dislikesValue2 as string[]) : []
 
       const favRows = await db
         .select({ recipeId: userFavorites.recipeId })
@@ -487,6 +494,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
         restrictions,
         favoriteRecipeIds,
         bannedRecipeIds: new Set(menu.bannedRecipeIds ?? []),
+        dislikes,
       })
       if (!newRecipe) {
         res.status(404).json({ error: 'No matching recipe found for this slot' })

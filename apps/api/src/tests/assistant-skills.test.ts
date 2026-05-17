@@ -928,8 +928,10 @@ describe('cooking_step', () => {
 // ─── Sanity: every skill in the export array has at least one test ────────
 
 describe('skill export coverage', () => {
-  it('there are exactly 30 registered skills', () => {
-    expect(skills.length).toBe(30)
+  it('there are exactly 31 registered skills', () => {
+    // Bumped from 30 when PR 2 added `update_memory` (persists inferred
+    // facts to user_memories from "recuerda que..." utterances).
+    expect(skills.length).toBe(31)
   })
 
   it('every skill has a unique name', () => {

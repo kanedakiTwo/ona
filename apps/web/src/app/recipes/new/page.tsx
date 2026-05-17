@@ -11,9 +11,10 @@ import Link from "next/link"
 import { PhotoRecipeUpload } from "@/components/recipes/PhotoRecipeUpload"
 import { UrlRecipeImport } from "@/components/recipes/UrlRecipeImport"
 import { IngredientAutocomplete } from "@/components/recipes/IngredientAutocomplete"
-import { buildRecipePayload, createRecipeSchema } from "@ona/shared"
+import { buildRecipePayload, createRecipeSchema, VOCABULARY } from "@ona/shared"
 import type { Meal, Season, ExtractedRecipe, Ingredient } from "@ona/shared"
 import { MEAL_LABELS, SEASON_LABELS } from "@/lib/labels"
+import { useUnitResolver } from "@/hooks/useUnitResolver"
 
 const MEAL_OPTIONS: { value: Meal; label: string }[] = [
   { value: "breakfast", label: MEAL_LABELS.breakfast },
@@ -31,15 +32,27 @@ const SEASON_OPTIONS: { value: Season; label: string }[] = [
 
 const UNIT_OPTIONS = ["g", "kg", "ml", "l", "ud", "cda", "cdta"]
 
+// Free-form display-unit suggestions for the per-row datalist. Ships every
+// vocabulary term's canonical label; the user can also type anything else
+// (the resolver then falls back to the backend's LLM path).
+const DISPLAY_UNIT_SUGGESTIONS = VOCABULARY.map((term) => term.canonical)
+
 interface IngredientRow {
   // What the user typed; we resolve against the library to populate ingredientId.
   ingredientName: string
   ingredientId: string
   quantity: number | ""
   unit: string
+  // Free-form display unit (e.g. "cda", "puñado"). Resolved to canonical
+  // (quantity, unit) on blur via useUnitResolver. Stays undefined when the
+  // user enters canonical (g/ml/u) directly through the canonical select.
+  displayQuantity?: number | null
+  displayUnit?: string | null
 }
 
 function emptyRow(): IngredientRow {
+  // Leave displayQuantity/displayUnit undefined — buildRecipePayload's
+  // `!= null` check then keeps the payload tidy.
   return { ingredientName: "", ingredientId: "", quantity: "", unit: "g" }
 }
 
@@ -49,6 +62,13 @@ export default function NewRecipePage() {
   const createRecipe = useCreateRecipe()
   const { data: ingredientLibrary = [], isLoading: ingredientsLoading } =
     useIngredients()
+  // ONE resolver instance per form. The hook keeps a single in-flight request
+  // — if two rows blur in quick succession, the second cancels the first.
+  // That's fine: each blur awaits its own promise and gets its own result.
+  const unitResolver = useUnitResolver()
+  // Track which row triggered the latest resolve so the loading hint can be
+  // scoped per-row instead of flashing on every row at once.
+  const [resolvingRowIdx, setResolvingRowIdx] = useState<number | null>(null)
 
   const [name, setName] = useState("")
   const [servings, setServings] = useState<number | "">(2)
@@ -88,6 +108,12 @@ export default function NewRecipePage() {
             ingredientName: ing.ingredientName ?? ing.extractedName,
             quantity: ing.quantity,
             unit: ing.unit || "g",
+            // ExtractedIngredient already carries these (see
+            // packages/shared/src/types/recipe.ts:188-201). Forward them so
+            // the form preserves the "1 cda" the LLM detected instead of
+            // collapsing back to canonical-only.
+            displayQuantity: ing.displayQuantity ?? null,
+            displayUnit: ing.displayUnit ?? null,
           }))
         : [emptyRow()]
     )
@@ -143,6 +169,101 @@ export default function NewRecipePage() {
     const next = [...ingredientRows]
     next[idx] = { ...next[idx], unit: value }
     setIngredientRows(next)
+  }
+
+  // Track the typed display-unit string in local state on every keystroke.
+  // The resolve() call only fires on blur (see handleDisplayUnitBlur).
+  function updateIngredientDisplayUnit(idx: number, value: string) {
+    setIngredientRows((prev) => {
+      const next = [...prev]
+      next[idx] = { ...next[idx], displayUnit: value }
+      return next
+    })
+  }
+
+  // On blur, resolve the display unit to canonical via /units/resolve.
+  // - Empty string clears display state (re-enables manual canonical entry).
+  // - Typing "g"/"ml"/"u" short-circuits — that's a user picking canonical
+  //   via the wrong field; no round-trip needed.
+  // - Otherwise: call the hook, then write the result back into the row.
+  // TODO(test): covered by Playwright spec in PR 3.5 — pick "cda", set
+  // quantity 1, blur, assert quantity becomes 15 and unit becomes 'ml'.
+  async function handleDisplayUnitBlur(idx: number) {
+    const row = ingredientRows[idx]
+    if (!row) return
+    const typed = (row.displayUnit ?? "").trim()
+    if (!typed) {
+      // Cleared field → strip display state, leave canonical alone.
+      setIngredientRows((prev) => {
+        const next = [...prev]
+        next[idx] = {
+          ...next[idx],
+          displayQuantity: null,
+          displayUnit: null,
+        }
+        return next
+      })
+      return
+    }
+    const normalized = typed.toLowerCase()
+    if (normalized === "g" || normalized === "ml" || normalized === "u") {
+      // Short-circuit: user typed canonical into the display field.
+      setIngredientRows((prev) => {
+        const next = [...prev]
+        next[idx] = {
+          ...next[idx],
+          displayQuantity: null,
+          displayUnit: null,
+          unit: normalized,
+        }
+        return next
+      })
+      return
+    }
+    if (row.quantity === "" || row.quantity <= 0) {
+      // Wait until the user types a quantity. The display unit is already
+      // captured in state via updateIngredientDisplayUnit; we just defer
+      // the conversion.
+      return
+    }
+    const ing = row.ingredientId
+      ? ingredientLibrary.find((i) => i.id === row.ingredientId)
+      : undefined
+    setResolvingRowIdx(idx)
+    try {
+      const result = await unitResolver.resolve({
+        displayQuantity: row.quantity,
+        displayUnit: typed,
+        ingredient: ing
+          ? {
+              id: ing.id,
+              density: ing.density ?? null,
+              unitWeight: ing.unitWeight ?? null,
+              name: ing.name,
+            }
+          : undefined,
+      })
+      setIngredientRows((prev) => {
+        const next = [...prev]
+        const r = next[idx]
+        if (!r) return prev
+        next[idx] = {
+          ...r,
+          displayQuantity: typeof r.quantity === "number" ? r.quantity : null,
+          displayUnit: typed,
+          quantity: result.canonicalQuantity,
+          unit: result.canonicalUnit,
+        }
+        return next
+      })
+    } catch (err) {
+      // Superseded calls reject with AbortError — that's expected when the
+      // user types quickly across rows. Anything else, log and move on.
+      if (err instanceof DOMException && err.name === "AbortError") return
+      console.error("[useUnitResolver] resolve failed:", err)
+    } finally {
+      setResolvingRowIdx((current) => (current === idx ? null : current))
+    }
   }
 
   function addIngredientRow() {
@@ -515,6 +636,14 @@ export default function NewRecipePage() {
               escribir y selecciona uno de la lista.
             </p>
 
+            {/* One shared <datalist> for every row's display-unit input.
+                Rendered once so the 29-term suggestion list isn't duplicated
+                per ingredient. */}
+            <datalist id="display-units">
+              {DISPLAY_UNIT_SUGGESTIONS.map((opt) => (
+                <option key={opt} value={opt} />
+              ))}
+            </datalist>
             <div className="mt-4 space-y-3">
               {ingredientRows.map((row, idx) => {
                 const localHint = ingredientRowHints[idx]
@@ -527,6 +656,11 @@ export default function NewRecipePage() {
                 const selectedIng = row.ingredientId
                   ? ingredientLibrary.find((ing) => ing.id === row.ingredientId) ?? null
                   : null
+                // The canonical (g/ml/u) select goes read-only once a display
+                // unit is set — display drives canonical via the resolver, so
+                // letting the user edit canonical separately would desync them.
+                const hasDisplayUnit = row.displayUnit != null && row.displayUnit !== ""
+                const isResolving = resolvingRowIdx === idx && unitResolver.isPending
                 return (
                   <div key={idx} className="flex flex-col gap-1">
                     <div className="flex items-center gap-2">
@@ -550,14 +684,28 @@ export default function NewRecipePage() {
                         placeholder="Cant."
                         min={0}
                         step="any"
-                        className="w-20 rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-3 py-2 text-[14px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
+                        className="w-16 rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-2 py-2 text-[14px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
+                      />
+                      {/* Display unit: free-form input with shared datalist
+                          suggestions. Resolves on blur via useUnitResolver. */}
+                      <input
+                        type="text"
+                        list="display-units"
+                        value={row.displayUnit ?? ""}
+                        onChange={(e) =>
+                          updateIngredientDisplayUnit(idx, e.target.value)
+                        }
+                        onBlur={() => handleDisplayUnitBlur(idx)}
+                        placeholder="cda"
+                        className="w-20 rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-2 py-2 text-[14px] text-[#1A1612] placeholder:text-[#7A7066] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
                       />
                       <select
                         value={row.unit}
                         onChange={(e) =>
                           updateIngredientUnit(idx, e.target.value)
                         }
-                        className="w-20 rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-2 py-2 text-[14px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
+                        disabled={hasDisplayUnit || isResolving}
+                        className="w-16 rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-1 py-2 text-[14px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612] disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {UNIT_OPTIONS.map((u) => (
                           <option key={u} value={u}>
@@ -575,7 +723,12 @@ export default function NewRecipePage() {
                         <Trash2 size={16} />
                       </button>
                     </div>
-                    {hint && (
+                    {isResolving && (
+                      <p className="pl-1 text-[11px] italic text-[#7A7066]">
+                        Resolviendo...
+                      </p>
+                    )}
+                    {!isResolving && hint && (
                       <p className="pl-1 text-[11px] italic text-[#C65D38]">
                         {hint}
                       </p>

@@ -189,6 +189,8 @@ interface IngredientRow {
   optional: boolean
   note: string | null
   displayOrder: number
+  displayQuantity: number | null
+  displayUnit: string | null
 }
 
 interface StepRow {
@@ -214,6 +216,8 @@ function toRecipeIngredient(row: IngredientRow): RecipeIngredient {
   }
   if (row.section != null) out.section = row.section
   if (row.note != null) out.note = row.note
+  if (row.displayQuantity != null) out.displayQuantity = row.displayQuantity
+  if (row.displayUnit != null) out.displayUnit = row.displayUnit
   return out
 }
 
@@ -292,6 +296,8 @@ async function fetchIngredientsForRecipes(recipeIds: string[]): Promise<Ingredie
       optional: recipeIngredients.optional,
       note: recipeIngredients.note,
       displayOrder: recipeIngredients.displayOrder,
+      displayQuantity: recipeIngredients.displayQuantity,
+      displayUnit: recipeIngredients.displayUnit,
     })
     .from(recipeIngredients)
     .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))

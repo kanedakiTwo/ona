@@ -205,4 +205,173 @@ describe('recipes route smoke', () => {
       expect(Array.isArray(created.allergens)).toBe(true)
     },
   )
+
+  // ─── display fields + servingsConfidence (PR 2.4) ─────────────
+
+  describe('display fields + servingsConfidence (PR 2.4)', () => {
+    it.skipIf(!reachable || !TEST_USER_TOKEN)(
+      'round-trips displayQuantity + displayUnit on POST → GET',
+      async () => {
+        // Borrow an ingredientId from the catalog so lint passes.
+        const cards = await fetch(`${API_URL}/recipes?perPage=1`).then((r) => r.json())
+        if (!Array.isArray(cards) || cards.length === 0) return
+        const detail = await fetch(`${API_URL}/recipes/${cards[0].id}`).then((r) => r.json())
+        if (!detail.ingredients || detail.ingredients.length === 0) return
+        const ing = detail.ingredients[0]
+
+        const body = {
+          name: `__smoke display-fields ${Date.now()}__`,
+          servings: 2,
+          meals: ['lunch'],
+          seasons: [],
+          ingredients: [
+            {
+              ingredientId: ing.ingredientId,
+              quantity: 30,
+              unit: 'ml',
+              displayQuantity: 2,
+              displayUnit: 'cda',
+              displayOrder: 0,
+            },
+          ],
+          steps: [
+            {
+              index: 0,
+              text: `Agrega ${ing.ingredientName} al recipiente.`,
+              ingredientRefs: ['ing_0'],
+            },
+          ],
+        }
+
+        const postRes = await fetch(`${API_URL}/recipes`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${TEST_USER_TOKEN}`,
+          },
+          body: JSON.stringify(body),
+        })
+        // Skip gracefully if lint blocks (e.g. QUANTITY_OUT_OF_RANGE for this ingredient).
+        if (postRes.status === 422) return
+        expect(postRes.status).toBe(201)
+        const created = await postRes.json()
+        expect(typeof created.id).toBe('string')
+
+        // GET the recipe back and assert display fields round-tripped.
+        const getRes = await fetch(`${API_URL}/recipes/${created.id}`, {
+          headers: { Authorization: `Bearer ${TEST_USER_TOKEN}` },
+        })
+        expect(getRes.ok).toBe(true)
+        const fetched = await getRes.json()
+        expect(Array.isArray(fetched.ingredients)).toBe(true)
+        const fetchedIng = fetched.ingredients[0]
+        expect(fetchedIng.quantity).toBe(30)
+        expect(fetchedIng.unit).toBe('ml')
+        expect(fetchedIng.displayQuantity).toBe(2)
+        expect(fetchedIng.displayUnit).toBe('cda')
+      },
+    )
+
+    it.skipIf(!reachable || !TEST_USER_TOKEN)(
+      'servingsConfidence defaults to "explicit" when omitted on POST',
+      async () => {
+        const cards = await fetch(`${API_URL}/recipes?perPage=1`).then((r) => r.json())
+        if (!Array.isArray(cards) || cards.length === 0) return
+        const detail = await fetch(`${API_URL}/recipes/${cards[0].id}`).then((r) => r.json())
+        if (!detail.ingredients || detail.ingredients.length === 0) return
+        const ing = detail.ingredients[0]
+
+        // POST without servingsConfidence
+        const body = {
+          name: `__smoke confidence-default ${Date.now()}__`,
+          servings: 4,
+          meals: ['dinner'],
+          seasons: [],
+          ingredients: [
+            {
+              ingredientId: ing.ingredientId,
+              quantity: 100,
+              unit: 'g',
+              displayOrder: 0,
+            },
+          ],
+          steps: [
+            {
+              index: 0,
+              text: `Prepara ${ing.ingredientName} al gusto.`,
+              ingredientRefs: ['ing_0'],
+            },
+          ],
+        }
+
+        const postRes = await fetch(`${API_URL}/recipes`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${TEST_USER_TOKEN}`,
+          },
+          body: JSON.stringify(body),
+        })
+        if (postRes.status === 422) return
+        expect(postRes.status).toBe(201)
+        const created = await postRes.json()
+
+        const getRes = await fetch(`${API_URL}/recipes/${created.id}`)
+        expect(getRes.ok).toBe(true)
+        const fetched = await getRes.json()
+        expect(fetched.servingsConfidence).toBe('explicit')
+      },
+    )
+
+    it.skipIf(!reachable || !TEST_USER_TOKEN)(
+      'servingsConfidence "estimated" round-trips when supplied',
+      async () => {
+        const cards = await fetch(`${API_URL}/recipes?perPage=1`).then((r) => r.json())
+        if (!Array.isArray(cards) || cards.length === 0) return
+        const detail = await fetch(`${API_URL}/recipes/${cards[0].id}`).then((r) => r.json())
+        if (!detail.ingredients || detail.ingredients.length === 0) return
+        const ing = detail.ingredients[0]
+
+        const body = {
+          name: `__smoke confidence-estimated ${Date.now()}__`,
+          servings: 3,
+          servingsConfidence: 'estimated',
+          meals: ['lunch'],
+          seasons: [],
+          ingredients: [
+            {
+              ingredientId: ing.ingredientId,
+              quantity: 150,
+              unit: 'g',
+              displayOrder: 0,
+            },
+          ],
+          steps: [
+            {
+              index: 0,
+              text: `Mezcla ${ing.ingredientName} con el resto.`,
+              ingredientRefs: ['ing_0'],
+            },
+          ],
+        }
+
+        const postRes = await fetch(`${API_URL}/recipes`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${TEST_USER_TOKEN}`,
+          },
+          body: JSON.stringify(body),
+        })
+        if (postRes.status === 422) return
+        expect(postRes.status).toBe(201)
+        const created = await postRes.json()
+
+        const getRes = await fetch(`${API_URL}/recipes/${created.id}`)
+        expect(getRes.ok).toBe(true)
+        const fetched = await getRes.json()
+        expect(fetched.servingsConfidence).toBe('estimated')
+      },
+    )
+  })
 })

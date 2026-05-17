@@ -83,7 +83,7 @@ export default function EditRecipePage() {
     if (seeded) return
     if (!recipe) return
     setName(recipe.name)
-    setServings(recipe.servings ?? 2)
+    setServings(recipe.servings)
     setPrepTime(recipe.prepTime ?? "")
     setCookTime(recipe.cookTime ?? "")
     setDifficulty(recipe.difficulty ?? "medium")

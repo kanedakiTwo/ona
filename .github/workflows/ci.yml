@@ -149,7 +149,12 @@ jobs:
             'src/tests/ingredientAutoCreateRoute.smoke.ts' \
             'src/tests/authRoute.smoke.ts' \
             'src/tests/menusRoute.smoke.ts' \
-            'src/tests/shoppingRoute.smoke.ts'
+            'src/tests/shoppingRoute.smoke.ts' \
+            'src/tests/unitResolver.smoke.ts' \
+            'src/tests/unitsRoute.smoke.ts' \
+            'src/tests/extractorAbstractUnits.smoke.ts'
+            # TODO: add ANTHROPIC_API_KEY secret to this job to un-skip the
+            # extractorAbstractUnits smoke in CI (currently skips cleanly without it)
 
       - name: Tail API log on failure
         if: failure()

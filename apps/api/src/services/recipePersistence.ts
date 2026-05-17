@@ -87,6 +87,10 @@ export interface RecipeIngredientWriteInput {
   optional?: boolean
   note?: string | null
   displayOrder?: number
+  /** Human-readable quantity as entered/extracted (e.g. 2 for "2 cda"). Null/absent = no display override. */
+  displayQuantity?: number | null
+  /** Human-readable unit label as entered/extracted (e.g. "cda"). Null/absent = no display override. */
+  displayUnit?: string | null
 }
 
 /** A single step row in a write payload. */
@@ -109,6 +113,8 @@ export interface RecipeWriteInput {
   name: string
   imageUrl?: string | null
   servings: number
+  /** Confidence level for the servings count. DB default 'explicit'. */
+  servingsConfidence?: 'explicit' | 'estimated'
   yieldText?: string | null
   prepTime?: number | null
   cookTime?: number | null
@@ -452,6 +458,7 @@ export async function persistRecipe(
       name: input.name,
       authorId: opts.authorId,
       servings: input.servings,
+      servingsConfidence: input.servingsConfidence ?? 'explicit',
       yieldText: input.yieldText ?? null,
       prepTime: input.prepTime ?? null,
       cookTime: input.cookTime ?? null,
@@ -513,6 +520,8 @@ export async function persistRecipe(
           optional: ing.optional ?? false,
           note: ing.note ?? null,
           displayOrder: ing.displayOrder ?? i,
+          displayQuantity: ing.displayQuantity ?? null,
+          displayUnit: ing.displayUnit ?? null,
         })),
       )
     }

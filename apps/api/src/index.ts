@@ -14,6 +14,7 @@ import advisorRoutes from './routes/advisor.js'
 import assistantRoutes from './routes/assistant.js'
 import realtimeRoutes from './routes/realtime.js'
 import adminRoutes from './routes/admin.js'
+import unitsRouter from './routes/units.js'
 
 const app = express()
 
@@ -60,6 +61,7 @@ app.use(advisorRoutes)
 app.use(assistantRoutes)
 app.use(realtimeRoutes)
 app.use(adminRoutes)
+app.use('/', unitsRouter)
 
 // Error handler
 app.use(errorHandler)

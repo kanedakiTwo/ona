@@ -47,6 +47,17 @@ const recipeIngredientWriteSchema = z.object({
   optional: z.boolean().default(false),
   note: z.string().optional(),
   displayOrder: z.number().int().min(0).default(0),
+  /**
+   * Human-readable quantity as entered/extracted (e.g. 2 for "2 cda").
+   * Canonical `quantity` holds the converted SI value (e.g. 30 ml).
+   * Null/absent when no display conversion applies.
+   */
+  displayQuantity: z.number().min(0).nullable().optional(),
+  /**
+   * Human-readable unit label as entered/extracted (e.g. "cda").
+   * Null/absent when no display conversion applies.
+   */
+  displayUnit: z.string().max(40).nullable().optional(),
 })
 
 export const recipeIngredientSchema = recipeIngredientWriteSchema.extend({
@@ -85,6 +96,8 @@ export interface Recipe {
 
   // Yield / portioning
   servings: number
+  /** Confidence level for the servings value: 'explicit' = stated in the source, 'estimated' = inferred. DB default 'explicit'. */
+  servingsConfidence: 'explicit' | 'estimated'
   /** Optional human-readable yield (e.g. "12 albóndigas", "1 L de salsa"). JSON field is `yieldText` to avoid the JS reserved word. */
   yieldText?: string
 
@@ -137,6 +150,7 @@ export const createRecipeSchema = z.object({
   imageUrl: z.string().url().nullable().optional(),
 
   servings: z.number().int().positive(),
+  servingsConfidence: z.enum(['explicit', 'estimated']).default('explicit'),
   yieldText: z.string().optional(),
 
   prepTime: z.number().int().min(0).optional(),
@@ -178,11 +192,20 @@ export interface ExtractedIngredient {
   quantity: number
   unit: Unit
   matched: boolean
+  /** Human-readable quantity as entered/extracted (e.g. 2 for "2 cda").
+   * Null/absent when no display conversion applies. */
+  displayQuantity?: number | null
+  /** Human-readable unit label as entered/extracted (e.g. "cda").
+   * Null/absent when no display conversion applies. */
+  displayUnit?: string | null
 }
 
 export interface ExtractedRecipe {
   name: string
-  servings: number | null
+  /** Always a positive integer. The extractor defaults to 2 when the source is silent. */
+  servings: number
+  /** 'explicit' = servings value was stated in the source; 'estimated' = inferred/defaulted by the extractor. */
+  servingsConfidence: 'explicit' | 'estimated'
   prepTime: number | null
   cookTime: number | null
   meals: Meal[]

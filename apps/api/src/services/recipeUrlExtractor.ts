@@ -100,9 +100,23 @@ export async function extractRecipeFromUrl(
       ? (raw.difficulty.toLowerCase() as Difficulty)
       : null
 
+  // Harden servings: the provider already clamps, but re-apply here for safety
+  // in case the JSON-LD path (article source) populates raw directly.
+  let servings = raw.servings
+  let servingsConfidence: 'explicit' | 'estimated' = raw.servingsConfidence ?? 'estimated'
+  if (servings == null || !Number.isInteger(servings) || servings < 1) {
+    servings = 4
+    servingsConfidence = 'estimated'
+  }
+  if (servings > 12) {
+    servings = 12
+    servingsConfidence = 'estimated'
+  }
+
   return {
     name: raw.name,
-    servings: raw.servings ?? null,
+    servings,
+    servingsConfidence,
     prepTime: raw.prepTime,
     cookTime: raw.cookTime ?? null,
     meals: meals.length > 0 ? meals : ['lunch', 'dinner'],

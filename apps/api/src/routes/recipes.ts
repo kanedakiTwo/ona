@@ -114,6 +114,8 @@ interface RecipeRow {
   authorId: string | null
   imageUrl: string | null
   servings: number
+  /** DB column added in PR 2 migration; absent on pre-migration rows — default 'explicit'. */
+  servingsConfidence?: 'explicit' | 'estimated' | null
   yieldText: string | null
   prepTime: number | null
   cookTime: number | null
@@ -187,6 +189,8 @@ interface IngredientRow {
   optional: boolean
   note: string | null
   displayOrder: number
+  displayQuantity: number | null
+  displayUnit: string | null
 }
 
 interface StepRow {
@@ -212,6 +216,8 @@ function toRecipeIngredient(row: IngredientRow): RecipeIngredient {
   }
   if (row.section != null) out.section = row.section
   if (row.note != null) out.note = row.note
+  if (row.displayQuantity != null) out.displayQuantity = row.displayQuantity
+  if (row.displayUnit != null) out.displayUnit = row.displayUnit
   return out
 }
 
@@ -246,6 +252,7 @@ function toDetailRecipe(
     authorId: row.authorId,
     imageUrl: row.imageUrl ?? null,
     servings: row.servings,
+    servingsConfidence: row.servingsConfidence ?? 'explicit',
     difficulty: ((row.difficulty as Difficulty) ?? 'medium') as Difficulty,
     meals: (row.meals ?? []) as Meal[],
     seasons: (row.seasons ?? []) as Season[],
@@ -289,6 +296,8 @@ async function fetchIngredientsForRecipes(recipeIds: string[]): Promise<Ingredie
       optional: recipeIngredients.optional,
       note: recipeIngredients.note,
       displayOrder: recipeIngredients.displayOrder,
+      displayQuantity: recipeIngredients.displayQuantity,
+      displayUnit: recipeIngredients.displayUnit,
     })
     .from(recipeIngredients)
     .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
@@ -472,7 +481,7 @@ router.post(
 
       const writeInput: RecipeWriteInput = {
         name: extracted.name,
-        servings: extracted.servings ?? 2,
+        servings: extracted.servings,
         prepTime: extracted.prepTime ?? null,
         cookTime: extracted.cookTime ?? null,
         difficulty: (extracted.difficulty ?? 'medium') as Difficulty,

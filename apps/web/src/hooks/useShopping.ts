@@ -3,21 +3,31 @@ import type { Aisle, BuyableUnit } from "@ona/shared"
 import { api } from "@/lib/api"
 import { enqueue } from "@/lib/pwa/offlineQueue"
 
-interface ShoppingItem {
+export interface ShoppingItem {
   id: string
-  ingredientId: string
+  ingredientId: string | null
   name: string
   quantity: number
   unit: BuyableUnit
   aisle: Aisle
   checked: boolean
   inStock: boolean
+  /** 'menu' (default for legacy rows) | 'manual' | 'staple'. PR 10. */
+  kind?: 'menu' | 'manual' | 'staple'
+  /** € per `unit`. Null/undefined = no price entered yet. PR 10. */
+  pricePerUnit?: number | null
 }
 
-interface ShoppingList {
+export interface ShoppingList {
   id: string
   menu_id: string
   items: ShoppingItem[]
+}
+
+export interface ShoppingListTotal {
+  totalEur: number
+  pricedCount: number
+  unpricedCount: number
 }
 
 export function useShoppingList(menuId: string | undefined) {
@@ -65,6 +75,71 @@ export function useCheckItem() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
+    },
+  })
+}
+
+// ─── PR 10: manual items + prices + totals ────────────────────────────
+
+export function useListTotal(listId: string | undefined) {
+  return useQuery<ShoppingListTotal>({
+    queryKey: ["shopping-list", listId, "totals"],
+    queryFn: () => api.get<ShoppingListTotal>(`/shopping-list/${listId}/totals`),
+    enabled: !!listId,
+    staleTime: 10_000,
+  })
+}
+
+export function useAddShoppingItem() {
+  const qc = useQueryClient()
+  return useMutation<
+    ShoppingList,
+    Error,
+    {
+      listId: string
+      name: string
+      quantity?: number
+      unit?: BuyableUnit
+      aisle?: Aisle
+      pricePerUnit?: number | null
+    }
+  >({
+    mutationFn: ({ listId, ...body }) => api.post(`/shopping-list/${listId}/items`, body),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["shopping-list"] })
+      qc.invalidateQueries({ queryKey: ["shopping-list", vars.listId, "totals"] })
+    },
+  })
+}
+
+export function usePatchShoppingItem() {
+  const qc = useQueryClient()
+  return useMutation<
+    ShoppingList,
+    Error,
+    {
+      listId: string
+      itemId: string
+      patch: Partial<Pick<ShoppingItem, "name" | "quantity" | "unit" | "aisle" | "pricePerUnit">>
+    }
+  >({
+    mutationFn: ({ listId, itemId, patch }) =>
+      api.patch(`/shopping-list/${listId}/item/${itemId}`, patch),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["shopping-list"] })
+      qc.invalidateQueries({ queryKey: ["shopping-list", vars.listId, "totals"] })
+    },
+  })
+}
+
+export function useDeleteShoppingItem() {
+  const qc = useQueryClient()
+  return useMutation<ShoppingList, Error, { listId: string; itemId: string }>({
+    mutationFn: ({ listId, itemId }) =>
+      api.delete(`/shopping-list/${listId}/item/${itemId}`),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["shopping-list"] })
+      qc.invalidateQueries({ queryKey: ["shopping-list", vars.listId, "totals"] })
     },
   })
 }

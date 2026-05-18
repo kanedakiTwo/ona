@@ -16,6 +16,12 @@ import { useMenu } from '@/hooks/useMenu'
 import { haptic } from '@/lib/pwa/haptics'
 import { share } from '@/lib/pwa/share'
 import { AISLE_LABELS, AISLE_ORDER, aisleLabel } from '@/lib/labels'
+import {
+  ListTotalBanner,
+  AddManualItemForm,
+  ItemPriceField,
+  ItemDeleteButton,
+} from '@/components/shopping/ShoppingExtensions'
 
 function getWeekStart(): string {
   const now = new Date()
@@ -182,6 +188,14 @@ export default function ShoppingPage() {
         </div>
       </div>
 
+      {/* PR 10A — total banner + add manual item */}
+      {shoppingList && (
+        <div className="px-5 mt-5 space-y-3">
+          <ListTotalBanner listId={shoppingList.id} />
+          <AddManualItemForm listId={shoppingList.id} />
+        </div>
+      )}
+
       {/* Tabs */}
       <div className="px-5 mt-5">
         <div className="flex gap-1 border-b border-[#DDD6C5]">
@@ -306,6 +320,7 @@ function BuyList({ items, listId }: { items: any[]; listId: string }) {
                 key={item.id}
                 item={item}
                 index={i}
+                listId={listId}
                 variant="buy"
                 onCheck={() => checkItem.mutate({ listId, itemId: item.id, checked: !item.checked })}
                 onStock={() => stockItem.mutate({ listId, itemId: item.id, inStock: true })}
@@ -349,6 +364,7 @@ function StockList({ items, listId }: { items: any[]; listId: string }) {
                 key={item.id}
                 item={item}
                 index={i}
+                listId={listId}
                 variant="stock"
                 onCheck={() => {}}
                 onStock={() => stockItem.mutate({ listId, itemId: item.id, inStock: false })}
@@ -365,15 +381,18 @@ function ItemRow({
   item,
   index,
   variant,
+  listId,
   onCheck,
   onStock,
 }: {
   item: any
   index: number
   variant: 'buy' | 'stock'
+  listId: string
   onCheck: () => void
   onStock: () => void
 }) {
+  const isManual = item.kind === 'manual'
   return (
     <motion.li
       initial={{ opacity: 0, x: -8 }}
@@ -402,12 +421,20 @@ function ItemRow({
       <div className="flex-1 min-w-0">
         <div className={`text-[15px] capitalize text-[#1A1612] ${item.checked ? 'line-through' : ''}`}>
           {item.name}
+          {isManual && (
+            <span className="ml-1.5 text-[9px] uppercase tracking-[0.15em] text-[#C65D38] not-italic">
+              · manual
+            </span>
+          )}
         </div>
       </div>
 
       <div className="font-mono text-[11px] tracking-tight text-[#7A7066] tabular-nums shrink-0">
         {item.quantity} {item.unit}
       </div>
+
+      {variant === 'buy' && <ItemPriceField listId={listId} item={item} />}
+      {variant === 'buy' && isManual && <ItemDeleteButton listId={listId} itemId={item.id} />}
 
       <button
         onClick={onStock}

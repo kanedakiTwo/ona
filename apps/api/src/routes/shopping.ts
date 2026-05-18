@@ -1,17 +1,26 @@
 import { Router } from 'express'
 import { eq } from 'drizzle-orm'
+import { randomUUID } from 'crypto'
+import { z } from 'zod'
 import { db } from '../db/connection.js'
 import { menus, shoppingLists, users } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
-import { generateShoppingList } from '../services/shoppingList.js'
+import { computeListTotal, generateShoppingList } from '../services/shoppingList.js'
 import { getPrimaryHouseholdId, resolveScope } from '../services/scopeResolver.js'
 import {
+  AISLES,
+  UNITS,
   householdMultiplier,
   householdSizeToCounts,
+  type Aisle,
   type DayMenu,
   type HouseholdSize,
   type ShoppingItem,
 } from '@ona/shared'
+
+const BUYABLE_UNITS = new Set<string>(['g', 'ml', 'u', 'cda', 'cdita'])
+const AISLE_SET = new Set<string>(AISLES)
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** Pull the user's authoritative household sizing, falling back to the legacy
  * `householdSize` enum if `adults`/`kidsCount` haven't been set yet (e.g. a
@@ -256,6 +265,209 @@ router.post('/shopping-list/:listId/regenerate', async (req: AuthRequest, res) =
     res.json(updated)
   } catch (err) {
     console.error('Regenerate shopping list error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// ─── PR 10: manual items + prices + totals ───────────────────────────────
+
+const addItemSchema = z.object({
+  name: z.string().min(1).max(80),
+  quantity: z.number().positive().max(10_000).optional(),
+  unit: z.string().refine((u) => BUYABLE_UNITS.has(u)).optional(),
+  aisle: z.string().refine((a) => AISLE_SET.has(a)).optional(),
+  pricePerUnit: z.number().nonnegative().max(10_000).nullable().optional(),
+})
+
+const patchItemSchema = z.object({
+  name: z.string().min(1).max(80).optional(),
+  quantity: z.number().positive().max(10_000).optional(),
+  unit: z.string().refine((u) => BUYABLE_UNITS.has(u)).optional(),
+  aisle: z.string().refine((a) => AISLE_SET.has(a)).optional(),
+  pricePerUnit: z.number().nonnegative().max(10_000).nullable().optional(),
+})
+
+/** Access check shared by all item-mutation routes. PR 1B: any household
+ *  member can touch the household's list. Pre-PR-1B: list.userId == userId. */
+async function loadListForCaller(listId: string, userId: string) {
+  const [list] = await db
+    .select()
+    .from(shoppingLists)
+    .where(eq(shoppingLists.id, listId))
+    .limit(1)
+  if (!list) return { list: null as null, forbidden: false }
+  const scope = await resolveScope(userId)
+  const userOwns = list.userId === userId
+  const sameHousehold =
+    scope.kind === 'household' &&
+    list.householdId != null &&
+    list.householdId === scope.value
+  if (!userOwns && !sameHousehold) return { list: null as null, forbidden: true }
+  return { list, forbidden: false }
+}
+
+// POST /shopping-list/:listId/items — append a manual free-text item.
+router.post('/shopping-list/:listId/items', async (req: AuthRequest, res) => {
+  try {
+    const listId = String(req.params.listId)
+    if (!UUID_RE.test(listId)) {
+      res.status(400).json({ error: 'listId must be a UUID' })
+      return
+    }
+    const parsed = addItemSchema.safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Datos invalidos', issues: parsed.error.issues })
+      return
+    }
+    const { list, forbidden } = await loadListForCaller(listId, req.userId!)
+    if (!list) {
+      res.status(forbidden ? 403 : 404).json({ error: forbidden ? 'Forbidden' : 'Shopping list not found' })
+      return
+    }
+    const items = (list.items as ShoppingItem[]).slice()
+    const newItem: ShoppingItem = {
+      id: randomUUID(),
+      ingredientId: null,
+      name: parsed.data.name.trim(),
+      quantity: parsed.data.quantity ?? 1,
+      unit: (parsed.data.unit as ShoppingItem['unit']) ?? 'u',
+      aisle: (parsed.data.aisle as Aisle) ?? 'otros',
+      checked: false,
+      inStock: false,
+      kind: 'manual',
+      pricePerUnit: parsed.data.pricePerUnit ?? null,
+    }
+    items.push(newItem)
+    const [updated] = await db
+      .update(shoppingLists)
+      .set({ items })
+      .where(eq(shoppingLists.id, listId))
+      .returning()
+    res.status(201).json(updated)
+  } catch (err) {
+    console.error('Add manual item error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// PATCH /shopping-list/:listId/item/:itemId — partial update.
+//   Allowed on manual items: name, quantity, unit, aisle, pricePerUnit.
+//   Allowed on menu items: pricePerUnit only (pricing your generated list).
+router.patch('/shopping-list/:listId/item/:itemId', async (req: AuthRequest, res) => {
+  try {
+    const listId = String(req.params.listId)
+    const itemId = String(req.params.itemId)
+    if (!UUID_RE.test(listId) || !UUID_RE.test(itemId)) {
+      res.status(400).json({ error: 'IDs must be UUIDs' })
+      return
+    }
+    const parsed = patchItemSchema.safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Datos invalidos', issues: parsed.error.issues })
+      return
+    }
+    const { list, forbidden } = await loadListForCaller(listId, req.userId!)
+    if (!list) {
+      res.status(forbidden ? 403 : 404).json({ error: forbidden ? 'Forbidden' : 'Shopping list not found' })
+      return
+    }
+    const items = (list.items as ShoppingItem[]).slice()
+    const idx = items.findIndex((i) => i.id === itemId)
+    if (idx < 0) {
+      res.status(404).json({ error: 'Item not found' })
+      return
+    }
+    const current = items[idx]
+    const isManual = current.kind === 'manual'
+    const patch = parsed.data
+    const next: ShoppingItem = { ...current }
+    if (patch.pricePerUnit !== undefined) next.pricePerUnit = patch.pricePerUnit
+    if (isManual) {
+      if (patch.name !== undefined) next.name = patch.name.trim()
+      if (patch.quantity !== undefined) next.quantity = patch.quantity
+      if (patch.unit !== undefined) next.unit = patch.unit as ShoppingItem['unit']
+      if (patch.aisle !== undefined) next.aisle = patch.aisle as Aisle
+    } else if (
+      patch.name !== undefined ||
+      patch.quantity !== undefined ||
+      patch.unit !== undefined ||
+      patch.aisle !== undefined
+    ) {
+      res.status(400).json({
+        error:
+          'Solo se puede editar el precio en items generados desde el menu. Crea uno manual para nombre / cantidad / pasillo.',
+      })
+      return
+    }
+    items[idx] = next
+    const [updated] = await db
+      .update(shoppingLists)
+      .set({ items })
+      .where(eq(shoppingLists.id, listId))
+      .returning()
+    res.json(updated)
+  } catch (err) {
+    console.error('PATCH item error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// DELETE /shopping-list/:listId/item/:itemId — manual items only.
+router.delete('/shopping-list/:listId/item/:itemId', async (req: AuthRequest, res) => {
+  try {
+    const listId = String(req.params.listId)
+    const itemId = String(req.params.itemId)
+    if (!UUID_RE.test(listId) || !UUID_RE.test(itemId)) {
+      res.status(400).json({ error: 'IDs must be UUIDs' })
+      return
+    }
+    const { list, forbidden } = await loadListForCaller(listId, req.userId!)
+    if (!list) {
+      res.status(forbidden ? 403 : 404).json({ error: forbidden ? 'Forbidden' : 'Shopping list not found' })
+      return
+    }
+    const items = (list.items as ShoppingItem[]).slice()
+    const idx = items.findIndex((i) => i.id === itemId)
+    if (idx < 0) {
+      res.status(404).json({ error: 'Item not found' })
+      return
+    }
+    if (items[idx].kind !== 'manual') {
+      res.status(400).json({
+        error:
+          'Solo se pueden borrar items manuales. Los items generados desde el menu desaparecen al regenerar la lista.',
+      })
+      return
+    }
+    items.splice(idx, 1)
+    const [updated] = await db
+      .update(shoppingLists)
+      .set({ items })
+      .where(eq(shoppingLists.id, listId))
+      .returning()
+    res.json(updated)
+  } catch (err) {
+    console.error('DELETE item error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// GET /shopping-list/:listId/totals — { totalEur, pricedCount, unpricedCount }.
+router.get('/shopping-list/:listId/totals', async (req: AuthRequest, res) => {
+  try {
+    const listId = String(req.params.listId)
+    if (!UUID_RE.test(listId)) {
+      res.status(400).json({ error: 'listId must be a UUID' })
+      return
+    }
+    const { list, forbidden } = await loadListForCaller(listId, req.userId!)
+    if (!list) {
+      res.status(forbidden ? 403 : 404).json({ error: forbidden ? 'Forbidden' : 'Shopping list not found' })
+      return
+    }
+    res.json(computeListTotal(list.items as ShoppingItem[]))
+  } catch (err) {
+    console.error('GET totals error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

@@ -60,6 +60,23 @@ The list is generated on the **first** GET; subsequent GETs return the same pers
 
 Both toggle endpoints flip the field (no payload value used) and return the full updated list.
 
+## Manual items + prices (PR 10A)
+
+- Users can add **free-text items** that aren't in any recipe — bread, dish soap, coffee — through an inline "Añadir un item manual" form at the top of `/shopping`. Body: `{ name, quantity?, unit?, aisle?, pricePerUnit? }`. Each manual item is stored as a `ShoppingItem` with `kind: 'manual'` and `ingredientId: null`. They survive `regenerate` (the aggregator only ever rebuilds menu-derived items today, but PR 10B will formalise this guarantee).
+- Each item carries an optional **`pricePerUnit`** (€ per `unit`). A tiny inline number input next to every row lets the user enter it; menu-derived items accept price edits, but only manual items accept name/quantity/aisle edits or deletes. Trying to rename a menu item returns 400 with a Spanish hint.
+- The page shows a **weekly-total banner** at the top: `€X.XX · Y con precio · Z sin precio`. Sum is `Σ quantity × pricePerUnit` over non-`inStock`, positive-quantity, priced items. Items the user already has at home are excluded from spend. The pure reducer `computeListTotal(items)` is unit-tested.
+
+### REST surface added by PR 10A
+
+| Method | Path | Notes |
+|---|---|---|
+| POST   | `/shopping-list/:listId/items`              | append manual item (auth, household-member) |
+| PATCH  | `/shopping-list/:listId/item/:itemId`       | partial update — `pricePerUnit` allowed on any item, name/quantity/unit/aisle on manual only |
+| DELETE | `/shopping-list/:listId/item/:itemId`       | manual items only — menu items get regenerated away |
+| GET    | `/shopping-list/:listId/totals`             | `{ totalEur, pricedCount, unpricedCount }` |
+
+Access check is the same scope rule as the rest of `/shopping-list/*`: requester is the list owner, OR (with `SHARED_HOUSEHOLD_SCOPE=true`) shares the list's household. See [Household](./household.md).
+
 ## Constraints
 
 - Field names are camelCase (`inStock`, `checked`, `ingredientId`) end-to-end — frontend, types, and DB JSONB

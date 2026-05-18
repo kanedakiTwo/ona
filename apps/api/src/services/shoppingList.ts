@@ -417,3 +417,44 @@ function pickCanonicalLines(bucket: IngredientBucket): CanonicalLine[] {
 
   return lines
 }
+
+// ─── PR 10: price total ─────────────────────────────────────────────────
+
+export interface ListTotal {
+  /** Sum of `quantity * pricePerUnit` across non-inStock priced items. */
+  totalEur: number
+  /** How many items carry a usable price. */
+  pricedCount: number
+  /** How many items lack a price (helps the UI show "X items sin precio"). */
+  unpricedCount: number
+}
+
+/**
+ * Reduce a list of `ShoppingItem`s to a price snapshot. Pure function — kept
+ * separate from the aggregator so a regression in arithmetic trips a unit
+ * test before the UI shows a wrong subtotal.
+ *
+ * Skip rules:
+ *   - `pricePerUnit` null / undefined / non-finite → counted as `unpriced`.
+ *   - `inStock === true` → user already has it, exclude from spend (but
+ *     still counted as priced).
+ *   - `quantity <= 0` → defensive, exclude from spend.
+ */
+export function computeListTotal(items: ShoppingItem[]): ListTotal {
+  let totalEur = 0
+  let pricedCount = 0
+  let unpricedCount = 0
+  for (const it of items) {
+    const price = it.pricePerUnit
+    const hasPrice = typeof price === 'number' && Number.isFinite(price)
+    if (!hasPrice) {
+      unpricedCount += 1
+      continue
+    }
+    pricedCount += 1
+    if (it.inStock) continue
+    if (!(it.quantity > 0)) continue
+    totalEur += it.quantity * (price as number)
+  }
+  return { totalEur, pricedCount, unpricedCount }
+}

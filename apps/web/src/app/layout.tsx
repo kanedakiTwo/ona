@@ -77,8 +77,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       className={`${inter.variable} ${fraunces.variable} ${cormorant.variable} ${jetbrains.variable}`}
     >
       <head>
-        <title>ONA — El placer de cocinar sin pensar</title>
-        <meta name="description" content="Tu menú semanal listo en 2 minutos. Con la lista de la compra incluida." />
+        <title>ONA — Tu menú semanal, con criterio. El tuyo.</title>
+        <meta name="description" content="Asistente nutricional en castellano. Te planifica el menú de la semana, te hace la lista de la compra y va recordando lo que vas aprendiendo sobre tu cuerpo." />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 
         {/* PWA manifest + theme */}

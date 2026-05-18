@@ -69,7 +69,7 @@ export default function Footer() {
         {/* Big logo bottom */}
         <div className="mt-24 flex items-end justify-between">
           <div>
-            <div className="font-display text-[clamp(4rem,12vw,10rem)] leading-none tracking-tighter text-[#FAF6EE]">
+            <div className="font-display text-[clamp(4rem,12vw,10rem)] leading-tight tracking-tighter text-[#FAF6EE]">
               ONA
             </div>
             <div className="mt-4 text-xs text-[#FAF6EE]/50">

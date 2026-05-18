@@ -374,4 +374,67 @@ describe('recipes route smoke', () => {
       },
     )
   })
+
+  // ─── public catalogue (anonymous access) ──────────────────────
+  //
+  // Regression guards for the `/recipes-ona` public pages:
+  // - GET /recipes (no token) must 200 and return only system recipes
+  //   (`authorId IS NULL`). Mounting recipeRoutes after a router that does
+  //   `router.use(authMiddleware)` would silently revert this to 401.
+  // - GET /recipes/:id (no token) must 200 for a system recipe, and 404
+  //   for any user-authored recipe (no leak of private recipe existence).
+  describe('public catalogue', () => {
+    it.skipIf(!reachable)(
+      'GET /recipes without a token returns 200 with only system cards',
+      async () => {
+        const r = await fetch(`${API_URL}/recipes?perPage=5`)
+        expect(r.status).toBe(200)
+        const cards = await r.json()
+        expect(Array.isArray(cards)).toBe(true)
+        // Drill into each card's detail to confirm authorId is null. Cards
+        // themselves don't carry authorId by design (spec/recipes.md card shape),
+        // so we use the detail endpoint — same one /recipes-ona/[id] uses.
+        for (const card of cards) {
+          const d = await fetch(`${API_URL}/recipes/${card.id}`).then((x) => x.json())
+          expect(d.authorId).toBe(null)
+        }
+      },
+    )
+
+    it.skipIf(!reachable)(
+      'GET /recipes/:id without a token 200s for a system recipe',
+      async () => {
+        const cards = await fetch(`${API_URL}/recipes?perPage=1`).then((r) => r.json())
+        if (!Array.isArray(cards) || cards.length === 0) return
+        const r = await fetch(`${API_URL}/recipes/${cards[0].id}`)
+        expect(r.status).toBe(200)
+        const detail = await r.json()
+        expect(detail.id).toBe(cards[0].id)
+        expect(detail.authorId).toBe(null)
+      },
+    )
+
+    it.skipIf(!reachable || !TEST_USER_TOKEN)(
+      'GET /recipes/:id without a token 404s when the recipe is user-authored',
+      async () => {
+        // Need a user-authored recipe id — list the caller's full catalogue
+        // (token present → no system-only filter) and find one with a non-null
+        // authorId. If no user recipe exists, skip — nothing to assert.
+        const fullList: any[] = await fetch(`${API_URL}/recipes?perPage=100`, {
+          headers: { Authorization: `Bearer ${TEST_USER_TOKEN}` },
+        }).then((r) => r.json())
+        let userRecipeId: string | null = null
+        for (const card of fullList) {
+          const d = await fetch(`${API_URL}/recipes/${card.id}`, {
+            headers: { Authorization: `Bearer ${TEST_USER_TOKEN}` },
+          }).then((r) => r.json())
+          if (d.authorId !== null) { userRecipeId = card.id; break }
+        }
+        if (!userRecipeId) return // nothing to test against
+
+        const anon = await fetch(`${API_URL}/recipes/${userRecipeId}`)
+        expect(anon.status).toBe(404)
+      },
+    )
+  })
 })

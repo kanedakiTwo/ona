@@ -475,3 +475,27 @@ export const cookLogs = pgTable('cook_logs', {
   index('idx_cook_logs_household_cooked').on(t.householdId, t.cookedAt),
   index('idx_cook_logs_recipe').on(t.recipeId),
 ])
+
+// ─── 20. household_staples (PR 10B) ───────────────────────────
+// "We always need these" — bread, milk, coffee — that the shopping-list
+// aggregator pre-pends to every freshly generated list. Per-household
+// (any member can edit). Soft-toggleable via `active=false` (a staple you
+// skip this week without losing the row).
+export const householdStaples = pgTable('household_staples', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  /** Default quantity to pull in when materialising into a shopping list. */
+  quantity: real('quantity').notNull().default(1),
+  /** Buyable unit (`g | ml | u | cda | cdita`). Enforced at the route. */
+  unit: text('unit').notNull().default('u'),
+  /** Aisle hint so it lands in the right group on /shopping. */
+  aisle: text('aisle').notNull().default('otros'),
+  /** Optional last known price per unit — copied onto the shopping item. */
+  pricePerUnit: real('price_per_unit'),
+  /** Pause without deleting (e.g., "skip the milk this week"). */
+  active: boolean('active').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_household_staples_household').on(t.householdId),
+])

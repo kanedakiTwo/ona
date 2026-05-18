@@ -66,6 +66,14 @@ Both toggle endpoints flip the field (no payload value used) and return the full
 - Each item carries an optional **`pricePerUnit`** (€ per `unit`). A tiny inline number input next to every row lets the user enter it; menu-derived items accept price edits, but only manual items accept name/quantity/aisle edits or deletes. Trying to rename a menu item returns 400 with a Spanish hint.
 - The page shows a **weekly-total banner** at the top: `€X.XX · Y con precio · Z sin precio`. Sum is `Σ quantity × pricePerUnit` over non-`inStock`, positive-quantity, priced items. Items the user already has at home are excluded from spend. The pure reducer `computeListTotal(items)` is unit-tested.
 
+## Recurring staples (PR 10B)
+
+- `household_staples(id, household_id, name, quantity, unit, aisle, price_per_unit?, active, created_at)` stores the items the household always needs (bread, milk, coffee). Any member can add / edit / delete; the row is per-household, not per-user.
+- The shopping-list aggregator pre-pends every **active** staple to every freshly generated list. Items are added with `kind: 'staple'` and `ingredientId: null`. Dedup rule: a staple is **skipped** when an item with the same name (case-insensitive, trimmed) already exists in the menu items — that way "we always buy milk" and "this week's menu happens to include milk" don't double up. The pure `mergeStaplesIntoItems(items, staples)` reducer encapsulates the rule (5 unit tests).
+- `POST /shopping-list/:listId/regenerate` re-applies the menu items, **preserves manual rows** (PR 10A) the user had typed in, then re-applies staples on top. Order is `menu → manual-kept → staples`.
+- `active = false` pauses a staple without losing the row — the milk you skip this week comes back next week.
+- REST: `GET /staples`, `POST /staples`, `PATCH /staples/:id`, `DELETE /staples/:id`. Frontend: `/profile/staples` page (entry button on `/profile` → "Mis básicos") with name + qty/unit/aisle + price + active-toggle UI.
+
 ### REST surface added by PR 10A
 
 | Method | Path | Notes |

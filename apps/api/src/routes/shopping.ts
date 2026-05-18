@@ -5,8 +5,13 @@ import { z } from 'zod'
 import { db } from '../db/connection.js'
 import { menus, shoppingLists, users } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
-import { computeListTotal, generateShoppingList } from '../services/shoppingList.js'
+import {
+  computeListTotal,
+  generateShoppingList,
+  mergeStaplesIntoItems,
+} from '../services/shoppingList.js'
 import { getPrimaryHouseholdId, resolveScope } from '../services/scopeResolver.js'
+import { listActiveStaplesForHousehold } from '../services/staplesStore.js'
 import {
   AISLES,
   UNITS,
@@ -88,11 +93,15 @@ router.get('/shopping-list/:menuId', async (req: AuthRequest, res) => {
     }
 
     // Generate the shopping list
-    const items = await generateShoppingList(days, multiplier, db)
+    const menuItems = await generateShoppingList(days, multiplier, db)
+
+    // PR 10B: pre-pend household staples (dedup'd by case-insensitive name).
+    const householdId = menu.householdId ?? (await getPrimaryHouseholdId(menu.userId))
+    const staples = householdId ? await listActiveStaplesForHousehold(householdId) : []
+    const items = mergeStaplesIntoItems(menuItems, staples)
 
     // Save to shopping_lists table — dual-write the menu's household id
     // (resolves on user when missing) so household members share the list.
-    const householdId = menu.householdId ?? (await getPrimaryHouseholdId(menu.userId))
     const [list] = await db
       .insert(shoppingLists)
       .values({
@@ -254,7 +263,17 @@ router.post('/shopping-list/:listId/regenerate', async (req: AuthRequest, res) =
       .limit(1)
 
     const multiplier = multiplierForUser(user ?? {})
-    const items = await generateShoppingList(menu.days as DayMenu[], multiplier, db)
+    const menuItems = await generateShoppingList(menu.days as DayMenu[], multiplier, db)
+
+    // PR 10B: regenerate rebuilds menu items from scratch but preserves
+    // user-authored extras — manual rows and the price the user typed on
+    // them — and re-applies staples. Order: menu → manual (kept) → staples.
+    const previousItems = (list.items ?? []) as ShoppingItem[]
+    const manualKept = previousItems.filter((i) => i.kind === 'manual')
+    const householdId = list.householdId ?? menu.householdId ?? null
+    const staples = householdId ? await listActiveStaplesForHousehold(householdId) : []
+    const itemsBeforeStaples = [...menuItems, ...manualKept]
+    const items = mergeStaplesIntoItems(itemsBeforeStaples, staples)
 
     const [updated] = await db
       .update(shoppingLists)

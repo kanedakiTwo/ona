@@ -16,11 +16,21 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('recipe detail: marking cooked increments the count', async ({ page }) => {
-  // Open the catalog, click the first recipe card.
-  await page.goto('/recipes')
-  const firstCard = page.locator('a[href*="/recipes/"]').first()
-  await expect(firstCard).toBeVisible({ timeout: 10_000 })
-  await firstCard.click()
+  // Pull a recipe id directly from the API instead of the catalog grid —
+  // the catalog page also has a "+ Nueva receta" button whose href starts
+  // with "/recipes/" and would shadow the real cards in a generic
+  // selector. Fetching via the API gives us an unambiguous target.
+  const apiUrl = process.env.API_URL ?? 'http://localhost:8765'
+  const token = await page.evaluate(() => localStorage.getItem('ona_token'))
+  const resp = await page.request.get(`${apiUrl}/recipes?perPage=1`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  const list = (await resp.json()) as Array<{ id: string }>
+  if (!list || list.length === 0) {
+    test.skip(true, 'Empty catalog — seed step did not produce recipes')
+    return
+  }
+  await page.goto(`/recipes/${list[0].id}`)
 
   // The cook-mode CTA section carries the new "Cocinada" button.
   await expect(page.getByRole('link', { name: /empezar a cocinar/i })).toBeVisible({

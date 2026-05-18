@@ -45,6 +45,7 @@ import {
 } from "lucide-react"
 import { mealLabel } from "@/lib/labels"
 import { RecipePickerSheet } from "@/components/menu/RecipePickerSheet"
+import { CookedBadge } from "@/components/recipes/CookedBadge"
 
 const DAY_NAMES = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
 const DAY_SHORT = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"]
@@ -478,6 +479,7 @@ export default function MenuPage() {
                       isLocked={isLocked(meal.type)}
                       readOnly={isPastWeek}
                       defaultDiners={defaultDiners}
+                      menuId={menu.id}
                       onRegenerate={() => {
                         haptic.medium()
                         regenerateMeal.mutate({
@@ -635,6 +637,7 @@ function EditorialMealCard({
   onBan,
   onSetPinnedType,
   isRegenerating,
+  menuId,
 }: {
   meal: {
     type: string
@@ -652,6 +655,8 @@ function EditorialMealCard({
   readOnly: boolean
   /** Household-derived diner count used when the slot has no override. */
   defaultDiners: number
+  /** The menu this card belongs to — used as context when recording a cook event. */
+  menuId: string
   onRegenerate: () => void
   onPickRecipe: (r: { id: string; name: string }) => void
   onToggleLock: () => void
@@ -791,6 +796,15 @@ function EditorialMealCard({
               Quitar
             </button>
           </>
+        )}
+        {!readOnly && meal.recipeId && (
+          <CookedBadge
+            recipeId={meal.recipeId}
+            menuId={menuId}
+            dayIndex={day}
+            meal={meal.type}
+            variant="button"
+          />
         )}
         <Link
           href={`/recipes/${meal.recipeId}`}

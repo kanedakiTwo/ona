@@ -444,3 +444,34 @@ export const householdInvites = pgTable('household_invites', {
   index('idx_household_invites_household').on(t.householdId),
   check('household_invites_role_check', sql.raw("role IN ('member','child')")),
 ])
+
+// ─── 17. cook_logs (PR 6) ────────────────────────────────────────
+// Append-only log of every "we cooked this" event. Feeds the times-cooked
+// counter on recipe cards, the last-cooked badge, and the adherence
+// analytics ("planeaste 21, cocinaste 15"). Always household-scoped — a
+// recipe cooked by anyone in the household counts for the whole house.
+//
+// `menuId`/`dayIndex`/`meal` are nullable so off-menu cooking (made an old
+// favourite, didn't put it on the weekly plan) still logs cleanly.
+//
+// We never UPDATE rows here; corrections happen via DELETE + new INSERT.
+export const cookLogs = pgTable('cook_logs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  householdId: uuid('household_id').references(() => households.id, { onDelete: 'cascade' }),
+  recipeId: uuid('recipe_id').notNull().references(() => recipes.id, { onDelete: 'cascade' }),
+  menuId: uuid('menu_id').references(() => menus.id, { onDelete: 'set null' }),
+  /** 0=Monday … 6=Sunday — matches `menus.days` ordering. */
+  dayIndex: integer('day_index'),
+  /** breakfast | lunch | dinner | snack — same canonical set as the menu. */
+  meal: text('meal'),
+  cookedAt: timestamp('cooked_at', { withTimezone: true }).notNull().defaultNow(),
+  /** Measured cooking time in minutes — populated from cooking mode or manual entry. */
+  durationMin: integer('duration_min'),
+  /** Short free-form note ("Sin cebolla, le faltó sal"). Max 500 chars at the API layer. */
+  notes: text('notes'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_cook_logs_household_cooked').on(t.householdId, t.cookedAt),
+  index('idx_cook_logs_recipe').on(t.recipeId),
+])

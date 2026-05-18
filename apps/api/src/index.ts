@@ -17,6 +17,7 @@ import adminRoutes from './routes/admin.js'
 import unitsRouter from './routes/units.js'
 import memoryRoutes from './routes/memory.js'
 import householdRoutes, { publicHouseholdRouter } from './routes/households.js'
+import cookLogRoutes from './routes/cookLogs.js'
 
 const app = express()
 
@@ -70,6 +71,7 @@ app.use(adminRoutes)
 app.use('/', unitsRouter)
 app.use(memoryRoutes)
 app.use(householdRoutes)
+app.use(cookLogRoutes)
 
 // Error handler
 app.use(errorHandler)

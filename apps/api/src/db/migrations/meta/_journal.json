@@ -92,6 +92,13 @@
       "when": 1779083874904,
       "tag": "0012_pr1b_household_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1779085242955,
+      "tag": "0013_pr6_cook_logs",
+      "breakpoints": true
     }
   ]
 }

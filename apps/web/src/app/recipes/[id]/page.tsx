@@ -11,6 +11,7 @@ import {
 import { useUser } from "@/hooks/useUser"
 import { useAuth } from "@/lib/auth"
 import { FavoriteButton } from "@/components/recipes/FavoriteButton"
+import { CookedBadge } from "@/components/recipes/CookedBadge"
 import { ServingsScaler } from "@/components/recipes/ServingsScaler"
 import { IngredientsSection } from "@/components/recipes/detail/IngredientsSection"
 import { StepsSection } from "@/components/recipes/detail/StepsSection"
@@ -250,6 +251,7 @@ export default function RecipeDetailPage() {
               <span>{timeLine}</span>
             </div>
           )}
+          <CookedBadge recipeId={recipe.id} />
           {recipe.seasons?.length > 0 && (
             <div className="flex items-center gap-1.5">
               <Sparkles size={13} className="text-[#7A7066]" />
@@ -382,12 +384,15 @@ export default function RecipeDetailPage() {
           <p className="font-display text-xl leading-tight">
             ¿Empezamos con <span className="font-italic italic">{recipe.name}</span>?
           </p>
-          <Link
-            href={`/recipes/${recipe.id}/cook?servings=${displayServings}`}
-            className="mt-5 inline-flex items-center gap-2 rounded-full bg-[#FAF6EE] px-5 py-2.5 text-[13px] font-medium text-[#1A1612] transition-all hover:gap-3 hover:bg-[#52B788]"
-          >
-            Empezar a cocinar
-          </Link>
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <Link
+              href={`/recipes/${recipe.id}/cook?servings=${displayServings}`}
+              className="inline-flex items-center gap-2 rounded-full bg-[#FAF6EE] px-5 py-2.5 text-[13px] font-medium text-[#1A1612] transition-all hover:gap-3 hover:bg-[#52B788]"
+            >
+              Empezar a cocinar
+            </Link>
+            <CookedBadge recipeId={recipe.id} variant="button" />
+          </div>
         </section>
 
         {/* Author-only: edit + regenerate-image affordances */}

@@ -20,6 +20,14 @@ Multi-user "shared household" foundation: every authed user has a `primary_house
 
 ---
 
+## [Cook Log](./cook-log.md)
+
+Household-scoped record of "we actually cooked this." Feeds the times-cooked counter, the last-cooked date, and the adherence analytics (planeaste 21 / cocinaste 15) for upcoming PRs. `cook_logs(id, user_id, household_id, recipe_id, menu_id?, day_index?, meal?, cooked_at, duration_min?, notes?, created_at)` — append-only; corrections via DELETE + INSERT. REST: `POST /cook-logs`, `GET /cook-logs`, `GET /cook-logs/recipe/:recipeId` (returns `{ count, lastCookedAt }`), `DELETE /cook-logs/:id`. Frontend: `CookedBadge` component (pill on recipe detail meta row, button on cook-mode section + every meal card on /menu); `useCookLogs` TanStack hooks. Pure `summarizeCookLog` reducer kept as a top-level export so the unit suite hits the same code path.
+
+**Source**: `apps/api/src/db/schema.ts` (`cookLogs`), `apps/api/src/db/migrations/0013_pr6_cook_logs.sql`, `apps/api/src/services/cookLogStore.ts`, `apps/api/src/routes/cookLogs.ts`, `apps/api/src/tests/cookLogStats.test.ts`, `apps/web/src/hooks/useCookLogs.ts`, `apps/web/src/components/recipes/CookedBadge.tsx`, `apps/web/src/app/recipes/[id]/page.tsx`, `apps/web/src/app/menu/page.tsx`, `apps/web/e2e/cook-log.spec.ts`
+
+---
+
 ## [User Memory](./user-memory.md)
 
 Typed long-term storage of user preferences (dislikes, equipment, time-available per weekday, weekly budget, cuisine bias, cooking skill, meal times, free-form notes). Stable key registry + per-key Zod schema in `@ona/shared`. `user_memories` table, one row per (user_id, key). Advisor injects a Spanish-language digest into every system prompt; `update_memory` skill lets the assistant write inferred facts mid-conversation ("recuerda que no me gusta el cilantro"). REST: `GET /memory`, `PATCH /memory { key, value | facts: [...] }`, `DELETE /memory/:key`. Profile sub-page `/profile/memoria` lists every fact with source badge (Tú / Asistente / Onboarding). 19 contract tests.

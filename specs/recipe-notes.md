@@ -48,6 +48,7 @@ Check constraint `recipe_notes_rating_check` enforces 1..5 at the DB. The API al
 | GET | `/recipes/:recipeId/notes` | required | Returns row or `null` (200 either way — saves the client a 404-branch on an empty form). Response includes `customTags: string[]` |
 | PUT | `/recipes/:recipeId/notes` | required | Body `{ notes?, rating?, substitutions?, customTags? }`. Partial upsert: undefined fields preserve, explicit `null` clears, strings are trimmed (empty → null) and capped at 1000 chars. `rating` must be int 1..5 or null. `customTags` is sanitized via `sanitizeCustomTags` (lowercase + trim + dedup + cap 10) |
 | GET | `/custom-tags` | required | Returns `[{ tag, count }]` — every distinct custom tag used by the household with usage count, ordered by count desc |
+| GET | `/recipes?customTag=X` | optional | **PR 8B-2** — when the caller is authed and provides one or more `customTag` query params, the catalog filters to recipes whose `recipe_notes` row in the caller's household contains every requested tag (AND semantics). The parameter is sanitised through `sanitizeCustomTags`. Anonymous callers ignoring the catalogue won't trip this branch |
 
 Both routes mount via `apps/api/src/routes/recipeNotes.ts` (after `router.use(authMiddleware)`).
 

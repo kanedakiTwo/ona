@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { motion, AnimatePresence } from "motion/react"
 import { useRecipes } from "@/hooks/useRecipes"
+import { useHouseholdCustomTags } from "@/hooks/useRecipeNotes"
 import { useAuth } from "@/lib/auth"
 import { Search, Plus, X, SlidersHorizontal } from "lucide-react"
 import Link from "next/link"
@@ -45,10 +46,16 @@ export default function RecipesPage() {
    * Persisted in `localStorage` so the choice survives reloads.
    */
   const [scope, setScope] = useState<"all" | "mine" | "ona">("all")
+  /** PR 8B-2 — selected household custom tags (AND filter). */
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
   useEffect(() => {
     const saved = typeof window !== "undefined" ? localStorage.getItem("ona.recipes.scope") : null
     if (saved === "all" || saved === "mine" || saved === "ona") setScope(saved)
   }, [])
+  function toggleTag(tag: string) {
+    setSelectedTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]))
+  }
+  const { data: householdTags } = useHouseholdCustomTags()
   function setScopeAndPersist(next: "all" | "mine" | "ona") {
     setScope(next)
     if (typeof window !== "undefined") localStorage.setItem("ona.recipes.scope", next)
@@ -57,6 +64,7 @@ export default function RecipesPage() {
   const { data: recipes, isLoading } = useRecipes({
     search: searchQuery || undefined,
     meal: selectedMeal || undefined,
+    customTags: selectedTags.length > 0 ? selectedTags : undefined,
     perPage: 100,
   })
 
@@ -81,6 +89,7 @@ export default function RecipesPage() {
     setMaxTime("")
     setSearchQuery("")
     setScopeAndPersist("all")
+    setSelectedTags([])
   }
 
   return (
@@ -125,6 +134,38 @@ export default function RecipesPage() {
           })}
         </div>
       </div>
+
+      {/* PR 8B-2 — Household custom-tag filter chips. Only render when the
+          household has at least one tag in use. AND across selected chips. */}
+      {householdTags && householdTags.length > 0 && (
+        <div className="px-5 pb-2">
+          <div className="text-[10px] uppercase tracking-[0.18em] text-[#7A7066] mb-1.5">
+            Etiquetas propias
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {householdTags.map((t) => {
+              const active = selectedTags.includes(t.tag)
+              return (
+                <button
+                  key={t.tag}
+                  type="button"
+                  onClick={() => toggleTag(t.tag)}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] transition-colors ${
+                    active
+                      ? 'bg-[#1A1612] text-[#FAF6EE]'
+                      : 'bg-[#F2EDE0] text-[#4A4239] hover:bg-[#DDD6C5]'
+                  }`}
+                >
+                  {t.tag}
+                  <span className={active ? 'text-[#FAF6EE]/60' : 'text-[#7A7066]'}>
+                    {t.count}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Sticky search + filter bar */}
       <div className="sticky top-0 z-20 -mx-1 bg-[#FAF6EE]/95 px-5 pb-3 pt-3 backdrop-blur-sm">

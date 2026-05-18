@@ -24,6 +24,7 @@ import {
   ingredients,
   userFavorites,
   users,
+  recipeNotes,
 } from '../db/schema.js'
 import { env } from '../config/env.js'
 import {
@@ -67,6 +68,7 @@ import {
 } from '../services/recipeUrlExtractor.js'
 import { NoExtractableContentError } from '../services/sources/youtube.js'
 import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../services/scopeResolver.js'
+import { sanitizeCustomTags } from '../services/recipeNotesStore.js'
 import { z } from 'zod'
 
 const router = Router()
@@ -351,6 +353,16 @@ router.get('/recipes', optionalAuthMiddleware, async (req: AuthRequest, res) => 
     const search = req.query.search as string | undefined
     const maxTimeRaw = req.query.maxTime as string | undefined
     const maxTime = maxTimeRaw != null ? parseInt(maxTimeRaw) : null
+    // PR 8B-2: filter by custom-tag — only for authed callers (anonymous
+    // catalogue has no household scope). Accepts a single ?customTag=
+    // or repeated ?customTag=a&customTag=b (intersection).
+    const rawCustomTags = req.query.customTag
+    const customTagsList = Array.isArray(rawCustomTags)
+      ? (rawCustomTags as unknown[])
+      : rawCustomTags != null
+        ? [rawCustomTags as unknown]
+        : []
+    const customTags = sanitizeCustomTags(customTagsList)
     const offset = (page - 1) * perPage
 
     const conditions = []
@@ -360,6 +372,27 @@ router.get('/recipes', optionalAuthMiddleware, async (req: AuthRequest, res) => 
     if (search) conditions.push(sql`lower(${recipes.name}) like ${`%${search.toLowerCase()}%`}`)
     if (maxTime != null && Number.isFinite(maxTime) && maxTime > 0) {
       conditions.push(sql`coalesce(${recipes.totalTime}, 999999) <= ${maxTime}`)
+    }
+    if (req.userId && customTags.length > 0) {
+      const householdId = await getPrimaryHouseholdId(req.userId)
+      if (householdId) {
+        // Inner-join semantics via a correlated subquery: keep recipes
+        // whose recipe_notes row in this household contains every
+        // requested tag. We hand-build the ARRAY[...] literal so each
+        // entry is a bound parameter (sql tag would otherwise serialize
+        // the JS array as a single string and Postgres throws
+        // "malformed array literal").
+        const tagsArr = sql`ARRAY[${sql.join(customTags.map((t) => sql`${t}`), sql`, `)}]::text[]`
+        conditions.push(sql`EXISTS (
+          SELECT 1 FROM ${recipeNotes}
+          WHERE ${recipeNotes.recipeId} = ${recipes.id}
+            AND ${recipeNotes.householdId} = ${householdId}
+            AND ${recipeNotes.customTags} @> ${tagsArr}
+        )`)
+      } else {
+        // No household, no tags can match — return empty result.
+        conditions.push(sql`FALSE`)
+      }
     }
     const where = conditions.length > 0 ? and(...conditions) : undefined
 

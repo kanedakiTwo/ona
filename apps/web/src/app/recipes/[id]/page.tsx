@@ -14,6 +14,7 @@ import { FavoriteButton } from "@/components/recipes/FavoriteButton"
 import { CookedBadge } from "@/components/recipes/CookedBadge"
 import { RecipeNotesSection } from "@/components/recipes/RecipeNotesSection"
 import { AddToCookbookButton } from "@/components/recipes/AddToCookbookButton"
+import { RecipePhotoGallery } from "@/components/recipes/RecipePhotoGallery"
 import { ServingsScaler } from "@/components/recipes/ServingsScaler"
 import { IngredientsSection } from "@/components/recipes/detail/IngredientsSection"
 import { StepsSection } from "@/components/recipes/detail/StepsSection"
@@ -400,6 +401,9 @@ export default function RecipeDetailPage() {
 
         {/* Notes / rating / substitutions (PR 7) — household-shared */}
         {user && <RecipeNotesSection recipeId={recipe.id} />}
+
+        {/* Photo gallery (PR 8C) — household-shared, distinct from hero */}
+        {user && <RecipePhotoGallery recipeId={recipe.id} />}
 
         {/* Author-only: edit + regenerate-image affordances */}
         {user && recipe.authorId === user.id && (

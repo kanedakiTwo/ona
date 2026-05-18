@@ -60,6 +60,14 @@ Typed long-term storage of user preferences (dislikes, equipment, time-available
 
 ---
 
+## [Recipe Photos](./recipe-photos.md)
+
+Household-shared photo gallery per recipe (PR 8C). Distinct from `recipes.image_url` (the author's hero) — this is the consumer's "look how it came out" wall. `recipe_photos(id, recipe_id, household_id, uploaded_by_user_id?, image_url, caption?, created_at)` — one JPEG per row, file keyed by row id, stored on the Railway volume via the existing `IMAGE_STORAGE_DIR` + `IMAGE_PUBLIC_URL_BASE` env vars. Sharp pipeline: `rotate()` (EXIF) → resize to 1600px wide → JPEG q85. REST: `GET /recipes/:recipeId/photos`, `POST /recipes/:recipeId/photos` (multipart, ≤ 8 MB, accepts jpeg/png/webp/heic/heif), `DELETE /recipes/:recipeId/photos/:photoId`. Frontend: `<RecipePhotoGallery />` on `/recipes/[id]` — 3-col thumbnail grid + lightbox + inline upload with optional caption + per-thumbnail delete. Any household member can read or write.
+
+**Source**: `apps/api/src/db/schema.ts` (`recipePhotos`), `apps/api/src/db/migrations/0019_pr8c_recipe_photos.sql`, `apps/api/src/services/recipePhotosStore.ts`, `apps/api/src/routes/recipePhotos.ts`, `apps/web/src/hooks/useRecipePhotos.ts`, `apps/web/src/components/recipes/RecipePhotoGallery.tsx`, `apps/web/src/app/recipes/[id]/page.tsx`
+
+---
+
 ## [Recipes](./recipes.md)
 
 Recipe catalog, recipe detail, ingredients, sectioned ingredient groups ("Para la masa"), rich steps (text + duration + temperature + technique + ingredient refs), photos (Unsplash + Notion), system vs user recipes, public vs internal tags, favorites, search, meal/season/maxTime filters, servings, diner scaler with culinary rounding, prepTime/cookTime/activeTime/totalTime, difficulty, equipment, allergens, notes/tips/substitutions/storage, yield, nutritionPerServing, AI extraction from photo (returns ExtractedRecipe draft for review, no auto-persist), AI extraction from URL (YouTube video or web article via JSON-LD + Readability + Claude), AI hero-photo generation (AiKit Imagen-fal, regenerate-image endpoint, monthly per-user quota, Railway volume storage in prod), sourceUrl/sourceType, hero image, RecipeCard, ServingsScaler. **Public catalogue**: `/recipes-ona` + `/recipes-ona/[id]` are anonymous-readable pages (no login) that surface system recipes only, backed by the same `GET /recipes` endpoint via `optionalAuthMiddleware` — with a token it returns the full catalogue, without one it filters to `authorId IS NULL`. Seed pipeline: `seed/recipes.ts` shells + `handAuthoredRecipes.ts` bodies → `regen-passed.jsonl` → `apply:recipes` (with `--soft-lint` / `--auto-create-missing` flags). Prod maintenance one-offs: `dedupSystemRecipes`, `linkSeedRecipeImages`, `fillSeedCatalogGap`.

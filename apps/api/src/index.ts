@@ -22,6 +22,7 @@ import staplesRoutes from './routes/staples.js'
 import recipeNotesRoutes from './routes/recipeNotes.js'
 import pantryRoutes from './routes/pantry.js'
 import cookbooksRoutes from './routes/cookbooks.js'
+import recipePhotosRoutes from './routes/recipePhotos.js'
 
 const app = express()
 
@@ -85,6 +86,7 @@ app.use(staplesRoutes)
 app.use(recipeNotesRoutes)
 app.use(pantryRoutes)
 app.use(cookbooksRoutes)
+app.use(recipePhotosRoutes)
 
 // Error handler
 app.use(errorHandler)

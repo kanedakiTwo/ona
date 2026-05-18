@@ -16,28 +16,27 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('recipe detail: marking cooked increments the count', async ({ page }) => {
-  // Pull a recipe id directly from the API instead of the catalog grid —
-  // the catalog page also has a "+ Nueva receta" button whose href starts
-  // with "/recipes/" and would shadow the real cards in a generic
-  // selector. Fetching via the API gives us an unambiguous target.
-  const apiUrl = process.env.API_URL ?? 'http://localhost:8765'
-  const token = await page.evaluate(() => localStorage.getItem('ona_token'))
-  const resp = await page.request.get(`${apiUrl}/recipes?perPage=1`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  })
-  const list = (await resp.json()) as Array<{ id: string }>
-  if (!list || list.length === 0) {
-    test.skip(true, 'Empty catalog — seed step did not produce recipes')
-    return
-  }
-  await page.goto(`/recipes/${list[0].id}`)
+  // Open the catalog and pick the first card whose href looks like
+  // `/recipes/<uuid>` — explicitly excludes `/recipes/new` (the floating
+  // "+" button), which would land us on the create form instead.
+  await page.goto('/recipes')
+  const card = page
+    .locator(
+      'a[href*="/recipes/"]:not([href="/recipes/new"]):not([href$="/recipes"])',
+    )
+    .first()
+  await expect(card).toBeVisible({ timeout: 10_000 })
+  await Promise.all([page.waitForURL(/\/recipes\/[0-9a-f-]{36}/), card.click()])
 
   // The cook-mode CTA section carries the new "Cocinada" button.
   await expect(page.getByRole('link', { name: /empezar a cocinar/i })).toBeVisible({
     timeout: 10_000,
   })
+  // The CookedBadge returns null while its query is loading, so the
+  // button may take a beat to appear after the rest of the page renders.
+  // Give it explicit time.
   const cookedBtn = page.getByRole('button', { name: /^cocinada/i }).first()
-  await expect(cookedBtn).toBeVisible()
+  await expect(cookedBtn).toBeVisible({ timeout: 10_000 })
 
   // Initial state — never cooked: label is just "Cocinada" (no count).
   await expect(cookedBtn).toHaveText(/^cocinada$/i)
@@ -45,6 +44,6 @@ test('recipe detail: marking cooked increments the count', async ({ page }) => {
   // Click it. The button text should switch to "Cocinada 1×".
   await cookedBtn.click()
   await expect(page.getByRole('button', { name: /cocinada 1×/i }).first()).toBeVisible({
-    timeout: 8_000,
+    timeout: 10_000,
   })
 })

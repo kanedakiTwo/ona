@@ -476,6 +476,32 @@ export const cookLogs = pgTable('cook_logs', {
   index('idx_cook_logs_recipe').on(t.recipeId),
 ])
 
+// ─── 24. recipe_photos (PR 8C) ────────────────────────────────
+// Multi-photo gallery per recipe. `recipes.image_url` stays as the
+// canonical hero shot; this table layers additional photos (cook
+// results, plating variations, "look how it came out"). Household-shared
+// so any member can upload; `uploaded_by_user_id` keeps the audit trail.
+//
+// Storage: same Railway volume as the AI-generated hero images
+// (`IMAGE_STORAGE_DIR` + `IMAGE_PUBLIC_URL_BASE`). One JPEG per row,
+// keyed by a UUID-named file.
+export const recipePhotos = pgTable('recipe_photos', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  recipeId: uuid('recipe_id').notNull().references(() => recipes.id, { onDelete: 'cascade' }),
+  /** Scope key — only callers in this household see / edit the photo. */
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  /** Author of the upload — kept for the audit even if the user is later deleted. */
+  uploadedByUserId: uuid('uploaded_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+  /** Public URL (`${IMAGE_PUBLIC_URL_BASE}/<uuid>.jpg`) — written by the upload route. */
+  imageUrl: text('image_url').notNull(),
+  /** Optional caption ("salió crujiente esta vez"). Up to 280 chars. */
+  caption: text('caption'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_recipe_photos_recipe').on(t.recipeId),
+  index('idx_recipe_photos_household').on(t.householdId),
+])
+
 // ─── 23. cookbooks (PR 8A) ────────────────────────────────────
 // Named groupings of recipes ("Favoritos de Sara", "Para diabéticos",
 // "Recetas de mi madre"). Household-shared — any member can create,

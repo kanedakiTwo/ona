@@ -476,6 +476,32 @@ export const cookLogs = pgTable('cook_logs', {
   index('idx_cook_logs_recipe').on(t.recipeId),
 ])
 
+// ─── 21. recipe_notes (PR 7) ──────────────────────────────────
+// Per-household personal notes / 1-5 rating / substitutions on a recipe.
+// One row per (household, recipe). Household-scoped (not per-user) — a
+// couple sees one shared note. `last_edited_by_user_id` carries the
+// audit trail. The author-side `recipes.notes` / `recipes.substitutions`
+// columns are unchanged; this is the *consumer's* note about the recipe.
+export const recipeNotes = pgTable('recipe_notes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  recipeId: uuid('recipe_id').notNull().references(() => recipes.id, { onDelete: 'cascade' }),
+  /** Personal cooking notes. Up to 1000 chars (enforced at the route). */
+  notes: text('notes'),
+  /** 1..5 stars; null = not rated. Range enforced by check constraint. */
+  rating: integer('rating'),
+  /** Free-form swaps ("sin cebolla / con puerro"). Up to 1000 chars. */
+  substitutions: text('substitutions'),
+  /** Last user to touch this row — for the audit / future "edited by X" UX. */
+  lastEditedByUserId: uuid('last_edited_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_recipe_notes_household_recipe').on(t.householdId, t.recipeId),
+  index('idx_recipe_notes_recipe').on(t.recipeId),
+  check('recipe_notes_rating_check', sql.raw('rating IS NULL OR (rating >= 1 AND rating <= 5)')),
+])
+
 // ─── 20. household_staples (PR 10B) ───────────────────────────
 // "We always need these" — bread, milk, coffee — that the shopping-list
 // aggregator pre-pends to every freshly generated list. Per-household

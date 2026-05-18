@@ -20,6 +20,14 @@ Multi-user "shared household" foundation: every authed user has a `primary_house
 
 ---
 
+## [Recipe Notes](./recipe-notes.md)
+
+Per-household consumer annotation on a recipe: 1-5 star rating + free-form notes + free-form substitutions. Distinct from the author's `recipes.notes` — this is what you and your household think about the dish ("le va un toque de comino"; "sin cebolla, con puerro"). One row per `(household_id, recipe_id)`; any member can read or write; last-write-wins on concurrent edits. REST: `GET /recipes/:recipeId/notes`, `PUT /recipes/:recipeId/notes` with partial `{ notes?, rating?, substitutions? }` body (undefined preserves, null clears, strings trim+cap at 1000 chars). DB enforces rating ∈ {1..5} via CHECK constraint. Pure `applyNotesPatch` + `validateRating` helpers are unit-tested. Frontend: `RecipeNotesSection` card on `/recipes/[id]` below the cook-mode CTA.
+
+**Source**: `apps/api/src/db/schema.ts` (`recipeNotes`), `apps/api/src/db/migrations/0015_pr7_recipe_notes.sql`, `apps/api/src/services/recipeNotesStore.ts`, `apps/api/src/routes/recipeNotes.ts`, `apps/api/src/tests/recipeNotesPatch.test.ts`, `apps/web/src/hooks/useRecipeNotes.ts`, `apps/web/src/components/recipes/RecipeNotesSection.tsx`, `apps/web/src/app/recipes/[id]/page.tsx`
+
+---
+
 ## [Cook Log](./cook-log.md)
 
 Household-scoped record of "we actually cooked this." Feeds the times-cooked counter, the last-cooked date, and the adherence analytics (planeaste 21 / cocinaste 15) for upcoming PRs. `cook_logs(id, user_id, household_id, recipe_id, menu_id?, day_index?, meal?, cooked_at, duration_min?, notes?, created_at)` — append-only; corrections via DELETE + INSERT. REST: `POST /cook-logs`, `GET /cook-logs`, `GET /cook-logs/recipe/:recipeId` (returns `{ count, lastCookedAt }`), `DELETE /cook-logs/:id`. Frontend: `CookedBadge` component (pill on recipe detail meta row, button on cook-mode section + every meal card on /menu); `useCookLogs` TanStack hooks. Pure `summarizeCookLog` reducer kept as a top-level export so the unit suite hits the same code path.

@@ -46,6 +46,7 @@ import {
 import { mealLabel } from "@/lib/labels"
 import { RecipePickerSheet } from "@/components/menu/RecipePickerSheet"
 import { CookedBadge } from "@/components/recipes/CookedBadge"
+import { PantryMatchCard } from "@/components/menu/PantryMatchCard"
 
 const DAY_NAMES = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
 const DAY_SHORT = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"]
@@ -323,6 +324,10 @@ export default function MenuPage() {
           )}
         </div>
       </header>
+
+      {/* PR 12 — cook from pantry: only renders when the household has
+          ingredients on hand that match real recipes */}
+      {user && <PantryMatchCard />}
 
       {/* Week Strip */}
       <div className="border-y border-[#DDD6C5] bg-[#F2EDE0]">

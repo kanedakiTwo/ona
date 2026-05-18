@@ -28,6 +28,14 @@ Household-shared named recipe collections — "Favoritos de Sara", "Para diabét
 
 ---
 
+## [Cook from Pantry](./cook-from-pantry.md)
+
+"Lo que puedes cocinar con lo que tienes" — PR 12. Ranks every catalogue recipe by what fraction of its required ingredients the household has at home (PR 11 pantry). Pure scorer `scoreRecipeAgainstPantry(ings, pantry)` exported + unit-tested (6 cases): coverage = matched / required, optional ingredients excluded from both sides, ties broken by matchedCount then totalRequired. REST: `GET /recipes/match-pantry?limit=N` (auth-only, default 3, max 20). Frontend: `<PantryMatchCard />` ink-on-cream card at the top of `/menu` with up to 3 recipes + thumbnail + `<matched>/<total>` + coverage percentage. Hides itself when the pantry is empty or no recipe matches.
+
+**Source**: `apps/api/src/services/pantryMatcher.ts`, `apps/api/src/routes/recipes.ts` (handler before `/recipes/:id`), `apps/api/src/tests/pantryMatcher.test.ts`, `apps/web/src/hooks/usePantryMatch.ts`, `apps/web/src/components/menu/PantryMatchCard.tsx`, `apps/web/src/app/menu/page.tsx`
+
+---
+
 ## [Pantry](./pantry.md)
 
 Household-shared register of "what's at home" — real quantities + units + optional expiry per item. Distinct from the legacy `shopping_lists.items.inStock` boolean (which only said yes/no). `pantry_items(id, household_id, ingredient_id?, name, quantity, unit, expires_at?, last_updated_at, created_at)` with a **partial unique index** on `(household_id, ingredient_id) WHERE ingredient_id IS NOT NULL` so catalog rows can't duplicate. REST: `GET /pantry`, `POST /pantry` (idempotent merge when `ingredientId` is set), `PATCH /pantry/:id`, `DELETE /pantry/:id`. **Auto-decrement**: `POST /cook-logs` resolves `scaleFactor = cookedServings / recipe.servings`, then deducts `recipeIngredient.quantity × scaleFactor` from every matching pantry row (same `ingredient_id`, same `unit`). Cross-unit conversion deferred. The decrement is best-effort — never blocks the cook-log insert; the response includes `pantry: { updatedRowIds, skipped }`. Pure `applyPantryDeduct` reducer is unit-tested (6 cases). Frontend: `/profile/pantry` page with inline-edit qty + expiry pills (red < 0d, terracotta ≤ 3d).

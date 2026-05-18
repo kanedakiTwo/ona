@@ -69,6 +69,7 @@ import {
 import { NoExtractableContentError } from '../services/sources/youtube.js'
 import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../services/scopeResolver.js'
 import { sanitizeCustomTags } from '../services/recipeNotesStore.js'
+import { findPantryMatches } from '../services/pantryMatcher.js'
 import { z } from 'zod'
 
 const router = Router()
@@ -412,6 +413,23 @@ router.get('/recipes', optionalAuthMiddleware, async (req: AuthRequest, res) => 
     res.json(cards)
   } catch (err) {
     console.error('List recipes error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// GET /recipes/match-pantry?limit=N — cook-from-pantry suggestions (PR 12).
+// Auth-only. Ranks every catalogue recipe by what fraction of its required
+// ingredients the caller's household already has at home. Returns the top
+// `limit` (default 3, max 20) sorted by coverage desc. **Must be declared
+// before `/recipes/:id`** so the more-specific path matches first.
+router.get('/recipes/match-pantry', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const limitRaw = parseInt(String(req.query.limit ?? '3'), 10)
+    const limit = Math.min(20, Math.max(1, Number.isFinite(limitRaw) ? limitRaw : 3))
+    const matches = await findPantryMatches(req.userId!, limit)
+    res.json(matches)
+  } catch (err) {
+    console.error('GET /recipes/match-pantry error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

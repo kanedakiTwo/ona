@@ -34,9 +34,13 @@ export function CookedBadge({ recipeId, menuId, dayIndex, meal, variant = "pill"
   const { data, isLoading } = useRecipeCookStats(recipeId)
   const record = useRecordCook()
 
-  if (isLoading || !data) return null
-
   if (variant === "button") {
+    // Button variant always renders — even while the stats query is in
+    // flight — so the CTA never pops in late on a fresh page load.
+    // Count badge fills in once `data` is available. While the request
+    // is pending the label is the unadorned "Cocinada" which is also the
+    // never-cooked-yet state, so the visual fallback is correct.
+    const count = data?.count ?? 0
     const onClick = () =>
       record.mutate({
         recipeId,
@@ -53,11 +57,13 @@ export function CookedBadge({ recipeId, menuId, dayIndex, meal, variant = "pill"
         aria-label="Marcar como cocinada"
       >
         <ChefHat size={12} />
-        {record.isPending ? "Guardando…" : data.count > 0 ? `Cocinada ${data.count}×` : "Cocinada"}
+        {record.isPending ? "Guardando…" : count > 0 ? `Cocinada ${count}×` : "Cocinada"}
       </button>
     )
   }
 
+  // Pill variant — informational, hides while loading + when count is 0.
+  if (isLoading || !data) return null
   if (data.count === 0) return null
 
   const last = formatLast(data.lastCookedAt)

@@ -476,6 +476,34 @@ export const cookLogs = pgTable('cook_logs', {
   index('idx_cook_logs_recipe').on(t.recipeId),
 ])
 
+// ─── 22. pantry_items (PR 11) ─────────────────────────────────
+// Real pantry register — household-shared. Each row tracks quantity, unit,
+// and optional expiry for one ingredient (catalog row) OR one free-text
+// item (no `ingredientId`). The cook-log handler auto-decrements matching
+// rows when the user marks a meal cooked. With unit mismatch, we no-op
+// silently (cross-unit conversion lands in a follow-up).
+//
+// `(household_id, ingredient_id)` is unique when the catalog reference is
+// set — partial unique index — so a household can't accumulate duplicate
+// "100g rice" rows for the same catalog ingredient.
+export const pantryItems = pgTable('pantry_items', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  ingredientId: uuid('ingredient_id').references(() => ingredients.id, { onDelete: 'set null' }),
+  name: text('name').notNull(),
+  quantity: real('quantity').notNull().default(0),
+  unit: text('unit').notNull().default('u'),
+  /** Best-before date the user entered. null = no expiry tracked. */
+  expiresAt: date('expires_at'),
+  /** Bumped every time we decrement or the user edits. */
+  lastUpdatedAt: timestamp('last_updated_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_pantry_items_household').on(t.householdId),
+  // Partial unique index can't be expressed in drizzle today — enforced via
+  // a raw `CREATE UNIQUE INDEX … WHERE` in the migration file.
+])
+
 // ─── 21. recipe_notes (PR 7) ──────────────────────────────────
 // Per-household personal notes / 1-5 rating / substitutions on a recipe.
 // One row per (household, recipe). Household-scoped (not per-user) — a

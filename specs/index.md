@@ -20,6 +20,14 @@ Multi-user "shared household" foundation: every authed user has a `primary_house
 
 ---
 
+## [Pantry](./pantry.md)
+
+Household-shared register of "what's at home" — real quantities + units + optional expiry per item. Distinct from the legacy `shopping_lists.items.inStock` boolean (which only said yes/no). `pantry_items(id, household_id, ingredient_id?, name, quantity, unit, expires_at?, last_updated_at, created_at)` with a **partial unique index** on `(household_id, ingredient_id) WHERE ingredient_id IS NOT NULL` so catalog rows can't duplicate. REST: `GET /pantry`, `POST /pantry` (idempotent merge when `ingredientId` is set), `PATCH /pantry/:id`, `DELETE /pantry/:id`. **Auto-decrement**: `POST /cook-logs` resolves `scaleFactor = cookedServings / recipe.servings`, then deducts `recipeIngredient.quantity × scaleFactor` from every matching pantry row (same `ingredient_id`, same `unit`). Cross-unit conversion deferred. The decrement is best-effort — never blocks the cook-log insert; the response includes `pantry: { updatedRowIds, skipped }`. Pure `applyPantryDeduct` reducer is unit-tested (6 cases). Frontend: `/profile/pantry` page with inline-edit qty + expiry pills (red < 0d, terracotta ≤ 3d).
+
+**Source**: `apps/api/src/db/schema.ts` (`pantryItems`), `apps/api/src/db/migrations/0016_pr11_pantry_items.sql`, `apps/api/src/services/pantryStore.ts`, `apps/api/src/routes/pantry.ts`, `apps/api/src/routes/cookLogs.ts` (calls `decrementPantryForRecipe`), `apps/api/src/tests/pantryDeduct.test.ts`, `apps/web/src/hooks/usePantry.ts`, `apps/web/src/app/profile/pantry/page.tsx`
+
+---
+
 ## [Recipe Notes](./recipe-notes.md)
 
 Per-household consumer annotation on a recipe: 1-5 star rating + free-form notes + free-form substitutions. Distinct from the author's `recipes.notes` — this is what you and your household think about the dish ("le va un toque de comino"; "sin cebolla, con puerro"). One row per `(household_id, recipe_id)`; any member can read or write; last-write-wins on concurrent edits. REST: `GET /recipes/:recipeId/notes`, `PUT /recipes/:recipeId/notes` with partial `{ notes?, rating?, substitutions? }` body (undefined preserves, null clears, strings trim+cap at 1000 chars). DB enforces rating ∈ {1..5} via CHECK constraint. Pure `applyNotesPatch` + `validateRating` helpers are unit-tested. Frontend: `RecipeNotesSection` card on `/recipes/[id]` below the cook-mode CTA.

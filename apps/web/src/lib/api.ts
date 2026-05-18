@@ -31,16 +31,18 @@ export class LintFailureError extends Error {
 
 export async function apiFetch<T = unknown>(
   path: string,
-  options: FetchOptions = {}
+  options: FetchOptions & { anonymous?: boolean } = {}
 ): Promise<T> {
-  const { body, headers: customHeaders, ...rest } = options
+  const { body, headers: customHeaders, anonymous, ...rest } = options
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(customHeaders as Record<string, string>),
   }
 
-  if (typeof window !== "undefined") {
+  // Public endpoints (/recipes-ona, future SEO pages) opt out of the token
+  // so the same logged-in browser sees the anonymous catalogue per spec.
+  if (!anonymous && typeof window !== "undefined") {
     const token = localStorage.getItem("ona_token")
     if (token) {
       headers["Authorization"] = `Bearer ${token}`
@@ -87,6 +89,17 @@ export async function apiFetch<T = unknown>(
   }
 
   return response.json() as Promise<T>
+}
+
+/**
+ * Same surface as `api` but never sends the Authorization header. Use it
+ * for public-mode pages (e.g. /recipes-ona) so a logged-in browser still
+ * receives the anonymous catalogue.
+ */
+export const apiPublic = {
+  get<T = unknown>(path: string) {
+    return apiFetch<T>(path, { method: "GET", anonymous: true })
+  },
 }
 
 export const api = {

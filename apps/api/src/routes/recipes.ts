@@ -13,7 +13,7 @@
  *     (meal/season/difficulty/internal) never leak.
  */
 import { Router } from 'express'
-import { eq, and, sql, asc, count, arrayContains, inArray } from 'drizzle-orm'
+import { eq, and, sql, asc, count, arrayContains, inArray, isNull } from 'drizzle-orm'
 import multer from 'multer'
 import crypto from 'crypto'
 import { db } from '../db/connection.js'
@@ -33,7 +33,11 @@ import {
   AikitNotConfiguredError,
   AikitGenerationError,
 } from '../services/recipeImageGenerator.js'
-import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
+import {
+  authMiddleware,
+  optionalAuthMiddleware,
+  type AuthRequest,
+} from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
 import {
   createRecipeSchema,
@@ -334,7 +338,11 @@ async function fetchRecipeById(id: string): Promise<RecipeRow | null> {
 // ─── Routes ───────────────────────────────────────────────────────
 
 // GET /recipes — list with filters; returns lightweight cards per spec.
-router.get('/recipes', async (req, res) => {
+// Public catalogue: anonymous callers (no Bearer token) see ONLY system
+// recipes (`authorId IS NULL`). Authenticated callers keep the existing
+// behaviour and see the full catalogue — the frontend then segments by
+// scope (Todas / Mis recetas / Catálogo ONA) per spec.
+router.get('/recipes', optionalAuthMiddleware, async (req: AuthRequest, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page as string) || 1)
     const perPage = Math.min(100, Math.max(1, parseInt(req.query.perPage as string) || 20))
@@ -346,6 +354,7 @@ router.get('/recipes', async (req, res) => {
     const offset = (page - 1) * perPage
 
     const conditions = []
+    if (!req.userId) conditions.push(isNull(recipes.authorId))
     if (meal) conditions.push(arrayContains(recipes.meals, [meal]))
     if (season) conditions.push(arrayContains(recipes.seasons, [season]))
     if (search) conditions.push(sql`lower(${recipes.name}) like ${`%${search.toLowerCase()}%`}`)
@@ -375,11 +384,18 @@ router.get('/recipes', async (req, res) => {
 })
 
 // GET /recipes/:id — single recipe with full ingredients + steps; optional ?servings=N scaling.
-router.get('/recipes/:id', async (req, res) => {
+// Anonymous callers can only fetch system recipes (`authorId IS NULL`);
+// requesting another user's recipe returns 404 (same shape as "not found"
+// so we don't leak the existence of private recipes).
+router.get('/recipes/:id', optionalAuthMiddleware, async (req: AuthRequest, res) => {
   try {
     const id = String(req.params.id)
     const row = await fetchRecipeById(id)
     if (!row) {
+      res.status(404).json({ error: 'Recipe not found' })
+      return
+    }
+    if (!req.userId && row.authorId !== null) {
       res.status(404).json({ error: 'Recipe not found' })
       return
     }

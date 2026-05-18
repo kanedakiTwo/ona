@@ -54,14 +54,19 @@ app.get('/health', (_req, res) => {
 })
 
 // Routes
-// `publicHouseholdRouter` must be mounted BEFORE `userRoutes` — the users
-// router calls `router.use(authMiddleware)` at the top, which would otherwise
-// intercept the public `/invites/:token` preview and return 401.
+// Order matters: routers that call `router.use(authMiddleware)` at the top
+// (userRoutes, menuRoutes, shoppingRoutes, advisorRoutes, assistantRoutes,
+// memoryRoutes, householdRoutes, realtimeRoutes) intercept ANY request that
+// reaches them, even if it doesn't match one of their routes, and reject it
+// with 401 — because `router.use(mw)` runs unconditionally. Public-readable
+// routers (recipeRoutes, ingredientRoutes, publicHouseholdRouter) and
+// individual public routes (e.g. /invites/:token) MUST be mounted first so
+// they get a chance to respond before the catch-all auth.
 app.use(authRoutes)
 app.use(publicHouseholdRouter)
-app.use(userRoutes)
 app.use(recipeRoutes)
 app.use(ingredientRoutes)
+app.use(userRoutes)
 app.use(menuRoutes)
 app.use(shoppingRoutes)
 app.use(advisorRoutes)

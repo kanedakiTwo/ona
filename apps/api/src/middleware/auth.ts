@@ -78,6 +78,45 @@ export async function authMiddleware(
 }
 
 /**
+ * Best-effort auth: if a valid Bearer token is present, populate
+ * `req.userId` / `req.user` exactly like `authMiddleware`. If the token is
+ * missing, malformed, or the user is suspended / deleted, the request
+ * continues anonymously (no 401). Use this on endpoints that have a
+ * public anonymous mode but should personalise responses for logged-in
+ * users (e.g. GET /recipes returns system recipes for anonymous and
+ * system + own for authenticated).
+ */
+export async function optionalAuthMiddleware(
+  req: AuthRequest,
+  _res: Response,
+  next: NextFunction,
+): Promise<void> {
+  const authHeader = req.headers.authorization
+  if (!authHeader?.startsWith('Bearer ')) {
+    next()
+    return
+  }
+  const token = authHeader.slice(7)
+  let decoded: { userId: string }
+  try {
+    decoded = jwt.verify(token, env.JWT_SECRET) as { userId: string }
+  } catch {
+    next()
+    return
+  }
+  const [row] = await db
+    .select({ id: users.id, role: users.role, suspendedAt: users.suspendedAt })
+    .from(users)
+    .where(eq(users.id, decoded.userId))
+    .limit(1)
+  if (row && !row.suspendedAt) {
+    req.userId = row.id
+    req.user = { id: row.id, role: row.role as Role, suspendedAt: row.suspendedAt }
+  }
+  next()
+}
+
+/**
  * Admin-only gate. Must run AFTER `authMiddleware` — it relies on
  * `req.user.role` already being set.
  */

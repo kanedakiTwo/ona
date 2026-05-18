@@ -4,7 +4,8 @@ Recipe catalog, recipe detail, and the data needed to actually cook a recipe.
 
 ## User Capabilities
 
-- Users can browse the recipe catalog as a 2-column grid of photo cards. Each card carries an ownership badge: **"ONA"** (system catalog, `authorId = null`) or **"Tuya"** (`authorId = user.id`). Recipes owned by other users render unlabelled. A segmented control above the search bar filters the grid by scope: **Todas** (default), **Mis recetas**, **Catálogo ONA**. The choice persists in `localStorage.ona.recipes.scope`
+- **Anyone, no account needed**, can browse the public ONA catalogue at `/recipes-ona` and open any recipe detail at `/recipes-ona/[id]`. The public page only ever lists system recipes (`authorId IS NULL`) — even when a logged-in browser visits, the page forces an anonymous fetch via `apiPublic` so the catalogue is always the curated ONA set. The detail view shows ingredients, steps, nutrition and allergens but no favourite / copy / edit / cook-mode actions; a "Crear cuenta gratis" CTA appears at the bottom of both pages.
+- Logged-in users browse the catalog at `/recipes` as a 2-column grid of photo cards. Each card carries an ownership badge: **"ONA"** (system catalog, `authorId = null`) or **"Tuya"** (`authorId = user.id`). Recipes owned by other users render unlabelled. A segmented control above the search bar filters the grid by scope: **Todas** (default), **Mis recetas**, **Catálogo ONA**. The choice persists in `localStorage.ona.recipes.scope`
 - Users can copy a system (or another user's) recipe into their own catalog with the **"Añadir a mis recetas"** button on the recipe detail (visible only when `recipe.authorId !== user.id`). The copy is independent — editing it doesn't affect the original — and inherits ingredients, steps, times, nutrition cache and image. The new row gets `internalTags: ['copied-from-catalog']` and `sourceType: 'manual'`
 - Users can search recipes by name (case-insensitive substring match)
 - Users can filter recipes by meal type (breakfast/lunch/dinner/snack), season, and max prep time
@@ -123,8 +124,8 @@ When the user changes the diner count from `recipe.servings` to `target`:
 
 ## API Endpoints
 
-- `GET /recipes?search=&meal=&season=&maxTime=&perPage=&page=` — list with filters; returns the lightweight card shape
-- `GET /recipes/:id?servings=N` — single recipe; if `servings` is provided and differs from `recipe.servings`, quantities are scaled server-side and a `scaledFrom` field is included
+- `GET /recipes?search=&meal=&season=&maxTime=&perPage=&page=` — list with filters; returns the lightweight card shape. **Optional auth:** with a valid Bearer token the response is the full catalogue (system + every recipe the API exposes today); without a token only system recipes (`authorId IS NULL`) are returned, so the same endpoint backs the public `/recipes-ona` page anonymously and the app `/recipes` page authenticated.
+- `GET /recipes/:id?servings=N` — single recipe; if `servings` is provided and differs from `recipe.servings`, quantities are scaled server-side and a `scaledFrom` field is included. Anonymous callers can only fetch system recipes; requesting a user-authored recipe without a token returns 404 (same shape as "not found" to avoid leaking which IDs exist privately).
 - `POST /recipes` (auth) — create user recipe; runs lint validator
 - `PUT /recipes/:id` (auth, author only) — update; runs lint validator and recomputes `nutritionPerServing` and `allergens`
 - `DELETE /recipes/:id` (auth, author only)

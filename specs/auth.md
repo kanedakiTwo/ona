@@ -43,6 +43,7 @@ The `users` table holds the canonical scalar fields (`sex`, `age`, `weight`, `he
 
 **Public** (no navbar, no auth required):
 - `/` (landing), `/como-funciona`, `/privacidad`, `/terminos`
+- `/recipes-ona`, `/recipes-ona/[id]` — public ONA catalogue (system recipes only, see [Recipes](./recipes.md))
 - `/login`, `/register`
 - `/onboarding`
 

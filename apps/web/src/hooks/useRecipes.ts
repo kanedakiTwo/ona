@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { z } from "zod"
-import { api } from "@/lib/api"
+import { api, apiPublic } from "@/lib/api"
 import { enqueue } from "@/lib/pwa/offlineQueue"
 import { createRecipeSchema } from "@ona/shared"
 import type { ExtractedRecipe, Ingredient, Recipe } from "@ona/shared"
@@ -29,6 +29,26 @@ export function useRecipes(filters?: RecipeFilters) {
   return useQuery<Recipe[]>({
     queryKey: ["recipes", filters],
     queryFn: () => api.get(`/recipes${buildQueryString(filters)}`),
+  })
+}
+
+/**
+ * Same as `useRecipes` but hits the API anonymously — even if a token is
+ * present in localStorage. Used by the public `/recipes-ona` catalogue so
+ * a logged-in browser still sees only system recipes.
+ */
+export function usePublicRecipes(filters?: RecipeFilters) {
+  return useQuery<Recipe[]>({
+    queryKey: ["recipes-public", filters],
+    queryFn: () => apiPublic.get(`/recipes${buildQueryString(filters)}`),
+  })
+}
+
+export function usePublicRecipe(id: string | undefined) {
+  return useQuery<Recipe>({
+    queryKey: ["recipe-public", id],
+    queryFn: () => apiPublic.get(`/recipes/${id}`),
+    enabled: !!id,
   })
 }
 

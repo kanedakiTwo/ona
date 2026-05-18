@@ -19,17 +19,24 @@ type Db = typeof defaultDb
 
 const MAX_TEXT_LEN = 1000
 
+/** Max custom tags per (household, recipe). */
+const MAX_CUSTOM_TAGS = 10
+const MAX_CUSTOM_TAG_LEN = 30
+
 /** What the route exchanges with the client. */
 export interface NotesShape {
   notes: string | null
   rating: number | null
   substitutions: string | null
+  /** PR 8B. Always an array (possibly empty). */
+  customTags: string[]
 }
 
 export interface NotesPatch {
   notes?: string | null
   rating?: number | null
   substitutions?: string | null
+  customTags?: unknown
 }
 
 export interface NotesRow extends NotesShape {
@@ -56,6 +63,32 @@ export function validateRating(raw: unknown): RatingValidation {
   return { ok: true, value: raw }
 }
 
+/**
+ * Pure sanitizer for the `customTags` field — exported so the unit test
+ * exercises the same code path the route uses. Rules:
+ *   - non-array input → []
+ *   - each entry: trim, lowercase, truncate at 30 chars
+ *   - drop empty / whitespace / non-string entries
+ *   - dedup case-insensitively, preserving first-occurrence order
+ *   - cap the whole array at 10 entries
+ */
+export function sanitizeCustomTags(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const item of raw) {
+    if (typeof item !== 'string') continue
+    const trimmed = item.trim().toLowerCase()
+    if (trimmed === '') continue
+    const capped = trimmed.slice(0, MAX_CUSTOM_TAG_LEN)
+    if (seen.has(capped)) continue
+    seen.add(capped)
+    out.push(capped)
+    if (out.length >= MAX_CUSTOM_TAGS) break
+  }
+  return out
+}
+
 function trimToNull(raw: string | null | undefined): string | null {
   if (raw === undefined) return null
   if (raw === null) return null
@@ -72,7 +105,7 @@ function trimToNull(raw: string | null | undefined): string | null {
  * input shape).
  */
 export function applyNotesPatch(current: NotesShape, patch: NotesPatch): NotesShape {
-  const out: NotesShape = { ...current }
+  const out: NotesShape = { ...current, customTags: [...current.customTags] }
   if (Object.prototype.hasOwnProperty.call(patch, 'notes')) {
     out.notes = trimToNull(patch.notes ?? null)
   }
@@ -81,6 +114,9 @@ export function applyNotesPatch(current: NotesShape, patch: NotesPatch): NotesSh
   }
   if (Object.prototype.hasOwnProperty.call(patch, 'substitutions')) {
     out.substitutions = trimToNull(patch.substitutions ?? null)
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'customTags')) {
+    out.customTags = sanitizeCustomTags(patch.customTags)
   }
   return out
 }
@@ -101,6 +137,7 @@ export async function getRecipeNotesForUser(
       notes: recipeNotes.notes,
       rating: recipeNotes.rating,
       substitutions: recipeNotes.substitutions,
+      customTags: recipeNotes.customTags,
       lastEditedByUserId: recipeNotes.lastEditedByUserId,
       lastEditedByUsername: users.username,
       createdAt: recipeNotes.createdAt,
@@ -117,6 +154,7 @@ export async function getRecipeNotesForUser(
     notes: row.notes ?? null,
     rating: row.rating ?? null,
     substitutions: row.substitutions ?? null,
+    customTags: row.customTags ?? [],
     lastEditedByUserId: row.lastEditedByUserId ?? null,
     lastEditedByUsername: row.lastEditedByUsername ?? null,
     createdAt: row.createdAt.toISOString(),
@@ -150,6 +188,7 @@ export async function upsertRecipeNotes(
       notes: recipeNotes.notes,
       rating: recipeNotes.rating,
       substitutions: recipeNotes.substitutions,
+      customTags: recipeNotes.customTags,
     })
     .from(recipeNotes)
     .where(and(eq(recipeNotes.householdId, householdId), eq(recipeNotes.recipeId, recipeId)))
@@ -161,8 +200,9 @@ export async function upsertRecipeNotes(
           notes: current.notes ?? null,
           rating: current.rating ?? null,
           substitutions: current.substitutions ?? null,
+          customTags: current.customTags ?? [],
         }
-      : { notes: null, rating: null, substitutions: null },
+      : { notes: null, rating: null, substitutions: null, customTags: [] },
     patch,
   )
 
@@ -174,6 +214,7 @@ export async function upsertRecipeNotes(
       notes: merged.notes,
       rating: merged.rating,
       substitutions: merged.substitutions,
+      customTags: merged.customTags,
       lastEditedByUserId: userId,
     })
     .onConflictDoUpdate({
@@ -182,6 +223,7 @@ export async function upsertRecipeNotes(
         notes: merged.notes,
         rating: merged.rating,
         substitutions: merged.substitutions,
+        customTags: merged.customTags,
         lastEditedByUserId: userId,
         updatedAt: sql`NOW()`,
       },
@@ -190,4 +232,26 @@ export async function upsertRecipeNotes(
   const fresh = await getRecipeNotesForUser(userId, recipeId, db)
   if (!fresh) throw new Error('Failed to load notes after upsert')
   return fresh
+}
+
+/**
+ * Distinct custom tags used across the household, with row counts.
+ * Used for the catalog filter UI + tag chip suggestions on the editor.
+ */
+export async function listCustomTagsForHousehold(
+  userId: string,
+  db: Db = defaultDb,
+): Promise<Array<{ tag: string; count: number }>> {
+  const householdId = await getPrimaryHouseholdId(userId, db)
+  if (!householdId) return []
+  const rows = await db
+    .select({
+      tag: sql<string>`unnest(${recipeNotes.customTags})`,
+      count: sql<number>`COUNT(*)`,
+    })
+    .from(recipeNotes)
+    .where(eq(recipeNotes.householdId, householdId))
+    .groupBy(sql`unnest(${recipeNotes.customTags})`)
+    .orderBy(sql`COUNT(*) DESC`)
+  return rows.map((r) => ({ tag: r.tag, count: Number(r.count) }))
 }

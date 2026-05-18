@@ -1,0 +1,1 @@
+ALTER TABLE "recipe_notes" ADD COLUMN "custom_tags" text[] DEFAULT ARRAY[]::text[] NOT NULL;

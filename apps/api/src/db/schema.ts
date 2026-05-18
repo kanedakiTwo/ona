@@ -549,6 +549,12 @@ export const recipeNotes = pgTable('recipe_notes', {
   rating: integer('rating'),
   /** Free-form swaps ("sin cebolla / con puerro"). Up to 1000 chars. */
   substitutions: text('substitutions'),
+  /**
+   * PR 8B: per-(household, recipe) free-form tags. Lowercased + deduped
+   * at the route. Up to 10 tags, 30 chars each. Surfaced as filter chips
+   * in the catalog (follow-up). Default empty array.
+   */
+  customTags: text('custom_tags').array().notNull().default(sql`ARRAY[]::text[]`),
   /** Last user to touch this row — for the audit / future "edited by X" UX. */
   lastEditedByUserId: uuid('last_edited_by_user_id').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

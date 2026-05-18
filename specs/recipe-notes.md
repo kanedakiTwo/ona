@@ -1,8 +1,8 @@
 # Recipe Notes
 
-**Status:** PR 7 shipped.
+**Status:** PR 7 shipped. PR 8B (custom tags) shipped.
 
-Per-household personal notes / 1-5 star rating / free-form substitutions on a recipe. Distinct from `recipes.notes` and `recipes.substitutions` (which belong to the recipe's **author**) — this is the **consumer's** annotation: "we thought it was a bit salty, swap onion for leek next time".
+Per-household personal notes / 1-5 star rating / free-form substitutions / free-form custom tags on a recipe. Distinct from `recipes.notes` and `recipes.substitutions` (which belong to the recipe's **author**) — this is the **consumer's** annotation: "we thought it was a bit salty, swap onion for leek next time, etiquetas: vegano, sin gluten".
 
 ## User Capabilities
 
@@ -12,6 +12,7 @@ Per-household personal notes / 1-5 star rating / free-form substitutions on a re
   - **Sustituciones tuyas** — free-form 1000-char swaps note. Same inline-edit pattern.
 - All three fields are independent and partial: editing the rating doesn't touch notes / substitutions, and vice versa.
 - The card shows "editado por <username>" when the last edit was made by another household member.
+- **Etiquetas propias (PR 8B)** — chip input below substitutions. Add free-form tags ("vegano", "para Sara", "rápido") that are stored on the same `recipe_notes` row. Up to **10 tags** per (household, recipe); each tag is lowercased + trimmed + capped at 30 chars; duplicates collapse case-insensitively. Suggestions ("Ya usas …") surface the household's most-used tags so they don't fork on spelling.
 
 ## Scope
 
@@ -29,6 +30,7 @@ Per-household personal notes / 1-5 star rating / free-form substitutions on a re
 | `notes` | text? | consumer note, up to 1000 chars |
 | `rating` | int? | check 1..5; null = not rated |
 | `substitutions` | text? | consumer swaps note, up to 1000 chars |
+| `custom_tags` | text[] | per-(household, recipe) free-form tags. NOT NULL, defaults to `'{}'`. App layer caps at 10 entries × 30 chars (PR 8B) |
 | `last_edited_by_user_id` | uuid? → users | for the audit / "editado por" UX |
 | `created_at` | timestamptz | |
 | `updated_at` | timestamptz | bumped on every upsert |
@@ -43,14 +45,15 @@ Check constraint `recipe_notes_rating_check` enforces 1..5 at the DB. The API al
 
 | Method | Path | Auth | Notes |
 |---|---|---|---|
-| GET | `/recipes/:recipeId/notes` | required | Returns row or `null` (200 either way — saves the client a 404-branch on an empty form) |
-| PUT | `/recipes/:recipeId/notes` | required | Body `{ notes?, rating?, substitutions? }`. Partial upsert: undefined fields preserve, explicit `null` clears, strings are trimmed (empty → null) and capped at 1000 chars. `rating` must be int 1..5 or null |
+| GET | `/recipes/:recipeId/notes` | required | Returns row or `null` (200 either way — saves the client a 404-branch on an empty form). Response includes `customTags: string[]` |
+| PUT | `/recipes/:recipeId/notes` | required | Body `{ notes?, rating?, substitutions?, customTags? }`. Partial upsert: undefined fields preserve, explicit `null` clears, strings are trimmed (empty → null) and capped at 1000 chars. `rating` must be int 1..5 or null. `customTags` is sanitized via `sanitizeCustomTags` (lowercase + trim + dedup + cap 10) |
+| GET | `/custom-tags` | required | Returns `[{ tag, count }]` — every distinct custom tag used by the household with usage count, ordered by count desc |
 
 Both routes mount via `apps/api/src/routes/recipeNotes.ts` (after `router.use(authMiddleware)`).
 
 ## Pure Helpers
 
-`applyNotesPatch(current, patch)` and `validateRating(raw)` are exported from `services/recipeNotesStore.ts` and unit-tested (`recipeNotesPatch.test.ts`, 9 cases). The route handler calls into these so a regression trips a unit failure before touching the DB.
+`applyNotesPatch(current, patch)`, `validateRating(raw)` and `sanitizeCustomTags(raw)` are exported from `services/recipeNotesStore.ts` and unit-tested. The route handler calls into these so a regression trips a unit failure before touching the DB. 16 total cases between `recipeNotesPatch.test.ts` (9) and `customTagsSanitize.test.ts` (7).
 
 ## Constraints / Edge Cases
 

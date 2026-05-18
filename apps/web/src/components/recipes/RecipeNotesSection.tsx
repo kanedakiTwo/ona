@@ -9,8 +9,8 @@
  * member can read or write.
  */
 import { useEffect, useState } from "react"
-import { Pencil, Star } from "lucide-react"
-import { useRecipeNotes, useSaveRecipeNotes } from "@/hooks/useRecipeNotes"
+import { Pencil, Star, X } from "lucide-react"
+import { useHouseholdCustomTags, useRecipeNotes, useSaveRecipeNotes } from "@/hooks/useRecipeNotes"
 
 interface Props {
   recipeId: string
@@ -143,7 +143,115 @@ export function RecipeNotesSection({ recipeId }: Props) {
         }}
         onSave={saveSubs}
       />
+
+      {/* Custom tags (PR 8B) */}
+      <CustomTagsField
+        tags={data?.customTags ?? []}
+        onChange={(next) => save.mutate({ customTags: next })}
+      />
     </section>
+  )
+}
+
+function CustomTagsField({
+  tags,
+  onChange,
+}: {
+  tags: string[]
+  onChange: (next: string[]) => void
+}) {
+  const { data: householdTags } = useHouseholdCustomTags()
+  const [draft, setDraft] = useState("")
+
+  const suggestions = (householdTags ?? [])
+    .map((t) => t.tag)
+    .filter((t) => !tags.includes(t))
+    .slice(0, 6)
+
+  function addTag(raw: string) {
+    const trimmed = raw.trim().toLowerCase()
+    if (!trimmed) return
+    if (tags.includes(trimmed)) return
+    if (tags.length >= 10) return
+    onChange([...tags, trimmed])
+    setDraft("")
+  }
+  function removeTag(t: string) {
+    onChange(tags.filter((x) => x !== t))
+  }
+
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-[0.18em] text-[#7A7066] mb-2">
+        Etiquetas propias
+      </div>
+      {tags.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {tags.map((t) => (
+            <span
+              key={t}
+              className="inline-flex items-center gap-1 rounded-full bg-[#1A1612] pl-3 pr-1.5 py-1 text-[11px] text-[#FAF6EE]"
+            >
+              {t}
+              <button
+                type="button"
+                onClick={() => removeTag(t)}
+                aria-label={`Quitar ${t}`}
+                className="ml-0.5 rounded-full p-0.5 hover:bg-[#FAF6EE]/15"
+              >
+                <X size={10} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      {tags.length < 10 && (
+        <div className="flex flex-wrap gap-2">
+          <input
+            type="text"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ',') {
+                e.preventDefault()
+                addTag(draft)
+              }
+            }}
+            placeholder="Añadir etiqueta (Enter)"
+            maxLength={30}
+            className="flex-1 min-w-[160px] border-b border-[#DDD6C5] bg-transparent py-1.5 text-[13px] outline-none focus:border-[#1A1612]"
+          />
+          {draft.trim() && (
+            <button
+              type="button"
+              onClick={() => addTag(draft)}
+              className="rounded-full bg-[#1A1612] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#FAF6EE]"
+            >
+              Añadir
+            </button>
+          )}
+        </div>
+      )}
+      {suggestions.length > 0 && (
+        <div className="mt-3">
+          <div className="text-[10px] uppercase tracking-[0.12em] text-[#A39A8E] mb-1.5">
+            Ya usas
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {suggestions.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => addTag(s)}
+                className="inline-flex items-center gap-1 rounded-full border border-dashed border-[#DDD6C5] px-2.5 py-0.5 text-[11px] text-[#7A7066] hover:border-[#1A1612] hover:text-[#1A1612]"
+              >
+                + {s}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 

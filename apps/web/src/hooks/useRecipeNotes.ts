@@ -11,6 +11,8 @@ export interface RecipeNotes {
   notes: string | null
   rating: number | null
   substitutions: string | null
+  /** PR 8B — per-(household, recipe) free-form tags. Always an array. */
+  customTags: string[]
   lastEditedByUserId: string | null
   lastEditedByUsername: string | null
   createdAt: string
@@ -21,6 +23,21 @@ export interface NotesPatch {
   notes?: string | null
   rating?: number | null
   substitutions?: string | null
+  customTags?: string[]
+}
+
+export interface HouseholdCustomTag {
+  tag: string
+  count: number
+}
+
+/** All distinct custom tags in the household with their usage counts. */
+export function useHouseholdCustomTags() {
+  return useQuery<HouseholdCustomTag[]>({
+    queryKey: ["custom-tags"],
+    queryFn: () => api.get<HouseholdCustomTag[]>("/custom-tags"),
+    staleTime: 60_000,
+  })
 }
 
 /** Returns `null` when no row exists yet. */

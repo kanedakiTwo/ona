@@ -127,6 +127,13 @@
       "when": 1779098499441,
       "tag": "0017_pr8a_cookbooks",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1779099252506,
+      "tag": "0018_pr8b_recipe_notes_custom_tags",
+      "breakpoints": true
     }
   ]
 }

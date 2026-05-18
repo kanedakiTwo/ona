@@ -14,6 +14,7 @@ import { z } from 'zod'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import {
   getRecipeNotesForUser,
+  listCustomTagsForHousehold,
   NoHouseholdError,
   upsertRecipeNotes,
   validateRating,
@@ -28,6 +29,20 @@ const patchSchema = z.object({
   notes: z.string().max(2000).nullable().optional(),
   rating: z.number().nullable().optional(),
   substitutions: z.string().max(2000).nullable().optional(),
+  /** Free-form household tags ("vegano", "para Sara", "rápido"). The store
+   *  sanitizes (lowercase + trim + dedupe + cap). Accepts up to 32 raw
+   *  entries; the sanitizer caps the persisted result at 10. */
+  customTags: z.array(z.string().max(60)).max(32).nullable().optional(),
+})
+
+router.get('/custom-tags', async (req: AuthRequest, res) => {
+  try {
+    const rows = await listCustomTagsForHousehold(req.userId!)
+    res.json(rows)
+  } catch (err) {
+    console.error('GET /custom-tags error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
 })
 
 router.get('/recipes/:recipeId/notes', async (req: AuthRequest, res) => {

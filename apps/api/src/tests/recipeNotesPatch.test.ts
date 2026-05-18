@@ -12,7 +12,7 @@ import {
   type NotesShape,
 } from '../services/recipeNotesStore.js'
 
-const empty: NotesShape = { notes: null, rating: null, substitutions: null }
+const empty: NotesShape = { notes: null, rating: null, substitutions: null, customTags: [] }
 
 describe('validateRating', () => {
   it('accepts integers 1..5', () => {
@@ -35,7 +35,7 @@ describe('validateRating', () => {
 describe('applyNotesPatch', () => {
   it('on empty starting state, undefined fields stay null', () => {
     const result = applyNotesPatch(empty, {})
-    expect(result).toEqual({ notes: null, rating: null, substitutions: null })
+    expect(result).toEqual({ notes: null, rating: null, substitutions: null, customTags: [] })
   })
 
   it('sets each field independently', () => {
@@ -43,37 +43,41 @@ describe('applyNotesPatch', () => {
       notes: null,
       rating: 4,
       substitutions: null,
+      customTags: [],
     })
     expect(applyNotesPatch(empty, { notes: 'Está rico' })).toEqual({
       notes: 'Está rico',
       rating: null,
       substitutions: null,
+      customTags: [],
     })
   })
 
   it('preserves fields not mentioned in the patch', () => {
-    const current: NotesShape = { notes: 'X', rating: 3, substitutions: 'sin cebolla' }
+    const current: NotesShape = { notes: 'X', rating: 3, substitutions: 'sin cebolla', customTags: ['vegano'] }
     const result = applyNotesPatch(current, { rating: 5 })
-    expect(result).toEqual({ notes: 'X', rating: 5, substitutions: 'sin cebolla' })
+    expect(result).toEqual({ notes: 'X', rating: 5, substitutions: 'sin cebolla', customTags: ['vegano'] })
   })
 
   it('explicit null clears a field while preserving others', () => {
-    const current: NotesShape = { notes: 'X', rating: 3, substitutions: 'sin cebolla' }
+    const current: NotesShape = { notes: 'X', rating: 3, substitutions: 'sin cebolla', customTags: [] }
     const result = applyNotesPatch(current, { rating: null })
-    expect(result).toEqual({ notes: 'X', rating: null, substitutions: 'sin cebolla' })
+    expect(result).toEqual({ notes: 'X', rating: null, substitutions: 'sin cebolla', customTags: [] })
   })
 
   it('trims string fields and treats empty strings as null', () => {
-    const current: NotesShape = { notes: 'old', rating: 4, substitutions: null }
+    const current: NotesShape = { notes: 'old', rating: 4, substitutions: null, customTags: [] }
     expect(applyNotesPatch(current, { notes: '   ' })).toEqual({
       notes: null,
       rating: 4,
       substitutions: null,
+      customTags: [],
     })
     expect(applyNotesPatch(current, { notes: '  fresh take  ' })).toEqual({
       notes: 'fresh take',
       rating: 4,
       substitutions: null,
+      customTags: [],
     })
   })
 

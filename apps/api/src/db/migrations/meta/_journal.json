@@ -120,6 +120,13 @@
       "when": 1779095980562,
       "tag": "0016_pr11_pantry_items",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1779098499441,
+      "tag": "0017_pr8a_cookbooks",
+      "breakpoints": true
     }
   ]
 }

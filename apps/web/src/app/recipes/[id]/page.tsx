@@ -13,6 +13,7 @@ import { useAuth } from "@/lib/auth"
 import { FavoriteButton } from "@/components/recipes/FavoriteButton"
 import { CookedBadge } from "@/components/recipes/CookedBadge"
 import { RecipeNotesSection } from "@/components/recipes/RecipeNotesSection"
+import { AddToCookbookButton } from "@/components/recipes/AddToCookbookButton"
 import { ServingsScaler } from "@/components/recipes/ServingsScaler"
 import { IngredientsSection } from "@/components/recipes/detail/IngredientsSection"
 import { StepsSection } from "@/components/recipes/detail/StepsSection"
@@ -393,6 +394,7 @@ export default function RecipeDetailPage() {
               Empezar a cocinar
             </Link>
             <CookedBadge recipeId={recipe.id} variant="button" />
+            {user && <AddToCookbookButton recipeId={recipe.id} />}
           </div>
         </section>
 

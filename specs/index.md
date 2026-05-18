@@ -20,6 +20,14 @@ Multi-user "shared household" foundation: every authed user has a `primary_house
 
 ---
 
+## [Cookbooks](./cookbooks.md)
+
+Household-shared named recipe collections — "Favoritos de Sara", "Para diabéticos", "Recetas de mi madre". `cookbooks(id, household_id, name, description?, emoji?, created_at, updated_at)` + `cookbook_recipes(id, cookbook_id, recipe_id, added_at)` join with `UNIQUE(cookbook_id, recipe_id)` for idempotent add. REST: list / detail / CRUD on cookbooks + idempotent join mutations (`POST /cookbooks/:id/recipes/:recipeId`, `DELETE …`) + reverse lookup `GET /recipes/:id/cookbooks`. Pure name/emoji/description validators are unit-tested (9 cases). Frontend: `/profile/cookbooks` list + `/cookbooks/[id]` detail with inline editor + `<AddToCookbookButton />` bottom-sheet on `/recipes/[id]`.
+
+**Source**: `apps/api/src/db/schema.ts` (`cookbooks`, `cookbookRecipes`), `apps/api/src/db/migrations/0017_pr8a_cookbooks.sql`, `apps/api/src/services/cookbooksStore.ts`, `apps/api/src/routes/cookbooks.ts`, `apps/api/src/tests/cookbooksValidate.test.ts`, `apps/web/src/hooks/useCookbooks.ts`, `apps/web/src/app/profile/cookbooks/page.tsx`, `apps/web/src/app/cookbooks/[id]/page.tsx`, `apps/web/src/components/recipes/AddToCookbookButton.tsx`
+
+---
+
 ## [Pantry](./pantry.md)
 
 Household-shared register of "what's at home" — real quantities + units + optional expiry per item. Distinct from the legacy `shopping_lists.items.inStock` boolean (which only said yes/no). `pantry_items(id, household_id, ingredient_id?, name, quantity, unit, expires_at?, last_updated_at, created_at)` with a **partial unique index** on `(household_id, ingredient_id) WHERE ingredient_id IS NOT NULL` so catalog rows can't duplicate. REST: `GET /pantry`, `POST /pantry` (idempotent merge when `ingredientId` is set), `PATCH /pantry/:id`, `DELETE /pantry/:id`. **Auto-decrement**: `POST /cook-logs` resolves `scaleFactor = cookedServings / recipe.servings`, then deducts `recipeIngredient.quantity × scaleFactor` from every matching pantry row (same `ingredient_id`, same `unit`). Cross-unit conversion deferred. The decrement is best-effort — never blocks the cook-log insert; the response includes `pantry: { updatedRowIds, skipped }`. Pure `applyPantryDeduct` reducer is unit-tested (6 cases). Frontend: `/profile/pantry` page with inline-edit qty + expiry pills (red < 0d, terracotta ≤ 3d).

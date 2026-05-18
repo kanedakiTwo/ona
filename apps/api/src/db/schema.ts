@@ -476,6 +476,35 @@ export const cookLogs = pgTable('cook_logs', {
   index('idx_cook_logs_recipe').on(t.recipeId),
 ])
 
+// ─── 23. cookbooks (PR 8A) ────────────────────────────────────
+// Named groupings of recipes ("Favoritos de Sara", "Para diabéticos",
+// "Recetas de mi madre"). Household-shared — any member can create,
+// rename, add / remove recipes, delete. Recipes can belong to many
+// cookbooks; the join table `cookbook_recipes` enforces uniqueness per
+// (cookbook, recipe).
+export const cookbooks = pgTable('cookbooks', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  description: text('description'),
+  /** Single emoji or short symbol (≤ 8 chars) for the cover tile. */
+  emoji: text('emoji'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_cookbooks_household').on(t.householdId),
+])
+
+export const cookbookRecipes = pgTable('cookbook_recipes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  cookbookId: uuid('cookbook_id').notNull().references(() => cookbooks.id, { onDelete: 'cascade' }),
+  recipeId: uuid('recipe_id').notNull().references(() => recipes.id, { onDelete: 'cascade' }),
+  addedAt: timestamp('added_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_cookbook_recipes_cookbook_recipe').on(t.cookbookId, t.recipeId),
+  index('idx_cookbook_recipes_recipe').on(t.recipeId),
+])
+
 // ─── 22. pantry_items (PR 11) ─────────────────────────────────
 // Real pantry register — household-shared. Each row tracks quantity, unit,
 // and optional expiry for one ingredient (catalog row) OR one free-text

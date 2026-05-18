@@ -418,6 +418,56 @@ function pickCanonicalLines(bucket: IngredientBucket): CanonicalLine[] {
   return lines
 }
 
+// ─── PR 10B: staples merge ──────────────────────────────────────────────
+
+/**
+ * Subset of a `household_staples` row that the merge needs. The router
+ * passes this in so we don't import the schema into the pure function.
+ */
+export interface StapleSnapshot {
+  name: string
+  quantity: number
+  unit: BuyableUnit
+  aisle: Aisle
+  pricePerUnit: number | null
+}
+
+/**
+ * Prepend each active staple to the items array as a new
+ * `kind: 'staple'` row, **unless** a menu-derived row with the same name
+ * already exists (case-insensitive). When the menu already covers the
+ * staple, we keep the menu row authoritative — it has the right
+ * `ingredientId` for downstream nutrition / unit conversion.
+ *
+ * Pure function — exercised by `staplesMerge.test.ts` directly.
+ */
+export function mergeStaplesIntoItems(
+  items: ShoppingItem[],
+  staples: StapleSnapshot[],
+): ShoppingItem[] {
+  if (staples.length === 0) return items
+  const existingNames = new Set(items.map((i) => i.name.trim().toLowerCase()))
+  const out: ShoppingItem[] = [...items]
+  for (const s of staples) {
+    const norm = s.name.trim().toLowerCase()
+    if (existingNames.has(norm)) continue
+    existingNames.add(norm)
+    out.push({
+      id: randomUUID(),
+      ingredientId: null,
+      name: s.name,
+      quantity: s.quantity,
+      unit: s.unit,
+      aisle: s.aisle,
+      checked: false,
+      inStock: false,
+      kind: 'staple',
+      pricePerUnit: s.pricePerUnit,
+    })
+  }
+  return out
+}
+
 // ─── PR 10: price total ─────────────────────────────────────────────────
 
 export interface ListTotal {

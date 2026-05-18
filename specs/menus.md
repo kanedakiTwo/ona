@@ -97,6 +97,7 @@ Every generated menu also creates a `menu_logs` row with:
 - A user's `userSettings.template` can override per-day meal slots. The profile UI persists the override as `{ mealTemplate: { [día]: ['desayuno' | 'almuerzo' | 'comida' | 'merienda' | 'cena'] } }` (Spanish day + meal names) inside the junk-drawer `template` blob; the menu generator runs `normalizeMealTemplate` on every load to coerce that shape — or the legacy `DayTemplate[]` — into the canonical 7-day array of `{ breakfast?, lunch?, dinner?, snack? }`. Empty `mealTemplate` falls back to the default template; unknown day/meal keys are dropped silently
 - If no menu exists for the requested week, `GET /menu/:userId/:weekId` returns 404
 - The shopping page redirects users to `/menu` if no menu exists for the current week
+- **Household scope (PR 1B):** menus carry both `user_id` and `household_id`. Inserts always populate both; reads filter by `household_id` when the env flag `SHARED_HOUSEHOLD_SCOPE=true` (default ON in dev/test, OFF in prod). When the flag is on, every member of a shared household reads the same menus. See [Household](./household.md)
 
 ## Related specs
 

@@ -22,6 +22,7 @@ import { calculateMenuCaloriesFromDB } from '../calorieCalculator.js'
 import { calculateMenuNutrientsFromDB } from '../nutrientCalculator.js'
 import { updateBalance } from '../nutrientBalance.js'
 import { getSummary } from '../advisor.js'
+import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../scopeResolver.js'
 import type { SkillDefinition, SkillContext, SkillResult } from './types.js'
 
 // ─── Helper: get current week start (Monday) ───────────────
@@ -88,7 +89,7 @@ const getTodaysMenu: SkillDefinition = {
     const [menu] = await db
       .select()
       .from(menus)
-      .where(eq(menus.userId, userId))
+      .where(scopeWhere(menus.userId, menus.householdId, await resolveScope(userId, db)))
       .orderBy(desc(menus.createdAt))
       .limit(1)
 
@@ -253,7 +254,7 @@ const getShoppingList: SkillDefinition = {
     const [menu] = await db
       .select()
       .from(menus)
-      .where(eq(menus.userId, userId))
+      .where(scopeWhere(menus.userId, menus.householdId, await resolveScope(userId, db)))
       .orderBy(desc(menus.createdAt))
       .limit(1)
 
@@ -397,10 +398,13 @@ const generateWeeklyMenu: SkillDefinition = {
 
     const days = await generateMenu(userId, weekStart, undefined, db)
 
-    // Save to menus table
+    // Save to menus table — dual-write household_id so shared-scope reads
+    // pick it up. Null is acceptable if the user somehow lacks a primary
+    // household; the read path falls back to user-scope.
+    const householdId = await getPrimaryHouseholdId(userId, db)
     const [menu] = await db
       .insert(menus)
-      .values({ userId, weekStart, days, locked: {} })
+      .values({ userId, householdId, weekStart, days, locked: {} })
       .returning()
 
     // Calculate calories and nutrients for the log
@@ -465,7 +469,7 @@ const swapMeal: SkillDefinition = {
     const [menu] = await db
       .select()
       .from(menus)
-      .where(eq(menus.userId, userId))
+      .where(scopeWhere(menus.userId, menus.householdId, await resolveScope(userId, db)))
       .orderBy(desc(menus.createdAt))
       .limit(1)
 
@@ -547,7 +551,7 @@ const swapMeal: SkillDefinition = {
     const favRows = await db
       .select({ recipeId: userFavorites.recipeId })
       .from(userFavorites)
-      .where(eq(userFavorites.userId, userId))
+      .where(scopeWhere(userFavorites.userId, userFavorites.householdId, await resolveScope(userId, db)))
 
     const favoriteRecipeIds = new Set<string>(favRows.map((f: any) => f.recipeId))
 
@@ -617,7 +621,7 @@ const toggleFavorite: SkillDefinition = {
       .select()
       .from(userFavorites)
       .where(
-        eq(userFavorites.userId, userId),
+        scopeWhere(userFavorites.userId, userFavorites.householdId, await resolveScope(userId, db)),
       )
 
     const alreadyFav = existing.find((f: any) => f.recipeId === recipe.id)
@@ -629,9 +633,10 @@ const toggleFavorite: SkillDefinition = {
 
       return { data: { recipeId: recipe.id, favorited: false }, summary: `${recipe.name} eliminada de favoritos.`, uiHint: 'confirmation' }
     } else {
+      const householdId = await getPrimaryHouseholdId(userId, db)
       await db
         .insert(userFavorites)
-        .values({ userId, recipeId: recipe.id })
+        .values({ userId, householdId, recipeId: recipe.id })
 
       return { data: { recipeId: recipe.id, favorited: true }, summary: `${recipe.name} anadida a favoritos.`, uiHint: 'confirmation' }
     }
@@ -657,7 +662,7 @@ const markMealEaten: SkillDefinition = {
     const [menu] = await db
       .select()
       .from(menus)
-      .where(eq(menus.userId, userId))
+      .where(scopeWhere(menus.userId, menus.householdId, await resolveScope(userId, db)))
       .orderBy(desc(menus.createdAt))
       .limit(1)
 
@@ -939,7 +944,7 @@ const getPantryStock: SkillDefinition = {
     const [list] = await db
       .select()
       .from(shoppingLists)
-      .where(eq(shoppingLists.userId, userId))
+      .where(scopeWhere(shoppingLists.userId, shoppingLists.householdId, await resolveScope(userId, db)))
       .orderBy(desc(shoppingLists.createdAt))
       .limit(1)
     if (!list) {
@@ -975,7 +980,7 @@ const markInStock: SkillDefinition = {
     const [list] = await db
       .select()
       .from(shoppingLists)
-      .where(eq(shoppingLists.userId, userId))
+      .where(scopeWhere(shoppingLists.userId, shoppingLists.householdId, await resolveScope(userId, db)))
       .orderBy(desc(shoppingLists.createdAt))
       .limit(1)
     if (!list) {
@@ -1014,7 +1019,7 @@ const checkShoppingItem: SkillDefinition = {
     const [list] = await db
       .select()
       .from(shoppingLists)
-      .where(eq(shoppingLists.userId, userId))
+      .where(scopeWhere(shoppingLists.userId, shoppingLists.householdId, await resolveScope(userId, db)))
       .orderBy(desc(shoppingLists.createdAt))
       .limit(1)
     if (!list) {
@@ -1074,7 +1079,7 @@ const getMenuHistory: SkillDefinition = {
     const rows = await db
       .select({ id: menus.id, weekStart: menus.weekStart, days: menus.days })
       .from(menus)
-      .where(eq(menus.userId, userId))
+      .where(scopeWhere(menus.userId, menus.householdId, await resolveScope(userId, db)))
       .orderBy(desc(menus.weekStart))
       .limit(limit)
     if (rows.length === 0) {
@@ -1217,7 +1222,7 @@ const getVarietyScore: SkillDefinition = {
   parameters: { type: 'object', properties: {}, required: [] },
   async handler(_p, ctx) {
     const { userId, db } = ctx
-    const [menu] = await db.select().from(menus).where(eq(menus.userId, userId)).orderBy(desc(menus.createdAt)).limit(1)
+    const [menu] = await db.select().from(menus).where(scopeWhere(menus.userId, menus.householdId, await resolveScope(userId, db))).orderBy(desc(menus.createdAt)).limit(1)
     if (!menu) {
       return { data: null, summary: 'No tienes menu activo.', uiHint: 'text' }
     }
@@ -1277,7 +1282,7 @@ const getEatingWindow: SkillDefinition = {
     const rows = await db
       .select({ days: menus.days, weekStart: menus.weekStart })
       .from(menus)
-      .where(eq(menus.userId, userId))
+      .where(scopeWhere(menus.userId, menus.householdId, await resolveScope(userId, db)))
       .orderBy(desc(menus.weekStart))
       .limit(limit)
     if (rows.length === 0) {
@@ -1388,7 +1393,7 @@ const getInflammationIndex: SkillDefinition = {
   async handler(params: { recipeName?: string; weekly?: boolean }, ctx) {
     const { userId, db } = ctx
     if (params.weekly) {
-      const [menu] = await db.select().from(menus).where(eq(menus.userId, userId)).orderBy(desc(menus.createdAt)).limit(1)
+      const [menu] = await db.select().from(menus).where(scopeWhere(menus.userId, menus.householdId, await resolveScope(userId, db))).orderBy(desc(menus.createdAt)).limit(1)
       if (!menu) {
         return { data: null, summary: 'No tienes menu activo.', uiHint: 'text' }
       }

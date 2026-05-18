@@ -18,6 +18,7 @@ import {
 import type { DayMenu, DayTemplate, Meal, Season, Sex, ActivityLevel, LockedSlots } from '@ona/shared'
 import { findRecipeForSlot, normaliseEquipment, type RecipeWithIngredients } from './recipeMatcher.js'
 import { getMemoryForUser } from './userMemoryStore.js'
+import { resolveScope, scopeWhere } from './scopeResolver.js'
 import { calculateRecipeCaloriesFromDB, calculateMenuCaloriesFromDB } from './calorieCalculator.js'
 import { calculateMenuNutrientsFromDB } from './nutrientCalculator.js'
 
@@ -326,11 +327,13 @@ export async function generateMenu(
       .map((r: any) => r.id),
   )
 
-  // Fetch user favorites
+  // Fetch favorites — household-scoped when flag is on so the matcher
+  // boosts any starred recipe across the household.
+  const favScope = await resolveScope(userId)
   const favRows = await db
     .select({ recipeId: userFavorites.recipeId })
     .from(userFavorites)
-    .where(eq(userFavorites.userId, userId))
+    .where(scopeWhere(userFavorites.userId, userFavorites.householdId, favScope))
 
   const favoriteRecipeIds = new Set<string>(favRows.map((f: any) => f.recipeId))
 

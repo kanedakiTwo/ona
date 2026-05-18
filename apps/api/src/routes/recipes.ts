@@ -62,6 +62,7 @@ import {
   NotARecipeError,
 } from '../services/recipeUrlExtractor.js'
 import { NoExtractableContentError } from '../services/sources/youtube.js'
+import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../services/scopeResolver.js'
 import { z } from 'zod'
 
 const router = Router()
@@ -1019,7 +1020,11 @@ router.get('/user/:id/recipes', authMiddleware, async (req: AuthRequest, res) =>
       })
       .from(userFavorites)
       .innerJoin(recipes, eq(userFavorites.recipeId, recipes.id))
-      .where(eq(userFavorites.userId, userId))) as RecipeRow[]
+      .where(scopeWhere(
+        userFavorites.userId,
+        userFavorites.householdId,
+        await resolveScope(userId),
+      ))) as RecipeRow[]
 
     res.json({
       own: ownRows.map(toCard),
@@ -1056,6 +1061,9 @@ router.post(
         return
       }
 
+      // Toggle is keyed by (user, recipe) regardless of scope — every
+      // member toggles their own row. The `householdId` dual-write lets
+      // household-scoped reads find any member's favorites.
       const [existing] = await db
         .select({ id: userFavorites.id })
         .from(userFavorites)
@@ -1068,7 +1076,8 @@ router.post(
           .where(and(eq(userFavorites.userId, userId), eq(userFavorites.recipeId, recipeId)))
         res.json({ favorited: false })
       } else {
-        await db.insert(userFavorites).values({ userId, recipeId })
+        const householdId = await getPrimaryHouseholdId(userId)
+        await db.insert(userFavorites).values({ userId, householdId, recipeId })
         res.json({ favorited: true })
       }
     } catch (err) {

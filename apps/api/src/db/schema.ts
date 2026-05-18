@@ -233,16 +233,27 @@ export const recipeSteps = pgTable('recipe_steps', {
 export const userFavorites = pgTable('user_favorites', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /**
+   * PR 1B: scope key. Backfilled from `users.primary_household_id`. New
+   * inserts must populate. When `SHARED_HOUSEHOLD_SCOPE=true`, reads filter
+   * by `householdId` so every member of a household sees the same favorites.
+   * Nullable for the migration window; once prod is fully backfilled and the
+   * flag is permanently on, we'll flip to NOT NULL in a follow-up.
+   */
+  householdId: uuid('household_id').references(() => households.id, { onDelete: 'cascade' }),
   recipeId: uuid('recipe_id').notNull().references(() => recipes.id, { onDelete: 'cascade' }),
 }, (table) => [
   uniqueIndex('uq_user_favorite').on(table.userId, table.recipeId),
   index('idx_user_favorites_user').on(table.userId),
+  index('idx_user_favorites_household').on(table.householdId),
 ])
 
 // ─── 8. menus ───────────────────────────────────────────────
 export const menus = pgTable('menus', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** PR 1B scope key. See `user_favorites.householdId` for the lifecycle note. */
+  householdId: uuid('household_id').references(() => households.id, { onDelete: 'cascade' }),
   weekStart: date('week_start').notNull(),
   days: jsonb('days').notNull(),
   locked: jsonb('locked').default({}),
@@ -261,16 +272,21 @@ export const menus = pgTable('menus', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => [
   index('idx_menus_user_week').on(table.userId, table.weekStart),
+  index('idx_menus_household_week').on(table.householdId, table.weekStart),
 ])
 
 // ─── 9. shopping_lists ──────────────────────────────────────
 export const shoppingLists = pgTable('shopping_lists', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** PR 1B scope key. See `user_favorites.householdId` for the lifecycle note. */
+  householdId: uuid('household_id').references(() => households.id, { onDelete: 'cascade' }),
   menuId: uuid('menu_id').references(() => menus.id, { onDelete: 'set null' }),
   items: jsonb('items').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-})
+}, (table) => [
+  index('idx_shopping_lists_household').on(table.householdId),
+])
 
 // ─── 10. menu_logs ──────────────────────────────────────────
 export const menuLogs = pgTable('menu_logs', {

@@ -57,4 +57,18 @@ export const env = {
     process.env.IMAGE_GEN_MONTHLY_LIMIT || '20',
     10,
   ),
+  /**
+   * PR 1B feature flag. When `true`, menu/shopping/favorites reads filter by
+   * `household_id` so every member of a shared household sees the same
+   * rows. When `false` (default in prod), reads stay user-scoped — same
+   * behaviour as pre-PR-1B. Inserts always populate both columns so a
+   * flag flip is a no-op for the writer.
+   *
+   * Default is OFF in prod for safety; dev / test default ON so the new
+   * scope is exercised in the test suite.
+   */
+  SHARED_HOUSEHOLD_SCOPE:
+    process.env.SHARED_HOUSEHOLD_SCOPE !== undefined
+      ? process.env.SHARED_HOUSEHOLD_SCOPE === 'true'
+      : process.env.NODE_ENV !== 'production',
 }

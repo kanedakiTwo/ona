@@ -14,6 +14,7 @@ import { findRecipeForSlot, normaliseEquipment, type RecipeWithIngredients } fro
 import { getMemoryForUser } from '../services/userMemoryStore.js'
 import { detectSeason } from '@ona/shared'
 import { recipeIngredients, ingredients, recipes, userFavorites } from '../db/schema.js'
+import { resolveScope, scopeWhere, getPrimaryHouseholdId } from '../services/scopeResolver.js'
 
 const router = Router()
 
@@ -74,6 +75,12 @@ router.post('/menu/generate', validate(generateMenuSchema), async (req, res) => 
   try {
     const { userId, weekStart, customTemplate } = req.body
 
+    // PR 1B: resolve scope once for the whole handler. Reads filter by
+    // household when the flag is on; writes dual-populate `household_id`
+    // either way so the column stays consistent.
+    const scope = await resolveScope(userId)
+    const householdId = await getPrimaryHouseholdId(userId)
+
     // Preserve the user's manual shaping across regenerate: if a menu for
     // this week already exists, carry its bannedRecipeIds + skippedDays
     // into the new generation. The previous menu row stays in the DB as
@@ -84,7 +91,7 @@ router.post('/menu/generate', validate(generateMenuSchema), async (req, res) => 
         skippedDays: menus.skippedDays,
       })
       .from(menus)
-      .where(and(eq(menus.userId, userId), eq(menus.weekStart, weekStart)))
+      .where(and(scopeWhere(menus.userId, menus.householdId, scope), eq(menus.weekStart, weekStart)))
       .orderBy(desc(menus.createdAt))
       .limit(1)
     const carryBanned = new Set<string>(previous?.bannedRecipeIds ?? [])
@@ -108,6 +115,7 @@ router.post('/menu/generate', validate(generateMenuSchema), async (req, res) => 
       .insert(menus)
       .values({
         userId,
+        householdId,
         weekStart,
         days,
         locked: {},
@@ -146,6 +154,7 @@ router.use(authMiddleware)
 router.get('/menu/:userId/history', async (req: AuthRequest, res) => {
   try {
     const userId = String(req.params.userId)
+    const scope = await resolveScope(userId)
 
     const results = await db
       .select({
@@ -154,7 +163,7 @@ router.get('/menu/:userId/history', async (req: AuthRequest, res) => {
         createdAt: menus.createdAt,
       })
       .from(menus)
-      .where(eq(menus.userId, userId))
+      .where(scopeWhere(menus.userId, menus.householdId, scope))
       .orderBy(menus.createdAt)
 
     res.json(results.reverse())
@@ -169,11 +178,12 @@ router.get('/menu/:userId/:weekId', async (req: AuthRequest, res) => {
   try {
     const userId = String(req.params.userId)
     const weekId = String(req.params.weekId)
+    const scope = await resolveScope(userId)
 
     const [menu] = await db
       .select()
       .from(menus)
-      .where(and(eq(menus.userId, userId), eq(menus.weekStart, weekId)))
+      .where(and(scopeWhere(menus.userId, menus.householdId, scope), eq(menus.weekStart, weekId)))
       .orderBy(desc(menus.createdAt))
       .limit(1)
 
@@ -288,11 +298,13 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       ? (timeValue[SPANISH_DAY_KEYS[dayIndex]] ?? null)
       : null
 
-    // Fetch favorites
+    // Fetch favorites — household-scoped when the flag is on so the
+    // matcher boosts recipes any household member has starred.
+    const favScope = await resolveScope(menu.userId)
     const favRows = await db
       .select({ recipeId: userFavorites.recipeId })
       .from(userFavorites)
-      .where(eq(userFavorites.userId, menu.userId))
+      .where(scopeWhere(userFavorites.userId, userFavorites.householdId, favScope))
 
     const favoriteRecipeIds = new Set<string>(favRows.map((f: any) => f.recipeId))
 

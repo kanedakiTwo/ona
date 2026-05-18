@@ -43,6 +43,14 @@ vi.mock('../services/advisor.js', () => ({
     trend: 'stable',
   })),
 }))
+// Scope resolver: keep tests user-scoped so the existing mock-db queues stay
+// valid. Per-skill behaviour is unchanged; scope branching is exercised by
+// `scopeResolver.test.ts`.
+vi.mock('../services/scopeResolver.js', () => ({
+  resolveScope: vi.fn(async (userId: string) => ({ kind: 'user', value: userId })),
+  scopeWhere: vi.fn(() => ({ /* drizzle SQL stub — proxy db ignores it */ })),
+  getPrimaryHouseholdId: vi.fn(async () => null),
+}))
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 

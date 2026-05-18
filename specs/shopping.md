@@ -69,6 +69,7 @@ Both toggle endpoints flip the field (no payload value used) and return the full
 - Export format is plain text suitable for paste into messaging apps; it preserves aisle grouping
 - Aisle assignment falls back to `otros` when `ingredient.aisle` is unset; curators are nudged to fill the column
 - Check / stock mutations work offline; the request is held in the PWA queue until reconnect. The local UI updates optimistically and a "Pendiente de sincronizar" indicator shows while pending
+- **Household scope (PR 1B):** shopping lists carry both `user_id` and `household_id`. Reads + access checks on `POST /shopping-list/:listId/regenerate` honour the env flag `SHARED_HOUSEHOLD_SCOPE`; with the flag on, any household member can regenerate the household's list. See [Household](./household.md)
 
 ## Related specs
 

@@ -1,6 +1,6 @@
 # Household
 
-**Status:** PR 1 Part A shipped. PR 1 Part B (scope flip) pending.
+**Status:** PR 1 Part A shipped. PR 1 Part B (scope flip behind feature flag) shipped — default OFF in production.
 
 A "household" is the shared unit that owns menus, shopping lists, favourites and pantry stock. Every authed user belongs to exactly one **primary** household, accessible via `users.primary_household_id`. New users get a solo household auto-created at `/register` so every authed read has a valid scope from the first request.
 
@@ -58,11 +58,50 @@ The 0011 migration includes an **idempotent backfill** (NOT EXISTS guards) so ev
 - `/invites/[token]` — public preview page; if the visitor isn't authed, the accept button routes through `/register?next=/invites/:token`.
 - `/profile` links to `/profile/casa` from the "Memoria del asistente" section's button row.
 
+## PR 1B — household-scoped reads (feature-flagged)
+
+PR 1B added a parallel `household_id` foreign key to `menus`, `shopping_lists` and `user_favorites`, backfilled from `users.primary_household_id` in migration `0012_pr1b_household_scope.sql`. New writes dual-populate both `user_id` (legacy) and `household_id` (new) so the column never drifts. Reads pass through a single helper:
+
+```ts
+import { resolveScope, scopeWhere } from '../services/scopeResolver.js'
+
+const scope = await resolveScope(userId)              // env-flag aware
+db.select().from(menus).where(scopeWhere(menus.userId, menus.householdId, scope))
+```
+
+Behaviour matrix:
+
+| `SHARED_HOUSEHOLD_SCOPE` | Behaviour |
+|--------------------------|-----------|
+| `false` (prod default) | Reads filter by `user_id` — pre-PR-1B behaviour exactly |
+| `true` (dev/test default) | Reads filter by `household_id` — any member sees the household's rows |
+
+The flag defaults OFF in production (`NODE_ENV='production'` ⇒ `false`) and ON in dev/test (`NODE_ENV='development'` ⇒ `true`). Set `SHARED_HOUSEHOLD_SCOPE=true` on Railway when ready to flip the switch — no code change or redeploy beyond an env var.
+
+Affected surfaces:
+- `POST /menu/generate`, `GET /menu/:userId/:weekId`, `GET /menu/:userId/history`
+- `GET /shopping-list/:menuId`, `POST /shopping-list/:listId/regenerate` (also the access check — household members can regenerate each other's lists)
+- `GET /user/:id/recipes` (favorites column), favorite toggle still keys on the actual user but household reads aggregate across members
+- The matcher (`menuGenerator.ts`) — favorites boost now spans the household
+- The assistant skills surface (`get_todays_menu`, `get_shopping_list`, `toggle_favorite`, `get_pantry_stock`, `mark_in_stock`, etc.) — same scope rules apply
+
+The favorite **toggle** stays per-user (each member can independently star/unstar). The household-aware **read** unions every member's stars. So if A stars X, the household reads "X is favorited"; B clicking unstar only removes their own row (which didn't exist), and tests verify no duplicate is inserted (unique constraint on `(user_id, recipe_id)`).
+
+Edge cases:
+- `household_id` is nullable for the rollout window. Existing rows are backfilled; new inserts dual-write. If a row somehow lands with `household_id IS NULL`, the read path falls back to `user_id` via `pickScope` (covered by unit test).
+- The shopping-list access check (`POST /shopping-list/:listId/regenerate`) accepts the request if (a) the requester is the list's owner OR (b) the requester's primary household matches the list's `household_id` (only when flag is on). Cross-household requests still 403.
+
 ## Source
 
-- `apps/api/src/db/schema.ts` — `households`, `household_members`, `household_invites`, `users.primary_household_id`
+- `apps/api/src/db/schema.ts` — `households`, `household_members`, `household_invites`, `users.primary_household_id`, plus `household_id` on `menus`/`shopping_lists`/`user_favorites`
 - `apps/api/src/db/migrations/0011_married_speedball.sql` — tables + backfill
+- `apps/api/src/db/migrations/0012_pr1b_household_scope.sql` — household_id columns + idempotent backfill
 - `apps/api/src/services/householdStore.ts` — all business logic (load/rename/invite/accept/revoke/remove/leave)
+- `apps/api/src/services/scopeResolver.ts` — `pickScope`, `resolveScope`, `scopeWhere`, `getPrimaryHouseholdId`
+- `apps/api/src/config/env.ts` — `SHARED_HOUSEHOLD_SCOPE` flag (defaults OFF in prod, ON in dev/test)
+- `apps/api/src/tests/scopeResolver.test.ts` + `householdScopeSmoke.test.ts` — pure-logic regressions for the flag matrix
+- `apps/api/src/routes/menus.ts`, `apps/api/src/routes/shopping.ts`, `apps/api/src/routes/recipes.ts` — readers wired through `scopeWhere`
+- `apps/api/src/services/menuGenerator.ts`, `apps/api/src/services/assistant/skills.ts` — scope-aware favorites + pantry
 - `apps/api/src/routes/households.ts` — REST surface; exports `publicHouseholdRouter` (preview) + default router (everything else)
 - `apps/api/src/routes/auth.ts` — calls `createSoloHouseholdForNewUser` at register-time
 - `apps/api/src/index.ts` — mount order (`publicHouseholdRouter` before `userRoutes`)

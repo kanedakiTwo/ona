@@ -4,6 +4,7 @@ import { db } from '../db/connection.js'
 import { menus, shoppingLists, users } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { generateShoppingList } from '../services/shoppingList.js'
+import { getPrimaryHouseholdId, resolveScope } from '../services/scopeResolver.js'
 import {
   householdMultiplier,
   householdSizeToCounts,
@@ -80,11 +81,14 @@ router.get('/shopping-list/:menuId', async (req: AuthRequest, res) => {
     // Generate the shopping list
     const items = await generateShoppingList(days, multiplier, db)
 
-    // Save to shopping_lists table
+    // Save to shopping_lists table — dual-write the menu's household id
+    // (resolves on user when missing) so household members share the list.
+    const householdId = menu.householdId ?? (await getPrimaryHouseholdId(menu.userId))
     const [list] = await db
       .insert(shoppingLists)
       .values({
         userId: menu.userId,
+        householdId,
         menuId,
         items,
       })
@@ -199,7 +203,17 @@ router.post('/shopping-list/:listId/regenerate', async (req: AuthRequest, res) =
       return
     }
 
-    if (list.userId !== userId) {
+    // Access check: legacy = list.userId == userId. Household-scoped = any
+    // member of the list's household can regenerate. `resolveScope` reads
+    // the requester's primary household; if that matches the list's
+    // household_id (or list belongs to the requester directly), allow.
+    const requesterScope = await resolveScope(userId)
+    const userOwns = list.userId === userId
+    const sameHousehold =
+      requesterScope.kind === 'household' &&
+      list.householdId != null &&
+      list.householdId === requesterScope.value
+    if (!userOwns && !sameHousehold) {
       res.status(403).json({ error: 'Forbidden' })
       return
     }

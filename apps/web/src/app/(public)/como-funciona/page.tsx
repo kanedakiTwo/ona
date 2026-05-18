@@ -5,9 +5,11 @@ import Link from "next/link"
 import { motion, useScroll, useTransform, useInView } from "motion/react"
 import { ArrowUpRight, Plus, Minus } from "lucide-react"
 
-const STEP1_IMG = "https://images.unsplash.com/photo-1556909114-44e3e9399a2c?w=900&q=80&auto=format&fit=crop"
-const STEP2_IMG = "https://images.unsplash.com/photo-1556909212-d5b604d0c90d?w=900&q=80&auto=format&fit=crop"
-const STEP3_IMG = "https://images.unsplash.com/photo-1543339531-d6c87f0a6f4f?w=900&q=80&auto=format&fit=crop"
+// Hosted locally under /public/landing/ — Unsplash had retired two of the
+// previous hot-linked photos, the page rendered with broken images.
+const STEP1_IMG = "/landing/step-01.jpg"
+const STEP2_IMG = "/landing/step-02.jpg"
+const STEP3_IMG = "/landing/step-03.jpg"
 
 const FAQS = [
   {
@@ -147,12 +149,12 @@ function StepRow({
         animate={inView ? { opacity: 1, y: 0 } : {}}
         transition={{ duration: 0.9, delay: 0.15, ease: [0.19, 1, 0.22, 1] }}
       >
-        <div className="font-display text-[9rem] leading-none text-[#C65D38]/15 md:text-[11rem]">
+        <div className="font-display text-[9rem] leading-tight text-[#C65D38]/15 md:text-[11rem]">
           {step.num}
         </div>
         <div className="-mt-12 md:-mt-16">
           <div className="text-eyebrow mb-3 text-[#C65D38]">{step.eyebrow}</div>
-          <h3 className="text-editorial-md">{step.title}</h3>
+          <h3 className="text-editorial-md leading-tight">{step.title}</h3>
           <p className="mt-6 max-w-md text-base leading-relaxed text-[#4A4239]">{step.desc}</p>
           <hr className="divider-dotted my-8 max-w-md" />
           <p className="max-w-md text-sm leading-relaxed text-[#7A7066]">{step.detail}</p>

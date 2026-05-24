@@ -498,6 +498,10 @@ router.post(
 
       const writeInput: RecipeWriteInput = {
         name: extracted.name,
+        // Persist the cover photo captured by the extractor (JSON-LD image,
+        // og:image fallback, or YouTube thumbnail). Null when the source
+        // had nothing usable.
+        imageUrl: extracted.imageUrl ?? null,
         servings: extracted.servings,
         prepTime: extracted.prepTime ?? null,
         cookTime: extracted.cookTime ?? null,

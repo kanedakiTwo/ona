@@ -115,6 +115,7 @@ export async function extractRecipeFromUrl(
 
   return {
     name: raw.name,
+    imageUrl: raw.imageUrl ?? null,
     servings,
     servingsConfidence,
     prepTime: raw.prepTime,

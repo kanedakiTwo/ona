@@ -264,6 +264,7 @@ export function parseJsonLdRecipe(html: string): RawExtractedRecipe | null {
 
     return {
       name,
+      imageUrl: parseSchemaImage(node.image),
       prepTime: parseIsoDurationToMinutes(node.prepTime),
       cookTime: parseIsoDurationToMinutes(node.cookTime),
       servings: parseServings(node.recipeYield),
@@ -274,6 +275,58 @@ export function parseJsonLdRecipe(html: string): RawExtractedRecipe | null {
       suggestedSeasons: ['spring', 'summer', 'autumn', 'winter'],
       tags: [],
     }
+  }
+  return null
+}
+
+/**
+ * schema.org `Recipe.image` is one of: a URL string, an `ImageObject`
+ * (`{ url: string }`), or an array of either. We pick the first usable URL.
+ * Returns null when nothing parses to a valid http(s) URL.
+ */
+export function parseSchemaImage(value: unknown): string | null {
+  const pickOne = (v: unknown): string | null => {
+    if (typeof v === 'string' && /^https?:\/\//.test(v.trim())) {
+      return v.trim()
+    }
+    if (v && typeof v === 'object') {
+      const url = (v as Record<string, unknown>).url
+      if (typeof url === 'string' && /^https?:\/\//.test(url.trim())) {
+        return url.trim()
+      }
+    }
+    return null
+  }
+  if (Array.isArray(value)) {
+    for (const v of value) {
+      const u = pickOne(v)
+      if (u) return u
+    }
+    return null
+  }
+  return pickOne(value)
+}
+
+/**
+ * Best-effort extraction of an article hero image from the page's meta tags.
+ * Tries `og:image` / `og:image:secure_url` first, falls back to
+ * `twitter:image` and `<link rel="image_src">`. Used when JSON-LD didn't
+ * provide one (or wasn't present) so the URL importer still captures a
+ * cover photo for the recipe row.
+ */
+export function extractOgImage(html: string): string | null {
+  // Strip ordering matters: match `property|name` either way and tolerate
+  // single vs double-quoted attributes.
+  const patterns = [
+    /<meta[^>]+(?:property|name)=["'](?:og:image:secure_url|og:image)["'][^>]*content=["']([^"']+)["']/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["'](?:og:image:secure_url|og:image)["']/i,
+    /<meta[^>]+(?:property|name)=["']twitter:image["'][^>]*content=["']([^"']+)["']/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["']twitter:image["']/i,
+    /<link[^>]+rel=["']image_src["'][^>]*href=["']([^"']+)["']/i,
+  ]
+  for (const p of patterns) {
+    const m = html.match(p)
+    if (m && /^https?:\/\//.test(m[1].trim())) return m[1].trim()
   }
   return null
 }
@@ -333,12 +386,21 @@ export async function extractArticleRecipe(
 ): Promise<ArticleExtractionResult> {
   const fetcher = deps.fetchArticle ?? defaultFetchArticle
   const html = await fetcher(url)
+  const ogImage = extractOgImage(html)
 
-  // Tier 1: JSON-LD (free, deterministic).
+  // Tier 1: JSON-LD (free, deterministic). If the JSON-LD blob doesn't
+  // carry an image, fall back to the page's og:image so the recipe still
+  // gets a hero photo.
   const jsonLd = parseJsonLdRecipe(html)
-  if (jsonLd) return { isRecipe: true, raw: jsonLd }
+  if (jsonLd) {
+    return {
+      isRecipe: true,
+      raw: { ...jsonLd, imageUrl: jsonLd.imageUrl ?? ogImage },
+    }
+  }
 
-  // Tier 2: Readability + LLM.
+  // Tier 2: Readability + LLM. The LLM never returns an image (it only
+  // sees plain text), so we attach og:image directly.
   const text = await readableText(html)
   if (text.length < 200) {
     return {
@@ -346,5 +408,7 @@ export async function extractArticleRecipe(
       reason: 'No se pudo extraer suficiente contenido del artículo.',
     }
   }
-  return await deps.provider.extractRecipeFromText(text, 'article')
+  const llm = await deps.provider.extractRecipeFromText(text, 'article')
+  if (!llm.isRecipe) return llm
+  return { isRecipe: true, raw: { ...llm.raw, imageUrl: ogImage } }
 }

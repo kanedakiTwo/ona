@@ -16,6 +16,12 @@ import { UNITS } from '@ona/shared'
 // ─── Provider interface (swap implementation to change AI backend) ───
 export interface RawExtractedRecipe {
   name: string
+  /** Source image URL captured by the extractor (schema.org Recipe.image,
+   * og:image, twitter:image, or YouTube thumbnail). Null when the source
+   * provided nothing usable. The URL importer's route handler persists this
+   * directly into `recipes.image_url`; users can later swap it with the
+   * "Regenerar imagen" endpoint per the recipes spec. */
+  imageUrl?: string | null
   prepTime: number | null
   cookTime?: number | null
   servings?: number | null

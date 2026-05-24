@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Search, X } from "lucide-react"
+import Link from "next/link"
+import { Search, X, Plus } from "lucide-react"
 import { useRecipes } from "@/hooks/useRecipes"
 import type { Recipe } from "@ona/shared"
 
@@ -103,8 +104,24 @@ export function RecipePickerSheet({
             </div>
           )}
           {!isLoading && filtered.length === 0 && (
-            <div className="py-8 text-center text-[12px] italic text-[#7A7066]">
-              Sin resultados para “{query}”.
+            <div className="py-8 text-center">
+              <p className="text-[12px] italic text-[#7A7066]">
+                {query.trim()
+                  ? `Sin resultados para “${query.trim()}”.`
+                  : "Sin recetas en el catálogo todavía."}
+              </p>
+              <Link
+                href={
+                  query.trim()
+                    ? `/recipes/new?name=${encodeURIComponent(query.trim())}`
+                    : "/recipes/new"
+                }
+                onClick={onClose}
+                className="mt-4 inline-flex items-center gap-2 rounded-full bg-[#1A1612] px-4 py-2 text-[13px] font-medium text-[#FAF6EE] transition-colors hover:bg-[#2D6A4F]"
+              >
+                <Plus size={14} />
+                Crear receta{query.trim() ? ` “${query.trim()}”` : ""}
+              </Link>
             </div>
           )}
           <ul className="divide-y divide-[#DDD6C5]">

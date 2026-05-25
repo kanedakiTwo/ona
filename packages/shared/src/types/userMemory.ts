@@ -60,6 +60,17 @@ export const MEMORY_KEYS = [
   // conflict ("creo que la grasa saturada es buena" overrides any default
   // that suggests otherwise).
   'nutrition_principles',
+  // User's prep-time habits — the bridge between recipe ingredients
+  // that need anticipation (frozen fish, dried legumes, cold-rise dough)
+  // and the notification scheduler (PR-D). Each entry is one short
+  // Spanish sentence describing a consistent habit, e.g.
+  //   ["Siempre congelo el pescado",
+  //    "Pongo las legumbres en remojo la noche antes",
+  //    "Saco la carne 30 min antes para que tempere"]
+  // The assistant can write to this via `update_memory` after inferring
+  // the habit mid-conversation. The scheduler reads it to decide which
+  // ingredient prep events deserve a heads-up notification.
+  'prep_habits',
 ] as const
 
 export type MemoryKey = (typeof MEMORY_KEYS)[number]
@@ -100,6 +111,7 @@ export const MEMORY_VALUE_SCHEMAS: Record<MemoryKey, z.ZodTypeAny> = {
   ),
   notes: z.array(z.string().min(1)),
   nutrition_principles: z.array(z.string().min(3).max(280)),
+  prep_habits: z.array(z.string().min(3).max(280)),
 }
 
 // ─── Wire shape ─────────────────────────────────────────────────
@@ -190,6 +202,18 @@ export function buildMemoryDigestText(memory: UserMemory): string {
     // the model doesn't try to "correct" the user against their own beliefs.
     lines.push(
       `Principios nutricionales propios del usuario (RESPÉTALOS aunque entren en conflicto con tus 10 mandamientos por defecto):\n  - ${principles.join('\n  - ')}`,
+    )
+  }
+
+  const habits = (m.prep_habits?.value as string[] | undefined) ?? []
+  if (habits.length > 0) {
+    // Drives the notification scheduler: if the user says "siempre
+    // congelo el pescado", the assistant knows to anticipate defrost
+    // alerts when fish is in next week's menu. Surface them as
+    // first-person habit statements so the LLM can write to them via
+    // `update_memory` whenever it picks one up in conversation.
+    lines.push(
+      `Hábitos de preparación del usuario (úsalos para sugerir tiempos y avisos):\n  - ${habits.join('\n  - ')}`,
     )
   }
 

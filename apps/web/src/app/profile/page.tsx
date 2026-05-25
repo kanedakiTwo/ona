@@ -902,22 +902,19 @@ function PushNotificationsCard() {
                 >
                   {isWorking ? 'Activando…' : 'Activar notificaciones'}
                 </button>
-                {/* Recovery escape hatch: a previous deploy left some users
-                    with a broken service worker stuck in a failed-install
-                    loop. Unregistering + clearing caches + reloading fixes
-                    it in one tap, no DevTools required. */}
-                {(state === 'error' ||
-                  (error && error.includes('timeout@'))) && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      resetServiceWorker().catch(() => {})
-                    }}
-                    className="rounded-full border border-[#C65D38] bg-[#FFFEFA] px-3 py-1.5 text-[11px] font-medium text-[#C65D38] transition-all active:scale-95"
-                  >
-                    Reparar service worker
-                  </button>
-                )}
+                {/* Recovery escape hatch — always shown next to the activate
+                    button while subscribe hasn't succeeded. Some users have
+                    a stale broken SW from a previous deploy; one tap nukes
+                    everything and reloads cleanly. */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetServiceWorker().catch(() => {})
+                  }}
+                  className="rounded-full border border-[#C65D38] bg-[#FFFEFA] px-3 py-1.5 text-[11px] font-medium text-[#C65D38] transition-all active:scale-95"
+                >
+                  Reparar service worker
+                </button>
               </>
             )}
           </div>

@@ -42,6 +42,32 @@ export function urlBase64ToUint8Array(base64String: string): Uint8Array {
 }
 
 /**
+ * Resolve a `ServiceWorkerRegistration` for our `/sw.js`, registering it
+ * if absent. We avoid `navigator.serviceWorker.ready` because it can hang
+ * indefinitely when the registration's `active` field is null (Chrome
+ * sometimes leaves a registration in `installing` state and `ready` never
+ * fires). `register()` is idempotent — passing the same URL hands back
+ * the existing registration without re-installing.
+ *
+ * After register, we explicitly wait for the registration to have an
+ * `active` worker (or `installing`/`waiting` whose `statechange` lands
+ * on `activated`).
+ */
+export async function ensureActiveRegistration(): Promise<ServiceWorkerRegistration> {
+  const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" })
+  if (reg.active) return reg
+  const sw = reg.installing ?? reg.waiting
+  if (!sw) return reg
+  await new Promise<void>((resolve) => {
+    if (sw.state === "activated") return resolve()
+    sw.addEventListener("statechange", () => {
+      if (sw.state === "activated") resolve()
+    })
+  })
+  return reg
+}
+
+/**
  * Returns an active PushSubscription, prompting the user for permission
  * if they haven't granted it yet. Caller is responsible for sending the
  * resulting object to the API via `POST /push/subscribe`.
@@ -54,7 +80,7 @@ export function urlBase64ToUint8Array(base64String: string): Uint8Array {
 export async function getOrCreatePushSubscription(
   vapidPublicKey: string,
 ): Promise<PushSubscription> {
-  const reg = await navigator.serviceWorker.ready
+  const reg = await ensureActiveRegistration()
   const existing = await reg.pushManager.getSubscription()
   if (existing) return existing
 

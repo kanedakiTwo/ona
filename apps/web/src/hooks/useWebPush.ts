@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { api } from "@/lib/api"
 import {
+  ensureActiveRegistration,
   getOrCreatePushSubscription,
   isWebPushSupported,
 } from "@/lib/webPush"
@@ -48,7 +49,10 @@ export function useWebPush() {
     let cancelled = false
     ;(async () => {
       try {
-        const reg = await navigator.serviceWorker.ready
+        // Same `ready`-hangs-forever caveat as in `subscribe` — use the
+        // register-then-wait helper instead so initial state probing
+        // doesn't get stuck either.
+        const reg = await ensureActiveRegistration()
         const sub = await reg.pushManager.getSubscription()
         if (!cancelled) setState(sub ? "subscribed" : "idle")
       } catch {
@@ -78,8 +82,11 @@ export function useWebPush() {
     try {
       console.log("[useWebPush] subscribe start, PUBLIC_KEY len=", PUBLIC_KEY.length)
       phase = "sw-ready"
-      const reg = await withTimeout(navigator.serviceWorker.ready)
-      console.log("[useWebPush] SW ready, scope=", reg.scope)
+      // Register-then-wait-for-active beats `navigator.serviceWorker.ready`,
+      // which can hang forever when a Chrome registration is left in
+      // `installing` state. register() is idempotent.
+      const reg = await withTimeout(ensureActiveRegistration())
+      console.log("[useWebPush] SW ready, scope=", reg.scope, "active=", !!reg.active)
       phase = "get-existing"
       const existing = await withTimeout(reg.pushManager.getSubscription())
       if (!existing) {
@@ -137,7 +144,7 @@ export function useWebPush() {
   const unsubscribe = useCallback(async () => {
     setError(null)
     try {
-      const reg = await navigator.serviceWorker.ready
+      const reg = await ensureActiveRegistration()
       const sub = await reg.pushManager.getSubscription()
       if (sub) {
         await sub.unsubscribe()

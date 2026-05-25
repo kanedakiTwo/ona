@@ -69,6 +69,10 @@ app.use(authRoutes)
 app.use(publicHouseholdRouter)
 app.use(recipeRoutes)
 app.use(ingredientRoutes)
+// pushRoutes is mostly auth-protected (per-route authMiddleware) but the
+// `GET /push/public-key` endpoint is intentionally public — must be
+// mounted BEFORE userRoutes so the catch-all auth there doesn't block it.
+app.use(pushRoutes)
 app.use(userRoutes)
 app.use(menuRoutes)
 app.use(shoppingRoutes)
@@ -81,7 +85,6 @@ app.use(memoryRoutes)
 app.use(householdRoutes)
 app.use(cookLogRoutes)
 app.use(staplesRoutes)
-app.use(pushRoutes)
 
 // Error handler
 app.use(errorHandler)

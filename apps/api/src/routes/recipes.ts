@@ -148,6 +148,13 @@ interface RecipeRow {
 interface RecipeCard {
   id: string
   name: string
+  /** Null for system / ONA-curated recipes; the owning user's id otherwise.
+   * The frontend uses this for both the ownership badge ("ONA" vs "Tuya")
+   * and the scope segmenter ("Todas" / "Mis recetas" / "Catálogo ONA").
+   * Omitting it (the previous behaviour) made every card look authorless
+   * to the page logic — badge said ONA but the "Catálogo ONA" filter
+   * found 0 results, and "Mis recetas" was always empty. */
+  authorId: string | null
   imageUrl: string | null
   prepTime: number | null
   cookTime: number | null
@@ -166,6 +173,7 @@ function toCard(row: RecipeRow): RecipeCard {
   return {
     id: row.id,
     name: row.name,
+    authorId: row.authorId,
     imageUrl: row.imageUrl,
     prepTime: row.prepTime,
     cookTime: row.cookTime,

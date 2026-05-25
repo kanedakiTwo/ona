@@ -391,10 +391,11 @@ describe('recipes route smoke', () => {
         expect(r.status).toBe(200)
         const cards = await r.json()
         expect(Array.isArray(cards)).toBe(true)
-        // Drill into each card's detail to confirm authorId is null. Cards
-        // themselves don't carry authorId by design (spec/recipes.md card shape),
-        // so we use the detail endpoint — same one /recipes-ona/[id] uses.
+        // Every card must explicitly carry `authorId === null` — the
+        // scope segmenter on /recipes and the ownership badge both rely
+        // on it. The detail endpoint is double-checked for paranoia.
         for (const card of cards) {
+          expect(card.authorId).toBe(null)
           const d = await fetch(`${API_URL}/recipes/${card.id}`).then((x) => x.json())
           expect(d.authorId).toBe(null)
         }

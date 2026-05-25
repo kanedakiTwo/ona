@@ -540,7 +540,7 @@ export default function ProfilePage() {
           Tócalo para hablar con Ona en manos libres.{' '}
           {voiceMode.wakeAvailable
             ? <>Si además activas <em>“Hola Ona”</em>, podrás abrir el modo voz sin tocar nada.</>
-            : <span className="text-[#A39A8E]">La activación por “Hola Ona” llegará en cuanto se apruebe la cuenta de wake-word.</span>}
+            : <span className="text-[#A39A8E]">La activación por “Hola Ona” llegará cuando el modelo de wake-word esté entrenado.</span>}
         </p>
 
         {/* Master toggle — voice mode (FAB) */}

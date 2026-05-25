@@ -117,7 +117,11 @@ export default function VoiceProvider({ children }: { children: ReactNode }) {
   }, [session])
 
   const wakeAccessKey = process.env.NEXT_PUBLIC_PICOVOICE_ACCESS_KEY ?? ''
-  const wakeAvailable = wakeAccessKey.length > 0
+  const wakeEngineEnv = (process.env.NEXT_PUBLIC_WAKE_WORD_ENGINE ?? '').toLowerCase()
+  const wakeAvailable =
+    wakeEngineEnv === 'openwakeword' ||
+    wakeEngineEnv === 'porcupine' ||
+    wakeAccessKey.length > 0
 
   const wake = useWakeWord({
     enabled:

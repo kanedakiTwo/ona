@@ -6,6 +6,7 @@ import { AuthProvider } from "@/lib/auth"
 import Navbar from "@/components/shared/Navbar"
 import OfflineBanner from "@/components/pwa/OfflineBanner"
 import InstallSheet from "@/components/pwa/InstallSheet"
+import { ServiceWorkerRegistration } from "@/components/pwa/ServiceWorkerRegistration"
 import { PageTransition } from "@/components/pwa/PageTransition"
 import { SwipeNavigator } from "@/components/pwa/SwipeNavigator"
 import VoiceProvider from "@/components/voice/VoiceProvider"
@@ -102,6 +103,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         ))}
       </head>
       <body>
+        <ServiceWorkerRegistration />
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
             {isPublicRoute ? (

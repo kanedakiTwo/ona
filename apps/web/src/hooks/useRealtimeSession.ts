@@ -106,13 +106,18 @@ export function useRealtimeSession(options: UseRealtimeSessionOptions): UseRealt
         setPartialUserText('')
         break
       }
-      case 'response.audio_transcript.delta': {
+      // GA event names: response.audio_transcript.* renamed to
+      // response.output_audio_transcript.*. Keep the legacy names alive
+      // for one release in case any cached SW serves an older client.
+      case 'response.audio_transcript.delta':
+      case 'response.output_audio_transcript.delta': {
         if (typeof event.delta === 'string') {
           setPartialAssistantText(prev => prev + event.delta)
         }
         break
       }
-      case 'response.audio_transcript.done': {
+      case 'response.audio_transcript.done':
+      case 'response.output_audio_transcript.done': {
         const text = String(event.transcript ?? '').trim()
         if (text) {
           setTranscripts(prev => [...prev, { role: 'assistant', content: text }])
@@ -313,7 +318,10 @@ export function useRealtimeSession(options: UseRealtimeSessionOptions): UseRealt
               item: {
                 type: 'message',
                 role: turn.role,
-                content: [{ type: turn.role === 'user' ? 'input_text' : 'text', text: turn.content }],
+                // GA renamed assistant content type: text → output_text
+                // (user side stays 'input_text'). See the Realtime
+                // GA migration guide.
+                content: [{ type: turn.role === 'user' ? 'input_text' : 'output_text', text: turn.content }],
               },
             })
           }

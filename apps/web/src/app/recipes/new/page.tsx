@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { Suspense, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/lib/auth"
 import { useCreateRecipe, useIngredients } from "@/hooks/useRecipes"
@@ -44,6 +44,18 @@ function emptyRow(): IngredientRow {
 }
 
 export default function NewRecipePage() {
+  // Next.js 15 requires `useSearchParams()` to be wrapped in <Suspense>
+  // because it bails out of static prerendering. We split the page in
+  // two so the bail-out is scoped to the part that actually reads the
+  // `?name=` query param.
+  return (
+    <Suspense fallback={null}>
+      <NewRecipePageInner />
+    </Suspense>
+  )
+}
+
+function NewRecipePageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   useAuth()

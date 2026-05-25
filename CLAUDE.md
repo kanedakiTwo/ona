@@ -129,6 +129,12 @@ ONA (Opinionated Nutritional Assistant) is a **mobile-first meal planner** for S
 
 When introducing a new system (e.g., notifications, admin panel, payments), add a new spec following the format described in [`/Users/alio/.claude/skills/spec/`](file:///Users/alio/.claude/skills/spec/). Keep it under 200 lines. Always add an entry to `specs/index.md` with relevant search keywords.
 
+## Backlog — Claude can build
+
+Code work the user has scoped but not requested yet — pick up next session unless the user explicitly redirects. Items are ordered top = next-pickup.
+
+- [ ] **Dynamic loading splash** — replace the current static loading state (the cream "ONA" wordmark blank page that shows while the app boots / chunks load) with a dynamic, editorial-feel animation. Plays with black on the cream background; uses geometric primitives (dots, drops) that slowly transform / morph into each other. Reference vibe: slow ink-in-water dispersion, calm and considered, NOT bouncy. Render with motion/react or `<canvas>` (SVG is fine too). Touches `apps/web/src/app/loading.tsx` (root) + any per-route `loading.tsx` that should inherit the same vibe.
+
 ## Todo Miguel
 
 This is the **single source of truth** for work that's pending on Miguel's side (out of Claude's reach: device tests, asset replacement, manual ops, third-party setup, etc).

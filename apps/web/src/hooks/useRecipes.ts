@@ -12,6 +12,8 @@ interface RecipeFilters {
   meal?: string
   season?: string
   perPage?: number
+  /** PR 8B-2: household-scoped custom-tag filter (AND across entries). */
+  customTags?: string[]
 }
 
 function buildQueryString(filters?: RecipeFilters): string {
@@ -21,6 +23,9 @@ function buildQueryString(filters?: RecipeFilters): string {
   if (filters.meal) params.set("meal", filters.meal)
   if (filters.season) params.set("season", filters.season)
   if (filters.perPage) params.set("perPage", String(filters.perPage))
+  for (const tag of filters.customTags ?? []) {
+    params.append("customTag", tag)
+  }
   const qs = params.toString()
   return qs ? `?${qs}` : ""
 }

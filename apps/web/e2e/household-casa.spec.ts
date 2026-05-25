@@ -8,9 +8,8 @@
  *   - their own row with role badge,
  *   - a button to create an invite that produces a shareable URL.
  *
- * This is the regression test for PR 1A — the page didn't exist before, so
- * the spec was guaranteed to fail. It pins the public-facing contract:
- * member list renders, invite generation surfaces a copyable URL.
+ * Regression test for PR 1A — without the household-management page this
+ * spec is guaranteed to fail.
  */
 
 import { test, expect } from '@playwright/test'
@@ -31,11 +30,12 @@ test('shows solo household and generates an invite link', async ({ page }) => {
   // The current user is the single owner — owner badge is visible.
   await expect(page.getByText(/owner|propietari/i).first()).toBeVisible()
 
-  // Click "Crear invitación" → an invite URL appears (contains /invites/).
-  const inviteBtn = page.getByRole('button', { name: /invitar|invitaci/i }).first()
-  await expect(inviteBtn).toBeVisible()
-  await inviteBtn.click()
+  // Two-step flow: first button opens the role-picker; second button
+  // ("Crear invitación") actually persists the invite and surfaces the URL.
+  await page.getByRole('button', { name: /invitar a alguien/i }).first().click()
+  await page.getByRole('button', { name: /crear invitaci/i }).first().click()
 
+  // The pending-invites list now carries an `/invites/<token>` URL.
   const inviteUrl = page.locator('text=/\\/invites\\//').first()
   await expect(inviteUrl).toBeVisible({ timeout: 8_000 })
 })

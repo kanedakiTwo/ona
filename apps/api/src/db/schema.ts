@@ -485,6 +485,121 @@ export const cookLogs = pgTable('cook_logs', {
   index('idx_cook_logs_recipe').on(t.recipeId),
 ])
 
+// ─── 24. recipe_photos (PR 8C) ────────────────────────────────
+// Multi-photo gallery per recipe. `recipes.image_url` stays as the
+// canonical hero shot; this table layers additional photos (cook
+// results, plating variations, "look how it came out"). Household-shared
+// so any member can upload; `uploaded_by_user_id` keeps the audit trail.
+//
+// Storage: same Railway volume as the AI-generated hero images
+// (`IMAGE_STORAGE_DIR` + `IMAGE_PUBLIC_URL_BASE`). One JPEG per row,
+// keyed by a UUID-named file.
+export const recipePhotos = pgTable('recipe_photos', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  recipeId: uuid('recipe_id').notNull().references(() => recipes.id, { onDelete: 'cascade' }),
+  /** Scope key — only callers in this household see / edit the photo. */
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  /** Author of the upload — kept for the audit even if the user is later deleted. */
+  uploadedByUserId: uuid('uploaded_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+  /** Public URL (`${IMAGE_PUBLIC_URL_BASE}/<uuid>.jpg`) — written by the upload route. */
+  imageUrl: text('image_url').notNull(),
+  /** Optional caption ("salió crujiente esta vez"). Up to 280 chars. */
+  caption: text('caption'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_recipe_photos_recipe').on(t.recipeId),
+  index('idx_recipe_photos_household').on(t.householdId),
+])
+
+// ─── 23. cookbooks (PR 8A) ────────────────────────────────────
+// Named groupings of recipes ("Favoritos de Sara", "Para diabéticos",
+// "Recetas de mi madre"). Household-shared — any member can create,
+// rename, add / remove recipes, delete. Recipes can belong to many
+// cookbooks; the join table `cookbook_recipes` enforces uniqueness per
+// (cookbook, recipe).
+export const cookbooks = pgTable('cookbooks', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  description: text('description'),
+  /** Single emoji or short symbol (≤ 8 chars) for the cover tile. */
+  emoji: text('emoji'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_cookbooks_household').on(t.householdId),
+])
+
+export const cookbookRecipes = pgTable('cookbook_recipes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  cookbookId: uuid('cookbook_id').notNull().references(() => cookbooks.id, { onDelete: 'cascade' }),
+  recipeId: uuid('recipe_id').notNull().references(() => recipes.id, { onDelete: 'cascade' }),
+  addedAt: timestamp('added_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_cookbook_recipes_cookbook_recipe').on(t.cookbookId, t.recipeId),
+  index('idx_cookbook_recipes_recipe').on(t.recipeId),
+])
+
+// ─── 22. pantry_items (PR 11) ─────────────────────────────────
+// Real pantry register — household-shared. Each row tracks quantity, unit,
+// and optional expiry for one ingredient (catalog row) OR one free-text
+// item (no `ingredientId`). The cook-log handler auto-decrements matching
+// rows when the user marks a meal cooked. With unit mismatch, we no-op
+// silently (cross-unit conversion lands in a follow-up).
+//
+// `(household_id, ingredient_id)` is unique when the catalog reference is
+// set — partial unique index — so a household can't accumulate duplicate
+// "100g rice" rows for the same catalog ingredient.
+export const pantryItems = pgTable('pantry_items', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  ingredientId: uuid('ingredient_id').references(() => ingredients.id, { onDelete: 'set null' }),
+  name: text('name').notNull(),
+  quantity: real('quantity').notNull().default(0),
+  unit: text('unit').notNull().default('u'),
+  /** Best-before date the user entered. null = no expiry tracked. */
+  expiresAt: date('expires_at'),
+  /** Bumped every time we decrement or the user edits. */
+  lastUpdatedAt: timestamp('last_updated_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_pantry_items_household').on(t.householdId),
+  // Partial unique index can't be expressed in drizzle today — enforced via
+  // a raw `CREATE UNIQUE INDEX … WHERE` in the migration file.
+])
+
+// ─── 21. recipe_notes (PR 7) ──────────────────────────────────
+// Per-household personal notes / 1-5 rating / substitutions on a recipe.
+// One row per (household, recipe). Household-scoped (not per-user) — a
+// couple sees one shared note. `last_edited_by_user_id` carries the
+// audit trail. The author-side `recipes.notes` / `recipes.substitutions`
+// columns are unchanged; this is the *consumer's* note about the recipe.
+export const recipeNotes = pgTable('recipe_notes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  recipeId: uuid('recipe_id').notNull().references(() => recipes.id, { onDelete: 'cascade' }),
+  /** Personal cooking notes. Up to 1000 chars (enforced at the route). */
+  notes: text('notes'),
+  /** 1..5 stars; null = not rated. Range enforced by check constraint. */
+  rating: integer('rating'),
+  /** Free-form swaps ("sin cebolla / con puerro"). Up to 1000 chars. */
+  substitutions: text('substitutions'),
+  /**
+   * PR 8B: per-(household, recipe) free-form tags. Lowercased + deduped
+   * at the route. Up to 10 tags, 30 chars each. Surfaced as filter chips
+   * in the catalog (follow-up). Default empty array.
+   */
+  customTags: text('custom_tags').array().notNull().default(sql`ARRAY[]::text[]`),
+  /** Last user to touch this row — for the audit / future "edited by X" UX. */
+  lastEditedByUserId: uuid('last_edited_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_recipe_notes_household_recipe').on(t.householdId, t.recipeId),
+  index('idx_recipe_notes_recipe').on(t.recipeId),
+  check('recipe_notes_rating_check', sql.raw('rating IS NULL OR (rating >= 1 AND rating <= 5)')),
+])
+
 // ─── 20. household_staples (PR 10B) ───────────────────────────
 // "We always need these" — bread, milk, coffee — that the shopping-list
 // aggregator pre-pends to every freshly generated list. Per-household

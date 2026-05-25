@@ -19,6 +19,11 @@ import {
   listRecentCookLogs,
   deleteCookLog,
 } from '../services/cookLogStore.js'
+import {
+  decrementPantryForRecipe,
+  resolveCookScale,
+} from '../services/pantryStore.js'
+import { getPrimaryHouseholdId } from '../services/scopeResolver.js'
 
 const router = Router()
 router.use(authMiddleware)
@@ -34,6 +39,9 @@ const recordSchema = z.object({
   durationMin: z.number().int().positive().max(24 * 60).optional().nullable(),
   notes: z.string().max(500).optional().nullable(),
   cookedAt: z.string().datetime().optional(),
+  /** Portions actually cooked. Drives the pantry auto-decrement scale.
+   *  If absent, we decrement the full recipe (servings = recipe.servings). */
+  servings: z.number().positive().max(24).optional().nullable(),
 })
 
 router.post('/cook-logs', async (req: AuthRequest, res) => {
@@ -54,7 +62,21 @@ router.post('/cook-logs', async (req: AuthRequest, res) => {
       notes: parsed.data.notes ?? null,
       cookedAt,
     })
-    res.status(201).json({ id })
+
+    // PR 11: auto-decrement the household pantry. Best-effort — a failure
+    // here never blocks the cook-log insert (the row is already persisted).
+    let pantry: { updatedRowIds: string[]; skipped: Array<{ ingredientName: string; reason: string }> } | null = null
+    try {
+      const householdId = await getPrimaryHouseholdId(req.userId!)
+      if (householdId) {
+        const scale = await resolveCookScale(parsed.data.recipeId, parsed.data.servings ?? null)
+        pantry = await decrementPantryForRecipe(householdId, parsed.data.recipeId, scale)
+      }
+    } catch (e) {
+      console.error('[cook-logs] pantry auto-decrement failed (continuing):', e)
+    }
+
+    res.status(201).json({ id, pantry })
   } catch (err) {
     console.error('POST /cook-logs error:', err)
     res.status(500).json({ error: 'Internal server error' })

@@ -20,6 +20,38 @@ Multi-user "shared household" foundation: every authed user has a `primary_house
 
 ---
 
+## [Cookbooks](./cookbooks.md)
+
+Household-shared named recipe collections — "Favoritos de Sara", "Para diabéticos", "Recetas de mi madre". `cookbooks(id, household_id, name, description?, emoji?, created_at, updated_at)` + `cookbook_recipes(id, cookbook_id, recipe_id, added_at)` join with `UNIQUE(cookbook_id, recipe_id)` for idempotent add. REST: list / detail / CRUD on cookbooks + idempotent join mutations (`POST /cookbooks/:id/recipes/:recipeId`, `DELETE …`) + reverse lookup `GET /recipes/:id/cookbooks`. Pure name/emoji/description validators are unit-tested (9 cases). Frontend: `/profile/cookbooks` list + `/cookbooks/[id]` detail with inline editor + `<AddToCookbookButton />` bottom-sheet on `/recipes/[id]`.
+
+**Source**: `apps/api/src/db/schema.ts` (`cookbooks`, `cookbookRecipes`), `apps/api/src/db/migrations/0017_pr8a_cookbooks.sql`, `apps/api/src/services/cookbooksStore.ts`, `apps/api/src/routes/cookbooks.ts`, `apps/api/src/tests/cookbooksValidate.test.ts`, `apps/web/src/hooks/useCookbooks.ts`, `apps/web/src/app/profile/cookbooks/page.tsx`, `apps/web/src/app/cookbooks/[id]/page.tsx`, `apps/web/src/components/recipes/AddToCookbookButton.tsx`
+
+---
+
+## [Cook from Pantry](./cook-from-pantry.md)
+
+"Lo que puedes cocinar con lo que tienes" — PR 12. Ranks every catalogue recipe by what fraction of its required ingredients the household has at home (PR 11 pantry). Pure scorer `scoreRecipeAgainstPantry(ings, pantry)` exported + unit-tested (6 cases): coverage = matched / required, optional ingredients excluded from both sides, ties broken by matchedCount then totalRequired. REST: `GET /recipes/match-pantry?limit=N` (auth-only, default 3, max 20). Frontend: `<PantryMatchCard />` ink-on-cream card at the top of `/menu` with up to 3 recipes + thumbnail + `<matched>/<total>` + coverage percentage. Hides itself when the pantry is empty or no recipe matches.
+
+**Source**: `apps/api/src/services/pantryMatcher.ts`, `apps/api/src/routes/recipes.ts` (handler before `/recipes/:id`), `apps/api/src/tests/pantryMatcher.test.ts`, `apps/web/src/hooks/usePantryMatch.ts`, `apps/web/src/components/menu/PantryMatchCard.tsx`, `apps/web/src/app/menu/page.tsx`
+
+---
+
+## [Pantry](./pantry.md)
+
+Household-shared register of "what's at home" — real quantities + units + optional expiry per item. Distinct from the legacy `shopping_lists.items.inStock` boolean (which only said yes/no). `pantry_items(id, household_id, ingredient_id?, name, quantity, unit, expires_at?, last_updated_at, created_at)` with a **partial unique index** on `(household_id, ingredient_id) WHERE ingredient_id IS NOT NULL` so catalog rows can't duplicate. REST: `GET /pantry`, `POST /pantry` (idempotent merge when `ingredientId` is set), `PATCH /pantry/:id`, `DELETE /pantry/:id`. **Auto-decrement**: `POST /cook-logs` resolves `scaleFactor = cookedServings / recipe.servings`, then deducts `recipeIngredient.quantity × scaleFactor` from every matching pantry row (same `ingredient_id`, same `unit`). Cross-unit conversion deferred. The decrement is best-effort — never blocks the cook-log insert; the response includes `pantry: { updatedRowIds, skipped }`. Pure `applyPantryDeduct` reducer is unit-tested (6 cases). Frontend: `/profile/pantry` page with inline-edit qty + expiry pills (red < 0d, terracotta ≤ 3d).
+
+**Source**: `apps/api/src/db/schema.ts` (`pantryItems`), `apps/api/src/db/migrations/0016_pr11_pantry_items.sql`, `apps/api/src/services/pantryStore.ts`, `apps/api/src/routes/pantry.ts`, `apps/api/src/routes/cookLogs.ts` (calls `decrementPantryForRecipe`), `apps/api/src/tests/pantryDeduct.test.ts`, `apps/web/src/hooks/usePantry.ts`, `apps/web/src/app/profile/pantry/page.tsx`
+
+---
+
+## [Recipe Notes](./recipe-notes.md)
+
+Per-household consumer annotation on a recipe: 1-5 star rating + free-form notes + free-form substitutions + **custom tags** (PR 8B). Distinct from the author's `recipes.notes` — this is what you and your household think about the dish ("le va un toque de comino"; "sin cebolla, con puerro"; tags: vegano, sin gluten, rápido). One row per `(household_id, recipe_id)`; any member can read or write; last-write-wins on concurrent edits. REST: `GET /recipes/:recipeId/notes`, `PUT /recipes/:recipeId/notes` with partial `{ notes?, rating?, substitutions?, customTags? }` body (undefined preserves, null clears, strings trim+cap at 1000 chars; `customTags` is lowercased + deduped + capped at 10 entries × 30 chars). New `GET /custom-tags` returns `[{ tag, count }]` for the household. DB enforces rating ∈ {1..5} via CHECK constraint. Pure `applyNotesPatch` + `validateRating` + `sanitizeCustomTags` helpers are unit-tested. Frontend: `RecipeNotesSection` card on `/recipes/[id]` with stars + inline-edit text fields + chip-input for tags.
+
+**Source**: `apps/api/src/db/schema.ts` (`recipeNotes`), `apps/api/src/db/migrations/0015_pr7_recipe_notes.sql` + `0018_pr8b_recipe_notes_custom_tags.sql`, `apps/api/src/services/recipeNotesStore.ts`, `apps/api/src/routes/recipeNotes.ts`, `apps/api/src/tests/recipeNotesPatch.test.ts` + `customTagsSanitize.test.ts`, `apps/web/src/hooks/useRecipeNotes.ts`, `apps/web/src/components/recipes/RecipeNotesSection.tsx`, `apps/web/src/app/recipes/[id]/page.tsx`
+
+---
+
 ## [Cook Log](./cook-log.md)
 
 Household-scoped record of "we actually cooked this." Feeds the times-cooked counter, the last-cooked date, and the adherence analytics (planeaste 21 / cocinaste 15) for upcoming PRs. `cook_logs(id, user_id, household_id, recipe_id, menu_id?, day_index?, meal?, cooked_at, duration_min?, notes?, created_at)` — append-only; corrections via DELETE + INSERT. REST: `POST /cook-logs`, `GET /cook-logs`, `GET /cook-logs/recipe/:recipeId` (returns `{ count, lastCookedAt }`), `DELETE /cook-logs/:id`. Frontend: `CookedBadge` component (pill on recipe detail meta row, button on cook-mode section + every meal card on /menu); `useCookLogs` TanStack hooks. Pure `summarizeCookLog` reducer kept as a top-level export so the unit suite hits the same code path.
@@ -33,6 +65,14 @@ Household-scoped record of "we actually cooked this." Feeds the times-cooked cou
 Typed long-term storage of user preferences (dislikes, equipment, time-available per weekday, weekly budget, cuisine bias, cooking skill, meal times, free-form notes). Stable key registry + per-key Zod schema in `@ona/shared`. `user_memories` table, one row per (user_id, key). Advisor injects a Spanish-language digest into every system prompt; `update_memory` skill lets the assistant write inferred facts mid-conversation ("recuerda que no me gusta el cilantro"). REST: `GET /memory`, `PATCH /memory { key, value | facts: [...] }`, `DELETE /memory/:key`. Profile sub-page `/profile/memoria` lists every fact with source badge (Tú / Asistente / Onboarding). 19 contract tests.
 
 **Source**: `packages/shared/src/types/userMemory.ts`, `apps/api/src/services/userMemoryStore.ts`, `apps/api/src/routes/memory.ts`, `apps/api/src/services/assistant/contextLoader.ts`, `apps/web/src/hooks/useUserMemory.ts`, `apps/web/src/app/profile/memoria/page.tsx`
+
+---
+
+## [Recipe Photos](./recipe-photos.md)
+
+Household-shared photo gallery per recipe (PR 8C). Distinct from `recipes.image_url` (the author's hero) — this is the consumer's "look how it came out" wall. `recipe_photos(id, recipe_id, household_id, uploaded_by_user_id?, image_url, caption?, created_at)` — one JPEG per row, file keyed by row id, stored on the Railway volume via the existing `IMAGE_STORAGE_DIR` + `IMAGE_PUBLIC_URL_BASE` env vars. Sharp pipeline: `rotate()` (EXIF) → resize to 1600px wide → JPEG q85. REST: `GET /recipes/:recipeId/photos`, `POST /recipes/:recipeId/photos` (multipart, ≤ 8 MB, accepts jpeg/png/webp/heic/heif), `DELETE /recipes/:recipeId/photos/:photoId`. Frontend: `<RecipePhotoGallery />` on `/recipes/[id]` — 3-col thumbnail grid + lightbox + inline upload with optional caption + per-thumbnail delete. Any household member can read or write.
+
+**Source**: `apps/api/src/db/schema.ts` (`recipePhotos`), `apps/api/src/db/migrations/0019_pr8c_recipe_photos.sql`, `apps/api/src/services/recipePhotosStore.ts`, `apps/api/src/routes/recipePhotos.ts`, `apps/web/src/hooks/useRecipePhotos.ts`, `apps/web/src/components/recipes/RecipePhotoGallery.tsx`, `apps/web/src/app/recipes/[id]/page.tsx`
 
 ---
 

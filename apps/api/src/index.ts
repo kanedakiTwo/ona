@@ -20,6 +20,7 @@ import householdRoutes, { publicHouseholdRouter } from './routes/households.js'
 import cookLogRoutes from './routes/cookLogs.js'
 import staplesRoutes from './routes/staples.js'
 import pushRoutes from './routes/push.js'
+import { startScheduler } from './services/notificationScheduler.js'
 
 const app = express()
 
@@ -87,6 +88,10 @@ app.use(errorHandler)
 
 app.listen(env.PORT, () => {
   console.log(`ONA API running on port ${env.PORT}`)
+  // Notification scheduler — periodic poll over `notification_schedule`
+  // dispatches due prep alerts via Web Push. Started once at boot;
+  // idempotent if startup runs twice. See PR-D / notifications spec.
+  startScheduler()
 })
 
 export default app

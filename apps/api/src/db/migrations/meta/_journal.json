@@ -120,6 +120,13 @@
       "when": 1779700781400,
       "tag": "0016_ingredient_prep_requirements",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1779701113003,
+      "tag": "0017_notification_schedule",
+      "breakpoints": true
     }
   ]
 }

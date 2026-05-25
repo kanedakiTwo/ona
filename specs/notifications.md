@@ -54,7 +54,24 @@ SW push event ◄─────────────────────
 - `DELETE /push/subscribe` (auth) — body `{ endpoint }`. 204 on success. Used on logout and explicit user opt-out.
 - `POST /push/test` (auth) — sends an "Ona · Test" notification to every active subscription of the caller. Returns the `{ sent, failed, removedDeadSubscriptions }` from `sendPushToUser`. 503 when VAPID is missing.
 
-Higher-level event-driven dispatch lives elsewhere (see PR-D — `notification_schedule` table + scheduler in `services/notificationScheduler.ts`); this spec covers only the transport.
+## Notification scheduler (heartbeat)
+
+The push transport above is the *delivery* mechanism; the *timing* lives in `notification_schedule` + a periodic tick. The pipeline:
+
+  1. **Enqueue** at the moment something interesting happens — today the only event source is the recipe planner (`POST /menu/generate` and the manual `swap_meal` path in `PUT /menu/:menuId/day/:day/meal/:meal`). The route calls `enqueuePrepAlertsForMenu(menuId)` after the persist returns. The function:
+     - loads the user's `prep_habits` from `user_memories` — **if empty, returns immediately** (opt-in by design: no habit → no alert),
+     - loads the meal-time defaults (`user_memories.meal_times`, falling back to 09:00 / 14:00 / 17:00 / 21:00 Spanish defaults),
+     - flattens the menu's `days` into `(dayIndex, meal, recipeId)` tuples (leftover slots skipped — they share their source's alerts),
+     - joins each recipe's ingredients against `ingredients.prep_requirements` to find rows with a non-null requirement,
+     - matches each method against the user's habits via `HABIT_KEYWORDS_BY_METHOD` (regex per method — `congel|descongel` triggers thaw, `remoj` triggers soak, etc),
+     - computes `fireAt = cookTime − PREP_METHOD_HOURS_BEFORE[method]`,
+     - inserts one `notification_schedule` row per surviving (slot × ingredient × method) with a `dedup_key` = `menu:<id>:day:<n>:meal:<m>:ing:<id>:method:<x>` so re-enqueuing after a swap is idempotent. `INSERT … ON CONFLICT DO NOTHING` semantics via the unique constraint.
+  2. **Swap path** also calls `clearPendingForMenu(menuId)` before the re-enqueue — pending rows tied to the menu are dropped so old-recipe alerts disappear cleanly. Already-sent rows are kept for audit.
+  3. **Tick** — `startScheduler()` is called from `apps/api/src/index.ts` at boot. It runs a `setInterval` every 5 min (configurable). On each tick `tickScheduler()` does `SELECT * FROM notification_schedule WHERE status='pending' AND fire_at <= now()`, dispatches each via `sendPushToUser`, and updates `status` to `'sent'` or `'failed'` with `sent_at` and an optional `error_message`.
+
+Migration `0017_notification_schedule.sql` adds the table + the `(fire_at, status)` index used by the poll. Failure modes: a missing VAPID configuration causes the dispatch to fail and the row to land in `status='failed'` with `error_message='push-not-configured'`; the user can opt in later and a manual re-run is trivial. The tick never throws — DB errors are logged and the loop continues.
+
+This spec covers the transport AND the heartbeat. Event sources beyond the prep-alert pipeline (assistant reflection, menu reminders, etc) plug in by calling `db.insert(notificationSchedule)` directly with a `fireAt` + `payload` + a stable `dedupKey`.
 
 ## Required env vars
 
@@ -82,11 +99,15 @@ When any of these is missing the pipe degrades to "not configured" instead of cr
 
 ## Source
 
-- [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts) — `pushSubscriptions` table
+- [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts) — `pushSubscriptions` + `notificationSchedule` tables
 - [apps/api/src/db/migrations/0015_push_subscriptions.sql](../apps/api/src/db/migrations/0015_push_subscriptions.sql)
+- [apps/api/src/db/migrations/0017_notification_schedule.sql](../apps/api/src/db/migrations/0017_notification_schedule.sql)
 - [apps/api/src/services/pushNotifier.ts](../apps/api/src/services/pushNotifier.ts) — VAPID-configured dispatcher with dead-endpoint reaping
+- [apps/api/src/services/notificationScheduler.ts](../apps/api/src/services/notificationScheduler.ts) — enqueue / clear / tick / start
 - [apps/api/src/routes/push.ts](../apps/api/src/routes/push.ts) — `/push/*` endpoints
+- [apps/api/src/routes/menus.ts](../apps/api/src/routes/menus.ts) — calls `enqueuePrepAlertsForMenu` after `POST /menu/generate` and the manual swap path
 - [apps/api/src/config/env.ts](../apps/api/src/config/env.ts) — `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`
+- [apps/api/src/index.ts](../apps/api/src/index.ts) — `startScheduler()` boot wiring
 - [apps/web/worker/index.ts](../apps/web/worker/index.ts) — `push` + `notificationclick` handlers (compiled into the generated SW by `next-pwa`)
 - [apps/web/src/lib/webPush.ts](../apps/web/src/lib/webPush.ts) — `isWebPushSupported`, `urlBase64ToUint8Array`, `getOrCreatePushSubscription`
 - [apps/web/src/hooks/useWebPush.ts](../apps/web/src/hooks/useWebPush.ts) — React hook used by the Profile card

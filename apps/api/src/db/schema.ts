@@ -509,6 +509,35 @@ export const householdStaples = pgTable('household_staples', {
   index('idx_household_staples_household').on(t.householdId),
 ])
 
+// ─── Notification schedule (PR-D) ─────────────────────────────────
+//
+// Queue of "send this push at fireAt" rows. The scheduler tick in
+// `services/notificationScheduler.ts` polls every N minutes and
+// dispatches the due ones via `pushNotifier.sendPushToUser`. The
+// `dedupKey` (unique) lets enqueue idempotently retry an event: the
+// same recipe in the same slot + the same prep method computes to the
+// same key, so re-running `enqueuePrepAlertsForMenu` after a swap
+// doesn't double-fire.
+export const notificationSchedule = pgTable('notification_schedule', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** Stable hash of the event the row represents, e.g.
+   * `menu:<menuId>:day:<n>:meal:<m>:ing:<ingId>:method:<thaw_24h>`. */
+  dedupKey: text('dedup_key').notNull().unique(),
+  fireAt: timestamp('fire_at', { withTimezone: true }).notNull(),
+  /** JSON payload passed directly to `sendPushToUser` at dispatch time. */
+  payload: jsonb('payload').notNull().$type<{ title: string; body: string; url?: string; tag?: string }>(),
+  /** 'pending' | 'sent' | 'failed' | 'cancelled' */
+  status: text('status').notNull().default('pending'),
+  sentAt: timestamp('sent_at', { withTimezone: true }),
+  /** Last error message when status='failed'. */
+  errorMessage: text('error_message'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_notif_sched_due').on(t.fireAt, t.status),
+  index('idx_notif_sched_user').on(t.userId),
+])
+
 // ─── Web Push subscriptions (PR-B) ────────────────────────────────
 //
 // One row per (user, browser endpoint). Browsers identify themselves by

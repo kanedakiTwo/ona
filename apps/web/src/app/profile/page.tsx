@@ -822,6 +822,17 @@ export default function ProfilePage() {
  * On iOS, the user must "Add to Home Screen" first; we surface a tip
  * line so they don't think the button is broken.
  */
+async function resetServiceWorker() {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return
+  const regs = await navigator.serviceWorker.getRegistrations()
+  await Promise.all(regs.map((r) => r.unregister()))
+  if (typeof caches !== 'undefined') {
+    const names = await caches.keys()
+    await Promise.all(names.map((n) => caches.delete(n)))
+  }
+  window.location.reload()
+}
+
 function PushNotificationsCard() {
   const { state, error, subscribe, unsubscribe, sendTest } = useWebPush()
 
@@ -882,14 +893,32 @@ function PushNotificationsCard() {
                 </button>
               </>
             ) : (
-              <button
-                type="button"
-                onClick={subscribe}
-                disabled={isWorking}
-                className="rounded-full bg-[#1A1612] px-3.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.1em] text-[#FAF6EE] transition-all hover:bg-[#2D6A4F] active:scale-95 disabled:opacity-50"
-              >
-                {isWorking ? 'Activando…' : 'Activar notificaciones'}
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={subscribe}
+                  disabled={isWorking}
+                  className="rounded-full bg-[#1A1612] px-3.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.1em] text-[#FAF6EE] transition-all hover:bg-[#2D6A4F] active:scale-95 disabled:opacity-50"
+                >
+                  {isWorking ? 'Activando…' : 'Activar notificaciones'}
+                </button>
+                {/* Recovery escape hatch: a previous deploy left some users
+                    with a broken service worker stuck in a failed-install
+                    loop. Unregistering + clearing caches + reloading fixes
+                    it in one tap, no DevTools required. */}
+                {(state === 'error' ||
+                  (error && error.includes('timeout@'))) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      resetServiceWorker().catch(() => {})
+                    }}
+                    className="rounded-full border border-[#C65D38] bg-[#FFFEFA] px-3 py-1.5 text-[11px] font-medium text-[#C65D38] transition-all active:scale-95"
+                  >
+                    Reparar service worker
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>

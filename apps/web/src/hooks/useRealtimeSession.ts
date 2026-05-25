@@ -44,7 +44,10 @@ interface SessionResponse {
   voice: string
 }
 
-const REALTIME_URL = 'https://api.openai.com/v1/realtime'
+// GA endpoint for the WebRTC SDP exchange. The bare `/v1/realtime` URL
+// still routes to the Beta surface (rejects GA ephemeral keys with
+// "The Realtime Beta API is no longer supported"); GA uses `/calls`.
+const REALTIME_URL = 'https://api.openai.com/v1/realtime/calls'
 
 export function useRealtimeSession(options: UseRealtimeSessionOptions): UseRealtimeSessionReturn {
   const { userId, initialContext, onCookingNavigate, mode = 'voice' } = options

@@ -63,26 +63,48 @@ export function useWebPush() {
   const subscribe = useCallback(async () => {
     setError(null)
     setState("subscribing")
-    // Hard timeout: if any step hangs (typically `pushManager.subscribe`
-    // when the browser silently rejects the VAPID key), we want a
-    // visible error after 20s instead of a permanently-greyed button.
+    // Per-step timeouts. We track the current `phase` so when the timeout
+    // fires the visible error names the stuck phase. We also surface
+    // permission / SW state inline so the user doesn't need DevTools.
+    let phase: "sw-ready" | "get-existing" | "request-permission" | "subscribe" | "api-post" = "sw-ready"
     const timeoutMs = 20_000
-    const timeout = new Promise<never>((_, rej) =>
-      setTimeout(() => rej(new Error("subscribe-timeout-20s")), timeoutMs),
-    )
+    const withTimeout = <T>(p: Promise<T>): Promise<T> =>
+      Promise.race([
+        p,
+        new Promise<T>((_, rej) =>
+          setTimeout(() => rej(new Error(`timeout@${phase}`)), timeoutMs),
+        ),
+      ])
     try {
       console.log("[useWebPush] subscribe start, PUBLIC_KEY len=", PUBLIC_KEY.length)
-      const sub = await Promise.race([
-        getOrCreatePushSubscription(PUBLIC_KEY),
-        timeout,
-      ])
-      console.log("[useWebPush] got subscription")
-      const subJson = sub.toJSON() as {
+      phase = "sw-ready"
+      const reg = await withTimeout(navigator.serviceWorker.ready)
+      console.log("[useWebPush] SW ready, scope=", reg.scope)
+      phase = "get-existing"
+      const existing = await withTimeout(reg.pushManager.getSubscription())
+      if (!existing) {
+        if (Notification.permission === "denied") {
+          throw new Error("notifications-denied")
+        }
+        if (Notification.permission === "default") {
+          phase = "request-permission"
+          const perm = await withTimeout(Notification.requestPermission())
+          if (perm !== "granted") throw new Error("notifications-denied")
+        }
+        phase = "subscribe"
+        await withTimeout(getOrCreatePushSubscription(PUBLIC_KEY))
+        console.log("[useWebPush] new subscription created")
+      } else {
+        console.log("[useWebPush] reusing existing subscription")
+      }
+      const current = (await reg.pushManager.getSubscription())!
+      const subJson = current.toJSON() as {
         endpoint: string
         keys: { p256dh: string; auth: string }
       }
+      phase = "api-post"
       console.log("[useWebPush] POST /push/subscribe")
-      await Promise.race([
+      await withTimeout(
         api.post("/push/subscribe", {
           subscription: {
             endpoint: subJson.endpoint,
@@ -90,18 +112,25 @@ export function useWebPush() {
           },
           userAgent: navigator.userAgent.slice(0, 500),
         }),
-        timeout,
-      ])
+      )
       console.log("[useWebPush] subscribed OK")
       setState("subscribed")
     } catch (err: any) {
-      console.warn("[useWebPush] subscribe failed:", err)
+      console.warn("[useWebPush] subscribe failed:", err, { phase })
       if (err?.message === "notifications-denied") {
         setState("denied")
-      } else {
-        setError(err?.message ?? "Error inesperado")
-        setState("error")
+        return
       }
+      const swCount = (
+        await navigator.serviceWorker
+          .getRegistrations()
+          .catch(() => [] as readonly ServiceWorkerRegistration[])
+      ).length
+      const perm =
+        typeof Notification !== "undefined" ? Notification.permission : "n/a"
+      const base = String(err?.message ?? "Error inesperado")
+      setError(`${base} · phase=${phase}, permission=${perm}, sw-regs=${swCount}`)
+      setState("error")
     }
   }, [])
 

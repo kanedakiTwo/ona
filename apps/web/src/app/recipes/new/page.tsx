@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { Suspense, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/lib/auth"
 import { useCreateRecipe, useIngredients } from "@/hooks/useRecipes"
 import { LintFailureError } from "@/lib/api"
@@ -44,13 +44,29 @@ function emptyRow(): IngredientRow {
 }
 
 export default function NewRecipePage() {
+  // Next.js 15 requires `useSearchParams()` to be wrapped in <Suspense>
+  // because it bails out of static prerendering. We split the page in
+  // two so the bail-out is scoped to the part that actually reads the
+  // `?name=` query param.
+  return (
+    <Suspense fallback={null}>
+      <NewRecipePageInner />
+    </Suspense>
+  )
+}
+
+function NewRecipePageInner() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   useAuth()
   const createRecipe = useCreateRecipe()
   const { data: ingredientLibrary = [], isLoading: ingredientsLoading } =
     useIngredients()
 
-  const [name, setName] = useState("")
+  // `/recipes/new?name=tarta+de+zanahoria` pre-fills the name field — used by
+  // the menu swap picker's empty state so a user who searched "tarta" and
+  // got no hits can keep their typed term when they bounce to this form.
+  const [name, setName] = useState(() => searchParams.get("name") ?? "")
   const [servings, setServings] = useState<number | "">(2)
   const [prepTime, setPrepTime] = useState<number | "">("")
   const [selectedMeals, setSelectedMeals] = useState<Meal[]>([])

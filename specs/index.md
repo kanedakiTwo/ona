@@ -196,6 +196,14 @@ Native-feeling Progressive Web App: installable (Android + iOS), offline-capable
 
 ---
 
+## [Notifications](./notifications.md)
+
+Server-side Web Push (VAPID keys, `push_subscriptions` table, `web-push` lib) so the assistant can reach the user even with the tab closed — foundation for prep alerts ("saca el pescado del congelador 24h antes"), menu reminders, future heartbeat events. Subscribe / unsubscribe / test endpoints under `/push/*`; service worker handles `push` + `notificationclick`. Dead endpoints (404/410 Gone) auto-reap on next dispatch. Profile card opt-in. Degrades to "Push no configurado" when VAPID env vars are missing.
+
+**Source**: `apps/api/src/db/schema.ts` (`pushSubscriptions`), `apps/api/src/db/migrations/0015_push_subscriptions.sql`, `apps/api/src/services/pushNotifier.ts`, `apps/api/src/routes/push.ts`, `apps/api/src/config/env.ts` (`VAPID_*`), `apps/web/worker/index.ts`, `apps/web/src/lib/webPush.ts`, `apps/web/src/hooks/useWebPush.ts`, `apps/web/src/app/profile/page.tsx`
+
+---
+
 ## [Design System](./design-system.md)
 
 Editorial design system, design tokens (`@theme` in globals.css), color palette (cream, ink, terracotta, forest, mint), typography (Fraunces variable, Cormorant Garamond italic, Inter, JetBrains Mono), motion/react animations, magnetic buttons, grain texture, link-reveal underlines, marquee, layoutId pill nav, editorial mode pages (landing, como-funciona, recipes), app mode legacy pages (menu, shopping, profile, advisor), Tailwind v4, mobile-first 430px max-width, bottom tab bar, components (RecipeCard, MealPhotoCard, WeekStrip, Navbar, FavoriteButton, AdvisorChat).

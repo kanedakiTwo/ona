@@ -151,6 +151,13 @@ interface RecipeRow {
 interface RecipeCard {
   id: string
   name: string
+  /** Null for system / ONA-curated recipes; the owning user's id otherwise.
+   * The frontend uses this for both the ownership badge ("ONA" vs "Tuya")
+   * and the scope segmenter ("Todas" / "Mis recetas" / "Catálogo ONA").
+   * Omitting it (the previous behaviour) made every card look authorless
+   * to the page logic — badge said ONA but the "Catálogo ONA" filter
+   * found 0 results, and "Mis recetas" was always empty. */
+  authorId: string | null
   imageUrl: string | null
   prepTime: number | null
   cookTime: number | null
@@ -169,6 +176,7 @@ function toCard(row: RecipeRow): RecipeCard {
   return {
     id: row.id,
     name: row.name,
+    authorId: row.authorId,
     imageUrl: row.imageUrl,
     prepTime: row.prepTime,
     cookTime: row.cookTime,
@@ -519,7 +527,14 @@ router.post(
 )
 
 // POST /recipes/extract-from-url — extract from a YouTube video or article URL (auth required).
-const extractFromUrlSchema = z.object({ url: z.string().url() })
+// `asSystem: true` (admin-only) lands the recipe in the curated ONA catalogue
+// (`authorId = null`, `internalTags` includes `compartida`) so it shows up
+// under "Catálogo ONA" on /recipes and on the public /recipes-ona page.
+// Non-admins requesting asSystem get 403.
+const extractFromUrlSchema = z.object({
+  url: z.string().url(),
+  asSystem: z.boolean().optional(),
+})
 
 router.post(
   '/recipes/extract-from-url',
@@ -531,7 +546,15 @@ router.post(
         res.status(400).json({ error: 'URL inválida' })
         return
       }
-      const { url } = parsed.data
+      const { url, asSystem } = parsed.data
+
+      if (asSystem && req.user?.role !== 'admin') {
+        res.status(403).json({
+          error: 'Sólo los administradores pueden añadir al catálogo ONA.',
+          code: 'NOT_ADMIN',
+        })
+        return
+      }
 
       const provider = new AnthropicProvider()
       const extracted = await extractRecipeFromUrl(url, { provider })
@@ -549,6 +572,10 @@ router.post(
 
       const writeInput: RecipeWriteInput = {
         name: extracted.name,
+        // Persist the cover photo captured by the extractor (JSON-LD image,
+        // og:image fallback, or YouTube thumbnail). Null when the source
+        // had nothing usable.
+        imageUrl: extracted.imageUrl ?? null,
         servings: extracted.servings,
         prepTime: extracted.prepTime ?? null,
         cookTime: extracted.cookTime ?? null,
@@ -556,7 +583,13 @@ router.post(
         meals: extracted.meals,
         seasons: extracted.seasons,
         tags: extracted.tags ?? [],
-        internalTags: ['auto-extracted', 'from-url'],
+        // System imports get the `compartida` flag so the existing
+        // `publicTagsOf` filter hides it from cards (matches the seed
+        // pipeline convention). The `from-url` + `auto-extracted` tags
+        // mark provenance regardless of catalogue scope.
+        internalTags: asSystem
+          ? ['compartida', 'auto-extracted', 'from-url']
+          : ['auto-extracted', 'from-url'],
         sourceUrl: extracted.sourceUrl ?? url,
         sourceType: extracted.sourceType ?? null,
         ingredients: writeIngredients,
@@ -564,7 +597,9 @@ router.post(
       }
 
       const result = await persistRecipe(writeInput, {
-        authorId: req.userId!,
+        // asSystem: persist as a curated ONA recipe (authorId = null) so it
+        // surfaces on /recipes-ona and under "Catálogo ONA" on /recipes.
+        authorId: asSystem ? null : req.userId!,
         // URL imports go through soft lint: lint findings come back as
         // warnings instead of blocking the save. The user reviews + edits
         // on the recipe detail page.

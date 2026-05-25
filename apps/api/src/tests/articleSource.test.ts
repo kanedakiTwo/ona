@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  extractOgImage,
   parseIngredientString,
   parseJsonLdRecipe,
+  parseSchemaImage,
 } from '../services/sources/article.js'
 
 const wrap = (json: object | string) => `
@@ -211,5 +213,78 @@ describe('parseIngredientString', () => {
     expect(parseIngredientString('1 cucharadita de azúcar').unit).toBe('cdita')
     expect(parseIngredientString('2 cdas aceite').unit).toBe('cda')
     expect(parseIngredientString('1 cda. vinagre').unit).toBe('cda')
+  })
+})
+
+describe('parseSchemaImage', () => {
+  it('accepts a plain string URL', () => {
+    expect(parseSchemaImage('https://example.com/hero.jpg')).toBe(
+      'https://example.com/hero.jpg',
+    )
+  })
+
+  it('accepts an ImageObject with .url', () => {
+    expect(parseSchemaImage({ url: 'https://example.com/x.jpg', '@type': 'ImageObject' })).toBe(
+      'https://example.com/x.jpg',
+    )
+  })
+
+  it('picks the first usable entry from an array', () => {
+    expect(
+      parseSchemaImage([
+        { '@type': 'ImageObject' }, // no url
+        'https://example.com/second.jpg',
+      ]),
+    ).toBe('https://example.com/second.jpg')
+  })
+
+  it('rejects non-http schemes and empty strings', () => {
+    expect(parseSchemaImage('data:image/png;base64,abc')).toBeNull()
+    expect(parseSchemaImage('')).toBeNull()
+    expect(parseSchemaImage(undefined)).toBeNull()
+    expect(parseSchemaImage(null)).toBeNull()
+  })
+
+  it('flows through parseJsonLdRecipe so importer hits image_url', () => {
+    const html = wrap({
+      '@type': 'Recipe',
+      name: 'Lentejas',
+      image: ['https://blog.com/lentejas.jpg'],
+      recipeIngredient: ['200 g lentejas'],
+      recipeInstructions: ['Cocer 30 min.'],
+    })
+    const recipe = parseJsonLdRecipe(html)
+    expect(recipe?.imageUrl).toBe('https://blog.com/lentejas.jpg')
+  })
+})
+
+describe('extractOgImage', () => {
+  it('matches og:image with property attribute', () => {
+    const html = `<html><head><meta property="og:image" content="https://blog.com/og.jpg"></head></html>`
+    expect(extractOgImage(html)).toBe('https://blog.com/og.jpg')
+  })
+
+  it('matches og:image with the attribute order reversed (content before property)', () => {
+    const html = `<html><head><meta content="https://blog.com/og.jpg" property="og:image"></head></html>`
+    expect(extractOgImage(html)).toBe('https://blog.com/og.jpg')
+  })
+
+  it('falls back to twitter:image when og:image is absent', () => {
+    const html = `<html><head><meta name="twitter:image" content="https://blog.com/tw.jpg"></head></html>`
+    expect(extractOgImage(html)).toBe('https://blog.com/tw.jpg')
+  })
+
+  it('falls back to <link rel="image_src">', () => {
+    const html = `<html><head><link rel="image_src" href="https://blog.com/legacy.jpg"></head></html>`
+    expect(extractOgImage(html)).toBe('https://blog.com/legacy.jpg')
+  })
+
+  it('returns null when no meta is present', () => {
+    expect(extractOgImage('<html><head></head></html>')).toBeNull()
+  })
+
+  it('rejects relative or non-http URLs', () => {
+    const html = `<html><head><meta property="og:image" content="/relative.jpg"></head></html>`
+    expect(extractOgImage(html)).toBeNull()
   })
 })

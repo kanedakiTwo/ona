@@ -19,10 +19,12 @@ import memoryRoutes from './routes/memory.js'
 import householdRoutes, { publicHouseholdRouter } from './routes/households.js'
 import cookLogRoutes from './routes/cookLogs.js'
 import staplesRoutes from './routes/staples.js'
+import pushRoutes from './routes/push.js'
 import recipeNotesRoutes from './routes/recipeNotes.js'
 import pantryRoutes from './routes/pantry.js'
 import cookbooksRoutes from './routes/cookbooks.js'
 import recipePhotosRoutes from './routes/recipePhotos.js'
+import { startScheduler } from './services/notificationScheduler.js'
 
 const app = express()
 
@@ -71,6 +73,10 @@ app.use(authRoutes)
 app.use(publicHouseholdRouter)
 app.use(recipeRoutes)
 app.use(ingredientRoutes)
+// pushRoutes is mostly auth-protected (per-route authMiddleware) but the
+// `GET /push/public-key` endpoint is intentionally public — must be
+// mounted BEFORE userRoutes so the catch-all auth there doesn't block it.
+app.use(pushRoutes)
 app.use(userRoutes)
 app.use(menuRoutes)
 app.use(shoppingRoutes)
@@ -93,6 +99,10 @@ app.use(errorHandler)
 
 app.listen(env.PORT, () => {
   console.log(`ONA API running on port ${env.PORT}`)
+  // Notification scheduler — periodic poll over `notification_schedule`
+  // dispatches due prep alerts via Web Push. Started once at boot;
+  // idempotent if startup runs twice. See PR-D / notifications spec.
+  startScheduler()
 })
 
 export default app

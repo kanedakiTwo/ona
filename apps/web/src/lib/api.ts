@@ -119,8 +119,8 @@ export const api = {
     return apiFetch<T>(path, { method: "PATCH", body })
   },
 
-  delete<T = unknown>(path: string) {
-    return apiFetch<T>(path, { method: "DELETE" })
+  delete<T = unknown>(path: string, body?: unknown) {
+    return apiFetch<T>(path, { method: "DELETE", body })
   },
 
   async upload<T = unknown>(path: string, formData: FormData): Promise<T> {

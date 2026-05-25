@@ -1,7 +1,8 @@
 // Types
 export type { User, UserSettings, DayTemplate, OnboardingAnswers, Role } from './types/user.js'
 export { ROLES } from './types/user.js'
-export type { Ingredient } from './types/ingredient.js'
+export type { Ingredient, PrepMethod, PrepRequirement } from './types/ingredient.js'
+export { PREP_METHODS, PREP_METHOD_HOURS_BEFORE, prepRequirementSchema } from './types/ingredient.js'
 export type {
   Recipe,
   RecipeIngredient,

@@ -124,6 +124,15 @@ export const ingredients = pgTable('ingredients', {
   aminoAcids: jsonb('amino_acids').default({}),
   fatAcids: jsonb('fat_acids').default({}),
   carbTypes: jsonb('carb_types').default({}),
+  /**
+   * Prep-time requirements that need anticipating in advance. Populated by
+   * the LLM script `pnpm prep-requirements:populate` over the catalogue; the
+   * notification scheduler (PR-D) reads it to enqueue "saca el pescado del
+   * congelador" alerts. Shape:
+   *   { method: 'thaw_24h' | 'thaw_48h' | 'soak_overnight' | ..., notes?: string }
+   * Null for ingredients that need nothing special (most produce).
+   */
+  prepRequirements: jsonb('prep_requirements').$type<{ method: string; notes?: string } | null>(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => [
@@ -613,4 +622,59 @@ export const householdStaples = pgTable('household_staples', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_household_staples_household').on(t.householdId),
+])
+
+// ─── Notification schedule (PR-D) ─────────────────────────────────
+//
+// Queue of "send this push at fireAt" rows. The scheduler tick in
+// `services/notificationScheduler.ts` polls every N minutes and
+// dispatches the due ones via `pushNotifier.sendPushToUser`. The
+// `dedupKey` (unique) lets enqueue idempotently retry an event: the
+// same recipe in the same slot + the same prep method computes to the
+// same key, so re-running `enqueuePrepAlertsForMenu` after a swap
+// doesn't double-fire.
+export const notificationSchedule = pgTable('notification_schedule', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** Stable hash of the event the row represents, e.g.
+   * `menu:<menuId>:day:<n>:meal:<m>:ing:<ingId>:method:<thaw_24h>`. */
+  dedupKey: text('dedup_key').notNull().unique(),
+  fireAt: timestamp('fire_at', { withTimezone: true }).notNull(),
+  /** JSON payload passed directly to `sendPushToUser` at dispatch time. */
+  payload: jsonb('payload').notNull().$type<{ title: string; body: string; url?: string; tag?: string }>(),
+  /** 'pending' | 'sent' | 'failed' | 'cancelled' */
+  status: text('status').notNull().default('pending'),
+  sentAt: timestamp('sent_at', { withTimezone: true }),
+  /** Last error message when status='failed'. */
+  errorMessage: text('error_message'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_notif_sched_due').on(t.fireAt, t.status),
+  index('idx_notif_sched_user').on(t.userId),
+])
+
+// ─── Web Push subscriptions (PR-B) ────────────────────────────────
+//
+// One row per (user, browser endpoint). Browsers identify themselves by
+// the unique endpoint URL returned from `pushManager.subscribe(...)`,
+// and we hold the auth + p256dh keys we need to encrypt the payload
+// before dispatching via `web-push`. When the user revokes permission
+// (or the endpoint goes stale, e.g. browser cleared its storage), we
+// delete the row on the next failed send so the table stays warm.
+export const pushSubscriptions = pgTable('push_subscriptions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** Unique per browser. Acts as the natural key after `id`. */
+  endpoint: text('endpoint').notNull().unique(),
+  /** ECDH public key from `subscription.toJSON().keys.p256dh`. */
+  p256dh: text('p256dh').notNull(),
+  /** Subscription auth secret from `subscription.toJSON().keys.auth`. */
+  auth: text('auth').notNull(),
+  /** Best-effort hint for the UI; never used for routing. */
+  userAgent: text('user_agent'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  /** Updated on every successful dispatch — handy for "last delivered" displays. */
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+}, (t) => [
+  index('idx_push_subs_user').on(t.userId),
 ])

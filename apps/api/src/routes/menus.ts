@@ -15,6 +15,10 @@ import { getMemoryForUser } from '../services/userMemoryStore.js'
 import { detectSeason } from '@ona/shared'
 import { recipeIngredients, ingredients, recipes, userFavorites } from '../db/schema.js'
 import { resolveScope, scopeWhere, getPrimaryHouseholdId } from '../services/scopeResolver.js'
+import {
+  enqueuePrepAlertsForMenu,
+  clearPendingForMenu,
+} from '../services/notificationScheduler.js'
 
 const router = Router()
 
@@ -140,6 +144,13 @@ router.post('/menu/generate', validate(generateMenuSchema), async (req, res) => 
     // Update nutrient balance
     await updateBalance(userId, aggregatedNutrients, db)
 
+    // Enqueue prep-time alerts for this menu (PR-D). Best-effort: a
+    // failure here must NOT take the menu down — we log and continue.
+    // Opt-in: only fires when the user has matching `prep_habits`.
+    enqueuePrepAlertsForMenu(menu.id).catch((err) => {
+      console.warn('[menus.generate] enqueuePrepAlertsForMenu failed:', err)
+    })
+
     res.status(201).json(await hydrateMenuImages(menu))
   } catch (err) {
     console.error('Generate menu error:', err)
@@ -263,6 +274,17 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
         .set({ days })
         .where(eq(menus.id, menuId))
         .returning()
+      // Re-enqueue prep alerts after a manual swap — clear the menu's
+      // pending rows first so old-recipe alerts disappear, then rebuild.
+      // Best-effort: never block the swap response on this.
+      ;(async () => {
+        try {
+          await clearPendingForMenu(menuId)
+          await enqueuePrepAlertsForMenu(menuId)
+        } catch (err) {
+          console.warn('[menus.swap] re-enqueue prep alerts failed:', err)
+        }
+      })()
       res.json(await hydrateMenuImages(updated))
       return
     }

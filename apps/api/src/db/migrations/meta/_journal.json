@@ -141,6 +141,27 @@
       "when": 1779100544240,
       "tag": "0019_pr8c_recipe_photos",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1779699867128,
+      "tag": "0020_push_subscriptions",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1779700781400,
+      "tag": "0021_ingredient_prep_requirements",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1779701113003,
+      "tag": "0022_notification_schedule",
+      "breakpoints": true
     }
   ]
 }

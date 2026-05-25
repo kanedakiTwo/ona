@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Link2, Loader2, RotateCcw } from "lucide-react"
 import { useExtractRecipeFromUrl } from "@/hooks/useRecipes"
+import { useAuth } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 
 interface UrlRecipeImportProps {
@@ -22,7 +23,10 @@ function isLikelyUrl(input: string): boolean {
 }
 
 export function UrlRecipeImport({ onImported }: UrlRecipeImportProps) {
+  const { user } = useAuth()
+  const isAdmin = user?.role === "admin"
   const [url, setUrl] = useState("")
+  const [asSystem, setAsSystem] = useState(false)
   const [state, setState] = useState<State>("idle")
   const [errorMessage, setErrorMessage] = useState("")
   const mutation = useExtractRecipeFromUrl()
@@ -36,7 +40,7 @@ export function UrlRecipeImport({ onImported }: UrlRecipeImportProps) {
     }
 
     setState("submitting")
-    mutation.mutate(url.trim(), {
+    mutation.mutate({ url: url.trim(), asSystem: isAdmin && asSystem }, {
       onSuccess: (data) => {
         setState("idle")
         setUrl("")
@@ -112,6 +116,27 @@ export function UrlRecipeImport({ onImported }: UrlRecipeImportProps) {
           )}
         </button>
       </div>
+
+      {/* Admin-only: persist the imported recipe in the curated ONA
+          catalogue instead of the user's own collection. The server
+          re-checks the role before honouring the flag. */}
+      {isAdmin && (
+        <label className="mt-3 flex cursor-pointer items-start gap-2 text-[12px] text-[#4A4239]">
+          <input
+            type="checkbox"
+            checked={asSystem}
+            onChange={(e) => setAsSystem(e.target.checked)}
+            disabled={state === "submitting"}
+            className="mt-0.5 h-4 w-4 cursor-pointer accent-[#1A1612]"
+          />
+          <span>
+            <span className="font-medium text-[#1A1612]">Añadir al catálogo ONA</span>{" "}
+            — la receta queda como receta del sistema (sin autor),
+            visible para todos en <code>/recipes-ona</code> y bajo
+            “Catálogo ONA” en <code>/recipes</code>.
+          </span>
+        </label>
+      )}
 
       {state === "error" && (
         <div className="mt-3 flex items-start justify-between gap-3 rounded-lg border border-[#C65D38] bg-[#FAF6EE] px-3 py-2 text-[12px] text-[#1A1612]">

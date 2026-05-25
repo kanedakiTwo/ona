@@ -44,34 +44,58 @@ router.post('/realtime/:userId/session', async (req: AuthRequest, res) => {
     const instructions = buildSystemPrompt(userContext, requestedMode)
     const tools = getRealtimeTools()
 
-    const upstream = await fetch('https://api.openai.com/v1/realtime/sessions', {
+    // GA Realtime API: ephemeral keys come from /v1/realtime/client_secrets
+    // (the beta /v1/realtime/sessions was removed May 12 2026). The
+    // session config now nests under `session` with a required `type`
+    // discriminator. See:
+    //   https://platform.openai.com/docs/guides/realtime
+    //   https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/realtime-audio-preview-api-migration-guide
+    const upstream = await fetch('https://api.openai.com/v1/realtime/client_secrets', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${env.OPENAI_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: env.OPENAI_REALTIME_MODEL,
-        voice: env.OPENAI_REALTIME_VOICE,
-        instructions,
-        tools,
-        modalities: ['audio', 'text'],
-        input_audio_transcription: { model: 'whisper-1' },
-        turn_detection: { type: 'server_vad', threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 500 },
+        session: {
+          type: 'realtime',
+          model: env.OPENAI_REALTIME_MODEL,
+          // `audio.output.voice` replaces the flat `voice` field per GA.
+          // `audio.input.transcription` replaces `input_audio_transcription`.
+          // `audio.input.turn_detection` replaces `turn_detection`.
+          audio: {
+            input: {
+              transcription: { model: 'whisper-1' },
+              turn_detection: {
+                type: 'server_vad',
+                threshold: 0.5,
+                prefix_padding_ms: 300,
+                silence_duration_ms: 500,
+              },
+            },
+            output: { voice: env.OPENAI_REALTIME_VOICE },
+          },
+          instructions,
+          tools,
+        },
       }),
     })
 
     if (!upstream.ok) {
       const text = await upstream.text()
-      console.error('[realtime] OpenAI session creation failed:', upstream.status, text)
+      console.error('[realtime] OpenAI client_secrets creation failed:', upstream.status, text)
       res.status(502).json({ error: 'No se pudo iniciar la sesion de voz.' })
       return
     }
 
-    const session: any = await upstream.json()
+    // GA response shape: { value, expires_at } at the top level (no
+    // longer wrapped in `client_secret`). We pass it back to the client
+    // under the same `client_secret` key we used before so the existing
+    // hook code keeps working with one trivial assignment.
+    const session: { value: string; expires_at?: number } = await upstream.json()
     res.json({
-      client_secret: session.client_secret,
-      expires_at: session.client_secret?.expires_at,
+      client_secret: { value: session.value, expires_at: session.expires_at },
+      expires_at: session.expires_at,
       model: env.OPENAI_REALTIME_MODEL,
       voice: env.OPENAI_REALTIME_VOICE,
       tools,

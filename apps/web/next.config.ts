@@ -4,6 +4,15 @@ import withPWA from 'next-pwa'
 const nextConfig: NextConfig = {
   transpilePackages: ['@ona/shared'],
   output: 'standalone',
+  images: {
+    // Recipes imported from URLs (PR landing) and the Unsplash hot-link
+    // fallback all sit on third-party hosts (Unsplash, blogs, S3 buckets,
+    // YouTube thumbnails). Allowing any HTTPS host through next/image
+    // keeps the optimizer happy without us having to maintain a closed
+    // list of source domains. Cookie-bearing hosts are not at risk
+    // because the image optimizer fetches with no Auth header.
+    remotePatterns: [{ protocol: 'https', hostname: '**' }],
+  },
 }
 
 const runtimeCaching = [

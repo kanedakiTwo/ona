@@ -202,6 +202,11 @@ export interface ExtractedIngredient {
 
 export interface ExtractedRecipe {
   name: string
+  /** Source image URL captured by the URL extractor (schema.org Recipe.image,
+   * og:image, twitter:image, or YouTube thumbnail). Null/undefined for the
+   * photo + manual paths. The form / route handler persists this into
+   * `recipes.image_url`. */
+  imageUrl?: string | null
   /** Always a positive integer. The extractor defaults to 2 when the source is silent. */
   servings: number
   /** 'explicit' = servings value was stated in the source; 'estimated' = inferred/defaulted by the extractor. */

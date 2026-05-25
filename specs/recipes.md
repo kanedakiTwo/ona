@@ -122,6 +122,38 @@ When the user changes the diner count from `recipe.servings` to `target`:
 - The detail view groups ingredients by `section` if any ingredient has one set; otherwise renders a flat list
 - The "Para X" caption next to the ingredients title reflects the live scaler value, not a hardcoded number
 
+## Ingredient prep requirements
+
+Each `ingredients` row carries an optional `prep_requirements` JSONB column with the shape `{ method: PrepMethod, notes?: string }` where `PrepMethod` is a closed enum: `thaw_24h | thaw_48h | soak_overnight | soak_30min | temper_30min | marinate_2h | marinate_overnight | dough_rise_overnight`. The values encode the typical lead time so the scheduler doesn't need separate config — `PREP_METHOD_HOURS_BEFORE` in `@ona/shared` maps each value to a fixed number of hours.
+
+Population is offline via the LLM script:
+
+  1. `pnpm --filter @ona/api prep-requirements:populate` — loads every ingredient, asks Claude in batches of 50 (one ~$0.02 call per batch), writes JSONL to `apps/api/scripts/output/prep-requirements.jsonl`. Defaults to `null` whenever the LLM is unsure so the catalogue never gets noisy.
+  2. Human review of the JSONL.
+  3. `pnpm --filter @ona/api prep-requirements:apply` — re-reads the same file and `UPDATE`s the matching rows.
+
+Idempotent: re-running populate overwrites the JSONL; re-running apply overwrites the DB. The scheduler ([Notifications](./notifications.md) / PR-D) reads this column together with `user_memories.prep_habits` to decide which alerts fire for which user when a recipe lands in their menu.
+
+## Ingredient Resolution
+
+Both the photo extractor (`POST /recipes/extract-from-image`) and the URL extractor (`POST /recipes/extract-from-url`) call the shared `matchIngredients()` helper in `apps/api/src/services/recipeExtractor.ts` to bind every extracted ingredient name to a catalogue row id. The cascade has three stages, each is the previous one's fallback:
+
+1. **Token-set match** (`apps/api/src/services/ingredientTokenMatch.ts`, pure / no DB).
+   - Tokenise both names lowercase, drop Spanish stop-words (`de`, `del`, `la`, `el`, `las`, `los`, `al`, `en`, `con`, `a`, `y`).
+   - **exact**: token sets are equal — "aceite de oliva" ↔ "aceite de oliva".
+   - **noise-stripped**: catalogue tokens are a subset of user tokens AND every extra user token is in a curated list of *cooking-state modifiers* (picada, rallado, fresco, maduro, ecológico, asado, …). "cebolla picada" ↦ "cebolla". The list deliberately covers only state, never part-of-animal / variety / regional adjectives.
+   - **user-generic**: user tokens are a strict subset of catalogue tokens (user typed less specific than what the catalogue holds). "sal" matched against catalogue "sal marina". When several catalogue entries qualify, the shortest one wins.
+   - **NEVER** does a substring fallback that lets the user's input lose semantic content. "pechuga de pollo" does **not** collapse to "pollo"; "jamón ibérico" does **not** collapse to "jamón"; "aceite de girasol" does **not** collapse to "aceite". Anything the user typed beyond the noise list is preserved → cascade falls through.
+
+2. **LLM disambiguation** (`apps/api/src/services/ingredientMatcherLLM.ts`).
+   - Single batched call per import: sends every leftover name + the full catalogue + the recipe title to `claude-sonnet-4-20250514`, gets back `{matches: [{extracted_name, ingredient_id | null}]}`. One round-trip, not one-per-ingredient.
+   - System prompt explicitly forbids part-of-animal collapses (the very trap the token matcher refuses) but encourages genuine alias resolution: "chuletón" ↦ "chuleta de vaca", "pimentón dulce de la vera" ↦ "pimentón dulce", "cebolleta" ↦ "cebolla tierna" when present.
+   - Failure modes (no API key, network error, malformed JSON) degrade silently to an empty verdict map — the caller still tries stage 3. An import is never blocked on the LLM step.
+
+3. **USDA auto-create** (`apps/api/src/services/ingredientAutoCreate.ts`).
+   - Same Foundation/SR-Legacy lookup as the manual ingredient picker, with Spanish↦English translation. Persists a new `ingredients` row with full per-100 g nutrition + inferred allergens.
+   - Net effect over time: the first user to import "pechuga de pollo" pays the USDA round-trip; everyone after them hits stage 1 directly.
+
 ## API Endpoints
 
 - `GET /recipes?search=&meal=&season=&maxTime=&perPage=&page=` — list with filters; returns the lightweight card shape. **Optional auth:** with a valid Bearer token the response is the full catalogue (system + every recipe the API exposes today); without a token only system recipes (`authorId IS NULL`) are returned, so the same endpoint backs the public `/recipes-ona` page anonymously and the app `/recipes` page authenticated.
@@ -133,7 +165,7 @@ When the user changes the diner count from `recipe.servings` to `target`:
 - `POST /user/:id/recipes/:recipeId/favorite` (auth) — toggle favorite. **PR 1B:** each user toggles their own `user_favorites` row, but `GET /user/:id/recipes` returns the household-wide union of favorites when `SHARED_HOUSEHOLD_SCOPE` is on. See [Household](./household.md)
 - `POST /recipes/extract-from-image` (auth) — AI recipe extraction; returns the `ExtractedRecipe` draft (ingredients matched against catalog + warnings) so the user can review and adjust it on `/recipes/new` before saving. The draft is **not** persisted server-side — the user submits the normal `POST /recipes` from the form, which runs the lint validator. Defensive JSON parse tolerates ```json…``` fenced responses from the model
 - `POST /recipes/:id/copy` (auth) — clone a recipe into the caller's catalog. Refuses with 409 if the user already owns the source. Returns the new recipe
-- `POST /recipes/extract-from-url` (auth) — body `{ url }`. Detects YouTube vs article by hostname. Articles try `schema.org/Recipe` JSON-LD, then fall back to Mozilla Readability + Claude. YouTube combines title + description + caption transcript and feeds it to Claude. Unlike `/extract-from-image`, this endpoint persists the recipe directly and returns `{ recipe, warnings }` (the frontend then redirects to the detail page). Returns 422 with `{ isRecipe: false, reason }` when the LLM decides the URL doesn't describe a cookable recipe, and 422 with a Spanish message when a YouTube video has neither captions nor a usable description
+- `POST /recipes/extract-from-url` (auth) — body `{ url, asSystem?: boolean }`. Detects YouTube vs article by hostname. Articles try `schema.org/Recipe` JSON-LD, then fall back to Mozilla Readability + Claude. YouTube combines title + description + caption transcript and feeds it to Claude. Unlike `/extract-from-image`, this endpoint persists the recipe directly and returns `{ recipe, warnings }` (the frontend then redirects to the detail page). Returns 422 with `{ isRecipe: false, reason }` when the LLM decides the URL doesn't describe a cookable recipe, and 422 with a Spanish message when a YouTube video has neither captions nor a usable description. **Cover image is captured automatically**: articles read `schema.org/Recipe.image` (string · `{url}` · array) when JSON-LD is present, otherwise scrape `og:image` / `og:image:secure_url` / `twitter:image` / `<link rel="image_src">` from the page head; YouTube derives `https://i.ytimg.com/vi/<videoId>/hqdefault.jpg` (guaranteed for every video). The captured URL is persisted directly into `recipes.image_url` — no download / cache hop — so source-side hot-link protection is the only failure mode; users can swap it with the "Regenerar imagen" endpoint later. **`asSystem: true` is admin-only** (returns 403 `NOT_ADMIN` for non-admins): persists the recipe with `authorId = null` and `internalTags = ['compartida', 'auto-extracted', 'from-url']` so it shows up under "Catálogo ONA" on `/recipes` and on the public `/recipes-ona` page. The `UrlRecipeImport` component on `/recipes/new` surfaces an "Añadir al catálogo ONA" checkbox only when `user.role === 'admin'`
 - `POST /recipes/:id/regenerate-image` (auth, author only) — generate a new editorial-style hero photo via AiKit Imagen-fal. Builds the prompt from `recipe.name` + top 4 ingredients (by `displayOrder`) + a meal-aware framing hint + a fixed cream/wood/warm-light cookbook style suffix; calls `POST cms.aikit.es/api/free-form-tools/image-generation/generate-imagen-fal` with `Authorization: Bearer aik_…`; pipes the PNG through sharp (1200 px wide, JPEG q85 + mozjpeg) and writes to `${IMAGE_STORAGE_DIR}/<recipeId>.jpg`; updates `recipes.image_url` to `${IMAGE_PUBLIC_URL_BASE}/<recipeId>.jpg`. Per-user monthly quota (`IMAGE_GEN_MONTHLY_LIMIT`, default 20) tracked atomically on `users.image_gen_count` + `users.image_gen_month_key`: a single conditional UPDATE bumps the counter only if the user is under the cap and the month matches; mismatched month → reset to 1; cap reached → 429 with `{ quota: { used, limit, monthKey } }` and no AiKit call. Failed generations refund the slot. System recipes (authorId null) and other-user recipes return 403; missing `AIKIT_API_KEY` returns 503. Frontend (`useRegenerateRecipeImage`) renders a "Regenerar imagen" button on the author-side detail page and an "Imagen" section in `/recipes/[id]/edit`; both show a "(X/20 este mes)" counter and append `?v=<updatedAt>` to the hero src to bust the long-cached browser image after each regen
 
 ## Constraints

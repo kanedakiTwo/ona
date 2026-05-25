@@ -167,5 +167,12 @@ export async function extractYouTubeRecipe(
     transcript,
   })
 
-  return await deps.provider.extractRecipeFromText(payload, 'youtube')
+  // YouTube thumbnail: `hqdefault.jpg` is guaranteed to exist for every
+  // video (480×360). We don't use `maxresdefault.jpg` because it's only
+  // generated for ≥720p uploads and 404s on older videos.
+  const imageUrl = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
+
+  const llm = await deps.provider.extractRecipeFromText(payload, 'youtube')
+  if (!llm.isRecipe) return llm
+  return { isRecipe: true, raw: { ...llm.raw, imageUrl } }
 }

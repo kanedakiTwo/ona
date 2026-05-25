@@ -75,6 +75,13 @@ export default withPWA({
   register: true,
   skipWaiting: true,
   disable: process.env.NODE_ENV === 'development',
+  // Next.js generates `app-build-manifest.json` for build introspection
+  // but does NOT serve it in `output: 'standalone'` mode. next-pwa lists
+  // it in the precache regardless, so the service worker install crashes
+  // with `bad-precaching-response :: status 404` and never activates —
+  // which is exactly why every Web Push subscribe attempt has been
+  // hanging at the `sw-ready` phase. Exclude the file from the manifest.
+  buildExcludes: [/app-build-manifest\.json$/],
   runtimeCaching,
   // @ts-expect-error - @types/next-pwa requires all FallbackRoutes fields, but next-pwa accepts a partial object
   // Note: next-pwa's fallback worker is compiled with babel-loader, so `babel-loader`

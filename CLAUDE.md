@@ -133,7 +133,7 @@ When introducing a new system (e.g., notifications, admin panel, payments), add 
 
 Code work the user has scoped but not requested yet — pick up next session unless the user explicitly redirects. Items are ordered top = next-pickup.
 
-- [ ] **Dynamic loading splash** — replace the current static loading state (the cream "ONA" wordmark blank page that shows while the app boots / chunks load) with a dynamic, editorial-feel animation. Plays with black on the cream background; uses geometric primitives (dots, drops) that slowly transform / morph into each other. Reference vibe: slow ink-in-water dispersion, calm and considered, NOT bouncy. Render with motion/react or `<canvas>` (SVG is fine too). Touches `apps/web/src/app/loading.tsx` (root) + any per-route `loading.tsx` that should inherit the same vibe.
+_(currently empty — last picked: dynamic loading splash, shipped on 2026-05-25 as `app/loading.tsx`)_
 
 ## Todo Miguel
 

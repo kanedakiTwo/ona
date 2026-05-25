@@ -63,21 +63,39 @@ export function useWebPush() {
   const subscribe = useCallback(async () => {
     setError(null)
     setState("subscribing")
+    // Hard timeout: if any step hangs (typically `pushManager.subscribe`
+    // when the browser silently rejects the VAPID key), we want a
+    // visible error after 20s instead of a permanently-greyed button.
+    const timeoutMs = 20_000
+    const timeout = new Promise<never>((_, rej) =>
+      setTimeout(() => rej(new Error("subscribe-timeout-20s")), timeoutMs),
+    )
     try {
-      const sub = await getOrCreatePushSubscription(PUBLIC_KEY)
+      console.log("[useWebPush] subscribe start, PUBLIC_KEY len=", PUBLIC_KEY.length)
+      const sub = await Promise.race([
+        getOrCreatePushSubscription(PUBLIC_KEY),
+        timeout,
+      ])
+      console.log("[useWebPush] got subscription")
       const subJson = sub.toJSON() as {
         endpoint: string
         keys: { p256dh: string; auth: string }
       }
-      await api.post("/push/subscribe", {
-        subscription: {
-          endpoint: subJson.endpoint,
-          keys: subJson.keys,
-        },
-        userAgent: navigator.userAgent.slice(0, 500),
-      })
+      console.log("[useWebPush] POST /push/subscribe")
+      await Promise.race([
+        api.post("/push/subscribe", {
+          subscription: {
+            endpoint: subJson.endpoint,
+            keys: subJson.keys,
+          },
+          userAgent: navigator.userAgent.slice(0, 500),
+        }),
+        timeout,
+      ])
+      console.log("[useWebPush] subscribed OK")
       setState("subscribed")
     } catch (err: any) {
+      console.warn("[useWebPush] subscribe failed:", err)
       if (err?.message === "notifications-denied") {
         setState("denied")
       } else {

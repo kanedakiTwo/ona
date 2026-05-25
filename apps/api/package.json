@@ -18,7 +18,9 @@
     "expand:catalog": "tsx scripts/expandIngredientCatalog.ts",
     "regen:recipes": "tsx scripts/regenerateRecipes.ts",
     "repair:regen": "tsx scripts/repairRegenOutput.ts",
-    "apply:recipes": "tsx scripts/applyRegeneratedRecipes.ts"
+    "apply:recipes": "tsx scripts/applyRegeneratedRecipes.ts",
+    "prep-requirements:populate": "tsx scripts/populatePrepRequirements.ts",
+    "prep-requirements:apply": "tsx scripts/populatePrepRequirements.ts --apply"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.82.0",

@@ -122,6 +122,18 @@ When the user changes the diner count from `recipe.servings` to `target`:
 - The detail view groups ingredients by `section` if any ingredient has one set; otherwise renders a flat list
 - The "Para X" caption next to the ingredients title reflects the live scaler value, not a hardcoded number
 
+## Ingredient prep requirements
+
+Each `ingredients` row carries an optional `prep_requirements` JSONB column with the shape `{ method: PrepMethod, notes?: string }` where `PrepMethod` is a closed enum: `thaw_24h | thaw_48h | soak_overnight | soak_30min | temper_30min | marinate_2h | marinate_overnight | dough_rise_overnight`. The values encode the typical lead time so the scheduler doesn't need separate config — `PREP_METHOD_HOURS_BEFORE` in `@ona/shared` maps each value to a fixed number of hours.
+
+Population is offline via the LLM script:
+
+  1. `pnpm --filter @ona/api prep-requirements:populate` — loads every ingredient, asks Claude in batches of 50 (one ~$0.02 call per batch), writes JSONL to `apps/api/scripts/output/prep-requirements.jsonl`. Defaults to `null` whenever the LLM is unsure so the catalogue never gets noisy.
+  2. Human review of the JSONL.
+  3. `pnpm --filter @ona/api prep-requirements:apply` — re-reads the same file and `UPDATE`s the matching rows.
+
+Idempotent: re-running populate overwrites the JSONL; re-running apply overwrites the DB. The scheduler ([Notifications](./notifications.md) / PR-D) reads this column together with `user_memories.prep_habits` to decide which alerts fire for which user when a recipe lands in their menu.
+
 ## Ingredient Resolution
 
 Both the photo extractor (`POST /recipes/extract-from-image`) and the URL extractor (`POST /recipes/extract-from-url`) call the shared `matchIngredients()` helper in `apps/api/src/services/recipeExtractor.ts` to bind every extracted ingredient name to a catalogue row id. The cascade has three stages, each is the previous one's fallback:

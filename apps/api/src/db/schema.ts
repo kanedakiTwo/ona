@@ -124,6 +124,15 @@ export const ingredients = pgTable('ingredients', {
   aminoAcids: jsonb('amino_acids').default({}),
   fatAcids: jsonb('fat_acids').default({}),
   carbTypes: jsonb('carb_types').default({}),
+  /**
+   * Prep-time requirements that need anticipating in advance. Populated by
+   * the LLM script `pnpm prep-requirements:populate` over the catalogue; the
+   * notification scheduler (PR-D) reads it to enqueue "saca el pescado del
+   * congelador" alerts. Shape:
+   *   { method: 'thaw_24h' | 'thaw_48h' | 'soak_overnight' | ..., notes?: string }
+   * Null for ingredients that need nothing special (most produce).
+   */
+  prepRequirements: jsonb('prep_requirements').$type<{ method: string; notes?: string } | null>(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => [

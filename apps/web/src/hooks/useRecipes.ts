@@ -203,13 +203,22 @@ export interface ExtractRecipeFromUrlResponse {
   warnings: string[]
 }
 
+export interface ExtractRecipeFromUrlInput {
+  url: string
+  /** Admin-only. When true, the imported recipe is persisted with
+   * `authorId = null` and tagged `compartida` so it lands in the ONA
+   * catalogue. Non-admins get 403 server-side. */
+  asSystem?: boolean
+}
+
 export function useExtractRecipeFromUrl() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (url: string) => {
+    mutationFn: async (input: ExtractRecipeFromUrlInput | string) => {
+      const body = typeof input === "string" ? { url: input } : input
       return api.post<ExtractRecipeFromUrlResponse>(
         "/recipes/extract-from-url",
-        { url }
+        body
       )
     },
     onSuccess: () => {

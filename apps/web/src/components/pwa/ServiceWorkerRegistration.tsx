@@ -20,6 +20,10 @@ export function ServiceWorkerRegistration() {
   useEffect(() => {
     if (typeof window === "undefined") return
     if (!("serviceWorker" in navigator)) return
+    // `next-pwa` disables itself in dev (`disable: NODE_ENV === 'development'`),
+    // so /sw.js doesn't exist locally / in CI. Skip registration there to
+    // keep the console clean — production / preview builds still register.
+    if (process.env.NODE_ENV !== "production") return
     // Defer to after first paint so we never block hydration.
     const onLoad = () => {
       navigator.serviceWorker

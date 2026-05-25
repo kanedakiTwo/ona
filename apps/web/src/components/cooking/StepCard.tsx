@@ -3,6 +3,7 @@
 import { Check, Flame, Wand2 } from "lucide-react"
 import type { Recipe, RecipeIngredient, RecipeStep } from "@ona/shared"
 import { formatQuantity } from "@/lib/recipeView"
+import { renderInlineMarkdown } from "@/lib/inlineMarkdown"
 import { StepTimer } from "./StepTimer"
 import type { StepTimer as StepTimerState } from "@/hooks/useStepTimers"
 
@@ -125,7 +126,7 @@ export function StepCard({
 
       {/* Step text — large editorial body */}
       <p className="font-display text-[clamp(1.4rem,4.5vw,1.9rem)] leading-[1.25] text-[#1A1612]">
-        {step.text}
+        {renderInlineMarkdown(step.text)}
       </p>
 
       {/* Inline ingredient chips */}

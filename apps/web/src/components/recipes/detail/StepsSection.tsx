@@ -4,6 +4,7 @@ import { motion } from "motion/react"
 import { ChefHat, Clock, Flame } from "lucide-react"
 import type { RecipeIngredient, RecipeStep } from "@ona/shared"
 import { formatQuantity } from "@/lib/recipeView"
+import { renderInlineMarkdown } from "@/lib/inlineMarkdown"
 
 interface Props {
   steps: RecipeStep[]
@@ -93,7 +94,7 @@ export function StepsSection({
                 )}
 
                 <p className="text-[14px] leading-relaxed text-[#1A1612]">
-                  {step.text}
+                  {renderInlineMarkdown(step.text)}
                 </p>
 
                 {/* Referenced ingredients */}

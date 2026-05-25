@@ -149,17 +149,64 @@ export default function MemoryPage() {
         ) : (
           <div className="mt-10 space-y-8">
             {GROUPS.map((group) => {
-              const facts = group.keys
-                .map((k) => [k, memory?.[k]] as const)
-                .filter(([_, f]) => f != null && f !== undefined)
-              if (facts.length === 0) return null
+              // Show every key in the group — with its current value if any,
+              // or an "Añadir" placeholder if missing. Previously this page
+              // hid empty groups entirely, which made it impossible to add
+              // a first entry for keys like `prep_habits` from the UI.
+              const entries = group.keys.map(
+                (k) => [k, memory?.[k] ?? null] as const,
+              )
               return (
                 <section key={group.title}>
                   <div className="text-eyebrow text-[#7A7066]">{group.title}</div>
                   <ul className="mt-3 space-y-2">
-                    {facts.map(([key, fact]) => {
-                      const f = fact as MemoryFact
+                    {entries.map(([key, fact]) => {
                       const k = key as MemoryKey
+                      const isEmpty = fact == null
+                      if (isEmpty) {
+                        const isEditing = editingKey === k
+                        return (
+                          <li
+                            key={key}
+                            className="rounded-xl border border-dashed border-[#DDD6C5] bg-[#FAF6EE] px-4 py-3"
+                          >
+                            {!isEditing ? (
+                              <button
+                                type="button"
+                                onClick={() => setEditingKey(k)}
+                                className="flex w-full items-center justify-between text-left"
+                              >
+                                <span className="text-[13px] text-[#7A7066]">
+                                  {LABELS[k] ?? k}
+                                </span>
+                                <span className="text-[11px] uppercase tracking-[0.12em] text-[#2D6A4F]">
+                                  + Añadir
+                                </span>
+                              </button>
+                            ) : (
+                              <MemoryFactEditor
+                                memoryKey={k}
+                                initial={undefined}
+                                disabled={busyKey === k}
+                                onCancel={() => setEditingKey(null)}
+                                onSave={(next) => {
+                                  setBusyKey(k)
+                                  updateMemory.mutate(
+                                    { key: k, value: next },
+                                    {
+                                      onSettled: () => {
+                                        setBusyKey(null)
+                                        setEditingKey(null)
+                                      },
+                                    },
+                                  )
+                                }}
+                              />
+                            )}
+                          </li>
+                        )
+                      }
+                      const f = fact as MemoryFact
                       const badge = SOURCE_BADGES[f.source]
                       const isEditing = editingKey === k
                       return (

@@ -80,7 +80,7 @@ export async function extractRecipeFromUrl(
   }
 
   const { matched: matchedIngredients, warnings: matchWarnings } =
-    await matchIngredients(raw.ingredients)
+    await matchIngredients(raw.ingredients, { recipeName: raw.name })
 
   const meals = (raw.suggestedMeals ?? []).filter((m): m is Meal =>
     VALID_MEALS.includes(m as Meal),

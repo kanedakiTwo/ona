@@ -2,6 +2,8 @@ import { eq } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { ingredients } from '../db/schema.js'
 import { suggestIngredient } from './ingredientAutoCreate.js'
+import { tokenSetMatch } from './ingredientTokenMatch.js'
+import { disambiguateIngredients } from './ingredientMatcherLLM.js'
 import { inferAllergenTagsFromName } from './nutrition/allergens.js'
 import type {
   ExtractedRecipe,
@@ -160,13 +162,38 @@ async function autoCreateMissingIngredient(
 }
 
 /**
- * Resolve raw extracted ingredient names to the catalog. Tries exact match,
- * containment, and first-word match (≥3 chars). Falls back to USDA-backed
- * auto-create for the still-unmatched. Used by both the photo extractor and
- * the URL extractor (see `recipeUrlExtractor.ts`).
+ * Resolve raw extracted ingredient names to the catalog. Three-stage cascade,
+ * each stage is the previous one's fallback:
  *
- * `displayQuantity` and `displayUnit` are passive fields that ride through
- * unmodified — the matching logic does not touch them.
+ *   1. Pure token-set match (`ingredientTokenMatch.ts`): exact, then
+ *      noise-stripped (cooking-state modifiers like "picada" / "fresca"
+ *      removed), then user-generic (user typed less specific than the
+ *      catalogue). NEVER collapses meaning — refuses anything where the
+ *      user's input carries semantic content the catalogue lacks (the
+ *      "pechuga de pollo" → "pollo" trap).
+ *
+ *   2. LLM disambiguation (`ingredientMatcherLLM.ts`): a single batched
+ *      Claude call per import sees every leftover name + the full
+ *      catalogue + the recipe title. Resolves genuine aliases that the
+ *      token matcher can't see ("chuletón" → "chuleta de vaca",
+ *      "pimentón dulce de la vera" → "pimentón dulce"). LLM is
+ *      explicitly instructed to refuse part-of-animal collapses; on any
+ *      failure (no API key, network, malformed JSON) it returns an empty
+ *      verdict map and we fall through.
+ *
+ *   3. USDA auto-create (`ingredientAutoCreate.ts`): the existing
+ *      Foundation/SR-Legacy lookup with Spanish↦English translation
+ *      ingests the missing ingredient with full nutrition + allergens.
+ *      The first time "pechuga de pollo" comes through it lands as a
+ *      brand-new catalogue row; subsequent imports hit stage 1 directly.
+ *
+ * `displayQuantity` and `displayUnit` are passive fields that ride
+ * through unmodified — none of the three stages touches them. Used by
+ * both the photo extractor and the URL extractor.
+ *
+ * Optional `recipeName` improves LLM disambiguation accuracy by giving
+ * it context (the same name "huevo" reads differently inside an aioli
+ * recipe than in a sponge cake recipe).
  */
 export async function matchIngredients(
   rawIngredients: {
@@ -176,6 +203,7 @@ export async function matchIngredients(
     displayQuantity?: number | null
     displayUnit?: string | null
   }[],
+  opts: { recipeName?: string } = {},
 ): Promise<{ matched: ExtractedIngredient[]; warnings: string[] }> {
   const allIngredients = await db
     .select({ id: ingredients.id, name: ingredients.name })
@@ -184,31 +212,55 @@ export async function matchIngredients(
   const matched: ExtractedIngredient[] = []
   const warnings: string[] = []
 
+  // ─── Stage 1: pure token-set match ───────────────────────────────
+  // Resolve in two passes so we can collect every "no-match" and send
+  // them to the LLM in a single batched call (one LLM round-trip per
+  // recipe import, not per ingredient).
+  interface PendingRow {
+    ext: (typeof rawIngredients)[number]
+    quantity: number
+    resolved: { id: string; name: string } | null
+  }
+  const pending: PendingRow[] = []
+
   for (const ext of rawIngredients) {
-    const normalized = ext.name.toLowerCase().trim()
-
-    let match = allIngredients.find((i) => i.name.toLowerCase() === normalized)
-
-    if (!match) {
-      match = allIngredients.find(
-        (i) =>
-          normalized.includes(i.name.toLowerCase()) ||
-          i.name.toLowerCase().includes(normalized),
-      )
-    }
-
-    if (!match) {
-      const firstWord = normalized.split(' ')[0]
-      if (firstWord.length >= 3) {
-        match = allIngredients.find((i) => i.name.toLowerCase().startsWith(firstWord))
-      }
-    }
-
     let { quantity } = ext
     const lowerUnit = (ext.unit ?? '').toLowerCase()
     if (lowerUnit === 'kg' || lowerUnit === 'l') quantity = quantity * 1000
 
-    if (!match) {
+    const verdict = tokenSetMatch(ext.name, allIngredients)
+    let resolved: { id: string; name: string } | null = null
+    if (verdict.kind !== 'no-match') {
+      resolved = { id: verdict.catalog.id, name: verdict.catalog.name }
+    }
+    pending.push({ ext, quantity, resolved })
+  }
+
+  // ─── Stage 2: LLM disambiguation for the still-unmatched ─────────
+  const stage2Targets = pending
+    .filter((p) => p.resolved == null)
+    .map((p) => ({ extractedName: p.ext.name }))
+
+  if (stage2Targets.length > 0) {
+    const { verdicts } = await disambiguateIngredients({
+      recipeName: opts.recipeName,
+      unmatched: stage2Targets,
+      catalog: allIngredients,
+    })
+    for (const row of pending) {
+      if (row.resolved != null) continue
+      const v = verdicts.get(row.ext.name)
+      if (v && v.kind === 'alias') {
+        row.resolved = { id: v.ingredientId, name: v.ingredientName }
+      }
+    }
+  }
+
+  // ─── Stage 3: USDA auto-create for whatever's still unmatched ────
+  for (const row of pending) {
+    const { ext, quantity, resolved } = row
+
+    if (resolved == null) {
       const created = await autoCreateMissingIngredient(ext.name)
       if (created) {
         allIngredients.push({ id: created.id, name: created.name })
@@ -229,11 +281,11 @@ export async function matchIngredients(
 
     matched.push({
       extractedName: ext.name,
-      ingredientId: match?.id ?? null,
-      ingredientName: match?.name ?? null,
+      ingredientId: resolved?.id ?? null,
+      ingredientName: resolved?.name ?? null,
       quantity,
       unit: coerceUnit(ext.unit),
-      matched: !!match,
+      matched: !!resolved,
       displayQuantity: ext.displayQuantity ?? null,
       displayUnit: ext.displayUnit ?? null,
     })

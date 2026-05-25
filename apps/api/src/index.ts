@@ -19,6 +19,7 @@ import memoryRoutes from './routes/memory.js'
 import householdRoutes, { publicHouseholdRouter } from './routes/households.js'
 import cookLogRoutes from './routes/cookLogs.js'
 import staplesRoutes from './routes/staples.js'
+import pushRoutes from './routes/push.js'
 
 const app = express()
 
@@ -79,6 +80,7 @@ app.use(memoryRoutes)
 app.use(householdRoutes)
 app.use(cookLogRoutes)
 app.use(staplesRoutes)
+app.use(pushRoutes)
 
 // Error handler
 app.use(errorHandler)

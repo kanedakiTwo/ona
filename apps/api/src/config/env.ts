@@ -71,4 +71,20 @@ export const env = {
     process.env.SHARED_HOUSEHOLD_SCOPE !== undefined
       ? process.env.SHARED_HOUSEHOLD_SCOPE === 'true'
       : process.env.NODE_ENV !== 'production',
+
+  /**
+   * Web Push (VAPID) keys. Generated once with
+   * `npx web-push generate-vapid-keys`. The public key is shipped to the
+   * browser via `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (web env) so `subscribe()`
+   * can sign the subscription. The private key stays here and is used by
+   * `web-push.sendNotification` to authenticate dispatches.
+   *
+   * When EITHER is empty, all push endpoints degrade to a friendly 503
+   * ("Push no configurado") so a missing env in dev or staging never
+   * crashes the server on startup.
+   */
+  VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY || '',
+  VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY || '',
+  /** Subject sent with VAPID — must be a mailto: or https:// URL per RFC 8292. */
+  VAPID_SUBJECT: process.env.VAPID_SUBJECT || 'mailto:hola@ona.app',
 }

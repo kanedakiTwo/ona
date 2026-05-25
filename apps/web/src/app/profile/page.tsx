@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { motion } from 'motion/react'
-import { LogOut, X, Plus, Check, Mic } from 'lucide-react'
+import { LogOut, X, Plus, Check, Mic, Bell, BellOff } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
+import { useWebPush } from '@/hooks/useWebPush'
 import { useVoiceMode } from '@/components/voice/VoiceProvider'
 import {
   getEnabled as getNotifEnabled,
@@ -692,6 +693,9 @@ export default function ProfilePage() {
             </div>
           )}
         </div>
+
+        {/* Web Push — server-side notifications that survive a closed tab. */}
+        <PushNotificationsCard />
       </section>
 
       {/* Capitulo 06 — Mis recetas */}
@@ -795,6 +799,92 @@ export default function ProfilePage() {
 }
 
 /* ─────────────────────────────────────────── */
+
+/**
+ * Renders the Web Push opt-in card under the local-reminders chapter.
+ *
+ * The button stays hidden when:
+ *   - the browser doesn't support Push (esp. iOS Safari pre-install),
+ *   - `NEXT_PUBLIC_VAPID_PUBLIC_KEY` is missing at build time.
+ *
+ * On iOS, the user must "Add to Home Screen" first; we surface a tip
+ * line so they don't think the button is broken.
+ */
+function PushNotificationsCard() {
+  const { state, error, subscribe, unsubscribe, sendTest } = useWebPush()
+
+  if (state === 'unsupported') {
+    return (
+      <div className="mt-3 rounded-2xl bg-[#FFFEFA] border border-[#DDD6C5] p-4 text-[12px] text-[#7A7066]">
+        Las notificaciones push no están disponibles en este navegador. En
+        iPhone tienes que añadir la app a inicio primero (Compartir → Añadir
+        a pantalla de inicio).
+      </div>
+    )
+  }
+
+  const isSubscribed = state === 'subscribed'
+  const isWorking = state === 'subscribing'
+
+  return (
+    <div className="mt-3 rounded-2xl bg-[#FFFEFA] border border-[#DDD6C5] p-4">
+      <div className="flex items-start gap-3">
+        {isSubscribed ? (
+          <Bell size={18} className="mt-0.5 shrink-0 text-[#2D6A4F]" />
+        ) : (
+          <BellOff size={18} className="mt-0.5 shrink-0 text-[#7A7066]" />
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="text-[13px] font-medium text-[#1A1612]">
+            Notificaciones push del asistente
+          </div>
+          <div className="mt-1 text-[11px] leading-snug text-[#7A7066]">
+            Avisos que llegan aunque la app esté cerrada — futura base para
+            recordatorios de prep (sacar pescado del congelador, poner
+            legumbres en remojo…).{' '}
+            {state === 'denied' && (
+              <span className="text-[#C65D38]">
+                Has denegado el permiso; cámbialo en los ajustes del
+                navegador.
+              </span>
+            )}
+            {error && <span className="text-[#C65D38]"> {error}</span>}
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            {isSubscribed ? (
+              <>
+                <button
+                  type="button"
+                  onClick={sendTest}
+                  className="rounded-full border border-[#DDD6C5] bg-[#F2EDE0] px-3 py-1.5 text-[11px] font-medium text-[#1A1612] transition-all hover:border-[#1A1612] active:scale-95"
+                >
+                  Enviar prueba
+                </button>
+                <button
+                  type="button"
+                  onClick={unsubscribe}
+                  className="rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-3 py-1.5 text-[11px] font-medium text-[#7A7066] transition-all hover:text-[#1A1612] active:scale-95"
+                >
+                  Desactivar
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={subscribe}
+                disabled={isWorking}
+                className="rounded-full bg-[#1A1612] px-3.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.1em] text-[#FAF6EE] transition-all hover:bg-[#2D6A4F] active:scale-95 disabled:opacity-50"
+              >
+                {isWorking ? 'Activando…' : 'Activar notificaciones'}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function ChapterHeader({ number, title, italic }: { number: string; title: string; italic: string }) {
   return (

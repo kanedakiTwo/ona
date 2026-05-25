@@ -499,3 +499,29 @@ export const householdStaples = pgTable('household_staples', {
 }, (t) => [
   index('idx_household_staples_household').on(t.householdId),
 ])
+
+// ─── Web Push subscriptions (PR-B) ────────────────────────────────
+//
+// One row per (user, browser endpoint). Browsers identify themselves by
+// the unique endpoint URL returned from `pushManager.subscribe(...)`,
+// and we hold the auth + p256dh keys we need to encrypt the payload
+// before dispatching via `web-push`. When the user revokes permission
+// (or the endpoint goes stale, e.g. browser cleared its storage), we
+// delete the row on the next failed send so the table stays warm.
+export const pushSubscriptions = pgTable('push_subscriptions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** Unique per browser. Acts as the natural key after `id`. */
+  endpoint: text('endpoint').notNull().unique(),
+  /** ECDH public key from `subscription.toJSON().keys.p256dh`. */
+  p256dh: text('p256dh').notNull(),
+  /** Subscription auth secret from `subscription.toJSON().keys.auth`. */
+  auth: text('auth').notNull(),
+  /** Best-effort hint for the UI; never used for routing. */
+  userAgent: text('user_agent'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  /** Updated on every successful dispatch — handy for "last delivered" displays. */
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+}, (t) => [
+  index('idx_push_subs_user').on(t.userId),
+])

@@ -108,11 +108,17 @@ export default function RecipeDetailPage() {
 
   const fallbackImg =
     "https://images.unsplash.com/photo-1490645935967-10de6ba17061?w=1200&q=85&auto=format&fit=crop"
-  // Append `?v=<updatedAt>` so a regenerated image isn't masked by the
-  // browser cache — same URL, new bytes, but the query param refreshes the
-  // entry while keeping the API's long Cache-Control headers in play.
+  // Append `?v=<updatedAt>` ONLY for images we serve ourselves (the Railway
+  // volume under `IMAGE_PUBLIC_URL_BASE`). Adding a query to third-party
+  // hosts like `i.ytimg.com` makes them serve a generic placeholder instead
+  // of the real frame — that was the "import desde YouTube no muestra foto"
+  // bug. Same-URL-new-bytes only matters for our own regenerated heroes
+  // anyway; external URLs are immutable so the cache is fine as-is.
+  const isOwnImage = recipe.imageUrl?.includes("ona-api") ?? false
   const cacheBust = recipe.imageUrl
-    ? `${recipe.imageUrl}${recipe.imageUrl.includes("?") ? "&" : "?"}v=${new Date(recipe.updatedAt).getTime()}`
+    ? isOwnImage
+      ? `${recipe.imageUrl}${recipe.imageUrl.includes("?") ? "&" : "?"}v=${new Date(recipe.updatedAt).getTime()}`
+      : recipe.imageUrl
     : null
   const img = cacheBust ?? fallbackImg
 

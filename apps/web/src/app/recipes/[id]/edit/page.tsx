@@ -102,6 +102,11 @@ export default function EditRecipePage() {
   // 'none' and we don't have to maintain a parallel "selected" array.
   const [mealFit, setMealFit] = useState<Partial<Record<Meal, "mid" | "perfect">>>({})
   const [seasonFit, setSeasonFit] = useState<Partial<Record<Season, "mid" | "perfect">>>({})
+  // Frequency hint for the menu matcher. `null` = the "normal" default
+  // (matched against `recipes.frequency = NULL` in the DB).
+  const [frequency, setFrequency] = useState<
+    "frequent" | "normal" | "occasional" | "weekends_only" | null
+  >(null)
   const [tags, setTags] = useState<string[]>([])
   const [tagInput, setTagInput] = useState("")
   const [ingredientRows, setIngredientRows] = useState<IngredientRow[]>([emptyRow()])
@@ -146,6 +151,7 @@ export default function EditRecipePage() {
       recipe.seasonFit ??
         Object.fromEntries((recipe.seasons ?? []).map((s) => [s, "perfect" as const])),
     )
+    setFrequency(recipe.frequency ?? null)
     setTags(recipe.tags ?? [])
     // Round-trip the persisted blob(s) through split-on-blank-line so a
     // recipe authored before the unified UI still renders one row per
@@ -307,6 +313,7 @@ export default function EditRecipePage() {
       seasons: (Object.keys(seasonFit) as Season[]),
       mealFit,
       seasonFit,
+      frequency,
       tags,
       ingredients: cleanedIngredients,
       steps: cleanedSteps,
@@ -616,6 +623,45 @@ export default function EditRecipePage() {
                 {errors.seasons}
               </p>
             )}
+          </section>
+
+          {/* Planificación — scheduling frequency hint consumed by the
+              menu matcher. "Normal" is the default (null) — the matcher
+              treats it as 1× weight. The other three chips are mutually
+              exclusive. */}
+          <section>
+            <div className="text-eyebrow text-[#7A7066]">Planificación</div>
+            <p className="mt-1 text-[11px] italic text-[#7A7066]">
+              Cuánto debería proponer este plato el planificador
+              automático cuando regenera tu menú.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {([
+                { value: null, label: "Normal", subtitle: "Por defecto" },
+                { value: "frequent" as const, label: "Frecuente", subtitle: "Peso 2×" },
+                { value: "occasional" as const, label: "Ocasional", subtitle: "Peso 0.4×" },
+                { value: "weekends_only" as const, label: "Solo finde", subtitle: "Sólo S/D" },
+              ] as const).map((opt) => {
+                const active = (frequency ?? null) === opt.value
+                return (
+                  <button
+                    key={String(opt.value)}
+                    type="button"
+                    onClick={() => setFrequency(opt.value)}
+                    aria-pressed={active}
+                    title={opt.subtitle}
+                    className={cn(
+                      "rounded-full border px-4 py-2 text-[12px] uppercase tracking-[0.12em] transition-all active:scale-95",
+                      active
+                        ? "border-[#1A1612] bg-[#1A1612] text-[#FAF6EE]"
+                        : "border-[#DDD6C5] bg-transparent text-[#7A7066] hover:border-[#1A1612] hover:text-[#1A1612]",
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                )
+              })}
+            </div>
           </section>
 
           {/* Tags */}

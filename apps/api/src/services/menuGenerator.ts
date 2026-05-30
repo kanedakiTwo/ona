@@ -205,6 +205,9 @@ async function loadRecipesWithIngredients(db: any): Promise<RecipeWithIngredient
     // handles that branch and derives 'perfect' from the array tagging.
     mealFit: r.mealFit ?? undefined,
     seasonFit: r.seasonFit ?? undefined,
+    // Frequency hint (migration 0026). Null = 'normal' default; the
+    // matcher reads it for pool-weighting + the weekends-only filter.
+    frequency: r.frequency ?? null,
     tags: r.tags ?? [],
     equipment: r.equipment ?? [],
     prepTime: r.prepTime ?? null,
@@ -285,6 +288,7 @@ function buildRandomMenu(
         dislikes,
         availableEquipment,
         maxPrepMinutes: timeBudgetByDay?.[dayIndex] ?? null,
+        dayIndex,
       })
 
       if (recipe) {

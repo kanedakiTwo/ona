@@ -199,6 +199,14 @@ export const recipes = pgTable('recipes', {
    */
   copiedFromRecipeId: uuid('copied_from_recipe_id'),
 
+  /**
+   * Per-recipe scheduling hint for the menu matcher. Null = the default
+   * "normal" weight. `frequent` doubles the pool weight, `occasional`
+   * reduces it to 0.4×, `weekends_only` excludes the recipe from Mon-Fri
+   * slots entirely. Constraint-checked at the DB layer (migration 0026).
+   */
+  frequency: text('frequency'),
+
   /** How confident was the extractor about the servings count. */
   servingsConfidence: text('servings_confidence', { enum: ['explicit', 'estimated'] })
     .notNull()

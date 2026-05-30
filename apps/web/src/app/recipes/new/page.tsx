@@ -98,6 +98,9 @@ function NewRecipePageInner() {
   // to selection weights (mid = 1×, perfect = 3×).
   const [mealFit, setMealFit] = useState<Partial<Record<Meal, "mid" | "perfect">>>({})
   const [seasonFit, setSeasonFit] = useState<Partial<Record<Season, "mid" | "perfect">>>({})
+  const [frequency, setFrequency] = useState<
+    "frequent" | "normal" | "occasional" | "weekends_only" | null
+  >(null)
   const [tags, setTags] = useState<string[]>([])
   const [tagInput, setTagInput] = useState("")
   const [ingredientRows, setIngredientRows] = useState<IngredientRow[]>([
@@ -247,7 +250,7 @@ function NewRecipePageInner() {
       steps: steps.map((s) => s.text),
       ingredientRows,
     })
-    return { ...base, mealFit, seasonFit }
+    return { ...base, mealFit, seasonFit, frequency }
   }
 
   // Surface inline errors per row (e.g. "no encontrado") regardless of submit.
@@ -513,6 +516,43 @@ function NewRecipePageInner() {
                 {errors.seasons}
               </p>
             )}
+          </section>
+
+          {/* Planificación — frecuencia con la que el matcher propondrá
+              esta receta. Normal (default) = peso 1×; el resto modifican
+              el peso del pool o filtran el día. */}
+          <section>
+            <div className="text-eyebrow text-[#7A7066]">Planificación</div>
+            <p className="mt-1 text-[11px] italic text-[#7A7066]">
+              Cuánto debería proponer este plato el planificador cuando
+              regenera el menú.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {([
+                { value: null, label: "Normal" },
+                { value: "frequent" as const, label: "Frecuente" },
+                { value: "occasional" as const, label: "Ocasional" },
+                { value: "weekends_only" as const, label: "Solo finde" },
+              ] as const).map((opt) => {
+                const active = (frequency ?? null) === opt.value
+                return (
+                  <button
+                    key={String(opt.value)}
+                    type="button"
+                    onClick={() => setFrequency(opt.value)}
+                    aria-pressed={active}
+                    className={cn(
+                      "rounded-full border px-4 py-2 text-[12px] uppercase tracking-[0.12em] transition-all active:scale-95",
+                      active
+                        ? "border-[#1A1612] bg-[#1A1612] text-[#FAF6EE]"
+                        : "border-[#DDD6C5] bg-transparent text-[#7A7066] hover:border-[#1A1612] hover:text-[#1A1612]",
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                )
+              })}
+            </div>
           </section>
 
           {/* Tags */}

@@ -130,6 +130,8 @@ export interface RecipeWriteInput {
    */
   mealFit?: Partial<Record<Meal, 'mid' | 'perfect'>>
   seasonFit?: Partial<Record<Season, 'mid' | 'perfect'>>
+  /** Scheduling-frequency hint — see `RecipeFrequency` in `@ona/shared`. */
+  frequency?: 'frequent' | 'normal' | 'occasional' | 'weekends_only' | null
   equipment?: string[]
   notes?: string | null
   tips?: string | null
@@ -497,6 +499,11 @@ export async function persistRecipe(
       internalTags: input.internalTags ?? [],
       sourceUrl: input.sourceUrl ?? null,
       sourceType: input.sourceType ?? null,
+      // Scheduling hint — null means "normal" (default weight). Persist
+      // whatever the caller sent (the form clears to null when the user
+      // toggles back to "Normal"). The DB CHECK constraint guards the
+      // enum domain so a stray value can't reach the matcher.
+      frequency: input.frequency ?? null,
       updatedAt: new Date(),
     }
 

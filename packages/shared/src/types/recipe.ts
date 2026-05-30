@@ -118,6 +118,11 @@ export interface Recipe {
    */
   mealFit?: MealFitMap
   seasonFit?: SeasonFitMap
+  /**
+   * Scheduling-frequency hint consumed by the matcher. Null/undefined =
+   * 'normal' (default weight). See `FREQUENCY_WEIGHT` for the weights.
+   */
+  frequency?: RecipeFrequency | null
 
   equipment: string[]
   /** Auto-aggregated from ingredients on save */
@@ -172,6 +177,7 @@ export const createRecipeSchema = z.object({
   // route layer drops unknown keys + caps to the canonical enum domain.
   mealFit: z.record(z.string(), z.enum(['mid', 'perfect'])).optional(),
   seasonFit: z.record(z.string(), z.enum(['mid', 'perfect'])).optional(),
+  frequency: z.enum(['frequent', 'normal', 'occasional', 'weekends_only']).nullable().optional(),
 
   equipment: z.array(z.string()).default([]),
 
@@ -194,6 +200,40 @@ export const updateRecipeSchema = createRecipeSchema.partial()
 
 export type CreateRecipeInput = z.infer<typeof createRecipeSchema>
 export type UpdateRecipeInput = z.infer<typeof updateRecipeSchema>
+
+// ─── Scheduling frequency hint ─────────────────────────────────
+//
+// User-controlled hint that tells the menu matcher how often a recipe
+// should appear. Distinct from meal/season fit (which is "where it fits")
+// — this answers "how often the planner should pick it":
+//
+//   - frequent       → pool weight ×2 (matches favourite-boost magnitude)
+//   - normal         → 1× (the default; encoded as `undefined`/null on
+//                      the wire to keep the common case implicit)
+//   - occasional     → 0.4× (still selectable but rare)
+//   - weekends_only  → excluded from Mon-Fri slots; baseline weight on
+//                      Sat/Sun. Hard filter, not a soft preference.
+//
+// Pool weighting composes multiplicatively with meal/season fit and the
+// favourite boost. The matcher reads this from the recipe row directly;
+// it doesn't depend on tags so spelling drift can't break the matcher.
+export const FREQUENCY_LEVELS = [
+  'frequent',
+  'normal',
+  'occasional',
+  'weekends_only',
+] as const
+export type RecipeFrequency = (typeof FREQUENCY_LEVELS)[number]
+
+/** Weight applied to the recipe's selection pool entry — see comment above. */
+export const FREQUENCY_WEIGHT: Record<RecipeFrequency, number> = {
+  frequent: 2,
+  normal: 1,
+  occasional: 0.4,
+  weekends_only: 1,
+}
+
+export const recipeFrequencySchema = z.enum(FREQUENCY_LEVELS)
 
 // ─── Meal / Season fit ─────────────────────────────────────────
 //

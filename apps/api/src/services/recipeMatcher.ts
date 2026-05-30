@@ -1,5 +1,5 @@
-import type { FitLevel, Meal, Season } from '@ona/shared'
-import { FIT_WEIGHT, isInSeason } from '@ona/shared'
+import type { FitLevel, Meal, RecipeFrequency, Season } from '@ona/shared'
+import { FIT_WEIGHT, FREQUENCY_WEIGHT, isInSeason } from '@ona/shared'
 
 export interface RecipeWithIngredients {
   id: string
@@ -15,6 +15,13 @@ export interface RecipeWithIngredients {
    */
   mealFit?: Partial<Record<Meal, FitLevel>>
   seasonFit?: Partial<Record<Season, FitLevel>>
+  /**
+   * Scheduling-frequency hint. Null/undefined = 'normal' (1×). `frequent`
+   * doubles the pool weight; `occasional` cuts to 0.4×; `weekends_only`
+   * excludes the recipe from Mon-Fri slots entirely (the day-of-week
+   * filter happens in `matchRecipes` before scoring).
+   */
+  frequency?: RecipeFrequency | null
   tags: string[]
   /** Equipment the recipe needs ('horno', 'freidora', 'olla express'…). Empty / undefined = no equipment requirement. */
   equipment?: string[]
@@ -46,6 +53,13 @@ export interface MatcherOptions {
    * pizza…). Null / absent means no constraint.
    */
   pinnedType?: string | null
+  /**
+   * Day index (0-6, Mon-Sun) for this slot. Used by the
+   * `weekends_only` frequency filter — recipes with that hint are
+   * excluded when `dayIndex < 5`. Optional so legacy callers (the
+   * assistant skill / one-shot pick paths) still work without it.
+   */
+  dayIndex?: number
   /**
    * Lowercased ingredient names the user dislikes (from user_memories
    * `dislikes`). Functionally identical to `restrictions` — recipes whose
@@ -92,7 +106,9 @@ export function matchRecipes(
     dislikes,
     availableEquipment,
     maxPrepMinutes,
+    dayIndex,
   } = options
+  const isWeekday = typeof dayIndex === 'number' && dayIndex < 5
 
   // Restrictions + dislikes share the same predicate: any ingredient name
   // whose lowercased form contains one of the entries → recipe excluded.
@@ -108,6 +124,9 @@ export function matchRecipes(
 
     // 0b. Pinned meal type — when set, recipe must carry the tag.
     if (pinnedType && !recipe.tags.includes(pinnedType)) return false
+
+    // 0c. Frequency: hard-filter weekend-only recipes out of Mon-Fri.
+    if (recipe.frequency === 'weekends_only' && isWeekday) return false
 
     // 1. Meal type match (fit-aware). A recipe passes when:
     //    - it carries a fit map AND the entry for this slot is 'mid' or 'perfect', OR
@@ -212,9 +231,16 @@ export function pickRandom(
       const fit = seasonFitFor(recipe, ctx.season)
       if (fit) weight *= FIT_WEIGHT[fit]
     }
+    // Frequency hint scales the pool entry — frequent ×2, occasional ×0.4,
+    // weekends_only ×1 (it's a filter, not a soft pref), normal/null ×1.
+    if (recipe.frequency) {
+      weight *= FREQUENCY_WEIGHT[recipe.frequency]
+    }
     if (favoriteRecipeIds.has(recipe.id)) weight *= 2
     // Float weights are fine — duplicate the recipe into the pool an
-    // integer number of times. Round so the loop terminates cleanly.
+    // integer number of times. Round so the loop terminates cleanly, with
+    // a floor of 1 so an "occasional" recipe still has a non-zero chance
+    // when it's the only option.
     const count = Math.max(1, Math.round(weight))
     for (let i = 0; i < count; i++) pool.push(recipe)
   }

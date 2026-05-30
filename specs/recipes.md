@@ -102,6 +102,17 @@ The menu generator's matcher honours both:
 - **Pool weighting**: `pickRandom` multiplies by `FIT_WEIGHT` (`mid = 1×`, `perfect = 3×`) for the meal AND for the season, then by `2×` if the recipe is a household favourite. A perfect/perfect favourite weighs `18×` against a mid/mid non-favourite at `1×`.
 
 Stored as parallel `recipes.meal_fit` / `recipes.season_fit` jsonb columns (migration 0024). The `meals: text[]` / `seasons: text[]` arrays stay in sync as a derived view so the public catalogue endpoint and the assistant skills keep their existing shape. Legacy recipes saved before the migration have `NULL` in the fit columns — the read layer falls back to deriving `'perfect'` for every entry in the array tagging so old recipes keep their pre-fit semantics.
+
+### Scheduling frequency hint
+
+Each recipe carries an optional `frequency` enum (`recipes.frequency`, migration 0026) that drives how often the menu matcher picks it:
+
+- **Normal** (default; `NULL` in DB) — baseline weight 1×.
+- **Frecuente** (`frequent`) — pool weight ×2. Same magnitude as the favourite boost; the two compose multiplicatively.
+- **Ocasional** (`occasional`) — pool weight ×0.4. Still selectable when the matcher has no better option (floor of 1 entry in the pool), just rare.
+- **Solo finde** (`weekends_only`) — **hard filter**: the recipe is excluded from any Mon-Fri slot (`dayIndex < 5`). On Saturday / Sunday it enters the pool with weight 1×.
+
+The edit form exposes four mutually-exclusive chips under "Planificación"; "Normal" is the default state that maps to a NULL column. Persisted via `createRecipeSchema.frequency` (zod `nullable().optional()`); the DB CHECK constraint clamps writes to the canonical enum.
 - `note` — optional inline note (e.g. "picada fina", "del día anterior")
 - `displayOrder` — integer, controls UI ordering inside its section
 

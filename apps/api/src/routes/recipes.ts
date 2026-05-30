@@ -134,6 +134,7 @@ interface RecipeRow {
   seasons: string[]
   mealFit: Record<string, 'mid' | 'perfect'> | null
   seasonFit: Record<string, 'mid' | 'perfect'> | null
+  frequency: 'frequent' | 'normal' | 'occasional' | 'weekends_only' | null
   equipment: string[] | null
   allergens: string[] | null
   notes: string | null
@@ -283,6 +284,7 @@ function toDetailRecipe(
       Object.fromEntries(((row.meals ?? []) as string[]).map((m) => [m, 'perfect'])),
     seasonFit: (row.seasonFit as Record<string, 'mid' | 'perfect'> | null) ??
       Object.fromEntries(((row.seasons ?? []) as string[]).map((s) => [s, 'perfect'])),
+    frequency: row.frequency ?? null,
     equipment: row.equipment ?? [],
     allergens: row.allergens ?? [],
     nutritionPerServing: row.nutritionPerServing ?? null,

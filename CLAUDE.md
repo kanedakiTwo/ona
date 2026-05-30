@@ -133,7 +133,7 @@ When introducing a new system (e.g., notifications, admin panel, payments), add 
 
 Code work the user has scoped but not requested yet — pick up next session unless the user explicitly redirects. Items are ordered top = next-pickup.
 
-- [ ] **Recipe source links (vídeo / artículo).** Surface a small "Ver fuente" affordance in the recipe detail (Capítulo header or eyebrow) when `sourceUrl` is set, deep-linking to the original YouTube video or article. When a recipe is imported via `/recipes/extract-from-url`, the form should pre-fill the source field automatically (the backend already persists `sourceUrl` + `sourceType` — the frontend just doesn't render or set them yet on the recipe detail). Manual-entry path needs an optional URL input under "Detalles". Treat as next-pickup.
+_Recipe source links — shipped 2026-05-30: "Ver fuente" affordance on the detail under the title; editable from the edit form; YouTube vs article icon distinguished from `sourceType`._
 - [ ] **Bottom navbar mis-aligns "sometimes" on the recipe detail page.** Miguel reproduces it intermittently: the pill renders ~3 items, right-aligned, instead of 5 distributed across the centered 430 px container. Likely a motion `layoutId="nav-pill"` measurement race during page transitions. First-pass defensive try: drop the shared `layoutId` animation and render the active-item pill as a plain `absolute inset-0` div (loses the smooth slide between tabs but becomes deterministic). If the bug reproduces with a stable URL, instrument with `console.log` on `Navbar` mount/unmount counts before deciding the real fix.
 
 ## Todo Miguel

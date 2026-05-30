@@ -24,7 +24,17 @@ import { NutritionCard } from "@/components/recipes/detail/NutritionCard"
 import { AllergensBadges } from "@/components/recipes/detail/AllergensBadges"
 import { haptic } from "@/lib/pwa/haptics"
 import { share } from "@/lib/pwa/share"
-import { BookmarkPlus, ChevronLeft, Clock, Pencil, Share2, Sparkles, Wrench } from "lucide-react"
+import {
+  BookmarkPlus,
+  ChevronLeft,
+  Clock,
+  ExternalLink,
+  Pencil,
+  Share2,
+  Sparkles,
+  Wrench,
+  Youtube,
+} from "lucide-react"
 import Link from "next/link"
 import {
   householdToDinersOrNull,
@@ -213,6 +223,22 @@ export default function RecipeDetailPage() {
             <p className="mt-2 font-italic italic text-[14px] text-[#7A7066]">
               Rinde {recipe.yieldText}
             </p>
+          )}
+          {recipe.sourceUrl && (
+            <a
+              href={recipe.sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.12em] text-[#7A7066] transition-colors hover:text-[#C65D38]"
+            >
+              {recipe.sourceType === "youtube" ? (
+                <Youtube size={12} />
+              ) : (
+                <ExternalLink size={12} />
+              )}
+              Ver fuente
+              {recipe.sourceType === "youtube" ? " (vídeo)" : ""}
+            </a>
           )}
         </div>
 

@@ -19,6 +19,10 @@ import {
   makeStep,
   type StepDraft,
 } from "@/components/recipes/SortableStepsList"
+import {
+  SortableIngredientsList,
+  makeRowId,
+} from "@/components/recipes/SortableIngredientsList"
 import { FitChip, cycleFit } from "@/components/recipes/FitChip"
 import { cn } from "@/lib/utils"
 import { LintFailureError } from "@/lib/api"
@@ -49,6 +53,9 @@ const DIFFICULTY_OPTIONS: { value: Difficulty; label: string }[] = [
 ]
 
 interface IngredientRow {
+  /** Stable client-side id used by the sortable list. Stripped from the
+   *  payload at submit time. */
+  rowId: string
   ingredientName: string
   ingredientId: string
   quantity: number | ""
@@ -60,7 +67,14 @@ interface IngredientRow {
 }
 
 function emptyRow(): IngredientRow {
-  return { ingredientName: "", ingredientId: "", quantity: "", unit: "g", optional: false }
+  return {
+    rowId: makeRowId(),
+    ingredientName: "",
+    ingredientId: "",
+    quantity: "",
+    unit: "g",
+    optional: false,
+  }
 }
 
 export default function EditRecipePage() {
@@ -79,6 +93,9 @@ export default function EditRecipePage() {
   const [prepTime, setPrepTime] = useState<number | "">("")
   const [cookTime, setCookTime] = useState<number | "">("")
   const [difficulty, setDifficulty] = useState<Difficulty>("medium")
+  // Optional source URL — set automatically when the recipe is imported via
+  // /recipes/extract-from-url, manually editable later for any recipe.
+  const [sourceUrl, setSourceUrl] = useState<string>("")
   // Three-state fit per meal/season. The chip cycles through none → mid →
   // perfect → none; the matcher excludes 'none' and pool-weights mid/perfect
   // at 1×/3×. Stored as `Partial<Record<…>>` so absence implicitly means
@@ -115,6 +132,7 @@ export default function EditRecipePage() {
     setServings(recipe.servings)
     setPrepTime(recipe.prepTime ?? "")
     setCookTime(recipe.cookTime ?? "")
+    setSourceUrl(recipe.sourceUrl ?? "")
     setDifficulty(recipe.difficulty ?? "medium")
     // Seed fit maps. Prefer the explicit `mealFit` / `seasonFit` payloads
     // when present (recipes saved after migration 0024); fall back to
@@ -142,6 +160,7 @@ export default function EditRecipePage() {
     setIngredientRows(
       recipe.ingredients.length > 0
         ? recipe.ingredients.map((ri) => ({
+            rowId: makeRowId(),
             ingredientName: ri.ingredientName ?? "",
             ingredientId: ri.ingredientId,
             quantity: ri.quantity,
@@ -190,36 +209,43 @@ export default function EditRecipePage() {
     setTags(tags.filter((x) => x !== t))
   }
 
-  function setRowIngredient(idx: number, ing: Ingredient) {
-    const next = [...ingredientRows]
-    next[idx] = {
-      ...next[idx],
-      ingredientName: ing.name,
-      ingredientId: ing.id,
-    }
-    setIngredientRows(next)
+  // All ingredient mutations key by `rowId` now that the rows are
+  // sortable. Reordering invalidates positional indices, so functions that
+  // used `idx` would target the wrong row mid-drag.
+  function setRowIngredient(rowId: string, ing: Ingredient) {
+    setIngredientRows((prev) =>
+      prev.map((r) =>
+        r.rowId === rowId ? { ...r, ingredientName: ing.name, ingredientId: ing.id } : r,
+      ),
+    )
   }
-  function updateIngredientQuantity(idx: number, value: string) {
-    const next = [...ingredientRows]
-    next[idx] = { ...next[idx], quantity: value === "" ? "" : Number(value) }
-    setIngredientRows(next)
+  function updateIngredientQuantity(rowId: string, value: string) {
+    setIngredientRows((prev) =>
+      prev.map((r) =>
+        r.rowId === rowId
+          ? { ...r, quantity: value === "" ? "" : Number(value) }
+          : r,
+      ),
+    )
   }
-  function updateIngredientUnit(idx: number, value: string) {
-    const next = [...ingredientRows]
-    next[idx] = { ...next[idx], unit: value }
-    setIngredientRows(next)
+  function updateIngredientUnit(rowId: string, value: string) {
+    setIngredientRows((prev) =>
+      prev.map((r) => (r.rowId === rowId ? { ...r, unit: value } : r)),
+    )
   }
-  function toggleIngredientOptional(idx: number) {
-    const next = [...ingredientRows]
-    next[idx] = { ...next[idx], optional: !next[idx].optional }
-    setIngredientRows(next)
+  function toggleIngredientOptional(rowId: string) {
+    setIngredientRows((prev) =>
+      prev.map((r) => (r.rowId === rowId ? { ...r, optional: !r.optional } : r)),
+    )
   }
   function addIngredientRow() {
-    setIngredientRows([...ingredientRows, emptyRow()])
+    setIngredientRows((prev) => [...prev, emptyRow()])
   }
-  function removeIngredientRow(idx: number) {
-    if (ingredientRows.length <= 1) return
-    setIngredientRows(ingredientRows.filter((_, i) => i !== idx))
+  function removeIngredientRow(rowId: string) {
+    setIngredientRows((prev) => {
+      if (prev.length <= 1) return prev
+      return prev.filter((r) => r.rowId !== rowId)
+    })
   }
 
   // Generic single-string-list helpers, shared by notes + tips.
@@ -287,6 +313,21 @@ export default function EditRecipePage() {
     }
     if (typeof prepTime === "number" && prepTime > 0) payload.prepTime = prepTime
     if (typeof cookTime === "number" && cookTime > 0) payload.cookTime = cookTime
+    // Source URL is optional. Trim + omit when empty so the schema's
+    // `z.string().url()` validator doesn't reject empty strings.
+    const trimmedUrl = sourceUrl.trim()
+    if (trimmedUrl.length > 0) {
+      payload.sourceUrl = trimmedUrl
+      // sourceType defaults to whatever the source already had; if the user
+      // attaches a URL to a previously-manual recipe, mark it accordingly.
+      if (!recipe?.sourceType) {
+        payload.sourceType = /youtube\.com|youtu\.be/.test(trimmedUrl)
+          ? "youtube"
+          : "article"
+      }
+    } else {
+      payload.sourceUrl = null
+    }
     const notesText = notes
       .map((e) => e.trim())
       .filter((e) => e.length > 0)
@@ -487,6 +528,23 @@ export default function EditRecipePage() {
                 />
               </div>
             </div>
+            <div className="mt-4">
+              <label className="text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
+                Enlace a la fuente (vídeo o artículo)
+              </label>
+              <input
+                type="url"
+                value={sourceUrl}
+                onChange={(e) => setSourceUrl(e.target.value)}
+                placeholder="https://…"
+                className="mt-1 w-full rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-3 py-2 text-[13px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
+              />
+              <p className="mt-1 text-[11px] italic text-[#7A7066]">
+                Si importaste la receta desde una URL, ya viene rellenada.
+                También puedes añadirla manualmente — aparecerá un botón
+                "Ver fuente" en la receta.
+              </p>
+            </div>
           </section>
 
           {/* Difficulty */}
@@ -606,82 +664,82 @@ export default function EditRecipePage() {
             <h2 className="mt-1 font-display text-[1.5rem] leading-tight text-[#1A1612]">
               <span className="font-italic italic">Ingredientes</span>
             </h2>
-            <div className="mt-4 space-y-3">
-              {ingredientRows.map((row, idx) => {
-                const hint = ingredientRowHints[idx]
-                const selectedIng = row.ingredientId
-                  ? ingredientLibrary.find((ing) => ing.id === row.ingredientId) ?? null
-                  : null
-                // `ingredientLibrary` is the first 300 catalog rows; recipes
-                // can reference ingredients past that window (the global
-                // catalog is paginated). When the lookup misses, fall back
-                // to showing the denormalized `row.ingredientName` so the
-                // user sees what's there instead of an empty input.
-                const fallbackText =
-                  !selectedIng && row.ingredientName ? row.ingredientName : undefined
-                return (
-                  <div key={idx} className="flex flex-col gap-1">
-                    <div className="flex items-center gap-2">
-                      <IngredientAutocomplete
-                        value={selectedIng}
-                        onSelect={(ing) => setRowIngredient(idx, ing)}
-                        placeholder={
-                          ingredientsLoading ? "Cargando biblioteca…" : "Ingrediente"
-                        }
-                        hasError={!!hint}
-                        defaultText={fallbackText}
-                      />
-                      <input
-                        type="number"
-                        value={row.quantity === "" ? "" : row.quantity}
-                        onChange={(e) =>
-                          updateIngredientQuantity(idx, e.target.value)
-                        }
-                        placeholder="Cant."
-                        min={0}
-                        step="any"
-                        className="w-20 rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-3 py-2 text-[14px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
-                      />
-                      <select
-                        value={row.unit}
-                        onChange={(e) => updateIngredientUnit(idx, e.target.value)}
-                        className="w-20 rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-2 py-2 text-[14px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
-                      >
-                        {UNIT_OPTIONS.map((u) => (
-                          <option key={u} value={u}>
-                            {u}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() => toggleIngredientOptional(idx)}
-                        aria-pressed={row.optional}
-                        title={row.optional ? "Quitar marca opcional" : "Marcar como opcional"}
-                        className={`rounded-full px-2 py-1 text-[10px] uppercase tracking-[0.1em] transition-colors ${
-                          row.optional
-                            ? "bg-[#F2EDE0] text-[#7A7066]"
-                            : "border border-dashed border-[#DDD6C5] text-[#A39A8E] hover:border-[#1A1612] hover:text-[#1A1612]"
-                        }`}
-                      >
-                        opc
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => removeIngredientRow(idx)}
-                        disabled={ingredientRows.length <= 1}
-                        className="rounded p-1 text-[#7A7066] hover:text-[#C65D38] disabled:opacity-30"
-                        aria-label="Quitar ingrediente"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+            <div className="mt-4">
+              <SortableIngredientsList
+                rows={ingredientRows}
+                onReorder={setIngredientRows}
+                renderRow={(row) => {
+                  const idx = ingredientRows.findIndex((r) => r.rowId === row.rowId)
+                  const hint = ingredientRowHints[idx]
+                  const selectedIng = row.ingredientId
+                    ? ingredientLibrary.find((ing) => ing.id === row.ingredientId) ?? null
+                    : null
+                  const fallbackText =
+                    !selectedIng && row.ingredientName ? row.ingredientName : undefined
+                  return (
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <IngredientAutocomplete
+                          value={selectedIng}
+                          onSelect={(ing) => setRowIngredient(row.rowId, ing)}
+                          placeholder={
+                            ingredientsLoading ? "Cargando biblioteca…" : "Ingrediente"
+                          }
+                          hasError={!!hint}
+                          defaultText={fallbackText}
+                        />
+                        <input
+                          type="number"
+                          value={row.quantity === "" ? "" : row.quantity}
+                          onChange={(e) =>
+                            updateIngredientQuantity(row.rowId, e.target.value)
+                          }
+                          placeholder="Cant."
+                          min={0}
+                          step="any"
+                          className="w-20 rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-3 py-2 text-[14px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
+                        />
+                        <select
+                          value={row.unit}
+                          onChange={(e) => updateIngredientUnit(row.rowId, e.target.value)}
+                          className="w-20 rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-2 py-2 text-[14px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
+                        >
+                          {UNIT_OPTIONS.map((u) => (
+                            <option key={u} value={u}>
+                              {u}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => toggleIngredientOptional(row.rowId)}
+                          aria-pressed={row.optional}
+                          title={row.optional ? "Quitar marca opcional" : "Marcar como opcional"}
+                          className={`rounded-full px-2 py-1 text-[10px] uppercase tracking-[0.1em] transition-colors ${
+                            row.optional
+                              ? "bg-[#F2EDE0] text-[#7A7066]"
+                              : "border border-dashed border-[#DDD6C5] text-[#A39A8E] hover:border-[#1A1612] hover:text-[#1A1612]"
+                          }`}
+                        >
+                          opc
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeIngredientRow(row.rowId)}
+                          disabled={ingredientRows.length <= 1}
+                          className="rounded p-1 text-[#7A7066] hover:text-[#C65D38] disabled:opacity-30"
+                          aria-label="Quitar ingrediente"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                      {hint && (
+                        <p className="pl-1 text-[11px] italic text-[#C65D38]">{hint}</p>
+                      )}
                     </div>
-                    {hint && (
-                      <p className="pl-1 text-[11px] italic text-[#C65D38]">{hint}</p>
-                    )}
-                  </div>
-                )
-              })}
+                  )
+                }}
+              />
             </div>
             <button
               type="button"

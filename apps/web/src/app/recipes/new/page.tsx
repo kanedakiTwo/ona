@@ -16,6 +16,10 @@ import {
   makeStep,
   type StepDraft,
 } from "@/components/recipes/SortableStepsList"
+import {
+  SortableIngredientsList,
+  makeRowId,
+} from "@/components/recipes/SortableIngredientsList"
 import { FitChip, cycleFit } from "@/components/recipes/FitChip"
 import { IngredientAutocomplete } from "@/components/recipes/IngredientAutocomplete"
 import { buildRecipePayload, createRecipeSchema } from "@ona/shared"
@@ -39,6 +43,9 @@ const SEASON_OPTIONS: { value: Season; label: string }[] = [
 const UNIT_OPTIONS = ["g", "kg", "ml", "l", "ud", "cda", "cdta"]
 
 interface IngredientRow {
+  /** Stable client-side id used by the sortable list. Stripped from the
+   *  payload at submit time. */
+  rowId: string
   // What the user typed; we resolve against the library to populate ingredientId.
   ingredientName: string
   ingredientId: string
@@ -50,7 +57,14 @@ interface IngredientRow {
 }
 
 function emptyRow(): IngredientRow {
-  return { ingredientName: "", ingredientId: "", quantity: "", unit: "g", optional: false }
+  return {
+    rowId: makeRowId(),
+    ingredientName: "",
+    ingredientId: "",
+    quantity: "",
+    unit: "g",
+    optional: false,
+  }
 }
 
 export default function NewRecipePage() {
@@ -124,6 +138,7 @@ function NewRecipePageInner() {
     setIngredientRows(
       data.ingredients.length > 0
         ? data.ingredients.map((ing) => ({
+            rowId: makeRowId(),
             ingredientId: ing.ingredientId ?? "",
             ingredientName: ing.ingredientName ?? ing.extractedName,
             quantity: ing.quantity,
@@ -155,44 +170,47 @@ function NewRecipePageInner() {
     setTags(tags.filter((t) => t !== tag))
   }
 
-  function setRowIngredient(idx: number, ing: Ingredient) {
-    const next = [...ingredientRows]
-    next[idx] = {
-      ...next[idx],
-      ingredientName: ing.name,
-      ingredientId: ing.id,
-    }
-    setIngredientRows(next)
+  // Key all ingredient mutations by `rowId` so reordering doesn't break
+  // positional indices mid-drag. Same shape as the edit page.
+  function setRowIngredient(rowId: string, ing: Ingredient) {
+    setIngredientRows((prev) =>
+      prev.map((r) =>
+        r.rowId === rowId ? { ...r, ingredientName: ing.name, ingredientId: ing.id } : r,
+      ),
+    )
   }
 
-  function updateIngredientQuantity(idx: number, value: string) {
-    const next = [...ingredientRows]
-    next[idx] = {
-      ...next[idx],
-      quantity: value === "" ? "" : Number(value),
-    }
-    setIngredientRows(next)
+  function updateIngredientQuantity(rowId: string, value: string) {
+    setIngredientRows((prev) =>
+      prev.map((r) =>
+        r.rowId === rowId
+          ? { ...r, quantity: value === "" ? "" : Number(value) }
+          : r,
+      ),
+    )
   }
 
-  function updateIngredientUnit(idx: number, value: string) {
-    const next = [...ingredientRows]
-    next[idx] = { ...next[idx], unit: value }
-    setIngredientRows(next)
+  function updateIngredientUnit(rowId: string, value: string) {
+    setIngredientRows((prev) =>
+      prev.map((r) => (r.rowId === rowId ? { ...r, unit: value } : r)),
+    )
   }
 
-  function toggleIngredientOptional(idx: number) {
-    const next = [...ingredientRows]
-    next[idx] = { ...next[idx], optional: !next[idx].optional }
-    setIngredientRows(next)
+  function toggleIngredientOptional(rowId: string) {
+    setIngredientRows((prev) =>
+      prev.map((r) => (r.rowId === rowId ? { ...r, optional: !r.optional } : r)),
+    )
   }
 
   function addIngredientRow() {
-    setIngredientRows([...ingredientRows, emptyRow()])
+    setIngredientRows((prev) => [...prev, emptyRow()])
   }
 
-  function removeIngredientRow(idx: number) {
-    if (ingredientRows.length <= 1) return
-    setIngredientRows(ingredientRows.filter((_, i) => i !== idx))
+  function removeIngredientRow(rowId: string) {
+    setIngredientRows((prev) => {
+      if (prev.length <= 1) return prev
+      return prev.filter((r) => r.rowId !== rowId)
+    })
   }
 
   function updateStep(id: string, value: string) {
@@ -548,87 +566,92 @@ function NewRecipePageInner() {
               escribir y selecciona uno de la lista.
             </p>
 
-            <div className="mt-4 space-y-3">
-              {ingredientRows.map((row, idx) => {
-                const localHint = ingredientRowHints[idx]
-                // Server-side lint errors land under keys like
-                // "ingredients[2]" or "ingredients[2].quantity".
-                const serverHint = Object.entries(errors).find(
-                  ([k]) => k === `ingredients[${idx}]` || k.startsWith(`ingredients[${idx}].`),
-                )?.[1]
-                const hint = localHint ?? serverHint
-                const selectedIng = row.ingredientId
-                  ? ingredientLibrary.find((ing) => ing.id === row.ingredientId) ?? null
-                  : null
-                return (
-                  <div key={idx} className="flex flex-col gap-1">
-                    <div className="flex items-center gap-2">
-                      <IngredientAutocomplete
-                        value={selectedIng}
-                        onSelect={(ing) => setRowIngredient(idx, ing)}
-                        placeholder={
-                          ingredientsLoading
-                            ? "Cargando biblioteca..."
-                            : "Ingrediente"
-                        }
-                        hasError={!!hint}
-                        defaultText={row.ingredientName}
-                      />
-                      <input
-                        type="number"
-                        value={row.quantity === "" ? "" : row.quantity}
-                        onChange={(e) =>
-                          updateIngredientQuantity(idx, e.target.value)
-                        }
-                        placeholder="Cant."
-                        min={0}
-                        step="any"
-                        className="w-20 rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-3 py-2 text-[14px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
-                      />
-                      <select
-                        value={row.unit}
-                        onChange={(e) =>
-                          updateIngredientUnit(idx, e.target.value)
-                        }
-                        className="w-20 rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-2 py-2 text-[14px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
-                      >
-                        {UNIT_OPTIONS.map((u) => (
-                          <option key={u} value={u}>
-                            {u}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() => toggleIngredientOptional(idx)}
-                        aria-pressed={row.optional}
-                        title={row.optional ? "Quitar marca opcional" : "Marcar como opcional"}
-                        className={`rounded-full px-2 py-1 text-[10px] uppercase tracking-[0.1em] transition-colors ${
-                          row.optional
-                            ? "bg-[#F2EDE0] text-[#7A7066]"
-                            : "border border-dashed border-[#DDD6C5] text-[#A39A8E] hover:border-[#1A1612] hover:text-[#1A1612]"
-                        }`}
-                      >
-                        opc
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => removeIngredientRow(idx)}
-                        disabled={ingredientRows.length <= 1}
-                        className="rounded p-1 text-[#7A7066] hover:text-[#C65D38] disabled:opacity-30"
-                        aria-label="Quitar ingrediente"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+            <div className="mt-4">
+              <SortableIngredientsList
+                rows={ingredientRows}
+                onReorder={setIngredientRows}
+                renderRow={(row) => {
+                  const idx = ingredientRows.findIndex((r) => r.rowId === row.rowId)
+                  const localHint = ingredientRowHints[idx]
+                  const serverHint = Object.entries(errors).find(
+                    ([k]) =>
+                      k === `ingredients[${idx}]` ||
+                      k.startsWith(`ingredients[${idx}].`),
+                  )?.[1]
+                  const hint = localHint ?? serverHint
+                  const selectedIng = row.ingredientId
+                    ? ingredientLibrary.find((ing) => ing.id === row.ingredientId) ?? null
+                    : null
+                  return (
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <IngredientAutocomplete
+                          value={selectedIng}
+                          onSelect={(ing) => setRowIngredient(row.rowId, ing)}
+                          placeholder={
+                            ingredientsLoading
+                              ? "Cargando biblioteca..."
+                              : "Ingrediente"
+                          }
+                          hasError={!!hint}
+                          defaultText={row.ingredientName}
+                        />
+                        <input
+                          type="number"
+                          value={row.quantity === "" ? "" : row.quantity}
+                          onChange={(e) =>
+                            updateIngredientQuantity(row.rowId, e.target.value)
+                          }
+                          placeholder="Cant."
+                          min={0}
+                          step="any"
+                          className="w-20 rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-3 py-2 text-[14px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
+                        />
+                        <select
+                          value={row.unit}
+                          onChange={(e) =>
+                            updateIngredientUnit(row.rowId, e.target.value)
+                          }
+                          className="w-20 rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-2 py-2 text-[14px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
+                        >
+                          {UNIT_OPTIONS.map((u) => (
+                            <option key={u} value={u}>
+                              {u}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => toggleIngredientOptional(row.rowId)}
+                          aria-pressed={row.optional}
+                          title={row.optional ? "Quitar marca opcional" : "Marcar como opcional"}
+                          className={`rounded-full px-2 py-1 text-[10px] uppercase tracking-[0.1em] transition-colors ${
+                            row.optional
+                              ? "bg-[#F2EDE0] text-[#7A7066]"
+                              : "border border-dashed border-[#DDD6C5] text-[#A39A8E] hover:border-[#1A1612] hover:text-[#1A1612]"
+                          }`}
+                        >
+                          opc
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeIngredientRow(row.rowId)}
+                          disabled={ingredientRows.length <= 1}
+                          className="rounded p-1 text-[#7A7066] hover:text-[#C65D38] disabled:opacity-30"
+                          aria-label="Quitar ingrediente"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                      {hint && (
+                        <p className="pl-1 text-[11px] italic text-[#C65D38]">
+                          {hint}
+                        </p>
+                      )}
                     </div>
-                    {hint && (
-                      <p className="pl-1 text-[11px] italic text-[#C65D38]">
-                        {hint}
-                      </p>
-                    )}
-                  </div>
-                )
-              })}
+                  )
+                }}
+              />
             </div>
             <button
               type="button"

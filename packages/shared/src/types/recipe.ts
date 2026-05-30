@@ -184,6 +184,46 @@ export const updateRecipeSchema = createRecipeSchema.partial()
 export type CreateRecipeInput = z.infer<typeof createRecipeSchema>
 export type UpdateRecipeInput = z.infer<typeof updateRecipeSchema>
 
+// ─── Per-household ingredient overrides (sustituciones) ──────
+//
+// Structured edits a household applies to a recipe's ingredient list, used
+// by `recipe_notes.ingredient_overrides`. Three kinds:
+//   - 'remove' targets an existing row by its recipe_ingredient id and the
+//     recipe detail renders that row struck-through.
+//   - 'modify' changes quantity / unit on an existing row; the detail renders
+//     the original value next to the new one (original struck-through).
+//   - 'add' inserts a brand-new line at the bottom of the section; can be
+//     anchored to a catalog `ingredientId`, or free-form via `label` when the
+//     user wants something we don't catalog (e.g. "una pizca de algo raro").
+//
+// All quantities are in the same units the recipe stores (the canonical
+// `Unit` enum). Quantity null / unit null on 'modify' means "leave that
+// field unchanged" so the user can adjust one dimension at a time. The
+// store sanitizes — drops unknown kinds, dedupes by (kind, target), caps
+// the array at 50 entries.
+export const ingredientOverrideSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('remove'),
+    recipeIngredientId: z.string().uuid(),
+  }),
+  z.object({
+    kind: z.literal('modify'),
+    recipeIngredientId: z.string().uuid(),
+    quantity: z.number().min(0).max(10_000).nullable().optional(),
+    unit: z.enum(UNITS).nullable().optional(),
+    note: z.string().max(200).nullable().optional(),
+  }),
+  z.object({
+    kind: z.literal('add'),
+    ingredientId: z.string().uuid().nullable().optional(),
+    label: z.string().min(1).max(120),
+    quantity: z.number().min(0).max(10_000).nullable().optional(),
+    unit: z.enum(UNITS).nullable().optional(),
+  }),
+])
+
+export type IngredientOverride = z.infer<typeof ingredientOverrideSchema>
+
 // ─── Recipe extraction from photo ──────────────────────────
 export interface ExtractedIngredient {
   extractedName: string

@@ -1,9 +1,15 @@
-import { eq, inArray } from 'drizzle-orm'
-import { recipeIngredients, ingredients, recipes as recipesTable } from '../db/schema.js'
+import { and, eq, inArray } from 'drizzle-orm'
+import {
+  recipeIngredients,
+  ingredients,
+  recipes as recipesTable,
+  recipeNotes,
+} from '../db/schema.js'
 import type {
   Aisle,
   BuyableUnit,
   DayMenu,
+  IngredientOverride,
   ShoppingItem,
   Unit,
 } from '@ona/shared'
@@ -194,6 +200,74 @@ export function sumDinersByRecipe(
   return out
 }
 
+/**
+ * Apply a household's `ingredient_overrides` to the raw `recipe_ingredients`
+ * rows of one recipe before the shopping aggregator scales them.
+ *
+ * Pure helper — no DB. `addRowResolver` is called for every `add` override
+ * to obtain a synthetic ingredient row (the route layer resolves catalog
+ * IDs from free-form names by case-insensitive match); returning `null`
+ * drops the add silently (the recipe detail still shows it, the shopping
+ * list just can't find a catalog entry to scale).
+ *
+ * Semantics:
+ *   - `remove` drops the matching row.
+ *   - `modify` replaces `quantity` and/or `unit` on the matching row.
+ *     A modify that changes a buyable unit to `pizca`/`al_gusto` will be
+ *     dropped downstream by the aggregator's `BUYABLE` filter — that's the
+ *     "I don't want a number of grams of this, just a pinch" path.
+ *   - `add` appends every successful `addRowResolver` result.
+ *
+ * Per-recipe quantities scale together with the rest of the row set; the
+ * caller passes the raw values straight from `recipe_ingredients` and the
+ * downstream `factor = totalDiners / recipe.servings` does the work.
+ */
+export function applyOverridesToRecipeRows<
+  Row extends { recipeIngredientId?: string | null; quantity: number; unit: Unit },
+>(
+  rows: Row[],
+  overrides: IngredientOverride[],
+  addRowResolver: (
+    add: Extract<IngredientOverride, { kind: 'add' }>,
+  ) => Row | null,
+): Row[] {
+  const removed = new Set<string>()
+  const modifies = new Map<string, Extract<IngredientOverride, { kind: 'modify' }>>()
+  const adds: Extract<IngredientOverride, { kind: 'add' }>[] = []
+  for (const ov of overrides) {
+    if (ov.kind === 'remove') {
+      removed.add(ov.recipeIngredientId)
+      modifies.delete(ov.recipeIngredientId)
+    } else if (ov.kind === 'modify') {
+      if (!removed.has(ov.recipeIngredientId)) {
+        modifies.set(ov.recipeIngredientId, ov)
+      }
+    } else {
+      adds.push(ov)
+    }
+  }
+  const out: Row[] = []
+  for (const row of rows) {
+    const id = row.recipeIngredientId
+    if (id && removed.has(id)) continue
+    const mod = id ? modifies.get(id) : undefined
+    if (!mod) {
+      out.push(row)
+      continue
+    }
+    out.push({
+      ...row,
+      ...(mod.quantity != null ? { quantity: mod.quantity } : {}),
+      ...(mod.unit != null ? { unit: mod.unit } : {}),
+    })
+  }
+  for (const add of adds) {
+    const resolved = addRowResolver(add)
+    if (resolved) out.push(resolved)
+  }
+  return out
+}
+
 // ─── Public API ──────────────────────────────────────────────
 
 /**
@@ -212,6 +286,15 @@ export async function generateShoppingList(
   menuDays: DayMenu[],
   householdMultiplier: number,
   db: any,
+  /**
+   * When provided, the aggregator loads the household's
+   * `recipe_notes.ingredient_overrides` for every recipe in the menu and
+   * applies them (remove / modify quantity-unit / add) before scaling.
+   * Free-form `add` entries are name-resolved against the catalog (case
+   * insensitive). Unknown adds drop silently — the recipe detail still
+   * shows them, the list just can't include something we don't catalog.
+   */
+  householdId?: string | null,
 ): Promise<ShoppingItem[]> {
   // 1. Collect (recipeId → total diners across all occurrences this week).
   // Per-slot `servings` overrides win over the household-level multiplier;
@@ -234,6 +317,9 @@ export async function generateShoppingList(
 
   const ingredientRows: Array<{
     recipeId: string
+    /** The `recipe_ingredients.id` of the source row — needed so the
+     *  override layer can target individual rows for remove / modify. */
+    recipeIngredientId: string | null
     ingredientId: string
     quantity: number
     unit: Unit
@@ -245,6 +331,7 @@ export async function generateShoppingList(
   }> = await db
     .select({
       recipeId: recipeIngredients.recipeId,
+      recipeIngredientId: recipeIngredients.id,
       ingredientId: recipeIngredients.ingredientId,
       quantity: recipeIngredients.quantity,
       unit: recipeIngredients.unit,
@@ -258,11 +345,110 @@ export async function generateShoppingList(
     .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
     .where(inArray(recipeIngredients.recipeId, recipeIds))
 
+  // 2b. Per-household ingredient overrides — quitar, modificar, añadir.
+  // Loaded only when a household scope is supplied so anonymous menus
+  // (assistant tool calls without a session) behave as before.
+  type RecipeRow = (typeof ingredientRows)[number]
+  let rowsByRecipe = new Map<string, RecipeRow[]>()
+  for (const r of ingredientRows) {
+    const list = rowsByRecipe.get(r.recipeId) ?? []
+    list.push(r)
+    rowsByRecipe.set(r.recipeId, list)
+  }
+  if (householdId) {
+    const overrideRows: Array<{ recipeId: string; ingredientOverrides: unknown }> =
+      await db
+        .select({
+          recipeId: recipeNotes.recipeId,
+          ingredientOverrides: recipeNotes.ingredientOverrides,
+        })
+        .from(recipeNotes)
+        .where(
+          and(
+            eq(recipeNotes.householdId, householdId),
+            inArray(recipeNotes.recipeId, recipeIds),
+          ),
+        )
+
+    // Catalog name→row map for resolving free-form `add` entries. Index by
+    // lowercased catalog name; ties go to the first match (rare — the
+    // catalog uses canonical singular Spanish lowercase names).
+    const catalogByName = new Map<string, Omit<RecipeRow, 'recipeId' | 'recipeIngredientId' | 'quantity' | 'unit' | 'optional'>>()
+    if (overrideRows.some((r) => Array.isArray(r.ingredientOverrides) && (r.ingredientOverrides as IngredientOverride[]).some((ov) => ov.kind === 'add'))) {
+      const catalogRows: Array<{
+        id: string
+        name: string
+        aisle: Aisle | null
+        density: number | null
+        unitWeight: number | null
+      }> = await db
+        .select({
+          id: ingredients.id,
+          name: ingredients.name,
+          aisle: ingredients.aisle,
+          density: ingredients.density,
+          unitWeight: ingredients.unitWeight,
+        })
+        .from(ingredients)
+      for (const c of catalogRows) {
+        catalogByName.set(c.name.toLowerCase(), {
+          ingredientId: c.id,
+          ingredientName: c.name,
+          aisle: c.aisle,
+          density: c.density,
+          unitWeight: c.unitWeight,
+        })
+      }
+    }
+
+    for (const ovRow of overrideRows) {
+      const overrides = Array.isArray(ovRow.ingredientOverrides)
+        ? (ovRow.ingredientOverrides as IngredientOverride[])
+        : []
+      if (overrides.length === 0) continue
+      const original = rowsByRecipe.get(ovRow.recipeId) ?? []
+      const transformed = applyOverridesToRecipeRows<RecipeRow>(
+        original,
+        overrides,
+        (add) => {
+          // 'add' may carry an explicit ingredientId; otherwise we name-match.
+          let catalog = add.ingredientId
+            ? [...catalogByName.values()].find((c) => c.ingredientId === add.ingredientId)
+            : catalogByName.get(add.label.trim().toLowerCase())
+          if (!catalog) return null
+          // The aggregator needs a buyable unit + a positive quantity. When
+          // the user added without a quantity ("una pizca de algo") we can't
+          // include it in the shopping list — drop and let the recipe detail
+          // keep showing it.
+          const unit = add.unit ?? null
+          const quantity = add.quantity ?? 0
+          if (!unit || !BUYABLE.has(unit) || quantity <= 0) return null
+          return {
+            recipeId: ovRow.recipeId,
+            recipeIngredientId: null,
+            ingredientId: catalog.ingredientId,
+            quantity,
+            unit,
+            optional: false,
+            ingredientName: catalog.ingredientName,
+            aisle: catalog.aisle,
+            density: catalog.density,
+            unitWeight: catalog.unitWeight,
+          }
+        },
+      )
+      rowsByRecipe.set(ovRow.recipeId, transformed)
+    }
+  }
+  // Re-flatten back into the iteration order downstream code expects.
+  const effectiveRows: RecipeRow[] = []
+  for (const list of rowsByRecipe.values()) effectiveRows.push(...list)
+
   // 3. Scale + filter into a flat list of (ingredientId, quantity, unit).
   const scaled: ScaledRow[] = []
   /** ingredientId → catalog metadata (name, aisle, density, unitWeight). */
   const catalogById = new Map<string, CatalogRow>()
-  for (const row of ingredientRows) {
+  for (const row of effectiveRows) {
     if (row.optional) continue
     if (!BUYABLE.has(row.unit)) continue // pizca / al_gusto
 

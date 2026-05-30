@@ -281,7 +281,13 @@ const getShoppingList: SkillDefinition = {
       )
       multiplier = householdMultiplier(counts.adults, counts.kidsCount)
     }
-    const items = await generateShoppingList(menu.days as DayMenu[], multiplier, db)
+    const householdId = menu.householdId ?? (await getPrimaryHouseholdId(userId, db))
+    const items = await generateShoppingList(
+      menu.days as DayMenu[],
+      multiplier,
+      db,
+      householdId,
+    )
 
     const summary = items.length > 0
       ? `Lista de la compra con ${items.length} ingredientes para esta semana.`

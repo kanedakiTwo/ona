@@ -62,15 +62,24 @@ const SPANISH_TO_MEAL: Record<string, Meal> = {
  * Coerce whatever `userSettings.template` actually contains into a 7-day
  * `DayTemplate[]`. Returns null when the input carries no usable shape so
  * the caller can fall back to `defaultTemplate()`.
+ *
+ * Accepts three input shapes (in order of precedence):
+ *   1. Legacy `DayTemplate[]` (already the right shape).
+ *   2. `{ mealTemplate: { [Spanish day]: Spanish meal[] } }` — pure on/off.
+ *   3. `{ mealTemplate: { [Spanish day]: { [Spanish meal]: number } } }` —
+ *      the post-2026-05-30 shape that also carries per-slot diner counts.
+ *      We accept any positive number here; the 0/absent meaning "off" is
+ *      enforced by the UI's stepper component, but we also treat 0 as off
+ *      defensively so historical writes can't accidentally enable a slot.
  */
 export function normalizeMealTemplate(raw: unknown): DayTemplate[] | null {
   if (Array.isArray(raw) && raw.length === 7) {
     // Legacy DayTemplate[] — already the right shape.
     return raw as DayTemplate[]
   }
-  // New shape: { mealTemplate: { [Spanish day]: Spanish meal[] } }, possibly
-  // wrapped in the profile page's junk-drawer blob.
-  const blob = raw as { mealTemplate?: Record<string, string[]> } | null
+  // `mealTemplate` lives either at the top level or nested inside the
+  // profile page's junk-drawer blob ({ physical, preferences, mealTemplate }).
+  const blob = raw as { mealTemplate?: unknown } | null
   const mt = blob && typeof blob === 'object' ? blob.mealTemplate : null
   if (!mt || typeof mt !== 'object') return null
 
@@ -78,16 +87,66 @@ export function normalizeMealTemplate(raw: unknown): DayTemplate[] | null {
   let anySlot = false
   for (const [dayKey, meals] of Object.entries(mt)) {
     const idx = SPANISH_DAY_INDEX[dayKey.toLowerCase()]
-    if (idx == null || !Array.isArray(meals)) continue
-    for (const meal of meals) {
-      const canonical = SPANISH_TO_MEAL[String(meal).toLowerCase()]
-      if (canonical) {
-        out[idx][canonical] = true
-        anySlot = true
+    if (idx == null) continue
+    if (Array.isArray(meals)) {
+      for (const meal of meals) {
+        const canonical = SPANISH_TO_MEAL[String(meal).toLowerCase()]
+        if (canonical) {
+          out[idx][canonical] = true
+          anySlot = true
+        }
+      }
+    } else if (meals && typeof meals === 'object') {
+      for (const [mealKey, count] of Object.entries(meals as Record<string, unknown>)) {
+        const canonical = SPANISH_TO_MEAL[mealKey.toLowerCase()]
+        if (!canonical) continue
+        const n = typeof count === 'number' ? count : NaN
+        if (Number.isFinite(n) && n > 0) {
+          out[idx][canonical] = true
+          anySlot = true
+        }
       }
     }
   }
   return anySlot ? out : null
+}
+
+/**
+ * Per-slot diner counts paired with `normalizeMealTemplate`'s output.
+ *
+ * Returns a 7-entry array (indexed 0=Monday…6=Sunday); each entry maps a
+ * canonical meal key ('breakfast' | 'lunch' | 'snack' | 'dinner') to the
+ * positive integer of diners the user wants in that slot. Missing entries
+ * mean "use the household default" (the same fallback applied to slots
+ * generated without any template input).
+ *
+ * Accepts the same input shapes as `normalizeMealTemplate`; legacy on/off
+ * shapes produce an empty result so callers fall back to the household
+ * multiplier untouched.
+ */
+export function extractMealDiners(raw: unknown): Record<Meal, number>[] {
+  const out: Record<Meal, number>[] = Array.from(
+    { length: 7 },
+    () => ({}) as Record<Meal, number>,
+  )
+  const blob = raw as { mealTemplate?: unknown } | null
+  const mt = blob && typeof blob === 'object' ? blob.mealTemplate : null
+  if (!mt || typeof mt !== 'object') return out
+  for (const [dayKey, meals] of Object.entries(mt)) {
+    const idx = SPANISH_DAY_INDEX[dayKey.toLowerCase()]
+    if (idx == null || !meals || typeof meals !== 'object' || Array.isArray(meals)) {
+      continue
+    }
+    for (const [mealKey, count] of Object.entries(meals as Record<string, unknown>)) {
+      const canonical = SPANISH_TO_MEAL[mealKey.toLowerCase()]
+      if (!canonical) continue
+      const n = typeof count === 'number' ? count : NaN
+      if (Number.isFinite(n) && n > 0) {
+        out[idx][canonical] = Math.floor(n)
+      }
+    }
+  }
+  return out
 }
 
 /**
@@ -167,6 +226,7 @@ function buildRandomMenu(
   dislikes?: string[],
   availableEquipment?: Set<string>,
   timeBudgetByDay?: Record<number, number>,
+  mealDiners?: Record<Meal, number>[],
 ): DayMenu[] {
   const usedRecipeIds = new Set<string>()
   const days: DayMenu[] = []
@@ -223,7 +283,12 @@ function buildRandomMenu(
       })
 
       if (recipe) {
-        dayMenu[meal] = { recipeId: recipe.id, recipeName: recipe.name }
+        const dinerOverride = mealDiners?.[dayIndex]?.[meal as Meal]
+        dayMenu[meal] = {
+          recipeId: recipe.id,
+          recipeName: recipe.name,
+          ...(dinerOverride && dinerOverride > 0 ? { servings: dinerOverride } : {}),
+        }
         usedRecipeIds.add(recipe.id)
       }
     }
@@ -312,6 +377,11 @@ export async function generateMenu(
   // letting the matcher loop over it.
   const rawTemplate = customTemplate ?? settings?.template
   const template = normalizeMealTemplate(rawTemplate) ?? defaultTemplate()
+  // Per-slot diner counts (only present when the profile's plantilla uses the
+  // numeric shape `{ [day]: { [meal]: number } }`). Slots that didn't carry an
+  // explicit count keep `servings` undefined and fall back to the household
+  // multiplier in the shopping-list aggregator.
+  const mealDiners = extractMealDiners(rawTemplate)
 
   // Fetch all recipes with ingredients
   const allRecipes = await loadRecipesWithIngredients(db)
@@ -386,6 +456,7 @@ export async function generateMenu(
       dislikes,
       availableEquipment,
       timeBudgetByDay,
+      mealDiners,
     )
 
     // Verify the menu has at least some recipes

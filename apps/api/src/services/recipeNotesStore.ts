@@ -14,6 +14,7 @@ import { and, eq, sql } from 'drizzle-orm'
 import { db as defaultDb } from '../db/connection.js'
 import { recipeNotes, users } from '../db/schema.js'
 import { getPrimaryHouseholdId } from './scopeResolver.js'
+import { ingredientOverrideSchema, type IngredientOverride } from '@ona/shared'
 
 type Db = typeof defaultDb
 
@@ -23,6 +24,9 @@ const MAX_TEXT_LEN = 1000
 const MAX_CUSTOM_TAGS = 10
 const MAX_CUSTOM_TAG_LEN = 30
 
+/** Max structured ingredient overrides per (household, recipe). */
+const MAX_INGREDIENT_OVERRIDES = 50
+
 /** What the route exchanges with the client. */
 export interface NotesShape {
   notes: string | null
@@ -30,6 +34,11 @@ export interface NotesShape {
   substitutions: string | null
   /** PR 8B. Always an array (possibly empty). */
   customTags: string[]
+  /**
+   * Structured per-(household, recipe) ingredient edits. See
+   * `IngredientOverride` in `@ona/shared`. Always an array (possibly empty).
+   */
+  ingredientOverrides: IngredientOverride[]
 }
 
 export interface NotesPatch {
@@ -37,6 +46,7 @@ export interface NotesPatch {
   rating?: number | null
   substitutions?: string | null
   customTags?: unknown
+  ingredientOverrides?: unknown
 }
 
 export interface NotesRow extends NotesShape {
@@ -72,6 +82,45 @@ export function validateRating(raw: unknown): RatingValidation {
  *   - dedup case-insensitively, preserving first-occurrence order
  *   - cap the whole array at 10 entries
  */
+/**
+ * Pure sanitizer for `ingredientOverrides`. Validates each entry against
+ * the shared zod schema; drops invalid entries silently (the UI shouldn't
+ * be sending them, but a partial payload is better than a 400 that loses
+ * the whole save). Dedupes 'remove' and 'modify' by `recipeIngredientId`
+ * keeping the LAST entry, so the latest user edit wins; preserves all
+ * 'add' entries (different additions are independent). Caps at 50.
+ */
+export function sanitizeIngredientOverrides(raw: unknown): IngredientOverride[] {
+  if (!Array.isArray(raw)) return []
+  const validated: IngredientOverride[] = []
+  for (const entry of raw) {
+    const parsed = ingredientOverrideSchema.safeParse(entry)
+    if (parsed.success) validated.push(parsed.data)
+  }
+  // Last-write-wins per target for non-'add' kinds.
+  const removeByTarget = new Map<string, IngredientOverride>()
+  const modifyByTarget = new Map<string, IngredientOverride>()
+  const adds: IngredientOverride[] = []
+  for (const entry of validated) {
+    if (entry.kind === 'remove') {
+      removeByTarget.set(entry.recipeIngredientId, entry)
+      modifyByTarget.delete(entry.recipeIngredientId)
+    } else if (entry.kind === 'modify') {
+      if (!removeByTarget.has(entry.recipeIngredientId)) {
+        modifyByTarget.set(entry.recipeIngredientId, entry)
+      }
+    } else {
+      adds.push(entry)
+    }
+  }
+  const merged = [
+    ...removeByTarget.values(),
+    ...modifyByTarget.values(),
+    ...adds,
+  ]
+  return merged.slice(0, MAX_INGREDIENT_OVERRIDES)
+}
+
 export function sanitizeCustomTags(raw: unknown): string[] {
   if (!Array.isArray(raw)) return []
   const out: string[] = []
@@ -105,7 +154,11 @@ function trimToNull(raw: string | null | undefined): string | null {
  * input shape).
  */
 export function applyNotesPatch(current: NotesShape, patch: NotesPatch): NotesShape {
-  const out: NotesShape = { ...current, customTags: [...current.customTags] }
+  const out: NotesShape = {
+    ...current,
+    customTags: [...current.customTags],
+    ingredientOverrides: [...current.ingredientOverrides],
+  }
   if (Object.prototype.hasOwnProperty.call(patch, 'notes')) {
     out.notes = trimToNull(patch.notes ?? null)
   }
@@ -117,6 +170,9 @@ export function applyNotesPatch(current: NotesShape, patch: NotesPatch): NotesSh
   }
   if (Object.prototype.hasOwnProperty.call(patch, 'customTags')) {
     out.customTags = sanitizeCustomTags(patch.customTags)
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'ingredientOverrides')) {
+    out.ingredientOverrides = sanitizeIngredientOverrides(patch.ingredientOverrides)
   }
   return out
 }
@@ -138,6 +194,7 @@ export async function getRecipeNotesForUser(
       rating: recipeNotes.rating,
       substitutions: recipeNotes.substitutions,
       customTags: recipeNotes.customTags,
+      ingredientOverrides: recipeNotes.ingredientOverrides,
       lastEditedByUserId: recipeNotes.lastEditedByUserId,
       lastEditedByUsername: users.username,
       createdAt: recipeNotes.createdAt,
@@ -155,6 +212,9 @@ export async function getRecipeNotesForUser(
     rating: row.rating ?? null,
     substitutions: row.substitutions ?? null,
     customTags: row.customTags ?? [],
+    // Defensive: sanitize on read in case malformed entries leaked in via a
+    // direct DB write or a future bug. Keeps the route guaranteed-clean.
+    ingredientOverrides: sanitizeIngredientOverrides(row.ingredientOverrides),
     lastEditedByUserId: row.lastEditedByUserId ?? null,
     lastEditedByUsername: row.lastEditedByUsername ?? null,
     createdAt: row.createdAt.toISOString(),
@@ -189,6 +249,7 @@ export async function upsertRecipeNotes(
       rating: recipeNotes.rating,
       substitutions: recipeNotes.substitutions,
       customTags: recipeNotes.customTags,
+      ingredientOverrides: recipeNotes.ingredientOverrides,
     })
     .from(recipeNotes)
     .where(and(eq(recipeNotes.householdId, householdId), eq(recipeNotes.recipeId, recipeId)))
@@ -201,8 +262,15 @@ export async function upsertRecipeNotes(
           rating: current.rating ?? null,
           substitutions: current.substitutions ?? null,
           customTags: current.customTags ?? [],
+          ingredientOverrides: sanitizeIngredientOverrides(current.ingredientOverrides),
         }
-      : { notes: null, rating: null, substitutions: null, customTags: [] },
+      : {
+          notes: null,
+          rating: null,
+          substitutions: null,
+          customTags: [],
+          ingredientOverrides: [],
+        },
     patch,
   )
 
@@ -215,6 +283,7 @@ export async function upsertRecipeNotes(
       rating: merged.rating,
       substitutions: merged.substitutions,
       customTags: merged.customTags,
+      ingredientOverrides: merged.ingredientOverrides,
       lastEditedByUserId: userId,
     })
     .onConflictDoUpdate({
@@ -224,6 +293,7 @@ export async function upsertRecipeNotes(
         rating: merged.rating,
         substitutions: merged.substitutions,
         customTags: merged.customTags,
+        ingredientOverrides: merged.ingredientOverrides,
         lastEditedByUserId: userId,
         updatedAt: sql`NOW()`,
       },

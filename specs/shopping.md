@@ -37,9 +37,10 @@ Each item in `shopping_lists.items` (JSONB array) has:
 2. Computes the household multiplier as `adults + 0.5 × kidsCount`. For each slot the **effective diner count** is `slot.servings` if the user set a per-day override on the menu card (see [Menus](./menus.md#manual-slot-shaping-per-week-overrides)), otherwise this household multiplier.
 3. Sums effective diner counts per recipe across the week (`sumDinersByRecipe`): two slots of the same recipe with overrides for 4 and 8 diners aggregate to 12.
 4. Scaling factor per recipe: `aggregatedDiners / recipe.servings`
-5. For each `RecipeIngredient`, multiplies `quantity` by that factor
-6. Skips ingredients tagged `optional: true` unless the user opts in (future toggle)
-7. `pizca` and `al_gusto` are dropped from the list (not buyable)
+5. Applies the household's `recipe_notes.ingredient_overrides` for that recipe (see [Recipes](./recipes.md)) **before** scaling: `remove` drops the row, `modify` replaces quantity/unit, `add` appends a synthetic row whose `label` is resolved against the catalog by case-insensitive name match (unknown adds are skipped — the recipe detail still shows them)
+6. For each surviving row, multiplies `quantity` by that factor
+7. Skips ingredients tagged `optional: true` unless the user opts in (future toggle)
+8. `pizca` and `al_gusto` are dropped from the list (not buyable)
 
 Then the list aggregator merges items by `ingredientId`:
 

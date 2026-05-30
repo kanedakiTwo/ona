@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { useParams, usePathname, useRouter } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { motion } from "motion/react"
 import {
   useCopyRecipe,
@@ -17,13 +17,14 @@ import { AddToCookbookButton } from "@/components/recipes/AddToCookbookButton"
 import { RecipePhotoGallery } from "@/components/recipes/RecipePhotoGallery"
 import { ServingsScaler } from "@/components/recipes/ServingsScaler"
 import { IngredientsSection } from "@/components/recipes/detail/IngredientsSection"
+import { useRecipeNotes, useSaveRecipeNotes } from "@/hooks/useRecipeNotes"
+import type { IngredientOverride } from "@ona/shared"
 import { StepsSection } from "@/components/recipes/detail/StepsSection"
 import { NutritionCard } from "@/components/recipes/detail/NutritionCard"
 import { AllergensBadges } from "@/components/recipes/detail/AllergensBadges"
 import { haptic } from "@/lib/pwa/haptics"
 import { share } from "@/lib/pwa/share"
-import { acquireWakeLock, releaseWakeLock } from "@/lib/pwa/wakeLock"
-import { BookmarkPlus, ChevronLeft, Clock, Pencil, Share2, Sparkles, Wrench, Zap } from "lucide-react"
+import { BookmarkPlus, ChevronLeft, Clock, Pencil, Share2, Sparkles, Wrench } from "lucide-react"
 import Link from "next/link"
 import {
   householdToDinersOrNull,
@@ -35,7 +36,6 @@ import { MEAL_LABELS, SEASON_LABELS } from "@/lib/labels"
 export default function RecipeDetailPage() {
   const params = useParams<{ id: string }>()
   const router = useRouter()
-  const pathname = usePathname()
   const { user } = useAuth()
 
   const [servings, setServings] = useState<number | null>(null)
@@ -63,30 +63,11 @@ export default function RecipeDetailPage() {
     seededRef.current = true
   }, [recipe, user?.householdSize])
 
-  const [isCooking, setIsCooking] = useState(false)
-  const wakeLockRef = useRef<WakeLockSentinel | null>(null)
-
-  async function handleCookingToggle() {
-    haptic.medium()
-    if (isCooking) {
-      await releaseWakeLock(wakeLockRef.current)
-      wakeLockRef.current = null
-      setIsCooking(false)
-    } else {
-      const sentinel = await acquireWakeLock()
-      wakeLockRef.current = sentinel
-      setIsCooking(true)
-    }
-  }
-
-  useEffect(() => {
-    return () => {
-      if (wakeLockRef.current) {
-        releaseWakeLock(wakeLockRef.current)
-        wakeLockRef.current = null
-      }
-    }
-  }, [pathname])
+  // Per-household ingredient overrides (struck-through / highlighted in the
+  // section). The hook short-circuits when unauthed.
+  const { data: notes } = useRecipeNotes(user ? params.id : undefined)
+  const saveNotes = useSaveRecipeNotes(params.id)
+  const overrides: IngredientOverride[] = notes?.ingredientOverrides ?? []
 
   // ─── Derived state (must be declared before any early return so hook order is stable) ───
   const tags = useMemo(() => (recipe ? publicTagsOf(recipe) : []), [recipe])
@@ -198,17 +179,6 @@ export default function RecipeDetailPage() {
           </div>
         </div>
 
-        {isCooking && (
-          <button
-            onClick={handleCookingToggle}
-            className="absolute top-16 left-4 flex items-center gap-1.5 rounded-full bg-[#FAF6EE]/90 px-3 py-1.5 text-xs font-medium text-[#1A1612] backdrop-blur-sm shadow-sm transition-transform active:scale-95"
-            aria-label="Pantalla activa, toca para liberar"
-          >
-            <Zap size={12} className="text-[#C65D38]" />
-            Pantalla activa
-          </button>
-        )}
-
         <div className="pointer-events-none absolute bottom-6 left-4 text-[10px] uppercase tracking-[0.25em] text-[#FAF6EE]/80">
           ONA · Receta
         </div>
@@ -287,6 +257,13 @@ export default function RecipeDetailPage() {
             ingredients={recipe.ingredients as any}
             targetServings={displayServings}
             chapter={nextChapter()}
+            overrides={overrides}
+            onOverridesChange={
+              user
+                ? (next) => saveNotes.mutate({ ingredientOverrides: next })
+                : undefined
+            }
+            saving={saveNotes.isPending}
           />
         )}
 
@@ -296,8 +273,7 @@ export default function RecipeDetailPage() {
             steps={recipe.steps}
             ingredients={recipe.ingredients ?? []}
             chapter={nextChapter()}
-            isCooking={isCooking}
-            onCookingToggle={handleCookingToggle}
+            cookHref={`/recipes/${recipe.id}/cook?servings=${displayServings}`}
           />
         )}
 

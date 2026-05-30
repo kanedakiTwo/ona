@@ -128,8 +128,6 @@ export default function PublicRecipeDetailPage() {
             steps={recipe.steps ?? []}
             ingredients={recipe.ingredients ?? []}
             chapter="02"
-            isCooking={false}
-            onCookingToggle={() => {}}
           />
           {recipe.nutritionPerServing && (
             <NutritionCard

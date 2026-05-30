@@ -590,6 +590,16 @@ export const recipeNotes = pgTable('recipe_notes', {
    * in the catalog (follow-up). Default empty array.
    */
   customTags: text('custom_tags').array().notNull().default(sql`ARRAY[]::text[]`),
+  /**
+   * Structured per-(household, recipe) ingredient edits. Replaces the older
+   * free-form `substitutions` text for visual rendering — the recipe detail
+   * uses this list to render removed lines struck-through, modified lines
+   * with the original next to the new value, and added lines with a subtle
+   * highlight. Stored as a jsonb array of `IngredientOverride` (see the
+   * type in `recipeNotesStore.ts`). Default empty array; capped at 50
+   * entries by the sanitizer.
+   */
+  ingredientOverrides: jsonb('ingredient_overrides').notNull().default(sql`'[]'::jsonb`),
   /** Last user to touch this row — for the audit / future "edited by X" UX. */
   lastEditedByUserId: uuid('last_edited_by_user_id').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

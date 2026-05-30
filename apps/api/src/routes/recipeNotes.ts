@@ -19,6 +19,7 @@ import {
   upsertRecipeNotes,
   validateRating,
 } from '../services/recipeNotesStore.js'
+import { ingredientOverrideSchema } from '@ona/shared'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -33,6 +34,9 @@ const patchSchema = z.object({
    *  sanitizes (lowercase + trim + dedupe + cap). Accepts up to 32 raw
    *  entries; the sanitizer caps the persisted result at 10. */
   customTags: z.array(z.string().max(60)).max(32).nullable().optional(),
+  /** Structured ingredient overrides — see `IngredientOverride` in
+   *  `@ona/shared`. The store sanitizes (dedup, drop invalid, cap at 50). */
+  ingredientOverrides: z.array(ingredientOverrideSchema).max(100).nullable().optional(),
 })
 
 router.get('/custom-tags', async (req: AuthRequest, res) => {

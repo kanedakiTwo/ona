@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { motion } from 'motion/react'
-import { LogOut, X, Plus, Check, Mic, Bell, BellOff } from 'lucide-react'
+import { LogOut, X, Plus, Minus, Mic, Bell, BellOff } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
 import { useWebPush } from '@/hooks/useWebPush'
@@ -37,8 +37,17 @@ interface Household {
   kidsCount: number
 }
 
+/**
+ * Per-day meal template with diner counts.
+ *
+ * Each day maps a meal name ('desayuno' | 'almuerzo' | 'merienda' | 'cena')
+ * to the number of diners for that slot (>= 1). Absence of the key means the
+ * slot is off and won't be generated. The API normalizes either this shape or
+ * the legacy `string[]` shape; we keep loading both for backwards compat but
+ * always save the numeric one. See `extractMealDiners` in `menuGenerator.ts`.
+ */
 interface MealTemplate {
-  [day: string]: string[]
+  [day: string]: Record<string, number>
 }
 
 const DAYS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'] as const
@@ -90,8 +99,11 @@ export default function ProfilePage() {
   })
   const [household, setHousehold] = useState<Household>({ adults: 2, kidsCount: 0 })
   const [mealTemplate, setMealTemplate] = useState<MealTemplate>(() => {
+    // Default: 3 meals every day, 2 diners each — matches the previous on/off
+    // default ("desayuno, almuerzo, cena") but seeded with sensible counts so
+    // the menu generator can flow them into shopping-list quantities.
     const t: MealTemplate = {}
-    for (const d of DAYS) t[d] = ['desayuno', 'almuerzo', 'cena']
+    for (const d of DAYS) t[d] = { desayuno: 2, almuerzo: 2, cena: 2 }
     return t
   })
   const [restrictionInput, setRestrictionInput] = useState('')
@@ -138,8 +150,36 @@ export default function ProfilePage() {
       const blob = data?.template && !Array.isArray(data.template) ? data.template : data
       if (blob?.physical) setPhysical(blob.physical)
       if (blob?.preferences) setPreferences(blob.preferences)
-      if (blob?.mealTemplate) setMealTemplate(blob.mealTemplate)
-      else if (blob?.meal_template) setMealTemplate(blob.meal_template)
+      const rawMt = blob?.mealTemplate ?? blob?.meal_template
+      if (rawMt && typeof rawMt === 'object') {
+        // Coerce legacy on/off (`string[]`) to the numeric shape with the
+        // household default so the stepper has somewhere to start.
+        const defaultDiners = Math.max(
+          1,
+          (user.adults ?? 2) + Math.ceil((user.kidsCount ?? 0) * 0.5),
+        )
+        const next: MealTemplate = {}
+        for (const day of DAYS) {
+          const cell = (rawMt as Record<string, unknown>)[day]
+          if (Array.isArray(cell)) {
+            const counts: Record<string, number> = {}
+            for (const meal of cell) {
+              if (typeof meal === 'string') counts[meal] = defaultDiners
+            }
+            next[day] = counts
+          } else if (cell && typeof cell === 'object') {
+            const counts: Record<string, number> = {}
+            for (const [meal, n] of Object.entries(cell as Record<string, unknown>)) {
+              const v = typeof n === 'number' ? Math.floor(n) : 0
+              if (v > 0) counts[meal] = v
+            }
+            next[day] = counts
+          } else {
+            next[day] = {}
+          }
+        }
+        setMealTemplate(next)
+      }
     }).catch(() => {})
   }, [user])
 
@@ -190,11 +230,39 @@ export default function ProfilePage() {
     setPreferences((p) => ({ ...p, restrictions: p.restrictions.filter((r) => r !== value) }))
   }
 
-  function toggleMeal(day: string, meal: string) {
+  const defaultDinersForCell = useMemo(() => {
+    return Math.max(
+      1,
+      (household.adults ?? 2) + Math.ceil((household.kidsCount ?? 0) * 0.5),
+    )
+  }, [household.adults, household.kidsCount])
+
+  function adjustMealDiners(day: string, meal: string, delta: number) {
     setMealTemplate((prev) => {
-      const cur = prev[day] ?? []
-      const next = cur.includes(meal) ? cur.filter((m) => m !== meal) : [...cur, meal]
-      return { ...prev, [day]: next }
+      const cur = prev[day] ?? {}
+      const has = Object.prototype.hasOwnProperty.call(cur, meal)
+      const current = has ? cur[meal] : 0
+      // First tap on an off cell seeds the household default rather than 1, so
+      // the typical user (couple, family) doesn't have to spam +.
+      const next = has
+        ? Math.max(0, Math.min(24, current + delta))
+        : delta > 0
+          ? defaultDinersForCell
+          : 0
+      const nextCell: Record<string, number> = { ...cur }
+      if (next > 0) nextCell[meal] = next
+      else delete nextCell[meal]
+      return { ...prev, [day]: nextCell }
+    })
+  }
+
+  function clearMealDiners(day: string, meal: string) {
+    setMealTemplate((prev) => {
+      const cur = prev[day] ?? {}
+      if (!Object.prototype.hasOwnProperty.call(cur, meal)) return prev
+      const nextCell: Record<string, number> = { ...cur }
+      delete nextCell[meal]
+      return { ...prev, [day]: nextCell }
     })
   }
 
@@ -494,11 +562,15 @@ export default function ProfilePage() {
       <section className="px-5 mt-12">
         <ChapterHeader number="03" title="Plantilla" italic="semanal" />
         <p className="mt-2 text-[12px] text-[#7A7066]">
-          Qué comidas incluye tu menú cada día.
+          Qué comidas incluye tu menú cada día y para cuántos comensales.
+          Toca <span className="font-mono">+</span> para activar (parte con tu
+          casa por defecto, <span className="tabular-nums">{defaultDinersForCell}</span>),
+          <span className="font-mono"> −</span> para bajar y dejar la celda
+          vacía para apagarla.
         </p>
 
         <div className="mt-5 overflow-hidden rounded-2xl bg-[#FFFEFA] border border-[#DDD6C5]">
-          <div className="grid grid-cols-[auto_1fr_1fr_1fr_1fr]">
+          <div className="grid grid-cols-[44px_1fr_1fr_1fr_1fr]">
             <div />
             {MEALS.map((m) => (
               <div key={m} className="border-l border-[#DDD6C5] py-2.5 text-center text-[9px] uppercase tracking-[0.15em] text-[#7A7066]">
@@ -507,23 +579,53 @@ export default function ProfilePage() {
             ))}
             {DAYS.map((day, di) => (
               <div key={day} className="contents">
-                <div className="border-t border-[#DDD6C5] py-3 px-3 flex items-center gap-2">
-                  <span className="font-display text-base text-[#1A1612]">{DAYS_SHORT[di]}</span>
-                  <span className="text-[10px] uppercase tracking-[0.1em] text-[#7A7066] capitalize">{day}</span>
+                <div className="border-t border-[#DDD6C5] py-3 pl-3 flex items-center">
+                  <span className="font-display text-base text-[#1A1612]" title={day}>
+                    {DAYS_SHORT[di]}
+                  </span>
                 </div>
                 {MEALS.map((meal) => {
-                  const active = (mealTemplate[day] ?? []).includes(meal)
+                  const count = mealTemplate[day]?.[meal] ?? 0
+                  const active = count > 0
                   return (
-                    <button
+                    <div
                       key={meal}
-                      onClick={() => toggleMeal(day, meal)}
-                      className={`border-l border-t border-[#DDD6C5] py-3 transition-colors flex items-center justify-center ${
-                        active ? 'bg-[#1A1612] text-[#FAF6EE]' : 'bg-transparent hover:bg-[#F2EDE0]'
+                      className={`border-l border-t border-[#DDD6C5] flex items-stretch ${
+                        active ? 'bg-[#1A1612] text-[#FAF6EE]' : 'bg-transparent'
                       }`}
-                      aria-label={`${meal} el ${day}`}
                     >
-                      {active && <Check size={13} strokeWidth={2.5} />}
-                    </button>
+                      {active ? (
+                        <div className="flex w-full items-center justify-between px-1.5">
+                          <button
+                            type="button"
+                            onClick={() => adjustMealDiners(day, meal, -1)}
+                            className="flex h-7 w-7 items-center justify-center rounded-full hover:bg-[#FAF6EE]/15 transition-colors"
+                            aria-label={`Menos comensales en ${meal} ${day}`}
+                          >
+                            <Minus size={11} />
+                          </button>
+                          <span className="text-[13px] font-medium tabular-nums">{count}</span>
+                          <button
+                            type="button"
+                            onClick={() => adjustMealDiners(day, meal, 1)}
+                            disabled={count >= 24}
+                            className="flex h-7 w-7 items-center justify-center rounded-full hover:bg-[#FAF6EE]/15 transition-colors disabled:opacity-30"
+                            aria-label={`Más comensales en ${meal} ${day}`}
+                          >
+                            <Plus size={11} />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => adjustMealDiners(day, meal, 1)}
+                          className="flex w-full items-center justify-center py-2.5 text-[#7A7066] hover:bg-[#F2EDE0] transition-colors"
+                          aria-label={`Activar ${meal} el ${day}`}
+                        >
+                          <Plus size={13} />
+                        </button>
+                      )}
+                    </div>
                   )
                 })}
               </div>

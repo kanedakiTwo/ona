@@ -3,6 +3,7 @@
  * per recipe.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import type { IngredientOverride } from "@ona/shared"
 import { api } from "@/lib/api"
 
 export interface RecipeNotes {
@@ -13,6 +14,13 @@ export interface RecipeNotes {
   substitutions: string | null
   /** PR 8B — per-(household, recipe) free-form tags. Always an array. */
   customTags: string[]
+  /**
+   * Structured ingredient edits the household applies to this recipe — the
+   * recipe detail uses these to render removed lines struck-through, modified
+   * lines with the new value next to the original, and added lines with a
+   * subtle highlight. Always an array (possibly empty).
+   */
+  ingredientOverrides: IngredientOverride[]
   lastEditedByUserId: string | null
   lastEditedByUsername: string | null
   createdAt: string
@@ -24,6 +32,7 @@ export interface NotesPatch {
   rating?: number | null
   substitutions?: string | null
   customTags?: string[]
+  ingredientOverrides?: IngredientOverride[]
 }
 
 export interface HouseholdCustomTag {

@@ -133,7 +133,7 @@ When introducing a new system (e.g., notifications, admin panel, payments), add 
 
 Code work the user has scoped but not requested yet — pick up next session unless the user explicitly redirects. Items are ordered top = next-pickup.
 
-_(currently empty — last picked: dynamic loading splash, shipped on 2026-05-25 as `app/loading.tsx`)_
+- [ ] **Recipe source links (vídeo / artículo).** Surface a small "Ver fuente" affordance in the recipe detail (Capítulo header or eyebrow) when `sourceUrl` is set, deep-linking to the original YouTube video or article. When a recipe is imported via `/recipes/extract-from-url`, the form should pre-fill the source field automatically (the backend already persists `sourceUrl` + `sourceType` — the frontend just doesn't render or set them yet on the recipe detail). Manual-entry path needs an optional URL input under "Detalles". Treat as next-pickup.
 
 ## Todo Miguel
 

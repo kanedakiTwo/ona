@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { motion } from "motion/react"
 import { ChefHat, Clock, Flame } from "lucide-react"
 import type { RecipeIngredient, RecipeStep } from "@ona/shared"
@@ -11,16 +12,18 @@ interface Props {
   ingredients: RecipeIngredient[]
   /** Eyebrow chapter number, e.g. "02" */
   chapter: string
-  isCooking: boolean
-  onCookingToggle: () => void
+  /**
+   * Destination for the inline "Empezar a cocinar" CTA (fullscreen cook mode).
+   * Omit on read-only previews (e.g. the public catalog) to hide the button.
+   */
+  cookHref?: string
 }
 
 export function StepsSection({
   steps,
   ingredients,
   chapter,
-  isCooking,
-  onCookingToggle,
+  cookHref,
 }: Props) {
   // Index ingredients by id for quick lookup of step.ingredientRefs.
   const ingsById = new Map<string, RecipeIngredient>()
@@ -37,18 +40,15 @@ export function StepsSection({
             <span className="font-italic italic">Preparación</span>
           </h2>
         </div>
-        <button
-          onClick={onCookingToggle}
-          className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-[12px] font-medium transition-all active:scale-95 ${
-            isCooking
-              ? "bg-[#C65D38] text-[#FAF6EE]"
-              : "bg-[#1A1612] text-[#FAF6EE] hover:bg-[#2D6A4F]"
-          }`}
-          aria-pressed={isCooking}
-        >
-          <ChefHat size={13} />
-          {isCooking ? "Salir de cocina" : "Empezar a cocinar"}
-        </button>
+        {cookHref && (
+          <Link
+            href={cookHref}
+            className="inline-flex items-center gap-1.5 rounded-full bg-[#1A1612] px-4 py-2 text-[12px] font-medium text-[#FAF6EE] transition-all hover:bg-[#2D6A4F] active:scale-95"
+          >
+            <ChefHat size={13} />
+            Empezar a cocinar
+          </Link>
+        )}
       </div>
 
       <ol className="space-y-7">

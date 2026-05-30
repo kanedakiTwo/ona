@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeMealTemplate } from '../services/menuGenerator.js'
+import { extractMealDiners, normalizeMealTemplate } from '../services/menuGenerator.js'
 
 describe('normalizeMealTemplate', () => {
   it('honors the user disabling breakfasts everywhere', () => {
@@ -82,5 +82,56 @@ describe('normalizeMealTemplate', () => {
     expect(out![0]).toEqual({ breakfast: true })
     // Unknown 'funday' shouldn't appear anywhere — every other day stays empty.
     for (let i = 1; i < 7; i++) expect(out![i]).toEqual({})
+  })
+
+  it('accepts the numeric shape {meal: count} and treats positive ints as on', () => {
+    const out = normalizeMealTemplate({
+      mealTemplate: {
+        lunes: { almuerzo: 4, cena: 2 },
+        martes: { almuerzo: 2, cena: 2, merienda: 1 },
+        miercoles: { desayuno: 0, almuerzo: 3 }, // 0 counts as off
+      },
+    })
+    expect(out![0]).toEqual({ lunch: true, dinner: true })
+    expect(out![1]).toEqual({ lunch: true, dinner: true, snack: true })
+    expect(out![2]).toEqual({ lunch: true })
+  })
+})
+
+describe('extractMealDiners', () => {
+  it('returns 7 empty maps when the blob is the legacy string[] shape', () => {
+    const out = extractMealDiners({
+      mealTemplate: { lunes: ['almuerzo', 'cena'] },
+    })
+    expect(out).toHaveLength(7)
+    for (const day of out) expect(day).toEqual({})
+  })
+
+  it('pulls positive diner counts and ignores 0 / negatives / non-numeric', () => {
+    const out = extractMealDiners({
+      mealTemplate: {
+        lunes: { almuerzo: 4, cena: 2, desayuno: 0 },
+        martes: { almuerzo: -1, cena: 'nope', merienda: 1 },
+        miércoles: { cena: 6 },
+      },
+    })
+    expect(out[0]).toEqual({ lunch: 4, dinner: 2 })
+    expect(out[1]).toEqual({ snack: 1 })
+    expect(out[2]).toEqual({ dinner: 6 })
+    for (let i = 3; i < 7; i++) expect(out[i]).toEqual({})
+  })
+
+  it('floors fractional counts so the menu generator only seeds integers', () => {
+    const out = extractMealDiners({
+      mealTemplate: { lunes: { almuerzo: 3.7 } },
+    })
+    expect(out[0]).toEqual({ lunch: 3 })
+  })
+
+  it('returns 7 empty maps when no usable input is present', () => {
+    expect(extractMealDiners(null)).toHaveLength(7)
+    expect(extractMealDiners(undefined)).toHaveLength(7)
+    expect(extractMealDiners({})).toHaveLength(7)
+    expect(extractMealDiners({ mealTemplate: 'oops' })).toHaveLength(7)
   })
 })

@@ -13,6 +13,7 @@ export type {
   UpdateRecipeInput,
   ExtractedRecipe,
   ExtractedIngredient,
+  IngredientOverride,
 } from './types/recipe.js'
 export type { Menu, DayMenu, MealSlot, LockedSlots } from './types/menu.js'
 export type {
@@ -54,6 +55,7 @@ export {
   recipeIngredientSchema,
   recipeStepSchema,
   nutritionPerServingSchema,
+  ingredientOverrideSchema,
 } from './types/recipe.js'
 export { generateMenuSchema, lockMealSchema } from './types/menu.js'
 

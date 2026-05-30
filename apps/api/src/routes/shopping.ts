@@ -92,11 +92,13 @@ router.get('/shopping-list/:menuId', async (req: AuthRequest, res) => {
       return
     }
 
-    // Generate the shopping list
-    const menuItems = await generateShoppingList(days, multiplier, db)
-
     // PR 10B: pre-pend household staples (dedup'd by case-insensitive name).
     const householdId = menu.householdId ?? (await getPrimaryHouseholdId(menu.userId))
+
+    // Generate the shopping list — pass the household id so the aggregator
+    // applies `recipe_notes.ingredient_overrides` (remove / modify / add)
+    // before scaling.
+    const menuItems = await generateShoppingList(days, multiplier, db, householdId)
     const staples = householdId ? await listActiveStaplesForHousehold(householdId) : []
     const items = mergeStaplesIntoItems(menuItems, staples)
 
@@ -263,7 +265,6 @@ router.post('/shopping-list/:listId/regenerate', async (req: AuthRequest, res) =
       .limit(1)
 
     const multiplier = multiplierForUser(user ?? {})
-    const menuItems = await generateShoppingList(menu.days as DayMenu[], multiplier, db)
 
     // PR 10B: regenerate rebuilds menu items from scratch but preserves
     // user-authored extras — manual rows and the price the user typed on
@@ -271,6 +272,13 @@ router.post('/shopping-list/:listId/regenerate', async (req: AuthRequest, res) =
     const previousItems = (list.items ?? []) as ShoppingItem[]
     const manualKept = previousItems.filter((i) => i.kind === 'manual')
     const householdId = list.householdId ?? menu.householdId ?? null
+
+    const menuItems = await generateShoppingList(
+      menu.days as DayMenu[],
+      multiplier,
+      db,
+      householdId,
+    )
     const staples = householdId ? await listActiveStaplesForHousehold(householdId) : []
     const itemsBeforeStaples = [...menuItems, ...manualKept]
     const items = mergeStaplesIntoItems(itemsBeforeStaples, staples)

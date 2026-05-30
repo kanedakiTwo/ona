@@ -22,7 +22,7 @@
  * Drops dispatch `ona:dnd-start` / `ona:dnd-end` window events so the
  * page-level `SwipeNavigator` knows to stand down for the gesture.
  */
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { motion } from "motion/react"
 import {
   DndContext,
@@ -38,7 +38,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core"
-import { ChevronRight, Moon, Sun, Sunrise, Sunset, Utensils } from "lucide-react"
+import { CalendarX, ChevronRight, Moon, RotateCcw, Sun, Sunrise, Sunset, Utensils } from "lucide-react"
 import type { DayMenu } from "@ona/shared"
 import { shortRecipeName } from "@/lib/recipeView"
 
@@ -64,6 +64,10 @@ interface Props {
   days: DayMenu[]
   weekStart: string
   todayIndex: number
+  /** Day indices the user marked "sin cocinar". Rendered as a muted block
+   *  with an inline "Reactivar día" affordance so the user doesn't have to
+   *  switch to the day view to clear the flag. */
+  skippedDays?: number[]
   onSelectDay: (dayIndex: number) => void
   onMoveSlot?: (params: {
     fromDay: number
@@ -71,6 +75,8 @@ interface Props {
     toDay: number
     toMeal: MealKey
   }) => void
+  /** Called when the user taps "Reactivar día" on a skipped block. */
+  onUnskipDay?: (dayIndex: number) => void
 }
 
 interface CellData {
@@ -82,8 +88,17 @@ interface CellData {
   isLeftover: boolean
 }
 
-export function WeekGridView({ days, weekStart, todayIndex, onSelectDay, onMoveSlot }: Props) {
+export function WeekGridView({
+  days,
+  weekStart,
+  todayIndex,
+  skippedDays,
+  onSelectDay,
+  onMoveSlot,
+  onUnskipDay,
+}: Props) {
   const start = new Date(weekStart + "T00:00:00")
+  const skippedSet = useMemo(() => new Set(skippedDays ?? []), [skippedDays])
 
   // Meal types that have at least one recipe somewhere in the week —
   // empty-across-the-week meal types are dropped so the user doesn't see
@@ -99,6 +114,22 @@ export function WeekGridView({ days, weekStart, todayIndex, onSelectDay, onMoveS
   )
 
   const [draggingCell, setDraggingCell] = useState<CellData | null>(null)
+
+  // On first mount, gently scroll today's block into view so the user lands
+  // on "what am I cooking today" instead of starting at Monday every time.
+  // Doing it after a paint avoids fighting the entry motion animation.
+  const containerRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (todayIndex < 0) return
+    const id = setTimeout(() => {
+      const el = containerRef.current?.querySelector<HTMLElement>(
+        `[data-day="${todayIndex}"]`,
+      )
+      el?.scrollIntoView({ behavior: "smooth", block: "start" })
+    }, 300)
+    return () => clearTimeout(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   function handleDragStart(e: DragStartEvent) {
     const data = e.active.data.current as CellData | undefined
@@ -138,12 +169,12 @@ export function WeekGridView({ days, weekStart, todayIndex, onSelectDay, onMoveS
       onDragEnd={handleDragEnd}
       onDragCancel={endDrag}
     >
-      <div className="px-3 pb-8 md:px-5">
+      <div ref={containerRef} className="px-3 pb-8 md:px-5">
         <motion.div
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
-          className="overflow-hidden rounded-2xl border border-[#DDD6C5] bg-[#FFFEFA]"
+          className="rounded-2xl border border-[#DDD6C5] bg-[#FFFEFA]"
         >
           {days.map((day, di) => (
             <DaySection
@@ -154,10 +185,13 @@ export function WeekGridView({ days, weekStart, todayIndex, onSelectDay, onMoveS
               dayShort={DAY_SHORT[di]}
               dayName={DAY_NAMES[di]}
               isToday={di === todayIndex}
+              isSkipped={skippedSet.has(di)}
               visibleMeals={visibleMeals}
               day={day}
               onSelectDay={onSelectDay}
+              onUnskipDay={onUnskipDay}
               isFirst={di === 0}
+              isLast={di === days.length - 1}
             />
           ))}
         </motion.div>
@@ -181,10 +215,13 @@ function DaySection({
   dayShort,
   dayName,
   isToday,
+  isSkipped,
   visibleMeals,
   day,
   onSelectDay,
+  onUnskipDay,
   isFirst,
+  isLast,
 }: {
   dayIndex: number
   date: number
@@ -192,29 +229,48 @@ function DaySection({
   dayShort: string
   dayName: string
   isToday: boolean
+  isSkipped: boolean
   visibleMeals: MealKey[]
   day: DayMenu | undefined
   onSelectDay: (dayIndex: number) => void
+  onUnskipDay?: (dayIndex: number) => void
   isFirst: boolean
+  isLast: boolean
 }) {
   const hasAnyMeal = visibleMeals.some((m) => Boolean(day?.[m]?.recipeId))
+  // Background hierarchy:
+  //   - skipped → muted cream so it visually recedes
+  //   - today  → soft terracotta tint to anchor the eye
+  //   - other  → plain card surface
+  const sectionBg = isSkipped ? "bg-[#F2EDE0]/60" : isToday ? "bg-[#FDEEE8]" : ""
+  // Sticky header inherits the section's background so it doesn't show
+  // through to the rows it covers as the user scrolls. The card wrapper
+  // no longer carries `overflow-hidden` (otherwise sticky would clip).
+  const headerBg = isSkipped ? "bg-[#F2EDE0]" : isToday ? "bg-[#FDEEE8]" : "bg-[#FFFEFA]"
 
   return (
     <section
-      className={`${isFirst ? "" : "border-t border-[#DDD6C5]"} ${
-        isToday ? "bg-[#FDEEE8]" : ""
-      }`}
+      data-day={dayIndex}
+      className={`${isFirst ? "" : "border-t border-[#DDD6C5]"} ${sectionBg} ${
+        isFirst ? "rounded-t-2xl" : ""
+      } ${isLast ? "rounded-b-2xl" : ""}`}
     >
-      {/* Day header — sticky-looking but plain so the row containers can
-          still relayout cleanly when the user reorders. */}
       <button
         type="button"
         onClick={() => onSelectDay(dayIndex)}
-        className="flex w-full items-center justify-between px-4 pt-3 pb-2 text-left"
+        className={`sticky top-0 z-10 flex w-full items-center justify-between px-4 pt-3 pb-2 text-left backdrop-blur-sm ${headerBg}/95`}
         aria-label={`Ir al día ${dayName} ${date}`}
       >
         <div className="flex items-baseline gap-2">
-          <span className={`text-[13px] font-medium ${isToday ? "text-[#C65D38]" : "text-[#1A1612]"}`}>
+          <span
+            className={`text-[13px] font-medium ${
+              isSkipped
+                ? "text-[#7A7066]"
+                : isToday
+                  ? "text-[#C65D38]"
+                  : "text-[#1A1612]"
+            }`}
+          >
             {dayShort} {date} {monthLabel}
           </span>
           {isToday && (
@@ -222,39 +278,71 @@ function DaySection({
               Hoy
             </span>
           )}
+          {isSkipped && (
+            <span className="rounded-full border border-[#7A7066]/40 px-2 py-[1px] text-[9px] font-medium uppercase tracking-[0.12em] text-[#7A7066]">
+              Sin cocinar
+            </span>
+          )}
         </div>
         <ChevronRight size={14} className="text-[#7A7066]" />
       </button>
 
-      <div className="px-2 pb-2 md:px-3">
-        {hasAnyMeal ? (
-          visibleMeals.map((m) => {
-            const slot = day?.[m]
-            const isPlanned = Boolean(slot?.recipeId)
-            const cellData: CellData | null = isPlanned
-              ? {
-                  day: dayIndex,
-                  meal: m,
-                  recipeId: slot!.recipeId,
-                  recipeName: slot!.recipeName ?? "Receta",
-                  imageUrl: slot!.imageUrl ?? null,
-                  isLeftover: slot!.kind === "leftover",
-                }
-              : null
-            return (
-              <SlotRow
-                key={m}
-                dayIndex={dayIndex}
-                meal={m}
-                data={cellData}
-                onClick={() => onSelectDay(dayIndex)}
-              />
-            )
-          })
-        ) : (
-          <p className="px-2 py-3 text-[12px] italic text-[#7A7066]">Sin platos</p>
-        )}
-      </div>
+      {isSkipped ? (
+        <div className="flex items-center gap-2 px-4 pb-3 pt-1">
+          <CalendarX size={14} className="text-[#7A7066]" />
+          <span className="text-[12px] italic text-[#7A7066]">
+            Día saltado en esta semana.
+          </span>
+          {onUnskipDay && (
+            <button
+              type="button"
+              onClick={(e) => {
+                // Stop propagation so the click doesn't also navigate via
+                // the (parent isn't a button, but the section's day header
+                // is — keep both behaviours independent).
+                e.stopPropagation()
+                onUnskipDay(dayIndex)
+              }}
+              className="ml-auto inline-flex items-center gap-1 rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-3 py-1 text-[10px] uppercase tracking-[0.12em] text-[#1A1612] transition-colors hover:border-[#1A1612]"
+            >
+              <RotateCcw size={11} />
+              Reactivar
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="px-2 pb-2 md:px-3">
+          {hasAnyMeal ? (
+            visibleMeals.map((m) => {
+              const slot = day?.[m]
+              const isPlanned = Boolean(slot?.recipeId)
+              const cellData: CellData | null = isPlanned
+                ? {
+                    day: dayIndex,
+                    meal: m,
+                    recipeId: slot!.recipeId,
+                    recipeName: slot!.recipeName ?? "Receta",
+                    imageUrl: slot!.imageUrl ?? null,
+                    isLeftover: slot!.kind === "leftover",
+                  }
+                : null
+              return (
+                <SlotRow
+                  key={m}
+                  dayIndex={dayIndex}
+                  meal={m}
+                  data={cellData}
+                  onClick={() => onSelectDay(dayIndex)}
+                />
+              )
+            })
+          ) : (
+            // Truly empty days collapse to a single quiet line so they
+            // don't take up the same vertical space as a populated day.
+            <p className="px-2 py-1 text-[11px] italic text-[#A39A8E]">— sin platos —</p>
+          )}
+        </div>
+      )}
     </section>
   )
 }

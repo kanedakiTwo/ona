@@ -497,6 +497,7 @@ export default function MenuPage() {
               days={menu.days as any}
               weekStart={weekStart}
               todayIndex={todayIndex}
+              skippedDays={menu.skippedDays ?? []}
               onSelectDay={(d) => {
                 setSelectedDay(d)
                 setViewMode("day")
@@ -511,6 +512,11 @@ export default function MenuPage() {
                   toDay,
                   toMeal,
                 })
+              }}
+              onUnskipDay={(d) => {
+                if (!menu) return
+                haptic.light()
+                unskipDay.mutate({ menuId: menu.id, day: d })
               }}
             />
           </div>

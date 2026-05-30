@@ -108,12 +108,18 @@ export default function EditRecipePage() {
     setSeeded(true)
   }, [recipe, seeded])
 
-  // Authorization check (after the recipe loads).
+  // Authorization check (after the recipe loads). Authors can always edit
+  // their own row; admins can edit any recipe (system + others'). Everyone
+  // else gets bounced back to the read-only detail view.
   useEffect(() => {
     if (authLoading || recipeLoading || !recipe) return
-    const isOwner = user && recipe.authorId === user.id
-    if (!isOwner) {
-      // System recipe or not the author → bounce back to detail.
+    if (!user) {
+      router.replace(`/recipes/${recipe.id}`)
+      return
+    }
+    const isOwner = recipe.authorId === user.id
+    const isAdmin = user.role === 'admin'
+    if (!isOwner && !isAdmin) {
       router.replace(`/recipes/${recipe.id}`)
     }
   }, [authLoading, recipeLoading, recipe, user, router])

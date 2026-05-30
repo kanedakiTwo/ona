@@ -1846,6 +1846,7 @@ const addRecipeToMine: SkillDefinition = {
           internalTags: baseInternalTags,
           sourceUrl: full.sourceUrl,
           sourceType: 'manual',
+          copiedFromRecipeId: full.id,
         })
         .returning({ id: recipes.id })
 

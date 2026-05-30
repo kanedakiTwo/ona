@@ -386,7 +386,25 @@ router.get('/recipes', optionalAuthMiddleware, async (req: AuthRequest, res) => 
     const offset = (page - 1) * perPage
 
     const conditions = []
-    if (!req.userId) conditions.push(isNull(recipes.authorId))
+    // Visibility rules:
+    //   - Anonymous: system recipes only.
+    //   - Authenticated user (incl. admin): system recipes + their own.
+    //     Other users' recipes are NEVER returned through this listing.
+    //   - If the user has a personal copy of a system recipe (back-ref via
+    //     `copied_from_recipe_id`), hide the original so the catalogue
+    //     doesn't show two entries for the same dish.
+    if (!req.userId) {
+      conditions.push(isNull(recipes.authorId))
+    } else {
+      conditions.push(
+        sql`(${recipes.authorId} IS NULL OR ${recipes.authorId} = ${req.userId})`,
+      )
+      conditions.push(sql`NOT EXISTS (
+        SELECT 1 FROM ${recipes} AS copy
+        WHERE copy.author_id = ${req.userId}
+          AND copy.copied_from_recipe_id = ${recipes.id}
+      )`)
+    }
     if (meal) conditions.push(arrayContains(recipes.meals, [meal]))
     if (season) conditions.push(arrayContains(recipes.seasons, [season]))
     if (search) conditions.push(sql`lower(${recipes.name}) like ${`%${search.toLowerCase()}%`}`)
@@ -894,6 +912,9 @@ router.post('/recipes/:id/copy', authMiddleware, async (req: AuthRequest, res) =
           // The COPY's provenance is "manual" (user-owned). The fact that it
           // came from the catalog is captured in `internalTags`.
           sourceType: 'manual',
+          // Back-reference to the original — used by the catalogue list to
+          // hide the source from this user (they already have their own).
+          copiedFromRecipeId: source.id,
         })
         .returning({ id: recipes.id })
 

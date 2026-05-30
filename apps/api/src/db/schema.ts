@@ -191,6 +191,13 @@ export const recipes = pgTable('recipes', {
   sourceUrl: text('source_url'),
   /** Provenance enum: 'manual' | 'image' | 'article' | 'youtube'. */
   sourceType: text('source_type'),
+  /**
+   * Back-reference from a user-owned copy to the recipe it was copied from.
+   * Set by `POST /recipes/:id/copy`. The catalogue listing uses this to
+   * suppress the original from the user's view when they already have a
+   * copy — see migration 0025.
+   */
+  copiedFromRecipeId: uuid('copied_from_recipe_id'),
 
   /** How confident was the extractor about the servings count. */
   servingsConfidence: text('servings_confidence', { enum: ['explicit', 'estimated'] })

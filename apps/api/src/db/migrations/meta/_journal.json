@@ -176,6 +176,13 @@
       "when": 1779793500000,
       "tag": "0024_recipe_meal_season_fit",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1779793800000,
+      "tag": "0025_recipe_copied_from",
+      "breakpoints": true
     }
   ]
 }

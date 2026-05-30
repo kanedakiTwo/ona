@@ -11,6 +11,11 @@ import { Plus, Trash2, ChevronLeft } from "lucide-react"
 import Link from "next/link"
 import { PhotoRecipeUpload } from "@/components/recipes/PhotoRecipeUpload"
 import { UrlRecipeImport } from "@/components/recipes/UrlRecipeImport"
+import {
+  SortableStepsList,
+  makeStep,
+  type StepDraft,
+} from "@/components/recipes/SortableStepsList"
 import { IngredientAutocomplete } from "@/components/recipes/IngredientAutocomplete"
 import { buildRecipePayload, createRecipeSchema } from "@ona/shared"
 import type { Meal, Season, ExtractedRecipe, Ingredient } from "@ona/shared"
@@ -80,7 +85,10 @@ function NewRecipePageInner() {
   const [ingredientRows, setIngredientRows] = useState<IngredientRow[]>([
     emptyRow(),
   ])
-  const [steps, setSteps] = useState<string[]>([""])
+  // Steps carry a stable client-side id so the drag-and-drop list can
+  // reorder them without losing focus or remounting textareas. The id is
+  // form-local: the server still receives `{ index, text }`.
+  const [steps, setSteps] = useState<StepDraft[]>([makeStep()])
   const [photoExtracted, setPhotoExtracted] = useState(false)
 
   // Per-field validation errors surfaced after a submit attempt.
@@ -100,7 +108,9 @@ function NewRecipePageInner() {
     setSelectedMeals(data.meals)
     setSelectedSeasons(data.seasons)
     setTags(data.tags)
-    setSteps(data.steps.length > 0 ? data.steps : [""])
+    setSteps(
+      data.steps.length > 0 ? data.steps.map((t) => makeStep(t)) : [makeStep()],
+    )
     setIngredientRows(
       data.ingredients.length > 0
         ? data.ingredients.map((ing) => ({
@@ -181,19 +191,19 @@ function NewRecipePageInner() {
     setIngredientRows(ingredientRows.filter((_, i) => i !== idx))
   }
 
-  function updateStep(idx: number, value: string) {
-    const next = [...steps]
-    next[idx] = value
-    setSteps(next)
+  function updateStep(id: string, value: string) {
+    setSteps((prev) => prev.map((s) => (s.id === id ? { ...s, text: value } : s)))
   }
 
   function addStep() {
-    setSteps([...steps, ""])
+    setSteps((prev) => [...prev, makeStep()])
   }
 
-  function removeStep(idx: number) {
-    if (steps.length <= 1) return
-    setSteps(steps.filter((_, i) => i !== idx))
+  function removeStep(id: string) {
+    setSteps((prev) => {
+      if (prev.length <= 1) return [makeStep()]
+      return prev.filter((s) => s.id !== id)
+    })
   }
 
   // Build the schema-shaped payload from form state. Lives in @ona/shared so
@@ -207,7 +217,9 @@ function NewRecipePageInner() {
       selectedMeals,
       selectedSeasons,
       tags,
-      steps,
+      // The form holds steps as `{ id, text }[]` for drag-and-drop key
+      // stability; the payload builder only consumes the text array.
+      steps: steps.map((s) => s.text),
       ingredientRows,
     })
   }
@@ -649,46 +661,20 @@ function NewRecipePageInner() {
               <span className="font-italic italic">Preparacion</span>
             </h2>
 
-            <div className="mt-4 space-y-3">
-              {steps.map((step, idx) => {
-                // Server lint paths for steps: "steps[3].text", "steps[3]", etc.
-                const stepHint = Object.entries(errors).find(
-                  ([k]) => k === `steps[${idx}]` || k.startsWith(`steps[${idx}].`),
-                )?.[1]
-                return (
-                  <div key={idx} className="flex flex-col gap-1">
-                    <div className="flex items-start gap-3">
-                      <span className="font-display mt-1 text-[1.4rem] leading-none text-[#C65D38]/40">
-                        {String(idx + 1).padStart(2, "0")}
-                      </span>
-                      <textarea
-                        value={step}
-                        onChange={(e) => updateStep(idx, e.target.value)}
-                        placeholder={`Paso ${idx + 1}`}
-                        rows={2}
-                        className={cn(
-                          "flex-1 resize-none rounded-lg border bg-[#F2EDE0] px-3 py-2 text-[14px] leading-relaxed text-[#1A1612] placeholder:text-[#7A7066] focus:outline-none focus:ring-1",
-                          stepHint
-                            ? "border-[#C65D38] focus:border-[#C65D38] focus:ring-[#C65D38]"
-                            : "border-[#DDD6C5] focus:border-[#1A1612] focus:ring-[#1A1612]",
-                        )}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removeStep(idx)}
-                        disabled={steps.length <= 1}
-                        className="mt-1 rounded p-1 text-[#7A7066] hover:text-[#C65D38] disabled:opacity-30"
-                        aria-label="Quitar paso"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                    {stepHint && (
-                      <p className="pl-9 text-[11px] italic text-[#C65D38]">{stepHint}</p>
-                    )}
-                  </div>
-                )
-              })}
+            <div className="mt-4">
+              <SortableStepsList
+                steps={steps}
+                onReorder={setSteps}
+                onChange={updateStep}
+                onRemove={removeStep}
+                errorAt={(idx) =>
+                  // Lint paths from the server: "steps[3].text" or "steps[3]".
+                  Object.entries(errors).find(
+                    ([k]) =>
+                      k === `steps[${idx}]` || k.startsWith(`steps[${idx}].`),
+                  )?.[1] ?? null
+                }
+              />
             </div>
             <button
               type="button"

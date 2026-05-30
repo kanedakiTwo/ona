@@ -13,6 +13,11 @@ import {
 } from "@/hooks/useRecipes"
 import { useUser } from "@/hooks/useUser"
 import { IngredientAutocomplete } from "@/components/recipes/IngredientAutocomplete"
+import {
+  SortableStepsList,
+  makeStep,
+  type StepDraft,
+} from "@/components/recipes/SortableStepsList"
 import { cn } from "@/lib/utils"
 import { LintFailureError } from "@/lib/api"
 import { humanizeLintKey } from "@/lib/recipeView"
@@ -77,7 +82,10 @@ export default function EditRecipePage() {
   const [tags, setTags] = useState<string[]>([])
   const [tagInput, setTagInput] = useState("")
   const [ingredientRows, setIngredientRows] = useState<IngredientRow[]>([emptyRow()])
-  const [steps, setSteps] = useState<string[]>([""])
+  // Steps carry a stable client-side id so the drag-and-drop list can
+  // reorder them without losing focus or remounting textareas. The id is
+  // form-local: the server still receives `{ index, text }`.
+  const [steps, setSteps] = useState<StepDraft[]>([makeStep()])
   // Notes / tips persist as single `text` columns server-side but the UI
   // exposes them as multi-entry lists so the user can stack short ideas
   // (e.g. "Cebolla roja queda mucho mejor" / "Picar fino"). On submit we
@@ -127,7 +135,9 @@ export default function EditRecipePage() {
         : [emptyRow()]
     )
     setSteps(
-      recipe.steps.length > 0 ? recipe.steps.map((s) => s.text) : [""]
+      recipe.steps.length > 0
+        ? recipe.steps.map((s) => makeStep(s.text))
+        : [makeStep()],
     )
     setSeeded(true)
   }, [recipe, seeded])
@@ -219,17 +229,19 @@ export default function EditRecipePage() {
     setter(list.filter((_, i) => i !== idx))
   }
 
-  function updateStep(idx: number, value: string) {
-    const next = [...steps]
-    next[idx] = value
-    setSteps(next)
+  function updateStep(id: string, value: string) {
+    setSteps((prev) => prev.map((s) => (s.id === id ? { ...s, text: value } : s)))
   }
   function addStep() {
-    setSteps([...steps, ""])
+    setSteps((prev) => [...prev, makeStep()])
   }
-  function removeStep(idx: number) {
-    if (steps.length <= 1) return
-    setSteps(steps.filter((_, i) => i !== idx))
+  function removeStep(id: string) {
+    setSteps((prev) => {
+      // Last row — clear it instead of dropping so the form always has a
+      // visible textarea (mirrors the notes/tips editor behaviour).
+      if (prev.length <= 1) return [makeStep()]
+      return prev.filter((s) => s.id !== id)
+    })
   }
 
   function buildPayload() {
@@ -243,7 +255,7 @@ export default function EditRecipePage() {
       }))
 
     const cleanedSteps = steps
-      .map((s) => s.trim())
+      .map((s) => s.text.trim())
       .filter((s) => s.length > 0)
       .map((text, index) => ({ index, text }))
 
@@ -671,36 +683,20 @@ export default function EditRecipePage() {
             )}
           </section>
 
-          {/* Steps */}
+          {/* Steps — drag-and-drop reorderable. The grip handle on the left
+              of each row drags; the textarea and trash do their own thing. */}
           <section>
             <div className="text-eyebrow text-[#7A7066]">Capitulo 03</div>
             <h2 className="mt-1 font-display text-[1.5rem] leading-tight text-[#1A1612]">
               <span className="font-italic italic">Preparación</span>
             </h2>
-            <div className="mt-4 space-y-3">
-              {steps.map((step, idx) => (
-                <div key={idx} className="flex items-start gap-3">
-                  <span className="font-display mt-1 text-[1.4rem] leading-none text-[#C65D38]/40">
-                    {String(idx + 1).padStart(2, "0")}
-                  </span>
-                  <textarea
-                    value={step}
-                    onChange={(e) => updateStep(idx, e.target.value)}
-                    placeholder={`Paso ${idx + 1}`}
-                    rows={2}
-                    className="flex-1 resize-none rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-3 py-2 text-[14px] leading-relaxed text-[#1A1612] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeStep(idx)}
-                    disabled={steps.length <= 1}
-                    className="mt-1 rounded p-1 text-[#7A7066] hover:text-[#C65D38] disabled:opacity-30"
-                    aria-label="Quitar paso"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              ))}
+            <div className="mt-4">
+              <SortableStepsList
+                steps={steps}
+                onReorder={setSteps}
+                onChange={updateStep}
+                onRemove={removeStep}
+              />
             </div>
             <button
               type="button"

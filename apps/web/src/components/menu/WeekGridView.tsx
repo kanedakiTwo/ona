@@ -81,7 +81,14 @@ interface Props {
    *  with an inline "Reactivar día" affordance so the user doesn't have to
    *  switch to the day view to clear the flag. */
   skippedDays?: number[]
+  /**
+   * Tapping the day **header** flips to "Vista día" with that day
+   * selected (the existing affordance). Tapping a recipe **row** opens
+   * the recipe detail — that's `onSelectRecipe` below.
+   */
   onSelectDay: (dayIndex: number) => void
+  /** Tapping a populated row navigates straight to the recipe detail. */
+  onSelectRecipe: (recipeId: string) => void
   onMoveSlot?: (params: {
     fromDay: number
     fromMeal: MealKey
@@ -120,6 +127,7 @@ export function WeekGridView({
   todayIndex,
   skippedDays,
   onSelectDay,
+  onSelectRecipe,
   onMoveSlot,
   onUnskipDay,
   onRandomize,
@@ -218,6 +226,7 @@ export function WeekGridView({
               visibleMeals={visibleMeals}
               day={day}
               onSelectDay={onSelectDay}
+              onSelectRecipe={onSelectRecipe}
               onUnskipDay={onUnskipDay}
               onRandomize={onRandomize}
               onBan={onBan}
@@ -251,6 +260,7 @@ function DaySection({
   visibleMeals,
   day,
   onSelectDay,
+  onSelectRecipe,
   onUnskipDay,
   onRandomize,
   onBan,
@@ -268,6 +278,7 @@ function DaySection({
   visibleMeals: MealKey[]
   day: DayMenu | undefined
   onSelectDay: (dayIndex: number) => void
+  onSelectRecipe: (recipeId: string) => void
   onUnskipDay?: (dayIndex: number) => void
   onRandomize?: (day: number, meal: MealKey) => void
   onBan?: (day: number, meal: MealKey, recipeId: string) => void
@@ -372,7 +383,11 @@ function DaySection({
                   dayIndex={dayIndex}
                   meal={m}
                   data={cellData}
-                  onClick={() => onSelectDay(dayIndex)}
+                  onClick={() => {
+                    // Filled row → recipe detail; empty row → day view to add.
+                    if (cellData?.recipeId) onSelectRecipe(cellData.recipeId)
+                    else onSelectDay(dayIndex)
+                  }}
                   onRandomize={onRandomize}
                   onBan={onBan}
                   onRemove={onRemove}

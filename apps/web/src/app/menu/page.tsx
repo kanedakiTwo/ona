@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { motion, AnimatePresence } from "motion/react"
 import { useAuth } from "@/lib/auth"
 import {
@@ -130,6 +131,7 @@ function weekRangeShort(weekStart: string): string {
 
 export default function MenuPage() {
   const { user, isLoading: authLoading } = useAuth()
+  const router = useRouter()
 
   // Read initial week from `?week=YYYY-MM-DD` so the URL is shareable /
   // back-forward-able. Defaults to the current Monday. We avoid
@@ -501,6 +503,10 @@ export default function MenuPage() {
               onSelectDay={(d) => {
                 setSelectedDay(d)
                 setViewMode("day")
+              }}
+              onSelectRecipe={(recipeId) => {
+                haptic.light()
+                router.push(`/recipes/${recipeId}`)
               }}
               onMoveSlot={({ fromDay, fromMeal, toDay, toMeal }) => {
                 if (!menu) return

@@ -605,6 +605,13 @@ export default function EditRecipePage() {
                 const selectedIng = row.ingredientId
                   ? ingredientLibrary.find((ing) => ing.id === row.ingredientId) ?? null
                   : null
+                // `ingredientLibrary` is the first 300 catalog rows; recipes
+                // can reference ingredients past that window (the global
+                // catalog is paginated). When the lookup misses, fall back
+                // to showing the denormalized `row.ingredientName` so the
+                // user sees what's there instead of an empty input.
+                const fallbackText =
+                  !selectedIng && row.ingredientName ? row.ingredientName : undefined
                 return (
                   <div key={idx} className="flex flex-col gap-1">
                     <div className="flex items-center gap-2">
@@ -615,6 +622,7 @@ export default function EditRecipePage() {
                           ingredientsLoading ? "Cargando biblioteca…" : "Ingrediente"
                         }
                         hasError={!!hint}
+                        defaultText={fallbackText}
                       />
                       <input
                         type="number"

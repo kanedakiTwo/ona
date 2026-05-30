@@ -48,7 +48,12 @@ const autoCreateBodySchema = z.object({
 router.get('/ingredients', async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page as string) || 1)
-    const perPage = Math.min(100, Math.max(1, parseInt(req.query.perPage as string) || 20))
+    // The web app fetches the whole catalog in one shot to power the
+    // recipe-edit autocomplete (~160 rows today). 100 was the old cap and
+    // silently dropped late-alphabet ingredients (surimi, etc.) from the
+    // picker — the edit form then rendered an empty row for those because
+    // the lookup-by-id missed.
+    const perPage = Math.min(500, Math.max(1, parseInt(req.query.perPage as string) || 20))
     const sort = (req.query.sort as string) || 'name'
     const search = req.query.search as string | undefined
     const offset = (page - 1) * perPage

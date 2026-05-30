@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { motion, AnimatePresence } from "motion/react"
@@ -221,6 +221,79 @@ export default function MenuPage() {
     recordMenuVisit()
   }, [])
 
+  // The continuous-scroll day stack lives inside this container; each day
+  // section carries `data-day-block="<i>"`. The strip auto-syncs to the
+  // section that's currently in view via IntersectionObserver below.
+  const dayStackRef = useRef<HTMLDivElement>(null)
+
+  /**
+   * Scroll a day section into view, offsetting the sticky day strip + page
+   * header so the day's own title isn't covered. Used by:
+   *   - The day strip's tap-to-jump.
+   *   - The "auto-scroll to today" effect on first mount.
+   *   - Switching from "Vista semana" back to "Vista día" with a day
+   *     selected from the grid.
+   */
+  const scrollDayIntoView = useCallback((dayIndex: number, behavior: ScrollBehavior = "smooth") => {
+    const el = dayStackRef.current?.querySelector<HTMLElement>(
+      `[data-day-block="${dayIndex}"]`,
+    )
+    if (!el) return
+    // The day strip is ~64 px tall when sticky; leave a small gap so the
+    // title doesn't hide right under it.
+    const top = el.getBoundingClientRect().top + window.scrollY - 72
+    window.scrollTo({ top, behavior })
+  }, [])
+
+  // When the user enters Vista Día (mount or from Vista Semana), scroll
+  // the selected day into view. Defer one frame so the layout has settled.
+  useEffect(() => {
+    if (viewMode !== "day") return
+    if (selectedDay < 0) return
+    const id = setTimeout(() => scrollDayIntoView(selectedDay, "auto"), 50)
+    return () => clearTimeout(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode])
+
+  // IntersectionObserver keeps `selectedDay` in sync with the day section
+  // currently dominating the viewport — so the day strip's highlight slides
+  // as the user scrolls between days, and "Hoy" lights up automatically
+  // when today's block reaches the top.
+  useEffect(() => {
+    if (viewMode !== "day") return
+    const container = dayStackRef.current
+    if (!container) return
+    const blocks = Array.from(
+      container.querySelectorAll<HTMLElement>("[data-day-block]"),
+    )
+    if (blocks.length === 0) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // Pick the highest-positioned intersecting block: the one closest
+        // to the strip line. With the rootMargin below, only blocks whose
+        // header is in the upper third register at all.
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .map((e) => Number((e.target as HTMLElement).dataset.dayBlock))
+          .filter((n) => Number.isFinite(n))
+        if (visible.length === 0) return
+        const next = Math.min(...visible)
+        setSelectedDay((prev) => (prev === next ? prev : next))
+      },
+      {
+        // Section counts as "current" when its top has crossed the strip.
+        rootMargin: "-72px 0px -55% 0px",
+        threshold: 0,
+      },
+    )
+    blocks.forEach((b) => observer.observe(b))
+    return () => observer.disconnect()
+    // Re-attach when the menu data changes — that's when day blocks are
+    // added/removed from the DOM. `daysToRender.length` would be a tighter
+    // signal but it's declared after this hook; menu is good enough since
+    // the observer is cheap to set up.
+  }, [viewMode, menu])
+
   const start = useMemo(() => new Date(weekStart + "T00:00:00"), [weekStart])
   const issueNumber = useMemo(() => {
     const yearStart = new Date(start.getFullYear(), 0, 1)
@@ -251,17 +324,40 @@ export default function MenuPage() {
     ).length
   }, [menu])
 
-  const selectedDayMeals = useMemo(() => {
-    if (!menu?.days?.[selectedDay]) return []
-    const day = menu.days[selectedDay]
-    return MEAL_ORDER
-      .filter((meal) => day[meal])
-      .map((meal) => ({ type: meal, ...day[meal] }))
-  }, [menu, selectedDay])
+  /** Day-indexed accessor — used by both the single-day "selected" view
+   *  and the new continuous stack that renders every day with planned
+   *  meals one after another. */
+  const mealsForDay = useCallback(
+    (dayIndex: number) => {
+      if (!menu?.days?.[dayIndex]) return []
+      const day = menu.days[dayIndex]
+      return MEAL_ORDER.filter((meal) => day[meal]).map((meal) => ({
+        type: meal,
+        ...day[meal],
+      }))
+    },
+    [menu],
+  )
+  const selectedDayMeals = useMemo(() => mealsForDay(selectedDay), [mealsForDay, selectedDay])
 
-  const isLocked = (meal: string) => {
-    return Boolean((menu?.locked as any)?.[String(selectedDay)]?.[meal])
+  /** Days that should appear in the continuous-scroll view: any day with
+   *  at least one planned meal OR marked as skipped (so the user can see
+   *  + reactivate it). Empty/unscheduled days drop out. */
+  const daysToRender = useMemo(() => {
+    if (!menu?.days) return []
+    return menu.days
+      .map((_, i) => i)
+      .filter(
+        (i) =>
+          mealsForDay(i).length > 0 ||
+          (menu.skippedDays ?? []).includes(i),
+      )
+  }, [menu, mealsForDay])
+
+  const isLockedAt = (day: number, meal: string) => {
+    return Boolean((menu?.locked as any)?.[String(day)]?.[meal])
   }
+  const isLocked = (meal: string) => isLockedAt(selectedDay, meal)
 
   function handleGenerate() {
     if (!user) return
@@ -389,9 +485,10 @@ export default function MenuPage() {
       {user && <PantryMatchCard />}
 
       {/* Week Strip — only in "vista día"; the week view has its own
-          all-days header inside the grid. */}
+          all-days header inside the grid. Sticky at the top so the user
+          always sees the day index while scrolling through the stack. */}
       {viewMode === "day" && (
-      <div className="border-y border-[#DDD6C5] bg-[#F2EDE0]">
+      <div className="sticky top-0 z-30 border-y border-[#DDD6C5] bg-[#F2EDE0]/95 backdrop-blur-sm">
         <div className="flex">
           {weekDays.map((d, i) => {
             const isSelected = i === selectedDay
@@ -399,7 +496,10 @@ export default function MenuPage() {
             return (
               <button
                 key={i}
-                onClick={() => setSelectedDay(i)}
+                onClick={() => {
+                  setSelectedDay(i)
+                  scrollDayIntoView(i)
+                }}
                 className={`relative flex flex-1 flex-col items-center gap-0.5 py-3 transition-colors ${
                   isSelected ? "bg-[#1A1612] text-[#FAF6EE]" : ""
                 }`}
@@ -547,16 +647,9 @@ export default function MenuPage() {
         </>
       ) : (
         <>
-          {/* Day title row */}
-          <div className="px-5 mt-6 flex items-end justify-between">
-            <div>
-              <div className="text-eyebrow text-[#7A7066]">
-                {todayIndex === selectedDay ? "Hoy" : "Día"}
-              </div>
-              <h2 className="mt-1 font-display text-[2rem] leading-none text-[#1A1612]">
-                {DAY_NAMES[selectedDay]}
-              </h2>
-            </div>
+          {/* Top toolbar — once, above the stack. The per-day title is now
+              the sticky-ish header inside each day section. */}
+          <div className="px-5 mt-4 flex items-center justify-end">
             {!isPastWeek && (
               <button
                 onClick={handleGenerate}
@@ -569,161 +662,17 @@ export default function MenuPage() {
             )}
           </div>
 
-          {/* Meal cards */}
-          <div className="px-5 pt-5 pb-12">
-            {selectedDayMeals.length > 0 ? (
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={selectedDay}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.4, ease: [0.19, 1, 0.22, 1] }}
-                  className="space-y-4"
-                >
-                  {/* "Saltar día" toolbar. Only when there's something to
-                      empty AND the day isn't already skipped. */}
-                  {!isPastWeek &&
-                    !(menu?.skippedDays ?? []).includes(selectedDay) &&
-                    selectedDayMeals.length > 0 ? (
-                    <div className="flex items-center justify-end">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (
-                            typeof window === "undefined" ||
-                            window.confirm(`¿Marcar ${DAY_NAMES[selectedDay].toLowerCase()} como sin cocinar?`)
-                          ) {
-                            haptic.medium()
-                            skipDay.mutate({ menuId: menu.id, day: selectedDay })
-                          }
-                        }}
-                        className="inline-flex items-center gap-1.5 rounded-full bg-[#F2EDE0] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#7A7066] transition-colors hover:bg-[#1A1612] hover:text-[#FAF6EE]"
-                      >
-                        <CalendarX size={11} />
-                        Saltar día
-                      </button>
-                    </div>
-                  ) : null}
-                  {selectedDayMeals.map((meal: any, i: number) => (
-                    <EditorialMealCard
-                      key={meal.type}
-                      meal={meal}
-                      index={i}
-                      day={selectedDay}
-                      isLocked={isLocked(meal.type)}
-                      readOnly={isPastWeek}
-                      defaultDiners={defaultDiners}
-                      menuId={menu.id}
-                      onRegenerate={() => {
-                        haptic.medium()
-                        regenerateMeal.mutate({
-                          menuId: menu.id,
-                          day: selectedDay,
-                          meal: meal.type,
-                        })
-                      }}
-                      onPickRecipe={(recipe) => {
-                        haptic.medium()
-                        regenerateMeal.mutate({
-                          menuId: menu.id,
-                          day: selectedDay,
-                          meal: meal.type,
-                          recipeId: recipe.id,
-                        })
-                      }}
-                      onToggleLock={() =>
-                        lockMeal.mutate({
-                          menuId: menu.id,
-                          day: selectedDay,
-                          meal: meal.type,
-                          locked: !isLocked(meal.type),
-                        })
-                      }
-                      onDelete={() => {
-                        haptic.medium()
-                        deleteMealSlot.mutate({
-                          menuId: menu.id,
-                          day: selectedDay,
-                          meal: meal.type,
-                        })
-                      }}
-                      onChangeServings={(servings) => {
-                        updateSlotServings.mutate({
-                          menuId: menu.id,
-                          day: selectedDay,
-                          meal: meal.type,
-                          servings,
-                        })
-                      }}
-                      onBan={() => {
-                        if (
-                          typeof window === "undefined" ||
-                          window.confirm(`¿Vetar "${meal.recipeName}" del resto de la semana?`)
-                        ) {
-                          haptic.medium()
-                          banRecipe.mutate({
-                            menuId: menu.id,
-                            recipeId: meal.recipeId,
-                          })
-                        }
-                      }}
-                      onSetPinnedType={(pinnedType) => {
-                        haptic.light()
-                        setSlotPinnedType.mutate({
-                          menuId: menu.id,
-                          day: selectedDay,
-                          meal: meal.type,
-                          pinnedType,
-                        })
-                      }}
-                      isRegenerating={regenerateMeal.isPending}
-                    />
-                  ))}
-
-                  {/* "+ Añadir <comida>" affordances for the slots this day
-                      is missing (because the user removed them from the
-                      weekly template, or never had them). Scoped to this
-                      week only — the profile template is untouched. */}
-                  {!isPastWeek && menu?.days?.[selectedDay] ? (
-                    <AddMealsRow
-                      menuId={menu.id}
-                      day={selectedDay}
-                      presentMeals={selectedDayMeals.map((m: any) => m.type)}
-                      onAdd={(meal) => {
-                        haptic.light()
-                        addMealSlot.mutate({
-                          menuId: menu.id,
-                          day: selectedDay,
-                          meal,
-                        })
-                      }}
-                      isAdding={addMealSlot.isPending}
-                    />
-                  ) : null}
-                </motion.div>
-              </AnimatePresence>
-            ) : (menu?.skippedDays ?? []).includes(selectedDay) ? (
+          {/* Continuous day stack. Renders every day with planned meals (or
+              skipped). IntersectionObserver above keeps `selectedDay` in
+              sync with the day section dominating the viewport, so the
+              sticky strip's highlight slides as the user scrolls between
+              days. */}
+          <div ref={dayStackRef} className="px-5 pt-3 pb-12 space-y-8">
+            {daysToRender.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-[#DDD6C5] bg-[#FFFEFA] py-12 text-center">
-                <CalendarX size={24} className="mx-auto text-[#7A7066]" />
-                <p className="mt-3 font-italic italic text-[#7A7066]">
-                  Día marcado sin cocinar.
+                <p className="font-italic italic text-[#7A7066]">
+                  Sin platos esta semana.
                 </p>
-                {!isPastWeek && (
-                  <button
-                    onClick={() => {
-                      haptic.light()
-                      unskipDay.mutate({ menuId: menu.id, day: selectedDay })
-                    }}
-                    className="mt-3 inline-flex items-center gap-1.5 text-[12px] font-medium text-[#2D6A4F] underline"
-                  >
-                    <RotateCw size={11} /> Reactivar día
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-dashed border-[#DDD6C5] bg-[#FFFEFA] py-12 text-center">
-                <p className="font-italic italic text-[#7A7066]">Sin platos para este día.</p>
                 {!isPastWeek && (
                   <button
                     onClick={handleGenerate}
@@ -733,6 +682,169 @@ export default function MenuPage() {
                   </button>
                 )}
               </div>
+            ) : (
+              daysToRender.map((d) => {
+                const dayMeals = mealsForDay(d)
+                const isSkipped = (menu?.skippedDays ?? []).includes(d)
+                return (
+                  <section
+                    key={d}
+                    data-day-block={d}
+                    className="scroll-mt-[72px]"
+                  >
+                    {/* Day header — not sticky (the strip above is); just a
+                        clean banner so the user knows what day they're
+                        reading. */}
+                    <div className="mb-3 flex items-end justify-between">
+                      <div>
+                        <div className="text-eyebrow text-[#7A7066]">
+                          {todayIndex === d ? "Hoy" : DAY_SHORT[d]}
+                        </div>
+                        <h2 className="mt-1 font-display text-[1.8rem] leading-none text-[#1A1612]">
+                          {DAY_NAMES[d]}
+                        </h2>
+                      </div>
+                      {!isPastWeek && !isSkipped && dayMeals.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (
+                              typeof window === "undefined" ||
+                              window.confirm(
+                                `¿Marcar ${DAY_NAMES[d].toLowerCase()} como sin cocinar?`,
+                              )
+                            ) {
+                              haptic.medium()
+                              skipDay.mutate({ menuId: menu.id, day: d })
+                            }
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-full bg-[#F2EDE0] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#7A7066] transition-colors hover:bg-[#1A1612] hover:text-[#FAF6EE]"
+                        >
+                          <CalendarX size={11} />
+                          Saltar
+                        </button>
+                      )}
+                    </div>
+
+                    {isSkipped ? (
+                      <div className="rounded-2xl border border-dashed border-[#DDD6C5] bg-[#FFFEFA] py-10 text-center">
+                        <CalendarX size={22} className="mx-auto text-[#7A7066]" />
+                        <p className="mt-3 font-italic italic text-[#7A7066]">
+                          Día marcado sin cocinar.
+                        </p>
+                        {!isPastWeek && (
+                          <button
+                            onClick={() => {
+                              haptic.light()
+                              unskipDay.mutate({ menuId: menu.id, day: d })
+                            }}
+                            className="mt-3 inline-flex items-center gap-1.5 text-[12px] font-medium text-[#2D6A4F] underline"
+                          >
+                            <RotateCw size={11} /> Reactivar día
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {dayMeals.map((meal: any, i: number) => (
+                          <EditorialMealCard
+                            key={meal.type}
+                            meal={meal}
+                            index={i}
+                            day={d}
+                            isLocked={isLockedAt(d, meal.type)}
+                            readOnly={isPastWeek}
+                            defaultDiners={defaultDiners}
+                            menuId={menu.id}
+                            onRegenerate={() => {
+                              haptic.medium()
+                              regenerateMeal.mutate({
+                                menuId: menu.id,
+                                day: d,
+                                meal: meal.type,
+                              })
+                            }}
+                            onPickRecipe={(recipe) => {
+                              haptic.medium()
+                              regenerateMeal.mutate({
+                                menuId: menu.id,
+                                day: d,
+                                meal: meal.type,
+                                recipeId: recipe.id,
+                              })
+                            }}
+                            onToggleLock={() =>
+                              lockMeal.mutate({
+                                menuId: menu.id,
+                                day: d,
+                                meal: meal.type,
+                                locked: !isLockedAt(d, meal.type),
+                              })
+                            }
+                            onDelete={() => {
+                              haptic.medium()
+                              deleteMealSlot.mutate({
+                                menuId: menu.id,
+                                day: d,
+                                meal: meal.type,
+                              })
+                            }}
+                            onChangeServings={(servings) => {
+                              updateSlotServings.mutate({
+                                menuId: menu.id,
+                                day: d,
+                                meal: meal.type,
+                                servings,
+                              })
+                            }}
+                            onBan={() => {
+                              if (
+                                typeof window === "undefined" ||
+                                window.confirm(
+                                  `¿Vetar "${meal.recipeName}" del resto de la semana?`,
+                                )
+                              ) {
+                                haptic.medium()
+                                banRecipe.mutate({
+                                  menuId: menu.id,
+                                  recipeId: meal.recipeId,
+                                })
+                              }
+                            }}
+                            onSetPinnedType={(pinnedType) => {
+                              haptic.light()
+                              setSlotPinnedType.mutate({
+                                menuId: menu.id,
+                                day: d,
+                                meal: meal.type,
+                                pinnedType,
+                              })
+                            }}
+                            isRegenerating={regenerateMeal.isPending}
+                          />
+                        ))}
+
+                        {!isPastWeek && menu?.days?.[d] ? (
+                          <AddMealsRow
+                            menuId={menu.id}
+                            day={d}
+                            presentMeals={dayMeals.map((m: any) => m.type)}
+                            onAdd={(meal) => {
+                              haptic.light()
+                              addMealSlot.mutate({
+                                menuId: menu.id,
+                                day: d,
+                                meal,
+                              })
+                            }}
+                            isAdding={addMealSlot.isPending}
+                          />
+                        ) : null}
+                      </div>
+                    )}
+                  </section>
+                )
+              })
             )}
 
             {/* "Vetadas esta semana" panel — collapsible, only when there's

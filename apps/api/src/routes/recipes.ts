@@ -730,12 +730,15 @@ router.put(
         return
       }
 
-      // System recipes (authorId === null) are read-only.
-      if (existing.authorId === null) {
+      // System recipes (authorId === null) and recipes owned by another user
+      // are normally read-only — except for admins, who can curate the whole
+      // catalogue (fixing typos, adding missing steps to ONA recipes, etc.).
+      const isAdmin = req.user?.role === 'admin'
+      if (existing.authorId === null && !isAdmin) {
         res.status(403).json({ error: 'Forbidden: system recipe' })
         return
       }
-      if (existing.authorId !== req.userId) {
+      if (existing.authorId !== null && existing.authorId !== req.userId && !isAdmin) {
         res.status(403).json({ error: 'Forbidden: not the author' })
         return
       }
@@ -936,11 +939,14 @@ router.delete('/recipes/:id', authMiddleware, async (req: AuthRequest, res) => {
       return
     }
 
-    if (existing.authorId === null) {
+    // Admins can delete any recipe (including system ones); everyone else
+    // is restricted to the rows they authored.
+    const isAdmin = req.user?.role === 'admin'
+    if (existing.authorId === null && !isAdmin) {
       res.status(403).json({ error: 'Forbidden: system recipe' })
       return
     }
-    if (existing.authorId !== req.userId) {
+    if (existing.authorId !== null && existing.authorId !== req.userId && !isAdmin) {
       res.status(403).json({ error: 'Forbidden: not the author' })
       return
     }

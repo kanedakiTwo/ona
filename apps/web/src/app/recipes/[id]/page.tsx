@@ -381,8 +381,10 @@ export default function RecipeDetailPage() {
         {/* Photo gallery (PR 8C) — household-shared, distinct from hero */}
         {user && <RecipePhotoGallery recipeId={recipe.id} />}
 
-        {/* Author-only: edit + regenerate-image affordances */}
-        {user && recipe.authorId === user.id && (
+        {/* Author + admin: edit + regenerate-image affordances. Admins can
+            curate the whole catalogue (fix typos, add missing steps on ONA
+            recipes…) so they see the same controls as the original author. */}
+        {user && (recipe.authorId === user.id || user.role === 'admin') && (
           <section className="mt-6 flex flex-wrap items-center gap-3">
             <Link
               href={`/recipes/${recipe.id}/edit`}
@@ -391,13 +393,21 @@ export default function RecipeDetailPage() {
               <Pencil size={14} />
               Editar receta
             </Link>
-            <RegenerateImageButton recipeId={recipe.id} userId={user.id} />
+            {recipe.authorId === user.id && (
+              <RegenerateImageButton recipeId={recipe.id} userId={user.id} />
+            )}
+            {recipe.authorId !== user.id && user.role === 'admin' && (
+              <span className="rounded-full bg-[#C65D38]/15 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-[#C65D38]">
+                Admin
+              </span>
+            )}
           </section>
         )}
 
-        {/* Non-author: "add to mine" affordance — copies the recipe so the
-            user can edit a personal version without touching the original. */}
-        {user && recipe.authorId !== user.id && (
+        {/* Non-author + non-admin: "add to mine" affordance — copies the
+            recipe so the user can edit a personal version without touching
+            the original. */}
+        {user && recipe.authorId !== user.id && user.role !== 'admin' && (
           <CopyToMineButton recipeId={recipe.id} />
         )}
 

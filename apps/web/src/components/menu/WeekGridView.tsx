@@ -86,6 +86,10 @@ interface CellData {
   recipeName: string
   imageUrl: string | null
   isLeftover: boolean
+  /** Best-available "how long to make this" — `totalTime` when present,
+   *  otherwise `prepTime`. Null when neither is set. Drives the time chip
+   *  rendered under the recipe name. */
+  totalMinutes: number | null
 }
 
 export function WeekGridView({
@@ -324,6 +328,8 @@ function DaySection({
                     recipeName: slot!.recipeName ?? "Receta",
                     imageUrl: slot!.imageUrl ?? null,
                     isLeftover: slot!.kind === "leftover",
+                    totalMinutes:
+                      slot!.totalTime ?? slot!.prepTime ?? null,
                   }
                 : null
               return (
@@ -461,6 +467,11 @@ function DraggableRow({
         >
           {shortRecipeName(data.recipeName)}
         </p>
+        {data.totalMinutes != null && data.totalMinutes > 0 && (
+          <p className="mt-0.5 text-[11px] text-[#7A7066]">
+            {data.totalMinutes} min
+          </p>
+        )}
       </div>
       <ChevronRight size={16} className="shrink-0 text-[#7A7066]" />
     </button>

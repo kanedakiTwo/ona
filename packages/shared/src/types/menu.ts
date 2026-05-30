@@ -36,6 +36,14 @@ export interface MealSlot {
    * Null when the recipe has no image yet.
    */
   imageUrl?: string | null
+  /**
+   * Hydrated alongside `imageUrl` from the joined `recipes.prep_time` /
+   * `recipes.total_time` columns. Used by the week-list view to surface a
+   * time chip on each row without an extra per-recipe fetch. Null when
+   * the recipe doesn't carry that metric.
+   */
+  prepTime?: number | null
+  totalTime?: number | null
 }
 
 export interface DayMenu {

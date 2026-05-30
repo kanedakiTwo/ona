@@ -55,16 +55,35 @@ async function hydrateMenuImages<T extends { days: unknown }>(menu: T): Promise<
   }
   if (ids.size === 0) return menu
   const rows = await db
-    .select({ id: recipes.id, imageUrl: recipes.imageUrl })
+    .select({
+      id: recipes.id,
+      imageUrl: recipes.imageUrl,
+      // Hydrating prep + total time so the week-list view can show a time
+      // chip on every row without an extra per-recipe fetch. Pulled from
+      // the same `recipes` row that already gives us the image URL.
+      prepTime: recipes.prepTime,
+      totalTime: recipes.totalTime,
+    })
     .from(recipes)
     .where(inArray(recipes.id, [...ids]))
-  const imageById = new Map(rows.map((r) => [r.id, r.imageUrl]))
+  const recipeById = new Map(
+    rows.map((r) => [
+      r.id,
+      { imageUrl: r.imageUrl, prepTime: r.prepTime, totalTime: r.totalTime },
+    ]),
+  )
   const hydratedDays = days.map((day) => {
     const next: DayMenu = {}
     for (const meal of Object.keys(day)) {
       const slot = day[meal] as MealSlot | undefined
       if (slot?.recipeId) {
-        next[meal] = { ...slot, imageUrl: imageById.get(slot.recipeId) ?? null }
+        const info = recipeById.get(slot.recipeId)
+        next[meal] = {
+          ...slot,
+          imageUrl: info?.imageUrl ?? null,
+          prepTime: info?.prepTime ?? null,
+          totalTime: info?.totalTime ?? null,
+        }
       } else if (slot) {
         next[meal] = slot
       }

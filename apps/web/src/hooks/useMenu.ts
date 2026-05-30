@@ -162,6 +162,39 @@ export function useDeleteMealSlot() {
 }
 
 /**
+ * Move (or swap) a slot to another day/meal in the current week. The
+ * server applies the change atomically — a single jsonb update — so the
+ * drag-and-drop UI in "Vista semana" doesn't have to sequence DELETE +
+ * POST + re-handle locked checks on the client. Empty target → move;
+ * occupied target → swap.
+ */
+export function useMoveMealSlot() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (params: {
+      menuId: string
+      fromDay: number
+      fromMeal: string
+      toDay: number
+      toMeal: string
+    }) => {
+      return api.post<Menu>(`/menu/${params.menuId}/move-slot`, {
+        fromDay: params.fromDay,
+        fromMeal: params.fromMeal,
+        toDay: params.toDay,
+        toMeal: params.toMeal,
+      })
+    },
+    onSuccess: (data) => {
+      if (data?.userId && data?.weekStart) {
+        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
+      }
+      queryClient.invalidateQueries({ queryKey: ["menu"] })
+    },
+  })
+}
+
+/**
  * Override the diner count for a single slot in this week's menu. Pass
  * `null` to clear the override and revert to the user's household
  * default. Server rejects values outside [1, 24].

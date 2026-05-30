@@ -625,6 +625,89 @@ router.delete('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res)
   }
 })
 
+// POST /menu/:menuId/move-slot — move (or swap) a slot to another day/meal.
+//
+// Atomic single-write so the drag-and-drop UI in "Vista semana" doesn't have
+// to sequence DELETE + POST + handle locked checks twice on the client. Body:
+//   { fromDay, fromMeal, toDay, toMeal }
+//
+// If the target slot is empty the source is moved there (source becomes empty).
+// If the target slot is occupied the two slots swap. Locked slots on either
+// side reject the request with 400 (a locked slot means "don't move me").
+router.post('/menu/:menuId/move-slot', async (req: AuthRequest, res) => {
+  try {
+    const menuId = String(req.params.menuId)
+    const body = req.body as {
+      fromDay?: unknown
+      fromMeal?: unknown
+      toDay?: unknown
+      toMeal?: unknown
+    }
+    const fromDay = Number(body.fromDay)
+    const toDay = Number(body.toDay)
+    const fromMeal = String(body.fromMeal ?? '')
+    const toMeal = String(body.toMeal ?? '')
+
+    if (!Number.isInteger(fromDay) || !Number.isInteger(toDay)) {
+      res.status(400).json({ error: 'fromDay/toDay must be integers' })
+      return
+    }
+    if (!isValidMeal(fromMeal) || !isValidMeal(toMeal)) {
+      res.status(400).json({ error: 'Invalid meal type' })
+      return
+    }
+    if (fromDay === toDay && fromMeal === toMeal) {
+      res.status(400).json({ error: 'Source and target are the same slot' })
+      return
+    }
+
+    const [menu] = await db.select().from(menus).where(eq(menus.id, menuId)).limit(1)
+    if (!menu) {
+      res.status(404).json({ error: 'Menu not found' })
+      return
+    }
+
+    const days = menu.days as DayMenu[]
+    const locked = (menu.locked as LockedSlots) ?? {}
+
+    if (fromDay < 0 || fromDay >= days.length || toDay < 0 || toDay >= days.length) {
+      res.status(400).json({ error: 'Invalid day index' })
+      return
+    }
+    if (locked[String(fromDay)]?.[fromMeal] || locked[String(toDay)]?.[toMeal]) {
+      res.status(400).json({ error: 'Cannot move a locked slot' })
+      return
+    }
+    const sourceSlot = days[fromDay]?.[fromMeal]
+    if (!sourceSlot?.recipeId) {
+      res.status(404).json({ error: 'Source slot is empty' })
+      return
+    }
+    const targetSlot = days[toDay]?.[toMeal]
+
+    // Apply the move/swap on the in-memory copy then persist once.
+    if (targetSlot?.recipeId) {
+      // Swap: both slots keep their other metadata (servings overrides, etc).
+      days[toDay][toMeal] = sourceSlot
+      days[fromDay][fromMeal] = targetSlot
+    } else {
+      days[toDay] = days[toDay] ?? {}
+      days[toDay][toMeal] = sourceSlot
+      delete days[fromDay][fromMeal]
+    }
+
+    const [updated] = await db
+      .update(menus)
+      .set({ days })
+      .where(eq(menus.id, menuId))
+      .returning()
+    res.json(await hydrateMenuImages(updated))
+  } catch (err) {
+    console.error('Move meal slot error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
 // PATCH /menu/:menuId/day/:day/meal/:meal — partial update for slot metadata.
 //
 // v1 only supports `{ servings: number | null }` (per-day diner-count

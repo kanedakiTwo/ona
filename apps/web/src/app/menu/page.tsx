@@ -11,6 +11,7 @@ import {
   useLockMeal,
   useAddMealSlot,
   useDeleteMealSlot,
+  useMoveMealSlot,
   useUpdateSlotServings,
   useBanRecipe,
   useUnbanRecipe,
@@ -163,6 +164,7 @@ export default function MenuPage() {
   const lockMeal = useLockMeal()
   const addMealSlot = useAddMealSlot()
   const deleteMealSlot = useDeleteMealSlot()
+  const moveMealSlot = useMoveMealSlot()
   const updateSlotServings = useUpdateSlotServings()
   const banRecipe = useBanRecipe()
   const unbanRecipe = useUnbanRecipe()
@@ -498,6 +500,17 @@ export default function MenuPage() {
               onSelectDay={(d) => {
                 setSelectedDay(d)
                 setViewMode("day")
+              }}
+              onMoveSlot={({ fromDay, fromMeal, toDay, toMeal }) => {
+                if (!menu) return
+                haptic.medium()
+                moveMealSlot.mutate({
+                  menuId: menu.id,
+                  fromDay,
+                  fromMeal,
+                  toDay,
+                  toMeal,
+                })
               }}
             />
           </div>

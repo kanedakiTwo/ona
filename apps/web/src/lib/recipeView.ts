@@ -182,6 +182,49 @@ export function householdSizeToDiners(size?: HouseholdSize | null): number | nul
 }
 
 /**
+ * Boil a long, SEO-style recipe title down to a short display name suitable
+ * for tight cells (the week grid, future menu chips, etc).
+ *
+ * Strategy:
+ *   1. Strip common Spanish openers ("Cómo hacer", "Receta de", "Las 7
+ *      recetas que…", "Aprende a preparar"…). They eat horizontal space
+ *      without adding info.
+ *   2. Cut at the first preposition that introduces an "explanatory tail"
+ *      ("apetecible para disfrutar de…", "que te hará amar la…") so the
+ *      dish name comes through, not the article subtitle.
+ *   3. Word-truncate at 24 chars max, ellipsis suffix.
+ *   4. Title-case the first letter — the rest stays as-is so proper nouns
+ *      keep their casing.
+ */
+export function shortRecipeName(raw: string | null | undefined): string {
+  if (!raw) return ""
+  let t = raw.trim()
+
+  // 1. Strip leading "how-to / recipe-of / N-recipes-that…" openers.
+  t = t.replace(
+    /^(cómo\s+(?:hacer|preparar|cocinar)|aprende\s+a\s+(?:hacer|preparar|cocinar)|guía\s+para\s+(?:hacer|preparar|cocinar)|las?\s+(?:\d+\s+)?recetas?(?:\s+que)?|receta\s+(?:de|para|tradicional\s+de))\s+/i,
+    "",
+  )
+
+  // 2. Cut subtitle tails. Common joiners: " : ", " - ", " — ", " · ", or a
+  // long " para … " / " que … " clause whose subject is descriptive.
+  t = t.split(/\s*[:|·\-—]\s*/)[0]
+  const tailCut = t.match(/^(.+?)\s+(?:para\s+(?:disfrutar|aprender|hacer|que)|que\s+(?:te\s+har[áa]|nos\s+har[áa]|adoraréis|amar))/i)
+  if (tailCut && tailCut[1].length >= 4) t = tailCut[1]
+
+  // 3. Word-truncate at 24 chars.
+  if (t.length > 24) {
+    const cut = t.slice(0, 24)
+    const lastSpace = cut.lastIndexOf(" ")
+    t = (lastSpace > 12 ? cut.slice(0, lastSpace) : cut).trimEnd() + "…"
+  }
+
+  // 4. First-letter uppercase, rest untouched.
+  if (t.length > 0) t = t[0].toUpperCase() + t.slice(1)
+  return t
+}
+
+/**
  * Map a lint/zod error path like `steps[0].text` or `ingredients[7]` into a
  * Spanish, human-readable label like "Paso 1" or "Ingrediente 8". The
  * server's lint messages already contain the user-facing prose ("El paso 1

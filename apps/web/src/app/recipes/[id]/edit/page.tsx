@@ -86,13 +86,12 @@ export default function EditRecipePage() {
   // reorder them without losing focus or remounting textareas. The id is
   // form-local: the server still receives `{ index, text }`.
   const [steps, setSteps] = useState<StepDraft[]>([makeStep()])
-  // Notes / tips persist as single `text` columns server-side but the UI
-  // exposes them as multi-entry lists so the user can stack short ideas
-  // (e.g. "Cebolla roja queda mucho mejor" / "Picar fino"). On submit we
-  // join non-empty entries with a blank line so the persisted blob round
-  // trips through split-on-paragraph on load.
+  // Notes (a.k.a. tips — unified in the UI to a single multi-entry list).
+  // On load we merge any pre-existing `tips` content into the notes list
+  // so users who authored recipes under the split UI keep all their
+  // entries. On save the joined blob goes into `recipes.notes`; `tips`
+  // is cleared so the column drains over time without a migration.
   const [notes, setNotes] = useState<string[]>([""])
-  const [tips, setTips] = useState<string[]>([""])
 
   const [errors, setErrors] = useState<Record<string, string>>({})
   // Set to true after the server returns lint warnings: the next click of
@@ -114,15 +113,16 @@ export default function EditRecipePage() {
     setSelectedMeals(recipe.meals ?? [])
     setSelectedSeasons(recipe.seasons ?? [])
     setTags(recipe.tags ?? [])
-    // Round-trip the persisted text blob through split-on-blank-line so a
-    // recipe authored before the multi-entry UI still renders as one row.
+    // Round-trip the persisted blob(s) through split-on-blank-line so a
+    // recipe authored before the unified UI still renders one row per
+    // existing paragraph — and the legacy `tips` content gets folded in
+    // beneath the notes ones so nothing is silently dropped.
     const splitParas = (raw: string | null | undefined): string[] => {
-      if (!raw) return [""]
-      const parts = raw.split(/\n{2,}/).map((p) => p.trim()).filter((p) => p.length > 0)
-      return parts.length > 0 ? parts : [""]
+      if (!raw) return []
+      return raw.split(/\n{2,}/).map((p) => p.trim()).filter((p) => p.length > 0)
     }
-    setNotes(splitParas(recipe.notes))
-    setTips(splitParas(recipe.tips))
+    const merged = [...splitParas(recipe.notes), ...splitParas(recipe.tips)]
+    setNotes(merged.length > 0 ? merged : [""])
     setIngredientRows(
       recipe.ingredients.length > 0
         ? recipe.ingredients.map((ri) => ({
@@ -271,13 +271,14 @@ export default function EditRecipePage() {
     }
     if (typeof prepTime === "number" && prepTime > 0) payload.prepTime = prepTime
     if (typeof cookTime === "number" && cookTime > 0) payload.cookTime = cookTime
-    const joinEntries = (entries: string[]): string => {
-      return entries.map((e) => e.trim()).filter((e) => e.length > 0).join("\n\n")
-    }
-    const notesText = joinEntries(notes)
-    const tipsText = joinEntries(tips)
-    if (notesText.length > 0) payload.notes = notesText
-    if (tipsText.length > 0) payload.tips = tipsText
+    const notesText = notes
+      .map((e) => e.trim())
+      .filter((e) => e.length > 0)
+      .join("\n\n")
+    payload.notes = notesText.length > 0 ? notesText : null
+    // Explicitly clear the legacy `tips` column on every save so the split
+    // never re-emerges if the user authored before the unification.
+    payload.tips = null
 
     return payload
   }
@@ -716,30 +717,21 @@ export default function EditRecipePage() {
             </button>
           </section>
 
-          {/* Notes / tips — multi-entry lists. Each list is rendered as a
-              stack of textareas with their own +/- controls; on save the
-              non-empty entries are joined with a blank line so the
-              persisted text column round-trips cleanly. */}
+          {/* Notes — unified list ("notas y trucos" used to be two boxes;
+              users don't actually separate the two so we merged them into a
+              single stack). Persists into `recipes.notes`; `recipes.tips`
+              is cleared on save. */}
           <section>
-            <div className="text-eyebrow text-[#7A7066]">Notas y trucos</div>
-            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="text-eyebrow text-[#7A7066]">Notas</div>
+            <div className="mt-3">
               <NotesEditor
-                title="Notas"
-                placeholder="e.g. la madre la hacía con cebolla pochada"
+                title=""
+                placeholder="e.g. la madre la hacía con cebolla pochada — o cualquier truco"
                 addLabel="Añadir nota"
                 entries={notes}
                 onUpdate={(idx, v) => updateAt(setNotes, notes, idx, v)}
                 onAdd={() => addAt(setNotes, notes)}
                 onRemove={(idx) => removeAt(setNotes, notes, idx)}
-              />
-              <NotesEditor
-                title="Trucos"
-                placeholder="e.g. dejar reposar 5 min antes de servir"
-                addLabel="Añadir truco"
-                entries={tips}
-                onUpdate={(idx, v) => updateAt(setTips, tips, idx, v)}
-                onAdd={() => addAt(setTips, tips)}
-                onRemove={(idx) => removeAt(setTips, tips, idx)}
               />
             </div>
           </section>
@@ -902,7 +894,11 @@ function NotesEditor({
 }) {
   return (
     <div>
-      <div className="mb-2 text-[11px] uppercase tracking-[0.15em] text-[#7A7066]">{title}</div>
+      {title && (
+        <div className="mb-2 text-[11px] uppercase tracking-[0.15em] text-[#7A7066]">
+          {title}
+        </div>
+      )}
       <div className="space-y-2">
         {entries.map((entry, idx) => (
           <div key={idx} className="flex items-start gap-2">

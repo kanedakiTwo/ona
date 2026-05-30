@@ -316,36 +316,24 @@ export default function RecipeDetailPage() {
           />
         )}
 
-        {/* Notes / tips / substitutions / storage. The public detail
-            payload from /recipes/:id strips these per spec; they only
-            show up on author-edit / private views. We render defensively
-            just in case the server starts surfacing them.
+        {/* Notes / substitutions / storage. The public detail payload from
+            /recipes/:id strips these per spec; they only show up on
+            author-edit / private views. We render defensively just in
+            case the server starts surfacing them.
 
-            Notes + tips are persisted as a single text blob with paragraph
-            breaks (`\n\n`); split on render so each entry becomes its own
-            paragraph — single-paragraph legacy values still render as one. */}
+            Notes are persisted as a single text blob with paragraph breaks
+            (`\n\n`). Legacy `tips` content is merged in beneath the notes
+            ones (saves before the unification kept the split column) so
+            nothing the user typed disappears from the detail view. */}
         {(recipe.notes || recipe.tips || recipe.substitutions || recipe.storage) && (
           <section className="mt-12 space-y-6">
-            {recipe.notes && (
+            {(recipe.notes || recipe.tips) && (
               <div>
                 <div className="text-eyebrow mb-2 text-[#7A7066]">Notas</div>
                 <div className="space-y-2 text-[14px] leading-relaxed text-[#1A1612]">
-                  {recipe.notes
-                    .split(/\n{2,}/)
-                    .map((p) => p.trim())
-                    .filter((p) => p.length > 0)
-                    .map((p, i) => (
-                      <p key={i}>{p}</p>
-                    ))}
-                </div>
-              </div>
-            )}
-            {recipe.tips && (
-              <div>
-                <div className="text-eyebrow mb-2 text-[#7A7066]">Trucos</div>
-                <div className="space-y-2 text-[14px] leading-relaxed text-[#1A1612]">
-                  {recipe.tips
-                    .split(/\n{2,}/)
+                  {[recipe.notes, recipe.tips]
+                    .filter((v): v is string => !!v)
+                    .flatMap((blob) => blob.split(/\n{2,}/))
                     .map((p) => p.trim())
                     .filter((p) => p.length > 0)
                     .map((p, i) => (

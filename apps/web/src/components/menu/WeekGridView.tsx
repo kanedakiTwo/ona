@@ -38,7 +38,20 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core"
-import { CalendarX, ChevronRight, Moon, RotateCcw, Sun, Sunrise, Sunset, Utensils } from "lucide-react"
+import {
+  Ban,
+  CalendarX,
+  ChevronRight,
+  MoreHorizontal,
+  Moon,
+  RotateCcw,
+  Shuffle,
+  Sun,
+  Sunrise,
+  Sunset,
+  Trash2,
+  Utensils,
+} from "lucide-react"
 import type { DayMenu } from "@ona/shared"
 import { shortRecipeName } from "@/lib/recipeView"
 
@@ -77,6 +90,15 @@ interface Props {
   }) => void
   /** Called when the user taps "Reactivar día" on a skipped block. */
   onUnskipDay?: (dayIndex: number) => void
+  /**
+   * Quick-action callbacks fired from the inline "..." menu on each row.
+   * Optional — when undefined the menu button isn't rendered. The parent
+   * wires them to the existing `useRegenerateMeal` / `useBanRecipe` /
+   * `useDeleteMealSlot` mutations.
+   */
+  onRandomize?: (day: number, meal: MealKey) => void
+  onBan?: (day: number, meal: MealKey, recipeId: string) => void
+  onRemove?: (day: number, meal: MealKey) => void
 }
 
 interface CellData {
@@ -100,6 +122,9 @@ export function WeekGridView({
   onSelectDay,
   onMoveSlot,
   onUnskipDay,
+  onRandomize,
+  onBan,
+  onRemove,
 }: Props) {
   const start = new Date(weekStart + "T00:00:00")
   const skippedSet = useMemo(() => new Set(skippedDays ?? []), [skippedDays])
@@ -194,6 +219,9 @@ export function WeekGridView({
               day={day}
               onSelectDay={onSelectDay}
               onUnskipDay={onUnskipDay}
+              onRandomize={onRandomize}
+              onBan={onBan}
+              onRemove={onRemove}
               isFirst={di === 0}
               isLast={di === days.length - 1}
             />
@@ -224,6 +252,9 @@ function DaySection({
   day,
   onSelectDay,
   onUnskipDay,
+  onRandomize,
+  onBan,
+  onRemove,
   isFirst,
   isLast,
 }: {
@@ -238,6 +269,9 @@ function DaySection({
   day: DayMenu | undefined
   onSelectDay: (dayIndex: number) => void
   onUnskipDay?: (dayIndex: number) => void
+  onRandomize?: (day: number, meal: MealKey) => void
+  onBan?: (day: number, meal: MealKey, recipeId: string) => void
+  onRemove?: (day: number, meal: MealKey) => void
   isFirst: boolean
   isLast: boolean
 }) {
@@ -339,6 +373,9 @@ function DaySection({
                   meal={m}
                   data={cellData}
                   onClick={() => onSelectDay(dayIndex)}
+                  onRandomize={onRandomize}
+                  onBan={onBan}
+                  onRemove={onRemove}
                 />
               )
             })
@@ -358,11 +395,17 @@ function SlotRow({
   meal,
   data,
   onClick,
+  onRandomize,
+  onBan,
+  onRemove,
 }: {
   dayIndex: number
   meal: MealKey
   data: CellData | null
   onClick: () => void
+  onRandomize?: (day: number, meal: MealKey) => void
+  onBan?: (day: number, meal: MealKey, recipeId: string) => void
+  onRemove?: (day: number, meal: MealKey) => void
 }) {
   const dropId = `row-${dayIndex}-${meal}`
   const { setNodeRef: setDropRef, isOver } = useDroppable({
@@ -398,8 +441,16 @@ function SlotRow({
   }
 
   return (
-    <div ref={setDropRef} className={isOver ? "rounded-xl ring-2 ring-inset ring-[#1A1612]/40" : ""}>
-      <DraggableRow data={data} onClick={onClick} mealLabel={mealLabel} MealIcon={MealIcon} />
+    <div ref={setDropRef} className={`relative ${isOver ? "rounded-xl ring-2 ring-inset ring-[#1A1612]/40" : ""}`}>
+      <DraggableRow
+        data={data}
+        onClick={onClick}
+        mealLabel={mealLabel}
+        MealIcon={MealIcon}
+        onRandomize={onRandomize}
+        onBan={onBan}
+        onRemove={onRemove}
+      />
     </div>
   )
 }
@@ -409,33 +460,51 @@ function DraggableRow({
   onClick,
   mealLabel,
   MealIcon,
+  onRandomize,
+  onBan,
+  onRemove,
 }: {
   data: CellData
   onClick: () => void
   mealLabel: string
   MealIcon: typeof Sun
+  onRandomize?: (day: number, meal: MealKey) => void
+  onBan?: (day: number, meal: MealKey, recipeId: string) => void
+  onRemove?: (day: number, meal: MealKey) => void
 }) {
   const dragId = `row-${data.day}-${data.meal}`
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: dragId,
     data,
   })
+  const [menuOpen, setMenuOpen] = useState(false)
+  const showMenuButton = Boolean(onRandomize || onBan || onRemove)
 
   return (
-    <button
+    <div
       ref={setNodeRef}
-      type="button"
       {...attributes}
       {...listeners}
-      onClick={() => {
+      role="button"
+      tabIndex={0}
+      onClick={(e) => {
         if (isDragging) return
+        // The "..." button (and its dropdown) handle their own clicks. If
+        // the click came from inside that subtree we don't navigate.
+        const target = e.target as HTMLElement
+        if (target.closest('[data-row-menu="1"]')) return
         onClick()
       }}
-      className={`flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors ${
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault()
+          if (!isDragging) onClick()
+        }
+      }}
+      className={`relative flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors ${
         isDragging ? "opacity-30" : "hover:bg-[#F2EDE0]"
       }`}
     >
-      {/* Thumbnail — fall back to a meal icon when no image. */}
       <div className="relative h-[52px] w-[52px] shrink-0 overflow-hidden rounded-lg bg-[#F2EDE0]">
         {data.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -473,8 +542,118 @@ function DraggableRow({
           </p>
         )}
       </div>
-      <ChevronRight size={16} className="shrink-0 text-[#7A7066]" />
-    </button>
+      {showMenuButton ? (
+        <RowActionsButton
+          isOpen={menuOpen}
+          onOpen={() => setMenuOpen(true)}
+          onClose={() => setMenuOpen(false)}
+          actions={[
+            onRandomize && {
+              icon: Shuffle,
+              label: "Aleatorio",
+              onSelect: () => onRandomize(data.day, data.meal),
+            },
+            onBan && {
+              icon: Ban,
+              label: "Vetar receta",
+              onSelect: () => onBan(data.day, data.meal, data.recipeId),
+              destructive: true,
+            },
+            onRemove && {
+              icon: Trash2,
+              label: "Quitar slot",
+              onSelect: () => onRemove(data.day, data.meal),
+              destructive: true,
+            },
+          ].filter(
+            (
+              a,
+            ): a is {
+              icon: typeof Shuffle
+              label: string
+              onSelect: () => void
+              destructive?: boolean
+            } => Boolean(a),
+          )}
+        />
+      ) : (
+        <ChevronRight size={16} className="shrink-0 text-[#7A7066]" />
+      )}
+    </div>
+  )
+}
+
+function RowActionsButton({
+  isOpen,
+  onOpen,
+  onClose,
+  actions,
+}: {
+  isOpen: boolean
+  onOpen: () => void
+  onClose: () => void
+  actions: Array<{
+    icon: typeof Shuffle
+    label: string
+    onSelect: () => void
+    destructive?: boolean
+  }>
+}) {
+  return (
+    <div data-row-menu="1" className="shrink-0">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          isOpen ? onClose() : onOpen()
+        }}
+        className="rounded-full p-1.5 text-[#7A7066] transition-colors hover:bg-[#F2EDE0] hover:text-[#1A1612]"
+        aria-label="Acciones rápidas"
+        aria-expanded={isOpen}
+      >
+        <MoreHorizontal size={16} />
+      </button>
+      {isOpen && (
+        <>
+          {/* Click-outside catcher */}
+          <button
+            type="button"
+            aria-hidden="true"
+            tabIndex={-1}
+            onClick={(e) => {
+              e.stopPropagation()
+              onClose()
+            }}
+            className="fixed inset-0 z-30 cursor-default bg-transparent"
+          />
+          <div
+            className="absolute right-0 z-40 mt-1 w-44 overflow-hidden rounded-xl border border-[#DDD6C5] bg-[#FFFEFA] shadow-[0_12px_24px_-12px_rgba(26,22,18,0.28)]"
+            style={{ top: "100%" }}
+          >
+            {actions.map((a) => {
+              const Icon = a.icon
+              return (
+                <button
+                  key={a.label}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    a.onSelect()
+                    onClose()
+                  }}
+                  className={`flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] transition-colors hover:bg-[#F2EDE0] ${
+                    a.destructive ? "text-[#C65D38]" : "text-[#1A1612]"
+                  }`}
+                >
+                  <Icon size={13} strokeWidth={1.6} />
+                  {a.label}
+                </button>
+              )
+            })}
+          </div>
+        </>
+      )}
+    </div>
   )
 }
 

@@ -518,6 +518,24 @@ export default function MenuPage() {
                 haptic.light()
                 unskipDay.mutate({ menuId: menu.id, day: d })
               }}
+              onRandomize={(d, m) => {
+                if (!menu) return
+                haptic.medium()
+                regenerateMeal.mutate({ menuId: menu.id, day: d, meal: m })
+              }}
+              onBan={(_d, _m, recipeId) => {
+                if (!menu) return
+                haptic.medium()
+                banRecipe.mutate({ menuId: menu.id, recipeId })
+              }}
+              onRemove={(d, m) => {
+                if (!menu) return
+                if (typeof window !== "undefined" && !window.confirm("¿Quitar este plato del día?")) {
+                  return
+                }
+                haptic.medium()
+                deleteMealSlot.mutate({ menuId: menu.id, day: d, meal: m })
+              }}
             />
           </div>
         </>

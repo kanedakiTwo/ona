@@ -122,6 +122,14 @@ export interface RecipeWriteInput {
   difficulty?: Difficulty
   meals: Meal[]
   seasons?: Season[]
+  /**
+   * Optional three-state fit maps. When absent the helper derives 'perfect'
+   * for each entry already present in `meals` / `seasons` so legacy callers
+   * (existing recipes, the URL/photo extractors, the seed pipeline) keep
+   * their pre-fit semantics.
+   */
+  mealFit?: Partial<Record<Meal, 'mid' | 'perfect'>>
+  seasonFit?: Partial<Record<Season, 'mid' | 'perfect'>>
   equipment?: string[]
   notes?: string | null
   tips?: string | null
@@ -467,6 +475,17 @@ export async function persistRecipe(
       difficulty: input.difficulty ?? 'medium',
       meals: input.meals,
       seasons: input.seasons ?? [],
+      // Three-state fit maps. When the caller didn't supply them, derive
+      // 'perfect' for every entry already in `meals` / `seasons` so legacy
+      // saves (URL importer, photo extractor, seed pipeline) keep their
+      // pre-fit semantics. The matcher reads both columns directly; the
+      // arrays stay as the source of truth for the public catalogue.
+      mealFit:
+        input.mealFit ??
+        Object.fromEntries(input.meals.map((m) => [m, 'perfect' as const])),
+      seasonFit:
+        input.seasonFit ??
+        Object.fromEntries((input.seasons ?? []).map((s) => [s, 'perfect' as const])),
       equipment: input.equipment ?? [],
       allergens,
       notes: input.notes ?? null,

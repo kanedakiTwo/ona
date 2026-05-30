@@ -161,6 +161,15 @@ export const recipes = pgTable('recipes', {
   meals: text('meals').array().notNull().default([]),
   seasons: text('seasons').array().notNull().default([]),
 
+  /**
+   * Three-state fit per meal/season: `{ [meal]: 'mid' | 'perfect' }`.
+   * Absent key = 'none' (matcher excludes the slot). Null on legacy rows;
+   * the API derives 'perfect' for every entry in the legacy `meals` /
+   * `seasons` arrays so old data still matches.
+   */
+  mealFit: jsonb('meal_fit'),
+  seasonFit: jsonb('season_fit'),
+
   equipment: text('equipment').array().default([]),
   /** Auto-aggregated from ingredients on save */
   allergens: text('allergens').array().default([]),

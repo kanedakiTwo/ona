@@ -14,6 +14,9 @@ export type {
   ExtractedRecipe,
   ExtractedIngredient,
   IngredientOverride,
+  FitLevel,
+  MealFitMap,
+  SeasonFitMap,
 } from './types/recipe.js'
 export type { Menu, DayMenu, MealSlot, LockedSlots } from './types/menu.js'
 export type {
@@ -56,6 +59,11 @@ export {
   recipeStepSchema,
   nutritionPerServingSchema,
   ingredientOverrideSchema,
+  fitLevelSchema,
+  mealFitMapSchema,
+  seasonFitMapSchema,
+  FIT_LEVELS,
+  FIT_WEIGHT,
 } from './types/recipe.js'
 export { generateMenuSchema, lockMealSchema } from './types/menu.js'
 

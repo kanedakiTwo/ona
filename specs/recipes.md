@@ -87,6 +87,21 @@ Each row:
 - `quantity` — number
 - `unit` — enum `g | ml | u | cda | cdita | pizca | al_gusto`
 - `optional` — boolean. Editable from the recipe edit form (and the `/recipes/new` creation form) via an `opc` pill toggle next to each ingredient row. When true, the recipe detail renders an "opcional" badge inline and the shopping-list aggregator skips the row when scaling
+
+### Meal & season fit (3-state)
+
+Recipes carry **three-state fit maps** for meals and seasons next to the legacy on/off arrays:
+
+- `mealFit: { breakfast?, lunch?, dinner?, snack? }` — each entry is `'mid'` (encaja a veces) or `'perfect'` (encaja perfecto). Absent key = `'none'`.
+- `seasonFit: { spring?, summer?, autumn?, winter? }` — same shape.
+
+The recipe edit / create form exposes these via a single chip that cycles **vacío → mid → perfect → vacío** on tap. Visual progression: outline (none) → soft fill (mid, with a centered `·`) → solid fill + `★` (perfect). Ink palette for meals, forest palette for seasons.
+
+The menu generator's matcher honours both:
+- **Filter**: a slot is eligible only when the recipe's fit for that meal/season is `'mid'` or `'perfect'`. `'none'` excludes the recipe entirely.
+- **Pool weighting**: `pickRandom` multiplies by `FIT_WEIGHT` (`mid = 1×`, `perfect = 3×`) for the meal AND for the season, then by `2×` if the recipe is a household favourite. A perfect/perfect favourite weighs `18×` against a mid/mid non-favourite at `1×`.
+
+Stored as parallel `recipes.meal_fit` / `recipes.season_fit` jsonb columns (migration 0024). The `meals: text[]` / `seasons: text[]` arrays stay in sync as a derived view so the public catalogue endpoint and the assistant skills keep their existing shape. Legacy recipes saved before the migration have `NULL` in the fit columns — the read layer falls back to deriving `'perfect'` for every entry in the array tagging so old recipes keep their pre-fit semantics.
 - `note` — optional inline note (e.g. "picada fina", "del día anterior")
 - `displayOrder` — integer, controls UI ordering inside its section
 

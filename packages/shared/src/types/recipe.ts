@@ -111,6 +111,13 @@ export interface Recipe {
 
   meals: Meal[]
   seasons: Season[]
+  /**
+   * Three-state fit per meal/season — `{ [meal]: 'mid' | 'perfect' }`.
+   * Absent key = 'none' (matcher excludes). Optional on the wire so the
+   * public catalogue and older clients don't need to know about it.
+   */
+  mealFit?: MealFitMap
+  seasonFit?: SeasonFitMap
 
   equipment: string[]
   /** Auto-aggregated from ingredients on save */
@@ -161,6 +168,10 @@ export const createRecipeSchema = z.object({
 
   meals: z.array(z.enum(MEALS)).min(1),
   seasons: z.array(z.enum(SEASONS)).default([]),
+  // Optional three-state fit maps. Loose record validation here; the
+  // route layer drops unknown keys + caps to the canonical enum domain.
+  mealFit: z.record(z.string(), z.enum(['mid', 'perfect'])).optional(),
+  seasonFit: z.record(z.string(), z.enum(['mid', 'perfect'])).optional(),
 
   equipment: z.array(z.string()).default([]),
 
@@ -183,6 +194,37 @@ export const updateRecipeSchema = createRecipeSchema.partial()
 
 export type CreateRecipeInput = z.infer<typeof createRecipeSchema>
 export type UpdateRecipeInput = z.infer<typeof updateRecipeSchema>
+
+// ─── Meal / Season fit ─────────────────────────────────────────
+//
+// Each recipe scores 'mid' or 'perfect' against any meal slot and any
+// season it's tagged for; absence of the key means 'none' and the matcher
+// excludes the recipe from that slot. Stored as parallel jsonb columns
+// next to the legacy `meals: text[]` / `seasons: text[]` arrays — the API
+// keeps both in sync so old consumers (the public catalogue endpoint, the
+// assistant skills) don't need to know about fit levels yet.
+
+export const FIT_LEVELS = ['mid', 'perfect'] as const
+export type FitLevel = (typeof FIT_LEVELS)[number]
+
+/** Score per meal slot. Missing keys = 'none' (excluded). */
+export type MealFitMap = Partial<Record<import('../constants/enums.js').Meal, FitLevel>>
+/** Score per season. Missing keys = 'none' (excluded). */
+export type SeasonFitMap = Partial<Record<import('../constants/enums.js').Season, FitLevel>>
+
+export const fitLevelSchema = z.enum(FIT_LEVELS)
+// Zod can't express `Partial<Record<Meal, FitLevel>>` directly without
+// duplicating the Meal/Season enums into the validator — keep it loose
+// here and let the route's enum-aware sanitizer drop unknown keys.
+export const mealFitMapSchema = z.record(z.string(), fitLevelSchema)
+export const seasonFitMapSchema = z.record(z.string(), fitLevelSchema)
+
+/**
+ * Pool-weighting factor used by the menu generator's `pickRandom`. A perfect
+ * fit triples the chance of being picked vs. a mid fit (which is the
+ * baseline); favourites multiply on top via the existing 2× boost.
+ */
+export const FIT_WEIGHT: Record<FitLevel, number> = { mid: 1, perfect: 3 }
 
 // ─── Per-household ingredient overrides (sustituciones) ──────
 //

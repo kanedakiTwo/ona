@@ -200,6 +200,11 @@ async function loadRecipesWithIngredients(db: any): Promise<RecipeWithIngredient
     name: r.name,
     meals: r.meals ?? [],
     seasons: r.seasons ?? [],
+    // Three-state fit maps. `meal_fit` / `season_fit` are jsonb columns
+    // added in migration 0024; legacy rows have null — the matcher
+    // handles that branch and derives 'perfect' from the array tagging.
+    mealFit: r.mealFit ?? undefined,
+    seasonFit: r.seasonFit ?? undefined,
     tags: r.tags ?? [],
     equipment: r.equipment ?? [],
     prepTime: r.prepTime ?? null,

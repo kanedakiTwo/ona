@@ -132,6 +132,8 @@ interface RecipeRow {
   difficulty: string | null
   meals: string[]
   seasons: string[]
+  mealFit: Record<string, 'mid' | 'perfect'> | null
+  seasonFit: Record<string, 'mid' | 'perfect'> | null
   equipment: string[] | null
   allergens: string[] | null
   notes: string | null
@@ -272,6 +274,15 @@ function toDetailRecipe(
     difficulty: ((row.difficulty as Difficulty) ?? 'medium') as Difficulty,
     meals: (row.meals ?? []) as Meal[],
     seasons: (row.seasons ?? []) as Season[],
+    // Three-state fit maps. Legacy rows (created before migration 0024)
+    // have null in the column — fall back to "every listed entry is
+    // 'perfect'" so the matcher and UI see consistent shape regardless of
+    // when the recipe was authored. Re-saving the recipe overwrites with
+    // the user-chosen values.
+    mealFit: (row.mealFit as Record<string, 'mid' | 'perfect'> | null) ??
+      Object.fromEntries(((row.meals ?? []) as string[]).map((m) => [m, 'perfect'])),
+    seasonFit: (row.seasonFit as Record<string, 'mid' | 'perfect'> | null) ??
+      Object.fromEntries(((row.seasons ?? []) as string[]).map((s) => [s, 'perfect'])),
     equipment: row.equipment ?? [],
     allergens: row.allergens ?? [],
     nutritionPerServing: row.nutritionPerServing ?? null,

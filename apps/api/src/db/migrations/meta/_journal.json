@@ -169,6 +169,13 @@
       "when": 1779793200000,
       "tag": "0023_recipe_notes_ingredient_overrides",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1779793500000,
+      "tag": "0024_recipe_meal_season_fit",
+      "breakpoints": true
     }
   ]
 }

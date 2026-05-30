@@ -16,6 +16,7 @@ import {
   makeStep,
   type StepDraft,
 } from "@/components/recipes/SortableStepsList"
+import { FitChip, cycleFit } from "@/components/recipes/FitChip"
 import { IngredientAutocomplete } from "@/components/recipes/IngredientAutocomplete"
 import { buildRecipePayload, createRecipeSchema } from "@ona/shared"
 import type { Meal, Season, ExtractedRecipe, Ingredient } from "@ona/shared"
@@ -78,8 +79,11 @@ function NewRecipePageInner() {
   const [name, setName] = useState(() => searchParams.get("name") ?? "")
   const [servings, setServings] = useState<number | "">(2)
   const [prepTime, setPrepTime] = useState<number | "">("")
-  const [selectedMeals, setSelectedMeals] = useState<Meal[]>([])
-  const [selectedSeasons, setSelectedSeasons] = useState<Season[]>([])
+  // Three-state fit per meal/season (none → mid → perfect → none). See
+  // `FitChip` for the visual + the matcher in apps/api for how this maps
+  // to selection weights (mid = 1×, perfect = 3×).
+  const [mealFit, setMealFit] = useState<Partial<Record<Meal, "mid" | "perfect">>>({})
+  const [seasonFit, setSeasonFit] = useState<Partial<Record<Season, "mid" | "perfect">>>({})
   const [tags, setTags] = useState<string[]>([])
   const [tagInput, setTagInput] = useState("")
   const [ingredientRows, setIngredientRows] = useState<IngredientRow[]>([
@@ -105,8 +109,14 @@ function NewRecipePageInner() {
     // TODO(units PR 3): wire data.servingsConfidence into form state + show
     // the "Estimado" badge per spec section "Servings deduction → UI".
     setPrepTime(data.prepTime ?? "")
-    setSelectedMeals(data.meals)
-    setSelectedSeasons(data.seasons)
+    // Extractor output is on/off — seed every tagged entry as 'perfect'
+    // and let the user dial back to 'mid' before saving if needed.
+    setMealFit(
+      Object.fromEntries(data.meals.map((m) => [m, "perfect" as const])),
+    )
+    setSeasonFit(
+      Object.fromEntries(data.seasons.map((s) => [s, "perfect" as const])),
+    )
     setTags(data.tags)
     setSteps(
       data.steps.length > 0 ? data.steps.map((t) => makeStep(t)) : [makeStep()],
@@ -126,17 +136,11 @@ function NewRecipePageInner() {
   }
 
   function toggleMeal(meal: Meal) {
-    setSelectedMeals((prev) =>
-      prev.includes(meal) ? prev.filter((m) => m !== meal) : [...prev, meal]
-    )
+    cycleFit(mealFit, setMealFit, meal)
   }
 
   function toggleSeason(season: Season) {
-    setSelectedSeasons((prev) =>
-      prev.includes(season)
-        ? prev.filter((s) => s !== season)
-        : [...prev, season]
-    )
+    cycleFit(seasonFit, setSeasonFit, season)
   }
 
   function addTag() {
@@ -210,18 +214,22 @@ function NewRecipePageInner() {
   // the contract test in apps/api can validate this exact transformer against
   // createRecipeSchema and prevent silent drift.
   function buildPayload() {
-    return buildRecipePayload({
+    const base = buildRecipePayload({
       name,
       servings,
       prepTime,
-      selectedMeals,
-      selectedSeasons,
+      // The legacy on/off arrays come from the fit map (any entry with a
+      // non-none state is "selected"); the shared payload builder treats
+      // them the same as before.
+      selectedMeals: Object.keys(mealFit) as Meal[],
+      selectedSeasons: Object.keys(seasonFit) as Season[],
       tags,
       // The form holds steps as `{ id, text }[]` for drag-and-drop key
       // stability; the payload builder only consumes the text array.
       steps: steps.map((s) => s.text),
       ingredientRows,
     })
+    return { ...base, mealFit, seasonFit }
   }
 
   // Surface inline errors per row (e.g. "no encontrado") regardless of submit.
@@ -440,31 +448,23 @@ function NewRecipePageInner() {
             )}
           </section>
 
-          {/* Meals */}
+          {/* Meals — three-state fit chip cycles none → mid → perfect. */}
           <section>
             <div className="text-eyebrow text-[#7A7066]">Tipo de comida</div>
             <p className="mt-1 text-[12px] italic text-[#7A7066]">
-              Elige al menos uno
+              Toca: vacío → encaja a veces → encaja perfecto. Al menos una
+              en cualquier estado distinto a vacío.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
-              {MEAL_OPTIONS.map((opt) => {
-                const active = selectedMeals.includes(opt.value)
-                return (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => toggleMeal(opt.value)}
-                    className={cn(
-                      "rounded-full border px-4 py-2 text-[12px] uppercase tracking-[0.12em] transition-all active:scale-95",
-                      active
-                        ? "border-[#1A1612] bg-[#1A1612] text-[#FAF6EE]"
-                        : "border-[#DDD6C5] bg-[#F2EDE0] text-[#4A4239] hover:border-[#1A1612]"
-                    )}
-                  >
-                    {opt.label}
-                  </button>
-                )
-              })}
+              {MEAL_OPTIONS.map((opt) => (
+                <FitChip
+                  key={opt.value}
+                  label={opt.label}
+                  fit={mealFit[opt.value]}
+                  onClick={() => toggleMeal(opt.value)}
+                  palette="ink"
+                />
+              ))}
             </div>
             {errors.meals && (
               <p className="mt-2 text-[12px] italic text-[#C65D38]">
@@ -473,31 +473,22 @@ function NewRecipePageInner() {
             )}
           </section>
 
-          {/* Seasons */}
+          {/* Seasons — same chip in forest green. */}
           <section>
             <div className="text-eyebrow text-[#7A7066]">Temporada</div>
             <p className="mt-1 text-[12px] italic text-[#7A7066]">
-              Elige al menos una
+              Marca al menos una con el grado de encaje
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
-              {SEASON_OPTIONS.map((opt) => {
-                const active = selectedSeasons.includes(opt.value)
-                return (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => toggleSeason(opt.value)}
-                    className={cn(
-                      "rounded-full border px-4 py-2 text-[12px] uppercase tracking-[0.12em] transition-all active:scale-95",
-                      active
-                        ? "border-[#2D6A4F] bg-[#2D6A4F] text-[#FAF6EE]"
-                        : "border-[#DDD6C5] bg-[#F2EDE0] text-[#4A4239] hover:border-[#2D6A4F]"
-                    )}
-                  >
-                    {opt.label}
-                  </button>
-                )
-              })}
+              {SEASON_OPTIONS.map((opt) => (
+                <FitChip
+                  key={opt.value}
+                  label={opt.label}
+                  fit={seasonFit[opt.value]}
+                  onClick={() => toggleSeason(opt.value)}
+                  palette="forest"
+                />
+              ))}
             </div>
             {errors.seasons && (
               <p className="mt-2 text-[12px] italic text-[#C65D38]">

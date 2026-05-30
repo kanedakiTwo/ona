@@ -69,7 +69,20 @@ export function SortableIngredientsList<R extends SortableRowAnchor>({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
+  function handleDragStart() {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("ona:dnd-start"))
+    }
+  }
+
+  function endDrag() {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("ona:dnd-end"))
+    }
+  }
+
   function handleDragEnd(event: DragEndEvent) {
+    endDrag()
     const { active, over } = event
     if (!over || active.id === over.id) return
     const oldIndex = rows.findIndex((r) => r.rowId === active.id)
@@ -82,7 +95,9 @@ export function SortableIngredientsList<R extends SortableRowAnchor>({
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
+      onDragCancel={endDrag}
     >
       <SortableContext
         items={rows.map((r) => r.rowId)}

@@ -28,7 +28,7 @@ import {
   KeyboardSensor,
   PointerSensor,
   TouchSensor,
-  closestCenter,
+  pointerWithin,
   useDraggable,
   useDroppable,
   useSensor,
@@ -109,10 +109,27 @@ export function WeekGridView({ days, weekStart, todayIndex, onSelectDay, onMoveS
   function handleDragStart(e: DragStartEvent) {
     const data = e.active.data.current as CellData | undefined
     if (data) setDraggingCell(data)
+    // Tell the swipe navigator to stand down for the duration of the
+    // drag — without this guard a left-swipe drag also slid the whole
+    // page to the previous nav tab.
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("ona:dnd-start"))
+    }
+  }
+
+  function handleDragCancelOrEnd() {
+    setDraggingCell(null)
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("ona:dnd-end"))
+    }
   }
 
   function handleDragEnd(e: DragEndEvent) {
-    setDraggingCell(null)
+    handleDragCancelOrEnd()
+    // `pointerWithin` only reports `over` when the pointer is genuinely
+    // inside a droppable's bounding box on drop — drops in the gutter
+    // between cells, in the page margin, or even on the page header
+    // resolve to `null` here and the move is a no-op.
     if (!onMoveSlot || !e.over) return
     const from = e.active.data.current as CellData | undefined
     const to = parseTargetId(e.over.id as string)
@@ -133,9 +150,10 @@ export function WeekGridView({ days, weekStart, todayIndex, onSelectDay, onMoveS
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={pointerWithin}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancelOrEnd}
     >
       <div className="px-3 pb-8 md:px-5">
         <motion.div

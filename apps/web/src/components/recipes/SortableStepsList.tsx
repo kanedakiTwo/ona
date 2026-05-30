@@ -78,7 +78,20 @@ export function SortableStepsList({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
+  function handleDragStart() {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("ona:dnd-start"))
+    }
+  }
+
+  function endDrag() {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("ona:dnd-end"))
+    }
+  }
+
   function handleDragEnd(event: DragEndEvent) {
+    endDrag()
     const { active, over } = event
     if (!over || active.id === over.id) return
     const oldIndex = steps.findIndex((s) => s.id === active.id)
@@ -91,7 +104,9 @@ export function SortableStepsList({
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
+      onDragCancel={endDrag}
     >
       <SortableContext
         items={steps.map((s) => s.id)}

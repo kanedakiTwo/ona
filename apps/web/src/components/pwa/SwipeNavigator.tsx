@@ -1,6 +1,6 @@
 "use client"
 
-import { type ReactNode, useEffect } from "react"
+import { type ReactNode, useEffect, useRef } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { motion, useMotionValue, animate, type PanInfo } from "motion/react"
 
@@ -18,6 +18,29 @@ export function SwipeNavigator({ children }: Props) {
   // Find current tab index. If pathname doesn't start with any NAV path, swipe is disabled.
   const currentIndex = NAV_ORDER.findIndex((p) => pathname.startsWith(p))
 
+  // When a dnd-kit drag is active (the week-view grid is the only consumer
+  // today, but any future @dnd-kit/core caller can opt in by dispatching
+  // `ona:dnd-start` / `ona:dnd-end` window events), the swipe pan handler
+  // bails out entirely. Without this guard, dragging a cell to the left
+  // also slid the whole page towards the previous tab and the user lost
+  // their drop target halfway through the gesture.
+  const dndActiveRef = useRef(false)
+  useEffect(() => {
+    const onStart = () => {
+      dndActiveRef.current = true
+      animate(x, 0, { duration: 0 })
+    }
+    const onEnd = () => {
+      dndActiveRef.current = false
+    }
+    window.addEventListener("ona:dnd-start", onStart)
+    window.addEventListener("ona:dnd-end", onEnd)
+    return () => {
+      window.removeEventListener("ona:dnd-start", onStart)
+      window.removeEventListener("ona:dnd-end", onEnd)
+    }
+  }, [x])
+
   // Reset x to 0 whenever the pathname changes (after a swipe-induced navigation)
   useEffect(() => {
     animate(x, 0, { duration: 0 })
@@ -25,6 +48,7 @@ export function SwipeNavigator({ children }: Props) {
 
   function handlePan(_e: PointerEvent, info: PanInfo) {
     if (currentIndex < 0) return
+    if (dndActiveRef.current) return
     const dx = info.offset.x
     const dy = info.offset.y
     // In-pan: bail out if vertical-dominant
@@ -46,6 +70,10 @@ export function SwipeNavigator({ children }: Props) {
 
   function handlePanEnd(_e: PointerEvent, info: PanInfo) {
     if (currentIndex < 0) return
+    if (dndActiveRef.current) {
+      animate(x, 0, { duration: 0 })
+      return
+    }
     const dx = info.offset.x
     const dy = info.offset.y
     const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 430

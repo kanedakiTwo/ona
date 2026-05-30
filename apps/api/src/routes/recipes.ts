@@ -1018,8 +1018,10 @@ router.post(
         res.status(404).json({ error: 'Recipe not found' })
         return
       }
-      if (recipe.authorId !== userId) {
-        // System recipes (authorId null) and other users' recipes both fall here.
+      // Authors regenerate their own recipes; admins curate the catalogue
+      // (system recipes + others' recipes). Everyone else is rejected.
+      const isAdmin = req.user?.role === 'admin'
+      if (recipe.authorId !== userId && !isAdmin) {
         res.status(403).json({ error: 'Solo el autor puede regenerar la imagen' })
         return
       }
@@ -1107,6 +1109,54 @@ router.post(
       }
     } catch (err) {
       console.error('regenerate-image error:', err)
+      res.status(500).json({ error: 'Internal server error' })
+    }
+  },
+)
+
+// POST /recipes/:id/upload-image — manual hero image upload (author or admin).
+//
+// Replaces `recipes.image_url` with a user-supplied photo. Goes through the
+// same sharp pipeline as the AI generator (resize to 1200 px wide JPEG with
+// mozjpeg) so the storage shape stays uniform. Does NOT touch the AI quota
+// — uploaded images cost nothing.
+router.post(
+  '/recipes/:id/upload-image',
+  authMiddleware,
+  upload.single('image'),
+  async (req: AuthRequest, res) => {
+    try {
+      const recipeId = String(req.params.id)
+      if (!req.file) {
+        res.status(400).json({ error: 'Falta el archivo (campo "image")' })
+        return
+      }
+
+      const [recipe] = await db
+        .select({ authorId: recipes.authorId })
+        .from(recipes)
+        .where(eq(recipes.id, recipeId))
+        .limit(1)
+      if (!recipe) {
+        res.status(404).json({ error: 'Recipe not found' })
+        return
+      }
+
+      const isAdmin = req.user?.role === 'admin'
+      if (recipe.authorId !== req.userId && !isAdmin) {
+        res.status(403).json({ error: 'Solo el autor o un admin pueden subir una imagen' })
+        return
+      }
+
+      const { imageUrl } = await writeRecipeImage(req.file.buffer, `${recipeId}.jpg`)
+      await db
+        .update(recipes)
+        .set({ imageUrl, updatedAt: new Date() })
+        .where(eq(recipes.id, recipeId))
+
+      res.json({ imageUrl })
+    } catch (err) {
+      console.error('upload-image error:', err)
       res.status(500).json({ error: 'Internal server error' })
     }
   },

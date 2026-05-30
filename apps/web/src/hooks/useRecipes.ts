@@ -264,3 +264,45 @@ export function useRegenerateRecipeImage(recipeId: string | undefined, userId?: 
     },
   })
 }
+
+/**
+ * Upload a user-supplied hero photo. Available to authors on their own
+ * recipes and to admins on any recipe (including the curated ONA catalog).
+ * Does not touch the AI quota. The server resizes to 1200 px wide JPEG.
+ */
+export function useUploadRecipeImage(recipeId: string | undefined) {
+  const queryClient = useQueryClient()
+  return useMutation<{ imageUrl: string }, Error, File>({
+    mutationFn: async (file: File) => {
+      if (!recipeId) throw new Error("Falta el id de la receta")
+      const form = new FormData()
+      form.append("image", file)
+      // The shared `api` helper json-stringifies the body — bypass it for
+      // multipart and let the browser set the boundary header.
+      const token = typeof window !== "undefined" ? localStorage.getItem("ona_token") : null
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001"}/recipes/${recipeId}/upload-image`,
+        {
+          method: "POST",
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          body: form,
+        },
+      )
+      if (!res.ok) {
+        let msg = `HTTP ${res.status}`
+        try {
+          const body = (await res.json()) as { error?: string }
+          if (body.error) msg = body.error
+        } catch {
+          // ignore — non-JSON body
+        }
+        throw new Error(msg)
+      }
+      return (await res.json()) as { imageUrl: string }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["recipe", recipeId] })
+      queryClient.invalidateQueries({ queryKey: ["recipes"] })
+    },
+  })
+}

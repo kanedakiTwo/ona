@@ -1,15 +1,16 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
-import { ChevronLeft, Plus, Sparkles, Trash2 } from "lucide-react"
+import { ChevronLeft, Plus, Sparkles, Trash2, Upload } from "lucide-react"
 import { useAuth } from "@/lib/auth"
 import {
   useIngredients,
   useRecipe,
   useRegenerateRecipeImage,
   useUpdateRecipe,
+  useUploadRecipeImage,
 } from "@/hooks/useRecipes"
 import { useUser } from "@/hooks/useUser"
 import { IngredientAutocomplete } from "@/components/recipes/IngredientAutocomplete"
@@ -817,14 +818,29 @@ function PhotoSection({ recipeId, userId }: { recipeId: string; userId: string }
   const { data: recipe } = useRecipe(recipeId)
   const { data: profile } = useUser(userId)
   const regen = useRegenerateRecipeImage(recipeId, userId)
+  const upload = useUploadRecipeImage(recipeId)
   const quota = regen.data?.quota ?? profile?.imageGenQuota
   const exhausted = quota ? quota.used >= quota.limit : false
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // Same own-host cache-bust rule the detail page now follows: external
+  // URLs (i.ytimg, og:image hosts that hot-link-block unknown params) must
+  // not have a `?v=` appended or they return a placeholder.
+  const isOwnImage = recipe?.imageUrl?.includes("ona-api") ?? false
   const heroSrc = recipe?.imageUrl
-    ? `${recipe.imageUrl}${recipe.imageUrl.includes("?") ? "&" : "?"}v=${
-        new Date(recipe.updatedAt ?? Date.now()).getTime()
-      }`
+    ? isOwnImage
+      ? `${recipe.imageUrl}${recipe.imageUrl.includes("?") ? "&" : "?"}v=${
+          new Date(recipe.updatedAt ?? Date.now()).getTime()
+        }`
+      : recipe.imageUrl
     : null
+
+  function handleFilePick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (file) upload.mutate(file)
+    // Reset so picking the same file twice still triggers onChange.
+    e.target.value = ""
+  }
 
   return (
     <section className="mt-10">
@@ -848,7 +864,7 @@ function PhotoSection({ recipeId, userId }: { recipeId: string; userId: string }
           <button
             type="button"
             onClick={() => regen.mutate()}
-            disabled={regen.isPending || exhausted}
+            disabled={regen.isPending || upload.isPending || exhausted}
             className="inline-flex items-center gap-2 self-start rounded-full border border-[#DDD6C5] bg-[#F2EDE0] px-5 py-2.5 text-[12px] uppercase tracking-[0.12em] text-[#1A1612] transition-all hover:border-[#1A1612] disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Sparkles size={14} />
@@ -858,17 +874,39 @@ function PhotoSection({ recipeId, userId }: { recipeId: string; userId: string }
                 ? "Regenerar imagen"
                 : "Generar imagen"}
           </button>
+          {/* Manual upload — available to authors on their own recipes and
+              to admins on any recipe (the API enforces it, the UI just
+              presents the affordance). Doesn't consume the AI quota. */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={handleFilePick}
+            className="hidden"
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={upload.isPending || regen.isPending}
+            className="inline-flex items-center gap-2 self-start rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-5 py-2.5 text-[12px] uppercase tracking-[0.12em] text-[#1A1612] transition-all hover:border-[#1A1612] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Upload size={14} />
+            {upload.isPending ? "Subiendo…" : "Subir foto"}
+          </button>
           {quota && !regen.error ? (
             <span className="text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
-              {quota.used}/{quota.limit} este mes
+              {quota.used}/{quota.limit} este mes (IA)
             </span>
           ) : null}
           {regen.error ? (
             <span className="text-[11px] italic text-[#C65D38]">{regen.error.message}</span>
           ) : null}
+          {upload.error ? (
+            <span className="text-[11px] italic text-[#C65D38]">{upload.error.message}</span>
+          ) : null}
           <p className="max-w-xs text-[11px] leading-relaxed text-[#7A7066]">
-            La imagen se genera con IA a partir del nombre y los ingredientes.
-            Tarda unos segundos.
+            Genera con IA a partir del nombre y los ingredientes, o sube tu
+            propia foto (JPG / PNG / WebP, hasta 10 MB).
           </p>
         </div>
       </div>

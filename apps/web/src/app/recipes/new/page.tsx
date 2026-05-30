@@ -259,7 +259,10 @@ function NewRecipePageInner() {
 
     createRecipe.mutate({ ...parsed.data, force: useForce }, {
       onSuccess: (created) => {
-        router.push(`/recipes/${created.id}`)
+        // Land on the edit screen — the user just wrote/imported the recipe,
+        // they want to fine-tune ingredients/steps without an extra "Editar"
+        // click. The detail view is one tap away from there.
+        router.push(`/recipes/${created.id}/edit`)
       },
       onError: (err) => {
         // If the server returned a typed lint failure, route each issue to
@@ -319,7 +322,7 @@ function NewRecipePageInner() {
         {/* URL extraction (article or YouTube) */}
         <div className="mt-4">
           <UrlRecipeImport
-            onImported={(recipeId) => router.push(`/recipes/${recipeId}`)}
+            onImported={(recipeId) => router.push(`/recipes/${recipeId}/edit`)}
           />
         </div>
 

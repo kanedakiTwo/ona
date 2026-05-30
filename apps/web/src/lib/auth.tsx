@@ -94,6 +94,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem("ona_user")
     setToken(null)
     setUser(null)
+    // Send the user to the landing — soft-routing via Next would keep the
+    // auth-gated page mounted (the navbar already disappears when token is
+    // null, but the page itself can read stale data before React re-renders).
+    // A hard nav guarantees a clean slate.
+    if (typeof window !== "undefined") {
+      window.location.href = "/"
+    }
   }, [])
 
   const updateUser = useCallback((updates: Partial<User>) => {

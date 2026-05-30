@@ -275,10 +275,14 @@ export default function EditRecipePage() {
       .map((e) => e.trim())
       .filter((e) => e.length > 0)
       .join("\n\n")
-    payload.notes = notesText.length > 0 ? notesText : null
-    // Explicitly clear the legacy `tips` column on every save so the split
-    // never re-emerges if the user authored before the unification.
-    payload.tips = null
+    // The schema is `z.string().optional()` — undefined means "no change /
+    // not set", null is rejected. We use empty string as the explicit
+    // "clear this column" signal; the backend treats empty strings as null
+    // when persisting (see persistence helper).
+    payload.notes = notesText
+    // Always clear the legacy `tips` column so the split never re-emerges
+    // for users who authored before the unification.
+    payload.tips = ""
 
     return payload
   }

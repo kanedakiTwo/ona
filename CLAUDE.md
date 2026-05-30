@@ -134,7 +134,7 @@ When introducing a new system (e.g., notifications, admin panel, payments), add 
 Code work the user has scoped but not requested yet — pick up next session unless the user explicitly redirects. Items are ordered top = next-pickup.
 
 _Recipe source links — shipped 2026-05-30: "Ver fuente" affordance on the detail under the title; editable from the edit form; YouTube vs article icon distinguished from `sourceType`._
-- [ ] **Bottom navbar mis-aligns "sometimes" on the recipe detail page.** Miguel reproduces it intermittently: the pill renders ~3 items, right-aligned, instead of 5 distributed across the centered 430 px container. Likely a motion `layoutId="nav-pill"` measurement race during page transitions. First-pass defensive try: drop the shared `layoutId` animation and render the active-item pill as a plain `absolute inset-0` div (loses the smooth slide between tabs but becomes deterministic). If the bug reproduces with a stable URL, instrument with `console.log` on `Navbar` mount/unmount counts before deciding the real fix.
+_Bottom navbar mis-alignment defensive fix — shipped 2026-05-30. Items now use `flex-1 basis-0` so each gets an equal slice regardless of motion's transient measurements; pill is positioned `left-1/2 -translate-x-1/2 w-12` so the layout animation can't push width off. If the bug reproduces despite this, instrument with mount/unmount logs to find the actual race._
 
 ## Todo Miguel
 

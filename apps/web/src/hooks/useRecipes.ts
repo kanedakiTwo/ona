@@ -121,9 +121,13 @@ export function useCopyRecipe() {
 export function useUpdateRecipe(id: string | undefined) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (recipe: CreateRecipeInput) => {
+    mutationFn: (recipe: CreateRecipeInput & { force?: boolean }) => {
       if (!id) throw new Error("recipe id is required to update")
-      return api.put<Recipe>(`/recipes/${id}`, recipe)
+      const { force, ...payload } = recipe
+      // Mirror the create flow: `?force=1` downgrades lint errors to soft
+      // warnings on the server so the user can save imperfect recipes.
+      const url = force ? `/recipes/${id}?force=1` : `/recipes/${id}`
+      return api.put<Recipe>(url, payload)
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["recipes"] })

@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth"
 import { useCreateRecipe, useIngredients } from "@/hooks/useRecipes"
 import { LintFailureError } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { humanizeLintKey } from "@/lib/recipeView"
 import { Plus, Trash2, ChevronLeft } from "lucide-react"
 import Link from "next/link"
 import { PhotoRecipeUpload } from "@/components/recipes/PhotoRecipeUpload"
@@ -707,11 +708,24 @@ function NewRecipePageInner() {
                   {allowForce ? "Avisos" : "Faltan datos:"}
                 </p>
                 <ul className="mt-2 list-disc space-y-1 pl-5 text-[12px] italic text-[#C65D38]">
-                  {Object.entries(errors).map(([key, msg]) => (
-                    <li key={key}>
-                      {key === "_form" ? msg : <><span className="font-medium not-italic">{key}:</span> {msg}</>}
-                    </li>
-                  ))}
+                  {Object.entries(errors).map(([key, msg]) => {
+                    const label = humanizeLintKey(key)
+                    // Server-side lint messages already mention "el paso N"
+                    // / "el ingrediente X" — drop the prefix to avoid the
+                    // repetition "Paso 1: El paso 1 menciona…".
+                    const showLabel = !!label && !msg.toLowerCase().includes(label.toLowerCase())
+                    return (
+                      <li key={key}>
+                        {showLabel ? (
+                          <>
+                            <span className="font-medium not-italic">{label}:</span> {msg}
+                          </>
+                        ) : (
+                          msg
+                        )}
+                      </li>
+                    )
+                  })}
                 </ul>
                 {allowForce && (
                   <p className="mt-3 text-[12px] italic text-[#7A7066]">

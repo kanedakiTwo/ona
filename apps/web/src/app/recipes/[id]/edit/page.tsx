@@ -14,6 +14,8 @@ import {
 import { useUser } from "@/hooks/useUser"
 import { IngredientAutocomplete } from "@/components/recipes/IngredientAutocomplete"
 import { cn } from "@/lib/utils"
+import { LintFailureError } from "@/lib/api"
+import { humanizeLintKey } from "@/lib/recipeView"
 import { createRecipeSchema } from "@ona/shared"
 import type { Difficulty, Ingredient, Meal, Season } from "@ona/shared"
 import { MEAL_LABELS, SEASON_LABELS } from "@/lib/labels"
@@ -76,10 +78,20 @@ export default function EditRecipePage() {
   const [tagInput, setTagInput] = useState("")
   const [ingredientRows, setIngredientRows] = useState<IngredientRow[]>([emptyRow()])
   const [steps, setSteps] = useState<string[]>([""])
-  const [notes, setNotes] = useState("")
-  const [tips, setTips] = useState("")
+  // Notes / tips persist as single `text` columns server-side but the UI
+  // exposes them as multi-entry lists so the user can stack short ideas
+  // (e.g. "Cebolla roja queda mucho mejor" / "Picar fino"). On submit we
+  // join non-empty entries with a blank line so the persisted blob round
+  // trips through split-on-paragraph on load.
+  const [notes, setNotes] = useState<string[]>([""])
+  const [tips, setTips] = useState<string[]>([""])
 
   const [errors, setErrors] = useState<Record<string, string>>({})
+  // Set to true after the server returns lint warnings: the next click of
+  // "Guardar igualmente" re-submits with ?force=1 so the user can save a
+  // recipe whose quantities are unusual or whose steps mention an unbound
+  // ingredient. Mirrors the create flow on /recipes/new.
+  const [allowForce, setAllowForce] = useState(false)
   const [seeded, setSeeded] = useState(false)
 
   // Hydrate the form from the loaded recipe — once.
@@ -94,8 +106,15 @@ export default function EditRecipePage() {
     setSelectedMeals(recipe.meals ?? [])
     setSelectedSeasons(recipe.seasons ?? [])
     setTags(recipe.tags ?? [])
-    setNotes(recipe.notes ?? "")
-    setTips(recipe.tips ?? "")
+    // Round-trip the persisted text blob through split-on-blank-line so a
+    // recipe authored before the multi-entry UI still renders as one row.
+    const splitParas = (raw: string | null | undefined): string[] => {
+      if (!raw) return [""]
+      const parts = raw.split(/\n{2,}/).map((p) => p.trim()).filter((p) => p.length > 0)
+      return parts.length > 0 ? parts : [""]
+    }
+    setNotes(splitParas(recipe.notes))
+    setTips(splitParas(recipe.tips))
     setIngredientRows(
       recipe.ingredients.length > 0
         ? recipe.ingredients.map((ri) => ({
@@ -181,6 +200,25 @@ export default function EditRecipePage() {
     setIngredientRows(ingredientRows.filter((_, i) => i !== idx))
   }
 
+  // Generic single-string-list helpers, shared by notes + tips.
+  function updateAt(setter: (next: string[]) => void, list: string[], idx: number, value: string) {
+    const next = [...list]
+    next[idx] = value
+    setter(next)
+  }
+  function addAt(setter: (next: string[]) => void, list: string[]) {
+    setter([...list, ""])
+  }
+  function removeAt(setter: (next: string[]) => void, list: string[], idx: number) {
+    if (list.length <= 1) {
+      // Last row — clear it instead of dropping so the form always has a
+      // visible textarea (otherwise the section vanishes silently).
+      setter([""])
+      return
+    }
+    setter(list.filter((_, i) => i !== idx))
+  }
+
   function updateStep(idx: number, value: string) {
     const next = [...steps]
     next[idx] = value
@@ -221,8 +259,13 @@ export default function EditRecipePage() {
     }
     if (typeof prepTime === "number" && prepTime > 0) payload.prepTime = prepTime
     if (typeof cookTime === "number" && cookTime > 0) payload.cookTime = cookTime
-    if (notes.trim().length > 0) payload.notes = notes.trim()
-    if (tips.trim().length > 0) payload.tips = tips.trim()
+    const joinEntries = (entries: string[]): string => {
+      return entries.map((e) => e.trim()).filter((e) => e.length > 0).join("\n\n")
+    }
+    const notesText = joinEntries(notes)
+    const tipsText = joinEntries(tips)
+    if (notesText.length > 0) payload.notes = notesText
+    if (tipsText.length > 0) payload.tips = tipsText
 
     return payload
   }
@@ -235,8 +278,14 @@ export default function EditRecipePage() {
     return null
   })
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
+    // The user picked between two type="submit" buttons. The secondary one
+    // carries name="force"; the primary doesn't. Read from the native
+    // submitter — closure state would lag because React state updates are
+    // async relative to the click handler that fires before this runs.
+    const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null
+    const useForce = submitter?.name === "force"
     setErrors({})
     const payload = buildPayload()
     const parsed = createRecipeSchema.safeParse(payload)
@@ -259,12 +308,22 @@ export default function EditRecipePage() {
       })
       return
     }
-    updateRecipe.mutate(parsed.data, {
+    updateRecipe.mutate({ ...parsed.data, force: useForce }, {
       onSuccess: (updated) => {
         router.push(`/recipes/${updated.id}`)
       },
       onError: (err) => {
-        setErrors({ _form: err.message ?? "Error al guardar la receta." })
+        if (err instanceof LintFailureError) {
+          const next: Record<string, string> = {}
+          for (const issue of err.issues) {
+            const key = issue.path && issue.path.length > 0 ? issue.path : "_form"
+            if (!next[key]) next[key] = issue.message
+          }
+          setErrors(next)
+          setAllowForce(true)
+        } else {
+          setErrors({ _form: err.message ?? "Error al guardar la receta." })
+        }
       },
     })
   }
@@ -653,31 +712,69 @@ export default function EditRecipePage() {
             </button>
           </section>
 
-          {/* Notes / tips */}
+          {/* Notes / tips — multi-entry lists. Each list is rendered as a
+              stack of textareas with their own +/- controls; on save the
+              non-empty entries are joined with a blank line so the
+              persisted text column round-trips cleanly. */}
           <section>
             <div className="text-eyebrow text-[#7A7066]">Notas y trucos</div>
-            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Notas (e.g. la madre la hacía con cebolla pochada)…"
-                rows={3}
-                className="resize-none rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-3 py-2 text-[13px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-6">
+              <NotesEditor
+                title="Notas"
+                placeholder="e.g. la madre la hacía con cebolla pochada"
+                addLabel="Añadir nota"
+                entries={notes}
+                onUpdate={(idx, v) => updateAt(setNotes, notes, idx, v)}
+                onAdd={() => addAt(setNotes, notes)}
+                onRemove={(idx) => removeAt(setNotes, notes, idx)}
               />
-              <textarea
-                value={tips}
-                onChange={(e) => setTips(e.target.value)}
-                placeholder="Trucos (e.g. dejar reposar 5 min antes de servir)…"
-                rows={3}
-                className="resize-none rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-3 py-2 text-[13px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
+              <NotesEditor
+                title="Trucos"
+                placeholder="e.g. dejar reposar 5 min antes de servir"
+                addLabel="Añadir truco"
+                entries={tips}
+                onUpdate={(idx, v) => updateAt(setTips, tips, idx, v)}
+                onAdd={() => addAt(setTips, tips)}
+                onRemove={(idx) => removeAt(setTips, tips, idx)}
               />
             </div>
           </section>
 
           {/* Submit */}
           <div className="flex flex-col gap-3 border-t border-[#DDD6C5] pt-6">
-            {errors._form && (
-              <p className="text-[12px] italic text-[#C65D38]">{errors._form}</p>
+            {Object.keys(errors).length > 0 && (
+              <div className="rounded-lg border border-[#C65D38]/40 bg-[#C65D38]/10 px-4 py-3">
+                <p className="text-[12px] font-medium uppercase tracking-[0.12em] text-[#C65D38]">
+                  {allowForce ? "Avisos" : "Algo no encaja:"}
+                </p>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-[12px] italic text-[#C65D38]">
+                  {Object.entries(errors).map(([key, msg]) => {
+                    const label = humanizeLintKey(key)
+                    // The lint validator's own messages already namecheck
+                    // "el paso N" / "el ingrediente X" — when that's the case,
+                    // hide the prefix to avoid "Paso 1: El paso 1 menciona…".
+                    const showLabel = !!label && !msg.toLowerCase().includes(label.toLowerCase())
+                    return (
+                      <li key={key}>
+                        {showLabel ? (
+                          <>
+                            <span className="font-medium not-italic">{label}:</span> {msg}
+                          </>
+                        ) : (
+                          msg
+                        )}
+                      </li>
+                    )
+                  })}
+                </ul>
+                {allowForce && (
+                  <p className="mt-3 text-[12px] italic text-[#7A7066]">
+                    Estos avisos no impiden guardar. Corrige y pulsa
+                    "Guardar cambios" otra vez, o usa "Guardar igualmente"
+                    para aceptarlos tal cual.
+                  </p>
+                )}
+              </div>
             )}
             <div className="flex items-center gap-4">
               <button
@@ -687,6 +784,16 @@ export default function EditRecipePage() {
               >
                 {updateRecipe.isPending ? "Guardando…" : "Guardar cambios"}
               </button>
+              {allowForce && (
+                <button
+                  type="submit"
+                  name="force"
+                  disabled={updateRecipe.isPending}
+                  className="rounded-full border border-[#C65D38] bg-transparent px-6 py-2.5 text-[12px] font-medium uppercase tracking-[0.12em] text-[#C65D38] transition-all hover:bg-[#C65D38] hover:text-[#FAF6EE] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {updateRecipe.isPending ? "Guardando…" : "Guardar igualmente"}
+                </button>
+              )}
               <Link
                 href={`/recipes/${params.id}`}
                 className="text-[12px] uppercase tracking-[0.12em] text-[#7A7066] hover:text-[#1A1612]"
@@ -765,5 +872,62 @@ function PhotoSection({ recipeId, userId }: { recipeId: string; userId: string }
         </div>
       </div>
     </section>
+  )
+}
+
+/* ─────────────────────────────────────────────
+   Multi-entry list editor — used for notes + tips.
+   Stack of textareas with per-row trash + "+ Añadir" at the bottom.
+   ───────────────────────────────────────────── */
+function NotesEditor({
+  title,
+  placeholder,
+  addLabel,
+  entries,
+  onUpdate,
+  onAdd,
+  onRemove,
+}: {
+  title: string
+  placeholder: string
+  addLabel: string
+  entries: string[]
+  onUpdate: (idx: number, value: string) => void
+  onAdd: () => void
+  onRemove: (idx: number) => void
+}) {
+  return (
+    <div>
+      <div className="mb-2 text-[11px] uppercase tracking-[0.15em] text-[#7A7066]">{title}</div>
+      <div className="space-y-2">
+        {entries.map((entry, idx) => (
+          <div key={idx} className="flex items-start gap-2">
+            <textarea
+              value={entry}
+              onChange={(e) => onUpdate(idx, e.target.value)}
+              placeholder={placeholder}
+              rows={2}
+              className="flex-1 resize-none rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-3 py-2 text-[13px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
+            />
+            <button
+              type="button"
+              onClick={() => onRemove(idx)}
+              className="mt-1 rounded p-1 text-[#7A7066] hover:text-[#C65D38]"
+              aria-label={`Quitar ${title.toLowerCase()}`}
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={onAdd}
+        className="mt-2 inline-flex items-center gap-1 text-[11px] uppercase tracking-[0.12em] text-[#7A7066] hover:text-[#1A1612]"
+      >
+        <Plus size={12} />
+        {addLabel}
+      </button>
+    </div>
   )
 }

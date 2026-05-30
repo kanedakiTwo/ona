@@ -760,9 +760,18 @@ router.put(
         return
       }
 
+      // Mirror the POST flow: `?force=1` (or body `force: true`) downgrades
+      // lint errors to advisory warnings so the user can save a recipe with
+      // out-of-range quantities or unbound step references after one round
+      // of feedback. The edit UI shows the warnings as "Avisos" and exposes
+      // a "Guardar igualmente" submitter.
+      const force =
+        req.query.force === '1' ||
+        (req.body && (req.body as { force?: unknown }).force === true)
       const result = await persistRecipe(body as RecipeWriteInput, {
         authorId: existing.authorId,
         recipeId,
+        softLint: force,
       })
       if (!result.ok) {
         res.status(422).json({ errors: result.errors, warnings: result.warnings })

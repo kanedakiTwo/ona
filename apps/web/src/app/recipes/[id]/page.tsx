@@ -319,23 +319,39 @@ export default function RecipeDetailPage() {
         {/* Notes / tips / substitutions / storage. The public detail
             payload from /recipes/:id strips these per spec; they only
             show up on author-edit / private views. We render defensively
-            just in case the server starts surfacing them. */}
+            just in case the server starts surfacing them.
+
+            Notes + tips are persisted as a single text blob with paragraph
+            breaks (`\n\n`); split on render so each entry becomes its own
+            paragraph — single-paragraph legacy values still render as one. */}
         {(recipe.notes || recipe.tips || recipe.substitutions || recipe.storage) && (
           <section className="mt-12 space-y-6">
             {recipe.notes && (
               <div>
                 <div className="text-eyebrow mb-2 text-[#7A7066]">Notas</div>
-                <p className="text-[14px] leading-relaxed text-[#1A1612]">
-                  {recipe.notes}
-                </p>
+                <div className="space-y-2 text-[14px] leading-relaxed text-[#1A1612]">
+                  {recipe.notes
+                    .split(/\n{2,}/)
+                    .map((p) => p.trim())
+                    .filter((p) => p.length > 0)
+                    .map((p, i) => (
+                      <p key={i}>{p}</p>
+                    ))}
+                </div>
               </div>
             )}
             {recipe.tips && (
               <div>
                 <div className="text-eyebrow mb-2 text-[#7A7066]">Trucos</div>
-                <p className="text-[14px] leading-relaxed text-[#1A1612]">
-                  {recipe.tips}
-                </p>
+                <div className="space-y-2 text-[14px] leading-relaxed text-[#1A1612]">
+                  {recipe.tips
+                    .split(/\n{2,}/)
+                    .map((p) => p.trim())
+                    .filter((p) => p.length > 0)
+                    .map((p, i) => (
+                      <p key={i}>{p}</p>
+                    ))}
+                </div>
               </div>
             )}
             {recipe.substitutions && (

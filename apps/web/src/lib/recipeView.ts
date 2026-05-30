@@ -180,3 +180,35 @@ export function householdSizeToDiners(size?: HouseholdSize | null): number | nul
   if (!size) return null
   return LEGACY_HOUSEHOLD_DINERS[size] ?? null
 }
+
+/**
+ * Map a lint/zod error path like `steps[0].text` or `ingredients[7]` into a
+ * Spanish, human-readable label like "Paso 1" or "Ingrediente 8". The
+ * server's lint messages already contain the user-facing prose ("El paso 1
+ * menciona huevo pero no aparece en los ingredientes…"); this helper just
+ * gives the prefix a friendly form so users don't see raw JSON paths.
+ *
+ * Returns null for `_form` so the caller can render the message alone.
+ */
+export function humanizeLintKey(key: string): string | null {
+  if (!key || key === "_form") return null
+  const stepMatch = key.match(/^steps\[(\d+)\](?:\..+)?$/)
+  if (stepMatch) return `Paso ${Number(stepMatch[1]) + 1}`
+  const ingMatch = key.match(/^ingredients\[(\d+)\](?:\..+)?$/)
+  if (ingMatch) return `Ingrediente ${Number(ingMatch[1]) + 1}`
+  const FIELD_LABELS: Record<string, string> = {
+    name: "Nombre",
+    servings: "Comensales",
+    prepTime: "Tiempo de preparación",
+    cookTime: "Tiempo de cocción",
+    difficulty: "Dificultad",
+    meals: "Comidas",
+    seasons: "Temporadas",
+    tags: "Etiquetas",
+    ingredients: "Ingredientes",
+    steps: "Pasos",
+    notes: "Notas",
+    tips: "Trucos",
+  }
+  return FIELD_LABELS[key] ?? key
+}

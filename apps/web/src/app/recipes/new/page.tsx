@@ -37,10 +37,13 @@ interface IngredientRow {
   ingredientId: string
   quantity: number | ""
   unit: string
+  /** When true, the ingredient renders with an "opcional" badge on the
+   *  detail view and the shopping aggregator skips it. */
+  optional: boolean
 }
 
 function emptyRow(): IngredientRow {
-  return { ingredientName: "", ingredientId: "", quantity: "", unit: "g" }
+  return { ingredientName: "", ingredientId: "", quantity: "", unit: "g", optional: false }
 }
 
 export default function NewRecipePage() {
@@ -104,6 +107,7 @@ function NewRecipePageInner() {
             ingredientName: ing.ingredientName ?? ing.extractedName,
             quantity: ing.quantity,
             unit: ing.unit || "g",
+            optional: false,
           }))
         : [emptyRow()]
     )
@@ -158,6 +162,12 @@ function NewRecipePageInner() {
   function updateIngredientUnit(idx: number, value: string) {
     const next = [...ingredientRows]
     next[idx] = { ...next[idx], unit: value }
+    setIngredientRows(next)
+  }
+
+  function toggleIngredientOptional(idx: number) {
+    const next = [...ingredientRows]
+    next[idx] = { ...next[idx], optional: !next[idx].optional }
     setIngredientRows(next)
   }
 
@@ -584,6 +594,19 @@ function NewRecipePageInner() {
                           </option>
                         ))}
                       </select>
+                      <button
+                        type="button"
+                        onClick={() => toggleIngredientOptional(idx)}
+                        aria-pressed={row.optional}
+                        title={row.optional ? "Quitar marca opcional" : "Marcar como opcional"}
+                        className={`rounded-full px-2 py-1 text-[10px] uppercase tracking-[0.1em] transition-colors ${
+                          row.optional
+                            ? "bg-[#F2EDE0] text-[#7A7066]"
+                            : "border border-dashed border-[#DDD6C5] text-[#A39A8E] hover:border-[#1A1612] hover:text-[#1A1612]"
+                        }`}
+                      >
+                        opc
+                      </button>
                       <button
                         type="button"
                         onClick={() => removeIngredientRow(idx)}

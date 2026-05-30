@@ -34,6 +34,11 @@ export interface IngredientRowState {
    * Present only when a display↔canonical conversion applies.
    */
   displayUnit?: string | null
+  /**
+   * Whether the ingredient is optional. Renders an "opcional" badge on the
+   * detail view; the shopping aggregator skips it during scaling.
+   */
+  optional?: boolean
 }
 
 /** All form state needed to build the recipe payload. */
@@ -69,6 +74,7 @@ export function buildRecipePayload(form: RecipeFormState): Record<string, unknow
       }
       if (r.displayQuantity != null) ingredient.displayQuantity = r.displayQuantity
       if (r.displayUnit != null) ingredient.displayUnit = r.displayUnit
+      if (r.optional) ingredient.optional = true
       return ingredient
     })
 

@@ -86,7 +86,7 @@ Each row:
 - `section` — optional string for sub-grouping (e.g. "Para la masa", "Para la salsa"); `null` = ungrouped
 - `quantity` — number
 - `unit` — enum `g | ml | u | cda | cdita | pizca | al_gusto`
-- `optional` — boolean
+- `optional` — boolean. Editable from the recipe edit form (and the `/recipes/new` creation form) via an `opc` pill toggle next to each ingredient row. When true, the recipe detail renders an "opcional" badge inline and the shopping-list aggregator skips the row when scaling
 - `note` — optional inline note (e.g. "picada fina", "del día anterior")
 - `displayOrder` — integer, controls UI ordering inside its section
 

@@ -29,6 +29,8 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Grid3x3,
+  LayoutList,
   Lock,
   Minus,
   Pin,
@@ -45,6 +47,7 @@ import {
 } from "lucide-react"
 import { mealLabel } from "@/lib/labels"
 import { RecipePickerSheet } from "@/components/menu/RecipePickerSheet"
+import { WeekGridView } from "@/components/menu/WeekGridView"
 import { CookedBadge } from "@/components/recipes/CookedBadge"
 import { PantryMatchCard } from "@/components/menu/PantryMatchCard"
 
@@ -180,6 +183,22 @@ export default function MenuPage() {
     const day = now.getDay()
     return day === 0 ? 6 : day - 1
   })
+
+  // "Vista día" (current scroll-by-day UX) vs "Vista semana" (compact grid
+  // that shows the whole week at a glance). Persisted in localStorage so the
+  // user's preference sticks across visits.
+  const [viewMode, setViewModeState] = useState<"day" | "week">("day")
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const stored = window.localStorage.getItem("ona.menu.view")
+    if (stored === "week" || stored === "day") setViewModeState(stored)
+  }, [])
+  const setViewMode = useCallback((next: "day" | "week") => {
+    setViewModeState(next)
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("ona.menu.view", next)
+    }
+  }, [])
 
   // When the user navigates to a different week, reset the day picker:
   //   - Current week → land on today
@@ -323,13 +342,51 @@ export default function MenuPage() {
             </button>
           )}
         </div>
+
+        {/* View-mode toggle — "vista día" (current) vs "vista semana" (grid). */}
+        <div className="mt-3 inline-flex items-center gap-1 rounded-full border border-[#DDD6C5] bg-[#FFFEFA] p-1">
+          <button
+            type="button"
+            onClick={() => {
+              haptic.light()
+              setViewMode("day")
+            }}
+            aria-pressed={viewMode === "day"}
+            className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-[10px] uppercase tracking-[0.12em] transition-colors ${
+              viewMode === "day"
+                ? "bg-[#1A1612] text-[#FAF6EE]"
+                : "text-[#7A7066] hover:text-[#1A1612]"
+            }`}
+          >
+            <LayoutList size={11} />
+            Día
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              haptic.light()
+              setViewMode("week")
+            }}
+            aria-pressed={viewMode === "week"}
+            className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-[10px] uppercase tracking-[0.12em] transition-colors ${
+              viewMode === "week"
+                ? "bg-[#1A1612] text-[#FAF6EE]"
+                : "text-[#7A7066] hover:text-[#1A1612]"
+            }`}
+          >
+            <Grid3x3 size={11} />
+            Semana
+          </button>
+        </div>
       </header>
 
       {/* PR 12 — cook from pantry: only renders when the household has
           ingredients on hand that match real recipes */}
       {user && <PantryMatchCard />}
 
-      {/* Week Strip */}
+      {/* Week Strip — only in "vista día"; the week view has its own
+          all-days header inside the grid. */}
+      {viewMode === "day" && (
       <div className="border-y border-[#DDD6C5] bg-[#F2EDE0]">
         <div className="flex">
           {weekDays.map((d, i) => {
@@ -366,6 +423,7 @@ export default function MenuPage() {
           })}
         </div>
       </div>
+      )}
 
       {/* Progress */}
       {menu && (
@@ -415,6 +473,35 @@ export default function MenuPage() {
             </button>
           )}
         </div>
+      ) : viewMode === "week" ? (
+        <>
+          {/* All-week grid view. The grid carries its own header row of
+              days and meal-row labels; the page just hosts it + the
+              regenerate CTA. */}
+          <div className="mt-4 flex items-center justify-end px-5">
+            {!isPastWeek && (
+              <button
+                onClick={handleGenerate}
+                disabled={generateMenu.isPending}
+                className="flex items-center gap-1.5 rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#1A1612] transition-colors hover:bg-[#1A1612] hover:text-[#FAF6EE] disabled:opacity-50"
+              >
+                <RefreshCw size={11} className={generateMenu.isPending ? "animate-spin" : ""} />
+                Regenerar semana
+              </button>
+            )}
+          </div>
+          <div className="mt-3">
+            <WeekGridView
+              days={menu.days as any}
+              weekStart={weekStart}
+              todayIndex={todayIndex}
+              onSelectDay={(d) => {
+                setSelectedDay(d)
+                setViewMode("day")
+              }}
+            />
+          </div>
+        </>
       ) : (
         <>
           {/* Day title row */}

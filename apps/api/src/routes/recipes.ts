@@ -772,6 +772,12 @@ router.put(
         authorId: existing.authorId,
         recipeId,
         softLint: force,
+        // The edit form doesn't carry the hero image URL — that field is
+        // managed out-of-band by the "Regenerar imagen" button (which writes
+        // directly to `recipes.image_url`). Without this flag a regular
+        // "Guardar cambios" wipes the image on save because input.imageUrl
+        // is undefined → null. Author-only edits should always preserve.
+        preserveExistingImage: true,
       })
       if (!result.ok) {
         res.status(422).json({ errors: result.errors, warnings: result.warnings })

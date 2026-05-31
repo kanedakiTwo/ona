@@ -241,20 +241,19 @@ export default function MenuPage() {
     el.scrollIntoView({ behavior, block: "start" })
   }, [])
 
-  // First mount in Vista Día: clear any restored scroll position (browsers
-  // can land us at the bottom of the previous /menu visit, leaving the
-  // user looking at empty cream after navigating back from /recipes) and
-  // then scroll today's section into view once the layout has settled.
+  // Track whether we've ever shown Vista Día this mount. The first time
+  // the user lands on it we snap to top so a back-nav can't leave us in
+  // an empty scroll-restored position. We deliberately don't auto-scroll
+  // to today — if today is at the bottom of the stack (Sat/Sun) it leaves
+  // the user looking at cream below the last day, which was Miguel's
+  // "blank screen" report. The day strip + IntersectionObserver already
+  // surface which day is "now"; the user can tap the strip to jump.
+  const didMountDayViewRef = useRef(false)
   useEffect(() => {
     if (viewMode !== "day") return
-    if (selectedDay < 0) return
-    // Snap to top synchronously so we never start from a stale scroll.
+    if (didMountDayViewRef.current) return
+    didMountDayViewRef.current = true
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "auto" })
-    // Wait one paint + a beat so the day stack is laid out before we
-    // measure. 200 ms is generous on mobile and not visibly slow.
-    const id = setTimeout(() => scrollDayIntoView(selectedDay, "auto"), 200)
-    return () => clearTimeout(id)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode])
 
   // IntersectionObserver keeps `selectedDay` in sync with the day section
@@ -361,15 +360,18 @@ export default function MenuPage() {
     generateMenu.mutate({ userId: user.id, weekStart })
   }
 
-  if (authLoading || menuLoading) {
+  if (authLoading || menuLoading || !user) {
+    // The `!user` branch used to `return null`, which left the user looking
+    // at a completely blank cream screen during navigation back from a
+    // sibling page when the auth context hadn't re-hydrated yet. Falling
+    // through to the loader avoids the "blank menu" flash while still
+    // gating the rest of the render on an authenticated user.
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#FAF6EE]">
         <div className="text-eyebrow">Cargando...</div>
       </div>
     )
   }
-
-  if (!user) return null
 
   return (
     <div className="bg-[#FAF6EE] min-h-screen">
@@ -682,23 +684,36 @@ export default function MenuPage() {
               daysToRender.map((d) => {
                 const dayMeals = mealsForDay(d)
                 const isSkipped = (menu?.skippedDays ?? []).includes(d)
+                const isEmpty = !isSkipped && dayMeals.length === 0
                 return (
                   <section
                     key={d}
                     data-day-block={d}
-                    className="scroll-mt-[72px]"
+                    // Empty days collapse to a tight section so 7 days of
+                    // nothing don't pad the page out. We still need the
+                    // anchor for the strip's scrollIntoView, but the H2
+                    // and the per-day spacing shrink. Populated + skipped
+                    // days keep the full layout.
+                    className={`scroll-mt-[72px] ${isEmpty ? "py-1" : ""}`}
                   >
-                    {/* Day header — not sticky (the strip above is); just a
-                        clean banner so the user knows what day they're
-                        reading. */}
-                    <div className="mb-3 flex items-end justify-between">
+                    {/* Day header. Compacted when the day is empty so the
+                        page doesn't stack 7 big banners on a freshly
+                        cleared week. */}
+                    <div className={`flex items-end justify-between ${isEmpty ? "mb-1" : "mb-3"}`}>
                       <div>
                         <div className="text-eyebrow text-[#7A7066]">
                           {todayIndex === d ? "Hoy" : DAY_SHORT[d]}
                         </div>
-                        <h2 className="mt-1 font-display text-[1.8rem] leading-none text-[#1A1612]">
-                          {DAY_NAMES[d]}
-                        </h2>
+                        {isEmpty ? (
+                          <h3 className="mt-1 font-display text-[1.1rem] leading-none text-[#7A7066]">
+                            {DAY_NAMES[d]}{" "}
+                            <span className="text-[11px] italic">· sin platos</span>
+                          </h3>
+                        ) : (
+                          <h2 className="mt-1 font-display text-[1.8rem] leading-none text-[#1A1612]">
+                            {DAY_NAMES[d]}
+                          </h2>
+                        )}
                       </div>
                       {!isPastWeek && !isSkipped && dayMeals.length > 0 && (
                         <button

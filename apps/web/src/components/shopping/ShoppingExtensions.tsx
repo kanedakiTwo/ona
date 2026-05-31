@@ -89,7 +89,14 @@ export function AddManualItemForm({ listId }: { listId: string }) {
     if (!trimmed) return
     const quantity = Number(qty)
     if (!Number.isFinite(quantity) || quantity <= 0) return
-    const pricePerUnit = price.trim() ? Number(price.replace(",", ".")) : null
+    // The manual-add form now asks for the **total** price for the line
+    // (matching the new inline price input behaviour). Convert to
+    // per-unit so the wire shape stays the same.
+    const totalParsed = price.trim() ? Number(price.replace(",", ".")) : null
+    const pricePerUnit =
+      totalParsed !== null && Number.isFinite(totalParsed) && totalParsed >= 0 && quantity > 0
+        ? totalParsed / quantity
+        : null
     add.mutate(
       {
         listId,
@@ -97,7 +104,7 @@ export function AddManualItemForm({ listId }: { listId: string }) {
         quantity,
         unit,
         aisle,
-        pricePerUnit: pricePerUnit !== null && Number.isFinite(pricePerUnit) ? pricePerUnit : null,
+        pricePerUnit,
       },
       {
         onSuccess: () => {
@@ -177,7 +184,7 @@ export function AddManualItemForm({ listId }: { listId: string }) {
           inputMode="decimal"
           min={0}
           step={0.05}
-          placeholder="precio por unidad (opcional)"
+          placeholder="precio total estimado (opcional, e.g. 1,80)"
           value={price}
           onChange={(e) => setPrice(e.target.value)}
           className="flex-1 border-b border-[#DDD6C5] bg-transparent py-1.5 text-[13px] outline-none focus:border-[#1A1612]"
@@ -203,6 +210,13 @@ export function AddManualItemForm({ listId }: { listId: string }) {
   )
 }
 
+/**
+ * Inline price input. The user types the **total** they paid (or expect
+ * to pay) for the whole line — e.g. "1,80" for the 550 g of brócoli —
+ * instead of having to compute price-per-gram themselves. Internally we
+ * still store `pricePerUnit` (= total / quantity) so the backend totals
+ * computation and the rest of the codebase stay unchanged.
+ */
 export function ItemPriceField({
   listId,
   item,
@@ -211,36 +225,53 @@ export function ItemPriceField({
   item: ShoppingItem
 }) {
   const patch = usePatchShoppingItem()
-  const [draft, setDraft] = useState<string>(() =>
-    item.pricePerUnit != null ? String(item.pricePerUnit) : "",
-  )
+  // The displayed value is the total cost rounded to 2 decimals.
+  const displayTotal =
+    item.pricePerUnit != null && item.quantity > 0
+      ? (item.pricePerUnit * item.quantity).toFixed(2).replace(/\.?0+$/, "")
+      : ""
+  const [draft, setDraft] = useState<string>(displayTotal)
   function commit() {
     const next = draft.trim()
-    const parsed = next === "" ? null : Number(next.replace(",", "."))
-    if (parsed !== null && (!Number.isFinite(parsed) || parsed < 0)) return
-    if (parsed === (item.pricePerUnit ?? null)) return
+    const total = next === "" ? null : Number(next.replace(",", "."))
+    if (total !== null && (!Number.isFinite(total) || total < 0)) return
+    const nextPricePerUnit =
+      total !== null && item.quantity > 0 ? total / item.quantity : null
+    const prevPricePerUnit = item.pricePerUnit ?? null
+    if (
+      (nextPricePerUnit === null && prevPricePerUnit === null) ||
+      (nextPricePerUnit !== null &&
+        prevPricePerUnit !== null &&
+        Math.abs(nextPricePerUnit - prevPricePerUnit) < 1e-6)
+    ) {
+      return
+    }
     patch.mutate({
       listId,
       itemId: item.id,
-      patch: { pricePerUnit: parsed as number | null },
+      patch: { pricePerUnit: nextPricePerUnit },
     })
   }
   return (
-    <input
-      type="number"
-      inputMode="decimal"
-      min={0}
-      step={0.05}
-      placeholder="€"
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur()
-      }}
-      aria-label={`Precio por ${item.unit} de ${item.name}`}
-      className="w-14 shrink-0 rounded-md border border-[#DDD6C5] bg-transparent px-1.5 py-1 text-right text-[11px] text-[#1A1612] tabular-nums outline-none focus:border-[#1A1612]"
-    />
+    <label className="relative inline-flex shrink-0 items-center">
+      <input
+        type="number"
+        inputMode="decimal"
+        min={0}
+        step={0.1}
+        placeholder="—"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur()
+        }}
+        aria-label={`Precio total estimado de ${item.name}`}
+        title="Precio total que pagas (o esperas pagar) por esta línea"
+        className="w-20 rounded-md border border-[#DDD6C5] bg-[#FFFEFA] px-2 py-1 pr-5 text-right text-[12px] text-[#1A1612] tabular-nums outline-none transition-colors focus:border-[#1A1612] focus:bg-[#F2EDE0]"
+      />
+      <span className="pointer-events-none absolute right-1.5 text-[11px] text-[#7A7066]">€</span>
+    </label>
   )
 }
 

@@ -190,13 +190,14 @@ export default function MenuPage() {
 
   // "Vista día" (current scroll-by-day UX) vs "Vista semana" (compact grid
   // that shows the whole week at a glance). Persisted in localStorage so the
-  // user's preference sticks across visits.
-  const [viewMode, setViewModeState] = useState<"day" | "week">("day")
-  useEffect(() => {
-    if (typeof window === "undefined") return
+  // user's preference sticks across visits. Lazy-init from storage so the
+  // first render already has the right value — no useEffect-driven flip
+  // that would re-trigger the auto-scroll effect.
+  const [viewMode, setViewModeState] = useState<"day" | "week">(() => {
+    if (typeof window === "undefined") return "day"
     const stored = window.localStorage.getItem("ona.menu.view")
-    if (stored === "week" || stored === "day") setViewModeState(stored)
-  }, [])
+    return stored === "week" ? "week" : "day"
+  })
   const setViewMode = useCallback((next: "day" | "week") => {
     setViewModeState(next)
     if (typeof window !== "undefined") {
@@ -227,30 +228,31 @@ export default function MenuPage() {
   const dayStackRef = useRef<HTMLDivElement>(null)
 
   /**
-   * Scroll a day section into view, offsetting the sticky day strip + page
-   * header so the day's own title isn't covered. Used by:
-   *   - The day strip's tap-to-jump.
-   *   - The "auto-scroll to today" effect on first mount.
-   *   - Switching from "Vista semana" back to "Vista día" with a day
-   *     selected from the grid.
+   * Scroll a day section into view. Relies on each block's CSS
+   * `scroll-margin-top: 72px` (Tailwind `scroll-mt-[72px]`) to clear the
+   * sticky strip — no manual offset math, so it stays correct under
+   * different viewport sizes + dynamic safe-area insets.
    */
   const scrollDayIntoView = useCallback((dayIndex: number, behavior: ScrollBehavior = "smooth") => {
     const el = dayStackRef.current?.querySelector<HTMLElement>(
       `[data-day-block="${dayIndex}"]`,
     )
     if (!el) return
-    // The day strip is ~64 px tall when sticky; leave a small gap so the
-    // title doesn't hide right under it.
-    const top = el.getBoundingClientRect().top + window.scrollY - 72
-    window.scrollTo({ top, behavior })
+    el.scrollIntoView({ behavior, block: "start" })
   }, [])
 
-  // When the user enters Vista Día (mount or from Vista Semana), scroll
-  // the selected day into view. Defer one frame so the layout has settled.
+  // First mount in Vista Día: clear any restored scroll position (browsers
+  // can land us at the bottom of the previous /menu visit, leaving the
+  // user looking at empty cream after navigating back from /recipes) and
+  // then scroll today's section into view once the layout has settled.
   useEffect(() => {
     if (viewMode !== "day") return
     if (selectedDay < 0) return
-    const id = setTimeout(() => scrollDayIntoView(selectedDay, "auto"), 50)
+    // Snap to top synchronously so we never start from a stale scroll.
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "auto" })
+    // Wait one paint + a beat so the day stack is laid out before we
+    // measure. 200 ms is generous on mobile and not visibly slow.
+    const id = setTimeout(() => scrollDayIntoView(selectedDay, "auto"), 200)
     return () => clearTimeout(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode])
@@ -340,19 +342,13 @@ export default function MenuPage() {
   )
   const selectedDayMeals = useMemo(() => mealsForDay(selectedDay), [mealsForDay, selectedDay])
 
-  /** Days that should appear in the continuous-scroll view: any day with
-   *  at least one planned meal OR marked as skipped (so the user can see
-   *  + reactivate it). Empty/unscheduled days drop out. */
+  /** Days the stack renders. Always all 7 — even fully empty days appear
+   *  as a quiet "Añadir comida" row so the user has a way back from a
+   *  cleared day without bouncing into another view. */
   const daysToRender = useMemo(() => {
     if (!menu?.days) return []
-    return menu.days
-      .map((_, i) => i)
-      .filter(
-        (i) =>
-          mealsForDay(i).length > 0 ||
-          (menu.skippedDays ?? []).includes(i),
-      )
-  }, [menu, mealsForDay])
+    return menu.days.map((_, i) => i)
+  }, [menu])
 
   const isLockedAt = (day: number, meal: string) => {
     return Boolean((menu?.locked as any)?.[String(day)]?.[meal])

@@ -50,7 +50,9 @@ Then the list aggregator merges items by `ingredientId`:
 
 Quantities are then rounded to friendly values (kg above 1 kg, 50 g bands above 250 g, 25 g bands below) and grouped by `aisle` for display.
 
-The list is generated on the **first** GET; subsequent GETs return the same persisted list. There is no automatic regeneration if the menu changes — the list is decoupled once created.
+The list is a **rolling window** keyed by user (or household when shared). Every `GET /shopping-list?from=&to=` regenerates the menu-derived items from scratch by aggregating across every menu in the date range, and merges them with the persisted row's manual items + check state via an `ingredientId` overlay. There is one `shopping_lists` row per user — prior rows are deleted before the fresh row is inserted on every fetch. The web client also invalidates `["shopping-list"]` from every menu mutation (`useGenerateMenu`, `useRegenerateMeal`, `useAddMealSlot`, `useDeleteMealSlot`, `useMoveMealSlot`, `useUpdateSlotServings`, `useSkipDay`, `useUnskipDay`, `useMarkLeftover`, etc.) so a menu change refreshes the list automatically.
+
+Default range when neither `from` nor `to` is passed: **today (Madrid) → end of next week** (today's Monday + 13). The `from` day drops meal slots whose clock cutoff has already passed in Madrid time: breakfast after 10:00, lunch after 16:00, snack after 19:00, dinner after 23:00.
 
 ## API Endpoints
 
@@ -89,7 +91,7 @@ Access check is the same scope rule as the rest of `/shopping-list/*`: requester
 ## Constraints
 
 - Field names are camelCase (`inStock`, `checked`, `ingredientId`) end-to-end — frontend, types, and DB JSONB
-- The list is created on first GET; once created, it's not regenerated automatically — only via the explicit regenerate endpoint
+- The list is regenerated on every GET — there is no longer a manual "Regenerar" button on `/shopping`. The cache invalidates automatically when any menu mutation succeeds, so editing the menu, swapping slots, or skipping a day reflects in the basket on the next render.
 - Items are only created from menu recipes; users cannot add custom items in the current implementation
 - The progress bar uses `(checkedCount + inStockCount) / totalCount`
 - Export format is plain text suitable for paste into messaging apps; it preserves aisle grouping

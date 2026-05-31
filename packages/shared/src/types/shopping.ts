@@ -35,6 +35,10 @@ export interface ShoppingList {
   id: string
   userId: string
   menuId: string | null
+  /** Inclusive ISO `YYYY-MM-DD` boundaries of the date range this list covers.
+   *  Pre-migration rows have null — the route fills both on the next read. */
+  rangeStartDate: string | null
+  rangeEndDate: string | null
   items: ShoppingItem[]
   createdAt: Date
 }

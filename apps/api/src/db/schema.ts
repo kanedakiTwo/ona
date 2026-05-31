@@ -314,7 +314,19 @@ export const shoppingLists = pgTable('shopping_lists', {
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   /** PR 1B scope key. See `user_favorites.householdId` for the lifecycle note. */
   householdId: uuid('household_id').references(() => households.id, { onDelete: 'cascade' }),
+  /** Reference to *a* covering menu — kept for backwards compat with the
+   *  old single-menu listing model. The new aggregator finds every menu in
+   *  the date range via `(userId, weekStart)` matching, so this column is
+   *  only filled with the first menu in range as a soft hint. */
   menuId: uuid('menu_id').references(() => menus.id, { onDelete: 'set null' }),
+  /**
+   * Inclusive date range the list covers. Both columns are filled on every
+   * regenerate; the route uses them to decide which menus to aggregate
+   * across. Pre-migration rows have NULL — the route falls back to the
+   * "current week" default the first time the list is touched.
+   */
+  rangeStartDate: date('range_start_date'),
+  rangeEndDate: date('range_end_date'),
   items: jsonb('items').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => [

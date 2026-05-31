@@ -61,7 +61,7 @@ export function useGenerateMenu() {
       // Set the new menu directly in cache so it renders immediately
       queryClient.setQueryData(["menu", variables.userId, variables.weekStart], data)
       // Also invalidate to ensure fresh data on next access
-      queryClient.invalidateQueries({ queryKey: ["menu"] })
+      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
     },
   })
 }
@@ -104,7 +104,7 @@ export function useRegenerateMeal() {
       if (data?.userId && data?.weekStart) {
         queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
       }
-      queryClient.invalidateQueries({ queryKey: ["menu"] })
+      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
     },
   })
 }
@@ -135,7 +135,7 @@ export function useAddMealSlot() {
       if (data?.userId && data?.weekStart) {
         queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
       }
-      queryClient.invalidateQueries({ queryKey: ["menu"] })
+      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
     },
   })
 }
@@ -156,7 +156,7 @@ export function useDeleteMealSlot() {
       if (data?.userId && data?.weekStart) {
         queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
       }
-      queryClient.invalidateQueries({ queryKey: ["menu"] })
+      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
     },
   })
 }
@@ -189,7 +189,7 @@ export function useMoveMealSlot() {
       if (data?.userId && data?.weekStart) {
         queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
       }
-      queryClient.invalidateQueries({ queryKey: ["menu"] })
+      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
     },
   })
 }
@@ -215,7 +215,7 @@ export function useUpdateSlotServings() {
       if (data?.userId && data?.weekStart) {
         queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
       }
-      queryClient.invalidateQueries({ queryKey: ["menu"] })
+      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
     },
   })
 }
@@ -241,7 +241,7 @@ export function useSetSlotPinnedType() {
       if (data?.userId && data?.weekStart) {
         queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
       }
-      queryClient.invalidateQueries({ queryKey: ["menu"] })
+      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
     },
   })
 }
@@ -263,7 +263,7 @@ export function useBanRecipe() {
       if (data?.userId && data?.weekStart) {
         queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
       }
-      queryClient.invalidateQueries({ queryKey: ["menu"] })
+      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
     },
   })
 }
@@ -278,7 +278,7 @@ export function useUnbanRecipe() {
       if (data?.userId && data?.weekStart) {
         queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
       }
-      queryClient.invalidateQueries({ queryKey: ["menu"] })
+      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
     },
   })
 }
@@ -309,7 +309,7 @@ export function useMarkLeftover() {
       if (data?.userId && data?.weekStart) {
         queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
       }
-      queryClient.invalidateQueries({ queryKey: ["menu"] })
+      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
     },
   })
 }
@@ -330,7 +330,7 @@ export function useSkipDay() {
       if (data?.userId && data?.weekStart) {
         queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
       }
-      queryClient.invalidateQueries({ queryKey: ["menu"] })
+      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
     },
   })
 }
@@ -345,7 +345,7 @@ export function useUnskipDay() {
       if (data?.userId && data?.weekStart) {
         queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
       }
-      queryClient.invalidateQueries({ queryKey: ["menu"] })
+      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
     },
   })
 }
@@ -387,7 +387,7 @@ export function useLockMeal() {
       if (data?.userId && data?.weekStart) {
         queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
       }
-      queryClient.invalidateQueries({ queryKey: ["menu"] })
+      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
     },
   })
 }

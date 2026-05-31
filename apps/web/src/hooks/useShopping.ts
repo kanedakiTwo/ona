@@ -20,7 +20,10 @@ export interface ShoppingItem {
 
 export interface ShoppingList {
   id: string
-  menu_id: string
+  menuId: string | null
+  /** Inclusive ISO `YYYY-MM-DD` boundaries of the date range this list covers. */
+  rangeStartDate: string | null
+  rangeEndDate: string | null
   items: ShoppingItem[]
 }
 
@@ -30,11 +33,22 @@ export interface ShoppingListTotal {
   unpricedCount: number
 }
 
-export function useShoppingList(menuId: string | undefined) {
+/**
+ * Fetch the user's rolling shopping list. Date range is optional — server
+ * defaults to "today through end of next week". The list is regenerated
+ * on every GET (overwriting the persisted row's items + range) so the
+ * caller only needs to invalidate this query after menu mutations and
+ * the next fetch reflects them.
+ */
+export function useShoppingList(range?: { from: string; to: string }) {
   return useQuery<ShoppingList>({
-    queryKey: ["shopping-list", menuId],
-    queryFn: () => api.get(`/shopping-list/${menuId}`),
-    enabled: !!menuId,
+    queryKey: ["shopping-list", "rolling", range?.from ?? null, range?.to ?? null],
+    queryFn: () => {
+      const params = range
+        ? `?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`
+        : ""
+      return api.get<ShoppingList>(`/shopping-list${params}`)
+    },
   })
 }
 

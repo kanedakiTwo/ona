@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { eq } from 'drizzle-orm'
+import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
 import { z } from 'zod'
 import { db } from '../db/connection.js'
@@ -48,7 +48,253 @@ const router = Router()
 // All routes require auth
 router.use(authMiddleware)
 
+// ─── Helpers: dates + meal-time cutoffs ──────────────────────────
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+
+/** YYYY-MM-DD in Europe/Madrid (the user-facing "today" — server can be in UTC). */
+function todayInMadrid(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Madrid',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date())
+}
+
+/** Hour of the day (0-23) in Europe/Madrid. Used by the "skip already-passed
+ *  meals today" filter on the range aggregator. */
+function hourInMadrid(): number {
+  const s = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Madrid',
+    hour: '2-digit',
+    hour12: false,
+  }).format(new Date())
+  return parseInt(s, 10)
+}
+
+/** Shift an ISO date by N days; returns ISO date. */
+function shiftDate(iso: string, days: number): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  // Use UTC to avoid DST corner cases — we're only doing date arithmetic.
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  dt.setUTCDate(dt.getUTCDate() + days)
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`
+}
+
+/** Inclusive day-difference between two YYYY-MM-DD dates (b - a). */
+function daysBetween(a: string, b: string): number {
+  const [ay, am, ad] = a.split('-').map(Number)
+  const [by, bm, bd] = b.split('-').map(Number)
+  const da = Date.UTC(ay, am - 1, ad)
+  const db = Date.UTC(by, bm - 1, bd)
+  return Math.round((db - da) / (1000 * 60 * 60 * 24))
+}
+
+/** Map a date to its Monday week-start (ISO Mon-Sun grid). */
+function mondayOf(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  // getUTCDay: 0=Sun..6=Sat. Map to Mon-based 0=Mon..6=Sun.
+  const dow = (dt.getUTCDay() + 6) % 7
+  dt.setUTCDate(dt.getUTCDate() - dow)
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`
+}
+
+/** Drop today's already-passed meal slots from a `DayMenu`. Cutoffs are
+ *  generous so a user who scrolls the list around lunch still sees lunch
+ *  ("comida" tagged as past once it's 16:00 Madrid). */
+function filterPastTodayMeals(day: DayMenu | undefined, hour: number): DayMenu {
+  if (!day) return {}
+  const past = new Set<string>()
+  if (hour >= 10) past.add('breakfast')
+  if (hour >= 16) past.add('lunch')
+  if (hour >= 19) past.add('snack')
+  if (hour >= 23) past.add('dinner')
+  const out: DayMenu = {}
+  for (const k of Object.keys(day)) {
+    if (!past.has(k)) out[k] = day[k]
+  }
+  return out
+}
+
 // GET /shopping-list/:menuId - generate shopping list from menu
+/**
+ * GET /shopping-list — rolling window list (auth-scoped).
+ *
+ *   Query params: `from`, `to` (both `YYYY-MM-DD`, both optional).
+ *   Defaults: from = today (Madrid), to = end of next week (today's Monday
+ *   + 13 days). The route looks up every menu in `[from, to]` that the
+ *   caller's user (or household) owns, builds a synthetic day array, drops
+ *   today's already-passed meals (cutoffs: breakfast 10:00, lunch 16:00,
+ *   snack 19:00, dinner 23:00 Madrid time), and aggregates ingredients with
+ *   the existing `generateShoppingList` pipeline.
+ *
+ *   The persisted `shopping_lists` row is overwritten on every read so the
+ *   list always reflects the current menu state — manual items + `checked`/
+ *   `inStock`/`pricePerUnit` survive via an overlay merge by ingredientId.
+ *
+ *   One row per user (or household when shared) — we delete prior rows for
+ *   the user before inserting the fresh aggregate so historical staleness
+ *   doesn't accumulate.
+ */
+router.get('/shopping-list', async (req: AuthRequest, res) => {
+  try {
+    const userId = req.userId!
+    const todayMadrid = todayInMadrid()
+    const hourMadrid = hourInMadrid()
+
+    // Parse + validate range.
+    const rawFrom = typeof req.query.from === 'string' ? req.query.from : null
+    const rawTo = typeof req.query.to === 'string' ? req.query.to : null
+    const from = rawFrom && ISO_DATE_RE.test(rawFrom) ? rawFrom : todayMadrid
+    // Default to: end of next week. "Today's Monday + 13" = next Sunday.
+    const defaultTo = shiftDate(mondayOf(todayMadrid), 13)
+    const to = rawTo && ISO_DATE_RE.test(rawTo) ? rawTo : defaultTo
+    if (daysBetween(from, to) < 0) {
+      res.status(400).json({ error: 'Rango inválido: from > to' })
+      return
+    }
+
+    // Pull household sizing.
+    const [user] = await db
+      .select({
+        adults: users.adults,
+        kidsCount: users.kidsCount,
+        householdSize: users.householdSize,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1)
+    const multiplier = multiplierForUser(user ?? {})
+    const householdId = await getPrimaryHouseholdId(userId)
+
+    // Fetch every menu of this user/household whose 7-day window overlaps
+    // with [from, to]. A menu covers `[weekStart, weekStart + 6]`, so the
+    // earliest week we need is the one whose Monday <= `to` and whose
+    // Sunday >= `from` → `weekStart in [from-6, to]`.
+    const earliestWeek = shiftDate(from, -6)
+    const menuRows = await db
+      .select({
+        id: menus.id,
+        weekStart: menus.weekStart,
+        days: menus.days,
+        userId: menus.userId,
+        householdId: menus.householdId,
+      })
+      .from(menus)
+      .where(
+        and(
+          // Household-scoped if available; otherwise user-scoped.
+          householdId
+            ? eq(menus.householdId, householdId)
+            : eq(menus.userId, userId),
+          sql`${menus.weekStart} >= ${earliestWeek}`,
+          sql`${menus.weekStart} <= ${to}`,
+        ),
+      )
+      .orderBy(desc(menus.createdAt))
+
+    // Pick the most recent menu per weekStart (the user may have
+    // regenerated the same week multiple times — only the latest counts).
+    const menuByWeek = new Map<string, (typeof menuRows)[number]>()
+    for (const m of menuRows) {
+      if (!menuByWeek.has(m.weekStart)) menuByWeek.set(m.weekStart, m)
+    }
+
+    // Walk every date in [from, to] and pull the right slot from the
+    // covering menu. Today's already-passed meals are dropped.
+    const span = daysBetween(from, to) + 1
+    const aggregatedDays: DayMenu[] = []
+    for (let i = 0; i < span; i++) {
+      const date = shiftDate(from, i)
+      const wk = mondayOf(date)
+      const menu = menuByWeek.get(wk)
+      if (!menu) {
+        aggregatedDays.push({})
+        continue
+      }
+      const dowIndex = daysBetween(wk, date) // 0..6
+      const day = (menu.days as DayMenu[])[dowIndex] ?? {}
+      aggregatedDays.push(date === todayMadrid ? filterPastTodayMeals(day, hourMadrid) : day)
+    }
+
+    // Aggregate with the existing pipeline (handles overrides + scaling).
+    const menuItems = await generateShoppingList(
+      aggregatedDays,
+      multiplier,
+      db,
+      householdId,
+    )
+
+    // Load the user's previous list (if any) so we can merge state +
+    // manual items into the freshly-aggregated set.
+    const [previous] = await db
+      .select()
+      .from(shoppingLists)
+      .where(eq(shoppingLists.userId, userId))
+      .orderBy(desc(shoppingLists.createdAt))
+      .limit(1)
+    const prevItems = (previous?.items ?? []) as ShoppingItem[]
+
+    // Overlay merge: keep checked/inStock/pricePerUnit on menu items that
+    // are still in the new aggregate (matched by ingredientId). Manual
+    // items pass through verbatim. Staples get re-applied below.
+    const overlayByIngredient = new Map<string, ShoppingItem>()
+    const manualSurviving: ShoppingItem[] = []
+    for (const it of prevItems) {
+      if (it.kind === 'manual') {
+        manualSurviving.push(it)
+      } else if (it.ingredientId) {
+        overlayByIngredient.set(it.ingredientId, it)
+      }
+    }
+    const mergedMenuItems: ShoppingItem[] = menuItems.map((it) => {
+      const prev = it.ingredientId ? overlayByIngredient.get(it.ingredientId) : undefined
+      if (!prev) return it
+      return {
+        ...it,
+        checked: prev.checked,
+        inStock: prev.inStock,
+        pricePerUnit: prev.pricePerUnit ?? null,
+      }
+    })
+
+    // Re-merge staples (PR 10B) on top of the menu-derived items so they
+    // keep their `inStock` / pricing.
+    const staples = householdId ? await listActiveStaplesForHousehold(householdId) : []
+    const stapleMerged = mergeStaplesIntoItems(mergedMenuItems, staples)
+    // Manual items always at the end, preserving order.
+    const finalItems = [...stapleMerged, ...manualSurviving]
+
+    // Overwrite the persisted row — one shopping list per user. Delete
+    // any prior rows so historical churn doesn't pile up.
+    await db.delete(shoppingLists).where(eq(shoppingLists.userId, userId))
+    const firstMenuInRange = aggregatedDays
+      .map((_, i) => menuByWeek.get(mondayOf(shiftDate(from, i))))
+      .find((m) => Boolean(m))
+    const [list] = await db
+      .insert(shoppingLists)
+      .values({
+        userId,
+        householdId,
+        menuId: firstMenuInRange?.id ?? null,
+        rangeStartDate: from,
+        rangeEndDate: to,
+        items: finalItems,
+      })
+      .returning()
+
+    res.json(list)
+  } catch (err) {
+    console.error('Get rolling shopping list error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// Legacy single-menu listing — kept for the assistant skill + any
+// backwards-compat callers. The new web client uses the rolling window
+// endpoint above.
 router.get('/shopping-list/:menuId', async (req: AuthRequest, res) => {
   try {
     const menuId = String(req.params.menuId)

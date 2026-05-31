@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { Check, Share2, Package, Sparkles, RefreshCw } from 'lucide-react'
+import { Check, Share2, Package, Sparkles } from 'lucide-react'
 import Link from 'next/link'
 import type { Aisle } from '@ona/shared'
 import { useAuth } from '@/lib/auth'
@@ -10,7 +10,6 @@ import {
   useShoppingList,
   useCheckItem,
   useStockItem,
-  useRegenerateShoppingList,
 } from '@/hooks/useShopping'
 import { useMenu } from '@/hooks/useMenu'
 import { haptic } from '@/lib/pwa/haptics'
@@ -23,7 +22,12 @@ import {
   ItemDeleteButton,
 } from '@/components/shopping/ShoppingExtensions'
 
-function getWeekStart(): string {
+function todayIso(): string {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+}
+
+function mondayOfTodayIso(): string {
   const now = new Date()
   const day = now.getDay()
   const diff = day === 0 ? -6 : 1 - day
@@ -32,14 +36,43 @@ function getWeekStart(): string {
   return `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`
 }
 
+function shiftIso(iso: string, days: number): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  dt.setUTCDate(dt.getUTCDate() + days)
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`
+}
+
+function formatRangeLabel(from: string, to: string): string {
+  const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+  const [, , fd] = from.split('-')
+  const [, , td] = to.split('-')
+  const fm = months[Number(from.split('-')[1]) - 1]
+  const tm = months[Number(to.split('-')[1]) - 1]
+  return fm === tm ? `${Number(fd)}–${Number(td)} ${fm}` : `${Number(fd)} ${fm} – ${Number(td)} ${tm}`
+}
+
 type Tab = 'list' | 'stock'
 
 export default function ShoppingPage() {
   const { user, isLoading: authLoading } = useAuth()
-  const weekStart = useMemo(() => getWeekStart(), [])
+
+  // Rolling date range. Default: today → end of next week. The user can
+  // narrow it via the inputs above the list; pressing "Esta + sig" resets
+  // to the default.
+  const today = useMemo(() => todayIso(), [])
+  const defaultTo = useMemo(() => shiftIso(mondayOfTodayIso(), 13), [])
+  const [from, setFrom] = useState<string>(today)
+  const [to, setTo] = useState<string>(defaultTo)
+  const range = useMemo(() => ({ from, to }), [from, to])
+
+  // The /menu hook is still used by the empty-state to confirm whether the
+  // user has any menu at all — but the shopping list itself no longer
+  // depends on a single menuId.
+  const weekStart = useMemo(() => mondayOfTodayIso(), [])
   const { data: menu, isLoading: menuLoading } = useMenu(user?.id, weekStart)
   const menuId = menu?.id
-  const { data: shoppingList, isLoading: listLoading } = useShoppingList(menuId)
+  const { data: shoppingList, isLoading: listLoading } = useShoppingList(range)
 
   const [activeTab, setActiveTab] = useState<Tab>('list')
 
@@ -48,8 +81,6 @@ export default function ShoppingPage() {
   const totalCount = items.length
   const inStockCount = items.filter((i) => i.inStock).length
   const progress = totalCount > 0 ? (checkedCount + inStockCount) / totalCount : 0
-
-  const regenerate = useRegenerateShoppingList()
 
   async function handleExport() {
     haptic.light()
@@ -66,16 +97,6 @@ export default function ShoppingPage() {
     })
     const text = `Lista de compra ONA\nSemana del ${weekStart}\n\n${sections.join('\n')}`
     await share({ title: 'Lista de compra ONA', text })
-  }
-
-  async function handleRegenerate() {
-    if (!shoppingList?.id) return
-    const ok = window.confirm(
-      '¿Regenerar la lista? Perderás los items marcados.',
-    )
-    if (!ok) return
-    haptic.medium()
-    regenerate.mutate(shoppingList.id)
   }
 
   if (authLoading || menuLoading) {
@@ -123,14 +144,11 @@ export default function ShoppingPage() {
         <div className="flex items-baseline justify-between">
           <div className="text-eyebrow">La logística</div>
           <div className="flex items-center gap-3">
-            <button
-              onClick={handleRegenerate}
-              disabled={regenerate.isPending}
-              className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.18em] text-[#7A7066] hover:text-[#1A1612] disabled:opacity-50"
-            >
-              <RefreshCw size={12} className={regenerate.isPending ? 'animate-spin' : ''} />
-              {regenerate.isPending ? 'Regenerando...' : 'Regenerar'}
-            </button>
+            {/* The list now regenerates automatically on every fetch + any
+                time the menu changes (the menu mutation hooks invalidate
+                `shopping-list`). The previous "Regenerar" button is gone
+                because there's nothing left for the user to trigger
+                manually. */}
             <button
               onClick={handleExport}
               className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.18em] text-[#7A7066] hover:text-[#1A1612]"
@@ -143,6 +161,47 @@ export default function ShoppingPage() {
         <h1 className="mt-2 font-display text-[2.4rem] leading-[0.95] text-[#1A1612]">
           <span className="font-italic italic text-[#C65D38]">Lista</span><br />de la compra.
         </h1>
+
+        {/* Date range selector. Two date inputs + a "Esta + sig" preset that
+            resets to today → end of next week. The list regenerates on
+            every change (the rolling endpoint always returns fresh
+            aggregation; user-checked state survives via overlay). */}
+        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl border border-[#DDD6C5] bg-[#FFFEFA] px-3 py-2">
+          <label className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.12em] text-[#7A7066]">
+            Desde
+            <input
+              type="date"
+              value={from}
+              max={to}
+              onChange={(e) => setFrom(e.target.value)}
+              className="rounded-md border border-[#DDD6C5] bg-transparent px-2 py-1 text-[12px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none"
+            />
+          </label>
+          <label className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.12em] text-[#7A7066]">
+            Hasta
+            <input
+              type="date"
+              value={to}
+              min={from}
+              onChange={(e) => setTo(e.target.value)}
+              className="rounded-md border border-[#DDD6C5] bg-transparent px-2 py-1 text-[12px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => {
+              haptic.light()
+              setFrom(today)
+              setTo(defaultTo)
+            }}
+            className="ml-auto rounded-full border border-[#DDD6C5] px-3 py-1 text-[10px] uppercase tracking-[0.12em] text-[#1A1612] transition-colors hover:border-[#1A1612] hover:bg-[#1A1612] hover:text-[#FAF6EE]"
+          >
+            Esta + sig
+          </button>
+        </div>
+        <p className="mt-2 text-[11px] italic text-[#7A7066]">
+          {formatRangeLabel(from, to)} · los platos del día de hoy ya pasados se excluyen automáticamente
+        </p>
       </header>
 
       {/* Progress strip */}

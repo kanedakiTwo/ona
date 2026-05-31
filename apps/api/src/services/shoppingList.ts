@@ -502,7 +502,13 @@ export async function generateShoppingList(
       const rounded = roundForUnit(line.quantity, line.unit)
       if (rounded <= 0) continue
       items.push({
-        id: randomUUID(),
+        // Deterministic id: `menu:<ingredientId>:<unit>`. Stable across
+        // regenerates so React keys (and the route layer's lookup-by-id)
+        // don't see a fresh row every fetch. The aggregator already
+        // guarantees one row per (ingredientId, unit) within a list, so
+        // this id is unique per item; the `menu:` prefix keeps it from
+        // colliding with manual / staple uuids.
+        id: `menu:${bucket.ingredientId}:${line.unit}`,
         ingredientId: bucket.ingredientId,
         name: line.suffix
           ? `${bucket.catalog.name.toLowerCase()} · ${line.suffix}`
@@ -639,7 +645,10 @@ export function mergeStaplesIntoItems(
     if (existingNames.has(norm)) continue
     existingNames.add(norm)
     out.push({
-      id: randomUUID(),
+      // Deterministic staple id so check/inStock state survives the
+      // rolling regenerate. The name is normalized to slug form so a
+      // trailing space / case difference can't bump the id.
+      id: `staple:${norm.replace(/\s+/g, '-')}`,
       ingredientId: null,
       name: s.name,
       quantity: s.quantity,

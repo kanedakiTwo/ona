@@ -87,8 +87,14 @@ export function useCheckItem() {
 
       return api.put(url, body)
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
+    onSuccess: (data) => {
+      // State-only mutations: don't refetch (which would re-run the rolling
+      // aggregation server-side and feel like a full reload). The PUT
+      // already returns the updated list — slot it into every cached
+      // `["shopping-list"]` query directly.
+      if (data && typeof data === "object" && "items" in data) {
+        queryClient.setQueriesData({ queryKey: ["shopping-list"] }, data)
+      }
     },
   })
 }
@@ -119,8 +125,10 @@ export function useAddShoppingItem() {
     }
   >({
     mutationFn: ({ listId, ...body }) => api.post(`/shopping-list/${listId}/items`, body),
-    onSuccess: (_data, vars) => {
-      qc.invalidateQueries({ queryKey: ["shopping-list"] })
+    onSuccess: (data, vars) => {
+      if (data && typeof data === "object" && "items" in data) {
+        qc.setQueriesData({ queryKey: ["shopping-list"] }, data)
+      }
       qc.invalidateQueries({ queryKey: ["shopping-list", vars.listId, "totals"] })
     },
   })
@@ -139,8 +147,10 @@ export function usePatchShoppingItem() {
   >({
     mutationFn: ({ listId, itemId, patch }) =>
       api.patch(`/shopping-list/${listId}/item/${itemId}`, patch),
-    onSuccess: (_data, vars) => {
-      qc.invalidateQueries({ queryKey: ["shopping-list"] })
+    onSuccess: (data, vars) => {
+      if (data && typeof data === "object" && "items" in data) {
+        qc.setQueriesData({ queryKey: ["shopping-list"] }, data)
+      }
       qc.invalidateQueries({ queryKey: ["shopping-list", vars.listId, "totals"] })
     },
   })
@@ -151,22 +161,21 @@ export function useDeleteShoppingItem() {
   return useMutation<ShoppingList, Error, { listId: string; itemId: string }>({
     mutationFn: ({ listId, itemId }) =>
       api.delete(`/shopping-list/${listId}/item/${itemId}`),
-    onSuccess: (_data, vars) => {
-      qc.invalidateQueries({ queryKey: ["shopping-list"] })
+    onSuccess: (data, vars) => {
+      if (data && typeof data === "object" && "items" in data) {
+        qc.setQueriesData({ queryKey: ["shopping-list"] }, data)
+      }
       qc.invalidateQueries({ queryKey: ["shopping-list", vars.listId, "totals"] })
     },
   })
 }
 
+/**
+ * @deprecated The rolling endpoint regenerates on every GET, so manual
+ * regeneration isn't needed. Kept as a no-op for old callers.
+ */
 export function useRegenerateShoppingList() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (listId: string) =>
-      api.post(`/shopping-list/${listId}/regenerate`, {}),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
-    },
-  })
+  return useMutation({ mutationFn: async (_listId: string) => null })
 }
 
 export function useStockItem() {
@@ -204,8 +213,13 @@ export function useStockItem() {
 
       return api.put(url, body)
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
+    onSuccess: (data) => {
+      // State-only mutation — slot the server response into the cache
+      // rather than invalidating (which would trigger a fresh rolling
+      // aggregation server-side and feel like a page reload).
+      if (data && typeof data === "object" && "items" in data) {
+        queryClient.setQueriesData({ queryKey: ["shopping-list"] }, data)
+      }
     },
   })
 }

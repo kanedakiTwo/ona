@@ -1,52 +1,66 @@
 "use client"
 
 /**
- * Animated entry splash — shown on the very first client render of the
- * session, then fades out.
+ * Animated entry splash — second iteration.
  *
- * Why this exists alongside `app/loading.tsx`:
- *   - `app/loading.tsx` is rendered by Next.js during a Suspense boundary
- *     (initial hydration, slow data fetches). On a fast bundle it's gone
- *     in well under 100 ms, which is why "no he visto mejora ninguna" —
- *     the user never gets to see it.
- *   - The OS-level PWA splash (`splash-*.png`) is a static image and
- *     can't animate.
+ * Narrative (~2 s):
+ *   t=0.00   A black ink droplet starts falling from above the centre.
+ *            It's elongated (water-drop shape) and accelerates with a
+ *            gravity ease.
+ *   t≈0.55   Impact at centre. The droplet squashes briefly (rx grows,
+ *            ry shrinks) then settles to a small organic blob.
+ *   t≈0.60   A first ripple ring radiates outward, thinning + fading.
+ *   t≈0.78   A second, fainter ripple follows — staggered, smaller.
+ *   t≈0.85   A tiny secondary droplet falls off-axis (smaller, left of
+ *            centre). Adds asymmetry + a hand-painted feel.
+ *   t≈1.10   "Ona" italic Fraunces wordmark fades in below the impact,
+ *            letter by letter (O-n-a, 80 ms apart).
+ *   t≈1.45   A small terracotta dot pulses under the wordmark — the
+ *            single chromatic note in the composition; reads as a
+ *            "stamp of approval" or seal.
+ *   t≈1.85   Hold.
+ *   t≈2.05   Whole splash fades out over 350 ms.
  *
- * This component sits as the first child of the root layout and shows
- * for a deliberate minimum of ~1.6 s on the first mount of the tab,
- * regardless of how fast the rest of the app is. Subsequent route
- * navigations don't re-trigger it (it remembers via a session ref).
+ * Decisions worth recording:
+ *   - 220×220 SVG inside a centred flex container so the impact origin
+ *     sits at the optical centre of the viewport. The motion lives in a
+ *     400×400 viewBox so the ripples have room to expand past the
+ *     visible silhouette.
+ *   - Single colour (#1A1612 ink) for the entire ink composition; the
+ *     only chromatic accent is the terracotta dot at the end. Keeps the
+ *     piece feeling like a single editorial gesture instead of a UI.
+ *   - The OS-level static splash (`splash-*.png`) covers the bundle-
+ *     load window before this JS runs, so the cream background of this
+ *     component matches the static splash's cream → the user sees one
+ *     continuous frame, not a flash.
  *
- * Visual is the same ink-in-water vocabulary as `app/loading.tsx`: three
- * drops on cream morphing between two organic silhouettes, soft Gaussian
- * blur on the centre drop, "Ona" italic underneath. We do not import the
- * loading.tsx directly because Next.js owns that file; copying the
- * markup keeps the two surfaces decoupled.
+ * Replays per session: module-level boolean. Even if the React tree
+ * remounts (PageTransition / route change), the splash only shows on
+ * the FIRST tab load.
  */
 import { useEffect, useState } from "react"
 import { AnimatePresence, motion } from "motion/react"
 
-const EASE = [0.65, 0, 0.35, 1] as const
-
-const DROP_A = [
-  "M50,15 C68,18 80,32 80,52 C80,72 65,87 50,87 C35,87 20,72 20,52 C20,32 32,18 50,15 Z",
-  "M50,22 C72,22 82,40 80,58 C77,76 60,90 48,88 C30,84 18,68 22,48 C26,30 38,22 50,22 Z",
-] as const
-
-const DROP_B = [
-  "M50,20 C66,22 76,38 74,55 C72,72 58,85 48,84 C36,82 28,68 30,52 C32,36 40,22 50,20 Z",
-  "M50,18 C72,24 78,44 70,62 C62,80 46,86 38,80 C26,72 24,52 32,38 C38,28 44,16 50,18 Z",
-] as const
-
-const DROP_C = [
-  "M50,28 C62,30 70,42 68,55 C66,68 58,78 50,76 C42,74 36,62 38,50 C40,38 46,28 50,28 Z",
-  "M50,32 C66,30 74,46 70,60 C66,72 52,80 44,76 C34,70 30,56 36,44 C40,36 46,34 50,32 Z",
-] as const
-
-// Once we've shown the splash this session, don't show it again on
-// soft-navigation re-mounts. Survives across PageTransition cycles
-// because it's a module-level boolean, not React state.
 let splashShownThisSession = false
+
+// Sequence anchor points (seconds). Tweaking these in one place keeps
+// the choreography in sync.
+const T = {
+  fallStart: 0,
+  impact: 0.55,
+  rippleA: 0.6,
+  rippleB: 0.78,
+  secondaryDrop: 0.85,
+  wordmark: 1.1,
+  accent: 1.45,
+  hold: 1.85,
+  total: 2.05,
+} as const
+
+// Cubic-bezier curves picked by feel: `gravity` accelerates the fall
+// then snaps, `settle` is the post-impact rest curve.
+const GRAVITY: [number, number, number, number] = [0.55, 0, 0.85, 0.25]
+const SETTLE: [number, number, number, number] = [0.16, 1, 0.3, 1]
 
 export function ClientSplash() {
   const [visible, setVisible] = useState(false)
@@ -55,9 +69,7 @@ export function ClientSplash() {
     if (splashShownThisSession) return
     splashShownThisSession = true
     setVisible(true)
-    // Visible for 1.6 s — long enough to read the animation, short
-    // enough to not feel slow. The fade-out adds another 350 ms.
-    const id = setTimeout(() => setVisible(false), 1600)
+    const id = setTimeout(() => setVisible(false), T.total * 1000)
     return () => clearTimeout(id)
   }, [])
 
@@ -68,74 +80,194 @@ export function ClientSplash() {
           key="splash"
           initial={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.35, ease: EASE }}
+          transition={{ duration: 0.35, ease: SETTLE }}
           className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-[#FAF6EE] grain-subtle"
-          // Lock pointer/scroll while the splash is up.
           aria-hidden="true"
         >
           <svg
-            viewBox="0 0 300 300"
-            width="220"
-            height="220"
-            aria-hidden="true"
+            viewBox="0 0 400 400"
+            width="260"
+            height="260"
             className="select-none"
+            aria-hidden="true"
           >
             <defs>
-              <filter id="splash-ink-bleed" x="-20%" y="-20%" width="140%" height="140%">
-                <feGaussianBlur stdDeviation="1.4" />
+              <filter
+                id="splash-bleed"
+                x="-30%"
+                y="-30%"
+                width="160%"
+                height="160%"
+                filterUnits="objectBoundingBox"
+              >
+                <feGaussianBlur stdDeviation="2.2" />
               </filter>
+              <radialGradient id="splash-ripple-grad">
+                <stop offset="0%" stopColor="#1A1612" stopOpacity="0" />
+                <stop offset="80%" stopColor="#1A1612" stopOpacity="0.18" />
+                <stop offset="100%" stopColor="#1A1612" stopOpacity="0" />
+              </radialGradient>
             </defs>
-            <motion.path
-              fill="#1A1612"
-              fillOpacity={0.78}
-              initial={{ x: 0, y: 0, scale: 1 }}
+
+            {/* Ripple A — wide, slow, fades out as it expands. */}
+            <motion.circle
+              cx={200}
+              cy={200}
+              fill="none"
+              stroke="#1A1612"
+              initial={{ r: 4, opacity: 0, strokeWidth: 3 }}
               animate={{
-                d: [DROP_A[0], DROP_A[1], DROP_A[0]],
-                x: [0, -22, 4, 0],
-                y: [0, -10, 6, 0],
-                scale: [1, 1.05, 0.96, 1],
+                r: [4, 160],
+                opacity: [0, 0.32, 0],
+                strokeWidth: [3, 0.4],
               }}
-              transition={{ duration: 4.5, ease: EASE, repeat: Infinity }}
-              style={{ transformOrigin: "150px 150px" }}
-              transform="translate(70, 100)"
+              transition={{
+                duration: 1.2,
+                delay: T.rippleA,
+                times: [0, 0.5, 1],
+                ease: "easeOut",
+              }}
             />
-            <motion.g filter="url(#splash-ink-bleed)">
-              <motion.path
-                fill="#1A1612"
-                initial={{ scale: 1 }}
-                animate={{
-                  d: [DROP_B[0], DROP_B[1], DROP_B[0]],
-                  scale: [1, 1.08, 0.97, 1],
-                }}
-                transition={{ duration: 3.6, ease: EASE, repeat: Infinity }}
-                style={{ transformOrigin: "150px 150px" }}
-                transform="translate(100, 100)"
-              />
-            </motion.g>
-            <motion.path
-              fill="#1A1612"
-              fillOpacity={0.68}
-              initial={{ x: 0, y: 0 }}
+            {/* Ripple B — tighter, slightly delayed; the "echo". */}
+            <motion.circle
+              cx={200}
+              cy={200}
+              fill="none"
+              stroke="#1A1612"
+              initial={{ r: 4, opacity: 0, strokeWidth: 2 }}
               animate={{
-                d: [DROP_C[0], DROP_C[1], DROP_C[0]],
-                x: [0, 18, -6, 0],
-                y: [0, 8, -4, 0],
-                scale: [0.85, 0.95, 0.82, 0.85],
+                r: [4, 95],
+                opacity: [0, 0.22, 0],
+                strokeWidth: [2, 0.3],
               }}
-              transition={{ duration: 5.2, ease: EASE, repeat: Infinity }}
-              style={{ transformOrigin: "150px 150px" }}
-              transform="translate(130, 100)"
+              transition={{
+                duration: 1.1,
+                delay: T.rippleB,
+                times: [0, 0.5, 1],
+                ease: "easeOut",
+              }}
+            />
+
+            {/* Soft ink bleed bloom — radial gradient expanding briefly
+                after impact so the drop appears to disperse in water. */}
+            <motion.circle
+              cx={200}
+              cy={200}
+              fill="url(#splash-ripple-grad)"
+              initial={{ r: 0, opacity: 0 }}
+              animate={{
+                r: [10, 70, 90],
+                opacity: [0, 0.9, 0],
+              }}
+              transition={{
+                duration: 0.95,
+                delay: T.rippleA - 0.05,
+                times: [0, 0.45, 1],
+                ease: "easeOut",
+              }}
+            />
+
+            {/* Main drop. Two phases composed via keyframes:
+                  1. Fall: y from -180 → 0 (relative to centre 200);
+                     rx 12 → 14 (slight stretch); ry 22 → 18 (elongates
+                     less as it accelerates).
+                  2. Impact + settle: ry crushes to 7, rx fans to 22,
+                     then both relax to 16/19 final. */}
+            <motion.ellipse
+              cx={200}
+              fill="#1A1612"
+              filter="url(#splash-bleed)"
+              initial={{ cy: 20, rx: 11, ry: 20, opacity: 0 }}
+              animate={{
+                cy: [20, 200, 200, 200],
+                rx: [11, 14, 22, 16],
+                ry: [20, 18, 7, 19],
+                opacity: [0, 1, 1, 1],
+              }}
+              transition={{
+                duration: 1.05,
+                times: [0, T.impact / 1.05, (T.impact + 0.15) / 1.05, 1],
+                ease: [GRAVITY, GRAVITY, SETTLE],
+              }}
+            />
+
+            {/* Secondary drop — falls off-axis with a beat of delay so it
+                doesn't compete with the main impact. Smaller, slightly to
+                the left, less opaque. */}
+            <motion.ellipse
+              cx={158}
+              fill="#1A1612"
+              fillOpacity={0.72}
+              initial={{ cy: 30, rx: 6, ry: 12, opacity: 0 }}
+              animate={{
+                cy: [30, 220, 220],
+                rx: [6, 8, 11],
+                ry: [12, 11, 4],
+                opacity: [0, 1, 1],
+              }}
+              transition={{
+                duration: 0.7,
+                delay: T.secondaryDrop,
+                times: [0, 0.7, 1],
+                ease: [GRAVITY, SETTLE],
+              }}
+            />
+            {/* Echo ripple around the secondary drop's landing. */}
+            <motion.circle
+              cx={158}
+              cy={220}
+              fill="none"
+              stroke="#1A1612"
+              initial={{ r: 0, opacity: 0, strokeWidth: 1.4 }}
+              animate={{
+                r: [0, 40],
+                opacity: [0, 0.2, 0],
+                strokeWidth: [1.4, 0.2],
+              }}
+              transition={{
+                duration: 0.7,
+                delay: T.secondaryDrop + 0.4,
+                times: [0, 0.6, 1],
+                ease: "easeOut",
+              }}
             />
           </svg>
+
+          {/* Wordmark — letter stagger. "O" lands first, "n" 80 ms after,
+              "a" 80 ms after that. Each fades in + nudges up 4 px. */}
+          <div className="mt-6 flex font-display italic text-[#1A1612]" style={{ fontSize: "1.5rem", letterSpacing: "0.04em" }}>
+            {["O", "n", "a"].map((ch, i) => (
+              <motion.span
+                key={i}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 0.85, y: 0 }}
+                transition={{
+                  delay: T.wordmark + i * 0.08,
+                  duration: 0.45,
+                  ease: SETTLE,
+                }}
+              >
+                {ch}
+              </motion.span>
+            ))}
+          </div>
+
+          {/* Terracotta seal — single chromatic note. Pulses once on
+              entry so the eye lands on it after the wordmark resolves. */}
           <motion.div
-            className="mt-10 font-display italic text-[#1A1612]"
-            initial={{ opacity: 0.18 }}
-            animate={{ opacity: [0.18, 0.5, 0.18] }}
-            transition={{ duration: 2.4, ease: EASE, repeat: Infinity }}
-            style={{ fontSize: "1.1rem", letterSpacing: "0.04em" }}
-          >
-            Ona
-          </motion.div>
+            className="mt-3 h-[7px] w-[7px] rounded-full bg-[#C65D38]"
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{
+              scale: [0, 1.4, 1],
+              opacity: [0, 1, 0.85],
+            }}
+            transition={{
+              delay: T.accent,
+              duration: 0.55,
+              times: [0, 0.55, 1],
+              ease: SETTLE,
+            }}
+          />
         </motion.div>
       )}
     </AnimatePresence>

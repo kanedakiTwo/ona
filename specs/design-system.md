@@ -145,6 +145,34 @@ These have not been migrated to the editorial system yet:
 - All other specs reference UI components and tokens here
 - [PWA](./pwa.md) — installable shell, safe-area variables, dynamic per-section `theme-color`, View Transitions, swipe gestures, "Sin conexión" banner
 
+## Responsive towards desktop
+
+ONA supports a desktop layout at `md+` (≥768 px) and bespoke multi-column pages at `lg+` (≥1024 px). Mobile behaviour is unchanged.
+
+### Breakpoint matrix
+
+| Range | Layout |
+|---|---|
+| `< md` (≤767 px) | Bottom-nav fixed at viewport bottom, content in `max-w-[430px] mx-auto` column. |
+| `md` (768–1023 px) | `<DesktopSidebar />` appears (200 px wide), bottom-nav hidden, `<main>` shifted right via `md:ml-[calc(var(--sidebar-width)+var(--sidebar-gap))]`. Pages stay single-column. |
+| `lg+` (≥1024 px) | Per-page bespoke layouts (filters sidebar, split views, multi-col grids). Each page documents its desktop layout in its own spec. |
+
+### Tokens (globals.css `@theme`)
+
+- `--sidebar-width: 200px;`
+- `--sidebar-gap: 8px;`
+- `--container-max: 1400px;`
+
+### Components
+
+- `<DesktopSidebar />` at `apps/web/src/components/shared/DesktopSidebar.tsx` — persistent left nav at `md+`. Items: Menú, Compra, Recetas, Asesor, Perfil. Hides on `/recipes/[id]/cook` routes.
+- `<Navbar />` mobile bottom-nav unchanged; just gains `md:hidden` on its outer `<nav>`.
+
+### Exceptions (no responsive treatment)
+
+- `/onboarding`, `/auth/*`, `/offline`, `/recipes/[id]/cook` — single-column at all breakpoints.
+- Public site (`/recipes-ona`) uses its own `PublicNavbar` and is unaffected.
+
 ## Source
 
 - [apps/web/src/app/globals.css](../apps/web/src/app/globals.css) — `@theme` tokens, all editorial classes

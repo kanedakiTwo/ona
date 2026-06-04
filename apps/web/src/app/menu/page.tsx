@@ -196,7 +196,12 @@ export default function MenuPage() {
   const [viewMode, setViewModeState] = useState<"day" | "week">(() => {
     if (typeof window === "undefined") return "day"
     const stored = window.localStorage.getItem("ona.menu.view")
-    return stored === "week" ? "week" : "day"
+    if (stored === "week" || stored === "day") return stored
+    // No saved preference: default to "week" on desktop (lg+, ≥1024 px) so
+    // the user lands on the 7-day overview without scrolling, and "day" on
+    // mobile where the stack pattern works better.
+    const isDesktop = window.matchMedia("(min-width: 1024px)").matches
+    return isDesktop ? "week" : "day"
   })
   const setViewMode = useCallback((next: "day" | "week") => {
     setViewModeState(next)

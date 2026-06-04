@@ -362,7 +362,7 @@ function DaySection({
           )}
         </div>
       ) : (
-        <div className="px-2 pb-2 md:px-3">
+        <div className="px-2 pb-2 md:px-3 lg:p-2 lg:space-y-2">
           {hasAnyMeal ? (
             visibleMeals.map((m) => {
               const slot = day?.[m]
@@ -439,19 +439,19 @@ function SlotRow({
         ref={setDropRef as unknown as React.LegacyRef<HTMLButtonElement>}
         type="button"
         onClick={onClick}
-        className={`flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors ${
-          isOver ? "bg-[#1A1612]/10" : "hover:bg-[#F2EDE0]"
+        className={`flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors lg:flex-col lg:items-stretch lg:gap-1 lg:rounded-lg lg:border lg:border-dashed lg:border-[#DDD6C5] lg:bg-[#FFFEFA]/40 lg:px-2 lg:py-3 ${
+          isOver ? "bg-[#1A1612]/10 lg:border-[#1A1612]/40" : "hover:bg-[#F2EDE0] lg:hover:bg-[#F2EDE0]/40"
         }`}
       >
-        <div className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-lg border border-dashed border-[#DDD6C5] bg-[#F2EDE0]/40 text-[#7A7066]">
+        <div className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-lg border border-dashed border-[#DDD6C5] bg-[#F2EDE0]/40 text-[#7A7066] lg:h-auto lg:w-full lg:border-0 lg:bg-transparent lg:py-2">
           <MealIcon size={18} strokeWidth={1.4} />
         </div>
-        <div className="min-w-0 flex-1">
-          <p className="m-0 flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
-            <MealIcon size={12} strokeWidth={1.6} />
+        <div className="min-w-0 flex-1 lg:text-center">
+          <p className="m-0 flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-[#7A7066] lg:justify-center">
+            <MealIcon size={12} strokeWidth={1.6} className="lg:hidden" />
             {mealLabel}
           </p>
-          <p className="mt-0.5 text-[13px] italic text-[#A39A8E]">Sin plato</p>
+          <p className="mt-0.5 text-[13px] italic text-[#A39A8E] lg:text-[11px]">Sin plato</p>
         </div>
       </button>
     )
@@ -518,11 +518,11 @@ function DraggableRow({
           if (!isDragging) onClick()
         }
       }}
-      className={`relative flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors ${
-        isDragging ? "opacity-30" : "hover:bg-[#F2EDE0]"
+      className={`relative flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors lg:flex-col lg:items-stretch lg:gap-0 lg:px-0 lg:py-0 lg:rounded-lg lg:overflow-hidden ${
+        isDragging ? "opacity-30" : "hover:bg-[#F2EDE0] lg:hover:opacity-90"
       }`}
     >
-      <div className="relative h-[52px] w-[52px] shrink-0 overflow-hidden rounded-lg bg-[#F2EDE0]">
+      <div className="relative h-[52px] w-[52px] shrink-0 overflow-hidden rounded-lg bg-[#F2EDE0] lg:h-auto lg:w-full lg:rounded-none lg:aspect-[4/3]">
         {data.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -541,20 +541,25 @@ function DraggableRow({
             Sobras
           </span>
         )}
+        {data.totalMinutes != null && data.totalMinutes > 0 && (
+          <span className="absolute right-1 top-1 hidden rounded-full bg-[#FAF6EE]/95 px-1.5 py-0.5 text-[9px] font-medium text-[#1A1612] backdrop-blur-sm lg:inline-flex">
+            {data.totalMinutes}'
+          </span>
+        )}
       </div>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 lg:px-2 lg:pt-1.5 lg:pb-2">
         <p className="m-0 flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
           <MealIcon size={12} strokeWidth={1.6} />
           {mealLabel}
         </p>
         <p
-          className="mt-0.5 truncate text-[14px] font-medium text-[#1A1612]"
+          className="mt-0.5 truncate text-[14px] font-medium text-[#1A1612] lg:mt-1 lg:line-clamp-2 lg:whitespace-normal lg:font-[family-name:var(--font-display)] lg:text-[13px] lg:leading-tight"
           title={data.recipeName}
         >
           {shortRecipeName(data.recipeName)}
         </p>
         {data.totalMinutes != null && data.totalMinutes > 0 && (
-          <p className="mt-0.5 text-[11px] text-[#7A7066]">
+          <p className="mt-0.5 text-[11px] text-[#7A7066] lg:hidden">
             {data.totalMinutes} min
           </p>
         )}
@@ -594,7 +599,7 @@ function DraggableRow({
           )}
         />
       ) : (
-        <ChevronRight size={16} className="shrink-0 text-[#7A7066]" />
+        <ChevronRight size={16} className="shrink-0 text-[#7A7066] lg:hidden" />
       )}
     </div>
   )

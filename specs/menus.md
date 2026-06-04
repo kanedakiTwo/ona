@@ -93,9 +93,11 @@ Every generated menu also creates a `menu_logs` row with:
 
 ## Desktop layouts (lg+)
 
-**Vista Semana**: 7-column grid, one column per day Mon-Sun. Each day section becomes its own card with `border` + `rounded-2xl`. Today's column keeps its soft terracotta tint. Sticky-header behaviour drops at `lg+` (each column is short enough that floating headers would overlap). DnD between any two cells works as before via `POST /menu/move-slot` — the droppable IDs are scoped per `{dayIndex, meal}`, so cross-column drops resolve correctly regardless of visual orientation.
+**Vista Semana** is the default view at `lg+` (≥1024 px) when no preference is stored in `localStorage.ona.menu.view` — desktop users land on the 7-day overview without scrolling. Below `lg`, Vista Día remains the default. The user can switch manually at any breakpoint; the choice persists.
 
-**Vista Día**: at `lg+` the outer container widens to `max-w-[1200px]` and the horizontal day-strip hides via `lg:hidden` (all 7 day-cards fit on screen without scrolling, so the strip is redundant). The day stack itself remains structurally unchanged. A future polish PR may add a vertical day-strip + day-preview rail as a 3-column split — out of scope for this migration.
+**Vista Semana**: 7-column grid, one column per day Mon-Sun. Each day section becomes its own card with `border` + `rounded-2xl`. Today's column keeps its soft terracotta tint. Sticky-header behaviour drops at `lg+` (each column is short enough that floating headers would overlap). DnD between any two cells works as before via `POST /menu/move-slot` — the droppable IDs are scoped per `{dayIndex, meal}`, so cross-column drops resolve correctly regardless of visual orientation. Each meal slot at `lg+` renders as an editorial tile: photo as 4:3 hero on top, time chip overlaid top-right, meal eyebrow + recipe name (Fraunces, line-clamped to 2) below.
+
+**Vista Día**: at `lg+` the outer container widens to `max-w-[1200px]` and the horizontal day-strip hides via `lg:hidden` (since Vista Semana is the desktop default, the day-strip is rarely seen there; if the user opts back into Vista Día, the strip stays hidden to avoid duplicating the desktop-sidebar's role). The day stack itself remains structurally unchanged. A future polish PR may add a vertical day-strip + day-preview rail as a 3-column split — out of scope for this migration.
 
 Below `lg`, both views keep their existing single-column / horizontal-strip layouts.
 

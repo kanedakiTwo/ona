@@ -153,7 +153,7 @@ export default function RecipeDetailPage() {
   }
 
   return (
-    <div className="bg-[#FAF6EE] min-h-screen">
+    <div className="bg-[#FAF6EE] min-h-screen lg:mx-auto lg:max-w-[1100px]">
       {/* Hero image */}
       <div className="relative">
         <motion.div

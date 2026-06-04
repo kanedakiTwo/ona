@@ -138,7 +138,7 @@ export default function ShoppingPage() {
   }
 
   return (
-    <div className="bg-[#FAF6EE] min-h-screen pb-12">
+    <div className="bg-[#FAF6EE] min-h-screen pb-12 lg:mx-auto lg:max-w-[900px]">
       {/* Editorial header */}
       <header className="px-5 pt-8 pb-5">
         <div className="flex items-baseline justify-between">

@@ -156,6 +156,12 @@ At `lg+` (≥1024 px) the `/recipes` catalogue page renders a 2-column shell on 
 
 `/cookbooks/[id]` is **not** a catalogue page — it's a single-cookbook detail with a recipe-thumbnail grid. At `lg+` the page caps at `max-w-[1100px]` and the recipe grid widens from 2 to 4 columns. It does not share `<CatalogFilters>` or `<CatalogGrid>`.
 
+### Recipe detail / Create / Edit desktop layouts (lg+)
+
+`/recipes/[id]` widens its outer container to `max-w-[1100px]` at `lg+`. The page keeps a single-column flow (hero → header → meta → ingredients → steps → notes); a future polish PR may add the 38/62 split with sticky hero — out of scope for this migration.
+
+`/recipes/new` and `/recipes/[id]/edit` self-cap at `max-w-2xl` (672 px) on their inner form wrapper, which already reads as a comfortable desktop form width once the sidebar appears at `md+`. No additional outer constraint is added at `lg+`.
+
 ## Ingredient prep requirements
 
 Each `ingredients` row carries an optional `prep_requirements` JSONB column with the shape `{ method: PrepMethod, notes?: string }` where `PrepMethod` is a closed enum: `thaw_24h | thaw_48h | soak_overnight | soak_30min | temper_30min | marinate_2h | marinate_overnight | dough_rise_overnight`. The values encode the typical lead time so the scheduler doesn't need separate config — `PREP_METHOD_HOURS_BEFORE` in `@ona/shared` maps each value to a fixed number of hours.

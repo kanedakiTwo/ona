@@ -88,6 +88,10 @@ Both toggle endpoints flip the field (no payload value used) and return the full
 
 Access check is the same scope rule as the rest of `/shopping-list/*`: requester is the list owner, OR (with `SHARED_HOUSEHOLD_SCOPE=true`) shares the list's household. See [Household](./household.md).
 
+## Desktop layout (lg+)
+
+At `lg+` the `/shopping` page widens its outer container to `max-w-[900px]` so the list reads at a comfortable width on desktop instead of sitting in a 430 px column. The list itself stays single-column with aisles as inline section headers — a future polish PR may convert to a 3-col aisle grid with a left sidebar (date range + progress + total); that's out of scope for this migration.
+
 ## Constraints
 
 - Field names are camelCase (`inStock`, `checked`, `ingredientId`) end-to-end — frontend, types, and DB JSONB

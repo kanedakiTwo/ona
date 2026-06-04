@@ -35,3 +35,4 @@ apps/web/.last-run.json
 
 # API on-disk caches (USDA, BEDCA, translations)
 apps/api/.cache/
+.superpowers/

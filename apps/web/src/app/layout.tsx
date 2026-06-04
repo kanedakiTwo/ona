@@ -11,6 +11,7 @@ import { ClientSplash } from "@/components/pwa/ClientSplash"
 import { PageTransition } from "@/components/pwa/PageTransition"
 import { SwipeNavigator } from "@/components/pwa/SwipeNavigator"
 import VoiceProvider from "@/components/voice/VoiceProvider"
+import DesktopSidebar from "@/components/shared/DesktopSidebar"
 import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
 import { recordVisit } from "@/lib/pwa/installPrompt"
@@ -115,13 +116,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             ) : (
               <VoiceProvider>
                 <OfflineBanner />
-                <main className="standalone-pt mx-auto max-w-[430px] pb-20">
-                  <SwipeNavigator>
-                    <PageTransition>{children}</PageTransition>
-                  </SwipeNavigator>
-                </main>
-                <Navbar />
-                <InstallSheet />
+                <div className="mx-auto max-w-[var(--container-max)]">
+                  <DesktopSidebar />
+                  <main className="standalone-pt mx-auto max-w-[430px] pb-20 md:ml-[calc(var(--sidebar-width)+var(--sidebar-gap))] md:max-w-none md:mr-0 md:pb-0">
+                    <SwipeNavigator>
+                      <PageTransition>{children}</PageTransition>
+                    </SwipeNavigator>
+                  </main>
+                  <Navbar />
+                  <InstallSheet />
+                </div>
               </VoiceProvider>
             )}
           </AuthProvider>

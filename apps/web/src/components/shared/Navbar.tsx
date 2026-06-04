@@ -8,7 +8,7 @@ import { TransitionLink } from "@/components/pwa/TransitionLink"
 import { CalendarDays, ShoppingCart, BookOpen, MessageCircle, User } from "lucide-react"
 
 const NAV_ITEMS = [
-  { href: "/menu", label: "Menu", icon: CalendarDays },
+  { href: "/menu", label: "Menú", icon: CalendarDays },
   { href: "/shopping", label: "Compra", icon: ShoppingCart },
   { href: "/recipes", label: "Recetas", icon: BookOpen },
   { href: "/advisor", label: "Asesor", icon: MessageCircle },
@@ -22,7 +22,7 @@ export default function Navbar() {
   if (!user) return null
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 pb-[max(env(safe-area-inset-bottom),12px)]">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 pb-[max(env(safe-area-inset-bottom),12px)] md:hidden">
       <div className="mx-auto w-full max-w-[430px] px-3 pb-3">
         <div className="relative w-full rounded-full border border-[#DDD6C5] bg-[#FFFEFA]/95 px-2 py-1.5 shadow-[0_8px_32px_-8px_rgba(26,22,18,0.18)] backdrop-blur-md">
           {/* flex-1 + basis-0 on each item gives every nav button an equal

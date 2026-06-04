@@ -150,6 +150,12 @@ When the user changes the diner count from `recipe.servings` to `target`:
 - The detail view groups ingredients by `section` if any ingredient has one set; otherwise renders a flat list
 - The "Para X" caption next to the ingredients title reflects the live scaler value, not a hardcoded number
 
+### Desktop layout (lg+)
+
+At `lg+` (≥1024 px) the `/recipes` catalogue page renders a 2-column shell on top of the global desktop chrome (sidebar at md+): a 240 px filter sidebar always visible on the left + a 4-column card grid on the right. The shell caps at `max-w-[1200px]`. The filter component (`<CatalogFilters>`) is mounted twice — `variant="inline"` inside `lg:hidden` (the existing sticky bar + expand panel) and `variant="sidebar"` inside `hidden lg:block` (no sticky wrapper, every section always visible, no toggle button). State stays in the page; both mounts receive the same `filterProps`. The components live at `apps/web/src/components/recipes/CatalogFilters.tsx` and `CatalogGrid.tsx`.
+
+`/cookbooks/[id]` is **not** a catalogue page — it's a single-cookbook detail with a recipe-thumbnail grid. At `lg+` the page caps at `max-w-[1100px]` and the recipe grid widens from 2 to 4 columns. It does not share `<CatalogFilters>` or `<CatalogGrid>`.
+
 ## Ingredient prep requirements
 
 Each `ingredients` row carries an optional `prep_requirements` JSONB column with the shape `{ method: PrepMethod, notes?: string }` where `PrepMethod` is a closed enum: `thaw_24h | thaw_48h | soak_overnight | soak_30min | temper_30min | marinate_2h | marinate_overnight | dough_rise_overnight`. The values encode the typical lead time so the scheduler doesn't need separate config — `PREP_METHOD_HOURS_BEFORE` in `@ona/shared` maps each value to a fixed number of hours.

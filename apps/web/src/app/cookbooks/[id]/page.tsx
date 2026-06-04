@@ -86,8 +86,8 @@ export default function CookbookDetailPage() {
   }
 
   return (
-    <div className="bg-[#FAF6EE] min-h-screen pb-24">
-      <header className="px-5 pt-8 pb-6">
+    <div className="bg-[#FAF6EE] min-h-screen pb-24 lg:mx-auto lg:max-w-[1100px] lg:px-8">
+      <header className="px-5 pt-8 pb-6 lg:px-0">
         <Link
           href="/profile/cookbooks"
           className="inline-flex items-center gap-1 text-eyebrow text-[#7A7066] hover:text-[#C65D38]"
@@ -175,7 +175,7 @@ export default function CookbookDetailPage() {
         )}
       </header>
 
-      <section className="px-5">
+      <section className="px-5 lg:px-0">
         {data.recipes.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-[#DDD6C5] py-10 text-center">
             <p className="font-italic italic text-[#7A7066]">Aún no hay recetas.</p>
@@ -184,7 +184,7 @@ export default function CookbookDetailPage() {
             </p>
           </div>
         ) : (
-          <ul className="grid grid-cols-2 gap-3">
+          <ul className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             {data.recipes.map((r) => (
               <li key={r.id} className="relative">
                 <Link
@@ -217,7 +217,7 @@ export default function CookbookDetailPage() {
         )}
       </section>
 
-      <section className="px-5 mt-12">
+      <section className="px-5 mt-12 lg:px-0">
         <button
           type="button"
           onClick={handleDeleteCookbook}

@@ -116,16 +116,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             ) : (
               <VoiceProvider>
                 <OfflineBanner />
-                <div className="mx-auto max-w-[var(--container-max)]">
-                  <DesktopSidebar />
-                  <main className="standalone-pt mx-auto max-w-[430px] pb-20 md:ml-[calc(var(--sidebar-width)+var(--sidebar-gap))] md:max-w-none md:mr-0 md:pb-0">
-                    <SwipeNavigator>
-                      <PageTransition>{children}</PageTransition>
-                    </SwipeNavigator>
-                  </main>
-                  <Navbar />
-                  <InstallSheet />
-                </div>
+                <DesktopSidebar />
+                <main className="standalone-pt mx-auto max-w-[430px] pb-20 md:ml-[calc(var(--sidebar-width)+var(--sidebar-gap))] md:max-w-none md:mr-0 md:pb-0">
+                  <SwipeNavigator>
+                    <PageTransition>{children}</PageTransition>
+                  </SwipeNavigator>
+                </main>
+                <Navbar />
+                <InstallSheet />
               </VoiceProvider>
             )}
           </AuthProvider>

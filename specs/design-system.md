@@ -154,7 +154,7 @@ ONA supports a desktop layout at `md+` (≥768 px) and bespoke multi-column page
 | Range | Layout |
 |---|---|
 | `< md` (≤767 px) | Bottom-nav fixed at viewport bottom, content in `max-w-[430px] mx-auto` column. |
-| `md` (768–1023 px) | `<DesktopSidebar />` appears (200 px wide), bottom-nav hidden, `<main>` shifted right via `md:ml-[calc(var(--sidebar-width)+var(--sidebar-gap))]`. Pages stay single-column. |
+| `md` (768–1023 px) | `<DesktopSidebar />` appears (200 px wide), bottom-nav hidden, `<main>` shifted right via `md:ml-[calc(var(--sidebar-width)+var(--sidebar-gap))]`. Pages still cap at `max-w-[430px]` inside `<main>` at this breakpoint — the bespoke per-page widening kicks in at `lg+`. |
 | `lg+` (≥1024 px) | Per-page bespoke layouts (filters sidebar, split views, multi-col grids). Each page documents its desktop layout in its own spec. |
 
 ### Tokens (globals.css `@theme`)

@@ -112,7 +112,10 @@ export default function RecipesPage() {
 
       {/* At lg+: 2-column shell (filters sidebar + main area). At < lg: stacked. */}
       <div className="lg:mx-auto lg:max-w-[1200px] lg:px-8 lg:grid lg:grid-cols-[240px_minmax(0,1fr)] lg:gap-8 lg:items-start">
-        {/* Filters: inline (with expand panel) at < lg */}
+        {/* Filters: inline (with expand panel) at < lg.
+            display:none via lg:hidden hides from screen readers too —
+            both filter trees mount in the DOM but only the visible one
+            is reachable by assistive tech. */}
         <div className="lg:hidden">
           <CatalogFilters variant="inline" {...filterProps} />
         </div>

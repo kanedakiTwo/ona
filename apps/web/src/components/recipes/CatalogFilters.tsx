@@ -48,6 +48,31 @@ type Props = {
   onClearAll: () => void
 }
 
+// Hoisted to module scope so React's reconciler doesn't remount every chip on
+// each parent render (search input was rebuilding the chip subtree per keystroke).
+function FilterChip({
+  children,
+  active,
+  onClick,
+}: {
+  children: React.ReactNode
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`shrink-0 rounded-full border px-3.5 py-1.5 text-[12px] font-medium transition-all active:scale-95 ${
+        active
+          ? "border-[#1A1612] bg-[#1A1612] text-[#FAF6EE]"
+          : "border-[#DDD6C5] bg-[#FFFEFA] text-[#4A4239] hover:border-[#1A1612]"
+      }`}
+    >
+      {children}
+    </button>
+  )
+}
+
 export default function CatalogFilters(props: Props) {
   const {
     variant,
@@ -69,29 +94,6 @@ export default function CatalogFilters(props: Props) {
     activeFiltersCount,
     onClearAll,
   } = props
-
-  function FilterChip({
-    children,
-    active,
-    onClick,
-  }: {
-    children: React.ReactNode
-    active: boolean
-    onClick: () => void
-  }) {
-    return (
-      <button
-        onClick={onClick}
-        className={`shrink-0 rounded-full border px-3.5 py-1.5 text-[12px] font-medium transition-all active:scale-95 ${
-          active
-            ? "border-[#1A1612] bg-[#1A1612] text-[#FAF6EE]"
-            : "border-[#DDD6C5] bg-[#FFFEFA] text-[#4A4239] hover:border-[#1A1612]"
-        }`}
-      >
-        {children}
-      </button>
-    )
-  }
 
   // Shared inner sections used by both variants
   const scopeSegmenter = (

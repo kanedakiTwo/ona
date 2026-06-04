@@ -74,15 +74,6 @@
   --container-max: 1400px;
 }
 
-/* Per-page wrapper — page-shell standardises the auth-route container.
-   Each page sets its own max-w via inline class. */
-.page-shell {
-  width: 100%;
-  margin-inline: auto;
-  padding-inline: 20px;
-  padding-bottom: 48px;
-}
-
 /* ── Base ──────────────────────────────────────── */
 
 :root {

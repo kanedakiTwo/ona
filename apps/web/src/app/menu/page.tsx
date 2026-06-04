@@ -374,9 +374,9 @@ export default function MenuPage() {
   }
 
   return (
-    <div className="bg-[#FAF6EE] min-h-screen">
+    <div className="bg-[#FAF6EE] min-h-screen lg:mx-auto lg:max-w-[1200px] lg:px-8">
       {/* Editorial Header */}
-      <header className="px-5 pt-8 pb-6">
+      <header className="px-5 pt-8 pb-6 lg:px-0">
         <div className="flex items-baseline justify-between">
           <div>
             <div className="text-eyebrow mb-1">Menú de la semana</div>
@@ -484,9 +484,11 @@ export default function MenuPage() {
 
       {/* Week Strip — only in "vista día"; the week view has its own
           all-days header inside the grid. Sticky at the top so the user
-          always sees the day index while scrolling through the stack. */}
+          always sees the day index while scrolling through the stack.
+          Hidden at lg+ because all 7 day-cards are visible without
+          scrolling — the strip becomes redundant clutter. */}
       {viewMode === "day" && (
-      <div className="sticky top-0 z-30 border-y border-[#DDD6C5] bg-[#F2EDE0]/95 backdrop-blur-sm">
+      <div className="sticky top-0 z-30 border-y border-[#DDD6C5] bg-[#F2EDE0]/95 backdrop-blur-sm lg:hidden">
         <div className="flex">
           {weekDays.map((d, i) => {
             const isSelected = i === selectedDay

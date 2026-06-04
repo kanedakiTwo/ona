@@ -211,7 +211,7 @@ export function WeekGridView({
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
-          className="rounded-2xl border border-[#DDD6C5] bg-[#FFFEFA]"
+          className="rounded-2xl border border-[#DDD6C5] bg-[#FFFEFA] lg:rounded-none lg:border-0 lg:bg-transparent lg:grid lg:grid-cols-7 lg:gap-3"
         >
           {days.map((day, di) => (
             <DaySection
@@ -300,14 +300,16 @@ function DaySection({
   return (
     <section
       data-day={dayIndex}
-      className={`${isFirst ? "" : "border-t border-[#DDD6C5]"} ${sectionBg} ${
-        isFirst ? "rounded-t-2xl" : ""
-      } ${isLast ? "rounded-b-2xl" : ""}`}
+      className={`${sectionBg} ${
+        !isFirst ? "border-t border-[#DDD6C5] lg:border-t-0" : ""
+      } ${isFirst ? "rounded-t-2xl lg:rounded-2xl" : ""} ${
+        isLast ? "rounded-b-2xl lg:rounded-2xl" : ""
+      } lg:border lg:border-[#DDD6C5] lg:rounded-2xl lg:overflow-hidden`}
     >
       <button
         type="button"
         onClick={() => onSelectDay(dayIndex)}
-        className={`sticky top-0 z-10 flex w-full items-center justify-between px-4 pt-3 pb-2 text-left backdrop-blur-sm ${headerBg}/95`}
+        className={`sticky top-0 z-10 flex w-full items-center justify-between px-4 pt-3 pb-2 text-left backdrop-blur-sm lg:static lg:backdrop-blur-none ${headerBg}/95`}
         aria-label={`Ir al día ${dayName} ${date}`}
       >
         <div className="flex items-baseline gap-2">

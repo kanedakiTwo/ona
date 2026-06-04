@@ -71,10 +71,30 @@ export default function RecipesPage() {
     setSelectedTags([])
   }
 
+  const filterProps = {
+    searchQuery,
+    onSearchChange: setSearchQuery,
+    selectedMeal,
+    onMealChange: setSelectedMeal,
+    selectedSeason,
+    onSeasonChange: setSelectedSeason,
+    maxTime,
+    onMaxTimeChange: setMaxTime,
+    scope,
+    onScopeChange: setScopeAndPersist,
+    householdTags,
+    selectedTags,
+    onToggleTag: toggleTag,
+    filtersOpen,
+    onFiltersOpenChange: setFiltersOpen,
+    activeFiltersCount,
+    onClearAll: clearAll,
+  } as const
+
   return (
     <div className="bg-[#FAF6EE] min-h-screen">
-      {/* Editorial Header */}
-      <div className="px-5 pt-8 pb-4">
+      {/* Editorial Header — single-column block above the 2-col shell */}
+      <div className="px-5 pt-8 pb-4 lg:px-8 lg:max-w-[1200px] lg:mx-auto">
         <div className="text-eyebrow mb-2">Catálogo de cocina</div>
         <div className="flex items-end justify-between gap-4">
           <h1 className="font-display text-[2.5rem] leading-[0.95] tracking-tight text-[#1A1612]">
@@ -90,53 +110,47 @@ export default function RecipesPage() {
         </div>
       </div>
 
-      <CatalogFilters
-        variant="inline"
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        selectedMeal={selectedMeal}
-        onMealChange={setSelectedMeal}
-        selectedSeason={selectedSeason}
-        onSeasonChange={setSelectedSeason}
-        maxTime={maxTime}
-        onMaxTimeChange={setMaxTime}
-        scope={scope}
-        onScopeChange={setScopeAndPersist}
-        householdTags={householdTags}
-        selectedTags={selectedTags}
-        onToggleTag={toggleTag}
-        filtersOpen={filtersOpen}
-        onFiltersOpenChange={setFiltersOpen}
-        activeFiltersCount={activeFiltersCount}
-        onClearAll={clearAll}
-      />
+      {/* At lg+: 2-column shell (filters sidebar + main area). At < lg: stacked. */}
+      <div className="lg:mx-auto lg:max-w-[1200px] lg:px-8 lg:grid lg:grid-cols-[240px_minmax(0,1fr)] lg:gap-8 lg:items-start">
+        {/* Filters: inline (with expand panel) at < lg */}
+        <div className="lg:hidden">
+          <CatalogFilters variant="inline" {...filterProps} />
+        </div>
+        {/* Filters: always-visible sidebar at lg+ */}
+        <aside className="hidden lg:block lg:sticky lg:top-6">
+          <CatalogFilters variant="sidebar" {...filterProps} />
+        </aside>
 
-      <div className="px-5 pb-12 pt-4">
-        {!isLoading && (
-          <div className="mb-4 flex items-baseline justify-between">
-            <span className="text-[11px] uppercase tracking-[0.15em] text-[#7A7066]">
-              {filteredRecipes.length} {filteredRecipes.length === 1 ? "receta" : "recetas"}
-            </span>
-            <span className="font-italic italic text-xs text-[#7A7066]">de temporada</span>
+        {/* Main column: result count + grid */}
+        <div>
+          <div className="px-5 pb-12 pt-4 lg:px-0">
+            {!isLoading && (
+              <div className="mb-4 flex items-baseline justify-between">
+                <span className="text-[11px] uppercase tracking-[0.15em] text-[#7A7066]">
+                  {filteredRecipes.length} {filteredRecipes.length === 1 ? "receta" : "recetas"}
+                </span>
+                <span className="font-italic italic text-xs text-[#7A7066]">de temporada</span>
+              </div>
+            )}
+            <CatalogGrid
+              recipes={filteredRecipes}
+              userId={user?.id}
+              isLoading={isLoading}
+              emptyState={
+                <div className="mt-16 text-center">
+                  <div className="font-display text-5xl text-[#C65D38]/30">∅</div>
+                  <p className="mt-4 font-display text-xl text-[#1A1612]">No hay recetas con esos filtros.</p>
+                  <p className="mt-2 text-sm text-[#7A7066]">Prueba a quitarlos o crea una nueva.</p>
+                  {activeFiltersCount > 0 && (
+                    <button onClick={clearAll} className="mt-6 text-sm font-medium text-[#2D6A4F] underline">
+                      Limpiar filtros
+                    </button>
+                  )}
+                </div>
+              }
+            />
           </div>
-        )}
-        <CatalogGrid
-          recipes={filteredRecipes}
-          userId={user?.id}
-          isLoading={isLoading}
-          emptyState={
-            <div className="mt-16 text-center">
-              <div className="font-display text-5xl text-[#C65D38]/30">∅</div>
-              <p className="mt-4 font-display text-xl text-[#1A1612]">No hay recetas con esos filtros.</p>
-              <p className="mt-2 text-sm text-[#7A7066]">Prueba a quitarlos o crea una nueva.</p>
-              {activeFiltersCount > 0 && (
-                <button onClick={clearAll} className="mt-6 text-sm font-medium text-[#2D6A4F] underline">
-                  Limpiar filtros
-                </button>
-              )}
-            </div>
-          }
-        />
+        </div>
       </div>
     </div>
   )

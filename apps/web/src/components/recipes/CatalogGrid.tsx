@@ -82,7 +82,7 @@ type Props = {
 export default function CatalogGrid({ recipes, userId, isLoading, emptyState }: Props) {
   if (isLoading) {
     return (
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="space-y-2">
             <div className="aspect-[4/5] rounded-2xl bg-[#EFE8D8] animate-pulse" />
@@ -95,7 +95,7 @@ export default function CatalogGrid({ recipes, userId, isLoading, emptyState }: 
   }
   if (recipes.length === 0) return <>{emptyState}</>
   return (
-    <div className="grid grid-cols-2 gap-x-3 gap-y-6">
+    <div className="grid grid-cols-2 gap-x-3 gap-y-6 lg:grid-cols-4">
       {recipes.map((recipe, i) => (
         <motion.div
           key={recipe.id}

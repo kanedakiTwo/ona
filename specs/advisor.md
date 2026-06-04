@@ -71,6 +71,10 @@ The model responds with either a plain text message or a tool call. After the to
   - `history` is the recent conversation, capped at 20 messages by the client
   - Response: `{ message, skillUsed?, uiHint?, data? }`
 
+## Desktop layout (lg+)
+
+At `lg+` the `/advisor` page widens its outer container to `max-w-[900px]` so the chat reads at a comfortable width on desktop. A future polish PR may add a 60/40 split with a persistent right side-panel (nutrition summary + memory facts) — out of scope for this migration.
+
 ## Constraints
 
 - The chat is single-session in memory (no persistent conversation history in the DB)

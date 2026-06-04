@@ -19,7 +19,7 @@ export default function AdvisorPage() {
   if (!user) return null
 
   return (
-    <div className="flex h-[calc(100dvh-100px)] flex-col bg-[#FAF6EE]">
+    <div className="flex h-[calc(100dvh-100px)] flex-col bg-[#FAF6EE] lg:mx-auto lg:max-w-[900px]">
       {/* Editorial header */}
       <header className="border-b border-[#DDD6C5] bg-[#FAF6EE] px-5 pt-6 pb-4">
         <div className="flex items-end justify-between gap-3">

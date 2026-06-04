@@ -74,7 +74,7 @@ export default function PantryPage() {
   }
 
   return (
-    <div className="bg-[#FAF6EE] min-h-screen pb-24">
+    <div className="bg-[#FAF6EE] min-h-screen pb-24 lg:mx-auto lg:max-w-[900px]">
       <header className="px-5 pt-8 pb-6">
         <Link
           href="/profile"

@@ -146,7 +146,7 @@ export default function AdminPage() {
     (ingredientGaps.isLoading || recipeGaps.isLoading || regen.isLoading)
 
   return (
-    <div className="bg-[#FAF6EE] min-h-screen pb-24">
+    <div className="bg-[#FAF6EE] min-h-screen pb-24 lg:mx-auto lg:max-w-[1200px]">
       <header className="px-5 pt-8 pb-6">
         <div className="text-eyebrow mb-2">Panel</div>
         <h1 className="font-display text-[2.4rem] leading-[0.95] text-[#1A1612]">

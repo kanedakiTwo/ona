@@ -173,6 +173,10 @@ ONA supports a desktop layout at `md+` (≥768 px) and bespoke multi-column page
 - `/onboarding`, `/auth/*`, `/offline`, `/recipes/[id]/cook` — single-column at all breakpoints.
 - Public site (`/recipes-ona`) uses its own `PublicNavbar` and is unaffected.
 
+### Pragmatic scope vs original plan
+
+The migration (June 2026) shipped the chasis (sidebar at `md+`, container caps) + the `/recipes` 3-col catalogue shell + the Vista Semana 7-col grid + page-by-page container widening at `lg+`. The original plan ([docs/superpowers/specs/2026-06-01-responsive-desktop-design.md](../docs/superpowers/specs/2026-06-01-responsive-desktop-design.md)) also called for bespoke per-page splits (38/62 recipe detail with sticky hero, 40/60 form layouts, vertical day-strip + preview rail, sidebar + 3-col aisle grid on `/shopping`, `/profile` tabs shell, `/advisor` side panel). Those bespoke layouts were deferred to follow-up polish PRs — the foundational responsive win is delivered without them, and the editorial splits can land iteratively as taste decisions allow.
+
 ## Source
 
 - [apps/web/src/app/globals.css](../apps/web/src/app/globals.css) — `@theme` tokens, all editorial classes

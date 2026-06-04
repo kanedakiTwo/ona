@@ -120,7 +120,7 @@ export default function MemoryPage() {
 
   return (
     <div className="min-h-screen bg-[#FAF6EE]">
-      <div className="mx-auto max-w-[430px] px-5 pb-20 pt-8">
+      <div className="mx-auto max-w-[430px] px-5 pb-20 pt-8 lg:max-w-[800px] lg:px-8">
         <Link
           href="/profile"
           className="inline-flex items-center gap-1 text-[12px] uppercase tracking-[0.15em] text-[#7A7066] hover:text-[#1A1612]"

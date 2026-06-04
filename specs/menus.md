@@ -91,6 +91,14 @@ Every generated menu also creates a `menu_logs` row with:
 - Aggregated nutrient profile (vitamins, minerals, etc.)
 - Used to update `user_nutrient_balance` (running balance for the advisor)
 
+## Desktop layouts (lg+)
+
+**Vista Semana**: 7-column grid, one column per day Mon-Sun. Each day section becomes its own card with `border` + `rounded-2xl`. Today's column keeps its soft terracotta tint. Sticky-header behaviour drops at `lg+` (each column is short enough that floating headers would overlap). DnD between any two cells works as before via `POST /menu/move-slot` — the droppable IDs are scoped per `{dayIndex, meal}`, so cross-column drops resolve correctly regardless of visual orientation.
+
+**Vista Día**: at `lg+` the outer container widens to `max-w-[1200px]` and the horizontal day-strip hides via `lg:hidden` (all 7 day-cards fit on screen without scrolling, so the strip is redundant). The day stack itself remains structurally unchanged. A future polish PR may add a vertical day-strip + day-preview rail as a 3-column split — out of scope for this migration.
+
+Below `lg`, both views keep their existing single-column / horizontal-strip layouts.
+
 ## Constraints
 
 - Menu generation is open (`POST /menu/generate` does NOT require auth — known quirk)

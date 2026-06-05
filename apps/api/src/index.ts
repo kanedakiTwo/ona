@@ -28,6 +28,13 @@ import { startScheduler } from './services/notificationScheduler.js'
 
 const app = express()
 
+// Trust the first proxy hop (Railway's edge) so `req.ip` reflects the real
+// client address from `X-Forwarded-For`. Without this the IP-keyed auth rate
+// limiter would bucket every request under the proxy's IP and throttle the
+// whole world as one. One hop only — don't trust arbitrary client-supplied
+// XFF chains.
+app.set('trust proxy', 1)
+
 // Middleware
 app.use(cors({
   origin: '*',

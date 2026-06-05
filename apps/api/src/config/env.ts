@@ -9,6 +9,14 @@ dotenv.config({ path: path.resolve(__dirname, '../../../../.env') })
 export const env = {
   DATABASE_URL: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/ona',
   JWT_SECRET: process.env.JWT_SECRET || 'ona-dev-secret',
+  /**
+   * JWT lifetime, passed straight to `jwt.sign({ expiresIn })`. Accepts the
+   * `jsonwebtoken` vercel/ms format (e.g. `'90d'`, `'12h'`). Default is long
+   * but finite ("mucho pero no infinito") so a leaked token eventually dies
+   * without forcing users to re-login weekly. Tokens issued before this was
+   * added never expire — they age out as users naturally re-login.
+   */
+  JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '90d',
   PORT: parseInt(process.env.API_PORT || '8000', 10),
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
   OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',

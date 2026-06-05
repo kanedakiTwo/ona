@@ -2,8 +2,10 @@
  * Smoke test for the /menu routes.
  *
  * Covers:
- *   - POST /menu/generate (open route, see specs/menus.md quirk) builds a
- *     7-day menu and returns it
+ *   - POST /menu/generate (now auth-required, userId must match token) builds
+ *     a 7-day menu and returns it
+ *   - IDOR guards: unauthed generate → 401, foreign userId → 403, bogus
+ *     menuId → 400/404 (see specs/menus.md "Access control")
  *   - GET /menu/:userId/:weekId fetches the persisted menu
  *   - PUT /menu/:menuId/day/:day/meal/:meal/lock toggles the lock state
  *
@@ -65,7 +67,7 @@ describe('menus route smoke', () => {
     async () => {
       const r = await fetch(`${API_URL}/menu/generate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: auth(),
         body: JSON.stringify({ userId: USER_ID, weekStart }),
       })
       // The response shape varies; we just want a non-5xx + a payload that
@@ -78,6 +80,50 @@ describe('menus route smoke', () => {
         expect(days.length).toBe(7)
       }
       menuId = body.id ?? body.menuId ?? body.menu?.id ?? ''
+    },
+  )
+
+  // --- IDOR guards (see specs/menus.md "Access control") -------------------
+
+  it.skipIf(!reachable)('POST /menu/generate without a token is rejected (401)', async () => {
+    const r = await fetch(`${API_URL}/menu/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: USER_ID || '00000000-0000-0000-0000-000000000000', weekStart: '2020-01-06' }),
+    })
+    expect(r.status).toBe(401)
+  })
+
+  it.skipIf(!reachable || !TOKEN || !USER_ID)(
+    'POST /menu/generate for a DIFFERENT userId is forbidden (403)',
+    async () => {
+      const otherUser = '11111111-1111-1111-1111-111111111111'
+      const r = await fetch(`${API_URL}/menu/generate`, {
+        method: 'POST',
+        headers: auth(),
+        body: JSON.stringify({ userId: otherUser, weekStart: '2020-01-06' }),
+      })
+      expect(r.status).toBe(403)
+    },
+  )
+
+  it.skipIf(!reachable || !TOKEN)(
+    'mutating a menu by a bogus/foreign id never leaks (400 malformed, 404 unknown)',
+    async () => {
+      // Non-UUID id → 400 from the param guard.
+      const bad = await fetch(`${API_URL}/menu/not-a-uuid/day/0/meal/lunch/lock`, {
+        method: 'PUT',
+        headers: auth(),
+        body: JSON.stringify({ locked: true }),
+      })
+      expect(bad.status).toBe(400)
+      // Well-formed but unknown id → 404 (a foreign-but-real id would be 403;
+      // the smoke runner only has one user so we can't mint that case here).
+      const unknown = await fetch(
+        `${API_URL}/menu/99999999-9999-9999-9999-999999999999/day/0/meal/lunch/lock`,
+        { method: 'PUT', headers: auth(), body: JSON.stringify({ locked: true }) },
+      )
+      expect([403, 404]).toContain(unknown.status)
     },
   )
 

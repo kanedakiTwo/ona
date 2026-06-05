@@ -108,7 +108,7 @@ ONA (Opinionated Nutritional Assistant) is a **mobile-first meal planner** for S
 
 - The `inStock` field is camelCase end-to-end (frontend, API, DB JSONB). Never use `in_stock`.
 - The `GET /recipes` endpoint does not currently return `is_favorite`; favorite state on cards is not persisted across reloads (known limitation, see [recipes.md](./specs/recipes.md)).
-- `POST /menu/generate` does NOT require auth (known quirk, see [menus.md](./specs/menus.md)).
+- `POST /menu/generate` **requires auth** and the body `userId` must match the token (was previously open — that IDOR is now closed; see [menus.md](./specs/menus.md) "Access control"). All `/menu/:menuId/...` and `/menu/:userId/...` routes are scoped to the caller.
 - Recipe images: **two sources** in production. Seed/system recipes are committed JPGs under `apps/web/public/images/recipes/<slug>.jpg` and served by Next.js (DB stores relative URL `/images/recipes/<slug>.jpg`). User-regenerated images live on the `ona-api-volume` Railway volume mounted at `/data` and are served by the API (DB stores absolute URL `${IMAGE_PUBLIC_URL_BASE}/<recipeId>.jpg`). The frontend renders `<img src=image_url>` and treats both transparently.
 - The bottom tab bar is fixed at the viewport bottom; app routes use `<main className="mx-auto max-w-[430px] pb-20">` to reserve room.
 - The shopping list is generated on the **first** GET and persisted; if the menu changes afterwards, the list does NOT regenerate automatically.

@@ -10,7 +10,7 @@ import {
   generateShoppingList,
   mergeStaplesIntoItems,
 } from '../services/shoppingList.js'
-import { getPrimaryHouseholdId, resolveScope } from '../services/scopeResolver.js'
+import { canAccessRow, getPrimaryHouseholdId, resolveScope } from '../services/scopeResolver.js'
 import { listActiveStaplesForHousehold } from '../services/staplesStore.js'
 import {
   AISLES,
@@ -577,12 +577,9 @@ async function loadListForCaller(listId: string, userId: string) {
     .limit(1)
   if (!list) return { list: null as null, forbidden: false }
   const scope = await resolveScope(userId)
-  const userOwns = list.userId === userId
-  const sameHousehold =
-    scope.kind === 'household' &&
-    list.householdId != null &&
-    list.householdId === scope.value
-  if (!userOwns && !sameHousehold) return { list: null as null, forbidden: true }
+  if (!canAccessRow(list, userId, scope)) {
+    return { list: null as null, forbidden: true }
+  }
   return { list, forbidden: false }
 }
 

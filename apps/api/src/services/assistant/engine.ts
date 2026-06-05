@@ -4,6 +4,11 @@ import { loadUserContext } from './contextLoader.js'
 import { buildSystemPrompt } from './systemPrompt.js'
 import { skills, getToolDefinitions } from './skills.js'
 import type { AssistantResponse, ChatMessage } from './types.js'
+import {
+  EMPTY_USAGE,
+  addAnthropicUsage,
+  type TokenUsage,
+} from '../advisorBudget.js'
 
 let client: Anthropic | null = null
 
@@ -26,8 +31,12 @@ export async function chat(
   message: string,
   history: ChatMessage[],
   db: any,
-): Promise<AssistantResponse> {
+): Promise<AssistantResponse & { usage: TokenUsage }> {
   const anthropic = getClient()
+
+  // Accumulate token usage across every model call this turn so the route can
+  // meter spend against the per-user monthly budget (see advisorBudget.ts).
+  let usage: TokenUsage = EMPTY_USAGE
 
   // 1. Load user context
   const userContext = await loadUserContext(userId, db)
@@ -70,6 +79,7 @@ export async function chat(
     messages,
     tools: tools as any,
   })
+  usage = addAnthropicUsage(usage, response.usage)
 
   // 6. Check for tool use
   const toolUseBlock = response.content.find(block => block.type === 'tool_use') as
@@ -85,6 +95,7 @@ export async function chat(
       return {
         message: 'Ha habido un error interno. Intentalo de nuevo.',
         actionTaken: false,
+        usage,
       }
     }
 
@@ -124,6 +135,7 @@ export async function chat(
       messages: followUpMessages,
       tools: tools as any,
     })
+    usage = addAnthropicUsage(usage, followUp.usage)
 
     // Extract text from follow-up response
     const followUpText = followUp.content.find(block => block.type === 'text') as
@@ -136,6 +148,7 @@ export async function chat(
       data: skillResult.data,
       uiHint: skillResult.uiHint,
       actionTaken: true,
+      usage,
     }
   }
 
@@ -147,5 +160,6 @@ export async function chat(
   return {
     message: textBlock?.text ?? 'No he podido generar una respuesta.',
     actionTaken: false,
+    usage,
   }
 }

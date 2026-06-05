@@ -66,6 +66,21 @@ export const env = {
     10,
   ),
   /**
+   * Per-user monthly spend cap for the text advisor (the `/assistant/:userId/chat`
+   * Claude calls), in euros. Resets implicitly on month change. When a user has
+   * already spent at least this much in the current month, the chat endpoint
+   * returns 429 `ADVISOR_BUDGET_EXCEEDED` until the month rolls over. Default €5.
+   */
+  ADVISOR_MONTHLY_BUDGET_EUR: parseFloat(
+    process.env.ADVISOR_MONTHLY_BUDGET_EUR || '5',
+  ),
+  /**
+   * EUR per USD used to convert Anthropic's USD list price into the euro budget
+   * above. The token rates live in `advisorBudget.ts` (Haiku 4.5 list price);
+   * this single knob lets ops re-peg the FX without a code change. Default 0.92.
+   */
+  ADVISOR_EUR_PER_USD: parseFloat(process.env.ADVISOR_EUR_PER_USD || '0.92'),
+  /**
    * PR 1B feature flag. When `true`, menu/shopping/favorites reads filter by
    * `household_id` so every member of a shared household sees the same
    * rows. When `false` (default in prod), reads stay user-scoped — same

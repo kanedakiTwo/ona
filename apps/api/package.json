@@ -20,7 +20,9 @@
     "repair:regen": "tsx scripts/repairRegenOutput.ts",
     "apply:recipes": "tsx scripts/applyRegeneratedRecipes.ts",
     "prep-requirements:populate": "tsx scripts/populatePrepRequirements.ts",
-    "prep-requirements:apply": "tsx scripts/populatePrepRequirements.ts --apply"
+    "prep-requirements:apply": "tsx scripts/populatePrepRequirements.ts --apply",
+    "course:populate": "tsx scripts/populateRecipeCourses.ts",
+    "course:apply": "tsx scripts/populateRecipeCourses.ts --apply"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.82.0",

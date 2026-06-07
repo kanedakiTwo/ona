@@ -101,10 +101,29 @@ Every generated menu also creates a `menu_logs` row with:
 
 Below `lg`, both views keep their existing single-column / horizontal-strip layouts.
 
+## Access control (IDOR guards)
+
+Every menu route is scoped to the caller — a logged-in user can only read or
+mutate their own menus (or, when `SHARED_HOUSEHOLD_SCOPE` is on, those of a
+fellow household member). This closes a former gap where any authenticated
+user could read/modify any menu by id.
+
+- `POST /menu/generate` **requires auth** and the body `userId` must equal the
+  authenticated user (`403` otherwise). It used to be open — anyone could
+  overwrite any user's week by passing their id; that is no longer possible.
+- `GET /menu/:userId/:weekId` and `GET /menu/:userId/history` resolve the read
+  scope from the **token**, never the path param. Requesting another user's id
+  returns `403` unless they share your household.
+- Every `/menu/:menuId/...` mutation (regenerate, add/delete/move slot, lock,
+  ban, leftover, skip, servings) passes through a `:menuId` param guard:
+  `400` if the id isn't a UUID, `404` if no such menu, `403` if it belongs to
+  another user/household. Owner-or-same-household access mirrors the shopping
+  list rule (`canAccessRow` in `scopeResolver.ts`).
+
 ## Constraints
 
-- Menu generation is open (`POST /menu/generate` does NOT require auth — known quirk)
-- All other menu routes require auth
+- All menu routes require auth (including `POST /menu/generate`, which also
+  enforces that the body `userId` matches the token)
 - The default template assigns breakfast + lunch + dinner to every day (no snack)
 - A user's `userSettings.template` can override per-day meal slots **and the diner count for each slot**. The profile UI persists the override as `{ mealTemplate: { [día]: { [comida]: number } } }` — Spanish day + meal names, integer >= 1 = "this many comensales for that slot", absence = slot off. The menu generator runs `normalizeMealTemplate` (on/off projection) and `extractMealDiners` (per-slot counts) on every load to coerce that shape — or the legacy `string[]` shape from before 2026-05-30, or the legacy `DayTemplate[]` — into the canonical 7-day array of `{ breakfast?, lunch?, dinner?, snack? }` plus a parallel 7-day map of `{ breakfast?: n, lunch?: n, ... }`. The generator seeds each newly built slot's `servings` from that map, so the shopping list and recipe-detail "Para X" scale to the configured comensales without further user action. Empty `mealTemplate` falls back to the default template; unknown day/meal keys are dropped silently; per-slot overrides on the menu card still win over the template default
 - If no menu exists for the requested week, `GET /menu/:userId/:weekId` returns 404

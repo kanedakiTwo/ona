@@ -70,6 +70,28 @@ The model responds with either a plain text message or a tool call. After the to
 - `POST /assistant/:userId/chat` (auth) — body `{ message, history }`
   - `history` is the recent conversation, capped at 20 messages by the client
   - Response: `{ message, skillUsed?, uiHint?, data? }`
+  - `:userId` must match the authenticated user, else **403** (the chat loads that user's context and bills their budget)
+  - Returns **429** `code: 'ADVISOR_BUDGET_EXCEEDED'` once the user has spent their monthly euro budget (see Cost guardrail)
+
+## Cost guardrail (per-user monthly budget)
+
+The advisor chat calls Claude Haiku 4.5 (up to two requests per turn — tool
+decision + post-tool reply), so it's metered per user:
+
+- Every turn's real token `usage` (input / output / cache-write / cache-read)
+  is priced at Haiku 4.5 list rate (USD), converted to euros via
+  `ADVISOR_EUR_PER_USD` (default 0.92), and added to a per-user, per-month
+  running total stored in `users.advisor_spend_micros` (+ `advisor_spend_month_key`).
+- Before each turn the route checks the total against `ADVISOR_MONTHLY_BUDGET_EUR`
+  (default **€5**). At or over budget → `429 ADVISOR_BUDGET_EXCEEDED`, no model
+  call is made.
+- The month resets implicitly: the first chat of a new month overwrites the
+  total with that turn's cost (same stateless pattern as the image quota — no
+  cron). A user just under the line may run one final turn, so actual spend can
+  exceed the cap by at most one turn (~€0.01) — acceptable for a soft cap.
+- Pricing math lives in `services/advisorBudget.ts` and is unit-tested; the
+  per-MTok rates track the model in `engine.ts`. The legacy `/advisor/:userId/ask`
+  is rule/KB-based (no model call) and is not metered.
 
 ## Desktop layout (lg+)
 
@@ -103,7 +125,9 @@ At `lg+` the `/advisor` page widens its outer container to `max-w-[900px]` so th
 
 ## Source
 
-- [apps/api/src/routes/assistant.ts](../apps/api/src/routes/assistant.ts) — `POST /assistant/:userId/chat`
+- [apps/api/src/routes/assistant.ts](../apps/api/src/routes/assistant.ts) — `POST /assistant/:userId/chat` (caller check + budget gate + spend metering)
+- [apps/api/src/services/advisorBudget.ts](../apps/api/src/services/advisorBudget.ts) — pricing + monthly spend cap
+- [apps/api/src/config/env.ts](../apps/api/src/config/env.ts) — `ADVISOR_MONTHLY_BUDGET_EUR`, `ADVISOR_EUR_PER_USD`
 - [apps/api/src/routes/advisor.ts](../apps/api/src/routes/advisor.ts) — legacy advisor routes (summary, ask)
 - [apps/api/src/services/assistant/engine.ts](../apps/api/src/services/assistant/engine.ts) — chat loop
 - [apps/api/src/services/assistant/skills.ts](../apps/api/src/services/assistant/skills.ts) — skill definitions

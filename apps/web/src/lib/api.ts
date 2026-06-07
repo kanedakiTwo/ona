@@ -58,12 +58,12 @@ export async function apiFetch<T = unknown>(
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: response.statusText }))
 
-    // Stale token (signed by us but for a deleted user, e.g. after a reseed):
-    // wipe local auth and bounce to /login so the user can recover without
-    // every authed request landing on a confusing 500.
+    // Stale token (signed by us but for a deleted user, e.g. after a reseed)
+    // or an expired token: wipe local auth and bounce to /login so the user
+    // can recover without every authed request landing on a confusing error.
     if (
       response.status === 401 &&
-      error?.code === 'USER_NOT_FOUND' &&
+      (error?.code === 'USER_NOT_FOUND' || error?.code === 'TOKEN_EXPIRED') &&
       typeof window !== 'undefined'
     ) {
       localStorage.removeItem('ona_token')

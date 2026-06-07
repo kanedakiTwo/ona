@@ -66,6 +66,31 @@ export async function resolveScope(userId: string, db: Db = defaultDb): Promise<
 }
 
 /**
+ * Pure access decision for a single fetched row that carries both a legacy
+ * `userId` owner and a (nullable) `householdId`. Mirrors `scopeWhere` but for
+ * the "I already loaded this row by its id, may this caller touch it?" case
+ * used by IDOR guards on `:menuId` / `:listId` routes.
+ *
+ * Rule (same as the shopping list's historical `loadListForCaller`):
+ *   - the owner can always access their own row, even if `householdId` drifted
+ *     to NULL during the rollout window;
+ *   - otherwise, only when the caller's resolved scope is household-wide AND
+ *     the row belongs to that same household.
+ */
+export function canAccessRow(
+  row: { userId: string; householdId: string | null },
+  callerId: string,
+  scope: Scope,
+): boolean {
+  if (row.userId === callerId) return true
+  return (
+    scope.kind === 'household' &&
+    row.householdId != null &&
+    row.householdId === scope.value
+  )
+}
+
+/**
  * Build a Drizzle `WHERE` clause from a Scope + the (table.userIdCol, table.householdIdCol)
  * pair. The caller passes the actual columns so we don't have to import
  * every scoped table here.

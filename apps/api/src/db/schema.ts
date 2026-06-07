@@ -8,6 +8,7 @@ import {
   timestamp,
   date,
   jsonb,
+  bigint,
   uniqueIndex,
   index,
   check,
@@ -51,6 +52,18 @@ export const users = pgTable('users', {
    */
   imageGenMonthKey: text('image_gen_month_key'),
   imageGenCount: integer('image_gen_count').notNull().default(0),
+  /**
+   * Advisor (text-AI chat) monthly spend cap. `advisorSpendMonthKey` stores
+   * the YYYY-MM that `advisorSpendMicros` belongs to; on the first chat of a
+   * new month the running total resets to that turn's cost atomically — same
+   * stateless monthly reset as the image quota, no cron. Spend is accumulated
+   * in micro-euros (1e-6 €) so we never lose sub-cent token costs to integer
+   * rounding. See services/advisorBudget.ts + POST /assistant/:userId/chat.
+   */
+  advisorSpendMonthKey: text('advisor_spend_month_key'),
+  advisorSpendMicros: bigint('advisor_spend_micros', { mode: 'number' })
+    .notNull()
+    .default(0),
   /**
    * The household this user reads from by default — set automatically on
    * registration and reassigned when the user joins another household via

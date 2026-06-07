@@ -9,6 +9,14 @@ dotenv.config({ path: path.resolve(__dirname, '../../../../.env') })
 export const env = {
   DATABASE_URL: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/ona',
   JWT_SECRET: process.env.JWT_SECRET || 'ona-dev-secret',
+  /**
+   * JWT lifetime, passed straight to `jwt.sign({ expiresIn })`. Accepts the
+   * `jsonwebtoken` vercel/ms format (e.g. `'90d'`, `'12h'`). Default is long
+   * but finite ("mucho pero no infinito") so a leaked token eventually dies
+   * without forcing users to re-login weekly. Tokens issued before this was
+   * added never expire — they age out as users naturally re-login.
+   */
+  JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '90d',
   PORT: parseInt(process.env.API_PORT || '8000', 10),
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
   OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
@@ -57,6 +65,21 @@ export const env = {
     process.env.IMAGE_GEN_MONTHLY_LIMIT || '20',
     10,
   ),
+  /**
+   * Per-user monthly spend cap for the text advisor (the `/assistant/:userId/chat`
+   * Claude calls), in euros. Resets implicitly on month change. When a user has
+   * already spent at least this much in the current month, the chat endpoint
+   * returns 429 `ADVISOR_BUDGET_EXCEEDED` until the month rolls over. Default €5.
+   */
+  ADVISOR_MONTHLY_BUDGET_EUR: parseFloat(
+    process.env.ADVISOR_MONTHLY_BUDGET_EUR || '5',
+  ),
+  /**
+   * EUR per USD used to convert Anthropic's USD list price into the euro budget
+   * above. The token rates live in `advisorBudget.ts` (Haiku 4.5 list price);
+   * this single knob lets ops re-peg the FX without a code change. Default 0.92.
+   */
+  ADVISOR_EUR_PER_USD: parseFloat(process.env.ADVISOR_EUR_PER_USD || '0.92'),
   /**
    * PR 1B feature flag. When `true`, menu/shopping/favorites reads filter by
    * `household_id` so every member of a shared household sees the same

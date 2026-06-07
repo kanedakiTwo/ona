@@ -14,7 +14,7 @@ import { findRecipeForSlot, normaliseEquipment, type RecipeWithIngredients } fro
 import { getMemoryForUser } from '../services/userMemoryStore.js'
 import { detectSeason } from '@ona/shared'
 import { recipeIngredients, ingredients, recipes, userFavorites } from '../db/schema.js'
-import { resolveScope, scopeWhere, getPrimaryHouseholdId } from '../services/scopeResolver.js'
+import { resolveScope, scopeWhere, getPrimaryHouseholdId, canAccessRow } from '../services/scopeResolver.js'
 import {
   enqueuePrepAlertsForMenu,
   clearPendingForMenu,
@@ -93,10 +93,18 @@ async function hydrateMenuImages<T extends { days: unknown }>(menu: T): Promise<
   return { ...menu, days: hydratedDays }
 }
 
-// POST /menu/generate - does NOT require auth (as specified)
-router.post('/menu/generate', validate(generateMenuSchema), async (req, res) => {
+// POST /menu/generate - requires auth; a caller may only (re)generate their
+// own menu. The `userId` in the body must match the authenticated user — the
+// route used to be open (anyone could overwrite any user's week by passing
+// their id), which is the IDOR this guard closes.
+router.post('/menu/generate', authMiddleware, validate(generateMenuSchema), async (req: AuthRequest, res) => {
   try {
     const { userId, weekStart, customTemplate } = req.body
+
+    if (userId !== req.userId) {
+      res.status(403).json({ error: 'No puedes generar el menú de otro usuario.' })
+      return
+    }
 
     // PR 1B: resolve scope once for the whole handler. Reads filter by
     // household when the flag is on; writes dual-populate `household_id`
@@ -180,11 +188,71 @@ router.post('/menu/generate', validate(generateMenuSchema), async (req, res) => 
 // All remaining routes require auth
 router.use(authMiddleware)
 
+/**
+ * IDOR guard for every `/menu/:menuId/...` mutation route. The slot routes
+ * fetch the menu by id for their own logic, but they used to do so with NO
+ * ownership check — any authenticated user could mutate any menu by id. This
+ * param middleware runs once per matched `:menuId` route (after authMiddleware
+ * has set `req.userId`) and rejects rows the caller can't reach:
+ *   - 400 if the id isn't a UUID
+ *   - 404 if no such menu
+ *   - 403 if it exists but belongs to another user / household
+ * Owner-or-same-household access mirrors the shopping list rule.
+ */
+router.param('menuId', async (req: AuthRequest, res, next, menuId) => {
+  try {
+    if (typeof menuId !== 'string' || !UUID_RE.test(menuId)) {
+      res.status(400).json({ error: 'menuId must be a UUID' })
+      return
+    }
+    const [row] = await db
+      .select({ userId: menus.userId, householdId: menus.householdId })
+      .from(menus)
+      .where(eq(menus.id, menuId))
+      .limit(1)
+    if (!row) {
+      res.status(404).json({ error: 'Menu not found' })
+      return
+    }
+    const scope = await resolveScope(req.userId!)
+    if (!canAccessRow(row, req.userId!, scope)) {
+      res.status(403).json({ error: 'No tienes acceso a este menú.' })
+      return
+    }
+    next()
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
+ * Resolve the read scope for a `:userId`-path route, enforcing that the
+ * caller can only read their own menus — or, when household scope is on, those
+ * of a fellow household member. The scope is always derived from the *token*
+ * (`callerId`), never the path param, so passing someone else's id can never
+ * widen what comes back.
+ */
+async function resolveReadScopeForCaller(callerId: string, pathUserId: string) {
+  const scope = await resolveScope(callerId)
+  if (callerId === pathUserId) return { scope, allowed: true as const }
+  if (scope.kind === 'household') {
+    const otherHousehold = await getPrimaryHouseholdId(pathUserId)
+    if (otherHousehold && otherHousehold === scope.value) {
+      return { scope, allowed: true as const }
+    }
+  }
+  return { scope, allowed: false as const }
+}
+
 // GET /menu/:userId/history - list past menus
 router.get('/menu/:userId/history', async (req: AuthRequest, res) => {
   try {
     const userId = String(req.params.userId)
-    const scope = await resolveScope(userId)
+    const { scope, allowed } = await resolveReadScopeForCaller(req.userId!, userId)
+    if (!allowed) {
+      res.status(403).json({ error: 'No tienes acceso a estos menús.' })
+      return
+    }
 
     const results = await db
       .select({
@@ -208,7 +276,11 @@ router.get('/menu/:userId/:weekId', async (req: AuthRequest, res) => {
   try {
     const userId = String(req.params.userId)
     const weekId = String(req.params.weekId)
-    const scope = await resolveScope(userId)
+    const { scope, allowed } = await resolveReadScopeForCaller(req.userId!, userId)
+    if (!allowed) {
+      res.status(403).json({ error: 'No tienes acceso a este menú.' })
+      return
+    }
 
     const [menu] = await db
       .select()

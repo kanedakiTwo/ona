@@ -9,11 +9,26 @@ import { validate } from '../middleware/validate.js'
 import { registerSchema, loginSchema } from '@ona/shared'
 import { env } from '../config/env.js'
 import { consumeToken } from '../services/passwordReset.js'
+import { rateLimit } from '../middleware/rateLimit.js'
 
 const router = Router()
 
+// Anti-abuse limits on the public auth surface, keyed by client IP. Generous
+// enough that a real user (or the smoke suite) never trips them, tight enough
+// to stop mass registration and credential-stuffing. See middleware/rateLimit.
+const registerLimiter = rateLimit({
+  max: 10,
+  windowMs: 60 * 60 * 1000, // 10 new accounts per IP per hour
+  message: 'Demasiados registros desde esta red. Inténtalo más tarde.',
+})
+const loginLimiter = rateLimit({
+  max: 20,
+  windowMs: 5 * 60 * 1000, // 20 login attempts per IP per 5 minutes
+  message: 'Demasiados intentos de inicio de sesión. Espera unos minutos.',
+})
+
 // POST /register
-router.post('/register', validate(registerSchema), async (req, res) => {
+router.post('/register', registerLimiter, validate(registerSchema), async (req, res) => {
   try {
     const { username, email, password } = req.body
 
@@ -47,7 +62,9 @@ router.post('/register', validate(registerSchema), async (req, res) => {
       console.error('[register] solo household creation failed (continuing):', e)
     }
 
-    const token = jwt.sign({ userId: user.id }, env.JWT_SECRET)
+    const token = jwt.sign({ userId: user.id }, env.JWT_SECRET, {
+      expiresIn: env.JWT_EXPIRES_IN as jwt.SignOptions['expiresIn'],
+    })
     const { passwordHash: _, ...userWithoutPassword } = user
 
     res.status(201).json({ token, user: userWithoutPassword })
@@ -58,7 +75,7 @@ router.post('/register', validate(registerSchema), async (req, res) => {
 })
 
 // POST /login
-router.post('/login', validate(loginSchema), async (req, res) => {
+router.post('/login', loginLimiter, validate(loginSchema), async (req, res) => {
   try {
     const { username, password } = req.body
 
@@ -104,7 +121,9 @@ router.post('/login', validate(loginSchema), async (req, res) => {
       role = updated.role
     }
 
-    const token = jwt.sign({ userId: user.id }, env.JWT_SECRET)
+    const token = jwt.sign({ userId: user.id }, env.JWT_SECRET, {
+      expiresIn: env.JWT_EXPIRES_IN as jwt.SignOptions['expiresIn'],
+    })
 
     const { passwordHash, ...userWithoutPassword } = user
     userWithoutPassword.role = role
@@ -126,7 +145,7 @@ const resetSchema = z.object({
   password: z.string().min(6),
 })
 
-router.post('/auth/reset', async (req, res) => {
+router.post('/auth/reset', loginLimiter, async (req, res) => {
   try {
     const parsed = resetSchema.safeParse(req.body)
     if (!parsed.success) {

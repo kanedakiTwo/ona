@@ -36,7 +36,17 @@ export async function authMiddleware(
   let decoded: { userId: string }
   try {
     decoded = jwt.verify(token, env.JWT_SECRET) as { userId: string }
-  } catch {
+  } catch (err) {
+    // Expired tokens get a distinct code so the web client can wipe local auth
+    // and bounce to /login (same recovery path as USER_NOT_FOUND) instead of
+    // surfacing a confusing generic error on every request.
+    if (err instanceof jwt.TokenExpiredError) {
+      res.status(401).json({
+        error: 'Tu sesión ha caducado. Vuelve a iniciar sesión.',
+        code: 'TOKEN_EXPIRED',
+      })
+      return
+    }
     res.status(401).json({ error: 'Invalid token' })
     return
   }

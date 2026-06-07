@@ -162,6 +162,16 @@ At `lg+` (≥1024 px) the `/recipes` catalogue page renders a 2-column shell on 
 
 `/recipes/new` and `/recipes/[id]/edit` self-cap at `max-w-2xl` (672 px) on their inner form wrapper, which already reads as a comfortable desktop form width once the sidebar appears at `md+`. No additional outer constraint is added at `lg+`.
 
+## Course classification (`recipes.course`)
+
+Optional enum tagging the recipe's role in a multi-dish meal: `'starter' | 'main' | 'dessert' | null`. Spanish labels via `COURSE_LABELS` in `@ona/shared` (`Entrante / Principal / Postre`).
+
+`null` means "versatile" — the menu generator treats null-tagged recipes as valid stand-alone dishes for single-dish slots. The matcher uses this field when a slot is configured with 2 or 3 dishes (see [`menus.md`](./menus.md) "Multi-dish slots").
+
+Population:
+- Seed catalogue + existing user recipes: one-shot LLM script `pnpm --filter @ona/api course:populate` (→ JSONL → optional manual review → `course:apply`). Same two-step pattern as `prep-requirements:populate`. Source: `apps/api/scripts/populateRecipeCourses.ts`.
+- New recipes: optional dropdown in `/recipes/new` and `/recipes/[id]/edit` (defaults to "Sin clasificar (auto)" = `null`).
+
 ## Ingredient prep requirements
 
 Each `ingredients` row carries an optional `prep_requirements` JSONB column with the shape `{ method: PrepMethod, notes?: string }` where `PrepMethod` is a closed enum: `thaw_24h | thaw_48h | soak_overnight | soak_30min | temper_30min | marinate_2h | marinate_overnight | dough_rise_overnight`. The values encode the typical lead time so the scheduler doesn't need separate config — `PREP_METHOD_HOURS_BEFORE` in `@ona/shared` maps each value to a fixed number of hours.

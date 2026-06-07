@@ -4,13 +4,15 @@ import { db } from '../db/connection.js'
 import { menus, menuLogs, users } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
-import { generateMenuSchema, lockMealSchema, MEALS, MEAL_TYPE_TAGS } from '@ona/shared'
-import type { DayMenu, LockedSlots, Meal, MealSlot } from '@ona/shared'
+import { generateMenuSchema, lockMealSchema, MEALS, MEAL_TYPE_TAGS, courseSchema } from '@ona/shared'
+import type { DayMenu, Dish, LockedSlots, Meal, MealSlot, RecipeDish } from '@ona/shared'
 import { generateMenu } from '../services/menuGenerator.js'
 import { calculateMenuCaloriesFromDB } from '../services/calorieCalculator.js'
 import { calculateMenuNutrientsFromDB } from '../services/nutrientCalculator.js'
 import { updateBalance } from '../services/nutrientBalance.js'
 import { findRecipeForSlot, normaliseEquipment, type RecipeWithIngredients } from '../services/recipeMatcher.js'
+import { findForCourse } from '../services/courseAwareMatcher.js'
+import { addDish, removeDishAt, patchDish, reorderDish } from '../services/menuDishes.js'
 import { getMemoryForUser } from '../services/userMemoryStore.js'
 import { detectSeason } from '@ona/shared'
 import { recipeIngredients, ingredients, recipes, userFavorites } from '../db/schema.js'
@@ -19,6 +21,7 @@ import {
   enqueuePrepAlertsForMenu,
   clearPendingForMenu,
 } from '../services/notificationScheduler.js'
+import { z } from 'zod'
 
 const router = Router()
 
@@ -50,7 +53,13 @@ async function hydrateMenuImages<T extends { days: unknown }>(menu: T): Promise<
   for (const day of days) {
     for (const meal of Object.keys(day)) {
       const slot = day[meal] as MealSlot | undefined
-      if (slot?.recipeId) ids.add(slot.recipeId)
+      if (!slot) continue
+      // New multi-dish shape: iterate dishes[]
+      if (Array.isArray(slot.dishes)) {
+        for (const dish of slot.dishes) {
+          if (dish.kind === 'recipe') ids.add(dish.recipeId)
+        }
+      }
     }
   }
   if (ids.size === 0) return menu
@@ -76,15 +85,20 @@ async function hydrateMenuImages<T extends { days: unknown }>(menu: T): Promise<
     const next: DayMenu = {}
     for (const meal of Object.keys(day)) {
       const slot = day[meal] as MealSlot | undefined
-      if (slot?.recipeId) {
-        const info = recipeById.get(slot.recipeId)
-        next[meal] = {
-          ...slot,
-          imageUrl: info?.imageUrl ?? null,
-          prepTime: info?.prepTime ?? null,
-          totalTime: info?.totalTime ?? null,
-        }
-      } else if (slot) {
+      if (!slot) continue
+      if (Array.isArray(slot.dishes)) {
+        const hydratedDishes: Dish[] = slot.dishes.map((dish) => {
+          if (dish.kind !== 'recipe') return dish
+          const info = recipeById.get(dish.recipeId)
+          return {
+            ...dish,
+            imageUrl: info?.imageUrl ?? null,
+            prepTime: info?.prepTime ?? null,
+            totalTime: info?.totalTime ?? null,
+          }
+        })
+        next[meal] = { ...slot, dishes: hydratedDishes }
+      } else {
         next[meal] = slot
       }
     }
@@ -336,14 +350,20 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       return
     }
 
+    const slot = days[dayIndex]?.[meal]
+    if (!slot) {
+      res.status(404).json({ error: 'Slot not found' })
+      return
+    }
+
     // Manual override: if the body carries a `recipeId`, skip the matcher and
-    // pin that recipe directly. This is the path used by the menu UI's
-    // "cambiar plato" picker and by the assistant's swap_meal skill when the
-    // user names a specific recipe.
+    // replace every recipe-dish in the slot with the given recipe. This is the
+    // path used by the menu UI's "cambiar plato" picker and by the assistant's
+    // swap_meal skill when the user names a specific recipe.
     const manualRecipeId = typeof req.body?.recipeId === 'string' ? req.body.recipeId : null
     if (manualRecipeId) {
       const [chosen] = await db
-        .select({ id: recipes.id, name: recipes.name })
+        .select({ id: recipes.id, name: recipes.name, course: recipes.course })
         .from(recipes)
         .where(eq(recipes.id, manualRecipeId))
         .limit(1)
@@ -351,16 +371,17 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
         res.status(404).json({ error: 'Recipe not found' })
         return
       }
-      // Preserve user-set slot metadata (pinnedType, servings) across recipe swap —
-      // the user pinned "cremas", chose a specific recipe; the pin must stay so
-      // the next Aleatorio still respects it.
-      const prev = days[dayIndex]?.[meal]
-      days[dayIndex][meal] = {
-        recipeId: chosen.id,
-        recipeName: chosen.name,
-        ...(prev?.pinnedType ? { pinnedType: prev.pinnedType } : {}),
-        ...(prev?.servings != null ? { servings: prev.servings } : {}),
-      }
+      // Replace all recipe-dishes with the chosen recipe; preserve note dishes.
+      const newDishes: Dish[] = slot.dishes.map((dish) => {
+        if (dish.kind !== 'recipe') return dish
+        return {
+          kind: 'recipe',
+          recipeId: chosen.id,
+          recipeName: chosen.name,
+          course: (chosen.course as any) ?? null,
+        } satisfies RecipeDish
+      })
+      days[dayIndex][meal] = { ...slot, dishes: newDishes }
       const [updated] = await db
         .update(menus)
         .set({ days })
@@ -381,13 +402,15 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       return
     }
 
-    // Collect used recipe IDs (excluding the one being replaced)
+    // Collect used recipe IDs (excluding the slot being replaced)
     const usedRecipeIds = new Set<string>()
     for (let d = 0; d < days.length; d++) {
       for (const m of Object.keys(days[d])) {
-        const slot = days[d][m]
-        if (slot?.recipeId && !(d === dayIndex && m === meal)) {
-          usedRecipeIds.add(slot.recipeId)
+        const s = days[d][m]
+        if (!s) continue
+        if (d === dayIndex && m === meal) continue
+        for (const dish of s.dishes ?? []) {
+          if (dish.kind === 'recipe') usedRecipeIds.add(dish.recipeId)
         }
       }
     }
@@ -447,9 +470,10 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       ingredientsByRecipe.set(row.recipeId, list)
     }
 
-    const recipesWithIngredients: RecipeWithIngredients[] = allRecipes.map((r: any) => ({
+    const recipesWithIngredients = allRecipes.map((r: any) => ({
       id: r.id,
       name: r.name,
+      course: r.course ?? null,
       meals: r.meals ?? [],
       seasons: r.seasons ?? [],
       tags: r.tags ?? [],
@@ -460,41 +484,36 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
 
     const season = detectSeason()
 
-    // Find a new recipe for this slot, honouring the week's veto list and
-    // the slot's pinned meal type (if any).
-    const existingSlot = (menu.days as DayMenu[])?.[dayIndex]?.[meal]
-    const newRecipe = findRecipeForSlot(recipesWithIngredients, {
+    const matcherOptions = {
       meal: meal as Meal,
       season,
       usedRecipeIds,
       restrictions,
       favoriteRecipeIds,
       bannedRecipeIds: new Set(menu.bannedRecipeIds ?? []),
-      pinnedType: existingSlot?.pinnedType ?? null,
       dislikes,
       availableEquipment,
       maxPrepMinutes,
-    })
+    }
 
-    if (!newRecipe) {
-      if (existingSlot?.pinnedType) {
-        res.status(404).json({
-          error: `No hay recetas etiquetadas como "${existingSlot.pinnedType}" que encajen con este día/temporada. Cambia la etiqueta o quita el pin.`,
-        })
-      } else {
-        res.status(404).json({ error: 'No matching recipe found for this slot' })
+    // Re-pick a recipe for each existing recipe-dish, preserving the dish's course.
+    // Note dishes stay in place unchanged.
+    const newDishes = [...slot.dishes]
+    for (let i = 0; i < slot.dishes.length; i++) {
+      const dish = slot.dishes[i]
+      if (dish.kind !== 'recipe') continue
+      const currentCourse = dish.course ?? null
+      const picked = findForCourse(recipesWithIngredients, currentCourse, matcherOptions)
+      if (!picked) continue  // keep the old recipe if no candidate
+      newDishes[i] = {
+        kind: 'recipe',
+        recipeId: picked.id,
+        recipeName: picked.name,
+        course: picked.course ?? null,
       }
-      return
     }
 
-    // Update the menu, preserving user-set metadata (pinnedType, servings)
-    // across the matcher swap so a pinned slot keeps its pin.
-    days[dayIndex][meal] = {
-      recipeId: newRecipe.id,
-      recipeName: newRecipe.name,
-      ...(existingSlot?.pinnedType ? { pinnedType: existingSlot.pinnedType } : {}),
-      ...(existingSlot?.servings != null ? { servings: existingSlot.servings } : {}),
-    }
+    days[dayIndex][meal] = { ...slot, dishes: newDishes }
 
     const [updated] = await db
       .update(menus)
@@ -546,7 +565,8 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
       res.status(400).json({ error: 'Invalid day index' })
       return
     }
-    if (days[dayIndex]?.[meal]?.recipeId) {
+    const existingSlot = days[dayIndex]?.[meal]
+    if (existingSlot && existingSlot.dishes && existingSlot.dishes.length > 0) {
       res.status(409).json({ error: 'Slot already exists; use PUT to replace it' })
       return
     }
@@ -554,10 +574,11 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
     const manualRecipeId = typeof req.body?.recipeId === 'string' ? req.body.recipeId : null
     let chosenId: string
     let chosenName: string
+    let chosenCourse: string | null = null
 
     if (manualRecipeId) {
       const [chosen] = await db
-        .select({ id: recipes.id, name: recipes.name })
+        .select({ id: recipes.id, name: recipes.name, course: recipes.course })
         .from(recipes)
         .where(eq(recipes.id, manualRecipeId))
         .limit(1)
@@ -567,14 +588,18 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
       }
       chosenId = chosen.id
       chosenName = chosen.name
+      chosenCourse = chosen.course ?? null
     } else {
       // Run the matcher, same shape as PUT but with a fresh `usedRecipeIds`
       // built from every other slot in the week (so we don't repeat).
       const usedRecipeIds = new Set<string>()
       for (let d = 0; d < days.length; d++) {
         for (const m of Object.keys(days[d])) {
-          const slot = days[d][m]
-          if (slot?.recipeId) usedRecipeIds.add(slot.recipeId)
+          const s = days[d][m]
+          if (!s) continue
+          for (const dish of s.dishes ?? []) {
+            if (dish.kind === 'recipe') usedRecipeIds.add(dish.recipeId)
+          }
         }
       }
 
@@ -656,7 +681,13 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
       chosenName = newRecipe.name
     }
 
-    days[dayIndex][meal] = { recipeId: chosenId, recipeName: chosenName }
+    const initialDish: RecipeDish = {
+      kind: 'recipe',
+      recipeId: chosenId,
+      recipeName: chosenName,
+      course: chosenCourse as any,
+    }
+    days[dayIndex][meal] = { dishes: [initialDish] }
     const [updated] = await db.update(menus).set({ days }).where(eq(menus.id, menuId)).returning()
     res.status(201).json(await hydrateMenuImages(updated))
   } catch (err) {
@@ -771,14 +802,14 @@ router.post('/menu/:menuId/move-slot', async (req: AuthRequest, res) => {
       return
     }
     const sourceSlot = days[fromDay]?.[fromMeal]
-    if (!sourceSlot?.recipeId) {
+    if (!sourceSlot || !sourceSlot.dishes || sourceSlot.dishes.length === 0) {
       res.status(404).json({ error: 'Source slot is empty' })
       return
     }
     const targetSlot = days[toDay]?.[toMeal]
 
     // Apply the move/swap on the in-memory copy then persist once.
-    if (targetSlot?.recipeId) {
+    if (targetSlot && targetSlot.dishes && targetSlot.dishes.length > 0) {
       // Swap: both slots keep their other metadata (servings overrides, etc).
       days[toDay][toMeal] = sourceSlot
       days[fromDay][fromMeal] = targetSlot
@@ -802,10 +833,10 @@ router.post('/menu/:menuId/move-slot', async (req: AuthRequest, res) => {
 
 // PATCH /menu/:menuId/day/:day/meal/:meal — partial update for slot metadata.
 //
-// v1 only supports `{ servings: number | null }` (per-day diner-count
-// override). Null clears the override and the slot reverts to the user's
-// household default for shopping-list aggregation. Slot ownership / recipe
-// pinning stays in PUT to keep this method idempotent for metadata.
+// Supports `{ servings: number | null }` (per-day diner-count override).
+// Null clears the override and the slot reverts to the user's household
+// default for shopping-list aggregation. `pinnedType` moved to dish-level
+// (use PATCH /dish/:position instead).
 router.patch('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) => {
   try {
     const menuId = String(req.params.menuId)
@@ -850,22 +881,6 @@ router.patch('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) 
           return
         }
         slot.servings = n
-      }
-    }
-
-    // Pinned meal-type tag. Same shape as servings — null clears, a known
-    // tag from @ona/shared sets, unknown rejected with 400.
-    if ('pinnedType' in (req.body ?? {})) {
-      const raw = req.body.pinnedType
-      if (raw === null) {
-        delete slot.pinnedType
-      } else if (typeof raw !== 'string' || !MEAL_TYPE_TAG_VALUES.has(raw)) {
-        res.status(400).json({
-          error: `pinnedType must be one of: ${MEAL_TYPE_TAGS.join(', ')}`,
-        })
-        return
-      } else {
-        slot.pinnedType = raw
       }
     }
 
@@ -1040,12 +1055,16 @@ router.post('/menu/:menuId/day/:day/leftover', async (req: AuthRequest, res) => 
     }
     const days = menu.days as DayMenu[]
 
-    const source = days[sourceDay]?.[sourceMeal]
-    if (!source?.recipeId) {
+    const sourceSlot = days[sourceDay]?.[sourceMeal]
+    if (!sourceSlot || !sourceSlot.dishes || sourceSlot.dishes.length === 0) {
       res.status(404).json({ error: 'Source slot is empty' })
       return
     }
-    if (source.kind === 'leftover') {
+    // Prevent chaining: reject if every recipe-dish in the source is already a leftover.
+    const hasPlannedRecipe = sourceSlot.dishes.some(
+      (d) => d.kind === 'recipe' && d.variant !== 'leftover',
+    )
+    if (!hasPlannedRecipe) {
       res.status(400).json({ error: 'Cannot chain leftovers — pick a planned source slot' })
       return
     }
@@ -1054,13 +1073,19 @@ router.post('/menu/:menuId/day/:day/leftover', async (req: AuthRequest, res) => 
       return
     }
 
+    // Clone only the recipe dishes from the source slot (notes dropped).
+    const clonedDishes: RecipeDish[] = []
+    sourceSlot.dishes.forEach((d, sourcePos) => {
+      if (d.kind !== 'recipe') return  // notes don't propagate as leftovers
+      clonedDishes.push({
+        ...d,
+        variant: 'leftover',
+        leftoverOf: { day: sourceDay, meal: sourceMeal, dishPosition: sourcePos },
+      })
+    })
+
     if (!days[targetDay]) days[targetDay] = {}
-    days[targetDay][targetMeal] = {
-      recipeId: source.recipeId,
-      recipeName: source.recipeName,
-      kind: 'leftover',
-      leftoverOf: { day: sourceDay, meal: sourceMeal },
-    }
+    days[targetDay][targetMeal] = { servings: sourceSlot.servings, dishes: clonedDishes }
 
     const [updated] = await db
       .update(menus)
@@ -1156,6 +1181,244 @@ router.delete('/menu/:menuId/day/:day/skip', async (req: AuthRequest, res) => {
   } catch (err) {
     console.error('Unskip day error:', err)
     res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// ─── Dish-level routes ───────────────────────────────────────────────────────
+// All 4 share the :menuId param middleware (IDOR checks run automatically).
+
+const addDishSchema = z.union([
+  z.object({
+    kind: z.literal('recipe'),
+    recipeId: z.string().uuid(),
+    course: courseSchema.optional(),
+    pinnedType: z.string().nullable().optional(),
+  }),
+  z.object({
+    kind: z.literal('note'),
+    text: z.string().min(1).max(120),
+  }),
+])
+
+// B.1: POST /menu/:menuId/day/:day/meal/:meal/dish — append a dish to a slot.
+router.post('/menu/:menuId/day/:day/meal/:meal/dish', async (req: AuthRequest, res) => {
+  try {
+    const menuId = String(req.params.menuId)
+    const day = Number(req.params.day)
+    const meal = String(req.params.meal)
+    const parsed = addDishSchema.safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid dish payload', details: parsed.error.issues })
+      return
+    }
+    const [menu] = await db.select().from(menus).where(eq(menus.id, menuId)).limit(1)
+    if (!menu) { res.status(404).json({ error: 'Menu not found' }); return }
+    const days = menu.days as DayMenu[]
+    const slot = days[day]?.[meal] ?? { servings: null, dishes: [] }
+    const next = addDish(slot.dishes, parsed.data as Dish)
+    if (!days[day]) days[day] = {}
+    days[day][meal] = { ...slot, dishes: next }
+    await db.update(menus).set({ days: days as any }).where(eq(menus.id, menuId))
+    res.json({ position: next.length - 1, dish: next[next.length - 1] })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// B.2: DELETE /menu/:menuId/day/:day/meal/:meal/dish/:position — remove a dish by position.
+router.delete('/menu/:menuId/day/:day/meal/:meal/dish/:position', async (req: AuthRequest, res) => {
+  try {
+    const menuId = String(req.params.menuId)
+    const day = Number(req.params.day)
+    const meal = String(req.params.meal)
+    const position = Number(req.params.position)
+    const [menu] = await db.select().from(menus).where(eq(menus.id, menuId)).limit(1)
+    if (!menu) { res.status(404).json({ error: 'Menu not found' }); return }
+    const days = menu.days as DayMenu[]
+    const slot = days[day]?.[meal]
+    if (!slot) { res.status(404).json({ error: 'Slot not found' }); return }
+    if (position < 0 || position >= slot.dishes.length) {
+      res.status(400).json({ error: 'Position out of range' }); return
+    }
+    const next = removeDishAt(slot.dishes, position)
+    days[day][meal] = { ...slot, dishes: next }
+    await db.update(menus).set({ days: days as any }).where(eq(menus.id, menuId))
+    res.json({ dishes: next })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+const patchDishSchema = z.object({
+  text: z.string().max(120).optional(),
+  pinnedType: z.string().nullable().optional(),
+  newPosition: z.number().int().nonnegative().optional(),
+  course: courseSchema.optional(),
+})
+
+// B.3: PATCH /menu/:menuId/day/:day/meal/:meal/dish/:position — patch or reorder a dish.
+// If `newPosition` is present, ignore other fields and reorder.
+router.patch('/menu/:menuId/day/:day/meal/:meal/dish/:position', async (req: AuthRequest, res) => {
+  try {
+    const menuId = String(req.params.menuId)
+    const day = Number(req.params.day)
+    const meal = String(req.params.meal)
+    const position = Number(req.params.position)
+    const parsed = patchDishSchema.safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid patch payload', details: parsed.error.issues })
+      return
+    }
+    const [menu] = await db.select().from(menus).where(eq(menus.id, menuId)).limit(1)
+    if (!menu) { res.status(404).json({ error: 'Menu not found' }); return }
+    const days = menu.days as DayMenu[]
+    const slot = days[day]?.[meal]
+    if (!slot) { res.status(404).json({ error: 'Slot not found' }); return }
+    if (position < 0 || position >= slot.dishes.length) {
+      res.status(400).json({ error: 'Position out of range' }); return
+    }
+    const body = parsed.data
+    let next: Dish[]
+    if (body.newPosition !== undefined) {
+      if (body.newPosition >= slot.dishes.length) {
+        res.status(400).json({ error: 'newPosition out of range' }); return
+      }
+      next = reorderDish(slot.dishes, position, body.newPosition)
+    } else {
+      next = patchDish(slot.dishes, position, { text: body.text, pinnedType: body.pinnedType, course: body.course })
+    }
+    days[day][meal] = { ...slot, dishes: next }
+    await db.update(menus).set({ days: days as any }).where(eq(menus.id, menuId))
+    res.json({ dish: next[body.newPosition ?? position] })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// B.4: POST /menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate — re-pick one recipe dish.
+router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async (req: AuthRequest, res) => {
+  try {
+    const menuId = String(req.params.menuId)
+    const day = Number(req.params.day)
+    const meal = String(req.params.meal)
+    const position = Number(req.params.position)
+    const [menu] = await db.select().from(menus).where(eq(menus.id, menuId)).limit(1)
+    if (!menu) { res.status(404).json({ error: 'Menu not found' }); return }
+    const days = menu.days as DayMenu[]
+    const slot = days[day]?.[meal]
+    if (!slot) { res.status(404).json({ error: 'Slot not found' }); return }
+    if (position < 0 || position >= slot.dishes.length) {
+      res.status(400).json({ error: 'Position out of range' }); return
+    }
+    const dish = slot.dishes[position]
+    if (dish.kind === 'note') {
+      res.status(400).json({ error: 'Cannot regenerate a note dish' }); return
+    }
+
+    // Build matcher options — same pattern as PUT /meal/:meal above.
+    const usedRecipeIds = new Set<string>()
+    for (let d = 0; d < days.length; d++) {
+      for (const m of Object.keys(days[d])) {
+        const s = days[d][m]
+        if (!s) continue
+        // Exclude the dish being regenerated from the used set
+        s.dishes.forEach((dsh, idx) => {
+          if (dsh.kind === 'recipe' && !(d === day && m === meal && idx === position)) {
+            usedRecipeIds.add(dsh.recipeId)
+          }
+        })
+      }
+    }
+
+    const [user] = await db
+      .select({ restrictions: users.restrictions })
+      .from(users)
+      .where(eq(users.id, menu.userId))
+      .limit(1)
+    const restrictions: string[] = user?.restrictions ?? []
+    const memRegen = await getMemoryForUser(menu.userId).catch(() => null)
+    const dislikesValRegen = memRegen?.dislikes?.value
+    const dislikesRegen: string[] = Array.isArray(dislikesValRegen) ? (dislikesValRegen as string[]) : []
+    const equipValRegen = memRegen?.equipment?.value
+    const availEquipRegen = Array.isArray(equipValRegen)
+      ? new Set<string>((equipValRegen as string[]).map(normaliseEquipment))
+      : undefined
+    const SPANISH_DAY_KEYS_REGEN = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'] as const
+    const timeValRegen = memRegen?.time_available?.value as Record<string, number> | undefined
+    const maxPrepRegen = timeValRegen && typeof timeValRegen === 'object'
+      ? (timeValRegen[SPANISH_DAY_KEYS_REGEN[day]] ?? null)
+      : null
+
+    const favScopeRegen = await resolveScope(menu.userId)
+    const favRowsRegen = await db
+      .select({ recipeId: userFavorites.recipeId })
+      .from(userFavorites)
+      .where(scopeWhere(userFavorites.userId, userFavorites.householdId, favScopeRegen))
+    const favoriteRecipeIdsRegen = new Set<string>(favRowsRegen.map((f: any) => f.recipeId))
+
+    const allRecipesRegen = await db.select().from(recipes)
+    const riRowsRegen = await db
+      .select({
+        recipeId: recipeIngredients.recipeId,
+        ingredientId: recipeIngredients.ingredientId,
+        quantity: recipeIngredients.quantity,
+        unit: recipeIngredients.unit,
+        ingredientName: ingredients.name,
+      })
+      .from(recipeIngredients)
+      .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
+
+    const ingredientsByRecipeRegen = new Map<string, any[]>()
+    for (const row of riRowsRegen) {
+      const list = ingredientsByRecipeRegen.get(row.recipeId) ?? []
+      list.push({
+        ingredientId: row.ingredientId,
+        ingredientName: row.ingredientName,
+        quantity: row.quantity,
+        unit: row.unit ?? 'g',
+      })
+      ingredientsByRecipeRegen.set(row.recipeId, list)
+    }
+    const recipesWithIngredientsRegen = allRecipesRegen.map((r: any) => ({
+      id: r.id,
+      name: r.name,
+      course: r.course ?? null,
+      meals: r.meals ?? [],
+      seasons: r.seasons ?? [],
+      tags: r.tags ?? [],
+      equipment: r.equipment ?? [],
+      prepTime: r.prepTime ?? null,
+      ingredients: ingredientsByRecipeRegen.get(r.id) ?? [],
+    }))
+
+    const matcherOptionsRegen = {
+      meal: meal as Meal,
+      season: detectSeason(),
+      usedRecipeIds,
+      restrictions,
+      favoriteRecipeIds: favoriteRecipeIdsRegen,
+      bannedRecipeIds: new Set(menu.bannedRecipeIds ?? []),
+      dislikes: dislikesRegen,
+      availableEquipment: availEquipRegen,
+      maxPrepMinutes: maxPrepRegen,
+    }
+
+    const picked = findForCourse(recipesWithIngredientsRegen, dish.course ?? null, matcherOptionsRegen)
+    if (!picked) {
+      res.status(409).json({ error: 'No candidates for this course right now' }); return
+    }
+    const next = [...slot.dishes]
+    next[position] = {
+      kind: 'recipe',
+      recipeId: picked.id,
+      recipeName: picked.name,
+      course: picked.course ?? null,
+    }
+    days[day][meal] = { ...slot, dishes: next }
+    await db.update(menus).set({ days: days as any }).where(eq(menus.id, menuId))
+    res.json({ dish: next[position] })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
   }
 })
 

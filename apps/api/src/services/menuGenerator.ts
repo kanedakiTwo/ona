@@ -17,10 +17,13 @@ import {
 } from '@ona/shared'
 import type { DayMenu, DayTemplate, Meal, Season, Sex, ActivityLevel, LockedSlots } from '@ona/shared'
 import { findRecipeForSlot, normaliseEquipment, type RecipeWithIngredients } from './recipeMatcher.js'
+import { findForCourse } from './courseAwareMatcher.js'
+import { dishCountFor, coursesFor } from './menuDishes.js'
 import { getMemoryForUser } from './userMemoryStore.js'
 import { resolveScope, scopeWhere } from './scopeResolver.js'
 import { calculateRecipeCaloriesFromDB, calculateMenuCaloriesFromDB } from './calorieCalculator.js'
 import { calculateMenuNutrientsFromDB } from './nutrientCalculator.js'
+import type { MealDishCounts, Dish, RecipeDish, Course } from '@ona/shared'
 
 /**
  * Default 7-day template: breakfast, lunch, dinner every day.
@@ -150,6 +153,26 @@ export function extractMealDiners(raw: unknown): Record<Meal, number>[] {
 }
 
 /**
+ * Per-meal-type dish count, parsed from userSettings.template's junk-drawer
+ * blob: `{ mealDishCounts: { breakfast?: 1|2|3, lunch?: 1|2|3, ... } }`.
+ * Missing entries default to 1 in `dishCountFor`. Invalid values (anything
+ * outside 1/2/3) are dropped.
+ */
+export function extractMealDishCounts(raw: unknown): MealDishCounts {
+  if (!raw || typeof raw !== 'object') return {}
+  const blob = raw as { mealDishCounts?: unknown }
+  const mdc = blob.mealDishCounts
+  if (!mdc || typeof mdc !== 'object') return {}
+  const out: MealDishCounts = {}
+  for (const [meal, count] of Object.entries(mdc as Record<string, unknown>)) {
+    if (count === 1 || count === 2 || count === 3) {
+      out[meal as keyof MealDishCounts] = count
+    }
+  }
+  return out
+}
+
+/**
  * Count total meal slots in a template.
  */
 function countMealSlots(template: DayTemplate[]): number {
@@ -162,10 +185,12 @@ function countMealSlots(template: DayTemplate[]): number {
   return count
 }
 
+type RecipeWithCourse = RecipeWithIngredients & { course: Course | null }
+
 /**
  * Load all recipes with their ingredient names from the DB.
  */
-async function loadRecipesWithIngredients(db: any): Promise<RecipeWithIngredients[]> {
+async function loadRecipesWithIngredients(db: any): Promise<RecipeWithCourse[]> {
   const allRecipes = await db.select().from(recipes)
 
   const recipeIds = allRecipes.map((r: any) => r.id)
@@ -211,8 +236,10 @@ async function loadRecipesWithIngredients(db: any): Promise<RecipeWithIngredient
     tags: r.tags ?? [],
     equipment: r.equipment ?? [],
     prepTime: r.prepTime ?? null,
+    // Course classification for multi-dish slot building (starter/main/dessert).
+    course: (r.course as Course | null | undefined) ?? null,
     ingredients: ingredientsByRecipe.get(r.id) ?? [],
-  }))
+  })) as (RecipeWithIngredients & { course: Course | null })[]
 }
 
 /**
@@ -223,7 +250,7 @@ const WEEKDAY_KEYS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'saba
 
 function buildRandomMenu(
   template: DayTemplate[],
-  allRecipes: RecipeWithIngredients[],
+  allRecipes: RecipeWithCourse[],
   season: Season,
   restrictions: string[],
   favoriteRecipeIds: Set<string>,
@@ -235,9 +262,11 @@ function buildRandomMenu(
   availableEquipment?: Set<string>,
   timeBudgetByDay?: Record<number, number>,
   mealDiners?: Record<Meal, number>[],
-): DayMenu[] {
+  mealDishCounts?: MealDishCounts,
+): { days: DayMenu[]; warnings: string[] } {
   const usedRecipeIds = new Set<string>()
   const days: DayMenu[] = []
+  const warnings: string[] = []
 
   // If there are locked slots, pre-fill them and mark as used
   if (existingDays) {
@@ -246,8 +275,12 @@ function buildRandomMenu(
       const dayLocks = lockedSlots[dayIndexStr]
       if (!dayLocks || !existingDays[dayIndex]) continue
       for (const meal of Object.keys(dayLocks)) {
-        if (dayLocks[meal] && existingDays[dayIndex][meal]?.recipeId) {
-          usedRecipeIds.add(existingDays[dayIndex][meal]!.recipeId)
+        const slot = existingDays[dayIndex][meal]
+        if (dayLocks[meal] && slot) {
+          // Pre-mark all recipe dishes in locked slots as used
+          for (const dish of slot.dishes ?? []) {
+            if (dish.kind === 'recipe') usedRecipeIds.add(dish.recipeId)
+          }
         }
       }
     }
@@ -271,41 +304,59 @@ function buildRandomMenu(
       const isLocked =
         existingDays &&
         lockedSlots[String(dayIndex)]?.[meal] &&
-        existingDays[dayIndex]?.[meal]?.recipeId
+        existingDays[dayIndex]?.[meal]
 
       if (isLocked) {
-        dayMenu[meal] = existingDays[dayIndex][meal]
+        dayMenu[meal] = existingDays![dayIndex][meal]
         continue
       }
 
-      const recipe = findRecipeForSlot(allRecipes, {
-        meal: meal as Meal,
-        season,
-        usedRecipeIds,
-        restrictions,
-        favoriteRecipeIds,
-        bannedRecipeIds,
-        dislikes,
-        availableEquipment,
-        maxPrepMinutes: timeBudgetByDay?.[dayIndex] ?? null,
-        dayIndex,
-      })
+      const dinerOverride = mealDiners?.[dayIndex]?.[meal as Meal]
+      const defaultDinersForSlot = dinerOverride && dinerOverride > 0 ? dinerOverride : undefined
 
-      if (recipe) {
-        const dinerOverride = mealDiners?.[dayIndex]?.[meal as Meal]
-        dayMenu[meal] = {
-          recipeId: recipe.id,
-          recipeName: recipe.name,
-          ...(dinerOverride && dinerOverride > 0 ? { servings: dinerOverride } : {}),
+      const wantedCount = dishCountFor(meal as Meal, mealDishCounts ?? {})
+      const wantedCourses = coursesFor(wantedCount)
+      const dishes: Dish[] = []
+
+      for (const course of wantedCourses) {
+        const picked = findForCourse(allRecipes, course, {
+          meal: meal as Meal,
+          season,
+          usedRecipeIds,
+          restrictions,
+          favoriteRecipeIds,
+          bannedRecipeIds,
+          dayIndex,
+          dislikes,
+          availableEquipment,
+          maxPrepMinutes: timeBudgetByDay?.[dayIndex] ?? null,
+        })
+        if (!picked) {
+          warnings.push(`no_${course ?? 'main'}_available_${meal}_d${dayIndex}`)
+          continue
         }
-        usedRecipeIds.add(recipe.id)
+        usedRecipeIds.add(picked.id)
+        dishes.push({
+          kind: 'recipe',
+          recipeId: picked.id,
+          recipeName: picked.name,
+          course: (picked as RecipeWithCourse).course ?? null,
+        } as RecipeDish)
+      }
+
+      // Set the new-shape slot (only if we got at least one dish)
+      if (dishes.length > 0) {
+        dayMenu[meal] = {
+          ...(defaultDinersForSlot !== undefined ? { servings: defaultDinersForSlot } : {}),
+          dishes,
+        }
       }
     }
 
     days.push(dayMenu)
   }
 
-  return days
+  return { days, warnings }
 }
 
 /**
@@ -337,7 +388,9 @@ async function scoreMenu(
   for (const day of days) {
     for (const meal of Object.keys(day)) {
       const slot = day[meal]
-      if (slot?.recipeId && unmappedRecipeIds.has(slot.recipeId)) unmappedPenalty += 0.05
+      for (const dish of slot?.dishes ?? []) {
+        if (dish.kind === 'recipe' && unmappedRecipeIds.has(dish.recipeId)) unmappedPenalty += 0.05
+      }
     }
   }
 
@@ -364,7 +417,7 @@ export async function generateMenu(
   existingDays?: DayMenu[],
   bannedRecipeIds?: Set<string>,
   skippedDays?: Set<number>,
-): Promise<DayMenu[]> {
+): Promise<{ days: DayMenu[]; warnings: string[] }> {
   // 1. Fetch user profile
   const [user] = await db
     .select()
@@ -391,6 +444,9 @@ export async function generateMenu(
   // explicit count keep `servings` undefined and fall back to the household
   // multiplier in the shopping-list aggregator.
   const mealDiners = extractMealDiners(rawTemplate)
+  // Per-meal-type dish count from the same junk-drawer blob:
+  // `{ mealDishCounts: { lunch: 2, dinner: 3 } }`. Absent = all 1-dish.
+  const mealDishCounts = extractMealDishCounts(rawTemplate)
 
   // Fetch all recipes with ingredients
   const allRecipes = await loadRecipesWithIngredients(db)
@@ -450,9 +506,10 @@ export async function generateMenu(
   // 6. Iterative optimization
   let bestDays: DayMenu[] | null = null
   let bestFitness: number = MENU_GENERATION.MIN_FITNESS
+  let bestWarnings: string[] = []
 
   for (let i = 0; i < MENU_GENERATION.MAX_ITERATIONS; i++) {
-    const candidateDays = buildRandomMenu(
+    const { days: candidateDays, warnings: candidateWarnings } = buildRandomMenu(
       template,
       allRecipes,
       season,
@@ -466,11 +523,12 @@ export async function generateMenu(
       availableEquipment,
       timeBudgetByDay,
       mealDiners,
+      mealDishCounts,
     )
 
     // Verify the menu has at least some recipes
     const hasRecipes = candidateDays.some((day) =>
-      Object.values(day).some((slot) => slot?.recipeId),
+      Object.values(day).some((slot) => (slot?.dishes?.length ?? 0) > 0),
     )
     if (!hasRecipes) continue
 
@@ -479,13 +537,18 @@ export async function generateMenu(
     if (fitness < bestFitness) {
       bestFitness = fitness
       bestDays = candidateDays
+      bestWarnings = candidateWarnings
     }
 
     // Early stop if fitness is good enough
     if (bestFitness < MENU_GENERATION.OPTIMAL_FITNESS) break
   }
 
-  return bestDays ?? buildRandomMenu(
+  if (bestDays) {
+    return { days: bestDays, warnings: bestWarnings }
+  }
+
+  const fallback = buildRandomMenu(
     template,
     allRecipes,
     season,
@@ -498,5 +561,8 @@ export async function generateMenu(
     dislikes,
     availableEquipment,
     timeBudgetByDay,
+    mealDiners,
+    mealDishCounts,
   )
+  return { days: fallback.days, warnings: fallback.warnings }
 }

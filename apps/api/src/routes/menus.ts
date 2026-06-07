@@ -129,7 +129,7 @@ router.post('/menu/generate', authMiddleware, validate(generateMenuSchema), asyn
     const carrySkipped = new Set<number>(previous?.skippedDays ?? [])
 
     // Generate the menu
-    const days = await generateMenu(
+    const { days, warnings } = await generateMenu(
       userId,
       weekStart,
       customTemplate,
@@ -178,7 +178,8 @@ router.post('/menu/generate', authMiddleware, validate(generateMenuSchema), asyn
       console.warn('[menus.generate] enqueuePrepAlertsForMenu failed:', err)
     })
 
-    res.status(201).json(await hydrateMenuImages(menu))
+    const hydrated = await hydrateMenuImages(menu)
+    res.status(201).json({ ...hydrated, warnings })
   } catch (err) {
     console.error('Generate menu error:', err)
     res.status(500).json({ error: 'Internal server error' })

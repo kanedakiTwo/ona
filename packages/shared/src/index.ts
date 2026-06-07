@@ -20,7 +20,9 @@ export type {
   RecipeFrequency,
   Course,
 } from './types/recipe.js'
-export type { Menu, DayMenu, MealSlot, LockedSlots } from './types/menu.js'
+export type { Menu, DayMenu, MealSlot, LockedSlots, MealDishCounts } from './types/menu.js'
+export type { Dish, RecipeDish, NoteDish } from './types/menuDish.js'
+export { isRecipeDish, isNoteDish, recipeDishesOf } from './types/menuDish.js'
 export type {
   MemoryKey,
   MemorySource,

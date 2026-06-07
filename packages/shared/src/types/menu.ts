@@ -1,54 +1,20 @@
 import { z } from 'zod'
 import type { Meal } from '../constants/enums.js'
+import type { Dish } from './menuDish.js'
 
 export interface MealSlot {
-  recipeId: string
-  recipeName?: string
-  /**
-   * Per-slot diner-count override. When present, this number replaces the
-   * user's household-based default when scaling ingredients for this slot
-   * (e.g. shopping-list aggregation, "Para X" caption on the recipe detail
-   * when entered from the menu). Absent/null = use the user's household
-   * default. The slot is scoped to this week's menu; clearing it on the
-   * next regeneration is the user's responsibility.
-   */
+  /** Slot-level diner override; replaces the household default for every dish in this slot. */
   servings?: number | null
-  /**
-   * Pinned meal-type tag. When set, regeneration / random / add for this
-   * slot must pick a recipe whose `tags` includes this value (one of
-   * MEAL_TYPE_TAGS — 'cremas', 'legumbres', 'pizza' …). Null clears.
-   */
-  pinnedType?: string | null
-  /**
-   * Slot kind. `'planned'` (or undefined) is the default; `'leftover'`
-   * marks a slot cloned from a previous day's dinner via "Comer sobras".
-   * Leftover slots are excluded from re-pick (Aleatorio / Elegir hidden in
-   * the UI) and the shopping aggregator handles the repeated recipeId via
-   * `sumDinersByRecipe` so quantities aggregate cleanly.
-   */
-  kind?: 'planned' | 'leftover' | null
-  /** Back-reference to the source slot when `kind === 'leftover'`. */
-  leftoverOf?: { day: number; meal: string } | null
-  /**
-   * Hydrated by the menu API on every response from the joined
-   * `recipes.image_url` column. NOT persisted in the JSONB; resolved per
-   * request so a regenerate-image on the recipe takes effect immediately.
-   * Null when the recipe has no image yet.
-   */
-  imageUrl?: string | null
-  /**
-   * Hydrated alongside `imageUrl` from the joined `recipes.prep_time` /
-   * `recipes.total_time` columns. Used by the week-list view to surface a
-   * time chip on each row without an extra per-recipe fetch. Null when
-   * the recipe doesn't carry that metric.
-   */
-  prepTime?: number | null
-  totalTime?: number | null
+  /** Ordered list of dishes; length ≥ 1 after at least one populate, but `[]` is transient and valid. */
+  dishes: Dish[]
 }
 
 export interface DayMenu {
   [meal: string]: MealSlot | undefined
 }
+
+/** Per-meal-type dish count config for the menu generator. Default 1. */
+export type MealDishCounts = Partial<Record<Meal, 1 | 2 | 3>>
 
 export interface Menu {
   id: string

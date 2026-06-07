@@ -171,6 +171,9 @@ export const recipes = pgTable('recipes', {
 
   difficulty: text('difficulty').default('medium'),
 
+  /** Course classification: 'starter' | 'main' | 'dessert' | null; validated at app layer. */
+  course: text('course'),
+
   meals: text('meals').array().notNull().default([]),
   seasons: text('seasons').array().notNull().default([]),
 

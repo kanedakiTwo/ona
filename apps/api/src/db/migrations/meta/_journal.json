@@ -204,6 +204,13 @@
       "when": 1780684313316,
       "tag": "0028_advisor_spend",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1780868636496,
+      "tag": "0029_recipes_course",
+      "breakpoints": true
     }
   ]
 }

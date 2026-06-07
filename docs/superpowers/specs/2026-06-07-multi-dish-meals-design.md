@@ -146,8 +146,8 @@ Existing matcher rules (season, banned, restrictions, pinnedType) compose on top
 | `POST /menu/:menuId/move-slot` | Unchanged — whole slot moves. |
 | `PATCH /menu/:menuId/day/:day/meal/:meal/lock` | Unchanged — slot-level lock. |
 | `PATCH /menu/:menuId/day/:day/meal/:meal` | Body shrinks: `servings` only. `pinnedType` moves to dish-level. |
-| `POST /menu/:menuId/day/:day/meal/:meal/ban` | Accepts optional `?dishPosition=N` to disambiguate when slot has multiple recipe dishes. Default = position 0. |
-| `POST /menu/:menuId/day/:targetDay/leftover` | Clones only the recipe dishes of the source slot (notes skipped). |
+| `POST /menu/:menuId/ban` | Unchanged. Body `{recipeId}` already targets the recipe directly — the UI passes the chosen dish's recipeId so multi-dish needs no new param. |
+| `POST /menu/:menuId/day/:day/leftover` | Clones only the recipe dishes of the source slot (notes skipped). |
 
 ### New dish-level routes
 

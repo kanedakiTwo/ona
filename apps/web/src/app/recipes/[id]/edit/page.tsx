@@ -27,8 +27,8 @@ import { FitChip, cycleFit } from "@/components/recipes/FitChip"
 import { cn } from "@/lib/utils"
 import { LintFailureError } from "@/lib/api"
 import { humanizeLintKey } from "@/lib/recipeView"
-import { createRecipeSchema } from "@ona/shared"
-import type { Difficulty, Ingredient, Meal, Season } from "@ona/shared"
+import { createRecipeSchema, COURSES, COURSE_LABELS } from "@ona/shared"
+import type { Course, Difficulty, Ingredient, Meal, Season } from "@ona/shared"
 import { MEAL_LABELS, SEASON_LABELS } from "@/lib/labels"
 
 const MEAL_OPTIONS: { value: Meal; label: string }[] = [
@@ -107,6 +107,7 @@ export default function EditRecipePage() {
   const [frequency, setFrequency] = useState<
     "frequent" | "normal" | "occasional" | "weekends_only" | null
   >(null)
+  const [course, setCourse] = useState<Course | "">("")
   const [tags, setTags] = useState<string[]>([])
   const [tagInput, setTagInput] = useState("")
   const [ingredientRows, setIngredientRows] = useState<IngredientRow[]>([emptyRow()])
@@ -152,6 +153,7 @@ export default function EditRecipePage() {
         Object.fromEntries((recipe.seasons ?? []).map((s) => [s, "perfect" as const])),
     )
     setFrequency(recipe.frequency ?? null)
+    setCourse(recipe.course ?? "")
     setTags(recipe.tags ?? [])
     // Round-trip the persisted blob(s) through split-on-blank-line so a
     // recipe authored before the unified UI still renders one row per
@@ -314,6 +316,7 @@ export default function EditRecipePage() {
       mealFit,
       seasonFit,
       frequency,
+      course: course || null,
       tags,
       ingredients: cleanedIngredients,
       steps: cleanedSteps,
@@ -576,6 +579,25 @@ export default function EditRecipePage() {
                   </button>
                 )
               })}
+            </div>
+          </section>
+
+          {/* Course */}
+          <section>
+            <div className="text-eyebrow text-[#7A7066]">Tipo de plato</div>
+            <div className="mt-3">
+              <select
+                value={course}
+                onChange={(e) => setCourse(e.target.value as Course | "")}
+                className="w-full rounded-xl border border-[#DDD6C5] bg-[#FFFEFA] px-3 py-2 text-[14px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none"
+              >
+                <option value="">Sin clasificar (auto)</option>
+                {COURSES.map((c) => (
+                  <option key={c} value={c}>
+                    {COURSE_LABELS[c]}
+                  </option>
+                ))}
+              </select>
             </div>
           </section>
 

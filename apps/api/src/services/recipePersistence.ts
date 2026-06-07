@@ -143,6 +143,8 @@ export interface RecipeWriteInput {
   sourceUrl?: string | null
   /** Provenance enum (manual / image / article / youtube). */
   sourceType?: SourceType | null
+  /** Recipe course classification (entrante/principal/postre). Null = versatile. */
+  course?: string | null
   ingredients: RecipeIngredientWriteInput[]
   steps: RecipeStepWriteInput[]
 }
@@ -504,6 +506,8 @@ export async function persistRecipe(
       // toggles back to "Normal"). The DB CHECK constraint guards the
       // enum domain so a stray value can't reach the matcher.
       frequency: input.frequency ?? null,
+      // Course classification (entrante/principal/postre). Null = versatile.
+      course: input.course ?? null,
       updatedAt: new Date(),
     }
 

@@ -22,8 +22,8 @@ import {
 } from "@/components/recipes/SortableIngredientsList"
 import { FitChip, cycleFit } from "@/components/recipes/FitChip"
 import { IngredientAutocomplete } from "@/components/recipes/IngredientAutocomplete"
-import { buildRecipePayload, createRecipeSchema } from "@ona/shared"
-import type { Meal, Season, ExtractedRecipe, Ingredient } from "@ona/shared"
+import { buildRecipePayload, createRecipeSchema, COURSES, COURSE_LABELS } from "@ona/shared"
+import type { Course, Meal, Season, ExtractedRecipe, Ingredient } from "@ona/shared"
 import { MEAL_LABELS, SEASON_LABELS } from "@/lib/labels"
 
 const MEAL_OPTIONS: { value: Meal; label: string }[] = [
@@ -101,6 +101,7 @@ function NewRecipePageInner() {
   const [frequency, setFrequency] = useState<
     "frequent" | "normal" | "occasional" | "weekends_only" | null
   >(null)
+  const [course, setCourse] = useState<Course | "">("")
   const [tags, setTags] = useState<string[]>([])
   const [tagInput, setTagInput] = useState("")
   const [ingredientRows, setIngredientRows] = useState<IngredientRow[]>([
@@ -250,7 +251,7 @@ function NewRecipePageInner() {
       steps: steps.map((s) => s.text),
       ingredientRows,
     })
-    return { ...base, mealFit, seasonFit, frequency }
+    return { ...base, mealFit, seasonFit, frequency, course: course || null }
   }
 
   // Surface inline errors per row (e.g. "no encontrado") regardless of submit.
@@ -552,6 +553,25 @@ function NewRecipePageInner() {
                   </button>
                 )
               })}
+            </div>
+          </section>
+
+          {/* Course */}
+          <section>
+            <div className="text-eyebrow text-[#7A7066]">Tipo de plato</div>
+            <div className="mt-3">
+              <select
+                value={course}
+                onChange={(e) => setCourse(e.target.value as Course | "")}
+                className="w-full rounded-xl border border-[#DDD6C5] bg-[#FFFEFA] px-3 py-2 text-[14px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none"
+              >
+                <option value="">Sin clasificar (auto)</option>
+                {COURSES.map((c) => (
+                  <option key={c} value={c}>
+                    {COURSE_LABELS[c]}
+                  </option>
+                ))}
+              </select>
             </div>
           </section>
 

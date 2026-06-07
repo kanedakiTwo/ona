@@ -157,6 +157,22 @@ export interface Recipe {
   updatedAt: Date
 }
 
+// ─── Course (recipe classification) ────────────────────────────
+//
+// Recipes can be classified as a course (entrante/principal/postre),
+// indicating their primary role in a meal. Null means the recipe is
+// versatile and can fit multiple course slots.
+export const COURSES = ['starter', 'main', 'dessert'] as const
+export type Course = typeof COURSES[number]
+
+export const COURSE_LABELS: Record<Course, string> = {
+  starter: 'Entrante',
+  main: 'Principal',
+  dessert: 'Postre',
+}
+
+export const courseSchema = z.union([z.enum(COURSES), z.null()])
+
 // ─── Client → server schemas ──────────────────────────────────
 // Note: `totalTime`, `allergens`, and `nutritionPerServing` are
 // server-derived and intentionally absent from the write schemas.
@@ -194,6 +210,8 @@ export const createRecipeSchema = z.object({
 
   sourceUrl: z.string().url().nullable().optional(),
   sourceType: z.enum(SOURCE_TYPES).nullable().optional(),
+
+  course: courseSchema.optional(),
 
   ingredients: z.array(recipeIngredientWriteSchema).min(1),
   steps: z.array(recipeStepSchema).default([]),
@@ -237,22 +255,6 @@ export const FREQUENCY_WEIGHT: Record<RecipeFrequency, number> = {
 }
 
 export const recipeFrequencySchema = z.enum(FREQUENCY_LEVELS)
-
-// ─── Course (recipe classification) ────────────────────────────
-//
-// Recipes can be classified as a course (entrante/principal/postre),
-// indicating their primary role in a meal. Null means the recipe is
-// versatile and can fit multiple course slots.
-export const COURSES = ['starter', 'main', 'dessert'] as const
-export type Course = typeof COURSES[number]
-
-export const COURSE_LABELS: Record<Course, string> = {
-  starter: 'Entrante',
-  main: 'Principal',
-  dessert: 'Postre',
-}
-
-export const courseSchema = z.union([z.enum(COURSES), z.null()])
 
 // ─── Meal / Season fit ─────────────────────────────────────────
 //

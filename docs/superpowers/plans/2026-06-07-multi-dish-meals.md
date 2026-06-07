@@ -329,9 +329,8 @@ async function classifyBatch(
     system: SYSTEM_PROMPT,
     messages: [{ role: 'user', content: userPrompt }],
   })
-  const text = msg.content.find((c) => c.type === 'text')?.type === 'text'
-    ? (msg.content.find((c) => c.type === 'text') as { text: string }).text
-    : ''
+  const block = msg.content.find((c) => c.type === 'text')
+  const text = block && block.type === 'text' ? block.text : ''
   const parsed = JSON.parse(text) as { results: OutputRow[] }
   // Validate every row before returning — drop unknown course values.
   return parsed.results.map((r) => ({
@@ -969,22 +968,42 @@ git commit -m "feat(api): pure dish helpers (add/remove/reorder/patch + dishCoun
 
 The SQL migration is empty (no schema change). The data migration runs as a TS script that the deploy invokes via `RAILPACK_START_CMD` — same pattern as `db:migrate`.
 
-- [ ] **Step 1: Generate an empty Drizzle migration**
+- [ ] **Step 1: Force-create the 0030 migration via Drizzle**
+
+We need a 0030 entry in `_journal.json` so the data-migration script (Step 2) runs at a deterministic point in the deploy. Easiest reliable way: make a *trivial* tracked column tweak that Drizzle picks up, then revert it before commit.
+
+Simpler alternative (recommended): just bump the schema with a no-op comment change to force Drizzle's awareness:
 
 ```bash
+# Edit schema.ts, add a comment near the menus table (e.g. // PR B: multi-dish migration boundary)
 pnpm --filter @ona/api exec drizzle-kit generate
 ```
 
-If Drizzle has nothing to generate (no schema change), force a placeholder:
+Drizzle will detect "no actual change" and may skip. If so, manually create:
 
-```bash
-echo "-- 0030_menus_dishes.sql
--- No schema change; menus.days JSONB shape is rewritten by
--- scripts/migrateMenusToDishes.ts which runs as part of RAILPACK_START_CMD.
-SELECT 1;" > apps/api/src/db/migrations/0030_menus_dishes.sql
-```
+1. `apps/api/src/db/migrations/0030_menus_dishes.sql`:
+   ```sql
+   -- 0030_menus_dishes.sql
+   -- No schema change; menus.days JSONB shape is rewritten by
+   -- scripts/migrateMenusToDishes.ts which runs in RAILPACK_START_CMD.
+   SELECT 1;
+   ```
 
-Edit `_journal.json` to add the 0030 entry manually if Drizzle skipped it. Generate the snapshot manually (copy the previous and bump the index).
+2. `apps/api/src/db/migrations/meta/0030_snapshot.json` — copy `0029_snapshot.json` verbatim (no schema delta) but bump the `"version"` field to `"7"` (or whatever the convention is — open `0029_snapshot.json` to confirm). Keep `"id"` unique (UUID v4).
+
+3. Append to `apps/api/src/db/migrations/meta/_journal.json`:
+   ```json
+   {
+     "idx": 30,
+     "version": "7",
+     "when": <unix-ms-timestamp>,
+     "tag": "0030_menus_dishes",
+     "breakpoints": true
+   }
+   ```
+   Match the exact shape of the existing entries — look at `idx: 29` for the template.
+
+**If you spend more than 10 minutes fighting Drizzle here, STOP and escalate.** The data migration can also be wired as a manual `pnpm` script invoked once during deploy instead of via a numbered migration — that's the fallback path.
 
 - [ ] **Step 2: Write the data-migration script**
 
@@ -1001,6 +1020,7 @@ Edit `_journal.json` to add the 0030 entry manually if Drizzle skipped it. Gener
  *
  * Triggered automatically on the next `ona-api` boot via RAILPACK_START_CMD.
  */
+import { eq } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
 import { menus } from '../src/db/schema.js'
 
@@ -1064,14 +1084,16 @@ async function run(): Promise<void> {
     const newDays = days.map((day: Record<string, unknown>) => {
       const out: Record<string, unknown> = {}
       for (const meal of Object.keys(day)) {
-        const migrated = migrateSlot(day[meal])
-        if (migrated && migrated !== day[meal]) changed = true
-        out[meal] = migrated
+        const migratedSlot = migrateSlot(day[meal])
+        if (migratedSlot && migratedSlot !== day[meal]) changed = true
+        out[meal] = migratedSlot
       }
       return out
     })
     if (!changed) { skipped++; continue }
-    await db.update(menus).set({ days: newDays as any }).where(/* eq(menus.id, row.id) */ undefined as any)
+    // CRITICAL: scope the UPDATE to the current row's id. Without the WHERE
+    // clause every iteration rewrites the entire menus table.
+    await db.update(menus).set({ days: newDays as any }).where(eq(menus.id, row.id))
     migrated++
   }
   console.log(`✓ Migrated ${migrated} menus (${skipped} already in new shape).`)
@@ -1141,7 +1163,7 @@ function r(id: string, course: 'starter' | 'main' | 'dessert' | null): RecipeWit
     tags: [],
     ingredients: [],
     course,
-  } as any
+  }
 }
 
 const baseOptions = {
@@ -1280,8 +1302,9 @@ Find where the generator iterates `(day, meal)` and calls `findRecipeForSlot(...
 ```ts
 import { findForCourse } from './courseAwareMatcher.js'
 import { dishCountFor, coursesFor } from './menuDishes.js'
-import { extractMealDishCounts } from './menuGenerator.js'   // self-import OK if in same file
 import type { Dish, RecipeDish } from '@ona/shared'
+// `extractMealDishCounts` lives in this same file (Step 1 above); call it directly,
+// no import line needed.
 
 // At the top of the generator (where userSettings is parsed):
 const mealDishCounts = extractMealDishCounts(rawTemplate)
@@ -1350,21 +1373,60 @@ const { menu, warnings } = await runGenerator(...)
 res.json({ ...menu, warnings })
 ```
 
-- [ ] **Step 2: Update `POST /menu/:menuId/regenerate-meal` to operate on dishes**
+- [ ] **Step 2: Update `PUT /menu/:menuId/day/:day/meal/:meal` to operate on dishes**
 
-This route currently swaps one recipe in one slot. With multi-dish, it regenerates all recipe dishes (notes stay in place). Walk the existing slot's `dishes`, count the recipe dishes, run the matcher that many times (one per existing recipe-dish's course), produce a new `dishes[]` interleaving the regenerated recipes back into the original positions (notes preserved at their positions).
+This is the single-slot regenerate handler (find it with `grep -n "router\.put.*meal" apps/api/src/routes/menus.ts` — it's the route at line ~305 in current master). With multi-dish, it regenerates all recipe dishes (notes stay in place). Pseudocode:
+
+```ts
+// Inside the existing PUT handler, after the slot is loaded:
+const currentRecipeIndexes: number[] = []
+slot.dishes.forEach((d, i) => { if (d.kind === 'recipe') currentRecipeIndexes.push(i) })
+
+// Re-pick a recipe for each, preserving the course at that position:
+const newDishes = [...slot.dishes]
+for (const i of currentRecipeIndexes) {
+  const currentCourse = (slot.dishes[i] as RecipeDish).course ?? null
+  const picked = findForCourse(recipesWithIngredients, currentCourse, matcherOptions)
+  if (!picked) continue   // keep the old dish if no candidate
+  newDishes[i] = {
+    kind: 'recipe',
+    recipeId: picked.id,
+    recipeName: picked.name,
+    course: picked.course ?? null,
+  }
+}
+
+// Notes at positions outside currentRecipeIndexes are untouched.
+days[day][meal] = { ...slot, dishes: newDishes }
+```
 
 - [ ] **Step 3: Update `PATCH /menu/:menuId/day/:day/meal/:meal`**
 
 Strip `pinnedType` from the body schema; that field moved to dish-level. Keep `servings`.
 
-- [ ] **Step 4: Update `POST /menu/:menuId/day/:day/meal/:meal/ban`**
+- [ ] **Step 4: Update the existing `POST /menu/:menuId/ban` (no per-slot ban route exists)**
 
-Accept optional `?dishPosition=N` to disambiguate which recipe dish to ban. Default = 0.
+Reality check: the codebase only has `POST /menu/:menuId/ban` with body `{recipeId}` — there's no per-slot ban endpoint. The spec's mention of `?dishPosition=N` was based on a misread. The existing route already takes `recipeId` directly in the body, so it works unchanged with multi-dish — the UI's "..." action menu on a dish-row passes that dish's `recipeId` and the ban applies week-wide as before. **No code change needed in this step**; just leave the route as-is. Mark the step done.
 
-- [ ] **Step 5: Update `POST /menu/:menuId/day/:targetDay/leftover`**
+- [ ] **Step 5: Update `POST /menu/:menuId/day/:day/leftover`**
 
-Clone only the recipe-dishes from the source slot. Drop notes. For each cloned recipe-dish, set `variant: 'leftover'` and `leftoverOf: { day, meal, dishPosition }` pointing at the source.
+Param name is `:day` (the target day), not `:targetDay` — check the existing handler at line ~1006 in master. Body already carries `{sourceDay, sourceMeal, targetMeal}`. With multi-dish:
+
+```ts
+// Inside the handler, after loading sourceSlot:
+const clonedDishes: Dish[] = sourceSlot.dishes
+  .map((d, sourcePos) => d.kind === 'recipe'
+    ? {
+        ...d,
+        variant: 'leftover' as const,
+        leftoverOf: { day: sourceDay, meal: sourceMeal, dishPosition: sourcePos },
+      }
+    : null
+  )
+  .filter((d): d is RecipeDish => d !== null)
+// Notes are dropped — they don't make sense as "leftovers".
+days[day][targetMeal] = { servings: sourceSlot.servings, dishes: clonedDishes }
+```
 
 - [ ] **Step 6: Typecheck after each sub-step**
 
@@ -1444,7 +1506,13 @@ router.delete('/menu/:menuId/day/:day/meal/:meal/dish/:position', async (req: Au
 
 - [ ] **Step 3: Add `PATCH /dish/:position`**
 
-Body: `{text?, pinnedType?, newPosition?, course?}`. Use `reorderDish` if `newPosition` is present, otherwise `patchDish`.
+Body: `{text?, pinnedType?, newPosition?, course?}`.
+
+**Precedence rule** (codify in the handler):
+- If `newPosition` is present, ignore the other fields and call `reorderDish(dishes, position, newPosition)`. The reorder is the only operation for this request.
+- Otherwise call `patchDish(dishes, position, {text, pinnedType, course})`.
+
+This keeps the request unambiguous — "patch and move" in one round-trip is not supported. A client that needs both fires two PATCH calls.
 
 ```ts
 const patchDishSchema = z.object({
@@ -1489,14 +1557,54 @@ git commit -m "feat(menus): 4 dish-level routes (POST/DELETE/PATCH/POST regenera
 
 - [ ] **Step 1: Write `apps/api/src/tests/menusRouteDish.smoke.ts`**
 
-Mirror the existing `menusRoute.smoke.ts` shape. Cover:
-- `POST /dish` happy path (recipe + note), bad payload (400).
-- `DELETE /dish/:pos` happy path, out-of-range (400).
-- `PATCH /dish/:pos` text edit on a note, reorder.
-- `POST /dish/:pos/regenerate` happy path (recipe), 400 on a note.
-- IDOR: every route returns 403 when the menu belongs to another user.
+Mirror the existing `menusRoute.smoke.ts` shape (read it first to lift the harness — `seedTestMenu`, `signTokenFor`, `request(app)` etc).
 
-(Full test code omitted here — the implementer should read `menusRoute.smoke.ts` and clone the harness.)
+Skeleton to expand (each block is one `it()`):
+
+```ts
+import { describe, it, expect, beforeAll } from 'vitest'
+// reuse the helpers from menusRoute.smoke.ts: app, signTokenFor, seedTestMenu
+// (extract them into a shared test helper if not already shared)
+
+describe('Dish-level routes', () => {
+  let menuId: string
+  let ownerToken: string
+  let otherToken: string
+
+  beforeAll(async () => {
+    ({ menuId, ownerToken, otherToken } = await seedTestMenu())   // returns ids + tokens for owner and a different user
+  })
+
+  describe('POST /dish', () => {
+    it('appends a recipe dish and returns position', async () => { /* expect status 200, position === current length */ })
+    it('appends a note dish', async () => { /* body {kind:'note', text:'pan con tomate'} */ })
+    it('400 on missing kind', async () => { /* expect 400, error mentions Invalid */ })
+    it('400 on text > 120 chars', async () => { /* expect 400 */ })
+    it('403 when caller does not own the menu', async () => { /* otherToken → 403 */ })
+  })
+
+  describe('DELETE /dish/:position', () => {
+    it('removes the dish and decrements subsequent positions', async () => { /* … */ })
+    it('400 on position out of range', async () => { /* … */ })
+    it('403 cross-user', async () => { /* … */ })
+  })
+
+  describe('PATCH /dish/:position', () => {
+    it('edits note text', async () => { /* … */ })
+    it('reorders via newPosition', async () => { /* assert order */ })
+    it('ignores text on a recipe dish', async () => { /* recipe dish payload still has its name afterwards */ })
+    it('403 cross-user', async () => { /* … */ })
+  })
+
+  describe('POST /dish/:position/regenerate', () => {
+    it('replaces the recipe at that position', async () => { /* assert new recipeId */ })
+    it('400 when targeting a note dish', async () => { /* … */ })
+    it('403 cross-user', async () => { /* … */ })
+  })
+})
+```
+
+Aim for one assertion per `it()`. The IDOR checks (`403 cross-user`) reuse `otherToken` — the IDOR guard from PR #7 means a single 403 assertion per route suffices.
 
 - [ ] **Step 2: Run**
 
@@ -1520,13 +1628,15 @@ git commit -m "test(menus): route smoke for the 4 dish-level endpoints + IDOR"
 - Modify: `apps/api/src/services/advisor/summary.ts` (or wherever nutrition aggregates)
 - Modify: `apps/api/src/tests/shoppingList.test.ts` (or create if missing)
 
-- [ ] **Step 1: Find every place the legacy `slot.recipeId` is read**
+- [ ] **Step 1: Find every place the legacy slot-shape `recipeId` is read**
+
+Narrow the grep to avoid false positives from unrelated `.recipeId` accesses (favourites, shopping items, ingredient overrides — those stay as-is):
 
 ```bash
-grep -rn 'slot\.recipeId\|\.recipeId\b' apps/api/src/services/ | grep -v '\.test\.ts'
+grep -rn 'slot\.recipeId\|slot\.kind\|slot\.imageUrl\|slot\.prepTime\|slot\.totalTime\|slot\.pinnedType' apps/api/src/services/ | grep -v '\.test\.ts'
 ```
 
-Expected: hits in `shoppingList.ts`, the advisor summary, possibly `menuGenerator.ts` (matcher consumers).
+Expected files: `shoppingList.ts`, `menuGenerator.ts`, anything under `services/advisor/`. If a hit appears in a service you didn't expect (e.g. `pantryMatcher.ts`), open it and adapt the read.
 
 - [ ] **Step 2: Replace each read with a `dishes[]` iteration**
 
@@ -1710,11 +1820,20 @@ git commit -m "feat(menu): AddDishSheet (Aleatorio / Elegir / Añadir nota)"
 **Files:**
 - Modify: `apps/web/src/app/menu/page.tsx` (the inline `EditorialMealCard` at ~line 890)
 
-- [ ] **Step 1: Branch the render**
+- [ ] **Step 1: Branch the render** (find the function with `grep -n "function EditorialMealCard" apps/web/src/app/menu/page.tsx` — line numbers drift between sessions)
 
 ```tsx
 function EditorialMealCard({ meal, ... }: Props) {
   const dishCount = meal.dishes.length
+
+  // Empty slot (DELETE last dish landed here): render the same placeholder
+  // as a never-populated slot. The "+ Añadir plato" trigger sits at the bottom
+  // of the stacked card body — share it across this branch and the multi-dish
+  // branch by rendering MultiDishStackedCard with an empty dishes[].
+  if (dishCount === 0) {
+    return <MultiDishStackedCard slot={meal} ... />
+  }
+
   if (dishCount === 1) {
     return <SingleDishHeroCard dish={meal.dishes[0]} slot={meal} ... />
   }
@@ -1980,6 +2099,7 @@ Commit + push.
 - **The matcher's existing criteria still apply**. `findForCourse` only adds a course filter on top — season, banned, restrictions, equipment all still run.
 - **Idempotency matters for both migrations.** Both `0029` (ADD COLUMN IF NOT EXISTS) and `0030` (script skips already-migrated rows) must be safe to re-run after a partial apply.
 - **Deploy order is fixed**: API first (so the migration runs and the new endpoints exist), then web. This was already the convention before PR #7; the new data migration tightens it further.
+- **Todo Miguel: update `RAILPACK_START_CMD` for `ona-api`** before `railway up` of PR B. Current: `pnpm --filter @ona/api db:migrate && node apps/api/dist/index.js`. New: `pnpm --filter @ona/api db:migrate && pnpm --filter @ona/api tsx scripts/migrateMenusToDishes.ts && node apps/api/dist/index.js`. This is a Railway dashboard env-var change — Claude cannot make it. Append a Todo Miguel item in CLAUDE.md when this plan kicks off PR B.
 - **No E2E in this plan**. Per Miguel's call, the pre-existing red Playwright tests (cook locator + create redirect) are the next PR after PR B ships. Manual smoke covers regression in the meantime.
 
 ## Skills referenced

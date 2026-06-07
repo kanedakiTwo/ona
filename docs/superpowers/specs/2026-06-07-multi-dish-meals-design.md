@@ -127,7 +127,7 @@ Default 1 for all (matches current behaviour). Per meal-type (not per day-meal).
 
 For each `(day, meal)` slot:
 1. Read `dishCount = userSettings.mealDishCounts[meal] ?? 1`.
-2. If `dishCount === 1`: call existing matcher with extra SQL clause `course IN ('main') OR course IS NULL`. Produce `dishes: [{kind:'recipe', recipeId, …}]`.
+2. If `dishCount === 1`: call existing matcher with extra SQL clause `(course = 'main' OR course IS NULL)` — parens are load-bearing since this composes with the matcher's other `WHERE` clauses (season, banned, restrictions) via `AND`. Produce `dishes: [{kind:'recipe', recipeId, …}]`.
 3. If `dishCount === 2`: matcher twice, with `course = 'starter'` then `course = 'main'`. Produce `dishes: [starterDish, mainDish]`.
 4. If `dishCount === 3`: matcher three times — `starter`, `main`, `dessert`. Produce `[starter, main, dessert]`.
 5. **Fallback**: if a matcher call returns no candidates for a course, skip that dish and accumulate a warning `no_<course>_available_<meal>_<dayLabel>`. Return all warnings in the menu generation response so the UI can show a toast.
@@ -141,7 +141,7 @@ Existing matcher rules (season, banned, restrictions, pinnedType) compose on top
 | Route | Change |
 |---|---|
 | `POST /menu/generate` | Honours `mealDishCounts`; returns `warnings: string[]`. |
-| `POST /menu/:menuId/regenerate-meal` | Regenerates all dishes of a slot, honouring the slot's current `dishes.length` count and course progression. |
+| `POST /menu/:menuId/regenerate-meal` | Regenerates **only the recipe dishes** of the slot, honouring the slot's current recipe-dish count and course progression. **Notes in the slot are preserved in place** (regenerate is not "wipe and refill"; it's "re-pick the recipes among the dishes"). |
 | `DELETE /menu/:menuId/day/:day/meal/:meal` | Unchanged — deletes whole slot. |
 | `POST /menu/:menuId/move-slot` | Unchanged — whole slot moves. |
 | `PATCH /menu/:menuId/day/:day/meal/:meal/lock` | Unchanged — slot-level lock. |
@@ -156,8 +156,8 @@ All gated by the existing `:menuId` param middleware (IDOR guards from PR #7).
 | Route | Body | Behaviour |
 |---|---|---|
 | `POST /menu/:menuId/day/:day/meal/:meal/dish` | `{kind:'recipe', recipeId, course?, pinnedType?}` or `{kind:'note', text}` | Appends dish to `dishes[]`. Returns `{position}`. |
-| `DELETE /menu/:menuId/day/:day/meal/:meal/dish/:position` | — | Removes dish; subsequent positions decrement. Empty `dishes[]` is allowed transiently (slot remains; user can re-add). |
-| `PATCH /menu/:menuId/day/:day/meal/:meal/dish/:position` | `{text?, pinnedType?, newPosition?, course?}` | Edit note text, change per-dish pin, reorder (newPosition), or override course manually. Returns the updated dish. |
+| `DELETE /menu/:menuId/day/:day/meal/:meal/dish/:position` | — | Removes dish; subsequent positions decrement. Empty `dishes[]` is allowed — the slot remains and the UI renders it as a `+ Añadir plato` placeholder, identical to a never-populated slot. |
+| `PATCH /menu/:menuId/day/:day/meal/:meal/dish/:position` | `{text?, pinnedType?, newPosition?, course?}` | Edit note text, change per-dish pin, reorder (newPosition), or override course manually. **`course` here is a per-instance override on `RecipeDish.course`** — it does NOT write back to `recipes.course`, so the catalogue isn't mutated by menu-level edits. Returns the updated dish. |
 | `POST /menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate` | — | Aleatorio on one dish; respects its `course`. 400 if dish is a note. |
 
 ## Shopping list + nutrition

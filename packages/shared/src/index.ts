@@ -18,6 +18,7 @@ export type {
   MealFitMap,
   SeasonFitMap,
   RecipeFrequency,
+  Course,
 } from './types/recipe.js'
 export type { Menu, DayMenu, MealSlot, LockedSlots } from './types/menu.js'
 export type {
@@ -68,6 +69,9 @@ export {
   FREQUENCY_LEVELS,
   FREQUENCY_WEIGHT,
   recipeFrequencySchema,
+  COURSES,
+  COURSE_LABELS,
+  courseSchema,
 } from './types/recipe.js'
 export { generateMenuSchema, lockMealSchema } from './types/menu.js'
 

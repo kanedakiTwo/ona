@@ -141,6 +141,9 @@ export interface Recipe {
   /** Hidden from public UI (e.g. "compartida", "auto-extracted") */
   internalTags: string[]
 
+  /** Recipe course: entrante/principal/postre. Null = versatile/unclassified. */
+  course?: Course | null
+
   /** Origin URL when the recipe was imported from an article or YouTube video (null otherwise). */
   sourceUrl?: string | null
   /** Provenance hint: how this recipe entered the catalog. */
@@ -234,6 +237,22 @@ export const FREQUENCY_WEIGHT: Record<RecipeFrequency, number> = {
 }
 
 export const recipeFrequencySchema = z.enum(FREQUENCY_LEVELS)
+
+// ─── Course (recipe classification) ────────────────────────────
+//
+// Recipes can be classified as a course (entrante/principal/postre),
+// indicating their primary role in a meal. Null means the recipe is
+// versatile and can fit multiple course slots.
+export const COURSES = ['starter', 'main', 'dessert'] as const
+export type Course = typeof COURSES[number]
+
+export const COURSE_LABELS: Record<Course, string> = {
+  starter: 'Entrante',
+  main: 'Principal',
+  dessert: 'Postre',
+}
+
+export const courseSchema = z.union([z.enum(COURSES), z.null()])
 
 // ─── Meal / Season fit ─────────────────────────────────────────
 //

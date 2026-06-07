@@ -1,89 +1,68 @@
-{"id":"09cefe3b-88a7-4d0c-8539-3ae50a9420df","name":"Acelgas rehogadas","course":null}
-{"id":"3ca5d75e-c885-4af6-a357-e645b3087832","name":"Aguachile de salmón","course":"starter"}
-{"id":"23f437fb-83e9-4fa8-a722-af963fcd7a62","name":"Albóndigas de la abuela","course":"main"}
-{"id":"c866a867-fd70-4cba-acc3-83d57d81dd8f","name":"Albóndigas en salsa española","course":"main"}
-{"id":"140dc603-835a-4e05-9e9f-236701dba289","name":"Albóndigas gipsy","course":"main"}
-{"id":"e90e2681-42e5-41e9-97ae-1f081c130ff8","name":"Alitas de pollo al horno","course":"main"}
-{"id":"341040dc-7921-41ef-b517-b6bc81de5932","name":"Arroz al caldero","course":"main"}
-{"id":"65359384-d932-4340-96cf-74c76140fee9","name":"Arroz al horno","course":"main"}
-{"id":"80496255-eea6-4f23-995e-3ed7357af9a7","name":"Arroz con bacalao","course":"main"}
-{"id":"1c1012fe-85e1-4829-bd1f-5461715c0e54","name":"Arroz con Bacalao","course":"main"}
-{"id":"e770c5c8-79c8-44eb-980c-7a0a165d2591","name":"Arroz con conejo","course":"main"}
-{"id":"18a0d265-d40a-415f-9bde-bff168399ced","name":"Arroz mexicano","course":"main"}
-{"id":"7f3f8d65-cd22-4397-8b83-62fc9b0c9c28","name":"Bacalao con tomate","course":"main"}
-{"id":"0c035f34-c9a4-4a31-965f-5cd935b35571","name":"Berenjenas con chermoula","course":null}
-{"id":"50b10069-6e8a-4fde-a785-590c67bfb69b","name":"Berenjenas con queso","course":null}
-{"id":"8b714618-f040-40b7-9351-6f49233225c8","name":"Berenjenas rellenas","course":"main"}
-{"id":"6b3f62a8-1948-466a-95dc-9c8b658d1c8a","name":"Carrilleras de ternera al vino tinto","course":"main"}
-{"id":"6796211d-fccb-4d9e-9f86-d84dcec411d2","name":"Carrilleras de ternera con vino tinto","course":"main"}
-{"id":"f59d40dc-3eb6-475f-9d93-bfd52a73313e","name":"Ceviche","course":"starter"}
-{"id":"02e2c1be-2035-40e2-9174-aa54ffe36d62","name":"Ceviche de salmón con mango y aguacate","course":"starter"}
-{"id":"bca43779-cf81-42b8-9104-1d36e842c92f","name":"Cinta de lomo con brócoli","course":"main"}
-{"id":"fe5ebee3-4f06-40b4-8e14-4c62fe578caa","name":"Cochinita pibil","course":"main"}
-{"id":"11a88e91-15d1-4f37-a605-e689ed79695c","name":"Cocido","course":"main"}
-{"id":"be740df1-7283-4f92-b514-d70ac31be0b0","name":"Cocido madrileño","course":"main"}
-{"id":"26ed70ca-68db-4dc3-982a-8f61cac7e6c5","name":"Cómo hacer lentejas guisadas: la receta clásica de un plato para repetir todas las semanas","course":"main"}
-{"id":"aaed8049-9e07-41d4-a4fb-1ff8d7332e85","name":"Contramuslos de pollo guisados","course":"main"}
-{"id":"1ecf699d-48d2-4ffc-9c65-1d9771be8208","name":"Costillas a la riojana","course":"main"}
-{"id":"1394c0e3-bb29-4a96-bb5c-b9aaa37b0e31","name":"Crema de calabacín","course":"starter"}
-{"id":"36daa3f2-d111-4a03-bd4c-64e00f79b152","name":"Crema de calabaza","course":"starter"}
-{"id":"fe2b223a-cf57-4afd-b85b-a4f6c253de90","name":"Crema de zanahorias","course":"starter"}
-{"id":"ffeab79c-d548-4068-8e9f-ac3b3fe1c27c","name":"Curry de berenjena","course":"main"}
-{"id":"c3bf9339-e1dd-44c2-a9ee-db10a58d8857","name":"Curry de berenjena y lentejas","course":"main"}
-{"id":"37a17ab1-5502-4264-bf69-a84f4906ef24","name":"Curry de patatas y guisantes","course":"main"}
-{"id":"37ff8fb0-a76d-44e1-ab46-2100f7e93ad8","name":"Dorada a la marsellesa","course":"main"}
-{"id":"b2aaf399-c48f-4c0d-93c9-11d3ff7b64f2","name":"Ensalada thai","course":"starter"}
-{"id":"a30cb707-ba97-4fe4-90c3-107fbe203993","name":"Ensalada thai de ternera","course":"main"}
-{"id":"059e93f1-a95e-4d2b-81b1-8eae45fac3e0","name":"Espaguetis carbonara","course":"main"}
-{"id":"74be0d10-51a0-4beb-8da9-c8e7768713b0","name":"Espinacas a la crema","course":null}
-{"id":"22ba017b-e08d-4dc3-8b4b-1a3a25cdd624","name":"Fabada asturiana: receta tradicional y auténtica de la cocina española","course":"main"}
-{"id":"88059cee-2acb-41d1-bad7-4e8e22e309c4","name":"Fajitas de pollo","course":"main"}
-{"id":"f7862da1-e0eb-47fc-8060-dd6b089c0a84","name":"Falafel","course":null}
-{"id":"b3a5a187-581b-446b-b2cf-66bf9092994e","name":"Falafel al horno","course":null}
-{"id":"0e6bc6d0-fad8-41e4-bcd1-e5fd492f6999","name":"Fideuá gipsy","course":"main"}
-{"id":"d9388d57-3efb-46b4-9f75-e569b4bab24c","name":"Garbanzos con espinacas","course":"main"}
-{"id":"93e1d5ae-4169-4a70-bef1-7e04025ab44f","name":"Guisantes lagrima","course":null}
-{"id":"d065f4de-3905-4d6e-a00d-966015882cdc","name":"Guisantes lágrima salteados con jamón","course":null}
-{"id":"fc65a48b-84ce-4c39-9fcc-1f163db8a61d","name":"Huevos al plato","course":null}
-{"id":"8899697c-6409-40ab-a0fd-ddbccf678980","name":"Judías verdes rehogadas","course":null}
-{"id":"e78a9466-7e73-4986-a757-1f21ae9b71dd","name":"Lasaña de carne","course":"main"}
-{"id":"50f7b358-c280-40c2-a111-3ae0c8fd77e4","name":"Lasaña de verduras","course":"main"}
-{"id":"2680b4b1-9a91-4526-968e-49523f9a18c5","name":"Lentejas guisadas","course":"main"}
-{"id":"7a1c390d-5b05-4679-9e54-7628365f34a8","name":"Lubina al horno","course":"main"}
-{"id":"54b320c0-7a85-4e77-b557-eb452c89c0fa","name":"Magret a la pekinesa","course":"main"}
-{"id":"101b07a2-fa8b-462d-b1d9-beefde59be89","name":"Menestra de verduras con carne","course":"main"}
-{"id":"ec39d904-685b-4ca2-8aad-1b9697336d30","name":"Migas","course":"main"}
-{"id":"bf70fe06-f24f-4c86-8ed5-51abe2ef8409","name":"Muslos de pavo a la catalana","course":"main"}
-{"id":"1710984c-ba6c-43b3-bca9-61ec70651f94","name":"Onigirazu","course":null}
-{"id":"63a87174-e4e9-4e0e-880a-01780a42ac4e","name":"Osobuco a la milanesa","course":"main"}
-{"id":"df1e6d7a-493d-456f-b58f-2bf9911ee77a","name":"Paella de sepia y gambas","course":"main"}
-{"id":"2a71450d-c05e-47ac-9d30-021f34380305","name":"Pastela vegetariana Gipsy","course":"main"}
-{"id":"06ff85d3-8e4b-4c54-81d7-e8f45a45e73c","name":"Pechuga de pollo a baja temperatura","course":"main"}
-{"id":"e5c33f8d-a346-4835-a335-54be62c7a990","name":"Pescado al horno","course":"main"}
-{"id":"743031e7-2269-4c00-8b4a-aae6e6e8755b","name":"Pisto (Shakshuka)","course":null}
-{"id":"c7ae56b0-e87e-4347-9787-ca606662442f","name":"Pizza casera","course":"main"}
-{"id":"89e2e1e0-1a02-403d-98e0-111168480e8d","name":"Poke de salmón con toppings frescos y aderezo cítrico: una receta tan fácil como deliciosa","course":"main"}
-{"id":"6cf8c8f9-7765-4449-96e5-d15b35b2a696","name":"Pollo agridulce","course":"main"}
-{"id":"c43a1b16-d41f-41fb-9a05-5ccc1f38d37c","name":"Pollo al mole","course":"main"}
-{"id":"d31658d6-5deb-468e-a458-5cd53d43618b","name":"Quesadillas de sobrasada","course":null}
-{"id":"37481bda-30d1-498f-b0ca-7513d5eef47b","name":"Ramen casero","course":"main"}
-{"id":"58645f78-5b03-45c9-b159-9635ed27ec66","name":"Revuelto de espinacas y atún","course":null}
-{"id":"26b44c4a-1774-4adb-863f-9f3149138bfe","name":"Romanescu salteado al ajillo","course":null}
-{"id":"cabeb123-dd5f-417f-bc0e-b6bebbcae792","name":"Salmón al horno con brócoli","course":"main"}
-{"id":"30a3b11a-250a-4c03-9366-e5f99e624663","name":"Salteado de salmón con verduras","course":"main"}
-{"id":"6d4cc9d7-e67b-4820-8a1b-70af77d7a9e2","name":"Sándwich mixto","course":null}
-{"id":"78df1c1b-c20a-48f2-849a-a5f49fe910f5","name":"Sopa juliana","course":"starter"}
-{"id":"25a4f371-3cba-4d1b-ae37-62c06c908189","name":"Sopa miso","course":"starter"}
-{"id":"3e2c0bf0-d045-431b-8c48-11039957e60f","name":"Sushi en bowl","course":"main"}
-{"id":"c1929ec4-05d7-43e4-ba34-3c20e4b3e674","name":"Tabulé","course":"starter"}
-{"id":"cec72828-823a-40c6-9c15-76d0fdc06137","name":"Tacos gipsy","course":"main"}
-{"id":"7fd8ced0-117c-411c-af24-ac3cb97dd544","name":"Tajín de verduras y cordero","course":"main"}
-{"id":"5b7be79f-235d-4e8c-aa9a-3f98830c4b90","name":"Ternera a la jardinera","course":"main"}
-{"id":"4ffd8a1e-4a8d-4b82-bc0d-0f6649dd0146","name":"Tian de verduras","course":null}
-{"id":"a7cd7089-3583-407d-bb61-73263bcbaac6","name":"Tiradito de bacalao","course":"starter"}
-{"id":"b6aa74ec-2a60-4226-a549-578021c1d36e","name":"Tzatziki","course":"starter"}
-{"id":"f50e167d-c7a2-4c7f-a3bb-cfb1fdca8a5c","name":"Vegan butter chicken (con tofu)","course":"main"}
-{"id":"f1190506-d9d4-4841-824b-863acd1221b3","name":"Verduras estofadas","course":null}
-{"id":"b3e9adcf-f00e-4761-823e-e590d20b03a0","name":"Vichyssoise","course":"starter"}
-{"id":"8e6a8222-b800-4079-abaf-10634bb092ee","name":"Wok de ternera y verduras","course":"main"}
-{"id":"5d87ffc0-62da-4e20-8899-170853f187ec","name":"Wrap de lechuga con noodles","course":null}
+{"id":"0a3a4035-c60f-45bd-b4fe-6e22db370d54","name":"Acelgas rehogadas","course":null}
+{"id":"779b6983-c3df-45a0-8939-56ebe18e3a20","name":"Albondigas en salsa espanola","course":"main"}
+{"id":"4649d0b9-129b-497f-8378-8104ff50c786","name":"Albóndigas gipsy","course":"main"}
+{"id":"3e8f9067-d48d-4096-9ffe-87c5ef00709d","name":"Alitas de pollo al horno","course":"main"}
+{"id":"10fe4f3b-40ce-4b88-9146-a70a4b117921","name":"Arroz al caldero","course":"main"}
+{"id":"82e6cadc-3cd3-463d-b170-7f527f56a160","name":"Arroz con bacalao","course":"main"}
+{"id":"c433598b-0cd4-45e0-85d5-cf91b309e406","name":"Arroz con bacalao","course":"main"}
+{"id":"ca6d5045-116a-4ea8-9bbf-c750a794dd21","name":"Arroz con pollo","course":"main"}
+{"id":"aa3a50d2-aa90-4b4e-8b76-2e6540ae7d71","name":"Avgolemono, receta fácil de la cremosa y reconfortante sopa griega","course":"starter"}
+{"id":"364b48fa-d920-4a82-ac3b-7150e8b3594f","name":"Bacalao con tomate","course":"main"}
+{"id":"ceb747e8-131b-4bfb-9ccc-5b83fc22db71","name":"Berenjenas con queso","course":null}
+{"id":"964f3b58-88bf-4c95-be25-d2ad68a205c0","name":"Berenjenas rellenas","course":"main"}
+{"id":"5f309986-aba8-4eee-867b-9d554698a518","name":"Carrilleras de ternera con vino tinto","course":"main"}
+{"id":"7f0093d1-40ab-416b-8cf3-ac1236fa365f","name":"Ceviche","course":"starter"}
+{"id":"5baa4f23-e53e-4959-87fe-cd9432f3c008","name":"Cocido madrileno","course":"main"}
+{"id":"701b0145-76a3-47fd-87cf-074b846afd21","name":"Coliflor gratinada","course":null}
+{"id":"b3cf7bdd-aacf-4bf6-93da-65bec4e14fed","name":"Cómo hacer los mejores boquerones fritos en casa","course":"starter"}
+{"id":"14a98e2e-4f9d-4151-bef4-b151f13236eb","name":"Conejo confitado con ajo y romero","course":"main"}
+{"id":"b5249e05-14dd-47fa-8b93-180f576c3ee7","name":"Contramuslos de pollo guisados","course":"main"}
+{"id":"0bcb64d0-f244-47e9-aca5-27cd62b7dc0f","name":"Costillas a la riojana","course":"main"}
+{"id":"97aaa08f-5c7b-4e5b-a9ad-81435cc603c6","name":"Crema de calabacin","course":"starter"}
+{"id":"c02c633b-ad87-4d1b-b6ef-5830e27c4a38","name":"Crema de zanahoria","course":"starter"}
+{"id":"ae2420ae-0a84-4939-a12a-8cd1f44841b2","name":"Crema de zanahoria con pollo, aguacate y granada","course":"starter"}
+{"id":"0f375138-a9e3-4038-9d4a-5df87119c1b5","name":"Curry de berenjena","course":"main"}
+{"id":"9ebd543b-75e0-498b-b675-fe1203a22db0","name":"Curry de patatas y guisantes","course":"main"}
+{"id":"dcfc9af4-b7a7-43df-8e6c-b01d12d11503","name":"Dorada a la marsellesa","course":"main"}
+{"id":"ee67516e-0d15-4cc2-934e-6c237b83e551","name":"Ensalada de atun","course":"starter"}
+{"id":"7aeb1524-9bf5-4c45-aa7b-17068bc20af0","name":"Ensalada thai","course":"starter"}
+{"id":"12883885-100b-4508-b6b5-af00ed2f8994","name":"Espaguetis con ajo y aceite","course":null}
+{"id":"04cbf6f7-926e-4d1b-884d-d5603b99bc64","name":"Espinacas a la crema","course":null}
+{"id":"44eca33b-8b18-4a66-b5b9-2af977990102","name":"Fajitas de pollo","course":"main"}
+{"id":"f89ab5ed-db37-4d46-ad72-27ee7c88e49f","name":"Falafel","course":null}
+{"id":"0e3b7022-554a-46cf-a267-0c35c555b435","name":"Garbanzos con espinacas","course":"main"}
+{"id":"6c1aef38-258e-4011-9b78-017aebf465ba","name":"Guisantes lagrima","course":null}
+{"id":"4a108a5e-06c3-4859-930a-c0c208304f7e","name":"Judias verdes rehogadas","course":null}
+{"id":"b4a9753a-4bc7-40f0-ad5c-1ddc28db10bf","name":"Lasaña de verduras","course":"main"}
+{"id":"b01c57bf-fad2-4d81-9d56-4ba60cc689be","name":"Lentejas estofadas","course":"main"}
+{"id":"15e1f1c7-e084-4a44-8d1b-25ef8fce4d3b","name":"Lentejas guisadas","course":"main"}
+{"id":"78a3796e-0bf6-43db-bf57-0809c01801af","name":"Melón con jamón","course":"starter"}
+{"id":"0a914784-677c-49af-b884-764f259450c6","name":"Menestra de verduras con carne","course":"main"}
+{"id":"0f7f1079-8265-4226-8b2a-4e84bc085499","name":"Onigirazu","course":null}
+{"id":"75e05b67-1971-45ad-928f-cf3078dc2ca1","name":"Pizza de colores: receta apetecible para disfrutar de las verduras","course":"main"}
+{"id":"8c775b11-b061-4e2b-a5d2-816963749d8e","name":"Pollo agridulce","course":"main"}
+{"id":"3e538dd1-464c-4cde-a20b-8ac2676fec7e","name":"Pollo a la plancha con brocoli","course":"main"}
+{"id":"597be4c1-4b8c-4b82-9b3c-6b3a59c84c71","name":"Porridge de avena con platano","course":null}
+{"id":"8cd4b0ad-d89f-484f-86ba-34e993a23791","name":"Ramen casero","course":"main"}
+{"id":"bb99c444-4701-4351-8115-bec7fe11e15c","name":"Revuelto de calabacin","course":null}
+{"id":"d2ece593-180a-4593-bab3-0e8f047a5567","name":"Revuelto de espinacas y atún","course":null}
+{"id":"0fe27711-34c6-4f73-898c-dc25470f6174","name":"Riñones al Jerez: la receta tradicional que te hará amar la casquería","course":"main"}
+{"id":"716b70d5-c7de-4c70-b09c-9cfc0e8e2963","name":"Salmon al horno con patatas","course":"main"}
+{"id":"82793aa6-d47c-4292-82ce-6ff57f3ada5f","name":"Salteado de verduras con salmón marinado","course":"main"}
+{"id":"d5ffddfe-9ff8-4e00-9259-640d351921df","name":"Sándwich mixto","course":"main"}
+{"id":"2f9cb8a0-4f10-4873-8f7c-74c86b186d83","name":"Sandwich vegetal","course":null}
+{"id":"e4538954-676d-4a4c-b9e6-92c33cfa62b9","name":"Sopa juliana","course":"starter"}
+{"id":"5fa2c422-0dbe-431c-a16c-39c4da207a69","name":"Sopa miso","course":"starter"}
+{"id":"6b4e52e7-e930-4951-abe8-17658d48277c","name":"Steak Tartar","course":"starter"}
+{"id":"637763ca-4af9-463e-8734-be033c5493b1","name":"Tabulé","course":"starter"}
+{"id":"9afcb84c-d2a3-4ef8-8171-b261505c6cd2","name":"Tajín de verduras y cordero","course":"main"}
+{"id":"67a6557a-b829-4b99-a449-749a833eed1a","name":"Ternera a la jardinera","course":"main"}
+{"id":"a71bebd9-482f-462a-a962-c06db9731f74","name":"Ternera con pimientos","course":"main"}
+{"id":"084172d5-c6fc-45e7-be25-13f61d728e8a","name":"Tortilla de patatas","course":null}
+{"id":"a3e9d08a-a96e-4eda-805b-75865471f7b9","name":"Tostadas con aguacate y huevo","course":null}
+{"id":"a1319fc0-8837-428c-98f2-6bb8ee3e6635","name":"Tzatziki","course":"starter"}
+{"id":"30d52408-00fb-4b3d-8306-79170b66c8cc","name":"Vegan butter chicken (con tofu)","course":"main"}
+{"id":"f307fcb5-26ec-401b-b3db-a7ec54246666","name":"Verduras estofadas","course":null}
+{"id":"11e19a26-836a-433d-b2cc-378bb8b7f605","name":"Vichyssoise","course":"starter"}
+{"id":"8f767563-eff7-48a1-a9ec-2cde04dae18e","name":"Wrap de lechuga con noodles","course":null}
+{"id":"4abec2e1-753e-417e-95cc-ef62abd2cebb","name":"Yogur con avena y manzana","course":"dessert"}

@@ -54,6 +54,10 @@ The list is a **rolling window** keyed by user (or household when shared). Every
 
 Default range when neither `from` nor `to` is passed: **today (Madrid) → end of next week** (today's Monday + 13). The `from` day drops meal slots whose clock cutoff has already passed in Madrid time: breakfast after 10:00, lunch after 16:00, snack after 19:00, dinner after 23:00.
 
+### Note dishes (multi-dish slots)
+
+A meal slot may contain `NoteDish` entries (`{kind:'note', text}`) alongside recipe dishes (see [menus.md "Multi-dish slots"](./menus.md)). The shopping aggregator iterates `slot.dishes` and processes only `kind:'recipe'` entries; notes contribute zero items. A day whose only dish is a note ("comemos fuera") produces no shopping items for that meal.
+
 ## API Endpoints
 
 - `GET /shopping-list/:menuId` (auth) — generate-or-fetch the list for a menu

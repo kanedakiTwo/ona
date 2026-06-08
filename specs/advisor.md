@@ -93,6 +93,10 @@ decision + post-tool reply), so it's metered per user:
   per-MTok rates track the model in `engine.ts`. The legacy `/advisor/:userId/ask`
   is rule/KB-based (no model call) and is not metered.
 
+## Multi-dish + notes nutrition
+
+The advisor's weekly nutrient/calorie aggregators iterate `slot.dishes` and process only `kind:'recipe'` entries (see [menus.md "Multi-dish slots"](./menus.md)). Notes contribute zero calories — a user who logs "comemos en casa de Paqui" as a note for lunch will see that meal as 0 kcal in the summary. By design.
+
 ## Desktop layout (lg+)
 
 At `lg+` the `/advisor` page widens its outer container to `max-w-[900px]` so the chat reads at a comfortable width on desktop. A future polish PR may add a 60/40 split with a persistent right side-panel (nutrition summary + memory facts) — out of scope for this migration.

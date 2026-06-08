@@ -24,6 +24,37 @@ Weekly meal plan generation and management.
 - The menu page shows progress: "X de 7 dias con menu" and a percentage bar
 - Users can opt in to local meal-time notifications (breakfast / lunch / snack / dinner times configured in profile `Capítulo 05`) — the app fires a reminder at the chosen times — see [PWA](./pwa.md)
 
+## Multi-dish slots
+
+Each `MealSlot` holds `{servings?, dishes: Dish[]}` where every `Dish` is either a `RecipeDish` (`{kind:'recipe', recipeId, recipeName?, course?, pinnedType?, variant?, leftoverOf?, imageUrl?, prepTime?, totalTime?}`) or a `NoteDish` (`{kind:'note', text}`). The list is ordered and the order is what the UI renders — there's no semantic role per position.
+
+Per-meal-type dish count lives in `userSettings.template.mealDishCounts: { breakfast?: 1|2|3, lunch?: 1|2|3, dinner?: 1|2|3, snack?: 1|2|3 }`. Default 1. The generator maps:
+- `1` → matcher restricted to `course IN ('main') OR course IS NULL` (single-plate convention; starters and desserts are auto-skipped).
+- `2` → `[starter, main]`.
+- `3` → `[starter, main, dessert]`.
+
+When a course has no candidates, the generator emits a warning `no_<course>_available_<meal>_d<dayIndex>` in the `POST /menu/generate` response and produces fewer dishes for that slot. The UI can surface the warning list as a toast.
+
+Notes are excluded from the matcher and added only via manual UI (`+ Añadir plato` → "Añadir nota") or `POST /menu/:menuId/day/:day/meal/:meal/dish` with `{kind:'note', text}`. Notes contribute zero to shopping list and nutrition aggregation.
+
+### Dish-level routes
+
+All under `/menu/:menuId/day/:day/meal/:meal/dish` and gated by the `:menuId` IDOR guard (400 non-UUID / 404 unknown / 403 foreign — see "Access control" below):
+
+- `POST` — append a dish. Body discriminated by `kind`: `{kind:'recipe', recipeId, course?, pinnedType?}` or `{kind:'note', text}` (text ≤120 chars).
+- `DELETE /:position` — remove. Subsequent positions decrement; empty `dishes[]` is allowed (slot remains, UI shows "+ Añadir plato" placeholder).
+- `PATCH /:position` — `{text?, pinnedType?, newPosition?, course?}`. Precedence: if `newPosition` is present, it's the only operation (pure reorder); otherwise patches text/pinnedType/course. Fields that don't apply to the dish kind are silently ignored.
+- `POST /:position/regenerate` — Aleatorio on one dish; respects its `course`. 400 on note dishes; 409 when no candidates match.
+
+### Slot-level vs dish-level state
+
+- **Slot-level** (unchanged surface): `servings`, `locked`, slot-DnD move (whole slot moves between (day, meal) via `POST /move-slot`).
+- **Per-dish**: `course`, `pinnedType`, `variant: 'planned' | 'leftover'`, `leftoverOf.dishPosition`, in-slot reorder via `PATCH .../dish/:position {newPosition}`.
+
+`POST /menu/:menuId/day/:day/meal/:meal/leftover` clones only the recipe dishes of the source slot (notes are skipped — they don't propagate as "leftovers").
+
+`PUT /menu/:menuId/day/:day/meal/:meal` (regenerate-meal) re-picks **only the recipe dishes** of the slot, preserving each dish's `course` and any `NoteDish` entries at their positions.
+
 ## Menu Structure
 
 A menu is stored per-user per-week:

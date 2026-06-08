@@ -1422,4 +1422,113 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
   }
 })
 
+// B.5 follow-up: POST /menu/:menuId/day/:day/meal/:meal/dish/random — pick a
+// random recipe via the matcher and APPEND it to dishes[]. Used by the
+// "Aleatorio" option in <AddDishSheet> where the user wants the matcher to
+// fill the slot with a sensible main / null-course recipe without typing.
+router.post('/menu/:menuId/day/:day/meal/:meal/dish/random', async (req: AuthRequest, res) => {
+  try {
+    const menuId = String(req.params.menuId)
+    const day = Number(req.params.day)
+    const meal = String(req.params.meal)
+    const [menu] = await db.select().from(menus).where(eq(menus.id, menuId)).limit(1)
+    if (!menu) { res.status(404).json({ error: 'Menu not found' }); return }
+    const days = menu.days as DayMenu[]
+    const slot = days[day]?.[meal] ?? { servings: null, dishes: [] }
+
+    // Used-recipe-ids: every recipe-dish in the menu, so we don't repeat.
+    const usedRecipeIds = new Set<string>()
+    for (let d = 0; d < days.length; d++) {
+      for (const m of Object.keys(days[d] ?? {})) {
+        const s = days[d]?.[m]
+        if (!s) continue
+        for (const dsh of s.dishes) {
+          if (dsh.kind === 'recipe') usedRecipeIds.add(dsh.recipeId)
+        }
+      }
+    }
+
+    const [user] = await db
+      .select({ restrictions: users.restrictions })
+      .from(users)
+      .where(eq(users.id, menu.userId))
+      .limit(1)
+    const restrictions: string[] = user?.restrictions ?? []
+    const memR = await getMemoryForUser(menu.userId).catch(() => null)
+    const dislikesValR = memR?.dislikes?.value
+    const dislikesR: string[] = Array.isArray(dislikesValR) ? (dislikesValR as string[]) : []
+    const equipValR = memR?.equipment?.value
+    const availEquipR = Array.isArray(equipValR)
+      ? new Set<string>((equipValR as string[]).map(normaliseEquipment))
+      : undefined
+    const SPANISH_DAY_KEYS_R = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'] as const
+    const timeValR = memR?.time_available?.value as Record<string, number> | undefined
+    const maxPrepR = timeValR && typeof timeValR === 'object'
+      ? (timeValR[SPANISH_DAY_KEYS_R[day]] ?? null)
+      : null
+
+    const favScopeR = await resolveScope(menu.userId)
+    const favRowsR = await db
+      .select({ recipeId: userFavorites.recipeId })
+      .from(userFavorites)
+      .where(scopeWhere(userFavorites.userId, userFavorites.householdId, favScopeR))
+    const favoriteRecipeIdsR = new Set<string>(favRowsR.map((f: any) => f.recipeId))
+
+    const allRecipesR = await db.select().from(recipes)
+    const riRowsR = await db
+      .select({
+        recipeId: recipeIngredients.recipeId,
+        ingredientId: recipeIngredients.ingredientId,
+        quantity: recipeIngredients.quantity,
+        unit: recipeIngredients.unit,
+        ingredientName: ingredients.name,
+      })
+      .from(recipeIngredients)
+      .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
+    const ingredientsByRecipeR = new Map<string, any[]>()
+    for (const row of riRowsR) {
+      const list = ingredientsByRecipeR.get(row.recipeId) ?? []
+      list.push({ ingredientId: row.ingredientId, ingredientName: row.ingredientName, quantity: row.quantity, unit: row.unit ?? 'g' })
+      ingredientsByRecipeR.set(row.recipeId, list)
+    }
+    const recipesWithIngredientsR = allRecipesR.map((r: any) => ({
+      id: r.id, name: r.name, course: r.course ?? null,
+      meals: r.meals ?? [], seasons: r.seasons ?? [],
+      tags: r.tags ?? [], equipment: r.equipment ?? [],
+      prepTime: r.prepTime ?? null,
+      ingredients: ingredientsByRecipeR.get(r.id) ?? [],
+    }))
+
+    const matcherOptionsR = {
+      meal: meal as Meal,
+      season: detectSeason(),
+      usedRecipeIds,
+      restrictions,
+      favoriteRecipeIds: favoriteRecipeIdsR,
+      bannedRecipeIds: new Set(menu.bannedRecipeIds ?? []),
+      dislikes: dislikesR,
+      availableEquipment: availEquipR,
+      maxPrepMinutes: maxPrepR,
+    }
+
+    // course = null means "single-dish convention" → matcher restricts to main/null.
+    const picked = findForCourse(recipesWithIngredientsR, null, matcherOptionsR)
+    if (!picked) {
+      res.status(409).json({ error: 'No hay recetas disponibles ahora mismo.' }); return
+    }
+    const next = [...slot.dishes, {
+      kind: 'recipe' as const,
+      recipeId: picked.id,
+      recipeName: picked.name,
+      course: picked.course ?? null,
+    }]
+    if (!days[day]) days[day] = {}
+    days[day][meal] = { ...slot, dishes: next }
+    await db.update(menus).set({ days: days as any }).where(eq(menus.id, menuId))
+    res.json({ position: next.length - 1, dish: next[next.length - 1] })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 export default router

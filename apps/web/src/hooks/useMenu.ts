@@ -493,3 +493,21 @@ export function useRegenerateDish() {
     },
   })
 }
+
+/**
+ * Append a random recipe dish picked by the matcher. Used by Aleatorio in
+ * the add-dish bottom sheet so the user gets a sensible recipe without typing.
+ */
+export function useAddRandomDish() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (params: { menuId: string; day: number; meal: string }) => {
+      const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}/dish/random`
+      return api.post<Menu>(url)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["menu"] })
+      queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
+    },
+  })
+}

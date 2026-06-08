@@ -24,6 +24,7 @@ import {
   useRemoveDish,
   usePatchDish,
   useRegenerateDish,
+  useAddRandomDish,
 } from "@/hooks/useMenu"
 import { MEAL_TYPE_TAGS, MEAL_TYPE_TAG_LABELS } from "@ona/shared"
 import { useUser } from "@/hooks/useUser"
@@ -204,6 +205,7 @@ export default function MenuPage() {
   const removeDish = useRemoveDish()
   const patchDish = usePatchDish()
   const regenerateDish = useRegenerateDish()
+  const addRandomDish = useAddRandomDish()
   // Live user profile so we can fall back to the household diner count when
   // a slot doesn't have a per-day servings override.
   const { data: profile } = useUser(user?.id)
@@ -879,6 +881,14 @@ export default function MenuPage() {
                                 payload,
                               })
                             }}
+                            onAddRandomDish={() => {
+                              haptic.medium()
+                              addRandomDish.mutate({
+                                menuId: menu.id,
+                                day: d,
+                                meal: meal.type,
+                              })
+                            }}
                             onRemoveDish={(position) => {
                               haptic.medium()
                               removeDish.mutate({
@@ -1014,6 +1024,7 @@ function EditorialMealCard({
   onBan,
   onSetPinnedType,
   onAddDish,
+  onAddRandomDish,
   onRemoveDish,
   onRegenerateDish,
   onReorderDish,
@@ -1043,6 +1054,8 @@ function EditorialMealCard({
   /** Fijar / desfijar etiqueta de tipo de comida (cremas, pizza, …). */
   onSetPinnedType: (next: string | null) => void
   onAddDish: (payload: { kind: 'recipe'; recipeId: string } | { kind: 'note'; text: string }) => void
+  /** Server-side Aleatorio: matcher picks + appends. Called from <AddDishSheet>. */
+  onAddRandomDish: () => void
   onRemoveDish: (position: number) => void
   onRegenerateDish: (position: number) => void
   onReorderDish: (fromPos: number, toPos: number) => void
@@ -1262,7 +1275,7 @@ function EditorialMealCard({
           open={addDishOpen}
           onClose={() => setAddDishOpen(false)}
           slotLabel={`${mealLabel(meal.type)} del día`}
-          onPickAleatorio={() => onAddDish({ kind: 'recipe', recipeId: '' })}
+          onPickAleatorio={onAddRandomDish}
           onPickRecipe={(recipeId) => onAddDish({ kind: 'recipe', recipeId })}
           onAddNote={(text) => onAddNote({ kind: 'note', text })}
         />
@@ -1370,7 +1383,7 @@ function EditorialMealCard({
         open={addDishOpen}
         onClose={() => setAddDishOpen(false)}
         slotLabel={`${mealLabel(meal.type)} del día`}
-        onPickAleatorio={onRegenerate}
+        onPickAleatorio={onAddRandomDish}
         onPickRecipe={(recipeId) => onAddDish({ kind: 'recipe', recipeId })}
         onAddNote={(text) => onAddNote({ kind: 'note', text })}
       />

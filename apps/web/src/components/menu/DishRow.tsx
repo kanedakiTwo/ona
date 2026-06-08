@@ -55,7 +55,7 @@ export function DishRow({ dish, onClickThumb, onRegenerate, onRemove, onEditNote
       <div className="flex shrink-0 gap-2">
         {onRegenerate && (
           <button onClick={onRegenerate} className="text-[10px] uppercase tracking-[0.12em] text-[#C65D38]">
-            Aleatorio
+            Cambiar
           </button>
         )}
         {onRemove && (

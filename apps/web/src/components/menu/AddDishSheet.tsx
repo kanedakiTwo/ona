@@ -38,10 +38,10 @@ export function AddDishSheet({
   }
 
   const courseHint =
-    nextMissingCourse === 'starter' ? 'Te buscamos un entrante.'
-    : nextMissingCourse === 'main' ? 'Te buscamos un principal.'
-    : nextMissingCourse === 'dessert' ? 'Te buscamos un postre.'
-    : 'Te buscamos una receta que encaje.'
+    nextMissingCourse === 'starter' ? 'Elige un entrante que equilibre tu menú.'
+    : nextMissingCourse === 'main' ? 'Elige un principal que equilibre tu menú.'
+    : nextMissingCourse === 'dessert' ? 'Elige un postre que equilibre tu menú.'
+    : 'Calcula qué plato encaja con tu menú y tus preferencias.'
 
   return (
     <>
@@ -79,7 +79,7 @@ export function AddDishSheet({
                   >
                     <Sparkles size={18} className="text-[#C65D38]" />
                     <div>
-                      <p className="text-[14px] font-medium text-[#1A1612]">Aleatorio</p>
+                      <p className="text-[14px] font-medium text-[#1A1612]">ONA sugiere</p>
                       <p className="text-[12px] text-[#7A7066]">{courseHint}</p>
                     </div>
                   </button>

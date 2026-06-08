@@ -1,18 +1,18 @@
 import { Router } from 'express'
 import { eq, and, desc, inArray } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { menus, menuLogs, users } from '../db/schema.js'
+import { menus, menuLogs, users, userSettings } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
 import { generateMenuSchema, lockMealSchema, MEALS, MEAL_TYPE_TAGS, courseSchema } from '@ona/shared'
 import type { DayMenu, Dish, LockedSlots, Meal, MealSlot, RecipeDish } from '@ona/shared'
-import { generateMenu } from '../services/menuGenerator.js'
+import { generateMenu, extractMealDishCounts } from '../services/menuGenerator.js'
 import { calculateMenuCaloriesFromDB } from '../services/calorieCalculator.js'
 import { calculateMenuNutrientsFromDB } from '../services/nutrientCalculator.js'
 import { updateBalance } from '../services/nutrientBalance.js'
 import { findRecipeForSlot, normaliseEquipment, type RecipeWithIngredients } from '../services/recipeMatcher.js'
 import { findForCourse } from '../services/courseAwareMatcher.js'
-import { addDish, removeDishAt, patchDish, reorderDish } from '../services/menuDishes.js'
+import { addDish, removeDishAt, patchDish, reorderDish, coursesFor, dishCountFor } from '../services/menuDishes.js'
 import { getMemoryForUser } from '../services/userMemoryStore.js'
 import { detectSeason } from '@ona/shared'
 import { recipeIngredients, ingredients, recipes, userFavorites } from '../db/schema.js'
@@ -72,13 +72,17 @@ async function hydrateMenuImages<T extends { days: unknown }>(menu: T): Promise<
       // the same `recipes` row that already gives us the image URL.
       prepTime: recipes.prepTime,
       totalTime: recipes.totalTime,
+      // Hydrate course so the UI shows the correct "Entrante / Principal /
+      // Postre" eyebrow on multi-dish slots, including legacy rows persisted
+      // before course tagging existed.
+      course: recipes.course,
     })
     .from(recipes)
     .where(inArray(recipes.id, [...ids]))
   const recipeById = new Map(
     rows.map((r) => [
       r.id,
-      { imageUrl: r.imageUrl, prepTime: r.prepTime, totalTime: r.totalTime },
+      { imageUrl: r.imageUrl, prepTime: r.prepTime, totalTime: r.totalTime, course: r.course },
     ]),
   )
   const hydratedDays = days.map((day) => {
@@ -90,11 +94,21 @@ async function hydrateMenuImages<T extends { days: unknown }>(menu: T): Promise<
         const hydratedDishes: Dish[] = slot.dishes.map((dish) => {
           if (dish.kind !== 'recipe') return dish
           const info = recipeById.get(dish.recipeId)
+          const persisted = (dish as { course?: 'starter' | 'main' | 'dessert' | null }).course
+          const hydratedCourse: 'starter' | 'main' | 'dessert' | null =
+            persisted ??
+            (info?.course === 'starter' || info?.course === 'main' || info?.course === 'dessert'
+              ? info.course
+              : null)
           return {
             ...dish,
             imageUrl: info?.imageUrl ?? null,
             prepTime: info?.prepTime ?? null,
             totalTime: info?.totalTime ?? null,
+            // Persisted course (set when the dish was added) wins; otherwise
+            // hydrate from the joined recipes.course so the UI eyebrow shows
+            // the right label on legacy slots.
+            course: hydratedCourse,
           }
         })
         next[meal] = { ...slot, dishes: hydratedDishes }
@@ -1511,8 +1525,74 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/random', async (req: AuthReq
       maxPrepMinutes: maxPrepR,
     }
 
-    // course = null means "single-dish convention" → matcher restricts to main/null.
-    const picked = findForCourse(recipesWithIngredientsR, null, matcherOptionsR)
+    // Decide which course to look for, based on the user's plantilla
+    // (`mealDishCounts[meal]`) and what's already in the slot. The user wants
+    // a sensible *next* dish, not just "any main / null".
+    //
+    // Rules:
+    //   - Read expectedCourses = coursesFor(dishCountFor(meal, mdc)).
+    //   - Subtract courses already present in the slot.
+    //   - Pick the first missing expected course.
+    //   - If all expected are present, fall back to `null` (any main/null) as
+    //     a graceful "extra dish" — the user's intent is to grow the slot.
+    const [settingsRow] = await db
+      .select({ template: userSettings.template })
+      .from(userSettings)
+      .where(eq(userSettings.userId, menu.userId))
+      .limit(1)
+    const mdc = extractMealDishCounts(settingsRow?.template ?? {})
+    const expectedCourses = coursesFor(dishCountFor(meal as Meal, mdc))
+    const presentCourses = new Set<string | null>(
+      slot.dishes
+        .filter((d): d is RecipeDish => d.kind === 'recipe')
+        .map((d) => d.course ?? null),
+    )
+    // Find the first expected course not yet present. null counts as "main"
+    // for matching purposes (the convention is "main/null → main slot").
+    const normalisedPresent = new Set([...presentCourses].map((c) => c ?? 'main'))
+    const nextCourse =
+      expectedCourses
+        .map((c) => (c ?? 'main') as 'starter' | 'main' | 'dessert')
+        .find((c) => !normalisedPresent.has(c)) ?? null
+    // Also build an ingredient-overlap exclude set to avoid repeats like
+    // "carrilleras de ternera + ternera con pimientos" in the same slot.
+    const existingIngredientNames = new Set<string>()
+    for (const dish of slot.dishes) {
+      if (dish.kind !== 'recipe') continue
+      const ing = ingredientsByRecipeR.get(dish.recipeId) ?? []
+      for (const i of ing.slice(0, 5)) {
+        existingIngredientNames.add((i.ingredientName as string).toLowerCase())
+      }
+    }
+    const diversityFilteredPool = existingIngredientNames.size === 0
+      ? recipesWithIngredientsR
+      : recipesWithIngredientsR.filter((r) => {
+          // Allow up to 1 ingredient overlap so the filter doesn't empty the pool;
+          // 2+ overlapping ingredients → drop (likely the "same dish, different name").
+          let overlap = 0
+          for (const i of (r.ingredients ?? []).slice(0, 5)) {
+            if (existingIngredientNames.has((i.ingredientName as string).toLowerCase())) overlap++
+            if (overlap >= 2) return false
+          }
+          return true
+        })
+
+    // courseForMatcher: when the slot is empty (no dishes yet), pass null so
+    // the matcher's "single-dish convention" (main OR null) applies and we get
+    // a versatile recipe. When the slot already has dishes, we want a STRICT
+    // course match — a starter+main pairing should produce a real main, not a
+    // null-tagged side. Otherwise the second dish often duplicates the
+    // protein or has no protein at all (the "2 ternera" / "no protein" bug
+    // Miguel reported on 2026-06-08).
+    const slotHasDishes = slot.dishes.length > 0
+    const courseForMatcher: 'starter' | 'main' | 'dessert' | null =
+      slotHasDishes
+        ? (nextCourse === 'main' ? 'main' : nextCourse)
+        : (nextCourse === 'main' ? null : nextCourse)
+    // First try with the diversity filter applied; if no candidates, fall back
+    // to the full pool — the user gets *something* rather than nothing.
+    let picked = findForCourse(diversityFilteredPool, courseForMatcher, matcherOptionsR)
+    if (!picked) picked = findForCourse(recipesWithIngredientsR, courseForMatcher, matcherOptionsR)
     if (!picked) {
       res.status(409).json({ error: 'No hay recetas disponibles ahora mismo.' }); return
     }

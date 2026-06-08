@@ -1175,7 +1175,7 @@ function EditorialMealCard({
                     className="flex items-center gap-1.5 rounded-full bg-[#F2EDE0] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#1A1612] transition-colors hover:bg-[#1A1612] hover:text-[#FAF6EE] disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <RefreshCw size={11} className={isRegenerating ? "animate-spin" : ""} />
-                    Aleatorio
+                    Cambiar
                   </button>
                   <button
                     onClick={() => setPinSheetOpen(true)}
@@ -1456,7 +1456,7 @@ function PinTypeSheet({
           </button>
         ) : (
           <p className="mt-4 text-[11px] uppercase tracking-[0.12em] text-[#7A7066]">
-            Aleatorio respetará la etiqueta a partir de ahora
+            La sugerencia respetará la etiqueta a partir de ahora
           </p>
         )}
       </div>

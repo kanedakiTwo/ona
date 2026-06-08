@@ -69,8 +69,8 @@ export function WeekCalendar({
                     className="bg-white p-2"
                   >
                     <MealSlot
-                      recipeId={slot?.recipeId}
-                      recipeName={slot?.recipeName}
+                      recipeId={slot?.dishes?.[0]?.kind === 'recipe' ? slot.dishes[0].recipeId : undefined}
+                      recipeName={slot?.dishes?.[0]?.kind === 'recipe' ? slot.dishes[0].recipeName : undefined}
                       meal={meal}
                       dayIndex={dayIndex}
                       menuId={menuId}
@@ -104,8 +104,8 @@ export function WeekCalendar({
                       {mealLabel(meal)}
                     </span>
                     <MealSlot
-                      recipeId={slot?.recipeId}
-                      recipeName={slot?.recipeName}
+                      recipeId={slot?.dishes?.[0]?.kind === 'recipe' ? slot.dishes[0].recipeId : undefined}
+                      recipeName={slot?.dishes?.[0]?.kind === 'recipe' ? slot.dishes[0].recipeName : undefined}
                       meal={meal}
                       dayIndex={dayIndex}
                       menuId={menuId}

@@ -20,6 +20,10 @@ import {
   useUnskipDay,
   useMarkLeftover,
   useSetSlotPinnedType,
+  useAddDish,
+  useRemoveDish,
+  usePatchDish,
+  useRegenerateDish,
 } from "@/hooks/useMenu"
 import { MEAL_TYPE_TAGS, MEAL_TYPE_TAG_LABELS } from "@ona/shared"
 import { useUser } from "@/hooks/useUser"
@@ -52,6 +56,28 @@ import { RecipePickerSheet } from "@/components/menu/RecipePickerSheet"
 import { WeekGridView } from "@/components/menu/WeekGridView"
 import { CookedBadge } from "@/components/recipes/CookedBadge"
 import { PantryMatchCard } from "@/components/menu/PantryMatchCard"
+import { AddDishSheet } from "@/components/menu/AddDishSheet"
+import { DishRow } from "@/components/menu/DishRow"
+import type { Dish, RecipeDish } from "@ona/shared"
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  TouchSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core"
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
+import { GripVertical } from "lucide-react"
 
 const DAY_NAMES = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
 const DAY_SHORT = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"]
@@ -174,6 +200,10 @@ export default function MenuPage() {
   const unskipDay = useUnskipDay()
   const markLeftover = useMarkLeftover()
   const setSlotPinnedType = useSetSlotPinnedType()
+  const addDish = useAddDish()
+  const removeDish = useRemoveDish()
+  const patchDish = usePatchDish()
+  const regenerateDish = useRegenerateDish()
   // Live user profile so we can fall back to the household diner count when
   // a slot doesn't have a per-day servings override.
   const { data: profile } = useUser(user?.id)
@@ -311,7 +341,7 @@ export default function MenuPage() {
       const d = new Date(start)
       d.setDate(start.getDate() + i)
       const hasMenu = menu?.days?.[i]
-        ? Object.values(menu.days[i]).some((slot: any) => slot?.recipeId)
+        ? Object.values(menu.days[i]).some((slot: any) => (slot?.dishes?.length ?? 0) > 0)
         : false
       return { label, date: d.getDate(), hasMenu }
     })
@@ -326,7 +356,7 @@ export default function MenuPage() {
   const plannedCount = useMemo(() => {
     if (!menu?.days) return 0
     return menu.days.filter((day: any) =>
-      day && Object.values(day).some((slot: any) => slot?.recipeId)
+      day && Object.values(day).some((slot: any) => (slot?.dishes?.length ?? 0) > 0)
     ).length
   }, [menu])
 
@@ -816,16 +846,18 @@ export default function MenuPage() {
                               })
                             }}
                             onBan={() => {
+                              const firstRecipe = (meal.dishes as Dish[] | undefined)?.find((dd): dd is RecipeDish => dd.kind === 'recipe')
+                              if (!firstRecipe) return
                               if (
                                 typeof window === "undefined" ||
                                 window.confirm(
-                                  `¿Vetar "${meal.recipeName}" del resto de la semana?`,
+                                  `¿Vetar "${firstRecipe.recipeName ?? 'esta receta'}" del resto de la semana?`,
                                 )
                               ) {
                                 haptic.medium()
                                 banRecipe.mutate({
                                   menuId: menu.id,
-                                  recipeId: meal.recipeId,
+                                  recipeId: firstRecipe.recipeId,
                                 })
                               }
                             }}
@@ -836,6 +868,42 @@ export default function MenuPage() {
                                 day: d,
                                 meal: meal.type,
                                 pinnedType,
+                              })
+                            }}
+                            onAddDish={(payload) => {
+                              haptic.light()
+                              addDish.mutate({
+                                menuId: menu.id,
+                                day: d,
+                                meal: meal.type,
+                                payload,
+                              })
+                            }}
+                            onRemoveDish={(position) => {
+                              haptic.medium()
+                              removeDish.mutate({
+                                menuId: menu.id,
+                                day: d,
+                                meal: meal.type,
+                                position,
+                              })
+                            }}
+                            onRegenerateDish={(position) => {
+                              haptic.medium()
+                              regenerateDish.mutate({
+                                menuId: menu.id,
+                                day: d,
+                                meal: meal.type,
+                                position,
+                              })
+                            }}
+                            onReorderDish={(fromPos, toPos) => {
+                              patchDish.mutate({
+                                menuId: menu.id,
+                                day: d,
+                                meal: meal.type,
+                                position: fromPos,
+                                patch: { newPosition: toPos },
                               })
                             }}
                             isRegenerating={regenerateMeal.isPending}
@@ -885,6 +953,50 @@ export default function MenuPage() {
 }
 
 /* ─────────────────────────────────────────────
+   Sortable dish row (grip handle + DishRow)
+   ───────────────────────────────────────────── */
+function SortableDishRow({
+  dish,
+  id,
+  onClickThumb,
+  onRegenerate,
+  onRemove,
+}: {
+  dish: Dish
+  id: string
+  onClickThumb?: () => void
+  onRegenerate?: () => void
+  onRemove?: () => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  }
+  return (
+    <div ref={setNodeRef} style={style} className="flex items-center gap-1">
+      <button
+        {...attributes}
+        {...listeners}
+        aria-label="Arrastrar para reordenar"
+        className="shrink-0 cursor-grab p-1 text-[#A39A8E] touch-none"
+      >
+        <GripVertical size={14} />
+      </button>
+      <div className="flex-1 min-w-0">
+        <DishRow
+          dish={dish}
+          onClickThumb={onClickThumb}
+          onRegenerate={onRegenerate}
+          onRemove={onRemove}
+        />
+      </div>
+    </div>
+  )
+}
+
+/* ─────────────────────────────────────────────
    Editorial Meal Card
    ───────────────────────────────────────────── */
 function EditorialMealCard({
@@ -901,18 +1013,17 @@ function EditorialMealCard({
   onChangeServings,
   onBan,
   onSetPinnedType,
+  onAddDish,
+  onRemoveDish,
+  onRegenerateDish,
+  onReorderDish,
   isRegenerating,
   menuId,
 }: {
   meal: {
     type: string
-    recipeId?: string
-    recipeName?: string
+    dishes: Dish[]
     servings?: number | null
-    imageUrl?: string | null
-    pinnedType?: string | null
-    kind?: "planned" | "leftover" | null
-    leftoverOf?: { day: number; meal: string } | null
   }
   index: number
   day: number
@@ -931,157 +1042,321 @@ function EditorialMealCard({
   onBan: () => void
   /** Fijar / desfijar etiqueta de tipo de comida (cremas, pizza, …). */
   onSetPinnedType: (next: string | null) => void
+  onAddDish: (payload: { kind: 'recipe'; recipeId: string } | { kind: 'note'; text: string }) => void
+  onRemoveDish: (position: number) => void
+  onRegenerateDish: (position: number) => void
+  onReorderDish: (fromPos: number, toPos: number) => void
   isRegenerating: boolean
 }) {
   const [pinSheetOpen, setPinSheetOpen] = useState(false)
-  const isLeftover = meal.kind === "leftover"
   const [pickerOpen, setPickerOpen] = useState(false)
-  if (!meal.recipeId) {
+  const [addDishOpen, setAddDishOpen] = useState(false)
+
+  const dishes = meal.dishes ?? []
+  const dishCount = dishes.length
+
+  // ── Sensors for per-dish DnD reorder ──
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
+
+  // Stable ids for DnD: use position-based string ids (position only changes on reorder)
+  const dishIds = dishes.map((_: Dish, i: number) => `dish-${i}`)
+
+  function handleDishDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = dishIds.indexOf(active.id as string)
+    const newIndex = dishIds.indexOf(over.id as string)
+    if (oldIndex === -1 || newIndex === -1) return
+    onReorderDish(oldIndex, newIndex)
+  }
+
+  // ── First recipe dish (for slot-level context) ──
+  const firstRecipe = dishes.find((d: Dish): d is RecipeDish => d.kind === 'recipe')
+
+  // ── Slot-level pinned type (from first recipe dish) ──
+  const slotPinnedType = firstRecipe?.pinnedType ?? null
+
+  // ── Single recipe dish — editorial hero render ──
+  if (dishCount === 1 && dishes[0].kind === 'recipe') {
+    const dish = dishes[0] as RecipeDish
+    const isLeftover = dish.variant === "leftover"
+
+    const fallbackImg = `https://images.unsplash.com/photo-${
+      ["1490645935967-10de6ba17061", "1546069901-ba9599a7e63c", "1540420773420-3366772f4999", "1556909114-44e3e9399a2c"][index % 4]
+    }?w=800&q=80&auto=format&fit=crop`
+    const heroSrc = dish.imageUrl || fallbackImg
+
     return (
-      <div className="rounded-2xl border border-dashed border-[#DDD6C5] bg-[#FFFEFA] p-5">
-        <div className="text-eyebrow text-[#7A7066]">{mealLabel(meal.type)}</div>
-        <p className="mt-2 font-italic italic text-[#7A7066]">Sin asignar.</p>
-      </div>
+      <motion.article
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: index * 0.08, duration: 0.5, ease: [0.19, 1, 0.22, 1] }}
+        className="group relative overflow-hidden rounded-2xl bg-[#FFFEFA]"
+      >
+        <Link href={`/recipes/${dish.recipeId}`} className="block">
+          <div className="relative aspect-[16/10] overflow-hidden">
+            <img
+              src={heroSrc}
+              alt={dish.recipeName}
+              className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
+            />
+            {/* Top tags */}
+            <div className="absolute inset-x-0 top-0 flex items-start justify-between p-3">
+              <div className="rounded-full bg-[#FAF6EE]/95 px-2.5 py-0.5 text-[9px] uppercase tracking-[0.2em] backdrop-blur-sm">
+                {mealLabel(meal.type)}
+              </div>
+              {isLocked && (
+                <div className="rounded-full bg-[#C65D38] px-2 py-1 text-[9px] uppercase tracking-[0.15em] text-[#FAF6EE]">
+                  <Lock size={10} className="inline" /> Fijado
+                </div>
+              )}
+            </div>
+            {/* Bottom recipe name overlay */}
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#1A1612]/80 via-[#1A1612]/40 to-transparent p-4 pt-12">
+              {isLeftover && dish.leftoverOf ? (
+                <div className="mb-1.5 inline-flex items-center gap-1 rounded-full bg-[#C65D38] px-2 py-0.5 text-[9px] uppercase tracking-[0.15em] text-[#FAF6EE]">
+                  <Utensils size={10} /> Sobras de {DAY_SHORT[dish.leftoverOf.day]?.toLowerCase()} {mealLabel(dish.leftoverOf.meal).toLowerCase()}
+                </div>
+              ) : null}
+              <h3 className="font-display text-xl leading-tight text-[#FAF6EE]">
+                {dish.recipeName}
+              </h3>
+            </div>
+          </div>
+        </Link>
+
+        {/* Action row */}
+        <div className="flex flex-wrap items-center gap-2 px-3 py-2.5">
+          {!readOnly && (
+            <>
+              <button
+                onClick={onToggleLock}
+                className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] transition-colors ${
+                  isLocked
+                    ? "bg-[#C65D38] text-[#FAF6EE]"
+                    : "bg-[#F2EDE0] text-[#1A1612] hover:bg-[#1A1612] hover:text-[#FAF6EE]"
+                }`}
+              >
+                {isLocked ? <Lock size={11} /> : <Unlock size={11} />}
+                {isLocked ? "Fijado" : "Fijar"}
+              </button>
+              {/* Leftover slots hide Aleatorio / Elegir / Tag — the recipe is
+                  tied to its source slot. They keep Quitar + Comensales. */}
+              {!isLeftover && (
+                <>
+                  <button
+                    onClick={() => setPickerOpen(true)}
+                    disabled={isLocked || isRegenerating}
+                    className="flex items-center gap-1.5 rounded-full bg-[#F2EDE0] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#1A1612] transition-colors hover:bg-[#1A1612] hover:text-[#FAF6EE] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <Replace size={11} />
+                    Elegir
+                  </button>
+                  <button
+                    onClick={onRegenerate}
+                    disabled={isLocked || isRegenerating}
+                    className="flex items-center gap-1.5 rounded-full bg-[#F2EDE0] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#1A1612] transition-colors hover:bg-[#1A1612] hover:text-[#FAF6EE] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <RefreshCw size={11} className={isRegenerating ? "animate-spin" : ""} />
+                    Aleatorio
+                  </button>
+                  <button
+                    onClick={() => setPinSheetOpen(true)}
+                    disabled={isLocked}
+                    className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                      slotPinnedType
+                        ? "bg-[#2D6A4F] text-[#FAF6EE]"
+                        : "bg-[#F2EDE0] text-[#1A1612] hover:bg-[#1A1612] hover:text-[#FAF6EE]"
+                    }`}
+                  >
+                    <Tag size={11} />
+                    {slotPinnedType ? MEAL_TYPE_TAG_LABELS[slotPinnedType as keyof typeof MEAL_TYPE_TAG_LABELS] ?? slotPinnedType : "Tipo"}
+                  </button>
+                  <button
+                    onClick={onBan}
+                    disabled={isLocked}
+                    aria-label="Vetar esta receta para el resto de la semana"
+                    className="flex items-center gap-1.5 rounded-full bg-[#F2EDE0] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#1A1612] transition-colors hover:bg-[#1A1612] hover:text-[#FAF6EE] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <Ban size={11} />
+                    Vetar
+                  </button>
+                </>
+              )}
+              {/* "+ Añadir plato" — available even on single-dish to grow to multi */}
+              {!isLocked && (
+                <button
+                  onClick={() => setAddDishOpen(true)}
+                  className="flex items-center gap-1.5 rounded-full bg-[#F2EDE0] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#1A1612] transition-colors hover:bg-[#1A1612] hover:text-[#FAF6EE]"
+                >
+                  <Plus size={11} />
+                  Añadir plato
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  if (typeof window === "undefined" || window.confirm(`¿Quitar ${mealLabel(meal.type).toLowerCase()} de este día?`)) {
+                    onDelete()
+                  }
+                }}
+                disabled={isLocked}
+                aria-label="Eliminar este plato del día"
+                className="flex items-center gap-1.5 rounded-full bg-[#F2EDE0] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#C65D38] transition-colors hover:bg-[#C65D38] hover:text-[#FAF6EE] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Trash2 size={11} />
+                Quitar
+              </button>
+            </>
+          )}
+          {!readOnly && dish.recipeId && (
+            <CookedBadge
+              recipeId={dish.recipeId}
+              menuId={menuId}
+              dayIndex={day}
+              meal={meal.type}
+              variant="button"
+            />
+          )}
+          <Link
+            href={`/recipes/${dish.recipeId}`}
+            className="ml-auto text-[11px] uppercase tracking-[0.12em] text-[#7A7066] hover:text-[#1A1612]"
+          >
+            Ver receta →
+          </Link>
+        </div>
+
+        {/* Per-slot diner override */}
+        {!readOnly && (
+          <DinerStepper
+            value={meal.servings ?? null}
+            fallback={defaultDiners}
+            disabled={isLocked}
+            onChange={onChangeServings}
+          />
+        )}
+
+        <RecipePickerSheet
+          open={pickerOpen}
+          onClose={() => setPickerOpen(false)}
+          title={`${mealLabel(meal.type)} del día`}
+          subtitle={dish.recipeName ? `Ahora: ${dish.recipeName}` : "Sin plato"}
+          onPick={(picked) => {
+            onPickRecipe(picked)
+            setPickerOpen(false)
+          }}
+        />
+        <PinTypeSheet
+          open={pinSheetOpen}
+          onClose={() => setPinSheetOpen(false)}
+          current={slotPinnedType}
+          onPick={(next) => {
+            onSetPinnedType(next)
+            setPinSheetOpen(false)
+          }}
+        />
+        <AddDishSheet
+          open={addDishOpen}
+          onClose={() => setAddDishOpen(false)}
+          slotLabel={`${mealLabel(meal.type)} del día`}
+          onPickAleatorio={() => onAddDish({ kind: 'recipe', recipeId: '' })}
+          onPickRecipe={(recipeId) => onAddDish({ kind: 'recipe', recipeId })}
+          onAddNote={(text) => onAddNote({ kind: 'note', text })}
+        />
+      </motion.article>
     )
   }
 
-  const fallbackImg = `https://images.unsplash.com/photo-${
-    ["1490645935967-10de6ba17061", "1546069901-ba9599a7e63c", "1540420773420-3366772f4999", "1556909114-44e3e9399a2c"][index % 4]
-  }?w=800&q=80&auto=format&fit=crop`
-  const heroSrc = meal.imageUrl || fallbackImg
-
+  // ── Multi-dish (≥2) or empty (0) — stacked card ──
   return (
     <motion.article
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.08, duration: 0.5, ease: [0.19, 1, 0.22, 1] }}
-      className="group relative overflow-hidden rounded-2xl bg-[#FFFEFA]"
+      className="relative overflow-hidden rounded-2xl bg-[#FFFEFA] border border-[#DDD6C5]"
     >
-      <Link href={`/recipes/${meal.recipeId}`} className="block">
-        <div className="relative aspect-[16/10] overflow-hidden">
-          <img
-            src={heroSrc}
-            alt={meal.recipeName}
-            className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
-          />
-          {/* Top tags */}
-          <div className="absolute inset-x-0 top-0 flex items-start justify-between p-3">
-            <div className="rounded-full bg-[#FAF6EE]/95 px-2.5 py-0.5 text-[9px] uppercase tracking-[0.2em] backdrop-blur-sm">
-              {mealLabel(meal.type)}
-            </div>
-            {isLocked && (
-              <div className="rounded-full bg-[#C65D38] px-2 py-1 text-[9px] uppercase tracking-[0.15em] text-[#FAF6EE]">
-                <Lock size={10} className="inline" /> Fijado
-              </div>
-            )}
+      {/* Slot header */}
+      <div className="flex items-center justify-between px-4 pt-4 pb-2">
+        <div className="text-eyebrow text-[#7A7066]">{mealLabel(meal.type)}</div>
+        {isLocked && (
+          <div className="rounded-full bg-[#C65D38] px-2 py-0.5 text-[9px] uppercase tracking-[0.15em] text-[#FAF6EE]">
+            <Lock size={9} className="inline mr-0.5" />Fijado
           </div>
-          {/* Bottom recipe name overlay */}
-          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#1A1612]/80 via-[#1A1612]/40 to-transparent p-4 pt-12">
-            {isLeftover && meal.leftoverOf ? (
-              <div className="mb-1.5 inline-flex items-center gap-1 rounded-full bg-[#C65D38] px-2 py-0.5 text-[9px] uppercase tracking-[0.15em] text-[#FAF6EE]">
-                <Utensils size={10} /> Sobras de {DAY_SHORT[meal.leftoverOf.day]?.toLowerCase()} {mealLabel(meal.leftoverOf.meal).toLowerCase()}
-              </div>
-            ) : null}
-            <h3 className="font-display text-xl leading-tight text-[#FAF6EE]">
-              {meal.recipeName}
-            </h3>
-          </div>
-        </div>
-      </Link>
-
-      {/* Action row */}
-      <div className="flex flex-wrap items-center gap-2 px-3 py-2.5">
-        {!readOnly && (
-          <>
-            <button
-              onClick={onToggleLock}
-              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] transition-colors ${
-                isLocked
-                  ? "bg-[#C65D38] text-[#FAF6EE]"
-                  : "bg-[#F2EDE0] text-[#1A1612] hover:bg-[#1A1612] hover:text-[#FAF6EE]"
-              }`}
-            >
-              {isLocked ? <Lock size={11} /> : <Unlock size={11} />}
-              {isLocked ? "Fijado" : "Fijar"}
-            </button>
-            {/* Leftover slots hide Aleatorio / Elegir / Tag — the recipe is
-                tied to its source slot. They keep Quitar + Comensales. */}
-            {!isLeftover && (
-              <>
-                <button
-                  onClick={() => setPickerOpen(true)}
-                  disabled={isLocked || isRegenerating}
-                  className="flex items-center gap-1.5 rounded-full bg-[#F2EDE0] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#1A1612] transition-colors hover:bg-[#1A1612] hover:text-[#FAF6EE] disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <Replace size={11} />
-                  Elegir
-                </button>
-                <button
-                  onClick={onRegenerate}
-                  disabled={isLocked || isRegenerating}
-                  className="flex items-center gap-1.5 rounded-full bg-[#F2EDE0] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#1A1612] transition-colors hover:bg-[#1A1612] hover:text-[#FAF6EE] disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <RefreshCw size={11} className={isRegenerating ? "animate-spin" : ""} />
-                  Aleatorio
-                </button>
-                <button
-                  onClick={() => setPinSheetOpen(true)}
-                  disabled={isLocked}
-                  className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-                    meal.pinnedType
-                      ? "bg-[#2D6A4F] text-[#FAF6EE]"
-                      : "bg-[#F2EDE0] text-[#1A1612] hover:bg-[#1A1612] hover:text-[#FAF6EE]"
-                  }`}
-                >
-                  <Tag size={11} />
-                  {meal.pinnedType ? MEAL_TYPE_TAG_LABELS[meal.pinnedType as keyof typeof MEAL_TYPE_TAG_LABELS] ?? meal.pinnedType : "Tipo"}
-                </button>
-                <button
-                  onClick={onBan}
-                  disabled={isLocked}
-                  aria-label="Vetar esta receta para el resto de la semana"
-                  className="flex items-center gap-1.5 rounded-full bg-[#F2EDE0] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#1A1612] transition-colors hover:bg-[#1A1612] hover:text-[#FAF6EE] disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <Ban size={11} />
-                  Vetar
-                </button>
-              </>
-            )}
-            <button
-              onClick={() => {
-                if (typeof window === "undefined" || window.confirm(`¿Quitar ${mealLabel(meal.type).toLowerCase()} de este día?`)) {
-                  onDelete()
-                }
-              }}
-              disabled={isLocked}
-              aria-label="Eliminar este plato del día"
-              className="flex items-center gap-1.5 rounded-full bg-[#F2EDE0] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#C65D38] transition-colors hover:bg-[#C65D38] hover:text-[#FAF6EE] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <Trash2 size={11} />
-              Quitar
-            </button>
-          </>
         )}
-        {!readOnly && meal.recipeId && (
-          <CookedBadge
-            recipeId={meal.recipeId}
-            menuId={menuId}
-            dayIndex={day}
-            meal={meal.type}
-            variant="button"
-          />
-        )}
-        <Link
-          href={`/recipes/${meal.recipeId}`}
-          className="ml-auto text-[11px] uppercase tracking-[0.12em] text-[#7A7066] hover:text-[#1A1612]"
-        >
-          Ver receta →
-        </Link>
       </div>
 
-      {/* Per-slot diner override. Stays a separate row from the action chips
-          to keep the touch targets large on mobile, and so the "Solo hoy"
-          caption makes clear this isn't the recipe's authored serving size. */}
+      {/* Dish list with DnD reorder */}
+      <div className="px-3 pb-2">
+        {dishCount === 0 ? (
+          <p className="py-4 text-center font-italic italic text-[#7A7066] text-[13px]">Sin platos.</p>
+        ) : (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDishDragEnd}
+          >
+            <SortableContext items={dishIds} strategy={verticalListSortingStrategy}>
+              <div className="space-y-2">
+                {dishes.map((dish: Dish, i: number) => (
+                  <SortableDishRow
+                    key={dishIds[i]}
+                    id={dishIds[i]}
+                    dish={dish}
+                    onClickThumb={dish.kind === 'recipe' ? () => {} : undefined}
+                    onRegenerate={!readOnly && dish.kind === 'recipe' ? () => onRegenerateDish(i) : undefined}
+                    onRemove={!readOnly ? () => onRemoveDish(i) : undefined}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+        )}
+
+        {/* "+ Añadir plato" trigger */}
+        {!readOnly && !isLocked && (
+          <button
+            onClick={() => setAddDishOpen(true)}
+            className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-[#DDD6C5] py-2.5 text-[11px] uppercase tracking-[0.12em] text-[#7A7066] transition-colors hover:border-[#1A1612] hover:text-[#1A1612]"
+          >
+            <Plus size={12} />
+            Añadir plato
+          </button>
+        )}
+      </div>
+
+      {/* Slot-level actions */}
+      {!readOnly && (
+        <div className="flex flex-wrap items-center gap-2 border-t border-[#F2EDE0] px-3 py-2.5">
+          <button
+            onClick={onToggleLock}
+            className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] transition-colors ${
+              isLocked
+                ? "bg-[#C65D38] text-[#FAF6EE]"
+                : "bg-[#F2EDE0] text-[#1A1612] hover:bg-[#1A1612] hover:text-[#FAF6EE]"
+            }`}
+          >
+            {isLocked ? <Lock size={11} /> : <Unlock size={11} />}
+            {isLocked ? "Fijado" : "Fijar"}
+          </button>
+          <button
+            onClick={() => {
+              if (typeof window === "undefined" || window.confirm(`¿Quitar ${mealLabel(meal.type).toLowerCase()} de este día?`)) {
+                onDelete()
+              }
+            }}
+            disabled={isLocked}
+            className="flex items-center gap-1.5 rounded-full bg-[#F2EDE0] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#C65D38] transition-colors hover:bg-[#C65D38] hover:text-[#FAF6EE] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Trash2 size={11} />
+            Quitar slot
+          </button>
+        </div>
+      )}
+
+      {/* Per-slot diner override */}
       {!readOnly && (
         <DinerStepper
           value={meal.servings ?? null}
@@ -1091,27 +1366,21 @@ function EditorialMealCard({
         />
       )}
 
-      <RecipePickerSheet
-        open={pickerOpen}
-        onClose={() => setPickerOpen(false)}
-        title={`${mealLabel(meal.type)} del día`}
-        subtitle={meal.recipeName ? `Ahora: ${meal.recipeName}` : "Sin plato"}
-        onPick={(picked) => {
-          onPickRecipe(picked)
-          setPickerOpen(false)
-        }}
-      />
-      <PinTypeSheet
-        open={pinSheetOpen}
-        onClose={() => setPinSheetOpen(false)}
-        current={meal.pinnedType ?? null}
-        onPick={(next) => {
-          onSetPinnedType(next)
-          setPinSheetOpen(false)
-        }}
+      <AddDishSheet
+        open={addDishOpen}
+        onClose={() => setAddDishOpen(false)}
+        slotLabel={`${mealLabel(meal.type)} del día`}
+        onPickAleatorio={onRegenerate}
+        onPickRecipe={(recipeId) => onAddDish({ kind: 'recipe', recipeId })}
+        onAddNote={(text) => onAddNote({ kind: 'note', text })}
       />
     </motion.article>
   )
+
+  // ── Helper: add-note forwarding ──
+  function onAddNote(payload: { kind: 'note'; text: string }) {
+    onAddDish(payload)
+  }
 }
 
 /* ─────────────────────────────────────────────

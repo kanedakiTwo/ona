@@ -119,6 +119,8 @@ interface CellData {
    *  otherwise `prepTime`. Null when neither is set. Drives the time chip
    *  rendered under the recipe name. */
   totalMinutes: number | null
+  /** Number of additional dishes beyond the first (for the "+N más" badge). */
+  extraDishes: number
 }
 
 export function WeekGridView({
@@ -141,7 +143,10 @@ export function WeekGridView({
   // empty-across-the-week meal types are dropped so the user doesn't see
   // 7 empty "Desayuno" rows when their household never plans breakfast.
   const visibleMeals = useMemo(() => {
-    return MEAL_ORDER.filter((m) => days.some((day) => Boolean(day?.[m]?.recipeId)))
+    return MEAL_ORDER.filter((m) => days.some((day) => {
+      const slot = day?.[m]
+      return slot && slot.dishes.length > 0 && slot.dishes[0].kind === 'recipe'
+    }))
   }, [days])
 
   const sensors = useSensors(
@@ -286,7 +291,10 @@ function DaySection({
   isFirst: boolean
   isLast: boolean
 }) {
-  const hasAnyMeal = visibleMeals.some((m) => Boolean(day?.[m]?.recipeId))
+  const hasAnyMeal = visibleMeals.some((m) => {
+    const slot = day?.[m]
+    return slot && slot.dishes.length > 0 && slot.dishes[0].kind === 'recipe'
+  })
   // Background hierarchy:
   //   - skipped → muted cream so it visually recedes
   //   - today  → soft terracotta tint to anchor the eye
@@ -366,17 +374,21 @@ function DaySection({
           {hasAnyMeal ? (
             visibleMeals.map((m) => {
               const slot = day?.[m]
-              const isPlanned = Boolean(slot?.recipeId)
-              const cellData: CellData | null = isPlanned
+              const firstDish = slot?.dishes?.[0]
+              const firstRecipe = firstDish?.kind === 'recipe' ? firstDish : null
+              const isPlanned = Boolean(firstRecipe)
+              const extraDishes = (slot?.dishes?.length ?? 0) - 1
+              const cellData: CellData | null = isPlanned && firstRecipe
                 ? {
                     day: dayIndex,
                     meal: m,
-                    recipeId: slot!.recipeId,
-                    recipeName: slot!.recipeName ?? "Receta",
-                    imageUrl: slot!.imageUrl ?? null,
-                    isLeftover: slot!.kind === "leftover",
+                    recipeId: firstRecipe.recipeId,
+                    recipeName: firstRecipe.recipeName ?? "Receta",
+                    imageUrl: firstRecipe.imageUrl ?? null,
+                    isLeftover: firstRecipe.variant === "leftover",
                     totalMinutes:
-                      slot!.totalTime ?? slot!.prepTime ?? null,
+                      firstRecipe.totalTime ?? firstRecipe.prepTime ?? null,
+                    extraDishes,
                   }
                 : null
               return (
@@ -557,6 +569,11 @@ function DraggableRow({
           title={data.recipeName}
         >
           {shortRecipeName(data.recipeName)}
+          {data.extraDishes > 0 && (
+            <span className="ml-1 text-[10px] uppercase tracking-[0.15em] text-[#7A7066]">
+              +{data.extraDishes} más
+            </span>
+          )}
         </p>
         {data.totalMinutes != null && data.totalMinutes > 0 && (
           <p className="mt-0.5 text-[11px] text-[#7A7066] lg:hidden">

@@ -320,9 +320,9 @@ function DaySection({
         className={`sticky top-0 z-10 flex w-full items-center justify-between px-4 pt-3 pb-2 text-left backdrop-blur-sm lg:static lg:backdrop-blur-none ${headerBg}/95`}
         aria-label={`Ir al día ${dayName} ${date}`}
       >
-        <div className="flex items-baseline gap-2">
+        <div className="flex min-w-0 items-baseline gap-2 lg:flex-col lg:items-start lg:gap-1">
           <span
-            className={`text-[13px] font-medium ${
+            className={`whitespace-nowrap text-[13px] font-medium ${
               isSkipped
                 ? "text-[#7A7066]"
                 : isToday

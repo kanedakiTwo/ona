@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { sumDinersByRecipe } from '../services/shoppingList.js'
-import type { DayMenu } from '@ona/shared'
+import type { DayMenu, MealSlot } from '@ona/shared'
 
-const slot = (recipeId: string, servings?: number) =>
-  servings == null ? { recipeId } : { recipeId, servings }
+const slot = (recipeId: string, servings?: number): MealSlot =>
+  servings == null
+    ? { dishes: [{ kind: 'recipe', recipeId }] }
+    : { servings, dishes: [{ kind: 'recipe', recipeId }] }
 
 describe('sumDinersByRecipe', () => {
   it('falls back to the household multiplier when no slot has an override', () => {
@@ -45,5 +47,28 @@ describe('sumDinersByRecipe', () => {
   it('produces an empty map when no slots are filled', () => {
     expect(sumDinersByRecipe([], 4).size).toBe(0)
     expect(sumDinersByRecipe([{}, {}, {}], 4).size).toBe(0)
+  })
+
+  it('slot with only note dishes contributes 0 items', () => {
+    const days: DayMenu[] = [
+      { lunch: { dishes: [{ kind: 'note', text: 'comer fuera' }] } },
+    ]
+    expect(sumDinersByRecipe(days, 4).size).toBe(0)
+  })
+
+  it('slot with a recipe dish and a note dish — only the recipe contributes', () => {
+    const days: DayMenu[] = [
+      {
+        lunch: {
+          servings: 3,
+          dishes: [
+            { kind: 'recipe', recipeId: 'r1', recipeName: 'Cocido' },
+            { kind: 'note', text: 'con pan' },
+          ],
+        },
+      },
+    ]
+    expect(sumDinersByRecipe(days, 4).get('r1')).toBe(3)
+    expect(sumDinersByRecipe(days, 4).size).toBe(1)
   })
 })

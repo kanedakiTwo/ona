@@ -19,7 +19,7 @@ import type { SkillDefinition } from '../services/assistant/types.js'
 // ─── Mock service heavy-lifters that the skills delegate into ─────────────
 
 vi.mock('../services/menuGenerator.js', () => ({
-  generateMenu: vi.fn(async () => [{}, {}, {}, {}, {}, {}, {}]),
+  generateMenu: vi.fn(async () => ({ days: [{}, {}, {}, {}, {}, {}, {}], warnings: [] })),
 }))
 vi.mock('../services/shoppingList.js', () => ({
   generateShoppingList: vi.fn(async () => []),
@@ -300,7 +300,7 @@ describe('swap_meal', () => {
   it('updates the slot when a replacement is found', async () => {
     const menu = {
       id: 'm-1',
-      days: Array.from({ length: 7 }, () => ({ lunch: { recipeId: 'r-old', recipeName: 'Antiguo' } })),
+      days: Array.from({ length: 7 }, () => ({ lunch: { dishes: [{ kind: 'recipe', recipeId: 'r-old', recipeName: 'Antiguo' }] } })),
     }
     // queries: select menu, select user(restrictions), select favorites,
     // loadRecipesWithIngredients → select recipes, select riRows, then update menu.
@@ -755,8 +755,8 @@ describe('get_variety_score', () => {
     const menu = {
       id: 'm',
       days: [
-        { lunch: { recipeId: 'r-1' } },
-        { dinner: { recipeId: 'r-2' } },
+        { lunch: { dishes: [{ kind: 'recipe', recipeId: 'r-1' }] } },
+        { dinner: { dishes: [{ kind: 'recipe', recipeId: 'r-2' }] } },
       ],
     }
     const ingRows = [

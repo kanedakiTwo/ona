@@ -12,7 +12,7 @@ import {
   menuLogs,
   shoppingLists,
 } from '../../db/schema.js'
-import { nutrientsToPercentages, TARGET_MACROS, detectSeason } from '@ona/shared'
+import { nutrientsToPercentages, TARGET_MACROS, detectSeason, recipeDishesOf } from '@ona/shared'
 import type { DayMenu, Meal, NutrientBalance, HouseholdSize } from '@ona/shared'
 import { householdMultiplier, householdSizeToCounts } from '@ona/shared'
 import { generateMenu } from '../menuGenerator.js'
@@ -402,7 +402,7 @@ const generateWeeklyMenu: SkillDefinition = {
     const { userId, db } = ctx
     const weekStart = getWeekStart()
 
-    const days = await generateMenu(userId, weekStart, undefined, db)
+    const { days } = await generateMenu(userId, weekStart, undefined, db)
 
     // Save to menus table — dual-write household_id so shared-scope reads
     // pick it up. Null is acceptable if the user somehow lacks a primary
@@ -431,8 +431,11 @@ const generateWeeklyMenu: SkillDefinition = {
     const dayNames = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo']
     const menuSummary = days.map((day: DayMenu, i: number) => {
       const meals = Object.entries(day)
-        .filter(([, slot]: any) => slot?.recipeName)
-        .map(([meal, slot]: any) => `${meal}: ${slot.recipeName}`)
+        .filter(([, slot]: any) => slot?.dishes?.some((d: any) => d.recipeName))
+        .map(([meal, slot]: any) => {
+          const firstName = slot.dishes.find((d: any) => d.kind === 'recipe')?.recipeName ?? ''
+          return `${meal}: ${firstName}`
+        })
       return `${dayNames[i]}: ${meals.join(', ')}`
     }).join('; ')
 
@@ -518,7 +521,7 @@ const swapMeal: SkillDefinition = {
           uiHint: 'text',
         }
       }
-      days[dayIndex][meal] = { recipeId: chosen.id, recipeName: chosen.name }
+      days[dayIndex][meal] = { dishes: [{ kind: 'recipe', recipeId: chosen.id, recipeName: chosen.name }] }
       const [updatedManual] = await db
         .update(menus)
         .set({ days })
@@ -537,9 +540,11 @@ const swapMeal: SkillDefinition = {
     const usedRecipeIds = new Set<string>()
     for (let d = 0; d < days.length; d++) {
       for (const m of Object.keys(days[d])) {
+        if (d === dayIndex && m === meal) continue
         const slot = days[d][m]
-        if (slot?.recipeId && !(d === dayIndex && m === meal)) {
-          usedRecipeIds.add(slot.recipeId)
+        if (!slot) continue
+        for (const dish of recipeDishesOf(slot.dishes)) {
+          usedRecipeIds.add(dish.recipeId)
         }
       }
     }
@@ -578,7 +583,7 @@ const swapMeal: SkillDefinition = {
     }
 
     // Update the menu
-    days[dayIndex][meal] = { recipeId: newRecipe.id, recipeName: newRecipe.name }
+    days[dayIndex][meal] = { dishes: [{ kind: 'recipe', recipeId: newRecipe.id, recipeName: newRecipe.name }] }
 
     const [updated] = await db
       .update(menus)
@@ -1235,7 +1240,9 @@ const getVarietyScore: SkillDefinition = {
     const recipeIds = new Set<string>()
     for (const d of (menu.days as any[]) ?? []) {
       for (const slot of Object.values(d) as any[]) {
-        if (slot?.recipeId) recipeIds.add(slot.recipeId)
+        for (const dish of recipeDishesOf(slot?.dishes ?? [])) {
+          recipeIds.add(dish.recipeId)
+        }
       }
     }
     if (recipeIds.size === 0) {

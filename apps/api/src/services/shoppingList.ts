@@ -13,6 +13,7 @@ import type {
   ShoppingItem,
   Unit,
 } from '@ona/shared'
+import { recipeDishesOf } from '@ona/shared'
 import { randomUUID } from 'crypto'
 
 /**
@@ -189,12 +190,14 @@ export function sumDinersByRecipe(
   for (const day of menuDays) {
     for (const meal of Object.keys(day)) {
       const slot = day[meal as keyof DayMenu]
-      if (!slot?.recipeId) continue
+      if (!slot) continue
       const diners =
         typeof slot.servings === 'number' && slot.servings > 0
           ? slot.servings
           : householdMultiplier
-      out.set(slot.recipeId, (out.get(slot.recipeId) ?? 0) + diners)
+      for (const dish of recipeDishesOf(slot.dishes)) {
+        out.set(dish.recipeId, (out.get(dish.recipeId) ?? 0) + diners)
+      }
     }
   }
   return out

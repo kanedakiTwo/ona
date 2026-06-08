@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm'
 import { recipes, recipeIngredients, ingredients } from '../db/schema.js'
-import { ingredientCalories } from '@ona/shared'
+import { ingredientCalories, recipeDishesOf } from '@ona/shared'
 import type { DayMenu, NutritionPerServing } from '@ona/shared'
 
 /**
@@ -60,9 +60,10 @@ export async function calculateMenuCaloriesFromDB(
   // Collect all unique recipe IDs
   for (const day of menuDays) {
     for (const meal of Object.keys(day)) {
-      const slot = day[meal]
-      if (slot?.recipeId) {
-        recipeIds.add(slot.recipeId)
+      const slot = day[meal as keyof DayMenu]
+      if (!slot) continue
+      for (const dish of recipeDishesOf(slot.dishes)) {
+        recipeIds.add(dish.recipeId)
       }
     }
   }
@@ -77,9 +78,10 @@ export async function calculateMenuCaloriesFromDB(
   let total = 0
   for (const day of menuDays) {
     for (const meal of Object.keys(day)) {
-      const slot = day[meal]
-      if (slot?.recipeId) {
-        total += recipeCaloriesMap.get(slot.recipeId) ?? 0
+      const slot = day[meal as keyof DayMenu]
+      if (!slot) continue
+      for (const dish of recipeDishesOf(slot.dishes)) {
+        total += recipeCaloriesMap.get(dish.recipeId) ?? 0
       }
     }
   }

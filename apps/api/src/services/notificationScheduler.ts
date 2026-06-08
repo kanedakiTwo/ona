@@ -112,11 +112,17 @@ function flattenMenuSlots(days: unknown): SlotEntry[] {
     if (!day) continue
     for (const [meal, slot] of Object.entries(day)) {
       if (!slot || typeof slot !== 'object') continue
-      const s = slot as { recipeId?: string; kind?: string }
-      // Skip leftover slots — they share the source's prep alerts.
-      if (s.kind === 'leftover') continue
-      if (typeof s.recipeId === 'string' && s.recipeId.length > 0) {
-        out.push({ dayIndex: i, meal: meal as Meal, recipeId: s.recipeId })
+      const s = slot as { dishes?: unknown[] }
+      if (!Array.isArray(s.dishes)) continue
+      for (const dish of s.dishes) {
+        if (!dish || typeof dish !== 'object') continue
+        const d = dish as { kind?: string; recipeId?: string; variant?: string }
+        if (d.kind !== 'recipe') continue
+        // Skip leftover dishes — they share the source's prep alerts.
+        if (d.variant === 'leftover') continue
+        if (typeof d.recipeId === 'string' && d.recipeId.length > 0) {
+          out.push({ dayIndex: i, meal: meal as Meal, recipeId: d.recipeId })
+        }
       }
     }
   }

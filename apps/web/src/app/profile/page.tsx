@@ -18,6 +18,8 @@ import {
   type MealTimes,
 } from '@/lib/pwa/notifications'
 import { MyRecipesSection } from './sections/MyRecipesSection'
+import { MealDishCountControls } from '@/components/profile/MealDishCountControls'
+import type { Meal } from '@ona/shared'
 
 interface PhysicalData {
   sex: 'male' | 'female' | ''
@@ -106,6 +108,7 @@ export default function ProfilePage() {
     for (const d of DAYS) t[d] = { desayuno: 2, almuerzo: 2, cena: 2 }
     return t
   })
+  const [mealDishCounts, setMealDishCounts] = useState<Partial<Record<Meal, 1 | 2 | 3>>>({})
   const [restrictionInput, setRestrictionInput] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -179,6 +182,14 @@ export default function ProfilePage() {
           }
         }
         setMealTemplate(next)
+      }
+      const rawMdc = blob?.mealDishCounts
+      if (rawMdc && typeof rawMdc === 'object') {
+        const cleaned: Partial<Record<Meal, 1 | 2 | 3>> = {}
+        for (const [m, c] of Object.entries(rawMdc as Record<string, unknown>)) {
+          if (c === 1 || c === 2 || c === 3) cleaned[m as Meal] = c
+        }
+        setMealDishCounts(cleaned)
       }
     }).catch(() => {})
   }, [user])
@@ -304,14 +315,14 @@ export default function ProfilePage() {
         calls.push(api.put(`/user/${user.id}`, userPayload))
       }
       calls.push(api.put(`/user/${user.id}/settings`, {
-        template: { physical, preferences, mealTemplate },
+        template: { physical, preferences, mealTemplate, mealDishCounts },
       }))
       await Promise.all(calls)
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
     } catch (e) { console.error(e) }
     finally { setSaving(false) }
-  }, [user, physical, preferences, household, mealTemplate])
+  }, [user, physical, preferences, household, mealTemplate, mealDishCounts])
 
   if (authLoading || !user) {
     return (
@@ -568,6 +579,10 @@ export default function ProfilePage() {
           <span className="font-mono"> −</span> para bajar y dejar la celda
           vacía para apagarla.
         </p>
+
+        <div className="mt-5">
+          <MealDishCountControls value={mealDishCounts} onChange={setMealDishCounts} />
+        </div>
 
         <div className="mt-5 overflow-hidden rounded-2xl bg-[#FFFEFA] border border-[#DDD6C5]">
           <div className="grid grid-cols-[44px_1fr_1fr_1fr_1fr]">

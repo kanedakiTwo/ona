@@ -391,3 +391,105 @@ export function useLockMeal() {
     },
   })
 }
+
+/**
+ * Add a dish to a meal slot. Dishes can be either recipes or freeform notes.
+ * The `payload` shape is a discriminated union:
+ *   { kind: 'recipe'; recipeId: string; course?: Course; pinnedType?: string }
+ *   { kind: 'note'; text: string }
+ */
+export function useAddDish() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (params: {
+      menuId: string
+      day: number
+      meal: string
+      payload: { kind: 'recipe'; recipeId: string; course?: string | null; pinnedType?: string | null } | { kind: 'note'; text: string }
+    }) => {
+      const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}/dish`
+      return api.post<Menu>(url, params.payload)
+    },
+    onSuccess: (data) => {
+      if (data?.userId && data?.weekStart) {
+        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
+      }
+      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
+    },
+  })
+}
+
+/**
+ * Remove a dish from a meal slot by position (0-indexed).
+ */
+export function useRemoveDish() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (params: {
+      menuId: string
+      day: number
+      meal: string
+      position: number
+    }) => {
+      const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}/dish/${params.position}`
+      return api.delete<Menu>(url)
+    },
+    onSuccess: (data) => {
+      if (data?.userId && data?.weekStart) {
+        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
+      }
+      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
+    },
+  })
+}
+
+/**
+ * Update a dish's metadata (note text, pinnedType, newPosition for reordering, course).
+ * Position is 0-indexed; newPosition moves the dish within the slot (no swap).
+ */
+export function usePatchDish() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (params: {
+      menuId: string
+      day: number
+      meal: string
+      position: number
+      patch: { text?: string; pinnedType?: string | null; newPosition?: number; course?: string | null }
+    }) => {
+      const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}/dish/${params.position}`
+      return api.patch<Menu>(url, params.patch)
+    },
+    onSuccess: (data) => {
+      if (data?.userId && data?.weekStart) {
+        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
+      }
+      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
+    },
+  })
+}
+
+/**
+ * Regenerate a recipe dish at a given position via the matcher (Aleatorio).
+ * Respects the slot's pinnedType and menu's bannedRecipeIds.
+ */
+export function useRegenerateDish() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (params: {
+      menuId: string
+      day: number
+      meal: string
+      position: number
+    }) => {
+      const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}/dish/${params.position}/regenerate`
+      return api.post<Menu>(url)
+    },
+    onSuccess: (data) => {
+      if (data?.userId && data?.weekStart) {
+        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
+      }
+      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
+    },
+  })
+}

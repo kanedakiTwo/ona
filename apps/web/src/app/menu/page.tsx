@@ -242,6 +242,23 @@ export default function MenuPage() {
     }
   }, [])
 
+  // The day/week toggle is hidden at lg+ (the day stack reads poorly at
+  // desktop width — the 7-col grid is the only sensible layout). Force
+  // viewMode to "week" whenever we're rendering at lg+ so a user whose
+  // localStorage carries `day` from a smaller browser session still
+  // lands on the grid. We don't *persist* this change to localStorage —
+  // resizing back to mobile should restore the user's saved preference.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const mq = window.matchMedia("(min-width: 1024px)")
+    const sync = () => {
+      if (mq.matches && viewMode === "day") setViewModeState("week")
+    }
+    sync()
+    mq.addEventListener("change", sync)
+    return () => mq.removeEventListener("change", sync)
+  }, [viewMode])
+
   // When the user navigates to a different week, reset the day picker:
   //   - Current week → land on today
   //   - Any other week → land on Monday
@@ -411,10 +428,10 @@ export default function MenuPage() {
   }
 
   return (
-    <div className="bg-[#FAF6EE] min-h-screen lg:mx-auto lg:max-w-[1200px] lg:px-8">
+    <div className="bg-[#FAF6EE] min-h-screen lg:mx-auto lg:max-w-[1200px] lg:px-8 xl:max-w-[1440px]">
       {/* Editorial Header */}
-      <header className="px-5 pt-8 pb-6 lg:px-0">
-        <div className="flex items-baseline justify-between">
+      <header className="px-5 pt-8 pb-6 lg:px-0 lg:pt-4 lg:pb-3">
+        <div className="flex items-baseline justify-between lg:hidden">
           <div>
             <div className="text-eyebrow mb-1">Menú de la semana</div>
             <div className="font-italic italic text-[11px] text-[#7A7066]">№ {issueNumber} · {start.getFullYear()}</div>
@@ -426,14 +443,26 @@ export default function MenuPage() {
           </div>
         </div>
 
-        <h1 className="mt-4 font-display text-[2.6rem] leading-[0.95] tracking-tight text-[#1A1612]">
+        {/* Mobile heading: big editorial. lg+: collapses into the title-row
+            beside the week selector so the grid lands above the fold. */}
+        <h1 className="mt-4 font-display text-[2.6rem] leading-[0.95] tracking-tight text-[#1A1612] lg:hidden">
           Buen <span className="font-italic italic text-[#C65D38]">comer</span>,
           <br />
           {user.username}.
         </h1>
 
+        {/* lg+ compact title row — small inline heading + immediate eyebrow */}
+        <div className="hidden lg:flex lg:items-baseline lg:gap-3">
+          <h1 className="font-display text-[1.4rem] leading-tight text-[#1A1612]">
+            Buen <span className="font-italic italic text-[#C65D38]">comer</span>, {user.username}.
+          </h1>
+          <span className="text-eyebrow text-[#7A7066]">
+            № {issueNumber} · {MONTHS[start.getMonth()]} {start.getFullYear()}
+          </span>
+        </div>
+
         {/* Week selector */}
-        <div className="mt-6 flex items-center justify-between gap-2 rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-2 py-1.5">
+        <div className="mt-6 flex items-center justify-between gap-2 rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-2 py-1.5 lg:mt-3">
           <button
             type="button"
             onClick={() => {
@@ -478,8 +507,11 @@ export default function MenuPage() {
           )}
         </div>
 
-        {/* View-mode toggle — "vista día" (current) vs "vista semana" (grid). */}
-        <div className="mt-3 inline-flex items-center gap-1 rounded-full border border-[#DDD6C5] bg-[#FFFEFA] p-1">
+        {/* View-mode toggle — "vista día" (current) vs "vista semana" (grid).
+            Hidden at lg+ where the 7-col grid is the only sensible layout —
+            the day-stack pattern at desktop width just stretches the
+            mobile design wide and reads poorly. */}
+        <div className="mt-3 inline-flex items-center gap-1 rounded-full border border-[#DDD6C5] bg-[#FFFEFA] p-1 lg:hidden">
           <button
             type="button"
             onClick={() => {

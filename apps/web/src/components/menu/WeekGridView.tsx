@@ -445,25 +445,36 @@ function SlotRow({
 
   // Empty slot — still a drop target (drop moves a recipe in from elsewhere)
   // but no drag source.
+  // At lg+ the empty slot collapses to a single quiet "+ COMIDA" line —
+  // a full-card placeholder per empty meal × per day balloons the column
+  // height and pushes filled meals below the fold (it's also the
+  // anti-pattern of variant-B column-stack where short days should stay
+  // short).
   if (!data) {
     return (
       <button
         ref={setDropRef as unknown as React.LegacyRef<HTMLButtonElement>}
         type="button"
         onClick={onClick}
-        className={`flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors lg:flex-col lg:items-stretch lg:gap-1 lg:rounded-lg lg:border lg:border-dashed lg:border-[#DDD6C5] lg:bg-[#FFFEFA]/40 lg:px-2 lg:py-3 ${
-          isOver ? "bg-[#1A1612]/10 lg:border-[#1A1612]/40" : "hover:bg-[#F2EDE0] lg:hover:bg-[#F2EDE0]/40"
+        className={`flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors lg:gap-1.5 lg:rounded-md lg:border-0 lg:bg-transparent lg:px-2 lg:py-1.5 lg:items-center ${
+          isOver ? "bg-[#1A1612]/10 lg:bg-[#1A1612]/5" : "hover:bg-[#F2EDE0] lg:hover:bg-[#F2EDE0]/40"
         }`}
       >
-        <div className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-lg border border-dashed border-[#DDD6C5] bg-[#F2EDE0]/40 text-[#7A7066] lg:h-auto lg:w-full lg:border-0 lg:bg-transparent lg:py-2">
+        {/* Mobile: keeps the 52px square meal icon. lg+: tiny inline icon
+            stays in the row with the eyebrow + "+". */}
+        <div className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-lg border border-dashed border-[#DDD6C5] bg-[#F2EDE0]/40 text-[#7A7066] lg:hidden">
           <MealIcon size={18} strokeWidth={1.4} />
         </div>
-        <div className="min-w-0 flex-1 lg:text-center">
-          <p className="m-0 flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-[#7A7066] lg:justify-center">
+        <MealIcon size={11} strokeWidth={1.6} className="hidden lg:inline text-[#A39A8E] shrink-0" />
+        <div className="min-w-0 flex-1 lg:flex lg:items-baseline lg:gap-1.5">
+          <p className="m-0 flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-[#7A7066] lg:text-[9px]">
             <MealIcon size={12} strokeWidth={1.6} className="lg:hidden" />
             {mealLabel}
           </p>
-          <p className="mt-0.5 text-[13px] italic text-[#A39A8E] lg:text-[11px]">Sin plato</p>
+          <p className="mt-0.5 text-[13px] italic text-[#A39A8E] lg:mt-0 lg:text-[10px]">
+            <span className="lg:hidden">Sin plato</span>
+            <span className="hidden lg:inline">+ añadir</span>
+          </p>
         </div>
       </button>
     )

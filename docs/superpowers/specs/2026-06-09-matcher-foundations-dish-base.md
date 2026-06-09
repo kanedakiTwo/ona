@@ -89,7 +89,7 @@ export const DISH_BASE_LABELS: Record<DishBase, string> = {
 export const dishBaseSchema = z.union([z.enum(DISH_BASES), z.null()])
 ```
 
-`Recipe` interface gains `dishBase?: DishBase | null`.
+`Recipe` interface gains `dishBase?: DishBase | null`. The `RecipeDish` variant of `Dish` (in `packages/shared/src/types/menuDish.ts`) **also** gains `dishBase?: DishBase | null` — hydrated by `hydrateMenuImages` on every menu GET, persisted by the generator and `/dish/random` when adding new dishes, so the diversity helper in `dishBaseDiversity.ts` can read `dish.dishBase` directly off the in-memory slot without re-querying.
 
 ## LLM backfill
 
@@ -192,7 +192,7 @@ let picked = findForCourse(filteredPool, courseForMatcher, matcherOptionsR)
 if (!picked) picked = findForCourse(recipesWithIngredientsR, courseForMatcher, matcherOptionsR)
 ```
 
-The `existingIngredientNames` + `diversityFilteredPool` block (lines ~XX in current `menus.ts`) is removed. Cleaner code, more accurate semantics.
+The `existingIngredientNames` + `diversityFilteredPool` block in the current `/dish/random` route (search `existingIngredientNames` in `apps/api/src/routes/menus.ts`) is removed. Cleaner code, more accurate semantics.
 
 ### 3. `regenerate-dish` endpoint (`POST .../dish/:position/regenerate`)
 
@@ -276,4 +276,4 @@ These were considered and parked entirely — they might never ship, or only as 
 ## Open follow-ups (within sub-project 1 — non-blocking)
 
 - **Manual override semántica**: si el usuario edita `dish_base` en `/recipes/[id]/edit`, lo marcamos con `dish_base_source: 'user' | 'llm'`? Por ahora simple: la columna se sobreescribe, no se trackea el origen. Si en sub-proyecto 2 necesitamos re-correr el backfill, le decimos al script que NO toque rows donde el user lo cambió.
-- **Distribution sanity check**: después del backfill en prod, validar que la distribución es razonable (no 80% `null`, no 70% `vegetal`). Si está sesgado, iterar sobre el prompt.
+- **Distribution sanity check**: después del backfill en prod, validar que la distribución es razonable (no 80% `null`, no 70% `vegetal`). Si está sesgado, iterar sobre el prompt. → **Add as a Todo Miguel line in the implementation plan** so it doesn't slip after deploy.

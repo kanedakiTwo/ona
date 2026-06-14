@@ -139,14 +139,14 @@ export function WeekGridView({
   const start = new Date(weekStart + "T00:00:00")
   const skippedSet = useMemo(() => new Set(skippedDays ?? []), [skippedDays])
 
-  // Meal types that have at least one recipe somewhere in the week —
-  // empty-across-the-week meal types are dropped so the user doesn't see
-  // 7 empty "Desayuno" rows when their household never plans breakfast.
+  // Meal types that have at least one *template-active* slot somewhere in
+  // the week — empty-across-the-week meal types are dropped so the user
+  // doesn't see 7 empty "Desayuno" rows when their household never plans
+  // breakfast. We count slot KEYS (not dish content) so empty-mode menus
+  // ("Vaciar semana" / new week) still show the user's template slots as
+  // tappable "+ añadir" rows instead of collapsing to "— sin platos —".
   const visibleMeals = useMemo(() => {
-    return MEAL_ORDER.filter((m) => days.some((day) => {
-      const slot = day?.[m]
-      return slot && slot.dishes.length > 0 && slot.dishes[0].kind === 'recipe'
-    }))
+    return MEAL_ORDER.filter((m) => days.some((day) => day?.[m] != null))
   }, [days])
 
   const sensors = useSensors(

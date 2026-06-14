@@ -779,6 +779,20 @@ export default function MenuPage() {
                 haptic.medium()
                 deleteMealSlot.mutate({ menuId: menu.id, day: d, meal: m })
               }}
+              onAddRecipe={(d, m, recipeId) => {
+                if (!menu) return
+                haptic.medium()
+                // regenerateMeal with a recipeId replaces the slot's
+                // current dish with the picked recipe. For empty slots
+                // (the "+ Añadir" path) the previous state was already
+                // `dishes: []`, so this is just an "add first dish".
+                regenerateMeal.mutate({
+                  menuId: menu.id,
+                  day: d,
+                  meal: m,
+                  recipeId,
+                })
+              }}
             />
           </div>
         </>

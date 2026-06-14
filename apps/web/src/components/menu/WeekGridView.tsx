@@ -54,6 +54,7 @@ import {
 } from "lucide-react"
 import type { DayMenu } from "@ona/shared"
 import { shortRecipeName } from "@/lib/recipeView"
+import { RecipePickerSheet } from "@/components/menu/RecipePickerSheet"
 
 type MealKey = "breakfast" | "lunch" | "dinner" | "snack"
 
@@ -106,6 +107,13 @@ interface Props {
   onRandomize?: (day: number, meal: MealKey) => void
   onBan?: (day: number, meal: MealKey, recipeId: string) => void
   onRemove?: (day: number, meal: MealKey) => void
+  /**
+   * Called when the user taps "+ Añadir" on an empty slot. Opens the
+   * picker sheet inline (at lg+) and dispatches the chosen recipe
+   * straight into the slot — no need to switch to "Vista día". When
+   * undefined the empty slot falls back to `onSelectDay` (legacy path).
+   */
+  onAddRecipe?: (day: number, meal: MealKey, recipeId: string) => void
 }
 
 interface CellData {
@@ -135,6 +143,7 @@ export function WeekGridView({
   onRandomize,
   onBan,
   onRemove,
+  onAddRecipe,
 }: Props) {
   const start = new Date(weekStart + "T00:00:00")
   const skippedSet = useMemo(() => new Set(skippedDays ?? []), [skippedDays])
@@ -237,6 +246,7 @@ export function WeekGridView({
               onRandomize={onRandomize}
               onBan={onBan}
               onRemove={onRemove}
+              onAddRecipe={onAddRecipe}
               isFirst={di === 0}
               isLast={di === days.length - 1}
             />
@@ -271,6 +281,7 @@ function DaySection({
   onRandomize,
   onBan,
   onRemove,
+  onAddRecipe,
   isFirst,
   isLast,
 }: {
@@ -289,6 +300,7 @@ function DaySection({
   onRandomize?: (day: number, meal: MealKey) => void
   onBan?: (day: number, meal: MealKey, recipeId: string) => void
   onRemove?: (day: number, meal: MealKey) => void
+  onAddRecipe?: (day: number, meal: MealKey, recipeId: string) => void
   isFirst: boolean
   isLast: boolean
 }) {
@@ -308,6 +320,14 @@ function DaySection({
   // no longer carries `overflow-hidden` (otherwise sticky would clip).
   const headerBg = isSkipped ? "bg-[#F2EDE0]" : isToday ? "bg-[#FDEEE8]" : "bg-[#FFFEFA]"
 
+  // Header is a clickable button on mobile (taps to flip to "Vista día"
+  // for that day). At lg+ there's no day-view to flip to (the toggle is
+  // hidden + viewMode is force-synced to "week"), so the header becomes
+  // a static header — no button semantics, no chevron, no click handler.
+  // The `<section>` no longer carries `lg:overflow-hidden` either — that
+  // was clipping the "..." popover when it opened below the last visible
+  // card in a column. Outer corners are still rounded; the inner cards
+  // are independently rounded so nothing visually leaks.
   return (
     <section
       data-day={dayIndex}
@@ -315,15 +335,19 @@ function DaySection({
         !isFirst ? "border-t border-[#DDD6C5] lg:border-t-0" : ""
       } ${isFirst ? "rounded-t-2xl lg:rounded-2xl" : ""} ${
         isLast ? "rounded-b-2xl lg:rounded-2xl" : ""
-      } lg:border lg:border-[#DDD6C5] lg:rounded-2xl lg:overflow-hidden`}
+      } lg:border lg:border-[#DDD6C5] lg:rounded-2xl`}
     >
+      {/* Mobile: clickable header that flips to Vista día. lg+ swaps to
+          a static header (button → div) because Vista día is unavailable
+          there. Two parallel implementations avoid conditional
+          aria/role attributes that confuse the type checker. */}
       <button
         type="button"
         onClick={() => onSelectDay(dayIndex)}
-        className={`sticky top-0 z-10 flex w-full items-center justify-between px-4 pt-3 pb-2 text-left backdrop-blur-sm lg:static lg:backdrop-blur-none ${headerBg}/95`}
+        className={`lg:hidden sticky top-0 z-10 flex w-full items-center justify-between px-4 pt-3 pb-2 text-left backdrop-blur-sm ${headerBg}/95`}
         aria-label={`Ir al día ${dayName} ${date}`}
       >
-        <div className="flex min-w-0 items-baseline gap-2 lg:flex-col lg:items-start lg:gap-1">
+        <div className="flex min-w-0 items-baseline gap-2">
           <span
             className={`whitespace-nowrap text-[13px] font-medium ${
               isSkipped
@@ -348,6 +372,31 @@ function DaySection({
         </div>
         <ChevronRight size={14} className="text-[#7A7066]" />
       </button>
+      <div
+        className={`hidden lg:flex w-full flex-col items-start gap-1 px-4 pt-3 pb-2 ${headerBg}`}
+      >
+        <span
+          className={`whitespace-nowrap text-[13px] font-medium ${
+            isSkipped
+              ? "text-[#7A7066]"
+              : isToday
+                ? "text-[#C65D38]"
+                : "text-[#1A1612]"
+          }`}
+        >
+          {dayShort} {date} {monthLabel}
+        </span>
+        {isToday && (
+          <span className="rounded-full bg-[#C65D38] px-2 py-[1px] text-[9px] font-medium uppercase tracking-[0.12em] text-[#FAF6EE]">
+            Hoy
+          </span>
+        )}
+        {isSkipped && (
+          <span className="rounded-full border border-[#7A7066]/40 px-2 py-[1px] text-[9px] font-medium uppercase tracking-[0.12em] text-[#7A7066]">
+            Sin cocinar
+          </span>
+        )}
+      </div>
 
       {isSkipped ? (
         <div className="flex items-center gap-2 px-4 pb-3 pt-1">
@@ -401,13 +450,16 @@ function DaySection({
                   meal={m}
                   data={cellData}
                   onClick={() => {
-                    // Filled row → recipe detail; empty row → day view to add.
+                    // Filled row → recipe detail; empty row → day view
+                    // (legacy mobile path; lg+ uses the inline picker
+                    // through `onAddRecipe` instead — see SlotRow).
                     if (cellData?.recipeId) onSelectRecipe(cellData.recipeId)
                     else onSelectDay(dayIndex)
                   }}
                   onRandomize={onRandomize}
                   onBan={onBan}
                   onRemove={onRemove}
+                  onAddRecipe={onAddRecipe}
                 />
               )
             })
@@ -430,6 +482,7 @@ function SlotRow({
   onRandomize,
   onBan,
   onRemove,
+  onAddRecipe,
 }: {
   dayIndex: number
   meal: MealKey
@@ -438,6 +491,7 @@ function SlotRow({
   onRandomize?: (day: number, meal: MealKey) => void
   onBan?: (day: number, meal: MealKey, recipeId: string) => void
   onRemove?: (day: number, meal: MealKey) => void
+  onAddRecipe?: (day: number, meal: MealKey, recipeId: string) => void
 }) {
   const dropId = `row-${dayIndex}-${meal}`
   const { setNodeRef: setDropRef, isOver } = useDroppable({
@@ -445,6 +499,7 @@ function SlotRow({
     data: { dayIndex, meal },
   })
   const { label: mealLabel, Icon: MealIcon } = MEAL_META[meal]
+  const [pickerOpen, setPickerOpen] = useState(false)
 
   // Empty slot — still a drop target (drop moves a recipe in from elsewhere)
   // but no drag source.
@@ -454,10 +509,18 @@ function SlotRow({
   // dinner indistinguishable when both were empty.
   if (!data) {
     return (
+      <>
       <button
         ref={setDropRef as unknown as React.LegacyRef<HTMLButtonElement>}
         type="button"
-        onClick={onClick}
+        onClick={() => {
+          // When the page wires `onAddRecipe`, the empty slot opens the
+          // inline picker — no need to flip to "Vista día" (which is
+          // hidden at lg+ anyway). Otherwise fall back to the legacy
+          // `onClick` which the parent points at `onSelectDay` on mobile.
+          if (onAddRecipe) setPickerOpen(true)
+          else onClick()
+        }}
         className={`flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors lg:flex-col lg:items-stretch lg:gap-0 lg:px-0 lg:py-0 lg:rounded-lg lg:border lg:border-dashed lg:border-[#DDD6C5] lg:bg-[#FFFEFA]/40 ${
           isOver ? "bg-[#1A1612]/10 lg:border-[#1A1612]/40 lg:bg-[#1A1612]/5" : "hover:bg-[#F2EDE0] lg:hover:border-[#1A1612]/40 lg:hover:bg-[#F2EDE0]/40"
         }`}
@@ -479,6 +542,17 @@ function SlotRow({
           </p>
         </div>
       </button>
+      <RecipePickerSheet
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        title={`${mealLabel} del día`}
+        subtitle="Sin plato"
+        onPick={(picked) => {
+          if (onAddRecipe) onAddRecipe(dayIndex, meal, picked.id)
+          setPickerOpen(false)
+        }}
+      />
+      </>
     )
   }
 

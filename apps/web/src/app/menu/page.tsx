@@ -826,6 +826,26 @@ export default function MenuPage() {
                   meal: m,
                 })
               }}
+              onEditNote={(d, m, position, text) => {
+                if (!menu) return
+                patchDish.mutate({
+                  menuId: menu.id,
+                  day: d,
+                  meal: m,
+                  position,
+                  patch: { text },
+                })
+              }}
+              onRemoveDish={(d, m, position) => {
+                if (!menu) return
+                haptic.medium()
+                removeDish.mutate({
+                  menuId: menu.id,
+                  day: d,
+                  meal: m,
+                  position,
+                })
+              }}
             />
           </div>
         </>
@@ -1063,6 +1083,15 @@ export default function MenuPage() {
                                 patch: { newPosition: toPos },
                               })
                             }}
+                            onEditDishText={(position, text) => {
+                              patchDish.mutate({
+                                menuId: menu.id,
+                                day: d,
+                                meal: meal.type,
+                                position,
+                                patch: { text },
+                              })
+                            }}
                             isRegenerating={regenerateMeal.isPending}
                           />
                         ))}
@@ -1118,12 +1147,14 @@ function SortableDishRow({
   onClickThumb,
   onRegenerate,
   onRemove,
+  onSaveNote,
 }: {
   dish: Dish
   id: string
   onClickThumb?: () => void
   onRegenerate?: () => void
   onRemove?: () => void
+  onSaveNote?: (text: string) => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
   const style = {
@@ -1147,6 +1178,7 @@ function SortableDishRow({
           onClickThumb={onClickThumb}
           onRegenerate={onRegenerate}
           onRemove={onRemove}
+          onSaveNote={onSaveNote}
         />
       </div>
     </div>
@@ -1175,6 +1207,7 @@ function EditorialMealCard({
   onRemoveDish,
   onRegenerateDish,
   onReorderDish,
+  onEditDishText,
   isRegenerating,
   menuId,
 }: {
@@ -1206,6 +1239,8 @@ function EditorialMealCard({
   onRemoveDish: (position: number) => void
   onRegenerateDish: (position: number) => void
   onReorderDish: (fromPos: number, toPos: number) => void
+  /** Inline edit of a note dish — persists the new text via patchDish. */
+  onEditDishText: (position: number, text: string) => void
   isRegenerating: boolean
 }) {
   const [pinSheetOpen, setPinSheetOpen] = useState(false)
@@ -1468,6 +1503,7 @@ function EditorialMealCard({
                     onClickThumb={dish.kind === 'recipe' ? () => {} : undefined}
                     onRegenerate={!readOnly && dish.kind === 'recipe' ? () => onRegenerateDish(i) : undefined}
                     onRemove={!readOnly ? () => onRemoveDish(i) : undefined}
+                    onSaveNote={!readOnly && dish.kind === 'note' ? (text) => onEditDishText(i, text) : undefined}
                   />
                 ))}
               </div>

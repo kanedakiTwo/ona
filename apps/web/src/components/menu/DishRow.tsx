@@ -1,33 +1,27 @@
 "use client"
 
 import type { Dish } from "@ona/shared"
-import { Coffee, Sparkles, X } from "lucide-react"
+import { Sparkles, X } from "lucide-react"
+import { NoteEditor } from "./NoteEditor"
 
 interface Props {
   dish: Dish
   onClickThumb?: () => void
   onRegenerate?: () => void
   onRemove?: () => void
-  onEditNote?: () => void
+  /** Persist edited note text. The note inline-edits — no modal. */
+  onSaveNote?: (text: string) => void
 }
 
-export function DishRow({ dish, onClickThumb, onRegenerate, onRemove, onEditNote }: Props) {
+export function DishRow({ dish, onClickThumb, onRegenerate, onRemove, onSaveNote }: Props) {
   if (dish.kind === "note") {
     return (
-      <div className="flex items-center gap-3 rounded-xl border border-dashed border-[#DDD6C5] bg-[#FFFEFA] px-3 py-2.5">
-        <Coffee size={16} className="shrink-0 text-[#7A7066]" />
-        <p className="flex-1 truncate text-[13px] italic text-[#4A4239]">{dish.text}</p>
-        {onEditNote && (
-          <button onClick={onEditNote} className="text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
-            Editar
-          </button>
-        )}
-        {onRemove && (
-          <button onClick={onRemove} aria-label="Quitar">
-            <X size={14} className="text-[#7A7066]" />
-          </button>
-        )}
-      </div>
+      <NoteEditor
+        text={dish.text}
+        onSave={(text) => onSaveNote?.(text)}
+        onRemove={onRemove}
+        variant="card"
+      />
     )
   }
 

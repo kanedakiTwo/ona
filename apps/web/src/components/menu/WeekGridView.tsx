@@ -44,7 +44,6 @@ import {
   Ban,
   CalendarX,
   ChevronRight,
-  Coffee,
   Lock,
   MoreHorizontal,
   Moon,
@@ -71,6 +70,7 @@ import {
 import { shortRecipeName } from "@/lib/recipeView"
 import { RecipePickerSheet } from "@/components/menu/RecipePickerSheet"
 import { AddDishSheet } from "@/components/menu/AddDishSheet"
+import { NoteEditor } from "@/components/menu/NoteEditor"
 
 type MealKey = "breakfast" | "lunch" | "dinner" | "snack"
 
@@ -128,6 +128,10 @@ interface Props {
   onAddDish?: (day: number, meal: MealKey, payload: { kind: 'recipe'; recipeId: string } | { kind: 'note'; text: string }) => void
   /** Aleatorio que **añade** un plato adicional al slot (no reemplaza el primero). */
   onAddRandomDish?: (day: number, meal: MealKey) => void
+  /** Edit the text of a note dish in place. Persists via `patchDish`. */
+  onEditNote?: (day: number, meal: MealKey, position: number, text: string) => void
+  /** Remove a single dish (recipe or note) at the given position. */
+  onRemoveDish?: (day: number, meal: MealKey, position: number) => void
 }
 
 interface CellData {
@@ -159,6 +163,8 @@ export function WeekGridView({
   onToggleLock,
   onAddDish,
   onAddRandomDish,
+  onEditNote,
+  onRemoveDish,
 }: Props) {
   const start = new Date(weekStart + "T00:00:00")
   const skippedSet = useMemo(() => new Set(skippedDays ?? []), [skippedDays])
@@ -265,6 +271,8 @@ export function WeekGridView({
               onToggleLock={onToggleLock}
               onAddDish={onAddDish}
               onAddRandomDish={onAddRandomDish}
+              onEditNote={onEditNote}
+              onRemoveDish={onRemoveDish}
               isFirst={di === 0}
               isLast={di === days.length - 1}
             />
@@ -306,6 +314,8 @@ function DaySection({
   onToggleLock,
   onAddDish,
   onAddRandomDish,
+  onEditNote,
+  onRemoveDish,
   isFirst,
   isLast,
 }: {
@@ -331,6 +341,8 @@ function DaySection({
   onToggleLock?: (day: number, meal: MealKey, nextLocked: boolean) => void
   onAddDish?: (day: number, meal: MealKey, payload: { kind: 'recipe'; recipeId: string } | { kind: 'note'; text: string }) => void
   onAddRandomDish?: (day: number, meal: MealKey) => void
+  onEditNote?: (day: number, meal: MealKey, position: number, text: string) => void
+  onRemoveDish?: (day: number, meal: MealKey, position: number) => void
   isFirst: boolean
   isLast: boolean
 }) {
@@ -449,6 +461,8 @@ function DaySection({
                   onToggleLock={onToggleLock}
                   onAddDish={onAddDish}
                   onAddRandomDish={onAddRandomDish}
+                  onEditNote={onEditNote}
+                  onRemoveDish={onRemoveDish}
                 />
               )
             })
@@ -477,6 +491,8 @@ function SlotRow({
   onToggleLock,
   onAddDish,
   onAddRandomDish,
+  onEditNote,
+  onRemoveDish,
 }: {
   dayIndex: number
   meal: MealKey
@@ -493,6 +509,8 @@ function SlotRow({
   onToggleLock?: (day: number, meal: MealKey, nextLocked: boolean) => void
   onAddDish?: (day: number, meal: MealKey, payload: { kind: 'recipe'; recipeId: string } | { kind: 'note'; text: string }) => void
   onAddRandomDish?: (day: number, meal: MealKey) => void
+  onEditNote?: (day: number, meal: MealKey, position: number, text: string) => void
+  onRemoveDish?: (day: number, meal: MealKey, position: number) => void
 }) {
   const dropId = `row-${dayIndex}-${meal}`
   const { setNodeRef: setDropRef, isOver } = useDroppable({
@@ -651,6 +669,8 @@ function SlotRow({
         onOpenAddDish={() => setAddDishOpen(true)}
         onSelectDay={onSelectDay}
         onSelectRecipe={onSelectRecipe}
+        onEditNote={onEditNote ? (position, text) => onEditNote(dayIndex, meal, position, text) : undefined}
+        onRemoveDish={onRemoveDish ? (position) => onRemoveDish(dayIndex, meal, position) : undefined}
       />
     </div>
     {/* Sheets live as siblings outside the card so they don't collide
@@ -710,6 +730,8 @@ function FilledRow({
   onOpenAddDish,
   onSelectDay,
   onSelectRecipe,
+  onEditNote,
+  onRemoveDish,
 }: {
   dayIndex: number
   meal: MealKey
@@ -727,6 +749,8 @@ function FilledRow({
   onOpenAddDish: () => void
   onSelectDay: (dayIndex: number) => void
   onSelectRecipe: (recipeId: string) => void
+  onEditNote?: (position: number, text: string) => void
+  onRemoveDish?: (position: number) => void
 }) {
   // Drag handle is the whole card (first recipe carries the drag payload).
   // If the slot is note-only we render but skip drag wiring.
@@ -852,10 +876,14 @@ function FilledRow({
                   {shortRecipeName(dish.recipeName ?? "Receta")}
                 </button>
               ) : (
-                <span className="flex min-w-0 flex-1 items-center gap-1 text-[12px] italic text-[#4A4239]">
-                  <Coffee size={10} className="shrink-0 text-[#7A7066]" />
-                  <span className="truncate">{dish.text}</span>
-                </span>
+                <div className="min-w-0 flex-1">
+                  <NoteEditor
+                    text={dish.text}
+                    onSave={(text) => onEditNote?.(i, text)}
+                    onRemove={onRemoveDish ? () => onRemoveDish(i) : undefined}
+                    variant="inline"
+                  />
+                </div>
               )}
             </li>
           ))}

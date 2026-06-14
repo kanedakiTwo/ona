@@ -414,6 +414,40 @@ export default function MenuPage() {
     generateMenu.mutate({ userId: user.id, weekStart })
   }
 
+  /**
+   * Auto-materialize an empty menu when the user lands on a current or
+   * future week that doesn't yet have one. Gives them the empty grid to
+   * fill manually without forcing a click on "Empezar de cero" first
+   * — matches "que aparezcan ya los slots vacios" from the request.
+   * Past weeks stay no-menu (they're historical).
+   */
+  useEffect(() => {
+    if (!user || authLoading || menuLoading) return
+    if (menu) return
+    if (isPastWeek) return
+    if (generateMenu.isPending) return
+    generateMenu.mutate({ userId: user.id, weekStart, empty: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, menu?.id, menuLoading, isPastWeek, weekStart])
+
+  /** "Vaciar semana" / "Empezar de cero" — generates a fresh row with
+   *  every slot empty so the user can fill manually instead of letting
+   *  the matcher pick. Confirms before wiping an existing menu. */
+  function handleClearWeek() {
+    if (!user) return
+    if (
+      menu &&
+      typeof window !== "undefined" &&
+      !window.confirm(
+        "¿Vaciar esta semana? Se borrarán los platos actuales (queda como historial). Podrás rellenar a mano o volver a generar.",
+      )
+    ) {
+      return
+    }
+    haptic.medium()
+    generateMenu.mutate({ userId: user.id, weekStart, empty: true })
+  }
+
   if (authLoading || menuLoading || !user) {
     // The `!user` branch used to `return null`, which left the user looking
     // at a completely blank cream screen during navigation back from a
@@ -636,14 +670,23 @@ export default function MenuPage() {
               : "Genera tu menú y la lista de la compra sale automática."}
           </p>
           {!isPastWeek && (
-            <button
-              onClick={handleGenerate}
-              disabled={generateMenu.isPending}
-              className="mt-6 inline-flex items-center gap-2 rounded-full bg-[#1A1612] px-5 py-2.5 text-[13px] font-medium text-[#FAF6EE] transition-all hover:gap-3 hover:bg-[#2D6A4F] disabled:opacity-50"
-            >
-              <Sparkles size={14} />
-              {generateMenu.isPending ? "Generando..." : "Generar mi menú"}
-            </button>
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+              <button
+                onClick={handleGenerate}
+                disabled={generateMenu.isPending}
+                className="inline-flex items-center gap-2 rounded-full bg-[#1A1612] px-5 py-2.5 text-[13px] font-medium text-[#FAF6EE] transition-all hover:gap-3 hover:bg-[#2D6A4F] disabled:opacity-50"
+              >
+                <Sparkles size={14} />
+                {generateMenu.isPending ? "Generando..." : "Generar mi menú"}
+              </button>
+              <button
+                onClick={handleClearWeek}
+                disabled={generateMenu.isPending}
+                className="inline-flex items-center gap-2 rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-4 py-2 text-[12px] uppercase tracking-[0.12em] text-[#7A7066] transition-colors hover:border-[#1A1612] hover:text-[#1A1612] disabled:opacity-50"
+              >
+                Empezar de cero
+              </button>
+            </div>
           )}
         </div>
       ) : viewMode === "week" ? (
@@ -651,16 +694,26 @@ export default function MenuPage() {
           {/* All-week grid view. The grid carries its own header row of
               days and meal-row labels; the page just hosts it + the
               regenerate CTA. */}
-          <div className="mt-4 flex items-center justify-end px-5">
+          <div className="mt-4 flex items-center justify-end gap-2 px-5">
             {!isPastWeek && (
-              <button
-                onClick={handleGenerate}
-                disabled={generateMenu.isPending}
-                className="flex items-center gap-1.5 rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#1A1612] transition-colors hover:bg-[#1A1612] hover:text-[#FAF6EE] disabled:opacity-50"
-              >
-                <RefreshCw size={11} className={generateMenu.isPending ? "animate-spin" : ""} />
-                Regenerar semana
-              </button>
+              <>
+                <button
+                  onClick={handleClearWeek}
+                  disabled={generateMenu.isPending}
+                  className="flex items-center gap-1.5 rounded-full border border-[#DDD6C5] bg-transparent px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#7A7066] transition-colors hover:border-[#C65D38] hover:text-[#C65D38] disabled:opacity-50"
+                >
+                  <Trash2 size={11} />
+                  Vaciar semana
+                </button>
+                <button
+                  onClick={handleGenerate}
+                  disabled={generateMenu.isPending}
+                  className="flex items-center gap-1.5 rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#1A1612] transition-colors hover:bg-[#1A1612] hover:text-[#FAF6EE] disabled:opacity-50"
+                >
+                  <RefreshCw size={11} className={generateMenu.isPending ? "animate-spin" : ""} />
+                  Regenerar semana
+                </button>
+              </>
             )}
           </div>
           <div className="mt-3">

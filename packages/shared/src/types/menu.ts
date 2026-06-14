@@ -47,6 +47,12 @@ export const generateMenuSchema = z.object({
   userId: z.string().uuid(),
   weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   customTemplate: z.array(z.record(z.boolean())).optional(),
+  /**
+   * When `true`, skip the matcher and write a row with all 7 days
+   * structured per the user's `mealTemplate` but every slot empty
+   * (`dishes: []`). Powers "Vaciar semana" + "Empezar de cero".
+   */
+  empty: z.boolean().optional(),
 })
 
 export const lockMealSchema = z.object({

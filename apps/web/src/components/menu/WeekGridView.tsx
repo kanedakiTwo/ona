@@ -541,11 +541,11 @@ function DraggableRow({
           if (!isDragging) onClick()
         }
       }}
-      className={`relative flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors lg:flex-col lg:items-stretch lg:gap-0 lg:px-0 lg:py-0 lg:rounded-lg lg:overflow-hidden ${
+      className={`relative flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors lg:flex-col lg:items-stretch lg:gap-0 lg:px-0 lg:py-0 lg:rounded-lg ${
         isDragging ? "opacity-30" : "hover:bg-[#F2EDE0] lg:hover:opacity-90"
       }`}
     >
-      <div className="relative h-[52px] w-[52px] shrink-0 overflow-hidden rounded-lg bg-[#F2EDE0] lg:h-auto lg:w-full lg:rounded-none lg:aspect-[4/3]">
+      <div className="relative h-[52px] w-[52px] shrink-0 overflow-hidden rounded-lg bg-[#F2EDE0] lg:h-auto lg:w-full lg:rounded-none lg:rounded-t-lg lg:aspect-[4/3]">
         {data.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img

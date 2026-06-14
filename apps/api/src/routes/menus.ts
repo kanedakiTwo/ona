@@ -6,7 +6,7 @@ import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
 import { generateMenuSchema, lockMealSchema, MEALS, MEAL_TYPE_TAGS, courseSchema } from '@ona/shared'
 import type { DayMenu, Dish, LockedSlots, Meal, MealSlot, RecipeDish } from '@ona/shared'
-import { generateMenu, extractMealDishCounts } from '../services/menuGenerator.js'
+import { generateMenu, extractMealDishCounts, normalizeMealTemplate } from '../services/menuGenerator.js'
 import { calculateMenuCaloriesFromDB } from '../services/calorieCalculator.js'
 import { calculateMenuNutrientsFromDB } from '../services/nutrientCalculator.js'
 import { updateBalance } from '../services/nutrientBalance.js'
@@ -127,7 +127,7 @@ async function hydrateMenuImages<T extends { days: unknown }>(menu: T): Promise<
 // their id), which is the IDOR this guard closes.
 router.post('/menu/generate', authMiddleware, validate(generateMenuSchema), async (req: AuthRequest, res) => {
   try {
-    const { userId, weekStart, customTemplate } = req.body
+    const { userId, weekStart, customTemplate, empty } = req.body
 
     if (userId !== req.userId) {
       res.status(403).json({ error: 'No puedes generar el menú de otro usuario.' })
@@ -155,6 +155,48 @@ router.post('/menu/generate', authMiddleware, validate(generateMenuSchema), asyn
       .limit(1)
     const carryBanned = new Set<string>(previous?.bannedRecipeIds ?? [])
     const carrySkipped = new Set<number>(previous?.skippedDays ?? [])
+
+    // Empty branch — skip the matcher entirely. Used by "Vaciar semana"
+    // and "Empezar de cero". We honour the user's mealTemplate so the
+    // slots that appear match what they normally plan.
+    if (empty) {
+      const [settings] = await db
+        .select()
+        .from(userSettings)
+        .where(eq(userSettings.userId, userId))
+        .limit(1)
+      const tpl = normalizeMealTemplate(customTemplate ?? settings?.template) ?? [
+        { breakfast: true, lunch: true, dinner: true },
+        { breakfast: true, lunch: true, dinner: true },
+        { breakfast: true, lunch: true, dinner: true },
+        { breakfast: true, lunch: true, dinner: true },
+        { breakfast: true, lunch: true, dinner: true },
+        { breakfast: true, lunch: true, dinner: true },
+        { breakfast: true, lunch: true, dinner: true },
+      ]
+      const days = tpl.map((dayTpl) => {
+        const day: Record<string, { dishes: [] }> = {}
+        for (const meal of ['breakfast', 'lunch', 'dinner', 'snack'] as const) {
+          if (dayTpl[meal]) day[meal] = { dishes: [] }
+        }
+        return day
+      })
+      const [menu] = await db
+        .insert(menus)
+        .values({
+          userId,
+          householdId,
+          weekStart,
+          days,
+          locked: {},
+          bannedRecipeIds: [...carryBanned],
+          skippedDays: [...carrySkipped],
+        })
+        .returning()
+      const hydrated = await hydrateMenuImages(menu)
+      res.status(201).json({ ...hydrated, warnings: [] })
+      return
+    }
 
     // Generate the menu
     const { days, warnings } = await generateMenu(

@@ -55,7 +55,10 @@ export function useGenerateMenu() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (params: { userId: string; weekStart: string }) =>
+    /** `empty: true` skips the matcher and creates a row with all 7 days
+     *  scaffolded per the user's mealTemplate but every slot empty
+     *  (`dishes: []`). Powers "Vaciar semana" + "Empezar de cero". */
+    mutationFn: (params: { userId: string; weekStart: string; empty?: boolean }) =>
       api.post<Menu>("/menu/generate", params),
     onSuccess: (data, variables) => {
       // Set the new menu directly in cache so it renders immediately

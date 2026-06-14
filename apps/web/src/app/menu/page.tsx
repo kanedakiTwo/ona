@@ -420,13 +420,28 @@ export default function MenuPage() {
    * fill manually without forcing a click on "Empezar de cero" first
    * — matches "que aparezcan ya los slots vacios" from the request.
    * Past weeks stay no-menu (they're historical).
+   *
+   * Also self-heals legacy empty rows whose `days` got persisted as
+   * `[{}, {}, ...]` (no meal keys). Those would render as 7 "— sin
+   * platos —" placeholders even though the grid should show the user's
+   * template slots. We re-fire `empty: true` so the backend rebuilds
+   * the row with the user's actual configured template populated.
    */
   useEffect(() => {
     if (!user || authLoading || menuLoading) return
-    if (menu) return
     if (isPastWeek) return
     if (generateMenu.isPending) return
-    generateMenu.mutate({ userId: user.id, weekStart, empty: true })
+    if (!menu) {
+      generateMenu.mutate({ userId: user.id, weekStart, empty: true })
+      return
+    }
+    const malformed =
+      Array.isArray(menu.days) &&
+      menu.days.length > 0 &&
+      menu.days.every((d: any) => !d || Object.keys(d).length === 0)
+    if (malformed) {
+      generateMenu.mutate({ userId: user.id, weekStart, empty: true })
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, menu?.id, menuLoading, isPastWeek, weekStart])
 

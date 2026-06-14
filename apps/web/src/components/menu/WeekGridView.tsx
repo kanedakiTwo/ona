@@ -140,11 +140,12 @@ export function WeekGridView({
   const skippedSet = useMemo(() => new Set(skippedDays ?? []), [skippedDays])
 
   // Meal types that have at least one *template-active* slot somewhere in
-  // the week — empty-across-the-week meal types are dropped so the user
-  // doesn't see 7 empty "Desayuno" rows when their household never plans
-  // breakfast. We count slot KEYS (not dish content) so empty-mode menus
+  // the week. Counts slot KEYS (not dish content) so empty-mode menus
   // ("Vaciar semana" / new week) still show the user's template slots as
-  // tappable "+ añadir" rows instead of collapsing to "— sin platos —".
+  // tappable "+ Añadir" cards instead of collapsing to "— sin platos —".
+  // No hardcoded fallback — we always defer to the user's actual
+  // configured template (the page-level effect auto-regenerates legacy
+  // malformed menus so this never sees a blank-keys row in practice).
   const visibleMeals = useMemo(() => {
     return MEAL_ORDER.filter((m) => days.some((day) => day?.[m] != null))
   }, [days])
@@ -291,10 +292,12 @@ function DaySection({
   isFirst: boolean
   isLast: boolean
 }) {
-  const hasAnyMeal = visibleMeals.some((m) => {
-    const slot = day?.[m]
-    return slot && slot.dishes.length > 0 && slot.dishes[0].kind === 'recipe'
-  })
+  // Day shows its meal rows when at least one meal slot exists in the
+  // template (filled OR empty). The previous filter required a populated
+  // recipe; an empty-mode menu has zero recipes by definition so every
+  // day would collapse to "— sin platos —", defeating the purpose of
+  // the empty grid. Match visibleMeals's logic.
+  const hasAnyMeal = visibleMeals.some((m) => day?.[m] != null)
   // Background hierarchy:
   //   - skipped → muted cream so it visually recedes
   //   - today  → soft terracotta tint to anchor the eye
@@ -445,35 +448,34 @@ function SlotRow({
 
   // Empty slot — still a drop target (drop moves a recipe in from elsewhere)
   // but no drag source.
-  // At lg+ the empty slot collapses to a single quiet "+ COMIDA" line —
-  // a full-card placeholder per empty meal × per day balloons the column
-  // height and pushes filled meals below the fold (it's also the
-  // anti-pattern of variant-B column-stack where short days should stay
-  // short).
+  // At lg+ the empty slot mirrors the FILLED slot's geometry (4:3 thumb +
+  // title block) so the user can scan the column and immediately see
+  // which meal is missing — collapsing to a one-liner made breakfast vs.
+  // dinner indistinguishable when both were empty.
   if (!data) {
     return (
       <button
         ref={setDropRef as unknown as React.LegacyRef<HTMLButtonElement>}
         type="button"
         onClick={onClick}
-        className={`flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors lg:gap-1.5 lg:rounded-md lg:border-0 lg:bg-transparent lg:px-2 lg:py-1.5 lg:items-center ${
-          isOver ? "bg-[#1A1612]/10 lg:bg-[#1A1612]/5" : "hover:bg-[#F2EDE0] lg:hover:bg-[#F2EDE0]/40"
+        className={`flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors lg:flex-col lg:items-stretch lg:gap-0 lg:px-0 lg:py-0 lg:rounded-lg lg:border lg:border-dashed lg:border-[#DDD6C5] lg:bg-[#FFFEFA]/40 ${
+          isOver ? "bg-[#1A1612]/10 lg:border-[#1A1612]/40 lg:bg-[#1A1612]/5" : "hover:bg-[#F2EDE0] lg:hover:border-[#1A1612]/40 lg:hover:bg-[#F2EDE0]/40"
         }`}
       >
-        {/* Mobile: keeps the 52px square meal icon. lg+: tiny inline icon
-            stays in the row with the eyebrow + "+". */}
-        <div className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-lg border border-dashed border-[#DDD6C5] bg-[#F2EDE0]/40 text-[#7A7066] lg:hidden">
-          <MealIcon size={18} strokeWidth={1.4} />
+        {/* Thumbnail placeholder: 52px square on mobile, 4:3 dashed
+            rectangle on lg+ (matches the filled card's thumbnail aspect
+            so empty and filled cards line up vertically). */}
+        <div className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-lg border border-dashed border-[#DDD6C5] bg-[#F2EDE0]/40 text-[#A39A8E] lg:h-auto lg:w-full lg:rounded-none lg:rounded-t-lg lg:aspect-[4/3] lg:border-0 lg:border-b lg:border-dashed lg:border-[#DDD6C5]">
+          <MealIcon size={18} strokeWidth={1.3} className="lg:hidden" />
+          <MealIcon size={28} strokeWidth={1.2} className="hidden lg:inline" />
         </div>
-        <MealIcon size={11} strokeWidth={1.6} className="hidden lg:inline text-[#A39A8E] shrink-0" />
-        <div className="min-w-0 flex-1 lg:flex lg:items-baseline lg:gap-1.5">
-          <p className="m-0 flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-[#7A7066] lg:text-[9px]">
+        <div className="min-w-0 flex-1 lg:px-2 lg:pt-1.5 lg:pb-2">
+          <p className="m-0 flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
             <MealIcon size={12} strokeWidth={1.6} className="lg:hidden" />
             {mealLabel}
           </p>
-          <p className="mt-0.5 text-[13px] italic text-[#A39A8E] lg:mt-0 lg:text-[10px]">
-            <span className="lg:hidden">Sin plato</span>
-            <span className="hidden lg:inline">+ añadir</span>
+          <p className="mt-0.5 text-[13px] italic text-[#A39A8E] lg:mt-1 lg:text-[12px]">
+            + Añadir
           </p>
         </div>
       </button>

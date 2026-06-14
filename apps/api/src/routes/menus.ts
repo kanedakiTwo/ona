@@ -427,8 +427,12 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
         res.status(404).json({ error: 'Recipe not found' })
         return
       }
-      // Replace all recipe-dishes with the chosen recipe; preserve note dishes.
-      const newDishes: Dish[] = slot.dishes.map((dish) => {
+      // Replace all recipe-dishes with the chosen recipe; preserve note
+      // dishes. When the slot starts empty (`dishes: []` — the empty-mode
+      // grid's "+ Añadir" path), `.map` returns `[]` and the recipe is
+      // never persisted. Detect that case and APPEND the chosen recipe
+      // as the first dish instead.
+      const replaced: Dish[] = slot.dishes.map((dish) => {
         if (dish.kind !== 'recipe') return dish
         return {
           kind: 'recipe',
@@ -437,6 +441,17 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
           course: (chosen.course as any) ?? null,
         } satisfies RecipeDish
       })
+      const newDishes: Dish[] = replaced.some((d) => d.kind === 'recipe')
+        ? replaced
+        : [
+            ...replaced,
+            {
+              kind: 'recipe',
+              recipeId: chosen.id,
+              recipeName: chosen.name,
+              course: (chosen.course as any) ?? null,
+            } satisfies RecipeDish,
+          ]
       days[dayIndex][meal] = { ...slot, dishes: newDishes }
       const [updated] = await db
         .update(menus)

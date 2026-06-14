@@ -737,6 +737,8 @@ export default function MenuPage() {
               weekStart={weekStart}
               todayIndex={todayIndex}
               skippedDays={menu.skippedDays ?? []}
+              lockedSlots={menu.locked as any}
+              defaultDiners={defaultDiners}
               onSelectDay={(d) => {
                 setSelectedDay(d)
                 setViewMode("day")
@@ -773,24 +775,55 @@ export default function MenuPage() {
               }}
               onRemove={(d, m) => {
                 if (!menu) return
-                if (typeof window !== "undefined" && !window.confirm("¿Quitar este plato del día?")) {
-                  return
-                }
                 haptic.medium()
                 deleteMealSlot.mutate({ menuId: menu.id, day: d, meal: m })
               }}
               onAddRecipe={(d, m, recipeId) => {
                 if (!menu) return
                 haptic.medium()
-                // regenerateMeal with a recipeId replaces the slot's
-                // current dish with the picked recipe. For empty slots
-                // (the "+ Añadir" path) the previous state was already
-                // `dishes: []`, so this is just an "add first dish".
                 regenerateMeal.mutate({
                   menuId: menu.id,
                   day: d,
                   meal: m,
                   recipeId,
+                })
+              }}
+              onPickRecipe={(d, m, recipeId) => {
+                if (!menu) return
+                haptic.medium()
+                regenerateMeal.mutate({
+                  menuId: menu.id,
+                  day: d,
+                  meal: m,
+                  recipeId,
+                })
+              }}
+              onToggleLock={(d, m, nextLocked) => {
+                if (!menu) return
+                lockMeal.mutate({
+                  menuId: menu.id,
+                  day: d,
+                  meal: m,
+                  locked: nextLocked,
+                })
+              }}
+              onAddDish={(d, m, payload) => {
+                if (!menu) return
+                haptic.light()
+                addDish.mutate({
+                  menuId: menu.id,
+                  day: d,
+                  meal: m,
+                  payload,
+                })
+              }}
+              onAddRandomDish={(d, m) => {
+                if (!menu) return
+                haptic.medium()
+                addRandomDish.mutate({
+                  menuId: menu.id,
+                  day: d,
+                  meal: m,
                 })
               }}
             />

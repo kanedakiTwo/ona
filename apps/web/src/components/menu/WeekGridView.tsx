@@ -1,28 +1,30 @@
 "use client"
 
 /**
- * "Vista semana" — scrollable list of every day, with each day's meals
- * stacked underneath as rows. Replaces the previous 2D grid because:
+ * "Vista semana" — at mobile (default) renders each day as a stacked row of
+ * meal cards; at lg+ it expands into a 7-column grid where each day is a
+ * column and each slot is a card with feature-parity to Vista día.
  *
- *   - The grid forced ~70 px cells on mobile; titles never fit.
- *   - Vertical-scroll-only feels more native on the phone.
- *   - DnD between rows is unambiguous: you grab a row, drop it onto
- *     another row, the two slots swap.
+ * Parity surface (lg+):
+ *   - All recipe dishes in a slot are shown (not just the first).
+ *   - Note dishes ("comemos fuera") render inline.
+ *   - The slot's pinned type, lock state, and servings override surface as
+ *     small chips above / next to the title.
+ *   - The "..." menu carries the full action set: Elegir / Aleatorio / Añadir
+ *     plato / Bloquear / Vetar / Quitar. The popover is portalled to
+ *     document.body so it can never be clipped or stacked below a sibling
+ *     card (motion.article children create their own stacking contexts; only
+ *     escaping to the root works).
+ *   - All mutations dispatch the SAME hooks Vista día uses, so the query
+ *     cache invalidation is shared and toggling between the two views
+ *     reflects each other instantly.
  *
- * Each row carries: thumbnail (or meal-icon placeholder), meal eyebrow
- * (icon + label), recipe name (long names auto-shortened via
- * `shortRecipeName`), and an optional time chip. Drop is allowed only on
- * rows whose `useDroppable` is `isOver` — `pointerWithin` collision
- * detection makes "drop on the margin / between rows" a no-op.
- *
- * Today's day block gets a soft terracotta tint + "HOY" pill so the
- * user lands on it when scrolling. Days the user marked "sin cocinar"
- * are still surfaced but with a muted state.
- *
- * Drops dispatch `ona:dnd-start` / `ona:dnd-end` window events so the
- * page-level `SwipeNavigator` knows to stand down for the gesture.
+ * Mobile keeps the compact one-row-per-slot layout because tapping a day
+ * header flips to Vista día one tap away for finer per-dish controls; the
+ * grid view's purpose is the bird's-eye glance.
  */
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { motion } from "motion/react"
 import {
   DndContext,
@@ -42,19 +44,33 @@ import {
   Ban,
   CalendarX,
   ChevronRight,
+  Coffee,
+  Lock,
   MoreHorizontal,
   Moon,
+  Pin,
+  Plus,
+  Replace,
   RotateCcw,
   Shuffle,
   Sun,
   Sunrise,
   Sunset,
   Trash2,
+  Unlock,
+  Users,
   Utensils,
 } from "lucide-react"
-import type { DayMenu } from "@ona/shared"
+import {
+  MEAL_TYPE_TAG_LABELS,
+  type DayMenu,
+  type Dish,
+  type MealSlot,
+  type RecipeDish,
+} from "@ona/shared"
 import { shortRecipeName } from "@/lib/recipeView"
 import { RecipePickerSheet } from "@/components/menu/RecipePickerSheet"
+import { AddDishSheet } from "@/components/menu/AddDishSheet"
 
 type MealKey = "breakfast" | "lunch" | "dinner" | "snack"
 
@@ -74,21 +90,20 @@ const MEAL_META: Record<MealKey, { label: string; Icon: typeof Sun }> = {
 
 const MEAL_ORDER: MealKey[] = ["breakfast", "lunch", "snack", "dinner"]
 
+interface LockedMap {
+  [dayIndex: string]: { [meal: string]: boolean } | undefined
+}
+
 interface Props {
   days: DayMenu[]
   weekStart: string
   todayIndex: number
-  /** Day indices the user marked "sin cocinar". Rendered as a muted block
-   *  with an inline "Reactivar día" affordance so the user doesn't have to
-   *  switch to the day view to clear the flag. */
   skippedDays?: number[]
-  /**
-   * Tapping the day **header** flips to "Vista día" with that day
-   * selected (the existing affordance). Tapping a recipe **row** opens
-   * the recipe detail — that's `onSelectRecipe` below.
-   */
+  /** Lock state per slot — drives the "Fijado" chip + the menu's Bloquear/Desbloquear label. */
+  lockedSlots?: LockedMap
+  /** Household-derived diner count, used as the fallback when the slot has no override. */
+  defaultDiners?: number
   onSelectDay: (dayIndex: number) => void
-  /** Tapping a populated row navigates straight to the recipe detail. */
   onSelectRecipe: (recipeId: string) => void
   onMoveSlot?: (params: {
     fromDay: number
@@ -96,24 +111,23 @@ interface Props {
     toDay: number
     toMeal: MealKey
   }) => void
-  /** Called when the user taps "Reactivar día" on a skipped block. */
   onUnskipDay?: (dayIndex: number) => void
-  /**
-   * Quick-action callbacks fired from the inline "..." menu on each row.
-   * Optional — when undefined the menu button isn't rendered. The parent
-   * wires them to the existing `useRegenerateMeal` / `useBanRecipe` /
-   * `useDeleteMealSlot` mutations.
-   */
+  /** Aleatorio — server-side matcher picks a new recipe for the slot. */
   onRandomize?: (day: number, meal: MealKey) => void
+  /** Vetar la primera receta del slot para el resto de la semana. */
   onBan?: (day: number, meal: MealKey, recipeId: string) => void
+  /** Quitar el slot entero del día (no la receta individual). */
   onRemove?: (day: number, meal: MealKey) => void
-  /**
-   * Called when the user taps "+ Añadir" on an empty slot. Opens the
-   * picker sheet inline (at lg+) and dispatches the chosen recipe
-   * straight into the slot — no need to switch to "Vista día". When
-   * undefined the empty slot falls back to `onSelectDay` (legacy path).
-   */
+  /** "+ Añadir" en slot vacío → opens RecipePickerSheet inline → server replaces. */
   onAddRecipe?: (day: number, meal: MealKey, recipeId: string) => void
+  /** Elegir receta en slot lleno → opens RecipePickerSheet inline → server replaces. */
+  onPickRecipe?: (day: number, meal: MealKey, recipeId: string) => void
+  /** Bloquear/Desbloquear slot — same toggle as Vista día. */
+  onToggleLock?: (day: number, meal: MealKey, nextLocked: boolean) => void
+  /** Añadir plato extra al slot (multi-dish) — opens AddDishSheet. */
+  onAddDish?: (day: number, meal: MealKey, payload: { kind: 'recipe'; recipeId: string } | { kind: 'note'; text: string }) => void
+  /** Aleatorio que **añade** un plato adicional al slot (no reemplaza el primero). */
+  onAddRandomDish?: (day: number, meal: MealKey) => void
 }
 
 interface CellData {
@@ -123,12 +137,7 @@ interface CellData {
   recipeName: string
   imageUrl: string | null
   isLeftover: boolean
-  /** Best-available "how long to make this" — `totalTime` when present,
-   *  otherwise `prepTime`. Null when neither is set. Drives the time chip
-   *  rendered under the recipe name. */
   totalMinutes: number | null
-  /** Number of additional dishes beyond the first (for the "+N más" badge). */
-  extraDishes: number
 }
 
 export function WeekGridView({
@@ -136,6 +145,8 @@ export function WeekGridView({
   weekStart,
   todayIndex,
   skippedDays,
+  lockedSlots,
+  defaultDiners,
   onSelectDay,
   onSelectRecipe,
   onMoveSlot,
@@ -144,17 +155,19 @@ export function WeekGridView({
   onBan,
   onRemove,
   onAddRecipe,
+  onPickRecipe,
+  onToggleLock,
+  onAddDish,
+  onAddRandomDish,
 }: Props) {
   const start = new Date(weekStart + "T00:00:00")
   const skippedSet = useMemo(() => new Set(skippedDays ?? []), [skippedDays])
 
   // Meal types that have at least one *template-active* slot somewhere in
   // the week. Counts slot KEYS (not dish content) so empty-mode menus
-  // ("Vaciar semana" / new week) still show the user's template slots as
-  // tappable "+ Añadir" cards instead of collapsing to "— sin platos —".
-  // No hardcoded fallback — we always defer to the user's actual
-  // configured template (the page-level effect auto-regenerates legacy
-  // malformed menus so this never sees a blank-keys row in practice).
+  // still show the user's configured template slots as tappable "+ Añadir"
+  // cards instead of collapsing to "— sin platos —". No hardcoded fallback
+  // — we always defer to the user's actual configured template.
   const visibleMeals = useMemo(() => {
     return MEAL_ORDER.filter((m) => days.some((day) => day?.[m] != null))
   }, [days])
@@ -169,7 +182,6 @@ export function WeekGridView({
 
   // On first mount, gently scroll today's block into view so the user lands
   // on "what am I cooking today" instead of starting at Monday every time.
-  // Doing it after a paint avoids fighting the entry motion animation.
   const containerRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (todayIndex < 0) return
@@ -240,6 +252,8 @@ export function WeekGridView({
               isSkipped={skippedSet.has(di)}
               visibleMeals={visibleMeals}
               day={day}
+              locked={lockedSlots?.[String(di)] ?? {}}
+              defaultDiners={defaultDiners}
               onSelectDay={onSelectDay}
               onSelectRecipe={onSelectRecipe}
               onUnskipDay={onUnskipDay}
@@ -247,6 +261,10 @@ export function WeekGridView({
               onBan={onBan}
               onRemove={onRemove}
               onAddRecipe={onAddRecipe}
+              onPickRecipe={onPickRecipe}
+              onToggleLock={onToggleLock}
+              onAddDish={onAddDish}
+              onAddRandomDish={onAddRandomDish}
               isFirst={di === 0}
               isLast={di === days.length - 1}
             />
@@ -275,6 +293,8 @@ function DaySection({
   isSkipped,
   visibleMeals,
   day,
+  locked,
+  defaultDiners,
   onSelectDay,
   onSelectRecipe,
   onUnskipDay,
@@ -282,6 +302,10 @@ function DaySection({
   onBan,
   onRemove,
   onAddRecipe,
+  onPickRecipe,
+  onToggleLock,
+  onAddDish,
+  onAddRandomDish,
   isFirst,
   isLast,
 }: {
@@ -294,6 +318,8 @@ function DaySection({
   isSkipped: boolean
   visibleMeals: MealKey[]
   day: DayMenu | undefined
+  locked: { [meal: string]: boolean }
+  defaultDiners?: number
   onSelectDay: (dayIndex: number) => void
   onSelectRecipe: (recipeId: string) => void
   onUnskipDay?: (dayIndex: number) => void
@@ -301,33 +327,17 @@ function DaySection({
   onBan?: (day: number, meal: MealKey, recipeId: string) => void
   onRemove?: (day: number, meal: MealKey) => void
   onAddRecipe?: (day: number, meal: MealKey, recipeId: string) => void
+  onPickRecipe?: (day: number, meal: MealKey, recipeId: string) => void
+  onToggleLock?: (day: number, meal: MealKey, nextLocked: boolean) => void
+  onAddDish?: (day: number, meal: MealKey, payload: { kind: 'recipe'; recipeId: string } | { kind: 'note'; text: string }) => void
+  onAddRandomDish?: (day: number, meal: MealKey) => void
   isFirst: boolean
   isLast: boolean
 }) {
-  // Day shows its meal rows when at least one meal slot exists in the
-  // template (filled OR empty). The previous filter required a populated
-  // recipe; an empty-mode menu has zero recipes by definition so every
-  // day would collapse to "— sin platos —", defeating the purpose of
-  // the empty grid. Match visibleMeals's logic.
   const hasAnyMeal = visibleMeals.some((m) => day?.[m] != null)
-  // Background hierarchy:
-  //   - skipped → muted cream so it visually recedes
-  //   - today  → soft terracotta tint to anchor the eye
-  //   - other  → plain card surface
   const sectionBg = isSkipped ? "bg-[#F2EDE0]/60" : isToday ? "bg-[#FDEEE8]" : ""
-  // Sticky header inherits the section's background so it doesn't show
-  // through to the rows it covers as the user scrolls. The card wrapper
-  // no longer carries `overflow-hidden` (otherwise sticky would clip).
   const headerBg = isSkipped ? "bg-[#F2EDE0]" : isToday ? "bg-[#FDEEE8]" : "bg-[#FFFEFA]"
 
-  // Header is a clickable button on mobile (taps to flip to "Vista día"
-  // for that day). At lg+ there's no day-view to flip to (the toggle is
-  // hidden + viewMode is force-synced to "week"), so the header becomes
-  // a static header — no button semantics, no chevron, no click handler.
-  // The `<section>` no longer carries `lg:overflow-hidden` either — that
-  // was clipping the "..." popover when it opened below the last visible
-  // card in a column. Outer corners are still rounded; the inner cards
-  // are independently rounded so nothing visually leaks.
   return (
     <section
       data-day={dayIndex}
@@ -337,10 +347,7 @@ function DaySection({
         isLast ? "rounded-b-2xl lg:rounded-2xl" : ""
       } lg:border lg:border-[#DDD6C5] lg:rounded-2xl`}
     >
-      {/* Mobile: clickable header that flips to Vista día. lg+ swaps to
-          a static header (button → div) because Vista día is unavailable
-          there. Two parallel implementations avoid conditional
-          aria/role attributes that confuse the type checker. */}
+      {/* Mobile header (clickable, flips to Vista día). */}
       <button
         type="button"
         onClick={() => onSelectDay(dayIndex)}
@@ -372,6 +379,7 @@ function DaySection({
         </div>
         <ChevronRight size={14} className="text-[#7A7066]" />
       </button>
+      {/* Desktop header (static, no flip target at lg+). */}
       <div
         className={`hidden lg:flex w-full flex-col items-start gap-1 px-4 pt-3 pb-2 ${headerBg}`}
       >
@@ -408,9 +416,6 @@ function DaySection({
             <button
               type="button"
               onClick={(e) => {
-                // Stop propagation so the click doesn't also navigate via
-                // the (parent isn't a button, but the section's day header
-                // is — keep both behaviours independent).
                 e.stopPropagation()
                 onUnskipDay(dayIndex)
               }}
@@ -425,47 +430,29 @@ function DaySection({
         <div className="px-2 pb-2 md:px-3 lg:p-2 lg:space-y-2">
           {hasAnyMeal ? (
             visibleMeals.map((m) => {
-              const slot = day?.[m]
-              const firstDish = slot?.dishes?.[0]
-              const firstRecipe = firstDish?.kind === 'recipe' ? firstDish : null
-              const isPlanned = Boolean(firstRecipe)
-              const extraDishes = (slot?.dishes?.length ?? 0) - 1
-              const cellData: CellData | null = isPlanned && firstRecipe
-                ? {
-                    day: dayIndex,
-                    meal: m,
-                    recipeId: firstRecipe.recipeId,
-                    recipeName: firstRecipe.recipeName ?? "Receta",
-                    imageUrl: firstRecipe.imageUrl ?? null,
-                    isLeftover: firstRecipe.variant === "leftover",
-                    totalMinutes:
-                      firstRecipe.totalTime ?? firstRecipe.prepTime ?? null,
-                    extraDishes,
-                  }
-                : null
+              const slot = day?.[m] as MealSlot | undefined
               return (
                 <SlotRow
                   key={m}
                   dayIndex={dayIndex}
                   meal={m}
-                  data={cellData}
-                  onClick={() => {
-                    // Filled row → recipe detail; empty row → day view
-                    // (legacy mobile path; lg+ uses the inline picker
-                    // through `onAddRecipe` instead — see SlotRow).
-                    if (cellData?.recipeId) onSelectRecipe(cellData.recipeId)
-                    else onSelectDay(dayIndex)
-                  }}
+                  slot={slot}
+                  isLocked={Boolean(locked?.[m])}
+                  defaultDiners={defaultDiners}
+                  onSelectDay={onSelectDay}
+                  onSelectRecipe={onSelectRecipe}
                   onRandomize={onRandomize}
                   onBan={onBan}
                   onRemove={onRemove}
                   onAddRecipe={onAddRecipe}
+                  onPickRecipe={onPickRecipe}
+                  onToggleLock={onToggleLock}
+                  onAddDish={onAddDish}
+                  onAddRandomDish={onAddRandomDish}
                 />
               )
             })
           ) : (
-            // Truly empty days collapse to a single quiet line so they
-            // don't take up the same vertical space as a populated day.
             <p className="px-2 py-1 text-[11px] italic text-[#A39A8E]">— sin platos —</p>
           )}
         </div>
@@ -477,21 +464,35 @@ function DaySection({
 function SlotRow({
   dayIndex,
   meal,
-  data,
-  onClick,
+  slot,
+  isLocked,
+  defaultDiners,
+  onSelectDay,
+  onSelectRecipe,
   onRandomize,
   onBan,
   onRemove,
   onAddRecipe,
+  onPickRecipe,
+  onToggleLock,
+  onAddDish,
+  onAddRandomDish,
 }: {
   dayIndex: number
   meal: MealKey
-  data: CellData | null
-  onClick: () => void
+  slot: MealSlot | undefined
+  isLocked: boolean
+  defaultDiners?: number
+  onSelectDay: (dayIndex: number) => void
+  onSelectRecipe: (recipeId: string) => void
   onRandomize?: (day: number, meal: MealKey) => void
   onBan?: (day: number, meal: MealKey, recipeId: string) => void
   onRemove?: (day: number, meal: MealKey) => void
   onAddRecipe?: (day: number, meal: MealKey, recipeId: string) => void
+  onPickRecipe?: (day: number, meal: MealKey, recipeId: string) => void
+  onToggleLock?: (day: number, meal: MealKey, nextLocked: boolean) => void
+  onAddDish?: (day: number, meal: MealKey, payload: { kind: 'recipe'; recipeId: string } | { kind: 'note'; text: string }) => void
+  onAddRandomDish?: (day: number, meal: MealKey) => void
 }) {
   const dropId = `row-${dayIndex}-${meal}`
   const { setNodeRef: setDropRef, isOver } = useDroppable({
@@ -499,35 +500,31 @@ function SlotRow({
     data: { dayIndex, meal },
   })
   const { label: mealLabel, Icon: MealIcon } = MEAL_META[meal]
-  const [pickerOpen, setPickerOpen] = useState(false)
+  const [emptyPickerOpen, setEmptyPickerOpen] = useState(false)
+  const [replacePickerOpen, setReplacePickerOpen] = useState(false)
+  const [addDishOpen, setAddDishOpen] = useState(false)
 
-  // Empty slot — still a drop target (drop moves a recipe in from elsewhere)
-  // but no drag source.
-  // At lg+ the empty slot mirrors the FILLED slot's geometry (4:3 thumb +
-  // title block) so the user can scan the column and immediately see
-  // which meal is missing — collapsing to a one-liner made breakfast vs.
-  // dinner indistinguishable when both were empty.
-  if (!data) {
+  const dishes: Dish[] = slot?.dishes ?? []
+  const recipeDishes = dishes.filter((d): d is RecipeDish => d.kind === 'recipe')
+  const firstRecipe = recipeDishes[0] ?? null
+  const slotPinnedType = firstRecipe?.pinnedType ?? null
+  const slotServingsOverride = slot?.servings ?? null
+
+  // Empty slot (no dishes at all) — keep the dashed "+ Añadir" affordance.
+  if (dishes.length === 0) {
     return (
       <>
       <button
         ref={setDropRef as unknown as React.LegacyRef<HTMLButtonElement>}
         type="button"
         onClick={() => {
-          // When the page wires `onAddRecipe`, the empty slot opens the
-          // inline picker — no need to flip to "Vista día" (which is
-          // hidden at lg+ anyway). Otherwise fall back to the legacy
-          // `onClick` which the parent points at `onSelectDay` on mobile.
-          if (onAddRecipe) setPickerOpen(true)
-          else onClick()
+          if (onAddRecipe) setEmptyPickerOpen(true)
+          else onSelectDay(dayIndex)
         }}
         className={`flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors lg:flex-col lg:items-stretch lg:gap-0 lg:px-0 lg:py-0 lg:rounded-lg lg:border lg:border-dashed lg:border-[#DDD6C5] lg:bg-[#FFFEFA]/40 ${
           isOver ? "bg-[#1A1612]/10 lg:border-[#1A1612]/40 lg:bg-[#1A1612]/5" : "hover:bg-[#F2EDE0] lg:hover:border-[#1A1612]/40 lg:hover:bg-[#F2EDE0]/40"
         }`}
       >
-        {/* Thumbnail placeholder: 52px square on mobile, 4:3 dashed
-            rectangle on lg+ (matches the filled card's thumbnail aspect
-            so empty and filled cards line up vertically). */}
         <div className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-lg border border-dashed border-[#DDD6C5] bg-[#F2EDE0]/40 text-[#A39A8E] lg:h-auto lg:w-full lg:rounded-none lg:rounded-t-lg lg:aspect-[4/3] lg:border-0 lg:border-b lg:border-dashed lg:border-[#DDD6C5]">
           <MealIcon size={18} strokeWidth={1.3} className="lg:hidden" />
           <MealIcon size={28} strokeWidth={1.2} className="hidden lg:inline" />
@@ -543,59 +540,206 @@ function SlotRow({
         </div>
       </button>
       <RecipePickerSheet
-        open={pickerOpen}
-        onClose={() => setPickerOpen(false)}
+        open={emptyPickerOpen}
+        onClose={() => setEmptyPickerOpen(false)}
         title={`${mealLabel} del día`}
         subtitle="Sin plato"
         onPick={(picked) => {
           if (onAddRecipe) onAddRecipe(dayIndex, meal, picked.id)
-          setPickerOpen(false)
+          setEmptyPickerOpen(false)
         }}
       />
       </>
     )
   }
 
+  // Slot has at least one dish. Build the action set once — only the
+  // callbacks the parent wired show up.
+  const actions: ActionDef[] = []
+  if (onPickRecipe && firstRecipe) {
+    actions.push({
+      icon: Replace,
+      label: "Elegir receta",
+      onSelect: () => setReplacePickerOpen(true),
+    })
+  }
+  if (onRandomize) {
+    actions.push({
+      icon: Shuffle,
+      label: "Aleatorio",
+      onSelect: () => onRandomize(dayIndex, meal),
+    })
+  }
+  if (onAddDish || onAddRandomDish) {
+    actions.push({
+      icon: Plus,
+      label: "Añadir plato",
+      onSelect: () => setAddDishOpen(true),
+    })
+  }
+  if (onToggleLock) {
+    actions.push({
+      icon: isLocked ? Unlock : Lock,
+      label: isLocked ? "Desbloquear" : "Bloquear",
+      onSelect: () => onToggleLock(dayIndex, meal, !isLocked),
+    })
+  }
+  if (onBan && firstRecipe) {
+    actions.push({
+      icon: Ban,
+      label: "Vetar receta",
+      onSelect: () => {
+        if (
+          typeof window === "undefined" ||
+          window.confirm(
+            `¿Vetar "${firstRecipe.recipeName ?? 'esta receta'}" del resto de la semana?`,
+          )
+        ) {
+          onBan(dayIndex, meal, firstRecipe.recipeId)
+        }
+      },
+      destructive: true,
+    })
+  }
+  if (onRemove) {
+    actions.push({
+      icon: Trash2,
+      label: "Quitar slot",
+      onSelect: () => {
+        if (
+          typeof window === "undefined" ||
+          window.confirm("¿Quitar este plato del día?")
+        ) {
+          onRemove(dayIndex, meal)
+        }
+      },
+      destructive: true,
+    })
+  }
+
+  // Drag preview uses the first recipe dish; if the slot is note-only we
+  // still render a card but disable dragging (no recipeId to carry).
+  const cellData: CellData | null = firstRecipe
+    ? {
+        day: dayIndex,
+        meal,
+        recipeId: firstRecipe.recipeId,
+        recipeName: firstRecipe.recipeName ?? "Receta",
+        imageUrl: firstRecipe.imageUrl ?? null,
+        isLeftover: firstRecipe.variant === "leftover",
+        totalMinutes: firstRecipe.totalTime ?? firstRecipe.prepTime ?? null,
+      }
+    : null
+
   return (
+    <>
     <div ref={setDropRef} className={`relative ${isOver ? "rounded-xl ring-2 ring-inset ring-[#1A1612]/40" : ""}`}>
-      <DraggableRow
-        data={data}
-        onClick={onClick}
+      <FilledRow
+        dayIndex={dayIndex}
+        meal={meal}
         mealLabel={mealLabel}
         MealIcon={MealIcon}
-        onRandomize={onRandomize}
-        onBan={onBan}
-        onRemove={onRemove}
+        dishes={dishes}
+        firstRecipe={firstRecipe}
+        cellData={cellData}
+        isLocked={isLocked}
+        slotPinnedType={slotPinnedType}
+        slotServingsOverride={slotServingsOverride}
+        defaultDiners={defaultDiners}
+        actions={actions}
+        canAddDish={Boolean(onAddDish || onAddRandomDish)}
+        onOpenAddDish={() => setAddDishOpen(true)}
+        onSelectDay={onSelectDay}
+        onSelectRecipe={onSelectRecipe}
       />
     </div>
+    {/* Sheets live as siblings outside the card so they don't collide
+        with stacking contexts created by motion / overflow-hidden. */}
+    <RecipePickerSheet
+      open={replacePickerOpen}
+      onClose={() => setReplacePickerOpen(false)}
+      title={`${mealLabel} del día`}
+      subtitle={firstRecipe?.recipeName ? `Ahora: ${firstRecipe.recipeName}` : "Sin plato"}
+      onPick={(picked) => {
+        if (onPickRecipe) onPickRecipe(dayIndex, meal, picked.id)
+        setReplacePickerOpen(false)
+      }}
+    />
+    <AddDishSheet
+      open={addDishOpen}
+      onClose={() => setAddDishOpen(false)}
+      slotLabel={`${mealLabel} del día`}
+      onPickAleatorio={() => {
+        if (onAddRandomDish) onAddRandomDish(dayIndex, meal)
+        setAddDishOpen(false)
+      }}
+      onPickRecipe={(recipeId) => {
+        if (onAddDish) onAddDish(dayIndex, meal, { kind: 'recipe', recipeId })
+        setAddDishOpen(false)
+      }}
+      onAddNote={(text) => {
+        if (onAddDish) onAddDish(dayIndex, meal, { kind: 'note', text })
+        setAddDishOpen(false)
+      }}
+    />
+    </>
   )
 }
 
-function DraggableRow({
-  data,
-  onClick,
+interface ActionDef {
+  icon: typeof Shuffle
+  label: string
+  onSelect: () => void
+  destructive?: boolean
+}
+
+function FilledRow({
+  dayIndex,
+  meal,
   mealLabel,
   MealIcon,
-  onRandomize,
-  onBan,
-  onRemove,
+  dishes,
+  firstRecipe,
+  cellData,
+  isLocked,
+  slotPinnedType,
+  slotServingsOverride,
+  defaultDiners,
+  actions,
+  canAddDish,
+  onOpenAddDish,
+  onSelectDay,
+  onSelectRecipe,
 }: {
-  data: CellData
-  onClick: () => void
+  dayIndex: number
+  meal: MealKey
   mealLabel: string
   MealIcon: typeof Sun
-  onRandomize?: (day: number, meal: MealKey) => void
-  onBan?: (day: number, meal: MealKey, recipeId: string) => void
-  onRemove?: (day: number, meal: MealKey) => void
+  dishes: Dish[]
+  firstRecipe: RecipeDish | null
+  cellData: CellData | null
+  isLocked: boolean
+  slotPinnedType: string | null
+  slotServingsOverride: number | null
+  defaultDiners?: number
+  actions: ActionDef[]
+  canAddDish: boolean
+  onOpenAddDish: () => void
+  onSelectDay: (dayIndex: number) => void
+  onSelectRecipe: (recipeId: string) => void
 }) {
-  const dragId = `row-${data.day}-${data.meal}`
+  // Drag handle is the whole card (first recipe carries the drag payload).
+  // If the slot is note-only we render but skip drag wiring.
+  const dragId = cellData ? `row-${dayIndex}-${meal}` : `noop-${dayIndex}-${meal}`
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: dragId,
-    data,
+    data: cellData ?? { day: dayIndex, meal, isPlaceholder: true },
+    disabled: cellData == null,
   })
-  const [menuOpen, setMenuOpen] = useState(false)
-  const showMenuButton = Boolean(onRandomize || onBan || onRemove)
 
+  // The image and the "..." menu live inside the same card. The card itself
+  // is the drag handle on lg+. The menu's portalled popover keeps clicks
+  // outside the card to avoid drag conflicts (target.closest catches them).
   return (
     <div
       ref={setNodeRef}
@@ -605,27 +749,33 @@ function DraggableRow({
       tabIndex={0}
       onClick={(e) => {
         if (isDragging) return
-        // The "..." button (and its dropdown) handle their own clicks. If
-        // the click came from inside that subtree we don't navigate.
         const target = e.target as HTMLElement
+        // Clicks on the action menu or its dishes manage their own targets.
         if (target.closest('[data-row-menu="1"]')) return
-        onClick()
+        if (target.closest('[data-dish-row="1"]')) return
+        if (target.closest('[data-add-dish="1"]')) return
+        // Default: tap the card → recipe detail (first recipe) or day flip.
+        if (firstRecipe) onSelectRecipe(firstRecipe.recipeId)
+        else onSelectDay(dayIndex)
       }}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault()
-          if (!isDragging) onClick()
+          if (!isDragging) {
+            if (firstRecipe) onSelectRecipe(firstRecipe.recipeId)
+            else onSelectDay(dayIndex)
+          }
         }
       }}
-      className={`relative flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors lg:flex-col lg:items-stretch lg:gap-0 lg:px-0 lg:py-0 lg:rounded-lg ${
-        isDragging ? "opacity-30" : "hover:bg-[#F2EDE0] lg:hover:opacity-90"
+      className={`relative flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors lg:flex-col lg:items-stretch lg:gap-0 lg:px-0 lg:py-0 lg:rounded-lg lg:border lg:border-[#DDD6C5] lg:bg-[#FFFEFA] ${
+        isDragging ? "opacity-30" : "hover:bg-[#F2EDE0] lg:hover:opacity-95"
       }`}
     >
       <div className="relative h-[52px] w-[52px] shrink-0 overflow-hidden rounded-lg bg-[#F2EDE0] lg:h-auto lg:w-full lg:rounded-none lg:rounded-t-lg lg:aspect-[4/3]">
-        {data.imageUrl ? (
+        {firstRecipe?.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={data.imageUrl}
+            src={firstRecipe.imageUrl}
             alt=""
             className="h-full w-full object-cover"
             loading="lazy"
@@ -635,126 +785,172 @@ function DraggableRow({
             <Utensils size={20} strokeWidth={1.4} />
           </div>
         )}
-        {data.isLeftover && (
+        {firstRecipe?.variant === "leftover" && (
           <span className="absolute bottom-0 left-0 right-0 bg-[#1A1612]/85 px-1 py-[1px] text-center text-[8px] font-medium uppercase tracking-[0.1em] text-[#FAF6EE]">
             Sobras
           </span>
         )}
-        {data.totalMinutes != null && data.totalMinutes > 0 && (
+        {cellData?.totalMinutes != null && cellData.totalMinutes > 0 && (
           <span className="absolute right-1 top-1 hidden rounded-full bg-[#FAF6EE]/95 px-1.5 py-0.5 text-[9px] font-medium text-[#1A1612] backdrop-blur-sm lg:inline-flex">
-            {data.totalMinutes}'
+            {cellData.totalMinutes}'
+          </span>
+        )}
+        {isLocked && (
+          <span className="absolute left-1 top-1 inline-flex items-center gap-0.5 rounded-full bg-[#C65D38] px-1.5 py-0.5 text-[8px] font-medium uppercase tracking-[0.12em] text-[#FAF6EE] backdrop-blur-sm">
+            <Lock size={9} strokeWidth={2} />
+            Fijado
           </span>
         )}
       </div>
       <div className="min-w-0 flex-1 lg:px-2 lg:pt-1.5 lg:pb-2">
-        <p className="m-0 flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
-          <MealIcon size={12} strokeWidth={1.6} />
-          {mealLabel}
-        </p>
-        <p
-          className="mt-0.5 truncate text-[14px] font-medium text-[#1A1612] lg:mt-1 lg:line-clamp-2 lg:whitespace-normal lg:font-[family-name:var(--font-display)] lg:text-[13px] lg:leading-tight"
-          title={data.recipeName}
-        >
-          {shortRecipeName(data.recipeName)}
-          {data.extraDishes > 0 && (
-            <span className="ml-1 text-[10px] uppercase tracking-[0.15em] text-[#7A7066]">
-              +{data.extraDishes} más
-            </span>
+        <div className="flex items-center justify-between gap-1">
+          <p className="m-0 flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
+            <MealIcon size={12} strokeWidth={1.6} />
+            {mealLabel}
+          </p>
+          {actions.length > 0 && (
+            <RowActionsButton actions={actions} />
           )}
-        </p>
-        {data.totalMinutes != null && data.totalMinutes > 0 && (
+        </div>
+
+        {/* Pinned-type + servings chips (mirror Vista día's surface). */}
+        {(slotPinnedType || slotServingsOverride != null) && (
+          <div className="mt-1 flex flex-wrap items-center gap-1">
+            {slotPinnedType && (
+              <span className="inline-flex items-center gap-0.5 rounded-full border border-[#C65D38]/30 bg-[#FDEEE8] px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-[0.12em] text-[#C65D38]">
+                <Pin size={9} strokeWidth={2} />
+                {(MEAL_TYPE_TAG_LABELS as Record<string, string>)[slotPinnedType] ?? slotPinnedType}
+              </span>
+            )}
+            {slotServingsOverride != null && (
+              <span className="inline-flex items-center gap-0.5 rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-[0.12em] text-[#7A7066]">
+                <Users size={9} strokeWidth={2} />
+                {slotServingsOverride} pax
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Dish list — every dish is shown, not just the first. */}
+        <ul className="mt-1 space-y-0.5">
+          {dishes.map((dish, i) => (
+            <li
+              key={i}
+              data-dish-row="1"
+              className="flex items-center gap-1.5"
+            >
+              {dish.kind === 'recipe' ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onSelectRecipe(dish.recipeId)
+                  }}
+                  className="block min-w-0 flex-1 truncate text-left text-[13px] font-medium text-[#1A1612] hover:text-[#C65D38] lg:line-clamp-2 lg:whitespace-normal lg:text-[12.5px] lg:leading-snug"
+                  title={dish.recipeName ?? undefined}
+                >
+                  {shortRecipeName(dish.recipeName ?? "Receta")}
+                </button>
+              ) : (
+                <span className="flex min-w-0 flex-1 items-center gap-1 text-[12px] italic text-[#4A4239]">
+                  <Coffee size={10} className="shrink-0 text-[#7A7066]" />
+                  <span className="truncate">{dish.text}</span>
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+
+        {/* "+ añadir" affordance only at lg+ where there's space for a
+            secondary row; mobile users go through the full action menu. */}
+        {canAddDish && (
+          <button
+            type="button"
+            data-add-dish="1"
+            onClick={(e) => {
+              e.stopPropagation()
+              onOpenAddDish()
+            }}
+            className="mt-1.5 hidden w-full items-center justify-center gap-1 rounded-md border border-dashed border-[#DDD6C5] py-1 text-[9px] uppercase tracking-[0.12em] text-[#7A7066] transition-colors hover:border-[#1A1612] hover:text-[#1A1612] lg:flex"
+          >
+            <Plus size={9} />
+            Añadir plato
+          </button>
+        )}
+
+        {cellData?.totalMinutes != null && cellData.totalMinutes > 0 && (
           <p className="mt-0.5 text-[11px] text-[#7A7066] lg:hidden">
-            {data.totalMinutes} min
+            {cellData.totalMinutes} min
           </p>
         )}
       </div>
-      {showMenuButton ? (
-        <RowActionsButton
-          isOpen={menuOpen}
-          onOpen={() => setMenuOpen(true)}
-          onClose={() => setMenuOpen(false)}
-          actions={[
-            onRandomize && {
-              icon: Shuffle,
-              label: "Aleatorio",
-              onSelect: () => onRandomize(data.day, data.meal),
-            },
-            onBan && {
-              icon: Ban,
-              label: "Vetar receta",
-              onSelect: () => onBan(data.day, data.meal, data.recipeId),
-              destructive: true,
-            },
-            onRemove && {
-              icon: Trash2,
-              label: "Quitar slot",
-              onSelect: () => onRemove(data.day, data.meal),
-              destructive: true,
-            },
-          ].filter(
-            (
-              a,
-            ): a is {
-              icon: typeof Shuffle
-              label: string
-              onSelect: () => void
-              destructive?: boolean
-            } => Boolean(a),
-          )}
-        />
-      ) : (
-        <ChevronRight size={16} className="shrink-0 text-[#7A7066] lg:hidden" />
-      )}
     </div>
   )
 }
 
-function RowActionsButton({
-  isOpen,
-  onOpen,
-  onClose,
-  actions,
-}: {
-  isOpen: boolean
-  onOpen: () => void
-  onClose: () => void
-  actions: Array<{
-    icon: typeof Shuffle
-    label: string
-    onSelect: () => void
-    destructive?: boolean
-  }>
-}) {
+/**
+ * "..." menu trigger + popover. The popover is rendered into document.body
+ * via createPortal — sibling `motion.article` cards each create their own
+ * stacking context (transform / will-change), so any in-tree z-index would
+ * be clipped or hidden behind a neighbouring card image. Portalling to the
+ * root escapes every parent stacking context permanently.
+ */
+function RowActionsButton({ actions }: { actions: ActionDef[] }) {
+  const [open, setOpen] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const [pos, setPos] = useState<{ top: number; right: number } | null>(null)
+
+  useLayoutEffect(() => {
+    if (!open) return
+    function place() {
+      const el = triggerRef.current
+      if (!el) return
+      const r = el.getBoundingClientRect()
+      setPos({
+        top: r.bottom + 4,
+        right: Math.max(8, window.innerWidth - r.right),
+      })
+    }
+    place()
+    window.addEventListener("resize", place)
+    window.addEventListener("scroll", place, true)
+    return () => {
+      window.removeEventListener("resize", place)
+      window.removeEventListener("scroll", place, true)
+    }
+  }, [open])
+
   return (
     <div data-row-menu="1" className="shrink-0">
       <button
+        ref={triggerRef}
         type="button"
         onClick={(e) => {
           e.stopPropagation()
-          isOpen ? onClose() : onOpen()
+          setOpen((v) => !v)
         }}
-        className="rounded-full p-1.5 text-[#7A7066] transition-colors hover:bg-[#F2EDE0] hover:text-[#1A1612]"
+        className="rounded-full p-1 text-[#7A7066] transition-colors hover:bg-[#F2EDE0] hover:text-[#1A1612]"
         aria-label="Acciones rápidas"
-        aria-expanded={isOpen}
+        aria-expanded={open}
       >
-        <MoreHorizontal size={16} />
+        <MoreHorizontal size={14} />
       </button>
-      {isOpen && (
+      {open && typeof window !== "undefined" && pos && createPortal(
         <>
-          {/* Click-outside catcher */}
           <button
             type="button"
             aria-hidden="true"
             tabIndex={-1}
             onClick={(e) => {
               e.stopPropagation()
-              onClose()
+              setOpen(false)
             }}
-            className="fixed inset-0 z-30 cursor-default bg-transparent"
+            className="fixed inset-0 z-[60] cursor-default bg-transparent"
           />
           <div
-            className="absolute right-0 z-40 mt-1 w-44 overflow-hidden rounded-xl border border-[#DDD6C5] bg-[#FFFEFA] shadow-[0_12px_24px_-12px_rgba(26,22,18,0.28)]"
-            style={{ top: "100%" }}
+            data-row-menu="1"
+            className="fixed z-[70] w-44 overflow-hidden rounded-xl border border-[#DDD6C5] bg-[#FFFEFA] shadow-[0_12px_24px_-12px_rgba(26,22,18,0.28)]"
+            style={{ top: pos.top, right: pos.right }}
           >
             {actions.map((a) => {
               const Icon = a.icon
@@ -765,7 +961,7 @@ function RowActionsButton({
                   onClick={(e) => {
                     e.stopPropagation()
                     a.onSelect()
-                    onClose()
+                    setOpen(false)
                   }}
                   className={`flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] transition-colors hover:bg-[#F2EDE0] ${
                     a.destructive ? "text-[#C65D38]" : "text-[#1A1612]"
@@ -777,7 +973,8 @@ function RowActionsButton({
               )
             })}
           </div>
-        </>
+        </>,
+        document.body,
       )}
     </div>
   )
@@ -829,7 +1026,6 @@ function monthOf(start: Date, i: number): string {
 }
 
 function parseTargetId(id: string): { day: number; meal: MealKey } | null {
-  // "row-<day>-<meal>"
   const match = /^row-(\d+)-(breakfast|lunch|dinner|snack)$/.exec(id)
   if (!match) return null
   return { day: Number(match[1]), meal: match[2] as MealKey }

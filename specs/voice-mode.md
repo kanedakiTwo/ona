@@ -2,16 +2,16 @@
 
 Hands-free voice conversation with the assistant, activated by the wake word "Hola Ona" or by tapping the floating mic anywhere in the authenticated app.
 
-**Status: shipped on master. `OPENAI_API_KEY` with `gpt-realtime` access is wired in production. Wake-word path is gated on `NEXT_PUBLIC_PICOVOICE_ACCESS_KEY` + `.ppn` model; while those are missing the floating mic FAB at top-right is the way in.**
+**Status: shipped on master. `OPENAI_API_KEY` with `gpt-realtime` access is wired in production. Wake-word backend is selected via `NEXT_PUBLIC_WAKE_WORD_ENGINE` (`porcupine` | `openwakeword` | `none`) — defaults to `porcupine` when the Picovoice key is set, otherwise `openwakeword`. While no engine has a usable model file, the floating mic FAB at top-right is the way in.**
 
 ## User Capabilities
 
 - Users can opt in to "Modo voz" (master toggle) from their profile/settings (off by default). When enabled, a floating mic FAB appears top-right on every authenticated route as the manual entry point
-- When the master toggle is on AND Picovoice is configured, a separate sub-toggle "Escuchar 'Hola Ona'" appears below it. The sub-toggle is independently off by default — users opt in explicitly to "always listening" so the master toggle can stay enabled (FAB visible) without the wake-word burning battery / mic
+- When the master toggle is on AND a wake-word engine is configured (either Picovoice key or openWakeWord model present), a separate sub-toggle "Escuchar 'Hola Ona'" appears below it. The sub-toggle is independently off by default — users opt in explicitly to "always listening" so the master toggle can stay enabled (FAB visible) without the wake-word burning battery / mic
 - Master OFF → no FAB, no wake-word, nothing listening
 - Master ON + sub OFF → FAB visible, no wake-word (manual entry only)
-- Master ON + sub ON + Picovoice configured → FAB visible **and** the app listens for "Hola Ona"
-- Master ON + sub ON + Picovoice not configured → sub-toggle is hidden; the copy under the master toggle explains the wake-word account is pending
+- Master ON + sub ON + an engine is configured → FAB visible **and** the app listens for "Hola Ona"
+- Master ON + sub ON + no engine configured → sub-toggle is hidden; the copy under the master toggle explains the wake-word model is pending
 - Saying "Hola Ona" (or tapping the FAB) opens a full-screen voice overlay (animated orb, no text) and starts a real-time spoken conversation with the assistant
 - Users can speak naturally without pressing any button; the assistant detects when they finish and replies aloud
 - Users can interrupt the assistant mid-sentence (barge-in) — the assistant stops and listens
@@ -61,9 +61,17 @@ When the conversation context is "step-by-step cooking" (a recipe-step skill is 
 
 ## Wake-word engine
 
-- **Default**: Picovoice Porcupine (WASM, custom phrase "Hola Ona" trained via Picovoice console). Free tier covers personal/dev use.
-- **Fallback**: openWakeWord (open source) if Porcupine pricing or licensing becomes a blocker. Requires training a custom model for "Hola Ona".
-- The engine is wrapped behind a small `useWakeWord` hook so swapping providers is local.
+`useWakeWord` supports two backends, selected via `NEXT_PUBLIC_WAKE_WORD_ENGINE`:
+
+- **`porcupine`**: Picovoice Porcupine (WASM, "Hola Ona" `.ppn` trained via Picovoice console). Picovoice no longer offers a free tier; a paid plan is required.
+- **`openwakeword`** (default when no Picovoice key is present): open-source ONNX models. Three files are loaded from `/wakewords/openwakeword/`:
+  - `melspectrogram.onnx` (~1.1 MB, shared, committed)
+  - `embedding_model.onnx` (~1.3 MB, shared, committed)
+  - `hola_ona.onnx` (~1.2 MB, trained per-deployment via [docs/voice-mode-openwakeword-training.md](../docs/voice-mode-openwakeword-training.md))
+  Inference is fully on-device in WebAssembly via `onnxruntime-web`. Audio is captured at 16 kHz mono in an AudioWorklet and processed in 80 ms (1280 sample) frames. Sustain + cooldown logic suppresses repeat triggers.
+- **`none`**: detection disabled; manual FAB entry only.
+
+The engine swap touches only `useWakeWord.ts` and `lib/wakeword/openWakeWord.ts`; the rest of the voice stack is engine-agnostic.
 
 ## Floating mic FAB (manual entry point)
 
@@ -91,7 +99,10 @@ If the Realtime session enters `error` or `closed` state while the overlay is op
 
 ## Source
 
-- [apps/web/src/hooks/useWakeWord.ts](../apps/web/src/hooks/useWakeWord.ts) — Porcupine WASM wrapper (swap point for openWakeWord)
+- [apps/web/src/hooks/useWakeWord.ts](../apps/web/src/hooks/useWakeWord.ts) — dual-backend wrapper (Porcupine ↔ openWakeWord) selected by env
+- [apps/web/src/lib/wakeword/openWakeWord.ts](../apps/web/src/lib/wakeword/openWakeWord.ts) — onnxruntime-web streaming inference (mel → embedding → wake-word)
+- [apps/web/public/wakeword-capture-worklet.js](../apps/web/public/wakeword-capture-worklet.js) — AudioWorklet that buffers 80 ms chunks at 16 kHz
+- [docs/voice-mode-openwakeword-training.md](../docs/voice-mode-openwakeword-training.md) — how to train `hola_ona.onnx` (Colab + Piper TTS)
 - [apps/web/src/hooks/useRealtimeSession.ts](../apps/web/src/hooks/useRealtimeSession.ts) — WebRTC + Realtime API client, tool round-trip, single-shot reconnect
 - [apps/web/src/components/voice/VoiceOverlay.tsx](../apps/web/src/components/voice/VoiceOverlay.tsx) — full-screen orb UI
 - [apps/web/src/components/voice/VoiceProvider.tsx](../apps/web/src/components/voice/VoiceProvider.tsx) — app-wide always-listening provider, silence timer, cooking-mode extension, context cache, top-right indicator
@@ -107,6 +118,14 @@ If the Realtime session enters `error` or `closed` state while the overlay is op
 
 ## Required client config
 
-- `NEXT_PUBLIC_PICOVOICE_ACCESS_KEY` — from console.picovoice.ai
-- `apps/web/public/wakewords/hola-ona_es_wasm_v4_0_0.ppn` — wake-word model trained for "Hola Ona" (Porcupine WASM v4)
-- `apps/web/public/wakewords/porcupine_params_es.pv` — Spanish acoustic model (downloaded from `Picovoice/porcupine` repo)
+- `NEXT_PUBLIC_WAKE_WORD_ENGINE` — `porcupine` | `openwakeword` | `none` (optional; auto-detects from other env)
+
+**For `porcupine`**:
+- `NEXT_PUBLIC_PICOVOICE_ACCESS_KEY` — from console.picovoice.ai (paid plan required since 2025)
+- `apps/web/public/wakewords/hola-ona_es_wasm_v4_0_0.ppn` — wake-word model
+- `apps/web/public/wakewords/porcupine_params_es.pv` — Spanish acoustic model
+
+**For `openwakeword`** (recommended, free):
+- `apps/web/public/wakewords/openwakeword/melspectrogram.onnx` (committed)
+- `apps/web/public/wakewords/openwakeword/embedding_model.onnx` (committed)
+- `apps/web/public/wakewords/openwakeword/hola_ona.onnx` (trained via [docs/voice-mode-openwakeword-training.md](../docs/voice-mode-openwakeword-training.md), NOT committed)

@@ -79,7 +79,7 @@ export interface DisambiguateOutput {
   verdicts: Map<string, LlmMatchVerdict>
 }
 
-const MODEL = 'claude-sonnet-4-20250514'
+const MODEL = 'claude-sonnet-4-6'
 
 /**
  * Batch-disambiguate a list of unmatched ingredient names against the

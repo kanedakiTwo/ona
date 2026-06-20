@@ -62,6 +62,67 @@ export interface YouTubeMeta {
   description: string
 }
 
+/**
+ * Parse `title` + `shortDescription` out of a YouTube watch-page HTML body.
+ *
+ * Needed as a fallback because Innertube (youtubei.js) often gets rate-limited
+ * or returns empty `basic_info` when called from a datacenter IP (Railway,
+ * Fly, AWS) — the plain watch page is served to anyone and embeds the same
+ * data inside a `ytInitialPlayerResponse` JSON blob.
+ *
+ * Forgiving regexes (vs. JSON.parse over the whole payload) on purpose:
+ *   - The blob is multi-MB and contains scripts that confuse balanced-bracket
+ *     parsers.
+ *   - We only need two fields; pinpointing them is faster and more resilient
+ *     to YouTube's monthly HTML shuffles.
+ *
+ * Returns empty strings (not null) when a field is missing so the caller can
+ * still build a payload from whichever signal is available.
+ */
+export function parseWatchPageMeta(html: string): YouTubeMeta {
+  // Match the literal "title":"..." pair INSIDE the videoDetails object. We
+  // anchor on `"videoId"` (always present in videoDetails) followed by the
+  // sibling `"title"` to avoid picking up unrelated `"title"` strings that
+  // appear elsewhere in the page (related-videos, etc.).
+  let title = ''
+  const titleMatch = html.match(
+    /"videoDetails"\s*:\s*\{[^}]*?"title"\s*:\s*"((?:[^"\\]|\\.)*)"/,
+  )
+  if (titleMatch) {
+    title = unescapeJsonString(titleMatch[1])
+  } else {
+    // Fallback to the <title> tag and strip the " - YouTube" suffix YouTube
+    // appends to every watch page.
+    const tagMatch = html.match(/<title>([^<]+)<\/title>/i)
+    if (tagMatch) {
+      title = tagMatch[1].replace(/\s+-\s+YouTube\s*$/i, '').trim()
+    }
+  }
+
+  let description = ''
+  const descMatch = html.match(/"shortDescription"\s*:\s*"((?:[^"\\]|\\.)*)"/)
+  if (descMatch) {
+    description = unescapeJsonString(descMatch[1])
+  }
+
+  return { title, description }
+}
+
+/** JSON-string unescape — handles \n, \t, \", \\ and \uXXXX. */
+function unescapeJsonString(s: string): string {
+  try {
+    return JSON.parse('"' + s + '"') as string
+  } catch {
+    // Defensive: malformed escape sequence in the captured slice. Fall back
+    // to a minimal manual unescape so the user gets *something* useful.
+    return s
+      .replace(/\\n/g, '\n')
+      .replace(/\\t/g, '\t')
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, '\\')
+  }
+}
+
 export interface YouTubePromptInput {
   title: string
   description: string
@@ -100,13 +161,72 @@ export interface YouTubeFetchers {
   fetchTranscript?: FetchYouTubeTranscript
 }
 
+/**
+ * Fetch + parse the public watch page directly. Used as a fallback when
+ * Innertube returns empty / throws (most often because the production IP
+ * is being rate-limited by YouTube's internal API).
+ */
+async function fetchMetaFromWatchPage(videoId: string): Promise<YouTubeMeta> {
+  const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+    headers: {
+      'User-Agent':
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+      'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+    },
+    redirect: 'follow',
+  })
+  if (!res.ok) {
+    throw new Error(`watch page returned HTTP ${res.status}`)
+  }
+  const html = await res.text()
+  return parseWatchPageMeta(html)
+}
+
 const defaultFetchMeta: FetchYouTubeMeta = async (videoId) => {
-  const { Innertube } = await import('youtubei.js')
-  const yt = await Innertube.create({ retrieve_player: false })
-  const info = await yt.getBasicInfo(videoId)
-  return {
-    title: info.basic_info.title ?? '',
-    description: info.basic_info.short_description ?? '',
+  // Primary path: Innertube. Works on dev machines, sometimes works on
+  // datacenter IPs. Wrapped in try/catch so a failure here cleanly degrades
+  // to the HTML scraper instead of propagating up and 500ing the request.
+  let primary: YouTubeMeta | null = null
+  try {
+    const { Innertube } = await import('youtubei.js')
+    const yt = await Innertube.create({ retrieve_player: false })
+    const info = await yt.getBasicInfo(videoId)
+    primary = {
+      title: info.basic_info.title ?? '',
+      description: info.basic_info.short_description ?? '',
+    }
+  } catch {
+    primary = null
+  }
+
+  // If Innertube gave us a usable description (long enough to plausibly
+  // contain a recipe), trust it — that's what tests and the local dev box
+  // exercise every day.
+  if (primary && primary.description.length >= MIN_USEFUL_DESCRIPTION_CHARS) {
+    return primary
+  }
+
+  // Otherwise, fall back to scraping the public watch page. This works from
+  // Railway/Fly even when the InnerTube /youtubei/v1 endpoints are blocked,
+  // because the watch page is served to any browser-shaped User-Agent.
+  try {
+    const fallback = await fetchMetaFromWatchPage(videoId)
+    // Prefer whichever produced a non-empty title, and prefer the LONGER
+    // description (one of the two paths sometimes returns a truncated
+    // snippet vs the full multi-paragraph blurb).
+    return {
+      title: fallback.title || primary?.title || '',
+      description:
+        (fallback.description.length >= (primary?.description.length ?? 0)
+          ? fallback.description
+          : primary?.description) || '',
+    }
+  } catch {
+    // Watch-page fetch failed too. Return whatever Innertube gave us (even
+    // if short) so the prompt builder gets a chance to either accept it
+    // alongside a transcript or throw NoExtractableContentError with the
+    // user-facing Spanish hint.
+    return primary ?? { title: '', description: '' }
   }
 }
 

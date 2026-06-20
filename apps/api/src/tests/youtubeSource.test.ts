@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildYouTubePromptInput,
   NoExtractableContentError,
+  parseWatchPageMeta,
   parseYouTubeVideoId,
 } from '../services/sources/youtube.js'
 import { detectSourceType } from '../services/sources/sourceType.js'
@@ -102,5 +103,48 @@ describe('buildYouTubePromptInput', () => {
         transcript: null,
       }),
     ).toThrow(NoExtractableContentError)
+  })
+})
+
+describe('parseWatchPageMeta', () => {
+  // The watch page embeds a `ytInitialPlayerResponse` JSON blob.
+  // We parse `videoDetails.title` + `videoDetails.shortDescription` out of it
+  // using a forgiving regex so YouTube's HTML shuffles don't break the parser
+  // every quarter. Source must survive arbitrary preceding HTML.
+
+  it('extracts title and shortDescription from a typical watch-page HTML payload', () => {
+    const html = `<!doctype html><html><head><title>x - YouTube</title></head><body>
+      <script>var ytInitialPlayerResponse = {"playabilityStatus":{"status":"OK"},"streamingData":{},"videoDetails":{"videoId":"usDS7hsvYAo","title":"La ensalada griega más espectacular","shortDescription":"Hoy nos vamos de viaje a Grecia con la ensalada griega.\\n\\n0:15 - Cortar pepino.\\n0:30 - Cortar tomate.","lengthSeconds":"320"}};</script>
+      </body></html>`
+    const meta = parseWatchPageMeta(html)
+    expect(meta.title).toBe('La ensalada griega más espectacular')
+    expect(meta.description).toContain('Cortar pepino')
+    expect(meta.description).toContain('Cortar tomate')
+  })
+
+  it('unescapes embedded newlines and quotes', () => {
+    const html = `var ytInitialPlayerResponse = {"videoDetails":{"title":"t","shortDescription":"línea 1\\n\\nlínea \\"dos\\" con comillas"}};`
+    const meta = parseWatchPageMeta(html)
+    expect(meta.description).toBe('línea 1\n\nlínea "dos" con comillas')
+  })
+
+  it('falls back to <title> when videoDetails.title is missing', () => {
+    const html = `<title>Solo título · viejo - YouTube</title>
+      <script>var ytInitialPlayerResponse = {"videoDetails":{"shortDescription":"desc"}};</script>`
+    const meta = parseWatchPageMeta(html)
+    expect(meta.title).toContain('Solo título')
+  })
+
+  it('returns empty strings when neither block is present (not a watch page)', () => {
+    const html = `<html><body>no script here</body></html>`
+    const meta = parseWatchPageMeta(html)
+    expect(meta.title).toBe('')
+    expect(meta.description).toBe('')
+  })
+
+  it('strips the " - YouTube" suffix that the <title> tag carries', () => {
+    const html = `<title>Receta de paella - YouTube</title>`
+    const meta = parseWatchPageMeta(html)
+    expect(meta.title).toBe('Receta de paella')
   })
 })

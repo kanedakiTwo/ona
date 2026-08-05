@@ -2,9 +2,12 @@
 
 import { useEffect, useRef, useState } from 'react'
 
+export type WakeWordEngine = 'porcupine' | 'openwakeword' | 'none'
+
 interface UseWakeWordOptions {
   enabled: boolean
   onDetected: () => void
+  engine?: WakeWordEngine
   keywordPath?: string
   accessKey?: string
 }
@@ -13,70 +16,80 @@ interface UseWakeWordReturn {
   isListening: boolean
   isSupported: boolean
   error: string | null
+  engine: WakeWordEngine
 }
 
-const DEFAULT_KEYWORD_PATH = '/wakewords/hola-ona_es_wasm_v4_0_0.ppn'
-const SPANISH_MODEL_PATH = '/wakewords/porcupine_params_es.pv'
+const PORCUPINE_KEYWORD = '/wakewords/hola-ona_es_wasm_v4_0_0.ppn'
+const PORCUPINE_PARAMS = '/wakewords/porcupine_params_es.pv'
+
+const OPENWAKEWORD_MELSPEC = '/wakewords/openwakeword/melspectrogram.onnx'
+const OPENWAKEWORD_EMBEDDING = '/wakewords/openwakeword/embedding_model.onnx'
+const OPENWAKEWORD_MODEL = '/wakewords/openwakeword/hola_ona.onnx'
+
+function pickEngine(explicit: WakeWordEngine | undefined): WakeWordEngine {
+  if (explicit) return explicit
+  const envEngine = (process.env.NEXT_PUBLIC_WAKE_WORD_ENGINE as WakeWordEngine | undefined) ?? undefined
+  if (envEngine === 'porcupine' || envEngine === 'openwakeword' || envEngine === 'none') {
+    return envEngine
+  }
+  if (process.env.NEXT_PUBLIC_PICOVOICE_ACCESS_KEY) return 'porcupine'
+  return 'openwakeword'
+}
 
 /**
- * Wake-word detector using Picovoice Porcupine WASM.
- * Wraps the engine so the rest of the app stays agnostic to the provider —
- * swapping to openWakeWord (open source) only touches this file.
+ * Wake-word detector. Two backends are supported; the active one is chosen
+ * via the `engine` prop or the `NEXT_PUBLIC_WAKE_WORD_ENGINE` env var.
+ *
+ * - `porcupine`: Picovoice Porcupine WASM (free tier expired; paid plan needed).
+ * - `openwakeword`: open-source ONNX models, custom-trained "Hola Ona".
+ * - `none`: detection disabled; manual entry (FAB) only.
  */
 export function useWakeWord(options: UseWakeWordOptions): UseWakeWordReturn {
-  const { enabled, onDetected, keywordPath = DEFAULT_KEYWORD_PATH } = options
-  const accessKey = options.accessKey ?? process.env.NEXT_PUBLIC_PICOVOICE_ACCESS_KEY ?? ''
-
-  const [isListening, setIsListening] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const engine = pickEngine(options.engine)
+  const { enabled, onDetected } = options
   const onDetectedRef = useRef(onDetected)
   onDetectedRef.current = onDetected
 
-  const isSupported = typeof window !== 'undefined' && 'AudioContext' in window && 'WebAssembly' in window
+  const [isListening, setIsListening] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const isSupported =
+    typeof window !== 'undefined' && 'AudioContext' in window && 'WebAssembly' in window
 
   useEffect(() => {
-    if (!enabled || !isSupported) {
+    if (!enabled || !isSupported || engine === 'none') {
       setIsListening(false)
-      return
-    }
-
-    if (!accessKey) {
-      setError('Falta NEXT_PUBLIC_PICOVOICE_ACCESS_KEY')
+      setError(null)
       return
     }
 
     let cancelled = false
-    let porcupine: any = null
-    let processor: any = null
+    let stop: (() => Promise<void> | void) | null = null
 
     async function start() {
       try {
-        const { PorcupineWorker } = await import('@picovoice/porcupine-web')
-        const { WebVoiceProcessor } = await import('@picovoice/web-voice-processor')
-
-        porcupine = await PorcupineWorker.create(
-          accessKey,
-          [{ publicPath: keywordPath, label: 'hola-ona' }],
-          (detection: { label: string }) => {
-            if (!cancelled && detection?.label === 'hola-ona') {
-              onDetectedRef.current()
-            }
-          },
-          { publicPath: SPANISH_MODEL_PATH },
-        )
-
+        if (engine === 'porcupine') {
+          stop = await startPorcupine({
+            accessKey: options.accessKey ?? process.env.NEXT_PUBLIC_PICOVOICE_ACCESS_KEY ?? '',
+            keywordPath: options.keywordPath ?? PORCUPINE_KEYWORD,
+            paramsPath: PORCUPINE_PARAMS,
+            onDetected: () => onDetectedRef.current(),
+          })
+        } else {
+          stop = await startOpenWakeWord({
+            melspecPath: OPENWAKEWORD_MELSPEC,
+            embeddingPath: OPENWAKEWORD_EMBEDDING,
+            modelPath: options.keywordPath ?? OPENWAKEWORD_MODEL,
+            onDetected: () => onDetectedRef.current(),
+          })
+        }
         if (cancelled) {
-          porcupine.terminate?.()
+          await stop?.()
+          stop = null
           return
         }
-
-        processor = WebVoiceProcessor
-        await processor.subscribe(porcupine)
-
-        if (!cancelled) {
-          setIsListening(true)
-          setError(null)
-        }
+        setIsListening(true)
+        setError(null)
       } catch (err: any) {
         if (cancelled) return
         const msg = err?.message || 'No se pudo iniciar la deteccion de voz.'
@@ -90,16 +103,57 @@ export function useWakeWord(options: UseWakeWordOptions): UseWakeWordReturn {
     return () => {
       cancelled = true
       setIsListening(false)
-      ;(async () => {
-        try {
-          if (processor && porcupine) await processor.unsubscribe(porcupine)
-        } catch {}
-        try {
-          porcupine?.terminate?.()
-        } catch {}
-      })()
+      const local = stop
+      stop = null
+      if (local) Promise.resolve(local()).catch(() => {})
     }
-  }, [enabled, isSupported, accessKey, keywordPath])
+  }, [enabled, isSupported, engine, options.accessKey, options.keywordPath])
 
-  return { isListening, isSupported, error }
+  return { isListening, isSupported, error, engine }
+}
+
+/* ── Porcupine ─────────────────────────────────────────────────── */
+
+async function startPorcupine(args: {
+  accessKey: string
+  keywordPath: string
+  paramsPath: string
+  onDetected: () => void
+}): Promise<() => Promise<void>> {
+  if (!args.accessKey) {
+    throw new Error('Falta NEXT_PUBLIC_PICOVOICE_ACCESS_KEY')
+  }
+  const { PorcupineWorker } = await import('@picovoice/porcupine-web')
+  const { WebVoiceProcessor } = await import('@picovoice/web-voice-processor')
+
+  const porcupine = await PorcupineWorker.create(
+    args.accessKey,
+    [{ publicPath: args.keywordPath, label: 'hola-ona' }],
+    (detection: { label: string }) => {
+      if (detection?.label === 'hola-ona') args.onDetected()
+    },
+    { publicPath: args.paramsPath },
+  )
+  await WebVoiceProcessor.subscribe(porcupine)
+
+  return async () => {
+    try {
+      await WebVoiceProcessor.unsubscribe(porcupine)
+    } catch {}
+    try {
+      porcupine.terminate?.()
+    } catch {}
+  }
+}
+
+/* ── openWakeWord ──────────────────────────────────────────────── */
+
+async function startOpenWakeWord(args: {
+  melspecPath: string
+  embeddingPath: string
+  modelPath: string
+  onDetected: () => void
+}): Promise<() => Promise<void>> {
+  const { startOpenWakeWordSession } = await import('@/lib/wakeword/openWakeWord')
+  return startOpenWakeWordSession(args)
 }

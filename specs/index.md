@@ -182,9 +182,9 @@ AI chat assistant, function calling, 30 skills total: menu/recipe reads (get_tod
 
 ## [Voice Mode](./voice-mode.md)
 
-**Status: shipped on master.** Hands-free voice conversation, wake word "Hola Ona" (or floating mic FAB while Picovoice access is missing), always-listening, Picovoice Porcupine (WASM), openWakeWord fallback, OpenAI Realtime API, gpt-realtime, WebRTC, server VAD, turn detection, barge-in, echo cancellation, ephemeral session token, full-screen voice overlay, animated orb, typed Spanish error messages on failure with auto-close, cooking mode, extended silence timeout, conversation persistence into AdvisorChat, skill/tool calling, opt-in toggle (Capítulo 04 del perfil), on-device wake-word detection, daily per-user minutes quota, Spanish.
+**Status: shipped on master.** Hands-free voice conversation, wake word "Hola Ona" (or floating mic FAB while no wake-word model is configured), always-listening, dual wake-word backend (Picovoice Porcupine + openWakeWord ONNX via onnxruntime-web), `NEXT_PUBLIC_WAKE_WORD_ENGINE` selector, AudioWorklet 16 kHz capture, OpenAI Realtime API, gpt-realtime, WebRTC, server VAD, turn detection, barge-in, echo cancellation, ephemeral session token, full-screen voice overlay, animated orb, typed Spanish error messages on failure with auto-close, cooking mode, extended silence timeout, conversation persistence into AdvisorChat, skill/tool calling, opt-in toggle (Capítulo 04 del perfil), on-device wake-word detection, daily per-user minutes quota, Spanish.
 
-**Source**: `apps/web/src/hooks/useWakeWord.ts`, `apps/web/src/hooks/useRealtimeSession.ts`, `apps/web/src/components/voice/`, `apps/web/src/lib/voiceMessages.ts`, `apps/api/src/routes/realtime.ts`, `apps/api/src/services/realtime/`
+**Source**: `apps/web/src/hooks/useWakeWord.ts`, `apps/web/src/lib/wakeword/openWakeWord.ts`, `apps/web/public/wakeword-capture-worklet.js`, `apps/web/src/hooks/useRealtimeSession.ts`, `apps/web/src/components/voice/`, `apps/web/src/lib/voiceMessages.ts`, `apps/api/src/routes/realtime.ts`, `apps/api/src/services/realtime/`, `docs/voice-mode-openwakeword-training.md`
 
 ---
 

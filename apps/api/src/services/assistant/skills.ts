@@ -1,5 +1,5 @@
 import crypto from 'crypto'
-import { and, eq, desc, ilike, or, inArray } from 'drizzle-orm'
+import { and, eq, desc, ilike, or, inArray, isNull } from 'drizzle-orm'
 import {
   menus,
   recipes,
@@ -26,6 +26,7 @@ import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../scopeResolve
 import { importRecipeFromUrl } from '../recipeImport.js'
 import { mealLinesForDay } from '../menuText.js'
 import { madridParts, madridWeekStart } from '../madridTime.js'
+import { appSkills, bestMatch, searchWords } from './appSkills.js'
 import { enqueuePrepAlertsForMenu } from '../notificationScheduler.js'
 import { NotARecipeError } from '../recipeUrlExtractor.js'
 import { NoExtractableContentError } from '../sources/youtube.js'
@@ -512,6 +513,7 @@ const swapMeal: SkillDefinition = {
     // with the same word.
     if (params.recipeId || params.recipeName) {
       let chosen: { id: string; name: string } | null = null
+      let approximate = false
       if (params.recipeId) {
         const [row] = await db
           .select({ id: recipes.id, name: recipes.name })
@@ -520,18 +522,38 @@ const swapMeal: SkillDefinition = {
           .limit(1)
         chosen = row ?? null
       } else if (params.recipeName) {
+        // Only the ONA catalogue + the user's own recipes — never another
+        // user's private ones.
+        const visible = or(isNull(recipes.authorId), eq(recipes.authorId, userId))
         const candidates = await db
           .select({ id: recipes.id, name: recipes.name, authorId: recipes.authorId })
           .from(recipes)
-          .where(ilike(recipes.name, `%${params.recipeName}%`))
+          .where(and(visible, ilike(recipes.name, `%${params.recipeName}%`)))
           .limit(20)
         const owned = candidates.find((c: { authorId: string | null }) => c.authorId === userId)
         chosen = owned ?? candidates[0] ?? null
+        if (!chosen) {
+          // Resolutive fallback: "filete de vaca" → closest real recipe
+          // ("Entrecot a la plancha") instead of giving up.
+          const words = searchWords(params.recipeName)
+          if (words.length > 0) {
+            const loose = await db
+              .select({ id: recipes.id, name: recipes.name, authorId: recipes.authorId })
+              .from(recipes)
+              .where(and(visible, or(...words.map((w) => ilike(recipes.name, `%${w}%`)))))
+              .limit(50)
+            const best = bestMatch(loose, params.recipeName, (c: { name: string }) => c.name) ?? loose[0] ?? null
+            if (best) {
+              chosen = best
+              approximate = true
+            }
+          }
+        }
       }
       if (!chosen) {
         return {
           data: null,
-          summary: `No he encontrado la receta "${params.recipeName ?? params.recipeId}".`,
+          summary: `No he encontrado ninguna receta parecida a "${params.recipeName ?? params.recipeId}"; no he cambiado nada.`,
           uiHint: 'text',
         }
       }
@@ -545,7 +567,9 @@ const swapMeal: SkillDefinition = {
       const mealEs = meal === 'breakfast' ? 'desayuno' : meal === 'lunch' ? 'comida' : meal === 'dinner' ? 'cena' : meal
       return {
         data: updatedManual,
-        summary: `Hecho. He puesto "${chosen.name}" en el ${mealEs} del ${dayNames[dayIndex]}.`,
+        summary: approximate
+          ? `Hecho. No habia "${params.recipeName}" en el catalogo; he puesto lo mas parecido, "${chosen.name}", en el ${mealEs} del ${dayNames[dayIndex]}.`
+          : `Hecho. He puesto "${chosen.name}" en el ${mealEs} del ${dayNames[dayIndex]}.`,
         uiHint: 'menu',
       }
     }
@@ -2075,6 +2099,8 @@ export const skills: SkillDefinition[] = [
   updateMemory,
   // WhatsApp channel 2026-10:
   importRecipeFromUrlSkill,
+  // UI parity (everything the app can do, from chat) — appSkills.ts:
+  ...appSkills,
 ]
 
 /**

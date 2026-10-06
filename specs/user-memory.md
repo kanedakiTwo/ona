@@ -99,3 +99,7 @@ The `update_memory` skill (declared in `assistant/skills.ts`) takes a `facts: Ar
 - [apps/web/src/app/onboarding/voz/page.tsx](../apps/web/src/app/onboarding/voz/page.tsx) — voice-onboarding landing page; opens a Realtime session with `mode: 'onboarding'` and watches transcripts for the closing line
 - [apps/web/src/app/profile/creencias/page.tsx](../apps/web/src/app/profile/creencias/page.tsx) — nutritional-beliefs editor; shows ONA defaults + lets the user add custom principles
 - [apps/api/src/services/assistant/systemPrompt.ts](../apps/api/src/services/assistant/systemPrompt.ts) — `AssistantMode = 'text' | 'voice' | 'onboarding'`; the onboarding branch carries the 12-step conversation script
+
+## Digest wording for dislikes
+
+The digest renders dislikes as "Le disgustan (evitalos al proponer; si el usuario pide algo explicitamente, hazlo): …". They steer what the assistant *proposes*, but never veto an explicit request. In 2026-10, an onboarding-inferred "vacuno" dislike made the assistant refuse "pon filete de vaca el jueves".

@@ -173,7 +173,9 @@ export function buildMemoryDigestText(memory: UserMemory): string {
   if (restr.length > 0) lines.push(`Restricciones: ${restr.join(', ')}.`)
 
   const dislikes = (m.dislikes?.value as string[] | undefined) ?? []
-  if (dislikes.length > 0) lines.push(`Le disgustan: ${dislikes.join(', ')}.`)
+  // Guidance for what to PROPOSE — not a veto: an explicit request from the
+  // user ("pon filete de vaca el jueves") always wins over a stored dislike.
+  if (dislikes.length > 0) lines.push(`Le disgustan (evitalos al proponer; si el usuario pide algo explicitamente, hazlo): ${dislikes.join(', ')}.`)
 
   const eq = (m.equipment?.value as string[] | undefined) ?? []
   if (eq.length > 0) lines.push(`Equipo de cocina: ${eq.join(', ')}.`)

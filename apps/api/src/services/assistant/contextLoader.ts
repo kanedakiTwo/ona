@@ -1,8 +1,11 @@
-import { eq, desc } from 'drizzle-orm'
+import { and, eq, desc } from 'drizzle-orm'
 import { users, menus, userNutrientBalance } from '../../db/schema.js'
 import { nutrientsToPercentages, TARGET_MACROS } from '@ona/shared'
 import type { NutrientBalance } from '@ona/shared'
 import { buildMemoryDigest } from '../userMemoryStore.js'
+import { madridParts, mondayOf } from '../madridTime.js'
+import { mealLinesForDay } from '../menuText.js'
+import { resolveScope, scopeWhere } from '../scopeResolver.js'
 
 /**
  * Load lightweight user context for the assistant system prompt.
@@ -19,6 +22,13 @@ export async function loadUserContext(userId: string, db: any): Promise<string> 
     .limit(1)
 
   if (!user) return 'Usuario no encontrado.'
+
+  // Today in Madrid — the model needs it for "hoy", "mañana", "el jueves".
+  const now = madridParts(new Date())
+  const dayNamesLong = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo']
+  parts.push(
+    `Hoy es ${dayNamesLong[now.weekday]} ${now.isoDate} (dayIndex ${now.weekday}), son las ${String(now.hour).padStart(2, '0')}:${String(now.minute).padStart(2, '0')} en Madrid.`,
+  )
 
   const profileParts = [`Usuario: ${user.username}`]
   if (user.age) profileParts.push(`${user.age} anos`)
@@ -77,11 +87,14 @@ export async function loadUserContext(userId: string, db: any): Promise<string> 
     parts.push(`Platos favoritos: ${user.favoriteDishes.join(', ')}`)
   }
 
-  // ── Current menu summary ──────────────────────────────────
+  // ── This week's menu (Madrid week, household-aware) ─────────
+  // Read from `dishes[]` (multi-dish slots); the old `slot.recipeName` shape
+  // left this block empty for every menu since the multi-dish migration.
+  const weekStart = mondayOf(now.isoDate, now.weekday)
   const [currentMenu] = await db
     .select()
     .from(menus)
-    .where(eq(menus.userId, userId))
+    .where(and(scopeWhere(menus.userId, menus.householdId, await resolveScope(userId, db)), eq(menus.weekStart, weekStart)))
     .orderBy(desc(menus.createdAt))
     .limit(1)
 
@@ -89,20 +102,15 @@ export async function loadUserContext(userId: string, db: any): Promise<string> 
     const days = currentMenu.days as any[]
     const dayNames = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom']
     const menuLines: string[] = []
-
     for (let i = 0; i < days.length; i++) {
-      const day = days[i]
-      const meals = Object.entries(day)
-        .filter(([, slot]: any) => slot?.recipeName)
-        .map(([meal, slot]: any) => `${meal}=${slot.recipeName}`)
-      if (meals.length > 0) {
-        menuLines.push(`  ${dayNames[i] ?? `D${i + 1}`}: ${meals.join(', ')}`)
-      }
+      const lines = mealLinesForDay(days[i])
+      if (lines.length > 0) menuLines.push(`  ${dayNames[i] ?? `D${i + 1}`} (dayIndex ${i}): ${lines.join('; ')}`)
     }
-
     if (menuLines.length > 0) {
-      parts.push(`Menu actual (semana ${currentMenu.weekStart}):\n${menuLines.join('\n')}`)
+      parts.push(`Menu de esta semana (${weekStart}):\n${menuLines.join('\n')}`)
     }
+  } else {
+    parts.push(`No hay menu para esta semana (${weekStart}).`)
   }
 
   // ── Nutrient balance ──────────────────────────────────────

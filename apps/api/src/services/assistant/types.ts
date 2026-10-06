@@ -8,6 +8,11 @@ export interface SkillDefinition {
 export interface SkillContext {
   userId: string
   db: any
+  /**
+   * The app's own REST API, called as this user (see appApi.ts). Skills built
+   * on it get exactly the UI's behaviour and permissions. Tests inject a fake.
+   */
+  api?: import('./appApi.js').AppApi
 }
 
 export interface SkillResult {

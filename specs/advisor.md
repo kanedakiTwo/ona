@@ -54,6 +54,41 @@ The assistant can call back-end skills (function calling). Each skill has a name
 - `set_timer` — emit a `cooking_timer` hint that `CookingShell` consumes via `subscribeCookingCommands` to start a timer at the current step
 - `cooking_step` — emit a `cooking_step` hint with `direction: 'next' | 'previous' | 'repeat'` to advance the cooking shell
 
+**UI-parity skills** (`services/assistant/appSkills.ts`, 2026-10). The goal is that anything the web app can do is reachable from chat. These skills call the app's own REST API as the user (`appApi.ts`: loopback + a 5-min JWT), so validation, side effects and permissions match the UI exactly.
+- **Menu:**
+  - `set_meal_note`: "el sábado cenamos fuera" (replaces the slot's dishes with a note by default).
+  - `clear_meal`, `set_day_skipped` (day without cooking / back on).
+  - `add_dish`, `remove_dish`: multi-dish slots.
+  - `set_meal_servings`, `lock_meal`, `move_meal` (move/swap slots).
+  - `ban_recipe_this_week`.
+  - `set_leftovers`.
+- **Shopping:** `add_shopping_items` (units normalised to g/ml/u/cda/cdita), `remove_shopping_items`, `regenerate_shopping_list`, `manage_staples`.
+- **Pantry:** `list_pantry`, `update_pantry` (add/set/remove, expiry).
+- **Recipes:**
+  - `log_cooked` (cook log + pantry decrement).
+  - `update_recipe_notes`: rating, notes appended, substitutions, tags.
+  - `delete_recipe`: own recipes only; the prompt asks for confirmation first.
+  - `manage_cookbook`, `regenerate_recipe_image`.
+- **Profile:**
+  - `update_profile`: restrictions add/remove, priority, physical data.
+  - `update_weekly_template`: diners per meal/day, dishes per meal.
+  - `invite_to_household`: returns the invite link.
+- **Conventions:**
+  - Menu skills take `dayIndex` (0 = lunes) + `meal`, plus `nextWeek` to target next week.
+  - Named recipes resolve fuzzily (`bestMatch`, Spanish stopwords ignored, culinary synonyms such as vaca→ternera/entrecot).
+  - "Las lentejas" prefers the dish in this week's menu.
+  - A lookup that finds nothing says so; it is never a silent no-op.
+- `swap_meal` with a recipe name that doesn't exist now pins the closest catalogue recipe and says so. It only searches the ONA catalogue plus the user's own recipes; previously the name lookup could match another user's private recipe.
+
+**Decisiveness (resolutive mode).**
+- The prompt tells the model to do everything a message asks in the same turn, with parallel tool calls and up to `MAX_TOOL_ROUNDS = 6`.
+- It doesn't ask permission for reversible changes; it confirms only destructive or bulk ones.
+- An explicit request beats a stored dislike or restriction. The memory digest now reads "Le disgustan (evítalos al proponer; si el usuario pide algo explícitamente, hazlo)".
+- If a week has no menu yet, the model generates one and then applies the changes.
+- Backstop: a turn that ran no tool and answers "no puedo…" (`refusesAction`) gets one corrective round, just like an unverified "hecho" claim. Found on 2026-10-06, when "jueves filete de vaca + sábado cenamos fuera" was refused over a wrongly inferred "vacuno" dislike.
+- The user context now includes **today's date and time in Madrid** with its dayIndex, plus **this week's menu** read from `dishes[]`. Before, it read the legacy `slot.recipeName` and was always empty.
+- The card or app link comes from the most visual skill of the turn (menu/list/recipe > nutrition > confirmation > text).
+
 The cooking-mode skills (`start_cooking_mode`, `set_timer`, `cooking_step`) are bridged to the `CookingShell` UI via [`apps/web/src/lib/cookingCommands.ts`](../apps/web/src/lib/cookingCommands.ts) — a tiny pub/sub bus subscribed to from `CookingShell`. If no shell is mounted, commands silently drop (the assistant still spoke the confirmation).
 
 The model responds with either a plain text message or tool calls. `runToolLoop` (engine.ts) executes **every** `tool_use` block of a response (parallel calls are answered in one user message, failures flagged `is_error`) and loops for up to `MAX_TOOL_ROUNDS = 4` rounds — so "genera el menú y dime qué toca hoy" runs both skills in one turn. The round after the last is sent with `tool_choice: none` to force a text answer. The response's `skillUsed`/`uiHint`/`data` come from the last skill with a non-`text` uiHint (falling back to the last skill), so the web still renders one card per turn.
@@ -143,6 +178,7 @@ At `lg+` the `/advisor` page widens its outer container to `max-w-[900px]` so th
 - [apps/api/src/routes/advisor.ts](../apps/api/src/routes/advisor.ts) — legacy advisor routes (summary, ask)
 - [apps/api/src/services/assistant/engine.ts](../apps/api/src/services/assistant/engine.ts) — `chat()` + `runToolLoop` (multi-round tools, hallucinated-action guard); tests in `apps/api/src/tests/assistantToolLoop.test.ts`
 - [apps/api/src/services/assistant/skills.ts](../apps/api/src/services/assistant/skills.ts) — skill definitions
+- [apps/api/src/services/assistant/appSkills.ts](../apps/api/src/services/assistant/appSkills.ts) + [appApi.ts](../apps/api/src/services/assistant/appApi.ts) — UI-parity skills over the app's REST API; tests in `apps/api/src/tests/appSkills.test.ts`
 - [apps/api/src/services/assistant/contextLoader.ts](../apps/api/src/services/assistant/contextLoader.ts)
 - [apps/api/src/services/assistant/systemPrompt.ts](../apps/api/src/services/assistant/systemPrompt.ts)
 - [apps/api/src/services/providers/](../apps/api/src/services/providers/) — LLM integration

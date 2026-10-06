@@ -146,7 +146,7 @@ describe('buildMemoryDigestText', () => {
       equipment: { key: 'equipment', value: ['horno', 'freidora de aire'], source: 'onboarding', confidence: 1, updatedAt: '' },
     }
     const out = buildMemoryDigestText(memory)
-    expect(out).toContain('Le disgustan: cilantro, hígado')
+    expect(out).toContain('Le disgustan (evitalos al proponer; si el usuario pide algo explicitamente, hazlo): cilantro, hígado')
     expect(out).toContain('Restricciones: sin gluten')
     expect(out).toContain('Equipo de cocina: horno, freidora de aire')
   })

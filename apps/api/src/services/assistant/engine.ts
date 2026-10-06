@@ -95,11 +95,12 @@ export async function chat(
 /** Model used by the text assistant. `advisorBudget.ts` prices its tokens. */
 export const ASSISTANT_MODEL = 'claude-haiku-4-5-20251001'
 /**
- * Tool rounds per turn. "Genera el menú y mándame la lista de la compra" is
- * two; four leaves room for a lookup before an action. The round after the
+ * Tool rounds per turn (each round can run several tools in parallel).
+ * "Cambia el jueves, el sábado cenamos fuera y apunta leche" plus a lookup
+ * or two fits comfortably in six. The round after the
  * last one runs with `tool_choice: none` so the model must answer in text.
  */
-export const MAX_TOOL_ROUNDS = 4
+export const MAX_TOOL_ROUNDS = 6
 
 type MessagesClient = { messages: { create: (args: any) => Promise<any> } }
 
@@ -149,11 +150,15 @@ export async function runToolLoop(params: {
       // no tool this turn. Give it one corrective round to either call the
       // tool or tell the truth — a false "listo" is worse than a slow answer,
       // especially on WhatsApp where there's no screen to notice it.
-      if (!claimCheckDone && executed.length === 0 && round < maxRounds && claimsAction(text)) {
+      // Same one-shot nudge when it gives up without trying ("no puedo
+      // cambiar eso porque…") — usually a stored dislike or a missing lookup,
+      // both of which the tools can handle.
+      const claim = claimsAction(text)
+      if (!claimCheckDone && executed.length === 0 && round < maxRounds && (claim || refusesAction(text))) {
         claimCheckDone = true
-        console.warn('[assistant] unverified action claim — asking the model to act or correct itself')
+        console.warn(`[assistant] ${claim ? 'unverified action claim' : 'refusal without trying'} — one corrective round`)
         messages.push({ role: 'assistant', content: content as any })
-        messages.push({ role: 'user', content: UNVERIFIED_ACTION_CORRECTION })
+        messages.push({ role: 'user', content: claim ? UNVERIFIED_ACTION_CORRECTION : REFUSAL_CORRECTION })
         continue
       }
       return buildResponse(text, executed, usage)
@@ -207,13 +212,23 @@ export function claimsAction(text: string): boolean {
   return ACTION_CLAIM_RE.test(text)
 }
 
+const REFUSAL_RE = /\bno\s+(?:puedo|podemos|es posible|he podido|se puede)\b/i
+
+export function refusesAction(text: string): boolean {
+  return REFUSAL_RE.test(text)
+}
+
+export const REFUSAL_CORRECTION =
+  '[Nota del sistema, no la menciones] Has dicho que no puedes sin haber llamado a ninguna herramienta. Lo que el usuario pide explicitamente manda sobre gustos, disgustos o restricciones guardados. Si alguna herramienta puede hacer lo que pide (cambiar platos, notas, lista, despensa, perfil…), llamala ahora y haz TODO lo que pidio. Solo si de verdad no existe herramienta para ello, explicalo en una linea.'
+
 export const UNVERIFIED_ACTION_CORRECTION =
   '[Nota del sistema, no la menciones] Tu respuesta afirma que has hecho un cambio, pero en este turno no has llamado a ninguna herramienta. Si solo estabas recordando algo que ya se hizo en un turno anterior de la conversacion, NO lo repitas ni llames a ninguna herramienta: vuelve a escribir tu respuesta tal cual. Si el usuario acaba de pedir un cambio, llama ahora a la herramienta adecuada. Si no es posible (por ejemplo, la receta no existe en el catalogo), dile la verdad y ofrece una alternativa real.'
 
 /**
- * The web client renders one card per turn from `uiHint` + `data`, so pick the
- * most visual skill result (the last non-`text` one) — "genera el menú y dime
- * qué toca hoy" should show the menu, not the plain-text lookup after it.
+ * The web client renders one card per turn from `uiHint` + `data` (and
+ * WhatsApp derives its app link from it), so pick the most visual skill result
+ * — "genera el menú y dime qué toca hoy" should show the menu, not the
+ * plain-text lookup after it.
  */
 function buildResponse(
   text: string,
@@ -223,9 +238,15 @@ function buildResponse(
   if (executed.length === 0) {
     return { message: text || 'No he podido generar una respuesta.', actionTaken: false, usage }
   }
-  const primary =
-    [...executed].reverse().find((e) => e.result.uiHint && e.result.uiHint !== 'text') ??
-    executed[executed.length - 1]
+  // Most visual wins (menu / list / recipe / cooking > nutrition >
+  // confirmation > text); among equals, the latest. So "cambia el jueves y
+  // recuerda que como vacuno" still links the menu, not the memory update.
+  const rank = (hint?: string) =>
+    hint === 'menu' || hint === 'shopping_list' || hint === 'recipe' || hint?.startsWith('cooking_') ? 3
+      : hint === 'nutrition' ? 2
+      : hint === 'confirmation' ? 1
+      : 0
+  const primary = executed.reduce((best, e) => (rank(e.result.uiHint) >= rank(best.result.uiHint) ? e : best))
   return {
     message: text || primary.result.summary,
     skillUsed: primary.name,

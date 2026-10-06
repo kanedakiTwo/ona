@@ -182,3 +182,38 @@ describe('onToolStart hook', () => {
     expect(order).toEqual(['start:generate_weekly_menu', 'run:generate_weekly_menu'])
   })
 })
+
+describe('refusal-without-trying guard', () => {
+  it('gives one corrective round when the model refuses without calling any tool', async () => {
+    const { REFUSAL_CORRECTION } = await import('../services/assistant/engine.js')
+    const swap = skill('swap_meal', 'menu')
+    const note = skill('set_meal_note', 'menu')
+    const f = fakeClient([
+      text('No puedo cambiar la comida del jueves por filete de vaca porque te disgusta el vacuno.'),
+      tools({ id: 'a', name: 'swap_meal' }, { id: 'b', name: 'set_meal_note' }),
+      text('Hecho:\n- Jueves comida: Entrecot\n- Sábado cena: Cenamos fuera'),
+    ])
+    const r = await runToolLoop(base(f.client, [swap, note]))
+    expect(f.calls[1].messages.at(-1).content).toBe(REFUSAL_CORRECTION)
+    expect(swap.handler).toHaveBeenCalledOnce()
+    expect(note.handler).toHaveBeenCalledOnce()
+    expect(r.message).toMatch(/^Hecho:/)
+  })
+
+  it('detects refusals but not ordinary sentences', async () => {
+    const { refusesAction } = await import('../services/assistant/engine.js')
+    expect(refusesAction('No puedo hacer esos cambios.')).toBe(true)
+    expect(refusesAction('No es posible cambiarlo.')).toBe(true)
+    expect(refusesAction('Puedo proponerte otra cosa.')).toBe(false)
+  })
+})
+
+describe('primary skill for the card / app link', () => {
+  it('prefers menu/list/recipe over confirmation and text, latest among equals', async () => {
+    const swap = skill('swap_meal', 'menu', { day: 3 })
+    const mem = skill('update_memory', 'confirmation')
+    const f = fakeClient([tools({ id: 'a', name: 'swap_meal' }, { id: 'b', name: 'update_memory' }), text('Hecho.')])
+    const r = await runToolLoop(base(f.client, [swap, mem]))
+    expect(r).toMatchObject({ skillUsed: 'swap_meal', uiHint: 'menu', data: { day: 3 } })
+  })
+})

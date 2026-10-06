@@ -39,6 +39,8 @@ import {
   sendPushToUser,
   PushNotConfiguredError,
 } from './pushNotifier.js'
+import { deliverAlertOverWhatsApp, runProactiveTick } from './whatsapp/outbound.js'
+import { combineDelivery, type ChannelOutcome } from './whatsapp/proactive.js'
 
 // ─── Habit → method matcher ─────────────────────────────────────
 //
@@ -319,22 +321,39 @@ export async function tickScheduler(): Promise<void> {
       ),
     )
 
+  // Each due alert goes out over Web Push AND WhatsApp (when the user linked
+  // a phone and opted into "Avisos por WhatsApp"). Sent if either delivered.
   for (const row of due) {
+    let push: ChannelOutcome
     try {
       await sendPushToUser(row.userId, row.payload)
-      await db
-        .update(notificationSchedule)
-        .set({ status: 'sent', sentAt: new Date() })
-        .where(eq(notificationSchedule.id, row.id))
+      push = { status: 'ok' }
     } catch (err: any) {
-      const msg = err instanceof PushNotConfiguredError
-        ? 'push-not-configured'
-        : String(err?.message ?? err).slice(0, 500)
-      await db
-        .update(notificationSchedule)
-        .set({ status: 'failed', sentAt: new Date(), errorMessage: msg })
-        .where(eq(notificationSchedule.id, row.id))
+      push = {
+        status: 'error',
+        error: err instanceof PushNotConfiguredError
+          ? 'push-not-configured'
+          : String(err?.message ?? err).slice(0, 500),
+      }
     }
+    let whatsapp: ChannelOutcome
+    try {
+      whatsapp = await deliverAlertOverWhatsApp(row.userId, row.payload, now)
+    } catch (err: any) {
+      whatsapp = { status: 'error', error: String(err?.message ?? err).slice(0, 300) }
+    }
+    const { status, errorMessage } = combineDelivery(push, whatsapp)
+    await db
+      .update(notificationSchedule)
+      .set({ status, sentAt: new Date(), errorMessage })
+      .where(eq(notificationSchedule.id, row.id))
+  }
+
+  // WhatsApp daily brief + Sunday menu nudge (no-op when not configured).
+  try {
+    await runProactiveTick(now)
+  } catch (err) {
+    console.error('[notificationScheduler] whatsapp proactive tick failed:', err)
   }
 }
 

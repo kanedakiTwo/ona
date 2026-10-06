@@ -53,7 +53,10 @@ export function renderAssistantReply(
   const { text: rawText, options } = extractOptions(resp.message ?? '')
   let text = toWhatsAppMarkup(rawText)
   const link = appLinkFor(resp, webUrl)
-  if (link) text = text ? `${text}\n\n${link}` : link
+  // History stores replies with their link line, so the model sometimes
+  // copies it into its own text — don't add it twice.
+  const linkUrl = link?.match(/https?:\/\/\S+/)?.[0]
+  if (link && !(linkUrl && text.includes(linkUrl))) text = text ? `${text}\n\n${link}` : link
   if (!text) text = 'Hecho.'
 
   if (options.length === 0) {

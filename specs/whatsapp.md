@@ -5,7 +5,7 @@ Talk to the ONA assistant from WhatsApp. WhatsApp is another way to reach the sa
 ## User Capabilities
 
 - Users can connect their WhatsApp from `/profile` → chapter "08 · Ona en WhatsApp" → "Conectar WhatsApp". This mints a one-time code, shown as "Vincular ONA: 4F7K2A", and an "Abrir WhatsApp" `wa.me` link with that message prefilled. When the user sends it from their phone, the account is linked; the card polls every 3 s and flips to "WhatsApp conectado".
-- Linked users see their masked number (`+34 ••• ••• 222`), an "Abrir chat con Ona" link, an "Avisos por WhatsApp" toggle and "Desconectar", which asks for confirmation first.
+- Linked users see their masked number (`+34 ••• ••• 222`), an "Abrir chat con Ona" link, an "Avisos por WhatsApp" toggle (see Proactive messages) and "Desconectar", which asks for confirmation first.
 - Linked users can text the assistant anything they'd type in `/advisor`: what's on today's menu, swap a meal, the shopping list, mark items bought, nutrition questions, create recipes, etc. Replies are short WhatsApp-style messages. When something is visual, the reply ends with a deep link into the app: `Ver menú: …/menu`, `Ver lista de la compra: …/shopping`, `Ver receta: …/recipes/:id`, `Modo cocina: …/recipes/:id/cook`.
 - Yes/no and short-choice questions arrive as native WhatsApp reply buttons (max 3). Tapping one is the same as typing its label.
 - Conversation context carries across messages: the server rebuilds the last 20 messages from the last 12 h, so "y el jueves?" works after "¿qué ceno el miércoles?".
@@ -15,6 +15,21 @@ Talk to the ONA assistant from WhatsApp. WhatsApp is another way to reach the sa
 - Users can **send a photo of a recipe** (cookbook page, handwritten card, screenshot). It is extracted with the existing photo extractor and **saved directly** (soft lint, tags `auto-extracted`/`from-photo`; caption kept as context in history). Reply: "He guardado *<nombre>* en tus recetas" + link, plus a "revisa los ingredientes" nudge when some weren't matched to the catalogue. Photos with no recipe get "No he encontrado ninguna receta en esa foto…". History records `[Foto de una receta: <caption>]`, so "ponla el jueves para cenar" works next.
 - One message can trigger several actions ("genérame el menú y dime qué ceno hoy") — the engine runs up to 4 tool rounds per turn (see [Advisor](./advisor.md)).
 - Sending a sticker, location or other unsupported type gets a polite "todavía no entiendo ese tipo de mensaje".
+
+## Proactive messages ("Avisos por WhatsApp")
+
+When the toggle is on (default after linking), ONA writes first:
+
+- **Daily brief** at the user's breakfast time (`user_memories.meal_times.breakfast`, default 09:00 Europe/Madrid), for a 90-minute window. It lists today's lunch and dinner from **this week's** menu ("Buenos días. Hoy toca: - Comida: … - Cena: … ¿Quieres cambiar algo?" plus a menu link). If the day is empty, nothing is sent. At most one brief per 20 h.
+- **Sunday nudge**, Sunday 18:00–21:59 Madrid, only when next week has no menu: "Domingo de planificar: ¿te preparo el menú de la semana que viene?" with buttons [Sí, prepáralo] [Ahora no]. At most one every 3 days. The nudge is stored in history, so tapping "Sí, prepáralo" makes the assistant call `generate_weekly_menu` with `nextWeek: true`.
+- **Prep alerts** from `notification_schedule` ("Acuérdate: Merluza — sácalo del congelador 24 h antes" plus a link) go out over Web Push **and** WhatsApp. A row becomes `sent` when either channel delivers (`combineDelivery`). With no push subscription and no linked WhatsApp, the old `push-not-configured` failure is kept.
+
+Delivery follows Meta's 24 h customer-service window, measured from `last_inbound_at` with a 30-min safety margin:
+- **Inside the window:** free-form messages with buttons.
+- **Outside the window:** the approved template `WHATSAPP_TEMPLATE_NAME` (language `WHATSAPP_TEMPLATE_LANG`, default `es`), whose single `{{1}}` body variable carries the message flattened to one line. Buttons are folded in as "Responde: Sí / No.", because Meta rejects newlines in template parameters.
+- **Outside the window with no template:** skipped silently and retried on the next tick while the time window is still open.
+
+Everything runs inside the existing 5-minute `notificationScheduler` tick (`runProactiveTick`). It's a no-op when WhatsApp isn't configured.
 
 ## Linking
 
@@ -65,7 +80,7 @@ Talk to the ONA assistant from WhatsApp. WhatsApp is another way to reach the sa
 
 - Required: `WHATSAPP_ACCESS_TOKEN` (permanent System User token with `whatsapp_business_messaging`), `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`.
 - Recommended: `WHATSAPP_DISPLAY_NUMBER` (the sender's number as digits, for `wa.me` links), `WHATSAPP_ALLOWED_EMAILS` (comma-separated ONA emails; empty means everyone), `WEB_PUBLIC_URL` (base for deep links; defaults to the Railway web URL).
-- Optional: `WHATSAPP_GRAPH_VERSION` (default `v26.0`) and `WHATSAPP_GRAPH_BASE_URL`, which local E2E points at a mock server.
+- Optional: `WHATSAPP_TEMPLATE_NAME` + `WHATSAPP_TEMPLATE_LANG` (proactive messages outside the 24 h window; template body must have one `{{1}}` and not start or end with it, e.g. "Aviso de ONA: {{1}} Respóndeme por aquí si quieres cambiar algo."), `WHATSAPP_GRAPH_VERSION` (default `v26.0`) and `WHATSAPP_GRAPH_BASE_URL`, which local E2E points at a mock server.
 - Meta dashboard webhook: `https://ona-api-production.up.railway.app/whatsapp/webhook`, subscribed to the `messages` field.
 
 ## Constraints
@@ -94,4 +109,4 @@ Talk to the ONA assistant from WhatsApp. WhatsApp is another way to reach the sa
 - [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts): `whatsappLinks`, `whatsappLinkCodes`, `whatsappMessages`; [migration 0030](../apps/api/src/db/migrations/0030_whatsapp.sql).
 - [apps/api/src/config/env.ts](../apps/api/src/config/env.ts): `WHATSAPP_*`, `WEB_PUBLIC_URL`.
 - [apps/web/src/components/profile/WhatsAppCard.tsx](../apps/web/src/components/profile/WhatsAppCard.tsx), [apps/web/src/hooks/useWhatsApp.ts](../apps/web/src/hooks/useWhatsApp.ts), [apps/web/src/app/profile/page.tsx](../apps/web/src/app/profile/page.tsx) (chapter 08).
-- Tests: `apps/api/src/tests/whatsappWebhook.test.ts`, `whatsappFormat.test.ts`, `whatsappInbound.test.ts`; `apps/web/e2e/whatsapp-link.spec.ts`.
+- Tests: `apps/api/src/tests/whatsappWebhook.test.ts`, `whatsappFormat.test.ts`, `whatsappInbound.test.ts`, `whatsappProactive.test.ts`; `apps/web/e2e/whatsapp-link.spec.ts`.

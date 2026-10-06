@@ -1,5 +1,5 @@
 import crypto from 'crypto'
-import { eq, desc, ilike, or, inArray } from 'drizzle-orm'
+import { and, eq, desc, ilike, or, inArray } from 'drizzle-orm'
 import {
   menus,
   recipes,
@@ -24,17 +24,19 @@ import { updateBalance } from '../nutrientBalance.js'
 import { getSummary } from '../advisor.js'
 import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../scopeResolver.js'
 import { importRecipeFromUrl } from '../recipeImport.js'
+import { mealLinesForDay } from '../menuText.js'
+import { enqueuePrepAlertsForMenu } from '../notificationScheduler.js'
 import { NotARecipeError } from '../recipeUrlExtractor.js'
 import { NoExtractableContentError } from '../sources/youtube.js'
 import type { SkillDefinition, SkillContext, SkillResult } from './types.js'
 
 // ─── Helper: get current week start (Monday) ───────────────
-function getWeekStart(): string {
+function getWeekStart(offsetWeeks = 0): string {
   const now = new Date()
   const day = now.getDay()
   const diff = day === 0 ? -6 : 1 - day // Monday = 1
   const monday = new Date(now)
-  monday.setDate(now.getDate() + diff)
+  monday.setDate(now.getDate() + diff + offsetWeeks * 7)
   return monday.toISOString().slice(0, 10)
 }
 
@@ -88,13 +90,19 @@ const getTodaysMenu: SkillDefinition = {
   },
   async handler(params: { dayIndex?: number }, ctx: SkillContext): Promise<SkillResult> {
     const { userId, db } = ctx
+    const scope = scopeWhere(menus.userId, menus.householdId, await resolveScope(userId, db))
 
-    const [menu] = await db
+    // Prefer THIS week's menu: once next week's menu exists (e.g. generated
+    // on Sunday), "the latest menu" would answer today with next week's day.
+    const [currentWeek] = await db
       .select()
       .from(menus)
-      .where(scopeWhere(menus.userId, menus.householdId, await resolveScope(userId, db)))
+      .where(and(scope, eq(menus.weekStart, getWeekStart())))
       .orderBy(desc(menus.createdAt))
       .limit(1)
+    const [menu] = currentWeek
+      ? [currentWeek]
+      : await db.select().from(menus).where(scope).orderBy(desc(menus.createdAt)).limit(1)
 
     if (!menu) {
       return { data: null, summary: 'No tienes ningun menu generado todavia.', uiHint: 'text' }
@@ -115,9 +123,9 @@ const getTodaysMenu: SkillDefinition = {
 
     const dayNames = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo']
     const day = days[dayIndex]
-    const meals = Object.entries(day)
-      .filter(([, slot]: any) => slot?.recipeName)
-      .map(([meal, slot]: any) => `${meal}: ${slot.recipeName}`)
+    // Slots hold `dishes[]` since the multi-dish migration — reading the old
+    // `slot.recipeName` made every day look empty ("no hay comidas").
+    const meals = mealLinesForDay(day)
 
     const summary = meals.length > 0
       ? `Menu del ${dayNames[dayIndex]}: ${meals.join(', ')}`
@@ -395,15 +403,17 @@ const searchRecipes: SkillDefinition = {
 
 const generateWeeklyMenu: SkillDefinition = {
   name: 'generate_weekly_menu',
-  description: 'Genera un nuevo menu semanal completo y lo guarda. Usa esto cuando el usuario pida un nuevo menu.',
+  description: 'Genera un nuevo menu semanal completo y lo guarda. Usa esto cuando el usuario pida un nuevo menu. Con nextWeek=true lo genera para la semana que viene (por ejemplo si el usuario dice "la semana que viene" o acepta la propuesta del domingo).',
   parameters: {
     type: 'object',
-    properties: {},
+    properties: {
+      nextWeek: { type: 'boolean', description: 'true para generar el menu de la semana que viene en lugar de la actual.' },
+    },
     required: [],
   },
-  async handler(_params: {}, ctx: SkillContext): Promise<SkillResult> {
+  async handler(params: { nextWeek?: boolean }, ctx: SkillContext): Promise<SkillResult> {
     const { userId, db } = ctx
-    const weekStart = getWeekStart()
+    const weekStart = getWeekStart(params?.nextWeek === true ? 1 : 0)
 
     const { days } = await generateMenu(userId, weekStart, undefined, db)
 
@@ -429,6 +439,11 @@ const generateWeeklyMenu: SkillDefinition = {
     })
 
     await updateBalance(userId, aggregatedNutrients, db)
+
+    // Same prep-alert enqueue as POST /menu/generate (opt-in by prep_habits).
+    enqueuePrepAlertsForMenu(menu.id).catch((err) => {
+      console.warn('[assistant.generate_weekly_menu] enqueuePrepAlertsForMenu failed:', err)
+    })
 
     // Build summary
     const dayNames = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo']

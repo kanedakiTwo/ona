@@ -21,13 +21,13 @@ AI assistant for nutrition guidance, menu queries, and recipe management via nat
 
 The assistant can call back-end skills (function calling). Each skill has a name, description, JSON schema parameters, and an executor. Current skills:
 
-- `get_todays_menu` — read the menu for today (or any day index 0–6)
+- `get_todays_menu` — read the menu for today (or any day index 0–6). Prefers **this week's** menu (falls back to the latest) and lists every dish of each slot from `dishes[]`, recipes and notes, e.g. "comida: Lentejas + Ensalada, cena: Cenamos fuera" (via `services/menuText.ts`). Fixes the pre-2026-10 bug where it read the legacy `slot.recipeName` and answered "no hay comidas planificadas" for every day.
 - `get_recipe_details` — pull a recipe by ID/name including ingredients and steps
 - `get_weekly_nutrition` — calorie and macro summary for the week
 - `get_shopping_list` — current week's shopping list
 - `suggest_recipes` — recommend recipes matching meal/season/restrictions
 - `search_recipes` — search by name substring
-- `generate_weekly_menu` — full menu generation for the user
+- `generate_weekly_menu` — full menu generation for the user. `nextWeek: true` targets next Monday (used when the user says "la semana que viene" or accepts the WhatsApp Sunday nudge). Enqueues prep alerts like `POST /menu/generate`
 - `swap_meal` — replace a single meal slot. Without a `recipeId`/`recipeName` parameter, runs the matcher (auto-picks). When the user names a recipe ("pon la fabada de mi madre el lunes"), the model passes `recipeName` (or `recipeId` when known) and the skill pins that recipe directly without the matcher. Recipes the user owns win over system recipes when names collide
 - `toggle_favorite` — favorite/unfavorite a recipe
 - `mark_meal_eaten` — log that the user actually ate a meal (records `eatenAt` timestamp)

@@ -67,6 +67,12 @@ describe('renderAssistantReply', () => {
     expect(appLinkFor({ uiHint: 'shopping_list' }, WEB)).toBe(`Ver lista de la compra: ${WEB}/shopping`)
   })
 
+  it('does not duplicate the deep link when the model already wrote it', () => {
+    expect(renderAssistantReply({ message: `Menú listo.\n\nVer menú: ${WEB}/menu`, uiHint: 'menu' }, WEB)).toEqual([
+      { type: 'text', text: `Menú listo.\n\nVer menú: ${WEB}/menu` },
+    ])
+  })
+
   it('renders options as reply buttons', () => {
     expect(renderAssistantReply({ message: '¿Te lo cambio?\n[[opciones: Sí | No]]' }, WEB)).toEqual([
       { type: 'buttons', text: '¿Te lo cambio?', buttons: [{ id: 'opt:0', title: 'Sí' }, { id: 'opt:1', title: 'No' }] },

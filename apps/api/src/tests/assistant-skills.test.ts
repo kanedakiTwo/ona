@@ -46,6 +46,9 @@ vi.mock('../services/advisor.js', () => ({
 // Scope resolver: keep tests user-scoped so the existing mock-db queues stay
 // valid. Per-skill behaviour is unchanged; scope branching is exercised by
 // `scopeResolver.test.ts`.
+vi.mock('../services/notificationScheduler.js', () => ({
+  enqueuePrepAlertsForMenu: vi.fn(async () => ({ inserted: 0, skipped: 0 })),
+}))
 vi.mock('../services/scopeResolver.js', () => ({
   resolveScope: vi.fn(async (userId: string) => ({ kind: 'user', value: userId })),
   scopeWhere: vi.fn(() => ({ /* drizzle SQL stub — proxy db ignores it */ })),
@@ -105,26 +108,55 @@ beforeEach(() => {
 
 describe('get_todays_menu', () => {
   const skill = get('get_todays_menu')
+  // Multi-dish slot shape (since the multi-dish migration).
+  const dishDay = (i: number) => ({
+    lunch: { dishes: [{ kind: 'recipe', recipeId: `r-${i}`, recipeName: `Plato ${i}` }] },
+  })
 
-  it('reports no menu when none exists', async () => {
-    const db = makeDb(/* select */ [])
+  it('reports no menu when none exists (no current-week menu, no fallback)', async () => {
+    const db = makeDb(/* current week */ [], /* latest */ [])
     const r = await skill.handler({}, ctx(db))
     expect(r.summary).toContain('No tienes ningun menu')
     expect(r.data).toBeNull()
   })
 
-  it('returns the day matching the dayIndex param', async () => {
-    const menu = {
-      id: 'm-1',
-      days: Array.from({ length: 7 }, (_, i) => ({
-        lunch: { recipeId: `r-${i}`, recipeName: `Plato ${i}` },
-      })),
-    }
+  it('returns the day matching the dayIndex param, reading dishes[]', async () => {
+    const menu = { id: 'm-1', days: Array.from({ length: 7 }, (_, i) => dishDay(i)) }
     const db = makeDb([menu])
     const r = await skill.handler({ dayIndex: 2 }, ctx(db))
     expect(r.summary).toContain('miercoles')
-    expect(r.summary).toContain('Plato 2')
+    expect(r.summary).toContain('comida: Plato 2')
     expect(r.data?.dayIndex).toBe(2)
+  })
+
+  it('lists every dish of a slot, notes and leftovers included (regression: used to say "no hay comidas")', async () => {
+    const day = {
+      lunch: {
+        dishes: [
+          { kind: 'recipe', recipeId: 'a', recipeName: 'Lentejas estofadas' },
+          { kind: 'recipe', recipeId: 'b', recipeName: 'Ensalada verde' },
+        ],
+      },
+      dinner: {
+        dishes: [
+          { kind: 'note', text: 'Cenamos en casa de Paqui' },
+          { kind: 'recipe', recipeId: 'c', recipeName: 'Crema de calabaza', variant: 'leftover' },
+        ],
+      },
+    }
+    const db = makeDb([{ id: 'm-1', days: [day] }])
+    const r = await skill.handler({ dayIndex: 0 }, ctx(db))
+    expect(r.summary).toBe(
+      'Menu del lunes: comida: Lentejas estofadas + Ensalada verde, cena: Cenamos en casa de Paqui + Crema de calabaza (sobras)',
+    )
+  })
+
+  it("falls back to the latest menu when this week's doesn't exist", async () => {
+    const menu = { id: 'm-old', days: Array.from({ length: 7 }, (_, i) => dishDay(i)) }
+    const db = makeDb(/* current week */ [], /* latest */ [menu])
+    const r = await skill.handler({ dayIndex: 4 }, ctx(db))
+    expect(r.summary).toContain('Plato 4')
+    expect(r.data?.menuId).toBe('m-old')
   })
 
   it('rejects an out-of-range dayIndex', async () => {
@@ -135,14 +167,12 @@ describe('get_todays_menu', () => {
   })
 
   it('falls back to today when dayIndex is omitted', async () => {
-    const menu = {
-      id: 'm-1',
-      days: Array.from({ length: 7 }, () => ({ lunch: { recipeName: 'Cualquier cosa' } })),
-    }
+    const menu = { id: 'm-1', days: Array.from({ length: 7 }, (_, i) => dishDay(i)) }
     const db = makeDb([menu])
     const r = await skill.handler({}, ctx(db))
     // Without overriding Date, just check shape — any of the 7 day names.
     expect(r.summary).toMatch(/lunes|martes|miercoles|jueves|viernes|sabado|domingo/)
+    expect(r.summary).toContain('comida: Plato')
   })
 })
 
@@ -276,6 +306,15 @@ describe('generate_weekly_menu', () => {
     const r = await skill.handler({}, ctx(db))
     expect(r.uiHint).toBe('menu')
     expect(r.summary).toContain('Menu generado')
+  })
+
+  it('targets next Monday with nextWeek=true (Sunday "¿te preparo el menú?" nudge)', async () => {
+    const inserted = { id: 'm-next', days: [{}, {}, {}, {}, {}, {}, {}] }
+    const thisWeek = await skill.handler({}, ctx(makeDb([inserted], [{ id: 'log-1' }])))
+    const nextWeek = await skill.handler({ nextWeek: true }, ctx(makeDb([inserted], [{ id: 'log-2' }])))
+    const a = thisWeek.summary.match(/semana del (\d{4}-\d{2}-\d{2})/)![1]
+    const b = nextWeek.summary.match(/semana del (\d{4}-\d{2}-\d{2})/)![1]
+    expect((Date.parse(b) - Date.parse(a)) / 86_400_000).toBe(7)
   })
 })
 

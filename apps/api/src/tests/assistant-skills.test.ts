@@ -46,6 +46,14 @@ vi.mock('../services/advisor.js', () => ({
 // Scope resolver: keep tests user-scoped so the existing mock-db queues stay
 // valid. Per-skill behaviour is unchanged; scope branching is exercised by
 // `scopeResolver.test.ts`.
+vi.mock('../services/recipeImport.js', () => ({
+  importRecipeFromUrl: vi.fn(),
+  createRecipeFromParts: vi.fn(async (parts: { name: string }) => ({
+    recipeId: 'r-new',
+    name: parts.name,
+    warnings: parts.name === 'Receta exótica' ? ['1 ingrediente(s) no encontrado(s) en la base de datos'] : [],
+  })),
+}))
 vi.mock('../services/notificationScheduler.js', () => ({
   enqueuePrepAlertsForMenu: vi.fn(async () => ({ inserted: 0, skipped: 0 })),
 }))
@@ -424,7 +432,8 @@ describe('mark_meal_eaten', () => {
 describe('create_recipe', () => {
   const skill = get('create_recipe')
 
-  it('creates a recipe with the given fields', async () => {
+  it('persists through the shared import pipeline (servings default lives there, not a raw insert)', async () => {
+    const { createRecipeFromParts } = await import('../services/recipeImport.js')
     const params = {
       name: 'Pollo al limón',
       ingredients: [
@@ -433,41 +442,19 @@ describe('create_recipe', () => {
       ],
       steps: ['Cortar el pollo', 'Cocinar 20 min'],
       prepTime: 25,
-      mealType: 'lunch',
-      season: 'spring',
     }
-    // Real query order in the handler: insert recipe returning, then per-ingredient
-    // (lookup, insert junction). Two ingredients × 2 awaits = 4, plus the insert
-    // recipe = 5 queue slots.
-    const db = makeDb(
-      [{ id: 'r-new', name: params.name }], // insert recipe returning
-      [{ id: 'i-pollo', name: 'pollo' }],   // SELECT ingredient #1
-      undefined,                             // INSERT junction #1
-      [{ id: 'i-limon', name: 'limón' }],   // SELECT ingredient #2
-      undefined,                             // INSERT junction #2
-    )
-    const r = await skill.handler(params, ctx(db))
+    const r = await skill.handler(params, ctx(makeDb()))
+    expect(createRecipeFromParts).toHaveBeenCalledWith(params, 'u-1')
     expect(r.summary).toContain('creada')
-    expect(r.data?.recipeId).toBe('r-new')
-    expect(r.data?.linkedIngredients).toHaveLength(2)
+    expect(r).toMatchObject({ uiHint: 'recipe', data: { recipeId: 'r-new', name: 'Pollo al limón' } })
   })
 
-  it('reports missing ingredients when the catalog has no match', async () => {
-    const params = {
-      name: 'Receta exótica',
-      ingredients: [{ name: 'unobtanium', quantity: 50, unit: 'g' }],
-      steps: ['Mezclar'],
-      prepTime: 5,
-      mealType: 'lunch',
-      season: 'spring',
-    }
-    const db = makeDb(
-      [{ id: 'r-new', name: params.name }], // insert recipe
-      [],                                    // SELECT — not found
+  it('mentions unmatched ingredients so the user can review them', async () => {
+    const r = await skill.handler(
+      { name: 'Receta exótica', ingredients: [{ name: 'unobtanium', quantity: 50, unit: 'g' }], steps: ['Mezclar'] },
+      ctx(makeDb()),
     )
-    const r = await skill.handler(params, ctx(db))
-    expect(r.data?.missingIngredients).toContain('unobtanium')
-    expect(r.data?.linkedIngredients).toHaveLength(0)
+    expect(r.summary).toContain('no se reconocio')
   })
 })
 

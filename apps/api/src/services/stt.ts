@@ -38,12 +38,18 @@ export function audioFileName(mimeType: string): string {
   return `nota-de-voz.${ext[base] ?? 'ogg'}`
 }
 
+export const TRANSCRIBE_PROMPT =
+  'Nota de voz en español de España para ONA, un asistente de cocina: menú de la semana, recetas, comida, cena, lista de la compra, despensa, lunes, martes, miércoles, jueves, viernes, sábado, domingo.'
+
 export async function transcribeAudio(audio: Buffer, mimeType: string): Promise<string> {
   if (!env.OPENAI_API_KEY) throw new SttNotConfiguredError()
   const form = new FormData()
   form.append('file', new Blob([new Uint8Array(audio)], { type: mimeType.split(';')[0] }), audioFileName(mimeType))
   form.append('model', env.OPENAI_TRANSCRIBE_MODEL)
   form.append('language', 'es')
+  // Steers vocabulary and language: without it short Spanish notes were
+  // occasionally transcribed as Galician/Portuguese ("está ben", "ademais").
+  form.append('prompt', TRANSCRIBE_PROMPT)
   const r = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST',
     headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}` },

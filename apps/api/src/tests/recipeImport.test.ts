@@ -4,7 +4,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import type { ExtractedRecipe } from '@ona/shared'
-import { extractedToWriteInput } from '../services/recipeImport.js'
+import { extractedToWriteInput, normalizeRecipeParts } from '../services/recipeImport.js'
 
 const extracted = (over: Partial<ExtractedRecipe> = {}): ExtractedRecipe => ({
   name: 'Lentejas estofadas',
@@ -45,5 +45,25 @@ describe('extractedToWriteInput', () => {
     expect(extractedToWriteInput(extracted({ sourceUrl: 'https://canonical' }), { internalTags: [], sourceUrl: 'https://shared' }).sourceUrl).toBe('https://canonical')
     expect(extractedToWriteInput(extracted(), { internalTags: [], sourceUrl: 'https://shared' }).sourceUrl).toBe('https://shared')
     expect(extractedToWriteInput(extracted(), { internalTags: [] }).sourceUrl).toBeNull()
+  })
+})
+
+describe('normalizeRecipeParts (assistant-created recipes)', () => {
+  it('fills safe defaults so the recipe always persists (servings was NOT NULL → prod failure)', () => {
+    const n = normalizeRecipeParts({ name: 'Filete a la parrilla', steps: [' Salar ', '', 'Asar 4 min por lado'], ingredients: [{ name: 'filete de ternera' }, { name: 'sal', quantity: 1, unit: 'cdita' }] })
+    expect(n.servings).toBe(2)
+    expect(n.servingsConfidence).toBe('estimated')
+    expect(n.meals).toEqual(['lunch', 'dinner'])
+    expect(n.seasons).toEqual(['spring', 'summer', 'autumn', 'winter'])
+    expect(n.steps).toEqual(['Salar', 'Asar 4 min por lado'])
+    expect(n.ingredients).toEqual([
+      { name: 'filete de ternera', quantity: 1, unit: 'u' },
+      { name: 'sal', quantity: 1, unit: 'cdita' },
+    ])
+  })
+
+  it('keeps valid explicit values and drops invalid ones', () => {
+    const n = normalizeRecipeParts({ name: 'x', servings: 4, meals: ['dinner', 'brunch'], seasons: ['winter'], steps: ['a'], ingredients: [] })
+    expect(n).toMatchObject({ servings: 4, servingsConfidence: 'explicit', meals: ['dinner'], seasons: ['winter'] })
   })
 })

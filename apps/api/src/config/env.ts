@@ -151,6 +151,9 @@ export const env = {
   WHATSAPP_GRAPH_VERSION: process.env.WHATSAPP_GRAPH_VERSION || 'v26.0',
   /** Overridable so local E2E can point the client at a mock Graph server. */
   WHATSAPP_GRAPH_BASE_URL: (process.env.WHATSAPP_GRAPH_BASE_URL || 'https://graph.facebook.com').replace(/\/+$/, ''),
-  /** OpenAI speech-to-text model for WhatsApp voice notes. */
-  OPENAI_TRANSCRIBE_MODEL: process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-mini-transcribe',
+  /**
+   * OpenAI speech-to-text model for WhatsApp voice notes. Full gpt-4o-transcribe
+   * (≈$0.006/min): the mini model mis-heard short Spanish notes as Galician.
+   */
+  OPENAI_TRANSCRIBE_MODEL: process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-transcribe',
 }

@@ -23,7 +23,7 @@ import { calculateMenuNutrientsFromDB } from '../nutrientCalculator.js'
 import { updateBalance } from '../nutrientBalance.js'
 import { getSummary } from '../advisor.js'
 import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../scopeResolver.js'
-import { importRecipeFromUrl } from '../recipeImport.js'
+import { importRecipeFromUrl, createRecipeFromParts, type RecipeParts } from '../recipeImport.js'
 import { mealLinesForDay } from '../menuText.js'
 import { madridParts, madridWeekStart } from '../madridTime.js'
 import { appSkills, bestMatch, searchWords } from './appSkills.js'
@@ -755,11 +755,13 @@ const markMealEaten: SkillDefinition = {
 
 const createRecipe: SkillDefinition = {
   name: 'create_recipe',
-  description: 'Crea y guarda una nueva receta en la base de datos. Usa esta herramienta cuando tengas toda la informacion necesaria: nombre, ingredientes con cantidades, pasos, tiempo, tipo de comida y temporada.',
+  description:
+    'Crea y guarda una receta nueva del usuario. Si el usuario pide una receta basica sin dar detalles ("crea tu un filete a la parrilla"), inventa tu una version sencilla y razonable (ingredientes con cantidades y pasos) y creala sin hacer mas preguntas.',
   parameters: {
     type: 'object',
     properties: {
       name: { type: 'string', description: 'Nombre de la receta' },
+      servings: { type: 'number', description: 'Raciones (por defecto 2)' },
       ingredients: {
         type: 'array',
         items: {
@@ -767,84 +769,30 @@ const createRecipe: SkillDefinition = {
           properties: {
             name: { type: 'string', description: 'Nombre del ingrediente' },
             quantity: { type: 'number', description: 'Cantidad' },
-            unit: { type: 'string', description: 'Unidad (g, ml, unidades, etc.)' },
+            unit: { type: 'string', description: 'Unidad: g, ml, u, cda, cdita' },
           },
-          required: ['name', 'quantity', 'unit'],
+          required: ['name'],
         },
         description: 'Lista de ingredientes con cantidades',
       },
-      steps: {
-        type: 'array',
-        items: { type: 'string' },
-        description: 'Pasos de preparacion',
-      },
+      steps: { type: 'array', items: { type: 'string' }, description: 'Pasos de preparacion' },
       prepTime: { type: 'number', description: 'Tiempo de preparacion en minutos' },
-      meals: {
-        type: 'array',
-        items: { type: 'string' },
-        description: 'Tipos de comida: breakfast, lunch, dinner',
-      },
-      seasons: {
-        type: 'array',
-        items: { type: 'string' },
-        description: 'Temporadas: spring, summer, autumn, winter',
-      },
+      cookTime: { type: 'number', description: 'Tiempo de coccion en minutos' },
+      meals: { type: 'array', items: { type: 'string' }, description: 'breakfast, lunch, dinner, snack' },
+      seasons: { type: 'array', items: { type: 'string' }, description: 'spring, summer, autumn, winter' },
     },
-    required: ['name', 'ingredients', 'steps', 'prepTime', 'meals', 'seasons'],
+    required: ['name', 'ingredients', 'steps'],
   },
-  async handler(params: {
-    name: string
-    ingredients: Array<{ name: string; quantity: number; unit: string }>
-    steps: string[]
-    prepTime: number
-    meals: string[]
-    seasons: string[]
-  }, ctx: SkillContext): Promise<SkillResult> {
-    const { userId, db } = ctx
-
-    // Create the recipe
-    const [recipe] = await db
-      .insert(recipes)
-      .values({
-        name: params.name,
-        authorId: userId,
-        prepTime: params.prepTime,
-        meals: params.meals,
-        seasons: params.seasons,
-        steps: params.steps,
-      })
-      .returning()
-
-    // Match ingredient names to existing ingredients (case-insensitive)
-    const linkedIngredients: string[] = []
-    const missingIngredients: string[] = []
-
-    for (const ing of params.ingredients) {
-      const [found] = await db
-        .select({ id: ingredients.id, name: ingredients.name })
-        .from(ingredients)
-        .where(ilike(ingredients.name, ing.name))
-        .limit(1)
-
-      if (found) {
-        await db.insert(recipeIngredients).values({
-          recipeId: recipe.id,
-          ingredientId: found.id,
-          quantity: ing.quantity,
-          unit: ing.unit,
-        })
-        linkedIngredients.push(found.name)
-      } else {
-        missingIngredients.push(ing.name)
-      }
+  async handler(params: RecipeParts, ctx: SkillContext): Promise<SkillResult> {
+    const saved = await createRecipeFromParts(params, ctx.userId)
+    const review = saved.warnings.some((w) => /no encontrado/.test(w))
+      ? ' Algun ingrediente no se reconocio del todo; se puede revisar en la app.'
+      : ''
+    return {
+      data: { recipeId: saved.recipeId, name: saved.name },
+      summary: `Receta "${saved.name}" creada en las recetas del usuario (id ${saved.recipeId}).${review}`,
+      uiHint: 'recipe',
     }
-
-    let summary = `Receta "${recipe.name}" creada con ${linkedIngredients.length} ingredientes vinculados.`
-    if (missingIngredients.length > 0) {
-      summary += ` Ingredientes no encontrados en la base de datos (no vinculados): ${missingIngredients.join(', ')}.`
-    }
-
-    return { data: { recipeId: recipe.id, name: recipe.name, linkedIngredients, missingIngredients }, summary, uiHint: 'recipe' }
   },
 }
 

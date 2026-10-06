@@ -3,7 +3,7 @@ import { env } from '../../config/env.js'
 import { loadUserContext } from './contextLoader.js'
 import { buildSystemPrompt, type AssistantMode } from './systemPrompt.js'
 import { skills, getToolDefinitions } from './skills.js'
-import type { AssistantResponse, ChatMessage } from './types.js'
+import type { AssistantResponse, ChatMessage, SkillContext, SkillDefinition, SkillResult } from './types.js'
 import {
   EMPTY_USAGE,
   addAnthropicUsage,
@@ -40,10 +40,6 @@ export async function chat(
 ): Promise<AssistantResponse & { usage: TokenUsage }> {
   const anthropic = getClient()
 
-  // Accumulate token usage across every model call this turn so the route can
-  // meter spend against the per-user monthly budget (see advisorBudget.ts).
-  let usage: TokenUsage = EMPTY_USAGE
-
   // 1. Load user context
   const userContext = await loadUserContext(userId, db)
 
@@ -77,95 +73,151 @@ export async function chat(
     { type: 'text' as const, text: systemPrompt, cache_control: { type: 'ephemeral' as const } },
   ]
 
-  // 5. First API call
-  const response = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 1024,
+  // 5. Model ↔ tools loop (see runToolLoop).
+  return runToolLoop({
+    client: anthropic,
     system: cachedSystem,
+    tools,
     messages,
-    tools: tools as any,
+    skills,
+    ctx: { userId, db },
   })
-  usage = addAnthropicUsage(usage, response.usage)
+}
 
-  // 6. Check for tool use
-  const toolUseBlock = response.content.find(block => block.type === 'tool_use') as
-    | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
-    | undefined
+/** Model used by the text assistant. `advisorBudget.ts` prices its tokens. */
+export const ASSISTANT_MODEL = 'claude-haiku-4-5-20251001'
+/**
+ * Tool rounds per turn. "Genera el menú y mándame la lista de la compra" is
+ * two; four leaves room for a lookup before an action. The round after the
+ * last one runs with `tool_choice: none` so the model must answer in text.
+ */
+export const MAX_TOOL_ROUNDS = 4
 
-  if (toolUseBlock) {
-    // Find the skill
-    const skill = skills.find(s => s.name === toolUseBlock.name)
+type MessagesClient = { messages: { create: (args: any) => Promise<any> } }
 
-    if (!skill) {
-      // Unknown tool — return error text
-      return {
-        message: 'Ha habido un error interno. Intentalo de nuevo.',
-        actionTaken: false,
-        usage,
-      }
-    }
+/**
+ * The model ↔ tools loop, separated from `chat()` so it can be unit-tested
+ * with a fake client. Executes EVERY `tool_use` block of a response and
+ * returns all results in one user message (the API rejects a follow-up that
+ * leaves a tool_use unanswered), then loops until the model answers in text.
+ */
+export async function runToolLoop(params: {
+  client: MessagesClient
+  system: unknown
+  tools: unknown[]
+  messages: Anthropic.MessageParam[]
+  skills: SkillDefinition[]
+  ctx: SkillContext
+  maxRounds?: number
+}): Promise<AssistantResponse & { usage: TokenUsage }> {
+  const maxRounds = params.maxRounds ?? MAX_TOOL_ROUNDS
+  const messages = [...params.messages]
+  const executed: { name: string; result: SkillResult }[] = []
+  let usage: TokenUsage = EMPTY_USAGE
+  let claimCheckDone = false
 
-    // Execute the skill handler
-    let skillResult
-    try {
-      skillResult = await skill.handler(toolUseBlock.input, { userId, db })
-    } catch (err: any) {
-      console.error(`[assistant] Skill ${skill.name} error:`, err.message)
-      skillResult = {
-        data: null,
-        summary: `Error ejecutando ${skill.name}: ${err.message}`,
-        uiHint: 'text' as const,
-      }
-    }
-
-    // Build tool_result message and make second API call
-    const followUpMessages: Anthropic.MessageParam[] = [
-      ...messages,
-      { role: 'assistant' as const, content: response.content as any },
-      {
-        role: 'user' as const,
-        content: [
-          {
-            type: 'tool_result' as const,
-            tool_use_id: toolUseBlock.id,
-            content: skillResult.summary,
-          },
-        ],
-      },
-    ]
-
-    const followUp = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+  for (let round = 0; ; round += 1) {
+    const response = await params.client.messages.create({
+      model: ASSISTANT_MODEL,
       max_tokens: 1024,
-      system: cachedSystem,
-      messages: followUpMessages,
-      tools: tools as any,
+      system: params.system,
+      messages,
+      tools: params.tools,
+      ...(round >= maxRounds ? { tool_choice: { type: 'none' } } : {}),
     })
-    usage = addAnthropicUsage(usage, followUp.usage)
+    usage = addAnthropicUsage(usage, response.usage)
 
-    // Extract text from follow-up response
-    const followUpText = followUp.content.find(block => block.type === 'text') as
-      | { type: 'text'; text: string }
-      | undefined
+    const content: any[] = Array.isArray(response.content) ? response.content : []
+    const toolUses = content.filter((b) => b?.type === 'tool_use') as Anthropic.ToolUseBlock[]
 
-    return {
-      message: followUpText?.text ?? skillResult.summary,
-      skillUsed: skill.name,
-      data: skillResult.data,
-      uiHint: skillResult.uiHint,
-      actionTaken: true,
-      usage,
+    if (toolUses.length === 0 || round >= maxRounds) {
+      const text = content
+        .filter((b) => b?.type === 'text' && typeof b.text === 'string')
+        .map((b) => b.text)
+        .join('\n')
+        .trim()
+      // Hallucinated action: the model says "cambiado/guardado/hecho" but ran
+      // no tool this turn. Give it one corrective round to either call the
+      // tool or tell the truth — a false "listo" is worse than a slow answer,
+      // especially on WhatsApp where there's no screen to notice it.
+      if (!claimCheckDone && executed.length === 0 && round < maxRounds && claimsAction(text)) {
+        claimCheckDone = true
+        console.warn('[assistant] unverified action claim — asking the model to act or correct itself')
+        messages.push({ role: 'assistant', content: content as any })
+        messages.push({ role: 'user', content: UNVERIFIED_ACTION_CORRECTION })
+        continue
+      }
+      return buildResponse(text, executed, usage)
     }
+
+    console.log(`[assistant] round ${round}: ${toolUses.map((t) => t.name).join(', ')}`)
+    const results: Anthropic.ToolResultBlockParam[] = []
+    for (const toolUse of toolUses) {
+      const skill = params.skills.find((s) => s.name === toolUse.name)
+      let result: SkillResult
+      let isError = false
+      if (!skill) {
+        result = { data: null, summary: `Herramienta desconocida: ${toolUse.name}`, uiHint: 'text' }
+        isError = true
+      } else {
+        try {
+          result = await skill.handler(toolUse.input, params.ctx)
+        } catch (err: any) {
+          console.error(`[assistant] Skill ${skill.name} error:`, err?.message ?? err)
+          result = { data: null, summary: `Error ejecutando ${skill.name}: ${err?.message ?? err}`, uiHint: 'text' }
+          isError = true
+        }
+      }
+      executed.push({ name: toolUse.name, result })
+      results.push({
+        type: 'tool_result',
+        tool_use_id: toolUse.id,
+        content: result.summary,
+        ...(isError ? { is_error: true } : {}),
+      })
+    }
+
+    messages.push({ role: 'assistant', content: content as any })
+    messages.push({ role: 'user', content: results })
   }
+}
 
-  // 7. No tool use — extract text response directly
-  const textBlock = response.content.find(block => block.type === 'text') as
-    | { type: 'text'; text: string }
-    | undefined
+/**
+ * Spanish past-tense "I did it" claims. Only checked when no tool ran this
+ * turn, so a legit "He cambiado la cena" after swap_meal never trips it.
+ */
+const ACTION_CLAIM_RE =
+  /\b(?:he|hemos|ya)\s+(?:cambiado|generado|guardado|marcado|a[ñn]adido|actualizado|apuntado|creado|quitado|eliminado|borrado|puesto|sustituido|registrado)\b|(?:^|[.!?,;]\s*)(?:hecho|listo|cambiado|guardado|apuntado)\s*[.!,:]/im
 
+export function claimsAction(text: string): boolean {
+  return ACTION_CLAIM_RE.test(text)
+}
+
+export const UNVERIFIED_ACTION_CORRECTION =
+  '[Nota del sistema, no la menciones] Tu respuesta afirma que has hecho un cambio, pero en este turno no has llamado a ninguna herramienta, asi que no se ha hecho nada. Si el usuario pidio un cambio, llama ahora a la herramienta adecuada. Si no es posible (por ejemplo, la receta no existe en el catalogo), responde al usuario diciendole la verdad y ofreciendo una alternativa real.'
+
+/**
+ * The web client renders one card per turn from `uiHint` + `data`, so pick the
+ * most visual skill result (the last non-`text` one) — "genera el menú y dime
+ * qué toca hoy" should show the menu, not the plain-text lookup after it.
+ */
+function buildResponse(
+  text: string,
+  executed: { name: string; result: SkillResult }[],
+  usage: TokenUsage,
+): AssistantResponse & { usage: TokenUsage } {
+  if (executed.length === 0) {
+    return { message: text || 'No he podido generar una respuesta.', actionTaken: false, usage }
+  }
+  const primary =
+    [...executed].reverse().find((e) => e.result.uiHint && e.result.uiHint !== 'text') ??
+    executed[executed.length - 1]
   return {
-    message: textBlock?.text ?? 'No he podido generar una respuesta.',
-    actionTaken: false,
+    message: text || primary.result.summary,
+    skillUsed: primary.name,
+    data: primary.result.data,
+    uiHint: primary.result.uiHint,
+    actionTaken: true,
     usage,
   }
 }

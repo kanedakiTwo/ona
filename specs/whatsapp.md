@@ -10,6 +10,8 @@ Talk to the ONA assistant from WhatsApp. WhatsApp is another way to reach the sa
 - Yes/no and short-choice questions arrive as native WhatsApp reply buttons (max 3). Tapping one is the same as typing its label.
 - Conversation context carries across messages: the server rebuilds the last 20 messages from the last 12 h, so "y el jueves?" works after "¿qué ceno el miércoles?".
 - An unlinked number that writes to ONA gets one "conecta tu WhatsApp desde la app" message per 24 h. A message that looks like a code but isn't valid gets "Ese código no es válido o ha caducado".
+- Users can send **voice notes**: they are transcribed with OpenAI (`OPENAI_TRANSCRIBE_MODEL`, default `gpt-4o-mini-transcribe`, language `es`) and handled exactly like typed text; the transcript is what lands in history. A failed or empty transcription gets "No he podido entender el audio…"; without `OPENAI_API_KEY` the reply is "Ahora mismo no puedo escuchar audios. ¿Me lo escribes?".
+- One message can trigger several actions ("genérame el menú y dime qué ceno hoy") — the engine runs up to 4 tool rounds per turn (see [Advisor](./advisor.md)).
 - Sending a sticker, location or other unsupported type gets a polite "todavía no entiendo ese tipo de mensaje".
 
 ## Linking

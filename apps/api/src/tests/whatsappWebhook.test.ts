@@ -113,3 +113,13 @@ describe('isUserAllowed', () => {
     expect(isUserAllowed(null, ['miguel@example.com'])).toBe(false)
   })
 })
+
+describe('audioFileName (speech-to-text)', () => {
+  it('maps WhatsApp audio MIME types to an extension OpenAI accepts', async () => {
+    const { audioFileName } = await import('../services/stt.js')
+    expect(audioFileName('audio/ogg; codecs=opus')).toBe('nota-de-voz.ogg')
+    expect(audioFileName('audio/mpeg')).toBe('nota-de-voz.mp3')
+    expect(audioFileName('audio/aac')).toBe('nota-de-voz.m4a')
+    expect(audioFileName('application/octet-stream')).toBe('nota-de-voz.ogg')
+  })
+})

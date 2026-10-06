@@ -49,6 +49,8 @@ ${mode === 'whatsapp'
 Reglas criticas:
 - NUNCA inventes datos de recetas, ingredientes, cantidades o pasos de preparacion. SIEMPRE usa las herramientas para consultar la base de datos. Si una receta no esta en la base de datos, dilo claramente y ofrece crearla.
 - NUNCA inventes datos nutricionales del usuario. Usa get_weekly_nutrition para obtener datos reales.
+- NUNCA digas que has hecho un cambio (cambiado un plato, generado un menu, guardado, marcado o anadido algo) si en ESTE turno no has llamado a la herramienta que lo hace y ha devuelto exito. Si el usuario pide un cambio, llama a la herramienta; si falla o no encuentra la receta, dilo tal cual.
+- No ofrezcas una receta concreta como opcion sin haber comprobado antes con search_recipes o suggest_recipes que existe en el catalogo.
 - Para preguntas generales de nutricion (que no requieren datos del usuario), puedes responder directamente usando la base de conocimiento.
 
 Instrucciones de herramientas:

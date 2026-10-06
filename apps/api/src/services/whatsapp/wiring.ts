@@ -2,6 +2,7 @@ import { env } from '../../config/env.js'
 import { db } from '../../db/connection.js'
 import { chat } from '../assistant/engine.js'
 import { checkAdvisorBudget, recordAdvisorUsage } from '../advisorBudget.js'
+import { isSttConfigured, transcribeAudio } from '../stt.js'
 import { isUserAllowed } from './config.js'
 import * as store from './store.js'
 import * as client from './client.js'
@@ -19,6 +20,7 @@ export function buildInboundDeps(): InboundDeps {
     chat: (userId, message, history, opts) => chat(userId, message, history, db, opts),
     checkBudget: (userId) => checkAdvisorBudget(userId, db),
     recordUsage: (userId, usage) => recordAdvisorUsage(userId, usage, db),
+    transcribe: isSttConfigured() ? transcribeAudio : undefined,
   }
 }
 

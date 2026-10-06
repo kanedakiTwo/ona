@@ -55,7 +55,9 @@ The assistant can call back-end skills (function calling). Each skill has a name
 
 The cooking-mode skills (`start_cooking_mode`, `set_timer`, `cooking_step`) are bridged to the `CookingShell` UI via [`apps/web/src/lib/cookingCommands.ts`](../apps/web/src/lib/cookingCommands.ts) — a tiny pub/sub bus subscribed to from `CookingShell`. If no shell is mounted, commands silently drop (the assistant still spoke the confirmation).
 
-The model responds with either a plain text message or a tool call. After the tool runs, the loop continues until the model produces a final message.
+The model responds with either a plain text message or tool calls. `runToolLoop` (engine.ts) executes **every** `tool_use` block of a response (parallel calls are answered in one user message, failures flagged `is_error`) and loops for up to `MAX_TOOL_ROUNDS = 4` rounds — so "genera el menú y dime qué toca hoy" runs both skills in one turn. The round after the last is sent with `tool_choice: none` to force a text answer. The response's `skillUsed`/`uiHint`/`data` come from the last skill with a non-`text` uiHint (falling back to the last skill), so the web still renders one card per turn.
+
+**Hallucinated-action guard.** The system prompt forbids claiming a change ("cambiado", "guardado", "hecho"…) without calling the tool that makes it this turn, and forbids offering a concrete recipe without checking the catalogue first. As a backstop, when a turn ran **no** tool and the reply matches a Spanish past-tense claim (`claimsAction`), the loop appends a hidden corrective note and gives the model one more round to call the tool or tell the truth. Found in the 2026-10-06 WhatsApp E2E: the model answered "Cambiado: hoy cenas pollo con calabacín" with no `swap_meal` call and no such recipe in the catalogue. Each round logs `[assistant] round N: <skills>`.
 
 ## Voice (`useVoice` hook)
 
@@ -138,7 +140,7 @@ At `lg+` the `/advisor` page widens its outer container to `max-w-[900px]` so th
 - [apps/api/src/services/advisorBudget.ts](../apps/api/src/services/advisorBudget.ts) — pricing + monthly spend cap
 - [apps/api/src/config/env.ts](../apps/api/src/config/env.ts) — `ADVISOR_MONTHLY_BUDGET_EUR`, `ADVISOR_EUR_PER_USD`
 - [apps/api/src/routes/advisor.ts](../apps/api/src/routes/advisor.ts) — legacy advisor routes (summary, ask)
-- [apps/api/src/services/assistant/engine.ts](../apps/api/src/services/assistant/engine.ts) — chat loop
+- [apps/api/src/services/assistant/engine.ts](../apps/api/src/services/assistant/engine.ts) — `chat()` + `runToolLoop` (multi-round tools, hallucinated-action guard); tests in `apps/api/src/tests/assistantToolLoop.test.ts`
 - [apps/api/src/services/assistant/skills.ts](../apps/api/src/services/assistant/skills.ts) — skill definitions
 - [apps/api/src/services/assistant/contextLoader.ts](../apps/api/src/services/assistant/contextLoader.ts)
 - [apps/api/src/services/assistant/systemPrompt.ts](../apps/api/src/services/assistant/systemPrompt.ts)

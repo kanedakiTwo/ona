@@ -24,6 +24,7 @@ import recipeNotesRoutes from './routes/recipeNotes.js'
 import pantryRoutes from './routes/pantry.js'
 import cookbooksRoutes from './routes/cookbooks.js'
 import recipePhotosRoutes from './routes/recipePhotos.js'
+import whatsappRoutes, { whatsappWebhookRouter } from './routes/whatsapp.js'
 import { startScheduler } from './services/notificationScheduler.js'
 
 const app = express()
@@ -40,6 +41,9 @@ app.use(cors({
   origin: '*',
   exposedHeaders: ['X-Total-Count'],
 }))
+// WhatsApp webhook verifies an HMAC over the raw body, so it must see the
+// bytes before `express.json()` consumes the stream. It parses its own body.
+app.use(whatsappWebhookRouter)
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 
@@ -84,6 +88,9 @@ app.use(ingredientRoutes)
 // `GET /push/public-key` endpoint is intentionally public — must be
 // mounted BEFORE userRoutes so the catch-all auth there doesn't block it.
 app.use(pushRoutes)
+// Per-route authMiddleware (no catch-all) — kept next to pushRoutes for the
+// same mount-order reason.
+app.use(whatsappRoutes)
 app.use(userRoutes)
 app.use(menuRoutes)
 app.use(shoppingRoutes)

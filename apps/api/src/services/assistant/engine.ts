@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { env } from '../../config/env.js'
 import { loadUserContext } from './contextLoader.js'
-import { buildSystemPrompt } from './systemPrompt.js'
+import { buildSystemPrompt, type AssistantMode } from './systemPrompt.js'
 import { skills, getToolDefinitions } from './skills.js'
 import type { AssistantResponse, ChatMessage } from './types.js'
 import {
@@ -22,6 +22,11 @@ function getClient(): Anthropic {
   return client
 }
 
+export interface ChatOptions {
+  /** Prompt flavour per channel. The web chat uses the default `'text'`. */
+  mode?: AssistantMode
+}
+
 /**
  * Core chat orchestrator. Sends the user message to Claude with tool definitions,
  * handles tool_use responses, and returns the final assistant response.
@@ -31,6 +36,7 @@ export async function chat(
   message: string,
   history: ChatMessage[],
   db: any,
+  opts: ChatOptions = {},
 ): Promise<AssistantResponse & { usage: TokenUsage }> {
   const anthropic = getClient()
 
@@ -42,7 +48,7 @@ export async function chat(
   const userContext = await loadUserContext(userId, db)
 
   // 2. Build system prompt
-  const systemPrompt = buildSystemPrompt(userContext)
+  const systemPrompt = buildSystemPrompt(userContext, opts.mode ?? 'text')
 
   // 3. Build messages array from history + new message
   const messages: Anthropic.MessageParam[] = history.map(msg => ({

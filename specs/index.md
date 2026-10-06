@@ -204,6 +204,14 @@ Server-side Web Push (VAPID keys, `push_subscriptions` table, `web-push` lib) so
 
 ---
 
+## [WhatsApp](./whatsapp.md)
+
+WhatsApp channel for the assistant via Meta WhatsApp Cloud API: webhook (`GET` verify handshake + `POST` with `X-Hub-Signature-256` HMAC over the raw body, mounted before `express.json()`), wamid dedupe, async per-phone serial queue, phone↔user linking with a one-time 6-char code sent from WhatsApp (`wa.me` deep link "Vincular ONA: XXXXXX", 10-min TTL), `whatsapp_links` / `whatsapp_link_codes` / `whatsapp_messages` (server-side chat history: last 20 msgs within 12 h), `chat(..., { mode: 'whatsapp' })` system-prompt mode, `[[opciones: Sí | No]]` → native reply buttons, deep links into the app by `uiHint`, monthly € budget + suspension + `WHATSAPP_ALLOWED_EMAILS` gates, stale-retry drop (>2 h), `/profile` chapter 08 "Ona en WhatsApp" card (connect, masked phone, notify toggle, disconnect), Meta test number (5 recipients), env `WHATSAPP_*` + `WEB_PUBLIC_URL`.
+
+**Source**: `apps/api/src/routes/whatsapp.ts`, `apps/api/src/services/whatsapp/`, `apps/api/src/db/migrations/0030_whatsapp.sql`, `apps/api/src/services/assistant/systemPrompt.ts`, `apps/web/src/components/profile/WhatsAppCard.tsx`, `apps/web/src/hooks/useWhatsApp.ts`
+
+---
+
 ## [Design System](./design-system.md)
 
 Editorial design system, design tokens (`@theme` in globals.css), color palette (cream, ink, terracotta, forest, mint), typography (Fraunces variable, Cormorant Garamond italic, Inter, JetBrains Mono), motion/react animations, magnetic buttons, grain texture, link-reveal underlines, marquee, layoutId pill nav, editorial mode pages (landing, como-funciona, recipes), app mode legacy pages (menu, shopping, profile, advisor), Tailwind v4, mobile-first 430px max-width, bottom tab bar, components (RecipeCard, MealPhotoCard, WeekStrip, Navbar, FavoriteButton, AdvisorChat).

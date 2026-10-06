@@ -740,3 +740,58 @@ export const pushSubscriptions = pgTable('push_subscriptions', {
 }, (t) => [
   index('idx_push_subs_user').on(t.userId),
 ])
+
+// ─── WhatsApp channel ─────────────────────────────────────────────
+//
+// WhatsApp is another transport for the assistant (see specs/whatsapp.md).
+// A phone is linked to exactly one user and vice versa; the link is proven
+// by sending a one-time code (generated in /profile) from the phone.
+
+export const whatsappLinks = pgTable('whatsapp_links', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().unique().references(() => users.id, { onDelete: 'cascade' }),
+  /** wa_id as Meta reports it: digits only, country code included (e.g. 34600111222). */
+  phone: text('phone').notNull().unique(),
+  /** WhatsApp profile name at link time — display only. */
+  profileName: text('profile_name'),
+  /** Opt-in for proactive messages (prep alerts, Sunday menu nudge). */
+  notify: boolean('notify').notNull().default(true),
+  linkedAt: timestamp('linked_at', { withTimezone: true }).notNull().defaultNow(),
+  /** Last inbound message — Meta's 24 h customer-service window starts here. */
+  lastInboundAt: timestamp('last_inbound_at', { withTimezone: true }),
+})
+
+export const whatsappLinkCodes = pgTable('whatsapp_link_codes', {
+  code: text('code').primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_wa_link_codes_user').on(t.userId),
+])
+
+/**
+ * Every inbound + outbound WhatsApp message. Serves three jobs: dedupe Meta's
+ * webhook retries (unique `wamid`), server-side chat history (the web keeps
+ * history in the client; WhatsApp has no client), and an audit trail.
+ */
+export const whatsappMessages = pgTable('whatsapp_messages', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  /** Meta message id. Null only for outbound sends that failed before Meta assigned one. */
+  wamid: text('wamid').unique(),
+  phone: text('phone').notNull(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  /** 'in' | 'out' */
+  direction: text('direction').notNull(),
+  /** in: text|audio|image|interactive|unsupported · out: reply|link|system|alert|weekly_nudge */
+  kind: text('kind').notNull(),
+  /** Text used for chat history: the message, the voice-note transcript, or a "[foto]" marker. */
+  body: text('body'),
+  /** in: received|processed|failed|ignored · out: sent|failed */
+  status: text('status').notNull(),
+  errorMessage: text('error_message'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_wa_messages_phone_created').on(t.phone, t.createdAt),
+])

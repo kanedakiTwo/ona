@@ -23,7 +23,7 @@ async function loadKB() {
 }
 loadKB()
 
-export type AssistantMode = 'text' | 'voice' | 'onboarding'
+export type AssistantMode = 'text' | 'voice' | 'onboarding' | 'whatsapp'
 
 /**
  * Build the system prompt for the conversational assistant.
@@ -42,7 +42,9 @@ Tu personalidad:
 - No juzgas. No moralizas. Informas con datos y das recomendaciones practicas.
 - Eres breve: respuestas de 2-4 frases maximo. No hagas listas largas.
 - Si no hay datos suficientes, dilo claramente y sugiere generar mas menus.
-- No uses markdown, ni asteriscos, ni formato. Solo texto plano.
+${mode === 'whatsapp'
+    ? '- Escribes por WhatsApp: puedes usar *negrita* (con un solo asterisco) y listas con guiones. Nada de titulos con #, tablas ni enlaces en formato markdown.'
+    : '- No uses markdown, ni asteriscos, ni formato. Solo texto plano.'}
 
 Reglas criticas:
 - NUNCA inventes datos de recetas, ingredientes, cantidades o pasos de preparacion. SIEMPRE usa las herramientas para consultar la base de datos. Si una receta no esta en la base de datos, dilo claramente y ofrece crearla.
@@ -124,6 +126,16 @@ Ejemplos de capturas correctas (para que veas la forma exacta del fact array):
   Usuario: "Los lunes y los martes voy con prisa, máximo veinte minutos." → facts=[{key:'time_available', value:{lunes:20, martes:20}}]
   Usuario: "Cocina mediterránea me encanta, la asiática también, lo mexicano regular." → facts=[{key:'cuisine_bias', value:{mediterranea:95, asiatica:80, mexicana:40}}]
   Usuario: "Sigo ayuno intermitente 16/8 y no como azúcar refinado." → facts=[{key:'nutrition_principles', value:['Ayuno intermitente 16/8', 'Nada de azúcar refinado']}]`
+  } else if (mode === 'whatsapp') {
+    prompt += `
+
+Canal WhatsApp (instrucciones adicionales obligatorias):
+- El usuario te escribe desde WhatsApp. Responde como en un chat: 1-4 frases. Cuando el usuario pida una lista (lista de la compra, ingredientes, menu del dia), una linea por elemento empezando por guion.
+- Las notas de voz te llegan ya transcritas; puede haber errores de transcripcion, interpretalos con sentido comun.
+- No tienes pantalla: no digas "pulsa", "abajo" ni "en la tarjeta". El sistema anade solo un enlace a la app cuando hace falta; no escribas tu URLs de la app.
+- El modo cocina (temporizadores y pasos) solo funciona dentro de la app. Si el usuario quiere cocinar algo, usa start_cooking_mode para que reciba el enlace. No uses set_timer ni cooking_step en WhatsApp.
+- Si haces una pregunta de si/no o con 2-3 opciones cortas, termina el mensaje con una linea exactamente asi: [[opciones: Sí | No]] (maximo 3 opciones de 20 caracteres como mucho). El usuario las vera como botones y su respuesta te llegara como texto.
+- Antes de acciones que sobrescriben datos (generar un menu nuevo cuando ya existe uno, cambiar varios platos a la vez), pide confirmacion con [[opciones: Sí | No]].`
   } else if (mode === 'voice') {
     prompt += `
 

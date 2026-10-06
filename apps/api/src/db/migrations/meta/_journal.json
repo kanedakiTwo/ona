@@ -211,6 +211,13 @@
       "when": 1780868636496,
       "tag": "0029_recipes_course",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1791244800000,
+      "tag": "0030_whatsapp",
+      "breakpoints": true
     }
   ]
 }

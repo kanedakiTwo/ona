@@ -73,6 +73,10 @@ The model responds with either a plain text message or a tool call. After the to
   - `:userId` must match the authenticated user, else **403** (the chat loads that user's context and bills their budget)
   - Returns **429** `code: 'ADVISOR_BUDGET_EXCEEDED'` once the user has spent their monthly euro budget (see Cost guardrail)
 
+## Channels
+
+`chat(userId, message, history, db, opts)` is transport-agnostic. `opts.mode` picks the system-prompt flavour: `'text'` (web chat, default), `'whatsapp'` (see [WhatsApp](./whatsapp.md) — WhatsApp markup, no screen language, `[[opciones: …]]` reply-button convention, cooking timers/steps redirected to the app). The Realtime voice session builds its prompt with `'voice'` / `'onboarding'` directly. The WhatsApp channel shares the same skills, memory digest and monthly budget as the web chat.
+
 ## Cost guardrail (per-user monthly budget)
 
 The advisor chat calls Claude Haiku 4.5 (up to two requests per turn — tool
@@ -115,6 +119,7 @@ At `lg+` the `/advisor` page widens its outer container to `max-w-[900px]` so th
 - [Menus](./menus.md) — assistant can read and modify menus
 - [Recipes](./recipes.md) — assistant can search, suggest, and create recipes
 - [Shopping](./shopping.md) — assistant can read the list
+- [WhatsApp](./whatsapp.md) — the same assistant over WhatsApp (text, buttons, deep links)
 - [Voice Mode](./voice-mode.md) — hands-free conversation with wake word "Hola Ona". When the opt-in toggle is on, the legacy mic button in the chat is hidden and conversation turns from the orb overlay are appended to the chat history on close.
 
 ## Hooks (client)

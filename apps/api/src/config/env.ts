@@ -110,4 +110,47 @@ export const env = {
   VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY || '',
   /** Subject sent with VAPID — must be a mailto: or https:// URL per RFC 8292. */
   VAPID_SUBJECT: process.env.VAPID_SUBJECT || 'mailto:hola@ona.app',
+
+  /**
+   * Public origin of the web app, used to build links inside WhatsApp
+   * replies ("Ver receta: <WEB_PUBLIC_URL>/recipes/<id>"). No trailing slash.
+   */
+  WEB_PUBLIC_URL: (process.env.WEB_PUBLIC_URL || 'https://ona-web-production.up.railway.app').replace(/\/+$/, ''),
+
+  /**
+   * WhatsApp Cloud API (Meta). The channel is live only when the first four
+   * are set — otherwise the webhook answers 503 and `/whatsapp/status`
+   * reports `available: false`. See specs/whatsapp.md.
+   *   - ACCESS_TOKEN: permanent System User token (whatsapp_business_messaging).
+   *   - PHONE_NUMBER_ID: the sender's Graph id (not the phone number itself).
+   *   - APP_SECRET: signs webhook bodies (X-Hub-Signature-256).
+   *   - VERIFY_TOKEN: any string; echoed by Meta on the GET handshake.
+   *   - DISPLAY_NUMBER: the sender number in digits, for wa.me deep links.
+   */
+  WHATSAPP_ACCESS_TOKEN: process.env.WHATSAPP_ACCESS_TOKEN || '',
+  WHATSAPP_PHONE_NUMBER_ID: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
+  WHATSAPP_APP_SECRET: process.env.WHATSAPP_APP_SECRET || '',
+  WHATSAPP_VERIFY_TOKEN: process.env.WHATSAPP_VERIFY_TOKEN || '',
+  WHATSAPP_DISPLAY_NUMBER: (process.env.WHATSAPP_DISPLAY_NUMBER || '').replace(/\D/g, ''),
+  /**
+   * Comma-separated ONA account emails allowed to link WhatsApp. Empty means
+   * every user. v1 ships for Miguel's household only (Meta test number
+   * caps recipients at 5 anyway).
+   */
+  WHATSAPP_ALLOWED_EMAILS: (process.env.WHATSAPP_ALLOWED_EMAILS || '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean),
+  /**
+   * Optional approved utility template (one `{{1}}` body variable) used for
+   * proactive messages outside Meta's 24 h customer-service window. Without
+   * it, proactive messages only go out while the window is open.
+   */
+  WHATSAPP_TEMPLATE_NAME: process.env.WHATSAPP_TEMPLATE_NAME || '',
+  WHATSAPP_TEMPLATE_LANG: process.env.WHATSAPP_TEMPLATE_LANG || 'es',
+  WHATSAPP_GRAPH_VERSION: process.env.WHATSAPP_GRAPH_VERSION || 'v26.0',
+  /** Overridable so local E2E can point the client at a mock Graph server. */
+  WHATSAPP_GRAPH_BASE_URL: (process.env.WHATSAPP_GRAPH_BASE_URL || 'https://graph.facebook.com').replace(/\/+$/, ''),
+  /** OpenAI speech-to-text model for WhatsApp voice notes. */
+  OPENAI_TRANSCRIBE_MODEL: process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-mini-transcribe',
 }

@@ -19,6 +19,8 @@ import {
 } from '@/lib/pwa/notifications'
 import { MyRecipesSection } from './sections/MyRecipesSection'
 import { MealDishCountControls } from '@/components/profile/MealDishCountControls'
+import { WhatsAppCard } from '@/components/profile/WhatsAppCard'
+import { useWhatsAppStatus } from '@/hooks/useWhatsApp'
 import type { Meal } from '@ona/shared'
 
 interface PhysicalData {
@@ -91,6 +93,7 @@ const ACTIVITY_MULTIPLIERS: Record<string, number> = {
 
 export default function ProfilePage() {
   const { user, logout, isLoading: authLoading } = useAuth()
+  const whatsapp = useWhatsAppStatus()
   const voiceMode = useVoiceMode()
 
   const [physical, setPhysical] = useState<PhysicalData>({
@@ -879,6 +882,22 @@ export default function ProfilePage() {
           </a>
         </div>
       </section>
+
+      {/* Capitulo 08 — Ona en WhatsApp. Hidden unless the server has the
+          channel configured for this account (or a phone is already linked,
+          so it can always be disconnected). */}
+      {(whatsapp.data?.available || whatsapp.data?.linked) && (
+        <section className="px-5 mt-12">
+          <ChapterHeader number="08" title="Ona en" italic="WhatsApp" />
+          <p className="mt-2 text-[12px] text-[#7A7066]">
+            Todo lo que hace el asistente, desde tu WhatsApp: escríbele,
+            mándale audios o compártele recetas.
+          </p>
+          <div className="mt-5">
+            <WhatsAppCard status={whatsapp.data} />
+          </div>
+        </section>
+      )}
 
       {/* Admin entry — discreet text link, only for admins */}
       {user?.role === 'admin' && (

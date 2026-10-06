@@ -151,6 +151,14 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 
 ### Pending
 
+- [ ] **WhatsApp channel setup in Meta + Railway** (code ready, see [specs/whatsapp.md](./specs/whatsapp.md)). Meta app "ONA" already created (2026-10-06).
+  1. Meta app → Casos de uso → add **"Conectar con clientes a través de WhatsApp"** (creates the WABA + test number).
+  2. WhatsApp → Configuración de la API: note the **Phone number ID** + the test number; add your phone + household phones as recipients (max 5).
+  3. Permanent token: business.facebook.com → Usuarios del sistema → admin user → assign app ONA + WhatsApp account (full control) → token "Nunca caduca" with `whatsapp_business_messaging` + `whatsapp_business_management`.
+  4. Set on `ona-api`: `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET` (Básica → Clave secreta), `WHATSAPP_VERIFY_TOKEN` (any random string), `WHATSAPP_DISPLAY_NUMBER` (digits), `WHATSAPP_ALLOWED_EMAILS` (your ONA emails).
+  5. After the API deploy: WhatsApp → Configuración → Webhook = `https://ona-api-production.up.railway.app/whatsapp/webhook` + your verify token → subscribe field **`messages`**.
+  6. Accept: `/profile` → "Ona en WhatsApp" → Conectar → send the code → you get "¡Listo!"; then "¿qué toca hoy?" answers with the menu.
+
 - [ ] **End-to-end check on production** after the next `ona-api` deploy: register a fresh user, create a recipe, hit "Regenerar imagen" — confirms the Railway volume writes survive and `IMAGE_PUBLIC_URL_BASE` (`https://ona-api-production.up.railway.app/images/recipes`) actually serves the JPEG. (Volume `ona-api-volume` mounted at `/data` and the three env vars `AIKIT_API_KEY`, `IMAGE_STORAGE_DIR`, `IMAGE_PUBLIC_URL_BASE` are already set on `ona-api` via Railway CLI.)
 
 - [ ] **Replace placeholder PWA assets** with real branded artwork — `apps/web/public/icons/*.png` + `apps/web/public/favicon.ico`. Same paths, same sizes; the SW picks up new revisions on next build. Current placeholders are an "ONA" wordmark on cream (generator: `apps/web/scripts/generate-pwa-placeholders.mjs`).

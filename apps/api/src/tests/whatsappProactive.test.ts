@@ -115,27 +115,62 @@ describe('daily brief', () => {
 
 describe('planProactive', () => {
   const day = { lunch: { dishes: [{ kind: 'recipe' as const, recipeId: 'a', recipeName: 'Lentejas' }] } }
+  const dinner = { names: ['Carrilleras de ternera'], totalMinutes: 90 }
   const base = {
     breakfastTime: null,
-    briefedRecently: false,
-    nudgedRecently: false,
+    dinnerTime: '20:00',
+    prefs: {},
+    sentRecently: {},
     todayDay: async () => day,
+    todayDinner: async () => dinner,
+    cookedToday: async () => false,
+    pendingShopping: async () => ['leche', 'pan', 'huevos', 'tomates'],
     hasNextWeekMenu: async () => false,
     webUrl: WEB,
   }
+  const kinds = (r: { kind: string }[]) => r.map((p) => p.kind)
 
   it('sends the daily brief at breakfast time', async () => {
-    const r = await planProactive({ ...base, parts: parts({ weekday: 2, hour: 9, minute: 10 }) })
-    expect(r.map((p) => p.kind)).toEqual(['daily_brief'])
+    expect(kinds(await planProactive({ ...base, parts: parts({ weekday: 2, hour: 9, minute: 10 }) }))).toEqual(['daily_brief'])
   })
 
-  it('does not repeat the brief within the cooldown, and skips days without a menu', async () => {
-    expect(await planProactive({ ...base, briefedRecently: true, parts: parts({ weekday: 2, hour: 9 }) })).toEqual([])
-    expect(await planProactive({ ...base, todayDay: async () => null, parts: parts({ weekday: 2, hour: 9 }) })).toEqual([])
+  it('respects cooldowns, per-kind switches and empty days', async () => {
+    const at9 = parts({ weekday: 2, hour: 9 })
+    expect(await planProactive({ ...base, sentRecently: { daily_brief: true }, parts: at9 })).toEqual([])
+    expect(await planProactive({ ...base, prefs: { daily_brief: false }, parts: at9 })).toEqual([])
+    expect(await planProactive({ ...base, todayDay: async () => null, parts: at9 })).toEqual([])
+  })
+
+  it('reminds to start cooking a long dinner in time (90 min recipe, dinner 20:00 → ~18:20)', async () => {
+    const r = await planProactive({ ...base, parts: parts({ weekday: 2, hour: 18, minute: 20 }) })
+    expect(kinds(r)).toEqual(['cooking_reminder'])
+    expect(r[0].messages[0].text).toBe('Si quieres cenar a las 20:00, toca empezar con *Carrilleras de ternera* (unos 90 min).')
+    // Short dinners never trigger it.
+    expect(await planProactive({ ...base, todayDinner: async () => ({ names: ['Tortilla'], totalMinutes: 20 }), parts: parts({ weekday: 2, hour: 19, minute: 30 }) })).toEqual([])
+  })
+
+  it('asks "¿hiciste la cena?" 2-3 h after dinner unless it was already logged', async () => {
+    const at22 = parts({ weekday: 2, hour: 22, minute: 15 })
+    const r = await planProactive({ ...base, parts: at22 })
+    expect(r).toEqual([
+      {
+        kind: 'dinner_checkin',
+        messages: [{ type: 'buttons', text: '¿Hiciste hoy la cena (*Carrilleras de ternera*)? Así lo apunto.', buttons: [{ id: 'checkin:yes', title: 'Sí, la hice' }, { id: 'checkin:no', title: 'No' }] }],
+      },
+    ])
+    expect(await planProactive({ ...base, cookedToday: async () => true, parts: at22 })).toEqual([])
+  })
+
+  it('sends the Saturday shopping reminder only with 3+ pending items', async () => {
+    const sat = parts({ weekday: 5, hour: 10, minute: 30 })
+    const r = await planProactive({ ...base, parts: sat })
+    expect(kinds(r)).toEqual(['shopping_reminder'])
+    expect(r[0].messages[0].text).toContain('Te faltan 4 cosas: leche, pan, huevos, tomates')
+    expect(await planProactive({ ...base, pendingShopping: async () => ['leche'], parts: sat })).toEqual([])
   })
 
   it('nudges on Sunday evening with reply buttons when next week has no menu', async () => {
-    const r = await planProactive({ ...base, parts: parts({ weekday: 6, hour: 19 }) })
+    const r = await planProactive({ ...base, dinnerTime: '23:59', parts: parts({ weekday: 6, hour: 19 }) })
     expect(r).toEqual([
       {
         kind: 'weekly_nudge',
@@ -145,17 +180,30 @@ describe('planProactive', () => {
   })
 
   it('skips the nudge when next week is planned or it was already sent', async () => {
-    const hasNextWeekMenu = vi.fn(async () => true)
-    expect(await planProactive({ ...base, hasNextWeekMenu, parts: parts({ weekday: 6, hour: 19 }) })).toEqual([])
-    expect(await planProactive({ ...base, nudgedRecently: true, parts: parts({ weekday: 6, hour: 19 }) })).toEqual([])
+    const sun = parts({ weekday: 6, hour: 19 })
+    const quiet = { ...base, dinnerTime: '23:59' }
+    expect(await planProactive({ ...quiet, hasNextWeekMenu: vi.fn(async () => true), parts: sun })).toEqual([])
+    expect(await planProactive({ ...quiet, sentRecently: { weekly_nudge: true }, parts: sun })).toEqual([])
   })
 
   it('does not hit the DB outside the windows', async () => {
     const todayDay = vi.fn(async () => day)
+    const todayDinner = vi.fn(async () => dinner)
     const hasNextWeekMenu = vi.fn(async () => false)
-    expect(await planProactive({ ...base, todayDay, hasNextWeekMenu, parts: parts({ weekday: 3, hour: 15 }) })).toEqual([])
+    const pendingShopping = vi.fn(async () => [])
+    expect(await planProactive({ ...base, todayDay, todayDinner, hasNextWeekMenu, pendingShopping, parts: parts({ weekday: 3, hour: 12 }) })).toEqual([])
     expect(todayDay).not.toHaveBeenCalled()
+    expect(todayDinner).not.toHaveBeenCalled()
     expect(hasNextWeekMenu).not.toHaveBeenCalled()
+    expect(pendingShopping).not.toHaveBeenCalled()
+  })
+
+  it('anyProactiveWindow is false in a quiet hour and kindEnabled defaults to on', async () => {
+    const { anyProactiveWindow, kindEnabled } = await import('../services/whatsapp/proactive.js')
+    expect(anyProactiveWindow(parts({ weekday: 3, hour: 12 }), null, '20:00')).toBe(false)
+    expect(anyProactiveWindow(parts({ weekday: 3, hour: 22, minute: 30 }), null, '20:00')).toBe(true)
+    expect(kindEnabled({}, 'daily_brief')).toBe(true)
+    expect(kindEnabled({ daily_brief: false }, 'daily_brief')).toBe(false)
   })
 })
 

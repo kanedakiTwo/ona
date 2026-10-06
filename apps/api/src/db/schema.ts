@@ -754,8 +754,13 @@ export const whatsappLinks = pgTable('whatsapp_links', {
   phone: text('phone').notNull().unique(),
   /** WhatsApp profile name at link time — display only. */
   profileName: text('profile_name'),
-  /** Opt-in for proactive messages (prep alerts, Sunday menu nudge). */
+  /** Opt-in for proactive messages (master switch). */
   notify: boolean('notify').notNull().default(true),
+  /**
+   * Per-kind switches for proactive messages, e.g. `{ daily_brief: false }`.
+   * Missing key = on. Kinds: see PROACTIVE_KINDS in whatsapp/proactive.ts.
+   */
+  prefs: jsonb('prefs').notNull().default({}).$type<Record<string, boolean>>(),
   linkedAt: timestamp('linked_at', { withTimezone: true }).notNull().defaultNow(),
   /** Last inbound message — Meta's 24 h customer-service window starts here. */
   lastInboundAt: timestamp('last_inbound_at', { withTimezone: true }),

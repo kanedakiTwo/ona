@@ -17,6 +17,73 @@ import type { OutboundMessage } from './render.js'
 export { MADRID_TZ, madridParts, mondayOf, type MadridParts } from '../madridTime.js'
 import type { MadridParts } from '../madridTime.js'
 
+export const PROACTIVE_KINDS = [
+  'daily_brief',
+  'weekly_nudge',
+  'prep_alerts',
+  'cooking_reminder',
+  'dinner_checkin',
+  'shopping_reminder',
+] as const
+export type ProactiveKind = (typeof PROACTIVE_KINDS)[number]
+
+export const PROACTIVE_LABELS: Record<ProactiveKind, string> = {
+  daily_brief: 'resumen de la mañana',
+  weekly_nudge: 'propuesta de menú del domingo',
+  prep_alerts: 'avisos de preparación (descongelar, remojo…)',
+  cooking_reminder: 'aviso de empezar a cocinar',
+  dinner_checkin: '"¿hiciste la cena?"',
+  shopping_reminder: 'recordatorio de la compra',
+}
+
+/** Missing key = on; the master `notify` switch is checked separately. */
+export function kindEnabled(prefs: Record<string, boolean> | null | undefined, kind: ProactiveKind): boolean {
+  return prefs?.[kind] !== false
+}
+
+/** "20:30" → 1230; garbage → fallback. */
+export function minutesOf(time: string | null | undefined, fallback: number): number {
+  const m = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(time ?? '')
+  return m ? Number(m[1]) * 60 + Number(m[2]) : fallback
+}
+const nowMinutes = (p: MadridParts) => p.hour * 60 + p.minute
+const hhmm = (min: number) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`
+
+export const DEFAULT_DINNER_MIN = 21 * 60
+
+/**
+ * Long dinners only (≥ 40 min): a 20-minute window ending when the user
+ * should start so dinner is ready at their dinner time (10-min buffer).
+ */
+export const COOKING_REMINDER_MIN_TOTAL = 40
+export function isCookingReminderWindow(p: MadridParts, dinnerTime: string | null, totalMinutes: number): boolean {
+  if (totalMinutes < COOKING_REMINDER_MIN_TOTAL) return false
+  const start = minutesOf(dinnerTime, DEFAULT_DINNER_MIN) - totalMinutes - 10
+  return nowMinutes(p) >= start - 10 && nowMinutes(p) < start + 10
+}
+/** Between 2 h and 3 h after dinner time. */
+export function isDinnerCheckinWindow(p: MadridParts, dinnerTime: string | null): boolean {
+  const d = minutesOf(dinnerTime, DEFAULT_DINNER_MIN)
+  return nowMinutes(p) >= d + 120 && nowMinutes(p) < d + 180
+}
+/** Saturday 10:00–12:59 Madrid. */
+export function isShoppingReminderWindow(p: MadridParts): boolean {
+  return p.weekday === 5 && p.hour >= 10 && p.hour < 13
+}
+/** Cooking reminders can only fire in the afternoon/evening; cheap pre-check. */
+export function couldNeedCookingReminder(p: MadridParts, dinnerTime: string | null): boolean {
+  const d = minutesOf(dinnerTime, DEFAULT_DINNER_MIN)
+  return nowMinutes(p) >= d - 4 * 60 && nowMinutes(p) < d
+}
+
+export function formatCookingReminder(name: string, totalMinutes: number, dinnerTime: string | null): string {
+  return `Si quieres cenar a las ${hhmm(minutesOf(dinnerTime, DEFAULT_DINNER_MIN))}, toca empezar con *${name}* (unos ${totalMinutes} min).`
+}
+export function formatShoppingReminder(pending: string[], webUrl: string): string {
+  const shown = pending.slice(0, 8).join(', ')
+  return `¿Toca compra? Te faltan ${pending.length} cosas: ${shown}${pending.length > 8 ? '…' : ''}.\n\nVer lista de la compra: ${webUrl}/shopping`
+}
+
 /** Sunday 18:00–21:59 Madrid. */
 export function isWeeklyNudgeWindow(p: MadridParts): boolean {
   return p.weekday === 6 && p.hour >= 18 && p.hour < 22
@@ -47,31 +114,80 @@ function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
+export interface TodayDinner {
+  names: string[]
+  /** Longest total time among today's dinner recipes (min), null if unknown. */
+  totalMinutes: number | null
+}
+
 export interface ProactiveInput {
   parts: MadridParts
   breakfastTime: string | null
-  briefedRecently: boolean
-  nudgedRecently: boolean
+  dinnerTime: string | null
+  prefs: Record<string, boolean>
+  /** Kinds already sent within their cooldown. */
+  sentRecently: Partial<Record<ProactiveKind, boolean>>
   /** Lazy so the DB is only hit inside the right time window. */
   todayDay: () => Promise<DayMenu | null>
+  todayDinner: () => Promise<TodayDinner | null>
+  cookedToday: () => Promise<boolean>
+  pendingShopping: () => Promise<string[]>
   hasNextWeekMenu: () => Promise<boolean>
   webUrl: string
 }
 
 export interface PlannedMessage {
-  kind: 'daily_brief' | 'weekly_nudge'
+  kind: ProactiveKind
   messages: OutboundMessage[]
 }
 
 export async function planProactive(input: ProactiveInput): Promise<PlannedMessage[]> {
   const out: PlannedMessage[] = []
+  const can = (k: ProactiveKind) => kindEnabled(input.prefs, k) && !input.sentRecently[k]
+  const p = input.parts
 
-  if (!input.briefedRecently && isDailyBriefWindow(input.parts, input.breakfastTime)) {
+  if (can('daily_brief') && isDailyBriefWindow(p, input.breakfastTime)) {
     const text = formatDailyBrief(await input.todayDay(), input.webUrl)
     if (text) out.push({ kind: 'daily_brief', messages: [{ type: 'text', text }] })
   }
 
-  if (!input.nudgedRecently && isWeeklyNudgeWindow(input.parts) && !(await input.hasNextWeekMenu())) {
+  if (can('cooking_reminder') && couldNeedCookingReminder(p, input.dinnerTime)) {
+    const dinner = await input.todayDinner()
+    if (dinner?.totalMinutes && dinner.names.length && isCookingReminderWindow(p, input.dinnerTime, dinner.totalMinutes)) {
+      out.push({
+        kind: 'cooking_reminder',
+        messages: [{ type: 'text', text: formatCookingReminder(dinner.names[0], dinner.totalMinutes, input.dinnerTime) }],
+      })
+    }
+  }
+
+  if (can('dinner_checkin') && isDinnerCheckinWindow(p, input.dinnerTime)) {
+    const dinner = await input.todayDinner()
+    if (dinner?.names.length && !(await input.cookedToday())) {
+      out.push({
+        kind: 'dinner_checkin',
+        messages: [
+          {
+            type: 'buttons',
+            text: `¿Hiciste hoy la cena (*${dinner.names[0]}*)? Así lo apunto.`,
+            buttons: [
+              { id: 'checkin:yes', title: 'Sí, la hice' },
+              { id: 'checkin:no', title: 'No' },
+            ],
+          },
+        ],
+      })
+    }
+  }
+
+  if (can('shopping_reminder') && isShoppingReminderWindow(p)) {
+    const pending = await input.pendingShopping()
+    if (pending.length >= 3) {
+      out.push({ kind: 'shopping_reminder', messages: [{ type: 'text', text: formatShoppingReminder(pending, input.webUrl) }] })
+    }
+  }
+
+  if (can('weekly_nudge') && isWeeklyNudgeWindow(p) && !(await input.hasNextWeekMenu())) {
     out.push({
       kind: 'weekly_nudge',
       messages: [
@@ -88,6 +204,17 @@ export async function planProactive(input: ProactiveInput): Promise<PlannedMessa
   }
 
   return out
+}
+
+/** Any proactive window that could fire now (cheap pre-check before DB work). */
+export function anyProactiveWindow(p: MadridParts, breakfastTime: string | null, dinnerTime: string | null): boolean {
+  return (
+    isDailyBriefWindow(p, breakfastTime) ||
+    couldNeedCookingReminder(p, dinnerTime) ||
+    isDinnerCheckinWindow(p, dinnerTime) ||
+    isShoppingReminderWindow(p) ||
+    isWeeklyNudgeWindow(p)
+  )
 }
 
 // ─── Delivery channel choice ─────────────────────────────────────

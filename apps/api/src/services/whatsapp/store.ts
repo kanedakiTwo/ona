@@ -11,6 +11,7 @@ export interface LinkWithUser {
   userId: string
   phone: string
   notify: boolean
+  prefs: Record<string, boolean>
   lastInboundAt: Date | null
   email: string
   username: string
@@ -21,6 +22,7 @@ const linkWithUserColumns = {
   userId: whatsappLinks.userId,
   phone: whatsappLinks.phone,
   notify: whatsappLinks.notify,
+  prefs: whatsappLinks.prefs,
   lastInboundAt: whatsappLinks.lastInboundAt,
   email: users.email,
   username: users.username,
@@ -93,16 +95,21 @@ export async function insertOutbound(row: {
   wamid?: string | null
   errorMessage?: string | null
 }): Promise<void> {
-  await db.insert(whatsappMessages).values({
-    wamid: row.wamid ?? null,
-    phone: row.phone,
-    userId: row.userId,
-    direction: 'out',
-    kind: row.kind,
-    body: row.body,
-    status: row.status,
-    errorMessage: row.errorMessage ?? null,
-  })
+  // The message is already out at this point; a duplicate wamid must not
+  // turn a delivered message into a "failed" one.
+  await db
+    .insert(whatsappMessages)
+    .values({
+      wamid: row.wamid ?? null,
+      phone: row.phone,
+      userId: row.userId,
+      direction: 'out',
+      kind: row.kind,
+      body: row.body,
+      status: row.status,
+      errorMessage: row.errorMessage ?? null,
+    })
+    .onConflictDoNothing({ target: whatsappMessages.wamid })
 }
 
 /**
@@ -215,6 +222,29 @@ export async function unlink(userId: string): Promise<boolean> {
     .where(eq(whatsappLinks.userId, userId))
     .returning({ id: whatsappLinks.id })
   return rows.length > 0
+}
+
+/** Merge per-kind proactive switches ({ daily_brief: false }). */
+export async function setPrefs(userId: string, patch: Record<string, boolean>): Promise<Record<string, boolean> | null> {
+  const link = await getLinkByUser(userId)
+  if (!link) return null
+  const prefs = { ...(link.prefs ?? {}), ...patch }
+  await db.update(whatsappLinks).set({ prefs }).where(eq(whatsappLinks.userId, userId))
+  return prefs
+}
+
+/** Outbound kinds sent to `phone` since `since`, with their latest time. */
+export async function recentOutboundKinds(phone: string, since: Date): Promise<Map<string, Date>> {
+  const rows = await db
+    .select({ kind: whatsappMessages.kind, createdAt: whatsappMessages.createdAt })
+    .from(whatsappMessages)
+    .where(and(eq(whatsappMessages.phone, phone), eq(whatsappMessages.direction, 'out'), gt(whatsappMessages.createdAt, since)))
+  const out = new Map<string, Date>()
+  for (const r of rows) {
+    const prev = out.get(r.kind)
+    if (!prev || r.createdAt > prev) out.set(r.kind, r.createdAt)
+  }
+  return out
 }
 
 export async function setNotify(userId: string, notify: boolean): Promise<boolean> {

@@ -37,8 +37,10 @@ export function buildChatHistory(
   const usable = [...rows]
     .filter((r) => r.createdAt.getTime() >= since)
     .filter((r) => typeof r.body === 'string' && r.body.trim().length > 0)
-    // Inbound rows count once answered; outbound once Meta accepted them.
-    .filter((r) => (r.direction === 'in' ? r.status === 'processed' : r.status === 'sent'))
+    // Inbound rows count once answered. Outbound replies count even if
+    // delivery failed: the actions behind them DID run, and leaving the
+    // request "unanswered" in history makes the model redo it next turn.
+    .filter((r) => (r.direction === 'in' ? r.status === 'processed' : r.status === 'sent' || r.kind === 'reply'))
     .filter((r) => !(r.direction === 'out' && NON_CONVERSATION_KINDS.has(r.kind ?? '')))
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
     .slice(-maxMessages)

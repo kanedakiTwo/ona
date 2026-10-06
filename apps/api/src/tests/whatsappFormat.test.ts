@@ -136,6 +136,17 @@ describe('buildChatHistory', () => {
     ])
   })
 
+  it('keeps a reply whose delivery failed, so its request is not redone next turn', () => {
+    const h = buildChatHistory(
+      [row('in', 'Pon lentejas el jueves', 5), { ...row('out', 'Hecho: jueves lentejas', 4, 'failed'), kind: 'reply' }],
+      now,
+    )
+    expect(h).toEqual([
+      { role: 'user', content: 'Pon lentejas el jueves' },
+      { role: 'assistant', content: 'Hecho: jueves lentejas' },
+    ])
+  })
+
   it('skips outbound system notices and acks (budget, linking help, "me pongo con ello")', () => {
     const h = buildChatHistory(
       [row('in', 'hola', 5), { ...row('out', 'Has alcanzado tu límite', 4), kind: 'system' }, { ...row('out', 'Un momento…', 4), kind: 'ack' }, { ...row('out', 'Hola!', 3), kind: 'reply' }],

@@ -16,7 +16,7 @@ Talk to the ONA assistant from WhatsApp. WhatsApp is another way to reach the sa
   - Anything else still silent after 8 s gets "Un momento, me pongo con ello…".
   - At most one ack per turn, always before the answer and never after it (`createAcker` + `ChatOptions.onToolStart`). Acks are stored as outbound `kind='ack'` and kept out of chat history.
   - Added after the first real use (2026-10-06), when "genera menú para la semana" took 25 s with no feedback.
-- Conversation context carries across messages: the server rebuilds the last 20 messages from the last 12 h, so "y el jueves?" works after "¿qué ceno el miércoles?". History is filtered by phone **and** user, so a phone that moves to another account never carries the previous owner's chat into the new one.
+- Conversation context carries across messages: the server rebuilds the last 20 messages from the last 12 h, so "y el jueves?" works after "¿qué ceno el miércoles?". History is filtered by phone **and** user, so a phone that moves to another account never carries the previous owner's chat into the new one. Assistant replies count even if their delivery failed: the actions behind them ran, and a request left "unanswered" would be redone by the decisive model.
 - A message from an unlinked number that looks like a profile code but isn't valid gets "Ese código no es válido o ha caducado".
 - Users can send **voice notes**: they are transcribed with OpenAI (`OPENAI_TRANSCRIBE_MODEL`, default `gpt-4o-mini-transcribe`, language `es`) and handled exactly like typed text; the transcript is what lands in history. A failed or empty transcription gets "No he podido entender el audio…"; without `OPENAI_API_KEY` the reply is "Ahora mismo no puedo escuchar audios. ¿Me lo escribes?".
 - Users can **share a recipe link** (YouTube or a recipe article), bare or with text ("guárdame esta"): the assistant calls `import_recipe_from_url`, saves it to their recipes and replies with `Ver receta: …/recipes/:id`, offering to put it on the menu. Links that aren't recipes, or pages the extractor can't read, get an honest "no he podido leerla" answer.
@@ -26,18 +26,28 @@ Talk to the ONA assistant from WhatsApp. WhatsApp is another way to reach the sa
 
 ## Proactive messages ("Avisos por WhatsApp")
 
-When the toggle is on (default after linking), ONA writes first:
+When the master toggle is on (default after linking), ONA writes first. All times are Europe/Madrid. Breakfast and dinner times come from `user_memories.meal_times`, defaulting to 09:00 and 21:00.
 
-- **Daily brief** at the user's breakfast time (`user_memories.meal_times.breakfast`, default 09:00 Europe/Madrid), for a 90-minute window. It lists today's lunch and dinner from **this week's** menu ("Buenos días. Hoy toca: - Comida: … - Cena: … ¿Quieres cambiar algo?" plus a menu link). If the day is empty, nothing is sent. At most one brief per 20 h.
-- **Sunday nudge**, Sunday 18:00–21:59 Madrid, only when next week has no menu: "Domingo de planificar: ¿te preparo el menú de la semana que viene?" with buttons [Sí, prepáralo] [Ahora no]. At most one every 3 days. The nudge is stored in history, so tapping "Sí, prepáralo" makes the assistant call `generate_weekly_menu` with `nextWeek: true`.
-- **Prep alerts** from `notification_schedule` ("Acuérdate: Merluza — sácalo del congelador 24 h antes" plus a link) go out over Web Push **and** WhatsApp. A row becomes `sent` when either channel delivers (`combineDelivery`). With no push subscription and no linked WhatsApp, the old `push-not-configured` failure is kept.
+| Kind (`prefs` key) | When | Message |
+|---|---|---|
+| `daily_brief` | breakfast time, for 90 min | "Buenos días. Hoy toca: - Comida: … - Cena: … ¿Quieres cambiar algo?" + menu link; skipped if the day is empty |
+| `cooking_reminder` | only if today's dinner takes ≥ 40 min (`recipes.total_time`, else prep+cook): around dinner time − total − 10 min | "Si quieres cenar a las 20:00, toca empezar con *Carrilleras* (unos 90 min)." |
+| `dinner_checkin` | 2–3 h after dinner time, if dinner has a recipe and nothing was cooked-logged today | "¿Hiciste hoy la cena (*X*)? Así lo apunto." [Sí, la hice] [No]. "Sí, la hice" → the assistant calls `log_cooked` (cook log + pantry decrement) |
+| `shopping_reminder` | Saturday 10:00–12:59, if the current list has ≥ 3 unchecked items | "¿Toca compra? Te faltan N cosas: …" + list link |
+| `weekly_nudge` | Sunday 18:00–21:59, if next week has no menu | "Domingo de planificar: ¿te preparo el menú de la semana que viene?" [Sí, prepáralo] [Ahora no] → `generate_weekly_menu(nextWeek: true)` |
+| `prep_alerts` | from `notification_schedule` | "Acuérdate: Merluza — sácalo del congelador…" (also sent by Web Push; the row is `sent` if either channel delivers) |
+
+- **Cooldowns:** 20 h per kind; 3 days for the Sunday nudge and the shopping reminder. They are stored as outbound rows, so the 5-minute scheduler tick is idempotent. Proactive messages land in chat history, so a short reply ("sí") makes sense to the assistant.
+- **Switches:**
+  - **Master:** `whatsapp_links.notify`, the profile toggle.
+  - **Per kind:** `whatsapp_links.prefs` (missing key = on), migration `0031_whatsapp_prefs.sql`.
+  - Users change them **by chat** via the `set_whatsapp_notifications` skill, e.g. "no me mandes el resumen de la mañana ni el recordatorio de la compra". `PATCH /whatsapp/link` accepts `{ notify?, prefs? }`, and `GET /whatsapp/status` returns `prefs`.
+- Everything runs inside the existing 5-minute `notificationScheduler` tick (`runProactiveTick`). It's a no-op when WhatsApp isn't configured, and DB work only happens while one of the time windows is open.
 
 Delivery follows Meta's 24 h customer-service window, measured from `last_inbound_at` with a 30-min safety margin:
 - **Inside the window:** free-form messages with buttons.
 - **Outside the window:** the approved template `WHATSAPP_TEMPLATE_NAME` (language `WHATSAPP_TEMPLATE_LANG`, default `es`), whose single `{{1}}` body variable carries the message flattened to one line. Buttons are folded in as "Responde: Sí / No.", because Meta rejects newlines in template parameters.
 - **Outside the window with no template:** skipped silently and retried on the next tick while the time window is still open.
-
-Everything runs inside the existing 5-minute `notificationScheduler` tick (`runProactiveTick`). It's a no-op when WhatsApp isn't configured.
 
 ## Linking
 
@@ -67,7 +77,7 @@ Everything runs inside the existing 5-minute `notificationScheduler` tick (`runP
 
 ## Data model
 
-- `whatsapp_links(user_id UNIQUE, phone UNIQUE, profile_name, notify, linked_at, last_inbound_at)`. `last_inbound_at` marks the start of Meta's 24 h customer-service window.
+- `whatsapp_links(user_id UNIQUE, phone UNIQUE, profile_name, notify, prefs jsonb, linked_at, last_inbound_at)`. `last_inbound_at` marks the start of Meta's 24 h customer-service window.
 - `whatsapp_link_codes(code PK, user_id, expires_at, used_at)`: used by both the profile card and `/whatsapp/conectar`.
 - `whatsapp_messages(wamid UNIQUE NULL, phone, user_id, direction in|out, kind, body, status, error_message)`.
   - Inbound statuses: `received` / `processed` / `failed` / `ignored`.
@@ -79,9 +89,9 @@ Everything runs inside the existing 5-minute `notificationScheduler` tick (`runP
 
 - `GET /whatsapp/webhook` (public): Meta's verification handshake. It echoes `hub.challenge` when `hub.verify_token` matches `WHATSAPP_VERIFY_TOKEN`; otherwise **403**.
 - `POST /whatsapp/webhook` (public, signed): **503** when the channel isn't configured.
-- `GET /whatsapp/status` (auth): `{ available, linked, phone, notify, chatLink }`. `available` = configured AND email allowed. The profile chapter is hidden unless `available || linked`, so a user can always disconnect.
+- `GET /whatsapp/status` (auth): `{ available, linked, phone, notify, prefs, chatLink }`. `available` = configured AND email allowed. The profile chapter is hidden unless `available || linked`, so a user can always disconnect.
 - `POST /whatsapp/link-code` (auth): `{ code, expiresAt, message, waLink }`. **403** `WHATSAPP_UNAVAILABLE` when not available.
-- `PATCH /whatsapp/link` (auth) `{ notify: boolean }`: **404** when not linked.
+- `PATCH /whatsapp/link` (auth) `{ notify?: boolean, prefs?: { <kind>: boolean } }`: **404** when not linked.
 - `DELETE /whatsapp/link` (auth): **204**.
 
 ## Configuration (`ona-api`)

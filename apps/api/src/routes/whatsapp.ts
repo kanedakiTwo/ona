@@ -12,6 +12,7 @@ import { enqueueInbound } from '../services/whatsapp/inbound.js'
 import { buildInboundDeps, initialInboundBody } from '../services/whatsapp/wiring.js'
 import * as store from '../services/whatsapp/store.js'
 import { buildWaLink, linkMessageText, maskPhone } from '../services/whatsapp/linking.js'
+import { PROACTIVE_KINDS } from '../services/whatsapp/proactive.js'
 
 // ─── Public webhook (Meta → ONA) ─────────────────────────────────
 //
@@ -104,6 +105,7 @@ router.get('/whatsapp/status', authMiddleware, async (req: AuthRequest, res) => 
       linked: Boolean(link),
       phone: link ? maskPhone(link.phone) : null,
       notify: link?.notify ?? false,
+      prefs: link?.prefs ?? {},
       chatLink: available && link && botNumber ? buildWaLink(botNumber) : null,
     })
   } catch (err: any) {
@@ -133,22 +135,30 @@ router.post('/whatsapp/link-code', authMiddleware, async (req: AuthRequest, res)
   }
 })
 
-const patchLinkSchema = z.object({ notify: z.boolean() })
+const patchLinkSchema = z
+  .object({
+    notify: z.boolean().optional(),
+    /** Per-kind switches, e.g. { daily_brief: false }. */
+    prefs: z.record(z.enum(PROACTIVE_KINDS), z.boolean()).optional(),
+  })
+  .refine((b) => b.notify !== undefined || b.prefs !== undefined, 'Nada que cambiar')
 
-// PATCH /whatsapp/link — toggle proactive messages.
+// PATCH /whatsapp/link — master switch and/or per-kind proactive switches.
 router.patch('/whatsapp/link', authMiddleware, async (req: AuthRequest, res) => {
   const parsed = patchLinkSchema.safeParse(req.body)
   if (!parsed.success) {
-    res.status(400).json({ error: 'Body inválido: { notify: boolean }' })
+    res.status(400).json({ error: 'Body inválido: { notify?: boolean, prefs?: { <tipo>: boolean } }' })
     return
   }
   try {
-    const ok = await store.setNotify(req.userId!, parsed.data.notify)
-    if (!ok) {
+    const link = await store.getLinkByUser(req.userId!)
+    if (!link) {
       res.status(404).json({ error: 'No tienes WhatsApp conectado.' })
       return
     }
-    res.json({ notify: parsed.data.notify })
+    if (parsed.data.notify !== undefined) await store.setNotify(req.userId!, parsed.data.notify)
+    const prefs = parsed.data.prefs ? await store.setPrefs(req.userId!, parsed.data.prefs) : link.prefs
+    res.json({ notify: parsed.data.notify ?? link.notify, prefs: prefs ?? {} })
   } catch (err: any) {
     console.error('[whatsapp] patch link error:', err?.message ?? err)
     res.status(500).json({ error: 'Internal server error' })

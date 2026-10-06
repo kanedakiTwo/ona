@@ -2,6 +2,7 @@ import type { SkillContext, SkillDefinition, SkillResult } from './types.js'
 import { appApiFor, AppApiError, type AppApi } from './appApi.js'
 import { madridWeekStart } from '../madridTime.js'
 import { env } from '../../config/env.js'
+import { PROACTIVE_KINDS, PROACTIVE_LABELS, type ProactiveKind } from '../whatsapp/proactive.js'
 
 /**
  * UI-parity skills: everything the web app can do, reachable from chat
@@ -827,6 +828,32 @@ const inviteToHousehold: SkillDefinition = {
   },
 }
 
+const setWhatsappNotifications: SkillDefinition = {
+  name: 'set_whatsapp_notifications',
+  description:
+    'Activa o desactiva los avisos que ONA manda por WhatsApp sin que el usuario escriba. kind: all (todos), daily_brief (resumen de la mañana), weekly_nudge (propuesta de menu del domingo), prep_alerts (descongelar, remojo…), cooking_reminder (empezar a cocinar), dinner_checkin ("¿hiciste la cena?"), shopping_reminder (recordatorio de la compra). Ej: "no me mandes el resumen de la mañana".',
+  parameters: {
+    type: 'object',
+    properties: {
+      kind: { type: 'string', enum: ['all', ...PROACTIVE_KINDS] },
+      enabled: { type: 'boolean' },
+    },
+    required: ['kind', 'enabled'],
+  },
+  async handler(p, ctx) {
+    const enabled = p.enabled !== false
+    if (p.kind === 'all') {
+      await api(ctx)('PATCH', '/whatsapp/link', { notify: enabled })
+      return text(`Hecho: avisos por WhatsApp ${enabled ? 'activados' : 'desactivados'}.`)
+    }
+    if (!PROACTIVE_KINDS.includes(p.kind)) return text('Tipo de aviso desconocido.')
+    const body: Record<string, unknown> = { prefs: { [p.kind]: enabled } }
+    if (enabled) body.notify = true // turning one kind on implies the master switch
+    await api(ctx)('PATCH', '/whatsapp/link', body)
+    return text(`Hecho: ${PROACTIVE_LABELS[p.kind as ProactiveKind]} ${enabled ? 'activado' : 'desactivado'}.`)
+  },
+}
+
 export const appSkills: SkillDefinition[] = [
   setMealNote,
   clearMeal,
@@ -852,4 +879,5 @@ export const appSkills: SkillDefinition[] = [
   updateProfile,
   updateWeeklyTemplate,
   inviteToHousehold,
+  setWhatsappNotifications,
 ]

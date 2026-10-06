@@ -141,8 +141,9 @@ function LinkedState({ status }: { status: WhatsAppStatus }) {
         <div className="text-left min-w-0">
           <div className="text-[13px] font-medium text-[#1A1612]">Avisos por WhatsApp</div>
           <div className="text-[11px] leading-snug text-[#7A7066]">
-            Cada mañana te cuenta qué toca hoy, te recuerda lo que hay que preparar con
-            antelación y los domingos te propone el menú de la semana.
+            Resumen de la mañana, aviso para empezar a cocinar, “¿hiciste la cena?”,
+            recordatorio de la compra y menú del domingo. Para quitar alguno, díselo a
+            Ona por WhatsApp (“no me mandes el resumen de la mañana”).
           </div>
         </div>
         <span

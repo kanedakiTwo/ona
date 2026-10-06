@@ -23,6 +23,9 @@ import { calculateMenuNutrientsFromDB } from '../nutrientCalculator.js'
 import { updateBalance } from '../nutrientBalance.js'
 import { getSummary } from '../advisor.js'
 import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../scopeResolver.js'
+import { importRecipeFromUrl } from '../recipeImport.js'
+import { NotARecipeError } from '../recipeUrlExtractor.js'
+import { NoExtractableContentError } from '../sources/youtube.js'
 import type { SkillDefinition, SkillContext, SkillResult } from './types.js'
 
 // ─── Helper: get current week start (Monday) ───────────────
@@ -1983,6 +1986,48 @@ const updateMemory: SkillDefinition = {
 
 // ─── Exports ────────────────────────────────────────────────
 
+// ─── import_recipe_from_url ─────────────────────────────────────
+// "Guárdame esta receta: <enlace>" — same extractor + persist path as the
+// /recipes "Importar desde enlace" flow (services/recipeImport.ts). Shines
+// on WhatsApp, where sharing a YouTube/blog link is the natural gesture.
+export const importRecipeFromUrlSkill: SkillDefinition = {
+  name: 'import_recipe_from_url',
+  description:
+    'Importa una receta desde un enlace (video de YouTube o articulo/blog de cocina) y la guarda en las recetas del usuario. Usala cuando el usuario comparta o pegue un enlace de una receta o pida "guardame esta receta". Tarda unos segundos. Devuelve el id y el nombre de la receta guardada.',
+  parameters: {
+    type: 'object',
+    properties: {
+      url: { type: 'string', description: 'URL completa (http/https) de la receta' },
+    },
+    required: ['url'],
+  },
+  handler: async (params: { url?: string }, ctx: SkillContext): Promise<SkillResult> => {
+    const url = typeof params.url === 'string' ? params.url.trim() : ''
+    if (!/^https?:\/\/\S+$/i.test(url)) {
+      return { data: null, summary: 'La URL no es valida. Pide al usuario el enlace completo.', uiHint: 'text' }
+    }
+    try {
+      const saved = await importRecipeFromUrl(url, ctx.userId)
+      const review = saved.warnings.length > 0
+        ? ` Algunos ingredientes no se reconocieron del todo: sugiere revisarla en la app.`
+        : ''
+      return {
+        data: { recipeId: saved.recipeId, name: saved.name },
+        summary: `Receta "${saved.name}" guardada en las recetas del usuario (id ${saved.recipeId}).${review}`,
+        uiHint: 'recipe',
+      }
+    } catch (err: any) {
+      if (err instanceof NotARecipeError) {
+        return { data: null, summary: `El enlace no parece contener una receta cocinable: ${err.reason}`, uiHint: 'text' }
+      }
+      if (err instanceof NoExtractableContentError) {
+        return { data: null, summary: `No se pudo leer el contenido del enlace: ${err.message}`, uiHint: 'text' }
+      }
+      throw err
+    }
+  },
+}
+
 export const skills: SkillDefinition[] = [
   getTodaysMenu,
   getRecipeDetails,
@@ -2017,6 +2062,8 @@ export const skills: SkillDefinition[] = [
   updateHousehold,
   addRecipeToMine,
   updateMemory,
+  // WhatsApp channel 2026-10:
+  importRecipeFromUrlSkill,
 ]
 
 /**

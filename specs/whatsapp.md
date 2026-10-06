@@ -11,6 +11,8 @@ Talk to the ONA assistant from WhatsApp. WhatsApp is another way to reach the sa
 - Conversation context carries across messages: the server rebuilds the last 20 messages from the last 12 h, so "y el jueves?" works after "¿qué ceno el miércoles?".
 - An unlinked number that writes to ONA gets one "conecta tu WhatsApp desde la app" message per 24 h. A message that looks like a code but isn't valid gets "Ese código no es válido o ha caducado".
 - Users can send **voice notes**: they are transcribed with OpenAI (`OPENAI_TRANSCRIBE_MODEL`, default `gpt-4o-mini-transcribe`, language `es`) and handled exactly like typed text; the transcript is what lands in history. A failed or empty transcription gets "No he podido entender el audio…"; without `OPENAI_API_KEY` the reply is "Ahora mismo no puedo escuchar audios. ¿Me lo escribes?".
+- Users can **share a recipe link** (YouTube or a recipe article), bare or with text ("guárdame esta"): the assistant calls `import_recipe_from_url`, saves it to their recipes and replies with `Ver receta: …/recipes/:id`, offering to put it on the menu. Links that aren't recipes, or pages the extractor can't read, get an honest "no he podido leerla" answer.
+- Users can **send a photo of a recipe** (cookbook page, handwritten card, screenshot). It is extracted with the existing photo extractor and **saved directly** (soft lint, tags `auto-extracted`/`from-photo`; caption kept as context in history). Reply: "He guardado *<nombre>* en tus recetas" + link, plus a "revisa los ingredientes" nudge when some weren't matched to the catalogue. Photos with no recipe get "No he encontrado ninguna receta en esa foto…". History records `[Foto de una receta: <caption>]`, so "ponla el jueves para cenar" works next.
 - One message can trigger several actions ("genérame el menú y dime qué ceno hoy") — the engine runs up to 4 tool rounds per turn (see [Advisor](./advisor.md)).
 - Sending a sticker, location or other unsupported type gets a polite "todavía no entiendo ese tipo de mensaje".
 
@@ -71,7 +73,7 @@ Talk to the ONA assistant from WhatsApp. WhatsApp is another way to reach the sa
 - No WhatsApp groups and no sign-up from WhatsApp; you need an ONA account first.
 - Meta's test number can only message the up-to-5 recipients verified in the Meta dashboard. Opening the channel to all users needs a real number plus business verification.
 - In-process queue: if the API restarts mid-turn, that message stays `received` and gets no answer.
-- The model sees text only. Cooking-mode hints (`set_timer`, `cooking_step`) have no effect on WhatsApp; the reply points to the app instead.
+- The model sees text only: photos are never shown to the chat model, they go straight to recipe import (a photo of the fridge is not understood yet). Cooking-mode hints (`set_timer`, `cooking_step`) have no effect on WhatsApp; the reply points to the app instead.
 
 ## Related specs
 

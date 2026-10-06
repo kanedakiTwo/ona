@@ -3,6 +3,7 @@ import { db } from '../../db/connection.js'
 import { chat } from '../assistant/engine.js'
 import { checkAdvisorBudget, recordAdvisorUsage } from '../advisorBudget.js'
 import { isSttConfigured, transcribeAudio } from '../stt.js'
+import { importRecipeFromImage } from '../recipeImport.js'
 import { isUserAllowed } from './config.js'
 import * as store from './store.js'
 import * as client from './client.js'
@@ -21,6 +22,7 @@ export function buildInboundDeps(): InboundDeps {
     checkBudget: (userId) => checkAdvisorBudget(userId, db),
     recordUsage: (userId, usage) => recordAdvisorUsage(userId, usage, db),
     transcribe: isSttConfigured() ? transcribeAudio : undefined,
+    importRecipeFromImage: env.ANTHROPIC_API_KEY ? importRecipeFromImage : undefined,
   }
 }
 

@@ -56,6 +56,7 @@ import {
   type Unit,
 } from '@ona/shared'
 import { extractRecipeFromImage } from '../services/recipeExtractor.js'
+import { saveExtractedRecipe } from '../services/recipeImport.js'
 import { AnthropicProvider } from '../services/providers/anthropic.js'
 import {
   persistRecipe,
@@ -590,52 +591,18 @@ router.post(
       const provider = new AnthropicProvider()
       const extracted = await extractRecipeFromUrl(url, { provider })
 
-      const writeIngredients = extracted.ingredients
-        .filter((i) => i.matched && i.ingredientId)
-        .map((i, idx) => ({
-          ingredientId: i.ingredientId as string,
-          quantity: i.quantity,
-          unit: i.unit,
-          displayOrder: idx,
-        }))
-
-      const writeSteps = extracted.steps.map((text, index) => ({ index, text }))
-
-      const writeInput: RecipeWriteInput = {
-        name: extracted.name,
-        // Persist the cover photo captured by the extractor (JSON-LD image,
-        // og:image fallback, or YouTube thumbnail). Null when the source
-        // had nothing usable.
-        imageUrl: extracted.imageUrl ?? null,
-        servings: extracted.servings,
-        prepTime: extracted.prepTime ?? null,
-        cookTime: extracted.cookTime ?? null,
-        difficulty: (extracted.difficulty ?? 'medium') as Difficulty,
-        meals: extracted.meals,
-        seasons: extracted.seasons,
-        tags: extracted.tags ?? [],
-        // System imports get the `compartida` flag so the existing
-        // `publicTagsOf` filter hides it from cards (matches the seed
-        // pipeline convention). The `from-url` + `auto-extracted` tags
-        // mark provenance regardless of catalogue scope.
-        internalTags: asSystem
-          ? ['compartida', 'auto-extracted', 'from-url']
-          : ['auto-extracted', 'from-url'],
-        sourceUrl: extracted.sourceUrl ?? url,
-        sourceType: extracted.sourceType ?? null,
-        ingredients: writeIngredients,
-        steps: writeSteps,
-      }
-
-      const result = await persistRecipe(writeInput, {
+      // System imports get the `compartida` flag so the existing
+      // `publicTagsOf` filter hides it from cards (matches the seed pipeline
+      // convention). `from-url` + `auto-extracted` mark provenance regardless
+      // of catalogue scope.
+      const result = await saveExtractedRecipe(extracted, {
         // asSystem: persist as a curated ONA recipe (authorId = null) so it
         // surfaces on /recipes-ona and under "Catálogo ONA" on /recipes.
         authorId: asSystem ? null : req.userId!,
-        // URL imports go through soft lint: lint findings come back as
-        // warnings instead of blocking the save. The user reviews + edits
-        // on the recipe detail page.
-        softLint: true,
-        force: true,
+        internalTags: asSystem
+          ? ['compartida', 'auto-extracted', 'from-url']
+          : ['auto-extracted', 'from-url'],
+        sourceUrl: url,
       })
       if (!result.ok) {
         res.status(422).json({
@@ -657,7 +624,7 @@ router.post(
       ])
       res.status(201).json({
         recipe: toDetailRecipe(newRow, ings, steps),
-        warnings: [...result.warnings.map((w) => w.message), ...extracted.warnings],
+        warnings: result.warnings,
       })
     } catch (err: any) {
       console.error('Extract recipe from URL error:', err)

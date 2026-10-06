@@ -83,6 +83,10 @@ Everything runs inside the existing 5-minute `notificationScheduler` tick (`runP
 - Recommended: `WHATSAPP_DISPLAY_NUMBER` (the sender's number as digits, for `wa.me` links), `WHATSAPP_ALLOWED_EMAILS` (comma-separated ONA emails; empty means everyone), `WEB_PUBLIC_URL` (base for deep links; defaults to the Railway web URL).
 - Optional: `WHATSAPP_TEMPLATE_NAME` + `WHATSAPP_TEMPLATE_LANG` (proactive messages outside the 24 h window; template body must have one `{{1}}` and not start or end with it, e.g. "Aviso de ONA: {{1}} Respóndeme por aquí si quieres cambiar algo."), `WHATSAPP_GRAPH_VERSION` (default `v26.0`) and `WHATSAPP_GRAPH_BASE_URL`, which local E2E points at a mock server.
 - Meta dashboard webhook: `https://ona-api-production.up.railway.app/whatsapp/webhook`, subscribed to the `messages` field.
+- **Two Meta gotchas, both hit while setting it up on 2026-10-06.** Either one means silence: no inbound rows at all and nothing in the logs.
+  1. **Webhook saved without fields.** Saving the URL in the dashboard doesn't subscribe any field. Check with `GET /{app-id}/subscriptions` (app token `app_id|app_secret`): `fields` must include `messages`. Fix: `POST /{app-id}/subscriptions` with `object=whatsapp_business_account&fields=messages&callback_url=…&verify_token=…`.
+  2. **App not subscribed to the WABA.** The test WhatsApp Business Account comes subscribed only to Meta's internal "WA DevX Webhook Events" app. Check with `GET /{waba-id}/subscribed_apps`; fix with `POST /{waba-id}/subscribed_apps`, using a token that can see the WABA. The System User needs the WhatsApp account assigned as an asset, not just the app.
+  Moving to a real number needs both again for the new WABA.
 
 ## Constraints
 

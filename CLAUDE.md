@@ -151,13 +151,14 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 
 ### Pending
 
-- [ ] **WhatsApp channel setup in Meta + Railway** (code ready, see [specs/whatsapp.md](./specs/whatsapp.md)). Meta app "ONA" already created (2026-10-06).
+- [ ] **WhatsApp channel setup in Meta + Railway** (code ready on branch `feat/whatsapp`, not yet merged/deployed — see [specs/whatsapp.md](./specs/whatsapp.md)). Meta app "ONA" already created (2026-10-06).
+  0. `railway login && railway link` (pick `ona-app`): the CLI session had expired on 2026-10-06, so Claude couldn't deploy. Then say "despliega WhatsApp" and Claude merges `feat/whatsapp` and runs `railway up` (api, then web). Migration 0030 only adds tables.
   1. Meta app → Casos de uso → add **"Conectar con clientes a través de WhatsApp"** (creates the WABA + test number).
   2. WhatsApp → Configuración de la API: note the **Phone number ID** + the test number; add your phone + household phones as recipients (max 5).
   3. Permanent token: business.facebook.com → Usuarios del sistema → admin user → assign app ONA + WhatsApp account (full control) → token "Nunca caduca" with `whatsapp_business_messaging` + `whatsapp_business_management`.
   4. Set on `ona-api`: `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET` (Básica → Clave secreta), `WHATSAPP_VERIFY_TOKEN` (any random string), `WHATSAPP_DISPLAY_NUMBER` (digits), `WHATSAPP_ALLOWED_EMAILS` (your ONA emails).
   5. After the API deploy: WhatsApp → Configuración → Webhook = `https://ona-api-production.up.railway.app/whatsapp/webhook` + your verify token → subscribe field **`messages`**.
-  6. Accept: `/profile` → "Ona en WhatsApp" → Conectar → send the code → you get "¡Listo!"; then "¿qué toca hoy?" answers with the menu.
+  6. Accept: write "hola" to the ONA number from WhatsApp → open the link → log in → "Enviar desde WhatsApp" → you get "¡Listo!" (or `/profile` → "Ona en WhatsApp" → Conectar). Then "¿qué toca hoy?" answers with today's menu; a voice note and a recipe link/photo work too.
   7. *(Optional, for proactive messages when you haven't written to Ona in 24 h)* WhatsApp Manager → Plantillas → new **Utility** template, language Spanish, name e.g. `ona_aviso`, body `Aviso de ONA: {{1}} Respóndeme por aquí si quieres cambiar algo.` → once approved set `WHATSAPP_TEMPLATE_NAME=ona_aviso` on `ona-api`. Without it, the morning brief / Sunday nudge / prep alerts only arrive while the 24 h window is open.
 
 - [ ] **End-to-end check on production** after the next `ona-api` deploy: register a fresh user, create a recipe, hit "Regenerar imagen" — confirms the Railway volume writes survive and `IMAGE_PUBLIC_URL_BASE` (`https://ona-api-production.up.railway.app/images/recipes`) actually serves the JPEG. (Volume `ona-api-volume` mounted at `/data` and the three env vars `AIKIT_API_KEY`, `IMAGE_STORAGE_DIR`, `IMAGE_PUBLIC_URL_BASE` are already set on `ona-api` via Railway CLI.)

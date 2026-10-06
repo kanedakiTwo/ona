@@ -46,7 +46,7 @@ function setup(overrides: {
   consume?: (code: string) => { userId: string } | null
   budgetExceeded?: boolean
   history?: HistoryRow[]
-  recentLinkHint?: boolean
+  activePhoneToken?: boolean
   allowed?: boolean
   chatReply?: { message: string; uiHint?: string; data?: unknown }
   transcribe?: InboundDeps['transcribe']
@@ -77,7 +77,8 @@ function setup(overrides: {
         outbound.push({ kind: row.kind, body: row.body, status: row.status })
       },
       loadHistoryRows: async () => overrides.history ?? [],
-      hasRecentOutbound: async () => overrides.recentLinkHint ?? false,
+      hasActivePhoneToken: async () => overrides.activePhoneToken ?? false,
+      createPhoneToken: async () => 'tok123',
     },
     client: {
       sendMessage: async (_to, m) => {
@@ -113,13 +114,16 @@ describe('processInbound — unlinked numbers', () => {
     expect(t.sent).toEqual([{ type: 'text', text: COPY.badCode }])
   })
 
-  it('explains how to connect, but only once per day', async () => {
+  it('sends a one-tap connect link (WhatsApp-first linking)', async () => {
     const first = setup({ link: null })
     await processInbound(msg({ text: 'hola' }), first.deps)
-    expect(first.sent).toEqual([{ type: 'text', text: COPY.notLinked(WEB) }])
+    expect(first.sent).toEqual([{ type: 'text', text: COPY.connect(`${WEB}/whatsapp/conectar?t=tok123`) }])
     expect(first.outbound[0].kind).toBe('link')
+    expect(first.chat).not.toHaveBeenCalled()
+  })
 
-    const again = setup({ link: null, recentLinkHint: true })
+  it('stays quiet while a connect link is still live', async () => {
+    const again = setup({ link: null, activePhoneToken: true })
     await processInbound(msg({ text: 'hola?' }), again.deps)
     expect(again.sent).toEqual([])
   })

@@ -11,6 +11,8 @@ import crypto from 'crypto'
 export const LINK_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 export const LINK_CODE_LENGTH = 6
 export const LINK_CODE_TTL_MS = 10 * 60 * 1000
+/** WhatsApp-first link (`/whatsapp/conectar?t=`): one per phone per hour. */
+export const PHONE_TOKEN_TTL_MS = 60 * 60 * 1000
 
 const DIGITS = '23456789'
 
@@ -40,6 +42,10 @@ export function extractLinkCodeCandidates(text: string | null | undefined): stri
       /[2-9]/.test(t),
   )
   return Array.from(new Set(valid)).slice(0, 3)
+}
+
+export function connectUrl(webUrl: string, token: string): string {
+  return `${webUrl}/whatsapp/conectar?t=${encodeURIComponent(token)}`
 }
 
 export function linkMessageText(code: string): string {

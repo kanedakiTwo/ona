@@ -1,9 +1,10 @@
 import { and, desc, eq, gt, gte, isNull, or, inArray } from 'drizzle-orm'
 import { db } from '../../db/connection.js'
-import { users, whatsappLinkCodes, whatsappLinks, whatsappMessages } from '../../db/schema.js'
+import { users, whatsappLinkCodes, whatsappLinks, whatsappMessages, whatsappPhoneTokens } from '../../db/schema.js'
 import type { InboundMessage } from './webhookParser.js'
 import type { HistoryRow } from './history.js'
-import { generateLinkCode, LINK_CODE_TTL_MS } from './linking.js'
+import crypto from 'crypto'
+import { generateLinkCode, LINK_CODE_TTL_MS, PHONE_TOKEN_TTL_MS } from './linking.js'
 
 /** DB access for the WhatsApp channel. Kept behind one object so `inbound.ts` can take a fake. */
 
@@ -155,10 +156,25 @@ export async function createLinkCode(userId: string, now: Date = new Date()): Pr
   throw new Error('No se pudo generar un código de vinculación')
 }
 
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
+
 /**
- * Consume a code sent from `phone` and link it to the code's owner. A phone
- * already linked to someone else moves to the new user; a user re-linking
- * replaces their previous phone. Returns null for unknown/used/expired codes.
+ * Link `phone ↔ userId` one-to-one inside a transaction. A phone already
+ * linked to someone else moves to the new user; a user re-linking replaces
+ * their previous phone; messages the phone sent before linking are adopted.
+ */
+async function linkPhoneToUser(tx: Tx, phone: string, userId: string, profileName: string | null, now: Date) {
+  await tx.delete(whatsappLinks).where(or(eq(whatsappLinks.phone, phone), eq(whatsappLinks.userId, userId)))
+  await tx.insert(whatsappLinks).values({ userId, phone, profileName, lastInboundAt: now })
+  await tx
+    .update(whatsappMessages)
+    .set({ userId })
+    .where(and(eq(whatsappMessages.phone, phone), isNull(whatsappMessages.userId)))
+}
+
+/**
+ * Consume a code sent from `phone` (profile flow) and link it to the code's
+ * owner. Returns null for unknown/used/expired codes.
  */
 export async function consumeLinkCode(
   code: string,
@@ -179,21 +195,65 @@ export async function consumeLinkCode(
       )
       .returning({ userId: whatsappLinkCodes.userId })
     if (!row) return null
-    await tx
-      .delete(whatsappLinks)
-      .where(or(eq(whatsappLinks.phone, phone), eq(whatsappLinks.userId, row.userId)))
-    await tx.insert(whatsappLinks).values({
-      userId: row.userId,
-      phone,
-      profileName,
-      lastInboundAt: now,
-    })
-    // Messages this phone sent before linking belong to the new owner now.
-    await tx
-      .update(whatsappMessages)
-      .set({ userId: row.userId })
-      .where(and(eq(whatsappMessages.phone, phone), isNull(whatsappMessages.userId)))
+    await linkPhoneToUser(tx, phone, row.userId, profileName, now)
     return { userId: row.userId }
+  })
+}
+
+// ─── WhatsApp-first linking (phone tokens) ──────────────────────
+
+export async function hasActivePhoneToken(phone: string, now: Date = new Date()): Promise<boolean> {
+  const [row] = await db
+    .select({ token: whatsappPhoneTokens.token })
+    .from(whatsappPhoneTokens)
+    .where(
+      and(
+        eq(whatsappPhoneTokens.phone, phone),
+        isNull(whatsappPhoneTokens.usedAt),
+        gt(whatsappPhoneTokens.expiresAt, now),
+      ),
+    )
+    .limit(1)
+  return Boolean(row)
+}
+
+export async function createPhoneToken(phone: string, profileName: string | null, now: Date = new Date()): Promise<string> {
+  const token = crypto.randomBytes(16).toString('hex')
+  await db.insert(whatsappPhoneTokens).values({
+    token,
+    phone,
+    profileName,
+    expiresAt: new Date(now.getTime() + PHONE_TOKEN_TTL_MS),
+  })
+  return token
+}
+
+export async function getPhoneToken(token: string) {
+  const [row] = await db.select().from(whatsappPhoneTokens).where(eq(whatsappPhoneTokens.token, token)).limit(1)
+  return row ?? null
+}
+
+/** Consume a phone token confirmed by a logged-in user. Null when unknown/used/expired. */
+export async function consumePhoneToken(
+  token: string,
+  userId: string,
+  now: Date = new Date(),
+): Promise<{ phone: string; profileName: string | null } | null> {
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .update(whatsappPhoneTokens)
+      .set({ usedAt: now })
+      .where(
+        and(
+          eq(whatsappPhoneTokens.token, token),
+          isNull(whatsappPhoneTokens.usedAt),
+          gt(whatsappPhoneTokens.expiresAt, now),
+        ),
+      )
+      .returning({ phone: whatsappPhoneTokens.phone, profileName: whatsappPhoneTokens.profileName })
+    if (!row) return null
+    await linkPhoneToUser(tx, row.phone, userId, row.profileName, now)
+    return row
   })
 }
 

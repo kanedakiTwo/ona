@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { nextFromLocation, useNextSuffix } from "@/lib/safeNext"
 import { motion } from "motion/react"
 import { ArrowRight, ArrowLeft } from "lucide-react"
 import { useAuth } from "@/lib/auth"
@@ -16,6 +17,7 @@ export default function RegisterPage() {
   const [username, setUsername] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const nextSuffix = useNextSuffix()
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -25,7 +27,7 @@ export default function RegisterPage() {
     setIsSubmitting(true)
     try {
       await register(username, email, password)
-      router.push("/onboarding")
+      router.push(nextFromLocation() ?? "/onboarding")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al registrarse")
     } finally {
@@ -159,7 +161,7 @@ export default function RegisterPage() {
         <div className="border-t border-[#DDD6C5] px-8 py-6 md:px-16">
           <div className="flex flex-col gap-3 text-[12px] text-[#7A7066] md:flex-row md:items-center md:justify-between">
             <span className="font-italic italic">¿Ya tienes cuenta?</span>
-            <Link href="/login" className="link-reveal font-medium text-[#1A1612]">
+            <Link href={`/login${nextSuffix}`} className="link-reveal font-medium text-[#1A1612]">
               Inicia sesion →
             </Link>
           </div>

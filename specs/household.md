@@ -55,7 +55,7 @@ The 0011 migration includes an **idempotent backfill** (NOT EXISTS guards) so ev
 ## Frontend
 
 - `/profile/casa` — owner sees full management UI (rename, invite, revoke, remove). Members see the member list and a "Salir del hogar" button.
-- `/invites/[token]` — public preview page; if the visitor isn't authed, the accept button routes through `/register?next=/invites/:token`.
+- `/invites/[token]` — public preview page; if the visitor isn't authed, the accept button routes through `/register?next=/invites/:token`, and registration returns them to the invite (`next` honoured since 2026-10, see [Auth](./auth.md)).
 - `/profile` links to `/profile/casa` from the "Memoria del asistente" section's button row.
 
 ## PR 1B — household-scoped reads (feature-flagged)

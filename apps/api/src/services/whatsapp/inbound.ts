@@ -55,6 +55,8 @@ export interface InboundDeps {
   recordUsage: (userId: string, usage: TokenUsage) => Promise<void>
   /** Speech-to-text for voice notes. Absent → voice notes get a polite "escríbemelo". */
   transcribe?: (audio: Buffer, mimeType: string) => Promise<string>
+  /** Silence before the generic "me pongo con ello" (ms). Tests shorten it. */
+  ackAfterMs?: number
   /** Photo of a recipe → saved recipe. Absent → photos get a polite "todavía no". */
   importRecipeFromImage?: (
     image: Buffer,
@@ -80,6 +82,54 @@ export const COPY = {
   imageNotRecipe: 'No he encontrado ninguna receta en esa foto. Prueba con una foto más nítida de la receta (ingredientes y pasos).',
   imageFailed: 'No he podido procesar la foto. Inténtalo de nuevo en un momento.',
   error: 'Vaya, algo ha fallado. Inténtalo de nuevo en un momento.',
+  working: 'Un momento, me pongo con ello…',
+  ackPhoto: 'Recibida la foto. Voy a leer la receta, dame unos segundos…',
+}
+
+/** Slow skills get an immediate, specific "on it" instead of waiting for the timer. */
+const SLOW_SKILL_ACK: Record<string, string> = {
+  generate_weekly_menu: 'Vale, preparo el menú. Dame unos segundos…',
+  import_recipe_from_url: 'Voy a leer esa receta, tardo un momento…',
+  recipe_variation: 'Preparo la variación de la receta, dame unos segundos…',
+  create_recipe: 'Guardando la receta, un momento…',
+}
+
+export function ackTextForTools(toolNames: string[]): string | null {
+  for (const name of toolNames) if (SLOW_SKILL_ACK[name]) return SLOW_SKILL_ACK[name]
+  return null
+}
+
+/** Default silence before the generic ack — the user asked for one past ~10 s. */
+export const ACK_AFTER_MS = 8_000
+
+/**
+ * "Me pongo con ello" — at most one per turn, never after the reply. `now()`
+ * sends immediately (slow skill / photo); `arm()` sends the generic text if the
+ * turn is still silent after `delayMs`; `settle()` must run before the final
+ * reply: it cancels the timer and waits for an in-flight ack so the ack can't
+ * land after the answer.
+ */
+export function createAcker(send: (text: string) => Promise<void>, delayMs: number) {
+  let state: 'idle' | 'sent' | 'settled' = 'idle'
+  let inflight: Promise<void> = Promise.resolve()
+  let timer: ReturnType<typeof setTimeout> | null = null
+  const now = (text: string) => {
+    if (state !== 'idle') return
+    state = 'sent'
+    if (timer) clearTimeout(timer)
+    inflight = send(text).catch(() => {})
+  }
+  return {
+    now,
+    arm(text: string = COPY.working) {
+      if (state === 'idle' && delayMs > 0) timer = setTimeout(() => now(text), delayMs)
+    },
+    async settle() {
+      if (state === 'idle') state = 'settled'
+      if (timer) clearTimeout(timer)
+      await inflight
+    },
+  }
 }
 
 /**
@@ -163,6 +213,16 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     return
   }
 
+  // From here on a turn can take a while (transcription, the model, a menu
+  // generation): every outbound goes through `out`/`outText`, which settle the
+  // ack first so "me pongo con ello" never arrives after the answer.
+  const acker = createAcker((text) => sendText(userId, 'ack', text), deps.ackAfterMs ?? ACK_AFTER_MS)
+  const out = async (kind: string, messages: OutboundMessage[]) => {
+    await acker.settle()
+    await send(userId, kind, messages)
+  }
+  const outText = (kind: string, text: string) => out(kind, renderPlainText(text))
+
   try {
     // ── 2. Budget gate (same cap as the web chat), before ANY paid work:
     // transcription, photo extraction and the chat itself.
@@ -170,10 +230,11 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
       const budget = await deps.checkBudget(userId)
       if (budget.exceeded) {
         await store.updateInbound(msg.wamid, { status: 'ignored', userId })
-        await sendText(userId, 'system', COPY.budget((budget.budgetMicros / 1_000_000).toFixed(0)))
+        await outText('system', COPY.budget((budget.budgetMicros / 1_000_000).toFixed(0)))
         return
       }
     }
+    acker.arm()
 
     // ── 3. Normalise the message to text ───────────────────────
     let text: string | null = null
@@ -185,7 +246,7 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
       case 'audio': {
         if (!deps.transcribe || !msg.mediaId) {
           await store.updateInbound(msg.wamid, { status: 'ignored', userId })
-          await sendText(userId, 'system', COPY.audioUnavailable)
+          await outText('system', COPY.audioUnavailable)
           return
         }
         try {
@@ -197,21 +258,22 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
         }
         if (!text) {
           await store.updateInbound(msg.wamid, { status: 'failed', userId, errorMessage: 'transcription-empty-or-failed' })
-          await sendText(userId, 'system', COPY.audioFailed)
+          await outText('system', COPY.audioFailed)
           return
         }
         break
       }
       case 'image':
-        await handleImage(msg, userId, deps, send, sendText)
+        await handleImage(msg, userId, deps, out, outText, acker)
         return
       default:
         await store.updateInbound(msg.wamid, { status: 'ignored', userId })
-        await sendText(userId, 'system', COPY.unsupported)
+        await outText('system', COPY.unsupported)
         return
     }
 
     if (!text) {
+      await acker.settle()
       await store.updateInbound(msg.wamid, { status: 'ignored', userId })
       return
     }
@@ -219,7 +281,13 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     // ── 4. Chat ────────────────────────────────────────────────
     const rows = await store.loadHistoryRows(msg.from, new Date(now.getTime() - HISTORY_WINDOW_MS), userId)
     const history = buildChatHistory(rows, now)
-    const { usage, ...response } = await deps.chat(userId, text, history, { mode: 'whatsapp' })
+    const { usage, ...response } = await deps.chat(userId, text, history, {
+      mode: 'whatsapp',
+      onToolStart: (names) => {
+        const ack = ackTextForTools(names)
+        if (ack) acker.now(ack)
+      },
+    })
     try {
       await deps.recordUsage(userId, usage)
     } catch (err) {
@@ -229,7 +297,7 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     // Mark the inbound processed BEFORE replying so it precedes the reply in
     // history even if a send fails half-way.
     await store.updateInbound(msg.wamid, { status: 'processed', userId, body: text })
-    await send(userId, 'reply', renderAssistantReply(response, deps.webUrl))
+    await out('reply', renderAssistantReply(response, deps.webUrl))
   } catch (err: any) {
     console.error('[whatsapp] processing failed:', err?.message ?? err)
     await store.updateInbound(msg.wamid, {
@@ -237,7 +305,10 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
       userId,
       errorMessage: String(err?.message ?? err).slice(0, 500),
     })
-    await sendText(userId, 'system', COPY.error)
+    await outText('system', COPY.error)
+  } finally {
+    // Whatever path ended the turn, no "me pongo con ello" after this point.
+    await acker.settle()
   }
 }
 
@@ -245,15 +316,18 @@ async function handleImage(
   msg: InboundMessage,
   userId: string,
   deps: InboundDeps,
-  send: (userId: string | null, kind: string, messages: OutboundMessage[]) => Promise<void>,
-  sendText: (userId: string | null, kind: string, text: string) => Promise<void>,
+  out: (kind: string, messages: OutboundMessage[]) => Promise<void>,
+  outText: (kind: string, text: string) => Promise<void>,
+  acker: ReturnType<typeof createAcker>,
 ): Promise<void> {
   const { store, client } = deps
   if (!deps.importRecipeFromImage || !msg.mediaId) {
     await store.updateInbound(msg.wamid, { status: 'ignored', userId })
-    await sendText(userId, 'system', COPY.imageUnavailable)
+    await outText('system', COPY.imageUnavailable)
     return
   }
+  // Reading a recipe photo always takes a while (vision + ingredient matching).
+  acker.now(COPY.ackPhoto)
   let saved: { recipeId: string; name: string; warnings: string[] }
   try {
     const media = await client.downloadMedia(msg.mediaId)
@@ -266,7 +340,7 @@ async function handleImage(
       userId,
       errorMessage: String(err?.message ?? err).slice(0, 500),
     })
-    await sendText(userId, 'system', notRecipe ? COPY.imageNotRecipe : COPY.imageFailed)
+    await outText('system', notRecipe ? COPY.imageNotRecipe : COPY.imageFailed)
     return
   }
 
@@ -279,8 +353,7 @@ async function handleImage(
   const reviewNote = saved.warnings.length > 0
     ? ' Revisa los ingredientes en la app: alguno no lo he reconocido del todo.'
     : ''
-  await send(
-    userId,
+  await out(
     'reply',
     renderAssistantReply(
       {

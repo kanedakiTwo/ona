@@ -9,6 +9,12 @@ Talk to the ONA assistant from WhatsApp. WhatsApp is another way to reach the sa
 - Linked users see their masked number (`+34 ••• ••• 222`), an "Abrir chat con Ona" link, an "Avisos por WhatsApp" toggle (see Proactive messages) and "Desconectar", which asks for confirmation first.
 - Linked users can text the assistant anything they'd type in `/advisor`: what's on today's menu, swap a meal, the shopping list, mark items bought, nutrition questions, create recipes, etc. Replies are short WhatsApp-style messages. When something is visual, the reply ends with a deep link into the app: `Ver menú: …/menu`, `Ver lista de la compra: …/shopping`, `Ver receta: …/recipes/:id`, `Modo cocina: …/recipes/:id/cook`.
 - Yes/no and short-choice questions arrive as native WhatsApp reply buttons (max 3). Tapping one is the same as typing its label.
+- **"Me pongo con ello" acks:** a turn never sits silent for long.
+  - When the assistant starts a slow skill, the user gets a specific note right away: "Vale, preparo el menú. Dame unos segundos…" for `generate_weekly_menu`, and similar ones for `import_recipe_from_url`, `recipe_variation` and `create_recipe`.
+  - A recipe photo gets "Recibida la foto. Voy a leer la receta…" immediately.
+  - Anything else still silent after 8 s gets "Un momento, me pongo con ello…".
+  - At most one ack per turn, always before the answer and never after it (`createAcker` + `ChatOptions.onToolStart`). Acks are stored as outbound `kind='ack'` and kept out of chat history.
+  - Added after the first real use (2026-10-06), when "genera menú para la semana" took 25 s with no feedback.
 - Conversation context carries across messages: the server rebuilds the last 20 messages from the last 12 h, so "y el jueves?" works after "¿qué ceno el miércoles?". History is filtered by phone **and** user, so a phone that moves to another account never carries the previous owner's chat into the new one.
 - A message from an unlinked number that looks like a profile code but isn't valid gets "Ese código no es válido o ha caducado".
 - Users can send **voice notes**: they are transcribed with OpenAI (`OPENAI_TRANSCRIBE_MODEL`, default `gpt-4o-mini-transcribe`, language `es`) and handled exactly like typed text; the transcript is what lands in history. A failed or empty transcription gets "No he podido entender el audio…"; without `OPENAI_API_KEY` the reply is "Ahora mismo no puedo escuchar audios. ¿Me lo escribes?".
@@ -65,7 +71,7 @@ Everything runs inside the existing 5-minute `notificationScheduler` tick (`runP
 - `whatsapp_messages(wamid UNIQUE NULL, phone, user_id, direction in|out, kind, body, status, error_message)`.
   - Inbound statuses: `received` / `processed` / `failed` / `ignored`.
   - Outbound statuses: `sent` / `failed`.
-  - Outbound kinds `system` (budget, linked, errors) and `link` (how to connect) are left out of chat history.
+  - Outbound kinds `system` (budget, linked, errors), `link` (how to connect) and `ack` ("me pongo con ello") are left out of chat history.
 - Migration `0030_whatsapp.sql`, which only creates new tables and is idempotent.
 
 ## API

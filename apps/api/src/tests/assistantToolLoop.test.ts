@@ -160,3 +160,25 @@ describe('hallucinated-action guard', () => {
     expect(f.calls).toHaveLength(2)
   })
 })
+
+describe('onToolStart hook', () => {
+  it('fires with the tool names of each round before they run, and survives a throwing callback', async () => {
+    const order: string[] = []
+    const gen: SkillDefinition = {
+      ...skill('generate_weekly_menu', 'menu'),
+      handler: vi.fn(async () => {
+        order.push('run:generate_weekly_menu')
+        return { data: null, summary: 'ok', uiHint: 'menu' as const }
+      }),
+    }
+    const f = fakeClient([tools({ id: '1', name: 'generate_weekly_menu' }), text('Hecho.')])
+    await runToolLoop({
+      ...base(f.client, [gen]),
+      onToolStart: (names) => {
+        order.push(`start:${names.join(',')}`)
+        throw new Error('boom')
+      },
+    })
+    expect(order).toEqual(['start:generate_weekly_menu', 'run:generate_weekly_menu'])
+  })
+})

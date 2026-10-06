@@ -25,6 +25,13 @@ function getClient(): Anthropic {
 export interface ChatOptions {
   /** Prompt flavour per channel. The web chat uses the default `'text'`. */
   mode?: AssistantMode
+  /**
+   * Called right before a round of tools runs, with their names. WhatsApp uses
+   * it to send "me pongo con ello" as soon as a slow skill (menu generation,
+   * recipe import…) starts, instead of leaving the chat silent for 20+ s.
+   * Must not throw; errors are swallowed.
+   */
+  onToolStart?: (toolNames: string[]) => void
 }
 
 /**
@@ -81,6 +88,7 @@ export async function chat(
     messages,
     skills,
     ctx: { userId, db },
+    onToolStart: opts.onToolStart,
   })
 }
 
@@ -109,6 +117,7 @@ export async function runToolLoop(params: {
   skills: SkillDefinition[]
   ctx: SkillContext
   maxRounds?: number
+  onToolStart?: (toolNames: string[]) => void
 }): Promise<AssistantResponse & { usage: TokenUsage }> {
   const maxRounds = params.maxRounds ?? MAX_TOOL_ROUNDS
   const messages = [...params.messages]
@@ -151,6 +160,11 @@ export async function runToolLoop(params: {
     }
 
     console.log(`[assistant] round ${round}: ${toolUses.map((t) => t.name).join(', ')}`)
+    try {
+      params.onToolStart?.(toolUses.map((t) => t.name))
+    } catch (err) {
+      console.warn('[assistant] onToolStart failed (ignored):', err)
+    }
     const results: Anthropic.ToolResultBlockParam[] = []
     for (const toolUse of toolUses) {
       const skill = params.skills.find((s) => s.name === toolUse.name)

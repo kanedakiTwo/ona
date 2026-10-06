@@ -136,9 +136,9 @@ describe('buildChatHistory', () => {
     ])
   })
 
-  it('skips outbound system notices (budget, linking help)', () => {
+  it('skips outbound system notices and acks (budget, linking help, "me pongo con ello")', () => {
     const h = buildChatHistory(
-      [row('in', 'hola', 5), { ...row('out', 'Has alcanzado tu límite', 4), kind: 'system' }, { ...row('out', 'Hola!', 3), kind: 'reply' }],
+      [row('in', 'hola', 5), { ...row('out', 'Has alcanzado tu límite', 4), kind: 'system' }, { ...row('out', 'Un momento…', 4), kind: 'ack' }, { ...row('out', 'Hola!', 3), kind: 'reply' }],
       now,
     )
     expect(h).toEqual([

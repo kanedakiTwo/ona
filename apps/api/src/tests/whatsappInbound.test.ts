@@ -4,7 +4,7 @@
  * voice notes, recipe photos and the chat round-trip.
  */
 import { describe, it, expect, vi } from 'vitest'
-import { processInbound, COPY, type InboundDeps } from '../services/whatsapp/inbound.js'
+import { processInbound, COPY, ackTextForTools, type InboundDeps } from '../services/whatsapp/inbound.js'
 import type { InboundMessage } from '../services/whatsapp/webhookParser.js'
 import type { LinkWithUser } from '../services/whatsapp/store.js'
 import type { HistoryRow } from '../services/whatsapp/history.js'
@@ -195,7 +195,7 @@ describe('processInbound — chat round-trip', () => {
         { role: 'user', content: 'hola' },
         { role: 'assistant', content: '¡Hola!' },
       ],
-      { mode: 'whatsapp' },
+      expect.objectContaining({ mode: 'whatsapp' }),
     )
     expect(t.sent).toEqual([{ type: 'text', text: `Hoy toca crema de calabaza.\n\nVer menú: ${WEB}/menu` }])
     expect(t.recordUsage).toHaveBeenCalledOnce()
@@ -206,7 +206,7 @@ describe('processInbound — chat round-trip', () => {
   it('treats a tapped button as the user typing its title', async () => {
     const t = setup()
     await processInbound(msg({ kind: 'interactive', text: 'Sí', replyId: 'opt:0' }), t.deps)
-    expect(t.chat).toHaveBeenCalledWith('user-1', 'Sí', [], { mode: 'whatsapp' })
+    expect(t.chat).toHaveBeenCalledWith('user-1', 'Sí', [], expect.objectContaining({ mode: 'whatsapp' }))
   })
 
   it('renders [[opciones]] as reply buttons', async () => {
@@ -246,7 +246,7 @@ describe('processInbound — voice notes', () => {
     const t = setup({ transcribe })
     await processInbound(audio(), t.deps)
     expect(transcribe).toHaveBeenCalledWith(Buffer.from('bytes'), 'audio/ogg; codecs=opus')
-    expect(t.chat).toHaveBeenCalledWith('user-1', 'ponme lentejas el jueves', [], { mode: 'whatsapp' })
+    expect(t.chat).toHaveBeenCalledWith('user-1', 'ponme lentejas el jueves', [], expect.objectContaining({ mode: 'whatsapp' }))
     expect(t.inboundUpdates.at(-1)).toMatchObject({ status: 'processed', body: 'ponme lentejas el jueves' })
   })
 
@@ -272,9 +272,9 @@ describe('processInbound — recipe photos', () => {
     const t = setup({ importRecipeFromImage })
     await processInbound(photo(), t.deps)
     expect(importRecipeFromImage).toHaveBeenCalledWith(Buffer.from('bytes'), 'image/jpeg', 'user-1')
-    expect(t.sent).toHaveLength(1)
-    expect(t.sent[0].text).toContain('*Tortilla de patatas*')
-    expect(t.sent[0].text).toContain(`Ver receta: ${WEB}/recipes/r9`)
+    expect(t.sent).toHaveLength(2) // "Recibida la foto…" + the result
+    expect(t.sent[1].text).toContain('*Tortilla de patatas*')
+    expect(t.sent[1].text).toContain(`Ver receta: ${WEB}/recipes/r9`)
     expect(t.inboundUpdates.at(-1)).toMatchObject({ status: 'processed', body: '[Foto de una receta: la de mi abuela]' })
     expect(t.chat).not.toHaveBeenCalled()
   })
@@ -282,7 +282,7 @@ describe('processInbound — recipe photos', () => {
   it('mentions unmatched ingredients so the user reviews them', async () => {
     const t = setup({ importRecipeFromImage: async () => ({ recipeId: 'r9', name: 'X', warnings: ['1 ingrediente(s) no encontrado(s)'] }) })
     await processInbound(photo(), t.deps)
-    expect(t.sent[0].text).toContain('Revisa los ingredientes')
+    expect(t.sent.at(-1)!.text).toContain('Revisa los ingredientes')
   })
 
   it('says so when the photo is not a recipe', async () => {
@@ -292,12 +292,62 @@ describe('processInbound — recipe photos', () => {
       },
     })
     await processInbound(photo(), t.deps)
-    expect(t.sent).toEqual([{ type: 'text', text: COPY.imageNotRecipe }])
+    expect(t.sent).toEqual([
+      { type: 'text', text: COPY.ackPhoto },
+      { type: 'text', text: COPY.imageNotRecipe },
+    ])
   })
 
   it('is polite when photo import is not wired', async () => {
     const t = setup()
     await processInbound(photo(), t.deps)
     expect(t.sent).toEqual([{ type: 'text', text: COPY.imageUnavailable }])
+  })
+})
+
+describe('processInbound — "me pongo con ello" acks', () => {
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+  it('sends the generic ack when the turn stays silent past the delay, before the reply', async () => {
+    const t = setup()
+    t.chat.mockImplementationOnce(async () => {
+      await wait(40)
+      return { message: 'Hoy toca lentejas.', usage: EMPTY_USAGE }
+    })
+    await processInbound(msg(), { ...t.deps, ackAfterMs: 5 })
+    expect(t.sent.map((m) => m.text)).toEqual([COPY.working, 'Hoy toca lentejas.'])
+    expect(t.outbound.map((o) => o.kind)).toEqual(['ack', 'reply'])
+  })
+
+  it('stays quiet when the answer is fast, and never acks after the reply', async () => {
+    const t = setup()
+    await processInbound(msg(), { ...t.deps, ackAfterMs: 20 })
+    await wait(40)
+    expect(t.outbound.map((o) => o.kind)).toEqual(['reply'])
+  })
+
+  it('acks immediately with a specific text when a slow skill starts, and only once', async () => {
+    const t = setup()
+    t.chat.mockImplementationOnce(async (_u, _m, _h, opts: any) => {
+      opts.onToolStart(['generate_weekly_menu'])
+      await wait(40) // the generic timer (5 ms) must not add a second ack
+      opts.onToolStart(['get_shopping_list'])
+      return { message: 'Menú listo.', uiHint: 'menu', usage: EMPTY_USAGE }
+    })
+    await processInbound(msg({ text: 'Genera el menú de la semana' }), { ...t.deps, ackAfterMs: 5 })
+    expect(t.sent[0].text).toBe(ackTextForTools(['generate_weekly_menu']))
+    expect(t.outbound.map((o) => o.kind)).toEqual(['ack', 'reply'])
+  })
+
+  it('acks a recipe photo right away', async () => {
+    const t = setup({ importRecipeFromImage: async () => ({ recipeId: 'r9', name: 'Tortilla', warnings: [] }) })
+    await processInbound(msg({ kind: 'image', text: null, mediaId: 'M', mimeType: 'image/jpeg' }), { ...t.deps, ackAfterMs: 60_000 })
+    expect(t.sent[0].text).toBe(COPY.ackPhoto)
+    expect(t.outbound.map((o) => o.kind)).toEqual(['ack', 'reply'])
+  })
+
+  it('maps only slow skills to an ack', () => {
+    expect(ackTextForTools(['get_todays_menu'])).toBeNull()
+    expect(ackTextForTools(['get_todays_menu', 'import_recipe_from_url'])).toMatch(/receta/)
   })
 })

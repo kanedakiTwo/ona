@@ -10,7 +10,7 @@ import type { ChatMessage } from '../assistant/types.js'
 
 export interface HistoryRow {
   direction: 'in' | 'out' | string
-  /** Outbound `system`/`link` notices (budget, linking help) are not conversation. */
+  /** Outbound `system`/`link`/`ack` notices (budget, linking help, "me pongo con ello") are not conversation. */
   kind?: string
   body: string | null
   status: string
@@ -20,7 +20,7 @@ export interface HistoryRow {
 export const HISTORY_MAX_MESSAGES = 20
 export const HISTORY_WINDOW_MS = 12 * 60 * 60 * 1000
 
-const NON_CONVERSATION_KINDS = new Set(['system', 'link'])
+const NON_CONVERSATION_KINDS = new Set(['system', 'link', 'ack'])
 
 /** Placeholder user turn when ONA spoke first (proactive nudge, alert). */
 export const ONA_STARTED_MARKER = '(ONA me ha escrito primero)'

@@ -12,8 +12,6 @@ import { enqueueInbound } from '../services/whatsapp/inbound.js'
 import { buildInboundDeps, initialInboundBody } from '../services/whatsapp/wiring.js'
 import * as store from '../services/whatsapp/store.js'
 import { buildWaLink, linkMessageText, maskPhone } from '../services/whatsapp/linking.js'
-import { COPY } from '../services/whatsapp/inbound.js'
-import { sendMessage } from '../services/whatsapp/client.js'
 
 // ─── Public webhook (Meta → ONA) ─────────────────────────────────
 //
@@ -60,24 +58,26 @@ whatsappWebhookRouter.post(
       return
     }
 
-    try {
-      // Persist first: the unique wamid drops Meta's retries, and a crash
-      // after the 200 leaves a trace ('received') instead of nothing.
-      const fresh = []
-      for (const msg of parseWebhookPayload(payload)) {
-        if (await store.insertInbound(msg, initialInboundBody(msg))) fresh.push(msg)
+    // Persist each message, then queue it right away: the unique wamid drops
+    // Meta's retries, so a message stored but never queued (e.g. a later
+    // message in the same batch failed and we answered 500) would be lost.
+    let deps: ReturnType<typeof buildInboundDeps> | null = null
+    let failed = false
+    for (const msg of parseWebhookPayload(payload)) {
+      try {
+        if (await store.insertInbound(msg, initialInboundBody(msg))) {
+          deps ??= buildInboundDeps()
+          // Processing (several seconds with the model) continues after the
+          // response; Meta wants a fast 200.
+          void enqueueInbound(msg, deps)
+        }
+      } catch (err: any) {
+        failed = true
+        console.error('[whatsapp] webhook persist failed:', err?.message ?? err)
       }
-      // Ack immediately — Meta expects a fast 200 and retries otherwise. The
-      // assistant (which can take several seconds) runs after the response.
-      res.sendStatus(200)
-      if (fresh.length > 0) {
-        const deps = buildInboundDeps()
-        for (const msg of fresh) void enqueueInbound(msg, deps)
-      }
-    } catch (err: any) {
-      console.error('[whatsapp] webhook persist failed:', err?.message ?? err)
-      if (!res.headersSent) res.sendStatus(500)
     }
+    // 500 makes Meta retry the batch; already-stored messages dedupe.
+    res.sendStatus(failed ? 500 : 200)
   },
 )
 
@@ -129,62 +129,6 @@ router.post('/whatsapp/link-code', authMiddleware, async (req: AuthRequest, res)
     })
   } catch (err: any) {
     console.error('[whatsapp] link-code error:', err?.message ?? err)
-    res.status(500).json({ error: 'Internal server error' })
-  }
-})
-
-// ─── WhatsApp-first linking: /whatsapp/conectar?t=<token> ───────
-
-// GET /whatsapp/phone-token/:token — what the confirm page shows. Authed: the
-// page asks to log in / sign up first, then confirms the masked number.
-router.get('/whatsapp/phone-token/:token', authMiddleware, async (req: AuthRequest, res) => {
-  try {
-    const row = await store.getPhoneToken(String(req.params.token))
-    if (!row) {
-      res.status(404).json({ error: 'El enlace no es válido.', code: 'TOKEN_NOT_FOUND' })
-      return
-    }
-    const status = row.usedAt ? 'used' : row.expiresAt.getTime() <= Date.now() ? 'expired' : 'valid'
-    res.json({
-      status,
-      phone: maskPhone(row.phone),
-      profileName: row.profileName,
-      available: await isAvailableFor(req.userId!),
-    })
-  } catch (err: any) {
-    console.error('[whatsapp] phone-token error:', err?.message ?? err)
-    res.status(500).json({ error: 'Internal server error' })
-  }
-})
-
-// POST /whatsapp/phone-token/:token/confirm — link that phone to the caller.
-router.post('/whatsapp/phone-token/:token/confirm', authMiddleware, async (req: AuthRequest, res) => {
-  try {
-    if (!(await isAvailableFor(req.userId!))) {
-      res.status(403).json({ error: 'WhatsApp no está disponible para tu cuenta.', code: 'WHATSAPP_UNAVAILABLE' })
-      return
-    }
-    const linked = await store.consumePhoneToken(String(req.params.token), req.userId!)
-    if (!linked) {
-      res.status(410).json({
-        error: 'El enlace ha caducado o ya se usó. Escribe de nuevo a Ona por WhatsApp y te mando otro.',
-        code: 'TOKEN_GONE',
-      })
-      return
-    }
-    // The user wrote to ONA within the last hour, so the 24 h window is open:
-    // say hi on WhatsApp right away so they can carry on there.
-    const welcome = COPY.linked(linked.profileName)
-    try {
-      const wamid = await sendMessage(linked.phone, { type: 'text', text: welcome })
-      await store.insertOutbound({ phone: linked.phone, userId: req.userId!, kind: 'system', body: welcome, status: 'sent', wamid })
-    } catch (err: any) {
-      console.warn('[whatsapp] welcome after web link failed (link kept):', err?.message ?? err)
-    }
-    const botNumber = env.WHATSAPP_DISPLAY_NUMBER || null
-    res.json({ linked: true, phone: maskPhone(linked.phone), chatLink: botNumber ? buildWaLink(botNumber) : null })
-  } catch (err: any) {
-    console.error('[whatsapp] phone-token confirm error:', err?.message ?? err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

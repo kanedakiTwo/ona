@@ -194,7 +194,7 @@ export function claimsAction(text: string): boolean {
 }
 
 export const UNVERIFIED_ACTION_CORRECTION =
-  '[Nota del sistema, no la menciones] Tu respuesta afirma que has hecho un cambio, pero en este turno no has llamado a ninguna herramienta, asi que no se ha hecho nada. Si el usuario pidio un cambio, llama ahora a la herramienta adecuada. Si no es posible (por ejemplo, la receta no existe en el catalogo), responde al usuario diciendole la verdad y ofreciendo una alternativa real.'
+  '[Nota del sistema, no la menciones] Tu respuesta afirma que has hecho un cambio, pero en este turno no has llamado a ninguna herramienta. Si solo estabas recordando algo que ya se hizo en un turno anterior de la conversacion, NO lo repitas ni llames a ninguna herramienta: vuelve a escribir tu respuesta tal cual. Si el usuario acaba de pedir un cambio, llama ahora a la herramienta adecuada. Si no es posible (por ejemplo, la receta no existe en el catalogo), dile la verdad y ofrece una alternativa real.'
 
 /**
  * The web client renders one card per turn from `uiHint` + `data`, so pick the

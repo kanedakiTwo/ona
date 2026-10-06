@@ -363,10 +363,20 @@ let intervalHandle: NodeJS.Timeout | null = null
 export function startScheduler(opts: { intervalMs?: number } = {}): void {
   if (intervalHandle) return
   const intervalMs = opts.intervalMs ?? 5 * 60 * 1000
+  // A tick can outlive the interval now that it also sends WhatsApp messages
+  // (20 s Graph timeout each); overlapping ticks would re-read the same
+  // pending rows and double-send. Skip a tick while the previous one runs.
+  let running = false
   intervalHandle = setInterval(() => {
-    tickScheduler().catch((err) => {
-      console.error('[notificationScheduler] tick failed:', err)
-    })
+    if (running) return
+    running = true
+    tickScheduler()
+      .catch((err) => {
+        console.error('[notificationScheduler] tick failed:', err)
+      })
+      .finally(() => {
+        running = false
+      })
   }, intervalMs)
   console.log(
     `[notificationScheduler] started; tick every ${Math.round(intervalMs / 1000)}s`,

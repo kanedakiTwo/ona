@@ -37,9 +37,8 @@ export interface InboundDeps {
       wamid?: string | null
       errorMessage?: string | null
     }) => Promise<void>
-    loadHistoryRows: (phone: string, since: Date) => Promise<HistoryRow[]>
-    hasActivePhoneToken: (phone: string) => Promise<boolean>
-    createPhoneToken: (phone: string, profileName: string | null) => Promise<string>
+    loadHistoryRows: (phone: string, since: Date, userId: string) => Promise<HistoryRow[]>
+    hasRecentOutbound: (phone: string, kinds: string[], since: Date) => Promise<boolean>
   }
   client: {
     sendMessage: (to: string, msg: OutboundMessage) => Promise<string | null>
@@ -69,7 +68,7 @@ export const COPY = {
     `¡Listo${name ? `, ${name}` : ''}! Tu WhatsApp ya está conectado con ONA. Pregúntame qué toca hoy, pídeme la lista de la compra, mándame un audio o compárteme una receta (enlace o foto) para guardarla.`,
   badCode: 'Ese código no es válido o ha caducado. Genera uno nuevo en ONA → Perfil → Ona en WhatsApp.',
   connect: (url: string) =>
-    `Hola, soy ONA, tu asistente de cocina. Para hablar conmigo por aquí, conecta tu cuenta con un toque (el enlace caduca en 1 hora):\n${url}\n\n¿Aún no tienes cuenta? Puedes crearla desde el mismo enlace.`,
+    `Hola, soy ONA, tu asistente de cocina. Para hablar conmigo por aquí, conecta tu cuenta:\n${url}\n\nEntra (o crea tu cuenta) y te daré un código para enviarme desde este chat.`,
   suspended: 'Tu cuenta de ONA está suspendida. Contacta con el equipo de ONA si crees que es un error.',
   notAllowed: 'WhatsApp todavía no está disponible para tu cuenta de ONA.',
   budget: (euros: string) =>
@@ -88,6 +87,8 @@ export const COPY = {
  * two days late is worse than silence, so stale messages are dropped.
  */
 export const STALE_MESSAGE_MS = 2 * 60 * 60 * 1000
+/** Unlinked numbers get the "conecta tu cuenta" hint at most once an hour. */
+const CONNECT_HINT_COOLDOWN_MS = 60 * 60 * 1000
 
 export async function processInbound(msg: InboundMessage, deps: InboundDeps): Promise<void> {
   const { store, client } = deps
@@ -138,12 +139,12 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
       await sendText(null, 'link', COPY.badCode)
       return
     }
-    // WhatsApp-first linking (Instinct-style "just text it"): a one-tap link
-    // to confirm on the web. One live link per phone at a time, so a chatty
-    // unlinked number gets one message per hour, not one per message.
-    if (!(await store.hasActivePhoneToken(msg.from))) {
-      const token = await store.createPhoneToken(msg.from, msg.profileName)
-      await sendText(null, 'link', COPY.connect(connectUrl(deps.webUrl, token)))
+    // WhatsApp-first linking (Instinct-style "just text it"): point to the
+    // connect page, which has the logged-in user send a code back from this
+    // phone. At most one such message per number per hour.
+    const since = new Date(now.getTime() - CONNECT_HINT_COOLDOWN_MS)
+    if (!(await store.hasRecentOutbound(msg.from, ['link'], since))) {
+      await sendText(null, 'link', COPY.connect(connectUrl(deps.webUrl)))
     }
     return
   }
@@ -163,7 +164,18 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
   }
 
   try {
-    // ── 2. Normalise the message to text ───────────────────────
+    // ── 2. Budget gate (same cap as the web chat), before ANY paid work:
+    // transcription, photo extraction and the chat itself.
+    if (msg.kind !== 'unsupported') {
+      const budget = await deps.checkBudget(userId)
+      if (budget.exceeded) {
+        await store.updateInbound(msg.wamid, { status: 'ignored', userId })
+        await sendText(userId, 'system', COPY.budget((budget.budgetMicros / 1_000_000).toFixed(0)))
+        return
+      }
+    }
+
+    // ── 3. Normalise the message to text ───────────────────────
     let text: string | null = null
     switch (msg.kind) {
       case 'text':
@@ -204,16 +216,8 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
       return
     }
 
-    // ── 3. Budget gate (same cap as the web chat) ─────────────
-    const budget = await deps.checkBudget(userId)
-    if (budget.exceeded) {
-      await store.updateInbound(msg.wamid, { status: 'ignored', userId, body: text })
-      await sendText(userId, 'system', COPY.budget((budget.budgetMicros / 1_000_000).toFixed(0)))
-      return
-    }
-
     // ── 4. Chat ────────────────────────────────────────────────
-    const rows = await store.loadHistoryRows(msg.from, new Date(now.getTime() - HISTORY_WINDOW_MS))
+    const rows = await store.loadHistoryRows(msg.from, new Date(now.getTime() - HISTORY_WINDOW_MS), userId)
     const history = buildChatHistory(rows, now)
     const { usage, ...response } = await deps.chat(userId, text, history, { mode: 'whatsapp' })
     try {

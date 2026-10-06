@@ -46,7 +46,7 @@ function setup(overrides: {
   consume?: (code: string) => { userId: string } | null
   budgetExceeded?: boolean
   history?: HistoryRow[]
-  activePhoneToken?: boolean
+  recentLinkHint?: boolean
   allowed?: boolean
   chatReply?: { message: string; uiHint?: string; data?: unknown }
   transcribe?: InboundDeps['transcribe']
@@ -55,6 +55,7 @@ function setup(overrides: {
 } = {}) {
   const sent: OutboundMessage[] = []
   const outbound: { kind: string; body: string; status: string }[] = []
+  const historyUserIds: string[] = []
   const inboundUpdates: { status: string; body?: string | null; userId?: string | null; errorMessage?: string | null }[] = []
   const chat = vi.fn(async () => ({
     ...(overrides.chatReply ?? { message: 'Hoy toca crema de calabaza.', uiHint: 'menu' }),
@@ -76,9 +77,11 @@ function setup(overrides: {
       insertOutbound: async (row) => {
         outbound.push({ kind: row.kind, body: row.body, status: row.status })
       },
-      loadHistoryRows: async () => overrides.history ?? [],
-      hasActivePhoneToken: async () => overrides.activePhoneToken ?? false,
-      createPhoneToken: async () => 'tok123',
+      loadHistoryRows: async (_phone, _since, userId) => {
+        historyUserIds.push(userId)
+        return overrides.history ?? []
+      },
+      hasRecentOutbound: async () => overrides.recentLinkHint ?? false,
     },
     client: {
       sendMessage: async (_to, m) => {
@@ -95,7 +98,7 @@ function setup(overrides: {
     transcribe: overrides.transcribe,
     importRecipeFromImage: overrides.importRecipeFromImage,
   }
-  return { deps, sent, outbound, inboundUpdates, chat, recordUsage }
+  return { deps, sent, outbound, inboundUpdates, chat, recordUsage, historyUserIds }
 }
 
 describe('processInbound — unlinked numbers', () => {
@@ -114,16 +117,17 @@ describe('processInbound — unlinked numbers', () => {
     expect(t.sent).toEqual([{ type: 'text', text: COPY.badCode }])
   })
 
-  it('sends a one-tap connect link (WhatsApp-first linking)', async () => {
+  it('points an unknown number to the connect page (no token in the link)', async () => {
     const first = setup({ link: null })
     await processInbound(msg({ text: 'hola' }), first.deps)
-    expect(first.sent).toEqual([{ type: 'text', text: COPY.connect(`${WEB}/whatsapp/conectar?t=tok123`) }])
+    expect(first.sent).toEqual([{ type: 'text', text: COPY.connect(`${WEB}/whatsapp/conectar`) }])
+    expect(first.sent[0].text).not.toMatch(/[?&]t=/)
     expect(first.outbound[0].kind).toBe('link')
     expect(first.chat).not.toHaveBeenCalled()
   })
 
-  it('stays quiet while a connect link is still live', async () => {
-    const again = setup({ link: null, activePhoneToken: true })
+  it('sends the connect hint at most once an hour', async () => {
+    const again = setup({ link: null, recentLinkHint: true })
     await processInbound(msg({ text: 'hola?' }), again.deps)
     expect(again.sent).toEqual([])
   })
@@ -149,6 +153,22 @@ describe('processInbound — gates', () => {
     await processInbound(msg(), t.deps)
     expect(t.sent).toEqual([{ type: 'text', text: COPY.budget('5') }])
     expect(t.chat).not.toHaveBeenCalled()
+  })
+
+  it('checks the budget before paying for transcription or photo extraction', async () => {
+    const transcribe = vi.fn(async () => 'hola')
+    const importRecipeFromImage = vi.fn(async () => ({ recipeId: 'r', name: 'x', warnings: [] }))
+    const t = setup({ budgetExceeded: true, transcribe, importRecipeFromImage })
+    await processInbound(msg({ kind: 'audio', text: null, mediaId: 'M', mimeType: 'audio/ogg' }), t.deps)
+    await processInbound(msg({ kind: 'image', text: null, mediaId: 'M2', mimeType: 'image/jpeg' }), t.deps)
+    expect(transcribe).not.toHaveBeenCalled()
+    expect(importRecipeFromImage).not.toHaveBeenCalled()
+  })
+
+  it("loads history for this phone AND this user (a moved phone doesn't leak the previous owner's chat)", async () => {
+    const t = setup()
+    await processInbound(msg(), t.deps)
+    expect(t.historyUserIds).toEqual(['user-1'])
   })
 
   it('drops stale messages Meta re-delivers hours later', async () => {

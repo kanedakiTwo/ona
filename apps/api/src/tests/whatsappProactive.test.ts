@@ -30,6 +30,14 @@ describe('madridParts / mondayOf', () => {
     expect(madridParts(new Date('2026-10-11T23:30:00Z'))).toMatchObject({ isoDate: '2026-10-12', weekday: 0, hour: 1 })
   })
 
+  it("madridWeekStart: early Monday in Madrid is already the new week (server is UTC)", async () => {
+    const { madridWeekStart } = await import('../services/madridTime.js')
+    // Sunday 23:30 UTC = Monday 01:30 Madrid.
+    expect(madridWeekStart(new Date('2026-10-11T23:30:00Z'))).toBe('2026-10-12')
+    expect(madridWeekStart(new Date('2026-10-11T21:00:00Z'))).toBe('2026-10-05')
+    expect(madridWeekStart(new Date('2026-10-11T21:00:00Z'), 1)).toBe('2026-10-12')
+  })
+
   it('computes this and next Monday', () => {
     expect(mondayOf('2026-10-11', 6)).toBe('2026-10-05')
     expect(mondayOf('2026-10-11', 6, 1)).toBe('2026-10-12')

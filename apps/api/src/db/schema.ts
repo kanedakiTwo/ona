@@ -772,24 +772,6 @@ export const whatsappLinkCodes = pgTable('whatsapp_link_codes', {
 ])
 
 /**
- * WhatsApp-first linking: an unlinked number that writes to ONA gets a
- * one-tap link `/whatsapp/conectar?t=<token>`; the logged-in user confirms on
- * the web and the phone is linked. Possession of the phone is proven by
- * receiving the token over WhatsApp; the confirm page shows the masked
- * number so a forwarded link can't silently hijack an account.
- */
-export const whatsappPhoneTokens = pgTable('whatsapp_phone_tokens', {
-  token: text('token').primaryKey(),
-  phone: text('phone').notNull(),
-  profileName: text('profile_name'),
-  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-  usedAt: timestamp('used_at', { withTimezone: true }),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [
-  index('idx_wa_phone_tokens_phone').on(t.phone),
-])
-
-/**
  * Every inbound + outbound WhatsApp message. Serves three jobs: dedupe Meta's
  * webhook retries (unique `wamid`), server-side chat history (the web keeps
  * history in the client; WhatsApp has no client), and an audit trail.

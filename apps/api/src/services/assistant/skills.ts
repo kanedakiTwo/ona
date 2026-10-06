@@ -25,19 +25,17 @@ import { getSummary } from '../advisor.js'
 import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../scopeResolver.js'
 import { importRecipeFromUrl } from '../recipeImport.js'
 import { mealLinesForDay } from '../menuText.js'
+import { madridParts, madridWeekStart } from '../madridTime.js'
 import { enqueuePrepAlertsForMenu } from '../notificationScheduler.js'
 import { NotARecipeError } from '../recipeUrlExtractor.js'
 import { NoExtractableContentError } from '../sources/youtube.js'
 import type { SkillDefinition, SkillContext, SkillResult } from './types.js'
 
 // ─── Helper: get current week start (Monday) ───────────────
+// Madrid wall clock, not the server's (UTC on Railway): between 00:00 and
+// 02:00 Madrid the server still thinks it's yesterday.
 function getWeekStart(offsetWeeks = 0): string {
-  const now = new Date()
-  const day = now.getDay()
-  const diff = day === 0 ? -6 : 1 - day // Monday = 1
-  const monday = new Date(now)
-  monday.setDate(now.getDate() + diff + offsetWeeks * 7)
-  return monday.toISOString().slice(0, 10)
+  return madridWeekStart(new Date(), offsetWeeks)
 }
 
 // ─── Helper: load recipes with ingredients ─────────────────
@@ -112,9 +110,7 @@ const getTodaysMenu: SkillDefinition = {
     let dayIndex = params.dayIndex
 
     if (dayIndex === undefined || dayIndex === null) {
-      const now = new Date()
-      const jsDay = now.getDay()
-      dayIndex = jsDay === 0 ? 6 : jsDay - 1 // Convert Sunday=0 to index 6, Monday=1 to 0
+      dayIndex = madridParts(new Date()).weekday // 0 = lunes … 6 = domingo
     }
 
     if (dayIndex < 0 || dayIndex >= days.length) {

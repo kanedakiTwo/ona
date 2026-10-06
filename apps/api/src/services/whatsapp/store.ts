@@ -1,10 +1,9 @@
 import { and, desc, eq, gt, gte, isNull, or, inArray } from 'drizzle-orm'
 import { db } from '../../db/connection.js'
-import { users, whatsappLinkCodes, whatsappLinks, whatsappMessages, whatsappPhoneTokens } from '../../db/schema.js'
+import { users, whatsappLinkCodes, whatsappLinks, whatsappMessages } from '../../db/schema.js'
 import type { InboundMessage } from './webhookParser.js'
 import type { HistoryRow } from './history.js'
-import crypto from 'crypto'
-import { generateLinkCode, LINK_CODE_TTL_MS, PHONE_TOKEN_TTL_MS } from './linking.js'
+import { generateLinkCode, LINK_CODE_TTL_MS } from './linking.js'
 
 /** DB access for the WhatsApp channel. Kept behind one object so `inbound.ts` can take a fake. */
 
@@ -106,7 +105,11 @@ export async function insertOutbound(row: {
   })
 }
 
-export async function loadHistoryRows(phone: string, since: Date): Promise<HistoryRow[]> {
+/**
+ * Conversation rows for `phone` that belong to `userId` — a phone that moved
+ * from user A to user B must not feed A's recent chat into B's context.
+ */
+export async function loadHistoryRows(phone: string, since: Date, userId: string): Promise<HistoryRow[]> {
   const rows = await db
     .select({
       direction: whatsappMessages.direction,
@@ -116,7 +119,13 @@ export async function loadHistoryRows(phone: string, since: Date): Promise<Histo
       createdAt: whatsappMessages.createdAt,
     })
     .from(whatsappMessages)
-    .where(and(eq(whatsappMessages.phone, phone), gte(whatsappMessages.createdAt, since)))
+    .where(
+      and(
+        eq(whatsappMessages.phone, phone),
+        eq(whatsappMessages.userId, userId),
+        gte(whatsappMessages.createdAt, since),
+      ),
+    )
     .orderBy(desc(whatsappMessages.createdAt))
     .limit(60)
   return rows.reverse()
@@ -197,63 +206,6 @@ export async function consumeLinkCode(
     if (!row) return null
     await linkPhoneToUser(tx, phone, row.userId, profileName, now)
     return { userId: row.userId }
-  })
-}
-
-// ─── WhatsApp-first linking (phone tokens) ──────────────────────
-
-export async function hasActivePhoneToken(phone: string, now: Date = new Date()): Promise<boolean> {
-  const [row] = await db
-    .select({ token: whatsappPhoneTokens.token })
-    .from(whatsappPhoneTokens)
-    .where(
-      and(
-        eq(whatsappPhoneTokens.phone, phone),
-        isNull(whatsappPhoneTokens.usedAt),
-        gt(whatsappPhoneTokens.expiresAt, now),
-      ),
-    )
-    .limit(1)
-  return Boolean(row)
-}
-
-export async function createPhoneToken(phone: string, profileName: string | null, now: Date = new Date()): Promise<string> {
-  const token = crypto.randomBytes(16).toString('hex')
-  await db.insert(whatsappPhoneTokens).values({
-    token,
-    phone,
-    profileName,
-    expiresAt: new Date(now.getTime() + PHONE_TOKEN_TTL_MS),
-  })
-  return token
-}
-
-export async function getPhoneToken(token: string) {
-  const [row] = await db.select().from(whatsappPhoneTokens).where(eq(whatsappPhoneTokens.token, token)).limit(1)
-  return row ?? null
-}
-
-/** Consume a phone token confirmed by a logged-in user. Null when unknown/used/expired. */
-export async function consumePhoneToken(
-  token: string,
-  userId: string,
-  now: Date = new Date(),
-): Promise<{ phone: string; profileName: string | null } | null> {
-  return db.transaction(async (tx) => {
-    const [row] = await tx
-      .update(whatsappPhoneTokens)
-      .set({ usedAt: now })
-      .where(
-        and(
-          eq(whatsappPhoneTokens.token, token),
-          isNull(whatsappPhoneTokens.usedAt),
-          gt(whatsappPhoneTokens.expiresAt, now),
-        ),
-      )
-      .returning({ phone: whatsappPhoneTokens.phone, profileName: whatsappPhoneTokens.profileName })
-    if (!row) return null
-    await linkPhoneToUser(tx, row.phone, userId, row.profileName, now)
-    return row
   })
 }
 

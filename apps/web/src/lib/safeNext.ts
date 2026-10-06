@@ -7,8 +7,17 @@ import { useEffect, useState } from 'react'
  */
 export function safeNext(raw: string | null | undefined): string | null {
   if (!raw) return null
+  // Browsers strip tabs/newlines in URLs, so "/\t/evil.com" would become
+  // "//evil.com" — reject every control character, not just \r\n.
+  if (/[\x00-\x1f\x7f]/.test(raw)) return null
   if (!raw.startsWith('/') || raw.startsWith('//') || raw.startsWith('/\\')) return null
-  if (/[\r\n]/.test(raw)) return null
+  // Belt and braces: whatever the string, it must resolve to our own origin.
+  try {
+    const base = 'https://ona.invalid'
+    if (new URL(raw, base).origin !== base) return null
+  } catch {
+    return null
+  }
   return raw
 }
 

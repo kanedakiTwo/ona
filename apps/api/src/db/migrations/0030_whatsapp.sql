@@ -1,6 +1,5 @@
 -- WhatsApp channel (specs/whatsapp.md): phone↔user links, one-time link codes,
--- WhatsApp-first link tokens, and the inbound/outbound message log (dedupe +
--- server-side chat history).
+-- and the inbound/outbound message log (dedupe + server-side chat history).
 -- New tables only; idempotent so a partial apply can be re-run safely.
 CREATE TABLE IF NOT EXISTS "whatsapp_links" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -41,14 +40,3 @@ CREATE TABLE IF NOT EXISTS "whatsapp_messages" (
 );
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_wa_messages_phone_created" ON "whatsapp_messages" USING btree ("phone","created_at");
---> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "whatsapp_phone_tokens" (
-	"token" text PRIMARY KEY NOT NULL,
-	"phone" text NOT NULL,
-	"profile_name" text,
-	"expires_at" timestamp with time zone NOT NULL,
-	"used_at" timestamp with time zone,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL
-);
---> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "idx_wa_phone_tokens_phone" ON "whatsapp_phone_tokens" USING btree ("phone");

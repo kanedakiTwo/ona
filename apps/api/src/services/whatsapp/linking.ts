@@ -11,8 +11,6 @@ import crypto from 'crypto'
 export const LINK_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 export const LINK_CODE_LENGTH = 6
 export const LINK_CODE_TTL_MS = 10 * 60 * 1000
-/** WhatsApp-first link (`/whatsapp/conectar?t=`): one per phone per hour. */
-export const PHONE_TOKEN_TTL_MS = 60 * 60 * 1000
 
 const DIGITS = '23456789'
 
@@ -44,8 +42,14 @@ export function extractLinkCodeCandidates(text: string | null | undefined): stri
   return Array.from(new Set(valid)).slice(0, 3)
 }
 
-export function connectUrl(webUrl: string, token: string): string {
-  return `${webUrl}/whatsapp/conectar?t=${encodeURIComponent(token)}`
+/**
+ * WhatsApp-first entry point. Deliberately carries no token: the page makes
+ * the logged-in user send a one-time code FROM their WhatsApp, so the phone
+ * that gets linked is always the one that sent the code — a forwarded link
+ * can't attach someone else's phone to your account.
+ */
+export function connectUrl(webUrl: string): string {
+  return `${webUrl}/whatsapp/conectar`
 }
 
 export function linkMessageText(code: string): string {

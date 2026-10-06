@@ -4,12 +4,12 @@ Talk to the ONA assistant from WhatsApp. WhatsApp is another way to reach the sa
 
 ## User Capabilities
 
-- **WhatsApp-first:** anyone can just write to ONA's number. An unlinked number gets a one-tap link (`/whatsapp/conectar?t=<token>`, valid 1 h): "Hola, soy ONA… conecta tu cuenta con un toque… ¿Aún no tienes cuenta? Puedes crearla desde el mismo enlace." While that link is live, further messages from the number get no reply, so it receives at most one message per hour. The page asks to log in or register first; `?next=` brings the user back. It then shows the **masked number + WhatsApp profile name** and the ONA username, with "Sí, conectar" / "No es mío". The confirmation is explicit so a link someone forwards you can't quietly attach their phone to your account. On confirm, ONA says hi on WhatsApp right away (the 24 h window is open because the user just wrote).
+- **WhatsApp-first:** anyone can just write to ONA's number. An unlinked number gets "Hola, soy ONA… conecta tu cuenta: <web>/whatsapp/conectar · Entra (o crea tu cuenta) y te daré un código para enviarme desde este chat", at most once an hour per number. The page asks to log in or register (with `?next=` back). Then it mints a one-time code and shows "Último paso: envía este mensaje a Ona desde tu WhatsApp" with an "Enviar desde WhatsApp" `wa.me` button (message prefilled), polling until linked → "¡Listo!" + "Volver a WhatsApp". The link carries **no token**: the phone that gets linked is always the one that sends the code, so forwarding the link to someone else can't attach a phone to the wrong account. A first version used a phone-bound token and a "¿Conectar este número?" confirm page; the 2026-10-06 review showed a forwarded link plus a spoofed profile name could hijack an account, so it was replaced before shipping.
 - Users can also connect from `/profile` → chapter "08 · Ona en WhatsApp" → "Conectar WhatsApp". This mints a one-time code, shown as "Vincular ONA: 4F7K2A", and an "Abrir WhatsApp" `wa.me` link with that message prefilled. When the user sends it from their phone, the account is linked; the card polls every 3 s and flips to "WhatsApp conectado".
 - Linked users see their masked number (`+34 ••• ••• 222`), an "Abrir chat con Ona" link, an "Avisos por WhatsApp" toggle (see Proactive messages) and "Desconectar", which asks for confirmation first.
 - Linked users can text the assistant anything they'd type in `/advisor`: what's on today's menu, swap a meal, the shopping list, mark items bought, nutrition questions, create recipes, etc. Replies are short WhatsApp-style messages. When something is visual, the reply ends with a deep link into the app: `Ver menú: …/menu`, `Ver lista de la compra: …/shopping`, `Ver receta: …/recipes/:id`, `Modo cocina: …/recipes/:id/cook`.
 - Yes/no and short-choice questions arrive as native WhatsApp reply buttons (max 3). Tapping one is the same as typing its label.
-- Conversation context carries across messages: the server rebuilds the last 20 messages from the last 12 h, so "y el jueves?" works after "¿qué ceno el miércoles?".
+- Conversation context carries across messages: the server rebuilds the last 20 messages from the last 12 h, so "y el jueves?" works after "¿qué ceno el miércoles?". History is filtered by phone **and** user, so a phone that moves to another account never carries the previous owner's chat into the new one.
 - A message from an unlinked number that looks like a profile code but isn't valid gets "Ese código no es válido o ha caducado".
 - Users can send **voice notes**: they are transcribed with OpenAI (`OPENAI_TRANSCRIBE_MODEL`, default `gpt-4o-mini-transcribe`, language `es`) and handled exactly like typed text; the transcript is what lands in history. A failed or empty transcription gets "No he podido entender el audio…"; without `OPENAI_API_KEY` the reply is "Ahora mismo no puedo escuchar audios. ¿Me lo escribes?".
 - Users can **share a recipe link** (YouTube or a recipe article), bare or with text ("guárdame esta"): the assistant calls `import_recipe_from_url`, saves it to their recipes and replies with `Ver receta: …/recipes/:id`, offering to put it on the menu. Links that aren't recipes, or pages the extractor can't read, get an honest "no he podido leerla" answer.
@@ -40,12 +40,11 @@ Everything runs inside the existing 5-minute `notificationScheduler` tick (`runP
   - If the user had another phone linked, the old phone is replaced.
   - Messages the phone sent before linking are assigned to the new owner.
 - Phones are stored as Meta's `wa_id`: digits only, with the country code.
-- WhatsApp-first tokens: 32-hex `whatsapp_phone_tokens(token, phone, profile_name, expires_at, used_at)`, TTL 1 h, single use. Confirming one uses the same one-to-one linking rules above.
 
 ## Message handling
 
 1. `POST /whatsapp/webhook` verifies `X-Hub-Signature-256`, an HMAC-SHA256 of the **raw** body keyed with `WHATSAPP_APP_SECRET`. That's why the router is mounted before `express.json()`. A bad or missing signature gets **401**.
-2. Every message is inserted into `whatsapp_messages` with `ON CONFLICT (wamid) DO NOTHING`, so Meta's retries are deduplicated. The webhook answers **200** right away; the assistant runs after the response.
+2. Every message is inserted into `whatsapp_messages` with `ON CONFLICT (wamid) DO NOTHING`, so Meta's retries are deduplicated. Each new message is queued **right after its insert**. If one insert fails, the response is **500**: Meta retries the batch, the already-stored messages dedupe, and they are already queued. Otherwise **200**. The assistant runs after the response.
 3. Messages are processed **in order per phone**, using an in-process promise chain (Railway runs one API instance).
 4. Each message is marked read with a "typing…" indicator (best effort).
 5. Gates, in order:
@@ -53,7 +52,7 @@ Everything runs inside the existing 5-minute `notificationScheduler` tick (`runP
    - An unlinked phone goes to the linking flow.
    - A suspended account is refused.
    - An account not in `WHATSAPP_ALLOWED_EMAILS` is refused.
-   - Once the monthly budget is spent, the user gets the same copy as the web's 429. No model call is made.
+   - Once the monthly budget is spent, the user gets the same copy as the web's 429. This check runs **before any paid work**: no transcription, no photo extraction, no model call.
 6. Text and button replies go through `chat(userId, text, history, db, { mode: 'whatsapp' })`. The system prompt's WhatsApp mode allows `*negrita*` and dash lists, forbids "pulsa/abajo" screen language, sends cooking timers and steps to the app's cooking mode, and asks the model to end short-choice questions with `[[opciones: Sí | No]]`. The renderer turns that line into reply buttons; with more than 3 options, they are folded back into the text.
 7. Replies are cut to WhatsApp's 4096-character limit, splitting on paragraph boundaries first.
 8. Each reply is stored as an outbound row (`kind='reply'`). The inbound row becomes `processed`, with its final text.
@@ -62,8 +61,7 @@ Everything runs inside the existing 5-minute `notificationScheduler` tick (`runP
 ## Data model
 
 - `whatsapp_links(user_id UNIQUE, phone UNIQUE, profile_name, notify, linked_at, last_inbound_at)`. `last_inbound_at` marks the start of Meta's 24 h customer-service window.
-- `whatsapp_link_codes(code PK, user_id, expires_at, used_at)`: profile flow.
-- `whatsapp_phone_tokens(token PK, phone, profile_name, expires_at, used_at)`: WhatsApp-first flow.
+- `whatsapp_link_codes(code PK, user_id, expires_at, used_at)`: used by both the profile card and `/whatsapp/conectar`.
 - `whatsapp_messages(wamid UNIQUE NULL, phone, user_id, direction in|out, kind, body, status, error_message)`.
   - Inbound statuses: `received` / `processed` / `failed` / `ignored`.
   - Outbound statuses: `sent` / `failed`.
@@ -76,8 +74,6 @@ Everything runs inside the existing 5-minute `notificationScheduler` tick (`runP
 - `POST /whatsapp/webhook` (public, signed): **503** when the channel isn't configured.
 - `GET /whatsapp/status` (auth): `{ available, linked, phone, notify, chatLink }`. `available` = configured AND email allowed. The profile chapter is hidden unless `available || linked`, so a user can always disconnect.
 - `POST /whatsapp/link-code` (auth): `{ code, expiresAt, message, waLink }`. **403** `WHATSAPP_UNAVAILABLE` when not available.
-- `GET /whatsapp/phone-token/:token` (auth): `{ status: valid|expired|used, phone (masked), profileName, available }` for the confirm page; **404** unknown.
-- `POST /whatsapp/phone-token/:token/confirm` (auth): links the phone to the caller and sends the WhatsApp welcome. Returns `{ linked, phone, chatLink }`; **410** `TOKEN_GONE` (expired/used); **403** `WHATSAPP_UNAVAILABLE`.
 - `PATCH /whatsapp/link` (auth) `{ notify: boolean }`: **404** when not linked.
 - `DELETE /whatsapp/link` (auth): **204**.
 
@@ -92,7 +88,9 @@ Everything runs inside the existing 5-minute `notificationScheduler` tick (`runP
 
 - No WhatsApp groups. Signing up happens on the web (the connect link offers "Crear cuenta"), not inside the chat.
 - Meta's test number can only message the up-to-5 recipients verified in the Meta dashboard. Opening the channel to all users needs a real number plus business verification.
-- In-process queue: if the API restarts mid-turn, that message stays `received` and gets no answer.
+- In-process queue: if the API restarts mid-turn, that message stays `received` and gets no answer (no sweeper; messages older than 2 h are dropped as stale anyway).
+- Photo extraction cost is gated by the monthly budget but not added to it; only chat turns are metered.
+- "Today" and "this week" use the Europe/Madrid clock (`services/madridTime.ts`), for the assistant's `get_todays_menu` / `generate_weekly_menu` and for the daily brief.
 - The model sees text only: photos are never shown to the chat model, they go straight to recipe import (a photo of the fridge is not understood yet). Cooking-mode hints (`set_timer`, `cooking_step`) have no effect on WhatsApp; the reply points to the app instead.
 
 ## Related specs
@@ -113,6 +111,6 @@ Everything runs inside the existing 5-minute `notificationScheduler` tick (`runP
 - [apps/api/src/services/assistant/engine.ts](../apps/api/src/services/assistant/engine.ts): `ChatOptions.mode`.
 - [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts): `whatsappLinks`, `whatsappLinkCodes`, `whatsappMessages`; [migration 0030](../apps/api/src/db/migrations/0030_whatsapp.sql).
 - [apps/api/src/config/env.ts](../apps/api/src/config/env.ts): `WHATSAPP_*`, `WEB_PUBLIC_URL`.
-- [apps/web/src/app/whatsapp/conectar/page.tsx](../apps/web/src/app/whatsapp/conectar/page.tsx) (WhatsApp-first confirm page), [apps/web/src/lib/safeNext.ts](../apps/web/src/lib/safeNext.ts) (`?next=` for login/register),
+- [apps/web/src/app/whatsapp/conectar/page.tsx](../apps/web/src/app/whatsapp/conectar/page.tsx) (WhatsApp-first: login/register → send the code from WhatsApp), [apps/web/src/lib/safeNext.ts](../apps/web/src/lib/safeNext.ts) (`?next=` for login/register),
 - [apps/web/src/components/profile/WhatsAppCard.tsx](../apps/web/src/components/profile/WhatsAppCard.tsx), [apps/web/src/hooks/useWhatsApp.ts](../apps/web/src/hooks/useWhatsApp.ts), [apps/web/src/app/profile/page.tsx](../apps/web/src/app/profile/page.tsx) (chapter 08).
 - Tests: `apps/api/src/tests/whatsappWebhook.test.ts`, `whatsappFormat.test.ts`, `whatsappInbound.test.ts`, `whatsappProactive.test.ts`; `apps/web/e2e/whatsapp-link.spec.ts`, `apps/web/e2e/whatsapp-connect.spec.ts`.

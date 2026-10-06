@@ -21,7 +21,7 @@ AI assistant for nutrition guidance, menu queries, and recipe management via nat
 
 The assistant can call back-end skills (function calling). Each skill has a name, description, JSON schema parameters, and an executor. Current skills:
 
-- `get_todays_menu` — read the menu for today (or any day index 0–6). Prefers **this week's** menu (falls back to the latest) and lists every dish of each slot from `dishes[]`, recipes and notes, e.g. "comida: Lentejas + Ensalada, cena: Cenamos fuera" (via `services/menuText.ts`). Fixes the pre-2026-10 bug where it read the legacy `slot.recipeName` and answered "no hay comidas planificadas" for every day.
+- `get_todays_menu` — read the menu for today in Madrid time (or any day index 0–6). Prefers **this week's** menu (falls back to the latest) and lists every dish of each slot from `dishes[]`, recipes and notes, e.g. "comida: Lentejas + Ensalada, cena: Cenamos fuera" (via `services/menuText.ts`). Fixes the pre-2026-10 bug where it read the legacy `slot.recipeName` and answered "no hay comidas planificadas" for every day.
 - `get_recipe_details` — pull a recipe by ID/name including ingredients and steps
 - `get_weekly_nutrition` — calorie and macro summary for the week
 - `get_shopping_list` — current week's shopping list
@@ -58,7 +58,7 @@ The cooking-mode skills (`start_cooking_mode`, `set_timer`, `cooking_step`) are 
 
 The model responds with either a plain text message or tool calls. `runToolLoop` (engine.ts) executes **every** `tool_use` block of a response (parallel calls are answered in one user message, failures flagged `is_error`) and loops for up to `MAX_TOOL_ROUNDS = 4` rounds — so "genera el menú y dime qué toca hoy" runs both skills in one turn. The round after the last is sent with `tool_choice: none` to force a text answer. The response's `skillUsed`/`uiHint`/`data` come from the last skill with a non-`text` uiHint (falling back to the last skill), so the web still renders one card per turn.
 
-**Hallucinated-action guard.** The system prompt forbids claiming a change ("cambiado", "guardado", "hecho"…) without calling the tool that makes it this turn, and forbids offering a concrete recipe without checking the catalogue first. As a backstop, when a turn ran **no** tool and the reply matches a Spanish past-tense claim (`claimsAction`), the loop appends a hidden corrective note and gives the model one more round to call the tool or tell the truth. Found in the 2026-10-06 WhatsApp E2E: the model answered "Cambiado: hoy cenas pollo con calabacín" with no `swap_meal` call and no such recipe in the catalogue. Each round logs `[assistant] round N: <skills>`.
+**Hallucinated-action guard.** The system prompt forbids claiming a change ("cambiado", "guardado", "hecho"…) without calling the tool that makes it this turn, and forbids offering a concrete recipe without checking the catalogue first. As a backstop, when a turn ran **no** tool and the reply matches a Spanish past-tense claim (`claimsAction`), the loop appends a hidden corrective note and gives the model one more round to call the tool or tell the truth. The note tells the model that if it was only recalling something done in an earlier turn, it should restate its answer and not repeat the action. This prevents a "ya he generado tu menú" recap from triggering a second menu. Found in the 2026-10-06 WhatsApp E2E: the model answered "Cambiado: hoy cenas pollo con calabacín" with no `swap_meal` call and no such recipe in the catalogue. Each round logs `[assistant] round N: <skills>`.
 
 ## Voice (`useVoice` hook)
 

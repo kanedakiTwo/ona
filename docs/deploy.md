@@ -28,8 +28,14 @@ railway up --service ona-web --detach
 
 # 3) sanity checks
 curl -sf https://ona-api-production.up.railway.app/health        # → {"ok":true,…}
-curl -s  https://ona-web-production.up.railway.app/recipes/new \
-  | grep -c "Importar desde URL"                                  # → 1
+# /recipes/new renders a loading shell until client-side auth resolves, so
+# check the route's JS chunk instead of the HTML:
+B=https://ona-web-production.up.railway.app
+for s in $(curl -s $B/recipes/new | grep -o '/_next/static/chunks/app/recipes/new/[^"]*\.js' | sort -u); do
+  curl -s "$B$s" | grep -c "Importar desde URL"                   # → 1
+done
+# WhatsApp webhook handshake (needs WHATSAPP_VERIFY_TOKEN on ona-api):
+curl -s "https://ona-api-production.up.railway.app/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=$WHATSAPP_VERIFY_TOKEN&hub.challenge=ok"  # → ok
 ```
 
 The API runs `pnpm --filter @ona/api db:migrate` on boot (set in `RAILPACK_START_CMD`), so committed Drizzle migrations apply automatically on the next deploy. Each deploy takes 2–4 minutes.

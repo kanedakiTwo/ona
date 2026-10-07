@@ -31,7 +31,22 @@ import { visibleAuthorIds, visibleRecipeWhere } from '../recipeVisibility.js'
 import { enqueuePrepAlertsForMenu } from '../notificationScheduler.js'
 import { NotARecipeError } from '../recipeUrlExtractor.js'
 import { NoExtractableContentError } from '../sources/youtube.js'
+import { PageFetchError, UnsafeUrlError } from '../net/publicFetch.js'
 import type { SkillDefinition, SkillContext, SkillResult } from './types.js'
+
+/**
+ * Text that came from a web page, a photo or another person (an imported
+ * recipe's name, the extractor's reason) on its way back to the model: one
+ * line, bounded. It is content, never instructions — systemPrompt.ts tells
+ * the model the same — but a page shouldn't get a paragraph to try.
+ */
+export function untrustedText(value: unknown, max = 120): string {
+  const s = String(value ?? '')
+    .replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return s.length > max ? `${s.slice(0, max - 1)}…` : s
+}
 
 // ─── Helper: get current week start (Monday) ───────────────
 // Madrid wall clock, not the server's (UTC on Railway): between 00:00 and
@@ -2008,15 +2023,18 @@ export const importRecipeFromUrlSkill: SkillDefinition = {
         : ''
       return {
         data: { recipeId: saved.recipeId, name: saved.name },
-        summary: `Receta "${saved.name}" guardada en las recetas del usuario (id ${saved.recipeId}).${review}`,
+        summary: `Receta «${untrustedText(saved.name, 80)}» guardada en las recetas del usuario (id ${saved.recipeId}).${review}`,
         uiHint: 'recipe',
       }
     } catch (err: any) {
       if (err instanceof NotARecipeError) {
-        return { data: null, summary: `El enlace no parece contener una receta cocinable: ${err.reason}`, uiHint: 'text' }
+        return { data: null, summary: `El enlace no parece contener una receta cocinable: «${untrustedText(err.reason, 160)}»`, uiHint: 'text' }
       }
-      if (err instanceof NoExtractableContentError) {
+      if (err instanceof NoExtractableContentError || err instanceof PageFetchError) {
         return { data: null, summary: `No se pudo leer el contenido del enlace: ${err.message}`, uiHint: 'text' }
+      }
+      if (err instanceof UnsafeUrlError) {
+        return { data: null, summary: `No se puede importar ese enlace: ${err.message} Pide un enlace público a la receta.`, uiHint: 'text' }
       }
       throw err
     }

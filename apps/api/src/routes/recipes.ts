@@ -69,6 +69,7 @@ import {
   NotARecipeError,
 } from '../services/recipeUrlExtractor.js'
 import { NoExtractableContentError } from '../services/sources/youtube.js'
+import { PageFetchError, UnsafeUrlError } from '../services/net/publicFetch.js'
 import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../services/scopeResolver.js'
 import { sanitizeCustomTags } from '../services/recipeNotesStore.js'
 import { findPantryMatches } from '../services/pantryMatcher.js'
@@ -647,6 +648,15 @@ router.post(
         return
       }
       if (err instanceof NoExtractableContentError) {
+        res.status(422).json({ error: err.message })
+        return
+      }
+      // SSRF guard (services/net/publicFetch.ts): localhost, private ranges…
+      if (err instanceof UnsafeUrlError) {
+        res.status(400).json({ error: err.message })
+        return
+      }
+      if (err instanceof PageFetchError) {
         res.status(422).json({ error: err.message })
         return
       }

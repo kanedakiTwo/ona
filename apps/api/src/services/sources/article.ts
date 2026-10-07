@@ -17,6 +17,7 @@ import type {
   RawExtractedRecipe,
   TextExtractionProvider,
 } from '../recipeExtractor.js'
+import { fetchPublicPage } from '../net/publicFetch.js'
 
 // ─── ISO 8601 duration → minutes ─────────────────────────────────
 
@@ -341,25 +342,17 @@ export type ArticleFetcher = (url: string) => Promise<string>
 const DEFAULT_USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36'
 
+// Goes through fetchPublicPage: the URL is user-supplied, so it must never
+// reach localhost, the cloud metadata endpoint or Railway's private network.
 const defaultFetchArticle: ArticleFetcher = async (url) => {
-  const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), 10_000)
-  try {
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent': DEFAULT_USER_AGENT,
-        Accept: 'text/html,application/xhtml+xml,*/*;q=0.8',
-        'Accept-Language': 'es-ES,es;q=0.9',
-      },
-      signal: ctrl.signal,
-    })
-    if (!res.ok) {
-      throw new Error(`No se pudo descargar la página (HTTP ${res.status}).`)
-    }
-    return await res.text()
-  } finally {
-    clearTimeout(timer)
-  }
+  const page = await fetchPublicPage(url, {
+    headers: {
+      'User-Agent': DEFAULT_USER_AGENT,
+      Accept: 'text/html,application/xhtml+xml,*/*;q=0.8',
+      'Accept-Language': 'es-ES,es;q=0.9',
+    },
+  })
+  return page.body
 }
 
 /** Truncate the article body before sending to Claude — same budget the photo prompt uses. */

@@ -22,7 +22,8 @@ export async function share(input: ShareInput): Promise<ShareResult> {
   }
 
   // Fallback: clipboard
-  const fallbackText = input.text ?? input.url ?? input.title ?? ""
+  // Text AND link: copying only the text would drop the public page.
+  const fallbackText = [input.text, input.url].filter(Boolean).join("\n") || input.title || ""
   if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
     try {
       await navigator.clipboard.writeText(fallbackText)

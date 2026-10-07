@@ -45,6 +45,7 @@ import {
   RefreshCw,
   Replace,
   RotateCw,
+  Share2,
   Sparkles,
   Tag,
   Trash2,
@@ -79,6 +80,8 @@ import {
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { GripVertical } from "lucide-react"
+import { menuShareText } from "@ona/shared"
+import { share } from "@/lib/pwa/share"
 
 const DAY_NAMES = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
 const DAY_SHORT = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"]
@@ -414,6 +417,13 @@ export default function MenuPage() {
   }
   const isLocked = (meal: string) => isLockedAt(selectedDay, meal)
 
+  /** "Pásalo": the week as text, with a link that brings another household to ONA. */
+  async function handleShareWeek() {
+    if (!menu) return
+    haptic.light()
+    await share({ title: "Mi menú de la semana", text: menuShareText(menu.days as any, window.location.origin) })
+  }
+
   function handleGenerate() {
     if (!user) return
     haptic.medium()
@@ -736,6 +746,13 @@ export default function MenuPage() {
               days and meal-row labels; the page just hosts it + the
               regenerate CTA. */}
           <div className="mt-4 flex items-center justify-end gap-2 px-5">
+            <button
+              onClick={handleShareWeek}
+              className="flex items-center gap-1.5 rounded-full border border-[#DDD6C5] bg-transparent px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#7A7066] transition-colors hover:border-[#1A1612] hover:text-[#1A1612]"
+            >
+              <Share2 size={11} />
+              Compartir
+            </button>
             {!isPastWeek && (
               <>
                 <button
@@ -879,7 +896,14 @@ export default function MenuPage() {
         <>
           {/* Top toolbar — once, above the stack. The per-day title is now
               the sticky-ish header inside each day section. */}
-          <div className="px-5 mt-4 flex items-center justify-end">
+          <div className="px-5 mt-4 flex items-center justify-end gap-2">
+            <button
+              onClick={handleShareWeek}
+              className="flex items-center gap-1.5 rounded-full border border-[#DDD6C5] bg-transparent px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#7A7066] transition-colors hover:border-[#1A1612] hover:text-[#1A1612]"
+            >
+              <Share2 size={11} />
+              Compartir
+            </button>
             {!isPastWeek && (
               <button
                 onClick={handleGenerate}

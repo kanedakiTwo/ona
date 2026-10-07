@@ -42,6 +42,7 @@ import {
   timelineString,
 } from "@/lib/recipeView"
 import { MEAL_LABELS, SEASON_LABELS } from "@/lib/labels"
+import { recipeSharePayload } from "@ona/shared"
 
 export default function RecipeDetailPage() {
   const params = useParams<{ id: string }>()
@@ -154,10 +155,9 @@ export default function RecipeDetailPage() {
 
   const handleShare = async () => {
     haptic.light()
-    await share({
-      title: recipe.name,
-      url: typeof window !== "undefined" ? window.location.href : undefined,
-    })
+    // "Pásalo": catalogue recipes share their public page (opens without an
+    // account, with a sign-up CTA); private ones go as text + a link to ONA.
+    await share(recipeSharePayload(recipe, typeof window !== "undefined" ? window.location.origin : ""))
   }
 
   return (

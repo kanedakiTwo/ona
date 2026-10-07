@@ -103,7 +103,7 @@ At `lg+` the `/shopping` page widens its outer container to `max-w-[900px]` so t
 - The list is regenerated on every GET — there is no longer a manual "Regenerar" button on `/shopping`. The cache invalidates automatically when any menu mutation succeeds, so editing the menu, swapping slots, or skipping a day reflects in the basket on the next render.
 - Items are only created from menu recipes; users cannot add custom items in the current implementation
 - The progress bar uses `(checkedCount + inStockCount) / totalCount`
-- Export format is plain text suitable for paste into messaging apps; it preserves aisle grouping
+- Export format is plain text suitable for paste into messaging apps; it preserves aisle grouping and ends with a "Hecho con ONA" line + link (`/?ref=lista`, `withOnaFooter`), so a shared list can bring another household
 - Aisle assignment falls back to `otros` when `ingredient.aisle` is unset; curators are nudged to fill the column
 - Check / stock mutations work offline; the request is held in the PWA queue until reconnect. The local UI updates optimistically and a "Pendiente de sincronizar" indicator shows while pending
 - **Household scope (PR 1B):** shopping lists carry both `user_id` and `household_id`. Reads + access checks on `POST /shopping-list/:listId/regenerate` honour the env flag `SHARED_HOUSEHOLD_SCOPE`; with the flag on, any household member can regenerate the household's list. See [Household](./household.md)

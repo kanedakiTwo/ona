@@ -21,6 +21,7 @@ import {
   ItemPriceField,
   ItemDeleteButton,
 } from '@/components/shopping/ShoppingExtensions'
+import { withOnaFooter } from '@ona/shared'
 
 function todayIso(): string {
   const now = new Date()
@@ -95,7 +96,11 @@ export default function ShoppingPage() {
         .join('\n')
       return [`## ${AISLE_LABELS[aisle]}`, lines, '']
     })
-    const text = `Lista de compra ONA\nSemana del ${weekStart}\n\n${sections.join('\n')}`
+    const text = withOnaFooter(
+      `Lista de compra ONA\nSemana del ${weekStart}\n\n${sections.join('\n')}`,
+      window.location.origin,
+      'lista',
+    )
     await share({ title: 'Lista de compra ONA', text })
   }
 

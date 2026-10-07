@@ -139,6 +139,8 @@ export { calculateBMR, getActivityFactor, calculateTDEE, calculateMenuTargetCalo
 export { ingredientCalories, recipeCalories, dayCalories, menuCalories } from './utils/calories.js'
 export { ingredientNutrients, sumNutrients, nutrientsToPercentages, updateNutrientBalance, normalizeDeviation } from './utils/nutrients.js'
 export { detectSeason, isInSeason } from './utils/seasons.js'
+export { menuShareText, recipeSharePayload, withOnaFooter } from './utils/sharePayloads.js'
+export type { SharePayload } from './utils/sharePayloads.js'
 export {
   householdMultiplier,
   householdToDiners,

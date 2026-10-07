@@ -40,7 +40,8 @@ Premium Progressive Web App layer that makes ONA feel like a native iOS/Android 
 ### Sharing
 
 - Users can share a recipe via the native share sheet (`navigator.share`) — a Share2 button in the recipe detail hero overlay sends recipe URL + name
-- Users can share their shopping list as text via the native share sheet — the "Exportar" button uses Web Share when available and falls back to clipboard
+- Users can share their shopping list as text via the native share sheet — the "Exportar" button uses Web Share when available and falls back to clipboard (the clipboard copy keeps text **and** link)
+- Users can share the week's menu ("Compartir" on /menu, both views) as text, one line per meal, with a link to ONA (`menuShareText`, `/?ref=menu`)
 
 ### Cooking mode (Wake Lock)
 

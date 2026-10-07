@@ -153,8 +153,8 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 
 ### Pending
 
-- [ ] **Compra en mis tiendas — primer pedido real** (v1 en prod 2026-10-07, [specs/shop-orders.md](./specs/shop-orders.md)): tus tiendas The Fruits of the World (WhatsApp +34 913 52 51 11), Ben-Car Boadilla (WhatsApp pedidos 638 015 827) y El Corte Inglés (web) ya están dadas de alta en tu hogar.
-  - **Pescadería nueva**: Pescados Aparicio no tiene número, así que hay que elegir otra entre las que propone Claude (cerca de Pozuelo/Boadilla, que acepten WhatsApp). Cuando la elijas, Claude la da de alta.
+- [ ] **Compra en mis tiendas — primer pedido real** (v1 en prod 2026-10-07, [specs/shop-orders.md](./specs/shop-orders.md)): tus tiendas The Fruits of the World (WhatsApp +34 913 52 51 11), Ben-Car Boadilla (WhatsApp pedidos 638 015 827), Pescaderías Los Alonso (WhatsApp 616 943 425; Pescados Aparicio no tenía número fiable) y El Corte Inglés (web) ya están dadas de alta en tu hogar.
+  - *(Opcional)* Los Alonso reparte gratis en Pozuelo/Boadilla (mismo día si pides antes de las 13:00): para usarlo, en `/compra/tiendas` cambia la entrega a "A domicilio" con tu dirección (hoy está en "recojo en tienda").
   - Avisar en persona a la frutería y a la carnicería (Miguel se encarga) de que les pedirás por WhatsApp con una lista y que te digan precio por kilo y total antes de prepararlo.
   - Haz un pedido de verdad: "hazme la compra" por WhatsApp → envía cada enlace → reenvía a Ona lo que contesten → aprueba → cierra al recoger. Hecho = un pedido cerrado por tienda y las respuestas reales guardadas (sirven para calibrar el lector).
 

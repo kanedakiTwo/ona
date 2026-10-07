@@ -28,6 +28,8 @@ import { mealLinesForDay } from '../menuText.js'
 import { madridParts, madridWeekStart } from '../madridTime.js'
 import { appSkills, bestMatch, searchWords } from './appSkills.js'
 import { visibleAuthorIds, visibleRecipeWhere } from '../recipeVisibility.js'
+import { loadMatchableRecipes } from '../matchableRecipes.js'
+import { compileRestrictions, mergeRestrictions, violatesRestrictions, type RestrictableRecipe } from '../dietaryRestrictions.js'
 import { enqueuePrepAlertsForMenu } from '../notificationScheduler.js'
 import { NotARecipeError } from '../recipeUrlExtractor.js'
 import { NoExtractableContentError } from '../sources/youtube.js'
@@ -64,40 +66,42 @@ async function visibleWhere(ctx: SkillContext) {
   return visibleRecipeWhere(await visibleAuthorIds(ctx.userId, ctx.db))
 }
 
-// ─── Helper: load recipes with ingredients ─────────────────
-async function loadRecipesWithIngredients(db: any, userId: string): Promise<RecipeWithIngredients[]> {
-  const allRecipes = await db.select().from(recipes).where(visibleRecipeWhere(await visibleAuthorIds(userId, db)))
-  const riRows = await db
-    .select({
-      recipeId: recipeIngredients.recipeId,
-      ingredientId: recipeIngredients.ingredientId,
-      quantity: recipeIngredients.quantity,
-      unit: recipeIngredients.unit,
-      ingredientName: ingredients.name,
-    })
+/**
+ * The user's allergies / diet (profile + memory, see mergeRestrictions) and
+ * dislikes. Anything ONA proposes on its own goes through these; an explicit
+ * request can override a dislike, never an allergy (systemPrompt.ts).
+ */
+async function restrictionsFor(ctx: SkillContext): Promise<{ restrictions: string[]; dislikes: string[] }> {
+  const [user] = await ctx.db
+    .select({ restrictions: users.restrictions })
+    .from(users)
+    .where(eq(users.id, ctx.userId))
+    .limit(1)
+  const { getMemoryForUser } = await import('../userMemoryStore.js')
+  const memory = await getMemoryForUser(ctx.userId).catch(() => null)
+  const dislikesValue = memory?.dislikes?.value
+  return {
+    restrictions: mergeRestrictions(user?.restrictions, memory),
+    dislikes: Array.isArray(dislikesValue) ? (dislikesValue as string[]) : [],
+  }
+}
+
+/** Which of the user's allergies / diets (not dislikes) a recipe breaks. */
+async function restrictionConflicts(ctx: SkillContext, recipeId: string): Promise<string[]> {
+  const { restrictions } = await restrictionsFor(ctx)
+  if (restrictions.length === 0) return []
+  const [row] = await ctx.db
+    .select({ allergens: recipes.allergens })
+    .from(recipes)
+    .where(eq(recipes.id, recipeId))
+    .limit(1)
+  const ings = await ctx.db
+    .select({ ingredientName: ingredients.name, allergenTags: ingredients.allergenTags })
     .from(recipeIngredients)
     .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
-
-  const ingredientsByRecipe = new Map<string, any[]>()
-  for (const row of riRows) {
-    const list = ingredientsByRecipe.get(row.recipeId) ?? []
-    list.push({
-      ingredientId: row.ingredientId,
-      ingredientName: row.ingredientName,
-      quantity: row.quantity,
-      unit: row.unit ?? 'g',
-    })
-    ingredientsByRecipe.set(row.recipeId, list)
-  }
-
-  return allRecipes.map((r: any) => ({
-    id: r.id,
-    name: r.name,
-    meals: r.meals ?? [],
-    seasons: r.seasons ?? [],
-    tags: r.tags ?? [],
-    ingredients: ingredientsByRecipe.get(r.id) ?? [],
-  }))
+    .where(eq(recipeIngredients.recipeId, recipeId))
+  const recipe = { allergens: row?.allergens ?? [], ingredients: (ings ?? []) as RestrictableRecipe['ingredients'] }
+  return restrictions.filter((r) => violatesRestrictions(recipe, compileRestrictions([r])))
 }
 
 // ─── Skill definitions ─────────────────────────────────────
@@ -345,17 +349,12 @@ const suggestRecipes: SkillDefinition = {
     const { db } = ctx
     const season = detectSeason()
 
-    let allRecipes = await db
-      .select({
-        id: recipes.id,
-        name: recipes.name,
-        meals: recipes.meals,
-        seasons: recipes.seasons,
-        prepTime: recipes.prepTime,
-        tags: recipes.tags,
-      })
-      .from(recipes)
-      .where(await visibleWhere(ctx))
+    // Never suggest something the user can't or won't eat.
+    const { restrictions, dislikes } = await restrictionsFor(ctx)
+    const rules = compileRestrictions(restrictions, dislikes)
+    let allRecipes: any[] = (await loadMatchableRecipes(ctx.userId, db)).filter(
+      (r) => !violatesRestrictions(r, rules),
+    )
 
     // Filter by season
     allRecipes = allRecipes.filter((r: any) => {
@@ -506,11 +505,15 @@ const swapMeal: SkillDefinition = {
         type: 'string',
         description: 'Nombre (o parte) de la receta concreta. Se buscará por substring case-insensitive. Opcional. Si hay varias coincidencias se prioriza la del usuario sobre las del catálogo de ONA.',
       },
+      confirmRestriction: {
+        type: 'boolean',
+        description: 'Solo true si el usuario ya ha confirmado que quiere ese plato aunque choque con su alergia/dieta (la herramienta te lo habrá avisado).',
+      },
     },
     required: ['dayIndex', 'meal'],
   },
   async handler(
-    params: { dayIndex: number; meal: string; recipeId?: string; recipeName?: string },
+    params: { dayIndex: number; meal: string; recipeId?: string; recipeName?: string; confirmRestriction?: boolean },
     ctx: SkillContext,
   ): Promise<SkillResult> {
     const { userId, db } = ctx
@@ -584,6 +587,18 @@ const swapMeal: SkillDefinition = {
           uiHint: 'text',
         }
       }
+      // Allergies / diet are never skipped silently: an explicit request can
+      // beat a dislike, not an allergy without the user's confirmation.
+      const conflicts = await restrictionConflicts(ctx, chosen.id)
+      if (conflicts.length > 0 && !params.confirmRestriction) {
+        return {
+          data: { recipeId: chosen.id, recipeName: chosen.name, conflicts },
+          summary: approximate
+            ? `No he cambiado nada: no habia "${untrustedText(params.recipeName, 80)}" y lo mas parecido, "${chosen.name}", no es compatible con sus restricciones (${conflicts.join(', ')}). Dile que no hay opcion compatible parecida y ofrece otra.`
+            : `No he cambiado nada: "${chosen.name}" no es compatible con sus restricciones (${conflicts.join(', ')}). Avisale y pregunta si aun asi lo quiere; si lo confirma, vuelve a llamar a swap_meal con confirmRestriction: true.`,
+          uiHint: 'text',
+        }
+      }
       days[dayIndex][meal] = { dishes: [{ kind: 'recipe', recipeId: chosen.id, recipeName: chosen.name }] }
       const [updatedManual] = await db
         .update(menus)
@@ -614,14 +629,8 @@ const swapMeal: SkillDefinition = {
       }
     }
 
-    // Fetch user restrictions
-    const [user] = await db
-      .select({ restrictions: users.restrictions })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1)
-
-    const restrictions: string[] = user?.restrictions ?? []
+    // Allergies / diet (profile + memory) and dislikes — same filter as the generator.
+    const { restrictions, dislikes } = await restrictionsFor(ctx)
 
     // Fetch favorites
     const favRows = await db
@@ -632,7 +641,7 @@ const swapMeal: SkillDefinition = {
     const favoriteRecipeIds = new Set<string>(favRows.map((f: any) => f.recipeId))
 
     // Load recipes with ingredients for matching
-    const allRecipes = await loadRecipesWithIngredients(db, userId)
+    const allRecipes = await loadMatchableRecipes(userId, db)
     const season = detectSeason()
 
     const newRecipe = findRecipeForSlot(allRecipes, {
@@ -640,6 +649,7 @@ const swapMeal: SkillDefinition = {
       season,
       usedRecipeIds,
       restrictions,
+      dislikes,
       favoriteRecipeIds,
     })
 

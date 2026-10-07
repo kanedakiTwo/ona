@@ -243,3 +243,49 @@ describe('matchRecipes: bannedRecipeIds', () => {
     expect(out.map((r) => r.id)).not.toContain('r2')
   })
 })
+
+describe('matchRecipes: allergies and diets (2026-10-07 regression)', () => {
+  // r1 has chorizo (meat) in its name only — its ingredient is lentejas — so
+  // the diet check must come from ingredients. r4 carries a gluten tag on
+  // the recipe; r5 only on the ingredient's catalogue entry.
+  const POOL: RecipeWithIngredients[] = [
+    ...RECIPES,
+    {
+      id: 'r4',
+      name: 'Espaguetis al pesto',
+      meals: ['lunch'],
+      seasons: ['spring'],
+      tags: [],
+      allergens: ['gluten', 'frutos_secos'],
+      ingredients: [{ ingredientId: 'i4', ingredientName: 'espaguetis', quantity: 200, unit: 'g' }],
+    },
+    {
+      id: 'r5',
+      name: 'Pollo al curry',
+      meals: ['lunch'],
+      seasons: ['spring'],
+      tags: [],
+      ingredients: [
+        { ingredientId: 'i5', ingredientName: 'pechuga de pollo', quantity: 300, unit: 'g' },
+        { ingredientId: 'i6', ingredientName: 'curry en polvo', quantity: 5, unit: 'g', allergenTags: ['mostaza'] },
+      ],
+    },
+  ]
+  const ids = (restrictions: string[]) =>
+    matchRecipes(POOL, { ...baseOptions, restrictions }).map((r) => r.id).sort()
+
+  it('"sin gluten" drops recipes with gluten (recipe union or ingredient name)', () => {
+    // r3's "masa" isn't tagged and doesn't name a cereal: kept (data gap, not a rule gap).
+    expect(ids(['sin gluten'])).toEqual(['r1', 'r2', 'r3', 'r5'])
+  })
+
+  it('"frutos secos" and "mostaza" use the allergen tags', () => {
+    expect(ids(['frutos secos'])).not.toContain('r4')
+    expect(ids(['mostaza'])).not.toContain('r5')
+  })
+
+  it('"vegetariano" drops meat by ingredient', () => {
+    expect(ids(['vegetariano'])).not.toContain('r5')
+    expect(ids(['vegetariano'])).toContain('r2')
+  })
+})

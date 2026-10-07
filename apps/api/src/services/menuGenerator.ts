@@ -1,5 +1,7 @@
 import { eq, inArray } from 'drizzle-orm'
 import { visibleAuthorIds, visibleRecipeWhere } from './recipeVisibility.js'
+import { loadMatchableRecipes, type RecipeWithCourse } from './matchableRecipes.js'
+import { mergeRestrictions } from './dietaryRestrictions.js'
 import {
   users,
   userSettings,
@@ -184,65 +186,6 @@ function countMealSlots(template: DayTemplate[]): number {
     }
   }
   return count
-}
-
-type RecipeWithCourse = RecipeWithIngredients & { course: Course | null }
-
-/**
- * Load all recipes with their ingredient names from the DB.
- */
-async function loadRecipesWithIngredients(db: any, userId: string): Promise<RecipeWithCourse[]> {
-  // Catalogue + the user's and their household's own recipes — never other
-  // users' private recipes (specs/recipes.md).
-  const allRecipes = await db.select().from(recipes).where(visibleRecipeWhere(await visibleAuthorIds(userId, db)))
-
-  const recipeIds = allRecipes.map((r: any) => r.id)
-  if (recipeIds.length === 0) return []
-
-  const riRows = await db
-    .select({
-      recipeId: recipeIngredients.recipeId,
-      ingredientId: recipeIngredients.ingredientId,
-      quantity: recipeIngredients.quantity,
-      unit: recipeIngredients.unit,
-      ingredientName: ingredients.name,
-    })
-    .from(recipeIngredients)
-    .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
-
-  // Group ingredients by recipe
-  const ingredientsByRecipe = new Map<string, any[]>()
-  for (const row of riRows) {
-    const list = ingredientsByRecipe.get(row.recipeId) ?? []
-    list.push({
-      ingredientId: row.ingredientId,
-      ingredientName: row.ingredientName,
-      quantity: row.quantity,
-      unit: row.unit ?? 'g',
-    })
-    ingredientsByRecipe.set(row.recipeId, list)
-  }
-
-  return allRecipes.map((r: any) => ({
-    id: r.id,
-    name: r.name,
-    meals: r.meals ?? [],
-    seasons: r.seasons ?? [],
-    // Three-state fit maps. `meal_fit` / `season_fit` are jsonb columns
-    // added in migration 0024; legacy rows have null — the matcher
-    // handles that branch and derives 'perfect' from the array tagging.
-    mealFit: r.mealFit ?? undefined,
-    seasonFit: r.seasonFit ?? undefined,
-    // Frequency hint (migration 0026). Null = 'normal' default; the
-    // matcher reads it for pool-weighting + the weekends-only filter.
-    frequency: r.frequency ?? null,
-    tags: r.tags ?? [],
-    equipment: r.equipment ?? [],
-    prepTime: r.prepTime ?? null,
-    // Course classification for multi-dish slot building (starter/main/dessert).
-    course: (r.course as Course | null | undefined) ?? null,
-    ingredients: ingredientsByRecipe.get(r.id) ?? [],
-  })) as (RecipeWithIngredients & { course: Course | null })[]
 }
 
 /**
@@ -452,7 +395,7 @@ export async function generateMenu(
   const mealDishCounts = extractMealDishCounts(rawTemplate)
 
   // Fetch all recipes with ingredients
-  const allRecipes = await loadRecipesWithIngredients(db, userId)
+  const allRecipes = await loadMatchableRecipes(userId, db)
 
   // Identify recipes whose nutritionPerServing isn't cached yet — they get a
   // tiny fitness penalty so the algorithm prefers fully-mapped alternatives.
@@ -490,8 +433,8 @@ export async function generateMenu(
   const season = detectSeason()
 
   // 4. Restrictions + dislikes + equipment + time-budget from long-term memory
-  const restrictions: string[] = user.restrictions ?? []
   const memory = await getMemoryForUser(userId).catch(() => null)
+  const restrictions = mergeRestrictions(user.restrictions, memory)
   const dislikesValue = memory?.dislikes?.value
   const dislikes: string[] = Array.isArray(dislikesValue) ? (dislikesValue as string[]) : []
   const equipmentValue = memory?.equipment?.value

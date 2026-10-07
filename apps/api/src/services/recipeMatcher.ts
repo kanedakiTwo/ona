@@ -1,5 +1,6 @@
 import type { FitLevel, Meal, RecipeFrequency, Season } from '@ona/shared'
 import { FIT_WEIGHT, FREQUENCY_WEIGHT, isInSeason } from '@ona/shared'
+import { compileRestrictions, violatesRestrictions } from './dietaryRestrictions.js'
 
 export interface RecipeWithIngredients {
   id: string
@@ -27,11 +28,15 @@ export interface RecipeWithIngredients {
   equipment?: string[]
   /** Prep time in minutes. Used by the time-budget filter (user_memories.time_available). */
   prepTime?: number | null
+  /** Recipe-level allergen union (recipes.allergens). Checked by the restriction filter. */
+  allergens?: string[] | null
   ingredients: Array<{
     ingredientId: string
     ingredientName: string
     quantity: number
     unit: string
+    /** The ingredient's catalogue allergen tags (ingredients.allergen_tags). */
+    allergenTags?: string[] | null
   }>
 }
 
@@ -88,7 +93,7 @@ export interface MatcherOptions {
  * 1. Recipe's meals array includes the target meal type
  * 2. Recipe's seasons array includes current season (or empty = all seasons)
  * 3. Recipe is not already used in the current menu (no repeats)
- * 4. Recipe's ingredients don't contain restricted items
+ * 4. Recipe doesn't break the user's allergies / diet / dislikes (dietaryRestrictions.ts)
  *
  * Favorites appear with higher probability (duplicated in pool).
  */
@@ -110,13 +115,11 @@ export function matchRecipes(
   } = options
   const isWeekday = typeof dayIndex === 'number' && dayIndex < 5
 
-  // Restrictions + dislikes share the same predicate: any ingredient name
-  // whose lowercased form contains one of the entries → recipe excluded.
-  // Dislikes are merged into the same set so the loop stays one O(N×M).
-  const blockedNames = new Set<string>([
-    ...restrictions.map((r) => r.toLowerCase()),
-    ...(dislikes ?? []).map((d) => d.toLowerCase()),
-  ])
+  // Restrictions (allergies, diets, free text) + dislikes compile once per
+  // call into allergen tags + whole-word ingredient terms
+  // (dietaryRestrictions.ts). Before 2026-10-07 this was an exact-name
+  // match, so "sin gluten" or "vegetariano" excluded nothing.
+  const rules = compileRestrictions(restrictions, dislikes ?? [])
 
   return recipes.filter((recipe) => {
     // 0. Veto wins over everything else — a banned favourite is still out.
@@ -141,15 +144,9 @@ export function matchRecipes(
     // 3. No repeats in the week
     if (usedRecipeIds.has(recipe.id)) return false
 
-    // 4. Restriction + dislikes check — exact-match against the lowercased
-    //    ingredient name. Lifted into a single Set above so a user with
-    //    both "sin gluten" + dislikes:['cilantro'] pays one pass.
-    if (blockedNames.size > 0) {
-      const hasBlocked = recipe.ingredients.some((ing) =>
-        blockedNames.has(ing.ingredientName.toLowerCase()),
-      )
-      if (hasBlocked) return false
-    }
+    // 4. Restrictions + dislikes: allergen tags (recipe union, ingredient
+    //    catalogue tags, name inference) and ingredient terms.
+    if (violatesRestrictions(recipe, rules)) return false
 
     // 5. Equipment check — every piece of equipment the recipe needs must
     //    be present in the user's owned set. Recipes with no equipment array

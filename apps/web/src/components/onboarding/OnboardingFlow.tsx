@@ -5,17 +5,10 @@ import { useAuth } from "@/lib/auth"
 import { api } from "@/lib/api"
 import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
+import { RESTRICTION_PRESETS } from "@ona/shared"
 
-const PRESET_RESTRICTIONS = [
-  "sin gluten",
-  "sin lacteos",
-  "frutos secos",
-  "marisco",
-  "huevo",
-  "soja",
-  "vegetariano",
-  "vegano",
-]
+// Shared with the profile so both offer the same chips (@ona/shared).
+const PRESET_RESTRICTIONS = RESTRICTION_PRESETS
 
 interface OnboardingData {
   adults: number

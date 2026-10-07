@@ -38,6 +38,7 @@ function recipeChains(source: string): string[] {
 }
 
 const SCOPED_FILES = [
+  'services/matchableRecipes.ts',
   'services/menuGenerator.ts',
   'services/pantryMatcher.ts',
   'services/advisor.ts',
@@ -57,19 +58,18 @@ describe('recipe visibility coverage', () => {
   }
 
   it('bulk loaders filter by visibility', () => {
-    expect(read('services/menuGenerator.ts')).toMatch(
-      /loadRecipesWithIngredients\(db: any, userId: string\)[\s\S]{0,300}visibleRecipeWhere\(/,
+    // The one matcher loader (generator, slot regenerations, assistant swap).
+    expect(read('services/matchableRecipes.ts')).toMatch(
+      /export async function loadMatchableRecipes[\s\S]{0,200}visibleRecipeWhere\(/,
     )
-    expect(read('services/assistant/skills.ts')).toMatch(
-      /loadRecipesWithIngredients\(db: any, userId: string\)[\s\S]{0,300}visibleRecipeWhere\(/,
-    )
+    expect(read('services/menuGenerator.ts')).toContain('loadMatchableRecipes(userId, db)')
+    expect(read('services/assistant/skills.ts')).toContain('loadMatchableRecipes(userId, db)')
+    // generate-slot, household slot, regenerate-dish, add-course: all through the loader.
+    expect(read('routes/menus.ts').match(/= await loadMatchableRecipes\(req\.userId!\)/g)?.length).toBe(4)
     expect(read('services/pantryMatcher.ts')).toContain('visibleRecipeWhere(await visibleAuthorIds(userId))')
     expect(read('services/advisor.ts')).toContain('visibleRecipeWhere(await visibleAuthorIds(userId))')
-    // generate, regenerate-week and the two single-slot regenerations.
-    const menus = read('routes/menus.ts')
-    expect(menus.match(/from\(recipes\)\.where\(visibleRecipeWhere/g)?.length).toBe(4)
     // manual pick of a recipe for a slot (meal + course variants).
-    expect(menus.match(/eq\(recipes\.id, manualRecipeId\), visibleRecipeWhere/g)?.length).toBe(2)
+    expect(read('routes/menus.ts').match(/eq\(recipes\.id, manualRecipeId\), visibleRecipeWhere/g)?.length).toBe(2)
   })
 
   it('the chain extractor catches an unscoped bulk load', () => {

@@ -57,6 +57,9 @@ vi.mock('../services/recipeImport.js', () => ({
 vi.mock('../services/notificationScheduler.js', () => ({
   enqueuePrepAlertsForMenu: vi.fn(async () => ({ inserted: 0, skipped: 0 })),
 }))
+vi.mock('../services/userMemoryStore.js', () => ({
+  getMemoryForUser: vi.fn(async () => ({})),
+}))
 vi.mock('../services/scopeResolver.js', () => ({
   resolveScope: vi.fn(async (userId: string) => ({ kind: 'user', value: userId })),
   scopeWhere: vi.fn(() => ({ /* drizzle SQL stub — proxy db ignores it */ })),
@@ -266,16 +269,34 @@ describe('suggest_recipes', () => {
       seasons: ['summer'],
       prepTime: 20,
     }))
-    const db = makeDb(recipes)
+    // queries: user restrictions → visible recipes → their ingredients
+    const db = makeDb([{ restrictions: [] }], recipes, [])
     const r = await skill.handler({ mealType: 'dinner' }, ctx(db))
     expect(r.uiHint).toBe('recipe')
     expect(r.data).toBeTruthy()
   })
 
   it('handles empty result', async () => {
-    const db = makeDb([])
+    const db = makeDb([{ restrictions: [] }], [])
     const r = await skill.handler({}, ctx(db))
     expect(r.summary).toBeTruthy()
+  })
+
+  it('never suggests a recipe that breaks an allergy or diet', async () => {
+    const rows = [
+      { id: 'r-pasta', name: 'Espaguetis carbonara', meals: ['dinner'], seasons: [], prepTime: 20, allergens: ['gluten', 'huevo'] },
+      { id: 'r-pollo', name: 'Pollo asado', meals: ['dinner'], seasons: [], prepTime: 60, allergens: [] },
+      { id: 'r-crema', name: 'Crema de calabaza', meals: ['dinner'], seasons: [], prepTime: 30, allergens: [] },
+    ]
+    const ingredientRows = [
+      { recipeId: 'r-pollo', ingredientId: 'i1', ingredientName: 'pollo entero', quantity: 1, unit: 'u', allergenTags: [] },
+      { recipeId: 'r-crema', ingredientId: 'i2', ingredientName: 'calabaza', quantity: 500, unit: 'g', allergenTags: [] },
+    ]
+    const db = makeDb([{ restrictions: ['sin gluten', 'vegetariano'] }], rows, ingredientRows)
+    const r = await skill.handler({ mealType: 'dinner' }, ctx(db))
+    expect(r.summary).toContain('Crema de calabaza')
+    expect(r.summary).not.toContain('Espaguetis')
+    expect(r.summary).not.toContain('Pollo')
   })
 })
 
@@ -361,6 +382,37 @@ describe('swap_meal', () => {
     )
     const r = await skill.handler({ dayIndex: 0, meal: 'lunch' }, ctx(db))
     expect(r.summary).toContain('Cambiado')
+  })
+
+  describe('a named recipe that breaks an allergy', () => {
+    const menu = {
+      id: 'm-1',
+      days: Array.from({ length: 7 }, () => ({ lunch: { dishes: [{ kind: 'recipe', recipeId: 'r-old', recipeName: 'Antiguo' }] } })),
+    }
+    // queries: menu → candidates by name → user restrictions → recipe allergens → its ingredients [→ update]
+    const queue = (extra: any[] = []) =>
+      makeDb(
+        [menu],
+        [{ id: 'r-pasta', name: 'Espaguetis carbonara', authorId: null }],
+        [{ restrictions: ['sin gluten'] }],
+        [{ allergens: ['gluten', 'huevo'] }],
+        [{ ingredientName: 'espaguetis', allergenTags: ['gluten'] }],
+        ...extra,
+      )
+
+    it('is not placed without confirmation; the model is told why', async () => {
+      const r = await skill.handler({ dayIndex: 0, meal: 'lunch', recipeName: 'carbonara' }, ctx(queue()))
+      expect(r.uiHint).toBe('text')
+      expect(r.summary).toMatch(/No he cambiado nada.*sin gluten/)
+      expect(r.summary).toContain('confirmRestriction')
+    })
+
+    it('is placed once the user confirms', async () => {
+      const db = queue([[{ ...menu }]])
+      const r = await skill.handler({ dayIndex: 0, meal: 'lunch', recipeName: 'carbonara', confirmRestriction: true }, ctx(db))
+      expect(r.uiHint).toBe('menu')
+      expect(r.summary).toContain('Espaguetis carbonara')
+    })
   })
 })
 

@@ -1,5 +1,7 @@
 import { Router } from 'express'
 import { visibleAuthorIds, visibleRecipeWhere } from '../services/recipeVisibility.js'
+import { loadMatchableRecipes } from '../services/matchableRecipes.js'
+import { mergeRestrictions } from '../services/dietaryRestrictions.js'
 import { eq, and, desc, inArray } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { menus, menuLogs, users, userSettings } from '../db/schema.js'
@@ -493,8 +495,8 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       .from(users)
       .where(eq(users.id, menu.userId))
       .limit(1)
-    const restrictions: string[] = user?.restrictions ?? []
     const memory = await getMemoryForUser(menu.userId).catch(() => null)
+    const restrictions = mergeRestrictions(user?.restrictions, memory)
     const dislikesValue = memory?.dislikes?.value
     const dislikes: string[] = Array.isArray(dislikesValue) ? (dislikesValue as string[]) : []
     const equipmentValue = memory?.equipment?.value
@@ -518,41 +520,8 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
     const favoriteRecipeIds = new Set<string>(favRows.map((f: any) => f.recipeId))
 
     // Load all recipes with ingredients for matching
-    const allRecipes = await db.select().from(recipes).where(visibleRecipeWhere(await visibleAuthorIds(req.userId!)))
-    const riRows = await db
-      .select({
-        recipeId: recipeIngredients.recipeId,
-        ingredientId: recipeIngredients.ingredientId,
-        quantity: recipeIngredients.quantity,
-        unit: recipeIngredients.unit,
-        ingredientName: ingredients.name,
-      })
-      .from(recipeIngredients)
-      .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
-
-    const ingredientsByRecipe = new Map<string, any[]>()
-    for (const row of riRows) {
-      const list = ingredientsByRecipe.get(row.recipeId) ?? []
-      list.push({
-        ingredientId: row.ingredientId,
-        ingredientName: row.ingredientName,
-        quantity: row.quantity,
-        unit: row.unit ?? 'g',
-      })
-      ingredientsByRecipe.set(row.recipeId, list)
-    }
-
-    const recipesWithIngredients = allRecipes.map((r: any) => ({
-      id: r.id,
-      name: r.name,
-      course: r.course ?? null,
-      meals: r.meals ?? [],
-      seasons: r.seasons ?? [],
-      tags: r.tags ?? [],
-      equipment: r.equipment ?? [],
-      prepTime: r.prepTime ?? null,
-      ingredients: ingredientsByRecipe.get(r.id) ?? [],
-    }))
+    // Same loader as the weekly generator: visibility, fit maps, frequency, allergens.
+    const recipesWithIngredients = await loadMatchableRecipes(req.userId!)
 
     const season = detectSeason()
 
@@ -680,8 +649,8 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
         .from(users)
         .where(eq(users.id, menu.userId))
         .limit(1)
-      const restrictions: string[] = user?.restrictions ?? []
       const memory2 = await getMemoryForUser(menu.userId).catch(() => null)
+      const restrictions = mergeRestrictions(user?.restrictions, memory2)
       const dislikesValue2 = memory2?.dislikes?.value
       const dislikes: string[] = Array.isArray(dislikesValue2) ? (dislikesValue2 as string[]) : []
       const equipmentValue2 = memory2?.equipment?.value
@@ -700,39 +669,8 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
         .where(eq(userFavorites.userId, menu.userId))
       const favoriteRecipeIds = new Set<string>(favRows.map((f: any) => f.recipeId))
 
-      const allRecipes = await db.select().from(recipes).where(visibleRecipeWhere(await visibleAuthorIds(req.userId!)))
-      const riRows = await db
-        .select({
-          recipeId: recipeIngredients.recipeId,
-          ingredientId: recipeIngredients.ingredientId,
-          quantity: recipeIngredients.quantity,
-          unit: recipeIngredients.unit,
-          ingredientName: ingredients.name,
-        })
-        .from(recipeIngredients)
-        .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
-
-      const ingredientsByRecipe = new Map<string, any[]>()
-      for (const row of riRows) {
-        const list = ingredientsByRecipe.get(row.recipeId) ?? []
-        list.push({
-          ingredientId: row.ingredientId,
-          ingredientName: row.ingredientName,
-          quantity: row.quantity,
-          unit: row.unit ?? 'g',
-        })
-        ingredientsByRecipe.set(row.recipeId, list)
-      }
-      const recipesWithIngredients: RecipeWithIngredients[] = allRecipes.map((r: any) => ({
-        id: r.id,
-        name: r.name,
-        meals: r.meals ?? [],
-        seasons: r.seasons ?? [],
-        tags: r.tags ?? [],
-        equipment: r.equipment ?? [],
-        prepTime: r.prepTime ?? null,
-        ingredients: ingredientsByRecipe.get(r.id) ?? [],
-      }))
+      // Same loader as the weekly generator: visibility, fit maps, frequency, allergens.
+      const recipesWithIngredients = await loadMatchableRecipes(req.userId!)
 
       const newRecipe = findRecipeForSlot(recipesWithIngredients, {
         meal: meal as Meal,
@@ -1407,8 +1345,8 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
       .from(users)
       .where(eq(users.id, menu.userId))
       .limit(1)
-    const restrictions: string[] = user?.restrictions ?? []
     const memRegen = await getMemoryForUser(menu.userId).catch(() => null)
+    const restrictions = mergeRestrictions(user?.restrictions, memRegen)
     const dislikesValRegen = memRegen?.dislikes?.value
     const dislikesRegen: string[] = Array.isArray(dislikesValRegen) ? (dislikesValRegen as string[]) : []
     const equipValRegen = memRegen?.equipment?.value
@@ -1428,40 +1366,8 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
       .where(scopeWhere(userFavorites.userId, userFavorites.householdId, favScopeRegen))
     const favoriteRecipeIdsRegen = new Set<string>(favRowsRegen.map((f: any) => f.recipeId))
 
-    const allRecipesRegen = await db.select().from(recipes).where(visibleRecipeWhere(await visibleAuthorIds(req.userId!)))
-    const riRowsRegen = await db
-      .select({
-        recipeId: recipeIngredients.recipeId,
-        ingredientId: recipeIngredients.ingredientId,
-        quantity: recipeIngredients.quantity,
-        unit: recipeIngredients.unit,
-        ingredientName: ingredients.name,
-      })
-      .from(recipeIngredients)
-      .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
-
-    const ingredientsByRecipeRegen = new Map<string, any[]>()
-    for (const row of riRowsRegen) {
-      const list = ingredientsByRecipeRegen.get(row.recipeId) ?? []
-      list.push({
-        ingredientId: row.ingredientId,
-        ingredientName: row.ingredientName,
-        quantity: row.quantity,
-        unit: row.unit ?? 'g',
-      })
-      ingredientsByRecipeRegen.set(row.recipeId, list)
-    }
-    const recipesWithIngredientsRegen = allRecipesRegen.map((r: any) => ({
-      id: r.id,
-      name: r.name,
-      course: r.course ?? null,
-      meals: r.meals ?? [],
-      seasons: r.seasons ?? [],
-      tags: r.tags ?? [],
-      equipment: r.equipment ?? [],
-      prepTime: r.prepTime ?? null,
-      ingredients: ingredientsByRecipeRegen.get(r.id) ?? [],
-    }))
+    // Same loader as the weekly generator: visibility, fit maps, frequency, allergens.
+    const recipesWithIngredientsRegen = await loadMatchableRecipes(req.userId!)
 
     const matcherOptionsRegen = {
       meal: meal as Meal,
@@ -1525,8 +1431,8 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/random', async (req: AuthReq
       .from(users)
       .where(eq(users.id, menu.userId))
       .limit(1)
-    const restrictions: string[] = user?.restrictions ?? []
     const memR = await getMemoryForUser(menu.userId).catch(() => null)
+    const restrictions = mergeRestrictions(user?.restrictions, memR)
     const dislikesValR = memR?.dislikes?.value
     const dislikesR: string[] = Array.isArray(dislikesValR) ? (dislikesValR as string[]) : []
     const equipValR = memR?.equipment?.value
@@ -1546,30 +1452,8 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/random', async (req: AuthReq
       .where(scopeWhere(userFavorites.userId, userFavorites.householdId, favScopeR))
     const favoriteRecipeIdsR = new Set<string>(favRowsR.map((f: any) => f.recipeId))
 
-    const allRecipesR = await db.select().from(recipes).where(visibleRecipeWhere(await visibleAuthorIds(req.userId!)))
-    const riRowsR = await db
-      .select({
-        recipeId: recipeIngredients.recipeId,
-        ingredientId: recipeIngredients.ingredientId,
-        quantity: recipeIngredients.quantity,
-        unit: recipeIngredients.unit,
-        ingredientName: ingredients.name,
-      })
-      .from(recipeIngredients)
-      .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
-    const ingredientsByRecipeR = new Map<string, any[]>()
-    for (const row of riRowsR) {
-      const list = ingredientsByRecipeR.get(row.recipeId) ?? []
-      list.push({ ingredientId: row.ingredientId, ingredientName: row.ingredientName, quantity: row.quantity, unit: row.unit ?? 'g' })
-      ingredientsByRecipeR.set(row.recipeId, list)
-    }
-    const recipesWithIngredientsR = allRecipesR.map((r: any) => ({
-      id: r.id, name: r.name, course: r.course ?? null,
-      meals: r.meals ?? [], seasons: r.seasons ?? [],
-      tags: r.tags ?? [], equipment: r.equipment ?? [],
-      prepTime: r.prepTime ?? null,
-      ingredients: ingredientsByRecipeR.get(r.id) ?? [],
-    }))
+    // Same loader as the weekly generator: visibility, fit maps, frequency, allergens.
+    const recipesWithIngredientsR = await loadMatchableRecipes(req.userId!)
 
     const matcherOptionsR = {
       meal: meal as Meal,
@@ -1615,6 +1499,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/random', async (req: AuthReq
     // Also build an ingredient-overlap exclude set to avoid repeats like
     // "carrilleras de ternera + ternera con pimientos" in the same slot.
     const existingIngredientNames = new Set<string>()
+    const ingredientsByRecipeR = new Map(recipesWithIngredientsR.map((r) => [r.id, r.ingredients]))
     for (const dish of slot.dishes) {
       if (dish.kind !== 'recipe') continue
       const ing = ingredientsByRecipeR.get(dish.recipeId) ?? []

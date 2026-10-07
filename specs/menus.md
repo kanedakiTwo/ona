@@ -88,7 +88,17 @@ For each meal slot, the matcher (`recipeMatcher.ts`) filters recipes by:
 - Recipe's `meals[]` includes the target meal type
 - Recipe's `seasons[]` includes current season (or is empty = always-available)
 - Recipe ID is not already used elsewhere in the menu (no repeats within the week)
-- No ingredient name matches a user restriction (case-insensitive)
+- The recipe doesn't break the user's **restrictions** (allergies, diets, free text) or **dislikes** — see *Restrictions & allergies* below
+
+### Restrictions & allergies
+
+`services/dietaryRestrictions.ts` compiles each entry once per call. Restrictions come from the profile (`users.restrictions`) **and** long-term memory (`user_memories.restrictions`, e.g. "soy celíaco" told to the assistant), merged by `mergeRestrictions`.
+- **Allergies** ("sin gluten", "sin lactosa"/"sin lácteos", "huevo", "frutos secos" (also excludes peanuts), "cacahuetes", "marisco" (crustaceans + molluscs), "pescado", "soja", "apio", "mostaza", "sésamo", "sulfitos"…, with prefixes like "alergia a…", "intolerante a…" stripped) map to EU allergen tags. A recipe is out if the tag appears in its `allergens` union, in any ingredient's catalogue `allergen_tags`, or in the name-based inference (`inferAllergenTagsFromName`, conservative).
+- **Diets**: "vegetariano" (no meat or fish/seafood, by curated whole-word ingredient terms + fish tags), "vegano" (also no dairy, egg, honey, gelatine), "pescetariano", "sin carne", "sin cerdo", "halal".
+- **Anything else** ("cilantro", "picante") and every **dislike** are whole-word, accent/case-insensitive, plural-tolerant ingredient terms ("cebolla" excludes "cebolla morada" and "cebollas", not "cebollino").
+- Before 2026-10-07 this was an exact ingredient-name match, so allergies and diets filtered nothing.
+- Every path that picks recipes on ONA's own initiative applies it: weekly generation, "Aleatorio" slot regenerations, add-course, and the assistant's random swap and `suggest_recipes`. Those paths all load through `services/matchableRecipes.ts`. An explicitly named recipe (assistant `swap_meal` by name) that breaks an allergy/diet is **not placed**: the tool returns the conflict and the model must get the user's confirmation (`confirmRestriction: true`). Dislikes still yield to explicit requests.
+- The onboarding and profile chips share one list, `RESTRICTION_PRESETS` (`@ona/shared`), and a test checks that every preset compiles to a real rule.
 
 Then picks one at random from the pool. **Favorites get double weight** — they appear twice in the random pool.
 
@@ -176,6 +186,9 @@ user could read/modify any menu by id.
 
 - [apps/api/src/routes/menus.ts](../apps/api/src/routes/menus.ts)
 - [apps/api/src/services/menuGenerator.ts](../apps/api/src/services/menuGenerator.ts) — core algorithm
+- [apps/api/src/services/dietaryRestrictions.ts](../apps/api/src/services/dietaryRestrictions.ts) — restrictions/dislikes → allergen tags + ingredient terms
+- [apps/api/src/services/matchableRecipes.ts](../apps/api/src/services/matchableRecipes.ts) — the one recipe loader for every matcher path (visibility, fit maps, frequency, allergens)
+- [packages/shared/src/constants/restrictions.ts](../packages/shared/src/constants/restrictions.ts) — `RESTRICTION_PRESETS`
 - [apps/api/src/services/recipeMatcher.ts](../apps/api/src/services/recipeMatcher.ts) — slot matcher
 - [apps/api/src/services/calorieCalculator.ts](../apps/api/src/services/calorieCalculator.ts)
 - [apps/api/src/services/nutrientCalculator.ts](../apps/api/src/services/nutrientCalculator.ts)

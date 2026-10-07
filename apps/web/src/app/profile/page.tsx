@@ -22,6 +22,7 @@ import { MealDishCountControls } from '@/components/profile/MealDishCountControl
 import { WhatsAppCard } from '@/components/profile/WhatsAppCard'
 import { useWhatsAppStatus } from '@/hooks/useWhatsApp'
 import type { Meal } from '@ona/shared'
+import { RESTRICTION_PRESETS } from '@ona/shared'
 
 interface PhysicalData {
   sex: 'male' | 'female' | ''
@@ -73,10 +74,8 @@ const PRIORITY_LABELS: Record<string, string> = {
   energy: 'Mas energia',
 }
 
-const COMMON_RESTRICTIONS = [
-  'sin gluten', 'sin lactosa', 'vegetariano', 'vegano',
-  'frutos secos', 'mariscos', 'huevo', 'soja',
-]
+// Shared with onboarding so both offer the same chips (@ona/shared).
+const COMMON_RESTRICTIONS: readonly string[] = RESTRICTION_PRESETS
 
 function calculateBMR(sex: string, weight: number, height: number, age: number): number {
   if (sex === 'male') return 10 * weight + 6.25 * height - 5 * age + 5

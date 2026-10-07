@@ -56,6 +56,7 @@ export const PRICES: PriceTable = {
   // except Opus 5.5 (0.05×).
   'anthropic/claude-haiku-4-5': { currency: 'USD', inputPerMTok: 1, outputPerMTok: 5, cacheWritePerMTok: 1.25, cacheReadPerMTok: 0.1 },
   'anthropic/claude-sonnet-4-6': { currency: 'USD', inputPerMTok: 3, outputPerMTok: 15, cacheWritePerMTok: 3.75, cacheReadPerMTok: 0.3 },
+  'anthropic/claude-sonnet-5-5': { currency: 'USD', inputPerMTok: 2, outputPerMTok: 10, cacheWritePerMTok: 2.5, cacheReadPerMTok: 0.2 },
   'anthropic/claude-opus-4-6': { currency: 'USD', inputPerMTok: 5, outputPerMTok: 25, cacheWritePerMTok: 6.25, cacheReadPerMTok: 0.5 },
   'anthropic/claude-opus-5-5': { currency: 'USD', inputPerMTok: 4, outputPerMTok: 20, cacheWritePerMTok: 5, cacheReadPerMTok: 0.2 },
 

@@ -147,8 +147,14 @@ Reglas de COHERENCIA:
 - Cada ingrediente debe aparecer EXACTAMENTE una vez en el array.
 - Si un ingrediente aparece sin cantidad (ej. "sal al gusto"), usa canonical: { quantity: 0, unit: "g" } y omite display.`
 
-/** Vision + text recipe extraction model (also priced in config/pricing.ts). */
-const EXTRACTION_MODEL = 'claude-sonnet-4-6'
+/**
+ * Vision + text recipe extraction model (also priced in config/pricing.ts).
+ * Sonnet 5.5 thinks adaptively by default (4.6 ran thinking-off) and uses a
+ * tokenizer with ~30% more tokens, so max_tokens has headroom for thinking +
+ * the JSON; effort `medium` ≈ Sonnet 4.6 at its default.
+ */
+const EXTRACTION_MODEL = 'claude-sonnet-5-5'
+const EXTRACTION_OPTS = { max_tokens: 8000, output_config: { effort: 'medium' as const } }
 
 export class AnthropicProvider implements VisionProvider, TextExtractionProvider {
   private client: Anthropic
@@ -163,7 +169,7 @@ export class AnthropicProvider implements VisionProvider, TextExtractionProvider
   async extractRecipe(imageBase64: string, mimeType: string): Promise<RawExtractedRecipe> {
     const response = await this.client.messages.create({
       model: EXTRACTION_MODEL,
-      max_tokens: 2000,
+      ...EXTRACTION_OPTS,
       messages: [{
         role: 'user',
         content: [
@@ -259,7 +265,7 @@ export class AnthropicProvider implements VisionProvider, TextExtractionProvider
 
     const response = await this.client.messages.create({
       model: EXTRACTION_MODEL,
-      max_tokens: 2500,
+      ...EXTRACTION_OPTS,
       messages: [
         {
           role: 'user',

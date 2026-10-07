@@ -196,7 +196,7 @@ Both the photo extractor (`POST /recipes/extract-from-image`) and the URL extrac
    - **NEVER** does a substring fallback that lets the user's input lose semantic content. "pechuga de pollo" does **not** collapse to "pollo"; "jamón ibérico" does **not** collapse to "jamón"; "aceite de girasol" does **not** collapse to "aceite". Anything the user typed beyond the noise list is preserved → cascade falls through.
 
 2. **LLM disambiguation** (`apps/api/src/services/ingredientMatcherLLM.ts`).
-   - Single batched call per import: sends every leftover name + the full catalogue + the recipe title to `claude-sonnet-4-20250514`, gets back `{matches: [{extracted_name, ingredient_id | null}]}`. One round-trip, not one-per-ingredient.
+   - Single batched call per import: sends every leftover name + the full catalogue + the recipe title to `claude-sonnet-5-5` (adaptive thinking, effort `medium`), gets back `{matches: [{extracted_name, ingredient_id | null}]}`. One round-trip, not one-per-ingredient.
    - System prompt explicitly forbids part-of-animal collapses (the very trap the token matcher refuses) but encourages genuine alias resolution: "chuletón" ↦ "chuleta de vaca", "pimentón dulce de la vera" ↦ "pimentón dulce", "cebolleta" ↦ "cebolla tierna" when present.
    - Failure modes (no API key, network error, malformed JSON) degrade silently to an empty verdict map — the caller still tries stage 3. An import is never blocked on the LLM step.
 

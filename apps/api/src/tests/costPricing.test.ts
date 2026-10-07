@@ -77,7 +77,7 @@ describe('price table coverage', () => {
     for (const [provider, model] of [
       ['anthropic', ASSISTANT_MODEL],
       ['anthropic', REVIEW_MODEL],
-      ['anthropic', 'claude-sonnet-4-6'], // recipe extraction + ingredient matcher
+      ['anthropic', 'claude-sonnet-5-5'], // recipe extraction + ingredient matcher
       ['anthropic', 'claude-opus-4-6'], // ingredient nutrition estimate
       ['anthropic', 'claude-haiku-4-5-20251001'], // unit fallback + USDA translator
       ['openai', 'gpt-realtime'],

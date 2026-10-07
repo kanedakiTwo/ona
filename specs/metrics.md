@@ -37,9 +37,9 @@ Every paid provider call writes one row — user (nullable), household (user's p
 | `whatsapp_chat` | Anthropic Haiku 4.5 | user (WhatsApp turn) |
 | `voice_note_transcription` (WhatsApp voice notes) | OpenAI `OPENAI_TRANSCRIBE_MODEL` | user |
 | `voice_realtime` (voice mode, client-reported minutes) | OpenAI `OPENAI_REALTIME_MODEL` | user |
-| `recipe_extract_photo` (web photo, WhatsApp photo) | Anthropic Sonnet 4.6 | user |
-| `recipe_extract_url` (web URL import, `import_recipe_from_url`) | Anthropic Sonnet 4.6 | user |
-| `ingredient_match` (extraction disambiguation) | Anthropic Sonnet 4.6 | user |
+| `recipe_extract_photo` (web photo, WhatsApp photo) | Anthropic Sonnet 5.5 | user |
+| `recipe_extract_url` (web URL import, `import_recipe_from_url`) | Anthropic Sonnet 5.5 | user |
+| `ingredient_match` (extraction disambiguation) | Anthropic Sonnet 5.5 | user |
 | `unit_fallback` (odd units → grams/ml) | Anthropic Haiku 4.5 | user |
 | `usda_translation` (ingredient auto-create) | Anthropic Haiku 4.5 | user |
 | `ingredient_nutrition_estimate` ("Estimar con ONA") | Anthropic Opus 4.6 | user |

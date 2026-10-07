@@ -80,7 +80,8 @@ export interface DisambiguateOutput {
   verdicts: Map<string, LlmMatchVerdict>
 }
 
-const MODEL = 'claude-sonnet-4-6'
+// Sonnet 5.5: adaptive thinking on by default, so max_tokens leaves room for it.
+const MODEL = 'claude-sonnet-5-5'
 
 /**
  * Batch-disambiguate a list of unmatched ingredient names against the
@@ -110,7 +111,8 @@ export async function disambiguateIngredients(
   try {
     response = await client.messages.create({
       model: MODEL,
-      max_tokens: 2500,
+      max_tokens: 8000,
+      output_config: { effort: 'medium' },
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userMsg }],
     })

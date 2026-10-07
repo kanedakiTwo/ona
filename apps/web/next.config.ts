@@ -16,27 +16,46 @@ const nextConfig: NextConfig = {
   },
 }
 
-const runtimeCaching = [
-  // GET /recipes (and /recipes/:id, query strings) — stale-while-revalidate
-  {
-    urlPattern: /\/recipes(\/.*)?(\?.*)?$/,
-    handler: 'StaleWhileRevalidate' as const,
-    method: 'GET' as const,
-    options: {
-      cacheName: 'api-cache',
-      expiration: { maxEntries: 100, maxAgeSeconds: 24 * 60 * 60 },
-      cacheableResponse: { statuses: [0, 200] },
-    },
+// API responses carry the user's data and the cache keys them by URL only
+// (no Authorization). So: patterns anchored on the API origin (a cross-origin
+// regex that doesn't match at index 0 is silently ignored by Workbox), and
+// NetworkFirst — online you always get fresh data for *your* token; the cache
+// is only the offline fallback. lib/pwa/sessionData.ts wipes `api-cache` on
+// login / register / logout / rejected token. scripts/verify-sw.mjs checks the
+// generated sw.js on every build.
+const API_ORIGIN = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000').replace(/\/+$/, '')
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const apiRoute = (resource: string) => new RegExp(`^${escapeRegExp(API_ORIGIN)}/${resource}(?:[/?]|$)`)
+
+const apiNetworkFirst = (resource: string) => ({
+  urlPattern: apiRoute(resource),
+  handler: 'NetworkFirst' as const,
+  method: 'GET' as const,
+  options: {
+    cacheName: 'api-cache',
+    networkTimeoutSeconds: 5,
+    expiration: { maxEntries: 150, maxAgeSeconds: 7 * 24 * 60 * 60 },
+    cacheableResponse: { statuses: [200] },
   },
-  // GET /menu/* — stale-while-revalidate
+})
+
+const runtimeCaching = [
+  // Opened recipes, this week's menu and shopping list stay readable offline.
+  apiNetworkFirst('recipes'),
+  apiNetworkFirst('menu'),
+  apiNetworkFirst('shopping-list'),
+  // App pages (HTML shells — the session lives in localStorage, so they carry
+  // no user data): last version offline, `/offline` fallback otherwise.
   {
-    urlPattern: /\/menu\/.*$/,
-    handler: 'StaleWhileRevalidate' as const,
+    urlPattern: ({ request, url }: { request: Request; url: URL }) =>
+      request.mode === 'navigate' && url.origin === self.location.origin,
+    handler: 'NetworkFirst' as const,
     method: 'GET' as const,
     options: {
-      cacheName: 'api-cache',
-      expiration: { maxEntries: 100, maxAgeSeconds: 24 * 60 * 60 },
-      cacheableResponse: { statuses: [0, 200] },
+      cacheName: 'pages',
+      networkTimeoutSeconds: 5,
+      expiration: { maxEntries: 50, maxAgeSeconds: 7 * 24 * 60 * 60 },
+      cacheableResponse: { statuses: [200] },
     },
   },
   // Recipe images — cache-first (LRU 200 entries / ~50MB / 30 days)

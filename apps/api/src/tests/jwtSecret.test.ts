@@ -19,7 +19,7 @@ describe('resolveJwtSecret', () => {
     expect(resolveJwtSecret({ JWT_SECRET: 'short' })).toBe('short')
   })
 
-  it('treats Railway as deployed even without NODE_ENV (prod runs `pnpm dev`)', () => {
+  it('treats Railway as deployed even without NODE_ENV', () => {
     expect(isDeployedRuntime({ RAILWAY_ENVIRONMENT_NAME: 'production' })).toBe(true)
     expect(isDeployedRuntime({ NODE_ENV: 'production' })).toBe(true)
     expect(isDeployedRuntime({ NODE_ENV: 'test' })).toBe(false)

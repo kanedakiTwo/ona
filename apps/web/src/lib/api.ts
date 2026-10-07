@@ -1,3 +1,5 @@
+import { clearSessionData } from "@/lib/pwa/sessionData"
+
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 
 /** 401 codes after which the stored session is useless: log out locally. */
@@ -72,6 +74,7 @@ export async function apiFetch<T = unknown>(
     ) {
       localStorage.removeItem('ona_token')
       localStorage.removeItem('ona_user')
+      await clearSessionData()
       // Avoid a redirect loop if we're already on the login page.
       if (!window.location.pathname.startsWith('/login')) {
         window.location.assign('/login')

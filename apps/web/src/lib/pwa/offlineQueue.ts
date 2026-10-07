@@ -2,8 +2,7 @@
 
 import { get, set } from "idb-keyval"
 import { api } from "@/lib/api"
-
-const QUEUE_KEY = "ona-offline-queue"
+import { OFFLINE_QUEUE_KEY as QUEUE_KEY } from "./sessionData"
 
 export interface QueuedMutation {
   id: string

@@ -15,9 +15,9 @@ Premium Progressive Web App layer that makes ONA feel like a native iOS/Android 
 
 ### Offline behavior (hybrid)
 
-- The app shell (all routes, components, fonts, CSS, JS) is always available offline
-- Recipes the user has opened are cached and available offline (image, ingredients, steps) via stale-while-revalidate runtime caching
-- The current week's menu and shopping list are available offline (last cached version)
+- The app shell (components, fonts, CSS, JS) is precached; pages the user has visited are cached network-first (`pages` cache) and available offline
+- Recipes the user has opened, the menu and the shopping list are available offline (last cached version). API responses use **network-first** (5 s timeout) in `api-cache`: online you always get fresh data for your own session; the cache is only the offline fallback
+- **Cached data never outlives the session**: login, register, logout and a rejected token (`INVALID_TOKEN` / `TOKEN_EXPIRED` / `USER_NOT_FOUND`) wipe `api-cache` and the offline queue (`lib/pwa/sessionData.ts`), so the next person on the same device can't read the previous user's menu offline or replay their queued mutations
 - A "Sin conexión" banner slides in at the top when the device is offline (sits above main content, respects `safe-area-inset-top`)
 - Mutations made offline (favorite a recipe, check a shopping item, mark stock, regenerate a meal, lock a meal) are **queued** in IndexedDB and replayed automatically when the `online` event fires
 - The user sees an inline "Pendiente de sincronizar" Clock indicator on items still in the queue
@@ -66,6 +66,7 @@ Premium Progressive Web App layer that makes ONA feel like a native iOS/Android 
 - **Notifications scheduled with `setTimeout`** only fire while the page is alive — they're a best-effort approximation, not a substitute for server-side push (deferred to a future spec)
 - **View Transitions API** is Chromium-only as of writing; the `motion/react` fallback covers the rest
 - The service worker only caches GET requests; all mutations go through the network or the offline queue
+- `api-cache` keys responses by URL only (no `Authorization`), which is why its routes must be network-first and anchored on the API origin (`^<NEXT_PUBLIC_API_URL>/recipes|menu|shopping-list`). Workbox silently ignores a cross-origin regex that doesn't match at index 0, which is why the pre-2026-10-07 `/\/menu\/.*$/` rule cached only page shells and no API data. `scripts/verify-sw.mjs` runs in `postbuild` and fails the build if any `api-cache` route breaks either rule
 - Recipe images are cached cache-first with LRU eviction (200 entries / 30 days)
 - The app shell precache is invalidated on every deploy (Workbox versioning via `next-pwa`)
 
@@ -148,6 +149,8 @@ The `.standalone-pt` utility class applies `padding-top: var(--safe-top)` so con
 - [apps/web/src/lib/pwa/share.ts](../apps/web/src/lib/pwa/share.ts) — `navigator.share` wrapper with clipboard fallback
 - [apps/web/src/lib/pwa/wakeLock.ts](../apps/web/src/lib/pwa/wakeLock.ts) — Wake Lock acquire/release helpers
 - [apps/web/src/lib/pwa/notifications.ts](../apps/web/src/lib/pwa/notifications.ts) — permission flow, scheduling from meal-time preferences, re-arm on app open
+- [apps/web/src/lib/pwa/sessionData.ts](../apps/web/src/lib/pwa/sessionData.ts) — `clearSessionData()`: wipes `api-cache` + the offline queue on session change
+- [apps/web/scripts/verify-sw.mjs](../apps/web/scripts/verify-sw.mjs) — post-build guard on the generated `sw.js`
 - [apps/web/src/lib/pwa/offlineQueue.ts](../apps/web/src/lib/pwa/offlineQueue.ts) — IndexedDB-backed mutation queue (idb-keyval), replay on `online` event
 - [apps/web/src/components/pwa/PageTransition.tsx](../apps/web/src/components/pwa/PageTransition.tsx) — View Transitions API + `motion/react` fallback
 - [apps/web/src/components/pwa/SwipeNavigator.tsx](../apps/web/src/components/pwa/SwipeNavigator.tsx) — pan-gesture swipe between bottom-tab routes

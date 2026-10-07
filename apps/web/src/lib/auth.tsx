@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react"
 import { api } from "@/lib/api"
+import { clearSessionData } from "@/lib/pwa/sessionData"
 
 type Role = 'user' | 'admin'
 
@@ -68,6 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (username: string, password: string) => {
     const data = await api.post<AuthResponse>("/login", { username, password })
+    await clearSessionData()
     localStorage.setItem("ona_token", data.token)
     localStorage.setItem("ona_user", JSON.stringify(data.user))
     setToken(data.token)
@@ -81,6 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email,
         password,
       })
+      await clearSessionData()
       localStorage.setItem("ona_token", data.token)
       localStorage.setItem("ona_user", JSON.stringify(data.user))
       setToken(data.token)
@@ -98,8 +101,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // auth-gated page mounted (the navbar already disappears when token is
     // null, but the page itself can read stale data before React re-renders).
     // A hard nav guarantees a clean slate.
+    // Cached API responses / queued mutations belong to this user: wipe them
+    // before the next person can use this device.
     if (typeof window !== "undefined") {
-      window.location.href = "/"
+      void clearSessionData().finally(() => {
+        window.location.href = "/"
+      })
     }
   }, [])
 

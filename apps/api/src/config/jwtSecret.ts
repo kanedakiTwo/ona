@@ -3,8 +3,8 @@
  * so a deployed API refuses to boot with a missing or short one. Local dev and
  * tests keep the fixed fallback.
  *
- * "Deployed" = NODE_ENV=production OR running on Railway: the container starts
- * with `pnpm dev` and no NODE_ENV, so NODE_ENV alone would never trip it.
+ * "Deployed" = NODE_ENV=production OR running on Railway: our Railway services
+ * don't set NODE_ENV themselves, so NODE_ENV alone isn't a reliable signal.
  */
 export const MIN_JWT_SECRET_LENGTH = 32
 

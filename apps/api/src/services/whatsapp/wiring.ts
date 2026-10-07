@@ -1,5 +1,8 @@
 import { env } from '../../config/env.js'
 import { db } from '../../db/connection.js'
+import { eq } from 'drizzle-orm'
+import { users } from '../../db/schema.js'
+import { spendCapStatus } from '../spendCap.js'
 import { chat } from '../assistant/engine.js'
 import { checkAdvisorBudget, recordAdvisorUsage } from '../advisorBudget.js'
 import { isSttConfigured, transcribeAudio } from '../stt.js'
@@ -20,7 +23,16 @@ export function buildInboundDeps(): InboundDeps {
     store,
     client,
     chat: (userId, message, history, opts) => chat(userId, message, history, db, opts),
-    checkBudget: (userId) => checkAdvisorBudget(userId, db),
+    // The chat's own € budget AND the monthly cap on all paid AI work
+    // (spendCap.ts), both before any paid step. Admins are exempt from the cap.
+    checkBudget: async (userId) => {
+      const advisor = await checkAdvisorBudget(userId, db)
+      if (advisor.exceeded) return advisor
+      const [row] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1)
+      if (row?.role === 'admin') return advisor
+      const cap = await spendCapStatus(userId)
+      return cap.exceeded ? { exceeded: true, budgetMicros: Math.round(cap.capEur * 1_000_000) } : advisor
+    },
     recordUsage: (userId, usage) => recordAdvisorUsage(userId, usage, db),
     transcribe: isSttConfigured() ? transcribeAudio : undefined,
     importRecipeFromImage: env.ANTHROPIC_API_KEY ? importRecipeFromImage : undefined,

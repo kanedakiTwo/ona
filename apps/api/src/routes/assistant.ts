@@ -4,6 +4,7 @@ import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { chat } from '../services/assistant/engine.js'
 import type { ChatMessage } from '../services/assistant/types.js'
 import { checkAdvisorBudget, recordAdvisorUsage } from '../services/advisorBudget.js'
+import { requireSpendCapacity } from '../middleware/spendCap.js'
 
 const router = Router()
 
@@ -11,7 +12,7 @@ const router = Router()
 router.use(authMiddleware)
 
 // POST /assistant/:userId/chat
-router.post('/assistant/:userId/chat', async (req: AuthRequest, res) => {
+router.post('/assistant/:userId/chat', requireSpendCapacity(), async (req: AuthRequest, res) => {
   try {
     const userId = String(req.params.userId)
 

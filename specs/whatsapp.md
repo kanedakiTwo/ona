@@ -126,7 +126,7 @@ Migration `0032_assistant_reviews.sql` (new table + nullable `meta` column; idem
 - No WhatsApp groups. Signing up happens on the web (the connect link offers "Crear cuenta"), not inside the chat.
 - Meta's test number can only message the up-to-5 recipients verified in the Meta dashboard. Opening the channel to all users needs a real number plus business verification.
 - In-process queue: if the API restarts mid-turn, that message stays `received` and gets no answer (no sweeper; messages older than 2 h are dropped as stale anyway).
-- Photo extraction cost is gated by the monthly budget but not added to it; only chat turns are metered. Every paid call (including each template message, `meta_whatsapp/utility_template`) is recorded in the cost ledger ([Metrics](./metrics.md)).
+- Every turn checks the chat's € budget **and** the monthly cap on all paid AI work (`USER_MONTHLY_SPEND_CAP_EUR`, see [Advisor](./advisor.md)) before any paid step. Every paid call (including each template message, `meta_whatsapp/utility_template`) is recorded in the cost ledger ([Metrics](./metrics.md)).
 - "Today" and "this week" use the Europe/Madrid clock (`services/madridTime.ts`), for the assistant's `get_todays_menu` / `generate_weekly_menu` and for the daily brief.
 - The model sees text only: photos are never shown to the chat model, they go straight to recipe import (a photo of the fridge is not understood yet). Cooking-mode hints (`set_timer`, `cooking_step`) have no effect on WhatsApp; the reply points to the app instead.
 

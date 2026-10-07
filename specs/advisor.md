@@ -136,6 +136,7 @@ decision + post-tool reply), so it's metered per user:
 - Pricing math lives in `services/advisorBudget.ts` and is unit-tested; the
   per-MTok rates track the model in `engine.ts`. The legacy `/advisor/:userId/ask`
   is rule/KB-based (no model call) and is not metered.
+- **Monthly cap on all paid AI work** (`USER_MONTHLY_SPEND_CAP_EUR`, default €10, Madrid month, summed from the cost ledger — [Metrics](./metrics.md)). Every route that pays a provider checks it first (`middleware/spendCap.ts` → `429 SPEND_CAP_EXCEEDED`): this chat, recipe photo/URL import, image regeneration, ingredient auto-create / nutrition estimate, voice session + voice tools. Every WhatsApp turn checks it too. Admins are exempt; a ledger read error fails open. Voice also keeps its daily minutes quota (`REALTIME_DAILY_MINUTES_PER_USER`). Since 2026-10-07 the quota is read from the ledger (`services/realtime/quota.ts`) instead of process memory, so a deploy no longer resets it. Minutes are still client-reported.
 
 ## Multi-dish + notes nutrition
 
@@ -177,6 +178,7 @@ At `lg+` the `/advisor` page widens its outer container to `max-w-[900px]` so th
 
 - [apps/api/src/routes/assistant.ts](../apps/api/src/routes/assistant.ts) — `POST /assistant/:userId/chat` (caller check + budget gate + spend metering)
 - [apps/api/src/services/advisorBudget.ts](../apps/api/src/services/advisorBudget.ts) — pricing + monthly spend cap
+- [apps/api/src/services/spendCap.ts](../apps/api/src/services/spendCap.ts), [apps/api/src/middleware/spendCap.ts](../apps/api/src/middleware/spendCap.ts) — monthly cap on all paid AI work
 - [apps/api/src/config/env.ts](../apps/api/src/config/env.ts) — `ADVISOR_MONTHLY_BUDGET_EUR`, `ADVISOR_EUR_PER_USD`
 - [apps/api/src/routes/advisor.ts](../apps/api/src/routes/advisor.ts) — legacy advisor routes (summary, ask)
 - [apps/api/src/services/assistant/engine.ts](../apps/api/src/services/assistant/engine.ts) — `chat()` + `runToolLoop` (multi-round tools, hallucinated-action guard); tests in `apps/api/src/tests/assistantToolLoop.test.ts`

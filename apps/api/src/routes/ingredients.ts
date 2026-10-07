@@ -23,6 +23,7 @@ import { createUsdaClient } from '../services/nutrition/usdaClient.js'
 import { fetchBedcaNutrition } from '../services/nutrition/bedcaClient.js'
 import { inferAllergenTagsFromName } from '../services/nutrition/allergens.js'
 import { env } from '../config/env.js'
+import { requireSpendCapacity } from '../middleware/spendCap.js'
 
 const router = Router()
 
@@ -149,7 +150,7 @@ router.get('/ingredients/suggest', authMiddleware, async (req: AuthRequest, res)
 //     fdcId NULL).
 //   - Fuzzy dedupe (Levenshtein ≤ 2 on normalized name) against existing rows;
 //     if it hits, return the existing row + `dedupedFrom`.
-router.post('/ingredients/auto-create', authMiddleware, autoCreateLimiter, async (req: AuthRequest, res) => {
+router.post('/ingredients/auto-create', authMiddleware, requireSpendCapacity(), autoCreateLimiter, async (req: AuthRequest, res) => {
   try {
     const parsed = autoCreateBodySchema.safeParse(req.body)
     if (!parsed.success) {
@@ -347,6 +348,7 @@ async function estimateNutritionForName(
 router.post(
   '/ingredients/estimate-nutrition',
   authMiddleware,
+  requireSpendCapacity(),
   estimateLimiter,
   async (req: AuthRequest, res) => {
     try {

@@ -5,16 +5,17 @@ import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { loadUserContext } from '../services/assistant/contextLoader.js'
 import { buildSystemPrompt } from '../services/assistant/systemPrompt.js'
 import { getRealtimeTools, executeTool } from '../services/realtime/tools.js'
-import { checkQuota, recordSessionMinutes } from '../services/realtime/quota.js'
+import { checkQuota } from '../services/realtime/quota.js'
 import { voiceTranscripts } from '../db/schema.js'
 import { recordCost } from '../services/costLedger.js'
+import { requireSpendCapacity } from '../middleware/spendCap.js'
 
 const router = Router()
 
 router.use(authMiddleware)
 
 // POST /realtime/:userId/session — issue an ephemeral OpenAI Realtime token
-router.post('/realtime/:userId/session', async (req: AuthRequest, res) => {
+router.post('/realtime/:userId/session', requireSpendCapacity(), async (req: AuthRequest, res) => {
   const userId = String(req.params.userId)
 
   if (req.userId && req.userId !== userId) {
@@ -22,7 +23,7 @@ router.post('/realtime/:userId/session', async (req: AuthRequest, res) => {
     return
   }
 
-  const quota = checkQuota(userId)
+  const quota = await checkQuota(userId).catch(() => ({ ok: true as const }))
   if (!quota.ok) {
     res.status(429).json({
       error: 'Has llegado al limite de voz por hoy. Vuelve manana o usa el chat de texto.',
@@ -108,7 +109,7 @@ router.post('/realtime/:userId/session', async (req: AuthRequest, res) => {
 })
 
 // POST /realtime/:userId/tool — execute a skill called by the Realtime model
-router.post('/realtime/:userId/tool', async (req: AuthRequest, res) => {
+router.post('/realtime/:userId/tool', requireSpendCapacity(), async (req: AuthRequest, res) => {
   const userId = String(req.params.userId)
 
   if (req.userId && req.userId !== userId) {
@@ -190,9 +191,9 @@ router.post('/realtime/:userId/usage', async (req: AuthRequest, res) => {
     return
   }
 
-  recordSessionMinutes(userId, minutes)
   // The session ran browser ↔ OpenAI over WebRTC, so the client-reported
   // length is all the server knows: priced per minute (config/pricing.ts).
+  // This ledger row is also what the daily minutes quota reads (quota.ts).
   if (minutes > 0) {
     recordCost({ feature: 'voice_realtime', provider: 'openai', model: env.OPENAI_REALTIME_MODEL, units: { minutes }, userId })
   }

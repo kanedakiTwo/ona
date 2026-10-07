@@ -77,6 +77,14 @@ export const env = {
     process.env.ADVISOR_MONTHLY_BUDGET_EUR || '5',
   ),
   /**
+   * Per-user monthly cap on ALL paid AI work (chat, WhatsApp, voice,
+   * transcription, recipe imports, nutrition estimates, images), in euros,
+   * summed from the cost ledger on the Madrid month. Every route that pays a
+   * provider checks it first (middleware/spendCap.ts → 429 SPEND_CAP_EXCEEDED).
+   * Admins are exempt. 0 disables the cap. Default €10.
+   */
+  USER_MONTHLY_SPEND_CAP_EUR: parseFloat(process.env.USER_MONTHLY_SPEND_CAP_EUR || '10'),
+  /**
    * EUR per USD used to convert Anthropic's USD list price into the euro budget
    * above. The token rates live in `advisorBudget.ts` (Haiku 4.5 list price);
    * this single knob lets ops re-peg the FX without a code change. Default 0.92.

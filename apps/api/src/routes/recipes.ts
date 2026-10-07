@@ -75,6 +75,7 @@ import { sanitizeCustomTags } from '../services/recipeNotesStore.js'
 import { findPantryMatches } from '../services/pantryMatcher.js'
 import { canViewRecipe } from '../services/recipeVisibility.js'
 import { z } from 'zod'
+import { requireSpendCapacity } from '../middleware/spendCap.js'
 
 const router = Router()
 
@@ -527,6 +528,7 @@ router.get('/recipes/:id', optionalAuthMiddleware, async (req: AuthRequest, res)
 router.post(
   '/recipes/extract-from-image',
   authMiddleware,
+  requireSpendCapacity(),
   upload.single('image'),
   async (req: AuthRequest, res) => {
     try {
@@ -581,6 +583,7 @@ const extractFromUrlSchema = z.object({
 router.post(
   '/recipes/extract-from-url',
   authMiddleware,
+  requireSpendCapacity(),
   async (req: AuthRequest, res) => {
     try {
       const parsed = extractFromUrlSchema.safeParse(req.body)
@@ -1006,6 +1009,7 @@ router.delete('/recipes/:id', authMiddleware, async (req: AuthRequest, res) => {
 router.post(
   '/recipes/:id/regenerate-image',
   authMiddleware,
+  requireSpendCapacity(),
   async (req: AuthRequest, res) => {
     try {
       const recipeId = String(req.params.id)

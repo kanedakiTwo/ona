@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from 'express'
+import { isDeployedRuntime } from '../config/jwtSecret.js'
 
 /**
  * Tiny dependency-free fixed-window rate limiter.
@@ -71,6 +72,40 @@ export class FixedWindowCounter {
   }
 }
 
+/**
+ * Whether rate limiting is switched off for this process.
+ *
+ * Opt-in escape hatch for test harnesses: the Playwright suite registers a
+ * fresh user per test from a single IP (localhost), so the 10/hour register
+ * cap would fail every test from the 11th registration onward. CI and
+ * `apps/web/scripts/test-e2e.sh` set `RATE_LIMIT_DISABLED=true`.
+ *
+ * Honoured ONLY when explicitly set (`true` / `1`) AND the API is not a
+ * deployed runtime (`isDeployedRuntime`: NODE_ENV=production OR running on
+ * Railway — the Railway container has no NODE_ENV, so NODE_ENV alone would
+ * not protect prod). A stray env var on the production service can never
+ * turn the anti-abuse limits off.
+ */
+export function isRateLimitDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const flag = (env.RATE_LIMIT_DISABLED ?? '').trim().toLowerCase()
+  if (flag !== 'true' && flag !== '1') return false
+  return !isDeployedRuntime(env)
+}
+
+let warnedAboutBypass = false
+
+function logBypassOnce(env: NodeJS.ProcessEnv = process.env): void {
+  if (warnedAboutBypass) return
+  const flag = (env.RATE_LIMIT_DISABLED ?? '').trim().toLowerCase()
+  if (flag !== 'true' && flag !== '1') return
+  warnedAboutBypass = true
+  if (isRateLimitDisabled(env)) {
+    console.warn('[rateLimit] RATE_LIMIT_DISABLED is set — rate limits are OFF (local/CI only).')
+  } else {
+    console.warn('[rateLimit] RATE_LIMIT_DISABLED ignored: deployed runtime keeps rate limits on.')
+  }
+}
+
 interface RateLimitOptions {
   /** Max requests allowed per window, per key. */
   max: number
@@ -80,6 +115,12 @@ interface RateLimitOptions {
   message?: string
   /** Key extractor; defaults to the client IP. */
   keyFn?: (req: Request) => string
+  /**
+   * Bypass the limiter entirely (every request passes through). Defaults to
+   * `isRateLimitDisabled()` — i.e. the `RATE_LIMIT_DISABLED` env var on a
+   * non-deployed runtime. Exposed mainly for tests.
+   */
+  disabled?: boolean
 }
 
 /**
@@ -92,6 +133,13 @@ interface RateLimitOptions {
  * whole world gets rate-limited as one bucket).
  */
 export function rateLimit(opts: RateLimitOptions) {
+  logBypassOnce()
+  if (opts.disabled ?? isRateLimitDisabled()) {
+    return function rateLimitBypass(_req: Request, _res: Response, next: NextFunction): void {
+      next()
+    }
+  }
+
   const counter = new FixedWindowCounter(opts.max, opts.windowMs)
   const message =
     opts.message ?? 'Demasiadas peticiones. Espera un momento e inténtalo de nuevo.'

@@ -16,6 +16,9 @@ const router = Router()
 // Anti-abuse limits on the public auth surface, keyed by client IP. Generous
 // enough that a real user (or the smoke suite) never trips them, tight enough
 // to stop mass registration and credential-stuffing. See middleware/rateLimit.
+// Test harnesses (CI, apps/web/scripts/test-e2e.sh) set RATE_LIMIT_DISABLED=true
+// because the e2e suite registers one user per test from localhost; that flag
+// is ignored on a deployed runtime (NODE_ENV=production or Railway).
 const registerLimiter = rateLimit({
   max: 10,
   windowMs: 60 * 60 * 1000, // 10 new accounts per IP per hour

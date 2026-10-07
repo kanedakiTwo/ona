@@ -43,6 +43,10 @@ done
 echo "── 2/6 Push Drizzle schema ─────────────────────────────────────"
 export DATABASE_URL="postgresql://postgres:postgres@localhost:${DB_PORT}/onatest"
 export JWT_SECRET="e2e-only-do-not-use-anywhere-else"
+# Every spec registers a fresh user from localhost; without this the API's
+# 10-registrations/hour/IP limiter fails the suite from the 11th test on.
+# Ignored by a deployed API (NODE_ENV=production or Railway).
+export RATE_LIMIT_DISABLED="true"
 pnpm --filter @ona/api exec drizzle-kit push --force >/dev/null
 
 echo "── 3/6 Seed minimal catalog ────────────────────────────────────"

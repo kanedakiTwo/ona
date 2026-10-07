@@ -80,6 +80,10 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/onatest
       JWT_SECRET: ci-smoke-only-not-used-anywhere-else
+      # Smoke files register throwaway users from localhost; keep them clear
+      # of the per-IP auth limiter (ignored by a deployed API: NODE_ENV=production
+      # or Railway).
+      RATE_LIMIT_DISABLED: 'true'
       API_PORT: 8765
       API_URL: http://localhost:8765
 
@@ -192,6 +196,10 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/onatest
       JWT_SECRET: ci-e2e-only-not-used-anywhere-else
+      # Every Playwright spec registers a fresh user from localhost; the API's
+      # 10-registrations/hour/IP limiter would fail the suite from the 11th
+      # test on. Ignored by a deployed API (NODE_ENV=production or Railway).
+      RATE_LIMIT_DISABLED: 'true'
       API_PORT: 8765
       API_URL: http://localhost:8765
       WEB_URL: http://localhost:3001

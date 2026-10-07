@@ -33,6 +33,7 @@ ROUTES=(
   /profile
   /profile/casa
   /whatsapp/conectar
+  /advisor
 )
 
 for route in "${ROUTES[@]}"; do

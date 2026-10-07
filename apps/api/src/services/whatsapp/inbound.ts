@@ -79,7 +79,7 @@ export interface InboundDeps {
 }
 
 const humanContact = (email?: string) =>
-  email ? `escribe a ${email}` : 'escríbenos desde ONA → Perfil'
+  email ? `escribe a ${email}` : 'escribe a la persona de ONA que te invitó a la beta'
 
 export const COPY = {
   linked: (name: string | null) =>

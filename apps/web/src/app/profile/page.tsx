@@ -20,6 +20,7 @@ import {
 import { MyRecipesSection } from './sections/MyRecipesSection'
 import { MealDishCountControls } from '@/components/profile/MealDishCountControls'
 import { WhatsAppCard } from '@/components/profile/WhatsAppCard'
+import { DeleteAccountCard } from '@/components/profile/DeleteAccountCard'
 import { useWhatsAppStatus } from '@/hooks/useWhatsApp'
 import type { Meal } from '@ona/shared'
 import { RESTRICTION_PRESETS } from '@ona/shared'
@@ -911,7 +912,7 @@ export default function ProfilePage() {
       )}
 
       {/* Save bar */}
-      <div className="px-5 mt-6 mb-24">
+      <div className="px-5 mt-6">
         <button
           onClick={handleSave}
           disabled={saving}
@@ -920,6 +921,16 @@ export default function ProfilePage() {
           {saving ? 'Guardando...' : saved ? '✓ Guardado' : 'Guardar cambios'}
         </button>
       </div>
+
+      {/* Tu cuenta — privacy + right to erasure */}
+      <section className="px-5 mt-12 mb-24">
+        <div className="mb-4 text-[12px] text-[#7A7066]">
+          <a href="/privacidad" className="underline underline-offset-4 hover:text-[#1A1612]">
+            Política de privacidad
+          </a>
+        </div>
+        {user?.id && <DeleteAccountCard userId={user.id} />}
+      </section>
 
       <style jsx>{`
         :global(.input-line) {

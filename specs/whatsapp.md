@@ -79,7 +79,7 @@ Migration `0032_assistant_reviews.sql` (new table + nullable `meta` column; idem
 3. Messages are processed **in order per phone**, using an in-process promise chain (Railway runs one API instance).
 4. Each message is marked read with a "typing…" indicator (best effort).
 5. Gates, in order:
-   - **Control words** run first, before every other gate, and never reach the model (`commands.ts`, whole-message match only, so "para la cena pon lentejas" is a request). **BAJA / STOP / PARAR / "no quiero más avisos"** → `notify = false` + "Hecho: no te enviaré más avisos…". A late (stale), suspended, not-allowed or over-budget sender is honoured too. An unlinked number that wrote BAJA never gets the connect hint again until ALTA. **ALTA / "Sí, avísame"** → `notify = true`. **HUMANO / "hablar con una persona"** → how to reach the team (`SUPPORT_EMAIL`, or "ONA → Perfil" if unset). "No, gracias" is handled here only when it answers the opt-in question; otherwise it goes to the model.
+   - **Control words** run first, before every other gate, and never reach the model (`commands.ts`, whole-message match only, so "para la cena pon lentejas" is a request). **BAJA / STOP / PARAR / "no quiero más avisos"** → `notify = false` + "Hecho: no te enviaré más avisos…". A late (stale), suspended, not-allowed or over-budget sender is honoured too. An unlinked number that wrote BAJA never gets the connect hint again until ALTA. **ALTA / "Sí, avísame"** → `notify = true`. **HUMANO / "hablar con una persona"** → how to reach the team (`SUPPORT_EMAIL`; unset → "la persona de ONA que te invitó a la beta"). "No, gracias" is handled here only when it answers the opt-in question; otherwise it goes to the model.
    - A message older than 2 h (a late Meta retry) is dropped silently.
    - An unlinked phone goes to the linking flow.
    - A suspended account is refused (the copy includes the human contact).
@@ -113,7 +113,7 @@ Migration `0032_assistant_reviews.sql` (new table + nullable `meta` column; idem
 
 - Required: `WHATSAPP_ACCESS_TOKEN` (permanent System User token with `whatsapp_business_messaging`), `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`.
 - Recommended: `WHATSAPP_DISPLAY_NUMBER` (the sender's number as digits, for `wa.me` links), `WHATSAPP_ALLOWED_EMAILS` (comma-separated ONA emails; empty means everyone), `WEB_PUBLIC_URL` (base for deep links; defaults to the Railway web URL).
-- `SUPPORT_EMAIL`: the human contact shown for HUMANO and in the suspended copy. Unset → "escríbenos desde ONA → Perfil".
+- `SUPPORT_EMAIL`: the human contact shown for HUMANO and in the suspended copy. Unset → "escribe a la persona de ONA que te invitó a la beta".
 - Optional: `WHATSAPP_TEMPLATE_NAME` + `WHATSAPP_TEMPLATE_LANG` (proactive messages outside the 24 h window; template body must have one `{{1}}` and not start or end with it, e.g. "Aviso de ONA: {{1}} Respóndeme por aquí si quieres cambiar algo."), `WHATSAPP_GRAPH_VERSION` (default `v26.0`) and `WHATSAPP_GRAPH_BASE_URL`, which local E2E points at a mock server.
 - Meta dashboard webhook: `https://ona-api-production.up.railway.app/whatsapp/webhook`, subscribed to the `messages` field.
 - **Two Meta gotchas, both hit while setting it up on 2026-10-06.** Either one means silence: no inbound rows at all and nothing in the logs.

@@ -1,73 +1,117 @@
+/**
+ * Política de privacidad. Describes what the code actually does (see
+ * specs/privacy.md). Pending legal review: the controller's legal identity
+ * and the contact address come from Miguel (CLAUDE.md → Todo Miguel).
+ */
+const CONTACT = process.env.NEXT_PUBLIC_SUPPORT_EMAIL
+
+function Contact() {
+  return CONTACT ? (
+    <a href={`mailto:${CONTACT}`} className="underline underline-offset-4">
+      {CONTACT}
+    </a>
+  ) : (
+    // Until NEXT_PUBLIC_SUPPORT_EMAIL is set (beta, invitation only).
+    <>la persona de ONA que te invitó a la beta</>
+  )
+}
+
+const H2 = ({ children }: { children: React.ReactNode }) => (
+  <h2 className="mt-10 font-display text-2xl text-[#1A1612]">{children}</h2>
+)
+
 export default function PrivacidadPage() {
   return (
-    <div className="mx-auto max-w-[720px] px-4 py-16 md:py-24">
-      <h1 className="text-h1 mb-8 text-[#1B4332]">Politica de Privacidad</h1>
+    <div className="mx-auto max-w-[720px] px-4 pb-16 pt-28 md:pb-24 md:pt-32">
+      <h1 className="font-display text-4xl text-[#1A1612] md:text-5xl">Política de privacidad</h1>
 
-      <div className="prose-ona space-y-6 text-[#444444] leading-relaxed">
-        <p className="text-sm text-[#777777]">Ultima actualizacion: abril 2026</p>
+      <div className="mt-8 space-y-5 text-[15px] leading-relaxed text-[#4A4239]">
+        <p className="text-sm text-[#7A7066]">Última actualización: 7 de octubre de 2026</p>
 
-        <h2 className="text-h3 mt-10 text-[#1A1A1A]">1. Responsable del tratamiento</h2>
+        <H2>1. Quién trata tus datos</H2>
         <p>
-          ONA (&quot;nosotros&quot;, &quot;nuestro&quot;) es responsable del tratamiento de los datos
-          personales recogidos a traves de esta plataforma. Si tienes preguntas sobre como tratamos
-          tus datos, puedes escribirnos a privacidad@ona.app.
+          El responsable del tratamiento es el equipo de ONA. Para cualquier cuestión sobre tus datos
+          o para ejercer tus derechos, escribe a <Contact />.
         </p>
 
-        <h2 className="text-h3 mt-10 text-[#1A1A1A]">2. Datos que recogemos</h2>
-        <p>
-          Recogemos los datos que nos proporcionas directamente al crear tu cuenta y al usar el
-          servicio: nombre, correo electronico, preferencias alimentarias, restricciones dieteticas
-          y datos de uso del menu semanal.
-        </p>
-
-        <h2 className="text-h3 mt-10 text-[#1A1A1A]">3. Finalidad del tratamiento</h2>
-        <p>Usamos tus datos para:</p>
-        <ul className="ml-6 list-disc space-y-2">
-          <li>Generar tu menu semanal personalizado</li>
-          <li>Crear tu lista de la compra</li>
-          <li>Mejorar nuestras recomendaciones con el tiempo</li>
-          <li>Enviarte comunicaciones sobre el servicio (si lo autorizas)</li>
+        <H2>2. Qué datos tratamos</H2>
+        <ul className="ml-5 list-disc space-y-2">
+          <li><strong>Cuenta:</strong> nombre de usuario, email y contraseña (guardada cifrada, nunca en claro).</li>
+          <li>
+            <strong>Datos de salud y alimentación:</strong> sexo, edad, peso, altura y nivel de actividad
+            (para calcular tus calorías), alergias, intolerancias y restricciones (para que ONA no te
+            proponga lo que no puedes comer), gustos y lo que cocinas. Las alergias y los datos físicos son
+            datos de salud: solo los tratamos porque tú nos los das, con tu consentimiento explícito, y
+            puedes borrarlos cuando quieras desde tu perfil.
+          </li>
+          <li><strong>Tu uso de ONA:</strong> menús, lista de la compra, despensa, recetas propias y fotos que subas.</li>
+          <li>
+            <strong>Conversaciones con el asistente</strong> (chat, voz y WhatsApp): el texto de los mensajes y la
+            transcripción de las notas de voz. Si conectas WhatsApp, también tu número de teléfono.
+          </li>
+          <li><strong>Datos técnicos:</strong> suscripción a notificaciones push y un registro del coste de cada uso de la IA.</li>
         </ul>
 
-        <h2 className="text-h3 mt-10 text-[#1A1A1A]">4. Base legal</h2>
+        <H2>3. Para qué</H2>
+        <ul className="ml-5 list-disc space-y-2">
+          <li>Generar tu menú semanal, la lista de la compra y los avisos que hayas activado.</li>
+          <li>Responder a lo que le pidas al asistente y hacer los cambios que le pidas.</li>
+          <li>Revisar, de forma interna, conversaciones de WhatsApp para detectar errores del asistente y corregirlos.</li>
+          <li>Controlar el gasto en IA por usuario y mantener el servicio seguro.</li>
+        </ul>
         <p>
-          El tratamiento de tus datos se basa en tu consentimiento al crear tu cuenta y en la
-          ejecucion del contrato de servicio. Puedes retirar tu consentimiento en cualquier momento
-          desde la configuracion de tu perfil.
+          No vendemos tus datos ni los usamos para publicidad. ONA es un asistente con inteligencia
+          artificial: puede equivocarse y no sustituye a un profesional sanitario.
         </p>
 
-        <h2 className="text-h3 mt-10 text-[#1A1A1A]">5. Comparticion de datos</h2>
+        <H2>4. Base legal</H2>
         <p>
-          No vendemos tus datos personales. Podemos compartir datos con proveedores de servicios
-          que nos ayudan a operar la plataforma (alojamiento, envio de correos), siempre bajo
-          acuerdos de confidencialidad.
+          La ejecución del servicio que pides al registrarte y, para los datos de salud, tu consentimiento
+          explícito (art. 9.2.a RGPD), que puedes retirar en cualquier momento borrando esos datos o tu cuenta.
+          Los avisos proactivos por WhatsApp solo se envían si los activas, y puedes darte de baja escribiendo BAJA.
         </p>
 
-        <h2 className="text-h3 mt-10 text-[#1A1A1A]">6. Retencion de datos</h2>
+        <H2>5. Con quién los compartimos</H2>
+        <p>Solo con los proveedores que hacen funcionar ONA, que tratan los datos por cuenta nuestra:</p>
+        <ul className="ml-5 list-disc space-y-2">
+          <li><strong>Anthropic</strong> (modelos Claude): el asistente, la lectura de recetas desde enlaces y fotos, y las estimaciones nutricionales.</li>
+          <li><strong>OpenAI</strong>: transcripción de notas de voz y el modo de conversación por voz.</li>
+          <li><strong>Meta (WhatsApp Business)</strong>: si conectas WhatsApp, para enviar y recibir los mensajes.</li>
+          <li><strong>Railway</strong>: alojamiento de la aplicación y de la base de datos.</li>
+          <li><strong>AiKit</strong>: generación de imágenes de recetas cuando lo pides (solo recibe el nombre e ingredientes de la receta).</li>
+        </ul>
         <p>
-          Conservamos tus datos mientras mantengas tu cuenta activa. Si eliminas tu cuenta,
-          borraremos tus datos personales en un plazo de 30 dias, salvo obligacion legal de
-          conservarlos.
+          Algunos de estos proveedores están en Estados Unidos. Las transferencias se amparan en el Marco de
+          Privacidad de Datos UE-EE. UU. o en cláusulas contractuales tipo de la Comisión Europea.
         </p>
 
-        <h2 className="text-h3 mt-10 text-[#1A1A1A]">7. Tus derechos</h2>
+        <H2>6. Cuánto tiempo</H2>
         <p>
-          Tienes derecho a acceder, rectificar, eliminar y portar tus datos, asi como a oponerte
-          o limitar su tratamiento. Para ejercer estos derechos, escribenos a privacidad@ona.app.
+          Mientras tengas la cuenta. Puedes borrarla tú mismo en <strong>Perfil → Borrar mi cuenta</strong>: se
+          eliminan al momento tu perfil, tus menús, tu memoria, tus recetas propias y tu historial de WhatsApp. Si
+          compartes hogar, el hogar sigue para los demás miembros. El registro de costes se conserva sin
+          vincularlo a ti.
         </p>
 
-        <h2 className="text-h3 mt-10 text-[#1A1A1A]">8. Cookies</h2>
+        <H2>7. Tus derechos</H2>
         <p>
-          Usamos cookies esenciales para el funcionamiento del servicio y cookies analiticas para
-          entender como se usa la plataforma. Puedes gestionar tus preferencias de cookies desde
-          la configuracion de tu navegador.
+          Puedes acceder a tus datos, corregirlos, borrarlos, llevártelos, limitar su uso u oponerte, escribiendo
+          a <Contact />. Si crees que no los tratamos bien, puedes reclamar ante la Agencia Española de Protección
+          de Datos (aepd.es).
         </p>
 
-        <h2 className="text-h3 mt-10 text-[#1A1A1A]">9. Cambios en esta politica</h2>
+        <H2>8. Cookies y almacenamiento local</H2>
         <p>
-          Podemos actualizar esta politica periodicamente. Te notificaremos de cambios relevantes
-          por correo electronico o mediante un aviso en la plataforma.
+          ONA no usa cookies de publicidad ni de analítica. Guarda en tu navegador tu sesión y algunas
+          preferencias de pantalla, y una copia de tu menú y tu lista para que funcionen sin conexión. La sesión y
+          esa copia se borran al cerrar sesión.
         </p>
+
+        <H2>9. Menores</H2>
+        <p>ONA no está dirigida a menores de 14 años.</p>
+
+        <H2>10. Cambios</H2>
+        <p>Si cambiamos esta política de forma relevante, te lo diremos en la app antes de que se aplique.</p>
       </div>
     </div>
   )

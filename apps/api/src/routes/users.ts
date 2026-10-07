@@ -11,11 +11,44 @@ import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
 import { updateProfileSchema, onboardingSchema } from '@ona/shared'
 import { env } from '../config/env.js'
+import bcrypt from 'bcryptjs'
+import { AdminAccountDeletionError, deleteAccount } from '../services/accountDeletion.js'
 
 const router = Router()
 
 // All routes require auth
 router.use(authMiddleware)
+
+// DELETE /user/:id — "Borrar mi cuenta" (own account only). Body
+// `{ password }`: a stolen session alone can't erase an account. See
+// services/accountDeletion.ts for what is removed vs handed over.
+router.delete('/user/:id', async (req: AuthRequest, res) => {
+  try {
+    if (req.userId !== req.params.id) {
+      res.status(403).json({ error: 'Forbidden' })
+      return
+    }
+    const password = typeof req.body?.password === 'string' ? req.body.password : ''
+    const [row] = await db.select({ passwordHash: users.passwordHash }).from(users).where(eq(users.id, req.userId!)).limit(1)
+    if (!row) {
+      res.status(404).json({ error: 'User not found' })
+      return
+    }
+    if (!password || !(await bcrypt.compare(password, row.passwordHash))) {
+      res.status(401).json({ error: 'La contraseña no es correcta.', code: 'WRONG_PASSWORD' })
+      return
+    }
+    const summary = await deleteAccount(req.userId!)
+    res.json({ deleted: true, ...summary })
+  } catch (err) {
+    if (err instanceof AdminAccountDeletionError) {
+      res.status(409).json({ error: err.message, code: 'ADMIN_ACCOUNT' })
+      return
+    }
+    console.error('Delete account error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
 
 // GET /user/:id — own profile only (email, weight, restrictions…).
 router.get('/user/:id', async (req: AuthRequest, res) => {

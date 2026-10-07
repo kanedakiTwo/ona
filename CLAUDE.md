@@ -151,6 +151,14 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 
 ### Pending
 
+- [ ] **ONA HQ (la empresa con agentes) — arranque**: vive en [`kanedakiTwo/ona-hq`](https://github.com/kanedakiTwo/ona-hq) (local: `~/ona-hq`). Cada mañana `/ona-dia` (≤ 15 min), los lunes `/ona-semana` (≤ 30 min), y notas para los agentes con `/ona-inbox`. Pendiente de Miguel esta semana:
+  - Pasar el contacto del/de la dietista-nutricionista (D-005). El mensaje de primer contacto lo prepara Marketing.
+  - Hacer una lista de 10–15 hogares conocidos para la beta (abre el 2026-10-28).
+  - Pedir cita con una gestoría con las preguntas del §8 de `research/findings/2026-10-07-forma-juridica.md`. Confirmar D-004 en `/ona-dia`.
+  - Añadir un número real de WhatsApp al portfolio actual de Meta, **sin pedir todavía la verificación** (D-004).
+  - Reescribir con su voz las secciones [BORRADOR] de `constitution.md` (misión y POV, unos 15 min).
+  - Conectar las métricas a las routines (`ona-hq/README.md` → "Conectar métricas"), cuando `/admin/metrics` esté desplegado.
+
 - [ ] **WhatsApp — optional follow-ups** (channel live in prod since 2026-10-06; linked + "genera menú" verified end-to-end; setup notes in [specs/whatsapp.md](./specs/whatsapp.md) → Configuration):
   - *(Optional, for proactive messages when you haven't written to Ona in 24 h)* WhatsApp Manager → Plantillas → new **Utility** template, Spanish, e.g. `ona_aviso`, body `Aviso de ONA: {{1}} Respóndeme por aquí si quieres cambiar algo.` → once approved, tell Claude to set `WHATSAPP_TEMPLATE_NAME=ona_aviso`.
   - Household members: tell Claude their ONA emails (added to `WHATSAPP_ALLOWED_EMAILS`) and add their phones in Meta → Paso 1 "Para" (max 5 on the test number).

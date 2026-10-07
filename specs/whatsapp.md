@@ -39,7 +39,8 @@ When the master toggle is on (default after linking), ONA writes first. All time
 
 - **Cooldowns:** 20 h per kind; 3 days for the Sunday nudge and the shopping reminder. They are stored as outbound rows, so the 5-minute scheduler tick is idempotent. Proactive messages land in chat history, so a short reply ("sí") makes sense to the assistant.
 - **Switches:**
-  - **Master:** `whatsapp_links.notify`, the profile toggle.
+  - **Master:** `whatsapp_links.notify`, the profile toggle. **Opt-in**: a new link starts with `notify = false`, and right after "¡Listo!" ONA asks "¿Quieres que también te escriba yo?…" with [Sí, avísame] [No, gracias] (outbound kind `optin_prompt`). Links made before 2026-10-07 kept their setting.
+  - **BAJA / ALTA** (see *Control words*) flip the master switch from the chat.
   - **Per kind:** `whatsapp_links.prefs` (missing key = on), migration `0031_whatsapp_prefs.sql`.
   - Users change them **by chat** via the `set_whatsapp_notifications` skill, e.g. "no me mandes el resumen de la mañana ni el recordatorio de la compra". `PATCH /whatsapp/link` accepts `{ notify?, prefs? }`, and `GET /whatsapp/status` returns `prefs`.
 - Everything runs inside the existing 5-minute `notificationScheduler` tick (`runProactiveTick`). It's a no-op when WhatsApp isn't configured, and DB work only happens while one of the time windows is open.
@@ -77,12 +78,13 @@ Migration `0032_assistant_reviews.sql` (new table + nullable `meta` column; idem
 3. Messages are processed **in order per phone**, using an in-process promise chain (Railway runs one API instance).
 4. Each message is marked read with a "typing…" indicator (best effort).
 5. Gates, in order:
+   - **Control words** run first, before every other gate, and never reach the model (`commands.ts`, whole-message match only, so "para la cena pon lentejas" is a request). **BAJA / STOP / PARAR / "no quiero más avisos"** → `notify = false` + "Hecho: no te enviaré más avisos…". A late (stale), suspended, not-allowed or over-budget sender is honoured too. An unlinked number that wrote BAJA never gets the connect hint again until ALTA. **ALTA / "Sí, avísame"** → `notify = true`. **HUMANO / "hablar con una persona"** → how to reach the team (`SUPPORT_EMAIL`, or "ONA → Perfil" if unset). "No, gracias" is handled here only when it answers the opt-in question; otherwise it goes to the model.
    - A message older than 2 h (a late Meta retry) is dropped silently.
    - An unlinked phone goes to the linking flow.
-   - A suspended account is refused.
+   - A suspended account is refused (the copy includes the human contact).
    - An account not in `WHATSAPP_ALLOWED_EMAILS` is refused.
    - Once the monthly budget is spent, the user gets the same copy as the web's 429. This check runs **before any paid work**: no transcription, no photo extraction, no model call.
-6. Text and button replies go through `chat(userId, text, history, db, { mode: 'whatsapp' })`. The system prompt's WhatsApp mode allows `*negrita*` and dash lists, forbids "pulsa/abajo" screen language, sends cooking timers and steps to the app's cooking mode, and asks the model to end short-choice questions with `[[opciones: Sí | No]]`. The renderer turns that line into reply buttons; with more than 3 options, they are folded back into the text.
+6. Text and button replies go through `chat(userId, text, history, db, { mode: 'whatsapp' })`. **Food only:** for anything that isn't about food (menu, recipes, cooking, shopping list, pantry, nutrition, the user's ONA settings) the model answers exactly `WHATSAPP_OFF_TOPIC_REPLY` ("Solo te puedo ayudar con tu comida: menú, recetas, lista de la compra, despensa y nutrición. ¿Te ayudo con algo de eso?"). A mixed message gets the food part done and the rest omitted. The sentence avoids "no puedo…" so the engine's refusal guard doesn't fire. The system prompt's WhatsApp mode allows `*negrita*` and dash lists, forbids "pulsa/abajo" screen language, sends cooking timers and steps to the app's cooking mode, and asks the model to end short-choice questions with `[[opciones: Sí | No]]`. The renderer turns that line into reply buttons; with more than 3 options, they are folded back into the text.
 7. Replies are cut to WhatsApp's 4096-character limit, splitting on paragraph boundaries first.
 8. Each reply is stored as an outbound row (`kind='reply'`). The inbound row becomes `processed`, with its final text.
 9. If anything fails, the user gets "Vaya, algo ha fallado…" and the inbound row becomes `failed` with the error.
@@ -110,6 +112,7 @@ Migration `0032_assistant_reviews.sql` (new table + nullable `meta` column; idem
 
 - Required: `WHATSAPP_ACCESS_TOKEN` (permanent System User token with `whatsapp_business_messaging`), `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`.
 - Recommended: `WHATSAPP_DISPLAY_NUMBER` (the sender's number as digits, for `wa.me` links), `WHATSAPP_ALLOWED_EMAILS` (comma-separated ONA emails; empty means everyone), `WEB_PUBLIC_URL` (base for deep links; defaults to the Railway web URL).
+- `SUPPORT_EMAIL`: the human contact shown for HUMANO and in the suspended copy. Unset → "escríbenos desde ONA → Perfil".
 - Optional: `WHATSAPP_TEMPLATE_NAME` + `WHATSAPP_TEMPLATE_LANG` (proactive messages outside the 24 h window; template body must have one `{{1}}` and not start or end with it, e.g. "Aviso de ONA: {{1}} Respóndeme por aquí si quieres cambiar algo."), `WHATSAPP_GRAPH_VERSION` (default `v26.0`) and `WHATSAPP_GRAPH_BASE_URL`, which local E2E points at a mock server.
 - Meta dashboard webhook: `https://ona-api-production.up.railway.app/whatsapp/webhook`, subscribed to the `messages` field.
 - **Two Meta gotchas, both hit while setting it up on 2026-10-06.** Either one means silence: no inbound rows at all and nothing in the logs.
@@ -123,7 +126,7 @@ Migration `0032_assistant_reviews.sql` (new table + nullable `meta` column; idem
 - No WhatsApp groups. Signing up happens on the web (the connect link offers "Crear cuenta"), not inside the chat.
 - Meta's test number can only message the up-to-5 recipients verified in the Meta dashboard. Opening the channel to all users needs a real number plus business verification.
 - In-process queue: if the API restarts mid-turn, that message stays `received` and gets no answer (no sweeper; messages older than 2 h are dropped as stale anyway).
-- Photo extraction cost is gated by the monthly budget but not added to it; only chat turns are metered.
+- Photo extraction cost is gated by the monthly budget but not added to it; only chat turns are metered. Every paid call (including each template message, `meta_whatsapp/utility_template`) is recorded in the cost ledger ([Metrics](./metrics.md)).
 - "Today" and "this week" use the Europe/Madrid clock (`services/madridTime.ts`), for the assistant's `get_todays_menu` / `generate_weekly_menu` and for the daily brief.
 - The model sees text only: photos are never shown to the chat model, they go straight to recipe import (a photo of the fridge is not understood yet). Cooking-mode hints (`set_timer`, `cooking_step`) have no effect on WhatsApp; the reply points to the app instead.
 
@@ -140,6 +143,7 @@ Migration `0032_assistant_reviews.sql` (new table + nullable `meta` column; idem
   - `wiring.ts`: real dependencies.
   - `store.ts`: DB.
   - `client.ts`: Graph API.
+  - `commands.ts`: BAJA / ALTA / HUMANO control words.
   - `webhookParser.ts`, `signature.ts`, `linking.ts`, `history.ts`, `format.ts`, `render.ts`, `config.ts`.
 - [apps/api/src/services/assistant/systemPrompt.ts](../apps/api/src/services/assistant/systemPrompt.ts): `mode: 'whatsapp'`.
 - [apps/api/src/services/assistant/engine.ts](../apps/api/src/services/assistant/engine.ts): `ChatOptions.mode`.
@@ -147,4 +151,4 @@ Migration `0032_assistant_reviews.sql` (new table + nullable `meta` column; idem
 - [apps/api/src/config/env.ts](../apps/api/src/config/env.ts): `WHATSAPP_*`, `WEB_PUBLIC_URL`.
 - [apps/web/src/app/whatsapp/conectar/page.tsx](../apps/web/src/app/whatsapp/conectar/page.tsx) (WhatsApp-first: login/register → send the code from WhatsApp), [apps/web/src/lib/safeNext.ts](../apps/web/src/lib/safeNext.ts) (`?next=` for login/register),
 - [apps/web/src/components/profile/WhatsAppCard.tsx](../apps/web/src/components/profile/WhatsAppCard.tsx), [apps/web/src/hooks/useWhatsApp.ts](../apps/web/src/hooks/useWhatsApp.ts), [apps/web/src/app/profile/page.tsx](../apps/web/src/app/profile/page.tsx) (chapter 08).
-- Tests: `apps/api/src/tests/whatsappWebhook.test.ts`, `whatsappFormat.test.ts`, `whatsappInbound.test.ts`, `whatsappProactive.test.ts`; `apps/web/e2e/whatsapp-link.spec.ts`, `apps/web/e2e/whatsapp-connect.spec.ts`.
+- Tests: `apps/api/src/tests/whatsappWebhook.test.ts`, `whatsappFormat.test.ts`, `whatsappInbound.test.ts` (incl. control words + opt-in), `whatsappScope.test.ts` (food-only), `whatsappProactive.test.ts`; `apps/web/e2e/whatsapp-link.spec.ts`, `apps/web/e2e/whatsapp-connect.spec.ts`.

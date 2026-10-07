@@ -20,7 +20,7 @@ export interface HistoryRow {
 export const HISTORY_MAX_MESSAGES = 20
 export const HISTORY_WINDOW_MS = 12 * 60 * 60 * 1000
 
-const NON_CONVERSATION_KINDS = new Set(['system', 'link', 'ack', 'review'])
+const NON_CONVERSATION_KINDS = new Set(['system', 'link', 'ack', 'review', 'optout', 'optin', 'optin_prompt'])
 
 /** Placeholder user turn when ONA spoke first (proactive nudge, alert). */
 export const ONA_STARTED_MARKER = '(ONA me ha escrito primero)'

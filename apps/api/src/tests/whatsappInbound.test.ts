@@ -53,6 +53,8 @@ function setup(overrides: {
   transcribe?: InboundDeps['transcribe']
   importRecipeFromImage?: InboundDeps['importRecipeFromImage']
   sendFails?: boolean
+  outboundKinds?: Map<string, Date>
+  supportEmail?: string
 } = {}) {
   const sent: OutboundMessage[] = []
   const outbound: { kind: string; body: string; status: string }[] = []
@@ -63,6 +65,8 @@ function setup(overrides: {
     usage: EMPTY_USAGE,
   }))
   const recordUsage = vi.fn(async () => {})
+  const setNotify = vi.fn(async () => true)
+  const checkBudget = vi.fn(async () => ({ exceeded: overrides.budgetExceeded ?? false, budgetMicros: 5_000_000 }))
 
   const deps: InboundDeps = {
     webUrl: WEB,
@@ -83,7 +87,10 @@ function setup(overrides: {
         return overrides.history ?? []
       },
       hasRecentOutbound: async () => overrides.recentLinkHint ?? false,
+      recentOutboundKinds: async () => overrides.outboundKinds ?? new Map(),
+      setNotify,
     },
+    supportEmail: overrides.supportEmail,
     client: {
       sendMessage: async (_to, m) => {
         if (overrides.sendFails) throw new Error('Graph 500')
@@ -94,19 +101,23 @@ function setup(overrides: {
       downloadMedia: async () => ({ buffer: Buffer.from('bytes'), mimeType: 'audio/ogg' }),
     },
     chat,
-    checkBudget: async () => ({ exceeded: overrides.budgetExceeded ?? false, budgetMicros: 5_000_000 }),
+    checkBudget,
     recordUsage,
     transcribe: overrides.transcribe,
     importRecipeFromImage: overrides.importRecipeFromImage,
   }
-  return { deps, sent, outbound, inboundUpdates, chat, recordUsage, historyUserIds }
+  return { deps, sent, outbound, inboundUpdates, chat, recordUsage, historyUserIds, setNotify, checkBudget }
 }
 
 describe('processInbound — unlinked numbers', () => {
   it('links the phone when the message carries a valid code', async () => {
     const t = setup({ link: null, consume: (code) => (code === '4F7K2A' ? { userId: 'user-1' } : null) })
     await processInbound(msg({ text: 'Vincular ONA: 4F7K2A' }), t.deps)
-    expect(t.sent).toEqual([{ type: 'text', text: COPY.linked('Miguel') }])
+    expect(t.sent[0]).toEqual({ type: 'text', text: COPY.linked('Miguel') })
+    // Proactive messages are opt-in: the link is followed by the question.
+    expect(t.sent[1]).toMatchObject({ type: 'buttons', text: COPY.optInPrompt })
+    expect((t.sent[1] as any).buttons.map((b: any) => b.title)).toEqual(['Sí, avísame', 'No, gracias'])
+    expect(t.outbound[1]).toMatchObject({ kind: 'optin_prompt' })
     expect(t.outbound[0]).toMatchObject({ kind: 'system', status: 'sent' })
     expect(t.inboundUpdates.at(-1)).toMatchObject({ status: 'ignored', userId: 'user-1' })
     expect(t.chat).not.toHaveBeenCalled()
@@ -148,7 +159,7 @@ describe('processInbound — gates', () => {
   it('refuses suspended accounts', async () => {
     const t = setup({ link: { ...LINK, suspendedAt: new Date() } })
     await processInbound(msg(), t.deps)
-    expect(t.sent).toEqual([{ type: 'text', text: COPY.suspended }])
+    expect(t.sent).toEqual([{ type: 'text', text: COPY.suspended(undefined) }])
     expect(t.chat).not.toHaveBeenCalled()
   })
 
@@ -360,5 +371,73 @@ describe('processInbound — "me pongo con ello" acks', () => {
   it('maps only slow skills to an ack', () => {
     expect(ackTextForTools(['get_todays_menu'])).toBeNull()
     expect(ackTextForTools(['get_todays_menu', 'import_recipe_from_url'])).toMatch(/receta/)
+  })
+})
+
+describe('processInbound — control words (BAJA / ALTA / HUMANO)', () => {
+  it('BAJA turns proactive messages off before any other gate (even over budget)', async () => {
+    const t = setup({ budgetExceeded: true })
+    await processInbound(msg({ text: 'BAJA' }), t.deps)
+    expect(t.setNotify).toHaveBeenCalledWith('user-1', false)
+    expect(t.checkBudget).not.toHaveBeenCalled()
+    expect(t.chat).not.toHaveBeenCalled()
+    expect(t.sent).toEqual([{ type: 'text', text: COPY.stopped }])
+    expect(t.outbound[0]).toMatchObject({ kind: 'optout' })
+  })
+
+  it('honours a late STOP that would otherwise be dropped as stale', async () => {
+    const t = setup()
+    await processInbound(msg({ text: 'stop', timestamp: Math.floor(NOW.getTime() / 1000) - 5 * 60 * 60 }), t.deps)
+    expect(t.setNotify).toHaveBeenCalledWith('user-1', false)
+  })
+
+  it('also works for a suspended or not-allowed account', async () => {
+    const t = setup({ allowed: false, link: { ...LINK, suspendedAt: new Date() } })
+    await processInbound(msg({ text: 'Darme de baja' }), t.deps)
+    expect(t.setNotify).toHaveBeenCalledWith('user-1', false)
+    expect(t.sent[0]).toEqual({ type: 'text', text: COPY.stopped })
+  })
+
+  it('ALTA (or the "Sí, avísame" button) turns them back on', async () => {
+    const t = setup()
+    await processInbound(msg({ kind: 'interactive', text: 'Sí, avísame', rawType: 'interactive' }), t.deps)
+    expect(t.setNotify).toHaveBeenCalledWith('user-1', true)
+    expect(t.sent[0]).toEqual({ type: 'text', text: COPY.started })
+  })
+
+  it('HUMANO gives the support contact without calling the model', async () => {
+    const t = setup({ supportEmail: 'hola@ona.test' })
+    await processInbound(msg({ text: 'Quiero hablar con una persona' }), t.deps)
+    expect(t.chat).not.toHaveBeenCalled()
+    expect(t.sent[0].text).toContain('hola@ona.test')
+  })
+
+  it('"para la cena pon lentejas" is a request, not an opt-out', async () => {
+    const t = setup()
+    await processInbound(msg({ text: 'para la cena pon lentejas' }), t.deps)
+    expect(t.setNotify).not.toHaveBeenCalled()
+    expect(t.chat).toHaveBeenCalled()
+  })
+
+  it('an unlinked number that wrote BAJA never gets the connect hint again', async () => {
+    const first = setup({ link: null })
+    await processInbound(msg({ text: 'BAJA' }), first.deps)
+    expect(first.sent).toEqual([{ type: 'text', text: COPY.stoppedUnlinked }])
+    const later = setup({ link: null, outboundKinds: new Map([['optout', new Date(NOW.getTime() - 60_000)]]) })
+    await processInbound(msg({ text: 'hola' }), later.deps)
+    expect(later.sent).toEqual([])
+  })
+
+  it('"No, gracias" right after the opt-in question is answered without the model', async () => {
+    const t = setup({ outboundKinds: new Map([['system', new Date(NOW.getTime() - 120_000)], ['optin_prompt', new Date(NOW.getTime() - 60_000)]]) })
+    await processInbound(msg({ kind: 'interactive', text: 'No, gracias', rawType: 'interactive' }), t.deps)
+    expect(t.chat).not.toHaveBeenCalled()
+    expect(t.sent[0]).toEqual({ type: 'text', text: COPY.optInDeclined })
+  })
+
+  it('"No, gracias" to anything else goes to the model', async () => {
+    const t = setup({ outboundKinds: new Map([['optin_prompt', new Date(NOW.getTime() - 120_000)], ['weekly_nudge', new Date(NOW.getTime() - 60_000)]]) })
+    await processInbound(msg({ text: 'No, gracias' }), t.deps)
+    expect(t.chat).toHaveBeenCalled()
   })
 })

@@ -7,6 +7,7 @@ import { buildChatHistory, HISTORY_WINDOW_MS, type HistoryRow } from './history.
 import { connectUrl, extractLinkCodeCandidates } from './linking.js'
 import { renderAssistantReply, renderPlainText, type OutboundMessage } from './render.js'
 import { AI_DISCLOSURE_FIRST_PERSON } from '@ona/shared'
+import { controlCommand, OPT_IN_NO, OPT_IN_YES } from './commands.js'
 
 /**
  * Inbound orchestrator: one WhatsApp message in → zero or more replies out.
@@ -46,7 +47,12 @@ export interface InboundDeps {
     }) => Promise<void>
     loadHistoryRows: (phone: string, since: Date, userId: string) => Promise<HistoryRow[]>
     hasRecentOutbound: (phone: string, kinds: string[], since: Date) => Promise<boolean>
+    /** Latest time each outbound kind was sent to `phone` since `since`. */
+    recentOutboundKinds: (phone: string, since: Date) => Promise<Map<string, Date>>
+    setNotify: (userId: string, notify: boolean) => Promise<boolean>
   }
+  /** Where to reach a human (env SUPPORT_EMAIL). Empty → point to the app. */
+  supportEmail?: string
   client: {
     sendMessage: (to: string, msg: OutboundMessage) => Promise<string | null>
     markReadWithTyping: (wamid: string) => Promise<void>
@@ -72,13 +78,28 @@ export interface InboundDeps {
   ) => Promise<{ recipeId: string; name: string; warnings: string[] }>
 }
 
+const humanContact = (email?: string) =>
+  email ? `escribe a ${email}` : 'escríbenos desde ONA → Perfil'
+
 export const COPY = {
   linked: (name: string | null) =>
     `¡Listo${name ? `, ${name}` : ''}! Tu WhatsApp ya está conectado con ONA. Pregúntame qué toca hoy, pídeme la lista de la compra, mándame un audio o compárteme una receta (enlace o foto) para guardarla.\n\n${AI_DISCLOSURE_FIRST_PERSON}`,
+  /** Explicit opt-in for proactive messages, asked once right after linking. */
+  optInPrompt:
+    '¿Quieres que también te escriba yo? Te mandaría el menú del día, un aviso antes de cocinar y la lista de la compra los sábados. Puedes cambiarlo cuando quieras escribiendo BAJA o ALTA.',
+  optInDeclined: 'Vale, no te escribiré por mi cuenta. Si cambias de idea, escribe ALTA.',
+  stopped:
+    'Hecho: no te enviaré más avisos por WhatsApp. Puedes seguir escribiéndome cuando quieras. Para volver a recibirlos, escribe ALTA.',
+  stoppedUnlinked: 'De acuerdo, no te volveré a escribir.',
+  started:
+    'Hecho: vuelvo a enviarte avisos (menú del día, aviso antes de cocinar, lista de la compra). Escribe BAJA para dejar de recibirlos.',
+  human: (email?: string) =>
+    `Soy un asistente con IA. Para hablar con una persona del equipo de ONA, ${humanContact(email)}. Si es sobre tu menú, la compra o una receta, cuéntamelo y lo hago.`,
   badCode: 'Ese código no es válido o ha caducado. Genera uno nuevo en ONA → Perfil → Ona en WhatsApp.',
   connect: (url: string) =>
     `Hola, soy ONA, tu asistente de cocina. ${AI_DISCLOSURE_FIRST_PERSON}\n\nPara hablar conmigo por aquí, conecta tu cuenta:\n${url}\n\nEntra (o crea tu cuenta) y te daré un código para enviarme desde este chat.`,
-  suspended: 'Tu cuenta de ONA está suspendida. Contacta con el equipo de ONA si crees que es un error.',
+  suspended: (email?: string) =>
+    `Tu cuenta de ONA está suspendida. Si crees que es un error, ${humanContact(email)}.`,
   notAllowed: 'WhatsApp todavía no está disponible para tu cuenta de ONA.',
   budget: (euros: string) =>
     `Has alcanzado tu límite mensual del asistente (€${euros}). Se renueva el mes que viene.`,
@@ -150,8 +171,12 @@ const CONNECT_HINT_COOLDOWN_MS = 60 * 60 * 1000
 export async function processInbound(msg: InboundMessage, deps: InboundDeps): Promise<void> {
   const { store, client } = deps
   const now = deps.now()
+  const command = msg.kind === 'text' || msg.kind === 'interactive' ? controlCommand(msg.text) : null
 
-  if (now.getTime() - msg.timestamp * 1000 > STALE_MESSAGE_MS) {
+  // Opt-out / opt-in / "a human" run before every other gate — even for a
+  // late (stale), suspended, not-allowed or over-budget sender: an opt-out
+  // must always stick.
+  if (now.getTime() - msg.timestamp * 1000 > STALE_MESSAGE_MS && command !== 'stop') {
     await store.updateInbound(msg.wamid, { status: 'ignored', errorMessage: 'stale' })
     return
   }
@@ -179,8 +204,38 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
 
   await client.markReadWithTyping(msg.wamid)
 
-  // ── 1. Who is this? ────────────────────────────────────────────
+  // ── 0. Control words ───────────────────────────────────────────
   const link = await store.getLinkByPhone(msg.from)
+  if (command) {
+    const userId = link?.userId ?? null
+    await store.updateInbound(msg.wamid, { status: 'ignored', userId })
+    if (command === 'stop') {
+      if (link) await store.setNotify(link.userId, false)
+      await sendText(userId, 'optout', link ? COPY.stopped : COPY.stoppedUnlinked)
+    } else if (command === 'start') {
+      if (link) {
+        await store.setNotify(link.userId, true)
+        await sendText(userId, 'optin', COPY.started)
+      } else {
+        await sendText(null, 'optin', COPY.connect(connectUrl(deps.webUrl)))
+      }
+    } else {
+      await sendText(userId, 'system', COPY.human(deps.supportEmail))
+    }
+    return
+  }
+  // "No, gracias" only means something as the answer to the opt-in question.
+  if (link && msg.text && msg.text.trim().toLowerCase() === OPT_IN_NO.toLowerCase()) {
+    const kinds = await store.recentOutboundKinds(msg.from, new Date(now.getTime() - 24 * 60 * 60 * 1000))
+    const prompt = kinds.get('optin_prompt')
+    if (prompt && [...kinds.values()].every((t) => t <= prompt)) {
+      await store.updateInbound(msg.wamid, { status: 'ignored', userId: link.userId })
+      await sendText(link.userId, 'system', COPY.optInDeclined)
+      return
+    }
+  }
+
+  // ── 1. Who is this? ────────────────────────────────────────────
   if (!link) {
     const candidates = msg.kind === 'text' ? extractLinkCodeCandidates(msg.text) : []
     for (const code of candidates) {
@@ -188,6 +243,17 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
       if (linked) {
         await store.updateInbound(msg.wamid, { status: 'ignored', userId: linked.userId })
         await sendText(linked.userId, 'system', COPY.linked(msg.profileName))
+        // New links start with proactive messages OFF: ask explicitly.
+        await send(linked.userId, 'optin_prompt', [
+          {
+            type: 'buttons',
+            text: COPY.optInPrompt,
+            buttons: [
+              { id: 'optin_yes', title: OPT_IN_YES },
+              { id: 'optin_no', title: OPT_IN_NO },
+            ],
+          },
+        ])
         return
       }
     }
@@ -200,6 +266,11 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     // connect page, which has the logged-in user send a code back from this
     // phone. At most one such message per number per hour.
     const since = new Date(now.getTime() - CONNECT_HINT_COOLDOWN_MS)
+    // A number that wrote BAJA never gets the hint again (until ALTA).
+    const kinds = await store.recentOutboundKinds(msg.from, new Date(0))
+    const optedOut = kinds.get('optout')
+    const optedIn = kinds.get('optin')
+    if (optedOut && (!optedIn || optedIn < optedOut)) return
     if (!(await store.hasRecentOutbound(msg.from, ['link'], since))) {
       await sendText(null, 'link', COPY.connect(connectUrl(deps.webUrl)))
     }
@@ -211,7 +282,7 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
 
   if (link.suspendedAt) {
     await store.updateInbound(msg.wamid, { status: 'ignored', userId })
-    await sendText(userId, 'system', COPY.suspended)
+    await sendText(userId, 'system', COPY.suspended(deps.supportEmail))
     return
   }
   if (!deps.isUserAllowed(link.email)) {

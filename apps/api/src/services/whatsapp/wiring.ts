@@ -14,6 +14,7 @@ import type { InboundMessage } from './webhookParser.js'
 export function buildInboundDeps(): InboundDeps {
   return {
     webUrl: env.WEB_PUBLIC_URL,
+    supportEmail: env.SUPPORT_EMAIL || undefined,
     now: () => new Date(),
     isUserAllowed: (email) => isUserAllowed(email),
     store,

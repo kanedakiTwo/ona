@@ -187,7 +187,9 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
  */
 async function linkPhoneToUser(tx: Tx, phone: string, userId: string, profileName: string | null, now: Date) {
   await tx.delete(whatsappLinks).where(or(eq(whatsappLinks.phone, phone), eq(whatsappLinks.userId, userId)))
-  await tx.insert(whatsappLinks).values({ userId, phone, profileName, lastInboundAt: now })
+  // Proactive messages are opt-in: a new link starts with notify off and the
+  // inbound flow asks right away (inbound.ts → COPY.optInPrompt).
+  await tx.insert(whatsappLinks).values({ userId, phone, profileName, lastInboundAt: now, notify: false })
   await tx
     .update(whatsappMessages)
     .set({ userId })

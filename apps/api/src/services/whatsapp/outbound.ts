@@ -26,6 +26,7 @@ import {
   type ProactiveKind,
   type TodayDinner,
 } from './proactive.js'
+import { recordCost } from '../costLedger.js'
 
 /**
  * Messages ONA sends first. Free-form inside Meta's 24 h window; outside it,
@@ -50,6 +51,8 @@ export async function sendProactive(
     } else {
       const text = templateParamFrom(messages)
       const wamid = await client.sendTemplate(link.phone, env.WHATSAPP_TEMPLATE_NAME, env.WHATSAPP_TEMPLATE_LANG, text)
+      // Templates are the one WhatsApp message Meta bills (session replies are free).
+      recordCost({ feature: 'whatsapp_template', provider: 'meta_whatsapp', model: 'utility_template', units: { messages: 1 }, userId: link.userId })
       await store.insertOutbound({ phone: link.phone, userId: link.userId, kind, body: text, status: 'sent', wamid })
     }
     return { status: 'ok' }

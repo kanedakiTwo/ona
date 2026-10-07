@@ -163,6 +163,11 @@ export const env = {
    */
   WHATSAPP_TEMPLATE_NAME: process.env.WHATSAPP_TEMPLATE_NAME || '',
   /**
+   * Where a person can reach a human ("HUMANO" on WhatsApp, the help copy).
+   * Shown to users as-is. Empty → the copy points to the in-app profile.
+   */
+  SUPPORT_EMAIL: (process.env.SUPPORT_EMAIL || '').trim(),
+  /**
    * Who receives the daily WhatsApp conversation review (reviewer.ts) on
    * WhatsApp. Comma-separated ONA emails; empty → ADMIN_EMAILS.
    */

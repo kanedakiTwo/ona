@@ -111,7 +111,7 @@ ONA (Opinionated Nutritional Assistant) is a **mobile-first meal planner** for S
 - `POST /menu/generate` **requires auth** and the body `userId` must match the token (was previously open — that IDOR is now closed; see [menus.md](./specs/menus.md) "Access control"). All `/menu/:menuId/...` and `/menu/:userId/...` routes are scoped to the caller.
 - Recipe images: **two sources** in production. Seed/system recipes are committed JPGs under `apps/web/public/images/recipes/<slug>.jpg` and served by Next.js (DB stores relative URL `/images/recipes/<slug>.jpg`). User-regenerated images live on the `ona-api-volume` Railway volume mounted at `/data` and are served by the API (DB stores absolute URL `${IMAGE_PUBLIC_URL_BASE}/<recipeId>.jpg`). The frontend renders `<img src=image_url>` and treats both transparently.
 - The bottom tab bar is fixed at the viewport bottom; app routes use `<main className="mx-auto max-w-[430px] pb-20">` to reserve room.
-- The shopping list is generated on the **first** GET and persisted; if the menu changes afterwards, the list does NOT regenerate automatically.
+- The shopping list is rebuilt on **every** `GET /shopping-list` (rolling `from`/`to` range; the single `shopping_lists` row per user is deleted and re-inserted, so its id changes) — check/stock state survives via an `(ingredientId|unit)` overlay. Anything that needs a stable list (e.g. shop orders) must snapshot it. See [shopping.md](./specs/shopping.md).
 - `useAdvisor` is legacy; new code should use `useAssistant` for chat. The advisor page still calls `useAdvisorSummary` for the nutrition summary.
 
 ## When to update which spec
@@ -135,6 +135,8 @@ Code work the user has scoped but not requested yet — pick up next session unl
 
 _Recipe source links — shipped 2026-05-30: "Ver fuente" affordance on the detail under the title; editable from the edit form; YouTube vs article icon distinguished from `sourceType`._
 _Bottom navbar mis-alignment defensive fix — shipped 2026-05-30. Items now use `flex-1 basis-0` so each gets an equal slice regardless of motion's transient measurements; pill is positioned `left-1/2 -translate-x-1/2 w-12` so the layout animation can't push width off. If the bug reproduces despite this, instrument with mount/unmount logs to find the actual race._
+**Compra en mis tiendas v2** (v1 shipped 2026-10-07, see [specs/shop-orders.md](./specs/shop-orders.md) → Constraints): (1) read photos of a shop's reply/ticket (today WhatsApp photos go to recipe import — `whatsapp/inbound.ts`); (2) carry recipe notes ("picada", "en lomos") into the list so lines arrive annotated; (3) pack-size rounding (1 huevo → media docena, 25 g jengibre → 1 trozo); (4) reminders when a shop/user hasn't answered before the shop's cut-off; (5) "tiendas conectadas": shop opts in by QR to ONA's number so ONA reads replies directly (needs real number + business verification + utility template — Meta policy, see the research report); (6) email sent by ONA with per-order reply addresses.
+
 _Responsive desktop — shipped 2026-06-04 across 5 PRs. `<DesktopSidebar />` at `md+`, bottom-nav hidden at `md+`, `--sidebar-width`/`--sidebar-gap`/`--container-max` tokens, `/recipes` 3-col shell + 4-col card grid at `lg+`, `/cookbooks/[id]` 4-col grid at `lg+`, Vista Semana 7-col grid (DnD verified for cross-column drops), every authed page widens at `lg+` instead of sitting in a 430 px column. Bespoke per-page splits (38/62 recipe detail with sticky hero, 40/60 form layouts, vertical day-strip + preview rail, /shopping 3-col aisle grid, /profile tabs shell, /advisor side panel) were deferred to follow-up polish PRs — see [design-system.md "Pragmatic scope vs original plan"](./specs/design-system.md) and [docs/superpowers/specs/2026-06-01-responsive-desktop-design.md](./docs/superpowers/specs/2026-06-01-responsive-desktop-design.md) for the original vision._
 
 ## Todo Miguel
@@ -150,6 +152,13 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 **Scope**: Only items that genuinely require Miguel — external account setup, physical device testing, branded artwork, etc. Code work that Claude can do (refactors, bug fixes, page migrations) does NOT belong here; those go in regular tasks.
 
 ### Pending
+
+- [ ] **Compra en mis tiendas — primer pedido real** (v1 en prod 2026-10-07, [specs/shop-orders.md](./specs/shop-orders.md)): tus tiendas The Fruits of the World (WhatsApp +34 913 52 51 11), Ben-Car Boadilla (WhatsApp pedidos 638 015 827) y El Corte Inglés (web) ya están dadas de alta en tu hogar.
+  - Falta **el WhatsApp de Pescados Aparicio** (Pozuelo; no es público): añádelo en `/compra/tiendas` o díselo a Ona por WhatsApp ("mi pescadería es Pescados Aparicio, su WhatsApp es …").
+  - La primera vez, avisa en persona a cada tienda de que les pedirás por WhatsApp con una lista y que te digan precio por kilo y total antes de prepararlo.
+  - Haz un pedido de verdad: "hazme la compra" por WhatsApp → envía cada enlace → reenvía a Ona lo que contesten → aprueba → cierra al recoger. Hecho = un pedido cerrado por tienda y las respuestas reales guardadas (sirven para calibrar el lector).
+
+- [ ] **WhatsApp — revisar facturación en Meta (urgente)**: según 360dialog/Gupshup/YCloud (no confirmado en la página de precios de Meta a 2026-10-07), desde el 1-oct-2026 las respuestas de servicio se cobran a partir de 1.000/mes por número y sin medio de pago dado de alta Meta deja de entregarlas. WhatsApp Manager → Facturación: confirmar que hay medio de pago (o que el número de prueba está exento). Hecho = medio de pago visible o exención confirmada. Detalle: [docs/research/Compra ONA por WhatsApp y email.md](./docs/research/Compra%20ONA%20por%20WhatsApp%20y%20email.md) → «Dos riesgos de Meta».
 
 - [ ] **ONA HQ (la empresa con agentes) — arranque**: vive en [`kanedakiTwo/ona-hq`](https://github.com/kanedakiTwo/ona-hq) (local: `~/ona-hq`). Cada mañana `/ona-dia` (≤ 15 min), los lunes `/ona-semana` (≤ 30 min), y notas para los agentes con `/ona-inbox`. Pendiente de Miguel esta semana:
   - Pasar el contacto del/de la dietista-nutricionista (D-005). El mensaje de primer contacto lo prepara Marketing.

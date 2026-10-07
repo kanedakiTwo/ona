@@ -21,7 +21,8 @@
  */
 
 import { and, eq, inArray, isNotNull, lte, sql } from 'drizzle-orm'
-import { db } from '../db/connection.js'
+import { db, pool } from '../db/connection.js'
+import { addDays, madridWallTimeUtc } from './madridTime.js'
 import {
   menus,
   recipes,
@@ -81,22 +82,24 @@ const DEFAULT_MEAL_HOUR: Record<Meal, number> = {
   dinner: 21,
 }
 
-function resolveCookAt(
-  weekStart: Date,
+/**
+ * When the user sits down to `meal` on day `dayIndex` of the week starting
+ * `weekStart` (YYYY-MM-DD), as a UTC instant. Meal times are Spanish wall
+ * clock; the server runs in UTC, so this used to fire alerts 1–2 h late.
+ */
+export function resolveCookAt(
+  weekStart: string,
   dayIndex: number,
   meal: Meal,
   mealTimes: Partial<Record<Meal, string>>,
 ): Date {
-  const out = new Date(weekStart)
-  out.setDate(out.getDate() + dayIndex)
+  const isoDate = addDays(weekStart.slice(0, 10), dayIndex)
   const t = mealTimes[meal]
   if (t && /^[0-2]\d:\d\d$/.test(t)) {
     const [h, m] = t.split(':').map(Number)
-    out.setHours(h, m, 0, 0)
-  } else {
-    out.setHours(DEFAULT_MEAL_HOUR[meal], 0, 0, 0)
+    return madridWallTimeUtc(isoDate, h, m)
   }
-  return out
+  return madridWallTimeUtc(isoDate, DEFAULT_MEAL_HOUR[meal], 0)
 }
 
 // ─── Enqueue prep alerts for a whole menu ──────────────────────
@@ -213,7 +216,7 @@ export async function enqueuePrepAlertsForMenu(
   }
 
   const now = new Date()
-  const weekStart = new Date(menu.weekStart as unknown as string)
+  const weekStart = String(menu.weekStart)
 
   let inserted = 0
   let skipped = 0
@@ -310,7 +313,41 @@ export async function clearPendingForMenu(menuId: string): Promise<number> {
 
 // ─── Tick ───────────────────────────────────────────────────────
 
+/** App-wide key for the scheduler's Postgres advisory lock. */
+export const SCHEDULER_LOCK_KEY = 4_206_101
+
+/**
+ * Run `fn` only if no other process holds the scheduler lock. Railway starts
+ * the new container before stopping the old one, so during a deploy two
+ * schedulers tick at once; without this, both send the same prep alert and
+ * the same WhatsApp brief. Session-level lock on a dedicated connection:
+ * released on unlock, or by Postgres if the process dies. Returns null when
+ * another process is ticking.
+ */
+export async function withSchedulerLock<T>(
+  fn: () => Promise<T>,
+  p: { connect: () => Promise<{ query: (q: string, v: unknown[]) => Promise<{ rows: any[] }>; release: () => void }> } = pool,
+): Promise<T | null> {
+  const client = await p.connect()
+  try {
+    const { rows } = await client.query('SELECT pg_try_advisory_lock($1) AS locked', [SCHEDULER_LOCK_KEY])
+    if (!rows[0]?.locked) return null
+    try {
+      return await fn()
+    } finally {
+      await client.query('SELECT pg_advisory_unlock($1)', [SCHEDULER_LOCK_KEY]).catch(() => {})
+    }
+  } finally {
+    client.release()
+  }
+}
+
 export async function tickScheduler(): Promise<void> {
+  const ran = await withSchedulerLock(() => tickOnce())
+  if (ran === null) console.log('[notificationScheduler] another process holds the lock; skipping this tick')
+}
+
+async function tickOnce(): Promise<true> {
   const now = new Date()
   const due = await db
     .select()
@@ -364,6 +401,7 @@ export async function tickScheduler(): Promise<void> {
   } catch (err) {
     console.error('[notificationScheduler] conversation review failed:', err)
   }
+  return true
 }
 
 let intervalHandle: NodeJS.Timeout | null = null

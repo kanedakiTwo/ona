@@ -50,15 +50,24 @@ export function madridWeekStart(now: Date = new Date(), offsetWeeks = 0): string
   return mondayOf(p.isoDate, p.weekday, offsetWeeks)
 }
 
-/** The UTC instant of 00:00 Europe/Madrid on `isoDate` (DST-aware). */
-export function madridMidnightUtc(isoDate: string): Date {
-  const base = Date.parse(`${isoDate}T00:00:00Z`)
+/**
+ * The UTC instant of `hour:minute` Europe/Madrid wall time on `isoDate`
+ * (DST-aware). A time that doesn't exist (the spring-forward gap) resolves
+ * one hour later, like a phone alarm.
+ */
+export function madridWallTimeUtc(isoDate: string, hour: number, minute = 0): Date {
+  const base = Date.parse(`${isoDate}T00:00:00Z`) + (hour * 60 + minute) * 60_000
   for (const offsetHours of [1, 2, 0, 3]) {
     const t = new Date(base - offsetHours * 3_600_000)
     const p = madridParts(t)
-    if (p.isoDate === isoDate && p.hour === 0 && p.minute === 0) return t
+    if (p.isoDate === isoDate && p.hour === hour && p.minute === minute) return t
   }
-  return new Date(base - 2 * 3_600_000)
+  return new Date(base - 1 * 3_600_000)
+}
+
+/** The UTC instant of 00:00 Europe/Madrid on `isoDate` (DST-aware). */
+export function madridMidnightUtc(isoDate: string): Date {
+  return madridWallTimeUtc(isoDate, 0, 0)
 }
 
 /** YYYY-MM-DD shifted by `days` (calendar arithmetic, no TZ involved). */

@@ -3,6 +3,7 @@ import { visibleAuthorIds, visibleRecipeWhere } from './recipeVisibility.js'
 import { loadMatchableRecipes, type RecipeWithCourse } from './matchableRecipes.js'
 import { mergeRestrictions } from './dietaryRestrictions.js'
 import { prepBudgetByDay, recipesMatchingDishes } from './onboardingPreferences.js'
+import { menuMetabolicQuality, recipeMetabolicProfile, type MetabolicProfile } from './metabolicScore.js'
 import {
   users,
   userSettings,
@@ -29,9 +30,6 @@ import { calculateRecipeCaloriesFromDB, calculateMenuCaloriesFromDB } from './ca
 import { calculateMenuNutrientsFromDB } from './nutrientCalculator.js'
 import type { MealDishCounts, Dish, RecipeDish, Course } from '@ona/shared'
 
-/**
- * Default 7-day template: breakfast, lunch, dinner every day.
- */
 /**
  * Lunch + dinner every day, until the user sets their own plantilla in the
  * profile. Breakfast is opt-in: few households plan it, and with breakfast on
@@ -313,17 +311,29 @@ function buildRandomMenu(
 
 /**
  * Score a menu's fitness. Lower is better.
- * fitness = calorieDeviation + nutrientPercentageDeviation + unmappedPenalty
+ * fitness = ½·calorieDeviation + macro deviations
+ *         + 100·QUALITY_WEIGHT·(1 − metabolic quality) + 100·VARIETY_WEIGHT·(1 − plant variety)
+ *         + unmappedPenalty
+ *
+ * The metabolic terms carry ONA's opinion (kb/10 mandamientos.md: insulin
+ * and inflammation over calories, real food with fibre, many different
+ * plants a week). See metabolicScore.ts. Calories still count, at half
+ * weight, so menus stay sensible for the household's energy needs.
  *
  * Uses cached `recipe.nutritionPerServing` when available; legacy recipes
  * (whose nutrition is null) still score but get a small penalty so the
  * algorithm prefers fully-mapped alternatives.
  */
+const CALORIE_WEIGHT = 0.5
+export const QUALITY_WEIGHT = 3
+export const VARIETY_WEIGHT = 0.5
+
 async function scoreMenu(
   days: DayMenu[],
   targetCalories: number,
   db: any,
   unmappedRecipeIds: Set<string>,
+  metabolic: ReadonlyMap<string, MetabolicProfile>,
 ): Promise<number> {
   const totalCalories = await calculateMenuCaloriesFromDB(days, db)
   const nutrients = await calculateMenuNutrientsFromDB(days, db)
@@ -346,7 +356,20 @@ async function scoreMenu(
     }
   }
 
-  return calorieDeviation + carbsDeviation + fatDeviation + proteinDeviation + unmappedPenalty
+  const { quality01, variety01 } = menuMetabolicQuality(days, metabolic)
+
+  return (
+    CALORIE_WEIGHT * calorieDeviation +
+    carbsDeviation +
+    fatDeviation +
+    proteinDeviation +
+    // Deviations are in percentage points, so the 0..1 metabolic terms are
+    // scaled to points too: a menu 20 points worse in quality costs as much
+    // as a macro 20 % off target.
+    QUALITY_WEIGHT * 100 * (1 - quality01) +
+    VARIETY_WEIGHT * 100 * (1 - variety01) +
+    unmappedPenalty
+  )
 }
 
 /**
@@ -461,6 +484,9 @@ export async function generateMenu(
   for (const id of recipesMatchingDishes(allRecipes, user.favoriteDishes)) favoriteRecipeIds.add(id)
   Object.assign(timeBudgetByDay, prepBudgetByDay({ ...timeBudgetByDay }, user))
 
+  // Per-recipe metabolic profile, once (scoreMenu runs every iteration).
+  const metabolic = new Map(allRecipes.map((r) => [r.id, recipeMetabolicProfile(r.ingredients.map((i) => i.ingredientName))]))
+
   // 6. Iterative optimization
   let bestDays: DayMenu[] | null = null
   let bestFitness: number = MENU_GENERATION.MIN_FITNESS
@@ -490,7 +516,7 @@ export async function generateMenu(
     )
     if (!hasRecipes) continue
 
-    const fitness = await scoreMenu(candidateDays, targetCalories, db, unmappedRecipeIds)
+    const fitness = await scoreMenu(candidateDays, targetCalories, db, unmappedRecipeIds, metabolic)
 
     if (fitness < bestFitness) {
       bestFitness = fitness

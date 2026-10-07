@@ -78,7 +78,7 @@ The generator (`menuGenerator.ts`) uses iterative optimization:
 5. Runs up to **200 iterations**, each time:
    - Builds a candidate menu by picking a random matching recipe per slot (skipping locked slots)
    - Scores each candidate using **real per-serving nutrition** from `recipe.nutritionPerServing` × the user's `householdSize / recipe.servings` ratio
-   - Fitness = calorie deviation + macro percentage deviations (carbs/fat/protein vs `TARGET_MACROS`)
+   - Fitness (lower is better, in percentage points) = ½ × calorie deviation + macro deviations (carbs/fat/protein vs `TARGET_MACROS`) + **ONA's opinion** (`metabolicScore.ts`, kb/10 mandamientos: insulin and inflammation over calories): 3 × 100 × (1 − metabolic quality) + 0.5 × 100 × (1 − plant variety). Quality = mean per-recipe score from ingredient names (+ plants, oily fish, olive oil, fermented; − refined carbs/sugar, processed meats and seed oils). Variety = distinct plants / 20 per week. Measured on the local catalogue: menu quality from −0.08 to +0.14 on average, at a cost of ~3 macro points (2026-10-07)
    - Keeps the best (lowest fitness) menu seen so far
    - Stops early if fitness drops below `OPTIMAL_FITNESS`
 
@@ -186,6 +186,7 @@ user could read/modify any menu by id.
 
 - [apps/api/src/routes/menus.ts](../apps/api/src/routes/menus.ts)
 - [apps/api/src/services/menuGenerator.ts](../apps/api/src/services/menuGenerator.ts) — core algorithm
+- [apps/api/src/services/metabolicScore.ts](../apps/api/src/services/metabolicScore.ts) — per-recipe metabolic profile + weekly quality/variety for the fitness
 - [apps/api/src/services/menuWeek.ts](../apps/api/src/services/menuWeek.ts) — what a week's regeneration carries over (locks, vetoes, skipped days) + `menuHasDishes`
 - [apps/api/src/services/dietaryRestrictions.ts](../apps/api/src/services/dietaryRestrictions.ts) — restrictions/dislikes → allergen tags + ingredient terms
 - [apps/api/src/services/matchableRecipes.ts](../apps/api/src/services/matchableRecipes.ts) — the one recipe loader for every matcher path (visibility, fit maps, frequency, allergens)

@@ -27,23 +27,16 @@ export async function updateBalance(
   // 2. Apply EMA
   const newBalance = updateNutrientBalance(nutrients, currentBalance)
 
-  // 3. Upsert
-  if (existing) {
-    await db
-      .update(userNutrientBalance)
-      .set({
-        balance: newBalance,
-        updatedAt: new Date(),
-      })
-      .where(eq(userNutrientBalance.userId, userId))
-  } else {
-    await db
-      .insert(userNutrientBalance)
-      .values({
-        userId,
-        balance: newBalance,
-      })
-  }
+  // 3. Upsert — atomic: two menu generations at once used to race between
+  // the SELECT and the INSERT and 500 on the unique user_id. Concurrent
+  // updates now just keep the last EMA step.
+  await db
+    .insert(userNutrientBalance)
+    .values({ userId, balance: newBalance })
+    .onConflictDoUpdate({
+      target: userNutrientBalance.userId,
+      set: { balance: newBalance, updatedAt: new Date() },
+    })
 
   return newBalance
 }

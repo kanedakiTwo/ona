@@ -19,24 +19,29 @@ test('catalog renders + detail page opens for the first card', async ({ page }) 
   // Header is the editorial-mode "Recetas" title (font-display).
   await expect(page).toHaveURL(/\/recipes/)
 
-  // Look for at least one card. The card markup uses `<a href="/recipes/...">`
-  // wrapping the photo + name. If the catalog is empty the test reports it
-  // as a soft skip — the contract here is that the route renders.
-  const cards = page.locator('a[href^="/recipes/"]')
-  const count = await cards.count()
-  if (count === 0) {
+  // Look for at least one card. Cards are `<a href="/recipes/<uuid>">`
+  // inside <main>; `/recipes/new` (the "Añadir receta" header link) is not
+  // a card. If the catalog is empty the test reports it as a soft skip —
+  // the contract here is that the route renders.
+  const cards = page
+    .getByRole('main')
+    .locator('a[href^="/recipes/"]:not([href="/recipes/new"])')
+  try {
+    await cards.first().waitFor({ state: 'visible', timeout: 10_000 })
+  } catch {
     test.skip(true, 'Empty catalog — seed step did not produce recipes')
     return
   }
 
   await Promise.all([
-    page.waitForURL(/\/recipes\/[^/]+/, { timeout: 10_000 }),
+    page.waitForURL(/\/recipes\/[0-9a-f-]{36}(\?|$)/, { timeout: 20_000 }),
     cards.first().click(),
   ])
 
-  // On the detail view, expect either ingredients or a step list to render —
-  // both are required parts of the recipe shape.
-  await expect(
-    page.getByText(/ingredientes|preparaci/i).first(),
-  ).toBeVisible({ timeout: 10_000 })
+  // On the detail view, both required parts of the recipe shape render as
+  // section headings.
+  await expect(page.getByRole('heading', { name: /ingredientes/i })).toBeVisible({
+    timeout: 10_000,
+  })
+  await expect(page.getByRole('heading', { name: /preparaci/i })).toBeVisible()
 })

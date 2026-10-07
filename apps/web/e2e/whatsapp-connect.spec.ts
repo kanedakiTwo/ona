@@ -7,7 +7,7 @@
  */
 
 import { test, expect, type Route } from '@playwright/test'
-import { uniqueId } from './_helpers'
+import { freshCreds, submitLoginForm, submitRegisterForm } from './_helpers'
 
 const json = (route: Route, body: unknown, status = 200) =>
   route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
@@ -30,11 +30,7 @@ test('logged out → create account → back here → send the code from WhatsAp
   await page.getByRole('link', { name: /crear cuenta/i }).click()
   await expect(page).toHaveURL(/\/register\?next=%2Fwhatsapp%2Fconectar/)
 
-  const id = uniqueId()
-  await page.locator('input').nth(0).fill(`e2e_${id}`)
-  await page.locator('input[type="email"]').fill(`e2e_${id}@test.local`)
-  await page.locator('input[type="password"]').fill('e2epass123')
-  await page.getByRole('button', { name: /crear|registr|empezar|continuar/i }).first().click()
+  await submitRegisterForm(page, freshCreds())
 
   // `next` brings the new user straight back, and the page mints a code.
   await expect(page).toHaveURL(/\/whatsapp\/conectar/, { timeout: 20_000 })
@@ -49,14 +45,10 @@ test('logged out → create account → back here → send the code from WhatsAp
 })
 
 test('explains when WhatsApp is not available for the account', async ({ page }) => {
-  const id = uniqueId()
   await page.goto('/register')
-  await page.locator('input').nth(0).fill(`e2e_${id}`)
-  await page.locator('input[type="email"]').fill(`e2e_${id}@test.local`)
-  await page.locator('input[type="password"]').fill('e2epass123')
   await Promise.all([
     page.waitForURL(/\/onboarding|\/menu/, { timeout: 20_000 }),
-    page.getByRole('button', { name: /crear|registr|empezar|continuar/i }).first().click(),
+    submitRegisterForm(page, freshCreds()),
   ])
   await page.route('**/whatsapp/status', (route) =>
     json(route, { available: false, linked: false, phone: null, notify: false, chatLink: null }),
@@ -68,16 +60,13 @@ test('explains when WhatsApp is not available for the account', async ({ page })
 
 test('login honours a relative next but ignores an off-site one (no open redirect)', async ({ page }) => {
   const apiUrl = process.env.API_URL ?? 'http://localhost:8765'
-  const id = uniqueId()
-  const creds = { username: `e2e_${id}`, email: `e2e_${id}@test.local`, password: 'e2epass123' }
+  const creds = freshCreds()
   const reg = await page.request.post(`${apiUrl}/register`, { data: creds })
   expect(reg.ok()).toBe(true)
 
   const login = async (next: string) => {
     await page.goto(`/login?next=${encodeURIComponent(next)}`)
-    await page.locator('input').nth(0).fill(creds.username)
-    await page.locator('input[type="password"]').fill(creds.password)
-    await page.getByRole('button', { name: /entrar|iniciar|acceder|continuar/i }).first().click()
+    await submitLoginForm(page, creds)
   }
 
   await login('//evil.example.com/phish')

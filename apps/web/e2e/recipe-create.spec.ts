@@ -67,15 +67,20 @@ test('happy path: fill the form, click Crear, land on the new recipe', async ({ 
   const submit = page.getByRole('button', { name: /^crear receta$/i })
   await expect(submit).toBeEnabled()
 
+  // Since 2026-05-30 a successful create lands on the edit screen
+  // (`/recipes/<id>/edit`) so the author can fine-tune straight away.
   await Promise.all([
-    page.waitForURL(/\/recipes\/[0-9a-f-]{36}/, { timeout: 15_000 }),
+    page.waitForURL(/\/recipes\/[0-9a-f-]{36}\/edit/, { timeout: 20_000 }),
     submit.click(),
   ])
 
-  // On the detail page, the name we typed should be visible.
-  await expect(page.getByText('E2E receta de prueba').first()).toBeVisible({
-    timeout: 10_000,
-  })
+  // The edit form loads the persisted recipe from the API: its name input
+  // (first text input of the form, under "Capitulo 01 · Nombre") must carry
+  // what we typed — proof the row was actually written.
+  await expect(page.getByRole('main').locator('form input[type="text"]').first()).toHaveValue(
+    'E2E receta de prueba',
+    { timeout: 10_000 },
+  )
 })
 
 test('validation: empty form surfaces specific field errors instead of silent failure', async ({ page }) => {
@@ -88,7 +93,9 @@ test('validation: empty form surfaces specific field errors instead of silent fa
   await submit.click()
 
   // The form should render an error banner listing missing fields.
-  await expect(page.getByText(/faltan datos/i)).toBeVisible({ timeout: 5_000 })
-  // At minimum, "name" should be flagged since it's empty.
-  await expect(page.locator('text=name').first()).toBeVisible()
+  const main = page.getByRole('main')
+  await expect(main.getByText(/faltan datos/i)).toBeVisible({ timeout: 5_000 })
+  // At minimum, the name field should be flagged since it's empty. Errors
+  // render as `<li>` items prefixed with the humanized field label.
+  await expect(main.getByRole('listitem').filter({ hasText: /^Nombre:/ })).toBeVisible()
 })

@@ -16,26 +16,28 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('recipe detail: marking cooked increments the count', async ({ page }) => {
-  // Open the catalog and pick the first card whose href looks like
-  // `/recipes/<uuid>` — explicitly excludes `/recipes/new` (the floating
-  // "+" button), which would land us on the create form instead.
+  // Open the catalog and pick the first recipe card. Scoped to <main> (the
+  // desktop sidebar is in the DOM but hidden on mobile) and excluding
+  // `/recipes/new` (the "Añadir receta" link in the header).
   await page.goto('/recipes')
   const card = page
-    .locator(
-      'a[href*="/recipes/"]:not([href="/recipes/new"]):not([href$="/recipes"])',
-    )
+    .getByRole('main')
+    .locator('a[href^="/recipes/"]:not([href="/recipes/new"])')
     .first()
   await expect(card).toBeVisible({ timeout: 10_000 })
-  await Promise.all([page.waitForURL(/\/recipes\/[0-9a-f-]{36}/), card.click()])
+  await Promise.all([page.waitForURL(/\/recipes\/[0-9a-f-]{36}(\?|$)/), card.click()])
 
-  // The cook-mode CTA section carries the new "Cocinada" button.
-  await expect(page.getByRole('link', { name: /empezar a cocinar/i })).toBeVisible({
+  // The detail page has two "Empezar a cocinar" links (inline in the
+  // Preparación header + the bottom "Modo cocina" CTA). The "Cocinada"
+  // button lives in the Modo cocina section, so scope everything to it.
+  const cookSection = page.locator('section').filter({ hasText: 'Modo cocina' })
+  await expect(cookSection.getByRole('link', { name: /^empezar a cocinar$/i })).toBeVisible({
     timeout: 10_000,
   })
-  // The CookedBadge returns null while its query is loading, so the
-  // button may take a beat to appear after the rest of the page renders.
-  // Give it explicit time.
-  const cookedBtn = page.getByRole('button', { name: /^cocinada/i }).first()
+
+  // The button's accessible name is its aria-label ("Marcar como cocinada");
+  // the visible text carries the count.
+  const cookedBtn = cookSection.getByRole('button', { name: /marcar como cocinada/i })
   await expect(cookedBtn).toBeVisible({ timeout: 10_000 })
 
   // Initial state — never cooked: label is just "Cocinada" (no count).
@@ -43,7 +45,5 @@ test('recipe detail: marking cooked increments the count', async ({ page }) => {
 
   // Click it. The button text should switch to "Cocinada 1×".
   await cookedBtn.click()
-  await expect(page.getByRole('button', { name: /cocinada 1×/i }).first()).toBeVisible({
-    timeout: 10_000,
-  })
+  await expect(cookedBtn).toHaveText(/^cocinada 1×$/i, { timeout: 10_000 })
 })

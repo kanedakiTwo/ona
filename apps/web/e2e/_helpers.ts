@@ -2,35 +2,84 @@
  * Shared helpers for the Playwright E2E suite.
  */
 
-import type { Page } from '@playwright/test'
+import { expect, type Locator, type Page } from '@playwright/test'
 
 /** Unique-per-run identifier — keeps DB state from colliding between specs. */
 export function uniqueId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-/** Generate a fresh test user and register them via the UI. */
-export async function registerFreshUser(page: Page): Promise<{ username: string; email: string; password: string }> {
+/**
+ * Fill a controlled form and keep re-filling until its submit button enables.
+ *
+ * `next dev` serves the SSR HTML before React has hydrated. A `fill()` that
+ * lands in that window sets the DOM value but not React state, so the
+ * auth forms (whose submit is `disabled` while any field is empty) stay
+ * disabled forever — the spec then dies on a 30 s click timeout. Re-filling
+ * until React reflects the values makes the step deterministic instead of
+ * timing-dependent.
+ */
+export async function fillUntilEnabled(
+  submit: Locator,
+  fill: () => Promise<void>,
+  timeout = 15_000,
+): Promise<void> {
+  await expect(async () => {
+    await fill()
+    await expect(submit).toBeEnabled({ timeout: 1_000 })
+  }).toPass({ timeout })
+}
+
+export interface TestCreds {
+  username: string
+  email: string
+  password: string
+}
+
+export function freshCreds(): TestCreds {
   const id = uniqueId()
   const username = `e2e_${id}`
-  const email = `${username}@test.local`
-  const password = 'e2epass123'
+  return { username, email: `${username}@test.local`, password: 'e2epass123' }
+}
 
+/**
+ * Fill /register (already loaded) and click "Crear cuenta". Does not wait
+ * for the redirect — callers assert where they expect to land.
+ *
+ * The register form labels (`Nombre de usuario`, `Email`, `Contrasena`) are
+ * not wired to their inputs, so we target inputs by position/type.
+ */
+export async function submitRegisterForm(page: Page, creds: TestCreds): Promise<void> {
+  const form = page.locator('form')
+  const submit = form.getByRole('button', { name: /^crear cuenta/i })
+  await fillUntilEnabled(submit, async () => {
+    await form.locator('input').nth(0).fill(creds.username)
+    await form.locator('input[type="email"]').fill(creds.email)
+    await form.locator('input[type="password"]').fill(creds.password)
+  })
+  await submit.click()
+}
+
+/** Fill /login (already loaded) and click "Entrar". */
+export async function submitLoginForm(page: Page, creds: Pick<TestCreds, 'username' | 'password'>): Promise<void> {
+  const form = page.locator('form')
+  const submit = form.getByRole('button', { name: /^entrar/i })
+  await fillUntilEnabled(submit, async () => {
+    await form.locator('input').nth(0).fill(creds.username)
+    await form.locator('input[type="password"]').fill(creds.password)
+  })
+  await submit.click()
+}
+
+/** Generate a fresh test user and register them via the UI. */
+export async function registerFreshUser(page: Page): Promise<TestCreds> {
+  const creds = freshCreds()
   await page.goto('/register')
-
-  // The register form labels use `Nombre de usuario`, `Email`, `Contrasena` (no
-  // ñ in the source — see register/page.tsx). We target by text to stay
-  // resilient to label-vs-input wiring choices.
-  await page.locator('input').nth(0).fill(username)
-  await page.locator('input[type="email"]').fill(email)
-  await page.locator('input[type="password"]').fill(password)
-
   await Promise.all([
     page.waitForURL(/\/onboarding|\/menu/, { timeout: 20_000 }),
-    page.getByRole('button', { name: /crear|registr|empezar|continuar/i }).first().click(),
+    submitRegisterForm(page, creds),
   ])
-
-  return { username, email, password }
+  return creds
 }
 
 /**

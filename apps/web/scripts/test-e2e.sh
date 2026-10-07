@@ -74,7 +74,8 @@ for i in $(seq 1 90); do
   if ! kill -0 "$WEB_PID" 2>/dev/null; then echo "  Web died:"; tail -30 /tmp/ona-e2e-web.log; exit 1; fi
   sleep 1
 done
-echo "  Web healthy."
+echo "  Web healthy. Pre-compiling routes…"
+bash "$ROOT/apps/web/scripts/warm-routes.sh" "http://localhost:${WEB_PORT}"
 
 echo "── 6/6 Run Playwright ──────────────────────────────────────────"
 WEB_URL="http://localhost:${WEB_PORT}" \

@@ -257,6 +257,11 @@ jobs:
           done
           tail -80 /tmp/web.log; exit 1
 
+      - name: Pre-compile routes
+        # `next dev` compiles each route on first hit; doing it here keeps
+        # that (cold-runner) cost out of the specs' 30 s timeouts.
+        run: bash apps/web/scripts/warm-routes.sh "$WEB_URL"
+
       - name: Run Playwright
         run: pnpm --filter @ona/web exec playwright test
 

@@ -51,7 +51,7 @@ Both are configured in the Railway dashboard, not committed.
 | `RAILPACK_BUILD_CMD` | `pnpm install && pnpm --filter @ona/shared build && pnpm --filter @ona/api build` |
 | `RAILPACK_START_CMD` | `pnpm --filter @ona/api db:migrate && node apps/api/dist/index.js` |
 | `DATABASE_URL` | Auto-injected via Railway service link to `Postgres` (uses internal hostname) |
-| `JWT_SECRET` | Production secret (do **not** reuse the dev `change-me-in-production`) |
+| `JWT_SECRET` | Production secret, **≥ 32 chars** or the API refuses to boot (`openssl rand -base64 48`). Rotating it logs every user out once. |
 | `ANTHROPIC_API_KEY` | For photo + URL recipe extraction |
 | `OPENAI_API_KEY` | For Realtime voice mode |
 | `USDA_FDC_API_KEY` | For ingredient auto-create |

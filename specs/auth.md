@@ -34,7 +34,8 @@ The `users` table holds the canonical scalar fields (`sex`, `age`, `weight`, `he
 
 - Username and email are both unique across users (registration returns 409 if either exists)
 - Passwords are stored hashed with bcrypt (10 rounds)
-- JWT tokens are signed with `JWT_SECRET` and expire after `JWT_EXPIRES_IN` (default `90d` — "long but not infinite"). On expiry the API returns `401` with `code: 'TOKEN_EXPIRED'`; the web client treats that like `USER_NOT_FOUND` (wipes local auth, bounces to `/login`). Tokens issued before expiry was introduced never expire — they age out as users re-login.
+- JWT tokens are signed with `JWT_SECRET` and expire after `JWT_EXPIRES_IN` (default `90d` — "long but not infinite"). On expiry the API returns `401` with `code: 'TOKEN_EXPIRED'`; the web client treats that like `USER_NOT_FOUND` (wipes local auth, bounces to `/login`). Tokens issued before expiry was introduced never expire — they age out as users re-login. A token with a bad signature or malformed (e.g. after `JWT_SECRET` is rotated) returns `401` with `code: 'INVALID_TOKEN'`, handled the same way.
+- A deployed API (`NODE_ENV=production` or running on Railway) **refuses to boot** when `JWT_SECRET` is missing or shorter than 32 characters (`config/jwtSecret.ts`); locally it falls back to `ona-dev-secret`. Rotating the secret logs every user out once.
 - `POST /register`, `/login`, and `/auth/reset` are rate-limited per client IP (in-memory fixed window): register `10/hour`, login + reset `20 / 5 min`. Over the limit returns `429` with `code: 'RATE_LIMITED'` and a `Retry-After` header. The limiter is per-process (approximate across restarts/instances) and relies on `app.set('trust proxy', 1)` to read the real client IP behind Railway's edge. See `middleware/rateLimit.ts`.
 - Login with invalid credentials returns 401 (no distinction between "user not found" and "wrong password")
 - Login with a suspended account returns 403 with `code: 'SUSPENDED'`
@@ -69,7 +70,8 @@ The `users` table holds the canonical scalar fields (`sex`, `age`, `weight`, `he
 ## Source
 
 - [apps/api/src/routes/auth.ts](../apps/api/src/routes/auth.ts) — register, login endpoints; auth rate limiters
-- [apps/api/src/middleware/auth.ts](../apps/api/src/middleware/auth.ts) — JWT validation (incl. `TOKEN_EXPIRED`)
+- [apps/api/src/middleware/auth.ts](../apps/api/src/middleware/auth.ts) — JWT validation (incl. `TOKEN_EXPIRED`, `INVALID_TOKEN`)
+- [apps/api/src/config/jwtSecret.ts](../apps/api/src/config/jwtSecret.ts) — boot-time `JWT_SECRET` strength check
 - [apps/api/src/middleware/rateLimit.ts](../apps/api/src/middleware/rateLimit.ts) — fixed-window IP rate limiter
 - [apps/api/src/config/env.ts](../apps/api/src/config/env.ts) — `JWT_EXPIRES_IN`
 - [apps/web/src/lib/auth.tsx](../apps/web/src/lib/auth.tsx) — client-side AuthProvider

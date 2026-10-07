@@ -153,6 +153,14 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 
 ### Pending
 
+- [ ] **Auditoría 2026-10-07 — lo que queda de tu lado** (todo lo de código está hecho y en prod):
+  - **Backups**: activar los backups de Postgres en Railway y hacer una restauración de prueba; copia periódica del volumen `ona-api-volume` (fotos de usuarios). Hoy no hay ninguna red si se pierde la base de datos.
+  - **Errores en producción**: crear una cuenta de Sentry (o similar) y pasarme el DSN; lo integro en api + web.
+  - **Contacto de soporte**: decidir el email y ponerlo en Railway como `SUPPORT_EMAIL` (ona-api) y `NEXT_PUBLIC_SUPPORT_EMAIL` (ona-web, requiere redeploy). Hasta entonces la app dice "la persona de ONA que te invitó a la beta".
+  - **Privacidad**: revisión legal de `/privacidad` cuando exista la forma jurídica (responsable con identidad real, datos de salud con consentimiento explícito, transferencias a EE. UU.). Ver [specs/privacy.md](./specs/privacy.md).
+  - **WhatsApp**: en WhatsApp Manager, crear plantillas *Utility* por tipo de aviso (p. ej. `ona_menu_de_hoy`, `ona_aviso_preparacion`, `ona_lista_compra`, `ona_plan_semana`; cuerpo con un único `{{1}}`) y pasarme los nombres aprobados → `WHATSAPP_TEMPLATES`.
+  - *(Opcional)* secreto `USDA_FDC_API_KEY` en GitHub Actions para que corra el smoke de USDA en CI.
+
 - [ ] **Compra en mis tiendas — primer pedido real** (v1 en prod 2026-10-07, [specs/shop-orders.md](./specs/shop-orders.md)): tus tiendas The Fruits of the World (WhatsApp +34 913 52 51 11), Ben-Car Boadilla (WhatsApp pedidos 638 015 827), Pescaderías Los Alonso (WhatsApp 616 943 425; Pescados Aparicio no tenía número fiable) y El Corte Inglés (web) ya están dadas de alta en tu hogar.
   - *(Opcional)* Los Alonso reparte gratis en Pozuelo/Boadilla (mismo día si pides antes de las 13:00): para usarlo, en `/compra/tiendas` cambia la entrega a "A domicilio" con tu dirección (hoy está en "recojo en tienda").
   - Avisar en persona a la frutería y a la carnicería (Miguel se encarga) de que les pedirás por WhatsApp con una lista y que te digan precio por kilo y total antes de prepararlo.

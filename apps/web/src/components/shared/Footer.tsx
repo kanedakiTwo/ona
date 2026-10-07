@@ -46,7 +46,7 @@ export default function Footer() {
           <div>
             <div className="text-eyebrow mb-4 text-[#FAF6EE]/40">Filosofia</div>
             <ul className="space-y-3 text-sm">
-              <li><span className="text-[#FAF6EE]/80">Antiinflamatoria</span></li>
+              <li><span className="text-[#FAF6EE]/80">Casera</span></li>
               <li><span className="text-[#FAF6EE]/80">De temporada</span></li>
               <li><span className="text-[#FAF6EE]/80">Sin culpa</span></li>
             </ul>

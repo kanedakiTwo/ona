@@ -442,7 +442,7 @@ function Opinionated() {
               Y aprende del <span className="text-[#C65D38]">tuyo</span>.
             </h2>
             <p className="mt-8 max-w-md text-base leading-relaxed text-[#4A4239]">
-              ONA arranca con una filosofía nutricional clara: antiinflamatoria, variedad, temporada, grasas reales. Pero no es un dictado. Todo lo que vayas aprendiendo sobre tu cuerpo se lo cuentas a ONA, lo recuerda y lo aplica.
+              ONA arranca con una forma de cocinar clara: casera, variada, de temporada y con buen aceite de oliva. Pero no es un dictado. Todo lo que vayas aprendiendo sobre tu cuerpo se lo cuentas a ONA, lo recuerda y lo aplica.
             </p>
             <p className="mt-8 font-display text-xl italic text-[#1A1612] md:text-2xl">
               Cuanto más le cuentas, mejor te entiende.
@@ -495,7 +495,7 @@ function Differential() {
     { tracking: "Registras lo que ya comiste", ona: "Planificas lo que vas a comer" },
     { tracking: "Cuentan calorías a posteriori", ona: "Organiza tu semana a priori" },
     { tracking: "Esfuerzo diario de 21 entradas", ona: "Una sesión semanal de 2 minutos" },
-    { tracking: "Sin criterio nutricional", ona: "Filosofía antiinflamatoria que puedes ajustar" },
+    { tracking: "Sin criterio nutricional", ona: "Criterio de cocina casera y de temporada que puedes ajustar" },
     { tracking: "No generan la lista de la compra", ona: "La lista sale automática del menú" },
     { tracking: "Empiezan de cero cuando cambias de app", ona: "Recuerda todo lo que le vas contando" },
   ]

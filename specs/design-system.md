@@ -127,6 +127,7 @@ These have not been migrated to the editorial system yet:
 - Tailwind v4 with `@theme` block; no `tailwind.config.js`
 - Several pages still mix arbitrary `[#hex]` values and `--color-*` tokens; prefer the tokens for new code
 - `PublicNavbar` links to `/recetas` (Spanish) but the actual route is `/recipes` — known broken link
+- **No health claims in public copy** (landing, footer, `/como-funciona`…): no "antiinflamatorio", "previene", "cura", "adelgaza", "controla la glucosa", microbioma, cardiólogo as endorsement, etc. ONA's nutrition philosophy guides the product, not the marketing (ONA HQ constitution §6; RD 1907/1996 art. 4). Describe the cooking style instead ("casera, variada, de temporada, con buen aceite de oliva"). Guarded in CI by `apps/api/src/tests/publicHealthClaims.test.ts`; legal pages (`/privacidad`, `/terminos`) are exempt.
 
 ## Common Components
 

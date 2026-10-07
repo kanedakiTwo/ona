@@ -18,6 +18,25 @@ railway link                               # pick `ona-app` project
 
 ## Deploy flow
 
+**Use the guarded wrapper** from a checkout of `master`:
+
+```bash
+scripts/deploy.sh             # api, then web
+scripts/deploy.sh api         # or just one service (api | web | all)
+scripts/deploy.sh --dry-run   # run the checks + print the plan, deploy nothing
+```
+
+`railway up` uploads the local working directory as-is, so without a guard prod can end up running code that exists in no commit. The wrapper refuses to deploy unless:
+
+1. the working tree is clean — no staged, unstaged **or untracked** files (they would be uploaded too);
+2. `HEAD` equals `origin/master` after a fresh `git fetch` — i.e. the commit is pushed. If `HEAD` is *behind* `origin/master` it refuses as well, unless you pass `--allow-behind` for an intentional rollback.
+
+It then prints the commit SHA + subject being deployed and runs the manual commands below (api first, then web). Prod therefore always maps to a pushed commit on `master`.
+
+### Underlying manual commands
+
+The wrapper is a thin guard around these; run them directly only when you know why the guard doesn't fit (e.g. an emergency hotfix from a dirty tree — and then commit + push it right after):
+
 ```bash
 # 1) deploy api
 railway up --service ona-api --detach

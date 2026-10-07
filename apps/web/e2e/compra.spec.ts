@@ -23,6 +23,9 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('add a shop → prepare orders → WhatsApp link with the order written', async ({ page }) => {
+  // Register + onboarding + shop + a full menu generation + the 15 s order
+  // wait don't fit the 30 s default on CI runners.
+  test.setTimeout(60_000)
   await page.goto('/compra')
   await dismissOverlays(page)
   await expect(page.getByText(/Primero,/)).toBeVisible({ timeout: 10_000 })
@@ -42,9 +45,13 @@ test('add a shop → prepare orders → WhatsApp link with the order written', a
   const userId = await page.evaluate(() => JSON.parse(localStorage.getItem('ona_user') ?? '{}').id as string)
   const d = new Date()
   d.setDate(d.getDate() + (d.getDay() === 0 ? -6 : 1 - d.getDay()))
+  // Breakfast included explicitly: the default plantilla is lunch + dinner
+  // since 2026-10-07, and with the thin e2e seed only breakfasts reliably
+  // bring fruit to the list.
+  const allMeals = Array.from({ length: 7 }, () => ({ breakfast: true, lunch: true, dinner: true }))
   await page.request.post(`${API_URL}/menu/generate`, {
     headers: { Authorization: `Bearer ${token}` },
-    data: { userId, weekStart: d.toISOString().slice(0, 10) },
+    data: { userId, weekStart: d.toISOString().slice(0, 10), customTemplate: allMeals },
   })
 
   await page.goto('/compra')

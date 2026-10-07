@@ -110,6 +110,7 @@ export default withPWA({
     document: '/offline',
   },
 })(
-  // @ts-expect-error - @types/next-pwa ships a Next 13 NextConfig type that conflicts with Next 15
+  // @types/next-pwa's `next` peer is pinned to the app's Next via a pnpm
+  // override (it used to drag in a vulnerable Next 13 and its NextConfig type).
   nextConfig,
 )

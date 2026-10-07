@@ -74,7 +74,7 @@ Both are configured in the Railway dashboard, not committed.
 | `ANTHROPIC_API_KEY` | For photo + URL recipe extraction |
 | `OPENAI_API_KEY` | For Realtime voice mode |
 | `USDA_FDC_API_KEY` | For ingredient auto-create |
-| `METRICS_READ_TOKEN` | Read-only token for `GET /admin/metrics` (header `x-metrics-token`) used by the Dirección/Finance agents; unset = token access off. See `specs/metrics.md` |
+| `METRICS_READ_TOKEN` | Read-only token for `GET /admin/metrics` and `GET /admin/errors` (header `x-metrics-token`) used by the ONA HQ agents; unset = token access off. See `specs/metrics.md`, `specs/errors.md` |
 | `COST_PRICE_OVERRIDES` | Optional JSON over the cost-ledger price table, e.g. `{"openai/gpt-realtime":{"perMinute":0.15}}` |
 
 `ona-web`:
@@ -85,6 +85,8 @@ Both are configured in the Railway dashboard, not committed.
 | `RAILPACK_START_CMD` | `node apps/web/.next/standalone/apps/web/server.js` |
 | `NEXT_PUBLIC_API_URL` | `https://ona-api-production.up.railway.app` (no trailing slash) |
 | `NEXT_PUBLIC_PICOVOICE_ACCESS_KEY` | From <https://console.picovoice.ai>; required for the "Hola Ona" wake word |
+| `NEXT_PUBLIC_ERROR_REPORTING` | Optional. `false` switches the browser error reporter off (it is on in production builds by default); `true` turns it on under `next dev`. See `specs/errors.md` |
+| `NEXT_PUBLIC_RELEASE` | Optional build label sent with client error reports. Unset → `RAILWAY_GIT_COMMIT_SHA` or `RAILWAY_DEPLOYMENT_ID` if Railway exposes them at build time, else none |
 | `PORT` | `3000` |
 
 ## Schema migrations

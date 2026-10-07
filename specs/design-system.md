@@ -171,6 +171,7 @@ ONA supports a desktop layout at `md+` (≥768 px) and bespoke multi-column page
 ### Exceptions (no responsive treatment)
 
 - `/onboarding`, `/auth/*`, `/offline`, `/recipes/[id]/cook` — single-column at all breakpoints.
+- Error boundaries `app/error.tsx` ("Algo se ha torcido", inside the app chrome) and `app/global-error.tsx` (replaces the root layout, own `<html>`) — centred single column, editorial tokens (cream, ink, terracotta "Vaya", Fraunces heading), same look as `/offline`. See [errors.md](./errors.md).
 - Public site (`/recipes-ona`) uses its own `PublicNavbar` and is unaffected.
 
 ### Pragmatic scope vs original plan

@@ -4,6 +4,12 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { env } from './config/env.js'
 import { errorHandler } from './middleware/errorHandler.js'
+import {
+  captureServerErrors,
+  installConsoleErrorCapture,
+  installProcessErrorHandlers,
+  observeServerErrors,
+} from './middleware/errorCapture.js'
 import authRoutes from './routes/auth.js'
 import userRoutes from './routes/users.js'
 import recipeRoutes from './routes/recipes.js'
@@ -27,8 +33,14 @@ import recipePhotosRoutes from './routes/recipePhotos.js'
 import whatsappRoutes, { whatsappWebhookRouter } from './routes/whatsapp.js'
 import metricsRoutes from './routes/metrics.js'
 import shopOrdersRoutes, { publicShopOrdersRouter } from './routes/shopOrders.js'
+import appErrorsRoutes, { clientErrorsRouter } from './routes/appErrors.js'
 import { trackShoppingActivity } from './services/activityEvents.js'
 import { startScheduler } from './services/notificationScheduler.js'
+
+// In-house error tracker (specs/errors.md): remember what handlers log with
+// console.error while serving a request, and record unhandled rejections.
+installConsoleErrorCapture()
+installProcessErrorHandlers()
 
 const app = express()
 
@@ -44,9 +56,15 @@ app.use(cors({
   origin: '*',
   exposedHeaders: ['X-Total-Count'],
 }))
+// Records every 5xx response in `app_errors` (observes only; mounted first so
+// each request runs in its error context). See middleware/errorCapture.ts.
+app.use(observeServerErrors)
 // WhatsApp webhook verifies an HMAC over the raw body, so it must see the
 // bytes before `express.json()` consumes the stream. It parses its own body.
 app.use(whatsappWebhookRouter)
+// POST /client-errors reads its own body with a hard 8 KB cap (any content
+// type — the browser beacon sends text/plain), so it goes before express.json().
+app.use(clientErrorsRouter)
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 // Logs shopping-list item mutations (2xx) for the business metrics'
@@ -102,6 +120,8 @@ app.use(whatsappRoutes)
 // GET /admin/metrics accepts `x-metrics-token` instead of a JWT, so it must
 // be mounted before the catch-all `router.use(authMiddleware)` routers below.
 app.use(metricsRoutes)
+// Same reason: GET /admin/errors also accepts `x-metrics-token`.
+app.use(appErrorsRoutes)
 app.use(userRoutes)
 app.use(menuRoutes)
 app.use(shoppingRoutes)
@@ -120,7 +140,9 @@ app.use(cookbooksRoutes)
 app.use(recipePhotosRoutes)
 app.use(shopOrdersRoutes)
 
-// Error handler
+// Error handler — captureServerErrors records the error, then hands it to
+// errorHandler unchanged.
+app.use(captureServerErrors)
 app.use(errorHandler)
 
 app.listen(env.PORT, () => {

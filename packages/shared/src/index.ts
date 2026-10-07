@@ -162,3 +162,13 @@ export { resolveFromTable } from './units/resolve.js'
 export type { ResolveInput, ResolveResult } from './units/resolve.js'
 export { formatScaled, formatFraction, formatCanonical, isCulinaryClean } from './units/format.js'
 export type { FormatScaledInput, FormatScaledOutput } from './units/format.js'
+
+// In-house error tracker (specs/errors.md)
+export {
+  CLIENT_ERROR_LIMITS,
+  clientErrorReportSchema,
+  buildClientErrorReport,
+  clientErrorDedupeKey,
+  isIgnorableClientError,
+} from './types/clientErrors.js'
+export type { ClientErrorReport, ClientErrorInput } from './types/clientErrors.js'

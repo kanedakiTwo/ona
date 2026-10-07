@@ -4,10 +4,11 @@ import { env } from '../config/env.js'
 import { authMiddleware, requireAdmin } from './auth.js'
 
 /**
- * Guard for GET /admin/metrics (specs/metrics.md): either an admin JWT, or the
- * header `x-metrics-token` equal to `METRICS_READ_TOKEN` — so the "Dirección"
- * agent can read business metrics without holding an admin session. The token
- * is mounted on that one route only; it grants nothing else.
+ * Guard for GET /admin/metrics (specs/metrics.md) and GET /admin/errors
+ * (specs/errors.md): either an admin JWT, or the header `x-metrics-token`
+ * equal to `METRICS_READ_TOKEN` — so the ONA HQ agents can read business
+ * metrics and the error log without holding an admin session. The token is
+ * mounted on those two read-only routes only; it grants nothing else.
  *
  *   - header present → token mode only (a wrong token is 401, no JWT fallback);
  *     with METRICS_READ_TOKEN unset, token mode is disabled (always 401);

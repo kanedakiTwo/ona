@@ -16,6 +16,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'user.suspend': 'Usuario suspendido',
   'user.unsuspend': 'Usuario reactivado',
   'user.reset_password.generate': 'Enlace de reset generado',
+  'app_error.resolve': 'Error marcado como resuelto',
 }
 
 export function actionLabel(code: string): string {

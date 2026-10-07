@@ -12,6 +12,7 @@
 import { sql } from 'drizzle-orm'
 import { db as defaultDb } from '../db/connection.js'
 import { addDays, madridMidnightUtc, madridWeekStart } from './madridTime.js'
+import { loadErrorSummary } from './appErrors.js'
 
 type Db = typeof defaultDb
 
@@ -225,6 +226,8 @@ export const DEFINITIONS = {
   costPerActiveHouseholdWeekEur: 'Window total costEur / sum of weekly activeHouseholds.',
   cohorts: 'Households grouped by signup week; retention.wK = share of the cohort active in week signup+K (null until that week starts; the current week is partial).',
   dataSince: 'First row in the cost ledger / activity log. Weeks before these dates under-report cost and resolved weeks.',
+  errors:
+    'In-house error tracker (specs/errors.md), last 7 days by last_seen: newGroups = error groups first seen in the window, activeGroups / openGroups = groups seen (unresolved), events = Σ count of those groups (cumulative, an upper bound). Detail: GET /admin/errors.',
 } as const
 
 // ─── SQL loader ──────────────────────────────────────────────────
@@ -324,8 +327,8 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
            (SELECT MIN(created_at) FROM activity_events) AS activity_log
   `)
 
-  const [activity, menuRows, shopping, signups, costs, since] = await Promise.all([
-    activityQ, menusQ, shoppingQ, signupsQ, costsQ, sinceQ,
+  const [activity, menuRows, shopping, signups, costs, since, errors] = await Promise.all([
+    activityQ, menusQ, shoppingQ, signupsQ, costsQ, sinceQ, loadErrorSummary(7, db, now),
   ])
 
   const input: MetricsInput = {
@@ -358,6 +361,7 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
     weekly,
     cohorts: buildCohorts(input),
     totals: buildTotals(input, weekly),
+    errors,
     definitions: DEFINITIONS,
   }
 }

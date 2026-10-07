@@ -33,8 +33,9 @@ export type AdminAction =
   | 'user.suspend'
   | 'user.unsuspend'
   | 'user.reset_password.generate'
+  | 'app_error.resolve'
 
-export type AuditTargetType = 'ingredient' | 'recipe' | 'user'
+export type AuditTargetType = 'ingredient' | 'recipe' | 'user' | 'app_error'
 
 export interface AuditRecord {
   adminId: string

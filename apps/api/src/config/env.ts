@@ -98,9 +98,10 @@ export const env = {
    */
   COST_PRICE_OVERRIDES: process.env.COST_PRICE_OVERRIDES || '',
   /**
-   * Read-only token for `GET /admin/metrics` (header `x-metrics-token`), so an
-   * agent can read business metrics without an admin JWT. Grants access to
-   * that endpoint only. Empty → token auth disabled (admin JWT still works).
+   * Read-only token for `GET /admin/metrics` and `GET /admin/errors` (header
+   * `x-metrics-token`), so an agent can read business metrics and the error
+   * log without an admin JWT. Grants access to those two endpoints only.
+   * Empty → token auth disabled (admin JWT still works).
    */
   METRICS_READ_TOKEN: process.env.METRICS_READ_TOKEN || '',
   /**

@@ -4,6 +4,13 @@ import withPWA from 'next-pwa'
 const nextConfig: NextConfig = {
   transpilePackages: ['@ona/shared'],
   output: 'standalone',
+  env: {
+    // Build id sent with client error reports (specs/errors.md). Explicit
+    // value wins; else Railway's commit SHA (git deploys) or deployment id
+    // (`railway up`), when Railway exposes them at build time.
+    NEXT_PUBLIC_RELEASE:
+      process.env.NEXT_PUBLIC_RELEASE || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.RAILWAY_DEPLOYMENT_ID || '',
+  },
   images: {
     // No server-side image optimizer. Recipe images live on arbitrary
     // third-party hosts (blogs, YouTube thumbnails, our API volume), and an

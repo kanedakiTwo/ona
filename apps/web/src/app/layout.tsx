@@ -16,6 +16,7 @@ import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
 import { recordVisit } from "@/lib/pwa/installPrompt"
 import { scheduleMealReminders } from "@/lib/pwa/notifications"
+import { installErrorReporter } from "@/lib/errorReporter"
 import "./globals.css"
 
 const inter = Inter({
@@ -70,6 +71,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   )
 
   useEffect(() => {
+    // In-house error tracker (specs/errors.md): window errors + unhandled rejections.
+    installErrorReporter()
     recordVisit()
     scheduleMealReminders()
   }, [])

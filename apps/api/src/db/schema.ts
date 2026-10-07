@@ -946,3 +946,38 @@ export const shopOrders = pgTable('shop_orders', {
   uniqueIndex('uq_shop_orders_token').on(t.token),
   index('idx_shop_orders_household_status').on(t.householdId, t.status),
 ])
+
+// ─── In-house error tracker (specs/errors.md) ────────────────────────
+//
+// One row per error *group* (same kind + normalised message + top stack
+// frame = same fingerprint), not per event: `count` / `last_seen` move on
+// every occurrence and the sample fields keep the latest one. Every text
+// field is scrubbed (emails, phones, tokens, query strings) before it is
+// written; no request bodies, no IP addresses. Written by
+// services/appErrors.ts (client reports via POST /client-errors, API 5xx).
+export const appErrors = pgTable('app_errors', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  fingerprint: text('fingerprint').notNull(),
+  /** client | server */
+  kind: text('kind').notNull(),
+  /** Normalised + scrubbed message, ≤ 500 chars. */
+  message: text('message').notNull(),
+  /** Latest scrubbed stack, ≤ 4 KB. */
+  sampleStack: text('sample_stack'),
+  /** Latest page path (client) or `METHOD /route/:pattern` (server); never a query string. */
+  samplePath: text('sample_path'),
+  /** Commit SHA / deploy id of the build that last hit it, when known. */
+  release: text('release'),
+  /** "Chrome · Android" — browser + OS family only, never the full UA. */
+  userAgentFamily: text('user_agent_family'),
+  lastUserId: uuid('last_user_id').references(() => users.id, { onDelete: 'set null' }),
+  count: bigint('count', { mode: 'number' }).notNull().default(1),
+  firstSeen: timestamp('first_seen', { withTimezone: true }).notNull().defaultNow(),
+  lastSeen: timestamp('last_seen', { withTimezone: true }).notNull().defaultNow(),
+  /** Set by an admin; a new occurrence clears it (regression). */
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('uq_app_errors_fingerprint').on(t.fingerprint),
+  index('idx_app_errors_last_seen').on(t.lastSeen),
+  check('app_errors_kind_check', sql.raw("kind IN ('client','server')")),
+])

@@ -49,7 +49,11 @@ export default function PrivacidadPage() {
             <strong>Conversaciones con el asistente</strong> (chat, voz y WhatsApp): el texto de los mensajes y la
             transcripción de las notas de voz. Si conectas WhatsApp, también tu número de teléfono.
           </li>
-          <li><strong>Datos técnicos:</strong> suscripción a notificaciones push y un registro del coste de cada uso de la IA.</li>
+          <li>
+            <strong>Datos técnicos:</strong> suscripción a notificaciones push, un registro del coste de cada uso de
+            la IA y un registro de los fallos de la aplicación (el mensaje técnico, la página y el tipo de
+            navegador; sin tu IP, sin lo que escribes y quitando emails, teléfonos y claves).
+          </li>
         </ul>
 
         <H2>3. Para qué</H2>
@@ -58,6 +62,7 @@ export default function PrivacidadPage() {
           <li>Responder a lo que le pidas al asistente y hacer los cambios que le pidas.</li>
           <li>Revisar, de forma interna, conversaciones de WhatsApp para detectar errores del asistente y corregirlos.</li>
           <li>Controlar el gasto en IA por usuario y mantener el servicio seguro.</li>
+          <li>Detectar y arreglar los fallos de la aplicación, con un registro propio que no se comparte con terceros.</li>
         </ul>
         <p>
           No vendemos tus datos ni los usamos para publicidad. ONA es un asistente con inteligencia
@@ -89,8 +94,8 @@ export default function PrivacidadPage() {
         <p>
           Mientras tengas la cuenta. Puedes borrarla tú mismo en <strong>Perfil → Borrar mi cuenta</strong>: se
           eliminan al momento tu perfil, tus menús, tu memoria, tus recetas propias y tu historial de WhatsApp. Si
-          compartes hogar, el hogar sigue para los demás miembros. El registro de costes se conserva sin
-          vincularlo a ti.
+          compartes hogar, el hogar sigue para los demás miembros. Los registros de costes y de fallos se conservan
+          sin vincularlos a ti.
         </p>
 
         <H2>7. Tus derechos</H2>

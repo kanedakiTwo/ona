@@ -127,6 +127,10 @@ export const apiPublic = {
   get<T = unknown>(path: string) {
     return apiFetch<T>(path, { method: "GET", anonymous: true })
   },
+  /** Public writes (e.g. the waitlist) — never tied to whoever is logged in on this browser. */
+  post<T = unknown>(path: string, body?: unknown) {
+    return apiFetch<T>(path, { method: "POST", body, anonymous: true })
+  },
 }
 
 export const api = {

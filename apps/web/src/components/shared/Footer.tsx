@@ -24,10 +24,10 @@ export default function Footer() {
           </div>
           <div className="md:col-span-4 md:flex md:justify-end">
             <Link
-              href="/register"
+              href="/#lista-de-espera"
               className="inline-flex items-center gap-2 rounded-full bg-[#FAF6EE] px-6 py-3.5 text-sm font-medium text-[#1A1612] transition-all hover:gap-3 hover:bg-[#52B788]"
             >
-              Empezar gratis
+              Únete a la lista de espera
               <ArrowUpRight size={16} />
             </Link>
           </div>
@@ -40,7 +40,7 @@ export default function Footer() {
             <ul className="space-y-3 text-sm">
               <li><Link href="/como-funciona" className="link-reveal text-[#FAF6EE]/80 hover:text-[#FAF6EE]">Como funciona</Link></li>
               <li><Link href="/recipes" className="link-reveal text-[#FAF6EE]/80 hover:text-[#FAF6EE]">Recetas</Link></li>
-              <li><Link href="/register" className="link-reveal text-[#FAF6EE]/80 hover:text-[#FAF6EE]">Empezar</Link></li>
+              <li><Link href="/#lista-de-espera" className="link-reveal text-[#FAF6EE]/80 hover:text-[#FAF6EE]">Lista de espera</Link></li>
             </ul>
           </div>
           <div>

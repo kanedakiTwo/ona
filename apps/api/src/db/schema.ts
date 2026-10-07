@@ -981,3 +981,62 @@ export const appErrors = pgTable('app_errors', {
   index('idx_app_errors_last_seen').on(t.lastSeen),
   check('app_errors_kind_check', sql.raw("kind IN ('client','server')")),
 ])
+
+// ─── Pre-launch waitlist (specs/waitlist.md) ─────────────────────────
+//
+// One row per person on the public waitlist (landing form → POST /waitlist).
+// No health data. `email` is lowercased + trimmed by the shared zod schema;
+// unsubscribing anonymises the row (email, first_name and supermarket go to
+// NULL — Postgres lets several NULLs share the unique index) and keeps only
+// the anonymous answers for the counts. `referral_code` is the person's
+// public link (?invita=); `unsubscribe_token` is their private opt-out link.
+export const waitlistEntries = pgTable('waitlist_entries', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  email: text('email'),
+  firstName: text('first_name'),
+  /** 1 | 2 | 3-4 | 5+ */
+  householdSize: text('household_size').notNull(),
+  /** yo | otra_persona | compartido — who plans and shops */
+  plannerRole: text('planner_role').notNull(),
+  /** improviso | lista | app | menu_fijo | no_cocino — how they plan today */
+  currentMethod: text('current_method').notNull(),
+  supermarket: text('supermarket'),
+  /** ios | android | otro */
+  platform: text('platform').notNull(),
+  wantsWhatsapp: boolean('wants_whatsapp').notNull().default(false),
+  referralCode: text('referral_code').notNull(),
+  /** Code of the entry whose link brought this person (validated on insert). */
+  referredByCode: text('referred_by_code'),
+  /** `?ref=` slug (menu, receta, lista…), 'invita', or 'directo'. */
+  source: text('source').notNull().default('directo'),
+  utmSource: text('utm_source'),
+  utmMedium: text('utm_medium'),
+  utmCampaign: text('utm_campaign'),
+  consentVersion: text('consent_version').notNull(),
+  consentAt: timestamp('consent_at', { withTimezone: true }).notNull(),
+  /**
+   * Separate, optional marketing consent (LSSI art. 21–22): "el menú de la
+   * semana por email cada viernes". Never implied by the waitlist consent;
+   * the opt-out link turns it off too.
+   */
+  newsletterOptIn: boolean('newsletter_opt_in').notNull().default(false),
+  newsletterConsentAt: timestamp('newsletter_consent_at', { withTimezone: true }),
+  newsletterConsentVersion: text('newsletter_consent_version'),
+  /** waiting | invited | joined | unsubscribed */
+  status: text('status').notNull().default('waiting'),
+  batch: integer('batch'),
+  invitedAt: timestamp('invited_at', { withTimezone: true }),
+  unsubscribeToken: text('unsubscribe_token').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_waitlist_entries_email').on(t.email),
+  uniqueIndex('uq_waitlist_entries_referral_code').on(t.referralCode),
+  uniqueIndex('uq_waitlist_entries_unsubscribe_token').on(t.unsubscribeToken),
+  index('idx_waitlist_entries_referred_by').on(t.referredByCode),
+  index('idx_waitlist_entries_status_created').on(t.status, t.createdAt),
+  check('waitlist_entries_household_size_check', sql.raw("household_size IN ('1','2','3-4','5+')")),
+  check('waitlist_entries_planner_role_check', sql.raw("planner_role IN ('yo','otra_persona','compartido')")),
+  check('waitlist_entries_current_method_check', sql.raw("current_method IN ('improviso','lista','app','menu_fijo','no_cocino')")),
+  check('waitlist_entries_platform_check', sql.raw("platform IN ('ios','android','otro')")),
+  check('waitlist_entries_status_check', sql.raw("status IN ('waiting','invited','joined','unsubscribed')")),
+])

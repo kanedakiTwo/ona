@@ -208,17 +208,17 @@ function SignupCTA() {
     <section className="mx-auto mt-20 max-w-4xl rounded-[32px] bg-[#1A1612] px-8 py-16 text-center text-[#FAF6EE] md:px-12 md:py-20">
       <div className="text-eyebrow mb-6 text-[#FAF6EE]/60">Para hacerlas tuyas</div>
       <h2 className="text-editorial-lg leading-tight">
-        Crea una cuenta y <span className="font-italic italic">ONA cocina la semana</span> por ti.
+        Apúntate y <span className="font-italic italic">ONA cocina la semana</span> por ti.
       </h2>
       <p className="mx-auto mt-6 max-w-md text-sm text-[#FAF6EE]/70 md:text-base">
         Te plantea menús, te genera la lista de la compra, y va recordando lo
-        que vas descubriendo sobre tu cuerpo. Dos minutos. Sin tarjeta.
+        que vas descubriendo sobre tu cuerpo. Entramos por tandas. Sin tarjeta.
       </p>
       <Link
-        href="/register"
+        href="/?ref=recetas#lista-de-espera"
         className="mt-10 inline-flex items-center gap-2.5 rounded-full bg-[#FAF6EE] px-7 py-4 text-base font-medium text-[#1A1612] transition-all hover:gap-3.5 hover:bg-[#C65D38] hover:text-[#FAF6EE]"
       >
-        Empezar gratis
+        Únete a la lista de espera
         <ArrowUpRight size={18} />
       </Link>
     </section>

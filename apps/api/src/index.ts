@@ -34,6 +34,7 @@ import whatsappRoutes, { whatsappWebhookRouter } from './routes/whatsapp.js'
 import metricsRoutes from './routes/metrics.js'
 import shopOrdersRoutes, { publicShopOrdersRouter } from './routes/shopOrders.js'
 import appErrorsRoutes, { clientErrorsRouter } from './routes/appErrors.js'
+import waitlistRoutes, { adminWaitlistRouter } from './routes/waitlist.js'
 import { trackShoppingActivity } from './services/activityEvents.js'
 import { startScheduler } from './services/notificationScheduler.js'
 
@@ -108,6 +109,8 @@ app.use(authRoutes)
 app.use(publicHouseholdRouter)
 // Public short links (/shop-orders/link/:token) for the order messages.
 app.use(publicShopOrdersRouter)
+// Pre-launch waitlist (public: signup, referral count, opt-out).
+app.use(waitlistRoutes)
 app.use(recipeRoutes)
 app.use(ingredientRoutes)
 // pushRoutes is mostly auth-protected (per-route authMiddleware) but the
@@ -122,6 +125,8 @@ app.use(whatsappRoutes)
 app.use(metricsRoutes)
 // Same reason: GET /admin/errors also accepts `x-metrics-token`.
 app.use(appErrorsRoutes)
+// Same reason: GET /admin/waitlist accepts `x-metrics-token` (invite is admin JWT only).
+app.use(adminWaitlistRouter)
 app.use(userRoutes)
 app.use(menuRoutes)
 app.use(shoppingRoutes)

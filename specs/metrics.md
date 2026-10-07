@@ -9,13 +9,14 @@ ONA is pre-launch and will be run as a one-person company with AI agents. Pricin
 ## User Capabilities
 
 - An admin (JWT, see [Roles](./roles.md)) or an agent holding the read-only token can call `GET /admin/metrics?weeks=8` and get JSON for the last N ISO weeks (1–52, default 8; Europe/Madrid clock, current week flagged `partial`).
-- The token is sent as header `x-metrics-token` and must equal the env var `METRICS_READ_TOKEN` (constant-time compare). It opens this endpoint and the read-only `GET /admin/errors` ([Error tracking](./errors.md)) only — every other `/admin/*` route still needs an admin JWT. With the env var unset, token access is off (always 401 `METRICS_TOKEN_DISABLED`); a wrong token is 401 `METRICS_TOKEN_INVALID`, with no fallback to JWT.
+- The token is sent as header `x-metrics-token` and must equal the env var `METRICS_READ_TOKEN` (constant-time compare). It opens this endpoint, the read-only `GET /admin/errors` ([Error tracking](./errors.md)) and `GET /admin/waitlist` ([Waitlist](./waitlist.md)) only — every other `/admin/*` route still needs an admin JWT. With the env var unset, token access is off (always 401 `METRICS_TOKEN_DISABLED`); a wrong token is 401 `METRICS_TOKEN_INVALID`, with no fallback to JWT.
 - `includeInternal=1` also counts admin and suspended accounts (useful pre-launch, when almost every user is internal).
 - Response:
   - `weekly[]`: `week` (Monday), `isoWeek` (`2026-W41`), `partial`, `activeHouseholds`, `resolvedWeekHouseholds`, `newHouseholds`, `costEur { total, byProvider, byFeature }`, `internalCostEur`, `costPerActiveHouseholdEur`.
   - `cohorts[]`: households by signup week with `size` and `retention { w1..w4 }`.
   - `totals`: distinct `activeHouseholds`, `activeHouseholdWeeks`, `newHouseholds`, `resolvedHouseholdWeeks`, `costEur`, `internalCostEur`, `costPerActiveHouseholdWeekEur`, `costEvents`, `unpricedCostEvents`.
   - `errors`: `{ windowDays: 7, newGroups, activeGroups, openGroups, events }` from the in-house error tracker over the last 7 days (rolling, by `last_seen`; not per ISO week): error groups first seen / seen / seen and unresolved, and Σ `count` of the groups seen (cumulative, so an upper bound of the window's events). Detail per group: `GET /admin/errors` ([errors.md](./errors.md)).
+  - `waitlist`: `{ entries, waiting, invited, joined, unsubscribed, last7Days, referredSignups, newsletterOptIns }` — all time, from `waitlist_entries` (`last7Days` = signups in the last 7 × 24 h; `referredSignups` / `newsletterOptIns` count active entries only). Segments, sources and the suggested next batch: `GET /admin/waitlist` ([waitlist.md](./waitlist.md)).
   - `definitions` (the rules below, in plain language) and `dataSince { costLedger, activityLog }` — the first ledger/activity row, so earlier weeks aren't misread as "free" or "unresolved".
 - Code that needs a user's spend (e.g. budget limits) calls `getUserMonthlySpendEur(userId, now?)` in `services/costLedger.ts`: estimated EUR billed to that user so far this calendar month (Europe/Madrid), all paid features.
 
@@ -64,7 +65,7 @@ Append-only `(user, household, kind, created_at)` for actions no other table tim
 ## Constraints
 
 - Queries aggregate in SQL to distinct (household, week|day) pairs and per-week cost sums; the rules above run as pure, unit-tested functions.
-- The token is mounted on `GET /admin/metrics` and `GET /admin/errors` only, and both routers are mounted before the catch-all `router.use(authMiddleware)` routers (else token-only calls would be 401'd first).
+- The token is mounted on `GET /admin/metrics`, `GET /admin/errors` and `GET /admin/waitlist` only, and those routers are mounted before the catch-all `router.use(authMiddleware)` routers (else token-only calls would be 401'd first).
 - Unit tests never write to the database (ledger/activity inserts are skipped under vitest).
 
 ## Known limitations
@@ -82,6 +83,7 @@ Append-only `(user, household, kind, created_at)` for actions no other table tim
 - [Voice Mode](./voice-mode.md) — realtime sessions and the minutes report
 - [Shopping](./shopping.md) — the list whose use defines a resolved week
 - [Error tracking](./errors.md) — the `errors` block and `GET /admin/errors`
+- [Waitlist](./waitlist.md) — the `waitlist` block and `GET /admin/waitlist`
 - [Admin Dashboard](./admin-dashboard.md) · [Roles](./roles.md)
 
 ## Source
@@ -90,6 +92,7 @@ Append-only `(user, household, kind, created_at)` for actions no other table tim
 - [apps/api/src/middleware/metricsAuth.ts](../apps/api/src/middleware/metricsAuth.ts) — admin JWT or `x-metrics-token`
 - [apps/api/src/services/businessMetrics.ts](../apps/api/src/services/businessMetrics.ts) — SQL loader + pure week/cohort/cost rules + `DEFINITIONS`
 - [apps/api/src/services/appErrors.ts](../apps/api/src/services/appErrors.ts) — `loadErrorSummary` (the `errors` block)
+- [apps/api/src/services/waitlist.ts](../apps/api/src/services/waitlist.ts) — `loadWaitlistSummary` (the `waitlist` block)
 - [apps/api/src/services/costLedger.ts](../apps/api/src/services/costLedger.ts) — `recordCost`, attribution context, `getUserMonthlySpendEur`
 - [apps/api/src/config/pricing.ts](../apps/api/src/config/pricing.ts) — price table + `COST_PRICE_OVERRIDES`
 - [apps/api/src/services/activityEvents.ts](../apps/api/src/services/activityEvents.ts) — shopping-use log + middleware

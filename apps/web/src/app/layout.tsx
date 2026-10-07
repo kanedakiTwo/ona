@@ -45,6 +45,8 @@ const jetbrains = JetBrains_Mono({
 })
 
 const PUBLIC_ROUTES = ["/", "/como-funciona", "/por-que-ona", "/privacidad", "/terminos", "/login", "/register", "/onboarding"]
+/** Public sections with dynamic segments: the waitlist owner page and opt-out (specs/waitlist.md). */
+const PUBLIC_PREFIXES = ["/lista/"]
 
 const APPLE_SPLASH_IMAGES = [
   { src: "splash-2048x2732.png", w: 1024, h: 1366, dpr: 2 },
@@ -59,7 +61,7 @@ const APPLE_SPLASH_IMAGES = [
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
-  const isPublicRoute = PUBLIC_ROUTES.includes(pathname)
+  const isPublicRoute = PUBLIC_ROUTES.includes(pathname) || PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))
 
   const [queryClient] = useState(
     () =>

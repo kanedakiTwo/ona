@@ -124,6 +124,7 @@ ONA (Opinionated Nutritional Assistant) is a **mobile-first meal planner** for S
 | Shopping list generation, item toggle, stock, household scaling | `shopping.md` |
 | Assistant skill added/removed, voice behavior, prompts | `advisor.md` |
 | New design token, font, component, page migrated to editorial | `design-system.md` |
+| Waitlist form/questions, batches, referral links, public CTAs, `BRAND_NAME` | `waitlist.md` (+ `privacy.md` if the data collected changes) |
 
 ## Adding new specs
 
@@ -135,6 +136,8 @@ Code work the user has scoped but not requested yet — pick up next session unl
 
 _Recipe source links — shipped 2026-05-30: "Ver fuente" affordance on the detail under the title; editable from the edit form; YouTube vs article icon distinguished from `sourceType`._
 _Bottom navbar mis-alignment defensive fix — shipped 2026-05-30. Items now use `flex-1 basis-0` so each gets an equal slice regardless of motion's transient measurements; pill is positioned `left-1/2 -translate-x-1/2 w-12` so the layout animation can't push width off. If the bug reproduces despite this, instrument with mount/unmount logs to find the actual race._
+**Lista de espera v2** (v1 2026-10-07, see [specs/waitlist.md](./specs/waitlist.md) → Known limitations): (1) retention purge — anonymise/delete entries 6 months after the public launch; (2) an email sender: confirmation (double opt-in), the invitation emails that `POST /admin/waitlist/invite` prepares, and the Friday menu newsletter (with one-click unsubscribe); (3) carry `?ref`/`?utm_*` across public pages and record them on `/register`; (4) a `/admin` tab for the waitlist report + "invitar tanda" button.
+
 **Compra en mis tiendas v2** (v1 shipped 2026-10-07, see [specs/shop-orders.md](./specs/shop-orders.md) → Constraints): (1) read photos of a shop's reply/ticket (today WhatsApp photos go to recipe import — `whatsapp/inbound.ts`); (2) carry recipe notes ("picada", "en lomos") into the list so lines arrive annotated; (3) pack-size rounding (1 huevo → media docena, 25 g jengibre → 1 trozo); (4) reminders when a shop/user hasn't answered before the shop's cut-off; (5) "tiendas conectadas": shop opts in by QR to ONA's number so ONA reads replies directly (needs real number + business verification + utility template — Meta policy, see the research report); (6) email sent by ONA with per-order reply addresses.
 
 _Responsive desktop — shipped 2026-06-04 across 5 PRs. `<DesktopSidebar />` at `md+`, bottom-nav hidden at `md+`, `--sidebar-width`/`--sidebar-gap`/`--container-max` tokens, `/recipes` 3-col shell + 4-col card grid at `lg+`, `/cookbooks/[id]` 4-col grid at `lg+`, Vista Semana 7-col grid (DnD verified for cross-column drops), every authed page widens at `lg+` instead of sitting in a 430 px column. Bespoke per-page splits (38/62 recipe detail with sticky hero, 40/60 form layouts, vertical day-strip + preview rail, /shopping 3-col aisle grid, /profile tabs shell, /advisor side panel) were deferred to follow-up polish PRs — see [design-system.md "Pragmatic scope vs original plan"](./specs/design-system.md) and [docs/superpowers/specs/2026-06-01-responsive-desktop-design.md](./docs/superpowers/specs/2026-06-01-responsive-desktop-design.md) for the original vision._
@@ -152,6 +155,13 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 **Scope**: Only items that genuinely require Miguel — external account setup, physical device testing, branded artwork, etc. Code work that Claude can do (refactors, bug fixes, page migrations) does NOT belong here; those go in regular tasks.
 
 ### Pending
+
+- [ ] **Lista de espera (Mimoia) — antes de abrirla (~16–21 oct)** ([specs/waitlist.md](./specs/waitlist.md)):
+  - Aprobar el copy: sección de la landing, pantalla de éxito, `/lista/[code]`, `/lista/baja` y el texto para WhatsApp.
+  - **Bloqueante**: `NEXT_PUBLIC_SUPPORT_EMAIL` (ona-web). La gente de la lista no tiene "persona que te invitó" y `/privacidad` necesita un contacto real para ejercer derechos.
+  - Revisión legal de "11. Lista de espera" en `/privacidad` (consentimiento, LSSI para el menú de los viernes, conservación hasta lanzamiento + 6 meses).
+  - Cuando mimoia.com apunte a ona-web: `WEB_PUBLIC_URL=https://mimoia.com` en ona-api (enlaces de invitación y de baja).
+  - Para invitar una tanda: `GET /admin/waitlist` (o el agente con el token) → `POST /admin/waitlist/invite {"ids":[…]}` con tu JWT de admin → escribirles con el `unsubscribeUrl` de cada uno.
 
 - [ ] **Auditoría 2026-10-07 — lo que queda de tu lado** (todo lo de código está hecho y en prod):
   - **Backups**: activar los backups de Postgres en Railway y hacer una restauración de prueba; copia periódica del volumen `ona-api-volume` (fotos de usuarios). Hoy no hay ninguna red si se pierde la base de datos.

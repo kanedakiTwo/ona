@@ -221,13 +221,13 @@ function CTA() {
           <span className="font-italic italic text-[#C65D38]">Listo</span> para empezar.
         </h2>
         <p className="mt-8 max-w-xl mx-auto text-base text-[#4A4239] md:text-lg">
-          Dos minutos. Sin tarjeta. Sin compromiso. Acabas con el menu en pantalla.
+          Entramos por tandas, cada dos a cuatro semanas. Sin tarjeta. Sin compromiso.
         </p>
         <Link
-          href="/register"
+          href="/?ref=como-funciona#lista-de-espera"
           className="mt-10 inline-flex items-center gap-2.5 rounded-full bg-[#1A1612] px-7 py-4 text-base font-medium text-[#FAF6EE] transition-all hover:gap-3.5 hover:bg-[#2D6A4F]"
         >
-          Empezar gratis
+          Únete a la lista de espera
           <ArrowUpRight size={18} />
         </Link>
       </div>

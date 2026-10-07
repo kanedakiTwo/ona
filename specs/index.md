@@ -20,6 +20,14 @@ Registration, login, logout, JWT tokens, session management, onboarding flow, pa
 
 ---
 
+## [Waitlist (pre-launch, Mimoia)](./waitlist.md)
+
+Public pre-launch waitlist on the landing (`#lista-de-espera`), public brand Mimoia (`BRAND_NAME`, D-012), closed beta, invite by batches (tandas) every 2–4 weeks, no queue position / no fake scarcity, segmentation questions (household size, who plans/shops, current method, iOS/Android, supermarket), WhatsApp interest, separate newsletter opt-in (menú de los viernes, LSSI), consent version, honeypot, per-IP rate limit, idempotent on email, referral codes (`?invita=`, Crockford base32), "Invita a tu hogar y entráis antes", owner page `/lista/[code]`, copy + wa.me share, opt-out `/lista/baja` (anonymises), `?ref` / `utm_*` attribution, `waitlist_entries` (migration 0037), `GET /admin/waitlist` (metrics token: segments, sources, referrals, suggested next batch), `POST /admin/waitlist/invite` (admin JWT, audited), register marks joined, public CTAs → waitlist.
+
+**Source**: `packages/shared/src/types/waitlist.ts`, `packages/shared/src/constants/brand.ts`, `apps/api/src/services/waitlist.ts`, `apps/api/src/routes/waitlist.ts`, `apps/api/src/db/migrations/0037_waitlist.sql`, `apps/web/src/components/waitlist/`, `apps/web/src/app/(public)/lista/`, `apps/web/src/app/(public)/page.tsx`
+
+---
+
 ## [Household](./household.md)
 
 Multi-user "shared household" foundation: every authed user has a `primary_household_id` pointing at a `households` row, with `household_members` (one row per user, role `owner`/`member`/`child`) and `household_invites` (32-hex token, 7-day TTL, public preview at `GET /invites/:token`, authed accept at `POST /invites/:token/accept`). At registration we auto-create a solo household named "Mi casa" with the registrant as owner. Owners can rename, generate/revoke invites, remove members, and leave (auto-promotes the oldest remaining member to owner; auto-creates a new solo household for the leaver). Public preview is mounted on a dedicated router BEFORE `userRoutes` so `router.use(authMiddleware)` doesn't intercept it. `GET /households/me` returns name + members + pendingInvites; `/profile/casa` is the management surface. **PR 1B (shipped):** `menus`, `shopping_lists` and `user_favorites` carry a `household_id` column (backfilled in 0012); inserts dual-write; reads switch to household scope when `SHARED_HOUSEHOLD_SCOPE=true` (default ON in dev/test, OFF in prod). The single helper `scopeResolver.resolveScope(userId)` + `scopeWhere(userCol, householdCol, scope)` keeps every route in sync.

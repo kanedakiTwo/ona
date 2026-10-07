@@ -92,6 +92,9 @@ jobs:
       # of the per-IP auth limiter (ignored by a deployed API: NODE_ENV=production
       # or Railway).
       RATE_LIMIT_DISABLED: 'true'
+      # Read-only token for GET /admin/metrics + /admin/waitlist + /admin/errors,
+      # so waitlistRoute.smoke.ts checks the admin aggregates against real SQL.
+      METRICS_READ_TOKEN: ci-smoke-metrics-token
       API_PORT: 8765
       API_URL: http://localhost:8765
 

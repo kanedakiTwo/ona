@@ -38,5 +38,6 @@ test('menu and catalogue recipe shares carry a link that works without an accoun
   await page.evaluate(() => localStorage.clear())
   await page.goto(url.pathname + url.search)
   await expect(page.getByRole('heading', { name: recipe.name }).first()).toBeVisible({ timeout: 20_000 })
-  await expect(page.getByRole('link', { name: /crear|empieza|prueba|registr/i }).first()).toBeVisible()
+  // Pre-launch the public CTAs lead to the waitlist (specs/waitlist.md).
+  await expect(page.getByRole('link', { name: /lista de espera|crear|empieza|prueba|registr/i }).first()).toBeVisible()
 })

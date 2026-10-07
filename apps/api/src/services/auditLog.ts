@@ -34,8 +34,9 @@ export type AdminAction =
   | 'user.unsuspend'
   | 'user.reset_password.generate'
   | 'app_error.resolve'
+  | 'waitlist.invite'
 
-export type AuditTargetType = 'ingredient' | 'recipe' | 'user' | 'app_error'
+export type AuditTargetType = 'ingredient' | 'recipe' | 'user' | 'app_error' | 'waitlist_entry'
 
 export interface AuditRecord {
   adminId: string

@@ -21,6 +21,8 @@ UUID="00000000-0000-0000-0000-000000000000"
 
 ROUTES=(
   /
+  /lista/00000000
+  /lista/baja
   /login
   /register
   /onboarding

@@ -16,8 +16,8 @@ function Contact() {
   )
 }
 
-const H2 = ({ children }: { children: React.ReactNode }) => (
-  <h2 className="mt-10 font-display text-2xl text-[#1A1612]">{children}</h2>
+const H2 = ({ children, id }: { children: React.ReactNode; id?: string }) => (
+  <h2 id={id} className="mt-10 scroll-mt-28 font-display text-2xl text-[#1A1612]">{children}</h2>
 )
 
 export default function PrivacidadPage() {
@@ -117,6 +117,51 @@ export default function PrivacidadPage() {
 
         <H2>10. Cambios</H2>
         <p>Si cambiamos esta política de forma relevante, te lo diremos en la app antes de que se aplique.</p>
+
+        <H2 id="lista-de-espera">11. Lista de espera</H2>
+        <p>Si te apuntas a la lista de espera de la web, antes de tener cuenta, tratamos solo esto:</p>
+        <ul className="ml-5 list-disc space-y-2">
+          <li>Tu email y, si nos lo das, tu nombre.</li>
+          <li>
+            Tus respuestas a cuatro preguntas: cuántos sois en casa, quién planifica y hace la compra, cómo lo
+            organizas hoy y qué móvil usas. Y, si lo dices, dónde sueles comprar y si te interesa usarlo por
+            WhatsApp. No te preguntamos nada de salud.
+          </li>
+          <li>
+            Cómo llegaste: el enlace de quien te invitó, si fue así, y la página o campaña de origen (los
+            parámetros <code>ref</code> y <code>utm</code> del enlace). Y cuándo nos diste tu consentimiento.
+          </li>
+        </ul>
+        <p>
+          <strong>Para qué:</strong> para invitarte por tandas y para preguntarte por tus hábitos y así diseñar el
+          producto. Con tus respuestas decidimos a quién invitamos primero, y con tu enlace de invitación contamos
+          cuántas personas se apuntan gracias a ti (en tu página solo se ve ese número, nunca quiénes son).
+        </p>
+        <p>
+          <strong>El menú de los viernes:</strong> si además marcas la casilla «Quiero recibir cada viernes el
+          menú de la semana por email», usamos tu email también para mandarte ese correo. Es opcional, va aparte
+          de la lista y puedes retirarlo en cualquier momento con un clic.
+        </p>
+        <p>
+          <strong>Base legal:</strong> tu consentimiento (art. 6.1.a RGPD), que das al marcar la casilla de
+          privacidad y puedes retirar cuando quieras. Para el email de los viernes, un consentimiento aparte
+          (art. 21 de la LSSI).
+        </p>
+        <p>
+          <strong>Cuánto tiempo:</strong> hasta seis meses después de que abramos al público o hasta que te des de
+          baja, lo que ocurra antes. Si te invitamos y creas una cuenta, desde ese momento se aplica el resto de
+          esta política.
+        </p>
+        <p>
+          <strong>Cómo darte de baja:</strong> con un clic en el enlace de baja que te damos al apuntarte y que va
+          en cada email que te mandemos, o escribiendo al contacto del apartado 1. Al darte de baja borramos tu
+          email y tu nombre, dejas de recibir el menú de los viernes y solo guardamos las respuestas, sin nada que
+          te identifique, para las cuentas.
+        </p>
+        <p>
+          Los datos de la lista se guardan en Railway (nuestro alojamiento) y no se comparten con nadie más ni se
+          usan para publicidad.
+        </p>
       </div>
     </div>
   )

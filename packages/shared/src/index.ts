@@ -172,3 +172,48 @@ export {
   isIgnorableClientError,
 } from './types/clientErrors.js'
 export type { ClientErrorReport, ClientErrorInput } from './types/clientErrors.js'
+
+// Public brand (D-012) + pre-launch waitlist (specs/waitlist.md)
+export { BRAND_NAME } from './constants/brand.js'
+export {
+  WAITLIST_HOUSEHOLD_SIZES,
+  WAITLIST_PLANNER_ROLES,
+  WAITLIST_CURRENT_METHODS,
+  WAITLIST_PLATFORMS,
+  WAITLIST_STATUSES,
+  WAITLIST_HOUSEHOLD_SIZE_LABELS,
+  WAITLIST_PLANNER_ROLE_LABELS,
+  WAITLIST_CURRENT_METHOD_LABELS,
+  WAITLIST_PLATFORM_LABELS,
+  WAITLIST_CONSENT_VERSION,
+  WAITLIST_NEWSLETTER_CONSENT_VERSION,
+  REFERRAL_CODE_ALPHABET,
+  REFERRAL_CODE_LENGTH,
+  REFERRAL_CODE_RE,
+  normalizeReferralCode,
+  normalizeSource,
+  readWaitlistAttribution,
+  waitlistSignupSchema,
+  waitlistUnsubscribeSchema,
+  EMPTY_WAITLIST_FORM,
+  isWaitlistFormComplete,
+  buildWaitlistPayload,
+  waitlistReferralUrl,
+  waitlistStatusPath,
+  waitlistUnsubscribePath,
+  waitlistShareText,
+  whatsappShareHref,
+} from './types/waitlist.js'
+export type {
+  WaitlistHouseholdSize,
+  WaitlistPlannerRole,
+  WaitlistCurrentMethod,
+  WaitlistPlatform,
+  WaitlistStatus,
+  WaitlistAttribution,
+  WaitlistSignup,
+  WaitlistSignupResponse,
+  WaitlistStatusResponse,
+  WaitlistFormState,
+  WaitlistSignupPayload,
+} from './types/waitlist.js'

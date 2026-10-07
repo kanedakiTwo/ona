@@ -89,12 +89,13 @@ The `.standalone-pt` utility applies `padding-top: var(--safe-top)` so content d
 
 ## Pages currently in Editorial Mode
 
-- `/` (landing) — hero with parallax, magnetic CTA, masonry steps, marquee, and a counter showing the **real** size of the public catalogue (`X-Total-Count` of anonymous `GET /recipes`; hidden if unreadable). Until 2026-10-07 it animated to a made-up "2.847 personas"
+- `/` (landing) — hero with parallax, magnetic CTA ("Únete a la lista de espera", smooth-scrolls in place to the waitlist so `?invita=`/`?ref=` stay in the URL), masonry steps, marquee, a **waitlist section** before the final CTA (`components/waitlist/WaitlistSection.tsx`, `#lista-de-espera`: cream bg, eyebrow "Lista de espera · Mimoia", `text-editorial-lg` headline with terracotta italic, form in a `rounded-[28px]` paper card with `.input-editorial` fields, `.chip-filter` one-tap answers as `role="radio"` buttons, accent-forest checkboxes, ink pill submit; success state with `ReferralShare` — link field + "Copiar enlace" ink pill + "Enviar por WhatsApp" outline pill — see [Waitlist](./waitlist.md)), and a counter showing the **real** size of the public catalogue (`X-Total-Count` of anonymous `GET /recipes`; hidden if unreadable). Until 2026-10-07 it animated to a made-up "2.847 personas"
 - `/como-funciona` — accordion FAQ, step images
 - `/recipes` — beige bg, sticky search, expandable filter sheet, editorial header with rust italic
 - `/recipes/[id]` — large hero photo with cream sheet, dotted ingredient list, monospace quantities, "Capitulo 01/02" eyebrow labels
-- `Footer` — `bg-ink` (`#1A1612`) with cream text, big editorial CTA before links
-- `PublicNavbar` — transparent over hero, beige/blur after scroll, mobile menu uses `font-display` 3xl
+- `Footer` — `bg-ink` (`#1A1612`) with cream text, big editorial CTA before links ("Únete a la lista de espera" pre-launch)
+- `PublicNavbar` — transparent over hero, beige/blur after scroll, mobile menu uses `font-display` 3xl; its primary pill is "Lista de espera" (mobile: "Únete a la lista de espera") → `/#lista-de-espera` (scrolls in place on `/`)
+- `/lista/[code]` (waitlist owner page) and `/lista/baja` (opt-out) — cream page, eyebrow with `BRAND_NAME`, `text-editorial-lg` headline, paper card
 - `Navbar` (bottom tab bar) — floating pill `bg-paper/95` with `bg-ink` active pill that animates between tabs (`motion layoutId="nav-pill"`)
 - `/compra` + `/compra/tiendas` — "Pide a tus *tiendas*." editorial header, one cream card per shop order with a status chip (ink = enviado, terracotta = ha contestado, forest = confirmado), ink pill CTAs, verdict labels OK (forest) / Revisar (terracotta) / No hay (muted); `/shopping` gets an outlined "Pedir a mis tiendas" card
 
@@ -127,7 +128,8 @@ These have not been migrated to the editorial system yet:
 - Tailwind v4 with `@theme` block; no `tailwind.config.js`
 - Several pages still mix arbitrary `[#hex]` values and `--color-*` tokens; prefer the tokens for new code
 - `PublicNavbar` links to `/recetas` (Spanish) but the actual route is `/recipes` — known broken link
-- **No health claims in public copy** (landing, footer, `/como-funciona`…): no "antiinflamatorio", "previene", "cura", "adelgaza", "controla la glucosa", microbioma, cardiólogo as endorsement, etc. ONA's nutrition philosophy guides the product, not the marketing (ONA HQ constitution §6; RD 1907/1996 art. 4). Describe the cooking style instead ("casera, variada, de temporada, con buen aceite de oliva"). Guarded in CI by `apps/api/src/tests/publicHealthClaims.test.ts`; legal pages (`/privacidad`, `/terminos`) are exempt.
+- **Public brand**: new public copy says **Mimoia** through `BRAND_NAME` (`@ona/shared`, decision D-012); existing "ONA" strings stay until the coordinated rename. Pre-launch, every public CTA leads to the waitlist (`/#lista-de-espera`, with `?ref=` where useful), never to `/register`
+- **No health claims in public copy** (landing, footer, `/como-funciona`, the waitlist components…): no "antiinflamatorio", "previene", "cura", "adelgaza", "controla la glucosa", microbioma, cardiólogo as endorsement, etc. ONA's nutrition philosophy guides the product, not the marketing (ONA HQ constitution §6; RD 1907/1996 art. 4). Describe the cooking style instead ("casera, variada, de temporada, con buen aceite de oliva"). Guarded in CI by `apps/api/src/tests/publicHealthClaims.test.ts` (scans `app/(public)`, the `Footer` and `components/waitlist/`); legal pages (`/privacidad`, `/terminos`) are exempt.
 
 ## Common Components
 
@@ -135,6 +137,8 @@ These have not been migrated to the editorial system yet:
 |-----------|------|-------|
 | `Navbar` (bottom tab bar) | `components/shared/Navbar.tsx` | Pill style, motion layoutId active state |
 | `PublicNavbar` | `components/shared/PublicNavbar.tsx` | Transparent → blur on scroll |
+| `WaitlistSection` | `components/waitlist/WaitlistSection.tsx` | Landing waitlist form + success state |
+| `ReferralShare` | `components/waitlist/ReferralShare.tsx` | Referral link, copy (clipboard fallback), wa.me share |
 | `Footer` | `components/shared/Footer.tsx` | Hidden on `/` (landing has its own) |
 | `WeekStrip` | `components/menu/WeekStrip.tsx` | 7-day picker with status circles |
 | `RecipeCard` | `components/recipes/RecipeCard.tsx` | Catalog card |

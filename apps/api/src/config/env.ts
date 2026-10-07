@@ -98,9 +98,10 @@ export const env = {
    */
   COST_PRICE_OVERRIDES: process.env.COST_PRICE_OVERRIDES || '',
   /**
-   * Read-only token for `GET /admin/metrics` and `GET /admin/errors` (header
-   * `x-metrics-token`), so an agent can read business metrics and the error
-   * log without an admin JWT. Grants access to those two endpoints only.
+   * Read-only token for `GET /admin/metrics`, `GET /admin/errors` and
+   * `GET /admin/waitlist` (header `x-metrics-token`), so an agent can read
+   * business metrics, the error log and the waitlist aggregates without an
+   * admin JWT. Grants access to those three endpoints only.
    * Empty → token auth disabled (admin JWT still works).
    */
   METRICS_READ_TOKEN: process.env.METRICS_READ_TOKEN || '',
@@ -137,7 +138,8 @@ export const env = {
 
   /**
    * Public origin of the web app, used to build links inside WhatsApp
-   * replies ("Ver receta: <WEB_PUBLIC_URL>/recipes/<id>"). No trailing slash.
+   * replies ("Ver receta: <WEB_PUBLIC_URL>/recipes/<id>") and the waitlist
+   * referral / opt-out links the API returns (specs/waitlist.md). No trailing slash.
    */
   WEB_PUBLIC_URL: (process.env.WEB_PUBLIC_URL || 'https://ona-web-production.up.railway.app').replace(/\/+$/, ''),
 

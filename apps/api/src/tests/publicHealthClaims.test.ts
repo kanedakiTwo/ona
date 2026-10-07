@@ -20,6 +20,8 @@ const WEB_SRC = resolve(__dirname, '../../../web/src')
 const PUBLIC_SURFACES = [
   'app/(public)',
   'components/shared/Footer.tsx',
+  // The landing's waitlist section + share text (specs/waitlist.md).
+  'components/waitlist',
 ]
 
 /** Pages that may name these words without making a claim (legal texts). */
@@ -57,6 +59,7 @@ describe('public marketing pages make no health claims (constitution §6, RD 190
     const rels = files.map((f) => relative(WEB_SRC, f))
     expect(rels).toContain('app/(public)/page.tsx')
     expect(rels).toContain('components/shared/Footer.tsx')
+    expect(rels).toContain('components/waitlist/WaitlistSection.tsx')
   })
 
   for (const file of files) {

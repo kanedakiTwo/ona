@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { motion, useScroll, useTransform, useInView, animate } from "motion/react"
 import { ArrowUpRight, ArrowRight } from "lucide-react"
 import { useAuth } from "@/lib/auth"
+import WaitlistSection, { WAITLIST_ANCHOR } from "@/components/waitlist/WaitlistSection"
 
 /* ═══════════════════════════════════════════
    Premium Unsplash food photography
@@ -38,6 +39,7 @@ export default function LandingPage() {
       <Differential />
       <Manifesto />
       <Counter />
+      <WaitlistSection />
       <FinalCTA />
     </div>
   )
@@ -111,8 +113,8 @@ function Hero() {
           </motion.p>
 
           <motion.div variants={fadeUp} className="mt-10 flex flex-wrap items-center gap-4">
-            <MagneticButton href="/register">
-              Crear mi primer menú
+            <MagneticButton href={`#${WAITLIST_ANCHOR}`}>
+              Únete a la lista de espera
               <ArrowUpRight size={16} />
             </MagneticButton>
             <Link
@@ -124,7 +126,7 @@ function Hero() {
           </motion.div>
 
           <motion.p variants={fadeUp} className="mt-10 text-xs text-[#7A7066]">
-            Sin tarjeta · Gratis para empezar · Baja en un toque
+            Entramos por tandas · Sin tarjeta · Baja en un toque
           </motion.p>
         </motion.div>
 
@@ -660,8 +662,8 @@ function FinalCTA() {
           te conocen <span className="text-[#C65D38]">mejor</span>.
         </h2>
         <div className="mt-12 flex flex-col items-center gap-4">
-          <MagneticButton href="/register" size="lg">
-            Empezar gratis
+          <MagneticButton href={`#${WAITLIST_ANCHOR}`} size="lg">
+            Únete a la lista de espera
             <ArrowUpRight size={20} />
           </MagneticButton>
           <p className="text-xs text-[#7A7066]">
@@ -715,12 +717,23 @@ function MagneticButton({
     ref.current.style.transform = "translate(0, 0)"
   }
 
+  // In-page anchors (the waitlist) scroll smoothly and keep the URL as is, so
+  // `?invita=` / `?ref=` / `?utm_*` stay there for the form to read.
+  function handleClick(e: React.MouseEvent<HTMLAnchorElement>) {
+    if (!href.startsWith("#")) return
+    const target = document.getElementById(href.slice(1))
+    if (!target) return
+    e.preventDefault()
+    target.scrollIntoView({ behavior: "smooth", block: "start" })
+  }
+
   return (
     <Link
       ref={ref}
       href={href}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
+      onClick={handleClick}
       className={`btn-magnetic group inline-flex items-center gap-2.5 rounded-full bg-[#1A1612] font-medium text-[#FAF6EE] transition-transform duration-300 ease-out hover:bg-[#2D6A4F] ${
         size === "lg" ? "px-7 py-4 text-base" : "px-6 py-3.5 text-sm"
       }`}

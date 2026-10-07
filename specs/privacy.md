@@ -5,7 +5,8 @@ How a user deletes their account, and what the public privacy policy promises. T
 ## User Capabilities
 
 - Users can delete their account from **Perfil → Borrar mi cuenta**: a card explains what goes and asks for the password; "Borrar definitivamente" calls `DELETE /user/:id { password }`, then wipes local auth + the offline caches (`clearSessionData`) and lands on `/?cuenta=borrada`.
-- Users can read the privacy policy at `/privacidad` (linked from the profile, above the delete card).
+- Users can read the privacy policy at `/privacidad` (linked from the profile, above the delete card, and from the waitlist consent checkbox).
+- People on the [waitlist](./waitlist.md) (no account) leave it with one click on `/lista/baja?t=<token>`: their email, name and supermarket are deleted, the weekly-menu newsletter is turned off, and only anonymous answers stay for the counts.
 
 ## What deletion does (`services/accountDeletion.ts`)
 
@@ -28,6 +29,8 @@ Runs in one transaction; image files are removed after the commit.
 - The policy's contact is `NEXT_PUBLIC_SUPPORT_EMAIL` (web build var); unset → "la persona de ONA que te invitó a la beta" (true while the beta is invitation-only). The controller's legal identity and the legal review are pending (CLAUDE.md → Todo Miguel).
 - Policy facts to keep true: processors are Anthropic (assistant, imports, nutrition estimates, WhatsApp review), OpenAI (transcription, realtime voice), Meta (WhatsApp), Railway (hosting), AiKit (recipe images: name + ingredients only). Health data (physical profile, allergies) is processed on explicit consent (art. 9.2.a RGPD). Technical data includes the in-house error log (`app_errors`: scrubbed message/stack, page path, browser family, last user; no IP, no request bodies, never sent to a third party — see [errors.md](./errors.md)). No analytics or ad cookies; localStorage holds the session, UI prefs and the offline copy.
 
+- **Waitlist section** ("11. Lista de espera"): collects email, optional name, four household/planning answers, optional supermarket and WhatsApp interest, how they arrived (`ref`/`utm`/referrer), consent time + version; **no health data**. Purpose: invite by batches and ask about habits to design the product. Basis: consent (art. 6.1.a RGPD); the "menú de los viernes" email is a separate, optional consent (art. 21 LSSI). Retention: until 6 months after the public launch or until opt-out, whichever comes first (purge not automated yet). Opt-out link given at signup and in every email; leaving anonymises the row. Stored on Railway only, never shared. The section names no brand: the rest of the page still says ONA while the waitlist form says Mimoia (coordinated rename pending).
+
 ## Related specs
 
 - [Auth](./auth.md) — sessions, `USER_NOT_FOUND`
@@ -35,6 +38,7 @@ Runs in one transaction; image files are removed after the commit.
 - [Recipes](./recipes.md) — visibility (`authorId NULL` = catalogue)
 - [WhatsApp](./whatsapp.md) — links, messages, BAJA
 - [PWA](./pwa.md) — `clearSessionData`
+- [Waitlist](./waitlist.md) — pre-launch list, its consent and opt-out
 
 ## Source
 

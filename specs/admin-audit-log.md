@@ -31,6 +31,7 @@ Every admin endpoint that mutates state. Concretely:
 - `user.unsuspend` — user reactivated
 - `user.reset_password.generate` — admin generated a one-time reset token (the token value itself is NOT stored in the audit payload; only that one was issued)
 - `app_error.resolve` — admin marked an error group resolved via `POST /admin/errors/:id/resolve` (target type `app_error`; payload: kind, message, resolvedAt) — see [errors.md](./errors.md)
+- `waitlist.invite` — admin marked a batch of waitlist entries invited via `POST /admin/waitlist/invite` (target type `waitlist_entry`, no single target id; payload: batch, count, ids — never emails) — see [waitlist.md](./waitlist.md)
 
 Admin **read** operations do not write to the log. Failed mutations (validation errors, 4xx responses) do not write either — only successful state changes.
 

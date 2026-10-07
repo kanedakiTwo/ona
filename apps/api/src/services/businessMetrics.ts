@@ -13,6 +13,7 @@ import { sql } from 'drizzle-orm'
 import { db as defaultDb } from '../db/connection.js'
 import { addDays, madridMidnightUtc, madridWeekStart } from './madridTime.js'
 import { loadErrorSummary } from './appErrors.js'
+import { loadWaitlistSummary } from './waitlist.js'
 
 type Db = typeof defaultDb
 
@@ -228,6 +229,8 @@ export const DEFINITIONS = {
   dataSince: 'First row in the cost ledger / activity log. Weeks before these dates under-report cost and resolved weeks.',
   errors:
     'In-house error tracker (specs/errors.md), last 7 days by last_seen: newGroups = error groups first seen in the window, activeGroups / openGroups = groups seen (unresolved), events = Σ count of those groups (cumulative, an upper bound). Detail: GET /admin/errors.',
+  waitlist:
+    'Pre-launch waitlist (specs/waitlist.md), all time: entries by status, last7Days = signups in the last 7 × 24 h, referredSignups / newsletterOptIns = active entries (not unsubscribed) that came with someone’s link / opted in to the weekly menu email. Segments, sources and the suggested next batch: GET /admin/waitlist.',
 } as const
 
 // ─── SQL loader ──────────────────────────────────────────────────
@@ -327,8 +330,8 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
            (SELECT MIN(created_at) FROM activity_events) AS activity_log
   `)
 
-  const [activity, menuRows, shopping, signups, costs, since, errors] = await Promise.all([
-    activityQ, menusQ, shoppingQ, signupsQ, costsQ, sinceQ, loadErrorSummary(7, db, now),
+  const [activity, menuRows, shopping, signups, costs, since, errors, waitlist] = await Promise.all([
+    activityQ, menusQ, shoppingQ, signupsQ, costsQ, sinceQ, loadErrorSummary(7, db, now), loadWaitlistSummary(db, now),
   ])
 
   const input: MetricsInput = {
@@ -362,6 +365,7 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
     cohorts: buildCohorts(input),
     totals: buildTotals(input, weekly),
     errors,
+    waitlist,
     definitions: DEFINITIONS,
   }
 }

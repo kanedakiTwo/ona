@@ -158,14 +158,14 @@ function SignupCTA({ recipeName }: { recipeName: string }) {
         plantéate la semana con ella.
       </h2>
       <p className="mx-auto mt-6 max-w-md text-sm text-[#FAF6EE]/70 md:text-base">
-        Con cuenta puedes marcarla como favorita, planificarla en tu menú
+        Cuando entres, podrás marcarla como favorita, planificarla en tu menú
         semanal, y que ONA te genere la lista de la compra.
       </p>
       <Link
-        href="/register"
+        href="/?ref=receta#lista-de-espera"
         className="mt-10 inline-flex items-center gap-2.5 rounded-full bg-[#FAF6EE] px-7 py-4 text-base font-medium text-[#1A1612] transition-all hover:gap-3.5 hover:bg-[#C65D38] hover:text-[#FAF6EE]"
       >
-        Crear cuenta gratis
+        Únete a la lista de espera
         <ArrowUpRight size={18} />
       </Link>
     </section>

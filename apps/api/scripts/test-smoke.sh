@@ -55,6 +55,8 @@ export JWT_SECRET="smoke-only-do-not-use-anywhere-else"
 # Smoke files register throwaway users from localhost; ignored by the API
 # when NODE_ENV=production.
 export RATE_LIMIT_DISABLED="true"
+# Lets waitlistRoute.smoke.ts read GET /admin/waitlist + /admin/metrics.
+export METRICS_READ_TOKEN="smoke-metrics-token"
 export API_PORT
 # Same path production takes on deploy (not `drizzle-kit push`).
 pnpm --filter @ona/api db:migrate >/dev/null

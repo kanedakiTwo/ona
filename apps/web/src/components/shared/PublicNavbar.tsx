@@ -5,6 +5,18 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { ArrowRight, Menu, X } from "lucide-react"
 
+/** Every public CTA leads to the waitlist on the landing (specs/waitlist.md). */
+const WAITLIST_HREF = "/#lista-de-espera"
+
+/** On the landing itself, scroll instead of navigating, so `?invita=` / `?ref=` stay in the URL. */
+function scrollToWaitlistIfHere(e: React.MouseEvent<HTMLAnchorElement>) {
+  if (window.location.pathname !== "/") return
+  const target = document.getElementById("lista-de-espera")
+  if (!target) return
+  e.preventDefault()
+  target.scrollIntoView({ behavior: "smooth", block: "start" })
+}
+
 const NAV_LINKS = [
   { href: "/como-funciona", label: "Como funciona" },
   { href: "/recipes", label: "Recetas" },
@@ -54,8 +66,8 @@ export default function PublicNavbar() {
             <Link href="/login" className="link-reveal text-[#4A4239]">
               Entrar
             </Link>
-            <Link href="/register" className="btn-editorial btn-editorial-primary text-xs">
-              Empezar gratis
+            <Link href={WAITLIST_HREF} onClick={scrollToWaitlistIfHere} className="btn-editorial btn-editorial-primary text-xs">
+              Lista de espera
               <ArrowRight size={14} />
             </Link>
           </div>
@@ -94,11 +106,14 @@ export default function PublicNavbar() {
           </div>
           <div className="px-6 pb-12">
             <Link
-              href="/register"
-              onClick={() => setOpen(false)}
+              href={WAITLIST_HREF}
+              onClick={(e) => {
+                setOpen(false)
+                scrollToWaitlistIfHere(e)
+              }}
               className="btn-editorial btn-editorial-primary w-full justify-center text-base"
             >
-              Empezar gratis
+              Únete a la lista de espera
               <ArrowRight size={16} />
             </Link>
           </div>

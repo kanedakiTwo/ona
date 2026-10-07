@@ -17,6 +17,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'user.unsuspend': 'Usuario reactivado',
   'user.reset_password.generate': 'Enlace de reset generado',
   'app_error.resolve': 'Error marcado como resuelto',
+  'waitlist.invite': 'Tanda de la lista de espera invitada',
 }
 
 export function actionLabel(code: string): string {

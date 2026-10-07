@@ -10,6 +10,7 @@ User registration, login, and session management for ONA.
 - Users can log out (clears local token; no server-side invalidation)
 - Newly registered users are redirected to onboarding before accessing the app
 - Existing users with completed onboarding go directly to `/menu` after login
+- Registering with an email that is on the pre-launch [waitlist](./waitlist.md) (waiting or invited) marks that entry `joined` — fire-and-forget, it never blocks or fails the registration
 - `/login` and `/register` honour `?next=<path>`: after success the user lands on `next` instead of `/menu` / `/onboarding`. Only same-origin relative paths are accepted (`safeNext`: must start with `/`, not `//` or `/\`, no newlines), so it can't become an open redirect. The "Crear cuenta" / "Inicia sesión" cross-links carry `next` along. Used by `/whatsapp/conectar` and `/invites/[token]`.
 
 ## Onboarding (post-registration)
@@ -48,7 +49,8 @@ The `users` table holds the canonical scalar fields (`sex`, `age`, `weight`, `he
 **Public** (no navbar, no auth required):
 - `/` (landing), `/como-funciona`, `/privacidad`, `/terminos`
 - `/recipes-ona`, `/recipes-ona/[id]` — public ONA catalogue (system recipes only, see [Recipes](./recipes.md))
-- `/login`, `/register`
+- `/login`, `/register` — `/register` stays reachable for invited households, but no public CTA links to it pre-launch (they lead to the [waitlist](./waitlist.md))
+- `/lista/[code]`, `/lista/baja` — waitlist owner page and opt-out (public chrome via `PUBLIC_PREFIXES`)
 - `/onboarding`
 - `/whatsapp/conectar?t=<token>` — WhatsApp-first link confirm page (asks to log in / register when logged out; see [WhatsApp](./whatsapp.md))
 

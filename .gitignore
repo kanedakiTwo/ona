@@ -20,6 +20,9 @@ apps/web/public/sw.js
 apps/web/public/sw.js.map
 apps/web/public/workbox-*.js
 apps/web/public/workbox-*.js.map
+# next-pwa custom worker bundle (worker/ → public/worker-<hash>.js), rebuilt every build
+apps/web/public/worker-*.js
+apps/web/public/worker-*.js.map
 apps/web/public/fallback-*.js
 apps/web/public/fallback-*.js.map
 

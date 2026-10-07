@@ -54,8 +54,9 @@ jobs:
       - name: API unit tests
         run: pnpm --filter @ona/api test
         env:
-          # Smoke files that hit USDA need the key; if missing, those tests skip.
-          USDA_API_KEY: ${{ secrets.USDA_API_KEY }}
+          # usdaClient.smoke.ts reads USDA_FDC_API_KEY (same name as env.ts);
+          # without the repo secret those tests skip.
+          USDA_FDC_API_KEY: ${{ secrets.USDA_FDC_API_KEY }}
 
   # ─── Route smoke tests against a real Postgres + booted API ───────
   # Boots Postgres as a service container, applies the real migrations

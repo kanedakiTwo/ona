@@ -23,6 +23,7 @@ Talk to the ONA assistant from WhatsApp. WhatsApp is another way to reach the sa
 - Users can **send a photo of a recipe** (cookbook page, handwritten card, screenshot). It is extracted with the existing photo extractor and **saved directly** (soft lint, tags `auto-extracted`/`from-photo`; caption kept as context in history). Reply: "He guardado *<nombre>* en tus recetas" + link, plus a "revisa los ingredientes" nudge when some weren't matched to the catalogue. Photos with no recipe get "No he encontrado ninguna receta en esa foto…". History records `[Foto de una receta: <caption>]`, so "ponla el jueves para cenar" works next.
 - One message can trigger several actions ("genérame el menú y dime qué ceno hoy") — the engine runs up to 4 tool rounds per turn (see [Advisor](./advisor.md)).
 - Sending a sticker, location or other unsupported type gets a polite "todavía no entiendo ese tipo de mensaje".
+- **"Hazme la compra"** → one short link per shop (`<WEB_PUBLIC_URL>/c/<token>`) that opens the user's own WhatsApp chat with that shop and the order already written; the user sends it. Forwarding (or pasting) the shop's answer back to ONA gets a line-by-line check and reply buttons to approve, then a second link with the confirmation. ONA's number never writes to a shop. See [Compra en mis tiendas](./shop-orders.md). These `/c/` links are the only URLs the model may write in a reply.
 
 ## Proactive messages ("Avisos por WhatsApp")
 

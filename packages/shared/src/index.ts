@@ -37,6 +37,40 @@ export {
   buildMemoryDigestText,
 } from './types/userMemory.js'
 export type { ShoppingItem, ShoppingList, BuyableUnit } from './types/shopping.js'
+export type {
+  ShopKind,
+  ShopChannel,
+  ShopFulfilment,
+  ShopOrderStatus,
+  EstimateSource,
+  LineQuote,
+  LineQuoteStatus,
+  LineVerdict,
+  LineDecision,
+  ShopOrderLine,
+  QuoteSummary,
+  ShopSnapshot,
+  ShopOrderLinks,
+  ShopOrder,
+  Shop,
+  ShopInput,
+  ShopFormState,
+} from './types/shopOrders.js'
+export {
+  SHOP_KINDS,
+  SHOP_KIND_LABELS,
+  SHOP_CHANNELS,
+  SHOP_CHANNEL_LABELS,
+  SHOP_FULFILMENTS,
+  SHOP_ORDER_STATUSES,
+  SHOP_ORDER_STATUS_LABELS,
+  EMPTY_SHOP_FORM,
+  normalizePhone,
+  shopInputSchema,
+  buildShopPayload,
+  approveShopOrderSchema,
+  patchShopOrderSchema,
+} from './types/shopOrders.js'
 export type { Macros, Vitamins, Minerals, AminoAcids, FatAcids, CarbTypes, NutrientBalance } from './types/nutrition.js'
 export type {
   Meal,
@@ -112,6 +146,8 @@ export {
   KID_PORTION_FRACTION,
 } from './utils/household.js'
 export type { HouseholdSnapshot } from './utils/household.js'
+
+export { formatQty, prettyName, capitalize } from './utils/shopFormat.js'
 
 export { buildRecipePayload } from './recipeFormPayload.js'
 export type { IngredientRowState, RecipeFormState } from './recipeFormPayload.js'

@@ -873,3 +873,69 @@ export const activityEvents = pgTable('activity_events', {
   index('idx_activity_events_created').on(t.createdAt),
   index('idx_activity_events_household_created').on(t.householdId, t.createdAt),
 ])
+
+// ─── "Compra en mis tiendas" (specs/shop-orders.md) ──────────────────
+//
+// The household's own shops (frutería, carnicería, pescadería, súper) and
+// the per-shop orders ONA drafts from the shopping list. v1 never messages
+// a shop itself: the user sends ONA's ready-made message from their own
+// WhatsApp / mail (wa.me / mailto), pastes or forwards the shop's reply,
+// approves, and pays the shop directly.
+export const householdShops = pgTable('household_shops', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  /** fruteria | carniceria | pescaderia | supermercado | otra */
+  kind: text('kind').notNull(),
+  /** whatsapp | email | web | telefono */
+  channel: text('channel').notNull(),
+  /** Digits with country code (34…), for wa.me. */
+  whatsapp: text('whatsapp'),
+  email: text('email'),
+  webUrl: text('web_url'),
+  phone: text('phone'),
+  /** How the shop knows the customer ("Miguel Martín"). */
+  customerName: text('customer_name'),
+  /** recoger | domicilio */
+  fulfilment: text('fulfilment').notNull().default('recoger'),
+  address: text('address'),
+  notes: text('notes'),
+  /** { [ingredientId]: { pricePerKg, at } } — last €/kg this shop quoted. */
+  priceMemory: jsonb('price_memory').notNull().default({}),
+  position: integer('position').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_household_shops_household').on(t.householdId),
+])
+
+export const shopOrders = pgTable('shop_orders', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+  shopId: uuid('shop_id').references(() => householdShops.id, { onDelete: 'set null' }),
+  /** The shop as it was when the order was drafted (name, kind, channel, contact). */
+  shopSnapshot: jsonb('shop_snapshot').notNull(),
+  /** draft | sent | quoted | approved | closed | cancelled */
+  status: text('status').notNull().default('draft'),
+  /** Unguessable id for the public short link /c/:token → wa.me. */
+  token: text('token').notNull(),
+  /** ShopOrderLine[] snapshot (the live list is rebuilt on every read). */
+  lines: jsonb('lines').notNull(),
+  estimateEur: real('estimate_eur'),
+  capEur: real('cap_eur'),
+  messageText: text('message_text').notNull(),
+  shopReplyText: text('shop_reply_text'),
+  quoteSummary: jsonb('quote_summary'),
+  confirmationText: text('confirmation_text'),
+  finalTotalEur: real('final_total_eur'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  sentAt: timestamp('sent_at', { withTimezone: true }),
+  quotedAt: timestamp('quoted_at', { withTimezone: true }),
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
+  closedAt: timestamp('closed_at', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('uq_shop_orders_token').on(t.token),
+  index('idx_shop_orders_household_status').on(t.householdId, t.status),
+])

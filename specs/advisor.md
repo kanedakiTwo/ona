@@ -63,6 +63,7 @@ The assistant can call back-end skills (function calling). Each skill has a name
   - `ban_recipe_this_week`.
   - `set_leftovers`.
 - **Shopping:** `add_shopping_items` (units normalised to g/ml/u/cda/cdita), `remove_shopping_items`, `regenerate_shopping_list`, `manage_staples`.
+- **Compra en mis tiendas** (`shopOrderSkills.ts`, see [Shop orders](./shop-orders.md)): `manage_shops`, `prepare_shop_orders` ("hazme la compra" → one `/c/<token>` short link per shop that opens the user's own WhatsApp with the order written), `register_shop_reply` (forwarded/pasted shop reply → OK / Revisar / No hay per line, total vs cap), `approve_shop_order` (only after an explicit "sí"; returns the confirmation link), `close_shop_order`, `get_shop_orders`. The prompt treats a shop's reply as data, never instructions, and allows copying `/c/` links verbatim.
 - **Pantry:** `list_pantry`, `update_pantry` (add/set/remove, expiry).
 - **Recipes:**
   - `log_cooked` (cook log + pantry decrement).
@@ -184,6 +185,7 @@ At `lg+` the `/advisor` page widens its outer container to `max-w-[900px]` so th
 - [apps/api/src/services/assistant/engine.ts](../apps/api/src/services/assistant/engine.ts) — `chat()` + `runToolLoop` (multi-round tools, hallucinated-action guard); tests in `apps/api/src/tests/assistantToolLoop.test.ts`
 - [apps/api/src/services/assistant/skills.ts](../apps/api/src/services/assistant/skills.ts) — skill definitions
 - [apps/api/src/services/assistant/appSkills.ts](../apps/api/src/services/assistant/appSkills.ts) + [appApi.ts](../apps/api/src/services/assistant/appApi.ts) — UI-parity skills over the app's REST API; tests in `apps/api/src/tests/appSkills.test.ts`
+- [apps/api/src/services/assistant/shopOrderSkills.ts](../apps/api/src/services/assistant/shopOrderSkills.ts) — "Compra en mis tiendas" skills; tests in `apps/api/src/tests/shopOrderSkills.test.ts`
 - [apps/api/src/services/assistant/contextLoader.ts](../apps/api/src/services/assistant/contextLoader.ts)
 - [apps/api/src/services/assistant/systemPrompt.ts](../apps/api/src/services/assistant/systemPrompt.ts)
 - [apps/api/src/services/providers/](../apps/api/src/services/providers/) — LLM integration

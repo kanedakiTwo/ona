@@ -27,6 +27,7 @@ import { importRecipeFromUrl, createRecipeFromParts, type RecipeParts } from '..
 import { mealLinesForDay } from '../menuText.js'
 import { madridParts, madridWeekStart } from '../madridTime.js'
 import { appSkills, bestMatch, searchWords } from './appSkills.js'
+import { shopOrderSkills } from './shopOrderSkills.js'
 import { visibleAuthorIds, visibleRecipeWhere } from '../recipeVisibility.js'
 import { loadMatchableRecipes } from '../matchableRecipes.js'
 import { loadPreviousWeek } from '../menuWeek.js'
@@ -2101,6 +2102,8 @@ export const skills: SkillDefinition[] = [
   importRecipeFromUrlSkill,
   // UI parity (everything the app can do, from chat) — appSkills.ts:
   ...appSkills,
+  // Compra en mis tiendas (specs/shop-orders.md) — shopOrderSkills.ts:
+  ...shopOrderSkills,
 ]
 
 /**

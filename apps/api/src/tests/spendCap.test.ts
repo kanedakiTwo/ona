@@ -69,6 +69,7 @@ describe('every route that pays a provider checks the cap', () => {
     ['assistant.ts', "'/assistant/:userId/chat'"],
     ['realtime.ts', "'/realtime/:userId/session'"],
     ['realtime.ts', "'/realtime/:userId/tool'"],
+    ['shopOrders.ts', "'/shop-orders/:id/quote'"],
   ])('%s %s', (file, route) => {
     const src = read(file)
     const at = src.indexOf(route)

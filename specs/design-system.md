@@ -96,6 +96,7 @@ The `.standalone-pt` utility applies `padding-top: var(--safe-top)` so content d
 - `Footer` — `bg-ink` (`#1A1612`) with cream text, big editorial CTA before links
 - `PublicNavbar` — transparent over hero, beige/blur after scroll, mobile menu uses `font-display` 3xl
 - `Navbar` (bottom tab bar) — floating pill `bg-paper/95` with `bg-ink` active pill that animates between tabs (`motion layoutId="nav-pill"`)
+- `/compra` + `/compra/tiendas` — "Pide a tus *tiendas*." editorial header, one cream card per shop order with a status chip (ink = enviado, terracotta = ha contestado, forest = confirmado), ink pill CTAs, verdict labels OK (forest) / Revisar (terracotta) / No hay (muted); `/shopping` gets an outlined "Pedir a mis tiendas" card
 
 ## Pages still in App Mode (legacy, green palette)
 

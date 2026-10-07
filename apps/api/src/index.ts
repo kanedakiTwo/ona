@@ -26,6 +26,7 @@ import cookbooksRoutes from './routes/cookbooks.js'
 import recipePhotosRoutes from './routes/recipePhotos.js'
 import whatsappRoutes, { whatsappWebhookRouter } from './routes/whatsapp.js'
 import metricsRoutes from './routes/metrics.js'
+import shopOrdersRoutes, { publicShopOrdersRouter } from './routes/shopOrders.js'
 import { trackShoppingActivity } from './services/activityEvents.js'
 import { startScheduler } from './services/notificationScheduler.js'
 
@@ -87,6 +88,8 @@ app.get('/health', (_req, res) => {
 // they get a chance to respond before the catch-all auth.
 app.use(authRoutes)
 app.use(publicHouseholdRouter)
+// Public short links (/shop-orders/link/:token) for the order messages.
+app.use(publicShopOrdersRouter)
 app.use(recipeRoutes)
 app.use(ingredientRoutes)
 // pushRoutes is mostly auth-protected (per-route authMiddleware) but the
@@ -115,6 +118,7 @@ app.use(recipeNotesRoutes)
 app.use(pantryRoutes)
 app.use(cookbooksRoutes)
 app.use(recipePhotosRoutes)
+app.use(shopOrdersRoutes)
 
 // Error handler
 app.use(errorHandler)

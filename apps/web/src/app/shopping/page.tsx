@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { Check, Share2, Package, Sparkles } from 'lucide-react'
+import { Check, Share2, Package, Sparkles, Store } from 'lucide-react'
 import Link from 'next/link'
 import type { Aisle } from '@ona/shared'
 import { useAuth } from '@/lib/auth'
@@ -245,6 +245,19 @@ export default function ShoppingPage() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Compra en mis tiendas (specs/shop-orders.md) */}
+      <div className="px-5 mt-4">
+        <Link
+          href="/compra"
+          className="flex items-center justify-between rounded-2xl border border-[#1A1612] bg-[#FFFEFA] px-5 py-3.5 text-[#1A1612] transition-colors hover:bg-[#F2EDE0]"
+        >
+          <span className="flex items-center gap-2 text-[13px]">
+            <Store size={14} /> Pedir a mis tiendas
+          </span>
+          <span className="text-[11px] uppercase tracking-[0.14em] text-[#C65D38]">WhatsApp →</span>
+        </Link>
       </div>
 
       {/* PR 10A — total banner + add manual item */}

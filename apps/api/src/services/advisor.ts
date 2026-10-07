@@ -1,4 +1,5 @@
 import { eq, desc } from 'drizzle-orm'
+import { visibleAuthorIds, visibleRecipeWhere } from './recipeVisibility.js'
 import { menuLogs, userNutrientBalance, menus, recipes } from '../db/schema.js'
 import { TARGET_MACROS, nutrientsToPercentages } from '@ona/shared'
 import type { NutrientBalance } from '@ona/shared'
@@ -157,6 +158,7 @@ export async function askAdvisor(
   const allRecipes = await db
     .select({ id: recipes.id, name: recipes.name, meals: recipes.meals, seasons: recipes.seasons, prepTime: recipes.prepTime })
     .from(recipes)
+    .where(visibleRecipeWhere(await visibleAuthorIds(userId)))
 
   const context = buildUserContext(
     balance?.balance as NutrientBalance | undefined,

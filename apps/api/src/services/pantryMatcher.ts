@@ -12,6 +12,7 @@
  * data is dense.
  */
 
+import { visibleAuthorIds, visibleRecipeWhere } from './recipeVisibility.js'
 import { and, eq, gt, isNotNull } from 'drizzle-orm'
 import { db as defaultDb } from '../db/connection.js'
 import { ingredients, pantryItems, recipeIngredients, recipes } from '../db/schema.js'
@@ -128,6 +129,7 @@ export async function findPantryMatches(
     .from(recipes)
     .innerJoin(recipeIngredients, eq(recipeIngredients.recipeId, recipes.id))
     .innerJoin(ingredients, eq(ingredients.id, recipeIngredients.ingredientId))
+    .where(visibleRecipeWhere(await visibleAuthorIds(userId)))
 
   // Group rows by recipe.
   const byRecipe = new Map<

@@ -1,4 +1,5 @@
 import { eq, inArray } from 'drizzle-orm'
+import { visibleAuthorIds, visibleRecipeWhere } from './recipeVisibility.js'
 import {
   users,
   userSettings,
@@ -190,8 +191,10 @@ type RecipeWithCourse = RecipeWithIngredients & { course: Course | null }
 /**
  * Load all recipes with their ingredient names from the DB.
  */
-async function loadRecipesWithIngredients(db: any): Promise<RecipeWithCourse[]> {
-  const allRecipes = await db.select().from(recipes)
+async function loadRecipesWithIngredients(db: any, userId: string): Promise<RecipeWithCourse[]> {
+  // Catalogue + the user's and their household's own recipes — never other
+  // users' private recipes (specs/recipes.md).
+  const allRecipes = await db.select().from(recipes).where(visibleRecipeWhere(await visibleAuthorIds(userId, db)))
 
   const recipeIds = allRecipes.map((r: any) => r.id)
   if (recipeIds.length === 0) return []
@@ -449,13 +452,14 @@ export async function generateMenu(
   const mealDishCounts = extractMealDishCounts(rawTemplate)
 
   // Fetch all recipes with ingredients
-  const allRecipes = await loadRecipesWithIngredients(db)
+  const allRecipes = await loadRecipesWithIngredients(db, userId)
 
   // Identify recipes whose nutritionPerServing isn't cached yet — they get a
   // tiny fitness penalty so the algorithm prefers fully-mapped alternatives.
   const nutritionRows = await db
     .select({ id: recipes.id, nutritionPerServing: recipes.nutritionPerServing })
     .from(recipes)
+    .where(visibleRecipeWhere(await visibleAuthorIds(userId, db)))
   const unmappedRecipeIds = new Set<string>(
     nutritionRows
       .filter((r: any) => !r.nutritionPerServing || (r.nutritionPerServing as any)?.kcal == null)

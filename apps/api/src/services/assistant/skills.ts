@@ -27,6 +27,7 @@ import { importRecipeFromUrl, createRecipeFromParts, type RecipeParts } from '..
 import { mealLinesForDay } from '../menuText.js'
 import { madridParts, madridWeekStart } from '../madridTime.js'
 import { appSkills, bestMatch, searchWords } from './appSkills.js'
+import { visibleAuthorIds, visibleRecipeWhere } from '../recipeVisibility.js'
 import { enqueuePrepAlertsForMenu } from '../notificationScheduler.js'
 import { NotARecipeError } from '../recipeUrlExtractor.js'
 import { NoExtractableContentError } from '../sources/youtube.js'
@@ -39,9 +40,18 @@ function getWeekStart(offsetWeeks = 0): string {
   return madridWeekStart(new Date(), offsetWeeks)
 }
 
+/**
+ * Catalogue + the caller's and their household's recipes — every recipe
+ * lookup by name goes through this so the assistant never surfaces another
+ * user's private recipe (specs/recipes.md).
+ */
+async function visibleWhere(ctx: SkillContext) {
+  return visibleRecipeWhere(await visibleAuthorIds(ctx.userId, ctx.db))
+}
+
 // ─── Helper: load recipes with ingredients ─────────────────
-async function loadRecipesWithIngredients(db: any): Promise<RecipeWithIngredients[]> {
-  const allRecipes = await db.select().from(recipes)
+async function loadRecipesWithIngredients(db: any, userId: string): Promise<RecipeWithIngredients[]> {
+  const allRecipes = await db.select().from(recipes).where(visibleRecipeWhere(await visibleAuthorIds(userId, db)))
   const riRows = await db
     .select({
       recipeId: recipeIngredients.recipeId,
@@ -149,7 +159,7 @@ const getRecipeDetails: SkillDefinition = {
     let results = await db
       .select()
       .from(recipes)
-      .where(ilike(recipes.name, `%${params.recipeName}%`))
+      .where(and(await visibleWhere(ctx), ilike(recipes.name, `%${params.recipeName}%`)))
       .limit(1)
 
     // If no exact match, try word-by-word
@@ -159,7 +169,7 @@ const getRecipeDetails: SkillDefinition = {
         results = await db
           .select()
           .from(recipes)
-          .where(or(...words.map((w: string) => ilike(recipes.name, `%${w}%`))))
+          .where(and(await visibleWhere(ctx), or(...words.map((w: string) => ilike(recipes.name, `%${w}%`)))))
           .limit(5)
       }
     }
@@ -330,6 +340,7 @@ const suggestRecipes: SkillDefinition = {
         tags: recipes.tags,
       })
       .from(recipes)
+      .where(await visibleWhere(ctx))
 
     // Filter by season
     allRecipes = allRecipes.filter((r: any) => {
@@ -382,12 +393,13 @@ const searchRecipes: SkillDefinition = {
         prepTime: recipes.prepTime,
       })
       .from(recipes)
-      .where(
+      .where(and(
+        await visibleWhere(ctx),
         or(
           ilike(recipes.name, `%${params.query}%`),
           ...params.query.split(/\s+/).filter(w => w.length >= 3).map(word => ilike(recipes.name, `%${word}%`)),
-        )
-      )
+        ),
+      ))
       .limit(10)
 
     const summary = results.length > 0
@@ -518,13 +530,13 @@ const swapMeal: SkillDefinition = {
         const [row] = await db
           .select({ id: recipes.id, name: recipes.name })
           .from(recipes)
-          .where(eq(recipes.id, params.recipeId))
+          .where(and(await visibleWhere(ctx), eq(recipes.id, params.recipeId)))
           .limit(1)
         chosen = row ?? null
       } else if (params.recipeName) {
         // Only the ONA catalogue + the user's own recipes — never another
         // user's private ones.
-        const visible = or(isNull(recipes.authorId), eq(recipes.authorId, userId))
+        const visible = await visibleWhere(ctx)
         const candidates = await db
           .select({ id: recipes.id, name: recipes.name, authorId: recipes.authorId })
           .from(recipes)
@@ -605,7 +617,7 @@ const swapMeal: SkillDefinition = {
     const favoriteRecipeIds = new Set<string>(favRows.map((f: any) => f.recipeId))
 
     // Load recipes with ingredients for matching
-    const allRecipes = await loadRecipesWithIngredients(db)
+    const allRecipes = await loadRecipesWithIngredients(db, userId)
     const season = detectSeason()
 
     const newRecipe = findRecipeForSlot(allRecipes, {
@@ -655,10 +667,10 @@ const toggleFavorite: SkillDefinition = {
     const [recipe] = await db
       .select({ id: recipes.id, name: recipes.name })
       .from(recipes)
-      .where(or(
+      .where(and(await visibleWhere(ctx), or(
         ilike(recipes.name, `%${params.recipeName}%`),
         ...params.recipeName.split(/\s+/).filter(w => w.length >= 3).map((w: string) => ilike(recipes.name, `%${w}%`)),
-      ))
+      )))
       .limit(1)
 
     if (!recipe) {
@@ -813,10 +825,10 @@ const recipeVariation: SkillDefinition = {
     const [recipe] = await db
       .select()
       .from(recipes)
-      .where(or(
+      .where(and(await visibleWhere(ctx), or(
         ilike(recipes.name, `%${params.recipeName}%`),
         ...params.recipeName.split(/\s+/).filter(w => w.length >= 3).map((w: string) => ilike(recipes.name, `%${w}%`)),
-      ))
+      )))
       .limit(1)
 
     if (!recipe) {
@@ -1116,10 +1128,10 @@ const scaleRecipeSkill: SkillDefinition = {
     const [recipe] = await db
       .select()
       .from(recipes)
-      .where(or(
+      .where(and(await visibleWhere(ctx), or(
         ilike(recipes.name, `%${params.recipeName}%`),
         ...params.recipeName.split(/\s+/).filter(w => w.length >= 3).map(w => ilike(recipes.name, `%${w}%`)),
-      ))
+      )))
       .limit(1)
     if (!recipe) {
       return { data: null, summary: `No he encontrado la receta "${params.recipeName}".`, uiHint: 'text' }
@@ -1191,10 +1203,10 @@ const suggestSubstitution: SkillDefinition = {
       const [recipe] = await db
         .select({ name: recipes.name, allergens: recipes.allergens })
         .from(recipes)
-        .where(or(
+        .where(and(await visibleWhere(ctx), or(
           ilike(recipes.name, `%${params.recipeName}%`),
           ...params.recipeName.split(/\s+/).filter(w => w.length >= 3).map(w => ilike(recipes.name, `%${w}%`)),
-        ))
+        )))
         .limit(1)
       if (recipe) {
         const allergens = ((recipe as any).allergens as string[]) ?? []
@@ -1420,10 +1432,10 @@ const getInflammationIndex: SkillDefinition = {
     const [recipe] = await db
       .select()
       .from(recipes)
-      .where(or(
+      .where(and(await visibleWhere(ctx), or(
         ilike(recipes.name, `%${params.recipeName}%`),
         ...params.recipeName.split(/\s+/).filter(w => w.length >= 3).map(w => ilike(recipes.name, `%${w}%`)),
-      ))
+      )))
       .limit(1)
     if (!recipe) {
       return { data: null, summary: `No he encontrado "${params.recipeName}".`, uiHint: 'text' }
@@ -1454,10 +1466,10 @@ const startCookingMode: SkillDefinition = {
     const [recipe] = await db
       .select({ id: recipes.id, name: recipes.name })
       .from(recipes)
-      .where(or(
+      .where(and(await visibleWhere(ctx), or(
         ilike(recipes.name, `%${params.recipeName}%`),
         ...params.recipeName.split(/\s+/).filter(w => w.length >= 3).map(w => ilike(recipes.name, `%${w}%`)),
-      ))
+      )))
       .limit(1)
     if (!recipe) {
       return { data: null, summary: `No he encontrado "${params.recipeName}".`, uiHint: 'text' }
@@ -1745,14 +1757,14 @@ const addRecipeToMine: SkillDefinition = {
       const [row] = await db
         .select({ id: recipes.id, name: recipes.name, authorId: recipes.authorId })
         .from(recipes)
-        .where(eq(recipes.id, params.recipeId))
+        .where(and(await visibleWhere(ctx), eq(recipes.id, params.recipeId)))
         .limit(1)
       source = row ?? null
     } else if (params.recipeName) {
       const candidates = await db
         .select({ id: recipes.id, name: recipes.name, authorId: recipes.authorId })
         .from(recipes)
-        .where(ilike(recipes.name, `%${params.recipeName}%`))
+        .where(and(await visibleWhere(ctx), ilike(recipes.name, `%${params.recipeName}%`)))
         .limit(20)
       // Prefer ONA system recipes for "add to mine" (don't accidentally copy
       // your own recipe). If only your own match, refuse with a friendly

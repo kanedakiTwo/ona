@@ -72,7 +72,7 @@ A menu is stored per-user per-week:
 The generator (`menuGenerator.ts`) uses iterative optimization:
 
 1. Loads user profile (sex, age, weight, height, activity level), restrictions, and favorites
-2. Loads all recipes with their ingredient names and cached `nutritionPerServing`
+2. Loads every recipe the user can see — system catalogue + their own + their household's (never another user's private recipes, see [Recipes → Recipe visibility](./recipes.md)) — with ingredient names and cached `nutritionPerServing`
 3. Calculates a target calorie count using BMR × activity × number of meal slots
 4. Detects current season
 5. Runs up to **200 iterations**, each time:

@@ -206,7 +206,7 @@ Both the photo extractor (`POST /recipes/extract-from-image`) and the URL extrac
 
 ## API Endpoints
 
-- `GET /recipes?search=&meal=&season=&maxTime=&perPage=&page=` — list with filters; returns the lightweight card shape. **Optional auth:** with a valid Bearer token the response is the full catalogue (system + every recipe the API exposes today); without a token only system recipes (`authorId IS NULL`) are returned, so the same endpoint backs the public `/recipes-ona` page anonymously and the app `/recipes` page authenticated.
+- `GET /recipes?search=&meal=&season=&maxTime=&perPage=&page=` — list with filters; returns the lightweight card shape. **Optional auth:** with a valid Bearer token the response is the system catalogue + the caller's own recipes (other users' recipes are never listed; a personal copy hides the system original it was copied from); without a token only system recipes (`authorId IS NULL`) are returned, so the same endpoint backs the public `/recipes-ona` page anonymously and the app `/recipes` page authenticated.
 - `GET /recipes/:id?servings=N` — single recipe; if `servings` is provided and differs from `recipe.servings`, quantities are scaled server-side and a `scaledFrom` field is included. Anonymous callers can only fetch system recipes; requesting a user-authored recipe without a token returns 404 (same shape as "not found" to avoid leaking which IDs exist privately).
 - `POST /recipes` (auth) — create user recipe; runs lint validator
 - `PUT /recipes/:id` (auth, author only) — update; runs lint validator and recomputes `nutritionPerServing` and `allergens`
@@ -228,6 +228,7 @@ Both the photo extractor (`POST /recipes/extract-from-image`) and the URL extrac
 - `totalTime` is read-only on the client; clients can edit `prepTime`/`cookTime`/`activeTime`
 - Schema migration is destructive (wipe + reseed acceptable; no production data preservation requirement)
 - v1 of the URL importer cannot process YouTube videos that lack both captions and a recipe-bearing description (no Whisper / yt-dlp / Gemini fallback yet)
+- **Recipe visibility** (`services/recipeVisibility.ts`): a user can see, be served, or have ONA pick the system catalogue (`authorId IS NULL`) + their own recipes + recipes authored by members of their primary household. Another user's private recipe never reaches them through the menu generator, slot regeneration, manual slot pick (`404`), cook-from-pantry, the nutrition advisor or any assistant skill (web chat + WhatsApp). `GET /recipes/:id` returns `404` for an invisible recipe. Before 2026-10-07 the generator and the assistant loaded the whole `recipes` table. Guarded by `recipeVisibilityCoverage.test.ts` (no unscoped read of `recipes` in those files)
 - Structured **ingredient overrides** (`recipe_notes.ingredient_overrides`) flow through to the shopping list and the recipe detail, but the *menu generator/matcher* still scores recipes against their original ingredient list. So a household that "removes cebolla" from every recipe will still see the same recipes get selected by the planner — they just won't see cebolla on the recipe detail or in the basket
 
 ## Related specs
@@ -250,6 +251,7 @@ Both the photo extractor (`POST /recipes/extract-from-image`) and the URL extrac
 - [apps/api/src/services/sources/youtube.ts](../apps/api/src/services/sources/youtube.ts) — video id parser, transcript fetch, prompt composer
 - [apps/api/src/services/sources/sourceType.ts](../apps/api/src/services/sources/sourceType.ts) — URL → 'youtube' | 'article'
 - [apps/web/src/components/recipes/UrlRecipeImport.tsx](../apps/web/src/components/recipes/UrlRecipeImport.tsx) — URL input UI in `/recipes/new`
+- [apps/api/src/services/recipeVisibility.ts](../apps/api/src/services/recipeVisibility.ts) — who can see which recipe (`visibleAuthorIds`, `visibleRecipeWhere`, `canViewRecipe`); used by the generator, menu routes, pantry matcher, advisor and assistant skills
 - [apps/api/src/services/recipeLint.ts](../apps/api/src/services/recipeLint.ts) — lint validator (new)
 - [apps/api/scripts/tagRecipesByType.ts](../apps/api/scripts/tagRecipesByType.ts) — deterministic backfill that adds the `MEAL_TYPE_TAGS` taxonomy (`cremas | legumbres | pizza | asiatico | mediterraneo | ensalada | parrilla | batch-cooking | pasta | arroz`) onto system recipes by name + ingredient heuristics. Runs dry-run by default; `--execute` commits. Idempotent — re-running on already-tagged rows is a no-op. The matcher's `pinnedType` predicate reads these tags so the "Fijar tipo" menu UX has something to filter against.
 - [apps/api/src/services/recipeScaler.ts](../apps/api/src/services/recipeScaler.ts) — quantity scaling + culinary rounding (new)

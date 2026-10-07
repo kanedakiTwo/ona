@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { visibleAuthorIds, visibleRecipeWhere } from '../services/recipeVisibility.js'
 import { eq, and, desc, inArray } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { menus, menuLogs, users, userSettings } from '../db/schema.js'
@@ -421,7 +422,7 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       const [chosen] = await db
         .select({ id: recipes.id, name: recipes.name, course: recipes.course })
         .from(recipes)
-        .where(eq(recipes.id, manualRecipeId))
+        .where(and(eq(recipes.id, manualRecipeId), visibleRecipeWhere(await visibleAuthorIds(req.userId!))))
         .limit(1)
       if (!chosen) {
         res.status(404).json({ error: 'Recipe not found' })
@@ -517,7 +518,7 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
     const favoriteRecipeIds = new Set<string>(favRows.map((f: any) => f.recipeId))
 
     // Load all recipes with ingredients for matching
-    const allRecipes = await db.select().from(recipes)
+    const allRecipes = await db.select().from(recipes).where(visibleRecipeWhere(await visibleAuthorIds(req.userId!)))
     const riRows = await db
       .select({
         recipeId: recipeIngredients.recipeId,
@@ -651,7 +652,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
       const [chosen] = await db
         .select({ id: recipes.id, name: recipes.name, course: recipes.course })
         .from(recipes)
-        .where(eq(recipes.id, manualRecipeId))
+        .where(and(eq(recipes.id, manualRecipeId), visibleRecipeWhere(await visibleAuthorIds(req.userId!))))
         .limit(1)
       if (!chosen) {
         res.status(404).json({ error: 'Recipe not found' })
@@ -699,7 +700,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
         .where(eq(userFavorites.userId, menu.userId))
       const favoriteRecipeIds = new Set<string>(favRows.map((f: any) => f.recipeId))
 
-      const allRecipes = await db.select().from(recipes)
+      const allRecipes = await db.select().from(recipes).where(visibleRecipeWhere(await visibleAuthorIds(req.userId!)))
       const riRows = await db
         .select({
           recipeId: recipeIngredients.recipeId,
@@ -1427,7 +1428,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
       .where(scopeWhere(userFavorites.userId, userFavorites.householdId, favScopeRegen))
     const favoriteRecipeIdsRegen = new Set<string>(favRowsRegen.map((f: any) => f.recipeId))
 
-    const allRecipesRegen = await db.select().from(recipes)
+    const allRecipesRegen = await db.select().from(recipes).where(visibleRecipeWhere(await visibleAuthorIds(req.userId!)))
     const riRowsRegen = await db
       .select({
         recipeId: recipeIngredients.recipeId,
@@ -1545,7 +1546,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/random', async (req: AuthReq
       .where(scopeWhere(userFavorites.userId, userFavorites.householdId, favScopeR))
     const favoriteRecipeIdsR = new Set<string>(favRowsR.map((f: any) => f.recipeId))
 
-    const allRecipesR = await db.select().from(recipes)
+    const allRecipesR = await db.select().from(recipes).where(visibleRecipeWhere(await visibleAuthorIds(req.userId!)))
     const riRowsR = await db
       .select({
         recipeId: recipeIngredients.recipeId,

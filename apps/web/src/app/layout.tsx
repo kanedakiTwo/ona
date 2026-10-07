@@ -85,7 +85,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       className={`${inter.variable} ${fraunces.variable} ${cormorant.variable} ${jetbrains.variable}`}
     >
       <head>
-        <title>ONA — Tu menú semanal, con criterio. El tuyo.</title>
+        <title>Mimoia — Tu semana de comidas, ya pensada</title>
         <meta name="description" content="Asistente nutricional en castellano. Te planifica el menú de la semana, te hace la lista de la compra y va recordando lo que vas aprendiendo sobre tu cuerpo." />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 
@@ -96,7 +96,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* iOS PWA capabilities */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-        <meta name="apple-mobile-web-app-title" content="ONA" />
+        <meta name="apple-mobile-web-app-title" content="Mimoia" />
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
 
         {/* iOS splash screens */}

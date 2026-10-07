@@ -61,7 +61,7 @@ export default function PublicRecipeDetailPage() {
           className="inline-flex items-center gap-1.5 text-xs uppercase tracking-[0.15em] text-[#7A7066] hover:text-[#1A1612]"
         >
           <ChevronLeft size={14} />
-          Catálogo ONA
+          Catálogo Mimoia
         </Link>
 
         <motion.div
@@ -77,7 +77,7 @@ export default function PublicRecipeDetailPage() {
               className="h-full w-full object-cover"
             />
             <div className="absolute left-4 top-4 rounded-full bg-[#FAF6EE]/95 px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-[#1A1612] backdrop-blur-sm">
-              ONA
+              Mimoia
             </div>
           </div>
 
@@ -159,7 +159,7 @@ function SignupCTA({ recipeName }: { recipeName: string }) {
       </h2>
       <p className="mx-auto mt-6 max-w-md text-sm text-[#FAF6EE]/70 md:text-base">
         Cuando entres, podrás marcarla como favorita, planificarla en tu menú
-        semanal, y que ONA te genere la lista de la compra.
+        semanal, y que Mimoia te genere la lista de la compra.
       </p>
       <Link
         href="/?ref=receta#lista-de-espera"

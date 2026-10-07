@@ -8,20 +8,20 @@ export default function TerminosPage() {
 
         <h2 className="text-h3 mt-10 text-[#1A1A1A]">1. Aceptacion de los terminos</h2>
         <p>
-          Al acceder y usar ONA, aceptas estos terminos y condiciones en su totalidad. Si no
+          Al acceder y usar Mimoia, aceptas estos terminos y condiciones en su totalidad. Si no
           estas de acuerdo con alguna parte, no deberias usar el servicio.
         </p>
 
         <h2 className="text-h3 mt-10 text-[#1A1A1A]">2. Descripcion del servicio</h2>
         <p>
-          ONA es una plataforma de planificacion de menus semanales que genera recomendaciones
+          Mimoia es una plataforma de planificacion de menus semanales que genera recomendaciones
           personalizadas basadas en tus preferencias alimentarias. El servicio incluye generacion
           de menus, lista de la compra y acceso a recetas.
         </p>
 
         <h2 className="text-h3 mt-10 text-[#1A1A1A]">3. Registro y cuenta</h2>
         <p>
-          Para usar ONA necesitas crear una cuenta con informacion veraz. Eres responsable de
+          Para usar Mimoia necesitas crear una cuenta con informacion veraz. Eres responsable de
           mantener la seguridad de tu contrasena y de toda la actividad que ocurra bajo tu cuenta.
         </p>
 
@@ -36,7 +36,7 @@ export default function TerminosPage() {
 
         <h2 className="text-h3 mt-10 text-[#1A1A1A]">5. Aviso sobre salud</h2>
         <p>
-          ONA no es un servicio medico ni nutricional profesional. Las recomendaciones de menus
+          Mimoia no es un servicio medico ni nutricional profesional. Las recomendaciones de menus
           son orientativas y no sustituyen el consejo de un medico, nutricionista o profesional
           de la salud. Si tienes condiciones medicas, alergias graves u otras necesidades
           dieteticas especificas, consulta a un profesional antes de seguir cualquier plan
@@ -45,13 +45,13 @@ export default function TerminosPage() {
 
         <h2 className="text-h3 mt-10 text-[#1A1A1A]">6. Propiedad intelectual</h2>
         <p>
-          Todo el contenido de ONA (textos, diseno, logotipos, software) es propiedad de ONA
+          Todo el contenido de Mimoia (textos, diseno, logotipos, software) es propiedad de Mimoia
           o de sus licenciantes y esta protegido por las leyes de propiedad intelectual.
         </p>
 
         <h2 className="text-h3 mt-10 text-[#1A1A1A]">7. Precio y pagos</h2>
         <p>
-          ONA ofrece un plan gratuito con funcionalidades basicas. Los planes de pago, si los
+          Mimoia ofrece un plan gratuito con funcionalidades basicas. Los planes de pago, si los
           hubiera, se facturaran segun los precios publicados en la plataforma. Nos reservamos
           el derecho de modificar los precios con preaviso de 30 dias.
         </p>
@@ -64,7 +64,7 @@ export default function TerminosPage() {
 
         <h2 className="text-h3 mt-10 text-[#1A1A1A]">9. Limitacion de responsabilidad</h2>
         <p>
-          ONA se proporciona &quot;tal cual&quot;. No garantizamos que el servicio sea
+          Mimoia se proporciona &quot;tal cual&quot;. No garantizamos que el servicio sea
           ininterrumpido, seguro o libre de errores. En la maxima medida permitida por la ley,
           no seremos responsables de danos indirectos, incidentales o consecuentes.
         </p>

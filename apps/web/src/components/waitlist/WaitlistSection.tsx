@@ -77,25 +77,25 @@ export default function WaitlistSection() {
         <div className="md:col-span-5">
           <div className="text-eyebrow mb-6">Lista de espera · {BRAND_NAME}</div>
           <h2 id="waitlist-title" className="text-editorial-lg">
-            Tu menú semanal y tu lista de la compra,{" "}
-            <span className="font-italic italic text-[#C65D38]">que te escriben por WhatsApp.</span>
+            Te guardamos{" "}
+            <span className="font-italic italic text-[#C65D38]">un sitio en la mesa.</span>
           </h2>
           <p className="mt-8 max-w-md text-base leading-relaxed text-[#4A4239] md:text-lg">
-            Sin contar calorías. Y sin el «¿qué cenamos?» de todos los días a las ocho de la tarde.
+            Abrimos {BRAND_NAME} poco a poco, por tandas de hogares, porque a los primeros los acompañamos uno a uno.
+            Queremos ver vuestra semana funcionar de verdad antes de abrir a todo el mundo.
           </p>
           <p className="mt-6 max-w-md text-base leading-relaxed text-[#4A4239]">
-            Entramos por tandas, cada dos a cuatro semanas, porque cada hogar lo acompañamos de cerca. No hay
-            número de turno que vigilar: cuando te toque, te escribimos.
+            No hay número de turno que vigilar. Cuando os toque, os escribimos.
           </p>
           <ul className="mt-8 space-y-3 text-sm text-[#1A1612]">
             <li className="flex gap-3">
-              <span className="text-[#C65D38]">✦</span>Cuatro preguntas rápidas sobre cómo coméis en casa.
+              <span className="text-[#C65D38]">✦</span>Cuatro preguntas sobre cómo coméis en casa. Medio minuto.
             </li>
             <li className="flex gap-3">
-              <span className="text-[#C65D38]">✦</span>Si invitas a tu hogar, entráis antes. Y juntos.
+              <span className="text-[#C65D38]">✦</span>Si alguien de tu casa se apunta con tu enlace, entráis antes. Y juntos.
             </li>
             <li className="flex gap-3">
-              <span className="text-[#C65D38]">✦</span>Te borras de la lista con un clic, cuando quieras.
+              <span className="text-[#C65D38]">✦</span>Gratis durante la beta. Te borras con un clic, cuando quieras.
             </li>
           </ul>
         </div>
@@ -233,7 +233,7 @@ export default function WaitlistSection() {
                   disabled={!complete || status === "sending"}
                   className="mt-8 inline-flex w-full items-center justify-center gap-2.5 rounded-full bg-[#1A1612] px-7 py-4 text-base font-medium text-[#FAF6EE] transition-colors hover:bg-[#2D6A4F] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-[#1A1612]"
                 >
-                  {status === "sending" ? "Apuntándote…" : "Apuntarme a la lista"}
+                  {status === "sending" ? "Guardando tu sitio…" : "Guárdame un sitio"}
                   <ArrowUpRight size={18} />
                 </button>
                 <p id="waitlist-form-help" className="mt-3 text-center text-xs text-[#7A7066]">
@@ -259,8 +259,8 @@ function WaitlistSuccess({ done }: { done: WaitlistSignupResponse & { origin: st
         Ya estás en la lista{done.firstName ? `, ${done.firstName}` : ""}.
       </h3>
       <p className="mt-6 text-base leading-relaxed text-[#4A4239]">
-        Entramos por tandas, cada dos a cuatro semanas, porque cada hogar lo acompañamos de cerca. No hay número
-        de turno que vigilar: cuando te toque, te llega un email.
+        Te escribimos por email cuando le toque a tu tanda. Mientras, si quieres que entre también tu casa,
+        aquí tienes tu enlace.
       </p>
 
       <div className="mt-10 border-t border-dashed border-[#DDD6C5] pt-8">
@@ -268,8 +268,8 @@ function WaitlistSuccess({ done }: { done: WaitlistSignupResponse & { origin: st
           Invita a tu hogar <span className="font-italic italic text-[#C65D38]">y entráis antes</span>
         </h4>
         <p className="mt-3 text-sm leading-relaxed text-[#4A4239]">
-          Si alguien de tu casa (o tu hermana, la que también improvisa la cena) se apunta con tu enlace, os damos
-          prioridad y entráis juntos.
+          Quien se apunte con tu enlace (tu pareja, tu hermana, la amiga que también improvisa la cena) entra
+          en tu tanda, y vuestra tanda va antes.
         </p>
         <div className="mt-5">
           <ReferralShare url={url} />

@@ -17,7 +17,7 @@ test.use({ permissions: ['clipboard-read', 'clipboard-write'] })
 
 async function fillWaitlistForm(page: Page, email: string): Promise<void> {
   const section = page.locator('#lista-de-espera')
-  const submit = section.getByRole('button', { name: /apuntarme a la lista/i })
+  const submit = section.getByRole('button', { name: /guárdame un sitio/i })
   await fillUntilEnabled(submit, async () => {
     await section.getByLabel('Tu email').fill(email)
     await section.getByRole('radio', { name: '3 o 4' }).click()
@@ -37,7 +37,7 @@ function codeFrom(url: string): string {
 
 test('the hero CTA takes you to the waitlist', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('link', { name: /únete a la lista de espera/i }).first().click()
+  await page.getByRole('link', { name: /quiero mi semana pensada/i }).first().click()
   await expect(page.locator('#waitlist-title')).toBeInViewport({ timeout: 10_000 })
   // Scrolled in place: the URL (and any ?invita=/ref=) is untouched.
   await expect(page).toHaveURL(/\/$/)

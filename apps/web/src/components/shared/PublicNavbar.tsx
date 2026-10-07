@@ -48,7 +48,7 @@ export default function PublicNavbar() {
       >
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5 md:px-10">
           <Link href="/" className="font-display text-2xl tracking-tight text-[#1A1612]">
-            ONA
+            Mimoia
           </Link>
 
           <div className="hidden items-center gap-10 text-sm md:flex">

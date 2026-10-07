@@ -66,10 +66,10 @@ function Hero() {
       {/* Side metadata */}
       <div className="pointer-events-none absolute inset-0 z-30 hidden md:block">
         <div className="absolute left-8 top-1/2 origin-left -translate-y-1/2 -rotate-90 text-[10px] uppercase tracking-[0.3em] text-[#7A7066]">
-          ONA · Issue №01 · Spring 2026
+          Mimoia · Nº 01 · Otoño 2026
         </div>
         <div className="absolute right-8 top-1/2 origin-right -translate-y-1/2 rotate-90 text-[10px] uppercase tracking-[0.3em] text-[#7A7066]">
-          Cook with intention
+          Cocina de casa, sin pensarla
         </div>
       </div>
 
@@ -90,18 +90,18 @@ function Hero() {
             variants={fadeUp}
           >
             <span className="h-[1px] w-8 bg-[#7A7066]" />
-            <span>El asistente que aprende contigo</span>
+            <span>Para quien piensa la comida de toda la casa</span>
           </motion.div>
 
           <h1 className="text-editorial-xl">
             <motion.span variants={fadeUp} className="block">
-              Un menú semanal
+              Lo cansado
             </motion.span>
             <motion.span variants={fadeUp} className="block">
-              con <span className="font-italic italic">criterio.</span>
+              no es <span className="font-italic italic">cocinar.</span>
             </motion.span>
             <motion.span variants={fadeUp} className="block text-[#2D6A4F]">
-              El tuyo.
+              Es decidir.
             </motion.span>
           </h1>
 
@@ -109,12 +109,12 @@ function Hero() {
             variants={fadeUp}
             className="mt-10 max-w-md text-base leading-relaxed text-[#4A4239] md:text-lg"
           >
-            Cocinas tú. ONA te lo planifica, te hace la lista de la compra agrupada por pasillo, y va recordando lo que vas descubriendo sobre tu cuerpo. Cada semana te entiende un poco mejor.
+            Mimoia piensa vuestra semana: un menú de temporada a vuestro gusto, la lista de la compra hecha y un mensaje por WhatsApp cuando toca descongelar o ir a comprar. Tú solo dices «vale» o «cámbiame el jueves».
           </motion.p>
 
           <motion.div variants={fadeUp} className="mt-10 flex flex-wrap items-center gap-4">
             <MagneticButton href={`#${WAITLIST_ANCHOR}`}>
-              Únete a la lista de espera
+              Quiero mi semana pensada
               <ArrowUpRight size={16} />
             </MagneticButton>
             <Link
@@ -126,7 +126,7 @@ function Hero() {
           </motion.div>
 
           <motion.p variants={fadeUp} className="mt-10 text-xs text-[#7A7066]">
-            Entramos por tandas · Sin tarjeta · Baja en un toque
+            Gratis durante la beta · Entramos por tandas · Te borras con un clic
           </motion.p>
         </motion.div>
 
@@ -144,7 +144,7 @@ function Hero() {
             >
               <img
                 src={HERO_IMG}
-                alt="Food composition"
+                alt="Una cena de casa preparada"
                 className="h-full w-full object-cover"
               />
             </motion.div>
@@ -156,8 +156,8 @@ function Hero() {
               transition={{ delay: 0.8, duration: 0.8, ease: [0.19, 1, 0.22, 1] }}
             >
               <div>
-                <div className="text-[9px] uppercase tracking-[0.2em] text-[#7A7066]">Hoy comes</div>
-                <div className="font-display text-base text-[#1A1612]">Pollo al limón con verduras</div>
+                <div className="text-[9px] uppercase tracking-[0.2em] text-[#7A7066]">Esta noche cenáis</div>
+                <div className="font-display text-base text-[#1A1612]">Crema de calabaza y tortilla</div>
               </div>
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#2D6A4F] text-white">
                 <ArrowRight size={14} />
@@ -171,7 +171,7 @@ function Hero() {
             transition={{ delay: 1.1, duration: 0.6 }}
             className="absolute -left-4 top-12 hidden rotate-[-6deg] rounded-full bg-[#FAF6EE] px-4 py-2 text-[10px] uppercase tracking-[0.18em] shadow-[0_8px_24px_-8px_rgba(26,22,18,0.18)] md:block"
           >
-            Lunes · Comida
+            Mimoia · 19:02 · WhatsApp
           </motion.div>
           <motion.div
             initial={{ opacity: 0, x: 20 }}
@@ -179,7 +179,7 @@ function Hero() {
             transition={{ delay: 1.2, duration: 0.6 }}
             className="absolute -right-4 bottom-32 hidden rotate-[5deg] rounded-full bg-[#2D6A4F] px-4 py-2 text-[10px] uppercase tracking-[0.18em] text-white md:block"
           >
-            ✓ Recuerda tu intolerancia al gluten
+            ✓ Sin cebolla para Lucas
           </motion.div>
         </motion.div>
       </div>
@@ -191,7 +191,7 @@ function Hero() {
         animate={{ y: [0, 8, 0] }}
         transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
       >
-        <div className="text-[9px] uppercase tracking-[0.3em] text-[#7A7066]">Scroll</div>
+        <div className="text-[9px] uppercase tracking-[0.3em] text-[#7A7066]">Sigue</div>
       </motion.div>
     </section>
   )
@@ -202,13 +202,13 @@ function Hero() {
    ═══════════════════════════════════════════ */
 function Marquee() {
   const items = [
-    "Sin diarios alimentarios",
-    "Recetas de temporada",
-    "Lista por pasillo del súper",
-    "Hecho a tu medida",
-    "Aprende de lo que le cuentas",
-    "Manos libres en la cocina",
-    "Baja en un toque",
+    "Sin contar calorías",
+    "Menús de temporada",
+    "La lista sale sola",
+    "Te escribe por WhatsApp",
+    "Pensado para toda la casa",
+    "Se acuerda de quién no come qué",
+    "Pide a tus tiendas de siempre",
   ]
   return (
     <section className="overflow-hidden border-y border-[#E8E2D3] bg-[#FAF6EE] py-6">
@@ -232,10 +232,10 @@ function Problem() {
   const inView = useInView(ref, { once: true, amount: 0.2 })
 
   const problems = [
-    { num: "01", text: "Son las 14:00 y no sabes qué comer.", emoji: "🥣" },
-    { num: "02", text: "Vas al súper sin lista y compras de más.", emoji: "🛒" },
-    { num: "03", text: "Descubriste algo sobre tu cuerpo hace meses y ya no te acuerdas.", emoji: "🧠" },
-    { num: "04", text: "Repites los mismos cinco platos.", emoji: "🔁" },
+    { num: "01", text: "Las 19:30, la nevera abierta y la misma pregunta: «¿qué cenamos?»", emoji: "🌙" },
+    { num: "02", text: "Doscientas recetas guardadas en Instagram. Cocinadas: tres.", emoji: "📱" },
+    { num: "03", text: "Cuatro visitas al súper esta semana. Y aun así falta algo.", emoji: "🛒" },
+    { num: "04", text: "El calabacín que se pone pocho en el cajón. Otra vez.", emoji: "🥒" },
   ]
 
   return (
@@ -245,12 +245,12 @@ function Problem() {
           <div className="md:col-span-5">
             <div className="text-eyebrow mb-6">Capítulo 01</div>
             <h2 className="text-editorial-lg">
-              No es <span className="font-italic italic">falta</span> de información.
+              No te faltan <span className="font-italic italic">recetas</span>.
               <br />
-              Es <span className="text-[#C65D38]">falta</span> de un sistema que recuerde.
+              Te falta <span className="text-[#C65D38]">alguien</span> que se acuerde.
             </h2>
             <p className="mt-8 max-w-md text-base leading-relaxed text-[#4A4239]">
-              La gente que quiere comer mejor no fracasa por desconocimiento. Fracasa porque cada semana repite las mismas micro-decisiones — y olvida lo que ya descubrió la última vez.
+              Recetas tienes de sobra. Lo que agota es ser quien siempre decide: qué se cena, quién no come qué, qué falta en la despensa y qué se va a estropear si no lo usas hoy. Todos los días. Sin que nadie lo vea.
             </p>
           </div>
 
@@ -282,7 +282,7 @@ function Problem() {
           className="mt-16 border-t border-[#DDD6C5] pt-8 text-center"
         >
           <p className="font-display text-2xl text-[#1A1612] md:text-3xl">
-            ONA <span className="font-italic italic text-[#2D6A4F]">corta</span> ese ciclo. Y recuerda lo que tú no recuerdas.
+            Mimoia <span className="font-italic italic text-[#2D6A4F]">se acuerda</span> por ti. Y te escribe cuando toca.
           </p>
         </motion.div>
       </div>
@@ -297,23 +297,23 @@ function Steps() {
   const steps = [
     {
       num: "01",
-      eyebrow: "Cinco preguntas",
-      title: "Cuéntale tus gustos.",
-      desc: "Para cuántos cocinas, cuánto tiempo tienes, qué no comes, tres platos que te encanten, qué te importa más. Eso es todo.",
+      eyebrow: "Una vez",
+      title: "Cuéntale cómo sois en casa.",
+      desc: "Cuántos sois, quién no come qué, cuánto tiempo tenéis entre semana y tres platos que os encantan. Por la app o por WhatsApp, como te sea más cómodo.",
       img: STEP1_IMG,
     },
     {
       num: "02",
-      eyebrow: "Dos minutos",
-      title: "Recibe tu menú.",
-      desc: "ONA diseña tu semana respetando temporada, variedad y tu nutrición. Cambias lo que no te convenza con un mensaje.",
+      eyebrow: "Cada semana",
+      title: "Recibe la semana pensada.",
+      desc: "Un menú de temporada y variado, que aprovecha lo que ya tienes en la despensa. ¿El jueves no te apetece? Escríbele «cámbiame el jueves» y listo.",
       img: STEP2_IMG,
     },
     {
       num: "03",
-      eyebrow: "Sin fricción",
+      eyebrow: "Sin vueltas",
       title: "Compra y cocina.",
-      desc: "Tu lista de la compra sale automática del menú. La compartes con quien va al súper o la usas tú en el carrito.",
+      desc: "La lista sale sola, por pasillos y sin lo que ya tienes en casa. Compártela con quien va al súper, o mándasela a tu frutería y a tu carnicería por WhatsApp.",
       img: STEP3_IMG,
     },
   ]
@@ -327,13 +327,13 @@ function Steps() {
             <h2 className="text-editorial-lg">
               <span className="font-italic italic">Tres</span> pasos.
               <br />
-              Sin complicaciones.
+              Y luego, casi nada.
             </h2>
             {/* Subtitle is rendered to the right (md:col-start-8). */}
           </div>
           <div className="md:col-span-5 md:col-start-8">
             <p className="text-base leading-relaxed text-[#4A4239]">
-              ONA es radical en su sencillez. Lo opuesto de las apps que te exigen registrar cada caloría, cada paso, cada vaso de agua.
+              Lo contrario de esas apps que te piden apuntar cada caloría y cada vaso de agua. Aquí le cuentas a Mimoia cómo sois en casa una vez, y ella se encarga del resto.
             </p>
           </div>
         </div>
@@ -407,7 +407,7 @@ function StepRow({
 }
 
 /* ═══════════════════════════════════════════
-   03b — La O de ONA (opinionated + memoria)
+   03b — Criterio + memoria
    ═══════════════════════════════════════════ */
 function Opinionated() {
   const ref = useRef<HTMLDivElement>(null)
@@ -416,18 +416,18 @@ function Opinionated() {
   const exchanges = [
     {
       day: "domingo 10:14",
-      user: "No me prohíbas el zumo de naranja los domingos en familia.",
-      ona: "Guardado. Los domingos no recortaré ese zumo.",
+      user: "Los domingos comemos en casa de mi madre. No me pongas nada ese día.",
+      ona: "Hecho. Los domingos a mediodía quedan libres.",
     },
     {
       day: "martes 18:02",
-      user: "Descubrí que las legumbres antes de entrenar me sientan fatal.",
-      ona: "Guardado. No te pondré legumbres en las cenas de los días que entrenas.",
+      user: "Lucas ha decidido que odia la cebolla. Otra vez.",
+      ona: "Anotado: nada de cebolla a la vista en sus platos. No se va a enterar.",
     },
     {
-      day: "jueves 09:30",
-      user: "Mi médica me ha pedido bajar la sal este trimestre.",
-      ona: "Guardado hasta julio. Reducimos sal en las recetas de esta semana.",
+      day: "jueves 19:40",
+      user: "Te mando por foto las lentejas de mi abuela.",
+      ona: "Guardadas. ¿Te las pongo el lunes, que viene frío?",
     },
   ]
 
@@ -437,17 +437,17 @@ function Opinionated() {
         <div className="grid grid-cols-1 gap-12 md:grid-cols-12 md:gap-16">
           {/* Left column — title + manifesto */}
           <div className="md:col-span-5">
-            <div className="text-eyebrow mb-6">Capítulo 02·5 — La O de ONA</div>
+            <div className="text-eyebrow mb-6">Capítulo 03 · La memoria</div>
             <h2 className="text-editorial-lg">
-              ONA tiene <span className="font-italic italic">criterio</span>.
+              Mimoia tiene <span className="font-italic italic">criterio</span>.
               <br />
-              Y aprende del <span className="text-[#C65D38]">tuyo</span>.
+              Y aprende el <span className="text-[#C65D38]">vuestro</span>.
             </h2>
             <p className="mt-8 max-w-md text-base leading-relaxed text-[#4A4239]">
-              ONA arranca con una forma de cocinar clara: casera, variada, de temporada y con buen aceite de oliva. Pero no es un dictado. Todo lo que vayas aprendiendo sobre tu cuerpo se lo cuentas a ONA, lo recuerda y lo aplica.
+              Mimoia arranca con una forma de cocinar clara: casera, variada, de temporada y con buen aceite de oliva. Pero no es un dictado: lo que le cuentas, lo recuerda y lo aplica la semana siguiente.
             </p>
             <p className="mt-8 font-display text-xl italic text-[#1A1612] md:text-2xl">
-              Cuanto más le cuentas, mejor te entiende.
+              Cuanto más le cuentas, menos tienes que pensar.
             </p>
           </div>
 
@@ -470,7 +470,7 @@ function Opinionated() {
                   </p>
                   <div className="mt-4 ml-6 rounded-xl bg-[#F2EDE0] px-4 py-3">
                     <div className="text-[10px] uppercase tracking-[0.2em] text-[#2D6A4F]">
-                      ONA
+                      Mimoia
                     </div>
                     <p className="mt-1 text-sm leading-snug text-[#1A1612] md:text-base">
                       {ex.ona}
@@ -494,12 +494,12 @@ function Differential() {
   const inView = useInView(ref, { once: true, amount: 0.2 })
 
   const rows = [
-    { tracking: "Registras lo que ya comiste", ona: "Planificas lo que vas a comer" },
-    { tracking: "Cuentan calorías a posteriori", ona: "Organiza tu semana a priori" },
-    { tracking: "Esfuerzo diario de 21 entradas", ona: "Una sesión semanal de 2 minutos" },
-    { tracking: "Sin criterio nutricional", ona: "Criterio de cocina casera y de temporada que puedes ajustar" },
-    { tracking: "No generan la lista de la compra", ona: "La lista sale automática del menú" },
-    { tracking: "Empiezan de cero cuando cambias de app", ona: "Recuerda todo lo que le vas contando" },
+    { tracking: "Apuntas lo que ya comiste", ona: "Piensa lo que vais a comer" },
+    { tracking: "Cuentan las calorías de una persona", ona: "Piensa en toda la casa" },
+    { tracking: "Te piden algo cada día", ona: "Dos minutos a la semana" },
+    { tracking: "Tienes que acordarte de abrir la app", ona: "Te escribe por WhatsApp cuando toca" },
+    { tracking: "La lista de la compra la haces tú", ona: "La lista sale sola, y se la puedes mandar a tus tiendas" },
+    { tracking: "Empiezan de cero cada vez", ona: "Recuerda lo que le vas contando" },
   ]
 
   return (
@@ -507,14 +507,14 @@ function Differential() {
       <div className="mx-auto max-w-7xl">
         <div className="mb-16 grid grid-cols-1 items-end gap-6 md:grid-cols-12">
           <div className="md:col-span-7">
-            <div className="text-eyebrow mb-4">Capítulo 03</div>
+            <div className="text-eyebrow mb-4">Capítulo 04</div>
             <h2 className="text-editorial-lg">
-              ONA no es una <span className="font-italic italic">app de tracking</span>.
+              Mimoia no es una app de <span className="font-italic italic">dietas</span>.
             </h2>
           </div>
           <div className="md:col-span-4 md:col-start-9">
             <p className="text-base leading-relaxed text-[#4A4239]">
-              Las apps de calorías miden lo que pasa cuando ya es tarde. ONA opera <em className="font-italic">a priori</em>.
+              Las apps de calorías miden lo que ya comiste. Mimoia piensa <em className="font-italic">lo que vais a comer</em>.
             </p>
           </div>
         </div>
@@ -522,12 +522,12 @@ function Differential() {
         <div className="overflow-hidden rounded-[24px] border border-[#DDD6C5]">
           <div className="grid grid-cols-2 border-b border-[#DDD6C5] bg-[#F2EDE0]">
             <div className="p-6 md:p-8">
-              <div className="text-eyebrow text-[#7A7066]">Las apps de tracking</div>
+              <div className="text-eyebrow text-[#7A7066]">Las apps de calorías</div>
               <div className="mt-1 font-display text-2xl text-[#7A7066] line-through decoration-1">MyFitnessPal · Yazio</div>
             </div>
             <div className="border-l border-[#DDD6C5] p-6 md:p-8">
-              <div className="text-eyebrow text-[#2D6A4F]">ONA</div>
-              <div className="mt-1 font-display text-2xl text-[#1A1612]">Tu asistente</div>
+              <div className="text-eyebrow text-[#2D6A4F]">Mimoia</div>
+              <div className="mt-1 font-display text-2xl text-[#1A1612]">Tu semana pensada</div>
             </div>
           </div>
           {rows.map((row, i) => (
@@ -580,11 +580,11 @@ function Manifesto() {
       <div className="relative mx-auto max-w-5xl text-center">
         <div className="text-eyebrow mb-8 text-[#95D5B2]">Manifiesto</div>
         <p className="text-editorial-lg text-[#FAF6EE]">
-          No te pedimos que registres
+          No te pedimos que apuntes
           <br />
           lo que <span className="font-italic italic">ya</span> comiste.
           <br />
-          Te organizamos lo que vas a comer
+          Te pensamos lo que vais a comer
           <br />
           con <span className="font-italic italic text-[#52B788]">lo que ya nos contaste</span>.
         </p>
@@ -600,7 +600,7 @@ function Counter() {
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: true, amount: 0.4 })
   const [count, setCount] = useState(0)
-  // A real number: the size of ONA's public catalogue (X-Total-Count of the
+  // A real number: the size of Mimoia's public catalogue (X-Total-Count of the
   // anonymous /recipes listing). The section used to animate to a made-up
   // "2.847 personas"; it now hides itself if the number can't be read.
   const [total, setTotal] = useState<number | null>(null)
@@ -636,7 +636,7 @@ function Counter() {
           {count.toLocaleString("es-ES")}
         </div>
         <p className="mt-6 text-base text-[#4A4239] md:text-lg">
-          recetas en el catálogo de ONA, listas para entrar en tu menú de la semana.
+          recetas en el catálogo de Mimoia. Más las que tú guardes de Instagram, de TikTok o de tu abuela.
         </p>
       </div>
     </section>
@@ -653,33 +653,33 @@ function FinalCTA() {
     <section className="bg-[#F2EDE0] px-6 py-32 md:px-10 md:py-48">
       <div className="mx-auto max-w-5xl text-center">
         <h2 className="text-editorial-xl">
-          Tu menú de <span className="font-italic italic text-[#C65D38]">esta</span> semana
+          La cena de <span className="font-italic italic text-[#C65D38]">esta</span> noche,
           <br />
-          está a 2 minutos.
+          ya pensada.
           <br />
-          Las <span className="font-italic italic">siguientes</span>
+          Las <span className="font-italic italic">siguientes</span>,
           <br />
-          te conocen <span className="text-[#C65D38]">mejor</span>.
+          <span className="text-[#C65D38]">también</span>.
         </h2>
         <div className="mt-12 flex flex-col items-center gap-4">
           <MagneticButton href={`#${WAITLIST_ANCHOR}`} size="lg">
-            Únete a la lista de espera
+            Quiero mi semana pensada
             <ArrowUpRight size={20} />
           </MagneticButton>
           <p className="text-xs text-[#7A7066]">
-            Sin tarjeta · Sin compromiso · Baja en un toque
+            Gratis durante la beta · Sin tarjeta · Te borras con un clic
           </p>
         </div>
 
         <div className="mt-32 flex flex-col items-center gap-6 border-t border-[#DDD6C5] pt-12 text-sm text-[#7A7066] md:flex-row md:justify-between">
-          <div className="font-display text-2xl text-[#1A1612]">ONA</div>
+          <div className="font-display text-2xl text-[#1A1612]">Mimoia</div>
           <nav className="flex gap-8">
             <Link href="/como-funciona" className="link-reveal hover:text-[#1A1612]">Cómo funciona</Link>
             <Link href="/recipes" className="link-reveal hover:text-[#1A1612]">Recetas</Link>
             <Link href="/privacidad" className="link-reveal hover:text-[#1A1612]">Privacidad</Link>
-            <Link href="/terminos" className="link-reveal hover:text-[#1A1612]">Terminos</Link>
+            <Link href="/terminos" className="link-reveal hover:text-[#1A1612]">Términos</Link>
           </nav>
-          <div className="text-xs">© 2026 ONA</div>
+          <div className="text-xs">© 2026 Mimoia</div>
         </div>
       </div>
     </section>

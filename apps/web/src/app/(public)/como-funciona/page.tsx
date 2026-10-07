@@ -14,7 +14,7 @@ const STEP3_IMG = "/landing/step-03.jpg"
 const FAQS = [
   {
     q: "Puedo anadir mis propias recetas?",
-    a: "Si. Tienes un chat con el asistente de ONA donde puedes contarle la receta de tu abuela o esa que descargaste. La extrae paso a paso y la guarda en tu coleccion.",
+    a: "Si. Tienes un chat con el asistente de Mimoia donde puedes contarle la receta de tu abuela o esa que descargaste. La extrae paso a paso y la guarda en tu coleccion.",
   },
   {
     q: "Es gratis?",
@@ -26,7 +26,7 @@ const FAQS = [
   },
   {
     q: "Funciona para dietas especiales?",
-    a: "ONA respeta tus restricciones desde el onboarding. Sin gluten, vegetariano, sin lacteos, lo que tengas. Y puedes anadir las tuyas en cualquier momento.",
+    a: "Mimoia respeta tus restricciones desde el onboarding. Sin gluten, vegetariano, sin lacteos, lo que tengas. Y puedes anadir las tuyas en cualquier momento.",
   },
 ]
 
@@ -52,10 +52,10 @@ function Hero() {
         >
           <div className="text-eyebrow mb-6">Manual de uso</div>
           <h1 className="text-editorial-xl max-w-4xl">
-            Asi <span className="font-italic italic">funciona</span> ONA.
+            Asi <span className="font-italic italic">funciona</span> Mimoia.
           </h1>
           <p className="mt-10 max-w-xl text-base leading-relaxed text-[#4A4239] md:text-lg">
-            Tres pasos honestos. Lo que veras a continuacion es lo unico que pasa entre que abres ONA y tienes tu menu listo. Sin sorpresas, sin pasos ocultos.
+            Tres pasos honestos. Lo que veras a continuacion es lo unico que pasa entre que abres Mimoia y tienes tu menu listo. Sin sorpresas, sin pasos ocultos.
           </p>
         </motion.div>
       </div>
@@ -77,7 +77,7 @@ function Steps() {
       num: "02",
       eyebrow: "Dos minutos",
       title: "Recibe tu menu.",
-      desc: "ONA disena tu semana. Lunes a domingo, las comidas que tu hayas configurado. Todo respeta temporada, evita repeticiones y se ajusta a tu balance nutricional. Si algo no te convence, lo cambias hablando.",
+      desc: "Mimoia disena tu semana. Lunes a domingo, las comidas que tu hayas configurado. Todo respeta temporada, evita repeticiones y se ajusta a tu balance nutricional. Si algo no te convence, lo cambias hablando.",
       detail: "El motor evalua hasta 200 combinaciones para encontrar la que mejor encaja con tu perfil. Calcula calorias, macronutrientes y variedad. Luego puedes fijar platos para que no se muevan en proximas regeneraciones.",
       img: STEP2_IMG,
     },
@@ -86,7 +86,7 @@ function Steps() {
       eyebrow: "Sin friccion",
       title: "Compra y cocina.",
       desc: "Tu lista de la compra sale automatica del menu. Ingredientes consolidados (si dos recetas llevan tomate, una sola entrada), agrupados por seccion del super, ajustados a tus comensales.",
-      detail: "Comparte la lista con tu pareja o quien va al super. Marca lo que ya tienes en casa y desaparece. Marca lo comprado y se queda atravesado. Cuando cocinas, marca el plato como hecho y ONA aprende para futuras semanas.",
+      detail: "Comparte la lista con tu pareja o quien va al super. Marca lo que ya tienes en casa y desaparece. Marca lo comprado y se queda atravesado. Cuando cocinas, marca el plato como hecho y Mimoia aprende para futuras semanas.",
       img: STEP3_IMG,
     },
   ]

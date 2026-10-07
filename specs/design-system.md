@@ -89,7 +89,7 @@ The `.standalone-pt` utility applies `padding-top: var(--safe-top)` so content d
 
 ## Pages currently in Editorial Mode
 
-- `/` (landing) — hero with parallax, magnetic CTA ("Únete a la lista de espera", smooth-scrolls in place to the waitlist so `?invita=`/`?ref=` stay in the URL), masonry steps, marquee, a **waitlist section** before the final CTA (`components/waitlist/WaitlistSection.tsx`, `#lista-de-espera`: cream bg, eyebrow "Lista de espera · Mimoia", `text-editorial-lg` headline with terracotta italic, form in a `rounded-[28px]` paper card with `.input-editorial` fields, `.chip-filter` one-tap answers as `role="radio"` buttons, accent-forest checkboxes, ink pill submit; success state with `ReferralShare` — link field + "Copiar enlace" ink pill + "Enviar por WhatsApp" outline pill — see [Waitlist](./waitlist.md)), and a counter showing the **real** size of the public catalogue (`X-Total-Count` of anonymous `GET /recipes`; hidden if unreadable). Until 2026-10-07 it animated to a made-up "2.847 personas"
+- `/` (landing) — hero with parallax, magnetic CTA ("Quiero mi semana pensada", smooth-scrolls in place to the waitlist so `?invita=`/`?ref=` stay in the URL), masonry steps, marquee, a **waitlist section** before the final CTA (`components/waitlist/WaitlistSection.tsx`, `#lista-de-espera`: cream bg, eyebrow "Lista de espera · Mimoia", `text-editorial-lg` headline with terracotta italic, form in a `rounded-[28px]` paper card with `.input-editorial` fields, `.chip-filter` one-tap answers as `role="radio"` buttons, accent-forest checkboxes, ink pill submit; success state with `ReferralShare` — link field + "Copiar enlace" ink pill + "Enviar por WhatsApp" outline pill — see [Waitlist](./waitlist.md)), and a counter showing the **real** size of the public catalogue (`X-Total-Count` of anonymous `GET /recipes`; hidden if unreadable). Until 2026-10-07 it animated to a made-up "2.847 personas"
 - `/como-funciona` — accordion FAQ, step images
 - `/recipes` — beige bg, sticky search, expandable filter sheet, editorial header with rust italic
 - `/recipes/[id]` — large hero photo with cream sheet, dotted ingredient list, monospace quantities, "Capitulo 01/02" eyebrow labels
@@ -122,6 +122,7 @@ These have not been migrated to the editorial system yet:
 
 ## Constraints
 
+- **Public brand is Mimoia** (decision D-012 in ONA HQ, 2026-10-07): the landing, `PublicNavbar`, `Footer`, `/como-funciona`, `/privacidad`, `/terminos`, the public recipe pages and the document `<title>` say "Mimoia". The logged-in app still says "ONA" until the coordinated rename before the beta (2026-10-28). Landing copy is written from the customer's mental load ("Lo cansado no es cocinar. Es decidir."), not from features, and never uses health data in examples (no doctors, diets or intolerances in the sample chats).
 - The `inStock` field is camelCase end-to-end (frontend, API, DB JSONB) — never `in_stock`
 - Spanish-language only (no i18n setup)
 - Mobile-first (test at 390×844 — iPhone 14 — before declaring UI work done)

@@ -70,10 +70,10 @@ export default function Footer() {
         <div className="mt-24 flex items-end justify-between">
           <div>
             <div className="font-display text-[clamp(4rem,12vw,10rem)] leading-tight tracking-tighter text-[#FAF6EE]">
-              ONA
+              Mimoia
             </div>
             <div className="mt-4 text-xs text-[#FAF6EE]/50">
-              © 2026 ONA · Cook with intention
+              © 2026 Mimoia · Cocina de casa, sin pensarla
             </div>
           </div>
           <div className="hidden text-right text-xs text-[#FAF6EE]/40 md:block">

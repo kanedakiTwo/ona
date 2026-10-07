@@ -275,7 +275,7 @@ export function waitlistUnsubscribePath(token: string): string {
 
 /** What the person sends to their household. Plain, first person, no health claims. */
 export function waitlistShareText(referralUrl: string): string {
-  return `Me he apuntado a ${BRAND_NAME}: te hace el menú de la semana y la lista de la compra, y te lo manda por WhatsApp. Si te apuntas con mi enlace, entramos antes: ${referralUrl}`
+  return `Me he apuntado a ${BRAND_NAME}: te piensa el menú de la semana, te hace la lista de la compra y te escribe por WhatsApp cuando toca. Si te apuntas con mi enlace, entramos juntos y antes: ${referralUrl}`
 }
 
 export function whatsappShareHref(text: string): string {

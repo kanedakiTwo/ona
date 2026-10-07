@@ -75,7 +75,7 @@ export default function PublicRecipesPage() {
 
         <div className="mt-8">
           <p className="text-eyebrow mb-6 text-[#7A7066]">
-            {isLoading ? "Cargando…" : `${recipes.length} recetas del catálogo ONA`}
+            {isLoading ? "Cargando…" : `${recipes.length} recetas del catálogo Mimoia`}
           </p>
 
           {isLoading ? (
@@ -120,12 +120,12 @@ function Hero() {
   return (
     <section className="px-6 pb-12 pt-28 md:px-10 md:pb-16 md:pt-36">
       <div className="mx-auto max-w-7xl">
-        <div className="text-eyebrow mb-6">Catálogo ONA</div>
+        <div className="text-eyebrow mb-6">Catálogo Mimoia</div>
         <h1 className="text-editorial-xl leading-tight">
           Recetas con <span className="font-italic italic">criterio</span>.
         </h1>
         <p className="mt-8 max-w-xl text-base leading-relaxed text-[#4A4239] md:text-lg">
-          El catálogo curado por ONA. Recetas honestas, de temporada, con su
+          El catálogo curado por Mimoia. Recetas honestas, de temporada, con su
           ficha nutricional y tiempos reales. Léelas libremente — para
           guardarlas, planificar tu semana o crear las tuyas, crea una cuenta.
         </p>
@@ -186,7 +186,7 @@ function PublicRecipeCard({ recipe }: { recipe: any }) {
           </div>
         )}
         <div className="absolute bottom-2 left-2 rounded-full bg-[#FAF6EE]/95 px-2 py-0.5 text-[9px] uppercase tracking-[0.15em] text-[#1A1612] backdrop-blur-sm">
-          ONA
+          Mimoia
         </div>
       </div>
       <div className="mt-2.5 space-y-1">
@@ -208,7 +208,7 @@ function SignupCTA() {
     <section className="mx-auto mt-20 max-w-4xl rounded-[32px] bg-[#1A1612] px-8 py-16 text-center text-[#FAF6EE] md:px-12 md:py-20">
       <div className="text-eyebrow mb-6 text-[#FAF6EE]/60">Para hacerlas tuyas</div>
       <h2 className="text-editorial-lg leading-tight">
-        Apúntate y <span className="font-italic italic">ONA cocina la semana</span> por ti.
+        Apúntate y <span className="font-italic italic">Mimoia cocina la semana</span> por ti.
       </h2>
       <p className="mx-auto mt-6 max-w-md text-sm text-[#FAF6EE]/70 md:text-base">
         Te plantea menús, te genera la lista de la compra, y va recordando lo

@@ -12,7 +12,7 @@ function Contact() {
     </a>
   ) : (
     // Until NEXT_PUBLIC_SUPPORT_EMAIL is set (beta, invitation only).
-    <>la persona de ONA que te invitó a la beta</>
+    <>la persona de Mimoia que te invitó a la beta</>
   )
 }
 
@@ -30,7 +30,7 @@ export default function PrivacidadPage() {
 
         <H2>1. Quién trata tus datos</H2>
         <p>
-          El responsable del tratamiento es el equipo de ONA. Para cualquier cuestión sobre tus datos
+          El responsable del tratamiento es el equipo de Mimoia. Para cualquier cuestión sobre tus datos
           o para ejercer tus derechos, escribe a <Contact />.
         </p>
 
@@ -39,12 +39,12 @@ export default function PrivacidadPage() {
           <li><strong>Cuenta:</strong> nombre de usuario, email y contraseña (guardada cifrada, nunca en claro).</li>
           <li>
             <strong>Datos de salud y alimentación:</strong> sexo, edad, peso, altura y nivel de actividad
-            (para calcular tus calorías), alergias, intolerancias y restricciones (para que ONA no te
+            (para calcular tus calorías), alergias, intolerancias y restricciones (para que Mimoia no te
             proponga lo que no puedes comer), gustos y lo que cocinas. Las alergias y los datos físicos son
             datos de salud: solo los tratamos porque tú nos los das, con tu consentimiento explícito, y
             puedes borrarlos cuando quieras desde tu perfil.
           </li>
-          <li><strong>Tu uso de ONA:</strong> menús, lista de la compra, despensa, recetas propias y fotos que subas.</li>
+          <li><strong>Tu uso de Mimoia:</strong> menús, lista de la compra, despensa, recetas propias y fotos que subas.</li>
           <li>
             <strong>Conversaciones con el asistente</strong> (chat, voz y WhatsApp): el texto de los mensajes y la
             transcripción de las notas de voz. Si conectas WhatsApp, también tu número de teléfono.
@@ -65,7 +65,7 @@ export default function PrivacidadPage() {
           <li>Detectar y arreglar los fallos de la aplicación, con un registro propio que no se comparte con terceros.</li>
         </ul>
         <p>
-          No vendemos tus datos ni los usamos para publicidad. ONA es un asistente con inteligencia
+          No vendemos tus datos ni los usamos para publicidad. Mimoia es un asistente con inteligencia
           artificial: puede equivocarse y no sustituye a un profesional sanitario.
         </p>
 
@@ -77,7 +77,7 @@ export default function PrivacidadPage() {
         </p>
 
         <H2>5. Con quién los compartimos</H2>
-        <p>Solo con los proveedores que hacen funcionar ONA, que tratan los datos por cuenta nuestra:</p>
+        <p>Solo con los proveedores que hacen funcionar Mimoia, que tratan los datos por cuenta nuestra:</p>
         <ul className="ml-5 list-disc space-y-2">
           <li><strong>Anthropic</strong> (modelos Claude): el asistente, la lectura de recetas desde enlaces y fotos, y las estimaciones nutricionales.</li>
           <li><strong>OpenAI</strong>: transcripción de notas de voz y el modo de conversación por voz.</li>
@@ -107,13 +107,13 @@ export default function PrivacidadPage() {
 
         <H2>8. Cookies y almacenamiento local</H2>
         <p>
-          ONA no usa cookies de publicidad ni de analítica. Guarda en tu navegador tu sesión y algunas
+          Mimoia no usa cookies de publicidad ni de analítica. Guarda en tu navegador tu sesión y algunas
           preferencias de pantalla, y una copia de tu menú y tu lista para que funcionen sin conexión. La sesión y
           esa copia se borran al cerrar sesión.
         </p>
 
         <H2>9. Menores</H2>
-        <p>ONA no está dirigida a menores de 14 años.</p>
+        <p>Mimoia no está dirigida a menores de 14 años.</p>
 
         <H2>10. Cambios</H2>
         <p>Si cambiamos esta política de forma relevante, te lo diremos en la app antes de que se aplique.</p>

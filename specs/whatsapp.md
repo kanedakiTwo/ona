@@ -119,6 +119,7 @@ Migration `0032_assistant_reviews.sql` (new table + nullable `meta` column; idem
 
 ## Constraints
 
+- **AI disclosure (EU AI Act art. 50):** both first messages Ona can send in a conversation — the unlinked "Hola, soy ONA…" hint and the "¡Listo!" after linking — include "Soy un asistente de inteligencia artificial (IA): puedo equivocarme y no sustituyo a un profesional sanitario." (`AI_DISCLOSURE_FIRST_PERSON` in `@ona/shared`). Pinned by `whatsappInbound.test.ts`.
 - No WhatsApp groups. Signing up happens on the web (the connect link offers "Crear cuenta"), not inside the chat.
 - Meta's test number can only message the up-to-5 recipients verified in the Meta dashboard. Opening the channel to all users needs a real number plus business verification.
 - In-process queue: if the API restarts mid-turn, that message stays `received` and gets no answer (no sweeper; messages older than 2 h are dropped as stale anyway).

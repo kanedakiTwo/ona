@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import type { RealtimeStatus, RealtimeTurn } from '@/hooks/useRealtimeSession'
+import { AI_DISCLOSURE_SHORT } from '@ona/shared'
 
 interface VoiceOverlayProps {
   status: RealtimeStatus
@@ -69,8 +70,9 @@ export default function VoiceOverlay({
         )}
       </div>
 
-      <p className="text-center text-[11px] text-white/40">
-        Habla con normalidad. Puedes interrumpirla en cualquier momento.
+      {/* AI Act art. 50: the voice surface discloses it is an AI from the first second */}
+      <p data-testid="ai-disclosure" className="text-center text-[11px] text-white/40">
+        {AI_DISCLOSURE_SHORT} Habla con normalidad. Puedes interrumpirla en cualquier momento.
       </p>
     </div>
   )

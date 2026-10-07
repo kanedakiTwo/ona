@@ -56,6 +56,7 @@ When the conversation context is "step-by-step cooking" (a recipe-step skill is 
 - Ephemeral tokens are issued by the backend and scoped to a single session; the OpenAI key never reaches the browser.
 - Echo cancellation (`getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })`) is mandatory; without it the assistant interrupts itself.
 - All voice prompts and TTS are in Spanish (`es-ES`).
+- **AI disclosure (EU AI Act art. 50):** the voice overlay footer always reads "Estás hablando con una IA. Habla con normalidad…" (`AI_DISCLOSURE_SHORT` in `@ona/shared`), visible from the moment the overlay opens.
 - Existing `/assistant/:userId/chat` skills are exposed as Realtime tools; the model calls them via function calling and the result is spoken back.
 - Skills that are destructive (`generate_weekly_menu`, `swap_meal`, `create_recipe`) require a verbal confirmation in voice mode before executing.
 

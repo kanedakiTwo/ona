@@ -148,6 +148,7 @@ At `lg+` the `/advisor` page widens its outer container to `max-w-[900px]` so th
 - The chat is single-session in memory (no persistent conversation history in the DB)
 - The history is sent with each request (last 20 messages from the client)
 - All assistant responses are in Spanish by design
+- **AI disclosure (EU AI Act art. 50, in force since 2026-08-02):** the chat shows "Soy Ona, tu asistente de IA" in the empty state and a permanent caption under the input ("Ona es un asistente de inteligencia artificial (IA): puede equivocarse y no sustituye a un profesional sanitario."). The wording lives in `AI_DISCLOSURE*` in `packages/shared/src/constants/aiDisclosure.ts`, shared with voice mode and WhatsApp; pinned by `apps/web/e2e/ai-disclosure.spec.ts`.
 - Voice is browser-side only; if the browser lacks Web Speech API, only text mode works
 - The model used (Claude family) is configured via the LLM provider in `services/providers/`
 - The advisor has read-write access to the user's data via skills (it can generate menus, swap meals, create recipes, etc.) — destructive intents should ideally be confirmed in copy
@@ -185,6 +186,7 @@ At `lg+` the `/advisor` page widens its outer container to `max-w-[900px]` so th
 - [apps/web/src/app/advisor/page.tsx](../apps/web/src/app/advisor/page.tsx)
 - [apps/web/src/app/debug-advisor/page.tsx](../apps/web/src/app/debug-advisor/page.tsx)
 - [apps/web/src/components/advisor/AdvisorChat.tsx](../apps/web/src/components/advisor/AdvisorChat.tsx)
+- [packages/shared/src/constants/aiDisclosure.ts](../packages/shared/src/constants/aiDisclosure.ts) — `AI_DISCLOSURE*` (AI Act art. 50 wording, shared by chat, voice and WhatsApp); e2e in `apps/web/e2e/ai-disclosure.spec.ts`
 - [apps/web/src/hooks/useAssistant.ts](../apps/web/src/hooks/useAssistant.ts)
 - [apps/web/src/hooks/useAdvisor.ts](../apps/web/src/hooks/useAdvisor.ts) — legacy
 - [apps/web/src/hooks/useVoice.ts](../apps/web/src/hooks/useVoice.ts)

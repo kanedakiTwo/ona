@@ -8,6 +8,7 @@ import { useVoice } from '@/hooks/useVoice'
 import { consumeVoiceTurns, subscribeVoiceTurns } from '@/lib/voiceMessages'
 import { useVoiceMode } from '@/components/voice/VoiceProvider'
 import { emitCookingCommand } from '@/lib/cookingCommands'
+import { AI_DISCLOSURE } from '@ona/shared'
 
 interface Message {
   id: string
@@ -170,7 +171,7 @@ export default function AdvisorChat({ userId }: AdvisorChatProps) {
               <span className="text-3xl">🥗</span>
             </div>
             <p className="text-center text-[13px] text-[#7A7066]">
-              Soy tu asistente de ONA. Escribe o habla.
+              Soy Ona, tu asistente de IA. Escribe o habla.
             </p>
             <div className="flex flex-wrap justify-center gap-2">
               {EXAMPLE_PROMPTS.map((prompt) => (
@@ -321,6 +322,10 @@ export default function AdvisorChat({ userId }: AdvisorChatProps) {
             <Send size={16} />
           </button>
         </div>
+        {/* AI Act art. 50: visible before and during every chat interaction */}
+        <p data-testid="ai-disclosure" className="mt-2 text-center text-[11px] leading-snug text-[#7A7066]">
+          {AI_DISCLOSURE}
+        </p>
       </div>
     </div>
   )

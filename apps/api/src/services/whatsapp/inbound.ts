@@ -6,6 +6,7 @@ import type { LinkWithUser } from './store.js'
 import { buildChatHistory, HISTORY_WINDOW_MS, type HistoryRow } from './history.js'
 import { connectUrl, extractLinkCodeCandidates } from './linking.js'
 import { renderAssistantReply, renderPlainText, type OutboundMessage } from './render.js'
+import { AI_DISCLOSURE_FIRST_PERSON } from '@ona/shared'
 
 /**
  * Inbound orchestrator: one WhatsApp message in → zero or more replies out.
@@ -73,10 +74,10 @@ export interface InboundDeps {
 
 export const COPY = {
   linked: (name: string | null) =>
-    `¡Listo${name ? `, ${name}` : ''}! Tu WhatsApp ya está conectado con ONA. Pregúntame qué toca hoy, pídeme la lista de la compra, mándame un audio o compárteme una receta (enlace o foto) para guardarla.`,
+    `¡Listo${name ? `, ${name}` : ''}! Tu WhatsApp ya está conectado con ONA. Pregúntame qué toca hoy, pídeme la lista de la compra, mándame un audio o compárteme una receta (enlace o foto) para guardarla.\n\n${AI_DISCLOSURE_FIRST_PERSON}`,
   badCode: 'Ese código no es válido o ha caducado. Genera uno nuevo en ONA → Perfil → Ona en WhatsApp.',
   connect: (url: string) =>
-    `Hola, soy ONA, tu asistente de cocina. Para hablar conmigo por aquí, conecta tu cuenta:\n${url}\n\nEntra (o crea tu cuenta) y te daré un código para enviarme desde este chat.`,
+    `Hola, soy ONA, tu asistente de cocina. ${AI_DISCLOSURE_FIRST_PERSON}\n\nPara hablar conmigo por aquí, conecta tu cuenta:\n${url}\n\nEntra (o crea tu cuenta) y te daré un código para enviarme desde este chat.`,
   suspended: 'Tu cuenta de ONA está suspendida. Contacta con el equipo de ONA si crees que es un error.',
   notAllowed: 'WhatsApp todavía no está disponible para tu cuenta de ONA.',
   budget: (euros: string) =>

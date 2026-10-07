@@ -10,6 +10,7 @@ import type { LinkWithUser } from '../services/whatsapp/store.js'
 import type { HistoryRow } from '../services/whatsapp/history.js'
 import type { OutboundMessage } from '../services/whatsapp/render.js'
 import { EMPTY_USAGE } from '../services/advisorBudget.js'
+import { AI_DISCLOSURE_FIRST_PERSON } from '@ona/shared'
 
 const NOW = new Date('2026-10-06T12:00:00Z')
 const PHONE = '34600111222'
@@ -124,6 +125,16 @@ describe('processInbound — unlinked numbers', () => {
     expect(first.sent[0].text).not.toMatch(/[?&]t=/)
     expect(first.outbound[0].kind).toBe('link')
     expect(first.chat).not.toHaveBeenCalled()
+  })
+
+  it('discloses that Ona is an AI in the first message of either path (AI Act art. 50)', async () => {
+    const unknown = setup({ link: null })
+    await processInbound(msg({ text: 'hola' }), unknown.deps)
+    expect(unknown.sent[0].text).toContain(AI_DISCLOSURE_FIRST_PERSON)
+
+    const linking = setup({ link: null, consume: () => ({ userId: 'user-1' }) })
+    await processInbound(msg({ text: 'Vincular ONA: 4F7K2A' }), linking.deps)
+    expect(linking.sent[0].text).toContain(AI_DISCLOSURE_FIRST_PERSON)
   })
 
   it('sends the connect hint at most once an hour', async () => {

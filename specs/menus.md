@@ -195,6 +195,5 @@ user could read/modify any menu by id.
 - [apps/api/src/services/nutrientCalculator.ts](../apps/api/src/services/nutrientCalculator.ts)
 - [apps/web/src/app/menu/page.tsx](../apps/web/src/app/menu/page.tsx)
 - [apps/web/src/components/menu/WeekStrip.tsx](../apps/web/src/components/menu/WeekStrip.tsx)
-- [apps/web/src/components/menu/MealPhotoCard.tsx](../apps/web/src/components/menu/MealPhotoCard.tsx)
 - [apps/web/src/hooks/useMenu.ts](../apps/web/src/hooks/useMenu.ts) — `useGenerateMenu`, `useRegenerateMeal`, `useLockMeal`, `useAddMealSlot`, `useDeleteMealSlot`, `useUpdateSlotServings`
 - [packages/shared/src/types/menu.ts](../packages/shared/src/types/menu.ts)

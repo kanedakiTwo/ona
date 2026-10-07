@@ -174,7 +174,7 @@ Lint validator for recipe data integrity, blocks save on missing ingredients in 
 
 ## [Menus](./menus.md)
 
-Weekly meal planning, menu generation algorithm using cached `nutritionPerServing`, recipe matcher, slot regeneration, meal locking, calorie targets, BMR, season detection, favorites boost, no-repeats, week navigation, WeekStrip, MealPhotoCard, menu history, day index 0-6 (Monday-Sunday), household-weighted scaling (`adults + 0.5 × kidsCount`).
+Weekly meal planning, menu generation algorithm using cached `nutritionPerServing`, recipe matcher, slot regeneration, meal locking, calorie targets, BMR, season detection, favorites boost, no-repeats, week navigation, WeekStrip, meal photo cards, menu history, day index 0-6 (Monday-Sunday), household-weighted scaling (`adults + 0.5 × kidsCount`).
 
 **Source**: `apps/api/src/routes/menus.ts`, `apps/api/src/services/menuGenerator.ts`, `apps/api/src/services/recipeMatcher.ts`, `apps/web/src/app/menu/`, `apps/web/src/components/menu/`, `apps/web/src/hooks/useMenu.ts`
 
@@ -238,7 +238,7 @@ WhatsApp channel for the assistant via Meta WhatsApp Cloud API: webhook (`GET` v
 
 ## [Design System](./design-system.md)
 
-Editorial design system, design tokens (`@theme` in globals.css), color palette (cream, ink, terracotta, forest, mint), typography (Fraunces variable, Cormorant Garamond italic, Inter, JetBrains Mono), motion/react animations, magnetic buttons, grain texture, link-reveal underlines, marquee, layoutId pill nav, editorial mode pages (landing, como-funciona, recipes), app mode legacy pages (menu, shopping, profile, advisor), Tailwind v4, mobile-first 430px max-width, bottom tab bar, components (RecipeCard, MealPhotoCard, WeekStrip, Navbar, FavoriteButton, AdvisorChat).
+Editorial design system, design tokens (`@theme` in globals.css), color palette (cream, ink, terracotta, forest, mint), typography (Fraunces variable, Cormorant Garamond italic, Inter, JetBrains Mono), motion/react animations, magnetic buttons, grain texture, link-reveal underlines, marquee, layoutId pill nav, editorial mode pages (landing, como-funciona, recipes), app mode legacy pages (menu, shopping, profile, advisor), Tailwind v4, mobile-first 430px max-width, bottom tab bar, components (RecipeCard, meal photo cards, WeekStrip, Navbar, FavoriteButton, AdvisorChat).
 
 **Source**: `apps/web/src/app/globals.css`, `apps/web/src/app/layout.tsx`, `apps/web/src/components/shared/`
 

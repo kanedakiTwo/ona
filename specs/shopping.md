@@ -120,7 +120,5 @@ At `lg+` the `/shopping` page widens its outer container to `max-w-[900px]` so t
 - [apps/api/src/routes/shopping.ts](../apps/api/src/routes/shopping.ts)
 - [apps/api/src/services/shoppingList.ts](../apps/api/src/services/shoppingList.ts) — aggregation + unit conversion + aisle grouping
 - [apps/web/src/app/shopping/page.tsx](../apps/web/src/app/shopping/page.tsx)
-- [apps/web/src/components/shopping/ShoppingList.tsx](../apps/web/src/components/shopping/ShoppingList.tsx)
-- [apps/web/src/components/shopping/StockManager.tsx](../apps/web/src/components/shopping/StockManager.tsx)
 - [apps/web/src/hooks/useShopping.ts](../apps/web/src/hooks/useShopping.ts)
 - [packages/shared/src/types/shopping.ts](../packages/shared/src/types/shopping.ts)

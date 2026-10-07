@@ -148,7 +148,7 @@ The `.standalone-pt` utility class applies `padding-top: var(--safe-top)` so con
 - [apps/web/src/lib/pwa/useOnlineStatus.ts](../apps/web/src/lib/pwa/useOnlineStatus.ts) — `online`/`offline` event hook
 - [apps/web/src/lib/pwa/haptics.ts](../apps/web/src/lib/pwa/haptics.ts) — `navigator.vibrate` wrapper with named patterns (light/medium)
 - [apps/web/src/lib/pwa/share.ts](../apps/web/src/lib/pwa/share.ts) — `navigator.share` wrapper with clipboard fallback
-- [apps/web/src/lib/pwa/wakeLock.ts](../apps/web/src/lib/pwa/wakeLock.ts) — Wake Lock acquire/release helpers
+- [apps/web/src/hooks/useWakeLock.ts](../apps/web/src/hooks/useWakeLock.ts) — Wake Lock acquire/release (cooking mode)
 - [apps/web/src/lib/pwa/notifications.ts](../apps/web/src/lib/pwa/notifications.ts) — permission flow, scheduling from meal-time preferences, re-arm on app open
 - [apps/web/src/lib/pwa/sessionData.ts](../apps/web/src/lib/pwa/sessionData.ts) — `clearSessionData()`: wipes `api-cache` + the offline queue on session change
 - [apps/web/scripts/verify-sw.mjs](../apps/web/scripts/verify-sw.mjs) — post-build guard on the generated `sw.js`

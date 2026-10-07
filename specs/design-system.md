@@ -136,7 +136,6 @@ These have not been migrated to the editorial system yet:
 | `PublicNavbar` | `components/shared/PublicNavbar.tsx` | Transparent → blur on scroll |
 | `Footer` | `components/shared/Footer.tsx` | Hidden on `/` (landing has its own) |
 | `WeekStrip` | `components/menu/WeekStrip.tsx` | 7-day picker with status circles |
-| `MealPhotoCard` | `components/menu/MealPhotoCard.tsx` | Photo card with gradient overlay |
 | `RecipeCard` | `components/recipes/RecipeCard.tsx` | Catalog card |
 | `FavoriteButton` | `components/recipes/FavoriteButton.tsx` | Heart toggle |
 | `AdvisorChat` | `components/advisor/AdvisorChat.tsx` | Chat bubbles + voice mic |

@@ -1,5 +1,8 @@
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 
+/** 401 codes after which the stored session is useless: log out locally. */
+const AUTH_RESET_CODES = new Set(['USER_NOT_FOUND', 'TOKEN_EXPIRED', 'INVALID_TOKEN'])
+
 interface FetchOptions extends Omit<RequestInit, "body"> {
   body?: unknown
 }
@@ -58,12 +61,13 @@ export async function apiFetch<T = unknown>(
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: response.statusText }))
 
-    // Stale token (signed by us but for a deleted user, e.g. after a reseed)
-    // or an expired token: wipe local auth and bounce to /login so the user
-    // can recover without every authed request landing on a confusing error.
+    // Stale token (signed by us but for a deleted user, e.g. after a reseed),
+    // an expired one, or one the API no longer accepts (JWT_SECRET rotated):
+    // wipe local auth and bounce to /login so the user can recover without
+    // every authed request landing on a confusing error.
     if (
       response.status === 401 &&
-      (error?.code === 'USER_NOT_FOUND' || error?.code === 'TOKEN_EXPIRED') &&
+      AUTH_RESET_CODES.has(error?.code) &&
       typeof window !== 'undefined'
     ) {
       localStorage.removeItem('ona_token')

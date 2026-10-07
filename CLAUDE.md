@@ -154,11 +154,9 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 ### Pending
 
 - [ ] **Compra en mis tiendas — primer pedido real** (v1 en prod 2026-10-07, [specs/shop-orders.md](./specs/shop-orders.md)): tus tiendas The Fruits of the World (WhatsApp +34 913 52 51 11), Ben-Car Boadilla (WhatsApp pedidos 638 015 827) y El Corte Inglés (web) ya están dadas de alta en tu hogar.
-  - Falta **el WhatsApp de Pescados Aparicio** (Pozuelo; no es público): añádelo en `/compra/tiendas` o díselo a Ona por WhatsApp ("mi pescadería es Pescados Aparicio, su WhatsApp es …").
-  - La primera vez, avisa en persona a cada tienda de que les pedirás por WhatsApp con una lista y que te digan precio por kilo y total antes de prepararlo.
+  - **Pescadería nueva**: Pescados Aparicio no tiene número, así que hay que elegir otra entre las que propone Claude (cerca de Pozuelo/Boadilla, que acepten WhatsApp). Cuando la elijas, Claude la da de alta.
+  - Avisar en persona a la frutería y a la carnicería (Miguel se encarga) de que les pedirás por WhatsApp con una lista y que te digan precio por kilo y total antes de prepararlo.
   - Haz un pedido de verdad: "hazme la compra" por WhatsApp → envía cada enlace → reenvía a Ona lo que contesten → aprueba → cierra al recoger. Hecho = un pedido cerrado por tienda y las respuestas reales guardadas (sirven para calibrar el lector).
-
-- [ ] **WhatsApp — revisar facturación en Meta (urgente)**: según 360dialog/Gupshup/YCloud (no confirmado en la página de precios de Meta a 2026-10-07), desde el 1-oct-2026 las respuestas de servicio se cobran a partir de 1.000/mes por número y sin medio de pago dado de alta Meta deja de entregarlas. WhatsApp Manager → Facturación: confirmar que hay medio de pago (o que el número de prueba está exento). Hecho = medio de pago visible o exención confirmada. Detalle: [docs/research/Compra ONA por WhatsApp y email.md](./docs/research/Compra%20ONA%20por%20WhatsApp%20y%20email.md) → «Dos riesgos de Meta».
 
 - [ ] **ONA HQ (la empresa con agentes) — arranque**: vive en [`kanedakiTwo/ona-hq`](https://github.com/kanedakiTwo/ona-hq) (local: `~/ona-hq`). Cada mañana `/ona-dia` (≤ 15 min), los lunes `/ona-semana` (≤ 30 min), y notas para los agentes con `/ona-inbox`. Pendiente de Miguel esta semana:
   - Pasar el contacto del/de la dietista-nutricionista (D-005). El mensaje de primer contacto lo prepara Marketing.

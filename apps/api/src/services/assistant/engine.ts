@@ -125,6 +125,7 @@ export async function runToolLoop(params: {
   const executed: { name: string; result: SkillResult }[] = []
   let usage: TokenUsage = EMPTY_USAGE
   let claimCheckDone = false
+  const corrections: string[] = []
 
   for (let round = 0; ; round += 1) {
     const response = await params.client.messages.create({
@@ -164,12 +165,13 @@ export async function runToolLoop(params: {
           : null
       if (!claimCheckDone && round < maxRounds && correction) {
         claimCheckDone = true
+        corrections.push(correction === PROMISE_CORRECTION ? 'promise' : correction === REFUSAL_CORRECTION ? 'refusal' : 'unverified_claim')
         console.warn(`[assistant] corrective round: ${correction === PROMISE_CORRECTION ? 'promise to act later' : claim ? 'unverified action claim' : 'refusal without trying'}`)
         messages.push({ role: 'assistant', content: content as any })
         messages.push({ role: 'user', content: correction })
         continue
       }
-      return buildResponse(text, executed, usage)
+      return buildResponse(text, executed, usage, corrections)
     }
 
     console.log(`[assistant] round ${round}: ${toolUses.map((t) => t.name).join(', ')}`)
@@ -252,9 +254,11 @@ function buildResponse(
   text: string,
   executed: { name: string; result: SkillResult }[],
   usage: TokenUsage,
+  corrections: string[] = [],
 ): AssistantResponse & { usage: TokenUsage } {
+  const trace = { toolsUsed: executed.map((e) => e.name), corrections }
   if (executed.length === 0) {
-    return { message: text || 'No he podido generar una respuesta.', actionTaken: false, usage }
+    return { message: text || 'No he podido generar una respuesta.', actionTaken: false, usage, ...trace }
   }
   // Most visual wins (menu / list / recipe / cooking > nutrition >
   // confirmation > text); among equals, the latest. So "cambia el jueves y
@@ -272,5 +276,6 @@ function buildResponse(
     uiHint: primary.result.uiHint,
     actionTaken: true,
     usage,
+    ...trace,
   }
 }

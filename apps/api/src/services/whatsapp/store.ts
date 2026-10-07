@@ -81,7 +81,13 @@ export async function insertInbound(msg: InboundMessage, body: string | null): P
 
 export async function updateInbound(
   wamid: string,
-  patch: { status: string; body?: string | null; userId?: string | null; errorMessage?: string | null },
+  patch: {
+    status: string
+    body?: string | null
+    userId?: string | null
+    errorMessage?: string | null
+    meta?: { tools?: string[]; corrections?: string[]; ms?: number }
+  },
 ): Promise<void> {
   await db.update(whatsappMessages).set(patch).where(eq(whatsappMessages.wamid, wamid))
 }

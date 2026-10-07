@@ -59,6 +59,7 @@ import {
   recipeIngredients,
   users,
   voiceTranscripts,
+  assistantReviews,
 } from '../db/schema.js'
 import { sql } from 'drizzle-orm'
 import {
@@ -74,6 +75,8 @@ import {
 import { createUsdaClient } from '../services/nutrition/usdaClient.js'
 import { diff, record, type AdminAction } from '../services/auditLog.js'
 import { mintToken } from '../services/passwordReset.js'
+import { reviewDay } from '../services/whatsapp/reviewer.js'
+import { madridParts } from '../services/madridTime.js'
 
 const router = Router()
 
@@ -1075,6 +1078,35 @@ router.get(
     }
   },
 )
+
+// ─── WhatsApp conversation reviews (reviewer agent) ─────────────
+
+// GET /admin/assistant-reviews?limit=N — latest daily reviews, newest first.
+router.get('/admin/assistant-reviews', authMiddleware, requireAdmin, async (req: AuthRequest, res) => {
+  try {
+    const limit = Math.min(30, Math.max(1, Number(req.query.limit) || 7))
+    const rows = await db.select().from(assistantReviews).orderBy(desc(assistantReviews.day)).limit(limit)
+    res.json(rows)
+  } catch (err) {
+    console.error('GET /admin/assistant-reviews error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// POST /admin/assistant-reviews/run { day?: 'YYYY-MM-DD', notify?: boolean } —
+// run (or re-run) the review now. Default day: today in Madrid.
+router.post('/admin/assistant-reviews/run', authMiddleware, requireAdmin, async (req: AuthRequest, res) => {
+  try {
+    const day = typeof req.body?.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.body.day)
+      ? req.body.day
+      : madridParts(new Date()).isoDate
+    const result = await reviewDay(day, undefined, { notify: req.body?.notify === true })
+    res.json(result)
+  } catch (err) {
+    console.error('POST /admin/assistant-reviews/run error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
 
 // Re-export `AdminAction` so consumers (e.g. tests) can import it from the
 // route module if convenient.

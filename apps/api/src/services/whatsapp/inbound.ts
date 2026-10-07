@@ -26,7 +26,13 @@ export interface InboundDeps {
     touchInbound: (phone: string, at: Date) => Promise<void>
     updateInbound: (
       wamid: string,
-      patch: { status: string; body?: string | null; userId?: string | null; errorMessage?: string | null },
+      patch: {
+        status: string
+        body?: string | null
+        userId?: string | null
+        errorMessage?: string | null
+        meta?: { tools?: string[]; corrections?: string[]; ms?: number }
+      },
     ) => Promise<void>
     insertOutbound: (row: {
       phone: string
@@ -296,7 +302,12 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
 
     // Mark the inbound processed BEFORE replying so it precedes the reply in
     // history even if a send fails half-way.
-    await store.updateInbound(msg.wamid, { status: 'processed', userId, body: text })
+    await store.updateInbound(msg.wamid, {
+      status: 'processed',
+      userId,
+      body: text,
+      meta: { tools: response.toolsUsed ?? [], corrections: response.corrections ?? [], ms: deps.now().getTime() - now.getTime() },
+    })
     await out('reply', renderAssistantReply(response, deps.webUrl))
   } catch (err: any) {
     console.error('[whatsapp] processing failed:', err?.message ?? err)

@@ -59,3 +59,7 @@ The admin dashboard handles **system recipes only** (`authorId IS NULL`). User-c
 - [apps/web/src/hooks/useAdmin.ts](../apps/web/src/hooks/useAdmin.ts) — replaces `useCurator.ts`; adds `useVoiceTranscriptSessions` + `useVoiceTranscriptTurns`
 - [apps/web/src/app/profile/page.tsx](../apps/web/src/app/profile/page.tsx) — gated "Admin" footer link, only visible when `role === 'admin'`
 - [apps/web/src/app/curator/page.tsx](../apps/web/src/app/curator/page.tsx) — temporary redirect to `/admin`
+
+## WhatsApp conversation reviews
+
+`GET /admin/assistant-reviews?limit=N` lists the daily conversation reviews (findings, stats, summary), newest first. `POST /admin/assistant-reviews/run { day?, notify? }` runs or re-runs one day. Both are admin-only; see [WhatsApp](./whatsapp.md) → Conversation reviewer agent. There is no UI tab yet.

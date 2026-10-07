@@ -49,6 +49,18 @@ Delivery follows Meta's 24 h customer-service window, measured from `last_inboun
 - **Outside the window:** the approved template `WHATSAPP_TEMPLATE_NAME` (language `WHATSAPP_TEMPLATE_LANG`, default `es`), whose single `{{1}}` body variable carries the message flattened to one line. Buttons are folded in as "Responde: Sí / No.", because Meta rejects newlines in template parameters.
 - **Outside the window with no template:** skipped silently and retried on the next tick while the time window is still open.
 
+## Conversation reviewer agent
+
+Every day after 07:00 Madrid, the scheduler tick runs `runDailyReviewIfDue` (`services/whatsapp/reviewer.ts`) once for **yesterday's** WhatsApp conversations:
+- **Objective signals** (`computeStats`): turns, failed turns, slow turns (> 20 s), engine corrective rounds, frustration cues ("eso no", "ya te he dicho"…), replies ending in a question, proactive sends, send failures.
+- **Transcripts** (`buildTranscripts`): one per user, Madrid times, with the engine trace per turn. Each inbound turn stores `whatsapp_messages.meta = { tools, corrections, ms }`. Older turns read "sin registro" and are not judged on tools.
+- **LLM review:** `claude-opus-5-5`, effort `high`, JSON-schema output, against the product rules: decisive, truthful, transparent about substitutions, brief "Hecho:", explicit request beats stored data, fast, useful proactivity, transcription quality. Each finding has severity (alta/media/baja), category, the turn, what happened, what was expected and a concrete suggested fix (prompt, skill, or missing capability). It never touches user data.
+- **Output:** a row in `assistant_reviews` (one per Madrid day; `ok` / `empty` / `failed`), shown at `GET /admin/assistant-reviews` (admin), plus a WhatsApp summary (outbound `kind='review'`, excluded from the recipient's chat history) sent to `WHATSAPP_REVIEW_EMAILS` (else `ADMIN_EMAILS`) when they have a linked phone.
+- **On-demand runs:** `POST /admin/assistant-reviews/run { day?, notify? }`.
+- **Cost:** one Opus call per day with conversations; about 20 s.
+
+Migration `0032_assistant_reviews.sql` (new table + nullable `meta` column; idempotent).
+
 ## Linking
 
 - The code has 6 characters from `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (no 0/O/1/I) and always contains at least one digit, so an ordinary 6-letter word is never mistaken for a code. It expires after 10 minutes and works once. Generating a new code invalidates the user's previous unused one.

@@ -36,6 +36,10 @@ export interface AssistantResponse {
   data?: any
   uiHint?: string
   actionTaken?: boolean
+  /** Every skill run this turn, in order (for logs and the daily review). */
+  toolsUsed?: string[]
+  /** Corrective rounds the engine forced: unverified_claim | refusal | promise. */
+  corrections?: string[]
 }
 
 export interface ChatMessage {

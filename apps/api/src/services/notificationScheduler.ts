@@ -40,6 +40,7 @@ import {
   PushNotConfiguredError,
 } from './pushNotifier.js'
 import { deliverAlertOverWhatsApp, runProactiveTick } from './whatsapp/outbound.js'
+import { runDailyReviewIfDue } from './whatsapp/reviewer.js'
 import { combineDelivery, type ChannelOutcome } from './whatsapp/proactive.js'
 
 // ─── Habit → method matcher ─────────────────────────────────────
@@ -354,6 +355,14 @@ export async function tickScheduler(): Promise<void> {
     await runProactiveTick(now)
   } catch (err) {
     console.error('[notificationScheduler] whatsapp proactive tick failed:', err)
+  }
+
+  // Daily conversation review (yesterday, once, after 07:00 Madrid).
+  try {
+    const review = await runDailyReviewIfDue(now)
+    if (review) console.log(`[reviewer] ${review.day}: ${review.status}, ${review.findings?.length ?? 0} findings`)
+  } catch (err) {
+    console.error('[notificationScheduler] conversation review failed:', err)
   }
 }
 

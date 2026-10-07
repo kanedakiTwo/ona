@@ -796,7 +796,31 @@ export const whatsappMessages = pgTable('whatsapp_messages', {
   /** in: received|processed|failed|ignored · out: sent|failed */
   status: text('status').notNull(),
   errorMessage: text('error_message'),
+  /**
+   * Inbound turns: what the assistant did — `{ tools, corrections, ms }` —
+   * so the daily conversation review has objective signals.
+   */
+  meta: jsonb('meta').$type<{ tools?: string[]; corrections?: string[]; ms?: number }>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_wa_messages_phone_created').on(t.phone, t.createdAt),
 ])
+
+/**
+ * Daily review of WhatsApp conversations by an LLM "reviewer agent"
+ * (services/whatsapp/reviewer.ts): what went wrong and what to fix.
+ * One row per Madrid day reviewed.
+ */
+export const assistantReviews = pgTable('assistant_reviews', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  /** YYYY-MM-DD (Europe/Madrid) of the conversations reviewed. */
+  day: text('day').notNull().unique(),
+  /** ok | empty | failed */
+  status: text('status').notNull(),
+  stats: jsonb('stats').$type<Record<string, number>>(),
+  findings: jsonb('findings').$type<unknown[]>(),
+  summary: text('summary'),
+  model: text('model'),
+  errorMessage: text('error_message'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})

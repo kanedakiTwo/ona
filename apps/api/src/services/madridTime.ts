@@ -49,3 +49,21 @@ export function madridWeekStart(now: Date = new Date(), offsetWeeks = 0): string
   const p = madridParts(now)
   return mondayOf(p.isoDate, p.weekday, offsetWeeks)
 }
+
+/** The UTC instant of 00:00 Europe/Madrid on `isoDate` (DST-aware). */
+export function madridMidnightUtc(isoDate: string): Date {
+  const base = Date.parse(`${isoDate}T00:00:00Z`)
+  for (const offsetHours of [1, 2, 0, 3]) {
+    const t = new Date(base - offsetHours * 3_600_000)
+    const p = madridParts(t)
+    if (p.isoDate === isoDate && p.hour === 0 && p.minute === 0) return t
+  }
+  return new Date(base - 2 * 3_600_000)
+}
+
+/** YYYY-MM-DD shifted by `days` (calendar arithmetic, no TZ involved). */
+export function addDays(isoDate: string, days: number): string {
+  const d = new Date(`${isoDate}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}

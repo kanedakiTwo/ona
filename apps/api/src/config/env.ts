@@ -147,6 +147,14 @@ export const env = {
    * it, proactive messages only go out while the window is open.
    */
   WHATSAPP_TEMPLATE_NAME: process.env.WHATSAPP_TEMPLATE_NAME || '',
+  /**
+   * Who receives the daily WhatsApp conversation review (reviewer.ts) on
+   * WhatsApp. Comma-separated ONA emails; empty → ADMIN_EMAILS.
+   */
+  WHATSAPP_REVIEW_EMAILS: (process.env.WHATSAPP_REVIEW_EMAILS || '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean),
   WHATSAPP_TEMPLATE_LANG: process.env.WHATSAPP_TEMPLATE_LANG || 'es',
   WHATSAPP_GRAPH_VERSION: process.env.WHATSAPP_GRAPH_VERSION || 'v26.0',
   /** Overridable so local E2E can point the client at a mock Graph server. */

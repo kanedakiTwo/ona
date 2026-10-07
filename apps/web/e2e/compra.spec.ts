@@ -65,3 +65,15 @@ test('add a shop → prepare orders → WhatsApp link with the order written', a
   expect(text).toMatch(/\n- \S/)
   expect(text).toMatch(/precio por kilo/)
 })
+
+test('an expired or unknown short link lands on /compra with a notice (relative redirect)', async ({ page }) => {
+  // The handler answers with a *relative* Location: behind Railway's proxy
+  // req.url is http://0.0.0.0:3000, so an absolute redirect built from it
+  // sent users to an unreachable host (prod, 2026-10-07).
+  const r = await page.request.get('/c/zzzzzzzzzzzzzzzzzzzz', { maxRedirects: 0 })
+  expect(r.status()).toBe(302)
+  expect(r.headers()['location']).toBe('/compra?enlace=caducado')
+  await page.goto('/c/zzzzzzzzzzzzzzzzzzzz')
+  await expect(page).toHaveURL(/\/compra\?enlace=caducado/)
+  await expect(page.getByText(/Ese enlace ya no vale/)).toBeVisible({ timeout: 10_000 })
+})

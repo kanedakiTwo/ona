@@ -24,5 +24,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
   } catch {
     // fall through to the friendly page
   }
-  return NextResponse.redirect(new URL("/compra?enlace=caducado", req.url), 302)
+  // Relative Location: behind Railway's proxy `req.url` is the internal
+  // http://0.0.0.0:3000, so an absolute URL built from it sends users nowhere.
+  return new Response(null, { status: 302, headers: { Location: "/compra?enlace=caducado" } })
 }

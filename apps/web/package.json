@@ -35,7 +35,7 @@
     "idb-keyval": "^6.2.2",
     "lucide-react": "^0.470.0",
     "motion": "^11.18.2",
-    "next": "^15.2.0",
+    "next": "^15.5.27",
     "next-pwa": "^5.6.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -51,7 +51,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "babel-loader": "^8.4.1",
-    "sharp": "^0.34.5",
+    "sharp": "^0.35.5",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.0"
   }

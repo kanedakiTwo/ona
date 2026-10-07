@@ -5,13 +5,14 @@ const nextConfig: NextConfig = {
   transpilePackages: ['@ona/shared'],
   output: 'standalone',
   images: {
-    // Recipes imported from URLs (PR landing) and the Unsplash hot-link
-    // fallback all sit on third-party hosts (Unsplash, blogs, S3 buckets,
-    // YouTube thumbnails). Allowing any HTTPS host through next/image
-    // keeps the optimizer happy without us having to maintain a closed
-    // list of source domains. Cookie-bearing hosts are not at risk
-    // because the image optimizer fetches with no Auth header.
-    remotePatterns: [{ protocol: 'https', hostname: '**' }],
+    // No server-side image optimizer. Recipe images live on arbitrary
+    // third-party hosts (blogs, YouTube thumbnails, our API volume), and an
+    // open optimizer (`remotePatterns: '**'`) is an unauthenticated
+    // fetch-and-decode endpoint for any URL — it carried a critical RCE
+    // (GHSA-2xp9-vwfh-vxw4, AVIF/libheif) in Next < 15.5.24. The app renders
+    // recipe photos with plain <img>; next/image (one call site) just emits
+    // the original URL.
+    unoptimized: true,
   },
 }
 

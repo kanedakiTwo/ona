@@ -246,6 +246,13 @@
       "when": 1791366329560,
       "tag": "0034_shop_orders",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1791384067599,
+      "tag": "0035_recipe_min_servings",
+      "breakpoints": true
     }
   ]
 }

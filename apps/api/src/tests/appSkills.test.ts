@@ -243,6 +243,19 @@ describe('recipes, profile, household', () => {
     ])
   })
 
+  it('update_recipe_notes sets / clears "siempre la cocino para al menos N"', async () => {
+    const f = fakeApi({
+      'GET /recipes': [{ id: 'r-lent', name: 'Lentejas estofadas' }],
+      'GET /recipes/r-lent/notes': null,
+    })
+    const r = await get('update_recipe_notes').handler({ recipeName: 'lentejas', minServings: 6 }, ctx(f.api))
+    expect(writes(f.calls)).toEqual([{ method: 'PUT', path: '/recipes/r-lent/notes', body: { minServings: 6 } }])
+    expect(r.summary).toContain('al menos 6')
+    const g = fakeApi({ 'GET /recipes': [{ id: 'r-lent', name: 'Lentejas estofadas' }], 'GET /recipes/r-lent/notes': null })
+    await get('update_recipe_notes').handler({ recipeName: 'lentejas', minServings: 0 }, ctx(g.api))
+    expect(writes(g.calls)).toEqual([{ method: 'PUT', path: '/recipes/r-lent/notes', body: { minServings: null } }])
+  })
+
   it('delete_recipe only touches recipes the user owns', async () => {
     const f = fakeApi({ 'GET /user/u1/recipes': { own: [{ id: 'mine1', name: 'Fabada de mi madre' }], favorites: [] } })
     expect((await get('delete_recipe').handler({ recipeName: 'paella' }, ctx(f.api))).summary).toMatch(/no he borrado nada/)

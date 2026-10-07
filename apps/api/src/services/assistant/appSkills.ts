@@ -613,7 +613,7 @@ const logCooked: SkillDefinition = {
 const updateRecipeNotes: SkillDefinition = {
   name: 'update_recipe_notes',
   description:
-    'Valora o anota una receta para el hogar: rating 1-5 estrellas, notas ("le va bien un toque de comino"), sustituciones, etiquetas propias. Las notas se añaden a las existentes salvo notesMode=replace.',
+    'Valora o anota una receta para el hogar: rating 1-5 estrellas, notas ("le va bien un toque de comino"), sustituciones, etiquetas propias, y minServings: "las lentejas siempre las hago para 6 y congelo" → minServings 6 (la compra comprara al menos para 6 cada vez; 0 lo quita). Las notas se añaden a las existentes salvo notesMode=replace.',
   parameters: {
     type: 'object',
     properties: {
@@ -623,6 +623,7 @@ const updateRecipeNotes: SkillDefinition = {
       notesMode: { type: 'string', enum: ['append', 'replace'] },
       substitutions: { type: 'string' },
       tags: { type: 'array', items: { type: 'string' } },
+      minServings: { type: 'number', description: 'Raciones minimas que siempre cocina (1-24); 0 para quitarlo.' },
     },
     required: ['recipeName'],
   },
@@ -635,6 +636,7 @@ const updateRecipeNotes: SkillDefinition = {
     if (p.notes) body.notes = p.notesMode === 'replace' || !current?.notes ? p.notes : `${current.notes}\n${p.notes}`
     if (p.substitutions) body.substitutions = p.substitutions
     if (Array.isArray(p.tags) && p.tags.length) body.customTags = [...(current?.customTags ?? []), ...p.tags]
+    if (typeof p.minServings === 'number') body.minServings = p.minServings >= 1 ? Math.min(24, Math.round(p.minServings)) : null
     if (Object.keys(body).length === 0) return text('No me has dicho que anotar; no he cambiado nada.')
     await api(ctx)('PUT', `/recipes/${recipe.id}/notes`, body)
     const what = [
@@ -642,6 +644,7 @@ const updateRecipeNotes: SkillDefinition = {
       p.notes ? 'nota' : null,
       p.substitutions ? 'sustituciones' : null,
       p.tags?.length ? `etiquetas ${p.tags.join(', ')}` : null,
+      'minServings' in body ? (body.minServings ? `siempre para al menos ${body.minServings}` : 'sin minimo de raciones') : null,
     ].filter(Boolean)
     return { data: { recipeId: recipe.id }, summary: `Hecho: "${recipe.name}" — ${what.join(', ')}.`, uiHint: 'recipe' }
   },

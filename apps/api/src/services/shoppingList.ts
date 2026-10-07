@@ -179,14 +179,23 @@ interface ScaledRow {
 /**
  * Sum the diner counts for every slot in the week, grouped by recipe id.
  * Per-slot `servings` overrides win over the household-level fallback; a
- * recipe scheduled in two slots accumulates both diner counts. Pure
+ * recipe scheduled in two slots accumulates both diner counts (a leftover
+ * slot is the same batch cooked bigger, so it adds its diners too). Pure
  * (no DB) so it's the unit-test entry point for shopping-list scaling.
+ *
+ * `minServingsByRecipe` ("esta receta siempre la cocino para al menos N",
+ * recipe_notes.min_servings): every time the recipe is actually cooked
+ * (each non-leftover occurrence) counts for at least N servings, so the
+ * total is max(diners, N × times cooked). The surplus is what the household
+ * keeps or freezes.
  */
 export function sumDinersByRecipe(
   menuDays: DayMenu[],
   householdMultiplier: number,
+  minServingsByRecipe: ReadonlyMap<string, number> = new Map(),
 ): Map<string, number> {
   const out = new Map<string, number>()
+  const timesCooked = new Map<string, number>()
   for (const day of menuDays) {
     for (const meal of Object.keys(day)) {
       const slot = day[meal as keyof DayMenu]
@@ -197,8 +206,14 @@ export function sumDinersByRecipe(
           : householdMultiplier
       for (const dish of recipeDishesOf(slot.dishes)) {
         out.set(dish.recipeId, (out.get(dish.recipeId) ?? 0) + diners)
+        if (dish.variant !== 'leftover') timesCooked.set(dish.recipeId, (timesCooked.get(dish.recipeId) ?? 0) + 1)
       }
     }
+  }
+  for (const [recipeId, min] of minServingsByRecipe) {
+    const total = out.get(recipeId)
+    if (total === undefined || !(min > 0)) continue
+    out.set(recipeId, Math.max(total, min * Math.max(1, timesCooked.get(recipeId) ?? 0)))
   }
   return out
 }
@@ -302,7 +317,7 @@ export async function generateShoppingList(
   // 1. Collect (recipeId → total diners across all occurrences this week).
   // Per-slot `servings` overrides win over the household-level multiplier;
   // see `sumDinersByRecipe` for the math (extracted for unit testing).
-  const dinersByRecipe = sumDinersByRecipe(menuDays, householdMultiplier)
+  let dinersByRecipe = sumDinersByRecipe(menuDays, householdMultiplier)
   if (dinersByRecipe.size === 0) return []
   const recipeIds = [...dinersByRecipe.keys()]
 
@@ -359,11 +374,12 @@ export async function generateShoppingList(
     rowsByRecipe.set(r.recipeId, list)
   }
   if (householdId) {
-    const overrideRows: Array<{ recipeId: string; ingredientOverrides: unknown }> =
+    const overrideRows: Array<{ recipeId: string; ingredientOverrides: unknown; minServings: number | null }> =
       await db
         .select({
           recipeId: recipeNotes.recipeId,
           ingredientOverrides: recipeNotes.ingredientOverrides,
+          minServings: recipeNotes.minServings,
         })
         .from(recipeNotes)
         .where(
@@ -372,6 +388,12 @@ export async function generateShoppingList(
             inArray(recipeNotes.recipeId, recipeIds),
           ),
         )
+
+    // "Siempre la cocino para al menos N": recompute the diners with the
+    // household's minimums (sumDinersByRecipe).
+    const minServings = new Map<string, number>()
+    for (const r of overrideRows) if (typeof r.minServings === 'number' && r.minServings > 0) minServings.set(r.recipeId, r.minServings)
+    if (minServings.size > 0) dinersByRecipe = sumDinersByRecipe(menuDays, householdMultiplier, minServings)
 
     // Catalog name→row map for resolving free-form `add` entries. Index by
     // lowercased catalog name; ties go to the first match (rare — the

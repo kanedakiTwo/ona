@@ -72,3 +72,32 @@ describe('sumDinersByRecipe', () => {
     expect(sumDinersByRecipe(days, 4).size).toBe(1)
   })
 })
+
+describe('sumDinersByRecipe — "siempre la cocino para al menos N" (recipe_notes.min_servings)', () => {
+  const slot = (recipeId: string, extra: Record<string, unknown> = {}) => ({
+    dishes: [{ kind: 'recipe', recipeId, recipeName: recipeId, ...extra }],
+  })
+
+  it('2 people, lentejas always for 6 → buy for 6', () => {
+    const days = [{ lunch: slot('lentejas') }] as any
+    expect(sumDinersByRecipe(days, 2, new Map([['lentejas', 6]])).get('lentejas')).toBe(6)
+  })
+
+  it('cooked twice in the week → at least 6 each time', () => {
+    const days = [{ lunch: slot('lentejas') }, {}, { dinner: slot('lentejas') }] as any
+    expect(sumDinersByRecipe(days, 2, new Map([['lentejas', 6]])).get('lentejas')).toBe(12)
+  })
+
+  it('a planned leftover is part of the same batch, not another cooking', () => {
+    const days = [{ lunch: slot('lentejas') }, { dinner: slot('lentejas', { variant: 'leftover' }) }] as any
+    // 2 + 2 diners from one batch, minimum 6 → still 6
+    expect(sumDinersByRecipe(days, 2, new Map([['lentejas', 6]])).get('lentejas')).toBe(6)
+  })
+
+  it('never lowers what the diners already need, and leaves other recipes alone', () => {
+    const days = [{ lunch: { servings: 8, ...slot('lentejas') }, dinner: slot('crema') }] as any
+    const out = sumDinersByRecipe(days, 2, new Map([['lentejas', 6]]))
+    expect(out.get('lentejas')).toBe(8)
+    expect(out.get('crema')).toBe(2)
+  })
+})

@@ -39,6 +39,8 @@ export interface NotesShape {
    * `IngredientOverride` in `@ona/shared`. Always an array (possibly empty).
    */
   ingredientOverrides: IngredientOverride[]
+  /** "Siempre la cocino para al menos N" (1..24) or null. */
+  minServings: number | null
 }
 
 export interface NotesPatch {
@@ -47,6 +49,7 @@ export interface NotesPatch {
   substitutions?: string | null
   customTags?: unknown
   ingredientOverrides?: unknown
+  minServings?: number | null
 }
 
 export interface NotesRow extends NotesShape {
@@ -153,6 +156,13 @@ function trimToNull(raw: string | null | undefined): string | null {
  * (the route does that before calling this, so this function trusts the
  * input shape).
  */
+/** 1..24 whole servings, anything else → null (no minimum). */
+export function sanitizeMinServings(raw: unknown): number | null {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return null
+  const n = Math.round(raw)
+  return n >= 1 && n <= 24 ? n : null
+}
+
 export function applyNotesPatch(current: NotesShape, patch: NotesPatch): NotesShape {
   const out: NotesShape = {
     ...current,
@@ -170,6 +180,9 @@ export function applyNotesPatch(current: NotesShape, patch: NotesPatch): NotesSh
   }
   if (Object.prototype.hasOwnProperty.call(patch, 'customTags')) {
     out.customTags = sanitizeCustomTags(patch.customTags)
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'minServings')) {
+    out.minServings = sanitizeMinServings(patch.minServings)
   }
   if (Object.prototype.hasOwnProperty.call(patch, 'ingredientOverrides')) {
     out.ingredientOverrides = sanitizeIngredientOverrides(patch.ingredientOverrides)
@@ -195,6 +208,7 @@ export async function getRecipeNotesForUser(
       substitutions: recipeNotes.substitutions,
       customTags: recipeNotes.customTags,
       ingredientOverrides: recipeNotes.ingredientOverrides,
+      minServings: recipeNotes.minServings,
       lastEditedByUserId: recipeNotes.lastEditedByUserId,
       lastEditedByUsername: users.username,
       createdAt: recipeNotes.createdAt,
@@ -215,6 +229,7 @@ export async function getRecipeNotesForUser(
     // Defensive: sanitize on read in case malformed entries leaked in via a
     // direct DB write or a future bug. Keeps the route guaranteed-clean.
     ingredientOverrides: sanitizeIngredientOverrides(row.ingredientOverrides),
+    minServings: row.minServings ?? null,
     lastEditedByUserId: row.lastEditedByUserId ?? null,
     lastEditedByUsername: row.lastEditedByUsername ?? null,
     createdAt: row.createdAt.toISOString(),
@@ -250,6 +265,7 @@ export async function upsertRecipeNotes(
       substitutions: recipeNotes.substitutions,
       customTags: recipeNotes.customTags,
       ingredientOverrides: recipeNotes.ingredientOverrides,
+      minServings: recipeNotes.minServings,
     })
     .from(recipeNotes)
     .where(and(eq(recipeNotes.householdId, householdId), eq(recipeNotes.recipeId, recipeId)))
@@ -263,6 +279,7 @@ export async function upsertRecipeNotes(
           substitutions: current.substitutions ?? null,
           customTags: current.customTags ?? [],
           ingredientOverrides: sanitizeIngredientOverrides(current.ingredientOverrides),
+          minServings: current.minServings ?? null,
         }
       : {
           notes: null,
@@ -270,6 +287,7 @@ export async function upsertRecipeNotes(
           substitutions: null,
           customTags: [],
           ingredientOverrides: [],
+          minServings: null,
         },
     patch,
   )
@@ -284,6 +302,7 @@ export async function upsertRecipeNotes(
       substitutions: merged.substitutions,
       customTags: merged.customTags,
       ingredientOverrides: merged.ingredientOverrides,
+      minServings: merged.minServings,
       lastEditedByUserId: userId,
     })
     .onConflictDoUpdate({
@@ -294,6 +313,7 @@ export async function upsertRecipeNotes(
         substitutions: merged.substitutions,
         customTags: merged.customTags,
         ingredientOverrides: merged.ingredientOverrides,
+        minServings: merged.minServings,
         lastEditedByUserId: userId,
         updatedAt: sql`NOW()`,
       },

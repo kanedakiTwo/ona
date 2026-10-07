@@ -37,6 +37,8 @@ const patchSchema = z.object({
   /** Structured ingredient overrides — see `IngredientOverride` in
    *  `@ona/shared`. The store sanitizes (dedup, drop invalid, cap at 50). */
   ingredientOverrides: z.array(ingredientOverrideSchema).max(100).nullable().optional(),
+  /** "Siempre la cocino para al menos N" — shopping buys ≥ N per cooking. */
+  minServings: z.number().int().min(1).max(24).nullable().optional(),
 })
 
 router.get('/custom-tags', async (req: AuthRequest, res) => {

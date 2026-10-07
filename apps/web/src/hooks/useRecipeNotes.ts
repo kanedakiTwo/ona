@@ -21,6 +21,8 @@ export interface RecipeNotes {
    * subtle highlight. Always an array (possibly empty).
    */
   ingredientOverrides: IngredientOverride[]
+  /** "Siempre la cocino para al menos N" (guardo o congelo lo que sobra). Null = no minimum. */
+  minServings: number | null
   lastEditedByUserId: string | null
   lastEditedByUsername: string | null
   createdAt: string
@@ -33,6 +35,7 @@ export interface NotesPatch {
   substitutions?: string | null
   customTags?: string[]
   ingredientOverrides?: IngredientOverride[]
+  minServings?: number | null
 }
 
 export interface HouseholdCustomTag {

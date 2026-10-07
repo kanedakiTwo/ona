@@ -67,7 +67,7 @@ The assistant can call back-end skills (function calling). Each skill has a name
 - **Pantry:** `update_pantry` (add/set/remove with quantities and expiry). Reading the pantry is `get_pantry_stock`; the old `list_pantry` duplicate was removed (62 skills).
 - **Recipes:**
   - `log_cooked` (cook log + pantry decrement).
-  - `update_recipe_notes`: rating, notes appended, substitutions, tags.
+  - `update_recipe_notes`: rating, notes appended, substitutions, tags, `minServings` ("siempre la hago para 6"; 0 clears).
   - `delete_recipe`: own recipes only; the prompt asks for confirmation first.
   - `manage_cookbook`, `regenerate_recipe_image`.
 - **Profile:**

@@ -112,6 +112,13 @@ export function RecipeNotesSection({ recipeId }: Props) {
         </div>
       </div>
 
+      {/* Minimum servings */}
+      <MinServingsField
+        value={data?.minServings ?? null}
+        disabled={save.isPending}
+        onChange={(minServings) => save.mutate({ minServings })}
+      />
+
       {/* Notes */}
       <NoteField
         label="Notas personales"
@@ -326,6 +333,76 @@ function NoteField({
         >
           <Pencil size={10} /> Añadir
         </button>
+      )}
+    </div>
+  )
+}
+
+/**
+ * "Siempre la cocino para al menos N": some dishes (lentejas, cocido,
+ * lasaña) are only worth making in a big pot; whatever is left is kept or
+ * frozen. The shopping list then buys at least N servings each time the
+ * recipe is cooked (specs/recipes.md → Minimum servings).
+ */
+function MinServingsField({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: number | null
+  disabled: boolean
+  onChange: (next: number | null) => void
+}) {
+  const step = (delta: number) => onChange(Math.min(24, Math.max(1, (value ?? 4) + delta)))
+  return (
+    <div>
+      <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-[#7A7066]">Raciones mínimas</div>
+      {value == null ? (
+        <button
+          type="button"
+          onClick={() => onChange(4)}
+          disabled={disabled}
+          className="text-left text-[13px] text-[#4A4239] underline decoration-[#DDD6C5] underline-offset-4 hover:text-[#1A1612] disabled:opacity-50"
+        >
+          Siempre la cocino para más gente (guardo o congelo lo que sobra)
+        </button>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2 text-[13px] text-[#4A4239]">
+          <span>Siempre la cocino para al menos</span>
+          <div className="inline-flex items-center rounded-full border border-[#DDD6C5]">
+            <button
+              type="button"
+              aria-label="Una ración menos"
+              onClick={() => step(-1)}
+              disabled={disabled || value <= 1}
+              className="px-3 py-1 text-[#1A1612] disabled:opacity-40"
+            >
+              −
+            </button>
+            <span className="min-w-[2ch] text-center font-medium text-[#1A1612]" data-testid="min-servings-value">
+              {value}
+            </span>
+            <button
+              type="button"
+              aria-label="Una ración más"
+              onClick={() => step(1)}
+              disabled={disabled || value >= 24}
+              className="px-3 py-1 text-[#1A1612] disabled:opacity-40"
+            >
+              +
+            </button>
+          </div>
+          <span>raciones.</span>
+          <button
+            type="button"
+            onClick={() => onChange(null)}
+            disabled={disabled}
+            className="text-[10px] uppercase tracking-[0.12em] text-[#7A7066] hover:text-[#1A1612]"
+          >
+            Quitar
+          </button>
+          <p className="w-full text-[12px] text-[#7A7066]">La lista de la compra compra para {value} cada vez que la cocinas; lo que sobre, a la nevera o al congelador.</p>
+        </div>
       )}
     </div>
   )

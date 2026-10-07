@@ -77,6 +77,14 @@ export default function RecipeDetailPage() {
   // section). The hook short-circuits when unauthed.
   const { data: notes } = useRecipeNotes(user ? params.id : undefined)
   const saveNotes = useSaveRecipeNotes(params.id)
+  // "Siempre la cocino para al menos N": start the scaler there (until the
+  // user moves it), since that's what they'll actually cook.
+  const scalerTouchedRef = useRef(false)
+  useEffect(() => {
+    const min = notes?.minServings
+    if (!min || scalerTouchedRef.current || servings == null) return
+    if (servings < min) setServings(Math.min(min, 12))
+  }, [notes?.minServings, servings])
   const overrides: IngredientOverride[] = notes?.ingredientOverrides ?? []
 
   // ─── Derived state (must be declared before any early return so hook order is stable) ───
@@ -246,7 +254,10 @@ export default function RecipeDetailPage() {
         <div className="flex flex-wrap items-center gap-x-5 gap-y-3 border-y border-[#DDD6C5] py-4 text-[12px] text-[#4A4239]">
           <ServingsScaler
             value={displayServings}
-            onChange={setServings}
+            onChange={(n) => {
+              scalerTouchedRef.current = true
+              setServings(n)
+            }}
             min={1}
             max={12}
           />

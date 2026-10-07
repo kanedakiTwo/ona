@@ -652,6 +652,12 @@ export const recipeNotes = pgTable('recipe_notes', {
    * entries by the sanitizer.
    */
   ingredientOverrides: jsonb('ingredient_overrides').notNull().default(sql`'[]'::jsonb`),
+  /**
+   * "Esta receta siempre la cocino para al menos N" (guardo o congelo lo que
+   * sobra). Each time the recipe is cooked, the shopping list buys for at
+   * least this many servings. Null = no minimum. 1..24 (check constraint).
+   */
+  minServings: integer('min_servings'),
   /** Last user to touch this row — for the audit / future "edited by X" UX. */
   lastEditedByUserId: uuid('last_edited_by_user_id').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -660,6 +666,7 @@ export const recipeNotes = pgTable('recipe_notes', {
   uniqueIndex('uq_recipe_notes_household_recipe').on(t.householdId, t.recipeId),
   index('idx_recipe_notes_recipe').on(t.recipeId),
   check('recipe_notes_rating_check', sql.raw('rating IS NULL OR (rating >= 1 AND rating <= 5)')),
+  check('recipe_notes_min_servings_check', sql.raw('min_servings IS NULL OR (min_servings >= 1 AND min_servings <= 24)')),
 ])
 
 // ─── 20. household_staples (PR 10B) ───────────────────────────

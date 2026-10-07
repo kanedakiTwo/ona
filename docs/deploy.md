@@ -6,7 +6,7 @@ ONA runs on Railway in two services + a Postgres:
 - `ona-web` — Next.js frontend (`apps/web/`, prod build via `next build`)
 - `Postgres` — managed Postgres
 
-There is **no GitHub-Railway repo connection**. Deploys are manual via the Railway CLI from your local machine. Both services are configured with **Railpack** (Railway's new builder); legacy `NIXPACKS_*` vars are no longer respected.
+There is **no GitHub-Railway repo connection**. Deploys are manual via the Railway CLI from your local machine. Both services are configured with **Railpack** (Railway's new builder); legacy `NIXPACKS_*` vars are no longer respected. Railpack takes the Node version from the root `package.json` `engines.node` (**22.x**; CI uses the same). `apps/*/Dockerfile` are not used by Railway (kept for local container experiments).
 
 ## One-time setup per machine
 
@@ -68,7 +68,7 @@ Both are configured in the Railway dashboard, not committed.
 | Var | Notes |
 |---|---|
 | `RAILPACK_BUILD_CMD` | `pnpm install && pnpm --filter @ona/shared build && pnpm --filter @ona/api build` |
-| `RAILPACK_START_CMD` | `pnpm --filter @ona/api db:migrate && node apps/api/dist/index.js` |
+| `RAILPACK_START_CMD` | `pnpm --filter @ona/api db:migrate && pnpm --filter @ona/api menus:migrate-dishes && node apps/api/dist/index.js` |
 | `DATABASE_URL` | Auto-injected via Railway service link to `Postgres` (uses internal hostname) |
 | `JWT_SECRET` | Production secret, **≥ 32 chars** or the API refuses to boot (`openssl rand -base64 48`). Rotating it logs every user out once. |
 | `ANTHROPIC_API_KEY` | For photo + URL recipe extraction |

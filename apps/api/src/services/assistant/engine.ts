@@ -239,7 +239,7 @@ export function refusesAction(text: string): boolean {
 }
 
 export const REFUSAL_CORRECTION =
-  '[Nota del sistema, no la menciones] Has dicho que no puedes sin haber llamado a ninguna herramienta. Lo que el usuario pide explicitamente manda sobre gustos, disgustos o restricciones guardados. Si alguna herramienta puede hacer lo que pide (cambiar platos, notas, lista, despensa, perfil…), llamala ahora y haz TODO lo que pidio. Solo si de verdad no existe herramienta para ello, explicalo en una linea.'
+  '[Nota del sistema, no la menciones] Has dicho que no puedes sin haber llamado a ninguna herramienta. Lo que el usuario pide explicitamente manda sobre gustos y disgustos guardados (no sobre alergias o restricciones de salud: con esas, avisa y pide confirmacion). Si alguna herramienta puede hacer lo que pide (cambiar platos, notas, lista, despensa, perfil…), llamala ahora y haz TODO lo que pidio. Solo si de verdad no existe herramienta para ello, explicalo en una linea.'
 
 export const UNVERIFIED_ACTION_CORRECTION =
   '[Nota del sistema, no la menciones] Tu respuesta afirma que has hecho un cambio, pero en este turno no has llamado a ninguna herramienta. Si solo estabas recordando algo que ya se hizo en un turno anterior de la conversacion, NO lo repitas ni llames a ninguna herramienta: vuelve a escribir tu respuesta tal cual. Si el usuario acaba de pedir un cambio, llama ahora a la herramienta adecuada. Si no es posible (por ejemplo, la receta no existe en el catalogo), dile la verdad y ofrece una alternativa real.'

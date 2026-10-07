@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Smoke-test orchestrator (Tier 3). Boots Postgres in Docker, pushes the
-# Drizzle schema, starts the API in the background, registers a throwaway
-# user to mint a JWT, runs every `*.smoke.ts` test (failing if any skipped
-# unexpectedly), and tears everything down on exit (success or failure).
+# Smoke-test orchestrator (Tier 3). Boots Postgres in Docker, applies the
+# real migrations + seed, starts the API in the background, registers a
+# throwaway user to mint a JWT, runs every `*.smoke.ts` test (failing if any
+# skipped unexpectedly), and tears everything down on exit (success or
+# failure). Mirrors the `smoke` job in .github/workflows/ci.yml.
 #
 # Usage:
 #   pnpm --filter @ona/api smoke
@@ -48,14 +49,16 @@ for i in $(seq 1 60); do
   sleep 1
 done
 
-echo "── 3/5 Push Drizzle schema ─────────────────────────────────────"
+echo "── 3/5 Apply migrations + seed ─────────────────────────────────"
 export DATABASE_URL="postgresql://postgres:postgres@localhost:${DB_PORT}/onatest"
 export JWT_SECRET="smoke-only-do-not-use-anywhere-else"
 # Smoke files register throwaway users from localhost; ignored by the API
 # when NODE_ENV=production.
 export RATE_LIMIT_DISABLED="true"
 export API_PORT
-pnpm --filter @ona/api exec drizzle-kit push --force >/dev/null
+# Same path production takes on deploy (not `drizzle-kit push`).
+pnpm --filter @ona/api db:migrate >/dev/null
+pnpm --filter @ona/api db:seed >/dev/null
 
 echo "── 4/5 Boot API on :${API_PORT} ─────────────────────────────────"
 pnpm --filter @ona/api exec tsx src/index.ts > /tmp/ona-smoke-api.log 2>&1 &

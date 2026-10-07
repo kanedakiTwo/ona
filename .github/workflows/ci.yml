@@ -39,6 +39,11 @@ jobs:
       - name: Build shared package (required by api/web typecheck)
         run: pnpm --filter @ona/shared build
 
+      - name: Schema drift check (schema.ts vs committed migrations)
+        # `drizzle-kit generate` must report "No schema changes"; the script
+        # removes anything it generated and fails otherwise. No DB needed.
+        run: bash apps/api/scripts/check-schema-drift.sh
+
       - name: Type-check API
         run: pnpm --filter @ona/api lint
 
@@ -53,7 +58,8 @@ jobs:
           USDA_API_KEY: ${{ secrets.USDA_API_KEY }}
 
   # ─── Route smoke tests against a real Postgres + booted API ───────
-  # Boots Postgres as a service container, pushes the Drizzle schema,
+  # Boots Postgres as a service container, applies the real migrations
+  # (same `db:migrate` production runs on deploy), seeds the catalog,
   # starts the API in the background, registers a throwaway user to
   # mint a token, then runs every `*.smoke.ts` file with that token and
   # fails if any of them skipped unexpectedly.
@@ -104,8 +110,16 @@ jobs:
       - name: Build shared package
         run: pnpm --filter @ona/shared build
 
-      - name: Push Drizzle schema to test DB
-        run: pnpm --filter @ona/api exec drizzle-kit push --force
+      - name: Apply migrations to test DB
+        # Production runs `db:migrate` (RAILPACK_START_CMD), not `drizzle-kit
+        # push`. Using the real migrations here means broken migration SQL —
+        # and the hand-written indexes/constraints schema.ts doesn't declare —
+        # behave in CI exactly as they will in prod.
+        run: pnpm --filter @ona/api db:migrate
+
+      - name: Seed catalog
+        # Menus/shopping smokes need recipes to generate a real menu.
+        run: pnpm --filter @ona/api db:seed
 
       - name: Boot API in background
         run: |
@@ -227,12 +241,14 @@ jobs:
       - name: Build shared package
         run: pnpm --filter @ona/shared build
 
-      - name: Push Drizzle schema
-        run: pnpm --filter @ona/api exec drizzle-kit push --force
+      - name: Apply migrations
+        run: pnpm --filter @ona/api db:migrate
 
-      - name: Seed minimal catalog (best-effort)
-        run: pnpm --filter @ona/api db:seed || echo 'seed step failed — recipe-catalog spec will skip'
-        continue-on-error: true
+      - name: Seed catalog
+        # Required: the catalog/cook-log/recipe-create specs need recipes and
+        # the "ajo" ingredient. A failing seed must fail the job, not turn
+        # those specs into silent skips.
+        run: pnpm --filter @ona/api db:seed
 
       - name: Cache Playwright browsers
         uses: actions/cache@v4

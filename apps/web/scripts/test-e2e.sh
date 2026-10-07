@@ -40,19 +40,21 @@ for i in $(seq 1 60); do
   sleep 1
 done
 
-echo "── 2/6 Push Drizzle schema ─────────────────────────────────────"
+echo "── 2/6 Apply migrations ────────────────────────────────────────"
 export DATABASE_URL="postgresql://postgres:postgres@localhost:${DB_PORT}/onatest"
 export JWT_SECRET="e2e-only-do-not-use-anywhere-else"
 # Every spec registers a fresh user from localhost; without this the API's
 # 10-registrations/hour/IP limiter fails the suite from the 11th test on.
 # Ignored by a deployed API (NODE_ENV=production or Railway).
 export RATE_LIMIT_DISABLED="true"
-pnpm --filter @ona/api exec drizzle-kit push --force >/dev/null
+# Same path production takes on deploy (not `drizzle-kit push`).
+pnpm --filter @ona/api db:migrate >/dev/null
 
 echo "── 3/6 Seed minimal catalog ────────────────────────────────────"
-# The recipes page needs at least one recipe for the catalog test. The
-# regular dev seed is heavy; we use `db:seed` which seeds a sane minimum.
-pnpm --filter @ona/api db:seed >/dev/null 2>&1 || echo "  (seed step failed or empty — non-fatal, recipe spec will skip)"
+# The catalog / cook-log / recipe-create specs need recipes and the "ajo"
+# ingredient. Fatal on failure, same as CI — a missing seed would otherwise
+# turn those specs into silent skips.
+pnpm --filter @ona/api db:seed >/dev/null
 
 echo "── 4/6 Boot API on :${API_PORT} ─────────────────────────────────"
 API_PORT="$API_PORT" pnpm --filter @ona/api exec tsx src/index.ts > /tmp/ona-e2e-api.log 2>&1 &

@@ -82,6 +82,10 @@ Apply them locally with:
 pnpm --filter @ona/api db:migrate
 ```
 
+CI applies the same migrations (`db:migrate`) to a fresh Postgres in the smoke and e2e jobs, and the `test` job runs `apps/api/scripts/check-schema-drift.sh`, which fails if `schema.ts` has changes no committed migration captures (`drizzle-kit generate` must say "No schema changes"). If it fails, run `db:generate` and commit the migration.
+
+**Never run `drizzle-kit push` against a migrated database (prod or dev).** Some objects exist only in hand-written migration SQL because drizzle can't express them, and `push` would drop them: the partial unique index `uq_pantry_items_household_ingredient` (0016, relied on by the pantry upsert), the FK + partial index on `recipes.copied_from_recipe_id` (0025) and the `recipes_frequency_check` CHECK (0026). `push` also reports false-positive diffs for array defaults and the expression index `idx_unit_cache_key`.
+
 In production, `db:migrate` runs automatically on every deploy as part of `RAILPACK_START_CMD`. If you ever need to run it manually:
 
 ```bash

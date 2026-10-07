@@ -1,10 +1,12 @@
+/**
+ * Smoke test for POST /units/resolve against a running API. Gating lives in
+ * smokeEnv.ts (skips when the API is down; hard-fails under SMOKE_REQUIRED).
+ */
 import { describe, it, expect } from 'vitest'
-
-const API = process.env.API_URL ?? 'http://localhost:8765'
-const TOKEN = process.env.SMOKE_USER_TOKEN
+import { API_URL as API, TOKEN, reachable } from './smokeEnv.js'
 
 describe('POST /units/resolve', () => {
-  it.skipIf(!TOKEN)('table hit: 1 cda → 15 ml', async () => {
+  it.skipIf(!reachable || !TOKEN)('table hit: 1 cda → 15 ml', async () => {
     const r = await fetch(`${API}/units/resolve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
@@ -15,7 +17,7 @@ describe('POST /units/resolve', () => {
     expect(body).toMatchObject({ canonicalQuantity: 15, canonicalUnit: 'ml', source: 'table' })
   })
 
-  it.skipIf(!TOKEN)('table hit with bare synonym: cucharadita → 5 ml', async () => {
+  it.skipIf(!reachable || !TOKEN)('table hit with bare synonym: cucharadita → 5 ml', async () => {
     const r = await fetch(`${API}/units/resolve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
@@ -26,7 +28,7 @@ describe('POST /units/resolve', () => {
     expect(body).toMatchObject({ canonicalQuantity: 5, canonicalUnit: 'ml', source: 'table' })
   })
 
-  it.skipIf(!TOKEN)('400 on invalid body (missing displayUnit)', async () => {
+  it.skipIf(!reachable || !TOKEN)('400 on invalid body (missing displayUnit)', async () => {
     const r = await fetch(`${API}/units/resolve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
@@ -35,7 +37,7 @@ describe('POST /units/resolve', () => {
     expect(r.status).toBe(400)
   })
 
-  it.skipIf(!process.env.API_URL)('401 without auth', async () => {
+  it.skipIf(!reachable)('401 without auth', async () => {
     const r = await fetch(`${API}/units/resolve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

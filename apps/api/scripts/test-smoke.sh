@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Smoke-test orchestrator (Tier 3). Boots Postgres in Docker, pushes the
 # Drizzle schema, starts the API in the background, registers a throwaway
-# user to mint a JWT, runs every `*.smoke.ts` test, and tears everything
-# down on exit (success or failure).
+# user to mint a JWT, runs every `*.smoke.ts` test (failing if any skipped
+# unexpectedly), and tears everything down on exit (success or failure).
 #
 # Usage:
 #   pnpm --filter @ona/api smoke
@@ -51,6 +51,9 @@ done
 echo "── 3/5 Push Drizzle schema ─────────────────────────────────────"
 export DATABASE_URL="postgresql://postgres:postgres@localhost:${DB_PORT}/onatest"
 export JWT_SECRET="smoke-only-do-not-use-anywhere-else"
+# Smoke files register throwaway users from localhost; ignored by the API
+# when NODE_ENV=production.
+export RATE_LIMIT_DISABLED="true"
 export API_PORT
 pnpm --filter @ona/api exec drizzle-kit push --force >/dev/null
 
@@ -92,10 +95,18 @@ fi
 echo "  Registered smoke user: $SMOKE_USER ($SMOKE_USER_ID)"
 
 echo "── 5/5 Run smoke vitest suite ───────────────────────────────────"
+REPORT="$(mktemp -t ona-smoke-report.XXXXXX)"
 API_URL="http://localhost:${API_PORT}" \
 SMOKE_USER_TOKEN="$SMOKE_USER_TOKEN" \
 SMOKE_USER_ID="$SMOKE_USER_ID" \
-  pnpm --filter @ona/api exec vitest run --reporter=default 'src/tests/*.smoke.ts'
+SMOKE_REQUIRED="true" \
+  pnpm --filter @ona/api exec vitest run .smoke.ts --no-file-parallelism \
+    --reporter=default --reporter=json --outputFile.json="$REPORT"
+
+# Key-gated smokes may skip when the key isn't in your env.
+node apps/api/scripts/assert-smoke-ran.mjs "$REPORT" \
+  --allow-skip extractorAbstractUnits.smoke.ts \
+  --allow-skip usdaClient.smoke.ts
 
 echo
 echo "✅ Smoke suite passed."

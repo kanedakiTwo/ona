@@ -1,32 +1,16 @@
 /**
  * Smoke test for the auth routes (register, login, /user/:id).
  *
- * Skips entirely when the API isn't reachable on $API_URL or 8000 — same
- * pattern as the other *.smoke.ts files. Run via `pnpm --filter @ona/api smoke`
- * which boots Docker Postgres + the API + a throwaway user before invoking
- * vitest.
+ * Skips when the API isn't reachable on $API_URL (default :8000) — see
+ * smokeEnv.ts; under SMOKE_REQUIRED=true (CI) that is a hard failure instead.
+ * Run via `pnpm --filter @ona/api smoke`, which boots Docker Postgres + the
+ * API + a throwaway user before invoking vitest.
  */
 
-import { describe, it, expect, beforeAll } from 'vitest'
-
-const API_URL = process.env.API_URL ?? 'http://localhost:8000'
-const TOKEN = process.env.SMOKE_USER_TOKEN ?? ''
-const USER_ID = process.env.SMOKE_USER_ID ?? ''
-
-async function isApiReachable(): Promise<boolean> {
-  const ctrl = new AbortController()
-  const t = setTimeout(() => ctrl.abort(), 1500)
-  const r = await fetch(`${API_URL}/health`, { signal: ctrl.signal }).catch(() => null)
-  clearTimeout(t)
-  return r != null && r.ok
-}
+import { describe, it, expect } from 'vitest'
+import { API_URL, TOKEN, USER_ID, reachable } from './smokeEnv.js'
 
 describe('auth route smoke', () => {
-  let reachable = false
-  beforeAll(async () => {
-    reachable = await isApiReachable()
-  })
-
   it.skipIf(!reachable)('GET /recipes (unauthed) returns 401', async () => {
     const r = await fetch(`${API_URL}/recipes`)
     // Public route → 200; protected → 401. /recipes IS public per spec, so 200.

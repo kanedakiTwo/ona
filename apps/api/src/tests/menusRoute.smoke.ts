@@ -13,28 +13,13 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest'
-
-const API_URL = process.env.API_URL ?? 'http://localhost:8000'
-const TOKEN = process.env.SMOKE_USER_TOKEN ?? ''
-const USER_ID = process.env.SMOKE_USER_ID ?? ''
-
-async function isApiReachable(): Promise<boolean> {
-  const ctrl = new AbortController()
-  const t = setTimeout(() => ctrl.abort(), 1500)
-  const r = await fetch(`${API_URL}/health`, { signal: ctrl.signal }).catch(() => null)
-  clearTimeout(t)
-  return r != null && r.ok
-}
-
-const auth = () => ({ Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' })
+import { API_URL, TOKEN, USER_ID, authHeaders as auth, reachable } from './smokeEnv.js'
 
 describe('menus route smoke', () => {
-  let reachable = false
   let weekStart = ''
   let menuId = ''
 
   beforeAll(async () => {
-    reachable = await isApiReachable()
     if (!reachable || !TOKEN || !USER_ID) return
 
     // Onboard the user just enough that the generator has all the inputs.
@@ -81,6 +66,9 @@ describe('menus route smoke', () => {
       }
       menuId = body.id ?? body.menuId ?? body.menu?.id ?? ''
     },
+    // The generator runs MENU_GENERATION.MAX_ITERATIONS scoring passes, each
+    // hitting the DB — ~10 s on a seeded test DB, well past vitest's 5 s default.
+    60_000,
   )
 
   // --- IDOR guards (see specs/menus.md "Access control") -------------------

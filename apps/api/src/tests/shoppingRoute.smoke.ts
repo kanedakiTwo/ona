@@ -11,28 +11,13 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest'
-
-const API_URL = process.env.API_URL ?? 'http://localhost:8000'
-const TOKEN = process.env.SMOKE_USER_TOKEN ?? ''
-const USER_ID = process.env.SMOKE_USER_ID ?? ''
-
-async function isApiReachable(): Promise<boolean> {
-  const ctrl = new AbortController()
-  const t = setTimeout(() => ctrl.abort(), 1500)
-  const r = await fetch(`${API_URL}/health`, { signal: ctrl.signal }).catch(() => null)
-  clearTimeout(t)
-  return r != null && r.ok
-}
-
-const auth = () => ({ Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' })
+import { API_URL, TOKEN, USER_ID, authHeaders as auth, reachable } from './smokeEnv.js'
 
 describe('shopping route smoke', () => {
-  let reachable = false
   let listId = ''
   let firstItemId = ''
 
   beforeAll(async () => {
-    reachable = await isApiReachable()
     if (!reachable || !TOKEN || !USER_ID) return
 
     // Need a menu to attach a shopping list to. Pick the latest one for the
@@ -42,10 +27,12 @@ describe('shopping route smoke', () => {
     const weekStart = monday.toISOString().slice(0, 10)
 
     // Ensure a menu exists (idempotent: if it does, /generate may noop or
-    // return a fresh one — either is fine for the smoke flow).
+    // return a fresh one — either is fine for the smoke flow). The route is
+    // auth-required since the IDOR fix; without the token this silently 401'd
+    // and every shopping assertion below was skipped via the early returns.
     await fetch(`${API_URL}/menu/generate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: auth(),
       body: JSON.stringify({ userId: USER_ID, weekStart }),
     })
 
@@ -59,7 +46,7 @@ describe('shopping route smoke', () => {
     const list = await listResp.json()
     listId = list.id ?? ''
     firstItemId = list.items?.[0]?.id ?? ''
-  })
+  }, 60_000) // /menu/generate takes ~10 s (see menusRoute.smoke.ts)
 
   it.skipIf(!reachable || !TOKEN || !USER_ID)(
     'GET /shopping-list/:menuId returns a list with items',

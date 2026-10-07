@@ -8,28 +8,10 @@
  *
  * Requires SMOKE_USER_ID + SMOKE_USER_TOKEN (smoke orchestrator provides them).
  */
-import { describe, it, expect, beforeAll } from 'vitest'
-
-const API_URL = process.env.API_URL ?? 'http://localhost:8000'
-const TOKEN = process.env.SMOKE_USER_TOKEN ?? ''
-const USER_ID = process.env.SMOKE_USER_ID ?? ''
-
-async function isApiReachable(): Promise<boolean> {
-  const ctrl = new AbortController()
-  const t = setTimeout(() => ctrl.abort(), 1500)
-  const r = await fetch(`${API_URL}/health`, { signal: ctrl.signal }).catch(() => null)
-  clearTimeout(t)
-  return r != null && r.ok
-}
-
-const auth = () => ({ Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' })
+import { describe, it, expect } from 'vitest'
+import { API_URL, TOKEN, USER_ID, authHeaders as auth, reachable } from './smokeEnv.js'
 
 describe('assistant chat route smoke', () => {
-  let reachable = false
-  beforeAll(async () => {
-    reachable = await isApiReachable()
-  })
-
   it.skipIf(!reachable)('POST /assistant/:userId/chat without a token returns 401', async () => {
     const r = await fetch(`${API_URL}/assistant/${USER_ID || '00000000-0000-0000-0000-000000000000'}/chat`, {
       method: 'POST',

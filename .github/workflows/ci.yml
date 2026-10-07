@@ -55,7 +55,8 @@ jobs:
   # ─── Route smoke tests against a real Postgres + booted API ───────
   # Boots Postgres as a service container, pushes the Drizzle schema,
   # starts the API in the background, registers a throwaway user to
-  # mint a token, then runs every `*.smoke.ts` file with that token.
+  # mint a token, then runs every `*.smoke.ts` file with that token and
+  # fails if any of them skipped unexpectedly.
   smoke:
     name: Route smoke (Postgres + API)
     runs-on: ubuntu-latest
@@ -147,18 +148,23 @@ jobs:
         env:
           SMOKE_USER_TOKEN: ${{ steps.register.outputs.token }}
           SMOKE_USER_ID: ${{ steps.register.outputs.uid }}
+          # Missing API / token / user id → hard failure, not a silent skip
+          # (see apps/api/src/tests/smokeEnv.ts).
+          SMOKE_REQUIRED: 'true'
+        # `.smoke.ts` matches every smoke file, so new ones run automatically.
+        # Sequential: menus + shopping share the smoke user's week.
         run: |
-          pnpm --filter @ona/api exec vitest run --reporter=default \
-            'src/tests/recipesRoute.smoke.ts' \
-            'src/tests/ingredientAutoCreateRoute.smoke.ts' \
-            'src/tests/authRoute.smoke.ts' \
-            'src/tests/menusRoute.smoke.ts' \
-            'src/tests/shoppingRoute.smoke.ts' \
-            'src/tests/unitResolver.smoke.ts' \
-            'src/tests/unitsRoute.smoke.ts' \
-            'src/tests/extractorAbstractUnits.smoke.ts'
-            # TODO: add ANTHROPIC_API_KEY secret to this job to un-skip the
-            # extractorAbstractUnits smoke in CI (currently skips cleanly without it)
+          pnpm --filter @ona/api exec vitest run .smoke.ts \
+            --no-file-parallelism \
+            --reporter=default --reporter=json --outputFile.json=/tmp/smoke-report.json
+
+      - name: Assert no smoke test was skipped unexpectedly
+        # Allowed: smokes gated on external API keys this job doesn't get.
+        # TODO: add ANTHROPIC_API_KEY to un-skip extractorAbstractUnits.
+        run: |
+          node apps/api/scripts/assert-smoke-ran.mjs /tmp/smoke-report.json \
+            --allow-skip extractorAbstractUnits.smoke.ts \
+            --allow-skip usdaClient.smoke.ts
 
       - name: Tail API log on failure
         if: failure()

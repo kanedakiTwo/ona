@@ -1,9 +1,8 @@
 /**
  * Smoke test for the /recipes routes.
  *
- * Skips entirely when the API server isn't reachable on localhost:8000
- * (mirrors the skip pattern from `usdaClient.smoke.ts` so this stays
- * green in CI and developer machines without a running API).
+ * Skips when the API isn't reachable on $API_URL (default :8000) — see
+ * smokeEnv.ts; under SMOKE_REQUIRED=true (CI) that is a hard failure instead.
  *
  * Covers:
  *   - GET /recipes returns cards stripped of internalTags / notes / etc.
@@ -16,32 +15,10 @@
  *  or: cd apps/api && npx vitest run src/tests/recipesRoute.smoke.ts
  */
 
-import { describe, it, expect, beforeAll } from 'vitest'
-
-const API_URL = process.env.API_URL ?? 'http://localhost:8000'
-const TEST_USER_TOKEN = process.env.SMOKE_USER_TOKEN ?? ''
-
-async function isApiReachable(): Promise<boolean> {
-  try {
-    const ctrl = new AbortController()
-    const t = setTimeout(() => ctrl.abort(), 1500)
-    const r = await fetch(`${API_URL}/health`, { signal: ctrl.signal }).catch(
-      () => null,
-    )
-    clearTimeout(t)
-    return r != null
-  } catch {
-    return false
-  }
-}
+import { describe, it, expect } from 'vitest'
+import { API_URL, TOKEN as TEST_USER_TOKEN, reachable } from './smokeEnv.js'
 
 describe('recipes route smoke', () => {
-  let reachable = false
-
-  beforeAll(async () => {
-    reachable = await isApiReachable()
-  })
-
   it.skipIf(!reachable)('GET /recipes returns lightweight cards', async () => {
     const r = await fetch(`${API_URL}/recipes?perPage=3`)
     expect(r.ok).toBe(true)
@@ -183,11 +160,10 @@ describe('recipes route smoke', () => {
           {
             index: 0,
             text: `Cocina ${ing.ingredientName} hasta que esté listo.`,
-            ingredientRefs: ['ing_0'],
           },
         ],
       }
-      const r = await fetch(`${API_URL}/recipes`, {
+      const r = await fetch(`${API_URL}/recipes?force=1`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -195,9 +171,9 @@ describe('recipes route smoke', () => {
         },
         body: JSON.stringify(body),
       })
-      // Some catalog ingredients may trip QUANTITY_OUT_OF_RANGE lint; if so,
-      // bail out gracefully — the broken-body case above is the must-pass.
-      if (r.status === 422) return
+      // `?force=1` downgrades lint errors (e.g. QUANTITY_OUT_OF_RANGE, which
+      // depends on whichever catalog ingredient came first) to warnings, so
+      // this asserts the success path instead of bailing on a 422.
       expect(r.status).toBe(201)
       const created = await r.json()
       expect(typeof created.id).toBe('string')
@@ -238,12 +214,11 @@ describe('recipes route smoke', () => {
             {
               index: 0,
               text: `Agrega ${ing.ingredientName} al recipiente.`,
-              ingredientRefs: ['ing_0'],
             },
           ],
         }
 
-        const postRes = await fetch(`${API_URL}/recipes`, {
+        const postRes = await fetch(`${API_URL}/recipes?force=1`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -251,8 +226,6 @@ describe('recipes route smoke', () => {
           },
           body: JSON.stringify(body),
         })
-        // Skip gracefully if lint blocks (e.g. QUANTITY_OUT_OF_RANGE for this ingredient).
-        if (postRes.status === 422) return
         expect(postRes.status).toBe(201)
         const created = await postRes.json()
         expect(typeof created.id).toBe('string')
@@ -299,12 +272,11 @@ describe('recipes route smoke', () => {
             {
               index: 0,
               text: `Prepara ${ing.ingredientName} al gusto.`,
-              ingredientRefs: ['ing_0'],
             },
           ],
         }
 
-        const postRes = await fetch(`${API_URL}/recipes`, {
+        const postRes = await fetch(`${API_URL}/recipes?force=1`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -312,11 +284,13 @@ describe('recipes route smoke', () => {
           },
           body: JSON.stringify(body),
         })
-        if (postRes.status === 422) return
         expect(postRes.status).toBe(201)
         const created = await postRes.json()
 
-        const getRes = await fetch(`${API_URL}/recipes/${created.id}`)
+        // User-authored recipes are private: unauthenticated GETs 404.
+        const getRes = await fetch(`${API_URL}/recipes/${created.id}`, {
+          headers: { Authorization: `Bearer ${TEST_USER_TOKEN}` },
+        })
         expect(getRes.ok).toBe(true)
         const fetched = await getRes.json()
         expect(fetched.servingsConfidence).toBe('explicit')
@@ -350,12 +324,11 @@ describe('recipes route smoke', () => {
             {
               index: 0,
               text: `Mezcla ${ing.ingredientName} con el resto.`,
-              ingredientRefs: ['ing_0'],
             },
           ],
         }
 
-        const postRes = await fetch(`${API_URL}/recipes`, {
+        const postRes = await fetch(`${API_URL}/recipes?force=1`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -363,11 +336,12 @@ describe('recipes route smoke', () => {
           },
           body: JSON.stringify(body),
         })
-        if (postRes.status === 422) return
         expect(postRes.status).toBe(201)
         const created = await postRes.json()
 
-        const getRes = await fetch(`${API_URL}/recipes/${created.id}`)
+        const getRes = await fetch(`${API_URL}/recipes/${created.id}`, {
+          headers: { Authorization: `Bearer ${TEST_USER_TOKEN}` },
+        })
         expect(getRes.ok).toBe(true)
         const fetched = await getRes.json()
         expect(fetched.servingsConfidence).toBe('estimated')

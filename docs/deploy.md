@@ -55,6 +55,8 @@ Both are configured in the Railway dashboard, not committed.
 | `ANTHROPIC_API_KEY` | For photo + URL recipe extraction |
 | `OPENAI_API_KEY` | For Realtime voice mode |
 | `USDA_FDC_API_KEY` | For ingredient auto-create |
+| `METRICS_READ_TOKEN` | Read-only token for `GET /admin/metrics` (header `x-metrics-token`) used by the Dirección/Finance agents; unset = token access off. See `specs/metrics.md` |
+| `COST_PRICE_OVERRIDES` | Optional JSON over the cost-ledger price table, e.g. `{"openai/gpt-realtime":{"perMinute":0.15}}` |
 
 `ona-web`:
 

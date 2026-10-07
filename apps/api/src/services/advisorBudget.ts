@@ -17,20 +17,27 @@ import { eq, sql } from 'drizzle-orm'
 import { db as defaultDb } from '../db/connection.js'
 import { users } from '../db/schema.js'
 import { env } from '../config/env.js'
+import { ACTIVE_PRICES } from '../config/pricing.js'
+import { attributeCostToUser, currentCostChannel, recordCost } from './costLedger.js'
 
 type Db = typeof defaultDb
 
+/** Model the advisor budget prices — keep in sync with `ASSISTANT_MODEL` in `services/assistant/engine.ts`. */
+export const ADVISOR_PRICE_MODEL = 'claude-haiku-4-5'
+
 /**
- * Claude Haiku 4.5 list price, USD per million tokens. Source: Anthropic
- * pricing — $1.00 input / $5.00 output; prompt-cache writes bill at 1.25× the
- * input rate (5-minute ephemeral, which `engine.ts` uses) and cache reads at
- * 0.1×. Keep in sync with the model in `services/assistant/engine.ts`.
+ * Claude Haiku 4.5 list price, USD per million tokens, read from the shared
+ * price table (config/pricing.ts): $1.00 input / $5.00 output; prompt-cache
+ * writes bill at 1.25× the input rate (5-minute ephemeral, which `engine.ts`
+ * uses) and cache reads at 0.1×. A `COST_PRICE_OVERRIDES` entry moves both
+ * the budget and the ledger, so they never disagree.
  */
+const HAIKU = ACTIVE_PRICES[`anthropic/${ADVISOR_PRICE_MODEL}`]
 export const HAIKU_USD_PER_MTOK = {
-  input: 1.0,
-  output: 5.0,
-  cacheWrite: 1.25,
-  cacheRead: 0.1,
+  input: HAIKU.inputPerMTok!,
+  output: HAIKU.outputPerMTok!,
+  cacheWrite: HAIKU.cacheWritePerMTok!,
+  cacheRead: HAIKU.cacheReadPerMTok!,
 } as const
 
 /** Normalised token counts pulled from one or more Anthropic responses. */
@@ -124,11 +131,16 @@ export async function getMonthlySpendMicros(
  * spent at least the monthly budget — the route should 429 before calling the
  * model. (A user just under the line may still run one more turn; the small
  * single-turn overage is acceptable for a soft cap.)
+ *
+ * Every channel calls this before any paid work, so it is also where a
+ * WhatsApp turn learns whom to bill: the cost-ledger context of the turn is
+ * attributed to `userId` (transcription, photo import and chat that follow).
  */
 export async function checkAdvisorBudget(
   userId: string,
   db: Db = defaultDb,
 ): Promise<{ exceeded: boolean; spentMicros: number; budgetMicros: number }> {
+  attributeCostToUser(userId)
   const limit = budgetMicros()
   const spentMicros = await getMonthlySpendMicros(userId, db)
   return { exceeded: spentMicros >= limit, spentMicros, budgetMicros: limit }
@@ -139,12 +151,18 @@ export async function checkAdvisorBudget(
  * if the stored month key is the current month we add to it, otherwise we
  * start a fresh month at this turn's cost. No-op when the turn cost rounds to
  * zero (e.g. a fully cache-read turn on a tiny prompt).
+ *
+ * Also appends the turn to the cost ledger (`cost_events`, fire-and-forget)
+ * under `feature` — `whatsapp_chat` inside a WhatsApp turn, `assistant_chat`
+ * otherwise — so business metrics see the same spend the budget meters.
  */
 export async function recordAdvisorUsage(
   userId: string,
   usage: TokenUsage,
   db: Db = defaultDb,
+  feature: 'assistant_chat' | 'whatsapp_chat' = currentCostChannel() === 'whatsapp' ? 'whatsapp_chat' : 'assistant_chat',
 ): Promise<void> {
+  recordCost({ feature, provider: 'anthropic', model: ADVISOR_PRICE_MODEL, units: { ...usage }, userId })
   const micros = usageCostMicros(usage, env.ADVISOR_EUR_PER_USD)
   if (micros <= 0) return
   const monthKey = currentMonthKey()

@@ -232,6 +232,13 @@
       "when": 1791360893131,
       "tag": "0032_assistant_reviews",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1791363840485,
+      "tag": "0033_cost_ledger",
+      "breakpoints": true
     }
   ]
 }

@@ -31,6 +31,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk'
+import { recordAnthropicCost } from './costLedger.js'
 import { env } from '../config/env.js'
 
 export interface LlmCandidate {
@@ -113,6 +114,7 @@ export async function disambiguateIngredients(
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userMsg }],
     })
+    recordAnthropicCost('ingredient_match', MODEL, response.usage)
   } catch (err) {
     console.warn('[ingredientMatcherLLM] API call failed, falling through:', err)
     return out

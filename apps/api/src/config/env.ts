@@ -1,6 +1,7 @@
 import dotenv from 'dotenv'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { resolveJwtSecret } from './jwtSecret.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // Load .env from monorepo root
@@ -8,7 +9,8 @@ dotenv.config({ path: path.resolve(__dirname, '../../../../.env') })
 
 export const env = {
   DATABASE_URL: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/ona',
-  JWT_SECRET: process.env.JWT_SECRET || 'ona-dev-secret',
+  /** Fails the boot on a deployed API when missing or < 32 chars (jwtSecret.ts). */
+  JWT_SECRET: resolveJwtSecret(),
   /**
    * JWT lifetime, passed straight to `jwt.sign({ expiresIn })`. Accepts the
    * `jsonwebtoken` vercel/ms format (e.g. `'90d'`, `'12h'`). Default is long
@@ -80,6 +82,19 @@ export const env = {
    * this single knob lets ops re-peg the FX without a code change. Default 0.92.
    */
   ADVISOR_EUR_PER_USD: parseFloat(process.env.ADVISOR_EUR_PER_USD || '0.92'),
+  /**
+   * Optional JSON merged over the provider price table in `config/pricing.ts`
+   * (keys `provider/model`), e.g. `{"openai/gpt-realtime":{"perMinute":0.15}}`.
+   * Lets ops correct an UNVERIFIED price without a deploy of new code. The same
+   * `ADVISOR_EUR_PER_USD` above converts every USD price in the cost ledger.
+   */
+  COST_PRICE_OVERRIDES: process.env.COST_PRICE_OVERRIDES || '',
+  /**
+   * Read-only token for `GET /admin/metrics` (header `x-metrics-token`), so an
+   * agent can read business metrics without an admin JWT. Grants access to
+   * that endpoint only. Empty → token auth disabled (admin JWT still works).
+   */
+  METRICS_READ_TOKEN: process.env.METRICS_READ_TOKEN || '',
   /**
    * PR 1B feature flag. When `true`, menu/shopping/favorites reads filter by
    * `household_id` so every member of a shared household sees the same

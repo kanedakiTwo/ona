@@ -824,3 +824,52 @@ export const assistantReviews = pgTable('assistant_reviews', {
   errorMessage: text('error_message'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
+
+// ─── Business metrics: cost ledger + activity log ────────────
+// See specs/metrics.md. Both are append-only; GET /admin/metrics aggregates
+// them per Europe/Madrid ISO week.
+
+/**
+ * One row per paid provider call (Anthropic, OpenAI, Meta WhatsApp templates,
+ * AIKIT images). Written fire-and-forget by services/costLedger.ts with the
+ * price from config/pricing.ts. `userId` is null for system jobs (daily
+ * reviewer, catalog scripts); `householdId` is the user's primary household at
+ * record time. `costMicros` is null when the model is not in the price table.
+ */
+export const costEvents = pgTable('cost_events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+  householdId: uuid('household_id').references(() => households.id, { onDelete: 'set null' }),
+  /** Product feature that spent it: assistant_chat, whatsapp_chat, voice_realtime… */
+  feature: text('feature').notNull(),
+  /** anthropic | openai | meta_whatsapp | aikit */
+  provider: text('provider').notNull(),
+  model: text('model').notNull(),
+  /** { inputTokens, outputTokens, cacheWriteTokens, cacheReadTokens, audioInputTokens, minutes, messages, images } */
+  units: jsonb('units').notNull().default({}).$type<Record<string, number>>(),
+  /** Estimated cost in micro-euros (1e-6 €). */
+  costMicros: bigint('cost_micros', { mode: 'number' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_cost_events_created').on(t.createdAt),
+  index('idx_cost_events_household_created').on(t.householdId, t.createdAt),
+  index('idx_cost_events_user_created').on(t.userId, t.createdAt),
+])
+
+/**
+ * Product-activity signals that no other table timestamps durably. Today:
+ * shopping-list use (the `shopping_lists` row is rewritten on every read, so
+ * it can't say WHEN a household shopped). Kinds: shopping_check (item
+ * check toggled), shopping_stock (in-stock toggled), shopping_add (manual
+ * item added). Written by services/activityEvents.ts.
+ */
+export const activityEvents = pgTable('activity_events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  householdId: uuid('household_id').references(() => households.id, { onDelete: 'set null' }),
+  kind: text('kind').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_activity_events_created').on(t.createdAt),
+  index('idx_activity_events_household_created').on(t.householdId, t.createdAt),
+])

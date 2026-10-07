@@ -6,6 +6,7 @@ import { assistantReviews, users, whatsappLinks, whatsappMessages } from '../../
 import { addDays, madridMidnightUtc, madridParts } from '../madridTime.js'
 import { isWhatsAppConfigured } from './config.js'
 import { sendProactive } from './outbound.js'
+import { recordAnthropicCost } from '../costLedger.js'
 
 /**
  * Conversation reviewer agent. Once a day (07:00 Madrid, from the scheduler
@@ -196,6 +197,8 @@ export const claudeReviewer: ReviewerLLM = async (system, transcript) => {
     messages: [{ role: 'user', content: transcript }],
     output_config: { effort: 'high', format: { type: 'json_schema', schema: REVIEW_SCHEMA as any } },
   } as any)
+  // System job: billed to nobody (overhead), even when an admin triggers a re-run.
+  recordAnthropicCost('whatsapp_review', REVIEW_MODEL, res.usage, null)
   if (res.stop_reason === 'refusal') throw new Error('El modelo rechazó la revisión')
   if (res.stop_reason === 'max_tokens') throw new Error('Revisión truncada (max_tokens)')
   const text = (res.content ?? []).find((b: any) => b.type === 'text')?.text

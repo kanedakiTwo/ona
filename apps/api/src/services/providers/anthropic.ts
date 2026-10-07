@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { recordAnthropicCost } from '../costLedger.js'
 import { env } from '../../config/env.js'
 import type {
   RawExtractedRecipe,
@@ -146,6 +147,9 @@ Reglas de COHERENCIA:
 - Cada ingrediente debe aparecer EXACTAMENTE una vez en el array.
 - Si un ingrediente aparece sin cantidad (ej. "sal al gusto"), usa canonical: { quantity: 0, unit: "g" } y omite display.`
 
+/** Vision + text recipe extraction model (also priced in config/pricing.ts). */
+const EXTRACTION_MODEL = 'claude-sonnet-4-6'
+
 export class AnthropicProvider implements VisionProvider, TextExtractionProvider {
   private client: Anthropic
 
@@ -158,7 +162,7 @@ export class AnthropicProvider implements VisionProvider, TextExtractionProvider
 
   async extractRecipe(imageBase64: string, mimeType: string): Promise<RawExtractedRecipe> {
     const response = await this.client.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: EXTRACTION_MODEL,
       max_tokens: 2000,
       messages: [{
         role: 'user',
@@ -175,6 +179,7 @@ export class AnthropicProvider implements VisionProvider, TextExtractionProvider
         ],
       }],
     })
+    recordAnthropicCost('recipe_extract_photo', EXTRACTION_MODEL, response.usage)
 
     const textBlock = response.content.find(block => block.type === 'text')
     if (!textBlock || textBlock.type !== 'text') {
@@ -253,7 +258,7 @@ export class AnthropicProvider implements VisionProvider, TextExtractionProvider
         : 'articulo web'
 
     const response = await this.client.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: EXTRACTION_MODEL,
       max_tokens: 2500,
       messages: [
         {
@@ -267,6 +272,7 @@ export class AnthropicProvider implements VisionProvider, TextExtractionProvider
         },
       ],
     })
+    recordAnthropicCost('recipe_extract_url', EXTRACTION_MODEL, response.usage)
 
     const textBlock = response.content.find((block) => block.type === 'text')
     if (!textBlock || textBlock.type !== 'text') {

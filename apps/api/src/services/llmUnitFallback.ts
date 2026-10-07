@@ -1,5 +1,6 @@
 // apps/api/src/services/llmUnitFallback.ts
 import Anthropic from '@anthropic-ai/sdk'
+import { recordAnthropicCost } from './costLedger.js'
 import { env } from '../config/env.js'
 
 export interface LlmUnitInput {
@@ -42,6 +43,8 @@ Output: { "gramsPerUnit": 8, "mlPerUnit": null, "rationale": "Una rodajita fina 
 Input: { "unit": "buen chorro", "ingredient": null }
 Output: { "gramsPerUnit": null, "mlPerUnit": 40, "rationale": "Un buen chorro de líquido suele rondar 40 ml." }`
 
+const UNIT_FALLBACK_MODEL = 'claude-haiku-4-5-20251001'
+
 class AnthropicLlmUnitClient implements LlmUnitClient {
   private client: Anthropic
 
@@ -59,12 +62,13 @@ class AnthropicLlmUnitClient implements LlmUnitClient {
       ingredient: input.ingredientName ?? null,
     })
     const response = await this.client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: UNIT_FALLBACK_MODEL,
       max_tokens: 200,
       messages: [
         { role: 'user', content: `${PROMPT}\n\nInput: ${userMessage}\nOutput:` },
       ],
     })
+    recordAnthropicCost('unit_fallback', UNIT_FALLBACK_MODEL, response.usage)
     const textBlock = response.content.find((b) => b.type === 'text')
     if (!textBlock || textBlock.type !== 'text') {
       throw new Error('No text response from LLM unit fallback')

@@ -58,6 +58,7 @@ import {
 import { extractRecipeFromImage } from '../services/recipeExtractor.js'
 import { saveExtractedRecipe } from '../services/recipeImport.js'
 import { AnthropicProvider } from '../services/providers/anthropic.js'
+import { runWithCostUser } from '../services/costLedger.js'
 import {
   persistRecipe,
   type RecipeWriteInput,
@@ -534,7 +535,12 @@ router.post(
       }
 
       const provider = new AnthropicProvider()
-      const extracted = await extractRecipeFromImage(provider, req.file.buffer, req.file.mimetype)
+      // multer's stream callbacks drop authMiddleware's cost context; re-enter
+      // it so the vision call is billed to this user in the cost ledger.
+      const file = req.file
+      const extracted = await runWithCostUser(req.userId ?? null, () =>
+        extractRecipeFromImage(provider, file.buffer, file.mimetype),
+      )
 
       // Return the extracted draft so the user can review and adjust before
       // persisting through POST /recipes. Auto-persisting here would skip the

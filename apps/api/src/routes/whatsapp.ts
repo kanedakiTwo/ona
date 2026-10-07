@@ -13,6 +13,7 @@ import { buildInboundDeps, initialInboundBody } from '../services/whatsapp/wirin
 import * as store from '../services/whatsapp/store.js'
 import { buildWaLink, linkMessageText, maskPhone } from '../services/whatsapp/linking.js'
 import { PROACTIVE_KINDS } from '../services/whatsapp/proactive.js'
+import { runWithCostUser } from '../services/costLedger.js'
 
 // ─── Public webhook (Meta → ONA) ─────────────────────────────────
 //
@@ -69,8 +70,10 @@ whatsappWebhookRouter.post(
         if (await store.insertInbound(msg, initialInboundBody(msg))) {
           deps ??= buildInboundDeps()
           // Processing (several seconds with the model) continues after the
-          // response; Meta wants a fast 200.
-          void enqueueInbound(msg, deps)
+          // response; Meta wants a fast 200. Each turn gets its own cost-ledger
+          // context; the user is filled in once the phone resolves.
+          const turnDeps = deps
+          void runWithCostUser(null, () => enqueueInbound(msg, turnDeps), 'whatsapp')
         }
       } catch (err: any) {
         failed = true

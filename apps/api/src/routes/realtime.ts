@@ -7,6 +7,7 @@ import { buildSystemPrompt } from '../services/assistant/systemPrompt.js'
 import { getRealtimeTools, executeTool } from '../services/realtime/tools.js'
 import { checkQuota, recordSessionMinutes } from '../services/realtime/quota.js'
 import { voiceTranscripts } from '../db/schema.js'
+import { recordCost } from '../services/costLedger.js'
 
 const router = Router()
 
@@ -190,6 +191,11 @@ router.post('/realtime/:userId/usage', async (req: AuthRequest, res) => {
   }
 
   recordSessionMinutes(userId, minutes)
+  // The session ran browser ↔ OpenAI over WebRTC, so the client-reported
+  // length is all the server knows: priced per minute (config/pricing.ts).
+  if (minutes > 0) {
+    recordCost({ feature: 'voice_realtime', provider: 'openai', model: env.OPENAI_REALTIME_MODEL, units: { minutes }, userId })
+  }
   res.json({ ok: true })
 })
 

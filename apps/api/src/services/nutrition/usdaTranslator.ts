@@ -25,6 +25,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import Anthropic from '@anthropic-ai/sdk'
+import { recordAnthropicCost } from '../costLedger.js'
 import { env } from '../../config/env.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -151,6 +152,7 @@ ${numbered}`
         max_tokens: 60 * batch.length, // ~60 tokens per item is plenty for terse USDA strings
         messages: [{ role: 'user', content: userMsg }],
       })
+      recordAnthropicCost('usda_translation', MODEL, response.usage)
       const block = response.content.find((b) => b.type === 'text')
       if (block && block.type === 'text') {
         const text = block.text.trim()

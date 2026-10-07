@@ -25,6 +25,8 @@ import pantryRoutes from './routes/pantry.js'
 import cookbooksRoutes from './routes/cookbooks.js'
 import recipePhotosRoutes from './routes/recipePhotos.js'
 import whatsappRoutes, { whatsappWebhookRouter } from './routes/whatsapp.js'
+import metricsRoutes from './routes/metrics.js'
+import { trackShoppingActivity } from './services/activityEvents.js'
 import { startScheduler } from './services/notificationScheduler.js'
 
 const app = express()
@@ -46,6 +48,9 @@ app.use(cors({
 app.use(whatsappWebhookRouter)
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
+// Logs shopping-list item mutations (2xx) for the business metrics'
+// "resolved week" — observes the response, never changes it.
+app.use(trackShoppingActivity)
 
 // Static files
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -91,6 +96,9 @@ app.use(pushRoutes)
 // Per-route authMiddleware (no catch-all) — kept next to pushRoutes for the
 // same mount-order reason.
 app.use(whatsappRoutes)
+// GET /admin/metrics accepts `x-metrics-token` instead of a JWT, so it must
+// be mounted before the catch-all `router.use(authMiddleware)` routers below.
+app.use(metricsRoutes)
 app.use(userRoutes)
 app.use(menuRoutes)
 app.use(shoppingRoutes)

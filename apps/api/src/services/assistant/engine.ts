@@ -4,6 +4,7 @@ import { loadUserContext } from './contextLoader.js'
 import { buildSystemPrompt, type AssistantMode } from './systemPrompt.js'
 import { skills, getToolDefinitions } from './skills.js'
 import type { AssistantResponse, ChatMessage, SkillContext, SkillDefinition, SkillResult } from './types.js'
+import { recordSkillActivity } from '../activityEvents.js'
 import {
   EMPTY_USAGE,
   addAnthropicUsage,
@@ -191,6 +192,7 @@ export async function runToolLoop(params: {
       } else {
         try {
           result = await skill.handler(toolUse.input, params.ctx)
+          recordSkillActivity(skill.name, params.ctx.userId, result)
         } catch (err: any) {
           console.error(`[assistant] Skill ${skill.name} error:`, err?.message ?? err)
           result = { data: null, summary: `Error ejecutando ${skill.name}: ${err?.message ?? err}`, uiHint: 'text' }

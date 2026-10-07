@@ -1,4 +1,6 @@
 import { env } from '../config/env.js'
+import type { CostUnits } from '../config/pricing.js'
+import { recordCost } from './costLedger.js'
 
 /**
  * Speech-to-text for WhatsApp voice notes via OpenAI's transcription API
@@ -60,5 +62,28 @@ export async function transcribeAudio(audio: Buffer, mimeType: string): Promise<
   if (!r.ok) {
     throw new Error(`OpenAI transcription ${r.status}: ${json?.error?.message ?? 'unknown error'}`)
   }
+  // Billed to the user of the current WhatsApp turn (cost-ledger context).
+  recordCost({
+    feature: 'voice_note_transcription',
+    provider: 'openai',
+    model: env.OPENAI_TRANSCRIBE_MODEL,
+    units: transcriptionUnits(json?.usage),
+  })
   return typeof json.text === 'string' ? json.text : ''
+}
+
+/**
+ * Pure: the transcription response's `usage` → ledger units. gpt-4o-*
+ * models report tokens (`{ type: 'tokens', input_token_details: { audio_tokens,
+ * text_tokens }, output_tokens }`); whisper-1 reports `{ type: 'duration', seconds }`.
+ */
+export function transcriptionUnits(usage: any): CostUnits {
+  if (usage?.type === 'duration' && Number.isFinite(usage.seconds)) return { minutes: usage.seconds / 60 }
+  if (usage?.type === 'tokens') {
+    const details = usage.input_token_details ?? {}
+    const audio = Number(details.audio_tokens ?? usage.input_tokens ?? 0)
+    const text = Number(details.text_tokens ?? 0)
+    return { audioInputTokens: audio, inputTokens: text, outputTokens: Number(usage.output_tokens ?? 0) }
+  }
+  return {}
 }

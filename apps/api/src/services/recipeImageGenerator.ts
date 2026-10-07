@@ -14,6 +14,7 @@ import sharp from 'sharp'
 import { writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { env } from '../config/env.js'
+import { recordCost } from './costLedger.js'
 
 const AIKIT_BASE = 'https://cms.aikit.es/api/free-form-tools/image-generation'
 
@@ -98,6 +99,9 @@ export async function generateRecipeImage(
   if (!ct.startsWith('image/')) {
     throw new AikitGenerationError(502, `Expected image/*, got ${ct}`)
   }
+  // Billed to the requesting user (route context); the bulk seed script has
+  // no context and lands as a system cost.
+  recordCost({ feature: 'recipe_image', provider: 'aikit', model: 'imagen-fal', units: { images: 1 } })
   return Buffer.from(await res.arrayBuffer())
 }
 

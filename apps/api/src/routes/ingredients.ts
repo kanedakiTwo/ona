@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import Anthropic from '@anthropic-ai/sdk'
+import { recordAnthropicCost } from '../services/costLedger.js'
 import { eq, like, count, asc, desc, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { ingredients, recipeIngredients } from '../db/schema.js'
@@ -295,6 +296,7 @@ async function estimateNutritionForName(
     max_tokens: 200,
     messages: [{ role: 'user', content: prompt }],
   })
+  recordAnthropicCost('ingredient_nutrition_estimate', 'claude-opus-4-6', response.usage)
   const block = response.content.find((b) => b.type === 'text')
   if (!block || block.type !== 'text') {
     const e = new Error('Respuesta vacía del modelo.') as Error & { status?: number }

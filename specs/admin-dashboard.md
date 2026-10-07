@@ -59,6 +59,11 @@ The admin dashboard handles **system recipes only** (`authorId IS NULL`). User-c
 - [apps/web/src/hooks/useAdmin.ts](../apps/web/src/hooks/useAdmin.ts) — replaces `useCurator.ts`; adds `useVoiceTranscriptSessions` + `useVoiceTranscriptTurns`
 - [apps/web/src/app/profile/page.tsx](../apps/web/src/app/profile/page.tsx) — gated "Admin" footer link, only visible when `role === 'admin'`
 - [apps/web/src/app/curator/page.tsx](../apps/web/src/app/curator/page.tsx) — temporary redirect to `/admin`
+- [apps/api/src/routes/metrics.ts](../apps/api/src/routes/metrics.ts) — `GET /admin/metrics` (own router, mounted before the catch-all auth routers so the metrics token works)
+
+## Business metrics
+
+`GET /admin/metrics?weeks=8` returns weekly active households, resolved weeks, signup cohorts and cost per active household from the cost ledger — admin JWT or the read-only `x-metrics-token`. No UI tab yet; see [Business Metrics & Cost Ledger](./metrics.md).
 
 ## WhatsApp conversation reviews
 

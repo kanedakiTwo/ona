@@ -1,5 +1,6 @@
 import { skills } from '../assistant/skills.js'
 import type { SkillContext, SkillResult } from '../assistant/types.js'
+import { recordSkillActivity } from '../activityEvents.js'
 
 export interface RealtimeTool {
   type: 'function'
@@ -26,5 +27,7 @@ export async function executeTool(
   if (!skill) {
     return { data: null, summary: `Herramienta desconocida: ${name}`, uiHint: 'text' }
   }
-  return skill.handler(params ?? {}, ctx)
+  const result = await skill.handler(params ?? {}, ctx)
+  recordSkillActivity(name, ctx.userId, result)
+  return result
 }

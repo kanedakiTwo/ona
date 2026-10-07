@@ -157,6 +157,7 @@ This is the **single source of truth** for work that's pending on Miguel's side 
   - Pedir cita con una gestoría con las preguntas del §8 de `research/findings/2026-10-07-forma-juridica.md`. Confirmar D-004 en `/ona-dia`.
   - Añadir un número real de WhatsApp al portfolio actual de Meta, **sin pedir todavía la verificación** (D-004).
   - Reescribir con su voz las secciones [BORRADOR] de `constitution.md` (misión y POV, unos 15 min).
+  - En claude.ai → Code → Environments → "Predeterminado", poner *Network access* en **Full**: hoy el proxy bloquea las fuentes primarias que lee Inteligencia (`ona-hq/README.md` → "Red del entorno").
   - Conectar las métricas a las routines (`ona-hq/README.md` → "Conectar métricas"), cuando `/admin/metrics` esté desplegado.
 
 - [ ] **WhatsApp — optional follow-ups** (channel live in prod since 2026-10-06; linked + "genera menú" verified end-to-end; setup notes in [specs/whatsapp.md](./specs/whatsapp.md) → Configuration):

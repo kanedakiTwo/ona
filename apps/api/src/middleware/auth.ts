@@ -5,6 +5,7 @@ import type { Role } from '@ona/shared'
 import { env } from '../config/env.js'
 import { db } from '../db/connection.js'
 import { users } from '../db/schema.js'
+import { runWithCostUser } from '../services/costLedger.js'
 
 export interface AuthRequest extends Request {
   userId?: string
@@ -47,7 +48,12 @@ export async function authMiddleware(
       })
       return
     }
-    res.status(401).json({ error: 'Invalid token' })
+    // Bad signature / malformed (e.g. signed with a rotated JWT_SECRET): same
+    // recovery path as an expired token.
+    res.status(401).json({
+      error: 'Tu sesión no es válida. Vuelve a iniciar sesión.',
+      code: 'INVALID_TOKEN',
+    })
     return
   }
 
@@ -84,7 +90,10 @@ export async function authMiddleware(
     role: row.role as Role,
     suspendedAt: row.suspendedAt,
   }
-  next()
+  // Paid provider calls made while handling this request (however deep) are
+  // billed to this user in the cost ledger. Handlers behind a multipart parser
+  // (multer) lose the context and must re-enter it — see costLedger.ts.
+  runWithCostUser(row.id, next)
 }
 
 /**
@@ -122,6 +131,8 @@ export async function optionalAuthMiddleware(
   if (row && !row.suspendedAt) {
     req.userId = row.id
     req.user = { id: row.id, role: row.role as Role, suspendedAt: row.suspendedAt }
+    runWithCostUser(row.id, next)
+    return
   }
   next()
 }

@@ -3,8 +3,8 @@
  * real form, prepare the orders from the shopping list, and check the
  * ready-to-send WhatsApp link — the whole point of the feature.
  *
- * Skips the order half gracefully if the catalog can't produce a menu with
- * fruit or vegetables (thin e2e seed).
+ * The list is built from manual items, so it never depends on the seed or
+ * on what the menu generator picks — the WhatsApp half always runs.
  */
 
 import { test, expect, type Page } from '@playwright/test'
@@ -23,8 +23,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('add a shop → prepare orders → WhatsApp link with the order written', async ({ page }) => {
-  // Register + onboarding + shop + a full menu generation + the 15 s order
-  // wait don't fit the 30 s default on CI runners.
+  // Register + onboarding + the shop form + prepare: roomy on slow CI runners.
   test.setTimeout(60_000)
   await page.goto('/compra')
   await dismissOverlays(page)
@@ -40,36 +39,34 @@ test('add a shop → prepare orders → WhatsApp link with the order written', a
   await page.getByRole('button', { name: /^Añadir tienda$/ }).click()
   await expect(page.getByText('WhatsApp +34913525111')).toBeVisible({ timeout: 10_000 })
 
-  // A menu, so the list has fruit and vegetables to order.
+  // Deterministic list, independent of the seed and the menu generator: two
+  // items the user typed with aisle "produce" → they must land in the
+  // frutería order (CI's thin seed puts every menu item in aisle "otros").
   const token = await page.evaluate(() => localStorage.getItem('ona_token'))
-  const userId = await page.evaluate(() => JSON.parse(localStorage.getItem('ona_user') ?? '{}').id as string)
-  const d = new Date()
-  d.setDate(d.getDate() + (d.getDay() === 0 ? -6 : 1 - d.getDay()))
-  // Breakfast included explicitly: the default plantilla is lunch + dinner
-  // since 2026-10-07, and with the thin e2e seed only breakfasts reliably
-  // bring fruit to the list.
-  const allMeals = Array.from({ length: 7 }, () => ({ breakfast: true, lunch: true, dinner: true }))
-  await page.request.post(`${API_URL}/menu/generate`, {
-    headers: { Authorization: `Bearer ${token}` },
-    data: { userId, weekStart: d.toISOString().slice(0, 10), customTemplate: allMeals },
-  })
+  const auth = { Authorization: `Bearer ${token}` }
+  const list = await (await page.request.get(`${API_URL}/shopping-list`, { headers: auth })).json()
+  for (const item of [
+    { name: 'tomates', quantity: 1000, unit: 'g', aisle: 'produce' },
+    { name: 'calabacín', quantity: 2, unit: 'u', aisle: 'produce' },
+  ]) {
+    const r = await page.request.post(`${API_URL}/shopping-list/${list.id}/items`, { headers: auth, data: item })
+    expect(r.ok()).toBe(true)
+  }
 
   await page.goto('/compra')
   await dismissOverlays(page)
   await page.getByRole('button', { name: /Preparar los pedidos/ }).click()
 
   const card = page.getByTestId('order-fruteria')
-  // isVisible() doesn't wait — waitFor does.
-  const hasOrder = await card.waitFor({ state: 'visible', timeout: 15_000 }).then(() => true, () => false)
-  test.skip(!hasOrder, 'Seed menu has no fruit or vegetables for the next 7 days')
-
+  await expect(card).toBeVisible({ timeout: 15_000 })
   await expect(card.getByText('The Fruits of the World')).toBeVisible()
   const link = card.getByRole('link', { name: /Enviar por WhatsApp/ })
   const href = await link.getAttribute('href')
   expect(href).toMatch(/^https:\/\/wa\.me\/34913525111\?text=/)
   const text = decodeURIComponent(href!.split('?text=')[1])
   expect(text).toMatch(/^Hola, soy Miguel\./)
-  expect(text).toMatch(/\n- \S/)
+  expect(text).toContain('- Tomates: 1 kg')
+  expect(text).toContain('- Calabacín: 2 unidades')
   expect(text).toMatch(/precio por kilo/)
 })
 

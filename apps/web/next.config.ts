@@ -21,6 +21,18 @@ const nextConfig: NextConfig = {
     // the original URL.
     unoptimized: true,
   },
+  // One canonical host. Railway serves both mimoia.com and www.mimoia.com
+  // (each with its own cert); www bounces to the apex keeping path + query.
+  async redirects() {
+    return [
+      {
+        source: '/:path*',
+        has: [{ type: 'host', value: 'www.mimoia.com' }],
+        destination: 'https://mimoia.com/:path*',
+        permanent: true,
+      },
+    ]
+  },
 }
 
 // API responses carry the user's data and the cache keys them by URL only

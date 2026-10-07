@@ -6,6 +6,8 @@ ONA runs on Railway in two services + a Postgres:
 - `ona-web` — Next.js frontend (`apps/web/`, prod build via `next build`)
 - `Postgres` — managed Postgres
 
+Custom domain (since 2026-10-07): `mimoia.com` and `www.mimoia.com` → `ona-web` (port 3000), DNS at Namecheap (ALIAS `@` + CNAME `www` to the `*.up.railway.app` targets Railway gave, plus two `_railway-verify` TXT; MX records are Namecheap email forwarding for `hola@`). `www.mimoia.com` 308-redirects to the apex (`redirects()` in `apps/web/next.config.ts`, pinned by `e2e/canonical-host.spec.ts`). `ona-web-production.up.railway.app` still serves too; `ona-api` keeps its Railway URL. `WEB_PUBLIC_URL` on `ona-api` = `https://mimoia.com`.
+
 There is **no GitHub-Railway repo connection**. Deploys are manual via the Railway CLI from your local machine. Both services are configured with **Railpack** (Railway's new builder); legacy `NIXPACKS_*` vars are no longer respected. Railpack takes the Node version from the root `package.json` `engines.node` (**22.x**; CI uses the same). `apps/*/Dockerfile` are not used by Railway (kept for local container experiments).
 
 ## One-time setup per machine

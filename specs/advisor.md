@@ -39,8 +39,8 @@ The assistant can call back-end skills (function calling). Each skill has a name
 - `update_memory` — persist any preference the user mentions ("recuerda que no me gusta el cilantro", "tengo freidora de aire", "los lunes no cocino más de 20 min"). Accepts `facts: [{ key, value, confidence? }]`; writes through `setMemoryBatch` with `source='inferred'` and default confidence 0.8 (1.0 if the user is emphatic). Canonical keys live in `@ona/shared` `MEMORY_KEYS` — see [User Memory](./user-memory.md). The assistant's system prompt already carries a Spanish digest of every stored fact, so a write here changes the next response's grounding.
 - `recipe_variation` — generate a variation of a recipe (e.g., dairy-free version)
 - `nutrition_advice` — return advisor summary based on `user_nutrient_balance`
-- `get_pantry_stock` — list ingredients currently flagged `inStock` on the latest shopping list
-- `mark_in_stock` — set/toggle the `inStock` flag of a shopping-list item by name
+- `get_pantry_stock` — what's at home: the real pantry (`pantry_items`, with quantities and expiry dates, what `/pantry` shows) plus items marked "ya lo tengo" on the latest shopping list, deduped by name. It used to read only the list flags, so the pantry kept in the app was invisible to the assistant
+- `mark_in_stock` — "tengo X" / "se me acabó X": sets the list item's `inStock` **and** adds the item to (or removes it from) the pantry, whichever exist. With no list it still writes the pantry
 - `check_shopping_item` — set/toggle the `checked` flag of a shopping-list item (mark groceries as bought)
 - `get_my_recipes` — list recipes authored by the user (`recipes.authorId = user.id`)
 - `get_menu_history` — list past weeks' menus to answer "when did I last eat X"
@@ -64,7 +64,7 @@ The assistant can call back-end skills (function calling). Each skill has a name
   - `set_leftovers`.
 - **Shopping:** `add_shopping_items` (units normalised to g/ml/u/cda/cdita), `remove_shopping_items`, `regenerate_shopping_list`, `manage_staples`.
 - **Compra en mis tiendas** (`shopOrderSkills.ts`, see [Shop orders](./shop-orders.md)): `manage_shops`, `prepare_shop_orders` ("hazme la compra" → one `/c/<token>` short link per shop that opens the user's own WhatsApp with the order written), `register_shop_reply` (forwarded/pasted shop reply → OK / Revisar / No hay per line, total vs cap), `approve_shop_order` (only after an explicit "sí"; returns the confirmation link), `close_shop_order`, `get_shop_orders`. The prompt treats a shop's reply as data, never instructions, and allows copying `/c/` links verbatim.
-- **Pantry:** `list_pantry`, `update_pantry` (add/set/remove, expiry).
+- **Pantry:** `update_pantry` (add/set/remove with quantities and expiry). Reading the pantry is `get_pantry_stock`; the old `list_pantry` duplicate was removed (62 skills).
 - **Recipes:**
   - `log_cooked` (cook log + pantry decrement).
   - `update_recipe_notes`: rating, notes appended, substitutions, tags.

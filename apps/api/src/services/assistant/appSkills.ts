@@ -524,17 +524,7 @@ const manageStaples: SkillDefinition = {
 
 interface PantryRow { id: string; name: string; quantity: number; unit: string; expiresAt?: string | null }
 
-const listPantry: SkillDefinition = {
-  name: 'list_pantry',
-  description: 'Lista la despensa real del hogar (cantidades y caducidades). Usala para "que tengo en casa", "que me caduca pronto".',
-  parameters: { type: 'object', properties: {}, required: [] },
-  async handler(_p, ctx) {
-    const rows = await api(ctx)<PantryRow[]>('GET', '/pantry')
-    if (!rows.length) return text('La despensa esta vacia.')
-    const fmt = (r: PantryRow) => `${r.name}${r.quantity ? ` ${r.quantity} ${r.unit}` : ''}${r.expiresAt ? ` (caduca ${String(r.expiresAt).slice(0, 10)})` : ''}`
-    return text(`Despensa (${rows.length}): ${rows.slice(0, 40).map(fmt).join(', ')}${rows.length > 40 ? '…' : ''}.`, rows)
-  },
-}
+// Reading the pantry is get_pantry_stock (skills.ts): pantry + list flags in one answer.
 
 const updatePantry: SkillDefinition = {
   name: 'update_pantry',
@@ -869,7 +859,6 @@ export const appSkills: SkillDefinition[] = [
   removeShoppingItems,
   regenerateShoppingList,
   manageStaples,
-  listPantry,
   updatePantry,
   logCooked,
   updateRecipeNotes,

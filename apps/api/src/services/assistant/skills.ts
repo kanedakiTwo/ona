@@ -31,7 +31,8 @@ import { shopOrderSkills } from './shopOrderSkills.js'
 import { visibleAuthorIds, visibleRecipeWhere } from '../recipeVisibility.js'
 import { loadMatchableRecipes } from '../matchableRecipes.js'
 import { loadPreviousWeek } from '../menuWeek.js'
-import { compileRestrictions, mergeRestrictions, violatesRestrictions, type RestrictableRecipe } from '../dietaryRestrictions.js'
+import { compileRestrictions, mergeRestrictions, nameHasTerm, normalizeText, violatesRestrictions, type RestrictableRecipe } from '../dietaryRestrictions.js'
+import { addPantryForUser, deletePantryForUser, listPantryForUser, NoHouseholdError } from '../pantryStore.js'
 import { enqueuePrepAlertsForMenu } from '../notificationScheduler.js'
 import { NotARecipeError } from '../recipeUrlExtractor.js'
 import { NoExtractableContentError } from '../sources/youtube.js'
@@ -982,38 +983,63 @@ function scaleRound(raw: number, unit: string): number {
 }
 
 // 1. ── get_pantry_stock ────────────────────────────────────
+// One answer to "¿qué tengo en casa?": the real pantry (pantry_items, with
+// quantities and expiry dates, what /pantry shows) plus anything marked "ya lo
+// tengo" on this week's shopping list. Before 2026-10-07 it only read the list
+// flags, so the pantry the user kept in the app was invisible to the assistant.
+async function latestShoppingList(ctx: SkillContext) {
+  const [list] = await ctx.db
+    .select()
+    .from(shoppingLists)
+    .where(scopeWhere(shoppingLists.userId, shoppingLists.householdId, await resolveScope(ctx.userId, ctx.db)))
+    .orderBy(desc(shoppingLists.createdAt))
+    .limit(1)
+  return list ?? null
+}
+
 const getPantryStock: SkillDefinition = {
   name: 'get_pantry_stock',
-  description: 'Devuelve los ingredientes que el usuario tiene en casa (marcados como "en casa" en la lista de la compra mas reciente). Usa esta skill cuando el usuario pregunte que tiene en la nevera o despensa.',
+  description: 'Lo que el usuario tiene en casa: su despensa (cantidades y caducidades) y lo marcado como "ya lo tengo" en la lista de la compra. Usala para "que tengo en la nevera/despensa", "que me caduca pronto".',
   parameters: { type: 'object', properties: {}, required: [] },
   async handler(_params, ctx) {
-    const { userId, db } = ctx
-    const [list] = await db
-      .select()
-      .from(shoppingLists)
-      .where(scopeWhere(shoppingLists.userId, shoppingLists.householdId, await resolveScope(userId, db)))
-      .orderBy(desc(shoppingLists.createdAt))
-      .limit(1)
-    if (!list) {
-      return { data: [], summary: 'Aun no tengo lista de la compra, asi que no se que tienes en casa. Genera un menu para empezar.', uiHint: 'text' }
+    const pantry = await listPantryForUser(ctx.userId, ctx.db).catch(() => [])
+    const list = await latestShoppingList(ctx)
+    const inPantry = new Set(pantry.map((p) => normalizeText(p.name)))
+    const fromList = ((list?.items as any[]) ?? []).filter((i) => i?.inStock && !inPantry.has(normalizeText(String(i.name ?? ''))))
+    if (pantry.length === 0 && fromList.length === 0) {
+      return {
+        data: [],
+        summary: list
+          ? 'No tienes nada en la despensa ni marcado como "ya lo tengo" en la lista.'
+          : 'Tu despensa esta vacia y aun no tienes lista de la compra.',
+        uiHint: 'text',
+      }
     }
-    const items = ((list.items as any[]) ?? []).filter(i => i?.inStock)
-    if (items.length === 0) {
-      return { data: [], summary: 'No tienes nada marcado como en casa. Cuando vayas comprando, marca lo que vas guardando.', uiHint: 'text' }
-    }
-    const names = items.map(i => i.name).slice(0, 30).join(', ')
+    const fmt = (r: { name: string; quantity: number; unit: string; expiresAt: string | null }) =>
+      `${r.name}${r.quantity ? ` ${r.quantity} ${r.unit}` : ''}${r.expiresAt ? ` (caduca ${String(r.expiresAt).slice(0, 10)})` : ''}`
+    const all = [...pantry.map(fmt), ...fromList.map((i) => String(i.name))]
     return {
-      data: items,
-      summary: `Tienes en casa: ${names}${items.length > 30 ? '…' : ''}.`,
-      uiHint: 'shopping_list',
+      data: { pantry, fromList },
+      summary: `Tienes en casa: ${all.slice(0, 40).join(', ')}${all.length > 40 ? '…' : ''}.`,
+      uiHint: 'text',
     }
   },
 }
 
 // 2. ── mark_in_stock ────────────────────────────────────────
+function findPantryRow<T extends { name: string }>(rows: T[], query: string): T | null {
+  const q = normalizeText(query)
+  if (!q) return null
+  return (
+    rows.find((r) => normalizeText(r.name) === q) ??
+    rows.find((r) => nameHasTerm(normalizeText(r.name), q) || nameHasTerm(q, normalizeText(r.name))) ??
+    null
+  )
+}
+
 const markInStock: SkillDefinition = {
   name: 'mark_in_stock',
-  description: 'Marca o desmarca un ingrediente como disponible en casa. Si el usuario dice "tengo X" pasa inStock:true; si dice "se acabo X" o "ya no tengo X" pasa false. Sin parametro inStock alterna.',
+  description: 'El usuario dice que tiene o que se le ha acabado un ingrediente. "tengo X" → inStock:true (lo apunta en la despensa y lo marca "ya lo tengo" en la lista); "se acabo X" / "ya no tengo X" → false (lo quita de ambas). Sin inStock alterna.',
   parameters: {
     type: 'object',
     properties: {
@@ -1024,26 +1050,45 @@ const markInStock: SkillDefinition = {
   },
   async handler(params: { ingredient: string; inStock?: boolean }, ctx) {
     const { userId, db } = ctx
-    const [list] = await db
-      .select()
-      .from(shoppingLists)
-      .where(scopeWhere(shoppingLists.userId, shoppingLists.householdId, await resolveScope(userId, db)))
-      .orderBy(desc(shoppingLists.createdAt))
-      .limit(1)
-    if (!list) {
-      return { data: null, summary: 'Necesitas tener una lista de la compra activa para gestionar la despensa.', uiHint: 'text' }
+    const pantry = await listPantryForUser(userId, db).catch(() => [])
+    const list = await latestShoppingList(ctx)
+    const items = ((list?.items as any[]) ?? []).slice()
+    const item = list ? findShoppingItem(items, params.ingredient) : null
+    const pantryHit = findPantryRow(pantry, params.ingredient)
+    const current = item ? Boolean(item.inStock) : Boolean(pantryHit)
+    const next = params.inStock != null ? !!params.inStock : !current
+
+    let touched = false
+    if (item) {
+      item.inStock = next
+      await db.update(shoppingLists).set({ items }).where(eq(shoppingLists.id, list.id))
+      touched = true
     }
-    const items = ((list.items as any[]) ?? []).slice()
-    const item = findShoppingItem(items, params.ingredient)
-    if (!item) {
-      return { data: null, summary: `No he encontrado "${params.ingredient}" en tu lista. Anadelo manualmente o regenera la lista.`, uiHint: 'text' }
+    if (next && !pantryHit) {
+      try {
+        await addPantryForUser(userId, { name: String(item?.name ?? params.ingredient).trim().slice(0, 80) }, db)
+        touched = true
+      } catch (err) {
+        if (!(err instanceof NoHouseholdError)) throw err
+      }
     }
-    const next = params.inStock != null ? !!params.inStock : !item.inStock
-    item.inStock = next
-    await db.update(shoppingLists).set({ items }).where(eq(shoppingLists.id, list.id))
+    if (!next && pantryHit) {
+      await deletePantryForUser(userId, pantryHit.id, db)
+      touched = true
+    }
+    if (!touched) {
+      return {
+        data: null,
+        summary: list
+          ? `No he encontrado "${params.ingredient}" en tu lista ni en la despensa.`
+          : 'Necesitas tener una lista de la compra activa para gestionar la despensa.',
+        uiHint: 'text',
+      }
+    }
+    const name = item?.name ?? pantryHit?.name ?? params.ingredient
     return {
-      data: { name: item.name, inStock: next },
-      summary: next ? `${item.name} marcado como en casa.` : `${item.name} eliminado de la despensa.`,
+      data: { name, inStock: next },
+      summary: next ? `${name} marcado como en casa.` : `${name} eliminado de la despensa.`,
       uiHint: 'confirmation',
     }
   },

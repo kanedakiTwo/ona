@@ -317,6 +317,10 @@ router.get('/shopping-list/:menuId', async (req: AuthRequest, res) => {
       res.status(404).json({ error: 'Menu not found' })
       return
     }
+    if (!canAccessRow(menu, req.userId!, await resolveScope(req.userId!))) {
+      res.status(403).json({ error: 'No tienes acceso a este menú.' })
+      return
+    }
 
     // Fetch user for household sizing (prefers adults+kidsCount, falls back
     // to legacy householdSize until everyone has updated their profile).
@@ -380,12 +384,11 @@ router.put('/shopping-list/:listId/item/:itemId/check', async (req: AuthRequest,
     const listId = String(req.params.listId)
     const itemId = String(req.params.itemId)
 
-    const [list] = await db
-      .select()
-      .from(shoppingLists)
-      .where(eq(shoppingLists.id, listId))
-      .limit(1)
-
+    const { list, forbidden } = await loadListForCaller(listId, req.userId!)
+    if (forbidden) {
+      res.status(403).json({ error: 'No tienes acceso a esta lista.' })
+      return
+    }
     if (!list) {
       res.status(404).json({ error: 'Shopping list not found' })
       return
@@ -420,12 +423,11 @@ router.put('/shopping-list/:listId/item/:itemId/stock', async (req: AuthRequest,
     const listId = String(req.params.listId)
     const itemId = String(req.params.itemId)
 
-    const [list] = await db
-      .select()
-      .from(shoppingLists)
-      .where(eq(shoppingLists.id, listId))
-      .limit(1)
-
+    const { list, forbidden } = await loadListForCaller(listId, req.userId!)
+    if (forbidden) {
+      res.status(403).json({ error: 'No tienes acceso a esta lista.' })
+      return
+    }
     if (!list) {
       res.status(404).json({ error: 'Shopping list not found' })
       return

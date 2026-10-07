@@ -71,6 +71,7 @@ import { NoExtractableContentError } from '../services/sources/youtube.js'
 import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../services/scopeResolver.js'
 import { sanitizeCustomTags } from '../services/recipeNotesStore.js'
 import { findPantryMatches } from '../services/pantryMatcher.js'
+import { canViewRecipe } from '../services/recipeVisibility.js'
 import { z } from 'zod'
 
 const router = Router()
@@ -486,7 +487,9 @@ router.get('/recipes/:id', optionalAuthMiddleware, async (req: AuthRequest, res)
       res.status(404).json({ error: 'Recipe not found' })
       return
     }
-    if (!req.userId && row.authorId !== null) {
+    // User recipes: only the author and their household (404, not 403, so we
+    // don't confirm that a private recipe exists).
+    if (!(await canViewRecipe(req.userId, row.authorId))) {
       res.status(404).json({ error: 'Recipe not found' })
       return
     }
@@ -1156,6 +1159,10 @@ router.post(
 router.get('/user/:id/recipes', authMiddleware, async (req: AuthRequest, res) => {
   try {
     const userId = String(req.params.id)
+    if (userId !== req.userId) {
+      res.status(403).json({ error: 'No tienes acceso a las recetas de otro usuario.' })
+      return
+    }
 
     const ownRows = (await db
       .select()

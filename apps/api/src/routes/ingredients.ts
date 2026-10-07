@@ -4,7 +4,8 @@ import Anthropic from '@anthropic-ai/sdk'
 import { eq, like, count, asc, desc, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { ingredients, recipeIngredients } from '../db/schema.js'
-import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
+import { authMiddleware, requireAdmin, type AuthRequest } from '../middleware/auth.js'
+import { rateLimit } from '../middleware/rateLimit.js'
 import { validate } from '../middleware/validate.js'
 import {
   updateIngredientSchema,
@@ -45,6 +46,26 @@ const autoCreateBodySchema = z.object({
 })
 
 // GET /ingredients - list with pagination, sort, search
+// ─── Abuse limits ───────────────────────────────────────────────
+// The shared catalogue is writable by recipe authors (auto-create), and the
+// nutrition preview runs a paid LLM call per request. Per-user caps keep one
+// account from spamming the catalogue or burning the API bill.
+const perUser = (req: any) => (req as AuthRequest).userId ?? req.ip ?? 'unknown'
+const autoCreateLimiter = rateLimit({
+  max: 40,
+  windowMs: 60 * 60 * 1000,
+  keyFn: perUser,
+  message: 'Has creado muchos ingredientes en poco tiempo. Espera un rato.',
+})
+const estimateLimiter = rateLimit({
+  max: 20,
+  windowMs: 60 * 60 * 1000,
+  keyFn: perUser,
+  message: 'Demasiadas estimaciones de nutrición. Espera un rato.',
+})
+/** Same cap as catalogue names: the name goes straight into an LLM prompt. */
+const MAX_INGREDIENT_NAME = 80
+
 router.get('/ingredients', async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page as string) || 1)
@@ -127,7 +148,7 @@ router.get('/ingredients/suggest', authMiddleware, async (req: AuthRequest, res)
 //     fdcId NULL).
 //   - Fuzzy dedupe (Levenshtein ≤ 2 on normalized name) against existing rows;
 //     if it hits, return the existing row + `dedupedFrom`.
-router.post('/ingredients/auto-create', authMiddleware, async (req: AuthRequest, res) => {
+router.post('/ingredients/auto-create', authMiddleware, autoCreateLimiter, async (req: AuthRequest, res) => {
   try {
     const parsed = autoCreateBodySchema.safeParse(req.body)
     if (!parsed.success) {
@@ -324,11 +345,16 @@ async function estimateNutritionForName(
 router.post(
   '/ingredients/estimate-nutrition',
   authMiddleware,
+  estimateLimiter,
   async (req: AuthRequest, res) => {
     try {
       const name = (req.body?.name as string | undefined)?.trim()
       if (!name) {
         res.status(400).json({ error: 'Falta el campo "name".' })
+        return
+      }
+      if (name.length > MAX_INGREDIENT_NAME) {
+        res.status(400).json({ error: `El nombre no puede superar ${MAX_INGREDIENT_NAME} caracteres.` })
         return
       }
       const nutrition = await estimateNutritionForName(name)
@@ -361,6 +387,8 @@ const estimateBodySchema = z
 router.post(
   '/ingredients/:id/estimate-nutrition',
   authMiddleware,
+  // Overwrites a shared catalogue row: curators only (admin RemapModal).
+  requireAdmin,
   async (req: AuthRequest, res) => {
     try {
       const id = String(req.params.id)
@@ -430,7 +458,8 @@ router.get('/ingredients/:id', async (req, res) => {
 })
 
 // PUT /ingredients/:id - update ingredient (auth required)
-router.put('/ingredients/:id', authMiddleware, validate(updateIngredientSchema), async (req: AuthRequest, res) => {
+// Catalogue edits/deletes affect every user's nutrition: admin only.
+router.put('/ingredients/:id', authMiddleware, requireAdmin, validate(updateIngredientSchema), async (req: AuthRequest, res) => {
   try {
     const [updated] = await db
       .update(ingredients)
@@ -451,7 +480,7 @@ router.put('/ingredients/:id', authMiddleware, validate(updateIngredientSchema),
 })
 
 // DELETE /ingredients/:id - delete ingredient (auth required, fail if used in recipes)
-router.delete('/ingredients/:id', authMiddleware, async (req: AuthRequest, res) => {
+router.delete('/ingredients/:id', authMiddleware, requireAdmin, async (req: AuthRequest, res) => {
   try {
     // Check if ingredient is used in any recipe
     const [usage] = await db

@@ -12,6 +12,10 @@ router.use(authMiddleware)
 router.get('/advisor/:userId/summary', async (req: AuthRequest, res) => {
   try {
     const userId = String(req.params.userId)
+    if (userId !== req.userId) {
+      res.status(403).json({ error: 'No tienes acceso a los datos de otro usuario.' })
+      return
+    }
     const weeks = parseInt(req.query.weeks as string, 10) || 4
 
     const summary = await getSummary(userId, weeks, db)
@@ -27,6 +31,10 @@ router.get('/advisor/:userId/summary', async (req: AuthRequest, res) => {
 router.post('/advisor/:userId/ask', async (req: AuthRequest, res) => {
   try {
     const userId = String(req.params.userId)
+    if (userId !== req.userId) {
+      res.status(403).json({ error: 'No tienes acceso a los datos de otro usuario.' })
+      return
+    }
     const { question } = req.body
 
     if (!question || typeof question !== 'string') {

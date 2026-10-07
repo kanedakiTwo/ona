@@ -17,9 +17,13 @@ const router = Router()
 // All routes require auth
 router.use(authMiddleware)
 
-// GET /user/:id
-router.get('/user/:id', async (req, res) => {
+// GET /user/:id — own profile only (email, weight, restrictions…).
+router.get('/user/:id', async (req: AuthRequest, res) => {
   try {
+    if (String(req.params.id) !== req.userId) {
+      res.status(403).json({ error: 'No tienes acceso al perfil de otro usuario.' })
+      return
+    }
     const [user] = await db
       .select({
         id: users.id,
@@ -43,7 +47,7 @@ router.get('/user/:id', async (req, res) => {
         createdAt: users.createdAt,
       })
       .from(users)
-      .where(eq(users.id, req.params.id))
+      .where(eq(users.id, String(req.params.id)))
       .limit(1)
 
     if (!user) {

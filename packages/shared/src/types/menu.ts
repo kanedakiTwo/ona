@@ -53,6 +53,12 @@ export const generateMenuSchema = z.object({
    * (`dishes: []`). Powers "Vaciar semana" + "Empezar de cero".
    */
   empty: z.boolean().optional(),
+  /**
+   * `empty: true` over a week that already has dishes is refused (409
+   * MENU_NOT_EMPTY) unless `force: true` — only the user-confirmed
+   * "Vaciar semana" sends it. Stops a failed GET from wiping a week.
+   */
+  force: z.boolean().optional(),
 })
 
 export const lockMealSchema = z.object({

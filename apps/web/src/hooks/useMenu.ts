@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { api } from "@/lib/api"
+import { api, ApiError } from "@/lib/api"
 import { enqueue } from "@/lib/pwa/offlineQueue"
 
 interface MealSlot {
@@ -40,10 +40,11 @@ export function useMenu(userId: string | undefined, weekStart: string | undefine
     queryFn: async () => {
       try {
         return await api.get<Menu>(`/menu/${userId}/${weekStart}`)
-      } catch (err: any) {
-        if (err.message?.includes("not found") || err.message?.includes("404")) {
-          return null
-        }
+      } catch (err) {
+        // Only a real 404 means "no menu this week". Anything else (500,
+        // offline, timeout) stays an error: the page must not mistake it
+        // for an empty week and create one on top of the real menu.
+        if (err instanceof ApiError && err.status === 404) return null
         throw err
       }
     },
@@ -58,8 +59,15 @@ export function useGenerateMenu() {
     /** `empty: true` skips the matcher and creates a row with all 7 days
      *  scaffolded per the user's mealTemplate but every slot empty
      *  (`dishes: []`). Powers "Vaciar semana" + "Empezar de cero". */
-    mutationFn: (params: { userId: string; weekStart: string; empty?: boolean }) =>
+    mutationFn: (params: { userId: string; weekStart: string; empty?: boolean; force?: boolean }) =>
       api.post<Menu>("/menu/generate", params),
+    onError: (err) => {
+      // 409 MENU_NOT_EMPTY: the week has dishes we didn't know about (an
+      // earlier GET failed). Re-read it instead of showing an empty week.
+      if (err instanceof ApiError && err.code === "MENU_NOT_EMPTY") {
+        queryClient.invalidateQueries({ queryKey: ["menu"] })
+      }
+    },
     onSuccess: (data, variables) => {
       // Set the new menu directly in cache so it renders immediately
       queryClient.setQueryData(["menu", variables.userId, variables.weekStart], data)

@@ -29,6 +29,7 @@ import { madridParts, madridWeekStart } from '../madridTime.js'
 import { appSkills, bestMatch, searchWords } from './appSkills.js'
 import { visibleAuthorIds, visibleRecipeWhere } from '../recipeVisibility.js'
 import { loadMatchableRecipes } from '../matchableRecipes.js'
+import { loadPreviousWeek } from '../menuWeek.js'
 import { compileRestrictions, mergeRestrictions, violatesRestrictions, type RestrictableRecipe } from '../dietaryRestrictions.js'
 import { enqueuePrepAlertsForMenu } from '../notificationScheduler.js'
 import { NotARecipeError } from '../recipeUrlExtractor.js'
@@ -438,7 +439,13 @@ const generateWeeklyMenu: SkillDefinition = {
     const { userId, db } = ctx
     const weekStart = getWeekStart(params?.nextWeek === true ? 1 : 0)
 
-    const { days } = await generateMenu(userId, weekStart, undefined, db)
+    // Same promises as POST /menu/generate: locked slots, vetoes and
+    // "sin cocinar" days of the current week survive the regeneration.
+    const previous = await loadPreviousWeek(userId, weekStart, db)
+    const { days } = await generateMenu(
+      userId, weekStart, undefined, db,
+      previous.locked, previous.days, previous.bannedRecipeIds, previous.skippedDays,
+    )
 
     // Save to menus table — dual-write household_id so shared-scope reads
     // pick it up. Null is acceptable if the user somehow lacks a primary
@@ -446,7 +453,12 @@ const generateWeeklyMenu: SkillDefinition = {
     const householdId = await getPrimaryHouseholdId(userId, db)
     const [menu] = await db
       .insert(menus)
-      .values({ userId, householdId, weekStart, days, locked: {} })
+      .values({
+        userId, householdId, weekStart, days,
+        locked: previous.locked,
+        bannedRecipeIds: [...previous.bannedRecipeIds],
+        skippedDays: [...previous.skippedDays],
+      })
       .returning()
 
     // Calculate calories and nutrients for the log

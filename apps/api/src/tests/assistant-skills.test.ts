@@ -330,17 +330,31 @@ describe('generate_weekly_menu', () => {
 
   it('inserts a new menu and reports success', async () => {
     const inserted = { id: 'm-new', days: [{}, {}, {}, {}, {}, {}, {}] }
-    // generator → insert menu → insert log → updateBalance
-    const db = makeDb([inserted], [{ id: 'log-1' }])
+    // previous week → generator → insert menu → insert log → updateBalance
+    const db = makeDb([], [inserted], [{ id: 'log-1' }])
     const r = await skill.handler({}, ctx(db))
     expect(r.uiHint).toBe('menu')
     expect(r.summary).toContain('Menu generado')
   })
 
+  it('keeps the current week\'s locked slots, vetoes and skipped days', async () => {
+    const { generateMenu } = await import('../services/menuGenerator.js')
+    const prevDays = [{ lunch: { dishes: [{ kind: 'recipe', recipeId: 'r-locked', recipeName: 'Lentejas' }] } }, {}, {}, {}, {}, {}, {}]
+    const previous = { days: prevDays, locked: { '0': { lunch: true } }, bannedRecipeIds: ['r-ban'], skippedDays: [6] }
+    const inserted = { id: 'm-new', days: prevDays }
+    vi.mocked(generateMenu).mockClear()
+    await skill.handler({}, ctx(makeDb([previous], [inserted], [{ id: 'log-1' }])))
+    const args = vi.mocked(generateMenu).mock.calls[0] as any[]
+    expect(args[4]).toEqual({ '0': { lunch: true } })
+    expect(args[5]).toBe(prevDays)
+    expect([...args[6]]).toEqual(['r-ban'])
+    expect([...args[7]]).toEqual([6])
+  })
+
   it('targets next Monday with nextWeek=true (Sunday "¿te preparo el menú?" nudge)', async () => {
     const inserted = { id: 'm-next', days: [{}, {}, {}, {}, {}, {}, {}] }
-    const thisWeek = await skill.handler({}, ctx(makeDb([inserted], [{ id: 'log-1' }])))
-    const nextWeek = await skill.handler({ nextWeek: true }, ctx(makeDb([inserted], [{ id: 'log-2' }])))
+    const thisWeek = await skill.handler({}, ctx(makeDb([], [inserted], [{ id: 'log-1' }])))
+    const nextWeek = await skill.handler({ nextWeek: true }, ctx(makeDb([], [inserted], [{ id: 'log-2' }])))
     const a = thisWeek.summary.match(/semana del (\d{4}-\d{2}-\d{2})/)![1]
     const b = nextWeek.summary.match(/semana del (\d{4}-\d{2}-\d{2})/)![1]
     expect((Date.parse(b) - Date.parse(a)) / 86_400_000).toBe(7)

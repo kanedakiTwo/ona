@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { visibleAuthorIds, visibleRecipeWhere } from '../services/recipeVisibility.js'
 import { loadMatchableRecipes } from '../services/matchableRecipes.js'
 import { mergeRestrictions } from '../services/dietaryRestrictions.js'
+import { keepLockedSlots, loadPreviousWeek, menuHasDishes } from '../services/menuWeek.js'
 import { eq, and, desc, inArray } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { menus, menuLogs, users, userSettings } from '../db/schema.js'
@@ -130,39 +131,39 @@ async function hydrateMenuImages<T extends { days: unknown }>(menu: T): Promise<
 // their id), which is the IDOR this guard closes.
 router.post('/menu/generate', authMiddleware, validate(generateMenuSchema), async (req: AuthRequest, res) => {
   try {
-    const { userId, weekStart, customTemplate, empty } = req.body
+    const { userId, weekStart, customTemplate, empty, force } = req.body
 
     if (userId !== req.userId) {
       res.status(403).json({ error: 'No puedes generar el menú de otro usuario.' })
       return
     }
 
-    // PR 1B: resolve scope once for the whole handler. Reads filter by
-    // household when the flag is on; writes dual-populate `household_id`
-    // either way so the column stays consistent.
-    const scope = await resolveScope(userId)
+    // PR 1B: writes dual-populate `household_id` so the column stays
+    // consistent; loadPreviousWeek reads by household scope when it's on.
     const householdId = await getPrimaryHouseholdId(userId)
 
-    // Preserve the user's manual shaping across regenerate: if a menu for
-    // this week already exists, carry its bannedRecipeIds + skippedDays
-    // into the new generation. The previous menu row stays in the DB as
-    // history; the new row is what the UI reads.
-    const [previous] = await db
-      .select({
-        bannedRecipeIds: menus.bannedRecipeIds,
-        skippedDays: menus.skippedDays,
-      })
-      .from(menus)
-      .where(and(scopeWhere(menus.userId, menus.householdId, scope), eq(menus.weekStart, weekStart)))
-      .orderBy(desc(menus.createdAt))
-      .limit(1)
-    const carryBanned = new Set<string>(previous?.bannedRecipeIds ?? [])
-    const carrySkipped = new Set<number>(previous?.skippedDays ?? [])
+    // Preserve the user's manual shaping across regenerate: locked slots,
+    // vetoed recipes and "sin cocinar" days carry into the new row
+    // (services/menuWeek.ts). The previous row stays in the DB as history;
+    // the new row is what the UI reads.
+    const previous = await loadPreviousWeek(userId, weekStart)
+    const carryBanned = previous.bannedRecipeIds
+    const carrySkipped = previous.skippedDays
 
     // Empty branch — skip the matcher entirely. Used by "Vaciar semana"
     // and "Empezar de cero". We honour the user's mealTemplate so the
     // slots that appear match what they normally plan.
     if (empty) {
+      // Never wipe a week with dishes unless the user confirmed it ("Vaciar
+      // semana" sends force). The /menu page auto-creates an empty week when
+      // it thinks there's none; a failed GET must not turn into data loss.
+      if (!force && menuHasDishes(previous.days)) {
+        res.status(409).json({
+          error: 'Esta semana ya tiene platos. Confirma que quieres vaciarla.',
+          code: 'MENU_NOT_EMPTY',
+        })
+        return
+      }
       const [settings] = await db
         .select()
         .from(userSettings)
@@ -184,6 +185,8 @@ router.post('/menu/generate', authMiddleware, validate(generateMenuSchema), asyn
         }
         return day
       })
+      // Locked slots survive "Vaciar semana" too: a lock means "don't touch".
+      keepLockedSlots(days as DayMenu[], previous.days, previous.locked)
       const [menu] = await db
         .insert(menus)
         .values({
@@ -191,7 +194,7 @@ router.post('/menu/generate', authMiddleware, validate(generateMenuSchema), asyn
           householdId,
           weekStart,
           days,
-          locked: {},
+          locked: previous.locked,
           bannedRecipeIds: [...carryBanned],
           skippedDays: [...carrySkipped],
         })
@@ -207,8 +210,8 @@ router.post('/menu/generate', authMiddleware, validate(generateMenuSchema), asyn
       weekStart,
       customTemplate,
       db,
-      {},
-      undefined,
+      previous.locked,
+      previous.days,
       carryBanned,
       carrySkipped,
     )
@@ -222,7 +225,7 @@ router.post('/menu/generate', authMiddleware, validate(generateMenuSchema), asyn
         householdId,
         weekStart,
         days,
-        locked: {},
+        locked: previous.locked,
         bannedRecipeIds: [...carryBanned],
         skippedDays: [...carrySkipped],
       })

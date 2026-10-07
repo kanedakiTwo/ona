@@ -187,7 +187,13 @@ export default function MenuPage() {
   const isPastWeek = delta < 0
   const isCurrentWeek = delta === 0
 
-  const { data: menu, isLoading: menuLoading } = useMenu(user?.id, weekStart)
+  const {
+    data: menu,
+    isLoading: menuLoading,
+    isError: menuFailed,
+    refetch: refetchMenu,
+    isFetching: menuFetching,
+  } = useMenu(user?.id, weekStart)
   const generateMenu = useGenerateMenu()
   const regenerateMeal = useRegenerateMeal()
   const lockMeal = useLockMeal()
@@ -431,7 +437,10 @@ export default function MenuPage() {
     if (!user || authLoading || menuLoading) return
     if (isPastWeek) return
     if (generateMenu.isPending) return
-    if (!menu) {
+    // `undefined` = the GET failed (or hasn't resolved): never auto-create on
+    // top of a week we couldn't read. Only a confirmed 404 (`null`) does.
+    if (menu === undefined) return
+    if (menu === null) {
       generateMenu.mutate({ userId: user.id, weekStart, empty: true })
       return
     }
@@ -454,13 +463,14 @@ export default function MenuPage() {
       menu &&
       typeof window !== "undefined" &&
       !window.confirm(
-        "¿Vaciar esta semana? Se borrarán los platos actuales (queda como historial). Podrás rellenar a mano o volver a generar.",
+        "¿Vaciar esta semana? Se borrarán los platos actuales, salvo los bloqueados (queda como historial). Podrás rellenar a mano o volver a generar.",
       )
     ) {
       return
     }
     haptic.medium()
-    generateMenu.mutate({ userId: user.id, weekStart, empty: true })
+    // force: the user just confirmed wiping a week that has dishes.
+    generateMenu.mutate({ userId: user.id, weekStart, empty: true, force: true })
   }
 
   if (authLoading || menuLoading || !user) {
@@ -668,7 +678,23 @@ export default function MenuPage() {
         </div>
       )}
 
-      {!menu ? (
+      {menuFailed && !menu ? (
+        <div role="alert" className="mx-5 mt-8 rounded-2xl border border-[#DDD6C5] bg-[#FFFEFA] px-6 py-10 text-center">
+          <p className="font-display text-xl text-[#1A1612]">
+            No hemos podido <span className="font-italic italic">cargar tu menú</span>.
+          </p>
+          <p className="mt-2 max-w-xs mx-auto text-[13px] text-[#7A7066]">
+            Tu semana sigue guardada. Revisa la conexión y vuelve a intentarlo.
+          </p>
+          <button
+            onClick={() => refetchMenu()}
+            disabled={menuFetching}
+            className="mt-6 inline-flex items-center gap-2 rounded-full bg-[#1A1612] px-5 py-2.5 text-[13px] font-medium text-[#FAF6EE] transition-colors hover:bg-[#2D6A4F] disabled:opacity-50"
+          >
+            {menuFetching ? "Cargando..." : "Reintentar"}
+          </button>
+        </div>
+      ) : !menu ? (
         /* Empty state — editorial */
         <div className="mx-5 mt-8 rounded-2xl border border-dashed border-[#DDD6C5] bg-[#FFFEFA] px-6 py-12 text-center">
           <div className="font-display text-5xl leading-none text-[#C65D38]/30">∅</div>

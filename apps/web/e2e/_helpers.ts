@@ -98,16 +98,19 @@ export async function completeOnboarding(page: Page): Promise<void> {
   if (!token || !userRaw) return
   const userId = JSON.parse(userRaw).id as string
 
-  await page.request.post(`${apiUrl}/user/${userId}/onboarding`, {
+  const res = await page.request.post(`${apiUrl}/user/${userId}/onboarding`, {
     headers: { Authorization: `Bearer ${token}` },
     data: {
-      householdSize: 'solo',
+      adults: 1,
+      kidsCount: 0,
       cookingFreq: 'daily',
       restrictions: [],
       favoriteDishes: ['pasta', 'pollo', 'ensalada'],
       priority: 'healthy',
     },
   })
+  // Fail loudly: this used to send a stale payload and get a silent 400.
+  if (!res.ok()) throw new Error(`onboarding failed: ${res.status()} ${await res.text()}`)
 
   // Reflect onboardingDone in the local copy so AuthProvider doesn't bounce
   // us back to /onboarding on the next navigation.

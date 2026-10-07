@@ -20,7 +20,7 @@ Weekly meal plan generation and management.
 
 - Users can mark a slot as a **leftover** from a previous slot via `POST /menu/:menuId/day/:targetDay/leftover`, body `{ sourceDay, sourceMeal, targetMeal }`. The target slot is cloned with `kind: 'leftover'` and a `leftoverOf` back-reference; the shopping-list aggregator handles the repeated `recipeId` via `sumDinersByRecipe` so quantities collapse onto the source row without double-counting. The card renders a terracotta "Sobras de [día] [comida]" pill and hides Aleatorio / Elegir / Tipo / Vetar since the leftover is tied to its source. *UI affordance to trigger the endpoint from the card itself is deferred to a follow-up — the endpoint is available for the assistant via the voice skill.*
 - Users can lock individual meal slots to prevent them from being changed during regeneration; the lock toggle is queued offline as well
-- Users can regenerate the whole week (re-runs the algorithm; locked slots are preserved)
+- Users can regenerate the whole week (re-runs the algorithm; locked slots are preserved, also by "Vaciar semana")
 - Users can view past menus via `/menu/history`
 - Users can tap a meal photo to open the recipe detail
 - The menu page shows progress: "X de 7 dias con menu" and a percentage bar
@@ -124,8 +124,8 @@ The recipe matcher and the per-week locks are unaffected by manual shaping.
 ## Lock Behavior
 
 `PUT /menu/:menuId/day/:day/meal/:meal/lock` toggles `locked[day][meal]`:
-- Locked slots are preserved across whole-week regenerations
-- Their recipes are added to `usedRecipeIds` first, so the rest of the menu doesn't repeat them
+- Locked slots (with vetoes and "sin cocinar" days) carry into every new row for the week: `POST /menu/generate` (regenerate and "Vaciar semana") and the assistant's `generate_weekly_menu`, via `services/menuWeek.ts`. Before 2026-10-07 regenerate wrote `locked: {}` and the locked dishes were lost. Their recipes go into `usedRecipeIds` first, so the rest of the menu doesn't repeat them
+- **No accidental wipes**: `empty: true` over a week that has dishes → **409 `MENU_NOT_EMPTY`** unless `force: true`. Only the confirmed "Vaciar semana" sends `force`. The /menu page auto-creates an empty week only on a real 404 (`ApiError.status`). A failed GET (500, offline) shows "No hemos podido cargar tu menú" + "Reintentar" and never writes. Covered by `menuWeekRoute.smoke.ts` + `e2e/menu-load-failure.spec.ts`
 
 ## Menu Logs
 
@@ -186,6 +186,7 @@ user could read/modify any menu by id.
 
 - [apps/api/src/routes/menus.ts](../apps/api/src/routes/menus.ts)
 - [apps/api/src/services/menuGenerator.ts](../apps/api/src/services/menuGenerator.ts) — core algorithm
+- [apps/api/src/services/menuWeek.ts](../apps/api/src/services/menuWeek.ts) — what a week's regeneration carries over (locks, vetoes, skipped days) + `menuHasDishes`
 - [apps/api/src/services/dietaryRestrictions.ts](../apps/api/src/services/dietaryRestrictions.ts) — restrictions/dislikes → allergen tags + ingredient terms
 - [apps/api/src/services/matchableRecipes.ts](../apps/api/src/services/matchableRecipes.ts) — the one recipe loader for every matcher path (visibility, fit maps, frequency, allergens)
 - [packages/shared/src/constants/restrictions.ts](../packages/shared/src/constants/restrictions.ts) — `RESTRICTION_PRESETS`

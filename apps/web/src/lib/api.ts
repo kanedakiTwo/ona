@@ -22,6 +22,22 @@ export interface LintIssuePayload {
  * (POST/PUT /recipes lint failures). Carries the structured issues so the
  * form can pin each one to its specific row/step.
  */
+/**
+ * Any non-2xx response. `status` + `code` let callers tell a real 404 ("no
+ * menu this week") from a failure (500, offline) — treating both as "empty"
+ * is how a failed GET used to auto-create an empty week over a real one.
+ */
+export class ApiError extends Error {
+  status: number
+  code?: string
+  constructor(message: string, status: number, code?: string) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.code = code
+  }
+}
+
 export class LintFailureError extends Error {
   issues: LintIssuePayload[]
   constructor(issues: LintIssuePayload[]) {
@@ -88,7 +104,11 @@ export async function apiFetch<T = unknown>(
       throw new LintFailureError(error.errors)
     }
 
-    throw new Error(error.error ?? error.message ?? error.detail ?? `Request failed: ${response.status}`)
+    throw new ApiError(
+      error.error ?? error.message ?? error.detail ?? `Request failed: ${response.status}`,
+      response.status,
+      typeof error?.code === 'string' ? error.code : undefined,
+    )
   }
 
   if (response.status === 204) {

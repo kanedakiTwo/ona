@@ -171,6 +171,13 @@ export const env = {
    */
   WHATSAPP_TEMPLATE_NAME: process.env.WHATSAPP_TEMPLATE_NAME || '',
   /**
+   * Per-kind approved templates, JSON: {"daily_brief":"ona_menu_de_hoy",
+   * "alert":"ona_aviso_preparacion",…}. Kinds: daily_brief, weekly_nudge,
+   * cooking_reminder, dinner_checkin, shopping_reminder, alert, review.
+   * Falls back to WHATSAPP_TEMPLATE_NAME. Each body takes one {{1}}.
+   */
+  WHATSAPP_TEMPLATES: process.env.WHATSAPP_TEMPLATES || '',
+  /**
    * Where a person can reach a human ("HUMANO" on WhatsApp, the help copy).
    * Shown to users as-is. Empty → the copy points to the in-app profile.
    */

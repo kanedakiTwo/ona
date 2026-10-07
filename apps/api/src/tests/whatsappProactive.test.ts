@@ -222,3 +222,21 @@ describe('combineDelivery (prep alerts over push + WhatsApp)', () => {
     expect(combineDelivery({ status: 'error', error: 'boom' }, { status: 'error', error: 'graph 500' }).errorMessage).toBe('boom · whatsapp: graph 500')
   })
 })
+
+describe('templateFor — one approved template per kind (WHATSAPP_TEMPLATES)', () => {
+  it('uses the per-kind template, then the generic one, then none', async () => {
+    const { templateFor, parseTemplateMap } = await import('../services/whatsapp/proactive.js')
+    const map = parseTemplateMap('{"daily_brief":"ona_menu_de_hoy","alert":" ona_aviso_preparacion "}')
+    expect(templateFor('daily_brief', map, 'ona_aviso')).toBe('ona_menu_de_hoy')
+    expect(templateFor('alert', map, '')).toBe('ona_aviso_preparacion')
+    expect(templateFor('weekly_nudge', map, 'ona_aviso')).toBe('ona_aviso')
+    expect(templateFor('weekly_nudge', map, '')).toBeNull()
+  })
+
+  it('ignores malformed config instead of crashing the scheduler', async () => {
+    const { parseTemplateMap } = await import('../services/whatsapp/proactive.js')
+    expect(parseTemplateMap('not json')).toEqual({})
+    expect(parseTemplateMap('["a"]')).toEqual({})
+    expect(parseTemplateMap('{"daily_brief": 3, "alert": "ok"}')).toEqual({ alert: 'ok' })
+  })
+})

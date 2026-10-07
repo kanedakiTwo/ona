@@ -20,6 +20,8 @@ import {
   mondayOf,
   planProactive,
   templateParamFrom,
+  templateFor,
+  parseTemplateMap,
   PROACTIVE_KINDS,
   type ChannelOutcome,
   type MadridParts,
@@ -28,9 +30,13 @@ import {
 } from './proactive.js'
 import { recordCost } from '../costLedger.js'
 
+/** Per-kind templates (WHATSAPP_TEMPLATES), parsed once. */
+const TEMPLATES = parseTemplateMap(env.WHATSAPP_TEMPLATES)
+
 /**
  * Messages ONA sends first. Free-form inside Meta's 24 h window; outside it,
- * through the approved template (`WHATSAPP_TEMPLATE_NAME`) when configured,
+ * through the approved template for that kind (`WHATSAPP_TEMPLATES`, else the
+ * generic `WHATSAPP_TEMPLATE_NAME`) when configured,
  * otherwise skipped. Every send is stored as an outbound row so a reply like
  * "sí" to the Sunday nudge has the question in its chat history.
  */
@@ -40,7 +46,8 @@ export async function sendProactive(
   kind: string,
   now: Date = new Date(),
 ): Promise<ChannelOutcome> {
-  const delivery = chooseDelivery(link.lastInboundAt, now, Boolean(env.WHATSAPP_TEMPLATE_NAME))
+  const template = templateFor(kind, TEMPLATES, env.WHATSAPP_TEMPLATE_NAME)
+  const delivery = chooseDelivery(link.lastInboundAt, now, Boolean(template))
   if (delivery === 'skip') return { status: 'skipped', error: 'outside-24h-window' }
   try {
     if (delivery === 'session') {
@@ -50,7 +57,7 @@ export async function sendProactive(
       }
     } else {
       const text = templateParamFrom(messages)
-      const wamid = await client.sendTemplate(link.phone, env.WHATSAPP_TEMPLATE_NAME, env.WHATSAPP_TEMPLATE_LANG, text)
+      const wamid = await client.sendTemplate(link.phone, template!, env.WHATSAPP_TEMPLATE_LANG, text)
       // Templates are the one WhatsApp message Meta bills (session replies are free).
       recordCost({ feature: 'whatsapp_template', provider: 'meta_whatsapp', model: 'utility_template', units: { messages: 1 }, userId: link.userId })
       await store.insertOutbound({ phone: link.phone, userId: link.userId, kind, body: text, status: 'sent', wamid })

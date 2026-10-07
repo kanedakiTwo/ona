@@ -228,6 +228,33 @@ export const SERVICE_WINDOW_MS = 24 * 60 * 60 * 1000 - 30 * 60 * 1000
 
 export type Delivery = 'session' | 'template' | 'skip'
 
+/**
+ * Which approved template carries a proactive message of `kind` outside the
+ * 24 h window: the per-kind one from WHATSAPP_TEMPLATES (JSON map, e.g.
+ * {"daily_brief":"ona_menu_de_hoy","alert":"ona_aviso_preparacion"}),
+ * else the generic WHATSAPP_TEMPLATE_NAME, else none (the message is
+ * skipped). Meta reviews templates per use: one generic "{{1}}" wrapper
+ * for everything is what its policy discourages.
+ */
+export function templateFor(kind: string, perKind: Readonly<Record<string, string>>, generic: string): string | null {
+  const named = perKind[kind]
+  if (typeof named === 'string' && named.trim()) return named.trim()
+  return generic.trim() || null
+}
+
+/** Parse WHATSAPP_TEMPLATES; anything malformed → {} (log once at boot). */
+export function parseTemplateMap(raw: string): Record<string, string> {
+  if (!raw.trim()) return {}
+  try {
+    const v = JSON.parse(raw)
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return {}
+    return Object.fromEntries(Object.entries(v).filter(([, name]) => typeof name === 'string' && name.trim())) as Record<string, string>
+  } catch {
+    console.warn('[whatsapp] WHATSAPP_TEMPLATES is not valid JSON; ignoring it')
+    return {}
+  }
+}
+
 export function chooseDelivery(
   lastInboundAt: Date | null,
   now: Date,

@@ -78,9 +78,8 @@ The generator (`menuGenerator.ts`) uses iterative optimization:
 5. Runs up to **200 iterations**, each time:
    - Builds a candidate menu by picking a random matching recipe per slot (skipping locked slots)
    - Scores each candidate using **real per-serving nutrition** from `recipe.nutritionPerServing` × the user's `householdSize / recipe.servings` ratio
-   - Fitness (lower is better, in percentage points) = ½ × calorie deviation + macro deviations (carbs/fat/protein vs `TARGET_MACROS`) + **ONA's opinion** (`metabolicScore.ts`, kb/10 mandamientos: insulin and inflammation over calories): 3 × 100 × (1 − metabolic quality) + 0.5 × 100 × (1 − plant variety). Quality = mean per-recipe score from ingredient names (+ plants, oily fish, olive oil, fermented; − refined carbs/sugar, processed meats and seed oils). Variety = distinct plants / 20 per week. Measured on the local catalogue: menu quality from −0.08 to +0.14 on average, at a cost of ~3 macro points (2026-10-07)
-   - Keeps the best (lowest fitness) menu seen so far
-   - Stops early if fitness drops below `OPTIMAL_FITNESS`
+   - Fitness (lower is better, in percentage points) = ½ × calorie deviation + macro deviations (carbs/fat/protein vs `TARGET_MACROS`) + **ONA's opinion** (`metabolicScore.ts`, kb/10 mandamientos: insulin and inflammation over calories): 3 × 100 × (1 − metabolic quality) + 0.5 × 100 × (1 − plant variety). Quality = mean per-recipe score from ingredient names (+ plants, oily fish, olive oil, fermented; − refined carbs/sugar, processed meats and seed oils). Variety = distinct plants / 20 per week. **Seasonality is read from the ingredients too** (Spanish calendar, `SEASONAL`): in-season produce +0.1, out-of-season −0.15 (±0.3 cap). The season tags are unreliable (26 of 56 prod recipes are tagged all four seasons). Measured on the local catalogue: menu quality from −0.08 to +0.14 on average, at a cost of ~3 macro points (2026-10-07)
+   - Keeps the best (lowest fitness) menu seen so far; stops early if fitness drops below `OPTIMAL_FITNESS`
 
 Recipes whose `nutritionPerServing` is not yet cached (e.g. unmapped ingredients) fall back to the legacy ingredient-name heuristic and are deprioritized when better-data alternatives exist.
 

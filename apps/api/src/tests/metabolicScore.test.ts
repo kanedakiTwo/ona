@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('../db/connection.js', () => ({ db: {}, pool: {} }))
 
-import { menuMetabolicQuality, recipeMetabolicProfile, PLANT_VARIETY_TARGET } from '../services/metabolicScore.js'
+import { menuMetabolicQuality, recipeMetabolicProfile, seasonalAdjustment, PLANT_VARIETY_TARGET } from '../services/metabolicScore.js'
 
 const score = (names: string[]) => recipeMetabolicProfile(names).score
 
@@ -57,5 +57,18 @@ describe('menuMetabolicQuality', () => {
   it('ignores notes and unknown recipes', () => {
     const q = menuMetabolicQuality([{ lunch: { dishes: [{ kind: 'note', text: 'fuera' }] } }] as any, profiles)
     expect(q).toEqual({ quality01: 0.5, variety01: 0 })
+  })
+})
+
+describe('seasonality from ingredients (the season tags are unreliable)', () => {
+  it('a summer salad scores better in summer than in winter', () => {
+    const salad = ['tomate', 'pepino', 'pimiento verde', 'cebolla', 'aceite de oliva']
+    expect(recipeMetabolicProfile(salad, 'summer').score).toBeGreaterThan(recipeMetabolicProfile(salad, 'winter').score)
+  })
+
+  it('year-round staples are neutral; the adjustment is bounded', () => {
+    expect(seasonalAdjustment(['cebolla', 'ajo', 'lenteja'], 'winter')).toBe(0)
+    expect(seasonalAdjustment(['tomate', 'calabacin', 'berenjena', 'pimiento', 'melon'], 'winter')).toBe(-0.3)
+    expect(seasonalAdjustment(['alcachofa', 'naranja', 'puerro', 'coliflor'], 'winter')).toBeCloseTo(0.3)
   })
 })

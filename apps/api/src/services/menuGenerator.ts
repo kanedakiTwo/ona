@@ -485,7 +485,7 @@ export async function generateMenu(
   Object.assign(timeBudgetByDay, prepBudgetByDay({ ...timeBudgetByDay }, user))
 
   // Per-recipe metabolic profile, once (scoreMenu runs every iteration).
-  const metabolic = new Map(allRecipes.map((r) => [r.id, recipeMetabolicProfile(r.ingredients.map((i) => i.ingredientName))]))
+  const metabolic = new Map(allRecipes.map((r) => [r.id, recipeMetabolicProfile(r.ingredients.map((i) => i.ingredientName), season)]))
 
   // 6. Iterative optimization
   let bestDays: DayMenu[] | null = null

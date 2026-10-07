@@ -85,7 +85,7 @@ The assistant can call back-end skills (function calling). Each skill has a name
 - It doesn't ask permission for reversible changes; it confirms only destructive or bulk ones.
 - An explicit request beats a stored dislike or restriction. The memory digest now reads "Le disgustan (evítalos al proponer; si el usuario pide algo explícitamente, hazlo)".
 - If a week has no menu yet, the model generates one and then applies the changes.
-- Backstop: a turn that ran no tool and answers "no puedo…" (`refusesAction`) gets one corrective round, just like an unverified "hecho" claim. Found on 2026-10-06, when "jueves filete de vaca + sábado cenamos fuera" was refused over a wrongly inferred "vacuno" dislike.
+- Backstop: a turn that ran no tool and answers "no puedo…" (`refusesAction`) gets one corrective round, just like an unverified "hecho" claim. The same goes for a reply that **promises to act later** ("dame un momento y luego te la pongo", `promisesLater`), even if tools ran: the assistant can't act after replying, so the promised work would never happen. Found on 2026-10-07: a recipe link failed to load, and instead of creating the recipe as asked ("si no está, añádela") the assistant promised to do it later. Now it calls `create_recipe` + `swap_meal` in the same turn. Found on 2026-10-06, when "jueves filete de vaca + sábado cenamos fuera" was refused over a wrongly inferred "vacuno" dislike.
 - The user context now includes **today's date and time in Madrid** with its dayIndex, plus **this week's menu** read from `dishes[]`. Before, it read the legacy `slot.recipeName` and was always empty.
 - The card or app link comes from the most visual skill of the turn (menu/list/recipe > nutrition > confirmation > text).
 

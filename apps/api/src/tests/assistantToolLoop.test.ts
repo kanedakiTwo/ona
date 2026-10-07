@@ -217,3 +217,31 @@ describe('primary skill for the card / app link', () => {
     expect(r).toMatchObject({ skillUsed: 'swap_meal', uiHint: 'menu', data: { day: 3 } })
   })
 })
+
+describe('promise-to-act-later guard', () => {
+  it('detects "dame un momento y luego te la pongo" but not ordinary text', async () => {
+    const { promisesLater } = await import('../services/assistant/engine.js')
+    expect(promisesLater('Voy a crear la receta a mano — dame un momento y luego te la pongo en el menú.')).toBe(true)
+    expect(promisesLater('Te aviso cuando esté.')).toBe(true)
+    expect(promisesLater('Hecho:\n- Jueves comida: Chawanmushi de setas')).toBe(false)
+  })
+
+  it('forces the promised work into this turn even after other tools ran', async () => {
+    const { PROMISE_CORRECTION } = await import('../services/assistant/engine.js')
+    const imp = skill('import_recipe_from_url', 'text')
+    const create = skill('create_recipe', 'recipe')
+    const swap = skill('swap_meal', 'menu')
+    const f = fakeClient([
+      tools({ id: 'a', name: 'import_recipe_from_url' }),
+      text('El enlace no se pudo descargar. Voy a crear la receta, dame un momento y luego te la pongo.'),
+      tools({ id: 'b', name: 'create_recipe' }),
+      tools({ id: 'c', name: 'swap_meal' }),
+      text('Hecho:\n- Receta creada: Chawanmushi de setas\n- Hoy comida: Chawanmushi de setas'),
+    ])
+    const r = await runToolLoop(base(f.client, [imp, create, swap]))
+    expect(f.calls[2].messages.at(-1).content).toBe(PROMISE_CORRECTION)
+    expect(create.handler).toHaveBeenCalledOnce()
+    expect(swap.handler).toHaveBeenCalledOnce()
+    expect(r.message).toMatch(/^Hecho:/)
+  })
+})

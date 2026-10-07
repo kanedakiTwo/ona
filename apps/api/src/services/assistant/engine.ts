@@ -154,11 +154,19 @@ export async function runToolLoop(params: {
       // cambiar eso porque…") — usually a stored dislike or a missing lookup,
       // both of which the tools can handle.
       const claim = claimsAction(text)
-      if (!claimCheckDone && executed.length === 0 && round < maxRounds && (claim || refusesAction(text))) {
+      const noTools = executed.length === 0
+      // "Dame un momento y luego te la pongo": the assistant can't act after
+      // replying, so a promise means the work is simply never done.
+      const correction =
+        noTools && claim ? UNVERIFIED_ACTION_CORRECTION
+          : noTools && refusesAction(text) ? REFUSAL_CORRECTION
+          : promisesLater(text) ? PROMISE_CORRECTION
+          : null
+      if (!claimCheckDone && round < maxRounds && correction) {
         claimCheckDone = true
-        console.warn(`[assistant] ${claim ? 'unverified action claim' : 'refusal without trying'} — one corrective round`)
+        console.warn(`[assistant] corrective round: ${correction === PROMISE_CORRECTION ? 'promise to act later' : claim ? 'unverified action claim' : 'refusal without trying'}`)
         messages.push({ role: 'assistant', content: content as any })
-        messages.push({ role: 'user', content: claim ? UNVERIFIED_ACTION_CORRECTION : REFUSAL_CORRECTION })
+        messages.push({ role: 'user', content: correction })
         continue
       }
       return buildResponse(text, executed, usage)
@@ -211,6 +219,16 @@ const ACTION_CLAIM_RE =
 export function claimsAction(text: string): boolean {
   return ACTION_CLAIM_RE.test(text)
 }
+
+const PROMISE_RE =
+  /\b(?:dame un (?:momento|segundo|minuto)|en (?:un|unos) (?:momento|minuto|minutos|segundos)\b.*\b(?:te|la|lo)\b|luego te|y luego (?:te )?(?:la |lo )?(?:pongo|añado|creo)|te aviso cuando|ahora mismo (?:te )?(?:la|lo) (?:creo|pongo|añado))/i
+
+export function promisesLater(text: string): boolean {
+  return PROMISE_RE.test(text)
+}
+
+export const PROMISE_CORRECTION =
+  '[Nota del sistema, no la menciones] Has prometido hacer algo despues ("dame un momento", "luego te la pongo"), pero no puedes actuar despues de responder: si no lo haces ahora, no se hara nunca. Hazlo ahora con las herramientas. Si un paso fallo (por ejemplo no se pudo leer un enlace y el usuario quiere esa receta), resuelvelo tu: crea la receta con create_recipe y usala con swap_meal. Luego responde solo con lo hecho.'
 
 const REFUSAL_RE = /\bno\s+(?:puedo|podemos|es posible|he podido|se puede)\b/i
 

@@ -335,15 +335,22 @@ export function extractOgImage(html: string): string | null {
 
 export type ArticleFetcher = (url: string) => Promise<string>
 
+// A recipe page the user explicitly shared, fetched once on their behalf —
+// like their browser would. Several recipe sites (gipsychef.es, …) answer 403
+// to self-identified bot user agents, which broke "guárdame esta receta".
 const DEFAULT_USER_AGENT =
-  'Mozilla/5.0 (compatible; OnaRecipeImporter/1.0; +https://ona.app)'
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36'
 
 const defaultFetchArticle: ArticleFetcher = async (url) => {
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), 10_000)
   try {
     const res = await fetch(url, {
-      headers: { 'User-Agent': DEFAULT_USER_AGENT, Accept: 'text/html,*/*' },
+      headers: {
+        'User-Agent': DEFAULT_USER_AGENT,
+        Accept: 'text/html,application/xhtml+xml,*/*;q=0.8',
+        'Accept-Language': 'es-ES,es;q=0.9',
+      },
       signal: ctrl.signal,
     })
     if (!res.ok) {

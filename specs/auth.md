@@ -18,6 +18,7 @@ User registration, login, and session management for ONA.
 - The `users.onboardingDone` flag tracks completion
 - Onboarding collects: household composition (`adults` + `kidsCount` for children aged 2–10; under 2 doesn't count, over 10 counts as adult), cooking frequency, dietary restrictions, favorite dishes, nutritional priority
 - Until `onboardingDone = true`, the landing page redirects authenticated users to `/onboarding`
+- Finishing onboarding generates the user's **first real menu** for the current week (`POST /menu/generate`) before landing on `/menu`, built from those answers. It used to land on an auto-created empty week. If generation fails, `/menu` still offers "Generar mi menú"
 - Onboarding can also collect physical profile data (sex, age, weight, height, activity level) used by the calorie calculator
 
 ## Profile data shape

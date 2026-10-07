@@ -10,7 +10,7 @@ import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
 import { generateMenuSchema, lockMealSchema, MEALS, MEAL_TYPE_TAGS, courseSchema } from '@ona/shared'
 import type { DayMenu, Dish, LockedSlots, Meal, MealSlot, RecipeDish } from '@ona/shared'
-import { generateMenu, extractMealDishCounts, normalizeMealTemplate } from '../services/menuGenerator.js'
+import { defaultTemplate, generateMenu, extractMealDishCounts, normalizeMealTemplate } from '../services/menuGenerator.js'
 import { calculateMenuCaloriesFromDB } from '../services/calorieCalculator.js'
 import { calculateMenuNutrientsFromDB } from '../services/nutrientCalculator.js'
 import { updateBalance } from '../services/nutrientBalance.js'
@@ -169,15 +169,7 @@ router.post('/menu/generate', authMiddleware, validate(generateMenuSchema), asyn
         .from(userSettings)
         .where(eq(userSettings.userId, userId))
         .limit(1)
-      const tpl = normalizeMealTemplate(customTemplate ?? settings?.template) ?? [
-        { breakfast: true, lunch: true, dinner: true },
-        { breakfast: true, lunch: true, dinner: true },
-        { breakfast: true, lunch: true, dinner: true },
-        { breakfast: true, lunch: true, dinner: true },
-        { breakfast: true, lunch: true, dinner: true },
-        { breakfast: true, lunch: true, dinner: true },
-        { breakfast: true, lunch: true, dinner: true },
-      ]
+      const tpl = normalizeMealTemplate(customTemplate ?? settings?.template) ?? defaultTemplate()
       const days = tpl.map((dayTpl) => {
         const day: Record<string, { dishes: [] }> = {}
         for (const meal of ['breakfast', 'lunch', 'dinner', 'snack'] as const) {

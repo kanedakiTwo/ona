@@ -2,6 +2,7 @@ import { eq, inArray } from 'drizzle-orm'
 import { visibleAuthorIds, visibleRecipeWhere } from './recipeVisibility.js'
 import { loadMatchableRecipes, type RecipeWithCourse } from './matchableRecipes.js'
 import { mergeRestrictions } from './dietaryRestrictions.js'
+import { prepBudgetByDay, recipesMatchingDishes } from './onboardingPreferences.js'
 import {
   users,
   userSettings,
@@ -31,9 +32,14 @@ import type { MealDishCounts, Dish, RecipeDish, Course } from '@ona/shared'
 /**
  * Default 7-day template: breakfast, lunch, dinner every day.
  */
-function defaultTemplate(): DayTemplate[] {
+/**
+ * Lunch + dinner every day, until the user sets their own plantilla in the
+ * profile. Breakfast is opt-in: few households plan it, and with breakfast on
+ * by default most new menus came back with `no_main_available_breakfast_*`
+ * warnings and empty breakfast slots.
+ */
+export function defaultTemplate(): DayTemplate[] {
   return Array.from({ length: 7 }, () => ({
-    breakfast: true,
     lunch: true,
     dinner: true,
   }))
@@ -449,6 +455,11 @@ export async function generateMenu(
       if (typeof v === 'number' && v > 0) timeBudgetByDay[i] = v
     }
   }
+
+  // 5b. Onboarding answers: dishes they love join the favourites weighting;
+  // "Rapidez" / "Cocino poco" caps weekday prep time (onboardingPreferences.ts).
+  for (const id of recipesMatchingDishes(allRecipes, user.favoriteDishes)) favoriteRecipeIds.add(id)
+  Object.assign(timeBudgetByDay, prepBudgetByDay({ ...timeBudgetByDay }, user))
 
   // 6. Iterative optimization
   let bestDays: DayMenu[] | null = null

@@ -598,30 +598,48 @@ function Counter() {
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: true, amount: 0.4 })
   const [count, setCount] = useState(0)
+  // A real number: the size of ONA's public catalogue (X-Total-Count of the
+  // anonymous /recipes listing). The section used to animate to a made-up
+  // "2.847 personas"; it now hides itself if the number can't be read.
+  const [total, setTotal] = useState<number | null>(null)
 
   useEffect(() => {
-    if (inView) {
-      const controls = animate(0, 2847, {
+    const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
+    fetch(`${base}/recipes?perPage=1`)
+      .then((r) => (r.ok ? Number(r.headers.get("X-Total-Count")) : NaN))
+      .then((n) => setTotal(Number.isFinite(n) && n > 0 ? n : null))
+      .catch(() => setTotal(null))
+  }, [])
+
+  useEffect(() => {
+    if (inView && total) {
+      const controls = animate(0, total, {
         duration: 2.4,
         ease: [0.19, 1, 0.22, 1],
         onUpdate: (v) => setCount(Math.floor(v)),
       })
       return () => controls.stop()
     }
-  }, [inView])
+  }, [inView, total])
 
+  // The observed wrapper is always mounted: swapping the ref'd element when
+  // `total` arrives would leave useInView watching a detached node.
   return (
-    <section ref={ref} className="bg-[#FAF6EE] px-6 py-24 md:px-10 md:py-32">
+    <div ref={ref}>
+      {total !== null && (
+    <section className="bg-[#FAF6EE] px-6 py-24 md:px-10 md:py-32">
       <div className="mx-auto max-w-7xl text-center">
-        <div className="text-eyebrow mb-8">En este momento</div>
+        <div className="text-eyebrow mb-8">El recetario</div>
         <div className="font-display text-[20vw] leading-[0.9] tracking-[-0.04em] text-[#1A1612] md:text-[14rem]">
           {count.toLocaleString("es-ES")}
         </div>
         <p className="mt-6 text-base text-[#4A4239] md:text-lg">
-          personas tienen su menú de esta semana hecho con ONA.
+          recetas en el catálogo de ONA, listas para entrar en tu menú de la semana.
         </p>
       </div>
     </section>
+      )}
+    </div>
   )
 }
 

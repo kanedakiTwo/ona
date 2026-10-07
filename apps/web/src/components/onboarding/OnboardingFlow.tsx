@@ -4,7 +4,7 @@ import { useState, type KeyboardEvent } from "react"
 import { useAuth } from "@/lib/auth"
 import { api } from "@/lib/api"
 import { useRouter } from "next/navigation"
-import { cn } from "@/lib/utils"
+import { cn, currentWeekStart } from "@/lib/utils"
 import { RESTRICTION_PRESETS } from "@ona/shared"
 
 // Shared with the profile so both offer the same chips (@ona/shared).
@@ -24,6 +24,7 @@ export default function OnboardingFlow() {
   const router = useRouter()
   const [step, setStep] = useState(1)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [preparingMenu, setPreparingMenu] = useState(false)
   const [error, setError] = useState("")
 
   const [data, setData] = useState<OnboardingData>({
@@ -93,6 +94,13 @@ export default function OnboardingFlow() {
 
       // Update auth context + localStorage with the full server response
       updateUser(result)
+
+      // Land on a real first menu built from these answers, not an empty
+      // week. If generation fails, /menu still offers "Generar mi menú".
+      setPreparingMenu(true)
+      await api
+        .post("/menu/generate", { userId: user.id, weekStart: currentWeekStart() })
+        .catch(() => undefined)
 
       router.push("/menu")
     } catch (err: any) {
@@ -277,7 +285,7 @@ export default function OnboardingFlow() {
                 onChange={(e) => setTagInput(e.target.value)}
                 onKeyDown={handleTagKeyDown}
                 placeholder="Escribe y pulsa Enter para anadir..."
-                className="input-ona w-full"
+                className="input-editorial"
               />
             </div>
             {data.restrictions.length > 0 && (
@@ -312,7 +320,7 @@ export default function OnboardingFlow() {
                 value={data.favoriteDishes[i]}
                 onChange={(e) => setFavoriteDish(i, e.target.value)}
                 placeholder={`Plato ${i + 1}`}
-                className="input-ona w-full"
+                className="input-editorial"
               />
             ))}
           </div>
@@ -363,7 +371,7 @@ export default function OnboardingFlow() {
           <button
             onClick={next}
             disabled={!canAdvance()}
-            className="btn-primary btn-m"
+            className="btn-editorial btn-editorial-primary disabled:opacity-50"
           >
             Siguiente
           </button>
@@ -371,9 +379,9 @@ export default function OnboardingFlow() {
           <button
             onClick={handleComplete}
             disabled={!canAdvance() || isSubmitting}
-            className="btn-primary btn-m"
+            className="btn-editorial btn-editorial-primary disabled:opacity-50"
           >
-            {isSubmitting ? "Guardando..." : "Empezar"}
+            {preparingMenu ? "Preparando tu menú..." : isSubmitting ? "Guardando..." : "Empezar"}
           </button>
         )}
       </div>

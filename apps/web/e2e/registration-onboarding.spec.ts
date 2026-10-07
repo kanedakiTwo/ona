@@ -24,6 +24,33 @@ test('register → onboarding → menu', async ({ page }) => {
   await expect(page).toHaveURL(/\/(menu|onboarding)/, { timeout: 10_000 })
 })
 
+test('the onboarding answers produce a real first menu (not an empty week)', async ({ page }) => {
+  await registerFreshUser(page)
+  await page.goto('/onboarding')
+
+  const generates: string[] = []
+  page.on('request', (req) => {
+    if (req.method() === 'POST' && req.url().endsWith('/menu/generate')) generates.push(req.postData() ?? '')
+  })
+
+  const next = page.getByRole('button', { name: /siguiente/i })
+  await next.click() // 1 adult (default)
+  await page.getByRole('button', { name: /3-4 veces/i }).click()
+  await next.click()
+  await page.getByRole('button', { name: /sin gluten/i }).click()
+  await next.click()
+  await page.getByPlaceholder('Plato 1').fill('Lentejas')
+  await next.click()
+  await page.getByRole('button', { name: /salud/i }).click()
+  await page.getByRole('button', { name: /empezar/i }).click()
+
+  await expect(page).toHaveURL(/\/menu/, { timeout: 30_000 })
+  // The first generate is a real one (no `empty`), sent before landing.
+  expect(generates.length).toBeGreaterThan(0)
+  expect(JSON.parse(generates[0]).empty).toBeUndefined()
+  await expect(page.getByText(/tu semana está/i)).toHaveCount(0, { timeout: 15_000 })
+})
+
 test('/register page renders with the expected fields', async ({ page }) => {
   await page.goto('/register')
   await expect(page.locator('input[type="email"]')).toBeVisible()

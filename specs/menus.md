@@ -71,7 +71,7 @@ A menu is stored per-user per-week:
 
 The generator (`menuGenerator.ts`) uses iterative optimization:
 
-1. Loads user profile (sex, age, weight, height, activity level), restrictions, and favorites
+1. Loads user profile (sex, age, weight, height, activity level), restrictions, and favorites. The meal template defaults to **lunch + dinner** every day (breakfast is opt-in from the profile's plantilla). Onboarding answers count too (`onboardingPreferences.ts`): recipes sharing a word with a *favourite dish* get the favourites' 2× weight, and priority **Rapidez** or cooking **Poco** caps Mon–Fri prep time at 30 min (unless `time_available` memory says otherwise). Priority *Ahorro*/*Variedad* and cooking *3-4 veces* don't change the generator yet
 2. Loads every recipe the user can see — system catalogue + their own + their household's (never another user's private recipes, see [Recipes → Recipe visibility](./recipes.md)) — with ingredient names and cached `nutritionPerServing`
 3. Calculates a target calorie count using BMR × activity × number of meal slots
 4. Detects current season

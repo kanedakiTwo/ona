@@ -89,7 +89,7 @@ The `.standalone-pt` utility applies `padding-top: var(--safe-top)` so content d
 
 ## Pages currently in Editorial Mode
 
-- `/` (landing) — hero with parallax, magnetic CTA, masonry steps, marquee
+- `/` (landing) — hero with parallax, magnetic CTA, masonry steps, marquee, and a counter showing the **real** size of the public catalogue (`X-Total-Count` of anonymous `GET /recipes`; hidden if unreadable). Until 2026-10-07 it animated to a made-up "2.847 personas"
 - `/como-funciona` — accordion FAQ, step images
 - `/recipes` — beige bg, sticky search, expandable filter sheet, editorial header with rust italic
 - `/recipes/[id]` — large hero photo with cream sheet, dotted ingredient list, monospace quantities, "Capitulo 01/02" eyebrow labels

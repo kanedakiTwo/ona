@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { createPortal } from "react-dom"
 import Link from "next/link"
 import { motion } from "motion/react"
-import { Play } from "lucide-react"
+import { CalendarPlus, Play } from "lucide-react"
 
 /**
  * Sticky bottom action bar of the recipe detail (mobile / tablet, < lg).
@@ -18,7 +18,14 @@ import { Play } from "lucide-react"
  * Height is 84 px + the iOS home-indicator inset; the page reserves that
  * much room at the bottom so the last line of every tab clears it.
  */
-export function RecipeActionBar({ cookHref }: { cookHref: string }) {
+export function RecipeActionBar({
+  cookHref,
+  onAddToMenu,
+}: {
+  cookHref: string
+  /** Opens "Añadir al menú" (signed-in users only). */
+  onAddToMenu?: () => void
+}) {
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
   if (!mounted) return null
@@ -39,6 +46,16 @@ export function RecipeActionBar({ cookHref }: { cookHref: string }) {
           <Play size={16} fill="currentColor" strokeWidth={0} aria-hidden />
           Empezar a cocinar
         </Link>
+        {onAddToMenu && (
+          <button
+            type="button"
+            onClick={onAddToMenu}
+            aria-label="Añadir al menú"
+            className="flex h-[50px] w-[50px] shrink-0 items-center justify-center rounded-full border border-[#DDD6C5] bg-[#FFFEFA] text-[#1A1612] transition-colors hover:border-[#1A1612] active:scale-[0.98]"
+          >
+            <CalendarPlus size={20} />
+          </button>
+        )}
       </div>
     </motion.div>,
     document.body,

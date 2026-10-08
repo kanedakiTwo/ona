@@ -30,10 +30,12 @@ import {
   type RecipeTab,
 } from "@/components/recipes/detail/RecipeTabs"
 import { RecipeActionBar } from "@/components/recipes/detail/RecipeActionBar"
+import { AddToMenuSheet } from "@/components/recipes/detail/AddToMenuSheet"
 import { haptic } from "@/lib/pwa/haptics"
 import { share } from "@/lib/pwa/share"
 import {
   BookmarkPlus,
+  CalendarPlus,
   ChevronLeft,
   Clock,
   ExternalLink,
@@ -121,6 +123,7 @@ export default function RecipeDetailPage() {
   // ─── Tabs (mobile). The active tab mirrors the URL hash (#pasos, #notas…)
   // so a reload or a shared link reopens the same section. ───
   const [tab, setTab] = useState<TabKey>("ingredientes")
+  const [addToMenuOpen, setAddToMenuOpen] = useState(false)
   const tabsAnchorRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
     const fromHash = window.location.hash.slice(1) as TabKey
@@ -303,6 +306,15 @@ export default function RecipeDetailPage() {
       <Pencil size={18} />
     </Link>
   ) : null
+  const addToMenuSheet = user ? (
+    <AddToMenuSheet
+      open={addToMenuOpen}
+      onClose={() => setAddToMenuOpen(false)}
+      userId={user.id}
+      recipeId={recipe.id}
+      recipeName={recipe.name}
+    />
+  ) : null
   const notesBlock = (
     <div>
       {/* Quick personal actions: log a cook, file it in a cookbook. */}
@@ -453,7 +465,18 @@ export default function RecipeDetailPage() {
                 className="relative flex h-[50px] w-[50px] items-center justify-center rounded-full border border-[#DDD6C5] bg-[#FFFEFA] transition-colors hover:border-[#1A1612]"
               />
             )}
+            {user && (
+              <button
+                type="button"
+                onClick={() => setAddToMenuOpen(true)}
+                className="flex h-[50px] items-center gap-2 rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-5 text-[15px] font-semibold text-[#1A1612] transition-colors hover:border-[#1A1612]"
+              >
+                <CalendarPlus size={18} aria-hidden />
+                Añadir al menú
+              </button>
+            )}
           </div>
+          {addToMenuSheet}
 
           <DesktopSection title="Ingredientes" aside={servingsStepper}>
             {ingredientsList}
@@ -570,7 +593,11 @@ export default function RecipeDetailPage() {
         {panel("notas", "Notas", notesBlock)}
       </motion.div>
 
-      <RecipeActionBar cookHref={cookHref} />
+      <RecipeActionBar
+        cookHref={cookHref}
+        onAddToMenu={user ? () => setAddToMenuOpen(true) : undefined}
+      />
+      {addToMenuSheet}
     </div>
   )
 }

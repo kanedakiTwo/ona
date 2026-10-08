@@ -19,7 +19,7 @@ import {
 
 const EMOJI_SUGGESTIONS = ['📖', '⭐', '🥗', '🍝', '🍰', '🥩', '🌮', '🍲', '☕']
 
-export function AddToCookbookButton({ recipeId }: { recipeId: string }) {
+export function AddToCookbookButton({ recipeId, className = "" }: { recipeId: string; className?: string }) {
   const [open, setOpen] = useState(false)
   const { data: hits } = useCookbooksForRecipe(recipeId)
   const inCount = hits?.length ?? 0
@@ -29,7 +29,7 @@ export function AddToCookbookButton({ recipeId }: { recipeId: string }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex items-center gap-1.5 rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#7A7066] transition-all hover:border-[#1A1612] hover:text-[#1A1612]"
+        className={`flex items-center gap-1.5 rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#7A7066] transition-all hover:border-[#1A1612] hover:text-[#1A1612] ${className}`}
       >
         <BookmarkPlus size={12} />
         {inCount > 0 ? `En ${inCount} ${inCount === 1 ? 'recetario' : 'recetarios'}` : 'Añadir a recetario'}

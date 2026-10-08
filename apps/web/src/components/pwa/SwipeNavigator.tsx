@@ -16,7 +16,9 @@ export function SwipeNavigator({ children }: Props) {
   const x = useMotionValue(0)
 
   // Find current tab index. If pathname doesn't start with any NAV path, swipe is disabled.
-  const currentIndex = NAV_ORDER.findIndex((p) => pathname.startsWith(p))
+  // The recipe detail has its own tabs, and cook mode is fullscreen: a horizontal
+  // swipe there must not jump to another app section.
+  const currentIndex = /^\/recipes\/(?!new\/?$)[^/]+(\/cook)?\/?$/.test(pathname) ? -1 : NAV_ORDER.findIndex((p) => pathname.startsWith(p))
 
   // When a dnd-kit drag is active (the week-view grid is the only consumer
   // today, but any future @dnd-kit/core caller can opt in by dispatching

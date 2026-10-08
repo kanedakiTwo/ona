@@ -10,13 +10,19 @@ import { renderInlineMarkdown } from "@/lib/inlineMarkdown"
 interface Props {
   steps: RecipeStep[]
   ingredients: RecipeIngredient[]
-  /** Eyebrow chapter number, e.g. "02" */
-  chapter: string
+  /** Eyebrow chapter number, e.g. "02" (`chapter` variant only) */
+  chapter?: string
   /**
    * Destination for the inline "Empezar a cocinar" CTA (fullscreen cook mode).
    * Omit on read-only previews (e.g. the public catalog) to hide the button.
    */
   cookHref?: string
+  /**
+   * `chapter` (default): "Capítulo NN · Preparación" header (public page).
+   * `plain`: no header (the private detail renders its own tab / heading),
+   * solid terracotta step numbers and 16 px text.
+   */
+  variant?: "chapter" | "plain"
 }
 
 export function StepsSection({
@@ -24,7 +30,9 @@ export function StepsSection({
   ingredients,
   chapter,
   cookHref,
+  variant = "chapter",
 }: Props) {
+  const plain = variant === "plain"
   // Index ingredients by id for quick lookup of step.ingredientRefs.
   const ingsById = new Map<string, RecipeIngredient>()
   for (const ing of ingredients) {
@@ -32,7 +40,8 @@ export function StepsSection({
   }
 
   return (
-    <section className="mt-12">
+    <section className={plain ? "" : "mt-12"}>
+      {!plain && (
       <div className="mb-5 flex items-end justify-between gap-4">
         <div>
           <div className="text-eyebrow text-[#7A7066]">Capítulo {chapter}</div>
@@ -50,8 +59,9 @@ export function StepsSection({
           </Link>
         )}
       </div>
+      )}
 
-      <ol className="space-y-7">
+      <ol className={plain ? "space-y-6" : "space-y-7"}>
         {steps.map((step, i) => {
           const refIngredients = (step.ingredientRefs ?? [])
             .map((id) => ingsById.get(id))
@@ -64,10 +74,18 @@ export function StepsSection({
               transition={{ delay: 0.1 + i * 0.05, duration: 0.5 }}
               className="flex gap-4"
             >
-              <span className="font-display text-[2.5rem] leading-none text-[#C65D38]/30 -mt-1">
+              <span
+                className={
+                  plain
+                    ? "w-9 shrink-0 font-display text-[28px] leading-none text-[#C65D38] lg:w-10 lg:text-[34px]"
+                    : "font-display text-[2.5rem] leading-none text-[#C65D38]/30 -mt-1"
+                }
+                aria-hidden={plain || undefined}
+              >
                 {String((step.index ?? i) + 1).padStart(2, "0")}
               </span>
-              <div className="flex-1 pt-1">
+              <div className={plain ? "min-w-0 flex-1" : "flex-1 pt-1"}>
+                {plain && <span className="sr-only">Paso {(step.index ?? i) + 1}. </span>}
                 {/* Chips row */}
                 {(step.temperature != null ||
                   step.technique ||
@@ -93,7 +111,7 @@ export function StepsSection({
                   </div>
                 )}
 
-                <p className="text-[14px] leading-relaxed text-[#1A1612]">
+                <p className={plain ? "text-[16px] leading-[1.5] text-[#1A1612]" : "text-[14px] leading-relaxed text-[#1A1612]"}>
                   {renderInlineMarkdown(step.text)}
                 </p>
 

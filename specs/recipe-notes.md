@@ -6,7 +6,7 @@ Per-household personal notes / 1-5 star rating / free-form substitutions / free-
 
 ## User Capabilities
 
-- On a recipe detail page, an authed user sees a "Tus notas" card with:
+- On a recipe detail page, an authed user sees a "Tus notas" card (mobile: in the **Notas** tab; desktop: the Notas section at the end of the right column) with:
   - **5-star rating** (terracotta) — tap a star to set, tap the same star again to clear, or tap "Quitar".
   - **Notas personales** — free-form 1000-char note. Click to edit, save / cancel buttons.
   - **Sustituciones tuyas** — free-form 1000-char swaps note. Same inline-edit pattern.
@@ -78,4 +78,4 @@ Both routes mount via `apps/api/src/routes/recipeNotes.ts` (after `router.use(au
 - `apps/api/src/tests/recipeNotesPatch.test.ts` — pure-helper unit tests (9 cases)
 - `apps/web/src/hooks/useRecipeNotes.ts` — TanStack hooks
 - `apps/web/src/components/recipes/RecipeNotesSection.tsx` — UI card with stars + inline-edit fields
-- `apps/web/src/app/recipes/[id]/page.tsx` — wired below the cook-mode CTA section
+- `apps/web/src/app/recipes/[id]/page.tsx` — wired into the Notas tab / section (after the recipe's own notes, before the gallery)

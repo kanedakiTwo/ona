@@ -23,8 +23,8 @@ interface Props {
   ingredients: DisplayIngredient[]
   /** Number to display next to the heading ("Para 4") */
   targetServings: number
-  /** Eyebrow chapter number, e.g. "01" */
-  chapter: string
+  /** Eyebrow chapter number, e.g. "01" (`chapter` variant only) */
+  chapter?: string
   /**
    * User's household ingredient overrides. When non-empty, each entry is
    * applied on top of the recipe's original ingredients:
@@ -43,6 +43,15 @@ interface Props {
   onOverridesChange?: (next: IngredientOverride[]) => void
   /** Optional disabled state while a save is in flight. */
   saving?: boolean
+  /**
+   * `chapter` (default): "Capítulo NN · Ingredientes · Para N" header, used by
+   * the public page. `plain`: no header (the private detail renders its own
+   * tab / heading + servings stepper), bigger rows, and the "Editar
+   * ingredientes" toggle sits under the list.
+   */
+  variant?: "chapter" | "plain"
+  /** `plain` only: lay rows out in two columns (desktop detail). */
+  columns?: 1 | 2
 }
 
 /** UI-local helper that looks up the per-row override (if any). */
@@ -65,7 +74,10 @@ export function IngredientsSection({
   overrides,
   onOverridesChange,
   saving,
+  variant = "chapter",
+  columns = 1,
 }: Props) {
+  const plain = variant === "plain"
   const groups = groupIngredientsBySection(ingredients)
   const safeOverrides = overrides ?? []
   const adds = useMemo(
@@ -116,8 +128,35 @@ export function IngredientsSection({
 
   let runningIdx = 0
 
+  const editToggle = editable ? (
+    <button
+      type="button"
+      onClick={() => {
+        setEditing((v) => !v)
+        setEditingRow(null)
+        setAddingRow(false)
+      }}
+      className={
+        plain
+          ? `inline-flex min-h-11 items-center gap-1.5 rounded-full px-1 text-[13px] transition-colors ${
+              editing ? "font-semibold text-[#1A1612]" : "text-[#6E655B] hover:text-[#1A1612]"
+            }`
+          : `inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] uppercase tracking-[0.12em] transition-colors ${
+              editing
+                ? "bg-[#1A1612] text-[#FAF6EE]"
+                : "border border-[#DDD6C5] text-[#7A7066] hover:border-[#1A1612] hover:text-[#1A1612]"
+            }`
+      }
+      aria-pressed={editing}
+    >
+      <Pencil size={plain ? 13 : 11} />
+      {editing ? "Listo" : plain ? "Editar ingredientes" : "Editar"}
+    </button>
+  ) : null
+
   return (
-    <section className="mt-10">
+    <section className={plain ? "" : "mt-10"}>
+      {!plain && (
       <div className="mb-5 flex items-end justify-between">
         <div>
           <div className="text-eyebrow text-[#7A7066]">Capítulo {chapter}</div>
@@ -129,29 +168,12 @@ export function IngredientsSection({
           <span className="text-[10px] uppercase tracking-[0.15em] text-[#7A7066]">
             Para {targetServings}
           </span>
-          {editable && (
-            <button
-              type="button"
-              onClick={() => {
-                setEditing((v) => !v)
-                setEditingRow(null)
-                setAddingRow(false)
-              }}
-              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] uppercase tracking-[0.12em] transition-colors ${
-                editing
-                  ? "bg-[#1A1612] text-[#FAF6EE]"
-                  : "border border-[#DDD6C5] text-[#7A7066] hover:border-[#1A1612] hover:text-[#1A1612]"
-              }`}
-              aria-pressed={editing}
-            >
-              <Pencil size={11} />
-              {editing ? "Listo" : "Editar"}
-            </button>
-          )}
+          {editToggle}
         </div>
       </div>
+      )}
 
-      <div className="space-y-6">
+      <div className={plain ? "space-y-5" : "space-y-6"}>
         {groups.map((group, gi) => (
           <div key={gi}>
             {group.section && (
@@ -159,7 +181,15 @@ export function IngredientsSection({
                 {group.section}
               </h3>
             )}
-            <ul className="divide-y divide-dashed divide-[#DDD6C5] border-y border-dashed border-[#DDD6C5]">
+            <ul
+              className={
+                plain
+                  ? columns === 2
+                    ? "grid grid-cols-2 gap-x-7"
+                    : ""
+                  : "divide-y divide-dashed divide-[#DDD6C5] border-y border-dashed border-[#DDD6C5]"
+              }
+            >
               {group.ingredients.map((ing) => {
                 const i = runningIdx++
                 const ov = findOverrideFor(ing.id, safeOverrides)
@@ -174,13 +204,15 @@ export function IngredientsSection({
                     initial={{ opacity: 0, x: -8 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.1 + i * 0.03, duration: 0.4 }}
-                    className={`flex items-baseline justify-between gap-3 py-3 ${
-                      removed ? "opacity-50" : ""
-                    }`}
+                    className={`flex items-baseline justify-between gap-3 ${
+                      plain
+                        ? "flex-wrap border-b border-dashed border-[#DDD6C5] py-[9px] last:border-b-0 lg:py-2.5"
+                        : "py-3"
+                    } ${removed ? "opacity-50" : ""}`}
                   >
                     <div className="flex flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5">
                       <span
-                        className={`text-[15px] capitalize ${
+                        className={`${plain ? "text-[16px]" : "text-[15px]"} capitalize ${
                           removed
                             ? "text-[#1A1612] line-through decoration-[#C65D38] decoration-1"
                             : "text-[#1A1612]"
@@ -211,7 +243,7 @@ export function IngredientsSection({
                     </div>
                     <div className="flex items-center gap-2">
                       {modified ? (
-                        <span className="flex items-baseline gap-1 whitespace-nowrap font-mono text-[11px]">
+                        <span className={`flex items-baseline gap-1 whitespace-nowrap font-mono ${plain ? "text-[13px]" : "text-[11px]"}`}>
                           <span className="text-[#7A7066]/60 line-through">
                             {formatQuantity(ing.quantity, ing.unit)}
                           </span>
@@ -221,8 +253,14 @@ export function IngredientsSection({
                         </span>
                       ) : (
                         <span
-                          className={`font-mono whitespace-nowrap text-[11px] tracking-tight ${
-                            removed ? "text-[#7A7066]/60 line-through" : "text-[#7A7066]"
+                          className={`font-mono whitespace-nowrap tracking-tight ${
+                            plain ? "text-[13px]" : "text-[11px]"
+                          } ${
+                            removed
+                              ? "text-[#7A7066]/60 line-through"
+                              : plain
+                                ? "text-[#4A4239]"
+                                : "text-[#7A7066]"
                           }`}
                         >
                           {formatQuantity(ing.quantity, ing.unit)}
@@ -368,6 +406,8 @@ export function IngredientsSection({
             )}
           </div>
         )}
+
+        {plain && editToggle && <div className="-mt-2">{editToggle}</div>}
       </div>
     </section>
   )

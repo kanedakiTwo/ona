@@ -6,7 +6,7 @@ Household-shared photo gallery per recipe. Distinct from `recipes.image_url` (th
 
 ## User Capabilities
 
-- On a recipe detail page, an authed user sees a "Galería" section below the household notes.
+- On a recipe detail page, an authed user sees a "Galería" section below the household notes (mobile: in the **Notas** tab).
 - Tap "Añadir foto" → opens the system file picker (camera + library on mobile). Accepted: `image/jpeg`, `image/png`, `image/webp`, `image/heic`, `image/heif`. Max 8 MB.
 - Preview the picked file, add an optional caption (≤ 280 chars), tap "Subir foto" to upload.
 - Tap any thumbnail to open the full-resolution lightbox.

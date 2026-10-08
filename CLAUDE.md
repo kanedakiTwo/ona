@@ -11,7 +11,8 @@ The specs live in [`./specs/`](./specs/). Start with the index:
 Then read the specs relevant to your task. The current set covers:
 
 - [`specs/auth.md`](./specs/auth.md) — registration, login, JWT, onboarding
-- [`specs/recipes.md`](./specs/recipes.md) — catalog, filters, favorites, photos, AI extraction
+- [`specs/recipes.md`](./specs/recipes.md) — catalog, filters, favorites, detail
+- [`specs/recipe-import.md`](./specs/recipe-import.md) / [`specs/recipe-images.md`](./specs/recipe-images.md) — imports and AI extraction / hero photos
 - [`specs/menus.md`](./specs/menus.md) — weekly menu generation, recipe matcher, locking
 - [`specs/shopping.md`](./specs/shopping.md) — auto-generated list, stock manager, item toggles
 - [`specs/advisor.md`](./specs/advisor.md) — AI chat assistant, skills, voice (STT/TTS)
@@ -119,7 +120,9 @@ ONA (Opinionated Nutritional Assistant) is a **mobile-first meal planner** for S
 | Change | Spec to update |
 |--------|----------------|
 | New API route, auth rule, onboarding step | `auth.md` |
-| Recipe model, filters, photos, favorites, AI extraction | `recipes.md` |
+| Recipe model, filters, favorites, detail page | `recipes.md` |
+| Recipe import (photo/URL/WhatsApp), seed pipeline, ingredient resolution | `recipe-import.md` |
+| Recipe hero photo generation, regenerate-image, photo audit | `recipe-images.md` |
 | Menu algorithm, generation rules, locking, calorie targets | `menus.md` |
 | Shopping list generation, item toggle, stock, household scaling | `shopping.md` |
 | Assistant skill added/removed, voice behavior, prompts | `advisor.md` |

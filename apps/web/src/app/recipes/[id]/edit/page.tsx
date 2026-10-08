@@ -23,6 +23,7 @@ import {
   SortableIngredientsList,
   makeRowId,
 } from "@/components/recipes/SortableIngredientsList"
+import { ShoppingIssues } from "@/components/recipes/ShoppingIssues"
 import { FitChip, cycleFit } from "@/components/recipes/FitChip"
 import { cn } from "@/lib/utils"
 import { LintFailureError } from "@/lib/api"
@@ -732,6 +733,8 @@ export default function EditRecipePage() {
             <h2 className="mt-1 font-display text-[1.5rem] leading-tight text-[#1A1612]">
               <span className="font-italic italic">Ingredientes</span>
             </h2>
+            {/* What the last saved version still lacks for the shopping list. */}
+            <ShoppingIssues issues={recipe?.shoppingIssues} />
             <div className="mt-4">
               <SortableIngredientsList
                 rows={ingredientRows}

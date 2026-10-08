@@ -44,6 +44,11 @@ export const env = {
    * it both code paths return 503.
    */
   AIKIT_API_KEY: process.env.AIKIT_API_KEY || '',
+  // Recipe photo generator: 'auto' = AiKit, then OpenAI when AiKit refuses
+  // (since 2026-10-08 AiKit answers 403 API_KEY_ROUTE_NOT_ALLOWED to keys);
+  // 'aikit' / 'openai' pin one. See services/recipeImageGenerator.ts.
+  RECIPE_IMAGE_PROVIDER: (process.env.RECIPE_IMAGE_PROVIDER || 'auto') as 'auto' | 'aikit' | 'openai',
+  OPENAI_IMAGE_MODEL: process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1',
   /**
    * Where generated recipe images are written.
    *   - prod (Railway): mount the volume at `/data` and set this to

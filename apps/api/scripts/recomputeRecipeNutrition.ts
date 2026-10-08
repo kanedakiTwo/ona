@@ -11,6 +11,7 @@
  *   DATABASE_URL=<db> tsx scripts/recomputeRecipeNutrition.ts            # dry-run, system recipes only
  *   DATABASE_URL=<db> tsx scripts/recomputeRecipeNutrition.ts --execute  # commit
  *   DATABASE_URL=<db> tsx scripts/recomputeRecipeNutrition.ts --scope=all --execute  # include user recipes
+ *   DATABASE_URL=<db> tsx scripts/recomputeRecipeNutrition.ts --only=<id,id> --execute  # just these
  */
 import { db, pool } from '../src/db/connection.js'
 import {
@@ -24,6 +25,8 @@ import { eq, isNull, inArray } from 'drizzle-orm'
 
 const EXECUTE = process.argv.includes('--execute')
 const SCOPE_ALL = process.argv.includes('--scope=all')
+// --only=<id,id> — just these recipes (any author), e.g. after a data fix.
+const ONLY = process.argv.find((a) => a.startsWith('--only='))?.slice('--only='.length).split(',').filter(Boolean) ?? null
 
 async function main() {
   console.log(`Mode: ${EXECUTE ? 'EXECUTE' : 'DRY-RUN'}  Scope: ${SCOPE_ALL ? 'all' : 'system-only'}`)
@@ -64,7 +67,9 @@ async function main() {
   }
 
   // Load target recipes.
-  const recipeRows = SCOPE_ALL
+  const recipeRows = ONLY
+    ? await db.select({ id: recipes.id, name: recipes.name, servings: recipes.servings }).from(recipes).where(inArray(recipes.id, ONLY))
+    : SCOPE_ALL
     ? await db.select({ id: recipes.id, name: recipes.name, servings: recipes.servings }).from(recipes)
     : await db
         .select({ id: recipes.id, name: recipes.name, servings: recipes.servings })

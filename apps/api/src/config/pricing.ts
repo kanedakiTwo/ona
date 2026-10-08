@@ -85,6 +85,8 @@ export const PRICES: PriceTable = {
 
   // ── AIKIT image generation (Imagen via fal, behind AiKit's CMS) ──
   'aikit/imagen-fal': { currency: 'USD', perImage: 0.04 }, // UNVERIFIED (fal Imagen list price; AiKit's own markup unknown)
+  // gpt-image-1, quality medium, 1536×1024: ~1,570 output image tokens at $40/MTok (measured 2026-10-08).
+  'openai/gpt-image-1': { currency: 'USD', perImage: 0.063 },
 }
 
 /** Strip dated snapshot suffixes: `-20251001`, `-2025-08-28`. */

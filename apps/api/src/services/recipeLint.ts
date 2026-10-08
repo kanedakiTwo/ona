@@ -23,6 +23,7 @@ import {
   type NutritionPerServing,
 } from '@ona/shared'
 import { INGREDIENT_RANGES, globalCeiling, type QuantityRange } from './recipeLint.ranges.js'
+import { shoppabilityIssues } from './recipeShoppability.js'
 
 // ─── Public types ────────────────────────────────────────────────
 
@@ -612,6 +613,16 @@ export function lintRecipe(recipe: RecipeInput, opts: LintOptions): LintResult {
       })
     }
   })
+
+  // BUY_* — rows the shopping list / shop orders can't use (recipeShoppability.ts)
+  const named = ingredients
+    .map((ing, i) => ({ ing, i, cat: catalog.byId.get(ing.ingredientId) }))
+    .filter((x): x is typeof x & { cat: CatalogIngredient } => !!x.cat)
+  for (const issue of shoppabilityIssues(
+    named.map(({ ing, cat }) => ({ name: cat.name, quantity: ing.quantity, unit: ing.unit, note: ing.note, optional: ing.optional })),
+  )) {
+    warnings.push({ code: issue.code, message: issue.message, path: `ingredients[${named[issue.index].i}]` })
+  }
 
   // NO_EQUIPMENT
   if (!recipe.equipment || recipe.equipment.length === 0) {

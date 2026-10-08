@@ -88,6 +88,13 @@ export const recipeStepSchema = z.object({
 export type RecipeStep = z.infer<typeof recipeStepSchema>
 
 // ─── Recipe (server-read shape) ───────────────────────────────
+export interface RecipeShoppingIssue {
+  code: 'BUY_NO_QUANTITY' | 'BUY_GENERIC' | 'BUY_NEEDS_CHOICE' | 'BUY_NEEDS_WEIGHT'
+  message: string
+  /** The recipe_ingredients row it's about. */
+  rowId: string
+}
+
 export interface Recipe {
   id: string
   name: string
@@ -153,6 +160,12 @@ export interface Recipe {
   steps: RecipeStep[]
 
   is_favorite?: boolean
+  /**
+   * Rows the shopping list / shop orders can't use as written (BUY_* lint:
+   * "cilantro al gusto", "ternera" with no cut…). Only sent to the author
+   * and admins on GET /recipes/:id; empty = ready to shop.
+   */
+  shoppingIssues?: RecipeShoppingIssue[]
   createdAt: Date
   updatedAt: Date
 }

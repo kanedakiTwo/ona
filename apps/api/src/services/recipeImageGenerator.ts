@@ -4,6 +4,7 @@
  * Used by:
  *   - `apps/api/scripts/generateRecipeImages.ts` (bulk seed regeneration)
  *   - `POST /recipes/:id/regenerate-image` (per-user, quota-bounded)
+ *   - `recipeHouseImage.ts` (automatic image on create/import, checked)
  *
  * The pipeline is intentionally side-effect-free until `writeRecipeImage`:
  * `buildRecipePrompt` / `generateRecipeImage` are pure (apart from the
@@ -29,12 +30,19 @@ export interface RecipePromptInput {
   topIngredients: string[]
   /** Recipe `meals` array — only used to pick framing for breakfast/snack. */
   meals: string[]
+  /**
+   * What the plated dish looks like (`describeDish` in recipeImageCheck.ts).
+   * When present it replaces the ingredient line: the name + 4 ingredients
+   * alone often gave Imagen the wrong dish.
+   */
+  description?: string | null
 }
 
 /** Compose the editorial prompt sent to Imagen-fal. Pure. */
 export function buildRecipePrompt(input: RecipePromptInput): string {
-  const ingredientsLine =
-    input.topIngredients.length > 0
+  const ingredientsLine = input.description
+    ? input.description.replace(/\.?\s*$/, '.')
+    : input.topIngredients.length > 0
       ? `Ingredientes principales visibles: ${input.topIngredients.join(', ')}.`
       : ''
   const mealHint = input.meals.includes('breakfast')
@@ -47,7 +55,7 @@ export function buildRecipePrompt(input: RecipePromptInput): string {
     .join(' ')
 }
 
-/** Thrown when AiKit rejects the request (auth, quota, model error, etc). */
+/** Thrown when the image provider rejects the request (auth, quota, model error, etc). */
 export class AikitGenerationError extends Error {
   status: number
   constructor(status: number, message: string) {
@@ -57,16 +65,32 @@ export class AikitGenerationError extends Error {
   }
 }
 
-/** Thrown when AIKIT_API_KEY isn't configured. The route handler maps this to 503. */
+/** Thrown when no image provider is configured. The route handler maps this to 503. */
 export class AikitNotConfiguredError extends Error {
   constructor() {
-    super('AIKIT_API_KEY is not configured.')
+    super('No image provider configured (AIKIT_API_KEY / OPENAI_API_KEY).')
     this.name = 'AikitNotConfiguredError'
   }
 }
 
+type Provider = 'aikit' | 'openai'
+
+/** Providers to try, in order, for the configured mode. */
+export function imageProviders(
+  mode: typeof env.RECIPE_IMAGE_PROVIDER = env.RECIPE_IMAGE_PROVIDER,
+  keys: { aikit: boolean; openai: boolean } = { aikit: !!env.AIKIT_API_KEY, openai: !!env.OPENAI_API_KEY },
+): Provider[] {
+  const order: Provider[] = mode === 'openai' ? ['openai'] : mode === 'aikit' ? ['aikit'] : ['aikit', 'openai']
+  return order.filter((p) => keys[p])
+}
+
+export function imageGenerationConfigured(): boolean {
+  return imageProviders().length > 0
+}
+
 /**
- * Hit AiKit's Imagen-fal endpoint and return the raw PNG bytes.
+ * Generate one recipe photo and return PNG/JPEG bytes. AiKit's Imagen-fal
+ * first (in 'auto'), OpenAI gpt-image when AiKit refuses or isn't set up.
  * Exported so callers can decide whether to persist to disk (the bulk
  * script does, the route handler can defer until the quota write commits).
  */
@@ -74,8 +98,21 @@ export async function generateRecipeImage(
   prompt: string,
   aspectRatio: AspectRatio = '4:3',
 ): Promise<Buffer> {
-  if (!env.AIKIT_API_KEY) throw new AikitNotConfiguredError()
+  const providers = imageProviders()
+  if (providers.length === 0) throw new AikitNotConfiguredError()
+  let lastErr: unknown = null
+  for (const p of providers) {
+    try {
+      return p === 'aikit' ? await generateWithAikit(prompt, aspectRatio) : await generateWithOpenAI(prompt, aspectRatio)
+    } catch (err) {
+      lastErr = err
+      if (providers.length > 1) console.warn(`[recipeImage] ${p} failed, trying next:`, (err as Error)?.message ?? err)
+    }
+  }
+  throw lastErr
+}
 
+async function generateWithAikit(prompt: string, aspectRatio: AspectRatio): Promise<Buffer> {
   const form = new FormData()
   form.append('prompt', prompt)
   form.append('aspectRatio', aspectRatio)
@@ -103,6 +140,34 @@ export async function generateRecipeImage(
   // no context and lands as a system cost.
   recordCost({ feature: 'recipe_image', provider: 'aikit', model: 'imagen-fal', units: { images: 1 } })
   return Buffer.from(await res.arrayBuffer())
+}
+
+const OPENAI_SIZE: Record<AspectRatio, string> = { '4:3': '1536x1024', '1:1': '1024x1024', '3:4': '1024x1536' }
+const RATIO: Record<AspectRatio, number> = { '4:3': 4 / 3, '1:1': 1, '3:4': 3 / 4 }
+
+async function generateWithOpenAI(prompt: string, aspectRatio: AspectRatio): Promise<Buffer> {
+  const res = await fetch('https://api.openai.com/v1/images/generations', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: env.OPENAI_IMAGE_MODEL, prompt, size: OPENAI_SIZE[aspectRatio], quality: 'medium', n: 1 }),
+  })
+  if (!res.ok) {
+    let detail = ''
+    try { detail = (await res.text()).slice(0, 300) } catch {}
+    throw new AikitGenerationError(res.status, `OpenAI images ${res.status}: ${detail}`)
+  }
+  const body = (await res.json()) as { data?: Array<{ b64_json?: string }> }
+  const b64 = body.data?.[0]?.b64_json
+  if (!b64) throw new AikitGenerationError(502, 'OpenAI images: empty response')
+  recordCost({ feature: 'recipe_image', provider: 'openai', model: env.OPENAI_IMAGE_MODEL, units: { images: 1 } })
+  // gpt-image has no 4:3 — center-crop the 3:2 frame to the ratio asked for.
+  const img = sharp(Buffer.from(b64, 'base64'))
+  const { width = 0, height = 0 } = await img.metadata()
+  const want = RATIO[aspectRatio]
+  if (!width || !height || Math.abs(width / height - want) < 0.01) return img.png().toBuffer()
+  const w = width / height > want ? Math.round(height * want) : width
+  const h = width / height > want ? height : Math.round(width / want)
+  return img.extract({ left: Math.round((width - w) / 2), top: Math.round((height - h) / 2), width: w, height: h }).png().toBuffer()
 }
 
 export interface WriteResult {

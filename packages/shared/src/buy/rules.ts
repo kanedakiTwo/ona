@@ -182,8 +182,9 @@ const MEAT_PREP = ['picada', 'en filetes', 'fileteada', 'fileteado', 'en dados',
 const CARNICERIA: BuyRule[] = [
   weight('ternera', 'carniceria', ['ternera', 'vaca', 'buey', 'carne de ternera', 'carne'], 'ternera {c}', {
     choice: { question: '¿Para qué es la ternera?', options: ['picada', 'en filetes', 'para guisar'], def: null },
-    variants: [[/\bpicad/, 'carne picada de ternera'], [/\bfilete/, 'filetes de ternera']],
+    variants: [[/\bpicad/, 'carne picada de ternera'], [/\bfilete/, 'filetes de ternera'], [/\bcarriller/, 'carrilleras de ternera']],
   }),
+  weight('carrilleras', 'carniceria', ['carrilleras', 'carrilleras de ternera', 'carrillada', 'carrilladas'], 'carrilleras de ternera', { min: 500 }),
   weight('carne picada', 'carniceria', ['carne picada', ['carne picada de ternera', 'de ternera'], ['carne picada de cerdo', 'de cerdo'], ['carne picada mixta', 'mixta']], 'carne picada {c}', {
     choice: { question: '¿Picada de qué?', options: ['de ternera', 'de cerdo', 'mixta'], def: 'mixta' },
   }),
@@ -202,7 +203,10 @@ const CARNICERIA: BuyRule[] = [
   weight('cerdo', 'carniceria', ['cerdo', 'carne de cerdo', ['lomo de cerdo', 'lomo'], ['secreto', 'secreto']], '{c} de cerdo', {
     choice: { question: '¿Qué parte del cerdo?', options: ['lomo', 'secreto', 'carne para guisar'], def: null },
   }),
-  weight('aguja de cerdo', 'carniceria', ['carne de aguja', 'carne de aguja de retal', 'aguja de cerdo'], 'aguja de cerdo'),
+  // "Carne de aguja" is beef for a burger and pork for a stew: the recipe says which.
+  weight('aguja', 'carniceria', ['carne de aguja', 'carne de aguja de retal', 'aguja', ['aguja de cerdo', 'de cerdo'], ['aguja de ternera', 'de ternera'], ['aguja de vaca', 'de ternera']], 'aguja {c}', {
+    choice: { question: '¿Aguja de ternera o de cerdo?', options: ['de ternera', 'de cerdo'], def: null },
+  }),
   weight('costillas de cerdo', 'carniceria', ['costillas', 'costillas de cerdo', 'costilla de cerdo'], 'costillas de cerdo', { min: 500 }),
   weight('panceta', 'carniceria', ['panceta', 'panceta fresca'], 'panceta fresca'),
   weight('cordero', 'carniceria', ['cordero', 'carne de cordero'], '{c} de cordero', {
@@ -253,7 +257,8 @@ const PESCADERIA: BuyRule[] = [
     variants: [[/\brodaja/, 'merluza en rodajas']],
   }),
   weight('merluza en rodajas', 'pescaderia', ['merluza en rodajas'], 'merluza en rodajas', { volatile: true }),
-  weight('bacalao', 'pescaderia', ['bacalao', 'bacalao fresco'], 'bacalao fresco', { prep: ['en lomos', 'en lomos'] }),
+  weight('bacalao', 'pescaderia', ['bacalao', 'bacalao fresco'], 'bacalao fresco', { prep: ['en lomos', 'en lomos'], variants: [[/\bdesmig/, 'bacalao desmigado']] }),
+  weight('bacalao desmigado', 'pescaderia', ['bacalao desmigado', 'bacalao desalado desmigado'], 'bacalao desalado desmigado'),
   weight('bacalao desalado', 'pescaderia', ['bacalao desalado'], 'bacalao desalado', { prep: ['en lomos', 'en lomos'] }),
   weight('salmon', 'pescaderia', ['salmon', 'salmon fresco', 'lomo de salmon', 'lomos de salmon'], 'salmón', { prep: ['en lomos sin piel', 'en lomos sin piel'] }),
   weight('rape', 'pescaderia', ['rape', 'cola de rape'], 'rape', { prep: ['limpio, en rodajas', 'limpio, en rodajas'], volatile: true }),

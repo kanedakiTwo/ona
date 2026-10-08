@@ -10,6 +10,7 @@ The previous seed contained recipes that referenced ingredients in their steps t
 
 - Authors of user-created recipes see a clear error if their recipe fails any blocking lint rule on save
 - Authors see non-blocking warnings (nutrition gaps, suspiciously high/low values) in a side panel, but can save anyway
+- Authors (and admins) see a **"Para hacer la compra"** card on the recipe detail (Ingredientes tab) and above the ingredient rows on the edit page whenever an ingredient can't go to the shopping list or a shop order as written; it disappears once fixed (Shoppability below)
 - Curators can run a one-off regeneration script that rebuilds the system catalog from scratch and only persists recipes that pass the lint
 - Curators can review the LLM-generated JSON for each recipe before it is committed to the seed (no automatic apply)
 
@@ -35,6 +36,18 @@ The previous seed contained recipes that referenced ingredients in their steps t
 - Computed `kcal/servings` falls outside [150, 1500] → suspect quantity error
 - Step lacks `durationMin` while `step.text` contains a time hint ("30 minutos", "media hora") → suggest extracting it
 - Recipe has no `equipment` set → curator may want to add at least one tool
+- `BUY_*` — the Shoppability checks below
+
+### Shoppability (`BUY_*` warnings, 2026-10-08)
+
+Reuses the shop-order buy rules ([shop-orders.md](./shop-orders.md) → Buy rules); never blocks a save. Returned as lint warnings on `POST`/`PUT /recipes` and imports, and as `shoppingIssues` (`{ code, message, rowId }`) on `GET /recipes/:id` for the author/admins only.
+
+- `BUY_NO_QUANTITY` — something you have to buy goes `al_gusto` / `pizca` / 0 ("cilantro al gusto") → it never reaches the shopping list. Pantry basics (sal, pimienta, aceite, especias secas…) and optional rows may go al gusto. The message suggests the shop unit ("p. ej. 1 manojo de cilantro")
+- `BUY_GENERIC` — a family or an open choice in the name: "hierbas aromáticas (romero, tomillo)" → one row per product; "pescado entero fresco (dorada, lubina…)" → name one
+- `BUY_NEEDS_CHOICE` — the buy rule needs a choice nobody made: "ternera" with no cut, "jamón" with no serrano/ibérico, "pan blanco" with no type. The name or the ingredient note settles it ("para guisar", "carrilleras", "serrano", "en barra")
+- `BUY_NEEDS_WEIGHT` — meat/fish/charcutería counted in units ("2 u de panceta"): the shop weighs, give grams
+
+The 2026-10-08 audit of the 81 production recipes fixed every hit by hand (30 recipes: cuts in notes, quantities for herbs and al-gusto rows, a dorada instead of salmón in "Dorada a la marsellesa", jamón de york in "Sándwich mixto") and recomputed their nutrition; all 81 now pass.
 
 ## LLM Regeneration Pipeline
 
@@ -70,6 +83,7 @@ Per-ingredient range tables live next to the lint validator. Initial coverage fo
 ## Source
 
 - [apps/api/src/services/recipeLint.ts](../apps/api/src/services/recipeLint.ts) — validator
+- [apps/api/src/services/recipeShoppability.ts](../apps/api/src/services/recipeShoppability.ts) — the `BUY_*` checks; [apps/web/src/components/recipes/ShoppingIssues.tsx](../apps/web/src/components/recipes/ShoppingIssues.tsx) — the "Para hacer la compra" card
 - [apps/api/src/services/recipeLint.ranges.ts](../apps/api/src/services/recipeLint.ranges.ts) — per-ingredient sanity ranges
 - [apps/api/src/services/recipePersistence.ts](../apps/api/src/services/recipePersistence.ts) — orchestrator: lint → nutrition aggregate → allergen union → DB write (single canonical save path used by the API route, the photo extractor and the apply script)
 - [apps/api/src/services/regenSchema.ts](../apps/api/src/services/regenSchema.ts) — Zod schema describing the LLM regen JSON output, used by both `regenerateRecipes.ts` to validate the model response and by the apply script to type the JSONL rows

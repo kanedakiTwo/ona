@@ -3,13 +3,15 @@ import { persistRecipe, type RecipeWriteInput } from './recipePersistence.js'
 import { AnthropicProvider } from './providers/anthropic.js'
 import { extractRecipeFromImage, matchIngredients } from './recipeExtractor.js'
 import { extractRecipeFromUrl } from './recipeUrlExtractor.js'
+import { scheduleHouseImage } from './recipeHouseImage.js'
 
 /**
  * One persist path for every "import a recipe" entry point: the
  * `POST /recipes/extract-from-url` route, the assistant's
  * `import_recipe_from_url` skill, and WhatsApp photos. Imports go through
  * soft lint (findings come back as warnings) — the user reviews and edits
- * on the recipe page afterwards.
+ * on the recipe page afterwards — and get a house-style photo in the
+ * background (recipeHouseImage.ts).
  */
 
 /** Pure: extractor output → the write shape `persistRecipe` takes. */
@@ -58,6 +60,9 @@ export async function saveExtractedRecipe(
     { authorId: opts.authorId, softLint: true, force: true },
   )
   if (!result.ok) return { ok: false, errors: result.errors, warnings: result.warnings }
+  // The source's og:image / thumbnail is a stand-in until the house photo
+  // (this dish, our style, checked) replaces it in the background.
+  scheduleHouseImage(result.recipeId, opts.authorId)
   return {
     ok: true,
     recipeId: result.recipeId,

@@ -5,6 +5,7 @@ export type { Ingredient, PrepMethod, PrepRequirement } from './types/ingredient
 export { PREP_METHODS, PREP_METHOD_HOURS_BEFORE, prepRequirementSchema } from './types/ingredient.js'
 export type {
   Recipe,
+  RecipeShoppingIssue,
   RecipeIngredient,
   RecipeIngredientInput,
   RecipeStep,

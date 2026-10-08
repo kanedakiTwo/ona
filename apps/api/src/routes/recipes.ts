@@ -30,10 +30,13 @@ import { env } from '../config/env.js'
 import {
   buildRecipePrompt,
   generateRecipeImage,
+  imageGenerationConfigured,
   writeRecipeImage,
   AikitNotConfiguredError,
   AikitGenerationError,
 } from '../services/recipeImageGenerator.js'
+import { loadDish, makeHouseImage, scheduleHouseImage } from '../services/recipeHouseImage.js'
+import { recipeShoppingIssues } from '../services/recipeShoppability.js'
 import {
   authMiddleware,
   optionalAuthMiddleware,
@@ -503,6 +506,12 @@ router.get('/recipes/:id', optionalAuthMiddleware, async (req: AuthRequest, res)
     ])
 
     const recipe = toDetailRecipe(row, ings, steps)
+    // "¿Se puede comprar?" — for whoever can fix the recipe.
+    if (req.userId && (row.authorId === req.userId || req.user?.role === 'admin')) {
+      recipe.shoppingIssues = recipeShoppingIssues(
+        ings.map((i) => ({ id: i.id, name: i.ingredientName, quantity: i.quantity, unit: i.unit as Unit, note: i.note, optional: i.optional })),
+      )
+    }
 
     const servingsParam = req.query.servings
     const target = servingsParam != null ? parseInt(String(servingsParam)) : null
@@ -719,6 +728,8 @@ router.post(
         message: w.message,
         path: w.path,
       }))
+      // No photo (or a pasted external URL) → house-style photo in the background.
+      scheduleHouseImage(result.recipeId, req.userId!, { isAdmin: req.user?.role === 'admin', currentUrl: body.imageUrl })
       res.status(201).json({
         ...toDetailRecipe(newRow, ings, steps),
         warnings,
@@ -998,6 +1009,14 @@ router.delete('/recipes/:id', authMiddleware, async (req: AuthRequest, res) => {
   }
 })
 
+/** Give back an image slot — same conditional shape so it never goes negative. */
+async function refundImageQuota(userId: string, monthKey: string): Promise<void> {
+  await db.execute(sql`
+    UPDATE users SET image_gen_count = GREATEST(image_gen_count - 1, 0)
+    WHERE id = ${userId}::uuid AND image_gen_month_key = ${monthKey}
+  `)
+}
+
 // POST /recipes/:id/regenerate-image — author-only AI hero photo (auth required).
 //
 // Quota model (per-user, monthly): each user has `image_gen_month_key` (the
@@ -1039,7 +1058,7 @@ router.post(
         return
       }
 
-      if (!env.AIKIT_API_KEY) {
+      if (!imageGenerationConfigured()) {
         res.status(503).json({ error: 'Generación de imágenes no configurada' })
         return
       }
@@ -1070,30 +1089,18 @@ router.post(
         return
       }
 
-      // 3. Pull the recipe's top ingredients for the prompt. Best-effort —
-      //    if the recipe has no ingredients we still generate something.
-      const ingRows = await db
-        .select({
-          name: ingredients.name,
-          displayOrder: recipeIngredients.displayOrder,
-        })
-        .from(recipeIngredients)
-        .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
-        .where(eq(recipeIngredients.recipeId, recipeId))
-        .orderBy(asc(recipeIngredients.displayOrder))
-        .limit(4)
-
-      const prompt = buildRecipePrompt({
-        name: recipe.name,
-        topIngredients: ingRows.map((r) => r.name),
-        meals: recipe.meals ?? [],
-      })
-
-      // 4. Call AiKit + persist. If anything goes wrong we refund the quota
-      //    so the user doesn't lose a slot to a transient failure.
+      // 3+4. Describe the plated dish → generate in the house style → vision
+      //      check (one more try on a miss) → persist. If anything goes wrong
+      //      we refund the quota so the user doesn't lose a slot to it.
       try {
-        const png = await generateRecipeImage(prompt, '4:3')
-        const { imageUrl } = await writeRecipeImage(png, `${recipeId}.jpg`)
+        const dish = await loadDish(recipeId)
+        const made = dish ? await makeHouseImage(dish) : null
+        if (!made?.png) {
+          await refundImageQuota(userId, monthKey)
+          res.status(502).json({ error: 'La imagen no ha salido bien. Inténtalo de nuevo.' })
+          return
+        }
+        const { imageUrl } = await writeRecipeImage(made.png, `${recipeId}.jpg`)
 
         await db
           .update(recipes)
@@ -1105,12 +1112,7 @@ router.post(
           quota: { used: newCount, limit, monthKey },
         })
       } catch (genErr) {
-        // Refund the quota slot — same conditional shape so we don't go
-        // negative if the user happens to call again concurrently.
-        await db.execute(sql`
-          UPDATE users SET image_gen_count = GREATEST(image_gen_count - 1, 0)
-          WHERE id = ${userId}::uuid AND image_gen_month_key = ${monthKey}
-        `)
+        await refundImageQuota(userId, monthKey)
         if (genErr instanceof AikitNotConfiguredError) {
           res.status(503).json({ error: 'Generación de imágenes no configurada' })
         } else if (genErr instanceof AikitGenerationError) {

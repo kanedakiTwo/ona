@@ -130,8 +130,8 @@ async function main() {
   // The shared service reads AIKIT_API_KEY from `env` at call time; we only
   // pre-flight the check here so a missing key dies fast instead of after the
   // first generate() call.
-  if (!process.env.AIKIT_API_KEY && !flags.dryRun) {
-    console.error('AIKIT_API_KEY env var is required (unless --dry-run).')
+  if (!process.env.AIKIT_API_KEY && !process.env.OPENAI_API_KEY && !flags.dryRun) {
+    console.error('AIKIT_API_KEY or OPENAI_API_KEY env var is required (unless --dry-run).')
     process.exit(1)
   }
 

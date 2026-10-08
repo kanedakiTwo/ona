@@ -12,6 +12,7 @@ import { useUser } from "@/hooks/useUser"
 import { useIsDesktop } from "@/hooks/useMediaQuery"
 import { useAuth } from "@/lib/auth"
 import { FavoriteButton } from "@/components/recipes/FavoriteButton"
+import { ShoppingIssues } from "@/components/recipes/ShoppingIssues"
 import { CookedBadge } from "@/components/recipes/CookedBadge"
 import { RecipeNotesSection } from "@/components/recipes/RecipeNotesSection"
 import { AddToCookbookButton } from "@/components/recipes/AddToCookbookButton"
@@ -231,19 +232,23 @@ export default function RecipeDetailPage() {
 
   const ingredientsList =
     recipe.ingredients?.length > 0 ? (
-      <IngredientsSection
-        variant="plain"
-        columns={isDesktop ? 2 : 1}
-        ingredients={recipe.ingredients as any}
-        targetServings={displayServings}
-        overrides={overrides}
-        onOverridesChange={
-          user
-            ? (next) => saveNotes.mutate({ ingredientOverrides: next })
-            : undefined
-        }
-        saving={saveNotes.isPending}
-      />
+      <>
+        <IngredientsSection
+          variant="plain"
+          columns={isDesktop ? 2 : 1}
+          ingredients={recipe.ingredients as any}
+          targetServings={displayServings}
+          overrides={overrides}
+          onOverridesChange={
+            user
+              ? (next) => saveNotes.mutate({ ingredientOverrides: next })
+              : undefined
+          }
+          saving={saveNotes.isPending}
+        />
+        {/* "Para hacer la compra" — only sent to the author / admins. */}
+        <ShoppingIssues issues={recipe.shoppingIssues} editHref={`/recipes/${recipe.id}/edit`} />
+      </>
     ) : (
       <EmptyLine>Esta receta aún no tiene ingredientes.</EmptyLine>
     )

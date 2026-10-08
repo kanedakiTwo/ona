@@ -45,3 +45,13 @@ export function prettyName(name: string): string {
 export function capitalize(s: string): string {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : s
 }
+
+/**
+ * How an ingredient name reads on screen (recipe detail, shopping list,
+ * pantry): sentence case — only the first letter is raised — with accents
+ * restored. Brands and acronyms the user typed ("Kerrygold", "AOVE") stay as
+ * written; the stored name is never touched.
+ */
+export function ingredientDisplayName(name: string): string {
+  return capitalize(prettyName(name.trim()))
+}

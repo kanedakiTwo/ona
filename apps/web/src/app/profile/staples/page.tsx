@@ -11,7 +11,7 @@ import { useState } from "react"
 import Link from "next/link"
 import { ChevronLeft, Plus, Trash2 } from "lucide-react"
 import type { Aisle, BuyableUnit } from "@ona/shared"
-import { AISLES } from "@ona/shared"
+import { AISLES, ingredientDisplayName } from "@ona/shared"
 import {
   useStaples,
   useAddStaple,
@@ -223,7 +223,7 @@ function StapleRow({
         />
       </button>
       <div className="flex-1 min-w-0">
-        <div className="text-[14px] text-[#1A1612] capitalize">{staple.name}</div>
+        <div className="text-[14px] text-[#1A1612]">{ingredientDisplayName(staple.name)}</div>
         <div className="text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
           {staple.quantity} {staple.unit} · {AISLE_LABEL[staple.aisle]}
           {staple.pricePerUnit != null && (

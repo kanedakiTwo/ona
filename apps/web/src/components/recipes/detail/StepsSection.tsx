@@ -4,6 +4,7 @@ import Link from "next/link"
 import { motion } from "motion/react"
 import { ChefHat, Clock, Flame } from "lucide-react"
 import type { RecipeIngredient, RecipeStep } from "@ona/shared"
+import { ingredientDisplayName } from "@ona/shared"
 import { formatQuantity } from "@/lib/recipeView"
 import { renderInlineMarkdown } from "@/lib/inlineMarkdown"
 
@@ -123,8 +124,8 @@ export function StepsSection({
                         key={ing.id}
                         className="rounded-full border border-[#DDD6C5] bg-[#FAF6EE] px-2 py-0.5 text-[10px] text-[#4A4239]"
                       >
-                        <span className="capitalize">
-                          {ing.ingredientName ?? "Ingrediente"}
+                        <span>
+                          {ing.ingredientName ? ingredientDisplayName(ing.ingredientName) : "Ingrediente"}
                         </span>{" "}
                         <span className="font-mono text-[#7A7066]">
                           · {formatQuantity(ing.quantity, ing.unit)}

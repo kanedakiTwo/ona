@@ -21,7 +21,7 @@ import {
   ItemPriceField,
   ItemDeleteButton,
 } from '@/components/shopping/ShoppingExtensions'
-import { withOnaFooter } from '@ona/shared'
+import { ingredientDisplayName, withOnaFooter } from '@ona/shared'
 
 function todayIso(): string {
   const now = new Date()
@@ -496,8 +496,8 @@ function ItemRow({
       )}
 
       <div className="flex-1 min-w-0">
-        <div className={`text-[15px] capitalize text-[#1A1612] ${item.checked ? 'line-through' : ''}`}>
-          {item.name}
+        <div className={`text-[15px] text-[#1A1612] ${item.checked ? 'line-through' : ''}`}>
+          {ingredientDisplayName(item.name)}
           {isManual && (
             <span className="ml-1.5 text-[9px] uppercase tracking-[0.15em] text-[#C65D38] not-italic">
               · manual

@@ -160,7 +160,7 @@ export {
 } from './utils/household.js'
 export type { HouseholdSnapshot } from './utils/household.js'
 
-export { formatQty, prettyName, capitalize } from './utils/shopFormat.js'
+export { formatQty, prettyName, capitalize, ingredientDisplayName } from './utils/shopFormat.js'
 export { BUY_RULES } from './buy/rules.js'
 export type { BuyRule, BuyShop, BuyBy, BuyTier, BuyChoice } from './buy/rules.js'
 export { toOrderQty, resolveBuyRule, buyRuleByKey, splitCompound, normalizeBuyName, weightPhrase } from './buy/convert.js'

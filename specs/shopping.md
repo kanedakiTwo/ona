@@ -105,6 +105,7 @@ At `lg+` the `/shopping` page widens its outer container to `max-w-[900px]` so t
 - Items are only created from menu recipes; users cannot add custom items in the current implementation
 - The progress bar uses `(checkedCount + inStockCount) / totalCount`
 - Export format is plain text suitable for paste into messaging apps; it preserves aisle grouping and ends with a "Hecho con Mimoia" line + link (the shared title is "Lista de compra · Mimoia") (`/?ref=lista`, `withOnaFooter`), so a shared list can bring another household
+- **Ingredient names on screen (detail, shopping list, pantry, staples)** read as a sentence — «Aceite de oliva virgen», «Pimentón dulce» — via `ingredientDisplayName` (`packages/shared/src/utils/shopFormat.ts`): only the first letter is raised and catalogue accents are restored; brands/acronyms the user typed («Kerrygold», «AOVE») stay. Display-only; stored names are untouched (PRO-02).
 - Aisle assignment falls back to `otros` when `ingredient.aisle` is unset; curators are nudged to fill the column
 - Check / stock mutations work offline; the request is held in the PWA queue until reconnect. The local UI updates optimistically and a "Pendiente de sincronizar" indicator shows while pending
 - **Household scope (PR 1B):** shopping lists carry both `user_id` and `household_id`. Reads + access checks on `POST /shopping-list/:listId/regenerate` honour the env flag `SHARED_HOUSEHOLD_SCOPE`; with the flag on, any household member can regenerate the household's list. See [Household](./household.md)

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react"
 import { motion } from "motion/react"
 import { Pencil, Plus, Trash2, Undo2, X } from "lucide-react"
 import type { IngredientOverride, RecipeIngredient } from "@ona/shared"
+import { ingredientDisplayName } from "@ona/shared"
 import {
   formatQuantity,
   groupIngredientsBySection,
@@ -212,13 +213,13 @@ export function IngredientsSection({
                   >
                     <div className="flex flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5">
                       <span
-                        className={`${plain ? "text-[16px]" : "text-[15px]"} capitalize ${
+                        className={`${plain ? "text-[16px]" : "text-[15px]"} ${
                           removed
                             ? "text-[#1A1612] line-through decoration-[#C65D38] decoration-1"
                             : "text-[#1A1612]"
                         }`}
                       >
-                        {ing.ingredientName ?? "Ingrediente"}
+                        {ing.ingredientName ? ingredientDisplayName(ing.ingredientName) : "Ingrediente"}
                       </span>
                       {ing.optional && (
                         <span className="rounded-full bg-[#F2EDE0] px-1.5 py-0.5 text-[9px] uppercase tracking-[0.1em] text-[#7A7066]">
@@ -350,8 +351,8 @@ export function IngredientsSection({
                 key={`add-${i}`}
                 className="flex items-baseline justify-between gap-3 py-1.5"
               >
-                <span className="text-[15px] capitalize text-[#1A1612]">
-                  {ov.label}
+                <span className="text-[15px] text-[#1A1612]">
+                  {ingredientDisplayName(ov.label)}
                 </span>
                 <div className="flex items-center gap-2">
                   {ov.quantity != null && ov.unit && (

@@ -11,6 +11,7 @@ import { useState } from "react"
 import Link from "next/link"
 import { ChevronLeft, Plus, Trash2 } from "lucide-react"
 import type { BuyableUnit } from "@ona/shared"
+import { ingredientDisplayName } from "@ona/shared"
 import {
   usePantry,
   useAddPantry,
@@ -199,7 +200,7 @@ function PantryRow({ item, onDelete }: { item: PantryItem; onDelete: () => void 
   return (
     <li className="flex flex-wrap items-center gap-3 px-4 py-3">
       <div className="flex-1 min-w-0">
-        <div className="text-[14px] text-[#1A1612] capitalize">{item.name}</div>
+        <div className="text-[14px] text-[#1A1612]">{ingredientDisplayName(item.name)}</div>
         {pill && (
           <span
             className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[9px] uppercase tracking-[0.12em] ${pill.tone}`}

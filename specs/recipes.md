@@ -228,6 +228,7 @@ Both the photo extractor (`POST /recipes/extract-from-image`) and the URL extrac
 - `name` and `servings` are required; everything else is optional but `difficulty` defaults to `medium` if absent
 - Saving a recipe **fails** if the lint validator finds issues (see [Recipe Quality](./recipe-quality.md))
 - `nutritionPerServing` and `allergens` are recomputed automatically on every recipe save — never edited by hand
+- **Ingredient names on screen (detail, shopping list, pantry, staples)** read as a sentence — «Aceite de oliva virgen», «Pimentón dulce» — via `ingredientDisplayName` (`packages/shared/src/utils/shopFormat.ts`): only the first letter is raised and catalogue accents are restored; brands/acronyms the user typed («Kerrygold», «AOVE») stay. Display-only; stored names are untouched (PRO-02).
 - `totalTime` is read-only on the client; clients can edit `prepTime`/`cookTime`/`activeTime`
 - Schema migration is destructive (wipe + reseed acceptable; no production data preservation requirement)
 - v1 of the URL importer cannot process YouTube videos that lack both captions and a recipe-bearing description (no Whisper / yt-dlp / Gemini fallback yet)

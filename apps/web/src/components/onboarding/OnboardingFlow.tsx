@@ -92,9 +92,6 @@ export default function OnboardingFlow() {
       }
       const result = await api.post<any>(`/user/${user.id}/onboarding`, payload)
 
-      // Update auth context + localStorage with the full server response
-      updateUser(result)
-
       // Land on a real first menu built from these answers, not an empty
       // week. If generation fails, /menu still offers "Generar mi menú".
       setPreparingMenu(true)
@@ -102,6 +99,11 @@ export default function OnboardingFlow() {
         .post("/menu/generate", { userId: user.id, weekStart: currentWeekStart() })
         .catch(() => undefined)
 
+      // Only now mark the user as onboarded (auth context + localStorage).
+      // Doing it before the generate let the onboarding page's own
+      // "already onboarded" redirect reach /menu first; /menu then found no
+      // week (404) and auto-created an empty one on top of the real menu.
+      updateUser(result)
       router.push("/menu")
     } catch (err: any) {
       setError(err.message || "Error al guardar")

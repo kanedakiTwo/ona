@@ -1,116 +1,57 @@
 "use client"
 
-const DAY_LABELS = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"]
-
-interface DayMeta {
-  label: string
-  date: number
-  hasMenu: boolean
-}
+/**
+ * Day strip of /menu (Vista día): seven equal cells "L 5 · M 6 · X 7 …",
+ * the selected day as an ink pill, today's number in terracotta when it
+ * isn't selected, skipped days ("sin cocinar") muted.
+ */
+import { DAY_INITIALS, dateOfDay, weekdayName } from "@/lib/menuDay"
 
 interface WeekStripProps {
-  days: DayMeta[]
+  weekStart: string
   selectedDay: number
   todayIndex: number
+  skippedDays?: number[]
   onSelectDay: (i: number) => void
 }
 
-export function WeekStrip({
-  days,
-  selectedDay,
-  todayIndex,
-  onSelectDay,
-}: WeekStripProps) {
+export function WeekStrip({ weekStart, selectedDay, todayIndex, skippedDays = [], onSelectDay }: WeekStripProps) {
   return (
-    <div className="week-strip flex items-center justify-center gap-6 py-4 max-[479px]:justify-start max-[479px]:overflow-x-auto max-[479px]:scroll-smooth max-[479px]:[scroll-snap-type:x_mandatory]">
-      {days.map((day, i) => {
-        const isToday = i === todayIndex
-        const isSelected = i === selectedDay
-        const isDone = day.hasMenu
-
+    <nav aria-label="Días de la semana" className="grid grid-cols-7 gap-1 px-4 pt-3">
+      {DAY_INITIALS.map((initial, i) => {
+        const date = dateOfDay(weekStart, i).getDate()
+        const selected = i === selectedDay
+        const today = i === todayIndex
+        const skipped = skippedDays.includes(i)
         return (
           <button
             key={i}
+            type="button"
             onClick={() => onSelectDay(i)}
-            className="flex flex-shrink-0 flex-col items-center gap-1.5 outline-none max-[479px]:[scroll-snap-align:start]"
+            aria-pressed={selected}
+            aria-current={today ? "date" : undefined}
+            aria-label={`${weekdayName(i)} ${date}${today ? ", hoy" : ""}${skipped ? ", sin cocinar" : ""}`}
+            className={`flex h-[54px] flex-col items-center justify-center gap-px rounded-2xl transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink ${
+              selected ? "bg-ink text-cream" : "text-ink-muted hover:bg-cream-deep"
+            }`}
           >
-            {/* Day label */}
+            <span className="text-[11px] font-semibold">{initial}</span>
             <span
-              className="text-[11px] font-medium uppercase tracking-[0.05em]"
-              style={{
-                color: isToday ? "#1A1612" : "#7A7066",
-              }}
+              className={`font-serif-text text-[19px] leading-none ${
+                selected
+                  ? "text-cream"
+                  : skipped
+                    ? "text-ink-light line-through decoration-1"
+                    : today
+                      ? "text-terracotta-deep"
+                      : "text-ink"
+              }`}
             >
-              {day.label}
+              {date}
             </span>
-
-            {/* Day circle */}
-            <div
-              className="flex h-10 w-10 items-center justify-center rounded-full text-[13px] font-medium transition-all max-[479px]:h-9 max-[479px]:w-9"
-              style={{
-                ...getCircleStyles(isToday, isSelected, isDone),
-              }}
-            >
-              {day.date}
-            </div>
-
-            {/* Status dot */}
-            <div
-              className="h-[5px] w-[5px] rounded-full"
-              style={{
-                background: isDone
-                  ? "#C65D38"
-                  : isToday
-                    ? "#1A1612"
-                    : "#DDD6C5",
-              }}
-            />
           </button>
         )
       })}
-    </div>
+    </nav>
   )
-}
-
-function getCircleStyles(
-  isToday: boolean,
-  isSelected: boolean,
-  isDone: boolean
-): React.CSSProperties {
-  if (isToday && isSelected) {
-    return {
-      background: "#1A1612",
-      border: "2px solid #1A1612",
-      color: "#FFFEFA",
-      outline: "2px solid #1A1612",
-      outlineOffset: "2px",
-    }
-  }
-  if (isToday) {
-    return {
-      background: "#1A1612",
-      border: "2px solid #1A1612",
-      color: "#FFFEFA",
-    }
-  }
-  if (isSelected) {
-    return {
-      background: "#F2EDE0",
-      border: "2px solid #7A7066",
-      color: "#1A1612",
-    }
-  }
-  if (isDone) {
-    return {
-      background: "#F2EDE0",
-      border: "2px solid #DDD6C5",
-      color: "#4A4239",
-    }
-  }
-  // Empty / default
-  return {
-    background: "#FFFEFA",
-    border: "2px solid #DDD6C5",
-    color: "#7A7066",
-  }
 }

@@ -1,9 +1,13 @@
 "use client"
 
 /**
- * "Vista semana" — at mobile (default) renders each day as a stacked row of
- * meal cards; at lg+ it expands into a 7-column grid where each day is a
- * column and each slot is a card with feature-parity to Vista día.
+ * "Vista semana" (mobile) — each day as a stacked row of meal cards.
+ * Since the 2026-10-08 redesign /menu renders it only below lg; desktop uses
+ * MenuDesktop's "La semana" columns. The lg+ classes below are kept for any
+ * other host but are not reached from /menu today.
+ *
+ * Original lg+ design: a 7-column grid where each day is a column and each
+ * slot is a card with feature-parity to Vista día.
  *
  * Parity surface (lg+):
  *   - All recipe dishes in a slot are shown (not just the first).
@@ -58,7 +62,6 @@ import {
   Trash2,
   Unlock,
   Users,
-  Utensils,
 } from "lucide-react"
 import {
   MEAL_TYPE_TAG_LABELS,
@@ -71,6 +74,7 @@ import { shortRecipeName } from "@/lib/recipeView"
 import { RecipePickerSheet } from "@/components/menu/RecipePickerSheet"
 import { AddDishSheet } from "@/components/menu/AddDishSheet"
 import { NoteEditor } from "@/components/menu/NoteEditor"
+import { RecipeCover } from "@/components/menu/RecipeCover"
 
 type MealKey = "breakfast" | "lunch" | "dinner" | "snack"
 
@@ -796,19 +800,12 @@ function FilledRow({
       }`}
     >
       <div className="relative h-[52px] w-[52px] shrink-0 overflow-hidden rounded-lg bg-[#F2EDE0] lg:h-auto lg:w-full lg:rounded-none lg:rounded-t-lg lg:aspect-[4/3]">
-        {firstRecipe?.imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={firstRecipe.imageUrl}
-            alt=""
-            className="h-full w-full object-cover"
-            loading="lazy"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-[#7A7066]">
-            <Utensils size={20} strokeWidth={1.4} />
-          </div>
-        )}
+        <RecipeCover
+          src={firstRecipe?.imageUrl}
+          name={firstRecipe?.recipeName ?? mealLabel}
+          meal={meal}
+          className="h-full w-full"
+        />
         {firstRecipe?.variant === "leftover" && (
           <span className="absolute bottom-0 left-0 right-0 bg-[#1A1612]/85 px-1 py-[1px] text-center text-[8px] font-medium uppercase tracking-[0.1em] text-[#FAF6EE]">
             Sobras
@@ -1014,18 +1011,7 @@ function RowPreview({ data }: { data: CellData }) {
     <div className="pointer-events-none w-[280px] rounded-xl border border-[#1A1612]/30 bg-[#FFFEFA] px-2 py-2 shadow-[0_8px_24px_-8px_rgba(26,22,18,0.35)]">
       <div className="flex items-center gap-3">
         <div className="h-[52px] w-[52px] shrink-0 overflow-hidden rounded-lg bg-[#F2EDE0]">
-          {data.imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={data.imageUrl}
-              alt=""
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center text-[#7A7066]">
-              <Utensils size={20} strokeWidth={1.4} />
-            </div>
-          )}
+          <RecipeCover src={data.imageUrl} name={data.recipeName} meal={data.meal} className="h-full w-full" />
         </div>
         <div className="min-w-0 flex-1">
           <p className="m-0 flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">

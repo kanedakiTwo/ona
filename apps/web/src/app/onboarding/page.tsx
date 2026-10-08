@@ -14,7 +14,9 @@ export default function OnboardingPage() {
       router.push("/login")
     }
     if (!isLoading && user?.onboardingDone) {
-      router.push("/")
+      // Straight to /menu ("/" only bounces onboarded users there), so it
+      // doesn't race OnboardingFlow's own push("/menu") through the landing.
+      router.push("/menu")
     }
   }, [user, isLoading, router])
 

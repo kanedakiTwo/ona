@@ -19,7 +19,7 @@ User registration, login, and session management for ONA.
 - The `users.onboardingDone` flag tracks completion
 - Onboarding collects: household composition (`adults` + `kidsCount` for children aged 2–10; under 2 doesn't count, over 10 counts as adult), cooking frequency, dietary restrictions, favorite dishes, nutritional priority
 - Until `onboardingDone = true`, the landing page redirects authenticated users to `/onboarding`
-- Finishing onboarding generates the user's **first real menu** for the current week (`POST /menu/generate`) before landing on `/menu`, built from those answers. It used to land on an auto-created empty week. If generation fails, `/menu` still offers "Generar mi menú"
+- Finishing onboarding generates the user's **first real menu** for the current week (`POST /menu/generate`) before landing on `/menu`, built from those answers. It used to land on an auto-created empty week. The client marks the user onboarded only **after** that generate answers (button "Preparando tu menú..."): marking it first let `/onboarding`'s "already onboarded" redirect reach `/menu` before the menu existed, and `/menu` auto-created an empty week on top (fixed 2026-10-08, guarded by `e2e/registration-onboarding.spec.ts`, which now sees the "Tu semana está en blanco" card). An already-onboarded user who opens `/onboarding` goes straight to `/menu`. If generation fails, `/menu` still offers "Generar mi menú"
 - Onboarding can also collect physical profile data (sex, age, weight, height, activity level) used by the calorie calculator
 
 ## Profile data shape
@@ -81,5 +81,5 @@ The `users` table holds the canonical scalar fields (`sex`, `age`, `weight`, `he
 - [apps/web/src/lib/safeNext.ts](../apps/web/src/lib/safeNext.ts) — `?next=` validation + carry-over for login/register
 - [apps/web/src/app/(auth)/login/page.tsx](../apps/web/src/app/(auth)/login/page.tsx)
 - [apps/web/src/app/(auth)/register/page.tsx](../apps/web/src/app/(auth)/register/page.tsx)
-- [apps/web/src/app/onboarding/page.tsx](../apps/web/src/app/onboarding/page.tsx)
+- [apps/web/src/app/onboarding/page.tsx](../apps/web/src/app/onboarding/page.tsx) · [components/onboarding/OnboardingFlow.tsx](../apps/web/src/components/onboarding/OnboardingFlow.tsx)
 - [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts) — `users` table

@@ -6,7 +6,7 @@
 
 ## User Capabilities
 
-- An authed user with a non-empty pantry sees a "Con lo que tienes · Puedes cocinar esto" card at the top of `/menu` (below the page header).
+- An authed user with a non-empty pantry sees a "Con lo que tienes · Puedes cocinar esto" card on `/menu` below the day's meals (since the 2026-10-08 redesign the first screen is today's food).
 - The card lists the top 3 recipes by pantry coverage, each as a row:
   - thumbnail
   - recipe name
@@ -65,4 +65,4 @@ type PantryMatchHit = {
 - `apps/api/src/tests/pantryMatcher.test.ts` — 6 cases
 - `apps/web/src/hooks/usePantryMatch.ts`
 - `apps/web/src/components/menu/PantryMatchCard.tsx`
-- `apps/web/src/app/menu/page.tsx` — mounted below the page header
+- `apps/web/src/app/menu/page.tsx` — mounted below the day's meals

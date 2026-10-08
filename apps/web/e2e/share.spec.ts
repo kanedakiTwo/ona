@@ -23,7 +23,9 @@ test('menu and catalogue recipe shares carry a link that works without an accoun
   await page.request.post(`${apiUrl}/menu/generate`, { headers: { Authorization: `Bearer ${token}` }, data: { userId, weekStart } })
 
   await page.goto('/menu')
-  await page.getByRole('button', { name: /^compartir$/i }).first().click()
+  // Since the 2026-10-08 redesign "Compartir" lives in the week's "···" sheet.
+  await page.getByRole('button', { name: /opciones de la semana/i }).click()
+  await page.getByRole('dialog').getByRole('button', { name: /^compartir$/i }).click()
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('Mi menú de la semana')
   expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/\/\?ref=menu$/)
 

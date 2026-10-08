@@ -134,7 +134,7 @@ export const env = {
   VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY || '',
   VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY || '',
   /** Subject sent with VAPID — must be a mailto: or https:// URL per RFC 8292. */
-  VAPID_SUBJECT: process.env.VAPID_SUBJECT || 'mailto:hola@ona.app',
+  VAPID_SUBJECT: process.env.VAPID_SUBJECT || 'mailto:hola@mimoia.com',
 
   /**
    * Public origin of the web app, used to build links inside WhatsApp

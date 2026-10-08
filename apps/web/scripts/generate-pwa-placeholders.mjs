@@ -56,7 +56,7 @@ function svgIsotype({ size, bg, fg, safeZonePct }) {
   </svg>`
 }
 
-// ── Splash imagotipo: isotype + "Ona" wordmark + soft accent ──────────────
+// ── Splash imagotipo: isotype + "Mimoia" wordmark + soft accent ──────────────
 function svgSplash({ width, height }) {
   const cx = width / 2
   const cy = height / 2
@@ -76,7 +76,7 @@ function svgSplash({ width, height }) {
     <text x="50%" y="${wordmarkY}" text-anchor="middle" dominant-baseline="central"
       font-family="'Fraunces', Georgia, 'Times New Roman', serif"
       font-style="italic" font-weight="400" font-size="${wordmarkSize}"
-      fill="${INK}" letter-spacing="0.02em">Ona</text>
+      fill="${INK}" letter-spacing="0.02em">Mimoia</text>
     <circle cx="${cx}" cy="${wordmarkY + wordmarkSize * 0.75}" r="${wordmarkSize * 0.08}" fill="${TERRACOTTA}"/>
   </svg>`
 }
@@ -130,7 +130,7 @@ const favIco = await sharp(
 await fs.writeFile(OUT_FAVICON, favIco)
 console.log("  →", path.relative(process.cwd(), OUT_FAVICON))
 
-// ── Splash screens — imagotipo (drop + "Ona" italic wordmark) ─────────────
+// ── Splash screens — imagotipo (drop + "Mimoia" italic wordmark) ─────────────
 console.log("Splash screens (imagotipo):")
 const SPLASHES = [
   { name: "splash-2048x2732.png", w: 2048, h: 2732 }, // iPad Pro 12.9

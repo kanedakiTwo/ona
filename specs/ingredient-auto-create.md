@@ -45,13 +45,13 @@ The BEDCA client (`apps/api/src/services/nutrition/bedcaClient.ts`):
 - Posts XML payloads to `http://www.bedca.net/bdpub/procquery.php` (search + per-id fetch)
 - Parses with regex-based scrapers (no `cheerio` dependency)
 - Caches responses on disk under `apps/api/.cache/bedca/{search,food}/`
-- Is best-effort: on any timeout / network error / parse failure, returns `[]` so the curator workflow falls through to "Estimar con ONA" rather than crashing
+- Is best-effort: on any timeout / network error / parse failure, returns `[]` so the curator workflow falls through to "Estimar con Mimoia" rather than crashing
 
 BEDCA candidates are returned in the same `AutoCreateCandidate` shape as USDA, with `dataType: 'BEDCA'`, `fdcId: null`, and `bedcaId: '<id>'`. The UI renders them with a blue "BEDCA" badge.
 
 ## Manual estimation
 
-Last-resort path: when both USDA and BEDCA miss, the curator clicks "Estimar con ONA". This calls Claude Opus with a constrained prompt asking for per-100 g values only as JSON. The response is validated against `nutritionPerServingSchema` and rejected if `kcal` is out of band (< 0 or > 900) so a hallucinated value can't slip through.
+Last-resort path: when both USDA and BEDCA miss, the curator clicks "Estimar con Mimoia". This calls Claude Opus with a constrained prompt asking for per-100 g values only as JSON. The response is validated against `nutritionPerServingSchema` and rejected if `kcal` is out of band (< 0 or > 900) so a hallucinated value can't slip through.
 
 Two endpoints back this:
 

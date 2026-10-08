@@ -423,7 +423,7 @@ function SentBody({ order }: { order: ShopOrder }) {
   return (
     <div className="space-y-3">
       <p className="text-[12px] text-[#7A7066]">
-        Enviado. Cuando te conteste, pega aquí su respuesta o reenvíasela a ONA por WhatsApp.
+        Enviado. Cuando te conteste, pega aquí su respuesta o reenvíasela a Mimo por WhatsApp.
       </p>
       <ReplyForm order={order} />
       {order.links.order && (

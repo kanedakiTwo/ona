@@ -1,6 +1,6 @@
 # Advisor
 
-AI assistant for nutrition guidance, menu queries, and recipe management via natural language.
+AI assistant for nutrition guidance, menu queries, and recipe management via natural language. The assistant is called **Mimo**, of **Mimoia** (renamed from "Ona" on 2026-10-08; `ASSISTANT_NAME` / `BRAND_NAME` in `@ona/shared`). Every prompt mode (text, voice, onboarding, WhatsApp) opens with "Eres Mimo, el asistente de Mimoia", tells the model to introduce itself as "Hola, soy Mimo, de Mimoia" and never as ONA (the old name, which users may still use); pinned by `apps/api/src/tests/brandName.test.ts`.
 
 ## User Capabilities
 
@@ -152,7 +152,7 @@ At `lg+` the `/advisor` page widens its outer container to `max-w-[900px]` so th
 - The chat is single-session in memory (no persistent conversation history in the DB)
 - The history is sent with each request (last 20 messages from the client)
 - All assistant responses are in Spanish by design
-- **AI disclosure (EU AI Act art. 50, in force since 2026-08-02):** the chat shows "Soy Ona, tu asistente de IA" in the empty state and a permanent caption under the input ("Ona es un asistente de inteligencia artificial (IA): puede equivocarse y no sustituye a un profesional sanitario."). The wording lives in `AI_DISCLOSURE*` in `packages/shared/src/constants/aiDisclosure.ts`, shared with voice mode and WhatsApp; pinned by `apps/web/e2e/ai-disclosure.spec.ts`.
+- **AI disclosure (EU AI Act art. 50, in force since 2026-08-02):** the chat shows "Soy Mimo, tu asistente de IA. Escribe o habla." in the empty state and a permanent caption under the input ("Mimo es un asistente de inteligencia artificial (IA): puede equivocarse y no sustituye a un profesional sanitario."). The wording lives in `AI_DISCLOSURE*` in `packages/shared/src/constants/aiDisclosure.ts`, shared with voice mode and WhatsApp; pinned by `apps/web/e2e/ai-disclosure.spec.ts`.
 - Voice is browser-side only; if the browser lacks Web Speech API, only text mode works
 - The model used (Claude family) is configured via the LLM provider in `services/providers/`
 - The advisor has read-write access to the user's data via skills (it can generate menus, swap meals, create recipes, etc.) — destructive intents should ideally be confirmed in copy
@@ -163,7 +163,7 @@ At `lg+` the `/advisor` page widens its outer container to `max-w-[900px]` so th
 - [Recipes](./recipes.md) — assistant can search, suggest, and create recipes
 - [Shopping](./shopping.md) — assistant can read the list
 - [WhatsApp](./whatsapp.md) — the same assistant over WhatsApp (text, buttons, deep links)
-- [Voice Mode](./voice-mode.md) — hands-free conversation with wake word "Hola Ona". When the opt-in toggle is on, the legacy mic button in the chat is hidden and conversation turns from the orb overlay are appended to the chat history on close.
+- [Voice Mode](./voice-mode.md) — hands-free conversation. **Wake word: still "Hola Ona"** — the trained Picovoice model (`hola-ona_es_wasm_v4_0_0.ppn`) can't be renamed in code; Miguel has to train and upload a "Hola Mimo" model, then `WAKE_PHRASE` + the model path in `useWakeWord.ts` change together. When the opt-in toggle is on, the legacy mic button in the chat is hidden and conversation turns from the orb overlay are appended to the chat history on close.
 
 ## Hooks (client)
 

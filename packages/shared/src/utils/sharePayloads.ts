@@ -1,7 +1,9 @@
+import { BRAND_NAME } from '../constants/brand.js'
+
 /**
- * What ONA puts in the share sheet ("pásalo"). A share should be able to
+ * What the app puts in the share sheet ("pásalo"). A share should be able to
  * bring another household: the link must open without an account and say
- * what ONA is. Pure, so both the web and the tests use it.
+ * what Mimoia is. Pure, so both the web and the tests use it.
  */
 export interface SharePayload {
   title: string
@@ -24,7 +26,7 @@ export function recipeSharePayload(recipe: ShareableRecipe, origin: string): Sha
   if (recipe.authorId == null) {
     return {
       title: recipe.name,
-      text: `${recipe.name} — receta de ONA, el planificador de menús semanales.`,
+      text: `${recipe.name} — receta de ${BRAND_NAME}, el planificador de menús semanales.`,
       url: `${base}/recipes-ona/${recipe.id}?ref=receta`,
     }
   }
@@ -39,19 +41,19 @@ export function recipeSharePayload(recipe: ShareableRecipe, origin: string): Sha
     .filter((l): l is string => !!l)
   return {
     title: recipe.name,
-    text: `${recipe.name}${lines.length ? `\n\nIngredientes:\n${lines.join('\n')}` : ''}\n\nLa organizo con ONA, mi menú semanal: ${base}/?ref=receta`,
+    text: `${recipe.name}${lines.length ? `\n\nIngredientes:\n${lines.join('\n')}` : ''}\n\nLa organizo con ${BRAND_NAME}, mi menú semanal: ${base}/?ref=receta`,
   }
 }
 
 export function withOnaFooter(text: string, origin: string, ref: string): string {
-  return `${text.trimEnd()}\n\n— Hecho con ONA, el menú semanal que hace la lista de la compra: ${strip(origin)}/?ref=${ref}`
+  return `${text.trimEnd()}\n\n— Hecho con ${BRAND_NAME}, el menú semanal que hace la lista de la compra: ${strip(origin)}/?ref=${ref}`
 }
 
 const DAY_NAMES = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
 const MEAL_NAMES: Record<string, string> = { breakfast: 'desayuno', lunch: 'comida', snack: 'merienda', dinner: 'cena' }
 const MEAL_ORDER = ['breakfast', 'lunch', 'snack', 'dinner']
 
-/** "Mi menú de la semana" as plain text, one line per meal, + the ONA footer. */
+/** "Mi menú de la semana" as plain text, one line per meal, + the Mimoia footer. */
 export function menuShareText(
   days: ReadonlyArray<Record<string, { dishes?: Array<{ kind?: string; recipeName?: string; text?: string }> } | undefined>>,
   origin: string,

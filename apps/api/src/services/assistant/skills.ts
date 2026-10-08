@@ -517,7 +517,7 @@ const swapMeal: SkillDefinition = {
       },
       recipeName: {
         type: 'string',
-        description: 'Nombre (o parte) de la receta concreta. Se buscará por substring case-insensitive. Opcional. Si hay varias coincidencias se prioriza la del usuario sobre las del catálogo de ONA.',
+        description: 'Nombre (o parte) de la receta concreta. Se buscará por substring case-insensitive. Opcional. Si hay varias coincidencias se prioriza la del usuario sobre las del catálogo de Mimoia.',
       },
       confirmRestriction: {
         type: 'boolean',
@@ -958,7 +958,7 @@ const nutritionAdvice: SkillDefinition = {
 
     return {
       data: { balance: balance?.balance, question: params.question },
-      summary: `Pregunta del usuario: ${params.question}. ${balanceInfo}${logInfo} Responde usando la base de conocimiento de ONA.`,
+      summary: `Pregunta del usuario: ${params.question}. ${balanceInfo}${logInfo} Responde usando la base de conocimiento de Mimoia.`,
       uiHint: 'nutrition',
     }
   },
@@ -1266,7 +1266,7 @@ const scaleRecipeSkill: SkillDefinition = {
 // 7. ── evaluate_food_health ────────────────────────────────
 const evaluateFoodHealth: SkillDefinition = {
   name: 'evaluate_food_health',
-  description: 'Cuando el usuario pregunta si un alimento es saludable (ej. "el zumo es sano", "que tal la avena"), llama a esta skill. Devuelve contexto para que tu (Claude) respondas con criterio segun los principios de ONA — no neutral.',
+  description: 'Cuando el usuario pregunta si un alimento es saludable (ej. "el zumo es sano", "que tal la avena"), llama a esta skill. Devuelve contexto para que tu (Claude) respondas con criterio segun los principios de Mimoia — no neutral.',
   parameters: {
     type: 'object',
     properties: {
@@ -1277,7 +1277,7 @@ const evaluateFoodHealth: SkillDefinition = {
   async handler(params: { food: string }) {
     return {
       data: { food: params.food },
-      summary: `Evalua si "${params.food}" es saludable usando los principios de ONA. Considera: 1) carga inflamatoria, 2) impacto en insulina, 3) si esta procesado y por tanto carece de fibra, 4) frecuencia recomendada (la frecuencia importa tanto como el contenido), 5) si es de los alimentos popularmente "saludables" que no lo son (zumos, pan blanco, arroz blanco, aceites vegetales refinados, fruta en exceso fuera de temporada). Da una respuesta corta (2-3 frases) con criterio propio, sin moralizar.`,
+      summary: `Evalua si "${params.food}" es saludable usando los principios de Mimoia. Considera: 1) carga inflamatoria, 2) impacto en insulina, 3) si esta procesado y por tanto carece de fibra, 4) frecuencia recomendada (la frecuencia importa tanto como el contenido), 5) si es de los alimentos popularmente "saludables" que no lo son (zumos, pan blanco, arroz blanco, aceites vegetales refinados, fruta en exceso fuera de temporada). Da una respuesta corta (2-3 frases) con criterio propio, sin moralizar.`,
       uiHint: 'nutrition',
     }
   },
@@ -1286,7 +1286,7 @@ const evaluateFoodHealth: SkillDefinition = {
 // 8. ── suggest_substitution ────────────────────────────────
 const suggestSubstitution: SkillDefinition = {
   name: 'suggest_substitution',
-  description: 'Cuando al usuario le falta un ingrediente o quiere cambiarlo (ej. "no tengo nata, que uso", "como sustituyo el azucar"), llama a esta skill. Tu (Claude) propondras alternativas alineadas con los principios de ONA.',
+  description: 'Cuando al usuario le falta un ingrediente o quiere cambiarlo (ej. "no tengo nata, que uso", "como sustituyo el azucar"), llama a esta skill. Tu (Claude) propondras alternativas alineadas con los principios de Mimoia.',
   parameters: {
     type: 'object',
     properties: {
@@ -1315,7 +1315,7 @@ const suggestSubstitution: SkillDefinition = {
     }
     return {
       data: params,
-      summary: `El usuario quiere sustituir "${params.ingredient}"${params.restriction ? ` (restriccion: ${params.restriction})` : ''}.${recipeContext} Sugiere 1-2 alternativas concretas alineadas con los principios de ONA. Importante: NUNCA propongas margarina, aceites vegetales refinados (girasol, soja, maiz, colza), edulcorantes artificiales ni sirope de maiz. Si propon AOVE, ghee, mantequilla, fermentados, frutos secos, semillas, harinas integrales, hueso/caldo casero, fruta entera en lugar de zumo.`,
+      summary: `El usuario quiere sustituir "${params.ingredient}"${params.restriction ? ` (restriccion: ${params.restriction})` : ''}.${recipeContext} Sugiere 1-2 alternativas concretas alineadas con los principios de Mimoia. Importante: NUNCA propongas margarina, aceites vegetales refinados (girasol, soja, maiz, colza), edulcorantes artificiales ni sirope de maiz. Si propon AOVE, ghee, mantequilla, fermentados, frutos secos, semillas, harinas integrales, hueso/caldo casero, fruta entera en lugar de zumo.`,
       uiHint: 'recipe',
     }
   },
@@ -1327,7 +1327,7 @@ const PROT_RE = /(pollo|pavo|ternera|cerdo|cordero|huevo|salmon|atun|sardina|mer
 
 const getVarietyScore: SkillDefinition = {
   name: 'get_variety_score',
-  description: 'Calcula la diversidad de ingredientes (con foco en vegetales y proteinas) en el menu actual del usuario. Pilar del principio 7 de ONA: variedad maxima para microbioma resiliente.',
+  description: 'Calcula la diversidad de ingredientes (con foco en vegetales y proteinas) en el menu actual del usuario. Pilar del principio 7 de Mimoia: variedad maxima para microbioma resiliente.',
   parameters: { type: 'object', properties: {}, required: [] },
   async handler(_p, ctx) {
     const { userId, db } = ctx
@@ -1379,7 +1379,7 @@ const getVarietyScore: SkillDefinition = {
 // 10. ── get_eating_window ──────────────────────────────────
 const getEatingWindow: SkillDefinition = {
   name: 'get_eating_window',
-  description: 'Calcula la ventana de alimentacion del usuario (primera y ultima comida del dia, longitud media en horas) usando las comidas marcadas como comidas. Importante para el principio 3 de ONA: la frecuencia importa tanto como el contenido.',
+  description: 'Calcula la ventana de alimentacion del usuario (primera y ultima comida del dia, longitud media en horas) usando las comidas marcadas como comidas. Importante para el principio 3 de Mimoia: la frecuencia importa tanto como el contenido.',
   parameters: {
     type: 'object',
     properties: {
@@ -1637,7 +1637,7 @@ const cookingStep: SkillDefinition = {
 const editRecipe: SkillDefinition = {
   name: 'edit_recipe',
   description:
-    'Edita una receta del usuario. Sólo el autor puede editar (las recetas de ONA con authorId null no son editables). Útil para cambios de nombre, tiempos, dificultad, notas y trucos por voz. Para editar ingredientes o pasos completos sugiere abrir el editor.',
+    'Edita una receta del usuario. Sólo el autor puede editar (las recetas del catálogo de Mimoia, con authorId null, no son editables). Útil para cambios de nombre, tiempos, dificultad, notas y trucos por voz. Para editar ingredientes o pasos completos sugiere abrir el editor.',
   parameters: {
     type: 'object',
     properties: {
@@ -1710,7 +1710,7 @@ const editRecipe: SkillDefinition = {
     if (target.authorId !== userId) {
       return {
         data: null,
-        summary: `"${target.name}" es una receta del catálogo de ONA, no tuya. Para hacer cambios, primero añádela a tus recetas y edita la copia.`,
+        summary: `"${target.name}" es una receta del catálogo de Mimoia, no tuya. Para hacer cambios, primero añádela a tus recetas y edita la copia.`,
         uiHint: 'text',
       }
     }
@@ -1834,14 +1834,14 @@ const updateHousehold: SkillDefinition = {
 const addRecipeToMine: SkillDefinition = {
   name: 'add_recipe_to_mine',
   description:
-    'Copia una receta (del catálogo de ONA o de otro usuario) a las recetas del usuario actual. La copia es totalmente editable. Devuelve el id y el nombre de la nueva receta. Si el usuario nombra una receta que ya es suya, no se duplica.',
+    'Copia una receta (del catálogo de Mimoia o de otro usuario) a las recetas del usuario actual. La copia es totalmente editable. Devuelve el id y el nombre de la nueva receta. Si el usuario nombra una receta que ya es suya, no se duplica.',
   parameters: {
     type: 'object',
     properties: {
       recipeId: { type: 'string', description: 'UUID de la receta original.' },
       recipeName: {
         type: 'string',
-        description: 'Nombre (o parte) de la receta a copiar. Se prefiere el match exacto en el catálogo de ONA.',
+        description: 'Nombre (o parte) de la receta a copiar. Se prefiere el match exacto en el catálogo de Mimoia.',
       },
     },
     required: [],

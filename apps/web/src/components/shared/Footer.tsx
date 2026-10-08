@@ -1,85 +1,39 @@
-"use client"
-
 import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { ArrowUpRight } from "lucide-react"
+import { BRAND_NAME } from "@ona/shared"
+import { CONTACT_EMAIL } from "@/lib/contact"
+
+/**
+ * The one public footer (landing + every page under `app/(public)`, rendered
+ * by `app/(public)/layout.tsx`). It is the landing's footer strip: sand band,
+ * hairline, wordmark, the four links, contact (`CONTACT_EMAIL`:
+ * NEXT_PUBLIC_SUPPORT_EMAIL, else hola@mimoia.com) and ©.
+ *
+ * Public marketing surface: `publicHealthClaims.test.ts` scans this file.
+ */
+const LINKS = [
+  { href: "/como-funciona", label: "Cómo funciona" },
+  { href: "/recipes", label: "Recetas" },
+  { href: "/privacidad", label: "Privacidad" },
+  { href: "/terminos", label: "Términos" },
+]
 
 export default function Footer() {
-  const pathname = usePathname()
-  // The landing page has its own footer embedded
-  if (pathname === "/") return null
-
   return (
-    <footer className="relative bg-[#1A1612] px-6 pb-12 pt-24 text-[#FAF6EE] md:px-10 md:pb-16 md:pt-32">
-      <div className="mx-auto max-w-7xl">
-        {/* Big editorial CTA */}
-        <div className="mb-20 grid grid-cols-1 gap-8 border-b border-[#FAF6EE]/15 pb-20 md:grid-cols-12 md:items-end">
-          <div className="md:col-span-8">
-            <div className="text-eyebrow mb-4 text-[#95D5B2]">¿Listo?</div>
-            <h2 className="text-editorial-lg">
-              Tu menu de <span className="font-italic italic text-[#52B788]">esta</span> semana
-              <br />
-              esta a 2 minutos.
-            </h2>
-          </div>
-          <div className="md:col-span-4 md:flex md:justify-end">
-            <Link
-              href="/#lista-de-espera"
-              className="inline-flex items-center gap-2 rounded-full bg-[#FAF6EE] px-6 py-3.5 text-sm font-medium text-[#1A1612] transition-all hover:gap-3 hover:bg-[#52B788]"
-            >
-              Únete a la lista de espera
-              <ArrowUpRight size={16} />
+    <footer data-testid="site-footer" className="bg-[#F2EDE0] px-6 pb-24 pt-16 text-sm text-[#7A7066] md:px-10 md:pb-32 md:pt-20">
+      <div className="mx-auto flex max-w-5xl flex-col items-center gap-6 border-t border-[#DDD6C5] pt-12 md:flex-row md:justify-between">
+        <div className="font-display text-2xl text-[#1A1612]">{BRAND_NAME}</div>
+        <nav aria-label="Enlaces del pie" className="flex flex-wrap justify-center gap-x-8 gap-y-3">
+          {LINKS.map((l) => (
+            <Link key={l.href} href={l.href} className="link-reveal hover:text-[#1A1612]">
+              {l.label}
             </Link>
-          </div>
-        </div>
-
-        {/* Links grid */}
-        <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
-          <div>
-            <div className="text-eyebrow mb-4 text-[#FAF6EE]/40">Producto</div>
-            <ul className="space-y-3 text-sm">
-              <li><Link href="/como-funciona" className="link-reveal text-[#FAF6EE]/80 hover:text-[#FAF6EE]">Como funciona</Link></li>
-              <li><Link href="/recipes" className="link-reveal text-[#FAF6EE]/80 hover:text-[#FAF6EE]">Recetas</Link></li>
-              <li><Link href="/#lista-de-espera" className="link-reveal text-[#FAF6EE]/80 hover:text-[#FAF6EE]">Lista de espera</Link></li>
-            </ul>
-          </div>
-          <div>
-            <div className="text-eyebrow mb-4 text-[#FAF6EE]/40">Filosofia</div>
-            <ul className="space-y-3 text-sm">
-              <li><span className="text-[#FAF6EE]/80">Casera</span></li>
-              <li><span className="text-[#FAF6EE]/80">De temporada</span></li>
-              <li><span className="text-[#FAF6EE]/80">Sin culpa</span></li>
-            </ul>
-          </div>
-          <div>
-            <div className="text-eyebrow mb-4 text-[#FAF6EE]/40">Legal</div>
-            <ul className="space-y-3 text-sm">
-              <li><Link href="/privacidad" className="link-reveal text-[#FAF6EE]/80 hover:text-[#FAF6EE]">Privacidad</Link></li>
-              <li><Link href="/terminos" className="link-reveal text-[#FAF6EE]/80 hover:text-[#FAF6EE]">Terminos</Link></li>
-            </ul>
-          </div>
-          <div>
-            <div className="text-eyebrow mb-4 text-[#FAF6EE]/40">Contacto</div>
-            <ul className="space-y-3 text-sm">
-              <li><a href="mailto:hola@ona.app" className="link-reveal text-[#FAF6EE]/80 hover:text-[#FAF6EE]">hola@ona.app</a></li>
-            </ul>
-          </div>
-        </div>
-
-        {/* Big logo bottom */}
-        <div className="mt-24 flex items-end justify-between">
-          <div>
-            <div className="font-display text-[clamp(4rem,12vw,10rem)] leading-tight tracking-tighter text-[#FAF6EE]">
-              Mimoia
-            </div>
-            <div className="mt-4 text-xs text-[#FAF6EE]/50">
-              © 2026 Mimoia · Cocina de casa, sin pensarla
-            </div>
-          </div>
-          <div className="hidden text-right text-xs text-[#FAF6EE]/40 md:block">
-            <div>Madrid · Spain</div>
-            <div className="mt-1 font-italic italic">Issue №01</div>
-          </div>
+          ))}
+        </nav>
+        <div className="flex flex-col items-center gap-1 text-xs md:items-end">
+          <a href={`mailto:${CONTACT_EMAIL}`} className="link-reveal hover:text-[#1A1612]">
+            {CONTACT_EMAIL}
+          </a>
+          <span>© 2026 {BRAND_NAME}</span>
         </div>
       </div>
     </footer>

@@ -98,7 +98,7 @@ export default function VoiceOnboardingPage() {
         <div className="mt-6">
           <div className="text-eyebrow text-[#C65D38]">Onboarding por voz</div>
           <h1 className="mt-2 font-display text-[2.2rem] leading-[1.02] tracking-tight text-[#1A1612]">
-            Cuéntale a <span className="font-italic italic text-[#C65D38]">ONA</span> cómo eres
+            Cuéntale a <span className="font-italic italic text-[#C65D38]">Mimo</span> cómo eres
           </h1>
           <p className="mt-2 max-w-md text-[13px] leading-relaxed text-[#7A7066]">
             Una conversación de un par de minutos. Te pregunta lo justo para

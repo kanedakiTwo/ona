@@ -848,7 +848,7 @@ const inviteToHousehold: SkillDefinition = {
 const setWhatsappNotifications: SkillDefinition = {
   name: 'set_whatsapp_notifications',
   description:
-    'Activa o desactiva los avisos que ONA manda por WhatsApp sin que el usuario escriba. kind: all (todos), daily_brief (resumen de la mañana), weekly_nudge (propuesta de menu del domingo), prep_alerts (descongelar, remojo…), cooking_reminder (empezar a cocinar), dinner_checkin ("¿hiciste la cena?"), shopping_reminder (recordatorio de la compra). Ej: "no me mandes el resumen de la mañana".',
+    'Activa o desactiva los avisos que Mimo manda por WhatsApp sin que el usuario escriba. kind: all (todos), daily_brief (resumen de la mañana), weekly_nudge (propuesta de menu del domingo), prep_alerts (descongelar, remojo…), cooking_reminder (empezar a cocinar), dinner_checkin ("¿hiciste la cena?"), shopping_reminder (recordatorio de la compra). Ej: "no me mandes el resumen de la mañana".',
   parameters: {
     type: 'object',
     properties: {

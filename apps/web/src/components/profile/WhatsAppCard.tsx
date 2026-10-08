@@ -12,7 +12,7 @@ import {
 } from '@/hooks/useWhatsApp'
 
 /**
- * "Ona en WhatsApp" card on /profile. Two states:
+ * "Mimo en WhatsApp" card on /profile. Two states:
  *   - not linked → "Conectar WhatsApp" mints a one-time code and shows a
  *     wa.me link with it prefilled; the status polls until the phone sends it.
  *   - linked → masked number, "Abrir chat", proactive-messages toggle, disconnect.
@@ -48,7 +48,7 @@ function UnlinkedState() {
         <div className="min-w-0 flex-1">
           <div className="text-[13px] font-medium text-[#1A1612]">Conecta tu WhatsApp</div>
           <div className="mt-1 text-[11px] leading-snug text-[#7A7066]">
-            Pregúntale a Ona qué toca hoy, pídele la lista de la compra,
+            Pregúntale a Mimo qué toca hoy, pídele la lista de la compra,
             mándale notas de voz o compártele recetas (enlace o foto) para
             guardarlas.
           </div>
@@ -73,7 +73,7 @@ function UnlinkedState() {
           ) : (
             <div className="mt-3 border-t border-[#DDD6C5] pt-3">
               <p className="text-[12px] text-[#1A1612]">
-                Envía este mensaje a Ona desde tu WhatsApp:
+                Envía este mensaje a Mimo desde tu WhatsApp:
               </p>
               <p
                 data-testid="whatsapp-link-message"
@@ -126,7 +126,7 @@ function LinkedState({ status }: { status: WhatsAppStatus }) {
               rel="noopener noreferrer"
               className="mt-3 inline-block rounded-full bg-[#2D6A4F] px-3.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.1em] text-[#FAF6EE] transition-all hover:opacity-90 active:scale-95"
             >
-              Abrir chat con Ona
+              Abrir chat con Mimo
             </a>
           )}
         </div>
@@ -143,7 +143,7 @@ function LinkedState({ status }: { status: WhatsAppStatus }) {
           <div className="text-[11px] leading-snug text-[#7A7066]">
             Resumen de la mañana, aviso para empezar a cocinar, “¿hiciste la cena?”,
             recordatorio de la compra y menú del domingo. Para quitar alguno, díselo a
-            Ona por WhatsApp (“no me mandes el resumen de la mañana”).
+            Mimo por WhatsApp (“no me mandes el resumen de la mañana”).
           </div>
         </div>
         <span

@@ -203,7 +203,7 @@ export default function RecipeDetailPage() {
   const handleShare = async () => {
     haptic.light()
     // "Pásalo": catalogue recipes share their public page (opens without an
-    // account, with a sign-up CTA); private ones go as text + a link to ONA.
+    // account, with a sign-up CTA); private ones go as text + a link to Mimoia.
     await share(recipeSharePayload(recipe, typeof window !== "undefined" ? window.location.origin : ""))
   }
 
@@ -398,7 +398,7 @@ export default function RecipeDetailPage() {
             Recetas
           </Link>
           <div className="pointer-events-none absolute bottom-5 left-5 text-[10px] uppercase tracking-[0.25em] text-[#FAF6EE]/85">
-            ONA · Receta
+            Mimoia · Receta
           </div>
         </div>
 
@@ -511,7 +511,7 @@ export default function RecipeDetailPage() {
         </div>
 
         <div className="pointer-events-none absolute bottom-[44px] left-5 text-[10px] uppercase tracking-[0.25em] text-[#FAF6EE]/85">
-          ONA · Receta
+          Mimoia · Receta
         </div>
       </div>
 

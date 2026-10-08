@@ -124,7 +124,7 @@ router.delete(
 router.post('/push/test', authMiddleware, async (req: AuthRequest, res) => {
   try {
     const result = await sendPushToUser(req.userId!, {
-      title: 'ONA · Test',
+      title: 'Mimoia · Test',
       body: 'Si lees esto, las notificaciones funcionan ✓',
       url: '/menu',
       tag: 'push-test',

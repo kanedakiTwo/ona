@@ -1,6 +1,6 @@
 /**
  * "Pásalo" (audit §4): a share must be able to bring another household — a
- * link that opens without an account and says what ONA is.
+ * link that opens without an account and says what Mimoia is.
  */
 import { describe, expect, it } from 'vitest'
 import { menuShareText, recipeSharePayload, withOnaFooter } from '@ona/shared'
@@ -11,10 +11,11 @@ describe('recipeSharePayload', () => {
   it('catalogue recipes share their public page (no account needed)', () => {
     const p = recipeSharePayload({ id: 'r1', name: 'Lentejas', authorId: null }, ORIGIN)
     expect(p.url).toBe('https://ona.example/recipes-ona/r1?ref=receta')
-    expect(p.text).toContain('ONA')
+    expect(p.text).toContain('receta de Mimoia')
+    expect(p.text).not.toMatch(/\bONA\b/)
   })
 
-  it('private recipes go as text with the ingredients and a link to ONA (their page is private)', () => {
+  it('private recipes go as text with the ingredients and a link to Mimoia (their page is private)', () => {
     const p = recipeSharePayload(
       {
         id: 'r2',
@@ -30,13 +31,13 @@ describe('recipeSharePayload', () => {
     expect(p.url).toBeUndefined()
     expect(p.text).toContain('- alubias (500 g)')
     expect(p.text).toContain('- sal\n')
-    expect(p.text).toContain('https://ona.example/?ref=receta')
+    expect(p.text).toContain('La organizo con Mimoia, mi menú semanal: https://ona.example/?ref=receta')
     expect(p.text).not.toContain('/recipes/r2')
   })
 })
 
 describe('menuShareText', () => {
-  it('one line per meal, notes included, empty days skipped, ONA footer', () => {
+  it('one line per meal, notes included, empty days skipped, Mimoia footer', () => {
     const text = menuShareText(
       [
         { lunch: { dishes: [{ kind: 'recipe', recipeName: 'Lentejas' }, { kind: 'recipe', recipeName: 'Ensalada' }] } },
@@ -52,6 +53,6 @@ describe('menuShareText', () => {
   })
 
   it('withOnaFooter appends the link once', () => {
-    expect(withOnaFooter('Lista\n\n', ORIGIN, 'lista')).toMatch(/^Lista\n\n— Hecho con ONA.*\/\?ref=lista$/)
+    expect(withOnaFooter('Lista\n\n', ORIGIN, 'lista')).toMatch(/^Lista\n\n— Hecho con Mimoia,.*\/\?ref=lista$/)
   })
 })

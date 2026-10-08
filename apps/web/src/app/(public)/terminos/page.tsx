@@ -1,3 +1,5 @@
+import { CONTACT_EMAIL } from "@/lib/contact"
+
 export default function TerminosPage() {
   return (
     <div className="mx-auto max-w-[720px] px-4 py-16 md:py-24">
@@ -78,7 +80,8 @@ export default function TerminosPage() {
 
         <h2 className="text-h3 mt-10 text-[#1A1A1A]">11. Contacto</h2>
         <p>
-          Para cualquier consulta sobre estos terminos, escribenos a legal@ona.app.
+          Para cualquier consulta sobre estos terminos, escribenos a{" "}
+          <a href={`mailto:${CONTACT_EMAIL}`} className="underline underline-offset-4">{CONTACT_EMAIL}</a>.
         </p>
       </div>
     </div>

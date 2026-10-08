@@ -112,7 +112,7 @@ function setup(overrides: {
 describe('processInbound — unlinked numbers', () => {
   it('links the phone when the message carries a valid code', async () => {
     const t = setup({ link: null, consume: (code) => (code === '4F7K2A' ? { userId: 'user-1' } : null) })
-    await processInbound(msg({ text: 'Vincular ONA: 4F7K2A' }), t.deps)
+    await processInbound(msg({ text: 'Vincular Mimoia: 4F7K2A' }), t.deps)
     expect(t.sent[0]).toEqual({ type: 'text', text: COPY.linked('Miguel') })
     // Proactive messages are opt-in: the link is followed by the question.
     expect(t.sent[1]).toMatchObject({ type: 'buttons', text: COPY.optInPrompt })
@@ -123,9 +123,15 @@ describe('processInbound — unlinked numbers', () => {
     expect(t.chat).not.toHaveBeenCalled()
   })
 
+  it('still links a message prefilled before the rename ("Vincular ONA: <code>")', async () => {
+    const t = setup({ link: null, consume: (code) => (code === '4F7K2A' ? { userId: 'user-1' } : null) })
+    await processInbound(msg({ text: 'Vincular ONA: 4F7K2A' }), t.deps)
+    expect(t.sent[0]).toEqual({ type: 'text', text: COPY.linked('Miguel') })
+  })
+
   it('says the code is invalid when it looks like a code but does not match', async () => {
     const t = setup({ link: null })
-    await processInbound(msg({ text: 'Vincular ONA: 9ZZZZ9' }), t.deps)
+    await processInbound(msg({ text: 'Vincular Mimoia: 9ZZZZ9' }), t.deps)
     expect(t.sent).toEqual([{ type: 'text', text: COPY.badCode }])
   })
 
@@ -138,14 +144,23 @@ describe('processInbound — unlinked numbers', () => {
     expect(first.chat).not.toHaveBeenCalled()
   })
 
-  it('discloses that Ona is an AI in the first message of either path (AI Act art. 50)', async () => {
+  it('discloses that Mimo is an AI in the first message of either path (AI Act art. 50)', async () => {
     const unknown = setup({ link: null })
     await processInbound(msg({ text: 'hola' }), unknown.deps)
     expect(unknown.sent[0].text).toContain(AI_DISCLOSURE_FIRST_PERSON)
+    expect(unknown.sent[0].text).toMatch(/^Hola, soy Mimo, el asistente de cocina de Mimoia\./)
 
     const linking = setup({ link: null, consume: () => ({ userId: 'user-1' }) })
-    await processInbound(msg({ text: 'Vincular ONA: 4F7K2A' }), linking.deps)
+    await processInbound(msg({ text: 'Vincular Mimoia: 4F7K2A' }), linking.deps)
     expect(linking.sent[0].text).toContain(AI_DISCLOSURE_FIRST_PERSON)
+    expect(linking.sent[0].text).toContain('conectado con Mimoia')
+  })
+
+  it('every text the bot sends on its own says Mimo / Mimoia, never the old name ONA', () => {
+    const texts = Object.values(COPY).flatMap((v) =>
+      typeof v === 'function' ? [(v as (x?: string) => string)('x'), (v as (x?: string) => string)()] : [v],
+    )
+    for (const text of texts) expect(text).not.toMatch(/\b(ONA|Ona)\b/)
   })
 
   it('sends the connect hint at most once an hour', async () => {

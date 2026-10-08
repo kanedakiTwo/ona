@@ -41,7 +41,7 @@ export function audioFileName(mimeType: string): string {
 }
 
 export const TRANSCRIBE_PROMPT =
-  'Nota de voz en español de España para ONA, un asistente de cocina: menú de la semana, recetas, comida, cena, lista de la compra, despensa, lunes, martes, miércoles, jueves, viernes, sábado, domingo.'
+  'Nota de voz en español de España para Mimo, el asistente de cocina de Mimoia: menú de la semana, recetas, comida, cena, lista de la compra, despensa, lunes, martes, miércoles, jueves, viernes, sábado, domingo.'
 
 export async function transcribeAudio(audio: Buffer, mimeType: string): Promise<string> {
   if (!env.OPENAI_API_KEY) throw new SttNotConfiguredError()

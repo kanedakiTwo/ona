@@ -108,7 +108,7 @@ router.post('/login', loginLimiter, validate(loginSchema), async (req, res) => {
     if (user.suspendedAt) {
       res.status(403).json({
         error:
-          'Tu cuenta está suspendida. Contacta con el equipo de ONA si crees que es un error.',
+          'Tu cuenta está suspendida. Contacta con el equipo de Mimoia si crees que es un error.',
         code: 'SUSPENDED',
       })
       return

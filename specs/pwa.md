@@ -1,13 +1,13 @@
 # PWA — Native-feeling Mobile
 
-Premium Progressive Web App layer that makes ONA feel like a native iOS/Android app: installable, offline-capable, with haptic feedback, page transitions, swipe gestures, and local notifications.
+Premium Progressive Web App layer that makes Mimoia feel like a native iOS/Android app: installable, offline-capable, with haptic feedback, page transitions, swipe gestures, and local notifications.
 
 ## User Capabilities
 
 ### Installation
 
-- Users can install ONA to their home screen on Android (Chrome) and iOS (Safari) and launch it as a standalone app
-- After 3 visits, OR the second time the user reaches `/menu`, a bottom sheet appears: "Añade ONA a tu inicio"
+- Users can install Mimoia to their home screen on Android (Chrome) and iOS (Safari) and launch it as a standalone app
+- After 3 visits, OR the second time the user reaches `/menu`, a bottom sheet appears: "Añade Mimoia a tu inicio" ("…abre Mimoia con un toque desde tu pantalla de inicio")
 - On Android the prompt uses the browser's native install flow (`beforeinstallprompt`)
 - On iOS Safari the bottom sheet shows visual instructions ("Toca compartir → Añadir a pantalla de inicio") since iOS doesn't fire `beforeinstallprompt`
 - If the user dismisses the prompt, it isn't shown again for 30 days; if the user installs the app, the prompt isn't shown again for 365 days
@@ -46,7 +46,7 @@ Premium Progressive Web App layer that makes ONA feel like a native iOS/Android 
 
 - Users can share a recipe via the native share sheet (`navigator.share`) — a Share2 button in the recipe detail hero overlay (desktop: the action row) sends recipe URL + name
 - Users can share their shopping list as text via the native share sheet — the "Exportar" button uses Web Share when available and falls back to clipboard (the clipboard copy keeps text **and** link)
-- Users can share the week's menu ("Compartir" in the /menu week "···" sheet, both views; "Compartir semana" at lg+) as text, one line per meal, with a link to ONA (`menuShareText`, `/?ref=menu`)
+- Users can share the week's menu ("Compartir" in the /menu week "···" sheet, both views; "Compartir semana" at lg+) as text, one line per meal, ending "— Hecho con Mimoia, el menú semanal…" + link (`menuShareText`, `/?ref=menu`)
 
 ### Cooking mode (Wake Lock)
 
@@ -99,7 +99,7 @@ The user provides a single source logo. From it, the following are generated **e
 | `public/icons/splash-1125x2436.png` | iPhone X/11 Pro/12 mini | iOS splash |
 | `public/icons/splash-1242x2688.png` | iPhone 11 Pro Max / XS Max | iOS splash |
 
-Maskable icons must keep the logo within the central 80% safe-zone. Splash screens use the editorial cream `#FAF6EE` background with the centered logo. The monochrome icon is a single-color silhouette with alpha. The root layout already wires 8 `apple-touch-startup-image` link tags expecting these files.
+Maskable icons must keep the logo within the central 80% safe-zone. Splash screens use the editorial cream `#FAF6EE` background with the centered logo (placeholder: ink drop + italic "Mimoia" wordmark, regenerated 2026-10-08 by `apps/web/scripts/generate-pwa-placeholders.mjs`). The monochrome icon is a single-color silhouette with alpha. The root layout already wires 8 `apple-touch-startup-image` link tags expecting these files.
 
 ## Theme Colors
 
@@ -110,8 +110,8 @@ Maskable icons must keep the logo within the central 80% safe-zone. Splash scree
 ## Manifest
 
 `public/manifest.webmanifest` includes:
-- `name: "ONA — El placer de cocinar sin pensar"`
-- `short_name: "ONA"`
+- `name: "Mimoia — El placer de cocinar sin pensar"`
+- `short_name: "Mimoia"` (home-screen label; renamed from "ONA" on 2026-10-08 — Android Chrome applies it on its periodic WebAPK update; iOS keeps the name chosen at install until the user re-adds it)
 - `start_url: "/menu"` (deep-link into the app for installed users; falls through to `/login` if unauthenticated)
 - `scope: "/"`
 - `display: "standalone"`

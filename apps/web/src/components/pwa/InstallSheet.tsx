@@ -78,9 +78,9 @@ export default function InstallSheet() {
               <Smartphone size={26} className="text-ink" />
             </div>
 
-            <h2 className="font-display text-2xl text-ink">Añade ONA a tu inicio</h2>
+            <h2 className="font-display text-2xl text-ink">Añade Mimoia a tu inicio</h2>
             <p className="mt-2 text-sm text-ink-soft">
-              Cocina sin pestañas: abre ONA con un toque desde tu pantalla de inicio.
+              Cocina sin pestañas: abre Mimoia con un toque desde tu pantalla de inicio.
             </p>
 
             {isIOS ? (

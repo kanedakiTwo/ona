@@ -282,7 +282,7 @@ async function estimateNutritionForName(
 ): Promise<{ kcal: number; proteinG: number; carbsG: number; fatG: number; fiberG: number; saltG: number }> {
   if (!env.ANTHROPIC_API_KEY) {
     const e = new Error(
-      'La estimación con ONA no está disponible (falta ANTHROPIC_API_KEY).',
+      'La estimación con Mimoia no está disponible (falta ANTHROPIC_API_KEY).',
     ) as Error & { status?: number }
     e.status = 503
     throw e

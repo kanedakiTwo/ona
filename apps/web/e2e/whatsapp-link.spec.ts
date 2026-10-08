@@ -1,5 +1,5 @@
 /**
- * /profile → "Ona en WhatsApp" card. The real link completes from a phone, so
+ * /profile → "Mimo en WhatsApp" card. The real link completes from a phone, so
  * the /whatsapp/* endpoints are mocked: we assert the card mints a code, shows
  * the wa.me link, flips to "conectado" once the status poll reports linked,
  * and wires the notify toggle + disconnect to the right requests.
@@ -26,8 +26,8 @@ test('link → linked → notify toggle → disconnect', async ({ page }) => {
     return json(route, {
       code: '4F7K2A',
       expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
-      message: 'Vincular ONA: 4F7K2A',
-      waLink: 'https://wa.me/15550001111?text=Vincular%20ONA%3A%204F7K2A',
+      message: 'Vincular Mimoia: 4F7K2A',
+      waLink: 'https://wa.me/15550001111?text=Vincular%20Mimoia%3A%204F7K2A',
     }, 201)
   })
   await page.route('**/whatsapp/link', (route) => {
@@ -45,7 +45,7 @@ test('link → linked → notify toggle → disconnect', async ({ page }) => {
   await expect(page.getByText('WhatsApp', { exact: true })).toBeVisible({ timeout: 10_000 })
 
   await page.getByRole('button', { name: /conectar whatsapp/i }).click()
-  await expect(page.getByTestId('whatsapp-link-message')).toHaveText('Vincular ONA: 4F7K2A')
+  await expect(page.getByTestId('whatsapp-link-message')).toHaveText('Vincular Mimoia: 4F7K2A')
   await expect(page.getByRole('link', { name: /abrir whatsapp/i })).toHaveAttribute('href', /wa\.me\/15550001111\?text=/)
   expect(requests.some((r) => r.method === 'POST' && r.url.endsWith('/whatsapp/link-code'))).toBe(true)
 
@@ -53,7 +53,7 @@ test('link → linked → notify toggle → disconnect', async ({ page }) => {
   status = { available: true, linked: true, phone: '+34 ••• ••• 222', notify: true, chatLink: 'https://wa.me/15550001111' }
   await expect(page.getByText('WhatsApp conectado')).toBeVisible({ timeout: 8_000 })
   await expect(page.getByTestId('whatsapp-phone')).toHaveText('+34 ••• ••• 222')
-  await expect(page.getByRole('link', { name: /abrir chat con ona/i })).toHaveAttribute('href', 'https://wa.me/15550001111')
+  await expect(page.getByRole('link', { name: /abrir chat con mimo/i })).toHaveAttribute('href', 'https://wa.me/15550001111')
 
   const toggle = page.locator('button[aria-pressed]').filter({ hasText: /avisos por whatsapp/i })
   await expect(toggle).toHaveAttribute('aria-pressed', 'true')

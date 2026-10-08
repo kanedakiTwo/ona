@@ -171,7 +171,7 @@ export default function AdvisorChat({ userId }: AdvisorChatProps) {
               <span className="text-3xl">🥗</span>
             </div>
             <p className="text-center text-[13px] text-[#7A7066]">
-              Soy Ona, tu asistente de IA. Escribe o habla.
+              Soy Mimo, tu asistente de IA. Escribe o habla.
             </p>
             <div className="flex flex-wrap justify-center gap-2">
               {EXAMPLE_PROMPTS.map((prompt) => (

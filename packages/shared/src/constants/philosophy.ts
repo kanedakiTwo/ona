@@ -22,11 +22,11 @@ export const ONA_PRINCIPLES = [
   {
     id: 'variety',
     title: 'La variedad es salud',
-    rationale: 'Un menu diverso asegura un espectro amplio de micronutrientes. ONA penaliza la monotonia en el algoritmo de generacion.',
+    rationale: 'Un menu diverso asegura un espectro amplio de micronutrientes. Mimoia penaliza la monotonia en el algoritmo de generacion.',
   },
   {
     id: 'pleasure',
     title: 'El placer tambien importa',
-    rationale: 'ONA no excluye platos que no son optimos nutricionalmente. El equilibrio semanal importa mas que la perfeccion diaria.',
+    rationale: 'Mimoia no excluye platos que no son optimos nutricionalmente. El equilibrio semanal importa mas que la perfeccion diaria.',
   },
 ] as const

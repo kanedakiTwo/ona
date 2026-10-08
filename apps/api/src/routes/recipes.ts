@@ -595,7 +595,7 @@ router.post(
 
       if (asSystem && req.user?.role !== 'admin') {
         res.status(403).json({
-          error: 'Sólo los administradores pueden añadir al catálogo ONA.',
+          error: 'Sólo los administradores pueden añadir al catálogo Mimoia.',
           code: 'NOT_ADMIN',
         })
         return

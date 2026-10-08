@@ -8,7 +8,7 @@ export default function OfflinePage() {
           className="text-5xl tracking-tight text-ink"
           style={{ fontFamily: "var(--font-display)" }}
         >
-          ONA
+          Mimoia
         </span>
 
         <div className="flex flex-col gap-3">

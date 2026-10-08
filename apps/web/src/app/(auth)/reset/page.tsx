@@ -120,7 +120,7 @@ function ResetPageInner() {
         <div className="relative h-48 overflow-hidden md:hidden">
           <img src={HERO_IMG} alt="" className="h-full w-full object-cover" />
           <div className="absolute inset-0 bg-gradient-to-b from-transparent to-[#FAF6EE]" />
-          <div className="absolute bottom-2 left-6 font-display text-2xl text-[#1A1612]">ONA</div>
+          <div className="absolute bottom-2 left-6 font-display text-2xl text-[#1A1612]">Mimoia</div>
         </div>
 
         <motion.div

@@ -118,7 +118,7 @@ describe('buildChatHistory', () => {
     ])
   })
 
-  it('prepends a marker when ONA spoke first (proactive nudge)', () => {
+  it('prepends a marker when the assistant spoke first (proactive nudge)', () => {
     expect(buildChatHistory([row('out', '¿Te preparo el menú?', 5)], now)).toEqual([
       { role: 'user', content: ONA_STARTED_MARKER },
       { role: 'assistant', content: '¿Te preparo el menú?' },
@@ -179,7 +179,10 @@ describe('linking', () => {
   })
 
   it('finds the code in the prefilled message, case-insensitively', () => {
+    expect(linkMessageText('4F7K2A')).toBe('Vincular Mimoia: 4F7K2A')
     expect(extractLinkCodeCandidates(linkMessageText('4F7K2A'))).toEqual(['4F7K2A'])
+    // Messages prefilled before the rename still carry a valid code.
+    expect(extractLinkCodeCandidates('Vincular ONA: 4F7K2A')).toEqual(['4F7K2A'])
     expect(extractLinkCodeCandidates('mi código es 4f7k2a gracias')).toEqual(['4F7K2A'])
   })
 
@@ -190,7 +193,7 @@ describe('linking', () => {
   })
 
   it('builds wa.me links and masks phones', () => {
-    expect(buildWaLink('+1 555 0100', 'Vincular ONA: 4F7K2A')).toBe('https://wa.me/15550100?text=Vincular%20ONA%3A%204F7K2A')
+    expect(buildWaLink('+1 555 0100', 'Vincular Mimoia: 4F7K2A')).toBe('https://wa.me/15550100?text=Vincular%20Mimoia%3A%204F7K2A')
     expect(maskPhone('34600111222')).toBe('+34 ••• ••• 222')
   })
 })

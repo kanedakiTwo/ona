@@ -62,7 +62,7 @@ describe('buildTranscripts', () => {
     expect(t).toContain('=== Conversación 1 (miguel) ===')
     expect(t).toContain('[09:37] USUARIO (text): Pon chawanmushi')
     expect(t).toContain('↳ herramientas: import_recipe_from_url, swap_meal · correcciones del motor: promise · 7.2 s')
-    expect(t).toContain('[09:37] ONA (ack): Voy a leer esa receta…')
+    expect(t).toContain('[09:37] MIMO (ack): Voy a leer esa receta…')
   })
 
   it('marks turns recorded before the tool log as "sin registro", not "ninguna"', () => {

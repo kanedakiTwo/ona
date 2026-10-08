@@ -267,7 +267,7 @@ function AutoCreateModal({ name, onClose, onCreated }: ModalProps) {
       setError(
         err instanceof Error
           ? err.message
-          : "No se pudo estimar con ONA.",
+          : "No se pudo estimar con Mimoia.",
       )
     }
   }
@@ -382,7 +382,7 @@ function AutoCreateModal({ name, onClose, onCreated }: ModalProps) {
         )}
         {suggest.isError && (
           <p className="mt-4 text-[13px] italic text-[#C65D38]">
-            No se pudo consultar USDA. Prueba a estimar con ONA o crea sin
+            No se pudo consultar USDA. Prueba a estimar con Mimoia o crea sin
             nutrición.
           </p>
         )}
@@ -409,7 +409,7 @@ function AutoCreateModal({ name, onClose, onCreated }: ModalProps) {
 
         {!suggest.isLoading && !hasCandidates && !suggest.isError && (
           <p className="mt-4 text-[13px] italic text-[#7A7066]">
-            Sin coincidencias en USDA ni BEDCA. Estima con ONA o crea sin
+            Sin coincidencias en USDA ni BEDCA. Estima con Mimoia o crea sin
             nutrición.
           </p>
         )}
@@ -447,7 +447,7 @@ function AutoCreateModal({ name, onClose, onCreated }: ModalProps) {
             className="inline-flex items-center gap-1.5 rounded-full border border-[#DDD6C5] bg-transparent px-5 py-2 text-[12px] uppercase tracking-[0.12em] text-[#4A4239] transition-all hover:border-[#1A1612] hover:text-[#1A1612] active:scale-95 disabled:opacity-40"
           >
             <Sparkles size={12} />
-            {previewEstimate.isPending ? "Estimando..." : "Estimar con ONA"}
+            {previewEstimate.isPending ? "Estimando..." : "Estimar con Mimoia"}
           </button>
           <button
             type="button"
@@ -496,7 +496,7 @@ function EstimatedSummary({
     <div className="mt-5 rounded-lg border border-[#2A5C8B] bg-[#EEF3FA] px-4 py-3">
       <div className="flex items-center justify-between gap-3">
         <div className="text-[11px] uppercase tracking-[0.12em] text-[#2A5C8B]">
-          Estimación de ONA · &ldquo;{name}&rdquo;
+          Estimación de Mimoia · &ldquo;{name}&rdquo;
         </div>
         <button
           type="button"

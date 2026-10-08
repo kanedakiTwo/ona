@@ -91,7 +91,7 @@ function lineStatus(l: ShopOrderLine): string {
 const manageShops: SkillDefinition = {
   name: 'manage_shops',
   description:
-    'Gestiona las tiendas del hogar a las que ONA prepara pedidos (fruteria, carniceria, pescaderia, supermercado). action: list, add, update, remove. Para add hace falta name, kind y al menos un contacto (whatsapp, email, web o phone). customerName = como le conoce la tienda. delivery: recoger | domicilio (con address).',
+    'Gestiona las tiendas del hogar a las que Mimoia prepara pedidos (fruteria, carniceria, pescaderia, supermercado). action: list, add, update, remove. Para add hace falta name, kind y al menos un contacto (whatsapp, email, web o phone). customerName = como le conoce la tienda. delivery: recoger | domicilio (con address).',
   parameters: {
     type: 'object',
     properties: {
@@ -181,7 +181,7 @@ export function payloadFrom(p: Record<string, any>, prev: Shop | null): Record<s
 const prepareShopOrders: SkillDefinition = {
   name: 'prepare_shop_orders',
   description:
-    'Prepara (o rehace) los pedidos de la compra para las tiendas del usuario a partir de su lista actual. Llámala solo cuando pida hacer la compra, no después de editar: para cambiar un pedido preparado usa edit_shop_order. Reparte cada producto a su frutería, carnicería, pescadería o súper y devuelve un enlace por tienda que abre SU WhatsApp con el pedido escrito. Usala cuando pida "hazme la compra", "haz el pedido", "pídeselo a la frutería". ONA no envía nada: lo envía el usuario.',
+    'Prepara (o rehace) los pedidos de la compra para las tiendas del usuario a partir de su lista actual. Llámala solo cuando pida hacer la compra, no después de editar: para cambiar un pedido preparado usa edit_shop_order. Reparte cada producto a su frutería, carnicería, pescadería o súper y devuelve un enlace por tienda que abre SU WhatsApp con el pedido escrito. Usala cuando pida "hazme la compra", "haz el pedido", "pídeselo a la frutería". Mimoia no envía nada: lo envía el usuario.',
   parameters: { type: 'object', properties: {}, required: [] },
   async handler(_p, ctx) {
     const r = await api(ctx)<{ orders: ShopOrder[]; unassigned: Array<{ name: string }>; skipped: Array<{ name: string }>; pantry?: string[]; hasShops: boolean }>(

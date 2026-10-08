@@ -15,14 +15,14 @@ export interface WhatsAppStatus {
   /** Masked, e.g. "+34 ••• ••• 222". */
   phone: string | null
   notify: boolean
-  /** wa.me link to open the chat with ONA once linked. */
+  /** wa.me link to open the chat with Mimo once linked. */
   chatLink: string | null
 }
 
 export interface WhatsAppLinkCode {
   code: string
   expiresAt: string
-  /** Text the user must send, e.g. "Vincular ONA: 4F7K2A". */
+  /** Text the user must send, e.g. "Vincular Mimoia: 4F7K2A". */
   message: string
   /** wa.me deep link with `message` prefilled; null if the server has no display number. */
   waLink: string | null

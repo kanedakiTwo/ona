@@ -1,10 +1,10 @@
 # Waitlist (pre-launch, Mimoia)
 
-The public waitlist that comes before the launch. The product launches publicly as **Mimoia** (decision D-012; `BRAND_NAME` in `@ona/shared`, used by every new public string; "ONA" stays the internal name and still shows in older screens until the coordinated rename). Closed beta from 2026-10-28 (10–30 households, invite-only); people are let in **by batches every 2–4 weeks**. There is no visible queue position and no fake scarcity. The honest line is: "entramos por tandas porque cada hogar lo acompañamos de cerca".
+The public waitlist that comes before the launch. The product launches publicly as **Mimoia** (decision D-012; `BRAND_NAME` in `@ona/shared`, and since the coordinated rename of 2026-10-08 the name users see everywhere, logged-in app included; "ONA" stays only the internal name). Closed beta from 2026-10-28 (10–30 households, invite-only); people are let in **by batches every 2–4 weeks**. There is no visible queue position and no fake scarcity. The honest line is: "entramos por tandas porque cada hogar lo acompañamos de cerca".
 
 ## User Capabilities
 
-- Visitors on the landing (`/`) can join from the **"Lista de espera" section** (`#lista-de-espera`). The hero CTA, the landing's final CTA, `PublicNavbar` ("Lista de espera"), the `Footer`, `/como-funciona` and both `/recipes-ona` pages all lead there with "Únete a la lista de espera". `/register` still works for invited households, but no public CTA links to it.
+- Visitors on the landing (`/`) can join from the **"Lista de espera" section** (`#lista-de-espera`). The hero CTA, the landing's final CTA, `PublicNavbar` ("Lista de espera"), `/como-funciona` and both `/recipes-ona` pages all lead there with "Únete a la lista de espera". `/register` still works for invited households, but no public CTA links to it.
 - The form asks for:
   - email (required) and first name (optional);
   - **four one-tap questions** (all required): household size (`Solo yo / Dos / 3 o 4 / 5 o más`), who plans and shops (`Yo / Otra persona / Lo compartimos`), how they organise today (`Improviso / Lista en papel o en notas / Con una app / Menú fijo / Casi no cocino en casa`) and phone (`iPhone / Android / Otro`);
@@ -73,7 +73,6 @@ Each picked person **pulls in** the waiting people who signed up with their link
 - Retention (until 6 months after public launch) is not automated yet: the purge job is in the CLAUDE.md backlog.
 - `?ref` / `?utm_*` are read only on the landing URL. They are not carried across pages, and `/register` doesn't record them.
 - The opt-out link is shown only on the device and submission that created the entry. Otherwise it comes in Miguel's emails, or via the contact in `/privacidad` (which needs `NEXT_PUBLIC_SUPPORT_EMAIL`, see CLAUDE.md → Todo Miguel).
-- The rest of the landing (and `/privacidad`) still says "ONA". The waitlist section says Mimoia.
 
 ## Related specs
 

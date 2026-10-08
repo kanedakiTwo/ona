@@ -107,7 +107,7 @@ export default function AdminPage() {
             restringido.
           </h1>
           <p className="mt-4 text-[13px] text-[#4A4239]">
-            Esta sección está reservada al equipo de ONA.
+            Esta sección está reservada al equipo de Mimoia.
           </p>
           <Link
             href="/menu"
@@ -152,7 +152,7 @@ export default function AdminPage() {
         <h1 className="font-display text-[2.4rem] leading-[0.95] text-[#1A1612]">
           <span className="font-italic italic text-[#C65D38]">Admin</span>
           <br />
-          de ONA.
+          de Mimoia.
         </h1>
         <p className="mt-3 text-[12px] text-[#7A7066] max-w-md">
           Cura el catálogo, gestiona cuentas y revisa la auditoría. Cada acción

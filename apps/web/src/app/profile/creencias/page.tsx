@@ -82,10 +82,10 @@ export default function BeliefsPage() {
         <div className="mt-6">
           <div className="text-eyebrow text-[#C65D38]">Creencias nutricionales</div>
           <h1 className="mt-2 font-display text-[2.2rem] leading-[1.02] tracking-tight text-[#1A1612]">
-            Tu <span className="font-italic italic text-[#C65D38]">filosofía</span>, no la de ONA
+            Tu <span className="font-italic italic text-[#C65D38]">filosofía</span>, no la de Mimoia
           </h1>
           <p className="mt-2 max-w-md text-[13px] leading-relaxed text-[#7A7066]">
-            ONA viene con unas creencias por defecto (resumen abajo). Puedes
+            Mimoia viene con unas creencias por defecto (resumen abajo). Puedes
             añadir las tuyas y el asistente las respetará por encima de las
             suyas cuando entren en conflicto.
           </p>
@@ -153,7 +153,7 @@ export default function BeliefsPage() {
         <section className="mt-12">
           <div className="flex items-center gap-2">
             <Sparkles size={14} className="text-[#C65D38]" />
-            <div className="text-eyebrow text-[#7A7066]">Principios por defecto de ONA</div>
+            <div className="text-eyebrow text-[#7A7066]">Principios por defecto de Mimoia</div>
           </div>
           <p className="mt-1 text-[11px] text-[#7A7066]">
             El asistente sigue estos a menos que tus principios digan lo contrario.

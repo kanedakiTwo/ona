@@ -136,7 +136,7 @@ export function RecipePickerSheet({
                     {r.name}
                   </span>
                   <span className="text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
-                    {r.authorId ? "tuya" : "ONA"}
+                    {r.authorId ? "tuya" : "Mimoia"}
                   </span>
                 </button>
               </li>

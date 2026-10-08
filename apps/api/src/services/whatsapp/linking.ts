@@ -3,7 +3,7 @@ import crypto from 'crypto'
 /**
  * Phone ↔ user linking, pure half. The user taps "Conectar WhatsApp" in
  * /profile, which mints a one-time code and opens
- * `wa.me/<ONA number>?text=Vincular ONA: <code>`. Sending that message from
+ * `wa.me/<our number>?text=Vincular Mimoia: <code>`. Sending that message from
  * the phone proves possession of both the app session and the number.
  */
 
@@ -53,7 +53,7 @@ export function connectUrl(webUrl: string): string {
 }
 
 export function linkMessageText(code: string): string {
-  return `Vincular ONA: ${code}`
+  return `Vincular Mimoia: ${code}`
 }
 
 export function buildWaLink(displayNumber: string, text?: string): string {

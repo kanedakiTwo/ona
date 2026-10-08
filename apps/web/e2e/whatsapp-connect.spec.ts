@@ -21,8 +21,8 @@ test('logged out → create account → back here → send the code from WhatsAp
     return json(route, {
       code: '4F7K2A',
       expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
-      message: 'Vincular ONA: 4F7K2A',
-      waLink: 'https://wa.me/15550001111?text=Vincular%20ONA%3A%204F7K2A',
+      message: 'Vincular Mimoia: 4F7K2A',
+      waLink: 'https://wa.me/15550001111?text=Vincular%20Mimoia%3A%204F7K2A',
     }, 201)
   })
 
@@ -34,7 +34,7 @@ test('logged out → create account → back here → send the code from WhatsAp
 
   // `next` brings the new user straight back, and the page mints a code.
   await expect(page).toHaveURL(/\/whatsapp\/conectar/, { timeout: 20_000 })
-  await expect(page.getByTestId('whatsapp-connect-message')).toHaveText('Vincular ONA: 4F7K2A')
+  await expect(page.getByTestId('whatsapp-connect-message')).toHaveText('Vincular Mimoia: 4F7K2A')
   await expect(page.getByRole('link', { name: /enviar desde whatsapp/i })).toHaveAttribute('href', /wa\.me\/15550001111\?text=/)
   expect(codesMinted).toBe(1)
 

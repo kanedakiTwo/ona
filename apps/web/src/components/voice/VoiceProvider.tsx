@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
-import { useWakeWord } from '@/hooks/useWakeWord'
+import { useWakeWord, WAKE_PHRASE } from '@/hooks/useWakeWord'
 import { useRealtimeSession, type RealtimeTurn } from '@/hooks/useRealtimeSession'
 import { appendVoiceTurns } from '@/lib/voiceMessages'
 import VoiceOverlay from './VoiceOverlay'
@@ -29,7 +29,7 @@ interface VoiceModeContextValue {
   /** Master toggle — when true, voice mode is usable (FAB + manual entry). */
   enabled: boolean
   setEnabled: (v: boolean) => void
-  /** Sub-toggle — when true and wake-word is available, the browser listens for "Hola Ona". */
+  /** Sub-toggle — when true and wake-word is available, the browser listens for WAKE_PHRASE. */
   wakeWordEnabled: boolean
   setWakeWordEnabled: (v: boolean) => void
   isWakeListening: boolean
@@ -138,7 +138,10 @@ export default function VoiceProvider({ children }: { children: ReactNode }) {
     }
   }, [session.transcripts])
 
-  // Idle/silence timer
+  // Idle/silence timer. The goodbye only mentions the wake phrase when the
+  // detector is actually listening; otherwise the way back is the mic button.
+  const wakeListens = enabled && wakeWordEnabled && wakeAvailable
+  const resumeHint = wakeListens ? `Di "${WAKE_PHRASE}" para seguir.` : 'Toca el micrófono para seguir.'
   useEffect(() => {
     if (!overlayOpen || session.status !== 'connected') return
 
@@ -156,13 +159,13 @@ export default function VoiceProvider({ children }: { children: ReactNode }) {
 
     if (remainingToWarn > 0) {
       warnTimer = setTimeout(() => {
-        setSilenceWarning('Sigo aquí. Di "Hola Ona" para seguir.')
+        setSilenceWarning(`Sigo aquí. ${resumeHint}`)
         try {
-          session.sendUserText('[sistema: el usuario ha estado en silencio. Despídete brevemente diciendo: "Sigo aquí. Di Hola Ona para seguir." sin añadir nada más.]')
+          session.sendUserText(`[sistema: el usuario ha estado en silencio. Despídete brevemente diciendo: "Sigo aquí. ${resumeHint.replace(/"/g, '')}" sin añadir nada más.]`)
         } catch {}
       }, remainingToWarn)
     } else {
-      setSilenceWarning('Sigo aquí. Di "Hola Ona" para seguir.')
+      setSilenceWarning(`Sigo aquí. ${resumeHint}`)
     }
 
     if (remainingToClose > 0) {
@@ -177,7 +180,7 @@ export default function VoiceProvider({ children }: { children: ReactNode }) {
       if (warnTimer) clearTimeout(warnTimer)
       if (closeTimer) clearTimeout(closeTimer)
     }
-  }, [overlayOpen, session.status, session.lastActivityAt, session.lastToolName, persistAndClose, session])
+  }, [overlayOpen, session.status, session.lastActivityAt, session.lastToolName, persistAndClose, session, resumeHint])
 
   // Reset warning when activity resumes
   useEffect(() => {
@@ -215,8 +218,8 @@ export default function VoiceProvider({ children }: { children: ReactNode }) {
         <button
           onClick={() => startSession()}
           className="fixed top-3 right-3 z-40 flex h-10 w-10 items-center justify-center rounded-full bg-[#2D6A4F] text-white shadow-[0_4px_16px_rgba(45,106,79,0.35)] active:scale-95 transition-transform"
-          aria-label={wake.isListening ? 'Modo voz activo. Toca o di "Hola Ona" para abrir.' : 'Abrir modo voz'}
-          title={wake.isListening ? 'Hola Ona o toca' : 'Abrir modo voz'}
+          aria-label={wake.isListening ? `Modo voz activo. Toca o di "${WAKE_PHRASE}" para abrir.` : 'Abrir modo voz'}
+          title={wake.isListening ? `${WAKE_PHRASE} o toca` : 'Abrir modo voz'}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />

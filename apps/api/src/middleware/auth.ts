@@ -78,7 +78,7 @@ export async function authMiddleware(
   if (row.suspendedAt) {
     res.status(401).json({
       error:
-        'Tu cuenta está suspendida. Contacta con el equipo de ONA si crees que es un error.',
+        'Tu cuenta está suspendida. Contacta con el equipo de Mimoia si crees que es un error.',
       code: 'SUSPENDED',
     })
     return
@@ -148,7 +148,7 @@ export function requireAdmin(
 ): void {
   if (req.user?.role !== 'admin') {
     res.status(403).json({
-      error: 'Acceso restringido al equipo de ONA.',
+      error: 'Acceso restringido al equipo de Mimoia.',
       code: 'NOT_ADMIN',
     })
     return

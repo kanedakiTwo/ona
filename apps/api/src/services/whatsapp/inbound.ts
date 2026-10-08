@@ -79,11 +79,11 @@ export interface InboundDeps {
 }
 
 const humanContact = (email?: string) =>
-  email ? `escribe a ${email}` : 'escribe a la persona de ONA que te invitó a la beta'
+  email ? `escribe a ${email}` : 'escribe a la persona de Mimoia que te invitó a la beta'
 
 export const COPY = {
   linked: (name: string | null) =>
-    `¡Listo${name ? `, ${name}` : ''}! Tu WhatsApp ya está conectado con ONA. Pregúntame qué toca hoy, pídeme la lista de la compra, mándame un audio o compárteme una receta (enlace o foto) para guardarla.\n\n${AI_DISCLOSURE_FIRST_PERSON}`,
+    `¡Listo${name ? `, ${name}` : ''}! Tu WhatsApp ya está conectado con Mimoia. Pregúntame qué toca hoy, pídeme la lista de la compra, mándame un audio o compárteme una receta (enlace o foto) para guardarla.\n\n${AI_DISCLOSURE_FIRST_PERSON}`,
   /** Explicit opt-in for proactive messages, asked once right after linking. */
   optInPrompt:
     '¿Quieres que también te escriba yo? Te mandaría el menú del día, un aviso antes de cocinar y la lista de la compra los sábados. Puedes cambiarlo cuando quieras escribiendo BAJA o ALTA.',
@@ -94,13 +94,13 @@ export const COPY = {
   started:
     'Hecho: vuelvo a enviarte avisos (menú del día, aviso antes de cocinar, lista de la compra). Escribe BAJA para dejar de recibirlos.',
   human: (email?: string) =>
-    `Soy un asistente con IA. Para hablar con una persona del equipo de ONA, ${humanContact(email)}. Si es sobre tu menú, la compra o una receta, cuéntamelo y lo hago.`,
-  badCode: 'Ese código no es válido o ha caducado. Genera uno nuevo en ONA → Perfil → Ona en WhatsApp.',
+    `Soy un asistente con IA. Para hablar con una persona del equipo de Mimoia, ${humanContact(email)}. Si es sobre tu menú, la compra o una receta, cuéntamelo y lo hago.`,
+  badCode: 'Ese código no es válido o ha caducado. Genera uno nuevo en Mimoia → Perfil → Mimo en WhatsApp.',
   connect: (url: string) =>
-    `Hola, soy ONA, tu asistente de cocina. ${AI_DISCLOSURE_FIRST_PERSON}\n\nPara hablar conmigo por aquí, conecta tu cuenta:\n${url}\n\nEntra (o crea tu cuenta) y te daré un código para enviarme desde este chat.`,
+    `Hola, soy Mimo, el asistente de cocina de Mimoia. ${AI_DISCLOSURE_FIRST_PERSON}\n\nPara hablar conmigo por aquí, conecta tu cuenta:\n${url}\n\nEntra (o crea tu cuenta) y te daré un código para enviarme desde este chat.`,
   suspended: (email?: string) =>
-    `Tu cuenta de ONA está suspendida. Si crees que es un error, ${humanContact(email)}.`,
-  notAllowed: 'WhatsApp todavía no está disponible para tu cuenta de ONA.',
+    `Tu cuenta de Mimoia está suspendida. Si crees que es un error, ${humanContact(email)}.`,
+  notAllowed: 'WhatsApp todavía no está disponible para tu cuenta de Mimoia.',
   budget: (euros: string) =>
     `Has alcanzado tu límite mensual del asistente (€${euros}). Se renueva el mes que viene.`,
   unsupported: 'Todavía no entiendo ese tipo de mensaje. Escríbeme, mándame una nota de voz o una foto de una receta.',

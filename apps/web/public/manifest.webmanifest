@@ -1,6 +1,6 @@
 {
-  "name": "ONA — El placer de cocinar sin pensar",
-  "short_name": "ONA",
+  "name": "Mimoia — El placer de cocinar sin pensar",
+  "short_name": "Mimoia",
   "start_url": "/menu",
   "scope": "/",
   "display": "standalone",

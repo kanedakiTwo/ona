@@ -13,7 +13,7 @@ It is intentionally small: **a few sections, no charts, no destructive operation
 - An admin (see [Roles & Authorization](./roles.md)) opens `/admin` from the "Admin" footer link in `/profile`. A non-admin lands on a 403 page that links back to `/menu`.
 - The dashboard shows a counts header (ingredients sin USDA, recetas con kcal=0, alérgenos sugeridos, archivos en regen, usuarios suspendidos, acciones admin recientes).
 - Pill-bar tabs jump between sections:
-  - **Ingredientes sin USDA** — every ingredient with `fdcId IS NULL`. "Mapear a USDA" reuses the auto-create modal (manual search + Spanish translations + BEDCA fallback + "Estimar con ONA" — see [Ingredient Auto-Create](./ingredient-auto-create.md)).
+  - **Ingredientes sin USDA** — every ingredient with `fdcId IS NULL`. "Mapear a USDA" reuses the auto-create modal (manual search + Spanish translations + BEDCA fallback + "Estimar con Mimoia" — see [Ingredient Auto-Create](./ingredient-auto-create.md)).
   - **Pasillo «otros»** — `aisle === 'otros'` or `aisle IS NULL`. Inline `<select>`.
   - **Sin densidad** — heuristic: name matches density-relevant keywords AND `density IS NULL`. Inline numeric input.
   - **Sin peso por unidad** — `aisle === 'produce'` AND `unitWeight IS NULL` AND not bulk leafy. Inline numeric input.

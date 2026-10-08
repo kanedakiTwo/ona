@@ -44,7 +44,7 @@ Every paid provider call writes one row — user (nullable), household (user's p
 | `ingredient_match` (extraction disambiguation) | Anthropic Sonnet 5.5 | user |
 | `unit_fallback` (odd units → grams/ml) | Anthropic Haiku 4.5 | user |
 | `usda_translation` (ingredient auto-create) | Anthropic Haiku 4.5 | user |
-| `ingredient_nutrition_estimate` ("Estimar con ONA") | Anthropic Opus 4.6 | user |
+| `ingredient_nutrition_estimate` ("Estimar con Mimoia") | Anthropic Opus 4.6 | user |
 | `recipe_image` (regenerate image) | AIKIT Imagen-fal | user (seed script: system) |
 | `whatsapp_review` (daily conversation reviewer) | Anthropic Opus 5.5 | system |
 

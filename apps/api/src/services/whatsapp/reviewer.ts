@@ -104,7 +104,7 @@ export function buildTranscripts(rows: readonly ReviewRow[]): string[] {
         ].filter(Boolean)
         if (r.status === 'processed' || r.errorMessage) lines.push(`   ↳ ${trace.join(' · ')}`)
       } else {
-        lines.push(`[${hhmm(r.createdAt)}] ONA (${r.kind}${r.status !== 'sent' ? `, ${r.status}` : ''}): ${body}`)
+        lines.push(`[${hhmm(r.createdAt)}] MIMO (${r.kind}${r.status !== 'sent' ? `, ${r.status}` : ''}): ${body}`)
       }
     }
     out.push(lines.join('\n'))
@@ -166,7 +166,7 @@ export const REVIEW_SCHEMA = {
 } as const
 
 export function reviewerSystemPrompt(toolNames: string[]): string {
-  return `Eres el revisor de calidad de ONA, un asistente de menús semanales que funciona por WhatsApp. Revisas las conversaciones de un dia entre usuarios y ONA para encontrar lo que hay que corregir en el producto.
+  return `Eres el revisor de calidad de Mimoia, una app de menús semanales cuyo asistente, Mimo, también funciona por WhatsApp. Revisas las conversaciones de un dia entre usuarios y Mimo (MIMO en la transcripcion) para encontrar lo que hay que corregir en el producto. Antes de octubre de 2026 el asistente se llamaba ONA: que un mensaje antiguo diga ONA no es un hallazgo.
 
 Reglas del producto (contra ellas evaluas cada turno):
 1. Resolutivo: hace TODO lo que pide el mensaje en el mismo turno. Si pidio varias cosas, todas.
@@ -178,7 +178,7 @@ Reglas del producto (contra ellas evaluas cada turno):
 7. Proactividad util: los avisos (resumen, cocinar, ¿hiciste la cena?, compra, menu del domingo) aportan y no molestan.
 8. Las notas de voz llegan transcritas: si la transcripcion parece erronea, es un hallazgo de "transcripcion".
 
-Herramientas que ONA tiene disponibles: ${toolNames.join(', ')}.
+Herramientas que Mimo tiene disponibles: ${toolNames.join(', ')}.
 
 Para cada problema REAL crea un hallazgo con una correccion concreta y accionable (que cambiar en las instrucciones, en una herramienta, o que herramienta/funcion falta). Severidad alta = el usuario se queda sin lo que pidio o recibe informacion falsa; media = friccion clara; baja = pulido. No inventes problemas ni repitas el mismo dos veces: si todo fue bien, findings vacio. "summary": 2-3 frases en español sobre como fue el dia. Todo en español.`
 }

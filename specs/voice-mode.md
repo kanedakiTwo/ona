@@ -1,18 +1,20 @@
 # Voice Mode
 
-Hands-free voice conversation with the assistant, activated by the wake word "Hola Ona" or by tapping the floating mic anywhere in the authenticated app.
+Hands-free voice conversation with the assistant (Mimo), activated by the wake word or by tapping the floating mic anywhere in the authenticated app.
+
+**Wake phrase after the rename (2026-10-08):** the assistant is now called Mimo, but the wake word is a trained Picovoice model (`hola-ona_es_wasm_v4_0_0.ppn`) that only detects **"Hola Ona"**. Every string that tells the user what to say reads `WAKE_PHRASE` (`apps/web/src/hooks/useWakeWord.ts`, still "Hola Ona") so the UI never promises a phrase the detector can't hear. **Pending (Miguel):** train a **"Hola Mimo"** keyword (Spanish, Porcupine WASM) in console.picovoice.ai and hand over the `.ppn`; then swap `WAKE_PHRASE`, `DEFAULT_KEYWORD_PATH` and the detection label in that file together.
 
 **Status: shipped on master. `OPENAI_API_KEY` with `gpt-realtime` access is wired in production. Wake-word path is gated on `NEXT_PUBLIC_PICOVOICE_ACCESS_KEY` + `.ppn` model; while those are missing the floating mic FAB at top-right is the way in.**
 
 ## User Capabilities
 
 - Users can opt in to "Modo voz" (master toggle) from their profile/settings (off by default). When enabled, a floating mic FAB appears top-right on every authenticated route as the manual entry point
-- When the master toggle is on AND Picovoice is configured, a separate sub-toggle "Escuchar 'Hola Ona'" appears below it. The sub-toggle is independently off by default — users opt in explicitly to "always listening" so the master toggle can stay enabled (FAB visible) without the wake-word burning battery / mic
+- When the master toggle is on AND Picovoice is configured, a separate sub-toggle "Escuchar '<WAKE_PHRASE>'" appears below it. The sub-toggle is independently off by default — users opt in explicitly to "always listening" so the master toggle can stay enabled (FAB visible) without the wake-word burning battery / mic
 - Master OFF → no FAB, no wake-word, nothing listening
 - Master ON + sub OFF → FAB visible, no wake-word (manual entry only)
-- Master ON + sub ON + Picovoice configured → FAB visible **and** the app listens for "Hola Ona"
-- Master ON + sub ON + Picovoice not configured → sub-toggle is hidden; the copy under the master toggle explains the wake-word account is pending
-- Saying "Hola Ona" (or tapping the FAB) opens a full-screen voice overlay (animated orb, no text) and starts a real-time spoken conversation with the assistant
+- Master ON + sub ON + Picovoice configured → FAB visible **and** the app listens for the wake phrase
+- Master ON + sub ON + Picovoice not configured → sub-toggle is hidden; the copy under the master toggle ("Tócalo para hablar con Mimo en manos libres") says hands-free activation will come once the wake-word account is approved, without naming a phrase
+- Saying the wake phrase (or tapping the FAB) opens a full-screen voice overlay (animated orb, no text) and starts a real-time spoken conversation with the assistant
 - Users can speak naturally without pressing any button; the assistant detects when they finish and replies aloud
 - Users can interrupt the assistant mid-sentence (barge-in) — the assistant stops and listens
 - The assistant can call any existing skill (read today's menu, suggest recipes, swap a meal, generate a list, etc.) mid-conversation, and narrate the result
@@ -29,9 +31,9 @@ When the conversation context is "step-by-step cooking" (a recipe-step skill is 
 1. **Idle**: only the wake-word detector runs on-device (when configured); no audio leaves the browser.
 2. **Wake**: detector fires (or user taps the FAB) → overlay opens → backend issues an ephemeral Realtime session token → WebRTC connection to OpenAI Realtime API. Each step logs a `[voice] …` line in the browser console for diagnosis.
 3. **Active**: full-duplex audio. Server VAD detects user turns; barge-in handled natively.
-4. **Idle warning**: after the configured silence timeout (20s default, 120s in cooking mode), the assistant says "Sigo aquí. Di 'Hola Ona' para seguir." and disconnects the Realtime session.
+4. **Idle warning**: after the configured silence timeout (20s default, 120s in cooking mode), the assistant says "Sigo aquí. Di '<WAKE_PHRASE>' para seguir." when the wake word is actually listening (master + sub-toggle on + Picovoice configured), otherwise "Sigo aquí. Toca el micrófono para seguir.", and disconnects the Realtime session.
 5. **Failure**: any error during connect (mic permission denied, no mic, mic in use, SDP exchange failure, network) is caught, surfaced as readable Spanish text in the overlay, and the overlay auto-closes after ~3.5s so the user can retry.
-6. **Reconnect**: the next "Hola Ona" or FAB tap within the cached-context window (30 min) re-opens a session and re-injects the conversation context so the user can pick up where they left off.
+6. **Reconnect**: the next wake phrase or FAB tap within the cached-context window (30 min) re-opens a session and re-injects the conversation context so the user can pick up where they left off.
 
 ## Conversation persistence
 
@@ -49,7 +51,7 @@ When the conversation context is "step-by-step cooking" (a recipe-step skill is 
 
 ## Constraints
 
-- Wake-word phrase is fixed to "Hola Ona" for v1 (custom phrases are out of scope).
+- Wake-word phrase is fixed per model (`WAKE_PHRASE`, today "Hola Ona" until the "Hola Mimo" model lands; custom phrases are out of scope).
 - Wake word is browser-side only — desktop and mobile web. Native iOS/Android wrappers are out of scope for v1.
 - A Realtime session is short-lived: max 10 minutes of active conversation per session before forced reconnect (provider limit + cost guard).
 - The Realtime model is `gpt-realtime`; voice is one of the OpenAI preset Spanish voices.
@@ -62,8 +64,8 @@ When the conversation context is "step-by-step cooking" (a recipe-step skill is 
 
 ## Wake-word engine
 
-- **Default**: Picovoice Porcupine (WASM, custom phrase "Hola Ona" trained via Picovoice console). Free tier covers personal/dev use.
-- **Fallback**: openWakeWord (open source) if Porcupine pricing or licensing becomes a blocker. Requires training a custom model for "Hola Ona".
+- **Default**: Picovoice Porcupine (WASM, custom phrase trained via Picovoice console: today "Hola Ona", to be replaced by "Hola Mimo"). Free tier covers personal/dev use.
+- **Fallback**: openWakeWord (open source) if Porcupine pricing or licensing becomes a blocker. Requires training a custom model for the phrase.
 - The engine is wrapped behind a small `useWakeWord` hook so swapping providers is local.
 
 ## Floating mic FAB (manual entry point)
@@ -71,7 +73,7 @@ When the conversation context is "step-by-step cooking" (a recipe-step skill is 
 The FAB is the manual entry point and is shown whenever the master "Modo voz" toggle is ON, regardless of whether the wake-word sub-toggle is on. Tapping it opens the voice overlay. This guarantees there is always a way to enter voice mode by tap, even when the user has wake-word turned off or the Picovoice account is unavailable. The status text under each toggle in `/profile` is:
 
 - Master toggle: *"Activo · botón flotante visible"* when on, *"Desactivado"* when off.
-- Wake-word sub-toggle (only rendered when master is on AND `NEXT_PUBLIC_PICOVOICE_ACCESS_KEY` is configured): *"Escuchando 'Hola Ona'"* when listening, *"Iniciando…"* during model load, the typed `wakeError` if Porcupine fails, or *"Desactivado · activa para abrir el modo voz por voz"* when off.
+- Wake-word sub-toggle (only rendered when master is on AND `NEXT_PUBLIC_PICOVOICE_ACCESS_KEY` is configured): *"Escuchando '<WAKE_PHRASE>'"* when listening, *"Iniciando…"* during model load, the typed `wakeError` if Porcupine fails, or *"Desactivado · activa para abrir el modo voz por voz"* when off.
 
 ## Auto-close on error
 
@@ -109,5 +111,5 @@ If the Realtime session enters `error` or `closed` state while the overlay is op
 ## Required client config
 
 - `NEXT_PUBLIC_PICOVOICE_ACCESS_KEY` — from console.picovoice.ai
-- `apps/web/public/wakewords/hola-ona_es_wasm_v4_0_0.ppn` — wake-word model trained for "Hola Ona" (Porcupine WASM v4)
+- `apps/web/public/wakewords/hola-ona_es_wasm_v4_0_0.ppn` — wake-word model trained for "Hola Ona" (Porcupine WASM v4); to be replaced by a "Hola Mimo" model (see top)
 - `apps/web/public/wakewords/porcupine_params_es.pv` — Spanish acoustic model (downloaded from `Picovoice/porcupine` repo)

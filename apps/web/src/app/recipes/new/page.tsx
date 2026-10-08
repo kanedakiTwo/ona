@@ -356,7 +356,7 @@ function NewRecipePageInner() {
           </h1>
           <p className="mt-2 max-w-md text-[13px] leading-relaxed text-[#7A7066]">
             Completa los detalles esenciales. Los ingredientes se enlazan con la
-            biblioteca de ONA para calcular nutrientes y temporada.
+            biblioteca de Mimoia para calcular nutrientes y temporada.
           </p>
         </div>
 
@@ -622,7 +622,7 @@ function NewRecipePageInner() {
               <span className="font-italic italic">Ingredientes</span>
             </h2>
             <p className="mt-1 text-[12px] italic text-[#7A7066]">
-              Cada ingrediente se asocia a la biblioteca de ONA. Empieza a
+              Cada ingrediente se asocia a la biblioteca de Mimoia. Empieza a
               escribir y selecciona uno de la lista.
             </p>
 

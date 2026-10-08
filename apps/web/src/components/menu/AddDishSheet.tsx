@@ -79,7 +79,7 @@ export function AddDishSheet({
                   >
                     <Sparkles size={18} className="text-[#C65D38]" />
                     <div>
-                      <p className="text-[14px] font-medium text-[#1A1612]">ONA sugiere</p>
+                      <p className="text-[14px] font-medium text-[#1A1612]">Mimoia sugiere</p>
                       <p className="text-[12px] text-[#7A7066]">{courseHint}</p>
                     </div>
                   </button>

@@ -22,7 +22,7 @@ export default function GlobalError({ error }: { error: Error & { digest?: strin
         <div className="flex min-h-screen flex-col items-center justify-center px-6 text-center">
           <div className="mx-auto flex max-w-[360px] flex-col items-center gap-6">
             <span className="text-5xl tracking-tight" style={{ fontFamily: "var(--font-display)" }}>
-              ONA
+              Mimoia
             </span>
 
             <div className="flex flex-col gap-3">

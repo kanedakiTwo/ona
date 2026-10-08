@@ -46,7 +46,7 @@ export default function ShopsPage() {
           Tus <span className="italic text-[#C65D38]">tiendas</span>.
         </h1>
         <p className="mt-3 max-w-md text-[12px] text-[#7A7066]">
-          ONA reparte tu lista entre ellas: fruta y verdura a la frutería, carne a la carnicería, pescado a la pescadería y
+          Mimoia reparte tu lista entre ellas: fruta y verdura a la frutería, carne a la carnicería, pescado a la pescadería y
           el resto al súper. Si falta una, lo suyo va al súper.
         </p>
       </header>

@@ -97,11 +97,11 @@ export default function ShoppingPage() {
       return [`## ${AISLE_LABELS[aisle]}`, lines, '']
     })
     const text = withOnaFooter(
-      `Lista de compra ONA\nSemana del ${weekStart}\n\n${sections.join('\n')}`,
+      `Lista de compra · Mimoia\nSemana del ${weekStart}\n\n${sections.join('\n')}`,
       window.location.origin,
       'lista',
     )
-    await share({ title: 'Lista de compra ONA', text })
+    await share({ title: 'Lista de compra · Mimoia', text })
   }
 
   if (authLoading || menuLoading) {

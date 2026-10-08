@@ -332,7 +332,7 @@ export default function OnboardingFlow() {
       {/* Step 5: Priority */}
       {step === 5 && (
         <div>
-          <h2 className="text-2xl font-bold">Que quieres que ONA priorice?</h2>
+          <h2 className="text-2xl font-bold">¿Qué quieres que Mimoia priorice?</h2>
           <p className="mt-1 text-sm text-[#777777]">Elegimos el enfoque de tus menus</p>
           <div className="mt-6 grid grid-cols-2 gap-3">
             {[

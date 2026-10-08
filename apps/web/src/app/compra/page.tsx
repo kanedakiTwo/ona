@@ -87,7 +87,7 @@ export default function CompraPage() {
           Pide a tus <span className="font-italic italic text-[#C65D38]">tiendas</span>.
         </h1>
         <p className="mt-3 max-w-md text-[12px] text-[#7A7066]">
-          ONA prepara un pedido por tienda con lo que te falta para los próximos 7 días. Tú lo envías desde tu WhatsApp,
+          Mimoia prepara un pedido por tienda con lo que te falta para los próximos 7 días. Tú lo envías desde tu WhatsApp,
           la tienda te dice qué hay y cuánto cuesta, lo apruebas y pagas en la tienda.
         </p>
       </header>

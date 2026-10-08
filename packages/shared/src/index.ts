@@ -188,7 +188,7 @@ export {
 export type { ClientErrorReport, ClientErrorInput } from './types/clientErrors.js'
 
 // Public brand (D-012) + pre-launch waitlist (specs/waitlist.md)
-export { BRAND_NAME } from './constants/brand.js'
+export { BRAND_NAME, ASSISTANT_NAME, BRAND_SUPPORT_EMAIL } from './constants/brand.js'
 export {
   WAITLIST_HOUSEHOLD_SIZES,
   WAITLIST_PLANNER_ROLES,

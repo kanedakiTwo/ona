@@ -16,6 +16,15 @@ interface UseWakeWordReturn {
 }
 
 const DEFAULT_KEYWORD_PATH = '/wakewords/hola-ona_es_wasm_v4_0_0.ppn'
+
+/**
+ * The phrase the trained model above actually detects — every UI string that
+ * tells the user what to say reads it from here. The assistant is called Mimo
+ * since 2026-10-08, but until a "Hola Mimo" model is trained in the Picovoice
+ * console (Miguel; specs/voice-mode.md) the detector still hears "Hola Ona".
+ * Swap this, DEFAULT_KEYWORD_PATH and the detection label together.
+ */
+export const WAKE_PHRASE = 'Hola Ona'
 const SPANISH_MODEL_PATH = '/wakewords/porcupine_params_es.pv'
 
 /**

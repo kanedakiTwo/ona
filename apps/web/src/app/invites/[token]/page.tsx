@@ -88,7 +88,7 @@ export default function InviteAcceptPage() {
           href="/menu"
           className="mt-3 rounded-full bg-[#1A1612] px-5 py-2 text-[12px] uppercase tracking-[0.12em] text-[#FAF6EE]"
         >
-          Ir a ONA
+          Ir a Mimoia
         </a>
       </div>
     )

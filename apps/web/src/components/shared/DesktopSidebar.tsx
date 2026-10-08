@@ -28,9 +28,10 @@ export default function DesktopSidebar() {
     >
       <div className="mb-8 px-3">
         <span
+          data-testid="app-wordmark"
           className="font-[family-name:var(--font-italic)] text-[26px] italic leading-none text-[#1A1612]"
         >
-          Ona
+          Mimoia
         </span>
       </div>
       <nav className="flex flex-col gap-1">

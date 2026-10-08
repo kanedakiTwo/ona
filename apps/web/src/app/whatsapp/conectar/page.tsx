@@ -3,7 +3,7 @@
 /**
  * /whatsapp/conectar — WhatsApp-first linking.
  *
- * An unlinked number that writes to ONA gets a link here. Logged-out visitors
+ * An unlinked number that writes to our WhatsApp gets a link here. Logged-out visitors
  * go to /login or /register with `?next=` back here. Logged in, the page mints
  * a one-time code and asks the user to send it FROM their WhatsApp (wa.me with
  * the message prefilled). The phone that sends the code is the one that gets
@@ -20,7 +20,7 @@ export default function WhatsAppConnectPage() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-[#FAF6EE] px-6 pb-24 text-center">
-      <div className="text-eyebrow">Ona en WhatsApp</div>
+      <div className="text-eyebrow">Mimo en WhatsApp</div>
       {authLoading ? (
         <div className="text-[13px] text-[#7A7066]">Cargando…</div>
       ) : user ? (
@@ -40,7 +40,7 @@ function LoggedOut() {
         Conecta tu <span className="italic text-[#C65D38]">WhatsApp</span>
       </h1>
       <p className="max-w-xs text-[13px] text-[#7A7066]">
-        Entra en tu cuenta de ONA (o créala) y vuelves aquí para terminar.
+        Entra en tu cuenta de Mimoia (o créala) y vuelves aquí para terminar.
       </p>
       <div className="flex flex-col items-center gap-3">
         <a
@@ -104,7 +104,7 @@ function LoggedIn({ username }: { username: string }) {
   }
 
   if (status.data && !status.data.available) {
-    return <Message title="Aún no disponible" body="WhatsApp todavía no está disponible para tu cuenta de ONA." />
+    return <Message title="Aún no disponible" body="WhatsApp todavía no está disponible para tu cuenta de Mimoia." />
   }
 
   if (linkCode.error || status.error) {
@@ -119,7 +119,7 @@ function LoggedIn({ username }: { username: string }) {
         Último <span className="italic text-[#C65D38]">paso</span>
       </h1>
       <p className="max-w-xs text-[13px] text-[#7A7066]">
-        Envía este mensaje a Ona desde tu WhatsApp para conectarlo a <strong className="text-[#1A1612]">{username}</strong>:
+        Envía este mensaje a Mimo desde tu WhatsApp para conectarlo a <strong className="text-[#1A1612]">{username}</strong>:
       </p>
       <p
         data-testid="whatsapp-connect-message"
@@ -149,7 +149,7 @@ function Message({ title, body }: { title: string; body: string }) {
         href="/menu"
         className="mt-3 rounded-full bg-[#1A1612] px-5 py-2 text-[12px] uppercase tracking-[0.12em] text-[#FAF6EE]"
       >
-        Ir a ONA
+        Ir a Mimoia
       </a>
     </>
   )

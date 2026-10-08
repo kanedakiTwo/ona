@@ -1,7 +1,7 @@
 import { eq, desc } from 'drizzle-orm'
 import { visibleAuthorIds, visibleRecipeWhere } from './recipeVisibility.js'
 import { menuLogs, userNutrientBalance, menus, recipes } from '../db/schema.js'
-import { TARGET_MACROS, nutrientsToPercentages } from '@ona/shared'
+import { ASSISTANT_NAME, BRAND_NAME, TARGET_MACROS, nutrientsToPercentages } from '@ona/shared'
 import type { NutrientBalance } from '@ona/shared'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
@@ -105,7 +105,7 @@ export async function getSummary(
 // ───────────────────────────────────────────────
 
 function buildSystemPrompt(): string {
-  const base = `Eres el asesor nutricional de ONA, una app de planificacion de menus semanales.
+  const base = `Eres ${ASSISTANT_NAME}, el asesor nutricional de ${BRAND_NAME}, una app de planificacion de menus semanales.
 
 Tu personalidad:
 - Hablas en espanol, de tu, tono cercano pero informado.
@@ -119,7 +119,7 @@ Responderas basandote en los datos nutricionales reales del usuario que te paso.
   if (knowledgeBase) {
     return `${base}
 
-A continuacion tienes la base de conocimiento nutricional de ONA. Usala como marco para tus respuestas, pero no la impongas al usuario ni la cites textualmente — integra los principios de forma natural en tus consejos:
+A continuacion tienes la base de conocimiento nutricional de ${BRAND_NAME}. Usala como marco para tus respuestas, pero no la impongas al usuario ni la cites textualmente — integra los principios de forma natural en tus consejos:
 
 ${knowledgeBase}`
   }
@@ -207,7 +207,7 @@ function buildUserContext(balance: NutrientBalance | undefined, logs: any[], cur
   if (balance) {
     const pct = nutrientsToPercentages(balance)
     parts.push(`Balance actual (EMA): proteina ${pct.protein.toFixed(1)}%, carbohidratos ${pct.carbohydrates.toFixed(1)}%, grasa ${pct.fat.toFixed(1)}%`)
-    parts.push(`Objetivo ONA: proteina ${TARGET_MACROS.protein}%, carbohidratos ${TARGET_MACROS.carbohydrates}%, grasa ${TARGET_MACROS.fat}%`)
+    parts.push(`Objetivo ${BRAND_NAME}: proteina ${TARGET_MACROS.protein}%, carbohidratos ${TARGET_MACROS.carbohydrates}%, grasa ${TARGET_MACROS.fat}%`)
   }
 
   if (logs.length > 0) {

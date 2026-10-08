@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
 import { useWebPush } from '@/hooks/useWebPush'
 import { useVoiceMode } from '@/components/voice/VoiceProvider'
+import { WAKE_PHRASE } from '@/hooks/useWakeWord'
 import {
   getEnabled as getNotifEnabled,
   setEnabled as setNotifEnabledLS,
@@ -658,10 +659,10 @@ export default function ProfilePage() {
         <ChapterHeader number="04" title="Modo" italic="voz" />
         <p className="mt-2 text-[12px] text-[#7A7066]">
           Activa el modo voz y aparecerá un botón de micrófono flotante en cualquier pantalla.
-          Tócalo para hablar con Ona en manos libres.{' '}
+          Tócalo para hablar con Mimo en manos libres.{' '}
           {voiceMode.wakeAvailable
-            ? <>Si además activas <em>“Hola Ona”</em>, podrás abrir el modo voz sin tocar nada.</>
-            : <span className="text-[#A39A8E]">La activación por “Hola Ona” llegará en cuanto se apruebe la cuenta de wake-word.</span>}
+            ? <>Si además activas <em>“{WAKE_PHRASE}”</em>, podrás abrir el modo voz sin tocar nada.</>
+            : <span className="text-[#A39A8E]">La activación por voz, sin tocar nada, llegará en cuanto se apruebe la cuenta de wake-word.</span>}
         </p>
 
         {/* Master toggle — voice mode (FAB) */}
@@ -718,11 +719,11 @@ export default function ProfilePage() {
                   〽
                 </div>
                 <div className="text-left min-w-0">
-                  <div className="text-[13px] font-medium text-[#1A1612]">Escuchar “Hola Ona”</div>
+                  <div className="text-[13px] font-medium text-[#1A1612]">Escuchar “{WAKE_PHRASE}”</div>
                   <div className="text-[11px] text-[#7A7066] truncate">
                     {!voiceMode.wakeWordEnabled
                       ? 'Desactivado · activa para abrir el modo voz por voz'
-                      : (voiceMode.isWakeListening ? 'Escuchando “Hola Ona”' : (voiceMode.wakeError ?? 'Iniciando…'))}
+                      : (voiceMode.isWakeListening ? `Escuchando “${WAKE_PHRASE}”` : (voiceMode.wakeError ?? 'Iniciando…'))}
                   </div>
                 </div>
               </div>
@@ -833,7 +834,7 @@ export default function ProfilePage() {
       <section className="px-5 mt-12">
         <ChapterHeader number="07" title="Memoria" italic="del asistente" />
         <p className="mt-2 text-[12px] text-[#7A7066]">
-          Lo que ONA recuerda de ti: gustos, equipo de cocina, presupuesto,
+          Lo que Mimo recuerda de ti: gustos, equipo de cocina, presupuesto,
           días con poco tiempo… El asistente lo lee antes de cada respuesta
           y lo amplía con lo que le cuentes.
         </p>
@@ -883,12 +884,12 @@ export default function ProfilePage() {
         </div>
       </section>
 
-      {/* Capitulo 08 — Ona en WhatsApp. Hidden unless the server has the
+      {/* Capitulo 08 — Mimo en WhatsApp. Hidden unless the server has the
           channel configured for this account (or a phone is already linked,
           so it can always be disconnected). */}
       {(whatsapp.data?.available || whatsapp.data?.linked) && (
         <section className="px-5 mt-12">
-          <ChapterHeader number="08" title="Ona en" italic="WhatsApp" />
+          <ChapterHeader number="08" title="Mimo en" italic="WhatsApp" />
           <p className="mt-2 text-[12px] text-[#7A7066]">
             Todo lo que hace el asistente, desde tu WhatsApp: escríbele,
             mándale audios o compártele recetas.

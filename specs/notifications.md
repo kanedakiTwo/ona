@@ -52,7 +52,7 @@ SW push event ◄─────────────────────
 - `GET /push/public-key` (no auth) — returns `{ publicKey }`. 503 when VAPID is not configured. Used as a runtime feature-detection fallback (the canonical source for the frontend is the `NEXT_PUBLIC_VAPID_PUBLIC_KEY` build env).
 - `POST /push/subscribe` (auth) — body `{ subscription: { endpoint, keys: { p256dh, auth } }, userAgent? }`. Upserts on the endpoint. Returns 200/201 + `subscriptionId`.
 - `DELETE /push/subscribe` (auth) — body `{ endpoint }`. 204 on success. Used on logout and explicit user opt-out.
-- `POST /push/test` (auth) — sends an "Ona · Test" notification to every active subscription of the caller. Returns the `{ sent, failed, removedDeadSubscriptions }` from `sendPushToUser`. 503 when VAPID is missing.
+- `POST /push/test` (auth) — sends a "Mimoia · Test" notification to every active subscription of the caller. Returns the `{ sent, failed, removedDeadSubscriptions }` from `sendPushToUser`. 503 when VAPID is missing.
 
 ## Notification scheduler (heartbeat)
 
@@ -82,7 +82,7 @@ This spec covers the transport AND the heartbeat. Event sources beyond the prep-
 API (`ona-api` on Railway):
 - `VAPID_PUBLIC_KEY` — base64url public key from `web-push generate-vapid-keys`.
 - `VAPID_PRIVATE_KEY` — matching base64url private key.
-- `VAPID_SUBJECT` — defaults to `mailto:hola@ona.app`. Must be a `mailto:` or `https://` URL per RFC 8292.
+- `VAPID_SUBJECT` — defaults to `mailto:hola@mimoia.com`. Must be a `mailto:` or `https://` URL per RFC 8292.
 
 Web (`ona-web` on Railway):
 - `NEXT_PUBLIC_VAPID_PUBLIC_KEY` — the same public key as the API. Baked into the client bundle at build time.

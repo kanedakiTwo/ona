@@ -77,7 +77,7 @@ export function UrlRecipeImport({ onImported }: UrlRecipeImportProps) {
         <span className="text-eyebrow">Importar desde URL</span>
       </div>
       <p className="mt-2 text-[12px] italic text-[#7A7066]">
-        Pega un enlace a un artículo de receta o un vídeo de YouTube. ONA
+        Pega un enlace a un artículo de receta o un vídeo de YouTube. Mimoia
         extraerá los ingredientes y los pasos.
       </p>
 
@@ -130,7 +130,7 @@ export function UrlRecipeImport({ onImported }: UrlRecipeImportProps) {
             className="mt-0.5 h-4 w-4 cursor-pointer accent-[#1A1612]"
           />
           <span>
-            <span className="font-medium text-[#1A1612]">Añadir al catálogo ONA</span>{" "}
+            <span className="font-medium text-[#1A1612]">Añadir al catálogo Mimoia</span>{" "}
             — la receta queda como receta del sistema (sin autor),
             visible para todos en <code>/recipes-ona</code> y bajo
             “Selección Mimoia” en <code>/recipes</code>.

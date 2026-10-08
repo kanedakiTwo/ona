@@ -646,11 +646,12 @@ function Counter() {
 }
 
 /* ═══════════════════════════════════════════
-   07 — Final CTA + Footer
+   07 — Final CTA (the footer below it is the shared
+   components/shared/Footer.tsx, rendered by the public layout)
    ═══════════════════════════════════════════ */
 function FinalCTA() {
   return (
-    <section className="bg-[#F2EDE0] px-6 py-32 md:px-10 md:py-48">
+    <section className="bg-[#F2EDE0] px-6 pb-16 pt-32 md:px-10 md:pb-12 md:pt-48">
       <div className="mx-auto max-w-5xl text-center">
         <h2 className="text-editorial-xl">
           La cena de <span className="font-italic italic text-[#C65D38]">esta</span> noche,
@@ -669,17 +670,6 @@ function FinalCTA() {
           <p className="text-xs text-[#7A7066]">
             Gratis durante la beta · Sin tarjeta · Te borras con un clic
           </p>
-        </div>
-
-        <div className="mt-32 flex flex-col items-center gap-6 border-t border-[#DDD6C5] pt-12 text-sm text-[#7A7066] md:flex-row md:justify-between">
-          <div className="font-display text-2xl text-[#1A1612]">Mimoia</div>
-          <nav className="flex gap-8">
-            <Link href="/como-funciona" className="link-reveal hover:text-[#1A1612]">Cómo funciona</Link>
-            <Link href="/recipes" className="link-reveal hover:text-[#1A1612]">Recetas</Link>
-            <Link href="/privacidad" className="link-reveal hover:text-[#1A1612]">Privacidad</Link>
-            <Link href="/terminos" className="link-reveal hover:text-[#1A1612]">Términos</Link>
-          </nav>
-          <div className="text-xs">© 2026 Mimoia</div>
         </div>
       </div>
     </section>

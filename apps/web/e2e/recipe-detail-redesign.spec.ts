@@ -44,7 +44,11 @@ test('recipe detail: tabs, sticky cook bar, no tab bar, min-servings under Notas
   await expect(tabBar.first()).toBeVisible({ timeout: 10_000 })
   // …and there a horizontal swipe moves to the next section (proves the
   // gesture below is a real swipe, so "stays put" on the detail means something).
-  await swipeLeft(page, 45)
+  // Start the drag on plain text (the "N recetas" count): a mouse drag that
+  // starts on a link or image (the "+" button, a card) begins the browser's
+  // native link drag instead of a pan, on any page.
+  const count = await page.getByText(/^\d+ recetas?$/).first().boundingBox()
+  await swipeLeft(page, count!.y + count!.height / 2)
   await expect(page).toHaveURL(/\/advisor/, { timeout: 10_000 })
 
   const recipe = await recipeWithSteps(page)

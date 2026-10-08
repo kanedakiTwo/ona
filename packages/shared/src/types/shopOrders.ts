@@ -70,12 +70,39 @@ export interface ShopOrderLine {
   key: string
   /** Shopping-list item id this line came from (`menu:<ingredientId>:<unit>`, `manual:…`). */
   sourceItemId: string | null
+  /** Every list item merged into this line (duplicates: recipe + typed by hand). Closing ticks them all. */
+  sourceItemIds?: string[]
   ingredientId: string | null
+  /** What the list called it (input to the buy rules). */
   name: string
+  /** What the recipe/list needs, in list units — the shop never sees this. */
   quantity: number
   unit: BuyableUnit
-  /** Cut / preparation / variant the shop needs ("picada", "limpio, sin cabeza"). */
+  /** 'default' = typed by hand with no amount. */
+  quantitySource?: 'recipe' | 'user' | 'default'
+  /** Recipe notes ("picada", "morada en juliana"). */
+  notes?: string[]
+  /** Cut / preparation the user typed for the shop ("picada", "limpio, sin cabeza"). */
   note: string | null
+  /** "Cómo se compra" rule that wrote the line (null = no rule: name + amount). */
+  ruleKey?: string | null
+  /** The line as the shop reads it: "1 cabeza de ajos", "100 g de jamón serrano, loncheado fino". */
+  text?: string
+  /** Approximate grams/ml bought (feeds the estimate). */
+  grams?: number | null
+  /** Chosen option for rules that need one (serrano, dorada…) and the options to switch. */
+  choice?: string | null
+  options?: string[] | null
+  /** The order can't go out until someone chooses ("¿serrano o ibérico?"). */
+  needsChoice?: { question: string; options: string[] } | null
+  /** Sold by weight but typed with no amount ("¿cuánto jamón?"); suggestion = sensible minimum. */
+  needsQuantity?: { suggestion: string; grams: number } | null
+  /** Tiny fridge amount: offered unticked ("probablemente lo tienes"). */
+  maybeHave?: boolean
+  /** In the message? false for "probablemente lo tienes" until the user ticks it. */
+  included?: boolean
+  /** El Corte Inglés search text ("bebida de avena", not "leche avena"). */
+  eci?: string | null
   estimateEur: number | null
   estimateSource: EstimateSource | null
   /** Wild fish priced by the daily auction: always goes to the user for approval. */
@@ -104,6 +131,17 @@ export interface ShopSnapshot {
   email: string | null
   webUrl: string | null
   phone: string | null
+  deliveryMinEur?: number | null
+  deliveryFeeEur?: number | null
+}
+
+/** Home-delivery minimum vs the estimate. `confident` = most of the basket has a price estimate. */
+export interface DeliveryCheck {
+  minEur: number | null
+  feeEur: number | null
+  estimateEur: number | null
+  confident: boolean
+  shortByEur: number | null
 }
 
 export interface ShopOrderLinks {
@@ -132,6 +170,12 @@ export interface ShopOrder {
   confirmationText: string | null
   finalTotalEur: number | null
   links: ShopOrderLinks
+  /** Pickup or delivery for THIS order (default: the shop's), and the delivery address. */
+  fulfilment: ShopFulfilment
+  address: string | null
+  /** Why it can't be sent yet ("Falta la dirección de entrega", "Elige: ¿serrano o ibérico? (jamón)"). Links are null while non-empty. */
+  blockers: string[]
+  delivery: DeliveryCheck | null
   /** Per-line product search on the shop's web (El Corte Inglés today). */
   searchLinks: Record<string, string>
   createdAt: string
@@ -155,6 +199,8 @@ export interface Shop {
   fulfilment: ShopFulfilment
   address: string | null
   notes: string | null
+  deliveryMinEur: number | null
+  deliveryFeeEur: number | null
   position: number
   createdAt: string
 }
@@ -185,6 +231,8 @@ export const shopInputSchema = z
     fulfilment: z.enum(SHOP_FULFILMENTS).default('recoger'),
     address: z.string().trim().max(200).nullable().optional(),
     notes: z.string().trim().max(300).nullable().optional(),
+    deliveryMinEur: z.number().nonnegative().max(1000).nullable().optional(),
+    deliveryFeeEur: z.number().nonnegative().max(1000).nullable().optional(),
   })
   .superRefine((v, ctx) => {
     if (v.channel === 'whatsapp' && !v.whatsapp) ctx.addIssue({ code: 'custom', path: ['whatsapp'], message: 'Falta el WhatsApp de la tienda' })
@@ -208,6 +256,9 @@ export interface ShopFormState {
   fulfilment: ShopFulfilment
   address: string
   notes: string
+  /** Euros as typed ("20", "4,95"); empty = unknown. */
+  deliveryMin: string
+  deliveryFee: string
 }
 
 export const EMPTY_SHOP_FORM: ShopFormState = {
@@ -222,11 +273,20 @@ export const EMPTY_SHOP_FORM: ShopFormState = {
   fulfilment: 'recoger',
   address: '',
   notes: '',
+  deliveryMin: '',
+  deliveryFee: '',
 }
 
 function blankToNull(s: string): string | null {
   const t = s.trim()
   return t ? t : null
+}
+
+function euros(raw: string): number | null {
+  const t = raw.replace(/€/g, '').replace(',', '.').trim()
+  if (!t) return null
+  const n = Number(t)
+  return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : null
 }
 
 function normalizeUrl(raw: string): string | null {
@@ -249,6 +309,8 @@ export function buildShopPayload(form: ShopFormState): ShopInput {
     fulfilment: form.fulfilment,
     address: blankToNull(form.address),
     notes: blankToNull(form.notes),
+    deliveryMinEur: euros(form.deliveryMin),
+    deliveryFeeEur: euros(form.deliveryFee),
   }
 }
 
@@ -267,10 +329,27 @@ export const patchShopOrderSchema = z.object({
         remove: z.boolean().optional(),
         note: z.string().trim().max(120).nullable().optional(),
         quantity: z.number().positive().max(100_000).optional(),
+        unit: z.enum(['g', 'ml', 'u', 'cda', 'cdita']).optional(),
         moveToShopId: z.string().uuid().optional(),
+        choice: z.string().trim().min(1).max(60).optional(),
+        include: z.boolean().optional(),
       }),
     )
     .max(200)
     .optional(),
+  /** Things the user adds before sending ("y 1 kg de manzanas"). */
+  add: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1).max(80),
+        quantity: z.number().positive().max(100_000).optional(),
+        unit: z.enum(['g', 'ml', 'u', 'cda', 'cdita']).optional(),
+        note: z.string().trim().max(120).nullable().optional(),
+      }),
+    )
+    .max(50)
+    .optional(),
+  fulfilment: z.enum(SHOP_FULFILMENTS).optional(),
+  address: z.string().trim().max(200).nullable().optional(),
   capEur: z.number().positive().max(5000).nullable().optional(),
 })

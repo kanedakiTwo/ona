@@ -65,9 +65,10 @@ test('add a shop → prepare orders → WhatsApp link with the order written', a
   expect(href).toMatch(/^https:\/\/wa\.me\/34913525111\?text=/)
   const text = decodeURIComponent(href!.split('?text=')[1])
   expect(text).toMatch(/^Hola, soy Miguel\./)
-  expect(text).toContain('- Tomates: 1 kg')
-  expect(text).toContain('- Calabacín: 2 unidades')
-  expect(text).toMatch(/precio por kilo/)
+  // Written in the shop's units (buy rules), never the recipe's.
+  expect(text).toContain('- 1 kg de tomates de ensalada')
+  expect(text).toContain('- 2 calabacines')
+  expect(text).toContain('a partir de qué hora puedo pasar a recogerlo')
 })
 
 test('an expired or unknown short link lands on /compra with a notice (relative redirect)', async ({ page }) => {
@@ -80,4 +81,40 @@ test('an expired or unknown short link lands on /compra with a notice (relative 
   await page.goto('/c/zzzzzzzzzzzzzzzzzzzz')
   await expect(page).toHaveURL(/\/compra\?enlace=caducado/)
   await expect(page.getByText(/Ese enlace ya no vale/)).toBeVisible({ timeout: 10_000 })
+})
+
+test('a typed "Jamón serrano" blocks the order until the amount; home delivery carries address + ETA', async ({ page }) => {
+  test.setTimeout(60_000)
+  const token = await page.evaluate(() => localStorage.getItem('ona_token'))
+  const auth = { Authorization: `Bearer ${token}` }
+  await page.request.post(`${API_URL}/shops`, {
+    headers: auth,
+    data: { name: 'Ben-Car', kind: 'carniceria', channel: 'whatsapp', whatsapp: '34638015827', customerName: 'Miguel', fulfilment: 'recoger' },
+  })
+  const list = await (await page.request.get(`${API_URL}/shopping-list`, { headers: auth })).json()
+  await page.request.post(`${API_URL}/shopping-list/${list.id}/items`, { headers: auth, data: { name: 'Jamón serrano' } })
+
+  await page.goto('/compra')
+  await dismissOverlays(page)
+  await page.getByRole('button', { name: /Preparar los pedidos/ }).click()
+  const card = page.getByTestId('order-carniceria')
+  await expect(card).toBeVisible({ timeout: 15_000 })
+  // Never "1 unidad" of ham: the card asks how much and there's no send link yet.
+  await expect(card.getByTestId('blockers')).toContainText('Jamón serrano: ¿cuánto?')
+  await expect(card.getByRole('link', { name: /Enviar por WhatsApp/ })).toHaveCount(0)
+
+  await card.getByRole('button', { name: '100 g' }).click()
+  const link = card.getByRole('link', { name: /Enviar por WhatsApp/ })
+  await expect(link).toBeVisible({ timeout: 10_000 })
+  expect(decodeURIComponent((await link.getAttribute('href'))!)).toContain('- 100 g de jamón serrano, loncheado fino')
+
+  // Home delivery: without an address it's blocked; with it, the message says where and asks when.
+  await card.getByRole('button', { name: 'A domicilio' }).click()
+  await expect(card.getByTestId('blockers')).toContainText('Falta la dirección de entrega')
+  await card.getByLabel('Dirección de entrega').fill('C/ Real 1, Boadilla')
+  await card.getByLabel('Dirección de entrega').blur()
+  await expect(link).toBeVisible({ timeout: 10_000 })
+  const text = decodeURIComponent((await card.getByRole('link', { name: /Enviar por WhatsApp/ }).getAttribute('href'))!)
+  expect(text).toContain('para que me lo traigáis a C/ Real 1, Boadilla')
+  expect(text).toContain('más o menos a qué hora llegaría')
 })

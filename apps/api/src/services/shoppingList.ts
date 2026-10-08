@@ -13,7 +13,7 @@ import type {
   ShoppingItem,
   Unit,
 } from '@ona/shared'
-import { recipeDishesOf } from '@ona/shared'
+import { recipeDishesOf, resolveBuyRule } from '@ona/shared'
 import { randomUUID } from 'crypto'
 
 /**
@@ -168,12 +168,15 @@ interface IngredientBucket {
   catalog: CatalogRow
   /** Per-unit accumulators before canonicalisation. */
   byUnit: Map<BuyableUnit, IngredientLineUnit>
+  /** Distinct recipe notes for this ingredient (shop orders use them). */
+  notes: Set<string>
 }
 
 interface ScaledRow {
   ingredientId: string
   quantity: number
   unit: Unit
+  note?: string | null
 }
 
 /**
@@ -346,6 +349,8 @@ export async function generateShoppingList(
     aisle: Aisle | null
     density: number | null
     unitWeight: number | null
+    /** Recipe note ("picada", "morada en juliana") — the shop order reads it. */
+    note?: string | null
   }> = await db
     .select({
       recipeId: recipeIngredients.recipeId,
@@ -358,6 +363,7 @@ export async function generateShoppingList(
       aisle: ingredients.aisle,
       density: ingredients.density,
       unitWeight: ingredients.unitWeight,
+      note: recipeIngredients.note,
     })
     .from(recipeIngredients)
     .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
@@ -497,6 +503,7 @@ export async function generateShoppingList(
       ingredientId: row.ingredientId,
       quantity: row.quantity * factor,
       unit: row.unit,
+      note: row.note ?? null,
     })
   }
 
@@ -507,7 +514,7 @@ export async function generateShoppingList(
     if (!cat) continue
     let bucket = buckets.get(s.ingredientId)
     if (!bucket) {
-      bucket = { ingredientId: s.ingredientId, catalog: cat, byUnit: new Map() }
+      bucket = { ingredientId: s.ingredientId, catalog: cat, byUnit: new Map(), notes: new Set() }
       buckets.set(s.ingredientId, bucket)
     }
     const unit = s.unit as BuyableUnit
@@ -515,6 +522,8 @@ export async function generateShoppingList(
     cur.quantity += s.quantity
     cur.explicit = true
     bucket.byUnit.set(unit, cur)
+    const note = s.note?.trim()
+    if (note && !/añadido automáticamente/i.test(note)) bucket.notes.add(note)
   }
 
   // 5. Pick canonical unit per ingredient, fold compatible units into it.
@@ -524,8 +533,14 @@ export async function generateShoppingList(
     const lines = pickCanonicalLines(bucket)
     for (const line of lines) {
       if (line.quantity <= 0) continue
-      const rounded = roundForUnit(line.quantity, line.unit)
-      if (rounded <= 0) continue
+      let rounded = roundForUnit(line.quantity, line.unit)
+      // Two cloves of garlic or a little parsley round to 0 g — keep them when
+      // a shop sells the product (1 cabeza, 1 manojo); pantry staples can go.
+      if (rounded <= 0) {
+        const rule = resolveBuyRule(bucket.catalog.name)?.rule
+        if (!rule || rule.tier === 'despensa' || rule.shop === 'despensa') continue
+        rounded = Math.ceil(line.quantity)
+      }
       items.push({
         // Deterministic id: `menu:<ingredientId>:<unit>`. Stable across
         // regenerates so React keys (and the route layer's lookup-by-id)
@@ -543,6 +558,7 @@ export async function generateShoppingList(
         aisle: bucket.catalog.aisle ?? 'otros',
         checked: false,
         inStock: false,
+        ...(bucket.notes.size ? { notes: [...bucket.notes] } : {}),
       })
     }
   }

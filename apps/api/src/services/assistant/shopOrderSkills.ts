@@ -1,8 +1,9 @@
 import type { Shop, ShopOrder, ShopOrderLine } from '@ona/shared'
-import { SHOP_KIND_LABELS, normalizePhone } from '@ona/shared'
+import { SHOP_KIND_LABELS, normalizePhone, resolveBuyRule } from '@ona/shared'
 import type { SkillContext, SkillDefinition, SkillResult } from './types.js'
 import { appApiFor, AppApiError, type AppApi } from './appApi.js'
-import { bestMatch } from './appSkills.js'
+import { bestMatch, toBuyable } from './appSkills.js'
+import { classifyShopKind, kindForBuyShop } from '../shopOrders/classify.js'
 
 /**
  * "Compra en mis tiendas" from chat (specs/shop-orders.md). Same REST calls
@@ -15,7 +16,8 @@ const api = (ctx: SkillContext): AppApi => ctx.api ?? appApiFor(ctx.userId)
 const toCompra = (summary: string, data: Record<string, unknown> = {}): SkillResult => ({
   data: { ...data, navigateTo: '/compra' },
   summary,
-  uiHint: 'text',
+  // Same rank as get_shopping_list, and the latest wins: the reply links /compra (send buttons), not /shopping.
+  uiHint: 'shopping_list',
 })
 
 const KINDS = ['fruteria', 'carniceria', 'pescaderia', 'supermercado', 'otra']
@@ -24,8 +26,28 @@ function euros(n: number | null | undefined): string {
   return n == null ? '' : `${String(Math.round(n * 100) / 100).replace('.', ',')} €`
 }
 
+function deliveryNote(o: ShopOrder): string {
+  if (o.shop.channel === 'web') return ''
+  if (o.fulfilment !== 'domicilio') return ' Recoges en tienda.'
+  const d = o.delivery
+  let out = ` A domicilio${o.address ? ` (${o.address})` : ''}.`
+  if (d?.minEur != null) {
+    if (!d.confident) out += ` Mínimo ${euros(d.minEur)}: no sé si llegas.`
+    else if (d.shortByEur) out += ` Te faltan unos ${euros(d.shortByEur)} para el mínimo de ${euros(d.minEur)}.`
+  }
+  return out
+}
+
 function sendLine(o: ShopOrder): string {
-  const head = `*${o.shop.name}* (${o.lines.length} ${o.lines.length === 1 ? 'producto' : 'productos'}${o.estimateEur ? `, ≈${euros(o.estimateEur)}` : ''})`
+  const live = o.lines.filter((l) => l.included !== false).length
+  const head = `*${o.shop.name}* (${live} ${live === 1 ? 'producto' : 'productos'}${o.estimateEur ? `, ≈${euros(o.estimateEur)}` : ''})`
+  if (o.blockers.length && o.shop.channel !== 'web') {
+    return `- ${head}: antes de enviarlo falta: ${o.blockers.join('; ')}.${deliveryNote(o)}`
+  }
+  return sendLineReady(o, head) + deliveryNote(o)
+}
+
+function sendLineReady(o: ShopOrder, head: string): string {
   switch (o.shop.channel) {
     case 'whatsapp':
       return `- ${head}: envíaselo desde tu WhatsApp → ${o.links.shortOrder}`
@@ -85,6 +107,8 @@ const manageShops: SkillDefinition = {
       delivery: { type: 'string', enum: ['recoger', 'domicilio'] },
       address: { type: 'string' },
       notes: { type: 'string' },
+      deliveryMinEur: { type: 'number', description: 'Pedido mínimo para envío a domicilio, en euros.' },
+      deliveryFeeEur: { type: 'number', description: 'Gastos de envío, en euros.' },
     },
     required: ['action'],
   },
@@ -147,6 +171,8 @@ export function payloadFrom(p: Record<string, any>, prev: Shop | null): Record<s
     fulfilment,
     address: p.address !== undefined ? p.address || null : prev?.address ?? null,
     notes: p.notes !== undefined ? p.notes || null : prev?.notes ?? null,
+    deliveryMinEur: typeof p.deliveryMinEur === 'number' ? p.deliveryMinEur : prev?.deliveryMinEur ?? null,
+    deliveryFeeEur: typeof p.deliveryFeeEur === 'number' ? p.deliveryFeeEur : prev?.deliveryFeeEur ?? null,
   }
 }
 
@@ -155,10 +181,10 @@ export function payloadFrom(p: Record<string, any>, prev: Shop | null): Record<s
 const prepareShopOrders: SkillDefinition = {
   name: 'prepare_shop_orders',
   description:
-    'Prepara los pedidos de la compra para las tiendas del usuario a partir de su lista actual: reparte cada producto a su frutería, carnicería, pescadería o súper y devuelve un enlace por tienda que abre SU WhatsApp con el pedido escrito. Usala cuando pida "hazme la compra", "haz el pedido", "pídeselo a la frutería". ONA no envía nada: lo envía el usuario.',
+    'Prepara (o rehace) los pedidos de la compra para las tiendas del usuario a partir de su lista actual. Llámala solo cuando pida hacer la compra, no después de editar: para cambiar un pedido preparado usa edit_shop_order. Reparte cada producto a su frutería, carnicería, pescadería o súper y devuelve un enlace por tienda que abre SU WhatsApp con el pedido escrito. Usala cuando pida "hazme la compra", "haz el pedido", "pídeselo a la frutería". ONA no envía nada: lo envía el usuario.',
   parameters: { type: 'object', properties: {}, required: [] },
   async handler(_p, ctx) {
-    const r = await api(ctx)<{ orders: ShopOrder[]; unassigned: Array<{ name: string }>; skipped: Array<{ name: string }>; hasShops: boolean }>(
+    const r = await api(ctx)<{ orders: ShopOrder[]; unassigned: Array<{ name: string }>; skipped: Array<{ name: string }>; pantry?: string[]; hasShops: boolean }>(
       'POST',
       '/shop-orders/prepare',
       {},
@@ -169,8 +195,13 @@ const prepareShopOrders: SkillDefinition = {
     if (!r.orders.length) return toCompra('No hay nada pendiente en la lista para pedir (o ya está todo en pedidos abiertos).')
     const parts = ['Pedidos preparados. Copia los enlaces TAL CUAL en tu respuesta:', ...r.orders.map(sendLine)]
     if (r.unassigned.length) parts.push(`Sin tienda (no tiene ni súper guardado): ${r.unassigned.map((u) => u.name).join(', ')}.`)
-    if (r.skipped.length) parts.push(`No incluido por ser básico de despensa o ya pedido: ${r.skipped.map((s) => s.name).join(', ')}.`)
-    parts.push('Cuando la tienda conteste, que te reenvíe o pegue su respuesta y la reviso.')
+    const pantry = r.pantry ?? []
+    const already = r.skipped.filter((s) => !pantry.includes(s.name))
+    if (already.length) parts.push(`Ya está en un pedido abierto: ${already.map((s) => s.name).join(', ')}.`)
+    if (pantry.length) parts.push(`Doy por hecho que en casa tienes: ${pantry.join(', ')}. Si te falta algo, que lo diga y lo añado.`)
+    parts.push(
+      'Responde con UNA línea por tienda: las que están listas con su enlace copiado TAL CUAL; las que tienen "antes de enviarlo falta", con esa pregunta (corta) — luego se aplica con edit_shop_order, sin volver a preparar. Termina preguntando si quiere añadir algo más (por ejemplo fruta para la semana): se añade con edit_shop_order y el enlace sigue siendo el mismo. Cuando la tienda conteste, que te reenvíe o pegue su respuesta y la reviso.',
+    )
     return toCompra(parts.join('\n'), { orderIds: r.orders.map((o) => o.id) })
   },
 }
@@ -270,6 +301,91 @@ const closeShopOrder: SkillDefinition = {
   },
 }
 
+interface EditParams {
+  shop?: string
+  add?: Array<{ name: string; quantity?: number; unit?: string }>
+  remove?: string[]
+  choose?: Array<{ item: string; option: string }>
+  amounts?: Array<{ item: string; quantity: number; unit?: string }>
+  include?: string[]
+  delivery?: 'recoger' | 'domicilio'
+  address?: string
+}
+
+/** Kind of shop a free-text product goes to (same rules as the draft). */
+function kindForName(name: string): ShopOrder['shop']['kind'] {
+  const r = resolveBuyRule(name)
+  return r ? kindForBuyShop(r.rule.shop) : classifyShopKind(name, null)
+}
+
+const editShopOrder: SkillDefinition = {
+  name: 'edit_shop_order',
+  description:
+    'Cambia un pedido preparado ANTES de enviarlo: añadir cosas ("añade 1 kg de manzanas y naranjas"), quitar, elegir una opción ("el jamón serrano", "lubina en vez de dorada"), poner cantidad ("150 g de york"), incluir algo marcado como "probablemente lo tienes", o recoger/a domicilio con dirección. Sin shop, cada producto añadido va a la tienda que le toca. El enlace del pedido sigue siendo el mismo.',
+  parameters: {
+    type: 'object',
+    properties: {
+      shop: { type: 'string', description: 'Tienda a la que aplicar entrega/dirección o a la que añadir, si el usuario la nombra.' },
+      add: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, quantity: { type: 'number' }, unit: { type: 'string' } }, required: ['name'] } },
+      remove: { type: 'array', items: { type: 'string' } },
+      choose: { type: 'array', items: { type: 'object', properties: { item: { type: 'string' }, option: { type: 'string' } }, required: ['item', 'option'] } },
+      amounts: { type: 'array', items: { type: 'object', properties: { item: { type: 'string' }, quantity: { type: 'number' }, unit: { type: 'string' } }, required: ['item', 'quantity'] } },
+      include: { type: 'array', items: { type: 'string' } },
+      delivery: { type: 'string', enum: ['recoger', 'domicilio'] },
+      address: { type: 'string' },
+    },
+    required: [],
+  },
+  async handler(p: EditParams, ctx) {
+    const drafts = (await openOrders(ctx)).filter((o) => o.status === 'draft')
+    if (!drafts.length) return toCompra('No hay pedidos preparados sin enviar. Primero prepara la compra (prepare_shop_orders).')
+    const named = p.shop ? matchShop(drafts, p.shop, (o) => o.shop.name) ?? matchShop(drafts, p.shop, (o) => SHOP_KIND_LABELS[o.shop.kind]) : null
+    if (p.shop && !named) return toCompra(`No hay ningún pedido preparado para "${p.shop}"; no he cambiado nada.`)
+    const bodies = new Map<string, Record<string, any>>()
+    const body = (o: ShopOrder) => {
+      let b = bodies.get(o.id)
+      if (!b) bodies.set(o.id, (b = {}))
+      return b
+    }
+    const notes: string[] = []
+    const allLines = drafts.flatMap((o) => o.lines.map((l) => ({ o, l })))
+    const findLine = (item: string) => matchShop(allLines, item, ({ l }) => l.name) ?? matchShop(allLines, item, ({ l }) => l.text ?? '')
+    const linePatch = (item: string, patch: Record<string, unknown>) => {
+      const hit = findLine(item)
+      if (!hit) return void notes.push(`no encuentro "${item}" en los pedidos`)
+      const b = body(hit.o)
+      b.lines = [...(b.lines ?? []), { key: hit.l.key, ...patch }]
+    }
+    for (const a of p.add ?? []) {
+      const kind = kindForName(a.name)
+      const target = named ?? drafts.find((o) => o.shop.kind === kind) ?? drafts.find((o) => o.shop.kind === 'supermercado') ?? drafts[0]
+      const q = toBuyable(a.quantity, a.unit)
+      const b = body(target)
+      b.add = [...(b.add ?? []), { name: String(q.suffix ? `${a.name} (${q.suffix})` : a.name).slice(0, 80), ...(q.quantity ? { quantity: q.quantity, unit: q.unit } : {}) }]
+    }
+    for (const r of p.remove ?? []) linePatch(r, { remove: true })
+    for (const c of p.choose ?? []) linePatch(c.item, { choice: c.option })
+    for (const m of p.amounts ?? []) {
+      const q = toBuyable(m.quantity, m.unit ?? 'g')
+      if (q.quantity) linePatch(m.item, { quantity: q.quantity, unit: q.unit })
+    }
+    for (const i of p.include ?? []) linePatch(i, { include: true })
+    if (p.delivery || p.address) {
+      for (const o of named ? [named] : drafts.filter((d) => d.shop.channel !== 'web')) {
+        const b = body(o)
+        if (p.delivery) b.fulfilment = p.delivery
+        if (p.address) b.address = p.address
+      }
+    }
+    if (!bodies.size) return toCompra(`No he cambiado nada${notes.length ? `: ${notes.join('; ')}` : ''}.`)
+    const updated: ShopOrder[] = []
+    for (const [id, b] of bodies) updated.push(await api(ctx)<ShopOrder>('PATCH', `/shop-orders/${id}`, b))
+    const parts = ['Hecho. Pedidos actualizados (los enlaces son los mismos; cópialos tal cual si los repites):', ...updated.map(sendLine)]
+    if (notes.length) parts.push(`Ojo: ${notes.join('; ')}.`)
+    return toCompra(parts.join('\n'), { orderIds: updated.map((o) => o.id) })
+  },
+}
+
 const getShopOrders: SkillDefinition = {
   name: 'get_shop_orders',
   description: 'Dice en qué estado están los pedidos abiertos a las tiendas (preparado, enviado, ha contestado, confirmado).',
@@ -282,4 +398,4 @@ const getShopOrders: SkillDefinition = {
   },
 }
 
-export const shopOrderSkills: SkillDefinition[] = [manageShops, prepareShopOrders, registerShopReply, approveShopOrder, closeShopOrder, getShopOrders]
+export const shopOrderSkills: SkillDefinition[] = [manageShops, prepareShopOrders, editShopOrder, registerShopReply, approveShopOrder, closeShopOrder, getShopOrders]

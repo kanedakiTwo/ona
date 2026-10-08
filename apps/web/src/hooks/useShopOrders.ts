@@ -47,6 +47,8 @@ export interface PrepareResult {
   orders: ShopOrder[]
   unassigned: Array<{ name: string; quantity: number; unit: string; kind: string }>
   skipped: Array<{ name: string; reason: string }>
+  /** Pantry staples the recipes use, assumed at home ("¿Te falta algo de esto?"). */
+  pantry: string[]
   hasShops: boolean
 }
 
@@ -77,11 +79,23 @@ export interface LinePatch {
   remove?: boolean
   note?: string | null
   quantity?: number
+  unit?: "g" | "ml" | "u" | "cda" | "cdita"
   moveToShopId?: string
+  choice?: string
+  include?: boolean
+}
+
+export interface OrderPatchBody {
+  id: string
+  lines?: LinePatch[]
+  add?: Array<{ name: string; quantity?: number; unit?: "g" | "ml" | "u" }>
+  fulfilment?: "recoger" | "domicilio"
+  address?: string | null
+  capEur?: number | null
 }
 
 export const usePatchShopOrder = () =>
-  useOrderMutation<{ id: string; lines?: LinePatch[]; capEur?: number | null }>(({ id, ...body }) =>
+  useOrderMutation<OrderPatchBody>(({ id, ...body }) =>
     api.patch<ShopOrder>(`/shop-orders/${id}`, body),
   )
 

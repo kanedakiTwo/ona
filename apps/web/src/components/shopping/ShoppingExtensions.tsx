@@ -78,7 +78,8 @@ export function AddManualItemForm({ listId }: { listId: string }) {
   const add = useAddShoppingItem()
   const [open, setOpen] = useState(false)
   const [name, setName] = useState("")
-  const [qty, setQty] = useState("1")
+  // Empty = "no amount": the shop order then writes "1 calabacín" or asks how much jamón.
+  const [qty, setQty] = useState("")
   const [unit, setUnit] = useState<BuyableUnit>("u")
   const [aisle, setAisle] = useState<Aisle>("otros")
   const [price, setPrice] = useState("")
@@ -87,29 +88,28 @@ export function AddManualItemForm({ listId }: { listId: string }) {
     e.preventDefault()
     const trimmed = name.trim()
     if (!trimmed) return
-    const quantity = Number(qty)
-    if (!Number.isFinite(quantity) || quantity <= 0) return
+    const quantity = qty.trim() ? Number(qty.replace(",", ".")) : null
+    if (quantity !== null && (!Number.isFinite(quantity) || quantity <= 0)) return
     // The manual-add form now asks for the **total** price for the line
     // (matching the new inline price input behaviour). Convert to
     // per-unit so the wire shape stays the same.
     const totalParsed = price.trim() ? Number(price.replace(",", ".")) : null
     const pricePerUnit =
-      totalParsed !== null && Number.isFinite(totalParsed) && totalParsed >= 0 && quantity > 0
-        ? totalParsed / quantity
+      totalParsed !== null && Number.isFinite(totalParsed) && totalParsed >= 0
+        ? totalParsed / (quantity ?? 1)
         : null
     add.mutate(
       {
         listId,
         name: trimmed,
-        quantity,
-        unit,
+        ...(quantity !== null ? { quantity, unit } : {}),
         aisle,
         pricePerUnit,
       },
       {
         onSuccess: () => {
           setName("")
-          setQty("1")
+          setQty("")
           setPrice("")
           // keep unit + aisle — next add likely shares them
         },
@@ -151,6 +151,8 @@ export function AddManualItemForm({ listId }: { listId: string }) {
           min={0}
           step={0.5}
           value={qty}
+          placeholder="Cantidad"
+          aria-label="Cantidad (opcional)"
           onChange={(e) => setQty(e.target.value)}
           className="border-b border-[#DDD6C5] bg-transparent py-1.5 text-[13px] outline-none focus:border-[#1A1612]"
         />

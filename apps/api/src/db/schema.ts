@@ -909,6 +909,9 @@ export const householdShops = pgTable('household_shops', {
   notes: text('notes'),
   /** { [ingredientId]: { pricePerKg, at } } — last €/kg this shop quoted. */
   priceMemory: jsonb('price_memory').notNull().default({}),
+  /** Home-delivery minimum order and fee, when the shop has them. */
+  deliveryMinEur: real('delivery_min_eur'),
+  deliveryFeeEur: real('delivery_fee_eur'),
   position: integer('position').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -932,6 +935,10 @@ export const shopOrders = pgTable('shop_orders', {
   estimateEur: real('estimate_eur'),
   capEur: real('cap_eur'),
   messageText: text('message_text').notNull(),
+  /** recoger | domicilio for this order (null on v1 rows → the shop's). */
+  fulfilment: text('fulfilment'),
+  /** Delivery address for this order. */
+  address: text('address'),
   shopReplyText: text('shop_reply_text'),
   quoteSummary: jsonb('quote_summary'),
   confirmationText: text('confirmation_text'),
@@ -1039,4 +1046,19 @@ export const waitlistEntries = pgTable('waitlist_entries', {
   check('waitlist_entries_current_method_check', sql.raw("current_method IN ('improviso','lista','app','menu_fijo','no_cocino')")),
   check('waitlist_entries_platform_check', sql.raw("platform IN ('ios','android','otro')")),
   check('waitlist_entries_status_check', sql.raw("status IN ('waiting','invited','joined','unsubscribed')")),
+])
+
+/**
+ * What this household chose when a product needs a choice (jamón → serrano,
+ * pescado entero → lubina, carne picada → de ternera). Applied the next time
+ * ONA drafts an order (specs/shop-orders.md → Buy rules).
+ */
+export const householdBuyPrefs = pgTable('household_buy_prefs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  ruleKey: text('rule_key').notNull(),
+  choice: text('choice').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_household_buy_prefs').on(t.householdId, t.ruleKey),
 ])

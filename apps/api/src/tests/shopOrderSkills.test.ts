@@ -35,6 +35,8 @@ const ctx = (api: AppApi) => ({ userId: 'u1', db: null, api })
 const writes = (calls: { method: string }[]) => calls.filter((c) => c.method !== 'GET')
 
 const SHOP: Shop = {
+  deliveryMinEur: null,
+  deliveryFeeEur: null,
   id: 's1',
   householdId: 'h1',
   name: 'The Fruits of the World',
@@ -70,6 +72,10 @@ function order(over: Partial<ShopOrder> = {}): ShopOrder {
     confirmationText: null,
     finalTotalEur: null,
     links: { order: 'https://wa.me/34913525111?text=Hola', confirmation: null, shortOrder: 'https://ona.app/c/AAAAAAAAAAAAAAAA', shortConfirmation: null, tooLong: false },
+    fulfilment: 'recoger',
+    address: null,
+    blockers: [],
+    delivery: null,
     searchLinks: {},
     createdAt: '2026-10-07T00:00:00Z',
     sentAt: null,
@@ -207,5 +213,41 @@ describe('shop payload ↔ shopInputSchema contract', () => {
     expect(shopInputSchema.safeParse(payloadFrom({ name: 'Ben-Car', kind: 'carniceria', whatsapp: '638015827' }, null)).success).toBe(true)
     expect(shopInputSchema.safeParse(payloadFrom({ name: 'ECI', kind: 'supermercado', web: 'elcorteingles.es/supermercado' }, null)).success).toBe(true)
     expect(shopInputSchema.safeParse(payloadFrom({ name: 'fruits', notes: 'Cierra a las 14:00' }, SHOP)).success).toBe(true)
+  })
+})
+
+describe('edit_shop_order', () => {
+  const fru = order({ id: 'of', status: 'draft' })
+  const sup = order({ id: 'os', status: 'draft', shop: { name: 'El Corte Inglés', kind: 'supermercado', channel: 'web', whatsapp: null, email: null, webUrl: 'https://www.elcorteingles.es/supermercado/', phone: null } })
+  const car = order({
+    id: 'oc',
+    status: 'draft',
+    shop: { name: 'Ben-Car', kind: 'carniceria', channel: 'whatsapp', whatsapp: '34638015827', email: null, webUrl: null, phone: null },
+    lines: [{ ...order().lines[0], key: 'l1', name: 'jamon', text: '100 g de jamón, loncheado fino — ¿serrano o ibérico?', ruleKey: 'jamon' }],
+  })
+
+  it('routes each added product to its shop and keeps the same link', async () => {
+    const { api, calls } = fakeApi({ 'GET /shop-orders': [fru, sup, car], 'PATCH *': (b: any) => ({ ...fru, ...b }) })
+    const r = await get('edit_shop_order').handler({ add: [{ name: 'manzanas', quantity: 1, unit: 'kg' }, { name: 'detergente' }] }, ctx(api))
+    expect(writes(calls)).toEqual([
+      { method: 'PATCH', path: '/shop-orders/of', body: { add: [{ name: 'manzanas', quantity: 1000, unit: 'g' }] } },
+      { method: 'PATCH', path: '/shop-orders/os', body: { add: [{ name: 'detergente' }] } },
+    ])
+    expect(r.summary).toMatch(/enlaces son los mismos/)
+  })
+
+  it('answers a pending choice and switches to home delivery with the address', async () => {
+    const { api, calls } = fakeApi({ 'GET /shop-orders': [fru, car], 'PATCH *': (b: any) => ({ ...car, ...b }) })
+    await get('edit_shop_order').handler({ choose: [{ item: 'jamón', option: 'serrano' }], shop: 'ben car', delivery: 'domicilio', address: 'C/ Real 1, Boadilla' }, ctx(api))
+    expect(writes(calls)).toEqual([
+      { method: 'PATCH', path: '/shop-orders/oc', body: { lines: [{ key: 'l1', choice: 'serrano' }], fulfilment: 'domicilio', address: 'C/ Real 1, Boadilla' } },
+    ])
+  })
+
+  it('does nothing without a prepared order', async () => {
+    const { api, calls } = fakeApi({ 'GET /shop-orders': [order({ status: 'sent' })] })
+    const r = await get('edit_shop_order').handler({ add: [{ name: 'manzanas' }] }, ctx(api))
+    expect(writes(calls)).toEqual([])
+    expect(r.summary).toMatch(/No hay pedidos preparados/)
   })
 })

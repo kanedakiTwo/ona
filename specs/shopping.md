@@ -16,6 +16,7 @@ Weekly shopping list and pantry stock management. Aggregates ingredients across 
 - The page shows progress: "X/Y comprados" and "Z en stock" with a green progress bar
 - A toggle "Mostrar en stock" reveals/hides items already in stock within the list view
 - If no menu exists for the week, the page shows an empty state with a CTA to generate one
+- Items carry their recipe notes (`notes`: "picada", "morada en juliana") and tiny buyable amounts no longer vanish (two cloves of garlic stay as a line when a shop sells garlic; pantry staples still drop). Items typed by hand with no amount are stored as 1 u with `quantitySource: 'default'` (the form starts empty) and get their aisle from the buy rules ("calabacín" → frutas y verduras). See [shop-orders.md](./shop-orders.md) → Buy rules.
 - A **Pedir a mis tiendas** card links to `/compra`, where ONA turns what's left for the next 7 days into one order per shop (frutería, carnicería, pescadería, súper) that the user sends from their own WhatsApp — see [Compra en mis tiendas](./shop-orders.md). Closing a shop order ticks its items as bought on this list.
 
 ## Item Model

@@ -69,6 +69,7 @@ Defined as classes in `globals.css`:
 - `.animate-float` — 6s vertical bob
 - `.animate-blob` — organic morphing border-radius
 - `.marquee` — horizontal scroll loop (used in social proof)
+- `.route-loading-bar` — the global loading state (`app/loading.tsx`): 2 px terracotta sweep fixed at `top: var(--safe-top)`, transparent for the first 300 ms, static under reduced motion. No splash or full-screen loaders: content shows as soon as it's ready (see [PWA](./pwa.md) → Loading)
 - Easings: `--ease-out-expo` `cubic-bezier(0.19, 1, 0.22, 1)` is the default for editorial
 - Motion library: [`motion/react`](https://motion.dev) is used for stagger, parallax (`useScroll`/`useTransform`), `layoutId` shared elements (active nav pill), and `AnimatePresence` (filter expansion)
 

@@ -11,7 +11,7 @@ Premium Progressive Web App layer that makes ONA feel like a native iOS/Android 
 - On Android the prompt uses the browser's native install flow (`beforeinstallprompt`)
 - On iOS Safari the bottom sheet shows visual instructions ("Toca compartir → Añadir a pantalla de inicio") since iOS doesn't fire `beforeinstallprompt`
 - If the user dismisses the prompt, it isn't shown again for 30 days; if the user installs the app, the prompt isn't shown again for 365 days
-- Once installed, the app launches in standalone mode (no browser chrome), with a custom splash screen, and the status bar tinted to match the active section
+- Once installed, the app launches in standalone mode (no browser chrome), with the OS static splash image (cream, see Asset Requirements), and the status bar tinted to match the active section
 
 ### Offline behavior (hybrid)
 
@@ -30,6 +30,11 @@ Premium Progressive Web App layer that makes ONA feel like a native iOS/Android 
 - Vertical scroll is preserved via `touchAction: pan-y`
 - The active-tab pill on the bottom nav animates between tabs using `layoutId`
 - All page navigation uses the View Transitions API (cross-fade between routes) when supported, with a `motion/react` `AnimatePresence` fallback for non-Chromium browsers
+
+### Loading
+
+- No animated splash: a full load (new tab, reload, PWA launch, link from WhatsApp) shows the page as soon as it's ready
+- While a route is still loading (`app/loading.tsx`), a 2 px terracotta bar sweeps along the top, just under the status bar. It only appears if loading takes more than 300 ms, so quick navigations show nothing; the page area stays cream and the nav stays visible and tappable. With reduced motion it's a static bar
 
 ### Haptic feedback
 
@@ -70,6 +75,7 @@ Premium Progressive Web App layer that makes ONA feel like a native iOS/Android 
 - `api-cache` keys responses by URL only (no `Authorization`), which is why its routes must be network-first and anchored on the API origin (`^<NEXT_PUBLIC_API_URL>/recipes|menu|shopping-list`). Workbox silently ignores a cross-origin regex that doesn't match at index 0, which is why the pre-2026-10-07 `/\/menu\/.*$/` rule cached only page shells and no API data. `scripts/verify-sw.mjs` runs in `postbuild` and fails the build if any `api-cache` route breaks either rule
 - Recipe images are cached cache-first with LRU eviction (200 entries / 30 days)
 - The app shell precache is invalidated on every deploy (Workbox versioning via `next-pwa`)
+- Until 2026-10-08 every full load showed a ~2.4 s ink-drop splash (`ClientSplash`, with the old "Ona" wordmark, also on the public Mimoia site) and `app/loading.tsx` was a full-screen takeover that hid the app and the nav on route changes; both removed, guarded by `e2e/no-splash.spec.ts` (no fixed full-viewport layer at z ≥ 100 on load or navigation)
 
 ## Asset Requirements (user-supplied)
 
@@ -153,6 +159,7 @@ The `.standalone-pt` utility class applies `padding-top: var(--safe-top)` so con
 - [apps/web/src/lib/pwa/sessionData.ts](../apps/web/src/lib/pwa/sessionData.ts) — `clearSessionData()`: wipes `api-cache` + the offline queue on session change
 - [apps/web/scripts/verify-sw.mjs](../apps/web/scripts/verify-sw.mjs) — post-build guard on the generated `sw.js`
 - [apps/web/src/lib/pwa/offlineQueue.ts](../apps/web/src/lib/pwa/offlineQueue.ts) — IndexedDB-backed mutation queue (idb-keyval), replay on `online` event
+- [apps/web/src/app/loading.tsx](../apps/web/src/app/loading.tsx) — global loading state: delayed 2 px top bar (`.route-loading-bar` in `globals.css`)
 - [apps/web/src/components/pwa/PageTransition.tsx](../apps/web/src/components/pwa/PageTransition.tsx) — View Transitions API + `motion/react` fallback
 - [apps/web/src/components/pwa/SwipeNavigator.tsx](../apps/web/src/components/pwa/SwipeNavigator.tsx) — pan-gesture swipe between bottom-tab routes
 - [apps/web/src/components/pwa/TransitionLink.tsx](../apps/web/src/components/pwa/TransitionLink.tsx) — `<Link>` wrapper that triggers a view transition

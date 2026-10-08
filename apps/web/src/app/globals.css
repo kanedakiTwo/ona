@@ -439,6 +439,54 @@ html, body {
   animation: pulse-soft 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
+/* ── Route loading bar (app/loading.tsx) ───────────
+   2 px terracotta sweep pinned under the status bar. Transparent for the
+   first 300 ms so quick navigations show nothing; never covers content. */
+
+.route-loading-bar {
+  position: fixed;
+  top: var(--safe-top);
+  left: 0;
+  right: 0;
+  z-index: 90;
+  height: 2px;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  animation: route-loading-in 200ms ease-out 300ms forwards;
+}
+
+.route-loading-bar::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 40%;
+  background: var(--color-terracotta);
+  transform: translateX(-100%);
+  animation: route-loading-sweep 1.2s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+@keyframes route-loading-in {
+  to { opacity: 1; }
+}
+
+@keyframes route-loading-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(250%); }
+}
+
+/* Reduced motion: a static, softer full-width bar (still after 300 ms). */
+@media (prefers-reduced-motion: reduce) {
+  .route-loading-bar::before {
+    animation: none;
+    width: 100%;
+    transform: none;
+    opacity: 0.5;
+  }
+}
+
 /* ── Hide scrollbar on filter rows ─────────────── */
 
 .scrollbar-none {

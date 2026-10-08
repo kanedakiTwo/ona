@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { motion } from "motion/react"
 import {
@@ -9,6 +9,7 @@ import {
   useRegenerateRecipeImage,
 } from "@/hooks/useRecipes"
 import { useUser } from "@/hooks/useUser"
+import { useIsDesktop } from "@/hooks/useMediaQuery"
 import { useAuth } from "@/lib/auth"
 import { FavoriteButton } from "@/components/recipes/FavoriteButton"
 import { CookedBadge } from "@/components/recipes/CookedBadge"
@@ -18,10 +19,16 @@ import { RecipePhotoGallery } from "@/components/recipes/RecipePhotoGallery"
 import { ServingsScaler } from "@/components/recipes/ServingsScaler"
 import { IngredientsSection } from "@/components/recipes/detail/IngredientsSection"
 import { useRecipeNotes, useSaveRecipeNotes } from "@/hooks/useRecipeNotes"
-import type { IngredientOverride } from "@ona/shared"
+import type { IngredientOverride, Recipe } from "@ona/shared"
 import { StepsSection } from "@/components/recipes/detail/StepsSection"
 import { NutritionCard } from "@/components/recipes/detail/NutritionCard"
-import { AllergensBadges } from "@/components/recipes/detail/AllergensBadges"
+import {
+  RecipeTabs,
+  recipePanelId,
+  recipeTabId,
+  type RecipeTab,
+} from "@/components/recipes/detail/RecipeTabs"
+import { RecipeActionBar } from "@/components/recipes/detail/RecipeActionBar"
 import { haptic } from "@/lib/pwa/haptics"
 import { share } from "@/lib/pwa/share"
 import {
@@ -30,6 +37,7 @@ import {
   Clock,
   ExternalLink,
   Pencil,
+  Play,
   Share2,
   Sparkles,
   Wrench,
@@ -37,17 +45,38 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import {
+  allergenLabel,
   householdToDinersOrNull,
+  minutesLabel,
   publicTagsOf,
+  recipeEyebrow,
+  recipeTotalMinutes,
   timelineString,
 } from "@/lib/recipeView"
-import { MEAL_LABELS, SEASON_LABELS } from "@/lib/labels"
+import { DIFFICULTY_LABELS, SEASON_LABELS } from "@/lib/labels"
 import { recipeSharePayload } from "@ona/shared"
+
+/**
+ * Recipe detail — "D · Luz y foto" (2026-10-08).
+ *
+ * Mobile (< lg): 390 px hero photo, cream sheet with eyebrow + title, a
+ * tablist (Ingredientes · Pasos · Nutrición · Notas) and a sticky bottom
+ * action bar with "Empezar a cocinar" (the bottom tab bar hides on this
+ * route). Desktop (lg+): two columns — sticky rounded photo on the left,
+ * long-scroll column on the right with every section in order.
+ *
+ * Both layouts render the same section blocks; only the chrome differs.
+ */
+
+type TabKey = "ingredientes" | "pasos" | "nutricion" | "notas"
+const TAB_KEYS: TabKey[] = ["ingredientes", "pasos", "nutricion", "notas"]
+const TAB_ID_PREFIX = "receta"
 
 export default function RecipeDetailPage() {
   const params = useParams<{ id: string }>()
   const router = useRouter()
   const { user } = useAuth()
+  const isDesktop = useIsDesktop()
 
   const [servings, setServings] = useState<number | null>(null)
   // Once we know the recipe's authored servings, the scaler "seeds" itself.
@@ -88,6 +117,27 @@ export default function RecipeDetailPage() {
   }, [notes?.minServings, servings])
   const overrides: IngredientOverride[] = notes?.ingredientOverrides ?? []
 
+  // ─── Tabs (mobile). The active tab mirrors the URL hash (#pasos, #notas…)
+  // so a reload or a shared link reopens the same section. ───
+  const [tab, setTab] = useState<TabKey>("ingredientes")
+  const tabsAnchorRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const fromHash = window.location.hash.slice(1) as TabKey
+    if (TAB_KEYS.includes(fromHash)) setTab(fromHash)
+  }, [])
+  const selectTab = (key: TabKey) => {
+    setTab(key)
+    const url = `${window.location.pathname}${window.location.search}${key === "ingredientes" ? "" : `#${key}`}`
+    window.history.replaceState(window.history.state, "", url)
+    // If the (sticky) tablist is stuck at the top, jump back to where the
+    // panels start so the new tab is read from its beginning.
+    const anchor = tabsAnchorRef.current
+    if (anchor) {
+      const top = anchor.getBoundingClientRect().top
+      if (top < 0) window.scrollTo({ top: window.scrollY + top })
+    }
+  }
+
   // ─── Derived state (must be declared before any early return so hook order is stable) ───
   const tags = useMemo(() => (recipe ? publicTagsOf(recipe) : []), [recipe])
   const timeLine = useMemo(() => {
@@ -115,11 +165,12 @@ export default function RecipeDetailPage() {
       )
     }
     return (
-      <div className="min-h-screen bg-[#FAF6EE]">
-        <div className="aspect-[4/3] w-full bg-[#EFE8D8] animate-pulse" />
-        <div className="px-5 pt-6 space-y-4">
-          <div className="h-8 w-3/4 bg-[#EFE8D8] rounded animate-pulse" />
-          <div className="h-4 w-1/2 bg-[#EFE8D8] rounded animate-pulse" />
+      <div className="min-h-screen bg-[#FAF6EE] lg:mx-auto lg:grid lg:max-w-[1280px] lg:grid-cols-2 lg:gap-10 lg:px-8 lg:pr-12 lg:pt-7">
+        <div className="h-[390px] w-full animate-pulse bg-[#EFE8D8] lg:h-[calc(100dvh-56px)] lg:rounded-[24px]" />
+        <div className="space-y-4 px-5 pt-6 lg:px-0 lg:pt-2">
+          <div className="h-3 w-1/3 animate-pulse rounded bg-[#EFE8D8]" />
+          <div className="h-8 w-3/4 animate-pulse rounded bg-[#EFE8D8] lg:h-12" />
+          <div className="h-4 w-1/2 animate-pulse rounded bg-[#EFE8D8]" />
         </div>
       </div>
     )
@@ -141,16 +192,12 @@ export default function RecipeDetailPage() {
     : null
   const img = cacheBust ?? fallbackImg
 
-  // The displayed servings on the heading & "Para X" caption: the live
-  // scaler value when seeded, falling back to the recipe's own value.
+  // The live scaler value when seeded, falling back to the recipe's own value.
   const displayServings = servings ?? recipe.servings
-
-  // Track which "chapter" eyebrow we're on so the page reads as a coherent
-  // narrative even when sections are conditionally rendered.
-  let chapter = 0
-  const nextChapter = (): string => {
-    chapter += 1
-    return String(chapter).padStart(2, "0")
+  const cookHref = `/recipes/${recipe.id}/cook?servings=${displayServings}`
+  const onServingsChange = (n: number) => {
+    scalerTouchedRef.current = true
+    setServings(n)
   }
 
   const handleShare = async () => {
@@ -160,319 +207,555 @@ export default function RecipeDetailPage() {
     await share(recipeSharePayload(recipe, typeof window !== "undefined" ? window.location.origin : ""))
   }
 
-  return (
-    <div className="bg-[#FAF6EE] min-h-screen lg:mx-auto lg:max-w-[1100px]">
-      {/* Hero image */}
-      <div className="relative">
-        <motion.div
-          initial={{ scale: 1.05 }}
-          animate={{ scale: 1 }}
-          transition={{ duration: 1.2, ease: [0.19, 1, 0.22, 1] }}
-          className="aspect-[4/3] overflow-hidden"
-        >
-          <img src={img} alt={recipe.name} className="h-full w-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-t from-[#1A1612]/40 via-transparent to-[#1A1612]/30" />
-        </motion.div>
+  const stepCount = recipe.steps?.length ?? 0
+  const hasNutrition = recipe.nutritionPerServing != null
+  const tabs: RecipeTab<TabKey>[] = [
+    { key: "ingredientes", label: "Ingredientes" },
+    { key: "pasos", label: stepCount > 0 ? `Pasos · ${stepCount}` : "Pasos" },
+    ...(hasNutrition ? [{ key: "nutricion" as const, label: "Nutrición" }] : []),
+    { key: "notas", label: "Notas" },
+  ]
+  const activeTab: TabKey = tab === "nutricion" && !hasNutrition ? "ingredientes" : tab
 
-        {/* Top bar */}
-        <div className="absolute inset-x-0 top-0 flex items-center justify-between px-4 pt-4">
-          <button
-            onClick={() => router.back()}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-[#FAF6EE]/90 text-[#1A1612] backdrop-blur-sm transition-transform active:scale-95"
-            aria-label="Volver"
+  // ─── Section blocks (shared by the mobile panels and the desktop column) ───
+
+  const servingsStepper = (
+    <ServingsScaler
+      variant="pill"
+      value={displayServings}
+      onChange={onServingsChange}
+      min={1}
+      max={12}
+    />
+  )
+
+  const ingredientsList =
+    recipe.ingredients?.length > 0 ? (
+      <IngredientsSection
+        variant="plain"
+        columns={isDesktop ? 2 : 1}
+        ingredients={recipe.ingredients as any}
+        targetServings={displayServings}
+        overrides={overrides}
+        onOverridesChange={
+          user
+            ? (next) => saveNotes.mutate({ ingredientOverrides: next })
+            : undefined
+        }
+        saving={saveNotes.isPending}
+      />
+    ) : (
+      <EmptyLine>Esta receta aún no tiene ingredientes.</EmptyLine>
+    )
+
+  const stepsBlock = (
+    <>
+      {timeLine && (
+        <p className="mb-5 flex items-center gap-1.5 text-[13px] text-[#4A4239]">
+          <Clock size={14} className="text-[#7A7066]" aria-hidden />
+          {timeLine}
+        </p>
+      )}
+      {stepCount > 0 ? (
+        <StepsSection
+          variant="plain"
+          steps={recipe.steps}
+          ingredients={recipe.ingredients ?? []}
+        />
+      ) : (
+        <EmptyLine>Esta receta aún no tiene pasos.</EmptyLine>
+      )}
+    </>
+  )
+
+  const extras = (
+    <RecipeExtras
+      recipe={recipe}
+      tags={tags}
+      headingAs={isDesktop ? "h2" : "h3"}
+    />
+  )
+  const hasExtras =
+    (recipe.equipment?.length ?? 0) > 0 ||
+    (recipe.allergens?.length ?? 0) > 0 ||
+    (recipe.seasons?.length ?? 0) > 0 ||
+    tags.length > 0
+
+  const nutritionBlock = recipe.nutritionPerServing ? (
+    <NutritionCard nutrition={recipe.nutritionPerServing} />
+  ) : null
+
+  const canEdit = !!user && (recipe.authorId === user.id || user.role === "admin")
+  const notesBlock = (
+    <div>
+      {/* Quick personal actions: log a cook, file it in a cookbook. */}
+      {user && (
+        <div className="flex flex-wrap items-center gap-2">
+          <CookedBadge recipeId={recipe.id} variant="button" className="min-h-11 px-4" />
+          <AddToCookbookButton recipeId={recipe.id} className="min-h-11 px-4" />
+        </div>
+      )}
+
+      {/* The recipe's own notes / tips / substitutions / storage. Notes are
+          persisted as a single text blob with paragraph breaks (`\n\n`);
+          legacy `tips` content is merged in beneath so nothing the author
+          typed disappears. */}
+      {(recipe.notes || recipe.tips || recipe.substitutions || recipe.storage) && (
+        <section className={`${user ? "mt-8" : ""} space-y-5`} aria-label="Notas de la receta">
+          {(recipe.notes || recipe.tips) && (
+            <div>
+              <div className="text-eyebrow mb-2 text-[#7A7066]">Notas de la receta</div>
+              <div className="space-y-2 text-[15px] leading-relaxed text-[#1A1612]">
+                {[recipe.notes, recipe.tips]
+                  .filter((v): v is string => !!v)
+                  .flatMap((blob) => blob.split(/\n{2,}/))
+                  .map((p) => p.trim())
+                  .filter((p) => p.length > 0)
+                  .map((p, i) => (
+                    <p key={i}>{p}</p>
+                  ))}
+              </div>
+            </div>
+          )}
+          {recipe.substitutions && (
+            <div>
+              <div className="text-eyebrow mb-2 text-[#7A7066]">Sustituciones</div>
+              <p className="text-[15px] leading-relaxed text-[#1A1612]">{recipe.substitutions}</p>
+            </div>
+          )}
+          {recipe.storage && (
+            <div>
+              <div className="text-eyebrow mb-2 text-[#7A7066]">Conservación</div>
+              <p className="text-[15px] leading-relaxed text-[#1A1612]">{recipe.storage}</p>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Tus notas: valoración, raciones mínimas, notas, sustituciones,
+          etiquetas propias — household-shared. */}
+      {user && <RecipeNotesSection recipeId={recipe.id} />}
+
+      {/* Household photo gallery — distinct from the hero shot. */}
+      {user && <RecipePhotoGallery recipeId={recipe.id} />}
+
+      {/* Author + admin: edit + regenerate-image affordances. Admins can
+          curate the whole catalogue so they see the same controls. */}
+      {user && canEdit && (
+        <section className="mt-10 flex flex-wrap items-center gap-3" aria-label="Tu receta">
+          <Link
+            href={`/recipes/${recipe.id}/edit`}
+            className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#DDD6C5] bg-[#F2EDE0] px-5 text-[12px] uppercase tracking-[0.12em] text-[#1A1612] transition-all hover:border-[#1A1612]"
           >
-            <ChevronLeft size={20} />
-          </button>
-          <div className="flex items-center gap-2">
+            <Pencil size={14} />
+            Editar receta
+          </Link>
+          {recipe.authorId === user.id && (
+            <RegenerateImageButton recipeId={recipe.id} userId={user.id} />
+          )}
+          {recipe.authorId !== user.id && user.role === "admin" && (
+            <span className="rounded-full bg-[#C65D38]/15 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-[#C65D38]">
+              Admin
+            </span>
+          )}
+        </section>
+      )}
+
+      {/* Non-author + non-admin: copy into "Mis recetas" to get an editable version. */}
+      {user && recipe.authorId !== user.id && user.role !== "admin" && (
+        <CopyToMineButton recipeId={recipe.id} />
+      )}
+
+      {!user && !(recipe.notes || recipe.tips || recipe.substitutions || recipe.storage) && (
+        <EmptyLine>Esta receta no tiene notas.</EmptyLine>
+      )}
+    </div>
+  )
+
+  const header = (
+    <RecipeHeader recipe={recipe} tags={tags} isDesktop={isDesktop} />
+  )
+
+  // ─── Desktop (lg+): sticky photo left, long-scroll column right ───
+  if (isDesktop) {
+    return (
+      <div className="mx-auto grid min-h-screen max-w-[1280px] grid-cols-2 items-start gap-10 bg-[#FAF6EE] pb-10 pl-8 pr-12 pt-7">
+        <div className="sticky top-7 h-[calc(100dvh-56px)] max-h-[960px] min-h-[480px] overflow-hidden rounded-[24px] bg-[#EFE8D8]">
+          <motion.img
+            initial={{ scale: 1.04 }}
+            animate={{ scale: 1 }}
+            transition={{ duration: 1.2, ease: [0.19, 1, 0.22, 1] }}
+            src={img}
+            alt={recipe.name}
+            className="h-full w-full object-cover"
+          />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#1A1612]/40 to-transparent" />
+          <Link
+            href="/recipes"
+            className="absolute left-4 top-4 flex h-11 items-center gap-1 rounded-full bg-[#FFFEFA] pl-2.5 pr-4 text-[14px] font-semibold text-[#1A1612] shadow-sm transition-transform active:scale-95"
+          >
+            <ChevronLeft size={20} aria-hidden />
+            Recetas
+          </Link>
+          <div className="pointer-events-none absolute bottom-5 left-5 text-[10px] uppercase tracking-[0.25em] text-[#FAF6EE]/85">
+            ONA · Receta
+          </div>
+        </div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15, duration: 0.6 }}
+          className="flex min-w-0 flex-col gap-[18px] pt-2"
+        >
+          {header}
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            <Link
+              href={cookHref}
+              className="flex h-[50px] items-center gap-2 rounded-full bg-[#1A1612] px-6 text-[16px] font-semibold text-[#FAF6EE] transition-colors hover:bg-[#2D6A4F]"
+            >
+              <Play size={16} fill="currentColor" strokeWidth={0} aria-hidden />
+              Empezar a cocinar
+            </Link>
             <button
+              type="button"
               onClick={handleShare}
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-[#FAF6EE]/90 text-[#1A1612] backdrop-blur-sm transition-transform active:scale-95"
               aria-label="Compartir receta"
+              className="flex h-[50px] w-[50px] items-center justify-center rounded-full border border-[#DDD6C5] bg-[#FFFEFA] text-[#1A1612] transition-colors hover:border-[#1A1612]"
             >
               <Share2 size={18} />
             </button>
             {user && (
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#FAF6EE]/90 backdrop-blur-sm">
-                <FavoriteButton
-                  recipeId={recipe.id}
-                  userId={user.id}
-                  isFavorite={recipe.is_favorite ?? false}
-                />
-              </div>
+              <FavoriteButton
+                recipeId={recipe.id}
+                userId={user.id}
+                isFavorite={recipe.is_favorite ?? false}
+                tone="ink"
+                className="relative flex h-[50px] w-[50px] items-center justify-center rounded-full border border-[#DDD6C5] bg-[#FFFEFA] transition-colors hover:border-[#1A1612]"
+              />
+            )}
+          </div>
+
+          <DesktopSection title="Ingredientes" aside={servingsStepper}>
+            {ingredientsList}
+          </DesktopSection>
+
+          <DesktopSection title="Preparación">{stepsBlock}</DesktopSection>
+
+          {hasExtras && <section className="border-t border-[#DDD6C5] pt-[18px]">{extras}</section>}
+
+          {nutritionBlock && (
+            <section className="border-t border-[#DDD6C5] pt-[18px]">{nutritionBlock}</section>
+          )}
+
+          <DesktopSection title="Notas">{notesBlock}</DesktopSection>
+        </motion.div>
+      </div>
+    )
+  }
+
+  // ─── Mobile / tablet (< lg): hero, tabs, sticky action bar ───
+  const panel = (key: TabKey, title: string, children: ReactNode) => (
+    <div
+      role="tabpanel"
+      id={recipePanelId(TAB_ID_PREFIX, key)}
+      aria-labelledby={recipeTabId(TAB_ID_PREFIX, key)}
+      hidden={activeTab !== key}
+      tabIndex={0}
+      className="pt-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1A1612]/20"
+    >
+      <h2 className="sr-only">{title}</h2>
+      {children}
+    </div>
+  )
+
+  return (
+    // Bottom room for the action bar: <main> already pads 80 px (pb-20, sized
+    // for the tab bar this route hides); 24 px more + the home-indicator
+    // inset clears the 84 px bar with a little air.
+    <div className="min-h-screen bg-[#FAF6EE] pb-[calc(var(--safe-bottom)+24px)] md:mx-auto md:max-w-[640px]">
+      {/* Hero photo */}
+      <div className="relative h-[390px] overflow-hidden bg-[#EFE8D8]">
+        <motion.img
+          initial={{ scale: 1.05 }}
+          animate={{ scale: 1 }}
+          transition={{ duration: 1.2, ease: [0.19, 1, 0.22, 1] }}
+          src={img}
+          alt={recipe.name}
+          className="h-full w-full object-cover"
+        />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-[#1A1612]/45 to-transparent" />
+
+        <div className="absolute inset-x-0 top-0 flex items-center justify-between px-4 pt-4">
+          <BackButton />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleShare}
+              aria-label="Compartir receta"
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-[#FFFEFA] text-[#1A1612] shadow-sm transition-transform active:scale-95"
+            >
+              <Share2 size={18} />
+            </button>
+            {user && (
+              <FavoriteButton
+                recipeId={recipe.id}
+                userId={user.id}
+                isFavorite={recipe.is_favorite ?? false}
+                tone="ink"
+                className="relative flex h-11 w-11 items-center justify-center rounded-full bg-[#FFFEFA] shadow-sm transition-transform active:scale-95"
+              />
             )}
           </div>
         </div>
 
-        <div className="pointer-events-none absolute bottom-6 left-4 text-[10px] uppercase tracking-[0.25em] text-[#FAF6EE]/80">
+        <div className="pointer-events-none absolute bottom-[44px] left-5 text-[10px] uppercase tracking-[0.25em] text-[#FAF6EE]/85">
           ONA · Receta
         </div>
       </div>
 
-      {/* Content */}
+      {/* Cream sheet */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3, duration: 0.7 }}
-        className="-mt-8 rounded-t-[28px] bg-[#FAF6EE] px-5 pb-12 pt-8 relative"
+        transition={{ delay: 0.2, duration: 0.6 }}
+        className="relative -mt-7 rounded-t-[24px] bg-[#FAF6EE] px-5 pt-5"
       >
-        {/* Editorial header */}
-        <div className="mb-6">
-          {recipe.meals?.length > 0 && (
-            <div className="text-eyebrow mb-3 text-[#C65D38]">
-              {recipe.meals
-                .map((m: string) => MEAL_LABELS[m as keyof typeof MEAL_LABELS] ?? m)
-                .join(" · ")}
+        {header}
+
+        <div ref={tabsAnchorRef} aria-hidden className="h-0" />
+        <RecipeTabs
+          tabs={tabs}
+          active={activeTab}
+          onChange={selectTab}
+          idPrefix={TAB_ID_PREFIX}
+          className="sticky top-[var(--safe-top)] z-20 -mx-5 mt-3 bg-[#FAF6EE] px-5"
+        />
+
+        {panel(
+          "ingredientes",
+          "Ingredientes",
+          <>
+            <div className="mb-1 flex items-center justify-between gap-3">
+              <span className="text-[14px] text-[#4A4239]">Para</span>
+              {servingsStepper}
             </div>
-          )}
-          <h1 className="font-display text-[2rem] leading-[1.05] tracking-tight text-[#1A1612]">
-            {recipe.name}
-          </h1>
-          {recipe.yieldText && (
-            <p className="mt-2 font-italic italic text-[14px] text-[#7A7066]">
-              Rinde {recipe.yieldText}
-            </p>
-          )}
-          {recipe.sourceUrl && (
-            <a
-              href={recipe.sourceUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-2 inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.12em] text-[#7A7066] transition-colors hover:text-[#C65D38]"
-            >
-              {recipe.sourceType === "youtube" ? (
-                <Youtube size={12} />
-              ) : (
-                <ExternalLink size={12} />
-              )}
-              Ver fuente
-              {recipe.sourceType === "youtube" ? " (vídeo)" : ""}
-            </a>
-          )}
-        </div>
-
-        {/* Meta row */}
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-3 border-y border-[#DDD6C5] py-4 text-[12px] text-[#4A4239]">
-          <ServingsScaler
-            value={displayServings}
-            onChange={(n) => {
-              scalerTouchedRef.current = true
-              setServings(n)
-            }}
-            min={1}
-            max={12}
-          />
-          {timeLine && (
-            <div className="flex items-center gap-1.5">
-              <Clock size={13} className="text-[#7A7066]" />
-              <span>{timeLine}</span>
-            </div>
-          )}
-          <CookedBadge recipeId={recipe.id} />
-          {recipe.seasons?.length > 0 && (
-            <div className="flex items-center gap-1.5">
-              <Sparkles size={13} className="text-[#7A7066]" />
-              <span>
-                {recipe.seasons
-                  .map((s: string) => SEASON_LABELS[s as keyof typeof SEASON_LABELS] ?? s)
-                  .join(" · ")}
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Tags (filtered) */}
-        {tags.length > 0 && (
-          <div className="mt-6 flex flex-wrap gap-1.5">
-            {tags.map((tag) => (
-              <span
-                key={tag}
-                className="rounded-full bg-[#F2EDE0] px-2.5 py-1 text-[10px] uppercase tracking-[0.1em] text-[#4A4239]"
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
+            {ingredientsList}
+            {hasExtras && <div className="mt-8">{extras}</div>}
+          </>,
         )}
-
-        {/* Ingredients */}
-        {recipe.ingredients?.length > 0 && (
-          <IngredientsSection
-            ingredients={recipe.ingredients as any}
-            targetServings={displayServings}
-            chapter={nextChapter()}
-            overrides={overrides}
-            onOverridesChange={
-              user
-                ? (next) => saveNotes.mutate({ ingredientOverrides: next })
-                : undefined
-            }
-            saving={saveNotes.isPending}
-          />
-        )}
-
-        {/* Steps */}
-        {recipe.steps?.length > 0 && (
-          <StepsSection
-            steps={recipe.steps}
-            ingredients={recipe.ingredients ?? []}
-            chapter={nextChapter()}
-            cookHref={`/recipes/${recipe.id}/cook?servings=${displayServings}`}
-          />
-        )}
-
-        {/* Equipment */}
-        {recipe.equipment != null && recipe.equipment.length > 0 && (
-          <section className="mt-12">
-            <div className="mb-4">
-              <div className="text-eyebrow text-[#7A7066]">Capítulo {nextChapter()}</div>
-              <h2 className="font-display text-[1.6rem] leading-tight text-[#1A1612]">
-                <span className="font-italic italic">Equipo</span>
-              </h2>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {recipe.equipment.map((tool) => (
-                <span
-                  key={tool}
-                  className="inline-flex items-center gap-1 rounded-full border border-[#DDD6C5] bg-[#FAF6EE] px-2.5 py-1 text-[11px] text-[#4A4239]"
-                >
-                  <Wrench size={10} className="text-[#7A7066]" />
-                  {tool}
-                </span>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* Allergens */}
-        {recipe.allergens != null && recipe.allergens.length > 0 && (
-          <AllergensBadges
-            allergens={recipe.allergens}
-            chapter={nextChapter()}
-          />
-        )}
-
-        {/* Nutrition */}
-        {recipe.nutritionPerServing != null && (
-          <NutritionCard
-            nutrition={recipe.nutritionPerServing}
-            chapter={nextChapter()}
-          />
-        )}
-
-        {/* Notes / substitutions / storage. The public detail payload from
-            /recipes/:id strips these per spec; they only show up on
-            author-edit / private views. We render defensively just in
-            case the server starts surfacing them.
-
-            Notes are persisted as a single text blob with paragraph breaks
-            (`\n\n`). Legacy `tips` content is merged in beneath the notes
-            ones (saves before the unification kept the split column) so
-            nothing the user typed disappears from the detail view. */}
-        {(recipe.notes || recipe.tips || recipe.substitutions || recipe.storage) && (
-          <section className="mt-12 space-y-6">
-            {(recipe.notes || recipe.tips) && (
-              <div>
-                <div className="text-eyebrow mb-2 text-[#7A7066]">Notas</div>
-                <div className="space-y-2 text-[14px] leading-relaxed text-[#1A1612]">
-                  {[recipe.notes, recipe.tips]
-                    .filter((v): v is string => !!v)
-                    .flatMap((blob) => blob.split(/\n{2,}/))
-                    .map((p) => p.trim())
-                    .filter((p) => p.length > 0)
-                    .map((p, i) => (
-                      <p key={i}>{p}</p>
-                    ))}
-                </div>
-              </div>
-            )}
-            {recipe.substitutions && (
-              <div>
-                <div className="text-eyebrow mb-2 text-[#7A7066]">Sustituciones</div>
-                <p className="text-[14px] leading-relaxed text-[#1A1612]">
-                  {recipe.substitutions}
-                </p>
-              </div>
-            )}
-            {recipe.storage && (
-              <div>
-                <div className="text-eyebrow mb-2 text-[#7A7066]">Conservación</div>
-                <p className="text-[14px] leading-relaxed text-[#1A1612]">
-                  {recipe.storage}
-                </p>
-              </div>
-            )}
-          </section>
-        )}
-
-        {/* CTA: cook mode */}
-        <section className="mt-14 rounded-2xl bg-[#1A1612] p-6 text-[#FAF6EE]">
-          <div className="text-eyebrow mb-2 text-[#95D5B2]">Modo cocina</div>
-          <p className="font-display text-xl leading-tight">
-            ¿Empezamos con <span className="font-italic italic">{recipe.name}</span>?
-          </p>
-          <div className="mt-5 flex flex-wrap items-center gap-3">
-            <Link
-              href={`/recipes/${recipe.id}/cook?servings=${displayServings}`}
-              className="inline-flex items-center gap-2 rounded-full bg-[#FAF6EE] px-5 py-2.5 text-[13px] font-medium text-[#1A1612] transition-all hover:gap-3 hover:bg-[#52B788]"
-            >
-              Empezar a cocinar
-            </Link>
-            <CookedBadge recipeId={recipe.id} variant="button" />
-            {user && <AddToCookbookButton recipeId={recipe.id} />}
-          </div>
-        </section>
-
-        {/* Notes / rating / substitutions (PR 7) — household-shared */}
-        {user && <RecipeNotesSection recipeId={recipe.id} />}
-
-        {/* Photo gallery (PR 8C) — household-shared, distinct from hero */}
-        {user && <RecipePhotoGallery recipeId={recipe.id} />}
-
-        {/* Author + admin: edit + regenerate-image affordances. Admins can
-            curate the whole catalogue (fix typos, add missing steps on ONA
-            recipes…) so they see the same controls as the original author. */}
-        {user && (recipe.authorId === user.id || user.role === 'admin') && (
-          <section className="mt-6 flex flex-wrap items-center gap-3">
-            <Link
-              href={`/recipes/${recipe.id}/edit`}
-              className="inline-flex items-center gap-2 rounded-full border border-[#DDD6C5] bg-[#F2EDE0] px-5 py-2.5 text-[12px] uppercase tracking-[0.12em] text-[#1A1612] transition-all hover:border-[#1A1612]"
-            >
-              <Pencil size={14} />
-              Editar receta
-            </Link>
-            {recipe.authorId === user.id && (
-              <RegenerateImageButton recipeId={recipe.id} userId={user.id} />
-            )}
-            {recipe.authorId !== user.id && user.role === 'admin' && (
-              <span className="rounded-full bg-[#C65D38]/15 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-[#C65D38]">
-                Admin
-              </span>
-            )}
-          </section>
-        )}
-
-        {/* Non-author + non-admin: "add to mine" affordance — copies the
-            recipe so the user can edit a personal version without touching
-            the original. */}
-        {user && recipe.authorId !== user.id && user.role !== 'admin' && (
-          <CopyToMineButton recipeId={recipe.id} />
-        )}
-
-        {/* Back to catalog */}
-        <Link
-          href="/recipes"
-          className="mt-10 flex items-center gap-2 text-[12px] text-[#7A7066] hover:text-[#1A1612]"
-        >
-          <ChevronLeft size={14} /> Volver al catálogo
-        </Link>
+        {panel("pasos", "Preparación", stepsBlock)}
+        {hasNutrition && panel("nutricion", "Nutrición", nutritionBlock)}
+        {panel("notas", "Notas", notesBlock)}
       </motion.div>
+
+      <RecipeActionBar cookHref={cookHref} />
     </div>
   )
 }
 
 /* ─────────────────────────────────────────────
-   Copy-to-mine button
+   Header: eyebrow · title · meta / source / cook history
    ───────────────────────────────────────────── */
+function RecipeHeader({
+  recipe,
+  tags,
+  isDesktop,
+}: {
+  recipe: Recipe
+  tags: string[]
+  isDesktop: boolean
+}) {
+  const eyebrow = recipeEyebrow(
+    { ...recipe, tags },
+    { withTimeAndDifficulty: !isDesktop },
+  )
+  const total = minutesLabel(recipeTotalMinutes(recipe))
+  const difficulty = recipe.difficulty ? DIFFICULTY_LABELS[recipe.difficulty] : ""
+  const kcal = recipe.nutritionPerServing?.kcal
+  const metaParts = [
+    total,
+    difficulty,
+    kcal != null && kcal > 0 ? `${Math.round(kcal)} kcal por ración` : "",
+  ].filter(Boolean)
+
+  return (
+    <div className={`flex flex-col ${isDesktop ? "gap-1.5" : "gap-1"}`}>
+      {eyebrow && (
+        <div
+          className={`${isDesktop ? "text-[12px]" : "text-[11px]"} font-semibold uppercase tracking-[0.16em] text-[#6E655B]`}
+          data-testid="recipe-eyebrow"
+        >
+          {eyebrow}
+        </div>
+      )}
+      <h1
+        className={`font-display font-semibold! text-[#1A1612] ${
+          isDesktop ? "text-[48px] leading-[1.02]" : "text-[30px] leading-[1.1]"
+        }`}
+      >
+        {recipe.name}
+      </h1>
+      {isDesktop && metaParts.length > 0 && (
+        <div className="mt-1 flex flex-wrap gap-x-[18px] gap-y-1 text-[15px] text-[#4A4239]">
+          {metaParts.map((p) => (
+            <span key={p}>{p}</span>
+          ))}
+        </div>
+      )}
+      <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 empty:hidden">
+        {recipe.yieldText && (
+          <span className="font-italic text-[14px] italic text-[#7A7066]">Rinde {recipe.yieldText}</span>
+        )}
+        {recipe.sourceUrl && (
+          <a
+            href={recipe.sourceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-h-8 items-center gap-1.5 text-[11px] uppercase tracking-[0.12em] text-[#7A7066] transition-colors hover:text-[#C65D38]"
+          >
+            {recipe.sourceType === "youtube" ? <Youtube size={12} /> : <ExternalLink size={12} />}
+            Ver fuente
+            {recipe.sourceType === "youtube" ? " (vídeo)" : ""}
+          </a>
+        )}
+        <CookedBadge recipeId={recipe.id} />
+      </div>
+    </div>
+  )
+}
+
+/* ─────────────────────────────────────────────
+   Equipo · Alérgenos · Temporada · Etiquetas
+   ───────────────────────────────────────────── */
+function RecipeExtras({
+  recipe,
+  tags,
+  headingAs,
+}: {
+  recipe: Recipe
+  tags: string[]
+  headingAs: "h2" | "h3"
+}) {
+  const H = headingAs
+  const headingCls = "mb-2.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#6E655B]"
+  const chip = "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[12px]"
+  const blocks: ReactNode[] = []
+
+  if (recipe.equipment?.length > 0) {
+    blocks.push(
+      <div key="equipo">
+        <H className={headingCls}>Equipo</H>
+        <div className="flex flex-wrap gap-1.5">
+          {recipe.equipment.map((tool) => (
+            <span key={tool} className={`${chip} border border-[#DDD6C5] bg-[#FFFEFA] text-[#4A4239]`}>
+              <Wrench size={11} className="text-[#7A7066]" aria-hidden />
+              {tool}
+            </span>
+          ))}
+        </div>
+      </div>,
+    )
+  }
+  if (recipe.allergens?.length > 0) {
+    blocks.push(
+      <div key="alergenos">
+        <H className={headingCls}>Alérgenos</H>
+        <div className="flex flex-wrap gap-1.5">
+          {recipe.allergens.map((a) => (
+            <span key={a} className={`${chip} bg-[#FDEEE8] font-medium text-[#B5451B]`}>
+              {allergenLabel(a)}
+            </span>
+          ))}
+        </div>
+      </div>,
+    )
+  }
+  if (recipe.seasons?.length > 0) {
+    blocks.push(
+      <div key="temporada">
+        <H className={headingCls}>Temporada</H>
+        <p className="flex items-center gap-1.5 text-[14px] text-[#4A4239]">
+          <Sparkles size={13} className="text-[#7A7066]" aria-hidden />
+          {recipe.seasons
+            .map((s: string) => SEASON_LABELS[s as keyof typeof SEASON_LABELS] ?? s)
+            .join(" · ")}
+        </p>
+      </div>,
+    )
+  }
+  if (tags.length > 0) {
+    blocks.push(
+      <div key="etiquetas">
+        <H className={headingCls}>Etiquetas</H>
+        <div className="flex flex-wrap gap-1.5">
+          {tags.map((tag) => (
+            <span
+              key={tag}
+              className="rounded-full bg-[#F2EDE0] px-2.5 py-1 text-[11px] uppercase tracking-[0.1em] text-[#4A4239]"
+            >
+              {tag}
+            </span>
+          ))}
+        </div>
+      </div>,
+    )
+  }
+  if (blocks.length === 0) return null
+  return <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-x-8">{blocks}</div>
+}
+
+function DesktopSection({
+  title,
+  aside,
+  children,
+}: {
+  title: string
+  aside?: ReactNode
+  children: ReactNode
+}) {
+  return (
+    <section className="border-t border-[#DDD6C5] pt-[18px]">
+      <div className="mb-3 flex items-center justify-between gap-4">
+        <h2 className="font-display text-[1.75rem] leading-tight text-[#1A1612]">
+          <span className="font-italic italic">{title}</span>
+        </h2>
+        {aside}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function EmptyLine({ children }: { children: ReactNode }) {
+  return <p className="py-4 text-[14px] italic text-[#7A7066]">{children}</p>
+}
+
+/**
+ * Hero back button. Goes back in history when the user arrived from inside
+ * the app (menu, catalogue, cookbook…); a link opened cold (WhatsApp, a new
+ * tab) has nothing to go back to, so it falls through to the catalogue.
+ */
+function BackButton() {
+  const router = useRouter()
+  return (
+    <Link
+      href="/recipes"
+      onClick={(e) => {
+        if (window.history.length > 1) {
+          e.preventDefault()
+          router.back()
+        }
+      }}
+      aria-label="Volver"
+      className="flex h-11 w-11 items-center justify-center rounded-full bg-[#FFFEFA] text-[#1A1612] shadow-sm transition-transform active:scale-95"
+    >
+      <ChevronLeft size={20} aria-hidden />
+    </Link>
+  )
+}
+
 /* ─────────────────────────────────────────────
    Regenerate image button (author-only)
    ───────────────────────────────────────────── */
@@ -494,7 +777,7 @@ function RegenerateImageButton({
         type="button"
         onClick={() => regen.mutate()}
         disabled={regen.isPending || exhausted}
-        className="inline-flex items-center gap-2 rounded-full border border-[#DDD6C5] bg-[#F2EDE0] px-5 py-2.5 text-[12px] uppercase tracking-[0.12em] text-[#1A1612] transition-all hover:border-[#1A1612] disabled:cursor-not-allowed disabled:opacity-40"
+        className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#DDD6C5] bg-[#F2EDE0] px-5 text-[12px] uppercase tracking-[0.12em] text-[#1A1612] transition-all hover:border-[#1A1612] disabled:cursor-not-allowed disabled:opacity-40"
       >
         <Sparkles size={14} />
         {regen.isPending ? "Generando…" : "Regenerar imagen"}
@@ -513,12 +796,15 @@ function RegenerateImageButton({
   )
 }
 
+/* ─────────────────────────────────────────────
+   Copy-to-mine button
+   ───────────────────────────────────────────── */
 function CopyToMineButton({ recipeId }: { recipeId: string }) {
   const router = useRouter()
   const copy = useCopyRecipe()
   const [error, setError] = useState<string | null>(null)
   return (
-    <section className="mt-6 flex flex-col gap-2">
+    <section className="mt-8 flex flex-col gap-2">
       <button
         type="button"
         onClick={() => {
@@ -526,15 +812,15 @@ function CopyToMineButton({ recipeId }: { recipeId: string }) {
           copy.mutate(recipeId, {
             onSuccess: (created) => router.push(`/recipes/${created.id}`),
             onError: (err: any) => {
-              setError(err?.message ?? 'No se pudo copiar la receta.')
+              setError(err?.message ?? "No se pudo copiar la receta.")
             },
           })
         }}
         disabled={copy.isPending}
-        className="inline-flex items-center gap-2 self-start rounded-full border border-[#DDD6C5] bg-[#F2EDE0] px-5 py-2.5 text-[12px] uppercase tracking-[0.12em] text-[#1A1612] transition-all hover:border-[#1A1612] disabled:cursor-not-allowed disabled:opacity-40"
+        className="inline-flex min-h-11 items-center gap-2 self-start rounded-full border border-[#DDD6C5] bg-[#F2EDE0] px-5 text-[12px] uppercase tracking-[0.12em] text-[#1A1612] transition-all hover:border-[#1A1612] disabled:cursor-not-allowed disabled:opacity-40"
       >
         <BookmarkPlus size={14} />
-        {copy.isPending ? 'Añadiendo…' : 'Añadir a mis recetas'}
+        {copy.isPending ? "Añadiendo…" : "Añadir a mis recetas"}
       </button>
       {error && <p className="text-[12px] italic text-[#C65D38]">{error}</p>}
     </section>

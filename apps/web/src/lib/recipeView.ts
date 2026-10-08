@@ -5,7 +5,8 @@
  */
 
 import { householdToDiners } from "@ona/shared"
-import type { Recipe, RecipeIngredient, Unit, HouseholdSize } from "@ona/shared"
+import type { Recipe, RecipeIngredient, Unit, HouseholdSize, Meal, Difficulty } from "@ona/shared"
+import { DIFFICULTY_LABELS, MEAL_LABELS } from "./labels"
 
 // ─── Tag visibility ────────────────────────────────────────────────
 
@@ -55,6 +56,63 @@ export function timelineString(opts: {
   if (opts.activeTime != null && opts.activeTime > 0) parts.push(`Activo ${opts.activeTime}'`)
   if (opts.totalTime != null && opts.totalTime > 0) parts.push(`Total ${opts.totalTime}'`)
   return parts.join(" · ")
+}
+
+// ─── Recipe detail header ("Comida o cena · Verduras · 41 min · Fácil") ──
+
+/** ['lunch', 'dinner'] → "Comida o cena"; three or more → "Desayuno, comida o cena". */
+export function mealsPhrase(meals: readonly string[] | null | undefined): string {
+  const labels = (meals ?? []).map((m) => MEAL_LABELS[m as Meal] ?? m)
+  if (labels.length === 0) return ""
+  const [first, ...rest] = labels
+  const tail = rest.map((l) => l.toLowerCase())
+  if (tail.length === 0) return first
+  return `${[first, ...tail.slice(0, -1)].join(", ")} o ${tail[tail.length - 1]}`
+}
+
+/** 41 → "41 min"; 90 → "1 h 30 min"; 120 → "2 h". Empty for missing / 0. */
+export function minutesLabel(min: number | null | undefined): string {
+  if (min == null || !(min > 0)) return ""
+  const h = Math.floor(min / 60)
+  const m = Math.round(min % 60)
+  if (h === 0) return `${m} min`
+  return m === 0 ? `${h} h` : `${h} h ${m} min`
+}
+
+/** Total time the detail header shows: `totalTime`, else prep + cook. */
+export function recipeTotalMinutes(r: { totalTime?: number | null; prepTime?: number | null; cookTime?: number | null }): number | null {
+  if (r.totalTime != null && r.totalTime > 0) return r.totalTime
+  const sum = (r.prepTime ?? 0) + (r.cookTime ?? 0)
+  return sum > 0 ? sum : null
+}
+
+/**
+ * Eyebrow over the recipe title. Mobile packs everything in
+ * ("Comida o cena · Verduras · 41 min · Fácil"); desktop keeps meals +
+ * category and moves time / difficulty to its own meta line.
+ */
+export function recipeEyebrow(
+  r: {
+    meals?: readonly string[] | null
+    tags?: string[] | null
+    internalTags?: string[] | null
+    totalTime?: number | null
+    prepTime?: number | null
+    cookTime?: number | null
+    difficulty?: string | null
+  },
+  opts: { withTimeAndDifficulty: boolean },
+): string {
+  const category = publicTagsOf(r)[0]
+  const parts = [
+    mealsPhrase(r.meals),
+    category ? category.charAt(0).toUpperCase() + category.slice(1) : "",
+  ]
+  if (opts.withTimeAndDifficulty) {
+    parts.push(minutesLabel(recipeTotalMinutes(r)))
+    parts.push(r.difficulty ? DIFFICULTY_LABELS[r.difficulty as Difficulty] ?? "" : "")
+  }
+  return parts.filter(Boolean).join(" · ")
 }
 
 // ─── Ingredient grouping by section ────────────────────────────────

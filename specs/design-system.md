@@ -93,7 +93,7 @@ The `.standalone-pt` utility applies `padding-top: var(--safe-top)` so content d
 - `/` (landing) — hero with parallax, magnetic CTA ("Quiero mi semana pensada", smooth-scrolls in place to the waitlist so `?invita=`/`?ref=` stay in the URL), masonry steps, marquee, a **waitlist section** before the final CTA (`components/waitlist/WaitlistSection.tsx`, `#lista-de-espera`: cream bg, eyebrow "Lista de espera · Mimoia", `text-editorial-lg` headline with terracotta italic, form in a `rounded-[28px]` paper card with `.input-editorial` fields, `.chip-filter` one-tap answers as `role="radio"` buttons, accent-forest checkboxes, ink pill submit; success state with `ReferralShare` — link field + "Copiar enlace" ink pill + "Enviar por WhatsApp" outline pill — see [Waitlist](./waitlist.md)), and a counter showing the **real** size of the public catalogue (`X-Total-Count` of anonymous `GET /recipes`; hidden if unreadable). Until 2026-10-07 it animated to a made-up "2.847 personas"
 - `/como-funciona` — accordion FAQ, step images
 - `/recipes` — beige bg, sticky search, expandable filter sheet, editorial header with rust italic
-- `/recipes/[id]` — large hero photo with cream sheet, dotted ingredient list, monospace quantities, "Capitulo 01/02" eyebrow labels
+- `/recipes/[id]` — "D · Luz y foto" (2026-10-08): 390 px hero with back/share/favorite on 44 px `bg-paper` circles, cream sheet (`rounded-t-[24px]`, −28 px overlap), 11 px uppercase eyebrow + Fraunces title (30 px, semibold), underline tablist `RecipeTabs` (15 px, ink 2 px bar on the selected tab, sticky), pill servings stepper (`ServingsScaler variant="pill"`), dashed 16 px ingredient rows with JetBrains 13 px quantities, solid terracotta step numbers, and a sticky paper action bar `RecipeActionBar` (84 px, `border-border-soft` top, ink pill "Empezar a cocinar"). At `lg+`: 50/50 split, sticky `rounded-[24px]` photo with a "← Recetas" paper pill, 48 px title, ink pill + outline 50 px circles, Fraunces/Cormorant italic section heads with `border-t` dividers. No more "Capítulo NN" eyebrows on the private detail (the public `/recipes-ona/[id]` keeps them)
 - `Footer` — `bg-ink` (`#1A1612`) with cream text, big editorial CTA before links ("Únete a la lista de espera" pre-launch)
 - `PublicNavbar` — transparent over hero, beige/blur after scroll, mobile menu uses `font-display` 3xl; its primary pill is "Lista de espera" (mobile: "Únete a la lista de espera") → `/#lista-de-espera` (scrolls in place on `/`)
 - `/lista/[code]` (waitlist owner page) and `/lista/baja` (opt-out) — cream page, eyebrow with `BRAND_NAME`, `text-editorial-lg` headline, paper card
@@ -113,7 +113,7 @@ These have not been migrated to the editorial system yet:
 
 - App routes: `<main className="mx-auto max-w-[430px] pb-20">` (mobile-only canvas, leaves room for fixed bottom nav)
 - Public routes: full-width with internal `max-w-7xl` (~1280px) editorial composition
-- Public routes have their own top `PublicNavbar`; the bottom `Navbar` only renders for authenticated app routes
+- Public routes have their own top `PublicNavbar`; the bottom `Navbar` only renders for authenticated app routes, and hides itself on `/recipes/[id]` (that page's sticky action bar takes its place; the page pads its bottom for it)
 
 ## Iconography
 
@@ -183,7 +183,7 @@ ONA supports a desktop layout at `md+` (≥768 px) and bespoke multi-column page
 
 ### Pragmatic scope vs original plan
 
-The migration (June 2026) shipped the chasis (sidebar at `md+`, container caps) + the `/recipes` 3-col catalogue shell + the Vista Semana 7-col grid + page-by-page container widening at `lg+`. The original plan ([docs/superpowers/specs/2026-06-01-responsive-desktop-design.md](../docs/superpowers/specs/2026-06-01-responsive-desktop-design.md)) also called for bespoke per-page splits (38/62 recipe detail with sticky hero, 40/60 form layouts, vertical day-strip + preview rail, sidebar + 3-col aisle grid on `/shopping`, `/profile` tabs shell, `/advisor` side panel). Those bespoke layouts were deferred to follow-up polish PRs — the foundational responsive win is delivered without them, and the editorial splits can land iteratively as taste decisions allow.
+The migration (June 2026) shipped the chasis (sidebar at `md+`, container caps) + the `/recipes` 3-col catalogue shell + the Vista Semana 7-col grid + page-by-page container widening at `lg+`. The original plan ([docs/superpowers/specs/2026-06-01-responsive-desktop-design.md](../docs/superpowers/specs/2026-06-01-responsive-desktop-design.md)) also called for bespoke per-page splits (38/62 recipe detail with sticky hero, 40/60 form layouts, vertical day-strip + preview rail, sidebar + 3-col aisle grid on `/shopping`, `/profile` tabs shell, `/advisor` side panel). The recipe-detail split **shipped on 2026-10-08** as a 50/50 grid with a sticky photo (redesign "D", see `/recipes/[id]` above); the other bespoke layouts are still deferred to follow-up polish PRs — the foundational responsive win is delivered without them, and the editorial splits can land iteratively as taste decisions allow.
 
 ## Source
 

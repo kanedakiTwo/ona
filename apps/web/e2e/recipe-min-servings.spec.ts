@@ -17,6 +17,8 @@ test('mark a recipe as "always cook at least N"', async ({ page }) => {
   const [recipe] = await list.json()
   await page.goto(`/recipes/${recipe.id}`)
 
+  // "Tus notas" (and its Raciones mínimas) live in the detail's Notas tab.
+  await page.getByRole('tab', { name: /^notas$/i }).click()
   await page.getByRole('button', { name: /siempre la cocino para más gente/i }).click()
   await expect(page.getByTestId('min-servings-value')).toHaveText('4')
   await page.getByRole('button', { name: 'Una ración más' }).click()
@@ -24,8 +26,15 @@ test('mark a recipe as "always cook at least N"', async ({ page }) => {
   await expect(page.getByTestId('min-servings-value')).toHaveText('6')
 
   await page.reload()
+  // The open tab survives the reload (#notas in the URL).
+  await expect(page.getByRole('tab', { name: /^notas$/i })).toHaveAttribute('aria-selected', 'true', { timeout: 15_000 })
   await expect(page.getByTestId('min-servings-value')).toHaveText('6', { timeout: 15_000 })
   await expect(page.getByText(/compra para 6 cada vez/i)).toBeVisible()
+  // …and the servings stepper (Ingredientes tab) starts there, not at the
+  // household's 1 diner.
+  await page.getByRole('tab', { name: /^ingredientes$/i }).click()
+  await expect(page.getByTestId('servings-value')).toHaveText('6 raciones')
+  await page.getByRole('tab', { name: /^notas$/i }).click()
 
   await page.getByRole('button', { name: 'Quitar' }).last().click()
   await expect(page.getByRole('button', { name: /siempre la cocino para más gente/i })).toBeVisible()

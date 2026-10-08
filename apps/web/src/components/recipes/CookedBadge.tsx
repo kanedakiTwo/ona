@@ -19,6 +19,8 @@ interface Props {
   meal?: string | null
   /** Render variant. `pill` = meta-row badge; `button` = standalone CTA. */
   variant?: "pill" | "button"
+  /** `button` only: extra classes (e.g. a 44 px min height on the recipe detail). */
+  className?: string
 }
 
 function formatLast(d: string | null): string | null {
@@ -30,7 +32,7 @@ function formatLast(d: string | null): string | null {
   }
 }
 
-export function CookedBadge({ recipeId, menuId, dayIndex, meal, variant = "pill" }: Props) {
+export function CookedBadge({ recipeId, menuId, dayIndex, meal, variant = "pill", className = "" }: Props) {
   const { data, isLoading } = useRecipeCookStats(recipeId)
   const record = useRecordCook()
 
@@ -53,7 +55,7 @@ export function CookedBadge({ recipeId, menuId, dayIndex, meal, variant = "pill"
         type="button"
         onClick={onClick}
         disabled={record.isPending}
-        className="inline-flex items-center gap-1.5 rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-3 py-1.5 text-[11px] uppercase tracking-[0.1em] text-[#7A7066] transition-all hover:border-[#2D6A4F] hover:text-[#2D6A4F] disabled:opacity-50"
+        className={`inline-flex items-center gap-1.5 rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-3 py-1.5 text-[11px] uppercase tracking-[0.1em] text-[#7A7066] transition-all hover:border-[#2D6A4F] hover:text-[#2D6A4F] disabled:opacity-50 ${className}`}
         aria-label="Marcar como cocinada"
       >
         <ChefHat size={12} />

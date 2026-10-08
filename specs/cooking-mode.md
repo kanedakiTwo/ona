@@ -4,7 +4,7 @@ Hands-free, fullscreen step-by-step cooking experience driven from a recipe.
 
 ## User Capabilities
 
-- Users can enter cooking mode from any recipe detail view via a "Empezar a cocinar" button
+- Users can enter cooking mode from any recipe detail view via the "Empezar a cocinar" button (sticky bottom action bar on mobile, action row on desktop)
 - Cooking mode opens fullscreen, hides bottom navigation, and keeps the screen on while active (Wake Lock)
 - Users see one preparation step at a time, in large readable type
 - Users can swipe (or tap arrows) to advance to the next step or go back

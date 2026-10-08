@@ -1,10 +1,10 @@
 /**
  * Flow: record a cook from the recipe detail page → see the count update.
  *
- * The "Cocinada" CTA next to "Empezar a cocinar" POSTs to /cook-logs and
- * invalidates the per-recipe stats query, so the same button re-renders as
- * "Cocinada 1×". This spec is the regression for PR 6 — without the new
- * cook-log surface, the button wouldn't exist at all.
+ * The "Cocinada" CTA (Notas tab of the detail since the 2026-10-08 redesign)
+ * POSTs to /cook-logs and invalidates the per-recipe stats query, so the same
+ * button re-renders as "Cocinada 1×". This spec is the regression for PR 6 —
+ * without the cook-log surface, the button wouldn't exist at all.
  */
 
 import { test, expect } from '@playwright/test'
@@ -27,13 +27,13 @@ test('recipe detail: marking cooked increments the count', async ({ page }) => {
   await expect(card).toBeVisible({ timeout: 10_000 })
   await Promise.all([page.waitForURL(/\/recipes\/[0-9a-f-]{36}(\?|$)/), card.click()])
 
-  // The detail page has two "Empezar a cocinar" links (inline in the
-  // Preparación header + the bottom "Modo cocina" CTA). The "Cocinada"
-  // button lives in the Modo cocina section, so scope everything to it.
-  const cookSection = page.locator('section').filter({ hasText: 'Modo cocina' })
-  await expect(cookSection.getByRole('link', { name: /^empezar a cocinar$/i })).toBeVisible({
-    timeout: 10_000,
-  })
+  // "Empezar a cocinar" lives in the sticky bottom action bar; the
+  // "Cocinada" button lives in the Notas tab, so open it and scope to it.
+  await expect(
+    page.getByTestId('recipe-action-bar').getByRole('link', { name: /^empezar a cocinar$/i }),
+  ).toBeVisible({ timeout: 10_000 })
+  await page.getByRole('tab', { name: /^notas$/i }).click()
+  const cookSection = page.getByRole('tabpanel', { name: /notas/i })
 
   // The button's accessible name is its aria-label ("Marcar como cocinada");
   // the visible text carries the count.

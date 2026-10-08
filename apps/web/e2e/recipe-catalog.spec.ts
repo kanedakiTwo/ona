@@ -38,10 +38,13 @@ test('catalog renders + detail page opens for the first card', async ({ page }) 
     cards.first().click(),
   ])
 
-  // On the detail view, both required parts of the recipe shape render as
-  // section headings.
-  await expect(page.getByRole('heading', { name: /ingredientes/i })).toBeVisible({
-    timeout: 10_000,
-  })
-  await expect(page.getByRole('heading', { name: /preparaci/i })).toBeVisible()
+  // On the detail view, both required parts of the recipe shape render — on
+  // mobile as the Ingredientes (default) and Pasos tabs, each with rows.
+  const ingTab = page.getByRole('tab', { name: /^ingredientes$/i })
+  await expect(ingTab).toHaveAttribute('aria-selected', 'true', { timeout: 10_000 })
+  await expect(
+    page.getByRole('tabpanel', { name: /ingredientes/i }).getByRole('listitem').first(),
+  ).toBeVisible()
+  await page.getByRole('tab', { name: /^pasos/i }).click()
+  await expect(page.getByRole('tabpanel', { name: /pasos/i }).getByRole('listitem').first()).toBeVisible()
 })

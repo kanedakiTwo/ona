@@ -4,7 +4,8 @@ import type { NutritionPerServing } from "@ona/shared"
 
 interface Props {
   nutrition: NutritionPerServing
-  chapter: string
+  /** "Capítulo NN" eyebrow. Omit (private detail) for a bare block with no top margin. */
+  chapter?: string
 }
 
 function fmt(v: number): string {
@@ -15,9 +16,9 @@ export function NutritionCard({ nutrition, chapter }: Props) {
   const { kcal, proteinG, carbsG, fatG, fiberG, saltG } = nutrition
 
   return (
-    <section className="mt-12">
+    <section className={chapter ? "mt-12" : ""}>
       <div className="mb-5">
-        <div className="text-eyebrow text-[#7A7066]">Capítulo {chapter}</div>
+        {chapter && <div className="text-eyebrow text-[#7A7066]">Capítulo {chapter}</div>}
         <h2 className="font-display text-[1.6rem] leading-tight text-[#1A1612]">
           <span className="font-italic italic">Nutrición</span> por ración
         </h2>

@@ -11,7 +11,7 @@ Household-shared named recipe collections. The lightweight equivalent of Paprika
 - Rename / re-emoji / re-describe an existing cookbook. Delete a cookbook (recipes stay; only the grouping disappears).
 - Browse cookbooks at `/profile/cookbooks` → list with cover emoji + recipe counts.
 - Drill into `/cookbooks/[id]` to see the recipes inside as photo cards (2-col grid). Inline edit + delete from the same page.
-- From any recipe detail page, the "Añadir a recetario" button opens a bottom-sheet picker: tap an existing cookbook to toggle membership, or create a new one on the spot.
+- From any recipe detail page, the "Añadir a recetario" button (top of the Notas tab / section) opens a bottom-sheet picker: tap an existing cookbook to toggle membership, or create a new one on the spot.
 
 ## Data Model
 
@@ -94,5 +94,5 @@ All routes are auth-only + household-scoped. Any household member can read or wr
 - `apps/web/src/app/profile/cookbooks/page.tsx`
 - `apps/web/src/app/cookbooks/[id]/page.tsx`
 - `apps/web/src/components/recipes/AddToCookbookButton.tsx`
-- `apps/web/src/app/recipes/[id]/page.tsx` (wired into the cook-mode CTA section)
+- `apps/web/src/app/recipes/[id]/page.tsx` (wired into the Notas tab / section)
 - `apps/web/src/app/profile/page.tsx` (link button)

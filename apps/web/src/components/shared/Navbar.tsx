@@ -19,7 +19,7 @@ export default function Navbar() {
   const { user } = useAuth()
   const pathname = usePathname()
 
-  if (!user) return null
+  if (!user || /^\/recipes\/(?!new\/?$)[^/]+\/?$/.test(pathname)) return null // recipe detail has its own action bar
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 pb-[max(env(safe-area-inset-bottom),12px)] md:hidden">

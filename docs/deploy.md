@@ -81,7 +81,7 @@ scripts/smoke-remote.sh https://ona-api-staging.up.railway.app https://ona-web-s
 
 `--wait` waits for each new deployment to report `SUCCESS` (exit 1 on `FAILED`/`CRASHED` or after 15 min). `smoke-remote.sh` runs the production smoke checks; `--deep` also registers a user, generates the week's menu and reads the shopping list, and refuses to run against production.
 
-**Nightly Taller (ONA HQ, D-017).** The routine "Mimoia HQ · Taller" (00:00 Madrid) merges the backlog tasks Miguel marked `lista` and deploys them: staging → deep smoke → production → smoke, rolling production back to the previous commit (`scripts/deploy.sh --allow-behind`) and reverting the merge if the production smoke fails. It uses two Railway project tokens (`taller-staging`, `taller-production`, one per environment), held only in the Taller's cloud environment. The protocol lives in `kanedakiTwo/ona-hq` → `loops/taller.md`.
+**Nightly Taller (ONA HQ, D-018).** The routine "Mimoia HQ · Taller" (00:00 Madrid) merges the backlog tasks Miguel marked `lista` and deploys them: staging → deep smoke → production → smoke, rolling production back to the previous commit (`scripts/deploy.sh --allow-behind`) and reverting the merge if the production smoke fails. It uses two Railway project tokens (`taller-staging`, `taller-production`, one per environment), held only in the Taller's cloud environment. The protocol lives in `kanedakiTwo/ona-hq` → `loops/taller.md`.
 
 ## Required env vars
 

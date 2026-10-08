@@ -49,7 +49,8 @@ function setup(overrides: {
   history?: HistoryRow[]
   recentLinkHint?: boolean
   allowed?: boolean
-  chatReply?: { message: string; uiHint?: string; data?: unknown }
+  chatReply?: { message: string; uiHint?: string; data?: unknown; toolsUsed?: string[] }
+  menuDigest?: InboundDeps['menuDigest']
   transcribe?: InboundDeps['transcribe']
   importRecipeFromImage?: InboundDeps['importRecipeFromImage']
   sendFails?: boolean
@@ -105,6 +106,7 @@ function setup(overrides: {
     recordUsage,
     transcribe: overrides.transcribe,
     importRecipeFromImage: overrides.importRecipeFromImage,
+    menuDigest: overrides.menuDigest,
   }
   return { deps, sent, outbound, inboundUpdates, chat, recordUsage, historyUserIds, setNotify, checkBudget }
 }
@@ -454,5 +456,56 @@ describe('processInbound — control words (BAJA / ALTA / HUMANO)', () => {
     const t = setup({ outboundKinds: new Map([['optin_prompt', new Date(NOW.getTime() - 120_000)], ['weekly_nudge', new Date(NOW.getTime() - 60_000)]]) })
     await processInbound(msg({ text: 'No, gracias' }), t.deps)
     expect(t.chat).toHaveBeenCalled()
+  })
+})
+
+
+describe('processInbound — the reply carries the menu / list, not just a link (2026-10-08)', () => {
+  const MENU_TEXT = '*Tu semana del 12 al 18 de octubre* (comida · cena)\n*Lun* Lentejas · Crema'
+  const textOf = (sent: OutboundMessage[]) => sent.map((m) => m.text).join('\n')
+
+  it('after generating the week, the digest goes between the model text and the app link', async () => {
+    const menuDigest = vi.fn(async () => MENU_TEXT)
+    const t = setup({
+      chatReply: { message: 'Hecho:\n- Menú de la semana listo', uiHint: 'menu', data: { id: 'm-9', days: [] }, toolsUsed: ['generate_weekly_menu'] },
+      menuDigest,
+    })
+    await processInbound(msg({ text: 'genera el menú de la semana' }), t.deps)
+    expect(menuDigest).toHaveBeenCalledWith('user-1', 'm-9')
+    const text = textOf(t.sent)
+    expect(text.indexOf('Menú de la semana listo')).toBeLessThan(text.indexOf('*Lun* Lentejas'))
+    expect(text.indexOf('*Lun* Lentejas')).toBeLessThan(text.indexOf(`${WEB}/menu`))
+    // stored in history too, so the next turn can iterate on it
+    expect(t.outbound.at(-1)!.body).toContain('*Lun* Lentejas')
+  })
+
+  it('asking for the shopping list returns the list itself', async () => {
+    const items = [
+      { id: 'a', ingredientId: null, name: 'Cebolla', quantity: 300, unit: 'g', aisle: 'produce', checked: false, inStock: false },
+      { id: 'b', ingredientId: null, name: 'Leche', quantity: 1, unit: 'u', aisle: 'lacteos', checked: true, inStock: false },
+    ]
+    const t = setup({ chatReply: { message: 'Esta es tu lista:', uiHint: 'shopping_list', data: items, toolsUsed: ['get_shopping_list'] } })
+    await processInbound(msg({ text: 'dame la lista de la compra' }), t.deps)
+    const text = textOf(t.sent)
+    expect(text).toContain('*Frutas y verduras:* Cebolla (300 g)')
+    expect(text).not.toContain('Leche')
+    expect(text).toContain(`${WEB}/shopping`)
+  })
+
+  it('other turns are untouched and never read the menu', async () => {
+    const menuDigest = vi.fn(async () => MENU_TEXT)
+    const t = setup({ chatReply: { message: 'Hoy toca crema de calabaza.', uiHint: 'menu', toolsUsed: ['get_todays_menu'] }, menuDigest })
+    await processInbound(msg(), t.deps)
+    expect(menuDigest).not.toHaveBeenCalled()
+    expect(textOf(t.sent)).not.toContain('*Lun*')
+  })
+
+  it('a failing menu read still sends the reply', async () => {
+    const t = setup({
+      chatReply: { message: 'Hecho:\n- Menú de la semana listo', uiHint: 'menu', data: { menuId: 'm-9' }, toolsUsed: ['generate_weekly_menu'] },
+      menuDigest: async () => { throw new Error('db down') },
+    })
+    await processInbound(msg({ text: 'genera el menú' }), t.deps)
+    expect(textOf(t.sent)).toContain('Menú de la semana listo')
   })
 })

@@ -6,6 +6,7 @@ import type { LinkWithUser } from './store.js'
 import { buildChatHistory, HISTORY_WINDOW_MS, type HistoryRow } from './history.js'
 import { connectUrl, extractLinkCodeCandidates } from './linking.js'
 import { renderAssistantReply, renderPlainText, type OutboundMessage } from './render.js'
+import { isShoppingItemList, shoppingListDigest } from '../shoppingText.js'
 import { AI_DISCLOSURE_FIRST_PERSON } from '@ona/shared'
 import { controlCommand, OPT_IN_NO, OPT_IN_YES } from './commands.js'
 
@@ -70,12 +71,57 @@ export interface InboundDeps {
   transcribe?: (audio: Buffer, mimeType: string) => Promise<string>
   /** Silence before the generic "me pongo con ello" (ms). Tests shorten it. */
   ackAfterMs?: number
+  /**
+   * Compact text of a week's menu, appended to the reply of a turn that
+   * generated it so the user can read it and iterate here (menuId = the one
+   * the turn touched, null = the user's latest). Absent → no digest.
+   */
+  menuDigest?: (userId: string, menuId: string | null) => Promise<string | null>
   /** Photo of a recipe → saved recipe. Absent → photos get a polite "todavía no". */
   importRecipeFromImage?: (
     image: Buffer,
     mimeType: string,
     userId: string,
   ) => Promise<{ recipeId: string; name: string; warnings: string[] }>
+}
+
+/** Skills after which the reply carries the week's menu (not just a link to it). */
+const MENU_DIGEST_TOOLS = new Set(['generate_weekly_menu'])
+/** …and the shopping list. */
+const SHOPPING_DIGEST_TOOLS = new Set(['get_shopping_list'])
+
+/**
+ * "genera el menú" / "dame la lista" used to answer "Hecho" + a link, so the
+ * user had to open the app to see what was proposed. Append the compact
+ * digest instead: the week read back from the DB after the whole turn (so later
+ * swaps in the same turn show too), and the list from the skill's own items.
+ */
+export async function withDigests(
+  response: AssistantResponse,
+  userId: string,
+  deps: Pick<InboundDeps, 'menuDigest'>,
+): Promise<AssistantResponse> {
+  const tools = response.toolsUsed ?? []
+  const data = response.data && typeof response.data === 'object' && !Array.isArray(response.data)
+    ? (response.data as Record<string, unknown>)
+    : null
+  const digests: string[] = []
+  if (deps.menuDigest && tools.some((t) => MENU_DIGEST_TOOLS.has(t))) {
+    const menuId = typeof data?.menuId === 'string'
+      ? data.menuId
+      : typeof data?.id === 'string' && Array.isArray(data?.days) ? data.id : null
+    try {
+      const digest = await deps.menuDigest(userId, menuId)
+      if (digest) digests.push(digest)
+    } catch (err) {
+      console.warn('[whatsapp] menuDigest failed (sending the reply without it):', err)
+    }
+  }
+  if (tools.some((t) => SHOPPING_DIGEST_TOOLS.has(t)) && isShoppingItemList(response.data)) {
+    digests.push(shoppingListDigest(response.data))
+  }
+  if (digests.length === 0) return response
+  return { ...response, message: [response.message?.trim(), ...digests].filter(Boolean).join('\n\n') }
 }
 
 const humanContact = (email?: string) =>
@@ -380,7 +426,7 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
       body: text,
       meta: { tools: response.toolsUsed ?? [], corrections: response.corrections ?? [], ms: deps.now().getTime() - now.getTime() },
     })
-    await out('reply', renderAssistantReply(response, deps.webUrl))
+    await out('reply', renderAssistantReply(await withDigests(response, userId, deps), deps.webUrl))
   } catch (err: any) {
     console.error('[whatsapp] processing failed:', err?.message ?? err)
     await store.updateInbound(msg.wamid, {

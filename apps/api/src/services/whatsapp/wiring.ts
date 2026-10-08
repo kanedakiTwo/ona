@@ -1,7 +1,9 @@
 import { env } from '../../config/env.js'
 import { db } from '../../db/connection.js'
-import { eq } from 'drizzle-orm'
-import { users } from '../../db/schema.js'
+import { and, desc, eq } from 'drizzle-orm'
+import { menus, users } from '../../db/schema.js'
+import { resolveScope, scopeWhere } from '../scopeResolver.js'
+import { weekMenuDigest } from '../menuText.js'
 import { spendCapStatus } from '../spendCap.js'
 import { chat } from '../assistant/engine.js'
 import { checkAdvisorBudget, recordAdvisorUsage } from '../advisorBudget.js'
@@ -34,6 +36,18 @@ export function buildInboundDeps(): InboundDeps {
       return cap.exceeded ? { exceeded: true, budgetMicros: Math.round(cap.capEur * 1_000_000) } : advisor
     },
     recordUsage: (userId, usage) => recordAdvisorUsage(userId, usage, db),
+    // The week the turn just generated (or the user's latest), read back after
+    // the whole turn, scoped to the caller's household like every menu read.
+    menuDigest: async (userId, menuId) => {
+      const scope = scopeWhere(menus.userId, menus.householdId, await resolveScope(userId, db))
+      const [row] = await db
+        .select({ weekStart: menus.weekStart, days: menus.days, skippedDays: menus.skippedDays })
+        .from(menus)
+        .where(menuId ? and(scope, eq(menus.id, menuId)) : scope)
+        .orderBy(desc(menus.createdAt))
+        .limit(1)
+      return row ? weekMenuDigest({ weekStart: String(row.weekStart), days: row.days as any, skippedDays: row.skippedDays }) : null
+    },
     transcribe: isSttConfigured() ? transcribeAudio : undefined,
     importRecipeFromImage: env.ANTHROPIC_API_KEY ? importRecipeFromImage : undefined,
   }

@@ -171,9 +171,10 @@ Formato de la respuesta (WhatsApp):
 - Sin consejos, avisos ni comentarios que no se hayan pedido. Sin saludos ni despedidas.
 - Solo pregunta si es imprescindible (algo ambiguo de verdad o una confirmacion destructiva): una sola pregunta corta al final, con [[opciones: Sí | No]] si encaja (maximo 3 opciones de 20 caracteres; se ven como botones).
 - A las preguntas (que toca hoy, lista de la compra…) responde directo y corto; listas con una linea por elemento empezando por guion. Puedes usar *negrita*.
+- Si en este turno has generado el menu de la semana (generate_weekly_menu) o consultado la lista de la compra (get_shopping_list), no los escribas tu: el sistema añade debajo el resumen completo para que pueda revisarlo y pedirte cambios aqui. Tu parte: "Hecho:" con "- Menu de la semana listo" (y los demas cambios del turno), o una frase corta para la lista.
 - Las notas de voz te llegan transcritas; interpretalas con sentido comun.
 - No hables de pantallas ni digas "pulsa": el sistema añade solo el enlace a la app cuando hace falta; no escribas tu URLs de la app.
-- Excepcion: los enlaces de pedido a tiendas (los que contienen /c/) que devuelven prepare_shop_orders y approve_shop_order SI los copias tal cual, uno por tienda: son los que el usuario toca para enviar el pedido.
+- Excepcion: los enlaces de pedido a tiendas (los que contienen /c/) que devuelven prepare_shop_orders y approve_shop_order en ESTE turno SI los copias tal cual, uno por tienda: son los que el usuario toca para enviar el pedido. Nunca reenvies enlaces /c/ de mensajes anteriores: si pide la compra o los pedidos otra vez, vuelve a llamar a prepare_shop_orders.
 - El modo cocina (temporizadores y pasos) solo existe en la app: si quiere cocinar, usa start_cooking_mode (le llega el enlace). No uses set_timer ni cooking_step.`
   } else if (mode === 'voice') {
     prompt += `

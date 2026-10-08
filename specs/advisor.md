@@ -79,7 +79,7 @@ The assistant can call back-end skills (function calling). Each skill has a name
   - Named recipes resolve fuzzily (`bestMatch`, Spanish stopwords ignored, culinary synonyms such as vaca→ternera/entrecot).
   - "Las lentejas" prefers the dish in this week's menu.
   - A lookup that finds nothing says so; it is never a silent no-op.
-- `swap_meal` with a recipe name that doesn't exist now pins the closest catalogue recipe and says so. It only searches the ONA catalogue plus the user's own recipes; previously the name lookup could match another user's private recipe.
+- A dish the user names that isn't in their recipes nor the catalogue (`swap_meal` / `add_dish` with a `recipeName` that matches nothing, or only by one of its words) goes on the menu **as a note with the user's words** ("pizza casera" → note "Pizza casera"); the closest real recipe, if any, is only offered, and the model then offers to create the recipe. Never "no existe, ¿la creo?" before placing it (2026-10-08, WhatsApp). The prompt rule lives in the shared critical rules, so the app chat, voice and WhatsApp behave alike. Lookups only search the catalogue plus the user's own recipes, never another user's private ones.
 
 **Decisiveness (resolutive mode).**
 - The prompt tells the model to do everything a message asks in the same turn, with parallel tool calls and up to `MAX_TOOL_ROUNDS = 6`.

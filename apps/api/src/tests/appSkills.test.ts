@@ -125,6 +125,15 @@ describe('menu skills', () => {
     ])
   })
 
+  it('add_dish puts a dish that is not in the catalogue as a note (no blocking "¿la creo?")', async () => {
+    const f = fakeApi({ 'GET /recipes': [] })
+    const r = await get('add_dish').handler({ dayIndex: 0, meal: 'lunch', recipeName: 'pizza casera' }, ctx(f.api))
+    expect(writes(f.calls)).toEqual([{ method: 'POST', path: '/menu/m1/day/0/meal/lunch/dish', body: { kind: 'note', text: 'Pizza casera' } }])
+    expect(r.uiHint).toBe('menu')
+    expect(r.summary).toContain('como nota')
+    expect(r.summary).toContain('crear la receta')
+  })
+
   it('add_dish finds the closest catalogue recipe; random when unnamed', async () => {
     const f = fakeApi({ 'GET /recipes': [{ id: 'r9', name: 'Ensalada de tomate y ventresca' }] })
     const r = await get('add_dish').handler({ dayIndex: 0, meal: 'lunch', recipeName: 'ensalada de tomate' }, ctx(f.api))

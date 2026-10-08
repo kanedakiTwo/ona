@@ -398,6 +398,35 @@ describe('swap_meal', () => {
     expect(r.summary).toContain('Cambiado')
   })
 
+  describe('a named dish that is not in the catalogue (2026-10-08)', () => {
+    const freshMenu = () => ({
+      id: 'm-1',
+      days: Array.from({ length: 7 }, () => ({ lunch: { dishes: [{ kind: 'recipe', recipeId: 'r-old', recipeName: 'Antiguo' }] } as any })),
+    })
+
+    it('goes in as a note with the user words and the model offers to create it', async () => {
+      const menu = freshMenu()
+      // queries: menu → candidates by name (none) → loose by words (none) → update
+      const db = makeDb([menu], [], [], [{ ...menu }])
+      const r = await skill.handler({ dayIndex: 3, meal: 'lunch', recipeName: 'pizza casera de mi abuela' }, ctx(db))
+      expect(r.uiHint).toBe('menu')
+      expect(menu.days[3].lunch).toEqual({ dishes: [{ kind: 'note', text: 'Pizza casera de mi abuela' }] })
+      expect(r.summary).toMatch(/^Hecho\./)
+      expect(r.summary).toContain('como nota')
+      expect(r.summary).toContain('crear la receta')
+      expect(r.summary).not.toMatch(/no he cambiado nada/i)
+    })
+
+    it('only offers the closest real recipe instead of swapping it in', async () => {
+      const menu = freshMenu()
+      const db = makeDb([menu], [], [{ id: 'r-ent', name: 'Entrecot a la plancha', authorId: null }], [{ ...menu }])
+      const r = await skill.handler({ dayIndex: 3, meal: 'lunch', recipeName: 'filete de vaca' }, ctx(db))
+      expect(menu.days[3].lunch).toEqual({ dishes: [{ kind: 'note', text: 'Filete de vaca' }] })
+      expect(r.summary).toContain('Entrecot a la plancha')
+      expect(r.summary).toContain('crear la receta')
+    })
+  })
+
   describe('a named recipe that breaks an allergy', () => {
     const menu = {
       id: 'm-1',

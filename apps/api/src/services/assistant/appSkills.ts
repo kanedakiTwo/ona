@@ -115,14 +115,26 @@ const NO_MENU = (nextWeek?: boolean) =>
 const slotPath = (menuId: string, day: number, meal: string) => `/menu/${menuId}/day/${day}/meal/${meal}`
 
 /**
+ * A dish the user named that isn't in their recipes nor the catalogue goes on
+ * the menu as a note with their own words ("pizza casera" → "Pizza casera"):
+ * the menu never blocks on a missing recipe.
+ */
+export function dishNoteText(name: unknown): string {
+  const t = String(name ?? '').replace(/\s+/g, ' ').trim().slice(0, 120)
+  return t.charAt(0).toLocaleUpperCase('es') + t.slice(1)
+}
+
+/**
  * Resolve a recipe the user named. With `menuFirst`, "las lentejas" means the
  * lentils in THIS week's menu before any catalogue recipe with that word.
+ * `approximate` = nothing matched the name itself, only one of its words
+ * ("filete de vaca" → "Entrecot a la plancha").
  */
 async function findRecipe(
   ctx: SkillContext,
   name: string,
   opts: { menuFirst?: boolean } = {},
-): Promise<{ id: string; name: string } | null> {
+): Promise<{ id: string; name: string; approximate?: boolean } | null> {
   if (opts.menuFirst) {
     const menu = await loadMenu(ctx).catch(() => null)
     const dishes = (menu?.days ?? [])
@@ -137,15 +149,19 @@ async function findRecipe(
     `/recipes?search=${encodeURIComponent(name)}&perPage=30`,
   )
   let hit = bestMatch(cards ?? [], name, (c) => c.name)
+  let approximate = false
   if (!hit) {
     // "filete de vaca" → try significant words and their culinary synonyms.
     for (const w of searchWords(name).slice(0, 6)) {
       const more = await api(ctx)<Array<{ id: string; name: string }>>('GET', `/recipes?search=${encodeURIComponent(w)}&perPage=30`)
       hit = bestMatch(more ?? [], name, (c) => c.name) ?? (more?.[0] ?? null)
-      if (hit) break
+      if (hit) {
+        approximate = true
+        break
+      }
     }
   }
-  return hit ? { id: hit.id, name: hit.name } : null
+  return hit ? { id: hit.id, name: hit.name, approximate } : null
 }
 
 const dayMealProps = {
@@ -226,7 +242,7 @@ const setDaySkipped: SkillDefinition = {
 const addDish: SkillDefinition = {
   name: 'add_dish',
   description:
-    'Añade un plato mas a una comida sin quitar los que ya hay (ej. "añade una ensalada a la comida del lunes"). Con recipeName busca la receta mas parecida del catalogo; sin nombre añade uno aleatorio compatible.',
+    'Añade un plato mas a una comida sin quitar los que ya hay (ej. "añade una ensalada a la comida del lunes"). Con recipeName busca esa receta en sus recetas y el catalogo; si no existe, lo añade como nota con su nombre y te dice lo mas parecido que hay. Sin nombre añade uno aleatorio compatible.',
   parameters: {
     type: 'object',
     properties: { ...dayMealProps, recipeName: { type: 'string' }, recipeId: { type: 'string' } },
@@ -243,7 +259,15 @@ const addDish: SkillDefinition = {
       return menuDone(`Hecho: he añadido un plato aleatorio a ${where(p.dayIndex, p.meal)}.`)
     }
     const recipe = p.recipeId ? { id: p.recipeId, name: p.recipeName ?? 'la receta' } : await findRecipe(ctx, p.recipeName)
-    if (!recipe) return text(`No encontre ninguna receta parecida a "${p.recipeName}"; no he añadido nada.`)
+    if (!p.recipeId && (!recipe || ('approximate' in recipe && recipe.approximate))) {
+      const note = dishNoteText(p.recipeName)
+      await api(ctx)('POST', `${path}/dish`, { kind: 'note', text: note })
+      const closest = recipe ? ` Lo mas parecido que si hay es "${recipe.name}".` : ''
+      return menuDone(
+        `Hecho: he añadido "${note}" a ${where(p.dayIndex, p.meal)} como nota, porque no esta en sus recetas ni en el catalogo.${closest} Diselo y ofrecele crear la receta${recipe ? ` o cambiar la nota por "${recipe.name}"` : ''}; no hace falta para que quede en el menu.`,
+      )
+    }
+    if (!recipe) return text(`No encontre la receta "${p.recipeId}"; no he añadido nada.`)
     await api(ctx)('POST', `${path}/dish`, { kind: 'recipe', recipeId: recipe.id })
     return menuDone(`Hecho: he añadido "${recipe.name}" a ${where(p.dayIndex, p.meal)}.`, { recipeId: recipe.id })
   },

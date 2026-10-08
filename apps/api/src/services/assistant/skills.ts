@@ -26,7 +26,7 @@ import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../scopeResolve
 import { importRecipeFromUrl, createRecipeFromParts, type RecipeParts } from '../recipeImport.js'
 import { mealLinesForDay } from '../menuText.js'
 import { madridParts, madridWeekStart } from '../madridTime.js'
-import { appSkills, bestMatch, searchWords } from './appSkills.js'
+import { appSkills, bestMatch, dishNoteText, searchWords } from './appSkills.js'
 import { shopOrderSkills } from './shopOrderSkills.js'
 import { visibleAuthorIds, visibleRecipeWhere } from '../recipeVisibility.js'
 import { loadMatchableRecipes } from '../matchableRecipes.js'
@@ -505,7 +505,7 @@ const generateWeeklyMenu: SkillDefinition = {
 const swapMeal: SkillDefinition = {
   name: 'swap_meal',
   description:
-    'Cambia un plato concreto del menu. dayIndex: 0=lunes, 6=domingo. meal: breakfast, lunch o dinner. Si el usuario nombra una receta concreta, pásala en `recipeName` (o `recipeId` si lo conoces) y la receta se asigna directamente sin elegir aleatorio. Si no se nombra, el sistema escoge automáticamente un plato compatible con la temporada y restricciones.',
+    'Cambia un plato concreto del menu. dayIndex: 0=lunes, 6=domingo. meal: breakfast, lunch o dinner. Si el usuario nombra una receta concreta, pásala en `recipeName` (o `recipeId` si lo conoces) y la receta se asigna directamente sin elegir aleatorio. Si ese plato no está en sus recetas ni en el catálogo, se pone como nota con su nombre (y te digo lo más parecido que hay): llámala igualmente, no hace falta crear la receta antes. Si no se nombra, el sistema escoge automáticamente un plato compatible con la temporada y restricciones.',
   parameters: {
     type: 'object',
     properties: {
@@ -577,8 +577,8 @@ const swapMeal: SkillDefinition = {
         const owned = candidates.find((c: { authorId: string | null }) => c.authorId === userId)
         chosen = owned ?? candidates[0] ?? null
         if (!chosen) {
-          // Resolutive fallback: "filete de vaca" → closest real recipe
-          // ("Entrecot a la plancha") instead of giving up.
+          // "filete de vaca" → closest real recipe ("Entrecot a la plancha"),
+          // which is only offered: the slot gets the user's dish as a note.
           const words = searchWords(params.recipeName)
           if (words.length > 0) {
             const loose = await db
@@ -594,10 +594,31 @@ const swapMeal: SkillDefinition = {
           }
         }
       }
+      const dayNamesEs = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
+      const mealLabel = meal === 'breakfast' ? 'desayuno' : meal === 'lunch' ? 'comida' : meal === 'dinner' ? 'cena' : meal
+      // A dish that isn't in the user's recipes nor the catalogue goes in as a
+      // note with their own words — the menu never blocks on a missing recipe
+      // (2026-10-08: "ponme X el jueves" got "no existe, ¿la creo?"). The
+      // closest real recipe, if any, is only offered, never swapped in.
+      if (params.recipeName && (!chosen || approximate)) {
+        const note = dishNoteText(params.recipeName)
+        days[dayIndex][meal] = { dishes: [{ kind: 'note', text: note }] }
+        const [updatedNote] = await db
+          .update(menus)
+          .set({ days })
+          .where(eq(menus.id, menu.id))
+          .returning()
+        const closest = chosen ? ` Lo mas parecido que si hay es "${chosen.name}".` : ''
+        return {
+          data: updatedNote,
+          summary: `Hecho. "${untrustedText(note, 80)}" no esta en sus recetas ni en el catalogo, asi que lo he puesto como nota en la ${mealLabel} del ${dayNamesEs[dayIndex]}.${closest} Diselo y ofrecele crear la receta${chosen ? ` o cambiar la nota por "${chosen.name}"` : ''}; no hace falta para que quede en el menu.`,
+          uiHint: 'menu',
+        }
+      }
       if (!chosen) {
         return {
           data: null,
-          summary: `No he encontrado ninguna receta parecida a "${params.recipeName ?? params.recipeId}"; no he cambiado nada.`,
+          summary: `No he encontrado la receta "${params.recipeId}"; no he cambiado nada.`,
           uiHint: 'text',
         }
       }
@@ -607,9 +628,7 @@ const swapMeal: SkillDefinition = {
       if (conflicts.length > 0 && !params.confirmRestriction) {
         return {
           data: { recipeId: chosen.id, recipeName: chosen.name, conflicts },
-          summary: approximate
-            ? `No he cambiado nada: no habia "${untrustedText(params.recipeName, 80)}" y lo mas parecido, "${chosen.name}", no es compatible con sus restricciones (${conflicts.join(', ')}). Dile que no hay opcion compatible parecida y ofrece otra.`
-            : `No he cambiado nada: "${chosen.name}" no es compatible con sus restricciones (${conflicts.join(', ')}). Avisale y pregunta si aun asi lo quiere; si lo confirma, vuelve a llamar a swap_meal con confirmRestriction: true.`,
+          summary: `No he cambiado nada: "${chosen.name}" no es compatible con sus restricciones (${conflicts.join(', ')}). Avisale y pregunta si aun asi lo quiere; si lo confirma, vuelve a llamar a swap_meal con confirmRestriction: true.`,
           uiHint: 'text',
         }
       }
@@ -623,9 +642,7 @@ const swapMeal: SkillDefinition = {
       const mealEs = meal === 'breakfast' ? 'desayuno' : meal === 'lunch' ? 'comida' : meal === 'dinner' ? 'cena' : meal
       return {
         data: updatedManual,
-        summary: approximate
-          ? `Hecho. No habia "${params.recipeName}" en el catalogo; he puesto lo mas parecido, "${chosen.name}", en el ${mealEs} del ${dayNames[dayIndex]}.`
-          : `Hecho. He puesto "${chosen.name}" en el ${mealEs} del ${dayNames[dayIndex]}.`,
+        summary: `Hecho. He puesto "${chosen.name}" en el ${mealEs} del ${dayNames[dayIndex]}.`,
         uiHint: 'menu',
       }
     }

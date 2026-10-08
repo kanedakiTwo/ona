@@ -12,11 +12,22 @@ There is **no GitHub-Railway repo connection**. Deploys are manual via the Railw
 
 ## One-time setup per machine
 
+**Account (since 2026-10-08):** the `ona-app` project lives in Miguel's **personal** Railway workspace, «Miguel's Projects» (Hobby, `mmartinlacoma@gmail.com`). It was transferred from the AiKit company workspace, which no longer has access. On Miguel's laptop the CLI's own login is the AiKit company account (used for other projects), so don't `railway logout`. Run every Mimoia command with Miguel's personal account token in the environment instead; it overrides the login for that command only:
+
+```bash
+export RAILWAY_API_TOKEN="$(cat ~/.config/mimoia/railway-token)"   # personal account token, chmod 600, never in a repo
+railway whoami                             # → Miguel (mmartinlacoma@gmail.com)
+```
+
+On a machine without another Railway account:
+
 ```bash
 brew install railwayapp/railway/railway   # or `npm i -g @railway/cli`
 railway login                              # opens browser, paste-back code
 railway link                               # pick `ona-app` project
 ```
+
+The Taller's project tokens (`taller-staging`, `taller-production`) belong to the project and survived the transfer.
 
 ## Deploy flow
 

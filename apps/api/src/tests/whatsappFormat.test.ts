@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { extractOptions, splitMessage, toWhatsAppMarkup } from '../services/whatsapp/format.js'
 import { renderAssistantReply, appLinkFor } from '../services/whatsapp/render.js'
-import { buildChatHistory, ONA_STARTED_MARKER, type HistoryRow } from '../services/whatsapp/history.js'
+import { buildChatHistory, OLD_SHOP_LINK, ONA_STARTED_MARKER, type HistoryRow } from '../services/whatsapp/history.js'
 import {
   generateLinkCode,
   extractLinkCodeCandidates,
@@ -98,6 +98,14 @@ describe('buildChatHistory', () => {
     body,
     createdAt: at(min),
     status: status ?? (direction === 'in' ? 'processed' : 'sent'),
+  })
+
+  it('hides earlier shop-order links so a new "dame la compra" re-prepares instead of resending them', () => {
+    const reply = '*Frutería*: https://mimoia.com/c/qV-PF-oNpcHbOOJh\n*Carnicería*: https://mimoia.com/c/nkhswgQeBwOrb6JP\nVer receta: https://mimoia.com/recipes/abc'
+    const [, assistant] = buildChatHistory([row('in', 'hazme la compra', 30), row('out', reply, 29)], now)
+    expect(assistant.content).not.toContain('/c/')
+    expect(assistant.content).toContain(`*Frutería*: ${OLD_SHOP_LINK}`)
+    expect(assistant.content).toContain('https://mimoia.com/recipes/abc')
   })
 
   it('maps in/out to user/assistant in chronological order', () => {

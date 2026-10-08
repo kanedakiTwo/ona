@@ -84,6 +84,7 @@ Web: `GET /c/<token>[?m=ok]` (Next route handler) redirects to that URL; expired
 ## Constraints
 
 - v1 never sends anything to a shop from ONA's WhatsApp number: Meta only allows messaging a business that opted in to ONA, and the shop would be talking to an AI. Connected shops (opt-in by QR to ONA's number) and email sent by ONA are future work — see the report.
+- Every "dame la compra" re-prepares the orders from the current list (`prepare_shop_orders`). On WhatsApp the `/c/` links of earlier replies are replaced by "[enlace de un pedido anterior]" in the history the model sees (`whatsapp/history.ts`), so it can't resend stale orders (2026-10-08: it did, and Miguel got the morning's pre-v1.1 messages).
 - ONA doesn't pay or collect: payment is always user → shop (pickup, Bizum, the shop's payment link).
 - Photos of a shop's reply aren't read yet (WhatsApp photos go to recipe import); text and voice notes are.
 - No timeouts or reminders when a shop or the user doesn't answer.

@@ -8,7 +8,7 @@ Hands-free voice conversation with the assistant (Mimo), activated by the wake w
 
 ## User Capabilities
 
-- Users can opt in to "Modo voz" (master toggle) from their profile/settings (off by default). When enabled, a floating mic FAB appears top-right on every authenticated route as the manual entry point
+- Users can opt in to "Modo voz" (master toggle) from their profile/settings (off by default). When enabled, a floating mic FAB appears top-right on every authenticated route as the manual entry point. On the recipe detail (`/recipes/<id>`, below `lg`) it drops to 72 px from the top so it sits under the hero's share/favourite row instead of covering the favourite (PRO-01, `isRecipeDetailPath` in `VoiceProvider.tsx`; e2e `recipe-detail-voice-favorite.spec.ts`)
 - When the master toggle is on AND Picovoice is configured, a separate sub-toggle "Escuchar '<WAKE_PHRASE>'" appears below it. The sub-toggle is independently off by default — users opt in explicitly to "always listening" so the master toggle can stay enabled (FAB visible) without the wake-word burning battery / mic
 - Master OFF → no FAB, no wake-word, nothing listening
 - Master ON + sub OFF → FAB visible, no wake-word (manual entry only)

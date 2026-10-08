@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 import { useWakeWord, WAKE_PHRASE } from '@/hooks/useWakeWord'
 import { useRealtimeSession, type RealtimeTurn } from '@/hooks/useRealtimeSession'
@@ -47,9 +47,15 @@ export function useVoiceMode() {
   return ctx
 }
 
+/** `/recipes/<id>` (not `/new`, not `/<id>/edit` or cook mode). */
+export function isRecipeDetailPath(pathname: string | null): boolean {
+  return !!pathname && /^\/recipes\/(?!new$)[^/]+$/.test(pathname)
+}
+
 export default function VoiceProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   const router = useRouter()
+  const pathname = usePathname()
   const userId = user?.id ?? ''
 
   const [enabled, setEnabledState] = useState(false)
@@ -211,13 +217,17 @@ export default function VoiceProvider({ children }: { children: ReactNode }) {
     },
   }), [enabled, setEnabled, wakeWordEnabled, setWakeWordEnabled, wake.isListening, wakeAvailable, overlayOpen, wake.error, startSession, userId])
 
+  // The recipe detail's mobile hero has its own top-right row (share,
+  // favourite): drop the mic below it there so it never covers a button.
+  const belowHeroRow = isRecipeDetailPath(pathname)
+
   return (
     <VoiceModeContext.Provider value={ctxValue}>
       {children}
       {enabled && !overlayOpen && userId && (
         <button
           onClick={() => startSession()}
-          className="fixed top-3 right-3 z-40 flex h-10 w-10 items-center justify-center rounded-full bg-[#2D6A4F] text-white shadow-[0_4px_16px_rgba(45,106,79,0.35)] active:scale-95 transition-transform"
+          className={`fixed ${belowHeroRow ? 'top-[72px] right-[18px] lg:top-3 lg:right-3' : 'top-3 right-3'} z-40 flex h-10 w-10 items-center justify-center rounded-full bg-[#2D6A4F] text-white shadow-[0_4px_16px_rgba(45,106,79,0.35)] active:scale-95 transition-transform`}
           aria-label={wake.isListening ? `Modo voz activo. Toca o di "${WAKE_PHRASE}" para abrir.` : 'Abrir modo voz'}
           title={wake.isListening ? `${WAKE_PHRASE} o toca` : 'Abrir modo voz'}
         >

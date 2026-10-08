@@ -27,6 +27,15 @@
 
 set -euo pipefail
 
+# Miguel's laptop: the CLI's own login is another Railway account (AiKit), so
+# Mimoia commands take his personal account token from a local file unless a
+# token is already set (the Taller sets RAILWAY_TOKEN). docs/deploy.md → One-time setup.
+TOKEN_FILE="${MIMOIA_RAILWAY_TOKEN_FILE:-$HOME/.config/mimoia/railway-token}"
+if [ -z "${RAILWAY_TOKEN:-}" ] && [ -z "${RAILWAY_API_TOKEN:-}" ] && [ -r "$TOKEN_FILE" ]; then
+  RAILWAY_API_TOKEN="$(cat "$TOKEN_FILE")"
+  export RAILWAY_API_TOKEN
+fi
+
 TARGET="all"
 DRY_RUN=0
 ALLOW_BEHIND=0

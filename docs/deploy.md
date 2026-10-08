@@ -19,6 +19,8 @@ export RAILWAY_API_TOKEN="$(cat ~/.config/mimoia/railway-token)"   # personal ac
 railway whoami                             # → Miguel (mmartinlacoma@gmail.com)
 ```
 
+`scripts/deploy.sh` loads that file by itself when neither `RAILWAY_TOKEN` nor `RAILWAY_API_TOKEN` is set. Plain `railway …` commands still need the `export`.
+
 On a machine without another Railway account:
 
 ```bash

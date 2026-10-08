@@ -94,7 +94,7 @@ ONA (Opinionated Nutritional Assistant) is a **mobile-first meal planner** for S
 - `specs/` — system specs (read these first)
 - `notion-export/` — source of the 79 seeded recipes
 - `kb/` — knowledge base / agent context
-- `docs/deploy.md` — Railway deploy flow (CLI commands, env vars, migrations, troubleshooting). Read this **before** trying to ship to prod or diagnose a stale deploy.
+- `docs/deploy.md` — Railway deploy flow (CLI commands, env vars, migrations, troubleshooting, **staging**). Read this **before** trying to ship to prod or diagnose a stale deploy. There is a `staging` environment (https://ona-web-staging.up.railway.app) and a nightly agent ("Taller") that merges and deploys backlog tasks marked `lista` — check `git log origin/master` for its overnight commits before you start.
 
 ## Working principles
 

@@ -15,22 +15,29 @@
 #      documented in docs/deploy.md (api first, then web).
 #
 # Usage:
-#   scripts/deploy.sh [api|web|all] [--dry-run] [--allow-behind]
+#   scripts/deploy.sh [api|web|all] [--dry-run] [--allow-behind] [--wait]
 #     api|web|all     which service(s) to deploy (default: all)
 #     --dry-run       run every check and print the plan, but don't deploy
 #     --allow-behind  allow HEAD to be an ancestor of origin/master (rollback)
+#     --wait          wait until Railway reports each deploy SUCCESS (exit 1 on
+#                     FAILED/CRASHED or after 15 min); used by the nightly Taller
+#
+# The target environment is the linked one, or the one a project token in
+# RAILWAY_TOKEN belongs to (staging and production each have their own).
 
 set -euo pipefail
 
 TARGET="all"
 DRY_RUN=0
 ALLOW_BEHIND=0
+WAIT=0
 for arg in "$@"; do
   case "$arg" in
     api|web|all) TARGET="$arg" ;;
     --dry-run) DRY_RUN=1 ;;
     --allow-behind) ALLOW_BEHIND=1 ;;
-    -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
+    --wait) WAIT=1 ;;
+    -h|--help) sed -n '2,27p' "$0"; exit 0 ;;
     *) echo "Unknown argument: $arg (see --help)" >&2; exit 2 ;;
   esac
 done
@@ -72,6 +79,7 @@ echo "── Deploying ───────────────────
 echo "  commit:   $(git log -1 --format='%H')"
 echo "            $(git log -1 --format='%s (%an, %ad)' --date=short)"
 echo "  services: ${services[*]}"
+echo "  env:      $(railway status 2>/dev/null | sed -n 's/^Environment: //p')"
 
 if [ "$DRY_RUN" -eq 1 ]; then
   for s in "${services[@]}"; do echo "  [dry-run] railway up --service $s --detach"; done
@@ -81,10 +89,35 @@ fi
 
 command -v railway >/dev/null 2>&1 || die "railway CLI not installed (see docs/deploy.md → One-time setup)"
 
+deploy_ids=""  # "service=id" lines (bash 3.2 on macOS has no associative arrays)
 for s in "${services[@]}"; do
   echo "── railway up --service $s --detach"
-  railway up --service "$s" --detach
+  out="$(railway up --service "$s" --detach 2>&1)" || { echo "$out"; die "railway up failed for $s"; }
+  echo "$out"
+  # The build-logs URL carries the new deployment id (…?id=<uuid>&).
+  deploy_ids="$deploy_ids$s=$(printf '%s' "$out" | sed -n 's/.*[?&]id=\([0-9a-f-]*\).*/\1/p' | head -1)
+"
 done
+
+if [ "$WAIT" -eq 1 ]; then
+  for s in "${services[@]}"; do
+    want="$(printf '%s' "$deploy_ids" | sed -n "s/^$s=//p")"
+    [ -n "$want" ] || die "could not read the deployment id for $s"
+    for i in $(seq 1 90); do
+      status_out="$(railway service status --service "$s" 2>/dev/null)"
+      cur="$(printf '%s' "$status_out" | sed -n 's/^Deployment: //p')"
+      st="$(printf '%s' "$status_out" | sed -n 's/^Status: //p')"
+      # Until Railway switches to the new deployment, the status is the old one's.
+      [ "$cur" = "$want" ] || st="WAITING"
+      case "$st" in
+        SUCCESS) echo "✓ $s deployed"; break ;;
+        FAILED|CRASHED|REMOVED) die "$s deploy ended $st (see Railway build logs)" ;;
+      esac
+      [ "$i" = "90" ] && die "$s still '$st' after 15 min"
+      sleep 10
+    done
+  done
+fi
 
 echo
 echo "Uploaded $(git rev-parse --short HEAD). Builds take 2–4 min; then check:"

@@ -63,6 +63,26 @@ curl -s "https://ona-api-production.up.railway.app/whatsapp/webhook?hub.mode=sub
 
 The API runs `pnpm --filter @ona/api db:migrate` on boot (set in `RAILPACK_START_CMD`), so committed Drizzle migrations apply automatically on the next deploy. Each deploy takes 2–4 minutes.
 
+## Staging
+
+Since 2026-10-08 the `ona-app` project has a second Railway environment, **`staging`**, duplicated from production: its own `ona-api`, `ona-web` and Postgres, at https://ona-api-staging.up.railway.app and https://ona-web-staging.up.railway.app. Differences from production:
+
+- its own `JWT_SECRET` and `METRICS_READ_TOKEN`; WhatsApp is off (no access token, app secret, phone id or verify token), so it never messages anyone;
+- `WEB_PUBLIC_URL` / `IMAGE_PUBLIC_URL_BASE` / `NEXT_PUBLIC_API_URL` point at the staging URLs;
+- low spend caps (`USER_MONTHLY_SPEND_CAP_EUR=2`, `ADVISOR_MONTHLY_BUDGET_EUR=2`, `REALTIME_DAILY_MINUTES_PER_USER=5`);
+- data: the recipe seed only (16 system recipes, because the full catalogue needs ingredients that production gathered over time) plus the throwaway `smoke…@example.com` users the deep smoke creates. Never copy production user data here.
+
+Deploy to staging the same way, from a clean checkout of `master` linked to `staging` (or with the staging project token in `RAILWAY_TOKEN`), then run the deep smoke:
+
+```bash
+scripts/deploy.sh --wait                                  # linked to staging
+scripts/smoke-remote.sh https://ona-api-staging.up.railway.app https://ona-web-staging.up.railway.app --deep
+```
+
+`--wait` waits for each new deployment to report `SUCCESS` (exit 1 on `FAILED`/`CRASHED` or after 15 min). `smoke-remote.sh` runs the production smoke checks; `--deep` also registers a user, generates the week's menu and reads the shopping list, and refuses to run against production.
+
+**Nightly Taller (ONA HQ, D-017).** The routine "Mimoia HQ · Taller" (00:00 Madrid) merges the backlog tasks Miguel marked `lista` and deploys them: staging → deep smoke → production → smoke, rolling production back to the previous commit (`scripts/deploy.sh --allow-behind`) and reverting the merge if the production smoke fails. It uses two Railway project tokens (`taller-staging`, `taller-production`, one per environment), held only in the Taller's cloud environment. The protocol lives in `kanedakiTwo/ona-hq` → `loops/taller.md`.
+
 ## Required env vars
 
 Both are configured in the Railway dashboard, not committed.

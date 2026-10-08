@@ -337,49 +337,8 @@ jobs:
       WEB_URL: https://ona-web-production.up.railway.app
 
     steps:
-      - name: API smoke — /health answers
-        # A few retries absorb a cold start / transient edge hiccup.
-        run: |
-          set -u
-          for i in $(seq 1 6); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$API_URL/health" || echo 000)
-            echo "[try $i] API /health → $code"
-            if [ "$code" = "200" ]; then exit 0; fi
-            sleep 10
-          done
-          echo "API /health never returned 200."
-          exit 1
-
-      - name: API smoke — auth middleware live (protected route without token → 401)
-        # NB: GET /recipes is the PUBLIC catalogue (200 without a token), so
-        # it can't be used to probe the auth gate.
-        run: |
-          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$API_URL/user/ci-smoke-probe")
-          test "$code" = "401" || (echo "Expected 401 from /user/:id, got $code" && exit 1)
-
-      - name: API smoke — public catalogue serves (GET /recipes → 200)
-        run: |
-          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$API_URL/recipes?perPage=1")
-          test "$code" = "200" || (echo "Expected 200 from /recipes, got $code" && exit 1)
-
-      - name: API smoke — login route live (rejects bogus credentials)
-        run: |
-          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
-            -X POST "$API_URL/login" \
-            -H 'Content-Type: application/json' \
-            -d '{"username":"smoke-bogus","password":"smoke-bogus"}')
-          # 401 = creds wrong (route alive). 400 = validation error (also alive).
-          if [ "$code" != "401" ] && [ "$code" != "400" ]; then
-            echo "Expected 401 or 400 from /login, got $code"
-            exit 1
-          fi
-
-      - name: Web smoke — landing page renders
-        run: |
-          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$WEB_URL/")
-          test "$code" = "200" || (echo "Expected 200 from web /, got $code" && exit 1)
-
-      - name: Web smoke — login page renders
-        run: |
-          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$WEB_URL/login")
-          test "$code" = "200" || (echo "Expected 200 from web /login, got $code" && exit 1)
+      - uses: actions/checkout@v4
+      # Same checks the nightly Taller runs against staging and production
+      # (docs/deploy.md → Staging). Retries absorb a cold start.
+      - name: Production smoke (scripts/smoke-remote.sh)
+        run: scripts/smoke-remote.sh "$API_URL" "$WEB_URL"

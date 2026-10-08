@@ -161,6 +161,7 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 - [ ] **Lista de espera (Mimoia) — abre el lunes 13 oct** (plan de validación D-020 de ONA HQ; [specs/waitlist.md](./specs/waitlist.md)). Ya hecho: copy aprobado por Miguel (2026-10-08), `NEXT_PUBLIC_SUPPORT_EMAIL=hola@mimoia.com`, `WEB_PUBLIC_URL=https://mimoia.com`. Queda:
   - Revisión legal de "11. Lista de espera" en `/privacidad` (consentimiento, LSSI para el menú de los viernes, conservación hasta lanzamiento + 6 meses). No bloquea la apertura; va con la revisión legal general de `/privacidad`.
   - Para invitar una tanda: `GET /admin/waitlist` (o el agente con el token) → `POST /admin/waitlist/invite {"ids":[…]}` con tu JWT de admin → escribirles con el `unsubscribeUrl` de cada uno. Con la beta cerrada (PRO-27 de ONA HQ), un email invitado así puede crear cuenta en `/register`.
+
 - [ ] **Auditoría 2026-10-07 — lo que queda de tu lado** (todo lo de código está hecho y en prod):
   - **Backups**: activar los backups de Postgres en Railway y hacer una restauración de prueba; copia periódica del volumen `ona-api-volume` (fotos de usuarios). Hoy no hay ninguna red si se pierde la base de datos.
   - **Errores en producción**: ya no hace falta Sentry: hay registro de errores propio (`specs/errors.md`), decisión de Miguel 2026-10-07.

@@ -27,7 +27,7 @@ async function register(): Promise<Session> {
   const r = await fetch(`${API_URL}/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: `shop_${id}`, email: `shop_${id}@test.local`, password: 'smokepass123' }),
+    body: JSON.stringify({ username: `shop_${id}`, email: `shop_${id}@test.local`, password: 'smokepass123', ageConfirmed: true }),
   })
   const body = await r.json()
   return { token: body.token, userId: body.user.id }

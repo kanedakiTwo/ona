@@ -55,6 +55,7 @@ async function setup() {
     username: `skills_${unique}`,
     email: `skills_${unique}@test.com`,
     password: 'testpass123',
+    ageConfirmed: true,
   })
   TOKEN = data.token
   USER_ID = data.user.id

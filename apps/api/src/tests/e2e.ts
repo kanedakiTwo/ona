@@ -13,7 +13,7 @@ let SHOPPING_LIST_ID = ''
 let ITEM_ID = ''
 
 const unique = Date.now()
-const TEST_USER = { username: `e2e_${unique}`, email: `e2e_${unique}@test.com`, password: 'testpass123' }
+const TEST_USER = { username: `e2e_${unique}`, email: `e2e_${unique}@test.com`, password: 'testpass123', ageConfirmed: true }
 
 let passed = 0
 let failed = 0
@@ -108,7 +108,7 @@ async function run() {
 
   await test('Register returns user object (not just token)', async () => {
     const u2 = Date.now()
-    const { status, data } = await api('POST', '/register', { username: `check_${u2}`, email: `check_${u2}@t.com`, password: '123456' }, false)
+    const { status, data } = await api('POST', '/register', { username: `check_${u2}`, email: `check_${u2}@t.com`, password: '123456', ageConfirmed: true }, false)
     assert(status === 201, `Expected 201, got ${status}`)
     assert(data.user, 'Register should return user object')
     assert(data.user.id, 'User should have id')

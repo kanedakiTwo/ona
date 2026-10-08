@@ -28,7 +28,7 @@ async function call(method: string, path: string, token?: string, body?: unknown
 
 async function register(tag: string) {
   const name = `${tag}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
-  const r = await call('POST', '/register', undefined, { username: name, email: `${name}@test.local`, password: 'e2epass123' })
+  const r = await call('POST', '/register', undefined, { username: name, email: `${name}@test.local`, password: 'e2epass123', ageConfirmed: true })
   expect(r.status).toBeLessThan(300)
   return { token: r.json.token as string, id: r.json.user.id as string }
 }
@@ -59,9 +59,9 @@ describe('account deletion (smoke)', () => {
 
       // Wrong password: refused, nothing deleted.
       expect((await call('DELETE', `/user/${a.id}`, a.token, { password: 'nope' })).status).toBe(401)
-      expect((await call('DELETE', `/user/${b.id}`, a.token, { password: 'e2epass123' })).status).toBe(403)
+      expect((await call('DELETE', `/user/${b.id}`, a.token, { password: 'e2epass123', ageConfirmed: true })).status).toBe(403)
 
-      const del = await call('DELETE', `/user/${a.id}`, a.token, { password: 'e2epass123' })
+      const del = await call('DELETE', `/user/${a.id}`, a.token, { password: 'e2epass123', ageConfirmed: true })
       expect(del.status).toBe(200)
       expect(del.json).toMatchObject({ deleted: true, recipesDeleted: 1, householdsTransferred: 1 })
 

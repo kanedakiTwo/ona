@@ -44,6 +44,8 @@ export const users = pgTable('users', {
   role: text('role').notNull().default('user'),
   // Suspension (admin gate). NULL = active.
   suspendedAt: timestamp('suspended_at', { withTimezone: true }),
+  /** When the user ticked «Tengo 14 años o más» at sign-up (LOPDGDD art. 7, PRO-23). */
+  ageConfirmedAt: timestamp('age_confirmed_at', { withTimezone: true }),
   /**
    * AI image-generation quota. `imageGenMonthKey` stores the YYYY-MM that
    * `imageGenCount` belongs to. On any generation, if the key doesn't match

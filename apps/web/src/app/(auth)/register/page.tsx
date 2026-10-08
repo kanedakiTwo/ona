@@ -17,6 +17,7 @@ export default function RegisterPage() {
   const [username, setUsername] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [ageConfirmed, setAgeConfirmed] = useState(false)
   const nextSuffix = useNextSuffix()
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -26,7 +27,7 @@ export default function RegisterPage() {
     setError(null)
     setIsSubmitting(true)
     try {
-      await register(username, email, password)
+      await register(username, email, password, ageConfirmed)
       router.push(nextFromLocation() ?? "/onboarding")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al registrarse")
@@ -139,9 +140,21 @@ export default function RegisterPage() {
                 onChange={setPassword}
               />
 
+              {/* LOPDGDD art. 7: Mimoia is not for under-14s (PRO-23). */}
+              <label className="flex cursor-pointer items-start gap-3 text-[13px] text-[#1A1612]">
+                <input
+                  type="checkbox"
+                  name="ageConfirmed"
+                  checked={ageConfirmed}
+                  onChange={(e) => setAgeConfirmed(e.target.checked)}
+                  className="mt-0.5 h-5 w-5 shrink-0 accent-[#1A1612]"
+                />
+                <span>Tengo 14 años o más</span>
+              </label>
+
               <button
                 type="submit"
-                disabled={isSubmitting || !username || !email || !password}
+                disabled={isSubmitting || !username || !email || !password || !ageConfirmed}
                 className="group flex w-full items-center justify-center gap-2 rounded-full bg-[#1A1612] py-4 text-[13px] font-medium text-[#FAF6EE] transition-all hover:bg-[#2D6A4F] hover:gap-3 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {isSubmitting ? "Creando cuenta..." : "Crear cuenta gratis"}

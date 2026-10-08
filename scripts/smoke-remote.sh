@@ -56,7 +56,7 @@ esac
 
 stamp="$(date +%s)$RANDOM"
 reg=$(curl -s --max-time 30 -X POST "$API_URL/register" -H 'Content-Type: application/json' \
-  -d "{\"username\":\"smoke$stamp\",\"email\":\"smoke$stamp@example.com\",\"password\":\"smoke-$stamp\"}")
+  -d "{\"username\":\"smoke$stamp\",\"email\":\"smoke$stamp@example.com\",\"password\":\"smoke-$stamp\",\"ageConfirmed\":true}")
 token=$(printf '%s' "$reg" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).token||"")}catch{}})')
 user_id=$(printf '%s' "$reg" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).user.id||"")}catch{}})')
 [ -n "$token" ] && [ -n "$user_id" ] || fail "register did not return a token and user id: ${reg:0:200}"

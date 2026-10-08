@@ -87,7 +87,7 @@ SMOKE_PASS="smokepass123"
 
 REG=$(curl -fsS -X POST "http://localhost:${API_PORT}/register" \
   -H 'Content-Type: application/json' \
-  -d "{\"username\":\"${SMOKE_USER}\",\"email\":\"${SMOKE_EMAIL}\",\"password\":\"${SMOKE_PASS}\"}")
+  -d "{\"username\":\"${SMOKE_USER}\",\"email\":\"${SMOKE_EMAIL}\",\"password\":\"${SMOKE_PASS}\",\"ageConfirmed\":true}")
 
 SMOKE_USER_TOKEN=$(printf '%s' "$REG" | node -e 'let b=""; process.stdin.on("data",c=>b+=c).on("end",()=>{const j=JSON.parse(b); process.stdout.write(j.token||"")})')
 SMOKE_USER_ID=$(printf '%s' "$REG" | node -e 'let b=""; process.stdin.on("data",c=>b+=c).on("end",()=>{const j=JSON.parse(b); process.stdout.write(j.user?.id||"")})')

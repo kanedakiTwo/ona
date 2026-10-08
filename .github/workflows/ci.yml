@@ -151,7 +151,7 @@ jobs:
           TS=$(date +%s)
           REG=$(curl -fsS -X POST "$API_URL/register" \
             -H 'Content-Type: application/json' \
-            -d "{\"username\":\"smoke_${TS}\",\"email\":\"smoke_${TS}@test.local\",\"password\":\"smokepass123\"}")
+            -d "{\"username\":\"smoke_${TS}\",\"email\":\"smoke_${TS}@test.local\",\"password\":\"smokepass123\",\"ageConfirmed\":true}")
           TOKEN=$(printf '%s' "$REG" | node -e 'let b="";process.stdin.on("data",c=>b+=c).on("end",()=>{process.stdout.write(JSON.parse(b).token||"")})')
           # NB: cannot use $UID — that name is a readonly bash builtin (the
           # process owner's numeric UID). Use SMOKE_USERID instead.

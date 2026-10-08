@@ -4,7 +4,7 @@ User registration, login, and session management for ONA.
 
 ## User Capabilities
 
-- Users can register with username, email, and password
+- Users can register with username, email, and password, plus the required box **«Tengo 14 años o más»** (LOPDGDD art. 7, PRO-23): «Crear cuenta gratis» stays disabled until it's ticked, and `POST /register` answers **400** without `ageConfirmed: true` (`registerSchema`, message «Para usar Mimoia tienes que tener 14 años o más.»). The moment is stored in `users.age_confirmed_at` (migration 0039). There is no sign-up from WhatsApp (it only links an existing account)
 - Users can log in with either username or email plus password
 - Logged-in users receive a JWT token used for subsequent API calls
 - Users can log out (clears local token; no server-side invalidation)

@@ -61,6 +61,10 @@ export const registerSchema = z.object({
   username: z.string().min(3).max(30),
   email: z.string().email(),
   password: z.string().min(6),
+  /** «Tengo 14 años o más» (LOPDGDD art. 7, PRO-23): required, must be ticked. */
+  ageConfirmed: z.literal(true, {
+    errorMap: () => ({ message: 'Para usar Mimoia tienes que tener 14 años o más.' }),
+  }),
 })
 
 export const loginSchema = z.object({

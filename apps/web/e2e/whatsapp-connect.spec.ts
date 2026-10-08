@@ -61,7 +61,7 @@ test('explains when WhatsApp is not available for the account', async ({ page })
 test('login honours a relative next but ignores an off-site one (no open redirect)', async ({ page }) => {
   const apiUrl = process.env.API_URL ?? 'http://localhost:8765'
   const creds = freshCreds()
-  const reg = await page.request.post(`${apiUrl}/register`, { data: creds })
+  const reg = await page.request.post(`${apiUrl}/register`, { data: { ...creds, ageConfirmed: true } })
   expect(reg.ok()).toBe(true)
 
   const login = async (next: string) => {

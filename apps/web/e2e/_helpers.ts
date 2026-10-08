@@ -56,6 +56,7 @@ export async function submitRegisterForm(page: Page, creds: TestCreds): Promise<
     await form.locator('input').nth(0).fill(creds.username)
     await form.locator('input[type="email"]').fill(creds.email)
     await form.locator('input[type="password"]').fill(creds.password)
+    await form.getByRole('checkbox', { name: 'Tengo 14 años o más' }).check()
   })
   await submit.click()
 }

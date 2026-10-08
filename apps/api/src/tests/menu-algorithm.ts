@@ -18,6 +18,7 @@ const TEST_USER = {
   username: `algo_${unique}`,
   email: `algo_${unique}@test.com`,
   password: 'testpass123',
+  ageConfirmed: true,
 }
 
 let passed = 0

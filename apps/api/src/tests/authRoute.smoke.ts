@@ -38,15 +38,36 @@ describe('auth route smoke', () => {
     const first = await fetch(`${API_URL}/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: u, email: `${u}@test.local`, password: 'pw12345678' }),
+      body: JSON.stringify({ username: u, email: `${u}@test.local`, password: 'pw12345678', ageConfirmed: true }),
     })
     expect(first.status).toBe(201)
     const second = await fetch(`${API_URL}/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: u, email: `${u}-2@test.local`, password: 'pw12345678' }),
+      body: JSON.stringify({ username: u, email: `${u}-2@test.local`, password: 'pw12345678', ageConfirmed: true }),
     })
     expect(second.status).toBe(409)
+  })
+
+  it.skipIf(!reachable)('POST /register without «Tengo 14 años o más» is a 400 (PRO-23)', async () => {
+    const u = `age_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    const base = { username: u, email: `${u}@test.local`, password: 'pw12345678' }
+    for (const body of [base, { ...base, ageConfirmed: false }]) {
+      const r = await fetch(`${API_URL}/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      expect(r.status).toBe(400)
+    }
+    const ok = await fetch(`${API_URL}/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...base, ageConfirmed: true }),
+    })
+    expect(ok.status).toBe(201)
+    const { user } = await ok.json()
+    expect(Date.parse(user.ageConfirmedAt)).toBeGreaterThan(Date.now() - 60_000)
   })
 
   it.skipIf(!reachable || !TOKEN || !USER_ID)(

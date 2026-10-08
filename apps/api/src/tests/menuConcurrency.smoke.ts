@@ -15,7 +15,7 @@ describe('menu generation concurrency (smoke)', () => {
       const reg = await fetch(`${API_URL}/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: name, email: `${name}@test.local`, password: 'e2epass123' }),
+        body: JSON.stringify({ username: name, email: `${name}@test.local`, password: 'e2epass123', ageConfirmed: true }),
       }).then((r) => r.json())
       const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${reg.token}` }
       const monday = new Date()

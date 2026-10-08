@@ -291,6 +291,18 @@ export default function RecipeDetailPage() {
   ) : null
 
   const canEdit = !!user && (recipe.authorId === user.id || user.role === "admin")
+  // Pencil on the photo: the quick way into the editor for whoever may edit
+  // (author or admin), same rule as "Editar receta" under Notas.
+  const heroEdit = canEdit ? (
+    <Link
+      href={`/recipes/${recipe.id}/edit`}
+      aria-label="Editar receta"
+      data-testid="recipe-hero-edit"
+      className="flex h-11 w-11 items-center justify-center rounded-full bg-[#FFFEFA] text-[#1A1612] shadow-sm transition-transform active:scale-95"
+    >
+      <Pencil size={18} />
+    </Link>
+  ) : null
   const notesBlock = (
     <div>
       {/* Quick personal actions: log a cook, file it in a cookbook. */}
@@ -402,6 +414,7 @@ export default function RecipeDetailPage() {
             <ChevronLeft size={20} aria-hidden />
             Recetas
           </Link>
+          {heroEdit && <div className="absolute right-4 top-4">{heroEdit}</div>}
           <div className="pointer-events-none absolute bottom-5 left-5 text-[10px] uppercase tracking-[0.25em] text-[#FAF6EE]/85">
             Mimoia · Receta
           </div>
@@ -514,6 +527,8 @@ export default function RecipeDetailPage() {
             )}
           </div>
         </div>
+
+        {heroEdit && <div className="absolute bottom-[40px] right-4">{heroEdit}</div>}
 
         <div className="pointer-events-none absolute bottom-[44px] left-5 text-[10px] uppercase tracking-[0.25em] text-[#FAF6EE]/85">
           Mimoia · Receta

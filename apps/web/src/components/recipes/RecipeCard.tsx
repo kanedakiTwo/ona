@@ -1,35 +1,22 @@
 "use client"
 
 import Link from "next/link"
-import { CookingPot, Star } from "lucide-react"
-import { isCuratedRecipe, recipeMinutes, type CatalogRecipeLike } from "@ona/shared"
+import { CookingPot } from "lucide-react"
+import { recipeMinutes, type CatalogRecipeLike } from "@ona/shared"
 
 /**
  * Catalogue card for `/recipes` ("D · Luz y foto"): photo with ONLY a time
- * pill bottom-left, Fraunces title below, and the terracotta "Selección
- * Mimoia" seal on system / curated recipes. No season badge (the catalogue
- * never derives a season from the order of `recipe.seasons`) and no
- * ownership badge.
+ * pill bottom-left and the Fraunces title below — nothing else. No season
+ * badge (the catalogue never derives a season from the order of
+ * `recipe.seasons`) and no ownership / "Selección Mimoia" mark: nearly every
+ * recipe is curated, so a per-card mark is noise; "Selección Mimoia" is a
+ * chip in the filter row instead.
  */
 
 export type CatalogCardRecipe = CatalogRecipeLike & { name: string }
 
 /** Fraunces at UI sizes: semibold, automatic optical size (not the 144 hero cut of `.font-display`). */
 export const DISPLAY_UI = "[font-family:var(--font-display)] font-[650] tracking-[-0.01em]"
-
-function SelectionSeal({ className = "" }: { className?: string }) {
-  return (
-    <span
-      role="img"
-      aria-label="Selección Mimoia"
-      title="Selección Mimoia"
-      data-testid="seleccion-seal"
-      className={`flex h-6 w-6 items-center justify-center rounded-full bg-terracotta text-paper shadow-[0_2px_8px_-2px_rgba(26,22,18,0.35)] ${className}`}
-    >
-      <Star size={12} fill="currentColor" strokeWidth={0} aria-hidden="true" />
-    </span>
-  )
-}
 
 function TimePill({ minutes, className = "" }: { minutes: number; className?: string }) {
   return (
@@ -53,7 +40,6 @@ export function RecipeCard({
   shape?: "tall" | "short"
 }) {
   const minutes = recipeMinutes(recipe)
-  const curated = isCuratedRecipe(recipe)
 
   return (
     <Link
@@ -80,7 +66,6 @@ export function RecipeCard({
           </span>
         )}
         {minutes != null && <TimePill minutes={minutes} className="absolute bottom-2 left-2 lg:bottom-2.5 lg:left-2.5" />}
-        {curated && <SelectionSeal className="absolute right-2 top-2 lg:right-2.5 lg:top-2.5" />}
       </span>
       <span className={`${DISPLAY_UI} line-clamp-2 text-[17px] leading-[1.2] lg:text-[19px]`}>
         {recipe.name}

@@ -123,7 +123,7 @@ export function CatalogSearch({
         inputMode="search"
         enterKeyHint="search"
         autoComplete="off"
-        placeholder="Busca un plato o un ingrediente"
+        placeholder="Busca una receta"
         value={searchQuery}
         onChange={(e) => onSearchChange(e.target.value)}
         className="min-w-0 flex-1 bg-transparent text-[15px] text-ink outline-none placeholder:text-ink-soft"

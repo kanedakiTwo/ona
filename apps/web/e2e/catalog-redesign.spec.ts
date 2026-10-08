@@ -4,7 +4,8 @@
  * Fails on the old catalogue, which had: a 3-way "Todas / Mis recetas /
  * Catálogo ONA" tab bar above the search, a separate meal-chip row, an "ONA"
  * badge on every card and a season badge built from `recipe.seasons[0]` —
- * "PRIMAVERA" on nearly every card in October.
+ * "PRIMAVERA" on nearly every card in October. Cards are now photo + time
+ * pill + title only; "Selección Mimoia" exists only as a chip.
  *
  * The page clock is pinned to 8 Oct 2026 so "De temporada" means otoño.
  */
@@ -60,13 +61,16 @@ test('one chip row replaces the scope tabs + meal chips', async ({ page }) => {
   await expect(quick).toHaveAttribute('aria-pressed', 'false')
 })
 
-test('cards carry no season badge and no "ONA" badge; "De temporada" follows the real season', async ({ page }) => {
+test('cards carry no season / "ONA" / seal badge; "De temporada" follows the real season', async ({ page }) => {
   await openCatalog(page)
   const main = page.getByRole('main')
 
   // Old UI: "Primavera" (CSS-uppercased) on almost every card in October.
   await expect(main.getByText(/^(primavera|verano|otoño|invierno)$/i)).toHaveCount(0)
   await expect(main.getByText('ONA', { exact: true })).toHaveCount(0)
+  // Nothing on a card but photo, time pill and title: no per-card mark either.
+  await expect(main.getByRole('img', { name: /selecci[oó]n mimoia/i })).toHaveCount(0)
+  await expect(page.getByTestId('recipe-card').first().getByText(/selecci[oó]n mimoia/i)).toHaveCount(0)
 
   // The hero, when there is one, is always in season.
   const hero = page.getByTestId('featured-recipe')
@@ -94,23 +98,30 @@ test('"Selección Mimoia" shows only system recipes, "Mis recetas" only mine', a
   expect(copyRes.ok()).toBeTruthy()
   const mine = (await copyRes.json()) as Card
 
+  // System recipe ids (anonymous listing = curated catalogue only).
+  const systemIds = new Set(
+    ((await (await page.request.get(`${apiUrl}/recipes?perPage=100`)).json()) as Card[]).map((r) => r.id),
+  )
+
   const cards = await openCatalog(page)
-  const seals = page.getByRole('main').getByRole('img', { name: 'Selección Mimoia' })
+  const cardIds = () =>
+    cards.evaluateAll((els) => els.map((a) => (a.getAttribute('href') ?? '').split('/').pop() ?? ''))
 
   await chipRow(page).getByRole('button', { name: 'Selección Mimoia' }).click()
   await expect(chipRow(page).getByRole('button', { name: 'Selección Mimoia' })).toHaveAttribute('aria-pressed', 'true')
   await expect(cards.first()).toBeVisible()
   const curatedCount = await cards.count()
   expect(curatedCount).toBeGreaterThan(0)
-  // Every card is curated (carries the seal); the user's copy is not listed.
-  await expect(seals).toHaveCount(curatedCount)
-  await expect(cards.filter({ has: page.getByText(mine.name, { exact: true }) })).toHaveCount(0)
+  // Every card is a system recipe; the user's copy is not listed.
+  const curatedIds = await cardIds()
+  expect(curatedIds.every((id) => systemIds.has(id))).toBe(true)
+  expect(curatedIds).not.toContain(mine.id)
 
   await chipRow(page).getByRole('button', { name: 'Mis recetas' }).click()
   await expect(chipRow(page).getByRole('button', { name: 'Selección Mimoia' })).toHaveAttribute('aria-pressed', 'false')
   await expect(cards).toHaveCount(1)
   await expect(cards.first().getByText(mine.name, { exact: true })).toBeVisible()
-  await expect(seals).toHaveCount(0)
+  expect(await cardIds()).toEqual([mine.id])
 })
 
 test('the filters button still opens the advanced filters', async ({ page }) => {

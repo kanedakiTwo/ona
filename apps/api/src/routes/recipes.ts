@@ -160,8 +160,8 @@ interface RecipeCard {
   id: string
   name: string
   /** Null for system / ONA-curated recipes; the owning user's id otherwise.
-   * The frontend uses this for both the "Selección Mimoia" seal on cards
-   * and the scope chips ("Selección Mimoia" / "Mis recetas"; none = todas).
+   * The frontend uses this for the scope chips ("Selección Mimoia" /
+   * "Mis recetas"; none = todas).
    * Omitting it (the previous behaviour) made every card look authorless
    * to the page logic — badge said ONA but the old "Catálogo ONA" filter
    * found 0 results, and "Mis recetas" was always empty. */

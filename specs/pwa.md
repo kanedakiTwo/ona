@@ -28,7 +28,7 @@ Premium Progressive Web App layer that makes ONA feel like a native iOS/Android 
 - Users can **swipe horizontally** between the 5 bottom-tab routes (menu ↔ compra ↔ recetas ↔ asesor ↔ perfil) with a pan gesture (`SwipeNavigator`, `motion/react` `onPan`). Not on the recipe detail `/recipes/[id]` (it has its own tabs) nor in cook mode `/recipes/[id]/cook`: a horizontal swipe there stays on the page
 - The gesture has rubber-band edge resistance, a 30% width threshold to confirm, and snaps back if released before threshold (300ms `--ease-out-expo`)
 - Vertical scroll is preserved via `touchAction: pan-y`
-- The active-tab pill on the bottom nav animates between tabs using `layoutId`
+- The bottom nav marks the active tab in ink with a heavier icon stroke and `aria-current="page"`; every tab shows its text label (no animated pill since 2026-10-08)
 - All page navigation uses the View Transitions API (cross-fade between routes) when supported, with a `motion/react` `AnimatePresence` fallback for non-Chromium browsers
 
 ### Loading
@@ -46,7 +46,7 @@ Premium Progressive Web App layer that makes ONA feel like a native iOS/Android 
 
 - Users can share a recipe via the native share sheet (`navigator.share`) — a Share2 button in the recipe detail hero overlay (desktop: the action row) sends recipe URL + name
 - Users can share their shopping list as text via the native share sheet — the "Exportar" button uses Web Share when available and falls back to clipboard (the clipboard copy keeps text **and** link)
-- Users can share the week's menu ("Compartir" on /menu, both views) as text, one line per meal, with a link to ONA (`menuShareText`, `/?ref=menu`)
+- Users can share the week's menu ("Compartir" in the /menu week "···" sheet, both views; "Compartir semana" at lg+) as text, one line per meal, with a link to ONA (`menuShareText`, `/?ref=menu`)
 
 ### Cooking mode (Wake Lock)
 

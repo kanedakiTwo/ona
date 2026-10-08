@@ -25,11 +25,15 @@
   --color-terracotta-soft: #E0917D;
   --color-ochre: #D4A24C;
   --color-clay: #B8765B;
+  /* Darker terracotta for small accent text on cream/paper (AA contrast). */
+  --color-terracotta-deep: #B5432A;
 
   /* ── Ink Scale ────────────────────────────── */
   --color-ink: #1A1612;
   --color-ink-mid: #4A4239;
   --color-ink-soft: #7A7066;
+  /* Eyebrows / secondary text on cream that must pass AA (ink-soft is 4.49:1 there). */
+  --color-ink-muted: #6E655B;
   --color-ink-light: #A39A8E;
   --color-border: #DDD6C5;
   --color-border-soft: #E8E2D3;
@@ -120,6 +124,16 @@ html, body {
   font-variation-settings: "opsz" 144, "SOFT" 100;
   letter-spacing: -0.022em;
   font-weight: 400;
+}
+
+/* Fraunces at its natural optical size, for titles set at text sizes
+   (menu cards, captions, day strip). No font-weight here on purpose, so
+   Tailwind weights (`font-[650]`, `font-medium`) apply. */
+.font-serif-text {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  font-variation-settings: "SOFT" 0;
+  letter-spacing: -0.01em;
 }
 
 .font-italic {

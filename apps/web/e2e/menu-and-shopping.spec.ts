@@ -21,9 +21,10 @@ test('generate menu → shopping list renders', async ({ page }) => {
   const generate = page.getByRole('button', { name: /generar/i }).first()
   if (await generate.isVisible({ timeout: 3_000 }).catch(() => false)) {
     await generate.click()
-    // Wait for the menu page to populate. The progress copy "X de 7 días"
-    // appears once the menu loads.
-    await expect(page.getByText(/de 7|menu/i).first()).toBeVisible({ timeout: 30_000 })
+    // Wait for the menu to populate: today's featured meal shows up as the
+    // photo hero with its "Empezar a cocinar" link (2026-10-08 redesign;
+    // before, the "X de 7 días" progress copy).
+    await expect(page.getByRole('link', { name: /empezar a cocinar/i }).first()).toBeVisible({ timeout: 30_000 })
   }
 
   // Navigate to shopping. Either a menu loaded → shopping shows items, or

@@ -17,7 +17,7 @@ Defined in [`apps/web/src/app/globals.css`](../apps/web/src/app/globals.css) und
 **Ink scale**:
 - `--color-ink` `#1A1612` — primary text, dark CTA
 - `--color-ink-mid` `#4A4239` — body
-- `--color-ink-soft` `#7A7066` — secondary
+- `--color-ink-soft` `#7A7066` — secondary · `--color-ink-muted` `#6E655B` — eyebrows/secondary text on cream that must pass AA (ink-soft is 4.49:1 there)
 - `--color-ink-light` `#A39A8E` — placeholders
 - `--color-border` `#DDD6C5` — primary border
 - `--color-border-soft` `#E8E2D3` — subtle dividers
@@ -30,7 +30,7 @@ Defined in [`apps/web/src/app/globals.css`](../apps/web/src/app/globals.css) und
 - `--color-mint` `#D8F3DC`
 
 **Warm accents (terracotta family)**:
-- `--color-terracotta` `#C65D38` — italic emphasis, badges
+- `--color-terracotta` `#C65D38` — italic emphasis, badges · `--color-terracotta-deep` `#B5432A` — accent text at small/medium sizes (AA on cream)
 - `--color-terracotta-soft` `#E0917D`
 - `--color-ochre` `#D4A24C`
 - `--color-clay` `#B8765B`
@@ -48,7 +48,8 @@ Predefined utility classes in `globals.css`:
 - `.text-editorial-lg` — clamp(2.5–4.5rem), `SOFT=30` (section heads)
 - `.text-editorial-md` — clamp(1.75–2.5rem), `opsz=60` (sub-section)
 - `.text-eyebrow` — 0.7rem, uppercase, letter-spacing 0.18em (kicker labels)
-- `.font-display`, `.font-display-soft`, `.font-italic` — type-family wrappers
+- `.font-display`, `.font-display-soft`, `.font-italic` — type-family wrappers (`.font-display` pins `opsz 144` + weight 400)
+- `.font-serif-text` — Fraunces at its natural optical size with no weight pinned, for titles at text sizes (`font-[650]`); used by `/menu`
 
 ### Components
 
@@ -71,7 +72,7 @@ Defined as classes in `globals.css`:
 - `.marquee` — horizontal scroll loop (used in social proof)
 - `.route-loading-bar` — the global loading state (`app/loading.tsx`): 2 px terracotta sweep fixed at `top: var(--safe-top)`, transparent for the first 300 ms, static under reduced motion. No splash or full-screen loaders: content shows as soon as it's ready (see [PWA](./pwa.md) → Loading)
 - Easings: `--ease-out-expo` `cubic-bezier(0.19, 1, 0.22, 1)` is the default for editorial
-- Motion library: [`motion/react`](https://motion.dev) is used for stagger, parallax (`useScroll`/`useTransform`), `layoutId` shared elements (active nav pill), and `AnimatePresence` (filter expansion)
+- Motion library: [`motion/react`](https://motion.dev) is used for stagger, parallax (`useScroll`/`useTransform`), `layoutId` shared elements, and `AnimatePresence` (filter expansion)
 
 ### Spacing & Radius
 
@@ -97,21 +98,21 @@ The `.standalone-pt` utility applies `padding-top: var(--safe-top)` so content d
 - `Footer` — `bg-ink` (`#1A1612`) with cream text, big editorial CTA before links ("Únete a la lista de espera" pre-launch)
 - `PublicNavbar` — transparent over hero, beige/blur after scroll, mobile menu uses `font-display` 3xl; its primary pill is "Lista de espera" (mobile: "Únete a la lista de espera") → `/#lista-de-espera` (scrolls in place on `/`)
 - `/lista/[code]` (waitlist owner page) and `/lista/baja` (opt-out) — cream page, eyebrow with `BRAND_NAME`, `text-editorial-lg` headline, paper card
-- `Navbar` (bottom tab bar) — floating pill `bg-paper/95` with `bg-ink` active pill that animates between tabs (`motion layoutId="nav-pill"`)
+- `Navbar` (bottom tab bar, 2026-10-08) — fixed full width, `bg-paper` + `border-border-soft` top border, five tabs with icon **and visible label** (Menú, Compra, Recetas, Asesor, Perfil; 11 px), active = ink, semibold, stroke 2.2 + `aria-current="page"` (Compra is also active on `/compra/*`); 60 px + safe-area inset. Hidden on full-screen routes listed in `HIDDEN_ON` (cook mode)
+- `/menu` — "D · Luz y foto": compact header (eyebrow + Fraunces 650 h1 with terracotta-deep italic day), day strip (ink pill), full-bleed photo hero with overlapping paper caption card + ink "Empezar a cocinar" pill, horizontal meal rows, every action behind "···" sheets (`MenuSheet`: bottom sheet on mobile, centred dialog at lg+, portalled, Esc closes, fades only under reduced motion); desktop hero row + "La semana" photo columns. Photo-less: the hero becomes a compact card (meal icon on a bone square, name once); thumbnails and tiles use `RecipeCover` (bone block + small meal icon, no name). See [Menus](./menus.md)
 - `/compra` + `/compra/tiendas` — "Pide a tus *tiendas*." editorial header, one cream card per shop order with a status chip (ink = enviado, terracotta = ha contestado, forest = confirmado), ink pill CTAs, verdict labels OK (forest) / Revisar (terracotta) / No hay (muted); `/shopping` gets an outlined "Pedir a mis tiendas" card
 
 ## Pages still in App Mode (legacy, green palette)
 
 These have not been migrated to the editorial system yet:
-- `/menu` — green/mint palette, `[#2D6A4F]` accents, `[#EAF3DE]` chips
-- `/shopping` — same
+- `/shopping` — green/mint palette, `[#2D6A4F]` accents, `[#EAF3DE]` chips
 - `/profile` — same
 - `/advisor` — green avatar, mint chat header
 - `/login` — photo background with white form sheet (transitional; uses `font-display` for logo but green submit button)
 
 ## Layout
 
-- App routes: `<main className="mx-auto max-w-[430px] pb-20">` (mobile-only canvas, leaves room for fixed bottom nav)
+- App routes: `<main className="mx-auto max-w-[430px] pb-[calc(5rem+var(--safe-bottom))]">` (mobile-only canvas; reserves the fixed bottom nav plus the iOS home-indicator inset — identical to `pb-20` without an inset)
 - Public routes: full-width with internal `max-w-7xl` (~1280px) editorial composition
 - Public routes have their own top `PublicNavbar`; the bottom `Navbar` only renders for authenticated app routes, and hides itself on `/recipes/[id]` (that page's sticky action bar takes its place; the page pads its bottom for it)
 
@@ -137,12 +138,12 @@ These have not been migrated to the editorial system yet:
 
 | Component | File | Notes |
 |-----------|------|-------|
-| `Navbar` (bottom tab bar) | `components/shared/Navbar.tsx` | Pill style, motion layoutId active state |
+| `Navbar` (bottom tab bar) | `components/shared/Navbar.tsx` | Fixed, labelled tabs, `HIDDEN_ON` route list |
 | `PublicNavbar` | `components/shared/PublicNavbar.tsx` | Transparent → blur on scroll |
 | `WaitlistSection` | `components/waitlist/WaitlistSection.tsx` | Landing waitlist form + success state |
 | `ReferralShare` | `components/waitlist/ReferralShare.tsx` | Referral link, copy (clipboard fallback), wa.me share |
 | `Footer` | `components/shared/Footer.tsx` | Hidden on `/` (landing has its own) |
-| `WeekStrip` | `components/menu/WeekStrip.tsx` | 7-day picker with status circles |
+| `WeekStrip` / `MenuSheet` / `RecipeCover` | `components/menu/` | /menu day strip · sheet primitive · photo or bone block + meal icon |
 | `RecipeCard` | `components/recipes/RecipeCard.tsx` | `/recipes` card: photo + time pill + title, nothing else (no badges); hero in `FeaturedRecipeCard.tsx` |
 | `FavoriteButton` | `components/recipes/FavoriteButton.tsx` | Heart toggle |
 | `AdvisorChat` | `components/advisor/AdvisorChat.tsx` | Chat bubbles + voice mic |
@@ -166,14 +167,12 @@ ONA supports a desktop layout at `md+` (≥768 px) and bespoke multi-column page
 
 ### Tokens (globals.css `@theme`)
 
-- `--sidebar-width: 200px;`
-- `--sidebar-gap: 8px;`
-- `--container-max: 1400px;`
+- `--sidebar-width: 200px;` · `--sidebar-gap: 8px;` · `--container-max: 1400px;`
 
 ### Components
 
 - `<DesktopSidebar />` at `apps/web/src/components/shared/DesktopSidebar.tsx` — persistent left nav at `md+`. Items: Menú, Compra, Recetas, Asesor, Perfil. Hides on `/recipes/[id]/cook` routes.
-- `<Navbar />` mobile bottom-nav unchanged; just gains `md:hidden` on its outer `<nav>`.
+- `<Navbar />` (mobile bottom-nav) carries `md:hidden` on its outer `<nav>`.
 
 ### Exceptions (no responsive treatment)
 
@@ -193,7 +192,7 @@ The migration (June 2026) shipped the chasis (sidebar at `md+`, container caps) 
 - [apps/web/src/app/(public)/como-funciona/page.tsx](../apps/web/src/app/(public)/como-funciona/page.tsx)
 - [apps/web/src/app/recipes/page.tsx](../apps/web/src/app/recipes/page.tsx) — editorial in-app
 - [apps/web/src/app/recipes/[id]/page.tsx](../apps/web/src/app/recipes/[id]/page.tsx)
-- [apps/web/src/app/menu/page.tsx](../apps/web/src/app/menu/page.tsx) — app mode (legacy)
-- [apps/web/src/components/shared/Navbar.tsx](../apps/web/src/components/shared/Navbar.tsx) — pill tab bar
+- [apps/web/src/app/menu/page.tsx](../apps/web/src/app/menu/page.tsx) — editorial "D · Luz y foto"
+- [apps/web/src/components/shared/Navbar.tsx](../apps/web/src/components/shared/Navbar.tsx) — labelled tab bar
 - [apps/web/src/components/shared/PublicNavbar.tsx](../apps/web/src/components/shared/PublicNavbar.tsx)
 - [apps/web/src/components/shared/Footer.tsx](../apps/web/src/components/shared/Footer.tsx)

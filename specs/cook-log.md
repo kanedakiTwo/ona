@@ -12,7 +12,7 @@ The cook-log is the **household-scoped** record of "we actually cooked this." It
 
 - A logged-in user marks any recipe as cooked from:
   - The recipe detail page (`/recipes/[id]`) — at the top of the **Notas** tab (desktop: Notas section), next to "Añadir a recetario".
-  - The menu page (`/menu`) — each `EditorialMealCard` exposes a "Cocinada" pill that records the cook event with menu / day-index / meal as context.
+  - The menu page (`/menu`) — each meal's "···" sheet has **"Marcar como cocinada"** (hint "La has cocinado N veces"), which records the cook event with menu / day-index / meal as context.
 - The pill flips its label to `Cocinada N×` once at least one event exists for the recipe in the household's scope.
 - The recipe detail header (under the title) shows `Cocinada N × · última dd mmm` once `N > 0`. The history line stays hidden for never-cooked recipes so the meta row doesn't get noisy on fresh catalog pages.
 - The user can delete a cook-log row (corrections) — no "undo" UX yet; the assistant or future analytics page will surface the list.
@@ -76,5 +76,5 @@ Same pattern as PR 1B: reads run through `resolveScope(userId)`; inserts dual-po
 - `apps/web/src/hooks/useCookLogs.ts` — TanStack hooks
 - `apps/web/src/components/recipes/CookedBadge.tsx` — pill + button variants
 - `apps/web/src/app/recipes/[id]/page.tsx` — wired into the detail header + the Notas tab
-- `apps/web/src/app/menu/page.tsx` — wired into `EditorialMealCard`
+- `apps/web/src/components/menu/MealOptions.tsx` — "Marcar como cocinada" in the /menu meal sheet
 - `apps/web/e2e/cook-log.spec.ts` — Playwright regression for the happy path

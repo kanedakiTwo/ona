@@ -54,7 +54,7 @@ When the conversation context is "step-by-step cooking" (a recipe-step skill is 
 - Wake-word phrase is fixed per model (`WAKE_PHRASE`, today "Hola Ona" until the "Hola Mimo" model lands; custom phrases are out of scope).
 - Wake word is browser-side only — desktop and mobile web. Native iOS/Android wrappers are out of scope for v1.
 - A Realtime session is short-lived: max 10 minutes of active conversation per session before forced reconnect (provider limit + cost guard).
-- The Realtime model is `gpt-realtime`; voice is one of the OpenAI preset Spanish voices.
+- The Realtime model comes from `OPENAI_REALTIME_MODEL` (default `gpt-realtime`) and the user-side transcript model from `OPENAI_REALTIME_TRANSCRIBE_MODEL` (default `whisper-1`), both read by `realtimeSessionBody` in `routes/realtime.ts` (test `realtimeModel.test.ts`). OpenAI switches off `gpt-realtime` on 2027-01-20 and `whisper-1` on 2027-02-26; the chosen successors are `gpt-realtime-2.1-mini` and `gpt-transcribe` (PRO-05): staging runs them first, production keeps the defaults until Miguel approves the voice. Voice is one of the OpenAI preset Spanish voices.
 - Ephemeral tokens are issued by the backend and scoped to a single session; the OpenAI key never reaches the browser.
 - Echo cancellation (`getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })`) is mandatory; without it the assistant interrupts itself.
 - All voice prompts and TTS are in Spanish (`es-ES`).
@@ -102,7 +102,7 @@ If the Realtime session enters `error` or `closed` state while the overlay is op
 - [apps/api/src/routes/realtime.ts](../apps/api/src/routes/realtime.ts) — `POST /realtime/:userId/session`, `/tool`, `/usage`
 - [apps/api/src/services/realtime/tools.ts](../apps/api/src/services/realtime/tools.ts) — assistant-skills→Realtime-tools adapter and executor
 - [apps/api/src/services/realtime/quota.ts](../apps/api/src/services/realtime/quota.ts) — per-user daily minutes guard
-- [apps/api/src/config/env.ts](../apps/api/src/config/env.ts) — `OPENAI_API_KEY`, `OPENAI_REALTIME_MODEL`, `OPENAI_REALTIME_VOICE`, `REALTIME_DAILY_MINUTES_PER_USER`
+- [apps/api/src/config/env.ts](../apps/api/src/config/env.ts) — `OPENAI_API_KEY`, `OPENAI_REALTIME_MODEL`, `OPENAI_REALTIME_TRANSCRIBE_MODEL`, `OPENAI_REALTIME_VOICE`, `REALTIME_DAILY_MINUTES_PER_USER`
 - [apps/web/src/components/advisor/AdvisorChat.tsx](../apps/web/src/components/advisor/AdvisorChat.tsx) — drains voice-mode turns into the chat history; hides mic button while voice mode is on
 - [apps/web/src/app/profile/page.tsx](../apps/web/src/app/profile/page.tsx) — opt-in toggle (Capítulo 04)
 - [apps/web/src/app/layout.tsx](../apps/web/src/app/layout.tsx) — mounts `VoiceProvider` only on authed routes

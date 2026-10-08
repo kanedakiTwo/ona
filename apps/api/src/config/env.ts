@@ -22,7 +22,17 @@ export const env = {
   PORT: parseInt(process.env.API_PORT || '8000', 10),
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
   OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
+  /**
+   * Voice-mode model. `gpt-realtime` is switched off by OpenAI on 2027-01-20;
+   * the successor chosen is `gpt-realtime-2.1-mini` (D-015, PRO-05). Changing
+   * models is configuration only: staging runs the new one first.
+   */
   OPENAI_REALTIME_MODEL: process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime',
+  /**
+   * Transcript of the user's side of a voice session (`audio.input.transcription`).
+   * `whisper-1` is switched off on 2027-02-26; successor `gpt-transcribe` (PRO-05).
+   */
+  OPENAI_REALTIME_TRANSCRIBE_MODEL: process.env.OPENAI_REALTIME_TRANSCRIBE_MODEL || 'whisper-1',
   // 'coral' is the OpenAI Realtime preset that lands closest to a Castilian
   // accent (vs. 'marin' which leans Latin-American). The system prompt also
   // pushes for Spain Spanish on top — see systemPrompt.ts when mode='voice'.

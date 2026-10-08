@@ -12,6 +12,37 @@ import { requireSpendCapacity } from '../middleware/spendCap.js'
 
 const router = Router()
 
+/**
+ * Body of `POST /v1/realtime/client_secrets`. Models come from env
+ * (`OPENAI_REALTIME_MODEL`, `OPENAI_REALTIME_TRANSCRIBE_MODEL`) so moving to
+ * a successor model is a config change per environment (PRO-05).
+ */
+export function realtimeSessionBody(instructions: string, tools: unknown[]) {
+  return {
+    session: {
+      type: 'realtime',
+      model: env.OPENAI_REALTIME_MODEL,
+      // `audio.output.voice` replaces the flat `voice` field per GA.
+      // `audio.input.transcription` replaces `input_audio_transcription`.
+      // `audio.input.turn_detection` replaces `turn_detection`.
+      audio: {
+        input: {
+          transcription: { model: env.OPENAI_REALTIME_TRANSCRIBE_MODEL },
+          turn_detection: {
+            type: 'server_vad',
+            threshold: 0.5,
+            prefix_padding_ms: 300,
+            silence_duration_ms: 500,
+          },
+        },
+        output: { voice: env.OPENAI_REALTIME_VOICE },
+      },
+      instructions,
+      tools,
+    },
+  }
+}
+
 router.use(authMiddleware)
 
 // POST /realtime/:userId/session — issue an ephemeral OpenAI Realtime token
@@ -58,29 +89,7 @@ router.post('/realtime/:userId/session', requireSpendCapacity(), async (req: Aut
         Authorization: `Bearer ${env.OPENAI_API_KEY}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        session: {
-          type: 'realtime',
-          model: env.OPENAI_REALTIME_MODEL,
-          // `audio.output.voice` replaces the flat `voice` field per GA.
-          // `audio.input.transcription` replaces `input_audio_transcription`.
-          // `audio.input.turn_detection` replaces `turn_detection`.
-          audio: {
-            input: {
-              transcription: { model: 'whisper-1' },
-              turn_detection: {
-                type: 'server_vad',
-                threshold: 0.5,
-                prefix_padding_ms: 300,
-                silence_duration_ms: 500,
-              },
-            },
-            output: { voice: env.OPENAI_REALTIME_VOICE },
-          },
-          instructions,
-          tools,
-        },
-      }),
+      body: JSON.stringify(realtimeSessionBody(instructions, tools)),
     })
 
     if (!upstream.ok) {

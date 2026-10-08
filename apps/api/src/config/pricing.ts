@@ -67,6 +67,8 @@ export const PRICES: PriceTable = {
   'openai/gpt-4o-transcribe': { currency: 'USD', inputPerMTok: 2.5, audioInputPerMTok: 2.5, outputPerMTok: 10, perMinute: 0.006 },
   'openai/gpt-4o-mini-transcribe': { currency: 'USD', inputPerMTok: 1.25, audioInputPerMTok: 1.25, outputPerMTok: 5, perMinute: 0.003 },
   'openai/whisper-1': { currency: 'USD', perMinute: 0.006 },
+  // Successor of whisper-1 / gpt-4o-transcribe (both off 2027-02-26): "$0.0045 / minute".
+  'openai/gpt-transcribe': { currency: 'USD', perMinute: 0.0045 },
   // Realtime voice is billed per token (verified 2026-10-07: audio $32 in /
   // $0.40 cached / $64 out, text $4 / $0.40 / $16 per MTok), but the server
   // only learns the session length the client reports — so we charge a blended
@@ -74,6 +76,11 @@ export const PRICES: PriceTable = {
   // (600 tok/min) + ~40 % assistant audio (1200 tok/min) + the cached ~5k-token
   // instructions/tools prefix re-read every response ≈ $0.05–0.15 / min.
   'openai/gpt-realtime': { currency: 'USD', perMinute: 0.1 }, // UNVERIFIED (blended estimate)
+  // Successors (gpt-realtime is off 2027-01-20). 2.1 has gpt-realtime's audio
+  // prices; 2.1-mini's audio is $10 / $0.30 / $20 per MTok — about a third,
+  // ≈ $0.02–0.03 / min by the same blend (ONA HQ Q-047). UNVERIFIED estimates.
+  'openai/gpt-realtime-2.1': { currency: 'USD', perMinute: 0.1 }, // UNVERIFIED (blended estimate)
+  'openai/gpt-realtime-2.1-mini': { currency: 'USD', perMinute: 0.03 }, // UNVERIFIED (blended estimate)
 
   // ── Meta WhatsApp (Spain rate card, EUR, VAT excluded) ───────
   // Free-form ("service") replies inside the 24 h window are free and are not

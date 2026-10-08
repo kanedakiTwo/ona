@@ -32,7 +32,7 @@ test('the advisor chat discloses it is an AI before and during the conversation'
   await expect(page.getByText('Soy Mimo, tu asistente de IA. Escribe o habla.')).toBeVisible()
   await expect(page.getByText(/\bOna\b/)).toHaveCount(0)
 
-  await page.getByRole('button', { name: /que toca cocinar hoy/i }).click()
+  await page.getByRole('button', { name: /qu[ée] toca cocinar hoy/i }).click()
   await expect(page.getByText('Hoy toca lentejas con verduras.')).toBeVisible()
   await expect(disclosure).toBeVisible()
 })

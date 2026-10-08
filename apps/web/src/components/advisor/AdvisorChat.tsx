@@ -24,10 +24,10 @@ interface AdvisorChatProps {
 }
 
 const EXAMPLE_PROMPTS = [
-  'Que toca cocinar hoy?',
+  '¿Qué toca cocinar hoy?',
   'Quiero crear una receta nueva',
-  'No tengo mantequilla, que uso?',
-  'Como van mis objetivos?',
+  'No tengo mantequilla, ¿qué uso?',
+  '¿Cómo van mis objetivos?',
 ]
 
 export default function AdvisorChat({ userId }: AdvisorChatProps) {

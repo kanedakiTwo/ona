@@ -18,7 +18,7 @@ function scrollToWaitlistIfHere(e: React.MouseEvent<HTMLAnchorElement>) {
 }
 
 const NAV_LINKS = [
-  { href: "/como-funciona", label: "Como funciona" },
+  { href: "/como-funciona", label: "Cómo funciona" },
   { href: "/recipes", label: "Recetas" },
 ]
 

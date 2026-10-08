@@ -185,6 +185,8 @@ This is the **single source of truth** for work that's pending on Miguel's side 
   - Añadir un número real de WhatsApp al portfolio actual de Meta, **sin pedir todavía la verificación** (D-004).
   - Reescribir con su voz las secciones [BORRADOR] de `constitution.md` (misión y POV, unos 15 min).
 
+- [ ] **WhatsApp — plantillas con el nombre viejo**: la asistente ahora es «Mimo» y la marca «Mimoia» (D-017). En WhatsApp Manager, re-enviar a aprobación las plantillas cuyo cuerpo dice "ONA" (p. ej. `ona_aviso`: "Aviso de ONA: {{1}}…" → "Aviso de Mimoia: {{1}}…"). Los nombres de plantilla no cambian.
+
 - [ ] **WhatsApp — optional follow-ups** (channel live in prod since 2026-10-06; linked + "genera menú" verified end-to-end; setup notes in [specs/whatsapp.md](./specs/whatsapp.md) → Configuration):
   - *(Optional, for proactive messages when you haven't written to Ona in 24 h)* WhatsApp Manager → Plantillas → new **Utility** template, Spanish, e.g. `ona_aviso`, body `Aviso de ONA: {{1}} Respóndeme por aquí si quieres cambiar algo.` → once approved, tell Claude to set `WHATSAPP_TEMPLATE_NAME=ona_aviso`.
   - Household members: tell Claude their ONA emails (added to `WHATSAPP_ALLOWED_EMAILS`) and add their phones in Meta → Paso 1 "Para" (max 5 on the test number).
@@ -196,7 +198,7 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 
 - [ ] **Voice-mode setup in Railway** (OpenAI key already set ✓):
   - `NEXT_PUBLIC_PICOVOICE_ACCESS_KEY` — get from console.picovoice.ai
-  - Upload the `Hola Ona` `.ppn` wake-word model file (trained at console.picovoice.ai, custom wake-word "Hola Ona")
+  - Upload the `Hola Mimo` `.ppn` wake-word model file (train it at console.picovoice.ai, Spanish, Porcupine WASM — the assistant is now "Mimo", D-017; the app still says "Hola Ona" via `WAKE_PHRASE` in `apps/web/src/hooks/useWakeWord.ts` until the new model lands)
   - *(Optional, cost control)* `REALTIME_DAILY_MINUTES_PER_USER` — caps per-user OpenAI Realtime minutes/day. Defaults to 30 if unset.
 
 - [ ] **Device-only manual tests** (the rest is covered by Playwright):

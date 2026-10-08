@@ -34,7 +34,7 @@ export default function AdvisorPage() {
               <span className="absolute inline-flex h-full w-full rounded-full bg-[#7A7066] opacity-40 animate-pulse-soft" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-[#7A7066]" />
             </span>
-            <span className="text-[10px] uppercase tracking-[0.15em] text-[#7A7066]">En linea</span>
+            <span className="text-[10px] uppercase tracking-[0.15em] text-[#7A7066]">En línea</span>
           </div>
         </div>
       </header>

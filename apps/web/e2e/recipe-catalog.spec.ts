@@ -20,7 +20,7 @@ test('catalog renders + detail page opens for the first card', async ({ page }) 
   await expect(page).toHaveURL(/\/recipes/)
 
   // Look for at least one card. Cards are `<a href="/recipes/<uuid>">`
-  // inside <main>; `/recipes/new` (the "Añadir receta" header link) is not
+  // inside <main>; `/recipes/new` (the "Nueva receta" header button) is not
   // a card. If the catalog is empty the test reports it as a soft skip —
   // the contract here is that the route renders.
   const cards = page

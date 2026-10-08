@@ -92,7 +92,7 @@ The `.standalone-pt` utility applies `padding-top: var(--safe-top)` so content d
 
 - `/` (landing) — hero with parallax, magnetic CTA ("Quiero mi semana pensada", smooth-scrolls in place to the waitlist so `?invita=`/`?ref=` stay in the URL), masonry steps, marquee, a **waitlist section** before the final CTA (`components/waitlist/WaitlistSection.tsx`, `#lista-de-espera`: cream bg, eyebrow "Lista de espera · Mimoia", `text-editorial-lg` headline with terracotta italic, form in a `rounded-[28px]` paper card with `.input-editorial` fields, `.chip-filter` one-tap answers as `role="radio"` buttons, accent-forest checkboxes, ink pill submit; success state with `ReferralShare` — link field + "Copiar enlace" ink pill + "Enviar por WhatsApp" outline pill — see [Waitlist](./waitlist.md)), and a counter showing the **real** size of the public catalogue (`X-Total-Count` of anonymous `GET /recipes`; hidden if unreadable). Until 2026-10-07 it animated to a made-up "2.847 personas"
 - `/como-funciona` — accordion FAQ, step images
-- `/recipes` — beige bg, sticky search, expandable filter sheet, editorial header with rust italic
+- `/recipes` — "D · Luz y foto" (2026-10-08): h1 "Recetas" in Fraunces semibold (`DISPLAY_UI` = `[font-family:var(--font-display)] font-[650]`, auto optical size — not the 144-opsz `.font-display` hero cut) + ink "+"; pill search (paper, `border`) with the "Más filtros" button inside on mobile; ONE chip row (36 px ink/paper pills with `aria-pressed`, hit area stretched to 44 px; horizontal scroll on mobile, wraps at `lg+` ending in an underlined "Más filtros" link — no filter column); "De temporada" hero (full-bleed 220 px on mobile, two 290 px radius-22 cards at `lg+`) with a paper caption card whose eyebrow uses `#B5432A` (terracotta darkened for AA on small text; `#C65D38` is 4.1:1 on paper); grid of photo cards (radius 16/18, 2-col masonry on mobile, 4-col 220 px at `lg+`); advanced filters in a dialog (bottom sheet / centred panel). See [Recipes](./recipes.md)
 - `/recipes/[id]` — large hero photo with cream sheet, dotted ingredient list, monospace quantities, "Capitulo 01/02" eyebrow labels
 - `Footer` — `bg-ink` (`#1A1612`) with cream text, big editorial CTA before links ("Únete a la lista de espera" pre-launch)
 - `PublicNavbar` — transparent over hero, beige/blur after scroll, mobile menu uses `font-display` 3xl; its primary pill is "Lista de espera" (mobile: "Únete a la lista de espera") → `/#lista-de-espera` (scrolls in place on `/`)
@@ -143,7 +143,7 @@ These have not been migrated to the editorial system yet:
 | `ReferralShare` | `components/waitlist/ReferralShare.tsx` | Referral link, copy (clipboard fallback), wa.me share |
 | `Footer` | `components/shared/Footer.tsx` | Hidden on `/` (landing has its own) |
 | `WeekStrip` | `components/menu/WeekStrip.tsx` | 7-day picker with status circles |
-| `RecipeCard` | `components/recipes/RecipeCard.tsx` | Catalog card |
+| `RecipeCard` | `components/recipes/RecipeCard.tsx` | `/recipes` card: photo + time pill + terracotta star **"Selección Mimoia" seal** (`SelectionSeal`, system recipes only); hero in `FeaturedRecipeCard.tsx` |
 | `FavoriteButton` | `components/recipes/FavoriteButton.tsx` | Heart toggle |
 | `AdvisorChat` | `components/advisor/AdvisorChat.tsx` | Chat bubbles + voice mic |
 
@@ -162,7 +162,7 @@ ONA supports a desktop layout at `md+` (≥768 px) and bespoke multi-column page
 |---|---|
 | `< md` (≤767 px) | Bottom-nav fixed at viewport bottom, content in `max-w-[430px] mx-auto` column. |
 | `md` (768–1023 px) | `<DesktopSidebar />` appears (200 px wide), bottom-nav hidden, `<main>` shifted right via `md:ml-[calc(var(--sidebar-width)+var(--sidebar-gap))]`. Pages still cap at `max-w-[430px]` inside `<main>` at this breakpoint — the bespoke per-page widening kicks in at `lg+`. |
-| `lg+` (≥1024 px) | Per-page bespoke layouts (filters sidebar, split views, multi-col grids). Each page documents its desktop layout in its own spec. |
+| `lg+` (≥1024 px) | Per-page bespoke layouts (filter rows, split views, multi-col grids). Each page documents its desktop layout in its own spec. |
 
 ### Tokens (globals.css `@theme`)
 
@@ -183,7 +183,7 @@ ONA supports a desktop layout at `md+` (≥768 px) and bespoke multi-column page
 
 ### Pragmatic scope vs original plan
 
-The migration (June 2026) shipped the chasis (sidebar at `md+`, container caps) + the `/recipes` 3-col catalogue shell + the Vista Semana 7-col grid + page-by-page container widening at `lg+`. The original plan ([docs/superpowers/specs/2026-06-01-responsive-desktop-design.md](../docs/superpowers/specs/2026-06-01-responsive-desktop-design.md)) also called for bespoke per-page splits (38/62 recipe detail with sticky hero, 40/60 form layouts, vertical day-strip + preview rail, sidebar + 3-col aisle grid on `/shopping`, `/profile` tabs shell, `/advisor` side panel). Those bespoke layouts were deferred to follow-up polish PRs — the foundational responsive win is delivered without them, and the editorial splits can land iteratively as taste decisions allow.
+The migration (June 2026) shipped the chasis (sidebar at `md+`, container caps) + a `/recipes` catalogue shell (replaced by the "D" filter row on 2026-10-08) + the Vista Semana 7-col grid + page-by-page container widening at `lg+`. The original plan ([docs/superpowers/specs/2026-06-01-responsive-desktop-design.md](../docs/superpowers/specs/2026-06-01-responsive-desktop-design.md)) also called for bespoke per-page splits (38/62 recipe detail with sticky hero, 40/60 form layouts, vertical day-strip + preview rail, sidebar + 3-col aisle grid on `/shopping`, `/profile` tabs shell, `/advisor` side panel). Those bespoke layouts were deferred to follow-up polish PRs — the foundational responsive win is delivered without them, and the editorial splits can land iteratively as taste decisions allow.
 
 ## Source
 

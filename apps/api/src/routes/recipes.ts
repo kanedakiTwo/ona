@@ -160,10 +160,10 @@ interface RecipeCard {
   id: string
   name: string
   /** Null for system / ONA-curated recipes; the owning user's id otherwise.
-   * The frontend uses this for both the ownership badge ("ONA" vs "Tuya")
-   * and the scope segmenter ("Todas" / "Mis recetas" / "Catálogo ONA").
+   * The frontend uses this for both the "Selección Mimoia" seal on cards
+   * and the scope chips ("Selección Mimoia" / "Mis recetas"; none = todas).
    * Omitting it (the previous behaviour) made every card look authorless
-   * to the page logic — badge said ONA but the "Catálogo ONA" filter
+   * to the page logic — badge said ONA but the old "Catálogo ONA" filter
    * found 0 results, and "Mis recetas" was always empty. */
   authorId: string | null
   imageUrl: string | null
@@ -370,7 +370,7 @@ async function fetchRecipeById(id: string): Promise<RecipeRow | null> {
 // Public catalogue: anonymous callers (no Bearer token) see ONLY system
 // recipes (`authorId IS NULL`). Authenticated callers keep the existing
 // behaviour and see the full catalogue — the frontend then segments by
-// scope (Todas / Mis recetas / Catálogo ONA) per spec.
+// scope (todas / Mis recetas / Selección Mimoia) per spec.
 router.get('/recipes', optionalAuthMiddleware, async (req: AuthRequest, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page as string) || 1)
@@ -573,7 +573,7 @@ router.post(
 // POST /recipes/extract-from-url — extract from a YouTube video or article URL (auth required).
 // `asSystem: true` (admin-only) lands the recipe in the curated ONA catalogue
 // (`authorId = null`, `internalTags` includes `compartida`) so it shows up
-// under "Catálogo ONA" on /recipes and on the public /recipes-ona page.
+// under "Selección Mimoia" on /recipes and on the public /recipes-ona page.
 // Non-admins requesting asSystem get 403.
 const extractFromUrlSchema = z.object({
   url: z.string().url(),
@@ -610,7 +610,7 @@ router.post(
       // of catalogue scope.
       const result = await saveExtractedRecipe(extracted, {
         // asSystem: persist as a curated ONA recipe (authorId = null) so it
-        // surfaces on /recipes-ona and under "Catálogo ONA" on /recipes.
+        // surfaces on /recipes-ona and under "Selección Mimoia" on /recipes.
         authorId: asSystem ? null : req.userId!,
         internalTags: asSystem
           ? ['compartida', 'auto-extracted', 'from-url']

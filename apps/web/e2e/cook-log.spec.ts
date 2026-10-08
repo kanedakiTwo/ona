@@ -18,7 +18,7 @@ test.beforeEach(async ({ page }) => {
 test('recipe detail: marking cooked increments the count', async ({ page }) => {
   // Open the catalog and pick the first recipe card. Scoped to <main> (the
   // desktop sidebar is in the DOM but hidden on mobile) and excluding
-  // `/recipes/new` (the "Añadir receta" link in the header).
+  // `/recipes/new` (the "Nueva receta" button in the header).
   await page.goto('/recipes')
   const card = page
     .getByRole('main')

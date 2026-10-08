@@ -1,15 +1,46 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import Link from "next/link"
+import { Plus } from "lucide-react"
+import {
+  detectSeason,
+  filterCatalogRecipes,
+  pickFeaturedRecipes,
+  type CatalogScope,
+  type Meal,
+  type Season,
+} from "@ona/shared"
 import { useRecipes } from "@/hooks/useRecipes"
 import { useHouseholdCustomTags } from "@/hooks/useRecipeNotes"
 import { useAuth } from "@/lib/auth"
-import { Plus } from "lucide-react"
-import Link from "next/link"
-import type { Meal, Season } from "@ona/shared"
-import CatalogFilters from "@/components/recipes/CatalogFilters"
+import {
+  CatalogChips,
+  CatalogFiltersSheet,
+  CatalogSearch,
+  QUICK_MAX_TIME,
+} from "@/components/recipes/CatalogFilters"
 import CatalogGrid from "@/components/recipes/CatalogGrid"
+import { FeaturedRecipeCard } from "@/components/recipes/FeaturedRecipeCard"
+import { DISPLAY_UI } from "@/components/recipes/RecipeCard"
 
+const SCOPE_KEY = "ona.recipes.scope"
+
+function readScope(): CatalogScope | null {
+  try {
+    const saved = window.localStorage.getItem(SCOPE_KEY)
+    return saved === "all" || saved === "mine" || saved === "ona" ? saved : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * `/recipes` — "D · Luz y foto". Header ("Recetas" + Nueva receta), one
+ * search field, one chip row (quick filters + scope), a "De temporada" hero
+ * when nothing is filtered, then the card grid. Advanced filters live in a
+ * dialog opened from the search field (mobile) or "Más filtros" (lg+).
+ */
 export default function RecipesPage() {
   const { user } = useAuth()
   const [searchQuery, setSearchQuery] = useState("")
@@ -18,27 +49,32 @@ export default function RecipesPage() {
   const [maxTime, setMaxTime] = useState<number | "">("")
   const [filtersOpen, setFiltersOpen] = useState(false)
   /**
-   * Catalog scope filter (per the user's design call):
-   *   - 'all'  : todas las recetas (catálogo ONA + las del usuario, mezcladas — comportamiento histórico)
-   *   - 'mine' : sólo las del usuario actual (`recipe.authorId === user.id`)
-   *   - 'ona'  : sólo las del catálogo ONA (`recipe.authorId === null`)
-   * Persisted in `localStorage` so the choice survives reloads.
+   * Catalogue scope: 'all' (no chip), 'ona' ("Selección Mimoia", system
+   * recipes) or 'mine' ("Mis recetas"). Persisted in localStorage.
    */
-  const [scope, setScope] = useState<"all" | "mine" | "ona">("all")
-  /** PR 8B-2 — selected household custom tags (AND filter). */
+  const [scope, setScope] = useState<CatalogScope>("all")
+  /** Household custom tags (AND filter, server-side). */
   const [selectedTags, setSelectedTags] = useState<string[]>([])
+  /** Season "now" — meteorological, Spain; same rule as the menu generator. */
+  const [currentSeason] = useState<Season>(() => detectSeason(new Date()))
+
   useEffect(() => {
-    const saved = typeof window !== "undefined" ? localStorage.getItem("ona.recipes.scope") : null
-    if (saved === "all" || saved === "mine" || saved === "ona") setScope(saved)
+    const saved = readScope()
+    if (saved) setScope(saved)
   }, [])
+
+  function setScopeAndPersist(next: CatalogScope) {
+    setScope(next)
+    try {
+      window.localStorage.setItem(SCOPE_KEY, next)
+    } catch {
+      /* private mode: the choice just doesn't survive a reload */
+    }
+  }
   function toggleTag(tag: string) {
     setSelectedTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]))
   }
   const { data: householdTags } = useHouseholdCustomTags()
-  function setScopeAndPersist(next: "all" | "mine" | "ona") {
-    setScope(next)
-    if (typeof window !== "undefined") localStorage.setItem("ona.recipes.scope", next)
-  }
 
   const { data: recipes, isLoading } = useRecipes({
     search: searchQuery || undefined,
@@ -47,20 +83,37 @@ export default function RecipesPage() {
     perPage: 100,
   })
 
-  // Client-side filtering for season + time + scope
-  const filteredRecipes = useMemo(() => {
-    if (!recipes) return []
-    return recipes.filter((r: any) => {
-      if (scope === "mine" && r.authorId !== user?.id) return false
-      if (scope === "ona" && r.authorId !== null) return false
-      if (selectedSeason && !r.seasons?.includes(selectedSeason)) return false
-      if (maxTime && r.prepTime && r.prepTime > maxTime) return false
-      return true
-    })
-  }, [recipes, selectedSeason, maxTime, scope, user?.id])
+  // Season / time / scope are filtered client-side (rules in @ona/shared).
+  const filteredRecipes = useMemo(
+    () =>
+      filterCatalogRecipes(recipes ?? [], {
+        scope,
+        userId: user?.id,
+        season: selectedSeason,
+        maxTime,
+      }),
+    [recipes, scope, user?.id, selectedSeason, maxTime],
+  )
 
-  const activeFiltersCount =
-    (selectedMeal ? 1 : 0) + (selectedSeason ? 1 : 0) + (maxTime ? 1 : 0)
+  const anyFilterActive =
+    !!searchQuery || !!selectedMeal || !!selectedSeason || !!maxTime || scope !== "all" || selectedTags.length > 0
+  // Filters with no chip in the row → badge on the filters button.
+  const hiddenFiltersCount =
+    (selectedSeason && selectedSeason !== currentSeason ? 1 : 0) +
+    (maxTime && maxTime !== QUICK_MAX_TIME ? 1 : 0) +
+    selectedTags.length
+
+  // "De temporada" hero: only on the unfiltered catalogue. Two at lg+ (the
+  // second is a regular grid card below lg).
+  const featured = useMemo(
+    () => (anyFilterActive ? [] : pickFeaturedRecipes(filteredRecipes, { date: new Date(), count: 2 })),
+    [anyFilterActive, filteredRecipes],
+  )
+  const gridRecipes = useMemo(
+    () => (featured[0] ? filteredRecipes.filter((r) => r.id !== featured[0].id) : filteredRecipes),
+    [featured, filteredRecipes],
+  )
+  const hiddenAtLg = useMemo(() => new Set(featured[1] ? [featured[1].id] : []), [featured])
 
   function clearAll() {
     setSelectedMeal("")
@@ -71,9 +124,10 @@ export default function RecipesPage() {
     setSelectedTags([])
   }
 
-  const filterProps = {
-    searchQuery,
-    onSearchChange: setSearchQuery,
+  const openFilters = useCallback(() => setFiltersOpen(true), [])
+  const closeFilters = useCallback(() => setFiltersOpen(false), [])
+
+  const filterState = {
     selectedMeal,
     onMealChange: setSelectedMeal,
     selectedSeason,
@@ -85,76 +139,103 @@ export default function RecipesPage() {
     householdTags,
     selectedTags,
     onToggleTag: toggleTag,
-    filtersOpen,
-    onFiltersOpenChange: setFiltersOpen,
-    activeFiltersCount,
-    onClearAll: clearAll,
-  } as const
+    currentSeason,
+  }
+
+  const count = filteredRecipes.length
 
   return (
-    <div className="bg-[#FAF6EE] min-h-screen">
-      {/* Editorial Header — single-column block above the 2-col shell */}
-      <div className="px-5 pt-8 pb-4 lg:px-8 lg:max-w-[1200px] lg:mx-auto">
-        <div className="text-eyebrow mb-2">Catálogo de cocina</div>
-        <div className="flex items-end justify-between gap-4">
-          <h1 className="font-display text-[2.5rem] leading-[0.95] tracking-tight text-[#1A1612]">
-            <span className="font-italic italic text-[#C65D38]">Buen</span><br />comer.
+    <div className="min-h-screen bg-cream">
+      <div className="mx-auto w-full max-w-[1180px] pb-12 lg:px-12 lg:pb-10 lg:pt-8">
+        {/* Row 1 — mobile: title + "+" then the search below; lg: title · search · Nueva receta */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-3 px-5 pt-4 lg:flex-nowrap lg:px-0 lg:pt-0">
+          <h1 className={`${DISPLAY_UI} order-1 text-[32px] leading-[1.1] text-ink lg:text-[40px] lg:leading-[1.05]`}>
+            Recetas
           </h1>
           <Link
             href="/recipes/new"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#1A1612] text-[#FAF6EE] shadow-[0_8px_24px_-8px_rgba(26,22,18,0.4)] transition-transform active:scale-95"
-            aria-label="Añadir receta"
+            aria-label="Nueva receta"
+            className="order-2 ml-auto flex h-11 w-11 shrink-0 items-center justify-center gap-2 rounded-full bg-ink text-cream transition-colors hover:bg-forest active:scale-95 lg:order-3 lg:h-12 lg:w-auto lg:px-5"
           >
-            <Plus size={18} />
+            <Plus size={20} strokeWidth={2.2} aria-hidden="true" />
+            <span className="hidden text-[15px] font-semibold lg:inline">Nueva receta</span>
           </Link>
+          <CatalogSearch
+            className="order-3 basis-full lg:order-2 lg:max-w-[560px] lg:flex-1 lg:basis-auto"
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            onOpenFilters={openFilters}
+            filtersOpen={filtersOpen}
+            hiddenFiltersCount={hiddenFiltersCount}
+          />
         </div>
-      </div>
 
-      {/* At lg+: 2-column shell (filters sidebar + main area). At < lg: stacked. */}
-      <div className="lg:mx-auto lg:max-w-[1200px] lg:px-8 lg:grid lg:grid-cols-[240px_minmax(0,1fr)] lg:gap-8 lg:items-start">
-        {/* Filters: inline (with expand panel) at < lg.
-            display:none via lg:hidden hides from screen readers too —
-            both filter trees mount in the DOM but only the visible one
-            is reachable by assistive tech. */}
-        <div className="lg:hidden">
-          <CatalogFilters variant="inline" {...filterProps} />
-        </div>
-        {/* Filters: always-visible sidebar at lg+ */}
-        <aside className="hidden lg:block lg:sticky lg:top-6">
-          <CatalogFilters variant="sidebar" {...filterProps} />
-        </aside>
+        {/* Row 2 — one chip row (scrolls on mobile, wraps at lg) */}
+        <CatalogChips
+          className="mt-1.5 lg:mt-[22px]"
+          onOpenFilters={openFilters}
+          filtersOpen={filtersOpen}
+          hiddenFiltersCount={hiddenFiltersCount}
+          {...filterState}
+        />
 
-        {/* Main column: result count + grid */}
-        <div>
-          <div className="px-5 pb-12 pt-4 lg:px-0">
-            {!isLoading && (
-              <div className="mb-4 flex items-baseline justify-between">
-                <span className="text-[11px] uppercase tracking-[0.15em] text-[#7A7066]">
-                  {filteredRecipes.length} {filteredRecipes.length === 1 ? "receta" : "recetas"}
-                </span>
-                <span className="font-italic italic text-xs text-[#7A7066]">de temporada</span>
-              </div>
-            )}
-            <CatalogGrid
-              recipes={filteredRecipes}
-              userId={user?.id}
-              isLoading={isLoading}
-              emptyState={
+        {featured.length > 0 && (
+          <section aria-label="De temporada" className="mt-2.5 lg:mt-[22px] lg:grid lg:grid-cols-2 lg:gap-5">
+            <FeaturedRecipeCard recipe={featured[0]} />
+            {featured[1] && <FeaturedRecipeCard recipe={featured[1]} className="hidden lg:block" />}
+          </section>
+        )}
+
+        <div className="px-4 pt-3.5 lg:px-0 lg:pt-[22px]">
+          {!isLoading && (
+            <div className="mb-3 flex items-center justify-between px-1 lg:px-0">
+              <p className="text-[12px] text-ink-soft" aria-live="polite">
+                {count} {count === 1 ? "receta" : "recetas"}
+              </p>
+              {anyFilterActive && (
+                <button
+                  type="button"
+                  onClick={clearAll}
+                  className="-my-3 py-3 text-[12px] font-medium text-ink underline underline-offset-4"
+                >
+                  Quitar filtros
+                </button>
+              )}
+            </div>
+          )}
+          <CatalogGrid
+            recipes={gridRecipes}
+            isLoading={isLoading}
+            hiddenAtLg={hiddenAtLg}
+            emptyState={
+              count > 0 ? null : (
                 <div className="mt-16 text-center">
-                  <div className="font-display text-5xl text-[#C65D38]/30">∅</div>
-                  <p className="mt-4 font-display text-xl text-[#1A1612]">No hay recetas con esos filtros.</p>
-                  <p className="mt-2 text-sm text-[#7A7066]">Prueba a quitarlos o crea una nueva.</p>
-                  {activeFiltersCount > 0 && (
-                    <button onClick={clearAll} className="mt-6 text-sm font-medium text-[#2D6A4F] underline">
+                  <p className={`${DISPLAY_UI} text-xl text-ink`}>No hay recetas con esos filtros.</p>
+                  <p className="mt-2 text-sm text-ink-soft">Prueba a quitarlos o crea una nueva.</p>
+                  {anyFilterActive && (
+                    <button
+                      type="button"
+                      onClick={clearAll}
+                      className="mt-4 h-11 px-2 text-sm font-medium text-forest underline"
+                    >
                       Limpiar filtros
                     </button>
                   )}
                 </div>
-              }
-            />
-          </div>
+              )
+            }
+          />
         </div>
       </div>
+
+      <CatalogFiltersSheet
+        open={filtersOpen}
+        onClose={closeFilters}
+        resultCount={count}
+        anyFilterActive={anyFilterActive}
+        onClearAll={clearAll}
+        {...filterState}
+      />
     </div>
   )
 }

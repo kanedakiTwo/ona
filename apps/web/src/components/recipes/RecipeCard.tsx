@@ -1,102 +1,90 @@
 "use client"
 
-import { Clock } from "lucide-react"
-import { FavoriteButton } from "@/components/recipes/FavoriteButton"
 import Link from "next/link"
-import { mealLabel } from "@/lib/labels"
+import { CookingPot, Star } from "lucide-react"
+import { isCuratedRecipe, recipeMinutes, type CatalogRecipeLike } from "@ona/shared"
 
-const MEAL_EMOJI: Record<string, string> = {
-  breakfast: "🥣",
-  lunch: "🍲",
-  dinner: "🥗",
-  snack: "🍎",
+/**
+ * Catalogue card for `/recipes` ("D · Luz y foto"): photo with ONLY a time
+ * pill bottom-left, Fraunces title below, and the terracotta "Selección
+ * Mimoia" seal on system / curated recipes. No season badge (the catalogue
+ * never derives a season from the order of `recipe.seasons`) and no
+ * ownership badge.
+ */
+
+export type CatalogCardRecipe = CatalogRecipeLike & { name: string }
+
+/** Fraunces at UI sizes: semibold, automatic optical size (not the 144 hero cut of `.font-display`). */
+export const DISPLAY_UI = "[font-family:var(--font-display)] font-[650] tracking-[-0.01em]"
+
+function SelectionSeal({ className = "" }: { className?: string }) {
+  return (
+    <span
+      role="img"
+      aria-label="Selección Mimoia"
+      title="Selección Mimoia"
+      data-testid="seleccion-seal"
+      className={`flex h-6 w-6 items-center justify-center rounded-full bg-terracotta text-paper shadow-[0_2px_8px_-2px_rgba(26,22,18,0.35)] ${className}`}
+    >
+      <Star size={12} fill="currentColor" strokeWidth={0} aria-hidden="true" />
+    </span>
+  )
 }
 
-const MEAL_BG: Record<string, string> = {
-  breakfast: "#FAEEDA",
-  lunch: "#EAF3DE",
-  dinner: "#E6F1FB",
-  snack: "#F3E8FF",
+function TimePill({ minutes, className = "" }: { minutes: number; className?: string }) {
+  return (
+    <span
+      className={`rounded-full bg-paper px-2 py-[3px] text-[12px] font-semibold leading-none text-ink lg:px-[9px] ${className}`}
+    >
+      {minutes} min
+    </span>
+  )
 }
 
-interface RecipeCardRecipe {
-  id: string
-  name: string
-  authorId?: string | null
-  imageUrl?: string | null
-  prepTime?: number
-  meals?: string[]
-  seasons?: string[]
-  tags?: string[]
-  internalTags?: string[]
-  is_favorite?: boolean
-}
-
-interface RecipeCardProps {
-  recipe: RecipeCardRecipe
-  isFavorite?: boolean
-  userId?: string
-  onToggleFavorite?: () => void
-}
-
+/**
+ * `shape` only matters below `lg`, where the grid is a two-column masonry
+ * (tall / short photos alternate). At `lg+` every photo is 220 px tall.
+ */
 export function RecipeCard({
   recipe,
-  isFavorite,
-  userId,
-}: RecipeCardProps) {
-  const mainMeal = recipe.meals?.[0] || "lunch"
+  shape = "tall",
+}: {
+  recipe: CatalogCardRecipe
+  shape?: "tall" | "short"
+}) {
+  const minutes = recipeMinutes(recipe)
+  const curated = isCuratedRecipe(recipe)
 
   return (
-    <div className="group relative overflow-hidden rounded-xl bg-white shadow-sm">
-      {/* Favorite button */}
-      {userId && (
-        <div className="absolute right-2 top-2 z-10">
-          <FavoriteButton
-            recipeId={recipe.id}
-            isFavorite={!!isFavorite}
-            userId={userId}
-          />
-        </div>
-      )}
-
-      <Link href={`/recipes/${recipe.id}`} className="block">
-        {/* Image */}
+    <Link
+      href={`/recipes/${recipe.id}`}
+      data-testid="recipe-card"
+      className="group flex flex-col gap-1.5 rounded-[16px] text-ink outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 focus-visible:ring-offset-cream lg:gap-2"
+    >
+      <span
+        className={`relative block overflow-hidden rounded-[16px] bg-bone lg:aspect-auto lg:h-[220px] lg:rounded-[18px] ${
+          shape === "tall" ? "aspect-[7/8]" : "aspect-[4/3]"
+        }`}
+      >
         {recipe.imageUrl ? (
           <img
             src={recipe.imageUrl}
-            alt={recipe.name}
-            className="h-32 w-full object-cover"
+            alt=""
+            loading="lazy"
+            className="h-full w-full object-cover transition-transform duration-700 ease-[cubic-bezier(0.19,1,0.22,1)] group-hover:scale-[1.04]"
           />
         ) : (
-          <div
-            className="flex h-32 w-full items-center justify-center"
-            style={{ background: MEAL_BG[mainMeal] || "#f5f5f5" }}
-          >
-            <span className="text-4xl">{MEAL_EMOJI[mainMeal] || "🍽️"}</span>
-          </div>
+          // No photo yet: a quiet placeholder instead of a stock photo of another dish.
+          <span className="flex h-full w-full items-center justify-center bg-cream-deep text-ink-light">
+            <CookingPot size={32} strokeWidth={1.4} aria-hidden="true" />
+          </span>
         )}
-
-        {/* Info */}
-        <div className="p-3">
-          <h3 className="text-[13px] font-semibold leading-tight text-[#1A1A1A]">
-            {recipe.name}
-          </h3>
-
-          <div className="mt-1.5 flex items-center gap-2">
-            {recipe.prepTime != null && recipe.prepTime > 0 ? (
-              <span className="flex items-center gap-1 text-[11px] text-[#999999]">
-                <Clock size={10} />
-                {recipe.prepTime} min
-              </span>
-            ) : null}
-            {recipe.meals && recipe.meals.length > 0 && (
-              <span className="text-[11px] text-[#999999]">
-                {mealLabel(recipe.meals[0])}
-              </span>
-            )}
-          </div>
-        </div>
-      </Link>
-    </div>
+        {minutes != null && <TimePill minutes={minutes} className="absolute bottom-2 left-2 lg:bottom-2.5 lg:left-2.5" />}
+        {curated && <SelectionSeal className="absolute right-2 top-2 lg:right-2.5 lg:top-2.5" />}
+      </span>
+      <span className={`${DISPLAY_UI} line-clamp-2 text-[17px] leading-[1.2] lg:text-[19px]`}>
+        {recipe.name}
+      </span>
+    </Link>
   )
 }

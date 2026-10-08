@@ -7,7 +7,7 @@ import { Search, X, ArrowUpRight } from "lucide-react"
 import { usePublicRecipes } from "@/hooks/useRecipes"
 import { publicTagsOf } from "@/lib/recipeView"
 import { seasonLabel, MEAL_LABELS } from "@/lib/labels"
-import type { Meal, Season } from "@ona/shared"
+import { recipeSeasonBadge, type Meal } from "@ona/shared"
 
 const MEAL_OPTIONS: { value: Meal; label: string }[] = [
   { value: "breakfast", label: MEAL_LABELS.breakfast },
@@ -161,7 +161,9 @@ function PublicRecipeCard({ recipe }: { recipe: any }) {
   const fallbackImg =
     "https://images.unsplash.com/photo-1490645935967-10de6ba17061?w=600&q=80&auto=format&fit=crop"
   const img = recipe.imageUrl || fallbackImg
-  const firstSeason = recipe.seasons?.[0] as Season | undefined
+  // Only the CURRENT season, and only for genuinely seasonal recipes — never
+  // `seasons[0]` (that labelled every all-year recipe "Primavera").
+  const seasonNow = recipeSeasonBadge(recipe.seasons)
   const visibleTags = publicTagsOf(recipe)
 
   return (
@@ -180,9 +182,9 @@ function PublicRecipeCard({ recipe }: { recipe: any }) {
             {recipe.prepTime}&apos;
           </div>
         ) : null}
-        {firstSeason && (
+        {seasonNow && (
           <div className="absolute left-2 top-2 rounded-full bg-[#1A1612]/70 px-2 py-0.5 text-[9px] uppercase tracking-[0.15em] text-[#FAF6EE] backdrop-blur-sm">
-            {seasonLabel(firstSeason)}
+            {seasonLabel(seasonNow)}
           </div>
         )}
         <div className="absolute bottom-2 left-2 rounded-full bg-[#FAF6EE]/95 px-2 py-0.5 text-[9px] uppercase tracking-[0.15em] text-[#1A1612] backdrop-blur-sm">

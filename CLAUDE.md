@@ -158,13 +158,9 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 
 - [ ] **Marca Mimoia — registrarla bien** (decidido seguir con Mimoia el 2026-10-08; detalle en [reports/A tu gusto y Apapacho como marca.md](./reports/A%20tu%20gusto%20y%20Apapacho%20como%20marca.md) y `research_notes/A tu gusto y Apapacho como marca/marcas_mimoia.md`): nadie tiene MIMOIA, pero "MIMO" pesa y Starship Technologies la tiene para apps de pedido/entrega de comida (EUTM 016775306, EE. UU., México), además de Mimo GmbH y Xiaomi. Encargar a un agente de la propiedad industrial (1) una investigación de uso de MIMO por Starship en UE/EE. UU./México y (2) la solicitud de MIMOIA en EUIPO acotada a clases 9 y 42 (software de menús, recetas y asistente de cocina), sin 39/43. Hecho = solicitud presentada con número.
 
-- [ ] **Lista de espera (Mimoia) — antes de abrirla (lunes 13 oct, adelantada por el plan de validación D-020 de ONA HQ)** ([specs/waitlist.md](./specs/waitlist.md)):
-  - Aprobar el copy: sección de la landing, pantalla de éxito, `/lista/[code]`, `/lista/baja` y el texto para WhatsApp.
-  - **Bloqueante**: `NEXT_PUBLIC_SUPPORT_EMAIL` (ona-web). La gente de la lista no tiene "persona que te invitó" y `/privacidad` necesita un contacto real para ejercer derechos.
-  - Revisión legal de "11. Lista de espera" en `/privacidad` (consentimiento, LSSI para el menú de los viernes, conservación hasta lanzamiento + 6 meses).
-  - Cuando mimoia.com apunte a ona-web: `WEB_PUBLIC_URL=https://mimoia.com` en ona-api (enlaces de invitación y de baja).
-  - Para invitar una tanda: `GET /admin/waitlist` (o el agente con el token) → `POST /admin/waitlist/invite {"ids":[…]}` con tu JWT de admin → escribirles con el `unsubscribeUrl` de cada uno.
-
+- [ ] **Lista de espera (Mimoia) — abre el lunes 13 oct** (plan de validación D-020 de ONA HQ; [specs/waitlist.md](./specs/waitlist.md)). Ya hecho: copy aprobado por Miguel (2026-10-08), `NEXT_PUBLIC_SUPPORT_EMAIL=hola@mimoia.com`, `WEB_PUBLIC_URL=https://mimoia.com`. Queda:
+  - Revisión legal de "11. Lista de espera" en `/privacidad` (consentimiento, LSSI para el menú de los viernes, conservación hasta lanzamiento + 6 meses). No bloquea la apertura; va con la revisión legal general de `/privacidad`.
+  - Para invitar una tanda: `GET /admin/waitlist` (o el agente con el token) → `POST /admin/waitlist/invite {"ids":[…]}` con tu JWT de admin → escribirles con el `unsubscribeUrl` de cada uno. Con la beta cerrada (PRO-27 de ONA HQ), un email invitado así puede crear cuenta en `/register`.
 - [ ] **Auditoría 2026-10-07 — lo que queda de tu lado** (todo lo de código está hecho y en prod):
   - **Backups**: activar los backups de Postgres en Railway y hacer una restauración de prueba; copia periódica del volumen `ona-api-volume` (fotos de usuarios). Hoy no hay ninguna red si se pierde la base de datos.
   - **Errores en producción**: ya no hace falta Sentry: hay registro de errores propio (`specs/errors.md`), decisión de Miguel 2026-10-07.

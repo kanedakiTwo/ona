@@ -13,6 +13,14 @@ import { updateProfileSchema, onboardingSchema } from '@ona/shared'
 import { env } from '../config/env.js'
 import bcrypt from 'bcryptjs'
 import { AdminAccountDeletionError, deleteAccount } from '../services/accountDeletion.js'
+import {
+  getHealthConsent,
+  grantHealthConsent,
+  hasHealthConsent,
+  stripHealthFromTemplate,
+  stripHealthProfileFields,
+  withdrawHealthConsent,
+} from '../services/healthConsent.js'
 
 const router = Router()
 
@@ -75,6 +83,9 @@ router.get('/user/:id', async (req: AuthRequest, res) => {
         favoriteDishes: users.favoriteDishes,
         priority: users.priority,
         onboardingDone: users.onboardingDone,
+        healthConsentAt: users.healthConsentAt,
+        healthConsentVersion: users.healthConsentVersion,
+        healthConsentWithdrawnAt: users.healthConsentWithdrawnAt,
         imageGenMonthKey: users.imageGenMonthKey,
         imageGenCount: users.imageGenCount,
         createdAt: users.createdAt,
@@ -113,9 +124,19 @@ router.put('/user/:id', validate(updateProfileSchema), async (req: AuthRequest, 
       return
     }
 
+    // Health fields only with the art. 9 consent in force (PRO-21).
+    const body = (await hasHealthConsent(req.userId!)) ? req.body : stripHealthProfileFields(req.body)
+    if (Object.keys(body).length === 0) {
+      res.status(403).json({
+        error: 'Para guardar datos de salud necesitas dar tu consentimiento en tu perfil.',
+        code: 'HEALTH_CONSENT_REQUIRED',
+      })
+      return
+    }
+
     const [updated] = await db
       .update(users)
-      .set(req.body)
+      .set(body)
       .where(eq(users.id, req.params.id))
       .returning({
         id: users.id,
@@ -157,7 +178,11 @@ router.post('/user/:id/onboarding', validate(onboardingSchema), async (req: Auth
       return
     }
 
-    const { adults, kidsCount, cookingFreq, restrictions, favoriteDishes, priority } = req.body
+    const { adults, kidsCount, cookingFreq, favoriteDishes, priority, healthConsent } = req.body
+    // Allergies / restrictions are health data: stored only with the
+    // separate consent box ticked (RGPD art. 9, PRO-21).
+    if (healthConsent === true) await grantHealthConsent(req.params.id)
+    const restrictions = healthConsent === true || (await hasHealthConsent(req.params.id)) ? req.body.restrictions : []
 
     const [updated] = await db
       .update(users)
@@ -185,6 +210,9 @@ router.post('/user/:id/onboarding', validate(onboardingSchema), async (req: Auth
         favoriteDishes: users.favoriteDishes,
         priority: users.priority,
         onboardingDone: users.onboardingDone,
+        healthConsentAt: users.healthConsentAt,
+        healthConsentVersion: users.healthConsentVersion,
+        healthConsentWithdrawnAt: users.healthConsentWithdrawnAt,
       })
 
     if (!updated) {
@@ -195,6 +223,47 @@ router.post('/user/:id/onboarding', validate(onboardingSchema), async (req: Auth
     res.json(updated)
   } catch (err) {
     console.error('Onboarding error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// GET /user/:id/health-consent — RGPD art. 9 consent state (PRO-21).
+router.get('/user/:id/health-consent', async (req: AuthRequest, res) => {
+  try {
+    if (req.userId !== req.params.id) {
+      res.status(403).json({ error: 'Forbidden' })
+      return
+    }
+    const state = await getHealthConsent(req.params.id)
+    if (!state) {
+      res.status(404).json({ error: 'User not found' })
+      return
+    }
+    res.json(state)
+  } catch (err) {
+    console.error('Get health consent error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// POST /user/:id/health-consent — body `{ consent: boolean }`. `true` records
+// the consent (date + version); `false` records the withdrawal and deletes
+// every copy of the health data.
+router.post('/user/:id/health-consent', async (req: AuthRequest, res) => {
+  try {
+    if (req.userId !== req.params.id) {
+      res.status(403).json({ error: 'Forbidden' })
+      return
+    }
+    if (typeof req.body?.consent !== 'boolean') {
+      res.status(400).json({ error: 'Body must be { consent: boolean }' })
+      return
+    }
+    if (req.body.consent) await grantHealthConsent(req.params.id)
+    else await withdrawHealthConsent(req.params.id)
+    res.json(await getHealthConsent(req.params.id))
+  } catch (err) {
+    console.error('Set health consent error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })
@@ -228,7 +297,9 @@ router.put('/user/:id/settings', async (req: AuthRequest, res) => {
       return
     }
 
-    const { template } = req.body
+    const template = (await hasHealthConsent(req.params.id))
+      ? req.body.template
+      : stripHealthFromTemplate(req.body.template)
 
     const [existing] = await db
       .select({ id: userSettings.id })

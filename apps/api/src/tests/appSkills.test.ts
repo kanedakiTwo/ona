@@ -286,9 +286,22 @@ describe('recipes, profile, household', () => {
   })
 
   it('update_profile merges restriction changes with the current profile', async () => {
-    const f = fakeApi({ 'GET /user/u1': { restrictions: ['sin gluten', 'sin vacuno'] } })
+    const f = fakeApi({
+      'GET /user/u1': { restrictions: ['sin gluten', 'sin vacuno'] },
+      'GET /user/u1/health-consent': { active: true },
+    })
     await get('update_profile').handler({ removeRestrictions: ['vacuno'], addRestrictions: ['sin lactosa'], priority: 'quick' }, ctx(f.api))
     expect(writes(f.calls)).toEqual([{ method: 'PUT', path: '/user/u1', body: { priority: 'quick', restrictions: ['sin gluten', 'sin lactosa'] } }])
+  })
+
+  it('update_profile never writes health data without the art. 9 consent (PRO-21)', async () => {
+    const f = fakeApi({ 'GET /user/u1/health-consent': { active: false } })
+    const onlyHealth = await get('update_profile').handler({ addRestrictions: ['sin lactosa'], age: 40 }, ctx(f.api))
+    expect(writes(f.calls)).toEqual([])
+    expect(onlyHealth.summary).toMatch(/consentimiento/)
+
+    await get('update_profile').handler({ priority: 'cheap', weight: 70 }, ctx(f.api))
+    expect(writes(f.calls)).toEqual([{ method: 'PUT', path: '/user/u1', body: { priority: 'cheap' } }])
   })
 
   it('update_weekly_template writes the merged settings blob', async () => {

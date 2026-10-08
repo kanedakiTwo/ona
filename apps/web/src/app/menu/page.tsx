@@ -12,6 +12,7 @@
  * draggable WeekGridView. Desktop (lg+) renders MenuDesktop: hero row +
  * "La semana" columns with drag & drop.
  */
+import { NoHealthDataNotice } from "@/components/menu/NoHealthDataNotice"
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react"
 import { useRouter } from "next/navigation"
 import { MoreHorizontal, RefreshCw, Share2, Sparkles } from "lucide-react"
@@ -568,6 +569,7 @@ export default function MenuPage() {
             header={
               <>
                 {header}
+                <NoHealthDataNotice />
                 {statusCard}
               </>
             }
@@ -601,6 +603,7 @@ export default function MenuPage() {
         ) : (
           <div className="mx-auto flex max-w-[1180px] flex-col gap-4 px-12 pt-8 pb-10">
             {header}
+            <NoHealthDataNotice />
             {statusCard}
           </div>
         )}
@@ -624,6 +627,8 @@ export default function MenuPage() {
         </div>
         {moreButton}
       </header>
+
+      <NoHealthDataNotice />
 
       {!showWeekGrid && (
         <WeekStrip

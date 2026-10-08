@@ -10,6 +10,7 @@
  */
 import { Router } from 'express'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
+import { HealthConsentRequiredError } from '../services/healthConsent.js'
 import {
   getMemoryForUser,
   setMemoryFact,
@@ -44,7 +45,9 @@ router.patch('/memory', async (req: AuthRequest, res) => {
         const memory = await setMemoryBatch(req.userId!, body.facts, 'manual')
         res.json(memory)
       } catch (e) {
-        if (e instanceof UnknownMemoryKeyError) {
+        if (e instanceof HealthConsentRequiredError) {
+          res.status(403).json({ error: e.message, code: e.code })
+        } else if (e instanceof UnknownMemoryKeyError) {
           res.status(400).json({ error: e.message })
         } else if (e instanceof MemoryValueValidationError) {
           res.status(422).json({ error: e.message, key: e.key, reason: e.reason })
@@ -65,7 +68,9 @@ router.patch('/memory', async (req: AuthRequest, res) => {
         )
         res.json(fact)
       } catch (e) {
-        if (e instanceof UnknownMemoryKeyError) {
+        if (e instanceof HealthConsentRequiredError) {
+          res.status(403).json({ error: e.message, code: e.code })
+        } else if (e instanceof UnknownMemoryKeyError) {
           res.status(400).json({ error: e.message })
         } else if (e instanceof MemoryValueValidationError) {
           res.status(422).json({ error: e.message, key: e.key, reason: e.reason })

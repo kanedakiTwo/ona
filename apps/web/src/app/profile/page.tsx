@@ -25,6 +25,8 @@ import { DeleteAccountCard } from '@/components/profile/DeleteAccountCard'
 import { useWhatsAppStatus } from '@/hooks/useWhatsApp'
 import type { Meal } from '@ona/shared'
 import { RESTRICTION_PRESETS } from '@ona/shared'
+import type { HealthConsentState } from '@ona/shared'
+import { HealthConsentCheckbox } from '@/components/HealthConsentCheckbox'
 
 interface PhysicalData {
   sex: 'male' | 'female' | ''
@@ -114,6 +116,10 @@ export default function ProfilePage() {
   })
   const [mealDishCounts, setMealDishCounts] = useState<Partial<Record<Meal, 1 | 2 | 3>>>({})
   const [restrictionInput, setRestrictionInput] = useState('')
+  // RGPD art. 9 (PRO-21): physical data and restrictions only with consent.
+  const [healthConsent, setHealthConsent] = useState<HealthConsentState | null>(null)
+  const [consentBusy, setConsentBusy] = useState(false)
+  const healthActive = healthConsent?.active === true
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
@@ -149,6 +155,26 @@ export default function ProfilePage() {
     setLocalMealTimes(next)
     setMealTimes(next)
     if (notifEnabled) scheduleMealReminders(next)
+  }
+
+  useEffect(() => {
+    if (!user) return
+    api.get<HealthConsentState>(`/user/${user.id}/health-consent`).then(setHealthConsent).catch(() => {})
+  }, [user])
+
+  async function handleHealthConsent(next: boolean) {
+    if (!user || consentBusy) return
+    if (!next && !window.confirm('Si retiras el consentimiento, borramos tus alergias, restricciones y datos físicos. ¿Seguro?')) return
+    setConsentBusy(true)
+    try {
+      const state = await api.post<HealthConsentState>(`/user/${user.id}/health-consent`, { consent: next })
+      setHealthConsent(state)
+      if (!next) {
+        setPhysical({ sex: '', age: '', weight: '', height: '', activity_level: 'moderate' })
+        setPreferences((p) => ({ ...p, restrictions: [] }))
+      }
+    } catch (e) { console.error(e) }
+    finally { setConsentBusy(false) }
   }
 
   useEffect(() => {
@@ -293,12 +319,14 @@ export default function ProfilePage() {
         very_active: 'high',
       }
       const userPayload: Record<string, unknown> = {}
+      if (healthActive) {
       if (physical.sex) userPayload.sex = physical.sex
       if (physical.age !== '' && physical.age != null) userPayload.age = Number(physical.age)
       if (physical.weight !== '' && physical.weight != null) userPayload.weight = Number(physical.weight)
       if (physical.height !== '' && physical.height != null) userPayload.height = Number(physical.height)
       if (physical.activity_level) userPayload.activityLevel = ACTIVITY_MAP[physical.activity_level] ?? 'moderate'
       if (preferences.restrictions.length > 0) userPayload.restrictions = preferences.restrictions
+      }
       const PRIORITY_MAP: Record<string, 'quick' | 'varied' | 'healthy' | 'cheap'> = {
         balanced: 'varied',
         muscle: 'healthy',
@@ -319,14 +347,16 @@ export default function ProfilePage() {
         calls.push(api.put(`/user/${user.id}`, userPayload))
       }
       calls.push(api.put(`/user/${user.id}/settings`, {
-        template: { physical, preferences, mealTemplate, mealDishCounts },
+        template: healthActive
+          ? { physical, preferences, mealTemplate, mealDishCounts }
+          : { preferences: { ...preferences, restrictions: [] }, mealTemplate, mealDishCounts },
       }))
       await Promise.all(calls)
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
     } catch (e) { console.error(e) }
     finally { setSaving(false) }
-  }, [user, physical, preferences, household, mealTemplate, mealDishCounts])
+  }, [user, physical, preferences, household, mealTemplate, mealDishCounts, healthActive])
 
   if (authLoading || !user) {
     return (
@@ -387,7 +417,19 @@ export default function ProfilePage() {
       {/* Capitulo 01 — Datos fisicos */}
       <section className="px-5 mt-10">
         <ChapterHeader number="01" title="Datos" italic="fisicos" />
-        <div className="mt-6 space-y-5">
+        <div className="mt-6" data-testid="health-consent">
+          <HealthConsentCheckbox
+            checked={healthActive}
+            disabled={consentBusy || healthConsent === null}
+            onChange={handleHealthConsent}
+          />
+          {!healthActive && healthConsent !== null && (
+            <p className="mt-2 text-[11px] italic text-[#7A7066]">
+              Sin tu consentimiento no guardamos datos físicos, alergias ni restricciones.
+            </p>
+          )}
+        </div>
+        <fieldset disabled={!healthActive} className={`mt-6 space-y-5 ${healthActive ? '' : 'opacity-40'}`}>
           <div className="grid grid-cols-2 gap-4">
             <Field label="Sexo">
               <div className="flex gap-1.5 pt-1">
@@ -448,7 +490,7 @@ export default function ProfilePage() {
               ))}
             </div>
           </div>
-        </div>
+        </fieldset>
       </section>
 
       {/* Capitulo 02 — Preferencias */}
@@ -515,7 +557,7 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          <div>
+          <fieldset disabled={!healthActive} className={healthActive ? '' : 'opacity-40'}>
             <Label>Restricciones</Label>
             {preferences.restrictions.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1.5">
@@ -569,7 +611,7 @@ export default function ProfilePage() {
                 Añadir
               </button>
             </div>
-          </div>
+          </fieldset>
         </div>
       </section>
 

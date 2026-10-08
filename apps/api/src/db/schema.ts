@@ -47,6 +47,14 @@ export const users = pgTable('users', {
   /** When the user ticked «Tengo 14 años o más» at sign-up (LOPDGDD art. 7, PRO-23). */
   ageConfirmedAt: timestamp('age_confirmed_at', { withTimezone: true }),
   /**
+   * Explicit consent for health data (RGPD art. 9, PRO-21): when it was given,
+   * which text version, and when it was withdrawn. Both dates stay as the
+   * record; it is in force when consent_at is later than withdrawn_at.
+   */
+  healthConsentAt: timestamp('health_consent_at', { withTimezone: true }),
+  healthConsentVersion: text('health_consent_version'),
+  healthConsentWithdrawnAt: timestamp('health_consent_withdrawn_at', { withTimezone: true }),
+  /**
    * AI image-generation quota. `imageGenMonthKey` stores the YYYY-MM that
    * `imageGenCount` belongs to. On any generation, if the key doesn't match
    * the current month the count is reset to 1 atomically — stateless monthly

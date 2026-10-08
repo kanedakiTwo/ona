@@ -23,6 +23,12 @@ describe('menus route smoke', () => {
     if (!reachable || !TOKEN || !USER_ID) return
 
     // Onboard the user just enough that the generator has all the inputs.
+    // The physical profile is health data: consent first (PRO-21).
+    await fetch(`${API_URL}/user/${USER_ID}/health-consent`, {
+      method: 'POST',
+      headers: auth(),
+      body: JSON.stringify({ consent: true }),
+    })
     await fetch(`${API_URL}/user/${USER_ID}`, {
       method: 'PUT',
       headers: auth(),

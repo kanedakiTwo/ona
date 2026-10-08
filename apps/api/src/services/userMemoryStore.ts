@@ -8,7 +8,9 @@
 import { eq, and, inArray } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { userMemories } from '../db/schema.js'
+import { HealthConsentRequiredError, hasHealthConsent } from './healthConsent.js'
 import {
+  isHealthMemoryKey,
   validateMemoryFactValue,
   buildMemoryDigestText,
   type MemoryKey,
@@ -55,6 +57,15 @@ export async function getMemoryForUser(userId: string): Promise<UserMemory> {
   return out
 }
 
+export { HealthConsentRequiredError }
+
+/** Health keys (physical.*, restrictions) need the art. 9 consent (PRO-21). */
+async function assertHealthConsentFor(userId: string, keys: string[]): Promise<void> {
+  if (keys.some(isHealthMemoryKey) && !(await hasHealthConsent(userId))) {
+    throw new HealthConsentRequiredError()
+  }
+}
+
 /**
  * Upsert one fact. Throws if the key is unknown or the value fails its
  * schema. Returns the resulting fact (for the route's response).
@@ -71,6 +82,7 @@ export async function setMemoryFact(
     if (v.reason.startsWith('unknown')) throw new UnknownMemoryKeyError(key)
     throw new MemoryValueValidationError(key, v.reason)
   }
+  await assertHealthConsentFor(userId, [v.key])
   const [row] = await db
     .insert(userMemories)
     .values({
@@ -115,6 +127,7 @@ export async function setMemoryBatch(
     }
     validated.push({ key: v.key, value: v.value, confidence: f.confidence ?? 1 })
   }
+  await assertHealthConsentFor(userId, validated.map((f) => f.key))
   await db.transaction(async (tx) => {
     for (const f of validated) {
       await tx

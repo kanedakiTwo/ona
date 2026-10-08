@@ -38,6 +38,7 @@ import { NotARecipeError } from '../recipeUrlExtractor.js'
 import { NoExtractableContentError } from '../sources/youtube.js'
 import { PageFetchError, UnsafeUrlError } from '../net/publicFetch.js'
 import type { SkillDefinition, SkillContext, SkillResult } from './types.js'
+import { HEALTH_CONSENT_SKILL_REPLY } from '../healthConsent.js'
 
 /**
  * Text that came from a web page, a photo or another person (an imported
@@ -2039,7 +2040,7 @@ const updateMemory: SkillDefinition = {
     ctx: SkillContext,
   ): Promise<SkillResult> {
     const { userId } = ctx
-    const { setMemoryBatch, UnknownMemoryKeyError, MemoryValueValidationError } = await import('../userMemoryStore.js')
+    const { setMemoryBatch, UnknownMemoryKeyError, MemoryValueValidationError, HealthConsentRequiredError } = await import('../userMemoryStore.js')
     // Forward as a single transaction so a partial failure rolls back.
     try {
       // The skill writes source='inferred' so a manual edit from the user
@@ -2054,6 +2055,13 @@ const updateMemory: SkillDefinition = {
         'inferred',
       )
     } catch (err) {
+      if (err instanceof HealthConsentRequiredError) {
+        return {
+          data: null,
+          summary: HEALTH_CONSENT_SKILL_REPLY,
+          uiHint: 'text',
+        }
+      }
       if (err instanceof UnknownMemoryKeyError) {
         return {
           data: null,

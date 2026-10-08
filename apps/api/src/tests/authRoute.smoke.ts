@@ -87,6 +87,12 @@ describe('auth route smoke', () => {
   it.skipIf(!reachable || !TOKEN || !USER_ID)(
     'PUT /user/:id partial update accepts camelCase activityLevel',
     async () => {
+      // Age / activity are health data: consent first (PRO-21).
+      await fetch(`${API_URL}/user/${USER_ID}/health-consent`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ consent: true }),
+      })
       const r = await fetch(`${API_URL}/user/${USER_ID}`, {
         method: 'PUT',
         headers: {

@@ -73,6 +73,7 @@ The `update_memory` skill (declared in `assistant/skills.ts`) takes a `facts: Ar
 
 ## Constraints
 
+- **Health keys need consent** (PRO-21): `physical.*` and `restrictions` are written only while the user's health-data consent is in force (`HEALTH_MEMORY_KEYS`, `isHealthMemoryKey` in `@ona/shared`). Otherwise `setMemoryFact`/`setMemoryBatch` throw `HealthConsentRequiredError` → `PATCH /memory` 403 `HEALTH_CONSENT_REQUIRED`, `update_memory` replies with the profile link. Withdrawing the consent deletes those rows. See [Privacy](./privacy.md)
 - The `user_memories` table is **truth**. `users.adults` / `users.kids_2_to_10` are still written for legacy reads, but new code reading the household composition should prefer the memory entries (PR 3 will deprecate the mirror)
 - Inferred facts default to confidence 0.8. The `update_memory` skill writes 1.0 only when the user explicitly asks ("APUNTA", "GUÁRDATE", "no se te olvide")
 - Manual writes (PATCH /memory) always set source='manual' and confidence 1.0 — they can override a previous inferred guess

@@ -2,6 +2,7 @@ import type { SkillContext, SkillDefinition, SkillResult } from './types.js'
 import { appApiFor, AppApiError, type AppApi } from './appApi.js'
 import { madridWeekStart } from '../madridTime.js'
 import { env } from '../../config/env.js'
+import { HEALTH_CONSENT_SKILL_REPLY } from '../healthConsent.js'
 import { PROACTIVE_KINDS, PROACTIVE_LABELS, type ProactiveKind } from '../whatsapp/proactive.js'
 
 /**
@@ -778,6 +779,16 @@ const updateProfile: SkillDefinition = {
       body.restrictions = next
     }
     if (Object.keys(body).length === 0) return text('No me has dicho que cambiar del perfil.')
+    // Sex, age, weight, height, activity and restrictions are health data:
+    // only with the art. 9 consent in force (PRO-21).
+    const health = ['sex', 'age', 'weight', 'height', 'activityLevel', 'restrictions'].filter((k) => k in body)
+    if (health.length > 0) {
+      const consent = await api(ctx)<{ active?: boolean }>('GET', `/user/${ctx.userId}/health-consent`)
+      if (!consent?.active) {
+        for (const k of health) delete body[k]
+        if (Object.keys(body).length === 0) return text(HEALTH_CONSENT_SKILL_REPLY)
+      }
+    }
     await api(ctx)('PUT', `/user/${ctx.userId}`, body)
     return text(`Hecho: perfil actualizado (${Object.entries(body).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') || 'ninguna' : v}`).join('; ')}).`)
   },

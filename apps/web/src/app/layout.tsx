@@ -1,5 +1,6 @@
 "use client"
 
+import { HealthConsentGate } from "@/components/HealthConsentGate"
 import { Inter, Fraunces, Cormorant_Garamond, JetBrains_Mono } from "next/font/google"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { AuthProvider } from "@/lib/auth"
@@ -127,6 +128,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 </main>
                 <Navbar />
                 <InstallSheet />
+                <HealthConsentGate />
               </VoiceProvider>
             )}
           </AuthProvider>

@@ -22,6 +22,10 @@ test('profile save shows the success indicator', async ({ page }) => {
   // Touch at least one field so the payload isn't empty (otherwise the
   // user PUT skips, which is a valid path but doesn't exercise the bug).
   // Find the first numeric input and set a value.
+  // Physical data needs the health-data consent first (PRO-21).
+  const consent = page.getByRole('checkbox', { name: /datos de salud/i })
+  await consent.click() // async: the box follows the server's answer
+  await expect(consent).toBeChecked({ timeout: 10_000 })
   const numInput = page.locator('input[inputmode="numeric"], input[type="number"]').first()
   if (await numInput.isVisible({ timeout: 3_000 }).catch(() => false)) {
     await numInput.fill('30')

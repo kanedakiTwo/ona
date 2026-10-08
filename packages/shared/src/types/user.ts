@@ -79,6 +79,11 @@ export const onboardingSchema = z.object({
   restrictions: z.array(z.string()),
   favoriteDishes: z.array(z.string()).min(1).max(5),
   priority: z.enum(['quick', 'varied', 'healthy', 'cheap']),
+  /**
+   * The separate, unticked health-data box (RGPD art. 9, PRO-21). Without it
+   * `restrictions` is not stored.
+   */
+  healthConsent: z.boolean().optional(),
 })
 
 export const updateProfileSchema = z.object({

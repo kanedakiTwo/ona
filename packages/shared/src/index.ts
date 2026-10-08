@@ -133,6 +133,17 @@ export {
 export { TARGET_MACROS, MACRO_RANGES, ACTIVITY_FACTORS, MENU_GENERATION, EMA_WEIGHTS, MINERALS_RDA, VITAMINS_RDA } from './constants/nutrition.js'
 export { ONA_PRINCIPLES } from './constants/philosophy.js'
 export { AI_DISCLOSURE, AI_DISCLOSURE_FIRST_PERSON, AI_DISCLOSURE_SHORT } from './constants/aiDisclosure.js'
+export {
+  HEALTH_CONSENT_VERSION,
+  HEALTH_CONSENT_TEXT,
+  NO_HEALTH_DATA_NOTICE,
+  HEALTH_PROFILE_FIELDS,
+  HEALTH_MEMORY_KEYS,
+  isHealthMemoryKey,
+  isHealthConsentActive,
+  needsHealthConsentPrompt,
+} from './constants/healthConsent.js'
+export type { HealthConsentState } from './constants/healthConsent.js'
 export { RESTRICTION_PRESETS } from './constants/restrictions.js'
 export type { RestrictionPreset } from './constants/restrictions.js'
 

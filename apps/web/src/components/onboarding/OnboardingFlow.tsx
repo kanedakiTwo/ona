@@ -6,6 +6,7 @@ import { api } from "@/lib/api"
 import { useRouter } from "next/navigation"
 import { cn, currentWeekStart } from "@/lib/utils"
 import { RESTRICTION_PRESETS } from "@ona/shared"
+import { HealthConsentCheckbox } from "@/components/HealthConsentCheckbox"
 
 // Shared with the profile so both offer the same chips (@ona/shared).
 const PRESET_RESTRICTIONS = RESTRICTION_PRESETS
@@ -37,6 +38,8 @@ export default function OnboardingFlow() {
   })
 
   const [tagInput, setTagInput] = useState("")
+  // RGPD art. 9 (PRO-21): restrictions are health data, only with this box.
+  const [healthConsent, setHealthConsent] = useState(false)
 
   const totalSteps = 5
 
@@ -86,9 +89,10 @@ export default function OnboardingFlow() {
         adults: data.adults,
         kidsCount: data.kidsCount,
         cookingFreq: data.cookingFreq,
-        restrictions: data.restrictions,
+        restrictions: healthConsent ? data.restrictions : [],
         favoriteDishes: data.favoriteDishes.filter((d) => d.trim() !== ""),
         priority: data.priority,
+        healthConsent,
       }
       const result = await api.post<any>(`/user/${user.id}/onboarding`, payload)
 
@@ -259,11 +263,26 @@ export default function OnboardingFlow() {
         <div>
           <h2 className="text-2xl font-bold">Hay algo que no comas?</h2>
           <p className="mt-1 text-sm text-[#777777]">Alergias, intolerancias o preferencias</p>
-          <div className="mt-6">
+          <div className="mt-5">
+            <HealthConsentCheckbox
+              checked={healthConsent}
+              onChange={(v) => {
+                setHealthConsent(v)
+                if (!v) setData({ ...data, restrictions: [] })
+              }}
+            />
+            {!healthConsent && (
+              <p className="mt-2 text-xs text-[#777777]">
+                Sin tu consentimiento no guardamos alergias ni restricciones; puedes seguir sin marcarlo.
+              </p>
+            )}
+          </div>
+          <div className={cn("mt-6", !healthConsent && "pointer-events-none opacity-40")} aria-disabled={!healthConsent}>
             <div className="flex flex-wrap gap-2">
               {PRESET_RESTRICTIONS.map((tag) => (
                 <button
                   key={tag}
+                  disabled={!healthConsent}
                   onClick={() =>
                     data.restrictions.includes(tag)
                       ? removeRestriction(tag)
@@ -286,6 +305,7 @@ export default function OnboardingFlow() {
                 value={tagInput}
                 onChange={(e) => setTagInput(e.target.value)}
                 onKeyDown={handleTagKeyDown}
+                disabled={!healthConsent}
                 placeholder="Escribe y pulsa Enter para anadir..."
                 className="input-editorial"
               />

@@ -35,6 +35,8 @@ scripts/deploy.sh --dry-run   # run the checks + print the plan, deploy nothing
 
 It then prints the commit SHA + subject being deployed and runs the manual commands below (api first, then web). Prod therefore always maps to a pushed commit on `master`.
 
+> **Gotcha:** `railway up` uploads the *linked project directory*, not the current directory. The clean checkout must live **outside** `/Users/alio/ona` (e.g. a scratchpad `git worktree add --detach <dir> origin/master`) and be linked there with `railway link --project ona-app --environment production`. Running the wrapper from a worktree *inside* the repo (`.claude/worktrees/…`) shipped the shared main tree instead of the commit (2026-10-08). After deploying, check the change is really live (a new string in the web chunk, the migration row in `drizzle.__drizzle_migrations`).
+
 ### Underlying manual commands
 
 The wrapper is a thin guard around these; run them directly only when you know why the guard doesn't fit (e.g. an emergency hotfix from a dirty tree — and then commit + push it right after):

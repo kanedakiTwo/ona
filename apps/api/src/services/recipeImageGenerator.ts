@@ -19,8 +19,10 @@ import { recordCost } from './costLedger.js'
 
 const AIKIT_BASE = 'https://cms.aikit.es/api/free-form-tools/image-generation'
 
+// "Que no parezca tan perfecto" (Miguel, 2026-10-08): home cooking shot in
+// window light, with the small accidents of a real table — not a studio.
 const STYLE_SUFFIX =
-  'Fotografía editorial cenital estilo libro de cocina. Plato cerámico blanco mate sobre superficie de madera natural o lino crudo color crema. Luz natural cálida lateral y suave. Composición limpia, espacio negativo, paleta cálida (cremas, ocres, terracota), sin texto, sin manos, sin cubiertos en primer plano. Acabado fotográfico realista, profundidad de campo media, alta resolución.'
+  'Fotografía real de comida casera recién servida, tomada desde arriba o en tres cuartos, como en un libro de cocina de autor. Cerámica artesana algo irregular (blanca, crema o de barro) sobre madera natural gastada o lino crudo arrugado. Luz natural de ventana, cálida, con sombras suaves. Nada de perfección de estudio: ración servida con naturalidad y algo desigual, cortes irregulares, piezas distintas entre sí, alguna gota de salsa o miga en el borde del plato o en el mantel, una cuchara de servir apoyada o una servilleta descolocada, encuadre ligeramente descentrado. Paleta cálida (cremas, ocres, terracota), sin texto, sin manos ni personas. Textura fotográfica real con ligero grano, profundidad de campo media; que no parezca una imagen generada por ordenador.'
 
 export type AspectRatio = '4:3' | '1:1' | '3:4'
 

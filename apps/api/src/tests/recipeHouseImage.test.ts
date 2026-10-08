@@ -58,7 +58,7 @@ describe('makeHouseImage', () => {
     await makeHouseImage(dish, d)
     const prompt = (d.generate as any).mock.calls[0][0] as string
     expect(prompt).toMatch(/^Tzatziki\. Cuenco de yogur blanco espeso/)
-    expect(prompt).toContain('Fotografía editorial cenital')
+    expect(prompt).toContain('Nada de perfección de estudio')
   })
 })
 

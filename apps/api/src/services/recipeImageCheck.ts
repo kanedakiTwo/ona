@@ -84,7 +84,7 @@ const CHECK_PROMPT = `Revisas la foto de portada de una receta en una app de coc
 
 matches_dish = true si la foto muestra ESTE plato: la preparación correcta (guiso, crema, ensalada, asado, bocadillo…) y sus ingredientes principales reconocibles. false si es otro plato, si falta el ingrediente principal, si muestra ingredientes crudos en vez del plato hecho, o si no es comida (persona, texto, logo, captura de vídeo).
 
-house_style = true si es una foto realista de libro de cocina: plato o recipiente de cerámica sobre madera natural, lino crudo o fondo crema; luz natural cálida y suave; composición limpia; sin texto, sin logos, sin marcas de agua, sin manos ni personas, sin fondos oscuros, saturados o de colores. Una captura de vídeo, un collage o una foto de móvil en una cocina no cumplen.
+house_style = true si es una foto realista de libro de cocina: plato o recipiente de cerámica o barro sobre madera natural, lino crudo o fondo crema; luz natural cálida y suave; sin texto, sin logos, sin marcas de agua, sin manos ni personas, sin fondos oscuros, saturados o de colores. Las imperfecciones naturales de una mesa real (migas, gotas de salsa, cortes irregulares, una servilleta descolocada, encuadre algo descentrado) SÍ cumplen. Una captura de vídeo, un collage o una foto de móvil en una cocina no cumplen.
 
 reason: una frase corta en español (qué falla, o "ok").`
 

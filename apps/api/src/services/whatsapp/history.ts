@@ -20,6 +20,15 @@ export interface HistoryRow {
 export const HISTORY_MAX_MESSAGES = 20
 export const HISTORY_WINDOW_MS = 12 * 60 * 60 * 1000
 
+/**
+ * Shop-order links (`…/c/<token>`) from earlier replies. The model copied
+ * them into a new "dame la compra" answer instead of calling
+ * prepare_shop_orders (2026-10-08: Miguel got the morning's orders, written
+ * before the v1.1 rules). Links only ever come from this turn's tools.
+ */
+const SHOP_LINK = /https?:\/\/\S+?\/c\/[A-Za-z0-9_-]+/g
+export const OLD_SHOP_LINK = '[enlace de un pedido anterior]'
+
 const NON_CONVERSATION_KINDS = new Set(['system', 'link', 'ack', 'review', 'optout', 'optin', 'optin_prompt'])
 
 /** Placeholder user turn when the assistant (Mimo) spoke first (proactive nudge, alert). */
@@ -51,7 +60,7 @@ export function buildChatHistory(
   const merged: ChatMessage[] = []
   for (const r of usable) {
     const role: ChatMessage['role'] = r.direction === 'in' ? 'user' : 'assistant'
-    const content = r.body!.trim()
+    const content = role === 'assistant' ? r.body!.trim().replace(SHOP_LINK, OLD_SHOP_LINK) : r.body!.trim()
     const last = merged[merged.length - 1]
     if (last && last.role === role) last.content = `${last.content}\n\n${content}`
     else merged.push({ role, content })

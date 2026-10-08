@@ -14,12 +14,38 @@ import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { ChevronLeft, RefreshCw, Store } from "lucide-react"
 import { useAuth } from "@/lib/auth"
-import { usePrepareShopOrders, useShopOrders, useShops, type PrepareResult } from "@/hooks/useShopOrders"
+import { usePatchShopOrder, usePrepareShopOrders, useShopOrders, useShops, type PrepareResult } from "@/hooks/useShopOrders"
+import type { ShopOrder } from "@ona/shared"
 import { OrderCard } from "@/components/compra/OrderCard"
 import { haptic } from "@/lib/pwa/haptics"
 
 /** Same order as a walk through the neighbourhood: fresh first, súper last. */
 const KIND_ORDER = ["fruteria", "carniceria", "pescaderia", "supermercado", "otra"]
+
+/** Pantry staples ONA assumed at home: one tap adds one to the súper draft. */
+function PantryCheck({ names, superOrder }: { names: string[]; superOrder: ShopOrder | null }) {
+  const patch = usePatchShopOrder()
+  const [added, setAdded] = useState<string[]>([])
+  return (
+    <div className="mt-1" data-testid="pantry-check">
+      <p>¿Te falta algo de esto? Lo he dado por hecho en casa:</p>
+      <div className="mt-1 flex flex-wrap gap-1.5">
+        {names.map((n) => (
+          <button
+            key={n}
+            type="button"
+            disabled={!superOrder || added.includes(n)}
+            onClick={() => superOrder && patch.mutate({ id: superOrder.id, add: [{ name: n }] }, { onSuccess: () => setAdded((a) => [...a, n]) })}
+            className="rounded-full border border-[#DDD6C5] px-2.5 py-0.5 text-[11px] text-[#1A1612] disabled:opacity-50"
+          >
+            {added.includes(n) ? `✓ ${n}` : `+ ${n}`}
+          </button>
+        ))}
+      </div>
+      {!superOrder && <p className="mt-1 text-[11px]">Añade un súper en tus tiendas para poder pedirlos.</p>}
+    </div>
+  )
+}
 
 function ExpiredLinkBanner() {
   const params = useSearchParams()
@@ -101,9 +127,10 @@ export default function CompraPage() {
           {result && (result.skipped.length > 0 || result.unassigned.length > 0 || result.orders.length === 0) && (
             <div className="rounded-xl bg-[#F7F2E7] px-3 py-2 text-[12px] text-[#7A7066]">
               {result.orders.length === 0 && <p>No queda nada pendiente en la lista para estos días.</p>}
-              {result.skipped.length > 0 && (
-                <p>No incluido (lo das por tenido o ya está pedido): {result.skipped.map((s) => s.name).join(", ")}.</p>
+              {result.skipped.some((s) => !result.pantry?.includes(s.name)) && (
+                <p>Ya está en un pedido abierto: {result.skipped.filter((s) => !result.pantry?.includes(s.name)).map((s) => s.name).join(", ")}.</p>
               )}
+              {result.pantry?.length > 0 && <PantryCheck names={result.pantry} superOrder={open.find((o) => o.shop.kind === "supermercado" && o.status === "draft") ?? null} />}
               {result.unassigned.length > 0 && (
                 <p className="text-[#C65D38]">Sin tienda donde pedirlo: {result.unassigned.map((u) => u.name).join(", ")}. Añade un súper en tus tiendas.</p>
               )}

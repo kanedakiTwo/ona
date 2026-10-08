@@ -7,8 +7,9 @@
  * out of the picture, and the shop talks to a person it already knows.
  */
 
-import type { ShopChannel, ShopFulfilment, ShopKind, ShopOrderLine } from '@ona/shared'
-import { lineRequestText, prettyName } from './format.js'
+import { BUY_RULES, type ShopChannel, type ShopFulfilment, type ShopKind, type ShopOrderLine } from '@ona/shared'
+import { prettyName } from './format.js'
+import { lineText } from './lines.js'
 
 /** Beyond this, prefilled wa.me texts get cut on some phones — offer "copy" instead. */
 export const MAX_PREFILL_CHARS = 1200
@@ -20,24 +21,38 @@ export interface OrderMessageInput {
   customerName: string | null
   fulfilment: ShopFulfilment
   address: string | null
-  lines: Array<Pick<ShopOrderLine, 'name' | 'quantity' | 'unit' | 'note'>>
+  lines: ShopOrderLine[]
 }
 
+function joinEs(parts: string[]): string {
+  return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} y ${parts[parts.length - 1]}` : parts[0] ?? ''
+}
+
+/**
+ * The order in the customer's voice. Delivery always carries the address and
+ * asks roughly when it will arrive; pickup asks from what time to go. Meat and
+ * fish ask the price per kilo and what to bring instead if something's missing
+ * (not for a charcutería-only order).
+ */
 export function buildOrderMessage(input: OrderMessageInput): string {
-  const lines = input.lines.map((l) => lineRequestText(l, input.kind))
+  const live = input.lines.filter((l) => l.included !== false)
+  const lines = live.map((l) => `- ${lineText(l, input.kind)}`)
   if (input.channel === 'web') return ['Lista de la compra:', '', ...lines].join('\n')
   const hello = input.customerName ? `Hola, soy ${input.customerName}.` : 'Hola.'
-  const how =
-    input.fulfilment === 'domicilio' && input.address
-      ? `Os paso un pedido para que me lo traigáis a ${input.address}:`
-      : 'Os paso un pedido para recoger en la tienda:'
+  const delivery = input.fulfilment === 'domicilio'
+  const how = delivery
+    ? `Os paso un pedido para que me lo traigáis a ${input.address ?? '[dirección]'}:`
+    : 'Os paso un pedido para recoger en la tienda:'
+  const fresh = input.kind === 'carniceria' || input.kind === 'pescaderia'
+  const onlyCharcuteria = live.length > 0 && live.every((l) => l.ruleKey && CHARCUTERIA_KEYS.has(l.ruleKey))
   const tail: string[] = []
-  if (input.kind === 'pescaderia' || input.kind === 'carniceria') {
-    tail.push('Si no hay algo, decidme qué me recomendáis en su lugar.')
-  }
-  tail.push('¿Me decís qué hay, el precio por kilo y el total aproximado antes de prepararlo? Gracias.')
+  if (fresh && !onlyCharcuteria) tail.push('Si no hay algo, decidme qué me recomendáis en su lugar.')
+  const asks = [...(fresh ? ['el precio por kilo'] : []), 'el total aproximado', delivery ? 'más o menos a qué hora llegaría' : 'a partir de qué hora puedo pasar a recogerlo']
+  tail.push(`Antes de prepararlo, ¿me decís ${joinEs(asks)}? Gracias.`)
   return [hello, how, '', ...lines, '', ...tail].join('\n')
 }
+
+const CHARCUTERIA_KEYS = new Set(BUY_RULES.filter((r) => r.shop === 'charcuteria').map((r) => r.key))
 
 export interface ConfirmationInput {
   lines: Array<Pick<ShopOrderLine, 'name' | 'decision' | 'quote'>>

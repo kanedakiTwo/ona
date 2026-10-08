@@ -29,6 +29,10 @@ export interface ShoppingItem {
    * present, the list total adds `quantity * pricePerUnit`.
    */
   pricePerUnit?: number | null
+  /** Recipe notes for this ingredient ("picada", "morada en juliana") — the shop order uses them. */
+  notes?: string[]
+  /** Manual items: 'default' when the user typed no amount (stored as 1 u). */
+  quantitySource?: 'user' | 'default'
 }
 
 export interface ShoppingList {

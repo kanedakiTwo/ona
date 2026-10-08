@@ -17,6 +17,7 @@ import {
   UNITS,
   householdMultiplier,
   householdSizeToCounts,
+  resolveBuyRule,
   type Aisle,
   type DayMenu,
   type HouseholdSize,
@@ -585,6 +586,15 @@ async function loadListForCaller(listId: string, userId: string) {
   return { list, forbidden: false }
 }
 
+/** Aisle for a typed item from the buy rules ("calabacín" → produce) instead of always "otros". */
+function aisleForName(name: string): Aisle {
+  const shop = resolveBuyRule(name)?.rule.shop
+  if (shop === 'fruteria') return 'produce'
+  if (shop === 'carniceria' || shop === 'charcuteria' || shop === 'pescaderia') return 'proteinas'
+  if (shop === 'despensa') return 'despensa'
+  return 'otros'
+}
+
 // POST /shopping-list/:listId/items — append a manual free-text item.
 router.post('/shopping-list/:listId/items', async (req: AuthRequest, res) => {
   try {
@@ -610,7 +620,9 @@ router.post('/shopping-list/:listId/items', async (req: AuthRequest, res) => {
       name: parsed.data.name.trim(),
       quantity: parsed.data.quantity ?? 1,
       unit: (parsed.data.unit as ShoppingItem['unit']) ?? 'u',
-      aisle: (parsed.data.aisle as Aisle) ?? 'otros',
+      aisle: (parsed.data.aisle as Aisle) ?? aisleForName(parsed.data.name),
+      // No amount typed → "default": shop orders write "1 calabacín" or ask "¿cuánto jamón?", never "1 unidad".
+      quantitySource: parsed.data.quantity == null ? 'default' : 'user',
       checked: false,
       inStock: false,
       kind: 'manual',
@@ -663,7 +675,10 @@ router.patch('/shopping-list/:listId/item/:itemId', async (req: AuthRequest, res
     if (patch.pricePerUnit !== undefined) next.pricePerUnit = patch.pricePerUnit
     if (isManual) {
       if (patch.name !== undefined) next.name = patch.name.trim()
-      if (patch.quantity !== undefined) next.quantity = patch.quantity
+      if (patch.quantity !== undefined) {
+        next.quantity = patch.quantity
+        next.quantitySource = 'user'
+      }
       if (patch.unit !== undefined) next.unit = patch.unit as ShoppingItem['unit']
       if (patch.aisle !== undefined) next.aisle = patch.aisle as Aisle
     } else if (

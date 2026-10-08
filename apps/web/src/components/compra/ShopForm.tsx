@@ -33,6 +33,8 @@ function formFromShop(s: Shop): ShopFormState {
     fulfilment: s.fulfilment,
     address: s.address ?? "",
     notes: s.notes ?? "",
+    deliveryMin: s.deliveryMinEur != null ? String(s.deliveryMinEur).replace(".", ",") : "",
+    deliveryFee: s.deliveryFeeEur != null ? String(s.deliveryFeeEur).replace(".", ",") : "",
   }
 }
 
@@ -133,6 +135,17 @@ export function ShopForm({ shop, onDone }: { shop?: Shop; onDone: () => void }) 
           <input id="shop-address" className={input} value={form.address} maxLength={200} onChange={(e) => set("address", e.target.value)} placeholder="Calle, número, piso, localidad" />
         </div>
       )}
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className={label} htmlFor="shop-min">Pedido mínimo a domicilio (€)</label>
+          <input id="shop-min" className={input} inputMode="decimal" value={form.deliveryMin} onChange={(e) => set("deliveryMin", e.target.value)} placeholder="Ej: 20" />
+        </div>
+        <div>
+          <label className={label} htmlFor="shop-fee">Gastos de envío (€)</label>
+          <input id="shop-fee" className={input} inputMode="decimal" value={form.deliveryFee} onChange={(e) => set("deliveryFee", e.target.value)} placeholder="Ej: 0 o 4,95" />
+        </div>
+      </div>
 
       <div>
         <label className={label} htmlFor="shop-notes">Notas (horario, pedido mínimo…)</label>

@@ -35,6 +35,23 @@ export interface EstimateInput {
   quantity: number
   unit: BuyableUnit
   pricePerUnit: number | null | undefined
+  /** Grams actually bought after the buy rules (whole pieces, packs) — beats the recipe quantity. */
+  grams?: number | null
+  /** Buy rule, for a closer reference €/kg than the shop-kind average. */
+  ruleKey?: string | null
+}
+
+/** €/kg references closer than the kind average for products far from it (MAPA / shop listings, est.). */
+const REFERENCE_BY_RULE: Record<string, number> = {
+  jamon: 25,
+  'jamon cocido': 14,
+  'panceta curada': 14,
+  gambas: 18,
+  merluza: 14,
+  salmon: 18,
+  'pescado entero': 13,
+  mejillones: 5,
+  'carne picada': 9,
 }
 
 export interface Estimate {
@@ -46,6 +63,7 @@ const round2 = (n: number) => Math.round(n * 100) / 100
 
 /** Weight the shop will actually weigh (whole fish for a pescadería), in kg. */
 function chargedKg(input: EstimateInput, kind: ShopKind): number | null {
+  if (input.grams != null && input.grams > 0) return input.grams / 1000
   if (input.unit !== 'g' && input.unit !== 'ml') return null
   const grams = kind === 'pescaderia' ? wholeWeightGrams(input.name, input.quantity) ?? input.quantity : input.quantity
   return grams / 1000
@@ -58,7 +76,7 @@ export function estimateLine(input: EstimateInput, kind: ShopKind, memory: Price
   const kg = chargedKg(input, kind)
   const remembered = input.ingredientId ? memory[input.ingredientId] : undefined
   if (remembered && kg != null) return { eur: round2(kg * remembered.pricePerKg), source: 'historial' }
-  const ref = REFERENCE_EUR_PER_KG[kind]
+  const ref = (input.ruleKey ? REFERENCE_BY_RULE[input.ruleKey] : undefined) ?? REFERENCE_EUR_PER_KG[kind]
   if (ref != null && kg != null) return { eur: round2(kg * ref), source: 'referencia' }
   const perUnit = REFERENCE_EUR_PER_UNIT[kind]
   if (perUnit != null && input.unit === 'u') return { eur: round2(input.quantity * perUnit), source: 'referencia' }

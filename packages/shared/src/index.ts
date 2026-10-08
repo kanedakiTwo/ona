@@ -55,6 +55,7 @@ export type {
   Shop,
   ShopInput,
   ShopFormState,
+  DeliveryCheck,
 } from './types/shopOrders.js'
 export {
   SHOP_KINDS,
@@ -159,6 +160,10 @@ export {
 export type { HouseholdSnapshot } from './utils/household.js'
 
 export { formatQty, prettyName, capitalize } from './utils/shopFormat.js'
+export { BUY_RULES } from './buy/rules.js'
+export type { BuyRule, BuyShop, BuyBy, BuyTier, BuyChoice } from './buy/rules.js'
+export { toOrderQty, resolveBuyRule, buyRuleByKey, splitCompound, normalizeBuyName, weightPhrase } from './buy/convert.js'
+export type { OrderQty, OrderQtyInput, ResolvedRule } from './buy/convert.js'
 
 export { buildRecipePayload } from './recipeFormPayload.js'
 export type { IngredientRowState, RecipeFormState } from './recipeFormPayload.js'

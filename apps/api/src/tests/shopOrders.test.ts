@@ -206,13 +206,31 @@ describe('capForLines', () => {
 describe('order and confirmation messages', () => {
   const lines = [line({ name: 'tomate', quantity: 1000 }), line({ key: 'l2', name: 'calabacin', quantity: 2, unit: 'u' })]
 
-  it('is written by the customer, lists every line and asks for availability, €/kg and total', () => {
+  it('is written by the customer, lists every line and asks the total and from when to pick it up', () => {
     const msg = buildOrderMessage({ kind: 'fruteria', channel: 'whatsapp', customerName: 'Miguel', fulfilment: 'recoger', address: null, lines })
     expect(msg).toMatch(/^Hola, soy Miguel\./)
     expect(msg).toContain('para recoger en la tienda')
     expect(msg).toContain('- Tomate: 1 kg')
     expect(msg).toContain('- Calabacín: 2 unidades')
-    expect(msg).toMatch(/qué hay.*precio.*total/i)
+    expect(msg).toContain('Antes de prepararlo, ¿me decís el total aproximado y a partir de qué hora puedo pasar a recogerlo? Gracias.')
+    expect(msg).not.toContain('precio por kilo') // frutería: the total is enough
+  })
+  it('home delivery always carries the address and asks roughly when it arrives', () => {
+    const msg = buildOrderMessage({ kind: 'fruteria', channel: 'whatsapp', customerName: 'Miguel', fulfilment: 'domicilio', address: 'C/ Real 1, Boadilla', lines })
+    expect(msg).toContain('Os paso un pedido para que me lo traigáis a C/ Real 1, Boadilla:')
+    expect(msg).toContain('¿me decís el total aproximado y más o menos a qué hora llegaría?')
+  })
+  it('meat asks the €/kg and an alternative — but not for a charcutería-only order', () => {
+    const meat = buildOrderMessage({ kind: 'carniceria', channel: 'whatsapp', customerName: null, fulfilment: 'recoger', address: null, lines: [line({ name: 'ternera', ruleKey: 'carne picada', text: 'medio kilo de carne picada mixta' })] })
+    expect(meat).toContain('Si no hay algo, decidme qué me recomendáis en su lugar.')
+    expect(meat).toContain('el precio por kilo, el total aproximado y a partir de qué hora puedo pasar a recogerlo')
+    const charcu = buildOrderMessage({ kind: 'carniceria', channel: 'whatsapp', customerName: null, fulfilment: 'recoger', address: null, lines: [line({ name: 'jamon', ruleKey: 'jamon', text: '100 g de jamón serrano, loncheado fino' })] })
+    expect(charcu).not.toContain('Si no hay algo')
+    expect(charcu).toContain('- 100 g de jamón serrano, loncheado fino')
+  })
+  it('"probablemente lo tienes" lines stay out of the message until ticked', () => {
+    const msg = buildOrderMessage({ kind: 'supermercado', channel: 'web', customerName: null, fulfilment: 'recoger', address: null, lines: [line({ text: '1 tarrina de mantequilla (250 g)', included: false }), line({ key: 'l2', text: '1 paquete de lentejas (1 kg)' })] })
+    expect(msg).toBe('Lista de la compra:\n\n- 1 paquete de lentejas (1 kg)')
   })
   it('asks the fishmonger what to bring instead when something is missing', () => {
     const msg = buildOrderMessage({ kind: 'pescaderia', channel: 'whatsapp', customerName: null, fulfilment: 'domicilio', address: 'C/ Real 1, Pozuelo', lines: [line({ name: 'merluza', quantity: 600, volatile: true })] })

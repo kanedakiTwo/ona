@@ -9,7 +9,7 @@
  *   approved → send the confirmation; close when collected
  */
 import { useState } from "react"
-import { ArrowRightLeft, Check, Copy, ExternalLink, Globe, Mail, MessageCircle, Phone, X } from "lucide-react"
+import { ArrowRightLeft, Check, Copy, ExternalLink, Globe, Mail, MessageCircle, Phone, Plus, X } from "lucide-react"
 import {
   SHOP_KIND_LABELS,
   SHOP_ORDER_STATUS_LABELS,
@@ -121,24 +121,92 @@ export function OrderCard({ order, shops }: { order: ShopOrder; shops: Shop[] })
 
 // ─── draft ─────────────────────────────────────────────────────
 
+/** "1 kg de manzanas" / "6 huevos" / "perejil" → what PATCH { add } takes. */
+export function parseAddText(raw: string): { name: string; quantity?: number; unit?: "g" | "ml" | "u" } | null {
+  const t = raw.trim()
+  if (!t) return null
+  const m = t.match(/^(\d+(?:[.,]\d+)?)\s*(kg|kilos?|g|gr|gramos?|l|litros?|ml|uds?|unidades?)?\s*(?:de\s+)?(.+)$/i)
+  if (!m) return { name: t.slice(0, 80) }
+  const n = Number(m[1].replace(",", "."))
+  const u = (m[2] ?? "").toLowerCase()
+  const name = m[3].trim().slice(0, 80)
+  if (/^(kg|kilo)/.test(u)) return { name, quantity: n * 1000, unit: "g" }
+  if (/^(g|gr|gramo)/.test(u)) return { name, quantity: n, unit: "g" }
+  if (/^(l|litro)/.test(u)) return { name, quantity: n * 1000, unit: "ml" }
+  if (u === "ml") return { name, quantity: n, unit: "ml" }
+  return { name, quantity: n, unit: "u" }
+}
+
 function DraftBody({ order, shops }: { order: ShopOrder; shops: Shop[] }) {
   const patch = usePatchShopOrder()
   const markSent = useMarkShopOrderSent()
   const close = useCloseShopOrder()
   const [cap, setCap] = useState(order.capEur != null ? String(order.capEur).replace(".", ",") : "")
+  const [address, setAddress] = useState(order.address ?? "")
+  const [extra, setExtra] = useState("")
   const others = shops.filter((s) => s.id !== order.shopId)
   const wantsNotes = order.shop.kind === "carniceria" || order.shop.kind === "pescaderia"
   const { channel } = order.shop
+  const blocked = order.blockers.length > 0
+  const d = order.delivery
 
   return (
     <div className="space-y-4">
+      {channel !== "web" && (
+        <div className="space-y-2">
+          <div className="flex gap-2" role="group" aria-label="Entrega">
+            {(["recoger", "domicilio"] as const).map((f) => (
+              <button
+                key={f}
+                type="button"
+                aria-pressed={order.fulfilment === f}
+                onClick={() => order.fulfilment !== f && patch.mutate({ id: order.id, fulfilment: f })}
+                className={`rounded-full border px-3 py-1 text-[12px] ${order.fulfilment === f ? "border-[#1A1612] bg-[#1A1612] text-[#FAF6EE]" : "border-[#DDD6C5] text-[#1A1612]"}`}
+              >
+                {f === "recoger" ? "Recojo en tienda" : "A domicilio"}
+              </button>
+            ))}
+          </div>
+          {order.fulfilment === "domicilio" && (
+            <input
+              aria-label="Dirección de entrega"
+              value={address}
+              maxLength={200}
+              placeholder="Dirección de entrega (calle, número, piso, localidad)"
+              onChange={(e) => setAddress(e.target.value)}
+              onBlur={() => address.trim() !== (order.address ?? "") && patch.mutate({ id: order.id, address: address.trim() || null })}
+              className="w-full border-b border-[#DDD6C5] bg-transparent py-1 text-[13px] text-[#1A1612] outline-none focus:border-[#1A1612]"
+            />
+          )}
+          {d && d.minEur != null && (
+            <p className={`text-[11px] ${d.shortByEur ? "text-[#C65D38]" : "text-[#7A7066]"}`} data-testid="delivery-check">
+              {!d.confident
+                ? `Pedido mínimo a domicilio: ${eur(d.minEur)}. No sé si llegas: faltan precios para estimarlo.`
+                : d.shortByEur
+                  ? `≈${eur(d.estimateEur)} de ${eur(d.minEur)} de mínimo a domicilio: te faltan unos ${eur(d.shortByEur)}. Añade algo o recógelo en tienda.`
+                  : `≈${eur(d.estimateEur)}: llegas al mínimo de ${eur(d.minEur)}.`}
+              {d.feeEur ? ` Envío: ${eur(d.feeEur)}.` : ""}
+            </p>
+          )}
+        </div>
+      )}
+
       <ul className="divide-y divide-[#EFE8D8]">
         {order.lines.map((l) => (
-          <li key={l.key} className="py-2">
+          <li key={l.key} className={`py-2 ${l.included === false ? "opacity-60" : ""}`} data-testid={`line-${l.key}`}>
             <div className="flex items-center gap-2">
+              {l.maybeHave && (
+                <input
+                  type="checkbox"
+                  aria-label={`Incluir ${lineName(l)}`}
+                  checked={l.included !== false}
+                  onChange={(e) => patch.mutate({ id: order.id, lines: [{ key: l.key, include: e.target.checked }] })}
+                />
+              )}
               <span className="min-w-0 flex-1 text-[14px] text-[#1A1612]">
-                {lineName(l)} <span className="text-[#7A7066]">· {formatQty(l.quantity, l.unit)}</span>
+                {l.text ?? `${lineName(l)} · ${formatQty(l.quantity, l.unit)}`}
                 {l.volatile && <span className="ml-1 text-[10px] uppercase tracking-[0.1em] text-[#C65D38]">lonja</span>}
+                {l.maybeHave && <span className="block text-[11px] text-[#7A7066]">probablemente lo tienes</span>}
               </span>
               {order.searchLinks[l.key] && (
                 <a href={order.searchLinks[l.key]} target="_blank" rel="noopener noreferrer" className={ghostBtn} aria-label={`Buscar ${lineName(l)} en ${order.shop.name}`}>
@@ -170,12 +238,28 @@ function DraftBody({ order, shops }: { order: ShopOrder; shops: Shop[] }) {
                 <X size={14} />
               </button>
             </div>
-            {wantsNotes && (
+            {l.options && l.options.length > 1 && (
+              <div className="mt-1 flex flex-wrap gap-1.5" role="group" aria-label={l.needsChoice?.question ?? `Opciones de ${lineName(l)}`}>
+                {l.options.map((o) => (
+                  <button
+                    key={o}
+                    type="button"
+                    aria-pressed={l.choice === o}
+                    onClick={() => l.choice !== o && patch.mutate({ id: order.id, lines: [{ key: l.key, choice: o }] })}
+                    className={`rounded-full border px-2.5 py-0.5 text-[11px] ${l.choice === o ? "border-[#1A1612] bg-[#1A1612] text-[#FAF6EE]" : l.needsChoice ? "border-[#C65D38] text-[#C65D38]" : "border-[#DDD6C5] text-[#1A1612]"}`}
+                  >
+                    {o}
+                  </button>
+                ))}
+              </div>
+            )}
+            {l.needsQuantity && <QuantityAsk order={order} line={l} />}
+            {wantsNotes && !l.needsQuantity && (
               <input
                 aria-label={`Nota para ${lineName(l)}`}
                 defaultValue={l.note ?? ""}
                 maxLength={120}
-                placeholder={order.shop.kind === "pescaderia" ? "Ej: en lomos, sin espinas" : "Ej: picada, en filetes finos"}
+                placeholder={order.shop.kind === "pescaderia" ? "Preparación: en lomos, sin espinas…" : "Preparación: picada, en filetes finos…"}
                 onBlur={(e) => {
                   const v = e.target.value.trim()
                   if (v !== (l.note ?? "")) patch.mutate({ id: order.id, lines: [{ key: l.key, note: v || null }] })
@@ -186,6 +270,27 @@ function DraftBody({ order, shops }: { order: ShopOrder; shops: Shop[] }) {
           </li>
         ))}
       </ul>
+
+      <form
+        className="flex items-center gap-2"
+        onSubmit={(e) => {
+          e.preventDefault()
+          const item = parseAddText(extra)
+          if (item) patch.mutate({ id: order.id, add: [item] }, { onSuccess: () => setExtra("") })
+        }}
+      >
+        <input
+          aria-label={`Añadir algo más a ${order.shop.name}`}
+          value={extra}
+          onChange={(e) => setExtra(e.target.value)}
+          maxLength={80}
+          placeholder="¿Algo más? Ej: 1 kg de manzanas"
+          className="min-w-0 flex-1 border-b border-[#DDD6C5] bg-transparent py-1 text-[13px] text-[#1A1612] outline-none placeholder:text-[#A39A8E] focus:border-[#1A1612]"
+        />
+        <button type="submit" disabled={!extra.trim() || patch.isPending} className={ghostBtn}>
+          <Plus size={12} /> Añadir
+        </button>
+      </form>
 
       {channel !== "web" && (
         <label className="flex items-center gap-2 text-[12px] text-[#7A7066]">
@@ -211,6 +316,15 @@ function DraftBody({ order, shops }: { order: ShopOrder; shops: Shop[] }) {
         <pre className="mt-2 whitespace-pre-wrap font-sans text-[12px] leading-relaxed text-[#1A1612]">{order.messageText}</pre>
       </details>
 
+      {blocked && (
+        <ul className="space-y-0.5 rounded-xl border border-[#C65D38]/40 px-3 py-2 text-[12px] text-[#C65D38]" data-testid="blockers">
+          <li className="text-[10px] uppercase tracking-[0.12em]">Antes de enviarlo</li>
+          {order.blockers.map((b) => (
+            <li key={b}>· {b}</li>
+          ))}
+        </ul>
+      )}
+
       <div className="flex flex-wrap items-center gap-3">
         {channel === "whatsapp" && order.links.order && (
           <a href={order.links.order} target="_blank" rel="noopener noreferrer" onClick={() => { haptic.light(); markSent.mutate({ id: order.id }) }} className={primaryBtn}>
@@ -232,16 +346,42 @@ function DraftBody({ order, shops }: { order: ShopOrder; shops: Shop[] }) {
             <Globe size={14} /> Abrir su web
           </a>
         )}
-        <CopyButton text={order.messageText} label={channel === "web" ? "Copiar lista" : "Copiar mensaje"} />
+        {(channel === "web" || !blocked) && <CopyButton text={order.messageText} label={channel === "web" ? "Copiar lista" : "Copiar mensaje"} />}
         {(channel === "web" || channel === "telefono") && (
           <button type="button" className={ghostBtn} onClick={() => close.mutate({ id: order.id })}>
             <Check size={12} /> Ya está pedido
           </button>
         )}
       </div>
-      {order.links.tooLong && (
+      {order.links.tooLong && !blocked && (
         <p className="text-[11px] text-[#C65D38]">El pedido es largo para escribirlo solo: copia el mensaje y pégalo en el chat que se abre.</p>
       )}
+    </div>
+  )
+}
+
+function QuantityAsk({ order, line }: { order: ShopOrder; line: ShopOrderLine }) {
+  const patch = usePatchShopOrder()
+  const [g, setG] = useState("")
+  const ask = line.needsQuantity!
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-[#C65D38]">
+      ¿Cuánto?
+      <button type="button" className="rounded-full border border-[#C65D38] px-2.5 py-0.5" onClick={() => patch.mutate({ id: order.id, lines: [{ key: line.key, quantity: ask.grams, unit: "g" }] })}>
+        {ask.suggestion}
+      </button>
+      <input
+        aria-label={`Gramos de ${lineName(line)}`}
+        inputMode="numeric"
+        value={g}
+        onChange={(e) => setG(e.target.value)}
+        onBlur={() => {
+          const n = Number(g.replace(",", "."))
+          if (n > 0) patch.mutate({ id: order.id, lines: [{ key: line.key, quantity: n, unit: "g" }] })
+        }}
+        placeholder="otra (g)"
+        className="w-20 border-b border-[#DDD6C5] bg-transparent py-0.5 text-[12px] text-[#1A1612] outline-none focus:border-[#1A1612]"
+      />
     </div>
   )
 }

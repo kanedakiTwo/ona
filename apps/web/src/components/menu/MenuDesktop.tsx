@@ -171,8 +171,6 @@ function SideMeal({
         src={first?.imageUrl}
         name={title}
         meal={meal}
-        variant={big ? "cover" : "thumb"}
-        nameClassName="text-[1.6rem]"
         className={big ? "h-[222px] w-full rounded-[20px]" : "h-[64px] w-[76px] shrink-0 rounded-xl"}
       />
       <span className="flex min-w-0 flex-col gap-1">

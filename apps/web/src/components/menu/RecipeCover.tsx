@@ -2,37 +2,33 @@
 
 /**
  * A recipe's photo, or — when the recipe has none (about a third of the
- * catalogue today) — an editorial "cover": a bone block with the dish name
- * set in Fraunces italic (large surfaces) or the meal's icon (thumbnails).
- * Never a grey fork box. The fallback also kicks in when the image fails
- * to load.
+ * catalogue today) or the image fails to load — a calm bone block with the
+ * meal's small icon (sunrise / sun / sunset / moon). Never a grey fork box,
+ * and never the dish name again: wherever a cover is shown, the name is
+ * already printed next to it.
+ *
+ * The featured-meal hero doesn't use this for photo-less recipes: it drops
+ * the image area altogether (see MealHero in DayMeals.tsx).
  */
 import { useState } from "react"
 import { Moon, Sun, Sunrise, Sunset } from "lucide-react"
 
 const MEAL_ICON = { breakfast: Sunrise, lunch: Sun, snack: Sunset, dinner: Moon } as const
 
+/** Lucide icon for a meal key (falls back to the sun). */
+export function mealIconFor(meal?: string) {
+  return MEAL_ICON[(meal ?? "lunch") as keyof typeof MEAL_ICON] ?? Sun
+}
+
 interface Props {
   src?: string | null
   name: string
   meal?: string
-  /** `cover` = big surfaces (hero, desktop cards): name in Fraunces. `thumb` = small tiles: meal icon. */
-  variant?: "cover" | "thumb"
   className?: string
-  /** Extra classes for the fallback's name text (size). */
-  nameClassName?: string
   loading?: "eager" | "lazy"
 }
 
-export function RecipeCover({
-  src,
-  name,
-  meal,
-  variant = "thumb",
-  className = "",
-  nameClassName = "text-[1.9rem]",
-  loading = "lazy",
-}: Props) {
+export function RecipeCover({ src, name, meal, className = "", loading = "lazy" }: Props) {
   const [failed, setFailed] = useState(false)
   if (src && !failed) {
     return (
@@ -46,7 +42,7 @@ export function RecipeCover({
       />
     )
   }
-  const Icon = MEAL_ICON[(meal ?? "lunch") as keyof typeof MEAL_ICON] ?? Sun
+  const Icon = mealIconFor(meal)
   return (
     <div
       role="img"
@@ -58,14 +54,7 @@ export function RecipeCover({
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_90%_at_30%_20%,rgba(255,254,250,0.75),transparent_60%)]"
       />
-      {variant === "cover" ? (
-        <div aria-hidden="true" className="relative flex max-w-[85%] flex-col items-center gap-3 text-center">
-          <Icon size={22} strokeWidth={1.4} className="text-clay" />
-          <span className={`font-serif-text italic leading-[1.05] text-ink-mid ${nameClassName}`}>{name}</span>
-        </div>
-      ) : (
-        <Icon aria-hidden="true" size={22} strokeWidth={1.4} className="relative text-clay" />
-      )}
+      <Icon aria-hidden="true" size={22} strokeWidth={1.4} className="relative text-clay" />
     </div>
   )
 }

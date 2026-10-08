@@ -96,6 +96,45 @@ test("today's first meal is the hero; meal and week actions live in sheets; the 
   await expect(nav.getByRole('link', { name: 'Menú' })).toHaveAttribute('aria-current', 'page')
 })
 
+const MENU_GET = /\/menu\/[0-9a-f-]{36}\/\d{4}-\d{2}-\d{2}$/
+
+/** Serve the week with today's featured dish stripped of its photo; returns that dish's name. */
+async function featuredWithoutPhoto(page: Page, menu: { days: Record<string, any>[] }): Promise<string | null> {
+  const todayIdx = (new Date().getDay() + 6) % 7
+  const meal = MEAL_ORDER.find((m) => menu.days[todayIdx]?.[m]?.dishes?.some((d: any) => d.kind === 'recipe'))
+  if (!meal) return null
+  const dish = menu.days[todayIdx][meal].dishes.find((d: any) => d.kind === 'recipe')
+  await page.route(MENU_GET, async (route) => {
+    if (route.request().method() !== 'GET') return route.continue()
+    const res = await route.fetch()
+    const json = await res.json()
+    for (const d of json.days?.[todayIdx]?.[meal]?.dishes ?? []) if (d.recipeId === dish.recipeId) d.imageUrl = null
+    await route.fulfill({ response: res, json })
+  })
+  return dish.recipeName as string
+}
+
+/** Photo-less featured meal: one compact card, the name printed once, no tall empty block. */
+async function expectCompactHero(page: Page, name: string, maxHeight: number) {
+  const hero = page.getByTestId('menu-hero')
+  await expect(hero).toBeVisible({ timeout: 20_000 })
+  await expect(hero).toHaveAttribute('data-photo', '0')
+  await expect(hero.locator('img, [role="img"]')).toHaveCount(0)
+  await expect(hero.getByText(name, { exact: true })).toHaveCount(1)
+  await expect(hero.getByRole('link', { name: /empezar a cocinar/i })).toBeVisible()
+  await expect(hero.getByRole('button', { name: /más opciones/i })).toBeVisible()
+  expect((await hero.boundingBox())!.height).toBeLessThan(maxHeight)
+}
+
+test('a featured meal without a photo is one compact card with its name once', async ({ page }) => {
+  test.setTimeout(90_000)
+  const { menu } = await userWithMenu(page)
+  const name = await featuredWithoutPhoto(page, menu)
+  test.skip(!name, 'the generator left today without recipes')
+  await page.goto('/menu')
+  await expectCompactHero(page, name!, 260)
+})
+
 test('the day strip switches the day shown', async ({ page }) => {
   test.setTimeout(90_000)
   const { menu } = await userWithMenu(page)
@@ -115,6 +154,15 @@ test('the day strip switches the day shown', async ({ page }) => {
 
 test.describe('desktop', () => {
   test.use({ viewport: { width: 1440, height: 900 }, isMobile: false, hasTouch: false })
+
+  test('a featured meal without a photo is a compact card, not a 420 px empty block', async ({ page }) => {
+    test.setTimeout(90_000)
+    const { menu } = await userWithMenu(page)
+    const name = await featuredWithoutPhoto(page, menu)
+    test.skip(!name, 'the generator left today without recipes')
+    await page.goto('/menu')
+    await expectCompactHero(page, name!, 330)
+  })
 
   test('dragging a dish onto another day swaps the two slots', async ({ page }) => {
     test.setTimeout(90_000)

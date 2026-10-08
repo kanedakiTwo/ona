@@ -99,7 +99,7 @@ The `.standalone-pt` utility applies `padding-top: var(--safe-top)` so content d
 - `PublicNavbar` — transparent over hero, beige/blur after scroll, mobile menu uses `font-display` 3xl; its primary pill is "Lista de espera" (mobile: "Únete a la lista de espera") → `/#lista-de-espera` (scrolls in place on `/`)
 - `/lista/[code]` (waitlist owner page) and `/lista/baja` (opt-out) — cream page, eyebrow with `BRAND_NAME`, `text-editorial-lg` headline, paper card
 - `Navbar` (bottom tab bar, 2026-10-08) — fixed full width, `bg-paper` + `border-border-soft` top border, five tabs with icon **and visible label** (Menú, Compra, Recetas, Asesor, Perfil; 11 px), active = ink, semibold, stroke 2.2 + `aria-current="page"` (Compra is also active on `/compra/*`); 60 px + safe-area inset. Hidden on full-screen routes listed in `HIDDEN_ON` (cook mode)
-- `/menu` — "D · Luz y foto": compact header (eyebrow + Fraunces 650 h1 with terracotta-deep italic day), day strip (ink pill), full-bleed photo hero with overlapping paper caption card + ink "Empezar a cocinar" pill, horizontal meal rows, every action behind "···" sheets (`MenuSheet`: bottom sheet on mobile, centred dialog at lg+, portalled, Esc closes, fades only under reduced motion); desktop hero row + "La semana" photo columns. Photo-less recipes use `RecipeCover` (bone block + Fraunces italic name / meal icon). See [Menus](./menus.md)
+- `/menu` — "D · Luz y foto": compact header (eyebrow + Fraunces 650 h1 with terracotta-deep italic day), day strip (ink pill), full-bleed photo hero with overlapping paper caption card + ink "Empezar a cocinar" pill, horizontal meal rows, every action behind "···" sheets (`MenuSheet`: bottom sheet on mobile, centred dialog at lg+, portalled, Esc closes, fades only under reduced motion); desktop hero row + "La semana" photo columns. Photo-less: the hero becomes a compact card (meal icon on a bone square, name once); thumbnails and tiles use `RecipeCover` (bone block + small meal icon, no name). See [Menus](./menus.md)
 - `/compra` + `/compra/tiendas` — "Pide a tus *tiendas*." editorial header, one cream card per shop order with a status chip (ink = enviado, terracotta = ha contestado, forest = confirmado), ink pill CTAs, verdict labels OK (forest) / Revisar (terracotta) / No hay (muted); `/shopping` gets an outlined "Pedir a mis tiendas" card
 
 ## Pages still in App Mode (legacy, green palette)
@@ -143,7 +143,7 @@ These have not been migrated to the editorial system yet:
 | `WaitlistSection` | `components/waitlist/WaitlistSection.tsx` | Landing waitlist form + success state |
 | `ReferralShare` | `components/waitlist/ReferralShare.tsx` | Referral link, copy (clipboard fallback), wa.me share |
 | `Footer` | `components/shared/Footer.tsx` | Hidden on `/` (landing has its own) |
-| `WeekStrip` / `MenuSheet` / `RecipeCover` | `components/menu/` | /menu day strip · sheet primitive · photo or editorial cover |
+| `WeekStrip` / `MenuSheet` / `RecipeCover` | `components/menu/` | /menu day strip · sheet primitive · photo or bone block + meal icon |
 | `RecipeCard` | `components/recipes/RecipeCard.tsx` | Catalog card |
 | `FavoriteButton` | `components/recipes/FavoriteButton.tsx` | Heart toggle |
 | `AdvisorChat` | `components/advisor/AdvisorChat.tsx` | Chat bubbles + voice mic |

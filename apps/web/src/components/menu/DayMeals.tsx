@@ -17,7 +17,7 @@ import { CalendarX, Lock, Play, Plus, RotateCw, Utensils } from "lucide-react"
 import type { Dish, MealSlot, RecipeDish } from "@ona/shared"
 import { mealLabel } from "@/lib/labels"
 import { firstRecipeDish, mealEyebrow, slotMinutes, type DaySlot, type MealKey } from "@/lib/menuDay"
-import { RecipeCover } from "./RecipeCover"
+import { RecipeCover, mealIconFor } from "./RecipeCover"
 import { MenuSheet, SheetAction } from "./MenuSheet"
 import {
   MealOptionsButton,
@@ -88,44 +88,81 @@ export function MealHero({
   const first = firstRecipeDish(ctx.slot)!
   const name = first.recipeName ?? "Receta"
   const eyebrow = mealEyebrow(mealLabel(ctx.meal), slotMinutes(ctx.slot), servingsOf(ctx))
-  const hasPhoto = Boolean(first.imageUrl)
+  // Remember which URL failed, so swapping to another recipe tries its photo.
+  const [failedSrc, setFailedSrc] = useState<string | null>(null)
+  const hasPhoto = Boolean(first.imageUrl) && failedSrc !== first.imageUrl
 
-  const caption = (
-    <>
-      <div className="flex flex-col gap-1">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted lg:text-[12px]">{eyebrow}</p>
-        <h2 className="font-serif-text text-[25px] font-[650] leading-[1.12] text-ink lg:text-[32px] lg:leading-[1.1]">
-          <Link href={`/recipes/${first.recipeId}`} className="hover:underline hover:decoration-1 hover:underline-offset-4">
-            {name}
-          </Link>
-        </h2>
-        <SlotChips ctx={ctx} first={first} />
-      </div>
-      <div className="flex gap-2">
-        <Link
-          href={cookHref(first.recipeId, servingsOf(ctx))}
-          className="flex h-[46px] flex-1 items-center justify-center gap-2 rounded-full bg-ink px-[22px] text-[15px] font-semibold text-cream transition-colors hover:bg-forest focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink lg:flex-none"
-        >
-          <Play size={15} fill="currentColor" strokeWidth={0} />
-          Empezar a cocinar
+  const captionText = (
+    <div className="flex flex-col gap-1">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted lg:text-[12px]">{eyebrow}</p>
+      <h2 className="font-serif-text text-[25px] font-[650] leading-[1.12] text-ink lg:text-[32px] lg:leading-[1.1]">
+        <Link href={`/recipes/${first.recipeId}`} className="hover:underline hover:decoration-1 hover:underline-offset-4">
+          {name}
         </Link>
-        {!readOnly && (
-          <MealOptionsButton
-            ctl={ctl}
-            label={`Más opciones de ${mealLabel(ctx.meal).toLowerCase()}: cambiar plato, vetar, comensales`}
-            className="h-[46px] w-[46px] border border-border bg-paper"
-          />
-        )}
-      </div>
-    </>
+      </h2>
+      <SlotChips ctx={ctx} first={first} />
+    </div>
   )
+  const captionActions = (
+    <div className="flex gap-2">
+      <Link
+        href={cookHref(first.recipeId, servingsOf(ctx))}
+        className="flex h-[46px] flex-1 items-center justify-center gap-2 rounded-full bg-ink px-[22px] text-[15px] font-semibold text-cream transition-colors hover:bg-forest focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink lg:flex-none"
+      >
+        <Play size={15} fill="currentColor" strokeWidth={0} />
+        Empezar a cocinar
+      </Link>
+      {!readOnly && (
+        <MealOptionsButton
+          ctl={ctl}
+          label={`Más opciones de ${mealLabel(ctx.meal).toLowerCase()}: cambiar plato, vetar, comensales`}
+          className="h-[46px] w-[46px] border border-border bg-paper"
+        />
+      )}
+    </div>
+  )
+
+  const motionProps = {
+    "data-testid": "menu-hero",
+    "data-photo": hasPhoto ? "1" : "0",
+    initial: reduce ? false : { opacity: 0, y: 8 },
+    animate: { opacity: 1, y: 0 },
+    transition: { duration: 0.35, ease: [0.19, 1, 0.22, 1] as const },
+  }
+  const sheets = !readOnly && <MealOptionsSheets ctl={ctl} ctx={ctx} handlers={handlers} />
+
+  // No photo (or it failed to load): no tall empty block and no second copy
+  // of the name — the caption becomes a normal card at the top, with the
+  // meal's small icon on a bone square.
+  if (!hasPhoto) {
+    const Icon = mealIconFor(ctx.meal)
+    return (
+      <motion.article
+        {...motionProps}
+        className={
+          layout === "card"
+            ? "flex flex-col gap-4 rounded-[24px] border border-border-soft bg-paper p-6"
+            : "mx-4 mt-4 flex flex-col gap-3 rounded-[22px] border border-border-soft bg-paper p-4"
+        }
+      >
+        <div className="flex items-start gap-3.5 lg:gap-5">
+          <span
+            aria-hidden="true"
+            className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-bone text-clay lg:h-[72px] lg:w-[72px]"
+          >
+            <Icon size={24} strokeWidth={1.5} />
+          </span>
+          <div className="min-w-0 flex-1">{captionText}</div>
+        </div>
+        {captionActions}
+        {sheets}
+      </motion.article>
+    )
+  }
 
   return (
     <motion.article
-      data-testid="menu-hero"
-      initial={reduce ? false : { opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, ease: [0.19, 1, 0.22, 1] }}
+      {...motionProps}
       className={layout === "card" ? "relative h-[420px] overflow-hidden rounded-[24px]" : "relative mt-3"}
     >
       <Link
@@ -134,18 +171,13 @@ export function MealHero({
         aria-hidden="true"
         className={layout === "card" ? "block h-full" : "block"}
       >
-        <RecipeCover
-          src={first.imageUrl}
-          name={name}
-          meal={ctx.meal}
-          variant="cover"
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={first.imageUrl!}
+          alt={name}
           loading="eager"
-          className={
-            layout === "card"
-              ? "h-full w-full"
-              : `w-full ${hasPhoto ? "h-[300px]" : "h-[240px]"}`
-          }
-          nameClassName={layout === "card" ? "text-[3rem] pb-24" : "text-[2rem] pb-10"}
+          onError={() => setFailedSrc(first.imageUrl ?? null)}
+          className={layout === "card" ? "h-full w-full object-cover" : "h-[300px] w-full object-cover"}
         />
       </Link>
       <div
@@ -155,9 +187,10 @@ export function MealHero({
             : "relative mx-4 -mt-[60px] flex flex-col gap-2.5 rounded-[22px] border border-border-soft bg-paper py-[14px] pl-4 pr-[14px]"
         }
       >
-        {caption}
+        {captionText}
+        {captionActions}
       </div>
-      {!readOnly && <MealOptionsSheets ctl={ctl} ctx={ctx} handlers={handlers} />}
+      {sheets}
     </motion.article>
   )
 }

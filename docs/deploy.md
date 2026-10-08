@@ -70,7 +70,7 @@ Since 2026-10-08 the `ona-app` project has a second Railway environment, **`stag
 - its own `JWT_SECRET` and `METRICS_READ_TOKEN`; WhatsApp is off (no access token, app secret, phone id or verify token), so it never messages anyone;
 - `WEB_PUBLIC_URL` / `IMAGE_PUBLIC_URL_BASE` / `NEXT_PUBLIC_API_URL` point at the staging URLs;
 - low spend caps (`USER_MONTHLY_SPEND_CAP_EUR=2`, `ADVISOR_MONTHLY_BUDGET_EUR=2`, `REALTIME_DAILY_MINUTES_PER_USER=5`);
-- data: the recipe seed only (16 system recipes, because the full catalogue needs ingredients that production gathered over time) plus the throwaway `smoke…@example.com` users the deep smoke creates. Never copy production user data here.
+- data: a copy of production's **catalogue only** (all `ingredients` + system recipes with `author_id IS NULL` and their `recipe_ingredients`/`recipe_steps`; 198 ingredients and 56 recipes on 2026-10-08), plus the throwaway `smoke…@example.com` users the deep smoke creates. Never copy user data (users, households, menus, personal recipes) here. To refresh the catalogue: `\copy` those four queries out of production and into staging after `truncate recipes, ingredients cascade` on **staging**.
 
 Deploy to staging the same way, from a clean checkout of `master` linked to `staging` (or with the staging project token in `RAILWAY_TOKEN`), then run the deep smoke:
 

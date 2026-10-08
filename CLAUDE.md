@@ -157,7 +157,6 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 ### Pending
 
 - [ ] **Marca Mimoia — registrarla bien** (decidido seguir con Mimoia el 2026-10-08; detalle en [reports/A tu gusto y Apapacho como marca.md](./reports/A%20tu%20gusto%20y%20Apapacho%20como%20marca.md) y `research_notes/A tu gusto y Apapacho como marca/marcas_mimoia.md`): nadie tiene MIMOIA, pero "MIMO" pesa y Starship Technologies la tiene para apps de pedido/entrega de comida (EUTM 016775306, EE. UU., México), además de Mimo GmbH y Xiaomi. Encargar a un agente de la propiedad industrial (1) una investigación de uso de MIMO por Starship en UE/EE. UU./México y (2) la solicitud de MIMOIA en EUIPO acotada a clases 9 y 42 (software de menús, recetas y asistente de cocina), sin 39/43. Hecho = solicitud presentada con número.
-- [ ] **hola@mimoia.com como contacto de soporte**: el reenvío ya funciona. Confirmar a Claude que es la dirección de soporte para ponerla en `SUPPORT_EMAIL` (ona-api) y `NEXT_PUBLIC_SUPPORT_EMAIL` (ona-web) — sustituye el punto "Contacto de soporte" de la auditoría.
 
 - [ ] **Lista de espera (Mimoia) — antes de abrirla (~16–21 oct)** ([specs/waitlist.md](./specs/waitlist.md)):
   - Aprobar el copy: sección de la landing, pantalla de éxito, `/lista/[code]`, `/lista/baja` y el texto para WhatsApp.
@@ -169,7 +168,6 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 - [ ] **Auditoría 2026-10-07 — lo que queda de tu lado** (todo lo de código está hecho y en prod):
   - **Backups**: activar los backups de Postgres en Railway y hacer una restauración de prueba; copia periódica del volumen `ona-api-volume` (fotos de usuarios). Hoy no hay ninguna red si se pierde la base de datos.
   - **Errores en producción**: ya no hace falta Sentry: hay registro de errores propio (`specs/errors.md`), decisión de Miguel 2026-10-07.
-  - **Contacto de soporte**: decidir el email y ponerlo en Railway como `SUPPORT_EMAIL` (ona-api) y `NEXT_PUBLIC_SUPPORT_EMAIL` (ona-web, requiere redeploy). Hasta entonces la app dice "la persona de ONA que te invitó a la beta".
   - **Privacidad**: revisión legal de `/privacidad` cuando exista la forma jurídica (responsable con identidad real, datos de salud con consentimiento explícito, transferencias a EE. UU.). Ver [specs/privacy.md](./specs/privacy.md).
   - **WhatsApp**: en WhatsApp Manager, crear plantillas *Utility* por tipo de aviso (p. ej. `ona_menu_de_hoy`, `ona_aviso_preparacion`, `ona_lista_compra`, `ona_plan_semana`; cuerpo con un único `{{1}}`) y pasarme los nombres aprobados → `WHATSAPP_TEMPLATES`.
   - *(Opcional)* secreto `USDA_FDC_API_KEY` en GitHub Actions para que corra el smoke de USDA en CI.

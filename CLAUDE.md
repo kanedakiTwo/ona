@@ -183,8 +183,6 @@ This is the **single source of truth** for work that's pending on Miguel's side 
   - Pedir cita con una gestoría con las preguntas del §8 de `research/findings/2026-10-07-forma-juridica.md`. Confirmar D-004 en `/ona-dia`.
   - Añadir un número real de WhatsApp al portfolio actual de Meta, **sin pedir todavía la verificación** (D-004).
   - Reescribir con su voz las secciones [BORRADOR] de `constitution.md` (misión y POV, unos 15 min).
-  - En claude.ai/code → botón del entorno encima de la caja de mensaje → «Nube» → engranaje junto a "Predeterminado" → *Network access* en **Full**: hoy el proxy bloquea las fuentes primarias que lee Inteligencia (`ona-hq/README.md` → "Red del entorno").
-  - Conectar las métricas a las routines (`ona-hq/README.md` → "Conectar métricas", ~5 min). `/admin/metrics` ya está en producción desde el 2026-10-07; solo falta crear `METRICS_READ_TOKEN`.
 
 - [ ] **WhatsApp — optional follow-ups** (channel live in prod since 2026-10-06; linked + "genera menú" verified end-to-end; setup notes in [specs/whatsapp.md](./specs/whatsapp.md) → Configuration):
   - *(Optional, for proactive messages when you haven't written to Ona in 24 h)* WhatsApp Manager → Plantillas → new **Utility** template, Spanish, e.g. `ona_aviso`, body `Aviso de ONA: {{1}} Respóndeme por aquí si quieres cambiar algo.` → once approved, tell Claude to set `WHATSAPP_TEMPLATE_NAME=ona_aviso`.

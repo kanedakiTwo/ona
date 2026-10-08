@@ -25,7 +25,7 @@ Premium Progressive Web App layer that makes ONA feel like a native iOS/Android 
 
 ### Native gestures and transitions
 
-- Users can **swipe horizontally** between the 5 bottom-tab routes (menu ↔ compra ↔ recetas ↔ asesor ↔ perfil) with a pan gesture (`SwipeNavigator`, `motion/react` `onPan`)
+- Users can **swipe horizontally** between the 5 bottom-tab routes (menu ↔ compra ↔ recetas ↔ asesor ↔ perfil) with a pan gesture (`SwipeNavigator`, `motion/react` `onPan`). Not on the recipe detail `/recipes/[id]` (it has its own tabs) nor in cook mode `/recipes/[id]/cook`: a horizontal swipe there stays on the page
 - The gesture has rubber-band edge resistance, a 30% width threshold to confirm, and snaps back if released before threshold (300ms `--ease-out-expo`)
 - Vertical scroll is preserved via `touchAction: pan-y`
 - The active-tab pill on the bottom nav animates between tabs using `layoutId`

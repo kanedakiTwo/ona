@@ -10,6 +10,19 @@ import { completeOnboarding, registerFreshUser } from './_helpers'
 
 const apiUrl = process.env.API_URL ?? 'http://localhost:8765'
 
+/**
+ * Right-to-left horizontal drag at height `y` with real pointer events (what
+ * SwipeNavigator's motion `onPan` listens to), long enough to clear its 30 %
+ * threshold. On a swipeable section it moves to the next bottom-tab route.
+ */
+async function swipeLeft(page: Page, y: number): Promise<void> {
+  const w = page.viewportSize()!.width
+  await page.mouse.move(w - 30, y)
+  await page.mouse.down()
+  for (let i = 1; i <= 12; i++) await page.mouse.move(w - 30 - (i * (w - 60)) / 12, y, { steps: 2 })
+  await page.mouse.up()
+}
+
 /** First catalogue recipe that has steps (so the Pasos tab has content). */
 async function recipeWithSteps(page: Page): Promise<{ id: string; steps: unknown[] }> {
   const list: Array<{ id: string }> = await (await page.request.get(`${apiUrl}/recipes?perPage=10`)).json()
@@ -29,6 +42,10 @@ test('recipe detail: tabs, sticky cook bar, no tab bar, min-servings under Notas
   const tabBar = page.locator('nav').filter({ has: page.getByRole('link', { name: 'Compra' }) })
   await page.goto('/recipes')
   await expect(tabBar.first()).toBeVisible({ timeout: 10_000 })
+  // …and there a horizontal swipe moves to the next section (proves the
+  // gesture below is a real swipe, so "stays put" on the detail means something).
+  await swipeLeft(page, 45)
+  await expect(page).toHaveURL(/\/advisor/, { timeout: 10_000 })
 
   const recipe = await recipeWithSteps(page)
   await page.goto(`/recipes/${recipe.id}`)
@@ -37,6 +54,13 @@ test('recipe detail: tabs, sticky cook bar, no tab bar, min-servings under Notas
   const tablist = page.getByRole('tablist', { name: /secciones de la receta/i })
   await expect(tablist).toBeVisible({ timeout: 15_000 })
   await expect(tabBar).toHaveCount(0)
+
+  // The detail has its own tabs: swiping across it must not jump to another
+  // app section (SwipeNavigator excludes /recipes/[id]).
+  const title = await page.getByRole('heading', { level: 1 }).boundingBox()
+  await swipeLeft(page, title!.y + title!.height / 2)
+  await page.waitForTimeout(1_000) // the section swipe would have navigated by now (300 ms slide + push)
+  await expect(page).toHaveURL(new RegExp(`/recipes/${recipe.id}$`))
 
   // Tabs: Ingredientes is selected by default; its panel shows the
   // servings stepper and the ingredient rows.

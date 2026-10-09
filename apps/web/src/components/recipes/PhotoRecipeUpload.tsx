@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback } from "react"
 import { useExtractRecipeFromImage } from "@/hooks/useRecipes"
-import { Camera, Upload, X, Loader2, RotateCcw } from "lucide-react"
+import { Camera, X, Loader2, RotateCcw } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { ExtractedRecipe } from "@ona/shared"
 
@@ -93,7 +93,7 @@ export function PhotoRecipeUpload({ onExtracted }: PhotoRecipeUploadProps) {
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onClick={() => inputRef.current?.click()}
-        className="cursor-pointer rounded-xl border-2 border-dashed border-gray-300 p-6 text-center transition-colors hover:border-gray-400 hover:bg-gray-50"
+        className="flex min-h-[148px] cursor-pointer items-center justify-center rounded-[20px] border border-dashed border-border bg-paper p-5 text-center transition-colors hover:border-ink hover:bg-cream-deep"
       >
         <input
           ref={inputRef}
@@ -104,14 +104,13 @@ export function PhotoRecipeUpload({ onExtracted }: PhotoRecipeUploadProps) {
           className="hidden"
         />
         <div className="flex flex-col items-center gap-2">
-          <div className="flex items-center gap-2 text-gray-400">
-            <Camera size={24} />
-            <Upload size={20} />
+          <div className="flex h-11 w-11 items-center justify-center gap-1 rounded-full bg-paper text-ink">
+            <Camera size={20} />
           </div>
-          <p className="text-sm font-medium text-gray-600">
+          <p className="font-serif-text text-[17px] font-[650] text-ink">
             Crear desde foto
           </p>
-          <p className="text-xs text-gray-400">
+          <p className="max-w-[260px] text-[13px] leading-snug text-ink-muted">
             Sube o fotografa una receta escrita para extraer los datos
           </p>
         </div>
@@ -122,9 +121,9 @@ export function PhotoRecipeUpload({ onExtracted }: PhotoRecipeUploadProps) {
   // Preview: show image + analyze button
   if (state === "preview") {
     return (
-      <div className="rounded-xl border border-gray-200 p-4">
+      <div className="rounded-[20px] border border-border-soft bg-paper p-4">
         <div className="flex items-start gap-4">
-          <div className="relative h-32 w-32 shrink-0 overflow-hidden rounded-lg">
+          <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-2xl bg-bone">
             {previewUrl && (
               <img
                 src={previewUrl}
@@ -134,14 +133,14 @@ export function PhotoRecipeUpload({ onExtracted }: PhotoRecipeUploadProps) {
             )}
           </div>
           <div className="flex flex-1 flex-col gap-3">
-            <p className="text-sm text-gray-600">
+            <p className="text-[14px] leading-snug text-ink-mid">
               Imagen seleccionada. Pulsa analizar para extraer la receta.
             </p>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={handleAnalyze}
-                className="inline-flex items-center gap-2 rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+                className="inline-flex h-11 items-center gap-2 rounded-full bg-ink px-5 text-[14px] font-semibold text-cream transition-colors hover:bg-ink-mid active:scale-[0.98]"
               >
                 <Camera size={16} />
                 Analizar receta
@@ -149,7 +148,7 @@ export function PhotoRecipeUpload({ onExtracted }: PhotoRecipeUploadProps) {
               <button
                 type="button"
                 onClick={cleanup}
-                className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50"
+                className="inline-flex h-11 items-center gap-1 rounded-full border border-border bg-paper px-4 text-[14px] text-ink transition-colors hover:border-ink"
               >
                 <X size={14} />
                 Cancelar
@@ -164,10 +163,10 @@ export function PhotoRecipeUpload({ onExtracted }: PhotoRecipeUploadProps) {
   // Processing: spinner
   if (state === "processing") {
     return (
-      <div className="rounded-xl border border-gray-200 p-6">
+      <div className="rounded-[20px] border border-border-soft bg-paper p-5">
         <div className="flex items-center gap-4">
           {previewUrl && (
-            <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg opacity-60">
+            <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl opacity-60">
               <img
                 src={previewUrl}
                 alt="Processing"
@@ -176,8 +175,8 @@ export function PhotoRecipeUpload({ onExtracted }: PhotoRecipeUploadProps) {
             </div>
           )}
           <div className="flex items-center gap-3">
-            <Loader2 size={20} className="animate-spin text-gray-500" />
-            <p className="text-sm text-gray-600">Analizando receta con IA...</p>
+            <Loader2 size={20} className="animate-spin text-terracotta-deep" />
+            <p className="text-[14px] text-ink-mid">Analizando receta con IA...</p>
           </div>
         </div>
       </div>
@@ -186,13 +185,13 @@ export function PhotoRecipeUpload({ onExtracted }: PhotoRecipeUploadProps) {
 
   // Error
   return (
-    <div className="rounded-xl border border-red-200 bg-red-50 p-4">
-      <p className="text-sm text-red-600">{errorMessage}</p>
-      <div className="mt-3 flex gap-2">
+    <div className="rounded-[20px] border border-terracotta/40 bg-warn-bg p-4">
+      <p className="text-[14px] text-terracotta-deep">{errorMessage}</p>
+      <div className="mt-3 flex flex-wrap gap-2">
         <button
           type="button"
           onClick={handleRetry}
-          className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-100"
+          className="inline-flex h-11 items-center gap-1 rounded-full border border-terracotta-deep bg-paper px-4 text-[14px] font-medium text-terracotta-deep transition-colors hover:bg-terracotta-deep hover:text-cream"
         >
           <RotateCcw size={14} />
           Reintentar
@@ -200,7 +199,7 @@ export function PhotoRecipeUpload({ onExtracted }: PhotoRecipeUploadProps) {
         <button
           type="button"
           onClick={cleanup}
-          className="text-sm text-gray-500 hover:text-gray-700"
+          className="inline-flex h-11 items-center px-3 text-[14px] text-ink-muted hover:text-ink"
         >
           Cancelar
         </button>

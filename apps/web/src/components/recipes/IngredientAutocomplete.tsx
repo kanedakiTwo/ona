@@ -107,7 +107,7 @@ export function IngredientAutocomplete({
   }
 
   return (
-    <div ref={containerRef} className="relative flex-1">
+    <div ref={containerRef} className="relative min-w-0 flex-1">
       <input
         id={inputId}
         type="text"
@@ -120,20 +120,20 @@ export function IngredientAutocomplete({
         placeholder={placeholder ?? "Ingrediente"}
         autoComplete="off"
         className={cn(
-          "w-full rounded-lg border bg-[#F2EDE0] px-3 py-2 text-[14px] text-[#1A1612] placeholder:text-[#7A7066] focus:outline-none focus:ring-1",
+          "h-11 w-full rounded-xl border bg-paper px-3.5 text-[16px] text-ink placeholder:text-ink-light focus:outline-none focus:ring-1 lg:text-[15px]",
           hasError
-            ? "border-[#C65D38] focus:border-[#C65D38] focus:ring-[#C65D38]"
-            : "border-[#DDD6C5] focus:border-[#1A1612] focus:ring-[#1A1612]"
+            ? "border-terracotta focus:border-terracotta focus:ring-terracotta"
+            : "border-border-soft focus:border-ink focus:ring-ink"
         )}
       />
 
       {open && (search.data || search.isLoading || showCreateOption) && (
         <ul
           role="listbox"
-          className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-auto rounded-lg border border-[#DDD6C5] bg-[#FAF6EE] py-1 shadow-md"
+          className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-auto rounded-2xl border border-border-soft bg-paper py-1 shadow-[0_12px_32px_-12px_rgba(26,22,18,0.3)]"
         >
           {search.isLoading && (
-            <li className="px-3 py-2 text-[12px] italic text-[#7A7066]">
+            <li className="px-3 py-2 text-[12px] italic text-ink-muted">
               Cargando...
             </li>
           )}
@@ -143,25 +143,25 @@ export function IngredientAutocomplete({
                 <button
                   type="button"
                   onClick={() => pick(ing)}
-                  className="block w-full px-3 py-2 text-left text-[14px] text-[#1A1612] hover:bg-[#F2EDE0]"
+                  className="block min-h-11 w-full px-3.5 py-2.5 text-left text-[15px] text-ink hover:bg-cream-deep"
                 >
                   {ing.name}
                 </button>
               </li>
             ))}
           {showCreateOption && (
-            <li className="border-t border-[#DDD6C5] mt-1 pt-1">
+            <li className="mt-1 border-t border-border-soft pt-1">
               <button
                 type="button"
                 onClick={() => {
                   setModalName(trimmed)
                   setOpen(false)
                 }}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] font-medium text-[#C65D38] hover:bg-[#F2EDE0]"
+                className="flex min-h-11 w-full items-center gap-2 px-3.5 py-2.5 text-left text-[14px] font-medium text-terracotta-deep hover:bg-cream-deep"
               >
                 <Plus size={14} />
                 Crear nuevo ingrediente
-                <span className="font-italic italic text-[#1A1612]">
+                <span className="italic text-ink">
                   &ldquo;{trimmed}&rdquo;
                 </span>
               </button>
@@ -170,7 +170,7 @@ export function IngredientAutocomplete({
           {!search.isLoading &&
             (search.data ?? []).length === 0 &&
             !showCreateOption && (
-              <li className="px-3 py-2 text-[12px] italic text-[#7A7066]">
+              <li className="px-3 py-2 text-[12px] italic text-ink-muted">
                 Empieza a escribir para buscar...
               </li>
             )}
@@ -325,26 +325,26 @@ function AutoCreateModal({ name, onClose, onCreated }: ModalProps) {
       role="dialog"
       aria-modal="true"
       aria-label="Crear nuevo ingrediente"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[#1A1612]/60 px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 px-4"
       onClick={onClose}
     >
       <div
-        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-[#DDD6C5] bg-[#FAF6EE] p-6 shadow-2xl"
+        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-[24px] border border-border-soft bg-cream p-5 shadow-2xl sm:p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="text-eyebrow text-[#C65D38]">Sugerencias nutricionales</div>
-            <h3 className="mt-1 font-display text-[1.5rem] leading-tight text-[#1A1612]">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-terracotta-deep">Sugerencias nutricionales</div>
+            <h3 className="mt-1 font-serif-text text-[22px] font-[650] leading-tight text-ink">
               Crear{" "}
-              <span className="font-italic italic">&ldquo;{name}&rdquo;</span>
+              <span className="font-medium italic text-terracotta-deep">&ldquo;{name}&rdquo;</span>
             </h3>
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Cerrar"
-            className="rounded-full p-1 text-[#7A7066] hover:bg-[#F2EDE0] hover:text-[#1A1612]"
+            className="-mr-2 -mt-2 flex h-11 w-11 items-center justify-center rounded-full text-ink-muted hover:bg-cream-deep hover:text-ink"
           >
             <X size={18} />
           </button>
@@ -353,35 +353,35 @@ function AutoCreateModal({ name, onClose, onCreated }: ModalProps) {
         <div className="mt-4">
           <label
             htmlFor="auto-create-search"
-            className="text-[10px] uppercase tracking-[0.12em] text-[#7A7066]"
+            className="text-[10px] uppercase tracking-[0.12em] text-ink-muted"
           >
             Búsqueda manual
           </label>
-          <div className="mt-1 flex items-center gap-2 rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-3 py-2 focus-within:border-[#1A1612] focus-within:ring-1 focus-within:ring-[#1A1612]">
-            <Search size={14} className="shrink-0 text-[#7A7066]" />
+          <div className="mt-1 flex h-11 items-center gap-2 rounded-xl border border-border-soft bg-paper px-3.5 focus-within:border-ink focus-within:ring-1 focus-within:ring-ink">
+            <Search size={14} className="shrink-0 text-ink-muted" />
             <input
               id="auto-create-search"
               type="text"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Refina la búsqueda en USDA (en inglés)…"
-              className="w-full bg-transparent text-[14px] text-[#1A1612] placeholder:text-[#7A7066] focus:outline-none"
+              className="w-full bg-transparent text-[16px] text-ink placeholder:text-ink-light focus:outline-none lg:text-[15px]"
             />
           </div>
           {suggest.data?.queryUsed && (
-            <p className="mt-1 text-[11px] italic text-[#7A7066]">
+            <p className="mt-1 text-[11px] italic text-ink-muted">
               Buscando: <span className="not-italic">&ldquo;{suggest.data.queryUsed}&rdquo;</span>
             </p>
           )}
         </div>
 
         {suggest.isLoading && (
-          <p className="mt-4 text-[13px] italic text-[#7A7066]">
+          <p className="mt-4 text-[13px] italic text-ink-muted">
             Buscando candidatos...
           </p>
         )}
         {suggest.isError && (
-          <p className="mt-4 text-[13px] italic text-[#C65D38]">
+          <p className="mt-4 text-[13px] italic text-terracotta-deep">
             No se pudo consultar USDA. Prueba a estimar con Mimoia o crea sin
             nutrición.
           </p>
@@ -408,7 +408,7 @@ function AutoCreateModal({ name, onClose, onCreated }: ModalProps) {
         )}
 
         {!suggest.isLoading && !hasCandidates && !suggest.isError && (
-          <p className="mt-4 text-[13px] italic text-[#7A7066]">
+          <p className="mt-4 text-[13px] italic text-ink-muted">
             Sin coincidencias en USDA ni BEDCA. Estima con Mimoia o crea sin
             nutrición.
           </p>
@@ -424,7 +424,7 @@ function AutoCreateModal({ name, onClose, onCreated }: ModalProps) {
         )}
 
         {error && (
-          <p className="mt-4 text-[12px] italic text-[#C65D38]">{error}</p>
+          <p className="mt-4 text-[12px] italic text-terracotta-deep">{error}</p>
         )}
 
         <div className="mt-6 flex flex-wrap items-center gap-3">
@@ -432,7 +432,7 @@ function AutoCreateModal({ name, onClose, onCreated }: ModalProps) {
             type="button"
             disabled={create.isPending || !canConfirm}
             onClick={() => handleConfirm("candidate")}
-            className="rounded-full bg-[#1A1612] px-5 py-2 text-[12px] font-medium uppercase tracking-[0.12em] text-[#FAF6EE] transition-all hover:bg-[#2D6A4F] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex h-11 items-center rounded-full bg-ink px-5 text-[14px] font-semibold text-cream transition-colors hover:bg-ink-mid active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
           >
             {create.isPending
               ? "Creando..."
@@ -444,7 +444,7 @@ function AutoCreateModal({ name, onClose, onCreated }: ModalProps) {
             type="button"
             disabled={previewEstimate.isPending || create.isPending}
             onClick={runEstimate}
-            className="inline-flex items-center gap-1.5 rounded-full border border-[#DDD6C5] bg-transparent px-5 py-2 text-[12px] uppercase tracking-[0.12em] text-[#4A4239] transition-all hover:border-[#1A1612] hover:text-[#1A1612] active:scale-95 disabled:opacity-40"
+            className="inline-flex h-11 items-center gap-1.5 rounded-full border border-border bg-paper px-5 text-[14px] text-ink transition-colors hover:border-ink active:scale-[0.98] disabled:opacity-40"
           >
             <Sparkles size={12} />
             {previewEstimate.isPending ? "Estimando..." : "Estimar con Mimoia"}
@@ -453,14 +453,14 @@ function AutoCreateModal({ name, onClose, onCreated }: ModalProps) {
             type="button"
             disabled={create.isPending}
             onClick={() => handleConfirm("stub")}
-            className="rounded-full border border-[#DDD6C5] bg-transparent px-5 py-2 text-[12px] uppercase tracking-[0.12em] text-[#7A7066] transition-all hover:text-[#1A1612] active:scale-95 disabled:opacity-40"
+            className="inline-flex h-11 items-center rounded-full border border-border bg-paper px-5 text-[14px] text-ink-muted transition-colors hover:border-ink hover:text-ink active:scale-[0.98] disabled:opacity-40"
           >
             Crear sin nutrición
           </button>
           <button
             type="button"
             onClick={onClose}
-            className="ml-auto text-[12px] uppercase tracking-[0.12em] text-[#7A7066] hover:text-[#1A1612]"
+            className="ml-auto inline-flex h-11 items-center px-2 text-[14px] text-ink-muted hover:text-ink"
           >
             Cancelar
           </button>
@@ -521,8 +521,8 @@ function EstimatedSummary({
 
 function NutritionStat({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-md bg-[#FAF6EE] px-2 py-1.5">
-      <div className="text-[9px] uppercase tracking-[0.12em] text-[#7A7066]">
+    <div className="rounded-md bg-paper px-2 py-1.5">
+      <div className="text-[9px] uppercase tracking-[0.12em] text-ink-muted">
         {label}
       </div>
       <div className="text-[13px] font-medium text-[#1A1612]">{value}</div>

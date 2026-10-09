@@ -198,14 +198,14 @@ export function CookingShell({
 
   if (totalSteps === 0) {
     return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#FAF6EE] px-6 text-center">
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-paper px-6 text-center">
         <div className="max-w-sm">
-          <p className="font-display text-2xl text-[#1A1612]">
+          <p className="font-serif-text text-2xl font-[650] leading-tight text-ink">
             Esta receta no tiene pasos para cocinar.
           </p>
           <button
             onClick={handleExit}
-            className="mt-6 rounded-full bg-[#1A1612] px-5 py-2 text-sm text-[#FAF6EE] active:scale-95"
+            className="mt-6 inline-flex h-11 items-center rounded-full bg-ink px-6 text-[15px] font-semibold text-paper active:scale-95"
           >
             Salir
           </button>
@@ -215,71 +215,74 @@ export function CookingShell({
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex flex-col bg-[#FAF6EE]">
+    <div className="fixed inset-0 z-[100] flex flex-col bg-paper">
       {/* Top bar */}
-      <header className="flex-none border-b border-[#DDD6C5] bg-[#FAF6EE] px-4 pt-[max(env(safe-area-inset-top),12px)] pb-3">
-        <div className="flex items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={handleExit}
-            className="inline-flex items-center gap-1.5 rounded-full border border-[#DDD6C5] bg-[#FAF6EE] px-3 py-1.5 text-[12px] text-[#1A1612] transition-transform active:scale-95"
-            aria-label="Salir del modo cocina"
-          >
-            <X size={14} />
-            Salir
-          </button>
-          <div className="text-[12px] tabular-nums text-[#7A7066]">
-            {safeIdx + 1} / {totalSteps}
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              haptic.light()
-              setChecklistOpen(true)
-            }}
-            className="inline-flex items-center gap-1.5 rounded-full border border-[#DDD6C5] bg-[#FAF6EE] px-3 py-1.5 text-[12px] text-[#1A1612] transition-transform active:scale-95"
-            aria-label="Abrir lista de ingredientes"
-          >
-            <ListChecks size={14} />
-            <span className="tabular-nums">
-              {checked.size}/{recipe.ingredients.length}
-            </span>
-          </button>
-        </div>
-
-        {/* Progress bar */}
-        <div className="mt-3 h-1 w-full overflow-hidden rounded-full bg-[#EFE8D8]">
-          <motion.div
-            className="h-full bg-[#52B788]"
-            initial={false}
-            animate={{ width: `${progressPct}%` }}
-            transition={{ type: "spring", damping: 30, stiffness: 280 }}
-          />
-        </div>
-
-        {/* Scaler row */}
-        <div className="mt-3 flex items-center justify-between gap-2">
-          <ServingsScaler
-            value={servings}
-            onChange={onServingsChange}
-            min={1}
-            max={12}
-          />
-          {activeTimers.length > 0 && (
-            <div className="flex items-center gap-1.5">
-              {activeTimers.map((t) => (
-                <ActiveTimerChip
-                  key={t.stepIndex}
-                  remainingSec={t.remainingSec}
-                  paused={t.paused}
-                  onClick={() => {
-                    haptic.light()
-                    setStepIdx(t.stepIndex)
-                  }}
-                />
-              ))}
+      <header className="flex-none border-b border-border-soft bg-paper px-4 pt-[max(env(safe-area-inset-top),12px)] pb-3 lg:px-10">
+        <div className="mx-auto w-full max-w-[1180px]">
+          <div className="flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={handleExit}
+              className="inline-flex h-11 items-center gap-1.5 rounded-full border border-border bg-paper px-4 text-[14px] font-medium text-ink transition-colors hover:border-ink active:scale-95"
+              aria-label="Salir del modo cocina"
+            >
+              <X size={16} />
+              Salir
+            </button>
+            <div className="text-[13px] font-semibold tabular-nums text-ink-muted">
+              {safeIdx + 1} / {totalSteps}
             </div>
-          )}
+            <button
+              type="button"
+              onClick={() => {
+                haptic.light()
+                setChecklistOpen(true)
+              }}
+              className="inline-flex h-11 items-center gap-1.5 rounded-full border border-border bg-paper px-4 text-[14px] font-medium text-ink transition-colors hover:border-ink active:scale-95"
+              aria-label="Abrir lista de ingredientes"
+            >
+              <ListChecks size={16} />
+              <span className="tabular-nums">
+                {checked.size}/{recipe.ingredients.length}
+              </span>
+            </button>
+          </div>
+
+          {/* Progress bar */}
+          <div className="mt-3 h-1 w-full overflow-hidden rounded-full bg-bone">
+            <motion.div
+              className="h-full bg-terracotta"
+              initial={false}
+              animate={{ width: `${progressPct}%` }}
+              transition={{ type: "spring", damping: 30, stiffness: 280 }}
+            />
+          </div>
+
+          {/* Scaler row */}
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+            <ServingsScaler
+              variant="pill"
+              value={servings}
+              onChange={onServingsChange}
+              min={1}
+              max={12}
+            />
+            {activeTimers.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                {activeTimers.map((t) => (
+                  <ActiveTimerChip
+                    key={t.stepIndex}
+                    remainingSec={t.remainingSec}
+                    paused={t.paused}
+                    onClick={() => {
+                      haptic.light()
+                      setStepIdx(t.stepIndex)
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -339,12 +342,12 @@ export function CookingShell({
             initial={{ y: 40, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 40, opacity: 0 }}
-            className="mx-4 mb-2 flex items-center justify-between gap-3 rounded-2xl bg-[#C65D38] px-4 py-3 text-[#FAF6EE] shadow-lg"
+            className="mx-4 mb-2 flex items-center justify-between gap-3 rounded-[20px] bg-terracotta-deep py-1.5 pl-4 pr-1.5 text-paper shadow-[0_12px_32px_-12px_rgba(26,22,18,0.45)] lg:mx-auto lg:w-full lg:max-w-[1180px]"
             role="alert"
           >
             <div className="flex items-center gap-2">
               <Timer size={16} />
-              <span className="text-[14px] font-medium">
+              <span className="text-[15px] font-semibold">
                 Tiempo terminado · paso {idx + 1}
               </span>
             </div>
@@ -355,7 +358,7 @@ export function CookingShell({
                 timers.cancel(idx)
                 setPendingExpired((prev) => prev.filter((i) => i !== idx))
               }}
-              className="rounded-full bg-[#FAF6EE]/15 px-3 py-1 text-[12px] active:scale-95"
+              className="inline-flex h-11 items-center rounded-full bg-paper px-4 text-[14px] font-semibold text-ink active:scale-95"
             >
               Listo
             </button>
@@ -364,13 +367,13 @@ export function CookingShell({
       </AnimatePresence>
 
       {/* Bottom step nav */}
-      <nav className="flex-none border-t border-[#DDD6C5] bg-[#FAF6EE] px-4 py-3 pb-[max(env(safe-area-inset-bottom),12px)]">
-        <div className="flex items-center justify-between gap-3">
+      <nav className="flex-none border-t border-border-soft bg-paper px-4 py-3 pb-[max(env(safe-area-inset-bottom),12px)] lg:px-10">
+        <div className="mx-auto flex w-full max-w-[1180px] items-center justify-between gap-3">
           <button
             type="button"
             onClick={goPrev}
             disabled={safeIdx === 0}
-            className="inline-flex h-12 flex-1 items-center justify-center gap-1.5 rounded-full border border-[#DDD6C5] bg-[#FAF6EE] text-[14px] font-medium text-[#1A1612] transition-transform active:scale-95 disabled:opacity-40"
+            className="inline-flex h-[50px] flex-1 items-center justify-center gap-1.5 rounded-full border border-border bg-paper text-[16px] font-semibold text-ink transition-colors hover:border-ink active:scale-[0.98] disabled:opacity-40 disabled:hover:border-border"
             aria-label="Paso anterior"
           >
             <ChevronLeft size={18} />
@@ -380,7 +383,7 @@ export function CookingShell({
             type="button"
             onClick={goNext}
             disabled={safeIdx >= totalSteps - 1}
-            className="inline-flex h-12 flex-[1.4] items-center justify-center gap-1.5 rounded-full bg-[#1A1612] text-[14px] font-medium text-[#FAF6EE] transition-transform active:scale-95 disabled:opacity-40"
+            className="inline-flex h-[50px] flex-[1.4] items-center justify-center gap-1.5 rounded-full bg-ink text-[16px] font-semibold text-paper transition-transform active:scale-[0.98] disabled:opacity-40"
             aria-label="Paso siguiente"
           >
             Siguiente
@@ -422,14 +425,14 @@ function ActiveTimerChip({
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition-transform active:scale-95 ${
+      className={`inline-flex h-11 items-center gap-1.5 rounded-full px-3.5 text-[13px] font-semibold transition-transform active:scale-95 ${
         paused
-          ? "bg-[#EFE8D8] text-[#7A7066]"
-          : "bg-[#1A1612] text-[#FAF6EE]"
+          ? "border border-border bg-cream-deep text-ink-muted"
+          : "bg-ink text-paper"
       }`}
       aria-label={paused ? "Temporizador pausado" : "Temporizador en marcha"}
     >
-      <Timer size={11} />
+      <Timer size={13} />
       <span className="font-mono tabular-nums">{fmt(remainingSec)}</span>
     </button>
   )

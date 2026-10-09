@@ -1,19 +1,18 @@
 "use client"
 
 /**
- * MyRecipesSection — "Mis recetas" tab inside /profile.
+ * MyRecipesSection — "Mis recetas" card inside /profile.
  *
  * Shows every recipe the current user authored plus the status pills the
  * admin/recipes-gaps endpoint computes (sin nutrición, ingredientes
- * auto-añadidos, etc.). Each row gets an "Editar" link to the public
- * recipe page and an "Eliminar" mutation that soft-checks via native
- * confirm() before firing.
+ * auto-añadidos, etc.). Each row opens the recipe; its "···" sheet
+ * (D · Luz y foto, PRO-39) holds "Editar" and "Eliminar" — the latter
+ * soft-checks via native confirm() before firing.
  *
  * Spec: ../../../../specs/recipes-spec.md (cascade behaviour)
  */
 
 import Link from "next/link"
-import Image from "next/image"
 import { useMemo, useState } from "react"
 import { Pencil, Trash2 } from "lucide-react"
 import {
@@ -21,20 +20,16 @@ import {
   useMyRecipes,
   type MyRecipeRow,
 } from "@/hooks/useMyRecipes"
+import { MenuSheet, SheetAction } from "@/components/menu/MenuSheet"
+import { RecipeCover } from "@/components/menu/RecipeCover"
+import { MoreButton } from "./ProfileCards"
 
-const PILL_TONE: Record<string, string> = {
-  "sin nutrición": "bg-[#C65D38]/15 text-[#C65D38]",
-  "ingredientes auto-añadidos":
-    "bg-[#E26A4A]/15 text-[#C65D38]",
-  "sin equipo": "border border-[#DDD6C5] text-[#7A7066]",
-  "sin tiempo": "border border-[#DDD6C5] text-[#7A7066]",
-}
+const WARN_PILLS = new Set(["sin nutrición", "ingredientes auto-añadidos"])
 
 function pillClass(label: string): string {
-  return (
-    PILL_TONE[label] ??
-    "border border-[#DDD6C5] text-[#7A7066]"
-  )
+  return WARN_PILLS.has(label)
+    ? "bg-warn-bg text-terracotta-deep"
+    : "border border-border text-ink-muted"
 }
 
 export function MyRecipesSection() {
@@ -42,6 +37,7 @@ export function MyRecipesSection() {
   const del = useDeleteMyRecipe()
   const [onlyPending, setOnlyPending] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [sheetFor, setSheetFor] = useState<MyRecipeRow | null>(null)
 
   const filtered = useMemo<MyRecipeRow[]>(() => {
     if (!data?.recipes) return []
@@ -74,13 +70,13 @@ export function MyRecipesSection() {
 
   if (isLoading) {
     return (
-      <p className="text-[12px] italic text-[#7A7066]">Cargando recetas…</p>
+      <p className="text-[13px] italic text-ink-muted">Cargando recetas…</p>
     )
   }
 
   if (isError) {
     return (
-      <p className="text-[12px] text-[#C65D38]">
+      <p className="text-[13px] text-terracotta-deep">
         {error instanceof Error
           ? error.message
           : "No se pudieron cargar tus recetas."}
@@ -98,27 +94,22 @@ export function MyRecipesSection() {
     <div>
       {/* Counts strip */}
       <div className="grid grid-cols-3 gap-2">
-        <CountTile label="recetas" value={counts.total} tone="ink" />
-        <CountTile
-          label="sin nutrición"
-          value={counts.sinNutricion}
-          tone="terracotta"
-        />
+        <CountTile label="recetas" value={counts.total} />
+        <CountTile label="sin nutrición" value={counts.sinNutricion} accent />
         <CountTile
           label="ingredientes pendientes"
           value={counts.ingredientesPendientesRevision}
-          tone="cream"
         />
       </div>
 
       {/* Filter */}
-      <div className="mt-4">
-        <label className="inline-flex items-center gap-2 text-[12px] text-[#4A4239]">
+      <div className="mt-2">
+        <label className="inline-flex min-h-[44px] items-center gap-2.5 text-[13px] text-ink-mid">
           <input
             type="checkbox"
             checked={onlyPending}
             onChange={(e) => setOnlyPending(e.target.checked)}
-            className="h-4 w-4 accent-[#C65D38]"
+            className="h-5 w-5 accent-ink"
           />
           Solo con pendientes
         </label>
@@ -126,78 +117,84 @@ export function MyRecipesSection() {
 
       {/* List */}
       {filtered.length === 0 ? (
-        <p className="mt-6 text-[12px] italic text-[#7A7066]">
+        <p className="mt-3 text-[13px] italic text-ink-muted">
           {counts.total === 0
             ? "Aún no has creado recetas."
             : "Sin recetas pendientes en este filtro."}
         </p>
       ) : (
-        <ul className="mt-4 overflow-hidden rounded-2xl border border-[#DDD6C5] bg-[#FFFEFA]">
+        <ul className="mt-2 overflow-hidden rounded-2xl border border-border-soft bg-paper">
           {filtered.map((r, idx) => (
             <li
               key={r.id}
-              className={`flex gap-3 px-3 py-3 ${
-                idx === 0 ? "" : "border-t border-[#DDD6C5]"
-              }`}
+              className={`flex items-center gap-3 py-2 pl-2 pr-1.5 ${
+                idx === 0 ? "" : "border-t border-border-soft"
+              } ${deletingId === r.id ? "opacity-50" : ""}`}
             >
-              <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-[#F2EDE0]">
-                {r.imageUrl ? (
-                  <Image
-                    src={r.imageUrl}
-                    alt={r.name}
-                    fill
-                    sizes="48px"
-                    className="object-cover"
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-[10px] text-[#A39A8E]">
-                    sin foto
-                  </div>
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-baseline gap-2">
-                  <span className="truncate text-[13px] font-medium text-[#1A1612]">
-                    {r.name}
+              <Link
+                href={`/recipes/${r.id}`}
+                className="flex min-w-0 flex-1 items-center gap-3 rounded-xl focus-visible:outline-2 focus-visible:outline-ink"
+              >
+                <RecipeCover
+                  src={r.imageUrl}
+                  name={r.name}
+                  className="h-12 w-12 shrink-0 rounded-[12px]"
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-baseline gap-2">
+                    <span className="truncate font-serif-text text-[15px] font-[650] text-ink">
+                      {r.name}
+                    </span>
+                    {r.kcal != null && (
+                      <span className="shrink-0 font-mono text-[11px] text-ink-muted">
+                        {Math.round(r.kcal)} kcal
+                      </span>
+                    )}
                   </span>
-                  {r.kcal != null && (
-                    <span className="rounded-full bg-[#1A1612] px-2 py-0.5 text-[9px] uppercase tracking-[0.1em] text-[#FAF6EE]">
-                      {Math.round(r.kcal)} kcal
+                  {r.statusPills.length > 0 && (
+                    <span className="mt-1 flex flex-wrap gap-1">
+                      {r.statusPills.map((p) => (
+                        <span
+                          key={p}
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] ${pillClass(p)}`}
+                        >
+                          {p}
+                        </span>
+                      ))}
                     </span>
                   )}
-                </div>
-                <div className="mt-1 flex flex-wrap gap-1">
-                  {r.statusPills.map((p) => (
-                    <span
-                      key={p}
-                      className={`rounded-full px-2 py-0.5 text-[9px] uppercase tracking-[0.1em] ${pillClass(p)}`}
-                    >
-                      {p}
-                    </span>
-                  ))}
-                </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-1">
-                <Link
-                  href={`/recipes/${r.id}`}
-                  className="flex h-8 items-center gap-1 rounded-full border border-[#DDD6C5] bg-[#FAF6EE] px-3 text-[10px] uppercase tracking-[0.1em] text-[#4A4239] hover:border-[#1A1612] hover:text-[#1A1612]"
-                >
-                  <Pencil size={11} />
-                  Editar
-                </Link>
-                <button
-                  onClick={() => handleDelete(r)}
-                  disabled={deletingId === r.id}
-                  className="flex h-8 items-center gap-1 rounded-full border border-[#C65D38]/40 bg-[#C65D38]/10 px-3 text-[10px] uppercase tracking-[0.1em] text-[#C65D38] hover:bg-[#C65D38] hover:text-[#FAF6EE] disabled:opacity-50"
-                >
-                  <Trash2 size={11} />
-                  {deletingId === r.id ? "…" : "Eliminar"}
-                </button>
-              </div>
+                </span>
+              </Link>
+              <MoreButton onClick={() => setSheetFor(r)} label={`Opciones de ${r.name}`} />
             </li>
           ))}
         </ul>
       )}
+
+      <MenuSheet
+        open={sheetFor !== null}
+        onClose={() => setSheetFor(null)}
+        eyebrow="Mis recetas"
+        title={sheetFor?.name ?? ""}
+      >
+        {sheetFor && (
+          <div className="flex flex-col gap-1">
+            <SheetAction icon={Pencil} label="Editar" href={`/recipes/${sheetFor.id}`} />
+            <SheetAction
+              icon={Trash2}
+              label="Eliminar"
+              hint="Borra la receta con sus pasos e ingredientes"
+              destructive
+              disabled={deletingId === sheetFor.id}
+              onClick={() => {
+                const r = sheetFor
+                setSheetFor(null)
+                handleDelete(r)
+              }}
+            />
+          </div>
+        )}
+      </MenuSheet>
     </div>
   )
 }
@@ -205,22 +202,22 @@ export function MyRecipesSection() {
 function CountTile({
   label,
   value,
-  tone,
+  accent = false,
 }: {
   label: string
   value: number
-  tone: "ink" | "terracotta" | "cream"
+  accent?: boolean
 }) {
-  const cls =
-    tone === "ink"
-      ? "bg-[#1A1612] text-[#FAF6EE]"
-      : tone === "terracotta"
-        ? "bg-[#C65D38] text-[#FAF6EE]"
-        : "bg-[#FFFEFA] border border-[#DDD6C5] text-[#1A1612]"
   return (
-    <div className={`rounded-2xl p-3 text-center ${cls}`}>
-      <div className="font-display text-2xl">{value}</div>
-      <div className="mt-0.5 text-[9px] uppercase tracking-[0.12em] opacity-70">
+    <div className="rounded-2xl border border-border-soft bg-cream p-3 text-center">
+      <div
+        className={`font-serif-text text-[24px] font-[650] leading-none ${
+          accent && value > 0 ? "text-terracotta-deep" : "text-ink"
+        }`}
+      >
+        {value}
+      </div>
+      <div className="mt-1 text-[10px] font-medium uppercase tracking-[0.1em] text-ink-muted">
         {label}
       </div>
     </div>

@@ -56,7 +56,7 @@ Premium Progressive Web App layer that makes Mimoia feel like a native iOS/Andro
 
 ### Local notifications
 
-- Users can opt in to meal-time reminders from the profile page (`Capitulo 05 — Recordatorios de comidas`)
+- Users can opt in to meal-time reminders from the profile page ("Recordatorios" card)
 - The chapter exposes 4 time inputs (breakfast / lunch / snack / dinner) plus a master toggle
 - After permission is granted, the app schedules **local** notifications based on the saved meal-time preferences
 - A notification fires at the configured times (e.g., "Es hora de comer · Pollo al limón con verduras")

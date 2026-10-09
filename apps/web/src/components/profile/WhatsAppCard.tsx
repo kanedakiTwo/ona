@@ -12,7 +12,8 @@ import {
 } from '@/hooks/useWhatsApp'
 
 /**
- * "Mimo en WhatsApp" card on /profile. Two states:
+ * "Mimo en WhatsApp" block inside the WhatsApp card on /profile ("D · Luz y
+ * foto", PRO-39: cream inset on the paper card, ink pills). Two states:
  *   - not linked → "Conectar WhatsApp" mints a one-time code and shows a
  *     wa.me link with it prefilled; the status polls until the phone sends it.
  *   - linked → masked number, "Abrir chat", proactive-messages toggle, disconnect.
@@ -20,6 +21,11 @@ import {
 export function WhatsAppCard({ status }: { status: WhatsAppStatus }) {
   return status.linked ? <LinkedState status={status} /> : <UnlinkedState />
 }
+
+const PILL_INK =
+  'inline-flex h-11 items-center rounded-full bg-ink px-5 text-[13px] font-medium text-cream transition-colors hover:bg-ink-mid active:scale-95 disabled:opacity-50'
+const PILL_OUTLINE =
+  'h-11 rounded-full border border-border bg-paper px-4 text-[13px] font-medium text-ink-muted transition-colors hover:text-ink active:scale-95'
 
 function UnlinkedState() {
   const linkCode = useWhatsAppLinkCode()
@@ -42,12 +48,12 @@ function UnlinkedState() {
   }
 
   return (
-    <div className="rounded-2xl bg-[#FFFEFA] border border-[#DDD6C5] p-4">
+    <div className="rounded-2xl border border-border-soft bg-cream p-4">
       <div className="flex items-start gap-3">
-        <MessageCircle size={18} className="mt-0.5 shrink-0 text-[#7A7066]" />
+        <MessageCircle size={18} className="mt-0.5 shrink-0 text-ink-muted" />
         <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-medium text-[#1A1612]">Conecta tu WhatsApp</div>
-          <div className="mt-1 text-[11px] leading-snug text-[#7A7066]">
+          <div className="text-[14px] font-medium text-ink">Conecta tu WhatsApp</div>
+          <div className="mt-1 text-[12px] leading-snug text-ink-muted">
             Pregúntale a Mimo qué toca hoy, pídele la lista de la compra,
             mándale notas de voz o compártele recetas (enlace o foto) para
             guardarlas.
@@ -56,28 +62,28 @@ function UnlinkedState() {
           {!pending || expired ? (
             <div className="mt-3">
               {expired && (
-                <p className="mb-2 text-[11px] text-[#C65D38]">El código ha caducado. Genera otro.</p>
+                <p className="mb-2 text-[12px] text-terracotta-deep">El código ha caducado. Genera otro.</p>
               )}
               <button
                 type="button"
                 onClick={handleConnect}
                 disabled={linkCode.isPending}
-                className="rounded-full bg-[#1A1612] px-3.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.1em] text-[#FAF6EE] transition-all hover:bg-[#2D6A4F] active:scale-95 disabled:opacity-50"
+                className={PILL_INK}
               >
                 {linkCode.isPending ? 'Generando…' : 'Conectar WhatsApp'}
               </button>
               {linkCode.error && (
-                <p className="mt-2 text-[11px] text-[#C65D38]">{linkCode.error.message}</p>
+                <p className="mt-2 text-[12px] text-terracotta-deep">{linkCode.error.message}</p>
               )}
             </div>
           ) : (
-            <div className="mt-3 border-t border-[#DDD6C5] pt-3">
-              <p className="text-[12px] text-[#1A1612]">
+            <div className="mt-3 border-t border-border-soft pt-3">
+              <p className="text-[13px] text-ink">
                 Envía este mensaje a Mimo desde tu WhatsApp:
               </p>
               <p
                 data-testid="whatsapp-link-message"
-                className="mt-2 inline-block rounded-lg bg-[#F2EDE0] px-3 py-1.5 font-mono text-[13px] tracking-wide text-[#1A1612]"
+                className="mt-2 inline-block rounded-lg border border-border-soft bg-paper px-3 py-1.5 font-mono text-[13px] tracking-wide text-ink"
               >
                 {pending.message}
               </p>
@@ -87,12 +93,12 @@ function UnlinkedState() {
                     href={pending.waLink}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="rounded-full bg-[#2D6A4F] px-3.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.1em] text-[#FAF6EE] transition-all hover:opacity-90 active:scale-95"
+                    className={PILL_INK}
                   >
                     Abrir WhatsApp
                   </a>
                 )}
-                <span className="text-[11px] text-[#7A7066]">
+                <span className="text-[12px] text-ink-muted">
                   Esperando tu mensaje… caduca en 10 min.
                 </span>
               </div>
@@ -111,12 +117,12 @@ function LinkedState({ status }: { status: WhatsAppStatus }) {
   const notifyOn = notify.isPending ? notify.variables ?? status.notify : status.notify
 
   return (
-    <div className="rounded-2xl bg-[#FFFEFA] border border-[#DDD6C5] p-4">
+    <div className="rounded-2xl border border-border-soft bg-cream p-4">
       <div className="flex items-start gap-3">
-        <Check size={18} className="mt-0.5 shrink-0 text-[#2D6A4F]" />
+        <Check size={18} className="mt-0.5 shrink-0 text-ink" />
         <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-medium text-[#1A1612]">WhatsApp conectado</div>
-          <div className="mt-0.5 text-[11px] text-[#7A7066]" data-testid="whatsapp-phone">
+          <div className="text-[14px] font-medium text-ink">WhatsApp conectado</div>
+          <div className="mt-0.5 text-[12px] text-ink-muted" data-testid="whatsapp-phone">
             {status.phone}
           </div>
           {status.chatLink && (
@@ -124,7 +130,7 @@ function LinkedState({ status }: { status: WhatsAppStatus }) {
               href={status.chatLink}
               target="_blank"
               rel="noopener noreferrer"
-              className="mt-3 inline-block rounded-full bg-[#2D6A4F] px-3.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.1em] text-[#FAF6EE] transition-all hover:opacity-90 active:scale-95"
+              className={`mt-3 ${PILL_INK}`}
             >
               Abrir chat con Mimo
             </a>
@@ -135,12 +141,12 @@ function LinkedState({ status }: { status: WhatsAppStatus }) {
       <button
         type="button"
         onClick={() => notify.mutate(!notifyOn)}
-        className="mt-4 flex w-full items-center justify-between gap-3 border-t border-[#DDD6C5] pt-4"
+        className="mt-4 flex min-h-[56px] w-full items-center justify-between gap-3 border-t border-border-soft pt-4"
         aria-pressed={notifyOn}
       >
         <div className="text-left min-w-0">
-          <div className="text-[13px] font-medium text-[#1A1612]">Avisos por WhatsApp</div>
-          <div className="text-[11px] leading-snug text-[#7A7066]">
+          <div className="text-[14px] font-medium text-ink">Avisos por WhatsApp</div>
+          <div className="text-[12px] leading-snug text-ink-muted">
             Resumen de la mañana, aviso para empezar a cocinar, “¿hiciste la cena?”,
             recordatorio de la compra y menú del domingo. Para quitar alguno, díselo a
             Mimo por WhatsApp (“no me mandes el resumen de la mañana”).
@@ -148,11 +154,11 @@ function LinkedState({ status }: { status: WhatsAppStatus }) {
         </div>
         <span
           className={`relative block h-6 w-11 shrink-0 rounded-full transition-colors ${
-            notifyOn ? 'bg-[#1A1612]' : 'bg-[#DDD6C5]'
+            notifyOn ? 'bg-ink' : 'bg-border'
           }`}
         >
           <span
-            className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-[left] duration-200 ${
+            className={`absolute top-0.5 h-5 w-5 rounded-full bg-paper shadow transition-[left] duration-200 ${
               notifyOn ? 'left-[22px]' : 'left-0.5'
             }`}
           />
@@ -162,19 +168,19 @@ function LinkedState({ status }: { status: WhatsAppStatus }) {
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {confirming ? (
           <>
-            <span className="text-[11px] text-[#1A1612]">¿Desconectar WhatsApp?</span>
+            <span className="text-[13px] text-ink">¿Desconectar WhatsApp?</span>
             <button
               type="button"
               onClick={() => unlink.mutate(undefined, { onSettled: () => setConfirming(false) })}
               disabled={unlink.isPending}
-              className="rounded-full border border-[#C65D38] bg-[#FFFEFA] px-3 py-1.5 text-[11px] font-medium text-[#C65D38] transition-all active:scale-95 disabled:opacity-50"
+              className="h-11 rounded-full border border-terracotta-deep bg-paper px-4 text-[13px] font-medium text-terracotta-deep transition-colors active:scale-95 disabled:opacity-50"
             >
               Sí, desconectar
             </button>
             <button
               type="button"
               onClick={() => setConfirming(false)}
-              className="rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-3 py-1.5 text-[11px] font-medium text-[#7A7066] active:scale-95"
+              className={PILL_OUTLINE}
             >
               Cancelar
             </button>
@@ -183,7 +189,7 @@ function LinkedState({ status }: { status: WhatsAppStatus }) {
           <button
             type="button"
             onClick={() => setConfirming(true)}
-            className="rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-3 py-1.5 text-[11px] font-medium text-[#7A7066] transition-all hover:text-[#1A1612] active:scale-95"
+            className={PILL_OUTLINE}
           >
             Desconectar
           </button>

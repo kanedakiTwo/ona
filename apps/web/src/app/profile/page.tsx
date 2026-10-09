@@ -1,8 +1,46 @@
 'use client'
 
+/**
+ * /profile — "D · Luz y foto" (PRO-39): compact header with the household's
+ * name, paper cards per section (Casa, Memoria, Creencias, Despensa, Fijos,
+ * Recetarios, Voz, WhatsApp) with an icon and a status line, then the menu
+ * settings the generator reads (one "Guardar cambios") and the account card.
+ * Secondary actions sit behind "···" sheets (`MenuSheet`). 2–3 columns at lg+.
+ */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { motion } from 'motion/react'
-import { LogOut, X, Plus, Minus, Mic, Bell, BellOff } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import {
+  Archive,
+  Bell,
+  BellOff,
+  BookOpen,
+  Brain,
+  CalendarDays,
+  ChefHat,
+  Compass,
+  Home,
+  LogOut,
+  MessageCircle,
+  Mic,
+  Minus,
+  Plus,
+  Repeat,
+  Ruler,
+  Send,
+  Shield,
+  SlidersHorizontal,
+  UserRound,
+  Wrench,
+  X,
+} from 'lucide-react'
+import { MenuSheet, SheetAction } from '@/components/menu/MenuSheet'
+import { DISPLAY_UI } from '@/components/recipes/RecipeCard'
+import { useUserMemory } from '@/hooks/useUserMemory'
+import { usePantry } from '@/hooks/usePantry'
+import { useStaples } from '@/hooks/useStaples'
+import { useCookbooks } from '@/hooks/useCookbooks'
+import { GroupLabel, MoreButton, ProfileCard, ProfileHubLink, Switch } from './sections/ProfileCards'
 import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
 import { useWebPush } from '@/hooks/useWebPush'
@@ -121,6 +159,7 @@ export default function ProfilePage() {
   const healthActive = healthConsent?.active === true
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
 
   const [notifEnabled, setNotifEnabled] = useState(false)
   const [mealTimes, setLocalMealTimes] = useState<MealTimes>({
@@ -357,618 +396,586 @@ export default function ProfilePage() {
     finally { setSaving(false) }
   }, [user, physical, preferences, household, mealTemplate, mealDishCounts, healthActive])
 
+
   if (authLoading || !user) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#FAF6EE]">
+      <div className="flex min-h-screen items-center justify-center bg-cream">
         <div className="text-eyebrow">Cargando...</div>
       </div>
     )
   }
 
-  const initials = user.username?.charAt(0).toUpperCase() || "U"
+  const activeMeals = Object.values(mealTemplate).reduce((n, day) => n + Object.keys(day).length, 0)
+  const showWhatsApp = Boolean(whatsapp.data?.available || whatsapp.data?.linked)
 
   return (
-    <div className="bg-[#FAF6EE] min-h-screen pb-12 lg:mx-auto lg:max-w-[900px]">
-      {/* Editorial header */}
-      <header className="px-5 pt-8 pb-6">
-        <div className="text-eyebrow mb-2">Tu perfil</div>
-        <div className="flex items-end justify-between gap-4">
-          <h1 className="font-display text-[2.4rem] leading-[0.95] text-[#1A1612]">
-            <span className="font-italic italic text-[#C65D38]">Tu</span><br />sello.
-          </h1>
-          <button
-            onClick={logout}
-            className="flex items-center gap-1.5 rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-3 py-1.5 text-[10px] uppercase tracking-[0.15em] text-[#7A7066] hover:border-[#C65D38] hover:text-[#C65D38]"
-          >
-            <LogOut size={12} />
-            Salir
-          </button>
-        </div>
-      </header>
-
-      {/* Identity card */}
-      <div className="px-5">
-        <div className="rounded-2xl bg-[#1A1612] p-5 text-[#FAF6EE]">
-          <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#C65D38] font-display text-2xl text-[#FAF6EE]">
-              {initials}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-display text-xl truncate">{user.username}</div>
-              <div className="text-[11px] text-[#FAF6EE]/60 truncate">{user.email}</div>
-            </div>
-          </div>
-          {bmr && tdee && (
-            <div className="mt-5 grid grid-cols-2 gap-4 border-t border-[#FAF6EE]/15 pt-4">
-              <div>
-                <div className="text-[9px] uppercase tracking-[0.2em] text-[#FAF6EE]/50">Metabolismo basal</div>
-                <div className="mt-1 font-display text-2xl">{bmr}<span className="text-sm text-[#FAF6EE]/50 ml-1">kcal</span></div>
-              </div>
-              <div>
-                <div className="text-[9px] uppercase tracking-[0.2em] text-[#FAF6EE]/50">Gasto diario</div>
-                <div className="mt-1 font-display text-2xl text-[#C65D38]">{tdee}<span className="text-sm text-[#C65D38]/60 ml-1">kcal</span></div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Capitulo 01 — Datos fisicos */}
-      <section className="px-5 mt-10">
-        <ChapterHeader number="01" title="Datos" italic="fisicos" />
-        <div className="mt-6" data-testid="health-consent">
-          <HealthConsentCheckbox
-            checked={healthActive}
-            disabled={consentBusy || healthConsent === null}
-            onChange={handleHealthConsent}
-          />
-          {!healthActive && healthConsent !== null && (
-            <p className="mt-2 text-[11px] italic text-[#7A7066]">
-              Sin tu consentimiento no guardamos datos físicos, alergias ni restricciones.
-            </p>
-          )}
-        </div>
-        <fieldset disabled={!healthActive} className={`mt-6 space-y-5 ${healthActive ? '' : 'opacity-40'}`}>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Sexo">
-              <div className="flex gap-1.5 pt-1">
-                <SexPill
-                  active={physical.sex === 'male'}
-                  onClick={() => setPhysical((p) => ({ ...p, sex: 'male' }))}
-                >
-                  Masculino
-                </SexPill>
-                <SexPill
-                  active={physical.sex === 'female'}
-                  onClick={() => setPhysical((p) => ({ ...p, sex: 'female' }))}
-                >
-                  Femenino
-                </SexPill>
-              </div>
-            </Field>
-            <Field label="Edad">
-              <input
-                type="number" min={1} max={120}
-                value={physical.age}
-                onChange={(e) => setPhysical((p) => ({ ...p, age: e.target.value ? Number(e.target.value) : '' }))}
-                placeholder="—"
-                className="input-line"
-              />
-            </Field>
-            <Field label="Peso · kg">
-              <input
-                type="number" min={20} max={300} step={0.1}
-                value={physical.weight}
-                onChange={(e) => setPhysical((p) => ({ ...p, weight: e.target.value ? Number(e.target.value) : '' }))}
-                placeholder="—"
-                className="input-line"
-              />
-            </Field>
-            <Field label="Altura · cm">
-              <input
-                type="number" min={100} max={250}
-                value={physical.height}
-                onChange={(e) => setPhysical((p) => ({ ...p, height: e.target.value ? Number(e.target.value) : '' }))}
-                placeholder="—"
-                className="input-line"
-              />
-            </Field>
-          </div>
-
-          <div>
-            <Label>Nivel de actividad</Label>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {Object.entries(ACTIVITY_LABELS).map(([value, label]) => (
-                <Pill
-                  key={value}
-                  active={physical.activity_level === value}
-                  onClick={() => setPhysical((p) => ({ ...p, activity_level: value as PhysicalData['activity_level'] }))}
-                >
-                  {label}
-                </Pill>
-              ))}
-            </div>
-          </div>
-        </fieldset>
-      </section>
-
-      {/* Capitulo 02 — Preferencias */}
-      <section className="px-5 mt-12">
-        <ChapterHeader number="02" title="Tus" italic="preferencias" />
-        <div className="mt-6 space-y-6">
-          <div>
-            <Label>Hogar (para escalar la compra)</Label>
-            <p className="mt-1 text-[11px] italic text-[#7A7066]">
-              Adultos cuenta a partir de 11 años. Niños son 2 a 10. Menores de 2 no cuentan. Cada niño cuenta como media ración.
-            </p>
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              <div className="rounded-xl border border-[#DDD6C5] bg-[#FFFEFA] p-3">
-                <div className="text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">Adultos</div>
-                <div className="mt-2 flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setHousehold((h) => ({ ...h, adults: Math.max(1, h.adults - 1) }))}
-                    className="h-8 w-8 rounded-full border border-[#DDD6C5] text-base leading-none hover:border-[#1A1612]"
-                    aria-label="Quitar adulto"
-                  >−</button>
-                  <span className="text-xl font-medium tabular-nums w-6 text-center">{household.adults}</span>
-                  <button
-                    type="button"
-                    onClick={() => setHousehold((h) => ({ ...h, adults: Math.min(20, h.adults + 1) }))}
-                    className="h-8 w-8 rounded-full border border-[#DDD6C5] text-base leading-none hover:border-[#1A1612]"
-                    aria-label="Añadir adulto"
-                  >+</button>
-                </div>
-              </div>
-              <div className="rounded-xl border border-[#DDD6C5] bg-[#FFFEFA] p-3">
-                <div className="text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">Niños 2–10</div>
-                <div className="mt-2 flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setHousehold((h) => ({ ...h, kidsCount: Math.max(0, h.kidsCount - 1) }))}
-                    className="h-8 w-8 rounded-full border border-[#DDD6C5] text-base leading-none hover:border-[#1A1612]"
-                    aria-label="Quitar niño"
-                  >−</button>
-                  <span className="text-xl font-medium tabular-nums w-6 text-center">{household.kidsCount}</span>
-                  <button
-                    type="button"
-                    onClick={() => setHousehold((h) => ({ ...h, kidsCount: Math.min(20, h.kidsCount + 1) }))}
-                    className="h-8 w-8 rounded-full border border-[#DDD6C5] text-base leading-none hover:border-[#1A1612]"
-                    aria-label="Añadir niño"
-                  >+</button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <Label>Prioridad nutricional</Label>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {Object.entries(PRIORITY_LABELS).map(([value, label]) => (
-                <Pill
-                  key={value}
-                  active={preferences.priority === value}
-                  onClick={() => setPreferences((p) => ({ ...p, priority: value as Preferences['priority'] }))}
-                >
-                  {label}
-                </Pill>
-              ))}
-            </div>
-          </div>
-
-          <fieldset disabled={!healthActive} className={healthActive ? '' : 'opacity-40'}>
-            <Label>Restricciones</Label>
-            {preferences.restrictions.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {preferences.restrictions.map((r) => (
-                  <motion.span
-                    key={r}
-                    layout
-                    initial={{ scale: 0.85, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    className="inline-flex items-center gap-1 rounded-full bg-[#1A1612] pl-3 pr-1.5 py-1 text-[12px] text-[#FAF6EE]"
-                  >
-                    {r}
-                    <button
-                      onClick={() => removeRestriction(r)}
-                      className="ml-0.5 rounded-full p-0.5 hover:bg-[#FAF6EE]/15"
-                      aria-label={`Quitar ${r}`}
-                    >
-                      <X size={11} />
-                    </button>
-                  </motion.span>
-                ))}
-              </div>
-            )}
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {COMMON_RESTRICTIONS.filter((r) => !preferences.restrictions.includes(r)).map((r) => (
-                <button
-                  key={r}
-                  onClick={() => addRestriction(r)}
-                  className="inline-flex items-center gap-1 rounded-full border border-dashed border-[#DDD6C5] bg-transparent px-3 py-1 text-[12px] text-[#7A7066] hover:border-[#1A1612] hover:text-[#1A1612]"
-                >
-                  <Plus size={10} /> {r}
-                </button>
-              ))}
-            </div>
-            <div className="mt-3 flex gap-2">
-              <input
-                type="text"
-                value={restrictionInput}
-                onChange={(e) => setRestrictionInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') { e.preventDefault(); addRestriction(restrictionInput) }
-                }}
-                placeholder="Otra restriccion..."
-                className="input-line flex-1"
-              />
-              <button
-                onClick={() => addRestriction(restrictionInput)}
-                disabled={!restrictionInput.trim()}
-                className="rounded-full bg-[#1A1612] px-4 text-[11px] uppercase tracking-[0.12em] text-[#FAF6EE] disabled:opacity-30"
-              >
-                Añadir
-              </button>
-            </div>
-          </fieldset>
-        </div>
-      </section>
-
-      {/* Capitulo 03 — Plantilla semanal */}
-      <section className="px-5 mt-12">
-        <ChapterHeader number="03" title="Plantilla" italic="semanal" />
-        <p className="mt-2 text-[12px] text-[#7A7066]">
-          Qué comidas incluye tu menú cada día y para cuántos comensales.
-          Toca <span className="font-mono">+</span> para activar (parte con tu
-          casa por defecto, <span className="tabular-nums">{defaultDinersForCell}</span>),
-          <span className="font-mono"> −</span> para bajar y dejar la celda
-          vacía para apagarla.
-        </p>
-
-        <div className="mt-5">
-          <MealDishCountControls value={mealDishCounts} onChange={setMealDishCounts} />
-        </div>
-
-        <div className="mt-5 overflow-hidden rounded-2xl bg-[#FFFEFA] border border-[#DDD6C5]">
-          <div className="grid grid-cols-[44px_1fr_1fr_1fr_1fr]">
-            <div />
-            {MEALS.map((m) => (
-              <div key={m} className="border-l border-[#DDD6C5] py-2.5 text-center text-[9px] uppercase tracking-[0.15em] text-[#7A7066]">
-                {m === 'desayuno' ? 'Des' : m === 'almuerzo' ? 'Com' : m === 'merienda' ? 'Mer' : 'Cen'}
-              </div>
-            ))}
-            {DAYS.map((day, di) => (
-              <div key={day} className="contents">
-                <div className="border-t border-[#DDD6C5] py-3 pl-3 flex items-center">
-                  <span className="font-display text-base text-[#1A1612]" title={day}>
-                    {DAYS_SHORT[di]}
-                  </span>
-                </div>
-                {MEALS.map((meal) => {
-                  const count = mealTemplate[day]?.[meal] ?? 0
-                  const active = count > 0
-                  return (
-                    <div
-                      key={meal}
-                      className={`border-l border-t border-[#DDD6C5] flex items-stretch ${
-                        active ? 'bg-[#1A1612] text-[#FAF6EE]' : 'bg-transparent'
-                      }`}
-                    >
-                      {active ? (
-                        <div className="flex w-full items-center justify-between px-1.5">
-                          <button
-                            type="button"
-                            onClick={() => adjustMealDiners(day, meal, -1)}
-                            className="flex h-7 w-7 items-center justify-center rounded-full hover:bg-[#FAF6EE]/15 transition-colors"
-                            aria-label={`Menos comensales en ${meal} ${day}`}
-                          >
-                            <Minus size={11} />
-                          </button>
-                          <span className="text-[13px] font-medium tabular-nums">{count}</span>
-                          <button
-                            type="button"
-                            onClick={() => adjustMealDiners(day, meal, 1)}
-                            disabled={count >= 24}
-                            className="flex h-7 w-7 items-center justify-center rounded-full hover:bg-[#FAF6EE]/15 transition-colors disabled:opacity-30"
-                            aria-label={`Más comensales en ${meal} ${day}`}
-                          >
-                            <Plus size={11} />
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => adjustMealDiners(day, meal, 1)}
-                          className="flex w-full items-center justify-center py-2.5 text-[#7A7066] hover:bg-[#F2EDE0] transition-colors"
-                          aria-label={`Activar ${meal} el ${day}`}
-                        >
-                          <Plus size={13} />
-                        </button>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Capitulo 04 — Mimo por voz (D-023: one assistant, the floating button on every page) */}
-      <section className="px-5 mt-12" data-testid="profile-mimo-voice">
-        <ChapterHeader number="04" title="Mimo" italic="por voz" />
-        <p className="mt-2 text-[12px] text-[#7A7066]">
-          Mimo está en el botón flotante de cualquier pantalla. Toca el micro para hablarle, o activa
-          «Manos libres» para conversar sin tocar nada mientras cocinas.
-        </p>
-
-        <ToggleRow
-          title="Leer las respuestas en voz alta"
-          subtitle={mimo.speakReplies ? 'Activo · también cuando escribes' : 'Solo cuando le hablas'}
-          on={mimo.speakReplies}
-          onToggle={() => mimo.setSpeakReplies(!mimo.speakReplies)}
-          icon={<Mic size={16} />}
+    <div className="min-h-screen bg-cream pb-12">
+      <div className="mx-auto w-full max-w-[1180px] lg:px-12 lg:pt-8">
+        <ProfileHeader
+          username={user.username}
+          email={user.email}
+          onMore={() => setMoreOpen(true)}
         />
 
-        {mimo.voices.length > 1 && (
-          <label className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-[#DDD6C5] bg-[#FFFEFA] p-4">
-            <span className="text-[13px] font-medium text-[#1A1612]">Voz de Mimo</span>
-            <select
-              value={mimo.selectedVoice ?? ''}
-              onChange={(e) => mimo.previewVoice(e.target.value)}
-              className="rounded-full border border-[#DDD6C5] bg-[#F2EDE0] px-3 py-1.5 text-[12px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none"
-              aria-label="Voz de Mimo"
-            >
-              {mimo.voices.map((v) => (
-                <option key={v.key} value={v.key}>{v.name}</option>
-              ))}
-            </select>
-          </label>
-        )}
+        {/* Casa y Mimo: one paper card per sub-page, with a status line. */}
+        <div className="mt-6 px-5 lg:mt-8 lg:px-0">
+          <GroupLabel>Tu casa y Mimo</GroupLabel>
+          <ProfileHub />
+        </div>
 
-        {mimo.wakeWord.available ? (
-          <ToggleRow
-            title={`Escuchar «${mimo.wakeWord.phrase}»`}
-            subtitle={
-              !mimo.wakeWord.enabled
-                ? 'Desactivado · actívalo para abrir a Mimo sin tocar nada'
-                : mimo.wakeWord.listening
-                  ? `Escuchando «${mimo.wakeWord.phrase}»`
-                  : 'Iniciando…'
-            }
-            on={mimo.wakeWord.enabled}
-            onToggle={async () => {
-              const next = !mimo.wakeWord.enabled
-              if (next) {
-                try {
-                  await navigator.mediaDevices.getUserMedia({ audio: true }).then((st) => st.getTracks().forEach((t) => t.stop()))
-                } catch {
-                  alert('Necesito permiso de micrófono para escucharte.')
-                  return
-                }
-              }
-              mimo.wakeWord.setEnabled(next)
-            }}
-            icon={<span className="text-[14px]">〽</span>}
-          />
-        ) : (
-          <p className="mt-3 text-[11px] text-[#A39A8E]">
-            Abrir a Mimo diciendo «Hola Mimo», sin tocar nada, llegará en cuanto esté entrenada la palabra de activación.
-          </p>
-        )}
-      </section>
-
-      {/* Capitulo 05 — Recordatorios */}
-      <section className="px-5 mt-12">
-        <ChapterHeader number="05" title="Recordatorios" italic="de comidas" />
-        <p className="mt-2 text-[12px] text-[#7A7066]">
-          Te avisamos a las horas que prefieras para que no se te pase. Las
-          notificaciones son locales: solo suenan si tienes la app abierta o
-          instalada.
-        </p>
-
-        <div className="mt-5 rounded-2xl bg-[#FFFEFA] border border-[#DDD6C5] p-4">
-          <button
-            type="button"
-            onClick={handleToggleNotif}
-            className="flex w-full items-center justify-between gap-3"
-            aria-pressed={notifEnabled}
+        <div className="mt-3 grid gap-3 px-5 lg:mt-4 lg:grid-cols-2 lg:items-start lg:gap-4 lg:px-0">
+          {/* Voz (D-023: one assistant, the floating button on every page) */}
+          <ProfileCard
+            icon={Mic}
+            title="Voz"
+            status={mimo.speakReplies ? 'Mimo lee sus respuestas en voz alta' : 'Mimo lee en voz alta solo cuando le hablas'}
+            data-testid="profile-mimo-voice"
           >
-            <div className="text-left min-w-0">
-              <div className="text-[13px] font-medium text-[#1A1612]">
-                Recibir recordatorios de comidas
-              </div>
-              <div className="text-[11px] text-[#7A7066] truncate">
-                {notifEnabled ? 'Activado' : 'Desactivado'}
-              </div>
-            </div>
-            <span
-              className={`relative block h-6 w-11 shrink-0 rounded-full transition-colors ${
-                notifEnabled ? 'bg-[#1A1612]' : 'bg-[#DDD6C5]'
-              }`}
-            >
-              <span
-                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-[left] duration-200 ${
-                  notifEnabled ? 'left-[22px]' : 'left-0.5'
-                }`}
-              />
-            </span>
-          </button>
+            <p className="mt-3 text-[13px] leading-snug text-ink-muted">
+              Mimo está en el botón flotante de cualquier pantalla. Toca el micro para hablarle, o activa
+              «Manos libres» para conversar sin tocar nada mientras cocinas.
+            </p>
 
-          {notifEnabled && (
-            <div className="mt-5 grid grid-cols-2 gap-4 border-t border-[#DDD6C5] pt-4">
-              <Field label="Desayuno">
-                <input
-                  type="time"
-                  value={mealTimes.breakfast}
-                  onChange={(e) => handleMealTimeChange('breakfast', e.target.value)}
-                  className="input-line"
-                />
-              </Field>
-              <Field label="Comida">
-                <input
-                  type="time"
-                  value={mealTimes.lunch}
-                  onChange={(e) => handleMealTimeChange('lunch', e.target.value)}
-                  className="input-line"
-                />
-              </Field>
-              <Field label="Merienda">
-                <input
-                  type="time"
-                  value={mealTimes.snack}
-                  onChange={(e) => handleMealTimeChange('snack', e.target.value)}
-                  className="input-line"
-                />
-              </Field>
-              <Field label="Cena">
-                <input
-                  type="time"
-                  value={mealTimes.dinner}
-                  onChange={(e) => handleMealTimeChange('dinner', e.target.value)}
-                  className="input-line"
-                />
-              </Field>
-            </div>
+            <ToggleRow
+              title="Leer las respuestas en voz alta"
+              subtitle={mimo.speakReplies ? 'Activo · también cuando escribes' : 'Solo cuando le hablas'}
+              on={mimo.speakReplies}
+              onToggle={() => mimo.setSpeakReplies(!mimo.speakReplies)}
+            />
+
+            {mimo.voices.length > 1 && (
+              <label className="flex min-h-[56px] items-center justify-between gap-3 border-t border-border-soft py-2">
+                <span className="text-[14px] font-medium text-ink">Voz de Mimo</span>
+                <select
+                  value={mimo.selectedVoice ?? ''}
+                  onChange={(e) => mimo.previewVoice(e.target.value)}
+                  className="h-11 max-w-[60%] rounded-full border border-border bg-cream px-3 text-[13px] text-ink focus:border-ink focus:outline-none"
+                  aria-label="Voz de Mimo"
+                >
+                  {mimo.voices.map((v) => (
+                    <option key={v.key} value={v.key}>{v.name}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+
+            {mimo.wakeWord.available ? (
+              <ToggleRow
+                title={`Escuchar «${mimo.wakeWord.phrase}»`}
+                subtitle={
+                  !mimo.wakeWord.enabled
+                    ? 'Desactivado · actívalo para abrir a Mimo sin tocar nada'
+                    : mimo.wakeWord.listening
+                      ? `Escuchando «${mimo.wakeWord.phrase}»`
+                      : 'Iniciando…'
+                }
+                on={mimo.wakeWord.enabled}
+                onToggle={async () => {
+                  const next = !mimo.wakeWord.enabled
+                  if (next) {
+                    try {
+                      await navigator.mediaDevices.getUserMedia({ audio: true }).then((st) => st.getTracks().forEach((t) => t.stop()))
+                    } catch {
+                      alert('Necesito permiso de micrófono para escucharte.')
+                      return
+                    }
+                  }
+                  mimo.wakeWord.setEnabled(next)
+                }}
+              />
+            ) : (
+              <p className="mt-2 border-t border-border-soft pt-3 text-[12px] leading-snug text-ink-muted">
+                Abrir a Mimo diciendo «Hola Mimo», sin tocar nada, llegará en cuanto esté entrenada la palabra de activación.
+              </p>
+            )}
+          </ProfileCard>
+
+          {/* WhatsApp. Hidden unless the server has the channel configured for
+              this account (or a phone is already linked, so it can always be
+              disconnected). */}
+          {showWhatsApp && whatsapp.data && (
+            <ProfileCard
+              icon={MessageCircle}
+              title="WhatsApp"
+              status={whatsapp.data.linked ? 'Conectado' : 'Sin conectar'}
+            >
+              <p className="mt-3 text-[13px] leading-snug text-ink-muted">
+                Todo lo que hace el asistente, desde tu WhatsApp: escríbele,
+                mándale audios o compártele recetas.
+              </p>
+              <div className="mt-3">
+                <WhatsAppCard status={whatsapp.data} />
+              </div>
+            </ProfileCard>
           )}
         </div>
 
-        {/* Web Push — server-side notifications that survive a closed tab. */}
-        <PushNotificationsCard />
-      </section>
-
-      {/* Capitulo 06 — Mis recetas */}
-      <section className="px-5 mt-12">
-        <ChapterHeader number="06" title="Mis" italic="recetas" />
-        <p className="mt-2 text-[12px] text-[#7A7066]">
-          Las recetas que has creado tú. Edítalas o elimínalas si ya no las usas.
-        </p>
-        <div className="mt-5">
-          <MyRecipesSection />
+        {/* Ajustes del menú: what the generator reads. One save button below. */}
+        <div className="mt-8 px-5 lg:mt-10 lg:px-0">
+          <GroupLabel>Ajustes del menú</GroupLabel>
         </div>
-      </section>
+        <div className="mt-3 grid gap-3 px-5 lg:mt-4 lg:grid-cols-2 lg:items-start lg:gap-4 lg:px-0">
+          <div className="grid gap-3 lg:gap-4">
+            {/* Datos físicos (RGPD art. 9: only with the health-data consent) */}
+            <ProfileCard
+              icon={Ruler}
+              title="Datos físicos"
+              status={
+                !healthActive
+                  ? 'Sin tu consentimiento no se guardan'
+                  : tdee
+                    ? `Gasto diario estimado: ${tdee} kcal`
+                    : 'Completa sexo, edad, peso y altura'
+              }
+            >
+              <div className="mt-4" data-testid="health-consent">
+                <HealthConsentCheckbox
+                  checked={healthActive}
+                  disabled={consentBusy || healthConsent === null}
+                  onChange={handleHealthConsent}
+                />
+                {!healthActive && healthConsent !== null && (
+                  <p className="mt-2 text-[12px] italic text-ink-muted">
+                    Sin tu consentimiento no guardamos datos físicos, alergias ni restricciones.
+                  </p>
+                )}
+              </div>
+              <fieldset disabled={!healthActive} className={`mt-5 space-y-5 ${healthActive ? '' : 'opacity-40'}`}>
+                <div className="grid grid-cols-2 gap-4">
+                  <Field label="Sexo" className="col-span-2">
+                    <div className="flex gap-1.5 pt-1">
+                      <SexPill
+                        active={physical.sex === 'male'}
+                        onClick={() => setPhysical((p) => ({ ...p, sex: 'male' }))}
+                      >
+                        Masculino
+                      </SexPill>
+                      <SexPill
+                        active={physical.sex === 'female'}
+                        onClick={() => setPhysical((p) => ({ ...p, sex: 'female' }))}
+                      >
+                        Femenino
+                      </SexPill>
+                    </div>
+                  </Field>
+                  <Field label="Edad">
+                    <input
+                      type="number" min={1} max={120}
+                      value={physical.age}
+                      onChange={(e) => setPhysical((p) => ({ ...p, age: e.target.value ? Number(e.target.value) : '' }))}
+                      placeholder="—"
+                      className="input-line"
+                    />
+                  </Field>
+                  <Field label="Peso · kg">
+                    <input
+                      type="number" min={20} max={300} step={0.1}
+                      value={physical.weight}
+                      onChange={(e) => setPhysical((p) => ({ ...p, weight: e.target.value ? Number(e.target.value) : '' }))}
+                      placeholder="—"
+                      className="input-line"
+                    />
+                  </Field>
+                  <Field label="Altura · cm">
+                    <input
+                      type="number" min={100} max={250}
+                      value={physical.height}
+                      onChange={(e) => setPhysical((p) => ({ ...p, height: e.target.value ? Number(e.target.value) : '' }))}
+                      placeholder="—"
+                      className="input-line"
+                    />
+                  </Field>
+                </div>
 
-      {/* Capitulo 07 — Memoria del asistente */}
-      <section className="px-5 mt-12">
-        <ChapterHeader number="07" title="Memoria" italic="del asistente" />
-        <p className="mt-2 text-[12px] text-[#7A7066]">
-          Lo que Mimo recuerda de ti: gustos, equipo de cocina, presupuesto,
-          días con poco tiempo… El asistente lo lee antes de cada respuesta
-          y lo amplía con lo que le cuentes.
-        </p>
-        <div className="mt-5 flex flex-wrap items-center gap-3">
-          <a
-            href="/onboarding/voz"
-            className="inline-flex items-center gap-2 rounded-full bg-[#2D6A4F] px-5 py-2.5 text-[12px] uppercase tracking-[0.12em] text-[#FAF6EE] transition-all hover:opacity-90"
-          >
-            🎙️ Onboarding por voz
-          </a>
-          <a
-            href="/profile/memoria"
-            className="inline-flex items-center gap-2 rounded-full border border-[#DDD6C5] bg-[#F2EDE0] px-5 py-2.5 text-[12px] uppercase tracking-[0.12em] text-[#1A1612] transition-all hover:border-[#1A1612]"
-          >
-            Ver / editar mi memoria →
-          </a>
-          <a
-            href="/profile/creencias"
-            className="inline-flex items-center gap-2 rounded-full border border-[#DDD6C5] bg-[#F2EDE0] px-5 py-2.5 text-[12px] uppercase tracking-[0.12em] text-[#1A1612] transition-all hover:border-[#1A1612]"
-          >
-            Mis creencias nutricionales →
-          </a>
-          <a
-            href="/profile/casa"
-            className="inline-flex items-center gap-2 rounded-full border border-[#DDD6C5] bg-[#F2EDE0] px-5 py-2.5 text-[12px] uppercase tracking-[0.12em] text-[#1A1612] transition-all hover:border-[#1A1612]"
-          >
-            Mi hogar →
-          </a>
-          <a
-            href="/profile/staples"
-            className="inline-flex items-center gap-2 rounded-full border border-[#DDD6C5] bg-[#F2EDE0] px-5 py-2.5 text-[12px] uppercase tracking-[0.12em] text-[#1A1612] transition-all hover:border-[#1A1612]"
-          >
-            Mis básicos →
-          </a>
-          <a
-            href="/profile/pantry"
-            className="inline-flex items-center gap-2 rounded-full border border-[#DDD6C5] bg-[#F2EDE0] px-5 py-2.5 text-[12px] uppercase tracking-[0.12em] text-[#1A1612] transition-all hover:border-[#1A1612]"
-          >
-            Mi despensa →
-          </a>
-          <a
-            href="/profile/cookbooks"
-            className="inline-flex items-center gap-2 rounded-full border border-[#DDD6C5] bg-[#F2EDE0] px-5 py-2.5 text-[12px] uppercase tracking-[0.12em] text-[#1A1612] transition-all hover:border-[#1A1612]"
-          >
-            Mis recetarios →
-          </a>
-        </div>
-      </section>
+                <div>
+                  <Label>Nivel de actividad</Label>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {Object.entries(ACTIVITY_LABELS).map(([value, label]) => (
+                      <Pill
+                        key={value}
+                        active={physical.activity_level === value}
+                        onClick={() => setPhysical((p) => ({ ...p, activity_level: value as PhysicalData['activity_level'] }))}
+                      >
+                        {label}
+                      </Pill>
+                    ))}
+                  </div>
+                </div>
+              </fieldset>
 
-      {/* Capitulo 08 — Mimo en WhatsApp. Hidden unless the server has the
-          channel configured for this account (or a phone is already linked,
-          so it can always be disconnected). */}
-      {(whatsapp.data?.available || whatsapp.data?.linked) && (
-        <section className="px-5 mt-12">
-          <ChapterHeader number="08" title="Mimo en" italic="WhatsApp" />
-          <p className="mt-2 text-[12px] text-[#7A7066]">
-            Todo lo que hace el asistente, desde tu WhatsApp: escríbele,
-            mándale audios o compártele recetas.
-          </p>
-          <div className="mt-5">
-            <WhatsAppCard status={whatsapp.data} />
+              {bmr && tdee && (
+                <div className="mt-5 grid grid-cols-2 gap-3 border-t border-border-soft pt-4">
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">Metabolismo basal</div>
+                    <div className="mt-1 font-serif-text text-[24px] font-[650] text-ink">
+                      {bmr}<span className="ml-1 text-[13px] font-normal text-ink-muted">kcal</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">Gasto diario</div>
+                    <div className="mt-1 font-serif-text text-[24px] font-[650] text-terracotta-deep">
+                      {tdee}<span className="ml-1 text-[13px] font-normal text-ink-muted">kcal</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </ProfileCard>
+
+            {/* Preferencias */}
+            <ProfileCard
+              icon={SlidersHorizontal}
+              title="Preferencias"
+              status={`${household.adults} ${household.adults === 1 ? 'adulto' : 'adultos'} · ${household.kidsCount} ${household.kidsCount === 1 ? 'niño' : 'niños'} · ${PRIORITY_LABELS[preferences.priority] ?? ''}`}
+            >
+              <div className="mt-4 space-y-6">
+                <div>
+                  <Label>Hogar (para escalar la compra)</Label>
+                  <p className="mt-1 text-[12px] italic leading-snug text-ink-muted">
+                    Adultos cuenta a partir de 11 años. Niños son 2 a 10. Menores de 2 no cuentan. Cada niño cuenta como media ración.
+                  </p>
+                  <div className="mt-3 grid grid-cols-2 gap-3">
+                    <Stepper
+                      label="Adultos"
+                      value={household.adults}
+                      onMinus={() => setHousehold((h) => ({ ...h, adults: Math.max(1, h.adults - 1) }))}
+                      onPlus={() => setHousehold((h) => ({ ...h, adults: Math.min(20, h.adults + 1) }))}
+                      minusLabel="Quitar adulto"
+                      plusLabel="Añadir adulto"
+                    />
+                    <Stepper
+                      label="Niños 2–10"
+                      value={household.kidsCount}
+                      onMinus={() => setHousehold((h) => ({ ...h, kidsCount: Math.max(0, h.kidsCount - 1) }))}
+                      onPlus={() => setHousehold((h) => ({ ...h, kidsCount: Math.min(20, h.kidsCount + 1) }))}
+                      minusLabel="Quitar niño"
+                      plusLabel="Añadir niño"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <Label>Prioridad nutricional</Label>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {Object.entries(PRIORITY_LABELS).map(([value, label]) => (
+                      <Pill
+                        key={value}
+                        active={preferences.priority === value}
+                        onClick={() => setPreferences((p) => ({ ...p, priority: value as Preferences['priority'] }))}
+                      >
+                        {label}
+                      </Pill>
+                    ))}
+                  </div>
+                </div>
+
+                <fieldset disabled={!healthActive} className={healthActive ? '' : 'opacity-40'}>
+                  <Label>Restricciones</Label>
+                  {preferences.restrictions.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {preferences.restrictions.map((r) => (
+                        <motion.span
+                          key={r}
+                          layout
+                          initial={{ scale: 0.85, opacity: 0 }}
+                          animate={{ scale: 1, opacity: 1 }}
+                          className="inline-flex h-10 items-center gap-0.5 rounded-full bg-ink pl-3.5 pr-0.5 text-[13px] text-cream"
+                        >
+                          {r}
+                          <button
+                            type="button"
+                            onClick={() => removeRestriction(r)}
+                            className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-cream/15"
+                            aria-label={`Quitar ${r}`}
+                          >
+                            <X size={13} />
+                          </button>
+                        </motion.span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {COMMON_RESTRICTIONS.filter((r) => !preferences.restrictions.includes(r)).map((r) => (
+                      <button
+                        type="button"
+                        key={r}
+                        onClick={() => addRestriction(r)}
+                        className="inline-flex min-h-[40px] items-center gap-1 rounded-full border border-dashed border-border bg-transparent px-3.5 text-[13px] text-ink-muted hover:border-ink hover:text-ink"
+                      >
+                        <Plus size={12} /> {r}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    <input
+                      type="text"
+                      value={restrictionInput}
+                      onChange={(e) => setRestrictionInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') { e.preventDefault(); addRestriction(restrictionInput) }
+                      }}
+                      placeholder="Otra restriccion..."
+                      className="input-line flex-1"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => addRestriction(restrictionInput)}
+                      disabled={!restrictionInput.trim()}
+                      className="h-11 rounded-full bg-ink px-5 text-[13px] font-medium text-cream disabled:opacity-30"
+                    >
+                      Añadir
+                    </button>
+                  </div>
+                </fieldset>
+              </div>
+            </ProfileCard>
           </div>
-        </section>
-      )}
 
-      {/* Admin entry — discreet text link, only for admins */}
-      {user?.role === 'admin' && (
-        <div className="px-5 mt-10">
-          <a
-            href="/admin"
-            className="inline-block text-[11px] uppercase tracking-[0.15em] text-[#7A7066] hover:text-[#C65D38]"
-          >
-            Panel de admin →
-          </a>
+          <div className="grid gap-3 lg:gap-4">
+            {/* Plantilla semanal */}
+            <ProfileCard
+              icon={CalendarDays}
+              title="Plantilla semanal"
+              status={`${activeMeals} ${activeMeals === 1 ? 'comida' : 'comidas'} a la semana`}
+            >
+              <p className="mt-3 text-[13px] leading-snug text-ink-muted">
+                Qué comidas incluye tu menú cada día y para cuántos comensales.
+                Toca <span className="font-mono">+</span> para activar (parte con tu
+                casa por defecto, <span className="tabular-nums">{defaultDinersForCell}</span>),
+                <span className="font-mono"> −</span> para bajar y dejar la celda
+                vacía para apagarla.
+              </p>
+
+              <div className="mt-4">
+                <MealDishCountControls value={mealDishCounts} onChange={setMealDishCounts} />
+              </div>
+
+              <div className="mt-4 overflow-hidden rounded-2xl border border-border-soft bg-paper">
+                <div className="grid grid-cols-[36px_1fr_1fr_1fr_1fr]">
+                  <div />
+                  {MEALS.map((m) => (
+                    <div key={m} className="border-l border-border-soft py-2.5 text-center text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-muted">
+                      {m === 'desayuno' ? 'Des' : m === 'almuerzo' ? 'Com' : m === 'merienda' ? 'Mer' : 'Cen'}
+                    </div>
+                  ))}
+                  {DAYS.map((day, di) => (
+                    <div key={day} className="contents">
+                      <div className="flex items-center justify-center border-t border-border-soft">
+                        <span className="font-serif-text text-[15px] font-[650] text-ink" title={day}>
+                          {DAYS_SHORT[di]}
+                        </span>
+                      </div>
+                      {MEALS.map((meal) => {
+                        const count = mealTemplate[day]?.[meal] ?? 0
+                        const active = count > 0
+                        return (
+                          <div
+                            key={meal}
+                            className={`flex min-h-[44px] items-stretch border-l border-t border-border-soft ${
+                              active ? 'bg-ink text-cream' : 'bg-transparent'
+                            }`}
+                          >
+                            {active ? (
+                              <div className="flex w-full items-center justify-between">
+                                <button
+                                  type="button"
+                                  onClick={() => adjustMealDiners(day, meal, -1)}
+                                  className="flex h-11 w-7 shrink-0 items-center justify-center transition-colors hover:bg-cream/15"
+                                  aria-label={`Menos comensales en ${meal} ${day}`}
+                                >
+                                  <Minus size={12} />
+                                </button>
+                                <span className="text-[13px] font-medium tabular-nums">{count}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => adjustMealDiners(day, meal, 1)}
+                                  disabled={count >= 24}
+                                  className="flex h-11 w-7 shrink-0 items-center justify-center transition-colors hover:bg-cream/15 disabled:opacity-30"
+                                  aria-label={`Más comensales en ${meal} ${day}`}
+                                >
+                                  <Plus size={12} />
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => adjustMealDiners(day, meal, 1)}
+                                className="flex w-full items-center justify-center text-ink-muted transition-colors hover:bg-cream-deep"
+                                aria-label={`Activar ${meal} el ${day}`}
+                              >
+                                <Plus size={14} />
+                              </button>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </ProfileCard>
+
+            {/* Recordatorios */}
+            <ProfileCard
+              icon={Bell}
+              title="Recordatorios"
+              status={notifEnabled ? 'Recordatorios de comidas activados' : 'Recordatorios de comidas desactivados'}
+            >
+              <p className="mt-3 text-[13px] leading-snug text-ink-muted">
+                Te avisamos a las horas que prefieras para que no se te pase. Las
+                notificaciones son locales: solo suenan si tienes la app abierta o
+                instalada.
+              </p>
+
+              <button
+                type="button"
+                onClick={handleToggleNotif}
+                className="mt-2 flex min-h-[56px] w-full items-center justify-between gap-3 border-t border-border-soft py-2"
+                aria-pressed={notifEnabled}
+              >
+                <div className="min-w-0 text-left">
+                  <div className="text-[14px] font-medium text-ink">
+                    Recibir recordatorios de comidas
+                  </div>
+                  <div className="truncate text-[12px] text-ink-muted">
+                    {notifEnabled ? 'Activado' : 'Desactivado'}
+                  </div>
+                </div>
+                <Switch on={notifEnabled} />
+              </button>
+
+              {notifEnabled && (
+                <div className="mt-2 grid grid-cols-2 gap-4 border-t border-border-soft pt-4">
+                  <Field label="Desayuno">
+                    <input
+                      type="time"
+                      value={mealTimes.breakfast}
+                      onChange={(e) => handleMealTimeChange('breakfast', e.target.value)}
+                      className="input-line"
+                    />
+                  </Field>
+                  <Field label="Comida">
+                    <input
+                      type="time"
+                      value={mealTimes.lunch}
+                      onChange={(e) => handleMealTimeChange('lunch', e.target.value)}
+                      className="input-line"
+                    />
+                  </Field>
+                  <Field label="Merienda">
+                    <input
+                      type="time"
+                      value={mealTimes.snack}
+                      onChange={(e) => handleMealTimeChange('snack', e.target.value)}
+                      className="input-line"
+                    />
+                  </Field>
+                  <Field label="Cena">
+                    <input
+                      type="time"
+                      value={mealTimes.dinner}
+                      onChange={(e) => handleMealTimeChange('dinner', e.target.value)}
+                      className="input-line"
+                    />
+                  </Field>
+                </div>
+              )}
+
+              {/* Web Push — server-side notifications that survive a closed tab. */}
+              <PushNotificationsCard />
+            </ProfileCard>
+
+            {/* Mis recetas */}
+            <ProfileCard
+              icon={ChefHat}
+              title="Mis recetas"
+              status="Las que has creado tú. Edítalas o elimínalas si ya no las usas."
+            >
+              <div className="mt-4">
+                <MyRecipesSection />
+              </div>
+            </ProfileCard>
+          </div>
         </div>
-      )}
 
-      {/* Save bar */}
-      <div className="px-5 mt-6">
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="flex w-full items-center justify-center gap-2 rounded-full bg-[#1A1612] py-3.5 text-[13px] font-medium text-[#FAF6EE] transition-all hover:bg-[#2D6A4F] disabled:opacity-50"
-        >
-          {saving ? 'Guardando...' : saved ? '✓ Guardado' : 'Guardar cambios'}
-        </button>
+        {/* Save bar */}
+        <div className="mt-6 px-5 lg:flex lg:justify-end lg:px-0">
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-ink text-[15px] font-medium text-cream transition-colors hover:bg-ink-mid disabled:opacity-50 lg:w-[320px]"
+          >
+            {saving ? 'Guardando...' : saved ? '✓ Guardado' : 'Guardar cambios'}
+          </button>
+        </div>
+
+        {/* Tu cuenta — session, privacy + right to erasure */}
+        <div className="mt-8 px-5 mb-24 lg:mt-10 lg:px-0">
+          <GroupLabel>Tu cuenta</GroupLabel>
+          <ProfileCard
+            icon={UserRound}
+            title={user.username}
+            status={user.email}
+            className="mt-3 lg:mt-4 lg:max-w-[580px]"
+          >
+            <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border-soft pt-3">
+              <button
+                type="button"
+                onClick={logout}
+                className="inline-flex h-11 items-center gap-2 rounded-full border border-border bg-paper px-4 text-[14px] font-medium text-ink transition-colors hover:bg-cream-deep"
+              >
+                <LogOut size={16} strokeWidth={1.8} />
+                Salir
+              </button>
+              <a
+                href="/privacidad"
+                className="inline-flex min-h-[44px] items-center text-[13px] text-ink-muted underline underline-offset-4 hover:text-ink"
+              >
+                Política de privacidad
+              </a>
+            </div>
+            {user.id && (
+              <div className="mt-2">
+                <DeleteAccountCard userId={user.id} />
+              </div>
+            )}
+          </ProfileCard>
+        </div>
       </div>
 
-      {/* Tu cuenta — privacy + right to erasure */}
-      <section className="px-5 mt-12 mb-24">
-        <div className="mb-4 text-[12px] text-[#7A7066]">
-          <a href="/privacidad" className="underline underline-offset-4 hover:text-[#1A1612]">
-            Política de privacidad
-          </a>
+      <MenuSheet open={moreOpen} onClose={() => setMoreOpen(false)} eyebrow="Perfil" title="Más opciones">
+        <div className="flex flex-col gap-1">
+          <SheetAction
+            icon={Mic}
+            label="Onboarding por voz"
+            hint="Cuéntale a Mimo cómo coméis en casa y lo guarda en su memoria"
+            href="/onboarding/voz"
+          />
+          {user.role === 'admin' && (
+            <SheetAction icon={Shield} label="Panel de admin" href="/admin" />
+          )}
         </div>
-        {user?.id && <DeleteAccountCard userId={user.id} />}
-      </section>
+      </MenuSheet>
 
       <style jsx>{`
         :global(.input-line) {
           width: 100%;
+          min-height: 44px;
           background: transparent;
           border: none;
-          border-bottom: 1px solid #DDD6C5;
+          border-bottom: 1px solid var(--color-border);
           padding: 0.5rem 0;
           font-family: inherit;
-          font-size: 14px;
-          color: #1A1612;
+          font-size: 15px;
+          color: var(--color-ink);
           outline: none;
           transition: border-color 200ms;
         }
         :global(.input-line:focus) {
-          border-bottom-color: #1A1612;
+          border-bottom-color: var(--color-ink);
         }
         :global(.input-line::placeholder) {
-          color: #A39A8E;
+          color: var(--color-ink-light);
         }
       `}</style>
     </div>
@@ -978,14 +985,110 @@ export default function ProfilePage() {
 /* ─────────────────────────────────────────── */
 
 /**
- * Renders the Web Push opt-in card under the local-reminders chapter.
+ * Compact header (PRO-39): eyebrow with the user, the household's name as
+ * the h1 (Fraunces 650, like /menu and /recipes) and a "···" for the
+ * secondary actions.
+ */
+function ProfileHeader({ username, email, onMore }: { username: string; email: string; onMore: () => void }) {
+  const household = useQuery<{ name: string }>({
+    queryKey: ['household', 'me'],
+    queryFn: () => api.get<{ name: string }>('/households/me'),
+  })
+  return (
+    <header className="flex items-start justify-between gap-3 px-5 pt-3 lg:px-0 lg:pt-0">
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-muted lg:text-[12px]">
+          Perfil · <span className="normal-case tracking-normal">{username}</span>
+        </p>
+        {household.isPending ? (
+          <span aria-hidden="true" className="my-1.5 block h-7 w-48 rounded-full bg-bone lg:h-9" />
+        ) : (
+          <h1 className={`${DISPLAY_UI} text-[30px] leading-[1.1] text-ink lg:text-[40px] lg:leading-[1.05]`}>
+            {household.data?.name || 'Tu casa'}
+          </h1>
+        )}
+        <p className="truncate text-[13px] text-ink-muted">{email}</p>
+      </div>
+      <MoreButton onClick={onMore} label="Más opciones del perfil" />
+    </header>
+  )
+}
+
+function plural(n: number, one: string, many: string) {
+  return `${n} ${n === 1 ? one : many}`
+}
+
+/** The six sub-page cards, each with a one-line status from its own data. */
+function ProfileHub() {
+  const household = useQuery<{ members: unknown[]; pendingInvites?: unknown[] }>({
+    queryKey: ['household', 'me'],
+    queryFn: () => api.get('/households/me'),
+  })
+  const memory = useUserMemory()
+  const pantry = usePantry()
+  const staples = useStaples()
+  const cookbooks = useCookbooks()
+
+  const memoryCount = memory.data
+    ? Object.keys(memory.data).filter((k) => k !== 'nutrition_principles').length
+    : null
+  const principles = memory.data?.nutrition_principles?.value
+  const principlesCount = Array.isArray(principles) ? principles.length : memory.data ? 0 : null
+
+  const loading = '…'
+  const members = household.data?.members.length
+  return (
+    <div className="mt-3 grid grid-cols-2 gap-3 lg:mt-4 lg:grid-cols-3 lg:gap-4">
+      <ProfileHubLink
+        href="/profile/casa"
+        icon={Home}
+        title="Casa"
+        status={members == null ? (household.isError ? 'Tu hogar' : loading) : members === 1 ? 'Solo tú' : plural(members, 'persona', 'personas')}
+      />
+      <ProfileHubLink
+        href="/profile/memoria"
+        icon={Brain}
+        title="Memoria"
+        status={memoryCount == null ? loading : memoryCount === 0 ? 'Aún vacía' : plural(memoryCount, 'cosa que recuerda', 'cosas que recuerda')}
+      />
+      <ProfileHubLink
+        href="/profile/creencias"
+        icon={Compass}
+        title="Creencias"
+        status={principlesCount == null ? loading : principlesCount === 0 ? 'Ninguna todavía' : plural(principlesCount, 'principio', 'principios')}
+      />
+      <ProfileHubLink
+        href="/profile/pantry"
+        icon={Archive}
+        title="Despensa"
+        status={pantry.data == null ? loading : pantry.data.length === 0 ? 'Vacía' : plural(pantry.data.length, 'producto', 'productos')}
+      />
+      <ProfileHubLink
+        href="/profile/staples"
+        icon={Repeat}
+        title="Fijos"
+        status={staples.data == null ? loading : staples.data.length === 0 ? 'Ningún básico todavía' : plural(staples.data.length, 'básico', 'básicos')}
+      />
+      <ProfileHubLink
+        href="/profile/cookbooks"
+        icon={BookOpen}
+        title="Recetarios"
+        status={cookbooks.data == null ? loading : cookbooks.data.length === 0 ? 'Ninguno todavía' : plural(cookbooks.data.length, 'recetario', 'recetarios')}
+      />
+    </div>
+  )
+}
+
+/**
+ * Renders the Web Push opt-in block inside the Recordatorios card.
  *
  * The button stays hidden when:
  *   - the browser doesn't support Push (esp. iOS Safari pre-install),
  *   - `NEXT_PUBLIC_VAPID_PUBLIC_KEY` is missing at build time.
  *
  * On iOS, the user must "Add to Home Screen" first; we surface a tip
- * line so they don't think the button is broken.
+ * line so they don't think the button is broken. "Enviar prueba" and
+ * "Reparar service worker" live behind its "···" (PRO-39).
  */
 async function resetServiceWorker() {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return
@@ -1000,14 +1103,15 @@ async function resetServiceWorker() {
 
 function PushNotificationsCard() {
   const { state, error, subscribe, unsubscribe, sendTest } = useWebPush()
+  const [sheetOpen, setSheetOpen] = useState(false)
 
   if (state === 'unsupported') {
     return (
-      <div className="mt-3 rounded-2xl bg-[#FFFEFA] border border-[#DDD6C5] p-4 text-[12px] text-[#7A7066]">
+      <p className="mt-3 border-t border-border-soft pt-3 text-[12px] leading-snug text-ink-muted">
         Las notificaciones push no están disponibles en este navegador. En
         iPhone tienes que añadir la app a inicio primero (Compartir → Añadir
         a pantalla de inicio).
-      </div>
+      </p>
     )
   }
 
@@ -1015,94 +1119,93 @@ function PushNotificationsCard() {
   const isWorking = state === 'subscribing'
 
   return (
-    <div className="mt-3 rounded-2xl bg-[#FFFEFA] border border-[#DDD6C5] p-4">
+    <div className="mt-3 border-t border-border-soft pt-3">
       <div className="flex items-start gap-3">
         {isSubscribed ? (
-          <Bell size={18} className="mt-0.5 shrink-0 text-[#2D6A4F]" />
+          <Bell size={18} className="mt-0.5 shrink-0 text-ink" />
         ) : (
-          <BellOff size={18} className="mt-0.5 shrink-0 text-[#7A7066]" />
+          <BellOff size={18} className="mt-0.5 shrink-0 text-ink-muted" />
         )}
         <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-medium text-[#1A1612]">
+          <div className="text-[14px] font-medium text-ink">
             Notificaciones push del asistente
           </div>
-          <div className="mt-1 text-[11px] leading-snug text-[#7A7066]">
+          <div className="mt-1 text-[12px] leading-snug text-ink-muted">
             Avisos que llegan aunque la app esté cerrada — futura base para
             recordatorios de prep (sacar pescado del congelador, poner
             legumbres en remojo…).{' '}
             {state === 'denied' && (
-              <span className="text-[#C65D38]">
+              <span className="text-terracotta-deep">
                 Has denegado el permiso; cámbialo en los ajustes del
                 navegador.
               </span>
             )}
-            {error && <span className="text-[#C65D38]"> {error}</span>}
+            {error && <span className="text-terracotta-deep"> {error}</span>}
           </div>
 
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-3 flex items-center gap-2">
             {isSubscribed ? (
-              <>
-                <button
-                  type="button"
-                  onClick={sendTest}
-                  className="rounded-full border border-[#DDD6C5] bg-[#F2EDE0] px-3 py-1.5 text-[11px] font-medium text-[#1A1612] transition-all hover:border-[#1A1612] active:scale-95"
-                >
-                  Enviar prueba
-                </button>
-                <button
-                  type="button"
-                  onClick={unsubscribe}
-                  className="rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-3 py-1.5 text-[11px] font-medium text-[#7A7066] transition-all hover:text-[#1A1612] active:scale-95"
-                >
-                  Desactivar
-                </button>
-              </>
+              <button
+                type="button"
+                onClick={unsubscribe}
+                className="h-11 rounded-full border border-border bg-paper px-4 text-[13px] font-medium text-ink-muted transition-colors hover:text-ink"
+              >
+                Desactivar
+              </button>
             ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={subscribe}
-                  disabled={isWorking}
-                  className="rounded-full bg-[#1A1612] px-3.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.1em] text-[#FAF6EE] transition-all hover:bg-[#2D6A4F] active:scale-95 disabled:opacity-50"
-                >
-                  {isWorking ? 'Activando…' : 'Activar notificaciones'}
-                </button>
-                {/* Recovery escape hatch — always shown next to the activate
-                    button while subscribe hasn't succeeded. Some users have
-                    a stale broken SW from a previous deploy; one tap nukes
-                    everything and reloads cleanly. */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    resetServiceWorker().catch(() => {})
-                  }}
-                  className="rounded-full border border-[#C65D38] bg-[#FFFEFA] px-3 py-1.5 text-[11px] font-medium text-[#C65D38] transition-all active:scale-95"
-                >
-                  Reparar service worker
-                </button>
-              </>
+              <button
+                type="button"
+                onClick={subscribe}
+                disabled={isWorking}
+                className="h-11 rounded-full bg-ink px-4 text-[13px] font-medium text-cream transition-colors hover:bg-ink-mid disabled:opacity-50"
+              >
+                {isWorking ? 'Activando…' : 'Activar notificaciones'}
+              </button>
             )}
+            <MoreButton onClick={() => setSheetOpen(true)} label="Más opciones de las notificaciones push" />
           </div>
         </div>
       </div>
+
+      <MenuSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        eyebrow="Notificaciones push"
+        title="Más opciones"
+      >
+        <div className="flex flex-col gap-1">
+          {isSubscribed ? (
+            <SheetAction
+              icon={Send}
+              label="Enviar prueba"
+              hint="Te llega un aviso de prueba a este dispositivo"
+              onClick={() => {
+                setSheetOpen(false)
+                sendTest()
+              }}
+            />
+          ) : (
+            /* Recovery escape hatch while subscribe hasn't succeeded: some
+               users have a stale broken SW from a previous deploy; one tap
+               nukes everything and reloads cleanly. */
+            <SheetAction
+              icon={Wrench}
+              label="Reparar service worker"
+              hint="Borra la caché de la app y recarga la página"
+              onClick={() => {
+                resetServiceWorker().catch(() => {})
+              }}
+            />
+          )}
+        </div>
+      </MenuSheet>
     </div>
   )
 }
 
-function ChapterHeader({ number, title, italic }: { number: string; title: string; italic: string }) {
+function Field({ label, children, className = '' }: { label: string; children: React.ReactNode; className?: string }) {
   return (
-    <div className="border-b border-[#DDD6C5] pb-3">
-      <div className="text-eyebrow mb-2 text-[#7A7066]">Capitulo {number}</div>
-      <h2 className="font-display text-[1.6rem] leading-tight text-[#1A1612]">
-        {title} <span className="font-italic italic text-[#C65D38]">{italic}</span>
-      </h2>
-    </div>
-  )
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
+    <div className={className}>
       <Label>{label}</Label>
       <div className="mt-1">{children}</div>
     </div>
@@ -1111,7 +1214,40 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function Label({ children }: { children: React.ReactNode }) {
   return (
-    <div className="text-[10px] uppercase tracking-[0.18em] text-[#7A7066]">{children}</div>
+    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">{children}</div>
+  )
+}
+
+function Stepper({
+  label,
+  value,
+  onMinus,
+  onPlus,
+  minusLabel,
+  plusLabel,
+}: {
+  label: string
+  value: number
+  onMinus: () => void
+  onPlus: () => void
+  minusLabel: string
+  plusLabel: string
+}) {
+  const btn =
+    'flex h-11 w-11 items-center justify-center rounded-full border border-border bg-paper text-ink transition-colors hover:border-ink'
+  return (
+    <div className="rounded-2xl border border-border-soft bg-cream p-3">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-muted">{label}</div>
+      <div className="mt-2 flex items-center justify-between gap-1">
+        <button type="button" onClick={onMinus} className={btn} aria-label={minusLabel}>
+          <Minus size={16} />
+        </button>
+        <span className="w-6 text-center text-xl font-medium tabular-nums text-ink">{value}</span>
+        <button type="button" onClick={onPlus} className={btn} aria-label={plusLabel}>
+          <Plus size={16} />
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -1126,11 +1262,13 @@ function Pill({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className={`rounded-full border px-3.5 py-1.5 text-[12px] font-medium transition-all active:scale-95 ${
+      aria-pressed={active}
+      className={`min-h-[40px] rounded-full border px-4 text-[13px] font-medium transition-colors active:scale-95 ${
         active
-          ? 'border-[#1A1612] bg-[#1A1612] text-[#FAF6EE]'
-          : 'border-[#DDD6C5] bg-[#FFFEFA] text-[#4A4239] hover:border-[#1A1612]'
+          ? 'border-ink bg-ink text-cream'
+          : 'border-border bg-paper text-ink-mid hover:border-ink'
       }`}
     >
       {children}
@@ -1151,10 +1289,11 @@ function SexPill({
     <button
       type="button"
       onClick={onClick}
-      className={`flex-1 rounded-full border px-3 py-2 text-[12px] font-medium transition-all active:scale-95 ${
+      aria-pressed={active}
+      className={`h-11 flex-1 rounded-full border px-3 text-[13px] font-medium transition-colors active:scale-95 ${
         active
-          ? 'border-[#1A1612] bg-[#1A1612] text-[#FAF6EE]'
-          : 'border-[#DDD6C5] bg-transparent text-[#7A7066] hover:border-[#1A1612] hover:text-[#1A1612]'
+          ? 'border-ink bg-ink text-cream'
+          : 'border-border bg-transparent text-ink-muted hover:border-ink hover:text-ink'
       }`}
     >
       {children}
@@ -1162,23 +1301,19 @@ function SexPill({
   )
 }
 
-function ToggleRow({ title, subtitle, on, onToggle, icon }: { title: string; subtitle: string; on: boolean; onToggle: () => void; icon: React.ReactNode }) {
+function ToggleRow({ title, subtitle, on, onToggle }: { title: string; subtitle: string; on: boolean; onToggle: () => void }) {
   return (
-    <div className="mt-3 rounded-2xl border border-[#DDD6C5] bg-[#FFFEFA] p-4">
-      <button type="button" onClick={onToggle} className="flex w-full items-center justify-between gap-3" aria-pressed={on}>
-        <div className="flex min-w-0 items-center gap-3">
-          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${on ? 'bg-[#1A1612] text-white' : 'bg-[#F2EDE0] text-[#7A7066]'}`}>
-            {icon}
-          </div>
-          <div className="min-w-0 text-left">
-            <div className="text-[13px] font-medium text-[#1A1612]">{title}</div>
-            <div className="truncate text-[11px] text-[#7A7066]">{subtitle}</div>
-          </div>
-        </div>
-        <span className={`relative block h-6 w-11 shrink-0 rounded-full transition-colors ${on ? 'bg-[#1A1612]' : 'bg-[#DDD6C5]'}`}>
-          <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-[left] duration-200 ${on ? 'left-[22px]' : 'left-0.5'}`} />
-        </span>
-      </button>
-    </div>
+    <button
+      type="button"
+      onClick={onToggle}
+      className="mt-2 flex min-h-[56px] w-full items-center justify-between gap-3 border-t border-border-soft py-2"
+      aria-pressed={on}
+    >
+      <div className="min-w-0 text-left">
+        <div className="text-[14px] font-medium text-ink">{title}</div>
+        <div className="truncate text-[12px] text-ink-muted">{subtitle}</div>
+      </div>
+      <Switch on={on} />
+    </button>
   )
 }

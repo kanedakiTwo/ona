@@ -106,11 +106,14 @@ The `.standalone-pt` utility applies `padding-top: var(--safe-top)` so content d
 - `/onboarding` + `/onboarding/voz` — "D · Luz y foto" (2026-10-10, PRO-37): one question per screen with a back circle + ink progress segments, compact header (`OnboardingHeader`: 11 px eyebrow "Primeros pasos · N de 5" + Fraunces 650 h1 with a terracotta-deep italic accent), answers as paper cards (`border-border-soft`, radius 20, ink border + ink check when picked, `aria-pressed`), 44 px −/+ counters and ink/paper restriction chips; ink pill ("Siguiente"/"Empezar") sticky at the bottom. `/onboarding/voz`: same header, ink mic (terracotta while Mimo speaks/listens) in a paper card, paper progress rows (ink border + ink tick when captured). At `lg+` both use `OnboardingShell`: a 560 px column with a sticky radius-24 dish photo beside it (max 1180 px)
 - `/compra` + `/compra/tiendas` — "Pide a tus *tiendas*." editorial header, one cream card per shop order with a status chip (ink = enviado, terracotta = ha contestado, forest = confirmado), ink pill CTAs, verdict labels OK (forest) / Revisar (terracotta) / No hay (muted); `/shopping` links to it from its "···" sheet (and an outlined "Pedir a mis tiendas" pill at `lg+`)
 - `/shopping` (lista y despensa) — "D · Luz y foto" (2026-10-10, PRO-38): compact header (date-range eyebrow + Fraunces 650 "Lista de la *compra*" with terracotta-deep italic + one "···" `MenuSheet` holding Compartir lo que queda · Añadir a mano · Pedir a mis tiendas · Cambiar fechas); ONE chip row (date-range chip → dates sheet, then "Todo" + aisle chips that filter, 36 px pills with a 44 px hit area); paper progress card (ink bar) + paper € total card (`border-border-soft`, radius 20); underline tabs "Por comprar" / "Ya en casa"; rows like the recipe detail's (dashed, 16 px name, JetBrains 13 px quantity, 26 px check in a 44 px target, ink when bought). At `lg+`: 1180 px container, aisles as paper cards in 2 columns (3 at `xl`). See [Shopping](./shopping.md)
+- `/profile` (portada) — "D · Luz y foto" (2026-10-10, PRO-39): compact header (11 px eyebrow "Perfil · usuario", the household's name as a Fraunces 650 h1 — `DISPLAY_UI`, 30/40 px — the email, and a 44 px "···" with «Onboarding por voz» and, for admins, «Panel de admin»). Paper cards (`border-border-soft`, radius 20, icon on a 40 px `cream-deep` circle, 17–18 px Fraunces 650 title + one `ink-muted` status line): six link cards Casa · Memoria · Creencias · Despensa · Fijos · Recetarios (2 cols on mobile, 3 at `lg+`, status from each sub-page's data), then Voz and WhatsApp, then «Ajustes del menú» (Datos físicos, Preferencias, Plantilla semanal, Recordatorios, Mis recetas; 2 cols at `lg+`, max 1180 px), one ink «Guardar cambios» pill and a «Tu cuenta» card (Salir, privacy, delete). Secondary actions behind `MenuSheet`: push «Enviar prueba» / «Reparar service worker», and each own recipe's «Editar» / «Eliminar». Ink switches and pills, 44 px targets, no green. Guarded by `apps/api/src/tests/redesignDPerfil.test.ts` (the sub-pages `/profile/*` are PRO-40)
 
 ## Pages still in App Mode (legacy, green palette)
 
 These have not been migrated to the editorial system yet:
 - `/profile` — same
+- `/shopping` — green/mint palette, `[#2D6A4F]` accents, `[#EAF3DE]` chips
+- `/login` — photo background with white form sheet (transitional; uses the `MimoiaLogo` lockup but green submit button)
 
 ## Layout
 
@@ -201,6 +204,8 @@ The migration (June 2026) shipped the chasis (sidebar at `md+`, container caps) 
 - [apps/web/src/components/onboarding/OnboardingShell.tsx](../apps/web/src/components/onboarding/OnboardingShell.tsx) — onboarding layout (560 px column + photo at lg+), header and accent
 - [apps/api/src/tests/helpers/legacyPalette.ts](../apps/api/src/tests/helpers/legacyPalette.ts) — guard against the old green palette on "D" pages (`redesignD*.test.ts`)
 - [apps/web/src/app/shopping/page.tsx](../apps/web/src/app/shopping/page.tsx) — editorial "D · Luz y foto" (+ `components/shopping/ShoppingExtensions.tsx`)
+- [apps/web/src/app/profile/page.tsx](../apps/web/src/app/profile/page.tsx) — "D · Luz y foto" profile front page; cards in [sections/ProfileCards.tsx](../apps/web/src/app/profile/sections/ProfileCards.tsx)
+- [apps/api/src/tests/helpers/legacyPalette.ts](../apps/api/src/tests/helpers/legacyPalette.ts) — legacy-green guard shared by the D redesign tests
 - [apps/web/src/components/shared/Navbar.tsx](../apps/web/src/components/shared/Navbar.tsx) — labelled tab bar
 - [apps/web/src/components/shared/PublicNavbar.tsx](../apps/web/src/components/shared/PublicNavbar.tsx)
 - [apps/web/src/components/shared/Footer.tsx](../apps/web/src/components/shared/Footer.tsx)

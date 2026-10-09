@@ -6,7 +6,7 @@ AI assistant for nutrition guidance, menu queries, and recipe management via nat
 
 **One Mimo, a companion on every page** (decision D-023, 2026-10-09). The advisor is no longer a page: Mimo lives in a floating button and a panel that opens over whatever the user is looking at.
 
-- **Floating button** (`MimoButton`, `data-testid="mimo-button"`): an ink circle with a Sparkles icon on every signed-in page. It is hidden on login, register, reset, onboarding, invites and public pages (`mimoHiddenOn`). It stays clear of fixed bars:
+- **Floating button** (`MimoButton`, `data-testid="mimo-button"`): a terracotta circle with the Mimoia spoon (Mimo's face, the same symbol as the app icon and the WhatsApp profile photo) on every signed-in page. It is hidden on login, register, reset, onboarding, invites and public pages (`mimoHiddenOn`). It stays clear of fixed bars:
   - default: above the 60 px bottom tab bar on mobile; bottom-right, 24 px from the edges, at `md+`;
   - recipe detail (`/recipes/<id>`): above the 84 px sticky action bar until `lg`;
   - cook mode: `z-110`, above the step controls.

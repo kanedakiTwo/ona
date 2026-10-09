@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { BRAND_NAME } from "@ona/shared"
 import { CONTACT_EMAIL } from "@/lib/contact"
+import { MimoiaLogo } from "@/components/brand/Mimoia"
 
 /**
  * The one public footer (landing + every page under `app/(public)`, rendered
@@ -22,7 +23,7 @@ export default function Footer() {
   return (
     <footer data-testid="site-footer" className="bg-[#F2EDE0] px-6 pb-24 pt-16 text-sm text-[#7A7066] md:px-10 md:pb-32 md:pt-20">
       <div className="mx-auto flex max-w-5xl flex-col items-center gap-6 border-t border-[#DDD6C5] pt-12 md:flex-row md:justify-between">
-        <div className="font-display text-2xl text-[#1A1612]">{BRAND_NAME}</div>
+        <MimoiaLogo size={24} testId="footer-logo" />
         <nav aria-label="Enlaces del pie" className="flex flex-wrap justify-center gap-x-8 gap-y-3">
           {LINKS.map((l) => (
             <Link key={l.href} href={l.href} className="link-reveal hover:text-[#1A1612]">

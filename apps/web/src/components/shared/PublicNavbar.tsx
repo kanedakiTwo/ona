@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { ArrowRight, Menu, X } from "lucide-react"
+import { MimoiaLogo } from "@/components/brand/Mimoia"
 
 /** Every public CTA leads to the waitlist on the landing (specs/waitlist.md). */
 const WAITLIST_HREF = "/#lista-de-espera"
@@ -47,8 +48,8 @@ export default function PublicNavbar() {
         }`}
       >
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5 md:px-10">
-          <Link href="/" className="font-display text-2xl tracking-tight text-[#1A1612]">
-            Mimoia
+          <Link href="/" aria-label="Mimoia, inicio" data-testid="public-logo">
+            <MimoiaLogo size={24} />
           </Link>
 
           <div className="hidden items-center gap-10 text-sm md:flex">

@@ -6,6 +6,7 @@ import { Mic, Send, Square, Volume2, VolumeX, X, Headphones, RotateCcw } from 'l
 import { AI_DISCLOSURE } from '@ona/shared'
 import { useMimo, type MimoStatus } from './MimoProvider'
 import { isCookPath, isRecipeDetailPath } from './MimoButton'
+import { MimoAvatar } from '@/components/brand/Mimoia'
 
 /** Suggestions for an empty conversation, by page. */
 export function suggestionsFor(pathname: string | null): string[] {
@@ -66,11 +67,14 @@ export default function MimoPanel() {
         <header className="flex-none border-b border-[#DDD6C5] px-5 pb-3 pt-3 lg:pt-5">
           <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-[#DDD6C5] lg:hidden" aria-hidden />
           <div className="flex items-center justify-between gap-2">
-            <div>
-              <h2 className="font-display text-[1.5rem] leading-none text-[#1A1612]">Mimo</h2>
-              <p className="mt-1 text-[11px] uppercase tracking-[0.12em] text-[#7A7066]" data-testid="mimo-status">
-                {mimo.handsFree && mimo.status === 'idle' ? 'Manos libres' : STATUS_TEXT[mimo.status]}
-              </p>
+            <div className="flex items-center gap-3">
+              <MimoAvatar size={40} />
+              <div>
+                <h2 className="font-display text-[1.5rem] leading-none text-[#1A1612]">Mimo</h2>
+                <p className="mt-1 text-[11px] uppercase tracking-[0.12em] text-[#7A7066]" data-testid="mimo-status">
+                  {mimo.handsFree && mimo.status === 'idle' ? 'Manos libres' : STATUS_TEXT[mimo.status]}
+                </p>
+              </div>
             </div>
             <div className="flex items-center gap-1.5">
               <IconButton

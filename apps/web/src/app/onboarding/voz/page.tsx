@@ -23,6 +23,7 @@ import { useRecorder, recorderSupported } from "@/hooks/useRecorder"
 import { useVoice } from "@/hooks/useVoice"
 import { useUserMemory } from "@/hooks/useUserMemory"
 import { AI_DISCLOSURE, type MemoryKey } from "@ona/shared"
+import { Accent, OnboardingHeader, OnboardingShell } from "@/components/onboarding/OnboardingShell"
 
 type Phase = "idle" | "thinking" | "speaking" | "listening" | "transcribing" | "done" | "error"
 type Turn = { role: "user" | "assistant"; content: string }
@@ -42,6 +43,7 @@ const PROGRESS_KEYS: { key: MemoryKey; label: string }[] = [
 ]
 
 const DONE_PHRASE = "ya te conozco"
+const PHOTO = "/images/recipes/garbanzos-con-espinacas.jpg"
 
 export default function VoiceOnboardingPage() {
   const router = useRouter()
@@ -118,8 +120,10 @@ export default function VoiceOnboardingPage() {
 
   if (!userId) {
     return (
-      <div className="min-h-screen bg-[#FAF6EE] p-6">
-        <p className="text-[#1A1612]">Necesitas iniciar sesión para hacer el onboarding por voz.</p>
+      <div className="min-h-screen bg-cream px-4 pt-8">
+        <p className="mx-auto max-w-[560px] text-[15px] text-ink">
+          Necesitas iniciar sesión para hacer el onboarding por voz.
+        </p>
       </div>
     )
   }
@@ -127,26 +131,25 @@ export default function VoiceOnboardingPage() {
   const completedCount = PROGRESS_KEYS.filter((p) => memory?.[p.key]).length
 
   return (
-    <div className="min-h-screen bg-[#FAF6EE]">
-      <div className="mx-auto max-w-[430px] px-5 pb-20 pt-8">
+    <div className="min-h-screen bg-cream lg:py-8">
+      <OnboardingShell photo={PHOTO} className="px-4 pb-20 pt-6 lg:pb-8 lg:pt-0">
         <Link
           href="/profile"
-          className="inline-flex items-center gap-1 text-[12px] uppercase tracking-[0.15em] text-[#7A7066] hover:text-[#1A1612]"
+          className="-ml-1 inline-flex min-h-[44px] w-fit items-center gap-1 rounded-full px-1 text-[13px] font-medium text-ink-muted transition-colors hover:text-ink"
         >
-          <ChevronLeft size={14} />
+          <ChevronLeft size={16} />
           Volver al perfil
         </Link>
 
-        <div className="mt-6">
-          <div className="text-eyebrow text-[#C65D38]">Onboarding por voz</div>
-          <h1 className="mt-2 font-display text-[2.2rem] leading-[1.02] tracking-tight text-[#1A1612]">
-            Cuéntale a <span className="font-italic italic text-[#C65D38]">Mimo</span> cómo eres
-          </h1>
-          <p className="mt-2 max-w-md text-[13px] leading-relaxed text-[#7A7066]">
+        <div className="mt-3">
+          <OnboardingHeader eyebrow="Onboarding por voz">
+            Cuéntale a <Accent>Mimo</Accent> cómo eres
+          </OnboardingHeader>
+          <p className="mt-2 text-[14px] leading-relaxed text-ink-muted">
             Una conversación de un par de minutos. Te pregunta lo justo para
             personalizar tus menús, tu lista de la compra y tus recomendaciones.
             Todo queda en tu memoria — la puedes editar luego en{" "}
-            <Link href="/profile/memoria" className="underline">
+            <Link href="/profile/memoria" className="text-ink underline underline-offset-2">
               /profile/memoria
             </Link>
             .
@@ -154,37 +157,42 @@ export default function VoiceOnboardingPage() {
         </div>
 
         {/* Voice control */}
-        <div className="mt-10 flex flex-col items-center">
+        <div className="mt-6 flex flex-col items-center rounded-[24px] border border-border-soft bg-paper px-5 py-8">
           {phase === "idle" || phase === "error" ? (
             <button
               type="button"
               onClick={start}
               disabled={!recorderSupported()}
-              className="flex h-24 w-24 items-center justify-center rounded-full bg-[#2D6A4F] text-[#FAF6EE] transition-transform active:scale-95 disabled:opacity-40"
+              className="flex h-24 w-24 items-center justify-center rounded-full bg-ink text-cream transition-transform active:scale-95 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ink"
               aria-label="Empezar onboarding por voz"
             >
               <Mic size={36} />
             </button>
           ) : phase === "thinking" || phase === "transcribing" ? (
-            <button type="button" onClick={stop} className="flex h-24 w-24 items-center justify-center rounded-full bg-[#F2EDE0] text-[#7A7066]" aria-label="Parar">
+            <button
+              type="button"
+              onClick={stop}
+              className="flex h-24 w-24 items-center justify-center rounded-full bg-cream-deep text-ink-muted"
+              aria-label="Parar"
+            >
               <Loader2 size={36} className="animate-spin" />
             </button>
           ) : phase === "done" ? (
-            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[#2D6A4F] text-[#FAF6EE]">
+            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-ink text-cream">
               <Check size={36} />
             </div>
           ) : (
             <button
               type="button"
               onClick={stop}
-              className="flex h-24 w-24 items-center justify-center rounded-full bg-[#C65D38] text-[#FAF6EE] transition-transform active:scale-95"
+              className="flex h-24 w-24 items-center justify-center rounded-full bg-terracotta text-cream transition-transform active:scale-95 hover:bg-terracotta-deep focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ink"
               aria-label="Parar el onboarding"
             >
               <MicOff size={36} />
             </button>
           )}
 
-          <p className="mt-4 text-center text-[12px] uppercase tracking-[0.12em] text-[#7A7066]">
+          <p className="mt-4 text-center text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">
             {phase === "idle" && (historyRef.current.length ? "Pulsa para seguir" : "Pulsa para empezar")}
             {phase === "thinking" && "Pensando…"}
             {phase === "speaking" && "Mimo habla"}
@@ -194,41 +202,43 @@ export default function VoiceOnboardingPage() {
             {phase === "error" && "Algo ha fallado"}
           </p>
           {!recorderSupported() && (
-            <p className="mt-2 max-w-xs text-center text-[11px] italic text-[#C65D38]">Este navegador no puede grabar audio.</p>
+            <p className="mt-2 max-w-xs text-center text-[12px] italic text-terracotta-deep">Este navegador no puede grabar audio.</p>
           )}
-          {error ? <p className="mt-2 max-w-xs text-center text-[11px] italic text-[#C65D38]">{error}</p> : null}
+          {error ? <p className="mt-2 max-w-xs text-center text-[12px] italic text-terracotta-deep">{error}</p> : null}
 
           {/* AI Act art. 50: the user knows they are talking to an AI before and during the conversation */}
-          <p data-testid="ai-disclosure" className="mt-4 max-w-xs text-center text-[11px] leading-snug text-[#7A7066]">
+          <p data-testid="ai-disclosure" className="mt-4 max-w-xs text-center text-[12px] leading-snug text-ink-muted">
             {AI_DISCLOSURE}
           </p>
 
           {lastAssistant ? (
-            <p className="mt-6 max-w-xs text-center text-[14px] font-italic italic leading-relaxed text-[#1A1612]">
+            <p className="mt-6 max-w-sm text-center font-serif-text text-[16px] italic leading-relaxed text-ink">
               «{lastAssistant}»
             </p>
           ) : null}
         </div>
 
         {/* Progress checklist */}
-        <div className="mt-10">
-          <div className="text-eyebrow text-[#7A7066]">
+        <div className="mt-8">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-muted">
             Progreso · {completedCount} / {PROGRESS_KEYS.length}
-          </div>
-          <ul className="mt-3 space-y-2">
+          </p>
+          <ul className="mt-3 grid gap-2 sm:grid-cols-2">
             {PROGRESS_KEYS.map((p) => {
               const captured = !!memory?.[p.key]
               return (
                 <li
                   key={p.key}
-                  className={`flex items-center justify-between rounded-xl border px-4 py-2 text-[13px] ${
-                    captured
-                      ? "border-[#2D6A4F] bg-[#2D6A4F]/5 text-[#1A1612]"
-                      : "border-[#DDD6C5] bg-[#FFFEFA] text-[#7A7066]"
+                  className={`flex min-h-[44px] items-center justify-between gap-2 rounded-2xl border bg-paper px-4 py-2 text-[14px] ${
+                    captured ? "border-ink text-ink" : "border-border-soft text-ink-muted"
                   }`}
                 >
                   <span>{p.label}</span>
-                  {captured ? <Check size={14} className="text-[#2D6A4F]" /> : null}
+                  {captured ? (
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink text-cream">
+                      <Check size={12} strokeWidth={2.5} />
+                    </span>
+                  ) : null}
                 </li>
               )
             })}
@@ -236,15 +246,16 @@ export default function VoiceOnboardingPage() {
         </div>
 
         {phase === "done" ? (
-          <p className="mt-8 text-center text-[12px] italic text-[#7A7066]">
-            Llevándote al menú…
-          </p>
+          <p className="mt-8 text-center text-[13px] italic text-ink-muted">Llevándote al menú…</p>
         ) : (
-          <p className="mt-8 text-center text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
-            Prefieres escribir: <Link href="/profile/memoria" className="underline">edita tu memoria a mano</Link>
+          <p className="mt-8 text-center text-[13px] text-ink-muted">
+            Prefieres escribir:{" "}
+            <Link href="/profile/memoria" className="inline-flex min-h-[44px] items-center text-ink underline underline-offset-2">
+              edita tu memoria a mano
+            </Link>
           </p>
         )}
-      </div>
+      </OnboardingShell>
     </div>
   )
 }

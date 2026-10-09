@@ -102,6 +102,7 @@ The `.standalone-pt` utility applies `padding-top: var(--safe-top)` so content d
 - `/menu` — "D · Luz y foto": compact header (eyebrow + Fraunces 650 h1 with terracotta-deep italic day), day strip (ink pill), full-bleed photo hero with overlapping paper caption card + ink "Empezar a cocinar" pill, horizontal meal rows, every action behind "···" sheets (`MenuSheet`: bottom sheet on mobile, centred dialog at lg+, portalled, Esc closes, fades only under reduced motion); desktop hero row + "La semana" photo columns. Photo-less: the hero becomes a compact card (meal icon on a bone square, name once); thumbnails and tiles use `RecipeCover` (bone block + small meal icon, no name). See [Menus](./menus.md)
 - **Mimo companion** (D-023, 2026-10-09; see [Advisor](./advisor.md)) — `MimoButton`: 56 px terracotta circle, cream ring, the brand spoon (`MimoiaSymbol`: Mimo's face), terracotta-deep on hover, a pulsing forest dot while the wake word listens; sits above the tab bar (mobile), the recipe action bar (< `lg`) or the cook-mode controls (`z-110`). `MimoPanel`: cream bottom sheet (88dvh, `rounded-t-[28px]`, ink/30 backdrop) below `lg`, a 400 px right column with a left hairline at `lg+` (the page moves aside via `--mimo-panel-width`); `MimoAvatar` + Fraunces «Mimo» title, 11 px uppercase status line, ink user bubbles / bone assistant bubbles, terracotta level bars while listening, forest «Manos libres» pill when on
 - `/compra` + `/compra/tiendas` — "Pide a tus *tiendas*." editorial header, one cream card per shop order with a status chip (ink = enviado, terracotta = ha contestado, forest = confirmado), ink pill CTAs, verdict labels OK (forest) / Revisar (terracotta) / No hay (muted); `/shopping` gets an outlined "Pedir a mis tiendas" card
+- `/onboarding` + `/onboarding/voz` — "D · Luz y foto" (2026-10-10, PRO-37): one question per screen with a back circle + ink progress segments, compact header (`OnboardingHeader`: 11 px eyebrow "Primeros pasos · N de 5" + Fraunces 650 h1 with a terracotta-deep italic accent), answers as paper cards (`border-border-soft`, radius 20, ink border + ink check when picked, `aria-pressed`), 44 px −/+ counters and ink/paper restriction chips; ink pill ("Siguiente"/"Empezar") sticky at the bottom. `/onboarding/voz`: same header, ink mic (terracotta while Mimo speaks/listens) in a paper card, paper progress rows (ink border + ink tick when captured). At `lg+` both use `OnboardingShell`: a 560 px column with a sticky radius-24 dish photo beside it (max 1180 px)
 
 ## Pages still in App Mode (legacy, green palette)
 
@@ -178,7 +179,7 @@ ONA supports a desktop layout at `md+` (≥768 px) and bespoke multi-column page
 
 ### Exceptions (no responsive treatment)
 
-- `/onboarding`, `/auth/*`, `/offline`, `/recipes/[id]/cook` — single-column at all breakpoints.
+- `/auth/*`, `/offline`, `/recipes/[id]/cook` — single-column at all breakpoints. (`/onboarding` stays one 560 px column, plus a dish photo beside it at `lg+`.)
 - Error boundaries `app/error.tsx` ("Algo se ha torcido", inside the app chrome) and `app/global-error.tsx` (replaces the root layout, own `<html>`) — centred single column, editorial tokens (cream, ink, terracotta "Vaya", Fraunces heading), same look as `/offline`. See [errors.md](./errors.md).
 - Public site (`/recipes-ona`) uses its own `PublicNavbar` and is unaffected.
 
@@ -195,6 +196,8 @@ The migration (June 2026) shipped the chasis (sidebar at `md+`, container caps) 
 - [apps/web/src/app/recipes/page.tsx](../apps/web/src/app/recipes/page.tsx) — editorial in-app
 - [apps/web/src/app/recipes/[id]/page.tsx](../apps/web/src/app/recipes/[id]/page.tsx)
 - [apps/web/src/app/menu/page.tsx](../apps/web/src/app/menu/page.tsx) — editorial "D · Luz y foto"
+- [apps/web/src/components/onboarding/OnboardingShell.tsx](../apps/web/src/components/onboarding/OnboardingShell.tsx) — onboarding layout (560 px column + photo at lg+), header and accent
+- [apps/api/src/tests/helpers/legacyPalette.ts](../apps/api/src/tests/helpers/legacyPalette.ts) — guard against the old green palette on "D" pages (`redesignD*.test.ts`)
 - [apps/web/src/components/shared/Navbar.tsx](../apps/web/src/components/shared/Navbar.tsx) — labelled tab bar
 - [apps/web/src/components/shared/PublicNavbar.tsx](../apps/web/src/components/shared/PublicNavbar.tsx)
 - [apps/web/src/components/shared/Footer.tsx](../apps/web/src/components/shared/Footer.tsx)

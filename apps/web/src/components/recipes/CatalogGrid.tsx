@@ -27,16 +27,30 @@ type Props = {
   emptyState: React.ReactNode
   /** Ids rendered below `lg` only (e.g. the second featured recipe, which is a hero at `lg+`). */
   hiddenAtLg?: ReadonlySet<string>
+  /** Optional control laid over each card's photo (e.g. "Quitar del recetario" on /cookbooks/[id]). */
+  renderAction?: (recipe: CatalogCardRecipe) => React.ReactNode
 }
 
-function Item({ recipe, index, shape }: { recipe: CatalogCardRecipe; index: number; shape: "tall" | "short" }) {
+function Item({
+  recipe,
+  index,
+  shape,
+  renderAction,
+}: {
+  recipe: CatalogCardRecipe
+  index: number
+  shape: "tall" | "short"
+  renderAction?: Props["renderAction"]
+}) {
   return (
     <motion.li
+      className={renderAction ? "relative" : undefined}
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: Math.min(index, 8) * 0.04, duration: 0.5, ease: [0.19, 1, 0.22, 1] }}
     >
       <RecipeCard recipe={recipe} shape={shape} />
+      {renderAction?.(recipe)}
     </motion.li>
   )
 }
@@ -46,7 +60,7 @@ function Item({ recipe, index, shape }: { recipe: CatalogCardRecipe; index: numb
  * right; the left column starts tall, the right one short, as in the "D"
  * mockup). `lg+`: a plain 4-column grid in catalogue order, 220 px photos.
  */
-export default function CatalogGrid({ recipes, isLoading, emptyState, hiddenAtLg }: Props) {
+export default function CatalogGrid({ recipes, isLoading, emptyState, hiddenAtLg, renderAction }: Props) {
   const isLg = useIsLg()
 
   if (isLoading) {
@@ -68,7 +82,7 @@ export default function CatalogGrid({ recipes, isLoading, emptyState, hiddenAtLg
     return (
       <ul className="grid grid-cols-4 gap-x-5 gap-y-6" data-testid="catalog-grid">
         {visible.map((r, i) => (
-          <Item key={r.id} recipe={r} index={i} shape="tall" />
+          <Item key={r.id} recipe={r} index={i} shape="tall" renderAction={renderAction} />
         ))}
       </ul>
     )
@@ -80,12 +94,12 @@ export default function CatalogGrid({ recipes, isLoading, emptyState, hiddenAtLg
     <div className="grid grid-cols-2 items-start gap-3" data-testid="catalog-grid">
       <ul className="flex flex-col gap-4">
         {left.map((r, i) => (
-          <Item key={r.id} recipe={r} index={i * 2} shape={i % 2 === 0 ? "tall" : "short"} />
+          <Item key={r.id} recipe={r} index={i * 2} shape={i % 2 === 0 ? "tall" : "short"} renderAction={renderAction} />
         ))}
       </ul>
       <ul className="flex flex-col gap-4">
         {right.map((r, i) => (
-          <Item key={r.id} recipe={r} index={i * 2 + 1} shape={i % 2 === 0 ? "short" : "tall"} />
+          <Item key={r.id} recipe={r} index={i * 2 + 1} shape={i % 2 === 0 ? "short" : "tall"} renderAction={renderAction} />
         ))}
       </ul>
     </div>

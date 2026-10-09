@@ -74,14 +74,14 @@ export default function CookPage() {
 
   if (error) {
     return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#FAF6EE] px-6 text-center">
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-paper px-6 text-center">
         <div className="max-w-sm">
-          <p className="font-display text-2xl text-[#1A1612]">
+          <p className="font-serif-text text-2xl font-[650] leading-tight text-ink">
             No hemos podido cargar la receta.
           </p>
           <button
             onClick={() => router.push(`/recipes/${params.id}`)}
-            className="mt-6 rounded-full bg-[#1A1612] px-5 py-2 text-sm text-[#FAF6EE] active:scale-95"
+            className="mt-6 inline-flex h-11 items-center rounded-full bg-ink px-6 text-[15px] font-semibold text-paper active:scale-95"
           >
             Volver
           </button>
@@ -92,8 +92,8 @@ export default function CookPage() {
 
   if (isLoading || !recipe || servings == null) {
     return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#FAF6EE]">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#DDD6C5] border-t-[#1A1612]" />
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-paper">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-ink" />
       </div>
     )
   }

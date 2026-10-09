@@ -9,7 +9,7 @@ Hands-free, fullscreen step-by-step cooking experience driven from a recipe.
 - Users see one preparation step at a time, in large readable type
 - Users can swipe (or tap arrows) to advance to the next step or go back
 - Users see the index of the current step ("3 / 6") and a thin progress bar
-- Users see the ingredients used in the current step inline, with the live-scaled quantity (e.g. "200 g cebolla")
+- Users see the ingredients used in the current step inline, with the live-scaled quantity (e.g. "cebolla · 200 g")
 - Users can tap any ingredient in the current step to mark it as added (visual checkmark, persists for the cooking session)
 - Users can start a per-step countdown timer when the step has a duration; the timer announces completion with sound + haptic and unlocks the swipe to the next step visually
 - Users can pause/resume the timer
@@ -21,9 +21,12 @@ Hands-free, fullscreen step-by-step cooking experience driven from a recipe.
 ## Display
 
 - Step text uses display typography sized for at-arm's-length reading (≥ 1.4rem on mobile)
-- Each step's `temperature` (e.g. "180 °C") and `technique` (e.g. "sofreír") render as compact pills above the text
-- Inline ingredient chips are derived from `step.ingredientRefs`; when an ingredient is referenced multiple times in the recipe, the chip shows the quantity intended for that step (split equally across step references unless otherwise specified)
+- Skin: "D · Luz y foto" (see [Design System](./design-system.md)) — paper background, a large solid-terracotta step number ("03") above a small "Paso 3 / 6" label, ink timer pills, no green
+- Each step's `temperature` (e.g. "180 °C") and `technique` (e.g. "sofreír") render as compact pills above the text, next to the timer
+- Inline ingredient chips are derived from `step.ingredientRefs` and look like the recipe detail's chips: name, then the quantity ("cebolla · 200 g"). When an ingredient is referenced multiple times in the recipe, the chip shows the quantity intended for that step (split equally across step references unless otherwise specified). A checked chip is struck through with an ink check
+- The diners control is the same pill stepper as the recipe detail ("− 4 raciones +")
 - The next-step preview is hinted (faded next instruction below the active one) so the user can read ahead while finishing the current task
+- On desktop (`lg+`) the step splits into two columns (max 1180 px): step number, pills and text on the left; a card with the step's ingredients and "A continuación" on the right. The ingredients checklist opens as a centred dialog there (bottom sheet on mobile)
 
 ## Timers
 

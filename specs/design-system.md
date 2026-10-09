@@ -102,6 +102,7 @@ The `.standalone-pt` utility applies `padding-top: var(--safe-top)` so content d
 - `/menu` — "D · Luz y foto": compact header (eyebrow + Fraunces 650 h1 with terracotta-deep italic day), day strip (ink pill), full-bleed photo hero with overlapping paper caption card + ink "Empezar a cocinar" pill, horizontal meal rows, every action behind "···" sheets (`MenuSheet`: bottom sheet on mobile, centred dialog at lg+, portalled, Esc closes, fades only under reduced motion); desktop hero row + "La semana" photo columns. Photo-less: the hero becomes a compact card (meal icon on a bone square, name once); thumbnails and tiles use `RecipeCover` (bone block + small meal icon, no name). See [Menus](./menus.md)
 - **Mimo companion** (D-023, 2026-10-09; see [Advisor](./advisor.md)) — `MimoButton`: 56 px terracotta circle, cream ring, the brand spoon (`MimoiaSymbol`: Mimo's face), terracotta-deep on hover, a pulsing forest dot while the wake word listens; sits above the tab bar (mobile), the recipe action bar (< `lg`) or the cook-mode controls (`z-110`). `MimoPanel`: cream bottom sheet (88dvh, `rounded-t-[28px]`, ink/30 backdrop) below `lg`, a 400 px right column with a left hairline at `lg+` (the page moves aside via `--mimo-panel-width`); `MimoAvatar` + Fraunces «Mimo» title, 11 px uppercase status line, ink user bubbles / bone assistant bubbles, terracotta level bars while listening, forest «Manos libres» pill when on
 - `/compra` + `/compra/tiendas` — "Pide a tus *tiendas*." editorial header, one cream card per shop order with a status chip (ink = enviado, terracotta = ha contestado, forest = confirmado), ink pill CTAs, verdict labels OK (forest) / Revisar (terracotta) / No hay (muted); `/shopping` gets an outlined "Pedir a mis tiendas" card
+- "D · Luz y foto" (2026-10-10, PRO-45) — `/recipes/[id]/cook` (cook mode, `components/cooking/`): same full-screen shell and large steps, new skin: `bg-paper` with `border-border-soft` hairlines, 44 px outline pills (Salir, checklist), terracotta progress bar on a bone track, `ServingsScaler variant="pill"` ("N raciones"), big solid-terracotta Fraunces step number ("03") + 11 px uppercase "Paso N / M", step text in `.font-serif-text`, meta pills (technique on `cream-deep`, temperature in `terracotta-deep` on `warn-bg`), ingredient chips like the detail (paper pill, name + JetBrains "· 200 g"; checked = `cream-deep` + strike-through + ink check), timers as 44 px ink pills (expired: `terracotta-deep`), ink "Siguiente" / outline "Anterior" 50 px pills. The ingredients checklist is a paper bottom sheet (centred dialog at `lg+`, ink checkboxes, dashed rows). At `lg+` the step is a two-column grid (text left, a paper `rounded-[22px]` card with the step's ingredients and "A continuación" right), max 1180 px. No green anywhere (guarded by `apps/api/src/tests/redesignDModoCocina.test.ts`)
 
 ## Pages still in App Mode (legacy, green palette)
 
@@ -178,7 +179,7 @@ ONA supports a desktop layout at `md+` (≥768 px) and bespoke multi-column page
 
 ### Exceptions (no responsive treatment)
 
-- `/onboarding`, `/auth/*`, `/offline`, `/recipes/[id]/cook` — single-column at all breakpoints.
+- `/onboarding`, `/auth/*`, `/offline` — single-column at all breakpoints. `/recipes/[id]/cook` keeps its own full-screen shell (no sidebar) but splits the step into two columns at `lg+` (max 1180 px).
 - Error boundaries `app/error.tsx` ("Algo se ha torcido", inside the app chrome) and `app/global-error.tsx` (replaces the root layout, own `<html>`) — centred single column, editorial tokens (cream, ink, terracotta "Vaya", Fraunces heading), same look as `/offline`. See [errors.md](./errors.md).
 - Public site (`/recipes-ona`) uses its own `PublicNavbar` and is unaffected.
 
@@ -195,6 +196,8 @@ The migration (June 2026) shipped the chasis (sidebar at `md+`, container caps) 
 - [apps/web/src/app/recipes/page.tsx](../apps/web/src/app/recipes/page.tsx) — editorial in-app
 - [apps/web/src/app/recipes/[id]/page.tsx](../apps/web/src/app/recipes/[id]/page.tsx)
 - [apps/web/src/app/menu/page.tsx](../apps/web/src/app/menu/page.tsx) — editorial "D · Luz y foto"
+- [apps/web/src/components/cooking/](../apps/web/src/components/cooking/) — cook mode in "D · Luz y foto"
+- [apps/api/src/tests/helpers/legacyPalette.ts](../apps/api/src/tests/helpers/legacyPalette.ts) — guard against the old green palette on pages moved to "D"
 - [apps/web/src/components/shared/Navbar.tsx](../apps/web/src/components/shared/Navbar.tsx) — labelled tab bar
 - [apps/web/src/components/shared/PublicNavbar.tsx](../apps/web/src/components/shared/PublicNavbar.tsx)
 - [apps/web/src/components/shared/Footer.tsx](../apps/web/src/components/shared/Footer.tsx)

@@ -42,10 +42,10 @@ export function StepTimer({
       <button
         type="button"
         onClick={onStart}
-        className="inline-flex items-center gap-2 rounded-full bg-[#1A1612] px-4 py-2 text-[13px] font-medium text-[#FAF6EE] transition-transform active:scale-95"
+        className="inline-flex h-11 items-center gap-2 rounded-full bg-ink px-4 text-[14px] font-semibold text-paper transition-transform active:scale-95"
         aria-label={`Iniciar temporizador de ${durationMin} minutos`}
       >
-        <Timer size={14} />
+        <Timer size={15} />
         <span className="font-mono tabular-nums">{initialLabel}</span>
         <span>Iniciar</span>
       </button>
@@ -58,47 +58,47 @@ export function StepTimer({
       <button
         type="button"
         onClick={onReset}
-        className="inline-flex items-center gap-2 rounded-full bg-[#C65D38] px-4 py-2 text-[13px] font-medium text-[#FAF6EE] transition-transform active:scale-95"
+        className="inline-flex h-11 items-center gap-2 rounded-full bg-terracotta-deep px-4 text-[14px] font-semibold text-paper transition-transform active:scale-95"
         aria-label="Reiniciar temporizador"
       >
-        <RotateCcw size={14} />
+        <RotateCcw size={15} />
         <span>Reiniciar</span>
       </button>
     )
   }
 
   return (
-    <div className="inline-flex items-center gap-1.5 rounded-full bg-[#1A1612] py-1 pl-3 pr-1 text-[#FAF6EE]">
-      <Timer size={13} className="text-[#95D5B2]" />
-      <span className="font-mono tabular-nums text-[13px]">
+    <div className="inline-flex h-11 items-center gap-0.5 rounded-full bg-ink pl-3.5 text-paper">
+      <Timer size={15} className="text-paper/70" aria-hidden />
+      <span className="ml-1.5 mr-0.5 font-mono text-[14px] font-semibold tabular-nums">
         {formatMmSs(state.remainingSec)}
       </span>
       {state.running ? (
         <button
           type="button"
           onClick={onPause}
-          className="ml-1 flex h-7 w-7 items-center justify-center rounded-full bg-[#FAF6EE]/15 transition-transform active:scale-90"
+          className="flex h-11 w-11 items-center justify-center rounded-full transition-colors hover:bg-paper/15 active:scale-90"
           aria-label="Pausar temporizador"
         >
-          <Pause size={13} />
+          <Pause size={15} />
         </button>
       ) : (
         <button
           type="button"
           onClick={onResume}
-          className="ml-1 flex h-7 w-7 items-center justify-center rounded-full bg-[#52B788] text-[#1A1612] transition-transform active:scale-90"
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-paper text-ink ring-4 ring-ink transition-transform active:scale-90"
           aria-label="Reanudar temporizador"
         >
-          <Play size={13} />
+          <Play size={15} fill="currentColor" strokeWidth={0} />
         </button>
       )}
       <button
         type="button"
         onClick={onReset}
-        className="flex h-7 w-7 items-center justify-center rounded-full bg-[#FAF6EE]/15 transition-transform active:scale-90"
+        className="flex h-11 w-11 items-center justify-center rounded-full transition-colors hover:bg-paper/15 active:scale-90"
         aria-label="Reiniciar temporizador"
       >
-        <RotateCcw size={12} />
+        <RotateCcw size={14} />
       </button>
     </div>
   )

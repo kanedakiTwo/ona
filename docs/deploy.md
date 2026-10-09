@@ -110,7 +110,7 @@ Both are configured in the Railway dashboard, not committed.
 | `JWT_SECRET` | Production secret, **≥ 32 chars** or the API refuses to boot (`openssl rand -base64 48`). Rotating it logs every user out once. |
 | `ANTHROPIC_API_KEY` | For photo + URL recipe extraction |
 | `OPENAI_API_KEY` | For transcription: WhatsApp voice notes and Mimo's voice in the app (`POST /stt`). Without it `/stt` answers 503 and Mimo is text-only |
-| `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICES` / `ELEVENLABS_MODEL` | Optional: Mimo's replies read aloud (`POST /tts`). `ELEVENLABS_VOICES` = `Nombre:voiceId,Nombre:voiceId` (first = default); `ELEVENLABS_MODEL` defaults to `eleven_multilingual_v2`. Library voices need a paid ElevenLabs plan. Unset = the browser's voice. Set only in staging as of 2026-10-09. See `specs/voice-mode.md` |
+| `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICES` / `ELEVENLABS_MODEL` | Optional: Mimo's replies read aloud (`POST /tts`). `ELEVENLABS_VOICES` = `Nombre:voiceId,Nombre:voiceId` (first = default); `ELEVENLABS_MODEL` defaults to `eleven_multilingual_v2`. Library voices need a paid ElevenLabs plan. Unset = the browser's voice. Production and staging since 2026-10-09: one voice, Miguel's clone (`Miguel:qvz8MPUNfIEXPflIyvbY`, ElevenLabs Starter on mmartinlacoma@gmail.com). See `specs/voice-mode.md` |
 | `USDA_FDC_API_KEY` | For ingredient auto-create |
 | `METRICS_READ_TOKEN` | Read-only token for `GET /admin/metrics`, `GET /admin/errors` and `GET /admin/waitlist` (header `x-metrics-token`) used by the ONA HQ agents; unset = token access off. See `specs/metrics.md`, `specs/errors.md`, `specs/waitlist.md` |
 | `COST_PRICE_OVERRIDES` | Optional JSON over the cost-ledger price table, e.g. `{"openai/gpt-realtime":{"perMinute":0.15}}` |

@@ -270,6 +270,26 @@ export default function AdvisorChat({ userId }: AdvisorChatProps) {
 
       {/* Input area */}
       <div className="border-t border-[#DDD6C5] bg-[#FFFEFA] px-4 py-3">
+        {/* Voice picker — only when the API offers several ElevenLabs voices */}
+        {voice.voices.length > 1 && (
+          <label className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-[0.12em] text-[#7A7066]">
+            Voz de Mimo
+            <select
+              value={voice.selectedVoice ?? ''}
+              onChange={(e) => {
+                voice.setVoice(e.target.value)
+                voice.speak('Hola, soy Mimo. Así sueno con esta voz. ¿Qué cocinamos hoy?', e.target.value)
+              }}
+              className="rounded-full border border-[#DDD6C5] bg-[#F2EDE0] px-3 py-1 text-[12px] normal-case tracking-normal text-[#1A1612] focus:border-[#1A1612] focus:outline-none"
+              aria-label="Voz de Mimo"
+              data-testid="tts-voice-select"
+            >
+              {voice.voices.map((v) => (
+                <option key={v.key} value={v.key}>{v.name}</option>
+              ))}
+            </select>
+          </label>
+        )}
         <div className="flex items-center gap-2">
           {/* Auto-speak toggle */}
           {voice.ttsSupported && (

@@ -154,6 +154,19 @@ export const api = {
     return apiFetch<T>(path, { method: "DELETE", body })
   },
 
+  /** POST JSON, get audio back (chat read-aloud). null on 204 (nothing to say). */
+  async audio(path: string, body: unknown): Promise<Blob | null> {
+    const headers: Record<string, string> = { "Content-Type": "application/json" }
+    if (typeof window !== "undefined") {
+      const token = localStorage.getItem("ona_token")
+      if (token) headers["Authorization"] = `Bearer ${token}`
+    }
+    const response = await fetch(`${BASE_URL}${path}`, { method: "POST", headers, body: JSON.stringify(body) })
+    if (response.status === 204) return null
+    if (!response.ok) throw new Error(`Audio request failed: ${response.status}`)
+    return response.blob()
+  },
+
   async upload<T = unknown>(path: string, formData: FormData): Promise<T> {
     const headers: Record<string, string> = {}
 

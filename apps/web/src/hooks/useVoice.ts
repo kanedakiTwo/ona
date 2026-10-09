@@ -1,6 +1,28 @@
 'use client'
 
 import { useState, useRef, useCallback, useEffect } from 'react'
+import { api } from '@/lib/api'
+
+/** Voices the API can read with (ElevenLabs); empty = browser voice only. */
+export interface ServerVoice {
+  key: string
+  name: string
+}
+interface ServerVoices {
+  enabled: boolean
+  voices: ServerVoice[]
+  defaultVoice: string | null
+}
+
+const VOICE_STORAGE_KEY = 'mimo-tts-voice'
+
+function readStoredVoice(): string | null {
+  try {
+    return localStorage.getItem(VOICE_STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
 
 interface UseVoiceOptions {
   lang?: string
@@ -17,14 +39,22 @@ interface UseVoiceReturn {
   sttSupported: boolean
   // TTS
   isSpeaking: boolean
-  speak: (text: string) => void
+  /** `voiceKey` overrides the selected voice (to preview one right after picking it). */
+  speak: (text: string, voiceKey?: string) => void
   stopSpeaking: () => void
   ttsSupported: boolean
+  /** 'elevenlabs' when the API reads replies aloud; 'browser' = the built-in voice. */
+  ttsEngine: 'elevenlabs' | 'browser'
+  voices: ServerVoice[]
+  selectedVoice: string | null
+  setVoice: (key: string) => void
 }
 
 /**
  * Hook for voice input (speech-to-text) and voice output (text-to-speech).
- * Uses native Web Speech API — no external dependencies.
+ * Input uses the Web Speech API. Output uses the API's ElevenLabs voice
+ * (`POST /tts`) when it is configured, else — or if it fails — the browser's
+ * built-in voice, which sounds robotic (specs/advisor.md → Voice).
  */
 export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
   const { lang = 'es-ES', onTranscript } = options
@@ -35,6 +65,39 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
 
   const recognitionRef = useRef<any>(null)
   const synthRef = useRef<SpeechSynthesis | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const speakSeq = useRef(0)
+  const [server, setServer] = useState<ServerVoices>({ enabled: false, voices: [], defaultVoice: null })
+  const [selectedVoice, setSelectedVoice] = useState<string | null>(null)
+
+  // Server voices (ElevenLabs), once per mount. Any error → browser voice.
+  useEffect(() => {
+    let alive = true
+    let token: string | null = null
+    try {
+      token = localStorage.getItem('ona_token')
+    } catch {}
+    if (!token) return
+    api
+      .get<ServerVoices>('/tts/voices')
+      .then((v) => {
+        if (!alive || !v?.enabled || !v.voices?.length) return
+        setServer(v)
+        const stored = readStoredVoice()
+        setSelectedVoice(v.voices.some((x) => x.key === stored) ? stored : v.defaultVoice ?? v.voices[0].key)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  const setVoice = useCallback((key: string) => {
+    setSelectedVoice(key)
+    try {
+      localStorage.setItem(VOICE_STORAGE_KEY, key)
+    } catch {}
+  }, [])
 
   // Check browser support
   const sttSupported = typeof window !== 'undefined' && (
@@ -109,7 +172,7 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
 
   // ── Text-to-Speech ─────────────────────────
 
-  const speak = useCallback((text: string) => {
+  const speakWithBrowser = useCallback((text: string) => {
     if (!ttsSupported || !synthRef.current) return
 
     // Cancel any ongoing speech
@@ -134,18 +197,61 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
     synthRef.current.speak(utterance)
   }, [ttsSupported, lang])
 
-  const stopSpeaking = useCallback(() => {
-    if (synthRef.current) {
-      synthRef.current.cancel()
-      setIsSpeaking(false)
+  const stopAudio = useCallback(() => {
+    const a = audioRef.current
+    if (a) {
+      a.pause()
+      if (a.src.startsWith('blob:')) URL.revokeObjectURL(a.src)
+      audioRef.current = null
     }
   }, [])
+
+  const speak = useCallback(
+    (text: string, voiceKey?: string) => {
+      if (!server.enabled) return speakWithBrowser(text)
+      const seq = ++speakSeq.current
+      stopAudio()
+      synthRef.current?.cancel()
+      setIsSpeaking(true)
+      api
+        .audio('/tts', { text, voice: voiceKey ?? selectedVoice ?? undefined })
+        .then((blob) => {
+          if (seq !== speakSeq.current) return // a newer reply took over
+          if (!blob) {
+            setIsSpeaking(false)
+            return
+          }
+          const audio = new Audio(URL.createObjectURL(blob))
+          audioRef.current = audio
+          audio.onended = () => {
+            if (audioRef.current === audio) stopAudio()
+            setIsSpeaking(false)
+          }
+          audio.onerror = () => setIsSpeaking(false)
+          return audio.play()
+        })
+        .catch(() => {
+          if (seq !== speakSeq.current) return
+          setIsSpeaking(false)
+          speakWithBrowser(text)
+        })
+    },
+    [server.enabled, selectedVoice, speakWithBrowser, stopAudio],
+  )
+
+  const stopSpeaking = useCallback(() => {
+    speakSeq.current++
+    stopAudio()
+    if (synthRef.current) synthRef.current.cancel()
+    setIsSpeaking(false)
+  }, [stopAudio])
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (recognitionRef.current) recognitionRef.current.abort()
       if (synthRef.current) synthRef.current.cancel()
+      if (audioRef.current) audioRef.current.pause()
     }
   }, [])
 
@@ -158,6 +264,10 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
     isSpeaking,
     speak,
     stopSpeaking,
-    ttsSupported,
+    ttsEngine: server.enabled ? 'elevenlabs' : 'browser',
+    voices: server.voices,
+    selectedVoice,
+    setVoice,
+    ttsSupported: ttsSupported || server.enabled,
   }
 }

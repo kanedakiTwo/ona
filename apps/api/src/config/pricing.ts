@@ -18,7 +18,7 @@
  */
 import { env } from './env.js'
 
-export type CostProvider = 'anthropic' | 'openai' | 'meta_whatsapp' | 'aikit'
+export type CostProvider = 'anthropic' | 'openai' | 'meta_whatsapp' | 'aikit' | 'elevenlabs'
 
 export interface Price {
   currency: 'USD' | 'EUR'
@@ -33,6 +33,8 @@ export interface Price {
   perMinute?: number
   perMessage?: number
   perImage?: number
+  /** Per 1,000 characters synthesised (ElevenLabs TTS). */
+  perKChars?: number
 }
 
 /** What one paid call consumed. Every field optional; absent = 0. */
@@ -45,6 +47,8 @@ export interface CostUnits {
   minutes?: number
   messages?: number
   images?: number
+  /** Characters sent to a TTS provider. */
+  chars?: number
 }
 
 export type PriceTable = Record<string, Price>
@@ -94,6 +98,16 @@ export const PRICES: PriceTable = {
   'aikit/imagen-fal': { currency: 'USD', perImage: 0.04 }, // UNVERIFIED (fal Imagen list price; AiKit's own markup unknown)
   // gpt-image-1, quality medium, 1536×1024: ~1,570 output image tokens at $40/MTok (measured 2026-10-08).
   'openai/gpt-image-1': { currency: 'USD', perImage: 0.063 },
+
+  // ── ElevenLabs TTS (chat read-aloud) ──
+  // Starter: 6 $ for 30,000 credits ≈ 0,20 $ per 1,000 characters with the
+  // full-quality models (1 credit/char); Flash/Turbo spend 0,5 credits/char. UNVERIFIED (plan list price, 2026-10).
+  'elevenlabs/eleven_multilingual_v2': { currency: 'USD', perKChars: 0.2 },
+  'elevenlabs/eleven_v3': { currency: 'USD', perKChars: 0.2 },
+  'elevenlabs/eleven_v4': { currency: 'USD', perKChars: 0.2 },
+  'elevenlabs/eleven_v4_turbo': { currency: 'USD', perKChars: 0.1 },
+  'elevenlabs/eleven_flash_v2_5': { currency: 'USD', perKChars: 0.1 },
+  'elevenlabs/eleven_turbo_v2_5': { currency: 'USD', perKChars: 0.1 },
 }
 
 /** Strip dated snapshot suffixes: `-20251001`, `-2025-08-28`. */
@@ -110,6 +124,7 @@ const NUMERIC_FIELDS: Array<keyof Price> = [
   'perMinute',
   'perMessage',
   'perImage',
+  'perKChars',
 ]
 
 /**
@@ -172,7 +187,8 @@ export function computeCostMicros(
       1_000_000 +
     n(units.minutes) * n(price.perMinute) +
     n(units.messages) * n(price.perMessage) +
-    n(units.images) * n(price.perImage)
+    n(units.images) * n(price.perImage) +
+    (n(units.chars) / 1000) * n(price.perKChars)
   const eur = price.currency === 'USD' ? native * opts.eurPerUsd : native
   return Math.round(eur * 1_000_000)
 }

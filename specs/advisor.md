@@ -6,7 +6,7 @@ AI assistant for nutrition guidance, menu queries, and recipe management via nat
 
 - Users can chat with an AI assistant via `/advisor`
 - Users can type messages or speak (voice input via Web Speech API, Spanish)
-- The assistant speaks responses aloud (TTS) when auto-speak is enabled
+- The assistant speaks responses aloud (TTS) when auto-speak is enabled — with an ElevenLabs voice when the API has one configured (a "Voz de Mimo" picker appears above the input when there are several; picking one plays a short preview and is remembered on the device), otherwise with the browser's built-in voice
 - Users can tap the speaker icon on any assistant message to replay it
 - Users see suggested example prompts when the chat is empty:
   - "Que toca cocinar hoy?"
@@ -100,10 +100,10 @@ The model responds with either a plain text message or tool calls. `runToolLoop`
 
 ## Voice (`useVoice` hook)
 
-- Uses native `SpeechRecognition` and `speechSynthesis` (no external API)
+- Uses native `SpeechRecognition` for input; output via the API voice (ElevenLabs) when configured, else `speechSynthesis`
 - Language defaults to `es-ES`
 - STT: continuous=false, interimResults=true; final transcript auto-sends
-- TTS: prefers a Spanish voice from `getVoices()`; rate 1.0, pitch 1.0
+- TTS: when `GET /tts/voices` says `enabled`, replies are read by `POST /tts { text, voice }` (ElevenLabs, `services/tts.ts`): the API strips Markdown/links/emoji, cuts at ~1.200 characters on a sentence end, streams MP3 and records the characters in the cost ledger (`elevenlabs/<model>`, per 1.000 chars). Off unless `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICES` (`Nombre:voiceId,…`, first = default; `ELEVENLABS_MODEL`, default `eleven_multilingual_v2`) are set — only in staging as of 2026-10-09. Library voices need a paid ElevenLabs plan (free → 402). Any failure falls back to the browser voice: prefers a Spanish voice from `getVoices()`; rate 1.0, pitch 1.0 (sounds robotic). Not the realtime "Modo voz" (OpenAI Realtime, `OPENAI_REALTIME_VOICE`)
 - Both can be unavailable in some browsers (the UI hides voice controls if `sttSupported`/`ttsSupported` is false)
 
 ## API
@@ -153,7 +153,7 @@ At `lg+` the `/advisor` page widens its outer container to `max-w-[900px]` so th
 - The history is sent with each request (last 20 messages from the client)
 - All assistant responses are in Spanish by design
 - **AI disclosure (EU AI Act art. 50, in force since 2026-08-02):** the chat shows "Soy Mimo, tu asistente de IA. Escribe o habla." in the empty state and a permanent caption under the input ("Mimo es un asistente de inteligencia artificial (IA): puede equivocarse y no sustituye a un profesional sanitario."). The wording lives in `AI_DISCLOSURE*` in `packages/shared/src/constants/aiDisclosure.ts`, shared with voice mode and WhatsApp; pinned by `apps/web/e2e/ai-disclosure.spec.ts`.
-- Voice is browser-side only; if the browser lacks Web Speech API, only text mode works
+- Voice input is browser-side only; if the browser lacks the Web Speech API, only text mode works (read-aloud still works through the API voice when it is on)
 - The model used (Claude family) is configured via the LLM provider in `services/providers/`
 - The advisor has read-write access to the user's data via skills (it can generate menus, swap meals, create recipes, etc.) — destructive intents should ideally be confirmed in copy
 
@@ -169,7 +169,7 @@ At `lg+` the `/advisor` page widens its outer container to `max-w-[900px]` so th
 
 - `useAssistant` (new, preferred) — `POST /assistant/:userId/chat` with `{ message, history }`. The component itself uses `api.post` directly with `useState` for messages
 - `useAdvisor` (legacy) — wraps `/advisor/:userId/summary` and `/advisor/:userId/ask`; the chat UI no longer uses `useAskAdvisor` but the summary endpoint is still called by the advisor page
-- `useVoice` — Web Speech API wrapper (STT + TTS), Spanish by default
+- `useVoice` — Web Speech API wrapper (STT + TTS), Spanish by default; reads aloud through `POST /tts` (ElevenLabs) when available. API: [routes/tts.ts](../apps/api/src/routes/tts.ts), [services/tts.ts](../apps/api/src/services/tts.ts)
 
 ## Debug page
 

@@ -37,6 +37,16 @@ export const env = {
   // accent (vs. 'marin' which leans Latin-American). The system prompt also
   // pushes for Spain Spanish on top — see systemPrompt.ts when mode='voice'.
   OPENAI_REALTIME_VOICE: process.env.OPENAI_REALTIME_VOICE || 'coral',
+  /**
+   * Read-aloud voice for the chat (the speaker button), instead of the
+   * browser's built-in robotic one. Off unless the key and at least one voice
+   * are set: then the web falls back to the browser voice. ELEVENLABS_VOICES
+   * is "Name:voiceId,Name:voiceId" (first = default). Library voices need a
+   * paid ElevenLabs plan. See services/tts.ts.
+   */
+  ELEVENLABS_API_KEY: process.env.ELEVENLABS_API_KEY || '',
+  ELEVENLABS_VOICES: process.env.ELEVENLABS_VOICES || '',
+  ELEVENLABS_MODEL: process.env.ELEVENLABS_MODEL || 'eleven_multilingual_v2',
   REALTIME_DAILY_MINUTES_PER_USER: parseInt(process.env.REALTIME_DAILY_MINUTES_PER_USER || '30', 10),
   USDA_FDC_API_KEY: process.env.USDA_FDC_API_KEY || '',
   /**

@@ -150,60 +150,65 @@ _Responsive desktop — shipped 2026-06-04 across 5 PRs. `<DesktopSidebar />` at
 This is the **single source of truth** for work that's pending on Miguel's side (out of Claude's reach: device tests, asset replacement, manual ops, third-party setup, etc).
 
 **Convention**:
-- Whenever a task finishes but leaves something for Miguel to do, Claude appends it here with a short rationale + concrete acceptance criteria
-- When Miguel reports "I did X" (or equivalent), Claude removes the matching item from this list
-- Keep entries terse: one bullet per item; if it grows, link out to a longer doc
-- Items are roughly ordered by priority (top = next)
+- Every item has an id `MIG-NN` (next free number, never reused) and this shape, so the ONA HQ panel can show it as a plain task with a checkbox:
+  `- [ ] **MIG-NN · Título corto** — Por qué importa, en una frase.` then sub-bullets with the steps (`Cómo:` first). Write it in plain Spanish, for Miguel, with no jargon he doesn't use.
+- Whenever a task finishes but leaves something for Miguel to do, Claude adds it here in that shape.
+- Miguel ticks tasks off in the panel (they are stored in the panel's database, collection `hechas`), or tells Claude. `/ona-dia` (or Claude when told) removes ticked items from this list.
+- Items are ordered by priority (top = next).
 
 **Scope**: Only items that genuinely require Miguel — external account setup, physical device testing, branded artwork, etc. Code work that Claude can do (refactors, bug fixes, page migrations) does NOT belong here; those go in regular tasks.
 
 ### Pending
 
-- [ ] **Beta cerrada (PRO-27) — el día D**: producción va con `REGISTRATION_MODE=invite` (por defecto): solo entra quien trae un enlace de campaña (`/admin` → Invitaciones), un email invitado de la lista de espera, una invitación de hogar o un email de `ADMIN_EMAILS`. El 12-ene, pon `REGISTRATION_MODE=open` en `ona-api` de producción para abrir el registro. Staging ya va en `open`.
+- [ ] **MIG-01 · Elegir los hogares de la beta** — La beta abre el 21 de octubre y empieza por 10–15 hogares que conoces.
+  - Cómo: haz tu lista (no hace falta pasárnosla: son datos personales). Marketing y Customer Success te preparan el mensaje el 12 y el 14; se lo mandas tú por WhatsApp con un enlace de invitación `mimoia.com/i/<código>` (se crea en `/admin` → Invitaciones; o pídeselo a Claude).
+  - Lo único que necesitamos: cuántos hogares son y cuántos querrán usar Mimo por WhatsApp. Con el número de prueba de Meta caben 5 teléfonos; a cada uno hay que darlo de alta (su email en `WHATSAPP_ALLOWED_EMAILS` y su teléfono en Meta → Paso 1 «Para»).
 
-- [ ] **Marca Mimoia — registrarla bien · APLAZADA hasta validar la beta (decisión de Miguel 2026-10-09: ningún gasto de más de 200 € antes de la decisión del 2026-11-16, D-020)**. Coste: OEPM (España) 127,88 € la 1.ª clase + 82,84 € cada clase más (clases 9 y 42 = 210,72 €), sin agente; EUIPO (UE) 850 € la 1.ª clase + 50 € la 2.ª, más 300–600 € de agente de la propiedad industrial si se encarga [E]. No lo pongas en las tareas de la semana hasta entonces. Detalle (decidido seguir con Mimoia el 2026-10-08; detalle en [reports/A tu gusto y Apapacho como marca.md](./reports/A%20tu%20gusto%20y%20Apapacho%20como%20marca.md) y `research_notes/A tu gusto y Apapacho como marca/marcas_mimoia.md`): nadie tiene MIMOIA, pero "MIMO" pesa y Starship Technologies la tiene para apps de pedido/entrega de comida (EUTM 016775306, EE. UU., México), además de Mimo GmbH y Xiaomi. Encargar a un agente de la propiedad industrial (1) una investigación de uso de MIMO por Starship en UE/EE. UU./México y (2) la solicitud de MIMOIA en EUIPO acotada a clases 9 y 42 (software de menús, recetas y asistente de cocina), sin 39/43. Hecho = solicitud presentada con número.
+- [ ] **MIG-02 · Pasar el contacto del/de la dietista** — Queremos que un profesional colegiado revise recetas y mensajes antes de abrir (D-005).
+  - Cómo: dile a Claude su nombre y cómo contactar. El primer mensaje lo prepara Marketing.
 
-- [ ] **Auditoría 2026-10-07 — lo que queda de tu lado** (todo lo de código está hecho y en prod):
-  - **Backups**: activar los backups de Postgres en Railway y hacer una restauración de prueba; copia periódica del volumen `ona-api-volume` (fotos de usuarios). Hoy no hay ninguna red si se pierde la base de datos.
-  - **Errores en producción**: ya no hace falta Sentry: hay registro de errores propio (`specs/errors.md`), decisión de Miguel 2026-10-07.
-  - **Privacidad**: revisión legal de `/privacidad` cuando exista la forma jurídica (responsable con identidad real, datos de salud con consentimiento explícito, transferencias a EE. UU.). Ver [specs/privacy.md](./specs/privacy.md).
-  - **WhatsApp**: en WhatsApp Manager, crear plantillas *Utility* por tipo de aviso (p. ej. `ona_menu_de_hoy`, `ona_aviso_preparacion`, `ona_lista_compra`, `ona_plan_semana`; cuerpo con un único `{{1}}`) y pasarme los nombres aprobados → `WHATSAPP_TEMPLATES`.
-  - *(Opcional)* secreto `USDA_FDC_API_KEY` en GitHub Actions para que corra el smoke de USDA en CI.
+- [ ] **MIG-03 · Activar las copias de seguridad de la base de datos** — Hoy, si se pierde la base de datos de producción, se pierde todo: menús, recetas y hogares.
+  - Cómo: en Railway → proyecto `ona-app` → servicio Postgres (producción) → Backups, actívalos y haz una restauración de prueba en staging.
+  - Además: una copia periódica del volumen `ona-api-volume`, donde están las fotos que suben los usuarios.
 
-- [ ] **Compra en mis tiendas — primer pedido real** (v1 en prod 2026-10-07, [specs/shop-orders.md](./specs/shop-orders.md)): tus tiendas The Fruits of the World (WhatsApp +34 913 52 51 11), Ben-Car Boadilla (WhatsApp pedidos 638 015 827), Pescaderías Los Alonso (WhatsApp 616 943 425; Pescados Aparicio no tenía número fiable) y El Corte Inglés (web) ya están dadas de alta en tu hogar.
-  - *(Opcional)* Los Alonso reparte gratis en Pozuelo/Boadilla (mismo día si pides antes de las 13:00): para usarlo, en `/compra/tiendas` cambia la entrega a "A domicilio" con tu dirección (hoy está en "recojo en tienda").
-  - Avisar en persona a la frutería y a la carnicería (Miguel se encarga) de que les pedirás por WhatsApp con una lista y que te digan precio por kilo y total antes de prepararlo.
-  - Haz un pedido de verdad: "hazme la compra" por WhatsApp → envía cada enlace → reenvía a Ona lo que contesten → aprueba → cierra al recoger. Hecho = un pedido cerrado por tienda y las respuestas reales guardadas (sirven para calibrar el lector).
-  - v1.1 (2026-10-08, "cómo se compra"): validar los valores por defecto (tomate de ensalada, pimiento verde italiano, naranja de zumo, carne picada mixta, dorada; se cambian en cada línea y Ona recuerda lo elegido). Al avisar a las tiendas, preguntar: mínimo que ponen de jamón y de picada (Ben-Car), pedido mínimo a domicilio y franja de reparto (apuntarlo en `/compra/tiendas`), y si les vale una línea sin cantidad ("Galletas Daniela").
+- [ ] **MIG-04 · Hacer un pedido real a tus tiendas** — Es la única forma de comprobar «Compra en mis tiendas» con respuestas de verdad, y sirven para afinar cómo Mimo las lee.
+  - Cómo: avisa en persona a la frutería y a la carnicería de que les pedirás por WhatsApp con una lista y que te digan precio por kilo y total. Luego, por WhatsApp a Mimo: «hazme la compra» → envía cada enlace → reenvíale lo que contesten → aprueba → cierra al recoger.
+  - Hecho cuando: un pedido cerrado por tienda. Tus tiendas ya están dadas de alta: The Fruits of the World, Ben-Car Boadilla, Pescaderías Los Alonso y El Corte Inglés (web).
+  - Al avisarlas, pregunta: mínimo de jamón y de picada (Ben-Car), pedido mínimo y franja de reparto a domicilio, y si les vale una línea sin cantidad («Galletas Daniela»). Revisa también los valores por defecto (tomate de ensalada, pimiento verde italiano, naranja de zumo, carne picada mixta, dorada).
+  - Opcional: Los Alonso reparte gratis en Pozuelo/Boadilla si pides antes de las 13:00; para usarlo, cambia la entrega a «A domicilio» en `/compra/tiendas`.
 
-- [ ] **ONA HQ (la empresa con agentes) — arranque**: vive en [`kanedakiTwo/ona-hq`](https://github.com/kanedakiTwo/ona-hq) (local: `~/ona-hq`). Cada mañana `/ona-dia` (≤ 15 min), los lunes `/ona-semana` (≤ 30 min), y notas para los agentes con `/ona-inbox`. Pendiente de Miguel esta semana:
-  - Pasar el contacto del/de la dietista-nutricionista (D-005). El mensaje de primer contacto lo prepara Marketing.
-  - Elegir 10–15 hogares conocidos para la beta (abre el 2026-10-21, D-020). La lista es tuya y no hace falta pasárnosla (son datos personales; los agentes no deben tenerlos). Les mandas tú, por tu WhatsApp, el mensaje que preparan Marketing y CS (12 y 14 oct) con un enlace de invitación `mimoia.com/i/<código>` (se crea en `/admin` → Invitaciones, p. ej. «beta-conocidos», 15 usos). Lo único que necesitamos saber: **cuántos hogares** y **cuántos querrán usar Mimo por WhatsApp**: con el número de prueba de Meta caben 5 teléfonos como mucho, y cada uno hay que darlo de alta (su email en `WHATSAPP_ALLOWED_EMAILS` y su teléfono en Meta → Paso 1 «Para»).
-  - Añadir un número real de WhatsApp al portfolio actual de Meta, **sin pedir todavía la verificación** (D-004).
-  - Reescribir con su voz las secciones [BORRADOR] de `constitution.md` (misión y POV, unos 15 min).
+- [ ] **MIG-05 · Poner al día las plantillas de WhatsApp** — Sin plantillas aprobadas, Mimo no puede escribirte primero cuando llevas más de 24 h sin hablarle, y las que hay aún dicen «ONA».
+  - Cómo: en WhatsApp Manager → Plantillas, vuelve a enviar a aprobación las que dicen «ONA» (p. ej. `ona_aviso`: «Aviso de Mimoia: {{1}}…»; los nombres no cambian).
+  - Crea plantillas de tipo *Utilidad*, en español, una por aviso: `ona_menu_de_hoy`, `ona_aviso_preparacion`, `ona_lista_compra`, `ona_plan_semana` (cuerpo con un único `{{1}}`). Cuando estén aprobadas, pásale los nombres a Claude.
 
-- [ ] **WhatsApp — plantillas con el nombre viejo**: la asistente ahora es «Mimo» y la marca «Mimoia» (D-017). En WhatsApp Manager, re-enviar a aprobación las plantillas cuyo cuerpo dice "ONA" (p. ej. `ona_aviso`: "Aviso de ONA: {{1}}…" → "Aviso de Mimoia: {{1}}…"). Los nombres de plantilla no cambian.
+- [ ] **MIG-06 · Añadir un número real de WhatsApp en Meta** — Con el número de prueba solo pueden hablar con Mimo 5 teléfonos y sale como «Test Number».
+  - Cómo: en Meta, añade un número real al portfolio actual, **sin pedir todavía la verificación del negocio** (D-004). Después Claude rehace el webhook y la suscripción para la cuenta nueva.
 
-- [ ] **WhatsApp — optional follow-ups** (channel live in prod since 2026-10-06; linked + "genera menú" verified end-to-end; setup notes in [specs/whatsapp.md](./specs/whatsapp.md) → Configuration):
-  - *(Optional, for proactive messages when you haven't written to Ona in 24 h)* WhatsApp Manager → Plantillas → new **Utility** template, Spanish, e.g. `ona_aviso`, body `Aviso de ONA: {{1}} Respóndeme por aquí si quieres cambiar algo.` → once approved, tell Claude to set `WHATSAPP_TEMPLATE_NAME=ona_aviso`.
-  - Household members: tell Claude their ONA emails (added to `WHATSAPP_ALLOWED_EMAILS`) and add their phones in Meta → Paso 1 "Para" (max 5 on the test number).
-  - Later, to open it to everyone or show "ONA" instead of "Test Number": real phone number + business verification in Meta (Paso 2), then redo the webhook field + WABA subscription for the new account.
+- [ ] **MIG-07 · Escribir con tu voz la misión de Mimoia** — La constitución de ONA HQ guía a todos los agentes y su misión y punto de vista siguen en borrador.
+  - Cómo: en `~/ona-hq/constitution.md`, reescribe las secciones marcadas [BORRADOR] (unos 15 min).
 
-- [ ] **End-to-end check on production** after the next `ona-api` deploy: register a fresh user, create a recipe, hit "Regenerar imagen" — confirms the Railway volume writes survive and `IMAGE_PUBLIC_URL_BASE` (`https://ona-api-production.up.railway.app/images/recipes`) actually serves the JPEG. (Volume `ona-api-volume` mounted at `/data` and the three env vars `AIKIT_API_KEY`, `IMAGE_STORAGE_DIR`, `IMAGE_PUBLIC_URL_BASE` are already set on `ona-api` via Railway CLI.)
+- [ ] **MIG-08 · Activar «Hola Mimo» para hablar sin tocar** — Hoy la palabra de activación sigue siendo «Hola Ona» y no está activa en producción.
+  - Cómo: en console.picovoice.ai, saca una clave de acceso y entrena la palabra «Hola Mimo» (español, Porcupine WASM). Pásale a Claude la clave y el fichero `.ppn`; él los pone en Railway (`NEXT_PUBLIC_PICOVOICE_ACCESS_KEY`) y cambia `WAKE_PHRASE`.
 
-- [ ] **Replace placeholder PWA assets** with real branded artwork — `apps/web/public/icons/*.png` + `apps/web/public/favicon.ico`. Same paths, same sizes; the SW picks up new revisions on next build. Current placeholders are an "ONA" wordmark on cream (generator: `apps/web/scripts/generate-pwa-placeholders.mjs`).
+- [ ] **MIG-09 · Poner el icono de verdad de la app** — Al instalar Mimoia en el móvil sale un icono provisional que pone «ONA».
+  - Cómo: pásale a Claude el icono definitivo (cuadrado, mínimo 512 × 512 px) y él genera todos los tamaños de `apps/web/public/icons/` y el `favicon.ico`.
 
-- [ ] **Voice-mode setup in Railway** (OpenAI key already set ✓):
-  - `NEXT_PUBLIC_PICOVOICE_ACCESS_KEY` — get from console.picovoice.ai
-  - Upload the `Hola Mimo` `.ppn` wake-word model file (train it at console.picovoice.ai, Spanish, Porcupine WASM — the assistant is now "Mimo", D-017; the app still says "Hola Ona" via `WAKE_PHRASE` in `apps/web/src/hooks/useWakeWord.ts` until the new model lands)
-  - *(Optional, cost control)* `REALTIME_DAILY_MINUTES_PER_USER` — caps per-user OpenAI Realtime minutes/day. Defaults to 30 if unset.
+- [ ] **MIG-10 · Probar en tu móvil lo que no se puede probar solo** — Hay cosas que solo se ven en un teléfono de verdad.
+  - Instalar la app en Android (Chrome) y en iPhone (Safari): que se abra a pantalla completa, con el color crema y respetando la barra de estado.
+  - En una receta, «Empezar a cocinar» y bloquear el móvil: la pantalla debe seguir encendida al volver.
+  - Avisos a la hora de comer: en el perfil, actívalos con la hora 1 minuto después y deja la app abierta; al tocar el aviso debe abrir la app.
+  - Vibración al tocar (solo Android), botón de compartir en una receta y en la lista de la compra, y la sensación general al cambiar de pantalla y deslizar entre pestañas.
 
-- [ ] **Device-only manual tests** (the rest is covered by Playwright):
-  - Install: Android Chrome → confirm prompt + home-screen install + standalone launch with cream theme
-  - Install: iOS Safari → follow the bottom-sheet instructions, confirm splash screen + translucent status bar + safe-area-inset respected
-  - Lighthouse PWA category = 100 against the deployed URL (DevTools → Lighthouse)
-  - Wake Lock holds when device is locked via power button (recipe detail → "Empezar a cocinar")
-  - Notification fires at meal time + tap-to-open behavior (profile → opt-in → set time 1 min ahead → leave tab open)
-  - Haptic vibration is perceived (Android only — tap a tab, toggle a favorite, check shopping item)
-  - Native share sheet renders (iOS/Android — recipe detail Share button + shopping export)
-  - Subjective UX feel: page transitions cross-fade (~250ms), swipe-between-tabs gesture (edge resistance, 30% threshold, vertical scroll preserved)
+- [ ] **MIG-11 · Comprobar «Regenerar imagen» en producción** — Confirma que las fotos nuevas se guardan y se ven bien.
+  - Cómo: en mimoia.com, crea una receta y pulsa «Regenerar imagen»; la foto debe aparecer y seguir ahí al recargar.
+
+- [ ] **MIG-12 · Revisión legal de la privacidad** — Cuando exista la SL, un abogado tiene que revisar `/privacidad`: responsable con nombre real, datos de salud con consentimiento explícito, envíos a EE. UU. y el apartado de la lista de espera.
+  - Cuándo: con la forma jurídica decidida (16 de noviembre). Ver `specs/privacy.md`.
+
+- [ ] **MIG-13 · Registrar la marca Mimoia · aplazada** — Nadie tiene MIMOIA, pero hay muchas marcas «MIMO» (Starship, para apps de pedir comida; Mimo GmbH; Xiaomi).
+  - Cuándo: no antes de la decisión del 16 de noviembre (D-024: ningún gasto de más de 200 € hasta validar la beta).
+  - Coste: en España (OEPM) 127,88 € la primera clase y 82,84 € cada clase más (clases 9 y 42: 210,72 €), sin agente. En la UE (EUIPO) 850 € la primera clase y 50 € la segunda, más 300–600 € de agente si se encarga.
+  - Detalle en `reports/A tu gusto y Apapacho como marca.md`.
+
+- [ ] **MIG-14 · Abrir el registro el día D** — Hasta el 12 de enero solo se entra con invitación (beta cerrada).
+  - Cómo: ese día, pon `REGISTRATION_MODE=open` en `ona-api` de producción (o pídeselo a Claude). Opcional antes: la clave `USDA_FDC_API_KEY` en GitHub Actions para que el CI pruebe también la búsqueda de ingredientes.

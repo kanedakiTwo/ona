@@ -3,18 +3,22 @@
 /**
  * /profile/memoria — Memory of the assistant.
  *
- * Read-only stub for PR 2. The assistant + the REST API can already read /
- * write here; this page lets the user *see* what's stored, grouped by
- * category, with a source badge per fact. The full inline-edit UX lands
- * in PR 4 (Memory Editor). Until then a "Borrar" button per row gives a
- * minimum-viable escape hatch, plus the user can edit via the assistant.
+ * Every fact the assistant knows about the user, grouped by category, with
+ * a source badge per fact. Each stored fact has a "···" sheet (Editar ·
+ * Olvidar este dato); editing happens inline in the row with
+ * `MemoryFactEditor`. Empty keys show "Añadir" so a first value can be set
+ * from the UI.
+ *
+ * Skin: "D · Luz y foto" (PRO-40) — paper group cards, rows split by
+ * hairlines, two columns at lg+.
  */
 import { useState } from "react"
-import Link from "next/link"
-import { ChevronLeft, Pencil, Trash2 } from "lucide-react"
+import { Pencil, Plus, Trash2 } from "lucide-react"
 import { useAuth } from "@/lib/auth"
 import { useUserMemory, useUpdateMemory, useDeleteMemoryFact } from "@/hooks/useUserMemory"
 import { MemoryFactEditor } from "@/components/profile/MemoryFactEditor"
+import { MenuSheet, SheetAction } from "@/components/menu/MenuSheet"
+import { Accent, MoreButton, SUB_EYEBROW, SUB_LIST, SubPage } from "@/components/profile/SubPage"
 import type { MemoryKey, MemoryFact } from "@ona/shared"
 
 interface Group {
@@ -85,9 +89,9 @@ const LABELS: Partial<Record<MemoryKey, string>> = {
 }
 
 const SOURCE_BADGES: Record<MemoryFact["source"], { label: string; color: string }> = {
-  onboarding: { label: "Onboarding", color: "bg-[#F2EDE0] text-[#7A7066]" },
-  manual: { label: "Tú", color: "bg-[#2D6A4F] text-[#FAF6EE]" },
-  inferred: { label: "Asistente", color: "bg-[#C65D38]/80 text-[#FAF6EE]" },
+  onboarding: { label: "Onboarding", color: "bg-cream-deep text-ink-muted" },
+  manual: { label: "Tú", color: "bg-ink text-cream" },
+  inferred: { label: "Asistente", color: "bg-warn-bg text-terracotta-deep" },
 }
 
 function formatValue(key: MemoryKey, value: unknown): string {
@@ -109,183 +113,141 @@ export default function MemoryPage() {
   const deleteFact = useDeleteMemoryFact()
   const [busyKey, setBusyKey] = useState<MemoryKey | null>(null)
   const [editingKey, setEditingKey] = useState<MemoryKey | null>(null)
+  const [sheetKey, setSheetKey] = useState<MemoryKey | null>(null)
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-[#FAF6EE] p-6">
-        <p className="text-[#1A1612]">Necesitas iniciar sesión para ver tu memoria.</p>
+      <div className="min-h-screen bg-cream p-6">
+        <p className="text-ink">Necesitas iniciar sesión para ver tu memoria.</p>
       </div>
     )
   }
 
-  return (
-    <div className="min-h-screen bg-[#FAF6EE]">
-      <div className="mx-auto max-w-[430px] px-5 pb-20 pt-8 lg:max-w-[800px] lg:px-8">
-        <Link
-          href="/profile"
-          className="inline-flex items-center gap-1 text-[12px] uppercase tracking-[0.15em] text-[#7A7066] hover:text-[#1A1612]"
-        >
-          <ChevronLeft size={14} />
-          Volver al perfil
-        </Link>
-        <div className="mt-6">
-          <div className="text-eyebrow text-[#C65D38]">Memoria del asistente</div>
-          <h1 className="mt-2 font-display text-[2.2rem] leading-[1.02] tracking-tight text-[#1A1612]">
-            Lo que <span className="font-italic italic text-[#C65D38]">recuerdo</span> de ti
-          </h1>
-          <p className="mt-2 max-w-md text-[13px] leading-relaxed text-[#7A7066]">
-            Cada dato que el asistente conoce sobre ti vive aquí. Los que tú
-            confirmaste tienen badge verde; los que el asistente dedujo en una
-            conversación, terracota.
-          </p>
-        </div>
+  function save(k: MemoryKey, next: unknown) {
+    setBusyKey(k)
+    updateMemory.mutate(
+      { key: k, value: next },
+      {
+        onSettled: () => {
+          setBusyKey(null)
+          setEditingKey(null)
+        },
+      },
+    )
+  }
 
-        {isLoading ? (
-          <div className="mt-10 animate-pulse space-y-3">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-12 rounded-xl bg-[#F2EDE0]" />
-            ))}
-          </div>
-        ) : (
-          <div className="mt-10 space-y-8">
+  function forget(k: MemoryKey) {
+    if (typeof window === "undefined" || window.confirm("¿Olvidar este dato?")) {
+      setBusyKey(k)
+      deleteFact.mutate({ key: k }, { onSettled: () => setBusyKey(null) })
+    }
+  }
+
+  const sheetLabel = sheetKey ? (LABELS[sheetKey] ?? sheetKey) : ""
+
+  return (
+    <SubPage
+      eyebrow="Memoria del asistente"
+      title={
+        <>
+          Lo que <Accent>recuerdo</Accent> de ti
+        </>
+      }
+      intro="Cada dato que el asistente conoce sobre ti vive aquí. Los que tú confirmaste llevan la etiqueta «Tú»; los que el asistente dedujo en una conversación, «Asistente»."
+    >
+      {isLoading ? (
+        <div className="animate-pulse space-y-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-14 rounded-[20px] bg-bone" />
+          ))}
+        </div>
+      ) : (
+        <>
+          {(!memory || Object.keys(memory).length === 0) && (
+            <div className="mb-8 rounded-[20px] border border-dashed border-border bg-paper p-6 text-center">
+              <p className="font-serif-text text-[18px] italic text-ink-mid">Todavía no recuerdo nada de ti.</p>
+              <p className="mt-2 text-[14px] text-ink-soft">
+                Habla con el asistente — todo lo que le cuentes se guardará aquí automáticamente.
+              </p>
+            </div>
+          )}
+
+          <div className="grid gap-8 lg:grid-cols-2 lg:items-start lg:gap-x-10">
             {GROUPS.map((group) => {
               // Show every key in the group — with its current value if any,
-              // or an "Añadir" placeholder if missing. Previously this page
-              // hid empty groups entirely, which made it impossible to add
-              // a first entry for keys like `prep_habits` from the UI.
-              const entries = group.keys.map(
-                (k) => [k, memory?.[k] ?? null] as const,
-              )
+              // or an "Añadir" row if missing, so a first entry for keys like
+              // `prep_habits` can be added from the UI.
+              const entries = group.keys.map((k) => [k, memory?.[k] ?? null] as const)
               return (
                 <section key={group.title}>
-                  <div className="text-eyebrow text-[#7A7066]">{group.title}</div>
-                  <ul className="mt-3 space-y-2">
+                  <h2 className={SUB_EYEBROW}>{group.title}</h2>
+                  <ul className={`${SUB_LIST} mt-3`}>
                     {entries.map(([key, fact]) => {
                       const k = key as MemoryKey
-                      const isEmpty = fact == null
-                      if (isEmpty) {
-                        const isEditing = editingKey === k
+                      const label = LABELS[k] ?? k
+                      const isEditing = editingKey === k
+                      if (fact == null) {
                         return (
-                          <li
-                            key={key}
-                            className="rounded-xl border border-dashed border-[#DDD6C5] bg-[#FAF6EE] px-4 py-3"
-                          >
+                          <li key={key} className="px-4 py-1">
                             {!isEditing ? (
                               <button
                                 type="button"
                                 onClick={() => setEditingKey(k)}
-                                className="flex w-full items-center justify-between text-left"
+                                className="flex min-h-[48px] w-full items-center justify-between gap-3 text-left"
                               >
-                                <span className="text-[13px] text-[#7A7066]">
-                                  {LABELS[k] ?? k}
-                                </span>
-                                <span className="text-[11px] uppercase tracking-[0.12em] text-[#2D6A4F]">
-                                  + Añadir
+                                <span className="text-[15px] text-ink-soft">{label}</span>
+                                <span className="inline-flex items-center gap-1 text-[13px] font-medium text-terracotta-deep">
+                                  <Plus size={14} strokeWidth={2.2} aria-hidden="true" /> Añadir
                                 </span>
                               </button>
                             ) : (
-                              <MemoryFactEditor
-                                memoryKey={k}
-                                initial={undefined}
-                                disabled={busyKey === k}
-                                onCancel={() => setEditingKey(null)}
-                                onSave={(next) => {
-                                  setBusyKey(k)
-                                  updateMemory.mutate(
-                                    { key: k, value: next },
-                                    {
-                                      onSettled: () => {
-                                        setBusyKey(null)
-                                        setEditingKey(null)
-                                      },
-                                    },
-                                  )
-                                }}
-                              />
+                              <div className="py-2">
+                                <span className="text-[15px] font-medium text-ink">{label}</span>
+                                <MemoryFactEditor
+                                  memoryKey={k}
+                                  initial={undefined}
+                                  disabled={busyKey === k}
+                                  onCancel={() => setEditingKey(null)}
+                                  onSave={(next) => save(k, next)}
+                                />
+                              </div>
                             )}
                           </li>
                         )
                       }
                       const f = fact as MemoryFact
                       const badge = SOURCE_BADGES[f.source]
-                      const isEditing = editingKey === k
                       return (
-                        <li
-                          key={key}
-                          className="rounded-xl border border-[#DDD6C5] bg-[#FFFEFA] px-4 py-3"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2">
-                                <span className="text-[13px] font-medium text-[#1A1612]">
-                                  {LABELS[k] ?? k}
-                                </span>
+                        <li key={key} className="py-2 pl-4 pr-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1 py-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-[13px] font-medium text-ink-muted">{label}</span>
                                 <span
-                                  className={`rounded-full px-1.5 py-0.5 text-[9px] uppercase tracking-[0.15em] ${badge.color}`}
+                                  className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${badge.color}`}
                                 >
                                   {badge.label}
                                 </span>
                               </div>
-                              {!isEditing ? (
-                                <div className="mt-1 text-[14px] text-[#1A1612]">
-                                  {formatValue(k, f.value)}
-                                </div>
-                              ) : null}
+                              {!isEditing && (
+                                <div className="mt-0.5 break-words text-[15px] text-ink">{formatValue(k, f.value)}</div>
+                              )}
                             </div>
-                            {!isEditing ? (
-                              <div className="flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => setEditingKey(k)}
-                                  className="text-[#1A1612] transition-colors hover:text-[#2D6A4F]"
-                                  aria-label={`Editar ${LABELS[k] ?? k}`}
-                                >
-                                  <Pencil size={14} />
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={busyKey === k}
-                                  onClick={() => {
-                                    if (
-                                      typeof window === "undefined" ||
-                                      window.confirm("¿Olvidar este dato?")
-                                    ) {
-                                      setBusyKey(k)
-                                      deleteFact.mutate(
-                                        { key: k },
-                                        { onSettled: () => setBusyKey(null) },
-                                      )
-                                    }
-                                  }}
-                                  className="text-[#C65D38] transition-colors hover:text-[#1A1612] disabled:opacity-40"
-                                  aria-label={`Olvidar ${LABELS[k] ?? k}`}
-                                >
-                                  <Trash2 size={14} />
-                                </button>
-                              </div>
-                            ) : null}
+                            {!isEditing && (
+                              <MoreButton label={`Opciones de ${label}`} onClick={() => setSheetKey(k)} />
+                            )}
                           </div>
-
-                          {isEditing ? (
-                            <MemoryFactEditor
-                              memoryKey={k}
-                              initial={f.value}
-                              disabled={busyKey === k}
-                              onCancel={() => setEditingKey(null)}
-                              onSave={(next) => {
-                                setBusyKey(k)
-                                updateMemory.mutate(
-                                  { key: k, value: next },
-                                  {
-                                    onSettled: () => {
-                                      setBusyKey(null)
-                                      setEditingKey(null)
-                                    },
-                                  },
-                                )
-                              }}
-                            />
-                          ) : null}
+                          {isEditing && (
+                            <div className="pb-2 pr-2">
+                              <MemoryFactEditor
+                                memoryKey={k}
+                                initial={f.value}
+                                disabled={busyKey === k}
+                                onCancel={() => setEditingKey(null)}
+                                onSave={(next) => save(k, next)}
+                              />
+                            </div>
+                          )}
                         </li>
                       )
                     })}
@@ -293,27 +255,41 @@ export default function MemoryPage() {
                 </section>
               )
             })}
+          </div>
+        </>
+      )}
 
-            {(!memory || Object.keys(memory).length === 0) && (
-              <div className="mt-6 rounded-2xl border border-dashed border-[#DDD6C5] bg-[#FFFEFA] p-6 text-center">
-                <p className="font-italic italic text-[#7A7066]">
-                  Todavía no recuerdo nada de ti.
-                </p>
-                <p className="mt-2 text-[12px] text-[#7A7066]">
-                  Habla con el asistente — todo lo que le cuentes se guardará
-                  aquí automáticamente.
-                </p>
-              </div>
-            )}
+      <p className="mt-10 max-w-[560px] text-[13px] leading-relaxed text-ink-muted">
+        Pulsa «···» en cualquier dato para editarlo u olvidarlo. También puedes pedírselo al asistente
+        («recuerda que…»); las dos vías escriben en la misma memoria.
+      </p>
+
+      <MenuSheet open={sheetKey !== null} onClose={() => setSheetKey(null)} eyebrow="Memoria" title={sheetLabel}>
+        {sheetKey && (
+          <div className="flex flex-col gap-1">
+            <SheetAction
+              icon={Pencil}
+              label={`Editar ${sheetLabel}`}
+              onClick={() => {
+                setEditingKey(sheetKey)
+                setSheetKey(null)
+              }}
+            />
+            <SheetAction
+              icon={Trash2}
+              label={`Olvidar ${sheetLabel}`}
+              hint="El asistente dejará de tenerlo en cuenta."
+              destructive
+              disabled={busyKey === sheetKey}
+              onClick={() => {
+                const k = sheetKey
+                setSheetKey(null)
+                forget(k)
+              }}
+            />
           </div>
         )}
-
-        <p className="mt-12 text-[11px] uppercase tracking-[0.12em] text-[#7A7066]">
-          Pulsa el lápiz para editar cualquier dato. También puedes pedírselo
-          al asistente ("recuerda que…"); las dos vías escriben en la misma
-          memoria.
-        </p>
-      </div>
-    </div>
+      </MenuSheet>
+    </SubPage>
   )
 }

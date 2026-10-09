@@ -9,13 +9,27 @@
  * "RESPÉTALOS aunque entren en conflicto con tus 10 mandamientos por
  * defecto" — so a user's "creo en el ayuno intermitente" beats ONA's
  * default "ventana de alimentación es importante" if there's tension.
+ *
+ * Skin: "D · Luz y foto" (PRO-40). Each own principle is a paper row whose
+ * "···" sheet holds "Eliminar principio"; at lg+ the defaults sit in a
+ * second column.
  */
 import { useState } from "react"
-import Link from "next/link"
-import { ChevronLeft, Plus, Sparkles, Trash2 } from "lucide-react"
+import { Plus, Sparkles, Trash2 } from "lucide-react"
 import { useAuth } from "@/lib/auth"
 import { useUserMemory, useUpdateMemory, useDeleteMemoryFact } from "@/hooks/useUserMemory"
 import { ONA_PRINCIPLES } from "@ona/shared"
+import { MenuSheet, SheetAction } from "@/components/menu/MenuSheet"
+import {
+  Accent,
+  MoreButton,
+  PILL_INK,
+  SUB_CARD,
+  SUB_EYEBROW,
+  SUB_INPUT,
+  SUB_LIST,
+  SubPage,
+} from "@/components/profile/SubPage"
 
 export default function BeliefsPage() {
   const { user } = useAuth()
@@ -25,13 +39,14 @@ export default function BeliefsPage() {
   const [draft, setDraft] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [sheetIdx, setSheetIdx] = useState<number | null>(null)
 
   const principles = (memory?.nutrition_principles?.value as string[] | undefined) ?? []
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-[#FAF6EE] p-6">
-        <p className="text-[#1A1612]">Necesitas iniciar sesión.</p>
+      <div className="min-h-screen bg-cream p-6">
+        <p className="text-ink">Necesitas iniciar sesión.</p>
       </div>
     )
   }
@@ -69,114 +84,104 @@ export default function BeliefsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#FAF6EE]">
-      <div className="mx-auto max-w-[430px] px-5 pb-20 pt-8 lg:max-w-[800px] lg:px-8">
-        <Link
-          href="/profile"
-          className="inline-flex items-center gap-1 text-[12px] uppercase tracking-[0.15em] text-[#7A7066] hover:text-[#1A1612]"
-        >
-          <ChevronLeft size={14} />
-          Volver al perfil
-        </Link>
-
-        <div className="mt-6">
-          <div className="text-eyebrow text-[#C65D38]">Creencias nutricionales</div>
-          <h1 className="mt-2 font-display text-[2.2rem] leading-[1.02] tracking-tight text-[#1A1612]">
-            Tu <span className="font-italic italic text-[#C65D38]">filosofía</span>, no la de Mimoia
-          </h1>
-          <p className="mt-2 max-w-md text-[13px] leading-relaxed text-[#7A7066]">
-            Mimoia viene con unas creencias por defecto (resumen abajo). Puedes
-            añadir las tuyas y el asistente las respetará por encima de las
-            suyas cuando entren en conflicto.
-          </p>
-        </div>
-
+    <SubPage
+      eyebrow="Creencias nutricionales"
+      title={
+        <>
+          Tu <Accent>filosofía</Accent>, no la de Mimoia
+        </>
+      }
+      intro="Mimoia viene con unas creencias por defecto (resumen abajo). Puedes añadir las tuyas y el asistente las respetará por encima de las suyas cuando entren en conflicto."
+    >
+      <div className="grid gap-10 lg:grid-cols-2 lg:items-start">
         {/* User principles */}
-        <section className="mt-10">
-          <div className="text-eyebrow text-[#7A7066]">Tus principios ({principles.length})</div>
-          <ul className="mt-3 space-y-2">
-            {principles.map((p, i) => (
-              <li
-                key={`${i}-${p.slice(0, 16)}`}
-                className="flex items-start justify-between gap-3 rounded-xl border border-[#2D6A4F] bg-[#2D6A4F]/5 px-4 py-3"
-              >
-                <span className="flex-1 text-[14px] leading-relaxed text-[#1A1612]">
-                  {p}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => handleRemove(i)}
-                  className="text-[#C65D38] transition-colors hover:text-[#1A1612] disabled:opacity-40"
-                  disabled={submitting}
-                  aria-label="Eliminar principio"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </li>
-            ))}
-          </ul>
+        <section>
+          <h2 className={SUB_EYEBROW}>Tus principios ({principles.length})</h2>
+          {principles.length > 0 && (
+            <ul className={`${SUB_LIST} mt-3`}>
+              {principles.map((p, i) => (
+                <li key={`${i}-${p.slice(0, 16)}`} className="flex items-start gap-2 py-2 pl-4 pr-2">
+                  <span className="min-w-0 flex-1 py-2 text-[15px] leading-relaxed text-ink">{p}</span>
+                  <MoreButton label={`Opciones del principio ${i + 1}`} onClick={() => setSheetIdx(i)} />
+                </li>
+              ))}
+            </ul>
+          )}
 
-          <div className="mt-3 rounded-xl border border-dashed border-[#DDD6C5] bg-[#FFFEFA] p-3">
-            <label className="text-[11px] uppercase tracking-[0.12em] text-[#7A7066]">
+          <div className={`${SUB_CARD} mt-3 p-4`}>
+            <label htmlFor="nuevo-principio" className={SUB_EYEBROW}>
               Añadir principio
             </label>
             <textarea
+              id="nuevo-principio"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               placeholder="Ej. Prefiero ayuno intermitente 16/8 — desayuno tarde."
               rows={2}
               maxLength={280}
-              className="mt-2 w-full resize-none rounded-lg border border-[#DDD6C5] bg-[#FAF6EE] px-3 py-2 text-[14px] text-[#1A1612] placeholder:text-[#7A7066] focus:border-[#1A1612] focus:outline-none"
+              className={`${SUB_INPUT} mt-2 resize-none py-2.5`}
             />
-            <div className="mt-2 flex items-center justify-between">
-              <span className="text-[10px] text-[#7A7066]">
-                {draft.trim().length} / 280
-              </span>
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <span className="text-[12px] tabular-nums text-ink-muted">{draft.trim().length} / 280</span>
               <button
                 type="button"
                 onClick={handleAdd}
                 disabled={draft.trim().length < 3 || submitting}
-                className="inline-flex items-center gap-1.5 rounded-full bg-[#2D6A4F] px-4 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#FAF6EE] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                className={PILL_INK}
               >
-                <Plus size={11} />
+                <Plus size={16} />
                 Añadir
               </button>
             </div>
-            {error ? (
-              <p className="mt-2 text-[11px] italic text-[#C65D38]">{error}</p>
-            ) : null}
+            {error ? <p className="mt-2 text-[13px] italic text-terracotta-deep">{error}</p> : null}
           </div>
         </section>
 
-        {/* ONA defaults — informational, can't be removed (but a user
+        {/* Mimoia defaults — informational, can't be removed (but a user
             principle that contradicts them wins). */}
-        <section className="mt-12">
+        <section>
           <div className="flex items-center gap-2">
-            <Sparkles size={14} className="text-[#C65D38]" />
-            <div className="text-eyebrow text-[#7A7066]">Principios por defecto de Mimoia</div>
+            <Sparkles size={14} className="text-terracotta-deep" aria-hidden="true" />
+            <h2 className={SUB_EYEBROW}>Principios por defecto de Mimoia</h2>
           </div>
-          <p className="mt-1 text-[11px] text-[#7A7066]">
+          <p className="mt-1 text-[13px] text-ink-soft">
             El asistente sigue estos a menos que tus principios digan lo contrario.
           </p>
-          <ul className="mt-3 space-y-2">
+          <ul className={`${SUB_LIST} mt-3`}>
             {ONA_PRINCIPLES.map((p) => (
-              <li
-                key={p.id}
-                className="rounded-xl border border-[#DDD6C5] bg-[#FFFEFA] px-4 py-3"
-              >
-                <div className="text-[13px] font-medium text-[#1A1612]">{p.title}</div>
-                <p className="mt-1 text-[12px] leading-relaxed text-[#7A7066]">
-                  {p.rationale}
-                </p>
+              <li key={p.id} className="px-4 py-3.5">
+                <div className="font-serif-text text-[16px] font-[650] leading-snug text-ink">{p.title}</div>
+                <p className="mt-1 text-[13px] leading-relaxed text-ink-soft">{p.rationale}</p>
               </li>
             ))}
           </ul>
         </section>
-
-        <p className="mt-12 text-center text-[11px] uppercase tracking-[0.12em] text-[#7A7066]">
-          O díctaselos al asistente: «recuerda que sigo dieta cetogénica»
-        </p>
       </div>
-    </div>
+
+      <p className="mt-10 text-center text-[13px] text-ink-muted">
+        O díctaselos al asistente: «recuerda que sigo dieta cetogénica»
+      </p>
+
+      <MenuSheet
+        open={sheetIdx !== null}
+        onClose={() => setSheetIdx(null)}
+        eyebrow="Tu principio"
+        title={<span className="line-clamp-2">{sheetIdx !== null ? (principles[sheetIdx] ?? "") : ""}</span>}
+      >
+        {sheetIdx !== null && (
+          <SheetAction
+            icon={Trash2}
+            label="Eliminar principio"
+            destructive
+            disabled={submitting}
+            onClick={() => {
+              const i = sheetIdx
+              setSheetIdx(null)
+              handleRemove(i)
+            }}
+          />
+        )}
+      </MenuSheet>
+    </SubPage>
   )
 }

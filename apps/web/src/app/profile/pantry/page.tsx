@@ -6,10 +6,13 @@
  * Quantities auto-decrement when someone in the household marks a recipe
  * cooked (POST /cook-logs). This page is for manual control: add what you
  * just bought, edit quantities, set expiry dates.
+ *
+ * Skin: "D · Luz y foto" (PRO-40). Quantity stays editable inline in each
+ * row; the expiry date and "Quitar de la despensa" live in the row's "···"
+ * sheet. At lg+ the add form is a left column and the list fills the rest.
  */
 import { useState } from "react"
-import Link from "next/link"
-import { ChevronLeft, Plus, Trash2 } from "lucide-react"
+import { Plus, Trash2 } from "lucide-react"
 import type { BuyableUnit } from "@ona/shared"
 import { ingredientDisplayName } from "@ona/shared"
 import {
@@ -19,6 +22,18 @@ import {
   useDeletePantry,
   type PantryItem,
 } from "@/hooks/usePantry"
+import { MenuSheet, SheetAction } from "@/components/menu/MenuSheet"
+import {
+  Accent,
+  MoreButton,
+  PILL_INK,
+  SUB_CARD,
+  SUB_EYEBROW,
+  SUB_INPUT,
+  SUB_LIST,
+  SubNotice,
+  SubPage,
+} from "@/components/profile/SubPage"
 
 const UNIT_OPTIONS: { value: BuyableUnit; label: string }[] = [
   { value: "u", label: "unidades" },
@@ -35,11 +50,13 @@ function expiryPill(expiresAt: string | null): { label: string; tone: string } |
   const d = new Date(expiresAt + 'T00:00:00')
   const diffDays = Math.round((d.getTime() - today.getTime()) / 86_400_000)
   const label = d.toLocaleDateString("es-ES", { day: "2-digit", month: "short" })
-  if (diffDays < 0) return { label: `Caducado ${label}`, tone: "bg-[#C65D38] text-[#FAF6EE]" }
-  if (diffDays <= 3) return { label: `Caduca ${label}`, tone: "bg-[#C65D38]/15 text-[#C65D38]" }
-  if (diffDays <= 7) return { label: `Caduca ${label}`, tone: "bg-[#F2EDE0] text-[#7A7066]" }
-  return { label, tone: "bg-[#F2EDE0] text-[#7A7066]" }
+  if (diffDays < 0) return { label: `Caducado ${label}`, tone: "bg-terracotta-deep text-cream" }
+  if (diffDays <= 3) return { label: `Caduca ${label}`, tone: "bg-warn-bg text-terracotta-deep" }
+  if (diffDays <= 7) return { label: `Caduca ${label}`, tone: "bg-cream-deep text-ink-muted" }
+  return { label, tone: "bg-cream-deep text-ink-muted" }
 }
+
+const FIELD_LABEL = "mb-1 block text-[12px] font-medium text-ink-muted"
 
 export default function PantryPage() {
   const { data: items, isLoading } = usePantry()
@@ -75,105 +92,101 @@ export default function PantryPage() {
   }
 
   return (
-    <div className="bg-[#FAF6EE] min-h-screen pb-24 lg:mx-auto lg:max-w-[900px]">
-      <header className="px-5 pt-8 pb-6">
-        <Link
-          href="/profile"
-          className="inline-flex items-center gap-1 text-eyebrow text-[#7A7066] hover:text-[#C65D38]"
-        >
-          <ChevronLeft size={14} /> Volver al perfil
-        </Link>
-        <div className="mt-3 text-eyebrow">Lo que hay en casa</div>
-        <h1 className="mt-1 font-display text-[2.2rem] leading-[0.95] text-[#1A1612]">
-          Tu <span className="italic text-[#C65D38]">despensa</span>.
-        </h1>
-        <p className="mt-3 text-[12px] text-[#7A7066] max-w-md">
-          Lo que tienes en casa con cantidad y caducidad. Cuando marques una
-          receta como cocinada, las cantidades bajan automáticamente.
-        </p>
-      </header>
-
-      <section className="px-5">
-        <form
-          onSubmit={handleAdd}
-          className="rounded-2xl border border-[#DDD6C5] bg-[#FFFEFA] p-4 space-y-3"
-        >
-          <div className="text-eyebrow text-[#7A7066]">Nuevo item</div>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Ej: Arroz, Yogur natural…"
-            maxLength={80}
-            className="w-full border-b border-[#DDD6C5] bg-transparent py-1.5 text-[14px] outline-none focus:border-[#1A1612]"
-          />
-          <div className="grid grid-cols-[1fr_1fr_1fr] gap-2">
+    <SubPage
+      eyebrow="Lo que hay en casa"
+      title={
+        <>
+          Tu <Accent>despensa</Accent>.
+        </>
+      }
+      intro="Lo que tienes en casa con cantidad y caducidad. Cuando marques una receta como cocinada, las cantidades bajan automáticamente."
+    >
+      <div className="grid gap-8 lg:grid-cols-[360px_1fr] lg:items-start lg:gap-10">
+        <section className="lg:sticky lg:top-6">
+          <form onSubmit={handleAdd} className={`${SUB_CARD} space-y-3 p-4`}>
+            <h2 className={SUB_EYEBROW}>Nuevo item</h2>
             <input
-              type="number"
-              inputMode="decimal"
-              min={0}
-              step={0.5}
-              value={qty}
-              onChange={(e) => setQty(e.target.value)}
-              className="border-b border-[#DDD6C5] bg-transparent py-1.5 text-[13px] outline-none focus:border-[#1A1612]"
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Ej: Arroz, Yogur natural…"
+              maxLength={80}
+              aria-label="Nombre"
+              className={SUB_INPUT}
             />
-            <select
-              value={unit}
-              onChange={(e) => setUnit(e.target.value as BuyableUnit)}
-              className="border-b border-[#DDD6C5] bg-transparent py-1.5 text-[13px] outline-none focus:border-[#1A1612]"
-            >
-              {UNIT_OPTIONS.map((u) => (
-                <option key={u.value} value={u.value}>
-                  {u.label}
-                </option>
-              ))}
-            </select>
-            <input
-              type="date"
-              value={exp}
-              onChange={(e) => setExp(e.target.value)}
-              className="border-b border-[#DDD6C5] bg-transparent py-1.5 text-[13px] outline-none focus:border-[#1A1612]"
-              aria-label="Caducidad (opcional)"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={!name.trim() || add.isPending}
-            className="inline-flex items-center gap-2 rounded-full bg-[#1A1612] px-5 py-2.5 text-[12px] uppercase tracking-[0.12em] text-[#FAF6EE] disabled:opacity-40"
-          >
-            <Plus size={12} /> {add.isPending ? "Añadiendo…" : "Añadir a despensa"}
-          </button>
-        </form>
-      </section>
-
-      <section className="px-5 mt-8">
-        <div className="text-eyebrow mb-3">
-          Despensa · {items?.length ?? 0}
-        </div>
-        {isLoading ? (
-          <div className="py-10 text-center font-italic italic text-[#7A7066]">Cargando…</div>
-        ) : !items || items.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-[#DDD6C5] py-10 text-center">
-            <p className="font-italic italic text-[#7A7066]">Despensa vacía.</p>
-            <p className="mt-1 text-[12px] text-[#A39A8E]">Añade lo que tengas guardado.</p>
-          </div>
-        ) : (
-          <ul className="divide-y divide-[#DDD6C5] rounded-2xl bg-[#FFFEFA] border border-[#DDD6C5]">
-            {items.map((it) => (
-              <PantryRow
-                key={it.id}
-                item={it}
-                onDelete={() => {
-                  if (typeof window === "undefined" || window.confirm(`¿Quitar "${it.name}" de la despensa?`)) {
-                    del.mutate({ id: it.id })
-                  }
-                }}
+            <div className="grid grid-cols-2 gap-2">
+              <label>
+                <span className={FIELD_LABEL}>Cantidad</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step={0.5}
+                  value={qty}
+                  onChange={(e) => setQty(e.target.value)}
+                  className={SUB_INPUT}
+                />
+              </label>
+              <label>
+                <span className={FIELD_LABEL}>Unidad</span>
+                <select
+                  value={unit}
+                  onChange={(e) => setUnit(e.target.value as BuyableUnit)}
+                  className={SUB_INPUT}
+                >
+                  {UNIT_OPTIONS.map((u) => (
+                    <option key={u.value} value={u.value}>
+                      {u.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <label className="block">
+              <span className={FIELD_LABEL}>Caducidad (opcional)</span>
+              <input
+                type="date"
+                value={exp}
+                onChange={(e) => setExp(e.target.value)}
+                className={SUB_INPUT}
+                aria-label="Caducidad (opcional)"
               />
-            ))}
-          </ul>
-        )}
-      </section>
-    </div>
+            </label>
+            <button type="submit" disabled={!name.trim() || add.isPending} className={`${PILL_INK} w-full`}>
+              <Plus size={16} /> {add.isPending ? "Añadiendo…" : "Añadir a despensa"}
+            </button>
+          </form>
+        </section>
+
+        <section>
+          <h2 className={`${SUB_EYEBROW} mb-3`}>Despensa · {items?.length ?? 0}</h2>
+          {isLoading ? (
+            <SubNotice>
+              <p className="font-serif-text text-[18px] italic text-ink-mid">Cargando…</p>
+            </SubNotice>
+          ) : !items || items.length === 0 ? (
+            <SubNotice dashed>
+              <p className="font-serif-text text-[18px] italic text-ink-mid">Despensa vacía.</p>
+              <p className="mt-1 text-[14px] text-ink-soft">Añade lo que tengas guardado.</p>
+            </SubNotice>
+          ) : (
+            <ul className={SUB_LIST}>
+              {items.map((it) => (
+                <PantryRow
+                  key={it.id}
+                  item={it}
+                  onDelete={() => {
+                    if (typeof window === "undefined" || window.confirm(`¿Quitar "${it.name}" de la despensa?`)) {
+                      del.mutate({ id: it.id })
+                    }
+                  }}
+                />
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+    </SubPage>
   )
 }
 
@@ -181,7 +194,9 @@ function PantryRow({ item, onDelete }: { item: PantryItem; onDelete: () => void 
   const patch = usePatchPantry()
   const [qtyDraft, setQtyDraft] = useState<string>(String(item.quantity))
   const [expDraft, setExpDraft] = useState<string>(item.expiresAt ?? "")
+  const [sheetOpen, setSheetOpen] = useState(false)
   const pill = expiryPill(item.expiresAt)
+  const displayName = ingredientDisplayName(item.name)
 
   function commitQty() {
     const n = Number(qtyDraft.replace(",", "."))
@@ -198,12 +213,12 @@ function PantryRow({ item, onDelete }: { item: PantryItem; onDelete: () => void 
   }
 
   return (
-    <li className="flex flex-wrap items-center gap-3 px-4 py-3">
-      <div className="flex-1 min-w-0">
-        <div className="text-[14px] text-[#1A1612]">{ingredientDisplayName(item.name)}</div>
+    <li className="flex min-h-[64px] items-center gap-2 py-2 pl-4 pr-2">
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[15px] text-ink">{displayName}</div>
         {pill && (
           <span
-            className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[9px] uppercase tracking-[0.12em] ${pill.tone}`}
+            className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] ${pill.tone}`}
           >
             {pill.label}
           </span>
@@ -221,25 +236,41 @@ function PantryRow({ item, onDelete }: { item: PantryItem; onDelete: () => void 
           if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur()
         }}
         aria-label="Cantidad"
-        className="w-16 shrink-0 rounded-md border border-[#DDD6C5] bg-transparent px-1.5 py-1 text-right text-[12px] tabular-nums outline-none focus:border-[#1A1612]"
+        className="min-h-[44px] w-[72px] shrink-0 rounded-xl border border-border-soft bg-paper px-2 text-right font-mono text-[14px] tabular-nums text-ink outline-none focus:border-ink"
       />
-      <span className="text-[11px] tabular-nums text-[#7A7066] shrink-0">{item.unit}</span>
-      <input
-        type="date"
-        value={expDraft}
-        onChange={(e) => setExpDraft(e.target.value)}
-        onBlur={commitExp}
-        aria-label="Caducidad"
-        className="rounded-md border border-[#DDD6C5] bg-transparent px-1.5 py-1 text-[11px] text-[#7A7066] outline-none focus:border-[#1A1612]"
-      />
-      <button
-        type="button"
-        onClick={onDelete}
-        aria-label="Eliminar"
-        className="shrink-0 rounded-full border border-[#DDD6C5] p-1.5 text-[#7A7066] hover:border-[#C65D38] hover:text-[#C65D38]"
+      <span className="w-9 shrink-0 font-mono text-[12px] tabular-nums text-ink-muted">{item.unit}</span>
+      <MoreButton label={`Opciones de ${displayName}`} onClick={() => setSheetOpen(true)} />
+
+      <MenuSheet
+        open={sheetOpen}
+        onClose={() => {
+          commitExp()
+          setSheetOpen(false)
+        }}
+        eyebrow="Despensa"
+        title={displayName}
       >
-        <Trash2 size={12} />
-      </button>
+        <label className="mb-3 block px-3">
+          <span className="mb-1 block text-[12px] font-medium text-ink-muted">Caducidad</span>
+          <input
+            type="date"
+            value={expDraft}
+            onChange={(e) => setExpDraft(e.target.value)}
+            onBlur={commitExp}
+            aria-label="Caducidad"
+            className="min-h-[44px] w-full rounded-xl border border-border-soft bg-paper px-3.5 text-[15px] text-ink outline-none focus:border-ink"
+          />
+        </label>
+        <SheetAction
+          icon={Trash2}
+          label="Quitar de la despensa"
+          destructive
+          onClick={() => {
+            setSheetOpen(false)
+            onDelete()
+          }}
+        />
+      </MenuSheet>
     </li>
   )
 }

@@ -6,10 +6,13 @@
  * Items here auto-pre-pend to every freshly generated shopping list (and to
  * regenerated lists). Toggle `active` to skip one without losing the row.
  * Any household member can add / edit / delete.
+ *
+ * Skin: "D · Luz y foto" (PRO-40). The pause switch stays inline in each
+ * row; "Quitar de tus básicos" lives in the row's "···" sheet. At lg+ the
+ * add form is a left column and the list fills the rest.
  */
 import { useState } from "react"
-import Link from "next/link"
-import { ChevronLeft, Plus, Trash2 } from "lucide-react"
+import { Plus, Trash2 } from "lucide-react"
 import type { Aisle, BuyableUnit } from "@ona/shared"
 import { AISLES, ingredientDisplayName } from "@ona/shared"
 import {
@@ -19,6 +22,18 @@ import {
   useDeleteStaple,
   type Staple,
 } from "@/hooks/useStaples"
+import { MenuSheet, SheetAction } from "@/components/menu/MenuSheet"
+import {
+  Accent,
+  MoreButton,
+  PILL_INK,
+  SUB_CARD,
+  SUB_EYEBROW,
+  SUB_INPUT,
+  SUB_LIST,
+  SubNotice,
+  SubPage,
+} from "@/components/profile/SubPage"
 
 const UNIT_OPTIONS: { value: BuyableUnit; label: string }[] = [
   { value: "u", label: "unidades" },
@@ -37,6 +52,8 @@ const AISLE_LABEL: Record<Aisle, string> = {
   congelados: "Congelados",
   otros: "Otros",
 }
+
+const FIELD_LABEL = "mb-1 block text-[12px] font-medium text-ink-muted"
 
 export default function StaplesPage() {
   const { data: staples, isLoading } = useStaples()
@@ -76,124 +93,119 @@ export default function StaplesPage() {
   }
 
   return (
-    <div className="bg-[#FAF6EE] min-h-screen pb-24 lg:mx-auto lg:max-w-[900px]">
-      <header className="px-5 pt-8 pb-6">
-        <Link
-          href="/profile"
-          className="inline-flex items-center gap-1 text-eyebrow text-[#7A7066] hover:text-[#C65D38]"
-        >
-          <ChevronLeft size={14} /> Volver al perfil
-        </Link>
-        <div className="mt-3 text-eyebrow">Lo de siempre</div>
-        <h1 className="mt-1 font-display text-[2.2rem] leading-[0.95] text-[#1A1612]">
-          <span className="italic text-[#C65D38]">Tus</span> básicos.
-        </h1>
-        <p className="mt-3 text-[12px] text-[#7A7066] max-w-md">
-          Los items que necesitas todas las semanas (pan, café, leche…). Se añaden
-          automáticamente a cada lista de la compra nueva. Pausa lo que no quieras
-          esta semana sin perder la fila.
-        </p>
-      </header>
-
-      <section className="px-5">
-        <form
-          onSubmit={handleAdd}
-          className="rounded-2xl border border-[#DDD6C5] bg-[#FFFEFA] p-4 space-y-3"
-        >
-          <div className="text-eyebrow text-[#7A7066]">Nuevo básico</div>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Ej: Leche, Pan, Café…"
-            maxLength={80}
-            className="w-full border-b border-[#DDD6C5] bg-transparent py-1.5 text-[14px] outline-none focus:border-[#1A1612]"
-          />
-          <div className="grid grid-cols-[1fr_1fr_1fr] gap-2">
+    <SubPage
+      eyebrow="Lo de siempre"
+      title={
+        <>
+          <Accent>Tus</Accent> básicos.
+        </>
+      }
+      intro="Los items que necesitas todas las semanas (pan, café, leche…). Se añaden automáticamente a cada lista de la compra nueva. Pausa lo que no quieras esta semana sin perder la fila."
+    >
+      <div className="grid gap-8 lg:grid-cols-[360px_1fr] lg:items-start lg:gap-10">
+        <section className="lg:sticky lg:top-6">
+          <form onSubmit={handleAdd} className={`${SUB_CARD} space-y-3 p-4`}>
+            <h2 className={SUB_EYEBROW}>Nuevo básico</h2>
             <input
-              type="number"
-              inputMode="decimal"
-              min={0}
-              step={0.5}
-              value={qty}
-              onChange={(e) => setQty(e.target.value)}
-              className="border-b border-[#DDD6C5] bg-transparent py-1.5 text-[13px] outline-none focus:border-[#1A1612]"
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Ej: Leche, Pan, Café…"
+              maxLength={80}
+              aria-label="Nombre"
+              className={SUB_INPUT}
             />
-            <select
-              value={unit}
-              onChange={(e) => setUnit(e.target.value as BuyableUnit)}
-              className="border-b border-[#DDD6C5] bg-transparent py-1.5 text-[13px] outline-none focus:border-[#1A1612]"
-            >
-              {UNIT_OPTIONS.map((u) => (
-                <option key={u.value} value={u.value}>
-                  {u.label}
-                </option>
-              ))}
-            </select>
-            <select
-              value={aisle}
-              onChange={(e) => setAisle(e.target.value as Aisle)}
-              className="border-b border-[#DDD6C5] bg-transparent py-1.5 text-[13px] outline-none focus:border-[#1A1612]"
-            >
-              {AISLES.map((a) => (
-                <option key={a} value={a}>
-                  {AISLE_LABEL[a]}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-[#7A7066]">€</span>
-            <input
-              type="number"
-              inputMode="decimal"
-              min={0}
-              step={0.05}
-              placeholder="precio por unidad (opcional)"
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-              className="flex-1 border-b border-[#DDD6C5] bg-transparent py-1.5 text-[13px] outline-none focus:border-[#1A1612]"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={!name.trim() || add.isPending}
-            className="inline-flex items-center gap-2 rounded-full bg-[#1A1612] px-5 py-2.5 text-[12px] uppercase tracking-[0.12em] text-[#FAF6EE] disabled:opacity-40"
-          >
-            <Plus size={12} /> {add.isPending ? "Añadiendo…" : "Añadir básico"}
-          </button>
-        </form>
-      </section>
+            <div className="grid grid-cols-2 gap-2">
+              <label>
+                <span className={FIELD_LABEL}>Cantidad</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step={0.5}
+                  value={qty}
+                  onChange={(e) => setQty(e.target.value)}
+                  className={SUB_INPUT}
+                />
+              </label>
+              <label>
+                <span className={FIELD_LABEL}>Unidad</span>
+                <select
+                  value={unit}
+                  onChange={(e) => setUnit(e.target.value as BuyableUnit)}
+                  className={SUB_INPUT}
+                >
+                  {UNIT_OPTIONS.map((u) => (
+                    <option key={u.value} value={u.value}>
+                      {u.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className={FIELD_LABEL}>Pasillo</span>
+                <select
+                  value={aisle}
+                  onChange={(e) => setAisle(e.target.value as Aisle)}
+                  className={SUB_INPUT}
+                >
+                  {AISLES.map((a) => (
+                    <option key={a} value={a}>
+                      {AISLE_LABEL[a]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className={FIELD_LABEL}>Precio € (opcional)</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step={0.05}
+                  placeholder="precio por unidad (opcional)"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  className={SUB_INPUT}
+                />
+              </label>
+            </div>
+            <button type="submit" disabled={!name.trim() || add.isPending} className={`${PILL_INK} w-full`}>
+              <Plus size={16} /> {add.isPending ? "Añadiendo…" : "Añadir básico"}
+            </button>
+          </form>
+        </section>
 
-      <section className="px-5 mt-8">
-        <div className="text-eyebrow mb-3">
-          Lista · {staples?.length ?? 0}
-        </div>
-        {isLoading ? (
-          <div className="py-10 text-center font-italic italic text-[#7A7066]">Cargando…</div>
-        ) : !staples || staples.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-[#DDD6C5] py-10 text-center">
-            <p className="font-italic italic text-[#7A7066]">Aún no tienes básicos.</p>
-            <p className="mt-1 text-[12px] text-[#A39A8E]">Empieza por la leche, el pan o el café.</p>
-          </div>
-        ) : (
-          <ul className="divide-y divide-[#DDD6C5] rounded-2xl bg-[#FFFEFA] border border-[#DDD6C5]">
-            {staples.map((s) => (
-              <StapleRow
-                key={s.id}
-                staple={s}
-                onToggle={() => patch.mutate({ id: s.id, patch: { active: !s.active } })}
-                onDelete={() => {
-                  if (typeof window === "undefined" || window.confirm(`¿Quitar "${s.name}" de tus básicos?`)) {
-                    del.mutate({ id: s.id })
-                  }
-                }}
-              />
-            ))}
-          </ul>
-        )}
-      </section>
-    </div>
+        <section>
+          <h2 className={`${SUB_EYEBROW} mb-3`}>Lista · {staples?.length ?? 0}</h2>
+          {isLoading ? (
+            <SubNotice>
+              <p className="font-serif-text text-[18px] italic text-ink-mid">Cargando…</p>
+            </SubNotice>
+          ) : !staples || staples.length === 0 ? (
+            <SubNotice dashed>
+              <p className="font-serif-text text-[18px] italic text-ink-mid">Aún no tienes básicos.</p>
+              <p className="mt-1 text-[14px] text-ink-soft">Empieza por la leche, el pan o el café.</p>
+            </SubNotice>
+          ) : (
+            <ul className={SUB_LIST}>
+              {staples.map((s) => (
+                <StapleRow
+                  key={s.id}
+                  staple={s}
+                  onToggle={() => patch.mutate({ id: s.id, patch: { active: !s.active } })}
+                  onDelete={() => {
+                    if (typeof window === "undefined" || window.confirm(`¿Quitar "${s.name}" de tus básicos?`)) {
+                      del.mutate({ id: s.id })
+                    }
+                  }}
+                />
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+    </SubPage>
   )
 }
 
@@ -206,39 +218,58 @@ function StapleRow({
   onToggle: () => void
   onDelete: () => void
 }) {
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const displayName = ingredientDisplayName(staple.name)
   return (
-    <li className={`flex items-center gap-3 px-4 py-3 ${staple.active ? "" : "opacity-50"}`}>
+    <li className="flex min-h-[64px] items-center gap-2 py-2 pl-2 pr-2">
       <button
         type="button"
         onClick={onToggle}
         aria-label={staple.active ? "Pausar" : "Activar"}
-        className={`relative inline-block h-5 w-9 shrink-0 rounded-full transition-colors ${
-          staple.active ? "bg-[#1A1612]" : "bg-[#DDD6C5]"
-        }`}
+        aria-pressed={staple.active}
+        className="flex h-11 w-12 shrink-0 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-ink"
       >
         <span
-          className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-[left] ${
-            staple.active ? "left-[18px]" : "left-0.5"
+          aria-hidden="true"
+          className={`relative inline-block h-6 w-10 rounded-full transition-colors ${
+            staple.active ? "bg-ink" : "bg-border"
           }`}
-        />
+        >
+          <span
+            className={`absolute top-0.5 h-5 w-5 rounded-full bg-paper shadow transition-[left] ${
+              staple.active ? "left-[18px]" : "left-0.5"
+            }`}
+          />
+        </span>
       </button>
-      <div className="flex-1 min-w-0">
-        <div className="text-[14px] text-[#1A1612]">{ingredientDisplayName(staple.name)}</div>
-        <div className="text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
-          {staple.quantity} {staple.unit} · {AISLE_LABEL[staple.aisle]}
+      <div className={`min-w-0 flex-1 ${staple.active ? "" : "opacity-50"}`}>
+        <div className="truncate text-[15px] text-ink">{displayName}</div>
+        <div className="text-[12px] text-ink-muted">
+          <span className="font-mono tabular-nums">
+            {staple.quantity} {staple.unit}
+          </span>{" "}
+          · {AISLE_LABEL[staple.aisle]}
           {staple.pricePerUnit != null && (
-            <span> · {staple.pricePerUnit.toLocaleString("es-ES", { style: "currency", currency: "EUR" })} / {staple.unit}</span>
+            <span>
+              {" "}
+              · {staple.pricePerUnit.toLocaleString("es-ES", { style: "currency", currency: "EUR" })} / {staple.unit}
+            </span>
           )}
         </div>
       </div>
-      <button
-        type="button"
-        onClick={onDelete}
-        aria-label="Eliminar básico"
-        className="rounded-full border border-[#DDD6C5] p-1.5 text-[#7A7066] hover:border-[#C65D38] hover:text-[#C65D38]"
-      >
-        <Trash2 size={12} />
-      </button>
+      <MoreButton label={`Opciones de ${displayName}`} onClick={() => setSheetOpen(true)} />
+
+      <MenuSheet open={sheetOpen} onClose={() => setSheetOpen(false)} eyebrow="Tus básicos" title={displayName}>
+        <SheetAction
+          icon={Trash2}
+          label="Quitar de tus básicos"
+          destructive
+          onClick={() => {
+            setSheetOpen(false)
+            onDelete()
+          }}
+        />
+      </MenuSheet>
     </li>
   )
 }

@@ -5,7 +5,7 @@ import { CONTACT_EMAIL } from "@/lib/contact"
 /**
  * The one public footer (landing + every page under `app/(public)`, rendered
  * by `app/(public)/layout.tsx`). It is the landing's footer strip: sand band,
- * hairline, wordmark, the four links, contact (`CONTACT_EMAIL`:
+ * hairline, wordmark, the links (incl. aviso legal), contact (`CONTACT_EMAIL`:
  * NEXT_PUBLIC_SUPPORT_EMAIL, else hola@mimoia.com) and ©.
  *
  * Public marketing surface: `publicHealthClaims.test.ts` scans this file.
@@ -15,6 +15,7 @@ const LINKS = [
   { href: "/recipes", label: "Recetas" },
   { href: "/privacidad", label: "Privacidad" },
   { href: "/terminos", label: "Términos" },
+  { href: "/aviso-legal", label: "Aviso legal" },
 ]
 
 export default function Footer() {

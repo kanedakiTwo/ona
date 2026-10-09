@@ -1,3 +1,6 @@
+import Link from "next/link"
+import { LEGAL_OWNER } from "@ona/shared"
+
 /**
  * Política de privacidad. Describes what the code actually does (see
  * specs/privacy.md). Pending legal review: the controller's legal identity
@@ -29,9 +32,10 @@ export default function PrivacidadPage() {
         <p className="text-sm text-[#7A7066]">Última actualización: 7 de octubre de 2026</p>
 
         <H2>1. Quién trata tus datos</H2>
-        <p>
-          El responsable del tratamiento es el equipo de Mimoia. Para cualquier cuestión sobre tus datos
-          o para ejercer tus derechos, escribe a <Contact />.
+        <p data-testid="privacy-controller">
+          El responsable del tratamiento es {LEGAL_OWNER.name}, con NIF {LEGAL_OWNER.nif} y domicilio en{" "}
+          {LEGAL_OWNER.address}, titular de Mimoia (ver el <Link href="/aviso-legal" className="underline underline-offset-4">aviso legal</Link>).
+          Para cualquier cuestión sobre tus datos o para ejercer tus derechos, escribe a <Contact />.
         </p>
 
         <H2>2. Qué datos tratamos</H2>

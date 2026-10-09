@@ -44,7 +44,7 @@ const jetbrains = JetBrains_Mono({
   weight: ["400"],
 })
 
-const PUBLIC_ROUTES = ["/", "/como-funciona", "/por-que-ona", "/privacidad", "/terminos", "/login", "/register", "/onboarding"]
+const PUBLIC_ROUTES = ["/", "/como-funciona", "/por-que-ona", "/privacidad", "/terminos", "/aviso-legal", "/login", "/register", "/onboarding"]
 /** Public sections with dynamic segments: the waitlist owner page and opt-out (specs/waitlist.md). */
 const PUBLIC_PREFIXES = ["/lista/"]
 

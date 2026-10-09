@@ -227,6 +227,8 @@ export type {
   WaitlistReservation,
 } from './types/founderPricing.js'
 
+export { LEGAL_OWNER } from './constants/legal.js'
+
 // Public brand (D-012) + pre-launch waitlist (specs/waitlist.md)
 export { BRAND_NAME, ASSISTANT_NAME, BRAND_SUPPORT_EMAIL } from './constants/brand.js'
 export {

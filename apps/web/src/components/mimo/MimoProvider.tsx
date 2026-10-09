@@ -243,6 +243,7 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
     const blob = await recorder.start()
     if (!blob) {
       setStatus('idle')
+      if (recorder.lastError()) setError(recorder.lastError())
       if (handsFreeRef.current) setHandsFreeState(false) // nobody spoke: end the conversation quietly
       return
     }

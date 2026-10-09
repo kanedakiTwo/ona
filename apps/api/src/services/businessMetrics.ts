@@ -263,7 +263,7 @@ export const DEFINITIONS = {
   excluded:
     'Admin accounts (role=admin) and suspended users are excluded from every count and from costEur; their spend is reported as internalCostEur. There is no demo-account flag. `includeInternal=1` counts them.',
   activeHouseholds:
-    'Distinct households with at least one meaningful action in the week: generated a menu, logged a cooked meal, used the shopping list (checked / in-stock / added an item), created a recipe, sent a WhatsApp message to ONA, spoke in voice mode, or triggered a paid AI feature (chat, voice, recipe import, image). Opening a screen is not tracked.',
+    'Distinct households with at least one meaningful action in the week: generated a menu, logged a cooked meal, used the shopping list (checked / in-stock / added an item), created a recipe, sent a WhatsApp message to Mimo, or triggered a paid AI feature (talking to Mimo typed or spoken, recipe import, image). Weeks before 2026-10-09 also count OpenAI Realtime voice sessions (retired, D-023). Opening a screen is not tracked.',
   resolvedWeekHouseholds:
     'Households that (a) have a menu whose week_start is that week AND (b) used the shopping list (checked an item, toggled in-stock, or added an item — web or assistant) during that week or the Saturday/Sunday right before it. Opening the list does not count: the list row is rewritten on every read, including by the WhatsApp shopping reminder.',
   newHouseholds: 'Households created (at registration) that week and still primary for a counted user.',

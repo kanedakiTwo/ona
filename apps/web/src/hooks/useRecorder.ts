@@ -35,12 +35,17 @@ export function recorderSupported(): boolean {
 export function useRecorder(opts: RecorderOptions = {}) {
   const { silenceMs = 1300, noSpeechMs = 8000, maxMs = 30_000 } = opts
   const [recording, setRecording] = useState(false)
+  /** Why the last start() gave nothing back, when it wasn't silence (no mic, permission denied). */
+  const [error, setError] = useState<string | null>(null)
+  const errorRef = useRef<string | null>(null)
   /** 0–1, for the listening animation. */
   const [level, setLevel] = useState(0)
   const stopRef = useRef<((keep: boolean) => void) | null>(null)
 
   const start = useCallback((): Promise<Blob | null> => {
     if (stopRef.current) stopRef.current(false)
+    setError(null)
+    errorRef.current = null
     return new Promise<Blob | null>((resolve) => {
       let finished = false
       let stream: MediaStream | null = null
@@ -108,7 +113,15 @@ export function useRecorder(opts: RecorderOptions = {}) {
             else if (now - startedAt > maxMs) finish(true)
           }, 100)
         })
-        .catch(() => finish(false))
+        .catch((err: unknown) => {
+          const name = (err as { name?: string })?.name
+          errorRef.current =
+            name === 'NotAllowedError' || name === 'SecurityError'
+              ? 'No tengo permiso para usar el micrófono. Actívalo en los ajustes del navegador.'
+              : 'No encuentro ningún micrófono.'
+          setError(errorRef.current)
+          finish(false)
+        })
     })
   }, [silenceMs, noSpeechMs, maxMs])
 
@@ -119,5 +132,8 @@ export function useRecorder(opts: RecorderOptions = {}) {
 
   useEffect(() => () => stopRef.current?.(false), [])
 
-  return { recording, level, start, stop, cancel }
+  /** The error of the last start(), readable right after awaiting it (state lags a render). */
+  const lastError = useCallback(() => errorRef.current, [])
+
+  return { recording, level, error, lastError, start, stop, cancel }
 }

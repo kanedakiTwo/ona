@@ -98,8 +98,9 @@ The `.standalone-pt` utility applies `padding-top: var(--safe-top)` so content d
 - `Footer` — the **one** public footer (since 2026-10-08), rendered by `app/(public)/layout.tsx` on the landing and every public page: the landing's sand strip (`#F2EDE0`, hairline `#DDD6C5` top rule inside `max-w-5xl`), `font-display` "Mimoia" wordmark, links Cómo funciona · Recetas · Privacidad · Términos, contact `CONTACT_EMAIL` (`lib/contact.ts`: `NEXT_PUBLIC_SUPPORT_EMAIL`, else hola@mimoia.com) and "© 2026 Mimoia". The old dark footer (ink band with a CTA, "hola@ona.app", "Issue №01") is gone; the landing's final CTA section no longer embeds its own footer. Pinned by `e2e/brand.spec.ts`
 - `PublicNavbar` — transparent over hero, beige/blur after scroll, mobile menu uses `font-display` 3xl; its primary pill is "Lista de espera" (mobile: "Únete a la lista de espera") → `/#lista-de-espera` (scrolls in place on `/`)
 - `/lista/[code]` (waitlist owner page) and `/lista/baja` (opt-out) — cream page, eyebrow with `BRAND_NAME`, `text-editorial-lg` headline, paper card
-- `Navbar` (bottom tab bar, 2026-10-08) — fixed full width, `bg-paper` + `border-border-soft` top border, five tabs with icon **and visible label** (Menú, Compra, Recetas, Asesor, Perfil; 11 px), active = ink, semibold, stroke 2.2 + `aria-current="page"` (Compra is also active on `/compra/*`); 60 px + safe-area inset. Hidden on full-screen routes listed in `HIDDEN_ON` (cook mode)
+- `Navbar` (bottom tab bar, 2026-10-08) — fixed full width, `bg-paper` + `border-border-soft` top border, four tabs with icon **and visible label** (Menú, Compra, Recetas, Perfil; 11 px; no «Asesor» tab since D-023, 2026-10-09: Mimo is the floating button), active = ink, semibold, stroke 2.2 + `aria-current="page"` (Compra is also active on `/compra/*`); 60 px + safe-area inset. Hidden on full-screen routes listed in `HIDDEN_ON` (cook mode)
 - `/menu` — "D · Luz y foto": compact header (eyebrow + Fraunces 650 h1 with terracotta-deep italic day), day strip (ink pill), full-bleed photo hero with overlapping paper caption card + ink "Empezar a cocinar" pill, horizontal meal rows, every action behind "···" sheets (`MenuSheet`: bottom sheet on mobile, centred dialog at lg+, portalled, Esc closes, fades only under reduced motion); desktop hero row + "La semana" photo columns. Photo-less: the hero becomes a compact card (meal icon on a bone square, name once); thumbnails and tiles use `RecipeCover` (bone block + small meal icon, no name). See [Menus](./menus.md)
+- **Mimo companion** (D-023, 2026-10-09; see [Advisor](./advisor.md)) — `MimoButton`: 56 px ink circle, cream ring, Sparkles icon, forest on hover, a pulsing terracotta dot while the wake word listens; sits above the tab bar (mobile), the recipe action bar (< `lg`) or the cook-mode controls (`z-110`). `MimoPanel`: cream bottom sheet (88dvh, `rounded-t-[28px]`, ink/30 backdrop) below `lg`, a 400 px right column with a left hairline at `lg+` (the page moves aside via `--mimo-panel-width`); Fraunces «Mimo» title, 11 px uppercase status line, ink user bubbles / bone assistant bubbles, terracotta level bars while listening, forest «Manos libres» pill when on
 - `/compra` + `/compra/tiendas` — "Pide a tus *tiendas*." editorial header, one cream card per shop order with a status chip (ink = enviado, terracotta = ha contestado, forest = confirmado), ink pill CTAs, verdict labels OK (forest) / Revisar (terracotta) / No hay (muted); `/shopping` gets an outlined "Pedir a mis tiendas" card
 
 ## Pages still in App Mode (legacy, green palette)
@@ -107,7 +108,6 @@ The `.standalone-pt` utility applies `padding-top: var(--safe-top)` so content d
 These have not been migrated to the editorial system yet:
 - `/shopping` — green/mint palette, `[#2D6A4F]` accents, `[#EAF3DE]` chips
 - `/profile` — same
-- `/advisor` — green avatar, mint chat header
 - `/login` — photo background with white form sheet (transitional; uses `font-display` for logo but green submit button)
 
 ## Layout
@@ -131,7 +131,7 @@ These have not been migrated to the editorial system yet:
 - Tailwind v4 with `@theme` block; no `tailwind.config.js`
 - Several pages still mix arbitrary `[#hex]` values and `--color-*` tokens; prefer the tokens for new code
 - `PublicNavbar` links to `/recetas` (Spanish) but the actual route is `/recipes` — known broken link
-- **Brand names**: user-facing copy uses `BRAND_NAME` ("Mimoia") and `ASSISTANT_NAME` ("Mimo") from `@ona/shared`; "ONA" is internal only (packages, env vars, DB, localStorage keys, routes such as `/recipes-ona`, code, comments). `apps/api/src/tests/brandName.test.ts` fails on any string literal or JSX text saying ONA/Ona in the web app, `@ona/shared` or the API copy (allow-list: the "Hola Ona" wake phrase, see [Voice Mode](./voice-mode.md)). Pre-launch, every public CTA leads to the waitlist (`/#lista-de-espera`, with `?ref=` where useful), never to `/register`
+- **Brand names**: user-facing copy uses `BRAND_NAME` ("Mimoia") and `ASSISTANT_NAME` ("Mimo") from `@ona/shared`; "ONA" is internal only (packages, env vars, DB, localStorage keys, routes such as `/recipes-ona`, code, comments). `apps/api/src/tests/brandName.test.ts` fails on any string literal or JSX text saying ONA/Ona in the web app, `@ona/shared` or the API copy (allow-list: the "Hola Ona" wake phrase, see [Voice (Mimo)](./voice-mode.md)). Pre-launch, every public CTA leads to the waitlist (`/#lista-de-espera`, with `?ref=` where useful), never to `/register`
 - **No health claims in public copy** (landing, footer, `/como-funciona`, the waitlist components…): no "antiinflamatorio", "previene", "cura", "adelgaza", "controla la glucosa", microbioma, cardiólogo as endorsement, etc. ONA's nutrition philosophy guides the product, not the marketing (ONA HQ constitution §6; RD 1907/1996 art. 4). Describe the cooking style instead ("casera, variada, de temporada, con buen aceite de oliva"). Guarded in CI by `apps/api/src/tests/publicHealthClaims.test.ts` (scans `app/(public)`, the `Footer` and `components/waitlist/`); legal pages (`/privacidad`, `/terminos`) are exempt.
 
 ## Common Components
@@ -146,7 +146,9 @@ These have not been migrated to the editorial system yet:
 | `WeekStrip` / `MenuSheet` / `RecipeCover` | `components/menu/` | /menu day strip · sheet primitive · photo or bone block + meal icon |
 | `RecipeCard` | `components/recipes/RecipeCard.tsx` | `/recipes` card: photo + time pill + title, nothing else (no badges); hero in `FeaturedRecipeCard.tsx` |
 | `FavoriteButton` | `components/recipes/FavoriteButton.tsx` | Heart toggle |
-| `AdvisorChat` | `components/advisor/AdvisorChat.tsx` | Chat bubbles + voice mic |
+| `MimoProvider` | `components/mimo/MimoProvider.tsx` | App-wide Mimo state (`useMimo`), mounted in `app/layout.tsx`; renders the button and the panel |
+| `MimoPanel` | `components/mimo/MimoPanel.tsx` | Bottom sheet < lg / 400 px column at lg+; chat, mic, «Manos libres», voice picker, AI caption |
+| `MimoButton` | `components/mimo/MimoButton.tsx` | Floating Sparkles button; position per page (`mimoButtonPosition`) |
 
 ## Related specs
 
@@ -167,11 +169,11 @@ ONA supports a desktop layout at `md+` (≥768 px) and bespoke multi-column page
 
 ### Tokens (globals.css `@theme`)
 
-- `--sidebar-width: 200px;` · `--sidebar-gap: 8px;` · `--container-max: 1400px;`
+- `--sidebar-width: 200px;` · `--sidebar-gap: 8px;` · `--container-max: 1400px;` · `--mimo-panel-width` (`0px`, or `400px` while the Mimo panel is open; set at runtime by `MimoProvider`, read by `<main>` at `lg+`)
 
 ### Components
 
-- `<DesktopSidebar />` at `apps/web/src/components/shared/DesktopSidebar.tsx` — persistent left nav at `md+`. Items: Menú, Compra, Recetas, Asesor, Perfil. Hides on `/recipes/[id]/cook` routes.
+- `<DesktopSidebar />` at `apps/web/src/components/shared/DesktopSidebar.tsx` — persistent left nav at `md+`. Items: Menú, Compra, Recetas, Perfil (Mimo is the floating button). Hides on `/recipes/[id]/cook` routes.
 - `<Navbar />` (mobile bottom-nav) carries `md:hidden` on its outer `<nav>`.
 
 ### Exceptions (no responsive treatment)
@@ -182,7 +184,7 @@ ONA supports a desktop layout at `md+` (≥768 px) and bespoke multi-column page
 
 ### Pragmatic scope vs original plan
 
-The migration (June 2026) shipped the chasis (sidebar at `md+`, container caps) + a `/recipes` catalogue shell (replaced by the "D" filter row on 2026-10-08) + the Vista Semana 7-col grid + page-by-page container widening at `lg+`. The original plan ([docs/superpowers/specs/2026-06-01-responsive-desktop-design.md](../docs/superpowers/specs/2026-06-01-responsive-desktop-design.md)) also called for bespoke per-page splits (38/62 recipe detail with sticky hero, 40/60 form layouts, vertical day-strip + preview rail, sidebar + 3-col aisle grid on `/shopping`, `/profile` tabs shell, `/advisor` side panel). The recipe-detail split **shipped on 2026-10-08** as a 50/50 grid with a sticky photo (redesign "D", see `/recipes/[id]` above); the other bespoke layouts are still deferred to follow-up polish PRs — the foundational responsive win is delivered without them, and the editorial splits can land iteratively as taste decisions allow.
+The migration (June 2026) shipped the chasis (sidebar at `md+`, container caps) + a `/recipes` catalogue shell (replaced by the "D" filter row on 2026-10-08) + the Vista Semana 7-col grid + page-by-page container widening at `lg+`. The original plan ([docs/superpowers/specs/2026-06-01-responsive-desktop-design.md](../docs/superpowers/specs/2026-06-01-responsive-desktop-design.md)) also called for bespoke per-page splits (38/62 recipe detail with sticky hero, 40/60 form layouts, vertical day-strip + preview rail, sidebar + 3-col aisle grid on `/shopping`, `/profile` tabs shell, `/advisor` side panel — superseded on 2026-10-09 by the Mimo desktop column on every page). The recipe-detail split **shipped on 2026-10-08** as a 50/50 grid with a sticky photo (redesign "D", see `/recipes/[id]` above); the other bespoke layouts are still deferred to follow-up polish PRs — the foundational responsive win is delivered without them, and the editorial splits can land iteratively as taste decisions allow.
 
 ## Source
 

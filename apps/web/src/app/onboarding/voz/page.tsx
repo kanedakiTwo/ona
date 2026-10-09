@@ -22,7 +22,7 @@ import { api } from "@/lib/api"
 import { useRecorder, recorderSupported } from "@/hooks/useRecorder"
 import { useVoice } from "@/hooks/useVoice"
 import { useUserMemory } from "@/hooks/useUserMemory"
-import type { MemoryKey } from "@ona/shared"
+import { AI_DISCLOSURE, type MemoryKey } from "@ona/shared"
 
 type Phase = "idle" | "thinking" | "speaking" | "listening" | "transcribing" | "done" | "error"
 type Turn = { role: "user" | "assistant"; content: string }
@@ -84,7 +84,8 @@ export default function VoiceOnboardingPage() {
         const blob = await recorder.start()
         if (stoppedRef.current) return
         if (!blob) {
-          setPhase("idle")
+          if (recorder.lastError()) setError(recorder.lastError())
+          setPhase(recorder.lastError() ? "error" : "idle")
           return
         }
         setPhase("transcribing")
@@ -196,6 +197,11 @@ export default function VoiceOnboardingPage() {
             <p className="mt-2 max-w-xs text-center text-[11px] italic text-[#C65D38]">Este navegador no puede grabar audio.</p>
           )}
           {error ? <p className="mt-2 max-w-xs text-center text-[11px] italic text-[#C65D38]">{error}</p> : null}
+
+          {/* AI Act art. 50: the user knows they are talking to an AI before and during the conversation */}
+          <p data-testid="ai-disclosure" className="mt-4 max-w-xs text-center text-[11px] leading-snug text-[#7A7066]">
+            {AI_DISCLOSURE}
+          </p>
 
           {lastAssistant ? (
             <p className="mt-6 max-w-xs text-center text-[14px] font-italic italic leading-relaxed text-[#1A1612]">

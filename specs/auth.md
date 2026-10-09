@@ -26,7 +26,7 @@ User registration, login, and session management for ONA.
 
 ## Onboarding (post-registration)
 
-- Onboarding is required before any in-product page (menu, recipes, shopping, advisor) is meaningful
+- Onboarding is required before any in-product page (menu, recipes, shopping, Mimo) is meaningful
 - The `users.onboardingDone` flag tracks completion
 - Onboarding collects: household composition (`adults` + `kidsCount` for children aged 2–10; under 2 doesn't count, over 10 counts as adult), cooking frequency, dietary restrictions, favorite dishes, nutritional priority. Dietary restrictions are health data: the step shows the separate, unticked health-data consent box and only stores them when it's ticked (`healthConsent: true` in the body records the consent) — see [Privacy](./privacy.md) → Health-data consent (PRO-21)
 - Until `onboardingDone = true`, the landing page redirects authenticated users to `/onboarding`
@@ -69,7 +69,7 @@ The `users` table holds the canonical scalar fields (`sex`, `age`, `weight`, `he
 - `/menu`, `/menu/history`
 - `/shopping`
 - `/recipes`, `/recipes/new`, `/recipes/[id]`, `/recipes/[id]/cook`
-- `/advisor`
+- `/advisor` — no longer a page (D-023): a client redirect to `/menu?mimo=1`, which opens Mimo. Mimo itself is the floating button on every protected page (see [Advisor](./advisor.md))
 - `/profile`
 - `/admin` — admin dashboard, gated by `requireAdmin` (see [Admin Dashboard](./admin-dashboard.md)). The old `/curator` route 301-redirects here.
 

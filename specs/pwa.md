@@ -25,7 +25,7 @@ Premium Progressive Web App layer that makes Mimoia feel like a native iOS/Andro
 
 ### Native gestures and transitions
 
-- Users can **swipe horizontally** between the 5 bottom-tab routes (menu ↔ compra ↔ recetas ↔ asesor ↔ perfil) with a pan gesture (`SwipeNavigator`, `motion/react` `onPan`). Not on the recipe detail `/recipes/[id]` (it has its own tabs) nor in cook mode `/recipes/[id]/cook`: a horizontal swipe there stays on the page
+- Users can **swipe horizontally** between the 4 bottom-tab routes (menu ↔ compra ↔ recetas ↔ perfil; Mimo is the floating button, not a tab — D-023) with a pan gesture (`SwipeNavigator`, `motion/react` `onPan`). Not on the recipe detail `/recipes/[id]` (it has its own tabs) nor in cook mode `/recipes/[id]/cook`: a horizontal swipe there stays on the page
 - The gesture has rubber-band edge resistance, a 30% width threshold to confirm, and snaps back if released before threshold (300ms `--ease-out-expo`)
 - Vertical scroll is preserved via `touchAction: pan-y`
 - The bottom nav marks the active tab in ink with a heavier icon stroke and `aria-current="page"`; every tab shows its text label (no animated pill since 2026-10-08)

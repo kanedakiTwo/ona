@@ -4,18 +4,26 @@ AI assistant for nutrition guidance, menu queries, and recipe management via nat
 
 ## User Capabilities
 
-- Users can chat with an AI assistant via `/advisor`
-- Users can type messages or speak (voice input via Web Speech API, Spanish)
-- The assistant speaks responses aloud (TTS) when auto-speak is enabled — with an ElevenLabs voice when the API has one configured (a "Voz de Mimo" picker appears above the input when there are several; picking one plays a short preview and is remembered on the device), otherwise with the browser's built-in voice
-- Users can tap the speaker icon on any assistant message to replay it
-- Users see suggested example prompts when the chat is empty:
-  - "Que toca cocinar hoy?"
-  - "Quiero crear una receta nueva"
-  - "No tengo mantequilla, que uso?"
-  - "Como van mis objetivos?"
-- The header shows the assistant avatar with "En linea" status
-- A microphone button toggles speech-to-text mode; while listening, an animated waveform replaces the input
-- A volume button toggles auto-speak globally for assistant replies
+**One Mimo, a companion on every page** (decision D-023, 2026-10-09). The advisor is no longer a page: Mimo lives in a floating button and a panel that opens over whatever the user is looking at.
+
+- **Floating button** (`MimoButton`, `data-testid="mimo-button"`): an ink circle with a Sparkles icon on every signed-in page. It is hidden on login, register, reset, onboarding, invites and public pages (`mimoHiddenOn`). It stays clear of fixed bars:
+  - default: above the 60 px bottom tab bar on mobile; bottom-right, 24 px from the edges, at `md+`;
+  - recipe detail (`/recipes/<id>`): above the 84 px sticky action bar until `lg`;
+  - cook mode: `z-110`, above the step controls.
+  - A small terracotta dot pulses on it while the wake word is listening.
+- **Panel** (`MimoPanel`, `data-testid="mimo-panel"`):
+  - Phones and tablets (< `lg`): a bottom sheet, 88dvh, over a backdrop (tap the backdrop to close).
+  - Desktop (`lg+`): a 400 px right column with no backdrop. The page moves aside: `<main>` gets `padding-right: var(--mimo-panel-width)`, set by `MimoProvider` while the panel is open.
+  - Header: «Mimo» and a status line («Escribe o habla», «Te escucho…», «Un momento…», «Pensando…», «Hablando… (toca para parar)», «Manos libres»). Buttons: read-aloud toggle, «Empezar de nuevo» (clears the conversation), «Cerrar». Esc also closes.
+  - A «Voz» picker shows when the API offers several ElevenLabs voices; picking one plays a short preview and is remembered on the device.
+  - Empty state: «Soy Mimo. Pregúntame lo que quieras…» with suggestions that depend on the page: cook mode («Siguiente paso», «Pon un temporizador de 10 minutos»…), recipe («¿Puedo hacerla sin horno?», «Adáptala para 4 personas»…), menu («¿Qué toca cocinar hoy?», «Cambia la cena del jueves»…), shopping («Añade leche a la lista», «Hazme la compra»…), or the default set.
+  - Composer: «Manos libres» toggle, text input («Escribe a Mimo…»), mic button (tap to talk; tap again to stop and send), send button. While Mimo speaks, a «Parar» link stops it.
+  - AI disclosure line under the composer (`data-testid="ai-disclosure"`).
+- **Mimo knows the page.** Each turn sends the current path; Mimo understands «esta receta», «siguiente» or «este menú» (see Page context below).
+- **The conversation survives navigation** within the tab (sessionStorage), so users can open Mimo on the menu, go to a recipe and keep talking.
+- **Pages refresh after Mimo acts.** When a reply changed something (`actionTaken`), every react-query query is invalidated, so the menu, list or recipe behind the panel shows the change.
+- **Old links:** `/advisor` is a client redirect to `/menu?mimo=1`; `?mimo=1` on any page opens the panel.
+- There is no «Asesor» tab any more: the bottom tab bar and the desktop sidebar have 4 entries (see [Design System](./design-system.md)).
 
 ## Assistant Skills
 
@@ -90,7 +98,7 @@ The assistant can call back-end skills (function calling). Each skill has a name
 - The user context now includes **today's date and time in Madrid** with its dayIndex, plus **this week's menu** read from `dishes[]`. Before, it read the legacy `slot.recipeName` and was always empty.
 - The card or app link comes from the most visual skill of the turn (menu/list/recipe > nutrition > confirmation > text).
 
-The cooking-mode skills (`start_cooking_mode`, `set_timer`, `cooking_step`) are bridged to the `CookingShell` UI via [`apps/web/src/lib/cookingCommands.ts`](../apps/web/src/lib/cookingCommands.ts) — a tiny pub/sub bus subscribed to from `CookingShell`. If no shell is mounted, commands silently drop (the assistant still spoke the confirmation).
+The cooking-mode skills (`start_cooking_mode`, `set_timer`, `cooking_step`) are bridged to the `CookingShell` UI by `MimoProvider`: `cooking_navigate` routes to `/recipes/:id/cook`, and `cooking_timer` / `cooking_step` go through [`apps/web/src/lib/cookingCommands.ts`](../apps/web/src/lib/cookingCommands.ts), a tiny pub/sub bus subscribed to from `CookingShell`. Typed and spoken turns dispatch the same way. If no shell is mounted, commands silently drop (the assistant still gave the confirmation).
 
 The model responds with either a plain text message or tool calls. `runToolLoop` (engine.ts) executes **every** `tool_use` block of a response (parallel calls are answered in one user message, failures flagged `is_error`) and loops for up to `MAX_TOOL_ROUNDS = 4` rounds — so "genera el menú y dime qué toca hoy" runs both skills in one turn. The round after the last is sent with `tool_choice: none` to force a text answer. The response's `skillUsed`/`uiHint`/`data` come from the last skill with a non-`text` uiHint (falling back to the last skill), so the web still renders one card per turn.
 
@@ -98,64 +106,55 @@ The model responds with either a plain text message or tool calls. `runToolLoop`
 
 **Hallucinated-action guard.** The system prompt forbids claiming a change ("cambiado", "guardado", "hecho"…) without calling the tool that makes it this turn, and forbids offering a concrete recipe without checking the catalogue first. As a backstop, when a turn ran **no** tool and the reply matches a Spanish past-tense claim (`claimsAction`), the loop appends a hidden corrective note and gives the model one more round to call the tool or tell the truth. The note tells the model that if it was only recalling something done in an earlier turn, it should restate its answer and not repeat the action. This prevents a "ya he generado tu menú" recap from triggering a second menu. Found in the 2026-10-06 WhatsApp E2E: the model answered "Cambiado: hoy cenas pollo con calabacín" with no `swap_meal` call and no such recipe in the catalogue. Each round logs `[assistant] round N: <skills>`. `ChatOptions.onToolStart(names)` fires before each tool round. WhatsApp uses it to send a "me pongo con ello" note as soon as a slow skill starts.
 
-## Voice (`useVoice` hook)
+## Voice (one brain)
 
-- Uses native `SpeechRecognition` for input; output via the API voice (ElevenLabs) when configured, else `speechSynthesis`
-- Language defaults to `es-ES`
-- STT: continuous=false, interimResults=true; final transcript auto-sends
-- TTS: when `GET /tts/voices` says `enabled`, replies are read by `POST /tts { text, voice }` (ElevenLabs, `services/tts.ts`): the API strips Markdown/links/emoji, cuts at ~1.200 characters on a sentence end, streams MP3 and records the characters in the cost ledger (`elevenlabs/<model>`, per 1.000 chars). Off unless `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICES` (`Nombre:voiceId,…`, first = default; `ELEVENLABS_MODEL`, default `eleven_multilingual_v2`) are set — only in staging as of 2026-10-09. Library voices need a paid ElevenLabs plan (free → 402). Any failure falls back to the browser voice: prefers a Spanish voice from `getVoices()`; rate 1.0, pitch 1.0 (sounds robotic). Not the realtime "Modo voz" (OpenAI Realtime, `OPENAI_REALTIME_VOICE`)
-- Both can be unavailable in some browsers (the UI hides voice controls if `sttSupported`/`ttsSupported` is false)
+Typed and spoken turns go to the same Claude assistant; there is no separate voice model. The mic records with silence detection → `POST /stt` (OpenAI transcription) → the text is sent with `mode: 'voice'` (short spoken replies) → the reply is read aloud by `POST /tts` (ElevenLabs, browser voice as fallback). Spoken turns are always read aloud; typed turns only when «Leer las respuestas en voz alta» is on. «Manos libres» listens again after each reply. Full detail (recorder timings, TTS limits, wake word, fallbacks) in [Voice (Mimo)](./voice-mode.md).
+
+## Page context
+
+`POST /assistant/:userId/chat` takes `context: { path }` (≤ 200 chars). `describePage` maps the path to a page kind and `pageContextNote` appends a hidden note to the message, «[Pantalla actual (no lo menciones): …]»: viewing recipe «X» (`/recipes/<id>`, `/edit`), cooking recipe «X» in cook mode (`/recipes/<id>/cook`: «siguiente», «temporizador» refer to it), the weekly menu (`/menu`), the shopping list and shop orders (`/shopping`, `/compra`), the catalogue (`/recipes`, `/cookbooks`), the profile; anything else adds nothing. A recipe is only named if the user can see it (`canViewRecipe`); otherwise no note. Onboarding turns never get one. Pure functions in `services/assistant/pageContext.ts`, tested in `pageContext.test.ts`.
 
 ## API
 
-- `POST /assistant/:userId/chat` (auth) — body `{ message, history }`
+- `POST /assistant/:userId/chat` (auth) — body `{ message, history, mode?, context? }`
   - `history` is the recent conversation, capped at 20 messages by the client
-  - Response: `{ message, skillUsed?, uiHint?, data? }`
+  - `mode`: `'text'` | `'voice'` | `'onboarding'`; anything else is treated as `'text'`
+  - `context.path`: the page the user is on (see Page context)
+  - Response: `{ message, skillUsed?, uiHint?, data?, actionTaken? }`
   - `:userId` must match the authenticated user, else **403** (the chat loads that user's context and bills their budget)
   - Returns **429** `code: 'ADVISOR_BUDGET_EXCEEDED'` once the user has spent their monthly euro budget (see Cost guardrail)
+- `POST /stt` (auth, 60/min, spend cap): multipart `audio` ≤ 10 MB → `{ text }`; 503 `STT_DISABLED` without `OPENAI_API_KEY`, 502 `STT_FAILED` on a transcription error. Cost feature `mimo_voice_transcription`.
+- `GET /tts/voices`, `POST /tts { text, voice }`: read-aloud (see Voice).
 
 ## Channels
 
-`chat(userId, message, history, db, opts)` is transport-agnostic. `opts.mode` picks the system-prompt flavour: `'text'` (web chat, default), `'whatsapp'` (see [WhatsApp](./whatsapp.md) — WhatsApp markup, no screen language, `[[opciones: …]]` reply-button convention, cooking timers/steps redirected to the app). The Realtime voice session builds its prompt with `'voice'` / `'onboarding'` directly. The WhatsApp channel shares the same skills, memory digest and monthly budget as the web chat.
+`chat(userId, message, history, db, opts)` is transport-agnostic. `opts.mode` picks the system-prompt flavour: `'text'` (typed in the app, default), `'voice'` (spoken in the app: short replies meant to be heard), `'onboarding'` (`/onboarding/voz`, see [User Memory](./user-memory.md)), `'whatsapp'` (see [WhatsApp](./whatsapp.md) — WhatsApp markup, no screen language, `[[opciones: …]]` reply-button convention, cooking timers/steps redirected to the app). Every channel shares the same skills, memory digest and monthly budget.
 
 ## Cost guardrail (per-user monthly budget)
 
-The advisor chat calls Claude Haiku 4.5 (up to two requests per turn — tool
-decision + post-tool reply), so it's metered per user:
+The advisor chat calls Claude Haiku 4.5 (up to two requests per turn — tool decision + post-tool reply), so it's metered per user:
 
-- Every turn's real token `usage` (input / output / cache-write / cache-read)
-  is priced at Haiku 4.5 list rate (USD), converted to euros via
-  `ADVISOR_EUR_PER_USD` (default 0.92), and added to a per-user, per-month
-  running total stored in `users.advisor_spend_micros` (+ `advisor_spend_month_key`).
-- Before each turn the route checks the total against `ADVISOR_MONTHLY_BUDGET_EUR`
-  (default **€5**). At or over budget → `429 ADVISOR_BUDGET_EXCEEDED`, no model
-  call is made.
-- The month resets implicitly: the first chat of a new month overwrites the
-  total with that turn's cost (same stateless pattern as the image quota — no
-  cron). A user just under the line may run one final turn, so actual spend can
-  exceed the cap by at most one turn (~€0.01) — acceptable for a soft cap.
-- Pricing math lives in `services/advisorBudget.ts` and is unit-tested; the
-  per-MTok rates track the model in `engine.ts`. The legacy `/advisor/:userId/ask`
-  is rule/KB-based (no model call) and is not metered.
-- **Monthly cap on all paid AI work** (`USER_MONTHLY_SPEND_CAP_EUR`, default €10, Madrid month, summed from the cost ledger — [Metrics](./metrics.md)). Every route that pays a provider checks it first (`middleware/spendCap.ts` → `429 SPEND_CAP_EXCEEDED`): this chat, recipe photo/URL import, image regeneration, ingredient auto-create / nutrition estimate, voice session + voice tools. Every WhatsApp turn checks it too. Admins are exempt; a ledger read error fails open. Voice also keeps its daily minutes quota (`REALTIME_DAILY_MINUTES_PER_USER`). Since 2026-10-07 the quota is read from the ledger (`services/realtime/quota.ts`) instead of process memory, so a deploy no longer resets it. Minutes are still client-reported.
+- Every turn's real token `usage` (input / output / cache-write / cache-read) is priced at Haiku 4.5 list rate (USD), converted to euros via `ADVISOR_EUR_PER_USD` (default 0.92), and added to a per-user, per-month running total stored in `users.advisor_spend_micros` (+ `advisor_spend_month_key`).
+- Before each turn the route checks the total against `ADVISOR_MONTHLY_BUDGET_EUR` (default **€5**). At or over budget → `429 ADVISOR_BUDGET_EXCEEDED`, no model call is made.
+- The month resets implicitly: the first chat of a new month overwrites the total with that turn's cost (same stateless pattern as the image quota — no cron). A user just under the line may run one final turn, so actual spend can exceed the cap by at most one turn (~€0.01) — acceptable for a soft cap.
+- Pricing math lives in `services/advisorBudget.ts` and is unit-tested; the per-MTok rates track the model in `engine.ts`. The legacy `/advisor/:userId/ask` is rule/KB-based (no model call) and is not metered.
+- **Monthly cap on all paid AI work** (`USER_MONTHLY_SPEND_CAP_EUR`, default €10, Madrid month, summed from the cost ledger — [Metrics](./metrics.md)). Every route that pays a provider checks it first (`middleware/spendCap.ts` → `429 SPEND_CAP_EXCEEDED`): this chat, `POST /stt`, `POST /tts`, recipe photo/URL import, image regeneration, ingredient auto-create / nutrition estimate. Every WhatsApp turn checks it too. Admins are exempt; a ledger read error fails open. Spoken turns are ordinary chat turns, so they use the same € budget; there is no separate voice-minutes quota since OpenAI Realtime was retired (2026-10-09).
 
 ## Multi-dish + notes nutrition
 
 The advisor's weekly nutrient/calorie aggregators iterate `slot.dishes` and process only `kind:'recipe'` entries (see [menus.md "Multi-dish slots"](./menus.md)). Notes contribute zero calories — a user who logs "comemos en casa de Paqui" as a note for lunch will see that meal as 0 kcal in the summary. By design.
 
-## Desktop layout (lg+)
-
-At `lg+` the `/advisor` page widens its outer container to `max-w-[900px]` so the chat reads at a comfortable width on desktop. A future polish PR may add a 60/40 split with a persistent right side-panel (nutrition summary + memory facts) — out of scope for this migration.
-
 ## Constraints
 
-- The chat is single-session in memory (no persistent conversation history in the DB)
-- The history is sent with each request (last 20 messages from the client)
+- The conversation lives in the browser tab only: sessionStorage `mimo.chat.v1` keeps the last 40 messages across navigation; nothing is stored in the DB, and a new tab starts empty
+- The client sends the last 20 messages as history with each request
+- One turn at a time: while Mimo is thinking, a new message is ignored
 - All assistant responses are in Spanish by design
-- **AI disclosure (EU AI Act art. 50, in force since 2026-08-02):** the chat shows "Soy Mimo, tu asistente de IA. Escribe o habla." in the empty state and a permanent caption under the input ("Mimo es un asistente de inteligencia artificial (IA): puede equivocarse y no sustituye a un profesional sanitario."). The wording lives in `AI_DISCLOSURE*` in `packages/shared/src/constants/aiDisclosure.ts`, shared with voice mode and WhatsApp; pinned by `apps/web/e2e/ai-disclosure.spec.ts`.
-- Voice input is browser-side only; if the browser lacks the Web Speech API, only text mode works (read-aloud still works through the API voice when it is on)
+- **AI disclosure (EU AI Act art. 50, in force since 2026-08-02):** the panel always shows a caption under the composer ("Mimo es un asistente de inteligencia artificial (IA): puede equivocarse y no sustituye a un profesional sanitario.", `data-testid="ai-disclosure"`), and the empty state introduces Mimo. The wording lives in `AI_DISCLOSURE*` in `packages/shared/src/constants/aiDisclosure.ts`, shared with WhatsApp; pinned by `apps/web/e2e/ai-disclosure.spec.ts`.
+- Without `OPENAI_API_KEY`, `POST /stt` answers 503 and only typing works (plus the Web Speech fallback in browsers without MediaRecorder)
 - The model used (Claude family) is configured via the LLM provider in `services/providers/`
-- The advisor has read-write access to the user's data via skills (it can generate menus, swap meals, create recipes, etc.) — destructive intents should ideally be confirmed in copy
+- The advisor has read-write access to the user's data via skills (it can generate menus, swap meals, create recipes, etc.) — destructive intents are confirmed in copy (see Decisiveness)
+- The legacy `/advisor/:userId/summary` and `/advisor/:userId/ask` routes remain in the API; no page calls them since `/advisor` became a redirect
 
 ## Related specs
 
@@ -163,17 +162,15 @@ At `lg+` the `/advisor` page widens its outer container to `max-w-[900px]` so th
 - [Recipes](./recipes.md) — assistant can search, suggest, and create recipes
 - [Shopping](./shopping.md) — assistant can read the list
 - [WhatsApp](./whatsapp.md) — the same assistant over WhatsApp (text, buttons, deep links)
-- [Voice Mode](./voice-mode.md) — hands-free conversation. **Wake word: still "Hola Ona"** — the trained Picovoice model (`hola-ona_es_wasm_v4_0_0.ppn`) can't be renamed in code; Miguel has to train and upload a "Hola Mimo" model, then `WAKE_PHRASE` + the model path in `useWakeWord.ts` change together. When the opt-in toggle is on, the legacy mic button in the chat is hidden and conversation turns from the orb overlay are appended to the chat history on close.
+- [Voice (Mimo)](./voice-mode.md) — talking to Mimo, hands-free, read-aloud, wake word (still "Hola Ona" until a "Hola Mimo" model is trained)
+- [Cooking mode](./cooking-mode.md) — the shell Mimo drives with cooking commands
 
 ## Hooks (client)
 
-- `useAssistant` (new, preferred) — `POST /assistant/:userId/chat` with `{ message, history }`. The component itself uses `api.post` directly with `useState` for messages
-- `useAdvisor` (legacy) — wraps `/advisor/:userId/summary` and `/advisor/:userId/ask`; the chat UI no longer uses `useAskAdvisor` but the summary endpoint is still called by the advisor page
-- `useVoice` — Web Speech API wrapper (STT + TTS), Spanish by default; reads aloud through `POST /tts` (ElevenLabs) when available. API: [routes/tts.ts](../apps/api/src/routes/tts.ts), [services/tts.ts](../apps/api/src/services/tts.ts)
-
-## Debug page
-
-`/debug-advisor` exists as a developer utility to inspect the auth token in `localStorage` and ping the assistant endpoint manually. Not linked from the UI; access via direct URL.
+- `useMimo` (`components/mimo/MimoProvider.tsx`) — the companion's state: open/close, messages, status, send, mic, hands-free, read-aloud, voices, wake word
+- `useAssistant` — `POST /assistant/:userId/chat` with `{ message, history }`; `MimoProvider` itself calls `api.post` directly
+- `useAdvisor` (legacy) — wraps `/advisor/:userId/summary` and `/advisor/:userId/ask`; no page uses it any more
+- `useRecorder` records for `POST /stt` (silence detection); `useVoice` — read-aloud through `POST /tts` (ElevenLabs) with the browser voice as fallback (`speak()` resolves when playback ends), plus the Web Speech recogniser fallback. API: [routes/tts.ts](../apps/api/src/routes/tts.ts), [services/tts.ts](../apps/api/src/services/tts.ts)
 
 ## Source
 
@@ -189,10 +186,14 @@ At `lg+` the `/advisor` page widens its outer container to `max-w-[900px]` so th
 - [apps/api/src/services/assistant/contextLoader.ts](../apps/api/src/services/assistant/contextLoader.ts)
 - [apps/api/src/services/assistant/systemPrompt.ts](../apps/api/src/services/assistant/systemPrompt.ts)
 - [apps/api/src/services/providers/](../apps/api/src/services/providers/) — LLM integration
-- [apps/web/src/app/advisor/page.tsx](../apps/web/src/app/advisor/page.tsx)
-- [apps/web/src/app/debug-advisor/page.tsx](../apps/web/src/app/debug-advisor/page.tsx)
-- [apps/web/src/components/advisor/AdvisorChat.tsx](../apps/web/src/components/advisor/AdvisorChat.tsx)
-- [packages/shared/src/constants/aiDisclosure.ts](../packages/shared/src/constants/aiDisclosure.ts) — `AI_DISCLOSURE*` (AI Act art. 50 wording, shared by chat, voice and WhatsApp); e2e in `apps/web/e2e/ai-disclosure.spec.ts`
-- [apps/web/src/hooks/useAssistant.ts](../apps/web/src/hooks/useAssistant.ts)
-- [apps/web/src/hooks/useAdvisor.ts](../apps/web/src/hooks/useAdvisor.ts) — legacy
-- [apps/web/src/hooks/useVoice.ts](../apps/web/src/hooks/useVoice.ts)
+- [apps/api/src/services/assistant/pageContext.ts](../apps/api/src/services/assistant/pageContext.ts) — path → hidden «Pantalla actual» note; tests in `apps/api/src/tests/pageContext.test.ts`
+- [apps/api/src/routes/stt.ts](../apps/api/src/routes/stt.ts) + [services/stt.ts](../apps/api/src/services/stt.ts) — `POST /stt`
+- [apps/web/src/components/mimo/MimoProvider.tsx](../apps/web/src/components/mimo/MimoProvider.tsx) — state, turns, voice loop, cooking dispatch, `?mimo=1`, `mimoHiddenOn`
+- [apps/web/src/components/mimo/MimoPanel.tsx](../apps/web/src/components/mimo/MimoPanel.tsx) — bottom sheet / desktop column, per-page suggestions
+- [apps/web/src/components/mimo/MimoButton.tsx](../apps/web/src/components/mimo/MimoButton.tsx) — floating button and its position per page; e2e in `apps/web/e2e/mimo-companion.spec.ts`, `chat-voice.spec.ts`
+- [apps/web/src/app/layout.tsx](../apps/web/src/app/layout.tsx) — mounts `MimoProvider`; `<main>` makes room with `--mimo-panel-width`
+- [apps/web/src/app/advisor/page.tsx](../apps/web/src/app/advisor/page.tsx) — redirect to `/menu?mimo=1`
+- [apps/web/src/app/debug-advisor/page.tsx](../apps/web/src/app/debug-advisor/page.tsx) — developer utility (inspect the token, ping the endpoint); not linked from the UI
+- [packages/shared/src/constants/aiDisclosure.ts](../packages/shared/src/constants/aiDisclosure.ts) — `AI_DISCLOSURE*` (AI Act art. 50 wording, shared by the Mimo panel and WhatsApp); e2e in `apps/web/e2e/ai-disclosure.spec.ts`
+- [apps/web/src/hooks/useAssistant.ts](../apps/web/src/hooks/useAssistant.ts), [apps/web/src/hooks/useAdvisor.ts](../apps/web/src/hooks/useAdvisor.ts) (legacy)
+- [apps/web/src/hooks/useRecorder.ts](../apps/web/src/hooks/useRecorder.ts), [apps/web/src/hooks/useVoice.ts](../apps/web/src/hooks/useVoice.ts)

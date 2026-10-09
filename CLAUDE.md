@@ -113,7 +113,7 @@ ONA (Opinionated Nutritional Assistant) is a **mobile-first meal planner** for S
 - Recipe images: **two sources** in production. Seed/system recipes are committed JPGs under `apps/web/public/images/recipes/<slug>.jpg` and served by Next.js (DB stores relative URL `/images/recipes/<slug>.jpg`). User-regenerated images live on the `ona-api-volume` Railway volume mounted at `/data` and are served by the API (DB stores absolute URL `${IMAGE_PUBLIC_URL_BASE}/<recipeId>.jpg`). The frontend renders `<img src=image_url>` and treats both transparently.
 - The bottom tab bar (`Navbar`) is fixed, full width, with visible labels; the app `<main>` in `app/layout.tsx` reserves `pb-[calc(5rem+var(--safe-bottom))]` for it, so pages don't add their own bottom padding for the bar. It's hidden on `HIDDEN_ON` routes (cook mode, recipe detail — which has its own sticky action bar).
 - The shopping list is rebuilt on **every** `GET /shopping-list` (rolling `from`/`to` range; the single `shopping_lists` row per user is deleted and re-inserted, so its id changes) — check/stock state survives via an `(ingredientId|unit)` overlay. Anything that needs a stable list (e.g. shop orders) must snapshot it. See [shopping.md](./specs/shopping.md).
-- `useAdvisor` is legacy; new code should use `useAssistant` for chat. The advisor page still calls `useAdvisorSummary` for the nutrition summary.
+- There is no advisor page: `/advisor` redirects to `/menu?mimo=1`. Chat (typed and spoken) goes through `MimoProvider` (`useMimo`, `components/mimo/`), the floating companion on every signed-in page. `useAdvisor` / `useAdvisorSummary` are legacy and unused.
 
 ## When to update which spec
 

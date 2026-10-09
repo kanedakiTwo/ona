@@ -1,6 +1,7 @@
 'use client'
 
 import { Sparkles } from 'lucide-react'
+import { WAKE_PHRASE } from '@/hooks/useWakeWord'
 
 /** `/recipes/<id>` (not `/new`, `/edit` or cook mode): it has its own fixed action bar until lg. */
 export function isRecipeDetailPath(pathname: string | null): boolean {
@@ -28,7 +29,7 @@ export default function MimoButton({ pathname, onOpen, listening }: { pathname: 
       type="button"
       onClick={onOpen}
       data-testid="mimo-button"
-      aria-label={listening ? 'Hablar con Mimo (también puedes decir «Hola Mimo»)' : 'Hablar con Mimo'}
+      aria-label={listening ? `Hablar con Mimo (también puedes decir «${WAKE_PHRASE}»)` : 'Hablar con Mimo'}
       className={`fixed ${mimoButtonPosition(pathname)} flex h-14 w-14 items-center justify-center rounded-full bg-[#1A1612] text-[#FAF6EE] shadow-[0_8px_24px_-6px_rgba(26,22,18,0.45)] ring-2 ring-[#FAF6EE] transition-transform hover:bg-[#2D6A4F] active:scale-95`}
     >
       <Sparkles size={22} strokeWidth={1.8} aria-hidden />

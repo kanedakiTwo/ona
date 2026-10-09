@@ -1,115 +1,90 @@
-# Voice Mode
+# Voice (Mimo)
 
-Hands-free voice conversation with the assistant (Mimo), activated by the wake word or by tapping the floating mic anywhere in the authenticated app.
+Talking to Mimo, the assistant, from the floating companion on any signed-in page. Since decision D-023 (2026-10-09) voice is not a separate mode: spoken and typed turns go to the **same Claude assistant** (`POST /assistant/:userId/chat`), in the same panel, with the same conversation. The panel itself is described in [Advisor](./advisor.md).
 
-**Wake phrase after the rename (2026-10-08):** the assistant is now called Mimo, but the wake word is a trained Picovoice model (`hola-ona_es_wasm_v4_0_0.ppn`) that only detects **"Hola Ona"**. Every string that tells the user what to say reads `WAKE_PHRASE` (`apps/web/src/hooks/useWakeWord.ts`, still "Hola Ona") so the UI never promises a phrase the detector can't hear. **Pending (Miguel):** train a **"Hola Mimo"** keyword (Spanish, Porcupine WASM) in console.picovoice.ai and hand over the `.ppn`; then swap `WAKE_PHRASE`, `DEFAULT_KEYWORD_PATH` and the detection label in that file together.
-
-**Status: shipped on master. `OPENAI_API_KEY` with `gpt-realtime` access is wired in production. Wake-word path is gated on `NEXT_PUBLIC_PICOVOICE_ACCESS_KEY` + `.ppn` model; while those are missing the floating mic FAB at top-right is the way in.**
+**Status: shipped (D-023, 2026-10-09).** OpenAI Realtime (the old full-screen "Modo voz" with the orb) is retired. Transcription needs `OPENAI_API_KEY`; the ElevenLabs voice needs `ELEVENLABS_API_KEY` + `ELEVENLABS_VOICES` (only in staging as of 2026-10-09; otherwise the browser voice reads replies). The wake word needs `NEXT_PUBLIC_PICOVOICE_ACCESS_KEY` and a trained model.
 
 ## User Capabilities
 
-- Users can opt in to "Modo voz" (master toggle) from their profile/settings (off by default). When enabled, a floating mic FAB appears top-right on every authenticated route as the manual entry point. On the recipe detail (`/recipes/<id>`, below `lg`) it drops to 72 px from the top so it sits under the hero's share/favourite row instead of covering the favourite (PRO-01, `isRecipeDetailPath` in `VoiceProvider.tsx`; e2e `recipe-detail-voice-favorite.spec.ts`)
-- When the master toggle is on AND Picovoice is configured, a separate sub-toggle "Escuchar '<WAKE_PHRASE>'" appears below it. The sub-toggle is independently off by default — users opt in explicitly to "always listening" so the master toggle can stay enabled (FAB visible) without the wake-word burning battery / mic
-- Master OFF → no FAB, no wake-word, nothing listening
-- Master ON + sub OFF → FAB visible, no wake-word (manual entry only)
-- Master ON + sub ON + Picovoice configured → FAB visible **and** the app listens for the wake phrase
-- Master ON + sub ON + Picovoice not configured → sub-toggle is hidden; the copy under the master toggle ("Tócalo para hablar con Mimo en manos libres") says hands-free activation will come once the wake-word account is approved, without naming a phrase
-- Saying the wake phrase (or tapping the FAB) opens a full-screen voice overlay (animated orb, no text) and starts a real-time spoken conversation with the assistant
-- Users can speak naturally without pressing any button; the assistant detects when they finish and replies aloud
-- Users can interrupt the assistant mid-sentence (barge-in) — the assistant stops and listens
-- The assistant can call any existing skill (read today's menu, suggest recipes, swap a meal, generate a list, etc.) mid-conversation, and narrate the result
-- Users can close the overlay manually (tap, escape, or saying "cierra"); on close, the spoken turns are persisted into the `/advisor` chat as regular messages
-- Users can disable the wake word at any time from the profile toggle
-- If the connection fails or drops, the overlay surfaces a typed error (e.g. "Necesito permiso de micrófono.", "El micrófono está siendo usado por otra app.", "SDP exchange 4xx: …") and auto-closes after a short delay so the user isn't trapped on a broken screen
+- **Tap to talk.** In the Mimo panel, users tap the mic button, speak, and either stop talking (Mimo notices the silence) or tap the mic again to stop and send. While listening, the bubble shows level bars that follow the voice and the status reads «Te escucho…»; then «Un momento…» (transcribing), «Pensando…», «Hablando… (toca para parar)».
+- **Spoken replies.** A spoken turn is sent with `mode: 'voice'`, so Mimo answers briefly, in a form meant to be heard. Spoken turns are always read aloud.
+- **Read typed replies aloud.** The toggle «Leer las respuestas en voz alta» (panel header icon, and in the profile) also reads replies to typed messages. Off by default; stored per device (`localStorage mimo.speak`).
+- **Stop talking.** «Parar» under the composer, or a new mic tap, cuts Mimo off.
+- **«Manos libres».** A toggle in the composer: Mimo starts listening, and after each reply it listens again, so users can cook and talk without touching the screen. The conversation ends quietly (hands-free turns off) when nobody speaks for 8 s. The status line reads «Manos libres» between turns.
+- **Choose the voice.** When the API offers several ElevenLabs voices, a «Voz» picker shows in the panel header and «Voz de Mimo» in the profile; picking one plays a short preview («Hola, soy Mimo. Así sueno con esta voz…») and is remembered on the device.
+- **Wake word.** With Picovoice configured and «Escuchar «Hola Ona»» on in the profile, saying the phrase opens Mimo already listening, in hands-free mode. A terracotta dot on the floating button shows it is listening. It only listens while Mimo is idle and not already hands-free.
+- **Cooking by voice.** In cook mode, «siguiente», «repite», «pon un temporizador de 10 minutos» work typed or spoken; Mimo knows which recipe is open (see [Advisor](./advisor.md) → Page context and [Cooking mode](./cooking-mode.md)).
+- **Voice onboarding** (`/onboarding/voz`) runs the same loop with `mode: 'onboarding'` (see [User Memory](./user-memory.md)).
 
-## Cooking mode
+## Profile, chapter 04 «Mimo por voz»
 
-When the conversation context is "step-by-step cooking" (a recipe-step skill is active, or the user says e.g. "estoy cocinando" / "guíame paso a paso"), the silence timeout extends from 20s to 90–120s so the user can chop, stir, etc. without losing the session. The `wake-lock` from PWA spec is also requested to keep the screen on.
+Section `data-testid="profile-mimo-voice"`. Copy: «Mimo está en el botón flotante de cualquier pantalla. Toca el micro para hablarle, o activa «Manos libres» para conversar sin tocar nada mientras cocinas.»
+- Toggle «Leer las respuestas en voz alta» («Activo · también cuando escribes» / «Solo cuando le hablas»).
+- «Voz de Mimo» picker, when there are several voices.
+- Toggle «Escuchar «<WAKE_PHRASE>»» when `NEXT_PUBLIC_PICOVOICE_ACCESS_KEY` is set (asks for mic permission when turned on; states «Escuchando…», «Iniciando…», «Desactivado · actívalo para abrir a Mimo sin tocar nada»). Without Picovoice, a note says opening Mimo by voice «llegará en cuanto esté entrenada la palabra de activación».
+- The old «Modo voz» master toggle and its green floating mic are gone.
 
-## Session lifecycle
+## How a spoken turn works
 
-1. **Idle**: only the wake-word detector runs on-device (when configured); no audio leaves the browser.
-2. **Wake**: detector fires (or user taps the FAB) → overlay opens → backend issues an ephemeral Realtime session token → WebRTC connection to OpenAI Realtime API. Each step logs a `[voice] …` line in the browser console for diagnosis.
-3. **Active**: full-duplex audio. Server VAD detects user turns; barge-in handled natively.
-4. **Idle warning**: after the configured silence timeout (20s default, 120s in cooking mode), the assistant says "Sigo aquí. Di '<WAKE_PHRASE>' para seguir." when the wake word is actually listening (master + sub-toggle on + Picovoice configured), otherwise "Sigo aquí. Toca el micrófono para seguir.", and disconnects the Realtime session.
-5. **Failure**: any error during connect (mic permission denied, no mic, mic in use, SDP exchange failure, network) is caught, surfaced as readable Spanish text in the overlay, and the overlay auto-closes after ~3.5s so the user can retry.
-6. **Reconnect**: the next wake phrase or FAB tap within the cached-context window (30 min) re-opens a session and re-injects the conversation context so the user can pick up where they left off.
+1. **Record** (`useRecorder`): MediaRecorder + an analyser on the mic stream (echo cancellation, noise suppression, auto gain). Voice = RMS above 0.025. The turn ends ~1.3 s after speech stops; nobody speaking within 8 s → nothing is sent; 30 s hard cap. Format: webm/opus, mp4 or ogg, whichever the browser supports.
+2. **Transcribe**: `POST /stt` (auth, 60 requests/min, monthly spend cap; multipart `audio` ≤ 10 MB, `audio/*` only) → OpenAI transcription (`OPENAI_TRANSCRIBE_MODEL`, Spanish prompt about menus and recipes) → `{ text }`. Cost feature `mimo_voice_transcription`. Empty text in hands-free → listen again.
+3. **Answer**: the text goes to `POST /assistant/:userId/chat` with `mode: 'voice'` and the page path, like any typed turn (same history, skills, budget).
+4. **Speak**: `POST /tts { text, voice }` (ElevenLabs). The API strips Markdown/links/emoji, cuts at ~1.200 characters on a sentence end, streams MP3 and records the characters (`chat_tts`, `elevenlabs/<model>`, per 1,000 chars). Off or failing → the browser's built-in Spanish voice (`speechSynthesis`).
+5. **Hands-free**: once playback ends, back to step 1.
 
-## Conversation persistence
-
-- The current spoken turns are mirrored client-side as text (Realtime API streams transcripts) and cached in memory.
-- On overlay close (manual or after idle), the turns are appended to the `/advisor` chat history.
-- The cached context is dropped when the user explicitly changes topic ("hablemos de otra cosa", "olvida eso") or after a long inactivity (e.g., 30 min).
-- Every turn (user + assistant) is also POSTed fire-and-forget to `POST /realtime/:userId/transcript`, persisting in the `voice_transcripts` table. A client-generated UUID groups turns of the same overlay open under one `sessionId`. The most recent skill name (captured when the model emits a `function_call_arguments.done` event) is attached to the very next assistant turn so analysis can correlate skills with model output. Admins review these conversations from `/admin` → "Voz" — see [Admin Dashboard](./admin-dashboard.md).
+Browsers without MediaRecorder fall back to the Web Speech API recogniser (`useVoice`); its transcript becomes the same spoken turn.
 
 ## Privacy and permissions
 
-- Wake word detection is **on-device only** (WASM). No audio is sent anywhere until the wake word fires and the user has confirmed mic permission.
-- The opt-in toggle is explicit and reversible. When off, no audio is captured.
-- Mic permission is requested once per browser; the app surfaces a clear banner when it's blocked.
-- An "always listening" indicator (small mic dot in the header) is visible whenever wake-word detection is running.
+- Audio is recorded only after a tap (or the wake word) and only for one turn; it goes to the API and on to OpenAI for transcription, and is not stored.
+- The wake word runs **on-device** (Porcupine WASM); no audio leaves the browser until it fires. Off by default.
+- Mic permission is asked by the browser on first use; turning the wake word on asks for it up front.
+- Spoken turns are not saved as transcripts. The `voice_transcripts` table (Realtime era) is kept but no longer written; the admin "Voz" tab only shows old sessions.
 
 ## Constraints
 
-- Wake-word phrase is fixed per model (`WAKE_PHRASE`, today "Hola Ona" until the "Hola Mimo" model lands; custom phrases are out of scope).
-- Wake word is browser-side only — desktop and mobile web. Native iOS/Android wrappers are out of scope for v1.
-- A Realtime session is short-lived: max 10 minutes of active conversation per session before forced reconnect (provider limit + cost guard).
-- The Realtime model comes from `OPENAI_REALTIME_MODEL` (default `gpt-realtime`) and the user-side transcript model from `OPENAI_REALTIME_TRANSCRIBE_MODEL` (default `whisper-1`), both read by `realtimeSessionBody` in `routes/realtime.ts` (test `realtimeModel.test.ts`). OpenAI switches off `gpt-realtime` on 2027-01-20 and `whisper-1` on 2027-02-26; the chosen successors are `gpt-realtime-2.1-mini` and `gpt-transcribe` (PRO-05): staging runs them first, production keeps the defaults until Miguel approves the voice. Voice is one of the OpenAI preset Spanish voices.
-- Ephemeral tokens are issued by the backend and scoped to a single session; the OpenAI key never reaches the browser.
-- Echo cancellation (`getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })`) is mandatory; without it the assistant interrupts itself.
-- All voice prompts and TTS are in Spanish (`es-ES`).
-- **AI disclosure (EU AI Act art. 50):** the voice overlay footer always reads "Estás hablando con una IA. Habla con normalidad…" (`AI_DISCLOSURE_SHORT` in `@ona/shared`), visible from the moment the overlay opens.
-- Existing `/assistant/:userId/chat` skills are exposed as Realtime tools; the model calls them via function calling and the result is spoken back.
-- Skills that are destructive (`generate_weekly_menu`, `swap_meal`, `create_recipe`) require a verbal confirmation in voice mode before executing.
+- Wake word: the trained model (`hola-ona_es_wasm_v4_0_0.ppn`) only detects **"Hola Ona"**, so every string reads `WAKE_PHRASE` (`useWakeWord.ts`, still "Hola Ona"). **Pending (Miguel):** train a **"Hola Mimo"** keyword (Spanish, Porcupine WASM) in console.picovoice.ai; then swap `WAKE_PHRASE`, `DEFAULT_KEYWORD_PATH` and the detection label together.
+- Wake word is browser-side only (desktop and mobile web). Native wrappers are out of scope.
+- If the mic is denied or missing, the recording ends without a message and Mimo goes back to idle.
+- Hands-free gives up after 8 s of silence, which can be short while cooking; tap the mic or say the wake word to resume.
+- Without `OPENAI_API_KEY`, `POST /stt` answers 503 `STT_DISABLED`; a transcription error is 502 «No te he entendido. Prueba otra vez.», shown in the panel.
+- Library ElevenLabs voices need a paid plan (free → 402, so the browser voice is used).
+- No voice-minutes quota: spoken turns cost one transcription + one chat turn (+ TTS characters), all under the monthly € cap (`USER_MONTHLY_SPEND_CAP_EUR`) and the chat budget ([Advisor](./advisor.md) → Cost guardrail).
+- All prompts and speech are Spanish (`es-ES`).
+- **AI disclosure (EU AI Act art. 50):** the panel caption (`AI_DISCLOSURE`, `data-testid="ai-disclosure"`) is visible before and during every spoken turn.
+- **Retired 2026-10-09:** OpenAI Realtime (`/realtime/:userId/session|tool|transcript|usage`), `OPENAI_REALTIME_MODEL`, `OPENAI_REALTIME_TRANSCRIBE_MODEL`, `OPENAI_REALTIME_VOICE`, `REALTIME_DAILY_MINUTES_PER_USER`, the orb overlay and the floating green mic. Old `voice_realtime` rows stay in the cost ledger and the `openai/gpt-realtime*` prices stay in `config/pricing.ts` for history.
 
 ## Wake-word engine
 
-- **Default**: Picovoice Porcupine (WASM, custom phrase trained via Picovoice console: today "Hola Ona", to be replaced by "Hola Mimo"). Free tier covers personal/dev use.
-- **Fallback**: openWakeWord (open source) if Porcupine pricing or licensing becomes a blocker. Requires training a custom model for the phrase.
-- The engine is wrapped behind a small `useWakeWord` hook so swapping providers is local.
-
-## Floating mic FAB (manual entry point)
-
-The FAB is the manual entry point and is shown whenever the master "Modo voz" toggle is ON, regardless of whether the wake-word sub-toggle is on. Tapping it opens the voice overlay. This guarantees there is always a way to enter voice mode by tap, even when the user has wake-word turned off or the Picovoice account is unavailable. The status text under each toggle in `/profile` is:
-
-- Master toggle: *"Activo · botón flotante visible"* when on, *"Desactivado"* when off.
-- Wake-word sub-toggle (only rendered when master is on AND `NEXT_PUBLIC_PICOVOICE_ACCESS_KEY` is configured): *"Escuchando '<WAKE_PHRASE>'"* when listening, *"Iniciando…"* during model load, the typed `wakeError` if Porcupine fails, or *"Desactivado · activa para abrir el modo voz por voz"* when off.
-
-## Auto-close on error
-
-If the Realtime session enters `error` or `closed` state while the overlay is open, the overlay shows the typed Spanish error briefly (3.5 s for an explicit error, 1.5 s for a silent close) and then auto-dismisses, returning the user to the underlying screen. This avoids trapping the user behind a frozen "Cerrando…" spinner when network or upstream issues prevent a clean disconnect.
-
-## Cost guardrails
-
-- Realtime sessions are charged per audio minute. The 20s silence timeout, 10-minute hard cap, and explicit user opt-in are the main guardrails.
-- A daily per-user quota (env-configurable) is enforced in the backend token issuer; when exceeded, the assistant falls back to the existing text+TTS pipeline and informs the user.
+- **Default**: Picovoice Porcupine (WASM, custom phrase trained in the Picovoice console: today "Hola Ona", to be replaced by "Hola Mimo"). Free tier covers personal/dev use.
+- **Fallback**: openWakeWord (open source) if Porcupine pricing or licensing becomes a blocker; needs a custom model.
+- Wrapped behind `useWakeWord`, so swapping providers is local. The on/off setting is `localStorage ona.voice.wakeword.enabled`.
 
 ## Related specs
 
-- [Advisor](./advisor.md) — conversation history, skills, system prompt, text mode chat
-- [Menus](./menus.md) — skills called during cooking mode
-- [Recipes](./recipes.md) — recipe-step narration source
-- [PWA](./pwa.md) — Wake Lock and install requirements for cooking mode
-- [Design System](./design-system.md) — overlay/orb visuals
+- [Advisor](./advisor.md) — the Mimo panel, page context, skills, budget
+- [Cooking mode](./cooking-mode.md) — the shell Mimo drives by voice
+- [User Memory](./user-memory.md) — voice onboarding
+- [WhatsApp](./whatsapp.md) — voice notes use the same transcription service
+- [Metrics](./metrics.md) — `mimo_voice_transcription` and `chat_tts` costs
+- [Design System](./design-system.md) — `MimoButton` / `MimoPanel`
 
 ## Source
 
-- [apps/web/src/hooks/useWakeWord.ts](../apps/web/src/hooks/useWakeWord.ts) — Porcupine WASM wrapper (swap point for openWakeWord)
-- [apps/web/src/hooks/useRealtimeSession.ts](../apps/web/src/hooks/useRealtimeSession.ts) — WebRTC + Realtime API client, tool round-trip, single-shot reconnect
-- [apps/web/src/components/voice/VoiceOverlay.tsx](../apps/web/src/components/voice/VoiceOverlay.tsx) — full-screen orb UI
-- [apps/web/src/components/voice/VoiceProvider.tsx](../apps/web/src/components/voice/VoiceProvider.tsx) — app-wide always-listening provider, silence timer, cooking-mode extension, context cache, top-right indicator
-- [apps/web/src/lib/voiceMessages.ts](../apps/web/src/lib/voiceMessages.ts) — bridge from voice mode to AdvisorChat
-- [apps/api/src/routes/realtime.ts](../apps/api/src/routes/realtime.ts) — `POST /realtime/:userId/session`, `/tool`, `/usage`
-- [apps/api/src/services/realtime/tools.ts](../apps/api/src/services/realtime/tools.ts) — assistant-skills→Realtime-tools adapter and executor
-- [apps/api/src/services/realtime/quota.ts](../apps/api/src/services/realtime/quota.ts) — per-user daily minutes guard
-- [apps/api/src/config/env.ts](../apps/api/src/config/env.ts) — `OPENAI_API_KEY`, `OPENAI_REALTIME_MODEL`, `OPENAI_REALTIME_TRANSCRIBE_MODEL`, `OPENAI_REALTIME_VOICE`, `REALTIME_DAILY_MINUTES_PER_USER`
-- [apps/web/src/components/advisor/AdvisorChat.tsx](../apps/web/src/components/advisor/AdvisorChat.tsx) — drains voice-mode turns into the chat history; hides mic button while voice mode is on
-- [apps/web/src/app/profile/page.tsx](../apps/web/src/app/profile/page.tsx) — opt-in toggle (Capítulo 04)
-- [apps/web/src/app/layout.tsx](../apps/web/src/app/layout.tsx) — mounts `VoiceProvider` only on authed routes
-- [apps/web/src/hooks/useVoice.ts](../apps/web/src/hooks/useVoice.ts) — legacy Web Speech mic button; superseded by voice mode while it's active
+- [apps/web/src/components/mimo/MimoProvider.tsx](../apps/web/src/components/mimo/MimoProvider.tsx) — voice loop, hands-free, read-aloud setting, wake word
+- [apps/web/src/components/mimo/MimoPanel.tsx](../apps/web/src/components/mimo/MimoPanel.tsx) — mic, «Manos libres», voice picker, status line
+- [apps/web/src/hooks/useRecorder.ts](../apps/web/src/hooks/useRecorder.ts) — recording with silence detection
+- [apps/web/src/hooks/useVoice.ts](../apps/web/src/hooks/useVoice.ts) — read-aloud (`POST /tts`, browser fallback) and the Web Speech recogniser fallback
+- [apps/web/src/hooks/useWakeWord.ts](../apps/web/src/hooks/useWakeWord.ts) — Porcupine WASM wrapper, `WAKE_PHRASE`
+- [apps/web/src/app/profile/page.tsx](../apps/web/src/app/profile/page.tsx) — chapter 04 «Mimo por voz»
+- [apps/web/src/app/onboarding/voz/page.tsx](../apps/web/src/app/onboarding/voz/page.tsx) — voice onboarding loop
+- [apps/api/src/routes/stt.ts](../apps/api/src/routes/stt.ts), [apps/api/src/services/stt.ts](../apps/api/src/services/stt.ts) — `POST /stt`
+- [apps/api/src/routes/tts.ts](../apps/api/src/routes/tts.ts), [apps/api/src/services/tts.ts](../apps/api/src/services/tts.ts) — `GET /tts/voices`, `POST /tts`
+- [apps/api/src/config/env.ts](../apps/api/src/config/env.ts) — `OPENAI_API_KEY`, `OPENAI_TRANSCRIBE_MODEL`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICES`, `ELEVENLABS_MODEL`
+- Tests: `apps/api/src/tests/spendCap.test.ts` (stt/tts gated); e2e `apps/web/e2e/voice-toggle.spec.ts`, `chat-voice.spec.ts`, `mimo-companion.spec.ts`
 
 ## Required client config
 
 - `NEXT_PUBLIC_PICOVOICE_ACCESS_KEY` — from console.picovoice.ai
-- `apps/web/public/wakewords/hola-ona_es_wasm_v4_0_0.ppn` — wake-word model trained for "Hola Ona" (Porcupine WASM v4); to be replaced by a "Hola Mimo" model (see top)
-- `apps/web/public/wakewords/porcupine_params_es.pv` — Spanish acoustic model (downloaded from `Picovoice/porcupine` repo)
+- `apps/web/public/wakewords/hola-ona_es_wasm_v4_0_0.ppn` — wake-word model for "Hola Ona" (Porcupine WASM v4); to be replaced by a "Hola Mimo" model
+- `apps/web/public/wakewords/porcupine_params_es.pv` — Spanish acoustic model (from the `Picovoice/porcupine` repo)

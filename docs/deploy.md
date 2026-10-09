@@ -82,7 +82,7 @@ Since 2026-10-08 the `ona-app` project has a second Railway environment, **`stag
 
 - its own `JWT_SECRET` and `METRICS_READ_TOKEN`; WhatsApp is off (no access token, app secret, phone id or verify token), so it never messages anyone;
 - `WEB_PUBLIC_URL` / `IMAGE_PUBLIC_URL_BASE` / `NEXT_PUBLIC_API_URL` point at the staging URLs;
-- low spend caps (`USER_MONTHLY_SPEND_CAP_EUR=2`, `ADVISOR_MONTHLY_BUDGET_EUR=2`, `REALTIME_DAILY_MINUTES_PER_USER=5`);
+- low spend caps (`USER_MONTHLY_SPEND_CAP_EUR=2`, `ADVISOR_MONTHLY_BUDGET_EUR=2`);
 - data: a copy of production's **catalogue only** (all `ingredients` + system recipes with `author_id IS NULL` and their `recipe_ingredients`/`recipe_steps`; 198 ingredients and 78 recipes on 2026-10-08, after 22 of Miguel's recipes moved to the catalogue), plus the throwaway `smoke…@example.com` users the deep smoke creates. Never copy user data (users, households, menus, personal recipes) here. To refresh the catalogue: `\copy` those four queries out of production and into staging after `truncate recipes, ingredients cascade` on **staging**.
 
 Deploy to staging the same way, from a clean checkout of `master` linked to `staging` (or with the staging project token in `RAILWAY_TOKEN`), then run the deep smoke:
@@ -109,7 +109,8 @@ Both are configured in the Railway dashboard, not committed.
 | `DATABASE_URL` | Auto-injected via Railway service link to `Postgres` (uses internal hostname) |
 | `JWT_SECRET` | Production secret, **≥ 32 chars** or the API refuses to boot (`openssl rand -base64 48`). Rotating it logs every user out once. |
 | `ANTHROPIC_API_KEY` | For photo + URL recipe extraction |
-| `OPENAI_API_KEY` | For Realtime voice mode |
+| `OPENAI_API_KEY` | For transcription: WhatsApp voice notes and Mimo's voice in the app (`POST /stt`). Without it `/stt` answers 503 and Mimo is text-only |
+| `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICES` / `ELEVENLABS_MODEL` | Optional: Mimo's replies read aloud (`POST /tts`). `ELEVENLABS_VOICES` = `Nombre:voiceId,Nombre:voiceId` (first = default); `ELEVENLABS_MODEL` defaults to `eleven_multilingual_v2`. Library voices need a paid ElevenLabs plan. Unset = the browser's voice. Set only in staging as of 2026-10-09. See `specs/voice-mode.md` |
 | `USDA_FDC_API_KEY` | For ingredient auto-create |
 | `METRICS_READ_TOKEN` | Read-only token for `GET /admin/metrics`, `GET /admin/errors` and `GET /admin/waitlist` (header `x-metrics-token`) used by the ONA HQ agents; unset = token access off. See `specs/metrics.md`, `specs/errors.md`, `specs/waitlist.md` |
 | `COST_PRICE_OVERRIDES` | Optional JSON over the cost-ledger price table, e.g. `{"openai/gpt-realtime":{"perMinute":0.15}}` |

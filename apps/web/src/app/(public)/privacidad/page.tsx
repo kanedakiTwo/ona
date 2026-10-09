@@ -84,7 +84,8 @@ export default function PrivacidadPage() {
         <p>Solo con los proveedores que hacen funcionar Mimoia, que tratan los datos por cuenta nuestra:</p>
         <ul className="ml-5 list-disc space-y-2">
           <li><strong>Anthropic</strong> (modelos Claude): el asistente, la lectura de recetas desde enlaces y fotos, y las estimaciones nutricionales.</li>
-          <li><strong>OpenAI</strong>: transcripción de notas de voz y el modo de conversación por voz.</li>
+          <li><strong>OpenAI</strong>: transcripción de lo que le dices a Mimo con la voz y de las notas de voz de WhatsApp; y, si AiKit no está disponible, generación de imágenes de recetas (solo recibe el nombre y los ingredientes de la receta).</li>
+          <li><strong>ElevenLabs</strong>: la voz de Mimo cuando lee sus respuestas en voz alta (solo recibe el texto de la respuesta).</li>
           <li><strong>Meta (WhatsApp Business)</strong>: si conectas WhatsApp, para enviar y recibir los mensajes.</li>
           <li><strong>Railway</strong>: alojamiento de la aplicación y de la base de datos.</li>
           <li><strong>AiKit</strong>: generación de imágenes de recetas cuando lo pides (solo recibe el nombre e ingredientes de la receta).</li>

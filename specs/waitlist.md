@@ -19,6 +19,7 @@ The public waitlist that comes before the launch. The product launches publicly 
   - "Enviar por WhatsApp" (`https://wa.me/?text=…`, the first-person share text from `waitlistShareText`);
   - "Ver a cuántas personas has invitado" (→ `/lista/<code>`);
   - "Date de baja aquí" (only on the submission that created the entry).
+- **Founder pricing signal (PRO-26, D-020/D-021)** — only on the submission that created the entry (it needs the opt-out token): under the success text, `FounderPricing` asks **four optional Van Westendorp questions** in €/month (`PRICE_QUESTIONS`: too cheap to trust / good buy / getting expensive / too expensive), with "Seguir" or "Prefiero no contestar". **Only after that** (so the prices don't anchor the answers) it shows «Reserva tu precio de fundador · No pagas nada ahora» and three cards in this order: **Esencial 4,99 €/mes**, **Plus anual 59,99 €/año («Plus por 5 €/mes»), featured and preselected**, **Plus 8,99 €/mes** (`FOUNDER_PLANS`), each «para todo tu hogar» with 3 bullets and the caps in small print (no figures yet: "tienen un tope de uso al mes"). Under them, the trial text (`FOUNDER_FOOTER`), or for **beta households** — the email already has a Mimoia account, `beta: true` in the signup response — «Tu beta sigue gratis hasta el 12 de enero…» (`FOUNDER_FOOTER_BETA`). «Reservar mi plaza de fundador» (+ «Sin pagar nada ahora: te guardamos este precio para siempre y te avisamos antes de cobrar») saves the plan + period; «Ninguno me encaja» asks why (caro · no lo usaría tanto · me falta algo · otro). After reserving, «Anular la reserva». No struck-through prices, no quotas. Nothing is charged.
 - **Owner page `/lista/[code]`**: "Aún no has invitado a nadie." / "Has invitado a 1 persona." / "Has invitado a N personas.", plus the link to share again. It shows a count only: never who those people are, nor the owner's own status. Unknown or left codes say "Este enlace no existe (o ya no está en la lista)".
 - **Opt-out `/lista/baja?t=<token>`**: one button, "Darme de baja". It works on click, not on page load, so mail scanners can't unsubscribe anyone. Leaving deletes the email, name and supermarket, turns the newsletter off, and the person's link stops working. The same email can sign up again later as a fresh entry.
 - **Admins / ONA HQ agents** read `GET /admin/waitlist?days=30&batchSize=20` with an admin JWT **or** `x-metrics-token` (the same read-only token as [metrics](./metrics.md)). The report has:
@@ -30,6 +31,7 @@ The public waitlist that comes before the launch. The product launches publicly 
   - `referrals`: top referrers by **code only**;
   - `batches`: size / joined / unsubscribed per batch;
   - `suggestedNextBatch`: ids + counts;
+  - `pricing` (PRO-26): `answeredPriceQuestions`, per question `{ answers, min, p25, median, p75, max, histogram[{eur,count}] }`, `reservations { total, byPlan }`, `none { total, byReason }` — aggregates of active entries only;
   - `definitions`.
   - It never includes an email, name or supermarket.
 - **Admins** (JWT only, not the token) mark a batch invited with `POST /admin/waitlist/invite { ids, batch? }`, which uses the next batch number when omitted. Only `waiting` entries change. The response is the one place emails leave the DB: email, name, platform, wantsWhatsapp, `statusUrl`, `unsubscribeUrl`, so Miguel can write the invitations. It is audited as `waitlist.invite` (ids, never emails).
@@ -51,6 +53,7 @@ Each picked person **pulls in** the waiting people who signed up with their link
   - `POST /waitlist` → `200 { code, referralUrl, referredCount, unsubscribeToken? }` for new and repeat emails alike;
   - `GET /waitlist/:code` → `{ code, referralUrl, referredCount }` or 404 (`WAITLIST_CODE_NOT_FOUND`);
   - `POST /waitlist/unsubscribe { token }` → `{ ok, alreadyUnsubscribed }` or 404 (`WAITLIST_TOKEN_NOT_FOUND`).
+  - `POST /waitlist/pricing { token, tooCheap?, good?, expensive?, tooExpensive? }` (€/month, 0–500, null = unanswered) and `POST /waitlist/reservation { token, choice }` (`esencial-mensual | plus-anual | plus-mensual`, `ninguno` + `reason`, or `anular`) → `200 { ok }`, 400 on bad input, 404 (`WAITLIST_TOKEN_NOT_FOUND`) for an unknown or left entry. The opt-out token is the credential (PRO-26). Limiter 60/hour per IP.
 - **Idempotent on email** (lowercased + trimmed by the shared schema). A repeat submission with any answers changes nothing and returns the same link and count, but **never the opt-out token**, so knowing someone's email isn't enough to remove them. That token difference is the only way a caller can tell "already on the list" (accepted trade-off). A concurrent duplicate (unique violation) answers like a repeat.
 - **Validation** (`waitlistSignupSchema`, shared with the form): bad email, missing consent, unknown answers and a filled **honeypot** (`website`, off-screen, no tab stop) all give 400 `INVALID_WAITLIST_SIGNUP`. People get a field-specific Spanish message; the honeypot gets a generic one. Unknown keys (e.g. allergies) are dropped. Attribution never fails a signup: a bad `ref` becomes `directo`, an unknown or malformed `invita` becomes `null`, and utm values are trimmed to 100 chars without control characters.
 - `source` = the `?ref` slug, else `invita` when only `?invita=` came, else `directo`.
@@ -84,6 +87,7 @@ Each picked person **pulls in** the waiting people who signed up with their link
 
 ## Source
 
+- [packages/shared/src/types/founderPricing.ts](../packages/shared/src/types/founderPricing.ts), [apps/api/src/services/waitlistPricing.ts](../apps/api/src/services/waitlistPricing.ts), [apps/web/src/components/waitlist/FounderPricing.tsx](../apps/web/src/components/waitlist/FounderPricing.tsx) — founder pricing signal (PRO-26; migration 0041)
 - [packages/shared/src/types/waitlist.ts](../packages/shared/src/types/waitlist.ts): enums, labels, `waitlistSignupSchema`, form state + `buildWaitlistPayload`, `readWaitlistAttribution`, link/share helpers
 - [packages/shared/src/constants/brand.ts](../packages/shared/src/constants/brand.ts): `BRAND_NAME`
 - [apps/api/src/services/waitlist.ts](../apps/api/src/services/waitlist.ts): code/token generators, `isTargetSegment`, `suggestNextBatch`, `buildWaitlistReport`, `signupToWaitlist`, DB repo, `loadWaitlistReport`, `loadWaitlistSummary`, `inviteWaitlistEntries`, `markWaitlistJoined`

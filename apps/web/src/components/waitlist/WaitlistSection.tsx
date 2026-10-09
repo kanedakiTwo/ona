@@ -26,6 +26,7 @@ import {
 } from "@ona/shared"
 import { apiPublic } from "@/lib/api"
 import ReferralShare from "./ReferralShare"
+import { FounderPricing } from "./FounderPricing"
 
 /** Anchor every public CTA points to ("/#lista-de-espera"). */
 export const WAITLIST_ANCHOR = "lista-de-espera"
@@ -262,6 +263,9 @@ function WaitlistSuccess({ done }: { done: WaitlistSignupResponse & { origin: st
         Te escribimos por email cuando le toque a tu tanda. Mientras, si quieres que entre también tu casa,
         aquí tienes tu enlace.
       </p>
+
+      {/* Founder pricing signal (PRO-26): only the browser that created the entry. */}
+      {done.unsubscribeToken && <FounderPricing token={done.unsubscribeToken} beta={done.beta === true} />}
 
       <div className="mt-10 border-t border-dashed border-[#DDD6C5] pt-8">
         <h4 className="font-display text-2xl text-[#1A1612]">

@@ -1044,6 +1044,21 @@ export const waitlistEntries = pgTable('waitlist_entries', {
   batch: integer('batch'),
   invitedAt: timestamp('invited_at', { withTimezone: true }),
   unsubscribeToken: text('unsubscribe_token').notNull(),
+  // Founder pricing signal (PRO-26): optional Van Westendorp answers in
+  // €/month, then the reserved plan + period, or «Ninguno me encaja» + why.
+  priceTooCheapEur: real('price_too_cheap_eur'),
+  priceGoodEur: real('price_good_eur'),
+  priceExpensiveEur: real('price_expensive_eur'),
+  priceTooExpensiveEur: real('price_too_expensive_eur'),
+  priceAnsweredAt: timestamp('price_answered_at', { withTimezone: true }),
+  /** esencial | plus */
+  reservedPlan: text('reserved_plan'),
+  /** mensual | anual */
+  reservedPeriod: text('reserved_period'),
+  reservedAt: timestamp('reserved_at', { withTimezone: true }),
+  /** caro | no_lo_usaria | me_falta_algo | otro */
+  declinedReason: text('declined_reason'),
+  declinedAt: timestamp('declined_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   uniqueIndex('uq_waitlist_entries_email').on(t.email),

@@ -199,6 +199,34 @@ export {
 } from './types/clientErrors.js'
 export type { ClientErrorReport, ClientErrorInput } from './types/clientErrors.js'
 
+// Founder pricing signal on the waitlist (PRO-26)
+export {
+  PRICE_QUESTIONS,
+  FOUNDER_PLAN_IDS,
+  FOUNDER_PLANS,
+  FOUNDER_TITLE,
+  FOUNDER_SUBTITLE,
+  FOUNDER_HOUSEHOLD,
+  FOUNDER_CTA,
+  FOUNDER_RESERVE_NOTE,
+  FOUNDER_FOOTER,
+  FOUNDER_FOOTER_BETA,
+  FOUNDER_NONE,
+  FOUNDER_DECLINE_REASONS,
+  FOUNDER_DECLINE_LABELS,
+  waitlistPricingSchema,
+  waitlistReservationSchema,
+  founderPlanById,
+} from './types/founderPricing.js'
+export type {
+  PriceQuestionKey,
+  FounderPlanId,
+  FounderPlan,
+  FounderDeclineReason,
+  WaitlistPricingAnswers,
+  WaitlistReservation,
+} from './types/founderPricing.js'
+
 // Public brand (D-012) + pre-launch waitlist (specs/waitlist.md)
 export { BRAND_NAME, ASSISTANT_NAME, BRAND_SUPPORT_EMAIL } from './constants/brand.js'
 export {

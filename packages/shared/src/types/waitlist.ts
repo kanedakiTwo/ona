@@ -167,9 +167,15 @@ export interface WaitlistSignupResponse {
    * knowing someone's email is not enough to take them off the list.
    */
   unsubscribeToken?: string
+  /**
+   * The email already has a Mimoia account (a beta household): the founder
+   * plans then say «Tu beta sigue gratis…» instead of the trial (PRO-26).
+   * Only with `unsubscribeToken`.
+   */
+  beta?: boolean
 }
 
-export type WaitlistStatusResponse = Omit<WaitlistSignupResponse, 'unsubscribeToken'>
+export type WaitlistStatusResponse = Omit<WaitlistSignupResponse, 'unsubscribeToken' | 'beta'>
 
 // ─── The landing form ────────────────────────────────────────────
 

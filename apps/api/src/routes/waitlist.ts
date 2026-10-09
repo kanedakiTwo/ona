@@ -1,6 +1,12 @@
 import { Router, type RequestHandler, type Response } from 'express'
 import { z } from 'zod'
-import { normalizeReferralCode, waitlistSignupSchema, waitlistUnsubscribeSchema } from '@ona/shared'
+import {
+  normalizeReferralCode,
+  waitlistPricingSchema,
+  waitlistReservationSchema,
+  waitlistSignupSchema,
+  waitlistUnsubscribeSchema,
+} from '@ona/shared'
 import { env } from '../config/env.js'
 import { authMiddleware, requireAdmin, type AuthRequest } from '../middleware/auth.js'
 import { metricsAuth } from '../middleware/metricsAuth.js'
@@ -13,6 +19,7 @@ import {
   signupToWaitlist,
   type WaitlistRepo,
 } from '../services/waitlist.js'
+import { saveWaitlistPricing, saveWaitlistReservation } from '../services/waitlistPricing.js'
 
 /**
  * Pre-launch waitlist (specs/waitlist.md).
@@ -20,6 +27,8 @@ import {
  *   POST /waitlist                 public: sign up (idempotent on email)
  *   GET  /waitlist/:code           public: the owner page's referral count
  *   POST /waitlist/unsubscribe     public: opt-out with the private token
+ *   POST /waitlist/pricing         public (opt-out token): the 4 price answers (PRO-26)
+ *   POST /waitlist/reservation     public (opt-out token): founder plan / «ninguno» / anular
  *   GET  /admin/waitlist           admin JWT or `x-metrics-token` (agents): aggregates, ids only
  *   POST /admin/waitlist/invite    admin JWT only: mark a batch invited, get their emails
  *
@@ -43,6 +52,9 @@ export interface WaitlistRouterDeps {
   signupLimiter: RequestHandler
   readLimiter: RequestHandler
   unsubscribeLimiter: RequestHandler
+  pricingLimiter: RequestHandler
+  savePricing: typeof saveWaitlistPricing
+  saveReservation: typeof saveWaitlistReservation
 }
 
 export function createWaitlistRouter(overrides: Partial<WaitlistRouterDeps> = {}): Router {
@@ -59,6 +71,9 @@ export function createWaitlistRouter(overrides: Partial<WaitlistRouterDeps> = {}
       }),
     readLimiter: overrides.readLimiter ?? rateLimit({ max: 60, windowMs: 60_000 }),
     unsubscribeLimiter: overrides.unsubscribeLimiter ?? rateLimit({ max: 20, windowMs: 60 * 60_000 }),
+    pricingLimiter: overrides.pricingLimiter ?? rateLimit({ max: 60, windowMs: 60 * 60_000 }),
+    savePricing: overrides.savePricing ?? saveWaitlistPricing,
+    saveReservation: overrides.saveReservation ?? saveWaitlistReservation,
   }
   const router = Router()
 
@@ -100,6 +115,44 @@ export function createWaitlistRouter(overrides: Partial<WaitlistRouterDeps> = {}
     } catch (err: any) {
       console.error('[waitlist] unsubscribe failed:', err?.message ?? err)
       res.status(500).json({ error: 'No hemos podido darte de baja. Inténtalo de nuevo en un momento.' })
+    }
+  })
+
+  // Founder pricing signal (PRO-26). The credential is the opt-out token,
+  // which only the browser that created the entry has.
+  router.post('/waitlist/pricing', deps.pricingLimiter, async (req, res) => {
+    const parsed = waitlistPricingSchema.safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Revisa los precios: números en euros al mes.', code: 'INVALID_WAITLIST_PRICING' })
+      return
+    }
+    try {
+      if ((await deps.savePricing(parsed.data)) === 'not_found') {
+        res.status(404).json({ error: 'No encontramos tu plaza en la lista.', code: 'WAITLIST_TOKEN_NOT_FOUND' })
+        return
+      }
+      res.json({ ok: true })
+    } catch (err: any) {
+      console.error('[waitlist] pricing failed:', err?.message ?? err)
+      res.status(500).json({ error: 'No hemos podido guardarlo. Inténtalo de nuevo en un momento.' })
+    }
+  })
+
+  router.post('/waitlist/reservation', deps.pricingLimiter, async (req, res) => {
+    const parsed = waitlistReservationSchema.safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Elige un plan o dinos por qué no te encaja.', code: 'INVALID_WAITLIST_RESERVATION' })
+      return
+    }
+    try {
+      if ((await deps.saveReservation(parsed.data)) === 'not_found') {
+        res.status(404).json({ error: 'No encontramos tu plaza en la lista.', code: 'WAITLIST_TOKEN_NOT_FOUND' })
+        return
+      }
+      res.json({ ok: true, choice: parsed.data.choice })
+    } catch (err: any) {
+      console.error('[waitlist] reservation failed:', err?.message ?? err)
+      res.status(500).json({ error: 'No hemos podido guardarlo. Inténtalo de nuevo en un momento.' })
     }
   })
 

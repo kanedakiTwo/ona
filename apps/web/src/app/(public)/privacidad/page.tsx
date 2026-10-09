@@ -131,6 +131,12 @@ export default function PrivacidadPage() {
             Cómo llegaste: el enlace de quien te invitó, si fue así, y la página o campaña de origen (los
             parámetros <code>ref</code> y <code>utm</code> del enlace). Y cuándo nos diste tu consentimiento.
           </li>
+          <li>
+            Si las contestas, tus respuestas a cuatro preguntas opcionales sobre el precio (cuánto te parecería
+            barato, buena compra, caro o demasiado caro, en euros al mes) y, si reservas una plaza de fundador, el
+            plan y el periodo que eliges y cuándo; o, si ninguno te encaja, el motivo. No se cobra nada: solo nos
+            sirve para decidir los precios y avisarte antes de cobrar.
+          </li>
         </ul>
         <p>
           <strong>Para qué:</strong> para invitarte por tandas y para preguntarte por tus hábitos y así diseñar el

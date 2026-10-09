@@ -288,6 +288,13 @@
       "when": 1791502854661,
       "tag": "0040_health_consent",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1791504077517,
+      "tag": "0041_waitlist_founder_pricing",
+      "breakpoints": true
     }
   ]
 }

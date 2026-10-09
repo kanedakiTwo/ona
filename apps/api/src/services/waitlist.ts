@@ -38,7 +38,8 @@ import {
   type WaitlistStatusResponse,
 } from '@ona/shared'
 import { db as defaultDb } from '../db/connection.js'
-import { waitlistEntries } from '../db/schema.js'
+import { buildPricingReport, type PricingReport } from './waitlistPricing.js'
+import { users, waitlistEntries } from '../db/schema.js'
 import { record as recordAudit } from './auditLog.js'
 import { MADRID_TZ, addDays, madridParts } from './madridTime.js'
 
@@ -360,6 +361,8 @@ export interface WaitlistRepo {
   countReferred(code: string): Promise<number>
   /** Anonymise the entry (status, email, name, supermarket, newsletter off). */
   unsubscribe(token: string): Promise<UnsubscribeOutcome>
+  /** True when a Mimoia account already uses this email (a beta household). */
+  isRegisteredEmail?(email: string): Promise<boolean>
 }
 
 export interface SignupDeps {
@@ -422,7 +425,8 @@ export async function signupToWaitlist(input: WaitlistSignup, deps: SignupDeps):
       unsubscribeToken: token,
     })
     if (inserted) {
-      return { code, referralUrl: waitlistReferralUrl(deps.publicUrl, code), referredCount: 0, unsubscribeToken: token }
+      const beta = (await deps.repo.isRegisteredEmail?.(input.email).catch(() => false)) ?? false
+      return { code, referralUrl: waitlistReferralUrl(deps.publicUrl, code), referredCount: 0, unsubscribeToken: token, beta }
     }
     // Lost a race on the same email (double click, two tabs)? Answer like a repeat.
     const raced = await deps.repo.findCodeByEmail(input.email)
@@ -479,6 +483,10 @@ export function createDbWaitlistRepo(db: Db = defaultDb): WaitlistRepo {
         .where(and(eq(waitlistEntries.referredByCode, code), ne(waitlistEntries.status, 'unsubscribed')))
       return Number(row?.n ?? 0)
     },
+    async isRegisteredEmail(email) {
+      const [row] = await db.select({ id: users.id }).from(users).where(sql`lower(${users.email}) = ${email}`).limit(1)
+      return !!row
+    },
     async unsubscribe(token) {
       const [row] = await db
         .select({ id: waitlistEntries.id, status: waitlistEntries.status })
@@ -502,7 +510,7 @@ export function createDbWaitlistRepo(db: Db = defaultDb): WaitlistRepo {
 export async function loadWaitlistReport(
   opts: { days: number; batchSize: number; now?: Date },
   db: Db = defaultDb,
-): Promise<WaitlistReport> {
+): Promise<WaitlistReport & { pricing: PricingReport }> {
   const rows = await db
     .select({
       id: waitlistEntries.id,
@@ -521,13 +529,25 @@ export async function loadWaitlistReport(
       referredByCode: waitlistEntries.referredByCode,
       status: waitlistEntries.status,
       batch: waitlistEntries.batch,
+      priceTooCheapEur: waitlistEntries.priceTooCheapEur,
+      priceGoodEur: waitlistEntries.priceGoodEur,
+      priceExpensiveEur: waitlistEntries.priceExpensiveEur,
+      priceTooExpensiveEur: waitlistEntries.priceTooExpensiveEur,
+      priceAnsweredAt: waitlistEntries.priceAnsweredAt,
+      reservedPlan: waitlistEntries.reservedPlan,
+      reservedPeriod: waitlistEntries.reservedPeriod,
+      declinedReason: waitlistEntries.declinedReason,
     })
     .from(waitlistEntries)
-  return buildWaitlistReport(rows as WaitlistReportRow[], {
-    now: opts.now ?? new Date(),
-    days: opts.days,
-    batchSize: opts.batchSize,
-  })
+  return {
+    ...buildWaitlistReport(rows as WaitlistReportRow[], {
+      now: opts.now ?? new Date(),
+      days: opts.days,
+      batchSize: opts.batchSize,
+    }),
+    // Founder pricing signal (PRO-26): price distributions + reservations, aggregates only.
+    pricing: buildPricingReport(rows.filter((r) => r.status !== 'unsubscribed')),
+  }
 }
 
 /** Pure mapper for the `waitlist` block of GET /admin/metrics (pg returns counts as numbers or strings). */

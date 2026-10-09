@@ -1,8 +1,20 @@
 'use client'
 
+/**
+ * /shopping — "D · Luz y foto" (PRO-38, 2026-10-10): lista y despensa.
+ *
+ * Compact header (date-range eyebrow + Fraunces 650 h1 + one "···"), ONE
+ * chip row (the date range — opens the dates sheet — then the aisles, which
+ * filter the list), a slim progress card + the € total, the "Por comprar" /
+ * "Ya en casa" tabs and the aisles. Rows read like the recipe detail's
+ * ingredient rows: dashed dividers, 16 px name, JetBrains quantity, a big
+ * check. Secondary actions (Compartir lo que queda, Añadir a mano, Pedir a
+ * mis tiendas, Cambiar fechas) live in the "···" sheet (`MenuSheet`).
+ * Desktop (lg+): 1180 px container, aisles as paper cards in 2–3 columns.
+ */
 import { useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { Check, Share2, Package, Sparkles, Store } from 'lucide-react'
+import { CalendarDays, Check, MoreHorizontal, Package, Plus, Share2, Sparkles, Store } from 'lucide-react'
 import Link from 'next/link'
 import type { Aisle } from '@ona/shared'
 import { useAuth } from '@/lib/auth'
@@ -21,6 +33,7 @@ import {
   ItemPriceField,
   ItemDeleteButton,
 } from '@/components/shopping/ShoppingExtensions'
+import { MenuSheet, SheetAction } from '@/components/menu/MenuSheet'
 import { ingredientDisplayName, withOnaFooter } from '@ona/shared'
 
 function todayIso(): string {
@@ -55,17 +68,20 @@ function formatRangeLabel(from: string, to: string): string {
 
 type Tab = 'list' | 'stock'
 
+/** Fraunces 650 at its natural optical size — same cut as /menu and /recipes titles. */
+const TITLE = 'font-serif-text font-[650] text-ink'
+
 export default function ShoppingPage() {
   const { user, isLoading: authLoading } = useAuth()
 
   // Rolling date range. Default: today → end of next week. The user can
-  // narrow it via the inputs above the list; pressing "Esta + sig" resets
-  // to the default.
+  // narrow it in the dates sheet; "Esta + sig" resets to the default.
   const today = useMemo(() => todayIso(), [])
   const defaultTo = useMemo(() => shiftIso(mondayOfTodayIso(), 13), [])
   const [from, setFrom] = useState<string>(today)
   const [to, setTo] = useState<string>(defaultTo)
   const range = useMemo(() => ({ from, to }), [from, to])
+  const rangeLabel = formatRangeLabel(from, to)
 
   // The /menu hook is still used by the empty-state to confirm whether the
   // user has any menu at all — but the shopping list itself no longer
@@ -76,12 +92,20 @@ export default function ShoppingPage() {
   const { data: shoppingList, isLoading: listLoading } = useShoppingList(range)
 
   const [activeTab, setActiveTab] = useState<Tab>('list')
+  const [aisleFilter, setAisleFilter] = useState<Aisle | null>(null)
+  const [sheet, setSheet] = useState<null | 'actions' | 'dates' | 'add'>(null)
 
   const items = (shoppingList?.items ?? []) as any[]
   const checkedCount = items.filter((i) => i.checked).length
   const totalCount = items.length
   const inStockCount = items.filter((i) => i.inStock).length
   const progress = totalCount > 0 ? (checkedCount + inStockCount) / totalCount : 0
+
+  // Aisle chips: only the aisles that have rows in the current tab.
+  const tabItems = items.filter((i) => (activeTab === 'list' ? !i.inStock : i.inStock))
+  const tabGroups = groupByAisle(tabItems)
+  const aislesInTab = AISLE_ORDER.filter((a) => (tabGroups[a]?.length ?? 0) > 0)
+  const effectiveAisle = aisleFilter && aislesInTab.includes(aisleFilter) ? aisleFilter : null
 
   async function handleExport() {
     haptic.light()
@@ -106,7 +130,7 @@ export default function ShoppingPage() {
 
   if (authLoading || menuLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#FAF6EE]">
+      <div className="flex min-h-screen items-center justify-center bg-cream">
         <div className="text-eyebrow">Cargando...</div>
       </div>
     )
@@ -114,204 +138,298 @@ export default function ShoppingPage() {
 
   if (!user) return null
 
+  const h1 = (
+    <h1 className={`${TITLE} text-[30px] leading-[1.1] lg:text-[40px] lg:leading-[1.05]`}>
+      Lista de la <span className="font-medium italic text-terracotta-deep">compra</span>
+    </h1>
+  )
+
   if (!menuId) {
     return (
-      <div className="bg-[#FAF6EE] min-h-screen px-5 pt-8">
-        <div className="text-eyebrow mb-2">La logistica</div>
-        <h1 className="font-display text-[2.4rem] leading-[0.95] text-[#1A1612]">
-          <span className="font-italic italic text-[#C65D38]">Lista</span><br />de la compra.
-        </h1>
+      <div className="min-h-screen bg-cream">
+        <div className="mx-auto w-full max-w-[1180px] px-5 pt-3 pb-12 lg:px-12 lg:pt-8">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-muted lg:text-[12px]">
+            La logística
+          </p>
+          <div className="mt-0.5">{h1}</div>
 
-        <div className="mt-12 rounded-2xl border border-dashed border-[#DDD6C5] bg-[#FFFEFA] px-6 py-12 text-center">
-          <div className="font-display text-5xl leading-none text-[#C65D38]/30">∅</div>
-          <p className="mt-4 font-display text-xl text-[#1A1612]">
-            Necesitas un menú <span className="font-italic italic">primero</span>.
-          </p>
-          <p className="mt-2 max-w-xs mx-auto text-[13px] text-[#7A7066]">
-            La lista de la compra sale automática de tu menú semanal.
-          </p>
-          <Link
-            href="/menu"
-            className="mt-6 inline-flex items-center gap-2 rounded-full bg-[#1A1612] px-5 py-2.5 text-[13px] font-medium text-[#FAF6EE] transition-all hover:gap-3 hover:bg-[#1A1612]"
-          >
-            <Sparkles size={14} />
-            Generar menú
-          </Link>
+          <div className="mt-6 rounded-[22px] border border-dashed border-border bg-paper px-6 py-10 text-center lg:mx-auto lg:max-w-[560px]">
+            <p className={`${TITLE} text-xl`}>
+              Necesitas un menú <span className="italic">primero</span>.
+            </p>
+            <p className="mx-auto mt-2 max-w-xs text-[14px] text-ink-soft">
+              La lista de la compra sale automática de tu menú semanal.
+            </p>
+            <Link
+              href="/menu"
+              className="mt-6 inline-flex min-h-[44px] items-center gap-2 rounded-full bg-ink px-5 text-[14px] font-semibold text-cream transition-colors hover:bg-ink-mid"
+            >
+              <Sparkles size={15} />
+              Generar menú
+            </Link>
+          </div>
         </div>
       </div>
     )
   }
 
+  function switchTab(tab: Tab) {
+    setActiveTab(tab)
+    setAisleFilter(null)
+  }
+
   return (
-    <div className="bg-[#FAF6EE] min-h-screen pb-12 lg:mx-auto lg:max-w-[900px]">
-      {/* Editorial header */}
-      <header className="px-5 pt-8 pb-5">
-        <div className="flex items-baseline justify-between">
-          <div className="text-eyebrow">La logística</div>
-          <div className="flex items-center gap-3">
-            {/* The list now regenerates automatically on every fetch + any
-                time the menu changes (the menu mutation hooks invalidate
-                `shopping-list`). The previous "Regenerar" button is gone
-                because there's nothing left for the user to trigger
-                manually. */}
-            <button
-              onClick={handleExport}
-              className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.18em] text-[#7A7066] hover:text-[#1A1612]"
+    <div className="min-h-screen bg-cream">
+      <div className="mx-auto w-full max-w-[1180px] pb-12 lg:px-12 lg:pt-8">
+        {/* Compact header: range eyebrow + title + "···" */}
+        <header className="flex items-start justify-between gap-2 px-5 pt-3 lg:items-end lg:px-0 lg:pt-0">
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-muted lg:text-[12px]">
+              {rangeLabel}
+            </p>
+            {h1}
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Link
+              href="/compra"
+              className="hidden h-11 items-center gap-2 rounded-full border border-border bg-paper px-4 text-[14px] font-medium text-ink transition-colors hover:border-ink lg:inline-flex"
             >
-              <Share2 size={12} />
-              Compartir
+              <Store size={15} /> Pedir a mis tiendas
+            </Link>
+            <button
+              type="button"
+              onClick={() => setSheet('actions')}
+              aria-label="Opciones de la compra"
+              aria-haspopup="dialog"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border bg-paper text-ink transition-colors hover:bg-cream-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+            >
+              <MoreHorizontal size={20} strokeWidth={2} />
             </button>
           </div>
-        </div>
-        <h1 className="mt-2 font-display text-[2.4rem] leading-[0.95] text-[#1A1612]">
-          <span className="font-italic italic text-[#C65D38]">Lista</span><br />de la compra.
-        </h1>
+        </header>
 
-        {/* Date range selector. Two date inputs + a "Esta + sig" preset that
-            resets to today → end of next week. The list regenerates on
-            every change (the rolling endpoint always returns fresh
-            aggregation; user-checked state survives via overlay). */}
-        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl border border-[#DDD6C5] bg-[#FFFEFA] px-3 py-2">
-          <label className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.12em] text-[#7A7066]">
+        {/* ONE chip row: date range (opens the dates sheet) + aisles (filter) */}
+        <div
+          className="scrollbar-none mt-3 flex gap-2 overflow-x-auto px-5 py-1 lg:mt-5 lg:flex-wrap lg:overflow-visible lg:px-0"
+          aria-label="Filtrar la lista"
+          role="group"
+        >
+          <Chip active={false} onClick={() => setSheet('dates')} ariaHaspopup>
+            <CalendarDays size={15} className="-ml-0.5 mr-1.5 inline-block align-[-2px]" aria-hidden="true" />
+            <span className="sr-only">Fechas: </span>
+            {rangeLabel}
+          </Chip>
+          {aislesInTab.length > 1 && (
+            <>
+              <span aria-hidden="true" className="my-2 w-px shrink-0 bg-border" />
+              <Chip active={effectiveAisle === null} onClick={() => setAisleFilter(null)} pressable>
+                Todo
+              </Chip>
+              {aislesInTab.map((a) => (
+                <Chip
+                  key={a}
+                  active={effectiveAisle === a}
+                  onClick={() => {
+                    haptic.light()
+                    setAisleFilter(effectiveAisle === a ? null : a)
+                  }}
+                  pressable
+                >
+                  {aisleLabel(a)}
+                  <span className="ml-1.5 font-mono text-[12px] tabular-nums opacity-70">{tabGroups[a]!.length}</span>
+                </Chip>
+              ))}
+            </>
+          )}
+        </div>
+
+        {/* Progress + € total */}
+        <div className="mt-3 grid gap-3 px-5 lg:mt-5 lg:grid-cols-2 lg:px-0">
+          <div className="rounded-[20px] border border-border-soft bg-paper px-5 py-4">
+            <div className="flex items-baseline justify-between gap-3">
+              <p className="flex items-baseline gap-2">
+                <span className={`${TITLE} text-[28px] leading-none tabular-nums`}>
+                  {checkedCount + inStockCount}
+                  <span className="text-ink-light">/{totalCount}</span>
+                </span>
+                <span className="text-[13px] text-ink-muted">completados</span>
+              </p>
+              <p className="text-[13px] text-ink-muted">
+                <span className="font-serif-text text-[20px] font-medium italic text-terracotta-deep">
+                  {Math.round(progress * 100)}%
+                </span>{' '}
+                listo
+              </p>
+            </div>
+            <div className="mt-3 h-1 overflow-hidden rounded-full bg-cream-deep">
+              <motion.div
+                animate={{ scaleX: progress }}
+                initial={{ scaleX: 0 }}
+                style={{ originX: 0 }}
+                transition={{ duration: 1, ease: [0.19, 1, 0.22, 1] }}
+                className="h-full rounded-full bg-ink"
+              />
+            </div>
+            <div className="mt-3 flex gap-4 text-[13px] text-ink-mid">
+              <span className="flex items-center gap-1.5">
+                <Check size={14} strokeWidth={2.2} aria-hidden="true" />
+                {checkedCount} comprados
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Package size={14} className="text-terracotta-deep" aria-hidden="true" />
+                {inStockCount} en casa
+              </span>
+            </div>
+          </div>
+          {shoppingList && <ListTotalBanner listId={shoppingList.id} />}
+        </div>
+
+        {/* Tabs: lista / despensa */}
+        <div className="mt-4 px-5 lg:mt-6 lg:px-0">
+          <div role="tablist" aria-label="Lista o despensa" className="flex gap-6 border-b border-border-soft">
+            <TabButton active={activeTab === 'list'} onClick={() => switchTab('list')}>
+              Por comprar
+            </TabButton>
+            <TabButton active={activeTab === 'stock'} onClick={() => switchTab('stock')}>
+              Ya en casa
+            </TabButton>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="mt-4 px-5 lg:mt-5 lg:px-0">
+          {listLoading ? (
+            <div className="py-12 text-center font-italic italic text-ink-muted">Generando lista...</div>
+          ) : (
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeTab}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.3 }}
+              >
+                {activeTab === 'list' ? (
+                  <BuyList items={items} listId={shoppingList!.id} aisle={effectiveAisle} />
+                ) : (
+                  <StockList items={items} listId={shoppingList!.id} aisle={effectiveAisle} />
+                )}
+              </motion.div>
+            </AnimatePresence>
+          )}
+        </div>
+      </div>
+
+      {/* "···" — the list's secondary actions */}
+      <MenuSheet open={sheet === 'actions'} onClose={() => setSheet(null)} eyebrow={rangeLabel} title="Tu compra">
+        <div className="flex flex-col gap-0.5">
+          <SheetAction
+            icon={Share2}
+            label="Compartir lo que queda"
+            hint="Lo que te falta por comprar, como texto"
+            onClick={() => {
+              setSheet(null)
+              void handleExport()
+            }}
+          />
+          {shoppingList && (
+            <SheetAction
+              icon={Plus}
+              label="Añadir a mano"
+              hint="Algo que no sale del menú: pan, café, detergente…"
+              onClick={() => setSheet('add')}
+            />
+          )}
+          <SheetAction
+            icon={Store}
+            label="Pedir a mis tiendas"
+            hint="Un pedido por tienda, por WhatsApp"
+            href="/compra"
+          />
+          <SheetAction icon={CalendarDays} label="Cambiar fechas" hint={rangeLabel} onClick={() => setSheet('dates')} />
+        </div>
+      </MenuSheet>
+
+      {/* Date range. The list regenerates on every change (the rolling
+          endpoint always returns fresh aggregation; checked state survives
+          via overlay). */}
+      <MenuSheet open={sheet === 'dates'} onClose={() => setSheet(null)} eyebrow={rangeLabel} title="Fechas de la lista">
+        <div className="grid grid-cols-2 gap-3">
+          <label className="flex flex-col gap-1.5 text-[12px] font-semibold uppercase tracking-[0.12em] text-ink-muted">
             Desde
             <input
               type="date"
               value={from}
               max={to}
               onChange={(e) => setFrom(e.target.value)}
-              className="rounded-md border border-[#DDD6C5] bg-transparent px-2 py-1 text-[12px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none"
+              className="h-11 rounded-xl border border-border bg-paper px-3 text-[15px] font-normal normal-case tracking-normal text-ink focus:border-ink focus:outline-none"
             />
           </label>
-          <label className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.12em] text-[#7A7066]">
+          <label className="flex flex-col gap-1.5 text-[12px] font-semibold uppercase tracking-[0.12em] text-ink-muted">
             Hasta
             <input
               type="date"
               value={to}
               min={from}
               onChange={(e) => setTo(e.target.value)}
-              className="rounded-md border border-[#DDD6C5] bg-transparent px-2 py-1 text-[12px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none"
+              className="h-11 rounded-xl border border-border bg-paper px-3 text-[15px] font-normal normal-case tracking-normal text-ink focus:border-ink focus:outline-none"
             />
           </label>
-          <button
-            type="button"
-            onClick={() => {
-              haptic.light()
-              setFrom(today)
-              setTo(defaultTo)
-            }}
-            className="ml-auto rounded-full border border-[#DDD6C5] px-3 py-1 text-[10px] uppercase tracking-[0.12em] text-[#1A1612] transition-colors hover:border-[#1A1612] hover:bg-[#1A1612] hover:text-[#FAF6EE]"
-          >
-            Esta + sig
-          </button>
         </div>
-        <p className="mt-2 text-[11px] italic text-[#7A7066]">
-          {formatRangeLabel(from, to)} · los platos del día de hoy ya pasados se excluyen automáticamente
+        <p className="mt-3 text-[13px] leading-snug text-ink-soft">
+          {rangeLabel} · los platos del día de hoy ya pasados se excluyen automáticamente
         </p>
-      </header>
-
-      {/* Progress strip */}
-      <div className="px-5">
-        <div className="rounded-2xl bg-[#FFFEFA] p-5 border border-[#DDD6C5]">
-          <div className="flex items-end justify-between">
-            <div>
-              <div className="font-display text-[2.5rem] leading-none text-[#1A1612]">
-                {checkedCount + inStockCount}<span className="text-[#7A7066]/40">/{totalCount}</span>
-              </div>
-              <div className="mt-1 text-[11px] uppercase tracking-[0.18em] text-[#7A7066]">
-                completados
-              </div>
-            </div>
-            <div className="text-right">
-              <div className="font-italic italic text-2xl text-[#C65D38]">
-                {Math.round(progress * 100)}<span className="text-base">%</span>
-              </div>
-              <div className="text-[10px] uppercase tracking-[0.18em] text-[#7A7066] mt-0.5">
-                listo
-              </div>
-            </div>
-          </div>
-          <div className="mt-3 h-px overflow-hidden bg-[#DDD6C5]">
-            <motion.div
-              animate={{ scaleX: progress }}
-              initial={{ scaleX: 0 }}
-              style={{ originX: 0 }}
-              transition={{ duration: 1, ease: [0.19, 1, 0.22, 1] }}
-              className="h-full bg-[#1A1612]"
-            />
-          </div>
-          <div className="mt-3 flex gap-3 text-[11px]">
-            <div className="flex items-center gap-1.5 text-[#2D6A4F]">
-              <Check size={12} />
-              <span>{checkedCount} comprados</span>
-            </div>
-            <div className="flex items-center gap-1.5 text-[#C65D38]">
-              <Package size={12} />
-              <span>{inStockCount} en casa</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Compra en mis tiendas (specs/shop-orders.md) */}
-      <div className="px-5 mt-4">
-        <Link
-          href="/compra"
-          className="flex items-center justify-between rounded-2xl border border-[#1A1612] bg-[#FFFEFA] px-5 py-3.5 text-[#1A1612] transition-colors hover:bg-[#F2EDE0]"
+        <button
+          type="button"
+          onClick={() => {
+            haptic.light()
+            setFrom(today)
+            setTo(defaultTo)
+          }}
+          className="mt-4 inline-flex min-h-[44px] items-center rounded-full border border-border bg-paper px-5 text-[14px] font-medium text-ink transition-colors hover:border-ink"
         >
-          <span className="flex items-center gap-2 text-[13px]">
-            <Store size={14} /> Pedir a mis tiendas
-          </span>
-          <span className="text-[11px] uppercase tracking-[0.14em] text-[#C65D38]">WhatsApp →</span>
-        </Link>
-      </div>
+          Esta + sig
+        </button>
+      </MenuSheet>
 
-      {/* PR 10A — total banner + add manual item */}
-      {shoppingList && (
-        <div className="px-5 mt-5 space-y-3">
-          <ListTotalBanner listId={shoppingList.id} />
-          <AddManualItemForm listId={shoppingList.id} />
-        </div>
-      )}
-
-      {/* Tabs */}
-      <div className="px-5 mt-5">
-        <div className="flex gap-1 border-b border-[#DDD6C5]">
-          <TabButton active={activeTab === 'list'} onClick={() => setActiveTab('list')}>
-            Por comprar
-          </TabButton>
-          <TabButton active={activeTab === 'stock'} onClick={() => setActiveTab('stock')}>
-            Ya en casa
-          </TabButton>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="px-5 mt-5">
-        {listLoading ? (
-          <div className="py-12 text-center font-italic italic text-[#7A7066]">Generando lista...</div>
-        ) : (
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeTab}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.3 }}
-            >
-              {activeTab === 'list' ? (
-                <BuyList items={items} listId={shoppingList!.id} />
-              ) : (
-                <StockList items={items} listId={shoppingList!.id} />
-              )}
-            </motion.div>
-          </AnimatePresence>
-        )}
-      </div>
+      {/* Añadir a mano */}
+      <MenuSheet open={sheet === 'add'} onClose={() => setSheet(null)} eyebrow="Lista de la compra" title="Añadir a mano">
+        {shoppingList && <AddManualItemForm listId={shoppingList.id} embedded onClose={() => setSheet(null)} />}
+      </MenuSheet>
     </div>
   )
 }
 
 /* ─────────────────────────────────────────── */
+
+/** 36 px pill (hit area stretched to 44 px), same as the /recipes chip row. */
+function Chip({
+  active,
+  onClick,
+  children,
+  pressable,
+  ariaHaspopup,
+}: {
+  active: boolean
+  onClick: () => void
+  children: React.ReactNode
+  pressable?: boolean
+  ariaHaspopup?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={pressable ? active : undefined}
+      aria-haspopup={ariaHaspopup ? 'dialog' : undefined}
+      onClick={onClick}
+      className={`relative h-9 shrink-0 whitespace-nowrap rounded-full border px-3.5 text-[14px] transition-colors before:absolute before:inset-x-0 before:-inset-y-1 active:scale-[0.97] lg:h-[38px] lg:px-4 ${
+        active ? 'border-ink bg-ink font-medium text-cream' : 'border-border bg-paper text-ink hover:border-ink'
+      }`}
+    >
+      {children}
+    </button>
+  )
+}
 
 function TabButton({
   active,
@@ -324,19 +442,15 @@ function TabButton({
 }) {
   return (
     <button
+      type="button"
+      role="tab"
+      aria-selected={active}
       onClick={onClick}
-      className={`relative px-4 py-2.5 text-[12px] uppercase tracking-[0.15em] transition-colors ${
-        active ? 'text-[#1A1612] font-medium' : 'text-[#7A7066]'
+      className={`-mb-px h-11 shrink-0 whitespace-nowrap border-b-2 text-[15px] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink ${
+        active ? 'border-ink font-semibold text-ink' : 'border-transparent text-ink-muted hover:text-ink'
       }`}
     >
       {children}
-      {active && (
-        <motion.div
-          layoutId="tab-underline"
-          className="absolute -bottom-px left-0 right-0 h-px bg-[#1A1612]"
-          transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-        />
-      )}
     </button>
   )
 }
@@ -355,17 +469,36 @@ function groupByAisle<T extends { aisle?: Aisle | string | null }>(
   return out
 }
 
-function AisleHeader({ aisle }: { aisle: Aisle }) {
+/** Aisles: sections on mobile, paper cards in 2–3 columns at lg+. */
+function AisleGrid({ children }: { children: React.ReactNode }) {
+  return <div className="flex flex-col gap-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-5 xl:grid-cols-3">{children}</div>
+}
+
+function AisleSection({ aisle, count, children }: { aisle: Aisle; count: number; children: React.ReactNode }) {
   return (
-    <li className="pt-5 pb-2 first:pt-0">
-      <div className="text-[10px] uppercase tracking-[0.18em] text-[#7A7066]">
+    <section
+      aria-label={aisleLabel(aisle)}
+      className="lg:rounded-[20px] lg:border lg:border-border-soft lg:bg-paper lg:px-5 lg:pt-4 lg:pb-2"
+    >
+      <h2 className="flex items-baseline justify-between gap-3 pb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-muted">
         {aisleLabel(aisle)}
-      </div>
-    </li>
+        <span className="font-mono text-[12px] font-normal tracking-normal tabular-nums">{count}</span>
+      </h2>
+      <ul>{children}</ul>
+    </section>
   )
 }
 
-function BuyList({ items, listId }: { items: any[]; listId: string }) {
+function EmptyCard({ title, hint }: { title: string; hint?: string }) {
+  return (
+    <div className="rounded-[22px] border border-dashed border-border bg-paper px-6 py-10 text-center">
+      <p className="font-serif-text text-[18px] font-medium italic text-ink-mid">{title}</p>
+      {hint && <p className="mt-1.5 text-[14px] text-ink-soft">{hint}</p>}
+    </div>
+  )
+}
+
+function BuyList({ items, listId, aisle }: { items: any[]; listId: string; aisle: Aisle | null }) {
   const checkItem = useCheckItem()
   const stockItem = useStockItem()
 
@@ -373,84 +506,80 @@ function BuyList({ items, listId }: { items: any[]; listId: string }) {
   const grouped = groupByAisle(buyable)
 
   if (buyable.length === 0) {
-    return (
-      <div className="rounded-2xl bg-[#FFFEFA] border border-dashed border-[#DDD6C5] py-12 text-center">
-        <div className="font-display text-3xl text-[#C65D38]/30">∅</div>
-        <p className="mt-3 font-italic italic text-[#7A7066]">Nada que comprar.</p>
-      </div>
-    )
+    return <EmptyCard title="Nada que comprar." />
   }
 
   let runningIndex = 0
   return (
-    <ul className="divide-y divide-dashed divide-[#DDD6C5]">
-      {AISLE_ORDER.flatMap((aisle) => {
-        const rows = grouped[aisle]
+    <AisleGrid>
+      {AISLE_ORDER.filter((a) => !aisle || a === aisle).flatMap((a) => {
+        const rows = grouped[a]
         if (!rows || rows.length === 0) return []
-        const sorted = [...rows].sort((a, b) => a.name.localeCompare(b.name))
+        const sorted = [...rows].sort((x, y) => x.name.localeCompare(y.name))
         return [
-          <AisleHeader key={`hdr-${aisle}`} aisle={aisle} />,
-          ...sorted.map((item) => {
-            const i = runningIndex++
-            return (
-              <ItemRow
-                key={item.id}
-                item={item}
-                index={i}
-                listId={listId}
-                variant="buy"
-                onCheck={() => checkItem.mutate({ listId, itemId: item.id, checked: !item.checked })}
-                onStock={() => stockItem.mutate({ listId, itemId: item.id, inStock: true })}
-              />
-            )
-          }),
+          <AisleSection key={a} aisle={a} count={sorted.length}>
+            {sorted.map((item) => {
+              const i = runningIndex++
+              return (
+                <ItemRow
+                  key={item.id}
+                  item={item}
+                  index={i}
+                  listId={listId}
+                  variant="buy"
+                  onCheck={() => checkItem.mutate({ listId, itemId: item.id, checked: !item.checked })}
+                  onStock={() => stockItem.mutate({ listId, itemId: item.id, inStock: true })}
+                />
+              )
+            })}
+          </AisleSection>,
         ]
       })}
-    </ul>
+    </AisleGrid>
   )
 }
 
-function StockList({ items, listId }: { items: any[]; listId: string }) {
+function StockList({ items, listId, aisle }: { items: any[]; listId: string; aisle: Aisle | null }) {
   const stockItem = useStockItem()
   const inStock = items.filter((i) => i.inStock)
   const grouped = groupByAisle(inStock)
 
   if (inStock.length === 0) {
     return (
-      <div className="rounded-2xl bg-[#FFFEFA] border border-dashed border-[#DDD6C5] py-12 text-center">
-        <div className="font-display text-3xl text-[#C65D38]/30">∅</div>
-        <p className="mt-3 font-italic italic text-[#7A7066]">No tienes nada marcado como "en casa".</p>
-        <p className="mt-1 text-[12px] text-[#7A7066]">Marca con el icono de paquete los items que ya tienes.</p>
-      </div>
+      <EmptyCard
+        title='No tienes nada marcado como "en casa".'
+        hint="Marca con el icono de paquete los items que ya tienes."
+      />
     )
   }
 
   let runningIndex = 0
   return (
-    <ul className="divide-y divide-dashed divide-[#DDD6C5]">
-      {AISLE_ORDER.flatMap((aisle) => {
-        const rows = grouped[aisle]
+    <AisleGrid>
+      {AISLE_ORDER.filter((a) => !aisle || a === aisle).flatMap((a) => {
+        const rows = grouped[a]
         if (!rows || rows.length === 0) return []
-        const sorted = [...rows].sort((a, b) => a.name.localeCompare(b.name))
+        const sorted = [...rows].sort((x, y) => x.name.localeCompare(y.name))
         return [
-          <AisleHeader key={`hdr-${aisle}`} aisle={aisle} />,
-          ...sorted.map((item) => {
-            const i = runningIndex++
-            return (
-              <ItemRow
-                key={item.id}
-                item={item}
-                index={i}
-                listId={listId}
-                variant="stock"
-                onCheck={() => {}}
-                onStock={() => stockItem.mutate({ listId, itemId: item.id, inStock: false })}
-              />
-            )
-          }),
+          <AisleSection key={a} aisle={a} count={sorted.length}>
+            {sorted.map((item) => {
+              const i = runningIndex++
+              return (
+                <ItemRow
+                  key={item.id}
+                  item={item}
+                  index={i}
+                  listId={listId}
+                  variant="stock"
+                  onCheck={() => {}}
+                  onStock={() => stockItem.mutate({ listId, itemId: item.id, inStock: false })}
+                />
+              )
+            })}
+          </AisleSection>,
         ]
       })}
-    </ul>
+    </AisleGrid>
   )
 }
 
@@ -474,51 +603,57 @@ function ItemRow({
     <motion.li
       initial={{ opacity: 0, x: -8 }}
       animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: index * 0.03, duration: 0.4 }}
-      className={`flex items-center gap-3 py-3.5 ${item.checked ? 'opacity-50' : ''}`}
+      transition={{ delay: Math.min(index, 20) * 0.03, duration: 0.4 }}
+      className="flex items-center gap-2 border-b border-dashed border-border py-1.5 last:border-b-0"
     >
       {variant === 'buy' ? (
         <button
+          type="button"
           onClick={onCheck}
-          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition-all ${
-            item.checked
-              ? 'border-[#2D6A4F] bg-[#2D6A4F] text-[#FAF6EE]'
-              : 'border-[#DDD6C5] bg-transparent hover:border-[#1A1612]'
-          }`}
+          className="group -ml-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-ink"
           aria-label="Marcar como comprado"
+          aria-pressed={!!item.checked}
         >
-          {item.checked && <Check size={13} strokeWidth={2.5} />}
+          <span
+            className={`flex h-[26px] w-[26px] items-center justify-center rounded-full border-2 transition-all ${
+              item.checked ? 'border-ink bg-ink text-cream' : 'border-border bg-paper group-hover:border-ink'
+            }`}
+          >
+            {item.checked && <Check size={15} strokeWidth={2.6} />}
+          </span>
         </button>
       ) : (
-        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#C65D38]/10">
-          <Package size={12} className="text-[#C65D38]" />
+        <div className="-ml-2 flex h-11 w-11 shrink-0 items-center justify-center" aria-hidden="true">
+          <span className="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-terracotta-deep/10">
+            <Package size={14} className="text-terracotta-deep" />
+          </span>
         </div>
       )}
 
-      <div className="flex-1 min-w-0">
-        <div className={`text-[15px] text-[#1A1612] ${item.checked ? 'line-through' : ''}`}>
+      <div className={`min-w-0 flex-1 ${item.checked ? 'opacity-50' : ''}`}>
+        <p className={`text-[16px] leading-snug text-ink ${item.checked ? 'line-through' : ''}`}>
           {ingredientDisplayName(item.name)}
           {isManual && (
-            <span className="ml-1.5 text-[9px] uppercase tracking-[0.15em] text-[#C65D38] not-italic">
+            <span className="ml-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-terracotta-deep no-underline">
               · manual
             </span>
           )}
-        </div>
-      </div>
-
-      <div className="font-mono text-[11px] tracking-tight text-[#7A7066] tabular-nums shrink-0">
-        {item.quantity} {item.unit}
+        </p>
+        <p className="font-mono text-[13px] tracking-tight text-ink-muted tabular-nums">
+          {item.quantity} {item.unit}
+        </p>
       </div>
 
       {variant === 'buy' && <ItemPriceField listId={listId} item={item} />}
       {variant === 'buy' && isManual && <ItemDeleteButton listId={listId} itemId={item.id} />}
 
       <button
+        type="button"
         onClick={onStock}
-        className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] uppercase tracking-[0.12em] transition-colors ${
+        className={`relative h-8 shrink-0 whitespace-nowrap rounded-full px-3 text-[12px] font-medium transition-colors before:absolute before:inset-x-0 before:-inset-y-1.5 ${
           variant === 'stock'
-            ? 'bg-[#C65D38] text-[#FAF6EE]'
-            : 'bg-[#F2EDE0] text-[#7A7066] hover:bg-[#1A1612] hover:text-[#FAF6EE]'
+            ? 'bg-terracotta-deep text-cream hover:bg-ink'
+            : 'bg-cream-deep text-ink-mid hover:bg-ink hover:text-cream'
         }`}
         aria-label={variant === 'stock' ? 'Quitar de en casa' : 'Marcar en casa'}
       >

@@ -22,8 +22,8 @@ export default function OnboardingPage() {
 
   if (isLoading || !user) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <p className="text-lg text-gray-500">Cargando...</p>
+      <div className="flex min-h-[100dvh] items-center justify-center bg-cream">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-muted" role="status">Cargando...</p>
       </div>
     )
   }

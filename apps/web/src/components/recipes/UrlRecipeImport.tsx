@@ -70,13 +70,13 @@ export function UrlRecipeImport({ onImported }: UrlRecipeImportProps) {
   return (
     <form
       onSubmit={handleSubmit}
-      className="rounded-xl border border-[#DDD6C5] bg-[#F2EDE0] p-4"
+      className="rounded-[20px] border border-border-soft bg-paper p-4 sm:p-5"
     >
-      <div className="flex items-center gap-2 text-[#7A7066]">
-        <Link2 size={16} />
-        <span className="text-eyebrow">Importar desde URL</span>
+      <div className="flex items-center gap-2 text-ink">
+        <Link2 size={16} aria-hidden />
+        <span className="font-serif-text text-[17px] font-[650]">Importar desde URL</span>
       </div>
-      <p className="mt-2 text-[12px] italic text-[#7A7066]">
+      <p className="mt-1.5 text-[13px] leading-snug text-ink-muted">
         Pega un enlace a un artículo de receta o un vídeo de YouTube. Mimoia
         extraerá los ingredientes y los pasos.
       </p>
@@ -92,16 +92,16 @@ export function UrlRecipeImport({ onImported }: UrlRecipeImportProps) {
           placeholder="https://..."
           disabled={state === "submitting"}
           className={cn(
-            "flex-1 rounded-lg border bg-[#FAF6EE] px-3 py-2 text-[14px] text-[#1A1612] placeholder:text-[#7A7066] focus:outline-none focus:ring-1 disabled:opacity-60",
+            "h-11 w-full min-w-0 rounded-xl border bg-paper px-3.5 text-[16px] sm:flex-1 text-ink placeholder:text-ink-light focus:outline-none focus:ring-1 disabled:opacity-60 lg:text-[15px]",
             state === "error"
-              ? "border-[#C65D38] focus:border-[#C65D38] focus:ring-[#C65D38]"
-              : "border-[#DDD6C5] focus:border-[#1A1612] focus:ring-[#1A1612]"
+              ? "border-terracotta focus:border-terracotta focus:ring-terracotta"
+              : "border-border-soft focus:border-ink focus:ring-ink"
           )}
         />
         <button
           type="submit"
           disabled={!url || state === "submitting"}
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#1A1612] px-4 py-2 text-[12px] font-medium uppercase tracking-[0.12em] text-[#FAF6EE] transition-all hover:bg-[#2D6A4F] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-ink px-5 text-[14px] font-semibold text-cream transition-colors hover:bg-ink-mid active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
         >
           {state === "submitting" ? (
             <>
@@ -121,16 +121,16 @@ export function UrlRecipeImport({ onImported }: UrlRecipeImportProps) {
           catalogue instead of the user's own collection. The server
           re-checks the role before honouring the flag. */}
       {isAdmin && (
-        <label className="mt-3 flex cursor-pointer items-start gap-2 text-[12px] text-[#4A4239]">
+        <label className="mt-3 flex cursor-pointer items-start gap-2 text-[13px] text-ink-mid">
           <input
             type="checkbox"
             checked={asSystem}
             onChange={(e) => setAsSystem(e.target.checked)}
             disabled={state === "submitting"}
-            className="mt-0.5 h-4 w-4 cursor-pointer accent-[#1A1612]"
+            className="mt-0.5 h-4 w-4 cursor-pointer accent-ink"
           />
           <span>
-            <span className="font-medium text-[#1A1612]">Añadir al catálogo Mimoia</span>{" "}
+            <span className="font-medium text-ink">Añadir al catálogo Mimoia</span>{" "}
             — la receta queda como receta del sistema (sin autor),
             visible para todos en <code>/recipes-ona</code> y bajo
             “Selección Mimoia” en <code>/recipes</code>.
@@ -139,12 +139,12 @@ export function UrlRecipeImport({ onImported }: UrlRecipeImportProps) {
       )}
 
       {state === "error" && (
-        <div className="mt-3 flex items-start justify-between gap-3 rounded-lg border border-[#C65D38] bg-[#FAF6EE] px-3 py-2 text-[12px] text-[#1A1612]">
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-terracotta/40 bg-warn-bg px-3.5 py-2 text-[13px] text-ink">
           <p className="flex-1">{errorMessage}</p>
           <button
             type="button"
             onClick={reset}
-            className="inline-flex items-center gap-1 text-[#7A7066] hover:text-[#1A1612]"
+            className="inline-flex min-h-11 shrink-0 items-center gap-1 text-ink-muted hover:text-ink"
           >
             <RotateCcw size={12} />
             Reintentar

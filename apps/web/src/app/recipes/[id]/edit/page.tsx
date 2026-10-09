@@ -2,8 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import Link from "next/link"
-import { ChevronLeft, Plus, Sparkles, Trash2, Upload } from "lucide-react"
+import { Sparkles, Trash2, Upload } from "lucide-react"
 import { useAuth } from "@/lib/auth"
 import {
   useIngredients,
@@ -13,7 +12,6 @@ import {
   useUploadRecipeImage,
 } from "@/hooks/useRecipes"
 import { useUser } from "@/hooks/useUser"
-import { IngredientAutocomplete } from "@/components/recipes/IngredientAutocomplete"
 import {
   SortableStepsList,
   makeStep,
@@ -25,9 +23,22 @@ import {
 } from "@/components/recipes/SortableIngredientsList"
 import { ShoppingIssues } from "@/components/recipes/ShoppingIssues"
 import { FitChip, cycleFit } from "@/components/recipes/FitChip"
-import { cn } from "@/lib/utils"
+import {
+  AddRowButton,
+  Field,
+  FieldError,
+  FORCE_PILL,
+  FormCard,
+  FormErrors,
+  FormHeader,
+  ICON_BUTTON,
+  IngredientRowFields,
+  SaveBar,
+  TagList,
+  choicePillClass,
+  fieldClass,
+} from "@/components/recipes/form/RecipeFormUI"
 import { LintFailureError } from "@/lib/api"
-import { humanizeLintKey } from "@/lib/recipeView"
 import { createRecipeSchema, COURSES, COURSE_LABELS } from "@ona/shared"
 import type { Course, Difficulty, Ingredient, Meal, Season } from "@ona/shared"
 import { MEAL_LABELS, SEASON_LABELS } from "@/lib/labels"
@@ -415,7 +426,7 @@ export default function EditRecipePage() {
 
   if (recipeLoading || !seeded) {
     return (
-      <div className="min-h-screen bg-[#FAF6EE] px-5 pt-12 text-[13px] text-[#7A7066]">
+      <div className="min-h-screen bg-cream px-5 pt-12 text-[14px] text-ink-muted">
         Cargando receta…
       </div>
     )
@@ -423,7 +434,7 @@ export default function EditRecipePage() {
 
   if (recipeError) {
     return (
-      <div className="min-h-screen bg-[#FAF6EE] px-5 pt-12 text-[13px] text-[#C65D38]">
+      <div className="min-h-screen bg-cream px-5 pt-12 text-[14px] text-terracotta-deep">
         No se pudo cargar la receta.
       </div>
     )
@@ -443,496 +454,341 @@ export default function EditRecipePage() {
     )
 
   return (
-    <div className="min-h-screen bg-[#FAF6EE]">
-      <div className="mx-auto max-w-2xl px-5 pb-16 pt-8">
-        <Link
-          href={`/recipes/${params.id}`}
-          className="inline-flex items-center gap-1 text-[12px] uppercase tracking-[0.15em] text-[#7A7066] hover:text-[#1A1612]"
-        >
-          <ChevronLeft size={14} />
-          Volver a la receta
-        </Link>
+    <div className="min-h-screen bg-cream">
+      <div className="mx-auto max-w-[1180px] px-4 pb-10 pt-4 sm:px-5 lg:px-8 lg:pt-8">
+        <FormHeader
+          backHref={`/recipes/${params.id}`}
+          backLabel="Volver a la receta"
+          eyebrow="Editor"
+          title="Editar"
+          accent="receta"
+          intro={
+            <>
+              Cambia lo que quieras y guarda. Los ingredientes deben estar
+              enlazados a la biblioteca para calcular nutrientes.
+            </>
+          }
+        />
 
-        <div className="mt-6">
-          <div className="text-eyebrow text-[#C65D38]">Editor</div>
-          <h1 className="mt-2 font-display text-[2.2rem] leading-[1.02] tracking-tight text-[#1A1612]">
-            Editar <span className="font-italic italic text-[#C65D38]">receta</span>
-          </h1>
-          <p className="mt-2 max-w-md text-[13px] leading-relaxed text-[#7A7066]">
-            Cambia lo que quieras y guarda. Los ingredientes deben estar
-            enlazados a la biblioteca para calcular nutrientes.
-          </p>
-        </div>
+        <form onSubmit={handleSubmit} className="mt-6 lg:mt-8" noValidate>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start lg:gap-6">
+            {/* Left column — photo and the recipe's data. */}
+            <div className="min-w-0 space-y-4 lg:space-y-6">
+              {/* Hero photo — preview + AI regenerate + upload. Its buttons
+                  are type="button" and the file input has no name, so it
+                  never submits (or adds to) the form. */}
+              {params.id && user?.id ? (
+                <PhotoSection recipeId={params.id} userId={user.id} />
+              ) : null}
 
-        {/* Hero photo — preview + AI regenerate. Outside the form so the
-            generation button doesn't accidentally submit unsaved edits. */}
-        {params.id && user?.id ? (
-          <PhotoSection recipeId={params.id} userId={user.id} />
-        ) : null}
+              <FormCard title="Datos">
+                <div className="space-y-5">
+                  <Field label="Nombre" htmlFor="recipe-name" error={errors.name}>
+                    <input
+                      id="recipe-name"
+                      type="text"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className={fieldClass(!!errors.name)}
+                      required
+                    />
+                  </Field>
 
-        <form onSubmit={handleSubmit} className="mt-10 space-y-10" noValidate>
-          {/* Name */}
-          <section>
-            <div className="text-eyebrow text-[#7A7066]">Capitulo 01</div>
-            <h2 className="mt-1 font-display text-[1.5rem] leading-tight text-[#1A1612]">
-              <span className="font-italic italic">Nombre</span>
-            </h2>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className={cn(
-                "mt-4 w-full rounded-lg border bg-[#F2EDE0] px-3 py-3 text-[15px] text-[#1A1612] focus:outline-none focus:ring-1",
-                errors.name
-                  ? "border-[#C65D38] focus:border-[#C65D38] focus:ring-[#C65D38]"
-                  : "border-[#DDD6C5] focus:border-[#1A1612] focus:ring-[#1A1612]"
-              )}
-              required
-            />
-            {errors.name && (
-              <p className="mt-2 text-[12px] italic text-[#C65D38]">{errors.name}</p>
-            )}
-          </section>
-
-          {/* Servings + times */}
-          <section>
-            <div className="text-eyebrow text-[#7A7066]">Tiempos y comensales</div>
-            <div className="mt-3 grid grid-cols-3 gap-4">
-              <div>
-                <label className="text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
-                  Comensales
-                </label>
-                <input
-                  type="number"
-                  value={servings}
-                  onChange={(e) => setServings(Math.max(1, Number(e.target.value) || 1))}
-                  min={1}
-                  className="mt-1 w-full rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-3 py-2 text-[14px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
-                  Prep (min)
-                </label>
-                <input
-                  type="number"
-                  value={prepTime}
-                  onChange={(e) =>
-                    setPrepTime(e.target.value ? Number(e.target.value) : "")
-                  }
-                  min={0}
-                  className="mt-1 w-full rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-3 py-2 text-[14px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
-                  Cocción (min)
-                </label>
-                <input
-                  type="number"
-                  value={cookTime}
-                  onChange={(e) =>
-                    setCookTime(e.target.value ? Number(e.target.value) : "")
-                  }
-                  min={0}
-                  className="mt-1 w-full rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-3 py-2 text-[14px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
-                />
-              </div>
-            </div>
-            <div className="mt-4">
-              <label className="text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
-                Enlace a la fuente (vídeo o artículo)
-              </label>
-              <input
-                type="url"
-                value={sourceUrl}
-                onChange={(e) => setSourceUrl(e.target.value)}
-                placeholder="https://…"
-                className="mt-1 w-full rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-3 py-2 text-[13px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
-              />
-              <p className="mt-1 text-[11px] italic text-[#7A7066]">
-                Si importaste la receta desde una URL, ya viene rellenada.
-                También puedes añadirla manualmente — aparecerá un botón
-                "Ver fuente" en la receta.
-              </p>
-            </div>
-          </section>
-
-          {/* Difficulty */}
-          <section>
-            <div className="text-eyebrow text-[#7A7066]">Dificultad</div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {DIFFICULTY_OPTIONS.map((opt) => {
-                const active = difficulty === opt.value
-                return (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setDifficulty(opt.value)}
-                    className={cn(
-                      "rounded-full border px-4 py-2 text-[12px] uppercase tracking-[0.12em] transition-all active:scale-95",
-                      active
-                        ? "border-[#1A1612] bg-[#1A1612] text-[#FAF6EE]"
-                        : "border-[#DDD6C5] bg-[#F2EDE0] text-[#4A4239] hover:border-[#1A1612]"
-                    )}
-                  >
-                    {opt.label}
-                  </button>
-                )
-              })}
-            </div>
-          </section>
-
-          {/* Course */}
-          <section>
-            <div className="text-eyebrow text-[#7A7066]">Tipo de plato</div>
-            <div className="mt-3">
-              <select
-                value={course}
-                onChange={(e) => setCourse(e.target.value as Course | "")}
-                className="w-full rounded-xl border border-[#DDD6C5] bg-[#FFFEFA] px-3 py-2 text-[14px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none"
-              >
-                <option value="">Sin clasificar (auto)</option>
-                {COURSES.map((c) => (
-                  <option key={c} value={c}>
-                    {COURSE_LABELS[c]}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </section>
-
-          {/* Meals — three-state fit chip cycles none → mid → perfect. */}
-          <section>
-            <div className="text-eyebrow text-[#7A7066]">Tipo de comida</div>
-            <p className="mt-1 text-[11px] italic text-[#7A7066]">
-              Pulsa: vacío → encaja a veces → encaja perfectamente. El menú
-              prioriza los "perfecto" frente a los "a veces".
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {MEAL_OPTIONS.map((opt) => (
-                <FitChip
-                  key={opt.value}
-                  label={opt.label}
-                  fit={mealFit[opt.value]}
-                  onClick={() => toggleMeal(opt.value)}
-                  palette="ink"
-                />
-              ))}
-            </div>
-            {errors.meals && (
-              <p className="mt-2 text-[12px] italic text-[#C65D38]">
-                {errors.meals}
-              </p>
-            )}
-          </section>
-
-          {/* Seasons — same three-state chip in forest green. */}
-          <section>
-            <div className="text-eyebrow text-[#7A7066]">Temporada</div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {SEASON_OPTIONS.map((opt) => (
-                <FitChip
-                  key={opt.value}
-                  label={opt.label}
-                  fit={seasonFit[opt.value]}
-                  onClick={() => toggleSeason(opt.value)}
-                  palette="forest"
-                />
-              ))}
-            </div>
-            {errors.seasons && (
-              <p className="mt-2 text-[12px] italic text-[#C65D38]">
-                {errors.seasons}
-              </p>
-            )}
-          </section>
-
-          {/* Planificación — scheduling frequency hint consumed by the
-              menu matcher. "Normal" is the default (null) — the matcher
-              treats it as 1× weight. The other three chips are mutually
-              exclusive. */}
-          <section>
-            <div className="text-eyebrow text-[#7A7066]">Planificación</div>
-            <p className="mt-1 text-[11px] italic text-[#7A7066]">
-              Cuánto debería proponer este plato el planificador
-              automático cuando regenera tu menú.
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {([
-                { value: null, label: "Normal", subtitle: "Por defecto" },
-                { value: "frequent" as const, label: "Frecuente", subtitle: "Peso 2×" },
-                { value: "occasional" as const, label: "Ocasional", subtitle: "Peso 0.4×" },
-                { value: "weekends_only" as const, label: "Solo finde", subtitle: "Sólo S/D" },
-              ] as const).map((opt) => {
-                const active = (frequency ?? null) === opt.value
-                return (
-                  <button
-                    key={String(opt.value)}
-                    type="button"
-                    onClick={() => setFrequency(opt.value)}
-                    aria-pressed={active}
-                    title={opt.subtitle}
-                    className={cn(
-                      "rounded-full border px-4 py-2 text-[12px] uppercase tracking-[0.12em] transition-all active:scale-95",
-                      active
-                        ? "border-[#1A1612] bg-[#1A1612] text-[#FAF6EE]"
-                        : "border-[#DDD6C5] bg-transparent text-[#7A7066] hover:border-[#1A1612] hover:text-[#1A1612]",
-                    )}
-                  >
-                    {opt.label}
-                  </button>
-                )
-              })}
-            </div>
-          </section>
-
-          {/* Tags */}
-          <section>
-            <div className="text-eyebrow text-[#7A7066]">Etiquetas</div>
-            <div className="mt-3 flex gap-2">
-              <input
-                type="text"
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === ",") {
-                    e.preventDefault()
-                    addTag()
-                  }
-                }}
-                placeholder="Escribe y pulsa Enter…"
-                className="flex-1 rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-3 py-2 text-[14px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
-              />
-            </div>
-            {tags.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="inline-flex items-center gap-1 rounded-full bg-[#F2EDE0] px-3 py-1 text-[10px] uppercase tracking-[0.1em] text-[#4A4239]"
-                  >
-                    {tag}
-                    <button
-                      type="button"
-                      onClick={() => removeTag(tag)}
-                      className="ml-1 text-[#7A7066] hover:text-[#C65D38]"
-                      aria-label={`Quitar etiqueta ${tag}`}
-                    >
-                      x
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-          </section>
-
-          {/* Ingredients */}
-          <section>
-            <div className="text-eyebrow text-[#7A7066]">Capitulo 02</div>
-            <h2 className="mt-1 font-display text-[1.5rem] leading-tight text-[#1A1612]">
-              <span className="font-italic italic">Ingredientes</span>
-            </h2>
-            {/* What the last saved version still lacks for the shopping list. */}
-            <ShoppingIssues issues={recipe?.shoppingIssues} />
-            <div className="mt-4">
-              <SortableIngredientsList
-                rows={ingredientRows}
-                onReorder={setIngredientRows}
-                renderRow={(row) => {
-                  const idx = ingredientRows.findIndex((r) => r.rowId === row.rowId)
-                  const hint = ingredientRowHints[idx]
-                  const selectedIng = row.ingredientId
-                    ? ingredientLibrary.find((ing) => ing.id === row.ingredientId) ?? null
-                    : null
-                  const fallbackText =
-                    !selectedIng && row.ingredientName ? row.ingredientName : undefined
-                  return (
-                    <div className="flex flex-col gap-1">
-                      <div className="flex items-center gap-2">
-                        <IngredientAutocomplete
-                          value={selectedIng}
-                          onSelect={(ing) => setRowIngredient(row.rowId, ing)}
-                          placeholder={
-                            ingredientsLoading ? "Cargando biblioteca…" : "Ingrediente"
-                          }
-                          hasError={!!hint}
-                          defaultText={fallbackText}
-                        />
+                  <Field label="Tiempos y comensales">
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label htmlFor="recipe-servings" className="text-[12px] text-ink-muted">
+                          Comensales
+                        </label>
                         <input
+                          id="recipe-servings"
                           type="number"
-                          value={row.quantity === "" ? "" : row.quantity}
-                          onChange={(e) =>
-                            updateIngredientQuantity(row.rowId, e.target.value)
-                          }
-                          placeholder="Cant."
-                          min={0}
-                          step="any"
-                          className="w-20 rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-3 py-2 text-[14px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
+                          value={servings}
+                          onChange={(e) => setServings(Math.max(1, Number(e.target.value) || 1))}
+                          min={1}
+                          className={fieldClass(false, "mt-1 font-mono")}
                         />
-                        <select
-                          value={row.unit}
-                          onChange={(e) => updateIngredientUnit(row.rowId, e.target.value)}
-                          className="w-20 rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-2 py-2 text-[14px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
-                        >
-                          {UNIT_OPTIONS.map((u) => (
-                            <option key={u} value={u}>
-                              {u}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => toggleIngredientOptional(row.rowId)}
-                          aria-pressed={row.optional}
-                          title={row.optional ? "Quitar marca opcional" : "Marcar como opcional"}
-                          className={`rounded-full px-2 py-1 text-[10px] uppercase tracking-[0.1em] transition-colors ${
-                            row.optional
-                              ? "bg-[#F2EDE0] text-[#7A7066]"
-                              : "border border-dashed border-[#DDD6C5] text-[#A39A8E] hover:border-[#1A1612] hover:text-[#1A1612]"
-                          }`}
-                        >
-                          opc
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => removeIngredientRow(row.rowId)}
-                          disabled={ingredientRows.length <= 1}
-                          className="rounded p-1 text-[#7A7066] hover:text-[#C65D38] disabled:opacity-30"
-                          aria-label="Quitar ingrediente"
-                        >
-                          <Trash2 size={16} />
-                        </button>
                       </div>
-                      {hint && (
-                        <p className="pl-1 text-[11px] italic text-[#C65D38]">{hint}</p>
-                      )}
+                      <div>
+                        <label htmlFor="recipe-prep" className="text-[12px] text-ink-muted">
+                          Prep (min)
+                        </label>
+                        <input
+                          id="recipe-prep"
+                          type="number"
+                          value={prepTime}
+                          onChange={(e) =>
+                            setPrepTime(e.target.value ? Number(e.target.value) : "")
+                          }
+                          min={0}
+                          className={fieldClass(false, "mt-1 font-mono")}
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="recipe-cook" className="text-[12px] text-ink-muted">
+                          Cocción (min)
+                        </label>
+                        <input
+                          id="recipe-cook"
+                          type="number"
+                          value={cookTime}
+                          onChange={(e) =>
+                            setCookTime(e.target.value ? Number(e.target.value) : "")
+                          }
+                          min={0}
+                          className={fieldClass(false, "mt-1 font-mono")}
+                        />
+                      </div>
                     </div>
-                  )
-                }}
-              />
-            </div>
-            <button
-              type="button"
-              onClick={addIngredientRow}
-              className="mt-3 inline-flex items-center gap-1 text-[12px] uppercase tracking-[0.12em] text-[#7A7066] hover:text-[#1A1612]"
-            >
-              <Plus size={14} />
-              Añadir ingrediente
-            </button>
-            {errors.ingredients && (
-              <p className="mt-3 text-[12px] italic text-[#C65D38]">
-                {errors.ingredients}
-              </p>
-            )}
-          </section>
+                  </Field>
 
-          {/* Steps — drag-and-drop reorderable. The grip handle on the left
-              of each row drags; the textarea and trash do their own thing. */}
-          <section>
-            <div className="text-eyebrow text-[#7A7066]">Capitulo 03</div>
-            <h2 className="mt-1 font-display text-[1.5rem] leading-tight text-[#1A1612]">
-              <span className="font-italic italic">Preparación</span>
-            </h2>
-            <div className="mt-4">
-              <SortableStepsList
-                steps={steps}
-                onReorder={setSteps}
-                onChange={updateStep}
-                onRemove={removeStep}
-              />
-            </div>
-            <button
-              type="button"
-              onClick={addStep}
-              className="mt-3 inline-flex items-center gap-1 text-[12px] uppercase tracking-[0.12em] text-[#7A7066] hover:text-[#1A1612]"
-            >
-              <Plus size={14} />
-              Añadir paso
-            </button>
-          </section>
+                  <Field
+                    label="Enlace a la fuente (vídeo o artículo)"
+                    htmlFor="recipe-source"
+                  >
+                    <input
+                      id="recipe-source"
+                      type="url"
+                      value={sourceUrl}
+                      onChange={(e) => setSourceUrl(e.target.value)}
+                      placeholder="https://…"
+                      className={fieldClass()}
+                    />
+                    <p className="mt-1.5 text-[13px] leading-snug text-ink-muted">
+                      Si importaste la receta desde una URL, ya viene rellenada.
+                      También puedes añadirla manualmente — aparecerá un botón
+                      &quot;Ver fuente&quot; en la receta.
+                    </p>
+                  </Field>
 
-          {/* Notes — unified list ("notas y trucos" used to be two boxes;
-              users don't actually separate the two so we merged them into a
-              single stack). Persists into `recipes.notes`; `recipes.tips`
-              is cleared on save. */}
-          <section>
-            <div className="text-eyebrow text-[#7A7066]">Notas</div>
-            <div className="mt-3">
-              <NotesEditor
-                title=""
-                placeholder="e.g. la madre la hacía con cebolla pochada — o cualquier truco"
-                addLabel="Añadir nota"
-                entries={notes}
-                onUpdate={(idx, v) => updateAt(setNotes, notes, idx, v)}
-                onAdd={() => addAt(setNotes, notes)}
-                onRemove={(idx) => removeAt(setNotes, notes, idx)}
-              />
-            </div>
-          </section>
+                  <Field label="Dificultad">
+                    <div className="flex flex-wrap gap-2">
+                      {DIFFICULTY_OPTIONS.map((opt) => {
+                        const active = difficulty === opt.value
+                        return (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => setDifficulty(opt.value)}
+                            aria-pressed={active}
+                            className={choicePillClass(active)}
+                          >
+                            {opt.label}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </Field>
 
-          {/* Submit */}
-          <div className="flex flex-col gap-3 border-t border-[#DDD6C5] pt-6">
-            {Object.keys(errors).length > 0 && (
-              <div className="rounded-lg border border-[#C65D38]/40 bg-[#C65D38]/10 px-4 py-3">
-                <p className="text-[12px] font-medium uppercase tracking-[0.12em] text-[#C65D38]">
-                  {allowForce ? "Avisos" : "Algo no encaja:"}
-                </p>
-                <ul className="mt-2 list-disc space-y-1 pl-5 text-[12px] italic text-[#C65D38]">
-                  {Object.entries(errors).map(([key, msg]) => {
-                    const label = humanizeLintKey(key)
-                    // The lint validator's own messages already namecheck
-                    // "el paso N" / "el ingrediente X" — when that's the case,
-                    // hide the prefix to avoid "Paso 1: El paso 1 menciona…".
-                    const showLabel = !!label && !msg.toLowerCase().includes(label.toLowerCase())
-                    return (
-                      <li key={key}>
-                        {showLabel ? (
-                          <>
-                            <span className="font-medium not-italic">{label}:</span> {msg}
-                          </>
-                        ) : (
-                          msg
-                        )}
-                      </li>
-                    )
-                  })}
-                </ul>
-                {allowForce && (
-                  <p className="mt-3 text-[12px] italic text-[#7A7066]">
-                    Estos avisos no impiden guardar. Corrige y pulsa
-                    "Guardar cambios" otra vez, o usa "Guardar igualmente"
-                    para aceptarlos tal cual.
-                  </p>
-                )}
-              </div>
-            )}
-            <div className="flex items-center gap-4">
-              <button
-                type="submit"
-                disabled={!canSubmit || updateRecipe.isPending}
-                className="rounded-full bg-[#1A1612] px-6 py-2.5 text-[12px] font-medium uppercase tracking-[0.12em] text-[#FAF6EE] transition-all hover:bg-[#2D6A4F] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                  <Field label="Tipo de plato" htmlFor="recipe-course">
+                    <select
+                      id="recipe-course"
+                      value={course}
+                      onChange={(e) => setCourse(e.target.value as Course | "")}
+                      className={fieldClass()}
+                    >
+                      <option value="">Sin clasificar (auto)</option>
+                      {COURSES.map((c) => (
+                        <option key={c} value={c}>
+                          {COURSE_LABELS[c]}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+
+                  <Field label="Etiquetas" htmlFor="recipe-tags">
+                    <input
+                      id="recipe-tags"
+                      type="text"
+                      value={tagInput}
+                      onChange={(e) => setTagInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === ",") {
+                          e.preventDefault()
+                          addTag()
+                        }
+                      }}
+                      placeholder="Escribe y pulsa Enter…"
+                      className={fieldClass()}
+                    />
+                    <TagList tags={tags} onRemove={removeTag} />
+                  </Field>
+                </div>
+              </FormCard>
+
+              {/* Planificación — scheduling frequency hint consumed by the
+                  menu matcher ("Normal" = null, 1× weight; the other three
+                  are mutually exclusive), plus the meal / season fit. */}
+              <FormCard
+                title="Planificación"
+                description="Cuánto debería proponer este plato el planificador automático cuando regenera tu menú."
               >
-                {updateRecipe.isPending ? "Guardando…" : "Guardar cambios"}
-              </button>
+                <div className="space-y-5">
+                  <div className="flex flex-wrap gap-2">
+                    {([
+                      { value: null, label: "Normal", subtitle: "Por defecto" },
+                      { value: "frequent" as const, label: "Frecuente", subtitle: "Peso 2×" },
+                      { value: "occasional" as const, label: "Ocasional", subtitle: "Peso 0.4×" },
+                      { value: "weekends_only" as const, label: "Solo finde", subtitle: "Sólo S/D" },
+                    ] as const).map((opt) => {
+                      const active = (frequency ?? null) === opt.value
+                      return (
+                        <button
+                          key={String(opt.value)}
+                          type="button"
+                          onClick={() => setFrequency(opt.value)}
+                          aria-pressed={active}
+                          title={opt.subtitle}
+                          className={choicePillClass(active)}
+                        >
+                          {opt.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {/* Meals — three-state fit chip cycles none → mid → perfect. */}
+                  <Field
+                    label="Tipo de comida"
+                    hint='Pulsa: vacío → encaja a veces → encaja perfectamente. El menú prioriza los "perfecto" frente a los "a veces".'
+                    error={errors.meals}
+                  >
+                    <div className="flex flex-wrap gap-2">
+                      {MEAL_OPTIONS.map((opt) => (
+                        <FitChip
+                          key={opt.value}
+                          label={opt.label}
+                          fit={mealFit[opt.value]}
+                          onClick={() => toggleMeal(opt.value)}
+                        />
+                      ))}
+                    </div>
+                  </Field>
+
+                  <Field label="Temporada" error={errors.seasons}>
+                    <div className="flex flex-wrap gap-2">
+                      {SEASON_OPTIONS.map((opt) => (
+                        <FitChip
+                          key={opt.value}
+                          label={opt.label}
+                          fit={seasonFit[opt.value]}
+                          onClick={() => toggleSeason(opt.value)}
+                        />
+                      ))}
+                    </div>
+                  </Field>
+                </div>
+              </FormCard>
+            </div>
+
+            {/* Right column — ingredients, steps and notes. */}
+            <div className="min-w-0 space-y-4 lg:space-y-6">
+              <FormCard title="Ingredientes">
+                {/* What the last saved version still lacks for the shopping
+                    list (shared with the detail page, which gives it mt-8). */}
+                <div className="[&>section]:mb-4 [&>section]:mt-0">
+                  <ShoppingIssues issues={recipe?.shoppingIssues} />
+                </div>
+                <SortableIngredientsList
+                  rows={ingredientRows}
+                  onReorder={setIngredientRows}
+                  renderRow={(row) => {
+                    const idx = ingredientRows.findIndex((r) => r.rowId === row.rowId)
+                    const hint = ingredientRowHints[idx]
+                    const selectedIng = row.ingredientId
+                      ? ingredientLibrary.find((ing) => ing.id === row.ingredientId) ?? null
+                      : null
+                    const fallbackText =
+                      !selectedIng && row.ingredientName ? row.ingredientName : undefined
+                    return (
+                      <IngredientRowFields
+                        selected={selectedIng}
+                        onSelect={(ing) => setRowIngredient(row.rowId, ing)}
+                        placeholder={
+                          ingredientsLoading ? "Cargando biblioteca…" : "Ingrediente"
+                        }
+                        hasError={!!hint}
+                        defaultText={fallbackText}
+                        quantity={row.quantity}
+                        onQuantity={(v) => updateIngredientQuantity(row.rowId, v)}
+                        unit={row.unit}
+                        units={UNIT_OPTIONS}
+                        onUnit={(v) => updateIngredientUnit(row.rowId, v)}
+                        optional={row.optional}
+                        onToggleOptional={() => toggleIngredientOptional(row.rowId)}
+                        onRemove={() => removeIngredientRow(row.rowId)}
+                        removable={ingredientRows.length > 1}
+                        hint={hint}
+                      />
+                    )
+                  }}
+                />
+                <AddRowButton onClick={addIngredientRow}>Añadir ingrediente</AddRowButton>
+                <FieldError>{errors.ingredients}</FieldError>
+              </FormCard>
+
+              {/* Steps — drag-and-drop reorderable. The grip handle on the
+                  left of each row drags; the textarea and trash do their own
+                  thing. */}
+              <FormCard title="Preparación">
+                <SortableStepsList
+                  steps={steps}
+                  onReorder={setSteps}
+                  onChange={updateStep}
+                  onRemove={removeStep}
+                />
+                <AddRowButton onClick={addStep}>Añadir paso</AddRowButton>
+              </FormCard>
+
+              {/* Notes — unified list ("notas y trucos" used to be two boxes;
+                  users don't actually separate the two so we merged them into
+                  a single stack). Persists into `recipes.notes`; `recipes.tips`
+                  is cleared on save. */}
+              <FormCard title="Notas">
+                <NotesEditor
+                  title=""
+                  placeholder="e.g. la madre la hacía con cebolla pochada — o cualquier truco"
+                  addLabel="Añadir nota"
+                  entries={notes}
+                  onUpdate={(idx, v) => updateAt(setNotes, notes, idx, v)}
+                  onAdd={() => addAt(setNotes, notes)}
+                  onRemove={(idx) => removeAt(setNotes, notes, idx)}
+                />
+              </FormCard>
+            </div>
+          </div>
+
+          {/* Submit: error summary (+ "Guardar igualmente" after lint
+              warnings) and the sticky ink pill. */}
+          {/* The bar must be a direct child of the form: a sticky element
+              only sticks inside its parent's box. */}
+          <div className="mt-6">
+            <FormErrors
+              errors={errors}
+              title={allowForce ? "Avisos" : "Algo no encaja:"}
+              footnote={
+                allowForce
+                  ? 'Estos avisos no impiden guardar. Corrige y pulsa "Guardar cambios" otra vez, o usa "Guardar igualmente" para aceptarlos tal cual.'
+                  : undefined
+              }
+            >
               {allowForce && (
                 <button
                   type="submit"
                   name="force"
                   disabled={updateRecipe.isPending}
-                  className="rounded-full border border-[#C65D38] bg-transparent px-6 py-2.5 text-[12px] font-medium uppercase tracking-[0.12em] text-[#C65D38] transition-all hover:bg-[#C65D38] hover:text-[#FAF6EE] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                  className={FORCE_PILL}
                 >
                   {updateRecipe.isPending ? "Guardando…" : "Guardar igualmente"}
                 </button>
               )}
-              <Link
-                href={`/recipes/${params.id}`}
-                className="text-[12px] uppercase tracking-[0.12em] text-[#7A7066] hover:text-[#1A1612]"
-              >
-                Cancelar
-              </Link>
-            </div>
+            </FormErrors>
           </div>
+          <SaveBar
+            submitLabel={updateRecipe.isPending ? "Guardando…" : "Guardar cambios"}
+            disabled={!canSubmit || updateRecipe.isPending}
+            cancelHref={`/recipes/${params.id}`}
+          />
         </form>
       </div>
     </div>
@@ -940,8 +796,8 @@ export default function EditRecipePage() {
 }
 
 /* ─────────────────────────────────────────────
-   Photo section — preview + "Regenerar imagen"
-   Lives outside the <form> so its button can't submit it.
+   Photo section — preview + "Regenerar imagen" + "Subir foto"
+   Its buttons are type="button", so it never submits the form.
    ───────────────────────────────────────────── */
 function PhotoSection({ recipeId, userId }: { recipeId: string; userId: string }) {
   const { data: recipe } = useRecipe(recipeId)
@@ -972,76 +828,81 @@ function PhotoSection({ recipeId, userId }: { recipeId: string; userId: string }
   }
 
   return (
-    <section className="mt-10">
-      <div className="text-eyebrow text-[#7A7066]">Imagen</div>
-      <h2 className="mt-1 font-display text-[1.5rem] leading-tight text-[#1A1612]">
-        <span className="font-italic italic">Foto</span> de la receta
-      </h2>
-      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-start">
-        {heroSrc ? (
-          <img
-            src={heroSrc}
-            alt={recipe?.name ?? ""}
-            className="aspect-[4/3] w-full max-w-[260px] rounded-lg object-cover"
-          />
-        ) : (
-          <div className="flex aspect-[4/3] w-full max-w-[260px] items-center justify-center rounded-lg border border-dashed border-[#DDD6C5] bg-[#F2EDE0] text-[12px] uppercase tracking-[0.12em] text-[#7A7066]">
-            Sin foto
-          </div>
-        )}
-        <div className="flex flex-col gap-2">
-          <button
-            type="button"
-            onClick={() => regen.mutate()}
-            disabled={regen.isPending || upload.isPending || exhausted}
-            className="inline-flex items-center gap-2 self-start rounded-full border border-[#DDD6C5] bg-[#F2EDE0] px-5 py-2.5 text-[12px] uppercase tracking-[0.12em] text-[#1A1612] transition-all hover:border-[#1A1612] disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <Sparkles size={14} />
-            {regen.isPending
-              ? "Generando…"
-              : recipe?.imageUrl
-                ? "Regenerar imagen"
-                : "Generar imagen"}
-          </button>
-          {/* Manual upload — available to authors on their own recipes and
-              to admins on any recipe (the API enforces it, the UI just
-              presents the affordance). Doesn't consume the AI quota. */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            onChange={handleFilePick}
-            className="hidden"
-          />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={upload.isPending || regen.isPending}
-            className="inline-flex items-center gap-2 self-start rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-5 py-2.5 text-[12px] uppercase tracking-[0.12em] text-[#1A1612] transition-all hover:border-[#1A1612] disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <Upload size={14} />
-            {upload.isPending ? "Subiendo…" : "Subir foto"}
-          </button>
-          {quota && !regen.error ? (
-            <span className="text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
-              {quota.used}/{quota.limit} este mes (IA)
-            </span>
-          ) : null}
-          {regen.error ? (
-            <span className="text-[11px] italic text-[#C65D38]">{regen.error.message}</span>
-          ) : null}
-          {upload.error ? (
-            <span className="text-[11px] italic text-[#C65D38]">{upload.error.message}</span>
-          ) : null}
-          <p className="max-w-xs text-[11px] leading-relaxed text-[#7A7066]">
-            Genera con IA a partir del nombre y los ingredientes, o sube tu
-            propia foto (JPG / PNG / WebP, hasta 10 MB).
-          </p>
+    <FormCard
+      title={
+        <>
+          <span className="font-medium italic text-terracotta-deep">Foto</span> de la receta
+        </>
+      }
+    >
+      {heroSrc ? (
+        <img
+          src={heroSrc}
+          alt={recipe?.name ?? ""}
+          className="aspect-[4/3] w-full rounded-2xl bg-bone object-cover"
+        />
+      ) : (
+        <div className="flex aspect-[4/3] w-full items-center justify-center rounded-2xl border border-dashed border-border bg-bone text-[12px] font-semibold uppercase tracking-[0.14em] text-ink-muted">
+          Sin foto
         </div>
+      )}
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => regen.mutate()}
+          disabled={regen.isPending || upload.isPending || exhausted}
+          className={PHOTO_PILL}
+        >
+          <Sparkles size={15} aria-hidden />
+          {regen.isPending
+            ? "Generando…"
+            : recipe?.imageUrl
+              ? "Regenerar imagen"
+              : "Generar imagen"}
+        </button>
+        {/* Manual upload — available to authors on their own recipes and
+            to admins on any recipe (the API enforces it, the UI just
+            presents the affordance). Doesn't consume the AI quota. */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          onChange={handleFilePick}
+          className="hidden"
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={upload.isPending || regen.isPending}
+          className={PHOTO_PILL}
+        >
+          <Upload size={15} aria-hidden />
+          {upload.isPending ? "Subiendo…" : "Subir foto"}
+        </button>
       </div>
-    </section>
+      <div className="mt-3 flex flex-col gap-1.5">
+        {quota && !regen.error ? (
+          <span className="font-mono text-[12px] text-ink-muted">
+            {quota.used}/{quota.limit} este mes (IA)
+          </span>
+        ) : null}
+        {regen.error ? (
+          <span className="text-[13px] italic text-terracotta-deep">{regen.error.message}</span>
+        ) : null}
+        {upload.error ? (
+          <span className="text-[13px] italic text-terracotta-deep">{upload.error.message}</span>
+        ) : null}
+        <p className="text-[13px] leading-snug text-ink-muted">
+          Genera con IA a partir del nombre y los ingredientes, o sube tu
+          propia foto (JPG / PNG / WebP, hasta 10 MB).
+        </p>
+      </div>
+    </FormCard>
   )
 }
+
+const PHOTO_PILL =
+  "inline-flex h-11 items-center gap-2 rounded-full border border-border bg-paper px-4 text-[14px] text-ink transition-colors hover:border-ink active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
 
 /* ─────────────────────────────────────────────
    Multi-entry list editor — used for notes + tips.
@@ -1066,40 +927,29 @@ function NotesEditor({
 }) {
   return (
     <div>
-      {title && (
-        <div className="mb-2 text-[11px] uppercase tracking-[0.15em] text-[#7A7066]">
-          {title}
-        </div>
-      )}
+      {title && <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">{title}</div>}
       <div className="space-y-2">
         {entries.map((entry, idx) => (
-          <div key={idx} className="flex items-start gap-2">
+          <div key={idx} className="flex items-start gap-1">
             <textarea
               value={entry}
               onChange={(e) => onUpdate(idx, e.target.value)}
               placeholder={placeholder}
               rows={2}
-              className="flex-1 resize-none rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-3 py-2 text-[13px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
+              className="min-h-[88px] min-w-0 flex-1 resize-y rounded-xl border border-border-soft bg-paper px-3.5 py-2.5 text-[16px] leading-relaxed text-ink placeholder:text-ink-light focus:border-ink focus:outline-none focus:ring-1 focus:ring-ink lg:text-[15px]"
             />
             <button
               type="button"
               onClick={() => onRemove(idx)}
-              className="mt-1 rounded p-1 text-[#7A7066] hover:text-[#C65D38]"
+              className={ICON_BUTTON}
               aria-label={`Quitar ${title.toLowerCase()}`}
             >
-              <Trash2 size={14} />
+              <Trash2 size={17} />
             </button>
           </div>
         ))}
       </div>
-      <button
-        type="button"
-        onClick={onAdd}
-        className="mt-2 inline-flex items-center gap-1 text-[11px] uppercase tracking-[0.12em] text-[#7A7066] hover:text-[#1A1612]"
-      >
-        <Plus size={12} />
-        {addLabel}
-      </button>
+      <AddRowButton onClick={onAdd}>{addLabel}</AddRowButton>
     </div>
   )
 }

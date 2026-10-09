@@ -8,7 +8,7 @@
  *   - English description as fine-print fallback when both languages exist
  *   - per-100 g summary (kcal + protein)
  *   - colored badge by data type:
- *       Foundation → green
+ *       Foundation → ink
  *       SR Legacy  → orange
  *       FNDDS      → tan
  *       BEDCA      → blue
@@ -42,23 +42,23 @@ export function CandidateCard({
       type="button"
       onClick={onClick}
       className={cn(
-        "w-full rounded-lg border px-4 py-3 text-left transition-all",
+        "w-full rounded-2xl border px-4 py-3 text-left transition-colors",
         picked
-          ? "border-[#1A1612] bg-[#F2EDE0]"
-          : "border-[#DDD6C5] bg-[#FAF6EE] hover:border-[#1A1612]",
+          ? "border-ink bg-cream-deep ring-1 ring-ink"
+          : "border-border-soft bg-paper hover:border-ink",
       )}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          <div className="text-[14px] font-medium text-[#1A1612]">
+          <div className="text-[15px] font-medium text-ink">
             {primary}
           </div>
           {showEnglish && (
-            <div className="mt-0.5 text-[11px] italic text-[#7A7066] truncate">
+            <div className="mt-0.5 truncate text-[11px] italic text-ink-muted">
               {c.description}
             </div>
           )}
-          <div className="mt-1 text-[11px] uppercase tracking-[0.1em] text-[#7A7066]">
+          <div className="mt-1 text-[11px] uppercase tracking-[0.1em] text-ink-muted">
             Por 100 g · {Math.round(c.per100g.kcal)} kcal ·{" "}
             {c.per100g.proteinG.toFixed(1)} g proteína
           </div>
@@ -66,8 +66,8 @@ export function CandidateCard({
         <span
           className={cn(
             "shrink-0 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.1em]",
-            c.dataType === "Foundation" && "bg-[#2D6A4F] text-[#FAF6EE]",
-            c.dataType === "SR Legacy" && "bg-[#C65D38] text-[#FAF6EE]",
+            c.dataType === "Foundation" && "bg-ink text-cream",
+            c.dataType === "SR Legacy" && "bg-terracotta-deep text-cream",
             c.dataType === "BEDCA" && "bg-[#2A5C8B] text-[#FAF6EE]",
             c.dataType !== "Foundation" &&
               c.dataType !== "SR Legacy" &&

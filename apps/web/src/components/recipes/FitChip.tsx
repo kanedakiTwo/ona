@@ -10,10 +10,9 @@
  *   3. solid fill + ★      → 'perfect' (encaja perfecto; pool weight 3×)
  *   4. back to outline
  *
- * The two palettes mirror the existing edit-form colour split: ink (#1A1612)
- * for meals — matches the active tab bar / submit button — and forest
- * (#2D6A4F) for seasons, the green that already runs through the produce
- * + cooking-mode accent surfaces.
+ * Both rows (meals and seasons) use the "D · Luz y foto" ink chip of
+ * /recipes (PRO-42): paper outline → bone fill + "·" → ink fill + ★. The
+ * old forest-green season palette is gone.
  */
 import { cn } from "@/lib/utils"
 
@@ -23,19 +22,17 @@ interface Props {
   label: string
   fit: FitState
   onClick: () => void
-  palette: "ink" | "forest"
 }
 
-export function FitChip({ label, fit, onClick, palette }: Props) {
-  const accent = palette === "ink" ? "#1A1612" : "#2D6A4F"
-  const softFill = palette === "ink" ? "#E9E2D3" : "#CAE5D5"
+export function FitChip({ label, fit, onClick }: Props) {
   const visualState = fit ?? "none"
+  // 36 px visual + a pseudo-element that stretches the hit area to 44 px,
+  // like the /recipes filter chips.
   const className = cn(
-    "rounded-full border px-4 py-2 text-[12px] uppercase tracking-[0.12em] transition-all active:scale-95",
-    visualState === "none" &&
-      "border-[#DDD6C5] bg-transparent text-[#A39A8E] hover:border-[#1A1612] hover:text-[#1A1612]",
-    visualState === "mid" && "text-[#1A1612]",
-    visualState === "perfect" && "text-[#FAF6EE]",
+    "relative inline-flex h-9 items-center whitespace-nowrap rounded-full border px-3.5 text-[14px] transition-colors before:absolute before:inset-x-0 before:-inset-y-1 active:scale-[0.97]",
+    visualState === "none" && "border-border bg-paper text-ink-muted hover:border-ink hover:text-ink",
+    visualState === "mid" && "border-ink bg-bone text-ink",
+    visualState === "perfect" && "border-ink bg-ink font-medium text-cream",
   )
   return (
     <button
@@ -50,13 +47,6 @@ export function FitChip({ label, fit, onClick, palette }: Props) {
             : "Encaja perfecto — peso 3×"
       }
       className={className}
-      style={
-        visualState === "mid"
-          ? { borderColor: accent, backgroundColor: softFill }
-          : visualState === "perfect"
-            ? { borderColor: accent, backgroundColor: accent }
-            : undefined
-      }
     >
       {label}
       {visualState === "mid" && <span className="ml-1 opacity-60">·</span>}

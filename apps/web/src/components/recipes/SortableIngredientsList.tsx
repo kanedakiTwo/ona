@@ -103,7 +103,7 @@ export function SortableIngredientsList<R extends SortableRowAnchor>({
         items={rows.map((r) => r.rowId)}
         strategy={verticalListSortingStrategy}
       >
-        <div className="space-y-3">
+        <div className="divide-y divide-dashed divide-border border-y border-dashed border-border">
           {rows.map((row) => (
             <SortableIngredientRow key={row.rowId} row={row} renderRow={renderRow} />
           ))}
@@ -137,17 +137,17 @@ function SortableIngredientRow<R extends SortableRowAnchor>({
   }
 
   return (
-    <div ref={setNodeRef} style={style} className="flex items-start gap-2">
+    <div ref={setNodeRef} style={style} className="flex items-start gap-1 bg-paper py-3">
       <button
         type="button"
         {...attributes}
         {...listeners}
         aria-label="Reordenar ingrediente"
-        className="mt-2 cursor-grab touch-none rounded p-1 text-[#7A7066] transition-colors hover:bg-[#F2EDE0] hover:text-[#1A1612] active:cursor-grabbing"
+        className="-ml-2 flex h-11 w-8 shrink-0 cursor-grab touch-none items-center justify-center rounded-full text-ink-light transition-colors hover:bg-cream-deep hover:text-ink active:cursor-grabbing"
       >
         <GripVertical size={16} />
       </button>
-      <div className="flex-1">{renderRow(row, isDragging)}</div>
+      <div className="min-w-0 flex-1">{renderRow(row, isDragging)}</div>
     </div>
   )
 }

@@ -5,10 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/lib/auth"
 import { useCreateRecipe, useIngredients } from "@/hooks/useRecipes"
 import { LintFailureError } from "@/lib/api"
-import { cn } from "@/lib/utils"
-import { humanizeLintKey } from "@/lib/recipeView"
-import { Plus, Trash2, ChevronLeft } from "lucide-react"
-import Link from "next/link"
 import { PhotoRecipeUpload } from "@/components/recipes/PhotoRecipeUpload"
 import { UrlRecipeImport } from "@/components/recipes/UrlRecipeImport"
 import {
@@ -21,7 +17,20 @@ import {
   makeRowId,
 } from "@/components/recipes/SortableIngredientsList"
 import { FitChip, cycleFit } from "@/components/recipes/FitChip"
-import { IngredientAutocomplete } from "@/components/recipes/IngredientAutocomplete"
+import {
+  AddRowButton,
+  Field,
+  FieldError,
+  FORCE_PILL,
+  FormCard,
+  FormErrors,
+  FormHeader,
+  IngredientRowFields,
+  SaveBar,
+  TagList,
+  choicePillClass,
+  fieldClass,
+} from "@/components/recipes/form/RecipeFormUI"
 import { buildRecipePayload, createRecipeSchema, COURSES, COURSE_LABELS } from "@ona/shared"
 import type { Course, Meal, Season, ExtractedRecipe, Ingredient } from "@ona/shared"
 import { MEAL_LABELS, SEASON_LABELS } from "@/lib/labels"
@@ -337,491 +346,302 @@ function NewRecipePageInner() {
   }
 
   return (
-    <div className="min-h-screen bg-[#FAF6EE]">
-      <div className="mx-auto max-w-2xl px-5 pb-16 pt-8">
-        {/* Back link */}
-        <Link
-          href="/recipes"
-          className="inline-flex items-center gap-1 text-[12px] uppercase tracking-[0.15em] text-[#7A7066] hover:text-[#1A1612]"
-        >
-          <ChevronLeft size={14} />
-          Volver al catalogo
-        </Link>
+    <div className="min-h-screen bg-cream">
+      <div className="mx-auto max-w-[1180px] px-4 pb-10 pt-4 sm:px-5 lg:px-8 lg:pt-8">
+        <FormHeader
+          backHref="/recipes"
+          backLabel="Volver al catalogo"
+          eyebrow="Nueva entrada"
+          title="Una nueva"
+          accent="receta"
+          intro={
+            <>
+              Completa los detalles esenciales. Los ingredientes se enlazan con la
+              biblioteca de Mimoia para calcular nutrientes y temporada.
+            </>
+          }
+        />
 
-        {/* Editorial header */}
-        <div className="mt-6">
-          <div className="text-eyebrow text-[#C65D38]">Nueva entrada</div>
-          <h1 className="mt-2 font-display text-[2.4rem] leading-[1.02] tracking-tight text-[#1A1612]">
-            Una nueva <span className="font-italic italic text-[#C65D38]">receta</span>
-          </h1>
-          <p className="mt-2 max-w-md text-[13px] leading-relaxed text-[#7A7066]">
-            Completa los detalles esenciales. Los ingredientes se enlazan con la
-            biblioteca de Mimoia para calcular nutrientes y temporada.
-          </p>
-        </div>
-
-        {/* Photo extraction */}
-        <div className="mt-8">
+        {/* Import: photo extraction + URL (article or YouTube). Two paper
+            cards, side by side at lg+. */}
+        <div className="mt-6 grid grid-cols-1 gap-4 lg:mt-8 lg:grid-cols-2 lg:gap-6">
           <PhotoRecipeUpload onExtracted={handlePhotoExtracted} />
-        </div>
-
-        {photoExtracted && (
-          <div className="mt-4 rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-4 py-3 text-[12px] text-[#1A1612]">
-            Receta extraida de la foto. Revisa los datos y ajusta lo que sea
-            necesario antes de guardar.
-          </div>
-        )}
-
-        {/* URL extraction (article or YouTube) */}
-        <div className="mt-4">
           <UrlRecipeImport
             onImported={(recipeId) => router.push(`/recipes/${recipeId}/edit`)}
           />
         </div>
 
-        <div className="mt-6 flex items-center gap-3 text-[11px] uppercase tracking-[0.12em] text-[#7A7066]">
-          <span className="h-px flex-1 bg-[#DDD6C5]" />
+        {photoExtracted && (
+          <div className="mt-4 rounded-2xl border border-border-soft bg-cream-deep px-4 py-3 text-[14px] text-ink">
+            Receta extraida de la foto. Revisa los datos y ajusta lo que sea
+            necesario antes de guardar.
+          </div>
+        )}
+
+        <div className="mt-6 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">
+          <span className="h-px flex-1 bg-border" />
           o introduce los datos manualmente
-          <span className="h-px flex-1 bg-[#DDD6C5]" />
+          <span className="h-px flex-1 bg-border" />
         </div>
 
-        <form
-          onSubmit={handleSubmit}
-          className="mt-10 space-y-10"
-          noValidate
-        >
-          {/* Name */}
-          <section>
-            <div className="text-eyebrow text-[#7A7066]">Capitulo 01</div>
-            <h2 className="mt-1 font-display text-[1.5rem] leading-tight text-[#1A1612]">
-              <span className="font-italic italic">Nombre</span>
-            </h2>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Ej: Tortilla de patatas"
-              className={cn(
-                "mt-4 w-full rounded-lg border bg-[#F2EDE0] px-3 py-3 text-[15px] text-[#1A1612] placeholder:text-[#7A7066] focus:outline-none focus:ring-1",
-                errors.name
-                  ? "border-[#C65D38] focus:border-[#C65D38] focus:ring-[#C65D38]"
-                  : "border-[#DDD6C5] focus:border-[#1A1612] focus:ring-[#1A1612]"
-              )}
-              required
-            />
-            {errors.name && (
-              <p className="mt-2 text-[12px] italic text-[#C65D38]">
-                {errors.name}
-              </p>
-            )}
-          </section>
+        <form onSubmit={handleSubmit} className="mt-6" noValidate>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start lg:gap-6">
+            {/* Left column — the recipe's data. */}
+            <div className="min-w-0 space-y-4 lg:space-y-6">
+              <FormCard title="Datos">
+                <div className="space-y-5">
+                  <Field label="Nombre" htmlFor="recipe-name" error={errors.name}>
+                    <input
+                      id="recipe-name"
+                      type="text"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Ej: Tortilla de patatas"
+                      className={fieldClass(!!errors.name)}
+                      required
+                    />
+                  </Field>
 
-          {/* Servings */}
-          <section>
-            <label className="text-eyebrow text-[#7A7066]">
-              Comensales
-            </label>
-            <div className="mt-2 flex items-baseline gap-2">
-              <input
-                type="number"
-                value={servings}
-                onChange={(e) =>
-                  setServings(e.target.value ? Number(e.target.value) : "")
-                }
-                placeholder="2"
-                min={1}
-                className="w-28 rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-3 py-2 text-[14px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
-              />
-              <span className="text-[12px] uppercase tracking-[0.12em] text-[#7A7066]">
-                personas
-              </span>
-            </div>
-            {errors.servings && (
-              <p className="mt-2 text-[12px] italic text-[#C65D38]">
-                {errors.servings}
-              </p>
-            )}
-          </section>
-
-          {/* Prep time */}
-          <section>
-            <label className="text-eyebrow text-[#7A7066]">
-              Tiempo de preparacion
-            </label>
-            <div className="mt-2 flex items-baseline gap-2">
-              <input
-                type="number"
-                value={prepTime}
-                onChange={(e) =>
-                  setPrepTime(e.target.value ? Number(e.target.value) : "")
-                }
-                placeholder="30"
-                min={1}
-                className="w-28 rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-3 py-2 text-[14px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
-              />
-              <span className="text-[12px] uppercase tracking-[0.12em] text-[#7A7066]">
-                minutos
-              </span>
-            </div>
-            {errors.prepTime && (
-              <p className="mt-2 text-[12px] italic text-[#C65D38]">
-                {errors.prepTime}
-              </p>
-            )}
-          </section>
-
-          {/* Meals — three-state fit chip cycles none → mid → perfect. */}
-          <section>
-            <div className="text-eyebrow text-[#7A7066]">Tipo de comida</div>
-            <p className="mt-1 text-[12px] italic text-[#7A7066]">
-              Toca: vacío → encaja a veces → encaja perfecto. Al menos una
-              en cualquier estado distinto a vacío.
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {MEAL_OPTIONS.map((opt) => (
-                <FitChip
-                  key={opt.value}
-                  label={opt.label}
-                  fit={mealFit[opt.value]}
-                  onClick={() => toggleMeal(opt.value)}
-                  palette="ink"
-                />
-              ))}
-            </div>
-            {errors.meals && (
-              <p className="mt-2 text-[12px] italic text-[#C65D38]">
-                {errors.meals}
-              </p>
-            )}
-          </section>
-
-          {/* Seasons — same chip in forest green. */}
-          <section>
-            <div className="text-eyebrow text-[#7A7066]">Temporada</div>
-            <p className="mt-1 text-[12px] italic text-[#7A7066]">
-              Marca al menos una con el grado de encaje
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {SEASON_OPTIONS.map((opt) => (
-                <FitChip
-                  key={opt.value}
-                  label={opt.label}
-                  fit={seasonFit[opt.value]}
-                  onClick={() => toggleSeason(opt.value)}
-                  palette="forest"
-                />
-              ))}
-            </div>
-            {errors.seasons && (
-              <p className="mt-2 text-[12px] italic text-[#C65D38]">
-                {errors.seasons}
-              </p>
-            )}
-          </section>
-
-          {/* Planificación — frecuencia con la que el matcher propondrá
-              esta receta. Normal (default) = peso 1×; el resto modifican
-              el peso del pool o filtran el día. */}
-          <section>
-            <div className="text-eyebrow text-[#7A7066]">Planificación</div>
-            <p className="mt-1 text-[11px] italic text-[#7A7066]">
-              Cuánto debería proponer este plato el planificador cuando
-              regenera el menú.
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {([
-                { value: null, label: "Normal" },
-                { value: "frequent" as const, label: "Frecuente" },
-                { value: "occasional" as const, label: "Ocasional" },
-                { value: "weekends_only" as const, label: "Solo finde" },
-              ] as const).map((opt) => {
-                const active = (frequency ?? null) === opt.value
-                return (
-                  <button
-                    key={String(opt.value)}
-                    type="button"
-                    onClick={() => setFrequency(opt.value)}
-                    aria-pressed={active}
-                    className={cn(
-                      "rounded-full border px-4 py-2 text-[12px] uppercase tracking-[0.12em] transition-all active:scale-95",
-                      active
-                        ? "border-[#1A1612] bg-[#1A1612] text-[#FAF6EE]"
-                        : "border-[#DDD6C5] bg-transparent text-[#7A7066] hover:border-[#1A1612] hover:text-[#1A1612]",
-                    )}
-                  >
-                    {opt.label}
-                  </button>
-                )
-              })}
-            </div>
-          </section>
-
-          {/* Course */}
-          <section>
-            <div className="text-eyebrow text-[#7A7066]">Tipo de plato</div>
-            <div className="mt-3">
-              <select
-                value={course}
-                onChange={(e) => setCourse(e.target.value as Course | "")}
-                className="w-full rounded-xl border border-[#DDD6C5] bg-[#FFFEFA] px-3 py-2 text-[14px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none"
-              >
-                <option value="">Sin clasificar (auto)</option>
-                {COURSES.map((c) => (
-                  <option key={c} value={c}>
-                    {COURSE_LABELS[c]}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </section>
-
-          {/* Tags */}
-          <section>
-            <div className="text-eyebrow text-[#7A7066]">Etiquetas</div>
-            <div className="mt-3 flex gap-2">
-              <input
-                type="text"
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === ",") {
-                    e.preventDefault()
-                    addTag()
-                  }
-                }}
-                placeholder="Escribe y pulsa Enter..."
-                className="flex-1 rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-3 py-2 text-[14px] text-[#1A1612] placeholder:text-[#7A7066] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
-              />
-            </div>
-            {tags.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="inline-flex items-center gap-1 rounded-full bg-[#F2EDE0] px-3 py-1 text-[10px] uppercase tracking-[0.1em] text-[#4A4239]"
-                  >
-                    {tag}
-                    <button
-                      type="button"
-                      onClick={() => removeTag(tag)}
-                      className="ml-1 text-[#7A7066] hover:text-[#C65D38]"
-                      aria-label={`Quitar etiqueta ${tag}`}
-                    >
-                      x
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-          </section>
-
-          {/* Ingredients */}
-          <section>
-            <div className="text-eyebrow text-[#7A7066]">Capitulo 02</div>
-            <h2 className="mt-1 font-display text-[1.5rem] leading-tight text-[#1A1612]">
-              <span className="font-italic italic">Ingredientes</span>
-            </h2>
-            <p className="mt-1 text-[12px] italic text-[#7A7066]">
-              Cada ingrediente se asocia a la biblioteca de Mimoia. Empieza a
-              escribir y selecciona uno de la lista.
-            </p>
-
-            <div className="mt-4">
-              <SortableIngredientsList
-                rows={ingredientRows}
-                onReorder={setIngredientRows}
-                renderRow={(row) => {
-                  const idx = ingredientRows.findIndex((r) => r.rowId === row.rowId)
-                  const localHint = ingredientRowHints[idx]
-                  const serverHint = Object.entries(errors).find(
-                    ([k]) =>
-                      k === `ingredients[${idx}]` ||
-                      k.startsWith(`ingredients[${idx}].`),
-                  )?.[1]
-                  const hint = localHint ?? serverHint
-                  const selectedIng = row.ingredientId
-                    ? ingredientLibrary.find((ing) => ing.id === row.ingredientId) ?? null
-                    : null
-                  return (
-                    <div className="flex flex-col gap-1">
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Comensales" htmlFor="recipe-servings" error={errors.servings}>
                       <div className="flex items-center gap-2">
-                        <IngredientAutocomplete
-                          value={selectedIng}
-                          onSelect={(ing) => setRowIngredient(row.rowId, ing)}
-                          placeholder={
-                            ingredientsLoading
-                              ? "Cargando biblioteca..."
-                              : "Ingrediente"
-                          }
-                          hasError={!!hint}
-                          defaultText={row.ingredientName}
-                        />
                         <input
+                          id="recipe-servings"
                           type="number"
-                          value={row.quantity === "" ? "" : row.quantity}
+                          value={servings}
                           onChange={(e) =>
-                            updateIngredientQuantity(row.rowId, e.target.value)
+                            setServings(e.target.value ? Number(e.target.value) : "")
                           }
-                          placeholder="Cant."
-                          min={0}
-                          step="any"
-                          className="w-20 rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-3 py-2 text-[14px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
+                          placeholder="2"
+                          min={1}
+                          className={fieldClass(false, "w-20 font-mono")}
                         />
-                        <select
-                          value={row.unit}
-                          onChange={(e) =>
-                            updateIngredientUnit(row.rowId, e.target.value)
-                          }
-                          className="w-20 rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-2 py-2 text-[14px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
-                        >
-                          {UNIT_OPTIONS.map((u) => (
-                            <option key={u} value={u}>
-                              {u}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => toggleIngredientOptional(row.rowId)}
-                          aria-pressed={row.optional}
-                          title={row.optional ? "Quitar marca opcional" : "Marcar como opcional"}
-                          className={`rounded-full px-2 py-1 text-[10px] uppercase tracking-[0.1em] transition-colors ${
-                            row.optional
-                              ? "bg-[#F2EDE0] text-[#7A7066]"
-                              : "border border-dashed border-[#DDD6C5] text-[#A39A8E] hover:border-[#1A1612] hover:text-[#1A1612]"
-                          }`}
-                        >
-                          opc
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => removeIngredientRow(row.rowId)}
-                          disabled={ingredientRows.length <= 1}
-                          className="rounded p-1 text-[#7A7066] hover:text-[#C65D38] disabled:opacity-30"
-                          aria-label="Quitar ingrediente"
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        <span className="text-[13px] text-ink-muted">personas</span>
                       </div>
-                      {hint && (
-                        <p className="pl-1 text-[11px] italic text-[#C65D38]">
-                          {hint}
-                        </p>
-                      )}
-                    </div>
-                  )
-                }}
-              />
-            </div>
-            <button
-              type="button"
-              onClick={addIngredientRow}
-              className="mt-3 inline-flex items-center gap-1 text-[12px] uppercase tracking-[0.12em] text-[#7A7066] hover:text-[#1A1612]"
-            >
-              <Plus size={14} />
-              Anadir ingrediente
-            </button>
-            {errors.ingredients && (
-              <p className="mt-3 text-[12px] italic text-[#C65D38]">
-                {errors.ingredients}
-              </p>
-            )}
-          </section>
+                    </Field>
+                    <Field
+                      label="Tiempo de preparacion"
+                      htmlFor="recipe-prep"
+                      error={errors.prepTime}
+                    >
+                      <div className="flex items-center gap-2">
+                        <input
+                          id="recipe-prep"
+                          type="number"
+                          value={prepTime}
+                          onChange={(e) =>
+                            setPrepTime(e.target.value ? Number(e.target.value) : "")
+                          }
+                          placeholder="30"
+                          min={1}
+                          className={fieldClass(false, "w-20 font-mono")}
+                        />
+                        <span className="text-[13px] text-ink-muted">minutos</span>
+                      </div>
+                    </Field>
+                  </div>
 
-          {/* Steps */}
-          <section>
-            <div className="text-eyebrow text-[#7A7066]">Capitulo 03</div>
-            <h2 className="mt-1 font-display text-[1.5rem] leading-tight text-[#1A1612]">
-              <span className="font-italic italic">Preparacion</span>
-            </h2>
+                  <Field label="Tipo de plato" htmlFor="recipe-course">
+                    <select
+                      id="recipe-course"
+                      value={course}
+                      onChange={(e) => setCourse(e.target.value as Course | "")}
+                      className={fieldClass()}
+                    >
+                      <option value="">Sin clasificar (auto)</option>
+                      {COURSES.map((c) => (
+                        <option key={c} value={c}>
+                          {COURSE_LABELS[c]}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
 
-            <div className="mt-4">
-              <SortableStepsList
-                steps={steps}
-                onReorder={setSteps}
-                onChange={updateStep}
-                onRemove={removeStep}
-                errorAt={(idx) =>
-                  // Lint paths from the server: "steps[3].text" or "steps[3]".
-                  Object.entries(errors).find(
-                    ([k]) =>
-                      k === `steps[${idx}]` || k.startsWith(`steps[${idx}].`),
-                  )?.[1] ?? null
-                }
-              />
-            </div>
-            <button
-              type="button"
-              onClick={addStep}
-              className="mt-3 inline-flex items-center gap-1 text-[12px] uppercase tracking-[0.12em] text-[#7A7066] hover:text-[#1A1612]"
-            >
-              <Plus size={14} />
-              Anadir paso
-            </button>
-          </section>
+                  <Field label="Etiquetas" htmlFor="recipe-tags">
+                    <input
+                      id="recipe-tags"
+                      type="text"
+                      value={tagInput}
+                      onChange={(e) => setTagInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === ",") {
+                          e.preventDefault()
+                          addTag()
+                        }
+                      }}
+                      placeholder="Escribe y pulsa Enter..."
+                      className={fieldClass()}
+                    />
+                    <TagList tags={tags} onRemove={removeTag} />
+                  </Field>
+                </div>
+              </FormCard>
 
-          {/* Submit */}
-          <div className="flex flex-col gap-3 border-t border-[#DDD6C5] pt-6">
-            {Object.keys(errors).length > 0 && (
-              <div className="rounded-lg border border-[#C65D38]/40 bg-[#C65D38]/10 px-4 py-3">
-                <p className="text-[12px] font-medium uppercase tracking-[0.12em] text-[#C65D38]">
-                  {allowForce ? "Avisos" : "Faltan datos:"}
-                </p>
-                <ul className="mt-2 list-disc space-y-1 pl-5 text-[12px] italic text-[#C65D38]">
-                  {Object.entries(errors).map(([key, msg]) => {
-                    const label = humanizeLintKey(key)
-                    // Server-side lint messages already mention "el paso N"
-                    // / "el ingrediente X" — drop the prefix to avoid the
-                    // repetition "Paso 1: El paso 1 menciona…".
-                    const showLabel = !!label && !msg.toLowerCase().includes(label.toLowerCase())
-                    return (
-                      <li key={key}>
-                        {showLabel ? (
-                          <>
-                            <span className="font-medium not-italic">{label}:</span> {msg}
-                          </>
-                        ) : (
-                          msg
-                        )}
-                      </li>
-                    )
-                  })}
-                </ul>
-                {allowForce && (
-                  <p className="mt-3 text-[12px] italic text-[#7A7066]">
-                    Estos avisos no impiden guardar. Corrige y pulsa "Crear
-                    receta" otra vez, o usa "Guardar igualmente" para aceptarlos
-                    tal cual.
-                  </p>
-                )}
-              </div>
-            )}
-            <div className="flex items-center gap-4">
-              <button
-                type="submit"
-                disabled={createRecipe.isPending}
-                className="rounded-full bg-[#1A1612] px-6 py-2.5 text-[12px] font-medium uppercase tracking-[0.12em] text-[#FAF6EE] transition-all hover:bg-[#2D6A4F] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+              <FormCard
+                title="Planificación"
+                description="Cuánto debería proponer este plato el planificador cuando regenera el menú."
               >
-                {createRecipe.isPending ? "Guardando..." : "Crear receta"}
-              </button>
+                <div className="space-y-5">
+                  {/* Frequency: Normal (default) = peso 1×; el resto modifican
+                      el peso del pool o filtran el día. */}
+                  <div className="flex flex-wrap gap-2">
+                    {([
+                      { value: null, label: "Normal" },
+                      { value: "frequent" as const, label: "Frecuente" },
+                      { value: "occasional" as const, label: "Ocasional" },
+                      { value: "weekends_only" as const, label: "Solo finde" },
+                    ] as const).map((opt) => {
+                      const active = (frequency ?? null) === opt.value
+                      return (
+                        <button
+                          key={String(opt.value)}
+                          type="button"
+                          onClick={() => setFrequency(opt.value)}
+                          aria-pressed={active}
+                          className={choicePillClass(active)}
+                        >
+                          {opt.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {/* Meals — three-state fit chip cycles none → mid → perfect. */}
+                  <Field
+                    label="Tipo de comida"
+                    hint="Toca: vacío → encaja a veces → encaja perfecto. Al menos una en cualquier estado distinto a vacío."
+                    error={errors.meals}
+                  >
+                    <div className="flex flex-wrap gap-2">
+                      {MEAL_OPTIONS.map((opt) => (
+                        <FitChip
+                          key={opt.value}
+                          label={opt.label}
+                          fit={mealFit[opt.value]}
+                          onClick={() => toggleMeal(opt.value)}
+                        />
+                      ))}
+                    </div>
+                  </Field>
+
+                  <Field
+                    label="Temporada"
+                    hint="Marca al menos una con el grado de encaje"
+                    error={errors.seasons}
+                  >
+                    <div className="flex flex-wrap gap-2">
+                      {SEASON_OPTIONS.map((opt) => (
+                        <FitChip
+                          key={opt.value}
+                          label={opt.label}
+                          fit={seasonFit[opt.value]}
+                          onClick={() => toggleSeason(opt.value)}
+                        />
+                      ))}
+                    </div>
+                  </Field>
+                </div>
+              </FormCard>
+            </div>
+
+            {/* Right column — ingredients and steps. */}
+            <div className="min-w-0 space-y-4 lg:space-y-6">
+              <FormCard
+                title="Ingredientes"
+                description="Cada ingrediente se asocia a la biblioteca de Mimoia. Empieza a escribir y selecciona uno de la lista."
+              >
+                <SortableIngredientsList
+                  rows={ingredientRows}
+                  onReorder={setIngredientRows}
+                  renderRow={(row) => {
+                    const idx = ingredientRows.findIndex((r) => r.rowId === row.rowId)
+                    const localHint = ingredientRowHints[idx]
+                    const serverHint = Object.entries(errors).find(
+                      ([k]) =>
+                        k === `ingredients[${idx}]` ||
+                        k.startsWith(`ingredients[${idx}].`),
+                    )?.[1]
+                    const hint = localHint ?? serverHint
+                    const selectedIng = row.ingredientId
+                      ? ingredientLibrary.find((ing) => ing.id === row.ingredientId) ?? null
+                      : null
+                    return (
+                      <IngredientRowFields
+                        selected={selectedIng}
+                        onSelect={(ing) => setRowIngredient(row.rowId, ing)}
+                        placeholder={
+                          ingredientsLoading ? "Cargando biblioteca..." : "Ingrediente"
+                        }
+                        hasError={!!hint}
+                        defaultText={row.ingredientName}
+                        quantity={row.quantity}
+                        onQuantity={(v) => updateIngredientQuantity(row.rowId, v)}
+                        unit={row.unit}
+                        units={UNIT_OPTIONS}
+                        onUnit={(v) => updateIngredientUnit(row.rowId, v)}
+                        optional={row.optional}
+                        onToggleOptional={() => toggleIngredientOptional(row.rowId)}
+                        onRemove={() => removeIngredientRow(row.rowId)}
+                        removable={ingredientRows.length > 1}
+                        hint={hint}
+                      />
+                    )
+                  }}
+                />
+                <AddRowButton onClick={addIngredientRow}>Anadir ingrediente</AddRowButton>
+                <FieldError>{errors.ingredients}</FieldError>
+              </FormCard>
+
+              <FormCard title="Preparacion">
+                <SortableStepsList
+                  steps={steps}
+                  onReorder={setSteps}
+                  onChange={updateStep}
+                  onRemove={removeStep}
+                  errorAt={(idx) =>
+                    // Lint paths from the server: "steps[3].text" or "steps[3]".
+                    Object.entries(errors).find(
+                      ([k]) =>
+                        k === `steps[${idx}]` || k.startsWith(`steps[${idx}].`),
+                    )?.[1] ?? null
+                  }
+                />
+                <AddRowButton onClick={addStep}>Anadir paso</AddRowButton>
+              </FormCard>
+            </div>
+          </div>
+
+          {/* Submit: error summary (+ "Guardar igualmente" after lint
+              warnings) and the sticky ink pill. */}
+          {/* The bar must be a direct child of the form: a sticky element
+              only sticks inside its parent's box. */}
+          <div className="mt-6">
+            <FormErrors
+              errors={errors}
+              title={allowForce ? "Avisos" : "Faltan datos:"}
+              footnote={
+                allowForce
+                  ? 'Estos avisos no impiden guardar. Corrige y pulsa "Crear receta" otra vez, o usa "Guardar igualmente" para aceptarlos tal cual.'
+                  : undefined
+              }
+            >
               {allowForce && (
                 <button
                   type="submit"
                   name="force"
                   disabled={createRecipe.isPending}
-                  className="rounded-full border border-[#C65D38] bg-transparent px-6 py-2.5 text-[12px] font-medium uppercase tracking-[0.12em] text-[#C65D38] transition-all hover:bg-[#C65D38] hover:text-[#FAF6EE] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                  className={FORCE_PILL}
                 >
                   {createRecipe.isPending ? "Guardando..." : "Guardar igualmente"}
                 </button>
               )}
-              <Link
-                href="/recipes"
-                className="text-[12px] uppercase tracking-[0.12em] text-[#7A7066] hover:text-[#1A1612]"
-              >
-                Cancelar
-              </Link>
-            </div>
+            </FormErrors>
           </div>
+          <SaveBar
+            submitLabel={createRecipe.isPending ? "Guardando..." : "Crear receta"}
+            disabled={createRecipe.isPending}
+            cancelHref="/recipes"
+          />
         </form>
       </div>
     </div>

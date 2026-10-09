@@ -163,18 +163,18 @@ function SortableStepRow({
   }
 
   return (
-    <div ref={setNodeRef} style={style} className="flex flex-col gap-1">
-      <div className="flex items-start gap-2">
+    <div ref={setNodeRef} style={style} className="flex flex-col gap-1 bg-paper">
+      <div className="flex items-start gap-1">
         <button
           type="button"
           {...attributes}
           {...listeners}
           aria-label="Reordenar paso"
-          className="mt-2 cursor-grab touch-none rounded p-1 text-[#7A7066] transition-colors hover:bg-[#F2EDE0] hover:text-[#1A1612] active:cursor-grabbing"
+          className="-ml-2 flex h-11 w-8 shrink-0 cursor-grab touch-none items-center justify-center rounded-full text-ink-light transition-colors hover:bg-cream-deep hover:text-ink active:cursor-grabbing"
         >
           <GripVertical size={16} />
         </button>
-        <span className="font-display mt-1 text-[1.4rem] leading-none text-[#C65D38]/40">
+        <span className="w-8 shrink-0 pt-2 font-display text-[24px] leading-none text-terracotta" aria-hidden>
           {String(index + 1).padStart(2, "0")}
         </span>
         <textarea
@@ -184,23 +184,23 @@ function SortableStepRow({
           placeholder={`Paso ${index + 1}`}
           rows={2}
           className={cn(
-            "flex-1 resize-none rounded-lg border bg-[#F2EDE0] px-3 py-2 text-[14px] leading-relaxed text-[#1A1612] placeholder:text-[#7A7066] focus:outline-none focus:ring-1",
+            "min-h-[88px] min-w-0 flex-1 resize-y rounded-xl border bg-paper px-3.5 py-2.5 text-[16px] leading-relaxed text-ink placeholder:text-ink-light focus:outline-none focus:ring-1 lg:text-[15px]",
             hint
-              ? "border-[#C65D38] focus:border-[#C65D38] focus:ring-[#C65D38]"
-              : "border-[#DDD6C5] focus:border-[#1A1612] focus:ring-[#1A1612]",
+              ? "border-terracotta focus:border-terracotta focus:ring-terracotta"
+              : "border-border-soft focus:border-ink focus:ring-ink",
           )}
         />
         <button
           type="button"
           onClick={() => onRemove(step.id)}
           disabled={!removable}
-          className="mt-1 rounded p-1 text-[#7A7066] hover:text-[#C65D38] disabled:opacity-30"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-cream-deep hover:text-terracotta-deep disabled:opacity-30 disabled:hover:bg-transparent"
           aria-label="Quitar paso"
         >
-          <Trash2 size={16} />
+          <Trash2 size={17} />
         </button>
       </div>
-      {hint && <p className="pl-9 text-[11px] italic text-[#C65D38]">{hint}</p>}
+      {hint && <p className="pl-[60px] text-[12px] italic text-terracotta-deep">{hint}</p>}
     </div>
   )
 }

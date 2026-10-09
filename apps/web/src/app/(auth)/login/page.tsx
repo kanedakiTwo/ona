@@ -6,6 +6,7 @@ import Link from "next/link"
 import { nextFromLocation, useNextSuffix } from "@/lib/safeNext"
 import { motion } from "motion/react"
 import { ArrowRight, ArrowLeft } from "lucide-react"
+import { MimoiaLogo } from "@/components/brand/Mimoia"
 import { useAuth } from "@/lib/auth"
 
 const HERO_IMG = "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=1200&q=85&auto=format&fit=crop"
@@ -86,7 +87,7 @@ export default function LoginPage() {
         <div className="relative h-48 overflow-hidden md:hidden">
           <img src={HERO_IMG} alt="" className="h-full w-full object-cover" />
           <div className="absolute inset-0 bg-gradient-to-b from-transparent to-[#FAF6EE]" />
-          <div className="absolute bottom-2 left-6 font-display text-2xl text-[#1A1612]">Mimoia</div>
+          <MimoiaLogo size={24} className="absolute bottom-2 left-6" />
         </div>
 
         <motion.div

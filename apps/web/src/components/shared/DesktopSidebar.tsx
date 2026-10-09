@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth"
 import { haptic } from "@/lib/pwa/haptics"
 import { TransitionLink } from "@/components/pwa/TransitionLink"
 import { CalendarDays, ShoppingCart, BookOpen, User } from "lucide-react"
+import { MimoiaLogo } from "@/components/brand/Mimoia"
 
 const NAV_ITEMS = [
   { href: "/menu", label: "Menú", icon: CalendarDays },
@@ -26,12 +27,7 @@ export default function DesktopSidebar() {
       aria-label="Navegación principal"
     >
       <div className="mb-8 px-3">
-        <span
-          data-testid="app-wordmark"
-          className="font-[family-name:var(--font-italic)] text-[26px] italic leading-none text-[#1A1612]"
-        >
-          Mimoia
-        </span>
+        <MimoiaLogo size={22} testId="app-wordmark" />
       </div>
       <nav className="flex flex-col gap-1">
         {NAV_ITEMS.map((item) => {

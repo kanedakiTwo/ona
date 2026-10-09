@@ -159,7 +159,7 @@ export function MemoryFactEditor({ memoryKey, initial, onSave, onCancel, disable
 
     default:
       return (
-        <p className="text-[12px] italic text-[#7A7066]">
+        <p className="text-[12px] italic text-ink-muted">
           Edición no disponible para esta clave. Pídeselo al asistente.
         </p>
       )
@@ -187,7 +187,7 @@ function EnumEditor({
       <select
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        className="w-full rounded-lg border border-[#DDD6C5] bg-[#FAF6EE] px-3 py-2 text-[14px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none"
+        className="w-full min-h-[44px] rounded-xl border border-border-soft bg-paper px-3.5 text-[15px] text-ink focus:border-ink focus:outline-none"
       >
         {options.map((o) => (
           <option key={o.value} value={o.value}>
@@ -239,12 +239,12 @@ function NumberEditor({
           max={max}
           step={step}
           inputMode="decimal"
-          className="flex-1 rounded-lg border border-[#DDD6C5] bg-[#FAF6EE] px-3 py-2 text-[14px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none"
+          className="flex-1 min-h-[44px] rounded-xl border border-border-soft bg-paper px-3.5 text-[15px] text-ink focus:border-ink focus:outline-none"
         />
-        {suffix ? <span className="text-[12px] text-[#7A7066]">{suffix}</span> : null}
+        {suffix ? <span className="text-[12px] text-ink-muted">{suffix}</span> : null}
       </div>
       {!valid ? (
-        <p className="mt-1 text-[10px] italic text-[#C65D38]">
+        <p className="mt-1 text-[10px] italic text-terracotta-deep">
           Entre {min} y {max}
         </p>
       ) : null}
@@ -290,21 +290,21 @@ function StringArrayEditor({
     >
       <div className="flex flex-wrap gap-1.5">
         {items.length === 0 ? (
-          <span className="text-[12px] italic text-[#7A7066]">Vacío</span>
+          <span className="text-[13px] italic text-ink-muted">Vacío</span>
         ) : (
           items.map((it, i) => (
             <span
               key={`${i}-${it}`}
-              className="inline-flex items-center gap-1 rounded-full bg-[#2D6A4F] px-2.5 py-1 text-[11px] text-[#FAF6EE]"
+              className="inline-flex items-center gap-0.5 rounded-full border border-border-soft bg-cream-deep py-0.5 pl-3 pr-0.5 text-[13px] text-ink"
             >
               {it}
               <button
                 type="button"
                 onClick={() => setItems(items.filter((_, idx) => idx !== i))}
                 aria-label={`Quitar ${it}`}
-                className="hover:opacity-70"
+                className="flex h-8 w-8 items-center justify-center rounded-full text-ink-mid hover:bg-bone hover:text-ink"
               >
-                <X size={10} />
+                <X size={13} />
               </button>
             </span>
           ))
@@ -323,16 +323,16 @@ function StringArrayEditor({
           }}
           placeholder={placeholder}
           maxLength={maxLen}
-          className="flex-1 rounded-lg border border-[#DDD6C5] bg-[#FAF6EE] px-3 py-2 text-[14px] text-[#1A1612] placeholder:text-[#7A7066] focus:border-[#1A1612] focus:outline-none"
+          className="flex-1 min-h-[44px] rounded-xl border border-border-soft bg-paper px-3.5 text-[15px] text-ink placeholder:text-ink-light focus:border-ink focus:outline-none"
         />
         <button
           type="button"
           onClick={add}
           disabled={draft.trim().length < minLen}
-          className="rounded-full bg-[#1A1612] p-2 text-[#FAF6EE] disabled:opacity-30"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ink text-cream transition-colors hover:bg-ink-mid disabled:opacity-30"
           aria-label="Añadir"
         >
-          <Plus size={12} />
+          <Plus size={16} />
         </button>
       </div>
     </EditorFrame>
@@ -379,10 +379,10 @@ function RecordEditor({
 
   return (
     <EditorFrame onSave={() => onSave(build())} onCancel={onCancel} disabled={disabled}>
-      <div className="space-y-1.5">
+      <div className="space-y-2">
         {fields.map((f) => (
           <div key={f.key} className="flex items-center justify-between gap-2">
-            <span className="w-24 text-[12px] text-[#7A7066]">{f.label}</span>
+            <span className="w-24 text-[14px] text-ink-muted">{f.label}</span>
             <input
               type="number"
               value={values[f.key]}
@@ -390,9 +390,9 @@ function RecordEditor({
               min={min}
               max={max}
               inputMode="numeric"
-              className="flex-1 rounded-lg border border-[#DDD6C5] bg-[#FAF6EE] px-2 py-1 text-[13px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none"
+              className="flex-1 min-h-[44px] rounded-xl border border-border-soft bg-paper px-3 text-[15px] text-ink focus:border-ink focus:outline-none"
             />
-            {unit ? <span className="text-[11px] text-[#7A7066]">{unit}</span> : null}
+            {unit ? <span className="text-[11px] text-ink-muted">{unit}</span> : null}
           </div>
         ))}
       </div>
@@ -431,15 +431,15 @@ function TimeRecordEditor({
 
   return (
     <EditorFrame onSave={() => onSave(build())} onCancel={onCancel} disabled={disabled}>
-      <div className="space-y-1.5">
+      <div className="space-y-2">
         {fields.map((f) => (
           <div key={f.key} className="flex items-center justify-between gap-2">
-            <span className="w-24 text-[12px] text-[#7A7066]">{f.label}</span>
+            <span className="w-24 text-[14px] text-ink-muted">{f.label}</span>
             <input
               type="time"
               value={values[f.key]}
               onChange={(e) => setValues({ ...values, [f.key]: e.target.value })}
-              className="flex-1 rounded-lg border border-[#DDD6C5] bg-[#FAF6EE] px-2 py-1 text-[13px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none"
+              className="flex-1 min-h-[44px] rounded-xl border border-border-soft bg-paper px-3 text-[15px] text-ink focus:border-ink focus:outline-none"
             />
           </div>
         ))}
@@ -485,7 +485,7 @@ function CuisineEditor({
       <div className="space-y-2.5">
         {keys.map((k) => (
           <div key={k}>
-            <div className="flex items-center justify-between text-[11px] text-[#7A7066]">
+            <div className="flex items-center justify-between text-[11px] text-ink-muted">
               <span className="capitalize">{k}</span>
               <span>{values[k]}</span>
             </div>
@@ -496,12 +496,12 @@ function CuisineEditor({
               step={5}
               value={values[k]}
               onChange={(e) => setValues({ ...values, [k]: Number(e.target.value) })}
-              className="w-full accent-[#2D6A4F]"
+              className="w-full accent-ink"
             />
           </div>
         ))}
       </div>
-      <p className="mt-2 text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
+      <p className="mt-2 text-[10px] uppercase tracking-[0.12em] text-ink-muted">
         0 = no me gusta · 100 = mi favorita
       </p>
     </EditorFrame>
@@ -528,7 +528,7 @@ function EditorFrame({
         <button
           type="button"
           onClick={onCancel}
-          className="text-[11px] uppercase tracking-[0.12em] text-[#7A7066] hover:text-[#1A1612]"
+          className="inline-flex min-h-[44px] items-center rounded-full px-4 text-[14px] font-medium text-ink-mid transition-colors hover:bg-cream-deep hover:text-ink"
         >
           Cancelar
         </button>
@@ -536,7 +536,7 @@ function EditorFrame({
           type="button"
           onClick={onSave}
           disabled={disabled}
-          className="rounded-full bg-[#2D6A4F] px-4 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#FAF6EE] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex min-h-[44px] items-center rounded-full bg-ink px-5 text-[14px] font-medium text-cream transition-colors hover:bg-ink-mid disabled:cursor-not-allowed disabled:opacity-40"
         >
           Guardar
         </button>

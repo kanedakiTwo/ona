@@ -54,7 +54,7 @@ The 0011 migration includes an **idempotent backfill** (NOT EXISTS guards) so ev
 
 ## Frontend
 
-- `/profile/casa` — owner sees full management UI (rename, invite, revoke, remove). Members see the member list and a "Salir del hogar" button.
+- `/profile/casa` — owner sees full management UI (rename, invite, revoke, remove). Members see the member list and can leave. Since PRO-40 (2026-10-10) the secondary actions live in "···" sheets: the header one ("Cambiar nombre" — owner; tapping the name still renames — and "Salir del hogar"), one per member ("Quitar del hogar") and one per pending invite ("Revocar invitación"). "Invitar a alguien" → role → "Crear invitación" and "Copiar enlace" stay inline.
 - `/invites/[token]` — public preview page; if the visitor isn't authed, the accept button routes through `/register?next=/invites/:token`, and registration returns them to the invite (`next` honoured since 2026-10, see [Auth](./auth.md)).
 - `/profile` links to `/profile/casa` from the "Memoria del asistente" section's button row.
 

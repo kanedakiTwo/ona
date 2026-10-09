@@ -11,10 +11,10 @@ This is separate from the legacy `inStock` boolean inside `shopping_lists.items`
 - A logged-in user can open `/profile/pantry` and see every item in the household pantry with current quantity + unit + (optional) expiry.
 - Add a manual item via the inline form (name + qty/unit + optional expiry).
 - Add a catalog-linked item by providing `ingredientId` — the second add for the same (household, ingredient) **adds to the existing quantity** instead of duplicating the row (real upsert via manual SELECT-then-UPDATE because Postgres `ON CONFLICT` won't bind to a partial unique index).
-- Edit qty / expiry inline (blur to save, Enter to commit).
-- Delete any row.
+- Edit qty inline in the row (blur to save, Enter to commit). Expiry is edited from the row's "···" sheet (date field, saved on blur or when the sheet closes).
+- Delete any row (row "···" sheet → "Quitar de la despensa", with a confirm).
 - **Auto-decrement on cook**: when anyone in the household calls `POST /cook-logs` for recipe X, every pantry row whose `ingredient_id` matches a recipe ingredient is deducted by `recipeIngredient.quantity × scaleFactor`, where `scaleFactor = cookedServings / recipe.servings` (defaults to 1 when `servings` isn't passed). Best-effort: the decrement runs in a `try/catch` and never blocks the cook-log insert; the response includes a `pantry: { updatedRowIds, skipped }` summary.
-- Expiry pill on each row: red ("Caducado dd mmm") if past, terracotta ("Caduca dd mmm") if within 3 days, neutral otherwise.
+- Expiry pill on each row: solid terracotta-deep ("Caducado dd mmm") if past, pale terracotta ("Caduca dd mmm") if within 3 days, neutral otherwise.
 
 ## Data Model
 

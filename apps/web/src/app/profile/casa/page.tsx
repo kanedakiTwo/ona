@@ -6,17 +6,28 @@
  * Every authed user has a "primary household" (a solo household auto-created
  * at registration). This page lets the owner rename it, invite people, revoke
  * pending invites, and remove members. Non-owners only see the member list
- * and a "Salir del hogar" button.
+ * and a "Salir del hogar" action.
  *
- * Scope flip from user_id → household_id for menus/shopping/etc. lands in
- * PR 1 Part B. This page is the visible foundation for that work.
+ * Skin: "D · Luz y foto" (PRO-40). Secondary actions live in "···" sheets:
+ * the header one (Cambiar nombre, Salir del hogar), one per member (Quitar
+ * del hogar) and one per invite (Revocar invitación). Copying an invite link
+ * and creating an invite stay inline.
  */
 
 import { useCallback, useEffect, useState } from 'react'
-import Link from 'next/link'
-import { ChevronLeft, Copy, X, Plus, LogOut } from 'lucide-react'
+import { Copy, Plus, LogOut, Pencil, UserMinus, XCircle } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
+import { MenuSheet, SheetAction } from '@/components/menu/MenuSheet'
+import {
+  MoreButton,
+  PILL_INK,
+  PILL_OUTLINE,
+  SUB_CARD,
+  SUB_EYEBROW,
+  SUB_LIST,
+  SubPage,
+} from '@/components/profile/SubPage'
 
 type Role = 'owner' | 'member' | 'child'
 
@@ -50,6 +61,12 @@ const ROLE_LABELS: Record<Role, string> = {
   child: 'Niñ@',
 }
 
+type SheetState =
+  | { kind: 'household' }
+  | { kind: 'member'; member: Member }
+  | { kind: 'invite'; invite: PendingInvite }
+  | null
+
 export default function HouseholdPage() {
   const { user, isLoading: authLoading } = useAuth()
   const [household, setHousehold] = useState<HouseholdView | null>(null)
@@ -60,6 +77,8 @@ export default function HouseholdPage() {
   const [creatingInvite, setCreatingInvite] = useState(false)
   const [newInviteRole, setNewInviteRole] = useState<Role>('member')
   const [busy, setBusy] = useState(false)
+  const [sheet, setSheet] = useState<SheetState>(null)
+  const [copiedToken, setCopiedToken] = useState<string | null>(null)
 
   const reload = useCallback(async () => {
     setLoading(true)
@@ -156,12 +175,15 @@ export default function HouseholdPage() {
 
   function copyInviteUrl(token: string) {
     const url = `${window.location.origin}/invites/${token}`
-    void navigator.clipboard.writeText(url).catch(() => {})
+    void navigator.clipboard
+      .writeText(url)
+      .then(() => setCopiedToken(token))
+      .catch(() => {})
   }
 
   if (authLoading || loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#FAF6EE]">
+      <div className="flex min-h-screen items-center justify-center bg-cream">
         <div className="text-eyebrow">Cargando...</div>
       </div>
     )
@@ -169,215 +191,263 @@ export default function HouseholdPage() {
 
   if (!household) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#FAF6EE]">
+      <div className="flex min-h-screen items-center justify-center bg-cream">
         <div className="text-eyebrow">No tienes un hogar asignado.</div>
       </div>
     )
   }
 
-  return (
-    <div className="bg-[#FAF6EE] min-h-screen pb-24 lg:mx-auto lg:max-w-[900px]">
-      <header className="px-5 pt-8 pb-6">
-        <Link
-          href="/profile"
-          className="inline-flex items-center gap-1 text-eyebrow text-[#7A7066] hover:text-[#C65D38]"
-        >
-          <ChevronLeft size={14} /> Volver al perfil
-        </Link>
-        <div className="mt-3 text-eyebrow">Tu hogar</div>
-        <h1 className="font-display text-[2.2rem] leading-[0.95] text-[#1A1612] mt-1">
-          {renaming ? (
-            <input
-              autoFocus
-              value={nameDraft}
-              onChange={(e) => setNameDraft(e.target.value)}
-              onBlur={() => void handleRename()}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void handleRename()
-                if (e.key === 'Escape') {
-                  setNameDraft(household.name)
-                  setRenaming(false)
-                }
-              }}
-              className="font-display text-[2.2rem] leading-[0.95] bg-transparent border-b border-[#1A1612] text-[#1A1612] outline-none w-full"
-              maxLength={60}
-            />
-          ) : (
-            <button
-              type="button"
-              onClick={() => isOwner && setRenaming(true)}
-              className={`font-display text-[2.2rem] leading-[0.95] text-[#1A1612] text-left ${
-                isOwner ? 'hover:text-[#C65D38] cursor-text' : 'cursor-default'
-              }`}
-            >
-              {household.name}
-            </button>
-          )}
-        </h1>
-      </header>
+  const title = renaming ? (
+    <input
+      autoFocus
+      value={nameDraft}
+      onChange={(e) => setNameDraft(e.target.value)}
+      onBlur={() => void handleRename()}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') void handleRename()
+        if (e.key === 'Escape') {
+          setNameDraft(household.name)
+          setRenaming(false)
+        }
+      }}
+      aria-label="Nombre del hogar"
+      className="w-full border-b-2 border-ink bg-transparent font-serif-text font-[650] text-ink outline-none"
+      maxLength={60}
+    />
+  ) : (
+    <button
+      type="button"
+      onClick={() => isOwner && setRenaming(true)}
+      className={`text-left ${isOwner ? 'cursor-text hover:text-terracotta-deep' : 'cursor-default'}`}
+    >
+      {household.name}
+    </button>
+  )
 
+  return (
+    <SubPage
+      eyebrow="Tu hogar"
+      title={title}
+      action={<MoreButton label="Opciones del hogar" onClick={() => setSheet({ kind: 'household' })} />}
+    >
       {error && (
-        <div className="mx-5 mb-4 rounded-xl bg-[#C65D38]/10 border border-[#C65D38]/30 px-4 py-3 text-[12px] text-[#C65D38]">
+        <div
+          role="alert"
+          className="mb-5 rounded-2xl border border-terracotta-deep/25 bg-warn-bg px-4 py-3 text-[14px] text-terracotta-deep"
+        >
           {error}
         </div>
       )}
 
-      {/* Members */}
-      <section className="px-5">
-        <div className="text-eyebrow mb-3">Miembros · {household.members.length}</div>
-        <ul className="divide-y divide-[#DDD6C5] rounded-2xl bg-[#FFFEFA] border border-[#DDD6C5]">
-          {household.members.map((m) => {
-            const isMe = m.userId === user?.id
-            return (
-              <li key={m.userId} className="flex items-center gap-3 px-4 py-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#F2EDE0] text-[13px] font-medium text-[#1A1612]">
-                  {m.username.charAt(0).toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[14px] text-[#1A1612] truncate">
-                    {m.username}{isMe && <span className="ml-1.5 text-[#7A7066] text-[11px]">(tú)</span>}
-                  </div>
-                  <div className="text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
-                    {ROLE_LABELS[m.role]}
-                  </div>
-                </div>
-                {isOwner && !isMe && (
-                  <button
-                    type="button"
-                    onClick={() => void handleRemoveMember(m.userId)}
-                    disabled={busy}
-                    className="rounded-full border border-[#DDD6C5] px-3 py-1 text-[10px] uppercase tracking-[0.1em] text-[#7A7066] hover:border-[#C65D38] hover:text-[#C65D38] disabled:opacity-40"
+      <div className="grid gap-8 lg:grid-cols-2 lg:items-start lg:gap-10">
+        {/* Members */}
+        <section>
+          <h2 className={`${SUB_EYEBROW} mb-3`}>Miembros · {household.members.length}</h2>
+          <ul className={SUB_LIST}>
+            {household.members.map((m) => {
+              const isMe = m.userId === user?.id
+              return (
+                <li key={m.userId} className="flex min-h-[64px] items-center gap-3 py-2 pl-4 pr-2">
+                  <div
+                    aria-hidden="true"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-bone font-serif-text text-[16px] font-[650] text-ink"
                   >
-                    Quitar
-                  </button>
-                )}
-              </li>
-            )
-          })}
-        </ul>
-      </section>
-
-      {/* Invites — owner only */}
-      {isOwner && (
-        <section className="px-5 mt-10">
-          <div className="text-eyebrow mb-3">Invitaciones pendientes</div>
-          {household.pendingInvites.length === 0 ? (
-            <p className="text-[12px] text-[#7A7066] mb-3">
-              Aún no hay invitaciones activas.
-            </p>
-          ) : (
-            <ul className="divide-y divide-[#DDD6C5] rounded-2xl bg-[#FFFEFA] border border-[#DDD6C5] mb-3">
-              {household.pendingInvites.map((inv) => {
-                const inviteUrl =
-                  typeof window !== 'undefined'
-                    ? `${window.location.origin}/invites/${inv.token}`
-                    : `/invites/${inv.token}`
-                return (
-                  <li key={inv.id} className="px-4 py-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="text-[12px] text-[#1A1612]">
-                        <span className="font-medium">{ROLE_LABELS[inv.role]}</span>
-                        {inv.email && <span className="text-[#7A7066]"> · {inv.email}</span>}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => void handleRevoke(inv.id)}
-                        disabled={busy}
-                        aria-label="Revocar invitación"
-                        className="rounded-full border border-[#DDD6C5] p-1.5 text-[#7A7066] hover:border-[#C65D38] hover:text-[#C65D38] disabled:opacity-40"
-                      >
-                        <X size={12} />
-                      </button>
+                    {m.username.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[15px] font-medium text-ink">
+                      {m.username}
+                      {isMe && <span className="ml-1.5 text-[13px] font-normal text-ink-muted">(tú)</span>}
                     </div>
-                    <div className="mt-2 flex items-center gap-2 rounded-xl bg-[#F2EDE0] px-3 py-2">
-                      <code className="flex-1 truncate text-[11px] text-[#1A1612]">
-                        {inviteUrl}
-                      </code>
-                      <button
-                        type="button"
-                        onClick={() => copyInviteUrl(inv.token)}
-                        aria-label="Copiar enlace"
-                        className="rounded-full border border-[#DDD6C5] bg-[#FFFEFA] p-1.5 text-[#7A7066] hover:border-[#1A1612] hover:text-[#1A1612]"
-                      >
-                        <Copy size={11} />
-                      </button>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">
+                      {ROLE_LABELS[m.role]}
                     </div>
-                    <div className="mt-1.5 text-[10px] text-[#A39A8E]">
-                      Caduca {new Date(inv.expiresAt).toLocaleDateString('es-ES', {
-                        day: '2-digit',
-                        month: 'short',
-                      })}
-                    </div>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-
-          {creatingInvite ? (
-            <div className="rounded-2xl bg-[#FFFEFA] border border-[#DDD6C5] p-4">
-              <div className="text-[10px] uppercase tracking-[0.18em] text-[#7A7066] mb-2">Rol</div>
-              <div className="flex gap-2">
-                {(['member', 'child'] as Role[]).map((r) => (
-                  <button
-                    key={r}
-                    type="button"
-                    onClick={() => setNewInviteRole(r)}
-                    className={`flex-1 rounded-full border px-3 py-2 text-[12px] ${
-                      newInviteRole === r
-                        ? 'border-[#1A1612] bg-[#1A1612] text-[#FAF6EE]'
-                        : 'border-[#DDD6C5] bg-transparent text-[#7A7066]'
-                    }`}
-                  >
-                    {ROLE_LABELS[r]}
-                  </button>
-                ))}
-              </div>
-              <div className="mt-3 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setCreatingInvite(false)}
-                  className="flex-1 rounded-full border border-[#DDD6C5] py-2 text-[12px] text-[#7A7066] hover:text-[#1A1612]"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleCreateInvite()}
-                  disabled={busy}
-                  className="flex-1 rounded-full bg-[#1A1612] py-2 text-[12px] text-[#FAF6EE] disabled:opacity-50"
-                >
-                  Crear invitación
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setCreatingInvite(true)}
-              className="inline-flex items-center gap-2 rounded-full bg-[#1A1612] px-5 py-2.5 text-[12px] uppercase tracking-[0.12em] text-[#FAF6EE] hover:bg-[#2D6A4F]"
-            >
-              <Plus size={12} /> Invitar a alguien
-            </button>
-          )}
+                  </div>
+                  {isOwner && !isMe && (
+                    <MoreButton
+                      label={`Opciones de ${m.username}`}
+                      onClick={() => setSheet({ kind: 'member', member: m })}
+                    />
+                  )}
+                </li>
+              )
+            })}
+          </ul>
         </section>
-      )}
 
-      {/* Leave — for everyone (even sole owner can leave; the API auto-creates a new solo) */}
-      <section className="px-5 mt-12">
-        <button
-          type="button"
-          onClick={() => void handleLeave()}
-          disabled={busy}
-          className="inline-flex items-center gap-2 rounded-full border border-[#C65D38]/40 px-4 py-2 text-[11px] uppercase tracking-[0.12em] text-[#C65D38] hover:bg-[#C65D38] hover:text-[#FAF6EE] disabled:opacity-40"
-        >
-          <LogOut size={11} /> Salir del hogar
-        </button>
-        <p className="mt-2 text-[11px] text-[#7A7066]">
-          Si eres el único miembro, se mantendrá tu hogar. Si hay más miembros,
-          el siguiente más antiguo pasará a ser propietari@.
-        </p>
-      </section>
-    </div>
+        {/* Invites — owner only */}
+        {isOwner && (
+          <section>
+            <h2 className={`${SUB_EYEBROW} mb-3`}>Invitaciones pendientes</h2>
+            {household.pendingInvites.length === 0 ? (
+              <p className="mb-4 text-[14px] text-ink-soft">Aún no hay invitaciones activas.</p>
+            ) : (
+              <ul className={`${SUB_LIST} mb-4`}>
+                {household.pendingInvites.map((inv) => {
+                  const inviteUrl =
+                    typeof window !== 'undefined'
+                      ? `${window.location.origin}/invites/${inv.token}`
+                      : `/invites/${inv.token}`
+                  return (
+                    <li key={inv.id} className="py-2 pl-4 pr-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0 text-[14px] text-ink">
+                          <span className="font-medium">{ROLE_LABELS[inv.role]}</span>
+                          {inv.email && <span className="text-ink-muted"> · {inv.email}</span>}
+                          <span className="ml-2 text-[12px] text-ink-muted">
+                            Caduca{' '}
+                            {new Date(inv.expiresAt).toLocaleDateString('es-ES', {
+                              day: '2-digit',
+                              month: 'short',
+                            })}
+                          </span>
+                        </div>
+                        <MoreButton
+                          label="Opciones de la invitación"
+                          onClick={() => setSheet({ kind: 'invite', invite: inv })}
+                        />
+                      </div>
+                      <div className="mb-2 mr-2 mt-1 flex items-center gap-1 rounded-xl bg-cream-deep pl-3">
+                        <code className="min-w-0 flex-1 truncate text-[12px] text-ink">{inviteUrl}</code>
+                        <button
+                          type="button"
+                          onClick={() => copyInviteUrl(inv.token)}
+                          aria-label="Copiar enlace"
+                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink-mid transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-ink"
+                        >
+                          <Copy size={16} />
+                        </button>
+                      </div>
+                      {copiedToken === inv.token && (
+                        <p role="status" className="mb-2 text-[12px] text-ink-muted">
+                          Enlace copiado.
+                        </p>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+
+            {creatingInvite ? (
+              <div className={`${SUB_CARD} p-4`}>
+                <div className={`${SUB_EYEBROW} mb-2`}>Rol</div>
+                <div className="flex gap-2">
+                  {(['member', 'child'] as Role[]).map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => setNewInviteRole(r)}
+                      aria-pressed={newInviteRole === r}
+                      className={`min-h-[44px] flex-1 rounded-full border px-3 text-[14px] transition-colors ${
+                        newInviteRole === r
+                          ? 'border-ink bg-ink text-cream'
+                          : 'border-border bg-paper text-ink-mid hover:bg-cream-deep'
+                      }`}
+                    >
+                      {ROLE_LABELS[r]}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <button type="button" onClick={() => setCreatingInvite(false)} className={`${PILL_OUTLINE} flex-1`}>
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleCreateInvite()}
+                    disabled={busy}
+                    className={`${PILL_INK} flex-1`}
+                  >
+                    Crear invitación
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button type="button" onClick={() => setCreatingInvite(true)} className={PILL_INK}>
+                <Plus size={16} /> Invitar a alguien
+              </button>
+            )}
+          </section>
+        )}
+      </div>
+
+      {/* Household "···": rename (owner) + leave (everyone — even a sole
+          owner can leave; the API auto-creates a new solo household). */}
+      <MenuSheet
+        open={sheet?.kind === 'household'}
+        onClose={() => setSheet(null)}
+        eyebrow="Tu hogar"
+        title={household.name}
+      >
+        <div className="flex flex-col gap-1">
+          {isOwner && (
+            <SheetAction
+              icon={Pencil}
+              label="Cambiar nombre"
+              hint="También puedes tocar el nombre arriba."
+              onClick={() => {
+                setSheet(null)
+                setRenaming(true)
+              }}
+            />
+          )}
+          <SheetAction
+            icon={LogOut}
+            label="Salir del hogar"
+            hint="Si eres el único miembro, se mantendrá tu hogar. Si hay más miembros, el siguiente más antiguo pasará a ser propietari@."
+            destructive
+            disabled={busy}
+            onClick={() => {
+              setSheet(null)
+              void handleLeave()
+            }}
+          />
+        </div>
+      </MenuSheet>
+
+      <MenuSheet
+        open={sheet?.kind === 'member'}
+        onClose={() => setSheet(null)}
+        eyebrow="Miembro"
+        title={sheet?.kind === 'member' ? sheet.member.username : ''}
+      >
+        {sheet?.kind === 'member' && (
+          <SheetAction
+            icon={UserMinus}
+            label="Quitar del hogar"
+            destructive
+            disabled={busy}
+            onClick={() => {
+              const id = sheet.member.userId
+              setSheet(null)
+              void handleRemoveMember(id)
+            }}
+          />
+        )}
+      </MenuSheet>
+
+      <MenuSheet
+        open={sheet?.kind === 'invite'}
+        onClose={() => setSheet(null)}
+        eyebrow="Invitación"
+        title={sheet?.kind === 'invite' ? ROLE_LABELS[sheet.invite.role] : ''}
+      >
+        {sheet?.kind === 'invite' && (
+          <SheetAction
+            icon={XCircle}
+            label="Revocar invitación"
+            hint="El enlace dejará de funcionar."
+            destructive
+            disabled={busy}
+            onClick={() => {
+              const id = sheet.invite.id
+              setSheet(null)
+              void handleRevoke(id)
+            }}
+          />
+        )}
+      </MenuSheet>
+    </SubPage>
   )
 }

@@ -92,5 +92,6 @@ The `users` table holds the canonical scalar fields (`sex`, `age`, `weight`, `he
 - [apps/web/src/lib/safeNext.ts](../apps/web/src/lib/safeNext.ts) — `?next=` validation + carry-over for login/register
 - [apps/web/src/app/(auth)/login/page.tsx](../apps/web/src/app/(auth)/login/page.tsx)
 - [apps/web/src/app/(auth)/register/page.tsx](../apps/web/src/app/(auth)/register/page.tsx)
+- [apps/web/src/components/auth/AuthShell.tsx](../apps/web/src/components/auth/AuthShell.tsx) — shared look of /login, /register, /reset and /invites ([Design System](./design-system.md))
 - [apps/web/src/app/onboarding/page.tsx](../apps/web/src/app/onboarding/page.tsx) · [components/onboarding/OnboardingFlow.tsx](../apps/web/src/components/onboarding/OnboardingFlow.tsx)
 - [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts) — `users` table

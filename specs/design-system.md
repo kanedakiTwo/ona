@@ -102,13 +102,13 @@ The `.standalone-pt` utility applies `padding-top: var(--safe-top)` so content d
 - `/menu` — "D · Luz y foto": compact header (eyebrow + Fraunces 650 h1 with terracotta-deep italic day), day strip (ink pill), full-bleed photo hero with overlapping paper caption card + ink "Empezar a cocinar" pill, horizontal meal rows, every action behind "···" sheets (`MenuSheet`: bottom sheet on mobile, centred dialog at lg+, portalled, Esc closes, fades only under reduced motion); desktop hero row + "La semana" photo columns. Photo-less: the hero becomes a compact card (meal icon on a bone square, name once); thumbnails and tiles use `RecipeCover` (bone block + small meal icon, no name). See [Menus](./menus.md)
 - **Mimo companion** (D-023, 2026-10-09; see [Advisor](./advisor.md)) — `MimoButton`: 56 px terracotta circle, cream ring, the brand spoon (`MimoiaSymbol`: Mimo's face), terracotta-deep on hover, a pulsing forest dot while the wake word listens; sits above the tab bar (mobile), the recipe action bar (< `lg`) or the cook-mode controls (`z-110`). `MimoPanel`: cream bottom sheet (88dvh, `rounded-t-[28px]`, ink/30 backdrop) below `lg`, a 400 px right column with a left hairline at `lg+` (the page moves aside via `--mimo-panel-width`); `MimoAvatar` + Fraunces «Mimo» title, 11 px uppercase status line, ink user bubbles / bone assistant bubbles, terracotta level bars while listening, forest «Manos libres» pill when on
 - `/compra` + `/compra/tiendas` — "Pide a tus *tiendas*." editorial header, one cream card per shop order with a status chip (ink = enviado, terracotta = ha contestado, forest = confirmado), ink pill CTAs, verdict labels OK (forest) / Revisar (terracotta) / No hay (muted); `/shopping` gets an outlined "Pedir a mis tiendas" card
+- `/login`, `/register`, `/reset`, `/invites/[token]` — "D · Luz y foto" (2026-10-10, PRO-36): one shell, `components/auth/AuthShell.tsx`. Mobile: full-bleed photo on top (280 px; paper "← Volver" pill, 44 px) with an overlapping paper card (`border-border-soft`, `rounded-[24px]`, −56 px) holding the `MimoiaLogo`, 11 px uppercase `ink-muted` eyebrow, `.font-serif-text` 650 title with a terracotta-deep italic accent and the form; the "other way in" link sits under the card. Inputs: static label above, 48 px paper field with `#E8E2D3` border, radius 14, ink on focus; ink pill submit (52 px). Errors and the closed-beta notice are radius-14/16 cards (terracotta-deep text / cream). At `lg+`: 50/50 inside `max-w-[1180px]` — sticky `rounded-[24px]` photo on the left with a paper caption (the old cover headline), card on the right. Same fields, labels, texts and behaviour as before (age box, closed beta, `?campana=`, `?next=`)
 
 ## Pages still in App Mode (legacy, green palette)
 
 These have not been migrated to the editorial system yet:
 - `/shopping` — green/mint palette, `[#2D6A4F]` accents, `[#EAF3DE]` chips
 - `/profile` — same
-- `/login` — photo background with white form sheet (transitional; uses the `MimoiaLogo` lockup but green submit button)
 
 ## Layout
 
@@ -148,6 +148,7 @@ These have not been migrated to the editorial system yet:
 | `FavoriteButton` | `components/recipes/FavoriteButton.tsx` | Heart toggle |
 | `MimoProvider` | `components/mimo/MimoProvider.tsx` | App-wide Mimo state (`useMimo`), mounted in `app/layout.tsx`; renders the button and the panel |
 | `MimoPanel` | `components/mimo/MimoPanel.tsx` | Bottom sheet < lg / 400 px column at lg+; chat, mic, «Manos libres», voice picker, AI caption |
+| `AuthShell` (+ `AuthField`, `AuthHeading`, `AuthError`) | `components/auth/AuthShell.tsx` | Access screens (/login, /register, /reset, /invites): photo + overlapping paper card, 50/50 at `lg+` |
 | `MimoButton` | `components/mimo/MimoButton.tsx` | Floating Mimo button (brand spoon on terracotta); position per page (`mimoButtonPosition`) |
 
 ## Related specs
@@ -198,3 +199,4 @@ The migration (June 2026) shipped the chasis (sidebar at `md+`, container caps) 
 - [apps/web/src/components/shared/Navbar.tsx](../apps/web/src/components/shared/Navbar.tsx) — labelled tab bar
 - [apps/web/src/components/shared/PublicNavbar.tsx](../apps/web/src/components/shared/PublicNavbar.tsx)
 - [apps/web/src/components/shared/Footer.tsx](../apps/web/src/components/shared/Footer.tsx)
+- [apps/web/src/components/auth/AuthShell.tsx](../apps/web/src/components/auth/AuthShell.tsx) — "D · Luz y foto" access screens shell

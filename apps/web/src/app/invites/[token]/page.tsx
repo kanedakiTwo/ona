@@ -12,6 +12,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
+import { Accent, AUTH_PILL, AUTH_TITLE, AuthHeading, AuthShell } from '@/components/auth/AuthShell'
+
+const HERO_IMG = 'https://images.unsplash.com/photo-1466637574441-749b8f19452f?w=1200&q=85&auto=format&fit=crop'
 
 interface InvitePreview {
   householdName: string
@@ -71,56 +74,56 @@ export default function InviteAcceptPage() {
 
   if (loading || authLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#FAF6EE]">
-        <div className="text-eyebrow">Cargando invitación…</div>
-      </div>
+      <AuthShell image={HERO_IMG}>
+        <p role="status" className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-muted">
+          Cargando invitación…
+        </p>
+      </AuthShell>
     )
   }
 
   if (error || !preview) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[#FAF6EE] px-6 text-center">
-        <div className="font-display text-2xl text-[#1A1612]">Invitación no válida</div>
-        <p className="text-[13px] text-[#7A7066] max-w-xs">
-          {error ?? 'El enlace ha caducado o ya se usó.'}
-        </p>
-        <a
-          href="/menu"
-          className="mt-3 rounded-full bg-[#1A1612] px-5 py-2 text-[12px] uppercase tracking-[0.12em] text-[#FAF6EE]"
-        >
+      <AuthShell image={HERO_IMG}>
+        <h1 className={AUTH_TITLE}>Invitación no válida</h1>
+        <p className="mt-3 text-[14px] leading-relaxed text-ink-mid">{error ?? 'El enlace ha caducado o ya se usó.'}</p>
+        <a href="/menu" className={`mt-7 ${AUTH_PILL}`}>
           Ir a Mimoia
         </a>
-      </div>
+      </AuthShell>
     )
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-[#FAF6EE] px-6 text-center">
-      <div className="text-eyebrow">Invitación</div>
-      <h1 className="font-display text-[2rem] leading-[1.05] text-[#1A1612] max-w-sm">
-        <span className="italic text-[#C65D38]">{preview.invitedByUsername}</span>
-        <br />te invita a unirte a{' '}
-        <span className="italic">{preview.householdName}</span>
-      </h1>
-      <p className="text-[13px] text-[#7A7066]">
-        Te uniras como <strong>{ROLE_COPY[preview.role]}</strong>.
-        Compartireis menús, lista de la compra y despensa.
-      </p>
+    <AuthShell image={HERO_IMG}>
+      <AuthHeading
+        eyebrow="Invitación"
+        title={
+          <>
+            <Accent>{preview.invitedByUsername}</Accent> te invita a unirte a{' '}
+            <span className="italic">{preview.householdName}</span>
+          </>
+        }
+        lead={
+          <>
+            Te unirás como <strong className="font-semibold text-ink">{ROLE_COPY[preview.role]}</strong>. Compartiréis
+            menús, lista de la compra y despensa.
+          </>
+        }
+      />
 
-      <button
-        type="button"
-        onClick={() => void handleAccept()}
-        disabled={accepting}
-        className="mt-4 inline-flex items-center justify-center rounded-full bg-[#1A1612] px-8 py-3 text-[12px] uppercase tracking-[0.12em] text-[#FAF6EE] hover:bg-[#2D6A4F] disabled:opacity-50"
-      >
+      <button type="button" onClick={() => void handleAccept()} disabled={accepting} className={`mt-7 ${AUTH_PILL}`}>
         {accepting ? 'Aceptando…' : user ? 'Aceptar invitación' : 'Crear cuenta y aceptar'}
       </button>
 
       {user && (
-        <a href="/menu" className="text-[11px] uppercase tracking-[0.12em] text-[#7A7066] hover:text-[#1A1612]">
+        <a
+          href="/menu"
+          className="mt-2 flex min-h-[44px] items-center justify-center text-[13px] font-medium text-ink-muted hover:text-ink"
+        >
           Más tarde
         </a>
       )}
-    </div>
+    </AuthShell>
   )
 }

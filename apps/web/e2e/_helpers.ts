@@ -46,8 +46,8 @@ export function freshCreds(): TestCreds {
  * Fill /register (already loaded) and click "Crear cuenta". Does not wait
  * for the redirect — callers assert where they expect to land.
  *
- * The register form labels (`Nombre de usuario`, `Email`, `Contrasena`) are
- * not wired to their inputs, so we target inputs by position/type.
+ * Inputs are targeted by position/type (the first input is the username),
+ * which keeps working whatever the labels say.
  */
 export async function submitRegisterForm(page: Page, creds: TestCreds): Promise<void> {
   // Closed beta (PRO-27): sign up through the e2e campaign link (global-setup.ts).

@@ -72,49 +72,49 @@ export function InvitationsSection() {
           e.preventDefault()
           if (name.trim()) create.mutate()
         }}
-        className="grid gap-3 rounded-2xl border border-[#DDD6C5] bg-[#FFFEFA] p-4 md:grid-cols-4 md:items-end"
+        className="grid gap-3 rounded-2xl border border-border-soft bg-paper p-4 md:grid-cols-4 md:items-end"
       >
-        <label className="flex flex-col gap-1 text-[12px] text-[#7A7066]">
+        <label className="flex flex-col gap-1 text-[12px] text-ink-muted">
           Campaña
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="familia, amigos-padel…"
-            className="rounded-lg border border-[#DDD6C5] px-3 py-2 text-[14px] text-[#1A1612]"
+            className="rounded-lg border border-border px-3 py-2 text-[14px] text-ink"
           />
         </label>
-        <label className="flex flex-col gap-1 text-[12px] text-[#7A7066]">
+        <label className="flex flex-col gap-1 text-[12px] text-ink-muted">
           Usos máximos (opcional)
           <input
             type="number"
             min={1}
             value={maxUses}
             onChange={(e) => setMaxUses(e.target.value)}
-            className="rounded-lg border border-[#DDD6C5] px-3 py-2 text-[14px] text-[#1A1612]"
+            className="rounded-lg border border-border px-3 py-2 text-[14px] text-ink"
           />
         </label>
-        <label className="flex flex-col gap-1 text-[12px] text-[#7A7066]">
+        <label className="flex flex-col gap-1 text-[12px] text-ink-muted">
           Caduca el (opcional)
           <input
             type="date"
             value={expires}
             onChange={(e) => setExpires(e.target.value)}
-            className="rounded-lg border border-[#DDD6C5] px-3 py-2 text-[14px] text-[#1A1612]"
+            className="rounded-lg border border-border px-3 py-2 text-[14px] text-ink"
           />
         </label>
         <button
           type="submit"
           disabled={!name.trim() || create.isPending}
-          className="rounded-full bg-[#1A1612] px-5 py-2.5 text-[13px] font-semibold text-[#FAF6EE] disabled:opacity-40"
+          className="rounded-full bg-ink px-5 py-2.5 text-[13px] font-semibold text-cream disabled:opacity-40"
         >
           Crear enlace
         </button>
-        {create.isError && <p className="text-[12px] text-[#B5451B] md:col-span-4">No se ha podido crear el enlace.</p>}
+        {create.isError && <p className="text-[12px] text-warn-text md:col-span-4">No se ha podido crear el enlace.</p>}
       </form>
 
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto rounded-2xl border border-border-soft bg-paper px-4">
         <table className="w-full text-left text-[13px]">
-          <thead className="text-[11px] uppercase tracking-[0.1em] text-[#7A7066]">
+          <thead className="text-[11px] uppercase tracking-[0.1em] text-ink-muted">
             <tr>
               <th className="py-2 pr-3">Campaña</th>
               <th className="py-2 pr-3">Enlace</th>
@@ -129,8 +129,8 @@ export function InvitationsSection() {
             {(campaigns.data ?? []).map((c) => {
               const m = byName.get(c.name)
               return (
-                <tr key={c.id} className="border-t border-[#E8E2D3]" data-testid={`campaign-${c.code}`}>
-                  <td className="py-2 pr-3 font-semibold text-[#1A1612]">{c.name}</td>
+                <tr key={c.id} className="border-t border-border-soft" data-testid={`campaign-${c.code}`}>
+                  <td className="py-2 pr-3 font-semibold text-ink">{c.name}</td>
                   <td className="py-2 pr-3 font-mono text-[12px]">{c.url}</td>
                   <td className="py-2 pr-3">
                     {c.uses}
@@ -144,7 +144,7 @@ export function InvitationsSection() {
               )
             })}
             {byName.has(null) && (
-              <tr className="border-t border-[#E8E2D3] text-[#7A7066]">
+              <tr className="border-t border-border-soft text-ink-muted">
                 <td className="py-2 pr-3">Sin campaña</td>
                 <td className="py-2 pr-3" colSpan={3}>
                   lista de espera, hogar, admin o registro abierto
@@ -160,7 +160,7 @@ export function InvitationsSection() {
             )}
           </tbody>
         </table>
-        {campaigns.data?.length === 0 && <p className="py-4 text-[13px] text-[#7A7066]">Aún no hay enlaces.</p>}
+        {campaigns.data?.length === 0 && <p className="py-4 text-[13px] text-ink-muted">Aún no hay enlaces.</p>}
       </div>
     </section>
   )

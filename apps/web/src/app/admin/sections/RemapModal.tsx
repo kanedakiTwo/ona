@@ -23,6 +23,7 @@ import { useRemapIngredient } from "@/hooks/useAdmin"
 import { CandidateCard } from "@/components/recipes/IngredientCandidateCard"
 import { useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
+import { DISPLAY_UI } from "@/components/recipes/RecipeCard"
 
 function useDebouncedString(value: string, ms: number): string {
   const [v, setV] = useState(value)
@@ -166,17 +167,17 @@ export function RemapModal({
       role="dialog"
       aria-modal="true"
       aria-label="Re-mapear ingrediente"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[#1A1612]/60 px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/60 px-4"
       onClick={onClose}
     >
       <div
-        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-[#DDD6C5] bg-[#FAF6EE] p-6 shadow-2xl"
+        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-border-soft bg-cream p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="text-eyebrow text-[#C65D38]">Re-mapear ingrediente</div>
-            <h3 className="mt-1 font-display text-[1.5rem] leading-tight text-[#1A1612]">
+            <div className="text-eyebrow text-terracotta-deep">Re-mapear ingrediente</div>
+            <h3 className={`mt-1 ${DISPLAY_UI} text-[1.5rem] leading-tight text-ink`}>
               <span className="font-italic italic">&ldquo;{name}&rdquo;</span>
             </h3>
           </div>
@@ -184,7 +185,7 @@ export function RemapModal({
             type="button"
             onClick={onClose}
             aria-label="Cerrar"
-            className="rounded-full p-1 text-[#7A7066] hover:bg-[#F2EDE0] hover:text-[#1A1612]"
+            className="rounded-full p-1 text-ink-muted hover:bg-cream-deep hover:text-ink"
           >
             <X size={18} />
           </button>
@@ -193,35 +194,35 @@ export function RemapModal({
         <div className="mt-4">
           <label
             htmlFor="remap-search"
-            className="text-[10px] uppercase tracking-[0.12em] text-[#7A7066]"
+            className="text-[10px] uppercase tracking-[0.12em] text-ink-muted"
           >
             Búsqueda manual
           </label>
-          <div className="mt-1 flex items-center gap-2 rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-3 py-2 focus-within:border-[#1A1612] focus-within:ring-1 focus-within:ring-[#1A1612]">
-            <Search size={14} className="shrink-0 text-[#7A7066]" />
+          <div className="mt-1 flex items-center gap-2 rounded-lg border border-border-soft bg-cream-deep px-3 py-2 focus-within:border-ink focus-within:ring-1 focus-within:ring-ink">
+            <Search size={14} className="shrink-0 text-ink-muted" />
             <input
               id="remap-search"
               type="text"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Refina la búsqueda en USDA (en inglés)…"
-              className="w-full bg-transparent text-[14px] text-[#1A1612] placeholder:text-[#7A7066] focus:outline-none"
+              className="w-full bg-transparent text-[14px] text-ink placeholder:text-ink-muted focus:outline-none"
             />
           </div>
           {suggest.data?.queryUsed && (
-            <p className="mt-1 text-[11px] italic text-[#7A7066]">
+            <p className="mt-1 text-[11px] italic text-ink-muted">
               Buscando: <span className="not-italic">&ldquo;{suggest.data.queryUsed}&rdquo;</span>
             </p>
           )}
         </div>
 
         {suggest.isLoading && (
-          <p className="mt-4 text-[13px] italic text-[#7A7066]">
+          <p className="mt-4 text-[13px] italic text-ink-muted">
             Buscando candidatos...
           </p>
         )}
         {suggest.isError && (
-          <p className="mt-4 text-[13px] italic text-[#C65D38]">
+          <p className="mt-4 text-[13px] italic text-terracotta-deep">
             No se pudo consultar USDA. Prueba con otra búsqueda o estima con Mimoia.
           </p>
         )}
@@ -247,7 +248,7 @@ export function RemapModal({
         )}
 
         {!suggest.isLoading && !hasCandidates && !suggest.isError && (
-          <p className="mt-4 text-[13px] italic text-[#7A7066]">
+          <p className="mt-4 text-[13px] italic text-ink-muted">
             Sin coincidencias en USDA ni BEDCA para esta búsqueda.
           </p>
         )}
@@ -262,7 +263,7 @@ export function RemapModal({
         )}
 
         {error && (
-          <p className="mt-4 text-[12px] italic text-[#C65D38]">{error}</p>
+          <p className="mt-4 text-[12px] italic text-terracotta-deep">{error}</p>
         )}
 
         <div className="mt-6 flex flex-wrap items-center gap-3">
@@ -270,7 +271,7 @@ export function RemapModal({
             type="button"
             disabled={remap.isPending || !canConfirm}
             onClick={handleConfirm}
-            className="rounded-full bg-[#1A1612] px-5 py-2 text-[12px] font-medium uppercase tracking-[0.12em] text-[#FAF6EE] transition-all hover:bg-[#2D6A4F] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-full bg-ink px-5 py-2 text-[12px] font-medium uppercase tracking-[0.12em] text-cream transition-all hover:bg-ink-mid active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {remap.isPending
               ? "Aplicando..."
@@ -282,7 +283,7 @@ export function RemapModal({
             type="button"
             disabled={estimate.isPending || remap.isPending}
             onClick={runEstimate}
-            className="inline-flex items-center gap-1.5 rounded-full border border-[#DDD6C5] bg-transparent px-5 py-2 text-[12px] uppercase tracking-[0.12em] text-[#4A4239] transition-all hover:border-[#1A1612] hover:text-[#1A1612] active:scale-95 disabled:opacity-40"
+            className="inline-flex items-center gap-1.5 rounded-full border border-border-soft bg-transparent px-5 py-2 text-[12px] uppercase tracking-[0.12em] text-ink-mid transition-all hover:border-ink hover:text-ink active:scale-95 disabled:opacity-40"
           >
             <Sparkles size={12} />
             {estimate.isPending ? "Estimando..." : "Estimar con Mimoia"}
@@ -290,7 +291,7 @@ export function RemapModal({
           <button
             type="button"
             onClick={onClose}
-            className="ml-auto text-[12px] uppercase tracking-[0.12em] text-[#7A7066] hover:text-[#1A1612]"
+            className="ml-auto text-[12px] uppercase tracking-[0.12em] text-ink-muted hover:text-ink"
           >
             Cancelar
           </button>
@@ -323,21 +324,21 @@ function EstimatedSummary({
   isRerunning: boolean
 }) {
   return (
-    <div className="mt-5 rounded-lg border border-[#2A5C8B] bg-[#EEF3FA] px-4 py-3">
+    <div className="mt-5 rounded-2xl border border-border-soft bg-cream-deep px-4 py-3">
       <div className="flex items-center justify-between gap-3">
-        <div className="text-[11px] uppercase tracking-[0.12em] text-[#2A5C8B]">
+        <div className="text-[11px] uppercase tracking-[0.12em] text-ink-muted">
           Estimación de Mimoia · &ldquo;{name}&rdquo;
         </div>
         <button
           type="button"
           onClick={onRerun}
           disabled={isRerunning}
-          className="text-[11px] uppercase tracking-[0.12em] text-[#2A5C8B] underline hover:no-underline disabled:opacity-40"
+          className="text-[11px] uppercase tracking-[0.12em] text-terracotta-deep underline hover:no-underline disabled:opacity-40"
         >
           {isRerunning ? "..." : "Reintentar"}
         </button>
       </div>
-      <div className="mt-2 grid grid-cols-3 gap-2 text-[12px] text-[#1A1612]">
+      <div className="mt-2 grid grid-cols-3 gap-2 text-[12px] text-ink">
         <NutritionStat label="kcal" value={Math.round(nutrition.kcal)} />
         <NutritionStat label="proteína" value={`${nutrition.proteinG.toFixed(1)} g`} />
         <NutritionStat label="hidratos" value={`${nutrition.carbsG.toFixed(1)} g`} />
@@ -351,11 +352,11 @@ function EstimatedSummary({
 
 function NutritionStat({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-md bg-[#FAF6EE] px-2 py-1.5">
-      <div className="text-[9px] uppercase tracking-[0.12em] text-[#7A7066]">
+    <div className="rounded-md bg-cream px-2 py-1.5">
+      <div className="text-[9px] uppercase tracking-[0.12em] text-ink-muted">
         {label}
       </div>
-      <div className="text-[13px] font-medium text-[#1A1612]">{value}</div>
+      <div className="text-[13px] font-medium text-ink">{value}</div>
     </div>
   )
 }

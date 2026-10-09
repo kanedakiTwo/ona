@@ -26,13 +26,13 @@ export function FdcSection({
       {rows.map((row) => (
         <li
           key={row.id}
-          className="flex items-center justify-between gap-3 rounded-xl border border-[#DDD6C5] bg-[#FFFEFA] p-3"
+          className="flex items-center justify-between gap-3 rounded-xl border border-border-soft bg-paper p-3"
         >
           <div className="min-w-0 flex-1">
-            <div className="text-[14px] font-medium text-[#1A1612] truncate">
+            <div className="text-[14px] font-medium text-ink truncate">
               {row.name}
             </div>
-            <div className="mt-0.5 text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
+            <div className="mt-0.5 text-[10px] uppercase tracking-[0.12em] text-ink-muted">
               {aisleLabel(row.aisle)}
               {row.allergenTags && row.allergenTags.length > 0 && (
                 <span className="ml-2 normal-case tracking-normal">
@@ -43,7 +43,7 @@ export function FdcSection({
           </div>
           <button
             onClick={() => onRemap({ id: row.id, name: row.name })}
-            className="shrink-0 rounded-full bg-[#1A1612] px-3.5 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#FAF6EE] active:scale-95"
+            className="shrink-0 rounded-full bg-ink px-3.5 py-1.5 text-[11px] uppercase tracking-[0.12em] text-cream active:scale-95"
           >
             Mapear
           </button>
@@ -65,9 +65,9 @@ export function AisleSection({
       {rows.map((row) => (
         <li
           key={row.id}
-          className="flex items-center justify-between gap-3 rounded-xl border border-[#DDD6C5] bg-[#FFFEFA] p-3"
+          className="flex items-center justify-between gap-3 rounded-xl border border-border-soft bg-paper p-3"
         >
-          <div className="min-w-0 flex-1 text-[14px] font-medium text-[#1A1612] truncate">
+          <div className="min-w-0 flex-1 text-[14px] font-medium text-ink truncate">
             {row.name}
           </div>
           <select
@@ -77,7 +77,7 @@ export function AisleSection({
               const aisle = e.target.value as (typeof AISLE_ORDER)[number]
               patch.mutate({ id: row.id, body: { aisle } })
             }}
-            className="shrink-0 rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-2 py-1.5 text-[12px] text-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
+            className="shrink-0 rounded-lg border border-border bg-cream-deep px-2 py-1.5 text-[12px] text-ink focus:outline-none focus:ring-1 focus:ring-ink"
           >
             {AISLE_ORDER.map((a) => (
               <option key={a} value={a}>
@@ -127,13 +127,13 @@ function NumericRows({
         return (
           <li
             key={row.id}
-            className="flex items-center justify-between gap-3 rounded-xl border border-[#DDD6C5] bg-[#FFFEFA] p-3"
+            className="flex items-center justify-between gap-3 rounded-xl border border-border-soft bg-paper p-3"
           >
             <div className="min-w-0 flex-1">
-              <div className="text-[14px] font-medium text-[#1A1612] truncate">
+              <div className="text-[14px] font-medium text-ink truncate">
                 {row.name}
               </div>
-              <div className="mt-0.5 text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
+              <div className="mt-0.5 text-[10px] uppercase tracking-[0.12em] text-ink-muted">
                 {aisleLabel(row.aisle)}
               </div>
             </div>
@@ -147,7 +147,7 @@ function NumericRows({
                 onChange={(e) =>
                   setDraft((d) => ({ ...d, [row.id]: e.target.value }))
                 }
-                className="w-24 shrink-0 rounded-lg border border-[#DDD6C5] bg-[#F2EDE0] px-2 py-1.5 text-[12px] text-[#1A1612] focus:outline-none focus:ring-1 focus:ring-[#1A1612]"
+                className="w-24 shrink-0 rounded-lg border border-border bg-cream-deep px-2 py-1.5 text-[12px] text-ink focus:outline-none focus:ring-1 focus:ring-ink"
               />
               <button
                 disabled={!value || patch.isPending}
@@ -163,7 +163,7 @@ function NumericRows({
                     return rest
                   })
                 }}
-                className="shrink-0 rounded-full bg-[#1A1612] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#FAF6EE] active:scale-95 disabled:opacity-40"
+                className="shrink-0 rounded-full bg-ink px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-cream active:scale-95 disabled:opacity-40"
               >
                 Guardar
               </button>
@@ -192,11 +192,11 @@ export function AllergenSection({
       {rows.map((row) => (
         <li
           key={row.id}
-          className="rounded-xl border border-[#DDD6C5] bg-[#FFFEFA] p-3"
+          className="rounded-xl border border-border-soft bg-paper p-3"
         >
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <div className="text-[14px] font-medium text-[#1A1612] truncate">
+              <div className="text-[14px] font-medium text-ink truncate">
                 {row.name}
               </div>
             </div>
@@ -208,25 +208,25 @@ export function AllergenSection({
                   body: { allergenTags: row.suggestedTags },
                 })
               }
-              className="shrink-0 rounded-full bg-[#2D6A4F] px-3.5 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#FAF6EE] active:scale-95 disabled:opacity-40"
+              className="shrink-0 rounded-full bg-ink hover:bg-ink-mid px-3.5 py-1.5 text-[11px] uppercase tracking-[0.12em] text-cream active:scale-95 disabled:opacity-40"
             >
               Aceptar
             </button>
           </div>
           <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
             <div>
-              <div className="text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
+              <div className="text-[10px] uppercase tracking-[0.12em] text-ink-muted">
                 Actual
               </div>
-              <div className="mt-1 text-[#4A4239]">
+              <div className="mt-1 text-ink-mid">
                 {row.currentTags.length > 0 ? row.currentTags.join(", ") : "—"}
               </div>
             </div>
             <div>
-              <div className="text-[10px] uppercase tracking-[0.12em] text-[#C65D38]">
+              <div className="text-[10px] uppercase tracking-[0.12em] text-terracotta-deep">
                 Sugerido
               </div>
-              <div className="mt-1 text-[#1A1612]">
+              <div className="mt-1 text-ink">
                 {row.suggestedTags.join(", ")}
               </div>
             </div>

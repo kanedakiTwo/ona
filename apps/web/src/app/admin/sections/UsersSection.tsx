@@ -29,6 +29,7 @@ import {
   type AdminUserRow,
   type AdminResetTokenResponse,
 } from "@/hooks/useAdmin"
+import { DISPLAY_UI } from "@/components/recipes/RecipeCard"
 
 function useDebounced<T>(value: T, ms: number): T {
   const [v, setV] = useState(value)
@@ -95,27 +96,27 @@ export function UsersSection() {
   return (
     <div>
       {/* Filter strip */}
-      <div className="rounded-2xl border border-[#DDD6C5] bg-[#FFFEFA] p-3">
+      <div className="rounded-2xl border border-border-soft bg-paper p-3">
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <Search
               size={14}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#A39A8E]"
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-light"
             />
             <input
               type="text"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Buscar por usuario o email…"
-              className="w-full rounded-full border border-[#DDD6C5] bg-[#FAF6EE] py-2 pl-9 pr-3 text-[13px] text-[#1A1612] placeholder:text-[#A39A8E] focus:border-[#1A1612] focus:outline-none"
+              className="w-full rounded-full border border-border bg-cream py-2 pl-9 pr-3 text-[13px] text-ink placeholder:text-ink-light focus:border-ink focus:outline-none"
             />
           </div>
-          <label className="flex items-center gap-2 px-2 text-[12px] text-[#4A4239]">
+          <label className="flex items-center gap-2 px-2 text-[12px] text-ink-mid">
             <input
               type="checkbox"
               checked={onlySuspended}
               onChange={(e) => setOnlySuspended(e.target.checked)}
-              className="h-4 w-4 accent-[#C65D38]"
+              className="h-4 w-4 accent-terracotta-deep"
             />
             Solo suspendidos
           </label>
@@ -123,15 +124,15 @@ export function UsersSection() {
       </div>
 
       {/* Table */}
-      <div className="mt-4 overflow-hidden rounded-2xl border border-[#DDD6C5] bg-[#FFFEFA]">
+      <div className="mt-4 overflow-hidden rounded-2xl border border-border-soft bg-paper">
         {list.isLoading && (
-          <div className="px-4 py-6 text-[12px] italic text-[#7A7066]">
+          <div className="px-4 py-6 text-[12px] italic text-ink-muted">
             Cargando usuarios…
           </div>
         )}
 
         {!list.isLoading && list.data && list.data.rows.length === 0 && (
-          <div className="px-4 py-8 text-center text-[12px] italic text-[#7A7066]">
+          <div className="px-4 py-8 text-center text-[12px] italic text-ink-muted">
             Sin resultados.
           </div>
         )}
@@ -151,7 +152,7 @@ export function UsersSection() {
       {/* Pager */}
       {list.data && list.data.total > 0 && (
         <div className="mt-3 flex items-center justify-between">
-          <div className="text-[11px] text-[#7A7066]">
+          <div className="text-[11px] text-ink-muted">
             {list.data.total} usuario{list.data.total === 1 ? "" : "s"} ·
             página {list.data.page} de {totalPages}
           </div>
@@ -159,7 +160,7 @@ export function UsersSection() {
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
-              className="flex h-8 w-8 items-center justify-center rounded-full border border-[#DDD6C5] bg-[#FFFEFA] text-[#4A4239] disabled:opacity-30"
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-border-soft bg-paper text-ink-mid disabled:opacity-30"
               aria-label="Página anterior"
             >
               <ChevronLeft size={14} />
@@ -167,7 +168,7 @@ export function UsersSection() {
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
-              className="flex h-8 w-8 items-center justify-center rounded-full border border-[#DDD6C5] bg-[#FFFEFA] text-[#4A4239] disabled:opacity-30"
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-border-soft bg-paper text-ink-mid disabled:opacity-30"
               aria-label="Página siguiente"
             >
               <ChevronRight size={14} />
@@ -201,37 +202,37 @@ function UserRow({
   return (
     <button
       onClick={onClick}
-      className={`flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-[#FAF6EE] ${
-        first ? "" : "border-t border-[#DDD6C5]"
+      className={`flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-cream ${
+        first ? "" : "border-t border-border-soft"
       }`}
     >
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1A1612] font-display text-sm text-[#FAF6EE]">
+      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ink ${DISPLAY_UI} text-sm text-cream`}>
         {initials}
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="truncate text-[13px] font-medium text-[#1A1612]">
+          <span className="truncate text-[13px] font-medium text-ink">
             {row.username}
           </span>
           {row.role === "admin" && (
-            <span className="rounded-full bg-[#C65D38] px-2 py-0.5 text-[9px] uppercase tracking-[0.12em] text-[#FAF6EE]">
+            <span className="rounded-full bg-terracotta-deep px-2 py-0.5 text-[9px] uppercase tracking-[0.12em] text-cream">
               Admin
             </span>
           )}
           {row.role === "user" && (
-            <span className="rounded-full border border-[#DDD6C5] px-2 py-0.5 text-[9px] uppercase tracking-[0.12em] text-[#7A7066]">
+            <span className="rounded-full border border-border-soft px-2 py-0.5 text-[9px] uppercase tracking-[0.12em] text-ink-muted">
               Usuario
             </span>
           )}
           {row.suspendedAt && (
-            <span className="rounded-full bg-[#E26A4A]/15 px-2 py-0.5 text-[9px] uppercase tracking-[0.12em] text-[#C65D38]">
+            <span className="rounded-full bg-warn-bg px-2 py-0.5 text-[9px] uppercase tracking-[0.12em] text-terracotta-deep">
               Suspendido
             </span>
           )}
         </div>
-        <div className="truncate text-[11px] text-[#7A7066]">{row.email}</div>
+        <div className="truncate text-[11px] text-ink-muted">{row.email}</div>
       </div>
-      <div className="shrink-0 text-[10px] uppercase tracking-[0.1em] text-[#A39A8E]">
+      <div className="shrink-0 text-[10px] uppercase tracking-[0.1em] text-ink-light">
         {relativeTime(row.createdAt)}
       </div>
     </button>
@@ -302,14 +303,14 @@ function UserSidePanel({
       onClick={onClose}
     >
       <aside
-        className="absolute right-0 top-0 flex h-full w-full max-w-md flex-col overflow-y-auto bg-[#FAF6EE] shadow-xl sm:w-[28rem]"
+        className="absolute right-0 top-0 flex h-full w-full max-w-md flex-col overflow-y-auto bg-cream shadow-xl sm:w-[28rem]"
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="sticky top-0 flex items-center justify-between border-b border-[#DDD6C5] bg-[#FAF6EE] px-5 py-4">
-          <div className="text-eyebrow text-[#7A7066]">Detalle de usuario</div>
+        <header className="sticky top-0 flex items-center justify-between border-b border-border-soft bg-cream px-5 py-4">
+          <div className="text-eyebrow text-ink-muted">Detalle de usuario</div>
           <button
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-full text-[#4A4239] hover:bg-[#DDD6C5]/40"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-ink-mid hover:bg-border/40"
             aria-label="Cerrar"
           >
             <X size={16} />
@@ -318,24 +319,24 @@ function UserSidePanel({
 
         <div className="flex-1 px-5 py-5">
           {detail.isLoading && (
-            <p className="text-[12px] italic text-[#7A7066]">Cargando…</p>
+            <p className="text-[12px] italic text-ink-muted">Cargando…</p>
           )}
           {detail.isError && (
-            <p className="text-[12px] text-[#C65D38]">
+            <p className="text-[12px] text-terracotta-deep">
               No se pudo cargar el usuario.
             </p>
           )}
           {u && (
             <>
               <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#C65D38] font-display text-lg text-[#FAF6EE]">
+                <div className={`flex h-12 w-12 items-center justify-center rounded-full bg-terracotta-deep ${DISPLAY_UI} text-lg text-cream`}>
                   {(u.username || "?").charAt(0).toUpperCase()}
                 </div>
                 <div className="min-w-0">
-                  <div className="font-display text-xl text-[#1A1612] truncate">
+                  <div className={`${DISPLAY_UI} text-xl text-ink truncate`}>
                     {u.username}
                   </div>
-                  <div className="text-[11px] text-[#7A7066] truncate">
+                  <div className="text-[11px] text-ink-muted truncate">
                     {u.email}
                   </div>
                 </div>
@@ -345,19 +346,19 @@ function UserSidePanel({
                 <span
                   className={`rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.1em] ${
                     u.role === "admin"
-                      ? "bg-[#C65D38] text-[#FAF6EE]"
-                      : "border border-[#DDD6C5] text-[#7A7066]"
+                      ? "bg-terracotta-deep text-cream"
+                      : "border border-border-soft text-ink-muted"
                   }`}
                 >
                   {u.role === "admin" ? "Admin" : "Usuario"}
                 </span>
                 {u.suspendedAt && (
-                  <span className="rounded-full bg-[#E26A4A]/15 px-2 py-0.5 text-[10px] uppercase tracking-[0.1em] text-[#C65D38]">
+                  <span className="rounded-full bg-warn-bg px-2 py-0.5 text-[10px] uppercase tracking-[0.1em] text-terracotta-deep">
                     Suspendido
                   </span>
                 )}
                 {u.onboardingDone && (
-                  <span className="rounded-full border border-[#2D6A4F]/30 bg-[#2D6A4F]/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.1em] text-[#2D6A4F]">
+                  <span className="rounded-full border border-ink/20 bg-paper px-2 py-0.5 text-[10px] uppercase tracking-[0.1em] text-ink">
                     Onboarding ok
                   </span>
                 )}
@@ -429,7 +430,7 @@ function UserSidePanel({
               </Section>
 
               {error && (
-                <p className="mt-4 text-[12px] text-[#C65D38]">{error}</p>
+                <p className="mt-4 text-[12px] text-terracotta-deep">{error}</p>
               )}
             </>
           )}
@@ -437,13 +438,13 @@ function UserSidePanel({
 
         {/* Action footer */}
         {u && (
-          <footer className="sticky bottom-0 border-t border-[#DDD6C5] bg-[#FAF6EE] px-5 py-4">
+          <footer className="sticky bottom-0 border-t border-border-soft bg-cream px-5 py-4">
             <div className="flex flex-col gap-2">
               {u.suspendedAt ? (
                 <button
                   onClick={handleUnsuspend}
                   disabled={unsuspend.isPending}
-                  className="rounded-full bg-[#2D6A4F] py-2.5 text-[12px] font-medium uppercase tracking-[0.1em] text-[#FAF6EE] hover:bg-[#235140] disabled:opacity-50"
+                  className="rounded-full bg-ink py-2.5 text-[12px] font-medium uppercase tracking-[0.1em] text-cream hover:bg-ink-mid disabled:opacity-50"
                 >
                   {unsuspend.isPending ? "Reactivando…" : "Reactivar"}
                 </button>
@@ -451,7 +452,7 @@ function UserSidePanel({
                 <button
                   onClick={handleSuspend}
                   disabled={suspend.isPending}
-                  className="rounded-full bg-[#C65D38] py-2.5 text-[12px] font-medium uppercase tracking-[0.1em] text-[#FAF6EE] hover:bg-[#A84A2A] disabled:opacity-50"
+                  className="rounded-full bg-terracotta-deep py-2.5 text-[12px] font-medium uppercase tracking-[0.1em] text-cream hover:bg-ink disabled:opacity-50"
                 >
                   {suspend.isPending ? "Suspendiendo…" : "Suspender"}
                 </button>
@@ -459,7 +460,7 @@ function UserSidePanel({
               <button
                 onClick={handleResetToken}
                 disabled={resetToken.isPending}
-                className="rounded-full border border-[#1A1612] py-2.5 text-[12px] font-medium uppercase tracking-[0.1em] text-[#1A1612] hover:bg-[#1A1612] hover:text-[#FAF6EE] disabled:opacity-50"
+                className="rounded-full border border-ink py-2.5 text-[12px] font-medium uppercase tracking-[0.1em] text-ink hover:bg-ink hover:text-cream disabled:opacity-50"
               >
                 {resetToken.isPending
                   ? "Generando…"
@@ -489,8 +490,8 @@ function Section({
 }) {
   return (
     <section className="mt-6">
-      <div className="text-eyebrow mb-2 text-[#7A7066]">{title}</div>
-      <div className="rounded-xl border border-[#DDD6C5] bg-[#FFFEFA] p-3">
+      <div className="text-eyebrow mb-2 text-ink-muted">{title}</div>
+      <div className="rounded-xl border border-border-soft bg-paper p-3">
         {children}
       </div>
     </section>
@@ -500,17 +501,17 @@ function Section({
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between gap-3 py-1 text-[12px]">
-      <span className="text-[#7A7066]">{label}</span>
-      <span className="text-right text-[#1A1612] font-medium">{value}</span>
+      <span className="text-ink-muted">{label}</span>
+      <span className="text-right text-ink font-medium">{value}</span>
     </div>
   )
 }
 
 function Tile({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-lg bg-[#FAF6EE] p-3 text-center">
-      <div className="font-display text-2xl text-[#1A1612]">{value}</div>
-      <div className="mt-0.5 text-[10px] uppercase tracking-[0.1em] text-[#7A7066]">
+    <div className="rounded-lg bg-cream p-3 text-center">
+      <div className={`${DISPLAY_UI} text-2xl text-ink`}>{value}</div>
+      <div className="mt-0.5 text-[10px] uppercase tracking-[0.1em] text-ink-muted">
         {label}
       </div>
     </div>
@@ -540,33 +541,33 @@ function ResetLinkModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-sm rounded-2xl bg-[#FAF6EE] p-6 shadow-xl"
+        className="w-full max-w-sm rounded-2xl bg-cream p-6 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="text-eyebrow mb-2 text-[#7A7066]">
+        <div className="text-eyebrow mb-2 text-ink-muted">
           Enlace de reset generado
         </div>
-        <h3 className="font-display text-xl text-[#1A1612]">
-          Comparte el <span className="font-italic italic text-[#C65D38]">enlace</span>
+        <h3 className={`${DISPLAY_UI} text-xl text-ink`}>
+          Comparte el <span className="font-italic italic text-terracotta-deep">enlace</span>
         </h3>
-        <p className="mt-2 text-[12px] text-[#7A7066]">
+        <p className="mt-2 text-[12px] text-ink-muted">
           El enlace ya está copiado al portapapeles. Caduca el{" "}
           {formatSpanishDateTime(result.expires_at)}.
         </p>
-        <div className="mt-3 break-all rounded-lg bg-[#FFFEFA] border border-[#DDD6C5] p-3 font-mono text-[11px] text-[#1A1612]">
+        <div className="mt-3 break-all rounded-lg bg-paper border border-border-soft p-3 font-mono text-[11px] text-ink">
           {result.link}
         </div>
         <div className="mt-4 flex gap-2">
           <button
             onClick={copyAgain}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-full border border-[#1A1612] py-2 text-[11px] uppercase tracking-[0.1em] text-[#1A1612] hover:bg-[#1A1612] hover:text-[#FAF6EE]"
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-full border border-ink py-2 text-[11px] uppercase tracking-[0.1em] text-ink hover:bg-ink hover:text-cream"
           >
             <Copy size={12} />
             {copied ? "Copiado" : "Copiar de nuevo"}
           </button>
           <button
             onClick={onClose}
-            className="flex-1 rounded-full bg-[#1A1612] py-2 text-[11px] uppercase tracking-[0.1em] text-[#FAF6EE] hover:bg-[#C65D38]"
+            className="flex-1 rounded-full bg-ink py-2 text-[11px] uppercase tracking-[0.1em] text-cream hover:bg-terracotta-deep"
           >
             Cerrar
           </button>

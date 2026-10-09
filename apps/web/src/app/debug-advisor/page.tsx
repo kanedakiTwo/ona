@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { DISPLAY_UI } from '@/components/recipes/RecipeCard'
 
 export default function DebugAdvisorPage() {
   const [info, setInfo] = useState<string>('Checking...')
@@ -57,23 +58,25 @@ export default function DebugAdvisorPage() {
   }
 
   return (
-    <div style={{ padding: 40, fontFamily: 'monospace', maxWidth: 700 }}>
-      <h1 style={{ fontSize: 24 }}>Debug: Auth & Advisor</h1>
-      <pre style={{ marginTop: 16, padding: 16, background: '#f0f0f0', whiteSpace: 'pre-wrap' }}>
-        {info}
-      </pre>
-      <button
-        onClick={testApi}
-        disabled={loading}
-        style={{ marginTop: 16, padding: '10px 24px', fontSize: 16, background: '#2D6A4F', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer' }}
-      >
-        {loading ? 'Testing...' : 'Test Advisor API'}
-      </button>
-      {apiResult && (
-        <pre style={{ marginTop: 16, padding: 16, background: '#e8f4f0', whiteSpace: 'pre-wrap' }}>
-          {apiResult}
+    <div className="min-h-screen bg-cream px-5 py-10 lg:px-12">
+      <div className="mx-auto max-w-[700px]">
+        <h1 className={`${DISPLAY_UI} text-[24px] leading-tight text-ink`}>Debug: Auth & Advisor</h1>
+        <pre className="mt-4 whitespace-pre-wrap rounded-2xl border border-border-soft bg-paper p-4 font-mono text-[13px] text-ink">
+          {info}
         </pre>
-      )}
+        <button
+          onClick={testApi}
+          disabled={loading}
+          className="mt-4 inline-flex min-h-[44px] items-center rounded-full bg-ink px-6 text-[15px] font-medium text-cream transition-colors hover:bg-ink-mid disabled:opacity-50"
+        >
+          {loading ? 'Testing...' : 'Test Advisor API'}
+        </button>
+        {apiResult && (
+          <pre className="mt-4 whitespace-pre-wrap rounded-2xl border border-border-soft bg-cream-deep p-4 font-mono text-[13px] text-ink">
+            {apiResult}
+          </pre>
+        )}
+      </div>
     </div>
   )
 }

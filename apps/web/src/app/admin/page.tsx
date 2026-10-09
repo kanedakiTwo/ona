@@ -47,6 +47,7 @@ import { UsersSection } from "./sections/UsersSection"
 import { AuditLogSection } from "./sections/AuditLogSection"
 import { VoiceTranscriptsSection } from "./sections/VoiceTranscriptsSection"
 import { InvitationsSection } from "./sections/InvitationsSection"
+import { DISPLAY_UI } from "@/components/recipes/RecipeCard"
 
 type SectionKey =
   | "fdc"
@@ -93,7 +94,7 @@ export default function AdminPage() {
 
   if (authLoading || !user) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#FAF6EE]">
+      <div className="flex min-h-screen items-center justify-center bg-cream">
         <div className="text-eyebrow">Cargando...</div>
       </div>
     )
@@ -102,19 +103,19 @@ export default function AdminPage() {
   // 403 fallback for non-admin users.
   if (user && !isAdmin) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#FAF6EE] px-6">
+      <div className="flex min-h-screen items-center justify-center bg-cream px-6">
         <div className="max-w-sm text-center">
-          <div className="text-eyebrow mb-3 text-[#7A7066]">403</div>
-          <h1 className="font-display text-[2rem] leading-tight text-[#1A1612]">
-            <span className="font-italic italic text-[#C65D38]">Acceso</span>{" "}
+          <div className="text-eyebrow mb-3 text-ink-muted">403</div>
+          <h1 className={`${DISPLAY_UI} text-[2rem] leading-tight text-ink`}>
+            <span className="font-italic italic text-terracotta-deep">Acceso</span>{" "}
             restringido.
           </h1>
-          <p className="mt-4 text-[13px] text-[#4A4239]">
+          <p className="mt-4 text-[13px] text-ink-mid">
             Esta sección está reservada al equipo de Mimoia.
           </p>
           <Link
             href="/menu"
-            className="mt-6 inline-block rounded-full bg-[#1A1612] px-5 py-2.5 text-[12px] font-medium uppercase tracking-[0.12em] text-[#FAF6EE] hover:bg-[#C65D38]"
+            className="mt-6 inline-block rounded-full bg-ink px-5 py-2.5 text-[12px] font-medium uppercase tracking-[0.12em] text-cream hover:bg-terracotta-deep"
           >
             Volver al menú
           </Link>
@@ -150,15 +151,15 @@ export default function AdminPage() {
     (ingredientGaps.isLoading || recipeGaps.isLoading || regen.isLoading)
 
   return (
-    <div className="bg-[#FAF6EE] min-h-screen pb-24 lg:mx-auto lg:max-w-[1200px]">
+    <div className="bg-cream min-h-screen pb-24 lg:mx-auto lg:max-w-[1180px]">
       <header className="px-5 pt-8 pb-6">
         <div className="text-eyebrow mb-2">Panel</div>
-        <h1 className="font-display text-[2.4rem] leading-[0.95] text-[#1A1612]">
-          <span className="font-italic italic text-[#C65D38]">Admin</span>
+        <h1 className={`${DISPLAY_UI} text-[2.4rem] leading-[0.95] text-ink`}>
+          <span className="font-italic italic text-terracotta-deep">Admin</span>
           <br />
           de Mimoia.
         </h1>
-        <p className="mt-3 text-[12px] text-[#7A7066] max-w-md">
+        <p className="mt-3 text-[12px] text-ink-muted max-w-md">
           Cura el catálogo, gestiona cuentas y revisa la auditoría. Cada acción
           queda registrada.
         </p>
@@ -201,10 +202,10 @@ export default function AdminPage() {
             <button
               key={s.key}
               onClick={() => setActive(s.key)}
-              className={`shrink-0 rounded-full border px-3.5 py-1.5 text-[12px] font-medium transition-all active:scale-95 ${
+              className={`inline-flex min-h-[44px] shrink-0 items-center rounded-full border px-4 text-[13px] font-medium transition-all active:scale-95 ${
                 active === s.key
-                  ? "border-[#1A1612] bg-[#1A1612] text-[#FAF6EE]"
-                  : "border-[#DDD6C5] bg-[#FFFEFA] text-[#4A4239] hover:border-[#1A1612]"
+                  ? "border-ink bg-ink text-cream"
+                  : "border-border-soft bg-paper text-ink-mid hover:border-ink"
               }`}
             >
               {s.label}
@@ -220,7 +221,7 @@ export default function AdminPage() {
 
       <main className="px-5 mt-6">
         {isLoading && (
-          <p className="text-[12px] italic text-[#7A7066]">Cargando huecos…</p>
+          <p className="text-[12px] italic text-ink-muted">Cargando huecos…</p>
         )}
 
         {!isLoading && active === "fdc" && (

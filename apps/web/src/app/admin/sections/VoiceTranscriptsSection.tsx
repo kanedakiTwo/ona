@@ -130,9 +130,9 @@ function SessionsList({
   return (
     <div className="space-y-4">
       {/* Filters */}
-      <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-[#DDD6C5] bg-[#FFFEFA] p-4">
+      <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-border-soft bg-paper p-4">
         <div className="flex-1 min-w-[200px]">
-          <label className="block text-[10px] uppercase tracking-[0.15em] text-[#7A7066] mb-1">
+          <label className="block text-[10px] uppercase tracking-[0.15em] text-ink-muted mb-1">
             Usuario
           </label>
           <input
@@ -140,11 +140,11 @@ function SessionsList({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="username o email"
-            className="w-full rounded-lg border border-[#DDD6C5] bg-[#FAF6EE] px-3 py-2 text-[13px]"
+            className="w-full rounded-lg border border-border bg-cream px-3 py-2 text-[13px]"
           />
         </div>
         <div>
-          <label className="block text-[10px] uppercase tracking-[0.15em] text-[#7A7066] mb-1">
+          <label className="block text-[10px] uppercase tracking-[0.15em] text-ink-muted mb-1">
             Desde
           </label>
           <input
@@ -154,11 +154,11 @@ function SessionsList({
               setFrom(e.target.value)
               setPage(1)
             }}
-            className="rounded-lg border border-[#DDD6C5] bg-[#FAF6EE] px-3 py-2 text-[13px]"
+            className="rounded-lg border border-border bg-cream px-3 py-2 text-[13px]"
           />
         </div>
         <div>
-          <label className="block text-[10px] uppercase tracking-[0.15em] text-[#7A7066] mb-1">
+          <label className="block text-[10px] uppercase tracking-[0.15em] text-ink-muted mb-1">
             Hasta
           </label>
           <input
@@ -168,7 +168,7 @@ function SessionsList({
               setTo(e.target.value)
               setPage(1)
             }}
-            className="rounded-lg border border-[#DDD6C5] bg-[#FAF6EE] px-3 py-2 text-[13px]"
+            className="rounded-lg border border-border bg-cream px-3 py-2 text-[13px]"
           />
         </div>
       </div>
@@ -181,41 +181,41 @@ function SessionsList({
       )}
 
       {filteredRows.length > 0 && (
-        <div className="overflow-hidden rounded-2xl border border-[#DDD6C5] bg-[#FFFEFA]">
+        <div className="overflow-hidden rounded-2xl border border-border-soft bg-paper">
           {filteredRows.map((s, i) => (
             <button
               key={s.sessionId}
               onClick={() => onOpen(s)}
-              className={`flex w-full items-start gap-4 px-4 py-3 text-left transition-colors hover:bg-[#FAF6EE] ${i > 0 ? "border-t border-[#DDD6C5]" : ""}`}
+              className={`flex w-full items-start gap-4 px-4 py-3 text-left transition-colors hover:bg-cream ${i > 0 ? "border-t border-border-soft" : ""}`}
             >
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 text-[13px] text-[#1A1612]">
+                <div className="flex items-center gap-2 text-[13px] text-ink">
                   <span className="font-medium">{s.username ?? s.email ?? "anon"}</span>
-                  <span className="text-[#A39A8E]">·</span>
-                  <span className="text-[11px] text-[#7A7066]">
+                  <span className="text-ink-light">·</span>
+                  <span className="text-[11px] text-ink-muted">
                     {formatTimestamp(s.startedAt)}
                   </span>
-                  <span className="text-[#A39A8E]">·</span>
-                  <span className="text-[11px] text-[#7A7066]">
+                  <span className="text-ink-light">·</span>
+                  <span className="text-[11px] text-ink-muted">
                     {formatSpan(s.startedAt, s.endedAt)}
                   </span>
                 </div>
-                <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-[#7A7066]">
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-ink-muted">
                   <span>
                     {s.turnCount} turno{s.turnCount === 1 ? "" : "s"}
                   </span>
-                  <span className="text-[#A39A8E]">·</span>
+                  <span className="text-ink-light">·</span>
                   <span>
                     {s.userTurns} usuario / {s.assistantTurns} asistente
                   </span>
                   {s.skillsUsed.length > 0 && (
                     <>
-                      <span className="text-[#A39A8E]">·</span>
+                      <span className="text-ink-light">·</span>
                       <span className="flex flex-wrap gap-1">
                         {s.skillsUsed.map((skill) => (
                           <span
                             key={skill}
-                            className="rounded-full bg-[#F2EDE0] px-2 py-0.5 text-[10px] text-[#4A4239]"
+                            className="rounded-full bg-cream-deep px-2 py-0.5 text-[10px] text-ink-mid"
                           >
                             {skill}
                           </span>
@@ -224,11 +224,11 @@ function SessionsList({
                     </>
                   )}
                 </div>
-                <div className="mt-1 font-mono text-[10px] text-[#A39A8E] truncate">
+                <div className="mt-1 font-mono text-[10px] text-ink-light truncate">
                   {s.sessionId}
                 </div>
               </div>
-              <ChevronRight size={16} className="mt-2 shrink-0 text-[#A39A8E]" />
+              <ChevronRight size={16} className="mt-2 shrink-0 text-ink-light" />
             </button>
           ))}
         </div>
@@ -236,7 +236,7 @@ function SessionsList({
 
       {/* Pagination */}
       {data && totalPages > 1 && (
-        <div className="flex items-center justify-between text-[12px] text-[#7A7066]">
+        <div className="flex items-center justify-between text-[12px] text-ink-muted">
           <span>
             Página {data.page} de {totalPages} · {data.total} sesiones
           </span>
@@ -244,14 +244,14 @@ function SessionsList({
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={data.page <= 1}
-              className="rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-3 py-1 disabled:opacity-40"
+              className="rounded-full border border-border-soft bg-paper px-3 py-1 disabled:opacity-40"
             >
               <ChevronLeft size={14} />
             </button>
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={data.page >= totalPages}
-              className="rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-3 py-1 disabled:opacity-40"
+              className="rounded-full border border-border-soft bg-paper px-3 py-1 disabled:opacity-40"
             >
               <ChevronRight size={14} />
             </button>
@@ -282,26 +282,26 @@ function SessionDetail({
     <div className="space-y-4">
       <button
         onClick={onBack}
-        className="inline-flex items-center gap-1 text-[12px] text-[#7A7066] hover:text-[#1A1612]"
+        className="inline-flex items-center gap-1 text-[12px] text-ink-muted hover:text-ink"
       >
         <ChevronLeft size={14} />
         Volver a la lista
       </button>
 
-      <div className="rounded-2xl border border-[#DDD6C5] bg-[#FFFEFA] p-4">
-        <div className="text-[10px] uppercase tracking-[0.15em] text-[#7A7066]">
+      <div className="rounded-2xl border border-border-soft bg-paper p-4">
+        <div className="text-[10px] uppercase tracking-[0.15em] text-ink-muted">
           Sesión
         </div>
-        <div className="mt-1 font-mono text-[11px] text-[#A39A8E] break-all">
+        <div className="mt-1 font-mono text-[11px] text-ink-light break-all">
           {sessionId}
         </div>
         {user && (
-          <div className="mt-2 text-[13px] text-[#1A1612]">
-            <span className="text-[#7A7066]">Usuario:</span> {user}
+          <div className="mt-2 text-[13px] text-ink">
+            <span className="text-ink-muted">Usuario:</span> {user}
           </div>
         )}
         {data && (
-          <div className="mt-2 text-[12px] text-[#7A7066]">
+          <div className="mt-2 text-[12px] text-ink-muted">
             {data.rows.length} turno{data.rows.length === 1 ? "" : "s"}
           </div>
         )}
@@ -330,24 +330,24 @@ function TurnCard({ turn }: { turn: VoiceTranscriptTurn }) {
     <div
       className={`rounded-2xl border p-3 ${
         isUser
-          ? "border-[#DDD6C5] bg-[#F2EDE0]"
-          : "border-[#DDD6C5] bg-[#FFFEFA]"
+          ? "border-border-soft bg-cream-deep"
+          : "border-border-soft bg-paper"
       }`}
     >
-      <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.15em] text-[#7A7066]">
+      <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.15em] text-ink-muted">
         <span>{isUser ? "Usuario" : "Asistente"}</span>
-        <span className="text-[#A39A8E]">·</span>
+        <span className="text-ink-light">·</span>
         <span>{formatTimestamp(turn.createdAt)}</span>
         {turn.skillUsed && (
           <>
-            <span className="text-[#A39A8E]">·</span>
-            <span className="rounded-full bg-[#1A1612] px-2 py-0.5 text-[10px] normal-case tracking-normal text-[#FAF6EE]">
+            <span className="text-ink-light">·</span>
+            <span className="rounded-full bg-ink px-2 py-0.5 text-[10px] normal-case tracking-normal text-cream">
               {turn.skillUsed}
             </span>
           </>
         )}
       </div>
-      <div className="mt-2 whitespace-pre-line text-[14px] leading-relaxed text-[#1A1612]">
+      <div className="mt-2 whitespace-pre-line text-[14px] leading-relaxed text-ink">
         {turn.content}
       </div>
     </div>

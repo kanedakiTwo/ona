@@ -1,6 +1,6 @@
 /**
- * Chat read-aloud with ElevenLabs (specs/advisor.md → Voice): when the API
- * offers voices, the chat shows "Voz de Mimo" and picking one asks the API
+ * Mimo's voice with ElevenLabs (specs/advisor.md → Voice): when the API
+ * offers voices, Mimo's panel shows "Voz" and picking one asks the API
  * for audio in that voice (a short preview). The API is mocked: no
  * ElevenLabs call, no cost.
  */
@@ -9,7 +9,7 @@ import { registerFreshUser, completeOnboarding } from './_helpers'
 
 const API_URL = process.env.API_URL ?? 'http://localhost:8765'
 
-test('picking a voice in the chat previews it through POST /tts', async ({ page }) => {
+test('picking a voice in Mimo previews it through POST /tts', async ({ page }) => {
   test.setTimeout(60_000)
   await registerFreshUser(page)
   if (page.url().includes('/onboarding')) await completeOnboarding(page)
@@ -25,7 +25,8 @@ test('picking a voice in the chat previews it through POST /tts', async ({ page 
     return route.fulfill({ status: 200, contentType: 'audio/mpeg', body: Buffer.from([]) })
   })
 
-  await page.goto('/advisor')
+  await page.goto('/menu')
+  await page.getByTestId('mimo-button').click()
   const select = page.getByTestId('tts-voice-select')
   await expect(select).toBeVisible({ timeout: 15_000 })
   await expect(select).toHaveValue('sara')

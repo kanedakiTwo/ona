@@ -1,5 +1,5 @@
 /**
- * PRO-01: with voice mode on, the floating mic used to sit right on top of the
+ * PRO-01 (and D-023, Mimo's floating button): the floating mic used to sit right on top of the
  * favourite button in the recipe detail's mobile hero (both fixed/absolute at
  * the top-right). The favourite must stay tappable — no floating button over
  * it — at 390×844 and on desktop.
@@ -30,11 +30,10 @@ for (const viewport of [
     await registerFreshUser(page)
     if (page.url().includes('/onboarding')) await completeOnboarding(page)
 
-    // Voice mode on, as the /profile toggle leaves it.
-    await page.evaluate(() => localStorage.setItem('ona.voice.enabled', '1'))
     await page.goto(`/recipes/${await firstRecipeId(page)}`)
 
-    const fab = page.getByRole('button', { name: /^(abrir modo voz|modo voz activo)/i })
+    // Mimo's floating button (D-023) is on every page.
+    const fab = page.getByTestId('mimo-button')
     const fav = page.getByRole('button', { name: 'Añadir a favoritos' })
     await expect(fab).toBeVisible({ timeout: 15_000 })
     await expect(fav).toBeVisible()
@@ -42,6 +41,9 @@ for (const viewport of [
     const fabBox = (await fab.boundingBox())!
     const favBox = (await fav.boundingBox())!
     expect(overlaps(fabBox, favBox)).toBe(false)
+    // …nor over the sticky action bar (Empezar a cocinar) where it shows (< lg).
+    const bar = page.getByTestId('recipe-action-bar')
+    if (await bar.isVisible()) expect(overlaps(fabBox, (await bar.boundingBox())!)).toBe(false)
 
     // A real click (no force): Playwright refuses if another element would get
     // it. The detail doesn't echo favourite state back yet (recipes.md known

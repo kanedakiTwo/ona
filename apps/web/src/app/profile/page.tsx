@@ -6,8 +6,7 @@ import { LogOut, X, Plus, Minus, Mic, Bell, BellOff } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
 import { useWebPush } from '@/hooks/useWebPush'
-import { useVoiceMode } from '@/components/voice/VoiceProvider'
-import { WAKE_PHRASE } from '@/hooks/useWakeWord'
+import { useMimo } from '@/components/mimo/MimoProvider'
 import {
   getEnabled as getNotifEnabled,
   setEnabled as setNotifEnabledLS,
@@ -97,7 +96,7 @@ const ACTIVITY_MULTIPLIERS: Record<string, number> = {
 export default function ProfilePage() {
   const { user, logout, isLoading: authLoading } = useAuth()
   const whatsapp = useWhatsAppStatus()
-  const voiceMode = useVoiceMode()
+  const mimo = useMimo()
 
   const [physical, setPhysical] = useState<PhysicalData>({
     sex: '', age: '', weight: '', height: '', activity_level: 'moderate',
@@ -695,92 +694,69 @@ export default function ProfilePage() {
         </div>
       </section>
 
-      {/* Capitulo 04 — Voz */}
-      {typeof window !== 'undefined' && typeof (window as any).RTCPeerConnection !== 'undefined' && (
-      <section className="px-5 mt-12">
-        <ChapterHeader number="04" title="Modo" italic="voz" />
+      {/* Capitulo 04 — Mimo por voz (D-023: one assistant, the floating button on every page) */}
+      <section className="px-5 mt-12" data-testid="profile-mimo-voice">
+        <ChapterHeader number="04" title="Mimo" italic="por voz" />
         <p className="mt-2 text-[12px] text-[#7A7066]">
-          Activa el modo voz y aparecerá un botón de micrófono flotante en cualquier pantalla.
-          Tócalo para hablar con Mimo en manos libres.{' '}
-          {voiceMode.wakeAvailable
-            ? <>Si además activas <em>“{WAKE_PHRASE}”</em>, podrás abrir el modo voz sin tocar nada.</>
-            : <span className="text-[#A39A8E]">La activación por voz, sin tocar nada, llegará en cuanto se apruebe la cuenta de wake-word.</span>}
+          Mimo está en el botón flotante de cualquier pantalla. Toca el micro para hablarle, o activa
+          «Manos libres» para conversar sin tocar nada mientras cocinas.
         </p>
 
-        {/* Master toggle — voice mode (FAB) */}
-        <div className="mt-5 rounded-2xl bg-[#FFFEFA] border border-[#DDD6C5] p-4">
-          <button
-            type="button"
-            onClick={async () => {
-              const next = !voiceMode.enabled
+        <ToggleRow
+          title="Leer las respuestas en voz alta"
+          subtitle={mimo.speakReplies ? 'Activo · también cuando escribes' : 'Solo cuando le hablas'}
+          on={mimo.speakReplies}
+          onToggle={() => mimo.setSpeakReplies(!mimo.speakReplies)}
+          icon={<Mic size={16} />}
+        />
+
+        {mimo.voices.length > 1 && (
+          <label className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-[#DDD6C5] bg-[#FFFEFA] p-4">
+            <span className="text-[13px] font-medium text-[#1A1612]">Voz de Mimo</span>
+            <select
+              value={mimo.selectedVoice ?? ''}
+              onChange={(e) => mimo.previewVoice(e.target.value)}
+              className="rounded-full border border-[#DDD6C5] bg-[#F2EDE0] px-3 py-1.5 text-[12px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none"
+              aria-label="Voz de Mimo"
+            >
+              {mimo.voices.map((v) => (
+                <option key={v.key} value={v.key}>{v.name}</option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        {mimo.wakeWord.available ? (
+          <ToggleRow
+            title={`Escuchar «${mimo.wakeWord.phrase}»`}
+            subtitle={
+              !mimo.wakeWord.enabled
+                ? 'Desactivado · actívalo para abrir a Mimo sin tocar nada'
+                : mimo.wakeWord.listening
+                  ? `Escuchando «${mimo.wakeWord.phrase}»`
+                  : 'Iniciando…'
+            }
+            on={mimo.wakeWord.enabled}
+            onToggle={async () => {
+              const next = !mimo.wakeWord.enabled
               if (next) {
                 try {
-                  await navigator.mediaDevices.getUserMedia({ audio: true }).then(s => s.getTracks().forEach(t => t.stop()))
+                  await navigator.mediaDevices.getUserMedia({ audio: true }).then((st) => st.getTracks().forEach((t) => t.stop()))
                 } catch {
-                  alert('Necesito permiso de micrófono para activar el modo voz.')
+                  alert('Necesito permiso de micrófono para escucharte.')
                   return
                 }
               }
-              voiceMode.setEnabled(next)
+              mimo.wakeWord.setEnabled(next)
             }}
-            className="flex w-full items-center justify-between gap-3"
-            aria-pressed={voiceMode.enabled}
-          >
-            <div className="flex items-center gap-3 min-w-0">
-              <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${voiceMode.enabled ? 'bg-[#1A1612] text-white' : 'bg-[#F2EDE0] text-[#7A7066]'}`}>
-                <Mic size={16} />
-              </div>
-              <div className="text-left min-w-0">
-                <div className="text-[13px] font-medium text-[#1A1612]">Activar modo voz</div>
-                <div className="text-[11px] text-[#7A7066] truncate">
-                  {voiceMode.enabled ? 'Activo · botón flotante visible' : 'Desactivado'}
-                </div>
-              </div>
-            </div>
-            <span
-              className={`relative block h-6 w-11 shrink-0 rounded-full transition-colors ${voiceMode.enabled ? 'bg-[#1A1612]' : 'bg-[#DDD6C5]'}`}
-            >
-              <span
-                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-[left] duration-200 ${voiceMode.enabled ? 'left-[22px]' : 'left-0.5'}`}
-              />
-            </span>
-          </button>
-        </div>
-
-        {/* Sub-toggle — wake-word listener. Only meaningful when master is on AND Picovoice is configured. */}
-        {voiceMode.enabled && voiceMode.wakeAvailable && (
-          <div className="mt-3 rounded-2xl bg-[#FFFEFA] border border-[#DDD6C5] p-4">
-            <button
-              type="button"
-              onClick={() => voiceMode.setWakeWordEnabled(!voiceMode.wakeWordEnabled)}
-              className="flex w-full items-center justify-between gap-3"
-              aria-pressed={voiceMode.wakeWordEnabled}
-            >
-              <div className="flex items-center gap-3 min-w-0">
-                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[14px] ${voiceMode.wakeWordEnabled ? 'bg-[#2D6A4F] text-white' : 'bg-[#F2EDE0] text-[#7A7066]'}`}>
-                  〽
-                </div>
-                <div className="text-left min-w-0">
-                  <div className="text-[13px] font-medium text-[#1A1612]">Escuchar “{WAKE_PHRASE}”</div>
-                  <div className="text-[11px] text-[#7A7066] truncate">
-                    {!voiceMode.wakeWordEnabled
-                      ? 'Desactivado · activa para abrir el modo voz por voz'
-                      : (voiceMode.isWakeListening ? `Escuchando “${WAKE_PHRASE}”` : (voiceMode.wakeError ?? 'Iniciando…'))}
-                  </div>
-                </div>
-              </div>
-              <span
-                className={`relative block h-6 w-11 shrink-0 rounded-full transition-colors ${voiceMode.wakeWordEnabled ? 'bg-[#2D6A4F]' : 'bg-[#DDD6C5]'}`}
-              >
-                <span
-                  className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-[left] duration-200 ${voiceMode.wakeWordEnabled ? 'left-[22px]' : 'left-0.5'}`}
-                />
-              </span>
-            </button>
-          </div>
+            icon={<span className="text-[14px]">〽</span>}
+          />
+        ) : (
+          <p className="mt-3 text-[11px] text-[#A39A8E]">
+            Abrir a Mimo diciendo «Hola Mimo», sin tocar nada, llegará en cuanto esté entrenada la palabra de activación.
+          </p>
         )}
       </section>
-      )}
 
       {/* Capitulo 05 — Recordatorios */}
       <section className="px-5 mt-12">
@@ -1183,5 +1159,26 @@ function SexPill({
     >
       {children}
     </button>
+  )
+}
+
+function ToggleRow({ title, subtitle, on, onToggle, icon }: { title: string; subtitle: string; on: boolean; onToggle: () => void; icon: React.ReactNode }) {
+  return (
+    <div className="mt-3 rounded-2xl border border-[#DDD6C5] bg-[#FFFEFA] p-4">
+      <button type="button" onClick={onToggle} className="flex w-full items-center justify-between gap-3" aria-pressed={on}>
+        <div className="flex min-w-0 items-center gap-3">
+          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${on ? 'bg-[#1A1612] text-white' : 'bg-[#F2EDE0] text-[#7A7066]'}`}>
+            {icon}
+          </div>
+          <div className="min-w-0 text-left">
+            <div className="text-[13px] font-medium text-[#1A1612]">{title}</div>
+            <div className="truncate text-[11px] text-[#7A7066]">{subtitle}</div>
+          </div>
+        </div>
+        <span className={`relative block h-6 w-11 shrink-0 rounded-full transition-colors ${on ? 'bg-[#1A1612]' : 'bg-[#DDD6C5]'}`}>
+          <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-[left] duration-200 ${on ? 'left-[22px]' : 'left-0.5'}`} />
+        </span>
+      </button>
+    </div>
   )
 }

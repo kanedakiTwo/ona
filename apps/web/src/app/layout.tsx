@@ -10,7 +10,7 @@ import InstallSheet from "@/components/pwa/InstallSheet"
 import { ServiceWorkerRegistration } from "@/components/pwa/ServiceWorkerRegistration"
 import { PageTransition } from "@/components/pwa/PageTransition"
 import { SwipeNavigator } from "@/components/pwa/SwipeNavigator"
-import VoiceProvider from "@/components/voice/VoiceProvider"
+import MimoProvider from "@/components/mimo/MimoProvider"
 import DesktopSidebar from "@/components/shared/DesktopSidebar"
 import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
@@ -118,10 +118,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <PageTransition>{children}</PageTransition>
               </main>
             ) : (
-              <VoiceProvider>
+              <MimoProvider>
                 <OfflineBanner />
                 <DesktopSidebar />
-                <main className="standalone-pt mx-auto max-w-[430px] pb-[calc(5rem+var(--safe-bottom))] md:ml-[calc(var(--sidebar-width)+var(--sidebar-gap))] md:max-w-none md:mr-0 md:pb-0">
+                <main className="standalone-pt mx-auto max-w-[430px] pb-[calc(5rem+var(--safe-bottom))] md:ml-[calc(var(--sidebar-width)+var(--sidebar-gap))] md:max-w-none md:mr-0 md:pb-0 lg:pr-[var(--mimo-panel-width,0px)] lg:transition-[padding] lg:duration-300">
                   <SwipeNavigator>
                     <PageTransition>{children}</PageTransition>
                   </SwipeNavigator>
@@ -129,7 +129,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <Navbar />
                 <InstallSheet />
                 <HealthConsentGate />
-              </VoiceProvider>
+              </MimoProvider>
             )}
           </AuthProvider>
         </QueryClientProvider>

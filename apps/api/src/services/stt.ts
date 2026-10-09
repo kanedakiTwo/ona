@@ -3,7 +3,7 @@ import type { CostUnits } from '../config/pricing.js'
 import { recordCost } from './costLedger.js'
 
 /**
- * Speech-to-text for WhatsApp voice notes via OpenAI's transcription API
+ * Speech-to-text (WhatsApp voice notes and Mimo's voice in the app, `POST /stt`) via OpenAI's transcription API
  * (OPENAI_API_KEY is already set for the Realtime voice mode). Plain fetch +
  * FormData — the project has no OpenAI SDK and doesn't need one for one call.
  */
@@ -43,7 +43,7 @@ export function audioFileName(mimeType: string): string {
 export const TRANSCRIBE_PROMPT =
   'Nota de voz en español de España para Mimo, el asistente de cocina de Mimoia: menú de la semana, recetas, comida, cena, lista de la compra, despensa, lunes, martes, miércoles, jueves, viernes, sábado, domingo.'
 
-export async function transcribeAudio(audio: Buffer, mimeType: string): Promise<string> {
+export async function transcribeAudio(audio: Buffer, mimeType: string, opts: { feature?: string } = {}): Promise<string> {
   if (!env.OPENAI_API_KEY) throw new SttNotConfiguredError()
   const form = new FormData()
   form.append('file', new Blob([new Uint8Array(audio)], { type: mimeType.split(';')[0] }), audioFileName(mimeType))
@@ -62,9 +62,9 @@ export async function transcribeAudio(audio: Buffer, mimeType: string): Promise<
   if (!r.ok) {
     throw new Error(`OpenAI transcription ${r.status}: ${json?.error?.message ?? 'unknown error'}`)
   }
-  // Billed to the user of the current WhatsApp turn (cost-ledger context).
+  // Billed to the user of the current turn (cost-ledger context).
   recordCost({
-    feature: 'voice_note_transcription',
+    feature: opts.feature ?? 'voice_note_transcription',
     provider: 'openai',
     model: env.OPENAI_TRANSCRIBE_MODEL,
     units: transcriptionUnits(json?.usage),

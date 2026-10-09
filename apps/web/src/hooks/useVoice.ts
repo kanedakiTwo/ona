@@ -40,7 +40,7 @@ interface UseVoiceReturn {
   // TTS
   isSpeaking: boolean
   /** `voiceKey` overrides the selected voice (to preview one right after picking it). */
-  speak: (text: string, voiceKey?: string) => void
+  speak: (text: string, voiceKey?: string) => Promise<void>
   stopSpeaking: () => void
   ttsSupported: boolean
   /** 'elevenlabs' when the API reads replies aloud; 'browser' = the built-in voice. */
@@ -172,8 +172,8 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
 
   // ── Text-to-Speech ─────────────────────────
 
-  const speakWithBrowser = useCallback((text: string) => {
-    if (!ttsSupported || !synthRef.current) return
+  const speakWithBrowser = useCallback((text: string): Promise<void> => new Promise<void>((resolve) => {
+    if (!ttsSupported || !synthRef.current) return resolve()
 
     // Cancel any ongoing speech
     synthRef.current.cancel()
@@ -191,50 +191,59 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
     }
 
     utterance.onstart = () => setIsSpeaking(true)
-    utterance.onend = () => setIsSpeaking(false)
-    utterance.onerror = () => setIsSpeaking(false)
+    utterance.onend = () => { setIsSpeaking(false); resolve() }
+    utterance.onerror = () => { setIsSpeaking(false); resolve() }
 
     synthRef.current.speak(utterance)
-  }, [ttsSupported, lang])
+  }), [ttsSupported, lang])
 
   const stopAudio = useCallback(() => {
     const a = audioRef.current
     if (a) {
+      audioRef.current = null // before pause(): its onpause then settles the speak() promise
       a.pause()
       if (a.src.startsWith('blob:')) URL.revokeObjectURL(a.src)
-      audioRef.current = null
     }
   }, [])
 
   const speak = useCallback(
-    (text: string, voiceKey?: string) => {
+    (text: string, voiceKey?: string): Promise<void> => {
       if (!server.enabled) return speakWithBrowser(text)
       const seq = ++speakSeq.current
       stopAudio()
       synthRef.current?.cancel()
       setIsSpeaking(true)
-      api
-        .audio('/tts', { text, voice: voiceKey ?? selectedVoice ?? undefined })
-        .then((blob) => {
-          if (seq !== speakSeq.current) return // a newer reply took over
-          if (!blob) {
+      // Resolves when the reply has finished playing (or was stopped/failed),
+      // so a hands-free conversation can listen again right after.
+      return new Promise<void>((resolve) => {
+        api
+          .audio('/tts', { text, voice: voiceKey ?? selectedVoice ?? undefined })
+          .then((blob) => {
+            if (seq !== speakSeq.current) return resolve() // a newer reply took over
+            if (!blob) {
+              setIsSpeaking(false)
+              return resolve()
+            }
+            const audio = new Audio(URL.createObjectURL(blob))
+            audioRef.current = audio
+            const done = () => {
+              if (audioRef.current === audio) stopAudio()
+              setIsSpeaking(false)
+              resolve()
+            }
+            audio.onended = done
+            audio.onerror = done
+            audio.onpause = () => {
+              if (audio.ended || audioRef.current !== audio) resolve()
+            }
+            return audio.play().catch(done)
+          })
+          .catch(() => {
+            if (seq !== speakSeq.current) return resolve()
             setIsSpeaking(false)
-            return
-          }
-          const audio = new Audio(URL.createObjectURL(blob))
-          audioRef.current = audio
-          audio.onended = () => {
-            if (audioRef.current === audio) stopAudio()
-            setIsSpeaking(false)
-          }
-          audio.onerror = () => setIsSpeaking(false)
-          return audio.play()
-        })
-        .catch(() => {
-          if (seq !== speakSeq.current) return
-          setIsSpeaking(false)
-          speakWithBrowser(text)
-        })
+            speakWithBrowser(text).then(resolve)
+          })
+      })
     },
     [server.enabled, selectedVoice, speakWithBrowser, stopAudio],
   )

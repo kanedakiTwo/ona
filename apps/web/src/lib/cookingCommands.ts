@@ -3,9 +3,8 @@
  * outside the React tree (the cooking shell keeps step + timer state
  * locally for performance; this bridges the gap).
  *
- * Producers: voice mode (`useRealtimeSession` tool dispatcher) and the
- * text chat (`AdvisorChat`) when an assistant reply carries a
- * `uiHint: 'cooking_*'`.
+ * Producer: Mimo (`components/mimo/MimoProvider.tsx`), typed or spoken,
+ * when an assistant reply carries a `uiHint: 'cooking_*'`.
  *
  * Consumer: `CookingShell` subscribes on mount, unsubscribes on unmount.
  * If no shell is mounted (i.e. user not in `/recipes/:id/cook`), commands

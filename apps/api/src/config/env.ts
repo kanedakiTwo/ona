@@ -23,22 +23,7 @@ export const env = {
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
   OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
   /**
-   * Voice-mode model. `gpt-realtime` is switched off by OpenAI on 2027-01-20;
-   * the successor chosen is `gpt-realtime-2.1-mini` (D-015, PRO-05). Changing
-   * models is configuration only: staging runs the new one first.
-   */
-  OPENAI_REALTIME_MODEL: process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime',
-  /**
-   * Transcript of the user's side of a voice session (`audio.input.transcription`).
-   * `whisper-1` is switched off on 2027-02-26; successor `gpt-transcribe` (PRO-05).
-   */
-  OPENAI_REALTIME_TRANSCRIBE_MODEL: process.env.OPENAI_REALTIME_TRANSCRIBE_MODEL || 'whisper-1',
-  // 'coral' is the OpenAI Realtime preset that lands closest to a Castilian
-  // accent (vs. 'marin' which leans Latin-American). The system prompt also
-  // pushes for Spain Spanish on top — see systemPrompt.ts when mode='voice'.
-  OPENAI_REALTIME_VOICE: process.env.OPENAI_REALTIME_VOICE || 'coral',
-  /**
-   * Read-aloud voice for the chat (the speaker button), instead of the
+   * Mimo's voice (D-023): replies read aloud in the companion, instead of the
    * browser's built-in robotic one. Off unless the key and at least one voice
    * are set: then the web falls back to the browser voice. ELEVENLABS_VOICES
    * is "Name:voiceId,Name:voiceId" (first = default). Library voices need a
@@ -47,7 +32,6 @@ export const env = {
   ELEVENLABS_API_KEY: process.env.ELEVENLABS_API_KEY || '',
   ELEVENLABS_VOICES: process.env.ELEVENLABS_VOICES || '',
   ELEVENLABS_MODEL: process.env.ELEVENLABS_MODEL || 'eleven_multilingual_v2',
-  REALTIME_DAILY_MINUTES_PER_USER: parseInt(process.env.REALTIME_DAILY_MINUTES_PER_USER || '30', 10),
   USDA_FDC_API_KEY: process.env.USDA_FDC_API_KEY || '',
   /**
    * Comma-separated emails that get bumped to `role='admin'` automatically

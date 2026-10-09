@@ -4,13 +4,12 @@ import { usePathname } from "next/navigation"
 import { useAuth } from "@/lib/auth"
 import { haptic } from "@/lib/pwa/haptics"
 import { TransitionLink } from "@/components/pwa/TransitionLink"
-import { CalendarDays, ShoppingCart, BookOpen, MessageCircle, User } from "lucide-react"
+import { CalendarDays, ShoppingCart, BookOpen, User } from "lucide-react"
 
 const NAV_ITEMS = [
   { href: "/menu", label: "Menú", icon: CalendarDays },
   { href: "/shopping", label: "Compra", icon: ShoppingCart },
   { href: "/recipes", label: "Recetas", icon: BookOpen },
-  { href: "/advisor", label: "Asesor", icon: MessageCircle },
   { href: "/profile", label: "Perfil", icon: User },
 ]
 

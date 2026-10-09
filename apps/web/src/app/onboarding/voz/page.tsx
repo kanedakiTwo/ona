@@ -3,22 +3,29 @@
 /**
  * /onboarding/voz — guided fact-extraction over voice.
  *
- * Opens a Realtime session in 'onboarding' mode. The advisor walks the
- * user through every memory key in a natural conversation, calling
- * `update_memory` after each answer. When the assistant emits the closing
- * line "Listo, ya te conozco" we auto-redirect to /menu.
+ * Mimo's one brain (D-023): the Claude assistant in 'onboarding' mode walks
+ * the user through every memory key, calling `update_memory` after each
+ * answer. Each turn is recorded → `POST /stt` → `POST /assistant/:id/chat`
+ * (mode 'onboarding') → read aloud (`POST /tts`) → listen again. When the
+ * assistant says the closing line "Listo, ya te conozco" we go to /menu.
  *
  * Falls back to the manual `/profile/memoria` editor if voice isn't
  * configured / breaks.
  */
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { useQueryClient } from "@tanstack/react-query"
 import { ChevronLeft, Mic, MicOff, Loader2, Check } from "lucide-react"
 import { useAuth } from "@/lib/auth"
-import { useRealtimeSession } from "@/hooks/useRealtimeSession"
+import { api } from "@/lib/api"
+import { useRecorder, recorderSupported } from "@/hooks/useRecorder"
+import { useVoice } from "@/hooks/useVoice"
 import { useUserMemory } from "@/hooks/useUserMemory"
 import type { MemoryKey } from "@ona/shared"
+
+type Phase = "idle" | "thinking" | "speaking" | "listening" | "transcribing" | "done" | "error"
+type Turn = { role: "user" | "assistant"; content: string }
 
 const PROGRESS_KEYS: { key: MemoryKey; label: string }[] = [
   { key: "physical.age", label: "Edad" },
@@ -38,41 +45,75 @@ const DONE_PHRASE = "ya te conozco"
 
 export default function VoiceOnboardingPage() {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const { user } = useAuth()
   const userId = user?.id ?? ""
   const { data: memory } = useUserMemory()
-  const [started, setStarted] = useState(false)
-  const [doneAt, setDoneAt] = useState<number | null>(null)
-  const session = useRealtimeSession({ userId, mode: "onboarding" })
+  const recorder = useRecorder({ noSpeechMs: 15_000 })
+  const voice = useVoice({ lang: "es-ES" })
+  const [phase, setPhase] = useState<Phase>("idle")
+  const [error, setError] = useState<string | null>(null)
+  const [lastAssistant, setLastAssistant] = useState<string | null>(null)
+  const historyRef = useRef<Turn[]>([])
+  const stoppedRef = useRef(false)
 
-  // Listen for the closing line in the assistant's transcripts.
-  useEffect(() => {
-    if (doneAt) return
-    for (const turn of session.transcripts) {
-      if (
-        turn.role === "assistant" &&
-        turn.content.toLowerCase().includes(DONE_PHRASE)
-      ) {
-        setDoneAt(Date.now())
-        break
+  /** One exchange: the user's words (or the kickoff) → Mimo → spoken reply → listen again. */
+  const turn = useCallback(
+    async (text: string) => {
+      setPhase("thinking")
+      try {
+        const res = await api.post<{ message: string }>(`/assistant/${userId}/chat`, {
+          message: text,
+          history: historyRef.current.slice(-30),
+          mode: "onboarding",
+        })
+        const reply = res.message || ""
+        historyRef.current = [...historyRef.current, { role: "user", content: text }, { role: "assistant", content: reply }]
+        setLastAssistant(reply)
+        queryClient.invalidateQueries() // the checklist reads the memory Mimo just saved
+        if (stoppedRef.current) return
+        setPhase("speaking")
+        await voice.speak(reply)
+        if (reply.toLowerCase().includes(DONE_PHRASE)) {
+          setPhase("done")
+          setTimeout(() => router.push("/menu"), 1500)
+          return
+        }
+        if (stoppedRef.current) return
+        setPhase("listening")
+        const blob = await recorder.start()
+        if (stoppedRef.current) return
+        if (!blob) {
+          setPhase("idle")
+          return
+        }
+        setPhase("transcribing")
+        const form = new FormData()
+        form.append("audio", blob, blob.type.includes("mp4") ? "voz.m4a" : "voz.webm")
+        const { text: said } = await api.upload<{ text: string }>("/stt", form)
+        await turn(said?.trim() || "(no se ha entendido; repite la última pregunta)")
+      } catch (err: any) {
+        setError(err?.message || "Algo ha fallado.")
+        setPhase("error")
       }
-    }
-  }, [session.transcripts, doneAt])
+    },
+    [userId, voice, recorder, router, queryClient],
+  )
 
-  // Auto-redirect 2s after the closing line so the user can hear the goodbye
-  // and the memory cache invalidates in time.
-  useEffect(() => {
-    if (!doneAt) return
-    const t = setTimeout(() => router.push("/menu"), 2_000)
-    return () => clearTimeout(t)
-  }, [doneAt, router])
-
-  const lastAssistant = useMemo(() => {
-    for (let i = session.transcripts.length - 1; i >= 0; i--) {
-      if (session.transcripts[i].role === "assistant") return session.transcripts[i].content
-    }
-    return null
-  }, [session.transcripts])
+  const start = () => {
+    stoppedRef.current = false
+    setError(null)
+    void turn(historyRef.current.length ? "Sigamos donde lo dejamos." : "Hola, empecemos.")
+  }
+  const stop = () => {
+    stoppedRef.current = true
+    recorder.cancel()
+    voice.stopSpeaking()
+    setPhase("idle")
+  }
+  useEffect(() => () => {
+    stoppedRef.current = true
+  }, [])
 
   if (!userId) {
     return (
@@ -113,52 +154,50 @@ export default function VoiceOnboardingPage() {
 
         {/* Voice control */}
         <div className="mt-10 flex flex-col items-center">
-          {session.status === "idle" || session.status === "closed" ? (
+          {phase === "idle" || phase === "error" ? (
             <button
               type="button"
-              onClick={() => {
-                setStarted(true)
-                session.connect()
-              }}
-              className="flex h-24 w-24 items-center justify-center rounded-full bg-[#2D6A4F] text-[#FAF6EE] transition-transform active:scale-95"
+              onClick={start}
+              disabled={!recorderSupported()}
+              className="flex h-24 w-24 items-center justify-center rounded-full bg-[#2D6A4F] text-[#FAF6EE] transition-transform active:scale-95 disabled:opacity-40"
               aria-label="Empezar onboarding por voz"
             >
               <Mic size={36} />
             </button>
-          ) : session.status === "connecting" ? (
-            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[#F2EDE0] text-[#7A7066]">
+          ) : phase === "thinking" || phase === "transcribing" ? (
+            <button type="button" onClick={stop} className="flex h-24 w-24 items-center justify-center rounded-full bg-[#F2EDE0] text-[#7A7066]" aria-label="Parar">
               <Loader2 size={36} className="animate-spin" />
+            </button>
+          ) : phase === "done" ? (
+            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[#2D6A4F] text-[#FAF6EE]">
+              <Check size={36} />
             </div>
-          ) : session.status === "connected" ? (
+          ) : (
             <button
               type="button"
-              onClick={session.disconnect}
+              onClick={stop}
               className="flex h-24 w-24 items-center justify-center rounded-full bg-[#C65D38] text-[#FAF6EE] transition-transform active:scale-95"
-              aria-label="Terminar onboarding"
+              aria-label="Parar el onboarding"
             >
               <MicOff size={36} />
             </button>
-          ) : (
-            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[#F2EDE0] text-[#C65D38]">
-              <MicOff size={36} />
-            </div>
           )}
 
           <p className="mt-4 text-center text-[12px] uppercase tracking-[0.12em] text-[#7A7066]">
-            {session.status === "idle" && "Pulsa para empezar"}
-            {session.status === "connecting" && "Conectando…"}
-            {session.status === "connected" && (doneAt ? "Onboarding completo" : "Te escucho")}
-            {session.status === "error" && "Error en la sesión"}
-            {session.status === "closed" && (doneAt ? "Onboarding completo" : "Sesión cerrada")}
+            {phase === "idle" && (historyRef.current.length ? "Pulsa para seguir" : "Pulsa para empezar")}
+            {phase === "thinking" && "Pensando…"}
+            {phase === "speaking" && "Mimo habla"}
+            {phase === "listening" && "Te escucho"}
+            {phase === "transcribing" && "Un momento…"}
+            {phase === "done" && "Onboarding completo"}
+            {phase === "error" && "Algo ha fallado"}
           </p>
+          {!recorderSupported() && (
+            <p className="mt-2 max-w-xs text-center text-[11px] italic text-[#C65D38]">Este navegador no puede grabar audio.</p>
+          )}
+          {error ? <p className="mt-2 max-w-xs text-center text-[11px] italic text-[#C65D38]">{error}</p> : null}
 
-          {session.error ? (
-            <p className="mt-2 max-w-xs text-center text-[11px] italic text-[#C65D38]">
-              {session.error}
-            </p>
-          ) : null}
-
-          {lastAssistant && started ? (
+          {lastAssistant ? (
             <p className="mt-6 max-w-xs text-center text-[14px] font-italic italic leading-relaxed text-[#1A1612]">
               «{lastAssistant}»
             </p>
@@ -190,7 +229,7 @@ export default function VoiceOnboardingPage() {
           </ul>
         </div>
 
-        {doneAt ? (
+        {phase === "done" ? (
           <p className="mt-8 text-center text-[12px] italic text-[#7A7066]">
             Llevándote al menú…
           </p>

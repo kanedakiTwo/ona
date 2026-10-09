@@ -4,7 +4,7 @@ import { type ReactNode, useEffect, useRef } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { motion, useMotionValue, animate, type PanInfo } from "motion/react"
 
-const NAV_ORDER = ["/menu", "/shopping", "/recipes", "/advisor", "/profile"]
+const NAV_ORDER = ["/menu", "/shopping", "/recipes", "/profile"]
 
 interface Props {
   children: ReactNode

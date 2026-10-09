@@ -4,13 +4,12 @@ import { usePathname } from "next/navigation"
 import { useAuth } from "@/lib/auth"
 import { haptic } from "@/lib/pwa/haptics"
 import { TransitionLink } from "@/components/pwa/TransitionLink"
-import { CalendarDays, ShoppingCart, BookOpen, MessageCircle, User } from "lucide-react"
+import { CalendarDays, ShoppingCart, BookOpen, User } from "lucide-react"
 
 const NAV_ITEMS: { href: string; label: string; icon: typeof CalendarDays; also?: string[] }[] = [
   { href: "/menu", label: "Menú", icon: CalendarDays },
   { href: "/shopping", label: "Compra", icon: ShoppingCart, also: ["/compra"] },
   { href: "/recipes", label: "Recetas", icon: BookOpen },
-  { href: "/advisor", label: "Asesor", icon: MessageCircle },
   { href: "/profile", label: "Perfil", icon: User },
 ]
 
@@ -25,7 +24,7 @@ const HIDDEN_ON: RegExp[] = [
 
 /**
  * Mobile bottom tab bar (< md): fixed, full width, paper with a top border,
- * five tabs with icon + visible label. The active tab is ink with a heavier
+ * four tabs (Mimo is the floating button, D-023) with icon + visible label. The active tab is ink with a heavier
  * stroke. Its 60 px (+ safe-area inset) fit the `pb-20` + safe-area reserve
  * that the app `<main>` keeps (app/layout.tsx).
  */
@@ -41,7 +40,7 @@ export default function Navbar() {
       aria-label="Navegación principal"
       className="fixed inset-x-0 bottom-0 z-50 border-t border-border-soft bg-paper pb-[var(--safe-bottom)] md:hidden"
     >
-      <ul className="mx-auto grid h-[60px] max-w-[560px] grid-cols-5">
+      <ul className="mx-auto grid h-[60px] max-w-[560px] grid-cols-4">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon
           const isActive = [item.href, ...(item.also ?? [])].some((p) => pathname?.startsWith(p))

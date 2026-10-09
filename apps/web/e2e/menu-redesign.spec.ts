@@ -90,9 +90,11 @@ test("today's first meal is the hero; meal and week actions live in sheets; the 
 
   // Bottom tab bar: visible text labels, active tab marked.
   const nav = page.getByRole('navigation', { name: 'Navegación principal' })
-  for (const label of ['Menú', 'Compra', 'Recetas', 'Asesor', 'Perfil']) {
+  for (const label of ['Menú', 'Compra', 'Recetas', 'Perfil']) {
     await expect(nav.getByText(label, { exact: true })).toBeVisible()
   }
+  // Mimo is the floating button, not a tab (D-023).
+  await expect(nav.getByText('Asesor', { exact: true })).toHaveCount(0)
   await expect(nav.getByRole('link', { name: 'Menú' })).toHaveAttribute('aria-current', 'page')
 })
 

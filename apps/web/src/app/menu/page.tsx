@@ -44,7 +44,6 @@ import { haptic } from "@/lib/pwa/haptics"
 import { recordMenuVisit } from "@/lib/pwa/installPrompt"
 import { share } from "@/lib/pwa/share"
 import { dateOfDay, dayHeading, missingMeals, orderedSlots, splitDay, weekHasDishes, weekRangeLabel, weekdayName, type MealKey } from "@/lib/menuDay"
-import { useVoiceMode } from "@/components/voice/VoiceProvider"
 import { WeekGridView } from "@/components/menu/WeekGridView"
 import { WeekStrip } from "@/components/menu/WeekStrip"
 import { PantryMatchCard } from "@/components/menu/PantryMatchCard"
@@ -123,7 +122,6 @@ export default function MenuPage() {
   const { user, isLoading: authLoading } = useAuth()
   const router = useRouter()
   const isDesktop = useIsDesktop()
-  const { enabled: voiceOn } = useVoiceMode()
 
   // Initial week from `?week=YYYY-MM-DD` (shareable / back-forward-able).
   // Avoids `useSearchParams`: it forces a Suspense boundary at build time
@@ -531,7 +529,7 @@ export default function MenuPage() {
   /* ── Desktop (lg+) ─────────────────────────── */
   if (isDesktop) {
     const header = (
-      <div className={`flex flex-wrap items-end justify-between gap-4 ${voiceOn ? "pr-12" : ""}`}>
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-1">
           {eyebrow}
           {h1}
@@ -619,7 +617,7 @@ export default function MenuPage() {
 
   return (
     <div className="min-h-screen bg-cream pb-6">
-      <header className={`flex items-center justify-between gap-2 px-5 pt-3 ${voiceOn ? "pr-16" : ""}`}>
+      <header className="flex items-center justify-between gap-2 px-5 pt-3">
         <div className="flex min-w-0 flex-col gap-0.5">
           {eyebrow}
           {h1}

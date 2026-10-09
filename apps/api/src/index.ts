@@ -18,8 +18,8 @@ import menuRoutes from './routes/menus.js'
 import shoppingRoutes from './routes/shopping.js'
 import advisorRoutes from './routes/advisor.js'
 import assistantRoutes from './routes/assistant.js'
-import realtimeRoutes from './routes/realtime.js'
 import ttsRoutes from './routes/tts.js'
+import sttRoutes from './routes/stt.js'
 import adminRoutes from './routes/admin.js'
 import unitsRouter from './routes/units.js'
 import memoryRoutes from './routes/memory.js'
@@ -136,7 +136,7 @@ app.use(shoppingRoutes)
 app.use(advisorRoutes)
 app.use(assistantRoutes)
 app.use(ttsRoutes)
-app.use(realtimeRoutes)
+app.use(sttRoutes)
 app.use(adminRoutes)
 app.use('/', unitsRouter)
 app.use(memoryRoutes)

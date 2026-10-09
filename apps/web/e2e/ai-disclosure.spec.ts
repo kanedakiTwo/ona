@@ -13,7 +13,7 @@ test.beforeEach(async ({ page }) => {
   if (page.url().includes('/onboarding')) await completeOnboarding(page)
 })
 
-test('the advisor chat discloses it is an AI before and during the conversation', async ({ page }) => {
+test('Mimo discloses it is an AI before and during the conversation', async ({ page }) => {
   // The assistant reply is mocked: this spec is about the disclosure, not the LLM.
   await page.route('**/assistant/*/chat', (route) =>
     route.fulfill({
@@ -23,13 +23,15 @@ test('the advisor chat discloses it is an AI before and during the conversation'
     }),
   )
 
-  await page.goto('/advisor')
+  // Mimo is the floating companion on every page (D-023).
+  await page.goto('/menu')
+  await page.getByTestId('mimo-button').click()
   const disclosure = page.getByTestId('ai-disclosure')
   await expect(disclosure).toBeVisible({ timeout: 10_000 })
   await expect(disclosure).toContainText(/inteligencia artificial/i)
   // The assistant is Mimo (rename 2026-10-08), never the old "Ona".
   await expect(disclosure).toContainText('Mimo es un asistente de inteligencia artificial (IA)')
-  await expect(page.getByText('Soy Mimo, tu asistente de IA. Escribe o habla.')).toBeVisible()
+  await expect(page.getByTestId('mimo-panel').getByText(/^Soy Mimo\./)).toBeVisible()
   await expect(page.getByText(/\bOna\b/)).toHaveCount(0)
 
   await page.getByRole('button', { name: /qu[ée] toca cocinar hoy/i }).click()

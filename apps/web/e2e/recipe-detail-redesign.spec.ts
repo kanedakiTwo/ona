@@ -49,7 +49,8 @@ test('recipe detail: tabs, sticky cook bar, no tab bar, min-servings under Notas
   // native link drag instead of a pan, on any page.
   const count = await page.getByText(/^\d+ recetas?$/).first().boundingBox()
   await swipeLeft(page, count!.y + count!.height / 2)
-  await expect(page).toHaveURL(/\/advisor/, { timeout: 10_000 })
+  // Recetas → Perfil: Mimo is no longer a tab (D-023).
+  await expect(page).toHaveURL(/\/profile/, { timeout: 10_000 })
 
   const recipe = await recipeWithSteps(page)
   await page.goto(`/recipes/${recipe.id}`)

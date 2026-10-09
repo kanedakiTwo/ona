@@ -12,7 +12,6 @@ vi.mock('../db/connection.js', () => ({ db: {}, pool: {} }))
 
 import { spendCapStatus } from '../services/spendCap.js'
 import { requireSpendCapacity } from '../middleware/spendCap.js'
-import { checkQuota } from '../services/realtime/quota.js'
 
 const spent = (eur: number) => async () => eur
 
@@ -67,8 +66,8 @@ describe('every route that pays a provider checks the cap', () => {
     ['ingredients.ts', "'/ingredients/auto-create'"],
     ['ingredients.ts', "'/ingredients/estimate-nutrition'"],
     ['assistant.ts', "'/assistant/:userId/chat'"],
-    ['realtime.ts', "'/realtime/:userId/session'"],
-    ['realtime.ts', "'/realtime/:userId/tool'"],
+    ['stt.ts', "'/stt'"],
+    ['tts.ts', "'/tts'"],
     ['shopOrders.ts', "'/shop-orders/:id/quote'"],
   ])('%s %s', (file, route) => {
     const src = read(file)
@@ -77,13 +76,5 @@ describe('every route that pays a provider checks the cap', () => {
     // The middleware list sits between the path and the handler.
     const decl = src.slice(at, src.indexOf('async (req', at))
     expect(decl).toContain('requireSpendCapacity()')
-  })
-})
-
-describe('realtime daily quota (from the ledger, survives deploys)', () => {
-  const fakeDb = (minutes: number) => ({ execute: async () => ({ rows: [{ minutes }] }) })
-  it('blocks once today\'s reported minutes reach the limit', async () => {
-    expect(await checkQuota('u', { db: fakeDb(12), limitMinutes: 30 })).toEqual({ ok: true })
-    expect(await checkQuota('u', { db: fakeDb(30.4), limitMinutes: 30 })).toEqual({ ok: false, usedMinutes: 30, limitMinutes: 30 })
   })
 })

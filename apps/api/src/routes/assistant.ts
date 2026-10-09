@@ -5,6 +5,14 @@ import { chat } from '../services/assistant/engine.js'
 import type { ChatMessage } from '../services/assistant/types.js'
 import { checkAdvisorBudget, recordAdvisorUsage } from '../services/advisorBudget.js'
 import { requireSpendCapacity } from '../middleware/spendCap.js'
+import { eq } from 'drizzle-orm'
+import { recipes } from '../db/schema.js'
+import { describePage, pageContextNote, withPageContext } from '../services/assistant/pageContext.js'
+import { canViewRecipe } from '../services/recipeVisibility.js'
+import type { AssistantMode } from '../services/assistant/systemPrompt.js'
+
+/** Web modes: the companion's chat and voice, and the voice onboarding. WhatsApp has its own route. */
+const WEB_MODES: AssistantMode[] = ['text', 'voice', 'onboarding']
 
 const router = Router()
 
@@ -24,6 +32,8 @@ router.post('/assistant/:userId/chat', requireSpendCapacity(), async (req: AuthR
     }
 
     const { message, history } = req.body
+    const mode: AssistantMode = WEB_MODES.includes(req.body?.mode) ? req.body.mode : 'text'
+    const path = typeof req.body?.context?.path === 'string' ? req.body.context.path.slice(0, 200) : null
 
     if (!message || typeof message !== 'string') {
       res.status(400).json({ error: 'Message is required' })
@@ -44,7 +54,17 @@ router.post('/assistant/:userId/chat', requireSpendCapacity(), async (req: AuthR
 
     const chatHistory: ChatMessage[] = Array.isArray(history) ? history : []
 
-    const { usage, ...response } = await chat(userId, message, chatHistory, db)
+    // Floating companion (D-023): what the user is looking at travels with the message.
+    const page = describePage(path)
+    let recipeName: string | null = null
+    if (page.recipeId) {
+      const [r] = await db.select({ name: recipes.name, authorId: recipes.authorId }).from(recipes).where(eq(recipes.id, page.recipeId)).limit(1)
+      // Only recipes this user may see: someone else's private recipe stays unnamed.
+      recipeName = r && (await canViewRecipe(userId, r.authorId)) ? r.name : null
+    }
+    const modelMessage = mode === 'onboarding' ? message : withPageContext(message, pageContextNote(page, recipeName))
+
+    const { usage, ...response } = await chat(userId, modelMessage, chatHistory, db, { mode })
 
     // Meter this turn's real token cost against the monthly budget. Awaited so
     // the next request sees the updated total, but a metering failure must not

@@ -37,6 +37,54 @@ export function parseVoices(raw: string): TtsVoice[] {
   return out
 }
 
+/** Abbreviation after a number → [singular, plural] said in full. */
+const UNITS: Array<[RegExp, string, string]> = [
+  [/^(?:min|mins)$/, 'minuto', 'minutos'],
+  [/^(?:h|hr|hrs)$/, 'hora', 'horas'],
+  [/^(?:seg|segs)$/, 'segundo', 'segundos'],
+  [/^kg$/, 'kilo', 'kilos'],
+  [/^(?:g|gr|grs)$/, 'gramo', 'gramos'],
+  [/^mg$/, 'miligramo', 'miligramos'],
+  [/^ml$/, 'mililitro', 'mililitros'],
+  [/^cl$/, 'centilitro', 'centilitros'],
+  [/^l$/i, 'litro', 'litros'],
+  [/^(?:cda|cdas)$/, 'cucharada', 'cucharadas'],
+  [/^(?:cdta|cdtas|cdita|cditas)$/, 'cucharadita', 'cucharaditas'],
+  [/^(?:u|ud|uds)$/, 'unidad', 'unidades'],
+  [/^kcal$/, 'kilocaloría', 'kilocalorías'],
+  [/^(?:°c|ºc|°|º)$/i, 'grado', 'grados'],
+  [/^€$/, 'euro', 'euros'],
+]
+const NUM = String.raw`\d+(?:[.,]\d+)?`
+const UNIT_RE = new RegExp(
+  String.raw`(${NUM})(?:\s?[-–]\s?(${NUM}))?\s?(min|mins|hrs|hr|h|segs|seg|kg|mg|ml|cl|grs|gr|g|l|L|cdas|cda|cditas|cdita|cdtas|cdta|uds|ud|u|kcal|[°º]\s?C|[°º]|€)(?![\p{L}\d])`,
+  'gu',
+)
+
+/**
+ * Pure: abbreviations read in full (Miguel, 2026-10-09: the voice said
+ * «min», «g» letter by letter). "10-15 min" → "de 10 a 15 minutos",
+ * "1 cda" → "1 cucharada", "180 °C" → "180 grados", "4,99 €" → "4,99 euros".
+ */
+export function spokenUnits(text: string): string {
+  let t = text.replace(UNIT_RE, (whole, a: string, b: string | undefined, unit: string, offset: number, all: string) => {
+    const u = unit.replace(/\s/g, '')
+    // "7 u 8 minutos": that «u» is the conjunction, not «unidades».
+    if (u === 'u' && /^\s*\d/.test(all.slice(offset + whole.length))) return whole
+    const hit = UNITS.find(([re]) => re.test(u))
+    if (!hit) return whole
+    const one = !b && /^1(?:[.,]0+)?$/.test(a)
+    const word = one ? hit[1] : hit[2]
+    return b ? `de ${a} a ${b} ${word}` : `${a} ${word}`
+  })
+  t = t
+    .replace(/(\d)\s?%/g, '$1 por ciento')
+    .replace(/\bp\.\s?ej\./gi, 'por ejemplo')
+    .replace(/\b([Aa])prox\.(?=\s|$)/g, (_m, a: string) => (a === 'A' ? 'Aproximadamente' : 'aproximadamente'))
+    .replace(/\betc\./g, 'etcétera')
+  return t
+}
+
 /**
  * Pure: chat Markdown → what should be said. Drops links' URLs, code, list
  * markers, emphasis and emoji; keeps the words. Cuts at MAX_TTS_CHARS on a
@@ -57,6 +105,7 @@ export function speakableText(md: string): string {
     .replace(/ +([.,;:!?])/g, '$1')
     .replace(/\n{2,}/g, '\n')
     .trim()
+  t = spokenUnits(t)
   if (t.length > MAX_TTS_CHARS) {
     const cut = t.slice(0, MAX_TTS_CHARS)
     const end = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('.\n'), cut.lastIndexOf('? '), cut.lastIndexOf('! '))

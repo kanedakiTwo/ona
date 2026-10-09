@@ -3,7 +3,7 @@
  * what gets said, and the upstream call + cost.
  */
 import { describe, it, expect, vi } from 'vitest'
-import { parseVoices, speakableText, synthesize, MAX_TTS_CHARS, TtsError } from '../services/tts.js'
+import { parseVoices, speakableText, spokenUnits, synthesize, MAX_TTS_CHARS, TtsError } from '../services/tts.js'
 import { computeCostMicros } from '../config/pricing.js'
 import { setCostSinkForTests } from '../services/costLedger.js'
 
@@ -58,5 +58,36 @@ describe('synthesize', () => {
 describe('pricing', () => {
   it('prices TTS per 1,000 characters', () => {
     expect(computeCostMicros('elevenlabs', 'eleven_multilingual_v2', { chars: 1000 }, { eurPerUsd: 1, table: { 'elevenlabs/eleven_multilingual_v2': { currency: 'USD', perKChars: 0.2 } } })).toBe(200_000)
+  })
+})
+
+describe('spokenUnits (abbreviations read in full)', () => {
+  it.each([
+    ['Hornea 10 min a 180 °C.', 'Hornea 10 minutos a 180 grados.'],
+    ['Deja reposar 1 min.', 'Deja reposar 1 minuto.'],
+    ['Cuece 10-15 min.', 'Cuece de 10 a 15 minutos.'],
+    ['Añade 200 g de arroz y 1 kg de patatas.', 'Añade 200 gramos de arroz y 1 kilo de patatas.'],
+    ['Pon 250 ml de leche y 1,5 l de agua.', 'Pon 250 mililitros de leche y 1,5 litros de agua.'],
+    ['2 cdas de aceite y 1 cdita de sal.', '2 cucharadas de aceite y 1 cucharadita de sal.'],
+    ['1 cda de miel.', '1 cucharada de miel.'],
+    ['3 uds de huevo.', '3 unidades de huevo.'],
+    ['Tarda 1 h y 20 min.', 'Tarda 1 hora y 20 minutos.'],
+    ['Unas 450 kcal por ración.', 'Unas 450 kilocalorías por ración.'],
+    ['Cuesta 4,99 €.', 'Cuesta 4,99 euros.'],
+    ['Aprox. 30 min.', 'Aproximadamente 30 minutos.'],
+    ['Sin gluten, p. ej. con arroz.', 'Sin gluten, por ejemplo con arroz.'],
+    ['El 20 % de la grasa.', 'El 20 por ciento de la grasa.'],
+    ['Unos 7 u 8 min.', 'Unos 7 u 8 minutos.'],
+    ['Ya lleva 20 minutos y 1 hora.', 'Ya lleva 20 minutos y 1 hora.'],
+  ])('%s', (input, expected) => {
+    expect(spokenUnits(input)).toBe(expected)
+  })
+
+  it('leaves words that only look like units alone', () => {
+    expect(spokenUnits('Mínimo g de gracia, hola Mimo')).toBe('Mínimo g de gracia, hola Mimo')
+  })
+
+  it('is applied by speakableText', () => {
+    expect(speakableText('**Hornea** 25 min')).toBe('Hornea 25 minutos')
   })
 })

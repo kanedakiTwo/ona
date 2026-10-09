@@ -190,9 +190,10 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 - [ ] **MIG-08 · Activar «Hola Mimo» para hablar sin tocar** — Hoy la palabra de activación sigue siendo «Hola Ona» y no está activa en producción.
   - Cómo: en console.picovoice.ai, saca una clave de acceso y entrena la palabra «Hola Mimo» (español, Porcupine WASM). Pásale a Claude la clave y el fichero `.ppn`; él los pone en Railway (`NEXT_PUBLIC_PICOVOICE_ACCESS_KEY`) y cambia `WAKE_PHRASE`.
 
-- [ ] **MIG-15 · Poner la cuchara en tus perfiles** — La app, el favicon y el botón de Mimo ya llevan el imagotipo (la cuchara con el corazón, elegido el 9 de octubre); faltan los perfiles, que solo puedes cambiar tú.
-  - Cómo: descarga la foto de perfil y el banner de LinkedIn de la guía de marca (enlace en el panel → Marketing). Sube la foto a Instagram @conmimoia y a WhatsApp Manager → Perfil del número de Mimo, y el banner a la página de LinkedIn.
-  - Hecho cuando: los tres perfiles muestran la cuchara.
+- [ ] **MIG-15 · Poner la cuchara en tus perfiles** — La app, el favicon y el botón de Mimo ya llevan el imagotipo (la cuchara con el corazón, elegido el 9 de octubre); faltan las redes, que solo puedes cambiar tú.
+  - Cómo: al crear o editar cada cuenta (@conmimoia), abre la guía de marca (panel → «Lo esencial» → Marketing) → sección «Redes sociales»: para cada red está la foto de perfil y la portada al tamaño exacto, con su enlace de descarga. Súbelas tal cual.
+  - Redes: Instagram, TikTok, Facebook, YouTube, el canal de WhatsApp y el número de Mimo (WhatsApp Manager → Perfil), LinkedIn (tu fondo de perfil y, si creas la página de empresa, su logo y portada).
+  - Hecho cuando: todas las cuentas creadas muestran la cuchara.
 
 - [ ] **MIG-10 · Probar en tu móvil lo que no se puede probar solo** — Hay cosas que solo se ven en un teléfono de verdad.
   - Instalar la app en Android (Chrome) y en iPhone (Safari): que se abra a pantalla completa, con el color crema y respetando la barra de estado.

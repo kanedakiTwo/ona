@@ -295,6 +295,13 @@
       "when": 1791504077517,
       "tag": "0041_waitlist_founder_pricing",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1791505274441,
+      "tag": "0042_invite_campaigns",
+      "breakpoints": true
     }
   ]
 }

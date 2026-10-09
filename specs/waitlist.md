@@ -35,7 +35,7 @@ The public waitlist that comes before the launch. The product launches publicly 
   - `definitions`.
   - It never includes an email, name or supermarket.
 - **Admins** (JWT only, not the token) mark a batch invited with `POST /admin/waitlist/invite { ids, batch? }`, which uses the next batch number when omitted. Only `waiting` entries change. The response is the one place emails leave the DB: email, name, platform, wantsWhatsapp, `statusUrl`, `unsubscribeUrl`, so Miguel can write the invitations. It is audited as `waitlist.invite` (ids, never emails).
-- Registering (`POST /register`) with an email that's on the list marks that entry `joined` (waiting or invited; never blocks registration).
+- During the closed beta (`REGISTRATION_MODE=invite`, PRO-27) an email with status `invited` is one of the ways in: `POST /register` accepts it without a campaign link (see [Auth](./auth.md) → Closed beta). Registering with an email that's on the list marks that entry `joined` (waiting or invited).
 - `GET /admin/metrics` carries a small `waitlist` block (see [metrics](./metrics.md)).
 
 ## Who gets in first (`suggestNextBatch`)

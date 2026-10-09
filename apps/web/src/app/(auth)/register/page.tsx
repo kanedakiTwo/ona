@@ -3,7 +3,8 @@
 import { useState, type FormEvent } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { nextFromLocation, useNextSuffix } from "@/lib/safeNext"
+import { campaignCodeFromLocation, householdInviteTokenFromNext, nextFromLocation, useNextSuffix } from "@/lib/safeNext"
+import { ApiError } from "@/lib/api"
 import { motion } from "motion/react"
 import { ArrowRight, ArrowLeft } from "lucide-react"
 import { useAuth } from "@/lib/auth"
@@ -20,16 +21,27 @@ export default function RegisterPage() {
   const [ageConfirmed, setAgeConfirmed] = useState(false)
   const nextSuffix = useNextSuffix()
   const [error, setError] = useState<string | null>(null)
+  // Closed beta (PRO-27): no invitation → point to the waitlist.
+  const [closedBeta, setClosedBeta] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
+    setClosedBeta(false)
     setIsSubmitting(true)
     try {
-      await register(username, email, password, ageConfirmed)
-      router.push(nextFromLocation() ?? "/onboarding")
+      const next = nextFromLocation()
+      await register(username, email, password, ageConfirmed, {
+        inviteCode: campaignCodeFromLocation(),
+        householdInviteToken: householdInviteTokenFromNext(next),
+      })
+      router.push(next ?? "/onboarding")
     } catch (err) {
+      if (err instanceof ApiError && err.code === "REGISTRATION_INVITE_REQUIRED") {
+        setClosedBeta(true)
+        return
+      }
       setError(err instanceof Error ? err.message : "Error al registrarse")
     } finally {
       setIsSubmitting(false)
@@ -109,6 +121,22 @@ export default function RegisterPage() {
             </p>
 
             <form onSubmit={handleSubmit} className="mt-10 space-y-7">
+              {closedBeta && (
+                <div
+                  role="alert"
+                  data-testid="closed-beta"
+                  className="rounded-xl border border-[#DDD6C5] bg-[#FFFEFA] px-4 py-4 text-[13px] text-[#1A1612]"
+                >
+                  <p className="font-semibold">Mimoia está en beta cerrada</p>
+                  <p className="mt-1 text-[#4A4239]">
+                    De momento solo se entra con invitación. Apúntate a la lista de espera y te avisamos cuando le
+                    toque a tu tanda.
+                  </p>
+                  <Link href="/#lista-de-espera" className="mt-2 inline-block font-medium underline underline-offset-4">
+                    Apuntarme a la lista de espera
+                  </Link>
+                </div>
+              )}
               {error && (
                 <motion.div
                   initial={{ opacity: 0, y: -8 }}

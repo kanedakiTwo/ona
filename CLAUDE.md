@@ -159,6 +159,8 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 
 ### Pending
 
+- [ ] **Beta cerrada (PRO-27) — el día D**: producción va con `REGISTRATION_MODE=invite` (por defecto): solo entra quien trae un enlace de campaña (`/admin` → Invitaciones), un email invitado de la lista de espera, una invitación de hogar o un email de `ADMIN_EMAILS`. El 12-ene, pon `REGISTRATION_MODE=open` en `ona-api` de producción para abrir el registro. Staging ya va en `open`.
+
 - [ ] **Marca Mimoia — registrarla bien** (decidido seguir con Mimoia el 2026-10-08; detalle en [reports/A tu gusto y Apapacho como marca.md](./reports/A%20tu%20gusto%20y%20Apapacho%20como%20marca.md) y `research_notes/A tu gusto y Apapacho como marca/marcas_mimoia.md`): nadie tiene MIMOIA, pero "MIMO" pesa y Starship Technologies la tiene para apps de pedido/entrega de comida (EUTM 016775306, EE. UU., México), además de Mimo GmbH y Xiaomi. Encargar a un agente de la propiedad industrial (1) una investigación de uso de MIMO por Starship en UE/EE. UU./México y (2) la solicitud de MIMOIA en EUIPO acotada a clases 9 y 42 (software de menús, recetas y asistente de cocina), sin 39/43. Hecho = solicitud presentada con número.
 
 - [ ] **Lista de espera (Mimoia) — abre el lunes 13 oct** (plan de validación D-020 de ONA HQ; [specs/waitlist.md](./specs/waitlist.md)). Ya hecho: copy aprobado por Miguel (2026-10-08), `NEXT_PUBLIC_SUPPORT_EMAIL=hola@mimoia.com`, `WEB_PUBLIC_URL=https://mimoia.com`. Queda:

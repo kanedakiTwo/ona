@@ -30,7 +30,13 @@ interface AuthState {
   user: User | null
   isLoading: boolean
   login: (username: string, password: string) => Promise<void>
-  register: (username: string, email: string, password: string, ageConfirmed: boolean) => Promise<void>
+  register: (
+    username: string,
+    email: string,
+    password: string,
+    ageConfirmed: boolean,
+    invite?: { inviteCode?: string; householdInviteToken?: string },
+  ) => Promise<void>
   logout: () => void
   updateUser: (updates: Partial<User>) => void
 }
@@ -77,12 +83,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const register = useCallback(
-    async (username: string, email: string, password: string, ageConfirmed: boolean) => {
+    async (
+      username: string,
+      email: string,
+      password: string,
+      ageConfirmed: boolean,
+      invite?: { inviteCode?: string; householdInviteToken?: string },
+    ) => {
       const data = await api.post<AuthResponse>("/register", {
         username,
         email,
         password,
         ageConfirmed,
+        ...invite,
       })
       await clearSessionData()
       localStorage.setItem("ona_token", data.token)

@@ -7,6 +7,14 @@ import { db } from '../db/connection.js'
 import { users } from '../db/schema.js'
 import { validate } from '../middleware/validate.js'
 import { registerSchema, loginSchema } from '@ona/shared'
+import {
+  REGISTRATION_INVITE_REQUIRED,
+  consumeCampaignUse,
+  findUsableCampaign,
+  isHouseholdInviteUsable,
+  isWaitlistInvited,
+  registrationAccess,
+} from '../services/inviteCampaigns.js'
 import { env } from '../config/env.js'
 import { consumeToken } from '../services/passwordReset.js'
 import { rateLimit } from '../middleware/rateLimit.js'
@@ -34,7 +42,7 @@ const loginLimiter = rateLimit({
 // POST /register
 router.post('/register', registerLimiter, validate(registerSchema), async (req, res) => {
   try {
-    const { username, email, password } = req.body
+    const { username, email, password, inviteCode, householdInviteToken } = req.body
 
     // Check username/email unique
     const existing = await db
@@ -48,11 +56,33 @@ router.post('/register', registerLimiter, validate(registerSchema), async (req, 
       return
     }
 
+    // Closed beta (PRO-27): only with an invitation unless REGISTRATION_MODE=open.
+    // A valid campaign link is recorded on the account in either mode.
+    const campaign = await findUsableCampaign(inviteCode)
+    const access = registrationAccess({
+      mode: env.REGISTRATION_MODE,
+      isAdminEmail: env.ADMIN_EMAILS.includes(String(email).trim().toLowerCase()),
+      campaignOk: campaign != null,
+      waitlistInvited: env.REGISTRATION_MODE === 'invite' && !campaign ? await isWaitlistInvited(email) : false,
+      householdInviteOk:
+        env.REGISTRATION_MODE === 'invite' && !campaign ? await isHouseholdInviteUsable(householdInviteToken) : false,
+    })
+    if (!access) {
+      res.status(403).json(REGISTRATION_INVITE_REQUIRED)
+      return
+    }
+    // Take the use now; if it ran out meanwhile, the link no longer lets you in.
+    const campaignId = campaign && (await consumeCampaignUse(campaign.id)) ? campaign.id : null
+    if (access === 'campaign' && !campaignId) {
+      res.status(403).json(REGISTRATION_INVITE_REQUIRED)
+      return
+    }
+
     const passwordHash = await bcrypt.hash(password, 10)
 
     const [user] = await db
       .insert(users)
-      .values({ username, email, passwordHash, ageConfirmedAt: new Date() })
+      .values({ username, email, passwordHash, ageConfirmedAt: new Date(), inviteCampaignId: campaignId })
       .returning()
 
     // Auto-create a solo household so every authed read has a valid scope.

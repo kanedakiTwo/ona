@@ -91,6 +91,8 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/onatest
       JWT_SECRET: ci-smoke-only-not-used-anywhere-else
+      # Closed beta (PRO-27): smoke registers users freely.
+      REGISTRATION_MODE: open
       # Smoke files register throwaway users from localhost; keep them clear
       # of the per-IP auth limiter (ignored by a deployed API: NODE_ENV=production
       # or Railway).
@@ -223,6 +225,10 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/onatest
       JWT_SECRET: ci-e2e-only-not-used-anywhere-else
+      # Closed beta stays ON here (PRO-27): Playwright's globalSetup registers
+      # this admin (always allowed) and creates the "e2e" campaign link every
+      # spec signs up with; closed-beta.spec.ts checks the rejection.
+      ADMIN_EMAILS: e2e-admin@test.local
       # Every Playwright spec registers a fresh user from localhost; the API's
       # 10-registrations/hour/IP limiter would fail the suite from the 11th
       # test on. Ignored by a deployed API (NODE_ENV=production or Railway).

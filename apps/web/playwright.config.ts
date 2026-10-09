@@ -18,6 +18,8 @@ const WEB_URL = process.env.WEB_URL ?? 'http://localhost:3001'
 
 export default defineConfig({
   testDir: './e2e',
+  // Closed beta (PRO-27): creates the "e2e" campaign link the specs sign up with.
+  globalSetup: './e2e/global-setup.ts',
   timeout: 30_000,
   expect: { timeout: 5_000 },
   // Each spec is independent; serial mode keeps test output legible while we

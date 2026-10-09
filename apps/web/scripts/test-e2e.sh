@@ -47,6 +47,7 @@ export JWT_SECRET="e2e-only-do-not-use-anywhere-else"
 # 10-registrations/hour/IP limiter fails the suite from the 11th test on.
 # Ignored by a deployed API (NODE_ENV=production or Railway).
 export RATE_LIMIT_DISABLED="true"
+export ADMIN_EMAILS="e2e-admin@test.local"  # globalSetup creates the e2e campaign (PRO-27)
 # Same path production takes on deploy (not `drizzle-kit push`).
 pnpm --filter @ona/api db:migrate >/dev/null
 

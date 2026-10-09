@@ -5,11 +5,12 @@
  */
 
 import { test, expect } from '@playwright/test'
-import { fillUntilEnabled, freshCreds } from './_helpers'
+import { fillUntilEnabled, freshCreds, useE2ECampaign } from './_helpers'
 
 test('register: blocked without the age box, works with it', async ({ page }) => {
   const creds = freshCreds()
   await page.goto('/register')
+  await useE2ECampaign(page)
   const form = page.locator('form')
   const submit = form.getByRole('button', { name: /^crear cuenta/i })
   const age = form.getByRole('checkbox', { name: 'Tengo 14 años o más' })

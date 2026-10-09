@@ -190,6 +190,52 @@ export function buildCohorts(input: MetricsInput): CohortMetrics[] {
     })
 }
 
+export interface CampaignMetrics {
+  /** Campaign name; null = signed up without a campaign link. */
+  campaign: string | null
+  signups: number
+  /** Active in their signup week. */
+  activated: number
+  activationRate: number | null
+  /** Signups whose week 3 (signup week + 3) has started. */
+  week3Eligible: number
+  /** Of those, active in week 3. */
+  week3Active: number
+  week3Rate: number | null
+}
+
+const rate = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 10_000) / 10_000 : null)
+
+/**
+ * Signups in the window grouped by the campaign link they used (PRO-27), so
+ * Miguel's circle ("familia", "amigos-padel"…) is read apart from strangers.
+ */
+export function buildCampaigns(input: MetricsInput, campaignOf: Map<string, string | null>): CampaignMetrics[] {
+  const active = groupSets(input.activity)
+  const groups = new Map<string | null, HouseholdWeek[]>()
+  for (const s of signupWeeks(input.signups)) {
+    const c = campaignOf.get(s.householdId) ?? null
+    if (!groups.has(c)) groups.set(c, [])
+    groups.get(c)!.push(s)
+  }
+  return [...groups.entries()]
+    .map(([campaign, members]) => {
+      const activated = members.filter((m) => active.get(m.week)?.has(m.householdId)).length
+      const eligible = members.filter((m) => addDays(m.week, 21) <= input.currentWeek)
+      const week3Active = eligible.filter((m) => active.get(addDays(m.week, 21))?.has(m.householdId)).length
+      return {
+        campaign,
+        signups: members.length,
+        activated,
+        activationRate: rate(activated, members.length),
+        week3Eligible: eligible.length,
+        week3Active,
+        week3Rate: rate(week3Active, eligible.length),
+      }
+    })
+    .sort((a, b) => b.signups - a.signups || String(a.campaign).localeCompare(String(b.campaign)))
+}
+
 export function buildTotals(input: MetricsInput, weekly: WeeklyMetrics[]) {
   const inWindow = new Set(input.weeks)
   const activeHouseholds = new Set(input.activity.filter((a) => inWindow.has(a.week)).map((a) => a.householdId)).size
@@ -229,6 +275,8 @@ export const DEFINITIONS = {
   dataSince: 'First row in the cost ledger / activity log. Weeks before these dates under-report cost and resolved weeks.',
   errors:
     'In-house error tracker (specs/errors.md), last 7 days by last_seen: newGroups = error groups first seen in the window, activeGroups / openGroups = groups seen (unresolved), events = Σ count of those groups (cumulative, an upper bound). Detail: GET /admin/errors.',
+  campaigns:
+    'Households that signed up in the window, by the campaign invitation link their first user registered with (null = no link: waitlist invitation, household invitation, admin or open registration). activated = active (see activeHouseholds) in the signup week; week3 = active in signup week + 3, over the signups whose week 3 has started.',
   waitlist:
     'Pre-launch waitlist (specs/waitlist.md), all time: entries by status, last7Days = signups in the last 7 × 24 h, referredSignups / newsletterOptIns = active entries (not unsubscribed) that came with someone’s link / opted in to the weekly menu email. Segments, sources and the suggested next batch: GET /admin/waitlist.',
 } as const
@@ -312,6 +360,15 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
         AND EXISTS (SELECT 1 FROM users u WHERE u.primary_household_id = h.id AND ${counted})
   `)
 
+  const campaignsQ = db.execute(sql`
+    SELECT h.id::text AS household_id, MIN(c.name) AS campaign
+      FROM households h
+      JOIN users u ON u.primary_household_id = h.id
+      LEFT JOIN invite_campaigns c ON c.id = u.invite_campaign_id
+      WHERE h.created_at >= ${from} AND ${counted}
+      GROUP BY h.id
+  `)
+
   const costsQ = db.execute(sql`
     SELECT ${weekOf(sql`ce.created_at`)} AS week,
            ce.provider,
@@ -330,8 +387,9 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
            (SELECT MIN(created_at) FROM activity_events) AS activity_log
   `)
 
-  const [activity, menuRows, shopping, signups, costs, since, errors, waitlist] = await Promise.all([
+  const [activity, menuRows, shopping, signups, costs, since, errors, waitlist, campaignRows] = await Promise.all([
     activityQ, menusQ, shoppingQ, signupsQ, costsQ, sinceQ, loadErrorSummary(7, db, now), loadWaitlistSummary(db, now),
+    campaignsQ,
   ])
 
   const input: MetricsInput = {
@@ -363,6 +421,10 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
     dataSince: { costLedger: iso(sinceRow.cost_ledger), activityLog: iso(sinceRow.activity_log) },
     weekly,
     cohorts: buildCohorts(input),
+    campaigns: buildCampaigns(
+      input,
+      new Map((campaignRows.rows as any[]).map((r) => [r.household_id as string, (r.campaign as string | null) ?? null])),
+    ),
     totals: buildTotals(input, weekly),
     errors,
     waitlist,

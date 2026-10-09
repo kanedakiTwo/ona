@@ -44,6 +44,12 @@ export const env = {
    * on every successful login. Whitespace tolerated; case-insensitive.
    * Removing an email here downgrades the next time that user logs in.
    */
+  /**
+   * Closed beta (PRO-27). `invite` (default until launch day): `POST /register`
+   * only accepts a campaign link, an invited waitlist email, a household
+   * invitation or an admin email. `open`: anyone. CI and staging run `open`.
+   */
+  REGISTRATION_MODE: (process.env.REGISTRATION_MODE === 'open' ? 'open' : 'invite') as 'invite' | 'open',
   ADMIN_EMAILS: (process.env.ADMIN_EMAILS || '')
     .split(',')
     .map((s) => s.trim().toLowerCase())

@@ -39,3 +39,23 @@ export function useNextSuffix(): string {
   }, [])
   return suffix
 }
+
+/** Household invitation token when `next` is `/invites/<token>` (PRO-27: lets them through the closed beta). */
+export function householdInviteTokenFromNext(next: string | null): string | undefined {
+  const m = next?.match(/^\/invites\/([^/?#]+)/)
+  return m ? decodeURIComponent(m[1]) : undefined
+}
+
+/** Campaign code from `/register?campana=<code>` (the `/i/<code>` links, PRO-27). */
+export function campaignCodeFromLocation(): string | undefined {
+  if (typeof window === 'undefined') return undefined
+  const ok = (v: string | null | undefined) => (v && /^[0-9a-z]{1,32}$/.test(v) ? v : undefined)
+  const fromUrl = ok(new URLSearchParams(window.location.search).get('campana'))
+  // Kept for the tab's session so a detour (/login and back) doesn't lose it.
+  try {
+    if (fromUrl) sessionStorage.setItem('ona.campana', fromUrl)
+    return fromUrl ?? ok(sessionStorage.getItem('ona.campana'))
+  } catch {
+    return fromUrl
+  }
+}

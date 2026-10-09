@@ -35,6 +35,7 @@ import metricsRoutes from './routes/metrics.js'
 import shopOrdersRoutes, { publicShopOrdersRouter } from './routes/shopOrders.js'
 import appErrorsRoutes, { clientErrorsRouter } from './routes/appErrors.js'
 import waitlistRoutes, { adminWaitlistRouter } from './routes/waitlist.js'
+import inviteCampaignRoutes from './routes/inviteCampaigns.js'
 import { trackShoppingActivity } from './services/activityEvents.js'
 import { startScheduler } from './services/notificationScheduler.js'
 
@@ -127,6 +128,7 @@ app.use(metricsRoutes)
 app.use(appErrorsRoutes)
 // Same reason: GET /admin/waitlist accepts `x-metrics-token` (invite is admin JWT only).
 app.use(adminWaitlistRouter)
+app.use(inviteCampaignRoutes)
 app.use(userRoutes)
 app.use(menuRoutes)
 app.use(shoppingRoutes)

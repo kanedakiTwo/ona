@@ -65,6 +65,10 @@ export const registerSchema = z.object({
   ageConfirmed: z.literal(true, {
     errorMap: () => ({ message: 'Para usar Mimoia tienes que tener 14 años o más.' }),
   }),
+  /** Campaign invitation code from `mimoia.com/i/<code>` (PRO-27). */
+  inviteCode: z.string().trim().toLowerCase().max(32).optional(),
+  /** Household invitation token when signing up from `/invites/<token>` (PRO-27). */
+  householdInviteToken: z.string().trim().max(128).optional(),
 })
 
 export const loginSchema = z.object({

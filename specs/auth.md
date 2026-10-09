@@ -13,6 +13,17 @@ User registration, login, and session management for ONA.
 - Registering with an email that is on the pre-launch [waitlist](./waitlist.md) (waiting or invited) marks that entry `joined` — fire-and-forget, it never blocks or fails the registration
 - `/login` and `/register` honour `?next=<path>`: after success the user lands on `next` instead of `/menu` / `/onboarding`. Only same-origin relative paths are accepted (`safeNext`: must start with `/`, not `//` or `/\`, no newlines), so it can't become an open redirect. The "Crear cuenta" / "Inicia sesión" cross-links carry `next` along. Used by `/whatsapp/conectar` and `/invites/[token]`.
 
+## Closed beta (PRO-27)
+
+- `REGISTRATION_MODE` (`invite` by default, `open` to open on launch day; CI's smoke job and staging run `open`). In `invite`, `POST /register` only creates an account when one of these holds, else **403 `REGISTRATION_INVITE_REQUIRED`** («Mimoia está en beta cerrada…»):
+  1. `inviteCode` = a **campaign invitation link** that exists, isn't expired and has uses left (one use is taken atomically);
+  2. the email is on the [waitlist](./waitlist.md) with status `invited`;
+  3. `householdInviteToken` = an unconsumed, unexpired household invitation (`/invites/:token`) — this path must never break;
+  4. the email is in `ADMIN_EMAILS`.
+- Campaign links: `mimoia.com/i/<code>` (`app/i/[code]/route.ts`) → `/register?campana=<code>`; the form sends it as `inviteCode` (kept in `sessionStorage.ona.campana` across a /login detour). The household path comes from `?next=/invites/<token>`. A valid campaign is recorded on the account (`users.invite_campaign_id`, table `invite_campaigns`, migration 0042) in either mode. Created and listed in `/admin` → Invitaciones ([Admin](./admin-dashboard.md)); counted in `GET /admin/metrics` → `campaigns` ([Metrics](./metrics.md)).
+- Without an invitation `/register` shows «Mimoia está en beta cerrada» and a link to `/#lista-de-espera`; no account is created.
+- Tests: `inviteCampaigns.test.ts` (gate + per-campaign counts), e2e `closed-beta.spec.ts` (the four paths; the e2e API runs `invite` and `global-setup.ts` creates the «e2e» campaign every spec signs up with).
+
 ## Onboarding (post-registration)
 
 - Onboarding is required before any in-product page (menu, recipes, shopping, advisor) is meaningful

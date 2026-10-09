@@ -54,6 +54,8 @@ export const users = pgTable('users', {
   healthConsentAt: timestamp('health_consent_at', { withTimezone: true }),
   healthConsentVersion: text('health_consent_version'),
   healthConsentWithdrawnAt: timestamp('health_consent_withdrawn_at', { withTimezone: true }),
+  /** Campaign invitation link the account signed up with (PRO-27); null = none. */
+  inviteCampaignId: uuid('invite_campaign_id').references(() => inviteCampaigns.id, { onDelete: 'set null' }),
   /**
    * AI image-generation quota. `imageGenMonthKey` stores the YYYY-MM that
    * `imageGenCount` belongs to. On any generation, if the key doesn't match
@@ -1087,3 +1089,22 @@ export const householdBuyPrefs = pgTable('household_buy_prefs', {
 }, (t) => [
   uniqueIndex('uq_household_buy_prefs').on(t.householdId, t.ruleKey),
 ])
+
+// ─── Invitation links by campaign (PRO-27) ──────────────────
+// `mimoia.com/i/<code>` → /register. During the closed beta a valid link
+// (not expired, uses left) is one of the ways in; the account keeps the
+// campaign so /admin/metrics can count signups, activation and week 3 per
+// campaign (Miguel's circle vs strangers).
+export const inviteCampaigns = pgTable('invite_campaigns', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  code: text('code').notNull(),
+  /** null = unlimited. */
+  maxUses: integer('max_uses'),
+  uses: integer('uses').notNull().default(0),
+  /** null = never expires. */
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  /** Admin who created it (no FK: audit trail survives account deletion). */
+  createdBy: uuid('created_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex('uq_invite_campaigns_code').on(t.code)])

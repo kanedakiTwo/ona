@@ -25,6 +25,8 @@ It is intentionally small: **a few sections, no charts, no destructive operation
   - **Voz** — sessions list of voice-mode conversations (one row per session) with filters (user search + date range); click a row to drill into all turns of that session in chronological order, each turn tagged with the skill it invoked when applicable. Read-only — no mutations, no audit-log entries on read. Source: [Voice Mode](./voice-mode.md). Backed by `GET /admin/voice-transcripts/sessions` (grouped) and `GET /admin/voice-transcripts` (flat list with `?sessionId=` filter).
 - Every mutation issued from the dashboard generates an entry in `admin_audit_log`.
 
+- **Invitaciones** tab (PRO-27, `sections/InvitationsSection.tsx`): create a campaign invitation link — name (e.g. «familia», «amigos-padel», «post-linkedin»), optional max uses, optional expiry — via `POST /admin/invite-campaigns` (admin JWT, audited `invite_campaign.create`); the table lists every campaign (`GET /admin/invite-campaigns`) with its link `mimoia.com/i/<code>`, uses / max, expiry and, from `GET /admin/metrics` → `campaigns`, signups, activation and week 3 over the last 12 weeks, plus a «Sin campaña» row. See [Auth](./auth.md) → Closed beta
+
 ## Scope vs My Recipes
 
 The admin dashboard handles **system recipes only** (`authorId IS NULL`). User-created recipes are out of scope here — users curate their own recipes via the "Mis recetas" tab in `/profile` (see [My Recipes](./my-recipes.md)). The split is enforced server-side: every admin mutation that touches a recipe rejects with 400 if `authorId !== NULL`.
@@ -63,7 +65,7 @@ The admin dashboard handles **system recipes only** (`authorId IS NULL`). User-c
 
 ## Business metrics
 
-`GET /admin/metrics?weeks=8` returns weekly active households, resolved weeks, signup cohorts and cost per active household from the cost ledger — admin JWT or the read-only `x-metrics-token`. No UI tab yet; see [Business Metrics & Cost Ledger](./metrics.md).
+`GET /admin/metrics?weeks=8` returns weekly active households, resolved weeks, signup cohorts and cost per active household from the cost ledger — admin JWT or the read-only `x-metrics-token`. Its `campaigns` block shows in the Invitaciones tab; otherwise no UI tab yet — see [Business Metrics & Cost Ledger](./metrics.md).
 
 ## WhatsApp conversation reviews
 

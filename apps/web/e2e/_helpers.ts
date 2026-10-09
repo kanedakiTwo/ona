@@ -50,6 +50,8 @@ export function freshCreds(): TestCreds {
  * not wired to their inputs, so we target inputs by position/type.
  */
 export async function submitRegisterForm(page: Page, creds: TestCreds): Promise<void> {
+  // Closed beta (PRO-27): sign up through the e2e campaign link (global-setup.ts).
+  await useE2ECampaign(page)
   const form = page.locator('form')
   const submit = form.getByRole('button', { name: /^crear cuenta/i })
   await fillUntilEnabled(submit, async () => {
@@ -124,4 +126,20 @@ export async function completeOnboarding(page: Page): Promise<void> {
   })
 
   await page.goto('/menu')
+}
+
+/**
+ * Closed beta (PRO-27): the register form takes the campaign code from
+ * `?campana=` or, after a detour, from sessionStorage. Put the e2e campaign
+ * there so any /register (with or without ?next=) signs up through it.
+ */
+export async function useE2ECampaign(page: Page): Promise<void> {
+  const code = process.env.E2E_CAMPAIGN_CODE
+  if (!code) return
+  await page.evaluate((c) => sessionStorage.setItem('ona.campana', c), code)
+}
+
+/** Body extras for API-level `POST /register` calls in specs. */
+export function e2eInvite(): { inviteCode?: string } {
+  return process.env.E2E_CAMPAIGN_CODE ? { inviteCode: process.env.E2E_CAMPAIGN_CODE } : {}
 }

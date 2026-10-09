@@ -35,8 +35,9 @@ export type AdminAction =
   | 'user.reset_password.generate'
   | 'app_error.resolve'
   | 'waitlist.invite'
+  | 'invite_campaign.create'
 
-export type AuditTargetType = 'ingredient' | 'recipe' | 'user' | 'app_error' | 'waitlist_entry'
+export type AuditTargetType = 'ingredient' | 'recipe' | 'user' | 'app_error' | 'waitlist_entry' | 'invite_campaign'
 
 export interface AuditRecord {
   adminId: string

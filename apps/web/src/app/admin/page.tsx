@@ -46,6 +46,7 @@ import { RemapModal } from "./sections/RemapModal"
 import { UsersSection } from "./sections/UsersSection"
 import { AuditLogSection } from "./sections/AuditLogSection"
 import { VoiceTranscriptsSection } from "./sections/VoiceTranscriptsSection"
+import { InvitationsSection } from "./sections/InvitationsSection"
 
 type SectionKey =
   | "fdc"
@@ -58,6 +59,7 @@ type SectionKey =
   | "users"
   | "audit"
   | "voice"
+  | "invites"
 
 const SECTIONS: Array<{ key: SectionKey; label: string }> = [
   { key: "fdc", label: "Ingredientes sin USDA" },
@@ -70,6 +72,7 @@ const SECTIONS: Array<{ key: SectionKey; label: string }> = [
   { key: "users", label: "Usuarios" },
   { key: "audit", label: "Auditoría" },
   { key: "voice", label: "Voz" },
+  { key: "invites", label: "Invitaciones" },
 ]
 
 export default function AdminPage() {
@@ -131,6 +134,7 @@ export default function AdminPage() {
     users: 0,
     audit: 0,
     voice: 0,
+    invites: 0,
   }
 
   const isCatalogTab =
@@ -246,6 +250,7 @@ export default function AdminPage() {
         {active === "users" && <UsersSection />}
         {active === "audit" && <AuditLogSection />}
         {active === "voice" && <VoiceTranscriptsSection />}
+        {active === "invites" && <InvitationsSection />}
       </main>
 
       {remapTarget && (

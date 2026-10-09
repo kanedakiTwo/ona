@@ -7,7 +7,7 @@
  */
 
 import { test, expect, type Route } from '@playwright/test'
-import { freshCreds, submitLoginForm, submitRegisterForm } from './_helpers'
+import { e2eInvite, freshCreds, submitLoginForm, submitRegisterForm } from './_helpers'
 
 const json = (route: Route, body: unknown, status = 200) =>
   route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
@@ -61,7 +61,7 @@ test('explains when WhatsApp is not available for the account', async ({ page })
 test('login honours a relative next but ignores an off-site one (no open redirect)', async ({ page }) => {
   const apiUrl = process.env.API_URL ?? 'http://localhost:8765'
   const creds = freshCreds()
-  const reg = await page.request.post(`${apiUrl}/register`, { data: { ...creds, ageConfirmed: true } })
+  const reg = await page.request.post(`${apiUrl}/register`, { data: { ...creds, ageConfirmed: true, ...e2eInvite() } })
   expect(reg.ok()).toBe(true)
 
   const login = async (next: string) => {

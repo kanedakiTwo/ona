@@ -39,7 +39,7 @@ export function MimoiaLogo({ size = 24, className, testId }: { size?: number; cl
     <span
       data-testid={testId}
       className={`inline-flex items-center text-[#1A1612] ${className ?? ""}`}
-      style={{ gap: Math.round(size * 0.22) }}
+      style={{ gap: Math.round(size * 0.1) }}
     >
       <MimoiaSymbol size={Math.round(size * 1.15)} className="flex-none text-[#C65D38]" />
       <span

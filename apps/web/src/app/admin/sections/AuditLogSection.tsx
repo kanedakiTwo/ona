@@ -21,6 +21,7 @@ import {
   type AdminAuditEntry,
 } from "@/hooks/useAdmin"
 import { ACTION_CODES, actionLabel } from "@/lib/auditCodes"
+import { DISPLAY_UI } from "@/components/recipes/RecipeCard"
 
 function isoDateOnly(d: Date): string {
   return d.toISOString().slice(0, 10)
@@ -132,10 +133,10 @@ export function AuditLogSection() {
   return (
     <div>
       {/* Filter strip */}
-      <div className="rounded-2xl border border-[#DDD6C5] bg-[#FFFEFA] p-3">
+      <div className="rounded-2xl border border-border-soft bg-paper p-3">
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <label className="block">
-            <span className="text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
+            <span className="text-[10px] uppercase tracking-[0.12em] text-ink-muted">
               Admin
             </span>
             <select
@@ -144,7 +145,7 @@ export function AuditLogSection() {
                 setPage(1)
                 setAdminId(e.target.value)
               }}
-              className="mt-1 w-full rounded-full border border-[#DDD6C5] bg-[#FAF6EE] px-3 py-2 text-[12px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none"
+              className="mt-1 w-full rounded-full border border-border bg-cream px-3 py-2 text-[12px] text-ink focus:border-ink focus:outline-none"
             >
               <option value="">Todos</option>
               {adminsList.data?.rows
@@ -157,7 +158,7 @@ export function AuditLogSection() {
             </select>
           </label>
           <label className="block">
-            <span className="text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
+            <span className="text-[10px] uppercase tracking-[0.12em] text-ink-muted">
               Acción
             </span>
             <select
@@ -166,7 +167,7 @@ export function AuditLogSection() {
                 setPage(1)
                 setAction(e.target.value)
               }}
-              className="mt-1 w-full rounded-full border border-[#DDD6C5] bg-[#FAF6EE] px-3 py-2 text-[12px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none"
+              className="mt-1 w-full rounded-full border border-border bg-cream px-3 py-2 text-[12px] text-ink focus:border-ink focus:outline-none"
             >
               <option value="">Todas</option>
               {ACTION_CODES.map((c) => (
@@ -177,7 +178,7 @@ export function AuditLogSection() {
             </select>
           </label>
           <label className="block">
-            <span className="text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
+            <span className="text-[10px] uppercase tracking-[0.12em] text-ink-muted">
               Desde
             </span>
             <input
@@ -187,11 +188,11 @@ export function AuditLogSection() {
                 setPage(1)
                 setFrom(e.target.value)
               }}
-              className="mt-1 w-full rounded-full border border-[#DDD6C5] bg-[#FAF6EE] px-3 py-2 text-[12px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none"
+              className="mt-1 w-full rounded-full border border-border bg-cream px-3 py-2 text-[12px] text-ink focus:border-ink focus:outline-none"
             />
           </label>
           <label className="block">
-            <span className="text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
+            <span className="text-[10px] uppercase tracking-[0.12em] text-ink-muted">
               Hasta
             </span>
             <input
@@ -201,21 +202,21 @@ export function AuditLogSection() {
                 setPage(1)
                 setTo(e.target.value)
               }}
-              className="mt-1 w-full rounded-full border border-[#DDD6C5] bg-[#FAF6EE] px-3 py-2 text-[12px] text-[#1A1612] focus:border-[#1A1612] focus:outline-none"
+              className="mt-1 w-full rounded-full border border-border bg-cream px-3 py-2 text-[12px] text-ink focus:border-ink focus:outline-none"
             />
           </label>
         </div>
       </div>
 
       {/* Feed */}
-      <div className="mt-4 overflow-hidden rounded-2xl border border-[#DDD6C5] bg-[#FFFEFA]">
+      <div className="mt-4 overflow-hidden rounded-2xl border border-border-soft bg-paper">
         {log.isLoading && (
-          <div className="px-4 py-6 text-[12px] italic text-[#7A7066]">
+          <div className="px-4 py-6 text-[12px] italic text-ink-muted">
             Cargando entradas…
           </div>
         )}
         {!log.isLoading && log.data && log.data.rows.length === 0 && (
-          <div className="px-4 py-8 text-center text-[12px] italic text-[#7A7066]">
+          <div className="px-4 py-8 text-center text-[12px] italic text-ink-muted">
             Sin entradas en este rango.
           </div>
         )}
@@ -229,7 +230,7 @@ export function AuditLogSection() {
       {/* Pager */}
       {log.data && log.data.total > 0 && (
         <div className="mt-3 flex items-center justify-between">
-          <div className="text-[11px] text-[#7A7066]">
+          <div className="text-[11px] text-ink-muted">
             {log.data.total} entrada{log.data.total === 1 ? "" : "s"} ·
             página {log.data.page} de {totalPages}
           </div>
@@ -237,7 +238,7 @@ export function AuditLogSection() {
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
-              className="flex h-8 w-8 items-center justify-center rounded-full border border-[#DDD6C5] bg-[#FFFEFA] text-[#4A4239] disabled:opacity-30"
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-border-soft bg-paper text-ink-mid disabled:opacity-30"
               aria-label="Página anterior"
             >
               <ChevronLeft size={14} />
@@ -245,7 +246,7 @@ export function AuditLogSection() {
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
-              className="flex h-8 w-8 items-center justify-center rounded-full border border-[#DDD6C5] bg-[#FFFEFA] text-[#4A4239] disabled:opacity-30"
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-border-soft bg-paper text-ink-mid disabled:opacity-30"
               aria-label="Página siguiente"
             >
               <ChevronRight size={14} />
@@ -276,42 +277,42 @@ function AuditRow({
     }
   }, [entry.payload])
   return (
-    <div className={first ? "" : "border-t border-[#DDD6C5]"}>
+    <div className={first ? "" : "border-t border-border-soft"}>
       <button
         onClick={() => setExpanded((v) => !v)}
-        className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-[#FAF6EE]"
+        className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-cream"
       >
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#1A1612] font-display text-xs text-[#FAF6EE]">
+        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ink ${DISPLAY_UI} text-xs text-cream`}>
           {initials}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
-            <span className="text-[12px] font-medium text-[#1A1612] truncate">
+            <span className="text-[12px] font-medium text-ink truncate">
               {entry.adminUsername ?? "(admin desconocido)"}
             </span>
-            <span className="text-[10px] uppercase tracking-[0.1em] text-[#A39A8E]">
+            <span className="text-[10px] uppercase tracking-[0.1em] text-ink-light">
               {formatTimestamp(entry.createdAt)}
             </span>
           </div>
           <div className="mt-0.5 flex flex-wrap items-baseline gap-2 text-[11px]">
-            <span className="rounded-full bg-[#C65D38]/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.1em] text-[#C65D38]">
+            <span className="rounded-full bg-terracotta-deep/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.1em] text-terracotta-deep">
               {actionLabel(entry.action)}
             </span>
-            <span className="text-[#4A4239] truncate">{targetName(entry)}</span>
+            <span className="text-ink-mid truncate">{targetName(entry)}</span>
           </div>
           {shortSummary(entry) && (
-            <div className="mt-0.5 text-[11px] italic text-[#7A7066]">
+            <div className="mt-0.5 text-[11px] italic text-ink-muted">
               {shortSummary(entry)}
             </div>
           )}
         </div>
-        <div className="shrink-0 text-[#A39A8E]">
+        <div className="shrink-0 text-ink-light">
           {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
         </div>
       </button>
       {expanded && (
-        <div className="border-t border-[#DDD6C5]/60 bg-[#FAF6EE] px-4 py-3">
-          <pre className="overflow-x-auto rounded bg-[#1A1612] p-3 font-mono text-[10px] leading-relaxed text-[#FAF6EE]">
+        <div className="border-t border-border-soft/60 bg-cream px-4 py-3">
+          <pre className="overflow-x-auto rounded bg-ink p-3 font-mono text-[10px] leading-relaxed text-cream">
             {pretty}
           </pre>
         </div>

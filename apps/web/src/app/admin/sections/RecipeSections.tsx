@@ -24,21 +24,21 @@ export function RecipesSection({
       {rows.map((row) => (
         <li
           key={row.id}
-          className="rounded-xl border border-[#DDD6C5] bg-[#FFFEFA] p-3"
+          className="rounded-xl border border-border-soft bg-paper p-3"
         >
           <div className="flex items-center justify-between gap-3">
             <Link
               href={`/recipes/${row.id}`}
-              className="min-w-0 flex-1 text-[14px] font-medium text-[#1A1612] truncate hover:text-[#C65D38]"
+              className="min-w-0 flex-1 text-[14px] font-medium text-ink truncate hover:text-terracotta-deep"
             >
               {row.name}
             </Link>
-            <span className="shrink-0 text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
+            <span className="shrink-0 text-[10px] uppercase tracking-[0.12em] text-ink-muted">
               {row.kcal === 0 ? "kcal=0" : `kcal=${Math.round(row.kcal)}`}
             </span>
           </div>
           {row.missingIngredientIds.length > 0 && (
-            <p className="mt-2 text-[11px] text-[#7A7066]">
+            <p className="mt-2 text-[11px] text-ink-muted">
               Bloqueada por {row.missingIngredientIds.length} ingrediente
               {row.missingIngredientIds.length === 1 ? "" : "s"} sin USDA — corrígelos
               en la pestaña «Ingredientes sin USDA».
@@ -67,34 +67,34 @@ export function RegenSection({
       {rows.map((row, i) => (
         <li
           key={`${row.recipeName}-${i}`}
-          className="rounded-xl border border-[#DDD6C5] bg-[#FFFEFA] p-3"
+          className="rounded-xl border border-border-soft bg-paper p-3"
         >
           <div className="flex items-center justify-between gap-2">
-            <div className="text-[14px] font-medium text-[#1A1612] truncate">
+            <div className="text-[14px] font-medium text-ink truncate">
               {row.recipeName}
             </div>
             <span
               className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] ${
                 row.source === "failed"
-                  ? "bg-[#C65D38] text-[#FAF6EE]"
-                  : "bg-[#DDD6C5] text-[#1A1612]"
+                  ? "bg-terracotta-deep text-cream"
+                  : "bg-border text-ink"
               }`}
             >
               {row.source === "failed" ? "fallo" : "skip"}
             </span>
           </div>
           {row.errors.length > 0 && (
-            <ul className="mt-2 list-disc space-y-1 pl-5 text-[11px] text-[#4A4239]">
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-[11px] text-ink-mid">
               {row.errors.slice(0, 6).map((e, k) => (
                 <li key={k}>
-                  <span className="font-mono text-[10px] text-[#C65D38]">
+                  <span className="font-mono text-[10px] text-terracotta-deep">
                     {e.code ?? "ERROR"}
                   </span>{" "}
                   {e.message}
                 </li>
               ))}
               {row.errors.length > 6 && (
-                <li className="italic text-[#7A7066]">
+                <li className="italic text-ink-muted">
                   +{row.errors.length - 6} más…
                 </li>
               )}

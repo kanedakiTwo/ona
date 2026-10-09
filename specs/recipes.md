@@ -123,7 +123,7 @@ When the user changes the diner count from `recipe.servings` to `target`:
 
 At `lg+` (≥1024 px) `/recipes` keeps the desktop sidebar and caps at `max-w-[1180px]`: row 1 = h1 "Recetas" (40 px) + search (max 560 px) + ink "Nueva receta" pill on the right; row 2 = every chip wrapped on one line + "Más filtros" (no filter column); then the two hero cards and a 4-column grid (220 px photos, row-major order). Below `lg` the grid is a 2-column masonry (tall / short photos alternate). State lives in the page; `CatalogFilters.tsx` exports `CatalogSearch`, `CatalogChips` and `CatalogFiltersSheet`; `CatalogGrid.tsx` renders `RecipeCard`; `FeaturedRecipeCard.tsx` is the hero.
 
-`/cookbooks/[id]` is **not** a catalogue page — it's a single-cookbook detail with a recipe-thumbnail grid. At `lg+` the page caps at `max-w-[1100px]` and the recipe grid widens from 2 to 4 columns. It does not share `<CatalogFilters>` or `<CatalogGrid>`.
+`/cookbooks/[id]` is **not** a catalogue page — it's a single-cookbook detail (see [Cookbooks](./cookbooks.md)). Since PRO-43 it reuses `<CatalogGrid>` (same cards, masonry below `lg`, 4 columns at `lg+`, page capped at `max-w-[1180px]`) and passes `renderAction` to lay a "Quitar del recetario" button over each photo; it does not use `<CatalogFilters>`. Without `renderAction` the grid renders exactly as on `/recipes`.
 
 ### Recipe detail / Create / Edit desktop layouts (lg+)
 

@@ -10,7 +10,7 @@ It is intentionally small: **a few sections, no charts, no destructive operation
 
 ## User Capabilities
 
-- An admin (see [Roles & Authorization](./roles.md)) opens `/admin` from the "Admin" footer link in `/profile`. A non-admin lands on a 403 page that links back to `/menu`.
+- An admin (see [Roles & Authorization](./roles.md)) opens `/admin` from "Panel de admin" in the profile header's "···" sheet (`/profile`). A non-admin lands on a 403 page that links back to `/menu`.
 - The dashboard shows a counts header (ingredients sin USDA, recetas con kcal=0, alérgenos sugeridos, archivos en regen, usuarios suspendidos, acciones admin recientes).
 - Pill-bar tabs jump between sections:
   - **Ingredientes sin USDA** — every ingredient with `fdcId IS NULL`. "Mapear a USDA" reuses the auto-create modal (manual search + Spanish translations + BEDCA fallback + "Estimar con Mimoia" — see [Ingredient Auto-Create](./ingredient-auto-create.md)).
@@ -59,7 +59,7 @@ The admin dashboard handles **system recipes only** (`authorId IS NULL`). User-c
 - [apps/web/src/app/admin/sections/](../apps/web/src/app/admin/sections/) — section components, replaces `app/curator/sections/`
 - [apps/web/src/app/admin/sections/VoiceTranscriptsSection.tsx](../apps/web/src/app/admin/sections/VoiceTranscriptsSection.tsx) — sessions list + per-session detail view of voice-mode conversations
 - [apps/web/src/hooks/useAdmin.ts](../apps/web/src/hooks/useAdmin.ts) — replaces `useCurator.ts`; adds `useVoiceTranscriptSessions` + `useVoiceTranscriptTurns`
-- [apps/web/src/app/profile/page.tsx](../apps/web/src/app/profile/page.tsx) — gated "Admin" footer link, only visible when `role === 'admin'`
+- [apps/web/src/app/profile/page.tsx](../apps/web/src/app/profile/page.tsx) — gated "Panel de admin" entry in the header "···" sheet, only rendered when `role === 'admin'`
 - [apps/web/src/app/curator/page.tsx](../apps/web/src/app/curator/page.tsx) — temporary redirect to `/admin`
 - [apps/api/src/routes/metrics.ts](../apps/api/src/routes/metrics.ts) — `GET /admin/metrics` (own router, mounted before the catch-all auth routers so the metrics token works)
 

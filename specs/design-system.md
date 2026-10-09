@@ -102,12 +102,12 @@ The `.standalone-pt` utility applies `padding-top: var(--safe-top)` so content d
 - `/menu` — "D · Luz y foto": compact header (eyebrow + Fraunces 650 h1 with terracotta-deep italic day), day strip (ink pill), full-bleed photo hero with overlapping paper caption card + ink "Empezar a cocinar" pill, horizontal meal rows, every action behind "···" sheets (`MenuSheet`: bottom sheet on mobile, centred dialog at lg+, portalled, Esc closes, fades only under reduced motion); desktop hero row + "La semana" photo columns. Photo-less: the hero becomes a compact card (meal icon on a bone square, name once); thumbnails and tiles use `RecipeCover` (bone block + small meal icon, no name). See [Menus](./menus.md)
 - **Mimo companion** (D-023, 2026-10-09; see [Advisor](./advisor.md)) — `MimoButton`: 56 px terracotta circle, cream ring, the brand spoon (`MimoiaSymbol`: Mimo's face), terracotta-deep on hover, a pulsing forest dot while the wake word listens; sits above the tab bar (mobile), the recipe action bar (< `lg`) or the cook-mode controls (`z-110`). `MimoPanel`: cream bottom sheet (88dvh, `rounded-t-[28px]`, ink/30 backdrop) below `lg`, a 400 px right column with a left hairline at `lg+` (the page moves aside via `--mimo-panel-width`); `MimoAvatar` + Fraunces «Mimo» title, 11 px uppercase status line, ink user bubbles / bone assistant bubbles, terracotta level bars while listening, forest «Manos libres» pill when on
 - `/compra` + `/compra/tiendas` — "Pide a tus *tiendas*." editorial header, one cream card per shop order with a status chip (ink = enviado, terracotta = ha contestado, forest = confirmado), ink pill CTAs, verdict labels OK (forest) / Revisar (terracotta) / No hay (muted); `/shopping` gets an outlined "Pedir a mis tiendas" card
+- `/profile` (portada) — "D · Luz y foto" (2026-10-10, PRO-39): compact header (11 px eyebrow "Perfil · usuario", the household's name as a Fraunces 650 h1 — `DISPLAY_UI`, 30/40 px — the email, and a 44 px "···" with «Onboarding por voz» and, for admins, «Panel de admin»). Paper cards (`border-border-soft`, radius 20, icon on a 40 px `cream-deep` circle, 17–18 px Fraunces 650 title + one `ink-muted` status line): six link cards Casa · Memoria · Creencias · Despensa · Fijos · Recetarios (2 cols on mobile, 3 at `lg+`, status from each sub-page's data), then Voz and WhatsApp, then «Ajustes del menú» (Datos físicos, Preferencias, Plantilla semanal, Recordatorios, Mis recetas; 2 cols at `lg+`, max 1180 px), one ink «Guardar cambios» pill and a «Tu cuenta» card (Salir, privacy, delete). Secondary actions behind `MenuSheet`: push «Enviar prueba» / «Reparar service worker», and each own recipe's «Editar» / «Eliminar». Ink switches and pills, 44 px targets, no green. Guarded by `apps/api/src/tests/redesignDPerfil.test.ts` (the sub-pages `/profile/*` are PRO-40)
 
 ## Pages still in App Mode (legacy, green palette)
 
 These have not been migrated to the editorial system yet:
 - `/shopping` — green/mint palette, `[#2D6A4F]` accents, `[#EAF3DE]` chips
-- `/profile` — same
 - `/login` — photo background with white form sheet (transitional; uses the `MimoiaLogo` lockup but green submit button)
 
 ## Layout
@@ -195,6 +195,8 @@ The migration (June 2026) shipped the chasis (sidebar at `md+`, container caps) 
 - [apps/web/src/app/recipes/page.tsx](../apps/web/src/app/recipes/page.tsx) — editorial in-app
 - [apps/web/src/app/recipes/[id]/page.tsx](../apps/web/src/app/recipes/[id]/page.tsx)
 - [apps/web/src/app/menu/page.tsx](../apps/web/src/app/menu/page.tsx) — editorial "D · Luz y foto"
+- [apps/web/src/app/profile/page.tsx](../apps/web/src/app/profile/page.tsx) — "D · Luz y foto" profile front page; cards in [sections/ProfileCards.tsx](../apps/web/src/app/profile/sections/ProfileCards.tsx)
+- [apps/api/src/tests/helpers/legacyPalette.ts](../apps/api/src/tests/helpers/legacyPalette.ts) — legacy-green guard shared by the D redesign tests
 - [apps/web/src/components/shared/Navbar.tsx](../apps/web/src/components/shared/Navbar.tsx) — labelled tab bar
 - [apps/web/src/components/shared/PublicNavbar.tsx](../apps/web/src/components/shared/PublicNavbar.tsx)
 - [apps/web/src/components/shared/Footer.tsx](../apps/web/src/components/shared/Footer.tsx)

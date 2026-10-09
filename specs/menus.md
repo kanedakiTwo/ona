@@ -22,7 +22,7 @@ Weekly meal plan generation and management.
 - Users can share the week as text with a link (**Compartir** in the week sheet in both views; desktop: **Compartir semana**) via `menuShareText`
 - Users can view past menus via `/menu/history` (**Historial** in the week sheet)
 - Users can tap a meal photo or title to open the recipe detail
-- Users can opt in to local meal-time notifications (breakfast / lunch / snack / dinner times configured in profile `Capítulo 05`) — the app fires a reminder at the chosen times — see [PWA](./pwa.md)
+- Users can opt in to local meal-time notifications (breakfast / lunch / snack / dinner times configured in the profile's "Recordatorios" card) — the app fires a reminder at the chosen times — see [PWA](./pwa.md)
 
 ## Multi-dish slots
 

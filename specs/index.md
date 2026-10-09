@@ -150,7 +150,7 @@ Admin-only page at `/admin` (renamed from `/curator`, gated by `requireAdmin`). 
 
 ## [My Recipes](./my-recipes.md)
 
-User-scoped recipe curator inside `/profile` ("Mis recetas" tab). Lists recipes where `authorId === user.id`, filters for quality gaps (sin nutrición, sin equipo, ingredientes pendientes de revisar — entries with note 'añadido automáticamente'), edit / delete inline, counts strip, future "veces cocinada" + calificación propia. No catalog editing or user management — those are admin-only.
+User-scoped recipe curator inside `/profile` ("Mis recetas" tab). Lists recipes where `authorId === user.id`, filters for quality gaps (sin nutrición, sin equipo, ingredientes pendientes de revisar — entries with note 'añadido automáticamente'), edit / delete from each row's "···" sheet, counts strip, future "veces cocinada" + calificación propia. No catalog editing or user management — those are admin-only.
 
 **Source**: `apps/web/src/app/profile/sections/MyRecipesSection.tsx`, `apps/web/src/hooks/useMyRecipes.ts`, `apps/api/src/routes/users.ts` (recipes-curator/gaps endpoint)
 

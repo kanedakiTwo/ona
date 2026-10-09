@@ -13,6 +13,12 @@ export interface SkillContext {
    * on it get exactly the UI's behaviour and permissions. Tests inject a fake.
    */
   api?: import('./appApi.js').AppApi
+  /**
+   * Where the conversation happens. On `whatsapp` health data (allergies,
+   * intolerances, restrictions, physical data) is never stored (Meta's terms
+   * 4.2, LEG-03, PRO-24): the skills point to the web profile instead.
+   */
+  channel?: import('./systemPrompt.js').AssistantMode
 }
 
 export interface SkillResult {

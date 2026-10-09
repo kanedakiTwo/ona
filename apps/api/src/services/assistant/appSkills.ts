@@ -2,7 +2,7 @@ import type { SkillContext, SkillDefinition, SkillResult } from './types.js'
 import { appApiFor, AppApiError, type AppApi } from './appApi.js'
 import { madridWeekStart } from '../madridTime.js'
 import { env } from '../../config/env.js'
-import { HEALTH_CONSENT_SKILL_REPLY } from '../healthConsent.js'
+import { HEALTH_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY } from '../healthConsent.js'
 import { PROACTIVE_KINDS, PROACTIVE_LABELS, type ProactiveKind } from '../whatsapp/proactive.js'
 
 /**
@@ -767,6 +767,16 @@ const updateProfile: SkillDefinition = {
     required: [],
   },
   async handler(p, ctx) {
+    // Over WhatsApp health data is never stored (PRO-24): only `priority` goes through.
+    if (ctx.channel === 'whatsapp') {
+      const health = ['sex', 'age', 'weight', 'height', 'activityLevel'].some((k) => p[k] != null) ||
+        !!p.addRestrictions?.length || !!p.removeRestrictions?.length
+      if (health) {
+        if (!p.priority) return text(WHATSAPP_HEALTH_DATA_REPLY)
+        await api(ctx)('PUT', `/user/${ctx.userId}`, { priority: p.priority })
+        return text(`Hecho: perfil actualizado (priority: ${p.priority}). ${WHATSAPP_HEALTH_DATA_REPLY}`)
+      }
+    }
     const body: Record<string, unknown> = {}
     for (const k of ['priority', 'sex', 'age', 'weight', 'height', 'activityLevel'] as const) {
       if (p[k] !== undefined && p[k] !== null) body[k] = p[k]

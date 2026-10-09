@@ -124,6 +124,7 @@ Migration `0032_assistant_reviews.sql` (new table + nullable `meta` column; idem
 
 ## Constraints
 
+- **No health data over WhatsApp** (LEG-03, Meta's terms 4.2; PRO-24): allergies, intolerances, restrictions and physical data are never stored from a WhatsApp conversation, with or without the health-data consent. The engine passes `channel: 'whatsapp'` in the skill context; `update_profile` and `update_memory` drop those fields and reply «Por WhatsApp no guardo datos de salud… Añádelos en tu perfil de la web: <WEB_PUBLIC_URL>/profile» (other changes in the same message still apply), and the WhatsApp prompt tells the model so. Restrictions already saved from the web are still respected. Test `whatsappHealthData.test.ts`
 - **AI disclosure (EU AI Act art. 50):** both first messages Mimo can send in a conversation — the unlinked "Hola, soy Mimo, el asistente de cocina de Mimoia…" hint and the "¡Listo!" after linking — include "Soy un asistente de inteligencia artificial (IA): puedo equivocarme y no sustituyo a un profesional sanitario." (`AI_DISCLOSURE_FIRST_PERSON` in `@ona/shared`). Pinned by `whatsappInbound.test.ts`.
 - No WhatsApp groups. Signing up happens on the web (the connect link offers "Crear cuenta"), not inside the chat.
 - Meta's test number can only message the up-to-5 recipients verified in the Meta dashboard. Opening the channel to all users needs a real number plus business verification.

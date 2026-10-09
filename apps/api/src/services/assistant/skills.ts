@@ -38,7 +38,8 @@ import { NotARecipeError } from '../recipeUrlExtractor.js'
 import { NoExtractableContentError } from '../sources/youtube.js'
 import { PageFetchError, UnsafeUrlError } from '../net/publicFetch.js'
 import type { SkillDefinition, SkillContext, SkillResult } from './types.js'
-import { HEALTH_CONSENT_SKILL_REPLY } from '../healthConsent.js'
+import { HEALTH_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY } from '../healthConsent.js'
+import { isHealthMemoryKey } from '@ona/shared'
 
 /**
  * Text that came from a web page, a photo or another person (an imported
@@ -2040,6 +2041,12 @@ const updateMemory: SkillDefinition = {
     ctx: SkillContext,
   ): Promise<SkillResult> {
     const { userId } = ctx
+    // Over WhatsApp health data is never stored (PRO-24): drop those facts
+    // and point to the web profile.
+    if (ctx.channel === 'whatsapp' && params.facts.some((f) => isHealthMemoryKey(f.key))) {
+      params = { facts: params.facts.filter((f) => !isHealthMemoryKey(f.key)) }
+      if (params.facts.length === 0) return { data: null, summary: WHATSAPP_HEALTH_DATA_REPLY, uiHint: 'text' }
+    }
     const { setMemoryBatch, UnknownMemoryKeyError, MemoryValueValidationError, HealthConsentRequiredError } = await import('../userMemoryStore.js')
     // Forward as a single transaction so a partial failure rolls back.
     try {

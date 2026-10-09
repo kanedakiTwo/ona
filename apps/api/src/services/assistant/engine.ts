@@ -88,7 +88,7 @@ export async function chat(
     tools,
     messages,
     skills,
-    ctx: { userId, db },
+    ctx: { userId, db, channel: opts.mode ?? 'text' },
     onToolStart: opts.onToolStart,
   })
 }

@@ -21,6 +21,12 @@ import { db } from '../db/connection.js'
 import { userMemories, users, userSettings } from '../db/schema.js'
 import { env } from '../config/env.js'
 
+/**
+ * WhatsApp is not for special-category data (Meta's terms 4.2, PRO-24): over
+ * WhatsApp health data is never stored, consent or not.
+ */
+export const WHATSAPP_HEALTH_DATA_REPLY = `Por WhatsApp no guardo datos de salud (alergias, intolerancias, restricciones ni datos físicos). Añádelos en tu perfil de la web: ${env.WEB_PUBLIC_URL}/profile`
+
 /** What the assistant says when asked to store health data without consent. */
 export const HEALTH_CONSENT_SKILL_REPLY = `No lo he guardado: las alergias, intolerancias y datos físicos son datos de salud y solo los guardo si das tu consentimiento en tu perfil: ${env.WEB_PUBLIC_URL}/profile`
 

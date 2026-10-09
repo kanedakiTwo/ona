@@ -9,15 +9,15 @@ Weekly shopping list and pantry stock management. Aggregates ingredients across 
 - Users can check items off as they buy them (visual strikethrough, persisted)
 - Users can mark items as already in their pantry (stock manager)
 - Items in stock are excluded from the active shopping list
-- Users can switch between two views: "Lista" (shopping list) and "Gestionar stock" (pantry toggle)
-- Users can see items grouped by aisle (produce, carnicería, lácteos, panadería, despensa…) for faster shopping
-- Users can export the active list as plain text via the native share sheet (Web Share API), with clipboard fallback on browsers without `navigator.share`
+- Users can switch between two tabs: "Por comprar" (shopping list) and "Ya en casa" (pantry)
+- Users can see items grouped by aisle (produce, carnicería, lácteos, panadería, despensa…) for faster shopping; a single chip row under the header narrows the current tab to one aisle ("Todo" shows them all; only aisles with rows in that tab get a chip)
+- The date range (today → end of next week by default) shows as the page eyebrow and as the first chip of that row; tapping it (or "···" → "Cambiar fechas") opens a sheet with "Desde" / "Hasta" and the "Esta + sig" reset
+- Users can export what's left to buy as plain text via the native share sheet (Web Share API), with clipboard fallback on browsers without `navigator.share` — "···" → "Compartir lo que queda"
 - Check-item and stock-toggle mutations are queued offline (IndexedDB) and replay automatically when the device reconnects; an inline "Pendiente de sincronizar" Clock icon marks items still in the queue — see [PWA](./pwa.md)
-- The page shows progress: "X/Y comprados" and "Z en stock" with a green progress bar
-- A toggle "Mostrar en stock" reveals/hides items already in stock within the list view
+- The page shows progress: "X/Y completados", "N% listo", "X comprados · Z en casa" with an ink progress bar
 - If no menu exists for the week, the page shows an empty state with a CTA to generate one
 - Items carry their recipe notes (`notes`: "picada", "morada en juliana") and tiny buyable amounts no longer vanish (two cloves of garlic stay as a line when a shop sells garlic; pantry staples still drop). Items typed by hand with no amount are stored as 1 u with `quantitySource: 'default'` (the form starts empty) and get their aisle from the buy rules ("calabacín" → frutas y verduras). See [shop-orders.md](./shop-orders.md) → Buy rules.
-- A **Pedir a mis tiendas** card links to `/compra`, where ONA turns what's left for the next 7 days into one order per shop (frutería, carnicería, pescadería, súper) that the user sends from their own WhatsApp — see [Compra en mis tiendas](./shop-orders.md). Closing a shop order ticks its items as bought on this list.
+- **Pedir a mis tiendas** ("···" sheet; also an outlined pill in the header at `lg+`) links to `/compra`, where ONA turns what's left for the next 7 days into one order per shop (frutería, carnicería, pescadería, súper) that the user sends from their own WhatsApp — see [Compra en mis tiendas](./shop-orders.md). Closing a shop order ticks its items as bought on this list.
 
 ## Item Model
 
@@ -71,7 +71,7 @@ Both toggle endpoints flip the field (no payload value used) and return the full
 
 ## Manual items + prices (PR 10A)
 
-- Users can add **free-text items** that aren't in any recipe — bread, dish soap, coffee — through an inline "Añadir un item manual" form at the top of `/shopping`. Body: `{ name, quantity?, unit?, aisle?, pricePerUnit? }`. Each manual item is stored as a `ShoppingItem` with `kind: 'manual'` and `ingredientId: null`. They survive `regenerate` (the aggregator only ever rebuilds menu-derived items today, but PR 10B will formalise this guarantee).
+- Users can add **free-text items** that aren't in any recipe — bread, dish soap, coffee — through "···" → "Añadir a mano", a sheet with the item form (name, optional quantity + unit, aisle, optional total price). Body: `{ name, quantity?, unit?, aisle?, pricePerUnit? }`. Each manual item is stored as a `ShoppingItem` with `kind: 'manual'` and `ingredientId: null`. They survive `regenerate` (the aggregator only ever rebuilds menu-derived items today, but PR 10B will formalise this guarantee).
 - Each item carries an optional **`pricePerUnit`** (€ per `unit`). A tiny inline number input next to every row lets the user enter it; menu-derived items accept price edits, but only manual items accept name/quantity/aisle edits or deletes. Trying to rename a menu item returns 400 with a Spanish hint.
 - The page shows a **weekly-total banner** at the top: `€X.XX · Y con precio · Z sin precio`. Sum is `Σ quantity × pricePerUnit` over non-`inStock`, positive-quantity, priced items. Items the user already has at home are excluded from spend. The pure reducer `computeListTotal(items)` is unit-tested.
 
@@ -96,13 +96,12 @@ Access check is the same scope rule as the rest of `/shopping-list/*`: requester
 
 ## Desktop layout (lg+)
 
-At `lg+` the `/shopping` page widens its outer container to `max-w-[900px]` so the list reads at a comfortable width on desktop instead of sitting in a 430 px column. The list itself stays single-column with aisles as inline section headers — a future polish PR may convert to a 3-col aisle grid with a left sidebar (date range + progress + total); that's out of scope for this migration.
+At `lg+` the `/shopping` page uses the "D" 1180 px container: header with the "Pedir a mis tiendas" pill + "···", the chip row wrapping, progress and € total side by side, and each aisle as a paper card in a 2-column grid (3 columns at `xl`). Mobile keeps one column with aisles as section headers. Visual details in [Design System](./design-system.md).
 
 ## Constraints
 
 - Field names are camelCase (`inStock`, `checked`, `ingredientId`) end-to-end — frontend, types, and DB JSONB
 - The list is regenerated on every GET — there is no longer a manual "Regenerar" button on `/shopping`. The cache invalidates automatically when any menu mutation succeeds, so editing the menu, swapping slots, or skipping a day reflects in the basket on the next render.
-- Items are only created from menu recipes; users cannot add custom items in the current implementation
 - The progress bar uses `(checkedCount + inStockCount) / totalCount`
 - Export format is plain text suitable for paste into messaging apps; it preserves aisle grouping and ends with a "Hecho con Mimoia" line + link (the shared title is "Lista de compra · Mimoia") (`/?ref=lista`, `withOnaFooter`), so a shared list can bring another household
 - **Ingredient names on screen (detail, shopping list, pantry, staples)** read as a sentence — «Aceite de oliva virgen», «Pimentón dulce» — via `ingredientDisplayName` (`packages/shared/src/utils/shopFormat.ts`): only the first letter is raised and catalogue accents are restored; brands/acronyms the user typed («Kerrygold», «AOVE») stay. Display-only; stored names are untouched (PRO-02).
@@ -122,5 +121,6 @@ At `lg+` the `/shopping` page widens its outer container to `max-w-[900px]` so t
 - [apps/api/src/routes/shopping.ts](../apps/api/src/routes/shopping.ts)
 - [apps/api/src/services/shoppingList.ts](../apps/api/src/services/shoppingList.ts) — aggregation + unit conversion + aisle grouping
 - [apps/web/src/app/shopping/page.tsx](../apps/web/src/app/shopping/page.tsx)
+- [apps/web/src/components/shopping/ShoppingExtensions.tsx](../apps/web/src/components/shopping/ShoppingExtensions.tsx) — € total card, manual-item form, inline price, delete
 - [apps/web/src/hooks/useShopping.ts](../apps/web/src/hooks/useShopping.ts)
 - [packages/shared/src/types/shopping.ts](../packages/shared/src/types/shopping.ts)

@@ -101,12 +101,12 @@ The `.standalone-pt` utility applies `padding-top: var(--safe-top)` so content d
 - `Navbar` (bottom tab bar, 2026-10-08) — fixed full width, `bg-paper` + `border-border-soft` top border, four tabs with icon **and visible label** (Menú, Compra, Recetas, Perfil; 11 px; no «Asesor» tab since D-023, 2026-10-09: Mimo is the floating button), active = ink, semibold, stroke 2.2 + `aria-current="page"` (Compra is also active on `/compra/*`); 60 px + safe-area inset. Hidden on full-screen routes listed in `HIDDEN_ON` (cook mode)
 - `/menu` — "D · Luz y foto": compact header (eyebrow + Fraunces 650 h1 with terracotta-deep italic day), day strip (ink pill), full-bleed photo hero with overlapping paper caption card + ink "Empezar a cocinar" pill, horizontal meal rows, every action behind "···" sheets (`MenuSheet`: bottom sheet on mobile, centred dialog at lg+, portalled, Esc closes, fades only under reduced motion); desktop hero row + "La semana" photo columns. Photo-less: the hero becomes a compact card (meal icon on a bone square, name once); thumbnails and tiles use `RecipeCover` (bone block + small meal icon, no name). See [Menus](./menus.md)
 - **Mimo companion** (D-023, 2026-10-09; see [Advisor](./advisor.md)) — `MimoButton`: 56 px terracotta circle, cream ring, the brand spoon (`MimoiaSymbol`: Mimo's face), terracotta-deep on hover, a pulsing forest dot while the wake word listens; sits above the tab bar (mobile), the recipe action bar (< `lg`) or the cook-mode controls (`z-110`). `MimoPanel`: cream bottom sheet (88dvh, `rounded-t-[28px]`, ink/30 backdrop) below `lg`, a 400 px right column with a left hairline at `lg+` (the page moves aside via `--mimo-panel-width`); `MimoAvatar` + Fraunces «Mimo» title, 11 px uppercase status line, ink user bubbles / bone assistant bubbles, terracotta level bars while listening, forest «Manos libres» pill when on
-- `/compra` + `/compra/tiendas` — "Pide a tus *tiendas*." editorial header, one cream card per shop order with a status chip (ink = enviado, terracotta = ha contestado, forest = confirmado), ink pill CTAs, verdict labels OK (forest) / Revisar (terracotta) / No hay (muted); `/shopping` gets an outlined "Pedir a mis tiendas" card
+- `/compra` + `/compra/tiendas` — "Pide a tus *tiendas*." editorial header, one cream card per shop order with a status chip (ink = enviado, terracotta = ha contestado, forest = confirmado), ink pill CTAs, verdict labels OK (forest) / Revisar (terracotta) / No hay (muted); `/shopping` links to it from its "···" sheet (and an outlined "Pedir a mis tiendas" pill at `lg+`)
+- `/shopping` (lista y despensa) — "D · Luz y foto" (2026-10-10, PRO-38): compact header (date-range eyebrow + Fraunces 650 "Lista de la *compra*" with terracotta-deep italic + one "···" `MenuSheet` holding Compartir lo que queda · Añadir a mano · Pedir a mis tiendas · Cambiar fechas); ONE chip row (date-range chip → dates sheet, then "Todo" + aisle chips that filter, 36 px pills with a 44 px hit area); paper progress card (ink bar) + paper € total card (`border-border-soft`, radius 20); underline tabs "Por comprar" / "Ya en casa"; rows like the recipe detail's (dashed, 16 px name, JetBrains 13 px quantity, 26 px check in a 44 px target, ink when bought). At `lg+`: 1180 px container, aisles as paper cards in 2 columns (3 at `xl`). See [Shopping](./shopping.md)
 
 ## Pages still in App Mode (legacy, green palette)
 
 These have not been migrated to the editorial system yet:
-- `/shopping` — green/mint palette, `[#2D6A4F]` accents, `[#EAF3DE]` chips
 - `/profile` — same
 - `/login` — photo background with white form sheet (transitional; uses the `MimoiaLogo` lockup but green submit button)
 
@@ -195,6 +195,7 @@ The migration (June 2026) shipped the chasis (sidebar at `md+`, container caps) 
 - [apps/web/src/app/recipes/page.tsx](../apps/web/src/app/recipes/page.tsx) — editorial in-app
 - [apps/web/src/app/recipes/[id]/page.tsx](../apps/web/src/app/recipes/[id]/page.tsx)
 - [apps/web/src/app/menu/page.tsx](../apps/web/src/app/menu/page.tsx) — editorial "D · Luz y foto"
+- [apps/web/src/app/shopping/page.tsx](../apps/web/src/app/shopping/page.tsx) — editorial "D · Luz y foto" (+ `components/shopping/ShoppingExtensions.tsx`)
 - [apps/web/src/components/shared/Navbar.tsx](../apps/web/src/components/shared/Navbar.tsx) — labelled tab bar
 - [apps/web/src/components/shared/PublicNavbar.tsx](../apps/web/src/components/shared/PublicNavbar.tsx)
 - [apps/web/src/components/shared/Footer.tsx](../apps/web/src/components/shared/Footer.tsx)

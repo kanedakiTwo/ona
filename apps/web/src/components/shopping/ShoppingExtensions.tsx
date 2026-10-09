@@ -3,7 +3,8 @@
 /**
  * PR 10A — bolt-on UI bits for the shopping page:
  *   - <ListTotalBanner />: prominent € total + "X sin precio" hint.
- *   - <AddManualItemForm />: inline form for free-text items.
+ *   - <AddManualItemForm />: form for free-text items (inline, or `embedded`
+ *     in the /shopping "···" → «Añadir a mano» sheet).
  *   - <ItemPriceField />: tiny inline € input attached to each item row.
  *   - <ItemDeleteButton />: only for manual items.
  *
@@ -51,21 +52,21 @@ export function ListTotalBanner({ listId }: { listId: string }) {
   const { totalEur, pricedCount, unpricedCount } = data
   if (pricedCount === 0 && unpricedCount === 0) return null
   return (
-    <div className="rounded-2xl bg-[#1A1612] p-4 text-[#FAF6EE] flex items-center justify-between gap-4">
-      <div className="flex items-center gap-3 min-w-0">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#C65D38]">
-          <Wallet size={15} />
+    <div className="flex items-center justify-between gap-4 rounded-[20px] border border-border-soft bg-paper px-5 py-4">
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-cream-deep text-terracotta-deep">
+          <Wallet size={17} />
         </div>
         <div className="min-w-0">
-          <div className="text-[10px] uppercase tracking-[0.18em] text-[#FAF6EE]/60">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">
             Total semanal estimado
           </div>
-          <div className="font-display text-2xl leading-none mt-0.5">
+          <div className="mt-0.5 font-serif-text text-[26px] font-[650] leading-none text-ink tabular-nums">
             {pricedCount > 0 ? fmtEur(totalEur) : "—"}
           </div>
         </div>
       </div>
-      <div className="text-right text-[10px] uppercase tracking-[0.12em] text-[#FAF6EE]/60">
+      <div className="text-right text-[12px] leading-snug text-ink-muted">
         {pricedCount} con precio
         <br />
         {unpricedCount} sin precio
@@ -74,9 +75,19 @@ export function ListTotalBanner({ listId }: { listId: string }) {
   )
 }
 
-export function AddManualItemForm({ listId }: { listId: string }) {
+export function AddManualItemForm({
+  listId,
+  embedded = false,
+  onClose,
+}: {
+  listId: string
+  /** Rendered inside a sheet (the "···" → Añadir a mano): always open, no own eyebrow/card. */
+  embedded?: boolean
+  /** Called by "Cerrar" when embedded. */
+  onClose?: () => void
+}) {
   const add = useAddShoppingItem()
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(embedded)
   const [name, setName] = useState("")
   // Empty = "no amount": the shop order then writes "1 calabacín" or asks how much jamón.
   const [qty, setQty] = useState("")
@@ -122,19 +133,21 @@ export function AddManualItemForm({ listId }: { listId: string }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-2 rounded-full border border-dashed border-[#DDD6C5] bg-transparent px-4 py-2 text-[12px] uppercase tracking-[0.12em] text-[#7A7066] transition-all hover:border-[#1A1612] hover:text-[#1A1612]"
+        className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-dashed border-border bg-transparent px-4 text-[14px] text-ink-mid transition-colors hover:border-ink hover:text-ink"
       >
         <Plus size={12} /> Añadir un item manual
       </button>
     )
   }
 
+  const field =
+    "h-11 w-full rounded-xl border border-border bg-paper px-3 text-[15px] text-ink outline-none placeholder:text-ink-light focus:border-ink"
   return (
     <form
       onSubmit={handleSubmit}
-      className="rounded-2xl border border-[#DDD6C5] bg-[#FFFEFA] p-4 space-y-3"
+      className={embedded ? "space-y-3" : "space-y-3 rounded-[20px] border border-border-soft bg-paper p-4"}
     >
-      <div className="text-eyebrow text-[#7A7066]">Nuevo item manual</div>
+      {!embedded && <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">Nuevo item manual</div>}
       <input
         type="text"
         value={name}
@@ -142,7 +155,7 @@ export function AddManualItemForm({ listId }: { listId: string }) {
         placeholder="Ej: Pan de molde integral"
         autoFocus
         maxLength={80}
-        className="w-full border-b border-[#DDD6C5] bg-transparent py-1.5 text-[14px] outline-none focus:border-[#1A1612]"
+        className={field}
       />
       <div className="grid grid-cols-[1fr_1fr_1fr] gap-2">
         <input
@@ -154,12 +167,13 @@ export function AddManualItemForm({ listId }: { listId: string }) {
           placeholder="Cantidad"
           aria-label="Cantidad (opcional)"
           onChange={(e) => setQty(e.target.value)}
-          className="border-b border-[#DDD6C5] bg-transparent py-1.5 text-[13px] outline-none focus:border-[#1A1612]"
+          className={field}
         />
         <select
           value={unit}
           onChange={(e) => setUnit(e.target.value as BuyableUnit)}
-          className="border-b border-[#DDD6C5] bg-transparent py-1.5 text-[13px] outline-none focus:border-[#1A1612]"
+          aria-label="Unidad"
+          className={field}
         >
           {UNIT_OPTIONS.map((u) => (
             <option key={u.value} value={u.value}>
@@ -170,7 +184,8 @@ export function AddManualItemForm({ listId }: { listId: string }) {
         <select
           value={aisle}
           onChange={(e) => setAisle(e.target.value as Aisle)}
-          className="border-b border-[#DDD6C5] bg-transparent py-1.5 text-[13px] outline-none focus:border-[#1A1612]"
+          aria-label="Pasillo"
+          className={field}
         >
           {AISLES.map((a) => (
             <option key={a} value={a}>
@@ -179,8 +194,8 @@ export function AddManualItemForm({ listId }: { listId: string }) {
           ))}
         </select>
       </div>
-      <div className="flex items-center gap-2">
-        <span className="text-[11px] text-[#7A7066]">€</span>
+      <label className="flex items-center gap-2">
+        <span className="text-[14px] text-ink-muted">€</span>
         <input
           type="number"
           inputMode="decimal"
@@ -189,21 +204,21 @@ export function AddManualItemForm({ listId }: { listId: string }) {
           placeholder="precio total estimado (opcional, e.g. 1,80)"
           value={price}
           onChange={(e) => setPrice(e.target.value)}
-          className="flex-1 border-b border-[#DDD6C5] bg-transparent py-1.5 text-[13px] outline-none focus:border-[#1A1612]"
+          className={`${field} flex-1`}
         />
-      </div>
-      <div className="flex gap-2">
+      </label>
+      <div className="flex gap-2 pt-1">
         <button
           type="button"
-          onClick={() => setOpen(false)}
-          className="flex-1 rounded-full border border-[#DDD6C5] py-2 text-[11px] uppercase tracking-[0.12em] text-[#7A7066] hover:text-[#1A1612]"
+          onClick={() => (embedded ? onClose?.() : setOpen(false))}
+          className="min-h-[44px] flex-1 rounded-full border border-border bg-paper text-[14px] font-medium text-ink-mid transition-colors hover:border-ink hover:text-ink"
         >
           Cerrar
         </button>
         <button
           type="submit"
           disabled={add.isPending || !name.trim()}
-          className="flex-1 rounded-full bg-[#1A1612] py-2 text-[11px] uppercase tracking-[0.12em] text-[#FAF6EE] disabled:opacity-40"
+          className="min-h-[44px] flex-1 rounded-full bg-ink text-[14px] font-semibold text-cream transition-colors hover:bg-ink-mid disabled:opacity-40"
         >
           {add.isPending ? "Añadiendo…" : "Añadir"}
         </button>
@@ -255,7 +270,8 @@ export function ItemPriceField({
     })
   }
   return (
-    <label className="relative inline-flex shrink-0 items-center">
+    // The label is the 44 px hit area; the field itself is 36 px.
+    <label className="relative inline-flex h-11 shrink-0 items-center">
       <input
         type="number"
         inputMode="decimal"
@@ -270,9 +286,9 @@ export function ItemPriceField({
         }}
         aria-label={`Precio total estimado de ${item.name}`}
         title="Precio total que pagas (o esperas pagar) por esta línea"
-        className="w-20 rounded-md border border-[#DDD6C5] bg-[#FFFEFA] px-2 py-1 pr-5 text-right text-[12px] text-[#1A1612] tabular-nums outline-none transition-colors focus:border-[#1A1612] focus:bg-[#F2EDE0]"
+        className="h-9 w-[72px] rounded-xl border border-border bg-paper px-2 pr-5 text-right font-mono text-[13px] text-ink tabular-nums outline-none transition-colors placeholder:text-ink-light focus:border-ink focus:bg-cream-deep"
       />
-      <span className="pointer-events-none absolute right-1.5 text-[11px] text-[#7A7066]">€</span>
+      <span className="pointer-events-none absolute right-2 text-[12px] text-ink-muted">€</span>
     </label>
   )
 }
@@ -295,9 +311,9 @@ export function ItemDeleteButton({
       }}
       disabled={del.isPending}
       aria-label="Eliminar item manual"
-      className="shrink-0 rounded-full border border-[#DDD6C5] p-1.5 text-[#7A7066] hover:border-[#C65D38] hover:text-[#C65D38] disabled:opacity-40"
+      className="-mx-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink-muted transition-colors hover:text-terracotta-deep disabled:opacity-40"
     >
-      <Trash2 size={11} />
+      <Trash2 size={15} />
     </button>
   )
 }

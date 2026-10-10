@@ -10,13 +10,13 @@
  * "Prefiero seguir en la web" keeps the classic five questions.
  */
 
-import { useEffect, useRef } from "react"
+import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { MessageCircle, Monitor } from "lucide-react"
 import { useAuth } from "@/lib/auth"
 import { api } from "@/lib/api"
-import { useWhatsAppLinkCode, useWhatsAppStatus } from "@/hooks/useWhatsApp"
+import { useWhatsAppStatus, type useWhatsAppLinkCode } from "@/hooks/useWhatsApp"
 import { Accent, OnboardingHeader } from "./OnboardingShell"
 
 const PILL =
@@ -68,20 +68,23 @@ export function OnboardingChannelChoice({ onWhatsApp, onWeb }: { onWhatsApp: () 
   )
 }
 
-/** Code to send from the phone, then "Mimo te está escribiendo" until the first steps are done in the chat. */
-export function OnboardingWhatsAppLink({ onWeb }: { onWeb: () => void }) {
+/**
+ * Code to send from the phone, then "Mimo te está escribiendo" until the first
+ * steps are done in the chat. The code is minted by the parent in the click on
+ * «Por WhatsApp» (an event, not an effect: under React's dev double-mount the
+ * effect version lost the response and stayed on «Preparando tu código…»).
+ */
+export function OnboardingWhatsAppLink({
+  onWeb,
+  linkCode,
+}: {
+  onWeb: () => void
+  linkCode: ReturnType<typeof useWhatsAppLinkCode>
+}) {
   const { user, updateUser } = useAuth()
   const router = useRouter()
   const status = useWhatsAppStatus({ pollWhilePending: true })
-  const linkCode = useWhatsAppLinkCode()
-  const requested = useRef(false)
   const linked = Boolean(status.data?.linked)
-
-  useEffect(() => {
-    if (requested.current || !status.data || status.data.linked || !status.data.available) return
-    requested.current = true
-    linkCode.mutate()
-  }, [status.data, linkCode])
 
   // Mimo finishes the first steps in the chat; follow the account until it's onboarded.
   const account = useQuery({
@@ -132,9 +135,14 @@ export function OnboardingWhatsAppLink({ onWeb }: { onWeb: () => void }) {
         Toca el botón: se abre WhatsApp con un mensaje ya escrito. Envíalo y Mimo te hará tres preguntas para tu primer menú.
       </p>
       {linkCode.error ? (
-        <p role="alert" className="mt-6 rounded-2xl bg-warn-bg p-3 text-[14px] text-terracotta-deep">
-          No hemos podido preparar tu código. Sigue en la web y conecta WhatsApp después desde tu perfil.
-        </p>
+        <div className="mt-6 flex flex-col gap-2">
+          <p role="alert" className="rounded-2xl bg-warn-bg p-3 text-[14px] text-terracotta-deep">
+            No hemos podido preparar tu código. Inténtalo otra vez o sigue en la web.
+          </p>
+          <button type="button" onClick={() => linkCode.mutate()} className={PILL}>
+            Reintentar
+          </button>
+        </div>
       ) : !linkCode.data ? (
         <p className="mt-6 text-[14px] text-ink-muted" role="status">
           Preparando tu código…

@@ -18,7 +18,7 @@ import { RESTRICTION_PRESETS } from "@ona/shared"
 import { HealthConsentCheckbox } from "@/components/HealthConsentCheckbox"
 import { Accent, OnboardingHeader, OnboardingShell } from "./OnboardingShell"
 import { OnboardingChannelChoice, OnboardingWhatsAppLink } from "./OnboardingWhatsApp"
-import { useWhatsAppStatus } from "@/hooks/useWhatsApp"
+import { useWhatsAppLinkCode, useWhatsAppStatus } from "@/hooks/useWhatsApp"
 
 // Shared with the profile so both offer the same chips (@ona/shared).
 const PRESET_RESTRICTIONS = RESTRICTION_PRESETS
@@ -146,6 +146,7 @@ export default function OnboardingFlow() {
   // screen offers to do the first steps with Mimo in WhatsApp. Already linked
   // (e.g. from /whatsapp/conectar) → straight to "Mimo te está escribiendo".
   const whatsapp = useWhatsAppStatus()
+  const linkCode = useWhatsAppLinkCode()
   const [channel, setChannel] = useState<"choose" | "whatsapp" | "web" | null>(null)
   useEffect(() => {
     if (channel !== null || whatsapp.isLoading) return
@@ -258,9 +259,15 @@ export default function OnboardingFlow() {
                   Cargando…
                 </p>
               ) : channel === "choose" ? (
-                <OnboardingChannelChoice onWhatsApp={() => setChannel("whatsapp")} onWeb={() => setChannel("web")} />
+                <OnboardingChannelChoice
+                  onWhatsApp={() => {
+                    linkCode.mutate()
+                    setChannel("whatsapp")
+                  }}
+                  onWeb={() => setChannel("web")}
+                />
               ) : (
-                <OnboardingWhatsAppLink onWeb={() => setChannel("web")} />
+                <OnboardingWhatsAppLink linkCode={linkCode} onWeb={() => setChannel("web")} />
               )}
             </div>
           </div>

@@ -1,5 +1,5 @@
 /**
- * Pure parser: Meta webhook payload → the inbound messages ONA cares about.
+ * Pure parser: Meta webhook payload → the inbound messages Mimoia cares about.
  *
  * Meta batches `entry[].changes[].value.messages[]`; the same payload shape
  * also carries delivery `statuses[]` (sent/delivered/read) which we ignore.

@@ -155,7 +155,7 @@ app.use(captureServerErrors)
 app.use(errorHandler)
 
 app.listen(env.PORT, () => {
-  console.log(`ONA API running on port ${env.PORT}`)
+  console.log(`Mimoia API running on port ${env.PORT}`)
   // Notification scheduler — periodic poll over `notification_schedule`
   // dispatches due prep alerts via Web Push. Started once at boot;
   // idempotent if startup runs twice. See PR-D / notifications spec.

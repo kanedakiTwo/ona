@@ -4,7 +4,7 @@ User-scoped curator inside `/profile` (a tab, not a separate page) where any log
 
 ## Why this exists
 
-When ONA only had system recipes, the `/curator` page treated all recipes the same. Now that users can create recipes (via `/recipes/new`, the photo extractor, the URL importer, the LLM regen pipeline), each user has their own slice of the catalog — and they're the only person who should be touching it. They want the same convenience the admin dashboard offers (filter by gap, edit inline) but scoped to their own work.
+When Mimoia only had system recipes, the `/curator` page treated all recipes the same. Now that users can create recipes (via `/recipes/new`, the photo extractor, the URL importer, the LLM regen pipeline), each user has their own slice of the catalog — and they're the only person who should be touching it. They want the same convenience the admin dashboard offers (filter by gap, edit inline) but scoped to their own work.
 
 This is **not** a separate page — it lives as a tab in `/profile` because users already think of "their stuff" as part of their profile.
 
@@ -18,7 +18,7 @@ This is **not** a separate page — it lives as a tab in `/profile` because user
   - **Solo con pendientes** (checkbox, "ver pendientes de revisar") — filters to recipes that have at least one ingredient with `note ILIKE '%añadido automáticamente%'` (the marker the regen `repair` step writes when it has to invent an ingredient). The user clicks an entry → goes to the recipe edit form to set the real quantity and unit.
 - A counts strip at the top shows: total recetas, recetas sin nutrición, ingredientes pendientes de revisar.
 - The user **cannot** see or edit system recipes (`authorId IS NULL`) here — those belong to the admin dashboard. If a system recipe and a user recipe share a name, both are listed in their respective surfaces (the user only sees the system one as a public catalog read in `/recipes`).
-- Optional v1.1 (flagged as follow-up): "veces cocinada" + "calificación propia" if/when ONA tracks cook events. Not required for this version.
+- Optional v1.1 (flagged as follow-up): "veces cocinada" + "calificación propia" if/when Mimoia tracks cook events. Not required for this version.
 
 ## Scope vs Admin Dashboard
 

@@ -174,7 +174,7 @@ export const env = {
   WHATSAPP_VERIFY_TOKEN: process.env.WHATSAPP_VERIFY_TOKEN || '',
   WHATSAPP_DISPLAY_NUMBER: (process.env.WHATSAPP_DISPLAY_NUMBER || '').replace(/\D/g, ''),
   /**
-   * Comma-separated ONA account emails allowed to link WhatsApp. Empty means
+   * Comma-separated Mimoia account emails allowed to link WhatsApp. Empty means
    * every user. v1 ships for Miguel's household only (Meta test number
    * caps recipients at 5 anyway).
    */
@@ -202,7 +202,7 @@ export const env = {
   SUPPORT_EMAIL: (process.env.SUPPORT_EMAIL || '').trim(),
   /**
    * Who receives the daily WhatsApp conversation review (reviewer.ts) on
-   * WhatsApp. Comma-separated ONA emails; empty → ADMIN_EMAILS.
+   * WhatsApp. Comma-separated Mimoia emails; empty → ADMIN_EMAILS.
    */
   WHATSAPP_REVIEW_EMAILS: (process.env.WHATSAPP_REVIEW_EMAILS || '')
     .split(',')

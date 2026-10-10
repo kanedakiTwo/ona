@@ -1,7 +1,7 @@
 /**
  * In-house error tracker ("Sentry casero", specs/errors.md). Every error a
  * user hits in the web app (POST /client-errors) and every 5xx the API
- * answers lands in `app_errors`, grouped by fingerprint, so the ONA HQ agents
+ * answers lands in `app_errors`, grouped by fingerprint, so the Mimoia HQ agents
  * can read them through GET /admin/errors without a third-party service.
  *
  * Privacy first: `scrub` runs over message, stack and path BEFORE anything is

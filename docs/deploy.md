@@ -1,6 +1,6 @@
 # Deploy
 
-ONA runs on Railway in two services + a Postgres:
+Mimoia runs on Railway in two services + a Postgres:
 
 - `ona-api` — Express API (`apps/api/`)
 - `ona-web` — Next.js frontend (`apps/web/`, prod build via `next build`)
@@ -94,7 +94,7 @@ scripts/smoke-remote.sh https://ona-api-staging.up.railway.app https://ona-web-s
 
 `--wait` waits for each new deployment to report `SUCCESS` (exit 1 on `FAILED`/`CRASHED` or after 15 min). `smoke-remote.sh` runs the production smoke checks; `--deep` also registers a user, generates the week's menu and reads the shopping list, and refuses to run against production.
 
-**Nightly Taller (ONA HQ, D-018 → D-027).** The routine "Mimoia HQ · Taller" (00:00 Madrid) implements the backlog tasks Miguel marked `lista`, joins them on its own branch `claude/taller-AAAA-MM-DD` (CI green) and deploys **that branch to staging** with `scripts/deploy.sh --staging-branch --wait` (refused against production), then the deep smoke and screenshots. **It never pushes to `master` nor deploys production**: since 2026-10-10 (D-027) Miguel gives the OK in `/ona-dia`, and that session fast-forwards `master` to the branch and deploys production from a clean worktree, then the smoke (rollback: `scripts/deploy.sh --allow-behind` on the previous commit). Why: the cloud session's safety check blocks an unattended push to `master` as a production deploy (2026-10-10). It uses the `taller-staging` Railway project token, held only in the Taller's cloud environment. The protocol lives in `kanedakiTwo/ona-hq` → `loops/taller.md`.
+**Nightly Taller (Mimoia HQ, D-018 → D-027).** The routine "Mimoia HQ · Taller" (00:00 Madrid) implements the backlog tasks Miguel marked `lista`, joins them on its own branch `claude/taller-AAAA-MM-DD` (CI green) and deploys **that branch to staging** with `scripts/deploy.sh --staging-branch --wait` (refused against production), then the deep smoke and screenshots. **It never pushes to `master` nor deploys production**: since 2026-10-10 (D-027) Miguel gives the OK in `/ona-dia`, and that session fast-forwards `master` to the branch and deploys production from a clean worktree, then the smoke (rollback: `scripts/deploy.sh --allow-behind` on the previous commit). Why: the cloud session's safety check blocks an unattended push to `master` as a production deploy (2026-10-10). It uses the `taller-staging` Railway project token, held only in the Taller's cloud environment. The protocol lives in `kanedakiTwo/ona-hq` → `loops/taller.md`.
 
 ## Required env vars
 
@@ -112,7 +112,7 @@ Both are configured in the Railway dashboard, not committed.
 | `OPENAI_API_KEY` | For transcription: WhatsApp voice notes and Mimo's voice in the app (`POST /stt`). Without it `/stt` answers 503 and Mimo is text-only |
 | `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICES` / `ELEVENLABS_MODEL` | Optional: Mimo's replies read aloud (`POST /tts`). `ELEVENLABS_VOICES` = `Nombre:voiceId,Nombre:voiceId` (first = default); `ELEVENLABS_MODEL` defaults to `eleven_multilingual_v2`. Library voices need a paid ElevenLabs plan. Unset = the browser's voice. Production and staging since 2026-10-09: one voice, Miguel's clone (`Miguel:qvz8MPUNfIEXPflIyvbY`, ElevenLabs Starter on mmartinlacoma@gmail.com). See `specs/voice-mode.md` |
 | `USDA_FDC_API_KEY` | For ingredient auto-create |
-| `METRICS_READ_TOKEN` | Read-only token for `GET /admin/metrics`, `GET /admin/errors` and `GET /admin/waitlist` (header `x-metrics-token`) used by the ONA HQ agents; unset = token access off. See `specs/metrics.md`, `specs/errors.md`, `specs/waitlist.md` |
+| `METRICS_READ_TOKEN` | Read-only token for `GET /admin/metrics`, `GET /admin/errors` and `GET /admin/waitlist` (header `x-metrics-token`) used by the Mimoia HQ agents; unset = token access off. See `specs/metrics.md`, `specs/errors.md`, `specs/waitlist.md` |
 | `COST_PRICE_OVERRIDES` | Optional JSON over the cost-ledger price table, e.g. `{"openai/gpt-realtime":{"perMinute":0.15}}` |
 
 `ona-web`:
@@ -122,7 +122,7 @@ Both are configured in the Railway dashboard, not committed.
 | `RAILPACK_BUILD_CMD` | `pnpm install && pnpm --filter @ona/shared build && pnpm --filter @ona/web build` |
 | `RAILPACK_START_CMD` | `node apps/web/.next/standalone/apps/web/server.js` |
 | `NEXT_PUBLIC_API_URL` | `https://ona-api-production.up.railway.app` (no trailing slash) |
-| `NEXT_PUBLIC_PICOVOICE_ACCESS_KEY` | From <https://console.picovoice.ai>; required for the "Hola Ona" wake word |
+| `NEXT_PUBLIC_PICOVOICE_ACCESS_KEY` | From <https://console.picovoice.ai>; required for the wake word (see `specs/voice-mode.md`) |
 | `NEXT_PUBLIC_ERROR_REPORTING` | Optional. `false` switches the browser error reporter off (it is on in production builds by default); `true` turns it on under `next dev`. See `specs/errors.md` |
 | `NEXT_PUBLIC_RELEASE` | Optional build label sent with client error reports. Unset → `RAILWAY_GIT_COMMIT_SHA` or `RAILWAY_DEPLOYMENT_ID` if Railway exposes them at build time, else none |
 | `PORT` | `3000` |

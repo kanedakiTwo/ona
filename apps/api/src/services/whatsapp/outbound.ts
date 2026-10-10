@@ -34,7 +34,7 @@ import { recordCost } from '../costLedger.js'
 const TEMPLATES = parseTemplateMap(env.WHATSAPP_TEMPLATES)
 
 /**
- * Messages ONA sends first. Free-form inside Meta's 24 h window; outside it,
+ * Messages Mimoia sends first. Free-form inside Meta's 24 h window; outside it,
  * through the approved template for that kind (`WHATSAPP_TEMPLATES`, else the
  * generic `WHATSAPP_TEMPLATE_NAME`) when configured,
  * otherwise skipped. Every send is stored as an outbound row so a reply like

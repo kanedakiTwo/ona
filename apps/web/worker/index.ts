@@ -13,7 +13,7 @@
  *                            icon path and tag.
  *
  *   - `notificationclick`  — user taps the notification. Bring an open
- *                            ONA tab to the front if possible, else
+ *                            Mimoia tab to the front if possible, else
  *                            open the URL embedded in the payload.
  */
 
@@ -37,7 +37,7 @@ self.addEventListener("push", (event: any) => {
   } catch {
     // Defensive — if the API ever sends a non-JSON payload, still surface
     // *something* rather than swallow the wakeup.
-    payload = { title: "ONA", body: event.data.text() }
+    payload = { title: "Mimoia", body: event.data.text() }
   }
 
   const url = payload.url ?? "/menu"

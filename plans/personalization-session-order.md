@@ -20,7 +20,7 @@ The household foundation (PR 1) is the blocker for half the list. Doing it secon
 | **10** | **PR 14 — Shopping real-time sync (SSE)** | Server-Sent Events stream of shopping list mutations per household, optimistic client reconciliation, "X miembros editando" indicator | The killer feature for family sharing | 3h | sessions 3, 5 |
 | **11** | **PR 13 — Ticket OCR** | Upload supermarket receipt → OCR → extract items + prices + dates → update pantry qty + price history. Manual correction UI for low-confidence lines | XL; high uncertainty (Spanish supermarket layouts vary). Treat as its own session | 5h | session 7 |
 | **12** | **PR 15 — Analytics** | Monthly nutrition trends, cost trends (€ per week, € per serving), adherence (planeaste 21, cocinaste 15), variety + inflammation extended with cook-log data | Synthesizes everything — needs cook_log + price data | 3h | sessions 4, 11 |
-| **13** | **PR 9 — Community recipes (public/private toggle)** | Per-recipe `is_public` flag, new "Comunidad" scope in the catalog alongside ONA / Mis recetas, anti-abuse moderation checklist (admin-flag in a follow-up) | Low priority — nobody is asking yet, but plumbing is small | 2h | session 8 |
+| **13** | **PR 9 — Community recipes (public/private toggle)** | Per-recipe `is_public` flag, new "Comunidad" scope in the catalog alongside Mimoia / Mis recetas, anti-abuse moderation checklist (admin-flag in a follow-up) | Low priority — nobody is asking yet, but plumbing is small | 2h | session 8 |
 | **14** | **PR 16 — Accessibility** | Dark mode (extension of `@theme` tokens), font-size scaling, print stylesheet, color-blind-safe status pills, voice as universal input (not only advisor) | Independent — ship any time. Last for now since the user-visible features above are the priority | 3h | none |
 
 Total: ~42 h across 14 sessions.
@@ -46,4 +46,4 @@ Total: ~42 h across 14 sessions.
 - ✅ PR 2b — `memory.dislikes` → matcher
 - ✅ PR 2c — `memory.equipment` + `memory.time_available` → matcher
 - ✅ PR 3 — Voice onboarding
-- ✅ PR 2d — `nutrition_principles` (override ONA's defaults)
+- ✅ PR 2d — `nutrition_principles` (override Mimoia's defaults)

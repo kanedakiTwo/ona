@@ -32,7 +32,7 @@ Where recipes come from: the seed pipeline, import from a photo, a URL (article 
 
 **User-created recipes** (`authorId = user.id`):
 - Editable and deletable by the author
-- Created via `/recipes/new`, AI extraction from photo, AI extraction from URL, or by copying from the ONA catalog (`POST /recipes/:id/copy`)
+- Created via `/recipes/new`, AI extraction from photo, AI extraction from URL, or by copying from the Mimoia catalog (`POST /recipes/:id/copy`)
 - Must pass the same lint rules on save
 - Cards carry no badge; they are what the **"Mis recetas"** chip shows
 

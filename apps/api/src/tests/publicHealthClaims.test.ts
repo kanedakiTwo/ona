@@ -1,8 +1,8 @@
 /**
- * Guard: no health claims on ONA's public marketing pages.
+ * Guard: no health claims on Mimoia's public marketing pages.
  *
  * Why this exists: on 2026-10-07 the landing and footer sold a
- * "filosofía antiinflamatoria". ONA HQ's constitution (§6) forbids health
+ * "filosofía antiinflamatoria". Mimoia HQ's constitution (§6) forbids health
  * effects in any external material, and RD 1907/1996 art. 4 bans advertising
  * unproven preventive or therapeutic effects. Several Claude sessions write
  * copy in parallel, so this scans the public surfaces on every CI run.

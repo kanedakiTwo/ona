@@ -1,6 +1,6 @@
 # Authentication
 
-User registration, login, and session management for ONA.
+User registration, login, and session management for Mimoia.
 
 ## User Capabilities
 
@@ -60,7 +60,7 @@ The `users` table holds the canonical scalar fields (`sex`, `age`, `weight`, `he
 
 **Public** (no navbar, no auth required):
 - `/` (landing), `/como-funciona`, `/privacidad`, `/terminos`
-- `/recipes-ona`, `/recipes-ona/[id]` — public ONA catalogue (system recipes only, see [Recipes](./recipes.md))
+- `/recipes-ona`, `/recipes-ona/[id]` — public Mimoia catalogue (system recipes only, see [Recipes](./recipes.md))
 - `/login`, `/register` — `/register` stays reachable for invited households, but no public CTA links to it pre-launch (they lead to the [waitlist](./waitlist.md))
 - `/lista/[code]`, `/lista/baja` — waitlist owner page and opt-out (public chrome via `PUBLIC_PREFIXES`)
 - `/onboarding`

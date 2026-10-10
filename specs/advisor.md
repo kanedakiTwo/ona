@@ -1,6 +1,6 @@
 # Advisor
 
-AI assistant for nutrition guidance, menu queries, and recipe management via natural language. The assistant is called **Mimo**, of **Mimoia** (renamed from "Ona" on 2026-10-08; `ASSISTANT_NAME` / `BRAND_NAME` in `@ona/shared`). Every prompt mode (text, voice, onboarding, WhatsApp) opens with "Eres Mimo, el asistente de Mimoia", tells the model to introduce itself as "Hola, soy Mimo, de Mimoia" and never as ONA (the old name, which users may still use); pinned by `apps/api/src/tests/brandName.test.ts`.
+AI assistant for nutrition guidance, menu queries, and recipe management via natural language. The assistant is called **Mimo**, of **Mimoia** (renamed on 2026-10-08; `ASSISTANT_NAME` / `BRAND_NAME` in `@ona/shared`). Every prompt mode (text, voice, onboarding, WhatsApp) opens with "Eres Mimo, el asistente de Mimoia", tells the model to introduce itself as "Hola, soy Mimo, de Mimoia" and never as Mimoia (the old name, which users may still use); pinned by `apps/api/src/tests/brandName.test.ts`.
 
 ## User Capabilities
 
@@ -43,7 +43,7 @@ The assistant can call back-end skills (function calling). Each skill has a name
 - `create_recipe` — save a new user recipe. If the user asks for a basic recipe without details ("créalo tú"), the model writes a reasonable version and saves it without further questions. Since 2026-10 it persists through `createRecipeFromParts` (`services/recipeImport.ts`): the same ingredient matching (USDA auto-create) and soft-lint persist as URL/photo imports, with safe defaults (2 servings, lunch+dinner, all seasons; `normalizeRecipeParts`). The old raw INSERT skipped `servings` (NOT NULL) and failed in prod; the mock-DB tests never caught it.
 - `edit_recipe` — author-only field edits on a user recipe (name, prepTime, cookTime, difficulty, notes, tips). Voice cannot edit ingredients/steps inline; with `openEditor: true` it returns a hint pointing at `/recipes/<id>/edit` so the user can continue in the form
 - `update_household` — set the user's `adults` + `kidsCount` (children 2–10 years; <2 don't count, >10 count as adults). Drives shopping-list portion sizing immediately. Triggered by phrases like "ahora somos 2 adultos y un niño" or "quítame el niño"
-- `add_recipe_to_mine` — copy a system (or another user's) recipe into the caller's catalog so they can edit it. Lookup by `recipeId` or `recipeName` (prefers ONA system matches; refuses if the only matches are recipes the user already owns). Returns the new recipe id + name. Same wire as the `POST /recipes/:id/copy` endpoint surfaced in the UI as "Añadir a mis recetas"
+- `add_recipe_to_mine` — copy a system (or another user's) recipe into the caller's catalog so they can edit it. Lookup by `recipeId` or `recipeName` (prefers Mimoia system matches; refuses if the only matches are recipes the user already owns). Returns the new recipe id + name. Same wire as the `POST /recipes/:id/copy` endpoint surfaced in the UI as "Añadir a mis recetas"
 - `import_recipe_from_url` — "guárdame esta receta: <enlace>": extracts a YouTube video or recipe article with the same pipeline as `POST /recipes/extract-from-url` and saves it as the user's recipe (soft lint, `internalTags: ['auto-extracted','from-url']`). Returns `{ recipeId, name }` with `uiHint: 'recipe'`; non-recipe links and unreadable pages come back as a plain-text summary the model relays. Shared persist in `services/recipeImport.ts`
 - `update_memory` — persist any preference the user mentions ("recuerda que no me gusta el cilantro", "tengo freidora de aire", "los lunes no cocino más de 20 min"). Accepts `facts: [{ key, value, confidence? }]`; writes through `setMemoryBatch` with `source='inferred'` and default confidence 0.8 (1.0 if the user is emphatic). Canonical keys live in `@ona/shared` `MEMORY_KEYS` — see [User Memory](./user-memory.md). The assistant's system prompt already carries a Spanish digest of every stored fact, so a write here changes the next response's grounding.
 - `recipe_variation` — generate a variation of a recipe (e.g., dairy-free version)
@@ -163,7 +163,7 @@ The advisor's weekly nutrient/calorie aggregators iterate `slot.dishes` and proc
 - [Recipes](./recipes.md) — assistant can search, suggest, and create recipes
 - [Shopping](./shopping.md) — assistant can read the list
 - [WhatsApp](./whatsapp.md) — the same assistant over WhatsApp (text, buttons, deep links)
-- [Voice (Mimo)](./voice-mode.md) — talking to Mimo, hands-free, read-aloud, wake word (still "Hola Ona" until a "Hola Mimo" model is trained)
+- [Voice (Mimo)](./voice-mode.md) — talking to Mimo, hands-free, read-aloud, wake word (the trained model still listens for the old-name phrase until a "Hola Mimo" model is trained)
 - [Cooking mode](./cooking-mode.md) — the shell Mimo drives with cooking commands
 
 ## Hooks (client)

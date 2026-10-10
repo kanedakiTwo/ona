@@ -29,7 +29,7 @@ test('Mimo discloses it is an AI before and during the conversation', async ({ p
   const disclosure = page.getByTestId('ai-disclosure')
   await expect(disclosure).toBeVisible({ timeout: 10_000 })
   await expect(disclosure).toContainText(/inteligencia artificial/i)
-  // The assistant is Mimo (rename 2026-10-08), never the old "Ona".
+  // The assistant is Mimo (rename 2026-10-08), never the old name.
   await expect(disclosure).toContainText('Mimo es un asistente de inteligencia artificial (IA)')
   await expect(page.getByTestId('mimo-panel').getByText(/^Soy Mimo\./)).toBeVisible()
   await expect(page.getByText(/\bOna\b/)).toHaveCount(0)

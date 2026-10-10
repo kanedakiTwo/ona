@@ -8,6 +8,7 @@
  *   - GET /shopping-list/:menuId aggregates items for the menu
  *   - PUT /shopping-list/:listId/item/:itemId/check toggles `checked`
  *   - PUT /shopping-list/:listId/item/:itemId/stock toggles `inStock`
+ *   - a tick sent with the id of a list rebuilt since lands on the current list
  */
 
 import { describe, it, expect, beforeAll } from 'vitest'
@@ -90,5 +91,33 @@ describe('shopping route smoke', () => {
       expect(item).toBeTruthy()
       expect(typeof item.inStock).toBe('boolean')
     },
+  )
+
+  it.skipIf(!reachable || !TOKEN || !USER_ID)(
+    'a tick with the id of a list rebuilt since lands on the current list (2026-10-10)',
+    async () => {
+      // Every GET rebuilds the rolling list with a new id; the page could send
+      // a tick with the previous id (a range seen before) and it was lost (404).
+      const d = new Date()
+      d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7))
+      await fetch(`${API_URL}/menu/generate`, {
+        method: 'POST',
+        headers: auth(),
+        body: JSON.stringify({ userId: USER_ID, weekStart: d.toISOString().slice(0, 10) }),
+      })
+      const first = await (await fetch(`${API_URL}/shopping-list`, { headers: auth() })).json()
+      const itemId = first?.items?.[0]?.id
+      if (!first?.id || !itemId) return
+      const second = await (await fetch(`${API_URL}/shopping-list`, { headers: auth() })).json()
+      expect(second.id).not.toBe(first.id)
+      const before = Boolean(second.items.find((i: any) => i.id === itemId)?.checked)
+
+      const r = await fetch(`${API_URL}/shopping-list/${first.id}/item/${itemId}/check`, { method: 'PUT', headers: auth() })
+      expect(r.status).toBe(200)
+      const body = await r.json()
+      expect(body.id).toBe(second.id)
+      expect(Boolean(body.items.find((i: any) => i.id === itemId)?.checked)).toBe(!before)
+    },
+    60_000,
   )
 })

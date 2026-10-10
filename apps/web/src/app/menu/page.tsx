@@ -15,7 +15,7 @@
 import { NoHealthDataNotice } from "@/components/menu/NoHealthDataNotice"
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react"
 import { useRouter } from "next/navigation"
-import { MoreHorizontal, RefreshCw, Share2, Sparkles } from "lucide-react"
+import { ChevronLeft, ChevronRight, MoreHorizontal, RefreshCw, Share2, Sparkles } from "lucide-react"
 import type { DayMenu, MealSlot } from "@ona/shared"
 import { menuShareText } from "@ona/shared"
 import { useAuth } from "@/lib/auth"
@@ -434,8 +434,25 @@ export default function MenuPage() {
     </h1>
   )
 
+  // ‹ week range › — change week without opening the week "···" (Miguel, 2026-10-10).
+  const stepWeek = (delta: number) => {
+    haptic.light()
+    setWeekStart(shiftWeek(weekStart, delta))
+  }
+  const weekStepClass =
+    "relative -my-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-ink-muted transition-colors before:absolute before:-inset-2 hover:bg-cream-deep hover:text-ink focus-visible:outline-2 focus-visible:outline-ink"
   const eyebrow = (
-    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-muted lg:text-[12px]">{weekRange}</p>
+    <div className="-ml-1.5 flex items-center gap-1">
+      <button type="button" onClick={() => stepWeek(-1)} aria-label="Semana anterior" className={weekStepClass}>
+        <ChevronLeft size={16} aria-hidden="true" />
+      </button>
+      <p data-testid="menu-week-range" className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-muted lg:text-[12px]">
+        {weekRange}
+      </p>
+      <button type="button" onClick={() => stepWeek(1)} aria-label="Semana siguiente" className={weekStepClass}>
+        <ChevronRight size={16} aria-hidden="true" />
+      </button>
+    </div>
   )
 
   /* ── States without a usable menu ─────────────────────────── */

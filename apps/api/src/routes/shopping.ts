@@ -408,7 +408,7 @@ router.put('/shopping-list/:listId/item/:itemId/check', async (req: AuthRequest,
     const [updated] = await db
       .update(shoppingLists)
       .set({ items })
-      .where(eq(shoppingLists.id, listId))
+      .where(eq(shoppingLists.id, list.id))
       .returning()
 
     res.json(updated)
@@ -447,7 +447,7 @@ router.put('/shopping-list/:listId/item/:itemId/stock', async (req: AuthRequest,
     const [updated] = await db
       .update(shoppingLists)
       .set({ items })
-      .where(eq(shoppingLists.id, listId))
+      .where(eq(shoppingLists.id, list.id))
       .returning()
 
     res.json(updated)
@@ -578,7 +578,20 @@ async function loadListForCaller(listId: string, userId: string) {
     .from(shoppingLists)
     .where(eq(shoppingLists.id, listId))
     .limit(1)
-  if (!list) return { list: null as null, forbidden: false }
+  if (!list) {
+    // The rolling list is rebuilt with a new id on every GET, so a write can
+    // arrive with the id of a previous rebuild (a range cached in the page,
+    // another tab or phone — 2026-10-10: ticks after ‹ › were lost with 404).
+    // Use the caller's current list instead: item ids are deterministic
+    // (`menu:<ingredientId>:<unit>`), so the same row is found there.
+    const [current] = await db
+      .select()
+      .from(shoppingLists)
+      .where(eq(shoppingLists.userId, userId))
+      .orderBy(desc(shoppingLists.createdAt))
+      .limit(1)
+    return current ? { list: current, forbidden: false } : { list: null as null, forbidden: false }
+  }
   const scope = await resolveScope(userId)
   if (!canAccessRow(list, userId, scope)) {
     return { list: null as null, forbidden: true }
@@ -632,7 +645,7 @@ router.post('/shopping-list/:listId/items', async (req: AuthRequest, res) => {
     const [updated] = await db
       .update(shoppingLists)
       .set({ items })
-      .where(eq(shoppingLists.id, listId))
+      .where(eq(shoppingLists.id, list.id))
       .returning()
     res.status(201).json(updated)
   } catch (err) {
@@ -697,7 +710,7 @@ router.patch('/shopping-list/:listId/item/:itemId', async (req: AuthRequest, res
     const [updated] = await db
       .update(shoppingLists)
       .set({ items })
-      .where(eq(shoppingLists.id, listId))
+      .where(eq(shoppingLists.id, list.id))
       .returning()
     res.json(updated)
   } catch (err) {
@@ -737,7 +750,7 @@ router.delete('/shopping-list/:listId/item/:itemId', async (req: AuthRequest, re
     const [updated] = await db
       .update(shoppingLists)
       .set({ items })
-      .where(eq(shoppingLists.id, listId))
+      .where(eq(shoppingLists.id, list.id))
       .returning()
     res.json(updated)
   } catch (err) {

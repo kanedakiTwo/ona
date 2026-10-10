@@ -60,6 +60,9 @@ export function useShoppingList(range?: { from: string; to: string }) {
     // While another range loads, keep showing the previous one; the page
     // disables the row buttons until the fresh list (and its id) arrives.
     placeholderData: keepPreviousData,
+    // The app default keeps data 60 s; a range seen before would come back
+    // with the id of a list the server has since rebuilt. Always refetch.
+    staleTime: 0,
     queryFn: () => {
       const params = range
         ? `?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`

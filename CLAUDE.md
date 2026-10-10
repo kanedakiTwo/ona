@@ -168,7 +168,8 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 - [ ] **MIG-02 · Pasar el contacto del/de la dietista** — Queremos que un profesional colegiado revise recetas y mensajes antes de abrir (D-005).
   - Cómo: dile a Claude su nombre y cómo contactar. El primer mensaje lo prepara Marketing.
 
-- [ ] **MIG-03 · Activar las copias de seguridad de la base de datos** — Hoy, si se pierde la base de datos de producción, se pierde todo: menús, recetas y hogares.
+- [ ] **MIG-03 · Activar las copias de seguridad de la base de datos** · *aplazada hasta el fin de la beta* — Hoy, si se pierde la base de datos de producción, se pierde todo: menús, recetas y hogares.
+  - **2026-10-10:** Railway no permite backups en el plan Hobby; hace falta Pro. Miguel lo deja así hasta el fin de la beta, salvo que otro requisito pida Pro antes (D-030 en ona-hq). Riesgo aceptado.
   - Cómo: en Railway → proyecto `ona-app` → servicio Postgres (producción) → Backups, actívalos y haz una restauración de prueba en staging.
   - Además: una copia periódica del volumen `ona-api-volume`, donde están las fotos que suben los usuarios.
 

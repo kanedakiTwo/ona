@@ -14,7 +14,7 @@
  */
 import { useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { CalendarDays, Check, MoreHorizontal, Package, Plus, Share2, Sparkles, Store } from 'lucide-react'
+import { CalendarDays, Check, ChevronLeft, ChevronRight, MoreHorizontal, Package, Plus, Share2, Sparkles, Store } from 'lucide-react'
 import Link from 'next/link'
 import type { Aisle } from '@ona/shared'
 import { useAuth } from '@/lib/auth'
@@ -34,7 +34,7 @@ import {
   ItemDeleteButton,
 } from '@/components/shopping/ShoppingExtensions'
 import { MenuSheet, SheetAction } from '@/components/menu/MenuSheet'
-import { ingredientDisplayName, withOnaFooter } from '@ona/shared'
+import { ingredientDisplayName, shoppingProgress, withOnaFooter } from '@ona/shared'
 
 function todayIso(): string {
   const now = new Date()
@@ -96,10 +96,8 @@ export default function ShoppingPage() {
   const [sheet, setSheet] = useState<null | 'actions' | 'dates' | 'add'>(null)
 
   const items = (shoppingList?.items ?? []) as any[]
-  const checkedCount = items.filter((i) => i.checked).length
-  const totalCount = items.length
-  const inStockCount = items.filter((i) => i.inStock).length
-  const progress = totalCount > 0 ? (checkedCount + inStockCount) / totalCount : 0
+  // Each row counts once: bought-then-at-home is "en casa" (never > 100 %).
+  const { total: totalCount, bought: checkedCount, atHome: inStockCount, done: doneCount, ratio: progress } = shoppingProgress(items)
 
   // Aisle chips: only the aisles that have rows in the current tab.
   const tabItems = items.filter((i) => (activeTab === 'list' ? !i.inStock : i.inStock))
@@ -214,11 +212,30 @@ export default function ShoppingPage() {
           aria-label="Filtrar la lista"
           role="group"
         >
+          <WeekStep
+            dir="prev"
+            disabled={from <= today}
+            onClick={() => {
+              haptic.light()
+              const nextFrom = shiftIso(from, -7) < today ? today : shiftIso(from, -7)
+              const nextTo = shiftIso(to, -7)
+              setFrom(nextFrom)
+              setTo(nextTo < nextFrom ? nextFrom : nextTo)
+            }}
+          />
           <Chip active={false} onClick={() => setSheet('dates')} ariaHaspopup>
             <CalendarDays size={15} className="-ml-0.5 mr-1.5 inline-block align-[-2px]" aria-hidden="true" />
             <span className="sr-only">Fechas: </span>
-            {rangeLabel}
+            <span data-testid="shopping-range">{rangeLabel}</span>
           </Chip>
+          <WeekStep
+            dir="next"
+            onClick={() => {
+              haptic.light()
+              setFrom(shiftIso(from, 7))
+              setTo(shiftIso(to, 7))
+            }}
+          />
           {aislesInTab.length > 1 && (
             <>
               <span aria-hidden="true" className="my-2 w-px shrink-0 bg-border" />
@@ -249,7 +266,7 @@ export default function ShoppingPage() {
             <div className="flex items-baseline justify-between gap-3">
               <p className="flex items-baseline gap-2">
                 <span className={`${TITLE} text-[28px] leading-none tabular-nums`}>
-                  {checkedCount + inStockCount}
+                  <span data-testid="shopping-done">{doneCount}</span>
                   <span className="text-ink-light">/{totalCount}</span>
                 </span>
                 <span className="text-[13px] text-ink-muted">completados</span>
@@ -402,6 +419,22 @@ export default function ShoppingPage() {
 
 /* ─────────────────────────────────────────── */
 
+/** ‹ › beside the date chip: move the whole range a week back or forward. */
+function WeekStep({ dir, onClick, disabled }: { dir: 'prev' | 'next'; onClick: () => void; disabled?: boolean }) {
+  const Icon = dir === 'prev' ? ChevronLeft : ChevronRight
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={dir === 'prev' ? 'Semana anterior' : 'Semana siguiente'}
+      className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border bg-paper text-ink transition-colors before:absolute before:-inset-1 hover:border-ink disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-border lg:h-[38px] lg:w-[38px]"
+    >
+      <Icon size={17} aria-hidden="true" />
+    </button>
+  )
+}
+
 /** 36 px pill (hit area stretched to 44 px), same as the /recipes chip row. */
 function Chip({
   active,
@@ -469,9 +502,9 @@ function groupByAisle<T extends { aisle?: Aisle | string | null }>(
   return out
 }
 
-/** Aisles: sections on mobile, paper cards in 2–3 columns at lg+. */
+/** Aisles: sections on mobile, paper cards in 2 columns at lg+ (3 squeezed the names onto two lines). */
 function AisleGrid({ children }: { children: React.ReactNode }) {
-  return <div className="flex flex-col gap-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-5 xl:grid-cols-3">{children}</div>
+  return <div className="flex flex-col gap-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-5">{children}</div>
 }
 
 function AisleSection({ aisle, count, children }: { aisle: Aisle; count: number; children: React.ReactNode }) {
@@ -631,16 +664,16 @@ function ItemRow({
       )}
 
       <div className={`min-w-0 flex-1 ${item.checked ? 'opacity-50' : ''}`}>
-        <p className={`text-[16px] leading-snug text-ink ${item.checked ? 'line-through' : ''}`}>
+        <p className={`break-words text-[16px] leading-snug text-ink ${item.checked ? 'line-through' : ''}`}>
           {ingredientDisplayName(item.name)}
-          {isManual && (
-            <span className="ml-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-terracotta-deep no-underline">
-              · manual
-            </span>
-          )}
         </p>
         <p className="font-mono text-[13px] tracking-tight text-ink-muted tabular-nums">
           {item.quantity} {item.unit}
+          {isManual && (
+            <span className="ml-2 font-sans text-[11px] font-semibold uppercase tracking-[0.12em] text-terracotta-deep">
+              Manual
+            </span>
+          )}
         </p>
       </div>
 

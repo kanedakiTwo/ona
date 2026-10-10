@@ -1,10 +1,10 @@
 # Business Metrics & Cost Ledger
 
-One JSON endpoint that tells the "Dirección" and Finance agents (and Miguel) how many households use ONA each week, how many "resolve" their week, how they retain, and what each active household really costs in paid AI/messaging providers. Built on an append-only **cost ledger** (one row per paid provider call) and a small **activity log** for shopping-list use.
+One JSON endpoint that tells the "Dirección" and Finance agents (and Miguel) how many households use Mimoia each week, how many "resolve" their week, how they retain, and what each active household really costs in paid AI/messaging providers. Built on an append-only **cost ledger** (one row per paid provider call) and a small **activity log** for shopping-list use.
 
 ## Why this exists
 
-ONA is pre-launch and will be run as a one-person company with AI agents. Pricing needs the real cost per active household per week, and the morning brief needs activation/retention numbers. Before this, only per-user counters existed (advisor € budget, image quota, a voice-minutes cap since retired), none per call, none per household.
+Mimoia is pre-launch and will be run as a one-person company with AI agents. Pricing needs the real cost per active household per week, and the morning brief needs activation/retention numbers. Before this, only per-user counters existed (advisor € budget, image quota, a voice-minutes cap since retired), none per call, none per household.
 
 ## User Capabilities
 
@@ -25,8 +25,8 @@ ONA is pre-launch and will be run as a one-person company with AI agents. Pricin
 
 - **Household**: the primary household of at least one counted user. Activity is attributed to the row's own `household_id` when it has one, else to the user's current primary household.
 - **Excluded accounts**: `role = admin` and suspended users (current status). Their spend is reported apart as `internalCostEur`. There is no demo-account flag in the schema.
-- **Active household (week)**: at least one of — generated a menu, logged a cooked meal, used the shopping list, created a recipe, sent a WhatsApp message to ONA, or triggered a paid AI feature (chat with Mimo, typed or spoken; voice transcription or read-aloud; recipe import/extraction; image). Old Realtime voice sessions (`voice_transcripts`, no longer written since 2026-10-09) still count for past weeks. Opening a screen is not tracked. ONA-initiated WhatsApp templates don't count.
-- **Resolved week**: the household has a menu whose `week_start` is that week AND used the shopping list (checked an item, toggled in-stock, or added an item — from the web or through the assistant/voice) during that week **or the Saturday/Sunday right before it** (people shop at the weekend for the menu starting Monday; ONA's shopping reminder fires Saturday). Opening the list does not count: the `shopping_lists` row is rewritten on every read, including by the WhatsApp shopping reminder.
+- **Active household (week)**: at least one of — generated a menu, logged a cooked meal, used the shopping list, created a recipe, sent a WhatsApp message to Mimo, or triggered a paid AI feature (chat with Mimo, typed or spoken; voice transcription or read-aloud; recipe import/extraction; image). Old Realtime voice sessions (`voice_transcripts`, no longer written since 2026-10-09) still count for past weeks. Opening a screen is not tracked. Mimoia-initiated WhatsApp templates don't count.
+- **Resolved week**: the household has a menu whose `week_start` is that week AND used the shopping list (checked an item, toggled in-stock, or added an item — from the web or through the assistant/voice) during that week **or the Saturday/Sunday right before it** (people shop at the weekend for the menu starting Monday; Mimoia's shopping reminder fires Saturday). Opening the list does not count: the `shopping_lists` row is rewritten on every read, including by the WhatsApp shopping reminder.
 - **New household**: created (at registration) that week. **Cohort retention wK**: share of the signup cohort active in week signup+K; `null` until that week starts; the current week is partial.
 - **Cost**: ledger cost of counted users plus system jobs (no user, e.g. the daily conversation reviewer). `costPerActiveHouseholdEur` = week cost / active households (`null` with none active); `costPerActiveHouseholdWeekEur` = window cost / Σ weekly active households.
 

@@ -82,7 +82,7 @@ export const PRICES: PriceTable = {
   'openai/gpt-realtime': { currency: 'USD', perMinute: 0.1 }, // UNVERIFIED (blended estimate)
   // Successors (gpt-realtime is off 2027-01-20). 2.1 has gpt-realtime's audio
   // prices; 2.1-mini's audio is $10 / $0.30 / $20 per MTok — about a third,
-  // ≈ $0.02–0.03 / min by the same blend (ONA HQ Q-047). UNVERIFIED estimates.
+  // ≈ $0.02–0.03 / min by the same blend (Mimoia HQ Q-047). UNVERIFIED estimates.
   'openai/gpt-realtime-2.1': { currency: 'USD', perMinute: 0.1 }, // UNVERIFIED (blended estimate)
   'openai/gpt-realtime-2.1-mini': { currency: 'USD', perMinute: 0.03 }, // UNVERIFIED (blended estimate)
 
@@ -92,7 +92,7 @@ export const PRICES: PriceTable = {
   // €0.0166 from the brief + third-party Spain rate cards (July 2026); Meta's
   // official rate-card CSV not checked.
   'meta_whatsapp/utility_template': { currency: 'EUR', perMessage: 0.0166 }, // UNVERIFIED against Meta's official CSV
-  'meta_whatsapp/marketing_template': { currency: 'EUR', perMessage: 0.0585 }, // UNVERIFIED (not sent by ONA today)
+  'meta_whatsapp/marketing_template': { currency: 'EUR', perMessage: 0.0585 }, // UNVERIFIED (not sent by Mimoia today)
 
   // ── AIKIT image generation (Imagen via fal, behind AiKit's CMS) ──
   'aikit/imagen-fal': { currency: 'USD', perImage: 0.04 }, // UNVERIFIED (fal Imagen list price; AiKit's own markup unknown)

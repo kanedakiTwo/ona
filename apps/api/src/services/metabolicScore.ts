@@ -2,7 +2,7 @@ import type { DayMenu, Season } from '@ona/shared'
 import { nameHasTerm, normalizeText } from './dietaryRestrictions.js'
 
 /**
- * ONA's "opinion" inside the menu generator (kb/10 mandamientos.md: insulin
+ * Mimoia's "opinion" inside the menu generator (kb/10 mandamientos.md: insulin
  * and inflammation, not calories; real food with fibre; variety of plants).
  * The generator used to optimise calories + macros only. Pure and computed
  * once per recipe from ingredient names, so the 200-iteration search stays

@@ -17,7 +17,7 @@ Weekly shopping list and pantry stock management. Aggregates ingredients across 
 - The page shows progress: "X/Y completados", "N% listo", "X comprados · Z en casa" with an ink progress bar. Each row counts once: a row bought and then marked "en casa" counts as en casa, so X never exceeds Y nor the % 100 (`shoppingProgress` in `@ona/shared`; it showed "72/56 · 129 %" before 2026-10-10)
 - If no menu exists for the week, the page shows an empty state with a CTA to generate one
 - Items carry their recipe notes (`notes`: "picada", "morada en juliana") and tiny buyable amounts no longer vanish (two cloves of garlic stay as a line when a shop sells garlic; pantry staples still drop). Items typed by hand with no amount are stored as 1 u with `quantitySource: 'default'` (the form starts empty) and get their aisle from the buy rules ("calabacín" → frutas y verduras). See [shop-orders.md](./shop-orders.md) → Buy rules.
-- **Pedir a mis tiendas** ("···" sheet; also an outlined pill in the header at `lg+`) links to `/compra`, where ONA turns what's left for the next 7 days into one order per shop (frutería, carnicería, pescadería, súper) that the user sends from their own WhatsApp — see [Compra en mis tiendas](./shop-orders.md). Closing a shop order ticks its items as bought on this list.
+- **Pedir a mis tiendas** ("···" sheet; also an outlined pill in the header at `lg+`) links to `/compra`, where Mimoia turns what's left for the next 7 days into one order per shop (frutería, carnicería, pescadería, súper) that the user sends from their own WhatsApp — see [Compra en mis tiendas](./shop-orders.md). Closing a shop order ticks its items as bought on this list.
 
 ## Item Model
 

@@ -1,5 +1,5 @@
 /**
- * ONA Assistant Skills E2E Tests
+ * Mimoia Assistant Skills E2E Tests
  * Tests each skill individually to verify tool_use routing and handler execution.
  *
  * Run: npx tsx apps/api/src/tests/assistant-skills.ts
@@ -74,7 +74,7 @@ async function setup() {
 }
 
 async function run() {
-  console.log('\n🧪 ONA Assistant Skills Tests\n')
+  console.log('\n🧪 Mimoia Assistant Skills Tests\n')
   await setup()
   console.log('Setup complete\n')
 
@@ -209,7 +209,7 @@ async function run() {
   await test('Answers nutrition question from KB', async () => {
     const r = await ask('Que opinas del azucar?')
     assert(r.message.length > 30, 'Should give detailed answer')
-    // Should reference insulin, inflammation, or ONA principles
+    // Should reference insulin, inflammation, or Mimoia principles
   })
 
   await test('Answers question about specific nutrient', async () => {

@@ -1,7 +1,7 @@
 /**
  * Short link for shop orders (specs/shop-orders.md): /c/<token> → the
  * wa.me / mailto link with the order (or, with ?m=ok, the confirmation)
- * already written. ONA's WhatsApp replies carry these so the model never
+ * already written. Mimoia's WhatsApp replies carry these so the model never
  * has to copy a long URL-encoded text. No side effects: WhatsApp's link
  * preview fetches it too.
  */

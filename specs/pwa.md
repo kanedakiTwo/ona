@@ -75,7 +75,7 @@ Premium Progressive Web App layer that makes Mimoia feel like a native iOS/Andro
 - `api-cache` keys responses by URL only (no `Authorization`), which is why its routes must be network-first and anchored on the API origin (`^<NEXT_PUBLIC_API_URL>/recipes|menu|shopping-list`). Workbox silently ignores a cross-origin regex that doesn't match at index 0, which is why the pre-2026-10-07 `/\/menu\/.*$/` rule cached only page shells and no API data. `scripts/verify-sw.mjs` runs in `postbuild` and fails the build if any `api-cache` route breaks either rule
 - Recipe images are cached cache-first with LRU eviction (200 entries / 30 days)
 - The app shell precache is invalidated on every deploy (Workbox versioning via `next-pwa`)
-- Until 2026-10-08 every full load showed a ~2.4 s ink-drop splash (`ClientSplash`, with the old "Ona" wordmark, also on the public Mimoia site) and `app/loading.tsx` was a full-screen takeover that hid the app and the nav on route changes; both removed, guarded by `e2e/no-splash.spec.ts` (no fixed full-viewport layer at z ≥ 100 on load or navigation)
+- Until 2026-10-08 every full load showed a ~2.4 s ink-drop splash (`ClientSplash`, with the old wordmark, also on the public Mimoia site) and `app/loading.tsx` was a full-screen takeover that hid the app and the nav on route changes; both removed, guarded by `e2e/no-splash.spec.ts` (no fixed full-viewport layer at z ≥ 100 on load or navigation)
 
 ## Brand assets (generated)
 
@@ -113,7 +113,7 @@ App icons are the cream spoon on terracotta (Mimo's face); maskable ones keep it
 
 `public/manifest.webmanifest` includes:
 - `name: "Mimoia — El placer de cocinar sin pensar"`
-- `short_name: "Mimoia"` (home-screen label; renamed from "ONA" on 2026-10-08 — Android Chrome applies it on its periodic WebAPK update; iOS keeps the name chosen at install until the user re-adds it)
+- `short_name: "Mimoia"` (home-screen label; renamed from the old project name on 2026-10-08 — Android Chrome applies it on its periodic WebAPK update; iOS keeps the name chosen at install until the user re-adds it)
 - `start_url: "/menu"` (deep-link into the app for installed users; falls through to `/login` if unauthenticated)
 - `scope: "/"`
 - `display: "standalone"`

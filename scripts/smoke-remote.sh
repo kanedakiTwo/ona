@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke checks against a deployed ONA (staging or production).
+# Smoke checks against a deployed Mimoia (staging or production).
 #
 #   scripts/smoke-remote.sh <api_url> <web_url> [--deep]
 #

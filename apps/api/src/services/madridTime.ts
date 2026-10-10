@@ -1,5 +1,5 @@
 /**
- * ONA's users are in Spain; the server (Railway) runs in UTC. Anything that
+ * Mimoia's users are in Spain; the server (Railway) runs in UTC. Anything that
  * means "today" or "this week" for the user — the assistant's
  * `get_todays_menu` default day, the week a new menu lands in, the WhatsApp
  * morning brief — reads the Europe/Madrid wall clock from here.

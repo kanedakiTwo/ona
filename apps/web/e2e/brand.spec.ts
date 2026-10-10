@@ -1,7 +1,7 @@
 /**
  * Brand rename (2026-10-08): the product is Mimoia everywhere users see it
  * and the assistant is Mimo. Fails if the app wordmark, the recipe eyebrow or
- * the public footer regress to "ONA"/"Ona", to the old hola@ona.app contact,
+ * the public footer regress to the old brand name, to the old hola@ona.app contact,
  * or if the landing goes back to its own footer (two footers, "Issue №01").
  * The string-level guard for the whole codebase is
  * apps/api/src/tests/brandName.test.ts; the assistant greeting and the AI
@@ -67,7 +67,7 @@ test('the logged-in app says Mimoia: desktop wordmark and recipe eyebrow', async
   const list: Array<{ id: string }> = await (await page.request.get(`${apiUrl}/recipes?perPage=1`)).json()
   await page.goto(`/recipes/${list[0].id}`)
   await expect(page.getByText('Mimoia · Receta').first()).toBeVisible({ timeout: 10_000 })
-  await expect(page.getByText(/ONA · Receta/i)).toHaveCount(0)
+  await expect(page.getByText(/\b(ONA|Ona) · Receta/i)).toHaveCount(0)
 })
 
 test('icons, favicon and the profile photo are the generated imagotipo', async ({ request }) => {

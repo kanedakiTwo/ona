@@ -4,7 +4,7 @@
  * manage the shops and the orders, same model as staples and the pantry.
  *
  * Order lifecycle:
- *   draft ──(user sends ONA's message)──▶ sent ──(shop reply pasted/forwarded)──▶ quoted
+ *   draft ──(user sends Mimoia's message)──▶ sent ──(shop reply pasted/forwarded)──▶ quoted
  *   quoted ──(user approves)──▶ approved ──(paid/collected)──▶ closed
  *   any open state ──▶ cancelled; web/phone shops go draft/sent ──▶ closed.
  * A reply can also be registered straight from `draft` (the user sent the
@@ -279,7 +279,7 @@ export async function resolveShortLink(token: string, which: 'order' | 'confirma
   if (!row || row.status === 'cancelled' || row.status === 'closed') return null
   const o = presentOrder(row)
   // Only messaging links: a web shop's URL is user-typed and must not turn
-  // ONA's domain into an open redirect.
+  // Mimoia's domain into an open redirect.
   if (o.shop.channel !== 'whatsapp' && o.shop.channel !== 'email') return null
   return which === 'confirmation' ? o.links.confirmation : o.links.order
 }
@@ -388,7 +388,7 @@ export interface PrepareResult {
   orders: ShopOrder[]
   unassigned: Array<{ name: string; quantity: number; unit: string; kind: ShopKind }>
   skipped: Array<{ name: string; reason: string }>
-  /** Pantry staples the recipes use and ONA assumed at home ("¿Te falta algo de esto?"). */
+  /** Pantry staples the recipes use and Mimoia assumed at home ("¿Te falta algo de esto?"). */
   pantry: string[]
   hasShops: boolean
 }

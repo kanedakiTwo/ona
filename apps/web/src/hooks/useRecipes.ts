@@ -215,7 +215,7 @@ export interface ExtractRecipeFromUrlResponse {
 export interface ExtractRecipeFromUrlInput {
   url: string
   /** Admin-only. When true, the imported recipe is persisted with
-   * `authorId = null` and tagged `compartida` so it lands in the ONA
+   * `authorId = null` and tagged `compartida` so it lands in the Mimoia
    * catalogue. Non-admins get 403 server-side. */
   asSystem?: boolean
 }
@@ -267,7 +267,7 @@ export function useRegenerateRecipeImage(recipeId: string | undefined, userId?: 
 
 /**
  * Upload a user-supplied hero photo. Available to authors on their own
- * recipes and to admins on any recipe (including the curated ONA catalog).
+ * recipes and to admins on any recipe (including the curated Mimoia catalog).
  * Does not touch the AI quota. The server resizes to 1200 px wide JPEG.
  */
 export function useUploadRecipeImage(recipeId: string | undefined) {

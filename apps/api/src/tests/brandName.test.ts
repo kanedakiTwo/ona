@@ -1,18 +1,20 @@
 /**
- * Brand rename guard (decision 2026-10-08): users see **Mimoia** (the
- * product) and **Mimo** (the assistant), never the old "ONA" / "Ona". ONA
- * stays only as the internal name (packages, env vars, DB, code symbols,
- * comments, logs).
+ * Brand rename guard (decisions D-012 / D-017, rename 2026-10-08; prose sweep
+ * 2026-10-10): the product is **Mimoia** and its assistant is **Mimo**. The
+ * old brand name must not appear in anything a person or an agent reads: UI
+ * copy, prompts, logs, code comments and the living docs (CLAUDE.md, specs,
+ * plans, docs). It survives only in technical identifiers that would break if
+ * renamed — lowercase `ona` (`@ona/shared`, `ona-api`, `/recipes-ona`,
+ * `ona_aviso`…) and constants such as `ONA_PRINCIPLES` — none of which match
+ * the case-sensitive whole-word pattern below.
  *
- * Several Claude sessions write copy in parallel, so besides pinning the
- * assistant's persona and the AI disclosure this scans every string literal
- * and JSX text in the user-facing code for the old name. Comments are ignored
- * (the TypeScript parser drops them), so internal notes can keep saying ONA.
+ * Several Claude sessions write in this repo in parallel, so besides pinning
+ * the assistant's persona and the AI disclosure this scans the raw text of
+ * every source and doc file (comments included) for the old name.
  */
 import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
-import { join, relative, resolve } from 'node:path'
-import ts from 'typescript'
+import { basename, extname, join, resolve } from 'node:path'
 import { AI_DISCLOSURE, ASSISTANT_NAME, BRAND_NAME } from '@ona/shared'
 import { buildSystemPrompt, type AssistantMode } from '../services/assistant/systemPrompt.js'
 
@@ -26,9 +28,7 @@ describe('assistant persona', () => {
     const prompt = buildSystemPrompt('', mode)
     expect(prompt.startsWith('Eres Mimo, el asistente de Mimoia')).toBe(true)
     expect(prompt).toContain('"Hola, soy Mimo, de Mimoia"')
-    // The only mention of the old name is the rule telling it not to use it.
-    expect(prompt).not.toMatch(/(soy|asistente de|conocimiento nutricional de|avisos en) (ONA|Ona)\b/)
-    expect(prompt.match(/\b(ONA|Ona)\b/g) ?? []).toEqual(['ONA', 'Ona'])
+    expect(prompt).not.toMatch(OLD_NAME)
   })
 
   it('voice onboarding introduces itself as Mimo', () => {
@@ -49,78 +49,67 @@ describe('AI disclosure (AI Act art. 50) names Mimo and still says it is an AI',
   })
 })
 
-/** User-facing code. API: routes, middleware, assistant + WhatsApp copy. */
-const SURFACES = [
-  'apps/web/src',
-  'packages/shared/src',
-  'apps/api/src/routes',
-  'apps/api/src/middleware',
-  'apps/api/src/services/assistant',
-  'apps/api/src/services/whatsapp',
-  'apps/api/src/services/advisor.ts',
-  'apps/api/src/services/stt.ts',
-  'apps/api/src/services/notificationScheduler.ts',
+/** Code and living docs, relative to the repo root. */
+const ROOTS = ['apps', 'packages', 'specs', 'plans', 'docs', 'scripts', '.github', 'CLAUDE.md', '.env.example']
+
+/** Never scanned: build output, deps, and records that are history by design. */
+const SKIP_DIRS = new Set(['node_modules', '.next', 'dist', 'build', '.turbo', 'coverage', 'test-results', 'playwright-report'])
+const SKIP_PATHS = [
+  'apps/api/src/db/migrations', // applied migrations are immutable
+  'docs/research', // research reports quote what was said at the time
+  'docs/superpowers', // dated design records
 ]
+const TEXT_EXT = new Set(['.ts', '.tsx', '.js', '.mjs', '.cjs', '.css', '.md', '.json', '.sh', '.yml', '.yaml', '.html', '.txt', '.sql'])
 
 /**
- * Strings that may say ONA on purpose. Keep each entry justified.
- *  - the wake word: the trained Picovoice model still detects "Hola Ona" until
- *    a "Hola Mimo" model replaces it (specs/voice-mode.md).
- *  - the persona rule / reviewer note that explain the old name to the model.
+ * Lines that may say the old name on purpose. Keep each entry justified.
+ *  - the wake phrase: the trained Picovoice model still detects it until a
+ *    "Hola Mimo" model replaces it (MIG-08, specs/voice-mode.md).
+ *  - tests: the pattern that forbids the old name, and the pre-rename
+ *    WhatsApp link message the linker still accepts.
  */
-const ALLOWED: Array<{ file: string; text: RegExp }> = [
-  { file: 'apps/web/src/hooks/useWakeWord.ts', text: /^Hola Ona$/ },
-  { file: 'apps/api/src/services/assistant/systemPrompt.ts', text: /Nunca te llames ONA ni Ona/ },
-  { file: 'apps/api/src/services/whatsapp/reviewer.ts', text: /el asistente se llamaba ONA/ },
-]
+const ALLOWED_ANYWHERE = [/Hola Ona/]
+const ALLOWED_IN_TESTS = [/\(ONA\|Ona\)/, /Vincular ONA: /]
+const isTest = (rel: string) => /\.(test|spec)\.tsx?$/.test(rel)
 
 function filesUnder(rel: string): string[] {
+  if (SKIP_PATHS.includes(rel)) return []
   const abs = join(REPO, rel)
-  if (statSync(abs).isFile()) return [abs]
-  return readdirSync(abs).flatMap((name) => (name === 'node_modules' ? [] : filesUnder(join(rel, name))))
-}
-
-/** Every string literal, template chunk and JSX text in a file (comments excluded). */
-function visibleTexts(file: string): string[] {
-  const src = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true,
-    file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS)
-  const out: string[] = []
-  const visit = (node: ts.Node) => {
-    if (
-      ts.isStringLiteral(node) ||
-      ts.isNoSubstitutionTemplateLiteral(node) ||
-      ts.isTemplateHead(node) ||
-      ts.isTemplateMiddle(node) ||
-      ts.isTemplateTail(node) ||
-      ts.isJsxText(node)
-    ) {
-      out.push(node.text)
-    }
-    node.forEachChild(visit)
+  if (statSync(abs).isFile()) {
+    return TEXT_EXT.has(extname(rel)) || basename(rel) === '.env.example' ? [rel] : []
   }
-  visit(src)
-  return out
+  return readdirSync(abs).flatMap((name) => (SKIP_DIRS.has(name) ? [] : filesUnder(join(rel, name))))
 }
 
-describe('no user-facing string says ONA / Ona', () => {
-  const files = SURFACES.flatMap(filesUnder).filter((f) => /\.tsx?$/.test(f) && !/\.d\.ts$/.test(f))
+describe('nothing a person or an agent reads says the old brand name', () => {
+  const files = ROOTS.flatMap(filesUnder)
 
-  it('scans the web app, the shared package and the API copy', () => {
-    const rels = files.map((f) => relative(REPO, f))
-    expect(rels).toContain('apps/web/src/components/shared/DesktopSidebar.tsx')
-    expect(rels).toContain('apps/api/src/services/whatsapp/inbound.ts')
-    expect(files.length).toBeGreaterThan(150)
+  it('scans the code, the prompts and the living docs', () => {
+    for (const f of [
+      'CLAUDE.md',
+      'specs/index.md',
+      'apps/web/src/components/shared/DesktopSidebar.tsx',
+      'apps/web/worker/index.ts',
+      'apps/api/src/services/whatsapp/inbound.ts',
+      'apps/api/src/services/ingredientMatcherLLM.ts',
+      'packages/shared/src/constants/brand.ts',
+    ]) {
+      expect(files).toContain(f)
+    }
+    expect(files.length).toBeGreaterThan(400)
   })
 
   it('finds none outside the allow-list', () => {
     const offenders: string[] = []
-    for (const file of files) {
-      const rel = relative(REPO, file)
-      for (const text of visibleTexts(file)) {
-        if (!OLD_NAME.test(text)) continue
-        if (ALLOWED.some((a) => a.file === rel && a.text.test(text))) continue
-        offenders.push(`${rel}: ${JSON.stringify(text.trim().slice(0, 120))}`)
-      }
+    for (const rel of files) {
+      readFileSync(join(REPO, rel), 'utf8')
+        .split('\n')
+        .forEach((line, i) => {
+          if (!OLD_NAME.test(line)) return
+          if (ALLOWED_ANYWHERE.some((a) => a.test(line))) return
+          if (isTest(rel) && ALLOWED_IN_TESTS.some((a) => a.test(line))) return
+          offenders.push(`${rel}:${i + 1}: ${line.trim().slice(0, 120)}`)
+        })
     }
     expect(offenders).toEqual([])
   })

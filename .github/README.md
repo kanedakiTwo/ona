@@ -1,6 +1,6 @@
 # CI / CD
 
-Two pieces wire ONA's pre-merge gate and post-deploy verification.
+Two pieces wire Mimoia's pre-merge gate and post-deploy verification.
 
 ## 1. The workflow — `.github/workflows/ci.yml`
 

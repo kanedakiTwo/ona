@@ -48,7 +48,7 @@ export type LlmMatchVerdict =
   | { kind: 'alias'; ingredientId: string; ingredientName: string }
   | { kind: 'new' }
 
-const SYSTEM_PROMPT = `Eres un asistente que normaliza nombres de ingredientes contra el catálogo de la app ONA (cocina española en castellano).
+const SYSTEM_PROMPT = `Eres un asistente que normaliza nombres de ingredientes contra el catálogo de la app Mimoia (cocina española en castellano).
 
 Para cada \`extracted_name\` que te paso, decides si es un alias de algún ingrediente del \`catalog\` (devuelves su \`id\`), o si es genuinamente un ingrediente nuevo que no está en el catálogo (devuelves \`null\`).
 

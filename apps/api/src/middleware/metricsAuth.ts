@@ -7,7 +7,7 @@ import { authMiddleware, requireAdmin } from './auth.js'
  * Guard for GET /admin/metrics (specs/metrics.md), GET /admin/errors
  * (specs/errors.md) and GET /admin/waitlist (specs/waitlist.md): either an
  * admin JWT, or the header `x-metrics-token` equal to `METRICS_READ_TOKEN` —
- * so the ONA HQ agents can read business metrics, the error log and the
+ * so the Mimoia HQ agents can read business metrics, the error log and the
  * waitlist aggregates without holding an admin session. The token is mounted
  * on those three read-only routes only; it grants nothing else.
  *

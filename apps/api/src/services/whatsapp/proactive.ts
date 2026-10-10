@@ -3,7 +3,7 @@ import { mealEntriesForDay } from '../menuText.js'
 import type { OutboundMessage } from './render.js'
 
 /**
- * Pure planning for messages ONA sends first (the Instinct-style "it texts
+ * Pure planning for messages Mimoia sends first (the Instinct-style "it texts
  * you when something needs attention"):
  *   - daily brief at breakfast time: today's menu + "¿cambio algo?"
  *   - Sunday evening nudge: "¿te preparo el menú de la semana que viene?"

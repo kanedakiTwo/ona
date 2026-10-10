@@ -1,5 +1,5 @@
 /**
- * ONA's nutritional philosophy.
+ * Mimoia's nutritional philosophy.
  * These principles guide the advisor (Layer 3) and optionally the menu generator.
  * They are explicit but never imposed on the user.
  */

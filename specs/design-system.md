@@ -1,6 +1,6 @@
 # Design System
 
-Visual language and tokens for ONA. The system is **editorial-first** — inspired by premium cookbook design — with a transitional "app mode" (green palette) still present in some in-product views.
+Visual language and tokens for Mimoia. The system is **editorial-first** — inspired by premium cookbook design — with a transitional "app mode" (green palette) still present in some in-product views.
 
 ## Canonical System: Editorial
 
@@ -131,15 +131,15 @@ None of the in-app pages since 2026-10-10 (PRO-36…46 moved the rest to "D · L
 
 ## Constraints
 
-- **The brand is Mimoia everywhere users see it** (decision D-012 in ONA HQ, 2026-10-07; coordinated rename 2026-10-08): the public site, the logged-in app (**imagotipo** since 2026-10-09, `components/brand/Mimoia.tsx`: a wooden spoon with a heart cut out of the bowl, "comida con cariño", + lowercase "mimoia" in Fraunces 650 — `MimoiaLogo` in the public navbar, footer, desktop sidebar `app-wordmark` and auth screens; `MimoiaSymbol` is also Mimo's face; offline/error wordmarks, "Mimoia · Receta" eyebrow, "Selección Mimoia"), the PWA manifest and splash screens, share texts and WhatsApp copy. The AI assistant is **Mimo** (chat, voice, WhatsApp: "Soy Mimo…"). Landing copy is written from the customer's mental load ("Lo cansado no es cocinar. Es decidir."), not from features, and never uses health data in examples (no doctors, diets or intolerances in the sample chats).
+- **The brand is Mimoia everywhere users see it** (decision D-012 in Mimoia HQ, 2026-10-07; coordinated rename 2026-10-08): the public site, the logged-in app (**imagotipo** since 2026-10-09, `components/brand/Mimoia.tsx`: a wooden spoon with a heart cut out of the bowl, "comida con cariño", + lowercase "mimoia" in Fraunces 650 — `MimoiaLogo` in the public navbar, footer, desktop sidebar `app-wordmark` and auth screens; `MimoiaSymbol` is also Mimo's face; offline/error wordmarks, "Mimoia · Receta" eyebrow, "Selección Mimoia"), the PWA manifest and splash screens, share texts and WhatsApp copy. The AI assistant is **Mimo** (chat, voice, WhatsApp: "Soy Mimo…"). Landing copy is written from the customer's mental load ("Lo cansado no es cocinar. Es decidir."), not from features, and never uses health data in examples (no doctors, diets or intolerances in the sample chats).
 - The `inStock` field is camelCase end-to-end (frontend, API, DB JSONB) — never `in_stock`
 - Spanish-language only (no i18n setup)
 - Mobile-first (test at 390×844 — iPhone 14 — before declaring UI work done)
 - Tailwind v4 with `@theme` block; no `tailwind.config.js`
 - Several pages still mix arbitrary `[#hex]` values and `--color-*` tokens; prefer the tokens for new code
 - `PublicNavbar` links to `/recetas` (Spanish) but the actual route is `/recipes` — known broken link
-- **Brand names**: user-facing copy uses `BRAND_NAME` ("Mimoia") and `ASSISTANT_NAME` ("Mimo") from `@ona/shared`; "ONA" is internal only (packages, env vars, DB, localStorage keys, routes such as `/recipes-ona`, code, comments). `apps/api/src/tests/brandName.test.ts` fails on any string literal or JSX text saying ONA/Ona in the web app, `@ona/shared` or the API copy (allow-list: the "Hola Ona" wake phrase, see [Voice (Mimo)](./voice-mode.md)). Pre-launch, every public CTA leads to the waitlist (`/#lista-de-espera`, with `?ref=` where useful), never to `/register`
-- **No health claims in public copy** (landing, footer, `/como-funciona`, the waitlist components…): no "antiinflamatorio", "previene", "cura", "adelgaza", "controla la glucosa", microbioma, cardiólogo as endorsement, etc. ONA's nutrition philosophy guides the product, not the marketing (ONA HQ constitution §6; RD 1907/1996 art. 4). Describe the cooking style instead ("casera, variada, de temporada, con buen aceite de oliva"). Guarded in CI by `apps/api/src/tests/publicHealthClaims.test.ts` (scans `app/(public)`, the `Footer` and `components/waitlist/`); legal pages (`/privacidad`, `/terminos`) are exempt.
+- **Brand names**: user-facing copy uses `BRAND_NAME` ("Mimoia") and `ASSISTANT_NAME` ("Mimo") from `@ona/shared`. The old project name survives only in technical identifiers that would break if renamed (lowercase `ona` in package names, env vars, DB, localStorage keys, routes such as `/recipes-ona`, Meta template names; constants such as `ONA_PRINCIPLES`). Prose says Mimoia too: UI copy, prompts, logs, code comments and the living docs (CLAUDE.md, specs, plans, docs outside `docs/research/` and `docs/superpowers/`). `apps/api/src/tests/brandName.test.ts` fails if the old name reappears as a word in any of them (allow-list: the wake phrase of the trained model, see [Voice (Mimo)](./voice-mode.md); old DB migrations; tests that feed or forbid the old name). Pre-launch, every public CTA leads to the waitlist (`/#lista-de-espera`, with `?ref=` where useful), never to `/register`
+- **No health claims in public copy** (landing, footer, `/como-funciona`, the waitlist components…): no "antiinflamatorio", "previene", "cura", "adelgaza", "controla la glucosa", microbioma, cardiólogo as endorsement, etc. Mimoia's nutrition philosophy guides the product, not the marketing (Mimoia HQ constitution §6; RD 1907/1996 art. 4). Describe the cooking style instead ("casera, variada, de temporada, con buen aceite de oliva"). Guarded in CI by `apps/api/src/tests/publicHealthClaims.test.ts` (scans `app/(public)`, the `Footer` and `components/waitlist/`); legal pages (`/privacidad`, `/terminos`) are exempt.
 
 ## Common Components
 
@@ -165,7 +165,7 @@ None of the in-app pages since 2026-10-10 (PRO-36…46 moved the rest to "D · L
 
 ## Responsive towards desktop
 
-ONA supports a desktop layout at `md+` (≥768 px) and bespoke multi-column pages at `lg+` (≥1024 px). Mobile behaviour is unchanged.
+Mimoia supports a desktop layout at `md+` (≥768 px) and bespoke multi-column pages at `lg+` (≥1024 px). Mobile behaviour is unchanged.
 
 ### Breakpoint matrix
 

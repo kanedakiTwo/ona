@@ -1,5 +1,5 @@
 /**
- * One-shot probe: call Claude with ONA's actual system prompt + tools, log
+ * One-shot probe: call Claude with Mimoia's actual system prompt + tools, log
  * the token usage Anthropic returns. Compares the no-cache baseline vs
  * the prompt-cached variant we now use in `engine.ts`, so the savings are
  * concrete and measurable.

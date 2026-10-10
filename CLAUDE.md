@@ -1,4 +1,4 @@
-# ONA — Project Guide for Claude
+# Mimoia — Project Guide for Claude
 
 ## Read this first
 
@@ -83,9 +83,11 @@ When in doubt: open `specs/index.md`, grep for keywords related to your change, 
 
 A code-only PR that touches user-observable behavior with no corresponding test is a bug, equivalent to a missing spec update. The spec-gate above and the test-gate here are sibling checks — both run before a task is reported done.
 
-## What ONA is
+## What Mimoia is
 
-ONA (Opinionated Nutritional Assistant) is a **mobile-first meal planner** for Spanish speakers. It generates a weekly menu from a recipe catalog, produces a shopping list, manages pantry stock, and provides an AI advisor for nutrition questions. The app is currently mid-migration toward an **editorial visual style** (cream/warm-black palette, Fraunces serif, motion/react animations) — see [`specs/design-system.md`](./specs/design-system.md) for which pages are migrated and which still use the legacy "app mode" green palette.
+Mimoia is a **mobile-first meal planner** for Spanish speakers. It generates a weekly menu from a recipe catalog, produces a shopping list, manages pantry stock, and provides an AI advisor for nutrition questions. The app is currently mid-migration toward an **editorial visual style** (cream/warm-black palette, Fraunces serif, motion/react animations) — see [`specs/design-system.md`](./specs/design-system.md) for which pages are migrated and which still use the legacy "app mode" green palette.
+
+The brand is **Mimoia** and its assistant is **Mimo** (`BRAND_NAME` / `ASSISTANT_NAME` in `@ona/shared`). The lowercase `ona` left in technical identifiers (`@ona/shared`, `ona-api`, `/recipes-ona`, env vars, DB, Meta template names such as `ona_aviso`) is the project's original codename and must stay; never write the old name in prose, copy, prompts, comments or docs (guard: `apps/api/src/tests/brandName.test.ts`).
 
 ## Repo layout
 
@@ -141,7 +143,7 @@ _Recipe source links — shipped 2026-05-30: "Ver fuente" affordance on the deta
 _Bottom navbar mis-alignment defensive fix — shipped 2026-05-30. Items now use `flex-1 basis-0` so each gets an equal slice regardless of motion's transient measurements; pill is positioned `left-1/2 -translate-x-1/2 w-12` so the layout animation can't push width off. If the bug reproduces despite this, instrument with mount/unmount logs to find the actual race._
 **Lista de espera v2** (v1 2026-10-07, see [specs/waitlist.md](./specs/waitlist.md) → Known limitations): (1) retention purge — anonymise/delete entries 6 months after the public launch; (2) an email sender: confirmation (double opt-in), the invitation emails that `POST /admin/waitlist/invite` prepares, and the Friday menu newsletter (with one-click unsubscribe); (3) carry `?ref`/`?utm_*` across public pages and record them on `/register`; (4) a `/admin` tab for the waitlist report + "invitar tanda" button.
 
-**Compra en mis tiendas v2** (v1 shipped 2026-10-07, see [specs/shop-orders.md](./specs/shop-orders.md) → Constraints): (1) read photos of a shop's reply/ticket (today WhatsApp photos go to recipe import — `whatsapp/inbound.ts`); (2) carry recipe notes ("picada", "en lomos") into the list so lines arrive annotated; (3) pack-size rounding (1 huevo → media docena, 25 g jengibre → 1 trozo); (4) reminders when a shop/user hasn't answered before the shop's cut-off; (5) "tiendas conectadas": shop opts in by QR to ONA's number so ONA reads replies directly (needs real number + business verification + utility template — Meta policy, see the research report); (6) email sent by ONA with per-order reply addresses.
+**Compra en mis tiendas v2** (v1 shipped 2026-10-07, see [specs/shop-orders.md](./specs/shop-orders.md) → Constraints): (1) read photos of a shop's reply/ticket (today WhatsApp photos go to recipe import — `whatsapp/inbound.ts`); (2) carry recipe notes ("picada", "en lomos") into the list so lines arrive annotated; (3) pack-size rounding (1 huevo → media docena, 25 g jengibre → 1 trozo); (4) reminders when a shop/user hasn't answered before the shop's cut-off; (5) "tiendas conectadas": shop opts in by QR to Mimoia's number so Mimo reads replies directly (needs real number + business verification + utility template — Meta policy, see the research report); (6) email sent by Mimoia with per-order reply addresses.
 
 _Responsive desktop — shipped 2026-06-04 across 5 PRs. `<DesktopSidebar />` at `md+`, bottom-nav hidden at `md+`, `--sidebar-width`/`--sidebar-gap`/`--container-max` tokens, `/recipes` 3-col shell + 4-col card grid at `lg+`, `/cookbooks/[id]` 4-col grid at `lg+`, Vista Semana 7-col grid (DnD verified for cross-column drops), every authed page widens at `lg+` instead of sitting in a 430 px column. Bespoke per-page splits (38/62 recipe detail with sticky hero, 40/60 form layouts, vertical day-strip + preview rail, /shopping 3-col aisle grid, /profile tabs shell, /advisor side panel) were deferred to follow-up polish PRs — see [design-system.md "Pragmatic scope vs original plan"](./specs/design-system.md) and [docs/superpowers/specs/2026-06-01-responsive-desktop-design.md](./docs/superpowers/specs/2026-06-01-responsive-desktop-design.md) for the original vision._
 
@@ -150,7 +152,7 @@ _Responsive desktop — shipped 2026-06-04 across 5 PRs. `<DesktopSidebar />` at
 This is the **single source of truth** for work that's pending on Miguel's side (out of Claude's reach: device tests, asset replacement, manual ops, third-party setup, etc).
 
 **Convention**:
-- Every item has an id `MIG-NN` (next free number, never reused) and this shape, so the ONA HQ panel can show it as a plain task with a checkbox:
+- Every item has an id `MIG-NN` (next free number, never reused) and this shape, so the Mimoia HQ panel can show it as a plain task with a checkbox:
   `- [ ] **MIG-NN · Título corto** — Por qué importa, en una frase.` then sub-bullets with the steps (`Cómo:` first). Write it in plain Spanish, for Miguel, with no jargon he doesn't use.
 - Whenever a task finishes but leaves something for Miguel to do, Claude adds it here in that shape.
 - Miguel ticks tasks off in the panel (they are stored in the panel's database, collection `hechas`), or tells Claude. `/ona-dia` (or Claude when told) removes ticked items from this list.
@@ -179,15 +181,12 @@ This is the **single source of truth** for work that's pending on Miguel's side 
   - Al avisarlas, pregunta: mínimo de jamón y de picada (Ben-Car), pedido mínimo y franja de reparto a domicilio, y si les vale una línea sin cantidad («Galletas Daniela»). Revisa también los valores por defecto (tomate de ensalada, pimiento verde italiano, naranja de zumo, carne picada mixta, dorada).
   - Opcional: Los Alonso reparte gratis en Pozuelo/Boadilla si pides antes de las 13:00; para usarlo, cambia la entrega a «A domicilio» en `/compra/tiendas`.
 
-- [ ] **MIG-05 · Poner al día las plantillas de WhatsApp** — Sin plantillas aprobadas, Mimo no puede escribirte primero cuando llevas más de 24 h sin hablarle, y las que hay aún dicen «ONA».
-  - Cómo: en WhatsApp Manager → Plantillas, vuelve a enviar a aprobación las que dicen «ONA» (p. ej. `ona_aviso`: «Aviso de Mimoia: {{1}}…»; los nombres no cambian).
+- [ ] **MIG-05 · Poner al día las plantillas de WhatsApp** — Sin plantillas aprobadas, Mimo no puede escribirte primero cuando llevas más de 24 h sin hablarle, y las que hay aún llevan el nombre antiguo de la app.
+  - Cómo: en WhatsApp Manager → Plantillas, vuelve a enviar a aprobación las que llevan el nombre antiguo (p. ej. `ona_aviso`: «Aviso de Mimoia: {{1}}…»; los nombres no cambian).
   - Crea plantillas de tipo *Utilidad*, en español, una por aviso: `ona_menu_de_hoy`, `ona_aviso_preparacion`, `ona_lista_compra`, `ona_plan_semana` (cuerpo con un único `{{1}}`). Cuando estén aprobadas, pásale los nombres a Claude.
 
 - [ ] **MIG-06 · Añadir un número real de WhatsApp en Meta** — Con el número de prueba solo pueden hablar con Mimo 5 teléfonos y sale como «Test Number».
   - Cómo: en Meta, añade un número real al portfolio actual, **sin pedir todavía la verificación del negocio** (D-004). Después Claude rehace el webhook y la suscripción para la cuenta nueva.
-
-- [ ] **MIG-08 · Activar «Hola Mimo» para hablar sin tocar** — Hoy la palabra de activación sigue siendo «Hola Ona» y no está activa en producción.
-  - Cómo: en console.picovoice.ai, saca una clave de acceso y entrena la palabra «Hola Mimo» (español, Porcupine WASM). Pásale a Claude la clave y el fichero `.ppn`; él los pone en Railway (`NEXT_PUBLIC_PICOVOICE_ACCESS_KEY`) y cambia `WAKE_PHRASE`.
 
 - [ ] **MIG-15 · Poner la cuchara en tus perfiles** — La app, el favicon y el botón de Mimo ya llevan el imagotipo (la cuchara con el corazón, elegido el 9 de octubre); faltan las redes, que solo puedes cambiar tú.
   - Cómo: al crear o editar cada cuenta (@conmimoia), abre la guía de marca (panel → «Lo esencial» → Marketing) → sección «Redes sociales»: para cada red está la foto de perfil y la portada al tamaño exacto, con su enlace de descarga. Súbelas tal cual.

@@ -902,8 +902,8 @@ export const activityEvents = pgTable('activity_events', {
 // ─── "Compra en mis tiendas" (specs/shop-orders.md) ──────────────────
 //
 // The household's own shops (frutería, carnicería, pescadería, súper) and
-// the per-shop orders ONA drafts from the shopping list. v1 never messages
-// a shop itself: the user sends ONA's ready-made message from their own
+// the per-shop orders Mimoia drafts from the shopping list. v1 never messages
+// a shop itself: the user sends Mimoia's ready-made message from their own
 // WhatsApp / mail (wa.me / mailto), pastes or forwards the shop's reply,
 // approves, and pays the shop directly.
 export const householdShops = pgTable('household_shops', {
@@ -1084,7 +1084,7 @@ export const waitlistEntries = pgTable('waitlist_entries', {
 /**
  * What this household chose when a product needs a choice (jamón → serrano,
  * pescado entero → lubina, carne picada → de ternera). Applied the next time
- * ONA drafts an order (specs/shop-orders.md → Buy rules).
+ * Mimoia drafts an order (specs/shop-orders.md → Buy rules).
  */
 export const householdBuyPrefs = pgTable('household_buy_prefs', {
   id: uuid('id').primaryKey().defaultRandom(),

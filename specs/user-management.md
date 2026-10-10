@@ -4,7 +4,7 @@ Admin-only sub-section of `/admin` for browsing the user list, viewing per-user 
 
 ## Why this exists
 
-Once ONA has more than one user, an admin needs a way to handle real-world support requests: a user forgot their password, a user is abusive, a user wants their data deleted. Without a UI for these, the admin is reduced to writing SQL or calling backend endpoints by hand.
+Once Mimoia has more than one user, an admin needs a way to handle real-world support requests: a user forgot their password, a user is abusive, a user wants their data deleted. Without a UI for these, the admin is reduced to writing SQL or calling backend endpoints by hand.
 
 This is intentionally narrow: **list, detail, suspend, reset password**. Things like "delete user", "edit profile", and "impersonate" are deliberate v2 follow-ups.
 
@@ -21,7 +21,7 @@ This is intentionally narrow: **list, detail, suspend, reset password**. Things 
   - Action buttons: **Suspender** / **Reactivar**, **Generar enlace de reset**
 - **Suspender** flips `suspended_at` to `now()`. Confirms in a small modal ("¿Suspender la cuenta de X? El usuario no podrá iniciar sesión hasta que la reactives."). Records `user.suspend` in the audit log.
 - **Reactivar** clears `suspended_at`. Records `user.unsuspend`.
-- **Generar enlace de reset** opens a modal with the link `/reset?token=<uuid>` already copied to the clipboard, plus a "Copiar de nuevo" button. The link expires in 24 h. The admin sends the link to the user via whatever channel they prefer (WhatsApp, in-person, etc.); ONA does not send the email.
+- **Generar enlace de reset** opens a modal with the link `/reset?token=<uuid>` already copied to the clipboard, plus a "Copiar de nuevo" button. The link expires in 24 h. The admin sends the link to the user via whatever channel they prefer (WhatsApp, in-person, etc.); Mimoia does not send the email.
 
 ## What's *not* here in v1
 
@@ -29,7 +29,7 @@ This is intentionally narrow: **list, detail, suspend, reset password**. Things 
 - No edit-user-profile from the admin side. If a user wants their profile changed, they edit it themselves.
 - No impersonation ("ver como X"). Useful for support but high-risk; we'll add it later with stricter audit + a banner.
 - No bulk operations. Suspend / reactivate / reset are one user at a time.
-- No automated email. The admin sends the reset link manually. Adding email is a separate feature when ONA grows past the "I know all my users" stage.
+- No automated email. The admin sends the reset link manually. Adding email is a separate feature when Mimoia grows past the "I know all my users" stage.
 
 ## Schema additions
 
@@ -66,7 +66,7 @@ The token is a single-use opaque string (`crypto.randomBytes(32).toString('hex')
 
 ## Suspension semantics
 
-- A suspended user's existing JWT keeps decoding, but every privileged endpoint (anything behind `requireAuth`) re-checks `users.suspended_at IS NULL` and returns 401 with `code: 'SUSPENDED'` if not. The frontend catches that code and forces a logout with a Spanish message: "Tu cuenta está suspendida. Contacta con el equipo de ONA si crees que es un error."
+- A suspended user's existing JWT keeps decoding, but every privileged endpoint (anything behind `requireAuth`) re-checks `users.suspended_at IS NULL` and returns 401 with `code: 'SUSPENDED'` if not. The frontend catches that code and forces a logout with a Spanish message: "Tu cuenta está suspendida. Contacta con el equipo de Mimoia si crees que es un error."
 - Login (`POST /auth/login`) explicitly rejects suspended users with the same code.
 - Suspending an admin is allowed but lands in audit. Re-promoting (re-adding to `ADMIN_EMAILS` and re-deploying) doesn't reactivate a suspended account — admin must explicitly unsuspend first. This avoids the odd state where someone who was suspended for cause silently regains access on next deploy.
 

@@ -2,7 +2,7 @@
 
 ## Summary
 
-Convert ONA into a premium PWA that feels like a native iOS/Android app. Adds installability, offline shell + viewed-recipe caching, offline mutation queue, contextual install prompt, haptic feedback, Web Share, Wake Lock for cooking mode, local meal-time notifications, View Transitions, and swipe gestures between bottom tabs. Implements [specs/pwa.md](../specs/pwa.md) end-to-end. Currently nothing PWA-related exists in the repo — this plan starts from zero.
+Convert Mimoia into a premium PWA that feels like a native iOS/Android app. Adds installability, offline shell + viewed-recipe caching, offline mutation queue, contextual install prompt, haptic feedback, Web Share, Wake Lock for cooking mode, local meal-time notifications, View Transitions, and swipe gestures between bottom tabs. Implements [specs/pwa.md](../specs/pwa.md) end-to-end. Currently nothing PWA-related exists in the repo — this plan starts from zero.
 
 ## Tasks
 
@@ -52,7 +52,7 @@ Convert ONA into a premium PWA that feels like a native iOS/Android app. Adds in
   - In `apps/web/src/components/shopping/ShoppingList.tsx` and `StockManager.tsx`, call `haptic.medium()` on check / stock toggle
   - In `apps/web/src/app/menu/page.tsx`, call `haptic.medium()` when regenerate button confirms
   - In `apps/web/src/app/recipes/[id]/page.tsx`, add a Share icon next to the favorite button in the hero overlay; clicking it calls `share({ title: recipe.name, url: window.location.href })`
-  - In `apps/web/src/app/shopping/page.tsx`, replace the existing `handleExport` clipboard-only code with `share({ title: 'Lista de compra ONA', text: ... })`; falls back to clipboard automatically
+  - In `apps/web/src/app/shopping/page.tsx`, replace the existing `handleExport` clipboard-only code with `share({ title: 'Lista de compra Mimoia', text: ... })`; falls back to clipboard automatically
   + See [spec: Haptic feedback](../specs/pwa.md#haptic-feedback) and [spec: Sharing](../specs/pwa.md#sharing)
 
 - [ ] Implement cooking mode with Wake Lock
@@ -65,7 +65,7 @@ Convert ONA into a premium PWA that feels like a native iOS/Android app. Adds in
 - [ ] Build the contextual install prompt
   - Create `apps/web/src/lib/pwa/installPrompt.ts` — captures `beforeinstallprompt` event into a module-level ref, exposes `getInstallPromptState()`, `triggerInstall()`, `dismissForDays(n)`. Uses `localStorage` keys `ona-pwa-visits` (incremented on each app load), `ona-pwa-menu-visits` (incremented on `/menu`), `ona-pwa-dismissed-until` (timestamp)
   - Create `apps/web/src/components/pwa/InstallSheet.tsx` — bottom sheet (uses the existing `motion/react` slide-up pattern from `AltModal`-style). Two branches:
-    - Android: "Añade ONA a tu inicio" + button → triggers stashed `beforeinstallprompt`
+    - Android: "Añade Mimoia a tu inicio" + button → triggers stashed `beforeinstallprompt`
     - iOS Safari: visual instructions with the share icon and "Añadir a pantalla de inicio" — detected via `/iPhone|iPad|iPod/.test(navigator.userAgent) && !window.matchMedia('(display-mode: standalone)').matches`
   - Mount `<InstallSheet />` in `apps/web/src/app/layout.tsx` for app routes. Sheet only renders if (visits >= 3 OR menu-visits >= 2) AND not installed AND not dismissed
   - "Más tarde" sets a 30-day dismissal; "No mostrar otra vez" sets a 365-day dismissal

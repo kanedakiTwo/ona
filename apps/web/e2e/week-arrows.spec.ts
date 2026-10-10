@@ -33,7 +33,8 @@ test('/menu: ‹ › change the week from the header', async ({ page }) => {
   await page.goto('/menu')
   const range = page.getByTestId('menu-week-range').first()
   await expect(range).toBeVisible({ timeout: 15_000 })
-  const thisWeek = await range.innerText()
+  // textContent, not innerText: the eyebrow is uppercased with CSS.
+  const thisWeek = (await range.textContent()) ?? ''
 
   await page.getByRole('button', { name: 'Semana siguiente' }).first().click()
   await expect(range).not.toHaveText(thisWeek)
@@ -47,7 +48,7 @@ test('/shopping: ‹ › move the dates a week; progress counts each row once', 
   await page.goto('/shopping')
   const range = page.getByTestId('shopping-range')
   await expect(range).toBeVisible({ timeout: 15_000 })
-  const thisWeek = await range.innerText()
+  const thisWeek = (await range.textContent()) ?? ''
 
   // The range starts today: nothing before it.
   await expect(page.getByRole('button', { name: 'Semana anterior' })).toBeDisabled()
@@ -56,7 +57,8 @@ test('/shopping: ‹ › move the dates a week; progress counts each row once', 
   await page.getByRole('button', { name: 'Semana anterior' }).click()
   await expect(range).toHaveText(thisWeek)
 
-  // Bought, then "en casa": still one row done, not two.
+  // Bought, then "en casa": still one row done, not two. Back on a range
+  // already seen, the rows wait (disabled) for the rebuilt list before writing.
   const done = page.getByTestId('shopping-done')
   await expect(done).toHaveText('0')
   await page.getByRole('button', { name: 'Marcar como comprado' }).first().click()

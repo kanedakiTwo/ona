@@ -89,7 +89,7 @@ export default function ShoppingPage() {
   const weekStart = useMemo(() => mondayOfTodayIso(), [])
   const { data: menu, isLoading: menuLoading } = useMenu(user?.id, weekStart)
   const menuId = menu?.id
-  const { data: shoppingList, isLoading: listLoading } = useShoppingList(range)
+  const { data: shoppingList, isLoading: listLoading, isFetching: listFetching } = useShoppingList(range)
 
   const [activeTab, setActiveTab] = useState<Tab>('list')
   const [aisleFilter, setAisleFilter] = useState<Aisle | null>(null)
@@ -327,9 +327,9 @@ export default function ShoppingPage() {
                 transition={{ duration: 0.3 }}
               >
                 {activeTab === 'list' ? (
-                  <BuyList items={items} listId={shoppingList!.id} aisle={effectiveAisle} />
+                  <BuyList items={items} listId={shoppingList!.id} aisle={effectiveAisle} busy={listFetching} />
                 ) : (
-                  <StockList items={items} listId={shoppingList!.id} aisle={effectiveAisle} />
+                  <StockList items={items} listId={shoppingList!.id} aisle={effectiveAisle} busy={listFetching} />
                 )}
               </motion.div>
             </AnimatePresence>
@@ -531,7 +531,8 @@ function EmptyCard({ title, hint }: { title: string; hint?: string }) {
   )
 }
 
-function BuyList({ items, listId, aisle }: { items: any[]; listId: string; aisle: Aisle | null }) {
+/** `busy`: the list is being rebuilt (its id changes on every GET), so rows wait instead of writing to the old one. */
+function BuyList({ items, listId, aisle, busy }: { items: any[]; listId: string; aisle: Aisle | null; busy?: boolean }) {
   const checkItem = useCheckItem()
   const stockItem = useStockItem()
 
@@ -556,6 +557,7 @@ function BuyList({ items, listId, aisle }: { items: any[]; listId: string; aisle
               return (
                 <ItemRow
                   key={item.id}
+                  busy={busy}
                   item={item}
                   index={i}
                   listId={listId}
@@ -572,7 +574,7 @@ function BuyList({ items, listId, aisle }: { items: any[]; listId: string; aisle
   )
 }
 
-function StockList({ items, listId, aisle }: { items: any[]; listId: string; aisle: Aisle | null }) {
+function StockList({ items, listId, aisle, busy }: { items: any[]; listId: string; aisle: Aisle | null; busy?: boolean }) {
   const stockItem = useStockItem()
   const inStock = items.filter((i) => i.inStock)
   const grouped = groupByAisle(inStock)
@@ -600,6 +602,7 @@ function StockList({ items, listId, aisle }: { items: any[]; listId: string; ais
               return (
                 <ItemRow
                   key={item.id}
+                  busy={busy}
                   item={item}
                   index={i}
                   listId={listId}
@@ -623,6 +626,7 @@ function ItemRow({
   listId,
   onCheck,
   onStock,
+  busy,
 }: {
   item: any
   index: number
@@ -630,6 +634,7 @@ function ItemRow({
   listId: string
   onCheck: () => void
   onStock: () => void
+  busy?: boolean
 }) {
   const isManual = item.kind === 'manual'
   return (
@@ -643,7 +648,8 @@ function ItemRow({
         <button
           type="button"
           onClick={onCheck}
-          className="group -ml-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-ink"
+          disabled={busy}
+          className="group -ml-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-ink disabled:cursor-wait"
           aria-label="Marcar como comprado"
           aria-pressed={!!item.checked}
         >
@@ -683,7 +689,8 @@ function ItemRow({
       <button
         type="button"
         onClick={onStock}
-        className={`relative h-8 shrink-0 whitespace-nowrap rounded-full px-3 text-[12px] font-medium transition-colors before:absolute before:inset-x-0 before:-inset-y-1.5 ${
+        disabled={busy}
+        className={`relative h-8 disabled:cursor-wait shrink-0 whitespace-nowrap rounded-full px-3 text-[12px] font-medium transition-colors before:absolute before:inset-x-0 before:-inset-y-1.5 ${
           variant === 'stock'
             ? 'bg-terracotta-deep text-cream hover:bg-ink'
             : 'bg-cream-deep text-ink-mid hover:bg-ink hover:text-cream'

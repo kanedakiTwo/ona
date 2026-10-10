@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import type { Aisle, BuyableUnit } from "@ona/shared"
 import { api } from "@/lib/api"
 import { enqueue } from "@/lib/pwa/offlineQueue"
@@ -34,6 +34,20 @@ export interface ShoppingListTotal {
 }
 
 /**
+ * A mutation answers with the whole updated list. Put it only into the
+ * cached rolling list it came from (same id). Writing it into every
+ * `["shopping-list"]` query also overwrote other date ranges and the
+ * `totals` query (2026-10-10).
+ */
+function putList(qc: ReturnType<typeof useQueryClient>, data: unknown) {
+  if (!data || typeof data !== "object" || !("items" in data) || !("id" in data)) return
+  const list = data as ShoppingList
+  qc.setQueriesData<ShoppingList>({ queryKey: ["shopping-list", "rolling"] }, (old) =>
+    old && old.id === list.id ? list : old,
+  )
+}
+
+/**
  * Fetch the user's rolling shopping list. Date range is optional — server
  * defaults to "today through end of next week". The list is regenerated
  * on every GET (overwriting the persisted row's items + range) so the
@@ -43,6 +57,9 @@ export interface ShoppingListTotal {
 export function useShoppingList(range?: { from: string; to: string }) {
   return useQuery<ShoppingList>({
     queryKey: ["shopping-list", "rolling", range?.from ?? null, range?.to ?? null],
+    // While another range loads, keep showing the previous one; the page
+    // disables the row buttons until the fresh list (and its id) arrives.
+    placeholderData: keepPreviousData,
     queryFn: () => {
       const params = range
         ? `?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`
@@ -70,8 +87,8 @@ export function useCheckItem() {
           resourceId: params.itemId,
         })
         // Optimistic cache update
-        queryClient.setQueriesData<ShoppingList>({ queryKey: ["shopping-list"] }, (old) => {
-          if (!old) return old
+        queryClient.setQueriesData<ShoppingList>({ queryKey: ["shopping-list", "rolling"] }, (old) => {
+          if (!old || !Array.isArray(old.items)) return old
           return {
             ...old,
             items: old.items.map((it) =>
@@ -93,7 +110,7 @@ export function useCheckItem() {
       // already returns the updated list — slot it into every cached
       // `["shopping-list"]` query directly.
       if (data && typeof data === "object" && "items" in data) {
-        queryClient.setQueriesData({ queryKey: ["shopping-list"] }, data)
+        putList(queryClient, data)
       }
     },
   })
@@ -127,7 +144,7 @@ export function useAddShoppingItem() {
     mutationFn: ({ listId, ...body }) => api.post(`/shopping-list/${listId}/items`, body),
     onSuccess: (data, vars) => {
       if (data && typeof data === "object" && "items" in data) {
-        qc.setQueriesData({ queryKey: ["shopping-list"] }, data)
+        putList(qc, data)
       }
       qc.invalidateQueries({ queryKey: ["shopping-list", vars.listId, "totals"] })
     },
@@ -149,7 +166,7 @@ export function usePatchShoppingItem() {
       api.patch(`/shopping-list/${listId}/item/${itemId}`, patch),
     onSuccess: (data, vars) => {
       if (data && typeof data === "object" && "items" in data) {
-        qc.setQueriesData({ queryKey: ["shopping-list"] }, data)
+        putList(qc, data)
       }
       qc.invalidateQueries({ queryKey: ["shopping-list", vars.listId, "totals"] })
     },
@@ -163,7 +180,7 @@ export function useDeleteShoppingItem() {
       api.delete(`/shopping-list/${listId}/item/${itemId}`),
     onSuccess: (data, vars) => {
       if (data && typeof data === "object" && "items" in data) {
-        qc.setQueriesData({ queryKey: ["shopping-list"] }, data)
+        putList(qc, data)
       }
       qc.invalidateQueries({ queryKey: ["shopping-list", vars.listId, "totals"] })
     },
@@ -196,8 +213,8 @@ export function useStockItem() {
           resourceId: params.itemId,
         })
         // Optimistic cache update
-        queryClient.setQueriesData<ShoppingList>({ queryKey: ["shopping-list"] }, (old) => {
-          if (!old) return old
+        queryClient.setQueriesData<ShoppingList>({ queryKey: ["shopping-list", "rolling"] }, (old) => {
+          if (!old || !Array.isArray(old.items)) return old
           return {
             ...old,
             items: old.items.map((it) =>
@@ -218,7 +235,7 @@ export function useStockItem() {
       // rather than invalidating (which would trigger a fresh rolling
       // aggregation server-side and feel like a page reload).
       if (data && typeof data === "object" && "items" in data) {
-        queryClient.setQueriesData({ queryKey: ["shopping-list"] }, data)
+        putList(queryClient, data)
       }
     },
   })

@@ -101,6 +101,7 @@ At `lg+` the `/shopping` page uses the "D" 1180 px container: header with the "P
 ## Constraints
 
 - Field names are camelCase (`inStock`, `checked`, `ingredientId`) end-to-end — frontend, types, and DB JSONB
+- While the list is being fetched again (another date range, or after a menu change) the row buttons (✓ and "En casa") are disabled and the previous range stays on screen: every GET rebuilds the row with a new id, so a tick sent with the old id used to be lost (404) when coming back to a range already seen (2026-10-10). A state mutation's response is written only into the cached rolling list with the same id — never into other ranges or the `totals` query.
 - The list is regenerated on every GET — there is no longer a manual "Regenerar" button on `/shopping`. The cache invalidates automatically when any menu mutation succeeds, so editing the menu, swapping slots, or skipping a day reflects in the basket on the next render.
 - The progress bar uses `shoppingProgress(items).ratio` = (bought-and-not-at-home + at-home) / rows, capped at 100 % by construction
 - Export format is plain text suitable for paste into messaging apps; it preserves aisle grouping and ends with a "Hecho con Mimoia" line + link (the shared title is "Lista de compra · Mimoia") (`/?ref=lista`, `withOnaFooter`), so a shared list can bring another household

@@ -16,6 +16,8 @@ export interface LinkWithUser {
   email: string
   username: string
   suspendedAt: Date | null
+  /** false → Mimo runs the first steps in the chat (WhatsApp-first sign-up). null = legacy, treated as done. */
+  onboardingDone: boolean | null
 }
 
 const linkWithUserColumns = {
@@ -27,6 +29,7 @@ const linkWithUserColumns = {
   email: users.email,
   username: users.username,
   suspendedAt: users.suspendedAt,
+  onboardingDone: users.onboardingDone,
 }
 
 export async function getLinkByPhone(phone: string): Promise<LinkWithUser | null> {
@@ -205,7 +208,7 @@ export async function consumeLinkCode(
   phone: string,
   profileName: string | null,
   now: Date = new Date(),
-): Promise<{ userId: string } | null> {
+): Promise<{ userId: string; onboardingDone: boolean } | null> {
   return db.transaction(async (tx) => {
     const [row] = await tx
       .update(whatsappLinkCodes)
@@ -220,7 +223,8 @@ export async function consumeLinkCode(
       .returning({ userId: whatsappLinkCodes.userId })
     if (!row) return null
     await linkPhoneToUser(tx, phone, row.userId, profileName, now)
-    return { userId: row.userId }
+    const [user] = await tx.select({ onboardingDone: users.onboardingDone }).from(users).where(eq(users.id, row.userId)).limit(1)
+    return { userId: row.userId, onboardingDone: user?.onboardingDone === true }
   })
 }
 

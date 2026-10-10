@@ -8,7 +8,7 @@
  * (`OnboardingShell`). Behaviour is unchanged: same steps, same payload,
  * same first-menu generation before landing on /menu.
  */
-import { useState, type KeyboardEvent, type ReactNode } from "react"
+import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react"
 import { useAuth } from "@/lib/auth"
 import { api } from "@/lib/api"
 import { useRouter } from "next/navigation"
@@ -17,6 +17,8 @@ import { cn, currentWeekStart } from "@/lib/utils"
 import { RESTRICTION_PRESETS } from "@ona/shared"
 import { HealthConsentCheckbox } from "@/components/HealthConsentCheckbox"
 import { Accent, OnboardingHeader, OnboardingShell } from "./OnboardingShell"
+import { OnboardingChannelChoice, OnboardingWhatsAppLink } from "./OnboardingWhatsApp"
+import { useWhatsAppStatus } from "@/hooks/useWhatsApp"
 
 // Shared with the profile so both offer the same chips (@ona/shared).
 const PRESET_RESTRICTIONS = RESTRICTION_PRESETS
@@ -140,12 +142,24 @@ export default function OnboardingFlow() {
 
   const totalSteps = 5
 
+  // WhatsApp-first (2026-10-10): when the channel is available, the first
+  // screen offers to do the first steps with Mimo in WhatsApp. Already linked
+  // (e.g. from /whatsapp/conectar) → straight to "Mimo te está escribiendo".
+  const whatsapp = useWhatsAppStatus()
+  const [channel, setChannel] = useState<"choose" | "whatsapp" | "web" | null>(null)
+  useEffect(() => {
+    if (channel !== null || whatsapp.isLoading) return
+    setChannel(whatsapp.data?.available ? (whatsapp.data.linked ? "whatsapp" : "choose") : "web")
+  }, [channel, whatsapp.isLoading, whatsapp.data])
+  const canBackToChannel = Boolean(whatsapp.data?.available)
+
   function next() {
     if (step < totalSteps) setStep(step + 1)
   }
 
   function prev() {
     if (step > 1) setStep(step - 1)
+    else if (canBackToChannel) setChannel("choose")
   }
 
   function addRestriction(tag: string) {
@@ -233,6 +247,28 @@ export default function OnboardingFlow() {
   const pill =
     "flex h-[52px] w-full items-center justify-center rounded-full bg-ink px-6 text-[16px] font-semibold text-cream transition-colors hover:bg-ink-mid active:scale-[0.98] disabled:opacity-40 disabled:active:scale-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
 
+  if (channel !== "web") {
+    return (
+      <div className="min-h-[100dvh] bg-cream lg:py-8">
+        <OnboardingShell photo={PHOTO}>
+          <div className="flex min-h-[100dvh] flex-col px-4 pt-[calc(var(--safe-top)+12px)] lg:min-h-[calc(100dvh-4rem)] lg:px-0 lg:pt-0">
+            <div className="flex-1 pb-8 pt-6 lg:pt-10">
+              {channel === null ? (
+                <p role="status" className="text-[14px] text-ink-muted">
+                  Cargando…
+                </p>
+              ) : channel === "choose" ? (
+                <OnboardingChannelChoice onWhatsApp={() => setChannel("whatsapp")} onWeb={() => setChannel("web")} />
+              ) : (
+                <OnboardingWhatsAppLink onWeb={() => setChannel("web")} />
+              )}
+            </div>
+          </div>
+        </OnboardingShell>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-[100dvh] bg-cream lg:py-8">
       <OnboardingShell photo={PHOTO}>
@@ -242,7 +278,7 @@ export default function OnboardingFlow() {
             <button
               type="button"
               onClick={prev}
-              disabled={step === 1}
+              disabled={step === 1 && !canBackToChannel}
               aria-label="Atrás"
               className="-ml-1.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink transition-colors hover:bg-cream-deep disabled:invisible focus-visible:outline-2 focus-visible:outline-ink"
             >

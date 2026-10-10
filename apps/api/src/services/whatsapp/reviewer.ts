@@ -303,6 +303,7 @@ async function notifyRecipients(day: string, stats: ReviewStats, summary: string
       email: users.email,
       username: users.username,
       suspendedAt: users.suspendedAt,
+      onboardingDone: users.onboardingDone,
     })
     .from(whatsappLinks)
     .innerJoin(users, eq(users.id, whatsappLinks.userId))

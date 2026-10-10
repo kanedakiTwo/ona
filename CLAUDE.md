@@ -186,9 +186,6 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 - [ ] **MIG-06 · Añadir un número real de WhatsApp en Meta** — Con el número de prueba solo pueden hablar con Mimo 5 teléfonos y sale como «Test Number».
   - Cómo: en Meta, añade un número real al portfolio actual, **sin pedir todavía la verificación del negocio** (D-004). Después Claude rehace el webhook y la suscripción para la cuenta nueva.
 
-- [ ] **MIG-07 · Escribir con tu voz la misión de Mimoia** — La constitución de ONA HQ guía a todos los agentes y su misión y punto de vista siguen en borrador.
-  - Cómo: en `~/ona-hq/constitution.md`, reescribe las secciones marcadas [BORRADOR] (unos 15 min).
-
 - [ ] **MIG-08 · Activar «Hola Mimo» para hablar sin tocar** — Hoy la palabra de activación sigue siendo «Hola Ona» y no está activa en producción.
   - Cómo: en console.picovoice.ai, saca una clave de acceso y entrena la palabra «Hola Mimo» (español, Porcupine WASM). Pásale a Claude la clave y el fichero `.ppn`; él los pone en Railway (`NEXT_PUBLIC_PICOVOICE_ACCESS_KEY`) y cambia `WAKE_PHRASE`.
 

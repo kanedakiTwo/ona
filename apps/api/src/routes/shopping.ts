@@ -12,6 +12,7 @@ import {
 } from '../services/shoppingList.js'
 import { canAccessRow, getPrimaryHouseholdId, resolveScope } from '../services/scopeResolver.js'
 import { listActiveStaplesForHousehold } from '../services/staplesStore.js'
+import { carryItemState, type ItemStateMap } from '../services/shoppingItemState.js'
 import {
   AISLES,
   UNITS,
@@ -239,34 +240,17 @@ router.get('/shopping-list', async (req: AuthRequest, res) => {
     const prevItems = (previous?.items ?? []) as ShoppingItem[]
 
     // Overlay merge: keep checked / inStock / pricePerUnit on every menu
-    // item that survives the new aggregate. Key is `(ingredientId, unit)`
-    // — a single ingredient can produce multiple rows when the aggregator
-    // splits incompatible units (e.g. "jengibre · 50 g" + "jengibre · 1 u"
-    // when one recipe uses grams and another uses unidades without a
-    // unitWeight). Keying by ingredientId alone meant the last-iterated
-    // row's state silently overwrote the others, so checking one row
-    // sometimes appeared to "un-check" itself on the next read.
-    const overlayByKey = new Map<string, ShoppingItem>()
-    const manualSurviving: ShoppingItem[] = []
-    for (const it of prevItems) {
-      if (it.kind === 'manual') {
-        manualSurviving.push(it)
-      } else if (it.ingredientId) {
-        overlayByKey.set(`${it.ingredientId}|${it.unit}`, it)
-      }
-    }
-    const mergedMenuItems: ShoppingItem[] = menuItems.map((it) => {
-      const prev = it.ingredientId
-        ? overlayByKey.get(`${it.ingredientId}|${it.unit}`)
-        : undefined
-      if (!prev) return it
-      return {
-        ...it,
-        checked: prev.checked,
-        inStock: prev.inStock,
-        pricePerUnit: prev.pricePerUnit ?? null,
-      }
-    })
+    // item, keyed by `(ingredientId, unit)` — a single ingredient can produce
+    // multiple rows when the aggregator splits incompatible units (e.g.
+    // "jengibre · 50 g" + "jengibre · 1 u"). The previous rows win; products
+    // absent from the previous range come back from `item_state`, so looking
+    // at another week no longer wipes what was marked (2026-10-10).
+    const manualSurviving: ShoppingItem[] = prevItems.filter((it) => it.kind === 'manual')
+    const { items: mergedMenuItems, state: itemState } = carryItemState(
+      menuItems,
+      prevItems,
+      (previous?.itemState ?? null) as ItemStateMap | null,
+    )
 
     // Re-merge staples (PR 10B) on top of the menu-derived items so they
     // keep their `inStock` / pricing.
@@ -290,6 +274,7 @@ router.get('/shopping-list', async (req: AuthRequest, res) => {
         rangeStartDate: from,
         rangeEndDate: to,
         items: finalItems,
+        itemState,
       })
       .returning()
 

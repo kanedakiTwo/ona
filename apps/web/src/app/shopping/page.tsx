@@ -294,7 +294,7 @@ export default function ShoppingPage() {
               </span>
               <span className="flex items-center gap-1.5">
                 <Package size={14} className="text-terracotta-deep" aria-hidden="true" />
-                {inStockCount} en casa
+                <span data-testid="shopping-athome">{inStockCount}</span> en casa
               </span>
             </div>
           </div>

@@ -163,6 +163,7 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 - [ ] **MIG-01 · Elegir los hogares de la beta** — La beta abre el 21 de octubre y empieza por 10–15 hogares que conoces.
   - Cómo: haz tu lista (no hace falta pasárnosla: son datos personales). Marketing y Customer Success te preparan el mensaje el 12 y el 14; se lo mandas tú por WhatsApp con un enlace de invitación `mimoia.com/i/<código>` (se crea en `/admin` → Invitaciones; o pídeselo a Claude).
   - Lo único que necesitamos: cuántos hogares son y cuántos querrán usar Mimo por WhatsApp. Con el número de prueba de Meta caben 5 teléfonos; a cada uno hay que darlo de alta (su email en `WHATSAPP_ALLOWED_EMAILS` y su teléfono en Meta → Paso 1 «Para»).
+  - Estado (2026-10-10): 14 hogares en tu lista; falta añadir a las amigas de Sara y refinarla.
 
 - [ ] **MIG-02 · Pasar el contacto del/de la dietista** — Queremos que un profesional colegiado revise recetas y mensajes antes de abrir (D-005).
   - Cómo: dile a Claude su nombre y cómo contactar. El primer mensaje lo prepara Marketing.
@@ -194,6 +195,7 @@ This is the **single source of truth** for work that's pending on Miguel's side 
   - Cómo: al crear o editar cada cuenta (@conmimoia), abre la guía de marca (panel → «Lo esencial» → Marketing) → sección «Redes sociales»: para cada red está la foto de perfil y la portada al tamaño exacto, con su enlace de descarga. Súbelas tal cual.
   - Redes: Instagram, TikTok, Facebook, YouTube, el canal de WhatsApp y el número de Mimo (WhatsApp Manager → Perfil), LinkedIn (tu fondo de perfil y, si creas la página de empresa, su logo y portada).
   - Hecho cuando: todas las cuentas creadas muestran la cuchara.
+  - Estado (2026-10-10): hecho Instagram; Facebook, en curso. Faltan TikTok, YouTube, WhatsApp (canal y número de Mimo) y LinkedIn.
 
 - [ ] **MIG-10 · Probar en tu móvil lo que no se puede probar solo** — Hay cosas que solo se ven en un teléfono de verdad.
   - Instalar la app en Android (Chrome) y en iPhone (Safari): que se abra a pantalla completa, con el color crema y respetando la barra de estado.

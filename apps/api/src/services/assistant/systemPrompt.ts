@@ -44,7 +44,24 @@ export type AssistantMode = 'text' | 'voice' | 'onboarding' | 'whatsapp'
 export const WHATSAPP_OFF_TOPIC_REPLY =
   'Solo te puedo ayudar con tu comida: menú, recetas, lista de la compra, despensa y nutrición. ¿Te ayudo con algo de eso?'
 
-export function buildSystemPrompt(userContext: string, mode: AssistantMode = 'text'): string {
+/**
+ * WhatsApp-first sign-up (2026-10-10): while the user hasn't done the first
+ * steps, Mimo asks them in the chat and finishes with complete_onboarding,
+ * which also builds the first menu. Health data stays out (PRO-24): the
+ * system sends the web link for it afterwards.
+ */
+export const WHATSAPP_ONBOARDING_PROMPT = `Primeros pasos por WhatsApp (obligatorio mientras no los termine): este hogar acaba de llegar y aun no tiene perfil ni menu. Tu objetivo es dejarle su primer menu en pocos mensajes.
+- Ya le has preguntado cuantos son en casa (adultos y niños de 2 a 10 años). Despues pregunta, de una en una y solo lo que falte: cuanto cocinan en casa, con [[opciones: Casi a diario | 3-4 días | Poco]], y tres platos que les gusten mucho.
+- Aprovecha todo lo que te diga en un mensaje y no repitas preguntas ya contestadas. "Somos 3" sin mas son 3 adultos y 0 niños.
+- En cuanto tengas adultos, niños, cuanto cocinan y al menos un plato, llama a complete_onboarding (prioridad: la que diga; si no, varied). Esa herramienta ya genera el menu de esta semana: no llames tambien a generate_weekly_menu. Responde "Hecho:" con "- Tu primer menu de la semana listo"; el sistema añade el resumen y le pregunta despues por los avisos.
+- No preguntes por alergias, intolerancias ni nada de salud: el sistema le manda despues el enlace para añadirlas en la web con su permiso. Si te las cuenta, no las guardes y dile que las añada ahi.
+- Si antes de terminar te pide otra cosa de comida, hazla en una linea y vuelve a la pregunta pendiente.`
+
+export function buildSystemPrompt(
+  userContext: string,
+  mode: AssistantMode = 'text',
+  opts: { onboarding?: boolean } = {},
+): string {
   let prompt = `Eres ${ASSISTANT_NAME}, el asistente de ${BRAND_NAME}, una app de planificacion de menus semanales saludables.
 
 Tu nombre:
@@ -177,6 +194,7 @@ Formato de la respuesta (WhatsApp):
 - No hables de pantallas ni digas "pulsa": el sistema añade solo el enlace a la app cuando hace falta; no escribas tu URLs de la app.
 - Excepcion: los enlaces de pedido a tiendas (los que contienen /c/) que devuelven prepare_shop_orders y approve_shop_order en ESTE turno SI los copias tal cual, uno por tienda: son los que el usuario toca para enviar el pedido. Nunca reenvies enlaces /c/ de mensajes anteriores: si pide la compra o los pedidos otra vez, vuelve a llamar a prepare_shop_orders.
 - El modo cocina (temporizadores y pasos) solo existe en la app: si quiere cocinar, usa start_cooking_mode (le llega el enlace). No uses set_timer ni cooking_step.`
+    if (opts.onboarding) prompt += `\n\n${WHATSAPP_ONBOARDING_PROMPT}`
   } else if (mode === 'voice') {
     prompt += `
 

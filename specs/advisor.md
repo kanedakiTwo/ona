@@ -35,6 +35,7 @@ The assistant can call back-end skills (function calling). Each skill has a name
 - `get_shopping_list` — current week's shopping list
 - `suggest_recipes` — recommend recipes matching meal/season, never one that breaks the user's allergies, diet or dislikes
 - `search_recipes` — search by name substring
+- `complete_onboarding` — WhatsApp-first sign-up only: saves adults, kids, cooking frequency, favourite dishes and priority like the web onboarding (`saveOnboarding`, never health data), marks `onboardingDone` and generates the first week (same as `generate_weekly_menu`). Refuses (summary, no write) when a required answer is missing or the account is already onboarded. The WhatsApp prompt adds `WHATSAPP_ONBOARDING_PROMPT` while the user isn't onboarded (`ChatOptions.onboarding`)
 - `generate_weekly_menu` — full menu generation for the user. `nextWeek: true` targets next Monday (used when the user says "la semana que viene" or accepts the WhatsApp Sunday nudge). Enqueues prep alerts like `POST /menu/generate`
 - `swap_meal` — replace a single meal slot. Without a `recipeId`/`recipeName` parameter, runs the matcher (auto-picks). When the user names a recipe ("pon la fabada de mi madre el lunes"), the model passes `recipeName` (or `recipeId` when known) and the skill pins that recipe directly without the matcher. Recipes the user owns win over system recipes when names collide
 - `toggle_favorite` — favorite/unfavorite a recipe

@@ -1057,7 +1057,7 @@ describe('cooking_step', () => {
 // ─── Sanity: every skill in the export array has at least one test ────────
 
 describe('skill export coverage', () => {
-  it('there are exactly 63 registered skills', () => {
+  it('there are exactly 64 registered skills', () => {
     // Bumped from 30 when PR 2 added `update_memory` (persists inferred
     // facts to user_memories from "recuerda que..." utterances), and to 32
     // with `import_recipe_from_url` (WhatsApp channel, 2026-10), and to 56
@@ -1065,8 +1065,9 @@ describe('skill export coverage', () => {
     // set_whatsapp_notifications, and to 63 with the 6 "compra en mis
     // tiendas" skills (shopOrderSkills.ts, tested in shopOrderSkills.test.ts),
     // and back to 62 when list_pantry folded into get_pantry_stock, and to 63
-    // with edit_shop_order (change a prepared shop order before sending).
-    expect(skills.length).toBe(63)
+    // with edit_shop_order (change a prepared shop order before sending), and to
+    // 64 with complete_onboarding (WhatsApp-first sign-up, 2026-10-10).
+    expect(skills.length).toBe(64)
   })
 
   it('every skill has a unique name', () => {

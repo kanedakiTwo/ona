@@ -33,6 +33,11 @@ export interface ChatOptions {
    * Must not throw; errors are swallowed.
    */
   onToolStart?: (toolNames: string[]) => void
+  /**
+   * WhatsApp-first sign-up: the user hasn't done the first steps yet, so Mimo
+   * asks them in the chat and finishes with `complete_onboarding`.
+   */
+  onboarding?: boolean
 }
 
 /**
@@ -52,7 +57,7 @@ export async function chat(
   const userContext = await loadUserContext(userId, db)
 
   // 2. Build system prompt
-  const systemPrompt = buildSystemPrompt(userContext, opts.mode ?? 'text')
+  const systemPrompt = buildSystemPrompt(userContext, opts.mode ?? 'text', { onboarding: opts.onboarding === true })
 
   // 3. Build messages array from history + new message
   const messages: Anthropic.MessageParam[] = history.map(msg => ({

@@ -25,7 +25,11 @@ export interface InboundDeps {
   isUserAllowed: (email: string) => boolean
   store: {
     getLinkByPhone: (phone: string) => Promise<LinkWithUser | null>
-    consumeLinkCode: (code: string, phone: string, profileName: string | null) => Promise<{ userId: string } | null>
+    consumeLinkCode: (
+      code: string,
+      phone: string,
+      profileName: string | null,
+    ) => Promise<{ userId: string; onboardingDone?: boolean } | null>
     touchInbound: (phone: string, at: Date) => Promise<void>
     updateInbound: (
       wamid: string,
@@ -86,7 +90,7 @@ export interface InboundDeps {
 }
 
 /** Skills after which the reply carries the week's menu (not just a link to it). */
-const MENU_DIGEST_TOOLS = new Set(['generate_weekly_menu'])
+const MENU_DIGEST_TOOLS = new Set(['generate_weekly_menu', 'complete_onboarding'])
 /** …and the shopping list. */
 const SHOPPING_DIGEST_TOOLS = new Set(['get_shopping_list'])
 
@@ -128,6 +132,16 @@ const humanContact = (email?: string) =>
   email ? `escribe a ${email}` : 'escribe a la persona de Mimoia que te invitó a la beta'
 
 export const COPY = {
+  /**
+   * WhatsApp-first sign-up (2026-10-10): a new account that links before doing
+   * the first steps gets them here, in the chat. The opt-in for proactive
+   * messages waits until the first menu is ready.
+   */
+  linkedOnboarding: (name: string | null) =>
+    `¡Hola${name ? `, ${name}` : ''}! Ya estás conectado: soy Mimo, de Mimoia. ${AI_DISCLOSURE_FIRST_PERSON}\n\nTe preparo tu primer menú en un momento: solo necesito saber tres cosas.\n\n*1.* ¿Cuántos sois en casa? Dime adultos y niños de 2 a 10 años.`,
+  /** After the first menu: health data goes to the web, never through WhatsApp (PRO-24). */
+  healthOnWeb: (url: string) =>
+    `Si en casa hay alergias, intolerancias o algo que no podáis comer, añádelo aquí con tu permiso y lo tendré en cuenta: ${url}\nPor WhatsApp no guardo datos de salud.`,
   linked: (name: string | null) =>
     `¡Listo${name ? `, ${name}` : ''}! Tu WhatsApp ya está conectado con Mimoia. Pregúntame qué toca hoy, pídeme la lista de la compra, mándame un audio o compárteme una receta (enlace o foto) para guardarla.\n\n${AI_DISCLOSURE_FIRST_PERSON}`,
   /** Explicit opt-in for proactive messages, asked once right after linking. */
@@ -246,6 +260,17 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
       }
     }
   }
+  const sendOptInPrompt = (userId: string) =>
+    send(userId, 'optin_prompt', [
+      {
+        type: 'buttons',
+        text: COPY.optInPrompt,
+        buttons: [
+          { id: 'optin_yes', title: OPT_IN_YES },
+          { id: 'optin_no', title: OPT_IN_NO },
+        ],
+      },
+    ])
   const sendText = (userId: string | null, kind: string, text: string) => send(userId, kind, renderPlainText(text))
 
   await client.markReadWithTyping(msg.wamid)
@@ -288,18 +313,15 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
       const linked = await store.consumeLinkCode(code, msg.from, msg.profileName)
       if (linked) {
         await store.updateInbound(msg.wamid, { status: 'ignored', userId: linked.userId })
+        if (linked.onboardingDone === false) {
+          // WhatsApp-first sign-up: the first steps happen here; the opt-in
+          // comes after the first menu (see the end of the turn).
+          await sendText(linked.userId, 'onboarding', COPY.linkedOnboarding(msg.profileName))
+          return
+        }
         await sendText(linked.userId, 'system', COPY.linked(msg.profileName))
         // New links start with proactive messages OFF: ask explicitly.
-        await send(linked.userId, 'optin_prompt', [
-          {
-            type: 'buttons',
-            text: COPY.optInPrompt,
-            buttons: [
-              { id: 'optin_yes', title: OPT_IN_YES },
-              { id: 'optin_no', title: OPT_IN_NO },
-            ],
-          },
-        ])
+        await sendOptInPrompt(linked.userId)
         return
       }
     }
@@ -407,6 +429,8 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     const history = buildChatHistory(rows, now)
     const { usage, ...response } = await deps.chat(userId, text, history, {
       mode: 'whatsapp',
+      // WhatsApp-first sign-up: Mimo asks the first steps until complete_onboarding.
+      onboarding: link.onboardingDone === false,
       onToolStart: (names) => {
         const ack = ackTextForTools(names)
         if (ack) acker.now(ack)
@@ -427,6 +451,13 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
       meta: { tools: response.toolsUsed ?? [], corrections: response.corrections ?? [], ms: deps.now().getTime() - now.getTime() },
     })
     await out('reply', renderAssistantReply(await withDigests(response, userId, deps), deps.webUrl))
+    if ((response.toolsUsed ?? []).includes('complete_onboarding') && link.onboardingDone === false) {
+      // First menu done: health data goes to the web (with consent), then the
+      // opt-in for proactive messages that linking skipped.
+      await outText('system', COPY.healthOnWeb(`${deps.webUrl.replace(/\/$/, '')}/profile`))
+      await acker.settle()
+      await sendOptInPrompt(userId)
+    }
   } catch (err: any) {
     console.error('[whatsapp] processing failed:', err?.message ?? err)
     await store.updateInbound(msg.wamid, {

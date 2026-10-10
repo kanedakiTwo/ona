@@ -39,6 +39,7 @@ import { NoExtractableContentError } from '../sources/youtube.js'
 import { PageFetchError, UnsafeUrlError } from '../net/publicFetch.js'
 import type { SkillDefinition, SkillContext, SkillResult } from './types.js'
 import { HEALTH_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY } from '../healthConsent.js'
+import { saveOnboarding } from '../onboarding.js'
 import { isHealthMemoryKey } from '@ona/shared'
 
 /**
@@ -500,6 +501,79 @@ const generateWeeklyMenu: SkillDefinition = {
       data: menu,
       summary: `Menu generado para la semana del ${weekStart}. ${menuSummary}`,
       uiHint: 'menu',
+    }
+  },
+}
+
+const COOKING_FREQS = ['daily', '3_4_times', 'rarely'] as const
+const PRIORITIES = ['quick', 'varied', 'healthy', 'cheap'] as const
+
+/**
+ * WhatsApp-first sign-up (2026-10-10): Mimo asks the first-steps questions in
+ * the chat and, with the answers, saves them (same as the web onboarding,
+ * without health data) and builds the first week's menu in one go.
+ */
+const completeOnboarding: SkillDefinition = {
+  name: 'complete_onboarding',
+  description:
+    'Solo durante los primeros pasos de un hogar nuevo por WhatsApp: guarda cuantos son en casa, cuanto cocinan, sus platos favoritos y su prioridad, marca los primeros pasos como hechos y genera su primer menu de esta semana (no hace falta llamar ademas a generate_weekly_menu). Llamalo una sola vez, cuando tengas adultos, niños, frecuencia y al menos un plato.',
+  parameters: {
+    type: 'object',
+    properties: {
+      adults: { type: 'integer', minimum: 1, maximum: 20, description: 'Adultos en casa (a partir de 11 años).' },
+      kidsCount: { type: 'integer', minimum: 0, maximum: 20, description: 'Niños de 2 a 10 años; los menores de 2 no cuentan. 0 si no hay.' },
+      cookingFreq: {
+        type: 'string',
+        enum: [...COOKING_FREQS],
+        description: 'daily = cocinan casi a diario; 3_4_times = unos 3-4 dias por semana; rarely = poco.',
+      },
+      favoriteDishes: {
+        type: 'array',
+        items: { type: 'string' },
+        minItems: 1,
+        maxItems: 5,
+        description: 'Platos que les gustan, tal como los dice el usuario.',
+      },
+      priority: {
+        type: 'string',
+        enum: [...PRIORITIES],
+        description: 'Lo que mas le importa (quick = rapido, varied = variado, healthy = sano, cheap = barato). Si no lo ha dicho, varied.',
+      },
+    },
+    required: ['adults', 'kidsCount', 'cookingFreq', 'favoriteDishes'],
+  },
+  async handler(
+    params: { adults?: number; kidsCount?: number; cookingFreq?: string; favoriteDishes?: string[]; priority?: string },
+    ctx: SkillContext,
+  ): Promise<SkillResult> {
+    const { userId, db } = ctx
+    const [current] = await db.select({ onboardingDone: users.onboardingDone }).from(users).where(eq(users.id, userId)).limit(1)
+    if (current?.onboardingDone) {
+      return { data: null, summary: 'Los primeros pasos ya estaban hechos; no he cambiado nada. Si quiere un menu nuevo, usa generate_weekly_menu.' }
+    }
+    const adults = Number.isInteger(params?.adults) ? Number(params.adults) : NaN
+    const kidsCount = Number.isInteger(params?.kidsCount) ? Number(params.kidsCount) : 0
+    const cookingFreq = (COOKING_FREQS as readonly string[]).includes(String(params?.cookingFreq)) ? (params.cookingFreq as (typeof COOKING_FREQS)[number]) : null
+    const priority = (PRIORITIES as readonly string[]).includes(String(params?.priority)) ? (params.priority as (typeof PRIORITIES)[number]) : 'varied'
+    const favoriteDishes = (Array.isArray(params?.favoriteDishes) ? params.favoriteDishes : [])
+      .map((d) => String(d).trim())
+      .filter(Boolean)
+      .slice(0, 5)
+    const missing = [
+      !(adults >= 1 && adults <= 20) && 'cuantos adultos son',
+      !(kidsCount >= 0 && kidsCount <= 20) && 'cuantos niños',
+      !cookingFreq && 'cuanto cocinan',
+      favoriteDishes.length === 0 && 'algun plato que les guste',
+    ].filter(Boolean)
+    if (missing.length > 0) {
+      return { data: null, summary: `No he guardado nada: falta ${missing.join(', ')}. Preguntaselo.` }
+    }
+    // No restrictions or consent here: health data never goes through WhatsApp.
+    await saveOnboarding(userId, { adults, kidsCount, cookingFreq: cookingFreq!, favoriteDishes, priority }, db)
+    const menu = await generateWeeklyMenu.handler({}, ctx)
+    return {
+      ...menu,
+      summary: `Primeros pasos guardados (${adults} adultos, ${kidsCount} niños). ${menu.summary}`,
     }
   },
 }
@@ -2149,6 +2223,7 @@ export const skills: SkillDefinition[] = [
   suggestRecipes,
   searchRecipes,
   generateWeeklyMenu,
+  completeOnboarding,
   swapMeal,
   toggleFavorite,
   markMealEaten,

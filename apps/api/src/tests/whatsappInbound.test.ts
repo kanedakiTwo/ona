@@ -40,11 +40,12 @@ const LINK: LinkWithUser = {
   email: 'miguel@example.com',
   username: 'miguel',
   suspendedAt: null,
+  onboardingDone: true,
 }
 
 function setup(overrides: {
   link?: LinkWithUser | null
-  consume?: (code: string) => { userId: string } | null
+  consume?: (code: string) => { userId: string; onboardingDone?: boolean } | null
   budgetExceeded?: boolean
   history?: HistoryRow[]
   recentLinkHint?: boolean
@@ -507,5 +508,50 @@ describe('processInbound — the reply carries the menu / list, not just a link 
     })
     await processInbound(msg({ text: 'genera el menú' }), t.deps)
     expect(textOf(t.sent)).toContain('Menú de la semana listo')
+  })
+})
+
+describe('processInbound — WhatsApp-first sign-up (2026-10-10)', () => {
+  const NEW_LINK: LinkWithUser = { ...LINK, onboardingDone: false }
+
+  it('a new account that links gets the first question in the chat; the opt-in waits', async () => {
+    const t = setup({ link: null, consume: () => ({ userId: 'user-1', onboardingDone: false }) })
+    await processInbound(msg({ text: 'Vincular Mimoia: 4F7K2A' }), t.deps)
+    expect(t.sent).toEqual([{ type: 'text', text: COPY.linkedOnboarding('Miguel') }])
+    expect(t.sent[0].text).toContain(AI_DISCLOSURE_FIRST_PERSON)
+    expect(t.sent[0].text).toMatch(/¿Cuántos sois en casa\?/)
+    expect(t.outbound.map((o) => o.kind)).toEqual(['onboarding'])
+    expect(t.chat).not.toHaveBeenCalled()
+  })
+
+  it('an account that already did the first steps links as before (opt-in right away)', async () => {
+    const t = setup({ link: null, consume: () => ({ userId: 'user-1', onboardingDone: true }) })
+    await processInbound(msg({ text: 'Vincular Mimoia: 4F7K2A' }), t.deps)
+    expect(t.sent[0]).toEqual({ type: 'text', text: COPY.linked('Miguel') })
+    expect(t.outbound.map((o) => o.kind)).toEqual(['system', 'optin_prompt'])
+  })
+
+  it('until the first steps are done, the chat runs in onboarding mode', async () => {
+    const pending = setup({ link: NEW_LINK })
+    await processInbound(msg({ text: 'Somos 2 adultos y un niño de 6' }), pending.deps)
+    expect(pending.chat).toHaveBeenCalledWith('user-1', 'Somos 2 adultos y un niño de 6', [], expect.objectContaining({ mode: 'whatsapp', onboarding: true }))
+
+    const done = setup()
+    await processInbound(msg(), done.deps)
+    expect(done.chat).toHaveBeenCalledWith('user-1', '¿Qué ceno hoy?', [], expect.objectContaining({ onboarding: false }))
+  })
+
+  it('complete_onboarding → the first menu in the chat, the web link for health data, then the opt-in', async () => {
+    const t = setup({
+      link: NEW_LINK,
+      chatReply: { message: 'Hecho:\n- Tu primer menú de la semana listo', toolsUsed: ['complete_onboarding'], data: { id: 'menu-1', days: [] } },
+      menuDigest: async (_userId, menuId) => (menuId === 'menu-1' ? '*Tu semana del 6 al 12 de octubre*' : null),
+    })
+    await processInbound(msg({ text: 'Lentejas, tortilla y pescado al horno' }), t.deps)
+    expect(t.outbound.map((o) => o.kind)).toEqual(['reply', 'system', 'optin_prompt'])
+    expect(t.sent[0].text).toContain('*Tu semana del 6 al 12 de octubre*')
+    expect(t.sent[1]).toEqual({ type: 'text', text: COPY.healthOnWeb(`${WEB}/profile`) })
+    expect(t.sent[1].text).toMatch(/no guardo datos de salud/)
+    expect(t.sent[2]).toMatchObject({ type: 'buttons', text: COPY.optInPrompt })
   })
 })

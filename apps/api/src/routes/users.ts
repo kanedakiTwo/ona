@@ -13,6 +13,7 @@ import { updateProfileSchema, onboardingSchema } from '@ona/shared'
 import { env } from '../config/env.js'
 import bcrypt from 'bcryptjs'
 import { AdminAccountDeletionError, deleteAccount } from '../services/accountDeletion.js'
+import { saveOnboarding } from '../services/onboarding.js'
 import {
   getHealthConsent,
   grantHealthConsent,
@@ -178,42 +179,12 @@ router.post('/user/:id/onboarding', validate(onboardingSchema), async (req: Auth
       return
     }
 
-    const { adults, kidsCount, cookingFreq, favoriteDishes, priority, healthConsent } = req.body
+    const { adults, kidsCount, cookingFreq, favoriteDishes, priority, healthConsent, restrictions } = req.body
     // Allergies / restrictions are health data: stored only with the
-    // separate consent box ticked (RGPD art. 9, PRO-21).
-    if (healthConsent === true) await grantHealthConsent(req.params.id)
-    const restrictions = healthConsent === true || (await hasHealthConsent(req.params.id)) ? req.body.restrictions : []
-
-    const [updated] = await db
-      .update(users)
-      .set({
-        adults,
-        kidsCount,
-        // Clear the deprecated enum so it doesn't shadow the new fields.
-        householdSize: null,
-        cookingFreq,
-        restrictions,
-        favoriteDishes,
-        priority,
-        onboardingDone: true,
-      })
-      .where(eq(users.id, req.params.id))
-      .returning({
-        id: users.id,
-        username: users.username,
-        email: users.email,
-        householdSize: users.householdSize,
-        adults: users.adults,
-        kidsCount: users.kidsCount,
-        cookingFreq: users.cookingFreq,
-        restrictions: users.restrictions,
-        favoriteDishes: users.favoriteDishes,
-        priority: users.priority,
-        onboardingDone: users.onboardingDone,
-        healthConsentAt: users.healthConsentAt,
-        healthConsentVersion: users.healthConsentVersion,
-        healthConsentWithdrawnAt: users.healthConsentWithdrawnAt,
-      })
+    // separate consent box ticked (RGPD art. 9, PRO-21) — see saveOnboarding.
+    const updated = await saveOnboarding(req.params.id, {
+      adults, kidsCount, cookingFreq, favoriteDishes, priority, healthConsent, restrictions,
+    })
 
     if (!updated) {
       res.status(404).json({ error: 'User not found' })

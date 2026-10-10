@@ -15,10 +15,13 @@
 #      documented in docs/deploy.md (api first, then web).
 #
 # Usage:
-#   scripts/deploy.sh [api|web|all] [--dry-run] [--allow-behind] [--wait]
+#   scripts/deploy.sh [api|web|all] [--dry-run] [--allow-behind] [--staging-branch] [--wait]
 #     api|web|all     which service(s) to deploy (default: all)
 #     --dry-run       run every check and print the plan, but don't deploy
 #     --allow-behind  allow HEAD to be an ancestor of origin/master (rollback)
+#     --staging-branch  allow HEAD to be any pushed commit (e.g. the nightly
+#                     Taller's claude/taller-* branch) — staging only: refused
+#                     when the linked/token environment is production (D-027)
 #     --wait          wait until Railway reports each deploy SUCCESS (exit 1 on
 #                     FAILED/CRASHED or after 15 min); used by the nightly Taller
 #
@@ -39,12 +42,14 @@ fi
 TARGET="all"
 DRY_RUN=0
 ALLOW_BEHIND=0
+STAGING_BRANCH=0
 WAIT=0
 for arg in "$@"; do
   case "$arg" in
     api|web|all) TARGET="$arg" ;;
     --dry-run) DRY_RUN=1 ;;
     --allow-behind) ALLOW_BEHIND=1 ;;
+    --staging-branch) STAGING_BRANCH=1 ;;
     --wait) WAIT=1 ;;
     -h|--help) sed -n '2,27p' "$0"; exit 0 ;;
     *) echo "Unknown argument: $arg (see --help)" >&2; exit 2 ;;
@@ -67,7 +72,15 @@ fi
 git fetch --quiet origin master || die "could not fetch origin/master"
 head_sha="$(git rev-parse HEAD)"
 remote_sha="$(git rev-parse origin/master)"
-if [ "$head_sha" != "$remote_sha" ]; then
+env_name="$(railway status 2>/dev/null | sed -n 's/^Environment: //p')"
+if [ "$head_sha" != "$remote_sha" ] && [ "$STAGING_BRANCH" -eq 1 ]; then
+  # The nightly Taller ships to staging from its own branch; production only
+  # ever gets master, after Miguel's OK in /ona-dia (D-027).
+  [ "$env_name" = "staging" ] || die "--staging-branch only deploys to staging (environment: ${env_name:-unknown})."
+  git fetch --quiet origin || die "could not fetch origin"
+  [ -n "$(git branch -r --contains "$head_sha" 2>/dev/null)" ] || die "HEAD ($(git rev-parse --short HEAD)) is not on any origin branch. Push it first."
+  echo "⚠️  Staging from a branch: $(git rev-parse --short HEAD) is not master."
+elif [ "$head_sha" != "$remote_sha" ]; then
   if git merge-base --is-ancestor "$head_sha" "$remote_sha"; then
     if [ "$ALLOW_BEHIND" -ne 1 ]; then
       die "HEAD ($(git rev-parse --short HEAD)) is behind origin/master ($(git rev-parse --short origin/master)). Pull first, or pass --allow-behind for an intentional rollback."
@@ -88,7 +101,7 @@ echo "── Deploying ───────────────────
 echo "  commit:   $(git log -1 --format='%H')"
 echo "            $(git log -1 --format='%s (%an, %ad)' --date=short)"
 echo "  services: ${services[*]}"
-echo "  env:      $(railway status 2>/dev/null | sed -n 's/^Environment: //p')"
+echo "  env:      $env_name"
 
 if [ "$DRY_RUN" -eq 1 ]; then
   for s in "${services[@]}"; do echo "  [dry-run] railway up --service $s --detach"; done

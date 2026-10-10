@@ -55,7 +55,9 @@ export function AuthShell({
               className="absolute left-4 top-[calc(var(--safe-top)+12px)] inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-paper px-4 text-[13px] font-medium text-ink shadow-sm transition-colors hover:text-terracotta-deep lg:left-6 lg:top-6"
             >
               <ArrowLeft size={15} strokeWidth={2} aria-hidden />
-              Volver<span className="hidden lg:inline">&nbsp;a inicio</span>
+              <span>
+                Volver<span className="hidden lg:inline"> a inicio</span>
+              </span>
             </Link>
           )}
 

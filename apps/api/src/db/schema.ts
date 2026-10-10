@@ -356,6 +356,12 @@ export const shoppingLists = pgTable('shopping_lists', {
   rangeStartDate: date('range_start_date'),
   rangeEndDate: date('range_end_date'),
   items: jsonb('items').notNull(),
+  /**
+   * State the user gave each product `(ingredientId|unit)` → { checked,
+   * inStock, pricePerUnit }, remembered across rebuilds so a product absent
+   * from the range on screen keeps it (2026-10-10). See shoppingItemState.ts.
+   */
+  itemState: jsonb('item_state'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => [
   index('idx_shopping_lists_household').on(table.householdId),

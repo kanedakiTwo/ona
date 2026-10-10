@@ -65,4 +65,14 @@ test('/shopping: ‹ › move the dates a week; progress counts each row once', 
   await expect(done).toHaveText('1')
   await page.getByRole('button', { name: 'Marcar en casa' }).first().click()
   await expect(done).toHaveText('1')
+
+  // What was marked survives a look at another week (item_state, 2026-10-10:
+  // the next week has other products and the "en casa" used to be lost).
+  const atHome = page.getByTestId('shopping-athome')
+  await expect(atHome).toHaveText('1')
+  await page.getByRole('button', { name: 'Semana siguiente' }).click()
+  await expect(range).not.toHaveText(thisWeek)
+  await page.getByRole('button', { name: 'Semana anterior' }).click()
+  await expect(range).toHaveText(thisWeek)
+  await expect(atHome).toHaveText('1', { timeout: 10_000 })
 })

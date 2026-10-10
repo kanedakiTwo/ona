@@ -188,9 +188,6 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 - [ ] **MIG-06 · Añadir un número real de WhatsApp en Meta** — Con el número de prueba solo pueden hablar con Mimo 5 teléfonos y sale como «Test Number».
   - Cómo: en Meta, añade un número real al portfolio actual, **sin pedir todavía la verificación del negocio** (D-004). Después Claude rehace el webhook y la suscripción para la cuenta nueva.
 
-- [ ] **MIG-08 · Activar «Hola Mimo» para hablar sin tocar** — Hoy la palabra de activación sigue siendo la del nombre antiguo de la app y no está activa en producción.
-  - Cómo: en console.picovoice.ai, saca una clave de acceso y entrena la palabra «Hola Mimo» (español, Porcupine WASM). Pásale a Claude la clave y el fichero `.ppn`; él los pone en Railway (`NEXT_PUBLIC_PICOVOICE_ACCESS_KEY`) y cambia `WAKE_PHRASE`.
-
 - [ ] **MIG-15 · Poner la cuchara en tus perfiles** — La app, el favicon y el botón de Mimo ya llevan el imagotipo (la cuchara con el corazón, elegido el 9 de octubre); faltan las redes, que solo puedes cambiar tú.
   - Cómo: al crear o editar cada cuenta (@conmimoia), abre la guía de marca (panel → «Lo esencial» → Marketing) → sección «Redes sociales»: para cada red está la foto de perfil y la portada al tamaño exacto, con su enlace de descarga. Súbelas tal cual.
   - Redes: Instagram, TikTok, Facebook, YouTube, el canal de WhatsApp y el número de Mimo (WhatsApp Manager → Perfil), LinkedIn (tu fondo de perfil y, si creas la página de empresa, su logo y portada).

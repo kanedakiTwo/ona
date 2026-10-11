@@ -30,7 +30,8 @@ import { shopOrderSkills } from './shopOrderSkills.js'
 import { visibleAuthorIds, visibleRecipeWhere } from '../recipeVisibility.js'
 import { loadMatchableRecipes } from '../matchableRecipes.js'
 import { loadPreviousWeek } from '../menuWeek.js'
-import { compileRestrictions, mergeRestrictions, nameHasTerm, normalizeText, violatesRestrictions, type RestrictableRecipe } from '../dietaryRestrictions.js'
+import { loadUserRestrictions, findRecipesWithWhatIHave } from '../withWhatIHave.js'
+import { compileRestrictions, nameHasTerm, normalizeText, violatesRestrictions, type RestrictableRecipe } from '../dietaryRestrictions.js'
 import { addPantryForUser, deletePantryForUser, listPantryForUser, NoHouseholdError } from '../pantryStore.js'
 import { enqueuePrepAlertsForMenu } from '../notificationScheduler.js'
 import { NotARecipeError } from '../recipeUrlExtractor.js'
@@ -77,18 +78,7 @@ async function visibleWhere(ctx: SkillContext) {
  * request can override a dislike, never an allergy (systemPrompt.ts).
  */
 async function restrictionsFor(ctx: SkillContext): Promise<{ restrictions: string[]; dislikes: string[] }> {
-  const [user] = await ctx.db
-    .select({ restrictions: users.restrictions })
-    .from(users)
-    .where(eq(users.id, ctx.userId))
-    .limit(1)
-  const { getMemoryForUser } = await import('../userMemoryStore.js')
-  const memory = await getMemoryForUser(ctx.userId).catch(() => null)
-  const dislikesValue = memory?.dislikes?.value
-  return {
-    restrictions: mergeRestrictions(user?.restrictions, memory),
-    dislikes: Array.isArray(dislikesValue) ? (dislikesValue as string[]) : [],
-  }
+  return loadUserRestrictions(ctx.userId, ctx.db)
 }
 
 /** Which of the user's allergies / diets (not dislikes) a recipe breaks. */
@@ -333,6 +323,42 @@ const suggestRecipes: SkillDefinition = {
       : 'No he encontrado recetas con esos criterios.'
 
     return { data: top5, summary, uiHint: 'recipe' }
+  },
+}
+
+// «Con lo que tengo» (PRO-31): same search as the /recipes filter.
+const cookWithWhatIHave: SkillDefinition = {
+  name: 'cook_with_what_i_have',
+  description: 'Cuando el usuario dice que tiene ciertos ingredientes y pregunta que puede cocinar (ej. "tengo calabacin y huevos, que hago?", "que hago con un pollo y unos pimientos"), busca recetas suyas y del catalogo que usen esos ingredientes (hasta 3), ordenadas por cuantos usan, y dice que faltaria sin contar los basicos (sal, aceite, agua, pimienta, harina). Nunca devuelve recetas que choquen con sus alergias, dieta o lo que no le gusta.',
+  parameters: {
+    type: 'object',
+    properties: {
+      ingredients: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Ingredientes que tiene, de 1 a 3, en singular y sin cantidades (ej: ["calabacin", "huevo"])',
+      },
+    },
+    required: ['ingredients'],
+  },
+  async handler(params: { ingredients?: string[] | string }, ctx: SkillContext): Promise<SkillResult> {
+    const raw = Array.isArray(params.ingredients) ? params.ingredients : String(params.ingredients ?? '').split(/,| y /)
+    const names = raw.map((n) => String(n).trim()).filter(Boolean)
+    if (names.length === 0) {
+      return { data: [], summary: 'Dime que ingredientes tienes (hasta 3) y busco que puedes cocinar.', uiHint: 'text' }
+    }
+    const chosen = names.slice(0, 3).map((name) => ({ name }))
+    const hits = await findRecipesWithWhatIHave(ctx.userId, chosen, ctx.db, 5)
+    const ignored = names.length > 3 ? ` (solo miro los 3 primeros: ${names.slice(0, 3).join(', ')})` : ''
+    if (hits.length === 0) {
+      return { data: [], summary: `No he encontrado recetas con ${names.slice(0, 3).join(' y ')} que encajen contigo${ignored}.`, uiHint: 'text' }
+    }
+    const data = hits.map((h) => ({ id: h.recipe.id, name: h.recipe.name, uses: h.uses, missing: h.missing }))
+    const lines = data.map((h) => {
+      const falta = h.missing.length === 0 ? 'no te falta nada mas' : `te faltaria ${h.missing.join(', ')}`
+      return `${h.name} (usa ${h.uses.join(' y ')}; ${falta})`
+    })
+    return { data, summary: `Con lo que tienes${ignored}: ${lines.join('; ')}.`, uiHint: 'recipe' }
   },
 }
 
@@ -2266,6 +2292,7 @@ export const skills: SkillDefinition[] = [
   getVarietyScore,
   getEatingWindow,
   getWeekBalance,
+  cookWithWhatIHave,
   startCookingMode,
   setTimer,
   cookingStep,

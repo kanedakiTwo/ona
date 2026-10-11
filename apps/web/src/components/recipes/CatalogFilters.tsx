@@ -12,7 +12,8 @@ import { DISPLAY_UI } from "@/components/recipes/RecipeCard"
  *   - `CatalogSearch`: one search field; on mobile the "Más filtros" button
  *     lives inside it.
  *   - `CatalogChips`: ONE chip row merging the old scope tabs and quick
- *     filters (De temporada, En 30 min, meals, Selección Mimoia, Mis recetas).
+ *     filters (Con lo que tengo, De temporada, En 30 min, meals, Selección
+ *     Mimoia, Mis recetas).
  *     No chip active = "Todas". At `lg+` the row wraps and ends in a
  *     "Más filtros" link.
  *   - `CatalogFiltersSheet`: the advanced filters dialog (bottom sheet on
@@ -58,6 +59,9 @@ type CatalogFilterControls = {
   onToggleTag: (tag: string) => void
   /** Season "now" (`detectSeason`), used by the "De temporada" chip. */
   currentSeason: Season
+  /** «Con lo que tengo» (PRO-31) on/off; the ingredient picker lives in the page. */
+  withWhatIHave?: boolean
+  onWithWhatIHaveChange?: (v: boolean) => void
 }
 
 // Module scope so React doesn't remount every chip per keystroke.
@@ -180,6 +184,11 @@ export function CatalogChips({
       aria-label="Filtros rápidos"
       className={`scrollbar-none flex gap-2 overflow-x-auto px-5 py-1 lg:flex-wrap lg:overflow-visible lg:px-0 lg:py-0 ${className}`}
     >
+      {f.onWithWhatIHaveChange && (
+        <Chip active={!!f.withWhatIHave} onClick={() => f.onWithWhatIHaveChange?.(!f.withWhatIHave)}>
+          Con lo que tengo
+        </Chip>
+      )}
       <Chip
         active={f.selectedSeason === f.currentSeason}
         onClick={() => f.onSeasonChange(f.selectedSeason === f.currentSeason ? "" : f.currentSeason)}

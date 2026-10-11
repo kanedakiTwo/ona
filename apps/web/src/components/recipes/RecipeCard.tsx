@@ -6,14 +6,19 @@ import { recipeMinutes, type CatalogRecipeLike } from "@ona/shared"
 
 /**
  * Catalogue card for `/recipes` ("D · Luz y foto"): photo with ONLY a time
- * pill bottom-left and the Fraunces title below — nothing else. No season
+ * pill bottom-left and the Fraunces title below — nothing else, except under
+ * «Con lo que tengo», where a line says what would be missing. No season
  * badge (the catalogue never derives a season from the order of
  * `recipe.seasons`) and no ownership / "Selección Mimoia" mark: nearly every
  * recipe is curated, so a per-card mark is noise; "Selección Mimoia" is a
  * chip in the filter row instead.
  */
 
-export type CatalogCardRecipe = CatalogRecipeLike & { name: string }
+export type CatalogCardRecipe = CatalogRecipeLike & {
+  name: string
+  /** «Con lo que tengo» (PRO-31): what would be missing, basics excluded. Absent on the plain catalogue. */
+  missing?: string[]
+}
 
 /** Fraunces at UI sizes: semibold, automatic optical size (not the 144 hero cut of `.font-display`). */
 export const DISPLAY_UI = "[font-family:var(--font-display)] font-[650] tracking-[-0.01em]"
@@ -70,6 +75,11 @@ export function RecipeCard({
       <span className={`${DISPLAY_UI} line-clamp-2 text-[17px] leading-[1.2] lg:text-[19px]`}>
         {recipe.name}
       </span>
+      {recipe.missing && (
+        <span data-testid="recipe-card-missing" className="line-clamp-2 text-[13px] leading-snug text-ink-soft">
+          {recipe.missing.length === 0 ? "No te falta nada más" : `Te falta: ${recipe.missing.join(", ").toLowerCase()}`}
+        </span>
+      )}
     </Link>
   )
 }

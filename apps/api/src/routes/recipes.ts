@@ -76,6 +76,7 @@ import { PageFetchError, UnsafeUrlError } from '../services/net/publicFetch.js'
 import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../services/scopeResolver.js'
 import { sanitizeCustomTags } from '../services/recipeNotesStore.js'
 import { findPantryMatches } from '../services/pantryMatcher.js'
+import { chosenFromIds, findRecipesWithWhatIHave, MAX_CHOSEN_INGREDIENTS } from '../services/withWhatIHave.js'
 import { canViewRecipe } from '../services/recipeVisibility.js'
 import { z } from 'zod'
 import { requireSpendCapacity } from '../middleware/spendCap.js'
@@ -477,6 +478,35 @@ router.get('/recipes/match-pantry', authMiddleware, async (req: AuthRequest, res
     res.json(matches)
   } catch (err) {
     console.error('GET /recipes/match-pantry error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// GET /recipes/with-what-i-have?ingredient=<id>[&ingredient=<id>…] — «Con lo
+// que tengo» (PRO-31). Auth-only. 1–3 catalogue ingredient ids → visible
+// recipes (catalogue + the household's own) that use them, ranked by how many
+// they use, each with what's missing (basics and optional ones never count).
+// Allergies, diet and dislikes filter like the assistant's suggest_recipes.
+// **Must be declared before `/recipes/:id`.**
+router.get('/recipes/with-what-i-have', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const raw = req.query.ingredient
+    const ids = (Array.isArray(raw) ? raw : raw != null ? [raw] : [])
+      .map((v) => String(v).trim())
+      .filter((v) => /^[0-9a-f-]{36}$/i.test(v))
+    if (ids.length === 0) {
+      res.status(400).json({ error: 'Elige al menos un ingrediente' })
+      return
+    }
+    if (new Set(ids).size > MAX_CHOSEN_INGREDIENTS) {
+      res.status(400).json({ error: `Elige como mucho ${MAX_CHOSEN_INGREDIENTS} ingredientes` })
+      return
+    }
+    const chosen = await chosenFromIds(ids)
+    const hits = await findRecipesWithWhatIHave(req.userId!, chosen)
+    res.json(hits.map((h) => ({ ...toCard(h.recipe.row as RecipeRow), uses: h.uses, missing: h.missing })))
+  } catch (err) {
+    console.error('GET /recipes/with-what-i-have error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

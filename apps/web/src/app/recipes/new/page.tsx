@@ -101,6 +101,9 @@ function NewRecipePageInner() {
   // got no hits can keep their typed term when they bounce to this form.
   const [name, setName] = useState(() => searchParams.get("name") ?? "")
   const [servings, setServings] = useState<number | "">(2)
+  // 'estimated' when the photo extractor had to guess the servings; typing a
+  // number makes it 'explicit' again. The detail shows «Estimado» (PRO-32).
+  const [servingsConfidence, setServingsConfidence] = useState<"explicit" | "estimated">("explicit")
   const [prepTime, setPrepTime] = useState<number | "">("")
   // Three-state fit per meal/season (none → mid → perfect → none). See
   // `FitChip` for the visual + the matcher in apps/api for how this maps
@@ -133,8 +136,7 @@ function NewRecipePageInner() {
     if (data.servings > 0) {
       setServings(data.servings)
     }
-    // TODO(units PR 3): wire data.servingsConfidence into form state + show
-    // the "Estimado" badge per spec section "Servings deduction → UI".
+    setServingsConfidence(data.servingsConfidence === "estimated" ? "estimated" : "explicit")
     setPrepTime(data.prepTime ?? "")
     // Extractor output is on/off — seed every tagged entry as 'perfect'
     // and let the user dial back to 'mid' before saving if needed.
@@ -248,6 +250,7 @@ function NewRecipePageInner() {
     const base = buildRecipePayload({
       name,
       servings,
+      servingsConfidence,
       prepTime,
       // The legacy on/off arrays come from the fit map (any entry with a
       // non-none state is "selected"); the shared payload builder treats
@@ -409,9 +412,10 @@ function NewRecipePageInner() {
                           id="recipe-servings"
                           type="number"
                           value={servings}
-                          onChange={(e) =>
+                          onChange={(e) => {
                             setServings(e.target.value ? Number(e.target.value) : "")
-                          }
+                            setServingsConfidence("explicit")
+                          }}
                           placeholder="2"
                           min={1}
                           className={fieldClass(false, "w-20 font-mono")}

@@ -223,14 +223,28 @@ export default function RecipeDetailPage() {
 
   // ─── Section blocks (shared by the mobile panels and the desktop column) ───
 
+  // PRO-32: servings the importer had to guess (the source didn't say) carry
+  // a discreet "Estimado" tag next to the stepper.
+  const servingsEstimated = recipe.servingsConfidence === "estimated"
   const servingsStepper = (
-    <ServingsScaler
-      variant="pill"
-      value={displayServings}
-      onChange={onServingsChange}
-      min={1}
-      max={12}
-    />
+    <span className="flex items-center gap-2">
+      {servingsEstimated && (
+        <span
+          data-testid="servings-estimated"
+          title="La receta original no decía para cuántas personas; lo hemos calculado."
+          className="rounded-full bg-[#F2EDE0] px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-[#7A7066]"
+        >
+          Estimado
+        </span>
+      )}
+      <ServingsScaler
+        variant="pill"
+        value={displayServings}
+        onChange={onServingsChange}
+        min={1}
+        max={12}
+      />
+    </span>
   )
 
   const ingredientsList =

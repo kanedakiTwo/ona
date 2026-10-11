@@ -8,6 +8,9 @@ interface Props {
   chapter?: string
 }
 
+export const NUTRITION_ESTIMATE_NOTE =
+  "Estimación a partir de los ingredientes; no es consejo médico."
+
 function fmt(v: number): string {
   return v.toFixed(1)
 }
@@ -67,6 +70,10 @@ export function NutritionCard({ nutrition, chapter }: Props) {
           </div>
         </dl>
       </div>
+      {/* PRO-32 / constitution §6: the numbers are computed, not measured. */}
+      <p data-testid="nutrition-estimate-note" className="mt-3 text-[12px] italic text-[#7A7066]">
+        {NUTRITION_ESTIMATE_NOTE}
+      </p>
     </section>
   )
 }

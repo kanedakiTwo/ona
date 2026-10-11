@@ -157,13 +157,20 @@ export function groupIngredientsBySection<T extends RecipeIngredient>(
  * - `pizca` / `al_gusto` ignore the quantity entirely and render Spanish
  *   text instead ("una pizca", "al gusto") because the scaler also
  *   leaves them untouched.
+ * - quantity 0 (an imported line with no amount) renders
+ *   "cantidad sin indicar", never "0 g".
  * - `g`, `ml` show the number then the unit, no space.
  * - `u`, `cda`, `cdita` show the number, a thin space, then the
  *   pluralized Spanish word.
  */
+export const QUANTITY_UNSTATED = "cantidad sin indicar"
+
 export function formatQuantity(quantity: number, unit: Unit): string {
   if (unit === "pizca") return "una pizca"
   if (unit === "al_gusto") return "al gusto"
+  // A line imported without an amount ("sal", "aceite") is stored as 0:
+  // say so instead of a misleading "0 g" (PRO-32).
+  if (!(quantity > 0)) return QUANTITY_UNSTATED
 
   const q = formatNumber(quantity)
   if (unit === "g" || unit === "ml") return `${q} ${unit}`

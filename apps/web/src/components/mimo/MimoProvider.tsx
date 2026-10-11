@@ -9,7 +9,8 @@
  *   - Voice: record → `POST /stt` → the same chat in `mode: 'voice'` (short
  *     spoken replies) → read aloud (`POST /tts`, ElevenLabs, or the browser
  *     voice). In hands-free mode it listens again after speaking, until
- *     nobody talks.
+ *     nobody talks — except in cook mode, where a silence just means
+ *     "listen again" (lib/mimoHandsFree.ts) and leaving it ends hands-free.
  *   - The conversation survives navigation (sessionStorage), and pages
  *     refresh after Mimo changes something.
  */
@@ -22,6 +23,7 @@ import { api } from '@/lib/api'
 import { useVoice, type ServerVoice } from '@/hooks/useVoice'
 import { recorderSupported, useRecorder } from '@/hooks/useRecorder'
 import { emitCookingCommand } from '@/lib/cookingCommands'
+import { handsFreeAfterSilence, leavesCookMode } from '@/lib/mimoHandsFree'
 import MimoPanel from './MimoPanel'
 import MimoButton from './MimoButton'
 
@@ -243,8 +245,18 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
     const blob = await recorder.start()
     if (!blob) {
       setStatus('idle')
-      if (recorder.lastError()) setError(recorder.lastError())
-      if (handsFreeRef.current) setHandsFreeState(false) // nobody spoke: end the conversation quietly
+      const micError = recorder.lastError()
+      if (micError) setError(micError)
+      if (handsFreeRef.current) {
+        // Nobody spoke (nothing is sent to transcribe). In cook mode: listen
+        // again. Elsewhere: end the conversation quietly.
+        if (handsFreeAfterSilence(pathRef.current, micError) === 'listen-again') {
+          listenRef.current()
+          return
+        }
+        setHandsFreeState(false)
+        handsFreeRef.current = false
+      }
       return
     }
     setStatus('transcribing')
@@ -284,6 +296,14 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
     if (status === 'speaking') voice.stopSpeaking()
     void listen()
   }, [status, recorder, voice, listen])
+
+  // Leaving cook mode ends a hands-free conversation (PRO-55).
+  const prevPathRef = useRef(pathname)
+  useEffect(() => {
+    const previous = prevPathRef.current
+    prevPathRef.current = pathname
+    if (leavesCookMode(previous, pathname) && handsFreeRef.current) setHandsFree(false)
+  }, [pathname, setHandsFree])
 
   // ── Open / close ──
   const open = useCallback(

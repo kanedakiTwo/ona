@@ -52,6 +52,7 @@ export default function MimoPanel() {
   }
 
   const listening = mimo.status === 'listening'
+  const inCook = isCookPath(pathname)
 
   return (
     <>
@@ -179,8 +180,17 @@ export default function MimoPanel() {
                 <Headphones size={13} />
                 Manos libres {mimo.handsFree ? 'activado' : ''}
               </button>
-              {mimo.status === 'speaking' && (
-                <button type="button" onClick={mimo.stopSpeaking} className="text-[12px] text-[#7A7066] underline underline-offset-4">
+              {(mimo.status === 'speaking' || (inCook && mimo.handsFree)) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    // In cook mode «Parar» also ends hands-free (it never ends on silence there).
+                    if (inCook) mimo.setHandsFree(false)
+                    mimo.stopSpeaking()
+                  }}
+                  data-testid="mimo-stop"
+                  className="text-[12px] text-[#7A7066] underline underline-offset-4"
+                >
                   Parar
                 </button>
               )}

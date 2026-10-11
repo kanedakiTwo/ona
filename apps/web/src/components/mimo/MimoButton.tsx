@@ -1,15 +1,14 @@
 'use client'
 
 import { MimoiaSymbol } from '@/components/brand/Mimoia'
+import { isCookPath } from '@/lib/mimoHandsFree'
 
 /** `/recipes/<id>` (not `/new`, `/edit` or cook mode): it has its own fixed action bar until lg. */
 export function isRecipeDetailPath(pathname: string | null): boolean {
   return !!pathname && /^\/recipes\/(?!new\/?$)[^/]+\/?$/.test(pathname)
 }
 
-export function isCookPath(pathname: string | null): boolean {
-  return !!pathname && /^\/recipes\/[^/]+\/cook(\/|$)/.test(pathname)
-}
+export { isCookPath }
 
 /**
  * Where the floating button sits, clear of each page's fixed bars:

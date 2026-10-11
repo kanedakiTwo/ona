@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "motion/react"
 import {
   ChevronLeft,
   ChevronRight,
+  Headphones,
   ListChecks,
   Timer,
   X,
@@ -16,6 +17,8 @@ import { useStepTimers } from "@/hooks/useStepTimers"
 import { useWakeLock } from "@/hooks/useWakeLock"
 import { haptic } from "@/lib/pwa/haptics"
 import { subscribeCookingCommands } from "@/lib/cookingCommands"
+import { useAuth } from "@/lib/auth"
+import { useMimo } from "@/components/mimo/MimoProvider"
 import { StepCard, buildIngredientRefCounts } from "./StepCard"
 import { ChecklistPanel } from "./ChecklistPanel"
 
@@ -81,6 +84,17 @@ export function CookingShell({
 
   // Wake lock for the duration of cooking mode.
   useWakeLock(true)
+
+  // «Mimo, manos libres» (PRO-55): Mimo opens listening and, while you stay
+  // in cook mode, a silence doesn't end it (lib/mimoHandsFree.ts).
+  const { user } = useAuth()
+  const mimo = useMimo()
+  const showHandsFree = !!user && mimo.canListen
+  const toggleHandsFree = () => {
+    haptic.light()
+    if (mimo.handsFree) mimo.setHandsFree(false)
+    else mimo.open({ listen: true, handsFree: true })
+  }
 
   const totalSteps = recipe.steps.length
   const safeIdx = Math.min(Math.max(0, stepIdx), Math.max(0, totalSteps - 1))
@@ -267,6 +281,22 @@ export function CookingShell({
               min={1}
               max={12}
             />
+            {showHandsFree && (
+              <button
+                type="button"
+                onClick={toggleHandsFree}
+                aria-pressed={mimo.handsFree}
+                data-testid="cook-handsfree"
+                className={`inline-flex h-11 items-center gap-1.5 rounded-full px-4 text-[14px] font-medium transition-colors active:scale-95 ${
+                  mimo.handsFree
+                    ? "bg-ink text-paper"
+                    : "border border-border bg-paper text-ink hover:border-ink"
+                }`}
+              >
+                <Headphones size={16} />
+                Mimo, manos libres
+              </button>
+            )}
             {activeTimers.length > 0 && (
               <div className="flex flex-wrap items-center gap-1.5">
                 {activeTimers.map((t) => (

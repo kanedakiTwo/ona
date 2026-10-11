@@ -37,6 +37,23 @@ export function useRecipes(filters?: RecipeFilters) {
   })
 }
 
+/** A card from «Con lo que tengo»: which chosen ingredients it uses and what's missing (basics excluded). */
+export type WithWhatIHaveRecipe = Recipe & { uses: string[]; missing: string[] }
+
+/**
+ * «Con lo que tengo» (PRO-31): GET /recipes/with-what-i-have for 1–3
+ * catalogue ingredient ids. Ranked by the server (most chosen ingredients
+ * used first). Disabled with no ingredients.
+ */
+export function useRecipesWithWhatIHave(ingredientIds: string[]) {
+  const qs = ingredientIds.map((id) => `ingredient=${encodeURIComponent(id)}`).join("&")
+  return useQuery<WithWhatIHaveRecipe[]>({
+    queryKey: ["recipes", "with-what-i-have", ingredientIds],
+    queryFn: () => api.get(`/recipes/with-what-i-have?${qs}`),
+    enabled: ingredientIds.length > 0,
+  })
+}
+
 /**
  * Same as `useRecipes` but hits the API anonymously — even if a token is
  * present in localStorage. Used by the public `/recipes-ona` catalogue so

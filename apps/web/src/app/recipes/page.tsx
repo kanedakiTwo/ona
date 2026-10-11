@@ -11,7 +11,7 @@ import {
   type Meal,
   type Season,
 } from "@ona/shared"
-import { useRecipes } from "@/hooks/useRecipes"
+import { useRecipes, useRecipesWithWhatIHave } from "@/hooks/useRecipes"
 import { useHouseholdCustomTags } from "@/hooks/useRecipeNotes"
 import { useAuth } from "@/lib/auth"
 import {
@@ -21,6 +21,7 @@ import {
   QUICK_MAX_TIME,
 } from "@/components/recipes/CatalogFilters"
 import CatalogGrid from "@/components/recipes/CatalogGrid"
+import { WithWhatIHavePicker, MAX_WITH_WHAT_I_HAVE, type PickedIngredient } from "@/components/recipes/WithWhatIHavePicker"
 import { FeaturedRecipeCard } from "@/components/recipes/FeaturedRecipeCard"
 import { DISPLAY_UI } from "@/components/recipes/RecipeCard"
 
@@ -37,7 +38,9 @@ function readScope(): CatalogScope | null {
 
 /**
  * `/recipes` — "D · Luz y foto". Header ("Recetas" + Nueva receta), one
- * search field, one chip row (quick filters + scope), a "De temporada" hero
+ * search field, one chip row (quick filters + scope, plus «Con lo que tengo»,
+ * which opens an ingredient picker and swaps the grid for ranked results
+ * with what is missing), a "De temporada" hero
  * when nothing is filtered, then the card grid. Advanced filters live in a
  * dialog opened from the search field (mobile) or "Más filtros" (lg+).
  */
@@ -55,6 +58,9 @@ export default function RecipesPage() {
   const [scope, setScope] = useState<CatalogScope>("all")
   /** Household custom tags (AND filter, server-side). */
   const [selectedTags, setSelectedTags] = useState<string[]>([])
+  /** «Con lo que tengo» (PRO-31): on/off + the 1–3 ingredients picked. */
+  const [withWhatIHave, setWithWhatIHave] = useState(false)
+  const [picked, setPicked] = useState<PickedIngredient[]>([])
   /** Season "now" — meteorological, Spain; same rule as the menu generator. */
   const [currentSeason] = useState<Season>(() => detectSeason(new Date()))
 
@@ -76,12 +82,29 @@ export default function RecipesPage() {
   }
   const { data: householdTags } = useHouseholdCustomTags()
 
-  const { data: recipes, isLoading } = useRecipes({
+  const { data: catalogRecipes, isLoading: catalogLoading } = useRecipes({
     search: searchQuery || undefined,
     meal: selectedMeal || undefined,
     customTags: selectedTags.length > 0 ? selectedTags : undefined,
     perPage: 100,
   })
+  const pickedIds = useMemo(() => picked.map((p) => p.id), [picked])
+  const { data: withWhatIHaveRecipes, isLoading: withWhatIHaveLoading } = useRecipesWithWhatIHave(
+    withWhatIHave ? pickedIds : [],
+  )
+  // «Con lo que tengo» results come ranked from the server; search and meal
+  // (server-side on the plain catalogue) are applied here instead.
+  const recipes = useMemo(() => {
+    if (!withWhatIHave) return catalogRecipes
+    const q = searchQuery.trim().toLowerCase()
+    return (withWhatIHaveRecipes ?? []).filter(
+      (r) =>
+        (!q || r.name.toLowerCase().includes(q)) &&
+        (!selectedMeal || (r.meals ?? []).includes(selectedMeal)),
+    )
+  }, [withWhatIHave, catalogRecipes, withWhatIHaveRecipes, searchQuery, selectedMeal])
+  const isLoading = withWhatIHave ? picked.length > 0 && withWhatIHaveLoading : catalogLoading
+  const waitingForIngredients = withWhatIHave && picked.length === 0
 
   // Season / time / scope are filtered client-side (rules in @ona/shared).
   const filteredRecipes = useMemo(
@@ -96,7 +119,13 @@ export default function RecipesPage() {
   )
 
   const anyFilterActive =
-    !!searchQuery || !!selectedMeal || !!selectedSeason || !!maxTime || scope !== "all" || selectedTags.length > 0
+    !!searchQuery ||
+    !!selectedMeal ||
+    !!selectedSeason ||
+    !!maxTime ||
+    scope !== "all" ||
+    selectedTags.length > 0 ||
+    withWhatIHave
   // Filters with no chip in the row → badge on the filters button.
   const hiddenFiltersCount =
     (selectedSeason && selectedSeason !== currentSeason ? 1 : 0) +
@@ -122,6 +151,14 @@ export default function RecipesPage() {
     setSearchQuery("")
     setScopeAndPersist("all")
     setSelectedTags([])
+    setWithWhatIHave(false)
+    setPicked([])
+  }
+
+  function addPicked(ing: PickedIngredient) {
+    setPicked((prev) =>
+      prev.some((p) => p.id === ing.id) || prev.length >= MAX_WITH_WHAT_I_HAVE ? prev : [...prev, ing],
+    )
   }
 
   const openFilters = useCallback(() => setFiltersOpen(true), [])
@@ -140,6 +177,8 @@ export default function RecipesPage() {
     selectedTags,
     onToggleTag: toggleTag,
     currentSeason,
+    withWhatIHave,
+    onWithWhatIHaveChange: setWithWhatIHave,
   }
 
   const count = filteredRecipes.length
@@ -179,6 +218,15 @@ export default function RecipesPage() {
           {...filterState}
         />
 
+        {withWhatIHave && (
+          <WithWhatIHavePicker
+            className="mt-2.5 lg:mt-4"
+            picked={picked}
+            onAdd={addPicked}
+            onRemove={(id) => setPicked((prev) => prev.filter((p) => p.id !== id))}
+          />
+        )}
+
         {featured.length > 0 && (
           <section aria-label="De temporada" className="mt-2.5 lg:mt-[22px] lg:grid lg:grid-cols-2 lg:gap-5">
             <FeaturedRecipeCard recipe={featured[0]} />
@@ -187,7 +235,7 @@ export default function RecipesPage() {
         )}
 
         <div className="px-4 pt-3.5 lg:px-0 lg:pt-[22px]">
-          {!isLoading && (
+          {!isLoading && !waitingForIngredients && (
             <div className="mb-3 flex items-center justify-between px-1 lg:px-0">
               <p className="text-[12px] text-ink-soft" aria-live="polite">
                 {count} {count === 1 ? "receta" : "recetas"}
@@ -203,15 +251,19 @@ export default function RecipesPage() {
               )}
             </div>
           )}
-          <CatalogGrid
+          {!waitingForIngredients && <CatalogGrid
             recipes={gridRecipes}
             isLoading={isLoading}
             hiddenAtLg={hiddenAtLg}
             emptyState={
               count > 0 ? null : (
                 <div className="mt-16 text-center">
-                  <p className={`${DISPLAY_UI} text-xl text-ink`}>No hay recetas con esos filtros.</p>
-                  <p className="mt-2 text-sm text-ink-soft">Prueba a quitarlos o crea una nueva.</p>
+                  <p className={`${DISPLAY_UI} text-xl text-ink`}>
+                    {withWhatIHave ? "No hay recetas con eso que encajen contigo." : "No hay recetas con esos filtros."}
+                  </p>
+                  <p className="mt-2 text-sm text-ink-soft">
+                    {withWhatIHave ? "Prueba con otro ingrediente o quita alguno." : "Prueba a quitarlos o crea una nueva."}
+                  </p>
                   {anyFilterActive && (
                     <button
                       type="button"
@@ -224,7 +276,7 @@ export default function RecipesPage() {
                 </div>
               )
             }
-          />
+          />}
         </div>
       </div>
 

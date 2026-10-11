@@ -72,7 +72,7 @@ fi
 git fetch --quiet origin master || die "could not fetch origin/master"
 head_sha="$(git rev-parse HEAD)"
 remote_sha="$(git rev-parse origin/master)"
-env_name="$(railway status 2>/dev/null | sed -n 's/^Environment: //p')"
+env_name="$(railway status 2>/dev/null | sed -n 's/^Environment:[[:space:]]*//p')"
 if [ "$head_sha" != "$remote_sha" ] && [ "$STAGING_BRANCH" -eq 1 ]; then
   # The nightly Taller ships to staging from its own branch; production only
   # ever gets master, after Miguel's OK in /ona-dia (D-027).

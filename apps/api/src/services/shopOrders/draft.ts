@@ -203,7 +203,7 @@ export function sumEstimate(lines: ShopOrderLine[]): number | null {
  * Default "hasta X €" for a draft. National averages are far too rough for
  * small baskets (shops sell whole pieces), so a cap is only proposed when
  * at least half of the estimate comes from the user's own prices or this
- * shop's last quote. Otherwise the user sets it — ONA never invents a margin.
+ * shop's last quote. Otherwise the user sets it — Mimoia never invents a margin.
  */
 export function capForLines(lines: ShopOrderLine[]): number | null {
   const total = sumEstimate(lines)

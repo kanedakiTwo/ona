@@ -1,4 +1,4 @@
-// Seed recipes for the ONA catalog (authorId = null)
+// Seed recipes for the Mimoia catalog (authorId = null)
 // ingredientNames will be resolved to IDs during seeding
 
 export interface SeedRecipe {

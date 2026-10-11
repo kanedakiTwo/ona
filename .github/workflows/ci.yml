@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    # claude/** = branches the ONA HQ agents prepare (Producto, L2): every
+    # claude/** = branches the Mimoia HQ agents prepare (Producto, L2): every
     # code approval reaches /ona-dia with its CI result. Production smoke
     # stays master-only (see post-deploy-smoke).
     branches: [master, 'claude/**']

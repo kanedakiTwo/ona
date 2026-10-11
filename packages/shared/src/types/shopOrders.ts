@@ -3,7 +3,7 @@ import type { BuyableUnit } from './shopping.js'
 
 /**
  * "Compra en mis tiendas" — the household's own shops (frutería,
- * carnicería, pescadería, súper) and the per-shop orders ONA drafts from
+ * carnicería, pescadería, súper) and the per-shop orders Mimoia drafts from
  * the shopping list. See specs/shop-orders.md.
  */
 
@@ -18,7 +18,7 @@ export const SHOP_KIND_LABELS: Record<ShopKind, string> = {
   otra: 'Otra tienda',
 }
 
-/** How the order reaches the shop. ONA never sends it itself in v1: it hands
+/** How the order reaches the shop. Mimoia never sends it itself in v1: it hands
  * the user a ready-to-send message (wa.me / mailto) or a checklist (web/phone). */
 export const SHOP_CHANNELS = ['whatsapp', 'email', 'web', 'telefono'] as const
 export type ShopChannel = (typeof SHOP_CHANNELS)[number]
@@ -149,7 +149,7 @@ export interface ShopOrderLinks {
   order: string | null
   /** Ready-to-send confirmation after the user approved the quote. */
   confirmation: string | null
-  /** Short ONA link that redirects to `order` (for WhatsApp replies). */
+  /** Short Mimoia link that redirects to `order` (for WhatsApp replies). */
   shortOrder: string | null
   shortConfirmation: string | null
   /** True when the order text is too long to prefill safely — copy it instead. */

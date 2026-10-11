@@ -95,7 +95,7 @@ export function clientErrorDedupeKey(message: string, stack?: string): string {
 }
 
 /**
- * Browser noise that says nothing about ONA: benign ResizeObserver warnings,
+ * Browser noise that says nothing about Mimoia: benign ResizeObserver warnings,
  * opaque cross-origin "Script error.", errors thrown by browser extensions,
  * and aborted fetches (navigation / query cancellation).
  */

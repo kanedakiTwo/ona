@@ -69,7 +69,7 @@ export async function chat(
   // 4. Get tool definitions, marking the last one with `cache_control` so
   // Anthropic prompt-caches the entire (system + tools) prefix on first
   // turn and reuses it (~10% cost) on every following turn within the 5-min
-  // TTL. With ONA's ~5k-token prefix (10 mandamientos KB + 27 tool defs),
+  // TTL. With Mimoia's ~5k-token prefix (10 mandamientos KB + 27 tool defs),
   // this typically cuts the per-turn cost ~70% on multi-turn conversations
   // and 30–50% even on single-turn ones thanks to the cached system block.
   const baseTools = getToolDefinitions()

@@ -3,7 +3,7 @@
  *
  * Until 2026-10-08 every full page load mounted `ClientSplash` (a fixed
  * `inset-0 z-[200]` ink-drop animation on a hard-coded ~2.4 s timer, with the
- * old "Ona" wordmark even on the public Mimoia site), and `app/loading.tsx`
+ * old wordmark even on the public Mimoia site), and `app/loading.tsx`
  * was a `fixed inset-0 z-[120]` cream takeover that hid the whole app —
  * bottom nav included — on every route transition. Both are gone; the global
  * loading state is now a 2 px terracotta bar at the top that only fades in

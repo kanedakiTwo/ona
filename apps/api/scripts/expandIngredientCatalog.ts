@@ -30,7 +30,7 @@ interface DraftEntry {
 }
 
 interface CandidateInput {
-  /** Spanish name as ONA stores it (lowercase, accent-stripped already if needed) */
+  /** Spanish name as Mimoia stores it (lowercase, accent-stripped already if needed) */
   es: string
   /** English query sent to USDA `searchByName` */
   en: string

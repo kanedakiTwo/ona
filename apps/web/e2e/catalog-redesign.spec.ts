@@ -2,8 +2,8 @@
  * `/recipes` redesign ("D · Luz y foto", 2026-10-08).
  *
  * Fails on the old catalogue, which had: a 3-way "Todas / Mis recetas /
- * Catálogo ONA" tab bar above the search, a separate meal-chip row, an "ONA"
- * badge on every card and a season badge built from `recipe.seasons[0]` —
+ * Catálogo" tab bar above the search, a separate meal-chip row, a badge with
+ * the old brand name on every card and a season badge built from `recipe.seasons[0]` —
  * "PRIMAVERA" on nearly every card in October. Cards are now photo + time
  * pill + title only; "Selección Mimoia" exists only as a chip.
  *
@@ -61,13 +61,13 @@ test('one chip row replaces the scope tabs + meal chips', async ({ page }) => {
   await expect(quick).toHaveAttribute('aria-pressed', 'false')
 })
 
-test('cards carry no season / "ONA" / seal badge; "De temporada" follows the real season', async ({ page }) => {
+test('cards carry no season / old-brand / seal badge; "De temporada" follows the real season', async ({ page }) => {
   await openCatalog(page)
   const main = page.getByRole('main')
 
   // Old UI: "Primavera" (CSS-uppercased) on almost every card in October.
   await expect(main.getByText(/^(primavera|verano|otoño|invierno)$/i)).toHaveCount(0)
-  await expect(main.getByText('ONA', { exact: true })).toHaveCount(0)
+  await expect(main.getByText(/^(ONA|Ona)$/)).toHaveCount(0)
   // Nothing on a card but photo, time pill and title: no per-card mark either.
   await expect(main.getByRole('img', { name: /selecci[oó]n mimoia/i })).toHaveCount(0)
   await expect(page.getByTestId('recipe-card').first().getByText(/selecci[oó]n mimoia/i)).toHaveCount(0)

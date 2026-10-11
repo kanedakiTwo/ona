@@ -162,11 +162,11 @@ interface RecipeRow {
 interface RecipeCard {
   id: string
   name: string
-  /** Null for system / ONA-curated recipes; the owning user's id otherwise.
+  /** Null for system / Mimoia-curated recipes; the owning user's id otherwise.
    * The frontend uses this for the scope chips ("Selección Mimoia" /
    * "Mis recetas"; none = todas).
    * Omitting it (the previous behaviour) made every card look authorless
-   * to the page logic — badge said ONA but the old "Catálogo ONA" filter
+   * to the page logic — badge said Mimoia but the old "Catálogo Mimoia" filter
    * found 0 results, and "Mis recetas" was always empty. */
   authorId: string | null
   imageUrl: string | null
@@ -580,7 +580,7 @@ router.post(
 )
 
 // POST /recipes/extract-from-url — extract from a YouTube video or article URL (auth required).
-// `asSystem: true` (admin-only) lands the recipe in the curated ONA catalogue
+// `asSystem: true` (admin-only) lands the recipe in the curated Mimoia catalogue
 // (`authorId = null`, `internalTags` includes `compartida`) so it shows up
 // under "Selección Mimoia" on /recipes and on the public /recipes-ona page.
 // Non-admins requesting asSystem get 403.
@@ -618,7 +618,7 @@ router.post(
       // convention). `from-url` + `auto-extracted` mark provenance regardless
       // of catalogue scope.
       const result = await saveExtractedRecipe(extracted, {
-        // asSystem: persist as a curated ONA recipe (authorId = null) so it
+        // asSystem: persist as a curated Mimoia recipe (authorId = null) so it
         // surfaces on /recipes-ona and under "Selección Mimoia" on /recipes.
         authorId: asSystem ? null : req.userId!,
         internalTags: asSystem
@@ -763,7 +763,7 @@ router.put(
 
       // System recipes (authorId === null) and recipes owned by another user
       // are normally read-only — except for admins, who can curate the whole
-      // catalogue (fixing typos, adding missing steps to ONA recipes, etc.).
+      // catalogue (fixing typos, adding missing steps to Mimoia recipes, etc.).
       const isAdmin = req.user?.role === 'admin'
       if (existing.authorId === null && !isAdmin) {
         res.status(403).json({ error: 'Forbidden: system recipe' })
@@ -833,7 +833,7 @@ router.put(
 )
 
 // POST /recipes/:id/copy — copy a recipe into the user's catalog (auth required).
-// Used to "Añadir a mis recetas" from the ONA system catalog. Creates a new
+// Used to "Añadir a mis recetas" from the Mimoia system catalog. Creates a new
 // `recipes` row with `authorId = req.userId` and clones every
 // `recipe_ingredients` and `recipe_steps` row. `step.ingredientRefs` UUIDs
 // are remapped from the source rows to the freshly-minted ones so step → ingredient

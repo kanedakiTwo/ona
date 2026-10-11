@@ -1,8 +1,9 @@
 /**
  * Brand (decision D-012, 2026-10; coordinated rename 2026-10-08): the product
- * is **Mimoia** (mimoia.com) everywhere users see it — public site, logged-in
- * app, PWA, WhatsApp — and its AI assistant (chat, voice, WhatsApp) is
- * **Mimo**. "ONA" stays only as the internal/project name: package names
+ * is **Mimoia** (mimoia.com) everywhere — public site, logged-in app, PWA,
+ * WhatsApp, prompts, logs, comments and docs — and its AI assistant (chat,
+ * voice, WhatsApp) is **Mimo**. The project's original codename survives only
+ * in technical identifiers that would break if renamed: package names
  * (@ona/*), env vars, DB tables, localStorage keys, route paths, code symbols.
  * New user-facing strings should use these constants instead of hard-coding.
  */

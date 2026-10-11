@@ -315,7 +315,7 @@ function buildRandomMenu(
  *         + 100·QUALITY_WEIGHT·(1 − metabolic quality) + 100·VARIETY_WEIGHT·(1 − plant variety)
  *         + unmappedPenalty
  *
- * The metabolic terms carry ONA's opinion (kb/10 mandamientos.md: insulin
+ * The metabolic terms carry Mimoia's opinion (kb/10 mandamientos.md: insulin
  * and inflammation over calories, real food with fibre, many different
  * plants a week). See metabolicScore.ts. Calories still count, at half
  * weight, so menus stay sensible for the household's energy needs.

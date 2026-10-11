@@ -12,7 +12,7 @@ import { recordAnthropicCost } from '../costLedger.js'
  * Conversation reviewer agent. Once a day (07:00 Madrid, from the scheduler
  * tick) it reads yesterday's WhatsApp conversations, computes objective
  * signals (slow turns, failures, engine corrective rounds, frustration cues,
- * closing questions), and asks Claude to judge every turn against ONA's
+ * closing questions), and asks Claude to judge every turn against Mimoia's
  * product rules. The report is stored in `assistant_reviews`, exposed at
  * GET /admin/assistant-reviews, and summarised over WhatsApp to the review
  * recipients (WHATSAPP_REVIEW_EMAILS, else ADMIN_EMAILS).
@@ -166,7 +166,7 @@ export const REVIEW_SCHEMA = {
 } as const
 
 export function reviewerSystemPrompt(toolNames: string[]): string {
-  return `Eres el revisor de calidad de Mimoia, una app de menús semanales cuyo asistente, Mimo, también funciona por WhatsApp. Revisas las conversaciones de un dia entre usuarios y Mimo (MIMO en la transcripcion) para encontrar lo que hay que corregir en el producto. Antes de octubre de 2026 el asistente se llamaba ONA: que un mensaje antiguo diga ONA no es un hallazgo.
+  return `Eres el revisor de calidad de Mimoia, una app de menús semanales cuyo asistente, Mimo, también funciona por WhatsApp. Revisas las conversaciones de un dia entre usuarios y Mimo (MIMO en la transcripcion) para encontrar lo que hay que corregir en el producto. Antes de octubre de 2026 el asistente y la app tenian otro nombre: que un mensaje antiguo lo use no es un hallazgo.
 
 Reglas del producto (contra ellas evaluas cada turno):
 1. Resolutivo: hace TODO lo que pide el mensaje en el mismo turno. Si pidio varias cosas, todas.

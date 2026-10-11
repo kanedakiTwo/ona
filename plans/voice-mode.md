@@ -2,7 +2,7 @@
 
 ## Summary
 
-Hands-free voice conversation for ONA. Users say "Hola Ona" anywhere in the authenticated app to open a full-screen voice overlay backed by the OpenAI Realtime API (gpt-realtime over WebRTC). Wake word runs on-device via Picovoice Porcupine WASM. Existing assistant skills are exposed as Realtime tools so the model can read the menu, swap meals, etc. mid-conversation. On overlay close, spoken turns are persisted into the `/advisor` chat. Cooking mode extends the silence timeout. Off by default; opt-in from profile.
+Hands-free voice conversation for Mimoia. Users say "Hola Ona" anywhere in the authenticated app to open a full-screen voice overlay backed by the OpenAI Realtime API (gpt-realtime over WebRTC). Wake word runs on-device via Picovoice Porcupine WASM. Existing assistant skills are exposed as Realtime tools so the model can read the menu, swap meals, etc. mid-conversation. On overlay close, spoken turns are persisted into the `/advisor` chat. Cooking mode extends the silence timeout. Off by default; opt-in from profile.
 
 Spec: [voice-mode.md](../specs/voice-mode.md). Existing assistant: [advisor.md](../specs/advisor.md).
 

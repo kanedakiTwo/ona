@@ -117,7 +117,7 @@ export function UrlRecipeImport({ onImported }: UrlRecipeImportProps) {
         </button>
       </div>
 
-      {/* Admin-only: persist the imported recipe in the curated ONA
+      {/* Admin-only: persist the imported recipe in the curated Mimoia
           catalogue instead of the user's own collection. The server
           re-checks the role before honouring the flag. */}
       {isAdmin && (

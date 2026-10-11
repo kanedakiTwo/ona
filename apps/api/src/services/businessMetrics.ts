@@ -102,7 +102,7 @@ export function lastWeekStarts(now: Date, n: number): Week[] {
 /**
  * Which menu weeks a shopping-list interaction counts for: its own week, and
  * — on Saturday/Sunday — also the coming week (people shop at the weekend for
- * the menu that starts Monday; ONA's shopping reminder fires on Saturday).
+ * the menu that starts Monday; Mimoia's shopping reminder fires on Saturday).
  */
 export function shoppingWeeksFor(day: string): Week[] {
   const week = weekOfDay(day)
@@ -325,7 +325,7 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
         FROM voice_transcripts v JOIN users u ON u.id = v.user_id
         WHERE v.role = 'user' AND v.created_at >= ${from} AND ${counted}
       UNION ALL
-      -- Paid features the user triggered (proactive templates are ONA's initiative, not activity).
+      -- Paid features the user triggered (proactive templates are Mimoia's initiative, not activity).
       SELECT COALESCE(ce.household_id, u.primary_household_id), ce.created_at
         FROM cost_events ce JOIN users u ON u.id = ce.user_id
         WHERE ce.feature <> 'whatsapp_template' AND ce.created_at >= ${from} AND ${counted}

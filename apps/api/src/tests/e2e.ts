@@ -1,5 +1,5 @@
 /**
- * ONA E2E Test Suite
+ * Mimoia E2E Test Suite
  * Tests all main API functionality end-to-end against a real database.
  * Run: DATABASE_URL="postgresql://alio@localhost:5432/ona" npx tsx apps/api/src/tests/e2e.ts
  */
@@ -52,7 +52,7 @@ async function api(method: string, path: string, body?: any, auth = true) {
 // ══════════════════════════════════════════════
 
 async function run() {
-  console.log('\n🧪 ONA E2E Tests\n')
+  console.log('\n🧪 Mimoia E2E Tests\n')
 
   // ── AUTH ────────────────────────────────────
   console.log('📋 Auth')

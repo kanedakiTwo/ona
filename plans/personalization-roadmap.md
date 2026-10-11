@@ -2,7 +2,7 @@
 
 ## Summary
 
-Rebuild ONA's personalization layer in 9 tracks, shipped as 16 stacked PRs. The goal is to move ONA from AI-first / single-user to user-controllable / household-shared, without breaking production. Two PRs are load-bearing and must ship first; the rest can fan out from there.
+Rebuild Mimoia's personalization layer in 9 tracks, shipped as 16 stacked PRs. The goal is to move Mimoia from AI-first / single-user to user-controllable / household-shared, without breaking production. Two PRs are load-bearing and must ship first; the rest can fan out from there.
 
 ## Load-bearing foundations (ship first, in parallel)
 

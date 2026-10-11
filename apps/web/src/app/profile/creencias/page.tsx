@@ -3,11 +3,11 @@
 /**
  * /profile/creencias — Personalize the assistant's nutritional philosophy.
  *
- * ONA ships with 5 default principles (see ONA_PRINCIPLES) plus a 10-
+ * Mimoia ships with 5 default principles (see ONA_PRINCIPLES) plus a 10-
  * mandamientos knowledge base. Users can add their own principles which
  * get injected into the system prompt with an explicit override flag —
  * "RESPÉTALOS aunque entren en conflicto con tus 10 mandamientos por
- * defecto" — so a user's "creo en el ayuno intermitente" beats ONA's
+ * defecto" — so a user's "creo en el ayuno intermitente" beats Mimoia's
  * default "ventana de alimentación es importante" if there's tension.
  *
  * Skin: "D · Luz y foto" (PRO-40). Each own principle is a paper row whose

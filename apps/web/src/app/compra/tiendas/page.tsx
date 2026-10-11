@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * /compra/tiendas — the household's shops (specs/shop-orders.md). ONA
+ * /compra/tiendas — the household's shops (specs/shop-orders.md). Mimoia
  * routes each shopping-list line to one of these: fruta y verdura → la
  * frutería, carne → la carnicería, pescado → la pescadería, el resto → el
  * súper.

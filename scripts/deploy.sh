@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Guarded production deploy for ONA (Railway).
+# Guarded production deploy for Mimoia (Railway).
 #
 # There is no GitHub→Railway connection: `railway up` uploads THIS working
 # directory, whatever is in it. This wrapper refuses to deploy anything that

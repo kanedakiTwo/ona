@@ -12,7 +12,7 @@ How a user deletes their account, and what the public privacy policy promises. T
 ## What deletion does (`services/accountDeletion.ts`)
 
 Runs in one transaction; image files are removed after the commit.
-- **Own recipes are deleted first.** `recipes.author_id` is `ON DELETE SET NULL` and `authorId NULL` means "ONA catalogue": with a bare user delete, private recipes would have turned public.
+- **Own recipes are deleted first.** `recipes.author_id` is `ON DELETE SET NULL` and `authorId NULL` means "Mimoia catalogue": with a bare user delete, private recipes would have turned public.
 - **Shared households survive.** For every household the user is in that has other members:
   - if the user owned it, ownership goes to the longest-standing non-child member (their member row becomes `owner`);
   - menus and shopping lists of that household created by the user are reassigned to the (new) owner, so the others keep their week.

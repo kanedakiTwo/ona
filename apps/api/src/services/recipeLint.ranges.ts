@@ -2,7 +2,7 @@
  * Per-ingredient sanity ranges for lint validation.
  *
  * Each entry is keyed by the lowercase canonical ingredient name as it appears
- * in the ONA catalog. Values are the acceptable range of grams **per serving**
+ * in the Mimoia catalog. Values are the acceptable range of grams **per serving**
  * for a typical preparation. Curators can extend this file as new staples enter
  * the catalog.
  *

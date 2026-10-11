@@ -2,7 +2,7 @@
 
 ## Summary
 
-Adds 13 new skills to the assistant so the conversational experience covers the daily reality of cooking and eating: read what's in the pantry, mark groceries off the list while shopping, scale a recipe to the diners at the table, get history, evaluate a food's healthiness through Ona's lens, propose substitutions aligned with the philosophy, score weekly variety, see your eating window, get an inflammation index per recipe, and drive the cooking flow by voice.
+Adds 13 new skills to the assistant so the conversational experience covers the daily reality of cooking and eating: read what's in the pantry, mark groceries off the list while shopping, scale a recipe to the diners at the table, get history, evaluate a food's healthiness through Mimoia's lens, propose substitutions aligned with the philosophy, score weekly variety, see your eating window, get an inflammation index per recipe, and drive the cooking flow by voice.
 
 Skills 11–13 (cooking-mode commands) are wired end-to-end: the cooking-mode UI is already shipped (see [cooking-mode spec](../specs/cooking-mode.md)), so the skills emit events on a small client-side bus that `CookingShell` subscribes to. Skill 9 (`get_eating_window`) needs `eatenAt` written into the meal slot inside the existing `mark_meal_eaten` skill — additive on the JSONB `menus.days`, no migration. Skill 10 (`get_inflammation_index`) combines real per-ingredient data already in the [nutrition spec](../specs/nutrition.md) (`fiber`, `fat`, `salt`, `recipes.nutritionPerServing`) with keyword heuristics; it stays heuristic until coverage of `fatAcids` / `carbTypes` JSONB on `ingredients` reaches a useful share.
 
@@ -35,10 +35,10 @@ All skills are added to `apps/api/src/services/assistant/skills.ts`, automatical
 
 - [ ] Add KB-driven evaluation skills (`evaluate_food_health`, `suggest_substitution`)
   - File: `apps/api/src/services/assistant/skills.ts` (modify) — both follow the same pattern as the existing `nutrition_advice` skill: the handler returns `data` and a `summary` that frames the question for the model, which then composes the verbal reply using the knowledge base loaded in [`systemPrompt.ts`](../apps/api/src/services/assistant/systemPrompt.ts) (the 10 commandments).
-    + `evaluate_food_health` — params `{ food: string }`. Summary: *"El usuario pregunta si X es saludable. Evalualo segun los principios de Ona: 1) carga inflamatoria, 2) impacto en insulina, 3) procesado, 4) frecuencia, 5) calidad nutricional real. Da una respuesta corta con criterio propio. Recuerda que `lo que se considera saludable` a menudo no lo es (zumos, arroz blanco, aceites vegetales)."*
+    + `evaluate_food_health` — params `{ food: string }`. Summary: *"El usuario pregunta si X es saludable. Evalualo segun los principios de Mimoia: 1) carga inflamatoria, 2) impacto en insulina, 3) procesado, 4) frecuencia, 5) calidad nutricional real. Da una respuesta corta con criterio propio. Recuerda que `lo que se considera saludable` a menudo no lo es (zumos, arroz blanco, aceites vegetales)."*
     + `suggest_substitution` — params `{ ingredient: string, recipeName?: string, restriction?: string }`. Summary: framed around principle 6 (*el tipo de grasa importa más que la cantidad*): never recommend margarina, vegetable oils, or sweeteners; do recommend ghee, mantequilla, AOVE, fermentados.
   - No DB changes. Uses the existing KB pipeline.
-  + Why: these two skills are **what makes Ona feel like Ona** instead of a generic meal planner.
+  + Why: these two skills are **what makes Mimoia feel like Mimoia** instead of a generic meal planner.
 
 - [ ] Add `get_variety_score`
   - File: `apps/api/src/services/assistant/skills.ts` (modify)

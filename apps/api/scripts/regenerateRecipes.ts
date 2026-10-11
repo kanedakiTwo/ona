@@ -280,9 +280,9 @@ function buildSystemPrompt(catalog: CatalogIngredient[]): string {
   const catalogList = catalog
     .map(c => `${c.id}\t${c.name}`)
     .join('\n')
-  return `You are a culinary data engineer regenerating the ONA recipe catalog.
+  return `You are a culinary data engineer regenerating the Mimoia recipe catalog.
 
-ONA is a Spanish meal-planning app. The previous recipes have data quality
+Mimoia is a Spanish meal-planning app. The previous recipes have data quality
 issues: steps mention ingredients not on the ingredient list, gramajes are
 calibrated for 5-6 diners while the UI claims "Para 2", many fields are
 missing. Your job is to produce a clean, lint-passing recipe in the new schema.

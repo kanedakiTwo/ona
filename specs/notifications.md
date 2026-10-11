@@ -12,7 +12,7 @@ Server-side Web Push notifications that survive a closed tab — the foundation 
 ## Architecture
 
 ```
-Browser                                 ONA API                                  Browser push service
+Browser                                 Mimoia API                                  Browser push service
                                                                                    (FCM / Mozilla / APNs)
                                                                                             │
 useWebPush hook                                                                             │
@@ -45,7 +45,7 @@ SW push event ◄─────────────────────
 - **Service worker** (`apps/web/worker/index.ts`, injected by `next-pwa`):
   handles two events:
   - `push` → renders `self.registration.showNotification(title, { body, icon, badge, data: { url }, tag })`. The payload is JSON the API ships; the SW degrades gracefully if it isn't.
-  - `notificationclick` → closes the notification and either focuses an open ONA tab matching the embedded URL, or opens a new one.
+  - `notificationclick` → closes the notification and either focuses an open Mimoia tab matching the embedded URL, or opens a new one.
 
 ## API Endpoints
 
@@ -93,7 +93,7 @@ When any of these is missing the pipe degrades to "not configured" instead of cr
 
 - iOS Safari ships push only inside an installed PWA (home-screen icon). The Profile card surfaces a hint when `isWebPushSupported()` returns false.
 - The current `setTimeout`-based local notifications (see [pwa.md](./pwa.md)) remain — they're cheaper to fire from inside an already-open tab and don't need server round-trips. Web Push is the durable channel; local timers are the convenience layer.
-- Payload size limit ~4 KB per RFC 8030. ONA's payloads (`{ title, body, url, tag }`) sit well under that.
+- Payload size limit ~4 KB per RFC 8030. Mimoia's payloads (`{ title, body, url, tag }`) sit well under that.
 
 ## Related specs
 

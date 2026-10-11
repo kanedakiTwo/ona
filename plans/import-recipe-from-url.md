@@ -2,7 +2,7 @@
 
 ## Summary
 
-Add `POST /recipes/extract-from-url` so users can pass a URL — YouTube video or web article — and have ONA extract, lint-validate and **persist** the recipe directly (mirroring the current `POST /recipes/extract-from-image` flow which already persists via `persistRecipe`). Articles use a hybrid path (JSON-LD `schema.org/Recipe` first → Mozilla Readability + Claude fallback). YouTube uses video description + caption transcript only (no Whisper / yt-dlp / Gemini in v1). The LLM also classifies whether the content is actually a recipe and surfaces a clear Spanish error otherwise. The origin URL is persisted on the recipe (`sourceUrl`, `sourceType`).
+Add `POST /recipes/extract-from-url` so users can pass a URL — YouTube video or web article — and have Mimoia extract, lint-validate and **persist** the recipe directly (mirroring the current `POST /recipes/extract-from-image` flow which already persists via `persistRecipe`). Articles use a hybrid path (JSON-LD `schema.org/Recipe` first → Mozilla Readability + Claude fallback). YouTube uses video description + caption transcript only (no Whisper / yt-dlp / Gemini in v1). The LLM also classifies whether the content is actually a recipe and surfaces a clear Spanish error otherwise. The origin URL is persisted on the recipe (`sourceUrl`, `sourceType`).
 
 Design reference: [/Users/alio/.claude/plans/quiero-que-investigues-la-soft-flame.md](/Users/alio/.claude/plans/quiero-que-investigues-la-soft-flame.md).
 

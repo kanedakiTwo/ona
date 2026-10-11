@@ -7,7 +7,7 @@ import { classifyShopKind, kindForBuyShop } from '../shopOrders/classify.js'
 
 /**
  * "Compra en mis tiendas" from chat (specs/shop-orders.md). Same REST calls
- * as /compra, as the user. ONA never messages a shop: it hands the user a
+ * as /compra, as the user. Mimoia never messages a shop: it hands the user a
  * short link (/c/<token>) that opens THEIR WhatsApp with the order written,
  * then reads the shop's reply when the user forwards or pastes it.
  */

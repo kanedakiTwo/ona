@@ -13,7 +13,7 @@ This file lists the device-dependent tests for the PWA implementation. Each test
 ### 1. Android Chrome — install
 - Open the deployed URL on Android Chrome
 - Visit the app at least 3 times to trigger the install prompt threshold
-- Confirm the InstallSheet bottom sheet appears with "Añade ONA a tu inicio"
+- Confirm the InstallSheet bottom sheet appears with "Añade Mimoia a tu inicio"
 - Tap "Añadir a inicio" → native install dialog appears
 - Accept; confirm app launches in standalone mode (no browser chrome) with cream theme color
 - Tap the splash icon on home screen; confirm splash uses the configured colors

@@ -4,7 +4,7 @@ import { householdMembers, recipes } from '../db/schema.js'
 import { getPrimaryHouseholdId } from './scopeResolver.js'
 
 /**
- * Who can see a recipe: the ONA catalogue (authorId NULL) is public; a user
+ * Who can see a recipe: the Mimoia catalogue (authorId NULL) is public; a user
  * recipe is visible to its author and to the members of the author's
  * household (they share menus, so a partner's recipe shows up in the shared
  * week). Never to anyone else — specs/recipes.md "Other users' recipes are

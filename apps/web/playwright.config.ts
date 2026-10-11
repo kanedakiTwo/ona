@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
 /**
- * Playwright config for the ONA web E2E suite.
+ * Playwright config for the Mimoia web E2E suite.
  *
  * The API + Web servers must be running on the URLs below before the suite
  * starts. The orchestration script `apps/web/scripts/test-e2e.sh` (and the

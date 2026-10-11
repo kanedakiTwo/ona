@@ -1,5 +1,5 @@
 /**
- * The texts and links ONA hands the user (specs/shop-orders.md).
+ * The texts and links Mimoia hands the user (specs/shop-orders.md).
  *
  * v1 never messages a shop itself: the order is written in the customer's
  * voice and opened in THEIR WhatsApp / mail app (wa.me / mailto) so they

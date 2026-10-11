@@ -1,13 +1,13 @@
 # Compra en mis tiendas (shop orders)
 
-**Status:** v1 shipped 2026-10-07; v1.1 (buy rules, pickup/delivery per order, add before sending) 2026-10-08 — orders are *handed* to the user, ONA never messages a shop nor handles money.
+**Status:** v1 shipped 2026-10-07; v1.1 (buy rules, pickup/delivery per order, add before sending) 2026-10-08 — orders are *handed* to the user, Mimoia never messages a shop nor handles money.
 
-ONA splits what's left on the shopping list for the next 7 days into one order per shop the household uses (frutería, carnicería, pescadería, súper), writes each order in the customer's voice, and hands it over as a link that opens **the user's own** WhatsApp (or mail app) with the text already written. The user sends it, pastes or forwards the shop's reply, ONA checks it line by line against what it expected, the user approves, sends the confirmation and pays the shop directly. Lines are written in **the shop's own units** ("1 cabeza de ajos", "100 g de jamón serrano, loncheado fino", "2 doradas de ración, limpias para el horno (o lubinas…)"), never the recipe's (see Buy rules). Background research: [docs/research/Pedir en tiendas de frescos.md](../docs/research/Pedir%20en%20tiendas%20de%20frescos.md), [docs/research/Compra ONA por WhatsApp y email.md](../docs/research/Compra%20ONA%20por%20WhatsApp%20y%20email.md) (and the earlier [supermarket study](../docs/research/Compra%20autom%C3%A1tica%20de%20ONA%20en%20Espa%C3%B1a.md)).
+Mimoia splits what's left on the shopping list for the next 7 days into one order per shop the household uses (frutería, carnicería, pescadería, súper), writes each order in the customer's voice, and hands it over as a link that opens **the user's own** WhatsApp (or mail app) with the text already written. The user sends it, pastes or forwards the shop's reply, Mimoia checks it line by line against what it expected, the user approves, sends the confirmation and pays the shop directly. Lines are written in **the shop's own units** ("1 cabeza de ajos", "100 g de jamón serrano, loncheado fino", "2 doradas de ración, limpias para el horno (o lubinas…)"), never the recipe's (see Buy rules). Background research: [docs/research/Pedir en tiendas de frescos.md](../docs/research/Pedir%20en%20tiendas%20de%20frescos.md), [docs/research/Compra Mimoia por WhatsApp y email.md](../docs/research/Compra%20ONA%20por%20WhatsApp%20y%20email.md) (and the earlier [supermarket study](../docs/research/Compra%20autom%C3%A1tica%20de%20ONA%20en%20Espa%C3%B1a.md)).
 
 ## User Capabilities
 
 - Save the household's shops at `/compra/tiendas` (any member; max 20): name, type (frutería / carnicería / pescadería / supermercado / otra), how to order (WhatsApp / email / web / teléfono) + that contact, "tu nombre para la tienda", recoger vs a domicilio (+ address), **pedido mínimo a domicilio** and **gastos de envío** (€, optional), free notes. Spanish 9-digit numbers get `34` prepended.
-- `/compra` → **Preparar los pedidos**: ONA rebuilds the rolling list for today + 6 days, routes every pending line to a shop and shows one card per shop (order: frutería, carnicería, pescadería, súper). Re-preparing replaces the previous *drafts* only.
+- `/compra` → **Preparar los pedidos**: Mimoia rebuilds the rolling list for today + 6 days, routes every pending line to a shop and shows one card per shop (order: frutería, carnicería, pescadería, súper). Re-preparing replaces the previous *drafts* only.
 - Draft card:
   - **Recojo en tienda / A domicilio** for this order (default: the shop's). A domicilio needs an address (prefilled from the shop or any other shop of the household); the message always says where and asks "¿más o menos a qué hora llegaría?"; pickup asks "a partir de qué hora puedo pasar a recogerlo".
   - Delivery minimum: "≈18 € de 20 € de mínimo: te faltan unos 2 €", or "no sé si llegas" when most lines have no price.
@@ -16,15 +16,15 @@ ONA splits what's left on the shopping list for the next 7 days into one order p
   - Remove a line, move it to another shop, add a preparation note (carnicería / pescadería), set "tope del pedido: hasta X €", read the message.
   - **Antes de enviarlo**: while a choice, an amount or the delivery address is missing, the card lists it and there's no send link.
   - Then:
-  - WhatsApp → **Enviar por WhatsApp** opens `wa.me/<shop>?text=<order>`; tapping it marks the order *enviado*. Over 1,200 characters ONA opens the chat without text and the user pastes it (Copiar mensaje).
+  - WhatsApp → **Enviar por WhatsApp** opens `wa.me/<shop>?text=<order>`; tapping it marks the order *enviado*. Over 1,200 characters Mimoia opens the chat without text and the user pastes it (Copiar mensaje).
   - Email → `mailto:` with the order as body.
   - Web (El Corte Inglés) → a plain checklist with a **Buscar** link per product on the shop's site (`/supermercado/buscar?question=…`), **Abrir su web**, **Ya está pedido** (closes it).
   - Teléfono → **Llamar** (`tel:`) + the list to read.
-- Sent card: paste what the shop answered (text, or a voice note already transcribed) → ONA reads it and shows each line as **OK**, **Revisar** (with the reason) or **No hay**, the total vs the cap, pickup time and payment. The user picks *Mantener / Quitar* (or *Vale, <sustituto>*) for every doubtful line, can change the cap, then **Aprobar pedido**. "Ha cambiado algo" re-reads a new reply.
+- Sent card: paste what the shop answered (text, or a voice note already transcribed) → Mimoia reads it and shows each line as **OK**, **Revisar** (with the reason) or **No hay**, the total vs the cap, pickup time and payment. The user picks *Mantener / Quitar* (or *Vale, <sustituto>*) for every doubtful line, can change the cap, then **Aprobar pedido**. "Ha cambiado algo" re-reads a new reply.
 - Approved card: the confirmation text ("Perfecto, adelante con el pedido. Quita: … Sí a pescadilla en lugar de merluza. Si el total pasa de 45 €, avisadme antes.") with **Enviar confirmación** (wa.me / mailto). **Ya lo tengo, cerrar pedido** (+ optional amount paid) closes it and ticks those items as bought on the shopping list.
 - Any open order can be cancelled. Closed orders of the last 30 days are listed under "Pedidos cerrados".
 - `/shopping` has a **Pedir a mis tiendas** card linking to `/compra`.
-- `/compra` also lists the pantry staples the recipes use and ONA assumed at home ("¿Te falta algo de esto?") — one tap adds one to the súper order.
+- `/compra` also lists the pantry staples the recipes use and Mimoia assumed at home ("¿Te falta algo de esto?") — one tap adds one to the súper order.
 - From chat (web or WhatsApp): "hazme la compra" → one short link per shop (or what's missing before sending), pickup/delivery and minimum, and "¿algo más?"; "añade fruta", "el jamón serrano", "150 g de york", "traédmelo a casa" edit the draft (same link); forward or paste the shop's reply → line-by-line summary with `[[opciones: …]]`; "sí" → confirmation link; "ya lo he recogido, 23 €" → closed. Shops can be added by chat ("mi carnicería es Ben-Car, WhatsApp 638 015 827").
 
 ## Preparing the orders
@@ -50,7 +50,7 @@ ONA splits what's left on the shopping list for the next 7 days into one order p
 ## Validation (estimate, band, cap)
 
 - Line estimate: the user's own `pricePerUnit` on the list (`manual`) → the €/kg this shop quoted last time (`historial`, remembered on approval in `household_shops.price_memory`) → national €/kg for the shop kind (`referencia`, MAPA 2025 traditional shop: fruta/verdura 2.3, carne 10, pescado 11.6; produce by unit 0.6 €).
-- Default cap is proposed **only** when ≥ 50 % of the estimate is `manual`/`historial`: estimate +10 % (+20 % with wild fish), rounded up to the euro. Otherwise there's no cap until the user sets one — ONA never invents a margin.
+- Default cap is proposed **only** when ≥ 50 % of the estimate is `manual`/`historial`: estimate +10 % (+20 % with wild fish), rounded up to the euro. Otherwise there's no cap until the user sets one — Mimoia never invents a margin.
 - Quote assessment (`validation.ts`): line not mentioned → Revisar; `no_hay` → No hay, dropped (never substituted); `sustituto` / cantidad distinta → Revisar; wild fish → always Revisar; > 10 % above a `manual`/`historial` estimate → Revisar; else OK. Basket over the cap → needs a decision. Approving keeps every line the user didn't remove.
 - Reading the reply: one Claude Haiku 4.5 call (`quoteParser.ts`, cost feature `shop_quote_parse`) returns JSON that a pure normaliser cleans (unknown keys/statuses dropped, "12,50 €" → 12.5). A bad answer can only send a line back to the user, never invent a price. If the model is down: 502 "No he podido leer la respuesta".
 
@@ -83,9 +83,9 @@ Web: `GET /c/<token>[?m=ok]` (Next route handler) redirects to that URL; expired
 
 ## Constraints
 
-- v1 never sends anything to a shop from ONA's WhatsApp number: Meta only allows messaging a business that opted in to ONA, and the shop would be talking to an AI. Connected shops (opt-in by QR to ONA's number) and email sent by ONA are future work — see the report.
+- v1 never sends anything to a shop from Mimoia's WhatsApp number: Meta only allows messaging a business that opted in to Mimoia, and the shop would be talking to an AI. Connected shops (opt-in by QR to Mimoia's number) and email sent by Mimoia are future work — see the report.
 - Every "dame la compra" re-prepares the orders from the current list (`prepare_shop_orders`). On WhatsApp the `/c/` links of earlier replies are replaced by "[enlace de un pedido anterior]" in the history the model sees (`whatsapp/history.ts`), so it can't resend stale orders (2026-10-08: it did, and Miguel got the morning's pre-v1.1 messages).
-- ONA doesn't pay or collect: payment is always user → shop (pickup, Bizum, the shop's payment link).
+- Mimoia doesn't pay or collect: payment is always user → shop (pickup, Bizum, the shop's payment link).
 - Photos of a shop's reply aren't read yet (WhatsApp photos go to recipe import); text and voice notes are.
 - No timeouts or reminders when a shop or the user doesn't answer.
 - Prepare persists the 7-day list (the single `shopping_lists` row); `/shopping` re-GETs its own range. Closing an order ticks the items by id; with a wider range the whole line shows as bought even if more was needed later.

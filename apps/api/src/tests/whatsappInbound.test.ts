@@ -126,7 +126,7 @@ describe('processInbound — unlinked numbers', () => {
     expect(t.chat).not.toHaveBeenCalled()
   })
 
-  it('still links a message prefilled before the rename ("Vincular ONA: <code>")', async () => {
+  it('still links a message prefilled before the rename (old brand name before the code)', async () => {
     const t = setup({ link: null, consume: (code) => (code === '4F7K2A' ? { userId: 'user-1' } : null) })
     await processInbound(msg({ text: 'Vincular ONA: 4F7K2A' }), t.deps)
     expect(t.sent[0]).toEqual({ type: 'text', text: COPY.linked('Miguel') })
@@ -159,7 +159,7 @@ describe('processInbound — unlinked numbers', () => {
     expect(linking.sent[0].text).toContain('conectado con Mimoia')
   })
 
-  it('every text the bot sends on its own says Mimo / Mimoia, never the old name ONA', () => {
+  it('every text the bot sends on its own says Mimo / Mimoia, never the old name', () => {
     const texts = Object.values(COPY).flatMap((v) =>
       typeof v === 'function' ? [(v as (x?: string) => string)('x'), (v as (x?: string) => string)()] : [v],
     )

@@ -1,10 +1,10 @@
 # Roles & Authorization
 
-Two-role system (`user` and `admin`) for ONA. Admin role gates the catalog management page (`/admin`, ex `/curator`), the user management page, and the audit log. Bootstrap is via the `ADMIN_EMAILS` environment variable.
+Two-role system (`user` and `admin`) for Mimoia. Admin role gates the catalog management page (`/admin`, ex `/curator`), the user management page, and the audit log. Bootstrap is via the `ADMIN_EMAILS` environment variable.
 
 ## Why this exists
 
-Until now `/curator` was reachable by any authenticated user — a real risk because that page can edit the global ingredient catalog and surface every recipe in the system. As soon as ONA started shipping user-created recipes alongside system recipes, the line between "stuff a curator should touch" and "stuff a regular user should touch" became important.
+Until now `/curator` was reachable by any authenticated user — a real risk because that page can edit the global ingredient catalog and surface every recipe in the system. As soon as Mimoia started shipping user-created recipes alongside system recipes, the line between "stuff a curator should touch" and "stuff a regular user should touch" became important.
 
 The two-role split is intentional: most decisions today are binary (system vs. self), and adding finer roles (editor, moderator) before there's a real workflow for them would be overengineering.
 

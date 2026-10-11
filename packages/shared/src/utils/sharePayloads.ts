@@ -14,7 +14,7 @@ export interface SharePayload {
 interface ShareableRecipe {
   id: string
   name: string
-  /** null = ONA catalogue (has a public page); otherwise a private recipe. */
+  /** null = Mimoia catalogue (has a public page); otherwise a private recipe. */
   authorId: string | null
   ingredients?: Array<{ name?: string | null; ingredientName?: string | null; quantity?: number | null; unit?: string | null }>
 }

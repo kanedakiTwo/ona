@@ -20,7 +20,7 @@
  *
  * This file is best-effort: if the server is down, the page format changed,
  * or parsing fails, we return an empty array rather than throwing — the UI
- * always has a "Estimar con ONA" fallback. We also cache responses to
+ * always has a "Estimar con Mimoia" fallback. We also cache responses to
  * `apps/api/.cache/bedca/` so curators don't pay the network roundtrip
  * twice for the same ingredient.
  *

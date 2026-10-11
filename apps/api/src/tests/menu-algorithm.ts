@@ -1,5 +1,5 @@
 /**
- * ONA Menu Generation Algorithm Tests
+ * Mimoia Menu Generation Algorithm Tests
  *
  * Tests the core business logic: menu generation, recipe matching,
  * no-repeat constraints, season filtering, locked slots, restrictions,
@@ -90,7 +90,7 @@ async function setup() {
 // ══════════════════════════════════════════════════════════
 
 async function run() {
-  console.log('\n🧪 ONA Menu Algorithm Tests\n')
+  console.log('\n🧪 Mimoia Menu Algorithm Tests\n')
 
   await setup()
   console.log('📋 Setup complete\n')

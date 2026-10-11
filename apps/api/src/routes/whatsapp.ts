@@ -15,7 +15,7 @@ import { buildWaLink, linkMessageText, maskPhone } from '../services/whatsapp/li
 import { PROACTIVE_KINDS } from '../services/whatsapp/proactive.js'
 import { runWithCostUser } from '../services/costLedger.js'
 
-// ─── Public webhook (Meta → ONA) ─────────────────────────────────
+// ─── Public webhook (Meta → Mimoia) ─────────────────────────────────
 //
 // Mounted in index.ts BEFORE `express.json()`: the signature is an HMAC of
 // the raw bytes, so this router reads the body itself with `express.raw`.

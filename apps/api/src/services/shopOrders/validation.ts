@@ -1,6 +1,6 @@
 /**
  * The intermediate validation (specs/shop-orders.md → Validation): the
- * shop quotes, ONA sorts each line into ok / revisar / no_hay and the user
+ * shop quotes, Mimoia sorts each line into ok / revisar / no_hay and the user
  * only decides what's out of range.
  *
  * - ±10 % per line, but only against a precise estimate (the user's own

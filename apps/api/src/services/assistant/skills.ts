@@ -74,7 +74,7 @@ async function visibleWhere(ctx: SkillContext) {
 
 /**
  * The user's allergies / diet (profile + memory, see mergeRestrictions) and
- * dislikes. Anything ONA proposes on its own goes through these; an explicit
+ * dislikes. Anything Mimoia proposes on its own goes through these; an explicit
  * request can override a dislike, never an allergy (systemPrompt.ts).
  */
 async function restrictionsFor(ctx: SkillContext): Promise<{ restrictions: string[]; dislikes: string[] }> {
@@ -642,7 +642,7 @@ const swapMeal: SkillDefinition = {
           .limit(1)
         chosen = row ?? null
       } else if (params.recipeName) {
-        // Only the ONA catalogue + the user's own recipes — never another
+        // Only the Mimoia catalogue + the user's own recipes — never another
         // user's private ones.
         const visible = await visibleWhere(ctx)
         const candidates = await db
@@ -1904,7 +1904,7 @@ const updateHousehold: SkillDefinition = {
 
 /**
  * add_recipe_to_mine — copy a system (or another user's) recipe into the
- * caller's catalog so they can edit it. Drives the "añade la fabada de ONA
+ * caller's catalog so they can edit it. Drives the "añade la fabada de Mimoia
  * a mis recetas" voice utterance and unlocks the Editar flow on copies.
  */
 const addRecipeToMine: SkillDefinition = {
@@ -1942,7 +1942,7 @@ const addRecipeToMine: SkillDefinition = {
         .from(recipes)
         .where(and(await visibleWhere(ctx), ilike(recipes.name, `%${params.recipeName}%`)))
         .limit(20)
-      // Prefer ONA system recipes for "add to mine" (don't accidentally copy
+      // Prefer Mimoia system recipes for "add to mine" (don't accidentally copy
       // your own recipe). If only your own match, refuse with a friendly
       // message.
       source = candidates.find((c: { authorId: string | null }) => c.authorId === null)

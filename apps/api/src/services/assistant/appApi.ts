@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken'
 import { env } from '../../config/env.js'
 
 /**
- * The assistant calls ONA's own REST API as the user — the same endpoints the
+ * The assistant calls Mimoia's own REST API as the user — the same endpoints the
  * web UI uses. Anything the UI can do, the assistant can do with identical
  * validation, side effects (shopping list, prep alerts…) and permissions
  * (it can never do more than the user could in the app).

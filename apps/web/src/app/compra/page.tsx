@@ -3,11 +3,11 @@
 /**
  * /compra — "Compra en mis tiendas" (specs/shop-orders.md).
  *
- * ONA splits what's left on the shopping list for the next 7 days into one
+ * Mimoia splits what's left on the shopping list for the next 7 days into one
  * order per shop (frutería, carnicería, pescadería, súper). The user sends
- * each one from their own WhatsApp / email, pastes the shop's reply, ONA
+ * each one from their own WhatsApp / email, pastes the shop's reply, Mimoia
  * checks it against the estimate and the cap, the user approves, and pays
- * the shop directly. ONA never messages a shop nor handles money.
+ * the shop directly. Mimoia never messages a shop nor handles money.
  */
 import { Suspense, useState } from "react"
 import Link from "next/link"
@@ -22,7 +22,7 @@ import { haptic } from "@/lib/pwa/haptics"
 /** Same order as a walk through the neighbourhood: fresh first, súper last. */
 const KIND_ORDER = ["fruteria", "carniceria", "pescaderia", "supermercado", "otra"]
 
-/** Pantry staples ONA assumed at home: one tap adds one to the súper draft. */
+/** Pantry staples Mimoia assumed at home: one tap adds one to the súper draft. */
 function PantryCheck({ names, superOrder }: { names: string[]; superOrder: ShopOrder | null }) {
   const patch = usePatchShopOrder()
   const [added, setAdded] = useState<string[]>([])

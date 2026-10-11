@@ -54,7 +54,7 @@ export const MEMORY_KEYS = [
   'meal_times',
   // Free-form notes the agent has learned ("his daughter doesn't eat fish")
   'notes',
-  // User-authored nutrition principles — added on top of ONA's defaults
+  // User-authored nutrition principles — added on top of Mimoia's defaults
   // (the "10 mandamientos"). Each entry is one short Spanish sentence.
   // The advisor reads both in its system prompt; user principles win on
   // conflict ("creo que la grasa saturada es buena" overrides any default
@@ -200,7 +200,7 @@ export function buildMemoryDigestText(memory: UserMemory): string {
 
   const principles = (m.nutrition_principles?.value as string[] | undefined) ?? []
   if (principles.length > 0) {
-    // These override ONA's defaults on conflict — flag that explicitly so
+    // These override Mimoia's defaults on conflict — flag that explicitly so
     // the model doesn't try to "correct" the user against their own beliefs.
     lines.push(
       `Principios nutricionales propios del usuario (RESPÉTALOS aunque entren en conflicto con tus 10 mandamientos por defecto):\n  - ${principles.join('\n  - ')}`,

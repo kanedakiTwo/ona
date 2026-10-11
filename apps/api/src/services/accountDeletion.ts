@@ -20,7 +20,7 @@ import {
  * "Borrar mi cuenta" (GDPR art. 17). Most user data goes with the users row
  * (ON DELETE CASCADE), but three things would go wrong with a bare DELETE:
  *
- *  - recipes.author_id is SET NULL, and authorId NULL means "ONA catalogue":
+ *  - recipes.author_id is SET NULL, and authorId NULL means "Mimoia catalogue":
  *    the user's private recipes would become public. They're deleted first.
  *  - households.owner_id CASCADEs: deleting an owner would wipe the shared
  *    household (menus, list, pantry) for every other member. Ownership moves

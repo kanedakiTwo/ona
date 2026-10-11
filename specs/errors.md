@@ -1,10 +1,10 @@
 # Error tracking (in-house)
 
-Every error a user hits in the web app, and every 5xx the API answers, is recorded in ONA's own Postgres — no Sentry, no third party (decision Miguel 2026-10-07). The ONA HQ agents (Customer Success, Producto) read it through a read-only admin endpoint and summarise it in the daily brief.
+Every error a user hits in the web app, and every 5xx the API answers, is recorded in Mimoia's own Postgres — no Sentry, no third party (decision Miguel 2026-10-07). The Mimoia HQ agents (Customer Success, Producto) read it through a read-only admin endpoint and summarise it in the daily brief.
 
 ## Why this exists
 
-Before this, a broken screen or a failing endpoint was only visible if a user complained or someone tailed Railway logs. A hosted tracker costs money and ships user data to another processor; ONA's scale (one instance, a private beta) fits a small grouped table.
+Before this, a broken screen or a failing endpoint was only visible if a user complained or someone tailed Railway logs. A hosted tracker costs money and ships user data to another processor; Mimoia's scale (one instance, a private beta) fits a small grouped table.
 
 ## User Capabilities
 
@@ -32,7 +32,7 @@ Row: `fingerprint` (unique), `kind`, `message` (normalised, ≤ 500 chars), `sam
 - **Scrubbed before storage** (message, stack and path; `services/appErrors.ts` `scrub`): emails → `<email>`; phone numbers (9–15 digits, `+34 600 111 222`, WhatsApp ids) → `<phone>`; IPv4 → `<ip>`; JWTs → `<jwt>`; `Bearer …` → `Bearer <redacted>`; query strings and fragments with values (`?token=…`, `#access_token=…`) removed; Drizzle `params: …` (bound SQL values) → `params: <redacted>`; long hex runs (invite/reset tokens) and mixed-case key-like strings → `<token>`. Dashed UUIDs are kept in samples (recipe ids help debugging) but normalised away in the message.
 - The browser drops the query string and hash from the path **before sending**; the API strips them again.
 - **Never stored**: request bodies, IP addresses (the per-IP limiter keys on the IP in memory only), the full user agent (only "Chrome · Android"-style family).
-- Attribution: a logged-in report sets `last_user_id`; deleting the account nulls it ([privacy.md](./privacy.md)). The data never leaves ONA's database on Railway; `/privacidad` lists it under "Datos técnicos".
+- Attribution: a logged-in report sets `last_user_id`; deleting the account nulls it ([privacy.md](./privacy.md)). The data never leaves Mimoia's database on Railway; `/privacidad` lists it under "Datos técnicos".
 
 ## Limits
 

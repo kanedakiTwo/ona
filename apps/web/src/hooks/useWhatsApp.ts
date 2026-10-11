@@ -2,7 +2,7 @@
  * WhatsApp channel hooks for the /profile card. See specs/whatsapp.md.
  *
  * Linking is completed from the phone (the user sends the one-time code to
- * ONA's number), so while a code is pending the status query polls until the
+ * Mimoia's number), so while a code is pending the status query polls until the
  * API reports `linked: true`.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"

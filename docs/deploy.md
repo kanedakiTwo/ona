@@ -74,7 +74,7 @@ done
 curl -s "https://ona-api-production.up.railway.app/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=$WHATSAPP_VERIFY_TOKEN&hub.challenge=ok"  # → ok
 ```
 
-The API runs `pnpm --filter @ona/api db:migrate` on boot (set in `RAILPACK_START_CMD`), so committed Drizzle migrations apply automatically on the next deploy. Each deploy takes 2–4 minutes.
+The API runs `pnpm --filter @ona/api db:migrate` on boot (set in `RAILPACK_START_CMD`), so committed Drizzle migrations apply automatically on the next deploy. Right after them it runs the idempotent catalogue backfill `applyCatalogSourceLinks` (Notion «Ver fuente» links for system recipes without one; log line `[catalog-source-links] …`; see `specs/recipe-import.md`). Each deploy takes 2–4 minutes.
 
 ## Staging
 

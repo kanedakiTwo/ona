@@ -403,7 +403,10 @@ export function DayMeals({
   return (
     <>
       {featured && (
-        <MealHero {...slotProps(featured.meal, featured.slot)} readOnly={readOnly} />
+        // data-first-steps: the dish the «Primeros pasos» guide lights up (PRO-07).
+        <div data-first-steps="dish">
+          <MealHero {...slotProps(featured.meal, featured.slot)} readOnly={readOnly} />
+        </div>
       )}
       <div className={`flex flex-col gap-3.5 ${featured ? "mt-3.5" : "mt-4"}`}>
         {rest.map(({ meal, slot }) => (

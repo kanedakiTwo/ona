@@ -13,6 +13,7 @@
  * "La semana" columns with drag & drop.
  */
 import { NoHealthDataNotice } from "@/components/menu/NoHealthDataNotice"
+import { FirstStepsGuide } from "@/components/menu/FirstStepsGuide"
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react"
 import { useRouter } from "next/navigation"
 import { ChevronLeft, ChevronRight, MoreHorizontal, RefreshCw, Share2, Sparkles } from "lucide-react"
@@ -366,6 +367,9 @@ export default function MenuPage() {
   const skippedDays = menu?.skippedDays ?? []
   const banned = !isPastWeek && menu ? menu.bannedRecipeIds ?? [] : []
 
+  // «Primeros pasos» (PRO-07): once the week is on screen, so step 1 has a dish to light up.
+  const firstSteps = <FirstStepsGuide userId={user.id} ready={Boolean(menu) && !menuLoading && isCurrentWeek} />
+
   const weekSheet = (
     <WeekActionsSheet
       open={weekSheetOpen}
@@ -623,6 +627,7 @@ export default function MenuPage() {
           </div>
         )}
         {weekSheet}
+        {firstSteps}
       </div>
     )
   }
@@ -757,6 +762,7 @@ export default function MenuPage() {
       <div className="mt-6 flex flex-col gap-4">{menu && !loadFailed && extras}</div>
 
       {weekSheet}
+      {firstSteps}
     </div>
   )
 }

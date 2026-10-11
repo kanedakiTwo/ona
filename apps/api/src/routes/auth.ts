@@ -82,7 +82,15 @@ router.post('/register', registerLimiter, validate(registerSchema), async (req, 
 
     const [user] = await db
       .insert(users)
-      .values({ username, email, passwordHash, ageConfirmedAt: new Date(), inviteCampaignId: campaignId })
+      .values({
+        username,
+        email,
+        passwordHash,
+        ageConfirmedAt: new Date(),
+        inviteCampaignId: campaignId,
+        // «Primeros pasos» on the first /menu visit (PRO-07): only new sign-ups.
+        firstStepsPending: true,
+      })
       .returning()
 
     // Auto-create a solo household so every authed read has a valid scope.

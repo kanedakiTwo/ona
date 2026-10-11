@@ -37,6 +37,7 @@ export default function DesktopSidebar() {
             <TransitionLink
               key={item.href}
               href={item.href}
+              data-first-steps={item.href === "/shopping" ? "shopping" : undefined}
               onClick={() => { if (!isActive) haptic.light() }}
               className={`flex items-center gap-3 rounded-full px-3 py-2 text-[13px] transition-colors ${
                 isActive

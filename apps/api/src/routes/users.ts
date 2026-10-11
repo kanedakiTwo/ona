@@ -84,6 +84,7 @@ router.get('/user/:id', async (req: AuthRequest, res) => {
         favoriteDishes: users.favoriteDishes,
         priority: users.priority,
         onboardingDone: users.onboardingDone,
+        firstStepsPending: users.firstStepsPending,
         healthConsentAt: users.healthConsentAt,
         healthConsentVersion: users.healthConsentVersion,
         healthConsentWithdrawnAt: users.healthConsentWithdrawnAt,
@@ -194,6 +195,30 @@ router.post('/user/:id/onboarding', validate(onboardingSchema), async (req: Auth
     res.json(updated)
   } catch (err) {
     console.error('Onboarding error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// POST /user/:id/first-steps — the «Primeros pasos» guide on /menu was
+// finished or skipped (PRO-07): it never shows again, on any device.
+router.post('/user/:id/first-steps', async (req: AuthRequest, res) => {
+  try {
+    if (req.userId !== req.params.id) {
+      res.status(403).json({ error: 'Forbidden' })
+      return
+    }
+    const [row] = await db
+      .update(users)
+      .set({ firstStepsPending: false })
+      .where(eq(users.id, req.params.id))
+      .returning({ firstStepsPending: users.firstStepsPending })
+    if (!row) {
+      res.status(404).json({ error: 'User not found' })
+      return
+    }
+    res.json(row)
+  } catch (err) {
+    console.error('First steps error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

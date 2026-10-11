@@ -88,7 +88,7 @@ export function MenuDesktop(p: Props) {
         <SkippedDay readOnly={p.readOnly} onUnskip={() => p.onUnskipDay(p.selectedDay)} />
       ) : (
         <div className="grid grid-cols-[minmax(0,1.75fr)_minmax(0,1fr)] gap-6">
-          <div>
+          <div data-first-steps="dish">
             {featured ? (
               <MealHero {...slotProps(featured.meal, featured.slot)} readOnly={p.readOnly} layout="card" />
             ) : (

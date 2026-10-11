@@ -48,6 +48,7 @@ export default function Navbar() {
             <li key={item.href} className="flex">
               <TransitionLink
                 href={item.href}
+              data-first-steps={item.href === "/shopping" ? "shopping" : undefined}
                 onClick={() => {
                   if (!isActive) haptic.light()
                 }}

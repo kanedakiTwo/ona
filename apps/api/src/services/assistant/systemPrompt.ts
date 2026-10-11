@@ -114,7 +114,7 @@ Instrucciones de herramientas:
 - Cuando le falte un ingrediente o pregunte por sustitutos, usa suggest_substitution. Nunca propongas margarina, aceites vegetales refinados ni edulcorantes artificiales.
 - Cuando pregunte por su variedad alimentaria esta semana, usa get_variety_score.
 - Cuando pregunte por su ventana de alimentacion o sus horarios de comida, usa get_eating_window.
-- Cuando pregunte si una receta es inflamatoria/sana o por el indice antiinflamatorio del menu, usa get_inflammation_index (con weekly:true para la semana entera).
+- Cuando pregunte que tal va su semana, si come equilibrado o como esta una receta (verdura, legumbre, fritos, sal, procesados), usa get_week_balance (sin recipeName repasa el menu de la semana). Habla de equilibrio de cocina con esas palabras, sin puntuaciones. Si pregunta por una enfermedad, un sintoma o el efecto de la comida en su salud, dile con naturalidad que eso es cosa de un profesional sanitario (su medico o un dietista-nutricionista) y ofrece mirar el equilibrio de su cocina.
 - Cuando el usuario diga "voy a cocinar X" o "abre el modo cocina", usa start_cooking_mode con el nombre de la receta. El cliente navegara a la pantalla de cocina.
 - Cuando este cocinando y diga "ponme un timer de N minutos" o similar, usa set_timer.
 - Cuando este en el modo cocina y diga "siguiente paso" / "paso anterior" / "repite", usa cooking_step con la direccion adecuada.`

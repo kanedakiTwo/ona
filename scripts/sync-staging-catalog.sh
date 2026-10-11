@@ -20,8 +20,10 @@
 # Database URLs come from Railway (service `Postgres`, DATABASE_PUBLIC_URL of
 # each environment; needs a directory linked to the `ona-app` project) unless
 # PROD_DATABASE_URL / STAGING_DATABASE_URL are set. They are never printed.
-# Run it after a production deploy that touches recipes and after editing the
-# catalogue in production (docs/deploy.md → Staging).
+# Exit codes: 0 done (or nothing to do), 3 skipped (different migrations),
+# anything else = error. It runs every day from GitHub Actions
+# (.github/workflows/sync-staging-catalog.yml, with a read-only production
+# role that only sees the catalogue) and after each production publish.
 
 set -euo pipefail
 
@@ -29,7 +31,7 @@ DRY_RUN=0
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY_RUN=1 ;;
-    -h|--help) sed -n '2,26p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,28p' "$0"; exit 0 ;;
     *) echo "Unknown argument: $arg (see --help)" >&2; exit 2 ;;
   esac
 done
@@ -60,7 +62,12 @@ staging() { psql "$STAGING_URL" -v ON_ERROR_STOP=1 -qAt "$@"; }
 
 # 1) Same schema on both sides.
 mig() { "$1" -c "select md5(string_agg(hash, ',' order by id)) from drizzle.__drizzle_migrations"; }
-[ "$(mig prod)" = "$(mig staging)" ] || die "production and staging are on different migrations — deploy the same commit to both first"
+# Exit 3 (not an error for the nightly job): the Taller may have put a
+# migration on staging that production doesn't have yet.
+if [ "$(mig prod)" != "$(mig staging)" ]; then
+  echo "⏭  skipped: production and staging are on different migrations — deploy the same commit to both first" >&2
+  exit 3
+fi
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT

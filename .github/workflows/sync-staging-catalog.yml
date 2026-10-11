@@ -1,0 +1,51 @@
+name: Sync staging catalogue
+
+# Staging gets production's recipe catalogue (ingredients, catalogue recipes,
+# their ingredients and steps; never users) — scripts/sync-staging-catalog.sh.
+# Twice a day: before the evening test households (ona-hq D-037, 17:30 UTC)
+# and before the nightly Taller (23:00 UTC), so both test what users see.
+on:
+  schedule:
+    - cron: '0 17 * * *'
+    - cron: '45 22 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Only compare, change nothing'
+        type: boolean
+        default: false
+
+concurrency:
+  group: sync-staging-catalog
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    name: Production catalogue → staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: psql
+        run: command -v psql || (sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client)
+
+      - name: Sync
+        env:
+          # Read-only role `staging_sync` that only sees the catalogue (row
+          # level security on recipes / recipe_ingredients / recipe_steps).
+          PROD_DATABASE_URL: ${{ secrets.PROD_CATALOG_DATABASE_URL }}
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          DRY_RUN: ${{ inputs.dry_run && '--dry-run' || '' }}
+        run: |
+          set +e
+          scripts/sync-staging-catalog.sh $DRY_RUN
+          code=$?
+          if [ "$code" -eq 3 ]; then
+            echo "::notice::Skipped: production and staging are on different migrations (the Taller may have staged one). Runs again next time."
+            exit 0
+          fi
+          exit "$code"

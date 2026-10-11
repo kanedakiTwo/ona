@@ -10,9 +10,9 @@ export const ONA_PRINCIPLES = [
     rationale: 'Los alimentos procesados elevan la insulina rapidamente y contribuyen a la resistencia insulinica a largo plazo.',
   },
   {
-    id: 'anti_inflammatory',
-    title: 'Priorizar alimentos antiinflamatorios',
-    rationale: 'La inflamacion sistemica es el mecanismo subyacente de la mayoria de enfermedades cronicas. La dieta es el principal factor modificable.',
+    id: 'kitchen_balance',
+    title: 'Equilibrio en la cocina de la semana',
+    rationale: 'Verdura todos los dias, legumbre varias veces por semana y pocos fritos, sal y procesados. Para dudas de salud, consulta a un profesional sanitario.',
   },
   {
     id: 'seasonal',

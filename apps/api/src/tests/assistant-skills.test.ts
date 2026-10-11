@@ -794,7 +794,7 @@ describe('evaluate_food_health', () => {
   it('frames the question with all 5 evaluation axes', async () => {
     const r = await skill.handler({ food: 'zumo de naranja' }, ctx(makeDb()))
     expect(r.summary).toContain('zumo de naranja')
-    expect(r.summary).toContain('inflamatoria')
+    expect(r.summary).toContain('verdura')
     expect(r.summary).toContain('insulina')
     expect(r.summary).toContain('procesado')
     expect(r.summary).toContain('frecuencia')
@@ -922,46 +922,42 @@ describe('get_eating_window', () => {
   })
 })
 
-// ─── 24. get_inflammation_index ───────────────────────────────────────────
+// ─── 24. get_week_balance ─────────────────────────────────────────────────
+// Message wording is covered in weekBalance.test.ts; here, the DB paths.
 
-describe('get_inflammation_index', () => {
-  const skill = get('get_inflammation_index')
+describe('get_week_balance', () => {
+  const skill = get('get_week_balance')
 
-  it('returns 50 baseline for a recipe with no signal', async () => {
-    const recipe = { id: 'r-1', name: 'Plato neutro', nutritionPerServing: null }
-    const db = makeDb([recipe], /* ingredients */ [], /* steps */ [])
-    const r = await skill.handler({ recipeName: 'plato neutro' }, ctx(db))
-    expect(r.data?.score).toBe(50)
-  })
-
-  it('penalizes processed ingredients', async () => {
-    const recipe = { id: 'r-1', name: 'Tarta dulce', nutritionPerServing: null }
-    const ings = [{ name: 'azucar' }, { name: 'harina blanca' }]
-    const steps = [{ text: 'Mezclar y hornear', technique: null }]
-    const db = makeDb([recipe], ings, steps)
-    const r = await skill.handler({ recipeName: 'tarta' }, ctx(db))
-    // 50 - 5 (azucar) - 5 (harina blanca) + 3 (horno) = 43
-    expect(r.data?.score).toBeLessThan(50)
-    expect(r.data?.reasons.some((x: string) => x.includes('procesado'))).toBe(true)
-  })
-
-  it('rewards whole-food ingredients and gentle cooking', async () => {
-    const recipe = { id: 'r-1', name: 'Salmón al horno', nutritionPerServing: { fiberG: 12, saltG: 1 } }
-    const ings = [{ name: 'salmon' }, { name: 'espinaca' }, { name: 'aceite oliva' }]
-    const steps = [{ text: 'Hornear 20 minutos', technique: 'horno' }]
+  it('describes one recipe from its ingredients and steps', async () => {
+    const recipe = { id: 'r-1', name: 'Salmón al horno', nutritionPerServing: { fiberG: 3, saltG: 1 } }
+    const ings = [{ recipeId: 'r-1', name: 'salmon' }, { recipeId: 'r-1', name: 'espinaca' }]
+    const steps = [{ recipeId: 'r-1', text: 'Hornear 20 minutos', technique: 'horno' }]
     const db = makeDb([recipe], ings, steps)
     const r = await skill.handler({ recipeName: 'salmon' }, ctx(db))
-    expect(r.data?.score).toBeGreaterThan(50)
+    expect(r.data).toMatchObject({ verdura: true, frito: false })
+    expect(r.summary).toContain('Salmón al horno: lleva verdura')
   })
 
-  it('weekly mode without weekly:true asks for a recipe', async () => {
-    const r = await skill.handler({}, ctx(makeDb()))
-    expect(r.summary).toMatch(/Indica una receta|weekly/)
+  it('reads the week from multi-dish slots and names the fried days', async () => {
+    const dish = (id: string) => ({ dishes: [{ kind: 'recipe', recipeId: id, recipeName: id }] })
+    const menu = { id: 'm-1', days: [{ lunch: dish('r-1') }, {}, {}, { dinner: dish('r-2') }, { dinner: dish('r-2') }, {}, {}] }
+    const recipeRows = [{ id: 'r-1', name: 'Crema de calabacín' }, { id: 'r-2', name: 'Croquetas' }]
+    const ings = [{ recipeId: 'r-1', name: 'Calabacín' }, { recipeId: 'r-2', name: 'Harina blanca' }]
+    const steps = [{ recipeId: 'r-2', text: 'Rebozar y freír', technique: null }]
+    const db = makeDb([menu], recipeRows, ings, steps)
+    const r = await skill.handler({}, ctx(db))
+    expect(r.data?.comidas).toBe(3)
+    expect(r.summary).toContain('El jueves y el viernes repiten fritos')
   })
 
-  it('weekly mode reports no menu when there is none', async () => {
+  it('reports not-found recipe', async () => {
+    const r = await skill.handler({ recipeName: 'nada' }, ctx(makeDb([])))
+    expect(r.summary).toContain('No he encontrado')
+  })
+
+  it('reports no menu when there is none', async () => {
     const db = makeDb([])
-    const r = await skill.handler({ weekly: true }, ctx(db))
+    const r = await skill.handler({}, ctx(db))
     expect(r.summary).toContain('No tienes menu')
   })
 })

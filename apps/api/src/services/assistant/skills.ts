@@ -1298,7 +1298,7 @@ const evaluateFoodHealth: SkillDefinition = {
   async handler(params: { food: string }) {
     return {
       data: { food: params.food },
-      summary: `Evalua si "${params.food}" es saludable usando los principios de Mimoia. Considera: 1) carga inflamatoria, 2) impacto en insulina, 3) si esta procesado y por tanto carece de fibra, 4) frecuencia recomendada (la frecuencia importa tanto como el contenido), 5) si es de los alimentos popularmente "saludables" que no lo son (zumos, pan blanco, arroz blanco, aceites vegetales refinados, fruta en exceso fuera de temporada). Da una respuesta corta (2-3 frases) con criterio propio, sin moralizar.`,
+      summary: `Evalua si "${params.food}" es saludable usando los principios de Mimoia. Considera: 1) cuanta verdura, legumbre o fibra aporta, 2) impacto en insulina, 3) si esta procesado y por tanto carece de fibra, 4) frecuencia recomendada (la frecuencia importa tanto como el contenido), 5) si es de los alimentos popularmente "saludables" que no lo son (zumos, pan blanco, arroz blanco, aceites vegetales refinados, fruta en exceso fuera de temporada). Da una respuesta corta (2-3 frases) con criterio propio, sin moralizar.`,
       uiHint: 'nutrition',
     }
   },
@@ -1455,118 +1455,198 @@ const getEatingWindow: SkillDefinition = {
   },
 }
 
-// 11. ── get_inflammation_index ────────────────────────────
-const PROCESSED_RE = /(azucar|harina blanca|harina_blanca|aceite girasol|aceite_girasol|aceite soja|aceite_soja|aceite maiz|aceite_maiz|embutido|salchich|bacon|nata industrial|salsa industrial|margarina|edulcorante|sirope|jarabe_maiz|jarabe maiz|fritos)/i
-const WHOLE_RE = /(verdura|hoja|espinaca|kale|acelga|brocoli|coliflor|crucifera|aguacate|aceite oliva|aceite_oliva|aove|ghee|mantequilla|fermentado|chucrut|kimchi|kefir|salmon|sardina|caballa|atun|frutos secos|frutos_secos|nuez|almendra|semilla|legumbre|lenteja|garbanzo|alubia|hueso|caldo)/i
+// 11. ── get_week_balance ─────────────────────────────────
+// Kitchen balance of the week (or one recipe), told in cooking words:
+// vegetables and fibre, legumes, salt, processed food and fried dishes.
+// No score and no health vocabulary on purpose (PRO-09, constitution §6):
+// a "your index of X" calculator reads as a medical device.
+const PROCESSED_RE = /(azucar|harina blanca|harina_blanca|aceite girasol|aceite_girasol|aceite soja|aceite_soja|aceite maiz|aceite_maiz|embutido|salchich|bacon|beicon|nata industrial|salsa industrial|margarina|edulcorante|sirope|jarabe_maiz|jarabe maiz|fritos|precocinad)/i
+const SALTY_RE = /(embutido|chorizo|salchich|bacon|beicon|salami|fuet|sobrasada|tocino|pastilla de caldo|cubito|salsa de soja)/i
+const LEGUME_RE = /(legumbre|lenteja|garbanzo|alubia|frijol|judion|habas?\b|soja texturizada|edamame)/i
 const FIBER_RE = /(legumbre|lenteja|garbanzo|alubia|frijol|integral|avena|quinoa|chia|lino|psyllium|semilla)/i
-const FRY_RE = /(\bfrit|fritura|deep[ _]fry|empanad|rebozad)/i
-const STEAM_RE = /(\bvapor\b|\bplancha\b|\bhorno\b|hervid|cocer|asad|al horno)/i
+const FRY_RE = /(\bfrit|fritura|freir|deep[ _]fry|empanad|rebozad)/i
 
-async function scoreRecipe(recipe: any, db: any): Promise<{ recipeId: string; name: string; score: number; reasons: string[] }> {
-  let score = 50
-  const reasons: string[] = []
+const BALANCE_DAY_NAMES = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
 
-  // Real per-serving signal: fiber boost / kcal density
+/** Lowercase and drop accents so «calabacín» matches /calabac/ and «brócoli» /brocoli/. */
+function plain(s: unknown): string {
+  return String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+}
+
+/** «a», «a y b», «a, b y c». */
+function joinEs(items: string[]): string {
+  if (items.length <= 1) return items.join('')
+  return `${items.slice(0, -1).join(', ')} y ${items[items.length - 1]}`
+}
+
+export interface RecipeBalance {
+  recipeId: string
+  name: string
+  verdura: boolean
+  legumbre: boolean
+  fibra: boolean
+  salada: boolean
+  frito: boolean
+  procesados: string[]
+}
+
+/**
+ * Kitchen signals of one recipe from its ingredient names, step texts and
+ * per-serving nutrition. Pure, so the weekly and single-recipe paths share it.
+ */
+export function recipeBalance(
+  recipe: { id: string; name: string; nutritionPerServing?: any },
+  ingredientNames: string[],
+  stepTexts: string[],
+): RecipeBalance {
+  const names = ingredientNames.map(plain).filter(Boolean)
+  const steps = stepTexts.map(plain).join(' ')
   const nps = recipe.nutritionPerServing as any
-  if (nps) {
-    if (typeof nps.fiberG === 'number') {
-      if (nps.fiberG >= 10) { score += 8; reasons.push(`+8 fibra alta (${nps.fiberG.toFixed(0)} g)`) }
-      else if (nps.fiberG <= 2) { score -= 5; reasons.push(`-5 fibra baja (${nps.fiberG.toFixed(0)} g)`) }
-    }
-    if (typeof nps.saltG === 'number' && nps.saltG > 3) {
-      score -= 4; reasons.push(`-4 sal alta (${nps.saltG.toFixed(1)} g)`)
-    }
-  }
-
-  // Ingredient names
-  const riRows = await db
-    .select({ name: ingredients.name })
-    .from(recipeIngredients)
-    .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
-    .where(eq(recipeIngredients.recipeId, recipe.id))
-  for (const r of riRows as any[]) {
-    const n = String(r.name ?? '').toLowerCase()
-    if (!n) continue
-    if (PROCESSED_RE.test(n)) { score -= 5; reasons.push(`-5 procesado: ${n}`) }
-    if (WHOLE_RE.test(n)) { score += 4; reasons.push(`+4 alimento real: ${n}`) }
-    if (FIBER_RE.test(n)) { score += 2; reasons.push(`+2 fibra: ${n}`) }
-  }
-
-  // Steps (techniques)
-  const stepRows = await db
-    .select({ text: recipeSteps.text, technique: recipeSteps.technique })
-    .from(recipeSteps)
-    .where(eq(recipeSteps.recipeId, recipe.id))
-  for (const s of stepRows as any[]) {
-    const t = `${s.text ?? ''} ${s.technique ?? ''}`.toLowerCase()
-    if (FRY_RE.test(t)) { score -= 4; reasons.push('-4 fritura/rebozado') }
-    if (STEAM_RE.test(t)) { score += 3; reasons.push('+3 coccion suave') }
-  }
-
+  const fiberG = typeof nps?.fiberG === 'number' ? nps.fiberG : null
+  const saltG = typeof nps?.saltG === 'number' ? nps.saltG : null
+  const legumbre = names.some((n) => LEGUME_RE.test(n))
   return {
     recipeId: recipe.id,
     name: recipe.name,
-    score: Math.max(0, Math.min(100, score)),
-    reasons: reasons.slice(0, 6),
+    verdura: names.some((n) => VEG_RE.test(n)),
+    legumbre,
+    fibra: legumbre || (fiberG !== null && fiberG >= 8) || names.some((n) => FIBER_RE.test(n)),
+    salada: (saltG !== null && saltG > 3) || names.some((n) => SALTY_RE.test(n)),
+    frito: FRY_RE.test(steps),
+    procesados: [...new Set(names.filter((n) => PROCESSED_RE.test(n)))],
   }
 }
 
-const getInflammationIndex: SkillDefinition = {
-  name: 'get_inflammation_index',
-  description: 'Devuelve un indice antiinflamatorio aproximado (0-100, mas alto = menos inflamatorio) para una receta concreta o el menu de la semana. Combina datos reales de fibra/sal con heuristicas de procesado y tecnica de coccion.',
+/** Fetch ingredient names + step texts for several recipes in two queries. */
+async function loadBalances(recipeRows: any[], db: any): Promise<Map<string, RecipeBalance>> {
+  const ids = recipeRows.map((r) => r.id)
+  const ingRows = ids.length === 0 ? [] : await db
+    .select({ recipeId: recipeIngredients.recipeId, name: ingredients.name })
+    .from(recipeIngredients)
+    .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
+    .where(inArray(recipeIngredients.recipeId, ids))
+  const stepRows = ids.length === 0 ? [] : await db
+    .select({ recipeId: recipeSteps.recipeId, text: recipeSteps.text, technique: recipeSteps.technique })
+    .from(recipeSteps)
+    .where(inArray(recipeSteps.recipeId, ids))
+  const out = new Map<string, RecipeBalance>()
+  for (const r of recipeRows) {
+    const ings = (ingRows as any[]).filter((x) => x.recipeId === r.id).map((x) => x.name)
+    const steps = (stepRows as any[]).filter((x) => x.recipeId === r.id).map((x) => `${x.text ?? ''} ${x.technique ?? ''}`)
+    out.set(r.id, recipeBalance(r, ings, steps))
+  }
+  return out
+}
+
+/**
+ * The week's balance in plain kitchen sentences. `slots` are the menu's
+ * meals that hold at least one recipe, with their day index (0 = lunes).
+ */
+export function describeWeekBalance(slots: Array<{ day: number; recipes: RecipeBalance[] }>) {
+  const comidas = slots.length
+  const conVerdura = slots.filter((s) => s.recipes.some((r) => r.verdura)).length
+  const daysWhere = (pred: (r: RecipeBalance) => boolean) =>
+    [...new Set(slots.filter((s) => s.recipes.some(pred)).map((s) => s.day))].sort((a, b) => a - b)
+  const diasLegumbre = daysWhere((r) => r.legumbre)
+  const diasFritos = daysWhere((r) => r.frito)
+  const all = slots.flatMap((s) => s.recipes)
+  const unique = <T,>(xs: T[]) => [...new Set(xs)]
+  const saladas = unique(all.filter((r) => r.salada).map((r) => r.name))
+  const procesados = unique(all.filter((r) => r.procesados.length > 0).map((r) => r.name))
+  const dayList = (ds: number[]) => joinEs(ds.map((d) => `el ${BALANCE_DAY_NAMES[d] ?? `día ${d + 1}`}`))
+
+  const parts: string[] = []
+  const ratio = comidas > 0 ? conVerdura / comidas : 0
+  if (ratio < 0.5) parts.push(`Esta semana vas corto de verdura: solo la llevan ${conVerdura} de ${comidas} comidas.`)
+  else if (ratio < 0.75) parts.push(`Hay verdura en ${conVerdura} de ${comidas} comidas; cabe alguna más.`)
+  else parts.push(`Bien de verdura: la llevan ${conVerdura} de ${comidas} comidas.`)
+
+  if (diasLegumbre.length === 0) parts.push('No hay legumbre en toda la semana.')
+  else if (diasLegumbre.length === 1) parts.push(`Legumbre solo un día (${dayList(diasLegumbre)}).`)
+  else parts.push(`Legumbre ${diasLegumbre.length} días.`)
+
+  if (diasFritos.length >= 2) {
+    const cap = dayList(diasFritos)
+    parts.push(`${cap.charAt(0).toUpperCase()}${cap.slice(1)} repiten fritos.`)
+  } else if (diasFritos.length === 1) parts.push(`Hay fritos ${dayList(diasFritos)}.`)
+  else parts.push('Ningún frito.')
+
+  if (saladas.length > 0) parts.push(`Van cargadas de sal: ${joinEs(saladas)}.`)
+  if (procesados.length > 0) parts.push(`Llevan procesados: ${joinEs(procesados)}.`)
+
+  return {
+    summary: parts.join(' '),
+    data: { comidas, conVerdura, diasLegumbre: diasLegumbre.length, diasFritos: diasFritos.map((d) => BALANCE_DAY_NAMES[d]), saladas, procesados },
+  }
+}
+
+/** One recipe's balance in a sentence. */
+export function describeRecipeBalance(b: RecipeBalance): string {
+  const good: string[] = []
+  const watch: string[] = []
+  if (b.verdura) good.push('verdura')
+  if (b.legumbre) good.push('legumbre')
+  else if (b.fibra) good.push('fibra')
+  if (b.frito) watch.push('es frito o rebozado')
+  if (b.salada) watch.push('va cargado de sal')
+  if (b.procesados.length > 0) watch.push(`lleva procesados (${joinEs(b.procesados)})`)
+  const lead = good.length > 0 ? `lleva ${joinEs(good)}` : 'no lleva verdura ni legumbre'
+  const tail = watch.length > 0 ? `; ojo: ${joinEs(watch)}` : '; nada frito ni procesado'
+  return `${b.name}: ${lead}${tail}.`
+}
+
+const getWeekBalance: SkillDefinition = {
+  name: 'get_week_balance',
+  description: 'Repasa el equilibrio de cocina del menu de la semana (o de una receta concreta): cuanta verdura y legumbre lleva, y donde hay fritos, mucha sal o procesados. Devuelve frases de cocina, sin puntuaciones.',
   parameters: {
     type: 'object',
     properties: {
-      recipeName: { type: 'string', description: 'Nombre de receta. Omitir si quieres el indice del menu semanal.' },
-      weekly: { type: 'boolean', description: 'Si true, calcula media para todas las recetas del menu actual.' },
+      recipeName: { type: 'string', description: 'Nombre de una receta. Omitir para repasar el menu de la semana.' },
     },
     required: [],
   },
-  async handler(params: { recipeName?: string; weekly?: boolean }, ctx) {
+  async handler(params: { recipeName?: string }, ctx) {
     const { userId, db } = ctx
-    if (params.weekly) {
-      const [menu] = await db.select().from(menus).where(scopeWhere(menus.userId, menus.householdId, await resolveScope(userId, db))).orderBy(desc(menus.createdAt)).limit(1)
-      if (!menu) {
-        return { data: null, summary: 'No tienes menu activo.', uiHint: 'text' }
+    if (params.recipeName) {
+      const [recipe] = await db
+        .select()
+        .from(recipes)
+        .where(and(await visibleWhere(ctx), or(
+          ilike(recipes.name, `%${params.recipeName}%`),
+          ...params.recipeName.split(/\s+/).filter(w => w.length >= 3).map(w => ilike(recipes.name, `%${w}%`)),
+        )))
+        .limit(1)
+      if (!recipe) {
+        return { data: null, summary: `No he encontrado "${params.recipeName}".`, uiHint: 'text' }
       }
-      const ids = new Set<string>()
-      for (const d of (menu.days as any[]) ?? []) {
-        for (const s of Object.values(d) as any[]) if (s?.recipeId) ids.add(s.recipeId)
+      const balances = await loadBalances([recipe], db)
+      const b = balances.get((recipe as any).id)!
+      return { data: b, summary: describeRecipeBalance(b), uiHint: 'nutrition' }
+    }
+
+    const [menu] = await db.select().from(menus).where(scopeWhere(menus.userId, menus.householdId, await resolveScope(userId, db))).orderBy(desc(menus.createdAt)).limit(1)
+    if (!menu) {
+      return { data: null, summary: 'No tienes menu activo.', uiHint: 'text' }
+    }
+    const slotIds: Array<{ day: number; ids: string[] }> = []
+    ;((menu.days as any[]) ?? []).forEach((d, day) => {
+      for (const slot of Object.values(d ?? {}) as any[]) {
+        const ids = recipeDishesOf(slot?.dishes ?? []).map((x) => x.recipeId)
+        if (ids.length > 0) slotIds.push({ day, ids })
       }
-      if (ids.size === 0) {
-        return { data: null, summary: 'El menu no tiene recetas.', uiHint: 'text' }
-      }
-      const recipesData = await db.select().from(recipes).where(inArray(recipes.id, [...ids]))
-      const scores = await Promise.all((recipesData as any[]).map(r => scoreRecipe(r, db)))
-      const avg = scores.length > 0 ? scores.reduce((a, b) => a + b.score, 0) / scores.length : 0
-      const top = [...scores].sort((a, b) => b.score - a.score).slice(0, 3).map(s => `${s.name} (${s.score})`).join(', ')
-      const bottom = [...scores].sort((a, b) => a.score - b.score).slice(0, 3).map(s => `${s.name} (${s.score})`).join(', ')
-      return {
-        data: { average: Math.round(avg), scores },
-        summary: `Indice antiinflamatorio medio del menu: ${Math.round(avg)}/100. Mejores: ${top}. Para revisar: ${bottom}.`,
-        uiHint: 'nutrition',
-      }
+    })
+    if (slotIds.length === 0) {
+      return { data: null, summary: 'El menu no tiene recetas.', uiHint: 'text' }
     }
-    if (!params.recipeName) {
-      return { data: null, summary: 'Indica una receta o pasa weekly:true para el menu completo.', uiHint: 'text' }
-    }
-    const [recipe] = await db
-      .select()
-      .from(recipes)
-      .where(and(await visibleWhere(ctx), or(
-        ilike(recipes.name, `%${params.recipeName}%`),
-        ...params.recipeName.split(/\s+/).filter(w => w.length >= 3).map(w => ilike(recipes.name, `%${w}%`)),
-      )))
-      .limit(1)
-    if (!recipe) {
-      return { data: null, summary: `No he encontrado "${params.recipeName}".`, uiHint: 'text' }
-    }
-    const result = await scoreRecipe(recipe, db)
-    return {
-      data: result,
-      summary: `${result.name}: ${result.score}/100. ${result.reasons.length > 0 ? `Lo que cuenta: ${result.reasons.join('; ')}.` : 'Sin senales fuertes en ningun sentido.'}`,
-      uiHint: 'nutrition',
-    }
+    const ids = [...new Set(slotIds.flatMap((s) => s.ids))]
+    const recipeRows = await db.select().from(recipes).where(inArray(recipes.id, ids))
+    const balances = await loadBalances(recipeRows as any[], db)
+    const slots = slotIds.map((s) => ({
+      day: s.day,
+      recipes: s.ids.map((id) => balances.get(id)).filter((b): b is RecipeBalance => !!b),
+    })).filter((s) => s.recipes.length > 0)
+    const { summary, data } = describeWeekBalance(slots)
+    return { data: { ...data, porReceta: [...balances.values()] }, summary, uiHint: 'nutrition' }
   },
 }
 
@@ -2194,7 +2274,7 @@ export const skills: SkillDefinition[] = [
   suggestSubstitution,
   getVarietyScore,
   getEatingWindow,
-  getInflammationIndex,
+  getWeekBalance,
   startCookingMode,
   setTimer,
   cookingStep,

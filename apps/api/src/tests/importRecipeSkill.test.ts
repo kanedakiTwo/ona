@@ -44,6 +44,20 @@ describe('import_recipe_from_url skill', () => {
   })
 })
 
+describe('import_recipe_from_url: Instagram / TikTok without the recipe (PRO-30)', () => {
+  const ctx = { userId: 'u1', db: null }
+
+  it('tells Mimo to ask for a screenshot with the exact sentence (WhatsApp + chat)', async () => {
+    const { SocialCaptionUnavailableError } = await import('../services/recipeUrlExtractor.js')
+    vi.mocked(importRecipeFromUrl).mockImplementation(async () => {
+      throw new SocialCaptionUnavailableError()
+    })
+    const r = await importRecipeFromUrlSkill.handler({ url: 'https://www.tiktok.com/@x/video/1' }, ctx)
+    expect(r).toMatchObject({ uiHint: 'text', data: null })
+    expect(r.summary).toContain('«No he podido leer la receta de este vídeo; mándame una captura»')
+  })
+})
+
 describe('import_recipe_from_url: imported text is data, not instructions', () => {
   const ctx = { userId: 'u1', db: null }
 

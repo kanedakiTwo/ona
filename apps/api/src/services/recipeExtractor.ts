@@ -56,7 +56,7 @@ export interface VisionProvider {
  * Hint passed to the text-based extractor so the model can prefer cantidades
  * stated in the spoken transcript over those in the description, etc.
  */
-export type TextExtractionHint = 'youtube' | 'article'
+export type TextExtractionHint = 'youtube' | 'article' | 'social'
 
 /**
  * Result of asking the LLM to extract a recipe from a text payload (article

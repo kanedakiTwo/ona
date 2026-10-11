@@ -70,6 +70,7 @@ import { scaleRecipe } from '../services/recipeScaler.js'
 import {
   extractRecipeFromUrl,
   NotARecipeError,
+  SocialCaptionUnavailableError,
 } from '../services/recipeUrlExtractor.js'
 import { NoExtractableContentError } from '../services/sources/youtube.js'
 import { PageFetchError, UnsafeUrlError } from '../services/net/publicFetch.js'
@@ -651,6 +652,12 @@ router.post(
     } catch (err: any) {
       console.error('Extract recipe from URL error:', err)
 
+      // Instagram / TikTok post whose caption doesn't hold the recipe:
+      // plan B is a screenshot (photo import). Same sentence as WhatsApp.
+      if (err instanceof SocialCaptionUnavailableError) {
+        res.status(422).json({ error: err.message, code: 'NEEDS_SCREENSHOT' })
+        return
+      }
       if (err instanceof NotARecipeError) {
         res.status(422).json({
           error: 'Esta URL no parece contener una receta cocinable.',

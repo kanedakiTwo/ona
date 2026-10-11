@@ -22,9 +22,18 @@ import {
   extractYouTubeRecipe,
   type YouTubeFetchers,
 } from './sources/youtube.js'
+import {
+  detectSocialPlatform,
+  extractSocialRecipe,
+  type SocialFetcher,
+} from './sources/social.js'
 
 export { detectSourceType } from './sources/sourceType.js'
 export type { UrlSourceType } from './sources/sourceType.js'
+export {
+  SocialCaptionUnavailableError,
+  SOCIAL_SCREENSHOT_MESSAGE,
+} from './sources/social.js'
 
 const VALID_MEALS: Meal[] = ['breakfast', 'lunch', 'dinner', 'snack']
 const VALID_SEASONS: Season[] = ['spring', 'summer', 'autumn', 'winter']
@@ -49,6 +58,8 @@ export interface ExtractFromUrlDeps {
   fetchArticle?: ArticleFetcher
   /** YouTube fetchers injected for testability. */
   youtube?: YouTubeFetchers
+  /** Instagram / TikTok page fetcher injected for testability. */
+  fetchSocial?: SocialFetcher
 }
 
 /**
@@ -62,8 +73,17 @@ export async function extractRecipeFromUrl(
 ): Promise<ExtractedRecipe> {
   const sourceType = detectSourceType(url)
 
+  const social = detectSocialPlatform(url)
+
   let raw: RawExtractedRecipe
-  if (sourceType === 'youtube') {
+  if (social) {
+    // Caption only (og:description); throws SocialCaptionUnavailableError
+    // ("mándame una captura") when it doesn't hold the whole recipe.
+    raw = await extractSocialRecipe(url, social, {
+      provider: deps.provider,
+      fetchPage: deps.fetchSocial,
+    })
+  } else if (sourceType === 'youtube') {
     const result = await extractYouTubeRecipe(url, {
       provider: deps.provider,
       fetchers: deps.youtube,

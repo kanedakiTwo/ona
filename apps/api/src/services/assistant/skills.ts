@@ -33,7 +33,7 @@ import { loadPreviousWeek } from '../menuWeek.js'
 import { compileRestrictions, mergeRestrictions, nameHasTerm, normalizeText, violatesRestrictions, type RestrictableRecipe } from '../dietaryRestrictions.js'
 import { addPantryForUser, deletePantryForUser, listPantryForUser, NoHouseholdError } from '../pantryStore.js'
 import { enqueuePrepAlertsForMenu } from '../notificationScheduler.js'
-import { NotARecipeError } from '../recipeUrlExtractor.js'
+import { NotARecipeError, SocialCaptionUnavailableError } from '../recipeUrlExtractor.js'
 import { NoExtractableContentError } from '../sources/youtube.js'
 import { PageFetchError, UnsafeUrlError } from '../net/publicFetch.js'
 import type { SkillDefinition, SkillContext, SkillResult } from './types.js'
@@ -2122,7 +2122,7 @@ const updateMemory: SkillDefinition = {
 export const importRecipeFromUrlSkill: SkillDefinition = {
   name: 'import_recipe_from_url',
   description:
-    'Importa una receta desde un enlace (video de YouTube o articulo/blog de cocina) y la guarda en las recetas del usuario. Usala cuando el usuario comparta o pegue un enlace de una receta o pida "guardame esta receta". Tarda unos segundos. Devuelve el id y el nombre de la receta guardada.',
+    'Importa una receta desde un enlace (video de YouTube, articulo/blog de cocina o post de Instagram/TikTok) y la guarda en las recetas del usuario. Usala cuando el usuario comparta o pegue un enlace de una receta o pida "guardame esta receta". Tarda unos segundos. Devuelve el id y el nombre de la receta guardada.',
   parameters: {
     type: 'object',
     properties: {
@@ -2146,6 +2146,15 @@ export const importRecipeFromUrlSkill: SkillDefinition = {
         uiHint: 'recipe',
       }
     } catch (err: any) {
+      if (err instanceof SocialCaptionUnavailableError) {
+        // Plan B for Instagram/TikTok: a screenshot, which the photo import
+        // reads (a WhatsApp photo is imported directly).
+        return {
+          data: null,
+          summary: `No se ha guardado nada. Responde al usuario exactamente: «${err.message}».`,
+          uiHint: 'text',
+        }
+      }
       if (err instanceof NotARecipeError) {
         return { data: null, summary: `El enlace no parece contener una receta cocinable: «${untrustedText(err.reason, 160)}»`, uiHint: 'text' }
       }

@@ -21,9 +21,6 @@ import type { SkillDefinition } from '../services/assistant/types.js'
 vi.mock('../services/menuGenerator.js', () => ({
   generateMenu: vi.fn(async () => ({ days: [{}, {}, {}, {}, {}, {}, {}], warnings: [] })),
 }))
-vi.mock('../services/shoppingList.js', () => ({
-  generateShoppingList: vi.fn(async () => []),
-}))
 vi.mock('../services/recipeMatcher.js', () => ({
   findRecipeForSlot: vi.fn(() => ({ id: 'r-new', name: 'Receta nueva' })),
 }))
@@ -237,24 +234,7 @@ describe('get_weekly_nutrition', () => {
   })
 })
 
-// ─── 4. get_shopping_list ─────────────────────────────────────────────────
-
-describe('get_shopping_list', () => {
-  const skill = get('get_shopping_list')
-
-  it('returns "no menu" when there is none', async () => {
-    const db = makeDb([])
-    const r = await skill.handler({}, ctx(db))
-    expect(r.summary).toContain('No tienes menu')
-  })
-
-  it('reports an empty list when the generator returns no items', async () => {
-    const menu = { id: 'm-1', days: [{}], userId: 'u-1' }
-    const db = makeDb([menu], [{ householdSize: 'solo' }])
-    const r = await skill.handler({}, ctx(db))
-    expect(r.summary).toContain('vacia')
-  })
-})
+// ─── 4. get_shopping_list → appSkills.test.ts (reads the rolling list) ───
 
 // ─── 5. suggest_recipes ───────────────────────────────────────────────────
 

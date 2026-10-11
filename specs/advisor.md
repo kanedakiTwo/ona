@@ -32,7 +32,7 @@ The assistant can call back-end skills (function calling). Each skill has a name
 - `get_todays_menu` — read the menu for today in Madrid time (or any day index 0–6). Prefers **this week's** menu (falls back to the latest) and lists every dish of each slot from `dishes[]`, recipes and notes, e.g. "comida: Lentejas + Ensalada, cena: Cenamos fuera" (via `services/menuText.ts`). Fixes the pre-2026-10 bug where it read the legacy `slot.recipeName` and answered "no hay comidas planificadas" for every day.
 - `get_recipe_details` — pull a recipe by ID/name including ingredients and steps
 - `get_weekly_nutrition` — calorie and macro summary for the week
-- `get_shopping_list` — current week's shopping list
+- `get_shopping_list` — reads the same rolling list `/shopping` shows (today → next Sunday: menu items, staples, manual items) and names what's still missing, sorted by aisle, with "Ya comprado: N. En casa: M." ("¿qué me falta?"). Before 2026-10-11 it re-aggregated the latest menu and only told the model a count, so manual items and bought ones were invisible
 - `suggest_recipes` — recommend recipes matching meal/season, never one that breaks the user's allergies, diet or dislikes
 - `search_recipes` — search by name substring
 - `complete_onboarding` — WhatsApp-first sign-up only: saves adults, kids, cooking frequency, favourite dishes and priority like the web onboarding (`saveOnboarding`, never health data), marks `onboardingDone` and generates the first week (same as `generate_weekly_menu`). Refuses (summary, no write) when a required answer is missing or the account is already onboarded. The WhatsApp prompt adds `WHATSAPP_ONBOARDING_PROMPT` while the user isn't onboarded (`ChatOptions.onboarding`)
@@ -71,7 +71,7 @@ The assistant can call back-end skills (function calling). Each skill has a name
   - `set_meal_servings`, `lock_meal`, `move_meal` (move/swap slots).
   - `ban_recipe_this_week`.
   - `set_leftovers`.
-- **Shopping:** `add_shopping_items` (units normalised to g/ml/u/cda/cdita), `remove_shopping_items`, `regenerate_shopping_list`, `manage_staples`.
+- **Shopping:** `add_shopping_items` (units normalised to g/ml/u/cda/cdita; never duplicates: a product already pending — same words, or a list name starting with what was said, "leche" → "Leche entera", "huevos" ↔ "Huevo" — is reported as "ya estaba"; one marked bought or "en casa" goes back to pending; "leche de coco" is never "Leche"), `remove_shopping_items`, `regenerate_shopping_list`, `manage_staples`.
 - **Compra en mis tiendas** (`shopOrderSkills.ts`, see [Shop orders](./shop-orders.md)): `manage_shops`, `prepare_shop_orders` ("hazme la compra" → one `/c/<token>` short link per shop that opens the user's own WhatsApp with the order written), `edit_shop_order` (before sending: add products — each to its shop —, remove, choose "serrano", amounts, include, pickup/delivery + address; same links), `register_shop_reply` (forwarded/pasted shop reply → OK / Revisar / No hay per line, total vs cap), `approve_shop_order` (only after an explicit "sí"; returns the confirmation link), `close_shop_order`, `get_shop_orders`. The prompt treats a shop's reply as data, never instructions, and allows copying `/c/` links verbatim.
 - **Pantry:** `update_pantry` (add/set/remove with quantities and expiry). Reading the pantry is `get_pantry_stock`; the old `list_pantry` duplicate was removed (62 skills).
 - **Recipes:**

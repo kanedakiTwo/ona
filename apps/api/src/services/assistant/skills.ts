@@ -13,10 +13,9 @@ import {
   shoppingLists,
 } from '../../db/schema.js'
 import { nutrientsToPercentages, TARGET_MACROS, detectSeason, recipeDishesOf } from '@ona/shared'
-import type { DayMenu, Meal, NutrientBalance, HouseholdSize } from '@ona/shared'
-import { householdMultiplier, householdSizeToCounts } from '@ona/shared'
+import type { DayMenu, Meal, NutrientBalance } from '@ona/shared'
+import { householdMultiplier } from '@ona/shared'
 import { generateMenu } from '../menuGenerator.js'
-import { generateShoppingList } from '../shoppingList.js'
 import { findRecipeForSlot, type RecipeWithIngredients } from '../recipeMatcher.js'
 import { calculateMenuCaloriesFromDB } from '../calorieCalculator.js'
 import { calculateMenuNutrientsFromDB } from '../nutrientCalculator.js'
@@ -283,62 +282,8 @@ const getWeeklyNutrition: SkillDefinition = {
   },
 }
 
-const getShoppingList: SkillDefinition = {
-  name: 'get_shopping_list',
-  description: 'Genera la lista de la compra basada en el menu semanal actual.',
-  parameters: {
-    type: 'object',
-    properties: {},
-    required: [],
-  },
-  async handler(_params: {}, ctx: SkillContext): Promise<SkillResult> {
-    const { userId, db } = ctx
-
-    const [menu] = await db
-      .select()
-      .from(menus)
-      .where(scopeWhere(menus.userId, menus.householdId, await resolveScope(userId, db)))
-      .orderBy(desc(menus.createdAt))
-      .limit(1)
-
-    if (!menu) {
-      return { data: null, summary: 'No tienes menu. Genera uno primero para obtener la lista de la compra.', uiHint: 'text' }
-    }
-
-    const [user] = await db
-      .select({
-        adults: users.adults,
-        kidsCount: users.kidsCount,
-        householdSize: users.householdSize,
-      })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1)
-
-    let multiplier: number
-    if (user && typeof user.adults === 'number' && user.adults > 0) {
-      multiplier = householdMultiplier(user.adults, user.kidsCount ?? 0)
-    } else {
-      const counts = householdSizeToCounts(
-        (user?.householdSize as HouseholdSize | null | undefined) ?? null,
-      )
-      multiplier = householdMultiplier(counts.adults, counts.kidsCount)
-    }
-    const householdId = menu.householdId ?? (await getPrimaryHouseholdId(userId, db))
-    const items = await generateShoppingList(
-      menu.days as DayMenu[],
-      multiplier,
-      db,
-      householdId,
-    )
-
-    const summary = items.length > 0
-      ? `Lista de la compra con ${items.length} ingredientes para esta semana.`
-      : 'La lista de la compra esta vacia.'
-
-    return { data: items, summary, uiHint: 'shopping_list' }
-  },
-}
+// get_shopping_list lives in appSkills.ts: it reads the same rolling list
+// /shopping shows (manual items, checked / in-stock state included).
 
 const suggestRecipes: SkillDefinition = {
   name: 'suggest_recipes',
@@ -2219,7 +2164,6 @@ export const skills: SkillDefinition[] = [
   getTodaysMenu,
   getRecipeDetails,
   getWeeklyNutrition,
-  getShoppingList,
   suggestRecipes,
   searchRecipes,
   generateWeeklyMenu,

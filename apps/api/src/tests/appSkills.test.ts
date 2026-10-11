@@ -4,7 +4,7 @@
  * responses, so these pin the exact endpoint + body per skill.
  */
 import { describe, it, expect } from 'vitest'
-import { appSkills, bestMatch, toBuyable, applyTemplateChange, normalize } from '../services/assistant/appSkills.js'
+import { appSkills, bestMatch, toBuyable, applyTemplateChange, normalize, findSameProduct } from '../services/assistant/appSkills.js'
 import { AppApiError, type AppApi } from '../services/assistant/appApi.js'
 import { madridWeekStart } from '../services/madridTime.js'
 
@@ -182,13 +182,82 @@ describe('shopping, pantry, staples', () => {
   const LIST = { id: 'L1', items: [{ id: 'i1', name: 'Leche entera' }, { id: 'i2', name: 'Pan de barra' }] }
 
   it('add_shopping_items posts each item with normalized units', async () => {
-    const f = fakeApi({ 'GET /shopping-list': LIST })
+    const f = fakeApi({ 'GET /shopping-list': { id: 'L1', items: [{ id: 'i2', name: 'Pan de barra' }] } })
     const r = await get('add_shopping_items').handler({ items: [{ name: 'leche', quantity: 2, unit: 'litros' }, { name: 'servilletas', quantity: 2, unit: 'paquetes' }] }, ctx(f.api))
     expect(writes(f.calls)).toEqual([
       { method: 'POST', path: '/shopping-list/L1/items', body: { name: 'leche', quantity: 2000, unit: 'ml' } },
       { method: 'POST', path: '/shopping-list/L1/items', body: { name: 'servilletas (2 paquetes)' } },
     ])
     expect(r.uiHint).toBe('shopping_list')
+  })
+
+  // Voice (WhatsApp audio, later Alexa): people re-dictate what's already there.
+  it('add_shopping_items does not duplicate a pending item and puts bought / at-home ones back', async () => {
+    const list = {
+      id: 'L1',
+      items: [
+        { id: 'i1', name: 'Leche entera', checked: false, inStock: false },
+        { id: 'i2', name: 'Huevo', checked: true, inStock: false },
+        { id: 'i3', name: 'Aceite de oliva', checked: false, inStock: true },
+      ],
+    }
+    const f = fakeApi({ 'GET /shopping-list': list })
+    const r = await get('add_shopping_items').handler(
+      { items: [{ name: 'leche' }, { name: 'huevos', quantity: 12 }, { name: 'aceite' }, { name: 'leche de coco' }, { name: 'leche de coco' }] },
+      ctx(f.api),
+    )
+    expect(writes(f.calls)).toEqual([
+      { method: 'PUT', path: '/shopping-list/L1/item/i2/check', body: undefined },
+      { method: 'PUT', path: '/shopping-list/L1/item/i3/stock', body: undefined },
+      { method: 'POST', path: '/shopping-list/L1/items', body: { name: 'leche de coco' } },
+    ])
+    expect(r.summary).toBe(
+      'Hecho: añadido a la lista: leche de coco. Vuelve a estar pendiente (estaba comprado o en casa): Huevo, Aceite de oliva. Ya estaba en la lista: Leche entera, leche de coco.',
+    )
+  })
+
+  it('add_shopping_items with everything already pending changes nothing and says so', async () => {
+    const f = fakeApi({ 'GET /shopping-list': LIST })
+    const r = await get('add_shopping_items').handler({ items: [{ name: 'el pan' }] }, ctx(f.api))
+    expect(writes(f.calls)).toEqual([])
+    expect(r.summary).toBe('No he cambiado nada, ya estaba en la lista: Pan de barra.')
+  })
+
+  it('findSameProduct: same words or one name starting with the other, never a loose overlap', () => {
+    const items = [{ id: 'a', name: 'Tomate frito' }, { id: 'b', name: 'Tomate' }, { id: 'c', name: 'Leche entera' }, { id: 'd', name: 'Limon' }]
+    expect(findSameProduct(items, 'tomates')?.id).toBe('b')
+    expect(findSameProduct(items, 'leche')?.id).toBe('c')
+    expect(findSameProduct(items, 'limones')?.id).toBe('d')
+    expect(findSameProduct(items, 'leche de coco')).toBeNull()
+    expect(findSameProduct(items, 'agua con limon')).toBeNull()
+    // More specific than what's on the list → a different product.
+    expect(findSameProduct([{ id: 'l', name: 'leche' }], 'leche de coco')).toBeNull()
+    expect(findSameProduct([{ id: 'l', name: 'Aceite' }], 'aceite de oliva')).toBeNull()
+  })
+
+  it('get_shopping_list names what is still missing (manual items included), by aisle, and counts the rest', async () => {
+    const f = fakeApi({
+      'GET /shopping-list': {
+        id: 'L1',
+        items: [
+          { id: 'i1', name: 'Papel de cocina', quantity: 1, unit: 'u', aisle: 'otros', checked: false, inStock: false, kind: 'manual' },
+          { id: 'i2', name: 'Tomate', quantity: 1000, unit: 'g', aisle: 'produce', checked: false, inStock: false },
+          { id: 'i3', name: 'Huevo', quantity: 12, unit: 'u', aisle: 'proteinas', checked: true, inStock: false },
+          { id: 'i4', name: 'Sal', quantity: 1, unit: 'u', aisle: 'despensa', checked: false, inStock: true },
+          { id: 'i5', name: 'Champinones', quantity: 250, unit: 'g', aisle: 'produce', checked: false, inStock: false },
+        ],
+      },
+    })
+    const r = await get('get_shopping_list').handler({}, ctx(f.api))
+    expect(r.summary).toBe('Te faltan 3 cosas: Tomate (1 kg), Champiñones (250 g), Papel de cocina. Ya comprado: 1. En casa: 1.')
+    expect(r.uiHint).toBe('shopping_list')
+  })
+
+  it('get_shopping_list: all done, and empty list', async () => {
+    const done = fakeApi({ 'GET /shopping-list': { id: 'L1', items: [{ id: 'i1', name: 'Pan', checked: true }] } })
+    expect((await get('get_shopping_list').handler({}, ctx(done.api))).summary).toBe('Ya lo tienes todo. Ya comprado: 1.')
+    const empty = fakeApi({ 'GET /shopping-list': { id: 'L1', items: [] } })
+    expect((await get('get_shopping_list').handler({}, ctx(empty.api))).summary).toContain('está vacía')
   })
 
   it('remove_shopping_items deletes matches and reports the rest', async () => {

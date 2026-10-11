@@ -72,6 +72,7 @@ Both toggle endpoints flip the field (no payload value used) and return the full
 ## Manual items + prices (PR 10A)
 
 - Users can add **free-text items** that aren't in any recipe — bread, dish soap, coffee — through "···" → "Añadir a mano", a sheet with the item form (name, optional quantity + unit, aisle, optional total price). Body: `{ name, quantity?, unit?, aisle?, pricePerUnit? }`. Each manual item is stored as a `ShoppingItem` with `kind: 'manual'` and `ingredientId: null`. They survive `regenerate` (the aggregator only ever rebuilds menu-derived items today, but PR 10B will formalise this guarantee).
+- Users can also add items **by chat or voice** (web assistant, WhatsApp text or voice notes): "apunta leche y dos docenas de huevos" → `add_shopping_items` writes the same manual items, without duplicating what's already pending, and "¿qué me falta?" reads this same list back (`get_shopping_list`) — see [Advisor](./advisor.md).
 - Each item carries an optional **`pricePerUnit`** (€ per `unit`). A tiny inline number input next to every row lets the user enter it; menu-derived items accept price edits, but only manual items accept name/quantity/aisle edits or deletes. Trying to rename a menu item returns 400 with a Spanish hint.
 - The page shows a **weekly-total banner** at the top: `€X.XX · Y con precio · Z sin precio`. Sum is `Σ quantity × pricePerUnit` over non-`inStock`, positive-quantity, priced items. Items the user already has at home are excluded from spend. The pure reducer `computeListTotal(items)` is unit-tested.
 

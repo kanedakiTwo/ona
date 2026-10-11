@@ -1,3 +1,4 @@
+import { AISLES, capitalize, formatQty, prettyName, type ShoppingItem } from '@ona/shared'
 import type { SkillContext, SkillDefinition, SkillResult } from './types.js'
 import { appApiFor, AppApiError, type AppApi } from './appApi.js'
 import { madridWeekStart } from '../madridTime.js'
@@ -420,8 +421,77 @@ const setLeftovers: SkillDefinition = {
 
 // ─── Shopping list ───────────────────────────────────────────────
 
-interface ListDoc { id: string; items: Array<{ id: string; name: string; checked?: boolean }> }
+type ListItem = Pick<ShoppingItem, 'id' | 'name'> & Partial<Pick<ShoppingItem, 'quantity' | 'unit' | 'aisle' | 'checked' | 'inStock' | 'kind'>>
+interface ListDoc { id: string; items: ListItem[] }
+// The rolling list /shopping shows (today → next Sunday): menu items, staples
+// and manual items, with their checked / inStock state.
 const currentList = (ctx: SkillContext) => api(ctx)<ListDoc>('GET', '/shopping-list')
+
+const pending = (i: ListItem) => !i.checked && !i.inStock
+
+/** "Tomate (1 kg)", "Huevos (12 unidades)", "Leche" (1 unidad says nothing). */
+export function itemLabel(i: ListItem): string {
+  const name = prettyName(i.name)
+  if (!i.quantity || !i.unit || (i.unit === 'u' && i.quantity === 1)) return name
+  return `${name} (${formatQty(i.quantity, i.unit)})`
+}
+
+/** "huevo" = "huevos", "limon" = "limones". */
+function sameWord(a: string, b: string): boolean {
+  return a === b || `${a}s` === b || `${b}s` === a || `${a}es` === b || `${b}es` === a
+}
+function productWords(name: string): string[] {
+  const words = normalize(name).split(' ')
+  return words.filter((w) => !(STOPWORDS.has(w) && words.length > 1))
+}
+/**
+ * The list row the user means when they ask to add `name` again: same words,
+ * or a list name that starts with what they said ("leche" → "Leche entera"),
+ * exact first. Never the other way round: with "Leche" on the list, "leche de
+ * coco" is a new product. Stricter than bestMatch.
+ */
+export function findSameProduct<T extends ListItem>(items: readonly T[], name: string): T | null {
+  const q = productWords(name)
+  if (q.length === 0) return null
+  const startsWith = (long: string[], short: string[]) =>
+    short.length <= long.length && short.every((w, i) => sameWord(w, long[i]))
+  let prefixHit: T | null = null
+  for (const item of items) {
+    const n = productWords(item.name)
+    if (n.length === q.length && startsWith(n, q)) return item
+    if (!prefixHit && startsWith(n, q)) prefixHit = item
+  }
+  return prefixHit
+}
+
+const getShoppingList: SkillDefinition = {
+  name: 'get_shopping_list',
+  description:
+    'Lee la lista de la compra (la misma que /shopping: lo que pide el menu de hoy al domingo que viene, los basicos y lo añadido a mano) y dice que falta por comprar. Usala para "que me falta", "que tengo que comprar", "lee la lista".',
+  parameters: { type: 'object', properties: {}, required: [] },
+  async handler(_p, ctx) {
+    const list = await currentList(ctx)
+    const items = list.items ?? []
+    const data = { listId: list.id, items }
+    if (items.length === 0) {
+      return { data, summary: 'La lista de la compra está vacía: no hay menú para estos días ni nada apuntado a mano.', uiHint: 'shopping_list' }
+    }
+    const missing = items.filter(pending).sort((a, b) => AISLES.indexOf(a.aisle ?? 'otros') - AISLES.indexOf(b.aisle ?? 'otros'))
+    const bought = items.filter((i) => i.checked).length
+    const atHome = items.filter((i) => i.inStock && !i.checked).length
+    const extra = [bought ? `Ya comprado: ${bought}.` : '', atHome ? `En casa: ${atHome}.` : ''].filter(Boolean).join(' ')
+    if (missing.length === 0) {
+      return { data, summary: `Ya lo tienes todo. ${extra}`.trim(), uiHint: 'shopping_list' }
+    }
+    const shown = missing.slice(0, 60).map(itemLabel)
+    const more = missing.length > shown.length ? ` y ${missing.length - shown.length} más` : ''
+    return {
+      data,
+      summary: `Te faltan ${missing.length} cosas: ${shown.join(', ')}${more}. ${extra}`.trim(),
+      uiHint: 'shopping_list',
+    }
+  },
+}
 
 /** Free-form quantity → what the list accepts (g, ml, u, cda, cdita). */
 export function toBuyable(quantity?: number, unit?: string): { quantity?: number; unit?: string; suffix?: string } {
@@ -439,7 +509,8 @@ export function toBuyable(quantity?: number, unit?: string): { quantity?: number
 
 const addShoppingItems: SkillDefinition = {
   name: 'add_shopping_items',
-  description: 'Añade uno o varios productos a la lista de la compra ("apunta leche y dos barras de pan").',
+  description:
+    'Añade uno o varios productos a la lista de la compra ("apunta leche y dos barras de pan"). Si ya estaba pendiente no lo duplica; si estaba marcado como comprado o "en casa", lo vuelve a poner pendiente.',
   parameters: {
     type: 'object',
     properties: {
@@ -456,8 +527,26 @@ const addShoppingItems: SkillDefinition = {
   },
   async handler(p, ctx) {
     const list = await currentList(ctx)
+    const items = [...(list.items ?? [])]
     const added: string[] = []
+    const back: string[] = []
+    const already: string[] = []
     for (const it of (p.items ?? []).slice(0, 30)) {
+      // Voice users repeat themselves: "apunta leche" with Leche entera still
+      // pending is a no-op, and with it bought it means "we need it again".
+      const same = findSameProduct(items, String(it.name ?? ''))
+      if (same) {
+        if (pending(same)) {
+          already.push(prettyName(same.name))
+          continue
+        }
+        if (same.checked) await api(ctx)('PUT', `/shopping-list/${list.id}/item/${same.id}/check`)
+        if (same.inStock) await api(ctx)('PUT', `/shopping-list/${list.id}/item/${same.id}/stock`)
+        same.checked = false
+        same.inStock = false
+        back.push(prettyName(same.name))
+        continue
+      }
       const b = toBuyable(it.quantity, it.unit)
       const name = String(b.suffix ? `${it.name} (${b.suffix})` : it.name).slice(0, 80)
       await api(ctx)('POST', `/shopping-list/${list.id}/items`, {
@@ -466,8 +555,16 @@ const addShoppingItems: SkillDefinition = {
         ...(b.unit ? { unit: b.unit } : {}),
       })
       added.push(name)
+      items.push({ id: `new-${added.length}`, name })
     }
-    return { data: { listId: list.id }, summary: `Hecho: añadido a la lista: ${added.join(', ')}.`, uiHint: 'shopping_list' }
+    const parts: string[] = []
+    if (added.length) parts.push(`añadido a la lista: ${added.join(', ')}.`)
+    if (back.length) parts.push(`vuelve a estar pendiente (estaba comprado o en casa): ${back.join(', ')}.`)
+    const changed = parts.length > 0
+    if (already.length) parts.push(`${changed ? 'Ya estaba' : 'No he cambiado nada, ya estaba'} en la lista: ${already.join(', ')}.`)
+    const sentences = parts.map((s, i) => (i === 0 ? s : capitalize(s)))
+    const summary = changed ? `Hecho: ${sentences.join(' ')}` : sentences.join(' ') || 'No me has dicho qué añadir.'
+    return { data: { listId: list.id }, summary, uiHint: 'shopping_list' }
   },
 }
 
@@ -903,6 +1000,7 @@ export const appSkills: SkillDefinition[] = [
   moveMeal,
   banRecipe,
   setLeftovers,
+  getShoppingList,
   addShoppingItems,
   removeShoppingItems,
   regenerateShoppingList,

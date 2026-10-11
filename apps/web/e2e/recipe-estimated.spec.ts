@@ -36,7 +36,7 @@ test('recipe detail: «Estimado», «cantidad sin indicar» and the nutrition no
   const ternera = await findIngredient(page, 'ternera', 'ternera')
   const other = await findIngredient(page, 'cebolla')
 
-  const created = await page.request.post(`${API_URL}/recipes`, {
+  const created = await page.request.post(`${API_URL}/recipes?force=1`, {
     headers: auth,
     data: {
       name: 'Guiso estimado de prueba',
@@ -52,10 +52,11 @@ test('recipe detail: «Estimado», «cantidad sin indicar» and the nutrition no
         { ingredientId: other.id, quantity: 0, unit: 'g' },
       ],
       steps: [{ index: 0, text: 'Guisa la ternera con la cebolla.' }],
-      force: true,
     },
   })
-  expect(created.status()).toBe(201)
+  // `?force=1`: the zod body parse strips a body `force`, and a 0-quantity
+  // line is a lint error a manual save would block.
+  expect(created.status(), await created.text()).toBe(201)
   const recipe = await created.json()
   expect(recipe.servingsConfidence).toBe('estimated')
 
@@ -80,7 +81,7 @@ test('recipe detail: «Estimado», «cantidad sin indicar» and the nutrition no
   )
 
   // A recipe whose servings were stated carries no «Estimado».
-  const explicit = await page.request.post(`${API_URL}/recipes`, {
+  const explicit = await page.request.post(`${API_URL}/recipes?force=1`, {
     headers: auth,
     data: {
       name: 'Guiso con raciones de prueba',
@@ -90,7 +91,6 @@ test('recipe detail: «Estimado», «cantidad sin indicar» and the nutrition no
       equipment: ['cazuela'],
       ingredients: [{ ingredientId: ternera.id, quantity: 300, unit: 'g' }],
       steps: [{ index: 0, text: 'Guisa la ternera.' }],
-      force: true,
     },
   })
   expect(explicit.status()).toBe(201)

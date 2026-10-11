@@ -35,7 +35,8 @@ test('choosing 2 ingredients lists recipes that use them, with what is missing',
   const [a, b, extra] = picks
 
   const name = `Con lo que tengo ${uniqueId()}`
-  const created = await page.request.post(`${API_URL}/recipes`, {
+  // ?force=1: lint findings (step text not naming the ingredients…) become warnings.
+  const created = await page.request.post(`${API_URL}/recipes?force=1`, {
     headers: auth,
     data: {
       name,
@@ -43,11 +44,10 @@ test('choosing 2 ingredients lists recipes that use them, with what is missing',
       meals: ['lunch'],
       seasons: [],
       ingredients: [a, b, extra].map((i) => ({ ingredientId: i.id, quantity: 100, unit: 'g' })),
-      steps: [{ index: 0, text: 'Mezcla todo y cocina 10 minutos.' }],
-      force: true,
+      steps: [{ index: 0, text: `Mezcla ${a.name}, ${b.name} y ${extra.name} y cocina 10 minutos.` }],
     },
   })
-  expect(created.status()).toBe(201)
+  expect(created.status(), await created.text()).toBe(201)
 
   await page.goto('/recipes')
   const chip = page.getByRole('group', { name: 'Filtros rápidos' }).getByRole('button', { name: 'Con lo que tengo' })

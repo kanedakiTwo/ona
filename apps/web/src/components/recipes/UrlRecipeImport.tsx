@@ -50,7 +50,11 @@ export function UrlRecipeImport({ onImported }: UrlRecipeImportProps) {
         // The API returns isRecipe:false with a Spanish reason for non-recipes,
         // and explanatory text for the no-captions case. Surface either.
         const apiData = err?.data ?? err?.response?.data
-        if (apiData?.reason) {
+        if (err?.code === "NEEDS_SCREENSHOT") {
+          // Instagram / TikTok caption without the recipe: plan B is the
+          // photo card next to this one.
+          setErrorMessage(`${err.message}. Súbela en «Crear desde foto».`)
+        } else if (apiData?.reason) {
           setErrorMessage(`No es una receta cocinable: ${apiData.reason}`)
         } else if (apiData?.error) {
           setErrorMessage(apiData.error)
@@ -77,8 +81,8 @@ export function UrlRecipeImport({ onImported }: UrlRecipeImportProps) {
         <span className="font-serif-text text-[17px] font-[650]">Importar desde URL</span>
       </div>
       <p className="mt-1.5 text-[13px] leading-snug text-ink-muted">
-        Pega un enlace a un artículo de receta o un vídeo de YouTube. Mimoia
-        extraerá los ingredientes y los pasos.
+        Pega un enlace a un artículo de receta, un vídeo de YouTube o un post
+        de Instagram o TikTok. Mimoia extraerá los ingredientes y los pasos.
       </p>
 
       <div className="mt-3 flex flex-col gap-2 sm:flex-row">

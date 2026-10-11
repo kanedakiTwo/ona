@@ -261,7 +261,17 @@ export class AnthropicProvider implements VisionProvider, TextExtractionProvider
     const sourceLabel =
       hint === 'youtube'
         ? 'transcripcion de YouTube (titulo + descripcion + subtitulos)'
-        : 'articulo web'
+        : hint === 'social'
+          ? 'pie de un post de Instagram o TikTok (no ves el video)'
+          : 'articulo web'
+    // Social captions often hold half a recipe ("pasos en el video", "receta
+    // en mi bio"). Nothing may be filled in from the dish name: if the caption
+    // doesn't carry both ingredients and steps, it is not a recipe for us and
+    // the user is asked for a screenshot instead (PRO-30).
+    const sourceRule =
+      hint === 'social'
+        ? '\n\nRegla para esta fuente: usa SOLO lo que dice el pie. Si no trae a la vez la lista de ingredientes y los pasos, responde isRecipe false. No completes nada a partir del nombre del plato.'
+        : ''
 
     const response = await this.client.messages.create({
       model: EXTRACTION_MODEL,
@@ -272,7 +282,7 @@ export class AnthropicProvider implements VisionProvider, TextExtractionProvider
           content: [
             {
               type: 'text',
-              text: `${TEXT_EXTRACTION_PROMPT}\n\nFuente: ${sourceLabel}\n\nContenido:\n${text}`,
+              text: `${TEXT_EXTRACTION_PROMPT}\n\nFuente: ${sourceLabel}${sourceRule}\n\nContenido:\n${text}`,
             },
           ],
         },

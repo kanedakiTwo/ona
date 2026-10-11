@@ -10,7 +10,6 @@ AI assistant for nutrition guidance, menu queries, and recipe management via nat
   - default: above the 60 px bottom tab bar on mobile; bottom-right, 24 px from the edges, at `md+`;
   - recipe detail (`/recipes/<id>`): above the 84 px sticky action bar until `lg`;
   - cook mode: `z-110`, above the step controls.
-  - A small terracotta dot pulses on it while the wake word is listening.
 - **Panel** (`MimoPanel`, `data-testid="mimo-panel"`):
   - Phones and tablets (< `lg`): a bottom sheet, 88dvh, over a backdrop (tap the backdrop to close).
   - Desktop (`lg+`): a 400 px right column with no backdrop. The page moves aside: `<main>` gets `padding-right: var(--mimo-panel-width)`, set by `MimoProvider` while the panel is open.
@@ -109,7 +108,7 @@ The model responds with either a plain text message or tool calls. `runToolLoop`
 
 ## Voice (one brain)
 
-Typed and spoken turns go to the same Claude assistant; there is no separate voice model. The mic records with silence detection → `POST /stt` (OpenAI transcription) → the text is sent with `mode: 'voice'` (short spoken replies) → the reply is read aloud by `POST /tts` (ElevenLabs, browser voice as fallback). Spoken turns are always read aloud; typed turns only when «Leer las respuestas en voz alta» is on. «Manos libres» listens again after each reply. Full detail (recorder timings, TTS limits, wake word, fallbacks) in [Voice (Mimo)](./voice-mode.md).
+Typed and spoken turns go to the same Claude assistant; there is no separate voice model. The mic records with silence detection → `POST /stt` (OpenAI transcription) → the text is sent with `mode: 'voice'` (short spoken replies) → the reply is read aloud by `POST /tts` (ElevenLabs, browser voice as fallback). Spoken turns are always read aloud; typed turns only when «Leer las respuestas en voz alta» is on. «Manos libres» listens again after each reply. Full detail (recorder timings, TTS limits, fallbacks) in [Voice (Mimo)](./voice-mode.md).
 
 ## Page context
 
@@ -163,12 +162,12 @@ The advisor's weekly nutrient/calorie aggregators iterate `slot.dishes` and proc
 - [Recipes](./recipes.md) — assistant can search, suggest, and create recipes
 - [Shopping](./shopping.md) — assistant can read the list
 - [WhatsApp](./whatsapp.md) — the same assistant over WhatsApp (text, buttons, deep links)
-- [Voice (Mimo)](./voice-mode.md) — talking to Mimo, hands-free, read-aloud, wake word (the trained model still listens for the old-name phrase until a "Hola Mimo" model is trained)
+- [Voice (Mimo)](./voice-mode.md) — talking to Mimo, hands-free, read-aloud (no spoken activation phrase: Mimo opens with a tap, D-032)
 - [Cooking mode](./cooking-mode.md) — the shell Mimo drives with cooking commands
 
 ## Hooks (client)
 
-- `useMimo` (`components/mimo/MimoProvider.tsx`) — the companion's state: open/close, messages, status, send, mic, hands-free, read-aloud, voices, wake word
+- `useMimo` (`components/mimo/MimoProvider.tsx`) — the companion's state: open/close, messages, status, send, mic, hands-free, read-aloud, voices
 - `useAssistant` — `POST /assistant/:userId/chat` with `{ message, history }`; `MimoProvider` itself calls `api.post` directly
 - `useAdvisor` (legacy) — wraps `/advisor/:userId/summary` and `/advisor/:userId/ask`; no page uses it any more
 - `useRecorder` records for `POST /stt` (silence detection); `useVoice` — read-aloud through `POST /tts` (ElevenLabs) with the browser voice as fallback (`speak()` resolves when playback ends), plus the Web Speech recogniser fallback. API: [routes/tts.ts](../apps/api/src/routes/tts.ts), [services/tts.ts](../apps/api/src/services/tts.ts)

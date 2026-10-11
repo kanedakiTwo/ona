@@ -61,7 +61,7 @@ Hands-free, fullscreen step-by-step cooking experience driven from a recipe.
 
 The assistant can drive the cooking shell hands-free via three skills: `start_cooking_mode` (navigates to `/recipes/:id/cook`), `set_timer` (starts a per-step timer through the existing `useStepTimers` API), and `cooking_step` (advances or repeats the current step). The bridge is a tiny pub/sub bus at [`apps/web/src/lib/cookingCommands.ts`](../apps/web/src/lib/cookingCommands.ts) that `CookingShell` subscribes to on mount; if no shell is active when a command is emitted, it silently drops (the assistant has already given the confirmation). The producer is Mimo (`components/mimo/MimoProvider.tsx`): typed or spoken, any reply with `uiHint: 'cooking_navigate'` routes to the cook page, and `cooking_timer` / `cooking_step` are emitted on the bus.
 
-In cook mode the Mimo button sits above the step controls (`z-110`) and the panel suggests «Siguiente paso», «Pon un temporizador de 10 minutos», «¿Por qué paso voy?». Mimo knows which recipe is being cooked (hidden page-context note, see [Advisor](./advisor.md) → Page context). For hands-free cooking, users turn on «Manos libres» in the panel (or say the wake word): Mimo listens again after each reply, until nobody speaks for 8 s.
+In cook mode the Mimo button sits above the step controls (`z-110`) and the panel suggests «Siguiente paso», «Pon un temporizador de 10 minutos», «¿Por qué paso voy?». Mimo knows which recipe is being cooked (hidden page-context note, see [Advisor](./advisor.md) → Page context). For hands-free cooking, users turn on «Manos libres» in the panel: Mimo listens again after each reply, until nobody speaks for 8 s.
 
 ## Related specs
 

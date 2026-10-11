@@ -459,35 +459,6 @@ export default function ProfilePage() {
               </label>
             )}
 
-            {mimo.wakeWord.available ? (
-              <ToggleRow
-                title={`Escuchar «${mimo.wakeWord.phrase}»`}
-                subtitle={
-                  !mimo.wakeWord.enabled
-                    ? 'Desactivado · actívalo para abrir a Mimo sin tocar nada'
-                    : mimo.wakeWord.listening
-                      ? `Escuchando «${mimo.wakeWord.phrase}»`
-                      : 'Iniciando…'
-                }
-                on={mimo.wakeWord.enabled}
-                onToggle={async () => {
-                  const next = !mimo.wakeWord.enabled
-                  if (next) {
-                    try {
-                      await navigator.mediaDevices.getUserMedia({ audio: true }).then((st) => st.getTracks().forEach((t) => t.stop()))
-                    } catch {
-                      alert('Necesito permiso de micrófono para escucharte.')
-                      return
-                    }
-                  }
-                  mimo.wakeWord.setEnabled(next)
-                }}
-              />
-            ) : (
-              <p className="mt-2 border-t border-border-soft pt-3 text-[12px] leading-snug text-ink-muted">
-                Abrir a Mimo diciendo «Hola Mimo», sin tocar nada, llegará en cuanto esté entrenada la palabra de activación.
-              </p>
-            )}
           </ProfileCard>
 
           {/* WhatsApp. Hidden unless the server has the channel configured for

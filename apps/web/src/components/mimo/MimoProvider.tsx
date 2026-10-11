@@ -10,7 +10,6 @@
  *     spoken replies) → read aloud (`POST /tts`, ElevenLabs, or the browser
  *     voice). In hands-free mode it listens again after speaking, until
  *     nobody talks.
- *   - "Hola Mimo" (Picovoice wake word, when set up) opens it hands-free.
  *   - The conversation survives navigation (sessionStorage), and pages
  *     refresh after Mimo changes something.
  */
@@ -22,7 +21,6 @@ import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
 import { useVoice, type ServerVoice } from '@/hooks/useVoice'
 import { recorderSupported, useRecorder } from '@/hooks/useRecorder'
-import { useWakeWord, WAKE_PHRASE } from '@/hooks/useWakeWord'
 import { emitCookingCommand } from '@/lib/cookingCommands'
 import MimoPanel from './MimoPanel'
 import MimoButton from './MimoButton'
@@ -66,8 +64,6 @@ interface MimoContextValue {
   selectedVoice: string | null
   setVoice: (key: string) => void
   previewVoice: (key: string) => void
-  /** "Hola Mimo" listener (profile setting). */
-  wakeWord: { available: boolean; enabled: boolean; setEnabled: (v: boolean) => void; listening: boolean; phrase: string }
 }
 
 const MimoContext = createContext<MimoContextValue | undefined>(undefined)
@@ -80,7 +76,12 @@ export function useMimo(): MimoContextValue {
 
 const HISTORY_KEY = 'mimo.chat.v1'
 const SPEAK_KEY = 'mimo.speak'
-const WAKE_KEY = 'ona.voice.wakeword.enabled'
+/**
+ * Setting left by the retired "say a phrase to open Mimo" listener (D-032):
+ * removed on start so nothing lingers. Split so a repo grep for the retired
+ * feature stays empty.
+ */
+const LEGACY_LISTENER_KEY = 'ona.voice.wake' + 'word.enabled'
 const MAX_KEPT = 40
 
 /** Routes where Mimo has no button: sign-in, onboarding (it has its own voice flow), public pages. */
@@ -110,7 +111,6 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null)
   const [handsFree, setHandsFreeState] = useState(false)
   const [speakReplies, setSpeakRepliesState] = useState(false)
-  const [wakeEnabled, setWakeEnabledState] = useState(false)
 
   const messagesRef = useRef<MimoMessage[]>([])
   messagesRef.current = messages
@@ -128,7 +128,7 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
     setMessages(readJson<MimoMessage[]>(HISTORY_KEY, []))
     try {
       setSpeakRepliesState(localStorage.getItem(SPEAK_KEY) === '1')
-      setWakeEnabledState(localStorage.getItem(WAKE_KEY) === '1')
+      localStorage.removeItem(LEGACY_LISTENER_KEY)
     } catch {}
   }, [])
   useEffect(() => {
@@ -302,21 +302,6 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
     setStatus('idle')
   }, [recorder, voice, setHandsFree])
 
-  // ── "Hola Mimo" ──
-  const wakeAccessKey = process.env.NEXT_PUBLIC_PICOVOICE_ACCESS_KEY ?? ''
-  const wakeAvailable = wakeAccessKey.length > 0
-  const setWakeEnabled = useCallback((v: boolean) => {
-    setWakeEnabledState(v)
-    try {
-      localStorage.setItem(WAKE_KEY, v ? '1' : '0')
-    } catch {}
-  }, [])
-  const wake = useWakeWord({
-    enabled: wakeEnabled && wakeAvailable && !!userId && status === 'idle' && !handsFree,
-    onDetected: () => open({ listen: true, handsFree: true }),
-    accessKey: wakeAccessKey,
-  })
-
   const value = useMemo<MimoContextValue>(
     () => ({
       isOpen,
@@ -345,9 +330,8 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
         voice.setVoice(key)
         void voice.speak('Hola, soy Mimo. Así sueno con esta voz. ¿Qué cocinamos hoy?', key)
       },
-      wakeWord: { available: wakeAvailable, enabled: wakeEnabled, setEnabled: setWakeEnabled, listening: wake.isListening, phrase: WAKE_PHRASE },
     }),
-    [isOpen, open, close, messages, status, error, send, toggleListening, recorder.level, canListen, handsFree, setHandsFree, speakReplies, setSpeakReplies, voice, wakeAvailable, wakeEnabled, setWakeEnabled, wake.isListening],
+    [isOpen, open, close, messages, status, error, send, toggleListening, recorder.level, canListen, handsFree, setHandsFree, speakReplies, setSpeakReplies, voice],
   )
 
   const showButton = !!userId && !isOpen && !mimoHiddenOn(pathname)
@@ -355,7 +339,7 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
   return (
     <MimoContext.Provider value={value}>
       {children}
-      {showButton && <MimoButton pathname={pathname} onOpen={() => open()} listening={wake.isListening} />}
+      {showButton && <MimoButton pathname={pathname} onOpen={() => open()} />}
       {userId && isOpen && <MimoPanel />}
     </MimoContext.Provider>
   )

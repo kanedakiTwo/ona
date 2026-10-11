@@ -63,12 +63,9 @@ const TEXT_EXT = new Set(['.ts', '.tsx', '.js', '.mjs', '.cjs', '.css', '.md', '
 
 /**
  * Lines that may say the old name on purpose. Keep each entry justified.
- *  - the wake phrase: the trained Picovoice model still detects it until a
- *    "Hola Mimo" model replaces it (MIG-08, specs/voice-mode.md).
  *  - tests: the pattern that forbids the old name, and the pre-rename
  *    WhatsApp link message the linker still accepts.
  */
-const ALLOWED_ANYWHERE = [/Hola Ona/]
 const ALLOWED_IN_TESTS = [/\(ONA\|Ona\)/, /Vincular ONA: /]
 const isTest = (rel: string) => /\.(test|spec)\.tsx?$/.test(rel)
 
@@ -106,7 +103,6 @@ describe('nothing a person or an agent reads says the old brand name', () => {
         .split('\n')
         .forEach((line, i) => {
           if (!OLD_NAME.test(line)) return
-          if (ALLOWED_ANYWHERE.some((a) => a.test(line))) return
           if (isTest(rel) && ALLOWED_IN_TESTS.some((a) => a.test(line))) return
           offenders.push(`${rel}:${i + 1}: ${line.trim().slice(0, 120)}`)
         })

@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "first_steps_pending" boolean DEFAULT false NOT NULL;

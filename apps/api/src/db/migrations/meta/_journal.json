@@ -309,6 +309,13 @@
       "when": 1791645534336,
       "tag": "0043_shopping_item_state",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1791760718528,
+      "tag": "0044_first_steps_pending",
+      "breakpoints": true
     }
   ]
 }

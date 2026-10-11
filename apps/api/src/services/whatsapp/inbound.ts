@@ -148,6 +148,12 @@ export const COPY = {
   optInPrompt:
     '¿Quieres que también te escriba yo? Te mandaría el menú del día, un aviso antes de cocinar y la lista de la compra los sábados. Puedes cambiarlo cuando quieras escribiendo BAJA o ALTA.',
   optInDeclined: 'Vale, no te escribiré por mi cuenta. Si cambias de idea, escribe ALTA.',
+  /**
+   * Last message of the WhatsApp-first sign-up (PRO-07): once the opt-in
+   * question is answered (yes or no), three things to try. Sent once.
+   */
+  firstSteps:
+    'Tres cosas que puedes pedirme ya:\n📸 Mándame una foto o un enlace de una receta y la guardo.\n🍽️ «¿Qué cenamos hoy?»\n🛒 «Hazme la lista de la compra»',
   stopped:
     'Hecho: no te enviaré más avisos por WhatsApp. Puedes seguir escribiéndome cuando quieras. Para volver a recibirlos, escribe ALTA.',
   stoppedUnlinked: 'De acuerdo, no te volveré a escribir.',
@@ -272,6 +278,17 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
       },
     ])
   const sendText = (userId: string | null, kind: string, text: string) => send(userId, kind, renderPlainText(text))
+  /**
+   * PRO-07: the WhatsApp-first sign-up ends with three suggestions, right
+   * after the person answers the opt-in question. Only for numbers that did
+   * the first steps here (an 'onboarding' message went out) and got the
+   * opt-in question, and only once per number ('first_steps' kind).
+   */
+  const sendFirstStepsOnce = async (userId: string) => {
+    const sent = await store.recentOutboundKinds(msg.from, new Date(0))
+    if (!sent.has('onboarding') || !sent.has('optin_prompt') || sent.has('first_steps')) return
+    await sendText(userId, 'first_steps', COPY.firstSteps)
+  }
 
   await client.markReadWithTyping(msg.wamid)
 
@@ -287,6 +304,7 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
       if (link) {
         await store.setNotify(link.userId, true)
         await sendText(userId, 'optin', COPY.started)
+        await sendFirstStepsOnce(link.userId)
       } else {
         await sendText(null, 'optin', COPY.connect(connectUrl(deps.webUrl)))
       }
@@ -302,6 +320,7 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     if (prompt && [...kinds.values()].every((t) => t <= prompt)) {
       await store.updateInbound(msg.wamid, { status: 'ignored', userId: link.userId })
       await sendText(link.userId, 'system', COPY.optInDeclined)
+      await sendFirstStepsOnce(link.userId)
       return
     }
   }

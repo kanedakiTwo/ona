@@ -74,15 +74,41 @@ export async function submitLoginForm(page: Page, creds: Pick<TestCreds, 'userna
   await submit.click()
 }
 
-/** Generate a fresh test user and register them via the UI. */
-export async function registerFreshUser(page: Page): Promise<TestCreds> {
+/**
+ * Generate a fresh test user and register them via the UI.
+ *
+ * New accounts get the «Primeros pasos» guide over /menu (PRO-07). It would
+ * cover the screen in every spec that isn't about it, so it is marked as
+ * seen here; `first-steps.spec.ts` passes `{ keepFirstSteps: true }`.
+ */
+export async function registerFreshUser(
+  page: Page,
+  opts: { keepFirstSteps?: boolean } = {},
+): Promise<TestCreds> {
   const creds = freshCreds()
   await page.goto('/register')
   await Promise.all([
     page.waitForURL(/\/onboarding|\/menu/, { timeout: 20_000 }),
     submitRegisterForm(page, creds),
   ])
+  if (!opts.keepFirstSteps) await skipFirstSteps(page)
   return creds
+}
+
+/**
+ * Mark the «Primeros pasos» guide (PRO-07) as seen for the logged-in user,
+ * through the same endpoint the guide's "Saltar" calls.
+ */
+export async function skipFirstSteps(page: Page): Promise<void> {
+  const apiUrl = process.env.API_URL ?? 'http://localhost:8765'
+  const token = await page.evaluate(() => localStorage.getItem('ona_token'))
+  const userRaw = await page.evaluate(() => localStorage.getItem('ona_user'))
+  if (!token || !userRaw) return
+  const userId = JSON.parse(userRaw).id as string
+  const res = await page.request.post(`${apiUrl}/user/${userId}/first-steps`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok()) throw new Error(`first-steps failed: ${res.status()} ${await res.text()}`)
 }
 
 /**
@@ -93,7 +119,10 @@ export async function registerFreshUser(page: Page): Promise<TestCreds> {
  * surface (it just asserts we land somewhere valid); every other spec uses
  * this helper to skip ahead to `/menu` reliably.
  */
-export async function completeOnboarding(page: Page): Promise<void> {
+export async function completeOnboarding(
+  page: Page,
+  opts: { keepFirstSteps?: boolean } = {},
+): Promise<void> {
   const apiUrl = process.env.API_URL ?? 'http://localhost:8765'
 
   const token = await page.evaluate(() => localStorage.getItem('ona_token'))
@@ -114,6 +143,8 @@ export async function completeOnboarding(page: Page): Promise<void> {
   })
   // Fail loudly: this used to send a stale payload and get a silent 400.
   if (!res.ok()) throw new Error(`onboarding failed: ${res.status()} ${await res.text()}`)
+  // Specs that sign up without registerFreshUser (closed-beta) land here.
+  if (!opts.keepFirstSteps) await skipFirstSteps(page)
 
   // Reflect onboardingDone in the local copy so AuthProvider doesn't bounce
   // us back to /onboarding on the next navigation.

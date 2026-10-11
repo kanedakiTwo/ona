@@ -40,6 +40,12 @@ export const users = pgTable('users', {
   favoriteDishes: text('favorite_dishes').array().default([]),
   priority: text('priority'),
   onboardingDone: boolean('onboarding_done').default(false),
+  /**
+   * «Primeros pasos» guide on /menu (PRO-07). Only POST /register sets it to
+   * true; the column default is false, so accounts created before it existed
+   * never see the guide. Seeing it (or skipping it) sets it back to false.
+   */
+  firstStepsPending: boolean('first_steps_pending').notNull().default(false),
   // Authorization
   role: text('role').notNull().default('user'),
   // Suspension (admin gate). NULL = active.

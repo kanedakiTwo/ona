@@ -554,4 +554,54 @@ describe('processInbound — WhatsApp-first sign-up (2026-10-10)', () => {
     expect(t.sent[1].text).toMatch(/no guardo datos de salud/)
     expect(t.sent[2]).toMatchObject({ type: 'buttons', text: COPY.optInPrompt })
   })
+
+  // PRO-07: the sign-up ends with three suggestions, once, after the opt-in answer.
+  describe('the three suggestions after the opt-in (PRO-07)', () => {
+    const at = (msAgo: number) => new Date(NOW.getTime() - msAgo)
+    const afterSignup = () =>
+      new Map([['onboarding', at(600_000)], ['reply', at(180_000)], ['system', at(120_000)], ['optin_prompt', at(60_000)]])
+
+    it('"Sí, avísame" → avisos on, then the suggestions', async () => {
+      const t = setup({ outboundKinds: afterSignup() })
+      await processInbound(msg({ kind: 'interactive', text: 'Sí, avísame', rawType: 'interactive' }), t.deps)
+      expect(t.outbound.map((o) => o.kind)).toEqual(['optin', 'first_steps'])
+      expect(t.sent[1]).toEqual({ type: 'text', text: COPY.firstSteps })
+      expect(COPY.firstSteps).toMatch(/foto o un enlace de una receta/)
+      expect(COPY.firstSteps).toMatch(/¿Qué cenamos hoy\?/)
+      expect(COPY.firstSteps).toMatch(/Hazme la lista de la compra/)
+      expect(t.chat).not.toHaveBeenCalled()
+    })
+
+    it('"No, gracias" → the decline, then the suggestions', async () => {
+      const t = setup({ outboundKinds: afterSignup() })
+      await processInbound(msg({ kind: 'interactive', text: 'No, gracias', rawType: 'interactive' }), t.deps)
+      expect(t.outbound.map((o) => o.kind)).toEqual(['system', 'first_steps'])
+      expect(t.sent[1]).toEqual({ type: 'text', text: COPY.firstSteps })
+    })
+
+    it('only once: not again on a later ALTA', async () => {
+      const kinds = afterSignup()
+      kinds.set('first_steps', at(30_000))
+      const t = setup({ outboundKinds: kinds })
+      await processInbound(msg({ text: 'ALTA' }), t.deps)
+      expect(t.outbound.map((o) => o.kind)).toEqual(['optin'])
+    })
+
+    it('not for an account that did the first steps on the web (no onboarding in the chat)', async () => {
+      const t = setup({ outboundKinds: new Map([['system', at(120_000)], ['optin_prompt', at(60_000)]]) })
+      await processInbound(msg({ kind: 'interactive', text: 'Sí, avísame', rawType: 'interactive' }), t.deps)
+      expect(t.outbound.map((o) => o.kind)).toEqual(['optin'])
+    })
+
+    it('not before the opt-in question (complete_onboarding turn ends with the question)', async () => {
+      const t = setup({
+        link: NEW_LINK,
+        chatReply: { message: 'Hecho:\n- Tu primer menú de la semana listo', toolsUsed: ['complete_onboarding'] },
+        outboundKinds: new Map([['onboarding', at(600_000)]]),
+      })
+      await processInbound(msg({ text: 'Lentejas y tortilla' }), t.deps)
+      expect(t.outbound.map((o) => o.kind)).not.toContain('first_steps')
+      expect(t.outbound.at(-1)?.kind).toBe('optin_prompt')
+    })
+  })
 })

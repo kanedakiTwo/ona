@@ -15,6 +15,7 @@ Where recipes come from: the seed pipeline, import from a photo, a URL (article 
 - Curated through the regeneration script (see [Recipe Quality](./recipe-quality.md)); each recipe must pass the lint validator before being seeded
 - Read-only for users (cannot edit or delete)
 - Listed by the **"Selección Mimoia"** chip in the catalog (no per-card mark)
+- **Link to the original** (PRO-57): catalogue recipes that came from Notion carry the `Link` of their Notion row as `sourceUrl` (`sourceType` `youtube` for YouTube, `article` otherwise), so the detail shows **"Ver fuente"**. `applyCatalogSourceLinks` (`services/catalogSourceLinks.ts`) fills it for every recipe with `author_id IS NULL AND source_url IS NULL` whose name matches a Notion row ignoring accents, case and repeated spaces (one-letter typos tolerated on names of 12+ characters when only one row is that close: «noddles», «chiken»). It never touches user recipes or a recipe that already has a link, so re-running it is a no-op. It runs by itself after `db:migrate` on every API boot (staging and production deploys; a failure is logged and never blocks the boot) and at the end of `db:seed` (fresh/CI databases). The boot log says `[catalog-source-links] N recetas del catálogo sin enlace: X emparejadas, Y sin emparejar (names…)`. The Notion links are embedded in `seed/notionSourceLinks.ts` (a unit test keeps it equal to the CSV); a cell with a note after the URL («… (TBD)», Ceviche) is not a confirmed source and is skipped
 
 **Seed pipeline (how the system catalog is populated)**:
 1. `apps/api/src/seed/recipes.ts` declares 79 recipe shells (name + meta). About 16 carry full `ingredients` / `steps` inline; the other 63 are intentional placeholders (`ingredients: []`, `steps: []`) that get filled in by a second pass.
@@ -81,6 +82,8 @@ Idempotent: re-running populate overwrites the JSONL; re-running apply overwrite
 
 ## Constraints
 
+- TODO(spec): PRO-57 also asked that, when a photo import looks like a screenshot of a web page or social network, Mimo asks «¿Tienes el enlace del original?». Not built: the photo extractor returns no "screenshot" signal yet, and on WhatsApp the link the user sends back would be imported as a second recipe (`import_recipe_from_url`) instead of being attached to the photo one — that needs a "set the source of the last imported recipe" step. Today a photo import has no link; it can be added by hand in the edit form
+
 - Instagram / TikTok: only the caption is read; the audio and on-screen text of the video are not (out of scope). Instagram often serves a login wall to server requests, in which case the user always gets the screenshot answer
 - v1 of the URL importer cannot process YouTube videos that lack both captions and a recipe-bearing description (no Whisper / yt-dlp / Gemini fallback yet)
 
@@ -107,6 +110,7 @@ Idempotent: re-running populate overwrites the JSONL; re-running apply overwrite
 - [apps/web/src/components/recipes/IngredientAutocomplete.tsx](../apps/web/src/components/recipes/IngredientAutocomplete.tsx) — open ingredient picker + auto-create modal (new). Accepts a `defaultText` prop so unmatched extractor output (photo / URL) is prefilled into the input instead of falling back to the empty placeholder, letting the user confirm via "Crear nuevo" or refine the search.
 - [apps/web/src/hooks/useIngredients.ts](../apps/web/src/hooks/useIngredients.ts) — `useSearchIngredients`, `useSuggestIngredient`, `useAutoCreateIngredient` (new)
 - [apps/api/src/seed/recipes.ts](../apps/api/src/seed/recipes.ts) — regenerated catalog
+- [apps/api/src/services/catalogSourceLinks.ts](../apps/api/src/services/catalogSourceLinks.ts) — catalogue ↔ Notion link backfill (`applyCatalogSourceLinks`, `matchSourceLink`), run from [db/migrate.ts](../apps/api/src/db/migrate.ts) and [seed/index.ts](../apps/api/src/seed/index.ts); data in [seed/notionSourceLinks.ts](../apps/api/src/seed/notionSourceLinks.ts)
 - [apps/api/scripts/handAuthoredRecipes.ts](../apps/api/scripts/handAuthoredRecipes.ts) — hand-authored bodies for the seed placeholders; appends to `output/regen-passed.jsonl`
 - [apps/api/scripts/applyRegeneratedRecipes.ts](../apps/api/scripts/applyRegeneratedRecipes.ts) — JSONL → DB applier with lint + auto-create + `--soft-lint` escape hatch
 - [apps/api/scripts/dedupSystemRecipes.ts](../apps/api/scripts/dedupSystemRecipes.ts), [linkSeedRecipeImages.ts](../apps/api/scripts/linkSeedRecipeImages.ts), [fillSeedCatalogGap.ts](../apps/api/scripts/fillSeedCatalogGap.ts), [bulkInsertIngredients.ts](../apps/api/scripts/bulkInsertIngredients.ts), [recomputeRecipeNutrition.ts](../apps/api/scripts/recomputeRecipeNutrition.ts), [insertMappedIngredients.ts](../apps/api/scripts/insertMappedIngredients.ts) — one-off prod maintenance scripts

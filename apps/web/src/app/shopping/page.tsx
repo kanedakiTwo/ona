@@ -27,6 +27,7 @@ import { useMenu } from '@/hooks/useMenu'
 import { haptic } from '@/lib/pwa/haptics'
 import { share } from '@/lib/pwa/share'
 import { AISLE_LABELS, AISLE_ORDER, aisleLabel } from '@/lib/labels'
+import { activeQuickRange, quickRanges, shiftIso } from '@/lib/shoppingRange'
 import {
   ListTotalBanner,
   AddManualItemForm,
@@ -50,19 +51,13 @@ function mondayOfTodayIso(): string {
   return `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`
 }
 
-function shiftIso(iso: string, days: number): string {
-  const [y, m, d] = iso.split('-').map(Number)
-  const dt = new Date(Date.UTC(y, m - 1, d))
-  dt.setUTCDate(dt.getUTCDate() + days)
-  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`
-}
-
 function formatRangeLabel(from: string, to: string): string {
   const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
   const [, , fd] = from.split('-')
   const [, , td] = to.split('-')
   const fm = months[Number(from.split('-')[1]) - 1]
   const tm = months[Number(to.split('-')[1]) - 1]
+  if (from === to) return `${Number(fd)} ${fm}`
   return fm === tm ? `${Number(fd)}–${Number(td)} ${fm}` : `${Number(fd)} ${fm} – ${Number(td)} ${tm}`
 }
 
@@ -82,6 +77,9 @@ export default function ShoppingPage() {
   const [to, setTo] = useState<string>(defaultTo)
   const range = useMemo(() => ({ from, to }), [from, to])
   const rangeLabel = formatRangeLabel(from, to)
+  // «Hoy» · «Mañana» · «Esta semana» (PRO-33): one tap instead of the dates sheet.
+  const shortcuts = useMemo(() => quickRanges(today, defaultTo), [today, defaultTo])
+  const activeShortcut = activeQuickRange(shortcuts, from, to)
 
   // The /menu hook is still used by the empty-state to confirm whether the
   // user has any menu at all — but the shopping list itself no longer
@@ -236,6 +234,20 @@ export default function ShoppingPage() {
               setTo(shiftIso(to, 7))
             }}
           />
+          {shortcuts.map((r) => (
+            <Chip
+              key={r.key}
+              active={activeShortcut === r.key}
+              onClick={() => {
+                haptic.light()
+                setFrom(r.from)
+                setTo(r.to)
+              }}
+              pressable
+            >
+              {r.label}
+            </Chip>
+          ))}
           {aislesInTab.length > 1 && (
             <>
               <span aria-hidden="true" className="my-2 w-px shrink-0 bg-border" />
@@ -267,7 +279,7 @@ export default function ShoppingPage() {
               <p className="flex items-baseline gap-2">
                 <span className={`${TITLE} text-[28px] leading-none tabular-nums`}>
                   <span data-testid="shopping-done">{doneCount}</span>
-                  <span className="text-ink-light">/{totalCount}</span>
+                  <span className="text-ink-light">/<span data-testid="shopping-total">{totalCount}</span></span>
                 </span>
                 <span className="text-[13px] text-ink-muted">completados</span>
               </p>

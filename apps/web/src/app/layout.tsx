@@ -44,9 +44,9 @@ const jetbrains = JetBrains_Mono({
   weight: ["400"],
 })
 
-const PUBLIC_ROUTES = ["/", "/como-funciona", "/por-que-ona", "/privacidad", "/terminos", "/aviso-legal", "/login", "/register", "/onboarding"]
-/** Public sections with dynamic segments: the waitlist owner page and opt-out (specs/waitlist.md). */
-const PUBLIC_PREFIXES = ["/lista/"]
+const PUBLIC_ROUTES = ["/", "/como-funciona", "/por-que-ona", "/privacidad", "/terminos", "/aviso-legal", "/login", "/register", "/reset", "/onboarding"]
+/** Public sections with dynamic segments: the waitlist owner page and opt-out (specs/waitlist.md) and household invitations (specs/auth.md). */
+const PUBLIC_PREFIXES = ["/lista/", "/invites/"]
 
 const APPLE_SPLASH_IMAGES = [
   { src: "splash-2048x2732.png", w: 1024, h: 1366, dpr: 2 },

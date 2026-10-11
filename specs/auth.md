@@ -63,6 +63,7 @@ The `users` table holds the canonical scalar fields (`sex`, `age`, `weight`, `he
 - `/recipes-ona`, `/recipes-ona/[id]` — public Mimoia catalogue (system recipes only, see [Recipes](./recipes.md))
 - `/login`, `/register` — `/register` stays reachable for invited households, but no public CTA links to it pre-launch (they lead to the [waitlist](./waitlist.md))
 - `/lista/[code]`, `/lista/baja` — waitlist owner page and opt-out (public chrome via `PUBLIC_PREFIXES`)
+- `/reset` (password recovery) and `/invites/[token]` (household invitation) — drawn like `/login` (public chrome: no sidebar, no bottom bar, no Mimo button, no desktop left margin), also for a signed-in user; `/invites/` via `PUBLIC_PREFIXES`
 - `/onboarding`
 - `/whatsapp/conectar?t=<token>` — WhatsApp-first link confirm page (asks to log in / register when logged out; see [WhatsApp](./whatsapp.md))
 

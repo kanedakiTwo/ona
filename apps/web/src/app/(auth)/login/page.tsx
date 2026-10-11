@@ -49,7 +49,7 @@ export default function LoginPage() {
         eyebrow="Acceso"
         title={
           <>
-            Bien<Accent>venida</Accent> de vuelta.
+            Hola de <Accent>nuevo</Accent>.
           </>
         }
         lead="Entra a tu cuenta y sigue cocinando con criterio."

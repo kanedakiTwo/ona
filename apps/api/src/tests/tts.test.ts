@@ -84,7 +84,7 @@ describe('spokenUnits (abbreviations read in full)', () => {
   })
 
   it('leaves words that only look like units alone', () => {
-    expect(spokenUnits('Mínimo g de gracia, hola Mimo')).toBe('Mínimo g de gracia, hola Mimo')
+    expect(spokenUnits('Mínimo g de gracia, gracias Mimo')).toBe('Mínimo g de gracia, gracias Mimo')
   })
 
   it('is applied by speakableText', () => {

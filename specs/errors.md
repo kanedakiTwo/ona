@@ -72,7 +72,7 @@ The browser reporter is **off in development** unless `NEXT_PUBLIC_ERROR_REPORTI
 - `release`: API = `RAILWAY_GIT_COMMIT_SHA`, else `RAILWAY_DEPLOYMENT_ID`; web = `NEXT_PUBLIC_RELEASE`, else the same Railway vars if present at build time. `railway up` deploys have no commit SHA.
 - With the `unhandledRejection` listener installed, the API logs and keeps serving instead of crashing; the request that caused it times out.
 - `errorHandler` answers 500 even to errors carrying a 4xx status (malformed JSON body, missing image under `/images/recipes`); those are not recorded as server errors. Pre-existing behaviour, unchanged.
-- Not captured: React recoverable/hydration errors (console only), service-worker errors, errors inside the cross-origin wake-word/voice SDKs that surface as `Script error.`.
+- Not captured: React recoverable/hydration errors (console only), service-worker errors, errors inside cross-origin scripts that surface as `Script error.`.
 - No admin UI yet: read through the API.
 
 ## Related specs

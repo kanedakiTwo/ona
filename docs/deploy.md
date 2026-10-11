@@ -122,7 +122,6 @@ Both are configured in the Railway dashboard, not committed.
 | `RAILPACK_BUILD_CMD` | `pnpm install && pnpm --filter @ona/shared build && pnpm --filter @ona/web build` |
 | `RAILPACK_START_CMD` | `node apps/web/.next/standalone/apps/web/server.js` |
 | `NEXT_PUBLIC_API_URL` | `https://ona-api-production.up.railway.app` (no trailing slash) |
-| `NEXT_PUBLIC_PICOVOICE_ACCESS_KEY` | From <https://console.picovoice.ai>; required for the wake word (see `specs/voice-mode.md`) |
 | `NEXT_PUBLIC_ERROR_REPORTING` | Optional. `false` switches the browser error reporter off (it is on in production builds by default); `true` turns it on under `next dev`. See `specs/errors.md` |
 | `NEXT_PUBLIC_RELEASE` | Optional build label sent with client error reports. Unset → `RAILWAY_GIT_COMMIT_SHA` or `RAILWAY_DEPLOYMENT_ID` if Railway exposes them at build time, else none |
 | `PORT` | `3000` |

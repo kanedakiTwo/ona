@@ -78,5 +78,4 @@ This file lists the device-dependent tests for the PWA implementation. Each test
 ## Known limitations / out of scope
 
 - Pre-existing typecheck errors in `apps/web/src/app/recipes/*` and related files block `pnpm -F @ona/web build`. These are unrelated to the PWA work and must be fixed before a production build can succeed. Once fixed, all the above tests can run.
-- Picovoice / OpenAI Realtime keys are required for the voice-mode feature on the same branch but are not part of the PWA scope.
 - Icons and 8 splash screens must be supplied externally per the spec asset table — without them, manifest references will 404.

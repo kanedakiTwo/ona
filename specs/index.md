@@ -118,9 +118,9 @@ Recipe catalog, recipe detail, ingredients, sectioned ingredient groups ("Para l
 
 ## [Cooking Mode](./cooking-mode.md)
 
-Hands-free fullscreen cook-along, step-by-step UX, per-step countdown timers, multiple concurrent timers, vibration + chime on timer fire, swipe between steps, ingredient checklist, inline scaled ingredient chips, temperature/technique badges, Wake Lock screen-on, live diner re-scaling inside cooking mode, exits cleanly without mutating the recipe, "Empezar a cocinar" entry point.
+Hands-free fullscreen cook-along, step-by-step UX, per-step countdown timers, multiple concurrent timers, vibration + chime on timer fire, swipe between steps, ingredient checklist, inline scaled ingredient chips, temperature/technique badges, Wake Lock screen-on, live diner re-scaling inside cooking mode, «Mimo, manos libres» hands-free button (keeps listening through silences until turned off or leaving cook mode), exits cleanly without mutating the recipe, "Empezar a cocinar" entry point.
 
-**Source**: `apps/web/src/app/recipes/[id]/cook/page.tsx`, `apps/web/src/components/cooking/` (`CookingShell`, `StepCard`, `StepTimer`, `ChecklistPanel`), `apps/web/src/hooks/useWakeLock.ts`, `apps/web/src/hooks/useStepTimers.ts`
+**Source**: `apps/web/src/app/recipes/[id]/cook/page.tsx`, `apps/web/src/components/cooking/` (`CookingShell`, `StepCard`, `StepTimer`, `ChecklistPanel`), `apps/web/src/hooks/useWakeLock.ts`, `apps/web/src/hooks/useStepTimers.ts`, `apps/web/src/lib/mimoHandsFree.ts`
 
 ---
 
@@ -238,9 +238,9 @@ AI chat assistant named Mimo (of Mimoia; `ASSISTANT_NAME`, persona "Hola, soy Mi
 
 ## [Voice (Mimo)](./voice-mode.md)
 
-Talking to Mimo in the app (D-023, 2026-10-09): the same Claude assistant for typed and spoken turns, tap-to-talk mic in the Mimo panel, `useRecorder` (MediaRecorder + analyser, silence detection ~1.3 s, 8 s no-speech, 30 s cap), `POST /stt` (OpenAI transcription, `mimo_voice_transcription`, 60/min, ≤ 10 MB), chat `mode: 'voice'` (short spoken replies), read-aloud `POST /tts` (ElevenLabs, `chat_tts`, `ELEVENLABS_VOICES`, «Voz de Mimo» picker with preview, browser `speechSynthesis` fallback), «Leer las respuestas en voz alta» (`localStorage mimo.speak`), «Manos libres» hands-free loop, Web Speech recogniser fallback, no spoken activation phrase (Mimo opens with a tap, D-032), profile chapter 04 «Mimo por voz», voice onboarding loop, cooking by voice, Spanish. OpenAI Realtime retired (no `/realtime/*`, no orb overlay, no «Modo voz» toggle, no minutes quota; `voice_transcripts` no longer written).
+Talking to Mimo in the app (D-023, 2026-10-09): the same Claude assistant for typed and spoken turns, tap-to-talk mic in the Mimo panel, `useRecorder` (MediaRecorder + analyser, silence detection ~1.3 s, 8 s no-speech, 30 s cap), `POST /stt` (OpenAI transcription, `mimo_voice_transcription`, 60/min, ≤ 10 MB), chat `mode: 'voice'` (short spoken replies), read-aloud `POST /tts` (ElevenLabs, `chat_tts`, `ELEVENLABS_VOICES`, «Voz de Mimo» picker with preview, browser `speechSynthesis` fallback), «Leer las respuestas en voz alta» (`localStorage mimo.speak`), «Manos libres» hands-free loop, «Mimo, manos libres» in cook mode (silence doesn't end it, leaving `/cook` does; `lib/mimoHandsFree.ts`), Web Speech recogniser fallback, no spoken activation phrase (Mimo opens with a tap, D-032), profile chapter 04 «Mimo por voz», voice onboarding loop, cooking by voice, Spanish. OpenAI Realtime retired (no `/realtime/*`, no orb overlay, no «Modo voz» toggle, no minutes quota; `voice_transcripts` no longer written).
 
-**Source**: `apps/web/src/components/mimo/MimoProvider.tsx`, `apps/web/src/components/mimo/MimoPanel.tsx`, `apps/web/src/hooks/useRecorder.ts`, `apps/web/src/hooks/useVoice.ts`, `apps/api/src/routes/stt.ts`, `apps/api/src/routes/tts.ts`, `apps/api/src/services/stt.ts`, `apps/api/src/services/tts.ts`
+**Source**: `apps/web/src/components/mimo/MimoProvider.tsx`, `apps/web/src/components/mimo/MimoPanel.tsx`, `apps/web/src/hooks/useRecorder.ts`, `apps/web/src/hooks/useVoice.ts`, `apps/web/src/lib/mimoHandsFree.ts`, `apps/api/src/routes/stt.ts`, `apps/api/src/routes/tts.ts`, `apps/api/src/services/stt.ts`, `apps/api/src/services/tts.ts`
 
 ---
 

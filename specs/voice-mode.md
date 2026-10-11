@@ -10,7 +10,8 @@ Talking to Mimo, the assistant, from the floating companion on any signed-in pag
 - **Spoken replies.** A spoken turn is sent with `mode: 'voice'`, so Mimo answers briefly, in a form meant to be heard. Spoken turns are always read aloud.
 - **Read typed replies aloud.** The toggle «Leer las respuestas en voz alta» (panel header icon, and in the profile) also reads replies to typed messages. Off by default; stored per device (`localStorage mimo.speak`).
 - **Stop talking.** «Parar» under the composer, or a new mic tap, cuts Mimo off.
-- **«Manos libres».** A toggle in the composer: Mimo starts listening, and after each reply it listens again, so users can cook and talk without touching the screen. The conversation ends quietly (hands-free turns off) when nobody speaks for 8 s. The status line reads «Manos libres» between turns.
+- **«Manos libres».** A toggle in the composer: Mimo starts listening, and after each reply it listens again, so users can cook and talk without touching the screen. The conversation ends quietly (hands-free turns off) when nobody speaks for 8 s — except in cook mode. The status line reads «Manos libres» between turns.
+- **Hands-free in cook mode** (PRO-55). The «Mimo, manos libres» pill in `/recipes/[id]/cook` opens Mimo listening in hands-free. There a silence never ends it: Mimo just listens again (nothing is sent to transcribe). It ends on tapping the pill or «Manos libres» again, «Parar» (always shown in the panel while hands-free is on in cook mode), closing the panel, or leaving `/cook`. See [Cooking mode](./cooking-mode.md).
 - **Choose the voice.** When the API offers several ElevenLabs voices, a «Voz» picker shows in the panel header and «Voz de Mimo» in the profile; picking one plays a short preview («Hola, soy Mimo. Así sueno con esta voz…») and is remembered on the device.
 - **Cooking by voice.** In cook mode, «siguiente», «repite», «pon un temporizador de 10 minutos» work typed or spoken; Mimo knows which recipe is open (see [Advisor](./advisor.md) → Page context and [Cooking mode](./cooking-mode.md)).
 - **Voice onboarding** (`/onboarding/voz`) runs the same loop with `mode: 'onboarding'` (see [User Memory](./user-memory.md)).
@@ -29,7 +30,7 @@ Card «Voz» on `/profile` (`data-testid="profile-mimo-voice"`, with a status li
 2. **Transcribe**: `POST /stt` (auth, 60 requests/min, monthly spend cap; multipart `audio` ≤ 10 MB, `audio/*` only) → OpenAI transcription (`OPENAI_TRANSCRIBE_MODEL`, Spanish prompt about menus and recipes) → `{ text }`. Cost feature `mimo_voice_transcription`. Empty text in hands-free → listen again.
 3. **Answer**: the text goes to `POST /assistant/:userId/chat` with `mode: 'voice'` and the page path, like any typed turn (same history, skills, budget).
 4. **Speak**: `POST /tts { text, voice }` (ElevenLabs). The API strips Markdown/links/emoji, says abbreviations in full (`spokenUnits`: «10 min» → «10 minutos», «1 cda» → «1 cucharada», «10-15 min» → «de 10 a 15 minutos», «180 °C» → «180 grados», «4,99 €», «%», «p. ej.», «aprox.»; the conjunction in «7 u 8» stays), cuts at ~1.200 characters on a sentence end, streams MP3 and records the characters (`chat_tts`, `elevenlabs/<model>`, per 1,000 chars). Since 2026-10-09 production and staging offer a single voice, Miguel's clone («Miguel»), so no picker shows (the picker only appears with several voices). Off or failing → the browser's built-in Spanish voice (`speechSynthesis`).
-5. **Hands-free**: once playback ends, back to step 1.
+5. **Hands-free**: once playback ends, back to step 1. A silent turn (nobody spoke) sends nothing; in cook mode it goes straight back to step 1, elsewhere it ends hands-free.
 
 Browsers without MediaRecorder fall back to the Web Speech API recogniser (`useVoice`); its transcript becomes the same spoken turn.
 
@@ -44,7 +45,7 @@ Browsers without MediaRecorder fall back to the Web Speech API recogniser (`useV
 
 - No spoken activation phrase (D-032): opening Mimo always takes a tap. Hands-free only runs while the panel is open.
 - If the mic is denied or missing, the recording ends without a message and Mimo goes back to idle.
-- Hands-free gives up after 8 s of silence, which can be short while cooking; tap the mic to resume.
+- Outside cook mode, hands-free gives up after 8 s of silence; tap the mic to resume. In cook mode it keeps listening (`handsFreeAfterSilence` in `lib/mimoHandsFree.ts`) until turned off or the user leaves `/cook`; a mic error (no permission, no device) always stops it.
 - Without `OPENAI_API_KEY`, `POST /stt` answers 503 `STT_DISABLED`; a transcription error is 502 «No te he entendido. Prueba otra vez.», shown in the panel.
 - Library ElevenLabs voices need a paid plan (free → 402, so the browser voice is used).
 - No voice-minutes quota: spoken turns cost one transcription + one chat turn (+ TTS characters), all under the monthly € cap (`USER_MONTHLY_SPEND_CAP_EUR`) and the chat budget ([Advisor](./advisor.md) → Cost guardrail).
@@ -65,6 +66,7 @@ Browsers without MediaRecorder fall back to the Web Speech API recogniser (`useV
 
 - [apps/web/src/components/mimo/MimoProvider.tsx](../apps/web/src/components/mimo/MimoProvider.tsx) — voice loop, hands-free, read-aloud setting
 - [apps/web/src/components/mimo/MimoPanel.tsx](../apps/web/src/components/mimo/MimoPanel.tsx) — mic, «Manos libres», voice picker, status line
+- [apps/web/src/lib/mimoHandsFree.ts](../apps/web/src/lib/mimoHandsFree.ts) — hands-free rules for cook mode (`handsFreeAfterSilence`, `leavesCookMode`)
 - [apps/web/src/hooks/useRecorder.ts](../apps/web/src/hooks/useRecorder.ts) — recording with silence detection
 - [apps/web/src/hooks/useVoice.ts](../apps/web/src/hooks/useVoice.ts) — read-aloud (`POST /tts`, browser fallback) and the Web Speech recogniser fallback
 - [apps/web/src/app/profile/page.tsx](../apps/web/src/app/profile/page.tsx) — «Voz» card
@@ -72,4 +74,4 @@ Browsers without MediaRecorder fall back to the Web Speech API recogniser (`useV
 - [apps/api/src/routes/stt.ts](../apps/api/src/routes/stt.ts), [apps/api/src/services/stt.ts](../apps/api/src/services/stt.ts) — `POST /stt`
 - [apps/api/src/routes/tts.ts](../apps/api/src/routes/tts.ts), [apps/api/src/services/tts.ts](../apps/api/src/services/tts.ts) — `GET /tts/voices`, `POST /tts`
 - [apps/api/src/config/env.ts](../apps/api/src/config/env.ts) — `OPENAI_API_KEY`, `OPENAI_TRANSCRIBE_MODEL`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICES`, `ELEVENLABS_MODEL`
-- Tests: `apps/api/src/tests/spendCap.test.ts` (stt/tts gated); e2e `apps/web/e2e/voice-toggle.spec.ts` (read-aloud switch; no «Escuchar» switch on `/profile`), `chat-voice.spec.ts`, `mimo-companion.spec.ts`
+- Tests: `apps/api/src/tests/spendCap.test.ts` (stt/tts gated), `mimoHandsFreeCook.test.ts`; e2e `apps/web/e2e/cook-handsfree.spec.ts`, `voice-toggle.spec.ts` (read-aloud switch; no «Escuchar» switch on `/profile`), `chat-voice.spec.ts`, `mimo-companion.spec.ts`

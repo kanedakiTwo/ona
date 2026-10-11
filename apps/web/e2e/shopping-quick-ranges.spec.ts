@@ -24,13 +24,14 @@ async function browserDates(page: Page) {
     const now = new Date()
     const monday = new Date(now)
     monday.setDate(now.getDate() - ((now.getDay() + 6) % 7))
-    return { today: iso(now), weekStart: iso(monday) }
+    const defaultTo = new Date(monday)
+    defaultTo.setDate(monday.getDate() + 13)
+    return { today: iso(now), weekStart: iso(monday), defaultTo: iso(defaultTo) }
   })
 }
 
-async function listCount(page: Page, headers: Record<string, string>, from?: string, to?: string) {
-  const qs = from && to ? `?from=${from}&to=${to}` : ''
-  const res = await page.request.get(`${apiUrl}/shopping-list${qs}`, { headers })
+async function listCount(page: Page, headers: Record<string, string>, from: string, to: string) {
+  const res = await page.request.get(`${apiUrl}/shopping-list?from=${from}&to=${to}`, { headers })
   expect(res.ok(), `shopping-list ${res.status()}`).toBeTruthy()
   const body = await res.json()
   return (body.items ?? []).length as number
@@ -41,13 +42,15 @@ test('/shopping: «Hoy» shows only today, «Esta semana» restores the default 
   await registerFreshUser(page)
   if (page.url().includes('/onboarding')) await completeOnboarding(page)
   const { headers, userId } = await auth(page)
-  const { today, weekStart } = await browserDates(page)
+  const { today, weekStart, defaultTo } = await browserDates(page)
   const gen = await page.request.post(`${apiUrl}/menu/generate`, { headers, data: { userId, weekStart } })
   expect(gen.ok(), `menu/generate ${gen.status()}`).toBeTruthy()
 
-  // What the API builds for today alone vs. the default range.
+  // What the API builds for today alone vs. the default range. Both with
+  // explicit dates, as the page sends them: the API's own default uses
+  // Madrid's date, which can be a day ahead of the browser's (CI runs in UTC).
   const todayCount = await listCount(page, headers, today, today)
-  const defaultCount = await listCount(page, headers)
+  const defaultCount = await listCount(page, headers, today, defaultTo)
   expect(todayCount).toBeLessThanOrEqual(defaultCount)
 
   await page.goto('/shopping')

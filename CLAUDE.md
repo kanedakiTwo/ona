@@ -213,3 +213,9 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 
 - [ ] **MIG-14 · Abrir el registro el día D** — Hasta el 12 de enero solo se entra con invitación (beta cerrada).
   - Cómo: ese día, pon `REGISTRATION_MODE=open` en `ona-api` de producción (o pídeselo a Claude). Opcional antes: la clave `USDA_FDC_API_KEY` en GitHub Actions para que el CI pruebe también la búsqueda de ingredientes.
+
+- [ ] **MIG-16 · Cambiar la contraseña de la base de datos de producción** — El 11 de octubre se imprimió por error en una sesión de Claude (solo quedó en el registro de esa conversación).
+  - Cómo: dile a Claude «rota la contraseña de Postgres de producción»; la cambia, comprueba que `ona-api` vuelve a conectar y actualiza el secreto de la sincronización con staging si hiciera falta. Hecho = contraseña nueva y la app funcionando.
+
+- [ ] **MIG-17 · Revisar el tope mensual de Mimo por usuario** — Desde el 12 de octubre Mimo usa Claude Sonnet 5.5 (antes Haiku 4.5): cada mensaje cuesta unos 0,02–0,03 $ en vez de unos 0,018 $, así que los 5 € de `ADVISOR_MONTHLY_BUDGET_EUR` dan para unos 200–500 mensajes al mes.
+  - Cómo: decidid con Finanzas (FIN-09, topes por plan) si se queda en 5 € o se sube; el cambio es una variable en `ona-api`. Hecho = cifra decidida y puesta.

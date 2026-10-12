@@ -182,6 +182,7 @@ The advisor's weekly nutrient/calorie aggregators iterate `slot.dishes` and proc
 - [apps/api/src/config/env.ts](../apps/api/src/config/env.ts) — `ADVISOR_MONTHLY_BUDGET_EUR`, `ADVISOR_EUR_PER_USD`
 - [apps/api/src/routes/advisor.ts](../apps/api/src/routes/advisor.ts) — legacy advisor routes (summary, ask)
 - [apps/api/src/services/assistant/engine.ts](../apps/api/src/services/assistant/engine.ts) — `chat()` + `runToolLoop` (model, multi-round tools, truncation/refusal handling, cache breakpoints, tool trace); tests in `apps/api/src/tests/assistantToolLoop.test.ts` and `mimoBrain.test.ts`
+- [apps/api/scripts/replayWhatsAppTurns.ts](../apps/api/scripts/replayWhatsAppTurns.ts) — replays real WhatsApp turns through the current engine against a read-only production DB (writes simulated) to check a prompt or model change before shipping it
 - [apps/api/src/services/assistant/skills.ts](../apps/api/src/services/assistant/skills.ts) — skill definitions
 - [apps/api/src/services/assistant/appSkills.ts](../apps/api/src/services/assistant/appSkills.ts) + [appApi.ts](../apps/api/src/services/assistant/appApi.ts) — UI-parity skills over the app's REST API; tests in `apps/api/src/tests/appSkills.test.ts`
 - [apps/api/src/services/assistant/shopOrderSkills.ts](../apps/api/src/services/assistant/shopOrderSkills.ts) — "Compra en mis tiendas" skills; tests in `apps/api/src/tests/shopOrderSkills.test.ts`

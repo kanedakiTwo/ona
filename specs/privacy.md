@@ -6,6 +6,7 @@ How a user deletes their account, and what the public privacy policy promises. T
 
 - Users can delete their account from **Perfil → Borrar mi cuenta**: a card explains what goes and asks for the password; "Borrar definitivamente" calls `DELETE /user/:id { password }`, then wipes local auth + the offline caches (`clearSessionData`) and lands on `/?cuenta=borrada`.
 - Anyone can read the **aviso legal** at `/aviso-legal` (LSSI art. 10, PRO-22), linked from the public footer: holder, NIF, address, contact email (`CONTACT_EMAIL`), what Mimoia is (a menu planner, not a medical device) and links to `/terminos` and `/privacidad`. During the beta the holder is Miguel as a sole trader; the data live in `LEGAL_OWNER` (`packages/shared/src/constants/legal.ts`) — replace them when the company exists. «1. Quién trata tus datos» in `/privacidad` names the same holder (RGPD art. 13). e2e `legal-notice.spec.ts`
+- Anyone can read the **términos y condiciones** at `/terminos`. Its section «3. Para qué sirve Mimoia» states the intended purpose word for word as the Mimoia HQ constitution §6 sets it (D-038, PRO-70): «Mimoia es un planificador de menús, recetas y lista de la compra para hogares, según sus gustos, preferencias y restricciones declaradas. Ofrece información general de alimentación. No está destinado a diagnosticar, prevenir, predecir, tratar ni controlar ninguna enfermedad, ni sustituye a un profesional sanitario.» Never reword it here: change the constitution first. Pinned by `apps/api/src/tests/termsIntendedPurpose.test.ts` and e2e `legal-notice.spec.ts`.
 - Users can read the privacy policy at `/privacidad` (linked from the profile, above the delete card, and from the waitlist consent checkbox).
 - People on the [waitlist](./waitlist.md) (no account) leave it with one click on `/lista/baja?t=<token>`: their email, name and supermarket are deleted, the weekly-menu newsletter is turned off, and only anonymous answers stay for the counts.
 
@@ -48,4 +49,5 @@ Runs in one transaction; image files are removed after the commit.
 - [apps/api/src/routes/users.ts](../apps/api/src/routes/users.ts) — `DELETE /user/:id`
 - [apps/web/src/components/profile/DeleteAccountCard.tsx](../apps/web/src/components/profile/DeleteAccountCard.tsx)
 - [apps/web/src/app/(public)/privacidad/page.tsx](../apps/web/src/app/(public)/privacidad/page.tsx)
+- [apps/web/src/app/(public)/terminos/page.tsx](../apps/web/src/app/(public)/terminos/page.tsx) — términos, with «Para qué sirve Mimoia» (PRO-70)
 - Tests: `apps/api/src/tests/accountDeletion.smoke.ts` (real API + DB), `apps/api/src/tests/accountDeletion.test.ts`

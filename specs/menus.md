@@ -121,7 +121,7 @@ The recipe matcher and the per-week locks are unaffected by manual shaping.
 ## Lock Behavior
 
 `PUT /menu/:menuId/day/:day/meal/:meal/lock` toggles `locked[day][meal]`:
-- Locked slots (with vetoes and "sin cocinar" days) carry into every new row for the week: `POST /menu/generate` (regenerate and "Vaciar semana") and the assistant's `generate_weekly_menu`, via `services/menuWeek.ts`. Before 2026-10-07 regenerate wrote `locked: {}` and the locked dishes were lost. Their recipes go into `usedRecipeIds` first, so the rest of the menu doesn't repeat them
+- Locked slots (with vetoes and "sin cocinar" days) carry into every new row for the week: `POST /menu/generate` (regenerate and "Vaciar semana") and the assistant's `generate_weekly_menu`, via `services/menuWeek.ts`. The assistant's `generate_weekly_menu` never remakes a week that already has dishes unless the user confirmed it (`replaceExisting: true`), and its dish tools edit the menu of the week the named day falls in, not the newest row (PRO-63, see [Advisor → Conventions](./advisor.md)). Before 2026-10-07 regenerate wrote `locked: {}` and the locked dishes were lost. Their recipes go into `usedRecipeIds` first, so the rest of the menu doesn't repeat them
 - **No accidental wipes**: `empty: true` over a week that has dishes → **409 `MENU_NOT_EMPTY`** unless `force: true`. Only the confirmed "Vaciar semana" sends `force`. The /menu page auto-creates an empty week only on a real 404 (`ApiError.status`). A failed GET (500, offline) shows "No hemos podido cargar tu menú" + "Reintentar" and never writes. Covered by `menuWeekRoute.smoke.ts` + `e2e/menu-load-failure.spec.ts`
 
 ## Menu Logs

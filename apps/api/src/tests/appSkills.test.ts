@@ -92,7 +92,7 @@ describe('menu skills', () => {
       { method: 'DELETE', path: '/menu/m1/day/5/meal/dinner', body: undefined },
       { method: 'POST', path: '/menu/m1/day/5/meal/dinner/dish', body: { kind: 'note', text: 'Cenamos fuera' } },
     ])
-    expect(r.summary).toMatch(/^Hecho: la cena del sábado queda como "Cenamos fuera"/)
+    expect(r.summary).toMatch(/^Hecho: la cena del sábado \d+ de \w+ queda como "Cenamos fuera"/)
   })
 
   it('set_meal_note on next week reads next Monday and can keep dishes', async () => {
@@ -105,13 +105,14 @@ describe('menu skills', () => {
   it('says there is no menu instead of silently doing nothing', async () => {
     const f = fakeApi({ 'GET /menu/*': new AppApiError(404, 'Menu not found') })
     const r = await get('clear_meal').handler({ dayIndex: 1, meal: 'lunch' }, ctx(f.api))
-    expect(r.summary).toMatch(/No hay menú esta semana/)
+    expect(r.summary).toMatch(/No hay menú para la semana del lunes \d+ de \w+; no he cambiado nada/)
     expect(writes(f.calls)).toEqual([])
   })
 
   it('validates day and meal', async () => {
     const f = fakeApi()
     expect((await get('clear_meal').handler({ dayIndex: 9, meal: 'lunch' }, ctx(f.api))).summary).toMatch(/dayIndex/)
+    expect((await get('clear_meal').handler({ day: 'el día de la marmota', meal: 'lunch' }, ctx(f.api))).summary).toMatch(/No sé qué día/)
     expect((await get('clear_meal').handler({ dayIndex: 1, meal: 'brunch' }, ctx(f.api))).summary).toMatch(/meal/)
   })
 

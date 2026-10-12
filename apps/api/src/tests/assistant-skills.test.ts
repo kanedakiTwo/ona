@@ -121,10 +121,10 @@ describe('get_todays_menu', () => {
     lunch: { dishes: [{ kind: 'recipe', recipeId: `r-${i}`, recipeName: `Plato ${i}` }] },
   })
 
-  it('reports no menu when none exists (no current-week menu, no fallback)', async () => {
-    const db = makeDb(/* current week */ [], /* latest */ [])
+  it('reports no menu when the week has none (never another week\'s menu)', async () => {
+    const db = makeDb(/* that week */ [])
     const r = await skill.handler({}, ctx(db))
-    expect(r.summary).toContain('No tienes ningun menu')
+    expect(r.summary).toContain('No hay menu para la semana del')
     expect(r.data).toBeNull()
   })
 
@@ -132,7 +132,7 @@ describe('get_todays_menu', () => {
     const menu = { id: 'm-1', days: Array.from({ length: 7 }, (_, i) => dishDay(i)) }
     const db = makeDb([menu])
     const r = await skill.handler({ dayIndex: 2 }, ctx(db))
-    expect(r.summary).toContain('miercoles')
+    expect(r.summary).toContain('miércoles')
     expect(r.summary).toContain('comida: Plato 2')
     expect(r.data?.dayIndex).toBe(2)
   })
@@ -152,26 +152,18 @@ describe('get_todays_menu', () => {
         ],
       },
     }
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-14T10:00:00Z'))
     const db = makeDb([{ id: 'm-1', days: [day] }])
-    const r = await skill.handler({ dayIndex: 0 }, ctx(db))
+    const r = await skill.handler({ dayIndex: 0 }, ctx(db)).finally(() => vi.useRealTimers())
     expect(r.summary).toBe(
-      'Menu del lunes: comida: Lentejas estofadas + Ensalada verde, cena: Cenamos en casa de Paqui + Crema de calabaza (sobras)',
+      'Menu del lunes 12 de octubre: comida: Lentejas estofadas + Ensalada verde, cena: Cenamos en casa de Paqui + Crema de calabaza (sobras)',
     )
   })
 
-  it("falls back to the latest menu when this week's doesn't exist", async () => {
-    const menu = { id: 'm-old', days: Array.from({ length: 7 }, (_, i) => dishDay(i)) }
-    const db = makeDb(/* current week */ [], /* latest */ [menu])
-    const r = await skill.handler({ dayIndex: 4 }, ctx(db))
-    expect(r.summary).toContain('Plato 4')
-    expect(r.data?.menuId).toBe('m-old')
-  })
-
-  it('rejects an out-of-range dayIndex', async () => {
-    const menu = { id: 'm-1', days: [{}, {}, {}] }
-    const db = makeDb([menu])
-    const r = await skill.handler({ dayIndex: 9 }, ctx(db))
-    expect(r.summary).toContain('fuera de rango')
+  it('rejects an out-of-range dayIndex without reading anything', async () => {
+    const r = await skill.handler({ dayIndex: 9 }, ctx(makeDb()))
+    expect(r.summary).toMatch(/Falta el día/)
   })
 
   it('falls back to today when dayIndex is omitted', async () => {
@@ -340,7 +332,7 @@ describe('generate_weekly_menu', () => {
     const previous = { days: prevDays, locked: { '0': { lunch: true } }, bannedRecipeIds: ['r-ban'], skippedDays: [6] }
     const inserted = { id: 'm-new', days: prevDays }
     vi.mocked(generateMenu).mockClear()
-    await skill.handler({}, ctx(makeDb([previous], [inserted], [{ id: 'log-1' }])))
+    await skill.handler({ replaceExisting: true }, ctx(makeDb([previous], [inserted], [{ id: 'log-1' }])))
     const args = vi.mocked(generateMenu).mock.calls[0] as any[]
     expect(args[4]).toEqual({ '0': { lunch: true } })
     expect(args[5]).toBe(prevDays)
@@ -366,14 +358,12 @@ describe('swap_meal', () => {
   it('refuses when there is no menu', async () => {
     const db = makeDb([])
     const r = await skill.handler({ dayIndex: 0, meal: 'lunch' }, ctx(db))
-    expect(r.summary).toContain('No tienes menu')
+    expect(r.summary).toMatch(/No hay menu para la semana del .*no he cambiado nada/)
   })
 
   it('rejects an out-of-range day', async () => {
-    const menu = { id: 'm-1', days: [{}, {}, {}] }
-    const db = makeDb([menu])
-    const r = await skill.handler({ dayIndex: 8, meal: 'lunch' }, ctx(db))
-    expect(r.summary).toContain('fuera de rango')
+    const r = await skill.handler({ dayIndex: 8, meal: 'lunch' }, ctx(makeDb()))
+    expect(r.summary).toMatch(/Falta el día.*No he cambiado nada/)
   })
 
   it('updates the slot when a replacement is found', async () => {
@@ -494,7 +484,7 @@ describe('mark_meal_eaten', () => {
     }
     const db = makeDb([menu], [{ ...menu }])
     const r = await skill.handler({ dayIndex: 0, meal: 'lunch', eaten: true }, ctx(db))
-    expect(r.summary).toContain('Pollo del lunes marcada como comida')
+    expect(r.summary).toMatch(/"Pollo" \(comida del lunes \d+ de \w+\) marcada como comida/)
     // The handler mutates `days[idx][meal]` in place before update.
     expect((menu.days[0].lunch as any).eatenAt).toBeTruthy()
   })

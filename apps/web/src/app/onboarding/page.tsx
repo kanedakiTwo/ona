@@ -2,20 +2,27 @@
 
 import { useAuth } from "@/lib/auth"
 import { useRouter } from "next/navigation"
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 import OnboardingFlow from "@/components/onboarding/OnboardingFlow"
 
 export default function OnboardingPage() {
   const { user, isLoading } = useAuth()
   const router = useRouter()
+  // Onboarded already when this page first saw the user? Only then does the
+  // page redirect: when the flow itself finishes, OnboardingFlow /
+  // OnboardingWhatsApp navigate (OnboardingFlow may open next week's menu,
+  // PRO-65, and a second push("/menu") here would race it).
+  const onboardedOnArrival = useRef<boolean | null>(null)
 
   useEffect(() => {
     if (!isLoading && !user) {
       router.push("/login")
     }
-    if (!isLoading && user?.onboardingDone) {
-      // Straight to /menu ("/" only bounces onboarded users there), so it
-      // doesn't race OnboardingFlow's own push("/menu") through the landing.
+    if (!isLoading && user && onboardedOnArrival.current === null) {
+      onboardedOnArrival.current = Boolean(user.onboardingDone)
+    }
+    if (!isLoading && user?.onboardingDone && onboardedOnArrival.current) {
+      // Straight to /menu ("/" only bounces onboarded users there).
       router.push("/menu")
     }
   }, [user, isLoading, router])

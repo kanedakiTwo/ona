@@ -368,7 +368,7 @@ export default function MenuPage() {
   const banned = !isPastWeek && menu ? menu.bannedRecipeIds ?? [] : []
 
   // «Primeros pasos» (PRO-07): once the week is on screen, so step 1 has a dish to light up.
-  const firstSteps = <FirstStepsGuide userId={user.id} ready={Boolean(menu) && !menuLoading && isCurrentWeek} />
+  const firstSteps = <FirstStepsGuide userId={user.id} ready={Boolean(menu) && !menuLoading && !isPastWeek} />
 
   const weekSheet = (
     <WeekActionsSheet

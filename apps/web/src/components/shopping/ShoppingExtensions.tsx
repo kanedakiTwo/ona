@@ -46,7 +46,14 @@ function fmtEur(n: number): string {
   return n.toLocaleString("es-ES", { style: "currency", currency: "EUR" })
 }
 
-export function ListTotalBanner({ listId }: { listId: string }) {
+export function ListTotalBanner({
+  listId,
+  title = "Total semanal estimado",
+}: {
+  listId: string
+  /** Follows the /shopping shortcut: «Total de hoy estimado»… (PRO-69). */
+  title?: string
+}) {
   const { data } = useListTotal(listId)
   if (!data) return null
   const { totalEur, pricedCount, unpricedCount } = data
@@ -58,8 +65,11 @@ export function ListTotalBanner({ listId }: { listId: string }) {
           <Wallet size={17} />
         </div>
         <div className="min-w-0">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">
-            Total semanal estimado
+          <div
+            data-testid="shopping-total-title"
+            className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted"
+          >
+            {title}
           </div>
           <div className="mt-0.5 font-serif-text text-[26px] font-[650] leading-none text-ink tabular-nums">
             {pricedCount > 0 ? fmtEur(totalEur) : "—"}

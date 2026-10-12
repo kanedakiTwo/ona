@@ -27,7 +27,7 @@ import { useMenu } from '@/hooks/useMenu'
 import { haptic } from '@/lib/pwa/haptics'
 import { share } from '@/lib/pwa/share'
 import { AISLE_LABELS, AISLE_ORDER, aisleLabel } from '@/lib/labels'
-import { activeQuickRange, quickRanges, shiftIso } from '@/lib/shoppingRange'
+import { activeQuickRange, quickRanges, shiftIso, totalTitle } from '@/lib/shoppingRange'
 import {
   ListTotalBanner,
   AddManualItemForm,
@@ -204,11 +204,15 @@ export default function ShoppingPage() {
           </div>
         </header>
 
-        {/* ONE chip row: date range (opens the dates sheet) + aisles (filter) */}
+        {/* ONE chip row: date range (opens the dates sheet) + aisles (filter).
+            On a phone it slides sideways; the trailing spacer keeps a visible
+            margin after the last chip (scroll containers may drop the end
+            padding), and the pressed shortcut slides into view (PRO-69). */}
         <div
-          className="scrollbar-none mt-3 flex gap-2 overflow-x-auto px-5 py-1 lg:mt-5 lg:flex-wrap lg:overflow-visible lg:px-0"
+          className="scrollbar-none mt-3 flex gap-2 overflow-x-auto pl-5 py-1 lg:mt-5 lg:flex-wrap lg:overflow-visible lg:px-0"
           aria-label="Filtrar la lista"
           role="group"
+          data-testid="shopping-chip-row"
         >
           <WeekStep
             dir="prev"
@@ -238,10 +242,11 @@ export default function ShoppingPage() {
             <Chip
               key={r.key}
               active={activeShortcut === r.key}
-              onClick={() => {
+              onClick={(e) => {
                 haptic.light()
                 setFrom(r.from)
                 setTo(r.to)
+                e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
               }}
               pressable
             >
@@ -270,6 +275,7 @@ export default function ShoppingPage() {
               ))}
             </>
           )}
+          <span aria-hidden="true" className="w-3 shrink-0 lg:hidden" />
         </div>
 
         {/* Progress + € total */}
@@ -310,7 +316,7 @@ export default function ShoppingPage() {
               </span>
             </div>
           </div>
-          {shoppingList && <ListTotalBanner listId={shoppingList.id} />}
+          {shoppingList && <ListTotalBanner listId={shoppingList.id} title={totalTitle(activeShortcut)} />}
         </div>
 
         {/* Tabs: lista / despensa */}
@@ -456,7 +462,7 @@ function Chip({
   ariaHaspopup,
 }: {
   active: boolean
-  onClick: () => void
+  onClick: (e: React.MouseEvent<HTMLButtonElement>) => void
   children: React.ReactNode
   pressable?: boolean
   ariaHaspopup?: boolean

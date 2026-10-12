@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { activeQuickRange, quickRanges, shiftIso } from '../../../web/src/lib/shoppingRange'
+import { activeQuickRange, quickRanges, shiftIso, totalTitle } from '../../../web/src/lib/shoppingRange'
 
 describe('shiftIso', () => {
   it('crosses month and year boundaries', () => {
@@ -44,5 +44,14 @@ describe('quickRanges', () => {
     expect(activeQuickRange(ranges, today, defaultTo)).toBe('semana')
     expect(activeQuickRange(ranges, '2026-10-21', '2026-11-01')).toBeNull()
     expect(activeQuickRange(ranges, today, '2026-10-16')).toBeNull()
+  })
+})
+
+describe('totalTitle (PRO-69)', () => {
+  it('names the day for «Hoy» and «Mañana», and keeps the weekly title otherwise', () => {
+    expect(totalTitle('hoy')).toBe('Total de hoy estimado')
+    expect(totalTitle('manana')).toBe('Total de mañana estimado')
+    expect(totalTitle('semana')).toBe('Total semanal estimado')
+    expect(totalTitle(null)).toBe('Total semanal estimado')
   })
 })

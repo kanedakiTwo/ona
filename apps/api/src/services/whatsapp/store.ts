@@ -89,7 +89,7 @@ export async function updateInbound(
     body?: string | null
     userId?: string | null
     errorMessage?: string | null
-    meta?: { tools?: string[]; corrections?: string[]; ms?: number }
+    meta?: { tools?: string[]; corrections?: string[]; ms?: number; toolTrace?: import('../assistant/types.js').ToolTrace[]; photo?: boolean }
   },
 ): Promise<void> {
   await db.update(whatsappMessages).set(patch).where(eq(whatsappMessages.wamid, wamid))
@@ -133,6 +133,7 @@ export async function loadHistoryRows(phone: string, since: Date, userId: string
       body: whatsappMessages.body,
       status: whatsappMessages.status,
       createdAt: whatsappMessages.createdAt,
+      meta: whatsappMessages.meta,
     })
     .from(whatsappMessages)
     .where(

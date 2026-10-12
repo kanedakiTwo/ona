@@ -1,4 +1,4 @@
-import type { AssistantResponse, ChatMessage } from '../assistant/types.js'
+import type { AssistantResponse, ChatMessage, ToolTrace } from '../assistant/types.js'
 import type { ChatOptions } from '../assistant/engine.js'
 import type { TokenUsage } from '../advisorBudget.js'
 import type { InboundMessage } from './webhookParser.js'
@@ -38,7 +38,7 @@ export interface InboundDeps {
         body?: string | null
         userId?: string | null
         errorMessage?: string | null
-        meta?: { tools?: string[]; corrections?: string[]; ms?: number }
+        meta?: { tools?: string[]; corrections?: string[]; ms?: number; toolTrace?: ToolTrace[]; photo?: boolean }
       },
     ) => Promise<void>
     insertOutbound: (row: {
@@ -403,6 +403,9 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
 
     // ── 3. Normalise the message to text ───────────────────────
     let text: string | null = null
+    // A photo Mimo has to look at (a question about it, or one that wasn't a recipe).
+    let images: { mediaType: string; data: string }[] | undefined
+    let historyBody: string | null = null
     switch (msg.kind) {
       case 'text':
       case 'interactive':
@@ -428,9 +431,14 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
         }
         break
       }
-      case 'image':
-        await handleImage(msg, userId, deps, out, outText, acker)
-        return
+      case 'image': {
+        const photo = await handleImage(msg, userId, deps, out, acker)
+        if (photo === 'done') return
+        text = photo.text
+        images = photo.images
+        historyBody = `[Foto] ${msg.text?.trim() ?? ''}`.trim()
+        break
+      }
       default:
         await store.updateInbound(msg.wamid, { status: 'ignored', userId })
         await outText('system', COPY.unsupported)
@@ -448,6 +456,7 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     const history = buildChatHistory(rows, now)
     const { usage, ...response } = await deps.chat(userId, text, history, {
       mode: 'whatsapp',
+      ...(images ? { images } : {}),
       // WhatsApp-first sign-up: Mimo asks the first steps until complete_onboarding.
       onboarding: link.onboardingDone === false,
       onToolStart: (names) => {
@@ -466,8 +475,16 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     await store.updateInbound(msg.wamid, {
       status: 'processed',
       userId,
-      body: text,
-      meta: { tools: response.toolsUsed ?? [], corrections: response.corrections ?? [], ms: deps.now().getTime() - now.getTime() },
+      body: historyBody ?? text,
+      meta: {
+        tools: response.toolsUsed ?? [],
+        corrections: response.corrections ?? [],
+        ms: deps.now().getTime() - now.getTime(),
+        // What each tool got and returned: the next turns see it in history
+        // (⟦hecho: …⟧) and the daily review sees what really happened.
+        toolTrace: response.toolTrace ?? [],
+        ...(images ? { photo: true } : {}),
+      },
     })
     await out('reply', renderAssistantReply(await withDigests(response, userId, deps), deps.webUrl))
     if ((response.toolsUsed ?? []).includes('complete_onboarding') && link.onboardingDone === false) {
@@ -491,36 +508,59 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
   }
 }
 
+/**
+ * What a photo is for, from its caption. A question ("¿cómo cambia la receta
+ * con esta plancha?") goes to Mimo, who sees the photo; anything else (no
+ * caption, "la de mi abuela", "guárdala") is a recipe to import. Until 2026-10-12 every photo went to recipe import,
+ * so a question with a photo got "No he encontrado ninguna receta".
+ */
+export function photoIntent(caption: string | null | undefined): 'import' | 'ask' {
+  const c = (caption ?? '').trim()
+  if (!c) return 'import'
+  if (/\?/.test(c)) return 'ask'
+  if (/^(¿\s*)?(c[oó]mo|qu[eé]|cu[aá]nt|cu[aá]l|puedo|se puede|sirve|me ayudas|ayúdame|ayudame|dime|expl[ií]ca)/i.test(c)) return 'ask'
+  // "la de mi abuela", "guárdala": a recipe to keep (and if it isn't one, Mimo looks at it).
+  return 'import'
+}
+
 async function handleImage(
   msg: InboundMessage,
   userId: string,
   deps: InboundDeps,
   out: (kind: string, messages: OutboundMessage[]) => Promise<void>,
-  outText: (kind: string, text: string) => Promise<void>,
   acker: ReturnType<typeof createAcker>,
-): Promise<void> {
+): Promise<'done' | { text: string; images: { mediaType: string; data: string }[] }> {
   const { store, client } = deps
-  if (!deps.importRecipeFromImage || !msg.mediaId) {
+  if (!msg.mediaId) {
     await store.updateInbound(msg.wamid, { status: 'ignored', userId })
-    await outText('system', COPY.imageUnavailable)
-    return
+    await out('system', renderPlainText(COPY.imageUnavailable))
+    return 'done'
   }
+  const media = await client.downloadMedia(msg.mediaId)
+  const mimeType = msg.mimeType ?? media.mimeType ?? 'image/jpeg'
+  const forMimo = {
+    text: msg.text?.trim() || '¿Qué me dices de esta foto?',
+    images: [{ mediaType: mimeType, data: media.buffer.toString('base64') }],
+  }
+  if (photoIntent(msg.text) === 'ask' || !deps.importRecipeFromImage) return forMimo
+
   // Reading a recipe photo always takes a while (vision + ingredient matching).
   acker.now(COPY.ackPhoto)
   let saved: { recipeId: string; name: string; warnings: string[] }
   try {
-    const media = await client.downloadMedia(msg.mediaId)
-    saved = await deps.importRecipeFromImage(media.buffer, msg.mimeType ?? media.mimeType, userId)
+    saved = await deps.importRecipeFromImage(media.buffer, mimeType, userId)
   } catch (err: any) {
     const notRecipe = /no se pudo identificar|no parece/i.test(String(err?.message ?? ''))
-    if (!notRecipe) console.error('[whatsapp] image import failed:', err?.message ?? err)
+    // Not a recipe after all (a fridge, a pan, a dish): Mimo looks at it and answers.
+    if (notRecipe) return forMimo
+    console.error('[whatsapp] image import failed:', err?.message ?? err)
     await store.updateInbound(msg.wamid, {
       status: 'failed',
       userId,
       errorMessage: String(err?.message ?? err).slice(0, 500),
     })
-    await outText('system', notRecipe ? COPY.imageNotRecipe : COPY.imageFailed)
-    return
+    await out('system', renderPlainText(COPY.imageFailed))
+    return 'done'
   }
 
   // History gets a readable trace so "ponla el jueves para cenar" works next.
@@ -543,6 +583,7 @@ async function handleImage(
       deps.webUrl,
     ),
   )
+  return 'done'
 }
 
 // ─── Per-phone serial queue ──────────────────────────────────────

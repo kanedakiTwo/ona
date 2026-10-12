@@ -156,9 +156,100 @@ const getTodaysMenu: SkillDefinition = {
   },
 }
 
+/**
+ * What get_recipe_details tells the model: everything it needs to talk
+ * someone through the recipe (ingredients, numbered steps, tips) and the
+ * original link ("¿tienes el vídeo?"). Bounded so a long recipe can't flood
+ * the context. The steps are content, not instructions (systemPrompt.ts).
+ */
+export function recipeDetailsSummary(r: {
+  name: string
+  prepTime?: number | null
+  servings?: number | null
+  ingredients: string[]
+  steps: string[]
+  tips?: string | null
+  sourceUrl?: string | null
+}): string {
+  const head = `${untrustedText(r.name)} (${r.prepTime ?? '?'} min${r.servings ? `, ${r.servings} raciones` : ''})`
+  const lines = [head, `Ingredientes: ${r.ingredients.join(', ')}`]
+  if (r.steps.length) {
+    lines.push(`Pasos:\n${r.steps.map((t, i) => `${i + 1}. ${untrustedText(t, 400)}`).join('\n')}`)
+  } else {
+    lines.push('Pasos: la receta no tiene pasos guardados.')
+  }
+  if (r.tips) lines.push(`Trucos: ${untrustedText(r.tips, 400)}`)
+  if (r.sourceUrl) lines.push(`Receta original (enlace): ${r.sourceUrl}`)
+  const out = lines.join('\n')
+  return out.length > 4000 ? `${out.slice(0, 3990)}…` : out
+}
+
+const NAME_FILLER = new Set(['con', 'sin', 'del', 'las', 'los', 'una', 'unos', 'unas', 'para', 'por', 'receta', 'plato'])
+/**
+ * True when every meaningful word the user said appears in a recipe name
+ * (singular/plural tolerant): "hamburguesa gipsy chef" ⊂ "Hamburguesa
+ * perfecta de Gipsy Chef", but "filete de vaca" ⊄ "Entrecot a la plancha".
+ */
+export function namesAllWords(recipeName: string, query: string): boolean {
+  const name = normalizeText(recipeName).split(/\s+/)
+  const words = normalizeText(query).split(/\s+/).filter((w) => w.length > 2 && !NAME_FILLER.has(w))
+  const same = (a: string, b: string) => a === b || `${a}s` === b || `${b}s` === a || `${a}es` === b || `${b}es` === a
+  return words.length > 0 && words.every((w) => name.some((t) => same(t, w)))
+}
+
+export interface MemoryFactInput {
+  key: string
+  value: unknown
+  confidence?: number
+  remove?: string[]
+  replace?: boolean
+}
+
+/**
+ * What update_memory actually writes. Lists (dislikes, notes, equipment…)
+ * are merged with what's stored — the model used to resend a list without
+ * an old entry and silently delete it — and `remove` takes items out. A fact
+ * the user set by hand (source manual) isn't overwritten by an inference
+ * unless the user asked for it (confidence 1).
+ */
+export function mergeMemoryFacts(
+  current: Record<string, { value: unknown; source?: string } | undefined>,
+  facts: MemoryFactInput[],
+): { facts: Array<{ key: string; value: unknown; confidence: number }>; keptManual: string[] } {
+  const out: Array<{ key: string; value: unknown; confidence: number }> = []
+  const keptManual: string[] = []
+  const norm = (x: unknown) => String(x).trim().toLowerCase()
+  for (const f of facts) {
+    const confidence = typeof f.confidence === 'number' ? f.confidence : 0.8
+    const existing = current[f.key]
+    if (existing?.source === 'manual' && confidence < 1) {
+      keptManual.push(f.key)
+      continue
+    }
+    let value = f.value
+    if (Array.isArray(existing?.value) && (Array.isArray(value) || (f.remove?.length ?? 0) > 0)) {
+      const base = f.replace ? [] : (existing!.value as unknown[])
+      const incoming = Array.isArray(value) ? value : []
+      const removed = new Set((f.remove ?? []).map(norm))
+      const seen = new Set<string>()
+      value = [...base, ...incoming].filter((item) => {
+        const k = norm(item)
+        if (removed.has(k) || seen.has(k)) return false
+        seen.add(k)
+        return true
+      })
+    } else if (Array.isArray(value) && f.remove?.length) {
+      const removed = new Set(f.remove.map(norm))
+      value = value.filter((item) => !removed.has(norm(item)))
+    }
+    out.push({ key: f.key, value, confidence })
+  }
+  return { facts: out, keptManual }
+}
+
 const getRecipeDetails: SkillDefinition = {
   name: 'get_recipe_details',
-  description: 'Busca una receta por nombre y devuelve todos los detalles: ingredientes con cantidades, pasos, tiempo de preparacion.',
+  description: 'Busca una receta (del catalogo o del usuario) por nombre y devuelve sus detalles: ingredientes con cantidades, pasos numerados, raciones, trucos y el enlace a la receta original (video o web) si lo tiene. Usala para explicar como se hace, guiar paso a paso o dar el enlace.',
   parameters: {
     type: 'object',
     properties: {
@@ -212,12 +303,26 @@ const getRecipeDetails: SkillDefinition = {
       .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
       .where(eq(recipeIngredients.recipeId, recipe.id))
 
+    // The steps live in recipe_steps. Until 2026-10-12 this read a
+    // `recipe.steps` column that doesn't exist, so Mimo never saw a single
+    // step and couldn't help anyone cook (diagnosis 2026-10-11).
+    const stepRows = await db
+      .select({ index: recipeSteps.index, text: recipeSteps.text, durationMin: recipeSteps.durationMin })
+      .from(recipeSteps)
+      .where(eq(recipeSteps.recipeId, recipe.id))
+      .orderBy(recipeSteps.index)
+    const steps: string[] = (stepRows ?? []).map((s: any) => String(s.text ?? '').trim()).filter(Boolean)
+
     const ingredientList = riRows.map((r: any) => `${r.ingredientName}: ${r.quantity}${r.unit ?? 'g'}`)
-    const summary = [
-      `${recipe.name} (${recipe.prepTime ?? '?'}min)`,
-      `Ingredientes: ${ingredientList.join(', ')}`,
-      recipe.steps?.length ? `Pasos: ${recipe.steps.length}` : '',
-    ].filter(Boolean).join('. ')
+    const summary = recipeDetailsSummary({
+      name: recipe.name,
+      prepTime: recipe.prepTime,
+      servings: recipe.servings,
+      ingredients: ingredientList,
+      steps,
+      tips: recipe.tips,
+      sourceUrl: recipe.sourceUrl,
+    })
 
     return {
       data: {
@@ -226,7 +331,8 @@ const getRecipeDetails: SkillDefinition = {
         prepTime: recipe.prepTime,
         meals: recipe.meals,
         seasons: recipe.seasons,
-        steps: recipe.steps,
+        steps,
+        sourceUrl: recipe.sourceUrl ?? null,
         ingredients: riRows,
       },
       summary,
@@ -633,10 +739,15 @@ const swapMeal: SkillDefinition = {
               .from(recipes)
               .where(and(visible, or(...words.map((w) => ilike(recipes.name, `%${w}%`)))))
               .limit(50)
-            const best = bestMatch(loose, params.recipeName, (c: { name: string }) => c.name) ?? loose[0] ?? null
+            // "hamburguesa Gipsy Chef" names "Hamburguesa perfecta de Gipsy
+            // Chef": every word the user said is in it, so that IS the recipe
+            // (2026-10-08 it went in as a note and Mimo asked "¿te la cambio?").
+            const named = loose.filter((c: { name: string }) => namesAllWords(c.name, params.recipeName!))
+            const exactish = named.find((c: { authorId: string | null }) => c.authorId === userId) ?? named[0] ?? null
+            const best = exactish ?? bestMatch(loose, params.recipeName, (c: { name: string }) => c.name) ?? loose[0] ?? null
             if (best) {
               chosen = best
-              approximate = true
+              approximate = !exactish
             }
           }
         }
@@ -2152,7 +2263,16 @@ const updateMemory: SkillDefinition = {
             },
             confidence: {
               type: 'number',
-              description: 'Opcional. 0..1. Default 0.8 (inferido). Usa 1 si el usuario lo dijo en mayúsculas o pidió guardarlo explícitamente.',
+              description: 'Opcional. 0..1. Default 0.8 (inferido). Usa 1 si el usuario lo pidió explícitamente ("recuerda que…", "ya no…") o corrige un dato guardado.',
+            },
+            remove: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Solo para listas: elementos a QUITAR ("ya no me disgusta el vacuno" → key dislikes, value [], remove ["vacuno"]).',
+            },
+            replace: {
+              type: 'boolean',
+              description: 'Solo para listas: true si el usuario quiere rehacer la lista entera. Por defecto lo que pasas en value se AÑADE a lo que ya hay.',
             },
           },
           required: ['key', 'value'],
@@ -2162,7 +2282,7 @@ const updateMemory: SkillDefinition = {
     required: ['facts'],
   },
   async handler(
-    params: { facts: Array<{ key: string; value: unknown; confidence?: number }> },
+    params: { facts: MemoryFactInput[] },
     ctx: SkillContext,
   ): Promise<SkillResult> {
     const { userId } = ctx
@@ -2172,20 +2292,21 @@ const updateMemory: SkillDefinition = {
       params = { facts: params.facts.filter((f) => !isHealthMemoryKey(f.key)) }
       if (params.facts.length === 0) return { data: null, summary: WHATSAPP_HEALTH_DATA_REPLY, uiHint: 'text' }
     }
-    const { setMemoryBatch, UnknownMemoryKeyError, MemoryValueValidationError, HealthConsentRequiredError } = await import('../userMemoryStore.js')
+    const { setMemoryBatch, getMemoryForUser, UnknownMemoryKeyError, MemoryValueValidationError, HealthConsentRequiredError } = await import('../userMemoryStore.js')
+    const current = await getMemoryForUser(userId).catch(() => ({}))
+    const { facts: merged, keptManual } = mergeMemoryFacts(current as Record<string, { value: unknown; source?: string }>, params.facts)
+    if (merged.length === 0) {
+      return {
+        data: null,
+        summary: `No he cambiado nada: ${keptManual.join(', ')} lo puso el usuario a mano; si quiere cambiarlo, que te lo diga expresamente.`,
+        uiHint: 'text',
+      }
+    }
     // Forward as a single transaction so a partial failure rolls back.
     try {
-      // The skill writes source='inferred' so a manual edit from the user
-      // can still override later (manual = 1.0 always overrides inferred).
-      await setMemoryBatch(
-        userId,
-        params.facts.map((f) => ({
-          key: f.key,
-          value: f.value,
-          confidence: typeof f.confidence === 'number' ? f.confidence : 0.8,
-        })),
-        'inferred',
-      )
+      // The skill writes source='inferred'; mergeMemoryFacts keeps what the
+      // user set by hand unless they asked for the change (confidence 1).
+      await setMemoryBatch(userId, merged, 'inferred')
     } catch (err) {
       if (err instanceof HealthConsentRequiredError) {
         return {
@@ -2210,10 +2331,11 @@ const updateMemory: SkillDefinition = {
       }
       throw err
     }
-    const keys = params.facts.map((f) => f.key).join(', ')
+    const keys = merged.map((f) => f.key).join(', ')
+    const kept = keptManual.length ? ` No he tocado ${keptManual.join(', ')}: lo puso el usuario a mano.` : ''
     return {
-      data: { updated: params.facts.length },
-      summary: `Apuntado. (${keys})`,
+      data: { updated: merged.length },
+      summary: `Apuntado. (${keys})${kept}`,
       uiHint: 'confirmation',
     }
   },
@@ -2321,12 +2443,28 @@ export const skills: SkillDefinition[] = [
 /**
  * Convert skills to Anthropic tool definitions format.
  */
-export function getToolDefinitions(): Array<{
+/**
+ * Tools the model can use on a channel. Hiding what doesn't apply makes the
+ * choice easier (64 tools on 2026-10-11): the in-app cooking controls don't
+ * exist on WhatsApp, and complete_onboarding only matters during the
+ * WhatsApp-first sign-up.
+ */
+const HIDDEN_ON_WHATSAPP = new Set(['set_timer', 'cooking_step'])
+
+export function toolsFor(opts: { mode?: string; onboarding?: boolean } = {}): SkillDefinition[] {
+  return skills.filter((skill) => {
+    if (skill.name === 'complete_onboarding') return opts.onboarding === true
+    if (opts.mode === 'whatsapp' && HIDDEN_ON_WHATSAPP.has(skill.name)) return false
+    return true
+  })
+}
+
+export function getToolDefinitions(opts: { mode?: string; onboarding?: boolean } = {}): Array<{
   name: string
   description: string
   input_schema: Record<string, any>
 }> {
-  return skills.map(skill => ({
+  return toolsFor(opts).map(skill => ({
     name: skill.name,
     description: skill.description,
     input_schema: skill.parameters,

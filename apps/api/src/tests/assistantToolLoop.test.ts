@@ -5,7 +5,7 @@
  * uiHint/data the web card renders.
  */
 import { describe, it, expect, vi } from 'vitest'
-import { runToolLoop, MAX_TOOL_ROUNDS } from '../services/assistant/engine.js'
+import { runToolLoop, MAX_TOOL_ROUNDS, ASSISTANT_MODEL, TRUNCATED_NOTE, claimsAction, withLastMessageCached } from '../services/assistant/engine.js'
 import type { SkillDefinition } from '../services/assistant/types.js'
 
 const usage = { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 }
@@ -31,8 +31,8 @@ function fakeClient(responses: any[]) {
     calls,
     client: {
       messages: {
-        create: vi.fn(async (args: any) => {
-          calls.push(structuredClone(args))
+        create: vi.fn(async (args: any, options?: any) => {
+          calls.push({ ...structuredClone(args), __options: options })
           const next = responses.shift()
           if (!next) throw new Error('no more fake responses')
           return next
@@ -110,54 +110,13 @@ describe('runToolLoop', () => {
     expect(r.message).toBe('Esto es lo que he encontrado.')
   })
 
-  it('prefers the last visual skill for the web card and falls back to its summary when the model says nothing', async () => {
+  it('prefers the last visual skill for the web card and says "Hecho." when the model says nothing', async () => {
     const menu = skill('get_todays_menu', 'menu', { day: 0 })
     const nut = skill('nutrition_advice', 'text')
     const f = fakeClient([tools({ id: '1', name: 'get_todays_menu' }), tools({ id: '2', name: 'nutrition_advice' }), { content: [], usage }])
     const r = await runToolLoop(base(f.client, [menu, nut]))
-    expect(r).toMatchObject({ skillUsed: 'get_todays_menu', uiHint: 'menu', data: { day: 0 }, message: 'get_todays_menu ok' })
-  })
-})
-
-describe('hallucinated-action guard', () => {
-  it('detects Spanish "I did it" claims but not questions or plain advice', async () => {
-    const { claimsAction } = await import('../services/assistant/engine.js')
-    // The exact reply from the 2026-10-06 E2E run where no swap_meal happened.
-    expect(claimsAction('Perfecto, listo. Cambiado: hoy cenas pollo con calabacín.')).toBe(true)
-    expect(claimsAction('He cambiado la cena de hoy.')).toBe(true)
-    expect(claimsAction('Listo. Hoy cenas pollo con calabacín.')).toBe(true)
-    expect(claimsAction('Hecho, ya lo tienes en la lista.')).toBe(true)
-    expect(claimsAction('Ya he añadido la leche.')).toBe(true)
-    expect(claimsAction('He añadido la leche a la lista.')).toBe(true)
-    expect(claimsAction('¿Listo para cocinar? Te paso los pasos.')).toBe(false)
-    expect(claimsAction('Te sugiero unas lentejas con verduras.')).toBe(false)
-  })
-
-  it('gives the model one corrective round when it claims a change without calling a tool', async () => {
-    const swap = skill('swap_meal', 'menu')
-    const f = fakeClient([
-      text('Perfecto, he cambiado la cena de hoy.'),
-      tools({ id: 's1', name: 'swap_meal', input: { dayIndex: 1, meal: 'dinner' } }),
-      text('Hecho: esta noche cenas crema de calabaza.'),
-    ])
-    const r = await runToolLoop(base(f.client, [swap]))
-    expect(swap.handler).toHaveBeenCalledOnce()
-    expect(f.calls[1].messages.at(-1).content).toContain('Nota del sistema')
-    expect(r).toMatchObject({ message: 'Hecho: esta noche cenas crema de calabaza.', skillUsed: 'swap_meal', actionTaken: true })
-  })
-
-  it('accepts the truthful answer after the correction and does not loop again', async () => {
-    const f = fakeClient([text('Listo, cambiado.'), text('Listo... en realidad esa receta no existe en tu catálogo. ¿Busco otra?')])
-    const r = await runToolLoop(base(f.client, []))
-    expect(f.calls).toHaveLength(2)
-    expect(r.message).toContain('no existe')
-  })
-
-  it('does not second-guess a claim backed by a tool call', async () => {
-    const swap = skill('swap_meal', 'menu')
-    const f = fakeClient([tools({ id: 's1', name: 'swap_meal' }), text('He cambiado la cena.')])
-    await runToolLoop(base(f.client, [swap]))
-    expect(f.calls).toHaveLength(2)
+    // An empty final text never leaks a tool summary (they carry notes meant for the model).
+    expect(r).toMatchObject({ skillUsed: 'get_todays_menu', uiHint: 'menu', data: { day: 0 }, message: 'Hecho.' })
   })
 })
 
@@ -183,31 +142,6 @@ describe('onToolStart hook', () => {
   })
 })
 
-describe('refusal-without-trying guard', () => {
-  it('gives one corrective round when the model refuses without calling any tool', async () => {
-    const { REFUSAL_CORRECTION } = await import('../services/assistant/engine.js')
-    const swap = skill('swap_meal', 'menu')
-    const note = skill('set_meal_note', 'menu')
-    const f = fakeClient([
-      text('No puedo cambiar la comida del jueves por filete de vaca porque te disgusta el vacuno.'),
-      tools({ id: 'a', name: 'swap_meal' }, { id: 'b', name: 'set_meal_note' }),
-      text('Hecho:\n- Jueves comida: Entrecot\n- Sábado cena: Cenamos fuera'),
-    ])
-    const r = await runToolLoop(base(f.client, [swap, note]))
-    expect(f.calls[1].messages.at(-1).content).toBe(REFUSAL_CORRECTION)
-    expect(swap.handler).toHaveBeenCalledOnce()
-    expect(note.handler).toHaveBeenCalledOnce()
-    expect(r.message).toMatch(/^Hecho:/)
-  })
-
-  it('detects refusals but not ordinary sentences', async () => {
-    const { refusesAction } = await import('../services/assistant/engine.js')
-    expect(refusesAction('No puedo hacer esos cambios.')).toBe(true)
-    expect(refusesAction('No es posible cambiarlo.')).toBe(true)
-    expect(refusesAction('Puedo proponerte otra cosa.')).toBe(false)
-  })
-})
-
 describe('primary skill for the card / app link', () => {
   it('prefers menu/list/recipe over confirmation and text, latest among equals', async () => {
     const swap = skill('swap_meal', 'menu', { day: 3 })
@@ -218,30 +152,100 @@ describe('primary skill for the card / app link', () => {
   })
 })
 
-describe('promise-to-act-later guard', () => {
-  it('detects "dame un momento y luego te la pongo" but not ordinary text', async () => {
-    const { promisesLater } = await import('../services/assistant/engine.js')
-    expect(promisesLater('Voy a crear la receta a mano — dame un momento y luego te la pongo en el menú.')).toBe(true)
-    expect(promisesLater('Te aviso cuando esté.')).toBe(true)
-    expect(promisesLater('Hecho:\n- Jueves comida: Chawanmushi de setas')).toBe(false)
+describe('model request (2026-10-12: Sonnet 5.5)', () => {
+  it('asks Sonnet 5.5 with effort, refusal fallback and a cache breakpoint on the last message', async () => {
+    const f = fakeClient([text('hola')])
+    await runToolLoop(base(f.client, []))
+    const call = f.calls[0]
+    expect(call.model).toBe(ASSISTANT_MODEL)
+    expect(ASSISTANT_MODEL).toBe('claude-sonnet-5-5')
+    expect(call.max_tokens).toBeGreaterThanOrEqual(4096)
+    expect(call.output_config).toEqual({ effort: 'medium' })
+    expect(call.fallbacks).toBe('default')
+    expect(call.__options.headers['anthropic-beta']).toBe('server-side-fallback-2026-07-01')
+    expect(call.temperature).toBeUndefined()
+    expect(call.messages.at(-1).content.at(-1)).toMatchObject({ type: 'text', text: 'hola', cache_control: { type: 'ephemeral' } })
   })
 
-  it('forces the promised work into this turn even after other tools ran', async () => {
-    const { PROMISE_CORRECTION } = await import('../services/assistant/engine.js')
-    const imp = skill('import_recipe_from_url', 'text')
+  it('withLastMessageCached marks only the newest block and never mutates history', () => {
+    const history: any[] = [
+      { role: 'user', content: 'uno' },
+      { role: 'assistant', content: [{ type: 'thinking', thinking: '', signature: 's' }, { type: 'tool_use', id: 'x', name: 'n', input: {} }] },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'x', content: 'ok' }] },
+    ]
+    const out = withLastMessageCached(history)
+    expect(out[2].content[0].cache_control).toEqual({ type: 'ephemeral' })
+    expect(history[2].content[0].cache_control).toBeUndefined()
+    expect(out[0]).toBe(history[0])
+  })
+})
+
+describe('no more forced rewrites (2026-10-12)', () => {
+  it('still recognises Spanish "I did it" claims', () => {
+    expect(claimsAction('Perfecto, listo. Cambiado: hoy cenas pollo con calabacín.')).toBe(true)
+    expect(claimsAction('Ya he añadido la leche.')).toBe(true)
+    expect(claimsAction('¿Listo para cocinar? Te paso los pasos.')).toBe(false)
+    expect(claimsAction('Te sugiero unas lentejas con verduras.')).toBe(false)
+  })
+
+  it('flags a claim made without tools for the daily review, without a second round', async () => {
+    const f = fakeClient([text('Perfecto, he cambiado la cena de hoy.')])
+    const r = await runToolLoop(base(f.client, []))
+    expect(f.calls).toHaveLength(1)
+    expect(r.message).toBe('Perfecto, he cambiado la cena de hoy.')
+    expect(r.corrections).toEqual(['unverified_claim'])
+  })
+
+  it('returns an honest "no se puede" as it is (no refusal round)', async () => {
+    const f = fakeClient([text('No se puede congelar la mayonesa casera: se corta.')])
+    const r = await runToolLoop(base(f.client, []))
+    expect(f.calls).toHaveLength(1)
+    expect(r.corrections).toEqual([])
+  })
+})
+
+describe('cut-off and refused responses', () => {
+  it('never runs a tool call cut by max_tokens: retries once asking for smaller steps', async () => {
     const create = skill('create_recipe', 'recipe')
-    const swap = skill('swap_meal', 'menu')
     const f = fakeClient([
-      tools({ id: 'a', name: 'import_recipe_from_url' }),
-      text('El enlace no se pudo descargar. Voy a crear la receta, dame un momento y luego te la pongo.'),
-      tools({ id: 'b', name: 'create_recipe' }),
-      tools({ id: 'c', name: 'swap_meal' }),
-      text('Hecho:\n- Receta creada: Chawanmushi de setas\n- Hoy comida: Chawanmushi de setas'),
+      { content: [{ type: 'tool_use', id: 'c1', name: 'create_recipe', input: { name: 'Pis' } }], usage, stop_reason: 'max_tokens' },
+      tools({ id: 'c2', name: 'create_recipe', input: { name: 'Pisto' } }),
+      text('Hecho: receta creada.'),
     ])
-    const r = await runToolLoop(base(f.client, [imp, create, swap]))
-    expect(f.calls[2].messages.at(-1).content).toBe(PROMISE_CORRECTION)
+    const r = await runToolLoop(base(f.client, [create]))
     expect(create.handler).toHaveBeenCalledOnce()
-    expect(swap.handler).toHaveBeenCalledOnce()
-    expect(r.message).toMatch(/^Hecho:/)
+    expect(create.handler).toHaveBeenCalledWith({ name: 'Pisto' }, expect.anything())
+    expect(JSON.stringify(f.calls[1].messages.at(-1))).toContain(TRUNCATED_NOTE.slice(0, 40))
+    expect(r.corrections).toContain('truncated')
+    expect(r.message).toBe('Hecho: receta creada.')
+  })
+
+  it('a second cut-off ends the turn with a plain explanation', async () => {
+    const cut = { content: [{ type: 'tool_use', id: 'c', name: 'create_recipe', input: {} }], usage, stop_reason: 'max_tokens' }
+    const f = fakeClient([cut, structuredClone(cut)])
+    const r = await runToolLoop(base(f.client, [skill('create_recipe', 'recipe')]))
+    expect(r.message).toMatch(/muy largo/)
+  })
+
+  it('a safety refusal gets a short, friendly reply', async () => {
+    const f = fakeClient([{ content: [], usage, stop_reason: 'refusal' }])
+    const r = await runToolLoop(base(f.client, []))
+    expect(r.message).toMatch(/no te puedo ayudar/)
+    expect(r.corrections).toContain('refusal')
+  })
+})
+
+describe('tool trace', () => {
+  it('records each tool input and result (bounded) for history and the daily review', async () => {
+    const swap = skill('swap_meal', 'menu')
+    const f = fakeClient([tools({ id: 's', name: 'swap_meal', input: { dayIndex: 3, meal: 'dinner', recipeName: 'Hamburguesa' } }), text('Hecho.')])
+    const r = await runToolLoop(base(f.client, [swap]))
+    expect(r.toolTrace).toEqual([{ name: 'swap_meal', input: '{"dayIndex":3,"meal":"dinner","recipeName":"Hamburguesa"}', summary: 'swap_meal ok' }])
+  })
+
+  it('never lets a ⟦hecho: …⟧ history mark reach the user', async () => {
+    const f = fakeClient([text('⟦hecho: swap_meal {} → ok⟧\nHoy cenas hamburguesa.')])
+    const r = await runToolLoop(base(f.client, []))
+    expect(r.message).toBe('Hoy cenas hamburguesa.')
   })
 })

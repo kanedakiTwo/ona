@@ -20,7 +20,7 @@
  * In dev it logs once per tick so we can see it's alive.
  */
 
-import { and, eq, inArray, isNotNull, lte, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNotNull, lte, sql } from 'drizzle-orm'
 import { db, pool } from '../db/connection.js'
 import { addDays, madridWallTimeUtc } from './madridTime.js'
 import {
@@ -311,6 +311,91 @@ export async function clearPendingForMenu(menuId: string): Promise<number> {
   return r.length
 }
 
+// ─── Is a prep alert still true? ────────────────────────────────
+//
+// Alerts are written when a menu is generated, but the menu keeps changing:
+// the week gets regenerated (a new menu row), a day is marked "sin cocinar",
+// a dish is moved, noted or swapped through the assistant's REST paths. Only
+// the legacy swap route re-enqueued, so on 2026-10-10/11 Miguel got "sácalo
+// a la nevera: atún / costillas" for dishes no longer in his menu. Rather than
+// chasing every mutation path, each prep alert is checked against the menu as
+// it is right before it goes out, and cancelled when it no longer applies.
+
+export interface PrepKey {
+  menuId: string
+  dayIndex: number
+  meal: string
+  ingredientId: string
+}
+
+/** `menu:<menuId>:day:<n>:meal:<m>:ing:<ingredientId>:method:<x>` → parts; null for other alerts. */
+export function parsePrepKey(key: string): PrepKey | null {
+  const m = /^menu:([0-9a-f-]{36}):day:(\d):meal:([a-z]+):ing:([0-9a-f-]{36}):method:/i.exec(key)
+  if (!m) return null
+  return { menuId: m[1], dayIndex: Number(m[2]), meal: m[3], ingredientId: m[4] }
+}
+
+/** Pure: why a prep alert no longer applies to the current menu, or null if it still does. */
+export function prepAlertStaleReason(
+  key: PrepKey,
+  current: {
+    /** The newest menu for that week and household/user, or null if none. */
+    latestMenuId: string | null
+    days: unknown
+    skippedDays: readonly number[]
+    /** Recipes (among the slot's) that use the alert's ingredient. */
+    recipeIdsWithIngredient: ReadonlySet<string>
+  },
+): string | null {
+  if (!current.latestMenuId) return 'el menú ya no existe'
+  if (current.latestMenuId !== key.menuId) return 'el menú de esa semana se ha vuelto a generar'
+  if (current.skippedDays.includes(key.dayIndex)) return 'ese día está marcado sin cocinar'
+  const slot = flattenMenuSlots(current.days).filter((x) => x.dayIndex === key.dayIndex && x.meal === key.meal)
+  if (!slot.some((x) => current.recipeIdsWithIngredient.has(x.recipeId))) return 'ese plato ya no está en el menú'
+  return null
+}
+
+/** Loads the current state for `prepAlertStaleReason`. Null for non-prep alerts. */
+export async function prepAlertStaleReasonFor(dedupKey: string): Promise<string | null> {
+  const key = parsePrepKey(dedupKey)
+  if (!key) return null
+  const [menu] = await db
+    .select({ userId: menus.userId, householdId: menus.householdId, weekStart: menus.weekStart })
+    .from(menus)
+    .where(eq(menus.id, key.menuId))
+    .limit(1)
+  if (!menu) return 'el menú ya no existe'
+  // Same rule as the shopping list: the newest menu of that week wins.
+  const [latest] = await db
+    .select({ id: menus.id, days: menus.days, skippedDays: menus.skippedDays })
+    .from(menus)
+    .where(
+      and(
+        eq(menus.weekStart, menu.weekStart),
+        menu.householdId ? eq(menus.householdId, menu.householdId) : eq(menus.userId, menu.userId),
+      ),
+    )
+    .orderBy(desc(menus.createdAt))
+    .limit(1)
+  const slotRecipeIds = latest
+    ? flattenMenuSlots(latest.days)
+        .filter((x) => x.dayIndex === key.dayIndex && x.meal === key.meal)
+        .map((x) => x.recipeId)
+    : []
+  const withIngredient = slotRecipeIds.length
+    ? await db
+        .select({ recipeId: recipeIngredients.recipeId })
+        .from(recipeIngredients)
+        .where(and(inArray(recipeIngredients.recipeId, slotRecipeIds), eq(recipeIngredients.ingredientId, key.ingredientId)))
+    : []
+  return prepAlertStaleReason(key, {
+    latestMenuId: latest?.id ?? null,
+    days: latest?.days ?? [],
+    skippedDays: (latest?.skippedDays as number[] | undefined) ?? [],
+    recipeIdsWithIngredient: new Set(withIngredient.map((r) => r.recipeId)),
+  })
+}
+
 // ─── Tick ───────────────────────────────────────────────────────
 
 /** App-wide key for the scheduler's Postgres advisory lock. */
@@ -362,6 +447,20 @@ async function tickOnce(): Promise<true> {
   // Each due alert goes out over Web Push AND WhatsApp (when the user linked
   // a phone and opted into "Avisos por WhatsApp"). Sent if either delivered.
   for (const row of due) {
+    let stale: string | null = null
+    try {
+      stale = await prepAlertStaleReasonFor(row.dedupKey)
+    } catch (err) {
+      // A failed check must not swallow a real alert: send it as before.
+      console.warn('[notificationScheduler] prep alert check failed (sending anyway):', err)
+    }
+    if (stale) {
+      await db
+        .update(notificationSchedule)
+        .set({ status: 'cancelled', errorMessage: `cancelado al enviar: ${stale}` })
+        .where(eq(notificationSchedule.id, row.id))
+      continue
+    }
     let push: ChannelOutcome
     try {
       await sendPushToUser(row.userId, row.payload)

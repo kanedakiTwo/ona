@@ -15,7 +15,7 @@ import {
 import { ASSISTANT_MODEL } from '../services/assistant/engine.js'
 import { REVIEW_MODEL } from '../services/whatsapp/reviewer.js'
 import { transcriptionUnits } from '../services/stt.js'
-import { ADVISOR_PRICE_MODEL, HAIKU_USD_PER_MTOK } from '../services/advisorBudget.js'
+import { ADVISOR_PRICE_MODEL, ASSISTANT_USD_PER_MTOK } from '../services/advisorBudget.js'
 
 const FX = { eurPerUsd: 0.9, table: PRICES }
 
@@ -92,7 +92,7 @@ describe('price table coverage', () => {
   it('the advisor budget prices the assistant model from the same table', () => {
     expect(normalizeModel(ASSISTANT_MODEL)).toBe(ADVISOR_PRICE_MODEL)
     const p = priceFor('anthropic', ASSISTANT_MODEL)!
-    expect(HAIKU_USD_PER_MTOK).toEqual({
+    expect(ASSISTANT_USD_PER_MTOK).toEqual({
       input: p.inputPerMTok,
       output: p.outputPerMTok,
       cacheWrite: p.cacheWritePerMTok,

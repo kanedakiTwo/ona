@@ -44,8 +44,22 @@ export interface AssistantResponse {
   actionTaken?: boolean
   /** Every skill run this turn, in order (for logs and the daily review). */
   toolsUsed?: string[]
-  /** Corrective rounds the engine forced: unverified_claim | refusal | promise. */
+  /**
+   * Signals for the daily review (no longer corrective rounds since
+   * 2026-10-12): unverified_claim | truncated | refusal.
+   */
   corrections?: string[]
+  /** What each tool got and returned this turn (history + daily review). */
+  toolTrace?: ToolTrace[]
+}
+
+export interface ToolTrace {
+  name: string
+  /** Tool input as compact JSON, bounded. */
+  input: string
+  /** What the tool told the model, bounded. */
+  summary: string
+  error?: boolean
 }
 
 export interface ChatMessage {

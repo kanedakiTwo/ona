@@ -1,9 +1,8 @@
 /**
  * Per-user monthly spend cap for the text advisor.
  *
- * The advisor chat (`POST /assistant/:userId/chat`) calls Claude Haiku 4.5 —
- * up to two requests per turn (one for the tool decision, one after the tool
- * runs). Left unbounded, a chatty user is unbounded cost. This module meters
+ * The advisor chat (`POST /assistant/:userId/chat`) and WhatsApp call Claude
+ * Sonnet 5.5 (Haiku 4.5 until 2026-10-12) — one request per tool round. Left unbounded, a chatty user is unbounded cost. This module meters
  * each turn's real token `usage` into a per-user, per-month running total
  * (micro-euros) and lets the route reject further turns once the configured
  * euro budget is spent. The month rolls over implicitly (same stateless
@@ -23,21 +22,22 @@ import { attributeCostToUser, currentCostChannel, recordCost } from './costLedge
 type Db = typeof defaultDb
 
 /** Model the advisor budget prices — keep in sync with `ASSISTANT_MODEL` in `services/assistant/engine.ts`. */
-export const ADVISOR_PRICE_MODEL = 'claude-haiku-4-5'
+export const ADVISOR_PRICE_MODEL = 'claude-sonnet-5-5'
 
 /**
- * Claude Haiku 4.5 list price, USD per million tokens, read from the shared
- * price table (config/pricing.ts): $1.00 input / $5.00 output; prompt-cache
- * writes bill at 1.25× the input rate (5-minute ephemeral, which `engine.ts`
- * uses) and cache reads at 0.1×. A `COST_PRICE_OVERRIDES` entry moves both
- * the budget and the ledger, so they never disagree.
+ * The assistant model's list price, USD per million tokens, read from the
+ * shared price table (config/pricing.ts): Sonnet 5.5 is $2.00 input / $10.00
+ * output; prompt-cache writes bill at 1.25× the input rate (5-minute
+ * ephemeral, which `engine.ts` uses) and cache reads at 0.1×. A
+ * `COST_PRICE_OVERRIDES` entry moves both the budget and the ledger, so they
+ * never disagree.
  */
-const HAIKU = ACTIVE_PRICES[`anthropic/${ADVISOR_PRICE_MODEL}`]
-export const HAIKU_USD_PER_MTOK = {
-  input: HAIKU.inputPerMTok!,
-  output: HAIKU.outputPerMTok!,
-  cacheWrite: HAIKU.cacheWritePerMTok!,
-  cacheRead: HAIKU.cacheReadPerMTok!,
+const MODEL_PRICE = ACTIVE_PRICES[`anthropic/${ADVISOR_PRICE_MODEL}`]
+export const ASSISTANT_USD_PER_MTOK = {
+  input: MODEL_PRICE.inputPerMTok!,
+  output: MODEL_PRICE.outputPerMTok!,
+  cacheWrite: MODEL_PRICE.cacheWritePerMTok!,
+  cacheRead: MODEL_PRICE.cacheReadPerMTok!,
 } as const
 
 /** Normalised token counts pulled from one or more Anthropic responses. */
@@ -81,10 +81,10 @@ export function addAnthropicUsage(
 /** Pure: cost of a usage block in USD (Haiku 4.5 list price). */
 export function usageCostUsd(usage: TokenUsage): number {
   return (
-    (usage.inputTokens * HAIKU_USD_PER_MTOK.input +
-      usage.outputTokens * HAIKU_USD_PER_MTOK.output +
-      usage.cacheWriteTokens * HAIKU_USD_PER_MTOK.cacheWrite +
-      usage.cacheReadTokens * HAIKU_USD_PER_MTOK.cacheRead) /
+    (usage.inputTokens * ASSISTANT_USD_PER_MTOK.input +
+      usage.outputTokens * ASSISTANT_USD_PER_MTOK.output +
+      usage.cacheWriteTokens * ASSISTANT_USD_PER_MTOK.cacheWrite +
+      usage.cacheReadTokens * ASSISTANT_USD_PER_MTOK.cacheRead) /
     1_000_000
   )
 }

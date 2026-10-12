@@ -35,7 +35,7 @@ export interface ReviewRow {
   body: string | null
   status: string
   errorMessage: string | null
-  meta: { tools?: string[]; corrections?: string[]; ms?: number } | null
+  meta: { tools?: string[]; corrections?: string[]; ms?: number; toolTrace?: import('../assistant/types.js').ToolTrace[]; photo?: boolean } | null
   createdAt: Date
 }
 
@@ -103,6 +103,12 @@ export function buildTranscripts(rows: readonly ReviewRow[]): string[] {
           r.errorMessage ? `error: ${r.errorMessage}` : null,
         ].filter(Boolean)
         if (r.status === 'processed' || r.errorMessage) lines.push(`   ↳ ${trace.join(' · ')}`)
+        // Since 2026-10-12: what each tool got and returned, so "dijo Hecho
+        // pero no cambió nada" can be judged from facts, not guessed.
+        for (const step of Array.isArray(t?.toolTrace) ? t.toolTrace : []) {
+          lines.push(`      · ${step.name} ${step.input ?? ''} → ${step.error ? 'ERROR: ' : ''}${step.summary ?? ''}`.slice(0, 600))
+        }
+        if (t?.photo) lines.push('      · (con foto: Mimo la ha visto)')
       } else {
         lines.push(`[${hhmm(r.createdAt)}] MIMO (${r.kind}${r.status !== 'sent' ? `, ${r.status}` : ''}): ${body}`)
       }
@@ -150,6 +156,8 @@ export const REVIEW_SCHEMA = {
               'error_tecnico',
               'transcripcion',
               'respuesta_larga',
+              'respuesta_poco_util',
+              'rechazo_indebido',
               'proactividad',
               'otro',
             ],
@@ -170,9 +178,10 @@ export function reviewerSystemPrompt(toolNames: string[]): string {
 
 Reglas del producto (contra ellas evaluas cada turno):
 1. Resolutivo: hace TODO lo que pide el mensaje en el mismo turno. Si pidio varias cosas, todas.
-2. Veraz: nunca afirma haber hecho algo que ninguna herramienta hizo (comprueba la linea "herramientas" de cada turno; si pone "sin registro" es un mensaje anterior al registro de herramientas y NO puedes juzgarlo por eso). Nunca promete hacerlo "luego": no puede actuar despues de responder.
+2. Veraz: nunca afirma haber hecho algo que ninguna herramienta hizo (comprueba la linea "herramientas" de cada turno y, debajo, lo que recibio y devolvio cada herramienta; si pone "sin registro" es un mensaje anterior al registro de herramientas y NO puedes juzgarlo por eso). Nunca promete hacerlo "luego": no puede actuar despues de responder.
 3. Transparente: si cambia algo que no se pidio literalmente (p. ej. pone la receta mas parecida), lo dice.
-4. Breve: si hizo cambios, "Hecho:" y una linea por cambio. Sin consejos ni avisos no pedidos. Solo pregunta si es imprescindible.
+4. Breve sin ser seco: si hizo cambios, "Hecho:" y una linea por cambio. Solo pregunta si es imprescindible.
+4b. Util e inteligente: contesta de verdad a lo que se pregunta. Una pregunta de cocina (como se hace algo, tiempos, trucos, utensilios, el enlace de una receta) se responde con conocimiento, no con una busqueda que no lleva a nada ni con la frase de "solo te puedo ayudar con tu comida" (eso solo vale para temas que no son de comida: si no, es "rechazo_indebido"). Una respuesta correcta pero que no ayuda, evasiva o que pregunta lo obvio es "respuesta_poco_util".
 5. Lo que el usuario pide explicitamente manda sobre lo guardado (gustos, disgustos), salvo alergias.
 6. Rapido: mas de 20 s sin respuesta es lento (salvo importar recetas o generar menus, que llevan un aviso "me pongo con ello").
 7. Proactividad util: los avisos (resumen, cocinar, ¿hiciste la cena?, compra, menu del domingo) aportan y no molestan.

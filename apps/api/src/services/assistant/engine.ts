@@ -1,9 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { env } from '../../config/env.js'
 import { loadUserContext } from './contextLoader.js'
-import { buildSystemPrompt, type AssistantMode } from './systemPrompt.js'
+import { buildSystemParts, type AssistantMode } from './systemPrompt.js'
 import { skills, getToolDefinitions } from './skills.js'
-import type { AssistantResponse, ChatMessage, SkillContext, SkillDefinition, SkillResult } from './types.js'
+import type { AssistantResponse, ChatMessage, SkillContext, SkillDefinition, SkillResult, ToolTrace } from './types.js'
 import { recordSkillActivity } from '../activityEvents.js'
 import {
   EMPTY_USAGE,
@@ -38,6 +38,8 @@ export interface ChatOptions {
    * asks them in the chat and finishes with `complete_onboarding`.
    */
   onboarding?: boolean
+  /** Photos sent with the message (WhatsApp): Mimo sees them and answers about them. */
+  images?: { mediaType: string; data: string }[]
 }
 
 /**
@@ -52,54 +54,72 @@ export async function chat(
   opts: ChatOptions = {},
 ): Promise<AssistantResponse & { usage: TokenUsage }> {
   const anthropic = getClient()
+  const mode = opts.mode ?? 'text'
 
   // 1. Load user context
   const userContext = await loadUserContext(userId, db)
 
-  // 2. Build system prompt
-  const systemPrompt = buildSystemPrompt(userContext, opts.mode ?? 'text', { onboarding: opts.onboarding === true })
+  // 2. System prompt in two blocks: the instructions (identical for every
+  // user of a channel → cached) and this user's data (date and time, menu,
+  // memory → changes often, so it goes after the cache breakpoint). Until
+  // 2026-10-12 it was one block with "son las HH:MM" inside, so the cache
+  // never survived from one message to the next.
+  const { instructions, context } = buildSystemParts(userContext, mode, { onboarding: opts.onboarding === true })
+  const system = [
+    { type: 'text' as const, text: instructions, cache_control: { type: 'ephemeral' as const } },
+    { type: 'text' as const, text: context },
+  ]
 
   // 3. Build messages array from history + new message
   const messages: Anthropic.MessageParam[] = history.map(msg => ({
     role: msg.role,
     content: msg.content,
   }))
-  messages.push({ role: 'user', content: message })
+  const images = (opts.images ?? []).slice(0, 4)
+  messages.push({
+    role: 'user',
+    content: images.length
+      ? [
+          ...images.map((img) => ({
+            type: 'image' as const,
+            source: { type: 'base64' as const, media_type: img.mediaType as 'image/jpeg', data: img.data },
+          })),
+          { type: 'text' as const, text: message || '(foto sin texto)' },
+        ]
+      : message,
+  })
 
-  // 4. Get tool definitions, marking the last one with `cache_control` so
-  // Anthropic prompt-caches the entire (system + tools) prefix on first
-  // turn and reuses it (~10% cost) on every following turn within the 5-min
-  // TTL. With Mimoia's ~5k-token prefix (10 mandamientos KB + 27 tool defs),
-  // this typically cuts the per-turn cost ~70% on multi-turn conversations
-  // and 30–50% even on single-turn ones thanks to the cached system block.
-  const baseTools = getToolDefinitions()
+  // 4. Tools for this channel, the last one marked as a cache breakpoint.
+  const baseTools = getToolDefinitions({ mode, onboarding: opts.onboarding === true })
   const tools = baseTools.map((t, i) =>
     i === baseTools.length - 1
       ? { ...t, cache_control: { type: 'ephemeral' as const } }
       : t,
   )
 
-  // System prompt is itself a cache breakpoint: this caches the system block
-  // independently of the tools, so even if we later tweak the tool list we
-  // keep the system prefix cached.
-  const cachedSystem = [
-    { type: 'text' as const, text: systemPrompt, cache_control: { type: 'ephemeral' as const } },
-  ]
-
   // 5. Model ↔ tools loop (see runToolLoop).
   return runToolLoop({
     client: anthropic,
-    system: cachedSystem,
+    system,
     tools,
     messages,
     skills,
-    ctx: { userId, db, channel: opts.mode ?? 'text' },
+    ctx: { userId, db, channel: mode },
     onToolStart: opts.onToolStart,
   })
 }
 
-/** Model used by the text assistant. `advisorBudget.ts` prices its tokens. */
-export const ASSISTANT_MODEL = 'claude-haiku-4-5-20251001'
+/**
+ * Model behind Mimo (web chat and WhatsApp). Haiku 4.5 until 2026-10-12:
+ * replaying 9 real WhatsApp turns, it failed 7 (refused cooking questions,
+ * claimed changes it hadn't made, invented menu facts, ran out of tokens);
+ * Sonnet 5.5 got none badly wrong. `advisorBudget.ts` prices its tokens.
+ */
+export const ASSISTANT_MODEL = 'claude-sonnet-5-5'
+/** Thinking depth. `medium` is enough for multi-change requests; `low` lost steps in the replay. */
+export const ASSISTANT_EFFORT = 'medium'
+/** Thinking + text + tool input share it; 1024 cut long create_recipe calls mid-way. */
+export const ASSISTANT_MAX_TOKENS = 8000
 /**
  * Tool rounds per turn (each round can run several tools in parallel).
  * "Cambia el jueves, el sábado cenamos fuera y apunta leche" plus a lookup
@@ -108,13 +128,38 @@ export const ASSISTANT_MODEL = 'claude-haiku-4-5-20251001'
  */
 export const MAX_TOOL_ROUNDS = 6
 
-type MessagesClient = { messages: { create: (args: any) => Promise<any> } }
+/** Server-side fallback when Sonnet's safety classifiers decline (routes by category). */
+const FALLBACK_BETA = 'server-side-fallback-2026-07-01'
+
+export const TRUNCATED_NOTE =
+  '[Nota del sistema, no la menciones] Tu respuesta anterior era demasiado larga y se ha cortado antes de terminar, asi que no se ha ejecutado. Hazlo por partes: menos herramientas a la vez y textos mas cortos (por ejemplo, una receta con los pasos justos).'
+
+const REFUSAL_REPLY = 'Perdona, con eso no te puedo ayudar. ¿Te echo una mano con el menú, una receta o la compra?'
+
+type MessagesClient = { messages: { create: (args: any, options?: any) => Promise<any> } }
+
+/** Copy of `messages` with a cache breakpoint on the last block, so later rounds of the same turn reuse the prefix. */
+export function withLastMessageCached(messages: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
+  if (messages.length === 0) return messages
+  const out = messages.slice(0, -1)
+  const last = messages[messages.length - 1]
+  const blocks: any[] = typeof last.content === 'string' ? [{ type: 'text', text: last.content }] : [...(last.content as any[])]
+  const i = blocks.length - 1
+  if (i >= 0 && blocks[i] && blocks[i].type !== 'thinking' && blocks[i].type !== 'redacted_thinking') {
+    blocks[i] = { ...blocks[i], cache_control: { type: 'ephemeral' } }
+  }
+  out.push({ role: last.role, content: blocks } as Anthropic.MessageParam)
+  return out
+}
 
 /**
  * The model ↔ tools loop, separated from `chat()` so it can be unit-tested
  * with a fake client. Executes EVERY `tool_use` block of a response and
  * returns all results in one user message (the API rejects a follow-up that
  * leaves a tool_use unanswered), then loops until the model answers in text.
+ *
+ * The full response content (thinking blocks included) goes back unchanged:
+ * Sonnet 5.5 needs its own thinking blocks to continue a tool loop.
  */
 export async function runToolLoop(params: {
   client: MessagesClient
@@ -128,56 +173,65 @@ export async function runToolLoop(params: {
 }): Promise<AssistantResponse & { usage: TokenUsage }> {
   const maxRounds = params.maxRounds ?? MAX_TOOL_ROUNDS
   const messages = [...params.messages]
-  const executed: { name: string; result: SkillResult }[] = []
+  const executed: ExecutedTool[] = []
   let usage: TokenUsage = EMPTY_USAGE
-  let claimCheckDone = false
-  const corrections: string[] = []
+  let retriedTruncation = false
+  const flags: string[] = []
 
   for (let round = 0; ; round += 1) {
-    const response = await params.client.messages.create({
-      model: ASSISTANT_MODEL,
-      max_tokens: 1024,
-      system: params.system,
-      messages,
-      tools: params.tools,
-      ...(round >= maxRounds ? { tool_choice: { type: 'none' } } : {}),
-    })
+    const response = await params.client.messages.create(
+      {
+        model: ASSISTANT_MODEL,
+        max_tokens: ASSISTANT_MAX_TOKENS,
+        output_config: { effort: ASSISTANT_EFFORT },
+        fallbacks: 'default',
+        system: params.system,
+        messages: withLastMessageCached(messages),
+        tools: params.tools,
+        ...(round >= maxRounds ? { tool_choice: { type: 'none' } } : {}),
+      },
+      { headers: { 'anthropic-beta': FALLBACK_BETA } },
+    )
     usage = addAnthropicUsage(usage, response.usage)
+
+    if (response.stop_reason === 'refusal') {
+      flags.push('refusal')
+      return buildResponse(REFUSAL_REPLY, executed, usage, flags)
+    }
 
     const content: any[] = Array.isArray(response.content) ? response.content : []
     const toolUses = content.filter((b) => b?.type === 'tool_use') as Anthropic.ToolUseBlock[]
+    const text = content
+      .filter((b) => b?.type === 'text' && typeof b.text === 'string')
+      .map((b) => b.text)
+      .join('\n')
+      .trim()
 
-    if (toolUses.length === 0 || round >= maxRounds) {
-      const text = content
-        .filter((b) => b?.type === 'text' && typeof b.text === 'string')
-        .map((b) => b.text)
-        .join('\n')
-        .trim()
-      // Hallucinated action: the model says "cambiado/guardado/hecho" but ran
-      // no tool this turn. Give it one corrective round to either call the
-      // tool or tell the truth — a false "listo" is worse than a slow answer,
-      // especially on WhatsApp where there's no screen to notice it.
-      // Same one-shot nudge when it gives up without trying ("no puedo
-      // cambiar eso porque…") — usually a stored dislike or a missing lookup,
-      // both of which the tools can handle.
-      const claim = claimsAction(text)
-      const noTools = executed.length === 0
-      // "Dame un momento y luego te la pongo": the assistant can't act after
-      // replying, so a promise means the work is simply never done.
-      const correction =
-        noTools && claim ? UNVERIFIED_ACTION_CORRECTION
-          : noTools && refusesAction(text) ? REFUSAL_CORRECTION
-          : promisesLater(text) ? PROMISE_CORRECTION
-          : null
-      if (!claimCheckDone && round < maxRounds && correction) {
-        claimCheckDone = true
-        corrections.push(correction === PROMISE_CORRECTION ? 'promise' : correction === REFUSAL_CORRECTION ? 'refusal' : 'unverified_claim')
-        console.warn(`[assistant] corrective round: ${correction === PROMISE_CORRECTION ? 'promise to act later' : claim ? 'unverified action claim' : 'refusal without trying'}`)
-        messages.push({ role: 'assistant', content: content as any })
-        messages.push({ role: 'user', content: correction })
+    // Cut off before finishing: a half-written tool call must not run, and
+    // half a sentence shouldn't go out as if complete. One retry asking for
+    // smaller steps (2026-10-06: a long create_recipe died at 1024 tokens and
+    // the user got "error del sistema").
+    if (response.stop_reason === 'max_tokens') {
+      flags.push('truncated')
+      if (!retriedTruncation && round < maxRounds) {
+        retriedTruncation = true
+        console.warn('[assistant] response hit max_tokens; retrying in smaller steps')
+        messages.push({ role: 'user', content: TRUNCATED_NOTE })
         continue
       }
-      return buildResponse(text, executed, usage, corrections)
+      if (toolUses.length > 0 || !text) {
+        return buildResponse('Se me ha hecho muy largo y no lo he terminado. ¿Me lo pides por partes?', executed, usage, flags)
+      }
+      return buildResponse(`${text}…`, executed, usage, flags)
+    }
+
+    if (toolUses.length === 0 || round >= maxRounds) {
+      // Saying "hecho / he cambiado" without having run a tool this turn is
+      // flagged for the daily review. Until 2026-10-12 the engine forced a
+      // rewrite instead, which produced the oddest replies of all ("Tienes
+      // razón, ya estaba hecho desde hace un turno").
+      if (executed.length === 0 && claimsAction(text)) flags.push('unverified_claim')
+      return buildResponse(text, executed, usage, flags)
     }
 
     console.log(`[assistant] round ${round}: ${toolUses.map((t) => t.name).join(', ')}`)
@@ -204,7 +258,7 @@ export async function runToolLoop(params: {
           isError = true
         }
       }
-      executed.push({ name: toolUse.name, result })
+      executed.push({ name: toolUse.name, input: toolUse.input, result, isError })
       results.push({
         type: 'tool_result',
         tool_use_id: toolUse.id,
@@ -218,9 +272,17 @@ export async function runToolLoop(params: {
   }
 }
 
+interface ExecutedTool {
+  name: string
+  input: unknown
+  result: SkillResult
+  isError: boolean
+}
+
 /**
  * Spanish past-tense "I did it" claims. Only checked when no tool ran this
  * turn, so a legit "He cambiado la cena" after swap_meal never trips it.
+ * Since 2026-10-12 it only flags the turn for the daily review.
  */
 const ACTION_CLAIM_RE =
   /\b(?:he|hemos|ya)\s+(?:cambiado|generado|guardado|marcado|a[ñn]adido|actualizado|apuntado|creado|quitado|eliminado|borrado|puesto|sustituido|registrado)\b|(?:^|[.!?,;]\s*)(?:hecho|listo|cambiado|guardado|apuntado)\s*[.!,:]/im
@@ -229,27 +291,25 @@ export function claimsAction(text: string): boolean {
   return ACTION_CLAIM_RE.test(text)
 }
 
-const PROMISE_RE =
-  /\b(?:dame un (?:momento|segundo|minuto)|en (?:un|unos) (?:momento|minuto|minutos|segundos)\b.*\b(?:te|la|lo)\b|luego te|y luego (?:te )?(?:la |lo )?(?:pongo|añado|creo)|te aviso cuando|ahora mismo (?:te )?(?:la|lo) (?:creo|pongo|añado))/i
-
-export function promisesLater(text: string): boolean {
-  return PROMISE_RE.test(text)
+/** One line per tool for history and review: what ran, with what, and what came back. */
+export function traceOf(executed: ExecutedTool[]): ToolTrace[] {
+  return executed.map((e) => ({
+    name: e.name,
+    input: compactJson(e.input, 300),
+    summary: String(e.result.summary ?? '').replace(/\s+/g, ' ').slice(0, 400),
+    ...(e.isError ? { error: true } : {}),
+  }))
 }
 
-export const PROMISE_CORRECTION =
-  '[Nota del sistema, no la menciones] Has prometido hacer algo despues ("dame un momento", "luego te la pongo"), pero no puedes actuar despues de responder: si no lo haces ahora, no se hara nunca. Hazlo ahora con las herramientas. Si un paso fallo (por ejemplo no se pudo leer un enlace y el usuario quiere esa receta), resuelvelo tu: crea la receta con create_recipe y usala con swap_meal. Luego responde solo con lo hecho.'
-
-const REFUSAL_RE = /\bno\s+(?:puedo|podemos|es posible|he podido|se puede)\b/i
-
-export function refusesAction(text: string): boolean {
-  return REFUSAL_RE.test(text)
+function compactJson(value: unknown, max: number): string {
+  let s = ''
+  try {
+    s = JSON.stringify(value ?? {})
+  } catch {
+    s = String(value)
+  }
+  return s.length > max ? `${s.slice(0, max - 1)}…` : s
 }
-
-export const REFUSAL_CORRECTION =
-  '[Nota del sistema, no la menciones] Has dicho que no puedes sin haber llamado a ninguna herramienta. Lo que el usuario pide explicitamente manda sobre gustos y disgustos guardados (no sobre alergias o restricciones de salud: con esas, avisa y pide confirmacion). Si alguna herramienta puede hacer lo que pide (cambiar platos, notas, lista, despensa, perfil…), llamala ahora y haz TODO lo que pidio. Solo si de verdad no existe herramienta para ello, explicalo en una linea.'
-
-export const UNVERIFIED_ACTION_CORRECTION =
-  '[Nota del sistema, no la menciones] Tu respuesta afirma que has hecho un cambio, pero en este turno no has llamado a ninguna herramienta. Si solo estabas recordando algo que ya se hizo en un turno anterior de la conversacion, NO lo repitas ni llames a ninguna herramienta: vuelve a escribir tu respuesta tal cual. Si el usuario acaba de pedir un cambio, llama ahora a la herramienta adecuada. Si no es posible (por ejemplo, la receta no existe en el catalogo), dile la verdad y ofrece una alternativa real.'
 
 /**
  * The web client renders one card per turn from `uiHint` + `data` (and
@@ -259,11 +319,13 @@ export const UNVERIFIED_ACTION_CORRECTION =
  */
 function buildResponse(
   text: string,
-  executed: { name: string; result: SkillResult }[],
+  executed: ExecutedTool[],
   usage: TokenUsage,
-  corrections: string[] = [],
+  flags: string[] = [],
 ): AssistantResponse & { usage: TokenUsage } {
-  const trace = { toolsUsed: executed.map((e) => e.name), corrections }
+  // A ⟦hecho: …⟧ mark is history bookkeeping (whatsapp/history.ts): never shown.
+  text = text.replace(/⟦[^⟧]*⟧\s*/g, '').trim()
+  const trace = { toolsUsed: executed.map((e) => e.name), corrections: flags, toolTrace: traceOf(executed) }
   if (executed.length === 0) {
     return { message: text || 'No he podido generar una respuesta.', actionTaken: false, usage, ...trace }
   }
@@ -277,7 +339,7 @@ function buildResponse(
       : 0
   const primary = executed.reduce((best, e) => (rank(e.result.uiHint) >= rank(best.result.uiHint) ? e : best))
   return {
-    message: text || primary.result.summary,
+    message: text || 'Hecho.',
     skillUsed: primary.name,
     data: primary.result.data,
     uiHint: primary.result.uiHint,

@@ -15,7 +15,36 @@ export interface HistoryRow {
   body: string | null
   status: string
   createdAt: Date
+  /** Inbound rows: `{ toolTrace }` of the turn they started (inbound.ts). */
+  meta?: unknown
 }
+
+/** Bounds for the ⟦hecho: …⟧ line: enough to know what happened, not a log dump. */
+const TRACE_ITEM_MAX = 260
+const TRACE_MAX = 1200
+
+/**
+ * One line telling the model what its tools did in a past turn:
+ * `⟦hecho: swap_meal {"dayIndex":3,…} → Hecho. He puesto "X" en la cena del jueves. · log_cooked … → …⟧`.
+ * Without it, history was only the text of past replies, so Mimo didn't know
+ * what it had done ("ya estaba hecho desde hace un turno", 2026-10-08/10).
+ */
+export function traceLine(meta: unknown): string | null {
+  const trace = (meta as { toolTrace?: unknown } | null)?.toolTrace
+  if (!Array.isArray(trace) || trace.length === 0) return null
+  const items = trace
+    .filter((t): t is { name: string; input?: string; summary?: string; error?: boolean } => !!t && typeof (t as any).name === 'string')
+    .map((t) => {
+      const item = `${t.name} ${t.input ?? ''} → ${t.error ? 'ERROR: ' : ''}${t.summary ?? ''}`.replace(/\s+/g, ' ').trim()
+      return item.length > TRACE_ITEM_MAX ? `${item.slice(0, TRACE_ITEM_MAX - 1)}…` : item
+    })
+  if (items.length === 0) return null
+  let line = items.join(' · ')
+  if (line.length > TRACE_MAX) line = `${line.slice(0, TRACE_MAX - 1)}…`
+  return `⟦hecho: ${line}⟧`
+}
+
+
 
 export const HISTORY_MAX_MESSAGES = 20
 export const HISTORY_WINDOW_MS = 12 * 60 * 60 * 1000
@@ -58,9 +87,17 @@ export function buildChatHistory(
   // a reply split across several WhatsApp messages) — the Messages API wants
   // alternating roles.
   const merged: ChatMessage[] = []
+  // The trace of a user turn goes in front of the reply it produced.
+  let pendingTrace: string | null = null
   for (const r of usable) {
     const role: ChatMessage['role'] = r.direction === 'in' ? 'user' : 'assistant'
-    const content = role === 'assistant' ? r.body!.trim().replace(SHOP_LINK, OLD_SHOP_LINK) : r.body!.trim()
+    let content = role === 'assistant' ? r.body!.trim().replace(SHOP_LINK, OLD_SHOP_LINK) : r.body!.trim()
+    if (role === 'user') {
+      pendingTrace = traceLine(r.meta)
+    } else if (pendingTrace && r.kind === 'reply') {
+      content = `${pendingTrace}\n${content}`
+      pendingTrace = null
+    }
     const last = merged[merged.length - 1]
     if (last && last.role === role) last.content = `${last.content}\n\n${content}`
     else merged.push({ role, content })

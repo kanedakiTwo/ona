@@ -4,7 +4,7 @@
  * voice notes, recipe photos and the chat round-trip.
  */
 import { describe, it, expect, vi } from 'vitest'
-import { processInbound, COPY, ackTextForTools, type InboundDeps } from '../services/whatsapp/inbound.js'
+import { processInbound, COPY, ackTextForTools, photoIntent, type InboundDeps } from '../services/whatsapp/inbound.js'
 import type { InboundMessage } from '../services/whatsapp/webhookParser.js'
 import type { LinkWithUser } from '../services/whatsapp/store.js'
 import type { HistoryRow } from '../services/whatsapp/history.js'
@@ -325,23 +325,47 @@ describe('processInbound — recipe photos', () => {
     expect(t.sent.at(-1)!.text).toContain('Revisa los ingredientes')
   })
 
-  it('says so when the photo is not a recipe', async () => {
+  it('a photo that is not a recipe goes to Mimo, who sees it and answers', async () => {
     const t = setup({
       importRecipeFromImage: async () => {
         throw new Error('No se pudo identificar una receta en la imagen')
       },
     })
+    t.chat.mockImplementationOnce(async () => ({ message: 'Es una plancha de hierro: precaliéntala bien.', usage: EMPTY_USAGE }))
     await processInbound(photo(), t.deps)
-    expect(t.sent).toEqual([
-      { type: 'text', text: COPY.ackPhoto },
-      { type: 'text', text: COPY.imageNotRecipe },
-    ])
+    expect(t.chat).toHaveBeenCalledOnce()
+    const opts = t.chat.mock.calls[0][3] as any
+    expect(opts.images).toEqual([{ mediaType: 'image/jpeg', data: Buffer.from('bytes').toString('base64') }])
+    expect(t.sent.map((m) => m.text)).toEqual([COPY.ackPhoto, 'Es una plancha de hierro: precaliéntala bien.'])
+    expect(t.inboundUpdates.at(-1)).toMatchObject({ status: 'processed', body: '[Foto] la de mi abuela', meta: expect.objectContaining({ photo: true }) })
   })
 
-  it('is polite when photo import is not wired', async () => {
+  it('a photo with a question goes straight to Mimo (2026-10-11: «¿cómo cambia la receta?» got «no hay receta»)', async () => {
+    const importRecipeFromImage = vi.fn()
+    const t = setup({ importRecipeFromImage })
+    t.chat.mockImplementationOnce(async () => ({ message: 'En plancha, piel abajo y fuego medio.', usage: EMPTY_USAGE }))
+    await processInbound(msg({ kind: 'image', text: 'Lo hago hoy en esta plancha. Como cambia la receta?', mediaId: 'M3', mimeType: 'image/jpeg' }), t.deps)
+    expect(importRecipeFromImage).not.toHaveBeenCalled()
+    expect(t.chat.mock.calls[0][1]).toBe('Lo hago hoy en esta plancha. Como cambia la receta?')
+    expect((t.chat.mock.calls[0][3] as any).images).toHaveLength(1)
+    expect(t.sent.map((m) => m.text)).toEqual(['En plancha, piel abajo y fuego medio.'])
+  })
+
+  it('without photo import wired, Mimo still looks at the photo', async () => {
     const t = setup()
+    t.chat.mockImplementationOnce(async () => ({ message: 'Qué buena pinta.', usage: EMPTY_USAGE }))
     await processInbound(photo(), t.deps)
-    expect(t.sent).toEqual([{ type: 'text', text: COPY.imageUnavailable }])
+    expect((t.chat.mock.calls[0][3] as any).images).toHaveLength(1)
+    expect(t.sent.map((m) => m.text)).toEqual(['Qué buena pinta.'])
+  })
+
+  it('photoIntent: questions go to Mimo, everything else is a recipe to import', () => {
+    expect(photoIntent('')).toBe('import')
+    expect(photoIntent('la de mi abuela')).toBe('import')
+    expect(photoIntent('guárdala')).toBe('import')
+    expect(photoIntent('¿Puedo usar esta sartén?')).toBe('ask')
+    expect(photoIntent('Como cambia la receta?')).toBe('ask')
+    expect(photoIntent('cómo lo hago en la barbacoa')).toBe('ask')
   })
 })
 

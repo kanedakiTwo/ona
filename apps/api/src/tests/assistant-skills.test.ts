@@ -201,12 +201,29 @@ describe('get_recipe_details', () => {
       { ingredientName: 'lentejas', quantity: 200, unit: 'g' },
       { ingredientName: 'cebolla', quantity: 1, unit: 'u' },
     ]
-    const db = makeDb([recipe], ingredients)
+    const steps = [
+      { index: 0, text: 'Sofríe la cebolla.', durationMin: 5 },
+      { index: 1, text: 'Añade las lentejas y cubre de agua.', durationMin: 25 },
+    ]
+    const db = makeDb([{ ...recipe, servings: 4, tips: 'Mejor de un día para otro.', sourceUrl: 'https://youtu.be/abc' }], ingredients, steps)
     const r = await skill.handler({ recipeName: 'lentejas' }, ctx(db))
     expect(r.uiHint).toBe('recipe')
     expect(r.summary).toContain('Lentejas con verduras')
     expect(r.summary).toContain('lentejas')
     expect(r.data?.ingredients).toHaveLength(2)
+    // The steps reach the model (they never did before 2026-10-12), with the
+    // tips and the original link ("¿tienes el vídeo?").
+    expect(r.summary).toContain('1. Sofríe la cebolla.')
+    expect(r.summary).toContain('2. Añade las lentejas y cubre de agua.')
+    expect(r.summary).toContain('Mejor de un día para otro.')
+    expect(r.summary).toContain('https://youtu.be/abc')
+    expect(r.summary).toContain('4 raciones')
+  })
+
+  it('says so when a recipe has no saved steps', async () => {
+    const db = makeDb([{ id: 'r-2', name: 'Ensalada', prepTime: 10 }], [], [])
+    const r = await skill.handler({ recipeName: 'ensalada' }, ctx(db))
+    expect(r.summary).toContain('no tiene pasos guardados')
   })
 })
 

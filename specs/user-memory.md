@@ -69,7 +69,7 @@ All endpoints require auth.
 - Flags weekdays with ≤30 min cooking windows
 - Carries the long-form `notes` array verbatim
 
-The `update_memory` skill (declared in `assistant/skills.ts`) takes a `facts: Array<{ key, value, confidence? }>` payload and routes it through `setMemoryBatch` with `source='inferred'`. Validation errors return a Spanish summary the model relays back to the user.
+The `update_memory` skill (declared in `assistant/skills.ts`) takes a `facts: Array<{ key, value, confidence?, remove?, replace? }>` payload, merges it with what's stored (`mergeMemoryFacts`: lists are added to without duplicates, `remove` takes items out, `replace: true` rebuilds the list; a fact with `source: manual` is kept unless the user asked for the change, confidence 1) and routes it through `setMemoryBatch` with `source='inferred'`. Until 2026-10-12 a list was replaced whole, so a model that resent it without an old entry deleted it. Validation errors return a Spanish summary the model relays back to the user.
 
 ## Constraints
 

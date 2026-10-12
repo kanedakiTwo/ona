@@ -31,3 +31,13 @@ test('footer → /aviso-legal shows the holder; /privacidad names the controller
   await expect(controller).toContainText(ADDRESS)
   await expect(controller).not.toContainText('el equipo de Mimoia')
 })
+
+// PRO-70: the intended purpose (D-038, constitution §6), word for word, in its own section.
+const INTENDED_PURPOSE =
+  'Mimoia es un planificador de menús, recetas y lista de la compra para hogares, según sus gustos, preferencias y restricciones declaradas. Ofrece información general de alimentación. No está destinado a diagnosticar, prevenir, predecir, tratar ni controlar ninguna enfermedad, ni sustituye a un profesional sanitario.'
+
+test('/terminos says what Mimoia is for, in the exact §6 words', async ({ page }) => {
+  await page.goto('/terminos')
+  await expect(page.getByRole('heading', { level: 2, name: /Para qué sirve Mimoia/ })).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId('terms-intended-purpose')).toHaveText(INTENDED_PURPOSE)
+})

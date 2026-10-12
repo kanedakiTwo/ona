@@ -1478,7 +1478,7 @@ const scaleRecipeSkill: SkillDefinition = {
 // 7. ── evaluate_food_health ────────────────────────────────
 const evaluateFoodHealth: SkillDefinition = {
   name: 'evaluate_food_health',
-  description: 'Cuando el usuario pregunta si un alimento es saludable (ej. "el zumo es sano", "que tal la avena"), llama a esta skill. Devuelve contexto para que tu (Claude) respondas con criterio segun los principios de Mimoia — no neutral.',
+  description: 'Cuando el usuario pregunta si un alimento es sano o que opinas de el (ej. "el zumo es sano", "que tal la avena"), llama a esta skill. Devuelve contexto para que tu (Claude) respondas con criterio segun los principios de cocina de Mimoia (Como cocina Mimoia) — no neutral.',
   parameters: {
     type: 'object',
     properties: {
@@ -1489,7 +1489,7 @@ const evaluateFoodHealth: SkillDefinition = {
   async handler(params: { food: string }) {
     return {
       data: { food: params.food },
-      summary: `Evalua si "${params.food}" es saludable usando los principios de Mimoia. Considera: 1) cuanta verdura, legumbre o fibra aporta, 2) impacto en insulina, 3) si esta procesado y por tanto carece de fibra, 4) frecuencia recomendada (la frecuencia importa tanto como el contenido), 5) si es de los alimentos popularmente "saludables" que no lo son (zumos, pan blanco, arroz blanco, aceites vegetales refinados, fruta en exceso fuera de temporada). Da una respuesta corta (2-3 frases) con criterio propio, sin moralizar.`,
+      summary: `Opina de "${params.food}" con los principios de cocina de Mimoia. Considera: 1) cuanta verdura, legumbre o fibra aporta, 2) si es comida de verdad o un ultraprocesado, y cuanto azucar añadido lleva, 3) cada cuanto encaja en la semana, 4) si hay una alternativa de cocina mejor segun los principios (fruta entera mejor que zumo, pan de verdad mejor que de molde, de temporada mejor que de fuera de temporada). Habla de cocina y de costumbres, nunca de efectos en el cuerpo; si pregunta por su salud, sigue la regla de Salud. Da una respuesta corta (2-3 frases) con criterio propio, sin moralizar.`,
       uiHint: 'nutrition',
     }
   },
@@ -1539,7 +1539,7 @@ const PROT_RE = /(pollo|pavo|ternera|cerdo|cordero|huevo|salmon|atun|sardina|mer
 
 const getVarietyScore: SkillDefinition = {
   name: 'get_variety_score',
-  description: 'Calcula la diversidad de ingredientes (con foco en vegetales y proteinas) en el menu actual del usuario. Pilar del principio 7 de Mimoia: variedad maxima para microbioma resiliente.',
+  description: 'Calcula la diversidad de ingredientes (con foco en vegetales y proteinas) en el menu actual del usuario. Pilar del principio 2 de Mimoia: verdura todos los dias, y variada.',
   parameters: { type: 'object', properties: {}, required: [] },
   async handler(_p, ctx) {
     const { userId, db } = ctx
@@ -1579,7 +1579,7 @@ const getVarietyScore: SkillDefinition = {
       ? 'Anade verdes oscuros (espinaca, kale) y crucíferas (brocoli, coliflor) para subir.'
       : score < 80
         ? 'Buen camino — sigue rotando proteinas distintas (legumbres, pescado azul, huevo).'
-        : 'Excelente variedad — el microbioma te lo agradece.'
+        : 'Excelente variedad: una semana con mucha verdura distinta.'
     return {
       data: { distinctCount: distinct.size, vegetableCount: veggies.size, proteinCount: proteins.size, score, vegetables: [...veggies], proteins: [...proteins] },
       summary: `Esta semana llevas ${distinct.size} ingredientes distintos (${veggies.size} vegetales, ${proteins.size} proteinas). Score de variedad: ${score}/100. ${advice}`,
@@ -1591,7 +1591,7 @@ const getVarietyScore: SkillDefinition = {
 // 10. ── get_eating_window ──────────────────────────────────
 const getEatingWindow: SkillDefinition = {
   name: 'get_eating_window',
-  description: 'Calcula la ventana de alimentacion del usuario (primera y ultima comida del dia, longitud media en horas) usando las comidas marcadas como comidas. Importante para el principio 3 de Mimoia: la frecuencia importa tanto como el contenido.',
+  description: 'Calcula la ventana de alimentacion del usuario (primera y ultima comida del dia, longitud media en horas) usando las comidas marcadas como comidas. Sirve para el principio 7 de Mimoia: comidas a su hora, sin picoteo.',
   parameters: {
     type: 'object',
     properties: {
@@ -1634,10 +1634,10 @@ const getEatingWindow: SkillDefinition = {
     const avgLast = dayHours.map(hs => Math.max(...hs)).reduce((a, b) => a + b, 0) / dayHours.length
     const fmt = (h: number) => `${Math.floor(h).toString().padStart(2, '0')}:${Math.round((h - Math.floor(h)) * 60).toString().padStart(2, '0')}`
     const advice = avgW > 12
-      ? 'Ventana ancha. Cerrarla a 10h (mover desayuno mas tarde o cenar antes) reduce la insulina cronica.'
+      ? 'Ventana ancha: muchas horas entre la primera y la ultima comida. Si os encaja, cenar un poco antes deja las comidas a su hora y menos picoteo.'
       : avgW < 8
-        ? 'Ventana corta — buena para insulina. Mantenla.'
-        : 'Ventana razonable. Estrecharla un poco mas si quieres ir mas alla.'
+        ? 'Ventana corta: las comidas se concentran en pocas horas.'
+        : 'Ventana razonable: comidas a horas regulares.'
     return {
       data: { avgWindowHours: Number(avgW.toFixed(2)), avgFirstHour: avgFirst, avgLastHour: avgLast, daysSampled: dayHours.length },
       summary: `Sobre ${dayHours.length} dia(s) con datos: ventana media ${avgW.toFixed(1)}h (~${fmt(avgFirst)} a ~${fmt(avgLast)}). ${advice}`,

@@ -5,27 +5,23 @@ import { ASSISTANT_NAME, BRAND_NAME, TARGET_MACROS, nutrientsToPercentages } fro
 import type { NutrientBalance } from '@ona/shared'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import { readdir, readFile } from 'fs/promises'
+import { readFile } from 'fs/promises'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
 const execFileAsync = promisify(execFile)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-// Load all knowledge base files from /kb at startup
+// Mimoia's cooking principles (kb/principios-mimo.md, PRO-67): the same
+// single file the assistant loads, never the rest of kb/.
 let knowledgeBase = ''
 async function loadKB() {
-  const kbDir = path.resolve(__dirname, '..', '..', '..', '..', 'kb')
+  const kbFile = path.resolve(__dirname, '..', '..', '..', '..', 'kb', 'principios-mimo.md')
   try {
-    const files = await readdir(kbDir)
-    const mdFiles = files.filter(f => f.endsWith('.md'))
-    const contents = await Promise.all(
-      mdFiles.map(f => readFile(path.join(kbDir, f), 'utf-8'))
-    )
-    knowledgeBase = contents.join('\n\n---\n\n')
-    console.log(`Loaded ${mdFiles.length} KB file(s): ${mdFiles.join(', ')}`)
+    knowledgeBase = (await readFile(kbFile, 'utf-8')).trim()
+    console.log('Loaded kb/principios-mimo.md')
   } catch {
-    console.log('No KB directory found, advisor will work without knowledge base.')
+    console.log('kb/principios-mimo.md not found, advisor will work without it.')
   }
 }
 loadKB()

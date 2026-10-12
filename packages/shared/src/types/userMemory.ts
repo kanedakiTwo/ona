@@ -55,7 +55,8 @@ export const MEMORY_KEYS = [
   // Free-form notes the agent has learned ("his daughter doesn't eat fish")
   'notes',
   // User-authored nutrition principles — added on top of Mimoia's defaults
-  // (the "10 mandamientos"). Each entry is one short Spanish sentence.
+  // (kb/principios-mimo.md, «Cómo cocina Mimoia»). Each entry is one short
+  // Spanish sentence.
   // The advisor reads both in its system prompt; user principles win on
   // conflict ("creo que la grasa saturada es buena" overrides any default
   // that suggests otherwise).
@@ -203,7 +204,7 @@ export function buildMemoryDigestText(memory: UserMemory): string {
     // These override Mimoia's defaults on conflict — flag that explicitly so
     // the model doesn't try to "correct" the user against their own beliefs.
     lines.push(
-      `Principios nutricionales propios del usuario (RESPÉTALOS aunque entren en conflicto con tus 10 mandamientos por defecto):\n  - ${principles.join('\n  - ')}`,
+      `Principios nutricionales propios del usuario (RESPÉTALOS aunque entren en conflicto con tus principios de cocina por defecto):\n  - ${principles.join('\n  - ')}`,
     )
   }
 

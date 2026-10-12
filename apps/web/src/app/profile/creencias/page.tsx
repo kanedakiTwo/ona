@@ -3,12 +3,12 @@
 /**
  * /profile/creencias — Personalize the assistant's nutritional philosophy.
  *
- * Mimoia ships with 5 default principles (see ONA_PRINCIPLES) plus a 10-
- * mandamientos knowledge base. Users can add their own principles which
- * get injected into the system prompt with an explicit override flag —
- * "RESPÉTALOS aunque entren en conflicto con tus 10 mandamientos por
- * defecto" — so a user's "creo en el ayuno intermitente" beats Mimoia's
- * default "ventana de alimentación es importante" if there's tension.
+ * Mimoia ships with 5 default principles (see ONA_PRINCIPLES) plus its
+ * cooking principles (kb/principios-mimo.md, «Cómo cocina Mimoia»). Users
+ * can add their own principles which get injected into the system prompt
+ * with an explicit override flag — "RESPÉTALOS aunque entren en conflicto
+ * con tus principios de cocina por defecto" — so a user's "creo en el ayuno
+ * intermitente" beats any Mimoia default if there's tension.
  *
  * Skin: "D · Luz y foto" (PRO-40). Each own principle is a paper row whose
  * "···" sheet holds "Eliminar principio"; at lg+ the defaults sit in a

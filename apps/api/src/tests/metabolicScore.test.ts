@@ -1,5 +1,5 @@
 /**
- * Mimoia's opinion in the generator (kb/10 mandamientos.md): real food, fibre
+ * Mimoia's opinion in the generator (the former kb/10 mandamientos.md, now kb/principios-mimo.md): real food, fibre
  * and many plants beat refined carbs and processed food. The fitness used
  * to optimise calories + macros only.
  */

@@ -37,12 +37,12 @@ const BANNED: Array<[RegExp, string]> = [
 ]
 const hits = (text: string) => BANNED.filter(([re]) => re.test(text)).map(([, l]) => l)
 
-/** The kb/ block is Miguel's internal framework, loaded at runtime; the
+/** The kb/ block (kb/principios-mimo.md) is guarded in principiosMimo.test.ts; the
  *  instructions Mimo gets from us end before it. The fixed health rule
  *  (PRO-62, healthGuard.ts) names glucose, insulin and the §6 diseases only
  *  to forbid talking about them, so it's left out too (its own guard is
  *  tests/healthAdvice.test.ts). */
-const instructionsOnly = (p: string) => p.split('Base de conocimiento nutricional')[0].replace(HEALTH_RULE, '')
+const instructionsOnly = (p: string) => p.split('Principios de cocina de Mimoia')[0].replace(HEALTH_RULE, '')
 
 describe('Mimo talks about kitchen balance, not health (constitution §6)', () => {
   it('no tool name, description or parameter mentions inflammation or diseases', () => {

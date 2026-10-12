@@ -20,7 +20,9 @@ interface RecipePickerSheetProps {
 /**
  * Bottom-sheet recipe picker. Lists recipes from `useRecipes()`, filterable
  * by name. Per the user's design call (#2 → "libre"), the picker does NOT
- * filter by `meal_type` — any recipe can be assigned to any slot.
+ * filter by `meal_type` — any recipe can be assigned to any slot. It DOES
+ * hide recipes that break the user's allergies or diet (`fitsMe`, PRO-61):
+ * a vegetarian must never be offered chicken here.
  */
 export function RecipePickerSheet({
   open,
@@ -33,8 +35,9 @@ export function RecipePickerSheet({
   const inputRef = useRef<HTMLInputElement>(null)
 
   // Fetch the full catalog (server already paginates; perPage=300 covers
-  // the seeded set + any user-created recipes for now).
-  const { data: recipes = [], isLoading } = useRecipes({ perPage: 300 })
+  // the seeded set + any user-created recipes for now), minus what breaks
+  // the user's allergies or diet.
+  const { data: recipes = [], isLoading } = useRecipes({ perPage: 300, fitsMe: true })
 
   useEffect(() => {
     if (open) {
@@ -72,6 +75,9 @@ export function RecipePickerSheet({
             {subtitle && (
               <p className="mt-1 text-[12px] italic text-[#7A7066]">{subtitle}</p>
             )}
+            <p className="mt-1 text-[11px] text-[#7A7066]" data-testid="picker-restrictions-note">
+              Solo salen las recetas que encajan con tus alergias y tu dieta.
+            </p>
           </div>
           <button
             type="button"

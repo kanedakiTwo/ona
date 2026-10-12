@@ -1,0 +1,2742 @@
+[
+ {
+  "name": "Acelgas rehogadas",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [],
+  "ingredients": [
+   "acelgas",
+   "patata",
+   "ajo",
+   "cebolla",
+   "aceite de oliva virgen"
+  ]
+ },
+ {
+  "name": "Albondigas en salsa espanola",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "gluten"
+  ],
+  "ingredients": [
+   "ternera",
+   "cebolla",
+   "zanahoria",
+   "ajo",
+   "harina de trigo",
+   "aceite de oliva virgen"
+  ]
+ },
+ {
+  "name": "Albóndigas gipsy",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "gluten",
+   "huevo",
+   "lactosa"
+  ],
+  "ingredients": [
+   "ternera",
+   "pan blanco",
+   "leche entera",
+   "huevo",
+   "cebolla",
+   "ajo",
+   "perejil",
+   "tomate triturado",
+   "caldo de verduras",
+   "aceite de oliva virgen",
+   "pimentón dulce",
+   "comino",
+   "harina de trigo",
+   "sal",
+   "pimienta negra"
+  ]
+ },
+ {
+  "name": "Alitas de pollo al horno",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "sesamo",
+   "soja"
+  ],
+  "ingredients": [
+   "pollo",
+   "salsa de soja",
+   "miel",
+   "ajo",
+   "jengibre fresco",
+   "aceite de oliva virgen",
+   "pimentón dulce",
+   "sesamo",
+   "pimienta negra",
+   "sal"
+  ]
+ },
+ {
+  "name": "Alubias rojas con entraña y embutidos",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "gluten"
+  ],
+  "ingredients": [
+   "chorizo oreado",
+   "morcilla de cebolla",
+   "patata",
+   "zanahoria",
+   "pimiento verde",
+   "tomate",
+   "ajo",
+   "cebolla",
+   "pimentón dulce",
+   "comino",
+   "aceite de oliva virgen extra",
+   "sal",
+   "panceta salada curada",
+   "cilantro",
+   "judias rojas",
+   "entraña de ternera"
+  ]
+ },
+ {
+  "name": "Arroz al caldero",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [],
+  "ingredients": [
+   "arroz",
+   "ajo"
+  ]
+ },
+ {
+  "name": "Arroz al horno",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "spring",
+   "summer",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "spring": "perfect",
+   "summer": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "gluten"
+  ],
+  "ingredients": [
+   "panceta",
+   "arroz",
+   "caldo de cocido",
+   "morcilla de cebolla",
+   "costillas de cerdo",
+   "tomate",
+   "patata",
+   "garbanzos",
+   "ajo"
+  ]
+ },
+ {
+  "name": "Arroz con bacalao",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "pescado"
+  ],
+  "ingredients": [
+   "arroz",
+   "cebolla",
+   "ajo",
+   "tomate triturado",
+   "pimiento rojo",
+   "guisantes",
+   "caldo de verduras",
+   "aceite de oliva virgen",
+   "pimentón dulce",
+   "sal",
+   "bacalao"
+  ]
+ },
+ {
+  "name": "Arroz con pollo",
+  "meals": [
+   "lunch"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [],
+  "ingredients": [
+   "arroz",
+   "cebolla",
+   "pimiento rojo",
+   "pollo",
+   "aceite de oliva virgen",
+   "ajo"
+  ]
+ },
+ {
+  "name": "Arroz tres delicias",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "spring": "perfect",
+   "summer": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "crustaceos",
+   "huevo",
+   "marisco",
+   "soja"
+  ],
+  "ingredients": [
+   "arroz de grano largo",
+   "zanahoria",
+   "gambas",
+   "guisantes",
+   "jamón de york",
+   "huevos",
+   "salsa de soja",
+   "azúcar",
+   "aceite de oliva virgen extra"
+  ]
+ },
+ {
+  "name": "Avgolemono (sopa griega de limón)",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "huevo"
+  ],
+  "ingredients": [
+   "caldo de pollo",
+   "arroz",
+   "pollo",
+   "limón",
+   "huevo",
+   "sal",
+   "pimienta negra",
+   "perejil"
+  ]
+ },
+ {
+  "name": "Bacalao con tomate",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "pescado"
+  ],
+  "ingredients": [
+   "bacalao",
+   "tomate"
+  ]
+ },
+ {
+  "name": "Berenjenas con queso",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "summer",
+   "autumn"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "summer": "perfect",
+   "autumn": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "lactosa"
+  ],
+  "ingredients": [
+   "berenjena",
+   "tomate triturado",
+   "mozzarella",
+   "queso parmesano",
+   "ajo",
+   "aceite de oliva virgen",
+   "oregano",
+   "albahaca",
+   "sal"
+  ]
+ },
+ {
+  "name": "Berenjenas rellenas",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "summer",
+   "autumn"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "summer": "perfect",
+   "autumn": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "lactosa"
+  ],
+  "ingredients": [
+   "berenjena",
+   "ternera",
+   "cebolla",
+   "ajo",
+   "tomate triturado",
+   "queso parmesano",
+   "aceite de oliva virgen",
+   "oregano",
+   "sal",
+   "pimienta negra"
+  ]
+ },
+ {
+  "name": "Boquerones fritos",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "gluten",
+   "pescado"
+  ],
+  "ingredients": [
+   "limón",
+   "boquerones",
+   "harina de trigo",
+   "aceite de oliva virgen",
+   "sal"
+  ]
+ },
+ {
+  "name": "Carrilleras de ternera con vino tinto",
+  "meals": [
+   "lunch"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [],
+  "ingredients": [
+   "ternera",
+   "cebolla",
+   "zanahoria",
+   "ajo",
+   "aceite de oliva virgen"
+  ]
+ },
+ {
+  "name": "Ceviche",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "pescado"
+  ],
+  "ingredients": [
+   "salmon",
+   "aguacate",
+   "cebolla",
+   "tomate"
+  ]
+ },
+ {
+  "name": "Cocido madrileno",
+  "meals": [
+   "lunch"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [],
+  "ingredients": [
+   "garbanzos",
+   "ternera",
+   "pollo",
+   "patata",
+   "zanahoria",
+   "puerro"
+  ]
+ },
+ {
+  "name": "Coliflor gratinada",
+  "meals": [
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "gluten",
+   "lactosa"
+  ],
+  "ingredients": [
+   "harina de trigo",
+   "coliflor",
+   "leche entera",
+   "queso parmesano",
+   "mantequilla"
+  ]
+ },
+ {
+  "name": "Conejo confitado con ajo y romero",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "spring",
+   "winter",
+   "summer"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "mid"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "spring": "perfect",
+   "summer": "mid",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "gluten",
+   "sulfitos"
+  ],
+  "ingredients": [
+   "conejo",
+   "aceite de oliva virgen extra",
+   "vino blanco",
+   "romero",
+   "ajo",
+   "harina de trigo",
+   "pimienta negra",
+   "sal"
+  ]
+ },
+ {
+  "name": "Contramuslos de pollo guisados",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "sulfitos"
+  ],
+  "ingredients": [
+   "pollo",
+   "cebolla",
+   "zanahoria",
+   "ajo",
+   "tomate triturado",
+   "vino blanco",
+   "caldo de pollo",
+   "aceite de oliva virgen",
+   "laurel",
+   "tomillo",
+   "sal",
+   "pimienta negra"
+  ]
+ },
+ {
+  "name": "Costillas a la riojana",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [],
+  "ingredients": [
+   "patata",
+   "costillas",
+   "cebolla",
+   "pimiento verde",
+   "pimiento rojo",
+   "tomate",
+   "ajo",
+   "aceite de oliva virgen"
+  ]
+ },
+ {
+  "name": "Crema de calabacin",
+  "meals": [
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [],
+  "ingredients": [
+   "calabacin",
+   "cebolla",
+   "puerro",
+   "aceite de oliva virgen",
+   "patata"
+  ]
+ },
+ {
+  "name": "Crema de zanahoria",
+  "meals": [
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [],
+  "ingredients": [
+   "cebolla",
+   "patata",
+   "zanahoria",
+   "aceite de oliva virgen",
+   "ajo"
+  ]
+ },
+ {
+  "name": "Crema de zanahoria con pollo, aguacate y granada",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [],
+  "ingredients": [
+   "jengibre fresco",
+   "cebolleta",
+   "aceite de oliva virgen extra",
+   "zanahoria",
+   "sal",
+   "comino",
+   "muslo de pollo",
+   "agua",
+   "uva",
+   "aguacate",
+   "granada",
+   "alcaparras"
+  ]
+ },
+ {
+  "name": "Curry de berenjena",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [],
+  "ingredients": [
+   "berenjena",
+   "aceite de oliva virgen",
+   "cebolla",
+   "ajo",
+   "pimiento rojo",
+   "tomate",
+   "lentejas"
+  ]
+ },
+ {
+  "name": "Curry de patatas y guisantes",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [],
+  "ingredients": [
+   "patata",
+   "guisantes",
+   "cebolla",
+   "ajo",
+   "jengibre fresco",
+   "tomate triturado",
+   "aceite de oliva virgen",
+   "comino",
+   "curcuma",
+   "pimentón dulce",
+   "caldo de verduras",
+   "sal",
+   "cilantro"
+  ]
+ },
+ {
+  "name": "Dorada a la marsellesa",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "pescado",
+   "sulfitos"
+  ],
+  "ingredients": [
+   "dorada",
+   "tomate",
+   "cebolla",
+   "ajo",
+   "aceitunas negras",
+   "vino blanco",
+   "aceite de oliva virgen",
+   "tomillo",
+   "romero",
+   "limon",
+   "sal",
+   "pimienta negra"
+  ]
+ },
+ {
+  "name": "Ensalada de atun",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "pescado"
+  ],
+  "ingredients": [
+   "atun",
+   "cebolla",
+   "tomate",
+   "aceite de oliva virgen"
+  ]
+ },
+ {
+  "name": "Ensalada griega",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "gluten",
+   "lactosa"
+  ],
+  "ingredients": [
+   "aceitunas negras",
+   "pimiento verde",
+   "tomate",
+   "aceite de oliva virgen",
+   "pepino",
+   "oregano",
+   "sal",
+   "alcaparras",
+   "feta",
+   "limón",
+   "cebolla morada",
+   "pan seco de algarroba"
+  ]
+ },
+ {
+  "name": "Ensalada thai",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "frutos_secos",
+   "soja"
+  ],
+  "ingredients": [
+   "zanahoria",
+   "pepino",
+   "tomate",
+   "cebolla",
+   "lechuga",
+   "almendras",
+   "lima",
+   "salsa de soja",
+   "azucar",
+   "ajo",
+   "jengibre fresco",
+   "guindilla",
+   "cilantro"
+  ]
+ },
+ {
+  "name": "Espaguetis con ajo y aceite",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "gluten",
+   "lactosa"
+  ],
+  "ingredients": [
+   "queso parmesano",
+   "aceite de oliva virgen",
+   "pasta",
+   "ajo"
+  ]
+ },
+ {
+  "name": "Espinacas a la crema",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "frutos_secos",
+   "lactosa"
+  ],
+  "ingredients": [
+   "espinacas",
+   "cebolla",
+   "ajo",
+   "nata liquida",
+   "queso parmesano",
+   "mantequilla",
+   "nuez moscada",
+   "sal",
+   "pimienta negra"
+  ]
+ },
+ {
+  "name": "Fajitas de pollo",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [],
+  "ingredients": [
+   "pollo",
+   "pimiento rojo",
+   "pimiento verde",
+   "cebolla",
+   "ajo",
+   "aceite de oliva virgen",
+   "comino",
+   "pimentón dulce",
+   "lima",
+   "sal",
+   "cilantro"
+  ]
+ },
+ {
+  "name": "Falafel",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "gluten"
+  ],
+  "ingredients": [
+   "garbanzos",
+   "guisantes",
+   "ajo",
+   "harina de trigo",
+   "aceite de oliva virgen"
+  ]
+ },
+ {
+  "name": "Garbanzos con espinacas",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "gluten",
+   "sulfitos"
+  ],
+  "ingredients": [
+   "garbanzos",
+   "espinacas",
+   "cebolla",
+   "ajo",
+   "tomate triturado",
+   "pan blanco",
+   "aceite de oliva virgen",
+   "pimentón dulce",
+   "comino",
+   "caldo de verduras",
+   "vinagre de vino",
+   "sal"
+  ]
+ },
+ {
+  "name": "Guisantes lagrima",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [],
+  "ingredients": [
+   "guisantes",
+   "jamon",
+   "cebolla",
+   "ajo"
+  ]
+ },
+ {
+  "name": "Hamburguesa perfecta de Gipsy Chef",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "spring": "perfect",
+   "summer": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "gluten",
+   "lactosa",
+   "mostaza"
+  ],
+  "ingredients": [
+   "carne de aguja",
+   "carne de aguja de retal",
+   "sal",
+   "pimienta negra",
+   "oregano",
+   "canela",
+   "mostaza",
+   "tomate cherry",
+   "mantequilla",
+   "pan de hamburguesa",
+   "cogollo",
+   "tomate"
+  ]
+ },
+ {
+  "name": "Hummus casero",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "spring": "perfect",
+   "summer": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "lactosa",
+   "sesamo"
+  ],
+  "ingredients": [
+   "garbanzos",
+   "aceite de oliva virgen extra",
+   "semillas de sésamo",
+   "agua",
+   "diente de ajo",
+   "sal",
+   "zumo de limón",
+   "comino",
+   "yogur natural"
+  ]
+ },
+ {
+  "name": "Judias verdes rehogadas",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "spring": "perfect",
+   "summer": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [],
+  "ingredients": [
+   "patata",
+   "judias verdes",
+   "aceite de oliva virgen",
+   "ajo"
+  ]
+ },
+ {
+  "name": "Lasaña de verduras",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "frutos_secos",
+   "gluten",
+   "lactosa"
+  ],
+  "ingredients": [
+   "pasta",
+   "calabacin",
+   "berenjena",
+   "espinacas",
+   "cebolla",
+   "ajo",
+   "tomate triturado",
+   "mozzarella",
+   "queso parmesano",
+   "leche entera",
+   "mantequilla",
+   "harina de trigo",
+   "aceite de oliva virgen",
+   "oregano",
+   "sal",
+   "nuez moscada"
+  ]
+ },
+ {
+  "name": "Lentejas estofadas",
+  "meals": [
+   "lunch"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [],
+  "ingredients": [
+   "cebolla",
+   "lentejas",
+   "patata",
+   "zanahoria",
+   "aceite de oliva virgen",
+   "ajo"
+  ]
+ },
+ {
+  "name": "Lentejas guisadas",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [],
+  "ingredients": [
+   "lentejas",
+   "zanahoria",
+   "ajo",
+   "cebolla",
+   "pimiento verde",
+   "tomate",
+   "aceite de oliva virgen"
+  ]
+ },
+ {
+  "name": "Melón con jamón",
+  "meals": [
+   "dinner",
+   "lunch"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn"
+  ],
+  "mealFit": {
+   "lunch": "mid",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "mid",
+   "spring": "perfect",
+   "summer": "perfect"
+  },
+  "frequency": null,
+  "allergens": [],
+  "ingredients": [
+   "jamón serrano fileteado",
+   "melon"
+  ]
+ },
+ {
+  "name": "Menestra de verduras con carne",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [],
+  "ingredients": [
+   "ajo",
+   "cebolla",
+   "pimiento rojo",
+   "guisantes",
+   "judias verdes",
+   "ternera"
+  ]
+ },
+ {
+  "name": "Onigirazu",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "pescado",
+   "sesamo",
+   "soja",
+   "sulfitos"
+  ],
+  "ingredients": [
+   "arroz",
+   "salmon",
+   "aguacate",
+   "pepino",
+   "salsa de soja",
+   "sesamo",
+   "vinagre de vino",
+   "azucar",
+   "sal"
+  ]
+ },
+ {
+  "name": "Oreja a la plancha",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "spring",
+   "summer",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "spring": "perfect",
+   "summer": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [],
+  "ingredients": [
+   "limón",
+   "aceite de oliva virgen extra",
+   "oreja de cerdo",
+   "perejil",
+   "ajo"
+  ]
+ },
+ {
+  "name": "Pescado a la espalda en la brasa",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "spring": "perfect",
+   "summer": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "pescado"
+  ],
+  "ingredients": [
+   "dorada",
+   "aceite de oliva virgen extra",
+   "limón",
+   "sal",
+   "pimienta negra",
+   "romero",
+   "tomillo"
+  ]
+ },
+ {
+  "name": "Pisto con huevo frito a la Thermomix",
+  "meals": [
+   "lunch"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn"
+  ],
+  "mealFit": {
+   "lunch": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "spring": "perfect",
+   "summer": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "huevo"
+  ],
+  "ingredients": [
+   "calabacin",
+   "berenjena",
+   "pimiento rojo",
+   "cebolla",
+   "tomate",
+   "aceite de oliva virgen extra",
+   "sal",
+   "pimienta negra",
+   "huevo",
+   "chorizo oreado",
+   "platano",
+   "arroz"
+  ]
+ },
+ {
+  "name": "Pizza de colores con verduras",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "huevo",
+   "lactosa"
+  ],
+  "ingredients": [
+   "harina de fuerza",
+   "leche entera",
+   "mantequilla",
+   "yema de huevo",
+   "sal",
+   "levadura",
+   "oregano",
+   "pimienta negra",
+   "aceite de oliva virgen extra",
+   "alcachofa",
+   "espárragos trigueros",
+   "pimientos de color",
+   "cebolleta",
+   "aceitunas negras",
+   "salsa de tomate",
+   "mozzarella"
+  ]
+ },
+ {
+  "name": "Pollo a la plancha con brocoli",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [],
+  "ingredients": [
+   "brocoli",
+   "pollo",
+   "aceite de oliva virgen"
+  ]
+ },
+ {
+  "name": "Pollo agridulce",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "gluten",
+   "soja",
+   "sulfitos"
+  ],
+  "ingredients": [
+   "pollo",
+   "pimiento rojo",
+   "pimiento verde",
+   "cebolla",
+   "pina",
+   "salsa de soja",
+   "vinagre de vino",
+   "azucar",
+   "tomate triturado",
+   "ajo",
+   "jengibre fresco",
+   "aceite de oliva virgen",
+   "harina de trigo"
+  ]
+ },
+ {
+  "name": "Porridge de avena con platano",
+  "meals": [
+   "breakfast"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "breakfast": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "gluten",
+   "lactosa"
+  ],
+  "ingredients": [
+   "avena",
+   "leche entera",
+   "platano"
+  ]
+ },
+ {
+  "name": "Ramen casero",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "huevo",
+   "sesamo",
+   "soja"
+  ],
+  "ingredients": [
+   "fideos",
+   "pollo",
+   "huevo",
+   "caldo de pollo",
+   "salsa de soja",
+   "jengibre fresco",
+   "ajo",
+   "cebolla",
+   "champinones",
+   "espinacas",
+   "aceite de oliva virgen",
+   "sesamo"
+  ]
+ },
+ {
+  "name": "Revuelto de calabacin",
+  "meals": [
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer"
+  ],
+  "mealFit": {
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "huevo"
+  ],
+  "ingredients": [
+   "calabacin",
+   "huevo",
+   "aceite de oliva virgen"
+  ]
+ },
+ {
+  "name": "Revuelto de espinacas y atún",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "huevo",
+   "pescado"
+  ],
+  "ingredients": [
+   "espinacas",
+   "atun",
+   "huevo",
+   "cebolla",
+   "ajo",
+   "aceite de oliva virgen",
+   "sal",
+   "pimienta negra"
+  ]
+ },
+ {
+  "name": "Riñones al jerez",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "lactosa",
+   "sulfitos"
+  ],
+  "ingredients": [
+   "riñones de cerdo",
+   "aceite de oliva virgen",
+   "cebolla",
+   "sal",
+   "vino de jerez",
+   "pimenton picante",
+   "mantequilla"
+  ]
+ },
+ {
+  "name": "Ropa vieja del cocido",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "spring",
+   "summer",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "spring": "perfect",
+   "summer": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [],
+  "ingredients": [
+   "aceite de oliva virgen extra",
+   "sobras del cocido madrileño",
+   "dientes de ajo",
+   "pimentón dulce",
+   "cebolla"
+  ]
+ },
+ {
+  "name": "Saam de pollo, mango y mandarina",
+  "meals": [
+   "lunch",
+   "dinner",
+   "snack"
+  ],
+  "seasons": [
+   "spring",
+   "summer"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "snack": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "sesamo",
+   "soja"
+  ],
+  "ingredients": [
+   "pollo en lata",
+   "mango",
+   "mandarina",
+   "limón",
+   "cebolleta encurtida",
+   "jengibre fresco",
+   "salsa de soja",
+   "salsa sriracha",
+   "aceite de sésamo",
+   "aceite de oliva virgen extra",
+   "pimienta negra",
+   "lechuga"
+  ]
+ },
+ {
+  "name": "Salmon al horno con patatas",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "pescado"
+  ],
+  "ingredients": [
+   "cebolla",
+   "patata",
+   "aceite de oliva virgen",
+   "salmon"
+  ]
+ },
+ {
+  "name": "Salteado de verduras con salmón marinado",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "spring": "perfect",
+   "summer": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "pescado",
+   "sesamo",
+   "soja"
+  ],
+  "ingredients": [
+   "jengibre fresco",
+   "aceite de oliva virgen extra",
+   "ciruela pasa",
+   "brocoli",
+   "cebolleta",
+   "zanahoria",
+   "salmon",
+   "salsa de soja",
+   "aceite de sésamo",
+   "limón",
+   "sal"
+  ]
+ },
+ {
+  "name": "Sandwich vegetal",
+  "meals": [
+   "lunch",
+   "dinner",
+   "snack"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect",
+   "snack": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "gluten",
+   "huevo",
+   "pescado"
+  ],
+  "ingredients": [
+   "cebolla",
+   "huevo",
+   "aceite de oliva virgen",
+   "lechuga",
+   "mayonesa",
+   "ketchup",
+   "atun",
+   "pan de molde",
+   "surimi"
+  ]
+ },
+ {
+  "name": "Sopa juliana",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "apio"
+  ],
+  "ingredients": [
+   "puerro",
+   "zanahoria",
+   "cebolla",
+   "apio",
+   "patata",
+   "caldo de verduras",
+   "aceite de oliva virgen",
+   "perejil",
+   "sal",
+   "pimienta negra"
+  ]
+ },
+ {
+  "name": "Sopa miso",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "sesamo",
+   "soja"
+  ],
+  "ingredients": [
+   "caldo de verduras",
+   "tofu",
+   "puerro",
+   "champinones",
+   "espinacas",
+   "salsa de soja",
+   "sesamo"
+  ]
+ },
+ {
+  "name": "Steak Tartar",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "spring",
+   "summer",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "mid",
+   "spring": "mid",
+   "summer": "perfect",
+   "winter": "mid"
+  },
+  "frequency": null,
+  "allergens": [
+   "huevo",
+   "lactosa",
+   "mostaza"
+  ],
+  "ingredients": [
+   "queso parmesano",
+   "pimienta negra",
+   "sal",
+   "alcaparras",
+   "cebolleta",
+   "Pepinillo",
+   "solomillo de ternera de calidad, o de buey, cortado en filetes de 2 cm de grosor",
+   "Salsa worcestershire",
+   "perejil",
+   "mostaza",
+   "yema de huevo",
+   "cebollino fresco, un manojo"
+  ]
+ },
+ {
+  "name": "Sándwich mixto",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "spring": "perfect",
+   "summer": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "gluten",
+   "lactosa"
+  ],
+  "ingredients": [
+   "pan de molde",
+   "queso gouda",
+   "jamón de york",
+   "mantequilla"
+  ]
+ },
+ {
+  "name": "Tabulé",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "gluten"
+  ],
+  "ingredients": [
+   "cuscus",
+   "tomate",
+   "pepino",
+   "cebolla",
+   "perejil",
+   "menta",
+   "aceite de oliva virgen",
+   "limon",
+   "sal",
+   "pimienta negra"
+  ]
+ },
+ {
+  "name": "Tajín de verduras y cordero",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "frutos_secos"
+  ],
+  "ingredients": [
+   "cordero",
+   "cebolla",
+   "zanahoria",
+   "patata",
+   "calabacin",
+   "ajo",
+   "tomate triturado",
+   "caldo de verduras",
+   "aceite de oliva virgen",
+   "comino",
+   "curcuma",
+   "canela",
+   "jengibre fresco",
+   "pasas",
+   "almendras",
+   "cilantro",
+   "sal"
+  ]
+ },
+ {
+  "name": "Ternera a la jardinera",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [],
+  "ingredients": [
+   "ternera",
+   "pimiento verde",
+   "cebolla",
+   "ajo",
+   "zanahoria",
+   "guisantes",
+   "tomate",
+   "patata",
+   "aceite de oliva virgen"
+  ]
+ },
+ {
+  "name": "Ternera con pimientos",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "summer",
+   "autumn"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "summer": "perfect",
+   "autumn": "perfect"
+  },
+  "frequency": null,
+  "allergens": [],
+  "ingredients": [
+   "ternera",
+   "cebolla",
+   "pimiento rojo",
+   "aceite de oliva virgen"
+  ]
+ },
+ {
+  "name": "Tortilla de patatas",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "huevo"
+  ],
+  "ingredients": [
+   "cebolla",
+   "patata",
+   "huevo",
+   "aceite de oliva virgen"
+  ]
+ },
+ {
+  "name": "Tostadas con aguacate y huevo",
+  "meals": [
+   "breakfast"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "breakfast": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "gluten",
+   "huevo"
+  ],
+  "ingredients": [
+   "pan integral",
+   "huevo",
+   "aguacate"
+  ]
+ },
+ {
+  "name": "Tzatziki",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "lactosa"
+  ],
+  "ingredients": [
+   "yogur natural",
+   "pepino",
+   "ajo",
+   "aceite de oliva virgen",
+   "limon",
+   "menta",
+   "sal",
+   "pimienta negra"
+  ]
+ },
+ {
+  "name": "Vegan butter chicken (con tofu)",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "lactosa",
+   "soja"
+  ],
+  "ingredients": [
+   "tofu",
+   "tomate triturado",
+   "cebolla",
+   "ajo",
+   "jengibre fresco",
+   "nata liquida",
+   "mantequilla",
+   "comino",
+   "curcuma",
+   "pimentón dulce",
+   "canela",
+   "sal",
+   "cilantro"
+  ]
+ },
+ {
+  "name": "Verduras estofadas",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [],
+  "ingredients": [
+   "patata",
+   "zanahoria",
+   "cebolla",
+   "puerro",
+   "ajo",
+   "tomate triturado",
+   "guisantes",
+   "caldo de verduras",
+   "aceite de oliva virgen",
+   "pimentón dulce",
+   "laurel",
+   "sal"
+  ]
+ },
+ {
+  "name": "Vichyssoise",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "lactosa"
+  ],
+  "ingredients": [
+   "puerro",
+   "patata",
+   "cebolla",
+   "mantequilla",
+   "caldo de verduras",
+   "nata liquida",
+   "perejil",
+   "sal",
+   "pimienta negra"
+  ]
+ },
+ {
+  "name": "Wrap de lechuga con noodles",
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "frutos_secos",
+   "soja"
+  ],
+  "ingredients": [
+   "lechuga",
+   "fideos",
+   "pollo",
+   "zanahoria",
+   "pepino",
+   "salsa de soja",
+   "lima",
+   "jengibre fresco",
+   "aceite de oliva virgen",
+   "cilantro",
+   "almendras"
+  ]
+ },
+ {
+  "name": "Yogur con avena y manzana",
+  "meals": [
+   "breakfast",
+   "snack"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "breakfast": "perfect",
+   "snack": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "allergens": [
+   "gluten",
+   "lactosa"
+  ],
+  "ingredients": [
+   "manzana",
+   "yogur natural",
+   "avena"
+  ]
+ }
+]

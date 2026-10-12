@@ -13,7 +13,7 @@
  *     (meal/season/difficulty/internal) never leak.
  */
 import { Router } from 'express'
-import { eq, and, sql, asc, count, arrayContains, inArray, isNull } from 'drizzle-orm'
+import { eq, and, sql, asc, count, arrayContains, inArray, isNull, notInArray } from 'drizzle-orm'
 import multer from 'multer'
 import crypto from 'crypto'
 import { db } from '../db/connection.js'
@@ -77,7 +77,10 @@ import { PageFetchError, UnsafeUrlError } from '../services/net/publicFetch.js'
 import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../services/scopeResolver.js'
 import { sanitizeCustomTags } from '../services/recipeNotesStore.js'
 import { findPantryMatches } from '../services/pantryMatcher.js'
-import { chosenFromIds, findRecipesWithWhatIHave, MAX_CHOSEN_INGREDIENTS } from '../services/withWhatIHave.js'
+import { chosenFromIds, findRecipesWithWhatIHave, loadUserRestrictions, MAX_CHOSEN_INGREDIENTS } from '../services/withWhatIHave.js'
+import { loadMatchableRecipes } from '../services/matchableRecipes.js'
+import { recipeIdsBreakingRestrictions } from '../services/dietaryRestrictions.js'
+import { effectiveAllergens } from '../services/nutrition/allergens.js'
 import { canViewRecipe } from '../services/recipeVisibility.js'
 import { z } from 'zod'
 import { requireSpendCapacity } from '../middleware/spendCap.js'
@@ -296,7 +299,9 @@ function toDetailRecipe(
       Object.fromEntries(((row.seasons ?? []) as string[]).map((s) => [s, 'perfect'])),
     frequency: row.frequency ?? null,
     equipment: row.equipment ?? [],
-    allergens: row.allergens ?? [],
+    // Stored union + what the ingredient names say today (PRO-61): fixes
+    // stale unions like «Harina de fuerza» without gluten, with no DB write.
+    allergens: effectiveAllergens(row.allergens, ings.map((i) => i.ingredientName)),
     nutritionPerServing: row.nutritionPerServing ?? null,
     tags: publicTagsOf(row),
     internalTags: [], // never leak internalTags in public payload
@@ -395,6 +400,11 @@ router.get('/recipes', optionalAuthMiddleware, async (req: AuthRequest, res) => 
         ? [rawCustomTags as unknown]
         : []
     const customTags = sanitizeCustomTags(customTagsList)
+    // ?fitsMe=1 (PRO-61): hide recipes that break the caller's allergies or
+    // diet (profile + memory; dislikes are not applied — an explicit pick may
+    // override a dislike, never an allergy). Used by the menu's «Elegir otra
+    // receta» picker. Anonymous callers: ignored.
+    const fitsMe = req.query.fitsMe === '1' || req.query.fitsMe === 'true'
     const offset = (page - 1) * perPage
 
     const conditions = []
@@ -442,6 +452,13 @@ router.get('/recipes', optionalAuthMiddleware, async (req: AuthRequest, res) => 
       } else {
         // No household, no tags can match — return empty result.
         conditions.push(sql`FALSE`)
+      }
+    }
+    if (req.userId && fitsMe) {
+      const { restrictions } = await loadUserRestrictions(req.userId, db)
+      if (restrictions.length > 0) {
+        const excluded = recipeIdsBreakingRestrictions(await loadMatchableRecipes(req.userId, db), restrictions)
+        if (excluded.length > 0) conditions.push(notInArray(recipes.id, excluded))
       }
     }
     const where = conditions.length > 0 ? and(...conditions) : undefined

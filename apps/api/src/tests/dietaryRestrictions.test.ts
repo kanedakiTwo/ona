@@ -115,3 +115,34 @@ describe('presets offered in onboarding and profile', () => {
     }
   })
 })
+
+describe('PRO-61 — prudent rules (Miguel, 2026-10-12)', () => {
+  it('cuts, offal and cocido count as meat for a vegetarian', () => {
+    for (const meat of [
+      'Costillas', 'costillas adobadas', 'Sobras del cocido madrileño', 'caldo de cocido', 'Cocido',
+      'rabo', 'oreja de cerdo', 'riñones', 'morcillo', 'hueso de caña', 'cuarto de gallina', 'entraña',
+      'Salsa worcestershire', 'corvina',
+    ]) {
+      expect(blocks(['vegetariano'], recipe([meat])), meat).toBe(true)
+    }
+  })
+
+  it('…without tripping on vegetarian words', () => {
+    for (const ok of ['garbanzos cocidos', 'arroz cocido', 'aceitunas sin hueso', 'huevos de gallina camperos', 'orejones', 'tartar de aguacate']) {
+      expect(blocks(['vegetariano'], recipe([ok])), ok).toBe(false)
+    }
+  })
+
+  it('«sin gluten»: flours unless a gluten-free base, soy sauce unless «sin gluten»', () => {
+    for (const g of ['Harina de fuerza', 'harina', 'harina integral', 'Salsa de soja', 'tamari', 'fideos', 'cerveza']) {
+      expect(blocks(['sin gluten'], recipe([g])), g).toBe(true)
+    }
+    for (const ok of [
+      'harina de arroz', 'harina de maíz', 'harina de garbanzo', 'harina de almendra',
+      'harina de trigo sarraceno', 'harina de mandioca', 'harina sin gluten', 'tamari sin gluten',
+      'salsa de soja sin gluten', 'fideos de arroz', 'soja texturizada', 'tofu',
+    ]) {
+      expect(blocks(['sin gluten'], recipe([ok])), ok).toBe(false)
+    }
+  })
+})

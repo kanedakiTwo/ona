@@ -72,11 +72,18 @@ const ALLERGEN_ALIASES: Record<string, AllergenTag[]> = {
 }
 
 const PORK_TERMS = [
-  'cerdo', 'jamon', 'chorizo', 'panceta', 'bacon', 'beicon', 'tocino', 'lomo', 'salchichon', 'fuet',
+  'cerdo', 'jamon', 'chorizo', 'panceta', 'pancetta', 'bacon', 'beicon', 'tocino', 'lomo', 'salchichon', 'fuet',
   'sobrasada', 'morcilla', 'butifarra', 'lacon', 'cochinillo', 'secreto iberico', 'presa iberica',
   'pluma iberica', 'manteca de cerdo', 'costilla de cerdo', 'costillas de cerdo', 'carrillada', 'mortadela',
+  'chistorra', 'longaniza', 'torrezno', 'chicharron', 'codillo', 'papada', 'careta', 'guanciale', 'lardo',
+  'prosciutto', 'salami', 'espinazo',
 ]
 
+// PRO-61 (2026-10-12, Miguel: «reglas prudentes»): cuts, offal and dishes
+// whose name doesn't say which animal («Costillas», «Rabo», «Sobras del
+// cocido») count as meat. «Cocido» only as the dish (start of the name or
+// «del/de cocido»), so «garbanzos cocidos» is still vegetarian. A term that
+// starts with ^ only matches at the start of the ingredient name.
 const MEAT_TERMS = [
   ...PORK_TERMS,
   'carne', 'pollo', 'pavo', 'ternera', 'vaca', 'vacuno', 'buey', 'cordero', 'cabrito', 'conejo', 'pato',
@@ -84,6 +91,14 @@ const MEAT_TERMS = [
   'chuleta', 'chuleton', 'entrecot', 'solomillo', 'filete de ternera', 'pechuga', 'muslo', 'contramuslo',
   'alitas', 'carrillera', 'rabo de toro', 'higado', 'mollejas', 'callos', 'magret', 'foie', 'pate',
   'caldo de pollo', 'caldo de carne', 'fondo de carne', 'gelatina', 'pepperoni', 'kebab', 'sesos',
+  // Cuts and offal on their own.
+  'costilla', 'rabo', 'oreja', 'morro', 'manitas', 'rinon', 'molleja', 'entrana', 'morcillo', 'jarrete',
+  'osobuco', 'tuetano', 'hueso de cana', 'hueso de rodilla', 'hueso blanco', 'aguja', 'falda', 'babilla',
+  'picana', 'lengua', 'casqueria', 'criadilla', 'menudillo', 'asadura', 'bistec', 'escalope', 'cachopo',
+  'flamenquin', 'san jacobo', 'churrasco', '^gallina', 'cuarto de gallina', 'caldo de gallina', 'capon',
+  'pularda', 'pichon', 'faisan', 'liebre', 'oca', 'ganso', 'embutido', 'fiambre', 'steak tartar',
+  // Dishes made of meat.
+  '^cocido', 'del cocido', 'de cocido', 'ropa vieja', 'pringa',
 ]
 
 const FISH_TERMS = [
@@ -92,6 +107,10 @@ const FISH_TERMS = [
   'surimi', 'caviar', 'huevas', 'salsa de pescado', 'caldo de pescado', 'fumet', 'gamba', 'langostino',
   'cigala', 'langosta', 'cangrejo', 'bogavante', 'mejillon', 'almeja', 'berberecho', 'pulpo', 'calamar',
   'sepia', 'chipiron', 'vieira', 'ostra', 'navaja', 'marisco',
+  'corvina', 'besugo', 'pescadilla', 'jurel', 'chicharro', 'mero', 'pargo', 'palometa', 'abadejo',
+  'carbonero', 'arenque', 'angula', 'gula', 'cazon', 'raya', 'mojama', 'ventresca', 'kokotxa', 'cococha',
+  'bacaladilla', 'tilapia', 'panga', 'perca', 'erizo', 'percebe', 'necora', 'centolla', 'carabinero',
+  'quisquilla', 'camaron', 'zamburina', 'dashi', 'katsuobushi', 'worcestershire', 'perrins',
 ]
 
 const ANIMAL_PRODUCT_TERMS = [
@@ -196,12 +215,16 @@ export function compileRestrictions(restrictions: readonly string[], dislikes: r
 
 const termRegexCache = new Map<string, RegExp>()
 
-/** Whole-word, plural-tolerant match of a normalised term in a normalised name. */
+/**
+ * Whole-word, plural-tolerant match of a normalised term in a normalised name.
+ * A term starting with ^ only matches at the start of the name.
+ */
 export function nameHasTerm(normalizedName: string, term: string): boolean {
   let re = termRegexCache.get(term)
   if (!re) {
-    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    re = new RegExp(`(^|[^a-z0-9])${escaped}(e?s)?($|[^a-z0-9])`)
+    const anchored = term.startsWith('^')
+    const escaped = (anchored ? term.slice(1) : term).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    re = new RegExp(`${anchored ? '^' : '(^|[^a-z0-9])'}${escaped}(e?s)?($|[^a-z0-9])`)
     termRegexCache.set(term, re)
   }
   return re.test(normalizedName)
@@ -230,4 +253,17 @@ export function violatesRestrictions(recipe: RestrictableRecipe, rules: Compiled
     }
   }
   return false
+}
+
+/**
+ * Ids of the recipes that break the user's allergies / diet (not dislikes).
+ * Used by GET /recipes?fitsMe=1 — the menu's «Elegir otra receta» picker.
+ */
+export function recipeIdsBreakingRestrictions(
+  recipes: ReadonlyArray<RestrictableRecipe & { id: string }>,
+  restrictions: readonly string[],
+): string[] {
+  const rules = compileRestrictions(restrictions)
+  if (rules.allergens.size === 0 && rules.terms.length === 0) return []
+  return recipes.filter((r) => violatesRestrictions(r, rules)).map((r) => r.id)
 }

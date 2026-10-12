@@ -42,3 +42,13 @@ export function activeQuickRange(
 ): QuickRangeKey | null {
   return ranges.find((r) => r.from === from && r.to === to)?.key ?? null
 }
+
+/**
+ * Title of the € total card (PRO-69): it follows the shortcut, so with «Hoy»
+ * it doesn't keep saying «semanal». Any other range keeps the usual title.
+ */
+export function totalTitle(key: QuickRangeKey | null): string {
+  if (key === 'hoy') return 'Total de hoy estimado'
+  if (key === 'manana') return 'Total de mañana estimado'
+  return 'Total semanal estimado'
+}

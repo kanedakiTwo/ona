@@ -2,8 +2,9 @@
 
 /**
  * «Primeros pasos» (PRO-07): the first time a new account lands on /menu,
- * three steps over the real screen — the day's dish, the shopping tab and
- * Mimo's button — each lit up with the rest dimmed. Skippable at any step;
+ * three steps over the real screen — the «···» button of the day's dish
+ * (tapping the dish opens the recipe; changing it goes through «···»), the
+ * shopping tab and Mimo's button — each lit up with the rest dimmed. Skippable at any step;
  * finishing or skipping calls POST /user/:id/first-steps, so it never comes
  * back on any device. Only accounts created after the feature see it
  * (`users.first_steps_pending`, set by POST /register; see specs/auth.md).
@@ -12,19 +13,27 @@ import { useCallback, useEffect, useLayoutEffect, useState, type CSSProperties }
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 
+/** Each step lights up the first selector that is on screen (fallbacks after the first). */
 export const FIRST_STEPS = [
-  { target: '[data-first-steps="dish"]', text: "Toca un plato para cambiarlo" },
-  { target: '[data-first-steps="shopping"]', text: "Aquí tienes la lista de la compra: se hace sola" },
-  { target: '[data-testid="mimo-button"]', text: "Este es Mimo: pídele lo que quieras" },
+  {
+    // PRO-68: the «···» of the day's dish; with the day still empty, the
+    // first «···» on screen (an empty slot's); read-only, the whole dish.
+    targets: ['[data-first-steps="dish"] [data-meal-options]', "[data-meal-options]", '[data-first-steps="dish"]'],
+    text: "Toca «···» en un plato para cambiarlo",
+  },
+  { targets: ['[data-first-steps="shopping"]'], text: "Aquí tienes la lista de la compra: se hace sola" },
+  { targets: ['[data-testid="mimo-button"]'], text: "Este es Mimo: pídele lo que quieras" },
 ] as const
 
 type Rect = { top: number; left: number; width: number; height: number }
 
 /** First matching element that is actually on screen (mobile tab bar vs desktop sidebar). */
-function findTarget(selector: string): HTMLElement | null {
-  for (const el of Array.from(document.querySelectorAll<HTMLElement>(selector))) {
-    const r = el.getBoundingClientRect()
-    if (r.width > 0 && r.height > 0) return el
+function findTarget(selectors: readonly string[]): HTMLElement | null {
+  for (const selector of selectors) {
+    for (const el of Array.from(document.querySelectorAll<HTMLElement>(selector))) {
+      const r = el.getBoundingClientRect()
+      if (r.width > 0 && r.height > 0) return el
+    }
   }
   return null
 }
@@ -56,7 +65,7 @@ export function FirstStepsGuide({ userId, ready }: { userId: string; ready: bool
   // Follow the highlighted element (scroll, resize, late layout).
   useLayoutEffect(() => {
     if (!open) return
-    const selector = FIRST_STEPS[step].target
+    const selector = FIRST_STEPS[step].targets
     const el = findTarget(selector)
     if (el && step === 0) el.scrollIntoView({ block: "center", behavior: "instant" as ScrollBehavior })
     const measure = () => {
@@ -103,6 +112,7 @@ export function FirstStepsGuide({ userId, ready }: { userId: string; ready: bool
       {rect ? (
         <div
           aria-hidden="true"
+          data-testid="first-steps-spotlight"
           className="pointer-events-none fixed rounded-[20px] ring-2 ring-cream transition-all duration-200"
           style={{
             top: rect.top - pad,

@@ -16,8 +16,9 @@ import { api } from "@/lib/api"
 /** Each step lights up the first selector that is on screen (fallbacks after the first). */
 export const FIRST_STEPS = [
   {
-    // PRO-68: the «···» of the first dish; the whole dish if it has none (read-only).
-    targets: ['[data-first-steps="dish"] [data-meal-options]', '[data-first-steps="dish"]'],
+    // PRO-68: the «···» of the day's dish; with the day still empty, the
+    // first «···» on screen (an empty slot's); read-only, the whole dish.
+    targets: ['[data-first-steps="dish"] [data-meal-options]', "[data-meal-options]", '[data-first-steps="dish"]'],
     text: "Toca «···» en un plato para cambiarlo",
   },
   { targets: ['[data-first-steps="shopping"]'], text: "Aquí tienes la lista de la compra: se hace sola" },

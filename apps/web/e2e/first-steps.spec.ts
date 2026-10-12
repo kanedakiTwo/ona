@@ -33,22 +33,28 @@ test('a new account sees the three steps on /menu, skips them, reloads and they 
   await expect(dialog).toContainText('1 de 3')
   await expect(dialog.getByRole('heading')).toHaveText('Toca «···» en un plato para cambiarlo')
 
-  // PRO-68: step 1 lights up the «···» button of the first dish (tapping the
-  // dish itself opens the recipe), not the whole dish.
-  const optionsButton = page.locator('[data-first-steps="dish"] [data-meal-options]').first()
-  await expect(optionsButton).toBeVisible()
+  // PRO-68: step 1 lights up a «···» button — the day's dish's, or the first
+  // empty slot's while the week is still blank — never the whole dish
+  // (tapping the dish itself opens the recipe).
   const spotlight = guide.getByTestId('first-steps-spotlight')
-  await expect(spotlight).toBeVisible()
+  await expect(spotlight).toBeVisible({ timeout: 10_000 })
   await expect
     .poll(async () => {
-      const [b, s] = await Promise.all([optionsButton.boundingBox(), spotlight.boundingBox()])
+      const s = await spotlight.boundingBox()
+      const b = await page.evaluate(() => {
+        const visible = (el: Element | null) => {
+          const r = el?.getBoundingClientRect()
+          return r && r.width > 0 && r.height > 0 ? r : null
+        }
+        const pick = (sel: string) => Array.from(document.querySelectorAll(sel)).map(visible).find(Boolean) ?? null
+        const r = pick('[data-first-steps="dish"] [data-meal-options]') ?? pick('[data-meal-options]')
+        return r ? { x: r.x, y: r.y, width: r.width, height: r.height } : null
+      })
       if (!b || !s) return false
-      const cx = b.x + b.width / 2
-      const cy = b.y + b.height / 2
-      // Spotlight = button + 6 px padding on each side.
+      // Spotlight = the «···» button + 6 px padding on each side.
       return (
-        Math.abs(s.x + s.width / 2 - cx) < 3 &&
-        Math.abs(s.y + s.height / 2 - cy) < 3 &&
+        Math.abs(s.x + s.width / 2 - (b.x + b.width / 2)) < 3 &&
+        Math.abs(s.y + s.height / 2 - (b.y + b.height / 2)) < 3 &&
         Math.abs(s.width - (b.width + 12)) < 3 &&
         Math.abs(s.height - (b.height + 12)) < 3
       )

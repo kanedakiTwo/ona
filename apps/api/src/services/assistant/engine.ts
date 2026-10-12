@@ -5,6 +5,7 @@ import { buildSystemParts, type AssistantMode } from './systemPrompt.js'
 import { skills, getToolDefinitions } from './skills.js'
 import type { AssistantResponse, ChatMessage, SkillContext, SkillDefinition, SkillResult, ToolTrace } from './types.js'
 import { recordSkillActivity } from '../activityEvents.js'
+import { ensureHealthDisclaimer, talksHealthEffects } from './healthGuard.js'
 import {
   EMPTY_USAGE,
   addAnthropicUsage,
@@ -325,6 +326,11 @@ function buildResponse(
 ): AssistantResponse & { usage: TokenUsage } {
   // A ⟦hecho: …⟧ mark is history bookkeeping (whatsapp/history.ts): never shown.
   text = text.replace(/⟦[^⟧]*⟧\s*/g, '').trim()
+  // Mimo is not a doctor (PRO-62, constitution §6): a reply that sends the
+  // user to a health professional always carries the mandatory sentence, and
+  // one that talks about body effects anyway is flagged for the daily review.
+  text = ensureHealthDisclaimer(text)
+  if (talksHealthEffects(text) && !flags.includes('health_talk')) flags.push('health_talk')
   const trace = { toolsUsed: executed.map((e) => e.name), corrections: flags, toolTrace: traceOf(executed) }
   if (executed.length === 0) {
     return { message: text || 'No he podido generar una respuesta.', actionTaken: false, usage, ...trace }

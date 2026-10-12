@@ -23,6 +23,7 @@ vi.mock('../services/scopeResolver.js', () => ({
 
 import { skills, recipeBalance, describeWeekBalance, describeRecipeBalance } from '../services/assistant/skills.js'
 import { buildSystemPrompt } from '../services/assistant/systemPrompt.js'
+import { HEALTH_RULE } from '../services/assistant/healthGuard.js'
 
 const BANNED: Array<[RegExp, string]> = [
   [/inflam/i, 'inflamación'],
@@ -37,8 +38,11 @@ const BANNED: Array<[RegExp, string]> = [
 const hits = (text: string) => BANNED.filter(([re]) => re.test(text)).map(([, l]) => l)
 
 /** The kb/ block is Miguel's internal framework, loaded at runtime; the
- *  instructions Mimo gets from us end before it. */
-const instructionsOnly = (p: string) => p.split('Base de conocimiento nutricional')[0]
+ *  instructions Mimo gets from us end before it. The fixed health rule
+ *  (PRO-62, healthGuard.ts) names glucose, insulin and the §6 diseases only
+ *  to forbid talking about them, so it's left out too (its own guard is
+ *  tests/healthAdvice.test.ts). */
+const instructionsOnly = (p: string) => p.split('Base de conocimiento nutricional')[0].replace(HEALTH_RULE, '')
 
 describe('Mimo talks about kitchen balance, not health (constitution §6)', () => {
   it('no tool name, description or parameter mentions inflammation or diseases', () => {

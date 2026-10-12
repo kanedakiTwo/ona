@@ -120,6 +120,8 @@ export function MealOptionsButton({
       type="button"
       aria-label={label}
       aria-haspopup="dialog"
+      // The «Primeros pasos» guide points at this button on the first dish (PRO-68).
+      data-meal-options=""
       onClick={(e) => {
         e.preventDefault()
         e.stopPropagation()

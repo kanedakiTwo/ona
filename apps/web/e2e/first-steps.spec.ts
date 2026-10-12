@@ -1,6 +1,7 @@
 /**
  * «Primeros pasos» (PRO-07): the first time a new account lands on /menu,
- * three steps over the real screen (a dish, the shopping tab, Mimo's button).
+ * three steps over the real screen (the «···» of the day's dish, the shopping
+ * tab, Mimo's button).
  * Skippable; saved on the account (not the browser), so after skipping and
  * reloading it doesn't come back.
  * Accounts that predate it never see it: the column defaults to "seen", which
@@ -30,7 +31,29 @@ test('a new account sees the three steps on /menu, skips them, reloads and they 
   await expect(guide).toBeVisible({ timeout: 20_000 })
   const dialog = guide.getByRole('dialog')
   await expect(dialog).toContainText('1 de 3')
-  await expect(dialog.getByRole('heading')).toHaveText('Toca un plato para cambiarlo')
+  await expect(dialog.getByRole('heading')).toHaveText('Toca «···» en un plato para cambiarlo')
+
+  // PRO-68: step 1 lights up the «···» button of the first dish (tapping the
+  // dish itself opens the recipe), not the whole dish.
+  const optionsButton = page.locator('[data-first-steps="dish"] [data-meal-options]').first()
+  await expect(optionsButton).toBeVisible()
+  const spotlight = guide.getByTestId('first-steps-spotlight')
+  await expect(spotlight).toBeVisible()
+  await expect
+    .poll(async () => {
+      const [b, s] = await Promise.all([optionsButton.boundingBox(), spotlight.boundingBox()])
+      if (!b || !s) return false
+      const cx = b.x + b.width / 2
+      const cy = b.y + b.height / 2
+      // Spotlight = button + 6 px padding on each side.
+      return (
+        Math.abs(s.x + s.width / 2 - cx) < 3 &&
+        Math.abs(s.y + s.height / 2 - cy) < 3 &&
+        Math.abs(s.width - (b.width + 12)) < 3 &&
+        Math.abs(s.height - (b.height + 12)) < 3
+      )
+    })
+    .toBe(true)
 
   await dialog.getByRole('button', { name: 'Siguiente' }).click()
   await expect(dialog).toContainText('2 de 3')

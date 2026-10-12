@@ -808,13 +808,14 @@ describe('scale_recipe', () => {
 describe('evaluate_food_health', () => {
   const skill = get('evaluate_food_health')
 
-  it('frames the question with all 5 evaluation axes', async () => {
+  it('frames the question with the 4 cooking axes, never insulin (PRO-67)', async () => {
     const r = await skill.handler({ food: 'zumo de naranja' }, ctx(makeDb()))
     expect(r.summary).toContain('zumo de naranja')
     expect(r.summary).toContain('verdura')
-    expect(r.summary).toContain('insulina')
-    expect(r.summary).toContain('procesado')
-    expect(r.summary).toContain('frecuencia')
+    expect(r.summary).toContain('ultraprocesado')
+    expect(r.summary).toContain('cada cuanto encaja en la semana')
+    expect(r.summary).toContain('fruta entera mejor que zumo')
+    expect(r.summary).not.toMatch(/insulin/i)
     expect(r.uiHint).toBe('nutrition')
   })
 })

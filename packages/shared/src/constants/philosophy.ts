@@ -6,8 +6,8 @@
 export const ONA_PRINCIPLES = [
   {
     id: 'reduce_processed',
-    title: 'Reducir alimentos procesados y de absorcion rapida de glucosa',
-    rationale: 'Los alimentos procesados elevan la insulina rapidamente y contribuyen a la resistencia insulinica a largo plazo.',
+    title: 'Comida de verdad, poco ultraprocesado',
+    rationale: 'Cocinamos con ingredientes que se reconocen. Lo ultraprocesado y el azucar añadido son la excepcion de la semana, no la base.',
   },
   {
     id: 'kitchen_balance',

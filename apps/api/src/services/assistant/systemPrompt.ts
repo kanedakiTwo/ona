@@ -1,4 +1,4 @@
-import { readdir, readFile } from 'fs/promises'
+import { readFile } from 'fs/promises'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { ASSISTANT_NAME, BRAND_NAME } from '@ona/shared'
@@ -6,21 +6,20 @@ import { HEALTH_RULE } from './healthGuard.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-// Load all knowledge base files from /kb at startup
+// Mimoia's cooking principles («Cómo cocina Mimoia», approved by Miguel on
+// 2026-10-12; PRO-67). Until then the whole of kb/ went in, «10 mandamientos»
+// included, with health effects (inflammation, insulin, microbiome) that the
+// constitution (§6) forbids in anything Mimo says. Only this file goes in now.
+export const KB_FILE = 'principios-mimo.md'
 let knowledgeBase = ''
 
 async function loadKB() {
-  const kbDir = path.resolve(__dirname, '..', '..', '..', '..', '..', 'kb')
+  const kbFile = path.resolve(__dirname, '..', '..', '..', '..', '..', 'kb', KB_FILE)
   try {
-    const files = await readdir(kbDir)
-    const mdFiles = files.filter(f => f.endsWith('.md'))
-    const contents = await Promise.all(
-      mdFiles.map(f => readFile(path.join(kbDir, f), 'utf-8'))
-    )
-    knowledgeBase = contents.join('\n\n---\n\n')
-    console.log(`[assistant] Loaded ${mdFiles.length} KB file(s): ${mdFiles.join(', ')}`)
+    knowledgeBase = (await readFile(kbFile, 'utf-8')).trim()
+    console.log(`[assistant] Loaded kb/${KB_FILE}`)
   } catch {
-    console.log('[assistant] No KB directory found, assistant will work without knowledge base.')
+    console.log(`[assistant] kb/${KB_FILE} not found, assistant will work without its principles.`)
   }
 }
 /** Resolves once kb/ is read (scripts and tests that need it in the prompt await it). */
@@ -148,7 +147,7 @@ Instrucciones de herramientas:
   if (knowledgeBase) {
     prompt += `
 
-Base de conocimiento nutricional de ${BRAND_NAME}. Usala como marco para tus respuestas, pero no la impongas al usuario ni la cites textualmente — integra los principios de forma natural en tus consejos:
+Principios de cocina de ${BRAND_NAME}. Usalos como marco para tus respuestas, pero no los impongas al usuario ni los cites textualmente — integralos de forma natural en tus consejos:
 
 ${knowledgeBase}`
   }

@@ -61,7 +61,7 @@ import { WhatsAppCard } from '@/components/profile/WhatsAppCard'
 import { DeleteAccountCard } from '@/components/profile/DeleteAccountCard'
 import { useWhatsAppStatus } from '@/hooks/useWhatsApp'
 import type { Meal } from '@ona/shared'
-import { RESTRICTION_PRESETS } from '@ona/shared'
+import { RESTRICTION_PRESETS, unionRestrictions } from '@ona/shared'
 import type { HealthConsentState } from '@ona/shared'
 import { HealthConsentCheckbox } from '@/components/HealthConsentCheckbox'
 
@@ -217,10 +217,17 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (!user) return
-    api.get<any>(`/user/${user.id}/settings`).then((data) => {
+    // Restrictions live in two places: the account (`users.restrictions`,
+    // written by onboarding and read by the menu generator) and the settings
+    // blob. Show the union so nothing picked in onboarding looks lost (PRO-64).
+    Promise.all([
+      api.get<any>(`/user/${user.id}/settings`).catch(() => null),
+      api.get<{ restrictions?: string[] }>(`/user/${user.id}`).catch(() => null),
+    ]).then(([data, account]) => {
       const blob = data?.template && !Array.isArray(data.template) ? data.template : data
       if (blob?.physical) setPhysical(blob.physical)
-      if (blob?.preferences) setPreferences(blob.preferences)
+      const restrictions = unionRestrictions(account?.restrictions, blob?.preferences?.restrictions)
+      setPreferences((p) => ({ ...p, ...(blob?.preferences ?? {}), restrictions }))
       const rawMt = blob?.mealTemplate ?? blob?.meal_template
       if (rawMt && typeof rawMt === 'object') {
         // Coerce legacy on/off (`string[]`) to the numeric shape with the
@@ -363,7 +370,9 @@ export default function ProfilePage() {
       if (physical.weight !== '' && physical.weight != null) userPayload.weight = Number(physical.weight)
       if (physical.height !== '' && physical.height != null) userPayload.height = Number(physical.height)
       if (physical.activity_level) userPayload.activityLevel = ACTIVITY_MAP[physical.activity_level] ?? 'moderate'
-      if (preferences.restrictions.length > 0) userPayload.restrictions = preferences.restrictions
+      // Same list to the account and to the settings blob (PRO-64): the
+      // screen shows the union of both, so this never drops either side.
+      userPayload.restrictions = preferences.restrictions
       }
       const PRIORITY_MAP: Record<string, 'quick' | 'varied' | 'healthy' | 'cheap'> = {
         balanced: 'varied',

@@ -20,3 +20,24 @@ export const RESTRICTION_PRESETS = [
 ] as const
 
 export type RestrictionPreset = (typeof RESTRICTION_PRESETS)[number]
+
+/**
+ * Restrictions shown and saved by /profile (PRO-64): the union of the
+ * account's (`users.restrictions`, written by onboarding) and the settings
+ * blob's (`user_settings.template.preferences.restrictions`). Trimmed,
+ * lowercased like the profile chips, deduped, first source first.
+ */
+export function unionRestrictions(
+  ...lists: ReadonlyArray<readonly unknown[] | null | undefined>
+): string[] {
+  const out: string[] = []
+  for (const list of lists) {
+    if (!Array.isArray(list)) continue
+    for (const raw of list) {
+      if (typeof raw !== 'string') continue
+      const r = raw.trim().toLowerCase()
+      if (r && !out.includes(r)) out.push(r)
+    }
+  }
+  return out
+}

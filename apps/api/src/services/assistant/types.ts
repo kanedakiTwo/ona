@@ -46,7 +46,7 @@ export interface AssistantResponse {
   toolsUsed?: string[]
   /**
    * Signals for the daily review (no longer corrective rounds since
-   * 2026-10-12): unverified_claim | truncated | refusal.
+   * 2026-10-12): unverified_claim | truncated | refusal | health_talk (PRO-62).
    */
   corrections?: string[]
   /** What each tool got and returned this turn (history + daily review). */

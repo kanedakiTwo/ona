@@ -124,6 +124,8 @@ describe('the engine adds the §6 sentence and flags body-effect talk', () => {
     const withIt = `Eso, con su pediatra. ${HEALTH_DISCLAIMER}`
     expect(ensureHealthDisclaimer(withIt)).toBe(withIt)
     expect(ensureHealthDisclaimer('Hecho:\n- Miércoles comida: Merluza en salsa verde')).toBe('Hecho:\n- Miércoles comida: Merluza en salsa verde')
+    expect(ensureHealthDisclaimer('Mezcla 112 g de harina con el huevo.')).toBe('Mezcla 112 g de harina con el huevo.')
+    expect(ensureHealthDisclaimer('Si le cuesta respirar, llama al 112.').endsWith(HEALTH_DISCLAIMER)).toBe(true)
   })
 
   it('runToolLoop: the 2026-10-12 rice reply goes out with the sentence and a health_talk flag', async () => {

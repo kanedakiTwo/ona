@@ -13,8 +13,8 @@ import { useAuth } from "@/lib/auth"
 import { api } from "@/lib/api"
 import { useRouter } from "next/navigation"
 import { Check, ChevronLeft, Minus, Plus, X } from "lucide-react"
-import { cn, currentWeekStart } from "@/lib/utils"
-import { RESTRICTION_PRESETS } from "@ona/shared"
+import { cn } from "@/lib/utils"
+import { RESTRICTION_PRESETS, firstMenuWeeks } from "@ona/shared"
 import { HealthConsentCheckbox } from "@/components/HealthConsentCheckbox"
 import { Accent, OnboardingHeader, OnboardingShell } from "./OnboardingShell"
 import { OnboardingChannelChoice, OnboardingWhatsAppLink } from "./OnboardingWhatsApp"
@@ -210,17 +210,21 @@ export default function OnboardingFlow() {
 
       // Land on a real first menu built from these answers, not an empty
       // week. If generation fails, /menu still offers "Generar mi menú".
+      // Friday to Sunday (Madrid) the week is nearly over: build the next
+      // one too and open it (PRO-65). One after the other, so the second
+      // week's variety sees the first.
       setPreparingMenu(true)
-      await api
-        .post("/menu/generate", { userId: user.id, weekStart: currentWeekStart() })
-        .catch(() => undefined)
+      const { weeks, open } = firstMenuWeeks()
+      for (const weekStart of weeks) {
+        await api.post("/menu/generate", { userId: user.id, weekStart }).catch(() => undefined)
+      }
 
       // Only now mark the user as onboarded (auth context + localStorage).
       // Doing it before the generate let the onboarding page's own
       // "already onboarded" redirect reach /menu first; /menu then found no
       // week (404) and auto-created an empty one on top of the real menu.
       updateUser(result)
-      router.push("/menu")
+      router.push(weeks.length > 1 ? `/menu?week=${open}` : "/menu")
     } catch (err: any) {
       setError(err.message || "Error al guardar")
     } finally {

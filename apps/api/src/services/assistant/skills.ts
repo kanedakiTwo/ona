@@ -24,7 +24,8 @@ import { getSummary } from '../advisor.js'
 import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../scopeResolver.js'
 import { importRecipeFromUrl, createRecipeFromParts, type RecipeParts } from '../recipeImport.js'
 import { mealLinesForDay } from '../menuText.js'
-import { madridParts, madridWeekStart } from '../madridTime.js'
+import { madridWeekStart } from '../madridTime.js'
+import { DAY_PROP, dateLabel, isMenuDayError, resolveMenuDay, type MenuDay } from './menuDay.js'
 import { appSkills, bestMatch, dishNoteText, searchWords } from './appSkills.js'
 import { shopOrderSkills } from './shopOrderSkills.js'
 import { visibleAuthorIds, visibleRecipeWhere } from '../recipeVisibility.js'
@@ -61,6 +62,50 @@ export function untrustedText(value: unknown, max = 120): string {
 // 02:00 Madrid the server still thinks it's yesterday.
 function getWeekStart(offsetWeeks = 0): string {
   return madridWeekStart(new Date(), offsetWeeks)
+}
+
+/**
+ * The household's menu for the week starting `weekStart`, or null. Menu
+ * tools never edit "the latest menu": the web creates next week's (empty)
+ * row just by opening that week, and from then on "el sábado" landed on
+ * next week's Saturday (PRO-63, hogares de prueba 2026-10-12).
+ */
+async function menuOfWeek(ctx: SkillContext, weekStart: string) {
+  const [menu] = await ctx.db
+    .select()
+    .from(menus)
+    .where(and(scopeWhere(menus.userId, menus.householdId, await resolveScope(ctx.userId, ctx.db)), eq(menus.weekStart, weekStart)))
+    .orderBy(desc(menus.createdAt))
+    .limit(1)
+  return menu ?? null
+}
+
+const noMenuFor = (weekStart: string): SkillResult => ({
+  data: null,
+  summary: `No hay menu para la semana del ${dateLabel(weekStart)}; no he cambiado nada. Puedes generarlo con generate_weekly_menu.`,
+  uiHint: 'text',
+})
+
+const MEAL_LABEL: Record<string, string> = { breakfast: 'desayuno', lunch: 'comida', snack: 'merienda', dinner: 'cena' }
+const MEAL_KEYS = Object.keys(MEAL_LABEL)
+
+/** Which day a menu tool call means: `day` words/date, or legacy dayIndex (+ nextWeek). */
+function menuDayParam(params: { day?: unknown; dayIndex?: unknown; nextWeek?: unknown }): MenuDay | { error: string } {
+  return resolveMenuDay({ day: params?.day, dayIndex: params?.dayIndex, nextWeek: params?.nextWeek })
+}
+
+/** What a confirmed menu change hands back: the real week, date, meal and dish. */
+function changeOf(t: MenuDay, meal: string, dish?: string) {
+  return { weekStart: t.weekStart, date: t.isoDate, dayIndex: t.dayIndex, meal, ...(dish ? { dish } : {}) }
+}
+
+/** The name (recipe or note) now in a slot of a saved menu row, or null. */
+function dishNow(row: { days?: unknown } | undefined, dayIndex: number, meal: string): string | null {
+  const slot = (row?.days as DayMenu[] | undefined)?.[dayIndex]?.[meal as Meal] as
+    | { dishes?: Array<{ recipeName?: string; text?: string }>; recipeName?: string }
+    | undefined
+  const d = slot?.dishes?.[0]
+  return d?.recipeName ?? d?.text ?? slot?.recipeName ?? null
 }
 
 /**
@@ -103,56 +148,44 @@ async function restrictionConflicts(ctx: SkillContext, recipeId: string): Promis
 
 const getTodaysMenu: SkillDefinition = {
   name: 'get_todays_menu',
-  description: 'Obtiene el menu del dia indicado (o de hoy si no se especifica). dayIndex: 0=lunes, 6=domingo.',
+  description: 'Obtiene el menu del dia indicado (o de hoy si no se especifica). Pasa day con las palabras del usuario ("mañana", "el sábado", "el martes de la semana que viene") o la fecha.',
   parameters: {
     type: 'object',
     properties: {
-      dayIndex: { type: 'number', description: 'Indice del dia (0=lunes, 6=domingo). Si se omite, se calcula automaticamente.' },
+      day: DAY_PROP,
+      dayIndex: { type: 'number', description: 'Solo si no usas day: 0=lunes … 6=domingo de esta semana (con nextWeek, de la que viene).' },
+      nextWeek: { type: 'boolean', description: 'Con dayIndex: true si es de la semana que viene.' },
     },
     required: [],
   },
-  async handler(params: { dayIndex?: number }, ctx: SkillContext): Promise<SkillResult> {
-    const { userId, db } = ctx
-    const scope = scopeWhere(menus.userId, menus.householdId, await resolveScope(userId, db))
+  async handler(params: { day?: string; dayIndex?: number; nextWeek?: boolean }, ctx: SkillContext): Promise<SkillResult> {
+    // No day at all = today (Madrid). The menu read is always the one of the
+    // resolved week — never "the latest menu", which after Sunday is often
+    // next week's (PRO-63).
+    const noDay = params?.day == null && (params?.dayIndex === undefined || params?.dayIndex === null)
+    const t = menuDayParam(noDay ? { day: 'hoy' } : params)
+    if (isMenuDayError(t)) return { data: null, summary: t.error, uiHint: 'text' }
 
-    // Prefer THIS week's menu: once next week's menu exists (e.g. generated
-    // on Sunday), "the latest menu" would answer today with next week's day.
-    const [currentWeek] = await db
-      .select()
-      .from(menus)
-      .where(and(scope, eq(menus.weekStart, getWeekStart())))
-      .orderBy(desc(menus.createdAt))
-      .limit(1)
-    const [menu] = currentWeek
-      ? [currentWeek]
-      : await db.select().from(menus).where(scope).orderBy(desc(menus.createdAt)).limit(1)
-
+    const menu = await menuOfWeek(ctx, t.weekStart)
     if (!menu) {
-      return { data: null, summary: 'No tienes ningun menu generado todavia.', uiHint: 'text' }
+      return { data: null, summary: `No hay menu para la semana del ${dateLabel(t.weekStart)}.`, uiHint: 'text' }
     }
 
     const days = menu.days as DayMenu[]
-    let dayIndex = params.dayIndex
-
-    if (dayIndex === undefined || dayIndex === null) {
-      dayIndex = madridParts(new Date()).weekday // 0 = lunes … 6 = domingo
-    }
-
-    if (dayIndex < 0 || dayIndex >= days.length) {
+    if (t.dayIndex >= days.length) {
       return { data: null, summary: 'Indice de dia fuera de rango.', uiHint: 'text' }
     }
 
-    const dayNames = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo']
-    const day = days[dayIndex]
+    const day = days[t.dayIndex]
     // Slots hold `dishes[]` since the multi-dish migration — reading the old
     // `slot.recipeName` made every day look empty ("no hay comidas").
     const meals = mealLinesForDay(day)
 
     const summary = meals.length > 0
-      ? `Menu del ${dayNames[dayIndex]}: ${meals.join(', ')}`
-      : `No hay comidas planificadas para el ${dayNames[dayIndex]}.`
+      ? `Menu del ${t.label}: ${meals.join(', ')}`
+      : `No hay comidas planificadas para el ${t.label}.`
 
-    return { data: { dayIndex, menuId: menu.id, day }, summary, uiHint: 'menu' }
+    return { data: { dayIndex: t.dayIndex, date: t.isoDate, weekStart: t.weekStart, menuId: menu.id, day }, summary, uiHint: 'menu' }
   },
 }
 
@@ -507,23 +540,42 @@ const searchRecipes: SkillDefinition = {
   },
 }
 
+/** True when any slot of the week has a dish or a note. */
+export function weekHasDishes(days: DayMenu[] | undefined): boolean {
+  return (days ?? []).some((d) =>
+    Object.values(d ?? {}).some((slot: any) => Array.isArray(slot?.dishes) && slot.dishes.length > 0),
+  )
+}
+
 const generateWeeklyMenu: SkillDefinition = {
   name: 'generate_weekly_menu',
-  description: 'Genera un nuevo menu semanal completo y lo guarda. Usa esto cuando el usuario pida un nuevo menu. Con nextWeek=true lo genera para la semana que viene (por ejemplo si el usuario dice "la semana que viene" o acepta la propuesta del domingo).',
+  description: 'Genera un menu semanal completo (todos los dias) y lo guarda. Solo cuando el usuario pida un menu nuevo para la semana entera; NUNCA para cambiar o poner uno o varios platos (eso es swap_meal / add_dish / set_meal_note). Con nextWeek=true lo genera para la semana que viene (por ejemplo si el usuario dice "la semana que viene" o acepta la propuesta del domingo). Si esa semana ya tiene platos no la toca y te lo dice: solo con replaceExisting=true, cuando el usuario ha confirmado que quiere rehacer la semana entera.',
   parameters: {
     type: 'object',
     properties: {
       nextWeek: { type: 'boolean', description: 'true para generar el menu de la semana que viene en lugar de la actual.' },
+      replaceExisting: { type: 'boolean', description: 'true solo si el usuario ha confirmado que quiere rehacer entera una semana que ya tiene platos.' },
     },
     required: [],
   },
-  async handler(params: { nextWeek?: boolean }, ctx: SkillContext): Promise<SkillResult> {
+  async handler(params: { nextWeek?: boolean; replaceExisting?: boolean }, ctx: SkillContext): Promise<SkillResult> {
     const { userId, db } = ctx
     const weekStart = getWeekStart(params?.nextWeek === true ? 1 : 0)
 
     // Same promises as POST /menu/generate: locked slots, vetoes and
     // "sin cocinar" days of the current week survive the regeneration.
     const previous = await loadPreviousWeek(userId, weekStart, db)
+
+    // A week that already has dishes is never remade without an explicit,
+    // confirmed request: asking for one dish used to regenerate the whole
+    // week and Laura lost her planned leftovers (PRO-63, 2026-10-11).
+    if (params?.replaceExisting !== true && weekHasDishes(previous.days)) {
+      return {
+        data: { weekStart, replaced: false },
+        summary: `No he cambiado nada: la semana del ${dateLabel(weekStart)} ya tiene menu. Para cambiar o poner platos concretos usa swap_meal, add_dish o set_meal_note. Solo si el usuario quiere rehacer la semana entera, confirmalo con el y vuelve a llamar con replaceExisting: true.`,
+        uiHint: 'text',
+      }
+    }
     const { days } = await generateMenu(
       userId, weekStart, undefined, db,
       previous.locked, previous.days, previous.bannedRecipeIds, previous.skippedDays,
@@ -655,15 +707,24 @@ const completeOnboarding: SkillDefinition = {
   },
 }
 
+/** The save didn't come back with the dish in place: never report it as done. */
+const notSaved = (slotLabel: string): SkillResult => ({
+  data: null,
+  summary: `No he podido guardar el cambio en la ${slotLabel}; no esta hecho. Diselo al usuario.`,
+  uiHint: 'text',
+})
+
 const swapMeal: SkillDefinition = {
   name: 'swap_meal',
   description:
-    'Cambia un plato concreto del menu. dayIndex: 0=lunes, 6=domingo. meal: breakfast, lunch o dinner. Si el usuario nombra una receta concreta, pásala en `recipeName` (o `recipeId` si lo conoces) y la receta se asigna directamente sin elegir aleatorio. Si ese plato no está en sus recetas ni en el catálogo, se pone como nota con su nombre (y te digo lo más parecido que hay): llámala igualmente, no hace falta crear la receta antes. Si no se nombra, el sistema escoge automáticamente un plato compatible con la temporada y restricciones.',
+    'Cambia un plato concreto del menu (nunca rehace la semana). Pasa day con las palabras del usuario ("el sábado", "la cena de hoy" → day "hoy", "el jueves de la semana que viene") o la fecha; la herramienta calcula la fecha en hora de Madrid y te devuelve el dia, la fecha y el plato que han quedado. meal: breakfast, lunch, snack o dinner. Si el usuario nombra una receta concreta, pásala en `recipeName` (o `recipeId` si lo conoces) y la receta se asigna directamente sin elegir aleatorio. Si ese plato no está en sus recetas ni en el catálogo, se pone como nota con su nombre (y te digo lo más parecido que hay): llámala igualmente, no hace falta crear la receta antes. Si no se nombra, el sistema escoge automáticamente un plato compatible con la temporada y restricciones.',
   parameters: {
     type: 'object',
     properties: {
-      dayIndex: { type: 'number', description: 'Indice del dia (0=lunes, 6=domingo)' },
-      meal: { type: 'string', description: 'Tipo de comida: breakfast, lunch o dinner' },
+      day: DAY_PROP,
+      dayIndex: { type: 'number', description: 'Solo si no usas day: 0=lunes … 6=domingo de esta semana (con nextWeek, de la que viene)' },
+      nextWeek: { type: 'boolean', description: 'Con dayIndex: true si es de la semana que viene' },
+      meal: { type: 'string', description: 'Tipo de comida: breakfast, lunch, snack o dinner' },
       recipeId: {
         type: 'string',
         description: 'UUID de la receta concreta a colocar en ese hueco. Opcional.',
@@ -677,30 +738,30 @@ const swapMeal: SkillDefinition = {
         description: 'Solo true si el usuario ya ha confirmado que quiere ese plato aunque choque con su alergia/dieta (la herramienta te lo habrá avisado).',
       },
     },
-    required: ['dayIndex', 'meal'],
+    required: ['meal'],
   },
   async handler(
-    params: { dayIndex: number; meal: string; recipeId?: string; recipeName?: string; confirmRestriction?: boolean },
+    params: { day?: string; dayIndex?: number; nextWeek?: boolean; meal: string; recipeId?: string; recipeName?: string; confirmRestriction?: boolean },
     ctx: SkillContext,
   ): Promise<SkillResult> {
     const { userId, db } = ctx
-    const { dayIndex, meal } = params
-
-    // Get latest menu
-    const [menu] = await db
-      .select()
-      .from(menus)
-      .where(scopeWhere(menus.userId, menus.householdId, await resolveScope(userId, db)))
-      .orderBy(desc(menus.createdAt))
-      .limit(1)
-
-    if (!menu) {
-      return { data: null, summary: 'No tienes menu. Genera uno primero.', uiHint: 'text' }
+    const { meal } = params
+    const t = menuDayParam(params)
+    if (isMenuDayError(t)) return { data: null, summary: t.error, uiHint: 'text' }
+    if (!MEAL_KEYS.includes(meal)) {
+      return { data: null, summary: 'meal debe ser breakfast, lunch, snack o dinner. No he cambiado nada.', uiHint: 'text' }
     }
+    const dayIndex = t.dayIndex
+    // "Comida del sábado 17 de octubre": what the user sees and Mimo repeats.
+    const slotLabel = `${MEAL_LABEL[meal]} del ${t.label}`
+
+    // The menu of the week the day falls in — never "the latest menu".
+    const menu = await menuOfWeek(ctx, t.weekStart)
+    if (!menu) return noMenuFor(t.weekStart)
 
     const days = menu.days as DayMenu[]
 
-    if (dayIndex < 0 || dayIndex >= days.length) {
+    if (dayIndex >= days.length) {
       return { data: null, summary: 'Indice de dia fuera de rango.', uiHint: 'text' }
     }
 
@@ -752,8 +813,6 @@ const swapMeal: SkillDefinition = {
           }
         }
       }
-      const dayNamesEs = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
-      const mealLabel = meal === 'breakfast' ? 'desayuno' : meal === 'lunch' ? 'comida' : meal === 'dinner' ? 'cena' : meal
       // A dish that isn't in the user's recipes nor the catalogue goes in as a
       // note with their own words — the menu never blocks on a missing recipe
       // (2026-10-08: "ponme X el jueves" got "no existe, ¿la creo?"). The
@@ -767,9 +826,10 @@ const swapMeal: SkillDefinition = {
           .where(eq(menus.id, menu.id))
           .returning()
         const closest = chosen ? ` Lo mas parecido que si hay es "${chosen.name}".` : ''
+        if (dishNow(updatedNote, dayIndex, meal) !== note) return notSaved(slotLabel)
         return {
-          data: updatedNote,
-          summary: `Hecho. "${untrustedText(note, 80)}" no esta en sus recetas ni en el catalogo, asi que lo he puesto como nota en la ${mealLabel} del ${dayNamesEs[dayIndex]}.${closest} Diselo y ofrecele crear la receta${chosen ? ` o cambiar la nota por "${chosen.name}"` : ''}; no hace falta para que quede en el menu.`,
+          data: { ...updatedNote, change: changeOf(t, meal, note) },
+          summary: `Hecho. "${untrustedText(note, 80)}" no esta en sus recetas ni en el catalogo, asi que lo he puesto como nota en la ${slotLabel}.${closest} Diselo y ofrecele crear la receta${chosen ? ` o cambiar la nota por "${chosen.name}"` : ''}; no hace falta para que quede en el menu.`,
           uiHint: 'menu',
         }
       }
@@ -796,11 +856,10 @@ const swapMeal: SkillDefinition = {
         .set({ days })
         .where(eq(menus.id, menu.id))
         .returning()
-      const dayNames = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
-      const mealEs = meal === 'breakfast' ? 'desayuno' : meal === 'lunch' ? 'comida' : meal === 'dinner' ? 'cena' : meal
+      if (dishNow(updatedManual, dayIndex, meal) !== chosen.name) return notSaved(slotLabel)
       return {
-        data: updatedManual,
-        summary: `Hecho. He puesto "${chosen.name}" en el ${mealEs} del ${dayNames[dayIndex]}.`,
+        data: { ...updatedManual, change: changeOf(t, meal, chosen.name) },
+        summary: `Hecho. He puesto "${chosen.name}" en la ${slotLabel}.`,
         uiHint: 'menu',
       }
     }
@@ -855,10 +914,10 @@ const swapMeal: SkillDefinition = {
       .where(eq(menus.id, menu.id))
       .returning()
 
-    const dayNames = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo']
+    if (dishNow(updated, dayIndex, meal) !== newRecipe.name) return notSaved(slotLabel)
     return {
-      data: updated,
-      summary: `Cambiado: ${dayNames[dayIndex]} ${meal} ahora es ${newRecipe.name}.`,
+      data: { ...updated, change: changeOf(t, meal, newRecipe.name) },
+      summary: `Cambiado: la ${slotLabel} ahora es "${newRecipe.name}".`,
       uiHint: 'menu',
     }
   },
@@ -924,30 +983,26 @@ const markMealEaten: SkillDefinition = {
   parameters: {
     type: 'object',
     properties: {
-      dayIndex: { type: 'number', description: 'Indice del dia (0=lunes, 6=domingo)' },
-      meal: { type: 'string', description: 'Tipo de comida: breakfast, lunch o dinner' },
+      day: DAY_PROP,
+      dayIndex: { type: 'number', description: 'Solo si no usas day: 0=lunes … 6=domingo de esta semana' },
+      meal: { type: 'string', description: 'Tipo de comida: breakfast, lunch, snack o dinner' },
       eaten: { type: 'boolean', description: 'true si se ha comido, false si no' },
     },
-    required: ['dayIndex', 'meal', 'eaten'],
+    required: ['meal', 'eaten'],
   },
-  async handler(params: { dayIndex: number; meal: string; eaten: boolean }, ctx: SkillContext): Promise<SkillResult> {
-    const { userId, db } = ctx
-    const { dayIndex, meal, eaten } = params
+  async handler(params: { day?: string; dayIndex?: number; meal: string; eaten: boolean }, ctx: SkillContext): Promise<SkillResult> {
+    const { db } = ctx
+    const { meal, eaten } = params
+    const t = menuDayParam({ day: params.day, dayIndex: params.dayIndex })
+    if (isMenuDayError(t)) return { data: null, summary: t.error, uiHint: 'text' }
+    const dayIndex = t.dayIndex
 
-    const [menu] = await db
-      .select()
-      .from(menus)
-      .where(scopeWhere(menus.userId, menus.householdId, await resolveScope(userId, db)))
-      .orderBy(desc(menus.createdAt))
-      .limit(1)
-
-    if (!menu) {
-      return { data: null, summary: 'No tienes menu.', uiHint: 'text' }
-    }
+    const menu = await menuOfWeek(ctx, t.weekStart)
+    if (!menu) return noMenuFor(t.weekStart)
 
     const days = menu.days as any[]
 
-    if (dayIndex < 0 || dayIndex >= days.length) {
+    if (dayIndex >= days.length) {
       return { data: null, summary: 'Indice de dia fuera de rango.', uiHint: 'text' }
     }
 
@@ -968,12 +1023,11 @@ const markMealEaten: SkillDefinition = {
       .where(eq(menus.id, menu.id))
       .returning()
 
-    const dayNames = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo']
     const label = eaten ? 'comida' : 'no comida'
-    const recipeName = days[dayIndex][meal].recipeName ?? meal
+    const recipeName = dishNow(updated ?? menu, dayIndex, meal) ?? MEAL_LABEL[meal] ?? meal
     return {
-      data: updated,
-      summary: `${recipeName} del ${dayNames[dayIndex]} marcada como ${label}.`,
+      data: { ...updated, change: changeOf(t, meal, recipeName) },
+      summary: `Hecho: "${recipeName}" (${MEAL_LABEL[meal] ?? meal} del ${t.label}) marcada como ${label}.`,
       uiHint: 'confirmation',
     }
   },
@@ -1489,7 +1543,7 @@ const getVarietyScore: SkillDefinition = {
   parameters: { type: 'object', properties: {}, required: [] },
   async handler(_p, ctx) {
     const { userId, db } = ctx
-    const [menu] = await db.select().from(menus).where(scopeWhere(menus.userId, menus.householdId, await resolveScope(userId, db))).orderBy(desc(menus.createdAt)).limit(1)
+    const menu = await menuOfWeek(ctx, getWeekStart())
     if (!menu) {
       return { data: null, summary: 'No tienes menu activo.', uiHint: 'text' }
     }
@@ -1761,7 +1815,7 @@ const getWeekBalance: SkillDefinition = {
       return { data: b, summary: describeRecipeBalance(b), uiHint: 'nutrition' }
     }
 
-    const [menu] = await db.select().from(menus).where(scopeWhere(menus.userId, menus.householdId, await resolveScope(userId, db))).orderBy(desc(menus.createdAt)).limit(1)
+    const menu = await menuOfWeek(ctx, getWeekStart())
     if (!menu) {
       return { data: null, summary: 'No tienes menu activo.', uiHint: 'text' }
     }

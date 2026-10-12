@@ -2,6 +2,7 @@ import { AISLES, capitalize, formatQty, prettyName, type ShoppingItem } from '@o
 import type { SkillContext, SkillDefinition, SkillResult } from './types.js'
 import { appApiFor, AppApiError, type AppApi } from './appApi.js'
 import { madridWeekStart } from '../madridTime.js'
+import { DAY_PROP, dateLabel, isMenuDayError, resolveMenuDay, type MenuDay } from './menuDay.js'
 import { env } from '../../config/env.js'
 import { HEALTH_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY } from '../healthConsent.js'
 import { PROACTIVE_KINDS, PROACTIVE_LABELS, type ProactiveKind } from '../whatsapp/proactive.js'
@@ -11,8 +12,11 @@ import { PROACTIVE_KINDS, PROACTIVE_LABELS, type ProactiveKind } from '../whatsa
  * (WhatsApp first). Each one calls the same REST endpoint the UI calls, as
  * the user (appApi.ts), so behaviour, validation and permissions are identical.
  *
- * Conventions: dayIndex 0 = lunes … 6 = domingo; meal ∈ breakfast | lunch |
- * snack | dinner; `nextWeek: true` targets next week's menu. Summaries are
+ * Conventions: `day` = the user's words or a date, resolved on the Madrid
+ * calendar by menuDay.ts (legacy dayIndex 0 = lunes … 6 = domingo, with
+ * `nextWeek: true` for next week); meal ∈ breakfast | lunch | snack | dinner.
+ * Every menu change edits the menu of the resolved week (never "the latest
+ * menu") and its summary repeats the day with its date (PRO-63). Summaries are
  * plain facts the model relays; lookups that find nothing return a summary
  * saying nothing changed (never a silent no-op).
  */
@@ -91,29 +95,40 @@ export function bestMatch<T>(items: readonly T[], query: string, nameOf: (t: T) 
   return bestScore >= 30 ? best : null
 }
 
-const dayMealError = (dayIndex: unknown, meal: unknown): string | null => {
-  if (typeof dayIndex !== 'number' || dayIndex < 0 || dayIndex > 6) return 'dayIndex debe ser 0 (lunes) a 6 (domingo).'
-  if (meal !== undefined && !MEALS.includes(meal as any)) return 'meal debe ser breakfast, lunch, snack o dinner.'
-  return null
-}
-const where = (dayIndex: number, meal?: string) =>
-  meal ? `la ${MEAL_ES[meal]} del ${DAY_NAMES[dayIndex]}` : `el ${DAY_NAMES[dayIndex]}`
+const mealError = (meal: unknown): string | null =>
+  meal !== undefined && !MEALS.includes(meal as any) ? 'meal debe ser breakfast, lunch, snack o dinner. No he cambiado nada.' : null
+
+/** The menu day a tool call means (`day` words/date, or legacy dayIndex + nextWeek). */
+const target = (day: unknown, dayIndex: unknown, nextWeek: unknown): MenuDay | { error: string } =>
+  resolveMenuDay({ day, dayIndex, nextWeek })
+
+/** "la cena del sábado 17 de octubre" / "el sábado 17 de octubre". */
+const where = (t: MenuDay, meal?: string) => (meal ? `la ${MEAL_ES[meal]} del ${t.label}` : `el ${t.label}`)
+/** What every successful menu change hands back: the real day, date and meal it touched. */
+const changed = (t: MenuDay, meal?: string, extra: Record<string, unknown> = {}) => ({
+  weekStart: t.weekStart,
+  date: t.isoDate,
+  dayIndex: t.dayIndex,
+  ...(meal ? { meal } : {}),
+  ...extra,
+})
 
 interface MenuDoc {
   id: string
   days: Array<Record<string, { dishes?: Array<{ kind: string; recipeId?: string; recipeName?: string; text?: string }>; servings?: number | null } | undefined>>
 }
 
-async function loadMenu(ctx: SkillContext, nextWeek?: boolean): Promise<MenuDoc | null> {
+/** The menu of the week starting `weekStart` (default: this Madrid week). */
+async function loadMenu(ctx: SkillContext, weekStart: string = madridWeekStart()): Promise<MenuDoc | null> {
   try {
-    return await api(ctx)<MenuDoc>('GET', `/menu/${ctx.userId}/${madridWeekStart(new Date(), nextWeek ? 1 : 0)}`)
+    return await api(ctx)<MenuDoc>('GET', `/menu/${ctx.userId}/${weekStart}`)
   } catch (err) {
     if (err instanceof AppApiError && err.status === 404) return null
     throw err
   }
 }
-const NO_MENU = (nextWeek?: boolean) =>
-  text(`No hay menú ${nextWeek ? 'para la semana que viene' : 'esta semana'}; no he cambiado nada. Puedes generarlo con generate_weekly_menu.`)
+const NO_MENU = (weekStart: string) =>
+  text(`No hay menú para la semana del ${dateLabel(weekStart)}; no he cambiado nada. Puedes generarlo con generate_weekly_menu.`)
 const slotPath = (menuId: string, day: number, meal: string) => `/menu/${menuId}/day/${day}/meal/${meal}`
 
 /**
@@ -167,7 +182,8 @@ async function findRecipe(
 }
 
 const dayMealProps = {
-  dayIndex: { type: 'number', description: '0=lunes … 6=domingo' },
+  day: DAY_PROP,
+  dayIndex: { type: 'number', description: 'Solo si no usas day: 0=lunes … 6=domingo de esta semana (con nextWeek, de la que viene)' },
   meal: { type: 'string', enum: [...MEALS], description: 'breakfast (desayuno), lunch (comida), snack (merienda), dinner (cena)' },
   nextWeek: { type: 'boolean', description: 'true si se refiere a la semana que viene' },
 }
@@ -185,20 +201,22 @@ const setMealNote: SkillDefinition = {
       text: { type: 'string', description: 'Texto corto de la nota (max 120)' },
       keepDishes: { type: 'boolean', description: 'true para añadir la nota sin quitar los platos existentes' },
     },
-    required: ['dayIndex', 'meal', 'text'],
+    required: ['meal', 'text'],
   },
   async handler(p, ctx) {
-    const bad = dayMealError(p.dayIndex, p.meal)
+    const t = target(p.day, p.dayIndex, p.nextWeek)
+    if (isMenuDayError(t)) return text(t.error)
+    const bad = mealError(p.meal)
     if (bad) return text(bad)
-    const menu = await loadMenu(ctx, p.nextWeek)
-    if (!menu) return NO_MENU(p.nextWeek)
-    const path = slotPath(menu.id, p.dayIndex, p.meal)
-    const had = (menu.days[p.dayIndex]?.[p.meal]?.dishes ?? []).length > 0
+    const menu = await loadMenu(ctx, t.weekStart)
+    if (!menu) return NO_MENU(t.weekStart)
+    const path = slotPath(menu.id, t.dayIndex, p.meal)
+    const had = (menu.days[t.dayIndex]?.[p.meal]?.dishes ?? []).length > 0
     if (!p.keepDishes && had) await api(ctx)('DELETE', path)
     await api(ctx)('POST', `${path}/dish`, { kind: 'note', text: String(p.text).slice(0, 120) })
     return menuDone(
-      `Hecho: ${where(p.dayIndex, p.meal)} queda como "${p.text}"${!p.keepDishes && had ? ' (he quitado los platos que había)' : ''}.`,
-      { menuId: menu.id },
+      `Hecho: ${where(t, p.meal)} queda como "${p.text}"${!p.keepDishes && had ? ' (he quitado los platos que había)' : ''}.`,
+      changed(t, p.meal, { menuId: menu.id, note: String(p.text).slice(0, 120) }),
     )
   },
 }
@@ -206,14 +224,16 @@ const setMealNote: SkillDefinition = {
 const clearMeal: SkillDefinition = {
   name: 'clear_meal',
   description: 'Vacia una comida del menu (quita todos sus platos y notas).',
-  parameters: { type: 'object', properties: dayMealProps, required: ['dayIndex', 'meal'] },
+  parameters: { type: 'object', properties: dayMealProps, required: ['meal'] },
   async handler(p, ctx) {
-    const bad = dayMealError(p.dayIndex, p.meal)
+    const t = target(p.day, p.dayIndex, p.nextWeek)
+    if (isMenuDayError(t)) return text(t.error)
+    const bad = mealError(p.meal)
     if (bad) return text(bad)
-    const menu = await loadMenu(ctx, p.nextWeek)
-    if (!menu) return NO_MENU(p.nextWeek)
-    await api(ctx)('DELETE', slotPath(menu.id, p.dayIndex, p.meal))
-    return menuDone(`Hecho: he vaciado ${where(p.dayIndex, p.meal)}.`)
+    const menu = await loadMenu(ctx, t.weekStart)
+    if (!menu) return NO_MENU(t.weekStart)
+    await api(ctx)('DELETE', slotPath(menu.id, t.dayIndex, p.meal))
+    return menuDone(`Hecho: he vaciado ${where(t, p.meal)}.`, changed(t, p.meal))
   },
 }
 
@@ -224,20 +244,26 @@ const setDaySkipped: SkillDefinition = {
   parameters: {
     type: 'object',
     properties: {
+      day: dayMealProps.day,
       dayIndex: dayMealProps.dayIndex,
       skipped: { type: 'boolean', description: 'true = sin cocinar; false = volver a planificar ese dia' },
       nextWeek: dayMealProps.nextWeek,
     },
-    required: ['dayIndex'],
+    required: [],
   },
   async handler(p, ctx) {
-    const bad = dayMealError(p.dayIndex, undefined)
-    if (bad) return text(bad)
-    const menu = await loadMenu(ctx, p.nextWeek)
-    if (!menu) return NO_MENU(p.nextWeek)
+    const t = target(p.day, p.dayIndex, p.nextWeek)
+    if (isMenuDayError(t)) return text(t.error)
+    const menu = await loadMenu(ctx, t.weekStart)
+    if (!menu) return NO_MENU(t.weekStart)
     const skip = p.skipped !== false
-    await api(ctx)(skip ? 'POST' : 'DELETE', `/menu/${menu.id}/day/${p.dayIndex}/skip`)
-    return menuDone(skip ? `Hecho: el ${DAY_NAMES[p.dayIndex]} queda sin cocinar.` : `Hecho: el ${DAY_NAMES[p.dayIndex]} vuelve a estar planificable (vacio hasta que añadas o regeneres).`)
+    await api(ctx)(skip ? 'POST' : 'DELETE', `/menu/${menu.id}/day/${t.dayIndex}/skip`)
+    return menuDone(
+      skip
+        ? `Hecho: ${where(t)} queda sin cocinar.`
+        : `Hecho: ${where(t)} vuelve a estar planificable (vacio hasta que añadas o regeneres).`,
+      changed(t, undefined, { skipped: skip }),
+    )
   },
 }
 
@@ -248,17 +274,19 @@ const addDish: SkillDefinition = {
   parameters: {
     type: 'object',
     properties: { ...dayMealProps, recipeName: { type: 'string' }, recipeId: { type: 'string' } },
-    required: ['dayIndex', 'meal'],
+    required: ['meal'],
   },
   async handler(p, ctx) {
-    const bad = dayMealError(p.dayIndex, p.meal)
+    const t = target(p.day, p.dayIndex, p.nextWeek)
+    if (isMenuDayError(t)) return text(t.error)
+    const bad = mealError(p.meal)
     if (bad) return text(bad)
-    const menu = await loadMenu(ctx, p.nextWeek)
-    if (!menu) return NO_MENU(p.nextWeek)
-    const path = slotPath(menu.id, p.dayIndex, p.meal)
+    const menu = await loadMenu(ctx, t.weekStart)
+    if (!menu) return NO_MENU(t.weekStart)
+    const path = slotPath(menu.id, t.dayIndex, p.meal)
     if (!p.recipeId && !p.recipeName) {
       await api(ctx)('POST', `${path}/dish/random`)
-      return menuDone(`Hecho: he añadido un plato aleatorio a ${where(p.dayIndex, p.meal)}.`)
+      return menuDone(`Hecho: he añadido un plato aleatorio a ${where(t, p.meal)}.`, changed(t, p.meal))
     }
     const recipe = p.recipeId ? { id: p.recipeId, name: p.recipeName ?? 'la receta' } : await findRecipe(ctx, p.recipeName)
     if (!p.recipeId && (!recipe || ('approximate' in recipe && recipe.approximate))) {
@@ -266,12 +294,13 @@ const addDish: SkillDefinition = {
       await api(ctx)('POST', `${path}/dish`, { kind: 'note', text: note })
       const closest = recipe ? ` Lo mas parecido que si hay es "${recipe.name}".` : ''
       return menuDone(
-        `Hecho: he añadido "${note}" a ${where(p.dayIndex, p.meal)} como nota, porque no esta en sus recetas ni en el catalogo.${closest} Diselo y ofrecele crear la receta${recipe ? ` o cambiar la nota por "${recipe.name}"` : ''}; no hace falta para que quede en el menu.`,
+        `Hecho: he añadido "${note}" a ${where(t, p.meal)} como nota, porque no esta en sus recetas ni en el catalogo.${closest} Diselo y ofrecele crear la receta${recipe ? ` o cambiar la nota por "${recipe.name}"` : ''}; no hace falta para que quede en el menu.`,
+        changed(t, p.meal, { note }),
       )
     }
     if (!recipe) return text(`No encontre la receta "${p.recipeId}"; no he añadido nada.`)
     await api(ctx)('POST', `${path}/dish`, { kind: 'recipe', recipeId: recipe.id })
-    return menuDone(`Hecho: he añadido "${recipe.name}" a ${where(p.dayIndex, p.meal)}.`, { recipeId: recipe.id })
+    return menuDone(`Hecho: he añadido "${recipe.name}" a ${where(t, p.meal)}.`, changed(t, p.meal, { recipeId: recipe.id, recipeName: recipe.name }))
   },
 }
 
@@ -281,18 +310,20 @@ const removeDish: SkillDefinition = {
   parameters: {
     type: 'object',
     properties: { ...dayMealProps, dishName: { type: 'string', description: 'Nombre del plato o texto de la nota' } },
-    required: ['dayIndex', 'meal', 'dishName'],
+    required: ['meal', 'dishName'],
   },
   async handler(p, ctx) {
-    const bad = dayMealError(p.dayIndex, p.meal)
+    const t = target(p.day, p.dayIndex, p.nextWeek)
+    if (isMenuDayError(t)) return text(t.error)
+    const bad = mealError(p.meal)
     if (bad) return text(bad)
-    const menu = await loadMenu(ctx, p.nextWeek)
-    if (!menu) return NO_MENU(p.nextWeek)
-    const dishes = (menu.days[p.dayIndex]?.[p.meal]?.dishes ?? []).map((d, i) => ({ ...d, i }))
+    const menu = await loadMenu(ctx, t.weekStart)
+    if (!menu) return NO_MENU(t.weekStart)
+    const dishes = (menu.days[t.dayIndex]?.[p.meal]?.dishes ?? []).map((d, i) => ({ ...d, i }))
     const hit = bestMatch(dishes, p.dishName, (d) => d.recipeName ?? d.text ?? '')
-    if (!hit) return text(`No hay ningun plato parecido a "${p.dishName}" en ${where(p.dayIndex, p.meal)}; no he quitado nada.`)
-    await api(ctx)('DELETE', `${slotPath(menu.id, p.dayIndex, p.meal)}/dish/${hit.i}`)
-    return menuDone(`Hecho: he quitado "${hit.recipeName ?? hit.text}" de ${where(p.dayIndex, p.meal)}.`)
+    if (!hit) return text(`No hay ningun plato parecido a "${p.dishName}" en ${where(t, p.meal)}; no he quitado nada.`)
+    await api(ctx)('DELETE', `${slotPath(menu.id, t.dayIndex, p.meal)}/dish/${hit.i}`)
+    return menuDone(`Hecho: he quitado "${hit.recipeName ?? hit.text}" de ${where(t, p.meal)}.`, changed(t, p.meal))
   },
 }
 
@@ -303,18 +334,21 @@ const setMealServings: SkillDefinition = {
   parameters: {
     type: 'object',
     properties: { ...dayMealProps, servings: { type: ['number', 'null'], description: 'Numero de comensales, o null' } },
-    required: ['dayIndex', 'meal', 'servings'],
+    required: ['meal', 'servings'],
   },
   async handler(p, ctx) {
-    const bad = dayMealError(p.dayIndex, p.meal)
+    const t = target(p.day, p.dayIndex, p.nextWeek)
+    if (isMenuDayError(t)) return text(t.error)
+    const bad = mealError(p.meal)
     if (bad) return text(bad)
-    const menu = await loadMenu(ctx, p.nextWeek)
-    if (!menu) return NO_MENU(p.nextWeek)
-    await api(ctx)('PATCH', slotPath(menu.id, p.dayIndex, p.meal), { servings: p.servings ?? null })
+    const menu = await loadMenu(ctx, t.weekStart)
+    if (!menu) return NO_MENU(t.weekStart)
+    await api(ctx)('PATCH', slotPath(menu.id, t.dayIndex, p.meal), { servings: p.servings ?? null })
     return menuDone(
       p.servings == null
-        ? `Hecho: ${where(p.dayIndex, p.meal)} vuelve a los comensales por defecto.`
-        : `Hecho: ${where(p.dayIndex, p.meal)} queda para ${p.servings} personas.`,
+        ? `Hecho: ${where(t, p.meal)} vuelve a los comensales por defecto.`
+        : `Hecho: ${where(t, p.meal)} queda para ${p.servings} personas.`,
+      changed(t, p.meal, { servings: p.servings ?? null }),
     )
   },
 }
@@ -322,40 +356,66 @@ const setMealServings: SkillDefinition = {
 const lockMeal: SkillDefinition = {
   name: 'lock_meal',
   description: 'Bloquea (o desbloquea) una comida para que no cambie al regenerar el menu ("deja fijo el cocido del domingo").',
-  parameters: { type: 'object', properties: { ...dayMealProps, locked: { type: 'boolean' } }, required: ['dayIndex', 'meal'] },
+  parameters: { type: 'object', properties: { ...dayMealProps, locked: { type: 'boolean' } }, required: ['meal'] },
   async handler(p, ctx) {
-    const bad = dayMealError(p.dayIndex, p.meal)
+    const t = target(p.day, p.dayIndex, p.nextWeek)
+    if (isMenuDayError(t)) return text(t.error)
+    const bad = mealError(p.meal)
     if (bad) return text(bad)
-    const menu = await loadMenu(ctx, p.nextWeek)
-    if (!menu) return NO_MENU(p.nextWeek)
+    const menu = await loadMenu(ctx, t.weekStart)
+    if (!menu) return NO_MENU(t.weekStart)
     const locked = p.locked !== false
-    await api(ctx)('PUT', `${slotPath(menu.id, p.dayIndex, p.meal)}/lock`, { locked })
-    return menuDone(`Hecho: ${where(p.dayIndex, p.meal)} ${locked ? 'queda bloqueada' : 'queda desbloqueada'}.`)
+    await api(ctx)('PUT', `${slotPath(menu.id, t.dayIndex, p.meal)}/lock`, { locked })
+    return menuDone(`Hecho: ${where(t, p.meal)} ${locked ? 'queda bloqueada' : 'queda desbloqueada'}.`, changed(t, p.meal, { locked }))
   },
 }
+
+/**
+ * Two days of one menu (move / leftovers): each given as words/date (string)
+ * or a legacy dayIndex (number). Both must fall in the same week — the API
+ * edits one menu at a time.
+ */
+function twoDays(a: unknown, b: unknown, nextWeek: unknown): [MenuDay, MenuDay] | { error: string } {
+  const pick = (x: unknown) => target(typeof x === 'string' ? x : undefined, typeof x === 'number' ? x : undefined, nextWeek)
+  const from = pick(a)
+  if (isMenuDayError(from)) return from
+  const to = pick(b)
+  if (isMenuDayError(to)) return to
+  if (from.weekStart !== to.weekStart) {
+    return { error: `${from.label} y ${to.label} son de semanas distintas; no he cambiado nada. Solo puedo mover comidas dentro de la misma semana.` }
+  }
+  return [from, to]
+}
+const dayOrIndex = { type: ['string', 'number'], description: 'El día ("el lunes", "mañana", AAAA-MM-DD) o 0=lunes … 6=domingo' }
 
 const moveMeal: SkillDefinition = {
   name: 'move_meal',
   description:
-    'Mueve o intercambia comidas del menu ("cambia la cena del lunes por la del martes", "pasa la comida del jueves al viernes"). Si el destino tiene platos, se intercambian.',
+    'Mueve o intercambia comidas del menu ("cambia la cena del lunes por la del martes", "pasa la comida del jueves al viernes"). Si el destino tiene platos, se intercambian. Los dos dias tienen que ser de la misma semana.',
   parameters: {
     type: 'object',
     properties: {
-      fromDay: dayMealProps.dayIndex,
+      fromDay: dayOrIndex,
       fromMeal: dayMealProps.meal,
-      toDay: dayMealProps.dayIndex,
+      toDay: dayOrIndex,
       toMeal: dayMealProps.meal,
       nextWeek: dayMealProps.nextWeek,
     },
     required: ['fromDay', 'fromMeal', 'toDay', 'toMeal'],
   },
   async handler(p, ctx) {
-    const bad = dayMealError(p.fromDay, p.fromMeal) ?? dayMealError(p.toDay, p.toMeal)
+    const days = twoDays(p.fromDay, p.toDay, p.nextWeek)
+    if (!Array.isArray(days)) return text(days.error)
+    const [from, to] = days
+    const bad = mealError(p.fromMeal) ?? mealError(p.toMeal)
     if (bad) return text(bad)
-    const menu = await loadMenu(ctx, p.nextWeek)
-    if (!menu) return NO_MENU(p.nextWeek)
-    await api(ctx)('POST', `/menu/${menu.id}/move-slot`, { fromDay: p.fromDay, fromMeal: p.fromMeal, toDay: p.toDay, toMeal: p.toMeal })
-    return menuDone(`Hecho: he movido ${where(p.fromDay, p.fromMeal)} a ${where(p.toDay, p.toMeal)} (si habia algo, se han intercambiado).`)
+    const menu = await loadMenu(ctx, from.weekStart)
+    if (!menu) return NO_MENU(from.weekStart)
+    await api(ctx)('POST', `/menu/${menu.id}/move-slot`, { fromDay: from.dayIndex, fromMeal: p.fromMeal, toDay: to.dayIndex, toMeal: p.toMeal })
+    return menuDone(
+      `Hecho: he movido ${where(from, p.fromMeal)} a ${where(to, p.toMeal)} (si habia algo, se han intercambiado).`,
+      { weekStart: from.weekStart, from: changed(from, p.fromMeal), to: changed(to, p.toMeal) },
+    )
   },
 }
 
@@ -369,8 +429,9 @@ const banRecipe: SkillDefinition = {
     required: ['recipeName'],
   },
   async handler(p, ctx) {
-    const menu = await loadMenu(ctx, p.nextWeek)
-    if (!menu) return NO_MENU(p.nextWeek)
+    const weekStart = madridWeekStart(new Date(), p.nextWeek === true ? 1 : 0)
+    const menu = await loadMenu(ctx, weekStart)
+    if (!menu) return NO_MENU(weekStart)
     const inMenu = menu.days
       .flatMap((d) => Object.values(d ?? {}))
       .flatMap((s) => s?.dishes ?? [])
@@ -378,44 +439,51 @@ const banRecipe: SkillDefinition = {
     const hit = bestMatch(inMenu, p.recipeName, (d) => d.recipeName ?? '')
     const recipe = hit ? { id: hit.recipeId!, name: hit.recipeName ?? p.recipeName } : await findRecipe(ctx, p.recipeName)
     if (!recipe) return text(`No encontre "${p.recipeName}"; no he vetado nada.`)
+    const week = `la semana del ${dateLabel(weekStart)}`
     if (p.banned === false) {
       await api(ctx)('DELETE', `/menu/${menu.id}/ban/${recipe.id}`)
-      return text(`Hecho: "${recipe.name}" vuelve a poder salir esta semana.`)
+      return text(`Hecho: "${recipe.name}" vuelve a poder salir ${week}.`, { weekStart, recipeId: recipe.id })
     }
     await api(ctx)('POST', `/menu/${menu.id}/ban`, { recipeId: recipe.id })
-    return text(`Hecho: "${recipe.name}" no volvera a salir esta semana.`)
+    return text(`Hecho: "${recipe.name}" no volvera a salir ${week}.`, { weekStart, recipeId: recipe.id })
   },
 }
 
 const setLeftovers: SkillDefinition = {
   name: 'set_leftovers',
   description:
-    'Planifica sobras: una comida reutiliza la receta de otra ("el martes comemos las sobras del cocido del lunes"). Sustituye lo que hubiera en la comida destino.',
+    'Planifica sobras: una comida reutiliza la receta de otra ("el martes comemos las sobras del cocido del lunes"). Sustituye lo que hubiera en la comida destino. Los dos dias tienen que ser de la misma semana.',
   parameters: {
     type: 'object',
     properties: {
-      sourceDay: dayMealProps.dayIndex,
+      sourceDay: dayOrIndex,
       sourceMeal: dayMealProps.meal,
-      targetDay: dayMealProps.dayIndex,
+      targetDay: dayOrIndex,
       targetMeal: dayMealProps.meal,
       nextWeek: dayMealProps.nextWeek,
     },
     required: ['sourceDay', 'sourceMeal', 'targetDay', 'targetMeal'],
   },
   async handler(p, ctx) {
-    const bad = dayMealError(p.sourceDay, p.sourceMeal) ?? dayMealError(p.targetDay, p.targetMeal)
+    const days = twoDays(p.sourceDay, p.targetDay, p.nextWeek)
+    if (!Array.isArray(days)) return text(days.error)
+    const [source, dest] = days
+    const bad = mealError(p.sourceMeal) ?? mealError(p.targetMeal)
     if (bad) return text(bad)
-    const menu = await loadMenu(ctx, p.nextWeek)
-    if (!menu) return NO_MENU(p.nextWeek)
-    if ((menu.days[p.targetDay]?.[p.targetMeal]?.dishes ?? []).length > 0) {
-      await api(ctx)('DELETE', slotPath(menu.id, p.targetDay, p.targetMeal))
+    const menu = await loadMenu(ctx, source.weekStart)
+    if (!menu) return NO_MENU(source.weekStart)
+    if ((menu.days[dest.dayIndex]?.[p.targetMeal]?.dishes ?? []).length > 0) {
+      await api(ctx)('DELETE', slotPath(menu.id, dest.dayIndex, p.targetMeal))
     }
-    await api(ctx)('POST', `/menu/${menu.id}/day/${p.targetDay}/leftover`, {
-      sourceDay: p.sourceDay,
+    await api(ctx)('POST', `/menu/${menu.id}/day/${dest.dayIndex}/leftover`, {
+      sourceDay: source.dayIndex,
       sourceMeal: p.sourceMeal,
       targetMeal: p.targetMeal,
     })
-    return menuDone(`Hecho: ${where(p.targetDay, p.targetMeal)} son sobras de ${where(p.sourceDay, p.sourceMeal)}.`)
+    return menuDone(
+      `Hecho: ${where(dest, p.targetMeal)} son sobras de ${where(source, p.sourceMeal)}.`,
+      { weekStart: source.weekStart, source: changed(source, p.sourceMeal), target: changed(dest, p.targetMeal) },
+    )
   },
 }
 
@@ -696,11 +764,12 @@ const updatePantry: SkillDefinition = {
 const logCooked: SkillDefinition = {
   name: 'log_cooked',
   description:
-    'Apunta que el usuario ha cocinado una receta ("hoy he hecho la lasaña", "la cena de ayer la hice"). Descuenta ingredientes de la despensa. Pasa dayIndex+meal si se refiere a una comida del menu, o recipeName.',
+    'Apunta que el usuario ha cocinado una receta ("hoy he hecho la lasaña", "la cena de ayer la hice"). Descuenta ingredientes de la despensa. Pasa day (o dayIndex) + meal si se refiere a una comida del menu, o recipeName.',
   parameters: {
     type: 'object',
     properties: {
       recipeName: { type: 'string' },
+      day: dayMealProps.day,
       dayIndex: dayMealProps.dayIndex,
       meal: dayMealProps.meal,
       servings: { type: 'number', description: 'Raciones cocinadas, si lo dice' },
@@ -711,19 +780,24 @@ const logCooked: SkillDefinition = {
   async handler(p, ctx) {
     let recipe: { id: string; name: string } | null = null
     let menuId: string | undefined
-    if (typeof p.dayIndex === 'number' && p.meal) {
-      const menu = await loadMenu(ctx)
-      const dish = menu?.days[p.dayIndex]?.[p.meal]?.dishes?.find((d) => d.kind === 'recipe' && d.recipeId)
-      if (dish) {
-        recipe = { id: dish.recipeId!, name: dish.recipeName ?? 'la receta' }
-        menuId = menu!.id
+    let slot: MenuDay | null = null
+    if ((typeof p.dayIndex === 'number' || typeof p.day === 'string') && p.meal) {
+      const t = target(p.day, p.dayIndex, undefined)
+      if (!isMenuDayError(t)) {
+        const menu = await loadMenu(ctx, t.weekStart)
+        const dish = menu?.days[t.dayIndex]?.[p.meal]?.dishes?.find((d) => d.kind === 'recipe' && d.recipeId)
+        if (dish) {
+          recipe = { id: dish.recipeId!, name: dish.recipeName ?? 'la receta' }
+          menuId = menu!.id
+          slot = t
+        }
       }
     }
     if (!recipe && p.recipeName) recipe = await findRecipe(ctx, p.recipeName, { menuFirst: true })
     if (!recipe) return text('No se que receta has cocinado; no he apuntado nada.')
     const res = await api(ctx)<{ pantry?: { updatedRowIds?: string[] } }>('POST', '/cook-logs', {
       recipeId: recipe.id,
-      ...(menuId ? { menuId, dayIndex: p.dayIndex, meal: p.meal } : {}),
+      ...(menuId && slot ? { menuId, dayIndex: slot.dayIndex, meal: p.meal } : {}),
       ...(typeof p.servings === 'number' ? { servings: p.servings } : {}),
       ...(p.notes ? { notes: String(p.notes).slice(0, 500) } : {}),
     })

@@ -67,7 +67,8 @@ export function talksHealthEffects(reply: string): boolean {
   return BODY_EFFECT_RE.test(fold(reply))
 }
 
-const REFERRAL_RE = /\b(pediatra|medic[oa]|doctor[a]?|dietista|profesional sanitari[oa]|centro de salud|112)\b/
+// «al 112», not a bare 112: «112 g de harina» is a recipe, not a referral.
+const REFERRAL_RE = /\b(pediatra|medic[oa]|doctor[a]?|dietista|profesional sanitari[oa]|centro de salud|al 112)\b/
 
 export function hasDisclaimer(reply: string): boolean {
   return fold(reply).includes(fold(HEALTH_DISCLAIMER).replace(/\.$/, ''))

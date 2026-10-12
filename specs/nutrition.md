@@ -24,7 +24,8 @@ Nutrition data is sourced from **USDA FoodData Central (FDC)**, populated once a
 Allergens are not provided by USDA. Each ingredient has an `allergenTags` string array maintained in our own catalog:
 
 - Tags follow EU labelling categories: `gluten`, `lactosa`, `huevo`, `frutos_secos`, `cacahuetes`, `soja`, `pescado`, `marisco`, `crustaceos`, `moluscos`, `apio`, `mostaza`, `sesamo`, `altramuces`, `sulfitos`
-- Helper rules collapse common ingredients (e.g. "trigo", "harina de trigo", "cebada", "centeno", "avena" → `gluten`; "leche", "queso", "mantequilla", "nata" → `lactosa`)
+- Helper rules collapse common ingredients (e.g. "trigo", "harina de trigo", "cebada", "centeno", "avena" → `gluten`; "leche", "queso", "mantequilla", "nata" → `lactosa`). Gluten is prudent (PRO-61): any flour/pasta/noodle/dough unless it names arroz, maíz, garbanzo, almendra, trigo sarraceno or mandioca; soy sauce/tamari unless «sin gluten»; «sin gluten» never counts. «Mayonesa» → `huevo`; Worcestershire → `pescado` + `gluten`
+- The recipe ficha shows `effectiveAllergens` (stored union + name inference, additive, computed on read), so a stale stored union is corrected without touching the database
 - A recipe's `allergens` is the union of all its ingredients' `allergenTags`, including `optional` ingredients (so the badge is conservative)
 
 ## Recipe Aggregation

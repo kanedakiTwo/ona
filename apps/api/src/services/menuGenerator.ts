@@ -198,7 +198,8 @@ function countMealSlots(template: DayTemplate[]): number {
 // Spanish weekday names in the same Monday→Sunday order the menu uses.
 const WEEKDAY_KEYS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'] as const
 
-function buildRandomMenu(
+/** Exported for tests (restrictions over the full catalogue, PRO-61). */
+export function buildRandomMenu(
   template: DayTemplate[],
   allRecipes: RecipeWithCourse[],
   season: Season,

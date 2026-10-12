@@ -9,6 +9,7 @@ import { describe, it, expect } from 'vitest'
 import {
   ALLERGEN_TAGS,
   allergenUnion,
+  effectiveAllergens,
   inferAllergenTagsFromName,
 } from '../services/nutrition/allergens.js'
 
@@ -246,5 +247,22 @@ describe('inferAllergenTagsFromName — staple-collapse rules', () => {
         expect(ALLERGEN_TAGS, `unexpected tag "${t}" from "${s}"`).toContain(t)
       }
     }
+  })
+})
+
+describe('PRO-61 — gluten rules and effectiveAllergens', () => {
+  it('harina de fuerza / salsa de soja carry gluten; gluten-free bases do not', () => {
+    expect(inferAllergenTagsFromName('Harina de fuerza')).toEqual(['gluten'])
+    expect(inferAllergenTagsFromName('salsa de soja')).toEqual(['gluten', 'soja'])
+    expect(inferAllergenTagsFromName('tamari sin gluten')).toEqual(['soja'])
+    expect(inferAllergenTagsFromName('harina de trigo sarraceno')).toEqual([])
+    expect(inferAllergenTagsFromName('harina de arroz')).toEqual([])
+  })
+
+  it('effectiveAllergens adds what the names say and keeps stored tags', () => {
+    expect(effectiveAllergens(['huevo', 'lactosa'], ['harina de fuerza', 'mozzarella'])).toEqual(['gluten', 'huevo', 'lactosa'])
+    expect(effectiveAllergens(['sulfitos'], ['tomate'])).toEqual(['sulfitos'])
+    expect(effectiveAllergens(null, [])).toEqual([])
+    expect(effectiveAllergens(['inventado'], [])).toEqual([])
   })
 })

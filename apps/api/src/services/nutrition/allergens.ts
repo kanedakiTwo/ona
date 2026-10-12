@@ -1,7 +1,7 @@
 /**
  * Allergen helpers.
  *
- * Two pure functions:
+ * Pure functions:
  *
  *   - `allergenUnion(ingredients, catalog)` — returns the deduped, sorted
  *     union of the allergen tags carried by every ingredient on a recipe
@@ -10,6 +10,9 @@
  *   - `inferAllergenTagsFromName(name)` — staple-collapse rule engine
  *     used by the seed script to pre-fill `ingredient.allergenTags` from
  *     a Spanish ingredient name. Case- and accent-insensitive.
+ *
+ *   - `effectiveAllergens(stored, ingredientNames)` — what the recipe ficha
+ *     shows: stored union + name inference, additive.
  *
  * Spec: ../../../../../specs/nutrition.md ("Allergens")
  */
@@ -94,6 +97,16 @@ function containsAny(haystack: string, needles: readonly string[]): boolean {
 
 // Each rule's keyword list is stored already normalized (no diacritics,
 // lowercase) so we only normalize the input once.
+//
+// Gluten is conservative on purpose (PRO-61, Miguel 2026-10-12, «reglas
+// prudentes»): for a coeliac a missed tag is a reaction, an extra one only
+// costs a recipe. Rules:
+//   - cereals with gluten and their products always count;
+//   - any flour / pasta / noodle counts unless it names a gluten-free base
+//     (arroz, maíz, garbanzo, almendra, trigo sarraceno, mandioca);
+//   - soy sauce (salsa de soja, tamari, shoyu) counts — it is usually brewed
+//     with wheat — unless it says «sin gluten»;
+//   - anything labelled «sin gluten» never counts.
 const GLUTEN_KEYWORDS = [
   'trigo',
   'cebada',
@@ -104,10 +117,50 @@ const GLUTEN_KEYWORDS = [
   'cuscus',
   'bulgur',
   'seitan',
-  'harina de trigo',
   'pan',
-  'pasta',
+  'cerveza',
+  'malta',
+  'worcestershire',
+  'perrins',
+  'galleta',
+  'bizcocho',
+  'hojaldre',
+  'rebozad',
+  'tempura',
+  'picatoste',
 ]
+
+/** Flour-like products: gluten unless they name a gluten-free base. */
+const GLUTEN_FLOUR_LIKE = [
+  'harina',
+  'pasta',
+  'fideo',
+  'noodle',
+  'espagueti',
+  'spaghetti',
+  'macarron',
+  'tallarin',
+  'lasana',
+  'canelon',
+  'noqui',
+  'gnocchi',
+  'semola',
+  'masa',
+]
+
+const GLUTEN_FREE_BASES = ['arroz', 'maiz', 'garbanzo', 'almendra', 'trigo sarraceno', 'mandioca']
+
+const SOY_SAUCE_KEYWORDS = ['salsa de soja', 'tamari', 'shoyu']
+
+function hasGluten(n: string): boolean {
+  if (n.includes('sin gluten')) return false
+  // Buckwheat is not wheat: drop it before looking for "trigo".
+  const s = n.replace(/trigo sarraceno/g, '')
+  if (containsAny(s, GLUTEN_KEYWORDS)) return true
+  if (containsAny(n, SOY_SAUCE_KEYWORDS)) return true
+  if (containsAny(n, GLUTEN_FLOUR_LIKE) && !containsAny(n, GLUTEN_FREE_BASES)) return true
+  return false
+}
 
 const LACTOSE_KEYWORDS = [
   'leche',
@@ -124,7 +177,7 @@ const LACTOSE_KEYWORDS = [
   'cuajada',
 ]
 
-const EGG_KEYWORDS = ['huevo', 'huevos', 'clara', 'yema']
+const EGG_KEYWORDS = ['huevo', 'huevos', 'clara', 'yema', 'mayonesa']
 
 const TREE_NUT_KEYWORDS = [
   'almendra',
@@ -163,6 +216,20 @@ const FISH_KEYWORDS = [
   'boqueron',
   'anchoa',
   'trucha',
+  'corvina',
+  'rape',
+  'rodaballo',
+  'lenguado',
+  'besugo',
+  'pescadilla',
+  'jurel',
+  'emperador',
+  'pez espada',
+  'bonito',
+  'surimi',
+  'fumet',
+  'worcestershire',
+  'perrins',
 ]
 
 const CRUSTACEAN_KEYWORDS = [
@@ -195,15 +262,17 @@ const SULFITE_KEYWORDS = ['vino', 'vinagre']
 /**
  * Infer EU-labelling allergen tags from a Spanish ingredient name.
  *
- * Used by the seed script (Task 7) to pre-fill the catalog. The output
- * is deduped and alphabetically sorted for deterministic snapshots.
+ * Used by the seed script (Task 7) to pre-fill the catalog, by ingredient
+ * auto-create, by the restriction filter (dietaryRestrictions.ts) and by
+ * `effectiveAllergens` below. The output is deduped and alphabetically
+ * sorted for deterministic snapshots.
  */
 export function inferAllergenTagsFromName(name: string): AllergenTag[] {
   const tags = new Set<AllergenTag>()
   const n = normalize(name)
   if (n.length === 0) return []
 
-  if (containsAny(n, GLUTEN_KEYWORDS)) tags.add('gluten')
+  if (hasGluten(n)) tags.add('gluten')
   if (containsAny(n, LACTOSE_KEYWORDS)) tags.add('lactosa')
   if (containsAny(n, EGG_KEYWORDS)) tags.add('huevo')
   if (containsAny(n, TREE_NUT_KEYWORDS)) tags.add('frutos_secos')
@@ -225,4 +294,24 @@ export function inferAllergenTagsFromName(name: string): AllergenTag[] {
   if (containsAny(n, SULFITE_KEYWORDS)) tags.add('sulfitos')
 
   return Array.from(tags).sort()
+}
+
+/**
+ * The allergens a recipe's ficha shows: the stored union (`recipes.allergens`,
+ * computed from catalogue tags when the recipe was saved) plus what the
+ * ingredient names say today. Additive only — a stored tag is never dropped.
+ *
+ * PRO-61 (2026-10-12): stored unions went stale when the name rules were
+ * missing words («Harina de fuerza», «Salsa de soja» → no gluten). Computing
+ * this when the recipe is read fixes every recipe at once without touching
+ * the database, and stays right as the rules improve.
+ */
+export function effectiveAllergens(
+  stored: readonly string[] | null | undefined,
+  ingredientNames: readonly string[],
+): AllergenTag[] {
+  const seen = new Set<AllergenTag>()
+  for (const t of stored ?? []) if (ALLERGEN_TAG_SET.has(t)) seen.add(t as AllergenTag)
+  for (const name of ingredientNames) for (const t of inferAllergenTagsFromName(name)) seen.add(t)
+  return Array.from(seen).sort()
 }

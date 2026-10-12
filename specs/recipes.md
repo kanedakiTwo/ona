@@ -38,7 +38,7 @@ Each recipe has:
 - `meals` — array of `breakfast | lunch | dinner | snack`
 - `seasons` — array of `spring | summer | autumn | winter` (empty = all seasons)
 - `equipment` — string array of tools required (e.g. "horno", "procesador", "batidora")
-- `allergens` — string array (auto-aggregated from ingredients on save; see [Nutrition](./nutrition.md))
+- `allergens` — string array (auto-aggregated from ingredients on save; see [Nutrition](./nutrition.md)). The detail payload (`GET /recipes/:id`, the ficha's «Alérgenos») returns `effectiveAllergens`: the stored union **plus** what the ingredient names say today (`inferAllergenTagsFromName`) — additive, computed on read, no DB write (PRO-61: «Pizza de colores» with «Harina de fuerza» and «Arroz tres delicias» with «Salsa de soja» showed no gluten)
 - `notes`, `tips`, `substitutions`, `storage` — long-form text, optional
 - `nutritionPerServing` — cached object: `{ kcal, proteinG, carbsG, fatG, fiberG, saltG }`. Computed when the recipe is saved
 - `tags` — public-facing string array, normalized (no internal labels, no `meal`/`difficulty` duplicates)
@@ -145,7 +145,7 @@ Population:
 
 ## API Endpoints
 
-- `GET /recipes?search=&meal=&season=&maxTime=&perPage=&page=` — list with filters; returns the lightweight card shape. **Optional auth:** with a valid Bearer token the response is the system catalogue + the caller's own recipes (other users' recipes are never listed; a personal copy hides the system original it was copied from); without a token only system recipes (`authorId IS NULL`) are returned, so the same endpoint backs the public `/recipes-ona` page anonymously and the app `/recipes` page authenticated.
+- `GET /recipes?search=&meal=&season=&maxTime=&perPage=&page=&fitsMe=1` — list with filters; returns the lightweight card shape. `fitsMe=1` (authenticated only; ignored anonymously) hides recipes that break the caller's allergies or diet (profile + memory, same rules as the menu generator; dislikes not applied) — used by the menu's «Elegir otra receta» picker (PRO-61). **Optional auth:** with a valid Bearer token the response is the system catalogue + the caller's own recipes (other users' recipes are never listed; a personal copy hides the system original it was copied from); without a token only system recipes (`authorId IS NULL`) are returned, so the same endpoint backs the public `/recipes-ona` page anonymously and the app `/recipes` page authenticated.
 - `GET /recipes/with-what-i-have?ingredient=<id>[&ingredient=<id>…]` (auth) — «Con lo que tengo»: 1–3 catalogue ingredient ids (400 with none or more than 3) → card shape + `uses` (chosen names the recipe uses) + `missing` (required non-basic ingredients not chosen), ranked; at most 100. Service: `services/withWhatIHave.ts`
 - `GET /recipes/:id?servings=N` — single recipe; if `servings` is provided and differs from `recipe.servings`, quantities are scaled server-side and a `scaledFrom` field is included. Anonymous callers can only fetch system recipes; requesting a user-authored recipe without a token returns 404 (same shape as "not found" to avoid leaking which IDs exist privately).
 - `POST /recipes` (auth) — create user recipe; runs lint validator

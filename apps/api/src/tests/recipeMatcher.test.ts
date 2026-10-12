@@ -275,8 +275,9 @@ describe('matchRecipes: allergies and diets (2026-10-07 regression)', () => {
     matchRecipes(POOL, { ...baseOptions, restrictions }).map((r) => r.id).sort()
 
   it('"sin gluten" drops recipes with gluten (recipe union or ingredient name)', () => {
-    // r3's "masa" isn't tagged and doesn't name a cereal: kept (data gap, not a rule gap).
-    expect(ids(['sin gluten'])).toEqual(['r1', 'r2', 'r3', 'r5'])
+    // r3's untagged "masa" (dough) counts as gluten since PRO-61's prudent
+    // rules: any dough/flour that doesn't name a gluten-free base.
+    expect(ids(['sin gluten'])).toEqual(['r1', 'r2', 'r5'])
   })
 
   it('"frutos secos" and "mostaza" use the allergen tags', () => {

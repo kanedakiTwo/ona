@@ -12,7 +12,7 @@
  * mis tiendas, Cambiar fechas) live in the "···" sheet (`MenuSheet`).
  * Desktop (lg+): 1180 px container, aisles as paper cards in 2–3 columns.
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { CalendarDays, Check, ChevronLeft, ChevronRight, MoreHorizontal, Package, Plus, Share2, Sparkles, Store } from 'lucide-react'
 import Link from 'next/link'
@@ -80,6 +80,17 @@ export default function ShoppingPage() {
   // «Hoy» · «Mañana» · «Esta semana» (PRO-33): one tap instead of the dates sheet.
   const shortcuts = useMemo(() => quickRanges(today, defaultTo), [today, defaultTo])
   const activeShortcut = activeQuickRange(shortcuts, from, to)
+  // PRO-69: slide the pressed shortcut fully into view once the row has
+  // re-rendered with the new range (the date chip changes width, so doing it
+  // in the click handler left «Esta semana» half cut on a phone).
+  const chipRowRef = useRef<HTMLDivElement>(null)
+  const shortcutTapped = useRef(false)
+  useEffect(() => {
+    if (!shortcutTapped.current) return
+    shortcutTapped.current = false
+    const pressed = chipRowRef.current?.querySelector<HTMLElement>('[data-shortcut][aria-pressed="true"]')
+    pressed?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
+  }, [activeShortcut, from, to])
 
   // The /menu hook is still used by the empty-state to confirm whether the
   // user has any menu at all — but the shopping list itself no longer
@@ -213,6 +224,7 @@ export default function ShoppingPage() {
           aria-label="Filtrar la lista"
           role="group"
           data-testid="shopping-chip-row"
+          ref={chipRowRef}
         >
           <WeekStep
             dir="prev"
@@ -242,13 +254,14 @@ export default function ShoppingPage() {
             <Chip
               key={r.key}
               active={activeShortcut === r.key}
-              onClick={(e) => {
+              onClick={() => {
                 haptic.light()
+                shortcutTapped.current = true
                 setFrom(r.from)
                 setTo(r.to)
-                e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
               }}
               pressable
+              shortcut
             >
               {r.label}
             </Chip>
@@ -460,18 +473,21 @@ function Chip({
   children,
   pressable,
   ariaHaspopup,
+  shortcut,
 }: {
   active: boolean
-  onClick: (e: React.MouseEvent<HTMLButtonElement>) => void
+  onClick: () => void
   children: React.ReactNode
   pressable?: boolean
   ariaHaspopup?: boolean
+  shortcut?: boolean
 }) {
   return (
     <button
       type="button"
       aria-pressed={pressable ? active : undefined}
       aria-haspopup={ariaHaspopup ? 'dialog' : undefined}
+      data-shortcut={shortcut ? '' : undefined}
       onClick={onClick}
       className={`relative h-9 shrink-0 whitespace-nowrap rounded-full border px-3.5 text-[14px] transition-colors before:absolute before:inset-x-0 before:-inset-y-1 active:scale-[0.97] lg:h-[38px] lg:px-4 ${
         active ? 'border-ink bg-ink font-medium text-cream' : 'border-border bg-paper text-ink hover:border-ink'

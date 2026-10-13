@@ -81,6 +81,11 @@ test('cook mode: «Parar» ends hands-free', async ({ page }) => {
   await page.getByTestId('cook-handsfree').click()
   const toggle = page.getByTestId('mimo-handsfree')
   await expect(toggle).toHaveAttribute('aria-pressed', 'true')
+  // Tap «Parar» once Mimo is really listening, as a person would. The panel
+  // starts the mic 150 ms after it opens (MimoProvider `open({ listen })`); a
+  // tap inside that window found nothing to cancel, the mic opened anyway and
+  // stayed on until the 8 s no-speech limit (flaky in CI, PRO-77).
+  await expect(page.getByTestId('mimo-listening')).toBeVisible()
   await page.getByTestId('mimo-stop').click()
   await expect(toggle).toHaveAttribute('aria-pressed', 'false')
   await expect(page.getByTestId('mimo-listening')).toHaveCount(0)

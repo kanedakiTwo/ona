@@ -36,6 +36,13 @@ ROUTES=(
   /profile/casa
   /whatsapp/conectar
   /advisor
+  "/recipes/${UUID}/cook"
+  /compra
+  /compra/tiendas
+  /privacidad
+  /como-funciona
+  /aviso-legal
+  /terminos
 )
 
 for route in "${ROUTES[@]}"; do

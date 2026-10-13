@@ -29,7 +29,10 @@ test('add a shop → prepare orders → WhatsApp link with the order written', a
   await dismissOverlays(page)
   await expect(page.getByText(/Primero,/)).toBeVisible({ timeout: 10_000 })
   await page.getByRole('link', { name: /Añadir tiendas/ }).click()
-  await expect(page).toHaveURL(/\/compra\/tiendas/)
+  // Client-side navigation: under `next dev` the first visit compiles
+  // /compra/tiendas, which took 5–7 s on CI runners (PRO-77). The CI also
+  // pre-compiles it (scripts/warm-routes.sh); this is the safety margin.
+  await expect(page).toHaveURL(/\/compra\/tiendas/, { timeout: 20_000 })
 
   await page.getByRole('button', { name: /Añadir tienda/ }).click()
   await page.getByLabel('Nombre', { exact: true }).fill('The Fruits of the World')

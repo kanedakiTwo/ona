@@ -36,6 +36,15 @@ async function mockWhatsApp(page: Page) {
   return state
 }
 
+// The /user/:id mock fetches the real API and reads the body. A request the
+// page fires as the test ends (it keeps following the account on /menu) is
+// still inside that handler when the context closes: "Response has been
+// disposed" / "route.fetch: Target page … closed" failed the test after all
+// its checks had passed (PRO-77). Drop the mocks and ignore those in flight.
+test.afterEach(async ({ page }) => {
+  await page.unrouteAll({ behavior: 'ignoreErrors' })
+})
+
 test('WhatsApp first: send the code, Mimo writes, and the page lands on /menu when the chat is done', async ({ page }) => {
   test.setTimeout(60_000)
   const wa = await mockWhatsApp(page)

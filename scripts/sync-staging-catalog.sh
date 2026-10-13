@@ -88,13 +88,23 @@ prod -c "\copy (select $(prefix ri "$RI_COLS") from recipe_ingredients ri join r
 prod -c "\copy (select $(prefix s "$ST_COLS") from recipe_steps s join recipes r on r.id = s.recipe_id where r.author_id is null) to '$WORK/recipe_steps.csv' csv"
 
 # 3) Compare (row content, ignoring timestamps).
-fingerprint() {
-  "$1" -c "select
+# Staging keeps ingredients that only exist there (the test households'
+# recipes create them, and those recipes need them), so the ingredient
+# fingerprint covers production's ingredient ids only, on both sides.
+prod -c "\copy (select id from ingredients) to '$WORK/ingredient_ids.csv' csv"
+FP_SQL="select
     (select count(*) from recipes where author_id is null),
     (select md5(coalesce(string_agg((to_jsonb(r) - 'created_at' - 'updated_at')::text, '' order by id), '')) from recipes r where author_id is null),
-    (select md5(coalesce(string_agg((to_jsonb(i) - 'created_at' - 'updated_at')::text, '' order by id), '')) from ingredients i),
+    (select md5(coalesce(string_agg((to_jsonb(i) - 'created_at' - 'updated_at')::text, '' order by id), '')) from ingredients i where i.id in (select id from _ids)),
     (select md5(coalesce(string_agg(to_jsonb(ri)::text, '' order by ri.id), '')) from recipe_ingredients ri join recipes r on r.id = ri.recipe_id where r.author_id is null),
     (select md5(coalesce(string_agg(to_jsonb(s)::text, '' order by s.id), '')) from recipe_steps s join recipes r on r.id = s.recipe_id where r.author_id is null)"
+fingerprint() {
+  if [ "$1" = prod ]; then
+    # Read-only session: no temp table, and every production id counts anyway.
+    prod -c "${FP_SQL//from _ids/from ingredients}"
+  else
+    staging -c "create temp table _ids (id uuid)" -c "\copy _ids from '$WORK/ingredient_ids.csv' csv" -c "$FP_SQL"
+  fi
 }
 before="$(fingerprint staging)"
 target="$(fingerprint prod)"

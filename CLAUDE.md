@@ -192,7 +192,7 @@ This is the **single source of truth** for work that's pending on Miguel's side 
   - Cómo: al crear o editar cada cuenta (@conmimoia), abre la guía de marca (panel → «Lo esencial» → Marketing) → sección «Redes sociales»: para cada red está la foto de perfil y la portada al tamaño exacto, con su enlace de descarga. Súbelas tal cual.
   - Redes: Instagram, TikTok, Facebook, YouTube, el canal de WhatsApp y el número de Mimo (WhatsApp Manager → Perfil), LinkedIn (tu fondo de perfil y, si creas la página de empresa, su logo y portada).
   - Hecho cuando: todas las cuentas creadas muestran la cuchara.
-  - Estado (2026-10-13): hechos Instagram, YouTube (canal de marca @conmimoia, https://www.youtube.com/@conmimoia) y la página de empresa de LinkedIn; Facebook, en curso. Faltan TikTok y WhatsApp (canal y número de Mimo); en LinkedIn, comprobar que la página lleva el logo y la portada.
+  - Estado (2026-10-13): hechos Instagram, YouTube (canal de marca @conmimoia, https://www.youtube.com/@conmimoia) y la página de empresa de LinkedIn; Facebook, en curso. TikTok creada el 2026-10-13 como cuenta personal (para pasarla a cuenta de empresa, TikTok pide documentación de la empresa: hacerlo cuando exista la SL). Falta WhatsApp (canal y número de Mimo); en LinkedIn, comprobar que la página lleva el logo y la portada.
 
 - [ ] **MIG-10 · Probar en tu móvil lo que no se puede probar solo** — Hay cosas que solo se ven en un teléfono de verdad.
   - Instalar la app en Android (Chrome) y en iPhone (Safari): que se abra a pantalla completa, con el color crema y respetando la barra de estado.

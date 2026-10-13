@@ -122,6 +122,15 @@ test('/shopping: «Hoy» shows only today, «Esta semana» restores the default 
   // «Esta semana»: back to the default range and list.
   await semana.click()
   await expect(semana).toHaveAttribute('aria-pressed', 'true')
+  // PRO-69: the tapped shortcut slides fully into view by itself, after the
+  // date chip has re-rendered with the wider range label.
+  await expect(semana).toBeInViewport({ ratio: 1 })
+  await expect
+    .poll(async () => {
+      const b = (await semana.boundingBox())!
+      return b.x >= 0 && b.x + b.width <= 390
+    })
+    .toBe(true)
   await expect(range).toHaveText(defaultLabel)
   await expect(total).toHaveText(String(defaultCount), { timeout: 15_000 })
   if (defaultCount > 0) await expect(totalTitle).toHaveText('Total semanal estimado')

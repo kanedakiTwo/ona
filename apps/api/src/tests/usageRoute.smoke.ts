@@ -1,0 +1,96 @@
+/**
+ * Smoke test for product analytics (specs/metrics.md "Eventos de uso") and
+ * the anonymised conversation flags (specs/whatsapp.md) against a running API
+ * + Postgres: a fresh account's signup, onboarding, first menu, shopping list
+ * and first-steps answer land in `usage_events` and come back as counts in
+ * GET /admin/usage; the flags endpoint answers with its shape; the read-only
+ * token never writes.
+ *
+ *   API_URL=http://localhost:8790 METRICS_READ_TOKEN=… pnpm --filter @ona/api exec vitest run src/tests/usageRoute.smoke.ts
+ *
+ * Needs REGISTRATION_MODE=open on that API (CI's smoke job sets it) and
+ * METRICS_READ_TOKEN on both sides; skips when the API isn't reachable.
+ */
+import { describe, expect, it } from 'vitest'
+import { API_URL, reachable } from './smokeEnv.js'
+
+const METRICS_TOKEN = process.env.METRICS_READ_TOKEN ?? ''
+const tag = `usage_${Date.now()}${Math.random().toString(36).slice(2, 6)}`
+
+async function call(method: string, path: string, payload?: unknown, headers: Record<string, string> = {}) {
+  const r = await fetch(`${API_URL}${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: payload === undefined ? undefined : JSON.stringify(payload),
+  })
+  const text = await r.text()
+  let body: any = null
+  try {
+    body = text ? JSON.parse(text) : null
+  } catch {
+    body = text
+  }
+  return { status: r.status, body }
+}
+
+const metrics = { 'x-metrics-token': METRICS_TOKEN }
+
+describe.skipIf(!reachable || !METRICS_TOKEN)('usage events + conversation flags smoke', () => {
+  it('records a new household’s first steps and reports them as counts only', async () => {
+    const before = await call('GET', '/admin/usage?days=1', undefined, metrics)
+    expect(before.status).toBe(200)
+    const count = (r: any, name: string) => Number(r.body.totals.events[name] ?? 0)
+
+    const reg = await call('POST', '/register', { username: tag, email: `${tag}@test.local`, password: 'e2epass123', ageConfirmed: true })
+    expect(reg.status).toBe(201)
+    const auth = { Authorization: `Bearer ${reg.body.token}` }
+    const userId = reg.body.user.id
+
+    const onboarding = await call('POST', `/user/${userId}/onboarding`, { adults: 2, kidsCount: 0, cookingFreq: 'daily', restrictions: [], favoriteDishes: ['lentejas'], priority: 'varied' }, auth)
+    expect(onboarding.status).toBe(200)
+    const now = new Date()
+    const monday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - ((now.getUTCDay() + 6) % 7)))
+    const gen = await call('POST', '/menu/generate', { userId, weekStart: monday.toISOString().slice(0, 10) }, auth)
+    expect([200, 201]).toContain(gen.status)
+    expect((await call('GET', '/shopping-list', undefined, auth)).status).toBe(200)
+    expect((await call('POST', `/user/${userId}/first-steps`, { outcome: 'skipped' }, auth)).status).toBe(200)
+    // The assistant's loopback marker: not counted as a web view.
+    expect((await call('GET', '/shopping-list', undefined, { ...auth, 'x-mimoia-internal': '1' })).status).toBe(200)
+
+    // Inserts are fire-and-forget: poll briefly.
+    let after: any = null
+    for (let i = 0; i < 20; i++) {
+      after = await call('GET', '/admin/usage?days=1', undefined, metrics)
+      if (count(after, 'first_steps_skipped') > count(before, 'first_steps_skipped')) break
+      await new Promise((r) => setTimeout(r, 250))
+    }
+    expect(after.status).toBe(200)
+    for (const name of ['signup_completed', 'onboarding_completed', 'menu_generated', 'first_steps_skipped']) {
+      expect(count(after, name) - count(before, name), name).toBe(1)
+    }
+    expect(count(after, 'shopping_list_viewed') - count(before, 'shopping_list_viewed')).toBe(1)
+
+    const today = after.body.daily.at(-1)
+    expect(today.day).toBe(after.body.to)
+    expect(today.activeHouseholds).toBeGreaterThanOrEqual(1)
+    expect(after.body.funnel.at(-1).signups).toBeGreaterThanOrEqual(1)
+    // Counts only: no ids, usernames or emails anywhere in the payload.
+    const raw = JSON.stringify(after.body)
+    expect(raw).not.toContain(userId)
+    expect(raw).not.toContain(tag)
+  }, 90_000)
+
+  it('serves the anonymised conversation flags to the token', async () => {
+    const r = await call('GET', '/admin/assistant-reviews/flags?days=3', undefined, metrics)
+    expect(r.status).toBe(200)
+    expect(r.body.channels).toEqual(['whatsapp'])
+    expect(Object.keys(r.body.counts.byCategory).sort()).toEqual(['error_refusal', 'health_claim', 'health_talk', 'other', 'unverified_done'])
+    expect(Array.isArray(r.body.items)).toBe(true)
+  })
+
+  it('the read-only token never writes, and opens nothing else', async () => {
+    expect((await call('POST', '/admin/assistant-reviews/run', {}, metrics)).status).toBe(401)
+    expect((await call('POST', '/admin/usage', {}, metrics)).status).not.toBe(200)
+    expect((await call('GET', '/admin/assistant-reviews', undefined, metrics)).status).toBe(401)
+  })
+})

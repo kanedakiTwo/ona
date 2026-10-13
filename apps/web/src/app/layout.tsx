@@ -17,6 +17,7 @@ import { usePathname } from "next/navigation"
 import { recordVisit } from "@/lib/pwa/installPrompt"
 import { scheduleMealReminders } from "@/lib/pwa/notifications"
 import { installErrorReporter } from "@/lib/errorReporter"
+import { CF_BEACON_SRC, cfBeaconAttr } from "@/lib/cfBeacon"
 import "./globals.css"
 
 const inter = Inter({
@@ -43,6 +44,9 @@ const jetbrains = JetBrains_Mono({
   variable: "--font-jetbrains",
   weight: ["400"],
 })
+
+// Cookieless visit statistics (Cloudflare Web Analytics), only when the token is set at build time.
+const CF_BEACON = cfBeaconAttr(process.env.NEXT_PUBLIC_CF_BEACON_TOKEN)
 
 const PUBLIC_ROUTES = ["/", "/como-funciona", "/por-que-ona", "/privacidad", "/terminos", "/aviso-legal", "/login", "/register", "/reset", "/onboarding"]
 /** Public sections with dynamic segments: the waitlist owner page and opt-out (specs/waitlist.md) and household invitations (specs/auth.md). */
@@ -100,6 +104,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
         <link rel="icon" href="/favicon.ico" sizes="any" />
         <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+
+        {CF_BEACON && <script defer src={CF_BEACON_SRC} data-cf-beacon={CF_BEACON} />}
 
         {/* iOS splash screens */}
         {APPLE_SPLASH_IMAGES.map((img) => (

@@ -13,6 +13,7 @@ import {
 import { canAccessRow, getPrimaryHouseholdId, resolveScope } from '../services/scopeResolver.js'
 import { listActiveStaplesForHousehold } from '../services/staplesStore.js'
 import { carryItemState, type ItemStateMap } from '../services/shoppingItemState.js'
+import { INTERNAL_CALL_HEADER, trackEvent } from '../services/usageEvents.js'
 import {
   AISLES,
   UNITS,
@@ -389,6 +390,8 @@ router.put('/shopping-list/:listId/item/:itemId/check', async (req: AuthRequest,
     }
 
     item.checked = !item.checked
+    // Product analytics: only ticking an item off counts, not un-ticking it.
+    if (item.checked && !req.get(INTERNAL_CALL_HEADER)) trackEvent('shopping_item_checked', { userId: req.userId!, channel: 'web' })
 
     const [updated] = await db
       .update(shoppingLists)

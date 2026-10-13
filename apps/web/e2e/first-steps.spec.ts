@@ -70,8 +70,11 @@ test('a new account sees the three steps on /menu, skips them, reloads and they 
   await expect(dialog.getByRole('heading')).toHaveText('Este es Mimo: pídele lo que quieras')
   await expect(dialog.getByRole('button', { name: 'Entendido' })).toBeVisible()
 
-  // Skip → gone, saved on the account.
+  // Skip → gone, saved on the account. The request says it was skipped (not
+  // finished): that feeds the first_steps_skipped usage event (specs/metrics.md).
+  const dismissed = page.waitForRequest((r) => r.method() === 'POST' && /\/user\/[^/]+\/first-steps$/.test(r.url()))
   await dialog.getByRole('button', { name: 'Saltar' }).click()
+  expect((await dismissed).postDataJSON()).toEqual({ outcome: 'skipped' })
   await expect(guide).toHaveCount(0)
   await expect.poll(() => firstStepsPending(page)).toBe(false)
 

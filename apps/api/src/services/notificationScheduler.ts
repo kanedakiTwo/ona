@@ -42,6 +42,7 @@ import {
 } from './pushNotifier.js'
 import { deliverAlertOverWhatsApp, runProactiveTick } from './whatsapp/outbound.js'
 import { runDailyReviewIfDue } from './whatsapp/reviewer.js'
+import { purgeOldUsageEventsIfDue } from './usageEvents.js'
 import { combineDelivery, type ChannelOutcome } from './whatsapp/proactive.js'
 
 // ─── Habit → method matcher ─────────────────────────────────────
@@ -499,6 +500,14 @@ async function tickOnce(): Promise<true> {
     if (review) console.log(`[reviewer] ${review.day}: ${review.status}, ${review.findings?.length ?? 0} findings`)
   } catch (err) {
     console.error('[notificationScheduler] conversation review failed:', err)
+  }
+
+  // Product analytics retention: usage events older than 180 days (once a day).
+  try {
+    const purged = await purgeOldUsageEventsIfDue(now)
+    if (purged) console.log(`[usage] purged ${purged} events older than 180 days`)
+  } catch (err) {
+    console.error('[notificationScheduler] usage events purge failed:', err)
   }
   return true
 }

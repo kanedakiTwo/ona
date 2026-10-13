@@ -38,6 +38,7 @@ import appErrorsRoutes, { clientErrorsRouter } from './routes/appErrors.js'
 import waitlistRoutes, { adminWaitlistRouter } from './routes/waitlist.js'
 import inviteCampaignRoutes from './routes/inviteCampaigns.js'
 import { trackShoppingActivity } from './services/activityEvents.js'
+import { trackUsageRoutes } from './services/usageEvents.js'
 import { startScheduler } from './services/notificationScheduler.js'
 
 // In-house error tracker (specs/errors.md): remember what handlers log with
@@ -73,6 +74,9 @@ app.use(express.urlencoded({ extended: true }))
 // Logs shopping-list item mutations (2xx) for the business metrics'
 // "resolved week" — observes the response, never changes it.
 app.use(trackShoppingActivity)
+// Product analytics (specs/metrics.md "Usage events"): records signups,
+// menus, imports… once the route answers 2xx. Observes only.
+app.use(trackUsageRoutes)
 
 // Static files
 const __dirname = path.dirname(fileURLToPath(import.meta.url))

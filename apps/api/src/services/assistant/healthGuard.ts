@@ -63,6 +63,33 @@ const BODY_EFFECT_RE = new RegExp(
   ].join('|'),
 )
 
+/**
+ * Constitution §6 guard list: health claims Mimoia never makes in external
+ * material (RD 1907/1996 art. 4). The CI test `publicHealthClaims.test.ts`
+ * scans the public pages with it, and the conversation flags
+ * (GET /admin/assistant-reviews/flags) scan Mimo's replies with it.
+ */
+export const HEALTH_CLAIM_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
+  [/antiinflamatori/i, 'antiinflamatorio/a'],
+  [/reduce(n)? la inflamaci[oó]n/i, 'reduce la inflamación'],
+  [/\bprevien(e|en)\b/i, 'previene'],
+  [/\bcura(n)?\b/i, 'cura'],
+  [/\badelgaza/i, 'adelgaza'],
+  [/p[eé]rdida de peso|perder peso|pierde peso/i, 'pérdida de peso'],
+  [/quema(r)? grasa/i, 'quema grasa'],
+  [/control(a|ar) (la )?(glucosa|insulina|az[uú]car en sangre)/i, 'controla la glucosa/insulina'],
+  [/depura|desintoxica|detox/i, 'depura / detox'],
+  [/microbiota|microbioma|salud intestinal/i, 'microbioma'],
+  [/refuerza (las|tus) defensas|sistema inmune/i, 'defensas'],
+  [/protege (el|tu) coraz[oó]n/i, 'protege el corazón'],
+  [/cardi[oó]log/i, 'cardiólogo como reclamo'],
+]
+
+/** Labels of the §6 guard-list claims a text makes (empty = none). */
+export function healthClaimWords(text: string): string[] {
+  return HEALTH_CLAIM_PATTERNS.filter(([re]) => re.test(text)).map(([, label]) => label)
+}
+
 export function talksHealthEffects(reply: string): boolean {
   return BODY_EFFECT_RE.test(fold(reply))
 }

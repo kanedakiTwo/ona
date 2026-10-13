@@ -905,6 +905,27 @@ export const activityEvents = pgTable('activity_events', {
   index('idx_activity_events_household_created').on(t.householdId, t.createdAt),
 ])
 
+/**
+ * Product analytics (own table, no third party): one row per thing a user did
+ * — signup_completed, menu_generated, mimo_message… (catalogue in
+ * services/usageEvents.ts). `props` holds small enums/counts only, never free
+ * text. Users and households are SET NULL on delete, so a deleted account
+ * leaves anonymous counts. Purged after 180 days. GET /admin/usage reads it.
+ */
+export const usageEvents = pgTable('usage_events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  householdId: uuid('household_id').references(() => households.id, { onDelete: 'set null' }),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+  name: text('name').notNull(),
+  /** web | whatsapp | voice (null = unknown / system) */
+  channel: text('channel'),
+  props: jsonb('props').$type<Record<string, string | number | boolean>>(),
+}, (t) => [
+  index('idx_usage_events_created').on(t.createdAt),
+  index('idx_usage_events_household_created').on(t.householdId, t.createdAt),
+])
+
 // ─── "Compra en mis tiendas" (specs/shop-orders.md) ──────────────────
 //
 // The household's own shops (frutería, carnicería, pescadería, súper) and

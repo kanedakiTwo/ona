@@ -112,7 +112,7 @@ Both are configured in the Railway dashboard, not committed.
 | `OPENAI_API_KEY` | For transcription: WhatsApp voice notes and Mimo's voice in the app (`POST /stt`). Without it `/stt` answers 503 and Mimo is text-only |
 | `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICES` / `ELEVENLABS_MODEL` | Optional: Mimo's replies read aloud (`POST /tts`). `ELEVENLABS_VOICES` = `Nombre:voiceId,Nombre:voiceId` (first = default); `ELEVENLABS_MODEL` defaults to `eleven_multilingual_v2`. Library voices need a paid ElevenLabs plan. Unset = the browser's voice. Production and staging since 2026-10-09: one voice, Miguel's clone (`Miguel:qvz8MPUNfIEXPflIyvbY`, ElevenLabs Starter on mmartinlacoma@gmail.com). See `specs/voice-mode.md` |
 | `USDA_FDC_API_KEY` | For ingredient auto-create |
-| `METRICS_READ_TOKEN` | Read-only token for `GET /admin/metrics`, `GET /admin/errors` and `GET /admin/waitlist` (header `x-metrics-token`) used by the Mimoia HQ agents; unset = token access off. See `specs/metrics.md`, `specs/errors.md`, `specs/waitlist.md` |
+| `METRICS_READ_TOKEN` | Read-only token (header `x-metrics-token`, GET only) for `GET /admin/metrics`, `GET /admin/usage`, `GET /admin/errors`, `GET /admin/waitlist` and `GET /admin/assistant-reviews/flags`, used by the Mimoia HQ agents; unset = token access off. See `specs/metrics.md`, `specs/errors.md`, `specs/waitlist.md`, `specs/whatsapp.md` |
 | `COST_PRICE_OVERRIDES` | Optional JSON over the cost-ledger price table, e.g. `{"openai/gpt-realtime":{"perMinute":0.15}}` |
 
 `ona-web`:
@@ -124,6 +124,7 @@ Both are configured in the Railway dashboard, not committed.
 | `NEXT_PUBLIC_API_URL` | `https://ona-api-production.up.railway.app` (no trailing slash) |
 | `NEXT_PUBLIC_ERROR_REPORTING` | Optional. `false` switches the browser error reporter off (it is on in production builds by default); `true` turns it on under `next dev`. See `specs/errors.md` |
 | `NEXT_PUBLIC_RELEASE` | Optional build label sent with client error reports. Unset → `RAILWAY_GIT_COMMIT_SHA` or `RAILWAY_DEPLOYMENT_ID` if Railway exposes them at build time, else none |
+| `NEXT_PUBLIC_CF_BEACON_TOKEN` | Optional. Cloudflare Web Analytics site token (cookieless, aggregated visits; `specs/privacy.md`). Baked at build time: set it, then redeploy ona-web. Unset → no beacon |
 | `PORT` | `3000` |
 
 ## Schema migrations

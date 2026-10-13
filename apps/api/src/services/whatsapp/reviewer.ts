@@ -7,6 +7,7 @@ import { addDays, madridMidnightUtc, madridParts } from '../madridTime.js'
 import { isWhatsAppConfigured } from './config.js'
 import { sendProactive } from './outbound.js'
 import { recordAnthropicCost } from '../costLedger.js'
+import { detectFlags, replyFlags } from '../assistantFlags.js'
 
 /**
  * Conversation reviewer agent. Once a day (07:00 Madrid, from the scheduler
@@ -52,6 +53,12 @@ export interface ReviewStats {
   questionEndings: number
   proactiveSent: number
   sendFailures: number
+  /** Deterministic detectors (assistantFlags.ts), since 2026-10-13: replies talking about body effects. */
+  healthTalk: number
+  /** Replies using a constitution §6 guard-list health claim. */
+  healthClaims: number
+  /** "Hecho:" / "he cambiado…" with no tool that changed anything in the turn's trace. */
+  unverifiedDone: number
 }
 
 /** Pure: counts of objective signals for the day. */
@@ -70,7 +77,21 @@ export function computeStats(rows: readonly ReviewRow[]): ReviewStats {
       (r) => r.direction === 'out' && ['daily_brief', 'weekly_nudge', 'alert', 'cooking_reminder', 'dinner_checkin', 'shopping_reminder'].includes(r.kind),
     ).length,
     sendFailures: rows.filter((r) => r.direction === 'out' && r.status === 'failed').length,
+    ...detectorCounts(rows),
   }
+}
+
+function detectorCounts(rows: readonly ReviewRow[]): Pick<ReviewStats, 'healthTalk' | 'healthClaims' | 'unverifiedDone'> {
+  const { flags } = detectFlags(rows)
+  const n = (c: string) => flags.filter((f) => f.category === c).length
+  return { healthTalk: n('health_talk'), healthClaims: n('health_claim'), unverifiedDone: n('unverified_done') }
+}
+
+const SIGNAL_LABEL: Record<string, string> = {
+  health_talk: 'habla de efectos en el cuerpo (regla de salud)',
+  health_claim: 'reclamo de salud prohibido (§6)',
+  unverified_done: 'dice "hecho" pero ninguna herramienta cambió nada',
+  error_refusal: 'rechazo o respuesta cortada',
 }
 
 const hhmm = (d: Date) => {
@@ -91,9 +112,13 @@ export function buildTranscripts(rows: readonly ReviewRow[]): string[] {
     n += 1
     const label = convo.find((r) => r.username)?.username ?? `usuario ${n}`
     const lines = [`=== Conversación ${n} (${label}) ===`]
+    let turnMeta: ReviewRow['meta'] = null
+    let answered = true
     for (const r of [...convo].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())) {
       const body = (r.body ?? '').replace(/\s+\n/g, '\n').trim()
       if (r.direction === 'in') {
+        turnMeta = r.meta
+        answered = false
         lines.push(`[${hhmm(r.createdAt)}] USUARIO (${r.kind}${r.status !== 'processed' ? `, ${r.status}` : ''}): ${body}`)
         const t = r.meta
         const trace = [
@@ -111,6 +136,13 @@ export function buildTranscripts(rows: readonly ReviewRow[]): string[] {
         if (t?.photo) lines.push('      · (con foto: Mimo la ha visto)')
       } else {
         lines.push(`[${hhmm(r.createdAt)}] MIMO (${r.kind}${r.status !== 'sent' ? `, ${r.status}` : ''}): ${body}`)
+        // Deterministic detectors (assistantFlags.ts): facts for the reviewer, not verdicts.
+        if (r.kind === 'reply' && !answered) {
+          answered = true
+          const { categories, claimWords } = replyFlags(r.body ?? '', turnMeta)
+          const labels = categories.map((c) => (c === 'health_claim' ? `${SIGNAL_LABEL[c]}: ${claimWords.join(', ')}` : SIGNAL_LABEL[c]))
+          if (labels.length) lines.push(`   ⚑ señales automáticas: ${labels.join(' · ')}`)
+        }
       }
     }
     out.push(lines.join('\n'))
@@ -186,6 +218,8 @@ Reglas del producto (contra ellas evaluas cada turno):
 6. Rapido: mas de 20 s sin respuesta es lento (salvo importar recetas o generar menus, que llevan un aviso "me pongo con ello").
 7. Proactividad util: los avisos (resumen, cocinar, ¿hiciste la cena?, compra, menu del domingo) aportan y no molestan.
 8. Las notas de voz llegan transcritas: si la transcripcion parece erronea, es un hallazgo de "transcripcion".
+
+Debajo de algunas respuestas veras "⚑ señales automaticas": las ponen detectores automaticos (hablar de efectos en el cuerpo, reclamos de salud prohibidos, decir "hecho" sin que ninguna herramienta cambiara nada). Son pistas, no veredictos: compruebalas con la conversacion y la traza; si son reales, crea el hallazgo; si no, ignoralas.
 
 Herramientas que Mimo tiene disponibles: ${toolNames.join(', ')}.
 

@@ -19,6 +19,7 @@ import { env } from '../config/env.js'
 import { consumeToken } from '../services/passwordReset.js'
 import { rateLimit } from '../middleware/rateLimit.js'
 import { markWaitlistJoined } from '../services/waitlist.js'
+import { trackEvent } from '../services/usageEvents.js'
 
 const router = Router()
 
@@ -107,6 +108,8 @@ router.post('/register', registerLimiter, validate(registerSchema), async (req, 
     // Someone from the waitlist (invited or not) has arrived: mark the entry
     // joined. Never blocks or fails the registration (specs/waitlist.md).
     void markWaitlistJoined(email)
+    // Product analytics (specs/metrics.md): how they got in, never who.
+    trackEvent('signup_completed', { userId: user.id, channel: 'web', props: { access } })
 
     const token = jwt.sign({ userId: user.id }, env.JWT_SECRET, {
       expiresIn: env.JWT_EXPIRES_IN as jwt.SignOptions['expiresIn'],

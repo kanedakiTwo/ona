@@ -1,6 +1,6 @@
 # Business Metrics & Cost Ledger
 
-One JSON endpoint that tells the "Dirección" and Finance agents (and Miguel) how many households use Mimoia each week, how many "resolve" their week, how they retain, and what each active household really costs in paid AI/messaging providers. Built on an append-only **cost ledger** (one row per paid provider call) and a small **activity log** for shopping-list use.
+One JSON endpoint (plus the product-analytics `GET /admin/usage`) that tells the "Dirección" and Finance agents (and Miguel) how many households use Mimoia each week, how many "resolve" their week, how they retain, and what each active household really costs in paid AI/messaging providers. Built on an append-only **cost ledger** (one row per paid provider call) and a small **activity log** for shopping-list use.
 
 ## Why this exists
 
@@ -9,7 +9,7 @@ Mimoia is pre-launch and will be run as a one-person company with AI agents. Pri
 ## User Capabilities
 
 - An admin (JWT, see [Roles](./roles.md)) or an agent holding the read-only token can call `GET /admin/metrics?weeks=8` and get JSON for the last N ISO weeks (1–52, default 8; Europe/Madrid clock, current week flagged `partial`).
-- The token is sent as header `x-metrics-token` and must equal the env var `METRICS_READ_TOKEN` (constant-time compare). It opens this endpoint, the read-only `GET /admin/errors` ([Error tracking](./errors.md)) and `GET /admin/waitlist` ([Waitlist](./waitlist.md)) only — every other `/admin/*` route still needs an admin JWT. With the env var unset, token access is off (always 401 `METRICS_TOKEN_DISABLED`); a wrong token is 401 `METRICS_TOKEN_INVALID`, with no fallback to JWT.
+- The token is sent as header `x-metrics-token` and must equal the env var `METRICS_READ_TOKEN` (constant-time compare). It opens five read-only GETs: this endpoint, `GET /admin/usage` (below), `GET /admin/errors` ([Error tracking](./errors.md)), `GET /admin/waitlist` ([Waitlist](./waitlist.md)) and `GET /admin/assistant-reviews/flags` ([WhatsApp](./whatsapp.md)) — every other `/admin/*` route still needs an admin JWT. With the env var unset, token access is off (always 401 `METRICS_TOKEN_DISABLED`); a wrong token is 401 `METRICS_TOKEN_INVALID`, with no fallback to JWT; any method other than GET/HEAD with the token is 405 `METRICS_TOKEN_READ_ONLY`.
 - `includeInternal=1` also counts admin and suspended accounts (useful pre-launch, when almost every user is internal).
 - Response:
   - `weekly[]`: `week` (Monday), `isoWeek` (`2026-W41`), `partial`, `activeHouseholds`, `resolvedWeekHouseholds`, `newHouseholds`, `costEur { total, byProvider, byFeature }`, `internalCostEur`, `costPerActiveHouseholdEur`.
@@ -65,14 +65,47 @@ The `openai/gpt-realtime*` entries stay in the table so historical `voice_realti
 
 Append-only `(user, household, kind, created_at)` for actions no other table timestamps durably: `shopping_check`, `shopping_stock`, `shopping_add`. Written by an app-level middleware when the matching shopping-list route answers 2xx, and by the assistant tool runner when `check_shopping_item` / `mark_in_stock` succeed. Never blocks the request.
 
+## Eventos de uso (`usage_events`, `GET /admin/usage`)
+
+Analítica de producto en una tabla propia, sin terceros. Una fila por cada cosa que hace un usuario: `(created_at, household_id, user_id, name, channel, props)`. `channel` es `web` | `whatsapp` | `voice` (null = desconocido). `props` solo admite slugs, números y booleanos (máx. 8 claves, los filtra `trackEvent`): nunca texto libre, nombres, URLs ni teléfonos. Usuario y hogar son `SET NULL` al borrarse, así que una cuenta borrada deja solo recuentos anónimos. `trackEvent` nunca lanza error ni espera a la base de datos.
+
+| Evento | Web (ruta, 2xx) | Mimo (herramienta ejecutada, canal de la conversación) |
+|---|---|---|
+| `signup_completed` (`props.access`: open/admin/campaign/waitlist/household) | `POST /register` | — |
+| `onboarding_completed` | `POST /user/:id/onboarding` | `complete_onboarding` (cuenta también `menu_generated`) |
+| `first_steps_completed` / `first_steps_skipped` | `POST /user/:id/first-steps` con `{ outcome }` (lo envía la guía; sin cuerpo no cuenta) | — |
+| `menu_generated` | `POST /menu/generate` | `generate_weekly_menu` |
+| `meal_swapped` (`props.target` meal/dish, `props.how` picked/auto) | `PUT /menu/:id/day/:d/meal/:m`, `POST …/dish/:p/regenerate` | `swap_meal` |
+| `shopping_list_viewed` | `GET /shopping-list`, `GET /shopping-list/:menuId` | `get_shopping_list` |
+| `shopping_item_checked` (solo al marcar, no al desmarcar) | `PUT /shopping-list/:l/item/:i/check` | `check_shopping_item` |
+| `recipe_imported` (`props.source` url / photo / whatsapp_photo / whatsapp_url / social; `props.kind` article/youtube/instagram/tiktok) | `POST /recipes/extract-from-url`, `POST /recipes/extract-from-image` (el borrador, antes de guardar) | `import_recipe_from_url`; foto de WhatsApp guardada como receta (`inbound.ts`) |
+| `recipe_created` (`props.withSource`) | `POST /recipes` | `create_recipe` |
+| `cook_mode_started` | — (el modo cocina de la web no llama al servidor) | `start_cooking_mode` |
+| `meal_cooked` | `POST /cook-logs` | `log_cooked` |
+| `mimo_message` (por `channel`; en WhatsApp `props.kind` text/voice_note/photo) | `POST /assistant/:id/chat` (`mode: voice` → voice) | cada turno de WhatsApp que llega a Mimo (`inbound.ts`) |
+| `whatsapp_linked` | — | código de vinculación aceptado (`inbound.ts`) |
+| `shop_order_prepared` (`props.orders` desde Mimo) | `POST /shop-orders/prepare` | `prepare_shop_orders` con al menos un pedido |
+
+Sin dobles recuentos: las herramientas que llaman a la propia API REST (`appApi.ts`) y los procesos de sistema que leen la lista (recordatorio de la compra por WhatsApp, la lectura interna de `POST /shop-orders/prepare`) envían la cabecera `x-mimoia-internal`, que el middleware web ignora; el ejecutor de herramientas los registra con el canal de la conversación. Las herramientas que responden "no encontrado" (`data: null`) no cuentan.
+
+`GET /admin/usage?days=28[&includeInternal=1]` (JWT de admin o el token; `days` 1–180; cuentas admin y suspendidas fuera salvo `includeInternal=1`; días de Europe/Madrid) devuelve solo recuentos:
+- `generatedAt`, `windowDays`, `from`, `to`, `includeInternal`, `eventNames[]`, `channels[]`, `dataSince` (primer evento registrado: los días anteriores salen vacíos, no "sin uso").
+- `daily[]`: `{ day, activeHouseholds, events { <nombre>: n }, byChannel { web, whatsapp, voice, unknown } }`, un elemento por día, también los días a cero.
+- `weekly[]`: `{ week (lunes), isoWeek, partial, activeHouseholds, events }`.
+- `funnel[]`, por semana ISO de alta: `{ week, isoWeek, signups, firstMenu, shoppingListViewed, cooked, week2Eligible, activeWeek2 }`. `firstMenu → shoppingListViewed → cooked` son pasos encadenados dentro de los 7 primeros días (día del alta … +6); `cooked` = `cook_mode_started` o `meal_cooked`. `activeWeek2` no está encadenado: algún evento en los días 7–13, sobre `week2Eligible` (altas cuyo día 7 ya ha llegado).
+- `totals`: `{ events, byChannel, activeHouseholds, householdsByEvent }` de la ventana. `definitions` repite las reglas.
+
+Conservación: el tick del planificador borra una vez al día los eventos de más de 180 días (`purgeOldUsageEventsIfDue`).
+
 ## Constraints
 
 - Queries aggregate in SQL to distinct (household, week|day) pairs and per-week cost sums; the rules above run as pure, unit-tested functions.
-- The token is mounted on `GET /admin/metrics`, `GET /admin/errors` and `GET /admin/waitlist` only, and those routers are mounted before the catch-all `router.use(authMiddleware)` routers (else token-only calls would be 401'd first).
-- Unit tests never write to the database (ledger/activity inserts are skipped under vitest).
+- The token is mounted on `GET /admin/metrics`, `GET /admin/usage`, `GET /admin/assistant-reviews/flags` (all in `routes/metrics.ts`; a unit test pins that list), `GET /admin/errors` and `GET /admin/waitlist` only, and those routers are mounted before the catch-all `router.use(authMiddleware)` routers (else token-only calls would be 401'd first).
+- Unit tests never write to the database (ledger/activity/usage inserts are skipped under vitest).
 
 ## Known limitations
 
+- **Los eventos de uso empiezan cuando se despliega esto.** Sin relleno hacia atrás: el embudo solo conoce las altas registradas desde entonces. El modo cocina de la web («Empezar a cocinar») no llama al servidor, así que `cook_mode_started` solo llega desde Mimo; `meal_cooked` cubre la web. Abrir una pantalla sin llamada a la API (detalle de receta, perfil) no se registra. Las conversaciones de Mimo en la web no se guardan: `mimo_message` las cuenta, pero no hay texto que revisar.
 - **History starts at deploy.** No backfill: weeks before `dataSince` under-report cost and resolved weeks (the old per-user advisor counter has no per-call history).
 - **WhatsApp template sends are not yet in the ledger.** They are only sent outside the 24 h window when `WHATSAPP_TEMPLATE_NAME` is set (not set in prod today, so the real cost is €0). The fix is one line in `services/whatsapp/outbound.ts` `sendProactive` after `sendTemplate`: `recordCost({ feature: 'whatsapp_template', provider: 'meta_whatsapp', model: 'utility_template', units: { messages: 1 }, userId: link.userId })` (price already in the table; the activity query already excludes this feature).
 - Historical `voice_realtime` rows (until 2026-10-09) trusted client-reported minutes (the retired `POST /realtime/:userId/usage`); a crashed tab reported nothing.
@@ -91,7 +124,10 @@ Append-only `(user, household, kind, created_at)` for actions no other table tim
 
 ## Source
 
-- [apps/api/src/routes/metrics.ts](../apps/api/src/routes/metrics.ts) — `GET /admin/metrics`
+- [apps/api/src/routes/metrics.ts](../apps/api/src/routes/metrics.ts) — `GET /admin/metrics`, `GET /admin/usage`, `GET /admin/assistant-reviews/flags`
+- [apps/api/src/services/usageEvents.ts](../apps/api/src/services/usageEvents.ts) — `trackEvent`, event catalogue, web middleware `trackUsageRoutes`, `recordSkillUsage`, `purgeOldUsageEventsIfDue`
+- [apps/api/src/services/usageReport.ts](../apps/api/src/services/usageReport.ts) — `loadUsageReport` + pure daily/weekly/funnel builders
+- [apps/api/src/db/migrations/0045_usage_events.sql](../apps/api/src/db/migrations/0045_usage_events.sql) — `usage_events`; inline call sites: `routes/auth.ts` (signup), `routes/shopping.ts` (check), `services/whatsapp/inbound.ts`, `services/assistant/engine.ts`, `services/assistant/appApi.ts` (`x-mimoia-internal`), `services/notificationScheduler.ts` (purge), `apps/web/src/components/menu/FirstStepsGuide.tsx` (`outcome`)
 - [apps/api/src/middleware/metricsAuth.ts](../apps/api/src/middleware/metricsAuth.ts) — admin JWT or `x-metrics-token`
 - [apps/api/src/services/businessMetrics.ts](../apps/api/src/services/businessMetrics.ts) — SQL loader + pure week/cohort/cost rules + `DEFINITIONS`
 - [apps/api/src/services/appErrors.ts](../apps/api/src/services/appErrors.ts) — `loadErrorSummary` (the `errors` block)
@@ -102,4 +138,4 @@ Append-only `(user, household, kind, created_at)` for actions no other table tim
 - [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts) (`costEvents`, `activityEvents`), [apps/api/src/db/migrations/0033_cost_ledger.sql](../apps/api/src/db/migrations/0033_cost_ledger.sql)
 - [apps/api/src/config/env.ts](../apps/api/src/config/env.ts) — `METRICS_READ_TOKEN`, `COST_PRICE_OVERRIDES`, `ADVISOR_EUR_PER_USD`
 - Recording call sites: `services/advisorBudget.ts`, `services/providers/anthropic.ts`, `services/ingredientMatcherLLM.ts`, `services/llmUnitFallback.ts`, `services/nutrition/usdaTranslator.ts`, `services/stt.ts`, `services/tts.ts`, `services/recipeImageGenerator.ts`, `services/whatsapp/reviewer.ts`, `routes/ingredients.ts`; attribution in `middleware/auth.ts`, `routes/recipes.ts` (photo extraction), `routes/stt.ts` (re-enters it after the audio upload), `routes/whatsapp.ts`; skill activity in `services/assistant/engine.ts`
-- Tests: `apps/api/src/tests/businessMetrics.test.ts`, `costPricing.test.ts`, `costLedger.test.ts`, `metricsAuth.test.ts`, `activityEvents.test.ts`
+- Tests: `apps/api/src/tests/businessMetrics.test.ts`, `costPricing.test.ts`, `costLedger.test.ts`, `metricsAuth.test.ts`, `activityEvents.test.ts`, `usageEvents.test.ts`, `usageReport.test.ts`; e2e `apps/web/e2e/first-steps.spec.ts` (the `outcome` body)

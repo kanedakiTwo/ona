@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken'
 import { env } from '../../config/env.js'
+import { INTERNAL_CALL_HEADER } from '../usageEvents.js'
 
 /**
  * The assistant calls Mimoia's own REST API as the user — the same endpoints the
@@ -28,7 +29,10 @@ export function appApiFor(userId: string): AppApi {
   return async (method, path, body) => {
     const r = await fetch(`${INTERNAL_BASE}${path}`, {
       method,
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      // Marks the call as the assistant's own (or a system job's): the usage
+      // middleware doesn't count it as a web action; the skill runner records
+      // it with the conversation's channel instead (services/usageEvents.ts).
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', [INTERNAL_CALL_HEADER]: '1' },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(90_000),
     })

@@ -316,6 +316,13 @@
       "when": 1791760718528,
       "tag": "0044_first_steps_pending",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1791885231692,
+      "tag": "0045_usage_events",
+      "breakpoints": true
     }
   ]
 }

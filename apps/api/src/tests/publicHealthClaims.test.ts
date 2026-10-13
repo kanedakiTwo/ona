@@ -14,6 +14,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
+import { HEALTH_CLAIM_PATTERNS } from '../services/assistant/healthGuard.js'
 
 const WEB_SRC = resolve(__dirname, '../../../web/src')
 
@@ -30,21 +31,8 @@ const ALLOWED = new Set<string>([
   'app/(public)/terminos/page.tsx',
 ])
 
-const BANNED: Array<[RegExp, string]> = [
-  [/antiinflamatori/i, 'antiinflamatorio/a'],
-  [/reduce(n)? la inflamaci[oó]n/i, 'reduce la inflamación'],
-  [/\bprevien(e|en)\b/i, 'previene'],
-  [/\bcura(n)?\b/i, 'cura'],
-  [/\badelgaza/i, 'adelgaza'],
-  [/p[eé]rdida de peso|perder peso|pierde peso/i, 'pérdida de peso'],
-  [/quema(r)? grasa/i, 'quema grasa'],
-  [/control(a|ar) (la )?(glucosa|insulina|az[uú]car en sangre)/i, 'controla la glucosa/insulina'],
-  [/depura|desintoxica|detox/i, 'depura / detox'],
-  [/microbiota|microbioma|salud intestinal/i, 'microbioma'],
-  [/refuerza (las|tus) defensas|sistema inmune/i, 'defensas'],
-  [/protege (el|tu) coraz[oó]n/i, 'protege el corazón'],
-  [/cardi[oó]log/i, 'cardiólogo como reclamo'],
-]
+/** The §6 guard list lives in healthGuard.ts: the conversation flags scan Mimo's replies with it too. */
+const BANNED = HEALTH_CLAIM_PATTERNS
 
 function filesUnder(rel: string): string[] {
   const abs = join(WEB_SRC, rel)

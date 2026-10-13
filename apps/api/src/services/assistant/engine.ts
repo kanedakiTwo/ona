@@ -5,6 +5,8 @@ import { buildSystemParts, type AssistantMode } from './systemPrompt.js'
 import { skills, getToolDefinitions } from './skills.js'
 import type { AssistantResponse, ChatMessage, SkillContext, SkillDefinition, SkillResult, ToolTrace } from './types.js'
 import { recordSkillActivity } from '../activityEvents.js'
+import { recordSkillUsage } from '../usageEvents.js'
+import { claimsAction } from './claims.js'
 import { ensureHealthDisclaimer, talksHealthEffects } from './healthGuard.js'
 import {
   EMPTY_USAGE,
@@ -253,6 +255,7 @@ export async function runToolLoop(params: {
         try {
           result = await skill.handler(toolUse.input, params.ctx)
           recordSkillActivity(skill.name, params.ctx.userId, result)
+          recordSkillUsage(skill.name, params.ctx, result, toolUse.input)
         } catch (err: any) {
           console.error(`[assistant] Skill ${skill.name} error:`, err?.message ?? err)
           result = { data: null, summary: `Error ejecutando ${skill.name}: ${err?.message ?? err}`, uiHint: 'text' }
@@ -280,17 +283,8 @@ interface ExecutedTool {
   isError: boolean
 }
 
-/**
- * Spanish past-tense "I did it" claims. Only checked when no tool ran this
- * turn, so a legit "He cambiado la cena" after swap_meal never trips it.
- * Since 2026-10-12 it only flags the turn for the daily review.
- */
-const ACTION_CLAIM_RE =
-  /\b(?:he|hemos|ya)\s+(?:cambiado|generado|guardado|marcado|a[ñn]adido|actualizado|apuntado|creado|quitado|eliminado|borrado|puesto|sustituido|registrado)\b|(?:^|[.!?,;]\s*)(?:hecho|listo|cambiado|guardado|apuntado)\s*[.!,:]/im
-
-export function claimsAction(text: string): boolean {
-  return ACTION_CLAIM_RE.test(text)
-}
+// claimsAction lives in claims.ts (no imports) so the conversation flags can use it without the engine.
+export { claimsAction }
 
 /** One line per tool for history and review: what ran, with what, and what came back. */
 export function traceOf(executed: ExecutedTool[]): ToolTrace[] {

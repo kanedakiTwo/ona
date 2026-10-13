@@ -89,6 +89,7 @@ export default function PrivacidadPage() {
           <li><strong>Meta (WhatsApp Business)</strong>: si conectas WhatsApp, para enviar y recibir los mensajes.</li>
           <li><strong>Railway</strong>: alojamiento de la aplicación y de la base de datos.</li>
           <li><strong>AiKit</strong>: generación de imágenes de recetas cuando lo pides (solo recibe el nombre e ingredientes de la receta).</li>
+          <li><strong>Cloudflare</strong>: estadísticas agregadas de visitas a la web, sin cookies (ver el punto 8).</li>
         </ul>
         <p>
           Algunos de estos proveedores están en Estados Unidos. Las transferencias se amparan en el Marco de
@@ -115,6 +116,12 @@ export default function PrivacidadPage() {
           Mimoia no usa cookies de publicidad ni de analítica. Guarda en tu navegador tu sesión y algunas
           preferencias de pantalla, y una copia de tu menú y tu lista para que funcionen sin conexión. La sesión y
           esa copia se borran al cerrar sesión.
+        </p>
+        <p data-testid="privacy-web-analytics">
+          Para saber cuántas personas visitan la web usamos Cloudflare Web Analytics, que cuenta las visitas de
+          forma agregada (páginas vistas, país, tipo de dispositivo) sin cookies, sin guardar nada en tu navegador y
+          sin crear un perfil tuyo. Dentro de la app contamos, también solo de forma agregada, qué funciones se usan
+          (por ejemplo, cuántos menús se generan) para saber qué mejorar; esos registros se borran a los 180 días.
         </p>
 
         <H2>9. Menores</H2>

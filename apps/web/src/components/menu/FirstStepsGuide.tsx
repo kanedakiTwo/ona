@@ -54,10 +54,11 @@ export function FirstStepsGuide({ userId, ready }: { userId: string; ready: bool
   const [rect, setRect] = useState<Rect | null>(null)
   const open = ready && pending === true && !closed
 
-  const finish = useCallback(() => {
+  // `outcome` only feeds the product analytics (first_steps_completed / _skipped).
+  const finish = useCallback((outcome: "completed" | "skipped") => {
     setClosed(true)
     queryClient.setQueryData(["first-steps", userId], false)
-    api.post(`/user/${userId}/first-steps`).catch(() => {
+    api.post(`/user/${userId}/first-steps`, { outcome }).catch(() => {
       // Not saved: it may show once more next time. Never blocks the menu.
     })
   }, [queryClient, userId])
@@ -88,7 +89,7 @@ export function FirstStepsGuide({ userId, ready }: { userId: string; ready: bool
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") finish()
+      if (e.key === "Escape") finish("skipped")
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
@@ -142,7 +143,7 @@ export function FirstStepsGuide({ userId, ready }: { userId: string; ready: bool
         <div className="mt-4 flex items-center justify-between gap-3">
           <button
             type="button"
-            onClick={finish}
+            onClick={() => finish("skipped")}
             className="inline-flex min-h-[44px] items-center rounded-full px-2 text-[14px] font-medium text-ink-mid underline underline-offset-4 hover:text-ink"
           >
             Saltar
@@ -150,7 +151,7 @@ export function FirstStepsGuide({ userId, ready }: { userId: string; ready: bool
           <button
             type="button"
             autoFocus
-            onClick={() => (last ? finish() : setStep(step + 1))}
+            onClick={() => (last ? finish("completed") : setStep(step + 1))}
             className="inline-flex min-h-[44px] items-center rounded-full bg-ink px-5 text-[14px] font-semibold text-cream transition-colors hover:bg-forest"
           >
             {last ? "Entendido" : "Siguiente"}

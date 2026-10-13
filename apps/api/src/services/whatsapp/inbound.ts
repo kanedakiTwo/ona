@@ -9,6 +9,7 @@ import { renderAssistantReply, renderPlainText, type OutboundMessage } from './r
 import { isShoppingItemList, shoppingListDigest } from '../shoppingText.js'
 import { AI_DISCLOSURE_FIRST_PERSON } from '@ona/shared'
 import { controlCommand, OPT_IN_NO, OPT_IN_YES } from './commands.js'
+import { trackEvent } from '../usageEvents.js'
 
 /**
  * Inbound orchestrator: one WhatsApp message in → zero or more replies out.
@@ -331,6 +332,7 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     for (const code of candidates) {
       const linked = await store.consumeLinkCode(code, msg.from, msg.profileName)
       if (linked) {
+        trackEvent('whatsapp_linked', { userId: linked.userId, channel: 'whatsapp' })
         await store.updateInbound(msg.wamid, { status: 'ignored', userId: linked.userId })
         if (linked.onboardingDone === false) {
           // WhatsApp-first sign-up: the first steps happen here; the opt-in
@@ -469,6 +471,7 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     } catch (err) {
       console.warn('[whatsapp] recordUsage failed (continuing):', err)
     }
+    trackEvent('mimo_message', { userId, channel: 'whatsapp', props: { kind: msg.kind === 'audio' ? 'voice_note' : images ? 'photo' : 'text' } })
 
     // Mark the inbound processed BEFORE replying so it precedes the reply in
     // history even if a send fails half-way.
@@ -563,6 +566,7 @@ async function handleImage(
     return 'done'
   }
 
+  trackEvent('recipe_imported', { userId, channel: 'whatsapp', props: { source: 'whatsapp_photo' } })
   // History gets a readable trace so "ponla el jueves para cenar" works next.
   await store.updateInbound(msg.wamid, {
     status: 'processed',

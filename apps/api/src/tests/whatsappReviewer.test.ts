@@ -49,6 +49,9 @@ describe('computeStats', () => {
       questionEndings: 1,
       proactiveSent: 1,
       sendFailures: 1,
+      healthTalk: 0,
+      healthClaims: 0,
+      unverifiedDone: 0,
     })
   })
 })
@@ -76,7 +79,7 @@ describe('formatReviewMessage', () => {
   it('summarises with the most severe findings first and points to the admin endpoint', () => {
     const msg = formatReviewMessage(
       '2026-10-07',
-      { conversations: 1, turns: 2, failedTurns: 0, slowTurns: 0, corrections: 1, frustrationCues: 0, questionEndings: 0, proactiveSent: 2, sendFailures: 0 },
+      { conversations: 1, turns: 2, failedTurns: 0, slowTurns: 0, corrections: 1, frustrationCues: 0, questionEndings: 0, proactiveSent: 2, sendFailures: 0, healthTalk: 0, healthClaims: 0, unverifiedDone: 0 },
       'Día correcto salvo un enlace.',
       [
         { severity: 'baja', category: 'respuesta_larga', when: '09:55', userMessage: 'x', whatHappened: 'Respuesta larga', expected: '', suggestedFix: 'Acortar' },

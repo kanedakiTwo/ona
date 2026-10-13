@@ -4,15 +4,18 @@ import { env } from '../config/env.js'
 import { authMiddleware, requireAdmin } from './auth.js'
 
 /**
- * Guard for GET /admin/metrics (specs/metrics.md), GET /admin/errors
- * (specs/errors.md) and GET /admin/waitlist (specs/waitlist.md): either an
- * admin JWT, or the header `x-metrics-token` equal to `METRICS_READ_TOKEN` —
- * so the Mimoia HQ agents can read business metrics, the error log and the
- * waitlist aggregates without holding an admin session. The token is mounted
- * on those three read-only routes only; it grants nothing else.
+ * Guard for the read-only routes the Mimoia HQ agents use: GET /admin/metrics
+ * and GET /admin/usage (specs/metrics.md), GET /admin/errors (specs/errors.md),
+ * GET /admin/waitlist (specs/waitlist.md) and GET
+ * /admin/assistant-reviews/flags (specs/whatsapp.md). Either an admin JWT, or
+ * the header `x-metrics-token` equal to `METRICS_READ_TOKEN`, so the agents
+ * read aggregates without holding an admin session. The token is mounted on
+ * those read-only routes only and grants nothing else.
  *
  *   - header present → token mode only (a wrong token is 401, no JWT fallback);
  *     with METRICS_READ_TOKEN unset, token mode is disabled (always 401);
+ *     only GET/HEAD: the token never writes, even if mounted by mistake on a
+ *     writing route (405 `METRICS_TOKEN_READ_ONLY`);
  *   - header absent  → the usual `authMiddleware` + `requireAdmin`.
  */
 
@@ -31,6 +34,10 @@ export function createMetricsAuth(deps: {
     const provided = req.get('x-metrics-token')
     if (provided === undefined) {
       deps.adminAuth(req, res, next)
+      return
+    }
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      res.status(405).json({ error: 'El token de métricas solo sirve para leer.', code: 'METRICS_TOKEN_READ_ONLY' })
       return
     }
     const expected = deps.expectedToken()

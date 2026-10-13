@@ -8,9 +8,9 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Request, Response } from 'express'
 import { createMetricsAuth, tokenMatches } from '../middleware/metricsAuth.js'
 
-function fakeReq(headers: Record<string, string> = {}): Request {
+function fakeReq(headers: Record<string, string> = {}, method = 'GET'): Request {
   const lower = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]))
-  return { get: (name: string) => lower[name.toLowerCase()] } as unknown as Request
+  return { method, get: (name: string) => lower[name.toLowerCase()] } as unknown as Request
 }
 
 function fakeRes() {
@@ -94,5 +94,30 @@ describe('createMetricsAuth', () => {
       expect(res.body.code).toBe('METRICS_TOKEN_DISABLED')
     }
     expect(adminAuth).not.toHaveBeenCalled()
+  })
+
+  it('the token only reads: a write method with a valid token is 405, never reaches the route', () => {
+    const adminAuth = vi.fn()
+    const guard = createMetricsAuth({ expectedToken: () => 'metrics-abc', adminAuth })
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+      const next = vi.fn()
+      const res = fakeRes()
+      guard(fakeReq({ 'x-metrics-token': 'metrics-abc' }, method), res, next)
+      expect(next).not.toHaveBeenCalled()
+      expect(res.statusCode).toBe(405)
+      expect(res.body.code).toBe('METRICS_TOKEN_READ_ONLY')
+    }
+    expect(adminAuth).not.toHaveBeenCalled()
+  })
+})
+
+describe('routes open to the read-only token', () => {
+  it('are exactly the GET aggregates the Mimoia HQ agents read (metrics, usage, conversation flags)', async () => {
+    const { default: router } = await import('../routes/metrics.js')
+    const routes = (router as any).stack
+      .filter((l: any) => l.route)
+      .map((l: any) => `${Object.keys(l.route.methods).join(',').toUpperCase()} ${l.route.path}`)
+      .sort()
+    expect(routes).toEqual(['GET /admin/assistant-reviews/flags', 'GET /admin/metrics', 'GET /admin/usage'])
   })
 })

@@ -30,6 +30,12 @@ test('footer → /aviso-legal shows the holder; /privacidad names the controller
   await expect(controller).toContainText(NIF)
   await expect(controller).toContainText(ADDRESS)
   await expect(controller).not.toContainText('el equipo de Mimoia')
+
+  // Cookieless visit statistics are disclosed; without NEXT_PUBLIC_CF_BEACON_TOKEN
+  // (as in CI) no beacon is loaded at all.
+  await expect(page.getByTestId('privacy-web-analytics')).toContainText('Cloudflare Web Analytics')
+  await expect(page.getByTestId('privacy-web-analytics')).toContainText('sin cookies')
+  await expect(page.locator('script[src*="cloudflareinsights"]')).toHaveCount(0)
 })
 
 // PRO-70: the intended purpose (D-038, constitution §6), word for word, in its own section.

@@ -177,7 +177,12 @@ export default function MemoryPage() {
               // Show every key in the group — with its current value if any,
               // or an "Añadir" row if missing, so a first entry for keys like
               // `prep_habits` can be added from the UI.
-              const entries = group.keys.map((k) => [k, memory?.[k] ?? null] as const)
+              // An empty list counts as missing: «Añadir» instead of a bare «—».
+              const entries = group.keys.map((k) => {
+                const fact = memory?.[k] ?? null
+                const empty = Array.isArray(fact?.value) && (fact.value as unknown[]).length === 0
+                return [k, empty ? null : fact] as const
+              })
               return (
                 <section key={group.title}>
                   <h2 className={SUB_EYEBROW}>{group.title}</h2>

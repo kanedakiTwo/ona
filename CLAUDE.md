@@ -162,6 +162,10 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 
 ### Pending
 
+- [ ] **MIG-18 · Quitar dos restos de la configuración de WhatsApp** — Desde el 2026-10-14 Mimo funciona con tu app «Mimoia»; quedan dos cosas sueltas que conviene borrar para evitar líos.
+  - Cómo: (1) business.facebook.com → Configuración → Usuarios → Usuarios del sistema: borra cualquiera que no sea **mimo-api** (el botón «Generar identificador» de la configuración rápida crea uno, y su token salió en una captura). A mimo-api no lo toques. (2) developers.facebook.com → app **ONA** (la de AiKit) → WhatsApp → Configuración → Webhook: borra la URL.
+  - Hecho cuando: en Usuarios del sistema solo queda mimo-api y la app ONA no tiene webhook.
+
 - [ ] **MIG-02 · Pasar el contacto del/de la dietista** — Queremos que un profesional colegiado revise recetas y mensajes antes de abrir (D-005).
   - Cómo: dile a Claude su nombre y cómo contactar. El primer mensaje lo prepara Marketing.
 
@@ -177,17 +181,14 @@ This is the **single source of truth** for work that's pending on Miguel's side 
   - Opcional: Los Alonso reparte gratis en Pozuelo/Boadilla si pides antes de las 13:00; para usarlo, cambia la entrega a «A domicilio» en `/compra/tiendas`.
 
 - [ ] **MIG-05 · Poner al día las plantillas de WhatsApp** — Sin plantillas aprobadas, Mimo no puede escribirte primero cuando llevas más de 24 h sin hablarle, y las que hay aún llevan el nombre antiguo de la app.
-  - Cómo: en WhatsApp Manager → Plantillas, vuelve a enviar a aprobación las que llevan el nombre antiguo (p. ej. `ona_aviso`: «Aviso de Mimoia: {{1}}…»; los nombres no cambian).
+  - Cómo: desde el 2026-10-14 Mimo usa el número real (+34 626 68 55 11) en tu cuenta de WhatsApp «mimoia» (ID 1785790632633447). Las plantillas aprobadas en la app antigua no sirven aquí: créalas en esa cuenta, en WhatsApp Manager → Plantillas de mensajes (`ona_aviso`: «Aviso de Mimoia: {{1}} Respóndeme por aquí si quieres cambiar algo.»).
   - Crea plantillas de tipo *Utilidad*, en español, una por aviso: `ona_menu_de_hoy`, `ona_aviso_preparacion`, `ona_lista_compra`, `ona_plan_semana` (cuerpo con un único `{{1}}`). Cuando estén aprobadas, pásale los nombres a Claude.
-
-- [ ] **MIG-06 · Añadir un número real de WhatsApp en Meta** — Con el número de prueba solo pueden hablar con Mimo 5 teléfonos y sale como «Test Number».
-  - Cómo: en Meta, añade un número real al portfolio actual, **sin pedir todavía la verificación del negocio** (D-004). Después Claude rehace el webhook y la suscripción para la cuenta nueva.
 
 - [ ] **MIG-15 · Poner la cuchara en tus perfiles** — La app, el favicon y el botón de Mimo ya llevan el imagotipo (la cuchara con el corazón, elegido el 9 de octubre); faltan las redes, que solo puedes cambiar tú.
   - Cómo: al crear o editar cada cuenta (@conmimoia), abre la guía de marca (panel → «Lo esencial» → Marketing) → sección «Redes sociales»: para cada red está la foto de perfil y la portada al tamaño exacto, con su enlace de descarga. Súbelas tal cual.
   - Redes: Instagram, TikTok, Facebook, YouTube, el canal de WhatsApp y el número de Mimo (WhatsApp Manager → Perfil), LinkedIn (tu fondo de perfil y, si creas la página de empresa, su logo y portada).
   - Hecho cuando: todas las cuentas creadas muestran la cuchara.
-  - Estado (2026-10-13): hechos Instagram, YouTube (canal de marca @conmimoia, https://www.youtube.com/@conmimoia) y la página de empresa de LinkedIn; Facebook, en curso. TikTok creada el 2026-10-13 como cuenta personal (para pasarla a cuenta de empresa, TikTok pide documentación de la empresa: hacerlo cuando exista la SL). Falta WhatsApp (canal y número de Mimo); en LinkedIn, comprobar que la página lleva el logo y la portada.
+  - Estado (2026-10-13): hechos Instagram, YouTube (canal de marca @conmimoia, https://www.youtube.com/@conmimoia) y la página de empresa de LinkedIn; Facebook, en curso. TikTok creada el 2026-10-13 como cuenta personal (para pasarla a cuenta de empresa, TikTok pide documentación de la empresa: hacerlo cuando exista la SL). El número de Mimo ya la lleva (2026-10-14); falta el canal de WhatsApp; en LinkedIn, comprobar que la página lleva el logo y la portada.
 
 - [ ] **MIG-10 · Probar en tu móvil lo que no se puede probar solo** — Hay cosas que solo se ven en un teléfono de verdad.
   - Instalar la app en Android (Chrome) y en iPhone (Safari): que se abra a pantalla completa, con el color crema y respetando la barra de estado.

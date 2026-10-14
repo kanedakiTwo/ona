@@ -72,7 +72,7 @@ Each picked person **pulls in** the waiting people who signed up with their link
 ## Known limitations
 
 - **No emails are sent yet.** There is no confirmation email (no double opt-in) and no invitation sender: Miguel writes the invitations from `/admin/waitlist/invite`'s output. The weekly menu email has no sender yet either; we only collect the consent.
-- No phone number is collected, so "por WhatsApp" is a stated preference, honoured by sending the invitation with the WhatsApp link (the beta's WhatsApp still runs on Meta's 5-recipient test number, see [WhatsApp](./whatsapp.md)).
+- No phone number is collected, so "por WhatsApp" is a stated preference, honoured by sending the invitation with the WhatsApp link (since 2026-10-14 Mimo is on a real number, so the 5-recipient limit of Meta's test number no longer applies; access is still gated by `WHATSAPP_ALLOWED_EMAILS`, see [WhatsApp](./whatsapp.md)).
 - Retention (until 6 months after public launch) is not automated yet: the purge job is in the CLAUDE.md backlog.
 - `?ref` / `?utm_*` are read only on the landing URL. They are not carried across pages, and `/register` doesn't record them.
 - The opt-out link is shown only on the device and submission that created the entry. Otherwise it comes in Miguel's emails, or via the contact in `/privacidad` (which needs `NEXT_PUBLIC_SUPPORT_EMAIL`, see CLAUDE.md → Todo Miguel).

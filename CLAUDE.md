@@ -162,10 +162,6 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 
 ### Pending
 
-- [ ] **MIG-20 · Dar de alta Resend para que Mimoia envíe correos** — Hoy Mimoia no puede mandar ningún correo (invitaciones de la beta, confirmación de la lista, newsletter). El Taller hace el código (PRO-93); la cuenta y el dominio son tuyos.
-  - Cómo: (1) entra en resend.com con hola@mimoia.com (o mira si ya tenías cuenta) → Domains → Add domain → `mimoia.com`, región **EU (Irlanda)**. (2) Resend te enseña 3–4 registros (un TXT `resend._domainkey`, un MX y un TXT en `send`, y uno opcional `_dmarc`): cópialos en Namecheap → Domain List → mimoia.com → Advanced DNS → Add new record, tal cual. No toques los registros de reenvío de correo que ya hay. (3) Cuando Resend marque el dominio como «Verified», crea una API key con permiso «Sending access», cópiala y dile a Claude «ya está»: la guarda con `pbpaste` y la pone en Railway sin que la pegues en el chat.
-  - Hecho cuando: el dominio sale «Verified» en Resend y la clave está en Railway (`RESEND_API_KEY`).
-
 - [ ] **MIG-19 · Mandar a tu círculo el mensaje de la lista de espera** · *hoy* — La lista está abierta desde el 13 y tiene 1 inscrito; el plan de validación necesita que tu círculo entre con su propia etiqueta para separarlo de los desconocidos (≥ 150 antes del 13 de noviembre).
   - Cómo: el texto aprobado está en ona-hq `approvals/approved/2026-10-12-marketing-mensaje-circulo-lista.md` (versión A para personas, con `?ref=circulo-miguel`; versión B para grupos, con `?ref=circulo-grupos`). Reescríbelo a tu manera, pero deja los enlaces tal cual. Mándalo por WhatsApp a unas 20 personas y a tus grupos.
   - Hecho cuando: lo has mandado y le dices a Claude a cuántas personas y grupos, para leer la conversión.

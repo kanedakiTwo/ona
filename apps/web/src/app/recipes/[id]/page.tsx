@@ -385,10 +385,12 @@ export default function RecipeDetailPage() {
       {/* Author + admin: edit + regenerate-image affordances. Admins can
           curate the whole catalogue so they see the same controls. */}
       {user && canEdit && (
-        <section className="mt-10 flex flex-wrap items-center gap-3" aria-label="Tu receta">
+        // Both pills share the row and its top edge (PRO-86): the regenerate
+        // counter floats above its own button, so it never pushes it down.
+        <section className="mt-12 flex items-start gap-3" aria-label="Tu receta">
           <Link
             href={`/recipes/${recipe.id}/edit`}
-            className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#DDD6C5] bg-[#F2EDE0] px-5 text-[12px] uppercase tracking-[0.12em] text-[#1A1612] transition-all hover:border-[#1A1612]"
+            className={`${OWNER_PILL} flex-1 md:flex-none`}
           >
             <Pencil size={14} />
             Editar receta
@@ -817,6 +819,11 @@ function BackButton() {
   )
 }
 
+/** Pill shared by «Editar receta» and «Regenerar imagen»: same height, so
+ *  the two line up; tighter padding on mobile so both fit in one row. */
+const OWNER_PILL =
+  "inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-full border border-[#DDD6C5] bg-[#F2EDE0] px-3 text-[11px] uppercase tracking-[0.1em] text-[#1A1612] transition-all hover:border-[#1A1612] sm:px-5 sm:text-[12px] sm:tracking-[0.12em]"
+
 /* ─────────────────────────────────────────────
    Regenerate image button (author-only)
    ───────────────────────────────────────────── */
@@ -833,21 +840,23 @@ function RegenerateImageButton({
   const exhausted = quota ? quota.used >= quota.limit : false
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="relative flex flex-1 flex-col gap-1 md:flex-none">
+      {/* Counter above the button, eyebrow style, out of the flow so the
+          button keeps the same top as «Editar receta» (PRO-86). */}
+      {quota && !regen.error ? (
+        <span className="text-eyebrow absolute bottom-full left-0 mb-1.5 whitespace-nowrap pl-1 text-[#7A7066]">
+          {quota.used}/{quota.limit} este mes
+        </span>
+      ) : null}
       <button
         type="button"
         onClick={() => regen.mutate()}
         disabled={regen.isPending || exhausted}
-        className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#DDD6C5] bg-[#F2EDE0] px-5 text-[12px] uppercase tracking-[0.12em] text-[#1A1612] transition-all hover:border-[#1A1612] disabled:cursor-not-allowed disabled:opacity-40"
+        className={`${OWNER_PILL} w-full disabled:cursor-not-allowed disabled:opacity-40`}
       >
         <Sparkles size={14} />
         {regen.isPending ? "Generando…" : "Regenerar imagen"}
       </button>
-      {quota && !regen.error ? (
-        <span className="text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
-          {quota.used}/{quota.limit} este mes
-        </span>
-      ) : null}
       {regen.error ? (
         <span className="text-[11px] italic text-[#C65D38]">
           {regen.error.message}

@@ -4,7 +4,8 @@ import { usePathname } from "next/navigation"
 import { useAuth } from "@/lib/auth"
 import { haptic } from "@/lib/pwa/haptics"
 import { TransitionLink } from "@/components/pwa/TransitionLink"
-import { CalendarDays, ShoppingCart, BookOpen, User } from "lucide-react"
+import { CalendarDays, ShoppingCart, BookOpen, User, Database, Users, Ticket, ScrollText, Mic } from "lucide-react"
+import { ADMIN_AREAS, adminAreaFromPath, type AdminArea } from "@/lib/adminNav"
 import { MimoiaLogo } from "@/components/brand/Mimoia"
 
 const NAV_ITEMS = [
@@ -14,12 +15,26 @@ const NAV_ITEMS = [
   { href: "/profile", label: "Perfil", icon: User },
 ]
 
+const ADMIN_ICONS: Record<AdminArea, typeof User> = {
+  catalogo: Database,
+  usuarios: Users,
+  invitaciones: Ticket,
+  auditoria: ScrollText,
+  voz: Mic,
+}
+
+const itemClass = (isActive: boolean) =>
+  `flex items-center gap-3 rounded-full px-3 py-2 text-[13px] transition-colors ${
+    isActive ? "bg-[#1A1612] text-[#FAF6EE]" : "text-[#4A4239] hover:bg-[#F2EDE0]"
+  }`
+
 export default function DesktopSidebar() {
   const { user } = useAuth()
   const pathname = usePathname()
 
   if (!user) return null
   if (pathname?.includes("/cook")) return null
+  const adminArea = adminAreaFromPath(pathname)
 
   return (
     <aside
@@ -39,11 +54,7 @@ export default function DesktopSidebar() {
               href={item.href}
               data-first-steps={item.href === "/shopping" ? "shopping" : undefined}
               onClick={() => { if (!isActive) haptic.light() }}
-              className={`flex items-center gap-3 rounded-full px-3 py-2 text-[13px] transition-colors ${
-                isActive
-                  ? "bg-[#1A1612] text-[#FAF6EE]"
-                  : "text-[#4A4239] hover:bg-[#F2EDE0]"
-              }`}
+              className={itemClass(isActive)}
               aria-current={isActive ? "page" : undefined}
             >
               <Icon size={16} strokeWidth={isActive ? 2 : 1.6} />
@@ -52,6 +63,27 @@ export default function DesktopSidebar() {
           )
         })}
       </nav>
+      {user.role === "admin" && (
+        <nav className="mt-6 flex flex-col gap-1 border-t border-[#DDD6C5] pt-5" aria-label="Admin">
+          <span className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#8A8174]">Admin</span>
+          {ADMIN_AREAS.map((item) => {
+            const Icon = ADMIN_ICONS[item.area]
+            const isActive = adminArea === item.area
+            return (
+              <TransitionLink
+                key={item.href}
+                href={item.href}
+                onClick={() => { if (!isActive) haptic.light() }}
+                className={itemClass(isActive)}
+                aria-current={isActive ? "page" : undefined}
+              >
+                <Icon size={16} strokeWidth={isActive ? 2 : 1.6} />
+                <span>{item.label}</span>
+              </TransitionLink>
+            )
+          })}
+        </nav>
+      )}
     </aside>
   )
 }

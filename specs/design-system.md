@@ -181,7 +181,7 @@ Mimoia supports a desktop layout at `md+` (≥768 px) and bespoke multi-column p
 
 ### Components
 
-- `<DesktopSidebar />` at `apps/web/src/components/shared/DesktopSidebar.tsx` — persistent left nav at `md+`. Items: Menú, Compra, Recetas, Perfil (Mimo is the floating button). Hides on `/recipes/[id]/cook` routes.
+- `<DesktopSidebar />` at `apps/web/src/components/shared/DesktopSidebar.tsx` — persistent left nav at `md+`. Items: Menú, Compra, Recetas, Perfil (Mimo is the floating button). Admins also get an «Admin» block below a hairline: Catálogo, Usuarios, Invitaciones, Auditoría, Voz (see [Admin Dashboard](./admin-dashboard.md)). Hides on `/recipes/[id]/cook` routes.
 - `<Navbar />` (mobile bottom-nav) carries `md:hidden` on its outer `<nav>`.
 
 ### Exceptions (no responsive treatment)
@@ -210,7 +210,7 @@ The migration (June 2026) shipped the chasis (sidebar at `md+`, container caps) 
 - [apps/web/src/components/recipes/form/RecipeFormUI.tsx](../apps/web/src/components/recipes/form/RecipeFormUI.tsx) — recipe forms in "D · Luz y foto" (cards, inputs, ingredient rows, sticky save pill)
 - [apps/web/src/app/menu/history/page.tsx](../apps/web/src/app/menu/history/page.tsx) + [apps/web/src/lib/menuHistory.ts](../apps/web/src/lib/menuHistory.ts) · [apps/web/src/app/cookbooks/[id]/page.tsx](../apps/web/src/app/cookbooks/[id]/page.tsx) — "D" (PRO-43); guarded by `apps/api/src/tests/redesignDHistorialRecetarios.test.ts`
 - [apps/web/src/components/cooking/](../apps/web/src/components/cooking/) — cook mode in "D · Luz y foto"
-- [apps/web/src/app/admin/page.tsx](../apps/web/src/app/admin/page.tsx) + `admin/sections/`, [apps/web/src/app/debug-advisor/page.tsx](../apps/web/src/app/debug-advisor/page.tsx) — internal pages in "D · Luz y foto"
+- [apps/web/src/app/admin/[[...seccion]]/page.tsx](../apps/web/src/app/admin/%5B%5B...seccion%5D%5D/page.tsx) + `admin/sections/`, [apps/web/src/app/debug-advisor/page.tsx](../apps/web/src/app/debug-advisor/page.tsx) — internal pages in "D · Luz y foto"
 - [apps/api/src/tests/redesignDInternas.test.ts](../apps/api/src/tests/redesignDInternas.test.ts) — legacy-palette guard (helper `tests/helpers/legacyPalette.ts`)
 - [apps/web/src/components/shared/Navbar.tsx](../apps/web/src/components/shared/Navbar.tsx) — labelled tab bar
 - [apps/web/src/components/shared/PublicNavbar.tsx](../apps/web/src/components/shared/PublicNavbar.tsx)

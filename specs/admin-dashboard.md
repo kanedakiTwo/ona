@@ -10,7 +10,7 @@ It is intentionally small: **a few sections, no charts, no destructive operation
 
 ## User Capabilities
 
-- An admin (see [Roles & Authorization](./roles.md)) opens `/admin` from "Panel de admin" in the profile header's "···" sheet (`/profile`). A non-admin lands on a 403 page that links back to `/menu`.
+- An admin (see [Roles & Authorization](./roles.md)) opens `/admin` from "Panel de admin" in the profile header's "···" sheet (`/profile`). On desktop (`md+`) the left sidebar shows an **«Admin» block under the normal items**, only for admins: Catálogo (`/admin`), Usuarios (`/admin/usuarios`), Invitaciones (`/admin/invitaciones`), Auditoría (`/admin/auditoria`) and Voz (`/admin/voz`), with the active one highlighted (`lib/adminNav.ts`). Each area has its own URL (route `/admin/[[...seccion]]`; an unknown slug shows the catalogue). On desktop the page then keeps only the catalogue's seven gap tabs, wrapped so none hides off-screen; on mobile (no sidebar) every tab scrolls sideways and the non-catalogue ones navigate to their URL. E2E `admin-sidebar.spec.ts`. A non-admin lands on a 403 page that links back to `/menu`.
 - The dashboard shows a counts header (ingredients sin USDA, recetas con kcal=0, alérgenos sugeridos, archivos en regen, usuarios suspendidos, acciones admin recientes).
 - Pill-bar tabs jump between sections:
   - **Ingredientes sin USDA** — every ingredient with `fdcId IS NULL`. "Mapear a USDA" reuses the auto-create modal (manual search + Spanish translations + BEDCA fallback + "Estimar con Mimoia" — see [Ingredient Auto-Create](./ingredient-auto-create.md)).
@@ -55,11 +55,12 @@ The admin dashboard handles **system recipes only** (`authorId IS NULL`). User-c
 - [apps/api/src/middleware/auth.ts](../apps/api/src/middleware/auth.ts) — `requireAdmin`
 - [apps/api/src/services/nutrition/allergens.ts](../apps/api/src/services/nutrition/allergens.ts) — `inferAllergenTagsFromName`
 - [apps/api/src/services/nutrition/usdaClient.ts](../apps/api/src/services/nutrition/usdaClient.ts)
-- [apps/web/src/app/admin/page.tsx](../apps/web/src/app/admin/page.tsx) — replaces `app/curator/page.tsx`
+- [apps/web/src/app/admin/[[...seccion]]/page.tsx](../apps/web/src/app/admin/%5B%5B...seccion%5D%5D/page.tsx) — replaces `app/curator/page.tsx`
 - [apps/web/src/app/admin/sections/](../apps/web/src/app/admin/sections/) — section components, replaces `app/curator/sections/`
 - [apps/web/src/app/admin/sections/VoiceTranscriptsSection.tsx](../apps/web/src/app/admin/sections/VoiceTranscriptsSection.tsx) — sessions list + per-session detail view of voice-mode conversations
 - [apps/web/src/hooks/useAdmin.ts](../apps/web/src/hooks/useAdmin.ts) — replaces `useCurator.ts`; adds `useVoiceTranscriptSessions` + `useVoiceTranscriptTurns`
 - [apps/web/src/app/profile/page.tsx](../apps/web/src/app/profile/page.tsx) — gated "Panel de admin" entry in the header "···" sheet, only rendered when `role === 'admin'`
+- [apps/web/src/lib/adminNav.ts](../apps/web/src/lib/adminNav.ts) — admin areas and their URLs, shared by the sidebar and the page
 - [apps/web/src/app/curator/page.tsx](../apps/web/src/app/curator/page.tsx) — temporary redirect to `/admin`
 - [apps/api/src/routes/metrics.ts](../apps/api/src/routes/metrics.ts) — `GET /admin/metrics` (own router, mounted before the catch-all auth routers so the metrics token works)
 

@@ -90,6 +90,7 @@ export default function PrivacidadPage() {
           <li><strong>Railway</strong>: alojamiento de la aplicación y de la base de datos.</li>
           <li><strong>AiKit</strong>: generación de imágenes de recetas cuando lo pides (solo recibe el nombre e ingredientes de la receta).</li>
           <li><strong>Cloudflare</strong>: estadísticas agregadas de visitas a la web, sin cookies (ver el punto 8).</li>
+          <li><strong>Resend</strong>: el envío de los emails de Mimoia, como la invitación de la lista de espera (recibe tu email, tu nombre y el contenido del mensaje; envía desde la Unión Europea).</li>
         </ul>
         <p>
           Algunos de estos proveedores están en Estados Unidos. Las transferencias se amparan en el Marco de
@@ -177,8 +178,9 @@ export default function PrivacidadPage() {
           te identifique, para las cuentas.
         </p>
         <p>
-          Los datos de la lista se guardan en Railway (nuestro alojamiento) y no se comparten con nadie más ni se
-          usan para publicidad.
+          Los datos de la lista se guardan en Railway (nuestro alojamiento). Los emails que te mandamos (la
+          invitación y, si lo pediste, el menú de los viernes) salen a través de Resend, que recibe tu email, tu
+          nombre y el mensaje. No se comparten con nadie más ni se usan para publicidad.
         </p>
       </div>
     </div>

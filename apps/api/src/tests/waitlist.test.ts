@@ -19,6 +19,7 @@ import {
   waitlistSignupSchema,
   whatsappShareHref,
   type WaitlistFormState,
+  WAITLIST_CONSENT_VERSION,
 } from '@ona/shared'
 import {
   buildWaitlistReport,
@@ -403,7 +404,7 @@ describe('signupToWaitlist', () => {
     expect(res.referredCount).toBe(0)
     expect(res.unsubscribeToken).toMatch(/^[A-Za-z0-9_-]{32,}$/)
     const stored = d.repo.rows[0]
-    expect(stored).toMatchObject({ email: 'lucia@example.com', status: 'waiting', consentVersion: '2026-10-07', source: 'directo' })
+    expect(stored).toMatchObject({ email: 'lucia@example.com', status: 'waiting', consentVersion: WAITLIST_CONSENT_VERSION, source: 'directo' })
     expect(stored.consentAt.toISOString()).toBe('2026-10-20T10:00:00.000Z')
   })
 

@@ -34,7 +34,7 @@ The public waitlist that comes before the launch. The product launches publicly 
   - `pricing` (PRO-26): `answeredPriceQuestions`, per question `{ answers, min, p25, median, p75, max, histogram[{eur,count}] }`, `reservations { total, byPlan }`, `none { total, byReason }` — aggregates of active entries only;
   - `definitions`.
   - It never includes an email, name or supermarket.
-- **Admins** (JWT only, not the token) mark a batch invited with `POST /admin/waitlist/invite { ids, batch? }`, which uses the next batch number when omitted. Only `waiting` entries change. The response is the one place emails leave the DB: email, name, platform, wantsWhatsapp, `statusUrl`, `unsubscribeUrl`, so Miguel can write the invitations. It is audited as `waitlist.invite` (ids, never emails).
+- **Admins** (JWT only, not the token) mark a batch invited with `POST /admin/waitlist/invite { ids, batch? }`, which uses the next batch number when omitted. Only `waiting` entries change. Then it **emails each newly invited person the invitation** through Resend (PRO-93, see [Email](./email.md)): «¡Te toca, <nombre>! Ya puedes entrar en Mimoia», a «Crear mi cuenta» button to `/register`, a WhatsApp line if they asked for it, their own opt-out link and a `List-Unsubscribe` header. `sendEmail: false` marks the batch without emailing; without `RESEND_API_KEY` nothing is sent (`skipped`). The response is the one place emails leave the DB: email, name, platform, wantsWhatsapp, `statusUrl`, `unsubscribeUrl`, plus `emailStatus` per person and `email { sent, skipped, failed }`, so Miguel can see who got it and write to the rest. It is audited as `waitlist.invite` (ids, never emails).
 - During the closed beta (`REGISTRATION_MODE=invite`, PRO-27) an email with status `invited` is one of the ways in: `POST /register` accepts it without a campaign link (see [Auth](./auth.md) → Closed beta). Registering with an email that's on the list marks that entry `joined` (waiting or invited).
 - `GET /admin/metrics` carries a small `waitlist` block (see [metrics](./metrics.md)).
 
@@ -63,7 +63,7 @@ Each picked person **pulls in** the waiting people who signed up with their link
   - referral code: 8 chars of lowercase Crockford base32 (40 random bits, no i/l/o/u), retried on collision;
   - opt-out token: 24 random bytes, base64url;
   - both are unique in the DB.
-- **Consent**: `consent_version` + `consent_at` on every entry (`WAITLIST_CONSENT_VERSION`). The newsletter is a separate consent (LSSI art. 21–22): `newsletter_opt_in` defaults to false, and `newsletter_consent_at` + `newsletter_consent_version` are stored only when ticked. Bump the versions when the copy or `/privacidad` changes.
+- **Consent**: `consent_version` + `consent_at` on every entry (`WAITLIST_CONSENT_VERSION`, `2026-10-15` since Resend joined `/privacidad`). The newsletter is a separate consent (LSSI art. 21–22): `newsletter_opt_in` defaults to false, and `newsletter_consent_at` + `newsletter_consent_version` are stored only when ticked. Bump the versions when the copy or `/privacidad` changes.
 - **Opt-out anonymises in place**: `status='unsubscribed'`, email/name/supermarket set to NULL, newsletter off. The anonymous answers stay for the counts (`email` is nullable; the unique index tolerates NULLs).
 - Referral links point to `WEB_PUBLIC_URL` in API responses; the web shows `window.location.origin`, so the link matches the domain the person used.
 - `/lista/*` renders with the public chrome (`PUBLIC_PREFIXES` in `app/layout.tsx`).
@@ -71,7 +71,7 @@ Each picked person **pulls in** the waiting people who signed up with their link
 
 ## Known limitations
 
-- **No emails are sent yet.** There is no confirmation email (no double opt-in) and no invitation sender: Miguel writes the invitations from `/admin/waitlist/invite`'s output. The weekly menu email has no sender yet either; we only collect the consent.
+- **Only the invitation is emailed** (PRO-93). There is no confirmation email (no double opt-in), and the weekly menu email has no sender yet (PRO-94); we only collect the consent. The invitation has no personal token: any `invited` email can register (PRO-97).
 - No phone number is collected, so "por WhatsApp" is a stated preference, honoured by sending the invitation with the WhatsApp link (since 2026-10-14 Mimo is on a real number, so the 5-recipient limit of Meta's test number no longer applies; access is still gated by `WHATSAPP_ALLOWED_EMAILS`, see [WhatsApp](./whatsapp.md)).
 - Retention (until 6 months after public launch) is not automated yet: the purge job is in the CLAUDE.md backlog.
 - `?ref` / `?utm_*` are read only on the landing URL. They are not carried across pages, and `/register` doesn't record them.
@@ -84,6 +84,7 @@ Each picked person **pulls in** the waiting people who signed up with their link
 - [Design system](./design-system.md): landing section, `/lista/*`
 - [Auth](./auth.md): `/register` marks the entry joined
 - [Admin audit log](./admin-audit-log.md): `waitlist.invite`
+- [Email](./email.md): the invitation email, Resend
 
 ## Source
 
@@ -92,12 +93,14 @@ Each picked person **pulls in** the waiting people who signed up with their link
 - [packages/shared/src/constants/brand.ts](../packages/shared/src/constants/brand.ts): `BRAND_NAME`
 - [apps/api/src/services/waitlist.ts](../apps/api/src/services/waitlist.ts): code/token generators, `isTargetSegment`, `suggestNextBatch`, `buildWaitlistReport`, `signupToWaitlist`, DB repo, `loadWaitlistReport`, `loadWaitlistSummary`, `inviteWaitlistEntries`, `markWaitlistJoined`
 - [apps/api/src/routes/waitlist.ts](../apps/api/src/routes/waitlist.ts): public + admin routers (mounted in `index.ts`)
+- [apps/api/src/services/waitlistEmails.ts](../apps/api/src/services/waitlistEmails.ts): `waitlistInviteEmail`
 - [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts) (`waitlistEntries`), [apps/api/src/db/migrations/0037_waitlist.sql](../apps/api/src/db/migrations/0037_waitlist.sql)
 - [apps/web/src/components/waitlist/WaitlistSection.tsx](../apps/web/src/components/waitlist/WaitlistSection.tsx), [ReferralShare.tsx](../apps/web/src/components/waitlist/ReferralShare.tsx)
 - [apps/web/src/app/(public)/page.tsx](../apps/web/src/app/(public)/page.tsx), [lista/[code]/page.tsx](../apps/web/src/app/(public)/lista/[code]/page.tsx), [lista/baja/page.tsx](../apps/web/src/app/(public)/lista/baja/page.tsx)
 - Tests:
   - `apps/api/src/tests/waitlist.test.ts`: generators, ranking, report, schema + form contract, signup service;
-  - `waitlistRoute.test.ts`: routes, rate limit, auth;
+  - `waitlistRoute.test.ts`: routes, rate limit, auth, the invite emails each person;
+  - `email.test.ts`: the invitation email;
   - `waitlistRoute.smoke.ts`: real API + Postgres;
   - `fixtures/memoryWaitlistRepo.ts`;
   - `apps/web/e2e/waitlist.spec.ts`.

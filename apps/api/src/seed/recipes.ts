@@ -117,9 +117,20 @@ export const seedRecipes: SeedRecipe[] = [
     seasons: ['spring', 'summer', 'autumn', 'winter'],
     tags: ['compartida'],
     steps: [],
+    // PRO-78 (2026-10-13, Miguel: respuesta A): the Notion original lists
+    // ñoras, fish stock, sea bass, alioli, tomato paste, garlic and 500 g of
+    // rice; it was seeded as «Arroz, Ajo» only, so diet/allergy filters could
+    // not see the fish. Existing databases are fixed on boot by
+    // services/catalogRecipeFixes.ts, which reads this list.
     ingredients: [
       { name: 'arroz', quantity: 500, unit: 'g' },
-      { name: 'ajo', quantity: 3, unit: 'g' },
+      { name: 'ñora', quantity: 5, unit: 'u' },
+      { name: 'caldo de pescado', quantity: 1500, unit: 'ml' },
+      { name: 'lubina', quantity: 600, unit: 'g' },
+      { name: 'tomate concentrado', quantity: 30, unit: 'g' },
+      { name: 'ajo', quantity: 15, unit: 'g' },
+      { name: 'aceite de oliva virgen', quantity: 60, unit: 'ml' },
+      { name: 'alioli', quantity: 100, unit: 'g' },
     ],
   },
   {

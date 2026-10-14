@@ -46,6 +46,8 @@ export interface CostUnits {
   audioInputTokens?: number
   minutes?: number
   messages?: number
+  /** Messages inside a provider's free tier (WhatsApp service messages): counted, never priced. */
+  freeMessages?: number
   images?: number
   /** Characters sent to a TTS provider. */
   chars?: number
@@ -87,12 +89,16 @@ export const PRICES: PriceTable = {
   'openai/gpt-realtime-2.1-mini': { currency: 'USD', perMinute: 0.03 }, // UNVERIFIED (blended estimate)
 
   // ── Meta WhatsApp (Spain rate card, EUR, VAT excluded) ───────
-  // Free-form ("service") replies inside the 24 h window are free and are not
-  // recorded; only templates sent outside the window cost money. Utility
-  // €0.0166 from the brief + third-party Spain rate cards (July 2026); Meta's
-  // official rate-card CSV not checked.
-  'meta_whatsapp/utility_template': { currency: 'EUR', perMessage: 0.0166 }, // UNVERIFIED against Meta's official CSV
-  'meta_whatsapp/marketing_template': { currency: 'EUR', perMessage: 0.0585 }, // UNVERIFIED (not sent by Mimoia today)
+  // Source: Meta's EUR list rates effective 2026-10-01, Spain row
+  // (developers.facebook.com/documentation/business-messaging/whatsapp/pricing,
+  // checked 2026-10-13): marketing 0.0585, utility 0.0166, service 0.0166.
+  // Free-form ("service") messages: the first 1,000 per month and business
+  // number are free, so they're recorded as `freeMessages` (0 €) and only the
+  // 1,001st onwards as `messages` — see services/whatsapp/serviceCost.ts.
+  // Utility templates are billed always, also inside the 24 h window.
+  'meta_whatsapp/utility_template': { currency: 'EUR', perMessage: 0.0166 },
+  'meta_whatsapp/marketing_template': { currency: 'EUR', perMessage: 0.0585 }, // not sent by Mimoia today
+  'meta_whatsapp/service_message': { currency: 'EUR', perMessage: 0.0166 },
 
   // ── AIKIT image generation (Imagen via fal, behind AiKit's CMS) ──
   'aikit/imagen-fal': { currency: 'USD', perImage: 0.04 }, // UNVERIFIED (fal Imagen list price; AiKit's own markup unknown)

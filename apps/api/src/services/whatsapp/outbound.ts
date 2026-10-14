@@ -29,6 +29,7 @@ import {
   type TodayDinner,
 } from './proactive.js'
 import { recordCost } from '../costLedger.js'
+import { recordServiceMessageCost } from './serviceCost.js'
 
 /** Per-kind templates (WHATSAPP_TEMPLATES), parsed once. */
 const TEMPLATES = parseTemplateMap(env.WHATSAPP_TEMPLATES)
@@ -53,12 +54,13 @@ export async function sendProactive(
     if (delivery === 'session') {
       for (const m of messages) {
         const wamid = await client.sendMessage(link.phone, m)
+        void recordServiceMessageCost(link.userId)
         await store.insertOutbound({ phone: link.phone, userId: link.userId, kind, body: m.text, status: 'sent', wamid })
       }
     } else {
       const text = templateParamFrom(messages)
       const wamid = await client.sendTemplate(link.phone, template!, env.WHATSAPP_TEMPLATE_LANG, text)
-      // Templates are the one WhatsApp message Meta bills (session replies are free).
+      // Every template is billed, inside or outside the 24 h window.
       recordCost({ feature: 'whatsapp_template', provider: 'meta_whatsapp', model: 'utility_template', units: { messages: 1 }, userId: link.userId })
       await store.insertOutbound({ phone: link.phone, userId: link.userId, kind, body: text, status: 'sent', wamid })
     }

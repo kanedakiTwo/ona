@@ -10,6 +10,7 @@ import { isShoppingItemList, shoppingListDigest } from '../shoppingText.js'
 import { AI_DISCLOSURE_FIRST_PERSON } from '@ona/shared'
 import { controlCommand, OPT_IN_NO, OPT_IN_YES } from './commands.js'
 import { trackEvent } from '../usageEvents.js'
+import { recordServiceMessageCost } from './serviceCost.js'
 
 /**
  * Inbound orchestrator: one WhatsApp message in → zero or more replies out.
@@ -253,6 +254,7 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
       const body = m.text
       try {
         const wamid = await client.sendMessage(msg.from, m)
+        void recordServiceMessageCost(userId)
         await store.insertOutbound({ phone: msg.from, userId, kind, body, status: 'sent', wamid })
       } catch (err: any) {
         console.error('[whatsapp] send failed:', err?.message ?? err)

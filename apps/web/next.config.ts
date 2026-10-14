@@ -4,6 +4,14 @@ import withPWA from 'next-pwa'
 const nextConfig: NextConfig = {
   transpilePackages: ['@ona/shared'],
   output: 'standalone',
+  // Blog articles are Markdown read with fs (lib/blog/posts.ts). The pages are
+  // pre-rendered at build time, but ship the files with the standalone server
+  // too so nothing breaks if a blog route ever renders at request time.
+  outputFileTracingIncludes: {
+    '/blog': ['./content/blog/**/*'],
+    '/blog/[slug]': ['./content/blog/**/*'],
+    '/sitemap.xml': ['./content/blog/**/*'],
+  },
   env: {
     // Build id sent with client error reports (specs/errors.md). Explicit
     // value wins; else Railway's commit SHA (git deploys) or deployment id

@@ -14,6 +14,7 @@ import { MimoiaLogo } from "@/components/brand/Mimoia"
 const LINKS = [
   { href: "/como-funciona", label: "Cómo funciona" },
   { href: "/recipes", label: "Recetas" },
+  { href: "/blog", label: "Blog" },
   { href: "/privacidad", label: "Privacidad" },
   { href: "/terminos", label: "Términos" },
   { href: "/aviso-legal", label: "Aviso legal" },

@@ -23,6 +23,9 @@ const PUBLIC_SURFACES = [
   'components/shared/Footer.tsx',
   // The landing's waitlist section + share text (specs/waitlist.md).
   'components/waitlist',
+  // The blog (specs/blog.md): its components and every article, published or not.
+  'components/blog',
+  '../content/blog',
 ]
 
 /** Pages that may name these words without making a claim (legal texts). */

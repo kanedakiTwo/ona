@@ -284,6 +284,9 @@ jobs:
 
       - name: Boot Web
         run: |
+          # BLOG_CONTENT_DIR: blog.spec.ts reads the fixture articles (one
+          # published, one not) instead of content/blog; ignored in production.
+          BLOG_CONTENT_DIR=e2e/fixtures/blog \
           PORT=3001 pnpm --filter @ona/web exec next dev --port 3001 > /tmp/web.log 2>&1 &
           echo $! > /tmp/web.pid
           for i in $(seq 1 90); do

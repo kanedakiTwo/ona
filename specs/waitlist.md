@@ -13,7 +13,7 @@ The public waitlist that comes before the launch. The product launches publicly 
   - the **required** consent checkbox, which links to `/privacidad#lista-de-espera`.
   - No health data, ever.
 - The submit button stays disabled until the email, the four answers and the consent are in.
-- The form sends the landing URL's `?ref=` (source slug: menu, receta, recetas, como-funciona…), `?utm_source/medium/campaign` and `?invita=<code>` (referral).
+- The form sends the landing URL's `?ref=` (source slug: menu, receta, recetas, como-funciona, blog — the CTA at the end of every article, see [Blog](./blog.md)…), `?utm_source/medium/campaign` and `?invita=<code>` (referral).
 - **Success state**: "Ya estás en la lista[, Nombre]." The text explains the batches honestly. Below it, "**Invita a tu hogar y entráis antes**" shows the personal link `<origin>/?invita=<code>` with:
   - "Copiar enlace" (Clipboard API, then `execCommand` fallback, then select-the-text-and-say-so);
   - "Enviar por WhatsApp" (`https://wa.me/?text=…`, the first-person share text from `waitlistShareText`);

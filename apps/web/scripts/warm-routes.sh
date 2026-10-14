@@ -43,6 +43,9 @@ ROUTES=(
   /como-funciona
   /aviso-legal
   /terminos
+  /blog
+  /blog/articulo-de-prueba-publicado
+  /sitemap.xml
 )
 
 for route in "${ROUTES[@]}"; do

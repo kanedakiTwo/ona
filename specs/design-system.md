@@ -150,7 +150,7 @@ None of the in-app pages since 2026-10-10 (PRO-36…46 moved the rest to "D · L
 | `WaitlistSection` | `components/waitlist/WaitlistSection.tsx` | Landing waitlist form + success state |
 | `ReferralShare` | `components/waitlist/ReferralShare.tsx` | Referral link, copy (clipboard fallback), wa.me share |
 | `Footer` | `components/shared/Footer.tsx` | One public footer, landing included; contact from `lib/contact.ts` |
-| `WeekStrip` / `MenuSheet` / `RecipeCover` | `components/menu/` | /menu day strip · sheet primitive · photo or bone block + meal icon |
+| `WeekStrip` / `MenuSheet` (+ `SheetAction`, `ConfirmSheet`) / `RecipeCover` | `components/menu/` | /menu day strip · sheet primitive (`ConfirmSheet`: "Cancelar" + terracotta-deep action pill, used instead of `window.confirm`) · photo or bone block + meal icon |
 | `RecipeCard` | `components/recipes/RecipeCard.tsx` | `/recipes` card: photo + time pill + title, nothing else (no badges); hero in `FeaturedRecipeCard.tsx` |
 | `FavoriteButton` | `components/recipes/FavoriteButton.tsx` | Heart toggle |
 | `MimoProvider` | `components/mimo/MimoProvider.tsx` | App-wide Mimo state (`useMimo`), mounted in `app/layout.tsx`; renders the button and the panel |

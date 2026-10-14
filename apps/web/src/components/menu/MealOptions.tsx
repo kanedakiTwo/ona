@@ -58,7 +58,7 @@ import { CSS } from "@dnd-kit/utilities"
 import { MEAL_TYPE_TAGS, MEAL_TYPE_TAG_LABELS, type Dish, type MealSlot, type RecipeDish } from "@ona/shared"
 import { mealLabel } from "@/lib/labels"
 import { useRecipeCookStats, useRecordCook } from "@/hooks/useCookLogs"
-import { MenuSheet, SheetAction } from "./MenuSheet"
+import { ConfirmSheet, MenuSheet, SheetAction } from "./MenuSheet"
 import { RecipePickerSheet } from "./RecipePickerSheet"
 import { AddDishSheet } from "./AddDishSheet"
 import { DishRow } from "./DishRow"
@@ -95,7 +95,7 @@ export interface SlotContext {
   isRegenerating?: boolean
 }
 
-type OpenSheet = null | "actions" | "picker" | "pin" | "addDish"
+type OpenSheet = null | "actions" | "picker" | "pin" | "addDish" | "confirmBan" | "confirmRemove"
 
 export function useMealOptions() {
   const [open, setOpen] = useState<OpenSheet>(null)
@@ -232,15 +232,7 @@ export function MealOptionsSheets({
               label="Vetar esta receta"
               hint={lockedHint ?? "No volverá a salir esta semana"}
               disabled={locked}
-              onClick={() => {
-                if (
-                  typeof window === "undefined" ||
-                  window.confirm(`¿Vetar "${first.recipeName ?? "esta receta"}" del resto de la semana?`)
-                ) {
-                  handlers.ban(first.recipeId)
-                  close()
-                }
-              }}
+              onClick={() => setOpen("confirmBan")}
             />
           )}
           {first && <CookedAction recipeId={first.recipeId} ctx={ctx} />}
@@ -260,18 +252,31 @@ export function MealOptionsSheets({
             hint={lockedHint ?? "Solo de este día; tus preferencias no cambian"}
             destructive
             disabled={locked}
-            onClick={() => {
-              if (
-                typeof window === "undefined" ||
-                window.confirm(`¿Quitar ${label.toLowerCase()} de este día?`)
-              ) {
-                handlers.remove()
-                close()
-              }
-            }}
+            onClick={() => setOpen("confirmRemove")}
           />
         </div>
       </MenuSheet>
+
+      {first && (
+        <ConfirmSheet
+          open={open === "confirmBan"}
+          onClose={close}
+          onConfirm={() => handlers.ban(first.recipeId)}
+          eyebrow={`${label} · ${ctx.dayLabel}`}
+          title={`¿Vetar «${first.recipeName ?? "esta receta"}» del resto de la semana?`}
+          message="Pondremos otra receta en su lugar y no volverá a salir esta semana."
+          confirmLabel="Vetar"
+        />
+      )}
+      <ConfirmSheet
+        open={open === "confirmRemove"}
+        onClose={close}
+        onConfirm={handlers.remove}
+        eyebrow={`${label} · ${ctx.dayLabel}`}
+        title={`¿Quitar ${label.toLowerCase()} de este día?`}
+        message="Solo de este día; tus preferencias no cambian."
+        confirmLabel="Quitar"
+      />
 
       <PinTypeSheet
         open={open === "pin"}

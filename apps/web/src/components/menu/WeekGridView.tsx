@@ -73,6 +73,7 @@ import {
 import { shortRecipeName } from "@/lib/recipeView"
 import { RecipePickerSheet } from "@/components/menu/RecipePickerSheet"
 import { AddDishSheet } from "@/components/menu/AddDishSheet"
+import { ConfirmSheet } from "@/components/menu/MenuSheet"
 import { NoteEditor } from "@/components/menu/NoteEditor"
 import { RecipeCover } from "@/components/menu/RecipeCover"
 
@@ -525,6 +526,7 @@ function SlotRow({
   const [emptyPickerOpen, setEmptyPickerOpen] = useState(false)
   const [replacePickerOpen, setReplacePickerOpen] = useState(false)
   const [addDishOpen, setAddDishOpen] = useState(false)
+  const [confirm, setConfirm] = useState<null | "ban" | "remove">(null)
 
   const dishes: Dish[] = slot?.dishes ?? []
   const recipeDishes = dishes.filter((d): d is RecipeDish => d.kind === 'recipe')
@@ -610,16 +612,7 @@ function SlotRow({
     actions.push({
       icon: Ban,
       label: "Vetar receta",
-      onSelect: () => {
-        if (
-          typeof window === "undefined" ||
-          window.confirm(
-            `¿Vetar "${firstRecipe.recipeName ?? 'esta receta'}" del resto de la semana?`,
-          )
-        ) {
-          onBan(dayIndex, meal, firstRecipe.recipeId)
-        }
-      },
+      onSelect: () => setConfirm("ban"),
       destructive: true,
     })
   }
@@ -627,14 +620,7 @@ function SlotRow({
     actions.push({
       icon: Trash2,
       label: "Quitar slot",
-      onSelect: () => {
-        if (
-          typeof window === "undefined" ||
-          window.confirm("¿Quitar este plato del día?")
-        ) {
-          onRemove(dayIndex, meal)
-        }
-      },
+      onSelect: () => setConfirm("remove"),
       destructive: true,
     })
   }
@@ -706,6 +692,26 @@ function SlotRow({
         setAddDishOpen(false)
       }}
     />
+    {firstRecipe && onBan && (
+      <ConfirmSheet
+        open={confirm === "ban"}
+        onClose={() => setConfirm(null)}
+        onConfirm={() => onBan(dayIndex, meal, firstRecipe.recipeId)}
+        title={`¿Vetar «${firstRecipe.recipeName ?? "esta receta"}» del resto de la semana?`}
+        message="Pondremos otra receta en su lugar y no volverá a salir esta semana."
+        confirmLabel="Vetar"
+      />
+    )}
+    {onRemove && (
+      <ConfirmSheet
+        open={confirm === "remove"}
+        onClose={() => setConfirm(null)}
+        onConfirm={() => onRemove(dayIndex, meal)}
+        title="¿Quitar este plato del día?"
+        message="Solo de este día; tus preferencias no cambian."
+        confirmLabel="Quitar"
+      />
+    )}
     </>
   )
 }

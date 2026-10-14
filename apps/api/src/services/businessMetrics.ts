@@ -14,6 +14,7 @@ import { db as defaultDb } from '../db/connection.js'
 import { addDays, madridMidnightUtc, madridWeekStart } from './madridTime.js'
 import { loadErrorSummary } from './appErrors.js'
 import { loadWaitlistSummary } from './waitlist.js'
+import { buildInstalledOpens, buildPushEnabled, deviceCountsFor, loadInstallRows } from './appInstalls.js'
 
 type Db = typeof defaultDb
 
@@ -277,6 +278,10 @@ export const DEFINITIONS = {
     'In-house error tracker (specs/errors.md), last 7 days by last_seen: newGroups = error groups first seen in the window, activeGroups / openGroups = groups seen (unresolved), events = Σ count of those groups (cumulative, an upper bound). Detail: GET /admin/errors.',
   campaigns:
     'Households that signed up in the window, by the campaign invitation link their first user registered with (null = no link: waitlist invitation, household invitation, admin or open registration). activated = active (see activeHouseholds) in the signup week; week3 = active in signup week + 3, over the signups whose week 3 has started.',
+  installedAppHouseholds:
+    'Households (counted users) that opened Mimoia as an installed app (display-mode standalone) at least once that week, by device (android / ios / desktop, deduced from the browser; total counts each household once). The web reports at most one open per household and day. Starts when this shipped (PRO-83): earlier weeks read 0.',
+  pushEnabledHouseholds:
+    'Households (counted users) with push notifications on at the end of the week: a push subscription that still exists today and was created on or before that Sunday, by device (from the browser). Turning notifications off deletes the subscription, so past weeks are a lower bound.',
   waitlist:
     'Pre-launch waitlist (specs/waitlist.md), all time: entries by status, last7Days = signups in the last 7 × 24 h, referredSignups / newsletterOptIns = active entries (not unsubscribed) that came with someone’s link / opted in to the weekly menu email. Segments, sources and the suggested next batch: GET /admin/waitlist.',
 } as const
@@ -387,9 +392,9 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
            (SELECT MIN(created_at) FROM activity_events) AS activity_log
   `)
 
-  const [activity, menuRows, shopping, signups, costs, since, errors, waitlist, campaignRows] = await Promise.all([
+  const [activity, menuRows, shopping, signups, costs, since, errors, waitlist, campaignRows, installs] = await Promise.all([
     activityQ, menusQ, shoppingQ, signupsQ, costsQ, sinceQ, loadErrorSummary(7, db, now), loadWaitlistSummary(db, now),
-    campaignsQ,
+    campaignsQ, loadInstallRows({ from, includeInternal: inc }, db),
   ])
 
   const input: MetricsInput = {
@@ -410,7 +415,13 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
     })),
   }
 
-  const weekly = buildWeekly(input)
+  const installedOpens = buildInstalledOpens(weeks, installs.opens)
+  const pushEnabled = buildPushEnabled(weeks, installs.subs)
+  const weekly = buildWeekly(input).map((w) => ({
+    ...w,
+    installedAppHouseholds: deviceCountsFor(installedOpens, w.week),
+    pushEnabledHouseholds: deviceCountsFor(pushEnabled, w.week),
+  }))
   const sinceRow = (since.rows[0] ?? {}) as { cost_ledger?: Date | string | null; activity_log?: Date | string | null }
   const iso = (v: Date | string | null | undefined) => (v ? new Date(v).toISOString() : null)
   return {

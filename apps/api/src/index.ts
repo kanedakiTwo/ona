@@ -36,6 +36,7 @@ import metricsRoutes from './routes/metrics.js'
 import shopOrdersRoutes, { publicShopOrdersRouter } from './routes/shopOrders.js'
 import appErrorsRoutes, { clientErrorsRouter } from './routes/appErrors.js'
 import waitlistRoutes, { adminWaitlistRouter } from './routes/waitlist.js'
+import usageRoutes from './routes/usage.js'
 import inviteCampaignRoutes from './routes/inviteCampaigns.js'
 import { trackShoppingActivity } from './services/activityEvents.js'
 import { trackUsageRoutes } from './services/usageEvents.js'
@@ -123,6 +124,7 @@ app.use(ingredientRoutes)
 // `GET /push/public-key` endpoint is intentionally public — must be
 // mounted BEFORE userRoutes so the catch-all auth there doesn't block it.
 app.use(pushRoutes)
+app.use(usageRoutes)
 // Per-route authMiddleware (no catch-all) — kept next to pushRoutes for the
 // same mount-order reason.
 app.use(whatsappRoutes)

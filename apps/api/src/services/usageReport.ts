@@ -10,7 +10,7 @@ import { sql } from 'drizzle-orm'
 import { db as defaultDb } from '../db/connection.js'
 import { addDays, madridMidnightUtc, madridParts } from './madridTime.js'
 import { isoWeekLabel, weekOfDay } from './businessMetrics.js'
-import { USAGE_CHANNELS, USAGE_EVENTS, type UsageEventName } from './usageEvents.js'
+import { PASSIVE_USAGE_EVENTS, USAGE_CHANNELS, USAGE_EVENTS, type UsageEventName } from './usageEvents.js'
 
 type Db = typeof defaultDb
 
@@ -193,7 +193,7 @@ export function buildTotals(input: UsageInput) {
 }
 
 export const USAGE_DEFINITIONS = {
-  activeHouseholds: 'Distinct households with at least one usage event that day / ISO week (Europe/Madrid). Events without a household (deleted accounts) are counted in events but not here.',
+  activeHouseholds: 'Distinct households with at least one usage event that day / ISO week (Europe/Madrid), not counting app_opened_installed (opening the installed app is not using it). Events without a household (deleted accounts) are counted in events but not here.',
   funnel: 'Signup-week cohorts (signup_completed). firstMenu → shoppingListViewed → cooked are nested steps within the first 7 days (signup day … +6): menu_generated, then shopping_list_viewed, then cook_mode_started or meal_cooked. activeWeek2 is not nested: signups with any event on days 7–13, over week2Eligible (signups whose day 7 has arrived).',
   channels: 'web (app and web chat), voice (Mimo with the voice in the app), whatsapp; unknown = system.',
   excluded: 'Admin and suspended accounts are excluded unless includeInternal=1. Events of deleted accounts stay as anonymous counts.',
@@ -236,7 +236,10 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
     days: dayRange(fromDay, today),
     today,
     counts: (counts.rows as any[]).map((r) => ({ day: r.day, name: r.name, channel: r.channel ?? null, count: Number(r.count) })),
-    householdDays: (householdDays.rows as any[]).map((r) => ({ householdId: r.household_id, day: r.day, name: r.name })),
+    // Passive signals (opening the installed app) are counted in `events` but never make a household active.
+    householdDays: (householdDays.rows as any[])
+      .filter((r) => !PASSIVE_USAGE_EVENTS.has(r.name))
+      .map((r) => ({ householdId: r.household_id, day: r.day, name: r.name })),
   }
   const sinceRaw = (since.rows as any[])[0]?.since
   return {

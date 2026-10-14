@@ -12,6 +12,7 @@ Premium Progressive Web App layer that makes Mimoia feel like a native iOS/Andro
 - On iOS Safari the bottom sheet shows visual instructions ("Toca compartir → Añadir a pantalla de inicio") since iOS doesn't fire `beforeinstallprompt`
 - If the user dismisses the prompt, it isn't shown again for 30 days; if the user installs the app, the prompt isn't shown again for 365 days
 - Once installed, the app launches in standalone mode (no browser chrome), with the OS static splash image (cream, see Asset Requirements), and the status bar tinted to match the active section
+- Each day the installed app is opened with a signed-in account, it tells the API once (`POST /usage/app-opened`, no body) so `/admin/metrics` can count households using the installed app per device — aggregate only, see [Metrics](./metrics.md) «App instalada y avisos»
 
 ### Offline behavior (hybrid)
 
@@ -152,6 +153,7 @@ The `.standalone-pt` utility class applies `padding-top: var(--safe-top)` so con
 - `apps/web/src/components/brand/Mimoia.tsx` — the imagotipo (`MIMOIA_SYMBOL_PATH`, `MimoiaSymbol`, `MimoiaLogo`, `MimoAvatar`)
 - [apps/web/src/app/layout.tsx](../apps/web/src/app/layout.tsx) — manifest link, viewport, apple-touch meta tags, status bar style, theme-color, splash-image link tags, notification re-arm hook
 - [apps/web/src/lib/pwa/installPrompt.ts](../apps/web/src/lib/pwa/installPrompt.ts) — `beforeinstallprompt` capture, visit-count gating, dismissal persistence (localStorage)
+- [apps/web/src/lib/pwa/installedOpen.ts](../apps/web/src/lib/pwa/installedOpen.ts) — daily installed-open ping (PRO-83)
 - [apps/web/src/components/pwa/InstallSheet.tsx](../apps/web/src/components/pwa/InstallSheet.tsx) — bottom sheet with Android + iOS instructions
 - [apps/web/src/components/pwa/OfflineBanner.tsx](../apps/web/src/components/pwa/OfflineBanner.tsx) — connection-status banner
 - [apps/web/src/lib/pwa/useOnlineStatus.ts](../apps/web/src/lib/pwa/useOnlineStatus.ts) — `online`/`offline` event hook

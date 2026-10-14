@@ -163,8 +163,8 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 ### Pending
 
 - [ ] **MIG-18 · Quitar dos restos de la configuración de WhatsApp** — Desde el 2026-10-14 Mimo funciona con tu app «Mimoia»; quedan dos cosas sueltas que conviene borrar para evitar líos.
-  - Cómo: (1) business.facebook.com → Configuración → Usuarios → Usuarios del sistema: borra cualquiera que no sea **mimo-api** (el botón «Generar identificador» de la configuración rápida crea uno, y su token salió en una captura). A mimo-api no lo toques. (2) developers.facebook.com → app **ONA** (la de AiKit) → WhatsApp → Configuración → Webhook: borra la URL.
-  - Hecho cuando: en Usuarios del sistema solo queda mimo-api y la app ONA no tiene webhook.
+  - Cómo: (1) business.facebook.com → Configuración → Usuarios → Usuarios del sistema: borra cualquiera que no sea **mimo-api** (el botón «Generar identificador» de la configuración rápida crea uno, y su token salió en una captura). A mimo-api no lo toques. (2) developers.facebook.com → la app antigua de AiKit (la que **no** se llama «Mimoia») → WhatsApp → Configuración → Webhook: borra la URL.
+  - Hecho cuando: en Usuarios del sistema solo queda mimo-api y la app antigua de AiKit no tiene webhook.
 
 - [ ] **MIG-02 · Pasar el contacto del/de la dietista** — Queremos que un profesional colegiado revise recetas y mensajes antes de abrir (D-005).
   - Cómo: dile a Claude su nombre y cómo contactar. El primer mensaje lo prepara Marketing.

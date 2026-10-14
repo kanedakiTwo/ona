@@ -171,7 +171,7 @@ describe('get_todays_menu', () => {
     const db = makeDb([menu])
     const r = await skill.handler({}, ctx(db))
     // Without overriding Date, just check shape — any of the 7 day names.
-    expect(r.summary).toMatch(/lunes|martes|miercoles|jueves|viernes|sabado|domingo/)
+    expect(r.summary).toMatch(/lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo/)
     expect(r.summary).toContain('comida: Plato')
   })
 })

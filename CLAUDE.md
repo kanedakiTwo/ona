@@ -162,11 +162,6 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 
 ### Pending
 
-- [ ] **MIG-01 · Elegir los hogares de la beta** — La beta abre el 21 de octubre y empieza por 10–15 hogares que conoces.
-  - Cómo: haz tu lista (no hace falta pasárnosla: son datos personales). Marketing y Customer Success te preparan el mensaje el 12 y el 14; se lo mandas tú por WhatsApp con un enlace de invitación `mimoia.com/i/<código>` (se crea en `/admin` → Invitaciones; o pídeselo a Claude).
-  - Lo único que necesitamos: cuántos hogares son y cuántos querrán usar Mimo por WhatsApp. Con el número de prueba de Meta caben 5 teléfonos; a cada uno hay que darlo de alta (su email en `WHATSAPP_ALLOWED_EMAILS` y su teléfono en Meta → Paso 1 «Para»).
-  - Estado (2026-10-10): 14 hogares en tu lista; falta añadir a las amigas de Sara y refinarla.
-
 - [ ] **MIG-02 · Pasar el contacto del/de la dietista** — Queremos que un profesional colegiado revise recetas y mensajes antes de abrir (D-005).
   - Cómo: dile a Claude su nombre y cómo contactar. El primer mensaje lo prepara Marketing.
 

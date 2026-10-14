@@ -70,15 +70,16 @@ describe('shop orders route smoke', () => {
     if (!reachable) return
     const bad = await api('POST', '/shops', { name: 'Frutería', kind: 'fruteria', channel: 'whatsapp', fulfilment: 'recoger' })
     expect(bad.status).toBe(400)
-    const ok = await api('POST', '/shops', { name: 'The Fruits of the World', kind: 'fruteria', channel: 'whatsapp', whatsapp: '34913525111', customerName: 'Miguel', fulfilment: 'recoger' })
+    const ok = await api('POST', '/shops', { name: 'Frutería del barrio', kind: 'fruteria', channel: 'whatsapp', whatsapp: '34600000001', customerName: 'Ana', fulfilment: 'recoger' })
     expect(ok.status).toBe(201)
-    expect(ok.body.whatsapp).toBe('34913525111')
+    expect(ok.body.whatsapp).toBe('34600000001')
   })
 
   it('prepares one order per shop from the list, with ready-to-send links', async () => {
     if (!reachable) return
     await api('POST', '/shops', { name: 'Pescados Aparicio', kind: 'pescaderia', channel: 'whatsapp', whatsapp: '34600000000', fulfilment: 'recoger' })
-    await api('POST', '/shops', { name: 'El Corte Inglés', kind: 'supermercado', channel: 'web', webUrl: 'https://www.elcorteingles.es/supermercado/', fulfilment: 'domicilio', address: 'C/ Real 1, Boadilla' })
+    // A public online supermarket on purpose: its host has its own search-link builder (message.ts).
+    await api('POST', '/shops', { name: 'El Corte Inglés', kind: 'supermercado', channel: 'web', webUrl: 'https://www.elcorteingles.es/supermercado/', fulfilment: 'domicilio', address: 'C/ Mayor 1, 2.º B' })
 
     const r = await api('POST', '/shop-orders/prepare', {})
     expect(r.status).toBe(200)

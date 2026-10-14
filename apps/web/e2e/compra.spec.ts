@@ -35,12 +35,15 @@ test('add a shop → prepare orders → WhatsApp link with the order written', a
   await expect(page).toHaveURL(/\/compra\/tiendas/, { timeout: 20_000 })
 
   await page.getByRole('button', { name: /Añadir tienda/ }).click()
-  await page.getByLabel('Nombre', { exact: true }).fill('The Fruits of the World')
+  // Made-up examples only, never a real shop or person (PRO-76).
+  await expect(page.getByLabel('Nombre', { exact: true })).toHaveAttribute('placeholder', 'Ej: Frutería del barrio')
+  await expect(page.getByLabel('Tu nombre para la tienda')).not.toHaveAttribute('placeholder', /Miguel/)
+  await page.getByLabel('Nombre', { exact: true }).fill('Frutería del barrio')
   await page.getByLabel('Tipo').selectOption('fruteria')
-  await page.getByLabel('WhatsApp de la tienda').fill('913 52 51 11')
-  await page.getByLabel('Tu nombre para la tienda').fill('Miguel')
+  await page.getByLabel('WhatsApp de la tienda').fill('600 00 00 01')
+  await page.getByLabel('Tu nombre para la tienda').fill('Ana')
   await page.getByRole('button', { name: /^Añadir tienda$/ }).click()
-  await expect(page.getByText('WhatsApp +34913525111')).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByText('WhatsApp +34600000001')).toBeVisible({ timeout: 10_000 })
 
   // Deterministic list, independent of the seed and the menu generator: two
   // items the user typed with aisle "produce" → they must land in the
@@ -62,12 +65,12 @@ test('add a shop → prepare orders → WhatsApp link with the order written', a
 
   const card = page.getByTestId('order-fruteria')
   await expect(card).toBeVisible({ timeout: 15_000 })
-  await expect(card.getByText('The Fruits of the World')).toBeVisible()
+  await expect(card.getByText('Frutería del barrio')).toBeVisible()
   const link = card.getByRole('link', { name: /Enviar por WhatsApp/ })
   const href = await link.getAttribute('href')
-  expect(href).toMatch(/^https:\/\/wa\.me\/34913525111\?text=/)
+  expect(href).toMatch(/^https:\/\/wa\.me\/34600000001\?text=/)
   const text = decodeURIComponent(href!.split('?text=')[1])
-  expect(text).toMatch(/^Hola, soy Miguel\./)
+  expect(text).toMatch(/^Hola, soy Ana\./)
   // Written in the shop's units (buy rules), never the recipe's.
   expect(text).toContain('- 1 kg de tomates de ensalada')
   expect(text).toContain('- 2 calabacines')
@@ -92,7 +95,7 @@ test('a typed "Jamón serrano" blocks the order until the amount; home delivery 
   const auth = { Authorization: `Bearer ${token}` }
   await page.request.post(`${API_URL}/shops`, {
     headers: auth,
-    data: { name: 'Ben-Car', kind: 'carniceria', channel: 'whatsapp', whatsapp: '34638015827', customerName: 'Miguel', fulfilment: 'recoger' },
+    data: { name: 'Carnicería La Plaza', kind: 'carniceria', channel: 'whatsapp', whatsapp: '34600000002', customerName: 'Ana', fulfilment: 'recoger' },
   })
   const list = await (await page.request.get(`${API_URL}/shopping-list`, { headers: auth })).json()
   await page.request.post(`${API_URL}/shopping-list/${list.id}/items`, { headers: auth, data: { name: 'Jamón serrano' } })
@@ -114,10 +117,10 @@ test('a typed "Jamón serrano" blocks the order until the amount; home delivery 
   // Home delivery: without an address it's blocked; with it, the message says where and asks when.
   await card.getByRole('button', { name: 'A domicilio' }).click()
   await expect(card.getByTestId('blockers')).toContainText('Falta la dirección de entrega')
-  await card.getByLabel('Dirección de entrega').fill('C/ Real 1, Boadilla')
+  await card.getByLabel('Dirección de entrega').fill('C/ Mayor 1, 2.º B')
   await card.getByLabel('Dirección de entrega').blur()
   await expect(link).toBeVisible({ timeout: 10_000 })
   const text = decodeURIComponent((await card.getByRole('link', { name: /Enviar por WhatsApp/ }).getAttribute('href'))!)
-  expect(text).toContain('para que me lo traigáis a C/ Real 1, Boadilla')
+  expect(text).toContain('para que me lo traigáis a C/ Mayor 1, 2.º B')
   expect(text).toContain('más o menos a qué hora llegaría')
 })

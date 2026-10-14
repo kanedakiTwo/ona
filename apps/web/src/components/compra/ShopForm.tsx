@@ -39,10 +39,10 @@ function formFromShop(s: Shop): ShopFormState {
 }
 
 const CONTACT_FIELD: Record<ShopChannel, { key: "whatsapp" | "email" | "webUrl" | "phone"; label: string; placeholder: string; type: string }> = {
-  whatsapp: { key: "whatsapp", label: "WhatsApp de la tienda", placeholder: "Ej: 638 015 827", type: "tel" },
+  whatsapp: { key: "whatsapp", label: "WhatsApp de la tienda", placeholder: "Ej: 600 000 000", type: "tel" },
   email: { key: "email", label: "Email de la tienda", placeholder: "pedidos@tienda.es", type: "email" },
-  web: { key: "webUrl", label: "Web de la tienda", placeholder: "https://www.elcorteingles.es/supermercado/", type: "url" },
-  telefono: { key: "phone", label: "Teléfono de la tienda", placeholder: "Ej: 916 339 217", type: "tel" },
+  web: { key: "webUrl", label: "Web de la tienda", placeholder: "Ej: https://www.tutienda.es", type: "url" },
+  telefono: { key: "phone", label: "Teléfono de la tienda", placeholder: "Ej: 910 000 000", type: "tel" },
 }
 
 const input =
@@ -72,7 +72,7 @@ export function ShopForm({ shop, onDone }: { shop?: Shop; onDone: () => void }) 
     <form onSubmit={submit} className="space-y-4 rounded-2xl border border-[#DDD6C5] bg-[#FFFEFA] p-4" aria-label={shop ? "Editar tienda" : "Nueva tienda"}>
       <div>
         <label className={label} htmlFor="shop-name">Nombre</label>
-        <input id="shop-name" className={input} value={form.name} maxLength={80} onChange={(e) => set("name", e.target.value)} placeholder="Ej: Frutería The Fruits of the World" />
+        <input id="shop-name" className={input} value={form.name} maxLength={80} onChange={(e) => set("name", e.target.value)} placeholder="Ej: Frutería del barrio" />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -109,7 +109,7 @@ export function ShopForm({ shop, onDone }: { shop?: Shop; onDone: () => void }) 
 
       <div>
         <label className={label} htmlFor="shop-customer">Tu nombre para la tienda</label>
-        <input id="shop-customer" className={input} value={form.customerName} maxLength={80} onChange={(e) => set("customerName", e.target.value)} placeholder="Como te conocen: Miguel, Miguel Martín…" />
+        <input id="shop-customer" className={input} value={form.customerName} maxLength={80} onChange={(e) => set("customerName", e.target.value)} placeholder="Como te conocen: Ana, la del 3.º B…" />
       </div>
 
       <fieldset>

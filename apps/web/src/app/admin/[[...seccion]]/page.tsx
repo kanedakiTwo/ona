@@ -26,27 +26,28 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
+import { adminAreaFromSlug, type AdminArea } from "@/lib/adminNav"
 import { useAuth } from "@/lib/auth"
 import {
   useIngredientGaps,
   useRecipeGaps,
   useRegenOutput,
 } from "@/hooks/useAdmin"
-import { Tile } from "./sections/shared"
+import { Tile } from "../sections/shared"
 import {
   FdcSection,
   AisleSection,
   DensitySection,
   UnitWeightSection,
   AllergenSection,
-} from "./sections/IngredientSections"
-import { RecipesSection, RegenSection } from "./sections/RecipeSections"
-import { RemapModal } from "./sections/RemapModal"
-import { UsersSection } from "./sections/UsersSection"
-import { AuditLogSection } from "./sections/AuditLogSection"
-import { VoiceTranscriptsSection } from "./sections/VoiceTranscriptsSection"
-import { InvitationsSection } from "./sections/InvitationsSection"
+} from "../sections/IngredientSections"
+import { RecipesSection, RegenSection } from "../sections/RecipeSections"
+import { RemapModal } from "../sections/RemapModal"
+import { UsersSection } from "../sections/UsersSection"
+import { AuditLogSection } from "../sections/AuditLogSection"
+import { VoiceTranscriptsSection } from "../sections/VoiceTranscriptsSection"
+import { InvitationsSection } from "../sections/InvitationsSection"
 import { DISPLAY_UI } from "@/components/recipes/RecipeCard"
 
 type SectionKey =
@@ -76,10 +77,32 @@ const SECTIONS: Array<{ key: SectionKey; label: string }> = [
   { key: "invites", label: "Invitaciones" },
 ]
 
+const AREA_SECTION: Record<Exclude<AdminArea, "catalogo">, SectionKey> = {
+  usuarios: "users",
+  invitaciones: "invites",
+  auditoria: "audit",
+  voz: "voice",
+}
+const SECTION_AREA_HREF: Partial<Record<SectionKey, string>> = {
+  users: "/admin/usuarios",
+  invites: "/admin/invitaciones",
+  audit: "/admin/auditoria",
+  voice: "/admin/voz",
+}
+
 export default function AdminPage() {
   const { user, isLoading: authLoading } = useAuth()
   const router = useRouter()
-  const [active, setActive] = useState<SectionKey>("fdc")
+  // Each area has its own URL (/admin/invitaciones…) so the desktop sidebar
+  // can link to it; the catalogue's seven gap lists stay as in-page tabs.
+  const params = useParams<{ seccion?: string[] }>()
+  const area = adminAreaFromSlug(params?.seccion?.[0])
+  const [catalogTab, setCatalogTab] = useState<SectionKey>("fdc")
+  const active: SectionKey = area === "catalogo" ? catalogTab : AREA_SECTION[area]
+  function goCatalog(k: SectionKey) {
+    setCatalogTab(k)
+    if (area !== "catalogo") router.push("/admin")
+  }
   const [remapTarget, setRemapTarget] = useState<{ id: string; name: string } | null>(null)
 
   const isAdmin = user?.role === "admin"
@@ -172,37 +195,47 @@ export default function AdminPage() {
             label="ingredientes sin USDA"
             value={counts.fdc}
             tone="terracotta"
-            onClick={() => setActive("fdc")}
+            onClick={() => goCatalog("fdc")}
           />
           <Tile
             label="recetas con kcal=0"
             value={counts.recipes}
             tone="ink"
-            onClick={() => setActive("recipes")}
+            onClick={() => goCatalog("recipes")}
           />
           <Tile
             label="alérgenos sugeridos"
             value={counts.allergens}
             tone="cream"
-            onClick={() => setActive("allergens")}
+            onClick={() => goCatalog("allergens")}
           />
           <Tile
             label="archivos en regen"
             value={counts.regen}
             tone="cream"
-            onClick={() => setActive("regen")}
+            onClick={() => goCatalog("regen")}
           />
         </div>
       </section>
 
       {/* Tabs */}
-      <nav className="px-5 mt-8">
-        <div className="flex gap-1.5 overflow-x-auto pb-2 -mx-5 px-5 scrollbar-none">
+      {/* Tabs. On md+ the sidebar lists the admin areas, so only the
+          catalogue's tabs stay here (wrapped, never hidden off-screen); on
+          mobile every tab scrolls sideways. */}
+      <nav className={`px-5 mt-8 ${isCatalogTab ? "" : "md:hidden"}`} aria-label="Secciones del admin">
+        <div className="flex gap-1.5 overflow-x-auto pb-2 -mx-5 px-5 scrollbar-none md:flex-wrap md:overflow-visible">
           {SECTIONS.map((s) => (
             <button
               key={s.key}
-              onClick={() => setActive(s.key)}
-              className={`inline-flex min-h-[44px] shrink-0 items-center rounded-full border px-4 text-[13px] font-medium transition-all active:scale-95 ${
+              onClick={() => {
+                const href = SECTION_AREA_HREF[s.key]
+                if (href) {
+                  router.push(href)
+                } else {
+                  goCatalog(s.key)
+                }
+              }}
+              className={`inline-flex min-h-[44px] shrink-0 items-center rounded-full border px-4 text-[13px] font-medium transition-all active:scale-95 ${SECTION_AREA_HREF[s.key] ? "md:hidden" : ""} ${
                 active === s.key
                   ? "border-ink bg-ink text-cream"
                   : "border-border-soft bg-paper text-ink-mid hover:border-ink"

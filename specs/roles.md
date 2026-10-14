@@ -49,4 +49,4 @@ The two-role split is intentional: most decisions today are binary (system vs. s
 - [apps/api/src/routes/auth.ts](../apps/api/src/routes/auth.ts) — login reconciles role from `ADMIN_EMAILS`
 - [apps/api/src/config/env.ts](../apps/api/src/config/env.ts) — `ADMIN_EMAILS` parsing
 - [apps/web/src/lib/auth.tsx](../apps/web/src/lib/auth.tsx) — role exposed in the auth context
-- [apps/web/src/app/admin/page.tsx](../apps/web/src/app/admin/page.tsx) — 403 if not admin
+- [apps/web/src/app/admin/[[...seccion]]/page.tsx](../apps/web/src/app/admin/%5B%5B...seccion%5D%5D/page.tsx) — 403 if not admin

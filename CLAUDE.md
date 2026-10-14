@@ -162,6 +162,10 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 
 ### Pending
 
+- [ ] **MIG-19 · Mandar a tu círculo el mensaje de la lista de espera** · *hoy* — La lista está abierta desde el 13 y tiene 1 inscrito; el plan de validación necesita que tu círculo entre con su propia etiqueta para separarlo de los desconocidos (≥ 150 antes del 13 de noviembre).
+  - Cómo: el texto aprobado está en ona-hq `approvals/approved/2026-10-12-marketing-mensaje-circulo-lista.md` (versión A para personas, con `?ref=circulo-miguel`; versión B para grupos, con `?ref=circulo-grupos`). Reescríbelo a tu manera, pero deja los enlaces tal cual. Mándalo por WhatsApp a unas 20 personas y a tus grupos.
+  - Hecho cuando: lo has mandado y le dices a Claude a cuántas personas y grupos, para leer la conversión.
+
 - [ ] **MIG-18 · Quitar dos restos de la configuración de WhatsApp** — Desde el 2026-10-14 Mimo funciona con tu app «Mimoia»; quedan dos cosas sueltas que conviene borrar para evitar líos.
   - Cómo: (1) business.facebook.com → Configuración → Usuarios → Usuarios del sistema: borra cualquiera que no sea **mimo-api** (el botón «Generar identificador» de la configuración rápida crea uno, y su token salió en una captura). A mimo-api no lo toques. (2) developers.facebook.com → la app antigua de AiKit (la que **no** se llama «Mimoia») → WhatsApp → Configuración → Webhook: borra la URL.
   - Hecho cuando: en Usuarios del sistema solo queda mimo-api y la app antigua de AiKit no tiene webhook.

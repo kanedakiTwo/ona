@@ -20,6 +20,8 @@ import {
   type WaitlistRepo,
 } from '../services/waitlist.js'
 import { saveWaitlistPricing, saveWaitlistReservation } from '../services/waitlistPricing.js'
+import { sendEmail, type EmailResult } from '../services/email.js'
+import { waitlistInviteEmail } from '../services/waitlistEmails.js'
 
 /**
  * Pre-launch waitlist (specs/waitlist.md).
@@ -30,7 +32,7 @@ import { saveWaitlistPricing, saveWaitlistReservation } from '../services/waitli
  *   POST /waitlist/pricing         public (opt-out token): the 4 price answers (PRO-26)
  *   POST /waitlist/reservation     public (opt-out token): founder plan / «ninguno» / anular
  *   GET  /admin/waitlist           admin JWT or `x-metrics-token` (agents): aggregates, ids only
- *   POST /admin/waitlist/invite    admin JWT only: mark a batch invited, get their emails
+ *   POST /admin/waitlist/invite    admin JWT only: mark a batch invited, email each one (PRO-93), get their emails
  *
  * Both routers are mounted in index.ts BEFORE the catch-all
  * `router.use(authMiddleware)` routers, after `express.json()`.
@@ -189,6 +191,8 @@ function intParam(raw: unknown, fallback: number, min: number, max: number): num
 const inviteSchema = z.object({
   ids: z.array(z.string().uuid()).min(1).max(200),
   batch: z.number().int().min(1).max(10_000).optional(),
+  /** `false` marks the batch without emailing anyone (Miguel writes by hand). */
+  sendEmail: z.boolean().optional(),
 })
 
 export interface AdminWaitlistDeps {
@@ -196,6 +200,7 @@ export interface AdminWaitlistDeps {
   adminAuth: RequestHandler[]
   load: typeof loadWaitlistReport
   invite: typeof inviteWaitlistEntries
+  sendEmail: typeof sendEmail
   publicUrl: () => string
 }
 
@@ -205,6 +210,7 @@ export function createAdminWaitlistRouter(overrides: Partial<AdminWaitlistDeps> 
     adminAuth: [authMiddleware as RequestHandler, requireAdmin as RequestHandler],
     load: loadWaitlistReport,
     invite: inviteWaitlistEntries,
+    sendEmail: (msg) => sendEmail(msg),
     publicUrl: () => env.WEB_PUBLIC_URL,
     ...overrides,
   }
@@ -233,7 +239,26 @@ export function createAdminWaitlistRouter(overrides: Partial<AdminWaitlistDeps> 
       return
     }
     try {
-      res.json(await deps.invite(parsed.data.ids, parsed.data.batch, req.userId!, { publicUrl: deps.publicUrl() }))
+      const result = await deps.invite(parsed.data.ids, parsed.data.batch, req.userId!, { publicUrl: deps.publicUrl() })
+      const send = parsed.data.sendEmail !== false
+      const statuses: (EmailResult['status'] | 'not_requested')[] = []
+      for (const person of result.invited) {
+        // One by one: a batch is ≤ 200 people and each email carries its own opt-out link.
+        if (!send || !person.email) {
+          statuses.push('not_requested')
+          continue
+        }
+        const r = await deps.sendEmail(
+          waitlistInviteEmail({ ...person, email: person.email }, { publicUrl: deps.publicUrl() }),
+        )
+        statuses.push(r.status)
+      }
+      const count = (s: string) => statuses.filter((x) => x === s).length
+      res.json({
+        ...result,
+        invited: result.invited.map((p, k) => ({ ...p, emailStatus: statuses[k] })),
+        email: { sent: count('sent'), skipped: count('skipped'), failed: count('failed') },
+      })
     } catch (err: any) {
       console.error('[admin/waitlist] invite failed:', err?.message ?? err)
       res.status(500).json({ error: 'Internal server error' })

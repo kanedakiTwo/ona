@@ -152,6 +152,15 @@ export const env = {
   VAPID_SUBJECT: process.env.VAPID_SUBJECT || 'mailto:hola@mimoia.com',
 
   /**
+   * Email through Resend (specs/email.md). Without RESEND_API_KEY nothing is
+   * sent (each send logs and resolves `skipped`). RESEND_BASE_URL exists so
+   * E2E can point at a mock. EMAIL_FROM must be on a domain verified in Resend.
+   */
+  RESEND_API_KEY: process.env.RESEND_API_KEY || '',
+  EMAIL_FROM: process.env.EMAIL_FROM || 'Mimoia <hola@mimoia.com>',
+  RESEND_BASE_URL: (process.env.RESEND_BASE_URL || 'https://api.resend.com').replace(/\/+$/, ''),
+
+  /**
    * Public origin of the web app, used to build links inside WhatsApp
    * replies ("Ver receta: <WEB_PUBLIC_URL>/recipes/<id>") and the waitlist
    * referral / opt-out links the API returns (specs/waitlist.md). No trailing slash.

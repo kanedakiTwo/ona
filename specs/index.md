@@ -14,15 +14,23 @@ Registration, login, logout, JWT tokens, session management, onboarding flow, pa
 
 ## [Privacy & account deletion](./privacy.md)
 
-"Borrar mi cuenta" (GDPR art. 17, right to erasure), `DELETE /user/:id` with password, own recipes deleted (never fall into the catalogue), household ownership hand-over, menus/shopping reassigned, WhatsApp messages purged, volume images removed, admin accounts refused (409 ADMIN_ACCOUNT), `/privacidad` privacy policy (processors Anthropic/OpenAI/Meta/Railway/AiKit/Cloudflare, Cloudflare Web Analytics cookieless beacon only when NEXT_PUBLIC_CF_BEACON_TOKEN is set, own usage events kept 180 days, health data consent art. 9, international transfers, AEPD, no cookies), NEXT_PUBLIC_SUPPORT_EMAIL.
+"Borrar mi cuenta" (GDPR art. 17, right to erasure), `DELETE /user/:id` with password, own recipes deleted (never fall into the catalogue), household ownership hand-over, menus/shopping reassigned, WhatsApp messages purged, volume images removed, admin accounts refused (409 ADMIN_ACCOUNT), `/privacidad` privacy policy (processors Anthropic/OpenAI/Meta/Railway/AiKit/Cloudflare/Resend, Cloudflare Web Analytics cookieless beacon only when NEXT_PUBLIC_CF_BEACON_TOKEN is set, own usage events kept 180 days, health data consent art. 9, international transfers, AEPD, no cookies), NEXT_PUBLIC_SUPPORT_EMAIL.
 
 **Source**: `apps/api/src/services/accountDeletion.ts`, `apps/api/src/routes/users.ts`, `apps/web/src/components/profile/DeleteAccountCard.tsx`, `apps/web/src/app/(public)/privacidad/page.tsx`, `apps/web/src/lib/cfBeacon.ts`, `apps/web/src/app/layout.tsx`
 
 ---
 
+## [Email](./email.md)
+
+Transactional email via Resend (REST API with fetch, no SDK, EU region, mimoia.com verified, D-050), `sendEmail` / `sendEmailBatch` (≤100 per call), `RESEND_API_KEY` unset → skipped (no email in CI/staging), `EMAIL_FROM` Mimoia <hola@mimoia.com>, `RESEND_BASE_URL`, never throws (sent/skipped/failed), masked recipients in logs (`maskEmail`), brand HTML template + text version (`renderBrandEmail`, tables, inline styles, 600 px), `List-Unsubscribe` header, waitlist invitation email «¡Te toca! Ya puedes entrar en Mimoia» sent by `POST /admin/waitlist/invite` (`sendEmail: false` to skip, `emailStatus` per person), PRO-93.
+
+**Source**: `apps/api/src/services/email.ts`, `apps/api/src/services/waitlistEmails.ts`, `apps/api/src/routes/waitlist.ts`
+
+---
+
 ## [Waitlist (pre-launch, Mimoia)](./waitlist.md)
 
-Public pre-launch waitlist on the landing (`#lista-de-espera`), public brand Mimoia (`BRAND_NAME`, D-012), closed beta, invite by batches (tandas) every 2–4 weeks, no queue position / no fake scarcity, segmentation questions (household size, who plans/shops, current method, iOS/Android, supermarket), WhatsApp interest, separate newsletter opt-in (menú de los viernes, LSSI), consent version, honeypot, per-IP rate limit, idempotent on email, referral codes (`?invita=`, Crockford base32), "Invita a tu hogar y entráis antes", owner page `/lista/[code]`, copy + wa.me share, opt-out `/lista/baja` (anonymises), `?ref` / `utm_*` attribution, `waitlist_entries` (migration 0037), `GET /admin/waitlist` (metrics token: segments, sources, referrals, suggested next batch), `POST /admin/waitlist/invite` (admin JWT, audited), register marks joined, public CTAs → waitlist.
+Public pre-launch waitlist on the landing (`#lista-de-espera`), public brand Mimoia (`BRAND_NAME`, D-012), closed beta, invite by batches (tandas) every 2–4 weeks, no queue position / no fake scarcity, segmentation questions (household size, who plans/shops, current method, iOS/Android, supermarket), WhatsApp interest, separate newsletter opt-in (menú de los viernes, LSSI), consent version, honeypot, per-IP rate limit, idempotent on email, referral codes (`?invita=`, Crockford base32), "Invita a tu hogar y entráis antes", owner page `/lista/[code]`, copy + wa.me share, opt-out `/lista/baja` (anonymises), `?ref` / `utm_*` attribution, `waitlist_entries` (migration 0037), `GET /admin/waitlist` (metrics token: segments, sources, referrals, suggested next batch), `POST /admin/waitlist/invite` (admin JWT, audited, emails each invitee via Resend, see Email), register marks joined, public CTAs → waitlist.
 
 **Source**: `packages/shared/src/types/waitlist.ts`, `packages/shared/src/constants/brand.ts`, `apps/api/src/services/waitlist.ts`, `apps/api/src/routes/waitlist.ts`, `apps/api/src/db/migrations/0037_waitlist.sql`, `apps/web/src/components/waitlist/`, `apps/web/src/app/(public)/lista/`, `apps/web/src/app/(public)/page.tsx`
 

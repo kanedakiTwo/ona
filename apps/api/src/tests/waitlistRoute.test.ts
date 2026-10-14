@@ -276,6 +276,55 @@ describe('POST /admin/waitlist/invite', () => {
     expect(ok.status).toBe(200)
     expect(invite).toHaveBeenLastCalledWith([ID], 3, '11111111-1111-4111-8111-111111111111', { publicUrl: 'https://mimoia.com' })
   })
+
+  // PRO-93: the invite sends each person their email (Resend is stubbed here).
+  const asAdmin: RequestHandler = (req, _res, next) => {
+    ;(req as any).userId = '11111111-1111-4111-8111-111111111111'
+    next()
+  }
+  const invited = [
+    { id: ID, email: 'laura@example.com', firstName: 'Laura', platform: 'web', wantsWhatsapp: true, statusUrl: 'https://mimoia.com/lista/abc', unsubscribeUrl: 'https://mimoia.com/lista/baja?t=t1' },
+    { id: '3f2a8c1e-0d4b-4c2a-9f1e-2b3c4d5e6f71', email: 'dani@example.com', firstName: null, platform: 'web', wantsWhatsapp: false, statusUrl: 'https://mimoia.com/lista/def', unsubscribeUrl: 'https://mimoia.com/lista/baja?t=t2' },
+  ]
+
+  it('emails every invited person once, with their own opt-out link, and reports the counts', async () => {
+    const invite = vi.fn(async () => ({ batch: 1, skipped: 0, invited }))
+    const sendEmail = vi
+      .fn()
+      .mockResolvedValueOnce({ status: 'sent', id: 'em_1' })
+      .mockResolvedValueOnce({ status: 'failed', error: 'boom' })
+    const app = express()
+    app.use(express.json())
+    app.use(createAdminWaitlistRouter({ adminAuth: [asAdmin], invite: invite as any, sendEmail, publicUrl: () => 'https://mimoia.com' }))
+    const b = await serve(app)
+    const r = await post(b, '/admin/waitlist/invite', { ids: [ID, invited[1].id] })
+    expect(r.status).toBe(200)
+    expect(sendEmail).toHaveBeenCalledTimes(2)
+    const first = sendEmail.mock.calls[0][0]
+    expect(first.to).toBe('laura@example.com')
+    expect(first.subject).toContain('Laura')
+    expect(first.headers['List-Unsubscribe']).toBe('<https://mimoia.com/lista/baja?t=t1>')
+    expect(sendEmail.mock.calls[1][0].to).toBe('dani@example.com')
+    expect(sendEmail.mock.calls[1][0].text).toContain('https://mimoia.com/lista/baja?t=t2')
+    const body = await r.json()
+    expect(body.email).toEqual({ sent: 1, skipped: 0, failed: 1 })
+    expect(body.invited.map((p: any) => p.emailStatus)).toEqual(['sent', 'failed'])
+  })
+
+  it('with sendEmail: false marks the batch and emails no one', async () => {
+    const invite = vi.fn(async () => ({ batch: 1, skipped: 0, invited }))
+    const sendEmail = vi.fn()
+    const app = express()
+    app.use(express.json())
+    app.use(createAdminWaitlistRouter({ adminAuth: [asAdmin], invite: invite as any, sendEmail, publicUrl: () => 'https://mimoia.com' }))
+    const b = await serve(app)
+    const r = await post(b, '/admin/waitlist/invite', { ids: [ID], sendEmail: false })
+    expect(r.status).toBe(200)
+    expect(sendEmail).not.toHaveBeenCalled()
+    const body = await r.json()
+    expect(body.email).toEqual({ sent: 0, skipped: 0, failed: 0 })
+    expect(body.invited[0].emailStatus).toBe('not_requested')
+  })
 })
 
 describe('toWaitlistSummary (the GET /admin/metrics block)', () => {

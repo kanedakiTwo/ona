@@ -48,7 +48,7 @@ const jetbrains = JetBrains_Mono({
 // Cookieless visit statistics (Cloudflare Web Analytics), only when the token is set at build time.
 const CF_BEACON = cfBeaconAttr(process.env.NEXT_PUBLIC_CF_BEACON_TOKEN)
 
-const PUBLIC_ROUTES = ["/", "/como-funciona", "/por-que-ona", "/privacidad", "/terminos", "/aviso-legal", "/login", "/register", "/reset", "/onboarding"]
+const PUBLIC_ROUTES = ["/", "/como-funciona", "/por-que-ona", "/privacidad", "/terminos", "/aviso-legal", "/login", "/register", "/reset", "/onboarding", "/newsletter/baja"]
 /** Public sections with dynamic segments: the waitlist owner page and opt-out (specs/waitlist.md) and household invitations (specs/auth.md). */
 const PUBLIC_PREFIXES = ["/lista/", "/invites/"]
 

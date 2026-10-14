@@ -28,6 +28,14 @@ Transactional email via Resend (REST API with fetch, no SDK, EU region, mimoia.c
 
 ---
 
+## [Newsletter «El menú de los viernes»](./newsletter.md)
+
+Weekly visual email for waitlist entries that ticked the newsletter box (LSSI consent), `POST /admin/newsletter/send` (admin JWT; `dryRun` counts, `testTo` one proof to an admin, real send via Resend batch ≤100, audited `newsletter.send`), content as data (star recipe full-width photo + alt, novedad, truco con Mimo, one CTA) rendered by `renderNewsletterEmail` (tables, inline styles, 600 px), idempotent per issue (`newsletter_sends` unique issue + sha256(email), migration 0046, failed/skipped claims released), newsletter-only opt-out `/newsletter/baja?t=w.<token>` + `POST /newsletter/unsubscribe` (place on the list stays), RFC 8058 `List-Unsubscribe-Post` one-click, hint «Te lo recomendamos: te va a sorprender», PRO-94.
+
+**Source**: `apps/api/src/services/newsletter.ts`, `apps/api/src/routes/newsletter.ts`, `apps/web/src/app/(public)/newsletter/baja/page.tsx`
+
+---
+
 ## [Waitlist (pre-launch, Mimoia)](./waitlist.md)
 
 Public pre-launch waitlist on the landing (`#lista-de-espera`), public brand Mimoia (`BRAND_NAME`, D-012), closed beta, invite by batches (tandas) every 2–4 weeks, no queue position / no fake scarcity, segmentation questions (household size, who plans/shops, current method, iOS/Android, supermarket), WhatsApp interest, separate newsletter opt-in (menú de los viernes, LSSI), consent version, honeypot, per-IP rate limit, idempotent on email, referral codes (`?invita=`, Crockford base32), "Invita a tu hogar y entráis antes", owner page `/lista/[code]`, copy + wa.me share, opt-out `/lista/baja` (anonymises), `?ref` / `utm_*` attribution, `waitlist_entries` (migration 0037), `GET /admin/waitlist` (metrics token: segments, sources, referrals, suggested next batch), `POST /admin/waitlist/invite` (admin JWT, audited, emails each invitee via Resend, see Email), register marks joined, public CTAs → waitlist.

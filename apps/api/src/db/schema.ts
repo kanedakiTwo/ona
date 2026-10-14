@@ -1109,6 +1109,28 @@ export const waitlistEntries = pgTable('waitlist_entries', {
 ])
 
 /**
+ * Newsletter «El menú de los viernes» (PRO-94, specs/newsletter.md): one row
+ * per issue and recipient, claimed before sending, so re-running the same
+ * issue never emails anyone twice. The recipient is the sha256 of the
+ * lowercased email: the idempotency key without a second copy of the address.
+ */
+export const newsletterSends = pgTable('newsletter_sends', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  issueId: text('issue_id').notNull(),
+  recipientHash: text('recipient_hash').notNull(),
+  /** waitlist | user */
+  source: text('source').notNull(),
+  /** pending (claimed, being sent) | sent */
+  status: text('status').notNull().default('pending'),
+  providerId: text('provider_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  sentAt: timestamp('sent_at', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('uq_newsletter_sends_issue_recipient').on(t.issueId, t.recipientHash),
+  check('newsletter_sends_status_check', sql.raw("status IN ('pending','sent')")),
+])
+
+/**
  * What this household chose when a product needs a choice (jamón → serrano,
  * pescado entero → lubina, carne picada → de ternera). Applied the next time
  * Mimoia drafts an order (specs/shop-orders.md → Buy rules).

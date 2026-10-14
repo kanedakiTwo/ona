@@ -36,6 +36,7 @@ import metricsRoutes from './routes/metrics.js'
 import shopOrdersRoutes, { publicShopOrdersRouter } from './routes/shopOrders.js'
 import appErrorsRoutes, { clientErrorsRouter } from './routes/appErrors.js'
 import waitlistRoutes, { adminWaitlistRouter } from './routes/waitlist.js'
+import newsletterRoutes from './routes/newsletter.js'
 import inviteCampaignRoutes from './routes/inviteCampaigns.js'
 import { trackShoppingActivity } from './services/activityEvents.js'
 import { trackUsageRoutes } from './services/usageEvents.js'
@@ -117,6 +118,8 @@ app.use(publicHouseholdRouter)
 app.use(publicShopOrdersRouter)
 // Pre-launch waitlist (public: signup, referral count, opt-out).
 app.use(waitlistRoutes)
+// Newsletter: public one-click opt-out + admin send (per-route auth, PRO-94).
+app.use(newsletterRoutes)
 app.use(recipeRoutes)
 app.use(ingredientRoutes)
 // pushRoutes is mostly auth-protected (per-route authMiddleware) but the

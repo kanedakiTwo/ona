@@ -19,6 +19,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'app_error.resolve': 'Error marcado como resuelto',
   'waitlist.invite': 'Tanda de la lista de espera invitada',
   'invite_campaign.create': 'Enlace de invitación creado',
+  'newsletter.send': 'Newsletter enviada',
 }
 
 export function actionLabel(code: string): string {

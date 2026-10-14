@@ -69,6 +69,7 @@ echo "  API healthy."
 
 echo "── 5/6 Boot Web on :${WEB_PORT} ─────────────────────────────────"
 NEXT_PUBLIC_API_URL="http://localhost:${API_PORT}" \
+BLOG_CONTENT_DIR="e2e/fixtures/blog" \
 PORT="$WEB_PORT" \
   pnpm --filter @ona/web exec next dev --port "$WEB_PORT" > /tmp/ona-e2e-web.log 2>&1 &
 WEB_PID=$!

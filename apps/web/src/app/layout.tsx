@@ -48,9 +48,11 @@ const jetbrains = JetBrains_Mono({
 // Cookieless visit statistics (Cloudflare Web Analytics), only when the token is set at build time.
 const CF_BEACON = cfBeaconAttr(process.env.NEXT_PUBLIC_CF_BEACON_TOKEN)
 
-const PUBLIC_ROUTES = ["/", "/como-funciona", "/por-que-ona", "/privacidad", "/terminos", "/aviso-legal", "/login", "/register", "/reset", "/onboarding"]
-/** Public sections with dynamic segments: the waitlist owner page and opt-out (specs/waitlist.md) and household invitations (specs/auth.md). */
-const PUBLIC_PREFIXES = ["/lista/", "/invites/"]
+const PUBLIC_ROUTES = ["/", "/como-funciona", "/por-que-ona", "/privacidad", "/terminos", "/aviso-legal", "/blog", "/login", "/register", "/reset", "/onboarding"]
+/** Public sections with dynamic segments: the waitlist owner page and opt-out (specs/waitlist.md), household invitations (specs/auth.md) and blog articles (specs/blog.md). */
+const PUBLIC_PREFIXES = ["/lista/", "/invites/", "/blog/"]
+/** Pages that set their own title/description/canonical with Next's `metadata` (specs/blog.md): the default tags below would duplicate them. */
+const hasOwnMetadata = (pathname: string) => pathname === "/blog" || pathname.startsWith("/blog/")
 
 const APPLE_SPLASH_IMAGES = [
   { src: "splash-2048x2732.png", w: 1024, h: 1366, dpr: 2 },
@@ -89,8 +91,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       className={`${inter.variable} ${fraunces.variable} ${cormorant.variable} ${jetbrains.variable}`}
     >
       <head>
-        <title>Mimoia — Tu semana de comidas, ya pensada</title>
-        <meta name="description" content="Asistente nutricional en castellano. Te planifica el menú de la semana, te hace la lista de la compra y va recordando lo que vas aprendiendo sobre tu cuerpo." />
+        {!hasOwnMetadata(pathname) && (
+          <>
+            <title>Mimoia — Tu semana de comidas, ya pensada</title>
+            <meta name="description" content="Asistente nutricional en castellano. Te planifica el menú de la semana, te hace la lista de la compra y va recordando lo que vas aprendiendo sobre tu cuerpo." />
+          </>
+        )}
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 
         {/* PWA manifest + theme */}

@@ -34,7 +34,7 @@ test.describe('desktop', () => {
   test('admin opens Invitaciones from the sidebar', async ({ page }) => {
     await loginAsAdmin(page)
     await page.goto('/admin')
-    const adminNav = page.getByRole('navigation', { name: 'Admin' })
+    const adminNav = page.getByRole('navigation', { name: 'Admin', exact: true })
     await expect(adminNav).toBeVisible({ timeout: 15_000 })
     await adminNav.getByRole('link', { name: 'Invitaciones' }).click()
     await expect(page).toHaveURL(/\/admin\/invitaciones$/)
@@ -50,7 +50,7 @@ test.describe('desktop', () => {
     await registerFreshUser(page)
     await page.goto('/menu')
     await expect(page.getByRole('complementary', { name: 'Navegación principal' })).toBeVisible()
-    await expect(page.getByRole('navigation', { name: 'Admin' })).toHaveCount(0)
+    await expect(page.getByRole('navigation', { name: 'Admin', exact: true })).toHaveCount(0)
   })
 })
 

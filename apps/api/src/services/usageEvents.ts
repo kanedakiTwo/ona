@@ -24,6 +24,7 @@
 import type { NextFunction, Request, Response } from 'express'
 import { sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
+import { carrefourLinks, type CarrefourLineInput } from '@ona/shared'
 import { detectSocialPlatform } from './sources/social.js'
 import { detectSourceType } from './sources/sourceType.js'
 
@@ -43,6 +44,7 @@ export const USAGE_EVENTS = [
   'mimo_message',
   'whatsapp_linked',
   'shop_order_prepared',
+  'carrefour_click',
 ] as const
 export type UsageEventName = (typeof USAGE_EVENTS)[number]
 
@@ -125,6 +127,14 @@ export function urlImportProps(url: unknown, channel: UsageChannel): UsageProps 
   }
   const social = kind === 'instagram' || kind === 'tiktok'
   return { source: social ? 'social' : channel === 'whatsapp' ? 'whatsapp_url' : 'url', kind }
+}
+
+/**
+ * Pure: `carrefour_click` props for a click on «Hacer este pedido en
+ * Carrefour.es» (PRO-84): only how many lines the card had, nothing else.
+ */
+export function carrefourClickProps(lines: CarrefourLineInput[]): UsageProps {
+  return { items: carrefourLinks(lines).length }
 }
 
 // ─── Web routes (middleware) ───────────────────────────────────────

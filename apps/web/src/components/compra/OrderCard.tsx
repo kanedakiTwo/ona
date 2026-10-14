@@ -12,6 +12,7 @@ import { useState } from "react"
 import { ArrowRightLeft, Check, Copy, ExternalLink, Globe, Mail, MessageCircle, Phone, Plus, X } from "lucide-react"
 import {
   SHOP_KIND_LABELS,
+  carrefourLinks,
   SHOP_ORDER_STATUS_LABELS,
   capitalize,
   formatQty,
@@ -30,6 +31,7 @@ import {
   useSubmitShopReply,
 } from "@/hooks/useShopOrders"
 import { haptic } from "@/lib/pwa/haptics"
+import { api } from "@/lib/api"
 
 const eur = (n: number | null | undefined) => (n == null ? "—" : `${String(Math.round(n * 100) / 100).replace(".", ",")} €`)
 const lineName = (l: ShopOrderLine) => capitalize(prettyName(l.name))
@@ -355,6 +357,56 @@ function DraftBody({ order, shops }: { order: ShopOrder; shops: Shop[] }) {
       </div>
       {order.links.tooLong && !blocked && (
         <p className="text-[11px] text-[#C65D38]">El pedido es largo para escribirlo solo: copia el mensaje y pégalo en el chat que se abre.</p>
+      )}
+      {order.shop.kind === "supermercado" && <CarrefourOrder order={order} />}
+    </div>
+  )
+}
+
+/**
+ * PRO-84 — «Hacer este pedido en Carrefour.es» on the súper card: opens one
+ * search link on carrefour.es per line (Carrefour doesn't let anyone fill its
+ * cart from outside). No affiliation; opening it is counted (`carrefour_click`,
+ * only the number of lines).
+ */
+function CarrefourOrder({ order }: { order: ShopOrder }) {
+  const [open, setOpen] = useState(false)
+  const links = carrefourLinks(order.lines)
+  if (links.length === 0) return null
+  const byKey = new Map(order.lines.map((l) => [l.key, l]))
+  return (
+    <div className="border-t border-[#EFE8D8] pt-3" data-testid="carrefour">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => {
+          if (!open) {
+            haptic.light()
+            api.post(`/shop-orders/${order.id}/carrefour-click`).catch(() => {})
+          }
+          setOpen(!open)
+        }}
+        className="inline-flex items-center gap-2 rounded-full border border-[#1A1612] px-4 py-2 text-[12px] text-[#1A1612]"
+      >
+        <Globe size={14} /> Hacer este pedido en Carrefour.es
+      </button>
+      {open && (
+        <div className="mt-3 space-y-2">
+          <p className="text-[11px] text-[#7A7066]">Busca cada producto en carrefour.es y añádelo a tu carrito allí.</p>
+          <ul className="divide-y divide-[#EFE8D8]">
+            {links.map(({ key, url }) => {
+              const l = byKey.get(key)!
+              return (
+                <li key={key} className="flex items-center gap-2 py-1.5">
+                  <span className="min-w-0 flex-1 text-[13px] text-[#1A1612]">{l.text ?? lineName(l)}</span>
+                  <a href={url} target="_blank" rel="noopener noreferrer" className={ghostBtn} aria-label={`Buscar ${lineName(l)} en Carrefour.es`}>
+                    Buscar <ExternalLink size={11} />
+                  </a>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
       )}
     </div>
   )

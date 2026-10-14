@@ -85,6 +85,7 @@ Analítica de producto en una tabla propia, sin terceros. Una fila por cada cosa
 | `mimo_message` (por `channel`; en WhatsApp `props.kind` text/voice_note/photo) | `POST /assistant/:id/chat` (`mode: voice` → voice) | cada turno de WhatsApp que llega a Mimo (`inbound.ts`) |
 | `whatsapp_linked` | — | código de vinculación aceptado (`inbound.ts`) |
 | `shop_order_prepared` (`props.orders` desde Mimo) | `POST /shop-orders/prepare` | `prepare_shop_orders` con al menos un pedido |
+| `carrefour_click` (`props.items` = líneas de la tarjeta del súper) | `POST /shop-orders/:id/carrefour-click` (botón «Hacer este pedido en Carrefour.es», PRO-84) | — |
 
 Sin dobles recuentos: las herramientas que llaman a la propia API REST (`appApi.ts`) y los procesos de sistema que leen la lista (recordatorio de la compra por WhatsApp, la lectura interna de `POST /shop-orders/prepare`) envían la cabecera `x-mimoia-internal`, que el middleware web ignora; el ejecutor de herramientas los registra con el canal de la conversación. Las herramientas que responden "no encontrado" (`data: null`) no cuentan.
 

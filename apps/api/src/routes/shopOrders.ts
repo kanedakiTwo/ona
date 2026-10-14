@@ -15,6 +15,7 @@
  *   POST   /shop-orders/:id/approve     — the user's decisions → confirmation message
  *   POST   /shop-orders/:id/close       — collected / delivered (ticks the list)
  *   POST   /shop-orders/:id/cancel
+ *   POST   /shop-orders/:id/carrefour-click — the user tapped «Hacer este pedido en Carrefour.es» on a súper card (counts the click, 204)
  *
  *   GET    /shop-orders/link/:token     — PUBLIC: the wa.me/mailto behind a short link (no side effects)
  */
@@ -26,6 +27,7 @@ import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { requireSpendCapacity } from '../middleware/spendCap.js'
 import { appApiFor } from '../services/assistant/appApi.js'
 import { addDays, madridParts } from '../services/madridTime.js'
+import { carrefourClickProps, trackEvent } from '../services/usageEvents.js'
 import {
   addShop,
   approveOrder,
@@ -205,5 +207,17 @@ router.post('/shop-orders/:id/close', withOrder(async (req, res) => {
 router.post('/shop-orders/:id/cancel', withOrder(async (req, res) => {
   res.json(await cancelOrder(req.userId!, String(req.params.id)))
 }, 'POST /shop-orders/:id/cancel'))
+
+// PRO-84: demand test for ordering the súper card on carrefour.es. Counts the
+// click only (`carrefour_click`, props.items = lines); no affiliation.
+router.post('/shop-orders/:id/carrefour-click', withOrder(async (req, res) => {
+  const order = await getOrder(req.userId!, String(req.params.id))
+  if (order.shop.kind !== 'supermercado') {
+    res.status(400).json({ error: 'Solo para el pedido del súper.' })
+    return
+  }
+  trackEvent('carrefour_click', { userId: req.userId!, channel: 'web', props: carrefourClickProps(order.lines) })
+  res.status(204).end()
+}, 'POST /shop-orders/:id/carrefour-click'))
 
 export default router

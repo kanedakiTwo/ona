@@ -103,6 +103,40 @@ describe('shop orders route smoke', () => {
     expect(list.body.length).toBe(again.body.orders.length)
   }, 60_000)
 
+  it('counts a click on «Hacer este pedido en Carrefour.es» as carrefour_click (PRO-84)', async () => {
+    if (!reachable) return
+    const s = await register()
+    const a = call(s)
+    await a('POST', '/shops', { name: 'Súper del barrio', kind: 'supermercado', channel: 'whatsapp', whatsapp: '34600000001', fulfilment: 'recoger' })
+    const list = await a('GET', '/shopping-list')
+    for (const name of ['leche entera', 'galletas']) {
+      expect((await a('POST', `/shopping-list/${list.body.id}/items`, { name })).status).toBeLessThan(300)
+    }
+    const prep = await a('POST', '/shop-orders/prepare', {})
+    const order = (prep.body.orders as any[]).find((o) => o.shop.kind === 'supermercado')
+    expect(order).toBeTruthy()
+
+    const token = process.env.METRICS_READ_TOKEN
+    const count = async () => {
+      if (!token) return 0
+      const r = await fetch(`${API_URL}/admin/usage?days=1`, { headers: { 'x-metrics-token': token } })
+      return Number((await r.json()).totals.events.carrefour_click ?? 0)
+    }
+    const before = await count()
+    expect((await a('POST', `/shop-orders/${order.id}/carrefour-click`)).status).toBe(204)
+    if (token) {
+      let after = before
+      for (let i = 0; i < 20 && after === before; i++) {
+        await new Promise((r) => setTimeout(r, 250))
+        after = await count()
+      }
+      expect(after - before).toBe(1)
+    }
+    // Only the súper card; someone else's order is not found.
+    const other = call(await register())
+    expect((await other('POST', `/shop-orders/${order.id}/carrefour-click`)).status).toBe(404)
+  }, 60_000)
+
   it('short link resolves publicly without changing the order', async () => {
     if (!reachable) return
     const [o] = (await api('GET', '/shop-orders')).body

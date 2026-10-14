@@ -60,6 +60,10 @@ export const WAITLIST_CONSENT_VERSION = '2026-10-15'
  */
 export const WAITLIST_NEWSLETTER_CONSENT_VERSION = '2026-10-15'
 
+/** The newsletter box, same words on the waitlist, /register and the profile (PRO-95). */
+export const NEWSLETTER_OPT_IN_LABEL = 'Quiero recibir cada viernes el menú de la semana por email'
+export const NEWSLETTER_OPT_IN_HINT = 'Te lo recomendamos: te va a sorprender.'
+
 // ─── Referral codes ──────────────────────────────────────────────
 
 /** Crockford-style base32, lowercase, without i/l/o/u (no look-alikes, URL-safe). */

@@ -1,7 +1,8 @@
-import { createHash } from 'node:crypto'
-import { and, eq, inArray, ne, sql } from 'drizzle-orm'
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
+import { and, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { ASSISTANT_NAME, BRAND_NAME, waitlistUnsubscribePath } from '@ona/shared'
+import { ASSISTANT_NAME, BRAND_NAME, WAITLIST_NEWSLETTER_CONSENT_VERSION, waitlistUnsubscribePath } from '@ona/shared'
+import { env } from '../config/env.js'
 import { db as defaultDb } from '../db/connection.js'
 import { newsletterSends, users, waitlistEntries } from '../db/schema.js'
 import { maskEmail, sendEmail, sendEmailBatch, type EmailMessage, type EmailResult } from './email.js'
@@ -10,7 +11,8 @@ import { maskEmail, sendEmail, sendEmailBatch, type EmailMessage, type EmailResu
  * Newsletter «El menú de los viernes» (PRO-94, specs/newsletter.md).
  *
  *   - Recipients: waitlist entries that ticked the newsletter box and haven't
- *     left (`selectNewsletterRecipients`). PRO-95 adds users with their own box.
+ *     left, and users who ticked it at /register or in the profile (PRO-95);
+ *     one email per address (`selectNewsletterRecipients`).
  *   - Idempotent per issue: each recipient is claimed in `newsletter_sends`
  *     (unique issue + sha256(email)) before the email goes out; a failed or
  *     unconfigured send releases the claim so a re-run retries only those.
@@ -53,6 +55,8 @@ export const newsletterSendSchema = z.object({
   testTo: z.string().trim().toLowerCase().email().optional(),
   /** Count the recipients without sending. */
   dryRun: z.boolean().optional(),
+  /** With dryRun: also say whether this address would get it. */
+  includes: z.string().trim().toLowerCase().email().optional(),
 })
 export type NewsletterSendInput = z.infer<typeof newsletterSendSchema>
 
@@ -171,30 +175,59 @@ export function newsletterTokenForWaitlist(unsubscribeToken: string): string {
   return `w.${unsubscribeToken}`
 }
 
+function userSig(userId: string): string {
+  return createHmac('sha256', env.JWT_SECRET).update(`newsletter:${userId}`).digest('base64url').slice(0, 22)
+}
+
+/** A user's newsletter-only opt-out token: `u.<userId>.<hmac>` (no row to look up, nothing to leak). */
+export function newsletterTokenForUser(userId: string): string {
+  return `u.${userId}.${userSig(userId)}`
+}
+
 export function newsletterUnsubscribePath(token: string): string {
   return `/newsletter/baja?t=${encodeURIComponent(token)}`
 }
 
+export type NewsletterTokenRef = { kind: 'waitlist'; token: string } | { kind: 'user'; userId: string }
+
+/** `w.<waitlist opt-out token>` or a valid `u.<userId>.<hmac>`; anything else → null. */
+export function parseNewsletterToken(token: string): NewsletterTokenRef | null {
+  const t = token.trim()
+  const w = /^w\.([A-Za-z0-9_-]{16,128})$/.exec(t)
+  if (w) return { kind: 'waitlist', token: w[1] }
+  const u = /^u\.([0-9a-f-]{36})\.([A-Za-z0-9_-]{22})$/.exec(t)
+  if (u) {
+    const want = Buffer.from(userSig(u[1]))
+    const got = Buffer.from(u[2])
+    if (want.length === got.length && timingSafeEqual(want, got)) return { kind: 'user', userId: u[1] }
+  }
+  return null
+}
+
 export interface NewsletterCandidate {
-  source: 'waitlist'
+  source: 'waitlist' | 'user'
   email: string | null
-  firstName: string | null
+  /** waitlist: waiting | invited | joined | unsubscribed; user: active | suspended */
   status: string
   newsletterOptIn: boolean
-  unsubscribeToken: string
+  /** Newsletter-only opt-out token. */
+  token: string
+  /** Full waitlist opt-out token (for «Salir de la lista de espera»); waitlist only. */
+  leaveToken?: string
 }
 
 export interface NewsletterRecipient {
-  source: 'waitlist'
+  source: 'waitlist' | 'user'
   email: string
   hash: string
-  /** Newsletter-only opt-out token. */
   token: string
-  /** Full waitlist opt-out token (for «Salir de la lista de espera»). */
-  leaveToken: string
+  leaveToken?: string
 }
 
-/** Opted in, still on the list, with an email, not yet sent this issue; one per email. */
+/**
+ * Opted in, still on the list (or an active account), with an email, not yet
+ * sent this issue; one per email — the first candidate wins, so pass users first.
+ */
 export function selectNewsletterRecipients(
   candidates: NewsletterCandidate[],
   alreadySent: ReadonlySet<string>,
@@ -202,7 +235,7 @@ export function selectNewsletterRecipients(
   const seen = new Set<string>()
   const out: NewsletterRecipient[] = []
   for (const c of candidates) {
-    if (!c.newsletterOptIn || c.status === 'unsubscribed' || !c.email?.trim()) continue
+    if (!c.newsletterOptIn || c.status === 'unsubscribed' || c.status === 'suspended' || !c.email?.trim()) continue
     const hash = recipientHash(c.email)
     if (alreadySent.has(hash) || seen.has(hash)) continue
     seen.add(hash)
@@ -210,8 +243,8 @@ export function selectNewsletterRecipients(
       source: c.source,
       email: c.email.trim().toLowerCase(),
       hash,
-      token: newsletterTokenForWaitlist(c.unsubscribeToken),
-      leaveToken: c.unsubscribeToken,
+      token: c.token,
+      ...(c.leaveToken ? { leaveToken: c.leaveToken } : {}),
     })
   }
   return out
@@ -229,8 +262,14 @@ export interface NewsletterRepo {
   /** Drop claims whose email didn't go out, so a re-run retries them. */
   release(issueId: string, hashes: string[]): Promise<void>
   isAdminEmail(email: string): Promise<boolean>
-  /** Newsletter off for the token's entry; the entry stays on the list. */
+  /**
+   * Newsletter off for the token's address, in the waitlist AND the account
+   * with that email (one person, one switch). The place on the list stays.
+   */
   unsubscribe(token: string): Promise<'ok' | 'already' | 'not_found'>
+  /** The profile switch (PRO-95). Off also turns off the waitlist entry with that email. */
+  getUserOptIn(userId: string): Promise<boolean | null>
+  setUserOptIn(userId: string, optIn: boolean): Promise<boolean | null>
 }
 
 type Db = typeof defaultDb
@@ -238,17 +277,35 @@ type Db = typeof defaultDb
 export function createDbNewsletterRepo(db: Db = defaultDb): NewsletterRepo {
   return {
     async candidates() {
+      const people = await db
+        .select({ id: users.id, email: users.email, suspendedAt: users.suspendedAt })
+        .from(users)
+        .where(eq(users.newsletterOptIn, true))
       const rows = await db
         .select({
           email: waitlistEntries.email,
-          firstName: waitlistEntries.firstName,
           status: waitlistEntries.status,
-          newsletterOptIn: waitlistEntries.newsletterOptIn,
           unsubscribeToken: waitlistEntries.unsubscribeToken,
         })
         .from(waitlistEntries)
         .where(and(eq(waitlistEntries.newsletterOptIn, true), ne(waitlistEntries.status, 'unsubscribed')))
-      return rows.map((r) => ({ source: 'waitlist' as const, ...r }))
+      return [
+        ...people.map((u) => ({
+          source: 'user' as const,
+          email: u.email,
+          status: u.suspendedAt ? 'suspended' : 'active',
+          newsletterOptIn: true,
+          token: newsletterTokenForUser(u.id),
+        })),
+        ...rows.map((r) => ({
+          source: 'waitlist' as const,
+          email: r.email,
+          status: r.status,
+          newsletterOptIn: true,
+          token: newsletterTokenForWaitlist(r.unsubscribeToken),
+          leaveToken: r.unsubscribeToken,
+        })),
+      ]
     },
     async claimedHashes(issueId) {
       const rows = await db
@@ -299,25 +356,60 @@ export function createDbNewsletterRepo(db: Db = defaultDb): NewsletterRepo {
       return !!row
     },
     async unsubscribe(token) {
-      const raw = parseNewsletterToken(token)
-      if (!raw) return 'not_found'
-      const [entry] = await db
-        .select({ id: waitlistEntries.id, optIn: waitlistEntries.newsletterOptIn, status: waitlistEntries.status })
-        .from(waitlistEntries)
-        .where(eq(waitlistEntries.unsubscribeToken, raw.token))
-        .limit(1)
-      if (!entry || entry.status === 'unsubscribed') return entry ? 'already' : 'not_found'
-      if (!entry.optIn) return 'already'
-      await db.update(waitlistEntries).set({ newsletterOptIn: false }).where(eq(waitlistEntries.id, entry.id))
-      return 'ok'
+      const ref = parseNewsletterToken(token)
+      if (!ref) return 'not_found'
+      let email: string | null = null
+      if (ref.kind === 'waitlist') {
+        const [entry] = await db
+          .select({ email: waitlistEntries.email, status: waitlistEntries.status })
+          .from(waitlistEntries)
+          .where(eq(waitlistEntries.unsubscribeToken, ref.token))
+          .limit(1)
+        if (!entry) return 'not_found'
+        if (entry.status === 'unsubscribed' || !entry.email) return 'already'
+        email = entry.email
+      } else {
+        const [user] = await db.select({ email: users.email }).from(users).where(eq(users.id, ref.userId)).limit(1)
+        if (!user) return 'not_found'
+        email = user.email
+      }
+      return (await turnOffByEmail(db, email)) > 0 ? 'ok' : 'already'
+    },
+    async getUserOptIn(userId) {
+      const [u] = await db.select({ on: users.newsletterOptIn }).from(users).where(eq(users.id, userId)).limit(1)
+      return u ? u.on : null
+    },
+    async setUserOptIn(userId, optIn) {
+      if (optIn) {
+        const rows = await db
+          .update(users)
+          .set({ newsletterOptIn: true, newsletterConsentAt: new Date(), newsletterConsentVersion: WAITLIST_NEWSLETTER_CONSENT_VERSION })
+          .where(eq(users.id, userId))
+          .returning({ id: users.id })
+        return rows.length > 0 ? true : null
+      }
+      const [u] = await db.select({ email: users.email }).from(users).where(eq(users.id, userId)).limit(1)
+      if (!u) return null
+      await turnOffByEmail(db, u.email)
+      return false
     },
   }
 }
 
-/** `w.<waitlist opt-out token>` → the waitlist token; anything else → null. */
-export function parseNewsletterToken(token: string): { kind: 'waitlist'; token: string } | null {
-  const m = /^w\.([A-Za-z0-9_-]{16,128})$/.exec(token.trim())
-  return m ? { kind: 'waitlist', token: m[1] } : null
+/** Newsletter off for every row with this email (account + waitlist). Returns how many were on. */
+async function turnOffByEmail(db: Db, email: string): Promise<number> {
+  const e = email.trim().toLowerCase()
+  const a = await db
+    .update(users)
+    .set({ newsletterOptIn: false })
+    .where(and(sql`lower(${users.email}) = ${e}`, eq(users.newsletterOptIn, true)))
+    .returning({ id: users.id })
+  const b = await db
+    .update(waitlistEntries)
+    .set({ newsletterOptIn: false })
+    .where(and(eq(waitlistEntries.email, e), eq(waitlistEntries.newsletterOptIn, true)))
+    .returning({ id: waitlistEntries.id })
+  return a.length + b.length
 }
 
 // ─── Send ────────────────────────────────────────────────────────
@@ -366,7 +458,14 @@ export function buildNewsletterMessage(
 }
 
 export type NewsletterOutcome =
-  | { mode: 'dry_run'; issueId: string; recipients: number; alreadySent: number }
+  | {
+      mode: 'dry_run'
+      issueId: string
+      recipients: number
+      alreadySent: number
+      bySource: { waitlist: number; user: number }
+      includes?: boolean
+    }
   | { mode: 'test'; issueId: string; to: string; status: EmailResult['status'] }
   | { mode: 'send'; issueId: string; sent: number; failed: number; skipped: number; alreadySent: number }
 
@@ -389,7 +488,17 @@ export async function sendNewsletter(input: NewsletterSendInput, deps: Newslette
   const claimedBefore = await deps.repo.claimedHashes(input.issueId)
   const recipients = selectNewsletterRecipients(await deps.repo.candidates(), claimedBefore)
   if (input.dryRun) {
-    return { mode: 'dry_run', issueId: input.issueId, recipients: recipients.length, alreadySent: claimedBefore.size }
+    return {
+      mode: 'dry_run',
+      issueId: input.issueId,
+      recipients: recipients.length,
+      alreadySent: claimedBefore.size,
+      bySource: {
+        waitlist: recipients.filter((r) => r.source === 'waitlist').length,
+        user: recipients.filter((r) => r.source === 'user').length,
+      },
+      ...(input.includes ? { includes: recipients.some((r) => r.hash === recipientHash(input.includes!)) } : {}),
+    }
   }
 
   const claimed = await deps.repo.claim(input.issueId, recipients)

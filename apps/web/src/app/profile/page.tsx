@@ -59,6 +59,7 @@ import { MyRecipesSection } from './sections/MyRecipesSection'
 import { MealDishCountControls } from '@/components/profile/MealDishCountControls'
 import { WhatsAppCard } from '@/components/profile/WhatsAppCard'
 import { DeleteAccountCard } from '@/components/profile/DeleteAccountCard'
+import { NewsletterToggle } from '@/components/profile/NewsletterToggle'
 import { useWhatsAppStatus } from '@/hooks/useWhatsApp'
 import type { Meal } from '@ona/shared'
 import { RESTRICTION_PRESETS, unionRestrictions } from '@ona/shared'
@@ -862,6 +863,9 @@ export default function ProfilePage() {
 
               {/* Web Push — server-side notifications that survive a closed tab. */}
               <PushNotificationsCard />
+
+              {/* Friday menu email (PRO-95): its own consent, saved on tap. */}
+              <NewsletterToggle />
             </ProfileCard>
 
             {/* Mis recetas */}

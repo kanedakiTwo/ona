@@ -8,6 +8,7 @@ import { ApiError } from "@/lib/api"
 import { ArrowRight } from "lucide-react"
 import { Accent, AUTH_PILL, AuthError, AuthField, AuthFooterLink, AuthHeading, AuthShell } from "@/components/auth/AuthShell"
 import { useAuth } from "@/lib/auth"
+import { NEWSLETTER_OPT_IN_HINT, NEWSLETTER_OPT_IN_LABEL } from "@ona/shared"
 
 const HERO_IMG = "https://images.unsplash.com/photo-1466637574441-749b8f19452f?w=1200&q=85&auto=format&fit=crop"
 
@@ -19,6 +20,7 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [ageConfirmed, setAgeConfirmed] = useState(false)
+  const [newsletterOptIn, setNewsletterOptIn] = useState(false)
   const nextSuffix = useNextSuffix()
   const [error, setError] = useState<string | null>(null)
   // Closed beta (PRO-27): no invitation → point to the waitlist.
@@ -35,6 +37,7 @@ export default function RegisterPage() {
       await register(username, email, password, ageConfirmed, {
         inviteCode: campaignCodeFromLocation(),
         householdInviteToken: householdInviteTokenFromNext(next),
+        newsletterOptIn,
       })
       router.push(next ?? "/onboarding")
     } catch (err) {
@@ -122,6 +125,24 @@ export default function RegisterPage() {
             className="h-5 w-5 shrink-0 accent-ink"
           />
           <span>Tengo 14 años o más</span>
+        </label>
+
+        {/* Friday menu email (PRO-95): separate, optional, unticked (LSSI art. 21). */}
+        <label className="flex min-h-[44px] cursor-pointer items-start gap-3 text-[14px] text-ink">
+          <input
+            type="checkbox"
+            name="newsletterOptIn"
+            checked={newsletterOptIn}
+            onChange={(e) => setNewsletterOptIn(e.target.checked)}
+            aria-describedby="register-newsletter-hint"
+            className="mt-0.5 h-5 w-5 shrink-0 accent-ink"
+          />
+          <span>
+            {NEWSLETTER_OPT_IN_LABEL}
+            <span id="register-newsletter-hint" className="mt-0.5 block text-[12px] text-ink-muted">
+              {NEWSLETTER_OPT_IN_HINT} Opcional; te das de baja con un clic.
+            </span>
+          </span>
         </label>
 
         <button

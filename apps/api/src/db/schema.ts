@@ -53,6 +53,14 @@ export const users = pgTable('users', {
   /** When the user ticked «Tengo 14 años o más» at sign-up (LOPDGDD art. 7, PRO-23). */
   ageConfirmedAt: timestamp('age_confirmed_at', { withTimezone: true }),
   /**
+   * «El menú de los viernes» newsletter (PRO-95, specs/newsletter.md): a
+   * separate, optional consent (LSSI art. 21–22) from /register or the
+   * profile. Date + text version stored when given; turning it off keeps them.
+   */
+  newsletterOptIn: boolean('newsletter_opt_in').notNull().default(false),
+  newsletterConsentAt: timestamp('newsletter_consent_at', { withTimezone: true }),
+  newsletterConsentVersion: text('newsletter_consent_version'),
+  /**
    * Explicit consent for health data (RGPD art. 9, PRO-21): when it was given,
    * which text version, and when it was withdrawn. Both dates stay as the
    * record; it is in force when consent_at is later than withdrawn_at.

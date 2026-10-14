@@ -18,12 +18,15 @@ import {
  * Newsletter «El menú de los viernes» (PRO-94, specs/newsletter.md).
  *
  *   POST /admin/newsletter/send    admin JWT: dryRun (count) | testTo (one proof to an admin) | send
+ *   GET  /newsletter/me            JWT: { optIn } — the profile switch (PRO-95)
+ *   PUT  /newsletter/me { optIn }  JWT: on (consent date + version) / off (also the waitlist entry)
  *   POST /newsletter/unsubscribe   public: newsletter off, the place on the list stays.
  *                                  JSON `{ token }` from /newsletter/baja, or the RFC 8058
  *                                  one-click POST to `?t=<token>` from the inbox.
  */
 
 const unsubscribeSchema = z.object({ token: z.string().trim().min(3).max(200) })
+const optInSchema = z.object({ optIn: z.boolean() })
 
 /** The API's own origin, for the one-click URL (behind Railway: `trust proxy` is on). */
 function apiOrigin(req: Request): string {
@@ -33,6 +36,7 @@ function apiOrigin(req: Request): string {
 export interface NewsletterRouterDeps {
   repo: NewsletterRepo
   adminAuth: RequestHandler[]
+  userAuth: RequestHandler
   unsubscribeLimiter: RequestHandler
   send: typeof sendNewsletter
   makeDeps: (urls: { publicUrl: string; apiUrl: string }) => NewsletterDeps
@@ -45,6 +49,7 @@ export function createNewsletterRouter(overrides: Partial<NewsletterRouterDeps> 
   const deps: NewsletterRouterDeps = {
     repo,
     adminAuth: [authMiddleware as RequestHandler, requireAdmin as RequestHandler],
+    userAuth: authMiddleware as RequestHandler,
     unsubscribeLimiter: rateLimit({ max: 30, windowMs: 60 * 60_000 }),
     send: sendNewsletter,
     makeDeps: (urls) => ({ ...defaultNewsletterDeps(urls), repo }),
@@ -82,6 +87,39 @@ export function createNewsletterRouter(overrides: Partial<NewsletterRouterDeps> 
       }
       console.error('[newsletter] send failed:', err?.message ?? err)
       res.status(500).json({ error: 'Internal server error' })
+    }
+  })
+
+  router.get('/newsletter/me', deps.userAuth, async (req: AuthRequest, res: Response) => {
+    try {
+      const on = await deps.repo.getUserOptIn(req.userId!)
+      if (on === null) {
+        res.status(404).json({ error: 'User not found' })
+        return
+      }
+      res.json({ optIn: on })
+    } catch (err: any) {
+      console.error('[newsletter] read opt-in failed:', err?.message ?? err)
+      res.status(500).json({ error: 'Internal server error' })
+    }
+  })
+
+  router.put('/newsletter/me', deps.userAuth, async (req: AuthRequest, res: Response) => {
+    const parsed = optInSchema.safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Pasa `optIn` (true o false).', code: 'INVALID_NEWSLETTER_OPT_IN' })
+      return
+    }
+    try {
+      const on = await deps.repo.setUserOptIn(req.userId!, parsed.data.optIn)
+      if (on === null) {
+        res.status(404).json({ error: 'User not found' })
+        return
+      }
+      res.json({ optIn: on })
+    } catch (err: any) {
+      console.error('[newsletter] set opt-in failed:', err?.message ?? err)
+      res.status(500).json({ error: 'No hemos podido guardarlo. Inténtalo de nuevo en un momento.' })
     }
   })
 

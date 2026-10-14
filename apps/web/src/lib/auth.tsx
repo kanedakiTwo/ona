@@ -35,7 +35,7 @@ interface AuthState {
     email: string,
     password: string,
     ageConfirmed: boolean,
-    invite?: { inviteCode?: string; householdInviteToken?: string },
+    invite?: { inviteCode?: string; householdInviteToken?: string; newsletterOptIn?: boolean },
   ) => Promise<void>
   logout: () => void
   updateUser: (updates: Partial<User>) => void
@@ -88,7 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email: string,
       password: string,
       ageConfirmed: boolean,
-      invite?: { inviteCode?: string; householdInviteToken?: string },
+      invite?: { inviteCode?: string; householdInviteToken?: string; newsletterOptIn?: boolean },
     ) => {
       const data = await api.post<AuthResponse>("/register", {
         username,

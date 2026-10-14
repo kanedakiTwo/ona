@@ -13,6 +13,8 @@ import { createNewsletterRouter } from '../routes/newsletter.js'
 import {
   buildNewsletterMessage,
   newsletterSendSchema,
+  newsletterTokenForUser,
+  newsletterTokenForWaitlist,
   parseNewsletterToken,
   recipientHash,
   renderNewsletterEmail,
@@ -30,8 +32,26 @@ const TOKEN_B = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
 const TOKEN_C = 'cccccccccccccccccccccccccccccccc'
 const TOKEN_D = 'dddddddddddddddddddddddddddddddd'
 
-function cand(email: string | null, extra: Partial<NewsletterCandidate> = {}): NewsletterCandidate {
-  return { source: 'waitlist', email, firstName: null, status: 'waiting', newsletterOptIn: true, unsubscribeToken: TOKEN_A, ...extra }
+type CandInput = Partial<NewsletterCandidate> & { unsubscribeToken?: string }
+
+/** A waitlist candidate; `unsubscribeToken` is the entry's full opt-out token. */
+function cand(email: string | null, extra: CandInput = {}): NewsletterCandidate {
+  const { unsubscribeToken = TOKEN_A, ...rest } = extra
+  return {
+    source: 'waitlist',
+    email,
+    status: 'waiting',
+    newsletterOptIn: true,
+    token: newsletterTokenForWaitlist(unsubscribeToken),
+    leaveToken: unsubscribeToken,
+    ...rest,
+  }
+}
+
+const USER_ID = '22222222-2222-4222-8222-222222222222'
+
+function userCand(email: string, extra: Partial<NewsletterCandidate> = {}): NewsletterCandidate {
+  return { source: 'user', email, status: 'active', newsletterOptIn: true, token: newsletterTokenForUser(USER_ID), ...extra }
 }
 
 const ISSUE: NewsletterSendInput = newsletterSendSchema.parse({
@@ -73,16 +93,53 @@ describe('selectNewsletterRecipients', () => {
     expect(r.map((x) => x.email)).toEqual(['ana@example.com', 'invitada@example.com', 'dentro@example.com'])
     expect(r[0]).toMatchObject({ token: `w.${TOKEN_A}`, leaveToken: TOKEN_A, hash: recipientHash('ana@example.com') })
   })
+  it('adds users who ticked the box (PRO-95), skips suspended ones, and one email per address with the account first', () => {
+    const r = selectNewsletterRecipients(
+      [
+        userCand('Ana@Example.com'),
+        userCand('suspendida@example.com', { status: 'suspended' }),
+        cand('ana@example.com'),
+        cand('bea@example.com', { unsubscribeToken: TOKEN_B }),
+      ],
+      new Set(),
+    )
+    expect(r.map((x) => [x.source, x.email])).toEqual([
+      ['user', 'ana@example.com'],
+      ['waitlist', 'bea@example.com'],
+    ])
+    expect(r[0].leaveToken).toBeUndefined()
+  })
 })
 
-/** In-memory repo with the same claim semantics as the SQL (unique issue + hash). */
+describe('newsletter tokens', () => {
+  it('a user token only parses with its signature', () => {
+    const t = newsletterTokenForUser(USER_ID)
+    expect(parseNewsletterToken(t)).toEqual({ kind: 'user', userId: USER_ID })
+    expect(parseNewsletterToken(t.slice(0, -1) + (t.endsWith('A') ? 'B' : 'A'))).toBeNull()
+    expect(parseNewsletterToken(`u.33333333-3333-4333-8333-333333333333.${t.split('.')[2]}`)).toBeNull()
+    expect(parseNewsletterToken(`w.${TOKEN_A}`)).toEqual({ kind: 'waitlist', token: TOKEN_A })
+    expect(parseNewsletterToken(TOKEN_A)).toBeNull()
+  })
+})
+
+/** In-memory repo with the same semantics as the SQL (unique issue + hash; opt-out by email). */
 function memoryRepo(candidates: NewsletterCandidate[], admins: string[] = []) {
   const rows = new Map<string, { status: 'pending' | 'sent'; providerId: string | null }>()
   const key = (issue: string, h: string) => `${issue}|${h}`
   const entries = candidates.map((c) => ({ ...c }))
+  const offByEmail = (email: string) => {
+    let n = 0
+    for (const e of entries) {
+      if (e.email?.toLowerCase() === email.toLowerCase() && e.newsletterOptIn) {
+        e.newsletterOptIn = false
+        n++
+      }
+    }
+    return n
+  }
   const repo: NewsletterRepo = {
     async candidates() {
-      return entries.map((c) => ({ ...c }))
+      return entries.filter((c) => c.newsletterOptIn).map((c) => ({ ...c }))
     },
     async claimedHashes(issue) {
       return new Set([...rows.keys()].filter((k) => k.startsWith(`${issue}|`)).map((k) => k.split('|')[1]))
@@ -106,12 +163,22 @@ function memoryRepo(candidates: NewsletterCandidate[], admins: string[] = []) {
       return admins.includes(email)
     },
     async unsubscribe(token) {
-      const p = parseNewsletterToken(token)
-      const e = p && entries.find((x) => x.unsubscribeToken === p.token)
+      if (!parseNewsletterToken(token)) return 'not_found'
+      const e = entries.find((x) => x.token === token)
       if (!e) return 'not_found'
-      if (e.status === 'unsubscribed' || !e.newsletterOptIn) return 'already'
-      e.newsletterOptIn = false
-      return 'ok'
+      if (e.status === 'unsubscribed' || !e.email) return 'already'
+      return offByEmail(e.email) > 0 ? 'ok' : 'already'
+    },
+    async getUserOptIn() {
+      const u = entries.find((x) => x.source === 'user')
+      return u ? u.newsletterOptIn : null
+    },
+    async setUserOptIn(_id, optIn) {
+      const u = entries.find((x) => x.source === 'user')
+      if (!u) return null
+      if (optIn) u.newsletterOptIn = true
+      else offByEmail(u.email!)
+      return optIn
     },
   }
   return { repo, rows, entries }
@@ -144,6 +211,7 @@ describe('sendNewsletter', () => {
       issueId: '2026-10-16',
       recipients: 2,
       alreadySent: 0,
+      bySource: { waitlist: 2, user: 0 },
     })
     expect(batch).not.toHaveBeenCalled()
     expect(rows.size).toBe(0)
@@ -199,6 +267,28 @@ describe('sendNewsletter', () => {
     const batch = okBatch()
     expect(await sendNewsletter(ISSUE, deps(repo, batch))).toMatchObject({ sent: 1 })
     expect(batch.mock.calls[0][0].map((m) => m.to)).toEqual(['bea@example.com'])
+  })
+
+  it('one person, one switch: the account opt-out also turns off their waitlist entry, and vice versa', async () => {
+    const both = memoryRepo([userCand('ana@example.com'), cand('ana@example.com'), cand('bea@example.com', { unsubscribeToken: TOKEN_B })])
+    expect(await both.repo.unsubscribe(newsletterTokenForUser(USER_ID))).toBe('ok')
+    expect(both.entries.map((e) => e.newsletterOptIn)).toEqual([false, false, true])
+
+    const again = memoryRepo([userCand('ana@example.com'), cand('ana@example.com')])
+    expect(await again.repo.unsubscribe(`w.${TOKEN_A}`)).toBe('ok')
+    expect(again.entries.map((e) => e.newsletterOptIn)).toEqual([false, false])
+
+    const prof = memoryRepo([userCand('ana@example.com'), cand('ana@example.com')])
+    expect(await prof.repo.setUserOptIn(USER_ID, false)).toBe(false)
+    expect(prof.entries.map((e) => e.newsletterOptIn)).toEqual([false, false])
+  })
+
+  it('dryRun says how many come from each source and whether an address is in', async () => {
+    const { repo } = memoryRepo([userCand('ana@example.com'), cand('bea@example.com', { unsubscribeToken: TOKEN_B })])
+    const r = await sendNewsletter({ ...ISSUE, dryRun: true, includes: 'ana@example.com' }, deps(repo, okBatch()))
+    expect(r).toMatchObject({ recipients: 2, bySource: { waitlist: 1, user: 1 }, includes: true })
+    const no = await sendNewsletter({ ...ISSUE, dryRun: true, includes: 'zoe@example.com' }, deps(repo, okBatch()))
+    expect(no).toMatchObject({ includes: false })
   })
 })
 
@@ -299,6 +389,24 @@ describe('newsletter routes', () => {
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ action: 'newsletter.send', payload: expect.objectContaining({ issueId: '2026-10-16', sent: 1 }) }))
     // The one-click URL points at the API origin that served the request.
     expect(sendBatch.mock.calls[0][0][0].headers!['List-Unsubscribe']).toContain(`${b}/newsletter/unsubscribe?t=w.`)
+  })
+
+  it('GET/PUT /newsletter/me: the profile switch, behind auth', async () => {
+    const { repo, entries } = memoryRepo([userCand('ana@example.com', { newsletterOptIn: false })])
+    const asUser: RequestHandler = (req, _res, next) => {
+      ;(req as any).userId = USER_ID
+      next()
+    }
+    const app = express().use(express.json()).use(createNewsletterRouter({ repo, userAuth: asUser, unsubscribeLimiter: noLimit }))
+    const b = await serve(app)
+    expect(await (await fetch(`${b}/newsletter/me`)).json()).toEqual({ optIn: false })
+    const put = (body: unknown) =>
+      fetch(`${b}/newsletter/me`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+    expect((await put({ optIn: 'si' })).status).toBe(400)
+    expect(await (await put({ optIn: true })).json()).toEqual({ optIn: true })
+    expect(entries[0].newsletterOptIn).toBe(true)
+    expect(await (await put({ optIn: false })).json()).toEqual({ optIn: false })
+    expect(entries[0].newsletterOptIn).toBe(false)
   })
 
   it('POST /newsletter/unsubscribe: JSON token and the RFC 8058 one-click form both work; unknown → 404', async () => {

@@ -1,6 +1,6 @@
 # Waitlist (pre-launch, Mimoia)
 
-The public waitlist that comes before the launch. The product launches publicly as **Mimoia** (decision D-012; `BRAND_NAME` in `@ona/shared`, and since the coordinated rename of 2026-10-08 the name users see everywhere, logged-in app included; "Mimoia" stays only the internal name). Closed beta from 2026-10-28 (10–30 households, invite-only); people are let in **by batches every 2–4 weeks**. There is no visible queue position and no fake scarcity. The honest line is: "entramos por tandas porque cada hogar lo acompañamos de cerca".
+The public waitlist that comes before the launch. The product launches publicly as **Mimoia** (decision D-012; `BRAND_NAME` in `@ona/shared`, and since the coordinated rename of 2026-10-08 the name users see everywhere, logged-in app included; "Mimoia" stays only the internal name). Closed beta from 2026-10-21 (D-041; 10–30 households, invite-only); people are let in **by batches every 2–4 weeks**. There is no visible queue position and no fake scarcity. The honest line is: "entramos por tandas porque cada hogar lo acompañamos de cerca".
 
 ## User Capabilities
 

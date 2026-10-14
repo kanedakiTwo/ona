@@ -39,3 +39,26 @@ test('shows solo household and generates an invite link', async ({ page }) => {
   const inviteUrl = page.locator('text=/\\/invites\\//').first()
   await expect(inviteUrl).toBeVisible({ timeout: 8_000 })
 })
+
+// Regression (Miguel, 2026-10-14): on a phone the long `/invites/<token>`
+// URL widened the whole single-column grid, so the members and invite cards
+// spilled past the right edge of the screen.
+test('the page fits the phone width with a pending invite', async ({ page }) => {
+  await page.goto('/profile/casa')
+  await page.getByRole('button', { name: /invitar a alguien/i }).first().click()
+  await page.getByRole('button', { name: /crear invitaci/i }).first().click()
+  await expect(page.locator('text=/\\/invites\\//').first()).toBeVisible({ timeout: 8_000 })
+
+  const { scrollWidth, viewport } = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    viewport: window.innerWidth,
+  }))
+  expect(scrollWidth).toBeLessThanOrEqual(viewport)
+
+  // Every card ends inside the screen (1 px of rounding slack).
+  const vw = page.viewportSize()!.width
+  for (const card of await page.locator('ul > li').all()) {
+    const box = await card.boundingBox()
+    if (box) expect(box.x + box.width).toBeLessThanOrEqual(vw + 1)
+  }
+})

@@ -239,7 +239,7 @@ export default function HouseholdPage() {
         </div>
       )}
 
-      <div className="grid gap-8 lg:grid-cols-2 lg:items-start lg:gap-10">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:items-start lg:gap-10">
         {/* Members */}
         <section>
           <h2 className={`${SUB_EYEBROW} mb-3`}>Miembros · {household.members.length}</h2>

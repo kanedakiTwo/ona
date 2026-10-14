@@ -1,6 +1,6 @@
 # Household
 
-**Status:** PR 1 Part A shipped. PR 1 Part B (scope flip behind feature flag) shipped — default OFF in production.
+**Status:** PR 1 Part A shipped. PR 1 Part B (scope flip behind feature flag) shipped — **ON in production** (verified 2026-10-14: Railway sets no `NODE_ENV` and `SHARED_HOUSEHOLD_SCOPE` is unset there, so it resolves to `true`).
 
 A "household" is the shared unit that owns menus, shopping lists, favourites and pantry stock. Every authed user belongs to exactly one **primary** household, accessible via `users.primary_household_id`. New users get a solo household auto-created at `/register` so every authed read has a valid scope from the first request.
 
@@ -54,7 +54,7 @@ The 0011 migration includes an **idempotent backfill** (NOT EXISTS guards) so ev
 
 ## Frontend
 
-- `/profile/casa` — owner sees full management UI (rename, invite, revoke, remove). Members see the member list and can leave. Since PRO-40 (2026-10-10) the secondary actions live in "···" sheets: the header one ("Cambiar nombre" — owner; tapping the name still renames — and "Salir del hogar"), one per member ("Quitar del hogar") and one per pending invite ("Revocar invitación"). "Invitar a alguien" → role → "Crear invitación" and "Copiar enlace" stay inline.
+- `/profile/casa` — on phones the members/invites column is `grid-cols-1` (`minmax(0,1fr)`) so the long `/invites/<token>` URL truncates instead of widening the cards past the screen edge (fixed 2026-10-14, pinned by `e2e/household-casa.spec.ts`). Owner sees full management UI (rename, invite, revoke, remove). Members see the member list and can leave. Since PRO-40 (2026-10-10) the secondary actions live in "···" sheets: the header one ("Cambiar nombre" — owner; tapping the name still renames — and "Salir del hogar"), one per member ("Quitar del hogar") and one per pending invite ("Revocar invitación"). "Invitar a alguien" → role → "Crear invitación" and "Copiar enlace" stay inline.
 - `/invites/[token]` — public preview page; if the visitor isn't authed, the accept button routes through `/register?next=/invites/:token`, and registration returns them to the invite (`next` honoured since 2026-10, see [Auth](./auth.md)).
 - `/profile` links to `/profile/casa` from the "Memoria del asistente" section's button row.
 
@@ -73,10 +73,10 @@ Behaviour matrix:
 
 | `SHARED_HOUSEHOLD_SCOPE` | Behaviour |
 |--------------------------|-----------|
-| `false` (prod default) | Reads filter by `user_id` — pre-PR-1B behaviour exactly |
-| `true` (dev/test default) | Reads filter by `household_id` — any member sees the household's rows |
+| `false` (only if set explicitly, or with `NODE_ENV=production`) | Reads filter by `user_id` — pre-PR-1B behaviour exactly |
+| `true` (default everywhere today, production included) | Reads filter by `household_id` — any member sees the household's rows |
 
-The flag defaults OFF in production (`NODE_ENV='production'` ⇒ `false`) and ON in dev/test (`NODE_ENV='development'` ⇒ `true`). Set `SHARED_HOUSEHOLD_SCOPE=true` on Railway when ready to flip the switch — no code change or redeploy beyond an env var.
+Without an explicit value the flag is `NODE_ENV !== 'production'`. Railway sets no `NODE_ENV`, so it is **ON in production and staging**: household members (owner, member, child) see the same menus, shopping list, favourites and pantry. `SHARED_HOUSEHOLD_SCOPE=false` on Railway would switch reads back to per-user.
 
 Affected surfaces:
 - `POST /menu/generate`, `GET /menu/:userId/:weekId`, `GET /menu/:userId/history`
@@ -98,7 +98,7 @@ Edge cases:
 - `apps/api/src/db/migrations/0012_pr1b_household_scope.sql` — household_id columns + idempotent backfill
 - `apps/api/src/services/householdStore.ts` — all business logic (load/rename/invite/accept/revoke/remove/leave)
 - `apps/api/src/services/scopeResolver.ts` — `pickScope`, `resolveScope`, `scopeWhere`, `getPrimaryHouseholdId`
-- `apps/api/src/config/env.ts` — `SHARED_HOUSEHOLD_SCOPE` flag (defaults OFF in prod, ON in dev/test)
+- `apps/api/src/config/env.ts` — `SHARED_HOUSEHOLD_SCOPE` flag (unset ⇒ `NODE_ENV !== 'production'`; ON on Railway)
 - `apps/api/src/tests/scopeResolver.test.ts` + `householdScopeSmoke.test.ts` — pure-logic regressions for the flag matrix
 - `apps/api/src/routes/menus.ts`, `apps/api/src/routes/shopping.ts`, `apps/api/src/routes/recipes.ts` — readers wired through `scopeWhere`
 - `apps/api/src/services/menuGenerator.ts`, `apps/api/src/services/assistant/skills.ts` — scope-aware favorites + pantry

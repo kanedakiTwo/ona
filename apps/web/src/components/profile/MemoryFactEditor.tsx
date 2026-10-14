@@ -254,6 +254,13 @@ function NumberEditor({
 
 // ─── String-array editor (chips + add) ───────────────────────
 
+/** `items` plus the trimmed draft when it's a valid, new entry; otherwise `items` unchanged. */
+export function withDraft(items: string[], draft: string, minLen: number, maxLen: number): string[] {
+  const t = draft.trim()
+  if (t.length < minLen || t.length > maxLen || items.includes(t)) return items
+  return [...items, t]
+}
+
 function StringArrayEditor({
   initial,
   placeholder,
@@ -275,16 +282,17 @@ function StringArrayEditor({
   const [draft, setDraft] = useState("")
 
   function add() {
-    const t = draft.trim()
-    if (t.length < minLen || t.length > maxLen) return
-    if (items.includes(t)) return // dedupe
-    setItems([...items, t])
+    const next = withDraft(items, draft, minLen, maxLen)
+    if (next === items) return
+    setItems(next)
     setDraft("")
   }
 
   return (
     <EditorFrame
-      onSave={() => onSave(items)}
+      // Text still in the box counts: people type an entry and press
+      // «Guardar» without the «+» (2026-10-14: two beliefs saved as []).
+      onSave={() => onSave(withDraft(items, draft, minLen, maxLen))}
       onCancel={onCancel}
       disabled={disabled}
     >

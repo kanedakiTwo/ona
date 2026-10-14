@@ -178,6 +178,10 @@ export default function PrivacidadPage() {
           te identifique, para las cuentas.
         </p>
         <p>
+          <strong>Solo el menú de los viernes:</strong> cada uno de esos emails lleva un enlace para dejar de
+          recibirlo sin salir de la lista. Tu sitio en la lista sigue igual.
+        </p>
+        <p>
           Los datos de la lista se guardan en Railway (nuestro alojamiento). Los emails que te mandamos (la
           invitación y, si lo pediste, el menú de los viernes) salen a través de Resend, que recibe tu email, tu
           nombre y el mensaje. No se comparten con nadie más ni se usan para publicidad.

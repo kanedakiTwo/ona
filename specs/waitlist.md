@@ -9,7 +9,7 @@ The public waitlist that comes before the launch. The product launches publicly 
   - email (required) and first name (optional);
   - **four one-tap questions** (all required): household size (`Solo yo / Dos / 3 o 4 / 5 o más`), who plans and shops (`Yo / Otra persona / Lo compartimos`), how they organise today (`Improviso / Lista en papel o en notas / Con una app / Menú fijo / Casi no cocino en casa`) and phone (`iPhone / Android / Otro`);
   - optional: where they usually shop, and "Quiero usar Mimoia por WhatsApp cuando entre";
-  - a **separate, optional, unchecked** "Quiero recibir cada viernes el menú de la semana por email" (newsletter opt-in);
+  - a **separate, optional, unchecked** "Quiero recibir cada viernes el menú de la semana por email" (newsletter opt-in), with the hint «Te lo recomendamos: te va a sorprender. Es opcional y aparte de la lista; te das de baja con un clic.» (PRO-94; it is sent as described in [Newsletter](./newsletter.md));
   - the **required** consent checkbox, which links to `/privacidad#lista-de-espera`.
   - No health data, ever.
 - The submit button stays disabled until the email, the four answers and the consent are in.
@@ -63,7 +63,7 @@ Each picked person **pulls in** the waiting people who signed up with their link
   - referral code: 8 chars of lowercase Crockford base32 (40 random bits, no i/l/o/u), retried on collision;
   - opt-out token: 24 random bytes, base64url;
   - both are unique in the DB.
-- **Consent**: `consent_version` + `consent_at` on every entry (`WAITLIST_CONSENT_VERSION`, `2026-10-15` since Resend joined `/privacidad`). The newsletter is a separate consent (LSSI art. 21–22): `newsletter_opt_in` defaults to false, and `newsletter_consent_at` + `newsletter_consent_version` are stored only when ticked. Bump the versions when the copy or `/privacidad` changes.
+- **Consent**: `consent_version` + `consent_at` on every entry (`WAITLIST_CONSENT_VERSION`, `2026-10-15` since Resend joined `/privacidad`; the newsletter's `WAITLIST_NEWSLETTER_CONSENT_VERSION` is `2026-10-15` too, for the new hint). The newsletter is a separate consent (LSSI art. 21–22): `newsletter_opt_in` defaults to false, and `newsletter_consent_at` + `newsletter_consent_version` are stored only when ticked. Bump the versions when the copy or `/privacidad` changes.
 - **Opt-out anonymises in place**: `status='unsubscribed'`, email/name/supermarket set to NULL, newsletter off. The anonymous answers stay for the counts (`email` is nullable; the unique index tolerates NULLs).
 - Referral links point to `WEB_PUBLIC_URL` in API responses; the web shows `window.location.origin`, so the link matches the domain the person used.
 - `/lista/*` renders with the public chrome (`PUBLIC_PREFIXES` in `app/layout.tsx`).
@@ -71,7 +71,7 @@ Each picked person **pulls in** the waiting people who signed up with their link
 
 ## Known limitations
 
-- **Only the invitation is emailed** (PRO-93). There is no confirmation email (no double opt-in), and the weekly menu email has no sender yet (PRO-94); we only collect the consent. The invitation has no personal token: any `invited` email can register (PRO-97).
+- **Emails sent**: the invitation (PRO-93) and the Friday newsletter (PRO-94, [newsletter.md](./newsletter.md); its own opt-out turns off only the newsletter). There is no confirmation email (no double opt-in). The invitation has no personal token: any `invited` email can register (PRO-97).
 - No phone number is collected, so "por WhatsApp" is a stated preference, honoured by sending the invitation with the WhatsApp link (since 2026-10-14 Mimo is on a real number, so the 5-recipient limit of Meta's test number no longer applies; access is still gated by `WHATSAPP_ALLOWED_EMAILS`, see [WhatsApp](./whatsapp.md)).
 - Retention (until 6 months after public launch) is not automated yet: the purge job is in the CLAUDE.md backlog.
 - `?ref` / `?utm_*` are read only on the landing URL. They are not carried across pages, and `/register` doesn't record them.
@@ -85,6 +85,7 @@ Each picked person **pulls in** the waiting people who signed up with their link
 - [Auth](./auth.md): `/register` marks the entry joined
 - [Admin audit log](./admin-audit-log.md): `waitlist.invite`
 - [Email](./email.md): the invitation email, Resend
+- [Newsletter](./newsletter.md): the Friday email to entries with the box ticked
 
 ## Source
 

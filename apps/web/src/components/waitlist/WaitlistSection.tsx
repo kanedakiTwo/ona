@@ -205,7 +205,7 @@ export default function WaitlistSection() {
                     checked={form.newsletterOptIn}
                     onChange={(v) => set("newsletterOptIn", v)}
                     label="Quiero recibir cada viernes el menú de la semana por email"
-                    hint="Opcional y aparte de la lista. Te das de baja con un clic."
+                    hint="Te lo recomendamos: te va a sorprender. Es opcional y aparte de la lista; te das de baja con un clic."
                   />
                   <CheckRow
                     id="waitlist-consent"

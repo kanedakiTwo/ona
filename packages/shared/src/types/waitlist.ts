@@ -58,7 +58,7 @@ export const WAITLIST_CONSENT_VERSION = '2026-10-15'
  * (LSSI art. 21–22, RGPD art. 7): unchecked by default, never bundled with
  * the waitlist consent. Its version is stored only when it is given.
  */
-export const WAITLIST_NEWSLETTER_CONSENT_VERSION = '2026-10-07'
+export const WAITLIST_NEWSLETTER_CONSENT_VERSION = '2026-10-15'
 
 // ─── Referral codes ──────────────────────────────────────────────
 

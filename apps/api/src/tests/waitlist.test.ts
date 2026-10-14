@@ -20,6 +20,7 @@ import {
   whatsappShareHref,
   type WaitlistFormState,
   WAITLIST_CONSENT_VERSION,
+  WAITLIST_NEWSLETTER_CONSENT_VERSION,
 } from '@ona/shared'
 import {
   buildWaitlistReport,
@@ -413,7 +414,7 @@ describe('signupToWaitlist', () => {
     await signupToWaitlist(signupInput({ email: 'no@example.com' }), d)
     await signupToWaitlist(signupInput({ email: 'si@example.com', newsletterOptIn: true }), d)
     expect(d.repo.rows[0]).toMatchObject({ newsletterOptIn: false, newsletterConsentAt: null, newsletterConsentVersion: null })
-    expect(d.repo.rows[1]).toMatchObject({ newsletterOptIn: true, newsletterConsentVersion: '2026-10-07' })
+    expect(d.repo.rows[1]).toMatchObject({ newsletterOptIn: true, newsletterConsentVersion: WAITLIST_NEWSLETTER_CONSENT_VERSION })
     expect(d.repo.rows[1].newsletterConsentAt?.toISOString()).toBe('2026-10-20T10:00:00.000Z')
   })
 

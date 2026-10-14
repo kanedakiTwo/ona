@@ -36,8 +36,9 @@ export type AdminAction =
   | 'app_error.resolve'
   | 'waitlist.invite'
   | 'invite_campaign.create'
+  | 'newsletter.send'
 
-export type AuditTargetType = 'ingredient' | 'recipe' | 'user' | 'app_error' | 'waitlist_entry' | 'invite_campaign'
+export type AuditTargetType = 'ingredient' | 'recipe' | 'user' | 'app_error' | 'waitlist_entry' | 'invite_campaign' | 'newsletter_issue'
 
 export interface AuditRecord {
   adminId: string

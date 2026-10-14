@@ -1,6 +1,6 @@
 # Email
 
-How Mimoia sends email. One provider, **Resend** (REST API, EU sending region, `mimoia.com` verified; D-050), called with a plain `fetch` from the API. The first and, for now, only email is the **waitlist invitation**; the newsletter (PRO-94) and the rest come on top of this service.
+How Mimoia sends email. One provider, **Resend** (REST API, EU sending region, `mimoia.com` verified; D-050), called with a plain `fetch` from the API. Today it sends the **waitlist invitation** and the **Friday newsletter** ([newsletter.md](./newsletter.md), PRO-94).
 
 ## User Capabilities
 
@@ -16,7 +16,7 @@ How Mimoia sends email. One provider, **Resend** (REST API, EU sending region, `
 
 - `services/email.ts`:
   - `sendEmail(msg)` → `POST {RESEND_BASE_URL}/emails` with `Authorization: Bearer RESEND_API_KEY`, body `{ from: EMAIL_FROM, to: [to], subject, html, text, headers? }`.
-  - `sendEmailBatch(msgs)` → `POST /emails/batch`, at most 100 per call (`RESEND_BATCH_LIMIT`), results in input order; for the newsletter.
+  - `sendEmailBatch(msgs)` → `POST /emails/batch`, at most 100 per call (`RESEND_BATCH_LIMIT`), results in input order; used by the newsletter.
   - Both resolve `{ status: 'sent', id } | { status: 'skipped', reason: 'not_configured' } | { status: 'failed', error }`. **They never throw**: a failed email never breaks the action that sent it.
   - `renderBrandEmail({ preheader?, heading, paragraphs, button?, footer?, unsubscribeUrl? })` → `{ html, text }`: cream background, 600 px column, «Mimoia» in terracotta, Fraunces heading with Georgia/serif fallbacks, Inter/system body, a pill button; tables + inline styles (Gmail and Apple Mail on a phone). Every string is HTML-escaped.
   - `listUnsubscribeHeaders(url)` → `List-Unsubscribe: <url>` for list emails. The URL is the opt-out page, which unsubscribes on a click, not on load (so no `List-Unsubscribe-Post` one-click yet).
@@ -33,13 +33,14 @@ How Mimoia sends email. One provider, **Resend** (REST API, EU sending region, `
 
 ## Known limitations
 
-- No waitlist confirmation email (double opt-in), no password-reset email (an admin still makes the link), no reminders, and no newsletter sender yet (PRO-94).
+- No waitlist confirmation email (double opt-in), no password-reset email (an admin still makes the link), no reminders.
 - The invitation links to `/register` with no personal token; the closed beta lets in any `invited` email without proving it's theirs (PRO-97 adds a one-time link).
 - No bounce/complaint webhook: Resend's dashboard is the only place to see them.
 
 ## Related specs
 
 - [Waitlist](./waitlist.md) — batches, `POST /admin/waitlist/invite`, opt-out
+- [Newsletter](./newsletter.md) — the Friday email, its one-click opt-out
 - [Privacy](./privacy.md) — Resend as a processor
 - [Auth](./auth.md) — closed beta, invited emails
 

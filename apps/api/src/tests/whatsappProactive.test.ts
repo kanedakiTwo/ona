@@ -97,9 +97,9 @@ describe('daily brief', () => {
     dinner: { dishes: [{ kind: 'note' as const, text: 'Cena fuera' }] },
   }
 
-  it('lists lunch and dinner (not breakfast) with a link to the menu', () => {
+  it('lists lunch and dinner (not breakfast), each recipe with its link (PRO-85), notes without, and the menu link', () => {
     expect(formatDailyBrief(day, WEB)).toBe(
-      `Buenos días. Hoy toca:\n- Comida: Lentejas estofadas\n- Cena: Cena fuera\n\n¿Quieres cambiar algo?\n\nVer menú: ${WEB}/menu`,
+      `Buenos días. Hoy toca:\n- Comida: Lentejas estofadas\n→ Lentejas estofadas: ona.test/recipes/a\n- Cena: Cena fuera\n\n¿Quieres cambiar algo?\n\nVer menú: ${WEB}/menu`,
     )
   })
 

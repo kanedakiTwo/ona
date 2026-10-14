@@ -50,3 +50,35 @@ describe('weekMenuDigest', () => {
     expect(text.length).toBeLessThan(1200)
   })
 })
+
+describe('weekMenuDigest with links (PRO-85)', () => {
+  const days: any[] = [
+    { lunch: slot(r('Lentejas estofadas')), dinner: slot(r('Crema de calabaza')) },
+    { lunch: slot(r('Dorada'), r('Ensalada verde')), dinner: slot({ kind: 'note', text: 'Cenamos fuera' }) },
+    { lunch: slot({ ...r('Lentejas estofadas'), variant: 'leftover' }) },
+    {}, {}, {}, {},
+  ]
+  const text = weekMenuDigest({ weekStart: '2026-10-12', days }, 'https://mimoia.com')
+  const lines = text.split('\n')
+
+  it('each recipe gets its short link under its day, in menu order', () => {
+    expect(lines.slice(1, 4)).toEqual([
+      '*Lun* Lentejas estofadas · Crema de calabaza',
+      '→ Lentejas estofadas: mimoia.com/recipes/Lentejas estofadas',
+      '→ Crema de calabaza: mimoia.com/recipes/Crema de calabaza',
+    ])
+    expect(lines.slice(4, 7)).toEqual([
+      '*Mar* Dorada + Ensalada verde · Cenamos fuera',
+      '→ Dorada: mimoia.com/recipes/Dorada',
+      '→ Ensalada verde: mimoia.com/recipes/Ensalada verde',
+    ])
+  })
+  it('notes never get a link; leftovers link to their recipe', () => {
+    expect(text).not.toContain('Cenamos fuera:')
+    expect(lines[7]).toBe('*Mié* Lentejas estofadas (sobras) · —')
+    expect(lines[8]).toBe('→ Lentejas estofadas: mimoia.com/recipes/Lentejas estofadas')
+  })
+  it('without a web URL the digest has no links (unchanged)', () => {
+    expect(weekMenuDigest({ weekStart: '2026-10-12', days })).not.toContain('/recipes/')
+  })
+})

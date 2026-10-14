@@ -40,6 +40,43 @@ export function mealEntriesForDay(day: DayMenu | null | undefined): { meal: stri
   return out
 }
 
+/**
+ * PRO-85: the short form of a recipe's page for WhatsApp, e.g.
+ * `mimoia.com/recipes/<id>` (no scheme or `www.`; WhatsApp still makes it a
+ * link). `webUrl` is `WEB_PUBLIC_URL`.
+ */
+export function shortRecipeLink(webUrl: string, recipeId: string): string {
+  const host = webUrl.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/+$/, '')
+  return `${host}/recipes/${recipeId}`
+}
+
+/**
+ * Pure: the recipes of a day (or of one meal's dishes), in menu order, once
+ * each — free-text notes have no page, so they never appear.
+ */
+export function recipesOfDay(day: DayMenu | null | undefined, meals?: readonly string[]): { id: string; name: string }[] {
+  if (!day || typeof day !== 'object') return []
+  const order = meals ?? [
+    ...MEAL_ORDER.filter((m) => m in day),
+    ...Object.keys(day).filter((m) => !(MEAL_ORDER as readonly string[]).includes(m)),
+  ]
+  const out: { id: string; name: string }[] = []
+  for (const meal of order) {
+    const dishes = day[meal]?.dishes
+    if (!Array.isArray(dishes)) continue
+    for (const d of dishes) {
+      if (d?.kind !== 'recipe' || !d.recipeId || out.some((r) => r.id === d.recipeId)) continue
+      out.push({ id: d.recipeId, name: d.recipeName?.trim() || 'Receta' })
+    }
+  }
+  return out
+}
+
+/** Pure: one line per recipe, `→ Lentejas estofadas: mimoia.com/recipes/<id>`. */
+export function recipeLinkLines(recipes: { id: string; name: string }[], webUrl: string): string[] {
+  return recipes.map((r) => `→ ${r.name}: ${shortRecipeLink(webUrl, r.id)}`)
+}
+
 export function mealLinesForDay(day: DayMenu | null | undefined): string[] {
   return mealEntriesForDay(day).map((e) => `${e.label}: ${e.dishes.join(' + ')}`)
 }
@@ -67,13 +104,18 @@ export const MENU_DIGEST_INVITE =
  * the menu is generated, so the user reads it and iterates without opening the
  * app. Header names the meals planned that week (in order); one line per day
  * with one entry per planned meal ("—" when that day has none), the dishes of a
- * multi-dish slot joined with " + ", free-text notes as written.
+ * multi-dish slot joined with " + ", free-text notes as written. With `webUrl`
+ * (PRO-85), each day is followed by one link line per recipe (a day line with
+ * links inline would be too long); notes get none.
  */
-export function weekMenuDigest(menu: {
-  weekStart: string
-  days: Array<DayMenu | null | undefined> | null | undefined
-  skippedDays?: number[] | null
-}): string {
+export function weekMenuDigest(
+  menu: {
+    weekStart: string
+    days: Array<DayMenu | null | undefined> | null | undefined
+    skippedDays?: number[] | null
+  },
+  webUrl?: string,
+): string {
   const days = Array.isArray(menu.days) ? menu.days : []
   const byDay = days.map((day) => new Map(mealEntriesForDay(day).map((e) => [e.meal, e.dishes])))
   const planned = [
@@ -81,11 +123,12 @@ export function weekMenuDigest(menu: {
     ...[...new Set(byDay.flatMap((d) => [...d.keys()]))].filter((m) => !(MEAL_ORDER as readonly string[]).includes(m)),
   ]
   const header = `*Tu semana ${weekRangeEs(menu.weekStart)}*${planned.length > 1 ? ` (${planned.map((m) => MEAL_LABEL_ES[m] ?? m).join(' · ')})` : ''}`
-  const lines = DAY_SHORT_ES.map((label, i) => {
-    if (menu.skippedDays?.includes(i)) return `*${label}* sin cocinar`
+  const lines = DAY_SHORT_ES.flatMap((label, i) => {
+    if (menu.skippedDays?.includes(i)) return [`*${label}* sin cocinar`]
     const meals = byDay[i]
-    if (!meals || meals.size === 0) return `*${label}* —`
-    return `*${label}* ${planned.map((m) => meals.get(m)?.join(' + ') ?? '—').join(' · ')}`
+    if (!meals || meals.size === 0) return [`*${label}* —`]
+    const dayLine = `*${label}* ${planned.map((m) => meals.get(m)?.join(' + ') ?? '—').join(' · ')}`
+    return webUrl ? [dayLine, ...recipeLinkLines(recipesOfDay(days[i], planned), webUrl)] : [dayLine]
   })
   return [header, ...lines, '', MENU_DIGEST_INVITE].join('\n')
 }

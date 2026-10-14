@@ -18,6 +18,7 @@ AI assistant for nutrition guidance, menu queries, and recipe management via nat
   - Empty state: «Soy Mimo. Pregúntame lo que quieras…» with suggestions that depend on the page: cook mode («Siguiente paso», «Pon un temporizador de 10 minutos»…), recipe («¿Puedo hacerla sin horno?», «Adáptala para 4 personas»…), menu («¿Qué toca cocinar hoy?», «Cambia la cena del jueves»…), shopping («Añade leche a la lista», «Hazme la compra»…), or the default set.
   - Composer: «Manos libres» toggle, text input («Escribe a Mimo…»), mic button (tap to talk; tap again to stop and send), send button. While Mimo speaks, a «Parar» link stops it.
   - AI disclosure line under the composer (`data-testid="ai-disclosure"`).
+  - **Recipes link to their page (PRO-85, 2026-10-15).** When a reply is about today's menu, the week or one recipe, the recipes come with the turn's `data` (`get_todays_menu` → `day`, a week → `days[]`, `get_recipe_details` → `{ id, name }`, or `{ recipeId, recipeName }`). The first whole-word mention of each recipe's name in Mimo's text (any case; the longer name wins) is a terracotta link to `/recipes/<id>` (`data-testid="mimo-recipe-link"`); tapping it opens the recipe and closes the panel. Notes («cenamos fuera») have no page and never link. If the model writes the dish differently from its recipe name, it stays plain text. The links are kept with the conversation (sessionStorage), not sent back as history.
 - **Mimo knows the page.** Each turn sends the current path; Mimo understands «esta receta», «siguiente» or «este menú» (see Page context below).
 - **The conversation survives navigation** within the tab (sessionStorage), so users can open Mimo on the menu, go to a recipe and keep talking.
 - **Pages refresh after Mimo acts.** When a reply changed something (`actionTaken`), every react-query query is invalidated, so the menu, list or recipe behind the panel shows the change.
@@ -201,7 +202,8 @@ The advisor's weekly nutrient/calorie aggregators iterate `slot.dishes` and proc
 - [apps/api/src/services/assistant/pageContext.ts](../apps/api/src/services/assistant/pageContext.ts) — path → hidden «Pantalla actual» note; tests in `apps/api/src/tests/pageContext.test.ts`
 - [apps/api/src/routes/stt.ts](../apps/api/src/routes/stt.ts) + [services/stt.ts](../apps/api/src/services/stt.ts) — `POST /stt`
 - [apps/web/src/components/mimo/MimoProvider.tsx](../apps/web/src/components/mimo/MimoProvider.tsx) — state, turns, voice loop, cooking dispatch, `?mimo=1`, `mimoHiddenOn`
-- [apps/web/src/components/mimo/MimoPanel.tsx](../apps/web/src/components/mimo/MimoPanel.tsx) — bottom sheet / desktop column, per-page suggestions
+- [apps/web/src/components/mimo/MimoPanel.tsx](../apps/web/src/components/mimo/MimoPanel.tsx) — bottom sheet / desktop column, per-page suggestions, recipe links
+- [apps/web/src/lib/mimoRecipeLinks.ts](../apps/web/src/lib/mimoRecipeLinks.ts) — `recipeRefsFrom` + `linkRecipeNames` (PRO-85); tests in `apps/api/src/tests/mimoRecipeLinks.test.ts`, e2e in `apps/web/e2e/mimo-recipe-links.spec.ts`
 - [apps/web/src/components/mimo/MimoButton.tsx](../apps/web/src/components/mimo/MimoButton.tsx) — floating button and its position per page; e2e in `apps/web/e2e/mimo-companion.spec.ts`, `chat-voice.spec.ts`
 - [apps/web/src/app/layout.tsx](../apps/web/src/app/layout.tsx) — mounts `MimoProvider`; `<main>` makes room with `--mimo-panel-width`
 - [apps/web/src/app/advisor/page.tsx](../apps/web/src/app/advisor/page.tsx) — redirect to `/menu?mimo=1`

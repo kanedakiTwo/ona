@@ -46,7 +46,7 @@ export function buildInboundDeps(): InboundDeps {
         .where(menuId ? and(scope, eq(menus.id, menuId)) : scope)
         .orderBy(desc(menus.createdAt))
         .limit(1)
-      return row ? weekMenuDigest({ weekStart: String(row.weekStart), days: row.days as any, skippedDays: row.skippedDays }) : null
+      return row ? weekMenuDigest({ weekStart: String(row.weekStart), days: row.days as any, skippedDays: row.skippedDays }, env.WEB_PUBLIC_URL) : null
     },
     transcribe: isSttConfigured() ? transcribeAudio : undefined,
     importRecipeFromImage: env.ANTHROPIC_API_KEY ? importRecipeFromImage : undefined,

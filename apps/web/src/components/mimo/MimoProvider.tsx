@@ -24,6 +24,7 @@ import { useVoice, type ServerVoice } from '@/hooks/useVoice'
 import { recorderSupported, useRecorder } from '@/hooks/useRecorder'
 import { emitCookingCommand } from '@/lib/cookingCommands'
 import { handsFreeAfterSilence, leavesCookMode } from '@/lib/mimoHandsFree'
+import { recipeRefsFrom, type RecipeRef } from '@/lib/mimoRecipeLinks'
 import MimoPanel from './MimoPanel'
 import MimoButton from './MimoButton'
 
@@ -32,6 +33,8 @@ export interface MimoMessage {
   role: 'user' | 'assistant'
   content: string
   uiHint?: string
+  /** PRO-85: recipes this reply is about; their names render as links to their page. */
+  recipes?: RecipeRef[]
 }
 
 interface AssistantResponse {
@@ -194,7 +197,8 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
           context: { path: pathRef.current },
         })
         reply = res.message || 'No he podido responder.'
-        append({ role: 'assistant', content: reply, uiHint: res.uiHint })
+        const recipes = recipeRefsFrom(res.uiHint, res.data)
+        append({ role: 'assistant', content: reply, uiHint: res.uiHint, ...(recipes.length ? { recipes } : {}) })
 
         // Same dispatchers the cook mode listens to.
         const d = res.data

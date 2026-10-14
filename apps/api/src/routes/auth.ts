@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { db } from '../db/connection.js'
 import { users } from '../db/schema.js'
 import { validate } from '../middleware/validate.js'
-import { registerSchema, loginSchema } from '@ona/shared'
+import { registerSchema, loginSchema, WAITLIST_NEWSLETTER_CONSENT_VERSION } from '@ona/shared'
 import {
   REGISTRATION_INVITE_REQUIRED,
   consumeCampaignUse,
@@ -43,7 +43,7 @@ const loginLimiter = rateLimit({
 // POST /register
 router.post('/register', registerLimiter, validate(registerSchema), async (req, res) => {
   try {
-    const { username, email, password, inviteCode, householdInviteToken } = req.body
+    const { username, email, password, inviteCode, householdInviteToken, newsletterOptIn } = req.body
 
     // Check username/email unique
     const existing = await db
@@ -91,6 +91,14 @@ router.post('/register', registerLimiter, validate(registerSchema), async (req, 
         inviteCampaignId: campaignId,
         // «Primeros pasos» on the first /menu visit (PRO-07): only new sign-ups.
         firstStepsPending: true,
+        // Friday newsletter, a separate unticked box (PRO-95, specs/newsletter.md).
+        ...(newsletterOptIn === true
+          ? {
+              newsletterOptIn: true,
+              newsletterConsentAt: new Date(),
+              newsletterConsentVersion: WAITLIST_NEWSLETTER_CONSENT_VERSION,
+            }
+          : {}),
       })
       .returning()
 

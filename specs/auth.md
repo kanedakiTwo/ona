@@ -5,6 +5,7 @@ User registration, login, and session management for Mimoia.
 ## User Capabilities
 
 - Users can register with username, email, and password, plus the required box **«Tengo 14 años o más»** (LOPDGDD art. 7, PRO-23): «Crear cuenta gratis» stays disabled until it's ticked, and `POST /register` answers **400** without `ageConfirmed: true` (`registerSchema`, message «Para usar Mimoia tienes que tener 14 años o más.»). The moment is stored in `users.age_confirmed_at` (migration 0039). There is no sign-up from WhatsApp (it only links an existing account)
+- Below it, a **separate, optional, unticked** box «Quiero recibir cada viernes el menú de la semana por email» with the hint «Te lo recomendamos: te va a sorprender. Opcional; te das de baja con un clic.» (PRO-95). `POST /register { newsletterOptIn: true }` stores `users.newsletter_opt_in`, `newsletter_consent_at` and `newsletter_consent_version` (migration 0047); the account then gets the Friday email (see [Newsletter](./newsletter.md)). The profile has the same switch
 - Users can log in with either username or email plus password
 - Logged-in users receive a JWT token used for subsequent API calls
 - Users can log out (clears local token; no server-side invalidation)

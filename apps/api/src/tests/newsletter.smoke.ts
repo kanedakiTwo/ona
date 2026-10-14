@@ -84,6 +84,28 @@ describe.skipIf(!reachable)('newsletter (real API + DB)', () => {
     expect((await repo.claimedHashes(ISSUE)).size).toBe(1)
   })
 
+  it('a user who registers with the box ticked is a recipient; PUT /newsletter/me false takes them out (PRO-95)', async () => {
+    const reg = await call('POST', '/register', {
+      username: `nl_${id}`,
+      email: `nl_user_${id}@test.local`,
+      password: 'smokepass123',
+      ageConfirmed: true,
+      newsletterOptIn: true,
+    })
+    expect(reg.status).toBe(201)
+    expect(reg.body.user.newsletterOptIn).toBe(true)
+    expect(reg.body.user.newsletterConsentVersion).toBeTruthy()
+    const repo = createDbNewsletterRepo()
+    const has = async () => selectNewsletterRecipients(await repo.candidates(), new Set()).some((p) => p.email === `nl_user_${id}@test.local`)
+    expect(await has()).toBe(true)
+    const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${reg.body.token}` }
+    const me = await fetch(`${API_URL}/newsletter/me`, { headers })
+    expect(await me.json()).toEqual({ optIn: true })
+    const off = await fetch(`${API_URL}/newsletter/me`, { method: 'PUT', headers, body: JSON.stringify({ optIn: false }) })
+    expect(await off.json()).toEqual({ optIn: false })
+    expect(await has()).toBe(false)
+  })
+
   it('POST /newsletter/unsubscribe turns off only the newsletter; the place on the list stays', async () => {
     const r = await call('POST', '/newsletter/unsubscribe', { token: `w.${leaveToken}` })
     expect(r.status).toBe(200)

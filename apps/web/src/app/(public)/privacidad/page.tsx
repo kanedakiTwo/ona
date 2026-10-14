@@ -67,6 +67,7 @@ export default function PrivacidadPage() {
           <li>Revisar, de forma interna, conversaciones de WhatsApp para detectar errores del asistente y corregirlos.</li>
           <li>Controlar el gasto en IA por usuario y mantener el servicio seguro.</li>
           <li>Detectar y arreglar los fallos de la aplicación, con un registro propio que no se comparte con terceros.</li>
+          <li>Si lo pides (al registrarte o en tu perfil), mandarte cada viernes el menú de la semana por email.</li>
         </ul>
         <p>
           No vendemos tus datos ni los usamos para publicidad. Mimoia es un asistente con inteligencia
@@ -78,6 +79,8 @@ export default function PrivacidadPage() {
           La ejecución del servicio que pides al registrarte y, para los datos de salud, tu consentimiento
           explícito (art. 9.2.a RGPD), que puedes retirar en cualquier momento borrando esos datos o tu cuenta.
           Los avisos proactivos por WhatsApp solo se envían si los activas, y puedes darte de baja escribiendo BAJA.
+          El menú de los viernes por email es un consentimiento aparte (art. 21 de la LSSI): lo quitas en tu
+          perfil o con el enlace de cada email.
         </p>
 
         <H2>5. Con quién los compartimos</H2>

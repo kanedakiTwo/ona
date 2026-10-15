@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/auth"
 import { haptic } from "@/lib/pwa/haptics"
 import { TransitionLink } from "@/components/pwa/TransitionLink"
 import { CalendarDays, ShoppingCart, BookOpen, User, Database, Users, Ticket, ScrollText, Mic } from "lucide-react"
-import { ADMIN_AREAS, adminAreaFromPath, type AdminArea } from "@/lib/adminNav"
+import { ADMIN_MENU, adminAreaFromPath, type AdminArea } from "@/lib/adminNav"
 import { MimoiaLogo } from "@/components/brand/Mimoia"
 
 const NAV_ITEMS = [
@@ -66,7 +66,7 @@ export default function DesktopSidebar() {
       {user.role === "admin" && (
         <nav className="mt-6 flex flex-col gap-1 border-t border-[#DDD6C5] pt-5" aria-label="Admin">
           <span className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#8A8174]">Admin</span>
-          {ADMIN_AREAS.map((item) => {
+          {ADMIN_MENU.map((item) => {
             const Icon = ADMIN_ICONS[item.area]
             const isActive = adminArea === item.area
             return (

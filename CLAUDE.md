@@ -202,20 +202,11 @@ This is the **single source of truth** for work that's pending on Miguel's side 
   - Cómo: desde el 2026-10-14 Mimo usa el número real (+34 626 68 55 11) en tu cuenta de WhatsApp «mimoia» (ID 1785790632633447). Las plantillas aprobadas en la app antigua no sirven aquí: créalas en esa cuenta, en WhatsApp Manager → Plantillas de mensajes (`ona_aviso`: «Aviso de Mimoia: {{1}} Respóndeme por aquí si quieres cambiar algo.»).
   - Crea plantillas de tipo *Utilidad*, en español, una por aviso: `ona_menu_de_hoy`, `ona_aviso_preparacion`, `ona_lista_compra`, `ona_plan_semana` (cuerpo con un único `{{1}}`). Cuando estén aprobadas, pásale los nombres a Claude.
 
-- [ ] **MIG-15 · Poner la cuchara en tus perfiles** — La app, el favicon y el botón de Mimo ya llevan el imagotipo (la cuchara con el corazón, elegido el 9 de octubre); faltan las redes, que solo puedes cambiar tú.
-  - Cómo: al crear o editar cada cuenta (@conmimoia), abre la guía de marca (panel → «Lo esencial» → Marketing) → sección «Redes sociales»: para cada red está la foto de perfil y la portada al tamaño exacto, con su enlace de descarga. Súbelas tal cual.
-  - Redes: Instagram, TikTok, Facebook, YouTube, el canal de WhatsApp y el número de Mimo (WhatsApp Manager → Perfil), LinkedIn (tu fondo de perfil y, si creas la página de empresa, su logo y portada).
-  - Hecho cuando: todas las cuentas creadas muestran la cuchara.
-  - Estado (2026-10-13): hechos Instagram, YouTube (canal de marca @conmimoia, https://www.youtube.com/@conmimoia) y la página de empresa de LinkedIn; Facebook, en curso. TikTok creada el 2026-10-13 como cuenta personal (para pasarla a cuenta de empresa, TikTok pide documentación de la empresa: hacerlo cuando exista la SL). El número de Mimo ya la lleva (2026-10-14); falta el canal de WhatsApp; en LinkedIn, comprobar que la página lleva el logo y la portada.
-
 - [ ] **MIG-10 · Probar en tu móvil lo que no se puede probar solo** — Hay cosas que solo se ven en un teléfono de verdad.
   - Instalar la app en Android (Chrome) y en iPhone (Safari): que se abra a pantalla completa, con el color crema y respetando la barra de estado.
   - En una receta, «Empezar a cocinar» y bloquear el móvil: la pantalla debe seguir encendida al volver.
   - Avisos a la hora de comer: en el perfil, actívalos con la hora 1 minuto después y deja la app abierta; al tocar el aviso debe abrir la app.
   - Vibración al tocar (solo Android), botón de compartir en una receta y en la lista de la compra, y la sensación general al cambiar de pantalla y deslizar entre pestañas.
-
-- [ ] **MIG-11 · Comprobar «Regenerar imagen» en producción** — Confirma que las fotos nuevas se guardan y se ven bien.
-  - Cómo: en mimoia.com, crea una receta y pulsa «Regenerar imagen»; la foto debe aparecer y seguir ahí al recargar.
 
 - [ ] **MIG-12 · Revisión legal de la privacidad** — Cuando exista la SL, un abogado tiene que revisar `/privacidad`: responsable con nombre real, datos de salud con consentimiento explícito, envíos a EE. UU. y el apartado de la lista de espera.
   - Cuándo: con la forma jurídica decidida (16 de noviembre). Ver `specs/privacy.md`.

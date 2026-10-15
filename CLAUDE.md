@@ -159,7 +159,8 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 
 **Convention**:
 - Every item has an id `MIG-NN` (next free number, never reused) and this shape, so the Mimoia HQ panel can show it as a plain task with a checkbox:
-  `- [ ] **MIG-NN · Título corto** — Por qué importa, en una frase.` then sub-bullets with the steps (`Cómo:` first). Write it in plain Spanish, for Miguel, with no jargon he doesn't use.
+  `- [ ] **MIG-NN · Título corto** · *plazo opcional* — Por qué importa, en una frase.` then sub-bullets with the steps (`Cómo:` first). Write it in plain Spanish, for Miguel, with no jargon he doesn't use. The optional `· *plazo*` (e.g. `*hoy*`, `*antes del 16 de noviembre*`) shows as a tag in the panel.
+- Never write figures that change on their own (waitlist signups, households, costs, errors) inside an item: they go stale and Miguel reads them as current. The panel shows them live under «Números»; point there instead.
 - Whenever a task finishes but leaves something for Miguel to do, Claude adds it here in that shape.
 - Miguel ticks tasks off in the panel (they are stored in the panel's database, collection `hechas`), or tells Claude. `/ona-dia` (or Claude when told) removes ticked items from this list.
 - Items are ordered by priority (top = next).
@@ -176,7 +177,7 @@ This is the **single source of truth** for work that's pending on Miguel's side 
   - Hoy: en Stripe (modo de prueba) copia la clave secreta `sk_test_…` y en el Terminal `pbpaste > ~/.config/mimoia/stripe-secret-test`. Con ella Claude crea productos, precios, webhook y portal (`scripts/stripeSetup.ts`) y lo prueba en staging.
   - En el Dashboard: Settings → Managed Payments → aceptar los términos (sin eso Checkout rechaza la sesión).
   - Para cobrar de verdad: alta de autónomo o SL (gestoría), activar la cuenta de Stripe (datos fiscales y banco) y pasar la clave `sk_live_…` del mismo modo a `~/.config/mimoia/stripe-secret-live`. Hecho = un pago real en producción, reembolsado.
-- [ ] **MIG-19 · Mandar a tu círculo el mensaje de la lista de espera** · *hoy* — La lista está abierta desde el 13 y tiene 1 inscrito; el plan de validación necesita que tu círculo entre con su propia etiqueta para separarlo de los desconocidos (≥ 150 antes del 13 de noviembre).
+- [ ] **MIG-19 · Mandar a tu círculo el mensaje de la lista de espera** · *hoy* — La lista está abierta desde el 13 (cuántos hay, en vivo en «Números» del panel); el plan de validación necesita que tu círculo entre con su propia etiqueta para separarlo de los desconocidos (≥ 150 antes del 13 de noviembre).
   - Cómo: el texto aprobado está en ona-hq `approvals/approved/2026-10-12-marketing-mensaje-circulo-lista.md` (versión A para personas, con `?ref=circulo-miguel`; versión B para grupos, con `?ref=circulo-grupos`). Reescríbelo a tu manera, pero deja los enlaces tal cual. Mándalo por WhatsApp a unas 20 personas y a tus grupos.
   - Hecho cuando: lo has mandado y le dices a Claude a cuántas personas y grupos, para leer la conversión.
 

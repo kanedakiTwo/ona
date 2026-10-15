@@ -7,10 +7,15 @@ import {
   BRAND_SUPPORT_EMAIL,
   FOUNDER_FOOTER,
   FOUNDER_FOOTER_BETA,
-  FOUNDER_HOUSEHOLD,
-  FOUNDER_PLANS,
+  LAUNCH_DATE_LABEL,
+  PLANS,
+  PLAN_CAPS_NOTE,
+  PLAN_FEATURE_GROUPS,
+  PLAN_HOUSEHOLD,
+  type FeatureValue,
 } from '@ona/shared'
 import { HEALTH_RULE } from './healthGuard.js'
+import { isBillingConfigured } from '../billing.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -24,7 +29,7 @@ export const KB_FILE = 'principios-mimo.md'
  * Public facts about Mimoia (what it is, what it does, channels, mission,
  * privacy, contact), so Mimo can answer «¿qué es Mimoia?» or «¿qué incluye
  * Plus?» (D-053, 2026-10-15). Prices are NOT in this file: `pricingBlock()`
- * builds them from the same constants the web shows (`FOUNDER_PLANS`), so
+ * builds them from the same constants `/precios` shows (`PLANS`, `PLAN_FEATURE_GROUPS`), so
  * they can't drift. Keep it in sync with what users can see (CLAUDE.md →
  * Definition of done).
  */
@@ -48,17 +53,30 @@ async function loadKB() {
   ;[knowledgeBase, aboutMimoia] = await Promise.all([readKb(KB_FILE), readKb(ABOUT_FILE)])
 }
 
-/** Plans and prices as the waitlist shows them (packages/shared founderPricing). */
+/** Plans and prices as `/precios` shows them (packages/shared plans.ts, specs/billing.md). */
 export function pricingBlock(): string {
-  const plans = FOUNDER_PLANS.map((p) => {
-    const note = p.note ? ` (${p.note})` : ''
-    return `- ${p.name}: ${p.price}${note}, ${FOUNDER_HOUSEHOLD}. Incluye: ${p.bullets.join('; ')}. ${p.finePrint}`
+  const plans = PLANS.map((p) => {
+    const m = p.prices.mensual.label
+    const a = p.prices.anual
+    return `- ${p.name}${p.featured ? ' (el que recomendamos)' : ''}: ${m} o ${a.label} (sale a ${a.perMonth}), ${PLAN_HOUSEHOLD}. ${p.tagline} Lo principal: ${p.highlights.join('; ')}.`
   }).join('\n')
-  return `Planes y precios (son precios de fundador: ahora no se cobra nada; se reservan desde la lista de espera en mimoia.com):
+  const v = (x: FeatureValue) => (x === true ? 'si' : x === false ? 'no' : x)
+  const table = PLAN_FEATURE_GROUPS.flatMap((g) => g.features)
+    .map((f) => `- ${f.label}: Esencial ${v(f.esencial)}; Plus ${v(f.plus)}`)
+    .join('\n')
+  const payNow = isBillingConfigured()
+    ? `Quien gestiona el hogar puede dejarlo pagado ya en Perfil → Suscripcion: guarda la tarjeta y el primer cobro es el ${LAUNCH_DATE_LABEL}; si cancela antes no paga nada.`
+    : `Muy pronto podra dejarlo pagado desde Perfil → Suscripcion (el primer cobro seria el ${LAUNCH_DATE_LABEL}); de momento aun no se puede pagar.`
+  return `Planes y precios (por hogar, IVA incluido; todo esta en mimoia.com/precios):
 ${plans}
+Que incluye cada plan:
+${table}
+- ${PLAN_CAPS_NOTE}
 - Como funciona: ${FOUNDER_FOOTER}.
-- Si el usuario ya esta en la beta: ${FOUNDER_FOOTER_BETA}.
-- Si pregunta algo de precios que no este aqui (descuentos, empresas, otros paises, cuando se cobra exactamente), di que no lo sabes y que escriba a ${BRAND_SUPPORT_EMAIL}.`
+- Si el usuario ya esta en la beta: ${FOUNDER_FOOTER_BETA}. Durante la beta todos tienen Plus gratis. ${payNow}
+- Cambiar de plan, la tarjeta o cancelar: Perfil → Suscripcion → Gestionar mi suscripcion. Si cancela, sigue con su plan hasta el final de lo pagado.
+- Quien cobra: Stripe a traves de Link, que emite los recibos; en el extracto aparece LINK.COM* MIMOIA.
+- Si pregunta algo de precios que no este aqui (descuentos, empresas, otros paises), di que no lo sabes y que escriba a ${BRAND_SUPPORT_EMAIL}.`
 }
 
 /** Resolves once kb/ is read (scripts and tests that need it in the prompt await it). */

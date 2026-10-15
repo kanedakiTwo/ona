@@ -161,6 +161,16 @@ export const env = {
   RESEND_BASE_URL: (process.env.RESEND_BASE_URL || 'https://api.resend.com').replace(/\/+$/, ''),
 
   /**
+   * Subscriptions (specs/billing.md). Payments are on only when both are set;
+   * otherwise `GET /billing` answers `enabled: false` and the web hides the
+   * pay buttons. Test keys (`sk_test_…`) in staging, live keys in production
+   * once there's a business to invoice. The webhook secret (`whsec_…`) comes
+   * from the endpoint `scripts/stripeSetup.ts` creates.
+   */
+  STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY || '',
+  STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || '',
+
+  /**
    * Public origin of the web app, used to build links inside WhatsApp
    * replies ("Ver receta: <WEB_PUBLIC_URL>/recipes/<id>") and the waitlist
    * referral / opt-out links the API returns (specs/waitlist.md). No trailing slash.

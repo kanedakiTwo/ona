@@ -49,8 +49,9 @@ If the change introduces a new system not covered by any existing spec (e.g., no
 [ ] If something a user could ask Mimo about Mimoia changed (a feature,
     a channel, what a plan includes, privacy, contact, launch dates) → I
     updated `kb/sobre-mimoia.md`, Mimo's public facts (D-053). Prices and
-    plan contents come from `FOUNDER_PLANS` by themselves: never write them
-    in the file.
+    plan contents come from `PLANS` / `PLAN_FEATURE_GROUPS`
+    (`packages/shared/src/types/plans.ts`, the same source as `/precios`)
+    by themselves: never write them in the file.
 [ ] If I deferred the spec on purpose → I left a `TODO(spec):` marker in the
     relevant spec file AND told the user explicitly in my reply.
 ```
@@ -167,6 +168,10 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 
 ### Pending
 
+- [ ] **MIG-21 · Stripe: de modo prueba a cobrar de verdad** · *prueba hoy; real antes del 12-ene* — El cobro está montado (D-054, [specs/billing.md](./specs/billing.md)); falta tu cuenta.
+  - Hoy: en Stripe (modo de prueba) copia la clave secreta `sk_test_…` y en el Terminal `pbpaste > ~/.config/mimoia/stripe-secret-test`. Con ella Claude crea productos, precios, webhook y portal (`scripts/stripeSetup.ts`) y lo prueba en staging.
+  - En el Dashboard: Settings → Managed Payments → aceptar los términos (sin eso Checkout rechaza la sesión).
+  - Para cobrar de verdad: alta de autónomo o SL (gestoría), activar la cuenta de Stripe (datos fiscales y banco) y pasar la clave `sk_live_…` del mismo modo a `~/.config/mimoia/stripe-secret-live`. Hecho = un pago real en producción, reembolsado.
 - [ ] **MIG-19 · Mandar a tu círculo el mensaje de la lista de espera** · *hoy* — La lista está abierta desde el 13 y tiene 1 inscrito; el plan de validación necesita que tu círculo entre con su propia etiqueta para separarlo de los desconocidos (≥ 150 antes del 13 de noviembre).
   - Cómo: el texto aprobado está en ona-hq `approvals/approved/2026-10-12-marketing-mensaje-circulo-lista.md` (versión A para personas, con `?ref=circulo-miguel`; versión B para grupos, con `?ref=circulo-grupos`). Reescríbelo a tu manera, pero deja los enlaces tal cual. Mándalo por WhatsApp a unas 20 personas y a tus grupos.
   - Hecho cuando: lo has mandado y le dices a Claude a cuántas personas y grupos, para leer la conversión.

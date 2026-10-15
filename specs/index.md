@@ -52,6 +52,14 @@ Public blog on mimoia.com (PRO-92): `/blog` listing and `/blog/[slug]` articles,
 
 ---
 
+## [Billing (plans, pricing, subscriptions)](./billing.md)
+
+Plans per household: Esencial (featured, «Recomendado»; 4,99 €/mes, 49,99 €/año) and Plus (8,99 €/mes, 59,99 €/año: voice + proactive WhatsApp + higher caps), monthly/yearly switch, `/precios` public pricing page with comparison table (everything each plan includes) + FAQ, `/profile/suscripcion`, Stripe Checkout with Managed Payments (Link merchant of record, VAT included, `LINK.COM* MIMOIA`), pay during the beta → `trial_end` launch day 2027-01-12 (first charge then), customer portal (card, receipts, change plan, cancel at period end), `GET /billing`, `POST /billing/checkout|portal`, `POST /billing/webhook` (signed, re-reads the subscription), `subscriptions` table (migration 0049), lookup keys `esencial_mensual`…, `scripts/stripeSetup.ts`, `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET`, household owner only, account deletion cancels the subscription, beta = Plus for everyone, plan caps not enforced yet.
+
+**Source**: `packages/shared/src/types/plans.ts`, `apps/api/src/services/billing.ts`, `apps/api/src/routes/billing.ts`, `apps/api/scripts/stripeSetup.ts`, `apps/web/src/components/billing/`, `apps/web/src/app/(public)/precios/page.tsx`, `apps/web/src/app/profile/suscripcion/page.tsx`, `apps/web/src/hooks/useBilling.ts`
+
+---
+
 ## [Household](./household.md)
 
 Multi-user "shared household" foundation: every authed user has a `primary_household_id` pointing at a `households` row, with `household_members` (one row per user, role `owner`/`member`/`child`) and `household_invites` (32-hex token, 7-day TTL, public preview at `GET /invites/:token`, authed accept at `POST /invites/:token/accept`). At registration we auto-create a solo household named "Mi casa" with the registrant as owner. Owners can rename, generate/revoke invites, remove members, and leave (auto-promotes the oldest remaining member to owner; auto-creates a new solo household for the leaver). Public preview is mounted on a dedicated router BEFORE `userRoutes` so `router.use(authMiddleware)` doesn't intercept it. `GET /households/me` returns name + members + pendingInvites; `/profile/casa` is the management surface. **PR 1B (shipped):** `menus`, `shopping_lists` and `user_favorites` carry a `household_id` column (backfilled in 0012); inserts dual-write; reads switch to household scope when `SHARED_HOUSEHOLD_SCOPE=true` (ON by default, production included, since Railway sets no `NODE_ENV`). The single helper `scopeResolver.resolveScope(userId)` + `scopeWhere(userCol, householdCol, scope)` keeps every route in sync.

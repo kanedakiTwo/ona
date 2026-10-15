@@ -1182,3 +1182,34 @@ export const inviteCampaigns = pgTable('invite_campaigns', {
   createdBy: uuid('created_by'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [uniqueIndex('uq_invite_campaigns_code').on(t.code)])
+
+// ─── Subscriptions (specs/billing.md) ───────────────────────
+// One row per Stripe subscription, kept in sync by the Stripe webhook. A
+// plan is per household; the payer is the household owner who subscribed.
+// Paid during the beta → status 'trialing' until launch day (first charge).
+export const subscriptions = pgTable('subscriptions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  /** Who subscribed and pays. null once their account is deleted (the Stripe subscription is cancelled then). */
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+  stripeCustomerId: text('stripe_customer_id').notNull(),
+  stripeSubscriptionId: text('stripe_subscription_id').notNull(),
+  /** 'esencial' | 'plus'. */
+  plan: text('plan').notNull(),
+  /** 'mensual' | 'anual'. */
+  period: text('period').notNull(),
+  /** Stripe's status, as is: trialing, active, past_due, unpaid, canceled, incomplete, incomplete_expired, paused. */
+  status: text('status').notNull(),
+  /** First charge while trialing (launch day), else the next renewal. */
+  currentPeriodEnd: timestamp('current_period_end', { withTimezone: true }),
+  trialEnd: timestamp('trial_end', { withTimezone: true }),
+  cancelAtPeriodEnd: boolean('cancel_at_period_end').notNull().default(false),
+  canceledAt: timestamp('canceled_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_subscriptions_stripe_id').on(t.stripeSubscriptionId),
+  index('idx_subscriptions_household').on(t.householdId),
+  check('subscriptions_plan_check', sql.raw("plan IN ('esencial','plus')")),
+  check('subscriptions_period_check', sql.raw("period IN ('mensual','anual')")),
+])

@@ -3,13 +3,13 @@
  * questions: what it is, what it does, plans and prices, mission, privacy.
  *
  * `kb/sobre-mimoia.md` carries the facts; prices come from the same constants
- * the waitlist shows (`FOUNDER_PLANS`), never from the file, so a price change
+ * `/precios` shows (`PLANS`, `PLAN_FEATURE_GROUPS`), never from the file, so a price change
  * on the web can't leave Mimo quoting an old one.
  */
 import { describe, it, expect, beforeAll } from 'vitest'
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { BRAND_SUPPORT_EMAIL, FOUNDER_FOOTER, FOUNDER_FOOTER_BETA, FOUNDER_PLANS } from '@ona/shared'
+import { BRAND_SUPPORT_EMAIL, FOUNDER_FOOTER, FOUNDER_FOOTER_BETA, PLANS, PLAN_FEATURE_GROUPS } from '@ona/shared'
 import {
   ABOUT_FILE,
   WHATSAPP_OFF_TOPIC_REPLY,
@@ -49,7 +49,7 @@ describe('kb/sobre-mimoia.md', () => {
     expect(about()).toContain(BRAND_SUPPORT_EMAIL)
   })
 
-  it('never writes a price: prices come from FOUNDER_PLANS', () => {
+  it('never writes a price: prices come from PLANS', () => {
     expect(about()).not.toMatch(/\d\s*€|€\s*\d|\d+,\d{2}\b/)
   })
 
@@ -63,15 +63,17 @@ describe("Mimo's prompt carries the public facts and today's prices", () => {
     await knowledgeBaseReady
   })
 
-  it('pricingBlock lists every plan with its price, what it includes and the conditions', () => {
+  it('pricingBlock: both plans with both prices, Esencial recommended, every feature row and the conditions', () => {
     const block = pricingBlock()
-    for (const p of FOUNDER_PLANS) {
-      expect(block).toContain(`${p.name}: ${p.price}`)
-      for (const b of p.bullets) expect(block).toContain(b)
-      expect(block).toContain(p.finePrint)
+    for (const p of PLANS) {
+      expect(block).toContain(`${p.name}${p.featured ? ' (el que recomendamos)' : ''}: ${p.prices.mensual.label} o ${p.prices.anual.label}`)
+      for (const h of p.highlights) expect(block).toContain(h)
     }
+    for (const f of PLAN_FEATURE_GROUPS.flatMap((g) => g.features)) expect(block).toContain(`- ${f.label}: Esencial`)
+    expect(block).toContain('- Hablar con Mimo por voz: Esencial no; Plus si')
     expect(block).toContain(FOUNDER_FOOTER)
     expect(block).toContain(FOUNDER_FOOTER_BETA)
+    expect(block).toContain('LINK.COM* MIMOIA')
   })
 
   for (const mode of ['text', 'voice', 'whatsapp', 'onboarding'] as const) {
@@ -79,7 +81,7 @@ describe("Mimo's prompt carries the public facts and today's prices", () => {
       const p = buildSystemPrompt('Usuario de prueba', mode)
       expect(p).toContain(INTENDED_PURPOSE)
       expect(p).toContain('que en casa solo quede la parte divertida de cocinar')
-      for (const plan of FOUNDER_PLANS) expect(p).toContain(plan.price)
+      for (const plan of PLANS) for (const period of ['mensual', 'anual'] as const) expect(p).toContain(plan.prices[period].label)
     })
   }
 

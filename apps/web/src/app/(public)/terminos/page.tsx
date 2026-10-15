@@ -1,3 +1,4 @@
+import Link from "next/link"
 import { CONTACT_EMAIL } from "@/lib/contact"
 
 /**
@@ -65,15 +66,32 @@ export default function TerminosPage() {
 
         <h2 className="text-h3 mt-10 text-[#1A1A1A]">8. Precio y pagos</h2>
         <p>
-          Mimoia ofrece un plan gratuito con funcionalidades básicas. Los planes de pago, si los
-          hubiera, se facturarán según los precios publicados en la plataforma. Nos reservamos
-          el derecho de modificar los precios con preaviso de 30 días.
+          Mimoia se ofrece por suscripción, por hogar, con dos planes, Esencial y Plus, que pueden
+          pagarse al mes o al año. Los precios vigentes, con el IVA incluido, y lo que incluye cada
+          plan están en la página de <Link href="/precios" className="underline">Precios</Link>.
+          La suscripción se renueva sola al final de cada periodo hasta que la canceles.
+        </p>
+        <p>
+          El cobro lo gestiona Stripe a través de Link, que actúa como vendedor registrado: cobra el
+          importe, emite los recibos y en el extracto aparece «LINK.COM* MIMOIA». Nosotros no vemos
+          ni guardamos los datos de tu tarjeta.
+        </p>
+        <p>
+          Durante la beta puedes dejar tu plan pagado: guardas la tarjeta y el primer cobro se hace
+          el día de la apertura, el 12 de enero de 2027. Si cancelas antes, no se cobra nada.
+          Si cambiamos el precio, te avisaremos con al menos 30 días de antelación; el precio de
+          fundador se mantiene mientras sigas suscrito, con las condiciones de tu plan.
         </p>
 
         <h2 className="text-h3 mt-10 text-[#1A1A1A]">9. Cancelación</h2>
         <p>
-          Puedes cancelar tu cuenta en cualquier momento desde la configuración de tu perfil.
-          Al cancelar, perderás acceso a tu menú, listas de la compra e historial de recetas.
+          Puedes cancelar tu suscripción cuando quieras desde Perfil → Suscripción → «Gestionar mi
+          suscripción». Sigues teniendo tu plan hasta el final del periodo ya pagado y no se vuelve
+          a cobrar. Si borras tu cuenta, la suscripción que pagas se cancela en ese momento.
+        </p>
+        <p>
+          También puedes borrar tu cuenta en cualquier momento desde tu perfil. Al hacerlo pierdes
+          el acceso a tu menú, tus listas de la compra y tu historial de recetas.
         </p>
 
         <h2 className="text-h3 mt-10 text-[#1A1A1A]">10. Limitación de responsabilidad</h2>

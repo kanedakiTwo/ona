@@ -7,19 +7,21 @@ import {
   FOUNDER_DECLINE_REASONS,
   FOUNDER_FOOTER,
   FOUNDER_FOOTER_BETA,
-  FOUNDER_HOUSEHOLD,
   FOUNDER_NONE,
-  FOUNDER_PLANS,
   FOUNDER_RESERVE_NOTE,
   FOUNDER_SUBTITLE,
   FOUNDER_TITLE,
   PRICE_QUESTIONS,
   founderPlanById,
+  founderPlanId,
+  type BillingPeriod,
   type FounderDeclineReason,
   type FounderPlanId,
+  type PlanKey,
   type PriceQuestionKey,
 } from "@ona/shared"
 import { apiPublic } from "@/lib/api"
+import { PlanCards } from "@/components/billing/PlanCards"
 
 type Step = "questions" | "plans" | "reserved" | "declined"
 
@@ -37,7 +39,10 @@ export function FounderPricing({ token, beta }: { token: string; beta: boolean }
     expensive: "",
     tooExpensive: "",
   })
-  const [selected, setSelected] = useState<FounderPlanId>("plus-anual")
+  // Esencial is the plan we recommend (Miguel, 2026-10-15): preselected, monthly.
+  const [plan, setPlan] = useState<PlanKey>("esencial")
+  const [period, setPeriod] = useState<BillingPeriod>("mensual")
+  const selected = founderPlanId(plan, period)
   const [reserved, setReserved] = useState<FounderPlanId | null>(null)
   const [noneOpen, setNoneOpen] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -142,37 +147,14 @@ export function FounderPricing({ token, beta }: { token: string; beta: boolean }
           <h4 className="font-display text-2xl text-[#1A1612]">
             {FOUNDER_TITLE} <span className="font-italic italic text-[#C65D38]">· {FOUNDER_SUBTITLE}</span>
           </h4>
-          <div className="mt-6 grid gap-3 md:grid-cols-3" role="radiogroup" aria-label="Planes">
-            {FOUNDER_PLANS.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                role="radio"
-                aria-checked={selected === p.id}
-                data-testid={`plan-${p.id}`}
-                onClick={() => setSelected(p.id)}
-                className={`flex flex-col rounded-2xl border p-4 text-left transition-colors ${
-                  selected === p.id ? "border-[#1A1612] bg-[#FFFEFA]" : "border-[#DDD6C5] bg-transparent"
-                } ${p.featured ? "ring-2 ring-[#C65D38]/40" : ""}`}
-              >
-                {p.featured && (
-                  <span className="mb-2 self-start rounded-full bg-[#C65D38] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#FAF6EE]">
-                    Recomendada
-                  </span>
-                )}
-                <span className="text-[15px] font-semibold text-[#1A1612]">{p.name}</span>
-                <span className="mt-1 font-display text-2xl text-[#1A1612]">{p.price}</span>
-                {p.note && <span className="text-[13px] text-[#C65D38]">«{p.note}»</span>}
-                <span className="mt-1 text-[12px] text-[#7A7066]">{FOUNDER_HOUSEHOLD}</span>
-                <ul className="mt-3 space-y-1 text-[13px] text-[#1A1612]">
-                  {p.bullets.map((b) => (
-                    <li key={b}>· {b}</li>
-                  ))}
-                </ul>
-                <span className="mt-3 text-[11px] leading-snug text-[#7A7066]">{p.finePrint}</span>
-              </button>
-            ))}
-          </div>
+          <PlanCards
+            className="mt-6"
+            period={period}
+            onPeriodChange={setPeriod}
+            selected={plan}
+            onSelect={setPlan}
+            testIdPrefix="plan"
+          />
           <p className="mt-5 text-[13px] leading-relaxed text-[#4A4239]">{beta ? FOUNDER_FOOTER_BETA : FOUNDER_FOOTER}.</p>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
             <button
@@ -218,7 +200,7 @@ export function FounderPricing({ token, beta }: { token: string; beta: boolean }
         <div role="status">
           <h4 className="font-display text-2xl text-[#1A1612]">Plaza de fundador reservada</h4>
           <p className="mt-3 text-sm leading-relaxed text-[#4A4239]">
-            {founderPlanById(reserved)!.name} · {founderPlanById(reserved)!.price}. No has pagado nada: te avisamos antes de
+            {founderPlanById(reserved)!.name} {reserved.endsWith("anual") ? "anual" : "mensual"} · {founderPlanById(reserved)!.price}. No has pagado nada: te avisamos antes de
             cobrar y puedes anular la reserva cuando quieras.
           </p>
           <button type="button" disabled={busy} onClick={cancel} className="mt-4 text-[13px] text-[#7A7066] underline">

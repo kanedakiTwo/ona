@@ -54,7 +54,7 @@ Hands-free, fullscreen step-by-step cooking experience driven from a recipe.
 - Cooking mode is **read-only**: it never mutates the underlying recipe
 - The session state (current step, timers, checklist) is held in memory; closing the tab discards it (no persistence)
 - The user must have at least one step in the recipe; recipes with zero steps cannot enter cooking mode
-- Cooking mode does not require auth; any logged-in user with access to a recipe can use it
+- Cooking mode does not require auth: signed out it works for catalogue recipes (public chrome, no Mimo hands-free button — there is no MimoProvider, `useOptionalMimo`); signed in, any user with access to the recipe can use it
 - Cooking mode must remain fully usable in landscape and with one hand (large hit targets, primary controls within thumb reach)
 
 ## Voice control integration

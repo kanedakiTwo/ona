@@ -39,6 +39,14 @@ const nextConfig: NextConfig = {
         destination: 'https://mimoia.com/:path*',
         permanent: true,
       },
+      // One recipe page (specs/recipes.md): the old public detail lives on as
+      // a permanent redirect so links already shared keep working. The query
+      // (`?ref=receta`, `?utm_*`) is carried over automatically.
+      {
+        source: '/recipes-ona/:id',
+        destination: '/recipes/:id',
+        permanent: true,
+      },
     ]
   },
 }

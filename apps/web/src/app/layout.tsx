@@ -1,17 +1,11 @@
 "use client"
 
-import { HealthConsentGate } from "@/components/HealthConsentGate"
 import { Inter, Fraunces, Cormorant_Garamond, JetBrains_Mono } from "next/font/google"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { AuthProvider } from "@/lib/auth"
-import Navbar from "@/components/shared/Navbar"
-import OfflineBanner from "@/components/pwa/OfflineBanner"
-import InstallSheet from "@/components/pwa/InstallSheet"
 import { ServiceWorkerRegistration } from "@/components/pwa/ServiceWorkerRegistration"
-import { PageTransition } from "@/components/pwa/PageTransition"
-import { SwipeNavigator } from "@/components/pwa/SwipeNavigator"
-import MimoProvider from "@/components/mimo/MimoProvider"
-import DesktopSidebar from "@/components/shared/DesktopSidebar"
+import { RootShell } from "@/components/shared/RootShell"
+import { isRecipeSegment } from "@/lib/recipeShell"
 import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
 import { recordVisit } from "@/lib/pwa/installPrompt"
@@ -49,11 +43,14 @@ const jetbrains = JetBrains_Mono({
 // Cookieless visit statistics (Cloudflare Web Analytics), only when the token is set at build time.
 const CF_BEACON = cfBeaconAttr(process.env.NEXT_PUBLIC_CF_BEACON_TOKEN)
 
-const PUBLIC_ROUTES = ["/", "/como-funciona", "/precios", "/por-que-ona", "/privacidad", "/terminos", "/aviso-legal", "/blog", "/login", "/register", "/reset", "/recuperar", "/onboarding", "/newsletter/baja"]
-/** Public sections with dynamic segments: the waitlist owner page and opt-out (specs/waitlist.md), household invitations (specs/auth.md) and blog articles (specs/blog.md). */
+const PUBLIC_ROUTES = ["/", "/como-funciona", "/precios", "/recipes-ona", "/por-que-ona", "/privacidad", "/terminos", "/aviso-legal", "/blog", "/login", "/register", "/reset", "/recuperar", "/onboarding", "/newsletter/baja"]
+/**
+ * Public sections with dynamic segments: the waitlist owner page and opt-out (specs/waitlist.md), household invitations (specs/auth.md) and blog articles (specs/blog.md).
+ * `/recipes/<id>` is public too, but only signed out: RootShell decides (lib/recipeShell.ts).
+ */
 const PUBLIC_PREFIXES = ["/lista/", "/invites/", "/blog/"]
-/** Pages that set their own title/description/canonical with Next's `metadata` (specs/blog.md): the default tags below would duplicate them. */
-const hasOwnMetadata = (pathname: string) => pathname === "/blog" || pathname.startsWith("/blog/")
+/** Pages that set their own title/description/canonical with Next's `metadata` (specs/blog.md, the recipe page's link preview in specs/recipes.md): the default tags below would duplicate them. */
+const hasOwnMetadata = (pathname: string) => pathname === "/blog" || pathname.startsWith("/blog/") || isRecipeSegment(pathname)
 
 const APPLE_SPLASH_IMAGES = [
   { src: "splash-2048x2732.png", w: 1024, h: 1366, dpr: 2 },
@@ -130,24 +127,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ServiceWorkerRegistration />
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
-            {isPublicRoute ? (
-              <main>
-                <PageTransition>{children}</PageTransition>
-              </main>
-            ) : (
-              <MimoProvider>
-                <OfflineBanner />
-                <DesktopSidebar />
-                <main className="standalone-pt mx-auto max-w-[430px] pb-[calc(5rem+var(--safe-bottom))] md:ml-[calc(var(--sidebar-width)+var(--sidebar-gap))] md:max-w-none md:mr-0 md:pb-0 lg:pr-[var(--mimo-panel-width,0px)] lg:transition-[padding] lg:duration-300">
-                  <SwipeNavigator>
-                    <PageTransition>{children}</PageTransition>
-                  </SwipeNavigator>
-                </main>
-                <Navbar />
-                <InstallSheet />
-                <HealthConsentGate />
-              </MimoProvider>
-            )}
+            <RootShell pathname={pathname} isPublicRoute={isPublicRoute}>
+              {children}
+            </RootShell>
           </AuthProvider>
         </QueryClientProvider>
       </body>

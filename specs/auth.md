@@ -64,7 +64,8 @@ The `users` table holds the canonical scalar fields (`sex`, `age`, `weight`, `he
 
 **Public** (no navbar, no auth required):
 - `/` (landing), `/como-funciona`, `/privacidad`, `/terminos`
-- `/recipes-ona`, `/recipes-ona/[id]` — public Mimoia catalogue (system recipes only, see [Recipes](./recipes.md))
+- `/recipes-ona` — public Mimoia catalogue list (system recipes only; in `PUBLIC_ROUTES`, see [Recipes](./recipes.md)). `/recipes-ona/[id]` is a permanent redirect to `/recipes/[id]`
+- `/recipes/[id]` and `/recipes/[id]/cook` — **public for catalogue recipes**: signed out they render with the public chrome (PublicNavbar + Footer; cook mode full-screen) and the waitlist block; a private recipe answers «Esta receta es privada.» (API `GET /recipes/:id` uses `optionalAuthMiddleware` and 404s private recipes without a token). Signed in they keep the app shell. Chosen by `RootShell` (`lib/recipeShell.ts`)
 - `/login`, `/register` — `/register` stays reachable for invited households, but no public CTA links to it pre-launch (they lead to the [waitlist](./waitlist.md))
 - `/lista/[code]`, `/lista/baja` — waitlist owner page and opt-out (public chrome via `PUBLIC_PREFIXES`)
 - `/recuperar` (ask for the link), `/reset` (password recovery) and `/invites/[token]` (household invitation) — drawn like `/login` (public chrome: no sidebar, no bottom bar, no Mimo button, no desktop left margin), also for a signed-in user; `/invites/` via `PUBLIC_PREFIXES`
@@ -74,7 +75,7 @@ The `users` table holds the canonical scalar fields (`sex`, `age`, `weight`, `he
 **Protected** (bottom tab bar, requires auth):
 - `/menu`, `/menu/history`
 - `/shopping`
-- `/recipes`, `/recipes/new`, `/recipes/[id]`, `/recipes/[id]/cook`
+- `/recipes`, `/recipes/new`, `/recipes/[id]/edit` (and `/recipes/[id]` + `/cook` when signed in — see Public above)
 - `/advisor` — no longer a page (D-023): a client redirect to `/menu?mimo=1`, which opens Mimo. Mimo itself is the floating button on every protected page (see [Advisor](./advisor.md))
 - `/profile`
 - `/admin` — admin dashboard, gated by `requireAdmin` (see [Admin Dashboard](./admin-dashboard.md)). The old `/curator` route 301-redirects here.

@@ -167,7 +167,7 @@ function PublicRecipeCard({ recipe }: { recipe: any }) {
   const visibleTags = publicTagsOf(recipe)
 
   return (
-    <Link href={`/recipes-ona/${recipe.id}`} className="group block">
+    <Link href={`/recipes/${recipe.id}`} className="group block">
       <div className="relative overflow-hidden rounded-2xl bg-[#EFE8D8]">
         <div className="aspect-[4/5] overflow-hidden">
           <img

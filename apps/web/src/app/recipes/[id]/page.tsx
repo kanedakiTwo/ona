@@ -57,7 +57,9 @@ import {
   timelineString,
 } from "@/lib/recipeView"
 import { DIFFICULTY_LABELS, SEASON_LABELS } from "@/lib/labels"
-import { recipeSharePayload } from "@ona/shared"
+import { BRAND_NAME, recipeSharePayload } from "@ona/shared"
+import { ApiError } from "@/lib/api"
+import { RecipeWaitlistCta } from "@/components/recipes/RecipeWaitlistCta"
 
 /**
  * Recipe detail — "D · Luz y foto" (2026-10-08).
@@ -69,6 +71,11 @@ import { recipeSharePayload } from "@ona/shared"
  * long-scroll column on the right with every section in order.
  *
  * Both layouts render the same section blocks; only the chrome differs.
+ *
+ * The one recipe page (specs/recipes.md): catalogue recipes open here without
+ * an account too — RootShell gives signed-out visitors the public chrome, the
+ * personal bits are behind `user &&`, and a waitlist block closes the page.
+ * `/recipes-ona/<id>` redirects here (next.config.ts).
  */
 
 type TabKey = "ingredientes" | "pasos" | "nutricion" | "notas"
@@ -78,8 +85,12 @@ const TAB_ID_PREFIX = "receta"
 export default function RecipeDetailPage() {
   const params = useParams<{ id: string }>()
   const router = useRouter()
-  const { user } = useAuth()
+  const { user, isLoading: authLoading } = useAuth()
   const isDesktop = useIsDesktop()
+  // Signed out this page wears the public chrome (RootShell): a fixed
+  // PublicNavbar on top, so the photo, sticky tabs and sticky hero start
+  // below it, and a waitlist block closes the page (specs/recipes.md).
+  const publicChrome = !authLoading && !user
 
   const [servings, setServings] = useState<number | null>(null)
   // Once we know the recipe's authored servings, the scaler "seeds" itself.
@@ -166,8 +177,13 @@ export default function RecipeDetailPage() {
 
   if (isLoading || !recipe) {
     if (error) {
+      // Signed out, a 404 is usually someone else's private recipe (the API
+      // answers 404, not 403, so it never confirms it exists).
+      if (publicChrome && error instanceof ApiError && error.status === 404) {
+        return <PrivateRecipeNotice />
+      }
       return (
-        <div className="min-h-screen bg-[#FAF6EE] px-5 pt-12 text-center">
+        <div className={`min-h-screen bg-[#FAF6EE] px-5 text-center ${publicChrome ? "pt-32" : "pt-12"}`}>
           <p className="font-display text-2xl text-[#1A1612]">Receta no encontrada.</p>
           <button
             onClick={() => router.back()}
@@ -179,7 +195,7 @@ export default function RecipeDetailPage() {
       )
     }
     return (
-      <div className="min-h-screen bg-[#FAF6EE] lg:mx-auto lg:grid lg:max-w-[1280px] lg:grid-cols-2 lg:gap-10 lg:px-8 lg:pr-12 lg:pt-7">
+      <div className={`min-h-screen bg-[#FAF6EE] lg:mx-auto lg:grid lg:max-w-[1280px] lg:grid-cols-2 lg:gap-10 lg:px-8 lg:pr-12 ${publicChrome ? "pt-20 lg:pt-[104px]" : "lg:pt-7"}`}>
         <div className="h-[390px] w-full animate-pulse bg-[#EFE8D8] lg:h-[calc(100dvh-56px)] lg:rounded-[24px]" />
         <div className="space-y-4 px-5 pt-6 lg:px-0 lg:pt-2">
           <div className="h-3 w-1/3 animate-pulse rounded bg-[#EFE8D8]" />
@@ -216,8 +232,9 @@ export default function RecipeDetailPage() {
 
   const handleShare = async () => {
     haptic.light()
-    // "Pásalo": catalogue recipes share their public page (opens without an
-    // account, with a sign-up CTA); private ones go as text + a link to Mimoia.
+    // "Pásalo": catalogue recipes share this very page's link (it opens
+    // without an account, with the waitlist block); private ones go as text
+    // + a link to Mimoia.
     await share(recipeSharePayload(recipe, typeof window !== "undefined" ? window.location.origin : ""))
   }
 
@@ -434,8 +451,16 @@ export default function RecipeDetailPage() {
   // ─── Desktop (lg+): sticky photo left, long-scroll column right ───
   if (isDesktop) {
     return (
-      <div className="mx-auto grid min-h-screen max-w-[1280px] grid-cols-2 items-start gap-10 bg-[#FAF6EE] pb-10 pl-8 pr-12 pt-7">
-        <div className="sticky top-7 h-[calc(100dvh-56px)] max-h-[960px] min-h-[480px] overflow-hidden rounded-[24px] bg-[#EFE8D8]">
+      <div
+        className={`mx-auto grid min-h-screen max-w-[1280px] grid-cols-2 items-start gap-10 bg-[#FAF6EE] pb-10 pl-8 pr-12 ${
+          publicChrome ? "pt-[104px]" : "pt-7"
+        }`}
+      >
+        <div
+          className={`sticky max-h-[960px] min-h-[480px] overflow-hidden rounded-[24px] bg-[#EFE8D8] ${
+            publicChrome ? "top-[104px] h-[calc(100dvh-132px)]" : "top-7 h-[calc(100dvh-56px)]"
+          }`}
+        >
           <motion.img
             initial={{ scale: 1.04 }}
             animate={{ scale: 1 }}
@@ -446,7 +471,7 @@ export default function RecipeDetailPage() {
           />
           <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#1A1612]/40 to-transparent" />
           <Link
-            href="/recipes"
+            href={publicChrome ? PUBLIC_CATALOGUE_HREF : "/recipes"}
             className="absolute left-4 top-4 flex h-11 items-center gap-1 rounded-full bg-[#FFFEFA] pl-2.5 pr-4 text-[14px] font-semibold text-[#1A1612] shadow-sm transition-transform active:scale-95"
           >
             <ChevronLeft size={20} aria-hidden />
@@ -517,6 +542,8 @@ export default function RecipeDetailPage() {
           )}
 
           <DesktopSection title="Notas">{notesBlock}</DesktopSection>
+
+          {publicChrome && <RecipeWaitlistCta recipeName={recipe.name} className="mt-6" />}
         </motion.div>
       </div>
     )
@@ -541,7 +568,11 @@ export default function RecipeDetailPage() {
     // Bottom room for the action bar: <main> already pads 80 px (pb-20, sized
     // for the tab bar this route hides); 24 px more + the home-indicator
     // inset clears the 84 px bar with a little air.
-    <div className="min-h-screen bg-[#FAF6EE] pb-[calc(var(--safe-bottom)+24px)] md:mx-auto md:max-w-[640px]">
+    <div
+      className={`min-h-screen bg-[#FAF6EE] pb-[calc(var(--safe-bottom)+24px)] md:mx-auto md:max-w-[640px] ${
+        publicChrome ? "pt-20" : ""
+      }`}
+    >
       {/* Hero photo */}
       <div className="relative h-[390px] overflow-hidden bg-[#EFE8D8]">
         <motion.img
@@ -555,7 +586,7 @@ export default function RecipeDetailPage() {
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-[#1A1612]/45 to-transparent" />
 
         <div className="absolute inset-x-0 top-0 flex items-center justify-between px-4 pt-4">
-          <BackButton />
+          <BackButton fallbackHref={publicChrome ? PUBLIC_CATALOGUE_HREF : "/recipes"} />
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -599,7 +630,7 @@ export default function RecipeDetailPage() {
           active={activeTab}
           onChange={selectTab}
           idPrefix={TAB_ID_PREFIX}
-          className="sticky top-[var(--safe-top)] z-20 -mx-5 mt-3 bg-[#FAF6EE] px-5"
+          className={`sticky z-20 -mx-5 mt-3 bg-[#FAF6EE] px-5 ${publicChrome ? "top-20" : "top-[var(--safe-top)]"}`}
         />
 
         {panel(
@@ -617,11 +648,14 @@ export default function RecipeDetailPage() {
         {panel("pasos", "Preparación", stepsBlock)}
         {hasNutrition && panel("nutricion", "Nutrición", nutritionBlock)}
         {panel("notas", "Notas", notesBlock)}
+
+        {publicChrome && <RecipeWaitlistCta recipeName={recipe.name} className="mt-12" />}
       </motion.div>
 
       <RecipeActionBar
         cookHref={cookHref}
         onAddToMenu={user ? () => setAddToMenuOpen(true) : undefined}
+        withSidebar={!publicChrome}
       />
       {addToMenuSheet}
     </div>
@@ -806,15 +840,51 @@ function EmptyLine({ children }: { children: ReactNode }) {
 }
 
 /**
+ * Signed out, a 404 from `GET /recipes/:id` means a private recipe (or one
+ * that no longer exists): say so plainly and offer sign-in and the catalogue.
+ */
+function PrivateRecipeNotice() {
+  return (
+    <div className="min-h-[70vh] bg-[#FAF6EE] px-6 pb-24 pt-32 text-center" data-testid="recipe-private">
+      <div className="text-eyebrow text-[#7A7066]">Receta privada</div>
+      <h1 className="mx-auto mt-5 max-w-md font-display text-[30px] leading-tight text-[#1A1612]">
+        Esta receta es privada.
+      </h1>
+      <p className="mx-auto mt-4 max-w-md text-[15px] leading-relaxed text-[#4A4239]">
+        Solo la ve el hogar que la guardó en {BRAND_NAME} (o ya no existe). Si es tuya, entra con tu cuenta para verla.
+      </p>
+      <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+        <Link
+          href="/login"
+          className="inline-flex min-h-11 items-center rounded-full bg-[#1A1612] px-6 text-[15px] font-semibold text-[#FAF6EE] transition-colors hover:bg-[#2D6A4F]"
+        >
+          Entrar
+        </Link>
+        <Link
+          href={PUBLIC_CATALOGUE_HREF}
+          className="inline-flex min-h-11 items-center rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-6 text-[15px] font-semibold text-[#1A1612] transition-colors hover:border-[#1A1612]"
+        >
+          Ver el catálogo
+        </Link>
+      </div>
+    </div>
+  )
+}
+
+/** Where a signed-out visitor goes "back" to: the public catalogue. */
+const PUBLIC_CATALOGUE_HREF = "/recipes-ona"
+
+/**
  * Hero back button. Goes back in history when the user arrived from inside
  * the app (menu, catalogue, cookbook…); a link opened cold (WhatsApp, a new
- * tab) has nothing to go back to, so it falls through to the catalogue.
+ * tab) has nothing to go back to, so it falls through to the catalogue
+ * (`/recipes` signed in, the public `/recipes-ona` signed out).
  */
-function BackButton() {
+function BackButton({ fallbackHref }: { fallbackHref: string }) {
   const router = useRouter()
   return (
     <Link
-      href="/recipes"
+      href={fallbackHref}
       onClick={(e) => {
         if (window.history.length > 1) {
           e.preventDefault()

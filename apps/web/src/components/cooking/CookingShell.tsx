@@ -18,7 +18,7 @@ import { useWakeLock } from "@/hooks/useWakeLock"
 import { haptic } from "@/lib/pwa/haptics"
 import { subscribeCookingCommands } from "@/lib/cookingCommands"
 import { useAuth } from "@/lib/auth"
-import { useMimo } from "@/components/mimo/MimoProvider"
+import { useOptionalMimo } from "@/components/mimo/MimoProvider"
 import { StepCard, buildIngredientRefCounts } from "./StepCard"
 import { ChecklistPanel } from "./ChecklistPanel"
 
@@ -88,9 +88,11 @@ export function CookingShell({
   // «Mimo, manos libres» (PRO-55): Mimo opens listening and, while you stay
   // in cook mode, a silence doesn't end it (lib/mimoHandsFree.ts).
   const { user } = useAuth()
-  const mimo = useMimo()
-  const showHandsFree = !!user && mimo.canListen
+  // Signed out there is no MimoProvider (public shell), so no hands-free.
+  const mimo = useOptionalMimo()
+  const showHandsFree = !!user && !!mimo?.canListen
   const toggleHandsFree = () => {
+    if (!mimo) return
     haptic.light()
     if (mimo.handsFree) mimo.setHandsFree(false)
     else mimo.open({ listen: true, handsFree: true })
@@ -285,10 +287,10 @@ export function CookingShell({
               <button
                 type="button"
                 onClick={toggleHandsFree}
-                aria-pressed={mimo.handsFree}
+                aria-pressed={mimo?.handsFree}
                 data-testid="cook-handsfree"
                 className={`inline-flex h-11 items-center gap-1.5 rounded-full px-4 text-[14px] font-medium transition-colors active:scale-95 ${
-                  mimo.handsFree
+                  mimo?.handsFree
                     ? "bg-ink text-paper"
                     : "border border-border bg-paper text-ink hover:border-ink"
                 }`}

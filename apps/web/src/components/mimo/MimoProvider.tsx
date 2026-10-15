@@ -80,6 +80,11 @@ export function useMimo(): MimoContextValue {
   return ctx
 }
 
+/** Mimo when it's mounted, else undefined: cook mode also runs signed out, with the public shell and no MimoProvider (specs/recipes.md). */
+export function useOptionalMimo(): MimoContextValue | undefined {
+  return useContext(MimoContext)
+}
+
 const HISTORY_KEY = 'mimo.chat.v1'
 const SPEAK_KEY = 'mimo.speak'
 /**

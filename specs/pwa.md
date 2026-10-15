@@ -45,7 +45,7 @@ Premium Progressive Web App layer that makes Mimoia feel like a native iOS/Andro
 
 ### Sharing
 
-- Users can share a recipe via the native share sheet (`navigator.share`) — a Share2 button in the recipe detail hero overlay (desktop: the action row) sends recipe URL + name
+- Users can share a recipe via the native share sheet (`navigator.share`) — a Share2 button in the recipe detail hero overlay (desktop: the action row) sends the recipe name as title + its `/recipes/<id>?ref=receta` URL, no text (catalogue recipes; private ones go as text — see [Recipes](./recipes.md) «Pásalo»)
 - Users can share their shopping list as text via the native share sheet — the "Exportar" button uses Web Share when available and falls back to clipboard (the clipboard copy keeps text **and** link)
 - Users can share the week's menu ("Compartir" in the /menu week "···" sheet, both views; "Compartir semana" at lg+) as text, one line per meal, ending "— Hecho con Mimoia, el menú semanal…" + link (`menuShareText`, `/?ref=menu`)
 

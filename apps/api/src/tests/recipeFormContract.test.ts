@@ -200,3 +200,26 @@ describe('buildRecipePayload — fails the schema only when expected', () => {
     }
   })
 })
+
+describe('buildRecipePayload — «Enlace del original» (PRO-66)', () => {
+  it('a pasted link passes the schema as the recipe source', () => {
+    const payload = buildRecipePayload(fullState({ sourceUrl: '  https://www.instagram.com/reel/abc/  ' }))
+    const parsed = createRecipeSchema.safeParse(payload)
+    expect(parsed.success).toBe(true)
+    expect(payload.sourceUrl).toBe('https://www.instagram.com/reel/abc/')
+    expect(payload.sourceType).toBe('article')
+  })
+
+  it('a YouTube link is a youtube source', () => {
+    const payload = buildRecipePayload(fullState({ sourceUrl: 'https://youtu.be/xyz' }))
+    expect(createRecipeSchema.safeParse(payload).success).toBe(true)
+    expect(payload.sourceType).toBe('youtube')
+  })
+
+  it('an empty field sends no source at all', () => {
+    const payload = buildRecipePayload(fullState({ sourceUrl: '   ' }))
+    expect(payload).not.toHaveProperty('sourceUrl')
+    expect(payload).not.toHaveProperty('sourceType')
+    expect(createRecipeSchema.safeParse(payload).success).toBe(true)
+  })
+})

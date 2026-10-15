@@ -54,6 +54,7 @@ function setup(overrides: {
   menuDigest?: InboundDeps['menuDigest']
   transcribe?: InboundDeps['transcribe']
   importRecipeFromImage?: InboundDeps['importRecipeFromImage']
+  setRecipeSource?: InboundDeps['setRecipeSource']
   sendFails?: boolean
   outboundKinds?: Map<string, Date>
   supportEmail?: string
@@ -61,7 +62,7 @@ function setup(overrides: {
   const sent: OutboundMessage[] = []
   const outbound: { kind: string; body: string; status: string }[] = []
   const historyUserIds: string[] = []
-  const inboundUpdates: { status: string; body?: string | null; userId?: string | null; errorMessage?: string | null }[] = []
+  const inboundUpdates: { status: string; body?: string | null; userId?: string | null; errorMessage?: string | null; meta?: unknown }[] = []
   const chat = vi.fn(async () => ({
     ...(overrides.chatReply ?? { message: 'Hoy toca crema de calabaza.', uiHint: 'menu' }),
     usage: EMPTY_USAGE,
@@ -107,6 +108,7 @@ function setup(overrides: {
     recordUsage,
     transcribe: overrides.transcribe,
     importRecipeFromImage: overrides.importRecipeFromImage,
+    setRecipeSource: overrides.setRecipeSource,
     menuDigest: overrides.menuDigest,
   }
   return { deps, sent, outbound, inboundUpdates, chat, recordUsage, historyUserIds, setNotify, checkBudget }
@@ -366,6 +368,109 @@ describe('processInbound — recipe photos', () => {
     expect(photoIntent('¿Puedo usar esta sartén?')).toBe('ask')
     expect(photoIntent('Como cambia la receta?')).toBe('ask')
     expect(photoIntent('cómo lo hago en la barbacoa')).toBe('ask')
+  })
+})
+
+describe('processInbound — the link to the original of a screenshot (PRO-66)', () => {
+  const photo = () => msg({ kind: 'image', text: '', mediaId: 'MEDIA5', mimeType: 'image/png' })
+  const IG = 'https://www.instagram.com/reel/abc123/'
+  const minutesAgo = (m: number) => new Date(NOW.getTime() - m * 60_000)
+  /** The inbound row of «guárdame <IG>» that got «mándame una captura». */
+  const unreadLinkRow = (at: Date): HistoryRow => ({
+    direction: 'in',
+    kind: 'text',
+    body: `guárdame ${IG}`,
+    status: 'processed',
+    createdAt: at,
+    meta: {
+      toolTrace: [{
+        name: 'import_recipe_from_url',
+        input: JSON.stringify({ url: IG }),
+        summary: 'No se ha guardado nada. Responde al usuario exactamente: «No he podido leer la receta de este vídeo; mándame una captura».',
+      }],
+    },
+  })
+  /** The inbound row of a screenshot after which Mimo asked for the link. */
+  const askedRow = (at: Date): HistoryRow => ({
+    direction: 'in',
+    kind: 'image',
+    body: '[Foto de una receta]',
+    status: 'processed',
+    createdAt: at,
+    meta: { photo: true, photoRecipeId: 'r7', photoRecipeName: 'Pasta cremosa', sourceAsked: true },
+  })
+
+  it('an unread link + a screenshot within 30 min: the recipe keeps that link, no question', async () => {
+    const importRecipeFromImage = vi.fn(async () => ({ recipeId: 'r7', name: 'Pasta cremosa', warnings: [], looksLikeScreenshot: true }))
+    const t = setup({ importRecipeFromImage, history: [unreadLinkRow(minutesAgo(10))] })
+    await processInbound(photo(), t.deps)
+    expect(importRecipeFromImage).toHaveBeenCalledWith(Buffer.from('bytes'), 'image/png', 'user-1', { sourceUrl: IG })
+    const reply = t.sent.at(-1)!.text
+    expect(reply).toContain('*Pasta cremosa*')
+    expect(reply).toContain('fuente')
+    expect(reply).not.toContain('¿Tienes el enlace del original?')
+    expect(t.inboundUpdates.at(-1)).toMatchObject({ status: 'processed', meta: expect.objectContaining({ photoRecipeId: 'r7', photoSourceUrl: IG }) })
+    expect(t.chat).not.toHaveBeenCalled()
+  })
+
+  it('an unread link older than 30 min is not used', async () => {
+    const importRecipeFromImage = vi.fn(async () => ({ recipeId: 'r7', name: 'Pasta cremosa', warnings: [], looksLikeScreenshot: true }))
+    const t = setup({ importRecipeFromImage, setRecipeSource: async () => true, history: [unreadLinkRow(minutesAgo(45))] })
+    await processInbound(photo(), t.deps)
+    expect(importRecipeFromImage).toHaveBeenCalledWith(Buffer.from('bytes'), 'image/png', 'user-1')
+    expect(t.sent.at(-1)!.text).toContain('¿Tienes el enlace del original?')
+  })
+
+  it('a screenshot with no recent link: Mimo asks for the original', async () => {
+    const t = setup({
+      importRecipeFromImage: async () => ({ recipeId: 'r7', name: 'Pasta cremosa', warnings: [], looksLikeScreenshot: true }),
+      setRecipeSource: async () => true,
+    })
+    await processInbound(photo(), t.deps)
+    expect(t.sent.at(-1)!.text).toContain('¿Tienes el enlace del original? Así lo guardo como fuente.')
+    expect(t.inboundUpdates.at(-1)).toMatchObject({
+      status: 'processed',
+      meta: expect.objectContaining({ photoRecipeId: 'r7', photoRecipeName: 'Pasta cremosa', sourceAsked: true }),
+    })
+  })
+
+  it('a cookbook page or a handwritten note: no question', async () => {
+    const t = setup({
+      importRecipeFromImage: async () => ({ recipeId: 'r8', name: 'Lentejas', warnings: [], looksLikeScreenshot: false }),
+      setRecipeSource: async () => true,
+    })
+    await processInbound(photo(), t.deps)
+    expect(t.sent.at(-1)!.text).not.toContain('enlace del original')
+    expect(t.sent.at(-1)!.text).toContain('¿Quieres que la ponga en el menú')
+  })
+
+  it('the link that answers the question becomes the source of that recipe, not a new recipe', async () => {
+    const setRecipeSource = vi.fn(async () => true)
+    const t = setup({ setRecipeSource, history: [askedRow(minutesAgo(5))] })
+    await processInbound(msg({ text: `toma ${IG}` }), t.deps)
+    expect(setRecipeSource).toHaveBeenCalledWith('user-1', 'r7', IG)
+    expect(t.chat).not.toHaveBeenCalled() // no import_recipe_from_url, no second recipe
+    const reply = t.sent.at(-1)!.text
+    expect(reply).toContain('*Pasta cremosa*')
+    expect(reply).toContain(`${WEB}/recipes/r7`)
+    expect(t.inboundUpdates.at(-1)).toMatchObject({ status: 'processed', meta: expect.objectContaining({ sourceAttachedTo: 'r7' }) })
+  })
+
+  it('a link after the 30 minutes goes to Mimo as usual', async () => {
+    const setRecipeSource = vi.fn(async () => true)
+    const t = setup({ setRecipeSource, history: [askedRow(minutesAgo(31))] })
+    await processInbound(msg({ text: IG }), t.deps)
+    expect(setRecipeSource).not.toHaveBeenCalled()
+    expect(t.chat).toHaveBeenCalledOnce()
+  })
+
+  it('a question already answered is not answered twice', async () => {
+    const setRecipeSource = vi.fn(async () => true)
+    const answered: HistoryRow = { direction: 'in', kind: 'text', body: IG, status: 'processed', createdAt: minutesAgo(3), meta: { sourceAttachedTo: 'r7' } }
+    const t = setup({ setRecipeSource, history: [askedRow(minutesAgo(5)), answered] })
+    await processInbound(msg({ text: 'https://otra.receta.es/croquetas' }), t.deps)
+    expect(setRecipeSource).not.toHaveBeenCalled()
+    expect(t.chat).toHaveBeenCalledOnce()
   })
 })
 

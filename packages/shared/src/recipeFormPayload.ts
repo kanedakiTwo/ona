@@ -57,6 +57,11 @@ export interface RecipeFormState {
    * Omitting it defaults to 'explicit' in buildRecipePayload.
    */
   servingsConfidence?: 'explicit' | 'estimated'
+  /**
+   * «Enlace del original» (PRO-66). Trimmed; omitted when empty. A YouTube
+   * link is sent as `sourceType: 'youtube'`, anything else as `'article'`.
+   */
+  sourceUrl?: string
 }
 
 export function buildRecipePayload(form: RecipeFormState): Record<string, unknown> {
@@ -97,6 +102,12 @@ export function buildRecipePayload(form: RecipeFormState): Record<string, unknow
 
   if (typeof form.prepTime === 'number' && form.prepTime > 0) {
     payload.prepTime = form.prepTime
+  }
+
+  const sourceUrl = (form.sourceUrl ?? '').trim()
+  if (sourceUrl.length > 0) {
+    payload.sourceUrl = sourceUrl
+    payload.sourceType = /^https?:\/\/([a-z0-9-]+\.)*(youtube\.com|youtu\.be)(\/|$)/i.test(sourceUrl) ? 'youtube' : 'article'
   }
 
   return payload

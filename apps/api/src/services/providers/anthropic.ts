@@ -29,7 +29,8 @@ Extrae la siguiente informacion en formato JSON:
   "steps": ["paso 1", "paso 2"],
   "suggestedMeals": ["breakfast | lunch | dinner | snack"],
   "suggestedSeasons": ["spring | summer | autumn | winter"],
-  "tags": ["etiqueta1", "etiqueta2"]
+  "tags": ["etiqueta1", "etiqueta2"],
+  "looksLikeScreenshot": false
 }
 
 Reglas generales:
@@ -37,6 +38,7 @@ Reglas generales:
 - Si no puedes determinar tipo de comida, usa ["lunch", "dinner"]
 - Si no puedes determinar temporada, usa las 4 estaciones
 - Devuelve SOLO el JSON, sin texto adicional ni markdown
+- "looksLikeScreenshot": true si la imagen es una captura de pantalla de una web, una app o una red social (Instagram, TikTok, YouTube, Facebook, un blog: se ven la barra de estado del movil, botones, iconos de me gusta o comentarios, nombres de cuenta, la interfaz del navegador). false si es una foto de un libro, una revista, una ficha impresa o una nota escrita a mano
 - Si la imagen no contiene una receta legible, responde: {"error": "No se pudo identificar una receta en la imagen"}
 
 Campo "servings" OBLIGATORIO:
@@ -251,6 +253,9 @@ export class AnthropicProvider implements VisionProvider, TextExtractionProvider
       suggestedMeals: parsed.suggestedMeals || ['lunch', 'dinner'],
       suggestedSeasons: parsed.suggestedSeasons || ['spring', 'summer', 'autumn', 'winter'],
       tags: parsed.tags || [],
+      // PRO-66: same call, no extra cost. Only an explicit `true` counts, so
+      // a model that forgets the field never makes Mimo ask by mistake.
+      looksLikeScreenshot: parsed.looksLikeScreenshot === true,
     }
   }
 

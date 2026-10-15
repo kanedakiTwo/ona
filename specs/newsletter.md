@@ -4,11 +4,14 @@ The weekly email for people who ticked «Quiero recibir cada viernes el menú de
 
 ## User Capabilities
 
-- People who ticked the box get, each Friday, one email from **Mimoia <hola@mimoia.com>**:
-  - header «Mimoia · El menú de los viernes» and an optional opening line from Mimo;
-  - **the star recipe**: its photo full width (links to the recipe), «La receta de la semana», title, two lines and the issue's single call to action (a pill button);
+- People who ticked the box get, each Friday, one email from **Mimoia <hola@mimoia.com>**, in the brand (cream, ink, one touch of terracotta, a forest button; Fraunces, Inter and a Cormorant italic accent), in this order:
+  - masthead: the Mimoia logo (links to mimoia.com), «El menú de los viernes» and the issue's edition line (e.g. «N.º 1 · 16 de octubre de 2026»);
+  - an optional **headline** (a `*word*` goes in the terracotta italic) and an opening **letter** — since issue 1 written and signed by Miguel, in a personal, family tone;
+  - **the star recipe**: its photo full width (links to the recipe), «La receta de la semana», title, an optional one-line meta, two short paragraphs and the issue's single call to action (a forest pill button);
+  - up to four free **sections** (e.g. «Por qué existe Mimoia» on a cream-deep panel with a big italic quote, «Qué es esta carta» after a thin rule);
   - optionally a **«Novedad en Mimoia»** card and an **«Un truco con Mimo»** card, each with an image when there is one and «Ver más»;
-  - small print (e.g. how the photos are made), «Te llega porque pediste el menú de los viernes de Mimoia.», and two links: «No quiero recibir más el menú de los viernes» and «Salir de la lista de espera».
+  - the signoff and, when a person signs, their name in the italic accent with their role underneath;
+  - a cream-deep footer: Mimo's round symbol, small print (e.g. how the photos are made), «Te llega porque pediste el menú de los viernes de Mimoia.», «No quiero recibir más el menú de los viernes» · «Salir de la lista de espera», and «Mimoia · mimoia.com».
 - **Newsletter-only opt-out** `/newsletter/baja?t=<token>`: «¿Dejamos de mandarte el menú de los viernes?», explains the place on the list stays, one button «No quiero recibirlo más». Works on click, not on load (mail scanners). Then «Hecho. Ya no te mandaremos el menú de los viernes.»; a second time «Ya no recibías el menú de los viernes.»; a bad link «Este enlace de baja no es válido.». Inboxes that support it (Gmail, Apple Mail) show their own «Cancelar suscripción» (RFC 8058 one-click).
 - The waitlist box carries the hint «Te lo recomendamos: te va a sorprender. Es opcional y aparte de la lista; te das de baja con un clic.»
 - **Beta households (PRO-95)**: the same box, unticked, at `/register` (see [Auth](./auth.md)), and a switch in **Perfil → Recordatorios** («Quiero recibir cada viernes el menú de la semana por email»; off: «Te lo recomendamos: te va a sorprender.», on: «Activado · te llega cada viernes»). The switch saves on tap (`GET`/`PUT /newsletter/me { optIn }`, JWT); turning it on records the date and `WAITLIST_NEWSLETTER_CONSENT_VERSION`.
@@ -18,7 +21,7 @@ The weekly email for people who ticked «Quiero recibir cada viernes el menú de
 
 `POST /admin/newsletter/send` (admin JWT) with `{ issueId, subject, preheader?, content, testTo?, dryRun? }`:
 - `issueId`: lowercase slug (`2026-10-16`), the idempotency key.
-- `content`: `{ intro?, star { title, body, imageUrl, imageAlt, url }, news?, tip?, cta { label, url }, note?, signoff? }`; `news`/`tip` = `{ title, body, imageUrl?, imageAlt?, url? }`. Image and link URLs must be absolute (`http(s)://`), the star needs `alt`. The template lays it out; nobody sends raw HTML.
+- `content`: `{ edition?, headline?, intro?, star { title, body, imageUrl, imageAlt, url, meta? }, sections?, news?, tip?, cta { label, url }, note?, signoff?, from? }`; `news`/`tip` = `{ title, body, imageUrl?, imageAlt?, url? }`; `sections` = up to 4 × `{ label?, title?, quote?, body, tone?: 'band' | 'plain' }`; `from` = `{ name, role? }`. Image and link URLs must be absolute (`http(s)://`), the star needs `alt`. The template lays it out; nobody sends raw HTML.
 - `dryRun: true` → `{ mode: 'dry_run', recipients, alreadySent, bySource { waitlist, user }, includes? }`, sends nothing; `includes: <email>` says whether that address would get it.
 - `testTo` → one proof, subject prefixed «[Prueba] », only to the email of an **admin** account (else 400 `NEWSLETTER_TEST_NOT_ADMIN`); its opt-out links are dummies; nothing recorded.
 - Otherwise → `{ mode: 'send', sent, failed, skipped, alreadySent }`, through Resend's batch API (≤ 100 per call), audited as `newsletter.send` (counts only).
@@ -31,7 +34,8 @@ Recommended order (D-027 style): `dryRun` → `testTo` to Miguel → send.
 - **Idempotent per issue**: before sending, each recipient is claimed in `newsletter_sends (issue_id, recipient_hash)` (unique; `recipient_hash` = sha256 of the lowercased email, so no second copy of the address). Re-running the same issue emails nobody twice; a concurrent run gets only what it claimed. A `failed` or `skipped` (no `RESEND_API_KEY`) send releases its claim, so a re-run retries just those. A claim left `pending` by a crash counts as sent (no double email; check Resend's dashboard).
 - **Opt-out tokens**: `w.<the entry's waitlist opt-out token>` for waitlist entries; `u.<userId>.<HMAC-SHA256(JWT_SECRET), 22 chars>` for accounts (`newsletterTokenForUser`; a forged or changed id fails). `POST /newsletter/unsubscribe` takes `{ token }` (from the page) or `?t=<token>` with the form body `List-Unsubscribe=One-Click` (from the inbox); it sets `newsletter_opt_in = false` on the account and the waitlist entry with that email, nothing else → `200 { ok, alreadyUnsubscribed }`, 404 `NEWSLETTER_TOKEN_NOT_FOUND`. Limiter 30/hour per IP.
 - Headers on every issue: `List-Unsubscribe: <API one-click URL>, <web opt-out page>` and `List-Unsubscribe-Post: List-Unsubscribe=One-Click`. The one-click URL uses the origin the admin call came in on (the API's own public URL).
-- Template: tables + inline styles, 600 px column, cream/ink/terracotta, Fraunces with Georgia/serif fallbacks, every string escaped, text version with the same content and links.
+- Template: tables + inline styles, 600 px column, brand tokens, Google Fonts link (Apple Mail shows Fraunces/Cormorant/Inter; Gmail falls back to Georgia/Helvetica), `color-scheme: light`, every string escaped (the headline's `*accent*` too), text version with the same content and links.
+- Brand images are served by the web from `apps/web/public/email/` (`mimoia-logo.png`, `mimoia-simbolo.png`): the logo and symbol only show once that web build is live.
 - `/newsletter/baja` is a public route (`PUBLIC_ROUTES` in `app/layout.tsx`).
 - No health claims in any issue (constitution §6); the wine idea waits for Legal.
 

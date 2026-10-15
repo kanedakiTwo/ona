@@ -333,6 +333,46 @@ describe('renderNewsletterEmail / buildNewsletterMessage', () => {
     const x = newsletterSendSchema.parse({ ...ISSUE, content: { ...ISSUE.content, intro: '<script>alert(1)</script>' } })
     expect(renderNewsletterEmail(x, { unsubscribeUrl: 'https://mimoia.com/x' }).html).not.toContain('<script>')
   })
+
+  it('a letter signed by a person: edition, accent headline, sections in order, the name under the signoff', () => {
+    const x = newsletterSendSchema.parse({
+      ...ISSUE,
+      content: {
+        ...ISSUE.content,
+        edition: 'N.º 1 · 16 de octubre de 2026',
+        headline: 'La escudella, fuera de *temporada*',
+        star: { ...ISSUE.content.star, meta: 'Cuchara · para 6' },
+        sections: [
+          { label: 'Por qué existe Mimoia', quote: 'Que en casa solo quede lo divertido', body: 'La misión.', tone: 'band' },
+          { label: 'Qué es esta carta', title: 'Cada viernes', body: 'El formato.' },
+        ],
+        signoff: 'Un abrazo,',
+        from: { name: 'Miguel', role: 'Fundador de Mimoia' },
+      },
+    })
+    const m = buildNewsletterMessage(x, 'ana@example.com', { token: `w.${TOKEN_A}` }, {
+      publicUrl: 'https://mimoia.com',
+      apiUrl: 'https://api.mimoia.com',
+    })
+    expect(m.html).toContain('src="https://mimoia.com/email/mimoia-logo.png"')
+    expect(m.html).toContain('N.º 1 · 16 de octubre de 2026')
+    expect(m.html).toMatch(/La escudella, fuera de <em [^>]*>temporada<\/em>/)
+    expect(m.html).toContain('Cuchara · para 6')
+    expect(m.html).toContain('«Que en casa solo quede lo divertido»')
+    expect(m.html.indexOf('lentejas.jpg')).toBeLessThan(m.html.indexOf('Por qué existe Mimoia'))
+    expect(m.html.indexOf('Por qué existe Mimoia')).toBeLessThan(m.html.indexOf('Qué es esta carta'))
+    expect(m.html.indexOf('Un abrazo,')).toBeLessThan(m.html.indexOf('>Miguel</p>'))
+    expect(m.text).toContain('La escudella, fuera de temporada')
+    expect(m.text).toContain('POR QUÉ EXISTE MIMOIA')
+    expect(m.text).toMatch(/Un abrazo,\nMiguel\nFundador de Mimoia/)
+  })
+
+  it('the headline accent cannot smuggle markup', () => {
+    const x = newsletterSendSchema.parse({ ...ISSUE, content: { ...ISSUE.content, headline: '*<img src=x onerror=alert(1)>*' } })
+    const { html } = renderNewsletterEmail(x, { unsubscribeUrl: 'https://mimoia.com/x' })
+    expect(html).not.toContain('<img src=x')
+    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;</em>')
+  })
 })
 
 // ─── Routes ──────────────────────────────────────────────────────

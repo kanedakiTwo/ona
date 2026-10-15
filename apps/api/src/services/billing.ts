@@ -38,6 +38,16 @@ export function launchInstant(launchDate: string = LAUNCH_DATE): Date {
   return new Date(`${launchDate}T00:00:00+01:00`)
 }
 
+/**
+ * When the trial of a subscription paid during the beta ends (= first
+ * charge): launch day at noon in Madrid, so Stripe's checkout, portal and
+ * emails, which print dates in UTC, all say «12 de enero» (00:00 Madrid is
+ * 11 January 23:00 UTC: the portal said «finaliza el 11 ene», staging 2026-10-15).
+ */
+export function firstChargeInstant(launchDate: string = LAUNCH_DATE): Date {
+  return new Date(`${launchDate}T12:00:00+01:00`)
+}
+
 export function isBeta(now: Date, launchDate: string = LAUNCH_DATE): boolean {
   return now.getTime() < launchInstant(launchDate).getTime()
 }
@@ -77,8 +87,8 @@ export interface CheckoutInput {
  */
 export function buildCheckoutParams(i: CheckoutInput): Stripe.Checkout.SessionCreateParams {
   const meta = { userId: i.userId, householdId: i.householdId, plan: i.plan, period: i.period }
-  const launch = launchInstant()
-  const trialUntilLaunch = launch.getTime() - i.now.getTime() >= MIN_TRIAL_MS
+  const firstCharge = firstChargeInstant()
+  const trialUntilLaunch = firstCharge.getTime() - i.now.getTime() >= MIN_TRIAL_MS
   return {
     mode: 'subscription',
     managed_payments: { enabled: true },
@@ -89,7 +99,7 @@ export function buildCheckoutParams(i: CheckoutInput): Stripe.Checkout.SessionCr
     metadata: meta,
     subscription_data: {
       metadata: meta,
-      ...(trialUntilLaunch ? { trial_end: Math.floor(launch.getTime() / 1000) } : {}),
+      ...(trialUntilLaunch ? { trial_end: Math.floor(firstCharge.getTime() / 1000) } : {}),
     },
     success_url: `${i.webUrl}/profile/suscripcion?estado=ok`,
     cancel_url: `${i.webUrl}/profile/suscripcion?estado=cancelado`,

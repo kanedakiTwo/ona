@@ -15,6 +15,7 @@ import {
   billingStateFor,
   buildCheckoutParams,
   cancelSubscriptionsPaidBy,
+  firstChargeInstant,
   formatDayEs,
   launchInstant,
   parseLookupKey,
@@ -84,8 +85,8 @@ describe('buildCheckoutParams', () => {
     expect(p.mode).toBe('subscription')
     expect(p.managed_payments).toEqual({ enabled: true })
     expect(p.line_items).toEqual([{ price: 'price_123', quantity: 1 }])
-    expect(p.subscription_data?.trial_end).toBe(Math.floor(launchInstant().getTime() / 1000))
-    expect(new Date(p.subscription_data!.trial_end! * 1000).toISOString()).toBe('2027-01-11T23:00:00.000Z')
+    // Noon in Madrid: Stripe prints UTC dates, and 00:00 Madrid would read «11 de enero».
+    expect(new Date(p.subscription_data!.trial_end! * 1000).toISOString()).toBe('2027-01-12T11:00:00.000Z')
     expect(p.customer_email).toBe('ana@example.com')
     expect(p.subscription_data?.metadata).toEqual({ userId: 'u1', householdId: 'h1', plan: 'esencial', period: 'mensual' })
     expect(p.success_url).toBe('https://mimoia.com/profile/suscripcion?estado=ok')
@@ -101,7 +102,7 @@ describe('buildCheckoutParams', () => {
 
   it('after launch (or < 48 h before): no trial, charged now', () => {
     expect(buildCheckoutParams({ ...base, now: AFTER_LAUNCH }).subscription_data?.trial_end).toBeUndefined()
-    const dayBefore = new Date(launchInstant().getTime() - 24 * 3600_000)
+    const dayBefore = new Date(firstChargeInstant().getTime() - 24 * 3600_000)
     expect(buildCheckoutParams({ ...base, now: dayBefore }).subscription_data?.trial_end).toBeUndefined()
   })
 

@@ -47,8 +47,9 @@ test('a published article reads with its title, SEO tags and the waitlist call',
   await expect(page.locator('meta[property="og:title"]')).toHaveAttribute('content', PUBLISHED.title)
   await expect(page.locator('meta[property="og:type"]')).toHaveAttribute('content', 'article')
 
+  // No scrolling first: the article can re-render after hydration and the
+  // scroll then hits a detached node (flaky on CI). toBeVisible retries.
   const cta = page.getByTestId('blog-cta')
-  await cta.scrollIntoViewIfNeeded()
   await expect(cta).toBeVisible()
   await expect(cta.getByRole('link', { name: /lista de espera/i })).toHaveAttribute(
     'href',

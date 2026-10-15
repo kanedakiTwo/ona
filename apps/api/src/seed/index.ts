@@ -33,6 +33,7 @@ import { seedIngredients } from './ingredients.js'
 import { seedRecipes, type SeedRecipe } from './recipes.js'
 import { eq } from 'drizzle-orm'
 import { applyCatalogSourceLinks } from '../services/catalogSourceLinks.js'
+import { applyCatalogRecipeFixes } from '../services/catalogRecipeFixes.js'
 import type { Meal, Season, Unit } from '@ona/shared'
 import { UNITS } from '@ona/shared'
 
@@ -178,6 +179,9 @@ async function seed(): Promise<void> {
   // Same backfill db:migrate runs on boot (PRO-57): on a fresh DB the
   // catalogue only exists after this seed, so link it here too.
   await applyCatalogSourceLinks(db)
+  // PRO-78: no-op on a fresh seed (it already has the full list); fixes a
+  // dev DB seeded before it.
+  await applyCatalogRecipeFixes(db)
   console.log('Seed complete!')
   await pool.end()
 }

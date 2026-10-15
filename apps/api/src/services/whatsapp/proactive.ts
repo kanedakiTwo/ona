@@ -1,5 +1,5 @@
 import type { DayMenu } from '@ona/shared'
-import { mealEntriesForDay } from '../menuText.js'
+import { mealEntriesForDay, recipeLinkLines, recipesOfDay } from '../menuText.js'
 import type { OutboundMessage } from './render.js'
 
 /**
@@ -106,7 +106,11 @@ export const WEEKLY_NUDGE_TEXT =
 export function formatDailyBrief(day: DayMenu | null | undefined, webUrl: string): string | null {
   const entries = mealEntriesForDay(day).filter((e) => e.meal !== 'breakfast')
   if (entries.length === 0) return null
-  const lines = entries.map((e) => `- ${capitalize(e.label)}: ${e.dishes.join(' + ')}`)
+  // PRO-85: each recipe right under its meal, with its link; notes get none.
+  const lines = entries.flatMap((e) => [
+    `- ${capitalize(e.label)}: ${e.dishes.join(' + ')}`,
+    ...recipeLinkLines(recipesOfDay(day, [e.meal]), webUrl),
+  ])
   return `Buenos días. Hoy toca:\n${lines.join('\n')}\n\n¿Quieres cambiar algo?\n\nVer menú: ${webUrl}/menu`
 }
 

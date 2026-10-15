@@ -1,12 +1,14 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Mic, Send, Square, Volume2, VolumeX, X, Headphones, RotateCcw } from 'lucide-react'
 import { AI_DISCLOSURE } from '@ona/shared'
 import { useMimo, type MimoStatus } from './MimoProvider'
 import { isCookPath, isRecipeDetailPath } from './MimoButton'
 import { MimoAvatar } from '@/components/brand/Mimoia'
+import { linkRecipeNames } from '@/lib/mimoRecipeLinks'
 
 /** Suggestions for an empty conversation, by page. */
 export function suggestionsFor(pathname: string | null): string[] {
@@ -144,7 +146,23 @@ export default function MimoPanel() {
                   m.role === 'user' ? 'rounded-br-md bg-[#1A1612] text-[#FFFEFA]' : 'rounded-bl-md bg-[#F2EDE0] text-[#1A1612]'
                 }`}
               >
-                {m.content}
+                {m.role === 'assistant' && m.recipes?.length
+                  ? linkRecipeNames(m.content, m.recipes).map((seg, i) =>
+                      seg.href ? (
+                        <Link
+                          key={i}
+                          href={seg.href}
+                          onClick={mimo.close}
+                          data-testid="mimo-recipe-link"
+                          className="font-medium text-[#C65D38] underline decoration-[#C65D38]/40 underline-offset-2"
+                        >
+                          {seg.text}
+                        </Link>
+                      ) : (
+                        <span key={i}>{seg.text}</span>
+                      ),
+                    )
+                  : m.content}
               </div>
             </div>
           ))}

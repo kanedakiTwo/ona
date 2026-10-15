@@ -67,6 +67,29 @@ describe('renderAssistantReply', () => {
     expect(appLinkFor({ uiHint: 'shopping_list' }, WEB)).toBe(`Ver lista de la compra: ${WEB}/shopping`)
   })
 
+  it("PRO-85: today's menu links each recipe to its page; notes get no link", () => {
+    const day = {
+      lunch: { dishes: [{ kind: 'recipe', recipeId: 'r1', recipeName: 'Lentejas estofadas' }, { kind: 'recipe', recipeId: 'r2', recipeName: 'Ensalada verde' }] },
+      dinner: { dishes: [{ kind: 'note', text: 'Cenamos fuera' }] },
+    }
+    const [msg] = renderAssistantReply({ message: 'Hoy toca lentejas con ensalada y cenáis fuera.', uiHint: 'menu', data: { dayIndex: 2, day } }, 'https://www.mimoia.com')
+    expect(msg).toEqual({
+      type: 'text',
+      text: 'Hoy toca lentejas con ensalada y cenáis fuera.\n\n→ Lentejas estofadas: mimoia.com/recipes/r1\n→ Ensalada verde: mimoia.com/recipes/r2\nVer menú: https://www.mimoia.com/menu',
+    })
+    expect(msg.text).not.toMatch(/Cenamos fuera:/)
+  })
+
+  it('PRO-85: a recipe asked by name (get_recipe_details → { id, name }) gets its link', () => {
+    expect(appLinkFor({ uiHint: 'recipe', data: { id: 'r9', name: 'Paella' } }, WEB)).toBe(`Ver receta: ${WEB}/recipes/r9`)
+  })
+
+  it('PRO-85: recipe links the model already copied are not repeated', () => {
+    const day = { lunch: { dishes: [{ kind: 'recipe', recipeId: 'r1', recipeName: 'Lentejas' }] } }
+    const [msg] = renderAssistantReply({ message: 'Hoy: Lentejas (ona.test/recipes/r1)', uiHint: 'menu', data: { day } }, WEB)
+    expect(msg.text).toBe(`Hoy: Lentejas (ona.test/recipes/r1)\n\nVer menú: ${WEB}/menu`)
+  })
+
   it('does not duplicate the deep link when the model already wrote it', () => {
     expect(renderAssistantReply({ message: `Menú listo.\n\nVer menú: ${WEB}/menu`, uiHint: 'menu' }, WEB)).toEqual([
       { type: 'text', text: `Menú listo.\n\nVer menú: ${WEB}/menu` },

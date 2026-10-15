@@ -22,6 +22,7 @@ import {
   type BrandAssets,
   type Signer,
 } from './emailBrand.js'
+import { isSinkAddress, sinkEmail } from './emailSink.js'
 
 /**
  * Transactional email through Resend's REST API (specs/email.md). A plain
@@ -111,6 +112,8 @@ async function postResend(cfg: EmailConfig, path: string, body: unknown): Promis
 }
 
 export async function sendEmail(msg: EmailMessage, cfg: EmailConfig = defaultEmailConfig()): Promise<EmailResult> {
+  // Staging test addresses go to the in-memory sink, never to Resend (emailSink.ts).
+  if (isSinkAddress(msg.to)) return sinkEmail(msg)
   if (!isEmailConfigured(cfg)) {
     console.log(`[email] not configured (RESEND_API_KEY unset): not sending «${msg.subject}» to ${maskEmail(msg.to)}`)
     return { status: 'skipped', reason: 'not_configured' }
@@ -135,6 +138,13 @@ export async function sendEmailBatch(
   cfg: EmailConfig = defaultEmailConfig(),
 ): Promise<EmailResult[]> {
   if (msgs.length === 0) return []
+  // Staging test addresses go to the sink; the rest are sent as usual, results in input order.
+  if (msgs.some((m) => isSinkAddress(m.to))) {
+    const rest = msgs.filter((m) => !isSinkAddress(m.to))
+    const sent = await sendEmailBatch(rest, cfg)
+    let k = 0
+    return msgs.map((m) => (isSinkAddress(m.to) ? sinkEmail(m) : sent[k++]))
+  }
   if (!isEmailConfigured(cfg)) {
     console.log(`[email] not configured (RESEND_API_KEY unset): not sending a batch of ${msgs.length}`)
     return msgs.map(() => ({ status: 'skipped', reason: 'not_configured' }) as const)

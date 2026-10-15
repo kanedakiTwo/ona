@@ -37,6 +37,7 @@ import shopOrdersRoutes, { publicShopOrdersRouter } from './routes/shopOrders.js
 import appErrorsRoutes, { clientErrorsRouter } from './routes/appErrors.js'
 import waitlistRoutes, { adminWaitlistRouter } from './routes/waitlist.js'
 import newsletterRoutes from './routes/newsletter.js'
+import emailSinkRoutes from './routes/emailSink.js'
 import usageRoutes from './routes/usage.js'
 import inviteCampaignRoutes from './routes/inviteCampaigns.js'
 import billingRoutes, { billingWebhookRouter } from './routes/billing.js'
@@ -125,6 +126,8 @@ app.use(publicShopOrdersRouter)
 app.use(waitlistRoutes)
 // Newsletter: public one-click opt-out + admin send (per-route auth, PRO-94).
 app.use(newsletterRoutes)
+// Staging mail sink for test addresses (EMAIL_SINK_DOMAINS; off on production).
+app.use(emailSinkRoutes)
 // Per-route authMiddleware (no catch-all), before userRoutes.
 app.use(billingRoutes)
 app.use(priceSurveyRoutes)

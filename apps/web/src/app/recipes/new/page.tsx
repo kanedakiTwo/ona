@@ -124,6 +124,10 @@ function NewRecipePageInner() {
   // form-local: the server still receives `{ index, text }`.
   const [steps, setSteps] = useState<StepDraft[]>([makeStep()])
   const [photoExtracted, setPhotoExtracted] = useState(false)
+  // «Enlace del original» (PRO-66): optional; highlighted when the imported
+  // photo looks like a screenshot of a web page or a social network.
+  const [sourceUrl, setSourceUrl] = useState("")
+  const [askSourceLink, setAskSourceLink] = useState(false)
 
   // Per-field validation errors surfaced after a submit attempt.
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -163,6 +167,7 @@ function NewRecipePageInner() {
         : [emptyRow()]
     )
     setPhotoExtracted(true)
+    setAskSourceLink(data.looksLikeScreenshot === true)
   }
 
   function toggleMeal(meal: Meal) {
@@ -262,6 +267,7 @@ function NewRecipePageInner() {
       // stability; the payload builder only consumes the text array.
       steps: steps.map((s) => s.text),
       ingredientRows,
+      sourceUrl,
     })
     return { ...base, mealFit, seasonFit, frequency, course: course || null }
   }
@@ -404,6 +410,37 @@ function NewRecipePageInner() {
                       required
                     />
                   </Field>
+
+                  <div
+                    data-testid="recipe-source-field"
+                    data-highlighted={askSourceLink ? "true" : "false"}
+                    className={
+                      askSourceLink
+                        ? "rounded-2xl border border-terracotta bg-cream-deep p-3.5"
+                        : undefined
+                    }
+                  >
+                    <Field
+                      label="Enlace del original"
+                      htmlFor="recipe-source"
+                      error={errors.sourceUrl}
+                      hint={
+                        askSourceLink
+                          ? "Parece una captura de una web o una red social. Pega aquí el enlace del original y se guardará como fuente de la receta."
+                          : "Opcional. Si la receta viene de una web o un vídeo, la receta mostrará «Ver fuente»."
+                      }
+                    >
+                      <input
+                        id="recipe-source"
+                        type="url"
+                        inputMode="url"
+                        value={sourceUrl}
+                        onChange={(e) => setSourceUrl(e.target.value)}
+                        placeholder="https://…"
+                        className={fieldClass(!!errors.sourceUrl || askSourceLink)}
+                      />
+                    </Field>
+                  </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="Comensales" htmlFor="recipe-servings" error={errors.servings}>

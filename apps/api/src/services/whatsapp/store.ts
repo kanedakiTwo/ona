@@ -89,7 +89,7 @@ export async function updateInbound(
     body?: string | null
     userId?: string | null
     errorMessage?: string | null
-    meta?: { tools?: string[]; corrections?: string[]; ms?: number; toolTrace?: import('../assistant/types.js').ToolTrace[]; photo?: boolean }
+    meta?: { tools?: string[]; corrections?: string[]; ms?: number; toolTrace?: import('../assistant/types.js').ToolTrace[] } & import('./photoSource.js').PhotoSourceMeta
   },
 ): Promise<void> {
   await db.update(whatsappMessages).set(patch).where(eq(whatsappMessages.wamid, wamid))

@@ -46,6 +46,9 @@ export interface RawExtractedRecipe {
   suggestedMeals: string[]
   suggestedSeasons: string[]
   tags: string[]
+  /** Photo imports only (PRO-66): the photo is a screenshot of a web page or
+   * a social network, not a cookbook page or a handwritten note. */
+  looksLikeScreenshot?: boolean
 }
 
 export interface VisionProvider {
@@ -355,5 +358,6 @@ export async function extractRecipeFromImage(
     ingredients: matchedIngredients,
     unmatchedCount,
     warnings,
+    looksLikeScreenshot: raw.looksLikeScreenshot === true,
   }
 }

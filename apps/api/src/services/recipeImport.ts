@@ -4,6 +4,10 @@ import { AnthropicProvider } from './providers/anthropic.js'
 import { extractRecipeFromImage, matchIngredients } from './recipeExtractor.js'
 import { extractRecipeFromUrl } from './recipeUrlExtractor.js'
 import { scheduleHouseImage } from './recipeHouseImage.js'
+import { detectSourceType } from './sources/sourceType.js'
+import { db } from '../db/connection.js'
+import { recipes } from '../db/schema.js'
+import { and, eq } from 'drizzle-orm'
 
 /**
  * One persist path for every "import a recipe" entry point: the
@@ -93,14 +97,54 @@ export async function importRecipeFromUrl(url: string, userId: string): Promise<
   return saveOrThrow(extracted, userId, ['auto-extracted', 'from-url'], url)
 }
 
-/** Photo of a recipe (cookbook page, handwritten card…) → saved user recipe. */
+/**
+ * Pure: a link the user gave as the original of a recipe → the columns to
+ * store (PRO-66). Null for anything that isn't a public-looking http(s) URL.
+ */
+export function sourceFieldsFor(url: string): { sourceUrl: string; sourceType: 'youtube' | 'article' } | null {
+  const trimmed = url.trim()
+  try {
+    const u = new URL(trimmed)
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null
+    if (trimmed.length > 2000) return null
+    return { sourceUrl: trimmed, sourceType: detectSourceType(trimmed) }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Photo of a recipe (cookbook page, handwritten card, screenshot…) → saved
+ * user recipe. `sourceUrl` = the link to the original, when we know it
+ * (PRO-66). `looksLikeScreenshot` comes from the same vision call.
+ */
 export async function importRecipeFromImage(
   image: Buffer,
   mimeType: string,
   userId: string,
-): Promise<ImportedRecipe> {
+  opts: { sourceUrl?: string } = {},
+): Promise<ImportedRecipe & { looksLikeScreenshot: boolean }> {
   const extracted = await extractRecipeFromImage(new AnthropicProvider(), image, mimeType)
-  return saveOrThrow(extracted, userId, ['auto-extracted', 'from-photo'])
+  const source = opts.sourceUrl ? sourceFieldsFor(opts.sourceUrl) : null
+  if (source) extracted.sourceType = source.sourceType
+  const saved = await saveOrThrow(extracted, userId, ['auto-extracted', 'from-photo'], source?.sourceUrl)
+  return { ...saved, looksLikeScreenshot: extracted.looksLikeScreenshot === true }
+}
+
+/**
+ * The link to the original of one of the user's own recipes (PRO-66: the
+ * answer to «¿Tienes el enlace del original?»). False when the link isn't
+ * valid or the recipe isn't theirs.
+ */
+export async function setRecipeSourceUrl(userId: string, recipeId: string, url: string): Promise<boolean> {
+  const source = sourceFieldsFor(url)
+  if (!source) return false
+  const updated = await db
+    .update(recipes)
+    .set({ sourceUrl: source.sourceUrl, sourceType: source.sourceType, updatedAt: new Date() })
+    .where(and(eq(recipes.id, recipeId), eq(recipes.authorId, userId)))
+    .returning({ id: recipes.id })
+  return updated.length > 0
 }
 
 // ─── Recipes the assistant writes from a conversation ────────────

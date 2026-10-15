@@ -381,4 +381,7 @@ export interface ExtractedRecipe {
   /** Set by the URL extractor; null/undefined for image and manual sources. */
   sourceUrl?: string | null
   sourceType?: SourceType | null
+  /** Photo extractor only (PRO-66): the photo looks like a screenshot of a
+   * web page or a social network → ask for the link to the original. */
+  looksLikeScreenshot?: boolean
 }

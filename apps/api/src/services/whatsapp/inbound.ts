@@ -10,6 +10,14 @@ import { isShoppingItemList, shoppingListDigest } from '../shoppingText.js'
 import { AI_DISCLOSURE_FIRST_PERSON } from '@ona/shared'
 import { controlCommand, OPT_IN_NO, OPT_IN_YES } from './commands.js'
 import { trackEvent } from '../usageEvents.js'
+import {
+  ASK_SOURCE_COPY,
+  PHOTO_SOURCE_WINDOW_MS,
+  firstUrl,
+  pendingSourceQuestion,
+  unreadLinkForScreenshot,
+  type PhotoSourceMeta,
+} from './photoSource.js'
 
 /**
  * Inbound orchestrator: one WhatsApp message in → zero or more replies out.
@@ -39,7 +47,7 @@ export interface InboundDeps {
         body?: string | null
         userId?: string | null
         errorMessage?: string | null
-        meta?: { tools?: string[]; corrections?: string[]; ms?: number; toolTrace?: ToolTrace[]; photo?: boolean }
+        meta?: { tools?: string[]; corrections?: string[]; ms?: number; toolTrace?: ToolTrace[] } & PhotoSourceMeta
       },
     ) => Promise<void>
     insertOutbound: (row: {
@@ -82,12 +90,19 @@ export interface InboundDeps {
    * the turn touched, null = the user's latest). Absent → no digest.
    */
   menuDigest?: (userId: string, menuId: string | null) => Promise<string | null>
-  /** Photo of a recipe → saved recipe. Absent → photos get a polite "todavía no". */
+  /**
+   * Photo of a recipe → saved recipe. Absent → photos get a polite "todavía no".
+   * `sourceUrl` = the link saved as its source (PRO-66); `looksLikeScreenshot`
+   * comes from the same vision call that reads the recipe.
+   */
   importRecipeFromImage?: (
     image: Buffer,
     mimeType: string,
     userId: string,
-  ) => Promise<{ recipeId: string; name: string; warnings: string[] }>
+    opts?: { sourceUrl?: string },
+  ) => Promise<{ recipeId: string; name: string; warnings: string[]; looksLikeScreenshot?: boolean }>
+  /** The link to the original of a screenshot's recipe (PRO-66). False = not the user's recipe. */
+  setRecipeSource?: (userId: string, recipeId: string, url: string) => Promise<boolean>
 }
 
 /** Skills after which the reply carries the week's menu (not just a link to it). */
@@ -176,6 +191,8 @@ export const COPY = {
   imageUnavailable: 'Todavía no puedo leer fotos por aquí. Mándame el enlace de la receta o escríbemela.',
   imageNotRecipe: 'No he encontrado ninguna receta en esa foto. Prueba con una foto más nítida de la receta (ingredientes y pasos).',
   imageFailed: 'No he podido procesar la foto. Inténtalo de nuevo en un momento.',
+  /** PRO-66: a link answered «¿Tienes el enlace del original?». */
+  sourceSaved: (name: string) => `Hecho: he guardado el enlace como fuente de *${name}*. Lo verás en «Ver fuente».`,
   error: 'Vaya, algo ha fallado. Inténtalo de nuevo en un momento.',
   working: 'Un momento, me pongo con ello…',
   ackPhoto: 'Recibida la foto. Voy a leer la receta, dame unos segundos…',
@@ -391,6 +408,12 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
   const outText = (kind: string, text: string) => out(kind, renderPlainText(text))
 
   try {
+    // ── 1b. The link that answers «¿Tienes el enlace del original?» (PRO-66):
+    // it becomes the source of that recipe, not a new import. No paid work.
+    if ((msg.kind === 'text' || msg.kind === 'interactive') && deps.setRecipeSource && firstUrl(msg.text)) {
+      if (await attachSourceLink(msg, userId, now, deps, outText)) return
+    }
+
     // ── 2. Budget gate (same cap as the web chat), before ANY paid work:
     // transcription, photo extraction and the chat itself.
     if (msg.kind !== 'unsupported') {
@@ -434,7 +457,7 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
         break
       }
       case 'image': {
-        const photo = await handleImage(msg, userId, deps, out, acker)
+        const photo = await handleImage(msg, userId, now, deps, out, acker)
         if (photo === 'done') return
         text = photo.text
         images = photo.images
@@ -526,9 +549,38 @@ export function photoIntent(caption: string | null | undefined): 'import' | 'ask
   return 'import'
 }
 
+/**
+ * PRO-66: a link right after «¿Tienes el enlace del original?» (30 min) is
+ * saved as the source of that recipe. True = handled (nothing else to do).
+ */
+async function attachSourceLink(
+  msg: InboundMessage,
+  userId: string,
+  now: Date,
+  deps: InboundDeps,
+  outText: (kind: string, text: string) => Promise<void>,
+): Promise<boolean> {
+  const url = firstUrl(msg.text)
+  if (!url || !deps.setRecipeSource) return false
+  const rows = await deps.store.loadHistoryRows(msg.from, new Date(now.getTime() - PHOTO_SOURCE_WINDOW_MS), userId)
+  const pending = pendingSourceQuestion(rows, now)
+  if (!pending) return false
+  if (!(await deps.setRecipeSource(userId, pending.recipeId, url))) return false
+  await deps.store.updateInbound(msg.wamid, {
+    status: 'processed',
+    userId,
+    body: `[Enlace del original de «${pending.name}»: ${url}]`,
+    meta: { sourceAttachedTo: pending.recipeId },
+  })
+  const recipeUrl = `${deps.webUrl.replace(/\/$/, '')}/recipes/${pending.recipeId}`
+  await outText('reply', `${COPY.sourceSaved(pending.name)}\nVer receta: ${recipeUrl}`)
+  return true
+}
+
 async function handleImage(
   msg: InboundMessage,
   userId: string,
+  now: Date,
   deps: InboundDeps,
   out: (kind: string, messages: OutboundMessage[]) => Promise<void>,
   acker: ReturnType<typeof createAcker>,
@@ -549,9 +601,15 @@ async function handleImage(
 
   // Reading a recipe photo always takes a while (vision + ingredient matching).
   acker.now(COPY.ackPhoto)
-  let saved: { recipeId: string; name: string; warnings: string[] }
+  // PRO-66: an Instagram/TikTok link we couldn't read in the last 30 min is
+  // the original of this screenshot.
+  const historyRows = await store.loadHistoryRows(msg.from, new Date(now.getTime() - PHOTO_SOURCE_WINDOW_MS), userId)
+  const sourceUrl = unreadLinkForScreenshot(historyRows, now)
+  let saved: { recipeId: string; name: string; warnings: string[]; looksLikeScreenshot?: boolean }
   try {
-    saved = await deps.importRecipeFromImage(media.buffer, mimeType, userId)
+    saved = sourceUrl
+      ? await deps.importRecipeFromImage(media.buffer, mimeType, userId, { sourceUrl })
+      : await deps.importRecipeFromImage(media.buffer, mimeType, userId)
   } catch (err: any) {
     const notRecipe = /no se pudo identificar|no parece/i.test(String(err?.message ?? ''))
     // Not a recipe after all (a fridge, a pan, a dish): Mimo looks at it and answers.
@@ -568,19 +626,29 @@ async function handleImage(
 
   trackEvent('recipe_imported', { userId, channel: 'whatsapp', props: { source: 'whatsapp_photo' } })
   // History gets a readable trace so "ponla el jueves para cenar" works next.
+  const askSource = !sourceUrl && saved.looksLikeScreenshot === true && !!deps.setRecipeSource
   await store.updateInbound(msg.wamid, {
     status: 'processed',
     userId,
     body: `[Foto de una receta${msg.text ? `: ${msg.text}` : ''}]`,
+    meta: {
+      photoRecipeId: saved.recipeId,
+      photoRecipeName: saved.name,
+      ...(sourceUrl ? { photoSourceUrl: sourceUrl } : {}),
+      ...(askSource ? { sourceAsked: true } : {}),
+    },
   })
   const reviewNote = saved.warnings.length > 0
     ? ' Revisa los ingredientes en la app: alguno no lo he reconocido del todo.'
     : ''
+  const sourceNote = sourceUrl ? ' Le he puesto como fuente el enlace que me mandaste.' : ''
+  // One question per message: the link to the original, or the menu.
+  const question = askSource ? ASK_SOURCE_COPY : '¿Quieres que la ponga en el menú de algún día?'
   await out(
     'reply',
     renderAssistantReply(
       {
-        message: `He guardado *${saved.name}* en tus recetas.${reviewNote} ¿Quieres que la ponga en el menú de algún día?`,
+        message: `He guardado *${saved.name}* en tus recetas.${sourceNote}${reviewNote} ${question}`,
         uiHint: 'recipe',
         data: { recipeId: saved.recipeId },
       },

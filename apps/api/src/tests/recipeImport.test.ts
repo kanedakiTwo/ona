@@ -67,3 +67,16 @@ describe('normalizeRecipeParts (assistant-created recipes)', () => {
     expect(n).toMatchObject({ servings: 4, servingsConfidence: 'explicit', meals: ['dinner'], seasons: ['winter'] })
   })
 })
+
+describe('sourceFieldsFor (PRO-66: the link to the original of a screenshot)', () => {
+  it('a YouTube link is a youtube source; anything else http(s) is an article', async () => {
+    const { sourceFieldsFor } = await import('../services/recipeImport.js')
+    expect(sourceFieldsFor('https://youtu.be/abc')).toEqual({ sourceUrl: 'https://youtu.be/abc', sourceType: 'youtube' })
+    expect(sourceFieldsFor(' https://www.instagram.com/reel/x/ ')).toEqual({ sourceUrl: 'https://www.instagram.com/reel/x/', sourceType: 'article' })
+  })
+  it('rejects what is not an http(s) link', async () => {
+    const { sourceFieldsFor } = await import('../services/recipeImport.js')
+    expect(sourceFieldsFor('javascript:alert(1)')).toBeNull()
+    expect(sourceFieldsFor('no es un enlace')).toBeNull()
+  })
+})

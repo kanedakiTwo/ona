@@ -40,10 +40,16 @@ test.describe('desktop', () => {
     await expect(page).toHaveURL(/\/admin\/invitaciones$/)
     await expect(page.getByRole('button', { name: 'Crear enlace' })).toBeVisible({ timeout: 10_000 })
     await expect(adminNav.getByRole('link', { name: 'Invitaciones' })).toHaveAttribute('aria-current', 'page')
+    // Its own heading; the catalogue's counts and tabs stay on Catálogo.
+    await expect(page.getByRole('heading', { level: 1, name: 'Invitaciones' })).toBeVisible()
+    await expect(page.getByText('ingredientes sin USDA', { exact: true })).toHaveCount(0)
+    // «Voz» (retired voice mode) is not in the menu.
+    await expect(adminNav.getByRole('link', { name: 'Voz' })).toHaveCount(0)
     // Back to the catalogue: its gap tabs are all visible, no sideways scroll.
     await adminNav.getByRole('link', { name: 'Catálogo' }).click()
     await expect(page).toHaveURL(/\/admin$/)
     await expect(page.getByRole('button', { name: /Output de regen/ })).toBeInViewport()
+    await expect(page.getByText('ingredientes sin USDA', { exact: true })).toBeVisible()
   })
 
   test('a normal user has no Admin block', async ({ page }) => {

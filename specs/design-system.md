@@ -182,7 +182,7 @@ Mimoia supports a desktop layout at `md+` (≥768 px) and bespoke multi-column p
 
 ### Components
 
-- `<DesktopSidebar />` at `apps/web/src/components/shared/DesktopSidebar.tsx` — persistent left nav at `md+`. Items: Menú, Compra, Recetas, Perfil (Mimo is the floating button). Admins also get an «Admin» block below a hairline: Catálogo, Usuarios, Invitaciones, Auditoría, Voz (see [Admin Dashboard](./admin-dashboard.md)). Hides on `/recipes/[id]/cook` routes.
+- `<DesktopSidebar />` at `apps/web/src/components/shared/DesktopSidebar.tsx` — persistent left nav at `md+`. Items: Menú, Compra, Recetas, Perfil (Mimo is the floating button). Admins also get an «Admin» block below a hairline: Catálogo, Usuarios, Invitaciones, Auditoría (see [Admin Dashboard](./admin-dashboard.md)). Hides on `/recipes/[id]/cook` routes.
 - `<Navbar />` (mobile bottom-nav) carries `md:hidden` on its outer `<nav>`.
 
 ### Exceptions (no responsive treatment)

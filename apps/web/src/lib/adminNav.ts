@@ -14,6 +14,10 @@ export const ADMIN_AREAS: Array<{ area: AdminArea; href: string; label: string }
   { area: "voz", href: "/admin/voz", label: "Voz" },
 ]
 
+/** Areas listed in the sidebar. «Voz» is history of the retired voice mode
+ * (D-023): still reachable at /admin/voz, not worth a menu entry. */
+export const ADMIN_MENU = ADMIN_AREAS.filter((a) => a.area !== "voz")
+
 /** `/admin` and `/admin/catalogo` → catálogo; an unknown slug falls back to it. */
 export function adminAreaFromSlug(slug: string | undefined): AdminArea {
   const hit = ADMIN_AREAS.find((a) => a.area === slug)

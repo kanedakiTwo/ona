@@ -89,6 +89,16 @@ const AREA_SECTION: Record<Exclude<AdminArea, "catalogo">, SectionKey> = {
   auditoria: "audit",
   voz: "voice",
 }
+/** Each admin area has its own heading; the catalogue's counts only show there. */
+const AREA_HEADER: Record<AdminArea, { title: string; intro: string }> = {
+  catalogo: { title: "Catálogo", intro: "Huecos del catálogo: ingredientes sin datos, alérgenos y recetas por revisar." },
+  usuarios: { title: "Usuarios", intro: "Busca cuentas, suspéndelas o genera un enlace para cambiar la contraseña." },
+  invitaciones: { title: "Invitaciones", intro: "Enlaces de invitación por campaña para entrar en la beta cerrada, con sus altas y su uso." },
+  "lista-espera": { title: "Lista de espera", intro: "Quién se ha apuntado, de qué canal viene y la siguiente tanda para invitar por correo." },
+  auditoria: { title: "Auditoría", intro: "Lo que ha hecho cada admin y cuándo. Cada acción queda registrada." },
+  voz: { title: "Voz", intro: "Histórico del antiguo modo de voz (retirado el 2026-10-09). Ya no entran conversaciones nuevas." },
+}
+
 const SECTION_AREA_HREF: Partial<Record<SectionKey, string>> = {
   users: "/admin/usuarios",
   invites: "/admin/invitaciones",
@@ -184,19 +194,15 @@ export default function AdminPage() {
   return (
     <div className="bg-cream min-h-screen pb-24 lg:mx-auto lg:max-w-[1180px]">
       <header className="px-5 pt-8 pb-6">
-        <div className="text-eyebrow mb-2">Panel</div>
+        <div className="text-eyebrow mb-2">Admin</div>
         <h1 className={`${DISPLAY_UI} text-[2.4rem] leading-[0.95] text-ink`}>
-          <span className="font-italic italic text-terracotta-deep">Admin</span>
-          <br />
-          de Mimoia.
+          <span className="font-italic italic text-terracotta-deep">{AREA_HEADER[area].title}</span>
         </h1>
-        <p className="mt-3 text-[12px] text-ink-muted max-w-md">
-          Cura el catálogo, gestiona cuentas y revisa la auditoría. Cada acción
-          queda registrada.
-        </p>
+        <p className="mt-3 text-[12px] text-ink-muted max-w-md">{AREA_HEADER[area].intro}</p>
       </header>
 
-      {/* Counts */}
+      {/* Counts — catalogue only */}
+      {area === "catalogo" && (
       <section className="px-5">
         <div className="grid grid-cols-2 gap-2">
           <Tile
@@ -225,6 +231,7 @@ export default function AdminPage() {
           />
         </div>
       </section>
+      )}
 
       {/* Tabs */}
       {/* Tabs. On md+ the sidebar lists the admin areas, so only the
@@ -232,7 +239,7 @@ export default function AdminPage() {
           mobile every tab scrolls sideways. */}
       <nav className={`px-5 mt-8 ${isCatalogTab ? "" : "md:hidden"}`} aria-label="Secciones del admin">
         <div className="flex gap-1.5 overflow-x-auto pb-2 -mx-5 px-5 scrollbar-none md:flex-wrap md:overflow-visible">
-          {SECTIONS.map((s) => (
+          {SECTIONS.filter((s) => s.key !== "voice").map((s) => (
             <button
               key={s.key}
               onClick={() => {

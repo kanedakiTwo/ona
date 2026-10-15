@@ -180,6 +180,7 @@ export { BUY_RULES } from './buy/rules.js'
 export type { BuyRule, BuyShop, BuyBy, BuyTier, BuyChoice } from './buy/rules.js'
 export { toOrderQty, resolveBuyRule, buyRuleByKey, splitCompound, normalizeBuyName, weightPhrase } from './buy/convert.js'
 export type { OrderQty, OrderQtyInput, ResolvedRule } from './buy/convert.js'
+export { buyableUnitFor, unitAfterQuantity, quantityHintFor, RECIPE_UNIT_LABELS } from './buy/recipeUnits.js'
 
 export { buildRecipePayload } from './recipeFormPayload.js'
 export type { IngredientRowState, RecipeFormState } from './recipeFormPayload.js'

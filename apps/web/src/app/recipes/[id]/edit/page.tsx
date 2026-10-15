@@ -39,7 +39,7 @@ import {
   fieldClass,
 } from "@/components/recipes/form/RecipeFormUI"
 import { LintFailureError } from "@/lib/api"
-import { createRecipeSchema, COURSES, COURSE_LABELS } from "@ona/shared"
+import { createRecipeSchema, COURSES, COURSE_LABELS, unitAfterQuantity } from "@ona/shared"
 import type { Course, Difficulty, Ingredient, Meal, Season } from "@ona/shared"
 import { MEAL_LABELS, SEASON_LABELS } from "@/lib/labels"
 
@@ -76,6 +76,10 @@ interface IngredientRow {
    * detail view and the shopping aggregator skips it. Mirrors the field
    * already present on `RecipeIngredient`. */
   optional: boolean
+  /** Not editable here, but carried through a save so it isn't lost (a
+   *  note like "para guisar" is what answers "¿para qué?" at the shop). */
+  note?: string
+  section?: string
 }
 
 function emptyRow(): IngredientRow {
@@ -186,6 +190,8 @@ export default function EditRecipePage() {
             quantity: ri.quantity,
             unit: ri.unit,
             optional: ri.optional ?? false,
+            note: ri.note ?? undefined,
+            section: ri.section ?? undefined,
           }))
         : [emptyRow()]
     )
@@ -243,7 +249,13 @@ export default function EditRecipePage() {
     setIngredientRows((prev) =>
       prev.map((r) =>
         r.rowId === rowId
-          ? { ...r, quantity: value === "" ? "" : Number(value) }
+          ? (() => {
+              const quantity: number | "" = value === "" ? "" : Number(value)
+              // An amount on an "al gusto" / "pizca" row means the user is
+              // fixing it for the shopping list: switch to a buyable unit,
+              // or it would be saved as "1 al gusto" (PRO-90).
+              return { ...r, quantity, unit: unitAfterQuantity(r.ingredientName, r.unit, quantity) }
+            })()
           : r,
       ),
     )
@@ -310,6 +322,8 @@ export default function EditRecipePage() {
         quantity: typeof r.quantity === "number" ? r.quantity : 0,
         unit: r.unit || "g",
         optional: r.optional,
+        ...(r.note ? { note: r.note } : {}),
+        ...(r.section ? { section: r.section } : {}),
       }))
 
     const cleanedSteps = steps

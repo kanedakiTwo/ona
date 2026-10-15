@@ -12,7 +12,7 @@
  *   BUY_NEEDS_WEIGHT  "2 u de panceta": the butcher weighs, say grams
  */
 
-import { resolveBuyRule, splitCompound, toOrderQty, type BuyableUnit, type RecipeShoppingIssue, type Unit } from '@ona/shared'
+import { quantityHintFor, resolveBuyRule, splitCompound, toOrderQty, type BuyableUnit, type RecipeShoppingIssue, type Unit } from '@ona/shared'
 import { isPantryBasic } from './shopOrders/draft.js'
 
 export interface ShoppableRow {
@@ -66,13 +66,12 @@ export function shoppabilityIssues(rows: ShoppableRow[]): ShoppabilityIssue[] {
 
     if (!BUYABLE.has(row.unit) || !(row.quantity > 0)) {
       if (atHome(name)) return
-      const hint = resolved
-        ? toOrderQty({ name, quantity: 1, unit: 'u', quantitySource: 'default' }).text.replace(/ — .*$/, '')
-        : null
+      // Only units the recipe form's selector has ("1 ud (manojo)", not "1 manojo"): PRO-90.
+      const hint = quantityHintFor(name)
       out.push({
         code: 'BUY_NO_QUANTITY',
         index,
-        message: `«${name}» no tiene cantidad y no saldrá en la lista de la compra: pon cuánto hace falta${hint ? ` (p. ej. ${hint.toLowerCase()})` : ''}.`,
+        message: `«${name}» no tiene cantidad y no saldrá en la lista de la compra: pon cuánto hace falta${hint ? ` (p. ej. ${hint})` : ''}.`,
       })
       return
     }

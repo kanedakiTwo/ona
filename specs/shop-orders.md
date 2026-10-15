@@ -23,6 +23,7 @@ Mimoia splits what's left on the shopping list for the next 7 days into one orde
 - Sent card: paste what the shop answered (text, or a voice note already transcribed) → Mimoia reads it and shows each line as **OK**, **Revisar** (with the reason) or **No hay**, the total vs the cap, pickup time and payment. The user picks *Mantener / Quitar* (or *Vale, <sustituto>*) for every doubtful line, can change the cap, then **Aprobar pedido**. "Ha cambiado algo" re-reads a new reply.
 - Approved card: the confirmation text ("Perfecto, adelante con el pedido. Quita: … Sí a pescadilla en lugar de merluza. Si el total pasa de 45 €, avisadme antes.") with **Enviar confirmación** (wa.me / mailto). **Ya lo tengo, cerrar pedido** (+ optional amount paid) closes it and ticks those items as bought on the shopping list.
 - Any open order can be cancelled. Closed orders of the last 30 days are listed under "Pedidos cerrados".
+- **Hacer este pedido en Carrefour.es** (PRO-84, prueba de demanda): every súper card (kind *supermercado*, any channel) in *draft* has this button. Tapping it unfolds one **Buscar** link per line still in the order (unticked «probablemente lo tienes» lines left out) to `https://www.carrefour.es/?q=<texto>` (the rule's supermarket search text, else the line name), opened in a new tab with `rel=noopener noreferrer`. Carrefour doesn't let anyone fill its cart from outside, so the user adds each product there. No affiliate code, no campaign parameters, no commission notice; only the tap is counted: `POST /shop-orders/:id/carrefour-click` (204; 400 if the order isn't a súper one; 404 if it isn't the household's) records `carrefour_click` with `props.items` = number of lines ([Metrics](./metrics.md), `GET /admin/usage`). Opening, not closing, counts.
 - `/shopping` has a **Pedir a mis tiendas** card linking to `/compra`.
 - `/compra` also lists the pantry staples the recipes use and Mimoia assumed at home ("¿Te falta algo de esto?") — one tap adds one to the súper order.
 - From chat (web or WhatsApp): "hazme la compra" → one short link per shop (or what's missing before sending), pickup/delivery and minimum, and "¿algo más?"; "añade fruta", "el jamón serrano", "150 g de york", "traédmelo a casa" edit the draft (same link); forward or paste the shop's reply → line-by-line summary with `[[opciones: …]]`; "sí" → confirmation link; "ya lo he recogido, 23 €" → closed. Shops can be added by chat ("mi carnicería es Ben-Car, WhatsApp 638 015 827").
@@ -92,7 +93,7 @@ Web: `GET /c/<token>[?m=ok]` (Next route handler) redirects to that URL; expired
 - Buy rules cover the catalogue's common products; unknown names go by name/amount. Weights, minimums and defaults (tomate de ensalada, pimiento italiano, naranja de zumo, carne picada mixta, dorada) are research estimates.
 - Moving a line to another shop rewrites it with that shop's kind; the rule (not the shop) decides units.
 - El Corte Inglés search text comes from the rule (`eci`); generic words on ECI return wrong products, so unknown names may still search badly.
-- El Corte Inglés is the only shop with a verified per-product search link.
+- El Corte Inglés is the only shop with a verified per-product search link. The Carrefour.es link (`?q=`) wasn't verifiable from the build machine (carrefour.es answers 403 to scripts); check it by hand. The button text is pending Legal's review.
 
 ## Related specs
 
@@ -103,9 +104,9 @@ Web: `GET /c/<token>[?m=ok]` (Next route handler) redirects to that URL; expired
 
 ## Source
 
-- `packages/shared/src/types/shopOrders.ts`, `packages/shared/src/utils/shopFormat.ts`, `packages/shared/src/buy/rules.ts` + `convert.ts` (buy rules)
+- `packages/shared/src/types/shopOrders.ts`, `packages/shared/src/utils/shopFormat.ts`, `packages/shared/src/buy/rules.ts` + `convert.ts` (buy rules), `packages/shared/src/buy/carrefour.ts` (Carrefour.es search links)
 - `apps/api/src/services/shopOrders/` — `classify.ts`, `fish.ts`, `format.ts`, `estimate.ts`, `draft.ts`, `lines.ts`, `message.ts`, `validation.ts`, `quoteParser.ts`, `store.ts`
-- `apps/api/src/routes/shopOrders.ts` (mounted in `apps/api/src/index.ts`), `apps/api/src/db/schema.ts` (`householdShops`, `shopOrders`), `apps/api/src/db/migrations/0034_shop_orders.sql`, `0038_shop_orders_v11.sql` (`householdBuyPrefs`); `apps/api/src/services/shoppingList.ts` (recipe notes → `ShoppingItem.notes`), `apps/api/src/routes/shopping.ts` (typed items: `quantitySource`, aisle from rules)
+- `apps/api/src/routes/shopOrders.ts` (incl. `POST /shop-orders/:id/carrefour-click`; mounted in `apps/api/src/index.ts`), `apps/api/src/db/schema.ts` (`householdShops`, `shopOrders`), `apps/api/src/db/migrations/0034_shop_orders.sql`, `0038_shop_orders_v11.sql` (`householdBuyPrefs`); `apps/api/src/services/shoppingList.ts` (recipe notes → `ShoppingItem.notes`), `apps/api/src/routes/shopping.ts` (typed items: `quantitySource`, aisle from rules)
 - `apps/api/src/services/assistant/shopOrderSkills.ts`, `skills.ts` (registration), `systemPrompt.ts` (rules)
 - `apps/web/src/app/compra/page.tsx`, `apps/web/src/app/compra/tiendas/page.tsx`, `apps/web/src/app/c/[token]/route.ts`, `apps/web/src/components/compra/`, `apps/web/src/hooks/useShopOrders.ts`, `apps/web/src/app/shopping/page.tsx` (entry card)
-- Tests: `apps/api/src/tests/buyRules.test.ts` (Miguel's real order line by line), `shopOrderDraft.test.ts` (draft, merge, blockers, delivery minimum), `shopOrders.test.ts`, `shopQuoteParser.test.ts`, `shopOrderSkills.test.ts` (incl. form ↔ schema contract), `shopOrdersRoute.smoke.ts`; `apps/web/e2e/compra.spec.ts`
+- Tests: `apps/api/src/tests/buyRules.test.ts` (Miguel's real order line by line), `shopOrderDraft.test.ts` (draft, merge, blockers, delivery minimum), `shopOrders.test.ts`, `shopQuoteParser.test.ts`, `shopOrderSkills.test.ts` (incl. form ↔ schema contract), `shopOrdersRoute.smoke.ts`, `carrefourOrder.test.ts`; `apps/web/e2e/compra.spec.ts`, `compra-carrefour.spec.ts`

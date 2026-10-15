@@ -225,6 +225,10 @@ export {
   waitlistReservationSchema,
   founderPlanById,
   founderPlanId,
+  PRICE_SURVEY_AFTER_DAYS,
+  PRICE_SURVEY_TITLE,
+  PRICE_SURVEY_INTRO,
+  priceSurveySchema,
 } from './types/founderPricing.js'
 export type {
   PriceQuestionKey,
@@ -233,6 +237,7 @@ export type {
   FounderDeclineReason,
   WaitlistPricingAnswers,
   WaitlistReservation,
+  PriceSurveyAnswers,
 } from './types/founderPricing.js'
 
 // Plans + subscription (specs/billing.md)
@@ -241,6 +246,10 @@ export {
   BILLING_PERIODS,
   LAUNCH_DATE,
   LAUNCH_DATE_LABEL,
+  TRIAL_DAYS,
+  BETA_FIRST_CHARGE_DATE,
+  BETA_FIRST_CHARGE_LABEL,
+  MIN_DAYS_CARD_TO_CHARGE,
   PLANS,
   PLAN_HOUSEHOLD,
   PLAN_CAPS_NOTE,
@@ -249,6 +258,8 @@ export {
   planLabel,
   stripeLookupKey,
   checkoutRequestSchema,
+  FOUNDING_HOUSEHOLD_LABEL,
+  isFoundingHousehold,
 } from './types/plans.js'
 export type {
   PlanKey,
@@ -266,7 +277,7 @@ export type {
 export { LEGAL_OWNER } from './constants/legal.js'
 
 // Public brand (D-012) + pre-launch waitlist (specs/waitlist.md)
-export { BRAND_NAME, ASSISTANT_NAME, BRAND_SUPPORT_EMAIL } from './constants/brand.js'
+export { BRAND_NAME, ASSISTANT_NAME, BRAND_SUPPORT_EMAIL, BRAND_SOCIAL_LINKS } from './constants/brand.js'
 export {
   WAITLIST_HOUSEHOLD_SIZES,
   WAITLIST_PLANNER_ROLES,

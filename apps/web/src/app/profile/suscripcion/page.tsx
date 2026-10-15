@@ -19,6 +19,8 @@ import { PlanCards } from '@/components/billing/PlanCards'
 import { useBilling, useCheckout, usePortal } from '@/hooks/useBilling'
 import { Accent, PILL_INK, PILL_OUTLINE, SUB_CARD, SUB_EYEBROW, SubNotice, SubPage } from '@/components/profile/SubPage'
 
+const shortDay = (iso: string) =>
+  new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'long', timeZone: 'Europe/Madrid' }).format(new Date(iso))
 const fmt = (iso: string) =>
   new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Madrid' }).format(new Date(iso))
 
@@ -113,12 +115,11 @@ function Suscripcion() {
             <SubNotice>El plan lo contrata quien gestiona tu hogar. Pídeselo desde Casa.</SubNotice>
           ) : (
             <>
-              {state.beta && (
-                <p className="mb-5 text-[14px] leading-relaxed text-ink-mid">
-                  Si ya sabes que te quedas, déjalo pagado con tu precio de fundador: guardamos la tarjeta hoy y el primer
-                  cobro es el {LAUNCH_DATE_LABEL}. Hasta entonces puedes cancelar sin pagar nada.
-                </p>
-              )}
+              <p className="mb-5 text-[14px] leading-relaxed text-ink-mid">
+                {state.beta
+                  ? `Si ya sabes que te quedas, déjalo pagado con tu precio de fundador: guardamos la tarjeta hoy y el primer cobro es el ${fmt(state.firstChargeAt)} (como todos, tienes 14 días de prueba desde la salida, el ${LAUNCH_DATE_LABEL}). Hasta entonces puedes cancelar sin pagar nada.`
+                  : `Guardamos la tarjeta hoy y el primer cobro es el ${fmt(state.firstChargeAt)}. Hasta entonces puedes cancelar sin pagar nada.`}
+              </p>
               <PlanCards period={period} onPeriodChange={setPeriod} selected={plan} onSelect={setPlan} testIdPrefix="subscribe" />
               <button
                 type="button"
@@ -127,9 +128,7 @@ function Suscripcion() {
                 onClick={() => checkout.mutate({ plan, period })}
                 data-testid="subscribe-cta"
               >
-                {state.beta
-                  ? `Suscribirme a ${planByKey(plan).name} · pago el ${LAUNCH_DATE_LABEL}`
-                  : `Suscribirme a ${planByKey(plan).name}`}
+                {`Suscribirme a ${planByKey(plan).name} · pago el ${shortDay(state.firstChargeAt)}`}
               </button>
               <p className="mt-3 text-[12px] leading-relaxed text-ink-muted">
                 Precios con IVA incluido, para todo tu hogar. El pago lo gestiona Stripe (en tu extracto, «LINK.COM* MIMOIA»).{' '}

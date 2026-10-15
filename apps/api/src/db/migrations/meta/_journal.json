@@ -351,6 +351,13 @@
       "when": 1792055816094,
       "tag": "0049_billing_subscriptions",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1792063186799,
+      "tag": "0050_price_survey",
+      "breakpoints": true
     }
   ]
 }

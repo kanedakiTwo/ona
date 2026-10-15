@@ -1,5 +1,6 @@
 import Link from "next/link"
-import { BRAND_NAME } from "@ona/shared"
+import { Facebook, Instagram } from "lucide-react"
+import { BRAND_NAME, BRAND_SOCIAL_LINKS } from "@ona/shared"
 import { CONTACT_EMAIL } from "@/lib/contact"
 import { MimoiaLogo } from "@/components/brand/Mimoia"
 
@@ -7,7 +8,7 @@ import { MimoiaLogo } from "@/components/brand/Mimoia"
  * The one public footer (landing + every page under `app/(public)`, rendered
  * by `app/(public)/layout.tsx`). It is the landing's footer strip: sand band,
  * hairline, wordmark, the links (incl. aviso legal), contact (`CONTACT_EMAIL`:
- * NEXT_PUBLIC_SUPPORT_EMAIL, else hola@mimoia.com) and ©.
+ * NEXT_PUBLIC_SUPPORT_EMAIL, else hola@mimoia.com), Instagram and Facebook, and ©.
  *
  * Public marketing surface: `publicHealthClaims.test.ts` scans this file.
  */
@@ -34,6 +35,16 @@ export default function Footer() {
           ))}
         </nav>
         <div className="flex flex-col items-center gap-1 text-xs md:items-end">
+          <div className="mb-1 flex gap-3">
+            {BRAND_SOCIAL_LINKS.map((s) => {
+              const Icon = s.network === "Instagram" ? Instagram : Facebook
+              return (
+                <a key={s.network} href={s.url} target="_blank" rel="noopener noreferrer" aria-label={`${BRAND_NAME} en ${s.network}`} className="hover:text-[#1A1612]">
+                  <Icon size={18} strokeWidth={1.8} aria-hidden="true" />
+                </a>
+              )
+            })}
+          </div>
           <a href={`mailto:${CONTACT_EMAIL}`} className="link-reveal hover:text-[#1A1612]">
             {CONTACT_EMAIL}
           </a>

@@ -28,6 +28,7 @@ import {
   SUB_LIST,
   SubPage,
 } from '@/components/profile/SubPage'
+import { FoundingBadge } from '@/components/profile/FoundingBadge'
 
 type Role = 'owner' | 'member' | 'child'
 
@@ -51,6 +52,8 @@ interface HouseholdView {
   id: string
   name: string
   ownerId: string
+  /** Created before launch day (specs/household.md). */
+  founding?: boolean
   members: Member[]
   pendingInvites: PendingInvite[]
 }
@@ -228,6 +231,7 @@ export default function HouseholdPage() {
     <SubPage
       eyebrow="Tu hogar"
       title={title}
+      intro={household.founding ? <FoundingBadge /> : undefined}
       action={<MoreButton label="Opciones del hogar" onClick={() => setSheet({ kind: 'household' })} />}
     >
       {error && (

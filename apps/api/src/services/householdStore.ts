@@ -12,6 +12,7 @@
  */
 import { and, eq, asc, isNotNull } from 'drizzle-orm'
 import { randomBytes } from 'node:crypto'
+import { isFoundingHousehold } from '@ona/shared'
 import { db } from '../db/connection.js'
 import { households, householdMembers, householdInvites, users } from '../db/schema.js'
 
@@ -58,6 +59,9 @@ export interface HouseholdDetails {
   id: string
   name: string
   ownerId: string
+  createdAt: string
+  /** Created before launch day: «Hogar fundador» (specs/household.md). */
+  founding: boolean
   members: HouseholdMember[]
   pendingInvites: Array<{
     id: string
@@ -126,6 +130,8 @@ export async function loadHousehold(householdId: string): Promise<HouseholdDetai
     id: household.id,
     name: household.name,
     ownerId: household.ownerId,
+    createdAt: household.createdAt.toISOString(),
+    founding: isFoundingHousehold(household.createdAt),
     members: memberRows.map((m) => ({
       userId: m.userId,
       username: m.username,

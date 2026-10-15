@@ -17,3 +17,9 @@ export const ASSISTANT_NAME = 'Mimo'
  * this is the fallback so a build without the var never shows a dead address.
  */
 export const BRAND_SUPPORT_EMAIL = 'hola@mimoia.com'
+
+/** Mimoia's public social accounts (waitlist success screen, footer). */
+export const BRAND_SOCIAL_LINKS = [
+  { network: 'Instagram', handle: '@conmimoia', url: 'https://www.instagram.com/conmimoia/' },
+  { network: 'Facebook', handle: 'Mimoia', url: 'https://www.facebook.com/1486113887915173' },
+] as const

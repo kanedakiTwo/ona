@@ -50,6 +50,11 @@ export default function PrivacidadPage() {
           </li>
           <li><strong>Tu uso de Mimoia:</strong> menús, lista de la compra, despensa, recetas propias y fotos que subas.</li>
           <li>
+            <strong>Tu plan y tu opinión del precio:</strong> si te suscribes, el plan, su estado y sus fechas (el pago lo
+            gestiona Stripe, ver el punto 5); y, si contestas la encuesta de precio de la beta, tus respuestas en euros
+            al mes.
+          </li>
+          <li>
             <strong>Conversaciones con el asistente</strong> (chat, voz y WhatsApp): el texto de los mensajes y la
             transcripción de las notas de voz. Si conectas WhatsApp, también tu número de teléfono.
           </li>
@@ -68,6 +73,7 @@ export default function PrivacidadPage() {
           <li>Controlar el gasto en IA por usuario y mantener el servicio seguro.</li>
           <li>Detectar y arreglar los fallos de la aplicación, con un registro propio que no se comparte con terceros.</li>
           <li>Si lo pides (al registrarte o en tu perfil), mandarte cada viernes el menú de la semana por email.</li>
+          <li>Cobrar tu suscripción, si tienes una, y decidir los precios con lo que opina la beta.</li>
         </ul>
         <p>
           No vendemos tus datos ni los usamos para publicidad. Mimoia es un asistente con inteligencia
@@ -150,10 +156,9 @@ export default function PrivacidadPage() {
             parámetros <code>ref</code> y <code>utm</code> del enlace). Y cuándo nos diste tu consentimiento.
           </li>
           <li>
-            Si las contestas, tus respuestas a cuatro preguntas opcionales sobre el precio (cuánto te parecería
-            barato, buena compra, caro o demasiado caro, en euros al mes) y, si reservas una plaza de fundador, el
-            plan y el periodo que eliges y cuándo; o, si ninguno te encaja, el motivo. No se cobra nada: solo nos
-            sirve para decidir los precios y avisarte antes de cobrar.
+            Solo si te apuntaste antes del 15 de octubre de 2026 y las contestaste: tus respuestas a cuatro
+            preguntas opcionales sobre el precio (en euros al mes) y, si reservaste una plaza de fundador, el plan y
+            el periodo que elegiste; o, si ninguno te encajaba, el motivo. Ya no las preguntamos en la lista.
           </li>
         </ul>
         <p>

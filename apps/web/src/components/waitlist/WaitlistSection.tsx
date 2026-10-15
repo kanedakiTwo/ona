@@ -1,11 +1,12 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { ArrowUpRight } from "lucide-react"
 import {
   BRAND_NAME,
   EMPTY_WAITLIST_FORM,
+  FOUNDING_HOUSEHOLD_LABEL,
   WAITLIST_CURRENT_METHODS,
   WAITLIST_CURRENT_METHOD_LABELS,
   WAITLIST_HOUSEHOLD_SIZES,
@@ -26,7 +27,7 @@ import {
 } from "@ona/shared"
 import { apiPublic } from "@/lib/api"
 import ReferralShare from "./ReferralShare"
-import { FounderPricing } from "./FounderPricing"
+import { SocialFollow } from "./SocialFollow"
 
 /** Anchor every public CTA points to ("/#lista-de-espera"). */
 export const WAITLIST_ANCHOR = "lista-de-espera"
@@ -46,6 +47,16 @@ export default function WaitlistSection() {
   useEffect(() => {
     setAttribution(readWaitlistAttribution(new URLSearchParams(window.location.search)))
   }, [])
+
+  // The submit button sits at the bottom of a long form: when the success
+  // state replaces it, bring its top into view (on a phone you'd otherwise
+  // land in the middle of it).
+  const cardRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!done) return
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    cardRef.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" })
+  }, [done])
 
   const set = <K extends keyof WaitlistFormState>(key: K, value: WaitlistFormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }))
@@ -88,6 +99,12 @@ export default function WaitlistSection() {
           <p className="mt-6 max-w-md text-base leading-relaxed text-[#4A4239]">
             No hay número de turno que vigilar. Cuando os toque, os escribimos.
           </p>
+          <p className="mt-6 max-w-md text-base leading-relaxed text-[#4A4239]" data-testid="waitlist-why-beta">
+            Entrando en la beta nos ayudas a hacer {BRAND_NAME}: cada semana que la usáis nos dice qué funciona en una
+            casa de verdad y qué tenemos que cambiar. A cambio, tu casa será{" "}
+            <strong className="font-semibold text-[#1A1612]">{FOUNDING_HOUSEHOLD_LABEL}</strong>, y lo verás en tu perfil
+            para siempre.
+          </p>
           <ul className="mt-8 space-y-3 text-sm text-[#1A1612]">
             <li className="flex gap-3">
               <span className="text-[#C65D38]">✦</span>Cuatro preguntas sobre cómo coméis en casa. Medio minuto.
@@ -102,7 +119,7 @@ export default function WaitlistSection() {
         </div>
 
         <div className="md:col-span-7">
-          <div className="rounded-[28px] border border-[#DDD6C5] bg-[#FFFEFA] p-6 md:p-10">
+          <div ref={cardRef} data-testid="waitlist-card" className="scroll-mt-24 rounded-[28px] border border-[#DDD6C5] bg-[#FFFEFA] p-6 md:p-10">
             {done ? (
               <WaitlistSuccess done={done} />
             ) : (
@@ -260,12 +277,10 @@ function WaitlistSuccess({ done }: { done: WaitlistSignupResponse & { origin: st
         Ya estás en la lista{done.firstName ? `, ${done.firstName}` : ""}.
       </h3>
       <p className="mt-6 text-base leading-relaxed text-[#4A4239]">
-        Te escribimos por email cuando le toque a tu tanda. Mientras, si quieres que entre también tu casa,
-        aquí tienes tu enlace.
+        Te escribimos por email cuando le toque a tu tanda. Cuando entréis, tu casa será {FOUNDING_HOUSEHOLD_LABEL}.
       </p>
 
-      {/* Founder pricing signal (PRO-26): only the browser that created the entry. */}
-      {done.unsubscribeToken && <FounderPricing token={done.unsubscribeToken} beta={done.beta === true} />}
+      <SocialFollow />
 
       <div className="mt-10 border-t border-dashed border-[#DDD6C5] pt-8">
         <h4 className="font-display text-2xl text-[#1A1612]">

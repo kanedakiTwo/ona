@@ -14,7 +14,11 @@ export default function InstallSheet() {
     // Re-check periodically (visits get incremented elsewhere)
     function check() {
       const s = getInstallPromptState()
-      setOpen(s.shouldShow)
+      // Never on top of another sheet (e.g. the beta price survey on /menu):
+      // while closed, our own dialog isn't in the DOM, so any modal found is
+      // someone else's; try again on the next tick.
+      const otherModal = () => !!document.querySelector('[role="dialog"][aria-modal="true"]')
+      setOpen((prev) => s.shouldShow && (prev || !otherModal()))
       setIsIOS(s.isIOS)
     }
     check()

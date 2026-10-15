@@ -11,6 +11,9 @@ test('pricing page: Esencial recommended, monthly/yearly, what each plan include
   await page.goto('/precios')
 
   await expect(page.getByRole('heading', { level: 1 })).toContainText('todo tu hogar')
+  // D-055/D-057: launch 15 December; the beta, like everyone, then has 14 days → first charge 29 December.
+  await expect(page.getByText(/Abrimos el 15 de diciembre, con 14 días gratis/)).toBeVisible()
+  await expect(page.getByText(/no\s+se cobra nada hasta el 29 de diciembre/)).toBeVisible()
   const esencial = page.getByTestId('pricing-esencial')
   const plus = page.getByTestId('pricing-plus')
   await expect(esencial).toContainText('Recomendado')

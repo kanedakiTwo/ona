@@ -5,7 +5,11 @@
  *     referral link, and the entry exists (GET /waitlist/:code);
  *   - visiting with `?invita=<code>` attributes the new signup to <code>,
  *     and the owner page /lista/<code> counts it;
- *   - the opt-out link from the success state takes the person off the list.
+ *   - the opt-out link from the success state takes the person off the list;
+ *   - (2026-10-15) the form says why joining the beta helps and promises
+ *     «Hogar fundador»; after sending, the success state scrolls into view
+ *     (top of the card visible on a phone), asks to follow Mimoia on social
+ *     media and never asks about price.
  */
 
 import { test, expect, type Page } from '@playwright/test'
@@ -105,4 +109,25 @@ test('the opt-out link from the success state takes you off the list', async ({ 
   await expect(page.getByRole('heading', { name: /ya no estás en la lista/i })).toBeVisible({ timeout: 15_000 })
 
   expect((await page.request.get(`${apiUrl}/waitlist/${code}`)).status()).toBe(404)
+})
+
+test('mobile: why the beta, «Hogar fundador», back to the top after sending, social links and no price questions', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+  const why = page.getByTestId('waitlist-why-beta')
+  await expect(why).toContainText('nos ayudas a hacer Mimoia')
+  await expect(why).toContainText('Hogar fundador')
+
+  await fillWaitlistForm(page, `wl_top_${uniqueId()}@test.local`)
+  const success = page.getByTestId('waitlist-success')
+  await expect(success).toBeVisible({ timeout: 15_000 })
+  // The heading of the success state, not the middle of it, is on screen.
+  await expect(success.getByRole('heading', { name: /ya estás en la lista/i })).toBeInViewport({ timeout: 5_000 })
+
+  const social = page.getByTestId('waitlist-social')
+  await expect(social.getByRole('link', { name: /instagram/i })).toHaveAttribute('href', 'https://www.instagram.com/conmimoia/')
+  await expect(social.getByRole('link', { name: /facebook/i })).toHaveAttribute('href', /facebook\.com/)
+  // Price questions moved to the beta (a week in): none here.
+  await expect(page.getByText(/€\/mes/)).toHaveCount(0)
+  await expect(page.getByText(/precio de fundador/i)).toHaveCount(0)
 })

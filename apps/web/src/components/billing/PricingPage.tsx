@@ -4,6 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import { Check, Minus } from "lucide-react"
 import {
+  BETA_FIRST_CHARGE_LABEL,
   LAUNCH_DATE_LABEL,
   PLANS,
   PLAN_CAPS_NOTE,
@@ -18,6 +19,10 @@ import { PlanCards } from "./PlanCards"
 
 const WAITLIST_HREF = "/#lista-de-espera"
 
+/** «29 de diciembre», in Madrid. */
+const shortDay = (iso: string) =>
+  new Intl.DateTimeFormat("es-ES", { day: "numeric", month: "long", timeZone: "Europe/Madrid" }).format(new Date(iso))
+
 const FAQS: { q: string; a: string }[] = [
   {
     q: "¿Es para una persona o para toda la casa?",
@@ -25,7 +30,7 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: "¿Cuándo se cobra?",
-    a: `Abrimos el ${LAUNCH_DATE_LABEL}. Quien entre ese día empieza con 14 días gratis con todo, sin tarjeta, y paga solo si elige un plan. Si estás en la beta y lo dejas pagado ya, guardas la tarjeta hoy y el primer cobro es el ${LAUNCH_DATE_LABEL}; hasta entonces puedes cancelar sin pagar nada.`,
+    a: `Abrimos el ${LAUNCH_DATE_LABEL}. Desde que te registras tienes 14 días gratis con todo, sin tarjeta, y pagas solo si eliges un plan. Si estás en la beta, la tienes gratis hasta la salida y, como todos, después tienes 14 días de prueba: si lo dejas pagado ya, guardas la tarjeta hoy y el primer cobro es el ${BETA_FIRST_CHARGE_LABEL}. Nunca cobramos antes de 15 días desde que dejas la tarjeta, y hasta entonces puedes cancelar sin pagar nada.`,
   },
   {
     q: "¿Puedo cambiar de plan o cancelar?",
@@ -91,7 +96,7 @@ export function PricingPage() {
         onClick={() => checkout.mutate({ plan: plan.key, period })}
         data-testid={`cta-${plan.key}`}
       >
-        {state?.beta ? `Elegir ${plan.name} · pagas el ${LAUNCH_DATE_LABEL}` : `Elegir ${plan.name}`}
+        {state ? `Elegir ${plan.name} · pagas el ${shortDay(state.firstChargeAt)}` : `Elegir ${plan.name}`}
       </button>
     )
   }
@@ -110,7 +115,8 @@ export function PricingPage() {
           </p>
           <p className="mt-4 max-w-2xl text-[14px] leading-relaxed text-[#7A7066]">
             Abrimos el {LAUNCH_DATE_LABEL}, con 14 días gratis con todo y sin tarjeta. Si ya estás en la beta, la tienes
-            gratis con Plus hasta entonces, y puedes dejarlo pagado ya: no se cobra nada hasta el {LAUNCH_DATE_LABEL}.
+            gratis con Plus hasta entonces y, como todos, después tienes 14 días de prueba: puedes dejarlo pagado ya y no
+            se cobra nada hasta el {BETA_FIRST_CHARGE_LABEL}.
           </p>
 
           {checkout.isError && (

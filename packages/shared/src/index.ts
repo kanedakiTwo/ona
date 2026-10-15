@@ -260,6 +260,7 @@ export {
   checkoutRequestSchema,
   FOUNDING_HOUSEHOLD_LABEL,
   isFoundingHousehold,
+  subscriptionSummary,
 } from './types/plans.js'
 export type {
   PlanKey,
@@ -272,6 +273,7 @@ export type {
   CheckoutRequest,
   SubscriptionStatus,
   BillingState,
+  SubscriptionSummary,
 } from './types/plans.js'
 
 export { LEGAL_OWNER } from './constants/legal.js'

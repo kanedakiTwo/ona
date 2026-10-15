@@ -52,7 +52,8 @@ test('WhatsApp first: send the code, Mimo writes, and the page lands on /menu wh
   await page.goto('/onboarding')
 
   await expect(page.getByTestId('onboarding-channel')).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByRole('heading', { name: /dónde quieres hablar con mimo/i })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /dónde quieres hablar principalmente con mimo/i })).toBeVisible()
+  await expect(page.getByTestId('onboarding-channel')).toContainText('Puedes usar Mimoia tanto desde WhatsApp como desde la web')
   await page.getByRole('button', { name: /por whatsapp/i }).click()
 
   await expect(page.getByTestId('onboarding-whatsapp-message')).toHaveText('Vincular Mimoia: 4F7K2A')

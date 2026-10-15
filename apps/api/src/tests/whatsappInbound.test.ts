@@ -45,7 +45,7 @@ const LINK: LinkWithUser = {
 
 function setup(overrides: {
   link?: LinkWithUser | null
-  consume?: (code: string) => { userId: string; onboardingDone?: boolean } | null
+  consume?: (code: string, currentUserId?: string | null) => { userId: string; onboardingDone?: boolean; sameUser?: boolean } | null
   budgetExceeded?: boolean
   history?: HistoryRow[]
   recentLinkHint?: boolean
@@ -77,7 +77,7 @@ function setup(overrides: {
     isUserAllowed: () => overrides.allowed ?? true,
     store: {
       getLinkByPhone: async () => (overrides.link === undefined ? LINK : overrides.link),
-      consumeLinkCode: async (code) => overrides.consume?.(code) ?? null,
+      consumeLinkCode: async (code, _phone, _name, currentUserId) => overrides.consume?.(code, currentUserId) ?? null,
       touchInbound: async () => {},
       updateInbound: async (_wamid, patch) => {
         inboundUpdates.push(patch)
@@ -138,6 +138,20 @@ describe('processInbound — unlinked numbers', () => {
     const t = setup({ link: null })
     await processInbound(msg({ text: 'Vincular Mimoia: 9ZZZZ9' }), t.deps)
     expect(t.sent).toEqual([{ type: 'text', text: COPY.badCode }])
+  })
+
+  it("the first message of the WhatsApp sign-up (Miguel's text, 2026-10-15): AI disclosure, voice notes, two questions", () => {
+    const m = COPY.linkedOnboarding('Ana')
+    // AI Act art. 50: AI, can be wrong, not a health professional.
+    expect(m).toMatch(/asistente de inteligencia artificial \(IA\)/)
+    expect(m).toMatch(/puedo equivocarme y no sustituyo a un profesional sanitario/)
+    expect(m).toMatch(/Puedes escribirme o mandarme notas de voz/)
+    expect(m).toMatch(/\*1\.\* ¿Cuántos sois en casa\?/)
+    expect(m).toMatch(/\*2\.\* Dime tres platos que os gusten mucho\./)
+  })
+
+  it('the opt-in question says it can be changed just by asking (Mimo has the tool)', () => {
+    expect(COPY.optInPrompt).toMatch(/simplemente pidiéndomelo/)
   })
 
   it('points an unknown number to the connect page (no token in the link)', async () => {
@@ -647,7 +661,8 @@ describe('processInbound — WhatsApp-first sign-up (2026-10-10)', () => {
     const t = setup({ link: null, consume: () => ({ userId: 'user-1', onboardingDone: false }) })
     await processInbound(msg({ text: 'Vincular Mimoia: 4F7K2A' }), t.deps)
     expect(t.sent).toEqual([{ type: 'text', text: COPY.linkedOnboarding('Miguel') }])
-    expect(t.sent[0].text).toContain(AI_DISCLOSURE_FIRST_PERSON)
+    // Miguel's wording (2026-10-15) keeps the disclosure's three parts (AI Act art. 50).
+    expect(t.sent[0].text).toMatch(/asistente de inteligencia artificial \(IA\)[\s\S]*puedo equivocarme y no sustituyo a un profesional sanitario/)
     expect(t.sent[0].text).toMatch(/¿Cuántos sois en casa\?/)
     expect(t.outbound.map((o) => o.kind)).toEqual(['onboarding'])
     expect(t.chat).not.toHaveBeenCalled()
@@ -680,7 +695,7 @@ describe('processInbound — WhatsApp-first sign-up (2026-10-10)', () => {
     expect(t.outbound.map((o) => o.kind)).toEqual(['reply', 'system', 'optin_prompt'])
     expect(t.sent[0].text).toContain('*Tu semana del 6 al 12 de octubre*')
     expect(t.sent[1]).toEqual({ type: 'text', text: COPY.healthOnWeb(`${WEB}/profile`) })
-    expect(t.sent[1].text).toMatch(/no guardo datos de salud/)
+    expect(t.sent[1].text).toMatch(/no me dejan guardar datos de salud/)
     expect(t.sent[2]).toMatchObject({ type: 'buttons', text: COPY.optInPrompt })
   })
 
@@ -690,22 +705,25 @@ describe('processInbound — WhatsApp-first sign-up (2026-10-10)', () => {
     const afterSignup = () =>
       new Map([['onboarding', at(600_000)], ['reply', at(180_000)], ['system', at(120_000)], ['optin_prompt', at(60_000)]])
 
-    it('"Sí, avísame" → avisos on, then the suggestions', async () => {
+    it('"Sí, avísame" → avisos on and straight to the suggestions, no confirmation line (2026-10-15)', async () => {
       const t = setup({ outboundKinds: afterSignup() })
       await processInbound(msg({ kind: 'interactive', text: 'Sí, avísame', rawType: 'interactive' }), t.deps)
-      expect(t.outbound.map((o) => o.kind)).toEqual(['optin', 'first_steps'])
-      expect(t.sent[1]).toEqual({ type: 'text', text: COPY.firstSteps })
-      expect(COPY.firstSteps).toMatch(/foto o un enlace de una receta/)
-      expect(COPY.firstSteps).toMatch(/¿Qué cenamos hoy\?/)
-      expect(COPY.firstSteps).toMatch(/Hazme la lista de la compra/)
+      expect(t.setNotify).toHaveBeenCalledWith('user-1', true)
+      expect(t.outbound.map((o) => o.kind)).toEqual(['first_steps'])
+      expect(t.sent[0]).toEqual({ type: 'text', text: COPY.firstSteps(`${WEB}/menu`) })
+      expect(COPY.firstSteps('x')).toMatch(/foto o un enlace de una receta/)
+      expect(COPY.firstSteps('x')).toMatch(/¿Qué cenamos hoy\?/)
+      expect(COPY.firstSteps('x')).toMatch(/Hazme la lista de la compra/)
+      // 2026-10-15: the WhatsApp sign-up ends sending them back to the web.
+      expect(COPY.firstSteps(`${WEB}/menu`)).toMatch(new RegExp(`vuelve a Mimoia en la web[\\s\\S]*${WEB}/menu$`))
       expect(t.chat).not.toHaveBeenCalled()
     })
 
-    it('"No, gracias" → the decline, then the suggestions', async () => {
+    it('"No, gracias" → straight to the suggestions, no confirmation line', async () => {
       const t = setup({ outboundKinds: afterSignup() })
       await processInbound(msg({ kind: 'interactive', text: 'No, gracias', rawType: 'interactive' }), t.deps)
-      expect(t.outbound.map((o) => o.kind)).toEqual(['system', 'first_steps'])
-      expect(t.sent[1]).toEqual({ type: 'text', text: COPY.firstSteps })
+      expect(t.outbound.map((o) => o.kind)).toEqual(['first_steps'])
+      expect(t.sent[0]).toEqual({ type: 'text', text: COPY.firstSteps(`${WEB}/menu`) })
     })
 
     it('only once: not again on a later ALTA', async () => {
@@ -732,5 +750,49 @@ describe('processInbound — WhatsApp-first sign-up (2026-10-10)', () => {
       expect(t.outbound.map((o) => o.kind)).not.toContain('first_steps')
       expect(t.outbound.at(-1)?.kind).toBe('optin_prompt')
     })
+  })
+})
+
+// 2026-10-15: Miguel tried the WhatsApp sign-up of a new account from his
+// already linked phone; «Vincular Mimoia: QUPTV7» went to Mimo, who answered
+// «No puedo vincular cuentas desde el chat».
+describe('processInbound — a linked number sends a link code', () => {
+  it("its own account's code: nothing changes, no model call", async () => {
+    const t = setup({ consume: (code, current) => (code === '4F7K2A' ? { userId: current!, sameUser: true } : null) })
+    await processInbound(msg({ text: 'Vincular Mimoia: 4F7K2A' }), t.deps)
+    expect(t.sent).toEqual([{ type: 'text', text: COPY.alreadyLinked }])
+    expect(t.chat).not.toHaveBeenCalled()
+  })
+
+  it("another account's code: the number moves there and that account's sign-up starts", async () => {
+    const t = setup({ consume: (code) => (code === 'QUPTV7' ? { userId: 'user-new', onboardingDone: false } : null) })
+    await processInbound(msg({ text: 'Vincular Mimoia: QUPTV7' }), t.deps)
+    expect(t.sent).toEqual([
+      { type: 'text', text: COPY.movedAccount },
+      { type: 'text', text: COPY.linkedOnboarding('Miguel') },
+    ])
+    expect(t.inboundUpdates.at(-1)).toMatchObject({ status: 'ignored', userId: 'user-new' })
+    expect(t.chat).not.toHaveBeenCalled()
+  })
+
+  it("another account's code for an account already set up: linked + the opt-in question", async () => {
+    const t = setup({ consume: () => ({ userId: 'user-2', onboardingDone: true }) })
+    await processInbound(msg({ text: 'Vincular Mimoia: QUPTV7' }), t.deps)
+    expect(t.sent[0]).toEqual({ type: 'text', text: COPY.movedAccount })
+    expect(t.sent[1]).toEqual({ type: 'text', text: COPY.linked('Miguel') })
+    expect(t.sent[2]).toMatchObject({ type: 'buttons', text: COPY.optInPrompt })
+  })
+
+  it('an expired or wrong code: says so, keeps the link, no model call', async () => {
+    const t = setup()
+    await processInbound(msg({ text: 'Vincular Mimoia: 9ZZZZ9' }), t.deps)
+    expect(t.sent).toEqual([{ type: 'text', text: COPY.badCodeLinked }])
+    expect(t.chat).not.toHaveBeenCalled()
+  })
+
+  it('a normal message that happens to contain a code-like word still goes to Mimo', async () => {
+    const t = setup({ consume: () => ({ userId: 'user-2' }) })
+    await processInbound(msg({ text: 'Ponme el plato 2 del menú, el de la receta ABC2DE que vi ayer' }), t.deps)
+    expect(t.chat).toHaveBeenCalled()
   })
 })

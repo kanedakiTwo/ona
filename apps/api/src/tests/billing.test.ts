@@ -9,7 +9,7 @@ import type { AddressInfo } from 'node:net'
 import type { Server } from 'node:http'
 import type Stripe from 'stripe'
 import { afterAll, describe, expect, it } from 'vitest'
-import { FOUNDER_PLANS, PLANS, PLAN_FEATURE_GROUPS, checkoutRequestSchema, stripeLookupKey } from '@ona/shared'
+import { FOUNDER_PLANS, PLANS, PLAN_FEATURE_GROUPS, checkoutRequestSchema, stripeLookupKey, subscriptionSummary } from '@ona/shared'
 import { createBillingRouter, createBillingWebhookRouter, type Payer } from '../routes/billing.js'
 import {
   billingStateFor,
@@ -418,5 +418,29 @@ describe('account deletion cancels what the user pays', () => {
   it('Stripe failing stops the deletion (throws)', async () => {
     const gateway = fakeGateway({ cancelNow: async () => { throw new Error('down') } })
     await expect(cancelSubscriptionsPaidBy('u1', { repo: memoryRepo([row()]), gateway, enabled: () => true })).rejects.toThrow()
+  })
+})
+
+describe('subscriptionSummary (2026-10-15: the trial, its end and a cancellation at a glance)', () => {
+  const base = { plan: 'esencial' as const, period: 'mensual' as const, status: 'trialing' as const, nextChargeAt: '2026-12-29T11:00:00.000Z', cancelAtPeriodEnd: false, endsAt: null }
+
+  it('paid during the beta: in trial until 29 December', () => {
+    const s = subscriptionSummary(base)
+    expect(s.badge).toBe('En prueba hasta el 29 de diciembre')
+    expect(s.line).toBe('Lo has dejado pagado: no se cobra nada hasta el 29 de diciembre de 2026. Puedes cancelar antes sin pagar nada.')
+    expect(s.hub).toBe('Esencial · en prueba')
+  })
+
+  it("cancelled during the trial (Miguel's case): cancelled, never charged, trial until 29 December", () => {
+    const s = subscriptionSummary({ ...base, nextChargeAt: null, cancelAtPeriodEnd: true, endsAt: '2026-12-29T11:00:00.000Z' })
+    expect(s.badge).toBe('Cancelada')
+    expect(s.line).toBe('Has cancelado: no se te cobrará nada. Sigues con tu prueba hasta el 29 de diciembre de 2026.')
+    expect(s.hub).toBe('Esencial · cancelada')
+  })
+
+  it('active, cancelled, and a failed payment', () => {
+    expect(subscriptionSummary({ ...base, status: 'active', nextChargeAt: '2027-02-01T11:00:00.000Z' })).toMatchObject({ badge: 'Activa', line: 'Próximo cobro: 1 de febrero de 2027.', hub: 'Esencial · 4,99 €/mes' })
+    expect(subscriptionSummary({ ...base, status: 'active', nextChargeAt: null, cancelAtPeriodEnd: true, endsAt: '2027-02-01T11:00:00.000Z' }).line).toBe('Has cancelado: sigues con Esencial hasta el 1 de febrero de 2027 y no se renueva.')
+    expect(subscriptionSummary({ ...base, status: 'past_due' })).toMatchObject({ badge: 'Pago pendiente', tone: 'warn' })
   })
 })

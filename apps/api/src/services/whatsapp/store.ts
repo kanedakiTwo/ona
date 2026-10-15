@@ -202,14 +202,19 @@ async function linkPhoneToUser(tx: Tx, phone: string, userId: string, profileNam
 
 /**
  * Consume a code sent from `phone` (profile flow) and link it to the code's
- * owner. Returns null for unknown/used/expired codes.
+ * owner. Returns null for unknown/used/expired codes. When the number is
+ * already linked to the code's owner (`currentUserId`), the code is used up
+ * but the link is left as it is (`sameUser`: its notify setting survives).
+ * If it was linked to another account, it moves to the code's owner: sending
+ * the code from this phone proves both.
  */
 export async function consumeLinkCode(
   code: string,
   phone: string,
   profileName: string | null,
+  currentUserId: string | null = null,
   now: Date = new Date(),
-): Promise<{ userId: string; onboardingDone: boolean } | null> {
+): Promise<{ userId: string; onboardingDone: boolean; sameUser?: boolean } | null> {
   return db.transaction(async (tx) => {
     const [row] = await tx
       .update(whatsappLinkCodes)
@@ -223,6 +228,7 @@ export async function consumeLinkCode(
       )
       .returning({ userId: whatsappLinkCodes.userId })
     if (!row) return null
+    if (currentUserId && row.userId === currentUserId) return { userId: row.userId, onboardingDone: true, sameUser: true }
     await linkPhoneToUser(tx, phone, row.userId, profileName, now)
     const [user] = await tx.select({ onboardingDone: users.onboardingDone }).from(users).where(eq(users.id, row.userId)).limit(1)
     return { userId: row.userId, onboardingDone: user?.onboardingDone === true }

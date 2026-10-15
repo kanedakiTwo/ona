@@ -4,7 +4,7 @@ import type { TokenUsage } from '../advisorBudget.js'
 import type { InboundMessage } from './webhookParser.js'
 import type { LinkWithUser } from './store.js'
 import { buildChatHistory, HISTORY_WINDOW_MS, type HistoryRow } from './history.js'
-import { connectUrl, extractLinkCodeCandidates } from './linking.js'
+import { connectUrl, extractLinkCodeCandidates, isLinkAttempt } from './linking.js'
 import { renderAssistantReply, renderPlainText, type OutboundMessage } from './render.js'
 import { isShoppingItemList, shoppingListDigest } from '../shoppingText.js'
 import { AI_DISCLOSURE_FIRST_PERSON } from '@ona/shared'
@@ -39,7 +39,8 @@ export interface InboundDeps {
       code: string,
       phone: string,
       profileName: string | null,
-    ) => Promise<{ userId: string; onboardingDone?: boolean } | null>
+      currentUserId?: string | null,
+    ) => Promise<{ userId: string; onboardingDone?: boolean; sameUser?: boolean } | null>
     touchInbound: (phone: string, at: Date) => Promise<void>
     updateInbound: (
       wamid: string,
@@ -154,23 +155,37 @@ export const COPY = {
    * the first steps gets them here, in the chat. The opt-in for proactive
    * messages waits until the first menu is ready.
    */
+  /**
+   * First message of the WhatsApp sign-up, in Miguel's words (2026-10-15). It
+   * keeps the three parts of the AI disclosure (AI, can be wrong, not a health
+   * professional; AI Act art. 50) and asks two of the three questions at once
+   * (household + three dishes) to save a message; the third (how often they
+   * cook) goes with buttons.
+   */
   linkedOnboarding: (name: string | null) =>
-    `¡Hola${name ? `, ${name}` : ''}! Ya estás conectado: soy Mimo, de Mimoia. ${AI_DISCLOSURE_FIRST_PERSON}\n\nTe preparo tu primer menú en un momento: solo necesito saber tres cosas.\n\n*1.* ¿Cuántos sois en casa? Dime adultos y niños de 2 a 10 años.`,
+    `¡Hola${name ? `, ${name}` : ''}! Ya estás conectado: soy Mimo, de Mimoia. Soy un asistente de inteligencia artificial (IA) especializado en cocina: puedo equivocarme y no sustituyo a un profesional sanitario, pero puedo encargarme de las tareas rutinarias para que cocinar vuelva a ser divertido.\n\nPuedes escribirme o mandarme notas de voz, como te sea más cómodo.\n\nPara entrar en calor te propongo preparar tu primer menú en un momento: solo necesito saber tres cosas.\n\n*1.* ¿Cuántos sois en casa? Dime adultos y niños de 2 a 10 años.\n*2.* Dime tres platos que os gusten mucho.`,
   /** After the first menu: health data goes to the web, never through WhatsApp (PRO-24). */
   healthOnWeb: (url: string) =>
-    `Si en casa hay alergias, intolerancias o algo que no podáis comer, añádelo aquí con tu permiso y lo tendré en cuenta: ${url}\nPor WhatsApp no guardo datos de salud.`,
+    `Si en casa hay alergias, intolerancias o algo que no podáis o queráis comer, añádelo aquí con tu permiso y lo tendré en cuenta: ${url}\nPor WhatsApp no me dejan guardar datos de salud.`,
   linked: (name: string | null) =>
     `¡Listo${name ? `, ${name}` : ''}! Tu WhatsApp ya está conectado con Mimoia. Pregúntame qué toca hoy, pídeme la lista de la compra, mándame un audio o compárteme una receta (enlace o foto) para guardarla.\n\n${AI_DISCLOSURE_FIRST_PERSON}`,
   /** Explicit opt-in for proactive messages, asked once right after linking. */
   optInPrompt:
-    '¿Quieres que también te escriba yo? Te mandaría el menú del día, un aviso antes de cocinar y la lista de la compra los sábados. Puedes cambiarlo cuando quieras escribiendo BAJA o ALTA.',
+    '¿Quieres que también te escriba yo? No escribo mucho, solo te mandaría el menú del día, un aviso antes de cocinar (congelados, tiempos) y la lista de la compra los sábados. Puedes cambiarlo cuando quieras simplemente pidiéndomelo.',
   optInDeclined: 'Vale, no te escribiré por mi cuenta. Si cambias de idea, escribe ALTA.',
   /**
    * Last message of the WhatsApp-first sign-up (PRO-07): once the opt-in
    * question is answered (yes or no), three things to try. Sent once.
    */
-  firstSteps:
-    'Tres cosas que puedes pedirme ya:\n📸 Mándame una foto o un enlace de una receta y la guardo.\n🍽️ «¿Qué cenamos hoy?»\n🛒 «Hazme la lista de la compra»',
+  firstSteps: (url: string) =>
+    `Te cuento ejemplos de cosas que puedes pedirme ya:\n📸 Mándame una foto o un enlace de una receta, la proceso y la guardo en tus recetas.\n🍽️ «¿Qué cenamos hoy?»\n🛒 «Hazme la lista de la compra»\n\nY cuando quieras, vuelve a Mimoia en la web: allí tienes tu menú de la semana y un recorrido rápido por todo lo demás.\n${url}`,
+  /** A linked number sends a code that is its own account's: nothing to do. */
+  alreadyLinked: 'Este WhatsApp ya está conectado a tu cuenta de Mimoia: no hace falta ningún código. ¿Qué te preparo?',
+  /** A linked number sends another account's code: it moves to that account. */
+  movedAccount: 'Este WhatsApp estaba conectado a otra cuenta de Mimoia. Desde ahora está conectado a la cuenta de la que has sacado el código.',
+  /** A linked number sends an invalid or expired code. */
+  badCodeLinked:
+    'Ese código no es válido o ha caducado (duran 10 minutos). Este WhatsApp sigue conectado a tu cuenta de siempre. Si querías conectarlo a otra cuenta, saca un código nuevo desde esa cuenta y mándamelo.',
   stopped:
     'Hecho: no te enviaré más avisos por WhatsApp. Puedes seguir escribiéndome cuando quieras. Para volver a recibirlos, escribe ALTA.',
   stoppedUnlinked: 'De acuerdo, no te volveré a escribir.',
@@ -304,11 +319,12 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
    * the first steps here (an 'onboarding' message went out) and got the
    * opt-in question, and only once per number ('first_steps' kind).
    */
-  const sendFirstStepsOnce = async (userId: string) => {
+  const signupEnding = async () => {
     const sent = await store.recentOutboundKinds(msg.from, new Date(0))
-    if (!sent.has('onboarding') || !sent.has('optin_prompt') || sent.has('first_steps')) return
-    await sendText(userId, 'first_steps', COPY.firstSteps)
+    return sent.has('onboarding') && sent.has('optin_prompt') && !sent.has('first_steps')
   }
+  const sendFirstSteps = (userId: string) =>
+    sendText(userId, 'first_steps', COPY.firstSteps(`${deps.webUrl.replace(/\/$/, '')}/menu`))
 
   await client.markReadWithTyping(msg.wamid)
 
@@ -323,8 +339,10 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     } else if (command === 'start') {
       if (link) {
         await store.setNotify(link.userId, true)
-        await sendText(userId, 'optin', COPY.started)
-        await sendFirstStepsOnce(link.userId)
+        // End of the WhatsApp sign-up (2026-10-15, Miguel): no confirmation
+        // line, straight to the suggestions. Otherwise, confirm.
+        if (await signupEnding()) await sendFirstSteps(link.userId)
+        else await sendText(userId, 'optin', COPY.started)
       } else {
         await sendText(null, 'optin', COPY.connect(connectUrl(deps.webUrl)))
       }
@@ -339,10 +357,38 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     const prompt = kinds.get('optin_prompt')
     if (prompt && [...kinds.values()].every((t) => t <= prompt)) {
       await store.updateInbound(msg.wamid, { status: 'ignored', userId: link.userId })
-      await sendText(link.userId, 'system', COPY.optInDeclined)
-      await sendFirstStepsOnce(link.userId)
+      if (await signupEnding()) await sendFirstSteps(link.userId)
+      else await sendText(link.userId, 'system', COPY.optInDeclined)
       return
     }
+  }
+
+  // ── 1a. A number already linked sends a link code (2026-10-15: Miguel
+  // tried the WhatsApp sign-up of a new account from his linked phone and the
+  // code went to Mimo, who answered «no puedo vincular cuentas»). Its own
+  // code: nothing to do; another account's code: the number moves there.
+  if (link && msg.kind === 'text' && isLinkAttempt(msg.text)) {
+    for (const code of extractLinkCodeCandidates(msg.text)) {
+      const linked = await store.consumeLinkCode(code, msg.from, msg.profileName, link.userId)
+      if (!linked) continue
+      await store.updateInbound(msg.wamid, { status: 'ignored', userId: linked.userId })
+      if (linked.sameUser) {
+        await sendText(linked.userId, 'system', COPY.alreadyLinked)
+        return
+      }
+      trackEvent('whatsapp_linked', { userId: linked.userId, channel: 'whatsapp' })
+      await sendText(linked.userId, 'system', COPY.movedAccount)
+      if (linked.onboardingDone === false) {
+        await sendText(linked.userId, 'onboarding', COPY.linkedOnboarding(msg.profileName))
+        return
+      }
+      await sendText(linked.userId, 'system', COPY.linked(msg.profileName))
+      await sendOptInPrompt(linked.userId)
+      return
+    }
+    await store.updateInbound(msg.wamid, { status: 'ignored', userId: link.userId })
+    await sendText(link.userId, 'link', COPY.badCodeLinked)
+    return
   }
 
   // ── 1. Who is this? ────────────────────────────────────────────

@@ -62,12 +62,16 @@ export function renderAssistantReply(
   const { text: rawText, options } = extractOptions(resp.message ?? '')
   let text = toWhatsAppMarkup(rawText)
   // History stores replies with their link lines, so the model sometimes
-  // copies them into its own text — don't add any of them twice.
+  // copies them into its own text — don't add any of them twice. The week
+  // digest carries the menu page in its short form ("mimoia.com/menu"), so
+  // compare without scheme / www too (2026-10-15: no second «Ver menú»).
   const link = appLinkFor(resp, webUrl)
     ?.split('\n')
     .filter((line) => {
       const url = line.match(/\S+\/\S+$/)?.[0]
-      return !(url && text.includes(url))
+      if (!url) return true
+      const bare = url.replace(/^https?:\/\//, '').replace(/^www\./, '')
+      return !(text.includes(url) || text.includes(bare))
     })
     .join('\n')
   if (link) text = text ? `${text}\n\n${link}` : link

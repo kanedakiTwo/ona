@@ -4,7 +4,8 @@
  * voice notes, recipe photos and the chat round-trip.
  */
 import { describe, it, expect, vi } from 'vitest'
-import { processInbound, COPY, ackTextForTools, photoIntent, type InboundDeps } from '../services/whatsapp/inbound.js'
+import { processInbound, COPY, ackTextForTools, photoIntent, withoutMenuReadyLines, type InboundDeps } from '../services/whatsapp/inbound.js'
+import { weekMenuDigest } from '../services/menuText.js'
 import type { InboundMessage } from '../services/whatsapp/webhookParser.js'
 import type { LinkWithUser } from '../services/whatsapp/store.js'
 import type { HistoryRow } from '../services/whatsapp/history.js'
@@ -628,10 +629,14 @@ describe('processInbound — control words (BAJA / ALTA / HUMANO)', () => {
 
 
 describe('processInbound — the reply carries the menu / list, not just a link (2026-10-08)', () => {
-  const MENU_TEXT = '*Tu semana del 12 al 18 de octubre* (comida · cena)\n*Lun* Lentejas · Crema'
+  // The real digest (Thursday 15 Oct, week 12–18), as wiring.ts builds it.
+  const MENU_TEXT = weekMenuDigest(
+    { weekStart: '2026-10-12', days: [{}, {}, {}, { lunch: { dishes: [{ kind: 'recipe', recipeId: 'r1', recipeName: 'Lentejas' }] }, dinner: { dishes: [{ kind: 'recipe', recipeId: 'r2', recipeName: 'Crema' }] } }] },
+    { today: '2026-10-15', webUrl: WEB },
+  )
   const textOf = (sent: OutboundMessage[]) => sent.map((m) => m.text).join('\n')
 
-  it('after generating the week, the digest goes between the model text and the app link', async () => {
+  it('after generating the week, the reply is the digest alone: no "Hecho / menú listo" on top, no second menu link', async () => {
     const menuDigest = vi.fn(async () => MENU_TEXT)
     const t = setup({
       chatReply: { message: 'Hecho:\n- Menú de la semana listo', uiHint: 'menu', data: { id: 'm-9', days: [] }, toolsUsed: ['generate_weekly_menu'] },
@@ -639,11 +644,38 @@ describe('processInbound — the reply carries the menu / list, not just a link 
     })
     await processInbound(msg({ text: 'genera el menú de la semana' }), t.deps)
     expect(menuDigest).toHaveBeenCalledWith('user-1', 'm-9')
+    expect(t.sent).toEqual([{ type: 'text', text: MENU_TEXT }])
     const text = textOf(t.sent)
-    expect(text.indexOf('Menú de la semana listo')).toBeLessThan(text.indexOf('*Lun* Lentejas'))
-    expect(text.indexOf('*Lun* Lentejas')).toBeLessThan(text.indexOf(`${WEB}/menu`))
+    expect(text.startsWith('Listo: tu menú hasta el domingo 🍽️')).toBe(true)
+    expect(text).not.toMatch(/Hecho|men[uú] de la semana listo/i)
+    expect(text).not.toContain('Ver menú')
+    expect(text.match(/\/menu/g)).toHaveLength(1)
+    expect(text).not.toContain('/recipes/')
     // stored in history too, so the next turn can iterate on it
-    expect(t.outbound.at(-1)!.body).toContain('*Lun* Lentejas')
+    expect(t.outbound.at(-1)!.body).toContain('*Jueves 15 · hoy*\n☀️ Lentejas\n🌙 Crema')
+  })
+
+  it('what the model says besides "menú listo" (another change, a warning) stays above the digest', async () => {
+    const t = setup({
+      chatReply: {
+        message: 'Hecho:\n- Menú de la semana listo\n- Sábado 17, cena: comemos fuera\n\nNo había dorada; he puesto lubina.',
+        uiHint: 'menu',
+        data: { id: 'm-9', days: [] },
+        toolsUsed: ['generate_weekly_menu', 'set_meal_note'],
+      },
+      menuDigest: async () => MENU_TEXT,
+    })
+    await processInbound(msg({ text: 'genera el menú, el sábado cenamos fuera' }), t.deps)
+    const text = textOf(t.sent)
+    expect(text).toBe(`Hecho:\n- Sábado 17, cena: comemos fuera\n\nNo había dorada; he puesto lubina.\n\n${MENU_TEXT}`)
+  })
+
+  it('withoutMenuReadyLines drops only the "menú listo" line and a bare ack', () => {
+    expect(withoutMenuReadyLines('Hecho:\n- Tu primer menú de la semana listo')).toBe('')
+    expect(withoutMenuReadyLines('Hecho: menú de la semana listo.')).toBe('')
+    expect(withoutMenuReadyLines('Tu menú de la semana está listo.')).toBe('')
+    expect(withoutMenuReadyLines('Hecho:\n- Menu de la semana listo\n- Jueves 15, comida: Entrecot')).toBe('Hecho:\n- Jueves 15, comida: Entrecot')
+    expect(withoutMenuReadyLines('Ojo: no queda pescado en el catálogo para el viernes.')).toBe('Ojo: no queda pescado en el catálogo para el viernes.')
   })
 
   it('asking for the shopping list returns the list itself', async () => {
@@ -664,16 +696,17 @@ describe('processInbound — the reply carries the menu / list, not just a link 
     const t = setup({ chatReply: { message: 'Hoy toca crema de calabaza.', uiHint: 'menu', toolsUsed: ['get_todays_menu'] }, menuDigest })
     await processInbound(msg(), t.deps)
     expect(menuDigest).not.toHaveBeenCalled()
-    expect(textOf(t.sent)).not.toContain('*Lun*')
+    expect(textOf(t.sent)).not.toContain('*Jueves 15')
   })
 
-  it('a failing menu read still sends the reply', async () => {
+  it('a failing menu read still sends the reply (the model text and the app link, untouched)', async () => {
     const t = setup({
       chatReply: { message: 'Hecho:\n- Menú de la semana listo', uiHint: 'menu', data: { menuId: 'm-9' }, toolsUsed: ['generate_weekly_menu'] },
       menuDigest: async () => { throw new Error('db down') },
     })
     await processInbound(msg({ text: 'genera el menú' }), t.deps)
     expect(textOf(t.sent)).toContain('Menú de la semana listo')
+    expect(textOf(t.sent)).toContain(`Ver menú: ${WEB}/menu`)
   })
 })
 
@@ -712,11 +745,12 @@ describe('processInbound — WhatsApp-first sign-up (2026-10-10)', () => {
     const t = setup({
       link: NEW_LINK,
       chatReply: { message: 'Hecho:\n- Tu primer menú de la semana listo', toolsUsed: ['complete_onboarding'], data: { id: 'menu-1', days: [] } },
-      menuDigest: async (_userId, menuId) => (menuId === 'menu-1' ? '*Tu semana del 6 al 12 de octubre*' : null),
+      menuDigest: async (_userId, menuId) => (menuId === 'menu-1' ? 'Listo: tu menú hasta el domingo 🍽️\n\n*Martes 6 · hoy*\n☀️ Lentejas' : null),
     })
     await processInbound(msg({ text: 'Lentejas, tortilla y pescado al horno' }), t.deps)
     expect(t.outbound.map((o) => o.kind)).toEqual(['reply', 'system', 'optin_prompt'])
-    expect(t.sent[0].text).toContain('*Tu semana del 6 al 12 de octubre*')
+    // The digest alone: the model's "Hecho: - Tu primer menú…" isn't stacked on top (2026-10-15).
+    expect(t.sent[0].text).toBe(`Listo: tu menú hasta el domingo 🍽️\n\n*Martes 6 · hoy*\n☀️ Lentejas`)
     expect(t.sent[1]).toEqual({ type: 'text', text: COPY.healthOnWeb(`${WEB}/profile`) })
     expect(t.sent[1].text).toMatch(/no me dejan guardar datos de salud/)
     expect(t.sent[2]).toMatchObject({ type: 'buttons', text: COPY.optInPrompt })

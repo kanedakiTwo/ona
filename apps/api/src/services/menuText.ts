@@ -47,8 +47,13 @@ export function mealEntriesForDay(day: DayMenu | null | undefined): { meal: stri
  * link). `webUrl` is `WEB_PUBLIC_URL`.
  */
 export function shortRecipeLink(webUrl: string, recipeId: string): string {
+  return shortWebLink(webUrl, `/recipes/${recipeId}`)
+}
+
+/** `https://www.mimoia.com` + `/menu` → `mimoia.com/menu` (same short form as recipe links). */
+export function shortWebLink(webUrl: string, path: string): string {
   const host = webUrl.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/+$/, '')
-  return `${host}/recipes/${recipeId}`
+  return `${host}${path}`
 }
 
 /**
@@ -82,7 +87,7 @@ export function mealLinesForDay(day: DayMenu | null | undefined): string[] {
   return mealEntriesForDay(day).map((e) => `${e.label}: ${e.dishes.join(' + ')}`)
 }
 
-const DAY_SHORT_ES = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
+const DAY_NAME_ES = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
 const MONTHS_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
 
 /** Monday `YYYY-MM-DD` → "del 12 al 18 de octubre" / "del 28 de septiembre al 4 de octubre". */
@@ -97,17 +102,39 @@ export function weekRangeEs(weekStart: string): string {
     : `del ${start.getUTCDate()} de ${sm} al ${end.getUTCDate()} de ${em}`
 }
 
-export const MENU_DIGEST_INVITE =
-  '¿Cambiamos algo? Dímelo aquí, por ejemplo «el jueves pon pescado» o «otra cena el martes».'
+/** `YYYY-MM-DD` + n days → `YYYY-MM-DD` (calendar arithmetic, no TZ involved). */
+function plusDays(isoDate: string, n: number): string {
+  const [y, m, d] = isoDate.slice(0, 10).split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10)
+}
 
 /**
- * Pure: a week's menu → the compact WhatsApp summary that follows "Hecho" when
- * the menu is generated, so the user reads it and iterates without opening the
- * app. Header names the meals planned that week (in order); one line per day
- * with one entry per planned meal ("—" when that day has none), the dishes of a
- * multi-dish slot joined with " + ", free-text notes as written. With `webUrl`
- * (PRO-85), each day is followed by one link line per recipe (a day line with
- * links inline would be too long); notes get none.
+ * One fixed marker per meal in the WhatsApp week digest (2026-10-15): it is
+ * what tells comida from cena at a glance, so it never changes and the meal
+ * lines carry no other emoji.
+ */
+export const MEAL_EMOJI: Record<string, string> = {
+  breakfast: '☕',
+  lunch: '☀️',
+  snack: '🍎',
+  dinner: '🌙',
+}
+
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+
+/**
+ * Pure: a week's menu → the WhatsApp message that answers "genera el menú"
+ * (rewritten 2026-10-15 after the first real feedback: «Overwhelming… too
+ * much info»). An opener saying up to when, one block per day — "*Jueves 15 ·
+ * hoy*" and one line per meal with its fixed emoji (☕ desayuno, ☀️ comida,
+ * 🍎 merienda, 🌙 cena), the dishes of a multi-dish slot joined with " + ",
+ * notes as written — then one link to the menu page (no per-recipe links:
+ * those stay in the one-day messages) and the invite to change something.
+ *
+ * `today` is the Europe/Madrid date (`YYYY-MM-DD`). When the week contains it,
+ * only today and the days after it are shown; any other week shows its seven
+ * days. A skipped day reads "Sin cocinar"; a day with nothing planned is left
+ * out; a meal a day doesn't have gets no line.
  */
 export function weekMenuDigest(
   menu: {
@@ -115,21 +142,56 @@ export function weekMenuDigest(
     days: Array<DayMenu | null | undefined> | null | undefined
     skippedDays?: number[] | null
   },
-  webUrl?: string,
+  opts: { today: string; webUrl?: string },
 ): string {
   const days = Array.isArray(menu.days) ? menu.days : []
-  const byDay = days.map((day) => new Map(mealEntriesForDay(day).map((e) => [e.meal, e.dishes])))
-  const planned = [
-    ...MEAL_ORDER.filter((m) => byDay.some((d) => d.has(m))),
-    ...[...new Set(byDay.flatMap((d) => [...d.keys()]))].filter((m) => !(MEAL_ORDER as readonly string[]).includes(m)),
-  ]
-  const header = `*Tu semana ${weekRangeEs(menu.weekStart)}*${planned.length > 1 ? ` (${planned.map((m) => MEAL_LABEL_ES[m] ?? m).join(' · ')})` : ''}`
-  const lines = DAY_SHORT_ES.flatMap((label, i) => {
-    if (menu.skippedDays?.includes(i)) return [`*${label}* sin cocinar`]
-    const meals = byDay[i]
-    if (!meals || meals.size === 0) return [`*${label}* —`]
-    const dayLine = `*${label}* ${planned.map((m) => meals.get(m)?.join(' + ') ?? '—').join(' · ')}`
-    return webUrl ? [dayLine, ...recipeLinkLines(recipesOfDay(days[i], planned), webUrl)] : [dayLine]
+  const weekStart = menu.weekStart.slice(0, 10)
+  const today = opts.today.slice(0, 10)
+  const tomorrow = plusDays(today, 1)
+
+  const all = Array.from({ length: 7 }, (_, i) => {
+    const skipped = menu.skippedDays?.includes(i) ?? false
+    return { i, date: plusDays(weekStart, i), skipped, entries: skipped ? [] : mealEntriesForDay(days[i]) }
   })
-  return [header, ...lines, '', MENU_DIGEST_INVITE].join('\n')
+  const visibleFrom = (from: number) => all.filter((d) => d.i >= from && (d.skipped || d.entries.length > 0))
+
+  const todayIndex = all.findIndex((d) => d.date === today)
+  // Generated mid-week: from today on. Another week, or nothing left from
+  // today on: the whole week.
+  const fromToday = todayIndex >= 0 && visibleFrom(todayIndex).length > 0
+  const shown = visibleFrom(fromToday ? todayIndex : 0)
+
+  const opener = !fromToday
+    ? `Listo: tu menú de la semana ${weekRangeEs(weekStart)} 🍽️`
+    : todayIndex === 6
+      ? 'Listo: tu menú de hoy 🍽️'
+      : 'Listo: tu menú hasta el domingo 🍽️'
+
+  const blocks = shown.map((d) => {
+    const when = d.date === today ? ' · hoy' : d.date === tomorrow ? ' · mañana' : ''
+    const title = `*${capitalize(DAY_NAME_ES[d.i])} ${Number(d.date.slice(8, 10))}${when}*`
+    if (d.skipped) return `${title}\nSin cocinar`
+    const lines = d.entries.map((e) => {
+      const dishes = e.dishes.join(' + ')
+      return MEAL_EMOJI[e.meal] ? `${MEAL_EMOJI[e.meal]} ${dishes}` : `${e.label}: ${dishes}`
+    })
+    return [title, ...lines].join('\n')
+  })
+
+  const parts = [opener, ...blocks]
+  if (opts.webUrl) parts.push(`📖 Recetas y lista de la compra: ${shortWebLink(opts.webUrl, '/menu')}`)
+  parts.push(menuDigestInvite(shown.filter((d) => !d.skipped && d.date !== today).map((d) => d.i)))
+  return parts.join('\n\n')
+}
+
+/**
+ * The closing line of the week digest, with an example on a day still to
+ * come that the message shows ("el sábado" on a Thursday): the second such
+ * day when there are several, the only one otherwise, "hoy" when today is all
+ * that's left.
+ */
+export function menuDigestInvite(upcomingDayIndexes: number[]): string {
+  const i = upcomingDayIndexes[Math.min(1, upcomingDayIndexes.length - 1)]
+  const when = i === undefined ? 'hoy' : `el ${DAY_NAME_ES[i]}`
+  return `¿Cambio algo? Dímelo, p. ej. «${when}, pescado».`
 }

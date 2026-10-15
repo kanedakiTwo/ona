@@ -1,13 +1,30 @@
 /**
- * The compact week summary WhatsApp appends after generating the menu
- * (Miguel, 2026-10-08: "la respuesta debería incluir un resumen del menú para
- * poder iterar desde WhatsApp sin navegar").
+ * The week summary WhatsApp sends after generating the menu (Miguel,
+ * 2026-10-08: "la respuesta debería incluir un resumen del menú para poder
+ * iterar desde WhatsApp sin navegar"). Rewritten 2026-10-15 after the first
+ * real feedback («Overwhelming… too much info»): day blocks with a fixed emoji
+ * per meal, only the days still to come, one link to the menu, no per-recipe
+ * links.
  */
 import { describe, it, expect } from 'vitest'
-import { weekMenuDigest, weekRangeEs, MENU_DIGEST_INVITE } from '../services/menuText.js'
+import { weekMenuDigest, weekRangeEs, menuDigestInvite, MEAL_EMOJI } from '../services/menuText.js'
 
-const r = (recipeName: string) => ({ kind: 'recipe' as const, recipeId: recipeName, recipeName })
+const r = (recipeName: string, recipeId = recipeName.toLowerCase().replace(/\s+/g, '-')) =>
+  ({ kind: 'recipe' as const, recipeId, recipeName })
 const slot = (...dishes: any[]) => ({ dishes })
+const day = (lunch: string, dinner: string) => ({ lunch: slot(r(lunch)), dinner: slot(r(dinner)) })
+const WEB = 'https://mimoia.com'
+
+/** Luis's week (generated on Thursday 15 Oct 2026). */
+const LUIS_WEEK: any[] = [
+  day('Ropa vieja del cocido', 'Onigirazu'),
+  day('Lentejas con chorizo', 'Tortilla de patata'),
+  day('Arroz al horno', 'Crema de calabacín'),
+  day('Pisto con huevo frito a la Thermomix', 'Guisantes lágrima'),
+  day('Pollo agridulce', 'Costillas a la riojana'),
+  day('Alubias rojas con entraña y embutidos', 'Lentejas guisadas'),
+  day('Hamburguesa casera', 'Oreja a la plancha'),
+]
 
 describe('weekRangeEs', () => {
   it('names one month when the week stays inside it', () => {
@@ -18,67 +35,136 @@ describe('weekRangeEs', () => {
   })
 })
 
-describe('weekMenuDigest', () => {
-  const days: any[] = [
-    { lunch: slot(r('Lentejas estofadas')), dinner: slot(r('Crema de calabaza')) },
-    { lunch: slot(r('Dorada a la marsellesa'), r('Ensalada verde')), dinner: slot({ kind: 'note', text: 'Cenamos fuera' }) },
-    { lunch: slot(r('Arroz al caldero')) },
-    { lunch: slot(r('Garbanzos con espinacas')), dinner: slot(r('Tortilla de patata')) },
-    {},
-    { lunch: slot(r('Paella')), dinner: slot(r('Pizza casera')) },
-    { lunch: slot(r('Cocido')), dinner: slot(r('Sopa juliana')) },
-  ]
-  const text = weekMenuDigest({ weekStart: '2026-10-12', days, skippedDays: [4] })
-  const lines = text.split('\n')
+describe('weekMenuDigest — generated mid-week (Thursday 15 Oct)', () => {
+  const text = weekMenuDigest({ weekStart: '2026-10-12', days: LUIS_WEEK }, { today: '2026-10-15', webUrl: WEB })
 
-  it('opens with the week and the meals planned, in order', () => {
-    expect(lines[0]).toBe('*Tu semana del 12 al 18 de octubre* (comida · cena)')
+  it('is exactly the format Miguel approved', () => {
+    expect(text).toBe([
+      'Listo: tu menú hasta el domingo 🍽️',
+      '',
+      '*Jueves 15 · hoy*',
+      '☀️ Pisto con huevo frito a la Thermomix',
+      '🌙 Guisantes lágrima',
+      '',
+      '*Viernes 16 · mañana*',
+      '☀️ Pollo agridulce',
+      '🌙 Costillas a la riojana',
+      '',
+      '*Sábado 17*',
+      '☀️ Alubias rojas con entraña y embutidos',
+      '🌙 Lentejas guisadas',
+      '',
+      '*Domingo 18*',
+      '☀️ Hamburguesa casera',
+      '🌙 Oreja a la plancha',
+      '',
+      '📖 Recetas y lista de la compra: mimoia.com/menu',
+      '',
+      '¿Cambio algo? Dímelo, p. ej. «el sábado, pescado».',
+    ].join('\n'))
   })
-  it('one line per day: meals in header order, multi-dish with " + ", notes as written, "—" for a missing meal', () => {
-    expect(lines[1]).toBe('*Lun* Lentejas estofadas · Crema de calabaza')
-    expect(lines[2]).toBe('*Mar* Dorada a la marsellesa + Ensalada verde · Cenamos fuera')
-    expect(lines[3]).toBe('*Mié* Arroz al caldero · —')
+  it('leaves out the days already gone', () => {
+    expect(text).not.toMatch(/Lunes|Martes|Miércoles/)
+    expect(text).not.toContain('Ropa vieja')
   })
-  it('marks a skipped day', () => {
-    expect(lines[5]).toBe('*Vie* sin cocinar')
+  it('has no per-recipe links and one menu line', () => {
+    expect(text).not.toContain('/recipes/')
+    expect(text).not.toContain('→')
+    expect(text.match(/\/menu/g)).toHaveLength(1)
   })
-  it('lists all seven days and ends inviting changes in the chat', () => {
-    expect(lines.filter((l) => /^\*(Lun|Mar|Mié|Jue|Vie|Sáb|Dom)\*/.test(l))).toHaveLength(7)
-    expect(lines.at(-1)).toBe(MENU_DIGEST_INVITE)
+  it('stays well inside one WhatsApp message', () => {
+    expect(text.length).toBeLessThan(700)
   })
-  it('stays short enough for one WhatsApp message', () => {
-    expect(text.length).toBeLessThan(1200)
+  it('says nothing about health', () => {
+    expect(text).not.toMatch(/salud|sano|saludable|nutri|calor/i)
   })
 })
 
-describe('weekMenuDigest with links (PRO-85)', () => {
-  const days: any[] = [
-    { lunch: slot(r('Lentejas estofadas')), dinner: slot(r('Crema de calabaza')) },
-    { lunch: slot(r('Dorada'), r('Ensalada verde')), dinner: slot({ kind: 'note', text: 'Cenamos fuera' }) },
-    { lunch: slot({ ...r('Lentejas estofadas'), variant: 'leftover' }) },
-    {}, {}, {}, {},
-  ]
-  const text = weekMenuDigest({ weekStart: '2026-10-12', days }, 'https://mimoia.com')
+describe('weekMenuDigest — a week that has not started', () => {
+  const text = weekMenuDigest({ weekStart: '2026-10-19', days: LUIS_WEEK }, { today: '2026-10-15', webUrl: WEB })
   const lines = text.split('\n')
 
-  it('each recipe gets its short link under its day, in menu order', () => {
-    expect(lines.slice(1, 4)).toEqual([
-      '*Lun* Lentejas estofadas · Crema de calabaza',
-      '→ Lentejas estofadas: mimoia.com/recipes/Lentejas estofadas',
-      '→ Crema de calabaza: mimoia.com/recipes/Crema de calabaza',
-    ])
-    expect(lines.slice(4, 7)).toEqual([
-      '*Mar* Dorada + Ensalada verde · Cenamos fuera',
-      '→ Dorada: mimoia.com/recipes/Dorada',
-      '→ Ensalada verde: mimoia.com/recipes/Ensalada verde',
-    ])
+  it('opens with the week range and shows all seven days', () => {
+    expect(lines[0]).toBe('Listo: tu menú de la semana del 19 al 25 de octubre 🍽️')
+    expect(lines.filter((l) => /^\*(Lunes|Martes|Miércoles|Jueves|Viernes|Sábado|Domingo) \d+\*$/.test(l))).toHaveLength(7)
+    expect(lines).toContain('*Lunes 19*')
+    expect(text).not.toContain('· hoy')
   })
-  it('notes never get a link; leftovers link to their recipe', () => {
-    expect(text).not.toContain('Cenamos fuera:')
-    expect(lines[7]).toBe('*Mié* Lentejas estofadas (sobras) · —')
-    expect(lines[8]).toBe('→ Lentejas estofadas: mimoia.com/recipes/Lentejas estofadas')
+  it('the invite names a day of that week', () => {
+    expect(lines.at(-1)).toBe('¿Cambio algo? Dímelo, p. ej. «el martes, pescado».')
   })
-  it('without a web URL the digest has no links (unchanged)', () => {
-    expect(weekMenuDigest({ weekStart: '2026-10-12', days })).not.toContain('/recipes/')
+  it('generated on Sunday for next week: Monday is "mañana"', () => {
+    const t = weekMenuDigest({ weekStart: '2026-10-19', days: LUIS_WEEK }, { today: '2026-10-18' })
+    expect(t).toContain('*Lunes 19 · mañana*')
+    expect(t).not.toContain('📖') // no web URL → no menu line
+  })
+})
+
+describe('weekMenuDigest — shapes of a day', () => {
+  const opts = { today: '2026-10-12', webUrl: WEB } // Monday: the whole week is still to come
+
+  it('lunch-only and dinner-only plans: one line per day, with its marker', () => {
+    const lunchOnly = weekMenuDigest({ weekStart: '2026-10-12', days: [{ lunch: slot(r('Paella')) }] }, opts)
+    expect(lunchOnly).toContain('*Lunes 12 · hoy*\n☀️ Paella\n\n')
+    expect(lunchOnly).not.toContain('🌙')
+    const dinnerOnly = weekMenuDigest({ weekStart: '2026-10-12', days: [{ dinner: slot(r('Sopa')) }] }, opts)
+    expect(dinnerOnly).toContain('*Lunes 12 · hoy*\n🌙 Sopa\n\n')
+    expect(dinnerOnly).not.toContain('☀️')
+  })
+  it('breakfast and snack get their own fixed markers, in meal order', () => {
+    const t = weekMenuDigest({
+      weekStart: '2026-10-12',
+      days: [{ dinner: slot(r('Sopa')), breakfast: slot(r('Tostadas')), snack: slot(r('Yogur')), lunch: slot(r('Paella')) }],
+    }, opts)
+    expect(t).toContain('*Lunes 12 · hoy*\n☕ Tostadas\n☀️ Paella\n🍎 Yogur\n🌙 Sopa')
+    expect(MEAL_EMOJI).toEqual({ breakfast: '☕', lunch: '☀️', snack: '🍎', dinner: '🌙' })
+  })
+  it('a multi-dish slot joins the dishes with " + "', () => {
+    const t = weekMenuDigest({ weekStart: '2026-10-12', days: [{ lunch: slot(r('Dorada'), r('Ensalada verde')) }] }, opts)
+    expect(t).toContain('☀️ Dorada + Ensalada verde')
+  })
+  it('notes as written, leftovers and freezer marked', () => {
+    const t = weekMenuDigest({
+      weekStart: '2026-10-12',
+      days: [{
+        lunch: slot({ ...r('Lentejas'), variant: 'leftover' }),
+        dinner: slot({ kind: 'note', text: 'Cenamos fuera' }),
+      }, {
+        lunch: slot({ ...r('Croquetas'), variant: 'freezer' }),
+      }],
+    }, opts)
+    expect(t).toContain('☀️ Lentejas (sobras)\n🌙 Cenamos fuera')
+    expect(t).toContain('☀️ Croquetas (del congelador)')
+  })
+  it('a skipped day reads "Sin cocinar"; a day with nothing is left out', () => {
+    const days: any[] = [day('A', 'B'), {}, day('C', 'D'), {}, {}, {}, {}]
+    const t = weekMenuDigest({ weekStart: '2026-10-12', days, skippedDays: [4] }, opts)
+    expect(t).toContain('*Viernes 16*\nSin cocinar')
+    expect(t).not.toContain('Martes')
+    expect(t).not.toContain('Jueves')
+    // The example skips today and the skipped day: Wednesday is the next to come.
+    expect(t.split('\n').at(-1)).toBe('¿Cambio algo? Dímelo, p. ej. «el miércoles, pescado».')
+  })
+})
+
+describe('weekMenuDigest — edges of "from today on"', () => {
+  it('on Sunday: only today, and the invite says "hoy"', () => {
+    const t = weekMenuDigest({ weekStart: '2026-10-12', days: LUIS_WEEK }, { today: '2026-10-18' })
+    expect(t.split('\n')[0]).toBe('Listo: tu menú de hoy 🍽️')
+    expect(t).toContain('*Domingo 18 · hoy*')
+    expect(t).not.toContain('Sábado')
+    expect(t.split('\n').at(-1)).toBe('¿Cambio algo? Dímelo, p. ej. «hoy, pescado».')
+  })
+  it('nothing left from today on: the whole week instead of an empty message', () => {
+    const days: any[] = [day('A', 'B'), day('C', 'D')]
+    const t = weekMenuDigest({ weekStart: '2026-10-12', days }, { today: '2026-10-15' })
+    expect(t.split('\n')[0]).toBe('Listo: tu menú de la semana del 12 al 18 de octubre 🍽️')
+    expect(t).toContain('*Lunes 12*')
+    expect(t).toContain('*Martes 13*')
+  })
+  it('the invite example picks the second day still to come, or the only one', () => {
+    expect(menuDigestInvite([4, 5, 6])).toBe('¿Cambio algo? Dímelo, p. ej. «el sábado, pescado».')
+    expect(menuDigestInvite([6])).toBe('¿Cambio algo? Dímelo, p. ej. «el domingo, pescado».')
+    expect(menuDigestInvite([])).toBe('¿Cambio algo? Dímelo, p. ej. «hoy, pescado».')
   })
 })

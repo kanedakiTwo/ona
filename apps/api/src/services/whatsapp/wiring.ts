@@ -4,6 +4,7 @@ import { and, desc, eq } from 'drizzle-orm'
 import { menus, users } from '../../db/schema.js'
 import { resolveScope, scopeWhere } from '../scopeResolver.js'
 import { weekMenuDigest } from '../menuText.js'
+import { madridParts } from '../madridTime.js'
 import { spendCapStatus } from '../spendCap.js'
 import { chat } from '../assistant/engine.js'
 import { checkAdvisorBudget, recordAdvisorUsage } from '../advisorBudget.js'
@@ -46,7 +47,11 @@ export function buildInboundDeps(): InboundDeps {
         .where(menuId ? and(scope, eq(menus.id, menuId)) : scope)
         .orderBy(desc(menus.createdAt))
         .limit(1)
-      return row ? weekMenuDigest({ weekStart: String(row.weekStart), days: row.days as any, skippedDays: row.skippedDays }, env.WEB_PUBLIC_URL) : null
+      if (!row) return null
+      return weekMenuDigest(
+        { weekStart: String(row.weekStart), days: row.days as any, skippedDays: row.skippedDays },
+        { today: madridParts(new Date()).isoDate, webUrl: env.WEB_PUBLIC_URL },
+      )
     },
     transcribe: isSttConfigured() ? transcribeAudio : undefined,
     importRecipeFromImage: env.ANTHROPIC_API_KEY ? importRecipeFromImage : undefined,

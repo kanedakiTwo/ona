@@ -128,13 +128,19 @@ export async function withDigests(
     ? (response.data as Record<string, unknown>)
     : null
   const digests: string[] = []
+  let message = response.message?.trim() ?? ''
   if (deps.menuDigest && tools.some((t) => MENU_DIGEST_TOOLS.has(t))) {
     const menuId = typeof data?.menuId === 'string'
       ? data.menuId
       : typeof data?.id === 'string' && Array.isArray(data?.days) ? data.id : null
     try {
       const digest = await deps.menuDigest(userId, menuId)
-      if (digest) digests.push(digest)
+      if (digest) {
+        digests.push(digest)
+        // The digest opens with "Listo: tu menú…": the model's own
+        // "Hecho: - Menú de la semana listo" would say it twice (2026-10-15).
+        message = withoutMenuReadyLines(message)
+      }
     } catch (err) {
       console.warn('[whatsapp] menuDigest failed (sending the reply without it):', err)
     }
@@ -143,7 +149,25 @@ export async function withDigests(
     digests.push(shoppingListDigest(response.data))
   }
   if (digests.length === 0) return response
-  return { ...response, message: [response.message?.trim(), ...digests].filter(Boolean).join('\n\n') }
+  return { ...response, message: [message, ...digests].filter(Boolean).join('\n\n') }
+}
+
+/** "- Menú de la semana listo", "Tu primer menú de la semana está listo.", "Hecho: menú de la semana listo"… */
+const MENU_READY_LINE =
+  /^\s*(?:hecho\s*:\s*)?(?:[-•*]\s*)?(?:tu\s+)?(?:primer\s+)?men[uú]\s+(?:de\s+(?:la|esta|tu)\s+semana\s+)?(?:est[aá]\s+)?(?:listo|generado|preparado)\s*[.!]?\s*$/i
+/** A line that only acknowledges: "Hecho:", "Hecho.", "Listo." */
+const BARE_ACK_LINE = /^\s*(?:hecho|listo|vale)\s*[:.!]?\s*$/i
+
+/**
+ * Pure: the model's reply to a turn that generated the menu, minus the
+ * "menú listo" line the digest already says. What's left only stays when it
+ * says something else (another change of the turn, a warning); a bare
+ * "Hecho:" goes too.
+ */
+export function withoutMenuReadyLines(message: string): string {
+  const lines = message.split('\n').filter((l) => !MENU_READY_LINE.test(l))
+  if (lines.every((l) => !l.trim() || BARE_ACK_LINE.test(l))) return ''
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()
 }
 
 const humanContact = (email?: string) =>

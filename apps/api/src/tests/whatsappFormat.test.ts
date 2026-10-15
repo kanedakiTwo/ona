@@ -96,6 +96,19 @@ describe('renderAssistantReply', () => {
     ])
   })
 
+  it('2026-10-15: no second «Ver menú» under a week digest that already links the menu (short form)', () => {
+    const digest = 'Listo: tu menú hasta el domingo 🍽️\n\n*Jueves 15 · hoy*\n☀️ Pollo\n\n📖 Recetas y lista de la compra: mimoia.com/menu\n\n¿Cambio algo? Dímelo, p. ej. «el sábado, pescado».'
+    const [msg] = renderAssistantReply({ message: digest, uiHint: 'menu', data: { id: 'm1', days: [] } }, 'https://www.mimoia.com')
+    expect(msg).toEqual({ type: 'text', text: digest })
+    // …while a reply without it still gets the link.
+    expect(renderAssistantReply({ message: 'Hoy toca pollo.', uiHint: 'menu' }, 'https://mimoia.com')[0].text).toContain('Ver menú: https://mimoia.com/menu')
+  })
+
+  it('2026-10-15: the week digest has no recipe links, so asking for one (get_recipe_details) still gives it', () => {
+    const [msg] = renderAssistantReply({ message: 'Aquí la tienes.', uiHint: 'recipe', data: { id: 'r9', name: 'Pollo agridulce' } }, WEB)
+    expect(msg.text).toBe(`Aquí la tienes.\n\nVer receta: ${WEB}/recipes/r9`)
+  })
+
   it('renders options as reply buttons', () => {
     expect(renderAssistantReply({ message: '¿Te lo cambio?\n[[opciones: Sí | No]]' }, WEB)).toEqual([
       { type: 'buttons', text: '¿Te lo cambio?', buttons: [{ id: 'opt:0', title: 'Sí' }, { id: 'opt:1', title: 'No' }] },

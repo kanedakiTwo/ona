@@ -168,6 +168,10 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 
 ### Pending
 
+- [ ] **MIG-21 · Verificar el negocio en Meta** · *antes del 16 de noviembre (beta abierta, D-057)* — Hoy Meta dice que el negocio no está verificado (`not_verified`): Mimo solo puede escribir primero a 250 personas al día, el nombre «Mimoia» no se muestra como verificado y, con la beta abierta, se queda corto. El número sí está verificado; el negocio, no.
+  - Cómo: business.facebook.com → Configuración → Centro de seguridad → «Verificación del negocio» → Empezar. Como autónomo: nombre legal y NIF, dirección, teléfono y web (mimoia.com), y un documento que lo pruebe (alta en Hacienda o recibo de autónomo, o una factura de luz o teléfono a tu nombre en esa dirección). Suele tardar de 2 a 10 días.
+  - Hecho cuando: Meta lo marca «Verificado» (Claude lo comprueba por la API).
+
 - [ ] **MIG-21 · Stripe: de modo prueba a cobrar de verdad** · *prueba hoy; real antes del 12-ene* — El cobro está montado (D-054, [specs/billing.md](./specs/billing.md)); falta tu cuenta.
   - Hoy: en Stripe (modo de prueba) copia la clave secreta `sk_test_…` y en el Terminal `pbpaste > ~/.config/mimoia/stripe-secret-test`. Con ella Claude crea productos, precios, webhook y portal (`scripts/stripeSetup.ts`) y lo prueba en staging.
   - En el Dashboard: Settings → Managed Payments → aceptar los términos (sin eso Checkout rechaza la sesión).

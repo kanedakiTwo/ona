@@ -8,8 +8,12 @@ export interface RecipeDish {
   course?: Course | null
   /** Per-dish meal-type pin (cremas, legumbres…). Moved from slot in the multi-dish migration. */
   pinnedType?: string | null
-  /** `planned` (default) | `leftover` (cloned from a previous slot's recipe-dish). */
-  variant?: 'planned' | 'leftover'
+  /**
+   * `planned` (default) | `leftover` (cloned from a previous slot's recipe-dish)
+   * | `freezer` (a táper from the freezer, PRO-82: linked to its recipe, never
+   * adds to the shopping list, whatever week it was cooked in).
+   */
+  variant?: 'planned' | 'leftover' | 'freezer'
   /** Back-reference when `variant === 'leftover'`. Carries the dish position because a slot can have multiple recipes now. */
   leftoverOf?: { day: number; meal: string; dishPosition: number } | null
   /** Hydrated from `recipes.image_url` on every menu response; NOT persisted in JSONB. */

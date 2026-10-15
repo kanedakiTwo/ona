@@ -1067,7 +1067,8 @@ router.post('/menu/:menuId/day/:day/leftover', async (req: AuthRequest, res) => 
     }
     // Prevent chaining: reject if every recipe-dish in the source is already a leftover.
     const hasPlannedRecipe = sourceSlot.dishes.some(
-      (d) => d.kind === 'recipe' && d.variant !== 'leftover',
+      // A freezer táper (PRO-82) isn't cooked here either, so it can't be a source.
+      (d) => d.kind === 'recipe' && d.variant !== 'leftover' && d.variant !== 'freezer',
     )
     if (!hasPlannedRecipe) {
       res.status(400).json({ error: 'Cannot chain leftovers — pick a planned source slot' })
@@ -1081,7 +1082,7 @@ router.post('/menu/:menuId/day/:day/leftover', async (req: AuthRequest, res) => 
     // Clone only the recipe dishes from the source slot (notes dropped).
     const clonedDishes: RecipeDish[] = []
     sourceSlot.dishes.forEach((d, sourcePos) => {
-      if (d.kind !== 'recipe') return  // notes don't propagate as leftovers
+      if (d.kind !== 'recipe' || d.variant === 'freezer') return  // notes and freezer tápers don't propagate as leftovers
       clonedDishes.push({
         ...d,
         variant: 'leftover',
@@ -1198,6 +1199,8 @@ const addDishSchema = z.union([
     recipeId: z.string().uuid(),
     course: courseSchema.optional(),
     pinnedType: z.string().nullable().optional(),
+    /** PRO-82: «Del congelador» — never adds to the shopping list. */
+    variant: z.enum(['planned', 'freezer']).optional(),
   }),
   z.object({
     kind: z.literal('note'),

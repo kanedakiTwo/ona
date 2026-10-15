@@ -13,7 +13,8 @@
 import { useState } from "react"
 import Link from "next/link"
 import { motion, useReducedMotion } from "motion/react"
-import { CalendarX, Lock, Play, Plus, RotateCw, Utensils } from "lucide-react"
+import { CalendarX, Lock, Play, Plus, RotateCw, Snowflake, Utensils } from "lucide-react"
+import { FreezerDishSheets } from "./FreezerDishSheets"
 import type { Dish, MealSlot, RecipeDish } from "@ona/shared"
 import { mealLabel } from "@/lib/labels"
 import { firstRecipeDish, mealEyebrow, slotMinutes, type DaySlot, type MealKey } from "@/lib/menuDay"
@@ -42,13 +43,19 @@ function cookHref(recipeId: string, servings: number) {
 /** Small state chips under a title — only rendered when there is state to show. */
 function SlotChips({ ctx, first }: { ctx: SlotContext; first: RecipeDish | null }) {
   const leftover = first?.variant === "leftover" && first.leftoverOf
+  const fromFreezer = first?.variant === "freezer"
   const others = (ctx.slot.dishes ?? []).filter((d) => d !== first)
-  if (!ctx.isLocked && !leftover && ctx.slot.servings == null && others.length === 0) return null
+  if (!ctx.isLocked && !leftover && !fromFreezer && ctx.slot.servings == null && others.length === 0) return null
   return (
     <div className="flex flex-wrap items-center gap-1.5 text-[12px] text-ink-mid">
       {ctx.isLocked && (
         <span className="inline-flex items-center gap-1 rounded-full bg-cream-deep px-2 py-0.5 font-medium text-ink">
           <Lock size={11} strokeWidth={2.2} /> Fijada
+        </span>
+      )}
+      {fromFreezer && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-cream-deep px-2 py-0.5 font-medium text-ink">
+          <Snowflake size={11} /> Del congelador · no suma a la compra
         </span>
       )}
       {leftover && first?.leftoverOf && (
@@ -335,6 +342,7 @@ export function DayFooter({
   isAdding,
   onAddMeal,
   onSkip,
+  onAddFreezer,
 }: {
   dayName: string
   missing: MealKey[]
@@ -342,7 +350,10 @@ export function DayFooter({
   isAdding: boolean
   onAddMeal: (meal: MealKey) => void
   onSkip: () => void
+  /** «Del congelador» (PRO-82): a táper that never adds to the shopping list. */
+  onAddFreezer?: (meal: MealKey, recipeId: string) => void
 }) {
+  const [freezerOpen, setFreezerOpen] = useState(false)
   const [open, setOpen] = useState(false)
   if (missing.length === 0 && !canSkip) return null
   return (
@@ -381,8 +392,30 @@ export function DayFooter({
               }}
             />
           ))}
+          {onAddFreezer && (
+            <div className="mt-1 border-t border-border-soft pt-1">
+              <SheetAction
+                icon={Snowflake}
+                label="Del congelador"
+                hint="Un táper que ya tienes: no suma a la compra"
+                disabled={isAdding}
+                onClick={() => {
+                  setOpen(false)
+                  setFreezerOpen(true)
+                }}
+              />
+            </div>
+          )}
         </div>
       </MenuSheet>
+      {onAddFreezer && (
+        <FreezerDishSheets
+          open={freezerOpen}
+          onClose={() => setFreezerOpen(false)}
+          missing={missing}
+          onAdd={onAddFreezer}
+        />
+      )}
     </div>
   )
 }

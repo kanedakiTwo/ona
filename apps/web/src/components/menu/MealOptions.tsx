@@ -63,7 +63,9 @@ import { RecipePickerSheet } from "./RecipePickerSheet"
 import { AddDishSheet } from "./AddDishSheet"
 import { DishRow } from "./DishRow"
 
-export type DishPayload = { kind: "recipe"; recipeId: string } | { kind: "note"; text: string }
+export type DishPayload =
+  | { kind: "recipe"; recipeId: string; variant?: "planned" | "freezer" }
+  | { kind: "note"; text: string }
 
 /** Mutations for one (day, meal) slot. Built once per slot by the page. */
 export interface SlotHandlers {
@@ -150,7 +152,9 @@ export function MealOptionsSheets({
   const first = dishes.find((d): d is RecipeDish => d.kind === "recipe") ?? null
   const isSingleRecipe = dishes.length === 1 && dishes[0].kind === "recipe"
   const isLeftover = first?.variant === "leftover"
-  const canReshape = isSingleRecipe && !isLeftover
+  // A freezer táper (PRO-82) is a given dish: no Elegir / Cambiar / Tipo / Vetar.
+  const fromFreezer = first?.variant === "freezer"
+  const canReshape = isSingleRecipe && !isLeftover && !fromFreezer
   const pinnedType = first?.pinnedType ?? null
   const label = mealLabel(ctx.meal)
   const locked = ctx.isLocked

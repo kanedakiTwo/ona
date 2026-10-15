@@ -386,3 +386,25 @@ describe('recipes, profile, household', () => {
     expect(r.summary).toMatch(/\/invites\/abc123/)
   })
 })
+
+describe('add_freezer_dish (PRO-82)', () => {
+  it('«esta noche comemos táper de lentejas» → the dinner becomes the lentejas recipe «Del congelador»', async () => {
+    const f = fakeApi({ 'GET /recipes': [{ id: 'r-lg', name: 'Lentejas guisadas' }] })
+    const r = await get('add_freezer_dish').handler({ dayIndex: 5, meal: 'dinner', recipeName: 'lentejas' }, ctx(f.api))
+    expect(writes(f.calls)).toEqual([
+      { method: 'DELETE', path: '/menu/m1/day/5/meal/dinner', body: undefined },
+      { method: 'POST', path: '/menu/m1/day/5/meal/dinner/dish', body: { kind: 'recipe', recipeId: 'r-lg', variant: 'freezer' } },
+    ])
+    expect(r.uiHint).toBe('menu')
+    expect(r.summary).toContain('Lentejas guisadas')
+    expect(r.summary).toContain('no suma nada a la lista de la compra')
+  })
+
+  it('an empty meal is not cleared first; unknown dishes go as a «Táper: …» note', async () => {
+    const f = fakeApi({ 'GET /recipes': [] })
+    await get('add_freezer_dish').handler({ dayIndex: 1, meal: 'dinner', recipeName: 'cocido de la abuela' }, ctx(f.api))
+    expect(writes(f.calls)).toEqual([
+      { method: 'POST', path: '/menu/m1/day/1/meal/dinner/dish', body: { kind: 'note', text: 'Táper: Cocido de la abuela' } },
+    ])
+  })
+})

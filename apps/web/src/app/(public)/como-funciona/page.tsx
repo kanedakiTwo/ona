@@ -25,8 +25,8 @@ const FAQS = [
     a: "Claro. Con un mensaje al asistente. \"El martes no me apetece pasta, ponme algo de menos de 20 minutos\" — y se cambia. También puedes fijar platos para que no se muevan en regeneraciones.",
   },
   {
-    q: "¿Funciona para dietas especiales?",
-    a: "Mimoia respeta tus restricciones desde el onboarding. Sin gluten, vegetariano, sin lácteos, lo que tengas. Y puedes añadir las tuyas en cualquier momento.",
+    q: "¿Y si en casa alguien no come de todo?",
+    a: "Se lo dices en el onboarding: si sois vegetarianos, si alguien no toma gluten o lácteos, o qué no os gusta, y el menú lo tiene en cuenta. Lo puedes cambiar cuando quieras. Si hay una alergia, revisa siempre los ingredientes: Mimoia no sustituye a un profesional sanitario.",
   },
 ]
 
@@ -77,7 +77,7 @@ function Steps() {
       num: "02",
       eyebrow: "Dos minutos",
       title: "Recibe tu menú.",
-      desc: "Mimoia diseña tu semana. Lunes a domingo, las comidas que tú hayas configurado. Todo respeta temporada, evita repeticiones y se ajusta a tu balance nutricional. Si algo no te convence, lo cambias hablando.",
+      desc: "Mimoia diseña tu semana. Lunes a domingo, las comidas que tú hayas configurado. Todo de temporada, variado y sin repetir platos. Si algo no te convence, lo cambias hablando.",
       detail: "El motor evalúa hasta 200 combinaciones para encontrar la que mejor encaja con tu perfil. Mira qué está de temporada, que la semana salga variada y que no se repitan platos. Luego puedes fijar platos para que no se muevan en próximas regeneraciones.",
       img: STEP2_IMG,
     },

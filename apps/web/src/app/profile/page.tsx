@@ -65,7 +65,7 @@ import { DeleteAccountCard } from '@/components/profile/DeleteAccountCard'
 import { NewsletterToggle } from '@/components/profile/NewsletterToggle'
 import { useWhatsAppStatus } from '@/hooks/useWhatsApp'
 import type { Meal } from '@ona/shared'
-import { RESTRICTION_PRESETS, planLabel, unionRestrictions } from '@ona/shared'
+import { RESTRICTION_PRESETS, subscriptionSummary, unionRestrictions } from '@ona/shared'
 import type { HealthConsentState } from '@ona/shared'
 import { HealthConsentCheckbox } from '@/components/HealthConsentCheckbox'
 
@@ -1072,7 +1072,7 @@ function ProfileHub() {
           billing.data == null
             ? billing.isError ? 'Tu plan' : loading
             : billing.data.subscription
-              ? planLabel(billing.data.subscription.plan, billing.data.subscription.period)
+              ? subscriptionSummary(billing.data.subscription).hub
               : billing.data.beta ? 'Beta: Plus gratis' : 'Sin plan'
         }
       />

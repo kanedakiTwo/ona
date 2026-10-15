@@ -14,7 +14,7 @@
 import { Suspense, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { LAUNCH_DATE_LABEL, PLAN_CAPS_NOTE, planByKey, type BillingPeriod, type PlanKey } from '@ona/shared'
+import { LAUNCH_DATE_LABEL, PLAN_CAPS_NOTE, planByKey, subscriptionSummary, type BillingPeriod, type PlanKey } from '@ona/shared'
 import { PlanCards } from '@/components/billing/PlanCards'
 import { useBilling, useCheckout, usePortal } from '@/hooks/useBilling'
 import { Accent, PILL_INK, PILL_OUTLINE, SUB_CARD, SUB_EYEBROW, SubNotice, SubPage } from '@/components/profile/SubPage'
@@ -44,6 +44,7 @@ function Suscripcion() {
 
   const state = billing.data
   const sub = state?.subscription
+  const summary = sub ? subscriptionSummary(sub) : null
   const error = checkout.error ?? portal.error
 
   return (
@@ -71,20 +72,26 @@ function Suscripcion() {
 
       {state && sub && (
         <section className={`${SUB_CARD} p-5`} data-testid="subscription-current">
-          <div className={SUB_EYEBROW}>Tu plan</div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className={SUB_EYEBROW}>Tu plan</div>
+            <span
+              data-testid="subscription-badge"
+              className={`rounded-full px-3 py-1 text-[12px] font-semibold ${
+                summary!.tone === 'good'
+                  ? 'bg-forest/10 text-forest'
+                  : summary!.tone === 'warn'
+                    ? 'bg-warn-bg text-terracotta-deep'
+                    : 'bg-cream-deep text-ink-muted'
+              }`}
+            >
+              {summary!.badge}
+            </span>
+          </div>
           <p className="mt-2 font-display text-[28px] leading-tight text-ink">
             {planByKey(sub.plan).name} <span className="text-ink-muted">· {planByKey(sub.plan).prices[sub.period].label}</span>
           </p>
-          <p className="mt-2 text-[14px] leading-relaxed text-ink-mid">
-            {sub.cancelAtPeriodEnd && sub.endsAt
-              ? `Cancelada: sigue hasta el ${fmt(sub.endsAt)} y no se renueva.`
-              : sub.status === 'trialing' && sub.nextChargeAt
-                ? `Lo has dejado pagado. No se cobra nada hasta el ${fmt(sub.nextChargeAt)}.`
-                : sub.status === 'past_due' || sub.status === 'unpaid'
-                  ? 'No hemos podido cobrar el último pago. Revisa tu tarjeta en «Gestionar mi suscripción».'
-                  : sub.nextChargeAt
-                    ? `Próximo cobro: ${fmt(sub.nextChargeAt)}.`
-                    : 'Activa.'}
+          <p className="mt-2 text-[14px] leading-relaxed text-ink-mid" data-testid="subscription-line">
+            {summary!.line}
           </p>
           {state.canManage ? (
             <button type="button" className={`${PILL_OUTLINE} mt-5`} disabled={portal.isPending} onClick={() => portal.mutate()}>

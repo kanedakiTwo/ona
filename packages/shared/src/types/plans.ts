@@ -218,3 +218,74 @@ export function isFoundingHousehold(createdAt: Date | string, launchDate: string
   const t = typeof createdAt === 'string' ? Date.parse(createdAt) : createdAt.getTime()
   return Number.isFinite(t) && t < Date.parse(`${launchDate}T00:00:00+01:00`)
 }
+
+/** «29 de diciembre de 2026» (long) / «29 de diciembre» (short), in Madrid. */
+function dayEs(iso: string, withYear: boolean): string {
+  return new Intl.DateTimeFormat('es-ES', {
+    day: 'numeric',
+    month: 'long',
+    ...(withYear ? { year: 'numeric' } : {}),
+    timeZone: 'Europe/Madrid',
+  }).format(new Date(iso))
+}
+
+export interface SubscriptionSummary {
+  /** Short pill: «En prueba hasta el 29 de diciembre», «Cancelada». */
+  badge: string
+  tone: 'good' | 'muted' | 'warn'
+  /** The sentence under the plan. */
+  line: string
+  /** Profile hub tile: «Esencial · en prueba». */
+  hub: string
+}
+
+/**
+ * How a subscription reads on Perfil → Suscripción and the profile hub
+ * (2026-10-15: after cancelling, Miguel still saw only «Esencial · 4,99 €/mes»;
+ * the trial, its end and the cancellation have to show at a glance).
+ */
+export function subscriptionSummary(sub: NonNullable<BillingState['subscription']>): SubscriptionSummary {
+  const name = planByKey(sub.plan).name
+  const until = sub.endsAt ?? sub.nextChargeAt
+  if (sub.cancelAtPeriodEnd) {
+    return sub.status === 'trialing'
+      ? {
+          badge: 'Cancelada',
+          tone: 'muted',
+          line: until
+            ? `Has cancelado: no se te cobrará nada. Sigues con tu prueba hasta el ${dayEs(until, true)}.`
+            : 'Has cancelado: no se te cobrará nada.',
+          hub: `${name} · cancelada`,
+        }
+      : {
+          badge: 'Cancelada',
+          tone: 'muted',
+          line: until ? `Has cancelado: sigues con ${name} hasta el ${dayEs(until, true)} y no se renueva.` : 'Has cancelado: no se renueva.',
+          hub: `${name} · cancelada`,
+        }
+  }
+  if (sub.status === 'trialing') {
+    return {
+      badge: sub.nextChargeAt ? `En prueba hasta el ${dayEs(sub.nextChargeAt, false)}` : 'En prueba',
+      tone: 'good',
+      line: sub.nextChargeAt
+        ? `Lo has dejado pagado: no se cobra nada hasta el ${dayEs(sub.nextChargeAt, true)}. Puedes cancelar antes sin pagar nada.`
+        : 'Lo has dejado pagado. Puedes cancelar antes del primer cobro sin pagar nada.',
+      hub: `${name} · en prueba`,
+    }
+  }
+  if (sub.status === 'past_due' || sub.status === 'unpaid') {
+    return {
+      badge: 'Pago pendiente',
+      tone: 'warn',
+      line: 'No hemos podido cobrar el último pago. Revisa tu tarjeta en «Gestionar mi suscripción».',
+      hub: `${name} · pago pendiente`,
+    }
+  }
+  return {
+    badge: 'Activa',
+    tone: 'good',
+    line: sub.nextChargeAt ? `Próximo cobro: ${dayEs(sub.nextChargeAt, true)}.` : 'Activa.',
+    hub: `${name} · ${planByKey(sub.plan).prices[sub.period].label}`,
+  }
+}

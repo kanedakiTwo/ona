@@ -18,6 +18,7 @@ function dishLabel(d: Dish): string | null {
   if (d.kind === 'note') return d.text?.trim() || null
   if (d.kind === 'recipe') {
     const name = d.recipeName?.trim() || 'receta sin nombre'
+    if (d.variant === 'freezer') return `${name} (del congelador)`
     return d.variant === 'leftover' ? `${name} (sobras)` : name
   }
   return null

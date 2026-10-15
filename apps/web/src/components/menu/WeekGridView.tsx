@@ -818,6 +818,11 @@ function FilledRow({
             Sobras
           </span>
         )}
+        {firstRecipe?.variant === "freezer" && (
+          <span className="absolute bottom-0 left-0 right-0 bg-[#1A1612]/85 px-1 py-[1px] text-center text-[8px] font-medium uppercase tracking-[0.1em] text-[#FAF6EE]">
+            Congelador
+          </span>
+        )}
         {cellData?.totalMinutes != null && cellData.totalMinutes > 0 && (
           <span className="absolute right-1 top-1 hidden rounded-full bg-[#FAF6EE]/95 px-1.5 py-0.5 text-[9px] font-medium text-[#1A1612] backdrop-blur-sm lg:inline-flex">
             {cellData.totalMinutes}'

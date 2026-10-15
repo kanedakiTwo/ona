@@ -251,6 +251,9 @@ export function sumDinersByRecipe(
           ? slot.servings
           : householdMultiplier
       for (const dish of recipeDishesOf(slot.dishes)) {
+        // A táper from the freezer (PRO-82) was bought and cooked some other
+        // time: no ingredients, not a cooking.
+        if (dish.variant === 'freezer') continue
         out.set(dish.recipeId, (out.get(dish.recipeId) ?? 0) + diners)
         if (dish.variant !== 'leftover') timesCooked.set(dish.recipeId, (timesCooked.get(dish.recipeId) ?? 0) + 1)
       }

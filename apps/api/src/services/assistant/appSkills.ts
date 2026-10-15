@@ -487,6 +487,53 @@ const setLeftovers: SkillDefinition = {
   },
 }
 
+// PRO-82: a táper from the freezer is a dish linked to its recipe that never
+// adds to the shopping list (`variant: 'freezer'`), whatever week it was
+// cooked in.
+const addFreezerDish: SkillDefinition = {
+  name: 'add_freezer_dish',
+  description:
+    'Pone en una comida un taper del congelador ("esta noche comemos taper de lentejas", "el jueves tiramos de las albondigas congeladas"). Queda enlazado a su receta con la etiqueta "Del congelador" y NO suma nada a la lista de la compra. Por defecto sustituye lo que hubiera en esa comida. Para sobras de otra comida de la misma semana usa set_leftovers.',
+  parameters: {
+    type: 'object',
+    properties: {
+      ...dayMealProps,
+      recipeName: { type: 'string', description: 'El plato del taper, sin "taper de" (ej. "lentejas")' },
+      recipeId: { type: 'string' },
+      keepDishes: { type: 'boolean', description: 'true para añadirlo sin quitar los platos de esa comida' },
+    },
+    required: ['meal', 'recipeName'],
+  },
+  async handler(p, ctx) {
+    const t = target(p.day, p.dayIndex, p.nextWeek)
+    if (isMenuDayError(t)) return text(t.error)
+    const bad = mealError(p.meal)
+    if (bad) return text(bad)
+    const menu = await loadMenu(ctx, t.weekStart)
+    if (!menu) return NO_MENU(t.weekStart)
+    const path = slotPath(menu.id, t.dayIndex, p.meal)
+    const had = (menu.days[t.dayIndex]?.[p.meal]?.dishes ?? []).length > 0
+    const recipe = p.recipeId ? { id: p.recipeId, name: p.recipeName ?? 'la receta' } : await findRecipe(ctx, p.recipeName)
+    if (!p.keepDishes && had) await api(ctx)('DELETE', path)
+    const removed = !p.keepDishes && had ? ' (he quitado lo que había)' : ''
+    if (!recipe) {
+      // Not in their recipes nor the catalogue: a note, which never buys anything.
+      const note = `Táper: ${dishNoteText(p.recipeName)}`.slice(0, 120)
+      await api(ctx)('POST', `${path}/dish`, { kind: 'note', text: note })
+      return menuDone(
+        `Hecho: ${where(t, p.meal)} queda como "${note}"${removed}; no suma nada a la compra. No esta en sus recetas ni en el catalogo, asi que va como nota.`,
+        changed(t, p.meal, { menuId: menu.id, note }),
+      )
+    }
+    await api(ctx)('POST', `${path}/dish`, { kind: 'recipe', recipeId: recipe.id, variant: 'freezer' })
+    const approx = 'approximate' in recipe && recipe.approximate ? ` Es la receta mas parecida a "${p.recipeName}" que hay.` : ''
+    return menuDone(
+      `Hecho: ${where(t, p.meal)} es "${recipe.name}" del congelador${removed}; no suma nada a la lista de la compra.${approx}`,
+      changed(t, p.meal, { menuId: menu.id, recipeId: recipe.id, recipeName: recipe.name, variant: 'freezer' }),
+    )
+  },
+}
+
 // ─── Shopping list ───────────────────────────────────────────────
 
 type ListItem = Pick<ShoppingItem, 'id' | 'name'> & Partial<Pick<ShoppingItem, 'quantity' | 'unit' | 'aisle' | 'checked' | 'inStock' | 'kind'>>
@@ -1074,6 +1121,7 @@ export const appSkills: SkillDefinition[] = [
   moveMeal,
   banRecipe,
   setLeftovers,
+  addFreezerDish,
   getShoppingList,
   addShoppingItems,
   removeShoppingItems,

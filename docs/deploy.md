@@ -44,7 +44,13 @@ scripts/deploy.sh --dry-run   # run the checks + print the plan, deploy nothing
 `railway up` uploads the local working directory as-is, so without a guard prod can end up running code that exists in no commit. The wrapper refuses to deploy unless:
 
 1. the working tree is clean — no staged, unstaged **or untracked** files (they would be uploaded too);
-2. `HEAD` equals `origin/master` after a fresh `git fetch` — i.e. the commit is pushed. If `HEAD` is *behind* `origin/master` it refuses as well, unless you pass `--allow-behind` for an intentional rollback.
+2. `HEAD` equals `origin/master` after a fresh `git fetch` — i.e. the commit is pushed. If `HEAD` is *behind* `origin/master` it refuses as well, unless you pass `--allow-behind` for an intentional rollback;
+3. **production only: CI is green for this code** (2026-10-15). It looks for a successful run of the `CI` workflow on `HEAD` **or on any commit whose diff with `HEAD` only touches docs** (`specs/`, `docs/`, `CLAUDE.md`, `plans/`, `reports/`, `README.md` — the same list as `paths-ignore` in `ci.yml`). So the **PR's green run is enough**: squash-merging an up-to-date PR gives `master` the same code, and you don't wait for `master`'s own run. If CI is still running it says so; `--skip-ci-check` overrides it (emergencies only). Needs the `gh` CLI with read access to the repo.
+
+**Why a deploy is faster since 2026-10-15** (it used to take about an hour from PR to production):
+- **E2E in 4 shards** on 4 runners (`e2e-shard` matrix, `playwright test --shard=N/4`), each with its own Postgres, API and web; the `E2E (Playwright)` check is an aggregator that is green only when every shard is. Serially the 71 specs took 16 of the CI's ~20 minutes.
+- **No second CI wait after merging** (point 3 above).
+- **Docs-only pushes don't run CI** (`paths-ignore`), and **on `master` runs queue instead of cancelling** each other (`cancel-in-progress` only on branches): a docs commit used to restart the CI of the code commit before it.
 
 It then prints the commit SHA + subject being deployed and runs the manual commands below (api first, then web). Prod therefore always maps to a pushed commit on `master`.
 

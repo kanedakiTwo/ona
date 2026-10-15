@@ -83,9 +83,9 @@ export default function WaitlistSection() {
     <section
       id={WAITLIST_ANCHOR}
       aria-labelledby="waitlist-title"
-      className="scroll-mt-20 border-t border-[#E8E2D3] bg-[#FAF6EE] px-6 py-24 md:px-10 md:py-32"
+      className="scroll-mt-20 border-t border-[#E8E2D3] bg-[#FAF6EE] py-24 md:py-32"
     >
-      <div className="mx-auto grid max-w-7xl grid-cols-1 gap-12 md:grid-cols-12 md:gap-16">
+      <div className="public-container grid grid-cols-1 gap-12 md:grid-cols-12 md:gap-16">
         <div className="md:col-span-5">
           <div className="text-eyebrow mb-6">Lista de espera · {BRAND_NAME}</div>
           <h2 id="waitlist-title" className="text-editorial-lg">

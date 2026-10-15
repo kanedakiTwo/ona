@@ -74,7 +74,7 @@ function Hero() {
       </div>
 
       {/* Hero content grid */}
-      <div className="relative z-10 mx-auto grid max-w-7xl grid-cols-1 gap-y-12 px-6 pb-16 pt-12 md:grid-cols-12 md:gap-x-8 md:px-10 md:pb-24 md:pt-16">
+      <div className="public-container relative z-10 grid grid-cols-1 gap-y-12 pb-16 pt-12 md:grid-cols-12 md:gap-x-8 md:pb-24 md:pt-16">
         {/* Left column — text */}
         <motion.div
           className="md:col-span-7"
@@ -239,8 +239,8 @@ function Problem() {
   ]
 
   return (
-    <section ref={ref} className="relative px-6 py-24 md:px-10 md:py-32">
-      <div className="mx-auto max-w-7xl">
+    <section ref={ref} className="relative py-24 md:py-32">
+      <div className="public-container">
         <div className="grid grid-cols-1 gap-12 md:grid-cols-12 md:gap-8">
           <div className="md:col-span-5">
             <div className="text-eyebrow mb-6">Capítulo 01</div>
@@ -319,8 +319,8 @@ function Steps() {
   ]
 
   return (
-    <section className="bg-[#F2EDE0] px-6 py-24 md:px-10 md:py-32">
-      <div className="mx-auto max-w-7xl">
+    <section className="bg-[#F2EDE0] py-24 md:py-32">
+      <div className="public-container">
         <div className="mb-20 grid grid-cols-1 items-end gap-6 md:grid-cols-12">
           <div className="md:col-span-6">
             <div className="text-eyebrow mb-4">Capítulo 02</div>
@@ -432,8 +432,8 @@ function Opinionated() {
   ]
 
   return (
-    <section ref={ref} className="relative px-6 py-24 md:px-10 md:py-32">
-      <div className="mx-auto max-w-7xl">
+    <section ref={ref} className="relative py-24 md:py-32">
+      <div className="public-container">
         <div className="grid grid-cols-1 gap-12 md:grid-cols-12 md:gap-16">
           {/* Left column — title + manifesto */}
           <div className="md:col-span-5">
@@ -503,8 +503,8 @@ function Differential() {
   ]
 
   return (
-    <section ref={ref} className="px-6 py-24 md:px-10 md:py-32">
-      <div className="mx-auto max-w-7xl">
+    <section ref={ref} className="py-24 md:py-32">
+      <div className="public-container">
         <div className="mb-16 grid grid-cols-1 items-end gap-6 md:grid-cols-12">
           <div className="md:col-span-7">
             <div className="text-eyebrow mb-4">Capítulo 04</div>
@@ -629,8 +629,8 @@ function Counter() {
   return (
     <div ref={ref}>
       {total !== null && (
-    <section className="bg-[#FAF6EE] px-6 py-24 md:px-10 md:py-32">
-      <div className="mx-auto max-w-7xl text-center">
+    <section className="bg-[#FAF6EE] py-24 md:py-32">
+      <div className="public-container text-center">
         <div className="text-eyebrow mb-8">El recetario</div>
         <div className="font-display text-[20vw] leading-[0.9] tracking-[-0.04em] text-[#1A1612] md:text-[14rem]">
           {count.toLocaleString("es-ES")}

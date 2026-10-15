@@ -53,35 +53,38 @@ export default async function BlogArticlePage({ params }: Params) {
   if (!post) notFound()
 
   return (
-    <article className="bg-[#FAF6EE] px-4 pb-24 pt-28 md:px-10 md:pb-32 md:pt-36">
-      <div className="mx-auto max-w-[720px]">
-        <Link
-          href="/blog"
-          className="inline-flex items-center gap-1 text-sm text-[#7A7066] transition-colors hover:text-[#1A1612]"
-        >
-          <ChevronLeft size={16} /> Blog
-        </Link>
+    <article className="bg-[#FAF6EE] pb-24 pt-28 md:pb-32 md:pt-36">
+      {/* Reading page: a 720 px column left-aligned on the public grid (specs/design-system.md). */}
+      <div className="public-container">
+        <div className="max-w-[720px]" data-testid="reading-column">
+          <Link
+            href="/blog"
+            className="inline-flex items-center gap-1 text-sm text-[#7A7066] transition-colors hover:text-[#1A1612]"
+          >
+            <ChevronLeft size={16} /> Blog
+          </Link>
 
-        <header className="mt-8">
-          <div className="text-eyebrow">
-            <time dateTime={post.fecha}>{formatBlogDate(post.fecha)}</time> · {post.autor}
+          <header className="mt-8">
+            <div className="text-eyebrow">
+              <time dateTime={post.fecha}>{formatBlogDate(post.fecha)}</time> · {post.autor}
+            </div>
+            <h1 className="mt-4 font-display text-[40px] leading-[1.05] tracking-[-0.02em] text-[#1A1612] md:text-[56px]">
+              {post.titulo}
+            </h1>
+            <p className="mt-6 font-italic text-[22px] italic leading-snug text-[#4A4239]">{post.resumen}</p>
+          </header>
+
+          <div className="mt-10 aspect-[16/10] overflow-hidden rounded-[24px] bg-[#EFE8D8]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={post.imagen} alt="" className="h-full w-full object-cover" />
           </div>
-          <h1 className="mt-4 font-display text-[40px] leading-[1.05] tracking-[-0.02em] text-[#1A1612] md:text-[56px]">
-            {post.titulo}
-          </h1>
-          <p className="mt-6 font-italic text-[22px] italic leading-snug text-[#4A4239]">{post.resumen}</p>
-        </header>
 
-        <div className="mt-10 aspect-[16/10] overflow-hidden rounded-[24px] bg-[#EFE8D8]">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={post.imagen} alt="" className="h-full w-full object-cover" />
+          <div className="mt-12">
+            <BlogBody blocks={post.blocks} />
+          </div>
+
+          <BlogWaitlistCta />
         </div>
-
-        <div className="mt-12">
-          <BlogBody blocks={post.blocks} />
-        </div>
-
-        <BlogWaitlistCta />
       </div>
     </article>
   )

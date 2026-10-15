@@ -24,31 +24,34 @@ const LINKS = [
 
 export default function Footer() {
   return (
-    <footer data-testid="site-footer" className="bg-[#F2EDE0] px-6 pb-24 pt-16 text-sm text-[#7A7066] md:px-10 md:pb-32 md:pt-20">
-      <div className="mx-auto flex max-w-5xl flex-col items-center gap-6 border-t border-[#DDD6C5] pt-12 md:flex-row md:justify-between">
-        <MimoiaLogo size={24} testId="footer-logo" />
-        <nav aria-label="Enlaces del pie" className="flex flex-wrap justify-center gap-x-8 gap-y-3">
-          {LINKS.map((l) => (
-            <Link key={l.href} href={l.href} className="link-reveal hover:text-[#1A1612]">
-              {l.label}
-            </Link>
-          ))}
-        </nav>
-        <div className="flex flex-col items-center gap-1 text-xs md:items-end">
-          <div className="mb-1 flex gap-3">
-            {BRAND_SOCIAL_LINKS.map((s) => {
-              const Icon = s.network === "Instagram" ? Instagram : Facebook
-              return (
-                <a key={s.network} href={s.url} target="_blank" rel="noopener noreferrer" aria-label={`${BRAND_NAME} en ${s.network}`} className="hover:text-[#1A1612]">
-                  <Icon size={18} strokeWidth={1.8} aria-hidden="true" />
-                </a>
-              )
-            })}
+    <footer data-testid="site-footer" className="bg-[#F2EDE0] pb-24 pt-16 text-sm text-[#7A7066] md:pb-32 md:pt-20">
+      {/* On the public grid (globals.css `public-container`): logo on the navbar's x, contact block on its right edge. */}
+      <div className="public-container">
+        <div className="flex flex-col items-center gap-6 border-t border-[#DDD6C5] pt-12 md:flex-row md:justify-between">
+          <MimoiaLogo size={24} testId="footer-logo" />
+          <nav aria-label="Enlaces del pie" className="flex flex-wrap justify-center gap-x-8 gap-y-3">
+            {LINKS.map((l) => (
+              <Link key={l.href} href={l.href} className="link-reveal hover:text-[#1A1612]">
+                {l.label}
+              </Link>
+            ))}
+          </nav>
+          <div data-testid="footer-meta" className="flex flex-col items-center gap-1 text-xs md:items-end">
+            <div className="mb-1 flex gap-3">
+              {BRAND_SOCIAL_LINKS.map((s) => {
+                const Icon = s.network === "Instagram" ? Instagram : Facebook
+                return (
+                  <a key={s.network} href={s.url} target="_blank" rel="noopener noreferrer" aria-label={`${BRAND_NAME} en ${s.network}`} className="hover:text-[#1A1612]">
+                    <Icon size={18} strokeWidth={1.8} aria-hidden="true" />
+                  </a>
+                )
+              })}
+            </div>
+            <a href={`mailto:${CONTACT_EMAIL}`} className="link-reveal hover:text-[#1A1612]">
+              {CONTACT_EMAIL}
+            </a>
+            <span>© 2026 {BRAND_NAME}</span>
           </div>
-          <a href={`mailto:${CONTACT_EMAIL}`} className="link-reveal hover:text-[#1A1612]">
-            {CONTACT_EMAIL}
-          </a>
-          <span>© 2026 {BRAND_NAME}</span>
         </div>
       </div>
     </footer>

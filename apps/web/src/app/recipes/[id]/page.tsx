@@ -101,6 +101,16 @@ export default function RecipeDetailPage() {
       kidsCount: user?.kidsCount,
       householdSize: user?.householdSize,
     })
+    // `?servings=N` (from the menu, PRO-75): open at the batch the menu cooks,
+    // táper included, and don't let "al menos N" bump it.
+    const fromUrl = Number(new URLSearchParams(window.location.search).get("servings"))
+    const maxServings = Math.max(1, (recipe.servings ?? 2) * 6)
+    if (Number.isInteger(fromUrl) && fromUrl >= 1) {
+      setServings(Math.min(fromUrl, maxServings))
+      scalerTouchedRef.current = true
+      seededRef.current = true
+      return
+    }
     const initial = userDiners ?? recipe.servings ?? 2
     setServings(initial)
     seededRef.current = true

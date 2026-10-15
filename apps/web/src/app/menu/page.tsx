@@ -44,7 +44,7 @@ import { useUser } from "@/hooks/useUser"
 import { haptic } from "@/lib/pwa/haptics"
 import { recordMenuVisit } from "@/lib/pwa/installPrompt"
 import { share } from "@/lib/pwa/share"
-import { dateOfDay, dayHeading, missingMeals, orderedSlots, splitDay, weekHasDishes, weekRangeLabel, weekdayName, type MealKey } from "@/lib/menuDay"
+import { batchServings, dateOfDay, dayHeading, missingMeals, orderedSlots, splitDay, weekHasDishes, weekRangeLabel, weekdayName, type MealKey } from "@/lib/menuDay"
 import { WeekGridView } from "@/components/menu/WeekGridView"
 import { WeekStrip } from "@/components/menu/WeekStrip"
 import { PantryMatchCard } from "@/components/menu/PantryMatchCard"
@@ -330,6 +330,7 @@ export default function MenuPage() {
             dayLabel: `${weekdayName(day)} ${dateOfDay(weekStart, day).getDate()}`,
             isLocked: isLockedAt(day, meal),
             defaultDiners,
+            batchServings: batchServings((menu!.days ?? []) as DayMenu[], day, meal, defaultDiners),
             isRegenerating: regenerateMeal.isPending,
           },
         }

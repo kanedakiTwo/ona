@@ -1090,7 +1090,10 @@ router.post('/menu/:menuId/day/:day/leftover', async (req: AuthRequest, res) => 
     })
 
     if (!days[targetDay]) days[targetDay] = {}
-    days[targetDay][targetMeal] = { servings: sourceSlot.servings, dishes: clonedDishes }
+    // No `servings` copy (PRO-75): with «Solo hoy: N» on the source, N already
+    // covers the táper; without it, the leftover counts the household's
+    // diners (see `withLeftoverBatches` in services/shoppingList.ts).
+    days[targetDay][targetMeal] = { dishes: clonedDishes }
 
     const [updated] = await db
       .update(menus)

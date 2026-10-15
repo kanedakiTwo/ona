@@ -43,7 +43,7 @@ import {
 } from "@/lib/menuDay"
 import { RecipeCover } from "./RecipeCover"
 import { DayFooter, EmptyMealCard, MealHero, SkippedDay, type SlotPropsFn } from "./DayMeals"
-import { MealOptionsButton, MealOptionsSheets, useMealOptions } from "./MealOptions"
+import { MealOptionsButton, MealOptionsSheets, slotRecipeHref, useMealOptions } from "./MealOptions"
 
 interface Props {
   header: ReactNode
@@ -188,7 +188,7 @@ function SideMeal({
     <div className="relative">
       {first ? (
         <Link
-          href={`/recipes/${first.recipeId}`}
+          href={slotRecipeHref(first.recipeId, props.ctx)}
           className={`flex text-ink focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ink ${
             big ? "flex-col gap-2.5" : "items-center gap-3.5 pr-12"
           }`}
@@ -424,7 +424,7 @@ function SlotTile({ d, s, slotProps, readOnly }: { d: number; s: DaySlot; slotPr
         </button>
       ) : (
         <Link
-          href={first ? `/recipes/${first.recipeId}` : "#"}
+          href={first ? slotRecipeHref(first.recipeId, props.ctx) : "#"}
           {...stopKeys}
           draggable={false}
           className="flex flex-col gap-2 text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
@@ -493,7 +493,7 @@ function SlotLine({ d, s, slotProps, readOnly }: { d: number; s: DaySlot; slotPr
         </button>
       ) : first ? (
         <Link
-          href={`/recipes/${first.recipeId}`}
+          href={slotRecipeHref(first.recipeId, props.ctx)}
           draggable={false}
           {...stopKeys}
           className="flex-1 py-1 text-[13px] leading-[1.3] text-ink-mid hover:text-ink focus-visible:outline-2 focus-visible:outline-ink [@media(hover:none)]:pr-8"

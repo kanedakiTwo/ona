@@ -179,11 +179,54 @@ interface ScaledRow {
   note?: string | null
 }
 
+function hasServingsOverride(slot: { servings?: number | null } | undefined): boolean {
+  return typeof slot?.servings === 'number' && slot.servings > 0
+}
+
+/**
+ * PRO-75 — a planned leftover ("táper") is part of its source's batch, not
+ * another cooking. Rule (option A, 2026-10-13): when the source meal carries
+ * «Solo hoy: N» (`servings` override), N is what gets cooked, táper included,
+ * so the leftover dish is dropped from the copy this returns and adds nothing
+ * to the list. Otherwise the leftover stays and adds its own diners (the
+ * household's, since leftovers no longer copy the source's `servings`).
+ *
+ * Takes ONE menu's 7 days (indices = `leftoverOf.day`), so call it before
+ * slicing/re-indexing days for a date range. Pure; never mutates its input.
+ * A leftover whose source slot no longer holds that recipe is left alone.
+ */
+export function withLeftoverBatches(weekDays: DayMenu[]): DayMenu[] {
+  return weekDays.map((day) => {
+    if (!day) return day
+    let changed = false
+    const next: DayMenu = { ...day }
+    for (const meal of Object.keys(day) as (keyof DayMenu)[]) {
+      const slot = day[meal]
+      if (!slot?.dishes?.length) continue
+      const kept = slot.dishes.filter((dish) => {
+        if (dish.kind !== 'recipe' || dish.variant !== 'leftover' || !dish.leftoverOf) return true
+        const source = weekDays[dish.leftoverOf.day]?.[dish.leftoverOf.meal as keyof DayMenu]
+        const sourceCooksIt = (source?.dishes ?? []).some(
+          (d) => d.kind === 'recipe' && d.variant !== 'leftover' && d.recipeId === dish.recipeId,
+        )
+        return !(sourceCooksIt && hasServingsOverride(source))
+      })
+      if (kept.length !== slot.dishes.length) {
+        changed = true
+        next[meal] = { ...slot, dishes: kept }
+      }
+    }
+    return changed ? next : day
+  })
+}
+
 /**
  * Sum the diner counts for every slot in the week, grouped by recipe id.
  * Per-slot `servings` overrides win over the household-level fallback; a
  * recipe scheduled in two slots accumulates both diner counts (a leftover
- * slot is the same batch cooked bigger, so it adds its diners too). Pure
+ * slot is the same batch cooked bigger, so it adds its diners too — unless
+ * `withLeftoverBatches` already dropped it because its source has «Solo hoy»,
+ * PRO-75). Pure
  * (no DB) so it's the unit-test entry point for shopping-list scaling.
  *
  * `minServingsByRecipe` ("esta receta siempre la cocino para al menos N",

@@ -50,6 +50,7 @@ import { WeekStrip } from "@/components/menu/WeekStrip"
 import { PantryMatchCard } from "@/components/menu/PantryMatchCard"
 import { BannedRecipesPanel } from "@/components/menu/BannedRecipesPanel"
 import { WeekActionsSheet } from "@/components/menu/WeekActionsSheet"
+import { ConfirmSheet } from "@/components/menu/MenuSheet"
 import { MenuDesktop } from "@/components/menu/MenuDesktop"
 import { DayFooter, DayMeals, SkippedDay, type SlotPropsFn } from "@/components/menu/DayMeals"
 import type { SlotHandlers } from "@/components/menu/MealOptions"
@@ -201,6 +202,7 @@ export default function MenuPage() {
   }, [])
 
   const [weekSheetOpen, setWeekSheetOpen] = useState(false)
+  const [confirmClearOpen, setConfirmClearOpen] = useState(false)
 
   // Changing week resets the day: today on the current week, Monday otherwise.
   useEffect(() => {
@@ -256,18 +258,20 @@ export default function MenuPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, menu?.id, menuLoading, isPastWeek, weekStart])
 
-  /** "Vaciar semana" / "Empezar de cero": confirmed, sends `force` (API 409s otherwise). */
+  /**
+   * "Vaciar semana" / "Empezar de cero": sends `force` (API 409s otherwise).
+   * With dishes on the week it asks first, in the app's own sheet (PRO-72).
+   */
   function handleClearWeek() {
     if (!user) return
-    if (
-      menu &&
-      typeof window !== "undefined" &&
-      !window.confirm(
-        "¿Vaciar esta semana? Se borrarán los platos actuales, salvo los fijados (queda como historial). Podrás rellenar a mano o volver a generar.",
-      )
-    ) {
+    if (menu) {
+      setConfirmClearOpen(true)
       return
     }
+    clearWeek()
+  }
+  function clearWeek() {
+    if (!user) return
     haptic.medium()
     generateMenu.mutate({ userId: user.id, weekStart, empty: true, force: true })
   }
@@ -293,9 +297,11 @@ export default function MenuPage() {
             deleteMealSlot.mutate(base)
           },
           setServings: (servings) => updateSlotServings.mutate({ ...base, servings }),
+          // PRO-72: vetoing also swaps this slot for another recipe (the
+          // matcher skips vetoed ids), so the vetoed dish leaves the day.
           ban: (recipeId) => {
             haptic.medium()
-            banRecipe.mutate({ menuId, recipeId })
+            banRecipe.mutate({ menuId, recipeId }, { onSuccess: () => regenerateMeal.mutate(base) })
           },
           setPinnedType: (pinnedType) => {
             haptic.light()
@@ -371,6 +377,15 @@ export default function MenuPage() {
   const firstSteps = <FirstStepsGuide userId={user.id} ready={Boolean(menu) && !menuLoading && !isPastWeek} />
 
   const weekSheet = (
+    <>
+    <ConfirmSheet
+      open={confirmClearOpen}
+      onClose={() => setConfirmClearOpen(false)}
+      onConfirm={clearWeek}
+      title="¿Vaciar esta semana?"
+      message="Se borrarán los platos actuales, salvo los fijados (queda como historial). Podrás rellenar a mano o volver a generar."
+      confirmLabel="Vaciar"
+    />
     <WeekActionsSheet
       open={weekSheetOpen}
       onClose={() => setWeekSheetOpen(false)}
@@ -399,6 +414,7 @@ export default function MenuPage() {
         setViewMode(viewMode === "day" ? "week" : "day")
       }}
     />
+    </>
   )
 
   const moreButton = (
@@ -692,9 +708,12 @@ export default function MenuPage() {
                 haptic.medium()
                 regenerateMeal.mutate({ menuId: menu.id, day: d, meal: m })
               }}
-              onBan={(_d, _m, recipeId) => {
+              onBan={(d, m, recipeId) => {
                 haptic.medium()
-                banRecipe.mutate({ menuId: menu.id, recipeId })
+                banRecipe.mutate(
+                  { menuId: menu.id, recipeId },
+                  { onSuccess: () => regenerateMeal.mutate({ menuId: menu.id, day: d, meal: m }) },
+                )
               }}
               onRemove={(d, m) => {
                 haptic.medium()

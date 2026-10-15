@@ -18,7 +18,7 @@ import type { Dish, MealSlot, RecipeDish } from "@ona/shared"
 import { mealLabel } from "@/lib/labels"
 import { firstRecipeDish, mealEyebrow, slotMinutes, type DaySlot, type MealKey } from "@/lib/menuDay"
 import { RecipeCover, mealIconFor } from "./RecipeCover"
-import { MenuSheet, SheetAction } from "./MenuSheet"
+import { ConfirmSheet, MenuSheet, SheetAction } from "./MenuSheet"
 import {
   MealOptionsButton,
   MealOptionsSheets,
@@ -344,6 +344,7 @@ export function DayFooter({
   onSkip: () => void
 }) {
   const [open, setOpen] = useState(false)
+  const [confirmSkip, setConfirmSkip] = useState(false)
   if (missing.length === 0 && !canSkip) return null
   return (
     <div className="mx-4 flex flex-wrap items-center gap-2">
@@ -359,14 +360,21 @@ export function DayFooter({
       {canSkip && (
         <button
           type="button"
-          onClick={() => {
-            if (typeof window === "undefined" || window.confirm(`¿Marcar ${dayName} como sin cocinar?`)) onSkip()
-          }}
+          onClick={() => setConfirmSkip(true)}
           className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full px-3 text-[14px] text-ink-mid transition-colors hover:bg-cream-deep hover:text-ink"
         >
           <CalendarX size={15} /> Saltar día
         </button>
       )}
+      <ConfirmSheet
+        open={confirmSkip}
+        onClose={() => setConfirmSkip(false)}
+        onConfirm={onSkip}
+        eyebrow="Solo afecta a esta semana"
+        title={`¿Marcar ${dayName} como sin cocinar?`}
+        message="Se quitan sus platos, salvo los fijados. Con «Reactivar día» puedes volver a llenarlo."
+        confirmLabel="Saltar día"
+      />
       <MenuSheet open={open} onClose={() => setOpen(false)} eyebrow="Solo afecta a esta semana" title="Añadir comida">
         <div className="flex flex-col gap-0.5">
           {missing.map((m) => (

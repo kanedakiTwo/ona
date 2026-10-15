@@ -164,3 +164,53 @@ export function SheetAction({
     </button>
   )
 }
+
+/**
+ * In-app confirmation for the menu's destructive actions (PRO-72). Replaces
+ * `window.confirm`, which some browsers never show (in-app browsers,
+ * automated ones) and then counts as «Cancelar» — the action silently did
+ * nothing. Guard: apps/api/src/tests/menuNoNativeConfirm.test.ts.
+ */
+export function ConfirmSheet({
+  open,
+  onClose,
+  onConfirm,
+  title,
+  message,
+  confirmLabel,
+  eyebrow,
+}: {
+  open: boolean
+  onClose: () => void
+  onConfirm: () => void
+  title: ReactNode
+  message?: ReactNode
+  /** Button text, e.g. "Saltar día". */
+  confirmLabel: string
+  eyebrow?: string
+}) {
+  return (
+    <MenuSheet open={open} onClose={onClose} eyebrow={eyebrow} title={title}>
+      {message && <p className="mb-4 text-[14.5px] leading-snug text-ink-mid">{message}</p>}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={onClose}
+          className="flex min-h-[48px] flex-1 items-center justify-center rounded-full border border-border bg-paper px-4 text-[15px] font-medium text-ink transition-colors hover:border-ink focus-visible:outline-2 focus-visible:outline-ink"
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            onConfirm()
+            onClose()
+          }}
+          className="flex min-h-[48px] flex-1 items-center justify-center rounded-full bg-terracotta-deep px-4 text-[15px] font-semibold text-cream transition-colors hover:bg-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+        >
+          {confirmLabel}
+        </button>
+      </div>
+    </MenuSheet>
+  )
+}

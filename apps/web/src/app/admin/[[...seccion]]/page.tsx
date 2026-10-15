@@ -50,6 +50,7 @@ import { UsersSection } from "../sections/UsersSection"
 import { AuditLogSection } from "../sections/AuditLogSection"
 import { VoiceTranscriptsSection } from "../sections/VoiceTranscriptsSection"
 import { InvitationsSection } from "../sections/InvitationsSection"
+import { FeedbackSection } from "../sections/FeedbackSection"
 import { WaitlistAdminSection } from "../sections/WaitlistAdminSection"
 import { DISPLAY_UI } from "@/components/recipes/RecipeCard"
 
@@ -66,6 +67,7 @@ type SectionKey =
   | "voice"
   | "invites"
   | "waitlist"
+  | "feedback"
 
 const SECTIONS: Array<{ key: SectionKey; label: string }> = [
   { key: "fdc", label: "Ingredientes sin USDA" },
@@ -80,12 +82,14 @@ const SECTIONS: Array<{ key: SectionKey; label: string }> = [
   { key: "voice", label: "Voz" },
   { key: "invites", label: "Invitaciones" },
   { key: "waitlist", label: "Lista de espera" },
+  { key: "feedback", label: "Opiniones" },
 ]
 
 const AREA_SECTION: Record<Exclude<AdminArea, "catalogo">, SectionKey> = {
   usuarios: "users",
   invitaciones: "invites",
   "lista-espera": "waitlist",
+  opiniones: "feedback",
   auditoria: "audit",
   voz: "voice",
 }
@@ -95,6 +99,7 @@ const AREA_HEADER: Record<AdminArea, { title: string; intro: string }> = {
   usuarios: { title: "Usuarios", intro: "Busca cuentas, suspéndelas o genera un enlace para cambiar la contraseña." },
   invitaciones: { title: "Invitaciones", intro: "Enlaces de invitación por campaña para entrar en la beta cerrada, con sus altas y su uso." },
   "lista-espera": { title: "Lista de espera", intro: "Quién se ha apuntado, de qué canal viene y la siguiente tanda para invitar por correo." },
+  opiniones: { title: "Opiniones", intro: "Lo que nos cuentan los hogares de la beta, desde el botón «Opinión», el chat o WhatsApp." },
   auditoria: { title: "Auditoría", intro: "Lo que ha hecho cada admin y cuándo. Cada acción queda registrada." },
   voz: { title: "Voz", intro: "Histórico del antiguo modo de voz (retirado el 2026-10-09). Ya no entran conversaciones nuevas." },
 }
@@ -103,6 +108,7 @@ const SECTION_AREA_HREF: Partial<Record<SectionKey, string>> = {
   users: "/admin/usuarios",
   invites: "/admin/invitaciones",
   waitlist: "/admin/lista-espera",
+  feedback: "/admin/opiniones",
   audit: "/admin/auditoria",
   voice: "/admin/voz",
 }
@@ -177,6 +183,7 @@ export default function AdminPage() {
     voice: 0,
     invites: 0,
     waitlist: 0,
+    feedback: 0,
   }
 
   const isCatalogTab =
@@ -301,6 +308,7 @@ export default function AdminPage() {
         {active === "voice" && <VoiceTranscriptsSection />}
         {active === "invites" && <InvitationsSection />}
         {active === "waitlist" && <WaitlistAdminSection />}
+        {active === "feedback" && <FeedbackSection />}
       </main>
 
       {remapTarget && (

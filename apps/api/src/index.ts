@@ -42,6 +42,7 @@ import usageRoutes from './routes/usage.js'
 import inviteCampaignRoutes from './routes/inviteCampaigns.js'
 import billingRoutes, { billingWebhookRouter } from './routes/billing.js'
 import priceSurveyRoutes from './routes/priceSurvey.js'
+import feedbackRoutes from './routes/feedback.js'
 import { trackShoppingActivity } from './services/activityEvents.js'
 import { trackUsageRoutes } from './services/usageEvents.js'
 import { startScheduler } from './services/notificationScheduler.js'
@@ -131,6 +132,7 @@ app.use(emailSinkRoutes)
 // Per-route authMiddleware (no catch-all), before userRoutes.
 app.use(billingRoutes)
 app.use(priceSurveyRoutes)
+app.use(feedbackRoutes)
 app.use(recipeRoutes)
 app.use(ingredientRoutes)
 // pushRoutes is mostly auth-protected (per-route authMiddleware) but the

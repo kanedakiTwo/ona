@@ -90,3 +90,37 @@ export function renderAssistantReply(
 export function renderPlainText(text: string): OutboundMessage[] {
   return splitMessage(toWhatsAppMarkup(text)).map((t) => ({ type: 'text' as const, text: t }))
 }
+
+/**
+ * PRO-141 (Miguel, 2026-10-15): in the WhatsApp sign-up the dishes question
+ * came with the buttons of the previous one («Casi a diario / 3-4 días /
+ * Poco») — the model repeated its [[opciones]]. Outbound bodies record the
+ * buttons they carried (`⟦botones: A | B⟧`, see `outboundBody`); a reply whose
+ * buttons are exactly the last ones Mimo sent goes out as plain text.
+ */
+export const BUTTONS_MARK = /⟦botones: ([^⟧]*)⟧/
+
+export function outboundBody(m: OutboundMessage): string {
+  return m.type === 'buttons' ? `${m.text}\n⟦botones: ${m.buttons.map((b) => b.title).join(' | ')}⟧` : m.text
+}
+
+/** Titles of the buttons in the most recent outbound body that had any (or null). */
+export function lastSentButtons(rows: Array<{ direction: string; body: string | null }>): string[] | null {
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const r = rows[i]
+    if (r.direction !== 'out') continue
+    const m = r.body?.match(BUTTONS_MARK)
+    if (m) return m[1].split(' | ').map((t) => t.trim())
+    return null // the last thing Mimo sent had no buttons
+  }
+  return null
+}
+
+export function dropRepeatedButtons(messages: OutboundMessage[], last: string[] | null): OutboundMessage[] {
+  if (!last) return messages
+  const same = (titles: string[]) => titles.length === last.length && titles.every((t, i) => t === last[i])
+  return messages.flatMap((m): OutboundMessage[] => {
+    if (m.type !== 'buttons' || !same(m.buttons.map((b) => b.title))) return [m]
+    return m.text === 'Elige una opción:' ? [] : [{ type: 'text', text: m.text }]
+  })
+}

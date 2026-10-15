@@ -186,7 +186,12 @@ export function normalizeRecipeParts(parts: RecipeParts) {
  * URL/photo imports. Replaces the assistant's old raw INSERT, which skipped
  * servings (NOT NULL → failed in prod) and left ingredients unlinked.
  */
-export async function createRecipeFromParts(parts: RecipeParts, userId: string): Promise<ImportedRecipe> {
+export async function createRecipeFromParts(
+  parts: RecipeParts,
+  userId: string,
+  /** `estimated` (PRO-74): Mimo made it up for the menu — servings show «Estimado». */
+  opts: { estimated?: boolean } = {},
+): Promise<ImportedRecipe> {
   const n = normalizeRecipeParts(parts)
   const { matched, warnings } = await matchIngredients(n.ingredients, { recipeName: parts.name })
   const unmatched = matched.filter((i) => !i.matched).length
@@ -194,7 +199,7 @@ export async function createRecipeFromParts(parts: RecipeParts, userId: string):
     name: parts.name,
     imageUrl: null,
     servings: n.servings,
-    servingsConfidence: n.servingsConfidence,
+    servingsConfidence: opts.estimated ? 'estimated' : n.servingsConfidence,
     prepTime: parts.prepTime ?? null,
     cookTime: parts.cookTime ?? null,
     meals: n.meals,
@@ -206,5 +211,5 @@ export async function createRecipeFromParts(parts: RecipeParts, userId: string):
     unmatchedCount: unmatched,
     warnings: unmatched > 0 ? [...warnings, `${unmatched} ingrediente(s) no encontrado(s) en la base de datos`] : warnings,
   }
-  return saveOrThrow(extracted, userId, ['assistant-created'])
+  return saveOrThrow(extracted, userId, opts.estimated ? ['assistant-created', 'estimated'] : ['assistant-created'])
 }

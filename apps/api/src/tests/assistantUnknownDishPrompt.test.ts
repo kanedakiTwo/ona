@@ -14,6 +14,9 @@ describe('system prompt: dishes that are not in the catalogue', () => {
       const p = buildSystemPrompt('', mode)
       expect(p).toMatch(/si es para ponerla en el menu, NO preguntes primero: llama igualmente a swap_meal/)
       expect(p).toMatch(/como nota con su nombre/)
+      // PRO-74: with newRecipe it becomes a household recipe that reaches the list
+      expect(p).toMatch(/swap_meal \(o add_dish\) con ese nombre y con newRecipe/)
+      expect(p).toMatch(/lista de la compra/)
       // the old contradictory rule is gone
       expect(p).not.toMatch(/pon la mas parecida que si exista/)
     })

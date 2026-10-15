@@ -3,7 +3,12 @@
  * REST calls the web app makes. A fake AppApi records calls and serves canned
  * responses, so these pin the exact endpoint + body per skill.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+
+// PRO-74: add_dish may create a household recipe (DB) — stubbed here.
+vi.mock('../services/recipeImport.js', () => ({
+  createRecipeFromParts: vi.fn(async (parts: { name: string }) => ({ recipeId: 'r-created', name: parts.name, warnings: [] })),
+}))
 import { appSkills, bestMatch, toBuyable, applyTemplateChange, normalize, findSameProduct } from '../services/assistant/appSkills.js'
 import { AppApiError, type AppApi } from '../services/assistant/appApi.js'
 import { madridWeekStart } from '../services/madridTime.js'
@@ -132,7 +137,28 @@ describe('menu skills', () => {
     expect(writes(f.calls)).toEqual([{ method: 'POST', path: '/menu/m1/day/0/meal/lunch/dish', body: { kind: 'note', text: 'Pizza casera' } }])
     expect(r.uiHint).toBe('menu')
     expect(r.summary).toContain('como nota')
-    expect(r.summary).toContain('crear la receta')
+    expect(r.summary).toContain('newRecipe')
+  })
+
+  it('add_dish with newRecipe creates the household recipe and replaces an earlier note of the same dish (PRO-74)', async () => {
+    const { createRecipeFromParts } = await import('../services/recipeImport.js')
+    vi.mocked(createRecipeFromParts).mockResolvedValueOnce({ recipeId: 'r-pizza', name: 'Pizza casera', warnings: [] })
+    const withNote = {
+      ...MENU,
+      days: MENU.days.map((d, i) =>
+        i === 4 ? { dinner: { dishes: [{ kind: 'recipe', recipeId: 'r-ter', recipeName: 'Ternera con pimientos' }, { kind: 'note', text: 'Pizza casera' }] } } : d,
+      ),
+    }
+    const f = fakeApi({ 'GET /recipes': [], 'GET /menu/u1/*': withNote })
+    const r = await get('add_dish').handler(
+      { dayIndex: 4, meal: 'dinner', recipeName: 'pizza casera', newRecipe: { ingredients: [{ name: 'harina', quantity: 500, unit: 'g' }] } },
+      ctx(f.api),
+    )
+    expect(writes(f.calls)).toEqual([
+      { method: 'DELETE', path: '/menu/m1/day/4/meal/dinner/dish/1', body: undefined },
+      { method: 'POST', path: '/menu/m1/day/4/meal/dinner/dish', body: { kind: 'recipe', recipeId: 'r-pizza' } },
+    ])
+    expect(r.summary).toContain('receta del hogar')
   })
 
   it('add_dish finds the closest catalogue recipe; random when unnamed', async () => {

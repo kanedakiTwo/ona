@@ -15,6 +15,11 @@ interface RecipePickerSheetProps {
   subtitle?: string
   /** Called with the chosen recipe id. The sheet closes after the parent confirms. */
   onPick: (recipe: { id: string; name: string }) => void
+  /**
+   * PRO-74: with 0 results, «Usar "<lo escrito>" como plato» puts the typed
+   * text in the slot instead of the current dish (a note, not one more dish).
+   */
+  onUseText?: (text: string) => void
 }
 
 /**
@@ -30,6 +35,7 @@ export function RecipePickerSheet({
   title,
   subtitle,
   onPick,
+  onUseText,
 }: RecipePickerSheetProps) {
   const [query, setQuery] = useState("")
   const inputRef = useRef<HTMLInputElement>(null)
@@ -128,6 +134,17 @@ export function RecipePickerSheet({
                 <Plus size={14} />
                 Crear receta{query.trim() ? ` “${query.trim()}”` : ""}
               </Link>
+              {onUseText && query.trim() && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => onUseText(query.trim().slice(0, 120))}
+                    className="mt-2 inline-flex min-h-[44px] items-center gap-2 rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-4 text-[13px] font-medium text-[#1A1612] transition-colors hover:border-[#1A1612]"
+                  >
+                    Usar “{query.trim()}” como plato
+                  </button>
+                </div>
+              )}
             </div>
           )}
           <ul className="divide-y divide-[#DDD6C5]">

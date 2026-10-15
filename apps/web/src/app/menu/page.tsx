@@ -332,6 +332,18 @@ export default function MenuPage() {
           },
           reorderDish: (from, to) => patchDish.mutate({ ...base, position: from, patch: { newPosition: to } }),
           editNote: (position, text) => patchDish.mutate({ ...base, position, patch: { text } }),
+          // PRO-74: «Usar "<lo escrito>" como plato» swaps the dish for the
+          // text (before, a note was only added next to it). Keeps «Solo hoy».
+          replaceWithNote: (text) => {
+            haptic.medium()
+            deleteMealSlot.mutate(base, {
+              onSuccess: () =>
+                addDish.mutate(
+                  { ...base, payload: { kind: "note", text } },
+                  { onSuccess: () => { if (slot.servings != null) updateSlotServings.mutate({ ...base, servings: slot.servings }) } },
+                ),
+            })
+          },
         }
         return {
           handlers,

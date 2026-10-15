@@ -27,6 +27,7 @@ import { mealLinesForDay } from '../menuText.js'
 import { madridWeekStart } from '../madridTime.js'
 import { DAY_PROP, dateLabel, isMenuDayError, resolveMenuDay, type MenuDay } from './menuDay.js'
 import { appSkills, bestMatch, dishNoteText, searchWords } from './appSkills.js'
+import { createDishRecipe, NEW_RECIPE_PROP, NOTE_THEN_RECIPE_HINT, type NewRecipeParam } from './dishRecipe.js'
 import { shopOrderSkills } from './shopOrderSkills.js'
 import { visibleAuthorIds, visibleRecipeWhere } from '../recipeVisibility.js'
 import { loadMatchableRecipes } from '../matchableRecipes.js'
@@ -717,7 +718,7 @@ const notSaved = (slotLabel: string): SkillResult => ({
 const swapMeal: SkillDefinition = {
   name: 'swap_meal',
   description:
-    'Cambia un plato concreto del menu (nunca rehace la semana). Pasa day con las palabras del usuario ("el sábado", "la cena de hoy" → day "hoy", "el jueves de la semana que viene") o la fecha; la herramienta calcula la fecha en hora de Madrid y te devuelve el dia, la fecha y el plato que han quedado. meal: breakfast, lunch, snack o dinner. Si el usuario nombra una receta concreta, pásala en `recipeName` (o `recipeId` si lo conoces) y la receta se asigna directamente sin elegir aleatorio. Si ese plato no está en sus recetas ni en el catálogo, se pone como nota con su nombre (y te digo lo más parecido que hay): llámala igualmente, no hace falta crear la receta antes. Si no se nombra, el sistema escoge automáticamente un plato compatible con la temporada y restricciones.',
+    'Cambia un plato concreto del menu (nunca rehace la semana). Pasa day con las palabras del usuario ("el sábado", "la cena de hoy" → day "hoy", "el jueves de la semana que viene") o la fecha; la herramienta calcula la fecha en hora de Madrid y te devuelve el dia, la fecha y el plato que han quedado. meal: breakfast, lunch, snack o dinner. Si el usuario nombra una receta concreta, pásala en `recipeName` (o `recipeId` si lo conoces) y la receta se asigna directamente sin elegir aleatorio. Si ese plato no está en sus recetas ni en el catálogo y mandas newRecipe (una versión sencilla estimada), lo creo como receta del hogar y la pongo, para que sus ingredientes lleguen a la lista de la compra; sin newRecipe, se pone como nota con su nombre (y te digo lo más parecido que hay). Llámala igualmente, no hace falta crear la receta antes. Si no se nombra, el sistema escoge automáticamente un plato compatible con la temporada y restricciones.',
   parameters: {
     type: 'object',
     properties: {
@@ -737,11 +738,12 @@ const swapMeal: SkillDefinition = {
         type: 'boolean',
         description: 'Solo true si el usuario ya ha confirmado que quiere ese plato aunque choque con su alergia/dieta (la herramienta te lo habrá avisado).',
       },
+      newRecipe: NEW_RECIPE_PROP,
     },
     required: ['meal'],
   },
   async handler(
-    params: { day?: string; dayIndex?: number; nextWeek?: boolean; meal: string; recipeId?: string; recipeName?: string; confirmRestriction?: boolean },
+    params: { day?: string; dayIndex?: number; nextWeek?: boolean; meal: string; recipeId?: string; recipeName?: string; confirmRestriction?: boolean; newRecipe?: NewRecipeParam },
     ctx: SkillContext,
   ): Promise<SkillResult> {
     const { userId, db } = ctx
@@ -818,6 +820,19 @@ const swapMeal: SkillDefinition = {
       // (2026-10-08: "ponme X el jueves" got "no existe, ¿la creo?"). The
       // closest real recipe, if any, is only offered, never swapped in.
       if (params.recipeName && (!chosen || approximate)) {
+        // PRO-74: with a `newRecipe`, the dish becomes a household recipe so
+        // its ingredients reach the shopping list; the note is the fallback.
+        const created = await createDishRecipe(userId, params.recipeName, params.newRecipe)
+        if (created) {
+          days[dayIndex][meal] = { dishes: [{ kind: 'recipe', recipeId: created.id, recipeName: created.name }] }
+          const [updatedNew] = await db.update(menus).set({ days }).where(eq(menus.id, menu.id)).returning()
+          if (dishNow(updatedNew, dayIndex, meal) !== created.name) return notSaved(slotLabel)
+          return {
+            data: { ...updatedNew, change: changeOf(t, meal, created.name), recipeId: created.id },
+            summary: `Hecho. "${untrustedText(created.name, 80)}" no estaba en sus recetas ni en el catalogo: la he creado como receta del hogar (raciones e ingredientes estimados; se puede revisar en la app) y la he puesto en la ${slotLabel}. Sus ingredientes ya salen en la lista de la compra.`,
+            uiHint: 'menu',
+          }
+        }
         const note = dishNoteText(params.recipeName)
         days[dayIndex][meal] = { dishes: [{ kind: 'note', text: note }] }
         const [updatedNote] = await db
@@ -829,7 +844,7 @@ const swapMeal: SkillDefinition = {
         if (dishNow(updatedNote, dayIndex, meal) !== note) return notSaved(slotLabel)
         return {
           data: { ...updatedNote, change: changeOf(t, meal, note) },
-          summary: `Hecho. "${untrustedText(note, 80)}" no esta en sus recetas ni en el catalogo, asi que lo he puesto como nota en la ${slotLabel}.${closest} Diselo y ofrecele crear la receta${chosen ? ` o cambiar la nota por "${chosen.name}"` : ''}; no hace falta para que quede en el menu.`,
+          summary: `Hecho. "${untrustedText(note, 80)}" no esta en sus recetas ni en el catalogo, asi que lo he puesto como nota en la ${slotLabel}.${closest} ${NOTE_THEN_RECIPE_HINT}${chosen ? ` Si prefiere "${chosen.name}", ofrecele cambiar la nota por esa receta.` : ''}`,
           uiHint: 'menu',
         }
       }

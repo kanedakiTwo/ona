@@ -60,7 +60,7 @@ Default range when neither `from` nor `to` is passed: **today (Madrid) → end o
 
 ### Note dishes (multi-dish slots)
 
-A meal slot may contain `NoteDish` entries (`{kind:'note', text}`) alongside recipe dishes (see [menus.md "Multi-dish slots"](./menus.md)). The shopping aggregator iterates `slot.dishes` and processes only `kind:'recipe'` entries; notes contribute zero items. A day whose only dish is a note ("comemos fuera") produces no shopping items for that meal.
+A meal slot may contain `NoteDish` entries (`{kind:'note', text}`) alongside recipe dishes (see [menus.md "Multi-dish slots"](./menus.md)). The shopping aggregator iterates `slot.dishes` and processes only `kind:'recipe'` entries; notes contribute zero items. A day whose only dish is a note ("comemos fuera") produces no shopping items for that meal. So that home dishes Mimo puts on the menu do reach the list, Mimo saves them as household recipes with estimated ingredients instead of notes (PRO-74, see [Advisor](./advisor.md)).
 
 ## API Endpoints
 

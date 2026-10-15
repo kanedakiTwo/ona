@@ -9,7 +9,10 @@
 #
 # --deep (staging only — refused against production): registers a throwaway
 # user, generates this week's menu and reads the shopping list, so a broken
-# migration or matcher shows up before production does.
+# migration or matcher shows up before production does. Staging runs the
+# closed beta like production (REGISTRATION_MODE=invite), so the user signs up
+# with an invitation link: SMOKE_INVITE_CODE, or by default the staging
+# campaign «smoke (prueba profunda)» (no use limit; it only opens staging).
 #
 # Used by CI (post-deploy-smoke) and by the nightly Taller (docs/deploy.md).
 
@@ -55,8 +58,9 @@ case "$API_URL" in
 esac
 
 stamp="$(date +%s)$RANDOM"
+invite="${SMOKE_INVITE_CODE:-9n8j31yf}"
 reg=$(curl -s --max-time 30 -X POST "$API_URL/register" -H 'Content-Type: application/json' \
-  -d "{\"username\":\"smoke$stamp\",\"email\":\"smoke$stamp@example.com\",\"password\":\"smoke-$stamp\",\"ageConfirmed\":true}")
+  -d "{\"username\":\"smoke$stamp\",\"email\":\"smoke$stamp@example.com\",\"password\":\"smoke-$stamp\",\"ageConfirmed\":true,\"inviteCode\":\"$invite\"}")
 token=$(printf '%s' "$reg" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).token||"")}catch{}})')
 user_id=$(printf '%s' "$reg" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).user.id||"")}catch{}})')
 [ -n "$token" ] && [ -n "$user_id" ] || fail "register did not return a token and user id: ${reg:0:200}"

@@ -64,8 +64,23 @@ test('skip day, remove a meal and ban a recipe confirm in the app sheet, without
   expect(gen.ok(), `generate: ${gen.status()}`).toBeTruthy()
 
   const todayIdx = (new Date().getDay() + 6) % 7
-  const first = featured((await fetchMenu(page)).days[todayIdx])
+  const generated = await fetchMenu(page)
+  const first = featured(generated.days[todayIdx])
   test.skip(!first, 'the generator left today without recipes (empty catalogue?)')
+  // The CI seed catalogue is small (16 recipes, fewer once PRO-73's quality
+  // gate skips the incomplete ones), so a full week can use every eligible
+  // recipe and leave none to swap in after a veto. Empty the other days so
+  // the matcher has free recipes, as a real catalogue does. One other day
+  // keeps its dishes so the week never ends up empty (an empty week is a
+  // different screen).
+  const keep = (todayIdx + 1) % 7
+  for (const [d, day] of generated.days.entries()) {
+    if (d === todayIdx || d === keep) continue
+    for (const meal of Object.keys(day ?? {})) {
+      const r = await page.request.delete(`${API}/menu/${generated.id}/day/${d}/meal/${meal}`, { headers })
+      expect(r.ok(), `clear day ${d} ${meal}: ${r.status()}`).toBeTruthy()
+    }
+  }
 
   await page.goto('/menu')
   const hero = page.getByTestId('menu-hero')

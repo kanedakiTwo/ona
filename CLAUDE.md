@@ -49,8 +49,9 @@ If the change introduces a new system not covered by any existing spec (e.g., no
 [ ] If something a user could ask Mimo about Mimoia changed (a feature,
     a channel, what a plan includes, privacy, contact, launch dates) → I
     updated `kb/sobre-mimoia.md`, Mimo's public facts (D-053). Prices and
-    plan contents come from `FOUNDER_PLANS` by themselves: never write them
-    in the file.
+    plan contents come from `PLANS` / `PLAN_FEATURE_GROUPS`
+    (`packages/shared/src/types/plans.ts`, the same source as `/precios`)
+    by themselves: never write them in the file.
 [ ] If I deferred the spec on purpose → I left a `TODO(spec):` marker in the
     relevant spec file AND told the user explicitly in my reply.
 ```

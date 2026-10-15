@@ -180,10 +180,6 @@ This is the **single source of truth** for work that's pending on Miguel's side 
   - Cómo: el texto aprobado está en ona-hq `approvals/approved/2026-10-12-marketing-mensaje-circulo-lista.md` (versión A para personas, con `?ref=circulo-miguel`; versión B para grupos, con `?ref=circulo-grupos`). Reescríbelo a tu manera, pero deja los enlaces tal cual. Mándalo por WhatsApp a unas 20 personas y a tus grupos.
   - Hecho cuando: lo has mandado y le dices a Claude a cuántas personas y grupos, para leer la conversión.
 
-- [ ] **MIG-18 · Quitar dos restos de la configuración de WhatsApp** — Desde el 2026-10-14 Mimo funciona con tu app «Mimoia»; quedan dos cosas sueltas que conviene borrar para evitar líos.
-  - Cómo: (1) business.facebook.com → Configuración → Usuarios → Usuarios del sistema: borra cualquiera que no sea **mimo-api** (el botón «Generar identificador» de la configuración rápida crea uno, y su token salió en una captura). A mimo-api no lo toques. (2) developers.facebook.com → la app antigua de AiKit (la que **no** se llama «Mimoia») → WhatsApp → Configuración → Webhook: borra la URL.
-  - Hecho cuando: en Usuarios del sistema solo queda mimo-api y la app antigua de AiKit no tiene webhook.
-
 - [ ] **MIG-02 · Pasar el contacto del/de la dietista** — Queremos que un profesional colegiado revise recetas y mensajes antes de abrir (D-005).
   - Cómo: dile a Claude su nombre y cómo contactar. El primer mensaje lo prepara Marketing.
 
@@ -199,6 +195,7 @@ This is the **single source of truth** for work that's pending on Miguel's side 
   - Opcional: Los Alonso reparte gratis en Pozuelo/Boadilla si pides antes de las 13:00; para usarlo, cambia la entrega a «A domicilio» en `/compra/tiendas`.
 
 - [ ] **MIG-05 · Poner al día las plantillas de WhatsApp** — Sin plantillas aprobadas, Mimo no puede escribirte primero cuando llevas más de 24 h sin hablarle, y las que hay aún llevan el nombre antiguo de la app.
+  - **Estado (2026-10-15):** Claude creó el 14 las 7 plantillas en la cuenta buena por la API (`mimoia_aviso`, `mimoia_menu_de_hoy`, `mimoia_aviso_preparacion`, `mimoia_compra_pendiente`, `mimoia_registro_cena`, `mimoia_plan_semana` —marketing— y `mimoia_lista_compra` —Meta la pasó a marketing—). Siguen «en revisión»; puede que Meta espere a la verificación del negocio (MIG-22). No tienes que crear nada: cuando se aprueben, Claude las conecta.
   - Cómo: desde el 2026-10-14 Mimo usa el número real (+34 626 68 55 11) en tu cuenta de WhatsApp «mimoia» (ID 1785790632633447). Las plantillas aprobadas en la app antigua no sirven aquí: créalas en esa cuenta, en WhatsApp Manager → Plantillas de mensajes (`ona_aviso`: «Aviso de Mimoia: {{1}} Respóndeme por aquí si quieres cambiar algo.»).
   - Crea plantillas de tipo *Utilidad*, en español, una por aviso: `ona_menu_de_hoy`, `ona_aviso_preparacion`, `ona_lista_compra`, `ona_plan_semana` (cuerpo con un único `{{1}}`). Cuando estén aprobadas, pásale los nombres a Claude.
 
@@ -216,7 +213,7 @@ This is the **single source of truth** for work that's pending on Miguel's side 
   - Coste: en España (OEPM) 127,88 € la primera clase y 82,84 € cada clase más (clases 9 y 42: 210,72 €), sin agente. En la UE (EUIPO) 850 € la primera clase y 50 € la segunda, más 300–600 € de agente si se encarga.
   - Detalle en `reports/A tu gusto y Apapacho como marca.md`.
 
-- [ ] **MIG-14 · Abrir el registro el día D** — Hasta el 12 de enero solo se entra con invitación (beta cerrada).
+- [ ] **MIG-14 · Abrir el registro el 16 de noviembre (beta abierta, D-057)** — Hasta el 12 de enero solo se entra con invitación (beta cerrada).
   - Cómo: ese día, pon `REGISTRATION_MODE=open` en `ona-api` de producción (o pídeselo a Claude). Opcional antes: la clave `USDA_FDC_API_KEY` en GitHub Actions para que el CI pruebe también la búsqueda de ingredientes.
 
 - [ ] **MIG-17 · Revisar el tope mensual de Mimo por usuario** — Desde el 12 de octubre Mimo usa Claude Sonnet 5.5 (antes Haiku 4.5): cada mensaje cuesta unos 0,02–0,03 $ en vez de unos 0,018 $, así que los 5 € de `ADVISOR_MONTHLY_BUDGET_EUR` dan para unos 200–500 mensajes al mes.

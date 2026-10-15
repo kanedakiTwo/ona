@@ -1,5 +1,5 @@
 /**
- * D-052 (2026-10-15) — Mimo knows Mimoia in detail and answers public
+ * D-053 (2026-10-15) — Mimo knows Mimoia in detail and answers public
  * questions: what it is, what it does, plans and prices, mission, privacy.
  *
  * `kb/sobre-mimoia.md` carries the facts; prices come from the same constants

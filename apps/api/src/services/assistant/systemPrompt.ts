@@ -23,7 +23,7 @@ export const KB_FILE = 'principios-mimo.md'
 /**
  * Public facts about Mimoia (what it is, what it does, channels, mission,
  * privacy, contact), so Mimo can answer «¿qué es Mimoia?» or «¿qué incluye
- * Plus?» (D-052, 2026-10-15). Prices are NOT in this file: `pricingBlock()`
+ * Plus?» (D-053, 2026-10-15). Prices are NOT in this file: `pricingBlock()`
  * builds them from the same constants the web shows (`FOUNDER_PLANS`), so
  * they can't drift. Keep it in sync with what users can see (CLAUDE.md →
  * Definition of done).

@@ -51,6 +51,10 @@ export default function PrivacidadPage() {
             </li>
             <li><strong>Tu uso de Mimoia:</strong> menús, lista de la compra, despensa, recetas propias y fotos que subas.</li>
             <li>
+              <strong>Tus opiniones sobre Mimoia:</strong> lo que nos cuentas desde el botón «Opinión» o le dices a Mimo
+              para el equipo (sugerencias, fallos, quejas), con la página desde la que lo enviaste.
+            </li>
+            <li>
               <strong>Tu plan y tu opinión del precio:</strong> si te suscribes, el plan, su estado y sus fechas (el pago lo
               gestiona Stripe, ver el punto 5); y, si contestas la encuesta de precio de la beta, tus respuestas en euros
               al mes.

@@ -1229,3 +1229,21 @@ export const priceSurveyResponses = pgTable('price_survey_responses', {
   dismissedAt: timestamp('dismissed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [uniqueIndex('uq_price_survey_user').on(t.userId)])
+
+// ─── User feedback (specs/feedback.md) ──────────────────────
+// What beta users tell us about Mimoia itself: from the floating «Opinión»
+// button, from the web chat or from WhatsApp (Mimo's leave_feedback tool).
+// Verbatim; deleted with the account.
+export const userFeedback = pgTable('user_feedback', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** 'app' (the button) | 'chat' (Mimo on the web) | 'whatsapp' (Mimo on WhatsApp). */
+  channel: text('channel').notNull(),
+  text: text('text').notNull(),
+  /** The page the button was pressed on (app only). */
+  page: text('page'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_user_feedback_created').on(t.createdAt),
+  check('user_feedback_channel_check', sql.raw("channel IN ('app','chat','whatsapp')")),
+])

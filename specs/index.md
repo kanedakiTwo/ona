@@ -60,6 +60,14 @@ Plans per household: Esencial (featured, «Recomendado»; 4,99 €/mes, 49,99 �
 
 ---
 
+## [Feedback (beta opinions box)](./feedback.md)
+
+Beta feedback box: floating «Opinión» pill bottom-left on every signed-in page (not in cook mode / onboarding) → «Danos tu opinión» sheet; Mimo's `leave_feedback` tool in the web chat and on WhatsApp («quiero dejar una sugerencia»); `POST /feedback`, `GET /admin/feedback` (admin JWT with who; `x-metrics-token` without identity for the agents' brief), `user_feedback` table (migration 0051), Admin → Opiniones (`/admin/opiniones`), morning brief summary.
+
+**Source**: `apps/api/src/routes/feedback.ts`, `apps/web/src/components/feedback/FeedbackButton.tsx`, `apps/web/src/app/admin/sections/FeedbackSection.tsx`
+
+---
+
 ## [Household](./household.md)
 
 Multi-user "shared household" foundation: every authed user has a `primary_household_id` pointing at a `households` row, with `household_members` (one row per user, role `owner`/`member`/`child`) and `household_invites` (32-hex token, 7-day TTL, public preview at `GET /invites/:token`, authed accept at `POST /invites/:token/accept`). At registration we auto-create a solo household named "Mi casa" with the registrant as owner. Owners can rename, generate/revoke invites, remove members, and leave (auto-promotes the oldest remaining member to owner; auto-creates a new solo household for the leaver). Public preview is mounted on a dedicated router BEFORE `userRoutes` so `router.use(authMiddleware)` doesn't intercept it. `GET /households/me` returns name + members + pendingInvites; `/profile/casa` is the management surface. **PR 1B (shipped):** `menus`, `shopping_lists` and `user_favorites` carry a `household_id` column (backfilled in 0012); inserts dual-write; reads switch to household scope when `SHARED_HOUSEHOLD_SCOPE=true` (ON by default, production included, since Railway sets no `NODE_ENV`). The single helper `scopeResolver.resolveScope(userId)` + `scopeWhere(userCol, householdCol, scope)` keeps every route in sync.

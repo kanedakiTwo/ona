@@ -1124,6 +1124,28 @@ const setWhatsappNotifications: SkillDefinition = {
   },
 }
 
+/**
+ * Beta feedback (specs/feedback.md): what the user wants to tell the team
+ * about Mimoia itself goes, verbatim, to the same box as the app's «Opinión»
+ * button. Not for recipe notes or food preferences.
+ */
+const leaveFeedback: SkillDefinition = {
+  name: 'leave_feedback',
+  description:
+    'Guarda una opinion del usuario sobre Mimoia para el equipo: una sugerencia, algo que no funciona, algo que le sobra o le falta, una queja o una felicitacion. Usala cuando diga "quiero dejar una sugerencia", "esto no funciona", "deberiais…", "me encantaria que…", "decidle al equipo…". Guarda su texto tal cual (sin resumirlo); si lo ha contado en varios mensajes, juntalos. No la uses para notas de recetas ni gustos de comida (eso va a la memoria).',
+  parameters: {
+    type: 'object',
+    properties: { text: { type: 'string', description: 'Lo que el usuario quiere decir al equipo, con sus palabras.' } },
+    required: ['text'],
+  },
+  async handler(p, ctx) {
+    const t = String(p.text ?? '').trim()
+    if (t.length < 2) return text('Falta el texto de la opinion: preguntale que quiere contarnos.')
+    await api(ctx)('POST', '/feedback', { text: t.slice(0, 2000), channel: ctx.channel === 'whatsapp' ? 'whatsapp' : 'chat' })
+    return text('Hecho: opinion guardada para el equipo. Dale las gracias en una linea (el equipo la lee) y sigue.')
+  },
+}
+
 export const appSkills: SkillDefinition[] = [
   setMealNote,
   clearMeal,
@@ -1151,4 +1173,5 @@ export const appSkills: SkillDefinition[] = [
   updateWeeklyTemplate,
   inviteToHousehold,
   setWhatsappNotifications,
+  leaveFeedback,
 ]

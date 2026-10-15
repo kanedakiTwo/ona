@@ -5,7 +5,7 @@ import type { InboundMessage } from './webhookParser.js'
 import type { LinkWithUser } from './store.js'
 import { buildChatHistory, HISTORY_WINDOW_MS, type HistoryRow } from './history.js'
 import { connectUrl, extractLinkCodeCandidates, isLinkAttempt } from './linking.js'
-import { renderAssistantReply, renderPlainText, type OutboundMessage } from './render.js'
+import { dropRepeatedButtons, lastSentButtons, outboundBody, renderAssistantReply, renderPlainText, type OutboundMessage } from './render.js'
 import { isShoppingItemList, shoppingListDigest } from '../shoppingText.js'
 import { AI_DISCLOSURE_FIRST_PERSON } from '@ona/shared'
 import { controlCommand, OPT_IN_NO, OPT_IN_YES } from './commands.js'
@@ -283,7 +283,7 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
 
   const send = async (userId: string | null, kind: string, messages: OutboundMessage[]) => {
     for (const m of messages) {
-      const body = m.text
+      const body = outboundBody(m)
       try {
         const wamid = await client.sendMessage(msg.from, m)
         void recordServiceMessageCost(userId)
@@ -560,7 +560,7 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
         ...(images ? { photo: true } : {}),
       },
     })
-    await out('reply', renderAssistantReply(await withDigests(response, userId, deps), deps.webUrl))
+    await out('reply', dropRepeatedButtons(renderAssistantReply(await withDigests(response, userId, deps), deps.webUrl), lastSentButtons(rows)))
     if ((response.toolsUsed ?? []).includes('complete_onboarding') && link.onboardingDone === false) {
       // First menu done: health data goes to the web (with consent), then the
       // opt-in for proactive messages that linking skipped.

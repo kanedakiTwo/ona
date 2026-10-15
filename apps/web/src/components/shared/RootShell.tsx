@@ -13,6 +13,7 @@ import InstallSheet from "@/components/pwa/InstallSheet"
 import { PageTransition } from "@/components/pwa/PageTransition"
 import { SwipeNavigator } from "@/components/pwa/SwipeNavigator"
 import MimoProvider from "@/components/mimo/MimoProvider"
+import { FeedbackButton } from "@/components/feedback/FeedbackButton"
 
 /**
  * Picks the page chrome (specs/design-system.md → "Page shells"):
@@ -73,6 +74,7 @@ export function RootShell({ pathname, isPublicRoute, children }: { pathname: str
         </SwipeNavigator>
       </main>
       <Navbar />
+      <FeedbackButton />
       <InstallSheet />
       <HealthConsentGate />
     </MimoProvider>

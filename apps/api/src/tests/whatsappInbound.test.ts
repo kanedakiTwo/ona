@@ -273,6 +273,29 @@ describe('processInbound — chat round-trip', () => {
     ])
   })
 
+  it('PRO-141: a reply that repeats the buttons Mimo just sent goes out without them', async () => {
+    const asked = new Date(NOW.getTime() - 60_000)
+    const t = setup({
+      history: [
+        { direction: 'out', kind: 'reply', body: '¿Cuánto cocináis en casa?\n⟦botones: Casi a diario | 3-4 días | Poco⟧', status: 'sent', createdAt: asked },
+        { direction: 'in', body: 'Casi a diario', status: 'processed', createdAt: new Date(asked.getTime() + 20_000) },
+      ],
+      chatReply: { message: 'Dime tres platos que os gusten mucho.\n[[opciones: Casi a diario | 3-4 días | Poco]]' },
+    })
+    await processInbound(msg({ text: 'Casi a diario' }), t.deps)
+    expect(t.sent).toEqual([{ type: 'text', text: 'Dime tres platos que os gusten mucho.' }])
+  })
+
+  it('PRO-141: new buttons still go out, and the stored body records them for next time', async () => {
+    const t = setup({
+      history: [{ direction: 'out', kind: 'reply', body: 'Hola\n⟦botones: Sí | No⟧', status: 'sent', createdAt: new Date(NOW.getTime() - 60_000) }],
+      chatReply: { message: '¿Cuánto cocináis?\n[[opciones: Casi a diario | 3-4 días | Poco]]' },
+    })
+    await processInbound(msg(), t.deps)
+    expect(t.sent[0]).toMatchObject({ type: 'buttons', text: '¿Cuánto cocináis?' })
+    expect(t.outbound.at(-1)?.body).toBe('¿Cuánto cocináis?\n⟦botones: Casi a diario | 3-4 días | Poco⟧')
+  })
+
   it('apologises and marks the message failed when chat throws', async () => {
     const t = setup()
     t.chat.mockRejectedValueOnce(new Error('Anthropic down'))

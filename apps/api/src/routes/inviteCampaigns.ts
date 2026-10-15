@@ -3,6 +3,7 @@
  *
  *   GET  /admin/invite-campaigns   admin JWT: every campaign with its link and uses
  *   POST /admin/invite-campaigns   admin JWT: { name, maxUses?, expiresAt? } → new link (audited)
+ *   DELETE /admin/invite-campaigns/:id   admin JWT: delete it; its link stops working (audited)
  *
  * Signups / activation / week 3 per campaign live in GET /admin/metrics → `campaigns`.
  */
@@ -11,7 +12,7 @@ import { z } from 'zod'
 import { env } from '../config/env.js'
 import { authMiddleware, requireAdmin, type AuthRequest } from '../middleware/auth.js'
 import { record } from '../services/auditLog.js'
-import { campaignUrl, createCampaign, listCampaigns } from '../services/inviteCampaigns.js'
+import { campaignUrl, createCampaign, deleteCampaign, listCampaigns } from '../services/inviteCampaigns.js'
 
 const createSchema = z.object({
   name: z.string().trim().min(1).max(60),
@@ -57,6 +58,33 @@ router.post('/admin/invite-campaigns', ...admin, async (req: AuthRequest, res: R
     res.status(201).json({ ...c, url: campaignUrl(env.WEB_PUBLIC_URL, c.code) })
   } catch (err: any) {
     console.error('[invite-campaigns] create failed:', err?.message ?? err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+const uuid = z.string().uuid()
+
+router.delete('/admin/invite-campaigns/:id', ...admin, async (req: AuthRequest, res: Response) => {
+  if (!uuid.safeParse(req.params.id).success) {
+    res.status(404).json({ error: 'Esa campaña no existe.' })
+    return
+  }
+  try {
+    const gone = await deleteCampaign(String(req.params.id))
+    if (!gone) {
+      res.status(404).json({ error: 'Esa campaña no existe.' })
+      return
+    }
+    await record({
+      adminId: req.userId!,
+      action: 'invite_campaign.delete',
+      targetType: 'invite_campaign',
+      targetId: gone.id,
+      payload: { deleted: { name: gone.name, code: gone.code, uses: gone.uses } },
+    })
+    res.json({ deleted: true })
+  } catch (err: any) {
+    console.error('[invite-campaigns] delete failed:', err?.message ?? err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

@@ -6,7 +6,9 @@
  * Create a link (campaign name, optional max uses and expiry) and see, per
  * campaign, its link, uses and — from GET /admin/metrics → `campaigns` —
  * signups, activation and week 3, so Miguel's circle is read apart from
- * strangers. Spec: specs/auth.md → Closed beta, specs/admin-dashboard.md.
+ * strangers. «Eliminar» deletes a campaign after a confirmation: its link
+ * stops working and its signups move to «Sin campaña». Spec: specs/auth.md →
+ * Closed beta, specs/admin-dashboard.md.
  */
 
 import { useState } from "react"
@@ -63,6 +65,21 @@ export function InvitationsSection() {
       qc.invalidateQueries({ queryKey: ["admin", "invite-campaigns"] })
     },
   })
+  const remove = useMutation({
+    mutationFn: (id: string) => api.delete(`/admin/invite-campaigns/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "invite-campaigns"] })
+      qc.invalidateQueries({ queryKey: ["admin", "metrics", "campaigns"] })
+    },
+  })
+  const confirmDelete = (c: Campaign) => {
+    const altas = c.uses === 1 ? "La persona que entró" : `Las ${c.uses} personas que entraron`
+    const text =
+      c.uses > 0
+        ? `¿Eliminar la campaña «${c.name}»?\n\nEl enlace dejará de funcionar. ${altas} con él conservan su cuenta, pero se contarán en «Sin campaña».`
+        : `¿Eliminar la campaña «${c.name}»?\n\nEl enlace dejará de funcionar.`
+    if (window.confirm(text)) remove.mutate(c.id)
+  }
   const byName = new Map((metrics.data?.campaigns ?? []).map((m) => [m.campaign, m]))
 
   return (
@@ -123,6 +140,9 @@ export function InvitationsSection() {
               <th className="py-2 pr-3">Altas (12 sem.)</th>
               <th className="py-2 pr-3">Activación</th>
               <th className="py-2 pr-3">Semana 3</th>
+              <th className="py-2 pr-3">
+                <span className="sr-only">Acciones</span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -140,6 +160,17 @@ export function InvitationsSection() {
                   <td className="py-2 pr-3" data-testid="campaign-signups">{m?.signups ?? 0}</td>
                   <td className="py-2 pr-3">{m ? `${m.activated} (${pct(m.activationRate)})` : "—"}</td>
                   <td className="py-2 pr-3">{m ? `${m.week3Active}/${m.week3Eligible} (${pct(m.week3Rate)})` : "—"}</td>
+                  <td className="py-2 pr-3 text-right">
+                    <button
+                      type="button"
+                      onClick={() => confirmDelete(c)}
+                      disabled={remove.isPending}
+                      aria-label={`Eliminar la campaña ${c.name}`}
+                      className="min-h-[36px] rounded-full border border-border px-3 text-[12px] font-medium text-terracotta-deep hover:bg-warn-bg disabled:opacity-40"
+                    >
+                      Eliminar
+                    </button>
+                  </td>
                 </tr>
               )
             })}
@@ -156,11 +187,13 @@ export function InvitationsSection() {
                 <td className="py-2 pr-3">
                   {byName.get(null)!.week3Active}/{byName.get(null)!.week3Eligible} ({pct(byName.get(null)!.week3Rate)})
                 </td>
+                <td />
               </tr>
             )}
           </tbody>
         </table>
         {campaigns.data?.length === 0 && <p className="py-4 text-[13px] text-ink-muted">Aún no hay enlaces.</p>}
+        {remove.isError && <p className="py-2 text-[12px] text-warn-text">No se ha podido eliminar la campaña.</p>}
       </div>
     </section>
   )

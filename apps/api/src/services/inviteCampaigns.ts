@@ -118,6 +118,20 @@ export async function listCampaigns(db: Db = defaultDb) {
     .orderBy(desc(inviteCampaigns.createdAt))
 }
 
+/**
+ * Delete a campaign: its link stops working at once. Accounts that came in
+ * with it keep their account; their `invite_campaign_id` goes null (FK
+ * `ON DELETE SET NULL`), so GET /admin/metrics counts them under «Sin campaña».
+ * Returns what was deleted (for the audit log), or null if it didn't exist.
+ */
+export async function deleteCampaign(id: string, db: Db = defaultDb) {
+  const [row] = await db
+    .delete(inviteCampaigns)
+    .where(eq(inviteCampaigns.id, id))
+    .returning({ id: inviteCampaigns.id, name: inviteCampaigns.name, code: inviteCampaigns.code, uses: inviteCampaigns.uses })
+  return row ?? null
+}
+
 export function campaignUrl(publicUrl: string, code: string): string {
   return `${publicUrl.replace(/\/+$/, '')}/i/${code}`
 }

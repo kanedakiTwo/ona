@@ -30,6 +30,13 @@ export interface RecipeWithIngredients {
   prepTime?: number | null
   /** Recipe-level allergen union (recipes.allergens). Checked by the restriction filter. */
   allergens?: string[] | null
+  /**
+   * PRO-73: what the catalogue quality audit flags on a system recipe (no
+   * steps, 2 ingredients or fewer, quantities per serving out of range).
+   * Computed in code by `loadMatchableRecipes`; non-empty = the matcher
+   * skips it. Absent / empty for users' own recipes.
+   */
+  catalogAuditIssues?: readonly string[]
   ingredients: Array<{
     ingredientId: string
     ingredientName: string
@@ -94,6 +101,7 @@ export interface MatcherOptions {
  * 2. Recipe's seasons array includes current season (or empty = all seasons)
  * 3. Recipe is not already used in the current menu (no repeats)
  * 4. Recipe doesn't break the user's allergies / diet / dislikes (dietaryRestrictions.ts)
+ * 5. Catalogue recipes flagged by the quality audit are skipped (catalogRecipeAudit.ts, PRO-73)
  *
  * Favorites appear with higher probability (duplicated in pool).
  */
@@ -127,6 +135,11 @@ export function matchRecipes(
 
     // 0b. Pinned meal type — when set, recipe must carry the tag.
     if (pinnedType && !recipe.tags.includes(pinnedType)) return false
+
+    // 0b'. Catalogue quality gate (PRO-73): a system recipe the audit flags
+    //      (no steps, too few ingredients, quantities out of range) is
+    //      skipped until Cocina fixes it. Users' own recipes never carry it.
+    if (recipe.catalogAuditIssues && recipe.catalogAuditIssues.length > 0) return false
 
     // 0c. Frequency: hard-filter weekend-only recipes out of Mon-Fri.
     if (recipe.frequency === 'weekends_only' && isWeekday) return false

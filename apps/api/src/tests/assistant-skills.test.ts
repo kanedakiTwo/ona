@@ -258,8 +258,8 @@ describe('suggest_recipes', () => {
       seasons: ['summer'],
       prepTime: 20,
     }))
-    // queries: user restrictions → visible recipes → their ingredients
-    const db = makeDb([{ restrictions: [] }], recipes, [])
+    // queries: user restrictions → visible recipes → their ingredients → step counts
+    const db = makeDb([{ restrictions: [] }], recipes, [], [])
     const r = await skill.handler({ mealType: 'dinner' }, ctx(db))
     expect(r.uiHint).toBe('recipe')
     expect(r.data).toBeTruthy()
@@ -281,7 +281,7 @@ describe('suggest_recipes', () => {
       { recipeId: 'r-pollo', ingredientId: 'i1', ingredientName: 'pollo entero', quantity: 1, unit: 'u', allergenTags: [] },
       { recipeId: 'r-crema', ingredientId: 'i2', ingredientName: 'calabaza', quantity: 500, unit: 'g', allergenTags: [] },
     ]
-    const db = makeDb([{ restrictions: ['sin gluten', 'vegetariano'] }], rows, ingredientRows)
+    const db = makeDb([{ restrictions: ['sin gluten', 'vegetariano'] }], rows, ingredientRows, /* step counts */ [])
     const r = await skill.handler({ mealType: 'dinner' }, ctx(db))
     expect(r.summary).toContain('Crema de calabaza')
     expect(r.summary).not.toContain('Espaguetis')
@@ -372,13 +372,16 @@ describe('swap_meal', () => {
       days: Array.from({ length: 7 }, () => ({ lunch: { dishes: [{ kind: 'recipe', recipeId: 'r-old', recipeName: 'Antiguo' }] } })),
     }
     // queries: select menu, select user(restrictions), select favorites,
-    // loadRecipesWithIngredients → select recipes, select riRows, then update menu.
+    // loadRecipesWithIngredients → select recipes, select riRows, step
+    // counts, then update menu. The candidate is the user's own recipe, so
+    // the catalogue quality gate (PRO-73) doesn't apply to it.
     const db = makeDb(
       [menu],                                       // select menu
       [{ restrictions: [] }],                       // select user restrictions
       [],                                           // select favorites
-      [{ id: 'r-1', name: 'Plato', meals: ['lunch'], seasons: [], tags: [] }],   // recipes
+      [{ id: 'r-1', name: 'Plato', authorId: 'u-1', meals: ['lunch'], seasons: [], tags: [] }],   // recipes
       [],                                           // recipe ingredients
+      [],                                           // step counts
       [{ ...menu, days: [...menu.days] }],          // returning updated
     )
     const r = await skill.handler({ dayIndex: 0, meal: 'lunch' }, ctx(db))

@@ -206,9 +206,9 @@ Lint validator for recipe data integrity, blocks save on missing ingredients in 
 
 ## [Menus](./menus.md)
 
-Weekly meal planning, menu generation algorithm using cached `nutritionPerServing`, recipe matcher, slot regeneration, meal locking, calorie targets, BMR, season detection, favorites boost, no-repeats, week navigation, WeekStrip day strip, "D · Luz y foto" layout, featured-meal photo hero, "Empezar a cocinar", meal "···" sheet (Vetar, Tipo, Fijar, Comensales, Quitar), week "···" sheet (Regenerar semana, Compartir, Vaciar semana, Vista semana, Historial), desktop "La semana" columns, drag and drop move-slot, editorial photo-less cover, menu history, day index 0-6 (Monday-Sunday), household-weighted scaling (`adults + 0.5 × kidsCount`).
+Weekly meal planning, menu generation algorithm using cached `nutritionPerServing`, recipe matcher, slot regeneration, meal locking, calorie targets, BMR, season detection, favorites boost, no-repeats, week navigation, WeekStrip day strip, "D · Luz y foto" layout, featured-meal photo hero, "Empezar a cocinar", meal "···" sheet (Vetar, Tipo, Fijar, Comensales, Quitar), week "···" sheet (Regenerar semana, Compartir, Vaciar semana, Vista semana, Historial), desktop "La semana" columns, drag and drop move-slot, editorial photo-less cover, menu history, day index 0-6 (Monday-Sunday), household-weighted scaling (`adults + 0.5 × kidsCount`), catalogue quality gate / auditoría del catálogo (recipes without steps, too few ingredients, quantities per serving out of range skipped by the generator, PRO-73).
 
-**Source**: `apps/api/src/routes/menus.ts`, `apps/api/src/services/menuGenerator.ts`, `apps/api/src/services/recipeMatcher.ts`, `apps/web/src/app/menu/`, `apps/web/src/components/menu/`, `apps/web/src/hooks/useMenu.ts`
+**Source**: `apps/api/src/routes/menus.ts`, `apps/api/src/services/menuGenerator.ts`, `apps/api/src/services/recipeMatcher.ts`, `apps/api/src/services/catalogRecipeAudit.ts`, `apps/api/scripts/auditCatalogRecipes.ts`, `apps/web/src/app/menu/`, `apps/web/src/components/menu/`, `apps/web/src/hooks/useMenu.ts`
 
 ---
 

@@ -87,6 +87,7 @@ For each meal slot, the matcher (`recipeMatcher.ts`) filters recipes by:
 - Recipe's `seasons[]` includes current season (or is empty = always-available)
 - Recipe ID is not already used elsewhere in the menu (no repeats within the week)
 - The recipe doesn't break the user's **restrictions** (allergies, diets, free text) or **dislikes** — see *Restrictions & allergies* below
+- **Catalogue quality gate** (PRO-73, Miguel 2026-10-13, answer C): a system recipe is skipped while it has no steps, 2 ingredients or fewer, a main protein per serving under 80 g or over 300 g (meat, fish, seafood, eggs, tofu added up; cured meats and yolks are garnish and don't count), or pasta/rice/dry pulses per serving under 50 g or over 150 g. Computed on read in `matchableRecipes.ts` (`catalogAuditIssues`, rule in `catalogRecipeAudit.ts`); nothing is written, so a recipe comes back as soon as Cocina fixes it. Users' own recipes are never audited. Applies to every `matchRecipes` path (weekly generation, «Aleatorio», add-course, the assistant's random swap); not to `suggest_recipes`, the «Elegir otra receta» picker or an explicitly named recipe. A unit weight the catalogue doesn't know (e.g. «dorada 2 u») never flags (eggs default to 55 g). Read-only report: `scripts/auditCatalogRecipes.ts` (`--seed`, `--fixture=`, or a `DATABASE_URL`). On the 2026-10-15 catalogue (78 recipes) it flags 32; full lunch+dinner weeks remain with no restrictions in every season and in autumn also for vegetarian or gluten-free; vegetarian + gluten-free drops to ~10 of 14 in autumn, and vegetarian to ~9 in spring/summer, until the vegetarian fixes land (`catalogRecipeAudit.test.ts`)
 
 ### Restrictions & allergies
 
@@ -186,12 +187,11 @@ user could read/modify any menu by id.
 - [apps/api/src/services/menuGenerator.ts](../apps/api/src/services/menuGenerator.ts) — core algorithm
 - [apps/api/src/services/metabolicScore.ts](../apps/api/src/services/metabolicScore.ts) — per-recipe metabolic profile + weekly quality/variety for the fitness
 - [apps/api/src/services/menuWeek.ts](../apps/api/src/services/menuWeek.ts) — what a week's regeneration carries over (locks, vetoes, skipped days) + `menuHasDishes`
-- [apps/api/src/services/dietaryRestrictions.ts](../apps/api/src/services/dietaryRestrictions.ts) — restrictions/dislikes → allergen tags + ingredient terms
+- [apps/api/src/services/dietaryRestrictions.ts](../apps/api/src/services/dietaryRestrictions.ts) — restrictions/dislikes → allergen tags + ingredient terms · [packages/shared/src/constants/restrictions.ts](../packages/shared/src/constants/restrictions.ts) — `RESTRICTION_PRESETS`
 - [apps/api/src/services/matchableRecipes.ts](../apps/api/src/services/matchableRecipes.ts) — the one recipe loader for every matcher path (visibility, fit maps, frequency, allergens)
-- [packages/shared/src/constants/restrictions.ts](../packages/shared/src/constants/restrictions.ts) — `RESTRICTION_PRESETS`
 - [apps/api/src/services/recipeMatcher.ts](../apps/api/src/services/recipeMatcher.ts) — slot matcher
-- [apps/api/src/services/calorieCalculator.ts](../apps/api/src/services/calorieCalculator.ts)
-- [apps/api/src/services/nutrientCalculator.ts](../apps/api/src/services/nutrientCalculator.ts)
+- [apps/api/src/services/calorieCalculator.ts](../apps/api/src/services/calorieCalculator.ts) · [nutrientCalculator.ts](../apps/api/src/services/nutrientCalculator.ts)
+- [apps/api/src/services/catalogRecipeAudit.ts](../apps/api/src/services/catalogRecipeAudit.ts) — catalogue quality gate (PRO-73) · report [scripts/auditCatalogRecipes.ts](../apps/api/scripts/auditCatalogRecipes.ts)
 - [apps/web/src/app/menu/page.tsx](../apps/web/src/app/menu/page.tsx)
 - [apps/web/src/components/menu/WeekStrip.tsx](../apps/web/src/components/menu/WeekStrip.tsx) — day strip
 - [apps/web/src/components/menu/DayMeals.tsx](../apps/web/src/components/menu/DayMeals.tsx) — hero, rows, empty card, day footer · [MealOptions.tsx](../apps/web/src/components/menu/MealOptions.tsx) — meal sheet · [WeekActionsSheet.tsx](../apps/web/src/components/menu/WeekActionsSheet.tsx) · [MenuDesktop.tsx](../apps/web/src/components/menu/MenuDesktop.tsx) · [WeekGridView.tsx](../apps/web/src/components/menu/WeekGridView.tsx) — mobile Vista semana

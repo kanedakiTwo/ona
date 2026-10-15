@@ -136,8 +136,8 @@ export function UrlRecipeImport({ onImported }: UrlRecipeImportProps) {
           <span>
             <span className="font-medium text-ink">Añadir al catálogo Mimoia</span>{" "}
             — la receta queda como receta del sistema (sin autor),
-            visible para todos en <code>/recipes-ona</code> y bajo
-            “Selección Mimoia” en <code>/recipes</code>.
+            visible para todos en <code>/recipes</code> (también sin
+            cuenta) y bajo “Selección Mimoia”.
           </span>
         </label>
       )}

@@ -4,7 +4,10 @@
  * /whatsapp/conectar — WhatsApp-first linking.
  *
  * An unlinked number that writes to our WhatsApp gets a link here. Logged-out visitors
- * go to /login or /register with `?next=` back here. Logged in, the page mints
+ * go to /login or /register with `?next=` back here. The page is open without an
+ * account (lib/routeAccess.ts): signed out RootShell draws the public chrome
+ * (PublicNavbar + Footer) and the content sits on the public grid; signed in it
+ * keeps the app shell and this page's own brand header. Logged in, the page mints
  * a one-time code and asks the user to send it FROM their WhatsApp (wa.me with
  * the message prefilled). The phone that sends the code is the one that gets
  * linked, so forwarding this link to someone else can't attach your phone to
@@ -32,6 +35,15 @@ const TEXT_LINK =
 export default function WhatsAppConnectPage() {
   const { user, isLoading: authLoading } = useAuth()
 
+  // Signed out: the PublicNavbar already carries the logo; room for it on top.
+  if (!authLoading && !user) {
+    return (
+      <div className="min-h-[70vh] bg-cream pb-16 pt-20 md:pb-24">
+        <LoggedOut />
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-cream pb-10">
       <header className="mx-auto flex max-w-[1180px] items-center px-5 pt-4 lg:px-8 lg:pt-8">
@@ -49,9 +61,24 @@ export default function WhatsAppConnectPage() {
 }
 
 /** Title block (eyebrow + h1 + intro) beside the paper card at lg+, stacked on mobile. */
-function Layout({ title, intro, children }: { title: ReactNode; intro?: ReactNode; children: ReactNode }) {
+function Layout({
+  title,
+  intro,
+  children,
+  publicGrid = false,
+}: {
+  title: ReactNode
+  intro?: ReactNode
+  children: ReactNode
+  /** Signed out: on the public grid (`public-container`), same x as the PublicNavbar logo. */
+  publicGrid?: boolean
+}) {
   return (
-    <div className="mx-auto grid max-w-[1180px] gap-6 px-5 pt-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,480px)] lg:items-center lg:gap-16 lg:px-8 lg:pt-20">
+    <div
+      className={`grid gap-6 pt-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,480px)] lg:items-center lg:gap-16 lg:pt-20 ${
+        publicGrid ? "public-container" : "mx-auto max-w-[1180px] px-5 lg:px-8"
+      }`}
+    >
       <div className="flex flex-col gap-2">
         <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-muted lg:text-[12px]">
           Mimo en WhatsApp
@@ -76,6 +103,7 @@ function LoggedOut() {
   const next = encodeURIComponent('/whatsapp/conectar')
   return (
     <Layout
+      publicGrid
       title={
         <>
           Conecta tu <span className={ACCENT}>WhatsApp</span>

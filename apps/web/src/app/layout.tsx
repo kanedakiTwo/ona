@@ -6,6 +6,7 @@ import { AuthProvider } from "@/lib/auth"
 import { ServiceWorkerRegistration } from "@/components/pwa/ServiceWorkerRegistration"
 import { RootShell } from "@/components/shared/RootShell"
 import { isRecipeSegment } from "@/lib/recipeShell"
+import { isBareRoute } from "@/lib/routeAccess"
 import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
 import { recordVisit } from "@/lib/pwa/installPrompt"
@@ -43,12 +44,6 @@ const jetbrains = JetBrains_Mono({
 // Cookieless visit statistics (Cloudflare Web Analytics), only when the token is set at build time.
 const CF_BEACON = cfBeaconAttr(process.env.NEXT_PUBLIC_CF_BEACON_TOKEN)
 
-const PUBLIC_ROUTES = ["/", "/como-funciona", "/precios", "/recipes-ona", "/por-que-ona", "/privacidad", "/terminos", "/aviso-legal", "/blog", "/login", "/register", "/reset", "/recuperar", "/onboarding", "/newsletter/baja"]
-/**
- * Public sections with dynamic segments: the waitlist owner page and opt-out (specs/waitlist.md), household invitations (specs/auth.md) and blog articles (specs/blog.md).
- * `/recipes/<id>` is public too, but only signed out: RootShell decides (lib/recipeShell.ts).
- */
-const PUBLIC_PREFIXES = ["/lista/", "/invites/", "/blog/"]
 /** Pages that set their own title/description/canonical with Next's `metadata` (specs/blog.md, the recipe page's link preview in specs/recipes.md): the default tags below would duplicate them. */
 const hasOwnMetadata = (pathname: string) => pathname === "/blog" || pathname.startsWith("/blog/") || isRecipeSegment(pathname)
 
@@ -65,7 +60,8 @@ const APPLE_SPLASH_IMAGES = [
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
-  const isPublicRoute = PUBLIC_ROUTES.includes(pathname) || PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))
+  // Who may open which page and with which chrome: lib/routeAccess.ts (applied by RootShell).
+  const isPublicRoute = isBareRoute(pathname)
 
   const [queryClient] = useState(
     () =>
@@ -127,7 +123,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ServiceWorkerRegistration />
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
-            <RootShell pathname={pathname} isPublicRoute={isPublicRoute}>
+            <RootShell pathname={pathname}>
               {children}
             </RootShell>
           </AuthProvider>

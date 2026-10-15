@@ -20,8 +20,8 @@ describe('publicRecipeRoute', () => {
     expect(publicRecipeRoute('/recipes/abc/cook')).toBe('cook')
   })
 
-  it('the rest of /recipes stays in the app shell', () => {
-    for (const p of ['/recipes', '/recipes/', '/recipes/new', '/recipes/new/', '/recipes/abc/edit', '/recipes-ona', '/menu', '', null, undefined]) {
+  it('only the detail and cook mode (the list /recipes is in lib/routeAccess.ts)', () => {
+    for (const p of ['/recipes', '/recipes/', '/recipes/new', '/recipes/new/', '/recipes/abc/edit', '/menu', '', null, undefined]) {
       expect(publicRecipeRoute(p)).toBeNull()
     }
   })

@@ -13,7 +13,7 @@ import { DISPLAY_UI } from "@/components/recipes/RecipeCard"
  *     lives inside it.
  *   - `CatalogChips`: ONE chip row merging the old scope tabs and quick
  *     filters (Con lo que tengo, De temporada, En 30 min, meals, Selección
- *     Mimoia, Mis recetas).
+ *     Mimoia, Mis recetas — these two only with an account).
  *     No chip active = "Todas". At `lg+` the row wraps and ends in a
  *     "Más filtros" link.
  *   - `CatalogFiltersSheet`: the advanced filters dialog (bottom sheet on
@@ -62,6 +62,12 @@ type CatalogFilterControls = {
   /** «Con lo que tengo» (PRO-31) on/off; the ingredient picker lives in the page. */
   withWhatIHave?: boolean
   onWithWhatIHaveChange?: (v: boolean) => void
+  /**
+   * Filters that only make sense with an account: «Selección Mimoia» / «Mis
+   * recetas» (chips and the sheet's "Recetas" group). Off for a signed-out
+   * visitor, who only ever sees the Mimoia catalogue. Default on.
+   */
+  accountFilters?: boolean
 }
 
 // Module scope so React doesn't remount every chip per keystroke.
@@ -182,7 +188,8 @@ export function CatalogChips({
     <div
       role="group"
       aria-label="Filtros rápidos"
-      className={`scrollbar-none flex gap-2 overflow-x-auto px-5 py-1 lg:flex-wrap lg:overflow-visible lg:px-0 lg:py-0 ${className}`}
+      // Side padding comes from the page (app column vs public grid).
+      className={`scrollbar-none flex gap-2 overflow-x-auto py-1 lg:flex-wrap lg:overflow-visible lg:py-0 ${className}`}
     >
       {f.onWithWhatIHaveChange && (
         <Chip active={!!f.withWhatIHave} onClick={() => f.onWithWhatIHaveChange?.(!f.withWhatIHave)}>
@@ -210,12 +217,16 @@ export function CatalogChips({
           {opt.label}
         </Chip>
       ))}
-      <Chip active={f.scope === "ona"} onClick={() => toggleScope("ona")}>
-        Selección Mimoia
-      </Chip>
-      <Chip active={f.scope === "mine"} onClick={() => toggleScope("mine")}>
-        Mis recetas
-      </Chip>
+      {f.accountFilters !== false && (
+        <>
+          <Chip active={f.scope === "ona"} onClick={() => toggleScope("ona")}>
+            Selección Mimoia
+          </Chip>
+          <Chip active={f.scope === "mine"} onClick={() => toggleScope("mine")}>
+            Mis recetas
+          </Chip>
+        </>
+      )}
       <button
         type="button"
         onClick={onOpenFilters}
@@ -387,7 +398,7 @@ export function CatalogFiltersSheet({
                 ))}
               </Group>
 
-              <Group title="Recetas">
+              {f.accountFilters !== false && <Group title="Recetas">
                 {(
                   [
                     ["all", "Todas"],
@@ -399,7 +410,7 @@ export function CatalogFiltersSheet({
                     {label}
                   </Chip>
                 ))}
-              </Group>
+              </Group>}
 
               {f.householdTags && f.householdTags.length > 0 && (
                 <Group title="Etiquetas propias">

@@ -65,7 +65,7 @@ const ISSUE: NewsletterSendInput = newsletterSendSchema.parse({
       body: 'De cuchara, para el primer fin de semana de frío.',
       imageUrl: 'https://mimoia.com/images/recipes/lentejas.jpg',
       imageAlt: 'Un plato de lentejas estofadas con zanahoria',
-      url: 'https://mimoia.com/recipes-ona/lentejas',
+      url: 'https://mimoia.com/recipes/lentejas',
     },
     news: { title: 'La lista por días', body: 'Ahora puedes ver solo lo de hoy.', imageUrl: 'https://mimoia.com/n.jpg' },
     tip: { title: '¿Qué ceno con lo que tengo?', body: 'Escríbeselo a Mimo.' },
@@ -300,7 +300,7 @@ describe('renderNewsletterEmail / buildNewsletterMessage', () => {
     expect(firstImg).toContain('alt="Un plato de lentejas estofadas con zanahoria"')
     expect(firstImg).toContain('width:100%')
     expect(html.indexOf('lentejas.jpg')).toBeLessThan(html.indexOf('La lista por días'))
-    expect(html).toContain('<a href="https://mimoia.com/recipes-ona/lentejas" style="text-decoration:none;"><img')
+    expect(html).toContain('<a href="https://mimoia.com/recipes/lentejas" style="text-decoration:none;"><img')
     expect(html).toContain('max-width:600px')
     expect(html).toContain('src="https://mimoia.com/n.jpg"')
     expect(text).toContain('LA RECETA DE LA SEMANA: Lentejas estofadas')

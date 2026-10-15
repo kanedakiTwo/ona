@@ -43,12 +43,13 @@ export interface HouseholdCustomTag {
   count: number
 }
 
-/** All distinct custom tags in the household with their usage counts. */
-export function useHouseholdCustomTags() {
+/** All distinct custom tags in the household with their usage counts. `enabled: false` for a signed-out visitor (no household). */
+export function useHouseholdCustomTags({ enabled = true }: { enabled?: boolean } = {}) {
   return useQuery<HouseholdCustomTag[]>({
     queryKey: ["custom-tags"],
     queryFn: () => api.get<HouseholdCustomTag[]>("/custom-tags"),
     staleTime: 60_000,
+    enabled,
   })
 }
 

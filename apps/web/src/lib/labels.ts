@@ -32,11 +32,6 @@ export const SEASON_LABELS: Record<Season, string> = {
   winter: "Invierno",
 }
 
-export function seasonLabel(value: string | null | undefined): string {
-  if (!value) return ""
-  return SEASON_LABELS[value as Season] ?? value
-}
-
 /* ─── Difficulty ──────────────────────────────────────────────── */
 
 export const DIFFICULTY_LABELS: Record<Difficulty, string> = {

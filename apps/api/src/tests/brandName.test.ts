@@ -4,7 +4,7 @@
  * old brand name must not appear in anything a person or an agent reads: UI
  * copy, prompts, logs, code comments and the living docs (CLAUDE.md, specs,
  * plans, docs). It survives only in technical identifiers that would break if
- * renamed — lowercase `ona` (`@ona/shared`, `ona-api`, `/recipes-ona`,
+ * renamed — lowercase `ona` (`@ona/shared`, `ona-api`, `/recipes-ona` (a redirect),
  * `ona_aviso`…) and constants such as `ONA_PRINCIPLES` — none of which match
  * the case-sensitive whole-word pattern below.
  *

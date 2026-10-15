@@ -97,7 +97,7 @@ const MAX_KEPT = 40
 
 /** Routes where Mimo has no button: sign-in, onboarding (it has its own voice flow), public pages. */
 export function mimoHiddenOn(pathname: string | null): boolean {
-  return /^\/(login|register|reset|onboarding|invites|lista|i\/|c\/|privacidad|terminos|aviso-legal|como-funciona|recipes-ona|blog)(\/|$)/.test(pathname ?? '') || pathname === '/'
+  return /^\/(login|register|reset|onboarding|invites|lista|i\/|c\/|privacidad|terminos|aviso-legal|como-funciona|blog)(\/|$)/.test(pathname ?? '') || pathname === '/'
 }
 
 function readJson<T>(key: string, fallback: T): T {
@@ -139,18 +139,23 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
   const voice = useVoice({ lang: 'es-ES' })
 
   // Restore the conversation and preferences.
+  const [restored, setRestored] = useState(false)
   useEffect(() => {
     setMessages(readJson<MimoMessage[]>(HISTORY_KEY, []))
+    setRestored(true)
     try {
       setSpeakRepliesState(localStorage.getItem(SPEAK_KEY) === '1')
       localStorage.removeItem(LEGACY_LISTENER_KEY)
     } catch {}
   }, [])
+  // Only once restored: saving the initial empty list first would wipe the
+  // stored conversation before a second mount (React StrictMode in dev) reads it.
   useEffect(() => {
+    if (!restored) return
     try {
       sessionStorage.setItem(HISTORY_KEY, JSON.stringify(messages.slice(-MAX_KEPT)))
     } catch {}
-  }, [messages])
+  }, [messages, restored])
 
   // Desktop: the page makes room for the 400 px column instead of hiding under it.
   useEffect(() => {

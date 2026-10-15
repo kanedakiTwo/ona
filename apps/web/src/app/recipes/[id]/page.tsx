@@ -59,6 +59,7 @@ import {
 import { DIFFICULTY_LABELS, SEASON_LABELS } from "@/lib/labels"
 import { BRAND_NAME, recipeSharePayload } from "@ona/shared"
 import { ApiError } from "@/lib/api"
+import { loginHrefFor } from "@/lib/routeAccess"
 import { RecipeWaitlistCta } from "@/components/recipes/RecipeWaitlistCta"
 
 /**
@@ -75,7 +76,8 @@ import { RecipeWaitlistCta } from "@/components/recipes/RecipeWaitlistCta"
  * The one recipe page (specs/recipes.md): catalogue recipes open here without
  * an account too — RootShell gives signed-out visitors the public chrome, the
  * personal bits are behind `user &&`, and a waitlist block closes the page.
- * `/recipes-ona/<id>` redirects here (next.config.ts).
+ * `/recipes-ona/<id>` redirects here (next.config.ts); the catalogue it goes
+ * back to is `/recipes`, public too.
  */
 
 type TabKey = "ingredientes" | "pasos" | "nutricion" | "notas"
@@ -452,8 +454,9 @@ export default function RecipeDetailPage() {
   if (isDesktop) {
     return (
       <div
-        className={`mx-auto grid min-h-screen max-w-[1280px] grid-cols-2 items-start gap-10 bg-[#FAF6EE] pb-10 pl-8 pr-12 ${
-          publicChrome ? "pt-[104px]" : "pt-7"
+        // Signed out the columns sit on the public grid (same x as the PublicNavbar logo).
+        className={`grid min-h-screen grid-cols-2 items-start gap-10 bg-[#FAF6EE] pb-10 ${
+          publicChrome ? "public-container pt-[104px]" : "mx-auto max-w-[1280px] pl-8 pr-12 pt-7"
         }`}
       >
         <div
@@ -471,7 +474,7 @@ export default function RecipeDetailPage() {
           />
           <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#1A1612]/40 to-transparent" />
           <Link
-            href={publicChrome ? PUBLIC_CATALOGUE_HREF : "/recipes"}
+            href="/recipes"
             className="absolute left-4 top-4 flex h-11 items-center gap-1 rounded-full bg-[#FFFEFA] pl-2.5 pr-4 text-[14px] font-semibold text-[#1A1612] shadow-sm transition-transform active:scale-95"
           >
             <ChevronLeft size={20} aria-hidden />
@@ -586,7 +589,7 @@ export default function RecipeDetailPage() {
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-[#1A1612]/45 to-transparent" />
 
         <div className="absolute inset-x-0 top-0 flex items-center justify-between px-4 pt-4">
-          <BackButton fallbackHref={publicChrome ? PUBLIC_CATALOGUE_HREF : "/recipes"} />
+          <BackButton fallbackHref="/recipes" />
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -844,6 +847,7 @@ function EmptyLine({ children }: { children: ReactNode }) {
  * that no longer exists): say so plainly and offer sign-in and the catalogue.
  */
 function PrivateRecipeNotice() {
+  const { id } = useParams<{ id: string }>()
   return (
     <div className="min-h-[70vh] bg-[#FAF6EE] px-6 pb-24 pt-32 text-center" data-testid="recipe-private">
       <div className="text-eyebrow text-[#7A7066]">Receta privada</div>
@@ -855,13 +859,13 @@ function PrivateRecipeNotice() {
       </p>
       <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
         <Link
-          href="/login"
+          href={loginHrefFor(`/recipes/${id}`)}
           className="inline-flex min-h-11 items-center rounded-full bg-[#1A1612] px-6 text-[15px] font-semibold text-[#FAF6EE] transition-colors hover:bg-[#2D6A4F]"
         >
           Entrar
         </Link>
         <Link
-          href={PUBLIC_CATALOGUE_HREF}
+          href="/recipes"
           className="inline-flex min-h-11 items-center rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-6 text-[15px] font-semibold text-[#1A1612] transition-colors hover:border-[#1A1612]"
         >
           Ver el catálogo
@@ -871,14 +875,11 @@ function PrivateRecipeNotice() {
   )
 }
 
-/** Where a signed-out visitor goes "back" to: the public catalogue. */
-const PUBLIC_CATALOGUE_HREF = "/recipes-ona"
-
 /**
  * Hero back button. Goes back in history when the user arrived from inside
  * the app (menu, catalogue, cookbook…); a link opened cold (WhatsApp, a new
  * tab) has nothing to go back to, so it falls through to the catalogue
- * (`/recipes` signed in, the public `/recipes-ona` signed out).
+ * (`/recipes`, public signed out too).
  */
 function BackButton({ fallbackHref }: { fallbackHref: string }) {
   const router = useRouter()

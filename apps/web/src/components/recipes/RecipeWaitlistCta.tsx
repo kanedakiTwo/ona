@@ -34,3 +34,32 @@ export function RecipeWaitlistCta({ recipeName, className = "" }: { recipeName: 
     </section>
   )
 }
+
+/** The catalogue's CTA (`/recipes` signed out), tagged apart from the recipe page's. */
+export const CATALOGUE_WAITLIST_HREF = "/?ref=recetas#lista-de-espera"
+
+/** Closing block of the public catalogue (`/recipes` signed out): the way in is the waitlist. */
+export function CatalogueWaitlistCta({ className = "" }: { className?: string }) {
+  return (
+    <section
+      data-testid="recipes-waitlist-cta"
+      aria-label="Lista de espera"
+      className={`rounded-[28px] bg-[#1A1612] px-6 py-12 text-center text-[#FAF6EE] md:rounded-[32px] md:px-12 md:py-16 ${className}`}
+    >
+      <div className="text-eyebrow mb-5 text-[#FAF6EE]/60">Para hacerlas tuyas</div>
+      <h2 className="font-display text-[26px] leading-tight md:text-[36px]">
+        Apúntate y <span className="font-italic italic">{BRAND_NAME} te plantea la semana</span> con ellas.
+      </h2>
+      <p className="mx-auto mt-5 max-w-md text-sm text-[#FAF6EE]/70 md:text-base">
+        Cuando entres, te propone el menú de cada semana, te hace la lista de la compra y guarda tus favoritas. Entramos por tandas, sin tarjeta.
+      </p>
+      <Link
+        href={CATALOGUE_WAITLIST_HREF}
+        className="mt-8 inline-flex items-center gap-2.5 rounded-full bg-[#FAF6EE] px-7 py-4 text-base font-medium text-[#1A1612] transition-all hover:gap-3.5 hover:bg-[#C65D38] hover:text-[#FAF6EE]"
+      >
+        Únete a la lista de espera
+        <ArrowUpRight size={18} />
+      </Link>
+    </section>
+  )
+}

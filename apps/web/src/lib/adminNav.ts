@@ -3,12 +3,13 @@
  * items) and `/admin/[[...seccion]]`. Each area has its own URL so the
  * sidebar can mark the active one from the pathname alone.
  */
-export type AdminArea = "catalogo" | "usuarios" | "invitaciones" | "auditoria" | "voz"
+export type AdminArea = "catalogo" | "usuarios" | "invitaciones" | "lista-espera" | "auditoria" | "voz"
 
 export const ADMIN_AREAS: Array<{ area: AdminArea; href: string; label: string }> = [
   { area: "catalogo", href: "/admin", label: "Catálogo" },
   { area: "usuarios", href: "/admin/usuarios", label: "Usuarios" },
   { area: "invitaciones", href: "/admin/invitaciones", label: "Invitaciones" },
+  { area: "lista-espera", href: "/admin/lista-espera", label: "Lista de espera" },
   { area: "auditoria", href: "/admin/auditoria", label: "Auditoría" },
   { area: "voz", href: "/admin/voz", label: "Voz" },
 ]

@@ -10,7 +10,7 @@ It is intentionally small: **a few sections, no charts, no destructive operation
 
 ## User Capabilities
 
-- An admin (see [Roles & Authorization](./roles.md)) opens `/admin` from "Panel de admin" in the profile header's "···" sheet (`/profile`). On desktop (`md+`) the left sidebar shows an **«Admin» block under the normal items**, only for admins: Catálogo (`/admin`), Usuarios (`/admin/usuarios`), Invitaciones (`/admin/invitaciones`), Auditoría (`/admin/auditoria`) and Voz (`/admin/voz`), with the active one highlighted (`lib/adminNav.ts`). Each area has its own URL (route `/admin/[[...seccion]]`; an unknown slug shows the catalogue). On desktop the page then keeps only the catalogue's seven gap tabs, wrapped so none hides off-screen; on mobile (no sidebar) every tab scrolls sideways and the non-catalogue ones navigate to their URL. E2E `admin-sidebar.spec.ts`. A non-admin lands on a 403 page that links back to `/menu`.
+- An admin (see [Roles & Authorization](./roles.md)) opens `/admin` from "Panel de admin" in the profile header's "···" sheet (`/profile`). On desktop (`md+`) the left sidebar shows an **«Admin» block under the normal items**, only for admins: Catálogo (`/admin`), Usuarios (`/admin/usuarios`), Invitaciones (`/admin/invitaciones`), Lista de espera (`/admin/lista-espera`), Auditoría (`/admin/auditoria`) and Voz (`/admin/voz`), with the active one highlighted (`lib/adminNav.ts`). Each area has its own URL (route `/admin/[[...seccion]]`; an unknown slug shows the catalogue). On desktop the page then keeps only the catalogue's seven gap tabs, wrapped so none hides off-screen; on mobile (no sidebar) every tab scrolls sideways and the non-catalogue ones navigate to their URL. E2E `admin-sidebar.spec.ts`. A non-admin lands on a 403 page that links back to `/menu`.
 - The dashboard shows a counts header (ingredients sin USDA, recetas con kcal=0, alérgenos sugeridos, archivos en regen, usuarios suspendidos, acciones admin recientes).
 - Pill-bar tabs jump between sections:
   - **Ingredientes sin USDA** — every ingredient with `fdcId IS NULL`. "Mapear a USDA" reuses the auto-create modal (manual search + Spanish translations + BEDCA fallback + "Estimar con Mimoia" — see [Ingredient Auto-Create](./ingredient-auto-create.md)).
@@ -26,6 +26,12 @@ It is intentionally small: **a few sections, no charts, no destructive operation
 - Every mutation issued from the dashboard generates an entry in `admin_audit_log`.
 
 - **Invitaciones** tab (PRO-27, `sections/InvitationsSection.tsx`): create a campaign invitation link — name (e.g. «familia», «amigos-padel», «post-linkedin»), optional max uses, optional expiry — via `POST /admin/invite-campaigns` (admin JWT, audited `invite_campaign.create`); the table lists every campaign (`GET /admin/invite-campaigns`) with its link `mimoia.com/i/<code>`, uses / max, expiry and, from `GET /admin/metrics` → `campaigns`, signups, activation and week 3 over the last 12 weeks, plus a «Sin campaña» row. See [Auth](./auth.md) → Closed beta
+- **Lista de espera** (`/admin/lista-espera`, PRO-97, `sections/WaitlistAdminSection.tsx`):
+  - **Inscritos**: en la lista, esperando, invitados, ya registrados, plus altas in 7 days, target-segment households and WhatsApp interest; **Por canal** (`?ref` source with counts). Both from `GET /admin/waitlist`.
+  - **Tanda sugerida** (`GET /admin/waitlist/next-batch?size=20`, admin JWT only — the metrics token never sees names or emails): each person in invitation order (`suggestNextBatch`) with name, email, answers, channel, WhatsApp, «entra con quien le invitó» and «fuera del segmento». Size editable (1–200). «Quitar» takes someone out of this batch (they stay waiting; «volver a añadir» undoes it).
+  - **«Invitar a estas N personas»** → a confirmation («¿Invitar a N personas?… No se puede deshacer.», «Sí, invitar y enviar el correo» / «Cancelar») → `POST /admin/waitlist/invite` with the remaining ids. The result says the batch number, how many were invited and the email counts; for anyone whose email wasn't sent (no Resend key, or a failure) it lists their one-time link to send by hand.
+  - **Tandas**: per batch invitados, registrados, sin registrarse and de baja (`batches` of the report). «Activos» (using the app) per batch is not shown: the report doesn't link entries to accounts' activity.
+  - E2E `waitlist-invite.spec.ts` at 1440×900 and 390×844.
 
 ## Scope vs My Recipes
 
@@ -61,6 +67,7 @@ The admin dashboard handles **system recipes only** (`authorId IS NULL`). User-c
 - [apps/web/src/hooks/useAdmin.ts](../apps/web/src/hooks/useAdmin.ts) — replaces `useCurator.ts`; adds `useVoiceTranscriptSessions` + `useVoiceTranscriptTurns`
 - [apps/web/src/app/profile/page.tsx](../apps/web/src/app/profile/page.tsx) — gated "Panel de admin" entry in the header "···" sheet, only rendered when `role === 'admin'`
 - [apps/web/src/lib/adminNav.ts](../apps/web/src/lib/adminNav.ts) — admin areas and their URLs, shared by the sidebar and the page
+- [apps/web/src/app/admin/sections/WaitlistAdminSection.tsx](../apps/web/src/app/admin/sections/WaitlistAdminSection.tsx) — «Lista de espera» (PRO-97); API in [apps/api/src/routes/waitlist.ts](../apps/api/src/routes/waitlist.ts)
 - [apps/web/src/app/curator/page.tsx](../apps/web/src/app/curator/page.tsx) — temporary redirect to `/admin`
 - [apps/api/src/routes/metrics.ts](../apps/api/src/routes/metrics.ts) — `GET /admin/metrics` (own router, mounted before the catch-all auth routers so the metrics token works)
 

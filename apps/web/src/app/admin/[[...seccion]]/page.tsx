@@ -14,6 +14,8 @@
  *   7. Recent regen output (failed/skipped JSONL)
  *   8. Usuarios — search + suspend + reset-link generator
  *   9. Auditoría — reverse-chronological feed of admin actions
+ *  10. Lista de espera — suggested batch with names, «Invitar a estas N
+ *      personas» (one-time link by email), per-batch results (PRO-97)
  *
  * Each row offers an inline edit (PATCH) or a "Re-mapear a USDA" modal.
  * Access is gated to `user.role === 'admin'`. The full server check is
@@ -48,6 +50,7 @@ import { UsersSection } from "../sections/UsersSection"
 import { AuditLogSection } from "../sections/AuditLogSection"
 import { VoiceTranscriptsSection } from "../sections/VoiceTranscriptsSection"
 import { InvitationsSection } from "../sections/InvitationsSection"
+import { WaitlistAdminSection } from "../sections/WaitlistAdminSection"
 import { DISPLAY_UI } from "@/components/recipes/RecipeCard"
 
 type SectionKey =
@@ -62,6 +65,7 @@ type SectionKey =
   | "audit"
   | "voice"
   | "invites"
+  | "waitlist"
 
 const SECTIONS: Array<{ key: SectionKey; label: string }> = [
   { key: "fdc", label: "Ingredientes sin USDA" },
@@ -75,17 +79,20 @@ const SECTIONS: Array<{ key: SectionKey; label: string }> = [
   { key: "audit", label: "Auditoría" },
   { key: "voice", label: "Voz" },
   { key: "invites", label: "Invitaciones" },
+  { key: "waitlist", label: "Lista de espera" },
 ]
 
 const AREA_SECTION: Record<Exclude<AdminArea, "catalogo">, SectionKey> = {
   usuarios: "users",
   invitaciones: "invites",
+  "lista-espera": "waitlist",
   auditoria: "audit",
   voz: "voice",
 }
 const SECTION_AREA_HREF: Partial<Record<SectionKey, string>> = {
   users: "/admin/usuarios",
   invites: "/admin/invitaciones",
+  waitlist: "/admin/lista-espera",
   audit: "/admin/auditoria",
   voice: "/admin/voz",
 }
@@ -159,6 +166,7 @@ export default function AdminPage() {
     audit: 0,
     voice: 0,
     invites: 0,
+    waitlist: 0,
   }
 
   const isCatalogTab =
@@ -242,7 +250,7 @@ export default function AdminPage() {
               }`}
             >
               {s.label}
-              {s.key !== "users" && s.key !== "audit" && s.key !== "voice" && (
+              {s.key !== "users" && s.key !== "audit" && s.key !== "voice" && s.key !== "waitlist" && (
                 <span className="ml-1.5 text-[10px] opacity-60">
                   {counts[s.key]}
                 </span>
@@ -285,6 +293,7 @@ export default function AdminPage() {
         {active === "audit" && <AuditLogSection />}
         {active === "voice" && <VoiceTranscriptsSection />}
         {active === "invites" && <InvitationsSection />}
+        {active === "waitlist" && <WaitlistAdminSection />}
       </main>
 
       {remapTarget && (

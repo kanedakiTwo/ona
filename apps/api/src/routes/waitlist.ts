@@ -15,6 +15,7 @@ import {
   createDbWaitlistRepo,
   getReferralStatus,
   inviteWaitlistEntries,
+  loadNextBatchPeople,
   loadWaitlistReport,
   signupToWaitlist,
   type WaitlistRepo,
@@ -22,6 +23,7 @@ import {
 import { saveWaitlistPricing, saveWaitlistReservation } from '../services/waitlistPricing.js'
 import { sendEmail, type EmailResult } from '../services/email.js'
 import { waitlistInviteEmail } from '../services/waitlistEmails.js'
+import { WAITLIST_INVITE_ERRORS, findWaitlistInvite, inviteLinkState } from '../services/waitlistInvites.js'
 
 /**
  * Pre-launch waitlist (specs/waitlist.md).
@@ -31,8 +33,10 @@ import { waitlistInviteEmail } from '../services/waitlistEmails.js'
  *   POST /waitlist/unsubscribe     public: opt-out with the private token
  *   POST /waitlist/pricing         public (opt-out token): the 4 price answers (PRO-26)
  *   POST /waitlist/reservation     public (opt-out token): founder plan / «ninguno» / anular
+ *   GET  /waitlist/invite/:token   public (the token is the credential): who the one-time link is for (PRO-97)
  *   GET  /admin/waitlist           admin JWT or `x-metrics-token` (agents): aggregates, ids only
- *   POST /admin/waitlist/invite    admin JWT only: mark a batch invited, email each one (PRO-93), get their emails
+ *   GET  /admin/waitlist/next-batch admin JWT only: the suggested batch with names and emails (PRO-97)
+ *   POST /admin/waitlist/invite    admin JWT only: mark a batch invited, email each one its link (PRO-93/97), get their emails
  *
  * Both routers are mounted in index.ts BEFORE the catch-all
  * `router.use(authMiddleware)` routers, after `express.json()`.
@@ -49,6 +53,8 @@ const SIGNUP_FIELD_ERRORS: Record<string, string> = {
 
 export interface WaitlistRouterDeps {
   repo: WaitlistRepo
+  /** The entry behind a one-time invitation link (PRO-97). */
+  findInvite: typeof findWaitlistInvite
   /** Origin of the referral links (`WEB_PUBLIC_URL`). */
   publicUrl: () => string
   signupLimiter: RequestHandler
@@ -62,6 +68,7 @@ export interface WaitlistRouterDeps {
 export function createWaitlistRouter(overrides: Partial<WaitlistRouterDeps> = {}): Router {
   const deps: WaitlistRouterDeps = {
     repo: overrides.repo ?? createDbWaitlistRepo(),
+    findInvite: overrides.findInvite ?? ((token) => findWaitlistInvite(token)),
     publicUrl: overrides.publicUrl ?? (() => env.WEB_PUBLIC_URL),
     // A household often signs up from the same Wi-Fi: generous, but caps scripted floods.
     signupLimiter:
@@ -158,6 +165,23 @@ export function createWaitlistRouter(overrides: Partial<WaitlistRouterDeps> = {}
     }
   })
 
+  // The one-time link (PRO-97): /entrar/<token> → /register asks who it is
+  // for, to fix the email. Opening it never uses it up (mail scanners).
+  router.get('/waitlist/invite/:token', deps.readLimiter, async (req, res) => {
+    try {
+      const row = await deps.findInvite(String(req.params.token))
+      const state = inviteLinkState(row)
+      if (state !== 'ok') {
+        res.status(state === 'used' ? 410 : 404).json(WAITLIST_INVITE_ERRORS[state])
+        return
+      }
+      res.json({ email: row!.email, firstName: row!.firstName })
+    } catch (err: any) {
+      console.error('[waitlist] invite lookup failed:', err?.message ?? err)
+      res.status(500).json({ error: 'No hemos podido comprobar el enlace. Inténtalo de nuevo en un momento.' })
+    }
+  })
+
   router.get('/waitlist/:code', deps.readLimiter, async (req, res) => {
     const notFound = () =>
       res.status(404).json({ error: 'Este enlace no existe.', code: 'WAITLIST_CODE_NOT_FOUND' })
@@ -199,6 +223,7 @@ export interface AdminWaitlistDeps {
   readAuth: RequestHandler
   adminAuth: RequestHandler[]
   load: typeof loadWaitlistReport
+  loadNextBatch: typeof loadNextBatchPeople
   invite: typeof inviteWaitlistEntries
   sendEmail: typeof sendEmail
   publicUrl: () => string
@@ -209,6 +234,7 @@ export function createAdminWaitlistRouter(overrides: Partial<AdminWaitlistDeps> 
     readAuth: metricsAuth,
     adminAuth: [authMiddleware as RequestHandler, requireAdmin as RequestHandler],
     load: loadWaitlistReport,
+    loadNextBatch: (size) => loadNextBatchPeople(size),
     invite: inviteWaitlistEntries,
     sendEmail: (msg) => sendEmail(msg),
     publicUrl: () => env.WEB_PUBLIC_URL,
@@ -231,7 +257,17 @@ export function createAdminWaitlistRouter(overrides: Partial<AdminWaitlistDeps> 
     }
   })
 
-  // POST /admin/waitlist/invite { ids, batch? } — the only route that returns emails.
+  // GET /admin/waitlist/next-batch?size=20 — admin JWT only: names + emails of the suggested batch.
+  router.get('/admin/waitlist/next-batch', ...deps.adminAuth, async (req: AuthRequest, res: Response) => {
+    try {
+      res.json(await deps.loadNextBatch(intParam(req.query.size, 20, 1, 200)))
+    } catch (err: any) {
+      console.error('[admin/waitlist] next batch failed:', err?.message ?? err)
+      res.status(500).json({ error: 'Internal server error' })
+    }
+  })
+
+  // POST /admin/waitlist/invite { ids, batch? } — returns emails (admin JWT only).
   router.post('/admin/waitlist/invite', ...deps.adminAuth, async (req: AuthRequest, res: Response) => {
     const parsed = inviteSchema.safeParse(req.body)
     if (!parsed.success) {
@@ -243,14 +279,12 @@ export function createAdminWaitlistRouter(overrides: Partial<AdminWaitlistDeps> 
       const send = parsed.data.sendEmail !== false
       const statuses: (EmailResult['status'] | 'not_requested')[] = []
       for (const person of result.invited) {
-        // One by one: a batch is ≤ 200 people and each email carries its own opt-out link.
+        // One by one: a batch is ≤ 200 people and each email carries its own link and opt-out link.
         if (!send || !person.email) {
           statuses.push('not_requested')
           continue
         }
-        const r = await deps.sendEmail(
-          waitlistInviteEmail({ ...person, email: person.email }, { publicUrl: deps.publicUrl() }),
-        )
+        const r = await deps.sendEmail(waitlistInviteEmail({ ...person, email: person.email }))
         statuses.push(r.status)
       }
       const count = (s: string) => statuses.filter((x) => x === s).length

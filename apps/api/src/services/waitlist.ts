@@ -42,6 +42,7 @@ import { buildPricingReport, type PricingReport } from './waitlistPricing.js'
 import { users, waitlistEntries } from '../db/schema.js'
 import { record as recordAudit } from './auditLog.js'
 import { MADRID_TZ, addDays, madridParts } from './madridTime.js'
+import { hashInviteToken, waitlistEntryUrl, waitlistInviteToken } from './waitlistInvites.js'
 
 type Db = typeof defaultDb
 
@@ -582,16 +583,79 @@ export async function loadWaitlistSummary(db: Db = defaultDb, now: Date = new Da
 }
 
 /**
+ * Admin JWT only (`GET /admin/waitlist/next-batch`, PRO-97): the suggested
+ * batch with name and email of each person, so Miguel can check it before
+ * inviting. The metrics token never reaches this.
+ */
+export async function loadNextBatchPeople(size: number, db: Db = defaultDb) {
+  const rows = await db
+    .select({
+      id: waitlistEntries.id,
+      email: waitlistEntries.email,
+      firstName: waitlistEntries.firstName,
+      createdAt: waitlistEntries.createdAt,
+      householdSize: waitlistEntries.householdSize,
+      plannerRole: waitlistEntries.plannerRole,
+      currentMethod: waitlistEntries.currentMethod,
+      platform: waitlistEntries.platform,
+      wantsWhatsapp: waitlistEntries.wantsWhatsapp,
+      source: waitlistEntries.source,
+      referralCode: waitlistEntries.referralCode,
+      referredByCode: waitlistEntries.referredByCode,
+      status: waitlistEntries.status,
+    })
+    .from(waitlistEntries)
+  return nextBatchPeople(rows as NextBatchRow[], size)
+}
+
+export interface NextBatchRow extends RankableEntry {
+  email: string | null
+  firstName: string | null
+  platform: WaitlistPlatform | string
+  wantsWhatsapp: boolean
+  source: string
+}
+
+/** Pure: `suggestNextBatch` + the people, in invitation order. */
+export function nextBatchPeople(rows: NextBatchRow[], size: number) {
+  const suggestion = suggestNextBatch(rows as RankableEntry[], size)
+  const byId = new Map(rows.map((r) => [r.id, r]))
+  const pickedCodes = new Set(suggestion.ids.map((id) => byId.get(id)!.referralCode))
+  return {
+    size: suggestion.size,
+    counts: suggestion.counts,
+    people: suggestion.ids.map((id) => {
+      const r = byId.get(id)!
+      return {
+        id: r.id,
+        email: r.email,
+        firstName: r.firstName,
+        createdAt: r.createdAt,
+        householdSize: r.householdSize,
+        plannerRole: r.plannerRole,
+        currentMethod: r.currentMethod,
+        platform: r.platform,
+        wantsWhatsapp: r.wantsWhatsapp,
+        source: r.source,
+        target: isTargetSegment(r),
+        /** Came with the link of someone in this same batch (they enter together). */
+        withReferrer: !!r.referredByCode && pickedCodes.has(r.referredByCode),
+      }
+    }),
+  }
+}
+
+/**
  * Admin JWT only: mark waiting entries invited in a batch (next number when
- * omitted) and return what Miguel needs to write to them — email, name and
- * their personal links. Audited as `waitlist.invite` (ids, never emails).
+ * omitted), give each one its one-time link (PRO-97) and return what Miguel
+ * needs to write to them — email, name and their personal links. Audited as `waitlist.invite` (ids, never emails).
  * Entries that are not `waiting` are skipped.
  */
 export async function inviteWaitlistEntries(
   ids: string[],
   batch: number | undefined,
   adminId: string,
-  opts: { publicUrl: string },
+  opts: { publicUrl: string; secret?: string },
   db: Db = defaultDb,
 ) {
   return db.transaction(async (tx) => {
@@ -600,7 +664,7 @@ export async function inviteWaitlistEntries(
       const [row] = await tx.select({ max: sql<number | null>`max(${waitlistEntries.batch})` }).from(waitlistEntries)
       batchNo = (Number(row?.max) || 0) + 1
     }
-    const rows = await tx
+    const updated = await tx
       .update(waitlistEntries)
       .set({ status: 'invited', batch: batchNo, invitedAt: new Date() })
       .where(and(inArray(waitlistEntries.id, ids), eq(waitlistEntries.status, 'waiting')))
@@ -613,6 +677,14 @@ export async function inviteWaitlistEntries(
         referralCode: waitlistEntries.referralCode,
         unsubscribeToken: waitlistEntries.unsubscribeToken,
       })
+    // The personal one-time link (PRO-97): only its hash is stored.
+    const rows = updated.map((r) => ({ ...r, inviteToken: waitlistInviteToken(r.id, opts.secret) }))
+    for (const r of rows) {
+      await tx
+        .update(waitlistEntries)
+        .set({ inviteTokenHash: hashInviteToken(r.inviteToken), inviteTokenUsedAt: null, inviteReminderSentAt: null })
+        .where(eq(waitlistEntries.id, r.id))
+    }
     if (rows.length > 0) {
       await recordAudit(
         {
@@ -636,6 +708,8 @@ export async function inviteWaitlistEntries(
         wantsWhatsapp: r.wantsWhatsapp,
         statusUrl: `${base}${waitlistStatusPath(r.referralCode)}`,
         unsubscribeUrl: `${base}${waitlistUnsubscribePath(r.unsubscribeToken)}`,
+        /** One-time link to create the account (`/entrar/<token>`). */
+        entryUrl: waitlistEntryUrl(base, r.inviteToken),
       })),
     }
   })

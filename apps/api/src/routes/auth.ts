@@ -12,13 +12,19 @@ import {
   consumeCampaignUse,
   findUsableCampaign,
   isHouseholdInviteUsable,
-  isWaitlistInvited,
   registrationAccess,
 } from '../services/inviteCampaigns.js'
 import { env } from '../config/env.js'
 import { consumeToken } from '../services/passwordReset.js'
 import { rateLimit } from '../middleware/rateLimit.js'
 import { markWaitlistJoined } from '../services/waitlist.js'
+import {
+  WAITLIST_INVITE_ERRORS,
+  checkWaitlistInvite,
+  consumeWaitlistInvite,
+  releaseWaitlistInvite,
+  waitlistInviteForEmail,
+} from '../services/waitlistInvites.js'
 import { trackEvent } from '../services/usageEvents.js'
 
 const router = Router()
@@ -43,7 +49,9 @@ const loginLimiter = rateLimit({
 // POST /register
 router.post('/register', registerLimiter, validate(registerSchema), async (req, res) => {
   try {
-    const { username, email, password, inviteCode, householdInviteToken, newsletterOptIn } = req.body
+    const { username, password, inviteCode, householdInviteToken, newsletterOptIn, waitlistToken } = req.body
+    // With a waitlist link the email is the one on the list (lowercase, fixed on the form).
+    const email: string = waitlistToken ? String(req.body.email).trim().toLowerCase() : req.body.email
 
     // Check username/email unique
     const existing = await db
@@ -57,24 +65,44 @@ router.post('/register', registerLimiter, validate(registerSchema), async (req, 
       return
     }
 
+    // One-time link from the waitlist invitation (PRO-97): it must be valid,
+    // unused and for this same email. It is used up below, with the account.
+    if (waitlistToken) {
+      const state = await checkWaitlistInvite(waitlistToken, email)
+      if (state !== 'ok') {
+        res.status(state === 'used' ? 410 : 403).json(WAITLIST_INVITE_ERRORS[state])
+        return
+      }
+    }
+
     // Closed beta (PRO-27): only with an invitation unless REGISTRATION_MODE=open.
     // A valid campaign link is recorded on the account in either mode.
     const campaign = await findUsableCampaign(inviteCode)
+    const listInvite =
+      env.REGISTRATION_MODE === 'invite' && !campaign && !waitlistToken ? await waitlistInviteForEmail(email) : null
     const access = registrationAccess({
       mode: env.REGISTRATION_MODE,
       isAdminEmail: env.ADMIN_EMAILS.includes(String(email).trim().toLowerCase()),
       campaignOk: campaign != null,
-      waitlistInvited: env.REGISTRATION_MODE === 'invite' && !campaign ? await isWaitlistInvited(email) : false,
+      // The link, or (invited before PRO-97, no link exists) the email alone.
+      waitlistInvited: !!waitlistToken || listInvite === 'legacy',
       householdInviteOk:
         env.REGISTRATION_MODE === 'invite' && !campaign ? await isHouseholdInviteUsable(householdInviteToken) : false,
     })
     if (!access) {
-      res.status(403).json(REGISTRATION_INVITE_REQUIRED)
+      // Invited from the list but came without the link: say how to get in.
+      res.status(403).json(listInvite === 'needs_link' ? WAITLIST_INVITE_ERRORS.link_required : REGISTRATION_INVITE_REQUIRED)
+      return
+    }
+    // Use the link up now; if someone used it meanwhile, it no longer lets you in.
+    if (waitlistToken && !(await consumeWaitlistInvite(waitlistToken))) {
+      res.status(410).json(WAITLIST_INVITE_ERRORS.used)
       return
     }
     // Take the use now; if it ran out meanwhile, the link no longer lets you in.
     const campaignId = campaign && (await consumeCampaignUse(campaign.id)) ? campaign.id : null
     if (access === 'campaign' && !campaignId) {
+      if (waitlistToken) await releaseWaitlistInvite(waitlistToken)
       res.status(403).json(REGISTRATION_INVITE_REQUIRED)
       return
     }
@@ -101,6 +129,11 @@ router.post('/register', registerLimiter, validate(registerSchema), async (req, 
           : {}),
       })
       .returning()
+      .catch(async (err) => {
+        // The account wasn't created (e.g. a concurrent duplicate): give the link back.
+        if (waitlistToken) await releaseWaitlistInvite(waitlistToken)
+        throw err
+      })
 
     // Auto-create a solo household so every authed read has a valid scope.
     // Falls back silently if the helper can't run (e.g. migration not yet

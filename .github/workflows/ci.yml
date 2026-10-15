@@ -233,6 +233,11 @@ jobs:
       # 10-registrations/hour/IP limiter would fail the suite from the 11th
       # test on. Ignored by a deployed API (NODE_ENV=production or Railway).
       RATE_LIMIT_DISABLED: 'true'
+      # Simulated email (PRO-97): the API "sends" through Resend's API to a
+      # fake one that Playwright's globalSetup starts on E2E_MAIL_URL.
+      RESEND_API_KEY: e2e-fake-key
+      RESEND_BASE_URL: http://127.0.0.1:8799
+      E2E_MAIL_URL: http://127.0.0.1:8799
       API_PORT: 8765
       API_URL: http://localhost:8765
       WEB_URL: http://localhost:3001

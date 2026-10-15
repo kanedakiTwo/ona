@@ -337,6 +337,13 @@
       "when": 1792020807134,
       "tag": "0047_users_newsletter",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1792021339659,
+      "tag": "0048_waitlist_invite_token",
+      "breakpoints": true
     }
   ]
 }

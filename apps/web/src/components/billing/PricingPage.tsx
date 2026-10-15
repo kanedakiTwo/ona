@@ -103,8 +103,8 @@ export function PricingPage() {
 
   return (
     <div className="bg-[#FAF6EE]">
-      <section className="px-5 pb-10 pt-28 md:px-10 md:pt-40">
-        <div className="mx-auto max-w-5xl">
+      <section className="pb-10 pt-28 md:pt-40">
+        <div className="public-container">
           <div className="text-eyebrow mb-5">Precios</div>
           <h1 className="text-editorial-xl max-w-3xl">
             Un precio para <span className="font-italic italic">todo tu hogar</span>.
@@ -132,8 +132,8 @@ export function PricingPage() {
         </div>
       </section>
 
-      <section className="px-5 pb-16 md:px-10" aria-labelledby="comparativa">
-        <div className="mx-auto max-w-5xl">
+      <section className="pb-16" aria-labelledby="comparativa">
+        <div className="public-container">
           <h2 id="comparativa" className="font-display text-3xl text-[#1A1612] md:text-4xl">
             Qué incluye cada plan
           </h2>
@@ -141,19 +141,21 @@ export function PricingPage() {
         </div>
       </section>
 
-      <section className="px-5 pb-28 md:px-10" aria-labelledby="preguntas">
-        <div className="mx-auto max-w-3xl">
-          <h2 id="preguntas" className="font-display text-3xl text-[#1A1612] md:text-4xl">
-            Preguntas
-          </h2>
-          <dl className="mt-6 divide-y divide-[#DDD6C5] border-y border-[#DDD6C5]">
-            {FAQS.map((f) => (
-              <div key={f.q} className="py-5">
-                <dt className="text-[16px] font-semibold text-[#1A1612]">{f.q}</dt>
-                <dd className="mt-2 text-[15px] leading-relaxed text-[#4A4239]">{f.a}</dd>
-              </div>
-            ))}
-          </dl>
+      <section className="pb-28" aria-labelledby="preguntas">
+        <div className="public-container">
+          <div className="max-w-3xl">
+            <h2 id="preguntas" className="font-display text-3xl text-[#1A1612] md:text-4xl">
+              Preguntas
+            </h2>
+            <dl className="mt-6 divide-y divide-[#DDD6C5] border-y border-[#DDD6C5]">
+              {FAQS.map((f) => (
+                <div key={f.q} className="py-5">
+                  <dt className="text-[16px] font-semibold text-[#1A1612]">{f.q}</dt>
+                  <dd className="mt-2 text-[15px] leading-relaxed text-[#4A4239]">{f.a}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
         </div>
       </section>
     </div>

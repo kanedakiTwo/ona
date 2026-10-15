@@ -48,7 +48,7 @@ export default function PublicNavbar() {
           scrolled || open ? "bg-[#FAF6EE]/90 backdrop-blur-md" : "bg-transparent"
         }`}
       >
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5 md:px-10">
+        <div className="public-container flex items-center justify-between py-5">
           <Link href="/" aria-label="Mimoia, inicio" data-testid="public-logo">
             <MimoiaLogo size={24} />
           </Link>
@@ -68,7 +68,12 @@ export default function PublicNavbar() {
             <Link href="/login" className="link-reveal text-[#4A4239]">
               Entrar
             </Link>
-            <Link href={WAITLIST_HREF} onClick={scrollToWaitlistIfHere} className="btn-editorial btn-editorial-primary text-xs">
+            <Link
+              href={WAITLIST_HREF}
+              onClick={scrollToWaitlistIfHere}
+              className="btn-editorial btn-editorial-primary text-xs"
+              data-testid="public-nav-cta"
+            >
               Lista de espera
               <ArrowRight size={14} />
             </Link>
@@ -77,7 +82,7 @@ export default function PublicNavbar() {
           <button
             onClick={() => setOpen(!open)}
             className="flex h-10 w-10 items-center justify-center rounded-full border border-[#DDD6C5] text-[#1A1612] md:hidden"
-            aria-label={open ? "Cerrar menu" : "Abrir menu"}
+            aria-label={open ? "Cerrar menú" : "Abrir menú"}
           >
             {open ? <X size={18} /> : <Menu size={18} />}
           </button>
@@ -86,7 +91,7 @@ export default function PublicNavbar() {
 
       {open && (
         <div className="fixed inset-0 z-40 flex flex-col bg-[#FAF6EE] pt-24 md:hidden">
-          <div className="flex flex-1 flex-col gap-2 px-6">
+          <div className="public-container flex flex-1 flex-col gap-2">
             {NAV_LINKS.map((link, i) => (
               <Link
                 key={link.href}
@@ -106,7 +111,7 @@ export default function PublicNavbar() {
               Entrar
             </Link>
           </div>
-          <div className="px-6 pb-12">
+          <div className="public-container pb-12">
             <Link
               href={WAITLIST_HREF}
               onClick={(e) => {

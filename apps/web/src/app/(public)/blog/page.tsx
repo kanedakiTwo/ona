@@ -35,8 +35,8 @@ export default function BlogIndexPage() {
 
   return (
     <div className="bg-[#FAF6EE] grain-subtle">
-      <section className="px-4 pb-12 pt-28 md:px-10 md:pb-16 md:pt-40">
-        <div className="mx-auto max-w-5xl">
+      <section className="pb-12 pt-28 md:pb-16 md:pt-40">
+        <div className="public-container">
           <div className="text-eyebrow mb-6">Cuaderno de {BRAND_NAME}</div>
           <h1 className="text-editorial-xl">
             El <span className="font-italic italic text-[#C65D38]">blog</span>.
@@ -47,8 +47,8 @@ export default function BlogIndexPage() {
         </div>
       </section>
 
-      <section className="px-4 pb-24 md:px-10 md:pb-32">
-        <div className="mx-auto max-w-5xl">
+      <section className="pb-24 md:pb-32">
+        <div className="public-container">
           {posts.length === 0 ? (
             <div data-testid="blog-empty" className="border-t border-[#DDD6C5] pt-10">
               <p className="font-display text-2xl text-[#1A1612]">Pronto, los primeros artículos.</p>

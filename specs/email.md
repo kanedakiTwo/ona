@@ -32,6 +32,12 @@ How Mimoia sends email. One provider, **Resend** (REST API, EU sending region, `
 - The reminder runs from the notification scheduler's tick (`sendWaitlistInviteRemindersIfDue`, at most once an hour per process, inside the scheduler's advisory lock). Due = `invited`, has a link, link unused, not reminded, invited ≥ 3 days ago. The row is marked (`invite_reminder_sent_at`) **before** sending, atomically, so two processes never send it twice; a `failed` send stays marked (no retry), a `skipped` one (no key) is unmarked so it goes out once email is configured.
 - `POST /admin/waitlist/invite { ids, batch?, sendEmail? }` (admin JWT) marks the batch invited and then emails each newly invited person, one call each. The response adds `emailStatus` per person (`sent | skipped | failed | not_requested`) and `email { sent, skipped, failed }`. `sendEmail: false` marks the batch without emailing (Miguel writes by hand). Entries that were not `waiting` are skipped and not emailed again.
 
+## Buzón de pruebas (staging)
+
+- With `EMAIL_SINK_DOMAINS` set (comma list, e.g. `example.com`), an email to an address in one of those domains is **not sent**: `sendEmail` / `sendEmailBatch` keep it in memory (the last 300, lost on restart) and resolve `sent` with an id `sink-…`; other addresses behave as always (Resend, or `skipped` without a key). A batch keeps the input order.
+- `GET /email-sink?to=<address>` (public, 120/min per IP) → `{ messages: [{ id, at, to, subject, html, text, headers? }] }`, oldest first. 404 `EMAIL_SINK_OFF` when the sink is off; 400 `EMAIL_SINK_NOT_TEST_ADDRESS` for an address outside those domains, so it never shows a real person's email.
+- **Never on production**: with `RAILWAY_ENVIRONMENT_NAME=production` the sink is off whatever the variable says. Set on staging (`EMAIL_SINK_DOMAINS=example.com`) so the test households (ona-hq `hogares-prueba`) can follow the invitation, welcome and password-reset emails.
+
 ## Constraints
 
 - **No key, no email.** Without `RESEND_API_KEY` every send logs `[email] not configured …` and resolves `skipped` (like WhatsApp unconfigured). CI, staging and local never have the key; tests stub `fetch`. The key is set in production by a session of Miguel, only after Legal reviews `/privacidad` (D-050).
@@ -57,6 +63,7 @@ How Mimoia sends email. One provider, **Resend** (REST API, EU sending region, `
 
 - [apps/api/src/services/email.ts](../apps/api/src/services/email.ts)
 - [apps/api/src/services/emailBrand.ts](../apps/api/src/services/emailBrand.ts) — the shared brand shell
+- [apps/api/src/services/emailSink.ts](../apps/api/src/services/emailSink.ts), [apps/api/src/routes/emailSink.ts](../apps/api/src/routes/emailSink.ts) — staging mail sink, `GET /email-sink`
 - [apps/api/src/services/waitlistEmails.ts](../apps/api/src/services/waitlistEmails.ts)
 - [apps/api/src/services/accountEmails.ts](../apps/api/src/services/accountEmails.ts), [apps/api/src/services/accountMailer.ts](../apps/api/src/services/accountMailer.ts) — welcome, password reset
 - [apps/api/src/routes/auth.ts](../apps/api/src/routes/auth.ts) — `POST /register` (welcome), `POST /auth/forgot`
@@ -65,4 +72,4 @@ How Mimoia sends email. One provider, **Resend** (REST API, EU sending region, `
 - [apps/api/src/services/notificationScheduler.ts](../apps/api/src/services/notificationScheduler.ts) — runs the reminder
 - [apps/api/src/routes/waitlist.ts](../apps/api/src/routes/waitlist.ts) — `POST /admin/waitlist/invite`
 - [apps/api/src/config/env.ts](../apps/api/src/config/env.ts) — `RESEND_API_KEY`, `EMAIL_FROM`, `RESEND_BASE_URL`
-- Tests: `apps/api/src/tests/email.test.ts` (fetch stubbed: body, headers, no key, masked logs, batch split, template, invitation), `apps/api/src/tests/waitlistRoute.test.ts` (the invite sends one email per person, each with its link), `waitlistInvites.test.ts` (reminder: at 3 days yes, at 2 no, never twice), `accountEmails.test.ts` (welcome kinds and texts, reset email, reset rules, brand shell), e2e `waitlist-invite.spec.ts` (also the beta welcome after registering) and `password-recovery.spec.ts` (/recuperar → reset email → new password works) against a fake Resend (`RESEND_BASE_URL` → the server `e2e/global-setup.ts` starts on `E2E_MAIL_URL`)
+- Tests: `apps/api/src/tests/emailSink.test.ts` (sink on/off, never on production, batch order, the route), `apps/api/src/tests/email.test.ts` (fetch stubbed: body, headers, no key, masked logs, batch split, template, invitation), `apps/api/src/tests/waitlistRoute.test.ts` (the invite sends one email per person, each with its link), `waitlistInvites.test.ts` (reminder: at 3 days yes, at 2 no, never twice), `accountEmails.test.ts` (welcome kinds and texts, reset email, reset rules, brand shell), e2e `waitlist-invite.spec.ts` (also the beta welcome after registering) and `password-recovery.spec.ts` (/recuperar → reset email → new password works) against a fake Resend (`RESEND_BASE_URL` → the server `e2e/global-setup.ts` starts on `E2E_MAIL_URL`)

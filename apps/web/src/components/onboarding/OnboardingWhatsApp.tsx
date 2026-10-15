@@ -29,9 +29,12 @@ export function OnboardingChannelChoice({ onWhatsApp, onWeb }: { onWhatsApp: () 
   return (
     <section data-testid="onboarding-channel">
       <OnboardingHeader eyebrow="Primeros pasos">
-        ¿Dónde quieres hablar con <Accent>Mimo</Accent>?
+        ¿Dónde quieres hablar principalmente con <Accent>Mimo</Accent>?
       </OnboardingHeader>
-      <p className={LEAD}>Puedes usar las dos cosas; esto es solo por dónde empezamos.</p>
+      <p className={LEAD}>
+        Puedes usar Mimoia tanto desde WhatsApp como desde la web. Te haremos un par de preguntas donde elijas, y así vas
+        viendo cómo se usa.
+      </p>
       <div className="mt-6 flex flex-col gap-3">
         <button
           type="button"

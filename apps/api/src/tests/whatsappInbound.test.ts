@@ -45,7 +45,7 @@ const LINK: LinkWithUser = {
 
 function setup(overrides: {
   link?: LinkWithUser | null
-  consume?: (code: string) => { userId: string; onboardingDone?: boolean } | null
+  consume?: (code: string, currentUserId?: string | null) => { userId: string; onboardingDone?: boolean; sameUser?: boolean } | null
   budgetExceeded?: boolean
   history?: HistoryRow[]
   recentLinkHint?: boolean
@@ -77,7 +77,7 @@ function setup(overrides: {
     isUserAllowed: () => overrides.allowed ?? true,
     store: {
       getLinkByPhone: async () => (overrides.link === undefined ? LINK : overrides.link),
-      consumeLinkCode: async (code) => overrides.consume?.(code) ?? null,
+      consumeLinkCode: async (code, _phone, _name, currentUserId) => overrides.consume?.(code, currentUserId) ?? null,
       touchInbound: async () => {},
       updateInbound: async (_wamid, patch) => {
         inboundUpdates.push(patch)
@@ -138,6 +138,10 @@ describe('processInbound — unlinked numbers', () => {
     const t = setup({ link: null })
     await processInbound(msg({ text: 'Vincular Mimoia: 9ZZZZ9' }), t.deps)
     expect(t.sent).toEqual([{ type: 'text', text: COPY.badCode }])
+  })
+
+  it('the first message of the WhatsApp sign-up says you can write or send voice notes', () => {
+    expect(COPY.linkedOnboarding('Ana')).toMatch(/Puedes escribirme o mandarme notas de voz/)
   })
 
   it('points an unknown number to the connect page (no token in the link)', async () => {
@@ -694,10 +698,12 @@ describe('processInbound — WhatsApp-first sign-up (2026-10-10)', () => {
       const t = setup({ outboundKinds: afterSignup() })
       await processInbound(msg({ kind: 'interactive', text: 'Sí, avísame', rawType: 'interactive' }), t.deps)
       expect(t.outbound.map((o) => o.kind)).toEqual(['optin', 'first_steps'])
-      expect(t.sent[1]).toEqual({ type: 'text', text: COPY.firstSteps })
-      expect(COPY.firstSteps).toMatch(/foto o un enlace de una receta/)
-      expect(COPY.firstSteps).toMatch(/¿Qué cenamos hoy\?/)
-      expect(COPY.firstSteps).toMatch(/Hazme la lista de la compra/)
+      expect(t.sent[1]).toEqual({ type: 'text', text: COPY.firstSteps(`${WEB}/menu`) })
+      expect(COPY.firstSteps('x')).toMatch(/foto o un enlace de una receta/)
+      expect(COPY.firstSteps('x')).toMatch(/¿Qué cenamos hoy\?/)
+      expect(COPY.firstSteps('x')).toMatch(/Hazme la lista de la compra/)
+      // 2026-10-15: the WhatsApp sign-up ends sending them back to the web.
+      expect(COPY.firstSteps(`${WEB}/menu`)).toMatch(new RegExp(`vuelve a Mimoia en la web[\\s\\S]*${WEB}/menu$`))
       expect(t.chat).not.toHaveBeenCalled()
     })
 
@@ -705,7 +711,7 @@ describe('processInbound — WhatsApp-first sign-up (2026-10-10)', () => {
       const t = setup({ outboundKinds: afterSignup() })
       await processInbound(msg({ kind: 'interactive', text: 'No, gracias', rawType: 'interactive' }), t.deps)
       expect(t.outbound.map((o) => o.kind)).toEqual(['system', 'first_steps'])
-      expect(t.sent[1]).toEqual({ type: 'text', text: COPY.firstSteps })
+      expect(t.sent[1]).toEqual({ type: 'text', text: COPY.firstSteps(`${WEB}/menu`) })
     })
 
     it('only once: not again on a later ALTA', async () => {
@@ -732,5 +738,49 @@ describe('processInbound — WhatsApp-first sign-up (2026-10-10)', () => {
       expect(t.outbound.map((o) => o.kind)).not.toContain('first_steps')
       expect(t.outbound.at(-1)?.kind).toBe('optin_prompt')
     })
+  })
+})
+
+// 2026-10-15: Miguel tried the WhatsApp sign-up of a new account from his
+// already linked phone; «Vincular Mimoia: QUPTV7» went to Mimo, who answered
+// «No puedo vincular cuentas desde el chat».
+describe('processInbound — a linked number sends a link code', () => {
+  it("its own account's code: nothing changes, no model call", async () => {
+    const t = setup({ consume: (code, current) => (code === '4F7K2A' ? { userId: current!, sameUser: true } : null) })
+    await processInbound(msg({ text: 'Vincular Mimoia: 4F7K2A' }), t.deps)
+    expect(t.sent).toEqual([{ type: 'text', text: COPY.alreadyLinked }])
+    expect(t.chat).not.toHaveBeenCalled()
+  })
+
+  it("another account's code: the number moves there and that account's sign-up starts", async () => {
+    const t = setup({ consume: (code) => (code === 'QUPTV7' ? { userId: 'user-new', onboardingDone: false } : null) })
+    await processInbound(msg({ text: 'Vincular Mimoia: QUPTV7' }), t.deps)
+    expect(t.sent).toEqual([
+      { type: 'text', text: COPY.movedAccount },
+      { type: 'text', text: COPY.linkedOnboarding('Miguel') },
+    ])
+    expect(t.inboundUpdates.at(-1)).toMatchObject({ status: 'ignored', userId: 'user-new' })
+    expect(t.chat).not.toHaveBeenCalled()
+  })
+
+  it("another account's code for an account already set up: linked + the opt-in question", async () => {
+    const t = setup({ consume: () => ({ userId: 'user-2', onboardingDone: true }) })
+    await processInbound(msg({ text: 'Vincular Mimoia: QUPTV7' }), t.deps)
+    expect(t.sent[0]).toEqual({ type: 'text', text: COPY.movedAccount })
+    expect(t.sent[1]).toEqual({ type: 'text', text: COPY.linked('Miguel') })
+    expect(t.sent[2]).toMatchObject({ type: 'buttons', text: COPY.optInPrompt })
+  })
+
+  it('an expired or wrong code: says so, keeps the link, no model call', async () => {
+    const t = setup()
+    await processInbound(msg({ text: 'Vincular Mimoia: 9ZZZZ9' }), t.deps)
+    expect(t.sent).toEqual([{ type: 'text', text: COPY.badCodeLinked }])
+    expect(t.chat).not.toHaveBeenCalled()
+  })
+
+  it('a normal message that happens to contain a code-like word still goes to Mimo', async () => {
+    const t = setup({ consume: () => ({ userId: 'user-2' }) })
+    await processInbound(msg({ text: 'Ponme el plato 2 del menú, el de la receta ABC2DE que vi ayer' }), t.deps)
+    expect(t.chat).toHaveBeenCalled()
   })
 })

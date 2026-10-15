@@ -24,7 +24,7 @@ import { BILLING_PERIODS, PLANS, stripeLookupKey } from '@ona/shared'
 const arg = (name: string) => process.argv.find((a) => a.startsWith(`--${name}=`))?.split('=').slice(1).join('=')
 const key = process.env.STRIPE_SECRET_KEY
 if (!key) throw new Error('Set STRIPE_SECRET_KEY')
-const live = key.startsWith('sk_live_')
+const live = /^(sk|rk)_live_/.test(key)
 const stripe = new Stripe(key)
 
 /** SaaS, personal use (Managed Payments eligible). */

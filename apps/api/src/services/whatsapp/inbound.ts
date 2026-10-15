@@ -4,7 +4,7 @@ import type { TokenUsage } from '../advisorBudget.js'
 import type { InboundMessage } from './webhookParser.js'
 import type { LinkWithUser } from './store.js'
 import { buildChatHistory, HISTORY_WINDOW_MS, type HistoryRow } from './history.js'
-import { connectUrl, extractLinkCodeCandidates } from './linking.js'
+import { connectUrl, extractLinkCodeCandidates, isLinkAttempt } from './linking.js'
 import { renderAssistantReply, renderPlainText, type OutboundMessage } from './render.js'
 import { isShoppingItemList, shoppingListDigest } from '../shoppingText.js'
 import { AI_DISCLOSURE_FIRST_PERSON } from '@ona/shared'
@@ -39,7 +39,8 @@ export interface InboundDeps {
       code: string,
       phone: string,
       profileName: string | null,
-    ) => Promise<{ userId: string; onboardingDone?: boolean } | null>
+      currentUserId?: string | null,
+    ) => Promise<{ userId: string; onboardingDone?: boolean; sameUser?: boolean } | null>
     touchInbound: (phone: string, at: Date) => Promise<void>
     updateInbound: (
       wamid: string,
@@ -155,7 +156,7 @@ export const COPY = {
    * messages waits until the first menu is ready.
    */
   linkedOnboarding: (name: string | null) =>
-    `¡Hola${name ? `, ${name}` : ''}! Ya estás conectado: soy Mimo, de Mimoia. ${AI_DISCLOSURE_FIRST_PERSON}\n\nTe preparo tu primer menú en un momento: solo necesito saber tres cosas.\n\n*1.* ¿Cuántos sois en casa? Dime adultos y niños de 2 a 10 años.`,
+    `¡Hola${name ? `, ${name}` : ''}! Ya estás conectado: soy Mimo, de Mimoia. ${AI_DISCLOSURE_FIRST_PERSON}\n\nPuedes escribirme o mandarme notas de voz, como te sea más cómodo.\n\nTe preparo tu primer menú en un momento: solo necesito saber tres cosas.\n\n*1.* ¿Cuántos sois en casa? Dime adultos y niños de 2 a 10 años.`,
   /** After the first menu: health data goes to the web, never through WhatsApp (PRO-24). */
   healthOnWeb: (url: string) =>
     `Si en casa hay alergias, intolerancias o algo que no podáis comer, añádelo aquí con tu permiso y lo tendré en cuenta: ${url}\nPor WhatsApp no guardo datos de salud.`,
@@ -169,8 +170,15 @@ export const COPY = {
    * Last message of the WhatsApp-first sign-up (PRO-07): once the opt-in
    * question is answered (yes or no), three things to try. Sent once.
    */
-  firstSteps:
-    'Tres cosas que puedes pedirme ya:\n📸 Mándame una foto o un enlace de una receta y la guardo.\n🍽️ «¿Qué cenamos hoy?»\n🛒 «Hazme la lista de la compra»',
+  firstSteps: (url: string) =>
+    `Tres cosas que puedes pedirme ya:\n📸 Mándame una foto o un enlace de una receta y la guardo.\n🍽️ «¿Qué cenamos hoy?»\n🛒 «Hazme la lista de la compra»\n\nY cuando quieras, vuelve a Mimoia en la web: allí tienes tu menú de la semana y un recorrido rápido por todo lo demás.\n${url}`,
+  /** A linked number sends a code that is its own account's: nothing to do. */
+  alreadyLinked: 'Este WhatsApp ya está conectado a tu cuenta de Mimoia: no hace falta ningún código. ¿Qué te preparo?',
+  /** A linked number sends another account's code: it moves to that account. */
+  movedAccount: 'Este WhatsApp estaba conectado a otra cuenta de Mimoia. Desde ahora está conectado a la cuenta de la que has sacado el código.',
+  /** A linked number sends an invalid or expired code. */
+  badCodeLinked:
+    'Ese código no es válido o ha caducado (duran 10 minutos). Este WhatsApp sigue conectado a tu cuenta de siempre. Si querías conectarlo a otra cuenta, saca un código nuevo desde esa cuenta y mándamelo.',
   stopped:
     'Hecho: no te enviaré más avisos por WhatsApp. Puedes seguir escribiéndome cuando quieras. Para volver a recibirlos, escribe ALTA.',
   stoppedUnlinked: 'De acuerdo, no te volveré a escribir.',
@@ -307,7 +315,7 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
   const sendFirstStepsOnce = async (userId: string) => {
     const sent = await store.recentOutboundKinds(msg.from, new Date(0))
     if (!sent.has('onboarding') || !sent.has('optin_prompt') || sent.has('first_steps')) return
-    await sendText(userId, 'first_steps', COPY.firstSteps)
+    await sendText(userId, 'first_steps', COPY.firstSteps(`${deps.webUrl.replace(/\/$/, '')}/menu`))
   }
 
   await client.markReadWithTyping(msg.wamid)
@@ -343,6 +351,34 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
       await sendFirstStepsOnce(link.userId)
       return
     }
+  }
+
+  // ── 1a. A number already linked sends a link code (2026-10-15: Miguel
+  // tried the WhatsApp sign-up of a new account from his linked phone and the
+  // code went to Mimo, who answered «no puedo vincular cuentas»). Its own
+  // code: nothing to do; another account's code: the number moves there.
+  if (link && msg.kind === 'text' && isLinkAttempt(msg.text)) {
+    for (const code of extractLinkCodeCandidates(msg.text)) {
+      const linked = await store.consumeLinkCode(code, msg.from, msg.profileName, link.userId)
+      if (!linked) continue
+      await store.updateInbound(msg.wamid, { status: 'ignored', userId: linked.userId })
+      if (linked.sameUser) {
+        await sendText(linked.userId, 'system', COPY.alreadyLinked)
+        return
+      }
+      trackEvent('whatsapp_linked', { userId: linked.userId, channel: 'whatsapp' })
+      await sendText(linked.userId, 'system', COPY.movedAccount)
+      if (linked.onboardingDone === false) {
+        await sendText(linked.userId, 'onboarding', COPY.linkedOnboarding(msg.profileName))
+        return
+      }
+      await sendText(linked.userId, 'system', COPY.linked(msg.profileName))
+      await sendOptInPrompt(linked.userId)
+      return
+    }
+    await store.updateInbound(msg.wamid, { status: 'ignored', userId: link.userId })
+    await sendText(link.userId, 'link', COPY.badCodeLinked)
+    return
   }
 
   // ── 1. Who is this? ────────────────────────────────────────────

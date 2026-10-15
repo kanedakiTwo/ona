@@ -43,6 +43,18 @@ export function extractLinkCodeCandidates(text: string | null | undefined): stri
 }
 
 /**
+ * A message that is clearly an attempt to link («Vincular Mimoia: QUPTV7», or
+ * just the code). From a number that is already linked, only these are taken
+ * as codes; any other text goes to Mimo as usual.
+ */
+export function isLinkAttempt(text: string | null | undefined): boolean {
+  if (!text) return false
+  if (/vincular\s+(mimoia|ona)/i.test(text)) return true
+  const t = text.trim()
+  return t.length <= LINK_CODE_LENGTH + 2 && extractLinkCodeCandidates(t).length === 1
+}
+
+/**
  * WhatsApp-first entry point. Deliberately carries no token: the page makes
  * the logged-in user send a one-time code FROM their WhatsApp, so the phone
  * that gets linked is always the one that sent the code — a forwarded link

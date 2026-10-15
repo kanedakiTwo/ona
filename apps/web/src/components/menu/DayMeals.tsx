@@ -22,6 +22,8 @@ import { ConfirmSheet, MenuSheet, SheetAction } from "./MenuSheet"
 import {
   MealOptionsButton,
   MealOptionsSheets,
+  slotRecipeHref,
+  slotServings,
   useMealOptions,
   type SlotContext,
   type SlotHandlers,
@@ -31,9 +33,7 @@ const DAY_SHORT = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"]
 
 export type SlotPropsFn = (meal: string, slot: MealSlot) => { ctx: SlotContext; handlers: SlotHandlers }
 
-function servingsOf(ctx: SlotContext) {
-  return ctx.slot.servings ?? ctx.defaultDiners
-}
+const servingsOf = slotServings
 
 function cookHref(recipeId: string, servings: number) {
   return `/recipes/${recipeId}/cook?servings=${servings}`
@@ -53,10 +53,10 @@ function SlotChips({ ctx, first }: { ctx: SlotContext; first: RecipeDish | null 
       )}
       {leftover && first?.leftoverOf && (
         <span className="inline-flex items-center gap-1 rounded-full bg-warn-bg px-2 py-0.5 font-medium text-terracotta-deep">
-          <Utensils size={11} /> Sobras de {DAY_SHORT[first.leftoverOf.day]} {mealLabel(first.leftoverOf.meal).toLowerCase()}
+          <Utensils size={11} /> Sobras de {DAY_SHORT[first.leftoverOf.day]} {mealLabel(first.leftoverOf.meal).toLowerCase()} · ya en la compra
         </span>
       )}
-      {ctx.slot.servings != null && (
+      {ctx.slot.servings != null && !leftover && (
         <span className="rounded-full bg-cream-deep px-2 py-0.5">Solo hoy: {ctx.slot.servings}</span>
       )}
       {others.length > 0 && (
@@ -96,7 +96,7 @@ export function MealHero({
     <div className="flex flex-col gap-1">
       <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted lg:text-[12px]">{eyebrow}</p>
       <h2 className="font-serif-text text-[25px] font-[650] leading-[1.12] text-ink lg:text-[32px] lg:leading-[1.1]">
-        <Link href={`/recipes/${first.recipeId}`} className="hover:underline hover:decoration-1 hover:underline-offset-4">
+        <Link href={slotRecipeHref(first.recipeId, ctx)} className="hover:underline hover:decoration-1 hover:underline-offset-4">
           {name}
         </Link>
       </h2>
@@ -166,7 +166,7 @@ export function MealHero({
       className={layout === "card" ? "relative h-[420px] overflow-hidden rounded-[24px]" : "relative mt-3"}
     >
       <Link
-        href={`/recipes/${first.recipeId}`}
+        href={slotRecipeHref(first.recipeId, ctx)}
         tabIndex={-1}
         aria-hidden="true"
         className={layout === "card" ? "block h-full" : "block"}
@@ -241,7 +241,7 @@ export function MealRow({
     <div className="mx-4 flex items-center gap-1">
       {first ? (
         <Link
-          href={`/recipes/${first.recipeId}`}
+          href={slotRecipeHref(first.recipeId, ctx)}
           className="flex min-w-0 flex-1 items-center gap-3.5 rounded-2xl text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
         >
           {body}

@@ -8,6 +8,7 @@ import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import {
   computeListTotal,
   generateShoppingList,
+  withLeftoverBatches,
   mergeStaplesIntoItems,
 } from '../services/shoppingList.js'
 import { canAccessRow, getPrimaryHouseholdId, resolveScope } from '../services/scopeResolver.js'
@@ -209,6 +210,7 @@ router.get('/shopping-list', async (req: AuthRequest, res) => {
     // covering menu. Today's already-passed meals are dropped.
     const span = daysBetween(from, to) + 1
     const aggregatedDays: DayMenu[] = []
+    const batchedWeeks = new Map<string, DayMenu[]>()
     for (let i = 0; i < span; i++) {
       const date = shiftDate(from, i)
       const wk = mondayOf(date)
@@ -218,7 +220,10 @@ router.get('/shopping-list', async (req: AuthRequest, res) => {
         continue
       }
       const dowIndex = daysBetween(wk, date) // 0..6
-      const day = (menu.days as DayMenu[])[dowIndex] ?? {}
+      // Leftovers resolve against their own week before re-indexing (PRO-75).
+      let weekDays = batchedWeeks.get(wk)
+      if (!weekDays) batchedWeeks.set(wk, (weekDays = withLeftoverBatches(menu.days as DayMenu[])))
+      const day = weekDays[dowIndex] ?? {}
       aggregatedDays.push(date === todayMadrid ? filterPastTodayMeals(day, hourMadrid) : day)
     }
 
@@ -342,7 +347,7 @@ router.get('/shopping-list/:menuId', async (req: AuthRequest, res) => {
     // Generate the shopping list — pass the household id so the aggregator
     // applies `recipe_notes.ingredient_overrides` (remove / modify / add)
     // before scaling.
-    const menuItems = await generateShoppingList(days, multiplier, db, householdId)
+    const menuItems = await generateShoppingList(withLeftoverBatches(days), multiplier, db, householdId)
     const staples = householdId ? await listActiveStaplesForHousehold(householdId) : []
     const items = mergeStaplesIntoItems(menuItems, staples)
 
@@ -518,7 +523,7 @@ router.post('/shopping-list/:listId/regenerate', async (req: AuthRequest, res) =
     const householdId = list.householdId ?? menu.householdId ?? null
 
     const menuItems = await generateShoppingList(
-      menu.days as DayMenu[],
+      withLeftoverBatches(menu.days as DayMenu[]),
       multiplier,
       db,
       householdId,

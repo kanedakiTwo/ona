@@ -92,7 +92,19 @@ export interface SlotContext {
   isLocked: boolean
   /** Household diner count used when the slot has no override. */
   defaultDiners: number
+  /** Servings the batch cooks, táper included (`batchServings`, PRO-75). */
+  batchServings?: number
   isRegenerating?: boolean
+}
+
+/** Servings a menu dish opens its recipe / cook mode with (PRO-75). */
+export function slotServings(ctx: SlotContext): number {
+  return ctx.batchServings ?? ctx.slot.servings ?? ctx.defaultDiners
+}
+
+/** Recipe detail link for a menu dish, at the batch's servings (PRO-75). */
+export function slotRecipeHref(recipeId: string, ctx: SlotContext): string {
+  return `/recipes/${recipeId}?servings=${slotServings(ctx)}`
 }
 
 type OpenSheet = null | "actions" | "picker" | "pin" | "addDish" | "confirmBan" | "confirmRemove"
@@ -174,7 +186,7 @@ export function MealOptionsSheets({
 
         <div className="flex flex-col gap-0.5">
           {first && (
-            <SheetAction icon={BookOpen} label="Ver receta" href={`/recipes/${first.recipeId}`} />
+            <SheetAction icon={BookOpen} label="Ver receta" href={slotRecipeHref(first.recipeId, ctx)} />
           )}
           {canReshape && (
             <>

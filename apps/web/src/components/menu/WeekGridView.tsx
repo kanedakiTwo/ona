@@ -532,7 +532,8 @@ function SlotRow({
   const recipeDishes = dishes.filter((d): d is RecipeDish => d.kind === 'recipe')
   const firstRecipe = recipeDishes[0] ?? null
   const slotPinnedType = firstRecipe?.pinnedType ?? null
-  const slotServingsOverride = slot?.servings ?? null
+  // A leftover is part of its source batch: no «N pax» chip (PRO-75).
+  const slotServingsOverride = firstRecipe?.variant === "leftover" ? null : slot?.servings ?? null
 
   // Empty slot (no dishes at all) — keep the dashed "+ Añadir" affordance.
   if (dishes.length === 0) {

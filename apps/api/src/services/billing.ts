@@ -73,7 +73,7 @@ export interface CheckoutInput {
  * The Checkout Session for a new subscription. Before launch day the
  * subscription trials until then (card now, first charge on launch day).
  * Parameters Managed Payments refuses (automatic_tax, tax id collection,
- * payment_method_types…) are never sent.
+ * payment_method_types, custom_text…) are never sent: Stripe answers 400.
  */
 export function buildCheckoutParams(i: CheckoutInput): Stripe.Checkout.SessionCreateParams {
   const meta = { userId: i.userId, householdId: i.householdId, plan: i.plan, period: i.period }
@@ -91,15 +91,6 @@ export function buildCheckoutParams(i: CheckoutInput): Stripe.Checkout.SessionCr
       metadata: meta,
       ...(trialUntilLaunch ? { trial_end: Math.floor(launch.getTime() / 1000) } : {}),
     },
-    ...(trialUntilLaunch
-      ? {
-          custom_text: {
-            submit: {
-              message: `No se cobra nada hasta el ${formatDayEs(launch)}. Puedes cancelar antes desde Mimoia sin pagar nada.`,
-            },
-          },
-        }
-      : {}),
     success_url: `${i.webUrl}/profile/suscripcion?estado=ok`,
     cancel_url: `${i.webUrl}/profile/suscripcion?estado=cancelado`,
   }

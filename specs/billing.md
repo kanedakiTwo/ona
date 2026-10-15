@@ -44,7 +44,7 @@ Prices include VAT. Caps have no figures yet (PRO-15 sets them on 2026-11-24 wit
 
 - Env (API): `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`; links use `WEB_PUBLIC_URL`.
 - `apps/api/scripts/stripeSetup.ts` (idempotent) creates in the Stripe account: products «Mimoia Esencial» / «Mimoia Plus» with tax code `txcd_10103000` (SaaS, personal use; required by Managed Payments), four EUR prices with `tax_behavior: inclusive` and lookup keys `esencial_mensual`, `esencial_anual`, `plus_mensual`, `plus_anual` (a changed price gets a new Price and the lookup key moves to it), the webhook endpoint (`--webhook-url`; its secret is written to `--secret-out`, never printed) and the default customer portal configuration.
-- Managed Payments must be accepted in the Stripe Dashboard. Checkout never sends what it refuses (`automatic_tax`, `tax_id_collection`, `payment_method_types`, `invoice_creation`…).
+- Managed Payments must be accepted in the Stripe Dashboard. Checkout never sends what it refuses (`automatic_tax`, `tax_id_collection`, `payment_method_types`, `invoice_creation`, `custom_text`…: Stripe answers 400 «You cannot use custom_text with Managed Payments», found in staging 2026-10-15). The «no se cobra nada hasta el 12 de enero» line lives on our pages; Stripe's checkout shows the trial until that date.
 
 ## Constraints / known limitations
 

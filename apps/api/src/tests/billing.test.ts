@@ -86,7 +86,6 @@ describe('buildCheckoutParams', () => {
     expect(p.line_items).toEqual([{ price: 'price_123', quantity: 1 }])
     expect(p.subscription_data?.trial_end).toBe(Math.floor(launchInstant().getTime() / 1000))
     expect(new Date(p.subscription_data!.trial_end! * 1000).toISOString()).toBe('2027-01-11T23:00:00.000Z')
-    expect(p.custom_text?.submit?.message).toMatch(/No se cobra nada hasta el 12 de enero de 2027/)
     expect(p.customer_email).toBe('ana@example.com')
     expect(p.subscription_data?.metadata).toEqual({ userId: 'u1', householdId: 'h1', plan: 'esencial', period: 'mensual' })
     expect(p.success_url).toBe('https://mimoia.com/profile/suscripcion?estado=ok')
@@ -95,7 +94,7 @@ describe('buildCheckoutParams', () => {
 
   it('never sends what Managed Payments refuses', () => {
     const p = buildCheckoutParams({ ...base, now: BETA_NOW }) as Record<string, unknown>
-    for (const k of ['automatic_tax', 'tax_id_collection', 'payment_method_types', 'invoice_creation', 'adaptive_pricing']) {
+    for (const k of ['automatic_tax', 'tax_id_collection', 'payment_method_types', 'invoice_creation', 'adaptive_pricing', 'custom_text']) {
       expect(p[k]).toBeUndefined()
     }
   })

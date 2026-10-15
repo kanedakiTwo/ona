@@ -50,16 +50,20 @@ Every paid provider call writes one row — user (nullable), household (user's p
 | `ingredient_nutrition_estimate` ("Estimar con Mimoia") | Anthropic Opus 4.6 | user |
 | `recipe_image` (regenerate image) | AIKIT Imagen-fal | user (seed script: system) |
 | `whatsapp_review` (daily conversation reviewer) | Anthropic Opus 5.5 | system |
+| `whatsapp_template` (Mimoia-initiated template, outside the 24 h window) | Meta `utility_template` | user |
+| `whatsapp_service` (each free-form message Mimo sends: replies, and proactive messages inside the 24 h window) | Meta `service_message` | user (`null` for a number not linked yet) |
 
 Attribution: every authed request runs in a per-request context carrying the user, so deep calls (matcher, unit fallback, translator) are billed without threading ids. Multipart routes (photo extraction, `POST /stt`) re-enter it after the upload parser. Each WhatsApp inbound turn runs in its own context that the budget check fills in once the phone resolves to a user. Schedulers and scripts have no context → system.
 
-Not costs, so not recorded: WhatsApp free-form ("service") replies inside the 24 h window, USDA / BEDCA lookups, YouTube/article fetches.
+WhatsApp service messages (since 2026-10-01 Meta bills them): one row per message sent, always. Meta gives each business number 1,000 free service messages a month, so the first 1,000 of the Madrid calendar month are recorded as `units.freeMessages = 1` (0 €) and the 1,001st onwards as `units.messages = 1` (€0.0166). The tier is counted over all `whatsapp_service` rows of the month (Mimoia has one number); if that count can't be read the message is recorded as priced. Neither templates nor service messages count as household activity (they're Mimoia's messages; the user's own inbound message already counts).
+
+Not costs, so not recorded: USDA / BEDCA lookups, YouTube/article fetches.
 
 ## Prices
 
 All rates live in `config/pricing.ts` (source + date in comments), in the provider's currency; USD is converted with `ADVISOR_EUR_PER_USD` (the same knob the advisor budget uses, default 0.92). The advisor's € budget prices Haiku from the same table, so budget and ledger never disagree. `COST_PRICE_OVERRIDES` (JSON, e.g. `{"openai/gpt-realtime":{"perMinute":0.15}}`) corrects or adds a price without a code change; malformed values are ignored with a warning.
 
-The `openai/gpt-realtime*` entries stay in the table so historical `voice_realtime` rows keep their price. ElevenLabs is priced per 1,000 characters by model (`elevenlabs/<model>`). Marked UNVERIFIED (estimates, override when known): Realtime voice blended **$0.10 / session-minute** (historical; token rates verified, the per-minute blend is derived), WhatsApp Spain utility template **€0.0166** (matches third-party rate cards; Meta's official CSV not checked) and marketing **€0.0585**, AIKIT image **$0.04**.
+The `openai/gpt-realtime*` entries stay in the table so historical `voice_realtime` rows keep their price. ElevenLabs is priced per 1,000 characters by model (`elevenlabs/<model>`). Marked UNVERIFIED (estimates, override when known): Realtime voice blended **$0.10 / session-minute** (historical; token rates verified, the per-minute blend is derived), AIKIT image **$0.04**. Meta WhatsApp Spain is verified against Meta's EUR list rates effective 2026-10-01 (checked 2026-10-13): utility template and service message **€0.0166**, marketing **€0.0585**.
 
 ## Activity log (`activity_events`)
 
@@ -107,7 +111,7 @@ Conservación: el tick del planificador borra una vez al día los eventos de má
 
 - **Los eventos de uso empiezan cuando se despliega esto.** Sin relleno hacia atrás: el embudo solo conoce las altas registradas desde entonces. El modo cocina de la web («Empezar a cocinar») no llama al servidor, así que `cook_mode_started` solo llega desde Mimo; `meal_cooked` cubre la web. Abrir una pantalla sin llamada a la API (detalle de receta, perfil) no se registra. Las conversaciones de Mimo en la web no se guardan: `mimo_message` las cuenta, pero no hay texto que revisar.
 - **History starts at deploy.** No backfill: weeks before `dataSince` under-report cost and resolved weeks (the old per-user advisor counter has no per-call history).
-- **WhatsApp template sends are not yet in the ledger.** They are only sent outside the 24 h window when `WHATSAPP_TEMPLATE_NAME` is set (not set in prod today, so the real cost is €0). The fix is one line in `services/whatsapp/outbound.ts` `sendProactive` after `sendTemplate`: `recordCost({ feature: 'whatsapp_template', provider: 'meta_whatsapp', model: 'utility_template', units: { messages: 1 }, userId: link.userId })` (price already in the table; the activity query already excludes this feature).
+- **WhatsApp service messages are counted when sent, not when delivered** (Meta bills delivered ones), and the free tier is counted on the Madrid calendar month and over all `whatsapp_service` rows, so a second number or a failed delivery would make the estimate slightly high. Two messages sent at the same instant can both see the same count at the 1,000 boundary.
 - Historical `voice_realtime` rows (until 2026-10-09) trusted client-reported minutes (the retired `POST /realtime/:userId/usage`); a crashed tab reported nothing.
 - One-off catalog scripts with their own Claude clients (`regenerateRecipes`, `populatePrepRequirements`, `populateRecipeCourses`, `measure-tokens`) are not recorded.
 - Households are resolved through the user's *current* primary household; a user who switches household moves their past activity with them.
@@ -137,5 +141,5 @@ Conservación: el tick del planificador borra una vez al día los eventos de má
 - [apps/api/src/services/activityEvents.ts](../apps/api/src/services/activityEvents.ts) — shopping-use log + middleware
 - [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts) (`costEvents`, `activityEvents`), [apps/api/src/db/migrations/0033_cost_ledger.sql](../apps/api/src/db/migrations/0033_cost_ledger.sql)
 - [apps/api/src/config/env.ts](../apps/api/src/config/env.ts) — `METRICS_READ_TOKEN`, `COST_PRICE_OVERRIDES`, `ADVISOR_EUR_PER_USD`
-- Recording call sites: `services/advisorBudget.ts`, `services/providers/anthropic.ts`, `services/ingredientMatcherLLM.ts`, `services/llmUnitFallback.ts`, `services/nutrition/usdaTranslator.ts`, `services/stt.ts`, `services/tts.ts`, `services/recipeImageGenerator.ts`, `services/whatsapp/reviewer.ts`, `routes/ingredients.ts`; attribution in `middleware/auth.ts`, `routes/recipes.ts` (photo extraction), `routes/stt.ts` (re-enters it after the audio upload), `routes/whatsapp.ts`; skill activity in `services/assistant/engine.ts`
+- Recording call sites: `services/advisorBudget.ts`, `services/providers/anthropic.ts`, `services/ingredientMatcherLLM.ts`, `services/llmUnitFallback.ts`, `services/nutrition/usdaTranslator.ts`, `services/stt.ts`, `services/tts.ts`, `services/recipeImageGenerator.ts`, `services/whatsapp/reviewer.ts`, `services/whatsapp/outbound.ts` (templates), `services/whatsapp/serviceCost.ts` (service messages, called from `outbound.ts` and `inbound.ts`), `routes/ingredients.ts`; attribution in `middleware/auth.ts`, `routes/recipes.ts` (photo extraction), `routes/stt.ts` (re-enters it after the audio upload), `routes/whatsapp.ts`; skill activity in `services/assistant/engine.ts`
 - Tests: `apps/api/src/tests/businessMetrics.test.ts`, `costPricing.test.ts`, `costLedger.test.ts`, `metricsAuth.test.ts`, `activityEvents.test.ts`, `usageEvents.test.ts`, `usageReport.test.ts`; e2e `apps/web/e2e/first-steps.spec.ts` (the `outcome` body)

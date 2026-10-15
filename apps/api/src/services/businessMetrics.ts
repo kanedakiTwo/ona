@@ -268,7 +268,7 @@ export const DEFINITIONS = {
     'Households that (a) have a menu whose week_start is that week AND (b) used the shopping list (checked an item, toggled in-stock, or added an item — web or assistant) during that week or the Saturday/Sunday right before it. Opening the list does not count: the list row is rewritten on every read, including by the WhatsApp shopping reminder.',
   newHouseholds: 'Households created (at registration) that week and still primary for a counted user.',
   costEur:
-    'Estimated provider cost (EUR) from the cost ledger for counted users plus system jobs (userId null, e.g. the daily conversation reviewer), split by provider and feature. Prices in config/pricing.ts; USD converted with ADVISOR_EUR_PER_USD. Free WhatsApp service replies are not costs.',
+    'Estimated provider cost (EUR) from the cost ledger for counted users plus system jobs (userId null, e.g. the daily conversation reviewer), split by provider and feature. Prices in config/pricing.ts; USD converted with ADVISOR_EUR_PER_USD. WhatsApp service messages sent by Mimo are recorded one row each (feature whatsapp_service): 0 € for the first 1,000 of the month, €0.0166 from the 1,001st.',
   costPerActiveHouseholdEur: 'costEur.total / activeHouseholds for the week (null when no household was active).',
   costPerActiveHouseholdWeekEur: 'Window total costEur / sum of weekly activeHouseholds.',
   cohorts: 'Households grouped by signup week; retention.wK = share of the cohort active in week signup+K (null until that week starts; the current week is partial).',
@@ -325,10 +325,10 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
         FROM voice_transcripts v JOIN users u ON u.id = v.user_id
         WHERE v.role = 'user' AND v.created_at >= ${from} AND ${counted}
       UNION ALL
-      -- Paid features the user triggered (proactive templates are Mimoia's initiative, not activity).
+      -- Paid features the user triggered (Mimo's own WhatsApp messages — templates and service replies — are not the user's activity).
       SELECT COALESCE(ce.household_id, u.primary_household_id), ce.created_at
         FROM cost_events ce JOIN users u ON u.id = ce.user_id
-        WHERE ce.feature <> 'whatsapp_template' AND ce.created_at >= ${from} AND ${counted}
+        WHERE ce.feature NOT IN ('whatsapp_template', 'whatsapp_service') AND ce.created_at >= ${from} AND ${counted}
     )
     SELECT ev.hh::text AS household_id, ${weekOf(sql`ev.at`)} AS week
       FROM ev

@@ -1,0 +1,5532 @@
+[
+ {
+  "name": "Acelgas rehogadas",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": null,
+  "allergens": [],
+  "stepCount": 7,
+  "ingredients": [
+   {
+    "name": "acelgas",
+    "quantity": 1000,
+    "unit": "g"
+   },
+   {
+    "name": "patata",
+    "quantity": 300,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 6,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 15,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Albondigas en salsa espanola",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "main",
+  "allergens": [
+   "gluten"
+  ],
+  "stepCount": 6,
+  "ingredients": [
+   {
+    "name": "ternera",
+    "quantity": 1000,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "zanahoria",
+    "quantity": 150,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 10,
+    "unit": "g"
+   },
+   {
+    "name": "harina de trigo",
+    "quantity": 15,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 30,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Albóndigas gipsy",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "main",
+  "allergens": [
+   "gluten",
+   "huevo",
+   "lactosa"
+  ],
+  "stepCount": 6,
+  "ingredients": [
+   {
+    "name": "ternera",
+    "quantity": 500,
+    "unit": "g"
+   },
+   {
+    "name": "pan blanco",
+    "quantity": 50,
+    "unit": "g"
+   },
+   {
+    "name": "leche entera",
+    "quantity": 50,
+    "unit": "ml"
+   },
+   {
+    "name": "huevo",
+    "quantity": 1,
+    "unit": "u"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 150,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 8,
+    "unit": "g"
+   },
+   {
+    "name": "perejil",
+    "quantity": 5,
+    "unit": "g"
+   },
+   {
+    "name": "tomate triturado",
+    "quantity": 300,
+    "unit": "g"
+   },
+   {
+    "name": "caldo de verduras",
+    "quantity": 200,
+    "unit": "ml"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 50,
+    "unit": "ml"
+   },
+   {
+    "name": "pimentón dulce",
+    "quantity": 1,
+    "unit": "cdita"
+   },
+   {
+    "name": "comino",
+    "quantity": 1,
+    "unit": "cdita"
+   },
+   {
+    "name": "harina de trigo",
+    "quantity": 30,
+    "unit": "g"
+   },
+   {
+    "name": "sal",
+    "quantity": 1,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "pimienta negra",
+    "quantity": 1,
+    "unit": "al_gusto"
+   }
+  ]
+ },
+ {
+  "name": "Alitas de pollo al horno",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "main",
+  "allergens": [
+   "gluten",
+   "sesamo",
+   "soja"
+  ],
+  "stepCount": 6,
+  "ingredients": [
+   {
+    "name": "pollo",
+    "quantity": 800,
+    "unit": "g"
+   },
+   {
+    "name": "salsa de soja",
+    "quantity": 30,
+    "unit": "ml"
+   },
+   {
+    "name": "miel",
+    "quantity": 30,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 10,
+    "unit": "g"
+   },
+   {
+    "name": "jengibre fresco",
+    "quantity": 10,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 15,
+    "unit": "ml"
+   },
+   {
+    "name": "pimentón dulce",
+    "quantity": 1,
+    "unit": "cdita"
+   },
+   {
+    "name": "sesamo",
+    "quantity": 5,
+    "unit": "g"
+   },
+   {
+    "name": "pimienta negra",
+    "quantity": 1,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "sal",
+    "quantity": 1,
+    "unit": "al_gusto"
+   }
+  ]
+ },
+ {
+  "name": "Alubias rojas con entraña y embutidos",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": null,
+  "allergens": [
+   "gluten"
+  ],
+  "stepCount": 8,
+  "ingredients": [
+   {
+    "name": "judias rojas",
+    "quantity": 120,
+    "unit": "g"
+   },
+   {
+    "name": "entraña de ternera",
+    "quantity": 500,
+    "unit": "g"
+   },
+   {
+    "name": "chorizo oreado",
+    "quantity": 3,
+    "unit": "u"
+   },
+   {
+    "name": "morcilla de cebolla",
+    "quantity": 150,
+    "unit": "g"
+   },
+   {
+    "name": "panceta salada curada",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "patata",
+    "quantity": 2,
+    "unit": "u"
+   },
+   {
+    "name": "zanahoria",
+    "quantity": 2,
+    "unit": "u"
+   },
+   {
+    "name": "pimiento verde",
+    "quantity": 2,
+    "unit": "u"
+   },
+   {
+    "name": "tomate",
+    "quantity": 1,
+    "unit": "u"
+   },
+   {
+    "name": "ajo",
+    "quantity": 3,
+    "unit": "u"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 0.5,
+    "unit": "u"
+   },
+   {
+    "name": "pimentón dulce",
+    "quantity": 30,
+    "unit": "ml"
+   },
+   {
+    "name": "cilantro",
+    "quantity": 10,
+    "unit": "g"
+   },
+   {
+    "name": "comino",
+    "quantity": 0.5,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen extra",
+    "quantity": 0,
+    "unit": "ml"
+   },
+   {
+    "name": "sal",
+    "quantity": 0,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Arroz al caldero",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "main",
+  "allergens": [],
+  "stepCount": 0,
+  "ingredients": [
+   {
+    "name": "arroz",
+    "quantity": 500,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 3,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Arroz al horno",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "spring",
+   "summer",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "spring": "perfect",
+   "summer": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": null,
+  "allergens": [
+   "gluten"
+  ],
+  "stepCount": 4,
+  "ingredients": [
+   {
+    "name": "arroz",
+    "quantity": 400,
+    "unit": "g"
+   },
+   {
+    "name": "caldo de cocido",
+    "quantity": 2000,
+    "unit": "ml"
+   },
+   {
+    "name": "panceta",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "morcilla de cebolla",
+    "quantity": 2,
+    "unit": "u"
+   },
+   {
+    "name": "costillas de cerdo",
+    "quantity": 250,
+    "unit": "g"
+   },
+   {
+    "name": "tomate",
+    "quantity": 1,
+    "unit": "u"
+   },
+   {
+    "name": "patata",
+    "quantity": 1,
+    "unit": "u"
+   },
+   {
+    "name": "garbanzos",
+    "quantity": 300,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 1,
+    "unit": "u"
+   }
+  ]
+ },
+ {
+  "name": "Arroz con bacalao",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "main",
+  "allergens": [
+   "pescado"
+  ],
+  "stepCount": 7,
+  "ingredients": [
+   {
+    "name": "arroz",
+    "quantity": 320,
+    "unit": "g"
+   },
+   {
+    "name": "bacalao",
+    "quantity": 400,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 8,
+    "unit": "g"
+   },
+   {
+    "name": "tomate triturado",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "pimiento rojo",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "guisantes",
+    "quantity": 80,
+    "unit": "g"
+   },
+   {
+    "name": "caldo de verduras",
+    "quantity": 800,
+    "unit": "ml"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 30,
+    "unit": "ml"
+   },
+   {
+    "name": "pimentón dulce",
+    "quantity": 1,
+    "unit": "cdita"
+   },
+   {
+    "name": "sal",
+    "quantity": 1,
+    "unit": "al_gusto"
+   }
+  ]
+ },
+ {
+  "name": "Arroz con pollo",
+  "servings": 4,
+  "meals": [
+   "lunch"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "main",
+  "allergens": [],
+  "stepCount": 0,
+  "ingredients": [
+   {
+    "name": "pimiento rojo",
+    "quantity": 60,
+    "unit": "g"
+   },
+   {
+    "name": "pollo",
+    "quantity": 120,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 10,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 5,
+    "unit": "g"
+   },
+   {
+    "name": "arroz",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 50,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Arroz tres delicias",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "spring": "perfect",
+   "summer": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": null,
+  "allergens": [
+   "crustaceos",
+   "gluten",
+   "huevo",
+   "marisco",
+   "soja"
+  ],
+  "stepCount": 4,
+  "ingredients": [
+   {
+    "name": "arroz de grano largo",
+    "quantity": 400,
+    "unit": "g"
+   },
+   {
+    "name": "zanahoria",
+    "quantity": 1,
+    "unit": "u"
+   },
+   {
+    "name": "gambas",
+    "quantity": 150,
+    "unit": "g"
+   },
+   {
+    "name": "guisantes",
+    "quantity": 75,
+    "unit": "g"
+   },
+   {
+    "name": "jamón de york",
+    "quantity": 75,
+    "unit": "g"
+   },
+   {
+    "name": "huevos",
+    "quantity": 2,
+    "unit": "u"
+   },
+   {
+    "name": "salsa de soja",
+    "quantity": 20,
+    "unit": "ml"
+   },
+   {
+    "name": "azúcar",
+    "quantity": 10,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen extra",
+    "quantity": 20,
+    "unit": "ml"
+   }
+  ]
+ },
+ {
+  "name": "Avgolemono (sopa griega de limón)",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": null,
+  "allergens": [
+   "huevo"
+  ],
+  "stepCount": 1,
+  "ingredients": [
+   {
+    "name": "caldo de pollo",
+    "quantity": 1000,
+    "unit": "ml"
+   },
+   {
+    "name": "arroz",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "pollo",
+    "quantity": 250,
+    "unit": "g"
+   },
+   {
+    "name": "limón",
+    "quantity": 1,
+    "unit": "u"
+   },
+   {
+    "name": "huevo",
+    "quantity": 2,
+    "unit": "u"
+   },
+   {
+    "name": "sal",
+    "quantity": 0,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "pimienta negra",
+    "quantity": 0,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "perejil",
+    "quantity": 5,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Bacalao con tomate",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "main",
+  "allergens": [
+   "pescado"
+  ],
+  "stepCount": 7,
+  "ingredients": [
+   {
+    "name": "bacalao",
+    "quantity": 300,
+    "unit": "g"
+   },
+   {
+    "name": "tomate",
+    "quantity": 200,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Berenjenas con queso",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "summer",
+   "autumn"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "summer": "perfect",
+   "autumn": "perfect"
+  },
+  "frequency": null,
+  "course": null,
+  "allergens": [
+   "lactosa"
+  ],
+  "stepCount": 6,
+  "ingredients": [
+   {
+    "name": "berenjena",
+    "quantity": 600,
+    "unit": "g"
+   },
+   {
+    "name": "tomate triturado",
+    "quantity": 300,
+    "unit": "g"
+   },
+   {
+    "name": "mozzarella",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "queso parmesano",
+    "quantity": 50,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 6,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 30,
+    "unit": "ml"
+   },
+   {
+    "name": "oregano",
+    "quantity": 1,
+    "unit": "cdita"
+   },
+   {
+    "name": "albahaca",
+    "quantity": 1,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "sal",
+    "quantity": 1,
+    "unit": "al_gusto"
+   }
+  ]
+ },
+ {
+  "name": "Berenjenas rellenas",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "summer",
+   "autumn"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "summer": "perfect",
+   "autumn": "perfect"
+  },
+  "frequency": null,
+  "course": "main",
+  "allergens": [
+   "lactosa"
+  ],
+  "stepCount": 5,
+  "ingredients": [
+   {
+    "name": "berenjena",
+    "quantity": 4,
+    "unit": "u"
+   },
+   {
+    "name": "ternera",
+    "quantity": 300,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 150,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 8,
+    "unit": "g"
+   },
+   {
+    "name": "tomate triturado",
+    "quantity": 300,
+    "unit": "g"
+   },
+   {
+    "name": "queso parmesano",
+    "quantity": 60,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 30,
+    "unit": "ml"
+   },
+   {
+    "name": "oregano",
+    "quantity": 1,
+    "unit": "cdita"
+   },
+   {
+    "name": "sal",
+    "quantity": 1,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "pimienta negra",
+    "quantity": 1,
+    "unit": "al_gusto"
+   }
+  ]
+ },
+ {
+  "name": "Boquerones fritos",
+  "servings": 3,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": null,
+  "allergens": [
+   "gluten",
+   "pescado"
+  ],
+  "stepCount": 4,
+  "ingredients": [
+   {
+    "name": "sal",
+    "quantity": 0,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "limón",
+    "quantity": 1,
+    "unit": "u"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 0,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "boquerones",
+    "quantity": 1000,
+    "unit": "g"
+   },
+   {
+    "name": "harina de trigo",
+    "quantity": 0,
+    "unit": "al_gusto"
+   }
+  ]
+ },
+ {
+  "name": "Carrilleras de ternera con vino tinto",
+  "servings": 4,
+  "meals": [
+   "lunch"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "main",
+  "allergens": [],
+  "stepCount": 0,
+  "ingredients": [
+   {
+    "name": "ternera",
+    "quantity": 400,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "zanahoria",
+    "quantity": 150,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 6,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 100,
+    "unit": "ml"
+   }
+  ]
+ },
+ {
+  "name": "Ceviche",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "starter",
+  "allergens": [
+   "pescado"
+  ],
+  "stepCount": 6,
+  "ingredients": [
+   {
+    "name": "salmon",
+    "quantity": 300,
+    "unit": "g"
+   },
+   {
+    "name": "aguacate",
+    "quantity": 150,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 80,
+    "unit": "g"
+   },
+   {
+    "name": "tomate",
+    "quantity": 100,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Cocido madrileno",
+  "servings": 4,
+  "meals": [
+   "lunch"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "main",
+  "allergens": [],
+  "stepCount": 7,
+  "ingredients": [
+   {
+    "name": "garbanzos",
+    "quantity": 300,
+    "unit": "g"
+   },
+   {
+    "name": "ternera",
+    "quantity": 400,
+    "unit": "g"
+   },
+   {
+    "name": "pollo",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "patata",
+    "quantity": 300,
+    "unit": "g"
+   },
+   {
+    "name": "zanahoria",
+    "quantity": 150,
+    "unit": "g"
+   },
+   {
+    "name": "puerro",
+    "quantity": 100,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Coliflor gratinada",
+  "servings": 4,
+  "meals": [
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": null,
+  "allergens": [
+   "gluten",
+   "lactosa"
+  ],
+  "stepCount": 0,
+  "ingredients": [
+   {
+    "name": "coliflor",
+    "quantity": 300,
+    "unit": "g"
+   },
+   {
+    "name": "leche entera",
+    "quantity": 150,
+    "unit": "g"
+   },
+   {
+    "name": "queso parmesano",
+    "quantity": 30,
+    "unit": "g"
+   },
+   {
+    "name": "mantequilla",
+    "quantity": 15,
+    "unit": "g"
+   },
+   {
+    "name": "harina de trigo",
+    "quantity": 15,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Conejo confitado con ajo y romero",
+  "servings": 2,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "spring",
+   "winter",
+   "summer"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "mid"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "spring": "perfect",
+   "summer": "mid",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "main",
+  "allergens": [
+   "gluten",
+   "sulfitos"
+  ],
+  "stepCount": 2,
+  "ingredients": [
+   {
+    "name": "sal",
+    "quantity": 0,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "pimienta negra",
+    "quantity": 0,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "romero",
+    "quantity": 5,
+    "unit": "u"
+   },
+   {
+    "name": "vino blanco",
+    "quantity": 300,
+    "unit": "ml"
+   },
+   {
+    "name": "ajo",
+    "quantity": 20,
+    "unit": "u"
+   },
+   {
+    "name": "harina de trigo",
+    "quantity": 0,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "aceite de oliva virgen extra",
+    "quantity": 250,
+    "unit": "ml"
+   },
+   {
+    "name": "conejo",
+    "quantity": 1,
+    "unit": "u"
+   }
+  ]
+ },
+ {
+  "name": "Contramuslos de pollo guisados",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "main",
+  "allergens": [
+   "sulfitos"
+  ],
+  "stepCount": 5,
+  "ingredients": [
+   {
+    "name": "pollo",
+    "quantity": 800,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "zanahoria",
+    "quantity": 150,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 10,
+    "unit": "g"
+   },
+   {
+    "name": "tomate triturado",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "vino blanco",
+    "quantity": 150,
+    "unit": "ml"
+   },
+   {
+    "name": "caldo de pollo",
+    "quantity": 300,
+    "unit": "ml"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 30,
+    "unit": "ml"
+   },
+   {
+    "name": "laurel",
+    "quantity": 2,
+    "unit": "u"
+   },
+   {
+    "name": "tomillo",
+    "quantity": 5,
+    "unit": "g"
+   },
+   {
+    "name": "sal",
+    "quantity": 1,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "pimienta negra",
+    "quantity": 1,
+    "unit": "al_gusto"
+   }
+  ]
+ },
+ {
+  "name": "Costillas a la riojana",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "main",
+  "allergens": [],
+  "stepCount": 5,
+  "ingredients": [
+   {
+    "name": "patata",
+    "quantity": 400,
+    "unit": "g"
+   },
+   {
+    "name": "costillas",
+    "quantity": 1000,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "pimiento verde",
+    "quantity": 50,
+    "unit": "g"
+   },
+   {
+    "name": "pimiento rojo",
+    "quantity": 50,
+    "unit": "g"
+   },
+   {
+    "name": "tomate",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 6,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 20,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Crema de calabacin",
+  "servings": 4,
+  "meals": [
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "starter",
+  "allergens": [],
+  "stepCount": 3,
+  "ingredients": [
+   {
+    "name": "calabacin",
+    "quantity": 1000,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 80,
+    "unit": "g"
+   },
+   {
+    "name": "puerro",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 40,
+    "unit": "ml"
+   },
+   {
+    "name": "patata",
+    "quantity": 150,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Crema de zanahoria",
+  "servings": 4,
+  "meals": [
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "starter",
+  "allergens": [],
+  "stepCount": 0,
+  "ingredients": [
+   {
+    "name": "patata",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "zanahoria",
+    "quantity": 250,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 10,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 5,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 50,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Crema de zanahoria con pollo, aguacate y granada",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "starter",
+  "allergens": [],
+  "stepCount": 17,
+  "ingredients": [
+   {
+    "name": "jengibre fresco",
+    "quantity": 1,
+    "unit": "u"
+   },
+   {
+    "name": "cebolleta",
+    "quantity": 1,
+    "unit": "u"
+   },
+   {
+    "name": "aceite de oliva virgen extra",
+    "quantity": 10,
+    "unit": "ml"
+   },
+   {
+    "name": "zanahoria",
+    "quantity": 500,
+    "unit": "g"
+   },
+   {
+    "name": "sal",
+    "quantity": 0,
+    "unit": "g"
+   },
+   {
+    "name": "comino",
+    "quantity": 0,
+    "unit": "g"
+   },
+   {
+    "name": "muslo de pollo",
+    "quantity": 1,
+    "unit": "u"
+   },
+   {
+    "name": "agua",
+    "quantity": 600,
+    "unit": "ml"
+   },
+   {
+    "name": "uva",
+    "quantity": 30,
+    "unit": "g"
+   },
+   {
+    "name": "aguacate",
+    "quantity": 1,
+    "unit": "u"
+   },
+   {
+    "name": "granada",
+    "quantity": 50,
+    "unit": "g"
+   },
+   {
+    "name": "alcaparras",
+    "quantity": 10,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Curry de berenjena",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "main",
+  "allergens": [],
+  "stepCount": 6,
+  "ingredients": [
+   {
+    "name": "berenjena",
+    "quantity": 400,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 5,
+    "unit": "ml"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 10,
+    "unit": "g"
+   },
+   {
+    "name": "pimiento rojo",
+    "quantity": 80,
+    "unit": "g"
+   },
+   {
+    "name": "tomate",
+    "quantity": 400,
+    "unit": "g"
+   },
+   {
+    "name": "lentejas",
+    "quantity": 265,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Curry de patatas y guisantes",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "main",
+  "allergens": [],
+  "stepCount": 6,
+  "ingredients": [
+   {
+    "name": "patata",
+    "quantity": 600,
+    "unit": "g"
+   },
+   {
+    "name": "guisantes",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 10,
+    "unit": "g"
+   },
+   {
+    "name": "jengibre fresco",
+    "quantity": 15,
+    "unit": "g"
+   },
+   {
+    "name": "tomate triturado",
+    "quantity": 300,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 30,
+    "unit": "ml"
+   },
+   {
+    "name": "comino",
+    "quantity": 1,
+    "unit": "cdita"
+   },
+   {
+    "name": "curcuma",
+    "quantity": 1,
+    "unit": "cdita"
+   },
+   {
+    "name": "pimentón dulce",
+    "quantity": 1,
+    "unit": "cdita"
+   },
+   {
+    "name": "caldo de verduras",
+    "quantity": 300,
+    "unit": "ml"
+   },
+   {
+    "name": "sal",
+    "quantity": 1,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "cilantro",
+    "quantity": 1,
+    "unit": "al_gusto"
+   }
+  ]
+ },
+ {
+  "name": "Dorada a la marsellesa",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect"
+  },
+  "frequency": null,
+  "course": "main",
+  "allergens": [
+   "pescado",
+   "sulfitos"
+  ],
+  "stepCount": 6,
+  "ingredients": [
+   {
+    "name": "dorada",
+    "quantity": 2,
+    "unit": "u"
+   },
+   {
+    "name": "tomate",
+    "quantity": 300,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 150,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 8,
+    "unit": "g"
+   },
+   {
+    "name": "aceitunas negras",
+    "quantity": 60,
+    "unit": "g"
+   },
+   {
+    "name": "vino blanco",
+    "quantity": 100,
+    "unit": "ml"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 40,
+    "unit": "ml"
+   },
+   {
+    "name": "tomillo",
+    "quantity": 5,
+    "unit": "g"
+   },
+   {
+    "name": "romero",
+    "quantity": 5,
+    "unit": "g"
+   },
+   {
+    "name": "limon",
+    "quantity": 1,
+    "unit": "u"
+   },
+   {
+    "name": "sal",
+    "quantity": 1,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "pimienta negra",
+    "quantity": 1,
+    "unit": "al_gusto"
+   }
+  ]
+ },
+ {
+  "name": "Ensalada de atun",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect"
+  },
+  "frequency": null,
+  "course": "starter",
+  "allergens": [
+   "pescado"
+  ],
+  "stepCount": 0,
+  "ingredients": [
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 10,
+    "unit": "g"
+   },
+   {
+    "name": "atun",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 40,
+    "unit": "g"
+   },
+   {
+    "name": "tomate",
+    "quantity": 150,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Ensalada griega",
+  "servings": 2,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect"
+  },
+  "frequency": null,
+  "course": null,
+  "allergens": [
+   "gluten",
+   "lactosa"
+  ],
+  "stepCount": 10,
+  "ingredients": [
+   {
+    "name": "aceitunas negras",
+    "quantity": 11,
+    "unit": "u"
+   },
+   {
+    "name": "pimiento verde",
+    "quantity": 0.5,
+    "unit": "u"
+   },
+   {
+    "name": "tomate",
+    "quantity": 1,
+    "unit": "u"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 125,
+    "unit": "ml"
+   },
+   {
+    "name": "pepino",
+    "quantity": 0.5,
+    "unit": "u"
+   },
+   {
+    "name": "oregano",
+    "quantity": 0,
+    "unit": "g"
+   },
+   {
+    "name": "sal",
+    "quantity": 0,
+    "unit": "g"
+   },
+   {
+    "name": "alcaparras",
+    "quantity": 30,
+    "unit": "g"
+   },
+   {
+    "name": "feta",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "limón",
+    "quantity": 1.5,
+    "unit": "u"
+   },
+   {
+    "name": "pan seco de algarroba",
+    "quantity": 40,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla morada",
+    "quantity": 1,
+    "unit": "u"
+   }
+  ]
+ },
+ {
+  "name": "Ensalada thai",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect"
+  },
+  "frequency": null,
+  "course": "starter",
+  "allergens": [
+   "frutos_secos",
+   "gluten",
+   "soja"
+  ],
+  "stepCount": 4,
+  "ingredients": [
+   {
+    "name": "zanahoria",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "pepino",
+    "quantity": 150,
+    "unit": "g"
+   },
+   {
+    "name": "tomate",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 50,
+    "unit": "g"
+   },
+   {
+    "name": "lechuga",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "almendras",
+    "quantity": 50,
+    "unit": "g"
+   },
+   {
+    "name": "lima",
+    "quantity": 2,
+    "unit": "u"
+   },
+   {
+    "name": "salsa de soja",
+    "quantity": 30,
+    "unit": "ml"
+   },
+   {
+    "name": "azucar",
+    "quantity": 15,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 6,
+    "unit": "g"
+   },
+   {
+    "name": "jengibre fresco",
+    "quantity": 5,
+    "unit": "g"
+   },
+   {
+    "name": "guindilla",
+    "quantity": 1,
+    "unit": "pizca"
+   },
+   {
+    "name": "cilantro",
+    "quantity": 10,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Espaguetis con ajo y aceite",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": null,
+  "allergens": [
+   "gluten",
+   "lactosa"
+  ],
+  "stepCount": 0,
+  "ingredients": [
+   {
+    "name": "queso parmesano",
+    "quantity": 15,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 15,
+    "unit": "g"
+   },
+   {
+    "name": "pasta",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 10,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Espinacas a la crema",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": null,
+  "allergens": [
+   "frutos_secos",
+   "lactosa"
+  ],
+  "stepCount": 4,
+  "ingredients": [
+   {
+    "name": "espinacas",
+    "quantity": 600,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 8,
+    "unit": "g"
+   },
+   {
+    "name": "nata liquida",
+    "quantity": 200,
+    "unit": "ml"
+   },
+   {
+    "name": "queso parmesano",
+    "quantity": 40,
+    "unit": "g"
+   },
+   {
+    "name": "mantequilla",
+    "quantity": 20,
+    "unit": "g"
+   },
+   {
+    "name": "nuez moscada",
+    "quantity": 1,
+    "unit": "pizca"
+   },
+   {
+    "name": "sal",
+    "quantity": 1,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "pimienta negra",
+    "quantity": 1,
+    "unit": "al_gusto"
+   }
+  ]
+ },
+ {
+  "name": "Fajitas de pollo",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "main",
+  "allergens": [],
+  "stepCount": 4,
+  "ingredients": [
+   {
+    "name": "pollo",
+    "quantity": 500,
+    "unit": "g"
+   },
+   {
+    "name": "pimiento rojo",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "pimiento verde",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 8,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 30,
+    "unit": "ml"
+   },
+   {
+    "name": "comino",
+    "quantity": 1,
+    "unit": "cdita"
+   },
+   {
+    "name": "pimentón dulce",
+    "quantity": 1,
+    "unit": "cdita"
+   },
+   {
+    "name": "lima",
+    "quantity": 1,
+    "unit": "u"
+   },
+   {
+    "name": "sal",
+    "quantity": 1,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "cilantro",
+    "quantity": 1,
+    "unit": "al_gusto"
+   }
+  ]
+ },
+ {
+  "name": "Falafel",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": null,
+  "allergens": [
+   "gluten"
+  ],
+  "stepCount": 6,
+  "ingredients": [
+   {
+    "name": "garbanzos",
+    "quantity": 400,
+    "unit": "g"
+   },
+   {
+    "name": "guisantes",
+    "quantity": 150,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 6,
+    "unit": "g"
+   },
+   {
+    "name": "harina de trigo",
+    "quantity": 8,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 15,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Garbanzos con espinacas",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "main",
+  "allergens": [
+   "gluten",
+   "sulfitos"
+  ],
+  "stepCount": 6,
+  "ingredients": [
+   {
+    "name": "garbanzos",
+    "quantity": 500,
+    "unit": "g"
+   },
+   {
+    "name": "espinacas",
+    "quantity": 400,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 150,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 12,
+    "unit": "g"
+   },
+   {
+    "name": "tomate triturado",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "pan blanco",
+    "quantity": 30,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 40,
+    "unit": "ml"
+   },
+   {
+    "name": "pimentón dulce",
+    "quantity": 1,
+    "unit": "cdita"
+   },
+   {
+    "name": "comino",
+    "quantity": 1,
+    "unit": "cdita"
+   },
+   {
+    "name": "caldo de verduras",
+    "quantity": 200,
+    "unit": "ml"
+   },
+   {
+    "name": "vinagre de vino",
+    "quantity": 15,
+    "unit": "ml"
+   },
+   {
+    "name": "sal",
+    "quantity": 1,
+    "unit": "al_gusto"
+   }
+  ]
+ },
+ {
+  "name": "Guisantes lagrima",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": null,
+  "allergens": [],
+  "stepCount": 5,
+  "ingredients": [
+   {
+    "name": "guisantes",
+    "quantity": 300,
+    "unit": "g"
+   },
+   {
+    "name": "jamon",
+    "quantity": 50,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 80,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 10,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Hamburguesa perfecta de Gipsy Chef",
+  "servings": 2,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "spring": "perfect",
+   "summer": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": null,
+  "allergens": [
+   "gluten",
+   "lactosa",
+   "mostaza"
+  ],
+  "stepCount": 11,
+  "ingredients": [
+   {
+    "name": "carne de aguja",
+    "quantity": 125,
+    "unit": "g"
+   },
+   {
+    "name": "carne de aguja de retal",
+    "quantity": 125,
+    "unit": "g"
+   },
+   {
+    "name": "sal",
+    "quantity": 0,
+    "unit": "g"
+   },
+   {
+    "name": "pimienta negra",
+    "quantity": 0,
+    "unit": "g"
+   },
+   {
+    "name": "oregano",
+    "quantity": 0,
+    "unit": "g"
+   },
+   {
+    "name": "canela",
+    "quantity": 0,
+    "unit": "g"
+   },
+   {
+    "name": "mostaza",
+    "quantity": 5,
+    "unit": "ml"
+   },
+   {
+    "name": "tomate cherry",
+    "quantity": 4,
+    "unit": "u"
+   },
+   {
+    "name": "mantequilla",
+    "quantity": 30,
+    "unit": "g"
+   },
+   {
+    "name": "pan de hamburguesa",
+    "quantity": 2,
+    "unit": "u"
+   },
+   {
+    "name": "cogollo",
+    "quantity": 2,
+    "unit": "u"
+   },
+   {
+    "name": "tomate",
+    "quantity": 1,
+    "unit": "u"
+   }
+  ]
+ },
+ {
+  "name": "Hummus casero",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "spring": "perfect",
+   "summer": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": null,
+  "allergens": [
+   "lactosa",
+   "sesamo"
+  ],
+  "stepCount": 3,
+  "ingredients": [
+   {
+    "name": "garbanzos",
+    "quantity": 400,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen extra",
+    "quantity": 70,
+    "unit": "g"
+   },
+   {
+    "name": "semillas de sésamo",
+    "quantity": 60,
+    "unit": "g"
+   },
+   {
+    "name": "agua",
+    "quantity": 50,
+    "unit": "ml"
+   },
+   {
+    "name": "diente de ajo",
+    "quantity": 1,
+    "unit": "u"
+   },
+   {
+    "name": "sal",
+    "quantity": 5,
+    "unit": "g"
+   },
+   {
+    "name": "zumo de limón",
+    "quantity": 30,
+    "unit": "g"
+   },
+   {
+    "name": "comino",
+    "quantity": 5,
+    "unit": "g"
+   },
+   {
+    "name": "yogur natural",
+    "quantity": 100,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Judias verdes rehogadas",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "spring": "perfect",
+   "summer": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": null,
+  "allergens": [],
+  "stepCount": 4,
+  "ingredients": [
+   {
+    "name": "patata",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "judias verdes",
+    "quantity": 1000,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 60,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 15,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Lasaña de verduras",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "main",
+  "allergens": [
+   "frutos_secos",
+   "gluten",
+   "lactosa"
+  ],
+  "stepCount": 6,
+  "ingredients": [
+   {
+    "name": "pasta",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "calabacin",
+    "quantity": 300,
+    "unit": "g"
+   },
+   {
+    "name": "berenjena",
+    "quantity": 300,
+    "unit": "g"
+   },
+   {
+    "name": "espinacas",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 150,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 10,
+    "unit": "g"
+   },
+   {
+    "name": "tomate triturado",
+    "quantity": 400,
+    "unit": "g"
+   },
+   {
+    "name": "mozzarella",
+    "quantity": 150,
+    "unit": "g"
+   },
+   {
+    "name": "queso parmesano",
+    "quantity": 50,
+    "unit": "g"
+   },
+   {
+    "name": "leche entera",
+    "quantity": 300,
+    "unit": "ml"
+   },
+   {
+    "name": "mantequilla",
+    "quantity": 30,
+    "unit": "g"
+   },
+   {
+    "name": "harina de trigo",
+    "quantity": 30,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 30,
+    "unit": "ml"
+   },
+   {
+    "name": "oregano",
+    "quantity": 1,
+    "unit": "cdita"
+   },
+   {
+    "name": "sal",
+    "quantity": 1,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "nuez moscada",
+    "quantity": 1,
+    "unit": "pizca"
+   }
+  ]
+ },
+ {
+  "name": "Lentejas estofadas",
+  "servings": 4,
+  "meals": [
+   "lunch"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "main",
+  "allergens": [],
+  "stepCount": 0,
+  "ingredients": [
+   {
+    "name": "patata",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "zanahoria",
+    "quantity": 80,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 10,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 5,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 60,
+    "unit": "g"
+   },
+   {
+    "name": "lentejas",
+    "quantity": 100,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Lentejas guisadas",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "main",
+  "allergens": [],
+  "stepCount": 8,
+  "ingredients": [
+   {
+    "name": "lentejas",
+    "quantity": 500,
+    "unit": "g"
+   },
+   {
+    "name": "zanahoria",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 6,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "pimiento verde",
+    "quantity": 60,
+    "unit": "g"
+   },
+   {
+    "name": "tomate",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 40,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Melón con jamón",
+  "servings": 4,
+  "meals": [
+   "dinner",
+   "lunch"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn"
+  ],
+  "mealFit": {
+   "lunch": "mid",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "mid",
+   "spring": "perfect",
+   "summer": "perfect"
+  },
+  "frequency": null,
+  "course": "starter",
+  "allergens": [],
+  "stepCount": 4,
+  "ingredients": [
+   {
+    "name": "melon",
+    "quantity": 2000,
+    "unit": "g"
+   },
+   {
+    "name": "jamón serrano fileteado",
+    "quantity": 200,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Menestra de verduras con carne",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "main",
+  "allergens": [],
+  "stepCount": 4,
+  "ingredients": [
+   {
+    "name": "ajo",
+    "quantity": 10,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "pimiento rojo",
+    "quantity": 80,
+    "unit": "g"
+   },
+   {
+    "name": "guisantes",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "judias verdes",
+    "quantity": 150,
+    "unit": "g"
+   },
+   {
+    "name": "ternera",
+    "quantity": 200,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Onigirazu",
+  "servings": 2,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": null,
+  "allergens": [
+   "gluten",
+   "pescado",
+   "sesamo",
+   "soja",
+   "sulfitos"
+  ],
+  "stepCount": 5,
+  "ingredients": [
+   {
+    "name": "arroz",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "salmon",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "aguacate",
+    "quantity": 1,
+    "unit": "u"
+   },
+   {
+    "name": "pepino",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "salsa de soja",
+    "quantity": 30,
+    "unit": "ml"
+   },
+   {
+    "name": "sesamo",
+    "quantity": 5,
+    "unit": "g"
+   },
+   {
+    "name": "vinagre de vino",
+    "quantity": 20,
+    "unit": "ml"
+   },
+   {
+    "name": "azucar",
+    "quantity": 5,
+    "unit": "g"
+   },
+   {
+    "name": "sal",
+    "quantity": 2,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Oreja a la plancha",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "spring",
+   "summer",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "spring": "perfect",
+   "summer": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": null,
+  "allergens": [],
+  "stepCount": 6,
+  "ingredients": [
+   {
+    "name": "limón",
+    "quantity": 1,
+    "unit": "u"
+   },
+   {
+    "name": "perejil",
+    "quantity": 5,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 2,
+    "unit": "u"
+   },
+   {
+    "name": "aceite de oliva virgen extra",
+    "quantity": 0,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "oreja de cerdo",
+    "quantity": 500,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Pescado a la espalda en la brasa",
+  "servings": 2,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "spring": "perfect",
+   "summer": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": null,
+  "allergens": [
+   "pescado"
+  ],
+  "stepCount": 0,
+  "ingredients": [
+   {
+    "name": "dorada",
+    "quantity": 1,
+    "unit": "u"
+   },
+   {
+    "name": "aceite de oliva virgen extra",
+    "quantity": 3,
+    "unit": "cda"
+   },
+   {
+    "name": "limón",
+    "quantity": 1,
+    "unit": "u"
+   },
+   {
+    "name": "sal",
+    "quantity": 1,
+    "unit": "cda"
+   },
+   {
+    "name": "pimienta negra",
+    "quantity": 1,
+    "unit": "cdita"
+   },
+   {
+    "name": "romero",
+    "quantity": 5,
+    "unit": "g"
+   },
+   {
+    "name": "tomillo",
+    "quantity": 5,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Pisto con huevo frito a la Thermomix",
+  "servings": 2,
+  "meals": [
+   "lunch"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn"
+  ],
+  "mealFit": {
+   "lunch": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "spring": "perfect",
+   "summer": "perfect"
+  },
+  "frequency": null,
+  "course": null,
+  "allergens": [
+   "huevo"
+  ],
+  "stepCount": 6,
+  "ingredients": [
+   {
+    "name": "calabacin",
+    "quantity": 300,
+    "unit": "g"
+   },
+   {
+    "name": "berenjena",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "pimiento rojo",
+    "quantity": 1,
+    "unit": "u"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 1,
+    "unit": "u"
+   },
+   {
+    "name": "tomate",
+    "quantity": 300,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen extra",
+    "quantity": 4,
+    "unit": "cda"
+   },
+   {
+    "name": "sal",
+    "quantity": 1,
+    "unit": "cdita"
+   },
+   {
+    "name": "pimienta negra",
+    "quantity": 1,
+    "unit": "cdita"
+   },
+   {
+    "name": "huevo",
+    "quantity": 2,
+    "unit": "u"
+   },
+   {
+    "name": "chorizo oreado",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "platano",
+    "quantity": 1,
+    "unit": "u"
+   },
+   {
+    "name": "arroz",
+    "quantity": 150,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Pizza de colores con verduras",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": null,
+  "allergens": [
+   "gluten",
+   "huevo",
+   "lactosa"
+  ],
+  "stepCount": 4,
+  "ingredients": [
+   {
+    "name": "harina de fuerza",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "leche entera",
+    "quantity": 75,
+    "unit": "ml"
+   },
+   {
+    "name": "mantequilla",
+    "quantity": 25,
+    "unit": "g"
+   },
+   {
+    "name": "yema de huevo",
+    "quantity": 1,
+    "unit": "u"
+   },
+   {
+    "name": "sal",
+    "quantity": 5,
+    "unit": "g"
+   },
+   {
+    "name": "levadura",
+    "quantity": 0.5,
+    "unit": "u"
+   },
+   {
+    "name": "alcachofa",
+    "quantity": 2,
+    "unit": "u"
+   },
+   {
+    "name": "espárragos trigueros",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "pimientos de color",
+    "quantity": 1,
+    "unit": "u"
+   },
+   {
+    "name": "cebolleta",
+    "quantity": 1,
+    "unit": "u"
+   },
+   {
+    "name": "aceitunas negras",
+    "quantity": 40,
+    "unit": "g"
+   },
+   {
+    "name": "salsa de tomate",
+    "quantity": 150,
+    "unit": "g"
+   },
+   {
+    "name": "mozzarella",
+    "quantity": 125,
+    "unit": "g"
+   },
+   {
+    "name": "oregano",
+    "quantity": 0,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "pimienta negra",
+    "quantity": 0,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "aceite de oliva virgen extra",
+    "quantity": 0,
+    "unit": "al_gusto"
+   }
+  ]
+ },
+ {
+  "name": "Pollo a la plancha con brocoli",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "main",
+  "allergens": [],
+  "stepCount": 0,
+  "ingredients": [
+   {
+    "name": "brocoli",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "pollo",
+    "quantity": 150,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 10,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Pollo agridulce",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "main",
+  "allergens": [
+   "gluten",
+   "soja",
+   "sulfitos"
+  ],
+  "stepCount": 4,
+  "ingredients": [
+   {
+    "name": "pollo",
+    "quantity": 500,
+    "unit": "g"
+   },
+   {
+    "name": "pimiento rojo",
+    "quantity": 150,
+    "unit": "g"
+   },
+   {
+    "name": "pimiento verde",
+    "quantity": 150,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "pina",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "salsa de soja",
+    "quantity": 30,
+    "unit": "ml"
+   },
+   {
+    "name": "vinagre de vino",
+    "quantity": 30,
+    "unit": "ml"
+   },
+   {
+    "name": "azucar",
+    "quantity": 30,
+    "unit": "g"
+   },
+   {
+    "name": "tomate triturado",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 8,
+    "unit": "g"
+   },
+   {
+    "name": "jengibre fresco",
+    "quantity": 10,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 30,
+    "unit": "ml"
+   },
+   {
+    "name": "harina de trigo",
+    "quantity": 30,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Porridge de avena con platano",
+  "servings": 4,
+  "meals": [
+   "breakfast"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "breakfast": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": null,
+  "allergens": [
+   "gluten",
+   "lactosa"
+  ],
+  "stepCount": 0,
+  "ingredients": [
+   {
+    "name": "avena",
+    "quantity": 50,
+    "unit": "g"
+   },
+   {
+    "name": "leche entera",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "platano",
+    "quantity": 100,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Ramen casero",
+  "servings": 2,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "main",
+  "allergens": [
+   "gluten",
+   "huevo",
+   "sesamo",
+   "soja"
+  ],
+  "stepCount": 6,
+  "ingredients": [
+   {
+    "name": "fideos",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "pollo",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "huevo",
+    "quantity": 2,
+    "unit": "u"
+   },
+   {
+    "name": "caldo de pollo",
+    "quantity": 1000,
+    "unit": "ml"
+   },
+   {
+    "name": "salsa de soja",
+    "quantity": 60,
+    "unit": "ml"
+   },
+   {
+    "name": "jengibre fresco",
+    "quantity": 20,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 10,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "champinones",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "espinacas",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 15,
+    "unit": "ml"
+   },
+   {
+    "name": "sesamo",
+    "quantity": 5,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Revuelto de calabacin",
+  "servings": 4,
+  "meals": [
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer"
+  ],
+  "mealFit": {
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect"
+  },
+  "frequency": null,
+  "course": null,
+  "allergens": [
+   "huevo"
+  ],
+  "stepCount": 0,
+  "ingredients": [
+   {
+    "name": "calabacin",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "huevo",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 10,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Revuelto de espinacas y atún",
+  "servings": 2,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": null,
+  "allergens": [
+   "huevo",
+   "pescado"
+  ],
+  "stepCount": 4,
+  "ingredients": [
+   {
+    "name": "espinacas",
+    "quantity": 300,
+    "unit": "g"
+   },
+   {
+    "name": "atun",
+    "quantity": 120,
+    "unit": "g"
+   },
+   {
+    "name": "huevo",
+    "quantity": 4,
+    "unit": "u"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 80,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 5,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 20,
+    "unit": "ml"
+   },
+   {
+    "name": "sal",
+    "quantity": 1,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "pimienta negra",
+    "quantity": 1,
+    "unit": "al_gusto"
+   }
+  ]
+ },
+ {
+  "name": "Riñones al jerez",
+  "servings": 2,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": null,
+  "allergens": [
+   "lactosa",
+   "sulfitos"
+  ],
+  "stepCount": 4,
+  "ingredients": [
+   {
+    "name": "riñones de cerdo",
+    "quantity": 1000,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 0,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 2,
+    "unit": "u"
+   },
+   {
+    "name": "sal",
+    "quantity": 0,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "vino de jerez",
+    "quantity": 200,
+    "unit": "ml"
+   },
+   {
+    "name": "pimenton picante",
+    "quantity": 3,
+    "unit": "g"
+   },
+   {
+    "name": "mantequilla",
+    "quantity": 15,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Ropa vieja del cocido",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "spring",
+   "summer",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "spring": "perfect",
+   "summer": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": null,
+  "allergens": [],
+  "stepCount": 4,
+  "ingredients": [
+   {
+    "name": "pimentón dulce",
+    "quantity": 0,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "aceite de oliva virgen extra",
+    "quantity": 0,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "sobras del cocido madrileño",
+    "quantity": 300,
+    "unit": "g"
+   },
+   {
+    "name": "dientes de ajo",
+    "quantity": 2,
+    "unit": "u"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 1,
+    "unit": "u"
+   }
+  ]
+ },
+ {
+  "name": "Saam de pollo, mango y mandarina",
+  "servings": 2,
+  "meals": [
+   "lunch",
+   "dinner",
+   "snack"
+  ],
+  "seasons": [
+   "spring",
+   "summer"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "snack": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect"
+  },
+  "frequency": null,
+  "course": null,
+  "allergens": [
+   "gluten",
+   "sesamo",
+   "soja"
+  ],
+  "stepCount": 10,
+  "ingredients": [
+   {
+    "name": "pollo en lata",
+    "quantity": 160,
+    "unit": "g"
+   },
+   {
+    "name": "mango",
+    "quantity": 1,
+    "unit": "u"
+   },
+   {
+    "name": "mandarina",
+    "quantity": 1,
+    "unit": "u"
+   },
+   {
+    "name": "limón",
+    "quantity": 1,
+    "unit": "u"
+   },
+   {
+    "name": "cebolleta encurtida",
+    "quantity": 30,
+    "unit": "ml"
+   },
+   {
+    "name": "jengibre fresco",
+    "quantity": 5,
+    "unit": "ml"
+   },
+   {
+    "name": "salsa de soja",
+    "quantity": 30,
+    "unit": "ml"
+   },
+   {
+    "name": "salsa sriracha",
+    "quantity": 5,
+    "unit": "ml"
+   },
+   {
+    "name": "aceite de sésamo",
+    "quantity": 10,
+    "unit": "ml"
+   },
+   {
+    "name": "aceite de oliva virgen extra",
+    "quantity": 10,
+    "unit": "ml"
+   },
+   {
+    "name": "pimienta negra",
+    "quantity": 0,
+    "unit": "g"
+   },
+   {
+    "name": "lechuga",
+    "quantity": 6,
+    "unit": "u"
+   }
+  ]
+ },
+ {
+  "name": "Salmon al horno con patatas",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "main",
+  "allergens": [
+   "pescado"
+  ],
+  "stepCount": 0,
+  "ingredients": [
+   {
+    "name": "patata",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 10,
+    "unit": "g"
+   },
+   {
+    "name": "salmon",
+    "quantity": 150,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 50,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Salteado de verduras con salmón marinado",
+  "servings": 2,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "spring": "perfect",
+   "summer": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "main",
+  "allergens": [
+   "gluten",
+   "pescado",
+   "sesamo",
+   "soja"
+  ],
+  "stepCount": 11,
+  "ingredients": [
+   {
+    "name": "jengibre fresco",
+    "quantity": 30,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen extra",
+    "quantity": 30,
+    "unit": "ml"
+   },
+   {
+    "name": "ciruela pasa",
+    "quantity": 45,
+    "unit": "u"
+   },
+   {
+    "name": "brocoli",
+    "quantity": 300,
+    "unit": "g"
+   },
+   {
+    "name": "cebolleta",
+    "quantity": 2,
+    "unit": "u"
+   },
+   {
+    "name": "zanahoria",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "salmon",
+    "quantity": 300,
+    "unit": "g"
+   },
+   {
+    "name": "salsa de soja",
+    "quantity": 30,
+    "unit": "ml"
+   },
+   {
+    "name": "aceite de sésamo",
+    "quantity": 5,
+    "unit": "ml"
+   },
+   {
+    "name": "limón",
+    "quantity": 0.25,
+    "unit": "u"
+   },
+   {
+    "name": "sal",
+    "quantity": 0,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Sandwich vegetal",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner",
+   "snack"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect",
+   "snack": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": null,
+  "allergens": [
+   "gluten",
+   "huevo",
+   "pescado"
+  ],
+  "stepCount": 10,
+  "ingredients": [
+   {
+    "name": "cebolla",
+    "quantity": 50,
+    "unit": "g"
+   },
+   {
+    "name": "huevo",
+    "quantity": 2,
+    "unit": "u"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 15,
+    "unit": "ml"
+   },
+   {
+    "name": "lechuga",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "mayonesa",
+    "quantity": 30,
+    "unit": "ml"
+   },
+   {
+    "name": "ketchup",
+    "quantity": 15,
+    "unit": "ml"
+   },
+   {
+    "name": "atun",
+    "quantity": 2,
+    "unit": "u"
+   },
+   {
+    "name": "pan de molde",
+    "quantity": 8,
+    "unit": "u"
+   },
+   {
+    "name": "surimi",
+    "quantity": 8,
+    "unit": "u"
+   }
+  ]
+ },
+ {
+  "name": "Sopa juliana",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "starter",
+  "allergens": [
+   "apio"
+  ],
+  "stepCount": 6,
+  "ingredients": [
+   {
+    "name": "puerro",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "zanahoria",
+    "quantity": 150,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "apio",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "patata",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "caldo de verduras",
+    "quantity": 1500,
+    "unit": "ml"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 20,
+    "unit": "ml"
+   },
+   {
+    "name": "perejil",
+    "quantity": 1,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "sal",
+    "quantity": 1,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "pimienta negra",
+    "quantity": 1,
+    "unit": "al_gusto"
+   }
+  ]
+ },
+ {
+  "name": "Sopa miso",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "starter",
+  "allergens": [
+   "gluten",
+   "sesamo",
+   "soja"
+  ],
+  "stepCount": 4,
+  "ingredients": [
+   {
+    "name": "caldo de verduras",
+    "quantity": 1000,
+    "unit": "ml"
+   },
+   {
+    "name": "tofu",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "puerro",
+    "quantity": 50,
+    "unit": "g"
+   },
+   {
+    "name": "champinones",
+    "quantity": 80,
+    "unit": "g"
+   },
+   {
+    "name": "espinacas",
+    "quantity": 60,
+    "unit": "g"
+   },
+   {
+    "name": "salsa de soja",
+    "quantity": 15,
+    "unit": "ml"
+   },
+   {
+    "name": "sesamo",
+    "quantity": 5,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Steak Tartar",
+  "servings": 2,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "spring",
+   "summer",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "mid",
+   "spring": "mid",
+   "summer": "perfect",
+   "winter": "mid"
+  },
+  "frequency": null,
+  "course": "starter",
+  "allergens": [
+   "gluten",
+   "huevo",
+   "lactosa",
+   "mostaza",
+   "pescado"
+  ],
+  "stepCount": 7,
+  "ingredients": [
+   {
+    "name": "queso parmesano",
+    "quantity": 25,
+    "unit": "g"
+   },
+   {
+    "name": "perejil",
+    "quantity": 5,
+    "unit": "g"
+   },
+   {
+    "name": "pimienta negra",
+    "quantity": 0,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "sal",
+    "quantity": 0,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "alcaparras",
+    "quantity": 1,
+    "unit": "cda"
+   },
+   {
+    "name": "mostaza",
+    "quantity": 1,
+    "unit": "cdita"
+   },
+   {
+    "name": "yema de huevo",
+    "quantity": 2,
+    "unit": "u"
+   },
+   {
+    "name": "cebolleta",
+    "quantity": 1,
+    "unit": "u"
+   },
+   {
+    "name": "Pepinillo",
+    "quantity": 3,
+    "unit": "u"
+   },
+   {
+    "name": "solomillo de ternera de calidad, o de buey, cortado en filetes de 2 cm de grosor",
+    "quantity": 250,
+    "unit": "g"
+   },
+   {
+    "name": "cebollino fresco, un manojo",
+    "quantity": 5,
+    "unit": "g"
+   },
+   {
+    "name": "Salsa worcestershire",
+    "quantity": 2,
+    "unit": "cdita"
+   }
+  ]
+ },
+ {
+  "name": "Sándwich mixto",
+  "servings": 1,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "spring": "perfect",
+   "summer": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "main",
+  "allergens": [
+   "gluten",
+   "lactosa"
+  ],
+  "stepCount": 4,
+  "ingredients": [
+   {
+    "name": "mantequilla",
+    "quantity": 10,
+    "unit": "g"
+   },
+   {
+    "name": "pan de molde",
+    "quantity": 2,
+    "unit": "u"
+   },
+   {
+    "name": "queso gouda",
+    "quantity": 2,
+    "unit": "u"
+   },
+   {
+    "name": "jamón de york",
+    "quantity": 60,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Tabulé",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect"
+  },
+  "frequency": null,
+  "course": "starter",
+  "allergens": [
+   "gluten"
+  ],
+  "stepCount": 5,
+  "ingredients": [
+   {
+    "name": "cuscus",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "tomate",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "pepino",
+    "quantity": 150,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 80,
+    "unit": "g"
+   },
+   {
+    "name": "perejil",
+    "quantity": 30,
+    "unit": "g"
+   },
+   {
+    "name": "menta",
+    "quantity": 10,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 40,
+    "unit": "ml"
+   },
+   {
+    "name": "limon",
+    "quantity": 2,
+    "unit": "u"
+   },
+   {
+    "name": "sal",
+    "quantity": 1,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "pimienta negra",
+    "quantity": 1,
+    "unit": "al_gusto"
+   }
+  ]
+ },
+ {
+  "name": "Tajín de verduras y cordero",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "main",
+  "allergens": [
+   "frutos_secos"
+  ],
+  "stepCount": 7,
+  "ingredients": [
+   {
+    "name": "cordero",
+    "quantity": 600,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "zanahoria",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "patata",
+    "quantity": 300,
+    "unit": "g"
+   },
+   {
+    "name": "calabacin",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 12,
+    "unit": "g"
+   },
+   {
+    "name": "tomate triturado",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "caldo de verduras",
+    "quantity": 400,
+    "unit": "ml"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 30,
+    "unit": "ml"
+   },
+   {
+    "name": "comino",
+    "quantity": 1,
+    "unit": "cdita"
+   },
+   {
+    "name": "curcuma",
+    "quantity": 1,
+    "unit": "cdita"
+   },
+   {
+    "name": "canela",
+    "quantity": 1,
+    "unit": "pizca"
+   },
+   {
+    "name": "jengibre fresco",
+    "quantity": 10,
+    "unit": "g"
+   },
+   {
+    "name": "pasas",
+    "quantity": 50,
+    "unit": "g"
+   },
+   {
+    "name": "almendras",
+    "quantity": 30,
+    "unit": "g"
+   },
+   {
+    "name": "cilantro",
+    "quantity": 1,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "sal",
+    "quantity": 1,
+    "unit": "al_gusto"
+   }
+  ]
+ },
+ {
+  "name": "Ternera a la jardinera",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "main",
+  "allergens": [],
+  "stepCount": 7,
+  "ingredients": [
+   {
+    "name": "ternera",
+    "quantity": 250,
+    "unit": "g"
+   },
+   {
+    "name": "pimiento verde",
+    "quantity": 50,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 80,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 3,
+    "unit": "g"
+   },
+   {
+    "name": "zanahoria",
+    "quantity": 150,
+    "unit": "g"
+   },
+   {
+    "name": "guisantes",
+    "quantity": 60,
+    "unit": "g"
+   },
+   {
+    "name": "tomate",
+    "quantity": 150,
+    "unit": "g"
+   },
+   {
+    "name": "patata",
+    "quantity": 150,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 20,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Ternera con pimientos",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "summer",
+   "autumn"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "summer": "perfect",
+   "autumn": "perfect"
+  },
+  "frequency": null,
+  "course": "main",
+  "allergens": [],
+  "stepCount": 0,
+  "ingredients": [
+   {
+    "name": "pimiento rojo",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 10,
+    "unit": "g"
+   },
+   {
+    "name": "ternera",
+    "quantity": 150,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 50,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Tortilla de patatas",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer",
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect",
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": null,
+  "allergens": [
+   "huevo"
+  ],
+  "stepCount": 0,
+  "ingredients": [
+   {
+    "name": "patata",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "huevo",
+    "quantity": 120,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 30,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 80,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Tostadas con aguacate y huevo",
+  "servings": 4,
+  "meals": [
+   "breakfast"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "breakfast": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": null,
+  "allergens": [
+   "gluten",
+   "huevo"
+  ],
+  "stepCount": 0,
+  "ingredients": [
+   {
+    "name": "pan integral",
+    "quantity": 60,
+    "unit": "g"
+   },
+   {
+    "name": "huevo",
+    "quantity": 60,
+    "unit": "g"
+   },
+   {
+    "name": "aguacate",
+    "quantity": 80,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Tzatziki",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect"
+  },
+  "frequency": null,
+  "course": "starter",
+  "allergens": [
+   "lactosa"
+  ],
+  "stepCount": 4,
+  "ingredients": [
+   {
+    "name": "yogur natural",
+    "quantity": 400,
+    "unit": "g"
+   },
+   {
+    "name": "pepino",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 6,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 20,
+    "unit": "ml"
+   },
+   {
+    "name": "limon",
+    "quantity": 1,
+    "unit": "u"
+   },
+   {
+    "name": "menta",
+    "quantity": 5,
+    "unit": "g"
+   },
+   {
+    "name": "sal",
+    "quantity": 1,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "pimienta negra",
+    "quantity": 1,
+    "unit": "al_gusto"
+   }
+  ]
+ },
+ {
+  "name": "Vegan butter chicken (con tofu)",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "main",
+  "allergens": [
+   "lactosa",
+   "soja"
+  ],
+  "stepCount": 5,
+  "ingredients": [
+   {
+    "name": "tofu",
+    "quantity": 400,
+    "unit": "g"
+   },
+   {
+    "name": "tomate triturado",
+    "quantity": 400,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 12,
+    "unit": "g"
+   },
+   {
+    "name": "jengibre fresco",
+    "quantity": 20,
+    "unit": "g"
+   },
+   {
+    "name": "nata liquida",
+    "quantity": 200,
+    "unit": "ml"
+   },
+   {
+    "name": "mantequilla",
+    "quantity": 30,
+    "unit": "g"
+   },
+   {
+    "name": "comino",
+    "quantity": 1,
+    "unit": "cdita"
+   },
+   {
+    "name": "curcuma",
+    "quantity": 1,
+    "unit": "cdita"
+   },
+   {
+    "name": "pimentón dulce",
+    "quantity": 1,
+    "unit": "cdita"
+   },
+   {
+    "name": "canela",
+    "quantity": 1,
+    "unit": "pizca"
+   },
+   {
+    "name": "sal",
+    "quantity": 1,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "cilantro",
+    "quantity": 1,
+    "unit": "al_gusto"
+   }
+  ]
+ },
+ {
+  "name": "Verduras estofadas",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": null,
+  "allergens": [],
+  "stepCount": 6,
+  "ingredients": [
+   {
+    "name": "patata",
+    "quantity": 400,
+    "unit": "g"
+   },
+   {
+    "name": "zanahoria",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 150,
+    "unit": "g"
+   },
+   {
+    "name": "puerro",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "ajo",
+    "quantity": 8,
+    "unit": "g"
+   },
+   {
+    "name": "tomate triturado",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "guisantes",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "caldo de verduras",
+    "quantity": 500,
+    "unit": "ml"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 30,
+    "unit": "ml"
+   },
+   {
+    "name": "pimentón dulce",
+    "quantity": 1,
+    "unit": "cdita"
+   },
+   {
+    "name": "laurel",
+    "quantity": 1,
+    "unit": "u"
+   },
+   {
+    "name": "sal",
+    "quantity": 1,
+    "unit": "al_gusto"
+   }
+  ]
+ },
+ {
+  "name": "Vichyssoise",
+  "servings": 4,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect"
+  },
+  "frequency": null,
+  "course": "starter",
+  "allergens": [
+   "lactosa"
+  ],
+  "stepCount": 6,
+  "ingredients": [
+   {
+    "name": "puerro",
+    "quantity": 400,
+    "unit": "g"
+   },
+   {
+    "name": "patata",
+    "quantity": 300,
+    "unit": "g"
+   },
+   {
+    "name": "cebolla",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "mantequilla",
+    "quantity": 30,
+    "unit": "g"
+   },
+   {
+    "name": "caldo de verduras",
+    "quantity": 800,
+    "unit": "ml"
+   },
+   {
+    "name": "nata liquida",
+    "quantity": 200,
+    "unit": "ml"
+   },
+   {
+    "name": "perejil",
+    "quantity": 1,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "sal",
+    "quantity": 1,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "pimienta negra",
+    "quantity": 1,
+    "unit": "al_gusto"
+   }
+  ]
+ },
+ {
+  "name": "Wrap de lechuga con noodles",
+  "servings": 2,
+  "meals": [
+   "lunch",
+   "dinner"
+  ],
+  "seasons": [
+   "spring",
+   "summer"
+  ],
+  "mealFit": {
+   "lunch": "perfect",
+   "dinner": "perfect"
+  },
+  "seasonFit": {
+   "spring": "perfect",
+   "summer": "perfect"
+  },
+  "frequency": null,
+  "course": null,
+  "allergens": [
+   "frutos_secos",
+   "gluten",
+   "soja"
+  ],
+  "stepCount": 4,
+  "ingredients": [
+   {
+    "name": "lechuga",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "fideos",
+    "quantity": 150,
+    "unit": "g"
+   },
+   {
+    "name": "pollo",
+    "quantity": 200,
+    "unit": "g"
+   },
+   {
+    "name": "zanahoria",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "pepino",
+    "quantity": 100,
+    "unit": "g"
+   },
+   {
+    "name": "salsa de soja",
+    "quantity": 30,
+    "unit": "ml"
+   },
+   {
+    "name": "lima",
+    "quantity": 1,
+    "unit": "u"
+   },
+   {
+    "name": "jengibre fresco",
+    "quantity": 5,
+    "unit": "g"
+   },
+   {
+    "name": "aceite de oliva virgen",
+    "quantity": 15,
+    "unit": "ml"
+   },
+   {
+    "name": "cilantro",
+    "quantity": 1,
+    "unit": "al_gusto"
+   },
+   {
+    "name": "almendras",
+    "quantity": 30,
+    "unit": "g"
+   }
+  ]
+ },
+ {
+  "name": "Yogur con avena y manzana",
+  "servings": 4,
+  "meals": [
+   "breakfast",
+   "snack"
+  ],
+  "seasons": [
+   "autumn",
+   "winter"
+  ],
+  "mealFit": {
+   "breakfast": "perfect",
+   "snack": "perfect"
+  },
+  "seasonFit": {
+   "autumn": "perfect",
+   "winter": "perfect"
+  },
+  "frequency": null,
+  "course": "dessert",
+  "allergens": [
+   "gluten",
+   "lactosa"
+  ],
+  "stepCount": 0,
+  "ingredients": [
+   {
+    "name": "yogur natural",
+    "quantity": 125,
+    "unit": "g"
+   },
+   {
+    "name": "avena",
+    "quantity": 30,
+    "unit": "g"
+   },
+   {
+    "name": "manzana",
+    "quantity": 100,
+    "unit": "g"
+   }
+  ]
+ }
+]

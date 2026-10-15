@@ -36,6 +36,7 @@ export type AdminAction =
   | 'app_error.resolve'
   | 'waitlist.invite'
   | 'invite_campaign.create'
+  | 'invite_campaign.delete'
   | 'newsletter.send'
 
 export type AuditTargetType = 'ingredient' | 'recipe' | 'user' | 'app_error' | 'waitlist_entry' | 'invite_campaign' | 'newsletter_issue'

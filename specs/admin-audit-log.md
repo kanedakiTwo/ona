@@ -33,6 +33,7 @@ Every admin endpoint that mutates state. Concretely:
 - `app_error.resolve` — admin marked an error group resolved via `POST /admin/errors/:id/resolve` (target type `app_error`; payload: kind, message, resolvedAt) — see [errors.md](./errors.md)
 - `waitlist.invite` — admin marked a batch of waitlist entries invited via `POST /admin/waitlist/invite` (target type `waitlist_entry`, no single target id; payload: batch, count, ids — never emails) — see [waitlist.md](./waitlist.md)
 - `newsletter.send` — admin sent an issue of the Friday newsletter via `POST /admin/newsletter/send` (target type `newsletter_issue`, no target id; payload: issueId, sent, failed, skipped — never emails). Dry runs and proofs are not audited — see [newsletter.md](./newsletter.md)
+- `invite_campaign.create` / `invite_campaign.delete` — admin created or deleted a campaign invitation link (`POST` / `DELETE /admin/invite-campaigns`, target type `invite_campaign`; payload: name, maxUses, expiresAt on create; name, code and uses on delete)
 
 Admin **read** operations do not write to the log. Failed mutations (validation errors, 4xx responses) do not write either — only successful state changes.
 

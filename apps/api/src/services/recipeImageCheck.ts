@@ -73,18 +73,18 @@ export async function describeDish(input: DishInput, deps: { create?: CreateFn }
 export interface ImageVerdict {
   /** The photo shows this dish (the right preparation and main ingredients). */
   matchesDish: boolean
-  /** Realistic home-cooking cookbook shot in any of the house variants (PRO-59), warm light, no text. */
+  /** Overhead/three-quarter editorial cookbook shot on cream/wood/linen, warm light, no text. */
   houseStyle: boolean
   /** Short reason in Spanish, for the audit report and logs. */
   reason: string
 }
 
-export const CHECK_PROMPT = `Revisas la foto de portada de una receta en una app de cocina. Te paso la receta y la foto. Contesta SOLO con JSON:
+const CHECK_PROMPT = `Revisas la foto de portada de una receta en una app de cocina. Te paso la receta y la foto. Contesta SOLO con JSON:
 {"matches_dish": true|false, "house_style": true|false, "reason": "…"}
 
 matches_dish = true si la foto muestra ESTE plato: la preparación correcta (guiso, crema, ensalada, asado, bocadillo…) y sus ingredientes principales reconocibles. false si es otro plato, si falta el ingrediente principal, si muestra ingredientes crudos en vez del plato hecho, o si no es comida (persona, texto, logo, captura de vídeo).
 
-house_style = true si es una foto realista de libro de cocina de comida casera: plato o recipiente de barro, gres (claro u oscuro), porcelana blanca o loza esmaltada, sobre madera, piedra, lino, un mantel de cuadros o una encimera clara; desde arriba, en tres cuartos o desde un lateral bajo; con o sin cubiertos, pan o servilleta; luz natural cálida y suave; sin texto, sin logos, sin marcas de agua, sin manos ni personas, sin fondos negros de estudio ni colores saturados. Las imperfecciones naturales de una mesa real (migas, gotas de salsa, cortes irregulares, una servilleta descolocada, encuadre algo descentrado) SÍ cumplen. Una captura de vídeo, un collage o una foto de móvil en una cocina no cumplen.
+house_style = true si es una foto realista de libro de cocina: plato o recipiente de cerámica o barro sobre madera natural, lino crudo o fondo crema; luz natural cálida y suave; sin texto, sin logos, sin marcas de agua, sin manos ni personas, sin fondos oscuros, saturados o de colores. Las imperfecciones naturales de una mesa real (migas, gotas de salsa, cortes irregulares, una servilleta descolocada, encuadre algo descentrado) SÍ cumplen. Una captura de vídeo, un collage o una foto de móvil en una cocina no cumplen.
 
 reason: una frase corta en español (qué falla, o "ok").`
 

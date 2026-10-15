@@ -21,68 +21,11 @@ const AIKIT_BASE = 'https://cms.aikit.es/api/free-form-tools/image-generation'
 
 // "Que no parezca tan perfecto" (Miguel, 2026-10-08): home cooking shot in
 // window light, with the small accidents of a real table — not a studio.
-// PRO-59 (2026-10-11): the base is shared, but tableware, surface, angle and
-// prop come from a variant picked per recipe — before, every photo had the
-// same linen and a serving spoon top-right.
-export const STYLE_BASE =
-  'Fotografía real de comida casera recién servida, como en un libro de cocina de autor. Luz natural de ventana, cálida, con sombras suaves. Nada de perfección de estudio: ración servida con naturalidad y algo desigual, cortes irregulares, piezas distintas entre sí, alguna gota de salsa o miga en el borde del plato, encuadre ligeramente descentrado. Paleta cálida (cremas, ocres, terracota), sin texto, sin manos ni personas. Textura fotográfica real con ligero grano, profundidad de campo media; que no parezca una imagen generada por ordenador.'
-
-export interface PhotoVariant {
-  id: string
-  /** Vajilla. */
-  tableware: string
-  /** Fondo / superficie. */
-  surface: string
-  /** Ángulo de cámara. */
-  angle: string
-  /** Accesorio junto al plato ('' = ninguno). */
-  prop: string
-}
-
-/**
- * 8 combinations of tableware × surface × angle × prop. Only two carry a
- * spoon. Order matters: the index is the stable pick per recipe, so add new
- * variants at the end (existing recipes keep theirs only if the length
- * stays the same — PRO-60 regenerates after any change).
- */
-export const PHOTO_VARIANTS: readonly PhotoVariant[] = [
-  { id: 'barro-madera-cenital', tableware: 'cazuela o plato de barro esmaltado por dentro', surface: 'mesa de madera natural gastada', angle: 'vista cenital, desde arriba', prop: 'una cuchara de servir de madera apoyada en el borde' },
-  { id: 'gres-piedra-tres-cuartos', tableware: 'plato de gres oscuro mate, algo irregular', surface: 'encimera de piedra clara', angle: 'en tres cuartos, a la altura de quien se sienta a comer', prop: 'un tenedor a un lado' },
-  { id: 'porcelana-lino-lateral', tableware: 'plato de porcelana blanca sencilla', surface: 'mantel de lino crudo arrugado', angle: 'desde un lateral bajo, casi a ras de mesa', prop: '' },
-  { id: 'esmaltada-cuadros-tres-cuartos', tableware: 'plato esmaltado color crema con el borde algo desconchado', surface: 'mantel de cuadros desvaído', angle: 'en tres cuartos', prop: 'un trozo de pan de pueblo al lado' },
-  { id: 'barro-encimera-cenital', tableware: 'bol o fuente de barro', surface: 'encimera de cocina clara con algo de luz lateral', angle: 'vista cenital, desde arriba', prop: 'una servilleta de lino doblada sin cuidado' },
-  { id: 'porcelana-madera-lateral', tableware: 'plato hondo de porcelana blanca', surface: 'tabla de madera de olivo', angle: 'desde un lateral bajo', prop: 'un tenedor apoyado en el plato' },
-  { id: 'gres-lino-cenital', tableware: 'plato de gres color arena hecho a mano', surface: 'lino color avena', angle: 'vista cenital, desde arriba', prop: '' },
-  { id: 'esmaltada-piedra-tres-cuartos', tableware: 'plato esmaltado verde oliva', surface: 'mesa de piedra gris cálida', angle: 'en tres cuartos', prop: 'una cuchara grande junto al plato' },
-]
-
-/** FNV-1a over the normalised text: stable across runs and processes. */
-function stableHash(text: string): number {
-  const norm = text
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim()
-  let h = 0x811c9dc5
-  for (let i = 0; i < norm.length; i++) {
-    h ^= norm.charCodeAt(i)
-    h = Math.imul(h, 0x01000193)
-  }
-  return h >>> 0
-}
-
-/** The variant for a recipe: always the same for the same seed (name or id). Pure. */
-export function photoVariantFor(seed: string): PhotoVariant {
-  return PHOTO_VARIANTS[stableHash(seed) % PHOTO_VARIANTS.length]
-}
-
-/** The variant as a prompt sentence. */
-export function photoVariantText(v: PhotoVariant): string {
-  const parts = [`Servido en ${v.tableware}, sobre ${v.surface}`, `foto tomada ${v.angle}`]
-  parts.push(v.prop ? `con ${v.prop}` : 'sin cubiertos a la vista')
-  return `${parts.join('; ')}.`
-}
+// One style for every recipe: the 8 per-recipe variants of PRO-59 looked
+// more artificial and were dropped (PRO-89, Miguel 2026-10-14). This is the
+// text that generated the current catalogue.
+export const STYLE_SUFFIX =
+  'Fotografía real de comida casera recién servida, tomada desde arriba o en tres cuartos, como en un libro de cocina de autor. Cerámica artesana algo irregular (blanca, crema o de barro) sobre madera natural gastada o lino crudo arrugado. Luz natural de ventana, cálida, con sombras suaves. Nada de perfección de estudio: ración servida con naturalidad y algo desigual, cortes irregulares, piezas distintas entre sí, alguna gota de salsa o miga en el borde del plato o en el mantel, una cuchara de servir apoyada o una servilleta descolocada, encuadre ligeramente descentrado. Paleta cálida (cremas, ocres, terracota), sin texto, sin manos ni personas. Textura fotográfica real con ligero grano, profundidad de campo media; que no parezca una imagen generada por ordenador.'
 
 export type AspectRatio = '4:3' | '1:1' | '3:4'
 
@@ -98,8 +41,6 @@ export interface RecipePromptInput {
    * alone often gave Imagen the wrong dish.
    */
   description?: string | null
-  /** What picks the photo variant (PRO-59). Defaults to the name, so a recipe keeps its look. */
-  variantSeed?: string
 }
 
 /** Compose the editorial prompt sent to Imagen-fal. Pure. */
@@ -114,8 +55,7 @@ export function buildRecipePrompt(input: RecipePromptInput): string {
     : input.meals.includes('snack')
       ? 'Tamaño de ración pequeña, tipo snack.'
       : ''
-  const variant = photoVariantText(photoVariantFor(input.variantSeed ?? input.name))
-  return [`${input.name}.`, ingredientsLine, mealHint, STYLE_BASE, variant]
+  return [`${input.name}.`, ingredientsLine, mealHint, STYLE_SUFFIX]
     .filter((s) => s.length > 0)
     .join(' ')
 }

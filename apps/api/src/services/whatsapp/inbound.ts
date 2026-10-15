@@ -5,7 +5,8 @@ import type { InboundMessage } from './webhookParser.js'
 import type { LinkWithUser } from './store.js'
 import { buildChatHistory, HISTORY_WINDOW_MS, type HistoryRow } from './history.js'
 import { connectUrl, extractLinkCodeCandidates, isLinkAttempt } from './linking.js'
-import { dropRepeatedButtons, lastSentButtons, outboundBody, renderAssistantReply, renderPlainText, type OutboundMessage } from './render.js'
+import { dropRepeatedButtons, lastSentButtons, outboundBody, renderAssistantReply, renderPlainText, WA_CAPTION_MAX, type OutboundMessage } from './render.js'
+import { extractOptions, toWhatsAppMarkup } from './format.js'
 import { isShoppingItemList, shoppingListDigest } from '../shoppingText.js'
 import { AI_DISCLOSURE_FIRST_PERSON } from '@ona/shared'
 import { controlCommand, OPT_IN_NO, OPT_IN_YES } from './commands.js'
@@ -93,6 +94,11 @@ export interface InboundDeps {
    */
   menuDigest?: (userId: string, menuId: string | null) => Promise<string | null>
   /**
+   * The same week as one picture plus a short caption (2026-10-15), sent
+   * instead of the digest text. Absent, null or throwing → the digest text.
+   */
+  menuImage?: (userId: string, menuId: string | null) => Promise<WeekImage | null>
+  /**
    * Photo of a recipe → saved recipe. Absent → photos get a polite "todavía no".
    * `sourceUrl` = the link saved as its source (PRO-66); `looksLikeScreenshot`
    * comes from the same vision call that reads the recipe.
@@ -123,33 +129,122 @@ export async function withDigests(
   userId: string,
   deps: Pick<InboundDeps, 'menuDigest'>,
 ): Promise<AssistantResponse> {
-  const tools = response.toolsUsed ?? []
+  return appendDigests(response, await loadMenuDigest(response, userId, deps))
+}
+
+/** The week picture the WhatsApp reply carries: the JPG and its caption. */
+export interface WeekImage {
+  jpeg: Buffer
+  caption: string
+}
+
+const generatedMenu = (response: AssistantResponse) => (response.toolsUsed ?? []).some((t) => MENU_DIGEST_TOOLS.has(t))
+
+/** The menu the turn touched (null = the user's latest). */
+function menuIdOf(response: AssistantResponse): string | null {
   const data = response.data && typeof response.data === 'object' && !Array.isArray(response.data)
     ? (response.data as Record<string, unknown>)
     : null
+  return typeof data?.menuId === 'string'
+    ? data.menuId
+    : typeof data?.id === 'string' && Array.isArray(data?.days) ? data.id : null
+}
+
+async function loadMenuDigest(
+  response: AssistantResponse,
+  userId: string,
+  deps: Pick<InboundDeps, 'menuDigest'>,
+): Promise<string | null> {
+  if (!deps.menuDigest || !generatedMenu(response)) return null
+  try {
+    return await deps.menuDigest(userId, menuIdOf(response))
+  } catch (err) {
+    console.warn('[whatsapp] menuDigest failed (sending the reply without it):', err)
+    return null
+  }
+}
+
+function shoppingDigestOf(response: AssistantResponse): string | null {
+  const tools = response.toolsUsed ?? []
+  return tools.some((t) => SHOPPING_DIGEST_TOOLS.has(t)) && isShoppingItemList(response.data)
+    ? shoppingListDigest(response.data)
+    : null
+}
+
+function appendDigests(response: AssistantResponse, menuDigest: string | null): AssistantResponse {
   const digests: string[] = []
   let message = response.message?.trim() ?? ''
-  if (deps.menuDigest && tools.some((t) => MENU_DIGEST_TOOLS.has(t))) {
-    const menuId = typeof data?.menuId === 'string'
-      ? data.menuId
-      : typeof data?.id === 'string' && Array.isArray(data?.days) ? data.id : null
-    try {
-      const digest = await deps.menuDigest(userId, menuId)
-      if (digest) {
-        digests.push(digest)
-        // The digest opens with "Listo: tu menú…": the model's own
-        // "Hecho: - Menú de la semana listo" would say it twice (2026-10-15).
-        message = withoutMenuReadyLines(message)
-      }
-    } catch (err) {
-      console.warn('[whatsapp] menuDigest failed (sending the reply without it):', err)
-    }
+  if (menuDigest) {
+    digests.push(menuDigest)
+    // The digest opens with "Listo: tu menú…": the model's own
+    // "Hecho: - Menú de la semana listo" would say it twice (2026-10-15).
+    message = withoutMenuReadyLines(message)
   }
-  if (tools.some((t) => SHOPPING_DIGEST_TOOLS.has(t)) && isShoppingItemList(response.data)) {
-    digests.push(shoppingListDigest(response.data))
-  }
+  const shopping = shoppingDigestOf(response)
+  if (shopping) digests.push(shopping)
   if (digests.length === 0) return response
   return { ...response, message: [message, ...digests].filter(Boolean).join('\n\n') }
+}
+
+/** What the history says the week picture showed. */
+export const WEEK_IMAGE_ALT = 'el menú de la semana, día a día'
+
+/**
+ * The WhatsApp messages answering a turn. A turn that generated the week
+ * sends ONE picture of it with a short caption (2026-10-15, Miguel: the text
+ * digest was «overwhelming»): the model's own words (minus its "menú listo"
+ * line), then the opener, the menu link and the invite. If the picture can't
+ * be drawn, or its upload/send fails later, the text digest goes out
+ * instead — exactly what a turn without the picture sends.
+ *
+ * When the model's words carry buttons (or a shopping list came in the same
+ * turn, or it all doesn't fit in a caption), they go after the picture as
+ * usual, so the buttons stay last.
+ */
+export async function replyMessages(
+  response: AssistantResponse,
+  userId: string,
+  deps: Pick<InboundDeps, 'menuDigest' | 'menuImage' | 'webUrl'>,
+  lastButtons: string[] | null,
+): Promise<OutboundMessage[]> {
+  const asText = (r: AssistantResponse) => dropRepeatedButtons(renderAssistantReply(r, deps.webUrl), lastButtons)
+  const digest = await loadMenuDigest(response, userId, deps)
+  const textVersion = asText(appendDigests(response, digest))
+  if (!deps.menuImage || !generatedMenu(response)) return textVersion
+
+  let image: WeekImage | null = null
+  try {
+    image = await deps.menuImage(userId, menuIdOf(response))
+  } catch (err) {
+    console.warn('[whatsapp] week image failed (sending the text digest):', err)
+  }
+  if (!image) return textVersion
+
+  const picture = (caption: string, fallback: OutboundMessage[]): OutboundMessage => ({
+    type: 'image',
+    text: caption,
+    image: image!.jpeg,
+    mimeType: 'image/jpeg',
+    alt: WEEK_IMAGE_ALT,
+    fallback,
+  })
+  const rest = withoutMenuReadyLines(response.message?.trim() ?? '')
+  const shopping = shoppingDigestOf(response)
+  const { text: restText, options } = extractOptions(rest)
+  if (!shopping && options.length === 0) {
+    const caption = [toWhatsAppMarkup(restText).trim(), image.caption].filter(Boolean).join('\n\n')
+    if (caption.length <= WA_CAPTION_MAX) return [picture(caption, textVersion)]
+  }
+  // The model's words (and buttons) after the picture. The caption already
+  // links the menu page, so no "Ver menú" line again.
+  const after = rest || shopping
+    ? asText({
+        ...response,
+        message: [rest, shopping].filter(Boolean).join('\n\n'),
+        uiHint: response.uiHint === 'menu' ? undefined : response.uiHint,
+      })
+    : []
+  return [picture(image.caption.slice(0, WA_CAPTION_MAX), digest ? renderPlainText(digest) : []), ...after]
 }
 
 /** "- Menú de la semana listo", "Tu primer menú de la semana está listo.", "Hecho: menú de la semana listo"… */
@@ -314,14 +409,18 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
         await store.insertOutbound({ phone: msg.from, userId, kind, body, status: 'sent', wamid })
       } catch (err: any) {
         console.error('[whatsapp] send failed:', err?.message ?? err)
+        const fallback = m.type === 'image' ? m.fallback : []
         await store.insertOutbound({
           phone: msg.from,
           userId,
-          kind,
+          // A picture whose text version goes out instead is not part of the
+          // conversation (failed replies otherwise stay in history).
+          kind: fallback.length > 0 ? 'image_failed' : kind,
           body,
           status: 'failed',
           errorMessage: String(err?.message ?? err).slice(0, 500),
         })
+        if (fallback.length > 0) await send(userId, kind, fallback)
       }
     }
   }
@@ -584,7 +683,7 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
         ...(images ? { photo: true } : {}),
       },
     })
-    await out('reply', dropRepeatedButtons(renderAssistantReply(await withDigests(response, userId, deps), deps.webUrl), lastSentButtons(rows)))
+    await out('reply', await replyMessages(response, userId, deps, lastSentButtons(rows)))
     if ((response.toolsUsed ?? []).includes('complete_onboarding') && link.onboardingDone === false) {
       // First menu done: health data goes to the web (with consent), then the
       // opt-in for proactive messages that linking skipped.

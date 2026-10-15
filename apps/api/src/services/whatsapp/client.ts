@@ -43,22 +43,50 @@ async function postMessages(body: Record<string, unknown>): Promise<any> {
 
 /** Returns Meta's wamid for the sent message. */
 export async function sendMessage(to: string, msg: OutboundMessage): Promise<string | null> {
-  const body =
-    msg.type === 'text'
-      ? { to, type: 'text', text: { body: msg.text, preview_url: false } }
-      : {
-          to,
-          type: 'interactive',
-          interactive: {
-            type: 'button',
-            body: { text: msg.text },
-            action: {
-              buttons: msg.buttons.map((b) => ({ type: 'reply', reply: { id: b.id, title: b.title } })),
-            },
-          },
-        }
+  let body: Record<string, unknown>
+  if (msg.type === 'text') {
+    body = { to, type: 'text', text: { body: msg.text, preview_url: false } }
+  } else if (msg.type === 'image') {
+    const id = await uploadMedia(msg.image, msg.mimeType, 'menu-semana.jpg')
+    body = { to, type: 'image', image: { id, caption: msg.text } }
+  } else {
+    body = {
+      to,
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        body: { text: msg.text },
+        action: {
+          buttons: msg.buttons.map((b) => ({ type: 'reply', reply: { id: b.id, title: b.title } })),
+        },
+      },
+    }
+  }
   const json = await postMessages(body)
   return json?.messages?.[0]?.id ?? null
+}
+
+/**
+ * Uploads a file to Meta (`POST /{phone-number-id}/media`, multipart) and
+ * returns the media id a message then references. Used for the week image
+ * (2026-10-15).
+ */
+export async function uploadMedia(bytes: Buffer, mimeType: string, filename: string): Promise<string> {
+  const form = new FormData()
+  form.append('messaging_product', 'whatsapp')
+  form.append('type', mimeType)
+  form.append('file', new Blob([new Uint8Array(bytes)], { type: mimeType }), filename)
+  const r = await fetch(graphUrl(`${env.WHATSAPP_PHONE_NUMBER_ID}/media`), {
+    method: 'POST',
+    headers: authHeaders(),
+    body: form,
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  })
+  const json: any = await r.json().catch(() => ({}))
+  if (!r.ok || typeof json?.id !== 'string') {
+    throw new GraphApiError(r.status, json?.error?.message ?? `Graph API media ${r.status}`)
+  }
+  return json.id
 }
 
 /**

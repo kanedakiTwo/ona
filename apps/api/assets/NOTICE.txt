@@ -1,0 +1,22 @@
+Assets bundled with the API (used to draw the WhatsApp week image,
+apps/api/src/services/weekImage/render.ts). Nothing here is fetched at runtime.
+
+fonts/
+  Fraunces-Display-Regular.ttf  Fraunces, static instance opsz 72 / wght 400
+  Fraunces-Regular.ttf          Fraunces, static instance opsz 36 / wght 400
+  Fraunces-SemiBold.ttf         Fraunces, static instance opsz 36 / wght 600
+  CormorantGaramond-MediumItalic.ttf
+  Inter-Regular.ttf, Inter-SemiBold.ttf, Inter-Bold.ttf
+  Downloaded from Google Fonts (static TTF instances). All three families are
+  licensed under the SIL Open Font License 1.1: see Fraunces-OFL.txt,
+  CormorantGaramond-OFL.txt and Inter-OFL.txt next to them.
+
+week-image/
+  breakfast.png (U+2615), lunch.png (U+2600), snack.png (U+1F34E),
+  dinner.png (U+1F319), plate.png (U+1F37D)
+  128 px PNGs from Noto Emoji v2.047 (github.com/googlefonts/noto-emoji,
+  png/128/). The Noto Emoji images are licensed under the Apache License 2.0
+  (https://www.apache.org/licenses/LICENSE-2.0); the Noto Emoji font itself is
+  OFL 1.1 (Noto-Emoji-LICENSE.txt).
+
+  mimoia-logo.png — copy of apps/web/public/email/mimoia-logo.png (Mimoia's own).

@@ -46,6 +46,11 @@ If the change introduces a new system not covered by any existing spec (e.g., no
     `## User Capabilities` / `## Constraints` lines.
 [ ] If a brand-new system landed → I added a new spec file AND a row to
     `specs/index.md`.
+[ ] If something a user could ask Mimo about Mimoia changed (a feature,
+    a channel, what a plan includes, privacy, contact, launch dates) → I
+    updated `kb/sobre-mimoia.md`, Mimo's public facts (D-052). Prices and
+    plan contents come from `FOUNDER_PLANS` by themselves: never write them
+    in the file.
 [ ] If I deferred the spec on purpose → I left a `TODO(spec):` marker in the
     relevant spec file AND told the user explicitly in my reply.
 ```

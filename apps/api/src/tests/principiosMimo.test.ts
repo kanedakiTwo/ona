@@ -40,7 +40,7 @@ const BANNED: Array<[RegExp, string]> = [
 const hits = (text: string) => BANNED.filter(([re]) => re.test(text)).map(([, l]) => l)
 
 describe('kb/principios-mimo.md replaces kb/10 mandamientos.md', () => {
-  it('is the only file the prompt loads, and the old one is gone', () => {
+  it('is the file of principles the prompt loads (the public facts live apart, in sobre-mimoia.md), and the old one is gone', () => {
     expect(KB_FILE).toBe('principios-mimo.md')
     expect(existsSync(KB_PATH)).toBe(true)
     expect(existsSync(resolve(REPO, 'kb', '10 mandamientos.md'))).toBe(false)

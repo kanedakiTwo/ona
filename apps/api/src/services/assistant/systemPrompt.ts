@@ -1,7 +1,15 @@
 import { readFile } from 'fs/promises'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { ASSISTANT_NAME, BRAND_NAME } from '@ona/shared'
+import {
+  ASSISTANT_NAME,
+  BRAND_NAME,
+  BRAND_SUPPORT_EMAIL,
+  FOUNDER_FOOTER,
+  FOUNDER_FOOTER_BETA,
+  FOUNDER_HOUSEHOLD,
+  FOUNDER_PLANS,
+} from '@ona/shared'
 import { HEALTH_RULE } from './healthGuard.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -9,19 +17,50 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // Mimoia's cooking principles («Cómo cocina Mimoia», approved by Miguel on
 // 2026-10-12; PRO-67). Until then the whole of kb/ went in, «10 mandamientos»
 // included, with health effects (inflammation, insulin, microbiome) that the
-// constitution (§6) forbids in anything Mimo says. Only this file goes in now.
+// constitution (§6) forbids in anything Mimo says. Only this file of principles
+// goes in now (plus the public facts in ABOUT_FILE, below).
 export const KB_FILE = 'principios-mimo.md'
+/**
+ * Public facts about Mimoia (what it is, what it does, channels, mission,
+ * privacy, contact), so Mimo can answer «¿qué es Mimoia?» or «¿qué incluye
+ * Plus?» (D-052, 2026-10-15). Prices are NOT in this file: `pricingBlock()`
+ * builds them from the same constants the web shows (`FOUNDER_PLANS`), so
+ * they can't drift. Keep it in sync with what users can see (CLAUDE.md →
+ * Definition of done).
+ */
+export const ABOUT_FILE = 'sobre-mimoia.md'
 let knowledgeBase = ''
+let aboutMimoia = ''
 
-async function loadKB() {
-  const kbFile = path.resolve(__dirname, '..', '..', '..', '..', '..', 'kb', KB_FILE)
+async function readKb(file: string): Promise<string> {
+  const kbFile = path.resolve(__dirname, '..', '..', '..', '..', '..', 'kb', file)
   try {
-    knowledgeBase = (await readFile(kbFile, 'utf-8')).trim()
-    console.log(`[assistant] Loaded kb/${KB_FILE}`)
+    const text = (await readFile(kbFile, 'utf-8')).trim()
+    console.log(`[assistant] Loaded kb/${file}`)
+    return text
   } catch {
-    console.log(`[assistant] kb/${KB_FILE} not found, assistant will work without its principles.`)
+    console.log(`[assistant] kb/${file} not found, assistant will work without it.`)
+    return ''
   }
 }
+
+async function loadKB() {
+  ;[knowledgeBase, aboutMimoia] = await Promise.all([readKb(KB_FILE), readKb(ABOUT_FILE)])
+}
+
+/** Plans and prices as the waitlist shows them (packages/shared founderPricing). */
+export function pricingBlock(): string {
+  const plans = FOUNDER_PLANS.map((p) => {
+    const note = p.note ? ` (${p.note})` : ''
+    return `- ${p.name}: ${p.price}${note}, ${FOUNDER_HOUSEHOLD}. Incluye: ${p.bullets.join('; ')}. ${p.finePrint}`
+  }).join('\n')
+  return `Planes y precios (son precios de fundador: ahora no se cobra nada; se reservan desde la lista de espera en mimoia.com):
+${plans}
+- Como funciona: ${FOUNDER_FOOTER}.
+- Si el usuario ya esta en la beta: ${FOUNDER_FOOTER_BETA}.
+- Si pregunta algo de precios que no este aqui (descuentos, empresas, otros paises, cuando se cobra exactamente), di que no lo sabes y que escriba a ${BRAND_SUPPORT_EMAIL}.`
+}
+
 /** Resolves once kb/ is read (scripts and tests that need it in the prompt await it). */
 export const knowledgeBaseReady = loadKB()
 
@@ -152,6 +191,16 @@ Principios de cocina de ${BRAND_NAME}. Usalos como marco para tus respuestas, pe
 ${knowledgeBase}`
   }
 
+  if (aboutMimoia) {
+    prompt += `
+
+Sobre ${BRAND_NAME}. Si te preguntan que es ${BRAND_NAME}, que puede hacer, como funciona, cuanto cuesta, que incluye cada plan, como se protegen sus datos, la mision o la vision, contesta con esto y solo con esto: no inventes funciones, fechas, cifras ni precios. Sigue las mismas reglas de salud que en todo lo demas.
+
+${aboutMimoia}
+
+${pricingBlock()}`
+  }
+
   if (mode === 'onboarding') {
     prompt += `
 
@@ -196,7 +245,7 @@ Ejemplos de capturas correctas (para que veas la forma exacta del fact array):
     prompt += `
 
 Canal WhatsApp (instrucciones obligatorias). Eres resolutivo y util: si te pide hacer algo, lo haces; si te pregunta algo, le contestas de verdad, como un buen amigo que sabe cocinar.
-- Hablas de todo lo que tenga que ver con comida y cocina: menu, recetas, tecnicas, ingredientes, utensilios y electrodomesticos de cocina, compra, despensa, nutricion, enlaces y videos de recetas, y su perfil o avisos en ${BRAND_NAME}. Ante la duda, es de comida. Solo para temas que no tienen nada que ver (noticias, programacion, deberes, politica…) responde exactamente: "${WHATSAPP_OFF_TOPIC_REPLY}" y nada mas. Si mezcla un tema de comida con otro, haz lo de comida y omite el resto. Si pide hablar con una persona, dile que escriba HUMANO para ver como contactar con el equipo (no prometas que alguien le escribira); si quiere dejar de recibir avisos, que escriba BAJA (y ALTA para volver).
+- Hablas de todo lo que tenga que ver con comida y cocina: menu, recetas, tecnicas, ingredientes, utensilios y electrodomesticos de cocina, compra, despensa, nutricion, enlaces y videos de recetas, su perfil o avisos en ${BRAND_NAME}, y cualquier pregunta sobre ${BRAND_NAME} (que es, que puede hacer, como funciona, planes y precios, privacidad, mision). Ante la duda, es de comida. Solo para temas que no tienen nada que ver (noticias, programacion, deberes, politica…) responde exactamente: "${WHATSAPP_OFF_TOPIC_REPLY}" y nada mas. Si mezcla un tema de comida con otro, haz lo de comida y omite el resto. Si pide hablar con una persona, dile que escriba HUMANO para ver como contactar con el equipo (no prometas que alguien le escribira); si quiere dejar de recibir avisos, que escriba BAJA (y ALTA para volver).
 - Por WhatsApp nunca guardas datos de salud (alergias, intolerancias, restricciones, edad, sexo, peso, altura, actividad): si el usuario te los da, no los guardes; dile en una linea que los añada en su perfil de la web. Las restricciones que ya tiene guardadas si las respetas.
 - Haz TODO lo que pida el mensaje en este mismo turno. Si pide varias cosas, llama a todas las herramientas necesarias a la vez y no te dejes ninguna.
 - No pidas permiso para cambios normales y reversibles (platos, notas, comensales, lista de la compra, despensa, memoria, perfil): hazlos directamente. Pide confirmacion SOLO para lo destructivo o masivo: borrar una receta, rehacer el menu entero cuando ya existe uno, salir del hogar.

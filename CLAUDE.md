@@ -159,7 +159,7 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 
 **Convention**:
 - Every item has an id `MIG-NN` (next free number, never reused) and this shape, so the Mimoia HQ panel can show it as a plain task with a checkbox:
-  `- [ ] **MIG-NN · Título corto** · *plazo opcional* — Por qué importa, en una frase.` then sub-bullets with the steps (`Cómo:` first). Write it in plain Spanish, for Miguel, with no jargon he doesn't use. The optional `· *plazo*` (e.g. `*hoy*`, `*antes del 16 de noviembre*`) shows as a tag in the panel.
+  `- [ ] **MIG-NN · Título corto** · *plazo opcional* — Por qué importa, en una frase.` then sub-bullets with the steps (`Cómo:` first). Write it in plain Spanish, for Miguel, with no jargon he doesn't use. The optional `· *plazo*` (e.g. `*hoy*`, `*antes del 16 de noviembre*`) shows as a tag in the panel. A plazo that starts with `aplazada`, `desde`, `a partir de` or `no antes de` (e.g. `*desde el 16 de noviembre*`, `*aplazada hasta el fin de la beta*`) puts the task under «Aplazadas» in the panel until that date (with no date, until the text changes).
 - Never write figures that change on their own (waitlist signups, households, costs, errors) inside an item: they go stale and Miguel reads them as current. The panel shows them live under «Números»; point there instead.
 - Whenever a task finishes but leaves something for Miguel to do, Claude adds it here in that shape.
 - Miguel ticks tasks off in the panel (they are stored in the panel's database, collection `hechas`), or tells Claude. `/ona-dia` (or Claude when told) removes ticked items from this list.
@@ -206,15 +206,15 @@ This is the **single source of truth** for work that's pending on Miguel's side 
   - Avisos a la hora de comer: en el perfil, actívalos con la hora 1 minuto después y deja la app abierta; al tocar el aviso debe abrir la app.
   - Vibración al tocar (solo Android), botón de compartir en una receta y en la lista de la compra, y la sensación general al cambiar de pantalla y deslizar entre pestañas.
 
-- [ ] **MIG-12 · Revisión legal de la privacidad** — Cuando exista la SL, un abogado tiene que revisar `/privacidad`: responsable con nombre real, datos de salud con consentimiento explícito, envíos a EE. UU. y el apartado de la lista de espera.
+- [ ] **MIG-12 · Revisión legal de la privacidad** · *desde el 16 de noviembre (decisión de la SL)* — Cuando exista la SL, un abogado tiene que revisar `/privacidad`: responsable con nombre real, datos de salud con consentimiento explícito, envíos a EE. UU. y el apartado de la lista de espera.
   - Cuándo: con la forma jurídica decidida (16 de noviembre). Ver `specs/privacy.md`.
 
-- [ ] **MIG-13 · Registrar la marca Mimoia · aplazada** — Nadie tiene MIMOIA, pero hay muchas marcas «MIMO» (Starship, para apps de pedir comida; Mimo GmbH; Xiaomi).
+- [ ] **MIG-13 · Registrar la marca Mimoia** · *aplazada hasta el 16 de noviembre (D-024)* — Nadie tiene MIMOIA, pero hay muchas marcas «MIMO» (Starship, para apps de pedir comida; Mimo GmbH; Xiaomi).
   - Cuándo: no antes de la decisión del 16 de noviembre (D-024: ningún gasto de más de 200 € hasta validar la beta).
   - Coste: en España (OEPM) 127,88 € la primera clase y 82,84 € cada clase más (clases 9 y 42: 210,72 €), sin agente. En la UE (EUIPO) 850 € la primera clase y 50 € la segunda, más 300–600 € de agente si se encarga.
   - Detalle en `reports/A tu gusto y Apapacho como marca.md`.
 
-- [ ] **MIG-14 · Abrir el registro el 16 de noviembre (beta abierta, D-057)** — Hasta el 12 de enero solo se entra con invitación (beta cerrada).
+- [ ] **MIG-14 · Abrir el registro (beta abierta, D-057)** · *desde el 16 de noviembre* — Hasta ese día solo se entra con invitación (beta cerrada).
   - Cómo: ese día, pon `REGISTRATION_MODE=open` en `ona-api` de producción (o pídeselo a Claude). Opcional antes: la clave `USDA_FDC_API_KEY` en GitHub Actions para que el CI pruebe también la búsqueda de ingredientes.
 
 - [ ] **MIG-17 · Revisar el tope mensual de Mimo por usuario** — Desde el 12 de octubre Mimo usa Claude Sonnet 5.5 (antes Haiku 4.5): cada mensaje cuesta unos 0,02–0,03 $ en vez de unos 0,018 $, así que los 5 € de `ADVISOR_MONTHLY_BUDGET_EUR` dan para unos 200–500 mensajes al mes.

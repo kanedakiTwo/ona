@@ -26,6 +26,8 @@ import {
   waitlistInviteForEmail,
 } from '../services/waitlistInvites.js'
 import { trackEvent } from '../services/usageEvents.js'
+import { welcomeKind } from '../services/accountEmails.js'
+import { defaultAccountMailerDeps, requestPasswordReset, sendWelcomeEmail } from '../services/accountMailer.js'
 
 const router = Router()
 
@@ -151,6 +153,12 @@ router.post('/register', registerLimiter, validate(registerSchema), async (req, 
     void markWaitlistJoined(email)
     // Product analytics (specs/metrics.md): how they got in, never who.
     trackEvent('signup_completed', { userId: user.id, channel: 'web', props: { access } })
+    // Welcome email (specs/email.md): beta, joining a home, or open sign-up.
+    // Fire and forget: it never delays or fails the registration.
+    void sendWelcomeEmail(
+      { email: user.email, kind: welcomeKind({ access, joiningHousehold: !!householdInviteToken }) },
+      defaultAccountMailerDeps(),
+    ).catch((e) => console.error('[register] welcome email failed (continuing):', e?.message ?? e))
 
     const token = jwt.sign({ userId: user.id }, env.JWT_SECRET, {
       expiresIn: env.JWT_EXPIRES_IN as jwt.SignOptions['expiresIn'],
@@ -260,6 +268,30 @@ router.post('/auth/reset', loginLimiter, async (req, res) => {
     console.error('Reset error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
+})
+
+// POST /auth/forgot { email }
+// Public: «¿Has olvidado la contraseña?». Emails a one-time /reset link valid
+// for 1 hour when the email has an active account. Always answers the same
+// 200, at once (the email goes out in the background), so the response says
+// nothing about whether the account exists.
+const forgotSchema = z.object({ email: z.string().trim().email().max(320) })
+const forgotLimiter = rateLimit({
+  max: 5,
+  windowMs: 15 * 60 * 1000, // 5 requests per IP per 15 minutes
+  message: 'Demasiadas peticiones. Espera unos minutos.',
+})
+
+router.post('/auth/forgot', forgotLimiter, (req, res) => {
+  const parsed = forgotSchema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ code: 'INVALID_EMAIL', error: 'Escribe un email válido.' })
+    return
+  }
+  void requestPasswordReset(parsed.data.email, defaultAccountMailerDeps()).catch((e) =>
+    console.error('[auth/forgot] failed:', e?.message ?? e),
+  )
+  res.json({ ok: true })
 })
 
 export default router

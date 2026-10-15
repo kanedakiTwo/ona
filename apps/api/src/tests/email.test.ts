@@ -163,7 +163,8 @@ describe('waitlistInviteEmail', () => {
     const m = waitlistInviteEmail({ ...base, firstName: null, wantsWhatsapp: true })
     expect(m.subject).toBe('¡Te toca! Ya puedes entrar en Mimoia')
     expect(m.text).toContain('«Conectar WhatsApp»')
-    expect(m.text).toContain('Soy Mimo')
+    expect(m.text).toContain('pídeselo todo a Mimo')
+    expect(m.text).toContain('Miguel\nFundador de Mimoia')
   })
 })
 

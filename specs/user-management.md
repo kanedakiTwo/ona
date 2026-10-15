@@ -21,7 +21,7 @@ This is intentionally narrow: **list, detail, suspend, reset password**. Things 
   - Action buttons: **Suspender** / **Reactivar**, **Generar enlace de reset**
 - **Suspender** flips `suspended_at` to `now()`. Confirms in a small modal ("¿Suspender la cuenta de X? El usuario no podrá iniciar sesión hasta que la reactives."). Records `user.suspend` in the audit log.
 - **Reactivar** clears `suspended_at`. Records `user.unsuspend`.
-- **Generar enlace de reset** opens a modal with the link `/reset?token=<uuid>` already copied to the clipboard, plus a "Copiar de nuevo" button. The link expires in 24 h. The admin sends the link to the user via whatever channel they prefer (WhatsApp, in-person, etc.); Mimoia does not send the email.
+- **Generar enlace de reset** opens a modal with the link `/reset?token=<uuid>` already copied to the clipboard, plus a "Copiar de nuevo" button. The link expires in 24 h. The admin sends the link to the user via whatever channel they prefer (WhatsApp, in-person, etc.). Users can also get a link by email themselves from `/recuperar` (1 h; see [Authentication](./auth.md)).
 
 ## What's *not* here in v1
 
@@ -29,7 +29,7 @@ This is intentionally narrow: **list, detail, suspend, reset password**. Things 
 - No edit-user-profile from the admin side. If a user wants their profile changed, they edit it themselves.
 - No impersonation ("ver como X"). Useful for support but high-risk; we'll add it later with stricter audit + a banner.
 - No bulk operations. Suspend / reactivate / reset are one user at a time.
-- No automated email. The admin sends the reset link manually. Adding email is a separate feature when Mimoia grows past the "I know all my users" stage.
+- The admin's link is not emailed: the admin sends it by hand. The self-service `/recuperar` flow emails its own 1-hour link.
 
 ## Schema additions
 

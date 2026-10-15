@@ -56,7 +56,7 @@ Recommended order (D-027 style): `dryRun` → `testTo` to Miguel → send.
 
 ## Source
 
-- [apps/api/src/services/newsletter.ts](../apps/api/src/services/newsletter.ts) — schema, template, recipients, repo, `sendNewsletter`
+- [apps/api/src/services/newsletter.ts](../apps/api/src/services/newsletter.ts) — schema, template, recipients, repo, `sendNewsletter`; the shell pieces come from [emailBrand.ts](../apps/api/src/services/emailBrand.ts)
 - [apps/api/src/routes/newsletter.ts](../apps/api/src/routes/newsletter.ts) — `POST /admin/newsletter/send`, `POST /newsletter/unsubscribe`
 - [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts) (`newsletterSends`), [apps/api/src/db/migrations/0046_newsletter_sends.sql](../apps/api/src/db/migrations/0046_newsletter_sends.sql)
 - [apps/web/src/app/(public)/newsletter/baja/page.tsx](../apps/web/src/app/(public)/newsletter/baja/page.tsx)

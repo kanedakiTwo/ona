@@ -132,6 +132,14 @@ async function checkEmailsAndRegister(page: Page, browser: Browser, people: Arra
   await expect(guest).toHaveURL(/\/onboarding|\/menu/, { timeout: 20_000 })
   await ctx.close()
 
+  // Her account brings the beta welcome, signed by Miguel (specs/email.md).
+  await expect
+    .poll(async () => (await mailsTo(page, people[0].email)).map((m) => m.subject), { timeout: 15_000 })
+    .toContain('Ya estás dentro de Mimoia')
+  const welcome = (await mailsTo(page, people[0].email)).find((m) => m.subject === 'Ya estás dentro de Mimoia')!
+  expect(welcome.text).toContain('Hola, Ana:')
+  expect(welcome.text).toContain('Estamos en beta')
+
   // The same link again: error, no form to submit.
   const again = await browser.newContext({ viewport })
   const p2 = await again.newPage()

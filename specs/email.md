@@ -1,17 +1,22 @@
 # Email
 
-How Mimoia sends email. One provider, **Resend** (REST API, EU sending region, `mimoia.com` verified; D-050), called with a plain `fetch` from the API. Today it sends the **waitlist invitation** and the **Friday newsletter** ([newsletter.md](./newsletter.md), PRO-94).
+How Mimoia sends email. One provider, **Resend** (REST API, EU sending region, `mimoia.com` verified; D-050), called with a plain `fetch` from the API. It sends five emails: the **waitlist invitation** and its **reminder**, the **welcome** when an account is created, the **password reset** link and the **Friday newsletter** ([newsletter.md](./newsletter.md), PRO-94). All share one brand shell (`services/emailBrand.ts`): the Mimoia logo, a Fraunces headline with one word in the terracotta Cormorant italic, a forest button, the signature and a cream-deep footer band with Mimo's round symbol.
 
 ## User Capabilities
 
 - People on the [waitlist](./waitlist.md) invited in a batch get an email from **Mimoia <hola@mimoia.com>**:
   - subject «¡Te toca, <nombre>! Ya puedes entrar en Mimoia» (without a name: «¡Te toca! Ya puedes entrar en Mimoia»);
-  - in Mimo's voice («Soy Mimo, de Mimoia… ahora es la tuya»), in the brand shell the newsletter shares (cream, Fraunces, terracotta pill);
+  - written and **signed by Miguel** («Miguel · Fundador de Mimoia»; constitution §5), eyebrow «Lista de espera», headline «Ya puedes *entrar*»; «Entramos por tandas pequeñas porque quiero acompañar de cerca a cada casa»;
   - **what to expect**: create the account, five questions about the household, and the first weekly menu with its shopping list in about 2 minutes;
   - a «Crear mi cuenta» button to their **personal one-time link** `<WEB_PUBLIC_URL>/entrar/<token>` (PRO-97): it opens `/register` with their email fixed, and it's the only way an invited email gets through the closed beta (see [Auth](./auth.md)); the email says the link is theirs and works once;
   - if they said they're interested in WhatsApp, how to talk to Mimo there (profile → «Conectar WhatsApp»);
-  - small print «Te escribimos porque te apuntaste a la lista de espera de Mimoia.», that they can leave and we delete their email, and a «Darme de baja» link to their own `/lista/baja?t=<token>`.
-- **One reminder** 3 days after the invitation if they haven't created the account (PRO-97): «<Nombre>, tu invitación a Mimoia sigue aquí», the same link, «Es el único recordatorio que te mando.», same opt-out. Never a second one; not to anyone who registered or left.
+  - in the footer band «Te escribo porque te apuntaste a la lista de espera de Mimoia.», that they can leave and we delete their email, and a «Darme de baja» link to their own `/lista/baja?t=<token>`.
+- **One reminder** 3 days after the invitation if they haven't created the account (PRO-97): «<Nombre>, tu invitación a Mimoia sigue aquí», headline «Tu plaza sigue *aquí*», the same link, «Es el único recordatorio que te mando.», signed by Miguel, same opt-out. Never a second one; not to anyone who registered or left.
+- **Welcome** right after `POST /register` creates an account, signed by Miguel, greeting with the first name they gave on the waitlist if any («Hola, Laura:», else «Hola:»), an «Abrir Mimoia» button to `/menu` and «Te escribo porque acabas de crear tu cuenta en Mimoia.». Three versions (`welcomeKind`):
+  - **beta** (came in through the closed beta: waitlist link, beta invitation link or an admin email) — «Ya estás dentro de Mimoia», eyebrow «Beta privada»: thanks for being among the first homes, «Estamos en beta», things may fail, reply to the email and Miguel reads it; four first steps (questions about the home, first menu, shopping list, connect WhatsApp); «Gracias por estar aquí desde el principio.»;
+  - **household** (registered with someone's household invitation) — «Ya tienes cuenta en Mimoia», «Ya estás en *casa*»: someone at home invited them, they share menu, list and pantry; three steps (the menu is the whole home's, tick what you buy, connect WhatsApp);
+  - **general** (open registration) — «Te doy la bienvenida a Mimoia»: where Mimoia comes from, what it does, reply to the email; the same four first steps.
+- **Password reset** after «¿Has olvidado la contraseña?» (`/recuperar`, see [Auth](./auth.md)): «Cambia tu contraseña de Mimoia», an «Elegir contraseña nueva» button to `<WEB_PUBLIC_URL>/reset?token=<token>`, «El enlace sirve una vez y caduca en 1 hora.» and «Si no lo has pedido tú, no hagas nada: tu contraseña sigue igual.» Unsigned.
 - Every email has an HTML version (brand shell) and a plain-text version with the same content and the links written out.
 
 ## How it works
@@ -20,9 +25,10 @@ How Mimoia sends email. One provider, **Resend** (REST API, EU sending region, `
   - `sendEmail(msg)` → `POST {RESEND_BASE_URL}/emails` with `Authorization: Bearer RESEND_API_KEY`, body `{ from: EMAIL_FROM, to: [to], subject, html, text, headers? }`.
   - `sendEmailBatch(msgs)` → `POST /emails/batch`, at most 100 per call (`RESEND_BATCH_LIMIT`), results in input order; used by the newsletter.
   - Both resolve `{ status: 'sent', id } | { status: 'skipped', reason: 'not_configured' } | { status: 'failed', error }`. **They never throw**: a failed email never breaks the action that sent it.
-  - `renderBrandEmail({ preheader?, heading, paragraphs, button?, footer?, unsubscribeUrl? })` → `{ html, text }`: cream background, 600 px column, «Mimoia» in terracotta, Fraunces heading with Georgia/serif fallbacks, Inter/system body, a pill button; tables + inline styles (Gmail and Apple Mail on a phone). Every string is HTML-escaped.
+  - `renderBrandEmail({ preheader?, eyebrow?, heading, paragraphs, steps?, button?, after?, signoff?, from?, footer?, unsubscribeUrl?, assets? })` → `{ html, text }` on the shared shell (`emailBrand.ts`: tokens, `masthead`, `headlineRow`, `button`, `signature`, `footerBand`, `emailDocument`; the newsletter uses the same pieces). `heading` takes `*word*` for the accent italic; `steps` is a numbered card; `from` signs with name and role (`MIGUEL`). Tables + inline styles, 600 px, Google Fonts link (Apple Mail shows the brand fonts, Gmail falls back to Georgia/Helvetica), `color-scheme: light`. Logo and symbol come from `<WEB_PUBLIC_URL>/email/` (`apps/web/public/email/`). Every string is HTML-escaped.
   - `listUnsubscribeHeaders(url)` → `List-Unsubscribe: <url>` for list emails. The URL is the opt-out page, which unsubscribes on a click, not on load (so no `List-Unsubscribe-Post` one-click yet).
 - `services/waitlistEmails.ts` → `waitlistInviteEmail()` builds the invitation, `waitlistInviteReminderEmail()` the reminder.
+- `services/accountEmails.ts` → `welcomeKind()`, `welcomeEmail()`, `passwordResetEmail()`; `services/accountMailer.ts` sends them: `sendWelcomeEmail()` (fired without waiting from `POST /register`, never delays or fails it; looks up the waitlist first name) and `requestPasswordReset()` (from `POST /auth/forgot`: only for an existing, not suspended account, at most `RESET_EMAILS_PER_HOUR` = 3 per account per hour, a 1-hour token via `mintToken(…, SELF_RESET_TTL_MS)`).
 - The reminder runs from the notification scheduler's tick (`sendWaitlistInviteRemindersIfDue`, at most once an hour per process, inside the scheduler's advisory lock). Due = `invited`, has a link, link unused, not reminded, invited ≥ 3 days ago. The row is marked (`invite_reminder_sent_at`) **before** sending, atomically, so two processes never send it twice; a `failed` send stays marked (no retry), a `skipped` one (no key) is unmarked so it goes out once email is configured.
 - `POST /admin/waitlist/invite { ids, batch?, sendEmail? }` (admin JWT) marks the batch invited and then emails each newly invited person, one call each. The response adds `emailStatus` per person (`sent | skipped | failed | not_requested`) and `email { sent, skipped, failed }`. `sendEmail: false` marks the batch without emailing (Miguel writes by hand). Entries that were not `waiting` are skipped and not emailed again.
 
@@ -36,7 +42,8 @@ How Mimoia sends email. One provider, **Resend** (REST API, EU sending region, `
 
 ## Known limitations
 
-- No waitlist confirmation email (double opt-in), no password-reset email (an admin still makes the link).
+- No waitlist confirmation email (double opt-in).
+- Replies go to `hola@mimoia.com` (Namecheap forwarding): the welcome asks people to reply, so that inbox has to reach Miguel.
 - No bounce/complaint webhook: Resend's dashboard is the only place to see them.
 
 ## Related specs
@@ -49,9 +56,13 @@ How Mimoia sends email. One provider, **Resend** (REST API, EU sending region, `
 ## Source
 
 - [apps/api/src/services/email.ts](../apps/api/src/services/email.ts)
+- [apps/api/src/services/emailBrand.ts](../apps/api/src/services/emailBrand.ts) — the shared brand shell
 - [apps/api/src/services/waitlistEmails.ts](../apps/api/src/services/waitlistEmails.ts)
+- [apps/api/src/services/accountEmails.ts](../apps/api/src/services/accountEmails.ts), [apps/api/src/services/accountMailer.ts](../apps/api/src/services/accountMailer.ts) — welcome, password reset
+- [apps/api/src/routes/auth.ts](../apps/api/src/routes/auth.ts) — `POST /register` (welcome), `POST /auth/forgot`
+- [apps/web/public/email/](../apps/web/public/email/) — logo and symbol the emails load
 - [apps/api/src/services/waitlistInvites.ts](../apps/api/src/services/waitlistInvites.ts) — one-time link, reminder
 - [apps/api/src/services/notificationScheduler.ts](../apps/api/src/services/notificationScheduler.ts) — runs the reminder
 - [apps/api/src/routes/waitlist.ts](../apps/api/src/routes/waitlist.ts) — `POST /admin/waitlist/invite`
 - [apps/api/src/config/env.ts](../apps/api/src/config/env.ts) — `RESEND_API_KEY`, `EMAIL_FROM`, `RESEND_BASE_URL`
-- Tests: `apps/api/src/tests/email.test.ts` (fetch stubbed: body, headers, no key, masked logs, batch split, template, invitation), `apps/api/src/tests/waitlistRoute.test.ts` (the invite sends one email per person, each with its link), `waitlistInvites.test.ts` (reminder: at 3 days yes, at 2 no, never twice), e2e `waitlist-invite.spec.ts` against a fake Resend (`RESEND_BASE_URL` → the server `e2e/global-setup.ts` starts on `E2E_MAIL_URL`)
+- Tests: `apps/api/src/tests/email.test.ts` (fetch stubbed: body, headers, no key, masked logs, batch split, template, invitation), `apps/api/src/tests/waitlistRoute.test.ts` (the invite sends one email per person, each with its link), `waitlistInvites.test.ts` (reminder: at 3 days yes, at 2 no, never twice), `accountEmails.test.ts` (welcome kinds and texts, reset email, reset rules, brand shell), e2e `waitlist-invite.spec.ts` (also the beta welcome after registering) and `password-recovery.spec.ts` (/recuperar → reset email → new password works) against a fake Resend (`RESEND_BASE_URL` → the server `e2e/global-setup.ts` starts on `E2E_MAIL_URL`)

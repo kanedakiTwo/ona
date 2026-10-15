@@ -27,7 +27,7 @@ async function setup(page: Page) {
     return (await r.json()).ingredient as { id: string; name: string }
   }
   const [jengibre, cilantro, calabacin] = await Promise.all([ensure('jengibre fresco'), ensure('cilantro'), ensure('calabacin')])
-  const created = await page.request.post(`${API_URL}/recipes`, {
+  const created = await page.request.post(`${API_URL}/recipes?force=1`, {
     headers: auth,
     data: {
       name: 'Salteado de calabacín con jengibre',
@@ -46,7 +46,7 @@ async function setup(page: Page) {
       force: true,
     },
   })
-  expect(created.status()).toBe(201)
+  expect(created.status(), await created.text()).toBe(201)
   const recipe = await created.json()
   return { recipe, jengibre, cilantro }
 }

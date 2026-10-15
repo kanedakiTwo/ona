@@ -140,8 +140,18 @@ describe('processInbound — unlinked numbers', () => {
     expect(t.sent).toEqual([{ type: 'text', text: COPY.badCode }])
   })
 
-  it('the first message of the WhatsApp sign-up says you can write or send voice notes', () => {
-    expect(COPY.linkedOnboarding('Ana')).toMatch(/Puedes escribirme o mandarme notas de voz/)
+  it("the first message of the WhatsApp sign-up (Miguel's text, 2026-10-15): AI disclosure, voice notes, two questions", () => {
+    const m = COPY.linkedOnboarding('Ana')
+    // AI Act art. 50: AI, can be wrong, not a health professional.
+    expect(m).toMatch(/asistente de inteligencia artificial \(IA\)/)
+    expect(m).toMatch(/puedo equivocarme y no sustituyo a un profesional sanitario/)
+    expect(m).toMatch(/Puedes escribirme o mandarme notas de voz/)
+    expect(m).toMatch(/\*1\.\* ¿Cuántos sois en casa\?/)
+    expect(m).toMatch(/\*2\.\* Dime tres platos que os gusten mucho\./)
+  })
+
+  it('the opt-in question says it can be changed just by asking (Mimo has the tool)', () => {
+    expect(COPY.optInPrompt).toMatch(/simplemente pidiéndomelo/)
   })
 
   it('points an unknown number to the connect page (no token in the link)', async () => {
@@ -651,7 +661,8 @@ describe('processInbound — WhatsApp-first sign-up (2026-10-10)', () => {
     const t = setup({ link: null, consume: () => ({ userId: 'user-1', onboardingDone: false }) })
     await processInbound(msg({ text: 'Vincular Mimoia: 4F7K2A' }), t.deps)
     expect(t.sent).toEqual([{ type: 'text', text: COPY.linkedOnboarding('Miguel') }])
-    expect(t.sent[0].text).toContain(AI_DISCLOSURE_FIRST_PERSON)
+    // Miguel's wording (2026-10-15) keeps the disclosure's three parts (AI Act art. 50).
+    expect(t.sent[0].text).toMatch(/asistente de inteligencia artificial \(IA\)[\s\S]*puedo equivocarme y no sustituyo a un profesional sanitario/)
     expect(t.sent[0].text).toMatch(/¿Cuántos sois en casa\?/)
     expect(t.outbound.map((o) => o.kind)).toEqual(['onboarding'])
     expect(t.chat).not.toHaveBeenCalled()
@@ -684,7 +695,7 @@ describe('processInbound — WhatsApp-first sign-up (2026-10-10)', () => {
     expect(t.outbound.map((o) => o.kind)).toEqual(['reply', 'system', 'optin_prompt'])
     expect(t.sent[0].text).toContain('*Tu semana del 6 al 12 de octubre*')
     expect(t.sent[1]).toEqual({ type: 'text', text: COPY.healthOnWeb(`${WEB}/profile`) })
-    expect(t.sent[1].text).toMatch(/no guardo datos de salud/)
+    expect(t.sent[1].text).toMatch(/no me dejan guardar datos de salud/)
     expect(t.sent[2]).toMatchObject({ type: 'buttons', text: COPY.optInPrompt })
   })
 
@@ -694,11 +705,12 @@ describe('processInbound — WhatsApp-first sign-up (2026-10-10)', () => {
     const afterSignup = () =>
       new Map([['onboarding', at(600_000)], ['reply', at(180_000)], ['system', at(120_000)], ['optin_prompt', at(60_000)]])
 
-    it('"Sí, avísame" → avisos on, then the suggestions', async () => {
+    it('"Sí, avísame" → avisos on and straight to the suggestions, no confirmation line (2026-10-15)', async () => {
       const t = setup({ outboundKinds: afterSignup() })
       await processInbound(msg({ kind: 'interactive', text: 'Sí, avísame', rawType: 'interactive' }), t.deps)
-      expect(t.outbound.map((o) => o.kind)).toEqual(['optin', 'first_steps'])
-      expect(t.sent[1]).toEqual({ type: 'text', text: COPY.firstSteps(`${WEB}/menu`) })
+      expect(t.setNotify).toHaveBeenCalledWith('user-1', true)
+      expect(t.outbound.map((o) => o.kind)).toEqual(['first_steps'])
+      expect(t.sent[0]).toEqual({ type: 'text', text: COPY.firstSteps(`${WEB}/menu`) })
       expect(COPY.firstSteps('x')).toMatch(/foto o un enlace de una receta/)
       expect(COPY.firstSteps('x')).toMatch(/¿Qué cenamos hoy\?/)
       expect(COPY.firstSteps('x')).toMatch(/Hazme la lista de la compra/)
@@ -707,11 +719,11 @@ describe('processInbound — WhatsApp-first sign-up (2026-10-10)', () => {
       expect(t.chat).not.toHaveBeenCalled()
     })
 
-    it('"No, gracias" → the decline, then the suggestions', async () => {
+    it('"No, gracias" → straight to the suggestions, no confirmation line', async () => {
       const t = setup({ outboundKinds: afterSignup() })
       await processInbound(msg({ kind: 'interactive', text: 'No, gracias', rawType: 'interactive' }), t.deps)
-      expect(t.outbound.map((o) => o.kind)).toEqual(['system', 'first_steps'])
-      expect(t.sent[1]).toEqual({ type: 'text', text: COPY.firstSteps(`${WEB}/menu`) })
+      expect(t.outbound.map((o) => o.kind)).toEqual(['first_steps'])
+      expect(t.sent[0]).toEqual({ type: 'text', text: COPY.firstSteps(`${WEB}/menu`) })
     })
 
     it('only once: not again on a later ALTA', async () => {

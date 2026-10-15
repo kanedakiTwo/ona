@@ -61,8 +61,8 @@ export async function apiFetch<T = unknown>(
     ...(customHeaders as Record<string, string>),
   }
 
-  // Public endpoints (/recipes-ona, future SEO pages) opt out of the token
-  // so the same logged-in browser sees the anonymous catalogue per spec.
+  // Public writes (waitlist, opt-outs) opt out of the token so they are
+  // never tied to whoever is logged in on this browser.
   if (!anonymous && typeof window !== "undefined") {
     const token = localStorage.getItem("ona_token")
     if (token) {
@@ -120,8 +120,8 @@ export async function apiFetch<T = unknown>(
 
 /**
  * Same surface as `api` but never sends the Authorization header. Use it
- * for public-mode pages (e.g. /recipes-ona) so a logged-in browser still
- * receives the anonymous catalogue.
+ * for public pages (waitlist, opt-out links, the invitation check on
+ * /register) so a logged-in browser never mixes its session in.
  */
 export const apiPublic = {
   get<T = unknown>(path: string) {

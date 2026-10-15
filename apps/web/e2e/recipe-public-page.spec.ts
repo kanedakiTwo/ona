@@ -3,8 +3,8 @@
  * the only recipe detail. Signed out it opens with the public chrome
  * (PublicNavbar + Footer, no app sidebar / bottom bar / Mimo) and ends with
  * the waitlist block; signed in it keeps the app shell. The old public detail
- * `/recipes-ona/<id>` is a permanent redirect, and the public catalogue
- * `/recipes-ona` no longer leaves the app sidebar's gap on desktop.
+ * `/recipes-ona/<id>` is a permanent redirect. The public catalogue list is
+ * `/recipes` itself (e2e/app-signed-out.spec.ts).
  */
 
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test'
@@ -70,13 +70,22 @@ test('signed out at 1440×900: public chrome, footer flush left, CTA in the righ
   await expect(page.getByTestId('recipe-waitlist-cta')).toBeAttached()
   const footer = await page.getByTestId('site-footer').boundingBox()
   expect(footer?.x ?? -1).toBeLessThan(2)
+  // The photo column starts on the public grid, under the navbar logo.
+  const logo = await page.getByTestId('public-logo').boundingBox()
+  const photo = await page.getByRole('img', { name: recipe.name }).first().boundingBox()
+  expect(Math.abs((photo?.x ?? 0) - (logo?.x ?? 100))).toBeLessThanOrEqual(2)
+  // Back link signed out → the catalogue, public at /recipes.
+  await expect(page.getByRole('link', { name: /^recetas$/i }).first()).toHaveAttribute('href', '/recipes')
 })
 
 test('signed out: a private or unknown recipe says it is private, with sign-in and the catalogue', async ({ page }) => {
   await page.goto('/recipes/00000000-0000-4000-8000-000000000000')
   await expect(page.getByRole('heading', { name: /esta receta es privada/i })).toBeVisible({ timeout: 20_000 })
-  await expect(page.getByTestId('recipe-private').getByRole('link', { name: /^entrar$/i })).toHaveAttribute('href', '/login')
-  await expect(page.getByTestId('recipe-private').getByRole('link', { name: /ver el catálogo/i })).toHaveAttribute('href', '/recipes-ona')
+  await expect(page.getByTestId('recipe-private').getByRole('link', { name: /^entrar$/i })).toHaveAttribute(
+    'href',
+    `/login?next=${encodeURIComponent('/recipes/00000000-0000-4000-8000-000000000000')}`,
+  )
+  await expect(page.getByTestId('recipe-private').getByRole('link', { name: /ver el catálogo/i })).toHaveAttribute('href', '/recipes')
   await expectPublicChrome(page)
 })
 
@@ -84,18 +93,6 @@ test('/recipes-ona/<id> redirects permanently to /recipes/<id> keeping the query
   const res = await request.get('/recipes-ona/abc-123?x=1&ref=receta', { maxRedirects: 0 })
   expect(res.status()).toBe(308)
   expect(res.headers()['location']).toBe('/recipes/abc-123?x=1&ref=receta')
-})
-
-test('/recipes-ona at 1440×900 has the public chrome and no sidebar gap; its cards open /recipes/<id>', async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 })
-  await page.goto('/recipes-ona')
-  const card = page.locator('a[href^="/recipes/"]').first()
-  await expect(card).toBeVisible({ timeout: 20_000 })
-  await expect(page.locator('a[href^="/recipes-ona/"]')).toHaveCount(0)
-  await expect(page.getByTestId('public-logo')).toBeVisible()
-  const footer = await page.getByTestId('site-footer').boundingBox()
-  expect(footer?.x ?? -1).toBeLessThan(2)
-  expect(footer?.width ?? 0).toBeGreaterThan(1400)
 })
 
 test('link previews: the recipe page sets its own title, Open Graph and canonical', async ({ request }) => {

@@ -38,20 +38,6 @@ export function isAllYearRecipe(seasons: readonly string[] | null | undefined): 
 }
 
 /**
- * The season label a card may show: the CURRENT season, and only for a
- * recipe that is genuinely seasonal and in season now. All-year and
- * out-of-season recipes get `null` (show nothing).
- */
-export function recipeSeasonBadge(
-  seasons: readonly string[] | null | undefined,
-  date: Date = new Date(),
-): Season | null {
-  if (isAllYearRecipe(seasons)) return null
-  const now = detectSeason(date)
-  return seasons!.includes(now) ? now : null
-}
-
-/**
  * Minutes shown on a card and used by the time filters: the total time
  * (server-derived) when known, else the prep time. `null` when unknown or 0.
  */

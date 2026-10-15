@@ -41,6 +41,9 @@ ROUTES=(
   "/recipes/${UUID}/cook"
   /compra
   /compra/tiendas
+  /menu/history
+  "/cookbooks/${UUID}"
+  /admin
   /privacidad
   /como-funciona
   /aviso-legal

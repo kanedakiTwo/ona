@@ -14,7 +14,7 @@ User registration, login, and session management for Mimoia.
 - Newly registered users are redirected to onboarding before accessing the app
 - Existing users with completed onboarding go directly to `/menu` after login
 - Registering with an email that is on the pre-launch [waitlist](./waitlist.md) (waiting or invited) marks that entry `joined` — fire-and-forget, it never blocks or fails the registration
-- `/login` and `/register` honour `?next=<path>`: after success the user lands on `next` instead of `/menu` / `/onboarding`. Only same-origin relative paths are accepted (`safeNext`: must start with `/`, not `//` or `/\`, no newlines), so it can't become an open redirect. The "Crear cuenta" / "Inicia sesión" cross-links carry `next` along. Used by `/whatsapp/conectar` and `/invites/[token]`.
+- `/login` and `/register` honour `?next=<path>`: after success the user lands on `next` instead of `/menu` / `/onboarding`. Only same-origin relative paths are accepted (`safeNext`: must start with `/`, not `//` or `/\`, no newlines), so it can't become an open redirect. The "Crear cuenta" / "Inicia sesión" cross-links carry `next` along. Used by `/whatsapp/conectar`, `/invites/[token]`, the private-recipe notice and the signed-out redirect of every protected page (see "Public vs Protected Routes").
 
 ## Closed beta (PRO-27)
 
@@ -62,23 +62,24 @@ The `users` table holds the canonical scalar fields (`sex`, `age`, `weight`, `he
 
 ## Public vs Protected Routes
 
-**Public** (no navbar, no auth required):
-- `/` (landing), `/como-funciona`, `/privacidad`, `/terminos`
-- `/recipes-ona` — public Mimoia catalogue list (system recipes only; in `PUBLIC_ROUTES`, see [Recipes](./recipes.md)). `/recipes-ona/[id]` is a permanent redirect to `/recipes/[id]`
-- `/recipes/[id]` and `/recipes/[id]/cook` — **public for catalogue recipes**: signed out they render with the public chrome (PublicNavbar + Footer; cook mode full-screen) and the waitlist block; a private recipe answers «Esta receta es privada.» (API `GET /recipes/:id` uses `optionalAuthMiddleware` and 404s private recipes without a token). Signed in they keep the app shell. Chosen by `RootShell` (`lib/recipeShell.ts`)
-- `/login`, `/register` — `/register` stays reachable for invited households, but no public CTA links to it pre-launch (they lead to the [waitlist](./waitlist.md))
-- `/lista/[code]`, `/lista/baja` — waitlist owner page and opt-out (public chrome via `PUBLIC_PREFIXES`)
-- `/recuperar` (ask for the link), `/reset` (password recovery) and `/invites/[token]` (household invitation) — drawn like `/login` (public chrome: no sidebar, no bottom bar, no Mimo button, no desktop left margin), also for a signed-in user; `/invites/` via `PUBLIC_PREFIXES`
-- `/onboarding`
-- `/whatsapp/conectar?t=<token>` — WhatsApp-first link confirm page (asks to log in / register when logged out; see [WhatsApp](./whatsapp.md))
+**One rule (2026-10-15):** every page needs an account unless it is on the open list in `lib/routeAccess.ts`. A signed-out visitor on any other page goes to **`/login?next=<path+query>`** once the session has resolved (`RootShell` paints an empty cream page meanwhile, so the wrong page never flashes), and logging in brings them back there (`safeNext`). New pages are protected by default; unknown URLs signed out land on `/login` too. Before, signed out, `/menu`, `/profile` and `/advisor` hung on «Cargando...», `/shopping` and `/compra` were blank and `/recipes/new` showed a form that couldn't save. Tests: `apps/api/src/tests/routeAccess.test.ts` (the lists), `e2e/app-signed-out.spec.ts`.
 
-**Protected** (bottom tab bar, requires auth):
-- `/menu`, `/menu/history`
-- `/shopping`
-- `/recipes`, `/recipes/new`, `/recipes/[id]/edit` (and `/recipes/[id]` + `/cook` when signed in — see Public above)
+**Open** (no account needed):
+- Marketing and legal: `/`, `/como-funciona`, `/precios`, `/blog`, `/blog/[slug]`, `/privacidad`, `/terminos`, `/aviso-legal`
+- `/login`, `/register` — `/register` stays reachable for invited households, but no public CTA links to it pre-launch (they lead to the [waitlist](./waitlist.md))
+- `/recuperar` (ask for the link), `/reset` (password recovery) and `/invites/[token]` (household invitation) — drawn like `/login` (no sidebar, bottom bar, Mimo button or desktop left margin), also for a signed-in user
+- `/lista/[code]`, `/lista/baja` (waitlist), `/newsletter/baja`, `/offline` (service-worker fallback)
+- Link handlers (`route.ts`): `/i/[code]` (campaign), `/entrar/[token]` (waitlist invitation), `/c/[token]` (shop-order short link)
+- **Open, chrome by session** (signed out: public chrome PublicNavbar + Footer on the public grid; signed in: the app shell): `/recipes` (the public catalogue, see [Recipes](./recipes.md) → "Catálogo público"), `/recipes/[id]` and `/recipes/[id]/cook` (catalogue recipes; cook mode full-screen; a private recipe answers «Esta receta es privada.» — API `GET /recipes/:id` uses `optionalAuthMiddleware` and 404s private recipes without a token), `/whatsapp/conectar` (signed out: «Entra en tu cuenta de Mimoia (o créala)…» with login/register links carrying `?next=`; see [WhatsApp](./whatsapp.md))
+- `/recipes-ona` and `/recipes-ona/[id]` are permanent redirects to `/recipes` and `/recipes/[id]`
+
+**Protected** (everything else; signed out → `/login?next=…`; signed in, the app shell unless noted):
+- `/menu`, `/menu/history`, `/shopping`, `/compra`, `/compra/tiendas`
+- `/recipes/new`, `/recipes/[id]/edit`, `/cookbooks/[id]`
+- `/profile` and every `/profile/*` page
 - `/advisor` — no longer a page (D-023): a client redirect to `/menu?mimo=1`, which opens Mimo. Mimo itself is the floating button on every protected page (see [Advisor](./advisor.md))
-- `/profile`
-- `/admin` — admin dashboard, gated by `requireAdmin` (see [Admin Dashboard](./admin-dashboard.md)). The old `/curator` route 301-redirects here.
+- `/onboarding`, `/onboarding/voz` — full-screen, without the app shell
+- `/admin` — admin dashboard, also gated by `requireAdmin` (see [Admin Dashboard](./admin-dashboard.md)). The old `/curator` route 301-redirects here.
 
 ## Related specs
 
@@ -96,6 +97,7 @@ The `users` table holds the canonical scalar fields (`sex`, `age`, `weight`, `he
 - [apps/api/src/middleware/rateLimit.ts](../apps/api/src/middleware/rateLimit.ts) — fixed-window IP rate limiter
 - [apps/api/src/config/env.ts](../apps/api/src/config/env.ts) — `JWT_EXPIRES_IN`
 - [apps/web/src/lib/auth.tsx](../apps/web/src/lib/auth.tsx) — client-side AuthProvider
+- [apps/web/src/lib/routeAccess.ts](../apps/web/src/lib/routeAccess.ts) — open vs protected pages (`needsAccount`, `signedOutChrome`, `isBareRoute`, `loginHrefFor`); applied by [components/shared/RootShell.tsx](../apps/web/src/components/shared/RootShell.tsx)
 - [apps/web/src/lib/safeNext.ts](../apps/web/src/lib/safeNext.ts) — `?next=` validation + carry-over for login/register; `campaignCodeFromLocation`, `waitlistTokenFromLocation`
 - [apps/api/src/services/waitlistInvites.ts](../apps/api/src/services/waitlistInvites.ts) — waitlist one-time link: check, use up, give back (PRO-97)
 - [apps/web/src/app/entrar/[token]/route.ts](../apps/web/src/app/entrar/%5Btoken%5D/route.ts) — `/entrar/<token>` → `/register?entrada=<token>`

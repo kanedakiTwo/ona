@@ -4,12 +4,10 @@
  * Why this exists: until 2026-10-08 every catalogue card showed
  * `seasonLabel(recipe.seasons[0])` — the FIRST season in the recipe's list.
  * Nearly every recipe is all-year with `spring` first, so in October the
- * whole grid said "PRIMAVERA". The rule now lives in `@ona/shared`
- * (`utils/catalog.ts`) and is pinned here:
+ * whole grid said "PRIMAVERA". Cards show no season now; the rule for
+ * "De temporada" lives in `@ona/shared` (`utils/catalog.ts`) and is pinned here:
  *   - "now" is `detectSeason(date)` (meteorological, Spain: Sep–Nov = otoño),
  *     the same rule the menu generator uses;
- *   - a season label is only ever the CURRENT season, and only for a recipe
- *     that is genuinely seasonal (never for an all-year recipe);
  *   - "De temporada" = recipes that fit the current season (all-year ones
  *     included), the featured card is always in season and has a photo.
  *
@@ -19,7 +17,6 @@
 import { describe, it, expect } from 'vitest'
 import {
   detectSeason,
-  recipeSeasonBadge,
   isAllYearRecipe,
   isCuratedRecipe,
   recipeMinutes,
@@ -68,26 +65,7 @@ describe('current season (Spain, meteorological — shared with the menu generat
   })
 })
 
-describe('recipeSeasonBadge — never the first season in the list', () => {
-  it('an all-year recipe (spring first) in October gets NO label — not "Primavera"', () => {
-    expect(recipeSeasonBadge(ALL_YEAR, OCTOBER)).toBeNull()
-    expect(recipeSeasonBadge(['autumn', 'winter', 'spring', 'summer'], OCTOBER)).toBeNull()
-  })
-
-  it('a recipe with no seasons is all-year → no label', () => {
-    expect(recipeSeasonBadge([], OCTOBER)).toBeNull()
-    expect(recipeSeasonBadge(undefined, OCTOBER)).toBeNull()
-  })
-
-  it('a seasonal recipe listed spring-first that also fits autumn is labelled with the CURRENT season', () => {
-    expect(recipeSeasonBadge(['spring', 'autumn'], OCTOBER)).toBe('autumn')
-    expect(recipeSeasonBadge(['spring', 'summer', 'autumn'], OCTOBER)).toBe('autumn')
-  })
-
-  it('an out-of-season recipe gets no label (it is not "de temporada" now)', () => {
-    expect(recipeSeasonBadge(['spring', 'summer'], OCTOBER)).toBeNull()
-  })
-
+describe('isAllYearRecipe', () => {
   it('isAllYearRecipe: empty or all four seasons', () => {
     expect(isAllYearRecipe([])).toBe(true)
     expect(isAllYearRecipe(['winter', 'autumn', 'summer', 'spring'])).toBe(true)

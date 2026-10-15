@@ -157,7 +157,6 @@ export { detectSeason, isInSeason } from './utils/seasons.js'
 export {
   isCuratedRecipe,
   isAllYearRecipe,
-  recipeSeasonBadge,
   recipeMinutes,
   filterCatalogRecipes,
   pickFeaturedRecipes,

@@ -4,10 +4,11 @@ import { SITE_URL } from "@/lib/site"
 
 /**
  * /sitemap.xml — the public pages a search engine should know about, plus
- * every published blog article (specs/blog.md). App routes behind login are
+ * every published blog article (specs/blog.md), and the recipe catalogue
+ * `/recipes` (public signed out, specs/recipes.md). App routes behind login are
  * left out on purpose.
  */
-const PUBLIC_PAGES = ["/", "/como-funciona", "/blog", "/privacidad", "/terminos", "/aviso-legal"]
+const PUBLIC_PAGES = ["/", "/como-funciona", "/recipes", "/blog", "/privacidad", "/terminos", "/aviso-legal"]
 
 export default function sitemap(): MetadataRoute.Sitemap {
   return [

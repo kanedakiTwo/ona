@@ -630,7 +630,7 @@ router.post(
 // POST /recipes/extract-from-url — extract from a YouTube video or article URL (auth required).
 // `asSystem: true` (admin-only) lands the recipe in the curated Mimoia catalogue
 // (`authorId = null`, `internalTags` includes `compartida`) so it shows up
-// under "Selección Mimoia" on /recipes and on the public /recipes-ona page.
+// under "Selección Mimoia" on /recipes and in the public catalogue (/recipes signed out).
 // Non-admins requesting asSystem get 403.
 const extractFromUrlSchema = z.object({
   url: z.string().url(),
@@ -667,7 +667,7 @@ router.post(
       // of catalogue scope.
       const result = await saveExtractedRecipe(extracted, {
         // asSystem: persist as a curated Mimoia recipe (authorId = null) so it
-        // surfaces on /recipes-ona and under "Selección Mimoia" on /recipes.
+        // surfaces in the public catalogue and under "Selección Mimoia" on /recipes.
         authorId: asSystem ? null : req.userId!,
         internalTags: asSystem
           ? ['compartida', 'auto-extracted', 'from-url']

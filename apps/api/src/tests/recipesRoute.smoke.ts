@@ -351,7 +351,7 @@ describe('recipes route smoke', () => {
 
   // ─── public catalogue (anonymous access) ──────────────────────
   //
-  // Regression guards for the `/recipes-ona` public pages:
+  // Regression guards for the public catalogue (`/recipes` and `/recipes/<id>` signed out):
   // - GET /recipes (no token) must 200 and return only system recipes
   //   (`authorId IS NULL`). Mounting recipeRoutes after a router that does
   //   `router.use(authMiddleware)` would silently revert this to 401.

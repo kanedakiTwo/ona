@@ -24,6 +24,7 @@ import { useVoice, type ServerVoice } from '@/hooks/useVoice'
 import { recorderSupported, useRecorder } from '@/hooks/useRecorder'
 import { emitCookingCommand } from '@/lib/cookingCommands'
 import { handsFreeAfterSilence, leavesCookMode } from '@/lib/mimoHandsFree'
+import { createPendingListen } from '@/lib/pendingListen'
 import MimoPanel from './MimoPanel'
 import MimoButton from './MimoButton'
 
@@ -121,6 +122,10 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
   const pathRef = useRef(pathname)
   pathRef.current = pathname
   const busyRef = useRef(false)
+  /** The mic start `open({ listen })` leaves for 150 ms later; cancellable (PRO-79). */
+  const pendingListenRef = useRef<ReturnType<typeof createPendingListen> | null>(null)
+  if (!pendingListenRef.current) pendingListenRef.current = createPendingListen()
+  const pendingListen = pendingListenRef.current
 
   const recorder = useRecorder()
   const voice = useVoice({ lang: 'es-ES' })
@@ -166,8 +171,11 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
   const setHandsFree = useCallback((v: boolean) => {
     setHandsFreeState(v)
     handsFreeRef.current = v
-    if (!v) recorder.cancel()
-  }, [recorder])
+    if (!v) {
+      pendingListen.cancel()
+      recorder.cancel()
+    }
+  }, [recorder, pendingListen])
 
   const append = (m: Omit<MimoMessage, 'id'>) =>
     setMessages((prev) => [...prev, { ...m, id: `${m.role[0]}-${Date.now()}-${prev.length}` }].slice(-MAX_KEPT))
@@ -310,17 +318,19 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
     (opts: { listen?: boolean; handsFree?: boolean } = {}) => {
       setIsOpen(true)
       if (opts.handsFree) setHandsFree(true)
-      if (opts.listen) setTimeout(() => listenRef.current(), 150)
+      if (opts.listen) pendingListen.schedule(() => listenRef.current(), 150)
     },
-    [setHandsFree],
+    [setHandsFree, pendingListen],
   )
   const close = useCallback(() => {
+    pendingListen.cancel()
     setIsOpen(false)
     setHandsFree(false)
     recorder.cancel()
     voice.stopSpeaking()
     setStatus('idle')
-  }, [recorder, voice, setHandsFree])
+  }, [recorder, voice, setHandsFree, pendingListen])
+  useEffect(() => () => pendingListen.cancel(), [pendingListen])
 
   const value = useMemo<MimoContextValue>(
     () => ({
@@ -340,6 +350,7 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
       speakReplies,
       setSpeakReplies,
       stopSpeaking: () => {
+        pendingListen.cancel()
         voice.stopSpeaking()
         setStatus('idle')
       },
@@ -351,7 +362,7 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
         void voice.speak('Hola, soy Mimo. Así sueno con esta voz. ¿Qué cocinamos hoy?', key)
       },
     }),
-    [isOpen, open, close, messages, status, error, send, toggleListening, recorder.level, canListen, handsFree, setHandsFree, speakReplies, setSpeakReplies, voice],
+    [isOpen, open, close, messages, status, error, send, toggleListening, recorder.level, canListen, handsFree, setHandsFree, speakReplies, setSpeakReplies, voice, pendingListen],
   )
 
   const showButton = !!userId && !isOpen && !mimoHiddenOn(pathname)

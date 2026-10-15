@@ -15,6 +15,8 @@ test.beforeEach(async ({ page }) => {
   // Silent microphone: a muted oscillator into a MediaStream.
   await page.addInitScript(() => {
     const silent = async () => {
+      ;(window as unknown as { __micStarts: number }).__micStarts =
+        ((window as unknown as { __micStarts?: number }).__micStarts ?? 0) + 1
       const ctx = new AudioContext()
       const dest = ctx.createMediaStreamDestination()
       const osc = ctx.createOscillator()
@@ -88,5 +90,42 @@ test('cook mode: «Parar» ends hands-free', async ({ page }) => {
   await expect(page.getByTestId('mimo-listening')).toBeVisible()
   await page.getByTestId('mimo-stop').click()
   await expect(toggle).toHaveAttribute('aria-pressed', 'false')
+  await expect(page.getByTestId('mimo-listening')).toHaveCount(0)
+})
+
+test('cook mode: «Parar» right after opening never turns the mic on (PRO-79)', async ({ page }) => {
+  test.setTimeout(60_000)
+  await page.goto('/recipes')
+  const card = page.getByRole('main').locator('a[href^="/recipes/"]:not([href="/recipes/new"])').first()
+  await expect(card).toBeVisible({ timeout: 10_000 })
+  const id = (await card.getAttribute('href'))!.match(/\/recipes\/([^/?#]+)/)![1]
+  await page.goto(`/recipes/${id}/cook`)
+  await expect(page.getByTestId('cook-handsfree')).toBeVisible({ timeout: 10_000 })
+
+  // Tap «Mimo, manos libres» and then «Parar» as soon as it renders, inside
+  // the 150 ms before the mic starts. Done in the page so the two taps are
+  // milliseconds apart, not a Playwright round trip.
+  const gap = await page.evaluate(
+    () =>
+      new Promise<number>((resolve, reject) => {
+        const t0 = performance.now()
+        ;(document.querySelector('[data-testid="cook-handsfree"]') as HTMLButtonElement).click()
+        const poll = () => {
+          const stop = document.querySelector('[data-testid="mimo-stop"]') as HTMLButtonElement | null
+          if (stop) {
+            stop.click()
+            resolve(performance.now() - t0)
+          } else if (performance.now() - t0 > 2_000) reject(new Error('«Parar» never showed up'))
+          else requestAnimationFrame(poll)
+        }
+        poll()
+      }),
+  )
+  expect(gap).toBeLessThan(150)
+
+  await expect(page.getByTestId('mimo-handsfree')).toHaveAttribute('aria-pressed', 'false')
+  // Well past the 150 ms delay: the mic was never asked for.
+  await page.waitForTimeout(1_500)
+  expect(await page.evaluate(() => (window as unknown as { __micStarts?: number }).__micStarts ?? 0)).toBe(0)
   await expect(page.getByTestId('mimo-listening')).toHaveCount(0)
 })

@@ -16,6 +16,9 @@
  *     `pending` row whose `fire_at` has elapsed, dispatches via
  *     `sendPushToUser`, and marks it sent / failed.
  *
+ * The tick also sends the waitlist invitation reminder (PRO-97,
+ * `sendWaitlistInviteRemindersIfDue`, once an hour).
+ *
  * The interval kicks off at API boot from `index.ts` via `startScheduler`.
  * In dev it logs once per tick so we can see it's alive.
  */
@@ -43,6 +46,7 @@ import {
 import { deliverAlertOverWhatsApp, runProactiveTick } from './whatsapp/outbound.js'
 import { runDailyReviewIfDue } from './whatsapp/reviewer.js'
 import { purgeOldUsageEventsIfDue } from './usageEvents.js'
+import { sendWaitlistInviteRemindersIfDue } from './waitlistInvites.js'
 import { combineDelivery, type ChannelOutcome } from './whatsapp/proactive.js'
 
 // ─── Habit → method matcher ─────────────────────────────────────
@@ -508,6 +512,17 @@ async function tickOnce(): Promise<true> {
     if (purged) console.log(`[usage] purged ${purged} events older than 180 days`)
   } catch (err) {
     console.error('[notificationScheduler] usage events purge failed:', err)
+  }
+
+  // Waitlist (PRO-97): one reminder 3 days after the invitation, if they
+  // haven't created the account (checked once an hour).
+  try {
+    const r = await sendWaitlistInviteRemindersIfDue(now)
+    if (r && r.sent + r.failed + r.skipped > 0) {
+      console.log(`[waitlist] invite reminders: ${r.sent} sent, ${r.failed} failed, ${r.skipped} skipped`)
+    }
+  } catch (err) {
+    console.error('[notificationScheduler] waitlist invite reminders failed:', err)
   }
   return true
 }

@@ -18,12 +18,12 @@ User registration, login, and session management for Mimoia.
 
 - `REGISTRATION_MODE` (`invite` by default, `open` to open on launch day; CI's smoke job and staging run `open`). In `invite`, `POST /register` only creates an account when one of these holds, else **403 `REGISTRATION_INVITE_REQUIRED`** («Mimoia está en beta cerrada…»):
   1. `inviteCode` = a **campaign invitation link** that exists, isn't expired and has uses left (one use is taken atomically);
-  2. the email is on the [waitlist](./waitlist.md) with status `invited`;
+  2. `waitlistToken` = the **one-time link of a waitlist invitation** (PRO-97): `mimoia.com/entrar/<token>` (`app/entrar/[token]/route.ts`) → `/register?entrada=<token>`. The page asks `GET /waitlist/invite/:token` who it is for, shows «¡Te toca, <nombre>! Vienes de la lista de espera.» and fixes the email (read-only, «Es el correo de tu invitación: no se puede cambiar.»). On submit the API checks the link is valid, unused and for that email, and uses it up atomically with the account (given back if the insert fails). Errors, in Spanish: used → **410 `WAITLIST_INVITE_USED`** («ya se ha usado… inicia sesión», the page shows it with a link to `/login` and the button disabled); unknown → 403 `WAITLIST_INVITE_NOT_FOUND`; another email → 403 `WAITLIST_INVITE_EMAIL_MISMATCH`. An **invited email without the link is rejected** with 403 **`WAITLIST_INVITE_LINK_REQUIRED`** («…crea tu cuenta desde el botón «Crear mi cuenta» del correo…»). Exception: entries invited before PRO-97 (no link exists) still get in with the email alone. In `open` mode a link is optional, but if sent it is checked and used up the same way;
   3. `householdInviteToken` = an unconsumed, unexpired household invitation (`/invites/:token`) — this path must never break;
   4. the email is in `ADMIN_EMAILS`.
 - Campaign links: `mimoia.com/i/<code>` (`app/i/[code]/route.ts`) → `/register?campana=<code>`; the form sends it as `inviteCode` (kept in `sessionStorage.ona.campana` across a /login detour). The household path comes from `?next=/invites/<token>`. A valid campaign is recorded on the account (`users.invite_campaign_id`, table `invite_campaigns`, migration 0042) in either mode. Created and listed in `/admin` → Invitaciones ([Admin](./admin-dashboard.md)); counted in `GET /admin/metrics` → `campaigns` ([Metrics](./metrics.md)).
 - Without an invitation `/register` shows «Mimoia está en beta cerrada» and a link to `/#lista-de-espera`; no account is created.
-- Tests: `inviteCampaigns.test.ts` (gate + per-campaign counts), e2e `closed-beta.spec.ts` (the four paths; the e2e API runs `invite` and `global-setup.ts` creates the «e2e» campaign every spec signs up with).
+- Tests: `inviteCampaigns.test.ts` (gate + per-campaign counts), `waitlistInvites.test.ts` (the link), e2e `waitlist-invite.spec.ts` (link fixes the email, creates the account, reuse is an error, invited email without link rejected) and `closed-beta.spec.ts` (the four paths; the e2e API runs `invite` and `global-setup.ts` creates the «e2e» campaign every spec signs up with).
 
 ## Onboarding (post-registration)
 
@@ -93,7 +93,9 @@ The `users` table holds the canonical scalar fields (`sex`, `age`, `weight`, `he
 - [apps/api/src/middleware/rateLimit.ts](../apps/api/src/middleware/rateLimit.ts) — fixed-window IP rate limiter
 - [apps/api/src/config/env.ts](../apps/api/src/config/env.ts) — `JWT_EXPIRES_IN`
 - [apps/web/src/lib/auth.tsx](../apps/web/src/lib/auth.tsx) — client-side AuthProvider
-- [apps/web/src/lib/safeNext.ts](../apps/web/src/lib/safeNext.ts) — `?next=` validation + carry-over for login/register
+- [apps/web/src/lib/safeNext.ts](../apps/web/src/lib/safeNext.ts) — `?next=` validation + carry-over for login/register; `campaignCodeFromLocation`, `waitlistTokenFromLocation`
+- [apps/api/src/services/waitlistInvites.ts](../apps/api/src/services/waitlistInvites.ts) — waitlist one-time link: check, use up, give back (PRO-97)
+- [apps/web/src/app/entrar/[token]/route.ts](../apps/web/src/app/entrar/%5Btoken%5D/route.ts) — `/entrar/<token>` → `/register?entrada=<token>`
 - [apps/web/src/app/(auth)/login/page.tsx](../apps/web/src/app/(auth)/login/page.tsx)
 - [apps/web/src/app/(auth)/register/page.tsx](../apps/web/src/app/(auth)/register/page.tsx)
 - [apps/web/src/components/auth/AuthShell.tsx](../apps/web/src/components/auth/AuthShell.tsx) — shared look of /login, /register, /reset and /invites ([Design System](./design-system.md))

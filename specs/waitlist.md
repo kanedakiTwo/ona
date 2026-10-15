@@ -34,8 +34,9 @@ The public waitlist that comes before the launch. The product launches publicly 
   - `pricing` (PRO-26): `answeredPriceQuestions`, per question `{ answers, min, p25, median, p75, max, histogram[{eur,count}] }`, `reservations { total, byPlan }`, `none { total, byReason }` — aggregates of active entries only;
   - `definitions`.
   - It never includes an email, name or supermarket.
-- **Admins** (JWT only, not the token) mark a batch invited with `POST /admin/waitlist/invite { ids, batch? }`, which uses the next batch number when omitted. Only `waiting` entries change. Then it **emails each newly invited person the invitation** through Resend (PRO-93, see [Email](./email.md)): «¡Te toca, <nombre>! Ya puedes entrar en Mimoia», a «Crear mi cuenta» button to `/register`, a WhatsApp line if they asked for it, their own opt-out link and a `List-Unsubscribe` header. `sendEmail: false` marks the batch without emailing; without `RESEND_API_KEY` nothing is sent (`skipped`). The response is the one place emails leave the DB: email, name, platform, wantsWhatsapp, `statusUrl`, `unsubscribeUrl`, plus `emailStatus` per person and `email { sent, skipped, failed }`, so Miguel can see who got it and write to the rest. It is audited as `waitlist.invite` (ids, never emails).
-- During the closed beta (`REGISTRATION_MODE=invite`, PRO-27) an email with status `invited` is one of the ways in: `POST /register` accepts it without a campaign link (see [Auth](./auth.md) → Closed beta). Registering with an email that's on the list marks that entry `joined` (waiting or invited).
+- **Admins** (JWT only, not the token) mark a batch invited with `POST /admin/waitlist/invite { ids, batch? }`, which uses the next batch number when omitted. Only `waiting` entries change. Each newly invited person gets a **personal one-time link** `/entrar/<token>` (PRO-97) and is **emailed the invitation** through Resend (PRO-93, see [Email](./email.md)): «¡Te toca, <nombre>! Ya puedes entrar en Mimoia», a «Crear mi cuenta» button to that link, what to expect, a WhatsApp line if they asked for it, their own opt-out link and a `List-Unsubscribe` header. Miguel does it from **`/admin/lista-espera`** ([Admin](./admin-dashboard.md)): suggested batch with names and emails (`GET /admin/waitlist/next-batch?size=`, admin JWT only), remove people, «Invitar a estas N personas» with a confirmation. `sendEmail: false` marks the batch without emailing; without `RESEND_API_KEY` nothing is sent (`skipped`). The invite response and `next-batch` are the only places emails leave the DB: email, name, platform, wantsWhatsapp, `statusUrl`, `unsubscribeUrl`, `entryUrl` (the one-time link), plus `emailStatus` per person and `email { sent, skipped, failed }`, so Miguel can see who got it and write to the rest. It is audited as `waitlist.invite` (ids, never emails).
+- **The one-time link** (PRO-97): `/entrar/<token>` → `/register?entrada=<token>` with the email fixed; `GET /waitlist/invite/:token` (public, the token is the credential, limiter 60/min) → `{ email, firstName }`, 410 `WAITLIST_INVITE_USED` once used (or the person already joined), 404 `WAITLIST_INVITE_NOT_FOUND` otherwise. Opening it never uses it up; creating the account does. During the closed beta (`REGISTRATION_MODE=invite`, PRO-27) the link is how an invited person gets in; **the invited email without the link is rejected** (403 `WAITLIST_INVITE_LINK_REQUIRED`), except entries invited before PRO-97 (see [Auth](./auth.md) → Closed beta).
+- **One reminder** 3 days after the invitation, if they haven't registered, by the notification scheduler (never twice; see [Email](./email.md)). Registering with an email that's on the list marks that entry `joined` (waiting or invited).
 - `GET /admin/metrics` carries a small `waitlist` block (see [metrics](./metrics.md)).
 
 ## Who gets in first (`suggestNextBatch`)
@@ -60,6 +61,7 @@ Each picked person **pulls in** the waiting people who signed up with their link
 - `referred_by_code` is kept only when that code belongs to an entry that hasn't unsubscribed. Referral counts exclude unsubscribed entries.
 - **Rate limits** (per IP, `middleware/rateLimit.ts`): signup 20/hour, status 60/min, opt-out 20/hour. The `RATE_LIMIT_DISABLED` rules are the same as [auth](./auth.md).
 - **Codes**:
+  - invitation link token: HMAC-SHA256 of the entry id keyed with `JWT_SECRET` (43 base64url chars), so the reminder rebuilds the same link; only its SHA-256 is stored (`invite_token_hash`, unique), with `invite_token_used_at` and `invite_reminder_sent_at` (migration 0048). Rotating `JWT_SECRET` breaks unused links;
   - referral code: 8 chars of lowercase Crockford base32 (40 random bits, no i/l/o/u), retried on collision;
   - opt-out token: 24 random bytes, base64url;
   - both are unique in the DB.
@@ -71,7 +73,7 @@ Each picked person **pulls in** the waiting people who signed up with their link
 
 ## Known limitations
 
-- **Emails sent**: the invitation (PRO-93) and the Friday newsletter (PRO-94, [newsletter.md](./newsletter.md); its own opt-out turns off only the newsletter). There is no confirmation email (no double opt-in). The invitation has no personal token: any `invited` email can register (PRO-97).
+- **Emails sent**: the invitation (PRO-93) and the Friday newsletter (PRO-94, [newsletter.md](./newsletter.md); its own opt-out turns off only the newsletter). There is no confirmation email (no double opt-in).
 - No phone number is collected, so "por WhatsApp" is a stated preference, honoured by sending the invitation with the WhatsApp link (since 2026-10-14 Mimo is on a real number, so the 5-recipient limit of Meta's test number no longer applies; access is still gated by `WHATSAPP_ALLOWED_EMAILS`, see [WhatsApp](./whatsapp.md)).
 - Retention (until 6 months after public launch) is not automated yet: the purge job is in the CLAUDE.md backlog.
 - `?ref` / `?utm_*` are read only on the landing URL. They are not carried across pages, and `/register` doesn't record them.
@@ -92,16 +94,20 @@ Each picked person **pulls in** the waiting people who signed up with their link
 - [packages/shared/src/types/founderPricing.ts](../packages/shared/src/types/founderPricing.ts), [apps/api/src/services/waitlistPricing.ts](../apps/api/src/services/waitlistPricing.ts), [apps/web/src/components/waitlist/FounderPricing.tsx](../apps/web/src/components/waitlist/FounderPricing.tsx) — founder pricing signal (PRO-26; migration 0041)
 - [packages/shared/src/types/waitlist.ts](../packages/shared/src/types/waitlist.ts): enums, labels, `waitlistSignupSchema`, form state + `buildWaitlistPayload`, `readWaitlistAttribution`, link/share helpers
 - [packages/shared/src/constants/brand.ts](../packages/shared/src/constants/brand.ts): `BRAND_NAME`
-- [apps/api/src/services/waitlist.ts](../apps/api/src/services/waitlist.ts): code/token generators, `isTargetSegment`, `suggestNextBatch`, `buildWaitlistReport`, `signupToWaitlist`, DB repo, `loadWaitlistReport`, `loadWaitlistSummary`, `inviteWaitlistEntries`, `markWaitlistJoined`
+- [apps/api/src/services/waitlist.ts](../apps/api/src/services/waitlist.ts): code/token generators, `isTargetSegment`, `suggestNextBatch`, `buildWaitlistReport`, `signupToWaitlist`, DB repo, `loadWaitlistReport`, `loadWaitlistSummary`, `loadNextBatchPeople` + `nextBatchPeople`, `inviteWaitlistEntries`, `markWaitlistJoined`
 - [apps/api/src/routes/waitlist.ts](../apps/api/src/routes/waitlist.ts): public + admin routers (mounted in `index.ts`)
-- [apps/api/src/services/waitlistEmails.ts](../apps/api/src/services/waitlistEmails.ts): `waitlistInviteEmail`
+- [apps/api/src/services/waitlistEmails.ts](../apps/api/src/services/waitlistEmails.ts): `waitlistInviteEmail`, `waitlistInviteReminderEmail`
+- [apps/api/src/services/waitlistInvites.ts](../apps/api/src/services/waitlistInvites.ts): one-time link (token, hash, check, use up), reminder; [migration 0048](../apps/api/src/db/migrations/0048_waitlist_invite_token.sql)
+- [apps/web/src/app/entrar/[token]/route.ts](../apps/web/src/app/entrar/%5Btoken%5D/route.ts), [apps/web/src/app/admin/sections/WaitlistAdminSection.tsx](../apps/web/src/app/admin/sections/WaitlistAdminSection.tsx)
 - [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts) (`waitlistEntries`), [apps/api/src/db/migrations/0037_waitlist.sql](../apps/api/src/db/migrations/0037_waitlist.sql)
 - [apps/web/src/components/waitlist/WaitlistSection.tsx](../apps/web/src/components/waitlist/WaitlistSection.tsx), [ReferralShare.tsx](../apps/web/src/components/waitlist/ReferralShare.tsx)
 - [apps/web/src/app/(public)/page.tsx](../apps/web/src/app/(public)/page.tsx), [lista/[code]/page.tsx](../apps/web/src/app/(public)/lista/[code]/page.tsx), [lista/baja/page.tsx](../apps/web/src/app/(public)/lista/baja/page.tsx)
 - Tests:
   - `apps/api/src/tests/waitlist.test.ts`: generators, ranking, report, schema + form contract, signup service;
   - `waitlistRoute.test.ts`: routes, rate limit, auth, the invite emails each person;
-  - `email.test.ts`: the invitation email;
+  - `email.test.ts`: the invitation and reminder emails;
+  - `waitlistInvites.test.ts`: link token/state, reminder (3 days yes, 2 no, never twice), `nextBatchPeople`, `GET /waitlist/invite/:token`;
+  - `apps/web/e2e/waitlist-invite.spec.ts`: admin invites a batch, simulated email, link, reuse, no link;
   - `waitlistRoute.smoke.ts`: real API + Postgres;
   - `fixtures/memoryWaitlistRepo.ts`;
   - `apps/web/e2e/waitlist.spec.ts`.

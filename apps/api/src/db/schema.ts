@@ -1086,6 +1086,16 @@ export const waitlistEntries = pgTable('waitlist_entries', {
   status: text('status').notNull().default('waiting'),
   batch: integer('batch'),
   invitedAt: timestamp('invited_at', { withTimezone: true }),
+  /**
+   * One-time invitation link `/entrar/<token>` (PRO-97). Only the SHA-256 of
+   * the token is stored; the token itself is an HMAC of the entry id, so the
+   * reminder can rebuild the same link. NULL = invited before PRO-97 (or not invited).
+   */
+  inviteTokenHash: text('invite_token_hash'),
+  /** When the link created the account (a second use is rejected). */
+  inviteTokenUsedAt: timestamp('invite_token_used_at', { withTimezone: true }),
+  /** The single reminder, 3 days after the invitation, if they haven't registered. */
+  inviteReminderSentAt: timestamp('invite_reminder_sent_at', { withTimezone: true }),
   unsubscribeToken: text('unsubscribe_token').notNull(),
   // Founder pricing signal (PRO-26): optional Van Westendorp answers in
   // €/month, then the reserved plan + period, or «Ninguno me encaja» + why.
@@ -1107,6 +1117,7 @@ export const waitlistEntries = pgTable('waitlist_entries', {
   uniqueIndex('uq_waitlist_entries_email').on(t.email),
   uniqueIndex('uq_waitlist_entries_referral_code').on(t.referralCode),
   uniqueIndex('uq_waitlist_entries_unsubscribe_token').on(t.unsubscribeToken),
+  uniqueIndex('uq_waitlist_entries_invite_token_hash').on(t.inviteTokenHash),
   index('idx_waitlist_entries_referred_by').on(t.referredByCode),
   index('idx_waitlist_entries_status_created').on(t.status, t.createdAt),
   check('waitlist_entries_household_size_check', sql.raw("household_size IN ('1','2','3-4','5+')")),

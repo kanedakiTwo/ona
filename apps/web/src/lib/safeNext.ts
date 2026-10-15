@@ -59,3 +59,10 @@ export function campaignCodeFromLocation(): string | undefined {
     return fromUrl
   }
 }
+
+/** One-time waitlist invitation token from `/register?entrada=<token>` (the `/entrar/<token>` links, PRO-97). */
+export function waitlistTokenFromLocation(): string | undefined {
+  if (typeof window === 'undefined') return undefined
+  const v = new URLSearchParams(window.location.search).get('entrada')
+  return v && /^[A-Za-z0-9_-]{1,128}$/.test(v) ? v : undefined
+}

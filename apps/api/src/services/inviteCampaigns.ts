@@ -3,14 +3,16 @@
  * (PRO-27). `mimoia.com/i/<code>` → `/register?campana=<code>`. During the
  * beta (`REGISTRATION_MODE=invite`) an account can only be created with:
  *   1. a valid campaign link (not expired, uses left);
- *   2. an email that is on the waitlist with status `invited`;
+ *   2. the one-time link of a waitlist invitation (`/entrar/<token>`, PRO-97,
+ *      services/waitlistInvites.ts); an email invited before PRO-97 (no link)
+ *      still gets in with the email alone;
  *   3. a household invitation (`/invites/:token`), which must never break;
  *   4. an admin email (`ADMIN_EMAILS`).
  * Anyone else gets 403 `REGISTRATION_INVITE_REQUIRED`.
  */
 import { and, desc, eq, gt, isNull, lt, or, sql } from 'drizzle-orm'
 import { db as defaultDb } from '../db/connection.js'
-import { householdInvites, inviteCampaigns, waitlistEntries } from '../db/schema.js'
+import { householdInvites, inviteCampaigns } from '../db/schema.js'
 import { generateReferralCode } from './waitlist.js'
 
 type Db = typeof defaultDb
@@ -69,15 +71,6 @@ export async function consumeCampaignUse(id: string, now = new Date(), db: Db = 
     )
     .returning({ id: inviteCampaigns.id })
   return rows.length > 0
-}
-
-export async function isWaitlistInvited(email: string, db: Db = defaultDb): Promise<boolean> {
-  const [row] = await db
-    .select({ id: waitlistEntries.id })
-    .from(waitlistEntries)
-    .where(and(eq(waitlistEntries.email, email.trim().toLowerCase()), eq(waitlistEntries.status, 'invited')))
-    .limit(1)
-  return !!row
 }
 
 export async function isHouseholdInviteUsable(token: string | undefined, now = new Date(), db: Db = defaultDb): Promise<boolean> {

@@ -69,6 +69,8 @@ export const registerSchema = z.object({
   inviteCode: z.string().trim().toLowerCase().max(32).optional(),
   /** Household invitation token when signing up from `/invites/<token>` (PRO-27). */
   householdInviteToken: z.string().trim().max(128).optional(),
+  /** One-time link from the waitlist invitation email, `/entrar/<token>` (PRO-97). */
+  waitlistToken: z.string().trim().max(128).optional(),
   /** «Quiero recibir cada viernes el menú de la semana por email» (PRO-95): separate, optional, unticked. */
   newsletterOptIn: z.boolean().optional(),
 })

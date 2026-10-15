@@ -283,8 +283,8 @@ describe('POST /admin/waitlist/invite', () => {
     next()
   }
   const invited = [
-    { id: ID, email: 'laura@example.com', firstName: 'Laura', platform: 'web', wantsWhatsapp: true, statusUrl: 'https://mimoia.com/lista/abc', unsubscribeUrl: 'https://mimoia.com/lista/baja?t=t1' },
-    { id: '3f2a8c1e-0d4b-4c2a-9f1e-2b3c4d5e6f71', email: 'dani@example.com', firstName: null, platform: 'web', wantsWhatsapp: false, statusUrl: 'https://mimoia.com/lista/def', unsubscribeUrl: 'https://mimoia.com/lista/baja?t=t2' },
+    { id: ID, email: 'laura@example.com', firstName: 'Laura', platform: 'web', wantsWhatsapp: true, statusUrl: 'https://mimoia.com/lista/abc', unsubscribeUrl: 'https://mimoia.com/lista/baja?t=t1', entryUrl: 'https://mimoia.com/entrar/tokLaura' },
+    { id: '3f2a8c1e-0d4b-4c2a-9f1e-2b3c4d5e6f71', email: 'dani@example.com', firstName: null, platform: 'web', wantsWhatsapp: false, statusUrl: 'https://mimoia.com/lista/def', unsubscribeUrl: 'https://mimoia.com/lista/baja?t=t2', entryUrl: 'https://mimoia.com/entrar/tokDani' },
   ]
 
   it('emails every invited person once, with their own opt-out link, and reports the counts', async () => {
@@ -304,6 +304,9 @@ describe('POST /admin/waitlist/invite', () => {
     expect(first.to).toBe('laura@example.com')
     expect(first.subject).toContain('Laura')
     expect(first.headers['List-Unsubscribe']).toBe('<https://mimoia.com/lista/baja?t=t1>')
+    // PRO-97: each one gets their own one-time link, not /register.
+    expect(first.text).toContain('Crear mi cuenta: https://mimoia.com/entrar/tokLaura')
+    expect(sendEmail.mock.calls[1][0].text).toContain('https://mimoia.com/entrar/tokDani')
     expect(sendEmail.mock.calls[1][0].to).toBe('dani@example.com')
     expect(sendEmail.mock.calls[1][0].text).toContain('https://mimoia.com/lista/baja?t=t2')
     const body = await r.json()

@@ -12,7 +12,7 @@ import {
   sendEmailBatch,
   type EmailConfig,
 } from '../services/email.js'
-import { waitlistInviteEmail } from '../services/waitlistEmails.js'
+import { waitlistInviteEmail, waitlistInviteReminderEmail } from '../services/waitlistEmails.js'
 
 function cfg(fetchImpl: any, apiKey = 're_test_key'): EmailConfig {
   return { apiKey, from: 'Mimoia <hola@mimoia.com>', baseUrl: 'https://api.resend.test/', fetch: fetchImpl }
@@ -139,22 +139,46 @@ describe('renderBrandEmail', () => {
 })
 
 describe('waitlistInviteEmail', () => {
-  const base = { email: 'laura@example.com', unsubscribeUrl: 'https://mimoia.com/lista/baja?t=tok' }
+  const base = {
+    email: 'laura@example.com',
+    entryUrl: 'https://mimoia.com/entrar/TOKEN123',
+    unsubscribeUrl: 'https://mimoia.com/lista/baja?t=tok',
+  }
 
-  it('greets by name, links to the register page and carries the opt-out link and header', () => {
-    const m = waitlistInviteEmail({ ...base, firstName: 'Laura', wantsWhatsapp: false }, { publicUrl: 'https://mimoia.com/' })
+  it('greets by name, links to the personal one-time link and carries the opt-out link and header', () => {
+    const m = waitlistInviteEmail({ ...base, firstName: 'Laura', wantsWhatsapp: false })
     expect(m.to).toBe('laura@example.com')
     expect(m.subject).toBe('¡Te toca, Laura! Ya puedes entrar en Mimoia')
-    expect(m.html).toContain('href="https://mimoia.com/register"')
-    expect(m.text).toContain('Crear mi cuenta: https://mimoia.com/register')
+    expect(m.html).toContain('href="https://mimoia.com/entrar/TOKEN123"')
+    expect(m.html).not.toContain('/register')
+    expect(m.text).toContain('Crear mi cuenta: https://mimoia.com/entrar/TOKEN123')
+    expect(m.text).toContain('2 minutos')
+    expect(m.text).toContain('sirve una vez')
     expect(m.text).toContain('Darme de baja: https://mimoia.com/lista/baja?t=tok')
     expect(m.headers).toEqual({ 'List-Unsubscribe': '<https://mimoia.com/lista/baja?t=tok>' })
     expect(m.text).not.toContain('WhatsApp')
   })
 
-  it('without a name, a plain subject; with WhatsApp interest, how to connect it', () => {
-    const m = waitlistInviteEmail({ ...base, firstName: null, wantsWhatsapp: true }, { publicUrl: 'https://mimoia.com' })
+  it('without a name, a plain subject; with WhatsApp interest, how to talk to Mimo there', () => {
+    const m = waitlistInviteEmail({ ...base, firstName: null, wantsWhatsapp: true })
     expect(m.subject).toBe('¡Te toca! Ya puedes entrar en Mimoia')
-    expect(m.text).toContain('conéctalo desde tu perfil')
+    expect(m.text).toContain('«Conectar WhatsApp»')
+    expect(m.text).toContain('Soy Mimo')
+  })
+})
+
+describe('waitlistInviteReminderEmail', () => {
+  it('same link, says it is the only reminder, keeps the opt-out', () => {
+    const m = waitlistInviteReminderEmail({
+      email: 'laura@example.com',
+      firstName: 'Laura',
+      wantsWhatsapp: false,
+      entryUrl: 'https://mimoia.com/entrar/TOKEN123',
+      unsubscribeUrl: 'https://mimoia.com/lista/baja?t=tok',
+    })
+    expect(m.subject).toBe('Laura, tu invitación a Mimoia sigue aquí')
+    expect(m.text).toContain('Crear mi cuenta: https://mimoia.com/entrar/TOKEN123')
+    expect(m.text).toContain('único recordatorio')
+    expect(m.headers).toEqual({ 'List-Unsubscribe': '<https://mimoia.com/lista/baja?t=tok>' })
   })
 })

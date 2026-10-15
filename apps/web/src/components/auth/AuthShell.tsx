@@ -126,6 +126,8 @@ export function AuthField({
   type = "text",
   autoFocus,
   autoComplete,
+  readOnly,
+  hint,
 }: {
   label: string
   value: string
@@ -133,6 +135,9 @@ export function AuthField({
   type?: string
   autoFocus?: boolean
   autoComplete?: string
+  /** Fixed value (e.g. the email of a waitlist invitation): shown, sent, not editable. */
+  readOnly?: boolean
+  hint?: string
 }) {
   const id = useId()
 
@@ -149,8 +154,18 @@ export function AuthField({
         onChange={(e) => onChange(e.target.value)}
         autoFocus={autoFocus}
         autoComplete={autoComplete}
-        className="h-12 w-full rounded-[14px] border border-border-soft bg-paper px-4 text-[16px] text-ink outline-none transition-colors focus:border-ink"
+        readOnly={readOnly}
+        aria-readonly={readOnly || undefined}
+        aria-describedby={hint ? `${id}-hint` : undefined}
+        className={`h-12 w-full rounded-[14px] border border-border-soft px-4 text-[16px] text-ink outline-none transition-colors focus:border-ink ${
+          readOnly ? "cursor-not-allowed bg-cream text-ink-mid" : "bg-paper"
+        }`}
       />
+      {hint && (
+        <p id={`${id}-hint`} className="text-[12px] text-ink-muted">
+          {hint}
+        </p>
+      )}
     </div>
   )
 }

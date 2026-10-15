@@ -2,7 +2,8 @@
  * PRO-27: closed beta. With REGISTRATION_MODE=invite (the e2e API runs so,
  * see global-setup.ts) an account can only be created:
  *   - via a campaign link mimoia.com/i/<code> (counted per campaign in /admin/metrics);
- *   - with an email invited from the waitlist;
+ *   - with the one-time link of a waitlist invitation (/entrar/<token>, PRO-97;
+ *     the invited email alone is rejected);
  *   - from a household invitation /invites/<token>;
  * and anyone else gets «Mimoia está en beta cerrada» + the waitlist link
  * (API: 403 REGISTRATION_INVITE_REQUIRED).
@@ -66,14 +67,14 @@ test('campaign link: /i/<code> → account counted under its campaign', async ({
   expect(list.find((c: { code: string }) => c.code === campaign.code).uses).toBe(1)
 })
 
-/** Submit /register keeping the ?campana= of the URL (no e2e campaign override). */
-async function submitRegisterBare(page: Page) {
+/** Submit /register keeping the ?campana= / ?entrada= of the URL (no e2e campaign override). */
+async function submitRegisterBare(page: Page, opts: { skipEmail?: boolean } = {}) {
   const creds = freshCreds()
   const form = page.locator('form')
   const submit = form.getByRole('button', { name: /^crear cuenta/i })
   await fillUntilEnabled(submit, async () => {
     await form.locator('input').nth(0).fill(creds.username)
-    await form.locator('input[type="email"]').fill(creds.email)
+    if (!opts.skipEmail) await form.locator('input[type="email"]').fill(creds.email)
     await form.locator('input[type="password"]').fill(creds.password)
     await form.getByRole('checkbox', { name: 'Tengo 14 años o más' }).check()
   })
@@ -81,7 +82,7 @@ async function submitRegisterBare(page: Page) {
   return creds
 }
 
-test('email invited from the waitlist can sign up', async ({ page }) => {
+test('email invited from the waitlist signs up with its one-time link (PRO-97)', async ({ page }) => {
   test.setTimeout(60_000)
   const email = `wlinv_${uniqueId()}@test.local`
   const joined = await page.request.post(`${API_URL}/waitlist`, {
@@ -92,13 +93,21 @@ test('email invited from the waitlist can sign up', async ({ page }) => {
   const report = await (await page.request.get(`${API_URL}/admin/waitlist?batchSize=500`, { headers: admin() })).json()
   const invited = await page.request.post(`${API_URL}/admin/waitlist/invite`, {
     headers: admin(),
-    data: { ids: report.suggestedNextBatch.ids },
+    data: { ids: report.suggestedNextBatch.ids, sendEmail: false },
   })
   expect(invited.ok()).toBe(true)
-  expect(JSON.stringify(await invited.json())).toContain(email)
+  const person = (await invited.json()).invited.find((p: { email: string }) => p.email === email)
+  expect(person.entryUrl).toMatch(/\/entrar\/[A-Za-z0-9_-]{43}$/)
 
+  // Without the link: rejected, even though the email is invited.
   await page.goto('/register')
   await submitBare(page, { ...freshCreds(), email })
+  await expect(page.locator('form [role="alert"]')).toContainText('enlace es personal', { timeout: 15_000 })
+
+  // With it: the email comes fixed and the account is created.
+  await page.goto(new URL(person.entryUrl).pathname)
+  await expect(page.locator('form input[type="email"]')).toHaveValue(email, { timeout: 15_000 })
+  await submitRegisterBare(page, { skipEmail: true })
   await expect(page).toHaveURL(/\/onboarding|\/menu/, { timeout: 20_000 })
 })
 

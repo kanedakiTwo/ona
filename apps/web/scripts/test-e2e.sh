@@ -48,6 +48,10 @@ export JWT_SECRET="e2e-only-do-not-use-anywhere-else"
 # Ignored by a deployed API (NODE_ENV=production or Railway).
 export RATE_LIMIT_DISABLED="true"
 export ADMIN_EMAILS="e2e-admin@test.local"  # globalSetup creates the e2e campaign (PRO-27)
+# Simulated email (PRO-97): Playwright's globalSetup starts a fake Resend here.
+export RESEND_API_KEY="e2e-fake-key"
+export RESEND_BASE_URL="http://127.0.0.1:8799"
+export E2E_MAIL_URL="http://127.0.0.1:8799"
 # Same path production takes on deploy (not `drizzle-kit push`).
 pnpm --filter @ona/api db:migrate >/dev/null
 

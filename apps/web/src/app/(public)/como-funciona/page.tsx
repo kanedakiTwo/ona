@@ -17,8 +17,8 @@ const FAQS = [
     a: "Si. Tienes un chat con el asistente de Mimoia donde puedes contarle la receta de tu abuela o esa que descargaste. La extrae paso a paso y la guarda en tu coleccion.",
   },
   {
-    q: "Es gratis?",
-    a: "El plan gratuito incluye un menu por semana, lista de la compra automatica y el catalogo de recetas. El plan premium llega cuando lo necesites.",
+    q: "Cuanto cuesta?",
+    a: "Esencial, 4,99 € al mes (o 49,99 € al año), para todo tu hogar; Plus, 8,99 € al mes (o 59,99 € al año), añade la voz y los avisos de Mimo por WhatsApp. Empiezas con 14 dias gratis con todo, sin tarjeta. Lo tienes todo en Precios.",
   },
   {
     q: "Puedo cambiar platos del menu generado?",

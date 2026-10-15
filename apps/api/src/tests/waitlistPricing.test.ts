@@ -28,14 +28,14 @@ describe('founder pricing copy (D-021)', () => {
     expect(PRICE_QUESTIONS.map((q) => q.key)).toEqual(['tooCheap', 'good', 'expensive', 'tooExpensive'])
   })
 
-  it('shows Esencial, Plus anual (featured) and Plus, in that order', () => {
-    expect(FOUNDER_PLANS.map((p) => [p.name, p.price, p.featured])).toEqual([
-      ['Esencial', '4,99 €/mes', false],
-      ['Plus anual', '59,99 €/año', true],
-      ['Plus', '8,99 €/mes', false],
+  it('Esencial (featured) then Plus, each monthly or yearly (2026-10-15)', () => {
+    expect(FOUNDER_PLANS.map((p) => [p.id, p.price, p.featured])).toEqual([
+      ['esencial-mensual', '4,99 €/mes', true],
+      ['esencial-anual', '49,99 €/año', true],
+      ['plus-mensual', '8,99 €/mes', false],
+      ['plus-anual', '59,99 €/año', false],
     ])
-    expect(FOUNDER_PLANS[1].note).toBe('Plus por 5 €/mes')
-    for (const p of FOUNDER_PLANS) expect(p.bullets).toHaveLength(3)
+    expect(FOUNDER_PLANS.find((p) => p.id === 'plus-anual')?.perMonth).toBe('5 €/mes')
   })
 
   it('beta households get no trial sentence', () => {
@@ -87,7 +87,7 @@ describe('admin report: pricing block', () => {
     expect(report.answeredPriceQuestions).toBe(2)
     expect(report.questions.good).toMatchObject({ answers: 2, median: 4.5 })
     expect(report.questions.tooExpensive.answers).toBe(1)
-    expect(report.reservations).toEqual({ total: 3, byPlan: { 'esencial-mensual': 1, 'plus-anual': 2, 'plus-mensual': 0 } })
+    expect(report.reservations).toEqual({ total: 3, byPlan: { 'esencial-mensual': 1, 'esencial-anual': 0, 'plus-mensual': 0, 'plus-anual': 2 } })
     expect(report.none).toEqual({ total: 1, byReason: { caro: 1, no_lo_usaria: 0, me_falta_algo: 0, otro: 0 } })
     expect(JSON.stringify(report)).not.toMatch(/@|token/i)
   })

@@ -39,6 +39,7 @@ import waitlistRoutes, { adminWaitlistRouter } from './routes/waitlist.js'
 import newsletterRoutes from './routes/newsletter.js'
 import usageRoutes from './routes/usage.js'
 import inviteCampaignRoutes from './routes/inviteCampaigns.js'
+import billingRoutes, { billingWebhookRouter } from './routes/billing.js'
 import { trackShoppingActivity } from './services/activityEvents.js'
 import { trackUsageRoutes } from './services/usageEvents.js'
 import { startScheduler } from './services/notificationScheduler.js'
@@ -68,6 +69,8 @@ app.use(observeServerErrors)
 // WhatsApp webhook verifies an HMAC over the raw body, so it must see the
 // bytes before `express.json()` consumes the stream. It parses its own body.
 app.use(whatsappWebhookRouter)
+// Stripe signs the raw body too (specs/billing.md).
+app.use(billingWebhookRouter)
 // POST /client-errors reads its own body with a hard 8 KB cap (any content
 // type — the browser beacon sends text/plain), so it goes before express.json().
 app.use(clientErrorsRouter)
@@ -121,6 +124,8 @@ app.use(publicShopOrdersRouter)
 app.use(waitlistRoutes)
 // Newsletter: public one-click opt-out + admin send (per-route auth, PRO-94).
 app.use(newsletterRoutes)
+// Per-route authMiddleware (no catch-all), before userRoutes.
+app.use(billingRoutes)
 app.use(recipeRoutes)
 app.use(ingredientRoutes)
 // pushRoutes is mostly auth-protected (per-route authMiddleware) but the

@@ -25,7 +25,7 @@ async function expectSharedFooter(page: Page) {
   await expect(footer).toHaveCount(1)
   await expect(footer).toHaveAttribute('data-testid', 'site-footer')
   await expect(footer.getByRole('link', { name: 'hola@mimoia.com' })).toHaveAttribute('href', 'mailto:hola@mimoia.com')
-  for (const label of ['Cómo funciona', 'Recetas', 'Privacidad', 'Términos']) {
+  for (const label of ['Cómo funciona', 'Precios', 'Recetas', 'Privacidad', 'Términos']) {
     await expect(footer.getByRole('link', { name: label, exact: true })).toBeVisible()
   }
   await expect(footer).toContainText('© 2026 Mimoia')

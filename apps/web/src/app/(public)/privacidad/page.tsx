@@ -94,6 +94,7 @@ export default function PrivacidadPage() {
           <li><strong>AiKit</strong>: generación de imágenes de recetas cuando lo pides (solo recibe el nombre e ingredientes de la receta).</li>
           <li><strong>Cloudflare</strong>: estadísticas agregadas de visitas a la web, sin cookies (ver el punto 8).</li>
           <li><strong>Resend</strong>: el envío de los emails de Mimoia, como la invitación de la lista de espera (recibe tu email, tu nombre y el contenido del mensaje; envía desde la Unión Europea).</li>
+          <li><strong>Stripe (a través de Link)</strong>: el cobro de las suscripciones. Recibe tu email y, cuando pagas, los datos de pago que escribes directamente en su página; Link actúa como vendedor registrado y emite los recibos. Nosotros guardamos solo el plan, su estado, sus fechas y las referencias de Stripe, nunca tu tarjeta.</li>
         </ul>
         <p>
           Algunos de estos proveedores están en Estados Unidos. Las transferencias se amparan en el Marco de
@@ -105,7 +106,8 @@ export default function PrivacidadPage() {
           Mientras tengas la cuenta. Puedes borrarla tú mismo en <strong>Perfil → Borrar mi cuenta</strong>: se
           eliminan al momento tu perfil, tus menús, tu memoria, tus recetas propias y tu historial de WhatsApp. Si
           compartes hogar, el hogar sigue para los demás miembros. Los registros de costes y de fallos se conservan
-          sin vincularlos a ti.
+          sin vincularlos a ti. Si pagas una suscripción, se cancela en ese momento; Stripe y Link conservan los
+          recibos el tiempo que exige la ley fiscal.
         </p>
 
         <H2>7. Tus derechos</H2>

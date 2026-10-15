@@ -13,6 +13,7 @@ import { updateProfileSchema, onboardingSchema } from '@ona/shared'
 import { env } from '../config/env.js'
 import bcrypt from 'bcryptjs'
 import { AdminAccountDeletionError, deleteAccount } from '../services/accountDeletion.js'
+import { cancelSubscriptionsPaidBy } from '../services/billing.js'
 import { saveOnboarding } from '../services/onboarding.js'
 import {
   getHealthConsent,
@@ -45,6 +46,16 @@ router.delete('/user/:id', async (req: AuthRequest, res) => {
     }
     if (!password || !(await bcrypt.compare(password, row.passwordHash))) {
       res.status(401).json({ error: 'La contraseña no es correcta.', code: 'WRONG_PASSWORD' })
+      return
+    }
+    try {
+      await cancelSubscriptionsPaidBy(req.userId!)
+    } catch (err) {
+      console.error('Delete account: cancelling the subscription failed', err)
+      res.status(502).json({
+        error: 'No hemos podido cancelar tu suscripción, así que no hemos borrado la cuenta. Inténtalo en un momento.',
+        code: 'SUBSCRIPTION_CANCEL_FAILED',
+      })
       return
     }
     const summary = await deleteAccount(req.userId!)

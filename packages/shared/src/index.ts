@@ -224,6 +224,7 @@ export {
   waitlistPricingSchema,
   waitlistReservationSchema,
   founderPlanById,
+  founderPlanId,
 } from './types/founderPricing.js'
 export type {
   PriceQuestionKey,
@@ -233,6 +234,34 @@ export type {
   WaitlistPricingAnswers,
   WaitlistReservation,
 } from './types/founderPricing.js'
+
+// Plans + subscription (specs/billing.md)
+export {
+  PLAN_KEYS,
+  BILLING_PERIODS,
+  LAUNCH_DATE,
+  LAUNCH_DATE_LABEL,
+  PLANS,
+  PLAN_HOUSEHOLD,
+  PLAN_CAPS_NOTE,
+  PLAN_FEATURE_GROUPS,
+  planByKey,
+  planLabel,
+  stripeLookupKey,
+  checkoutRequestSchema,
+} from './types/plans.js'
+export type {
+  PlanKey,
+  BillingPeriod,
+  Plan,
+  PlanPrice,
+  PlanFeature,
+  PlanFeatureGroup,
+  FeatureValue,
+  CheckoutRequest,
+  SubscriptionStatus,
+  BillingState,
+} from './types/plans.js'
 
 export { LEGAL_OWNER } from './constants/legal.js'
 

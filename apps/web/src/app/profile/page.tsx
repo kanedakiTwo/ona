@@ -18,6 +18,7 @@ import {
   Brain,
   CalendarDays,
   ChefHat,
+  CreditCard,
   Compass,
   Home,
   LogOut,
@@ -40,6 +41,7 @@ import { useUserMemory } from '@/hooks/useUserMemory'
 import { usePantry } from '@/hooks/usePantry'
 import { useStaples } from '@/hooks/useStaples'
 import { useCookbooks } from '@/hooks/useCookbooks'
+import { useBilling } from '@/hooks/useBilling'
 import { GroupLabel, MoreButton, ProfileCard, ProfileHubLink, Switch } from './sections/ProfileCards'
 import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
@@ -62,7 +64,7 @@ import { DeleteAccountCard } from '@/components/profile/DeleteAccountCard'
 import { NewsletterToggle } from '@/components/profile/NewsletterToggle'
 import { useWhatsAppStatus } from '@/hooks/useWhatsApp'
 import type { Meal } from '@ona/shared'
-import { RESTRICTION_PRESETS, unionRestrictions } from '@ona/shared'
+import { RESTRICTION_PRESETS, planLabel, unionRestrictions } from '@ona/shared'
 import type { HealthConsentState } from '@ona/shared'
 import { HealthConsentCheckbox } from '@/components/HealthConsentCheckbox'
 
@@ -1012,6 +1014,7 @@ function ProfileHub() {
   const pantry = usePantry()
   const staples = useStaples()
   const cookbooks = useCookbooks()
+  const billing = useBilling()
 
   const memoryCount = memory.data
     ? Object.keys(memory.data).filter((k) => k !== 'nutrition_principles').length
@@ -1058,6 +1061,18 @@ function ProfileHub() {
         icon={BookOpen}
         title="Recetarios"
         status={cookbooks.data == null ? loading : cookbooks.data.length === 0 ? 'Ninguno todavía' : plural(cookbooks.data.length, 'recetario', 'recetarios')}
+      />
+      <ProfileHubLink
+        href="/profile/suscripcion"
+        icon={CreditCard}
+        title="Suscripción"
+        status={
+          billing.data == null
+            ? billing.isError ? 'Tu plan' : loading
+            : billing.data.subscription
+              ? planLabel(billing.data.subscription.plan, billing.data.subscription.period)
+              : billing.data.beta ? 'Beta: Plus gratis' : 'Sin plan'
+        }
       />
     </div>
   )

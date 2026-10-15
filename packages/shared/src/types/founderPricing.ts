@@ -5,6 +5,7 @@
  * charged. No struck-through prices, no fake quotas (constitution §8.3).
  */
 import { z } from 'zod'
+import { BILLING_PERIODS, PLANS, type BillingPeriod, type PlanKey } from './plans.js'
 
 /** The four questions, asked before the plans so the prices don't anchor them. */
 export const PRICE_QUESTIONS = [
@@ -16,57 +17,41 @@ export const PRICE_QUESTIONS = [
 
 export type PriceQuestionKey = (typeof PRICE_QUESTIONS)[number]['key']
 
-export const FOUNDER_PLAN_IDS = ['esencial-mensual', 'plus-anual', 'plus-mensual'] as const
+export const FOUNDER_PLAN_IDS = ['esencial-mensual', 'esencial-anual', 'plus-mensual', 'plus-anual'] as const
 export type FounderPlanId = (typeof FOUNDER_PLAN_IDS)[number]
 
 export interface FounderPlan {
   id: FounderPlanId
-  plan: 'esencial' | 'plus'
-  period: 'mensual' | 'anual'
+  plan: PlanKey
+  period: BillingPeriod
   name: string
+  /** «4,99 €/mes», «49,99 €/año». */
   price: string
-  /** Short line under the price («Plus por 5 €/mes»). */
-  note?: string
+  /** Yearly only: «4,17 €/mes». */
+  perMonth?: string
   featured: boolean
-  bullets: [string, string, string]
-  /** The usage caps, in small print. */
-  finePrint: string
 }
 
-/** In this order (D-021): Esencial, Plus anual (featured), Plus. */
-export const FOUNDER_PLANS: readonly FounderPlan[] = [
-  {
-    id: 'esencial-mensual',
-    plan: 'esencial',
-    period: 'mensual',
-    name: 'Esencial',
-    price: '4,99 €/mes',
-    featured: false,
-    bullets: ['Menú de la semana y lista de la compra', 'Pedidos a tus tiendas de barrio', 'Importar recetas y Mimo por chat'],
-    finePrint: 'Importar recetas y chatear con Mimo tienen un tope de uso al mes.',
-  },
-  {
-    id: 'plus-anual',
-    plan: 'plus',
-    period: 'anual',
-    name: 'Plus anual',
-    price: '59,99 €/año',
-    note: 'Plus por 5 €/mes',
-    featured: true,
-    bullets: ['Todo lo de Esencial', 'Habla con Mimo por voz', 'Mimo te escribe por WhatsApp'],
-    finePrint: 'Un pago al año. La voz y los avisos por WhatsApp tienen un tope de uso al mes.',
-  },
-  {
-    id: 'plus-mensual',
-    plan: 'plus',
-    period: 'mensual',
-    name: 'Plus',
-    price: '8,99 €/mes',
-    featured: false,
-    bullets: ['Todo lo de Esencial', 'Habla con Mimo por voz', 'Mimo te escribe por WhatsApp'],
-    finePrint: 'La voz y los avisos por WhatsApp tienen un tope de uso al mes.',
-  },
-]
+/**
+ * Derived from `PLANS` (specs/billing.md): Esencial first and featured
+ * (Miguel, 2026-10-15, replacing D-021's featured Plus anual), each plan
+ * monthly or yearly. The screen shows two cards and a monthly/yearly switch.
+ */
+export const FOUNDER_PLANS: readonly FounderPlan[] = PLANS.flatMap((p) =>
+  BILLING_PERIODS.map((period) => ({
+    id: `${p.key}-${period}` as FounderPlanId,
+    plan: p.key,
+    period,
+    name: p.name,
+    price: p.prices[period].label,
+    perMonth: p.prices[period].perMonth,
+    featured: p.featured,
+  })),
+)
+
+export function founderPlanId(plan: PlanKey, period: BillingPeriod): FounderPlanId {
+  return `${plan}-${period}` as FounderPlanId
+}
 
 export const FOUNDER_TITLE = 'Reserva tu precio de fundador'
 export const FOUNDER_SUBTITLE = 'No pagas nada ahora'

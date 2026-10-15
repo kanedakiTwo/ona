@@ -1,7 +1,8 @@
 /**
  * PRO-26 (D-020/D-021): after joining the waitlist, four optional price
- * questions; only after answering, the founder plans (Esencial · Plus anual,
- * featured · Plus) and «Reservar mi plaza de fundador». Nothing is charged.
+ * questions; only after answering, the founder plans (Esencial, featured and
+ * preselected · Plus, each monthly or yearly — 2026-10-15) and «Reservar mi
+ * plaza de fundador». Nothing is charged.
  * Mobile, against the real API + DB.
  */
 
@@ -37,25 +38,29 @@ test('join → answer the 4 price questions → see the plans → reserve', asyn
   await pricing.getByRole('button', { name: 'Seguir' }).click()
   expect((await saved).ok()).toBe(true)
 
-  // The plans, in order, Plus anual featured and preselected.
+  // Two plans, Esencial first, featured and preselected; monthly by default.
   await expect(pricing.getByRole('heading', { name: /reserva tu precio de fundador/i })).toBeVisible()
-  const plans = pricing.getByRole('radio')
-  await expect(plans).toHaveCount(3)
-  await expect(plans.nth(0)).toContainText('Esencial')
-  await expect(plans.nth(0)).toContainText('4,99 €/mes')
-  await expect(plans.nth(1)).toContainText('Plus anual')
-  await expect(plans.nth(1)).toContainText('Plus por 5 €/mes')
-  await expect(plans.nth(1)).toHaveAttribute('aria-checked', 'true')
-  await expect(plans.nth(2)).toContainText('8,99 €/mes')
+  const esencial = pricing.getByTestId('plan-esencial')
+  const plus = pricing.getByTestId('plan-plus')
+  await expect(esencial).toContainText('Recomendado')
+  await expect(esencial).toContainText('4,99 €/mes')
+  await expect(esencial).toHaveAttribute('aria-checked', 'true')
+  await expect(plus).toContainText('8,99 €/mes')
+  await expect(plus).not.toContainText('Recomendado')
   await expect(pricing).toContainText('Empiezas con 14 días gratis con todo, sin tarjeta')
   await expect(pricing.getByRole('button', { name: 'Ninguno me encaja' })).toBeVisible()
 
-  // Reserve Esencial.
-  await plans.nth(0).click()
+  // Yearly: both plans have it.
+  await pricing.getByTestId('period-anual').click()
+  await expect(esencial).toContainText('49,99 €/año')
+  await expect(plus).toContainText('59,99 €/año')
+  await expect(plus).toContainText('5 €/mes')
+
+  // Reserve Esencial, yearly.
   const reserved = page.waitForResponse((r) => r.url().endsWith('/waitlist/reservation') && r.request().method() === 'POST')
   await pricing.getByRole('button', { name: 'Reservar mi plaza de fundador' }).click()
   const res = await reserved
   expect(res.ok()).toBe(true)
-  expect(await res.json()).toEqual({ ok: true, choice: 'esencial-mensual' })
-  await expect(pricing.getByRole('status')).toContainText('Esencial · 4,99 €/mes')
+  expect(await res.json()).toEqual({ ok: true, choice: 'esencial-anual' })
+  await expect(pricing.getByRole('status')).toContainText('Esencial anual · 49,99 €/año')
 })

@@ -42,7 +42,9 @@ export function useRecorder(opts: RecorderOptions = {}) {
   const [level, setLevel] = useState(0)
   const stopRef = useRef<((keep: boolean) => void) | null>(null)
 
-  const start = useCallback((): Promise<Blob | null> => {
+  /** `turn.silenceMs` overrides the hook's silence for this one turn (hands-free waits longer, PRO-87). */
+  const start = useCallback((turn: { silenceMs?: number } = {}): Promise<Blob | null> => {
+    const turnSilenceMs = turn.silenceMs ?? silenceMs
     if (stopRef.current) stopRef.current(false)
     setError(null)
     errorRef.current = null
@@ -108,7 +110,7 @@ export function useRecorder(opts: RecorderOptions = {}) {
               heardSpeech = true
               lastVoiceAt = now
             }
-            if (heardSpeech && now - lastVoiceAt > silenceMs) finish(true)
+            if (heardSpeech && now - lastVoiceAt > turnSilenceMs) finish(true)
             else if (!heardSpeech && now - startedAt > noSpeechMs) finish(false)
             else if (now - startedAt > maxMs) finish(true)
           }, 100)

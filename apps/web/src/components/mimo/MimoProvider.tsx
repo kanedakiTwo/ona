@@ -23,7 +23,7 @@ import { api } from '@/lib/api'
 import { useVoice, type ServerVoice } from '@/hooks/useVoice'
 import { recorderSupported, useRecorder } from '@/hooks/useRecorder'
 import { emitCookingCommand } from '@/lib/cookingCommands'
-import { handsFreeAfterSilence, leavesCookMode } from '@/lib/mimoHandsFree'
+import { handsFreeAfterSilence, leavesCookMode, turnSilenceMs } from '@/lib/mimoHandsFree'
 import { recipeRefsFrom, type RecipeRef } from '@/lib/mimoRecipeLinks'
 import { createPendingListen } from '@/lib/pendingListen'
 import MimoPanel from './MimoPanel'
@@ -254,7 +254,7 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
       return
     }
     setStatus('listening')
-    const blob = await recorder.start()
+    const blob = await recorder.start({ silenceMs: turnSilenceMs(handsFreeRef.current) })
     if (!blob) {
       setStatus('idle')
       const micError = recorder.lastError()

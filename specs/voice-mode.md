@@ -6,7 +6,7 @@ Talking to Mimo, the assistant, from the floating companion on any signed-in pag
 
 ## User Capabilities
 
-- **Tap to talk.** In the Mimo panel, users tap the mic button, speak, and either stop talking (Mimo notices the silence) or tap the mic again to stop and send. While listening, the bubble shows level bars that follow the voice and the status reads «Te escucho…»; then «Un momento…» (transcribing), «Pensando…», «Hablando… (toca para parar)».
+- **Tap to talk.** In the Mimo panel, users tap the mic button, speak, and either stop talking (Mimo notices the silence: 1.3 s after you stop) or tap the mic again to stop and send. In hands-free (also in cook mode) Mimo is more patient in pauses: 2.5 s of silence closes the turn (PRO-87, `turnSilenceMs` in `lib/mimoHandsFree.ts`). While listening, the bubble shows level bars that follow the voice and the status reads «Te escucho…»; then «Un momento…» (transcribing), «Pensando…», «Hablando… (toca para parar)».
 - **Spoken replies.** A spoken turn is sent with `mode: 'voice'`, so Mimo answers briefly, in a form meant to be heard. Spoken turns are always read aloud.
 - **Read typed replies aloud.** The toggle «Leer las respuestas en voz alta» (panel header icon, and in the profile) also reads replies to typed messages. Off by default; stored per device (`localStorage mimo.speak`).
 - **Stop talking.** «Parar» under the composer, or a new mic tap, cuts Mimo off.
@@ -45,6 +45,7 @@ Browsers without MediaRecorder fall back to the Web Speech API recogniser (`useV
 
 - No spoken activation phrase (D-032): opening Mimo always takes a tap. Hands-free only runs while the panel is open.
 - If the mic is denied or missing, the recording ends without a message and Mimo goes back to idle.
+- Once you have spoken, the turn closes after 1.3 s of silence when you tapped the mic, 2.5 s in hands-free (PRO-87); one turn lasts 30 s at most.
 - Outside cook mode, hands-free gives up after 8 s of silence; tap the mic to resume. In cook mode it keeps listening (`handsFreeAfterSilence` in `lib/mimoHandsFree.ts`) until turned off or the user leaves `/cook`; a mic error (no permission, no device) always stops it.
 - Without `OPENAI_API_KEY`, `POST /stt` answers 503 `STT_DISABLED`; a transcription error is 502 «No te he entendido. Prueba otra vez.», shown in the panel.
 - Library ElevenLabs voices need a paid plan (free → 402, so the browser voice is used).
@@ -66,7 +67,7 @@ Browsers without MediaRecorder fall back to the Web Speech API recogniser (`useV
 
 - [apps/web/src/components/mimo/MimoProvider.tsx](../apps/web/src/components/mimo/MimoProvider.tsx) — voice loop, hands-free, read-aloud setting
 - [apps/web/src/components/mimo/MimoPanel.tsx](../apps/web/src/components/mimo/MimoPanel.tsx) — mic, «Manos libres», voice picker, status line
-- [apps/web/src/lib/mimoHandsFree.ts](../apps/web/src/lib/mimoHandsFree.ts) — hands-free rules for cook mode (`handsFreeAfterSilence`, `leavesCookMode`)
+- [apps/web/src/lib/mimoHandsFree.ts](../apps/web/src/lib/mimoHandsFree.ts) — hands-free rules for cook mode (`handsFreeAfterSilence`, `leavesCookMode`) and the silence that closes a turn (`turnSilenceMs`)
 - [apps/web/src/lib/pendingListen.ts](../apps/web/src/lib/pendingListen.ts) — the cancellable 150 ms mic start after opening the panel (PRO-79)
 - [apps/web/src/hooks/useRecorder.ts](../apps/web/src/hooks/useRecorder.ts) — recording with silence detection
 - [apps/web/src/hooks/useVoice.ts](../apps/web/src/hooks/useVoice.ts) — read-aloud (`POST /tts`, browser fallback) and the Web Speech recogniser fallback

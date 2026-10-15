@@ -26,3 +26,12 @@ export function handsFreeAfterSilence(pathname: string | null, micError: string 
 export function leavesCookMode(previous: string | null, next: string | null): boolean {
   return isCookPath(previous) && !isCookPath(next)
 }
+
+/** Silence after speech that closes your turn when you tap the mic (PRO-87). */
+export const TAP_SILENCE_MS = 1300
+/** In hands-free (also in cook mode) Mimo waits longer in a pause (PRO-87). */
+export const HANDS_FREE_SILENCE_MS = 2500
+
+export function turnSilenceMs(handsFree: boolean): number {
+  return handsFree ? HANDS_FREE_SILENCE_MS : TAP_SILENCE_MS
+}

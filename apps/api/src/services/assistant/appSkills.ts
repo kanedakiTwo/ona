@@ -6,6 +6,7 @@ import { DAY_PROP, dateLabel, isMenuDayError, resolveMenuDay, type MenuDay } fro
 import { env } from '../../config/env.js'
 import { HEALTH_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY } from '../healthConsent.js'
 import { PROACTIVE_KINDS, PROACTIVE_LABELS, type ProactiveKind } from '../whatsapp/proactive.js'
+import { createDishRecipe, NEW_RECIPE_PROP, NOTE_THEN_RECIPE_HINT } from './dishRecipe.js'
 
 /**
  * UI-parity skills: everything the web app can do, reachable from chat
@@ -270,10 +271,10 @@ const setDaySkipped: SkillDefinition = {
 const addDish: SkillDefinition = {
   name: 'add_dish',
   description:
-    'Añade un plato mas a una comida sin quitar los que ya hay (ej. "añade una ensalada a la comida del lunes"). Con recipeName busca esa receta en sus recetas y el catalogo; si no existe, lo añade como nota con su nombre y te dice lo mas parecido que hay. Sin nombre añade uno aleatorio compatible.',
+    'Añade un plato mas a una comida sin quitar los que ya hay (ej. "añade una ensalada a la comida del lunes"). Con recipeName busca esa receta en sus recetas y el catalogo; si no existe y mandas newRecipe (version sencilla estimada), la crea como receta del hogar y la añade, para que sus ingredientes lleguen a la lista de la compra; sin newRecipe, lo añade como nota con su nombre y te dice lo mas parecido que hay. Sin nombre añade uno aleatorio compatible.',
   parameters: {
     type: 'object',
-    properties: { ...dayMealProps, recipeName: { type: 'string' }, recipeId: { type: 'string' } },
+    properties: { ...dayMealProps, recipeName: { type: 'string' }, recipeId: { type: 'string' }, newRecipe: NEW_RECIPE_PROP },
     required: ['meal'],
   },
   async handler(p, ctx) {
@@ -290,11 +291,24 @@ const addDish: SkillDefinition = {
     }
     const recipe = p.recipeId ? { id: p.recipeId, name: p.recipeName ?? 'la receta' } : await findRecipe(ctx, p.recipeName)
     if (!p.recipeId && (!recipe || ('approximate' in recipe && recipe.approximate))) {
+      // PRO-74: a household recipe (ingredients reach the list); note as fallback.
+      const created = await createDishRecipe(ctx.userId, p.recipeName, p.newRecipe)
+      if (created) {
+        // A note left by an earlier call for the same dish is replaced, not doubled.
+        const dishes = menu.days[t.dayIndex]?.[p.meal]?.dishes ?? []
+        const notePos = dishes.findIndex((d) => d.kind === 'note' && normalize(d.text ?? '') === normalize(dishNoteText(p.recipeName)))
+        if (notePos >= 0) await api(ctx)('DELETE', `${path}/dish/${notePos}`)
+        await api(ctx)('POST', `${path}/dish`, { kind: 'recipe', recipeId: created.id })
+        return menuDone(
+          `Hecho: "${created.name}" no estaba en sus recetas ni en el catalogo; la he creado como receta del hogar (raciones e ingredientes estimados; se puede revisar en la app) y la he añadido a ${where(t, p.meal)}. Sus ingredientes ya salen en la lista de la compra.`,
+          changed(t, p.meal, { recipeId: created.id, recipeName: created.name }),
+        )
+      }
       const note = dishNoteText(p.recipeName)
       await api(ctx)('POST', `${path}/dish`, { kind: 'note', text: note })
       const closest = recipe ? ` Lo mas parecido que si hay es "${recipe.name}".` : ''
       return menuDone(
-        `Hecho: he añadido "${note}" a ${where(t, p.meal)} como nota, porque no esta en sus recetas ni en el catalogo.${closest} Diselo y ofrecele crear la receta${recipe ? ` o cambiar la nota por "${recipe.name}"` : ''}; no hace falta para que quede en el menu.`,
+        `Hecho: he añadido "${note}" a ${where(t, p.meal)} como nota, porque no esta en sus recetas ni en el catalogo.${closest} ${NOTE_THEN_RECIPE_HINT}${recipe ? ` Si prefiere "${recipe.name}", ofrecele cambiar la nota por esa receta.` : ''}`,
         changed(t, p.meal, { note }),
       )
     }

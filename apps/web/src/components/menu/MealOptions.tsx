@@ -80,6 +80,8 @@ export interface SlotHandlers {
   regenerateDish: (position: number) => void
   reorderDish: (from: number, to: number) => void
   editNote: (position: number, text: string) => void
+  /** PRO-74: the slot's dishes become this written dish (a note). */
+  replaceWithNote: (text: string) => void
 }
 
 export interface SlotContext {
@@ -293,6 +295,10 @@ export function MealOptionsSheets({
               subtitle={first?.recipeName ? `Ahora: ${first.recipeName}` : "Sin plato"}
               onPick={(picked) => {
                 handlers.pickRecipe(picked.id)
+                close()
+              }}
+              onUseText={(text) => {
+                handlers.replaceWithNote(text)
                 close()
               }}
             />

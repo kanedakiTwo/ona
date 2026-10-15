@@ -400,8 +400,54 @@ describe('swap_meal', () => {
       expect(menu.days[3].lunch).toEqual({ dishes: [{ kind: 'note', text: 'Pizza casera de mi abuela' }] })
       expect(r.summary).toMatch(/^Hecho\./)
       expect(r.summary).toContain('como nota')
-      expect(r.summary).toContain('crear la receta')
+      // PRO-74: without newRecipe the model is told to call again with one
+      expect(r.summary).toContain('newRecipe')
       expect(r.summary).not.toMatch(/no he cambiado nada/i)
+    })
+
+    // PRO-74 (hogares de prueba 2026-10-11/14): «pizza casera el viernes» is a
+    // household recipe, so its ingredients reach the shopping list.
+    it('with newRecipe it becomes a household recipe in the slot, and the list counts it', async () => {
+      const { createRecipeFromParts } = await import('../services/recipeImport.js')
+      const { sumDinersByRecipe } = await import('../services/shoppingList.js')
+      vi.mocked(createRecipeFromParts).mockClear()
+      const menu = freshMenu()
+      // queries: menu → candidates by name (none) → loose by words (none) → update
+      const db = makeDb([menu], [], [], [{ ...menu }])
+      const newRecipe = {
+        servings: 4,
+        ingredients: [
+          { name: 'harina de trigo', quantity: 500, unit: 'g' },
+          { name: 'tomate triturado', quantity: 200, unit: 'g' },
+          { name: 'mozzarella', quantity: 250, unit: 'g' },
+        ],
+        steps: ['Haz la masa.', 'Hornea.'],
+      }
+      const r = await skill.handler({ dayIndex: 4, meal: 'lunch', recipeName: 'pizza casera', newRecipe }, ctx(db))
+      expect(vi.mocked(createRecipeFromParts)).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Pizza casera', servings: 4, ingredients: newRecipe.ingredients }),
+        'u-1',
+        { estimated: true },
+      )
+      expect(menu.days[4].lunch).toEqual({ dishes: [{ kind: 'recipe', recipeId: 'r-new', recipeName: 'Pizza casera' }] })
+      expect(r.uiHint).toBe('menu')
+      expect(r.summary).toContain('receta del hogar')
+      expect(r.summary).toContain('lista de la compra')
+      // The shopping aggregator scales recipe dishes only: the pizza is in.
+      expect(sumDinersByRecipe(menu.days as any, 2).get('r-new')).toBe(2)
+    })
+
+    it('if saving the recipe fails, the dish still goes in as a note', async () => {
+      const { createRecipeFromParts } = await import('../services/recipeImport.js')
+      vi.mocked(createRecipeFromParts).mockRejectedValueOnce(new Error('boom'))
+      const menu = freshMenu()
+      const db = makeDb([menu], [], [], [{ ...menu }])
+      const r = await skill.handler(
+        { dayIndex: 4, meal: 'lunch', recipeName: 'pizza casera', newRecipe: { ingredients: [{ name: 'harina' }] } },
+        ctx(db),
+      )
+      expect(menu.days[4].lunch).toEqual({ dishes: [{ kind: 'note', text: 'Pizza casera' }] })
+      expect(r.summary).toContain('como nota')
     })
 
     it('only offers the closest real recipe instead of swapping it in', async () => {
@@ -410,7 +456,7 @@ describe('swap_meal', () => {
       const r = await skill.handler({ dayIndex: 3, meal: 'lunch', recipeName: 'filete de vaca' }, ctx(db))
       expect(menu.days[3].lunch).toEqual({ dishes: [{ kind: 'note', text: 'Filete de vaca' }] })
       expect(r.summary).toContain('Entrecot a la plancha')
-      expect(r.summary).toContain('crear la receta')
+      expect(r.summary).toContain('newRecipe')
     })
   })
 

@@ -6,6 +6,34 @@ import { env } from '../config/env.js'
 import { db as defaultDb } from '../db/connection.js'
 import { newsletterSends, users, waitlistEntries } from '../db/schema.js'
 import { maskEmail, sendEmail, sendEmailBatch, type EmailMessage, type EmailResult } from './email.js'
+import {
+  ACCENT,
+  BODY,
+  BORDER,
+  BORDER_SOFT,
+  CREAM_DEEP,
+  EYEBROW,
+  INK,
+  INK_MID,
+  MUTED,
+  PAPER,
+  SANS,
+  SERIF,
+  TERRACOTTA,
+  TERRACOTTA_DEEP,
+  brandAssets,
+  button,
+  emailDocument,
+  esc,
+  footerBand,
+  headlineRow,
+  masthead,
+  paragraphs,
+  plainHeadline,
+  row,
+  signature,
+  type BrandAssets,
+} from './emailBrand.js'
 
 /**
  * Newsletter «El menú de los viernes» (PRO-94, specs/newsletter.md).
@@ -86,58 +114,9 @@ export type NewsletterSendInput = z.infer<typeof newsletterSendSchema>
 
 // ─── Template ────────────────────────────────────────────────────
 
-function esc(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
-
-// Brand tokens (ona-hq brand/guia, apps/web globals.css @theme).
-const INK = '#1A1612'
-const INK_MID = '#4A4239'
-const MUTED = '#6E655B'
-const CREAM = '#FAF6EE'
-const CREAM_DEEP = '#F2EDE0'
-const PAPER = '#FFFEFA'
-const BORDER = '#DDD6C5'
-const BORDER_SOFT = '#E8E2D3'
-const TERRACOTTA = '#C65D38'
-const TERRACOTTA_DEEP = '#B5432A'
-const FOREST = '#2D6A4F'
-const SERIF = "Fraunces, Georgia, 'Times New Roman', serif"
-const ACCENT = "'Cormorant Garamond', Georgia, 'Times New Roman', serif"
-const SANS = "Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif"
-const FONTS =
-  'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@1,400;1,500&family=Fraunces:opsz,wght@9..144,400;9..144,650&family=Inter:wght@400;500;600&display=swap'
-
-const EYEBROW = `margin:0 0 10px;font-family:${SANS};font-size:11px;line-height:1.3;font-weight:500;letter-spacing:0.18em;text-transform:uppercase;`
-const BODY = `font-family:${SANS};font-size:16px;line-height:1.6;color:${INK};`
-
-function paragraphs(text: string, style: string, gap = 14): string {
-  return text
-    .split(/\n{2,}/)
-    .map((p) => `<p style="margin:0 0 ${gap}px;${style}">${esc(p.trim()).replace(/\n/g, '<br>')}</p>`)
-    .join('')
-}
-
-/** Escaped headline with `*word*` in the accent italic, terracotta. */
-function headline(text: string): string {
-  return esc(text).replace(
-    /\*([^*]+)\*/g,
-    `<em style="font-family:${ACCENT};font-style:italic;font-weight:500;font-size:1.18em;color:${TERRACOTTA};">$1</em>`,
-  )
-}
-
 function img(url: string, alt: string, link?: string, radius = '14px'): string {
   const tag = `<img src="${esc(url)}" alt="${esc(alt)}" width="600" style="display:block;width:100%;max-width:600px;height:auto;border:0;border-radius:${radius};">`
   return link ? `<a href="${esc(link)}" style="text-decoration:none;">${tag}</a>` : tag
-}
-
-function row(inner: string, padding = '0 28px'): string {
-  return `<tr><td style="padding:${padding};">${inner}</td></tr>`
 }
 
 function sideBlock(label: string, b: NonNullable<NewsletterContent['news']>): string {
@@ -175,33 +154,17 @@ function sectionBlock(s: NonNullable<NewsletterContent['sections']>[number]): st
 }
 
 /**
- * The visual newsletter, in the brand (cream, ink, one touch of terracotta,
- * forest for the button; Fraunces, Inter and a Cormorant italic accent):
- * masthead with the logo → headline → letter → the star recipe's photo full
- * width → sections → cards → signature → footer band. Tables + inline styles,
- * 600 px, absolute image URLs with `alt` (Gmail and Apple Mail on a phone;
- * Gmail falls back to Georgia/Helvetica). `unsubscribeUrl` is per recipient.
+ * The visual newsletter, on the shared brand shell (emailBrand.ts): masthead
+ * with the logo → headline → letter → the star recipe's photo full width →
+ * sections → cards → signature → footer band. Absolute image URLs with `alt`.
+ * `unsubscribeUrl` is per recipient.
  */
 export function renderNewsletterEmail(
   input: Pick<NewsletterSendInput, 'subject' | 'preheader' | 'content'>,
-  links: { unsubscribeUrl: string; leaveListUrl?: string; logoUrl?: string; symbolUrl?: string; homeUrl?: string },
+  links: { unsubscribeUrl: string; leaveListUrl?: string } & BrandAssets,
 ): { html: string; text: string } {
   const c = input.content
   const brand = esc(BRAND_NAME)
-  const logo = links.logoUrl
-    ? `<img src="${esc(links.logoUrl)}" alt="${brand}" width="150" style="display:inline-block;width:150px;height:auto;border:0;">`
-    : `<span style="font-family:${SERIF};font-size:30px;font-weight:650;letter-spacing:-0.02em;color:${TERRACOTTA};">${esc(BRAND_NAME.toLowerCase())}</span>`
-  const masthead = `<tr><td align="center" style="padding:36px 28px 0;">${links.homeUrl ? `<a href="${esc(links.homeUrl)}" style="text-decoration:none;">${logo}</a>` : logo}</td></tr>
-<tr><td align="center" style="padding:14px 28px 26px;border-bottom:1px solid ${BORDER};">
-<p style="${EYEBROW}margin:0;color:${MUTED};">El menú de los viernes</p>
-${c.edition ? `<p style="margin:6px 0 0;font-family:${SANS};font-size:13px;line-height:1.4;color:${MUTED};">${esc(c.edition)}</p>` : ''}
-</td></tr>`
-  const head = c.headline
-    ? row(
-        `<p style="margin:0;font-family:${SERIF};font-size:36px;line-height:1.08;font-weight:400;letter-spacing:-0.025em;color:${INK};">${headline(c.headline)}</p>`,
-        '34px 28px 0',
-      )
-    : ''
   const intro = c.intro ? row(paragraphs(c.intro, `${BODY}font-size:17px;line-height:1.65;`, 16), '24px 28px 14px') : ''
   const star = `${row(img(c.star.imageUrl, c.star.imageAlt, c.star.url), '10px 28px 22px')}
 ${row(
@@ -210,59 +173,33 @@ ${row(
 ${c.star.meta ? `<p style="margin:0 0 16px;font-family:${SANS};font-size:14px;line-height:1.45;color:${MUTED};">${esc(c.star.meta)}</p>` : ''}
 ${paragraphs(c.star.body, BODY)}`,
 )}
-${row(
-  `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="background:${FOREST};border-radius:999px;"><a href="${esc(c.cta.url)}" style="display:inline-block;padding:15px 30px;font-family:${SANS};font-size:16px;font-weight:600;color:${CREAM};text-decoration:none;">${esc(c.cta.label)}</a></td></tr></table>`,
-  '6px 28px 38px',
-)}`
-  const signoff =
-    c.signoff || c.from
-      ? row(
-          `${c.signoff ? paragraphs(c.signoff, `${BODY}font-size:17px;`, 6) : ''}${
-            c.from
-              ? `<p style="margin:6px 0 2px;font-family:${ACCENT};font-style:italic;font-weight:500;font-size:38px;line-height:1;color:${INK};">${esc(c.from.name)}</p>${
-                  c.from.role ? `<p style="${EYEBROW}margin:8px 0 0;color:${MUTED};">${esc(c.from.role)}</p>` : ''
-                }`
-              : ''
-          }`,
-          '6px 28px 40px',
-        )
-      : ''
-  const small = `margin:0 0 10px;font-family:${SANS};font-size:12px;line-height:1.55;color:${MUTED};`
-  const footer = `<tr><td align="center" style="background:${CREAM_DEEP};padding:30px 28px 26px;border-radius:0 0 4px 4px;">
-${links.symbolUrl ? `<img src="${esc(links.symbolUrl)}" alt="" width="36" height="36" style="display:block;width:36px;height:36px;border:0;border-radius:50%;margin:0 auto 14px;">` : ''}
-${c.note ? `<p style="${small}">${esc(c.note)}</p>` : ''}
-<p style="${small}">Te llega porque pediste el menú de los viernes de ${brand}.</p>
-<p style="${small}"><a href="${esc(links.unsubscribeUrl)}" style="color:${MUTED};">No quiero recibir más el menú de los viernes</a>${links.leaveListUrl ? ` · <a href="${esc(links.leaveListUrl)}" style="color:${MUTED};">Salir de la lista de espera</a>` : ''}</p>
-<p style="${small}margin:0;">${links.homeUrl ? `<a href="${esc(links.homeUrl)}" style="color:${MUTED};text-decoration:none;">${brand} · ${esc(links.homeUrl.replace(/^https?:\/\//, '').replace(/\/+$/, ''))}</a>` : brand}</p>
-</td></tr>`
-
-  const html = `<!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light">
-<link href="${FONTS}" rel="stylesheet">
-<title>${esc(input.subject)}</title></head>
-<body style="margin:0;padding:0;background:${CREAM};">
-${input.preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;">${esc(input.preheader)}</div>` : ''}
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${CREAM};"><tr><td align="center" style="padding:0;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;background:${CREAM};">
-${masthead}
-${head}
-${intro}
-${star}
-${(c.sections ?? []).map(sectionBlock).join('\n')}
-${c.news ? sideBlock(`Novedad en ${BRAND_NAME}`, c.news) : ''}
-${c.tip ? sideBlock(`Un truco con ${ASSISTANT_NAME}`, c.tip) : ''}
-${signoff}
-${footer}
-</table></td></tr></table>
-</body></html>`
+${button(c.cta.label, c.cta.url, '6px 28px 38px')}`
+  const html = emailDocument(
+    input.subject,
+    input.preheader,
+    [
+      masthead(links, 'El menú de los viernes', c.edition),
+      c.headline ? headlineRow(c.headline) : '',
+      intro,
+      star,
+      ...(c.sections ?? []).map(sectionBlock),
+      c.news ? sideBlock(`Novedad en ${BRAND_NAME}`, c.news) : '',
+      c.tip ? sideBlock(`Un truco con ${ASSISTANT_NAME}`, c.tip) : '',
+      signature(c.signoff, c.from),
+      footerBand(links, [
+        ...(c.note ? [esc(c.note)] : []),
+        `Te llega porque pediste el menú de los viernes de ${brand}.`,
+        `<a href="${esc(links.unsubscribeUrl)}" style="color:${MUTED};">No quiero recibir más el menú de los viernes</a>${links.leaveListUrl ? ` · <a href="${esc(links.leaveListUrl)}" style="color:${MUTED};">Salir de la lista de espera</a>` : ''}`,
+      ]),
+    ].join('\n'),
+  )
 
   const block = (label: string, b?: NewsletterContent['news']) =>
     b ? [`${label.toUpperCase()}: ${b.title}`, b.body, ...(b.url ? [b.url] : []), ''] : []
   const text = [
     `${BRAND_NAME} · El menú de los viernes${c.edition ? ` · ${c.edition}` : ''}`,
     '',
-    ...(c.headline ? [c.headline.replace(/\*([^*]+)\*/g, '$1'), ''] : []),
+    ...(c.headline ? [plainHeadline(c.headline), ''] : []),
     ...(c.intro ? [c.intro, ''] : []),
     `LA RECETA DE LA SEMANA: ${c.star.title}`,
     ...(c.star.meta ? [c.star.meta] : []),
@@ -559,10 +496,6 @@ export function defaultNewsletterDeps(urls: { publicUrl: string; apiUrl: string 
   }
 }
 
-/** Brand images for the email, served by the web from `apps/web/public/email/`. */
-export const NEWSLETTER_LOGO_PATH = '/email/mimoia-logo.png'
-export const NEWSLETTER_SYMBOL_PATH = '/email/mimoia-simbolo.png'
-
 export function buildNewsletterMessage(
   input: Pick<NewsletterSendInput, 'subject' | 'preheader' | 'content'>,
   to: string,
@@ -574,13 +507,7 @@ export function buildNewsletterMessage(
   const unsubscribeUrl = `${web}${newsletterUnsubscribePath(tokens.token)}`
   const leaveListUrl = tokens.leaveToken ? `${web}${waitlistUnsubscribePath(tokens.leaveToken)}` : undefined
   const oneClick = `${api}/newsletter/unsubscribe?t=${encodeURIComponent(tokens.token)}`
-  const { html, text } = renderNewsletterEmail(input, {
-    unsubscribeUrl,
-    leaveListUrl,
-    logoUrl: `${web}${NEWSLETTER_LOGO_PATH}`,
-    symbolUrl: `${web}${NEWSLETTER_SYMBOL_PATH}`,
-    homeUrl: `${web}/`,
-  })
+  const { html, text } = renderNewsletterEmail(input, { unsubscribeUrl, leaveListUrl, ...brandAssets(web) })
   return {
     to,
     subject: input.subject,

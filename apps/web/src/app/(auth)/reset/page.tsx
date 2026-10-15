@@ -97,7 +97,7 @@ function ResetPageInner() {
             Nueva <Accent>contraseña</Accent>.
           </>
         }
-        lead="Elige una contraseña nueva y guarda los cambios. El enlace caduca a las 24 horas."
+        lead="Elige una contraseña nueva y guarda los cambios. El enlace sirve una sola vez."
       />
 
       {success ? (

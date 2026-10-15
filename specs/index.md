@@ -22,9 +22,9 @@ Registration, login, logout, JWT tokens, session management, onboarding flow, pa
 
 ## [Email](./email.md)
 
-Transactional email via Resend (REST API with fetch, no SDK, EU region, mimoia.com verified, D-050), `sendEmail` / `sendEmailBatch` (≤100 per call), `RESEND_API_KEY` unset → skipped (no email in CI/staging), `EMAIL_FROM` Mimoia <hola@mimoia.com>, `RESEND_BASE_URL`, never throws (sent/skipped/failed), masked recipients in logs (`maskEmail`), brand HTML template + text version (`renderBrandEmail`, tables, inline styles, 600 px), `List-Unsubscribe` header, waitlist invitation email «¡Te toca! Ya puedes entrar en Mimoia» sent by `POST /admin/waitlist/invite` (`sendEmail: false` to skip, `emailStatus` per person), PRO-93; personal link `/entrar/<token>` + one reminder at 3 days (`waitlistInviteReminderEmail`), fake Resend in e2e (`E2E_MAIL_URL`), PRO-97.
+Transactional email via Resend (REST API with fetch, no SDK, EU region, mimoia.com verified, D-050), `sendEmail` / `sendEmailBatch` (≤100 per call), `RESEND_API_KEY` unset → skipped (no email in CI/staging), `EMAIL_FROM` Mimoia <hola@mimoia.com>, `RESEND_BASE_URL`, never throws (sent/skipped/failed), masked recipients in logs (`maskEmail`), brand HTML template + text version (`renderBrandEmail`, tables, inline styles, 600 px), `List-Unsubscribe` header, waitlist invitation email «¡Te toca! Ya puedes entrar en Mimoia» sent by `POST /admin/waitlist/invite` (`sendEmail: false` to skip, `emailStatus` per person), PRO-93; personal link `/entrar/<token>` + one reminder at 3 days (`waitlistInviteReminderEmail`), fake Resend in e2e (`E2E_MAIL_URL`), PRO-97; shared brand shell (`emailBrand.ts`: logo, accent headline, forest button, signature, footer band), emails signed by Miguel; welcome email on sign-up (bienvenida: beta / household / general, `welcomeKind`); password reset email («¿Has olvidado la contraseña?», `/recuperar`, `POST /auth/forgot`, 1-hour link, 3 per hour).
 
-**Source**: `apps/api/src/services/email.ts`, `apps/api/src/services/waitlistEmails.ts`, `apps/api/src/routes/waitlist.ts`
+**Source**: `apps/api/src/services/email.ts`, `apps/api/src/services/emailBrand.ts`, `apps/api/src/services/waitlistEmails.ts`, `apps/api/src/services/accountEmails.ts`, `apps/api/src/services/accountMailer.ts`, `apps/api/src/routes/waitlist.ts`, `apps/api/src/routes/auth.ts`
 
 ---
 

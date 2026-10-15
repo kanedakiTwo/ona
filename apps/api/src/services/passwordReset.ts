@@ -1,10 +1,11 @@
 /**
  * Password-reset token mint + consume helpers.
  *
- * Tokens are opaque random strings (32 bytes hex). The admin generates one
- * via `POST /admin/users/:id/reset-password-token` and pastes the resulting
- * relative link to the user out-of-band. The user trades it in at
- * `/reset?token=...` (consumed by `POST /auth/reset`).
+ * Tokens are opaque random strings (32 bytes hex). Two ways to get one:
+ * the admin generates one via `POST /admin/users/:id/reset-password-token`
+ * and pastes the link to the user (24 h), or the user asks for it at
+ * `/recuperar` (`POST /auth/forgot`, emailed, 1 h — accountMailer.ts).
+ * Either is traded in at `/reset?token=...` (consumed by `POST /auth/reset`).
  *
  * Both helpers accept an optional Drizzle transaction client so the caller
  * can wrap the audit-log insert in the same tx.
@@ -34,9 +35,10 @@ export interface MintedToken {
 export async function mintToken(
   userId: string,
   client: DbOrTx = db,
+  ttlMs: number = TOKEN_TTL_MS,
 ): Promise<MintedToken> {
   const token = randomBytes(32).toString('hex')
-  const expiresAt = new Date(Date.now() + TOKEN_TTL_MS)
+  const expiresAt = new Date(Date.now() + ttlMs)
   const [row] = await client
     .insert(passwordResetTokens)
     .values({ userId, token, expiresAt })

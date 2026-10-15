@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { nextFromLocation, useNextSuffix } from "@/lib/safeNext"
 import { ArrowRight } from "lucide-react"
 import { Accent, AUTH_PILL, AuthError, AuthField, AuthFooterLink, AuthHeading, AuthShell } from "@/components/auth/AuthShell"
@@ -67,6 +68,10 @@ export default function LoginPage() {
           onChange={setPassword}
           autoComplete="current-password"
         />
+
+        <Link href="/recuperar" className="-mt-2 self-end text-[13px] text-ink-muted underline-offset-4 hover:text-ink hover:underline">
+          ¿Has olvidado la contraseña?
+        </Link>
 
         <button type="submit" disabled={isSubmitting || !username || !password} className={`mt-2 ${AUTH_PILL}`}>
           {isSubmitting ? "Entrando..." : "Entrar"}

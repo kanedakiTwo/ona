@@ -1,5 +1,27 @@
-import { BRAND_NAME } from '@ona/shared'
 import { env } from '../config/env.js'
+import {
+  BODY,
+  BORDER_SOFT,
+  INK,
+  MUTED,
+  PAPER,
+  SANS,
+  SERIF,
+  TERRACOTTA,
+  brandAssets,
+  button,
+  emailDocument,
+  esc,
+  footerBand,
+  headlineRow,
+  masthead,
+  paragraphs,
+  plainHeadline,
+  row,
+  signature,
+  type BrandAssets,
+  type Signer,
+} from './emailBrand.js'
 
 /**
  * Transactional email through Resend's REST API (specs/email.md). A plain
@@ -139,66 +161,75 @@ export async function sendEmailBatch(
 export interface BrandEmail {
   /** Hidden preview line shown by the inbox next to the subject. */
   preheader?: string
+  /** Small caps line under the logo (e.g. «Lista de espera»). */
+  eyebrow?: string
+  /** The one headline; `*word*` goes in the terracotta italic. */
   heading: string
   paragraphs: string[]
+  /** A short numbered list after the paragraphs («Para empezar»). */
+  steps?: string[]
   button?: { label: string; url: string }
-  /** Small print under the button (why you get this, how to leave). */
+  /** Paragraphs after the button (e.g. how the link works). */
+  after?: string[]
+  /** «Un abrazo,» before the signer's name. */
+  signoff?: string
+  /** Who signs (Miguel on the personal emails, constitution §5). */
+  from?: Signer
+  /** Small print in the footer band (why you get this, how to leave). */
   footer?: string[]
   unsubscribeUrl?: string
+  /** Logo, symbol and home link; defaults to `WEB_PUBLIC_URL`. */
+  assets?: BrandAssets
 }
-
-function esc(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
-
-const INK = '#1A1612'
-const CREAM = '#FAF6EE'
-const TERRACOTTA = '#C65D38'
-const MUTED = '#6B6158'
-const SERIF = "Fraunces, Georgia, 'Times New Roman', serif"
-const SANS = "Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif"
 
 /**
- * The brand shell: cream page, 600 px column, Fraunces with email-safe
- * fallbacks, tables and inline styles (Gmail and Apple Mail on a phone).
- * Every string is escaped; the text version says the same thing.
+ * The brand shell for the transactional emails, the same as the newsletter
+ * (emailBrand.ts): logo, headline, paragraphs, an optional numbered list,
+ * the forest button, the signature and the cream-deep footer band. Every
+ * string is escaped; the text version says the same thing.
  */
 export function renderBrandEmail(e: BrandEmail): { html: string; text: string } {
-  const p = (t: string) =>
-    `<p style="margin:0 0 16px;font-family:${SANS};font-size:16px;line-height:1.55;color:${INK};">${esc(t)}</p>`
-  const small = (t: string) =>
-    `<p style="margin:0 0 8px;font-family:${SANS};font-size:13px;line-height:1.5;color:${MUTED};">${esc(t)}</p>`
-  const button = e.button
-    ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 24px;"><tr><td style="background:${TERRACOTTA};border-radius:999px;"><a href="${esc(e.button.url)}" style="display:inline-block;padding:14px 28px;font-family:${SANS};font-size:16px;font-weight:600;color:#FFFFFF;text-decoration:none;">${esc(e.button.label)}</a></td></tr></table>`
+  const assets = e.assets ?? brandAssets(env.WEB_PUBLIC_URL)
+  const body = (list: string[], padding: string) =>
+    list.length ? row(list.map((t) => paragraphs(t, `${BODY}font-size:17px;line-height:1.65;`, 16)).join(''), padding) : ''
+  const steps = e.steps?.length
+    ? row(
+        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${PAPER};border:1px solid ${BORDER_SOFT};border-radius:16px;"><tr><td style="padding:20px 22px 8px;">${e.steps
+          .map(
+            (t, k) =>
+              `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;"><tr><td width="34" valign="top" style="font-family:${SERIF};font-size:22px;line-height:1.1;color:${TERRACOTTA};">${k + 1}</td><td valign="top" style="font-family:${SANS};font-size:16px;line-height:1.55;color:${INK};">${esc(t)}</td></tr></table>`,
+          )
+          .join('')}</td></tr></table>`,
+        '4px 28px 26px',
+      )
     : ''
-  const footer = [
-    ...(e.footer ?? []).map(small),
-    e.unsubscribeUrl
-      ? `<p style="margin:0 0 8px;font-family:${SANS};font-size:13px;line-height:1.5;color:${MUTED};"><a href="${esc(e.unsubscribeUrl)}" style="color:${MUTED};">Darme de baja</a></p>`
-      : '',
-  ].join('')
-  const html = `<!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(e.heading)}</title></head>
-<body style="margin:0;padding:0;background:${CREAM};">
-${e.preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;">${esc(e.preheader)}</div>` : ''}
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${CREAM};"><tr><td align="center" style="padding:32px 16px;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;">
-<tr><td style="padding:0 0 24px;font-family:${SERIF};font-size:22px;color:${TERRACOTTA};">${esc(BRAND_NAME)}</td></tr>
-<tr><td style="padding:0 0 16px;font-family:${SERIF};font-size:30px;line-height:1.2;color:${INK};">${esc(e.heading)}</td></tr>
-<tr><td>${e.paragraphs.map(p).join('')}${button}</td></tr>
-<tr><td style="padding:16px 0 0;border-top:1px solid #E6DED2;">${footer}</td></tr>
-</table></td></tr></table>
-</body></html>`
+  const html = emailDocument(
+    plainHeadline(e.heading),
+    e.preheader,
+    [
+      masthead(assets, e.eyebrow),
+      headlineRow(e.heading),
+      body(e.paragraphs, '24px 28px 6px'),
+      steps,
+      e.button ? button(e.button.label, e.button.url, '6px 28px 26px') : '',
+      body(e.after ?? [], '0 28px 6px'),
+      signature(e.signoff, e.from, '10px 28px 40px'),
+      footerBand(assets, [
+        ...(e.footer ?? []).map(esc),
+        ...(e.unsubscribeUrl ? [`<a href="${esc(e.unsubscribeUrl)}" style="color:${MUTED};">Darme de baja</a>`] : []),
+      ]),
+    ].join('\n'),
+  )
   const text = [
-    e.heading,
+    plainHeadline(e.heading),
     '',
     ...e.paragraphs.flatMap((t) => [t, '']),
+    ...(e.steps?.length ? [...e.steps.map((t, k) => `${k + 1}. ${t}`), ''] : []),
     ...(e.button ? [`${e.button.label}: ${e.button.url}`, ''] : []),
+    ...(e.after ?? []).flatMap((t) => [t, '']),
+    ...(e.signoff ? [e.signoff] : []),
+    ...(e.from ? [e.from.name, ...(e.from.role ? [e.from.role] : [])] : []),
+    ...(e.signoff || e.from ? [''] : []),
     ...(e.footer ?? []),
     ...(e.unsubscribeUrl ? [`Darme de baja: ${e.unsubscribeUrl}`] : []),
   ]

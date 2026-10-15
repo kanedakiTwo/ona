@@ -25,6 +25,8 @@ ROUTES=(
   /lista/baja
   /login
   /register
+  /recuperar
+  /reset
   /onboarding
   /menu
   /shopping

@@ -15,6 +15,7 @@ import DesktopSidebar from "@/components/shared/DesktopSidebar"
 import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
 import { recordVisit } from "@/lib/pwa/installPrompt"
+import { reportInstalledOpen } from "@/lib/pwa/installedOpen"
 import { scheduleMealReminders } from "@/lib/pwa/notifications"
 import { installErrorReporter } from "@/lib/errorReporter"
 import { CF_BEACON_SRC, cfBeaconAttr } from "@/lib/cfBeacon"
@@ -82,6 +83,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     // In-house error tracker (specs/errors.md): window errors + unhandled rejections.
     installErrorReporter()
     recordVisit()
+    // PRO-83: count installed-app opens (aggregate only, once a day).
+    reportInstalledOpen()
     scheduleMealReminders()
   }, [])
 

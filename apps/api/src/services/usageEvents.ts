@@ -29,6 +29,7 @@ import { detectSourceType } from './sources/sourceType.js'
 
 export const USAGE_EVENTS = [
   'signup_completed',
+  'app_opened_installed',
   'onboarding_completed',
   'first_steps_completed',
   'first_steps_skipped',
@@ -45,6 +46,12 @@ export const USAGE_EVENTS = [
   'shop_order_prepared',
 ] as const
 export type UsageEventName = (typeof USAGE_EVENTS)[number]
+
+/**
+ * Passive signals: counted as events, but they don't make a household
+ * "active" in GET /admin/usage (opening the app is not using it).
+ */
+export const PASSIVE_USAGE_EVENTS: ReadonlySet<string> = new Set<UsageEventName>(['app_opened_installed'])
 
 export const USAGE_CHANNELS = ['web', 'whatsapp', 'voice'] as const
 export type UsageChannel = (typeof USAGE_CHANNELS)[number]

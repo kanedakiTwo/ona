@@ -12,7 +12,7 @@ Mimoia is pre-launch and will be run as a one-person company with AI agents. Pri
 - The token is sent as header `x-metrics-token` and must equal the env var `METRICS_READ_TOKEN` (constant-time compare). It opens five read-only GETs: this endpoint, `GET /admin/usage` (below), `GET /admin/errors` ([Error tracking](./errors.md)), `GET /admin/waitlist` ([Waitlist](./waitlist.md)) and `GET /admin/assistant-reviews/flags` ([WhatsApp](./whatsapp.md)) — every other `/admin/*` route still needs an admin JWT. With the env var unset, token access is off (always 401 `METRICS_TOKEN_DISABLED`); a wrong token is 401 `METRICS_TOKEN_INVALID`, with no fallback to JWT; any method other than GET/HEAD with the token is 405 `METRICS_TOKEN_READ_ONLY`.
 - `includeInternal=1` also counts admin and suspended accounts (useful pre-launch, when almost every user is internal).
 - Response:
-  - `weekly[]`: `week` (Monday), `isoWeek` (`2026-W41`), `partial`, `activeHouseholds`, `resolvedWeekHouseholds`, `newHouseholds`, `costEur { total, byProvider, byFeature }`, `internalCostEur`, `costPerActiveHouseholdEur`.
+  - `weekly[]`: `week` (Monday), `isoWeek` (`2026-W41`), `partial`, `activeHouseholds`, `resolvedWeekHouseholds`, `newHouseholds`, `costEur { total, byProvider, byFeature }`, `internalCostEur`, `costPerActiveHouseholdEur`, `installedAppHouseholds` and `pushEnabledHouseholds` (each `{ android, ios, desktop, total }`, see «App instalada y avisos» below).
   - `cohorts[]`: households by signup week with `size` and `retention { w1..w4 }`.
   - `campaigns[]` (PRO-27): signups in the window grouped by the **campaign invitation link** their first user registered with (`campaign: null` = no link): `signups`, `activated` / `activationRate` (active in the signup week), `week3Eligible`, `week3Active`, `week3Rate` (active in signup week + 3, over the signups whose week 3 has started). This is how Miguel's circle («familia», «amigos-padel») is read apart from strangers.
   - `totals`: distinct `activeHouseholds`, `activeHouseholdWeeks`, `newHouseholds`, `resolvedHouseholdWeeks`, `costEur`, `internalCostEur`, `costPerActiveHouseholdWeekEur`, `costEvents`, `unpricedCostEvents`.
@@ -88,6 +88,7 @@ Analítica de producto en una tabla propia, sin terceros. Una fila por cada cosa
 | `meal_cooked` | `POST /cook-logs` | `log_cooked` |
 | `mimo_message` (por `channel`; en WhatsApp `props.kind` text/voice_note/photo) | `POST /assistant/:id/chat` (`mode: voice` → voice) | cada turno de WhatsApp que llega a Mimo (`inbound.ts`) |
 | `whatsapp_linked` | — | código de vinculación aceptado (`inbound.ts`) |
+| `app_opened_installed` (`props.device` android/ios/desktop; pasivo, ver abajo) | `POST /usage/app-opened` (la web, al abrirse instalada) | — |
 | `shop_order_prepared` (`props.orders` desde Mimo) | `POST /shop-orders/prepare` | `prepare_shop_orders` con al menos un pedido |
 
 Sin dobles recuentos: las herramientas que llaman a la propia API REST (`appApi.ts`) y los procesos de sistema que leen la lista (recordatorio de la compra por WhatsApp, la lectura interna de `POST /shop-orders/prepare`) envían la cabecera `x-mimoia-internal`, que el middleware web ignora; el ejecutor de herramientas los registra con el canal de la conversación. Las herramientas que responden "no encontrado" (`data: null`) no cuentan.
@@ -98,6 +99,13 @@ Sin dobles recuentos: las herramientas que llaman a la propia API REST (`appApi.
 - `weekly[]`: `{ week (lunes), isoWeek, partial, activeHouseholds, events }`.
 - `funnel[]`, por semana ISO de alta: `{ week, isoWeek, signups, firstMenu, shoppingListViewed, cooked, week2Eligible, activeWeek2 }`. `firstMenu → shoppingListViewed → cooked` son pasos encadenados dentro de los 7 primeros días (día del alta … +6); `cooked` = `cook_mode_started` o `meal_cooked`. `activeWeek2` no está encadenado: algún evento en los días 7–13, sobre `week2Eligible` (altas cuyo día 7 ya ha llegado).
 - `totals`: `{ events, byChannel, activeHouseholds, householdsByEvent }` de la ventana. `definitions` repite las reglas.
+
+## App instalada y avisos (PRO-83)
+
+- Al abrirse Mimoia como app instalada (`display-mode: standalone`, o `navigator.standalone` en iPhone) con sesión iniciada, la web llama a `POST /usage/app-opened` sin cuerpo, como mucho una vez al día por navegador (`localStorage`). La API deduce el dispositivo del navegador (android si dice Android; ios si dice iPhone/iPad/iPod; desktop el resto) y guarda solo esa palabra, en un único `app_opened_installed` por hogar y día de Madrid (aunque llegue tres veces). Responde 204 siempre; sin sesión, 401.
+- `app_opened_installed` es **pasivo**: sale en los recuentos de `/admin/usage`, pero no hace «activo» a un hogar (ni en `activeHouseholds` ni en el embudo).
+- `/admin/metrics` → `weekly[].installedAppHouseholds`: hogares que abrieron la app instalada esa semana, por dispositivo; `total` cuenta cada hogar una vez aunque use dos.
+- `weekly[].pushEnabledHouseholds`: hogares con avisos activados al final de esa semana, de `push_subscriptions` (suscripción que sigue existiendo hoy y creada hasta ese domingo), por dispositivo deducido de su `user_agent`. Solo cifras: ni ids ni navegadores en la respuesta.
 
 Conservación: el tick del planificador borra una vez al día los eventos de más de 180 días (`purgeOldUsageEventsIfDue`).
 
@@ -114,6 +122,7 @@ Conservación: el tick del planificador borra una vez al día los eventos de má
 - **WhatsApp service messages are counted when sent, not when delivered** (Meta bills delivered ones), and the free tier is counted on the Madrid calendar month and over all `whatsapp_service` rows, so a second number or a failed delivery would make the estimate slightly high. Two messages sent at the same instant can both see the same count at the 1,000 boundary.
 - Historical `voice_realtime` rows (until 2026-10-09) trusted client-reported minutes (the retired `POST /realtime/:userId/usage`); a crashed tab reported nothing.
 - One-off catalog scripts with their own Claude clients (`regenerateRecipes`, `populatePrepRequirements`, `populateRecipeCourses`, `measure-tokens`) are not recorded.
+- **App instalada y avisos:** las aperturas empiezan cuando se despliega PRO-83 (semanas anteriores a 0). Desactivar los avisos borra la suscripción, así que las semanas pasadas de `pushEnabledHouseholds` son un mínimo. Un iPad con iPadOS se presenta como Mac y cuenta como desktop.
 - Households are resolved through the user's *current* primary household; a user who switches household moves their past activity with them.
 
 ## Related specs
@@ -130,6 +139,7 @@ Conservación: el tick del planificador borra una vez al día los eventos de má
 
 - [apps/api/src/routes/metrics.ts](../apps/api/src/routes/metrics.ts) — `GET /admin/metrics`, `GET /admin/usage`, `GET /admin/assistant-reviews/flags`
 - [apps/api/src/services/usageEvents.ts](../apps/api/src/services/usageEvents.ts) — `trackEvent`, event catalogue, web middleware `trackUsageRoutes`, `recordSkillUsage`, `purgeOldUsageEventsIfDue`
+- [apps/api/src/services/appInstalls.ts](../apps/api/src/services/appInstalls.ts) — dispositivo desde el navegador, `recordInstalledOpen` (uno por hogar y día), `loadInstallRows` + builders puros; [apps/api/src/routes/usage.ts](../apps/api/src/routes/usage.ts) — `POST /usage/app-opened`; [apps/web/src/lib/pwa/installedOpen.ts](../apps/web/src/lib/pwa/installedOpen.ts) (llamado desde `app/layout.tsx`)
 - [apps/api/src/services/usageReport.ts](../apps/api/src/services/usageReport.ts) — `loadUsageReport` + pure daily/weekly/funnel builders
 - [apps/api/src/db/migrations/0045_usage_events.sql](../apps/api/src/db/migrations/0045_usage_events.sql) — `usage_events`; inline call sites: `routes/auth.ts` (signup), `routes/shopping.ts` (check), `services/whatsapp/inbound.ts`, `services/assistant/engine.ts`, `services/assistant/appApi.ts` (`x-mimoia-internal`), `services/notificationScheduler.ts` (purge), `apps/web/src/components/menu/FirstStepsGuide.tsx` (`outcome`)
 - [apps/api/src/middleware/metricsAuth.ts](../apps/api/src/middleware/metricsAuth.ts) — admin JWT or `x-metrics-token`
@@ -142,4 +152,4 @@ Conservación: el tick del planificador borra una vez al día los eventos de má
 - [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts) (`costEvents`, `activityEvents`), [apps/api/src/db/migrations/0033_cost_ledger.sql](../apps/api/src/db/migrations/0033_cost_ledger.sql)
 - [apps/api/src/config/env.ts](../apps/api/src/config/env.ts) — `METRICS_READ_TOKEN`, `COST_PRICE_OVERRIDES`, `ADVISOR_EUR_PER_USD`
 - Recording call sites: `services/advisorBudget.ts`, `services/providers/anthropic.ts`, `services/ingredientMatcherLLM.ts`, `services/llmUnitFallback.ts`, `services/nutrition/usdaTranslator.ts`, `services/stt.ts`, `services/tts.ts`, `services/recipeImageGenerator.ts`, `services/whatsapp/reviewer.ts`, `services/whatsapp/outbound.ts` (templates), `services/whatsapp/serviceCost.ts` (service messages, called from `outbound.ts` and `inbound.ts`), `routes/ingredients.ts`; attribution in `middleware/auth.ts`, `routes/recipes.ts` (photo extraction), `routes/stt.ts` (re-enters it after the audio upload), `routes/whatsapp.ts`; skill activity in `services/assistant/engine.ts`
-- Tests: `apps/api/src/tests/businessMetrics.test.ts`, `costPricing.test.ts`, `costLedger.test.ts`, `metricsAuth.test.ts`, `activityEvents.test.ts`, `usageEvents.test.ts`, `usageReport.test.ts`; e2e `apps/web/e2e/first-steps.spec.ts` (the `outcome` body)
+- Tests: `apps/api/src/tests/businessMetrics.test.ts`, `costPricing.test.ts`, `costLedger.test.ts`, `metricsAuth.test.ts`, `activityEvents.test.ts`, `usageEvents.test.ts`, `usageReport.test.ts`, `appInstalls.test.ts`, `appInstallsRoute.test.ts`, smoke `usageRoute.smoke.ts`; e2e `apps/web/e2e/first-steps.spec.ts` (the `outcome` body), `apps/web/e2e/installed-open.spec.ts`

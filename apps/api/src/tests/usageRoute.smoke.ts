@@ -80,6 +80,25 @@ describe.skipIf(!reachable || !METRICS_TOKEN)('usage events + conversation flags
     expect(raw).not.toContain(tag)
   }, 90_000)
 
+  it('counts installed-app opens once per household and day, by device, in /admin/metrics (PRO-83)', async () => {
+    const t = `${tag}i`
+    const reg = await call('POST', '/register', { username: t, email: `${t}@test.local`, password: 'e2epass123', ageConfirmed: true })
+    expect(reg.status).toBe(201)
+    const android = { Authorization: `Bearer ${reg.body.token}`, 'User-Agent': 'Mozilla/5.0 (Linux; Android 14; Pixel 8) Chrome/129 Mobile' }
+    const androidOf = (r: any) => Number(r.body.weekly.at(-1).installedAppHouseholds.android)
+    const before = await call('GET', '/admin/metrics?weeks=1', undefined, metrics)
+    expect(before.status).toBe(200)
+    for (let i = 0; i < 3; i++) expect((await call('POST', '/usage/app-opened', undefined, android)).status).toBe(204)
+    expect((await call('POST', '/usage/app-opened')).status).toBe(401)
+    const after = await call('GET', '/admin/metrics?weeks=1', undefined, metrics)
+    expect(androidOf(after) - androidOf(before)).toBe(1)
+    const usage = await call('GET', '/admin/usage?days=1', undefined, metrics)
+    expect(JSON.stringify(usage.body)).not.toContain('Pixel 8')
+    expect(after.body.weekly.at(-1).pushEnabledHouseholds).toEqual(
+      expect.objectContaining({ android: expect.any(Number), ios: expect.any(Number), desktop: expect.any(Number), total: expect.any(Number) }),
+    )
+  }, 30_000)
+
   it('serves the anonymised conversation flags to the token', async () => {
     const r = await call('GET', '/admin/assistant-reviews/flags?days=3', undefined, metrics)
     expect(r.status).toBe(200)

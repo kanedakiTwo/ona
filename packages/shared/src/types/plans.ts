@@ -17,9 +17,20 @@ export type PlanKey = (typeof PLAN_KEYS)[number]
 export const BILLING_PERIODS = ['mensual', 'anual'] as const
 export type BillingPeriod = (typeof BILLING_PERIODS)[number]
 
-/** Launch day: the beta ends, and a subscription paid during the beta is first charged. Europe/Madrid. */
-export const LAUNCH_DATE = '2027-01-12'
-export const LAUNCH_DATE_LABEL = '12 de enero'
+/**
+ * Launch day (D-057, 2026-10-15; was 2027-01-12): the beta ends and paying
+ * starts. Europe/Madrid. Everyone gets `TRIAL_DAYS` with everything from
+ * sign-up, and beta households from launch day (D-055), so a beta household
+ * is first charged on `BETA_FIRST_CHARGE_DATE`. And never earlier than
+ * `MIN_DAYS_CARD_TO_CHARGE` after leaving the card (D-056: room for the
+ * legal notice 15 days before the first charge).
+ */
+export const LAUNCH_DATE = '2026-12-15'
+export const LAUNCH_DATE_LABEL = '15 de diciembre'
+export const TRIAL_DAYS = 14
+export const BETA_FIRST_CHARGE_DATE = '2026-12-29'
+export const BETA_FIRST_CHARGE_LABEL = '29 de diciembre'
+export const MIN_DAYS_CARD_TO_CHARGE = 15
 
 export interface PlanPrice {
   /** Amount charged, VAT included, in euro cents. */
@@ -182,6 +193,8 @@ export interface BillingState {
   launchDate: string
   /** Only the household owner can subscribe or manage the subscription. */
   canManage: boolean
+  /** If the owner subscribed now, the first charge would be on this day (ISO). */
+  firstChargeAt: string
   subscription: {
     plan: PlanKey
     period: BillingPeriod

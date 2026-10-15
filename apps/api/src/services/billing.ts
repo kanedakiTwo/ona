@@ -15,6 +15,8 @@ import Stripe from 'stripe'
 import { and, desc, eq, inArray } from 'drizzle-orm'
 import {
   LAUNCH_DATE,
+  MIN_DAYS_CARD_TO_CHARGE,
+  TRIAL_DAYS,
   PLAN_KEYS,
   BILLING_PERIODS,
   stripeLookupKey,
@@ -30,22 +32,41 @@ import { subscriptions } from '../db/schema.js'
 /** Statuses that still give (or will give) the plan: no new checkout while one of these exists. */
 export const LIVE_STATUSES: readonly SubscriptionStatus[] = ['trialing', 'active', 'past_due', 'unpaid', 'incomplete', 'paused']
 
-/** Stripe needs a trial end at least 48 h ahead; we keep a margin. */
-const MIN_TRIAL_MS = 49 * 60 * 60 * 1000
-
-/** Launch day at 00:00 in Madrid, as a Date. CET in January: UTC+1. */
+/** Launch day at 00:00 in Madrid, as a Date. CET in December/January: UTC+1. */
 export function launchInstant(launchDate: string = LAUNCH_DATE): Date {
   return new Date(`${launchDate}T00:00:00+01:00`)
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000
+
+/** YYYY-MM-DD of an instant, in Madrid. */
+function madridDay(d: Date): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d)
+}
+
+/** Noon in Madrid of that calendar day (12:00 CET; 13:00 in summer time, still the same day). */
+function noonOf(day: string): Date {
+  return new Date(`${day}T12:00:00+01:00`)
+}
+
 /**
- * When the trial of a subscription paid during the beta ends (= first
- * charge): launch day at noon in Madrid, so Stripe's checkout, portal and
- * emails, which print dates in UTC, all say «12 de enero» (00:00 Madrid is
- * 11 January 23:00 UTC: the portal said «finaliza el 11 ene», staging 2026-10-15).
+ * When a subscription started now is first charged (= end of its Stripe
+ * trial), D-055/D-056/D-057:
+ *   - everyone has `TRIAL_DAYS` with everything from sign-up, beta households
+ *     from launch day: the trial ends at max(sign-up, launch) + 14 days;
+ *   - and never less than `MIN_DAYS_CARD_TO_CHARGE` after leaving the card
+ *     (the legal notice goes 15 days before the first charge).
+ * Rounded to noon in Madrid on or after that moment, so Stripe's checkout,
+ * portal and emails (which print UTC dates) all say the right day: at 00:00
+ * Madrid the portal read «finaliza el 11 ene» (staging, 2026-10-15).
+ * A beta household paying before 14 December: 29 December.
  */
-export function firstChargeInstant(launchDate: string = LAUNCH_DATE): Date {
-  return new Date(`${launchDate}T12:00:00+01:00`)
+export function firstChargeInstant(opts: { userCreatedAt: Date | null; now: Date; launchDate?: string }): Date {
+  const launch = launchInstant(opts.launchDate)
+  const start = Math.max(opts.userCreatedAt?.getTime() ?? opts.now.getTime(), launch.getTime())
+  const earliest = Math.max(start + TRIAL_DAYS * DAY_MS, opts.now.getTime() + MIN_DAYS_CARD_TO_CHARGE * DAY_MS)
+  const noon = noonOf(madridDay(new Date(earliest)))
+  return noon.getTime() >= earliest ? noon : new Date(noon.getTime() + DAY_MS)
 }
 
 export function isBeta(now: Date, launchDate: string = LAUNCH_DATE): boolean {
@@ -73,22 +94,21 @@ export interface CheckoutInput {
   email: string
   userId: string
   householdId: string
-  now: Date
+  /** `firstChargeInstant(…)` for this user: the Stripe trial ends then. */
+  firstCharge: Date
   webUrl: string
   /** Reuse the household's Stripe customer when it had a subscription before. */
   customerId?: string | null
 }
 
 /**
- * The Checkout Session for a new subscription. Before launch day the
- * subscription trials until then (card now, first charge on launch day).
+ * The Checkout Session for a new subscription. Always a Stripe trial until
+ * `firstCharge` (card now, first charge then; see `firstChargeInstant`).
  * Parameters Managed Payments refuses (automatic_tax, tax id collection,
  * payment_method_types, custom_text…) are never sent: Stripe answers 400.
  */
 export function buildCheckoutParams(i: CheckoutInput): Stripe.Checkout.SessionCreateParams {
   const meta = { userId: i.userId, householdId: i.householdId, plan: i.plan, period: i.period }
-  const firstCharge = firstChargeInstant()
-  const trialUntilLaunch = firstCharge.getTime() - i.now.getTime() >= MIN_TRIAL_MS
   return {
     mode: 'subscription',
     managed_payments: { enabled: true },
@@ -99,7 +119,7 @@ export function buildCheckoutParams(i: CheckoutInput): Stripe.Checkout.SessionCr
     metadata: meta,
     subscription_data: {
       metadata: meta,
-      ...(trialUntilLaunch ? { trial_end: Math.floor(firstCharge.getTime() / 1000) } : {}),
+      trial_end: Math.floor(i.firstCharge.getTime() / 1000),
     },
     success_url: `${i.webUrl}/profile/suscripcion?estado=ok`,
     cancel_url: `${i.webUrl}/profile/suscripcion?estado=cancelado`,
@@ -165,7 +185,7 @@ export function rowFromStripeSubscription(sub: Stripe.Subscription): Subscriptio
 /** What `GET /billing` answers, from the household's latest subscription. */
 export function billingStateFor(
   row: SubscriptionRow | null,
-  opts: { enabled: boolean; canManage: boolean; now: Date },
+  opts: { enabled: boolean; canManage: boolean; now: Date; userCreatedAt?: Date | null },
 ): BillingState {
   const live = row && LIVE_STATUSES.includes(row.status) ? row : null
   const nextCharge = live && !live.cancelAtPeriodEnd ? (live.status === 'trialing' ? live.trialEnd : live.currentPeriodEnd) : null
@@ -174,6 +194,7 @@ export function billingStateFor(
     beta: isBeta(opts.now),
     launchDate: LAUNCH_DATE,
     canManage: opts.canManage,
+    firstChargeAt: firstChargeInstant({ userCreatedAt: opts.userCreatedAt ?? null, now: opts.now }).toISOString(),
     subscription: live
       ? {
           plan: live.plan,

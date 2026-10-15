@@ -77,8 +77,10 @@ export default function TerminosPage() {
           ni guardamos los datos de tu tarjeta.
         </p>
         <p>
-          Durante la beta puedes dejar tu plan pagado: guardas la tarjeta y el primer cobro se hace
-          el día de la apertura, el 12 de enero de 2027. Si cancelas antes, no se cobra nada.
+          Desde que te registras tienes 14 días de prueba con todo, sin tarjeta; si estás en la beta, esos 14 días
+          empiezan el día de la salida, el 15 de diciembre de 2026. Si dejas tu plan pagado antes, guardas la tarjeta y
+          el primer cobro se hace al acabar tu prueba (en la beta, el 29 de diciembre de 2026), y nunca antes de 15 días
+          desde que dejaste la tarjeta. Si cancelas antes, no se cobra nada.
           Si cambiamos el precio, te avisaremos con al menos 30 días de antelación; el precio de
           fundador se mantiene mientras sigas suscrito, con las condiciones de tu plan.
         </p>

@@ -19,7 +19,7 @@ test('profile → Suscripción: beta on Plus, payments not open yet', async ({ p
   await link.click()
 
   await expect(page).toHaveURL(/\/profile\/suscripcion/)
-  await expect(page.getByText(/tienes Plus gratis hasta el 12 de enero/)).toBeVisible()
+  await expect(page.getByText(/tienes Plus gratis hasta el 15 de diciembre/)).toBeVisible()
   await expect(page.getByText(/Muy pronto podrás dejar tu plan pagado/)).toBeVisible()
   await page.getByRole('link', { name: 'Precios' }).click()
   await expect(page).toHaveURL(/\/precios/)

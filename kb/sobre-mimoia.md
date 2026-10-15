@@ -36,7 +36,7 @@ Mimo es su asistente: una inteligencia artificial que habla contigo en la app y 
 
 ## Cómo empezar
 
-Ahora mismo Mimoia está en beta cerrada: se entra por invitación. Cualquiera puede apuntarse a la lista de espera en mimoia.com, y vamos invitando por tandas. La apertura al público está prevista para el 12 de enero de 2027. En la lista de espera puedes invitar a tu hogar para entrar antes. Los hogares que entran en la beta ayudan a hacer Mimoia y son «Hogar fundador»: lo ven en su perfil y en Casa, para siempre.
+Ahora mismo Mimoia está en beta cerrada: se entra por invitación. Cualquiera puede apuntarse a la lista de espera en mimoia.com, y vamos invitando por tandas. Desde el 16 de noviembre de 2026 la beta se abre a cualquiera que se registre, gratis, y la salida (cuando empieza el pago) está prevista para el 15 de diciembre de 2026. Desde que te registras tienes 14 días con todo, sin tarjeta; quien está en la beta tiene esos mismos 14 días a partir de la salida. En la lista de espera puedes invitar a tu hogar para entrar antes. Los hogares que entran en la beta ayudan a hacer Mimoia y son «Hogar fundador»: lo ven en su perfil y en Casa, para siempre.
 
 ## Planes y precios
 

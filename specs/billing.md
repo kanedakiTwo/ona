@@ -1,6 +1,6 @@
 # Billing (plans, pricing page, subscriptions)
 
-**Status:** shipped 2026-10-15 in Stripe **test mode**. Payments are switched on per environment by `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET`; without them every pay button says payments aren't open yet. Production gets live keys only once there's a business to invoice (Todo Miguel).
+**Status:** shipped 2026-10-15 in Stripe **test mode** (staging has the test keys). Payments are switched on per environment by `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET`; without them every pay button says payments aren't open yet. Production gets live keys only once there's a business to invoice (Todo Miguel).
 
 Mimoia is paid per **household**, with two plans, each monthly or yearly. **Esencial is the plan we recommend** (Miguel, 2026-10-15): it goes first and carries «Recomendado» everywhere. Stripe Checkout with **Managed Payments** takes the money: Stripe, through **Link**, is the merchant of record (VAT, receipts, disputes, refunds). The statement reads `LINK.COM* MIMOIA`.
 
@@ -17,13 +17,13 @@ Prices include VAT. Caps have no figures yet (PRO-15 sets them on 2026-11-24 wit
   - logged out → «Apúntate a la lista de espera» (`/#lista-de-espera`);
   - logged in, payments off → «Muy pronto podrás pagarlo aquí» (disabled);
   - logged in, not the household owner → «Lo contrata quien gestiona tu hogar»;
-  - household owner → «Elegir Esencial · pagas el 12 de enero» (beta) or «Elegir Esencial», which opens Stripe Checkout;
+  - household owner → «Elegir Esencial · pagas el 29 de diciembre» (the date is `BillingState.firstChargeAt` for that user), which opens Stripe Checkout;
   - household already subscribed → «Es tu plan · ver suscripción» / «Cambiar a este plan» → `/profile/suscripcion`.
 - **Perfil → Suscripción** (`/profile/suscripcion`; hub tile shows «Beta: Plus gratis», «Sin plan» or «Esencial · 4,99 €/mes»):
-  - no subscription and payments on, owner: the two plans as a radio group (Esencial preselected, monthly) and «Suscribirme a Esencial · pago el 12 de enero»;
-  - with a subscription: the plan and price, then «Lo has dejado pagado. No se cobra nada hasta el 12 de enero de 2027», «Próximo cobro: …», «Cancelada: sigue hasta el … y no se renueva» or the failed-payment line, and **«Gestionar mi suscripción»** (owner only), which opens Stripe's customer portal: change card, receipts, switch plan or period, cancel (at the end of the period, with a reason);
+  - no subscription and payments on, owner: the two plans as a radio group (Esencial preselected, monthly) and «Suscribirme a Esencial · pago el 29 de diciembre» (again `firstChargeAt`);
+  - with a subscription: the plan and price, then «Lo has dejado pagado. No se cobra nada hasta el 29 de diciembre de 2026», «Próximo cobro: …», «Cancelada: sigue hasta el … y no se renueva» or the failed-payment line, and **«Gestionar mi suscripción»** (owner only), which opens Stripe's customer portal: change card, receipts, switch plan or period, cancel (at the end of the period, with a reason);
   - back from Checkout with `?estado=ok` it polls `GET /billing` every 2 s until the webhook has written the subscription («Estamos confirmando tu pago…»); `?estado=cancelado` says nothing was charged.
-- **Pay during the beta, charged on launch day.** Before `LAUNCH_DATE` (2027-01-12, 00:00 Madrid) Checkout creates the subscription with `trial_end` = launch day **at 12:00 Madrid** (`firstChargeInstant`): the card is saved now and the first charge is that day. Noon, because Stripe's checkout, portal and emails print dates in UTC and 00:00 Madrid read «11 de enero» there. Checkout shows «88 días gratis · A continuación, 4,99 € por mes a partir del 12 de enero de 2027» (verified end to end in staging 2026-10-15: pay with a test card → webhook → «Lo has dejado pagado…»; portal; cancel → «Cancelada: sigue hasta…»). Stripe/Link email a trial-start note and a reminder before it ends. Cancelling before then costs nothing. Less than 49 h before launch, or after it, there's no trial: the first charge is immediate.
+- **When the first charge happens** (`firstChargeInstant`, D-055/D-056/D-057, PRO-133). Launch day is **2026-12-15** (`LAUNCH_DATE`; was 2027-01-12). Everyone has **14 days** with everything from sign-up (`TRIAL_DAYS`), beta households from launch day, and the first charge is **never less than 15 days after leaving the card** (`MIN_DAYS_CARD_TO_CHARGE`, room for the legal notice). So every Checkout creates a Stripe trial that ends at max(max(sign-up, launch) + 14 days, now + 15 days), rounded up to **12:00 Madrid** (Stripe prints UTC dates; at 00:00 Madrid the portal read «finaliza el 11 ene», staging 2026-10-15). A beta household paying before 14 December is first charged on **2026-12-29** (`BETA_FIRST_CHARGE_DATE`). Cancelling before then costs nothing. Stripe/Link email a trial-start note and a reminder before it ends. Verified end to end in staging on 2026-10-15 (test card → webhook → «Lo has dejado pagado…»; portal; cancel → «Cancelada: sigue hasta…»), with the old date.
 - **The beta runs with Plus for everyone** until launch day (`BillingState.beta`), paid or not.
 - The waitlist no longer shows plans or asks about price (2026-10-15, see [waitlist.md](./waitlist.md)).
 - **«Borrar mi cuenta»** first cancels, at once, every live subscription the user pays; if Stripe can't be reached the account is not deleted (502 `SUBSCRIPTION_CANCEL_FAILED`, «inténtalo en un momento»).
@@ -37,7 +37,7 @@ Prices include VAT. Caps have no figures yet (PRO-15 sets them on 2026-11-24 wit
 
 ## API
 
-- `GET /billing` (auth) → `BillingState`: `enabled`, `beta`, `launchDate`, `canManage` (the caller owns their primary household), `subscription` (`plan`, `period`, `status`, `nextChargeAt`, `cancelAtPeriodEnd`, `endsAt`) or null. A subscription counts while its status is `trialing`, `active`, `past_due`, `unpaid`, `incomplete` or `paused`.
+- `GET /billing` (auth) → `BillingState`: `enabled`, `beta`, `launchDate`, `canManage` (the caller owns their primary household), `firstChargeAt` (if they subscribed now), `subscription` (`plan`, `period`, `status`, `nextChargeAt`, `cancelAtPeriodEnd`, `endsAt`) or null. A subscription counts while its status is `trialing`, `active`, `past_due`, `unpaid`, `incomplete` or `paused`.
 - `POST /billing/checkout` (auth) `{ plan, period }` → `{ url }` (Stripe Checkout). 503 `BILLING_DISABLED`, 400 bad body, 403 `NOT_HOUSEHOLD_OWNER`, 409 `ALREADY_SUBSCRIBED`, 502 when Stripe fails. Reuses the household's previous Stripe customer if there is one.
 - `POST /billing/portal` (auth, owner) → `{ url }` (customer portal, returns to `/profile/suscripcion`). 404 `NO_SUBSCRIPTION`.
 - `POST /billing/webhook` (Stripe, signed with `STRIPE_WEBHOOK_SECRET`, raw body, mounted before `express.json()`). Handles `checkout.session.completed` and `customer.subscription.created|updated|deleted|paused|resumed`; for each it **re-reads the subscription from Stripe** (events can arrive late or out of order) and upserts it. Bad signature 400; payments off 503; a failure 500 so Stripe retries.
@@ -51,11 +51,11 @@ Prices include VAT. Caps have no figures yet (PRO-15 sets them on 2026-11-24 wit
 
 - Env (API): `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`; links use `WEB_PUBLIC_URL`.
 - `apps/api/scripts/stripeSetup.ts` (idempotent) creates in the Stripe account: products «Mimoia Esencial» / «Mimoia Plus» with tax code `txcd_10103000` (SaaS, personal use; required by Managed Payments), four EUR prices with `tax_behavior: inclusive` and lookup keys `esencial_mensual`, `esencial_anual`, `plus_mensual`, `plus_anual` (a changed price gets a new Price and the lookup key moves to it), the webhook endpoint (`--webhook-url`; its secret is written to `--secret-out`, never printed) and the default customer portal configuration.
-- Managed Payments must be accepted in the Stripe Dashboard. Checkout never sends what it refuses (`automatic_tax`, `tax_id_collection`, `payment_method_types`, `invoice_creation`, `custom_text`…: Stripe answers 400 «You cannot use custom_text with Managed Payments», found in staging 2026-10-15). The «no se cobra nada hasta el 12 de enero» line lives on our pages; Stripe's checkout shows the trial until that date.
+- Managed Payments must be accepted in the Stripe Dashboard. Checkout never sends what it refuses (`automatic_tax`, `tax_id_collection`, `payment_method_types`, `invoice_creation`, `custom_text`…: Stripe answers 400 «You cannot use custom_text with Managed Payments», found in staging 2026-10-15). The «no se cobra nada hasta el …» line lives on our pages; Stripe's checkout shows the trial until that date.
 
 ## Constraints / known limitations
 
-- **Plans aren't enforced yet.** Everybody gets everything (the beta is Plus); from launch day the trial without card, the paused account at its end and the per-plan caps are still to build (TODO in `services/billing.ts`).
+- **Plans aren't enforced yet.** Everybody gets everything (the beta is Plus); the trial without card and the paused account at its end (PRO-135), the day-7 offer and the 15-day notice (PRO-136) and the per-plan caps (PRO-15) are still to build (TODO in `services/billing.ts`).
 - Only the household **owner** can subscribe or manage; the plan covers the whole household.
 - One live subscription per household (409 otherwise); changes go through the portal.
 - Terms §8–9 and the privacy policy describe this; both still need the legal review on Miguel's list.

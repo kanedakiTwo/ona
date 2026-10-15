@@ -38,10 +38,10 @@ describe('founder pricing copy (D-021)', () => {
     expect(FOUNDER_PLANS.find((p) => p.id === 'plus-anual')?.perMonth).toBe('5 €/mes')
   })
 
-  it('beta households get no trial sentence', () => {
+  it('beta households: free until launch, then the same 14 days as everyone (D-055)', () => {
     expect(FOUNDER_FOOTER).toMatch(/14 días gratis/)
-    expect(FOUNDER_FOOTER_BETA).not.toMatch(/14 días/)
-    expect(FOUNDER_FOOTER_BETA).toMatch(/^Tu beta sigue gratis hasta el 12 de enero/)
+    expect(FOUNDER_FOOTER_BETA).toMatch(/29 de diciembre/)
+    expect(FOUNDER_FOOTER_BETA).toMatch(/^Tu beta sigue gratis hasta la salida \(15 de diciembre\) y, como todos, tienes después 14 días de prueba/)
   })
 })
 

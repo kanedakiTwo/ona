@@ -27,6 +27,7 @@ import {
 
 const BETA_NOW = new Date('2026-10-20T10:00:00Z')
 const AFTER_LAUNCH = new Date('2027-02-01T10:00:00Z')
+const BETA_FIRST = new Date('2026-12-29T11:00:00Z')
 
 describe('plans (2026-10-15: Esencial featured, monthly or yearly)', () => {
   it('Esencial first and featured; Plus second', () => {
@@ -69,7 +70,36 @@ describe('plans (2026-10-15: Esencial featured, monthly or yearly)', () => {
   })
 })
 
+describe('firstChargeInstant (D-055/D-056/D-057: launch 2026-12-15, 14-day trial, ≥ 15 days from the card)', () => {
+  const iso = (d: Date) => d.toISOString()
+  const at = (s: string) => new Date(s)
+
+  it('a beta household: launch + 14 days → 29 December, at noon in Madrid', () => {
+    expect(iso(firstChargeInstant({ userCreatedAt: at('2026-10-21T09:00:00Z'), now: BETA_NOW }))).toBe('2026-12-29T11:00:00.000Z')
+    // Still the 29th paying on 13 December (29 Dec is 16 days later).
+    expect(iso(firstChargeInstant({ userCreatedAt: at('2026-10-21T09:00:00Z'), now: at('2026-12-13T20:00:00Z') }))).toBe('2026-12-29T11:00:00.000Z')
+  })
+
+  it('a beta household paying after launch: 15 days from the card, not before', () => {
+    expect(iso(firstChargeInstant({ userCreatedAt: at('2026-10-21T09:00:00Z'), now: at('2026-12-20T10:00:00Z') }))).toBe('2027-01-04T11:00:00.000Z')
+  })
+
+  it('someone new: sign-up + 14 days, or card + 15 days if later', () => {
+    // Signs up 20 Dec, pays on day 2 → card + 15 = 6 Jan beats 3 Jan.
+    expect(iso(firstChargeInstant({ userCreatedAt: at('2026-12-20T10:00:00Z'), now: at('2026-12-22T10:00:00Z') }))).toBe('2027-01-06T11:00:00.000Z')
+    // A late evening card rounds up to the next noon: never less than 15 days.
+    expect(iso(firstChargeInstant({ userCreatedAt: at('2026-12-20T10:00:00Z'), now: at('2026-12-22T19:00:00Z') }))).toBe('2027-01-07T11:00:00.000Z')
+  })
+
+  it('in summer time noon Madrid is still that day', () => {
+    const d = firstChargeInstant({ userCreatedAt: at('2027-06-01T08:00:00Z'), now: at('2027-06-01T08:00:00Z') })
+    expect(d.getTime()).toBeGreaterThanOrEqual(at('2027-06-16T08:00:00Z').getTime())
+    expect(formatDayEs(d)).toBe('16 de junio de 2027')
+  })
+})
+
 describe('buildCheckoutParams', () => {
+  const firstCharge = new Date('2026-12-29T11:00:00Z')
   const base = {
     plan: 'esencial' as const,
     period: 'mensual' as const,
@@ -78,15 +108,15 @@ describe('buildCheckoutParams', () => {
     userId: 'u1',
     householdId: 'h1',
     webUrl: 'https://mimoia.com',
+    firstCharge,
   }
 
-  it('during the beta: Managed Payments, card now, first charge on launch day', () => {
-    const p = buildCheckoutParams({ ...base, now: BETA_NOW })
+  it('Managed Payments, card now, the Stripe trial ends on the first charge', () => {
+    const p = buildCheckoutParams(base)
     expect(p.mode).toBe('subscription')
     expect(p.managed_payments).toEqual({ enabled: true })
     expect(p.line_items).toEqual([{ price: 'price_123', quantity: 1 }])
-    // Noon in Madrid: Stripe prints UTC dates, and 00:00 Madrid would read «11 de enero».
-    expect(new Date(p.subscription_data!.trial_end! * 1000).toISOString()).toBe('2027-01-12T11:00:00.000Z')
+    expect(p.subscription_data?.trial_end).toBe(Math.floor(firstCharge.getTime() / 1000))
     expect(p.customer_email).toBe('ana@example.com')
     expect(p.subscription_data?.metadata).toEqual({ userId: 'u1', householdId: 'h1', plan: 'esencial', period: 'mensual' })
     expect(p.success_url).toBe('https://mimoia.com/profile/suscripcion?estado=ok')
@@ -94,26 +124,21 @@ describe('buildCheckoutParams', () => {
   })
 
   it('never sends what Managed Payments refuses', () => {
-    const p = buildCheckoutParams({ ...base, now: BETA_NOW }) as Record<string, unknown>
+    const p = buildCheckoutParams(base) as Record<string, unknown>
     for (const k of ['automatic_tax', 'tax_id_collection', 'payment_method_types', 'invoice_creation', 'adaptive_pricing', 'custom_text']) {
       expect(p[k]).toBeUndefined()
     }
   })
 
-  it('after launch (or < 48 h before): no trial, charged now', () => {
-    expect(buildCheckoutParams({ ...base, now: AFTER_LAUNCH }).subscription_data?.trial_end).toBeUndefined()
-    const dayBefore = new Date(firstChargeInstant().getTime() - 24 * 3600_000)
-    expect(buildCheckoutParams({ ...base, now: dayBefore }).subscription_data?.trial_end).toBeUndefined()
-  })
-
   it('reuses the household customer when there is one', () => {
-    const p = buildCheckoutParams({ ...base, now: BETA_NOW, customerId: 'cus_9' })
+    const p = buildCheckoutParams({ ...base, customerId: 'cus_9' })
     expect(p.customer).toBe('cus_9')
     expect(p.customer_email).toBeUndefined()
   })
 
   it('dates in Spanish, Madrid time', () => {
-    expect(formatDayEs(launchInstant())).toBe('12 de enero de 2027')
+    expect(formatDayEs(launchInstant())).toBe('15 de diciembre de 2026')
+    expect(formatDayEs(firstCharge)).toBe('29 de diciembre de 2026')
   })
 })
 
@@ -168,8 +193,8 @@ function row(over: Partial<SubscriptionRow> = {}): SubscriptionRow {
     plan: 'esencial',
     period: 'mensual',
     status: 'trialing',
-    currentPeriodEnd: launchInstant(),
-    trialEnd: launchInstant(),
+    currentPeriodEnd: BETA_FIRST,
+    trialEnd: BETA_FIRST,
     cancelAtPeriodEnd: false,
     canceledAt: null,
     ...over,
@@ -178,14 +203,14 @@ function row(over: Partial<SubscriptionRow> = {}): SubscriptionRow {
 
 describe('billingStateFor', () => {
   it('beta, nothing paid', () => {
-    expect(billingStateFor(null, { enabled: true, canManage: true, now: BETA_NOW })).toEqual({
-      enabled: true, beta: true, launchDate: '2027-01-12', canManage: true, subscription: null,
+    expect(billingStateFor(null, { enabled: true, canManage: true, now: BETA_NOW, userCreatedAt: new Date('2026-10-21T09:00:00Z') })).toEqual({
+      enabled: true, beta: true, launchDate: '2026-12-15', canManage: true, firstChargeAt: '2026-12-29T11:00:00.000Z', subscription: null,
     })
   })
 
-  it('paid during the beta: first charge on launch day', () => {
+  it('paid during the beta: first charge on 29 December', () => {
     const s = billingStateFor(row(), { enabled: true, canManage: true, now: BETA_NOW }).subscription
-    expect(s).toMatchObject({ plan: 'esencial', period: 'mensual', status: 'trialing', nextChargeAt: '2027-01-11T23:00:00.000Z', cancelAtPeriodEnd: false, endsAt: null })
+    expect(s).toMatchObject({ plan: 'esencial', period: 'mensual', status: 'trialing', nextChargeAt: '2026-12-29T11:00:00.000Z', cancelAtPeriodEnd: false, endsAt: null })
   })
 
   it('cancelled but still running: no next charge, an end date', () => {
@@ -276,8 +301,8 @@ const fakeAuth: RequestHandler = (req, res, next) => {
 }
 
 const PAYERS: Record<string, Payer> = {
-  owner: { householdId: 'h1', email: 'ana@example.com', isOwner: true },
-  member: { householdId: 'h1', email: 'leo@example.com', isOwner: false },
+  owner: { householdId: 'h1', email: 'ana@example.com', isOwner: true, createdAt: new Date('2026-10-21T09:00:00Z') },
+  member: { householdId: 'h1', email: 'leo@example.com', isOwner: false, createdAt: new Date('2026-10-22T09:00:00Z') },
 }
 
 async function app(opts: { enabled?: boolean; repo?: ReturnType<typeof memoryRepo>; gateway?: ReturnType<typeof fakeGateway> } = {}) {
@@ -322,7 +347,8 @@ describe('routes', () => {
     expect(r.status).toBe(200)
     expect(await r.json()).toEqual({ url: 'https://checkout.stripe.com/c/pay/cs_test_1' })
     expect(gateway.checkouts[0].line_items).toEqual([{ price: 'price_esencial_anual', quantity: 1 }])
-    expect(gateway.checkouts[0].subscription_data?.trial_end).toBeDefined()
+    // A beta owner: first charge 29 December at noon in Madrid (D-055).
+    expect(gateway.checkouts[0].subscription_data?.trial_end).toBe(Math.floor(BETA_FIRST.getTime() / 1000))
   })
 
   it('refuses a member, a bad plan, payments off and a household that already pays', async () => {

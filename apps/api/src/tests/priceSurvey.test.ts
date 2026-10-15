@@ -39,10 +39,10 @@ describe('when the survey shows', () => {
 })
 
 describe('Hogar fundador', () => {
-  it('every household created before launch day (00:00 Madrid)', () => {
+  it('every household created before launch day, 15 December 00:00 Madrid (closed and open beta)', () => {
     expect(isFoundingHousehold('2026-10-21T09:00:00Z')).toBe(true)
-    expect(isFoundingHousehold(new Date('2027-01-11T22:59:59Z'))).toBe(true)
-    expect(isFoundingHousehold(new Date('2027-01-11T23:00:00Z'))).toBe(false)
+    expect(isFoundingHousehold(new Date('2026-12-14T22:59:59Z'))).toBe(true)
+    expect(isFoundingHousehold(new Date('2026-12-14T23:00:00Z'))).toBe(false)
     expect(isFoundingHousehold('no es una fecha')).toBe(false)
   })
 })

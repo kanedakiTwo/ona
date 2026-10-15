@@ -6,7 +6,7 @@ A "household" is the shared unit that owns menus, shopping lists, favourites and
 
 ## User Capabilities
 
-- **Hogar fundador** (2026-10-15): a household created before launch day (`isFoundingHousehold`: `households.created_at` before 2027-01-12 00:00 Madrid, i.e. the beta) shows a terracotta «Hogar fundador» badge (`FoundingBadge`, `data-testid="founding-badge"`) under its name on the profile header and on `/profile/casa`. `GET /households/me` returns `createdAt` and `founding`. Promised on the waitlist; it never goes away.
+- **Hogar fundador** (2026-10-15): a household created before launch day (`isFoundingHousehold`: `households.created_at` before 2026-12-15 00:00 Madrid, i.e. the closed and the open beta, D-057) shows a terracotta «Hogar fundador» badge (`FoundingBadge`, `data-testid="founding-badge"`) under its name on the profile header and on `/profile/casa`. `GET /households/me` returns `createdAt` and `founding`. Promised on the waitlist; it never goes away.
 
 - A registered user lands on a one-member household called **"Mi casa"** with role `owner`.
 - The owner can:

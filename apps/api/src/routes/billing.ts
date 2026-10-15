@@ -11,6 +11,7 @@ import {
   buildCheckoutParams,
   createDbSubscriptionRepo,
   createStripeGateway,
+  firstChargeInstant,
   handleBillingEvent,
   isBillingConfigured,
   type BillingGateway,
@@ -30,6 +31,8 @@ export interface Payer {
   householdId: string
   email: string
   isOwner: boolean
+  /** Sign-up: the 14-day trial counts from it (or from launch day for the beta). */
+  createdAt: Date | null
 }
 
 export interface BillingDeps {
@@ -45,13 +48,13 @@ export interface BillingDeps {
 
 async function loadPayer(userId: string): Promise<Payer | null> {
   const [u] = await db
-    .select({ email: users.email, householdId: users.primaryHouseholdId })
+    .select({ email: users.email, householdId: users.primaryHouseholdId, createdAt: users.createdAt })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1)
   if (!u?.householdId) return null
   const [h] = await db.select({ ownerId: households.ownerId }).from(households).where(eq(households.id, u.householdId)).limit(1)
-  return { householdId: u.householdId, email: u.email, isOwner: h?.ownerId === userId }
+  return { householdId: u.householdId, email: u.email, isOwner: h?.ownerId === userId, createdAt: u.createdAt ?? null }
 }
 
 function defaults(): BillingDeps {
@@ -77,7 +80,7 @@ export function createBillingRouter(overrides: Partial<BillingDeps> = {}): Route
   router.get('/billing', d.auth, async (req: AuthRequest, res) => {
     const payer = await d.payer(req.userId!)
     const row = payer ? await d.repo.latestForHousehold(payer.householdId) : null
-    res.json(billingStateFor(row, { enabled: d.enabled(), canManage: !!payer?.isOwner, now: d.now() }))
+    res.json(billingStateFor(row, { enabled: d.enabled(), canManage: !!payer?.isOwner, now: d.now(), userCreatedAt: payer?.createdAt ?? null }))
   })
 
   router.post('/billing/checkout', d.auth, async (req: AuthRequest, res) => {
@@ -109,7 +112,7 @@ export function createBillingRouter(overrides: Partial<BillingDeps> = {}): Route
           email: payer.email,
           userId: req.userId!,
           householdId: payer.householdId,
-          now: d.now(),
+          firstCharge: firstChargeInstant({ userCreatedAt: payer.createdAt, now: d.now() }),
           webUrl: d.webUrl,
           customerId: latest?.stripeCustomerId ?? null,
         }),

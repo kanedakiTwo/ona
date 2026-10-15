@@ -60,10 +60,10 @@ export const FOUNDER_CTA = 'Reservar mi plaza de fundador'
 export const FOUNDER_RESERVE_NOTE =
   'Sin pagar nada ahora: te guardamos este precio para siempre y te avisamos antes de cobrar'
 export const FOUNDER_FOOTER =
-  'Abrimos el 12 de enero. Empiezas con 14 días gratis con todo, sin tarjeta. Si te convence, eliges plan y pagas tu precio de fundador, que no subirá mientras sigas suscrito. Si no, no pagas nada'
-/** Beta households: no trial sentence. */
+  'Abrimos el 15 de diciembre. Empiezas con 14 días gratis con todo, sin tarjeta. Si te convence, eliges plan y pagas tu precio de fundador, que no subirá mientras sigas suscrito. Si no, no pagas nada'
+/** Beta households: free until launch, then the same 14-day trial as everyone (D-055). */
 export const FOUNDER_FOOTER_BETA =
-  'Tu beta sigue gratis hasta el 12 de enero. Si te convence, eliges plan y pagas tu precio de fundador, que no subirá mientras sigas suscrito. Si no, no pagas nada'
+  'Tu beta sigue gratis hasta la salida (15 de diciembre) y, como todos, tienes después 14 días de prueba: el primer cobro sería el 29 de diciembre. Hasta entonces puedes cancelar sin pagar nada'
 
 export const FOUNDER_NONE = 'Ninguno me encaja'
 export const FOUNDER_DECLINE_REASONS = ['caro', 'no_lo_usaria', 'me_falta_algo', 'otro'] as const

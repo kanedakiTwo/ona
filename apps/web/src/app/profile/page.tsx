@@ -42,6 +42,7 @@ import { usePantry } from '@/hooks/usePantry'
 import { useStaples } from '@/hooks/useStaples'
 import { useCookbooks } from '@/hooks/useCookbooks'
 import { useBilling } from '@/hooks/useBilling'
+import { FoundingBadge } from '@/components/profile/FoundingBadge'
 import { GroupLabel, MoreButton, ProfileCard, ProfileHubLink, Switch } from './sections/ProfileCards'
 import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
@@ -976,9 +977,9 @@ export default function ProfilePage() {
  * secondary actions.
  */
 function ProfileHeader({ username, email, onMore }: { username: string; email: string; onMore: () => void }) {
-  const household = useQuery<{ name: string }>({
+  const household = useQuery<{ name: string; founding?: boolean }>({
     queryKey: ['household', 'me'],
-    queryFn: () => api.get<{ name: string }>('/households/me'),
+    queryFn: () => api.get<{ name: string; founding?: boolean }>('/households/me'),
   })
   return (
     <header className="flex items-start justify-between gap-3 px-5 pt-3 lg:px-0 lg:pt-0">
@@ -993,6 +994,7 @@ function ProfileHeader({ username, email, onMore }: { username: string; email: s
             {household.data?.name || 'Tu casa'}
           </h1>
         )}
+        {household.data?.founding && <FoundingBadge className="my-1" />}
         <p className="truncate text-[13px] text-ink-muted">{email}</p>
       </div>
       <MoreButton onClick={onMore} label="Más opciones del perfil" />

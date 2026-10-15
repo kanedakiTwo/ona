@@ -25,8 +25,15 @@ Prices include VAT. Caps have no figures yet (PRO-15 sets them on 2026-11-24 wit
   - back from Checkout with `?estado=ok` it polls `GET /billing` every 2 s until the webhook has written the subscription («Estamos confirmando tu pago…»); `?estado=cancelado` says nothing was charged.
 - **Pay during the beta, charged on launch day.** Before `LAUNCH_DATE` (2027-01-12, 00:00 Madrid) Checkout creates the subscription with `trial_end` = launch day **at 12:00 Madrid** (`firstChargeInstant`): the card is saved now and the first charge is that day. Noon, because Stripe's checkout, portal and emails print dates in UTC and 00:00 Madrid read «11 de enero» there. Checkout shows «88 días gratis · A continuación, 4,99 € por mes a partir del 12 de enero de 2027» (verified end to end in staging 2026-10-15: pay with a test card → webhook → «Lo has dejado pagado…»; portal; cancel → «Cancelada: sigue hasta…»). Stripe/Link email a trial-start note and a reminder before it ends. Cancelling before then costs nothing. Less than 49 h before launch, or after it, there's no trial: the first charge is immediate.
 - **The beta runs with Plus for everyone** until launch day (`BillingState.beta`), paid or not.
-- **Founder reservation** on the waitlist uses the same cards (see [waitlist.md](./waitlist.md)).
+- The waitlist no longer shows plans or asks about price (2026-10-15, see [waitlist.md](./waitlist.md)).
 - **«Borrar mi cuenta»** first cancels, at once, every live subscription the user pays; if Stripe can't be reached the account is not deleted (502 `SUBSCRIPTION_CANCEL_FAILED`, «inténtalo en un momento»).
+
+## Beta price survey
+
+- From **day 7 after sign-up** (`users.created_at`), **once**, and only **before launch day**, `/menu` opens a sheet (`PriceSurveySheet`, `data-testid="price-survey"`): eyebrow «Beta · 1 minuto», title «Una semana con Mimoia», Miguel's text «Como usuario de la beta y ahora que llevas una semana, me gustaría hacerte unas preguntas sobre el precio. Nos ayudas mucho respondiendo.», then the four Van Westendorp questions (`PRICE_QUESTIONS`, €/month for the whole household, each optional) with «Enviar» and «Ahora no». Sending shows «¡Gracias! Nos ayuda muchísimo a poner un precio justo.»; either button closes it for good. It waits until no other modal sheet is open, and the install prompt (`InstallSheet`) no longer opens on top of another sheet.
+- Moved here from the waitlist on 2026-10-15 (people there hadn't used Mimoia yet).
+- `GET /price-survey` (auth) → `{ show }` (+ `title`, `intro`, `questions` when it shows); `POST /price-survey` (auth) the answers (same bounds as the waitlist: 0–500 €, rounded to cents; 400 otherwise); `POST /price-survey/dismiss` (auth); `GET /admin/price-survey` (admin JWT or `x-metrics-token`) → `answers` and per-question distributions (`min/p25/median/p75/max/histogram`), never user ids.
+- Table `price_survey_responses` (migration `0050_price_survey`): one row per user (`user_id` unique, cascades on account deletion), the four euros, `answered_at`, `dismissed_at`.
 
 ## API
 
@@ -65,4 +72,5 @@ Prices include VAT. Caps have no figures yet (PRO-15 sets them on 2026-11-24 wit
 - [apps/web/src/components/billing/PlanCards.tsx](../apps/web/src/components/billing/PlanCards.tsx), [PricingPage.tsx](../apps/web/src/components/billing/PricingPage.tsx)
 - [apps/web/src/app/(public)/precios/page.tsx](../apps/web/src/app/(public)/precios/page.tsx), [apps/web/src/app/profile/suscripcion/page.tsx](../apps/web/src/app/profile/suscripcion/page.tsx)
 - [apps/web/src/hooks/useBilling.ts](../apps/web/src/hooks/useBilling.ts)
-- Tests: `apps/api/src/tests/billing.test.ts`, `apps/web/e2e/pricing-page.spec.ts`, `apps/web/e2e/profile-subscription.spec.ts`, `apps/web/e2e/waitlist-founder-pricing.spec.ts`
+- Beta price survey: [apps/api/src/services/priceSurvey.ts](../apps/api/src/services/priceSurvey.ts), [apps/api/src/routes/priceSurvey.ts](../apps/api/src/routes/priceSurvey.ts), [apps/web/src/components/menu/PriceSurveySheet.tsx](../apps/web/src/components/menu/PriceSurveySheet.tsx), migration `0050_price_survey.sql`
+- Tests: `apps/api/src/tests/billing.test.ts`, `apps/api/src/tests/priceSurvey.test.ts`, `apps/web/e2e/founding-household.spec.ts`, `apps/web/e2e/pricing-page.spec.ts`, `apps/web/e2e/profile-subscription.spec.ts`, `apps/web/e2e/waitlist-founder-pricing.spec.ts`

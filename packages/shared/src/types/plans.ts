@@ -193,3 +193,15 @@ export interface BillingState {
     endsAt: string | null
   } | null
 }
+
+/**
+ * «Hogar fundador» (2026-10-15): every household created before launch day,
+ * i.e. the beta. Promised on the waitlist and shown on the profile and on
+ * Casa, for good. Launch day starts at 00:00 Madrid (CET, UTC+1 in January).
+ */
+export const FOUNDING_HOUSEHOLD_LABEL = 'Hogar fundador'
+
+export function isFoundingHousehold(createdAt: Date | string, launchDate: string = LAUNCH_DATE): boolean {
+  const t = typeof createdAt === 'string' ? Date.parse(createdAt) : createdAt.getTime()
+  return Number.isFinite(t) && t < Date.parse(`${launchDate}T00:00:00+01:00`)
+}

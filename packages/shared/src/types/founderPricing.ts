@@ -60,10 +60,10 @@ export const FOUNDER_CTA = 'Reservar mi plaza de fundador'
 export const FOUNDER_RESERVE_NOTE =
   'Sin pagar nada ahora: te guardamos este precio para siempre y te avisamos antes de cobrar'
 export const FOUNDER_FOOTER =
-  'Abrimos el 12 de enero. Empiezas con 14 días gratis con todo, sin tarjeta. Si te convence, eliges plan y pagas tu precio de fundador, que no subirá mientras sigas suscrito. Si no, no pagas nada. Puedes anular la reserva cuando quieras'
+  'Abrimos el 12 de enero. Empiezas con 14 días gratis con todo, sin tarjeta. Si te convence, eliges plan y pagas tu precio de fundador, que no subirá mientras sigas suscrito. Si no, no pagas nada'
 /** Beta households: no trial sentence. */
 export const FOUNDER_FOOTER_BETA =
-  'Tu beta sigue gratis hasta el 12 de enero. Si te convence, eliges plan y pagas tu precio de fundador, que no subirá mientras sigas suscrito. Si no, no pagas nada. Puedes anular la reserva cuando quieras'
+  'Tu beta sigue gratis hasta el 12 de enero. Si te convence, eliges plan y pagas tu precio de fundador, que no subirá mientras sigas suscrito. Si no, no pagas nada'
 
 export const FOUNDER_NONE = 'Ninguno me encaja'
 export const FOUNDER_DECLINE_REASONS = ['caro', 'no_lo_usaria', 'me_falta_algo', 'otro'] as const
@@ -105,3 +105,16 @@ export type WaitlistReservation = z.output<typeof waitlistReservationSchema>
 export function founderPlanById(id: string): FounderPlan | undefined {
   return FOUNDER_PLANS.find((p) => p.id === id)
 }
+
+/**
+ * Price survey for beta households after a week of use (2026-10-15: moved
+ * here from the waitlist, where people answered before trying Mimoia).
+ * Same four Van Westendorp questions (`PRICE_QUESTIONS`), €/month for the
+ * whole household. Shown once, from day 7 after sign-up, until launch day.
+ */
+export const PRICE_SURVEY_AFTER_DAYS = 7
+export const PRICE_SURVEY_TITLE = 'Una semana con Mimoia'
+export const PRICE_SURVEY_INTRO =
+  'Como usuario de la beta y ahora que llevas una semana, me gustaría hacerte unas preguntas sobre el precio. Nos ayudas mucho respondiendo.'
+export const priceSurveySchema = waitlistPricingSchema.omit({ token: true })
+export type PriceSurveyAnswers = z.output<typeof priceSurveySchema>

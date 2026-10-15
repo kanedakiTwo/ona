@@ -1213,3 +1213,19 @@ export const subscriptions = pgTable('subscriptions', {
   check('subscriptions_plan_check', sql.raw("plan IN ('esencial','plus')")),
   check('subscriptions_period_check', sql.raw("period IN ('mensual','anual')")),
 ])
+
+// ─── Beta price survey (specs/billing.md) ───────────────────
+// The four Van Westendorp questions, asked to beta users once, from day 7
+// after sign-up until launch day (moved off the waitlist on 2026-10-15).
+// One row per user: answered or dismissed («Ahora no»).
+export const priceSurveyResponses = pgTable('price_survey_responses', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  tooCheapEur: real('too_cheap_eur'),
+  goodEur: real('good_eur'),
+  expensiveEur: real('expensive_eur'),
+  tooExpensiveEur: real('too_expensive_eur'),
+  answeredAt: timestamp('answered_at', { withTimezone: true }),
+  dismissedAt: timestamp('dismissed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex('uq_price_survey_user').on(t.userId)])

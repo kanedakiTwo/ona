@@ -14,6 +14,7 @@
  */
 import { NoHealthDataNotice } from "@/components/menu/NoHealthDataNotice"
 import { FirstStepsGuide } from "@/components/menu/FirstStepsGuide"
+import { PriceSurveySheet } from "@/components/menu/PriceSurveySheet"
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react"
 import { useRouter } from "next/navigation"
 import { ChevronLeft, ChevronRight, MoreHorizontal, RefreshCw, Share2, Sparkles } from "lucide-react"
@@ -665,6 +666,7 @@ export default function MenuPage() {
         )}
         {weekSheet}
         {firstSteps}
+        <PriceSurveySheet />
       </div>
     )
   }
@@ -804,6 +806,7 @@ export default function MenuPage() {
 
       {weekSheet}
       {firstSteps}
+      <PriceSurveySheet />
     </div>
   )
 }

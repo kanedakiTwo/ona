@@ -60,7 +60,7 @@ Both routes mount via `apps/api/src/routes/recipeNotes.ts` (after `router.use(au
 
 - Empty strings collapse to `null` on save — `notes: ""` is functionally the same as `notes: null`.
 - The 1000-char cap is enforced **client-side** by the textarea `maxLength` and **server-side** by `applyNotesPatch` (silent truncation, no error). The route accepts up to 2000 chars at the schema layer so the server-side cap is a single source of truth.
-- The route is auth-only; non-authed users on `/recipes-ona/[id]` (public catalogue) never see the section because the page conditionally renders it (`user && <RecipeNotesSection />`).
+- The route is auth-only; signed-out visitors on `/recipes/[id]` (a catalogue recipe opens without an account) never see the section because the page conditionally renders it (`user && <RecipeNotesSection />`).
 - Concurrent edits: two members editing simultaneously means the last write wins. No conflict-resolution UI yet.
 
 ## Related specs

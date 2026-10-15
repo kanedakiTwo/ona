@@ -32,7 +32,7 @@ test('menu and catalogue recipe shares carry a link that works without an accoun
   const [recipe] = await (await page.request.get(`${apiUrl}/recipes?perPage=1`)).json()
   await page.goto(`/recipes/${recipe.id}`)
   await page.getByRole('button', { name: /compartir/i }).first().click()
-  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain(`/recipes-ona/${recipe.id}?ref=receta`)
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain(`/recipes/${recipe.id}?ref=receta`)
 
   // …and that link opens logged out.
   const shared = await page.evaluate(() => navigator.clipboard.readText())

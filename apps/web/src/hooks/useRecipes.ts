@@ -69,14 +69,6 @@ export function usePublicRecipes(filters?: RecipeFilters) {
   })
 }
 
-export function usePublicRecipe(id: string | undefined) {
-  return useQuery<Recipe>({
-    queryKey: ["recipe-public", id],
-    queryFn: () => apiPublic.get(`/recipes/${id}`),
-    enabled: !!id,
-  })
-}
-
 /**
  * Fetch a single recipe. When `servings` is supplied (and positive), the
  * API scales the response per Task 11; the cache key includes `servings`

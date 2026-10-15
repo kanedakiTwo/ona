@@ -49,7 +49,7 @@ All routes are auth-only + household-scoped (any household member can read or wr
 ## Constraints
 
 - Photo bytes are streamed via `multer.memoryStorage()` (max 8 MB). The sharp pipeline rewrites the file before the DB insert so unsupported formats (or malformed images) throw at sharp-time and we never persist a row pointing at non-existent bytes.
-- The component on `/recipes/[id]` is gated by `user` — anonymous visitors on `/recipes-ona/[id]` never see the gallery (it would need auth to load anyway).
+- The component on `/recipes/[id]` is gated by `user` — signed-out visitors on the same page (catalogue recipes open without an account) never see the gallery (it would need auth to load anyway).
 - HEIC files from iOS Safari upload cleanly thanks to sharp's libheif support — same pipeline produces the JPEG.
 - No favicon-style placeholder when the gallery is empty; the section simply shows the "Añadir foto" CTA on its own.
 

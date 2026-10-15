@@ -4,7 +4,7 @@ The public waitlist that comes before the launch. The product launches publicly 
 
 ## User Capabilities
 
-- Visitors on the landing (`/`) can join from the **"Lista de espera" section** (`#lista-de-espera`). The hero CTA, the landing's final CTA, `PublicNavbar` ("Lista de espera"), `/como-funciona` and both `/recipes-ona` pages all lead there with "Únete a la lista de espera". `/register` still works for invited households, but no public CTA links to it.
+- Visitors on the landing (`/`) can join from the **"Lista de espera" section** (`#lista-de-espera`). The hero CTA, the landing's final CTA, `PublicNavbar` ("Lista de espera"), `/como-funciona`, `/recipes-ona` and the recipe page `/recipes/[id]` seen signed out (`RecipeWaitlistCta`, `?ref=receta`) all lead there with "Únete a la lista de espera". `/register` still works for invited households, but no public CTA links to it.
 - Beside the form, the copy says why to join (2026-10-15): «Entrando en la beta nos ayudas a hacer Mimoia: cada semana que la usáis nos dice qué funciona en una casa de verdad y qué tenemos que cambiar. A cambio, tu casa será **Hogar fundador**, y lo verás en tu perfil para siempre» (`data-testid="waitlist-why-beta"`; the badge is real: [household.md](./household.md)).
 - The form asks for:
   - email (required) and first name (optional);

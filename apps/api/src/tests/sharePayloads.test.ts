@@ -8,11 +8,16 @@ import { menuShareText, recipeSharePayload, withOnaFooter } from '@ona/shared'
 const ORIGIN = 'https://ona.example/'
 
 describe('recipeSharePayload', () => {
-  it('catalogue recipes share their public page (no account needed)', () => {
+  it('catalogue recipes share the one recipe page (opens without an account)', () => {
     const p = recipeSharePayload({ id: 'r1', name: 'Lentejas', authorId: null }, ORIGIN)
-    expect(p.url).toBe('https://ona.example/recipes-ona/r1?ref=receta')
-    expect(p.text).toContain('receta de Mimoia')
-    expect(p.text).not.toMatch(/\bONA\b/)
+    expect(p).toEqual({ title: 'Lentejas', url: 'https://ona.example/recipes/r1?ref=receta' })
+  })
+
+  it('catalogue recipes carry no text next to the link (some apps glue it into the URL)', () => {
+    const p = recipeSharePayload({ id: 'r1', name: 'Pollo a la plancha', authorId: null }, ORIGIN)
+    expect(p.text).toBeUndefined()
+    expect(p.url).not.toContain('recipes-ona')
+    expect(p.url).not.toMatch(/\s/)
   })
 
   it('private recipes go as text with the ingredients and a link to Mimoia (their page is private)', () => {

@@ -21,6 +21,9 @@ const WEB_SRC = resolve(__dirname, '../../../web/src')
 const PUBLIC_SURFACES = [
   'app/(public)',
   'components/shared/Footer.tsx',
+  // The public recipe page's waitlist block and link-preview text (specs/recipes.md).
+  'components/recipes/RecipeWaitlistCta.tsx',
+  'lib/recipeMetadata.ts',
   // The landing's waitlist section + share text (specs/waitlist.md).
   'components/waitlist',
   // The blog (specs/blog.md): its components and every article, published or not.

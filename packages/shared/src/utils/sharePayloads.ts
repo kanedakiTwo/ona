@@ -7,7 +7,8 @@ import { BRAND_NAME } from '../constants/brand.js'
  */
 export interface SharePayload {
   title: string
-  text: string
+  /** Absent when there is a `url`: some apps glue url + " " + text into one broken link. */
+  text?: string
   url?: string
 }
 
@@ -24,10 +25,13 @@ const strip = (origin: string) => origin.replace(/\/+$/, '')
 export function recipeSharePayload(recipe: ShareableRecipe, origin: string): SharePayload {
   const base = strip(origin)
   if (recipe.authorId == null) {
+    // The recipe page itself (it opens without an account). Title + link
+    // only: the link's preview (app/recipes/[id]/layout.tsx) says what Mimoia
+    // is, and a `text` next to the `url` gets glued into the link by some
+    // receiving apps (`…?ref=receta%20Pollo%20a%20la%20plancha…`).
     return {
       title: recipe.name,
-      text: `${recipe.name} — receta de ${BRAND_NAME}, el planificador de menús semanales.`,
-      url: `${base}/recipes-ona/${recipe.id}?ref=receta`,
+      url: `${base}/recipes/${recipe.id}?ref=receta`,
     }
   }
   // Private recipes have no public page: share the recipe itself as text.

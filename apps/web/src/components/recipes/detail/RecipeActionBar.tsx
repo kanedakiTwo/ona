@@ -21,10 +21,13 @@ import { CalendarPlus, Play } from "lucide-react"
 export function RecipeActionBar({
   cookHref,
   onAddToMenu,
+  withSidebar = true,
 }: {
   cookHref: string
   /** Opens "Añadir al menú" (signed-in users only). */
   onAddToMenu?: () => void
+  /** App shell (signed in): leave room for the desktop sidebar at md. Signed out there is none. */
+  withSidebar?: boolean
 }) {
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
@@ -36,7 +39,9 @@ export function RecipeActionBar({
       animate={{ y: 0 }}
       transition={{ duration: 0.45, ease: [0.19, 1, 0.22, 1] }}
       data-testid="recipe-action-bar"
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-[#E8E2D3] bg-[#FFFEFA] pb-[var(--safe-bottom)] md:left-[var(--sidebar-width)] lg:hidden"
+      className={`fixed inset-x-0 bottom-0 z-40 border-t border-[#E8E2D3] bg-[#FFFEFA] pb-[var(--safe-bottom)] lg:hidden ${
+        withSidebar ? "md:left-[var(--sidebar-width)]" : ""
+      }`}
     >
       <div className="mx-auto flex h-[84px] w-full max-w-[430px] items-center gap-2.5 px-5 pb-2.5 md:max-w-[640px]">
         <Link

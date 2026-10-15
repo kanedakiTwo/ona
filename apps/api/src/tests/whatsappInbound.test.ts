@@ -4,8 +4,9 @@
  * voice notes, recipe photos and the chat round-trip.
  */
 import { describe, it, expect, vi } from 'vitest'
-import { processInbound, COPY, ackTextForTools, photoIntent, withoutMenuReadyLines, type InboundDeps } from '../services/whatsapp/inbound.js'
-import { weekMenuDigest } from '../services/menuText.js'
+import { processInbound, COPY, ackTextForTools, photoIntent, withoutMenuReadyLines, WEEK_IMAGE_ALT, type InboundDeps } from '../services/whatsapp/inbound.js'
+import { weekMenuCaption, weekMenuDigest } from '../services/menuText.js'
+import { buildChatHistory } from '../services/whatsapp/history.js'
 import type { InboundMessage } from '../services/whatsapp/webhookParser.js'
 import type { LinkWithUser } from '../services/whatsapp/store.js'
 import type { HistoryRow } from '../services/whatsapp/history.js'
@@ -53,6 +54,9 @@ function setup(overrides: {
   allowed?: boolean
   chatReply?: { message: string; uiHint?: string; data?: unknown; toolsUsed?: string[] }
   menuDigest?: InboundDeps['menuDigest']
+  menuImage?: InboundDeps['menuImage']
+  /** Only picture messages fail (e.g. the media upload). */
+  imageSendFails?: boolean
   transcribe?: InboundDeps['transcribe']
   importRecipeFromImage?: InboundDeps['importRecipeFromImage']
   setRecipeSource?: InboundDeps['setRecipeSource']
@@ -98,6 +102,7 @@ function setup(overrides: {
     client: {
       sendMessage: async (_to, m) => {
         if (overrides.sendFails) throw new Error('Graph 500')
+        if (overrides.imageSendFails && m.type === 'image') throw new Error('Graph media 400')
         sent.push(m)
         return `wamid.out.${sent.length}`
       },
@@ -111,6 +116,7 @@ function setup(overrides: {
     importRecipeFromImage: overrides.importRecipeFromImage,
     setRecipeSource: overrides.setRecipeSource,
     menuDigest: overrides.menuDigest,
+    menuImage: overrides.menuImage,
   }
   return { deps, sent, outbound, inboundUpdates, chat, recordUsage, historyUserIds, setNotify, checkBudget }
 }
@@ -707,6 +713,136 @@ describe('processInbound — the reply carries the menu / list, not just a link 
     await processInbound(msg({ text: 'genera el menú' }), t.deps)
     expect(textOf(t.sent)).toContain('Menú de la semana listo')
     expect(textOf(t.sent)).toContain(`Ver menú: ${WEB}/menu`)
+  })
+})
+
+describe('processInbound — the generated week goes out as ONE picture with a short caption (2026-10-15)', () => {
+  const WEEK = {
+    weekStart: '2026-10-12',
+    days: [{}, {}, {}, { lunch: { dishes: [{ kind: 'recipe' as const, recipeId: 'r1', recipeName: 'Lentejas' }] }, dinner: { dishes: [{ kind: 'recipe' as const, recipeId: 'r2', recipeName: 'Crema' }] } }],
+  }
+  const OPTS = { today: '2026-10-15', webUrl: WEB }
+  const MENU_TEXT = weekMenuDigest(WEEK, OPTS)
+  const CAPTION = weekMenuCaption(WEEK, OPTS)
+  const JPEG = Buffer.from('fake-jpeg')
+  const generated = (message = 'Hecho:\n- Menú de la semana listo', extra: Record<string, unknown> = {}) => ({
+    message,
+    uiHint: 'menu',
+    data: { id: 'm-9', days: [] },
+    toolsUsed: ['generate_weekly_menu'],
+    ...extra,
+  })
+
+  it('sends one image message whose caption is the opener, the menu link and the invite', async () => {
+    const menuImage = vi.fn(async () => ({ jpeg: JPEG, caption: CAPTION }))
+    const t = setup({ chatReply: generated(), menuDigest: async () => MENU_TEXT, menuImage })
+    await processInbound(msg({ text: 'genera el menú de la semana' }), t.deps)
+    expect(menuImage).toHaveBeenCalledWith('user-1', 'm-9')
+    expect(t.sent).toHaveLength(1)
+    const m = t.sent[0]
+    expect(m).toMatchObject({ type: 'image', mimeType: 'image/jpeg', image: JPEG })
+    expect(m.text).toBe(
+      'Listo: tu menú hasta el domingo 🍽️\n📖 Recetas y lista de la compra: ona.test/menu\n¿Cambio algo? Dímelo, p. ej. «hoy, pescado».',
+    )
+    // No day blocks in the caption: the picture has them.
+    expect(m.text).not.toContain('*Jueves')
+    expect(m.text).not.toMatch(/Hecho|Ver menú/)
+  })
+
+  it('history keeps the caption plus a mark saying a picture of the week was sent', async () => {
+    const t = setup({ chatReply: generated(), menuDigest: async () => MENU_TEXT, menuImage: async () => ({ jpeg: JPEG, caption: CAPTION }) })
+    await processInbound(msg({ text: 'genera el menú' }), t.deps)
+    expect(t.outbound).toHaveLength(1)
+    expect(t.outbound[0]).toMatchObject({ kind: 'reply', status: 'sent' })
+    expect(t.outbound[0].body).toBe(`⟦imagen enviada: ${WEEK_IMAGE_ALT}⟧\n${CAPTION}`)
+    const history = buildChatHistory(
+      [
+        { direction: 'in', body: 'genera el menú', status: 'processed', createdAt: new Date(NOW.getTime() - 2000) },
+        { direction: 'out', kind: 'reply', body: t.outbound[0].body, status: 'sent', createdAt: new Date(NOW.getTime() - 1000) },
+      ],
+      NOW,
+    )
+    expect(history.at(-1)!.content).toContain('⟦imagen enviada: el menú de la semana, día a día⟧')
+    expect(history.at(-1)!.content).toContain('Listo: tu menú hasta el domingo')
+  })
+
+  it("the model's other words go in the caption, above the opener", async () => {
+    const t = setup({
+      chatReply: generated('Hecho:\n- Menú de la semana listo\n\nNo había dorada; he puesto lubina.'),
+      menuDigest: async () => MENU_TEXT,
+      menuImage: async () => ({ jpeg: JPEG, caption: CAPTION }),
+    })
+    await processInbound(msg({ text: 'genera el menú' }), t.deps)
+    expect(t.sent).toHaveLength(1)
+    expect(t.sent[0].text).toBe(`Hecho:\n\nNo había dorada; he puesto lubina.\n\n${CAPTION}`)
+  })
+
+  it('buttons from the model go after the picture, without a second menu link', async () => {
+    const t = setup({
+      chatReply: generated('Menú de la semana listo.\n\n¿Te preparo la lista de la compra?\n[[opciones: Sí | No]]'),
+      menuDigest: async () => MENU_TEXT,
+      menuImage: async () => ({ jpeg: JPEG, caption: CAPTION }),
+    })
+    await processInbound(msg({ text: 'genera el menú' }), t.deps)
+    expect(t.sent.map((m) => m.type)).toEqual(['image', 'buttons'])
+    expect(t.sent[0].text).toBe(CAPTION)
+    expect(t.sent[1].text).toBe('¿Te preparo la lista de la compra?')
+    expect(t.sent.map((m) => m.text).join('\n')).not.toContain('Ver menú')
+  })
+
+  it('drawing the picture fails → exactly the text digest of before', async () => {
+    const t = setup({
+      chatReply: generated(),
+      menuDigest: async () => MENU_TEXT,
+      menuImage: async () => { throw new Error('satori exploded') },
+    })
+    await processInbound(msg({ text: 'genera el menú' }), t.deps)
+    expect(t.sent).toEqual([{ type: 'text', text: MENU_TEXT }])
+    expect(t.outbound).toEqual([{ kind: 'reply', body: MENU_TEXT, status: 'sent' }])
+  })
+
+  it('nothing to draw (null) → the text digest', async () => {
+    const t = setup({ chatReply: generated(), menuDigest: async () => MENU_TEXT, menuImage: async () => null })
+    await processInbound(msg({ text: 'genera el menú' }), t.deps)
+    expect(t.sent).toEqual([{ type: 'text', text: MENU_TEXT }])
+  })
+
+  it('the upload/send of the picture fails → the text digest goes out instead; the failed picture stays out of history', async () => {
+    const t = setup({
+      chatReply: generated(),
+      menuDigest: async () => MENU_TEXT,
+      menuImage: async () => ({ jpeg: JPEG, caption: CAPTION }),
+      imageSendFails: true,
+    })
+    await processInbound(msg({ text: 'genera el menú' }), t.deps)
+    expect(t.sent).toEqual([{ type: 'text', text: MENU_TEXT }])
+    expect(t.outbound.map((o) => [o.kind, o.status])).toEqual([['image_failed', 'failed'], ['reply', 'sent']])
+    const history = buildChatHistory(
+      t.outbound.map((o, i) => ({ direction: 'out', kind: o.kind, body: o.body, status: o.status, createdAt: new Date(NOW.getTime() - 1000 + i) })),
+      NOW,
+    )
+    expect(history.map((h) => h.content).join('\n')).not.toContain('⟦imagen enviada')
+  })
+
+  it("one-day messages stay text: today's menu never draws the week", async () => {
+    const menuImage = vi.fn(async () => ({ jpeg: JPEG, caption: CAPTION }))
+    const t = setup({ chatReply: { message: 'Hoy toca crema de calabaza.', uiHint: 'menu', toolsUsed: ['get_todays_menu'] }, menuImage })
+    await processInbound(msg(), t.deps)
+    expect(menuImage).not.toHaveBeenCalled()
+    expect(t.sent.every((m) => m.type !== 'image')).toBe(true)
+  })
+
+  it('the first menu of the WhatsApp sign-up is a picture too, then the health link and the opt-in', async () => {
+    const t = setup({
+      link: { ...LINK, onboardingDone: false },
+      chatReply: { message: 'Hecho:\n- Tu primer menú de la semana listo', toolsUsed: ['complete_onboarding'], data: { id: 'menu-1', days: [] } },
+      menuDigest: async () => MENU_TEXT,
+      menuImage: async () => ({ jpeg: JPEG, caption: CAPTION }),
+    })
+    await processInbound(msg({ text: 'Lentejas, tortilla y pescado al horno' }), t.deps)
+    expect(t.sent.map((m) => m.type)).toEqual(['image', 'text', 'buttons'])
+    expect(t.sent[0].text).toBe(CAPTION)
+    expect(t.outbound.map((o) => o.kind)).toEqual(['reply', 'system', 'optin_prompt'])
   })
 })
 

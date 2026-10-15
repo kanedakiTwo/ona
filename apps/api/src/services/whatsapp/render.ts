@@ -18,6 +18,23 @@ import {
 export type OutboundMessage =
   | { type: 'text'; text: string }
   | { type: 'buttons'; text: string; buttons: { id: string; title: string }[] }
+  | {
+      /**
+       * A picture with a caption (`text`, ≤ 1024 chars): the week's menu
+       * after generating it (2026-10-15). `alt` says what the picture shows,
+       * for the conversation history. When the upload or the send fails,
+       * `fallback` goes out instead — never a reply lost to a picture.
+       */
+      type: 'image'
+      text: string
+      image: Buffer
+      mimeType: string
+      alt: string
+      fallback: OutboundMessage[]
+    }
+
+/** WhatsApp's limit for an image caption. */
+export const WA_CAPTION_MAX = 1024
 
 export function appLinkFor(
   resp: Pick<AssistantResponse, 'uiHint' | 'data'>,
@@ -105,8 +122,15 @@ export function renderPlainText(text: string): OutboundMessage[] {
 export const BUTTONS_MARK = /⟦botones: ([^⟧]*)⟧/
 
 export function outboundBody(m: OutboundMessage): string {
-  return m.type === 'buttons' ? `${m.text}\n⟦botones: ${m.buttons.map((b) => b.title).join(' | ')}⟧` : m.text
+  if (m.type === 'buttons') return `${m.text}\n⟦botones: ${m.buttons.map((b) => b.title).join(' | ')}⟧`
+  // The picture itself isn't stored: history gets a mark saying what it
+  // showed, then the caption that went with it.
+  if (m.type === 'image') return `${imageMark(m.alt)}\n${m.text}`
+  return m.text
 }
+
+/** `⟦imagen enviada: el menú de la semana, día a día⟧` — the engine strips ⟦…⟧ marks if the model copies one. */
+export const imageMark = (alt: string) => `⟦imagen enviada: ${alt}⟧`
 
 /** Titles of the buttons in the most recent outbound body that had any (or null). */
 export function lastSentButtons(rows: Array<{ direction: string; body: string | null }>): string[] | null {

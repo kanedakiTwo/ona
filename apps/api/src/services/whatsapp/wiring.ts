@@ -1,9 +1,10 @@
 import { env } from '../../config/env.js'
 import { db } from '../../db/connection.js'
-import { and, desc, eq } from 'drizzle-orm'
-import { menus, users } from '../../db/schema.js'
+import { and, desc, eq, inArray } from 'drizzle-orm'
+import { menus, recipes, users } from '../../db/schema.js'
 import { resolveScope, scopeWhere } from '../scopeResolver.js'
-import { weekMenuDigest } from '../menuText.js'
+import { weekMenuCaption, weekMenuDigest, type WeekMenuInput } from '../menuText.js'
+import { weekMenuImage } from '../weekImage/index.js'
 import { madridParts } from '../madridTime.js'
 import { spendCapStatus } from '../spendCap.js'
 import { chat } from '../assistant/engine.js'
@@ -15,6 +16,29 @@ import * as store from './store.js'
 import * as client from './client.js'
 import type { InboundDeps } from './inbound.js'
 import type { InboundMessage } from './webhookParser.js'
+
+/**
+ * The week the turn just generated (or the user's latest), read back after
+ * the whole turn, scoped to the caller's household like every menu read.
+ */
+async function loadWeekMenu(userId: string, menuId: string | null): Promise<WeekMenuInput | null> {
+  const scope = scopeWhere(menus.userId, menus.householdId, await resolveScope(userId, db))
+  const [row] = await db
+    .select({ weekStart: menus.weekStart, days: menus.days, skippedDays: menus.skippedDays })
+    .from(menus)
+    .where(menuId ? and(scope, eq(menus.id, menuId)) : scope)
+    .orderBy(desc(menus.createdAt))
+    .limit(1)
+  if (!row) return null
+  return { weekStart: String(row.weekStart), days: row.days as any, skippedDays: row.skippedDays }
+}
+
+/** recipe id → `image_url` (the menu JSON doesn't store photos). */
+async function recipePhotoUrls(ids: string[]): Promise<Map<string, string | null>> {
+  if (ids.length === 0) return new Map()
+  const rows = await db.select({ id: recipes.id, imageUrl: recipes.imageUrl }).from(recipes).where(inArray(recipes.id, ids))
+  return new Map(rows.map((r) => [r.id, r.imageUrl]))
+}
 
 /** Real implementations behind `processInbound`'s deps. */
 export function buildInboundDeps(): InboundDeps {
@@ -40,18 +64,21 @@ export function buildInboundDeps(): InboundDeps {
     // The week the turn just generated (or the user's latest), read back after
     // the whole turn, scoped to the caller's household like every menu read.
     menuDigest: async (userId, menuId) => {
-      const scope = scopeWhere(menus.userId, menus.householdId, await resolveScope(userId, db))
-      const [row] = await db
-        .select({ weekStart: menus.weekStart, days: menus.days, skippedDays: menus.skippedDays })
-        .from(menus)
-        .where(menuId ? and(scope, eq(menus.id, menuId)) : scope)
-        .orderBy(desc(menus.createdAt))
-        .limit(1)
-      if (!row) return null
-      return weekMenuDigest(
-        { weekStart: String(row.weekStart), days: row.days as any, skippedDays: row.skippedDays },
-        { today: madridParts(new Date()).isoDate, webUrl: env.WEB_PUBLIC_URL },
-      )
+      const menu = await loadWeekMenu(userId, menuId)
+      if (!menu) return null
+      return weekMenuDigest(menu, { today: madridParts(new Date()).isoDate, webUrl: env.WEB_PUBLIC_URL })
+    },
+    // The same week as a picture + short caption (2026-10-15). Throws or
+    // returns null → inbound sends the digest text above instead.
+    menuImage: async (userId, menuId) => {
+      const menu = await loadWeekMenu(userId, menuId)
+      if (!menu) return null
+      const today = madridParts(new Date()).isoDate
+      const t0 = Date.now()
+      const jpeg = await weekMenuImage(menu, { today, webUrl: env.WEB_PUBLIC_URL, photoUrls: recipePhotoUrls })
+      if (!jpeg) return null
+      console.log(`[whatsapp] week image drawn in ${Date.now() - t0} ms (${Math.round(jpeg.length / 1024)} KB)`)
+      return { jpeg, caption: weekMenuCaption(menu, { today, webUrl: env.WEB_PUBLIC_URL }) }
     },
     transcribe: isSttConfigured() ? transcribeAudio : undefined,
     importRecipeFromImage: env.ANTHROPIC_API_KEY ? importRecipeFromImage : undefined,

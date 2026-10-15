@@ -14,7 +14,7 @@ export const MEAL_LABEL_ES: Record<string, string> = {
   dinner: 'cena',
 }
 
-function dishLabel(d: Dish): string | null {
+export function dishLabel(d: Dish): string | null {
   if (d.kind === 'note') return d.text?.trim() || null
   if (d.kind === 'recipe') {
     const name = d.recipeName?.trim() || 'receta sin nombre'
@@ -87,8 +87,8 @@ export function mealLinesForDay(day: DayMenu | null | undefined): string[] {
   return mealEntriesForDay(day).map((e) => `${e.label}: ${e.dishes.join(' + ')}`)
 }
 
-const DAY_NAME_ES = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
-const MONTHS_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+export const DAY_NAME_ES = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
+export const MONTHS_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
 
 /** Monday `YYYY-MM-DD` → "del 12 al 18 de octubre" / "del 28 de septiembre al 4 de octubre". */
 export function weekRangeEs(weekStart: string): string {
@@ -103,7 +103,7 @@ export function weekRangeEs(weekStart: string): string {
 }
 
 /** `YYYY-MM-DD` + n days → `YYYY-MM-DD` (calendar arithmetic, no TZ involved). */
-function plusDays(isoDate: string, n: number): string {
+export function plusDays(isoDate: string, n: number): string {
   const [y, m, d] = isoDate.slice(0, 10).split('-').map(Number)
   return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10)
 }
@@ -136,14 +136,41 @@ const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
  * days. A skipped day reads "Sin cocinar"; a day with nothing planned is left
  * out; a meal a day doesn't have gets no line.
  */
-export function weekMenuDigest(
-  menu: {
-    weekStart: string
-    days: Array<DayMenu | null | undefined> | null | undefined
-    skippedDays?: number[] | null
-  },
-  opts: { today: string; webUrl?: string },
-): string {
+export function weekMenuDigest(menu: WeekMenuInput, opts: { today: string; webUrl?: string }): string {
+  const { opener, shown, link, invite, today, tomorrow } = weekDigestParts(menu, opts)
+  const blocks = shown.map((d) => {
+    const when = d.date === today ? ' · hoy' : d.date === tomorrow ? ' · mañana' : ''
+    const title = `*${capitalize(DAY_NAME_ES[d.i])} ${Number(d.date.slice(8, 10))}${when}*`
+    if (d.skipped) return `${title}\nSin cocinar`
+    const lines = d.entries.map((e) => {
+      const dishes = e.dishes.join(' + ')
+      return MEAL_EMOJI[e.meal] ? `${MEAL_EMOJI[e.meal]} ${dishes}` : `${e.label}: ${dishes}`
+    })
+    return [title, ...lines].join('\n')
+  })
+  return [opener, ...blocks, ...(link ? [link] : []), invite].join('\n\n')
+}
+
+/**
+ * Pure: the caption of the week image WhatsApp sends instead of the digest
+ * (2026-10-15): the digest's opener, menu link and invite, without the day
+ * blocks (the image shows them). Built from the same parts as
+ * `weekMenuDigest`, so the image and its text fallback never say different
+ * things.
+ */
+export function weekMenuCaption(menu: WeekMenuInput, opts: { today: string; webUrl?: string }): string {
+  const { opener, link, invite } = weekDigestParts(menu, opts)
+  return [opener, ...(link ? [link] : []), invite].join('\n')
+}
+
+export interface WeekMenuInput {
+  weekStart: string
+  days: Array<DayMenu | null | undefined> | null | undefined
+  skippedDays?: number[] | null
+}
+
+/** The pieces both the week digest and the week image caption are made of. */
+function weekDigestParts(menu: WeekMenuInput, opts: { today: string; webUrl?: string }) {
   const days = Array.isArray(menu.days) ? menu.days : []
   const weekStart = menu.weekStart.slice(0, 10)
   const today = opts.today.slice(0, 10)
@@ -166,22 +193,9 @@ export function weekMenuDigest(
     : todayIndex === 6
       ? 'Listo: tu menú de hoy 🍽️'
       : 'Listo: tu menú hasta el domingo 🍽️'
-
-  const blocks = shown.map((d) => {
-    const when = d.date === today ? ' · hoy' : d.date === tomorrow ? ' · mañana' : ''
-    const title = `*${capitalize(DAY_NAME_ES[d.i])} ${Number(d.date.slice(8, 10))}${when}*`
-    if (d.skipped) return `${title}\nSin cocinar`
-    const lines = d.entries.map((e) => {
-      const dishes = e.dishes.join(' + ')
-      return MEAL_EMOJI[e.meal] ? `${MEAL_EMOJI[e.meal]} ${dishes}` : `${e.label}: ${dishes}`
-    })
-    return [title, ...lines].join('\n')
-  })
-
-  const parts = [opener, ...blocks]
-  if (opts.webUrl) parts.push(`📖 Recetas y lista de la compra: ${shortWebLink(opts.webUrl, '/menu')}`)
-  parts.push(menuDigestInvite(shown.filter((d) => !d.skipped && d.date !== today).map((d) => d.i)))
-  return parts.join('\n\n')
+  const link = opts.webUrl ? `📖 Recetas y lista de la compra: ${shortWebLink(opts.webUrl, '/menu')}` : null
+  const invite = menuDigestInvite(shown.filter((d) => !d.skipped && d.date !== today).map((d) => d.i))
+  return { opener, shown, link, invite, today, tomorrow }
 }
 
 /**

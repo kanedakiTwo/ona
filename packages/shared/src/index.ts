@@ -182,6 +182,7 @@ export { toOrderQty, resolveBuyRule, buyRuleByKey, splitCompound, normalizeBuyNa
 export type { OrderQty, OrderQtyInput, ResolvedRule } from './buy/convert.js'
 export { CARREFOUR_SEARCH_URL, carrefourSearchUrl, carrefourLinks } from './buy/carrefour.js'
 export type { CarrefourLineInput } from './buy/carrefour.js'
+export { buyableUnitFor, unitAfterQuantity, quantityHintFor, RECIPE_UNIT_LABELS } from './buy/recipeUnits.js'
 
 export { buildRecipePayload } from './recipeFormPayload.js'
 export type { IngredientRowState, RecipeFormState } from './recipeFormPayload.js'

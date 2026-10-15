@@ -15,7 +15,7 @@ describe('BUY_NO_QUANTITY', () => {
   it('flags things you have to buy that go "al gusto" (they never reach the list)', () => {
     const issues = shoppabilityIssues([row('cilantro', 0, 'al_gusto'), row('mozzarella', 0, 'al_gusto'), row('alcachofa', 0, 'pizca')])
     expect(issues.map((i) => i.code)).toEqual(['BUY_NO_QUANTITY', 'BUY_NO_QUANTITY', 'BUY_NO_QUANTITY'])
-    expect(issues[0].message).toContain('1 manojo de cilantro')
+    expect(issues[0].message).toContain('1 ud (manojo) de cilantro')
   })
 
   it('flags a zero amount in grams too ("pan seco de algarroba 0 g")', () => {

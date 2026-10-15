@@ -12,7 +12,7 @@
 import { useEffect, useRef, type ReactNode } from "react"
 import Link from "next/link"
 import { ChevronLeft, Plus, Trash2 } from "lucide-react"
-import type { Ingredient } from "@ona/shared"
+import { RECIPE_UNIT_LABELS, type Ingredient, type Unit } from "@ona/shared"
 import { cn } from "@/lib/utils"
 import { humanizeLintKey } from "@/lib/recipeView"
 import { IngredientAutocomplete } from "@/components/recipes/IngredientAutocomplete"
@@ -232,6 +232,7 @@ export function IngredientRowFields({
   removable: boolean
   hint?: string | null
 }) {
+  const label = selected?.name ?? defaultText ?? ""
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-1">
@@ -258,6 +259,7 @@ export function IngredientRowFields({
           value={quantity === "" ? "" : quantity}
           onChange={(e) => onQuantity(e.target.value)}
           placeholder="Cant."
+          aria-label={label ? `Cantidad de ${label}` : "Cantidad"}
           min={0}
           step="any"
           className={fieldClass(false, "w-24 font-mono text-[15px] lg:text-[14px]")}
@@ -265,11 +267,12 @@ export function IngredientRowFields({
         <select
           value={unit}
           onChange={(e) => onUnit(e.target.value)}
+          aria-label={label ? `Unidad de ${label}` : "Unidad"}
           className={fieldClass(false, "w-24 px-2.5")}
         >
           {units.map((u) => (
             <option key={u} value={u}>
-              {u}
+              {RECIPE_UNIT_LABELS[u as Unit] ?? u}
             </option>
           ))}
         </select>

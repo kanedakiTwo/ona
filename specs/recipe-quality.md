@@ -42,10 +42,12 @@ The previous seed contained recipes that referenced ingredients in their steps t
 
 Reuses the shop-order buy rules ([shop-orders.md](./shop-orders.md) → Buy rules); never blocks a save. Returned as lint warnings on `POST`/`PUT /recipes` and imports, and as `shoppingIssues` (`{ code, message, rowId }`) on `GET /recipes/:id` for the author/admins only.
 
-- `BUY_NO_QUANTITY` — something you have to buy goes `al_gusto` / `pizca` / 0 ("cilantro al gusto") → it never reaches the shopping list. Pantry basics (sal, pimienta, aceite, especias secas…) and optional rows may go al gusto. The message suggests the shop unit ("p. ej. 1 manojo de cilantro")
+- `BUY_NO_QUANTITY` — something you have to buy goes `al_gusto` / `pizca` / 0 ("cilantro al gusto") → it never reaches the shopping list. Pantry basics (sal, pimienta, aceite, especias secas…) and optional rows may go al gusto. The message suggests an amount in units the form's selector has ("p. ej. 1 ud (manojo) de cilantro", "1 ud (trozo) de jengibre fresco", "250 g de espinacas"; `quantityHintFor` in `@ona/shared`), never a shop unit like "1 manojo" the user can't pick (PRO-90). "1 ud" or "20 g" of jengibre clear it; "1 al gusto" doesn't
 - `BUY_GENERIC` — a family or an open choice in the name: "hierbas aromáticas (romero, tomillo)" → one row per product; "pescado entero fresco (dorada, lubina…)" → name one
 - `BUY_NEEDS_CHOICE` — the buy rule needs a choice nobody made: "ternera" with no cut, "jamón" with no serrano/ibérico, "pan blanco" with no type. The name or the ingredient note settles it ("para guisar", "carrilleras", "serrano", "en barra")
 - `BUY_NEEDS_WEIGHT` — meat/fish/charcutería counted in units ("2 u de panceta"): the shop weighs, give grams
+
+Fixing it in the editor (PRO-90): typing an amount on a row "al gusto" / "pizca" switches its unit to a buyable one — "ud" when the shop sells it by the piece (jengibre, cilantro), "g" otherwise (`unitAfterQuantity`) — so it isn't saved as "1 al gusto"; the selector shows `u` as "ud" and `al_gusto` as "al gusto". The editor also keeps each row's note and section through a save (it used to drop them, which brought `BUY_NEEDS_CHOICE` back), and after saving it waits for the recipe to be re-read before going back to the detail, so the card there reflects what was saved. Tests: `recipeShoppingUnits.test.ts`, e2e `recipe-shopping-fix.spec.ts` (import → fix → save; "Corregir en la receta" → fix → save).
 
 The 2026-10-08 audit of the 81 production recipes fixed every hit by hand (30 recipes: cuts in notes, quantities for herbs and al-gusto rows, a dorada instead of salmón in "Dorada a la marsellesa", jamón de york in "Sándwich mixto") and recomputed their nutrition; all 81 now pass.
 
@@ -83,7 +85,7 @@ Per-ingredient range tables live next to the lint validator. Initial coverage fo
 ## Source
 
 - [apps/api/src/services/recipeLint.ts](../apps/api/src/services/recipeLint.ts) — validator
-- [apps/api/src/services/recipeShoppability.ts](../apps/api/src/services/recipeShoppability.ts) — the `BUY_*` checks; [apps/web/src/components/recipes/ShoppingIssues.tsx](../apps/web/src/components/recipes/ShoppingIssues.tsx) — the "Para hacer la compra" card
+- [apps/api/src/services/recipeShoppability.ts](../apps/api/src/services/recipeShoppability.ts) — the `BUY_*` checks; [apps/web/src/components/recipes/ShoppingIssues.tsx](../apps/web/src/components/recipes/ShoppingIssues.tsx) — the "Para hacer la compra" card; [packages/shared/src/buy/recipeUnits.ts](../packages/shared/src/buy/recipeUnits.ts) — form units (`unitAfterQuantity`, `quantityHintFor`, `RECIPE_UNIT_LABELS`); [apps/web/src/app/recipes/[id]/edit/page.tsx](../apps/web/src/app/recipes/[id]/edit/page.tsx) — the editor
 - [apps/api/src/services/recipeLint.ranges.ts](../apps/api/src/services/recipeLint.ranges.ts) — per-ingredient sanity ranges
 - [apps/api/src/services/recipePersistence.ts](../apps/api/src/services/recipePersistence.ts) — orchestrator: lint → nutrition aggregate → allergen union → DB write (single canonical save path used by the API route, the photo extractor and the apply script)
 - [apps/api/src/services/regenSchema.ts](../apps/api/src/services/regenSchema.ts) — Zod schema describing the LLM regen JSON output, used by both `regenerateRecipes.ts` to validate the model response and by the apply script to type the JSONL rows

@@ -149,10 +149,14 @@ export function useUpdateRecipe(id: string | undefined) {
       const url = force ? `/recipes/${id}?force=1` : `/recipes/${id}`
       return api.put<Recipe>(url, payload)
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["recipes"] })
-      queryClient.invalidateQueries({ queryKey: ["recipe", data.id] })
-    },
+    // Awaited so the recipe is refetched before the caller navigates back to
+    // the detail: its "Para hacer la compra" notice is recomputed on every
+    // read and must reflect what was just saved (PRO-90).
+    onSuccess: (data) =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["recipes"] }),
+        queryClient.invalidateQueries({ queryKey: ["recipe", data.id] }),
+      ]),
   })
 }
 

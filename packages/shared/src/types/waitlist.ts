@@ -89,7 +89,7 @@ export function normalizeSource(raw: unknown): string | null {
   return /^[a-z0-9_-]{1,32}$/.test(s) ? s : null
 }
 
-function cleanAttributionText(raw: unknown, max: number): string | null {
+export function cleanAttributionText(raw: unknown, max: number): string | null {
   if (typeof raw !== 'string') return null
   const t = raw.replace(CONTROL_CHARS, '').trim().slice(0, max)
   return t || null

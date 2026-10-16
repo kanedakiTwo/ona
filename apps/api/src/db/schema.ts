@@ -73,6 +73,16 @@ export const users = pgTable('users', {
   healthConsentAt: timestamp('health_consent_at', { withTimezone: true }),
   healthConsentVersion: text('health_consent_version'),
   healthConsentWithdrawnAt: timestamp('health_consent_withdrawn_at', { withTimezone: true }),
+  /**
+   * Personal invitation code (PRO-162): `<web>/?invita=<code>`, same format
+   * as the waitlist's. Reuses the person's waitlist code when they came from
+   * the list; assigned on sign-up or the first time it's asked for.
+   */
+  referralCode: text('referral_code'),
+  /** Code of whoever invited this account (an account's or a waitlist person's), never their email. */
+  invitedByCode: text('invited_by_code'),
+  /** Where the sign-up came from: `?ref` and `utm_*` carried from the landing (PRO-162). */
+  signupAttribution: jsonb('signup_attribution').$type<{ source: string | null; utmSource: string | null; utmMedium: string | null; utmCampaign: string | null }>(),
   /** Campaign invitation link the account signed up with (PRO-27); null = none. */
   inviteCampaignId: uuid('invite_campaign_id').references(() => inviteCampaigns.id, { onDelete: 'set null' }),
   /**
@@ -106,6 +116,7 @@ export const users = pgTable('users', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => [
   check('users_role_check', sql.raw("role IN ('user','admin')")),
+  uniqueIndex('uq_users_referral_code').on(table.referralCode),
   index('idx_users_suspended').on(table.suspendedAt),
 ])
 

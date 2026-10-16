@@ -15,6 +15,7 @@ import { ArrowRight } from "lucide-react"
 import { Accent, AUTH_PILL, AuthError, AuthField, AuthFooterLink, AuthHeading, AuthShell } from "@/components/auth/AuthShell"
 import { useAuth } from "@/lib/auth"
 import { NEWSLETTER_OPT_IN_HINT, NEWSLETTER_OPT_IN_LABEL } from "@ona/shared"
+import { signupAttributionForRegister } from "@/lib/signupAttribution"
 
 const HERO_IMG = "https://images.unsplash.com/photo-1466637574441-749b8f19452f?w=1200&q=85&auto=format&fit=crop"
 
@@ -76,6 +77,8 @@ export default function RegisterPage() {
         householdInviteToken: householdInviteTokenFromNext(next),
         waitlistToken: entry.state === "ok" ? entry.token : undefined,
         newsletterOptIn,
+        // Who invited them and where the visit came from (PRO-162).
+        ...signupAttributionForRegister(),
       })
       router.push(next ?? "/onboarding")
     } catch (err) {

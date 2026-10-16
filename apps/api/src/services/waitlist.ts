@@ -14,7 +14,7 @@
  *     invite, which is the one place emails leave the database.
  */
 import { randomBytes } from 'node:crypto'
-import { and, eq, inArray, ne, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, ne, sql } from 'drizzle-orm'
 import {
   REFERRAL_CODE_ALPHABET,
   REFERRAL_CODE_LENGTH,
@@ -119,7 +119,12 @@ const byTime = (a: RankableEntry, b: RankableEntry) =>
  * link (and theirs, down the chain) right after them — "invita a tu hogar y
  * entráis antes" — until the batch is full.
  */
-export function suggestNextBatch(entries: RankableEntry[], size: number): SuggestedBatch {
+export function suggestNextBatch(
+  entries: RankableEntry[],
+  size: number,
+  /** Accounts' invitation codes (PRO-162): someone an account invited counts as «their referrer is in». */
+  accountCodes: ReadonlySet<string> = new Set(),
+): SuggestedBatch {
   const cap = Math.max(0, Math.floor(size))
   const referralsByCode = new Map<string, number>()
   for (const e of entries) {
@@ -140,6 +145,7 @@ export function suggestNextBatch(entries: RankableEntry[], size: number): Sugges
 
   const isReferrer = (e: RankableEntry) => (referralsByCode.get(e.referralCode) ?? 0) > 0
   const referrerIsIn = (e: RankableEntry) => {
+    if (e.referredByCode && accountCodes.has(e.referredByCode)) return true
     const s = e.referredByCode ? statusByCode.get(e.referredByCode) : undefined
     return s === 'invited' || s === 'joined'
   }
@@ -223,7 +229,7 @@ const byCountDesc = <T extends { count: number }>(a: T, b: T) => b.count - a.cou
 
 export function buildWaitlistReport(
   rows: WaitlistReportRow[],
-  opts: { now: Date; days: number; batchSize: number; topReferrers?: number },
+  opts: { now: Date; days: number; batchSize: number; topReferrers?: number; accountCodes?: ReadonlySet<string> },
 ) {
   const active = rows.filter((r) => r.status !== 'unsubscribed')
   const weekAgo = opts.now.getTime() - 7 * 86_400_000
@@ -317,7 +323,7 @@ export function buildWaitlistReport(
       topReferrers: topReferrers.slice(0, opts.topReferrers ?? 10),
     },
     batches,
-    suggestedNextBatch: suggestNextBatch(rows, opts.batchSize),
+    suggestedNextBatch: suggestNextBatch(rows, opts.batchSize, opts.accountCodes),
     definitions: WAITLIST_DEFINITIONS,
   }
 }
@@ -467,7 +473,10 @@ export function createDbWaitlistRepo(db: Db = defaultDb): WaitlistRepo {
         .from(waitlistEntries)
         .where(and(eq(waitlistEntries.referralCode, code), ne(waitlistEntries.status, 'unsubscribed')))
         .limit(1)
-      return !!row
+      if (row) return true
+      // An account's «Invitar a otro hogar» link (PRO-162) counts too.
+      const [account] = await db.select({ id: users.id }).from(users).where(eq(users.referralCode, code)).limit(1)
+      return !!account
     },
     async insert(entry) {
       const rows = await db
@@ -545,6 +554,7 @@ export async function loadWaitlistReport(
       now: opts.now ?? new Date(),
       days: opts.days,
       batchSize: opts.batchSize,
+      accountCodes: await loadAccountReferralCodes(db),
     }),
     // Founder pricing signal (PRO-26): price distributions + reservations, aggregates only.
     pricing: buildPricingReport(rows.filter((r) => r.status !== 'unsubscribed')),
@@ -582,6 +592,12 @@ export async function loadWaitlistSummary(db: Db = defaultDb, now: Date = new Da
   return toWaitlistSummary((res.rows[0] ?? {}) as Record<string, unknown>)
 }
 
+/** Accounts' invitation codes (PRO-162), for the batch suggestion. */
+async function loadAccountReferralCodes(db: Db): Promise<Set<string>> {
+  const rows = await db.select({ code: users.referralCode }).from(users).where(isNotNull(users.referralCode))
+  return new Set(rows.map((r: { code: string | null }) => r.code!).filter(Boolean))
+}
+
 /**
  * Admin JWT only (`GET /admin/waitlist/next-batch`, PRO-97): the suggested
  * batch with name and email of each person, so Miguel can check it before
@@ -605,7 +621,7 @@ export async function loadNextBatchPeople(size: number, db: Db = defaultDb) {
       status: waitlistEntries.status,
     })
     .from(waitlistEntries)
-  return nextBatchPeople(rows as NextBatchRow[], size)
+  return nextBatchPeople(rows as NextBatchRow[], size, await loadAccountReferralCodes(db))
 }
 
 export interface NextBatchRow extends RankableEntry {
@@ -617,8 +633,8 @@ export interface NextBatchRow extends RankableEntry {
 }
 
 /** Pure: `suggestNextBatch` + the people, in invitation order. */
-export function nextBatchPeople(rows: NextBatchRow[], size: number) {
-  const suggestion = suggestNextBatch(rows as RankableEntry[], size)
+export function nextBatchPeople(rows: NextBatchRow[], size: number, accountCodes: ReadonlySet<string> = new Set()) {
+  const suggestion = suggestNextBatch(rows as RankableEntry[], size, accountCodes)
   const byId = new Map(rows.map((r) => [r.id, r]))
   const pickedCodes = new Set(suggestion.ids.map((id) => byId.get(id)!.referralCode))
   return {

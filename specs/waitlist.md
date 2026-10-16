@@ -44,7 +44,7 @@ The public waitlist that comes before the launch. The product launches publicly 
 
 Only `waiting` entries. The ranking:
 1. **Target segment** first: household of 2 or more, plans alone or shared (`yo` / `compartido`), and doesn't answer "casi no cocino".
-2. Within a tier, people who **brought someone** (an active signup with their link) or whose **own referrer is already invited/joined**.
+2. Within a tier, people who **brought someone** (an active signup with their link) or whose **own referrer is already invited/joined** — or is an account: a waitlist signup with an account's «Invitar a otro hogar» code (PRO-162) counts as «their referrer is in» (`POST /waitlist` accepts account codes as `referredByCode`).
 3. Earliest signup (ties by id).
 
 Each picked person **pulls in** the waiting people who signed up with their link, and theirs down the chain, right after them, until the batch is full. That is how "entráis antes, y juntos" is kept. Only ids and counts are returned.
@@ -77,7 +77,6 @@ Each picked person **pulls in** the waiting people who signed up with their link
 - **Emails sent**: the invitation (PRO-93) and the Friday newsletter (PRO-94, [newsletter.md](./newsletter.md); its own opt-out turns off only the newsletter). There is no confirmation email (no double opt-in).
 - No phone number is collected, so "por WhatsApp" is a stated preference, honoured by sending the invitation with the WhatsApp link (since 2026-10-14 Mimo is on a real number, so the 5-recipient limit of Meta's test number no longer applies; access is still gated by `WHATSAPP_ALLOWED_EMAILS`, see [WhatsApp](./whatsapp.md)).
 - Retention (until 6 months after public launch) is not automated yet: the purge job is in the CLAUDE.md backlog.
-- `?ref` / `?utm_*` are read only on the landing URL. They are not carried across pages, and `/register` doesn't record them.
 - The opt-out link is shown only on the device and submission that created the entry. Otherwise it comes in Miguel's emails, or via the contact in `/privacidad` (which needs `NEXT_PUBLIC_SUPPORT_EMAIL`, see CLAUDE.md → Todo Miguel).
 
 ## Related specs

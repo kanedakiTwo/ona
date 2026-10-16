@@ -28,6 +28,7 @@ import {
 import { apiPublic } from "@/lib/api"
 import ReferralShare from "./ReferralShare"
 import { SocialFollow } from "./SocialFollow"
+import { rememberSignupAttribution } from "@/lib/signupAttribution"
 
 /** Anchor every public CTA points to ("/#lista-de-espera"). */
 export const WAITLIST_ANCHOR = "lista-de-espera"
@@ -46,6 +47,8 @@ export default function WaitlistSection() {
 
   useEffect(() => {
     setAttribution(readWaitlistAttribution(new URLSearchParams(window.location.search)))
+    // The same `?invita` / `?ref` / `utm_*` go with a sign-up later (PRO-162).
+    rememberSignupAttribution()
   }, [])
 
   // The submit button sits at the bottom of a long form: when the success

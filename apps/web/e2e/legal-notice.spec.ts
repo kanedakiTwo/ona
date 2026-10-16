@@ -35,6 +35,8 @@ test('footer → /aviso-legal shows the holder; /privacidad names the controller
   // (as in CI) no beacon is loaded at all.
   await expect(page.getByTestId('privacy-web-analytics')).toContainText('Cloudflare Web Analytics')
   await expect(page.getByTestId('privacy-web-analytics')).toContainText('sin cookies')
+  // PRO-148: the web chat with Mimo is kept 90 days.
+  await expect(page.getByTestId('privacy-web-chat')).toContainText('90 días')
   await expect(page.locator('script[src*="cloudflareinsights"]')).toHaveCount(0)
 })
 

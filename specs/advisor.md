@@ -159,6 +159,7 @@ The advisor's weekly nutrient/calorie aggregators iterate `slot.dishes` and proc
 ## Constraints
 
 - The conversation lives in the browser tab only: sessionStorage `mimo.chat.v1` keeps the last 40 messages across navigation; nothing is stored in the DB, and a new tab starts empty
+- **Since PRO-148 (2026-10-17) the web chat is also kept server-side for 90 days** (see «Web chat kept 90 days» below): the panel still shows only what sessionStorage holds, but the "nothing is stored in the DB" above no longer applies to what the server keeps
 - The client sends the last 20 messages as history with each request
 - One turn at a time: while Mimo is thinking, a new message is ignored
 - All assistant responses are in Spanish by design
@@ -168,6 +169,15 @@ The advisor's weekly nutrient/calorie aggregators iterate `slot.dishes` and proc
 - The advisor has read-write access to the user's data via skills (it can generate menus, swap meals, create recipes, etc.) — destructive intents are confirmed in copy (see Decisiveness)
 - The health rule (PRO-62) is a prompt instruction: the model can still slip. The CI pins the rule, the grader and the engine net, not the model's answers; `scripts/evalHealthAnswers.ts` checks those against the live model and has to be run by hand. The engine only appends the §6 sentence and flags `health_talk`: it doesn't remove body-effect talk from a reply
 - The legacy `/advisor/:userId/summary` and `/advisor/:userId/ask` routes remain in the API; no page calls them since `/advisor` became a redirect
+
+## Web chat kept 90 days (PRO-148, D-064)
+
+- Every web turn of `POST /assistant/:userId/chat` (modes `text`, `voice`, `onboarding`) leaves **two rows** in `chat_messages`: the user's own words (without the hidden «Pantalla actual» note; `meta: { mode, path }`) and Mimo's reply with what it did (`meta: { mode, tools, corrections, toolTrace, ms }`, the same trace `whatsapp_messages.meta` keeps). Each row carries the user, their household (`primary_household_id` at that moment) and `channel = 'web'`.
+- The route writes them after the model answers (`recordWebChatTurn`, `services/chatMessages.ts`); a failed write is logged and the user still gets the reply. Requests rejected before the model (403, 400, 429 budget) store nothing. The engine is untouched: the trace comes from the engine's response.
+- Purpose: the household profile («ficha viva», D-064) learns from the web chat as it already does from WhatsApp. Nothing reads the rows back into the chat: the panel keeps using sessionStorage, and a new tab still starts empty.
+- Retention: the scheduler tick deletes rows older than **90 days** once a day (`purgeOldChatMessagesIfDue`, `CHAT_RETENTION_DAYS`). Deleting the account deletes them (FK cascade on `user_id`); if a household is deleted while its member stays, the rows stay with `household_id = NULL`.
+- Tests: `apps/api/src/tests/chatMessages.test.ts` (rows + route, engine faked) and `chatMessages.smoke.ts` (purge 91 vs 89 days, account deletion, real Postgres).
+- Source: [apps/api/src/services/chatMessages.ts](../apps/api/src/services/chatMessages.ts), table `chat_messages` in [schema.ts](../apps/api/src/db/schema.ts) (migration `0055_chat_messages`), purge call in [notificationScheduler.ts](../apps/api/src/services/notificationScheduler.ts).
 
 ## Related specs
 

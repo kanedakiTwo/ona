@@ -46,6 +46,7 @@ Los planes, precios y condiciones vigentes van en el bloque «Planes y precios»
 
 - No vendemos tus datos ni los usamos para publicidad. Mimoia no usa cookies de publicidad ni de analítica.
 - Tus alergias, intolerancias y otros datos de salud solo se guardan si das tu permiso, y solo desde la web o la app; por WhatsApp no se guardan.
+- Lo que hablas con Mimo en la web se guarda 90 días, para conocer mejor los gustos y costumbres de tu hogar, y después se borra solo. Si borras la cuenta, se borra al momento.
 - Puedes borrar tu cuenta en Perfil → Borrar mi cuenta. Mimo no puede borrarla por chat.
 - Más detalle en mimoia.com/privacidad, mimoia.com/terminos y mimoia.com/aviso-legal.
 

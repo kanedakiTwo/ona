@@ -880,6 +880,43 @@ export const whatsappMessages = pgTable('whatsapp_messages', {
 ])
 
 /**
+ * Mimo's web chat (PRO-148, D-064): every web turn is kept server-side for
+ * 90 days so the household profile can learn from it, like WhatsApp already
+ * does with `whatsapp_messages`. Purged by the scheduler tick
+ * (`purgeOldChatMessagesIfDue`); deleting the account deletes the rows
+ * (cascade). The companion panel still shows the conversation from
+ * `sessionStorage`: nothing reads this table back into the chat.
+ */
+export const chatMessages = pgTable('chat_messages', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** The user's household at the time of the turn (null if none). */
+  householdId: uuid('household_id').references(() => households.id, { onDelete: 'set null' }),
+  /** 'web' for now (WhatsApp keeps its own table). */
+  channel: text('channel').notNull().default('web'),
+  /** 'user' | 'assistant' */
+  role: text('role').notNull(),
+  /** What the user typed or said (without the page note), or Mimo's reply. */
+  body: text('body').notNull(),
+  /**
+   * Assistant rows: what Mimo did this turn — `{ mode, tools, corrections,
+   * toolTrace, ms }` — as in `whatsapp_messages.meta`. User rows: `{ mode, path }`.
+   */
+  meta: jsonb('meta').$type<{
+    mode?: string
+    path?: string | null
+    tools?: string[]
+    corrections?: string[]
+    toolTrace?: { name: string; input: string; summary: string; error?: boolean }[]
+    ms?: number
+  }>(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_chat_messages_user_created').on(t.userId, t.createdAt),
+  index('idx_chat_messages_created').on(t.createdAt),
+])
+
+/**
  * Daily review of WhatsApp conversations by an LLM "reviewer agent"
  * (services/whatsapp/reviewer.ts): what went wrong and what to fix.
  * One row per Madrid day reviewed.

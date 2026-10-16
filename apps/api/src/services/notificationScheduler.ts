@@ -47,6 +47,7 @@ import { deliverAlertOverWhatsApp, runProactiveTick } from './whatsapp/outbound.
 import { runDailyReviewIfDue } from './whatsapp/reviewer.js'
 import { recordPendingReferralRewardsIfDue } from './referralRewards.js'
 import { purgeOldUsageEventsIfDue } from './usageEvents.js'
+import { CHAT_RETENTION_DAYS, purgeOldChatMessagesIfDue } from './chatMessages.js'
 import { sendWaitlistInviteRemindersIfDue } from './waitlistInvites.js'
 import { combineDelivery, type ChannelOutcome } from './whatsapp/proactive.js'
 
@@ -514,6 +515,14 @@ async function tickOnce(): Promise<true> {
     if (purged) console.log(`[usage] purged ${purged} events older than 180 days`)
   } catch (err) {
     console.error('[notificationScheduler] usage events purge failed:', err)
+  }
+
+  // Web chat retention (PRO-148): messages older than 90 days (once a day).
+  try {
+    const purged = await purgeOldChatMessagesIfDue(now)
+    if (purged) console.log(`[chat] purged ${purged} web chat messages older than ${CHAT_RETENTION_DAYS} days`)
+  } catch (err) {
+    console.error('[notificationScheduler] web chat purge failed:', err)
   }
 
   // Referrals (PRO-165): a pending reward per invited household that reached

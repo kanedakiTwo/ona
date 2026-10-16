@@ -204,8 +204,16 @@ export {
   buildClientErrorReport,
   clientErrorDedupeKey,
   isIgnorableClientError,
+  API_SLOW_MS,
+  MAX_API_PROBLEM_REPORTS_PER_SESSION,
+  apiPathPattern,
+  buildApiProblemMessage,
+  shouldReportApiStatus,
+  CHUNK_RELOAD_WINDOW_MS,
+  isChunkLoadError,
+  shouldReloadForChunkError,
 } from './types/clientErrors.js'
-export type { ClientErrorReport, ClientErrorInput } from './types/clientErrors.js'
+export type { ClientErrorReport, ClientErrorInput, ApiProblem } from './types/clientErrors.js'
 
 // Founder pricing signal on the waitlist (PRO-26)
 export {

@@ -8,10 +8,12 @@
 
 import { useEffect } from "react"
 import Link from "next/link"
-import { reportError } from "@/lib/errorReporter"
+import { handleChunkLoadError, reportError } from "@/lib/errorReporter"
 
 export default function RouteError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
+    // A chunk from an older deploy (navigation in a stale tab): reload once.
+    if (handleChunkLoadError(error)) return
     reportError(error)
   }, [error])
 

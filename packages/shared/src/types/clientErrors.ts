@@ -106,3 +106,80 @@ export function isIgnorableClientError(e: { name?: string; message?: string; sta
   if (/^Script error\.?$/.test(message.trim())) return true
   return /(chrome|moz|safari(-web)?)-extension:\/\//.test(`${message}\n${e.stack ?? ''}`)
 }
+
+// ─── Failed / slow API requests (PRO-143) ────────────────────────────────
+// A request that fails with a 4xx, never answers or takes too long leaves the
+// page loading and, before this, no trace. The web reports it as a
+// `kind = client` error with the page path and the API *pattern* only: never
+// the body, the query string or ids.
+
+/** A request still unanswered after this many ms is reported as slow (and the profile sub-pages offer «Reintentar»). */
+export const API_SLOW_MS = 8_000
+
+/** Request problems reported per browser session (tab), on top of the per-page cap. */
+export const MAX_API_PROBLEM_REPORTS_PER_SESSION = 20
+
+const ROUTE_WORD = /^[a-z][a-z_.-]{0,39}$/
+
+/**
+ * `/user/3f2c…/settings?x=1` → `/user/:id/settings`. Only plain lowercase
+ * route words survive; ids, numbers, dates, tokens, emails and encoded free
+ * text become `:id`. Capped at 200 chars.
+ */
+export function apiPathPattern(path: string): string {
+  const clean = path.split(/[?#]/)[0] ?? ''
+  const pattern = clean
+    .split('/')
+    .map((seg) => (seg === '' || ROUTE_WORD.test(seg) ? seg : ':id'))
+    .join('/')
+  return (pattern || '/').slice(0, 200)
+}
+
+export type ApiProblem = 'status' | 'network' | 'slow'
+
+/** One readable, groupable message: `API GET /memory → HTTP 500`. */
+export function buildApiProblemMessage(input: {
+  method?: string
+  path: string
+  problem: ApiProblem
+  status?: number
+}): string {
+  const head = `API ${(input.method ?? 'GET').toUpperCase()} ${apiPathPattern(input.path)}`
+  if (input.problem === 'status') return `${head} → HTTP ${input.status ?? 0}`
+  if (input.problem === 'network') return `${head}: sin respuesta (red)`
+  return `${head}: más de ${Math.round(API_SLOW_MS / 1000)} s sin respuesta`
+}
+
+/**
+ * Which error statuses are worth a report. Skipped: 401 (the session ended;
+ * the client logs out and goes to /login) and 422 (form validation the user
+ * sees and fixes).
+ */
+export function shouldReportApiStatus(status: number): boolean {
+  return status >= 400 && status !== 401 && status !== 422
+}
+
+// ─── ChunkLoadError (PRO-143) ────────────────────────────────────────────
+// A tab opened before a deploy asks for a JS/CSS chunk the new build no
+// longer serves. The web reports it and reloads the page once.
+
+/** After a chunk reload, another one is not attempted for this long (per tab). */
+export const CHUNK_RELOAD_WINDOW_MS = 5 * 60_000
+
+const CHUNK_MESSAGE =
+  /Loading (CSS )?chunk [^\s]+ failed|Failed to load chunk|Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module/i
+
+export function isChunkLoadError(error: unknown): boolean {
+  if (!error) return false
+  if (typeof error === 'string') return CHUNK_MESSAGE.test(error)
+  if (typeof error !== 'object') return false
+  const e = error as { name?: unknown; message?: unknown }
+  if (e.name === 'ChunkLoadError') return true
+  return typeof e.message === 'string' && CHUNK_MESSAGE.test(e.message)
+}
+
+/** Reload only if this tab hasn't reloaded for a chunk error in the last `CHUNK_RELOAD_WINDOW_MS`. */
+export function shouldReloadForChunkError(lastReloadAt: number | null, now: number): boolean {
+  if (lastReloadAt == null || !Number.isFinite(lastReloadAt)) return true
+  return now - lastReloadAt > CHUNK_RELOAD_WINDOW_MS
+}

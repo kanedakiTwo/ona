@@ -12,7 +12,7 @@ import { usePathname } from "next/navigation"
 import { recordVisit } from "@/lib/pwa/installPrompt"
 import { reportInstalledOpen } from "@/lib/pwa/installedOpen"
 import { scheduleMealReminders } from "@/lib/pwa/notifications"
-import { installErrorReporter } from "@/lib/errorReporter"
+import { installChunkReload, installErrorReporter } from "@/lib/errorReporter"
 import { CF_BEACON_SRC, cfBeaconAttr } from "@/lib/cfBeacon"
 import "./globals.css"
 
@@ -75,6 +75,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     // In-house error tracker (specs/errors.md): window errors + unhandled rejections.
     installErrorReporter()
+    // PRO-143: a tab older than the last deploy reloads once on a ChunkLoadError.
+    installChunkReload()
     recordVisit()
     // PRO-83: count installed-app opens (aggregate only, once a day).
     reportInstalledOpen()

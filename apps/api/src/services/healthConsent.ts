@@ -18,7 +18,7 @@ import {
   type HealthConsentState,
 } from '@ona/shared'
 import { db } from '../db/connection.js'
-import { userMemories, users, userSettings } from '../db/schema.js'
+import { profileChanges, profileFacts, userMemories, users, userSettings } from '../db/schema.js'
 import { env } from '../config/env.js'
 
 /**
@@ -115,6 +115,12 @@ export async function withdrawHealthConsent(userId: string): Promise<void> {
     await tx
       .delete(userMemories)
       .where(and(eq(userMemories.userId, userId), inArray(userMemories.key, [...HEALTH_MEMORY_KEYS])))
+    // The ficha's copy too (PRO-150): the person's health facts and their history.
+    const healthFacts = and(eq(profileFacts.subjectUserId, userId), inArray(profileFacts.type, [...HEALTH_MEMORY_KEYS]))
+    await tx
+      .delete(profileChanges)
+      .where(inArray(profileChanges.factId, tx.select({ id: profileFacts.id }).from(profileFacts).where(healthFacts)))
+    await tx.delete(profileFacts).where(healthFacts)
     const [settings] = await tx
       .select({ template: userSettings.template })
       .from(userSettings)

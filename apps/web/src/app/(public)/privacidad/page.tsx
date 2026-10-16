@@ -30,7 +30,7 @@ export default function PrivacidadPage() {
         <h1 className="font-display text-4xl text-[#1A1612] md:text-5xl">Política de privacidad</h1>
 
         <div className="mt-8 space-y-5 text-[15px] leading-relaxed text-[#4A4239]">
-          <p className="text-sm text-[#7A7066]">Última actualización: 7 de octubre de 2026</p>
+          <p className="text-sm text-[#7A7066]">Última actualización: 17 de octubre de 2026</p>
 
           <H2>1. Quién trata tus datos</H2>
           <p data-testid="privacy-controller">
@@ -81,7 +81,7 @@ export default function PrivacidadPage() {
             <li>Cobrar tu suscripción, si tienes una, y decidir los precios con lo que opina la beta.</li>
           </ul>
           <p>
-            No vendemos tus datos ni los usamos para publicidad. Mimoia es un asistente con inteligencia
+            No vendemos tus datos ni los usamos para publicidad de terceros. Mimoia es un asistente con inteligencia
             artificial: puede equivocarse y no sustituye a un profesional sanitario.
           </p>
 
@@ -90,7 +90,8 @@ export default function PrivacidadPage() {
             La ejecución del servicio que pides al registrarte y, para los datos de salud, tu consentimiento
             explícito (art. 9.2.a RGPD), que puedes retirar en cualquier momento borrando esos datos o tu cuenta.
             Los avisos proactivos por WhatsApp solo se envían si los activas, y puedes darte de baja escribiendo BAJA.
-            El menú de los viernes por email es un consentimiento aparte (art. 21 de la LSSI): lo quitas en tu
+            El menú de los viernes por email es un consentimiento aparte (art. 6.1.a RGPD y art. 21 de la LSSI): lo
+            quitas en tu
             perfil o con el enlace de cada email.
           </p>
 
@@ -104,7 +105,7 @@ export default function PrivacidadPage() {
             <li><strong>Railway</strong>: alojamiento de la aplicación y de la base de datos.</li>
             <li><strong>AiKit</strong>: generación de imágenes de recetas cuando lo pides (solo recibe el nombre e ingredientes de la receta).</li>
             <li><strong>Cloudflare</strong>: estadísticas agregadas de visitas a la web, sin cookies (ver el punto 8).</li>
-            <li><strong>Resend</strong>: el envío de los emails de Mimoia, como la invitación de la lista de espera (recibe tu email, tu nombre y el contenido del mensaje; envía desde la Unión Europea).</li>
+            <li><strong>Resend</strong> (empresa de EE. UU.): el envío de los emails de Mimoia, como la invitación de la lista de espera y el menú de los viernes. Recibe tu email, tu nombre y el contenido del mensaje. Los correos salen desde servidores de la Unión Europea, pero Resend puede tratar los datos en Estados Unidos.</li>
             <li><strong>Stripe (a través de Link)</strong>: el cobro de las suscripciones. Recibe tu email y, cuando pagas, los datos de pago que escribes directamente en su página; Link actúa como vendedor registrado y emite los recibos. Nosotros guardamos solo el plan, su estado, sus fechas y las referencias de Stripe, nunca tu tarjeta.</li>
           </ul>
           <p>
@@ -172,8 +173,8 @@ export default function PrivacidadPage() {
             cuántas personas se apuntan gracias a ti (en tu página solo se ve ese número, nunca quiénes son).
           </p>
           <p>
-            <strong>El menú de los viernes:</strong> si además marcas la casilla «Quiero recibir cada viernes el
-            menú de la semana por email», usamos tu email también para mandarte ese correo. Es opcional, va aparte
+            <strong>El menú de los viernes:</strong> si además marcas la casilla «Quiero recibir cada viernes por
+            email una receta de la semana y novedades de Mimoia», usamos tu email también para mandarte ese correo. Es opcional, va aparte
             de la lista y puedes retirarlo en cualquier momento con un clic.
           </p>
           <p>
@@ -199,7 +200,7 @@ export default function PrivacidadPage() {
           <p>
             Los datos de la lista se guardan en Railway (nuestro alojamiento). Los emails que te mandamos (la
             invitación y, si lo pediste, el menú de los viernes) salen a través de Resend, que recibe tu email, tu
-            nombre y el mensaje. No se comparten con nadie más ni se usan para publicidad.
+            nombre y el mensaje. No se comparten con nadie más ni se usan para publicidad de terceros.
           </p>
         </div>
       </div>

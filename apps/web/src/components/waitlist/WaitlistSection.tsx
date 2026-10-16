@@ -11,6 +11,7 @@ import {
   WAITLIST_CURRENT_METHOD_LABELS,
   WAITLIST_HOUSEHOLD_SIZES,
   WAITLIST_HOUSEHOLD_SIZE_LABELS,
+  NEWSLETTER_OPT_IN_LABEL,
   WAITLIST_PLANNER_ROLES,
   WAITLIST_PLANNER_ROLE_LABELS,
   WAITLIST_PLATFORMS,
@@ -224,7 +225,7 @@ export default function WaitlistSection() {
                     id="waitlist-newsletter"
                     checked={form.newsletterOptIn}
                     onChange={(v) => set("newsletterOptIn", v)}
-                    label="Quiero recibir cada viernes el menú de la semana por email"
+                    label={NEWSLETTER_OPT_IN_LABEL}
                     hint="Te lo recomendamos: te va a sorprender. Es opcional y aparte de la lista; te das de baja con un clic."
                   />
                   <CheckRow

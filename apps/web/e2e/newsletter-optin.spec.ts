@@ -1,6 +1,6 @@
 /**
  * PRO-95: the Friday-menu box for beta households. Registering at 390×844
- * with «Quiero recibir cada viernes el menú de la semana por email» ticked
+ * with «Quiero recibir cada viernes por email una receta de la semana y novedades de Mimoia» ticked (PRO-132)
  * makes the account a newsletter recipient (an admin dry run says so); the
  * profile switch turns it off again.
  */
@@ -49,7 +49,7 @@ test('register with the newsletter box → recipient; the profile switch turns i
   await useE2ECampaign(page)
   const form = page.locator('form')
   const submit = form.getByRole('button', { name: /^crear cuenta/i })
-  const box = form.getByRole('checkbox', { name: /quiero recibir cada viernes el menú de la semana por email/i })
+  const box = form.getByRole('checkbox', { name: /quiero recibir cada viernes por email una receta de la semana y novedades de mimoia/i })
   await expect(box).not.toBeChecked()
   await expect(form.getByText(/te lo recomendamos: te va a sorprender/i)).toBeVisible()
 
@@ -65,6 +65,9 @@ test('register with the newsletter box → recipient; the profile switch turns i
 
   await completeOnboarding(page)
   await page.goto('/profile')
+  await expect(page.getByTestId('profile-newsletter')).toContainText(
+    'Quiero recibir cada viernes por email una receta de la semana y novedades de Mimoia',
+  )
   const toggle = page.getByTestId('profile-newsletter').getByRole('button')
   await expect(toggle).toHaveAttribute('aria-pressed', 'true', { timeout: 15_000 })
   await toggle.scrollIntoViewIfNeeded()

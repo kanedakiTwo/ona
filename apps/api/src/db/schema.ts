@@ -270,9 +270,45 @@ export const recipes = pgTable('recipes', {
     .notNull()
     .default('explicit'),
 
+  /**
+   * PRO-154 (specs/catalog-import.md): a catalogue recipe brought in by the
+   * batch import starts as 'draft' — nobody sees it and the menu never picks
+   * it — until the batch is published. Everything else is 'published'.
+   */
+  status: text('status').notNull().default('published'),
+  /**
+   * Where a batch-imported catalogue recipe comes from (book and page, never
+   * its text), whose source it is (`miguel` | `cocina`), the batch, and the
+   * review state: `{ origin, book?, page?, file?, batch, auditIssues[],
+   * allergenDoubt, sampled?, reviewedAt? }`. Null for every other recipe.
+   */
+  catalogSource: jsonb('catalog_source').$type<CatalogSourceInfo>(),
+  /** Batch id of the catalogue import (PRO-154); null otherwise. */
+  importBatch: text('import_batch'),
+
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
-})
+}, (t) => [
+  index('idx_recipes_import_batch').on(t.importBatch),
+  check('recipes_status_check', sql.raw("status IN ('draft','published')")),
+])
+
+/** `recipes.catalog_source` (PRO-154). */
+export interface CatalogSourceInfo {
+  origin: 'miguel' | 'cocina'
+  book?: string | null
+  page?: string | null
+  file?: string | null
+  batch: string
+  auditIssues: string[]
+  allergenDoubt: boolean
+  /** Picked for Miguel's one-in-ten review (Cocina batches). */
+  sampled?: boolean
+  /** Miguel's verdict on a sampled recipe (true OK / false not OK). */
+  reviewOk?: boolean
+  /** When Miguel gave it. */
+  reviewedAt?: string | null
+}
 
 // ─── 5. recipe_ingredients (M:N join) ───────────────────────
 // CHECK constraint on `unit` enforces the Unit enum from @ona/shared.
@@ -1280,4 +1316,43 @@ export const userFeedback = pgTable('user_feedback', {
 }, (t) => [
   index('idx_user_feedback_created').on(t.createdAt),
   check('user_feedback_channel_check', sql.raw("channel IN ('app','chat','whatsapp')")),
+])
+
+// ─── Catalogue wishes (PRO-154, specs/catalog-import.md) ────
+// Dishes someone wants and the catalogue doesn't have: favourites from the
+// sign-up with no similar recipe, a menu's «no está en el catálogo» (PRO-155),
+// requests to Mimo that end as a note. One row per dish (normalised key);
+// one vote per household, so the count is «cuántos hogares lo piden». No
+// personal data leaves through the read: dish, sources and household count.
+export const catalogWishes = pgTable('catalog_wishes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  /** The dish as first written (trimmed), e.g. «Croquetas de cocido». */
+  dish: text('dish').notNull(),
+  /** Normalised key (accents, plurals, stopwords out) — one row per dish. */
+  dishKey: text('dish_key').notNull(),
+  /** 'abierto' (we don't have it) | 'cubierto' (a recipe now covers it) | 'descartado'. */
+  status: text('status').notNull().default('abierto'),
+  /** The catalogue recipe that covered it, once there is one. */
+  recipeId: uuid('recipe_id').references(() => recipes.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_catalog_wishes_key').on(t.dishKey),
+  check('catalog_wishes_status_check', sql.raw("status IN ('abierto','cubierto','descartado')")),
+])
+
+export const catalogWishVotes = pgTable('catalog_wish_votes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  wishId: uuid('wish_id').notNull().references(() => catalogWishes.id, { onDelete: 'cascade' }),
+  /** Household id, or the user id when the user has no household — one vote each. */
+  voterKey: text('voter_key').notNull(),
+  householdId: uuid('household_id').references(() => households.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  /** 'alta' | 'me_encanta' | 'mimo' | 'evaluador'. */
+  source: text('source').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_catalog_wish_votes_voter').on(t.wishId, t.voterKey, t.source),
+  index('idx_catalog_wish_votes_wish').on(t.wishId),
+  check('catalog_wish_votes_source_check', sql.raw("source IN ('alta','me_encanta','mimo','evaluador')")),
 ])

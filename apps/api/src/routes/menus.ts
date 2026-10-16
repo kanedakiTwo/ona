@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { visibleAuthorIds, visibleRecipeWhere } from '../services/recipeVisibility.js'
 import { loadMatchableRecipes } from '../services/matchableRecipes.js'
+import { requestCatalogPhotos } from '../services/catalogImageOnDemand.js'
 import { mergeRestrictions } from '../services/dietaryRestrictions.js'
 import { keepLockedSlots, loadPreviousWeek, menuHasDishes } from '../services/menuWeek.js'
 import { eq, and, desc, inArray } from 'drizzle-orm'
@@ -71,6 +72,8 @@ async function hydrateMenuImages<T extends { days: unknown }>(menu: T): Promise<
   const rows = await db
     .select({
       id: recipes.id,
+      authorId: recipes.authorId,
+      status: recipes.status,
       imageUrl: recipes.imageUrl,
       // Hydrating prep + total time so the week-list view can show a time
       // chip on every row without an extra per-recipe fetch. Pulled from
@@ -84,6 +87,8 @@ async function hydrateMenuImages<T extends { days: unknown }>(menu: T): Promise<
     })
     .from(recipes)
     .where(inArray(recipes.id, [...ids]))
+  // PRO-154: a catalogue recipe gets its photo the first time it's in a menu.
+  requestCatalogPhotos(rows)
   const recipeById = new Map(
     rows.map((r) => [
       r.id,

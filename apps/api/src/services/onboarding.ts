@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { db as defaultDb } from '../db/connection.js'
 import { users } from '../db/schema.js'
 import { grantHealthConsent, hasHealthConsent } from './healthConsent.js'
+import { recordWishesFromFavoriteDishes } from './catalogWishes.js'
 
 /**
  * Save the first-steps answers and mark the user onboarded. Shared by the web
@@ -56,5 +57,9 @@ export async function saveOnboarding(userId: string, input: OnboardingInput, dat
     set.restrictions = healthConsent === true || (await hasHealthConsent(userId)) ? input.restrictions : []
   }
   const [updated] = await database.update(users).set(set).where(eq(users.id, userId)).returning(onboardedUserColumns)
+  // PRO-154: favourites the catalogue doesn't have become «deseos del
+  // catálogo» (web and WhatsApp sign-up both land here). Best effort, real
+  // database only (unit tests pass their own `database`).
+  if (updated && database === defaultDb) await recordWishesFromFavoriteDishes(userId, favoriteDishes)
   return updated ?? null
 }

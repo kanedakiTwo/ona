@@ -315,3 +315,11 @@ Editorial design system, brand Mimoia everywhere users see it (`BRAND_NAME`, ren
 **Source**: `apps/web/src/app/globals.css`, `apps/web/src/app/layout.tsx`, `apps/web/src/components/shared/`, `apps/web/src/components/mimo/`
 
 ---
+
+---
+
+## [Catalogue import & «deseos del catálogo»](./catalog-import.md)
+
+Catalogue to 1.000 recipes (PRO-154, D-065): batch import `scripts/catalogImport.ts` (`import | status | sample | review | publish`, `catalog:import`) from page photos, PDF pages (pdftoppm) or Cocina JSON; extraction, duplicates (`findDuplicate`), quantities for 4, steps rewritten in the house's words (never the book's text, 7-word phrase check `copiedPhrases`), labels (meal, season, dish type, protein, technique, cuisine, active/total time, difficulty, allergen doubt), new ingredients auto-created, audit + recipeLint, nutrition, allergens; recipes saved as `draft` (`recipes.status`, `catalog_source` book + page, `import_batch`, migration 0058) hidden from `GET /recipes`, the menu and Mimo (admins open them by link); publishing rule: Miguel's sources publish when the audit passes, Cocina's after Miguel reviews one in ten (`pickReviewSample`, + allergen doubts, `planBatchPublish`); photos on demand on first menu / first view (`catalogImageOnDemand`); «deseos del catálogo» (`catalog_wishes`, `catalog_wish_votes`, households count, sign-up favourites with no similar recipe, `recordCatalogWish`, `GET /admin/catalog-wishes` with metrics token, Admin → Catálogo tab).
+
+**Source**: `apps/api/scripts/catalogImport.ts`, `apps/api/src/services/catalogImport.ts`, `apps/api/src/services/catalogRewriter.ts`, `apps/api/src/services/catalogImportDb.ts`, `apps/api/src/services/catalogWishes.ts`, `apps/api/src/services/catalogImageOnDemand.ts`, `apps/api/src/routes/catalogWishes.ts`, `apps/web/src/app/admin/sections/CatalogWishesSection.tsx`

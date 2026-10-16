@@ -386,6 +386,13 @@
       "when": 1792146402098,
       "tag": "0054_referral_rewards",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1792192119033,
+      "tag": "0058_catalog_drafts_wishes",
+      "breakpoints": true
     }
   ]
 }

@@ -406,6 +406,32 @@ describe('lintRecipe — errors', () => {
     expect(result.errors.some(e => e.code === 'QUANTITY_OUT_OF_RANGE')).toBe(true)
   })
 
+  it('QUANTITY_OUT_OF_RANGE checks frying oil by what is absorbed, not by what goes in the pan', () => {
+    // 500 ml «para freír» for 2 servings = 250 ml in the pan, ~37 ml eaten per serving → over 30.
+    // 300 ml for 2 = 150 ml in the pan, ~22 ml eaten → fine. 60 ml for 2 → ~4.5 ml, under the
+    // usual 5 ml minimum, which doesn't apply to frying.
+    const withOil = (quantity: number, note?: string) =>
+      makeRecipe({
+        ingredients: [
+          { id: 'row-1', ingredientId: 'cat-pollo', quantity: 300, unit: 'g' },
+          { id: 'row-2', ingredientId: 'cat-arroz', quantity: 160, unit: 'g' },
+          { id: 'row-3', ingredientId: 'cat-aceite', quantity, unit: 'ml', note },
+        ],
+        steps: [
+          { index: 0, text: 'Fríe el pollo en el aceite de oliva.', durationMin: 10, ingredientRefs: ['row-1', 'row-3'] },
+          { index: 1, text: 'Añade el arroz.', durationMin: 15, ingredientRefs: ['row-2'] },
+        ],
+      })
+    const outOfRange = (r: RecipeInput) => lintRecipe(r, opts).errors.filter(e => e.code === 'QUANTITY_OUT_OF_RANGE')
+    expect(outOfRange(withOil(300, 'para freír; se recupera casi todo'))).toEqual([])
+    expect(outOfRange(withOil(60, 'para freír'))).toEqual([])
+    const tooMuch = outOfRange(withOil(500, 'para freír'))
+    expect(tooMuch).toHaveLength(1)
+    expect(tooMuch[0]!.message).toContain('lo que absorbe la fritura')
+    // Without the note the whole 150 ml per serving counts.
+    expect(outOfRange(withOil(300))).toHaveLength(1)
+  })
+
   it('force: true suppresses QUANTITY_OUT_OF_RANGE but NOT other errors', () => {
     const recipe = makeRecipe({
       name: '', // still triggers MISSING_NAME

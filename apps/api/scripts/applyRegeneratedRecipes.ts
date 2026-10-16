@@ -765,6 +765,7 @@ async function main(): Promise<void> {
         ingredientId: ing.ingredientId,
         quantity: ing.quantity,
         unit: ing.unit,
+        note: ing.note,
       })) as any,
       catalog: nutritionCatalog,
     })

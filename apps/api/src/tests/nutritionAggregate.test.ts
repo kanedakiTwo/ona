@@ -470,3 +470,47 @@ describe('aggregateNutrition — performance', () => {
     expect(elapsed).toBeLessThan(5)
   })
 })
+
+// ─── Frying / confit fat (cookingMedium) ────────────────────────
+
+describe('aggregateNutrition — frying and confit fat', () => {
+  const aceite = makeEntry({ id: 'ing-aceite', name: 'aceite de girasol', calories: 884, fat: 100, density: 0.92 })
+  const pimientos = makeEntry({ id: 'ing-pimiento', name: 'pimientos de padrón', calories: 20, carbs: 3 })
+  const catalog = catalogOf([aceite, pimientos])
+  // 500 ml × 0.92 g/ml = 460 g of oil → 4066.4 kcal if all of it were eaten.
+  const kcalOf = (note?: string) =>
+    aggregateNutrition({
+      servings: 1,
+      ingredients: [makeIngredient({ ingredientId: 'ing-aceite', quantity: 500, unit: 'ml', note })],
+      catalog,
+    }).perServing.kcal
+
+  it('counts only the absorbed 15 % of oil noted «para freír»', () => {
+    expect(kcalOf('para freír; se recupera casi todo')).toBe(Math.round(4066.4 * 0.15))
+  })
+
+  it('is accent- and case-insensitive and accepts «para freírlos» / «para la fritura»', () => {
+    const expected = Math.round(4066.4 * 0.15)
+    expect(kcalOf('Para freir')).toBe(expected)
+    expect(kcalOf('para freírlos')).toBe(expected)
+    expect(kcalOf('para la fritura')).toBe(expected)
+  })
+
+  it('counts 25 % of fat noted «para confitar»', () => {
+    expect(kcalOf('para confitar; se recupera casi todo')).toBe(Math.round(4066.4 * 0.25))
+  })
+
+  it('counts all of it without the note, or when the note only mentions frying later', () => {
+    expect(kcalOf()).toBe(4066)
+    expect(kcalOf('40 ml para el pisto y el resto para freír')).toBe(4066)
+  })
+
+  it('never reduces a non-fat ingredient, whatever its note says', () => {
+    const { perServing } = aggregateNutrition({
+      servings: 1,
+      ingredients: [makeIngredient({ ingredientId: 'ing-pimiento', quantity: 200, unit: 'g', note: 'para freír' })],
+      catalog,
+    })
+    expect(perServing.kcal).toBe(40)
+  })
+})

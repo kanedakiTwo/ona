@@ -455,6 +455,7 @@ export async function persistRecipe(
       ingredientId: ing.ingredientId,
       quantity: ing.quantity,
       unit: ing.unit,
+      note: ing.note,
     })) as any,
     catalog: catalog.nutrition,
   })

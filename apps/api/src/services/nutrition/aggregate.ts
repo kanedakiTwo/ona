@@ -19,6 +19,7 @@
  */
 
 import type { NutritionPerServing, RecipeIngredient } from '@ona/shared'
+import { cookingMediumFactor } from './cookingMedium.js'
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -145,6 +146,8 @@ function round1(n: number): number {
  * - Optional ingredients are INCLUDED (worst-case nutrition per spec).
  * - Catalog misses are skipped with reason `unmapped` (no throw).
  * - `pizca` and `al_gusto` contribute 0 g (negligible).
+ * - Frying/confit fat (note «para freír…» / «para confitar…») counts only
+ *   the absorbed share (`cookingMedium.ts`).
  * - kcal is rounded to integer; macros to 1 decimal.
  *
  * @throws if `servings <= 0` or not finite.
@@ -184,8 +187,8 @@ export function aggregateNutrition(input: AggregateInput): AggregateResult {
       continue
     }
 
-    // Per-100g → grams used.
-    const factor = conv.grams / 100
+    // Per-100g → grams eaten (frying/confit fat: only what the food absorbs).
+    const factor = (conv.grams * cookingMediumFactor(ing.note, entry)) / 100
     totalKcal += entry.calories * factor
     totalProtein += entry.protein * factor
     totalCarbs += entry.carbs * factor

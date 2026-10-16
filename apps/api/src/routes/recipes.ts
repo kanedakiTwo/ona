@@ -12,7 +12,7 @@
  *   - The card list filters tags via `publicTagsOf` so reserved values
  *     (meal/season/difficulty/internal) never leak.
  */
-import { Router } from 'express'
+import { Router, type NextFunction, type Response } from 'express'
 import { eq, and, sql, asc, count, arrayContains, inArray, isNull, notInArray } from 'drizzle-orm'
 import multer from 'multer'
 import crypto from 'crypto'
@@ -36,6 +36,13 @@ import {
   AikitGenerationError,
 } from '../services/recipeImageGenerator.js'
 import { loadDish, makeHouseImage, scheduleHouseImage } from '../services/recipeHouseImage.js'
+import {
+  OWN_IMAGE_MAX_BYTES,
+  UnreadableImageError,
+  canChangeRecipeImage,
+  isAcceptedImageType,
+  saveOwnRecipeImage,
+} from '../services/recipeOwnImage.js'
 import { recipeShoppingIssues } from '../services/recipeShoppability.js'
 import {
   authMiddleware,
@@ -802,8 +809,11 @@ router.post(
         message: w.message,
         path: w.path,
       }))
-      // No photo (or a pasted external URL) → house-style photo in the background.
-      scheduleHouseImage(result.recipeId, req.userId!, { isAdmin: req.user?.role === 'admin', currentUrl: body.imageUrl })
+      // No photo (or a pasted external URL) → house-style photo in the background,
+      // unless the author is about to upload their own (`?ownPhoto=1`, PRO-145:
+      // the form sends the file right after this answers).
+      const ownPhoto = req.query.ownPhoto === '1'
+      scheduleHouseImage(result.recipeId, req.userId!, { isAdmin: req.user?.role === 'admin', currentUrl: body.imageUrl, ownPhoto })
       res.status(201).json({
         ...toDetailRecipe(newRow, ings, steps),
         warnings,
@@ -1203,24 +1213,50 @@ router.post(
   },
 )
 
-// POST /recipes/:id/upload-image — manual hero image upload (author or admin).
-//
-// Replaces `recipes.image_url` with a user-supplied photo. Goes through the
-// same sharp pipeline as the AI generator (resize to 1200 px wide JPEG with
-// mozjpeg) so the storage shape stays uniform. Does NOT touch the AI quota
-// — uploaded images cost nothing.
+// POST /recipes/:id/upload-image — "Subir mi foto": the author's (or an
+// admin's) own photo as the main one (PRO-145, specs/recipe-images.md →
+// "Own photo"). EXIF-rotated, centre-cropped to 4:3, ≤ 1200 px JPEG on the
+// volume. Costs nothing and does NOT touch the monthly AI image quota.
+// 413 over 10 MB, 415 for a format we can't read, 403 for anyone else.
+const ownImageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: OWN_IMAGE_MAX_BYTES },
+  fileFilter: (_req, file, cb) => {
+    if (isAcceptedImageType(file.mimetype)) cb(null, true)
+    else cb(new UnsupportedImageTypeError())
+  },
+})
+
+class UnsupportedImageTypeError extends Error {}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function receiveOwnImage(req: AuthRequest, res: Response, next: NextFunction) {
+  ownImageUpload.single('image')(req, res, (err: unknown) => {
+    if (!err) return next()
+    if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+      res.status(413).json({ error: 'La foto pesa más de 10 MB. Elige otra o redúcela.' })
+      return
+    }
+    if (err instanceof UnsupportedImageTypeError) {
+      res.status(415).json({ error: 'Formato no admitido. Sube una foto JPG, PNG, WebP o HEIC.' })
+      return
+    }
+    next(err)
+  })
+}
+
 router.post(
   '/recipes/:id/upload-image',
   authMiddleware,
-  upload.single('image'),
+  receiveOwnImage,
   async (req: AuthRequest, res) => {
     try {
       const recipeId = String(req.params.id)
-      if (!req.file) {
-        res.status(400).json({ error: 'Falta el archivo (campo "image")' })
+      if (!UUID_RE.test(recipeId)) {
+        res.status(404).json({ error: 'Recipe not found' })
         return
       }
-
       const [recipe] = await db
         .select({ authorId: recipes.authorId })
         .from(recipes)
@@ -1230,21 +1266,22 @@ router.post(
         res.status(404).json({ error: 'Recipe not found' })
         return
       }
-
-      const isAdmin = req.user?.role === 'admin'
-      if (recipe.authorId !== req.userId && !isAdmin) {
-        res.status(403).json({ error: 'Solo el autor o un admin pueden subir una imagen' })
+      if (!canChangeRecipeImage(recipe.authorId, { userId: req.userId!, isAdmin: req.user?.role === 'admin' })) {
+        res.status(403).json({ error: 'Solo el autor o un admin pueden cambiar la foto' })
+        return
+      }
+      if (!req.file) {
+        res.status(400).json({ error: 'Falta el archivo (campo "image")' })
         return
       }
 
-      const { imageUrl } = await writeRecipeImage(req.file.buffer, `${recipeId}.jpg`)
-      await db
-        .update(recipes)
-        .set({ imageUrl, updatedAt: new Date() })
-        .where(eq(recipes.id, recipeId))
-
+      const { imageUrl } = await saveOwnRecipeImage(recipeId, req.file.buffer)
       res.json({ imageUrl })
     } catch (err) {
+      if (err instanceof UnreadableImageError) {
+        res.status(415).json({ error: err.message })
+        return
+      }
       console.error('upload-image error:', err)
       res.status(500).json({ error: 'Internal server error' })
     }

@@ -82,6 +82,7 @@ The assistant can call back-end skills (function calling). Each skill has a name
   - `manage_cookbook`, `regenerate_recipe_image`.
 - **Profile:**
   - `update_profile`: restrictions add/remove, priority, physical data.
+  - `update_profile` and «sin alcohol» (PRO-144): its description names «sin alcohol» as an example and says that what the menu must always avoid goes to the profile restrictions, not to `notes` («cocinamos siempre sin alcohol» → `addRestrictions: ["sin alcohol"]`, which the generator reads; see [Menus → Restrictions](./menus.md)). The `update_memory` description and the system prompt are unchanged. Test: `appSkills.test.ts`.
   - `update_weekly_template`: diners per meal/day, dishes per meal.
   - `invite_to_household`: returns the invite link.
 - **Conventions:**

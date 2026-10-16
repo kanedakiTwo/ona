@@ -7,6 +7,27 @@ import { madridParts, mondayOf } from '../madridTime.js'
 import { mealLinesForDay } from '../menuText.js'
 import { resolveScope, scopeWhere } from '../scopeResolver.js'
 
+const DAY_NAMES_LONG = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo']
+const hhmm = (h: number, m: number) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+
+/**
+ * First line of the user context: the date, without the time. The context
+ * block sits before the conversation in the request, so anything in it that
+ * changes every minute ("son las 14:32", until 2026-10-16) made every message
+ * write the context and the whole history to the prompt cache again instead
+ * of reading them (`cost_events`: ~4 700 tokens written per message).
+ */
+export function todayLine(now: Date): string {
+  const p = madridParts(now)
+  return `Hoy es ${DAY_NAMES_LONG[p.weekday]} ${p.isoDate} (dayIndex ${p.weekday}). La hora va al principio del ultimo mensaje del usuario.`
+}
+
+/** The clock, as the first block of the newest user message (engine.ts → buildTurnMessages). */
+export function clockNote(now: Date): string {
+  const p = madridParts(now)
+  return `(Hora de este mensaje: ${hhmm(p.hour, p.minute)} en Madrid)`
+}
+
 /**
  * Load lightweight user context for the assistant system prompt.
  * Includes: profile, current menu summary, and macro balance.
@@ -24,11 +45,9 @@ export async function loadUserContext(userId: string, db: any): Promise<string> 
   if (!user) return 'Usuario no encontrado.'
 
   // Today in Madrid — the model needs it for "hoy", "mañana", "el jueves".
+  // The clock goes in the newest user message instead (clockNote, engine.ts).
   const now = madridParts(new Date())
-  const dayNamesLong = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo']
-  parts.push(
-    `Hoy es ${dayNamesLong[now.weekday]} ${now.isoDate} (dayIndex ${now.weekday}), son las ${String(now.hour).padStart(2, '0')}:${String(now.minute).padStart(2, '0')} en Madrid.`,
-  )
+  parts.push(todayLine(new Date()))
 
   const profileParts = [`Usuario: ${user.username}`]
   if (user.age) profileParts.push(`${user.age} anos`)

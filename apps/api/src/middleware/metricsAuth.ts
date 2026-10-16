@@ -8,7 +8,8 @@ import { authMiddleware, requireAdmin } from './auth.js'
  * and GET /admin/usage (specs/metrics.md), GET /admin/errors (specs/errors.md),
  * GET /admin/waitlist (specs/waitlist.md), GET /admin/price-survey and GET
  * /admin/feedback (without identity), and GET
- * /admin/assistant-reviews/flags (specs/whatsapp.md). Either an admin JWT, or
+ * /admin/assistant-reviews/flags (specs/whatsapp.md) and GET /admin/catalog-wishes
+ * (specs/catalog-import.md). Either an admin JWT, or
  * the header `x-metrics-token` equal to `METRICS_READ_TOKEN`, so the agents
  * read aggregates without holding an admin session. The token is mounted on
  * those read-only routes only and grants nothing else.

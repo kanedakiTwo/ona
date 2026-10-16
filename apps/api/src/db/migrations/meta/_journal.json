@@ -407,6 +407,13 @@
       "when": 1792146405098,
       "tag": "0057_household_profile",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1792146406098,
+      "tag": "0058_catalog_drafts_wishes",
+      "breakpoints": true
     }
   ]
 }

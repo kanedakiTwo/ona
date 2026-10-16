@@ -83,7 +83,8 @@ import { chosenFromIds, findRecipesWithWhatIHave, loadUserRestrictions, MAX_CHOS
 import { loadMatchableRecipes } from '../services/matchableRecipes.js'
 import { recipeIdsBreakingRestrictions } from '../services/dietaryRestrictions.js'
 import { effectiveAllergens } from '../services/nutrition/allergens.js'
-import { canViewRecipe } from '../services/recipeVisibility.js'
+import { canViewRecipe, isHiddenDraft, PUBLISHED } from '../services/recipeVisibility.js'
+import { requestCatalogPhotos } from '../services/catalogImageOnDemand.js'
 import { z } from 'zod'
 import { requireSpendCapacity } from '../middleware/spendCap.js'
 
@@ -135,6 +136,8 @@ interface RecipeRow {
   id: string
   name: string
   authorId: string | null
+  /** 'draft' | 'published' (PRO-154): catalogue drafts open only for admins. */
+  status?: string | null
   imageUrl: string | null
   servings: number
   /** DB column added in PR 2 migration; absent on pre-migration rows — default 'explicit'. */
@@ -410,6 +413,8 @@ router.get('/recipes', optionalAuthMiddleware, async (req: AuthRequest, res) => 
     const offset = (page - 1) * perPage
 
     const conditions = []
+    // Catalogue drafts (PRO-154) never list, not even for admins.
+    conditions.push(eq(recipes.status, PUBLISHED))
     // Visibility rules:
     //   - Anonymous: system recipes only.
     //   - Authenticated user (incl. admin): system recipes + their own.
@@ -567,6 +572,13 @@ router.get('/recipes/:id', optionalAuthMiddleware, async (req: AuthRequest, res)
       res.status(404).json({ error: 'Recipe not found' })
       return
     }
+    // A catalogue draft (PRO-154) opens only for an admin (the review sample).
+    if (isHiddenDraft(row, req.user?.role === 'admin')) {
+      res.status(404).json({ error: 'Recipe not found' })
+      return
+    }
+    // First time a catalogue recipe without a photo is opened → make it.
+    requestCatalogPhotos([row])
 
     const [ings, steps] = await Promise.all([
       fetchIngredientsForRecipes([id]),
@@ -922,7 +934,7 @@ router.post('/recipes/:id/copy', authMiddleware, async (req: AuthRequest, res) =
       .from(recipes)
       .where(eq(recipes.id, sourceId))
       .limit(1)
-    if (!source) {
+    if (!source || isHiddenDraft(source, req.user?.role === 'admin')) {
       res.status(404).json({ error: 'Recipe not found' })
       return
     }

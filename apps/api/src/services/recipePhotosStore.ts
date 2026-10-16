@@ -17,7 +17,8 @@ import { join } from 'path'
 import sharp from 'sharp'
 import { mkdir, writeFile } from 'fs/promises'
 import { db as defaultDb } from '../db/connection.js'
-import { recipePhotos, users } from '../db/schema.js'
+import { recipePhotos, recipes, users } from '../db/schema.js'
+import { canChangeRecipeImage, readStoredPhoto, saveOwnRecipeImage } from './recipeOwnImage.js'
 import { getPrimaryHouseholdId } from './scopeResolver.js'
 import { env } from '../config/env.js'
 
@@ -165,4 +166,38 @@ export async function deletePhotoForUser(
     console.warn('[recipePhotos] file cleanup failed (continuing):', e)
   }
   return true
+}
+
+export class NotRecipeAuthorError extends Error {
+  constructor() {
+    super('Solo el autor de la receta puede cambiar su foto principal.')
+    this.name = 'NotRecipeAuthorError'
+  }
+}
+
+/**
+ * «Usar como foto principal» (PRO-145): a gallery photo of the caller's
+ * household becomes the recipe's main photo (cropped to 4:3, stored as
+ * `<recipeId>.jpg`). Only the recipe's author or an admin. The gallery
+ * photo itself stays in the gallery.
+ */
+export async function usePhotoAsRecipeImage(
+  who: { userId: string; isAdmin: boolean },
+  recipeId: string,
+  photoId: string,
+  db: Db = defaultDb,
+): Promise<{ imageUrl: string }> {
+  const [recipe] = await db.select({ authorId: recipes.authorId }).from(recipes).where(eq(recipes.id, recipeId)).limit(1)
+  if (!recipe) throw new PhotoNotFoundError()
+  if (!canChangeRecipeImage(recipe.authorId, who)) throw new NotRecipeAuthorError()
+  const householdId = await getPrimaryHouseholdId(who.userId, db)
+  if (!householdId) throw new PhotoNotFoundError()
+  const [photo] = await db
+    .select({ imageUrl: recipePhotos.imageUrl })
+    .from(recipePhotos)
+    .where(and(eq(recipePhotos.id, photoId), eq(recipePhotos.recipeId, recipeId), eq(recipePhotos.householdId, householdId)))
+    .limit(1)
+  if (!photo) throw new PhotoNotFoundError()
+  const bytes = await readStoredPhoto(photo.imageUrl)
+  return saveOwnRecipeImage(recipeId, bytes, db)
 }

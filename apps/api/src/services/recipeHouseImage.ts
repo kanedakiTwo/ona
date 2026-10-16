@@ -139,12 +139,21 @@ export async function applyHouseImage(recipeId: string, opts: { force?: boolean;
 }
 
 /**
+ * Generate on save only when there is no photo of ours and the author isn't
+ * bringing their own (PRO-145: no AI spend when they upload one).
+ */
+export function shouldGenerateHouseImage(opts: { currentUrl?: string | null; ownPhoto?: boolean }): boolean {
+  if (opts.ownPhoto) return false
+  return isReplaceableImage(opts.currentUrl)
+}
+
+/**
  * Fire-and-forget after create/import. No-op without an image provider, under tests, or
  * when the author's AI allowance for the month is spent (admins exempt).
  * Cost lands on the author.
  */
-export function scheduleHouseImage(recipeId: string, authorId: string | null, opts: { isAdmin?: boolean; currentUrl?: string | null } = {}): void {
-  if (!isReplaceableImage(opts.currentUrl)) return
+export function scheduleHouseImage(recipeId: string, authorId: string | null, opts: { isAdmin?: boolean; currentUrl?: string | null; ownPhoto?: boolean } = {}): void {
+  if (!shouldGenerateHouseImage(opts)) return
   if (!imageGenerationConfigured() || process.env.NODE_ENV === 'test' || process.env.VITEST) return
   void runWithCostUser(authorId, async () => {
     try {

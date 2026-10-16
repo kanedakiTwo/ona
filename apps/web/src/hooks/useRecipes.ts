@@ -85,9 +85,15 @@ export function useCreateRecipe() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (recipe: CreateRecipeInput & { force?: boolean }) => {
-      const { force, ...payload } = recipe
-      const url = force ? "/recipes?force=1" : "/recipes"
+    mutationFn: (recipe: CreateRecipeInput & { force?: boolean; ownPhoto?: boolean }) => {
+      const { force, ownPhoto, ...payload } = recipe
+      // `ownPhoto`: the form uploads the user's photo right after — the API
+      // then skips the AI photo (PRO-145).
+      const params = new URLSearchParams()
+      if (force) params.set("force", "1")
+      if (ownPhoto) params.set("ownPhoto", "1")
+      const qs = params.toString()
+      const url = qs ? `/recipes?${qs}` : "/recipes"
       return api.post<CreateRecipeResponse>(url, payload)
     },
     onSuccess: () => {
@@ -269,40 +275,47 @@ export function useRegenerateRecipeImage(recipeId: string | undefined, userId?: 
   })
 }
 
+/** Hero photos bigger than this are rejected by the API (413). */
+export const OWN_IMAGE_MAX_BYTES = 10 * 1024 * 1024
+
 /**
- * Upload a user-supplied hero photo. Available to authors on their own
- * recipes and to admins on any recipe (including the curated Mimoia catalog).
- * Does not touch the AI quota. The server resizes to 1200 px wide JPEG.
+ * «Subir mi foto» (PRO-145): the user's own photo becomes the recipe's main
+ * photo. Authors on their own recipes, admins on any. The server crops it to
+ * 4:3 (≤ 1200 px JPEG) and it never counts against the AI image quota.
  */
+export async function uploadRecipeImage(recipeId: string, file: File): Promise<{ imageUrl: string }> {
+  const form = new FormData()
+  form.append("image", file)
+  // The shared `api` helper json-stringifies the body — bypass it for
+  // multipart and let the browser set the boundary header.
+  const token = typeof window !== "undefined" ? localStorage.getItem("ona_token") : null
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001"}/recipes/${recipeId}/upload-image`,
+    {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      body: form,
+    },
+  )
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`
+    try {
+      const body = (await res.json()) as { error?: string }
+      if (body.error) msg = body.error
+    } catch {
+      // ignore — non-JSON body
+    }
+    throw new Error(msg)
+  }
+  return (await res.json()) as { imageUrl: string }
+}
+
 export function useUploadRecipeImage(recipeId: string | undefined) {
   const queryClient = useQueryClient()
   return useMutation<{ imageUrl: string }, Error, File>({
     mutationFn: async (file: File) => {
       if (!recipeId) throw new Error("Falta el id de la receta")
-      const form = new FormData()
-      form.append("image", file)
-      // The shared `api` helper json-stringifies the body — bypass it for
-      // multipart and let the browser set the boundary header.
-      const token = typeof window !== "undefined" ? localStorage.getItem("ona_token") : null
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001"}/recipes/${recipeId}/upload-image`,
-        {
-          method: "POST",
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-          body: form,
-        },
-      )
-      if (!res.ok) {
-        let msg = `HTTP ${res.status}`
-        try {
-          const body = (await res.json()) as { error?: string }
-          if (body.error) msg = body.error
-        } catch {
-          // ignore — non-JSON body
-        }
-        throw new Error(msg)
-      }
-      return (await res.json()) as { imageUrl: string }
+      return uploadRecipeImage(recipeId, file)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["recipe", recipeId] })

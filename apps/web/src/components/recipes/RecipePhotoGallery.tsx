@@ -9,25 +9,31 @@
  * this is the "salió crujiente esta vez" cook-result wall.
  */
 import { useRef, useState } from "react"
-import { Camera, Trash2, X, ImagePlus } from "lucide-react"
+import { Camera, Check, Trash2, X, ImagePlus, ImageUp } from "lucide-react"
 import {
   useDeleteRecipePhoto,
   useRecipePhotos,
   useUploadRecipePhoto,
+  useUseRecipePhotoAsMain,
+  type RecipePhoto,
 } from "@/hooks/useRecipePhotos"
 
 interface Props {
   recipeId: string
+  /** Recipe author or admin: the lightbox offers «Usar como foto principal» (PRO-145). */
+  canSetMain?: boolean
 }
 
-export function RecipePhotoGallery({ recipeId }: Props) {
+export function RecipePhotoGallery({ recipeId, canSetMain = false }: Props) {
   const { data: photos, isLoading } = useRecipePhotos(recipeId)
   const upload = useUploadRecipePhoto()
   const del = useDeleteRecipePhoto()
   const fileRef = useRef<HTMLInputElement | null>(null)
   const [caption, setCaption] = useState("")
   const [pendingFile, setPendingFile] = useState<File | null>(null)
-  const [viewer, setViewer] = useState<string | null>(null)
+  const [viewer, setViewer] = useState<RecipePhoto | null>(null)
+  const setMain = useUseRecipePhotoAsMain()
+  const [mainId, setMainId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   function handlePickFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -89,7 +95,10 @@ export function RecipePhotoGallery({ recipeId }: Props) {
             <li key={p.id} className="relative aspect-square overflow-hidden rounded-xl bg-[#F2EDE0]">
               <button
                 type="button"
-                onClick={() => setViewer(p.imageUrl)}
+                onClick={() => {
+                  setMain.reset()
+                  setViewer(p)
+                }}
                 className="block h-full w-full"
                 aria-label={p.caption ?? "Ver foto"}
               >
@@ -186,15 +195,43 @@ export function RecipePhotoGallery({ recipeId }: Props) {
       {/* Lightbox */}
       {viewer && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[#1A1612]/90 p-4"
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-[#1A1612]/90 p-4"
           onClick={() => setViewer(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Foto de la galería"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={viewer}
-            alt="Foto"
-            className="max-h-[90vh] max-w-full rounded-2xl object-contain"
+            src={viewer.imageUrl}
+            alt={viewer.caption ?? "Foto"}
+            className="max-h-[75vh] max-w-full rounded-2xl object-contain lg:max-w-[960px]"
           />
+          {canSetMain && (
+            <div className="flex flex-col items-center gap-2" onClick={(e) => e.stopPropagation()}>
+              {mainId === viewer.id && setMain.isSuccess ? (
+                <span className="inline-flex h-11 items-center gap-2 rounded-full bg-[#2D6A4F] px-5 text-[14px] text-[#FAF6EE]">
+                  <Check size={16} aria-hidden /> Ya es la foto principal
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMainId(viewer.id)
+                    setMain.mutate({ recipeId, photoId: viewer.id })
+                  }}
+                  disabled={setMain.isPending}
+                  className="inline-flex h-11 items-center gap-2 rounded-full bg-[#FAF6EE] px-5 text-[14px] font-medium text-[#1A1612] transition-transform active:scale-[0.98] disabled:opacity-60"
+                >
+                  <ImageUp size={16} aria-hidden />
+                  {setMain.isPending ? "Cambiando…" : "Usar como foto principal"}
+                </button>
+              )}
+              {setMain.error && mainId === viewer.id ? (
+                <span className="text-[13px] italic text-[#F2B9A2]">{setMain.error.message}</span>
+              ) : null}
+            </div>
+          )}
           <button
             type="button"
             onClick={() => setViewer(null)}

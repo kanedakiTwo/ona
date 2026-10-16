@@ -35,7 +35,8 @@ function draft(looksLikeScreenshot: boolean) {
 async function importPhoto(page: Page, looksLikeScreenshot: boolean) {
   await page.route('**/recipes/extract-from-image', (route) => route.fulfill({ json: draft(looksLikeScreenshot) }))
   await page.goto('/recipes/new')
-  await page.locator('input[type="file"]').setInputFiles({ name: 'captura.png', mimeType: 'image/png', buffer: PNG })
+  // The import card's input (the «Foto de la receta» card has its own, PRO-145).
+  await page.locator('input[type="file"]:not([data-testid="new-recipe-photo-input"])').setInputFiles({ name: 'captura.png', mimeType: 'image/png', buffer: PNG })
   await page.getByRole('button', { name: /analizar receta/i }).click()
   await expect(page.locator('#recipe-name')).toHaveValue('Pasta cremosa', { timeout: 10_000 })
 }

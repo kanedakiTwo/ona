@@ -15,6 +15,11 @@ const MENU_GET = /\/menu\/[0-9a-f-]{36}\/\d{4}-\d{2}-\d{2}$/
 test('a failing menu GET shows a retry card and never creates a week', async ({ page }) => {
   await registerFreshUser(page)
   await completeOnboarding(page)
+  // Leave the /menu the onboarding landed on before counting: Friday to
+  // Sunday it opens next week (PRO-65) and the current week, still without a
+  // menu, is materialised by that page (a legitimate POST, not this test's).
+  await page.goto('about:blank')
+  await page.waitForTimeout(500)
 
   let generates = 0
   page.on('request', (req) => {

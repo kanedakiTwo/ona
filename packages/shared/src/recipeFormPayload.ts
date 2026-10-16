@@ -39,6 +39,11 @@ export interface IngredientRowState {
    * detail view; the shopping aggregator skips it during scaling.
    */
   optional?: boolean
+  /**
+   * Free-form note on the line («en lomos», «picada», PRO-109). Trimmed;
+   * omitted when empty, which clears it on update.
+   */
+  note?: string
 }
 
 /** All form state needed to build the recipe payload. */
@@ -80,6 +85,8 @@ export function buildRecipePayload(form: RecipeFormState): Record<string, unknow
       if (r.displayQuantity != null) ingredient.displayQuantity = r.displayQuantity
       if (r.displayUnit != null) ingredient.displayUnit = r.displayUnit
       if (r.optional) ingredient.optional = true
+      const note = (r.note ?? '').trim()
+      if (note.length > 0) ingredient.note = note
       return ingredient
     })
 

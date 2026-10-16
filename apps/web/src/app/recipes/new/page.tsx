@@ -63,6 +63,8 @@ interface IngredientRow {
   /** When true, the ingredient renders with an "opcional" badge on the
    *  detail view and the shopping aggregator skips it. */
   optional: boolean
+  /** «en lomos», «picada»… (PRO-109). */
+  note: string
 }
 
 function emptyRow(): IngredientRow {
@@ -73,6 +75,7 @@ function emptyRow(): IngredientRow {
     quantity: "",
     unit: "g",
     optional: false,
+    note: "",
   }
 }
 
@@ -163,6 +166,7 @@ function NewRecipePageInner() {
             quantity: ing.quantity,
             unit: ing.unit || "g",
             optional: false,
+            note: "",
           }))
         : [emptyRow()]
     )
@@ -219,6 +223,12 @@ function NewRecipePageInner() {
   function toggleIngredientOptional(rowId: string) {
     setIngredientRows((prev) =>
       prev.map((r) => (r.rowId === rowId ? { ...r, optional: !r.optional } : r)),
+    )
+  }
+
+  function updateIngredientNote(rowId: string, value: string) {
+    setIngredientRows((prev) =>
+      prev.map((r) => (r.rowId === rowId ? { ...r, note: value } : r)),
     )
   }
 
@@ -622,6 +632,8 @@ function NewRecipePageInner() {
                         onUnit={(v) => updateIngredientUnit(row.rowId, v)}
                         optional={row.optional}
                         onToggleOptional={() => toggleIngredientOptional(row.rowId)}
+                        note={row.note}
+                        onNote={(v) => updateIngredientNote(row.rowId, v)}
                         onRemove={() => removeIngredientRow(row.rowId)}
                         removable={ingredientRows.length > 1}
                         hint={hint}

@@ -223,3 +223,29 @@ describe('buildRecipePayload — «Enlace del original» (PRO-66)', () => {
     expect(createRecipeSchema.safeParse(payload).success).toBe(true)
   })
 })
+
+describe('buildRecipePayload — nota del ingrediente (PRO-109)', () => {
+  it('sends the trimmed note and passes createRecipeSchema', () => {
+    const payload = buildRecipePayload(
+      fullState({
+        ingredientRows: [
+          { ingredientId: UUID_A, ingredientName: 'patata', quantity: 600, unit: 'g', note: '  en lomos ' },
+          { ingredientId: UUID_B, ingredientName: 'huevo', quantity: 6, unit: 'u' },
+        ],
+      }),
+    )
+    const ings = payload.ingredients as Array<Record<string, unknown>>
+    expect(ings[0].note).toBe('en lomos')
+    expect(ings[1]).not.toHaveProperty('note')
+    const parsed = createRecipeSchema.safeParse(payload)
+    expect(parsed.success).toBe(true)
+    if (parsed.success) expect(parsed.data.ingredients[0].note).toBe('en lomos')
+  })
+
+  it('omits a blank note', () => {
+    const payload = buildRecipePayload(
+      fullState({ ingredientRows: [{ ingredientId: UUID_A, ingredientName: 'patata', quantity: 600, unit: 'g', note: '   ' }] }),
+    )
+    expect((payload.ingredients as Array<Record<string, unknown>>)[0]).not.toHaveProperty('note')
+  })
+})

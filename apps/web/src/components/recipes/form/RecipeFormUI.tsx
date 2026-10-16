@@ -212,6 +212,8 @@ export function IngredientRowFields({
   onUnit,
   optional,
   onToggleOptional,
+  note,
+  onNote,
   onRemove,
   removable,
   hint,
@@ -228,6 +230,9 @@ export function IngredientRowFields({
   onUnit: (value: string) => void
   optional: boolean
   onToggleOptional: () => void
+  /** Optional note on the line («en lomos», «picada», PRO-109). */
+  note?: string
+  onNote?: (value: string) => void
   onRemove: () => void
   removable: boolean
   hint?: string | null
@@ -291,6 +296,19 @@ export function IngredientRowFields({
           opc
         </button>
       </div>
+      {onNote && (
+        <div className="pr-12">
+        <input
+          type="text"
+          value={note ?? ""}
+          onChange={(e) => onNote(e.target.value)}
+          placeholder="Nota (opcional): en lomos, picada…"
+          aria-label={label ? `Nota de ${label}` : "Nota del ingrediente"}
+          maxLength={200}
+          className={fieldClass(false, "text-[14px]")}
+        />
+        </div>
+      )}
       {hint && <p className="text-[12px] italic text-terracotta-deep">{hint}</p>}
     </div>
   )

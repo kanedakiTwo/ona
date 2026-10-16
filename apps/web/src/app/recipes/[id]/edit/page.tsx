@@ -270,6 +270,12 @@ export default function EditRecipePage() {
       prev.map((r) => (r.rowId === rowId ? { ...r, optional: !r.optional } : r)),
     )
   }
+  function updateIngredientNote(rowId: string, value: string) {
+    setIngredientRows((prev) =>
+      prev.map((r) => (r.rowId === rowId ? { ...r, note: value } : r)),
+    )
+  }
+
   function addIngredientRow() {
     setIngredientRows((prev) => [...prev, emptyRow()])
   }
@@ -322,7 +328,7 @@ export default function EditRecipePage() {
         quantity: typeof r.quantity === "number" ? r.quantity : 0,
         unit: r.unit || "g",
         optional: r.optional,
-        ...(r.note ? { note: r.note } : {}),
+        ...(r.note?.trim() ? { note: r.note.trim() } : {}),
         ...(r.section ? { section: r.section } : {}),
       }))
 
@@ -730,6 +736,8 @@ export default function EditRecipePage() {
                         onUnit={(v) => updateIngredientUnit(row.rowId, v)}
                         optional={row.optional}
                         onToggleOptional={() => toggleIngredientOptional(row.rowId)}
+                        note={row.note}
+                        onNote={(v) => updateIngredientNote(row.rowId, v)}
                         onRemove={() => removeIngredientRow(row.rowId)}
                         removable={ingredientRows.length > 1}
                         hint={hint}

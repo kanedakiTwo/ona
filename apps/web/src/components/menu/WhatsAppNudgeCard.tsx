@@ -13,9 +13,24 @@ import { useWhatsAppStatus } from "@/hooks/useWhatsApp"
  * `nudge`); showing it stamps it (`POST /whatsapp/nudge/seen`), so it never
  * comes back — after «Ahora no», a reload or on another device.
  */
-// Once per page load, even if the card remounts (the menu swaps its layout
-// while it loads); the API keeps the first date anyway.
+// Once per tab, even if the card remounts or the page reloads while the
+// status is still cached; the API keeps the first date anyway.
+const STAMPED_KEY = "ona.whatsappNudgeStamped"
 let stampedThisLoad = false
+function alreadyStamped(): boolean {
+  if (stampedThisLoad) return true
+  try {
+    return sessionStorage.getItem(STAMPED_KEY) === "1"
+  } catch {
+    return false
+  }
+}
+function markStamped() {
+  stampedThisLoad = true
+  try {
+    sessionStorage.setItem(STAMPED_KEY, "1")
+  } catch {}
+}
 
 export function WhatsAppNudgeCard() {
   const status = useWhatsAppStatus()
@@ -23,8 +38,8 @@ export function WhatsAppNudgeCard() {
   const show = Boolean(status.data?.nudge) && !hidden
 
   useEffect(() => {
-    if (!show || stampedThisLoad) return
-    stampedThisLoad = true
+    if (!show || alreadyStamped()) return
+    markStamped()
     api.post("/whatsapp/nudge/seen").catch(() => {})
   }, [show])
 

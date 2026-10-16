@@ -17,6 +17,8 @@ export interface WhatsAppStatus {
   notify: boolean
   /** wa.me link to open the chat with Mimo once linked. */
   chatLink: string | null
+  /** Show the one WhatsApp reminder card on /menu (PRO-107). */
+  nudge?: boolean
 }
 
 export interface WhatsAppLinkCode {

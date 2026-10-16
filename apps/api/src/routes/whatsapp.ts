@@ -14,6 +14,7 @@ import * as store from '../services/whatsapp/store.js'
 import { buildWaLink, linkMessageText, maskPhone } from '../services/whatsapp/linking.js'
 import { PROACTIVE_KINDS } from '../services/whatsapp/proactive.js'
 import { runWithCostUser } from '../services/costLedger.js'
+import { loadNudgeState, markNudgeShown, shouldShowWhatsAppNudge } from '../services/whatsapp/nudge.js'
 
 // ─── Public webhook (Meta → Mimoia) ─────────────────────────────────
 //
@@ -103,9 +104,15 @@ router.get('/whatsapp/status', authMiddleware, async (req: AuthRequest, res) => 
     const available = await isAvailableFor(req.userId!)
     const link = await store.getLinkByUser(req.userId!)
     const botNumber = env.WHATSAPP_DISPLAY_NUMBER || null
+    // The reminder card on /menu (PRO-107); only looked up when it could apply.
+    const nudge =
+      available && !link
+        ? shouldShowWhatsAppNudge({ available, linked: false, ...(await loadNudgeState(req.userId!)) })
+        : false
     res.json({
       available,
       linked: Boolean(link),
+      nudge,
       phone: link ? maskPhone(link.phone) : null,
       notify: link?.notify ?? false,
       prefs: link?.prefs ?? {},
@@ -113,6 +120,17 @@ router.get('/whatsapp/status', authMiddleware, async (req: AuthRequest, res) => 
     })
   } catch (err: any) {
     console.error('[whatsapp] status error:', err?.message ?? err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// POST /whatsapp/nudge/seen — the /menu reminder card was shown (PRO-107): never again.
+router.post('/whatsapp/nudge/seen', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    await markNudgeShown(req.userId!)
+    res.status(204).end()
+  } catch (err: any) {
+    console.error('[whatsapp] nudge error:', err?.message ?? err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

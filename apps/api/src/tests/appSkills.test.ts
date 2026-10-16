@@ -12,6 +12,8 @@ vi.mock('../services/recipeImport.js', () => ({
 import { appSkills, bestMatch, toBuyable, applyTemplateChange, normalize, findSameProduct } from '../services/assistant/appSkills.js'
 import { AppApiError, type AppApi } from '../services/assistant/appApi.js'
 import { madridWeekStart } from '../services/madridTime.js'
+import { updateProfileSchema } from '@ona/shared'
+import { compileRestrictions, violatesRestrictions } from '../services/dietaryRestrictions.js'
 
 const get = (name: string) => {
   const s = appSkills.find((x) => x.name === name)
@@ -388,6 +390,24 @@ describe('recipes, profile, household', () => {
     })
     await get('update_profile').handler({ removeRestrictions: ['vacuno'], addRestrictions: ['sin lactosa'], priority: 'quick' }, ctx(f.api))
     expect(writes(f.calls)).toEqual([{ method: 'PUT', path: '/user/u1', body: { priority: 'quick', restrictions: ['sin gluten', 'sin lactosa'] } }])
+  })
+
+  it('PRO-144: «cocinamos siempre sin alcohol» → the «sin alcohol» restriction, which the menu reads (not a note)', async () => {
+    const tool = get('update_profile')
+    expect(tool.description).toMatch(/sin alcohol/)
+    expect(tool.description).toMatch(/no en notes/)
+    const f = fakeApi({
+      'GET /user/u1': { restrictions: ['sin gluten'] },
+      'GET /user/u1/health-consent': { active: true },
+    })
+    await tool.handler({ addRestrictions: ['sin alcohol'] }, ctx(f.api))
+    const put = writes(f.calls)
+    expect(put).toEqual([{ method: 'PUT', path: '/user/u1', body: { restrictions: ['sin gluten', 'sin alcohol'] } }])
+    // The body is valid for PUT /user and the generator turns it into the alcohol rule.
+    expect(updateProfileSchema.safeParse(put[0].body).success).toBe(true)
+    const rules = compileRestrictions(put[0].body.restrictions)
+    expect(rules.alcohol).toBe(true)
+    expect(violatesRestrictions({ name: 'Riñones al jerez', ingredients: [{ ingredientName: 'riñones' }] }, rules)).toBe(true)
   })
 
   it('update_profile never writes health data without the art. 9 consent (PRO-21)', async () => {

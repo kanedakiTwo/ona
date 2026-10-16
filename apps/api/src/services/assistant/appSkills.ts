@@ -983,7 +983,7 @@ const regenerateRecipeImage: SkillDefinition = {
 const updateProfile: SkillDefinition = {
   name: 'update_profile',
   description:
-    'Actualiza el perfil: restricciones alimentarias del perfil (addRestrictions / removeRestrictions, ej. "sin gluten", "vegetariano"), prioridad (quick, varied, healthy, cheap), sexo, edad, peso (kg), altura (cm), actividad (none, light, moderate, high). Para gustos y disgustos usa update_memory.',
+    'Actualiza el perfil: restricciones alimentarias del perfil (addRestrictions / removeRestrictions, ej. "sin gluten", "vegetariano", "sin alcohol"; lo que el menu debe evitar siempre va aqui, no en notes: "cocinamos siempre sin alcohol" → addRestrictions ["sin alcohol"]), prioridad (quick, varied, healthy, cheap), sexo, edad, peso (kg), altura (cm), actividad (none, light, moderate, high). Para gustos y disgustos usa update_memory.',
   parameters: {
     type: 'object',
     properties: {

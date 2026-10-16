@@ -61,7 +61,11 @@ export default function PrivacidadPage() {
             </li>
             <li>
               <strong>Conversaciones con el asistente</strong> (chat, voz y WhatsApp): el texto de los mensajes y la
-              transcripción de las notas de voz. Si conectas WhatsApp, también tu número de teléfono.
+              transcripción de las notas de voz. Si conectas WhatsApp, también tu número de teléfono.{' '}
+              <span data-testid="privacy-web-chat">
+                Lo que hablas con Mimo en la web (lo que le escribes o le dices, lo que te responde y lo que hizo por
+                ti) se guarda durante 90 días y después se borra solo.
+              </span>
             </li>
             <li>
               <strong>Datos técnicos:</strong> suscripción a notificaciones push, un registro del coste de cada uso de
@@ -74,6 +78,10 @@ export default function PrivacidadPage() {
           <ul className="ml-5 list-disc space-y-2">
             <li>Generar tu menú semanal, la lista de la compra y los avisos que hayas activado.</li>
             <li>Responder a lo que le pidas al asistente y hacer los cambios que le pidas.</li>
+            <li>
+              Preparar la ficha de tu hogar (vuestros gustos y costumbres a la hora de comer) a partir de lo que hablas
+              con Mimo en la web y por WhatsApp, para que tus menús y sus respuestas se ajusten mejor a vosotros.
+            </li>
             <li>Revisar, de forma interna, conversaciones de WhatsApp para detectar errores del asistente y corregirlos.</li>
             <li>Controlar el gasto en IA por usuario y mantener el servicio seguro.</li>
             <li>Detectar y arreglar los fallos de la aplicación, con un registro propio que no se comparte con terceros.</li>
@@ -114,8 +122,9 @@ export default function PrivacidadPage() {
 
           <H2>6. Cuánto tiempo</H2>
           <p>
-            Mientras tengas la cuenta. Puedes borrarla tú mismo en <strong>Perfil → Borrar mi cuenta</strong>: se
-            eliminan al momento tu perfil, tus menús, tu memoria, tus recetas propias y tu historial de WhatsApp. Si
+            Mientras tengas la cuenta, salvo el chat con Mimo en la web, que se borra solo a los 90 días. Puedes
+            borrar la cuenta tú mismo en <strong>Perfil → Borrar mi cuenta</strong>: se eliminan al momento tu perfil, tus
+            menús, tu memoria, tus recetas propias, tus conversaciones con Mimo en la web y tu historial de WhatsApp. Si
             compartes hogar, el hogar sigue para los demás miembros. Los registros de costes y de fallos se conservan
             sin vincularlos a ti. Si pagas una suscripción, se cancela en ese momento; Stripe y Link conservan los
             recibos el tiempo que exige la ley fiscal.

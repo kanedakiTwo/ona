@@ -17,6 +17,7 @@ import type { SourceType } from '@ona/shared'
 import { recipes } from '../db/schema.js'
 import { NOTION_SOURCE_LINKS } from '../seed/notionSourceLinks.js'
 import { detectSourceType } from './sources/sourceType.js'
+import { oldNamesOf } from './recipeRenames.js'
 
 // ─── Pure matching ───────────────────────────────────────────────
 
@@ -97,6 +98,11 @@ const TYPO_MIN_LENGTH = 12
  * names, only when exactly one Notion row is that close.
  */
 export function matchSourceLink(name: string, index: LinkIndex): string | null {
+  // A renamed catalogue recipe (PRO-140) keeps the link of its old Notion name.
+  for (const old of oldNamesOf(name)) {
+    const viaOld = matchSourceLink(old, index)
+    if (viaOld) return viaOld
+  }
   const key = normalizeRecipeName(name)
   const exact = index.get(key)
   if (exact) return exact

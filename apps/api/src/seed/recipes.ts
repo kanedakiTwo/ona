@@ -16,7 +16,7 @@ export const seedRecipes: SeedRecipe[] = [
   // ── Recetas compartidas por usuarios ────────────────────────────────
 
   {
-    name: 'Albondigas en salsa espanola',
+    name: 'Albóndigas en salsa española',
     prepTime: 0,
     meals: ['lunch', 'dinner'],
     seasons: ['spring', 'summer', 'autumn', 'winter'],
@@ -134,7 +134,7 @@ export const seedRecipes: SeedRecipe[] = [
     ],
   },
   {
-    name: 'Crema de calabacin',
+    name: 'Crema de calabacín',
     prepTime: 0,
     meals: ['dinner'],
     seasons: ['spring', 'summer', 'autumn', 'winter'],
@@ -168,7 +168,7 @@ export const seedRecipes: SeedRecipe[] = [
     ],
   },
   {
-    name: 'Cocido madrileno',
+    name: 'Cocido madrileño',
     prepTime: 0,
     meals: ['lunch'],
     seasons: ['spring', 'summer', 'autumn', 'winter'],
@@ -240,7 +240,7 @@ export const seedRecipes: SeedRecipe[] = [
     ],
   },
   {
-    name: 'Judias verdes rehogadas',
+    name: 'Judías verdes rehogadas',
     prepTime: 0,
     meals: ['lunch', 'dinner'],
     seasons: ['spring', 'summer', 'autumn', 'winter'],
@@ -321,7 +321,7 @@ export const seedRecipes: SeedRecipe[] = [
     ],
   },
   {
-    name: 'Guisantes lagrima',
+    name: 'Guisantes lágrima',
     prepTime: 0,
     meals: ['lunch', 'dinner'],
     seasons: ['spring', 'summer', 'autumn', 'winter'],
@@ -424,7 +424,7 @@ export const seedRecipes: SeedRecipe[] = [
     ingredients: [],
   },
   {
-    name: 'Fidegua gipsy',
+    name: 'Fideuá',
     prepTime: 0,
     meals: ['lunch', 'dinner'],
     seasons: ['spring', 'summer', 'autumn', 'winter'],
@@ -506,7 +506,7 @@ export const seedRecipes: SeedRecipe[] = [
     ingredients: [],
   },
   {
-    name: 'Pastela vegetariana Gipsy',
+    name: 'Pastela vegetariana',
     prepTime: 0,
     meals: ['lunch', 'dinner'],
     seasons: ['spring', 'summer', 'autumn', 'winter'],
@@ -691,7 +691,7 @@ export const seedRecipes: SeedRecipe[] = [
     ingredients: [],
   },
   {
-    name: 'Tacos gipsy',
+    name: 'Tacos caseros',
     prepTime: 0,
     meals: ['lunch', 'dinner'],
     seasons: ['spring', 'summer', 'autumn', 'winter'],
@@ -836,7 +836,7 @@ export const seedRecipes: SeedRecipe[] = [
     ingredients: [],
   },
   {
-    name: 'Vegan butter chicken',
+    name: 'Curry cremoso de tofu',
     prepTime: 0,
     meals: ['lunch', 'dinner'],
     seasons: ['spring', 'summer', 'autumn', 'winter'],
@@ -881,7 +881,7 @@ export const seedRecipes: SeedRecipe[] = [
     ingredients: [],
   },
   {
-    name: 'Pollo agridulce gipsy',
+    name: 'Pollo agridulce',
     prepTime: 0,
     meals: ['lunch', 'dinner'],
     seasons: ['spring', 'summer', 'autumn', 'winter'],
@@ -908,7 +908,7 @@ export const seedRecipes: SeedRecipe[] = [
     ingredients: [],
   },
   {
-    name: 'Albondigas gipsy',
+    name: 'Albóndigas express',
     prepTime: 0,
     meals: ['lunch', 'dinner'],
     seasons: ['spring', 'summer', 'autumn', 'winter'],

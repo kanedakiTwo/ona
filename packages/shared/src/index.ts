@@ -185,6 +185,7 @@ export { buyableUnitFor, unitAfterQuantity, quantityHintFor, RECIPE_UNIT_LABELS 
 
 export { buildRecipePayload } from './recipeFormPayload.js'
 export type { IngredientRowState, RecipeFormState } from './recipeFormPayload.js'
+export { FEATURED_RECIPES, RETIRED_RECIPE_TAG } from './featuredRecipes.js'
 
 // Units
 export { normalizeTerm } from './units/normalize.js'

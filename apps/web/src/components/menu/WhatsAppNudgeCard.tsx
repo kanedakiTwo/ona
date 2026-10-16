@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { MessageCircle } from "lucide-react"
 import { api } from "@/lib/api"
@@ -13,15 +13,18 @@ import { useWhatsAppStatus } from "@/hooks/useWhatsApp"
  * `nudge`); showing it stamps it (`POST /whatsapp/nudge/seen`), so it never
  * comes back — after «Ahora no», a reload or on another device.
  */
+// Once per page load, even if the card remounts (the menu swaps its layout
+// while it loads); the API keeps the first date anyway.
+let stampedThisLoad = false
+
 export function WhatsAppNudgeCard() {
   const status = useWhatsAppStatus()
   const [hidden, setHidden] = useState(false)
-  const stamped = useRef(false)
   const show = Boolean(status.data?.nudge) && !hidden
 
   useEffect(() => {
-    if (!show || stamped.current) return
-    stamped.current = true
+    if (!show || stampedThisLoad) return
+    stampedThisLoad = true
     api.post("/whatsapp/nudge/seen").catch(() => {})
   }, [show])
 

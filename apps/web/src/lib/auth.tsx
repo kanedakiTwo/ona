@@ -10,6 +10,7 @@ import {
 } from "react"
 import { api } from "@/lib/api"
 import { clearSessionData } from "@/lib/pwa/sessionData"
+import type { SignupAttribution } from "@/lib/signupAttribution"
 
 type Role = 'user' | 'admin'
 
@@ -35,7 +36,7 @@ interface AuthState {
     email: string,
     password: string,
     ageConfirmed: boolean,
-    invite?: { inviteCode?: string; householdInviteToken?: string; waitlistToken?: string; newsletterOptIn?: boolean },
+    invite?: { inviteCode?: string; householdInviteToken?: string; waitlistToken?: string; newsletterOptIn?: boolean } & SignupAttribution,
   ) => Promise<void>
   logout: () => void
   updateUser: (updates: Partial<User>) => void
@@ -88,7 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email: string,
       password: string,
       ageConfirmed: boolean,
-      invite?: { inviteCode?: string; householdInviteToken?: string; waitlistToken?: string; newsletterOptIn?: boolean },
+      invite?: { inviteCode?: string; householdInviteToken?: string; waitlistToken?: string; newsletterOptIn?: boolean } & SignupAttribution,
     ) => {
       const data = await api.post<AuthResponse>("/register", {
         username,

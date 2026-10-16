@@ -26,6 +26,8 @@ import {
   waitlistInviteForEmail,
 } from '../services/waitlistInvites.js'
 import { trackEvent } from '../services/usageEvents.js'
+import { accountReferralUrl, ensureReferralCode, inviterCodeForSignup } from '../services/accountReferrals.js'
+import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { welcomeKind } from '../services/accountEmails.js'
 import { defaultAccountMailerDeps, requestPasswordReset, sendWelcomeEmail } from '../services/accountMailer.js'
 
@@ -51,7 +53,7 @@ const loginLimiter = rateLimit({
 // POST /register
 router.post('/register', registerLimiter, validate(registerSchema), async (req, res) => {
   try {
-    const { username, password, inviteCode, householdInviteToken, newsletterOptIn, waitlistToken } = req.body
+    const { username, password, inviteCode, householdInviteToken, newsletterOptIn, waitlistToken, invitedBy } = req.body
     // With a waitlist link the email is the one on the list (lowercase, fixed on the form).
     const email: string = waitlistToken ? String(req.body.email).trim().toLowerCase() : req.body.email
 
@@ -110,6 +112,11 @@ router.post('/register', registerLimiter, validate(registerSchema), async (req, 
     }
 
     const passwordHash = await bcrypt.hash(password, 10)
+    // «Invitar a otro hogar» (PRO-162): the inviter's code (never their email)
+    // and where the visit came from. Never blocks or fails the sign-up.
+    const invitedByCode = await inviterCodeForSignup(invitedBy, { email, householdInviteToken })
+    const { signupSource, utmSource, utmMedium, utmCampaign } = req.body
+    const hasAttribution = [signupSource, utmSource, utmMedium, utmCampaign].some((v) => v != null)
 
     const [user] = await db
       .insert(users)
@@ -119,6 +126,10 @@ router.post('/register', registerLimiter, validate(registerSchema), async (req, 
         passwordHash,
         ageConfirmedAt: new Date(),
         inviteCampaignId: campaignId,
+        invitedByCode,
+        signupAttribution: hasAttribution
+          ? { source: signupSource ?? null, utmSource: utmSource ?? null, utmMedium: utmMedium ?? null, utmCampaign: utmCampaign ?? null }
+          : null,
         // «Primeros pasos» on the first /menu visit (PRO-07): only new sign-ups.
         firstStepsPending: true,
         // Friday newsletter, a separate unticked box (PRO-95, specs/newsletter.md).
@@ -148,6 +159,13 @@ router.post('/register', registerLimiter, validate(registerSchema), async (req, 
       console.error('[register] solo household creation failed (continuing):', e)
     }
 
+    // Their own invitation code (reuses their waitlist code if they had one).
+    try {
+      await ensureReferralCode(user.id)
+    } catch (e: any) {
+      console.error('[register] referral code failed (continuing):', e?.message ?? e)
+    }
+
     // Someone from the waitlist (invited or not) has arrived: mark the entry
     // joined. Never blocks or fails the registration (specs/waitlist.md).
     void markWaitlistJoined(email)
@@ -169,6 +187,17 @@ router.post('/register', registerLimiter, validate(registerSchema), async (req, 
   } catch (err: any) {
     console.error('Register error:', err)
     res.status(500).json({ error: err?.message || 'Internal server error' })
+  }
+})
+
+// GET /referrals/me — the account's «Invitar a otro hogar» link (PRO-162).
+router.get('/referrals/me', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const code = await ensureReferralCode(req.userId!)
+    res.json({ code, link: accountReferralUrl(code) })
+  } catch (err: any) {
+    console.error('[referrals] me failed:', err?.message ?? err)
+    res.status(500).json({ error: 'Internal server error' })
   }
 })
 

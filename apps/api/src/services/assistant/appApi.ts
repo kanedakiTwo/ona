@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken'
 import { env } from '../../config/env.js'
 import { INTERNAL_CALL_HEADER } from '../usageEvents.js'
+import { CHANNEL_HEADER } from '../menuEdits.js'
 
 /**
  * The assistant calls Mimoia's own REST API as the user — the same endpoints the
@@ -24,7 +25,14 @@ export type AppApi = <T = any>(method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELET
 
 const INTERNAL_BASE = (process.env.INTERNAL_API_URL || `http://127.0.0.1:${env.PORT}`).replace(/\/+$/, '')
 
-export function appApiFor(userId: string): AppApi {
+/**
+ * `channel` is the conversation's (web chat/voice or WhatsApp): it travels in
+ * `x-mimoia-channel` so routes that keep a log of who changed what (the menu's
+ * change log, services/menuEdits.ts) can tell Mimo on WhatsApp from Mimo on
+ * the web.
+ */
+export function appApiFor(userId: string, opts: { channel?: 'web' | 'whatsapp' } = {}): AppApi {
+  const channelHeader: Record<string, string> = opts.channel ? { [CHANNEL_HEADER]: opts.channel } : {}
   const token = jwt.sign({ userId }, env.JWT_SECRET, { expiresIn: '5m' })
   return async (method, path, body) => {
     const r = await fetch(`${INTERNAL_BASE}${path}`, {
@@ -32,7 +40,7 @@ export function appApiFor(userId: string): AppApi {
       // Marks the call as the assistant's own (or a system job's): the usage
       // middleware doesn't count it as a web action; the skill runner records
       // it with the conversation's channel instead (services/usageEvents.ts).
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', [INTERNAL_CALL_HEADER]: '1' },
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', [INTERNAL_CALL_HEADER]: '1', ...channelHeader },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(90_000),
     })

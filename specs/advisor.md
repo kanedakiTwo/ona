@@ -158,8 +158,7 @@ The advisor's weekly nutrient/calorie aggregators iterate `slot.dishes` and proc
 
 ## Constraints
 
-- The conversation lives in the browser tab only: sessionStorage `mimo.chat.v1` keeps the last 40 messages across navigation; nothing is stored in the DB, and a new tab starts empty
-- **Since PRO-148 (2026-10-17) the web chat is also kept server-side for 90 days** (see «Web chat kept 90 days» below): the panel still shows only what sessionStorage holds, but the "nothing is stored in the DB" above no longer applies to what the server keeps
+- The panel shows the conversation from the browser tab only: sessionStorage `mimo.chat.v1` keeps the last 40 messages across navigation, and a new tab starts empty. Since PRO-148 (2026-10-17) the server also keeps the web chat for 90 days (see «Web chat kept 90 days» below), but nothing reads it back into the panel
 - The client sends the last 20 messages as history with each request
 - One turn at a time: while Mimo is thinking, a new message is ignored
 - All assistant responses are in Spanish by design

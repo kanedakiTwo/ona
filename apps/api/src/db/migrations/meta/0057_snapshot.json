@@ -1,6 +1,6 @@
 {
   "id": "06f0d5bc-02eb-4bd6-93dc-9fe16e110b95",
-  "prevId": "028da5ab-0fac-4dd8-9642-7bf4c492167e",
+  "prevId": "1202cf8a-15a6-4fa9-bb52-e3f88f526ae6",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -6125,6 +6125,207 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.menu_edits": {
+      "name": "menu_edits",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "household_id": {
+          "name": "household_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "menu_id": {
+          "name": "menu_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "day": {
+          "name": "day",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "meal": {
+          "name": "meal",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "from_day": {
+          "name": "from_day",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "from_meal": {
+          "name": "from_meal",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "before_recipe_id": {
+          "name": "before_recipe_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "before_recipe_name": {
+          "name": "before_recipe_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "after_recipe_id": {
+          "name": "after_recipe_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "after_recipe_name": {
+          "name": "after_recipe_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "actor": {
+          "name": "actor",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "channel": {
+          "name": "channel",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_menu_edits_household_created": {
+          "name": "idx_menu_edits_household_created",
+          "columns": [
+            {
+              "expression": "household_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_menu_edits_menu": {
+          "name": "idx_menu_edits_menu",
+          "columns": [
+            {
+              "expression": "menu_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "menu_edits_household_id_households_id_fk": {
+          "name": "menu_edits_household_id_households_id_fk",
+          "tableFrom": "menu_edits",
+          "tableTo": "households",
+          "columnsFrom": [
+            "household_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "menu_edits_menu_id_menus_id_fk": {
+          "name": "menu_edits_menu_id_menus_id_fk",
+          "tableFrom": "menu_edits",
+          "tableTo": "menus",
+          "columnsFrom": [
+            "menu_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "menu_edits_user_id_users_id_fk": {
+          "name": "menu_edits_user_id_users_id_fk",
+          "tableFrom": "menu_edits",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "menu_edits_action_check": {
+          "name": "menu_edits_action_check",
+          "value": "action IN ('swap','add','remove','ban','skip_day','move','leftover','freezer')"
+        },
+        "menu_edits_actor_check": {
+          "name": "menu_edits_actor_check",
+          "value": "actor IN ('user','mimo')"
+        },
+        "menu_edits_channel_check": {
+          "name": "menu_edits_channel_check",
+          "value": "channel IN ('web','whatsapp')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.household_persons": {

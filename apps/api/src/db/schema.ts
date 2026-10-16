@@ -1425,3 +1425,37 @@ export const profileChanges = pgTable('profile_changes', {
   index('idx_profile_changes_household_created').on(t.householdId, t.createdAt),
   check('profile_changes_origin_check', sql.raw("origin IN ('user','onboarding','ai_realtime','ai_nightly','ai_weekly')")),
 ])
+
+// ─── Menu edits (specs/menus.md "Registro de cambios", PRO-149) ─────
+// One row per recipe that a change to a menu touched: which plate went out
+// and which came in, on which day and meal, who did it (the user in the app
+// or Mimo) and where (web or WhatsApp). Generating a menu is not an edit.
+// Signal for the household's «ficha viva» (D-064). Recipe names are copied so
+// the row still reads well if the recipe is deleted later.
+export const menuEdits = pgTable('menu_edits', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').references(() => households.id, { onDelete: 'cascade' }),
+  menuId: uuid('menu_id').notNull().references(() => menus.id, { onDelete: 'cascade' }),
+  /** Account that made the change (Mimo acts as the user it talks to). */
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  /** Day index 0-6 (Monday = 0); null for a week-wide veto (`ban`). */
+  day: integer('day'),
+  meal: text('meal'),
+  /** Origin slot for `move` and `leftover`. */
+  fromDay: integer('from_day'),
+  fromMeal: text('from_meal'),
+  action: text('action').notNull(),
+  beforeRecipeId: uuid('before_recipe_id'),
+  beforeRecipeName: text('before_recipe_name'),
+  afterRecipeId: uuid('after_recipe_id'),
+  afterRecipeName: text('after_recipe_name'),
+  actor: text('actor').notNull(),
+  channel: text('channel').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_menu_edits_household_created').on(t.householdId, t.createdAt),
+  index('idx_menu_edits_menu').on(t.menuId),
+  check('menu_edits_action_check', sql.raw("action IN ('swap','add','remove','ban','skip_day','move','leftover','freezer')")),
+  check('menu_edits_actor_check', sql.raw("actor IN ('user','mimo')")),
+  check('menu_edits_channel_check', sql.raw("channel IN ('web','whatsapp')")),
+])

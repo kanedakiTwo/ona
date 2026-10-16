@@ -265,7 +265,7 @@ export default function OnboardingFlow() {
               ) : channel === "choose" ? (
                 <OnboardingChannelChoice
                   onWhatsApp={() => {
-                    linkCode.mutate()
+                    linkCode.mutate({ from: "onboarding" })
                     setChannel("whatsapp")
                   }}
                   onWeb={() => setChannel("web")}

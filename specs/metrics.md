@@ -77,6 +77,7 @@ Analítica de producto en una tabla propia, sin terceros. Una fila por cada cosa
 |---|---|---|
 | `signup_completed` (`props.access`: open/admin/campaign/waitlist/household) | `POST /register` | — |
 | `onboarding_completed` | `POST /user/:id/onboarding` | `complete_onboarding` (cuenta también `menu_generated`) |
+| `onboarding_whatsapp_chosen` (PRO-106) | `POST /whatsapp/link-code` con `{ from: "onboarding" }`: «Por WhatsApp» en la primera pantalla del alta (Perfil y `/whatsapp/conectar` no lo mandan, así que no cuentan) | — |
 | `first_steps_completed` / `first_steps_skipped` | `POST /user/:id/first-steps` con `{ outcome }` (lo envía la guía; sin cuerpo no cuenta) | — |
 | `menu_generated` | `POST /menu/generate` | `generate_weekly_menu` |
 | `meal_swapped` (`props.target` meal/dish, `props.how` picked/auto) | `PUT /menu/:id/day/:d/meal/:m`, `POST …/dish/:p/regenerate` | `swap_meal` |
@@ -100,6 +101,8 @@ Sin dobles recuentos: las herramientas que llaman a la propia API REST (`appApi.
 - `weekly[]`: `{ week (lunes), isoWeek, partial, activeHouseholds, events }`.
 - `funnel[]`, por semana ISO de alta: `{ week, isoWeek, signups, firstMenu, shoppingListViewed, cooked, week2Eligible, activeWeek2 }`. `firstMenu → shoppingListViewed → cooked` son pasos encadenados dentro de los 7 primeros días (día del alta … +6); `cooked` = `cook_mode_started` o `meal_cooked`. `activeWeek2` no está encadenado: algún evento en los días 7–13, sobre `week2Eligible` (altas cuyo día 7 ya ha llegado).
 - `totals`: `{ events, byChannel, activeHouseholds, householdsByEvent }` de la ventana. `definitions` repite las reglas.
+- `channelSplit[]` (PRO-106), por semana ISO: `{ week, isoWeek, webOnly, whatsappOnly, both, unknownOnly }` — hogares activos que solo usaron la app o la web (la voz cuenta como app), solo WhatsApp, o los dos; `unknownOnly` = activos solo por eventos sin canal (el alta, por ejemplo).
+- `households` (PRO-106), el estado de **ahora**, no de la ventana: `{ households, withWhatsapp, withWhatsappNotify, withPush, withNotices, withTwoPlusMembers }` — hogares con al menos un miembro contado; con algún miembro con WhatsApp conectado; con los mensajes de Mimo por WhatsApp activados; con avisos push en algún navegador; con cualquiera de los dos avisos; con 2 o más miembros. Las cuentas admin y suspendidas no cuentan como miembros salvo `includeInternal=1`. Solo cifras: los ids se quedan en la consulta. Cuántos eligen «Por WhatsApp» en el alta: `totals.householdsByEvent.onboarding_whatsapp_chosen`.
 
 ## App instalada y avisos (PRO-83)
 

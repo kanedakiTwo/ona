@@ -3,7 +3,16 @@
  * weekly counts, active households, and the activation funnel.
  */
 import { describe, expect, it } from 'vitest'
-import { buildDaily, buildFunnel, buildTotals, buildWeekly, dayRange, type UsageInput } from '../services/usageReport.js'
+import {
+  buildChannelSplit,
+  buildDaily,
+  buildFunnel,
+  buildHouseholdSnapshot,
+  buildTotals,
+  buildWeekly,
+  dayRange,
+  type UsageInput,
+} from '../services/usageReport.js'
 
 const hd = (householdId: string, day: string, name: string) => ({ householdId, day, name })
 
@@ -104,5 +113,45 @@ describe('buildFunnel', () => {
     })
     expect(f[0].cooked).toBe(1)
     expect(f[0].activeWeek2).toBe(0)
+  })
+})
+
+describe('PRO-106 — households: WhatsApp, avisos, members, channel split', () => {
+  it('snapshot counts households, not people', () => {
+    expect(
+      buildHouseholdSnapshot([
+        { householdId: 'h1', members: 2, whatsappLinked: 2, whatsappNotify: 1, pushEnabled: 0 },
+        { householdId: 'h2', members: 1, whatsappLinked: 1, whatsappNotify: 0, pushEnabled: 1 },
+        { householdId: 'h3', members: 3, whatsappLinked: 0, whatsappNotify: 0, pushEnabled: 2 },
+        { householdId: 'h4', members: 1, whatsappLinked: 0, whatsappNotify: 0, pushEnabled: 0 },
+      ]),
+    ).toEqual({ households: 4, withWhatsapp: 2, withWhatsappNotify: 1, withPush: 2, withNotices: 3, withTwoPlusMembers: 2 })
+  })
+
+  it('snapshot of nothing is zeros', () => {
+    expect(buildHouseholdSnapshot([])).toEqual({ households: 0, withWhatsapp: 0, withWhatsappNotify: 0, withPush: 0, withNotices: 0, withTwoPlusMembers: 0 })
+  })
+
+  it('weekly split: web only / WhatsApp only / both; voice is the app; unknown-only apart', () => {
+    const split = buildChannelSplit({
+      days: dayRange('2026-10-05', '2026-10-18'),
+      today: '2026-10-16',
+      counts: [],
+      householdDays: [
+        { householdId: 'h1', day: '2026-10-05', name: 'menu_generated', channel: 'web' },
+        { householdId: 'h1', day: '2026-10-07', name: 'mimo_message', channel: 'whatsapp' },
+        { householdId: 'h2', day: '2026-10-06', name: 'mimo_message', channel: 'whatsapp' },
+        { householdId: 'h3', day: '2026-10-06', name: 'mimo_message', channel: 'voice' },
+        { householdId: 'h4', day: '2026-10-06', name: 'signup_completed', channel: null },
+        { householdId: 'h4', day: '2026-10-06', name: 'menu_generated', channel: 'web' },
+        { householdId: 'h5', day: '2026-10-08', name: 'signup_completed', channel: null },
+        // next week: h1 only web
+        { householdId: 'h1', day: '2026-10-13', name: 'shopping_list_viewed', channel: 'web' },
+      ],
+    })
+    expect(split).toEqual([
+      { week: '2026-10-05', isoWeek: '2026-W41', webOnly: 2, whatsappOnly: 1, both: 1, unknownOnly: 1 },
+      { week: '2026-10-12', isoWeek: '2026-W42', webOnly: 1, whatsappOnly: 0, both: 0, unknownOnly: 0 },
+    ])
   })
 })

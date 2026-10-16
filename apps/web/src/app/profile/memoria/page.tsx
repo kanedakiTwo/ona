@@ -19,6 +19,7 @@ import { useUserMemory, useUpdateMemory, useDeleteMemoryFact } from "@/hooks/use
 import { MemoryFactEditor } from "@/components/profile/MemoryFactEditor"
 import { MenuSheet, SheetAction } from "@/components/menu/MenuSheet"
 import { Accent, MoreButton, SUB_EYEBROW, SUB_LIST, SubPage } from "@/components/profile/SubPage"
+import { SubLoadError, useQueryLoad } from "@/components/profile/SubLoadError"
 import type { MemoryKey, MemoryFact } from "@ona/shared"
 
 interface Group {
@@ -108,7 +109,10 @@ function formatValue(key: MemoryKey, value: unknown): string {
 
 export default function MemoryPage() {
   const { user } = useAuth()
-  const { data: memory, isLoading } = useUserMemory()
+  const memoryQuery = useUserMemory()
+  const { data: memory, isLoading } = memoryQuery
+  // PRO-143: failed or > 8 s → «No hemos podido cargar esto» + «Reintentar».
+  const load = useQueryLoad([["memory"], memoryQuery])
   const updateMemory = useUpdateMemory()
   const deleteFact = useDeleteMemoryFact()
   const [busyKey, setBusyKey] = useState<MemoryKey | null>(null)
@@ -155,7 +159,9 @@ export default function MemoryPage() {
       }
       intro="Cada dato que el asistente conoce sobre ti vive aquí. Los que tú confirmaste llevan la etiqueta «Tú»; los que el asistente dedujo en una conversación, «Asistente»."
     >
-      {isLoading ? (
+      {load.failed ? (
+        <SubLoadError onRetry={load.retry} retrying={load.retrying} />
+      ) : isLoading ? (
         <div className="animate-pulse space-y-3">
           {[1, 2, 3].map((i) => (
             <div key={i} className="h-14 rounded-[20px] bg-bone" />

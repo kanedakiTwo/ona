@@ -29,6 +29,7 @@ import {
   SubPage,
 } from '@/components/profile/SubPage'
 import { FoundingBadge } from '@/components/profile/FoundingBadge'
+import { SubLoadError, useSlowLoad } from '@/components/profile/SubLoadError'
 
 type Role = 'owner' | 'member' | 'child'
 
@@ -82,6 +83,9 @@ export default function HouseholdPage() {
   const [busy, setBusy] = useState(false)
   const [sheet, setSheet] = useState<SheetState>(null)
   const [copiedToken, setCopiedToken] = useState<string | null>(null)
+
+  // PRO-143: still loading after 8 s → «Reintentar» (the request may hang).
+  const slowLoad = useSlowLoad(authLoading || loading)
 
   const reload = useCallback(async () => {
     setLoading(true)
@@ -182,6 +186,21 @@ export default function HouseholdPage() {
       .writeText(url)
       .then(() => setCopiedToken(token))
       .catch(() => {})
+  }
+
+  // PRO-143: a failed or hung first load shows «Reintentar», not «Cargando…»
+  // forever nor «No tienes un hogar asignado».
+  if ((slowLoad.slow && (authLoading || loading)) || (!loading && !household && error)) {
+    return (
+      <SubPage eyebrow="Tu hogar" title="Casa">
+        <SubLoadError
+          onRetry={() => {
+            slowLoad.restart()
+            if (user) void reload()
+          }}
+        />
+      </SubPage>
+    )
   }
 
   if (authLoading || loading) {

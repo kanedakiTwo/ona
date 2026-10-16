@@ -1,4 +1,5 @@
 import { eq, inArray } from 'drizzle-orm'
+import { loadHouseholdRatingSets, withHouseholdRatings } from './householdRatings.js'
 import { visibleAuthorIds, visibleRecipeWhere } from './recipeVisibility.js'
 import { loadMatchableRecipes, type RecipeWithCourse } from './matchableRecipes.js'
 import { mergeRestrictions } from './dietaryRestrictions.js'
@@ -483,6 +484,10 @@ export async function generateMenu(
   // 5b. Onboarding answers: dishes they love join the favourites weighting;
   // "Rapidez" / "Cocino poco" caps weekday prep time (onboardingPreferences.ts).
   for (const id of recipesMatchingDishes(allRecipes, user.favoriteDishes)) favoriteRecipeIds.add(id)
+
+  // 5c. «¿Qué tal?» (PRO-111): 5 stars weigh like a favourite, 1 star never
+  // comes out on its own. Matcher-only sets: the week's vetoes stay as they are.
+  const rated = withHouseholdRatings(favoriteRecipeIds, bannedRecipeIds, await loadHouseholdRatingSets(userId, db).catch(() => ({ boost: new Set<string>(), exclude: new Set<string>() })))
   Object.assign(timeBudgetByDay, prepBudgetByDay({ ...timeBudgetByDay }, user))
 
   // Per-recipe metabolic profile, once (scoreMenu runs every iteration).
@@ -499,10 +504,10 @@ export async function generateMenu(
       allRecipes,
       season,
       restrictions,
-      favoriteRecipeIds,
+      rated.favoriteRecipeIds,
       lockedSlots,
       existingDays,
-      bannedRecipeIds,
+      rated.bannedRecipeIds,
       skippedDays,
       dislikes,
       availableEquipment,
@@ -538,10 +543,10 @@ export async function generateMenu(
     allRecipes,
     season,
     restrictions,
-    favoriteRecipeIds,
+    rated.favoriteRecipeIds,
     lockedSlots,
     existingDays,
-    bannedRecipeIds,
+    rated.bannedRecipeIds,
     skippedDays,
     dislikes,
     availableEquipment,

@@ -74,6 +74,12 @@ describe.skipIf(!reachable || !METRICS_TOKEN)('usage events + conversation flags
     expect(today.day).toBe(after.body.to)
     expect(today.activeHouseholds).toBeGreaterThanOrEqual(1)
     expect(after.body.funnel.at(-1).signups).toBeGreaterThanOrEqual(1)
+    // PRO-106: households snapshot (the new household counts) and the weekly channel split.
+    expect(after.body.households.households).toBeGreaterThanOrEqual(1)
+    expect(after.body.households).toEqual(
+      expect.objectContaining({ withWhatsapp: expect.any(Number), withNotices: expect.any(Number), withTwoPlusMembers: expect.any(Number) }),
+    )
+    expect(after.body.channelSplit.at(-1).webOnly).toBeGreaterThanOrEqual(1)
     // Counts only: no ids, usernames or emails anywhere in the payload.
     const raw = JSON.stringify(after.body)
     expect(raw).not.toContain(userId)

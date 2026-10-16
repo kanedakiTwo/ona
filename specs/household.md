@@ -53,6 +53,7 @@ The 0011 migration includes an **idempotent backfill** (NOT EXISTS guards) so ev
 - **Owner self-leave.** The leaver gets a new solo household; the next-oldest member of the original household is promoted to owner. The original household never ends up ownerless.
 - **Pending vs consumed invites.** `pendingInvites` in `HouseholdDetails` only includes invites with `consumed_at IS NULL` AND `expires_at > now()`.
 - **Email field on invites is informational.** Today we don't email anything — the owner copies the share URL manually. The field is stored to give future automation a target.
+- **Mimo's monthly budget is per person, not per household.** `ADVISOR_MONTHLY_BUDGET_EUR` caps each account's own spend (`users.advisor_spend_micros`, see [Advisor](./advisor.md)); members of a household don't share one cap.
 
 ## Frontend
 

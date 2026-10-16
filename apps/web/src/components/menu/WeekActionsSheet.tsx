@@ -7,7 +7,7 @@
  * Día/Semana view switch (mobile only) and the history link.
  * Past weeks are read-only: no Regenerar / Vaciar.
  */
-import { CalendarDays, ChevronLeft, ChevronRight, History, LayoutList, RefreshCw, Share2, Trash2 } from "lucide-react"
+import { CalendarDays, ChevronLeft, ChevronRight, History, LayoutList, Printer, RefreshCw, Share2, Trash2 } from "lucide-react"
 import { MenuSheet, SheetAction } from "./MenuSheet"
 
 interface Props {
@@ -29,6 +29,8 @@ interface Props {
   onShare: () => void
   onClear: () => void
   onToggleView: () => void
+  /** «Imprimir la semana» (PRO-112): /menu/imprimir?week=… */
+  printHref: string
 }
 
 export function WeekActionsSheet(p: Props) {
@@ -76,6 +78,9 @@ export function WeekActionsSheet(p: Props) {
         )}
         {p.hasMenu && (
           <SheetAction icon={Share2} label="Compartir" hint="Tu menú como texto, con un enlace" onClick={run(p.onShare)} />
+        )}
+        {p.hasMenu && (
+          <SheetAction icon={Printer} label="Imprimir la semana" hint="En papel o en PDF, con la lista de la compra" href={p.printHref} />
         )}
         {p.showViewToggle && (
           <SheetAction

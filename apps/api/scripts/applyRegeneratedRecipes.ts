@@ -10,7 +10,8 @@
  *      `"ing_<i>" → uuid` map; resolve every step.ingredientRefs.
  *   3. Run lintRecipe() against the live ingredient catalog as a final
  *      guardrail. Failures go to regen-skipped.jsonl, log + continue.
- *   4. Find an existing recipe row by case-insensitive name match. If found,
+ *   4. Find an existing catalogue recipe (author_id IS NULL — never a user's
+ *      own recipe) by case-insensitive name match. If found,
  *      REPLACE it: delete its recipe_ingredients + recipe_steps and update
  *      its row in place (preserving id, imageUrl, authorId, createdAt). If
  *      not, INSERT a new row.
@@ -37,7 +38,7 @@ import { createWriteStream } from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { randomUUID } from 'crypto'
-import { eq, sql } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 
 import { db, pool } from '../src/db/connection.js'
 import {
@@ -47,6 +48,7 @@ import {
   recipeSteps as recipeStepsTable,
 } from '../src/db/schema.js'
 import { regenRecipeSchema, type RegenRecipe } from '../src/services/regenSchema.js'
+import { findCatalogRecipeByName } from '../src/services/catalogRecipeLookup.js'
 import {
   lintRecipe,
   type CatalogIngredient,
@@ -493,17 +495,10 @@ async function applyToDb(
   const { regen, ingredientRowIds, lintInput } = resolved
 
   return await db.transaction(async tx => {
-    // 1. Find by case-insensitive name match.
-    const existing = await tx
-      .select({
-        id: recipesTable.id,
-        imageUrl: recipesTable.imageUrl,
-        authorId: recipesTable.authorId,
-        createdAt: recipesTable.createdAt,
-      })
-      .from(recipesTable)
-      .where(sql`LOWER(${recipesTable.name}) = LOWER(${regen.name})`)
-      .limit(1)
+    // 1. Find the catalogue recipe by case-insensitive name — never a user's
+    //    own recipe that shares the name.
+    const found = await findCatalogRecipeByName(tx, regen.name)
+    const existing = found ? [found] : []
 
     let recipeId: string
     let replaced: boolean

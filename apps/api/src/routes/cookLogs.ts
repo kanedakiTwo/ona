@@ -1,7 +1,7 @@
 /**
  * cook_logs REST surface — "esto lo cocinamos" events.
  *
- *   POST   /cook-logs                                — record a cook
+ *   POST   /cook-logs                                — record a cook (+ askRating, PRO-110)
  *   GET    /cook-logs                                — recent rows (limit ≤ 200)
  *   GET    /cook-logs/recipe/:recipeId               — { count, lastCookedAt } for the badge
  *   DELETE /cook-logs/:cookLogId                     — owner / household-member
@@ -11,7 +11,7 @@
 
 import { Router } from 'express'
 import { z } from 'zod'
-import { MEALS } from '@ona/shared'
+import { MEALS, shouldAskRating } from '@ona/shared'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import {
   recordCook,
@@ -24,6 +24,7 @@ import {
   resolveCookScale,
 } from '../services/pantryStore.js'
 import { getPrimaryHouseholdId } from '../services/scopeResolver.js'
+import { getRecipeNotesForUser } from '../services/recipeNotesStore.js'
 
 const router = Router()
 router.use(authMiddleware)
@@ -76,7 +77,15 @@ router.post('/cook-logs', async (req: AuthRequest, res) => {
       console.error('[cook-logs] pantry auto-decrement failed (continuing):', e)
     }
 
-    res.status(201).json({ id, pantry })
+    // PRO-110: ask «¿Qué tal?» unless the household rated it in the last 30 days.
+    let askRating = false
+    try {
+      askRating = shouldAskRating(await getRecipeNotesForUser(req.userId!, parsed.data.recipeId))
+    } catch (e) {
+      console.error('[cook-logs] rating prompt check failed (continuing):', e)
+    }
+
+    res.status(201).json({ id, pantry, askRating })
   } catch (err) {
     console.error('POST /cook-logs error:', err)
     res.status(500).json({ error: 'Internal server error' })

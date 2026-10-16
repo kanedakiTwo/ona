@@ -13,6 +13,7 @@ The cook-log is the **household-scoped** record of "we actually cooked this." It
 - A logged-in user marks any recipe as cooked from:
   - The recipe detail page (`/recipes/[id]`) — at the top of the **Notas** tab (desktop: Notas section), next to "Añadir a recetario".
   - The menu page (`/menu`) — each meal's "···" sheet has **"Marcar como cocinada"** (hint "La has cocinado N veces"), which records the cook event with menu / day-index / meal as context.
+- **«¿Qué tal?» after cooking (PRO-110).** After «Marcar como cocinada» on `/menu` and after «Terminar» on the last step of cook mode, a one-tap sheet asks «¿Qué tal?» · **Repetir a menudo** / **Bien** / **Mejor no**. The answer is saved in the household's existing rating (`recipe_notes.rating` 5 / 3 / 1, see [Recipe notes](./recipe-notes.md)), so the recipe's «Valoración» stars show it. Closing the sheet saves nothing. The API decides when to ask (`askRating` in the `POST /cook-logs` answer, `shouldAskRating` in `@ona/shared`): when the recipe has no rating, or its notes row was last touched 30+ days ago — a recipe rated in the last 30 days isn't asked about again (any edit of the household's notes for that recipe restarts the 30 days). Nothing on WhatsApp yet. The «Cocinada» button on the recipe detail doesn't ask.
 - The pill flips its label to `Cocinada N×` once at least one event exists for the recipe in the household's scope.
 - The recipe detail header (under the title) shows `Cocinada N × · última dd mmm` once `N > 0`. The history line stays hidden for never-cooked recipes so the meta row doesn't get noisy on fresh catalog pages.
 - The user can delete a cook-log row (corrections) — no "undo" UX yet; the assistant or future analytics page will surface the list.
@@ -43,7 +44,7 @@ No UPDATE path — corrections happen via DELETE + new INSERT.
 
 | Method | Path | Auth | Notes |
 |---|---|---|---|
-| POST | `/cook-logs` | required | Body validated via zod: `{ recipeId: uuid, menuId?, dayIndex? (0-6), meal? (breakfast\|lunch\|dinner\|snack), durationMin? (>0, ≤1440), notes? (≤500), cookedAt? (ISO) }`. Returns `{ id }` |
+| POST | `/cook-logs` | required | Body validated via zod: `{ recipeId: uuid, menuId?, dayIndex? (0-6), meal? (breakfast\|lunch\|dinner\|snack), durationMin? (>0, ≤1440), notes? (≤500), cookedAt? (ISO), servings? }`. Returns `{ id, pantry, askRating }` (`askRating`: show «¿Qué tal?», PRO-110) |
 | GET | `/cook-logs?limit=N` | required | Recent rows in household scope, most-recent first. `limit` clamped to 200, default 50 |
 | GET | `/cook-logs/recipe/:recipeId` | required | Aggregated `{ count, lastCookedAt }`. Used by the badge + button on every meal/recipe card |
 | DELETE | `/cook-logs/:cookLogId` | required | Owner / household-member only. 204 on success, 404 if not in scope |
@@ -78,3 +79,4 @@ Same pattern as PR 1B: reads run through `resolveScope(userId)`; inserts dual-po
 - `apps/web/src/app/recipes/[id]/page.tsx` — wired into the detail header + the Notas tab
 - `apps/web/src/components/menu/MealOptions.tsx` — "Marcar como cocinada" in the /menu meal sheet
 - `apps/web/e2e/cook-log.spec.ts` — Playwright regression for the happy path
+- «¿Qué tal?» (PRO-110): `packages/shared/src/ratingPrompt.ts` (`shouldAskRating`, `RATING_PROMPT_CHOICES`), `apps/web/src/components/cooking/RatingPromptSheet.tsx` (menu meal sheet + cook mode «Terminar» in `CookingShell.tsx`); tests `apps/api/src/tests/ratingPrompt.test.ts`, `apps/web/e2e/rating-prompt.spec.ts`

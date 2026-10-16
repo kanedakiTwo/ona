@@ -16,6 +16,7 @@ Hands-free, fullscreen step-by-step cooking experience driven from a recipe.
 - Users see the step temperature and technique (when present) as small badges next to the step header
 - Users can switch the diners count from inside cooking mode without losing their place; quantities re-scale live
 - Users can exit cooking mode at any time; the wake lock is released and the app returns to the recipe detail
+- On the last step «Siguiente» becomes **«Terminar»** (PRO-110): it records the dish as cooked (`POST /cook-logs` with the servings, so the pantry auto-decrement applies), asks «¿Qué tal?» when the API says so (see [Cook log](./cook-log.md)) and returns to the recipe detail
 - A persistent "ingredients checklist" panel is reachable with one tap and shows the full ingredient list with checkmarks across all steps
 
 ## Display

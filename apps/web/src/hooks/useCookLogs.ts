@@ -31,6 +31,8 @@ export interface RecordCookBody {
   durationMin?: number | null
   notes?: string | null
   cookedAt?: string
+  /** Servings cooked — scales the pantry auto-decrement. */
+  servings?: number | null
 }
 
 /** Times-cooked + last-cooked for a single recipe in household scope. */
@@ -46,8 +48,9 @@ export function useRecipeCookStats(recipeId: string | undefined) {
 /** Append a cook event; invalidates the recipe's stats + the recent list. */
 export function useRecordCook() {
   const qc = useQueryClient()
-  return useMutation<{ id: string }, Error, RecordCookBody>({
-    mutationFn: (body) => api.post<{ id: string }>("/cook-logs", body),
+  // `askRating`: show «¿Qué tal?» (PRO-110).
+  return useMutation<{ id: string; askRating?: boolean }, Error, RecordCookBody>({
+    mutationFn: (body) => api.post<{ id: string; askRating?: boolean }>("/cook-logs", body),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ["cook-logs", "recipe", variables.recipeId] })
       qc.invalidateQueries({ queryKey: ["cook-logs", "recent"] })

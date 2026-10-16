@@ -50,6 +50,9 @@ test('a weekend sign-up gets this week and the next, and /menu opens the next', 
   await next.click()
   await page.getByRole('button', { name: /3-4 veces/i }).click()
   await next.click()
+  // PRO-138: «Entre semana, ¿cómo te gusta cocinar?»
+  await page.getByRole('button', { name: /sin prisa/i }).click()
+  await next.click()
   await next.click() // no restrictions
   await page.getByPlaceholder('Plato 1').fill('Lentejas')
   await next.click()

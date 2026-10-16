@@ -38,7 +38,7 @@ Each recipe has:
 - `imageUrl` — optional
 - `servings` — required, positive integer; the canonical number of diners the listed quantities cover
 - `yield` — optional human-readable string (e.g. "12 albóndigas", "1 L de salsa")
-- `prepTime`, `cookTime`, `activeTime` — minutes (integer, optional, editable)
+- `prepTime`, `cookTime`, `activeTime` — minutes (integer, optional, editable). `activeTime` is the hands-on time («de trabajo»); the menu's time limits use it (else `prepTime`) and `totalTime` (else prep + cook). System recipes get the empty ones filled on boot (PRO-138, see [Menus](./menus.md) → Time to cook)
 - `totalTime` — minutes, derived by the API: sum of `step.durationMin` if all steps have it, else `prepTime + cookTime`
 - `difficulty` — enum `easy | medium | hard`
 - `meals` — array of `breakfast | lunch | dinner | snack`

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { WEEKDAY_COOKING_CHOICES } from './cookingTime.js'
 import type { ActivityLevel, CookingFrequency, HouseholdSize, Priority, Sex } from '../constants/enums.js'
 import { cleanAttributionText, normalizeReferralCode, normalizeSource } from './waitlist.js'
 
@@ -102,6 +103,14 @@ export const onboardingSchema = z.object({
    * `restrictions` is not stored.
    */
   healthConsent: z.boolean().optional(),
+  /**
+   * PRO-138: «Entre semana, ¿cómo te gusta cocinar?» — stored as
+   * `time_available` in the memory. Optional: Mimo's WhatsApp onboarding
+   * doesn't ask it.
+   */
+  weekdayCooking: z.enum(WEEKDAY_COOKING_CHOICES).optional(),
+  /** «¿Algo más? Cuéntanos tu caso» — free text the AI reads into the memory. */
+  cookingNote: z.string().trim().max(500).optional(),
 })
 
 export const updateProfileSchema = z.object({

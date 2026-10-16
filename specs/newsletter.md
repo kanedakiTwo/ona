@@ -6,7 +6,7 @@ The weekly email for people who ticked «Quiero recibir cada viernes el menú de
 
 - People who ticked the box get, each Friday, one email from **Mimoia <hola@mimoia.com>**, in the brand (cream, ink, one touch of terracotta, a forest button; Fraunces, Inter and a Cormorant italic accent), in this order:
   - masthead: the Mimoia logo (links to mimoia.com), «El menú de los viernes» and the issue's edition line (e.g. «N.º 1 · 16 de octubre de 2026»);
-  - an optional **headline** (a `*word*` goes in the terracotta italic) and an opening **letter** — since issue 1 written and signed by Miguel, in a personal, family tone;
+  - an optional short **greeting** above the headline (`preface`, e.g. «Hola a todos…»), an optional **headline** (a `*word*` goes in the terracotta italic) and an opening **letter** — since issue 1 written and signed by Miguel, in a personal, family tone;
   - **the star recipe**: its photo full width (links to the recipe), «La receta de la semana», title, an optional one-line meta, two short paragraphs and the issue's single call to action (a forest pill button);
   - up to four free **sections** (e.g. «Por qué existe Mimoia» on a cream-deep panel with a big italic quote, «Qué es esta carta» after a thin rule);
   - optionally a **«Novedad en Mimoia»** card and an **«Un truco con Mimo»** card, each with an image when there is one and «Ver más»;
@@ -21,7 +21,7 @@ The weekly email for people who ticked «Quiero recibir cada viernes el menú de
 
 `POST /admin/newsletter/send` (admin JWT) with `{ issueId, subject, preheader?, content, testTo?, dryRun? }`:
 - `issueId`: lowercase slug (`2026-10-16`), the idempotency key.
-- `content`: `{ edition?, headline?, intro?, star { title, body, imageUrl, imageAlt, url, meta? }, sections?, news?, tip?, cta { label, url }, note?, signoff?, from? }`; `news`/`tip` = `{ title, body, imageUrl?, imageAlt?, url? }`; `sections` = up to 4 × `{ label?, title?, quote?, body, tone?: 'band' | 'plain' }`; `from` = `{ name, role? }`. Image and link URLs must be absolute (`http(s)://`), the star needs `alt`. The template lays it out; nobody sends raw HTML.
+- `content`: `{ edition?, preface?, headline?, intro?, star { title, body, imageUrl, imageAlt, url, meta? }, sections?, news?, tip?, cta { label, url }, note?, signoff?, from? }`; `news`/`tip` = `{ title, body, imageUrl?, imageAlt?, url? }`; `sections` = up to 4 × `{ label?, title?, quote?, body, tone?: 'band' | 'plain' }`; `from` = `{ name, role? }`. Image and link URLs must be absolute (`http(s)://`), the star needs `alt`. The template lays it out; nobody sends raw HTML.
 - `dryRun: true` → `{ mode: 'dry_run', recipients, alreadySent, bySource { waitlist, user }, includes? }`, sends nothing; `includes: <email>` says whether that address would get it.
 - `testTo` → one proof, subject prefixed «[Prueba] », only to the email of an **admin** account (else 400 `NEWSLETTER_TEST_NOT_ADMIN`); its opt-out links are dummies; nothing recorded.
 - Otherwise → `{ mode: 'send', sent, failed, skipped, alreadySent }`, through Resend's batch API (≤ 100 per call), audited as `newsletter.send` (counts only).

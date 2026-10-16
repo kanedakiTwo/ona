@@ -16,6 +16,7 @@ import { calculateMenuNutrientsFromDB } from '../services/nutrientCalculator.js'
 import { updateBalance } from '../services/nutrientBalance.js'
 import { findRecipeForSlot, normaliseEquipment, type RecipeWithIngredients } from '../services/recipeMatcher.js'
 import { findForCourse } from '../services/courseAwareMatcher.js'
+import { loadHouseholdRatingSets, withHouseholdRatings } from '../services/householdRatings.js'
 import { addDish, removeDishAt, patchDish, reorderDish, coursesFor, dishCountFor } from '../services/menuDishes.js'
 import { getMemoryForUser } from '../services/userMemoryStore.js'
 import { detectSeason } from '@ona/shared'
@@ -512,7 +513,12 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       .from(userFavorites)
       .where(scopeWhere(userFavorites.userId, userFavorites.householdId, favScope))
 
-    const favoriteRecipeIds = new Set<string>(favRows.map((f: any) => f.recipeId))
+    // «¿Qué tal?» ratings (PRO-111): 5 stars boost, 1 star never auto-picked.
+    const rated = withHouseholdRatings(
+      new Set<string>(favRows.map((f: any) => f.recipeId)),
+      new Set(menu.bannedRecipeIds ?? []),
+      await loadHouseholdRatingSets(req.userId!),
+    )
 
     // Load all recipes with ingredients for matching
     // Same loader as the weekly generator: visibility, fit maps, frequency, allergens.
@@ -525,8 +531,7 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       season,
       usedRecipeIds,
       restrictions,
-      favoriteRecipeIds,
-      bannedRecipeIds: new Set(menu.bannedRecipeIds ?? []),
+      ...rated,
       dislikes,
       availableEquipment,
       maxPrepMinutes,
@@ -662,7 +667,11 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
         .select({ recipeId: userFavorites.recipeId })
         .from(userFavorites)
         .where(eq(userFavorites.userId, menu.userId))
-      const favoriteRecipeIds = new Set<string>(favRows.map((f: any) => f.recipeId))
+      const rated = withHouseholdRatings(
+        new Set<string>(favRows.map((f: any) => f.recipeId)),
+        new Set(menu.bannedRecipeIds ?? []),
+        await loadHouseholdRatingSets(req.userId!),
+      )
 
       // Same loader as the weekly generator: visibility, fit maps, frequency, allergens.
       const recipesWithIngredients = await loadMatchableRecipes(req.userId!)
@@ -672,8 +681,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
         season: detectSeason(),
         usedRecipeIds,
         restrictions,
-        favoriteRecipeIds,
-        bannedRecipeIds: new Set(menu.bannedRecipeIds ?? []),
+        ...rated,
         dislikes,
         availableEquipment,
         maxPrepMinutes,
@@ -1365,7 +1373,11 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
       .select({ recipeId: userFavorites.recipeId })
       .from(userFavorites)
       .where(scopeWhere(userFavorites.userId, userFavorites.householdId, favScopeRegen))
-    const favoriteRecipeIdsRegen = new Set<string>(favRowsRegen.map((f: any) => f.recipeId))
+    const ratedRegen = withHouseholdRatings(
+      new Set<string>(favRowsRegen.map((f: any) => f.recipeId)),
+      new Set(menu.bannedRecipeIds ?? []),
+      await loadHouseholdRatingSets(req.userId!),
+    )
 
     // Same loader as the weekly generator: visibility, fit maps, frequency, allergens.
     const recipesWithIngredientsRegen = await loadMatchableRecipes(req.userId!)
@@ -1375,8 +1387,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
       season: detectSeason(),
       usedRecipeIds,
       restrictions,
-      favoriteRecipeIds: favoriteRecipeIdsRegen,
-      bannedRecipeIds: new Set(menu.bannedRecipeIds ?? []),
+      ...ratedRegen,
       dislikes: dislikesRegen,
       availableEquipment: availEquipRegen,
       maxPrepMinutes: maxPrepRegen,
@@ -1451,7 +1462,11 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/random', async (req: AuthReq
       .select({ recipeId: userFavorites.recipeId })
       .from(userFavorites)
       .where(scopeWhere(userFavorites.userId, userFavorites.householdId, favScopeR))
-    const favoriteRecipeIdsR = new Set<string>(favRowsR.map((f: any) => f.recipeId))
+    const ratedR = withHouseholdRatings(
+      new Set<string>(favRowsR.map((f: any) => f.recipeId)),
+      new Set(menu.bannedRecipeIds ?? []),
+      await loadHouseholdRatingSets(req.userId!),
+    )
 
     // Same loader as the weekly generator: visibility, fit maps, frequency, allergens.
     const recipesWithIngredientsR = await loadMatchableRecipes(req.userId!)
@@ -1461,8 +1476,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/random', async (req: AuthReq
       season: detectSeason(),
       usedRecipeIds,
       restrictions,
-      favoriteRecipeIds: favoriteRecipeIdsR,
-      bannedRecipeIds: new Set(menu.bannedRecipeIds ?? []),
+      ...ratedR,
       dislikes: dislikesR,
       availableEquipment: availEquipR,
       maxPrepMinutes: maxPrepR,

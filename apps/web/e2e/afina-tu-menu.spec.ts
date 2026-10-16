@@ -131,6 +131,13 @@ test('«Saltar» in the sign-up goes straight on to the questions', async ({ pag
 
 test('an account onboarded without it: «Novedad» once, then the card until «Ahora no»', async ({ page }) => {
   test.setTimeout(90_000)
+  // An account from before PRO-146: the sign-up page it lands on must not
+  // stamp the sign-up step (it would, as soon as it renders).
+  await page.route(/\/taste\/offers$/, (route) =>
+    route.request().postDataJSON()?.event === 'onboarding'
+      ? route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' })
+      : route.continue(),
+  )
   await registerFreshUser(page, { keepTaste: true })
   await completeOnboarding(page, { keepTaste: true })
 

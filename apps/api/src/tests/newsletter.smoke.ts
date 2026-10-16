@@ -69,6 +69,9 @@ describe.skipIf(!reachable)('newsletter (real API + DB)', () => {
     const repo = createDbNewsletterRepo()
     const picked = selectNewsletterRecipients(await repo.candidates(), new Set())
     expect(picked.some((p) => p.email === email)).toBe(true)
+    // PRO-130: the entry's own invite code travels with it, for the footer link.
+    expect(code).toBeTruthy()
+    expect(picked.find((p) => p.email === email)?.referralCode).toBe(code)
   })
 
   it('claims are unique per issue + recipient; release lets a re-run claim again', async () => {

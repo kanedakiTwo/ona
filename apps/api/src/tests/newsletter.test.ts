@@ -258,6 +258,44 @@ describe('sendNewsletter', () => {
     await expect(sendNewsletter({ ...ISSUE, testTo: 'ana@example.com' }, d)).rejects.toThrow()
   })
 
+  it('each waitlist recipient gets their own invite link, never someone else\'s; accounts get none (PRO-130)', async () => {
+    const codes: Record<string, string> = { 'ana@example.com': 'anacode1', 'bea@example.com': 'beacode2' }
+    const { repo } = memoryRepo([
+      userCand('cuenta@example.com'),
+      cand('ana@example.com', { unsubscribeToken: TOKEN_A, referralCode: codes['ana@example.com'] }),
+      cand('bea@example.com', { unsubscribeToken: TOKEN_B, referralCode: codes['bea@example.com'] }),
+    ])
+    const batch = okBatch()
+    await sendNewsletter(ISSUE, deps(repo, batch))
+    const msgs = batch.mock.calls[0][0]
+    expect(msgs.map((m) => m.to)).toEqual(['cuenta@example.com', 'ana@example.com', 'bea@example.com'])
+    for (const m of msgs) {
+      const own = codes[m.to]
+      for (const [email, code] of Object.entries(codes)) {
+        if (email === m.to) continue
+        expect(m.html).not.toContain(code)
+        expect(m.text).not.toContain(code)
+      }
+      if (own) {
+        expect(m.html).toContain('Invita a tu hogar y entráis antes:')
+        expect(m.html).toContain(`href="https://mimoia.com/?invita=${own}"`)
+        expect(m.text).toContain(`Invita a tu hogar y entráis antes: https://mimoia.com/?invita=${own}`)
+      } else {
+        expect(m.html).not.toContain('Invita a tu hogar')
+        expect(m.text).not.toContain('Invita a tu hogar')
+        expect(m.html).not.toContain('?invita=')
+      }
+    }
+  })
+
+  it('the admin proof carries no invite link (PRO-130)', async () => {
+    const { repo } = memoryRepo([cand('ana@example.com', { referralCode: 'anacode1' })], ['miguel@mimoia.com'])
+    const d = deps(repo, okBatch())
+    await sendNewsletter({ ...ISSUE, testTo: 'miguel@mimoia.com' }, d)
+    const msg = (d.sendOne as any).mock.calls[0][0] as EmailMessage
+    expect(msg.html).not.toContain('?invita=')
+  })
+
   it('the newsletter opt-out leaves the entry on the list; a second click says already', async () => {
     const { repo, entries } = memoryRepo(people)
     expect(await repo.unsubscribe(`w.${TOKEN_A}`)).toBe('ok')

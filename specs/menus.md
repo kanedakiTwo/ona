@@ -73,7 +73,7 @@ A menu is stored per-user per-week:
 
 The generator (`menuGenerator.ts`) uses iterative optimization:
 
-1. Loads user profile (sex, age, weight, height, activity level), restrictions, and favorites. The meal template defaults to **lunch + dinner** every day (breakfast is opt-in from the profile's plantilla). Onboarding answers count too (`onboardingPreferences.ts`): recipes sharing a word with a *favourite dish* get the favourites' 2× weight, and priority **Rapidez** or cooking **Poco** caps Mon–Fri prep time at 30 min (unless `time_available` memory says otherwise). Priority *Ahorro*/*Variedad* and cooking *3-4 veces* don't change the generator yet. **«¿Qué tal?» ratings** (PRO-111, `services/householdRatings.ts`): a recipe the household rated 5 («Repetir a menudo») gets the favourites' weight; one rated 1 («Mejor no») never comes out in the automatic menu — the weekly generator, «Cambiar al azar», an added meal and a regenerated dish — but can still be picked by hand («Elegir otra receta», Mimo naming it). 2–4 stars change nothing. The 1-star recipes are not added to the week's «Vetadas» list. Tests: `householdRatings.test.ts`
+1. Loads user profile (sex, age, weight, height, activity level), restrictions, and favorites. The meal template defaults to **lunch + dinner** every day (breakfast is opt-in from the profile's plantilla). Onboarding answers count too (`onboardingPreferences.ts`): recipes sharing a word with a *favourite dish* get the favourites' 2× weight, and priority **Rapidez** or cooking **Poco** caps Mon–Fri at 30 min **in total** when the user has no `time_available` memory (an empty one — the onboarding's «Sin prisa» — means no limit). Priority *Ahorro*/*Variedad* and cooking *3-4 veces* don't change the generator yet. **«¿Qué tal?» ratings** (PRO-111, `services/householdRatings.ts`): a recipe the household rated 5 («Repetir a menudo») gets the favourites' weight; one rated 1 («Mejor no») never comes out in the automatic menu — the weekly generator, «Cambiar al azar», an added meal and a regenerated dish — but can still be picked by hand («Elegir otra receta», Mimo naming it). 2–4 stars change nothing. The 1-star recipes are not added to the week's «Vetadas» list. Tests: `householdRatings.test.ts`
 2. Loads every recipe the user can see — system catalogue + their own + their household's (never another user's private recipes, see [Recipes → Recipe visibility](./recipes.md)) — with ingredient names and cached `nutritionPerServing`
 3. Calculates a target calorie count using BMR × activity × number of meal slots
 4. Detects current season
@@ -165,6 +165,12 @@ user could read/modify any menu by id.
   another user/household. Owner-or-same-household access mirrors the shopping
   list rule (`canAccessRow` in `scopeResolver.ts`).
 
+## Time to cook (PRO-138)
+
+- A day's limit comes from `time_available[weekday]` in the memory (`weekTimeBudgets` / `dayTimeBudget`, `@ona/shared` `types/cookingTime.ts`): either **in total** («Rápido: en media hora, a la mesa», or a plain number as Mimo writes it) or **of work** («Poco rato de trabajo, aunque luego se haga solo»). The weekly generator and every single-slot path (Cambiar al azar, add a meal, regenerate) apply it.
+- The matcher (`recipeMatcher.ts`, step 6, `fitsTimeBudget`): a «total» day compares `totalTime` (else `prepTime + cookTime`); a «trabajo» day compares `activeTime` (else `prepTime`). **With a limit, a recipe without that time does not pass** (until 2026-10-17 it always passed and only `prepTime` was compared, so a 3-hour stew with 20 min of prep reached a 30-minute Tuesday). Without a limit every recipe passes. A cocido with 15 min of work and 200 in total fits a «20 min de trabajo» day. Tests: `recipeMatcher.test.ts`, `onboardingPreferences.test.ts`.
+- Catalogue times: on every boot (`db:migrate`) and at the end of `db:seed`, `catalogRecipeTimes.ts` fills **only empty** times of system recipes: Cocina's prep/cook/total for the 10 recipes that had none, `totalTime = prepTime + cookTime` when missing, and `activeTime` from the steps (sum of hands-on steps; simmering, oven, resting, marinating and soaking steps don't count; a hands-on step without minutes → `prepTime`; never above the total). Each filled recipe is logged as `[catalog-recipe-times] «…»: … trabajo N (de pasos|de preparación) min` for Cocina to review, plus a «N de M recetas del sistema con tiempo total y de trabajo» line. Tests: `catalogRecipeTimes.test.ts`.
+
 ## Constraints
 
 - All menu routes require auth (including `POST /menu/generate`, which also
@@ -185,6 +191,8 @@ user could read/modify any menu by id.
 - [PWA](./pwa.md) — meal regeneration and slot-lock toggles are wrapped by the offline queue; meal-time notifications are scheduled client-side from saved meal-time preferences
 
 ## Source
+- [packages/shared/src/types/cookingTime.ts](../packages/shared/src/types/cookingTime.ts) — day limits (total / trabajo) and `fitsTimeBudget`
+- [apps/api/src/services/catalogRecipeTimes.ts](../apps/api/src/services/catalogRecipeTimes.ts) — boot-time fill of catalogue times (PRO-138)
 
 - [apps/api/src/routes/menus.ts](../apps/api/src/routes/menus.ts)
 - [apps/api/src/services/menuGenerator.ts](../apps/api/src/services/menuGenerator.ts) — core algorithm

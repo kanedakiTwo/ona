@@ -3,7 +3,7 @@ import { loadHouseholdRatingSets, withHouseholdRatings } from './householdRating
 import { visibleAuthorIds, visibleRecipeWhere } from './recipeVisibility.js'
 import { loadMatchableRecipes, type RecipeWithCourse } from './matchableRecipes.js'
 import { mergeRestrictions } from './dietaryRestrictions.js'
-import { prepBudgetByDay, recipesMatchingDishes } from './onboardingPreferences.js'
+import { recipesMatchingDishes, weekTimeBudgets } from './onboardingPreferences.js'
 import { menuMetabolicQuality, recipeMetabolicProfile, type MetabolicProfile } from './metabolicScore.js'
 import {
   users,
@@ -21,7 +21,7 @@ import {
   TARGET_MACROS,
   MENU_GENERATION,
 } from '@ona/shared'
-import type { DayMenu, DayTemplate, Meal, Season, Sex, ActivityLevel, LockedSlots } from '@ona/shared'
+import type { DayMenu, DayTemplate, DayTimeBudget, Meal, Season, Sex, ActivityLevel, LockedSlots } from '@ona/shared'
 import { findRecipeForSlot, normaliseEquipment, type RecipeWithIngredients } from './recipeMatcher.js'
 import { findForCourse } from './courseAwareMatcher.js'
 import { dishCountFor, coursesFor } from './menuDishes.js'
@@ -196,9 +196,6 @@ function countMealSlots(template: DayTemplate[]): number {
 /**
  * Build a random menu for one iteration.
  */
-// Spanish weekday names in the same Monday→Sunday order the menu uses.
-const WEEKDAY_KEYS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'] as const
-
 /** Exported for tests (restrictions over the full catalogue, PRO-61). */
 export function buildRandomMenu(
   template: DayTemplate[],
@@ -212,7 +209,7 @@ export function buildRandomMenu(
   skippedDays?: Set<number>,
   dislikes?: string[],
   availableEquipment?: Set<string>,
-  timeBudgetByDay?: Record<number, number>,
+  timeBudgetByDay?: Record<number, DayTimeBudget>,
   mealDiners?: Record<Meal, number>[],
   mealDishCounts?: MealDishCounts,
 ): { days: DayMenu[]; warnings: string[] } {
@@ -281,7 +278,7 @@ export function buildRandomMenu(
           dayIndex,
           dislikes,
           availableEquipment,
-          maxPrepMinutes: timeBudgetByDay?.[dayIndex] ?? null,
+          timeBudget: timeBudgetByDay?.[dayIndex] ?? null,
         })
         if (!picked) {
           warnings.push(`no_${course ?? 'main'}_available_${meal}_d${dayIndex}`)
@@ -472,23 +469,17 @@ export async function generateMenu(
   const availableEquipment = Array.isArray(equipmentValue)
     ? new Set<string>((equipmentValue as string[]).map(normaliseEquipment))
     : undefined
-  const timeValue = memory?.time_available?.value as Record<string, number> | undefined
-  const timeBudgetByDay: Record<number, number> = {}
-  if (timeValue && typeof timeValue === 'object') {
-    for (let i = 0; i < WEEKDAY_KEYS.length; i++) {
-      const v = timeValue[WEEKDAY_KEYS[i]]
-      if (typeof v === 'number' && v > 0) timeBudgetByDay[i] = v
-    }
-  }
+  // Per-day time limits (PRO-138): total or hands-on minutes; «Rapidez» /
+  // «Cocino poco» without an answer → ≤ 30 min in total Mon–Fri.
+  const timeBudgetByDay = weekTimeBudgets(memory?.time_available?.value, user)
 
   // 5b. Onboarding answers: dishes they love join the favourites weighting;
-  // "Rapidez" / "Cocino poco" caps weekday prep time (onboardingPreferences.ts).
+  // time limits come from weekTimeBudgets (onboardingPreferences.ts).
   for (const id of recipesMatchingDishes(allRecipes, user.favoriteDishes)) favoriteRecipeIds.add(id)
 
   // 5c. «¿Qué tal?» (PRO-111): 5 stars weigh like a favourite, 1 star never
   // comes out on its own. Matcher-only sets: the week's vetoes stay as they are.
   const rated = withHouseholdRatings(favoriteRecipeIds, bannedRecipeIds, await loadHouseholdRatingSets(userId, db).catch(() => ({ boost: new Set<string>(), exclude: new Set<string>() })))
-  Object.assign(timeBudgetByDay, prepBudgetByDay({ ...timeBudgetByDay }, user))
 
   // Per-recipe metabolic profile, once (scoreMenu runs every iteration).
   const metabolic = new Map(allRecipes.map((r) => [r.id, recipeMetabolicProfile(r.ingredients.map((i) => i.ingredientName), season)]))

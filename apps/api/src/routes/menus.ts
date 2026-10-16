@@ -19,7 +19,7 @@ import { findForCourse } from '../services/courseAwareMatcher.js'
 import { loadHouseholdRatingSets, withHouseholdRatings } from '../services/householdRatings.js'
 import { addDish, removeDishAt, patchDish, reorderDish, coursesFor, dishCountFor } from '../services/menuDishes.js'
 import { getMemoryForUser } from '../services/userMemoryStore.js'
-import { detectSeason } from '@ona/shared'
+import { dayTimeBudget, detectSeason } from '@ona/shared'
 import { recipeIngredients, ingredients, recipes, userFavorites } from '../db/schema.js'
 import { resolveScope, scopeWhere, getPrimaryHouseholdId, canAccessRow } from '../services/scopeResolver.js'
 import {
@@ -499,11 +499,8 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
     const availableEquipment = Array.isArray(equipmentValue)
       ? new Set<string>((equipmentValue as string[]).map(normaliseEquipment))
       : undefined
-    const timeValue = memory?.time_available?.value as Record<string, number> | undefined
-    const SPANISH_DAY_KEYS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'] as const
-    const maxPrepMinutes = timeValue && typeof timeValue === 'object'
-      ? (timeValue[SPANISH_DAY_KEYS[dayIndex]] ?? null)
-      : null
+    // PRO-138: the day's limit on total or hands-on time.
+    const timeBudget = dayTimeBudget(memory?.time_available?.value, dayIndex)
 
     // Fetch favorites — household-scoped when the flag is on so the
     // matcher boosts recipes any household member has starred.
@@ -534,7 +531,7 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       ...rated,
       dislikes,
       availableEquipment,
-      maxPrepMinutes,
+      timeBudget,
     }
 
     // Re-pick a recipe for each existing recipe-dish, preserving the dish's course.
@@ -657,11 +654,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
       const availableEquipment = Array.isArray(equipmentValue2)
         ? new Set<string>((equipmentValue2 as string[]).map(normaliseEquipment))
         : undefined
-      const SPANISH_DAY_KEYS2 = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'] as const
-      const timeValue2 = memory2?.time_available?.value as Record<string, number> | undefined
-      const maxPrepMinutes = timeValue2 && typeof timeValue2 === 'object'
-        ? (timeValue2[SPANISH_DAY_KEYS2[dayIndex]] ?? null)
-        : null
+      const timeBudget = dayTimeBudget(memory2?.time_available?.value, dayIndex)
 
       const favRows = await db
         .select({ recipeId: userFavorites.recipeId })
@@ -684,7 +677,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
         ...rated,
         dislikes,
         availableEquipment,
-        maxPrepMinutes,
+        timeBudget,
       })
       if (!newRecipe) {
         res.status(404).json({ error: 'No matching recipe found for this slot' })
@@ -1362,11 +1355,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
     const availEquipRegen = Array.isArray(equipValRegen)
       ? new Set<string>((equipValRegen as string[]).map(normaliseEquipment))
       : undefined
-    const SPANISH_DAY_KEYS_REGEN = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'] as const
-    const timeValRegen = memRegen?.time_available?.value as Record<string, number> | undefined
-    const maxPrepRegen = timeValRegen && typeof timeValRegen === 'object'
-      ? (timeValRegen[SPANISH_DAY_KEYS_REGEN[day]] ?? null)
-      : null
+    const timeBudgetRegen = dayTimeBudget(memRegen?.time_available?.value, day)
 
     const favScopeRegen = await resolveScope(menu.userId)
     const favRowsRegen = await db
@@ -1390,7 +1379,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
       ...ratedRegen,
       dislikes: dislikesRegen,
       availableEquipment: availEquipRegen,
-      maxPrepMinutes: maxPrepRegen,
+      timeBudget: timeBudgetRegen,
     }
 
     const picked = findForCourse(recipesWithIngredientsRegen, dish.course ?? null, matcherOptionsRegen)
@@ -1451,11 +1440,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/random', async (req: AuthReq
     const availEquipR = Array.isArray(equipValR)
       ? new Set<string>((equipValR as string[]).map(normaliseEquipment))
       : undefined
-    const SPANISH_DAY_KEYS_R = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'] as const
-    const timeValR = memR?.time_available?.value as Record<string, number> | undefined
-    const maxPrepR = timeValR && typeof timeValR === 'object'
-      ? (timeValR[SPANISH_DAY_KEYS_R[day]] ?? null)
-      : null
+    const timeBudgetR = dayTimeBudget(memR?.time_available?.value, day)
 
     const favScopeR = await resolveScope(menu.userId)
     const favRowsR = await db
@@ -1479,7 +1464,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/random', async (req: AuthReq
       ...ratedR,
       dislikes: dislikesR,
       availableEquipment: availEquipR,
-      maxPrepMinutes: maxPrepR,
+      timeBudget: timeBudgetR,
     }
 
     // Decide which course to look for, based on the user's plantilla

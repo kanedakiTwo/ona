@@ -39,7 +39,7 @@ Stable forever — never rename, only add. Adding a key is a one-line change in 
 | `restrictions` | `string[]` | non-empty strings; e.g. `['sin gluten', 'sin lactosa']` |
 | `dislikes` | `string[]` | e.g. `['cilantro', 'hígado']` |
 | `equipment` | `string[]` | e.g. `['horno', 'freidora de aire', 'olla express']` |
-| `time_available` | `{ [weekday-spanish]: minutes 0..480 }` | weekdays: lunes, martes, miercoles, jueves, viernes, sabado, domingo |
+| `time_available` | `{ [weekday-spanish]: minutes 0..480 \| { mode: 'total'\|'activo', minutes 0..480 } }` | weekdays: lunes, martes, miercoles, jueves, viernes, sabado, domingo. A number = minutes in total; `activo` = minutes of work (the rest can cook by itself). Missing day / 0 = no limit; `{}` = «Sin prisa» from the onboarding. The memory page shows «lunes: 20 min de trabajo» and the editor keeps each day's mode (PRO-138) |
 | `weekly_budget_eur` | number 0..5000 | |
 | `cuisine_bias` | `{ [cuisine]: 0..100 }` | slider per cuisine — only values ≥70 surface in the digest |
 | `cooking_skill` | `'easy'\|'medium'\|'advanced'` | |
@@ -71,6 +71,8 @@ All endpoints require auth.
 
 The `update_memory` skill (declared in `assistant/skills.ts`) takes a `facts: Array<{ key, value, confidence?, remove?, replace? }>` payload, merges it with what's stored (`mergeMemoryFacts`: lists are added to without duplicates, `remove` takes items out, `replace: true` rebuilds the list; a fact with `source: manual` is kept unless the user asked for the change, confidence 1) and routes it through `setMemoryBatch` with `source='inferred'`. Until 2026-10-12 a list was replaced whole, so a model that resent it without an old entry deleted it. Validation errors return a Spanish summary the model relays back to the user.
 
+- **Onboarding analysis (PRO-138, first step of PRO-91).** The web onboarding stores its weekday answer as `time_available` (source `onboarding`). Then, in the background, one Claude Sonnet call (`services/onboardingMemoryAnalysis.ts`) reads all the answers and the optional «¿Algo más? Cuéntanos tu caso» text and writes what it finds through the same rules as `update_memory` (`mergeMemoryFacts` + `setMemoryBatch`, source `inferred` → label «Asistente»): days with another limit (merged over the onboarding answer), meal times, habits, dislikes, equipment, and `notes` for what has no field («Come fuera a mediodía entre semana»). Never health keys (`physical.*`, `restrictions`); a fact set by hand is kept. Billed to the user in `cost_events` (`onboarding_analysis`). No API key or a model error → nothing written, the onboarding goes on. Tests: `onboardingMemoryAnalysis.test.ts` (model simulated)
+
 ## Constraints
 
 - **Health keys need consent** (PRO-21): `physical.*` and `restrictions` are written only while the user's health-data consent is in force (`HEALTH_MEMORY_KEYS`, `isHealthMemoryKey` in `@ona/shared`). Otherwise `setMemoryFact`/`setMemoryBatch` throw `HealthConsentRequiredError` → `PATCH /memory` 403 `HEALTH_CONSENT_REQUIRED`, `update_memory` replies with the profile link. Withdrawing the consent deletes those rows. See [Privacy](./privacy.md)
@@ -90,6 +92,7 @@ The `update_memory` skill (declared in `assistant/skills.ts`) takes a `facts: Ar
 
 - [packages/shared/src/types/userMemory.ts](../packages/shared/src/types/userMemory.ts) — key registry + per-key Zod schemas + digest builder
 - [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts) — `user_memories` table
+- [apps/api/src/services/onboardingMemoryAnalysis.ts](../apps/api/src/services/onboardingMemoryAnalysis.ts) — the onboarding answers read into the memory (PRO-138)
 - [apps/api/src/services/userMemoryStore.ts](../apps/api/src/services/userMemoryStore.ts) — get / set / batch / delete + digest
 - [apps/api/src/routes/memory.ts](../apps/api/src/routes/memory.ts) — REST surface
 - [apps/api/src/services/assistant/contextLoader.ts](../apps/api/src/services/assistant/contextLoader.ts) — injection point

@@ -34,6 +34,7 @@ import { seedRecipes, type SeedRecipe } from './recipes.js'
 import { eq, sql } from 'drizzle-orm'
 import { CATALOG_RENAMES } from '../services/recipeRenames.js'
 import { applyCatalogSourceLinks } from '../services/catalogSourceLinks.js'
+import { applyCatalogRecipeTimes } from '../services/catalogRecipeTimes.js'
 import { applyCatalogRecipeFixes } from '../services/catalogRecipeFixes.js'
 import type { Meal, Season, Unit } from '@ona/shared'
 import { UNITS } from '@ona/shared'
@@ -192,6 +193,8 @@ async function seed(): Promise<void> {
   // PRO-78: no-op on a fresh seed (it already has the full list); fixes a
   // dev DB seeded before it.
   await applyCatalogRecipeFixes(db)
+  // PRO-138: total and hands-on times for every catalogue recipe.
+  await applyCatalogRecipeTimes(db)
   console.log('Seed complete!')
   await pool.end()
 }

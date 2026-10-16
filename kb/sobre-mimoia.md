@@ -26,6 +26,7 @@ Mimo es su asistente: una inteligencia artificial que habla contigo en la app y 
 - **Modo cocina:** paso a paso con la pantalla siempre encendida, temporizadores y manos libres por voz («siguiente», «repite»).
 - **Tu hogar:** invita a tu familia al mismo hogar desde Perfil → Mi casa. Compartís menú, lista de la compra, favoritos y despensa, cada uno con su usuario.
 - **Lo que Mimo recuerda:** gustos, cosas que no te gustan, el equipo de tu cocina, días con poco tiempo… para que el menú se parezca cada vez más a tu casa.
+- **Afina tu menú:** Mimoia te enseña recetas una a una y dices si te apetecen («Me apetece», «Me encanta» o «No para mí»), deslizando o con botones. Lo que no te apetece no vuelve a salir en el menú y lo que te encanta sale más a menudo. Se hace al registrarte (se puede saltar) y siempre en mimoia.com/afinar o en Perfil → Afina tu menú.
 
 ## Dónde se usa
 

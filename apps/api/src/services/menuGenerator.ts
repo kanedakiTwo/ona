@@ -215,6 +215,7 @@ export function buildRandomMenu(
   timeBudgetByDay?: Record<number, number>,
   mealDiners?: Record<Meal, number>[],
   mealDishCounts?: MealDishCounts,
+  likedRecipeIds?: Set<string>,
 ): { days: DayMenu[]; warnings: string[] } {
   const usedRecipeIds = new Set<string>()
   const days: DayMenu[] = []
@@ -277,6 +278,7 @@ export function buildRandomMenu(
           usedRecipeIds,
           restrictions,
           favoriteRecipeIds,
+          likedRecipeIds,
           bannedRecipeIds,
           dayIndex,
           dislikes,
@@ -486,8 +488,10 @@ export async function generateMenu(
   for (const id of recipesMatchingDishes(allRecipes, user.favoriteDishes)) favoriteRecipeIds.add(id)
 
   // 5c. «¿Qué tal?» (PRO-111): 5 stars weigh like a favourite, 1 star never
-  // comes out on its own. Matcher-only sets: the week's vetoes stay as they are.
-  const rated = withHouseholdRatings(favoriteRecipeIds, bannedRecipeIds, await loadHouseholdRatingSets(userId, db).catch(() => ({ boost: new Set<string>(), exclude: new Set<string>() })))
+  // comes out on its own. «Afina tu menú» (PRO-146): «Me encanta» weighs like
+  // a favourite, «No para mí» of anyone in the household never comes out,
+  // «Me apetece» gets a small extra. Matcher-only sets: the week's vetoes stay as they are.
+  const rated = withHouseholdRatings(favoriteRecipeIds, bannedRecipeIds, await loadHouseholdRatingSets(userId, db).catch(() => ({ boost: new Set<string>(), exclude: new Set<string>(), like: new Set<string>() })))
   Object.assign(timeBudgetByDay, prepBudgetByDay({ ...timeBudgetByDay }, user))
 
   // Per-recipe metabolic profile, once (scoreMenu runs every iteration).
@@ -514,6 +518,7 @@ export async function generateMenu(
       timeBudgetByDay,
       mealDiners,
       mealDishCounts,
+      rated.likedRecipeIds,
     )
 
     // Verify the menu has at least some recipes
@@ -553,6 +558,7 @@ export async function generateMenu(
     timeBudgetByDay,
     mealDiners,
     mealDishCounts,
+    rated.likedRecipeIds,
   )
   return { days: fallback.days, warnings: fallback.warnings }
 }

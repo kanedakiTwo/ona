@@ -20,6 +20,7 @@ import { MemoryFactEditor } from "@/components/profile/MemoryFactEditor"
 import { MenuSheet, SheetAction } from "@/components/menu/MenuSheet"
 import { Accent, MoreButton, SUB_EYEBROW, SUB_LIST, SubPage } from "@/components/profile/SubPage"
 import type { MemoryKey, MemoryFact } from "@ona/shared"
+import { TasteMemorySection } from "@/components/taste/TasteMemorySection"
 
 interface Group {
   title: string
@@ -263,6 +264,8 @@ export default function MemoryPage() {
           </div>
         </>
       )}
+
+      <TasteMemorySection />
 
       <p className="mt-10 max-w-[560px] text-[13px] leading-relaxed text-ink-muted">
         Pulsa «···» en cualquier dato para editarlo u olvidarlo. También puedes pedírselo al asistente

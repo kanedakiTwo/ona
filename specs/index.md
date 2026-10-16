@@ -315,3 +315,11 @@ Editorial design system, brand Mimoia everywhere users see it (`BRAND_NAME`, ren
 **Source**: `apps/web/src/app/globals.css`, `apps/web/src/app/layout.tsx`, `apps/web/src/components/shared/`, `apps/web/src/components/mimo/`
 
 ---
+
+---
+
+## [Afina tu menú (taste cards)](./taste.md)
+
+«Afina tu menú» (PRO-146): recipes one at a time Tinder-style at `/afinar` (swipe right «Me apetece», left «No para mí», up «Me encanta», buttons + «No la conozco · saltar», stamps, «N de 78»), «¿Qué es lo que no?» sheet (main ingredients → dislikes, «El plato en sí», «Es muy largo», free text read like update_memory → equipment/prep_habits/notes, «Prefiero no decirlo»), summary «Tu menú ya te conoce un poco más», starter deck (`TASTE_STARTER_DECK`), next batches chosen by Claude Haiku at card 5 with variety fallback, 3 «no» to meat/fish → stop showing it + flag, sign-up step before the channel choice (replaces the three favourite dishes), «Novedad» full screen + card on /menu for older accounts, Perfil → Afina tu menú, `recipe_verdicts` (migration 0060), `users.taste_state`, `GET /taste/next`, `POST /taste`, generator: «No para mí» of anyone in the household never comes out, «Me encanta» = favourite, «Me apetece» small extra.
+
+**Source**: `packages/shared/src/types/taste.ts`, `apps/api/src/routes/taste.ts`, `apps/api/src/services/tasteDeck.ts`, `apps/api/src/services/tasteAI.ts`, `apps/api/src/services/tasteStore.ts`, `apps/web/src/app/afinar/page.tsx`, `apps/web/src/components/taste/`

@@ -51,6 +51,12 @@ export const users = pgTable('users', {
    * it is shown, so it never shows again (nor after «Ahora no»).
    */
   whatsappNudgeAt: timestamp('whatsapp_nudge_at', { withTimezone: true }),
+  /**
+   * «Afina tu menú» (PRO-146) offers: `{ introAt?, introChoice?: 'start'|'later',
+   * cardDismissedAt?, onboardingAt?, whatsappOfferedAt?, flags?: ('carne'|'pescado')[] }`.
+   * Each offer is stamped once so it never repeats.
+   */
+  tasteState: jsonb('taste_state').notNull().default(sql`'{}'::jsonb`),
   // Authorization
   role: text('role').notNull().default('user'),
   // Suspension (admin gate). NULL = active.
@@ -1280,4 +1286,23 @@ export const userFeedback = pgTable('user_feedback', {
 }, (t) => [
   index('idx_user_feedback_created').on(t.createdAt),
   check('user_feedback_channel_check', sql.raw("channel IN ('app','chat','whatsapp')")),
+])
+
+// ─── «Afina tu menú» (specs/taste.md, PRO-146) ──────────────
+// One row per user and recipe: the last verdict wins. «nope» keeps the
+// recipe out of the automatic menu of the whole household; «love» weighs
+// like a favourite; «like» a little more than nothing.
+export const recipeVerdicts = pgTable('recipe_verdicts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  recipeId: uuid('recipe_id').notNull().references(() => recipes.id, { onDelete: 'cascade' }),
+  /** 'love' | 'like' | 'nope' | 'skip' */
+  verdict: text('verdict').notNull(),
+  /** «¿Qué es lo que no?»: `{ kind: 'ingredient'|'dish'|'long'|'other'|'none', text? }`. */
+  reason: jsonb('reason'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_recipe_verdicts_user_recipe').on(t.userId, t.recipeId),
+  check('recipe_verdicts_verdict_check', sql.raw("verdict IN ('love','like','nope','skip')")),
 ])

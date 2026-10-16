@@ -325,3 +325,26 @@ export type {
   WaitlistFormState,
   WaitlistSignupPayload,
 } from './types/waitlist.js'
+export {
+  TASTE_VERDICTS,
+  TASTE_REASON_KINDS,
+  TASTE_PROTEIN_GROUPS,
+  TASTE_STARTER_DECK,
+  TASTE_BATCH_SIZE,
+  TASTE_PREFETCH_AT,
+  TASTE_WHY_EVERY,
+  TASTE_PROTEIN_STREAK,
+  tasteReasonSchema,
+  tasteVerdictSchema,
+} from './types/taste.js'
+export type {
+  TasteVerdict,
+  TasteReasonKind,
+  TasteReason,
+  TasteVerdictInput,
+  TasteProteinGroup,
+  TasteCard,
+  TasteNextResponse,
+  TasteStatus,
+  TasteVerdictRow,
+} from './types/taste.js'

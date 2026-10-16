@@ -27,8 +27,6 @@ async function onboardWithGlutenFree(page: Page) {
   await page.getByRole('checkbox', { name: /datos de salud/i }).check()
   await page.getByRole('button', { name: /sin gluten/i }).click()
   await next.click()
-  await page.getByPlaceholder('Plato 1').fill('Lentejas')
-  await next.click()
   await page.getByRole('button', { name: /salud/i }).click()
   await page.getByRole('button', { name: /empezar/i }).click()
   await expect(page).toHaveURL(/\/menu/, { timeout: 30_000 })

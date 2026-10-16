@@ -41,8 +41,6 @@ test('the onboarding answers produce a real first menu (not an empty week)', asy
   await page.getByRole('checkbox', { name: /datos de salud/i }).check()
   await page.getByRole('button', { name: /sin gluten/i }).click()
   await next.click()
-  await page.getByPlaceholder('Plato 1').fill('Lentejas')
-  await next.click()
   await page.getByRole('button', { name: /salud/i }).click()
   await page.getByRole('button', { name: /empezar/i }).click()
 

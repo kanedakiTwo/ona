@@ -54,6 +54,11 @@ export interface MatcherOptions {
   restrictions: string[]
   favoriteRecipeIds: Set<string>
   /**
+   * «Me apetece» in «Afina tu menú» (PRO-146): a small extra weight
+   * (`LIKE_WEIGHT`), less than a favourite's 2×. Absent = no-op.
+   */
+  likedRecipeIds?: Set<string>
+  /**
    * Recipes the user vetoed for this week. The matcher filters them out
    * before season / restriction checks, so a vetoed favourite is still
    * excluded. Absent / empty set is a no-op (existing call sites stay valid).
@@ -210,6 +215,9 @@ export function seasonFitFor(
   return isInSeason(recipe.seasons as Season[], season) ? 'perfect' : null
 }
 
+/** «Me apetece» (PRO-146): ×1.5 on top of the rounded weight — a favourite is ×2. */
+export const LIKE_WEIGHT = 1.5
+
 /**
  * Pick a random recipe from the filtered pool.
  *
@@ -217,6 +225,7 @@ export function seasonFitFor(
  *   - meal fit:   mid = 1×, perfect = 3×.
  *   - season fit: same scale, multiplicative against meal weight.
  *   - favourite:  2× on top.
+ *   - «Me apetece» (PRO-146): ×1.5 on the rounded weight.
  *
  * So a perfect-meal / perfect-season favourite weighs 18 against a
  * mid-meal / mid-season non-favourite at 1 — strong but not crushing,
@@ -226,11 +235,13 @@ export function seasonFitFor(
 export function pickRandom(
   candidates: RecipeWithIngredients[],
   favoriteRecipeIds: Set<string>,
-  ctx?: { meal?: Meal; season?: Season },
+  ctx?: { meal?: Meal; season?: Season; likedRecipeIds?: Set<string> },
 ): RecipeWithIngredients | undefined {
   if (candidates.length === 0) return undefined
 
-  const pool: RecipeWithIngredients[] = []
+  // Weighted draw: each recipe's integer weight (as before), «Me apetece» ×1.5.
+  const weights: number[] = []
+  let total = 0
   for (const recipe of candidates) {
     let weight = 1
     if (ctx?.meal) {
@@ -247,16 +258,20 @@ export function pickRandom(
       weight *= FREQUENCY_WEIGHT[recipe.frequency]
     }
     if (favoriteRecipeIds.has(recipe.id)) weight *= 2
-    // Float weights are fine — duplicate the recipe into the pool an
-    // integer number of times. Round so the loop terminates cleanly, with
+    // Round to an integer weight (as when the pool held copies), with
     // a floor of 1 so an "occasional" recipe still has a non-zero chance
     // when it's the only option.
-    const count = Math.max(1, Math.round(weight))
-    for (let i = 0; i < count; i++) pool.push(recipe)
+    const count = Math.max(1, Math.round(weight)) * (ctx?.likedRecipeIds?.has(recipe.id) ? LIKE_WEIGHT : 1)
+    weights.push(count)
+    total += count
   }
 
-  const index = Math.floor(Math.random() * pool.length)
-  return pool[index]
+  let r = Math.random() * total
+  for (let i = 0; i < candidates.length; i++) {
+    r -= weights[i]
+    if (r < 0) return candidates[i]
+  }
+  return candidates[candidates.length - 1]
 }
 
 /**
@@ -284,5 +299,6 @@ export function findRecipeForSlot(
   return pickRandom(candidates, options.favoriteRecipeIds, {
     meal: options.meal,
     season: options.season,
+    likedRecipeIds: options.likedRecipeIds,
   })
 }

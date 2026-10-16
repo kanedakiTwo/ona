@@ -65,7 +65,7 @@ test('skip day, remove a meal and ban a recipe confirm in the app sheet, without
 
   const todayIdx = (new Date().getDay() + 6) % 7
   const generated = await fetchMenu(page)
-  const first = featured(generated.days[todayIdx])
+  let first = featured(generated.days[todayIdx])
   test.skip(!first, 'the generator left today without recipes (empty catalogue?)')
   // The CI seed catalogue is small (16 recipes, fewer once PRO-73's quality
   // gate skips the incomplete ones), so a full week can use every eligible
@@ -73,13 +73,22 @@ test('skip day, remove a meal and ban a recipe confirm in the app sheet, without
   // the matcher has free recipes, as a real catalogue does. One other day
   // keeps its dishes so the week never ends up empty (an empty week is a
   // different screen).
-  const keep = (todayIdx + 1) % 7
+  // On a Friday the generator leaves the weekend empty and today with one
+  // meal (PRO-65 prepares next week): keep a day that does hold a recipe, and
+  // give today a second, empty meal so removing the first doesn't empty it.
+  const keep = [1, 2, 3, 4, 5, 6].map((k) => (todayIdx + k) % 7).find((d) => featured(generated.days[d])) ?? (todayIdx + 1) % 7
   for (const [d, day] of generated.days.entries()) {
     if (d === todayIdx || d === keep) continue
     for (const meal of Object.keys(day ?? {})) {
       const r = await page.request.delete(`${API}/menu/${generated.id}/day/${d}/meal/${meal}`, { headers })
       expect(r.ok(), `clear day ${d} ${meal}: ${r.status()}`).toBeTruthy()
     }
+  }
+  const other = first!.meal === 'dinner' ? 'lunch' : 'dinner'
+  if (!generated.days[todayIdx]?.[other]) {
+    const r = await page.request.post(`${API}/menu/${generated.id}/day/${todayIdx}/meal/${other}`, { headers })
+    expect(r.ok(), `add ${other}: ${r.status()}`).toBeTruthy()
+    first = featured((await fetchMenu(page)).days[todayIdx])
   }
 
   await page.goto('/menu')

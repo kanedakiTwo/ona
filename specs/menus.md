@@ -138,6 +138,15 @@ Every generated menu also creates a `menu_logs` row with:
 - Aggregated nutrient profile (vitamins, minerals, etc.)
 - Used to update `user_nutrient_balance` (running balance for the advisor)
 
+## Registro de cambios (PRO-149)
+
+Cada cambio de los platos de un menú deja filas en `menu_edits` (migración `0056_menu_edits`), una por receta que sale o entra: hogar, menú, día (0-6), comida, acción, receta de antes y de después (id y nombre copiado), quién (`user` | `mimo`), canal (`web` | `whatsapp`) y fecha. Es la señal de la ficha viva del hogar (D-064): «quitó el ceviche y puso tortilla». **Generar el menú no es un cambio** (`POST /menu/generate` y `generate_weekly_menu` no escriben).
+- Acciones por ruta: `PUT …/meal/:meal` y `…/dish/:position/regenerate` → `swap` (o `add` si el hueco estaba vacío); `POST …/meal/:meal`, `…/dish` y `…/dish/random` → `add` (`freezer` con `variant: 'freezer'`, PRO-82); `DELETE …/meal/:meal` y `…/dish/:position` → `remove`; `POST /ban` → `ban` (sin día, receta en «antes»); `POST …/leftover` → `leftover` (con `from_day`/`from_meal`); `POST /move-slot` → `move` (una fila por receta que cambia de sitio, en las dos direcciones si se intercambian); `POST …/skip` → `skip_day` (una por receta quitada, o una sin receta si el día estaba vacío).
+- No dejan fila: bloquear, comensales, notas, tipo/orden de un plato, quitar un veto y reactivar un día.
+- Un solo punto de escritura, `recordMenuEdits` (`services/menuEdits.ts`), llamado por cada ruta tras su `update`; nunca falla ni bloquea el cambio. **Mimo** entra por las mismas rutas (`assistant/appApi.ts` manda `x-mimoia-internal` y el canal en `x-mimoia-channel`), así que sus herramientas de `appSkills.ts` quedan como `mimo` con su canal. **Pendiente:** `swap_meal` escribe el menú directamente desde `assistant/skills.ts` y todavía no deja fila.
+- `GET /menu/:menuId/edits` devuelve el registro del menú (más antiguo primero), con el mismo control de acceso que el resto de `/menu/:menuId`. Sin interfaz todavía.
+- Se borra con el menú, con el hogar y con la cuenta de quien hizo el cambio (cascada). Tests: `menuEdits.test.ts`, `menuEditsRoute.smoke.ts`.
+
 ## Desktop layouts (lg+)
 
 At `lg+` (≥1024 px) `/menu` always renders `MenuDesktop`; the Día/Semana preference only applies below `lg`.
@@ -189,6 +198,7 @@ user could read/modify any menu by id.
 - [apps/api/src/routes/menus.ts](../apps/api/src/routes/menus.ts)
 - [apps/api/src/services/menuGenerator.ts](../apps/api/src/services/menuGenerator.ts) — core algorithm
 - [apps/api/src/services/metabolicScore.ts](../apps/api/src/services/metabolicScore.ts) — per-recipe metabolic profile + weekly quality/variety for the fitness
+- [apps/api/src/services/menuEdits.ts](../apps/api/src/services/menuEdits.ts) — registro de cambios del menú (PRO-149)
 - [apps/api/src/services/menuWeek.ts](../apps/api/src/services/menuWeek.ts) — what a week's regeneration carries over (locks, vetoes, skipped days) + `menuHasDishes`
 - [apps/api/src/services/dietaryRestrictions.ts](../apps/api/src/services/dietaryRestrictions.ts) — restrictions/dislikes → allergen tags + ingredient terms · [packages/shared/src/constants/restrictions.ts](../packages/shared/src/constants/restrictions.ts) — `RESTRICTION_PRESETS`
 - [apps/api/src/services/matchableRecipes.ts](../apps/api/src/services/matchableRecipes.ts) — the one recipe loader for every matcher path (visibility, fit maps, frequency, allergens)

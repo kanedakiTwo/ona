@@ -12,7 +12,8 @@ import { classifyShopKind, kindForBuyShop } from '../shopOrders/classify.js'
  * then reads the shop's reply when the user forwards or pastes it.
  */
 
-const api = (ctx: SkillContext): AppApi => ctx.api ?? appApiFor(ctx.userId)
+const api = (ctx: SkillContext): AppApi =>
+  ctx.api ?? appApiFor(ctx.userId, { channel: ctx.channel === 'whatsapp' ? 'whatsapp' : 'web' })
 const toCompra = (summary: string, data: Record<string, unknown> = {}): SkillResult => ({
   data: { ...data, navigateTo: '/compra' },
   summary,

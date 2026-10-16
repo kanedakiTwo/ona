@@ -3,9 +3,9 @@ import { visibleAuthorIds, visibleRecipeWhere } from '../services/recipeVisibili
 import { loadMatchableRecipes } from '../services/matchableRecipes.js'
 import { mergeRestrictions } from '../services/dietaryRestrictions.js'
 import { keepLockedSlots, loadPreviousWeek, menuHasDishes } from '../services/menuWeek.js'
-import { eq, and, desc, inArray } from 'drizzle-orm'
+import { eq, and, asc, desc, inArray } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { menus, menuLogs, users, userSettings } from '../db/schema.js'
+import { menus, menuEdits, menuLogs, users, userSettings } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
 import { generateMenuSchema, lockMealSchema, MEALS, MEAL_TYPE_TAGS, courseSchema } from '@ona/shared'
@@ -19,6 +19,15 @@ import { findForCourse } from '../services/courseAwareMatcher.js'
 import { loadHouseholdRatingSets, withHouseholdRatings } from '../services/householdRatings.js'
 import { addDish, removeDishAt, patchDish, reorderDish, coursesFor, dishCountFor } from '../services/menuDishes.js'
 import { getMemoryForUser } from '../services/userMemoryStore.js'
+import {
+  recordMenuEdits,
+  slotDiff,
+  slotRemoved,
+  slotRecipes,
+  moveChanges,
+  dishRecipe,
+  type MenuEditChange,
+} from '../services/menuEdits.js'
 import { detectSeason } from '@ona/shared'
 import { recipeIngredients, ingredients, recipes, userFavorites } from '../db/schema.js'
 import { resolveScope, scopeWhere, getPrimaryHouseholdId, canAccessRow } from '../services/scopeResolver.js'
@@ -314,6 +323,24 @@ async function resolveReadScopeForCaller(callerId: string, pathUserId: string) {
   return { scope, allowed: false as const }
 }
 
+// GET /menu/:menuId/edits — the menu's change log (PRO-149), oldest first.
+// Same access as every `/menu/:menuId` route (param guard above). Declared
+// before `/menu/:userId/:weekId`, which would otherwise swallow the path. Read by the
+// household's «ficha viva» and by the route smoke test; no UI yet.
+router.get('/menu/:menuId/edits', async (req: AuthRequest, res) => {
+  try {
+    const rows = await db
+      .select()
+      .from(menuEdits)
+      .where(eq(menuEdits.menuId, String(req.params.menuId)))
+      .orderBy(asc(menuEdits.createdAt))
+    res.json(rows)
+  } catch (err) {
+    console.error('Menu edits error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
 // GET /menu/:userId/history - list past menus
 router.get('/menu/:userId/history', async (req: AuthRequest, res) => {
   try {
@@ -457,6 +484,7 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
         .set({ days })
         .where(eq(menus.id, menuId))
         .returning()
+      await recordMenuEdits(req, menu, slotDiff(dayIndex, meal, slot.dishes, newDishes))
       // Re-enqueue prep alerts after a manual swap — clear the menu's
       // pending rows first so old-recipe alerts disappear, then rebuild.
       // Best-effort: never block the swap response on this.
@@ -561,6 +589,7 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       .set({ days })
       .where(eq(menus.id, menuId))
       .returning()
+    await recordMenuEdits(req, menu, slotDiff(dayIndex, meal, slot.dishes, newDishes))
 
     res.json(await hydrateMenuImages(updated))
   } catch (err) {
@@ -702,6 +731,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
     }
     days[dayIndex][meal] = { dishes: [initialDish] }
     const [updated] = await db.update(menus).set({ days }).where(eq(menus.id, menuId)).returning()
+    await recordMenuEdits(req, menu, [{ action: 'add', day: dayIndex, meal, after: { id: chosenId, name: chosenName } }])
     res.status(201).json(await hydrateMenuImages(updated))
   } catch (err) {
     console.error('Add meal slot error:', err)
@@ -752,8 +782,10 @@ router.delete('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res)
       return
     }
 
+    const removedSlot = days[dayIndex][meal]
     delete days[dayIndex][meal]
     const [updated] = await db.update(menus).set({ days }).where(eq(menus.id, menuId)).returning()
+    await recordMenuEdits(req, menu, slotRemoved('remove', dayIndex, meal, removedSlot))
     res.json(await hydrateMenuImages(updated))
   } catch (err) {
     console.error('Delete meal slot error:', err)
@@ -821,6 +853,10 @@ router.post('/menu/:menuId/move-slot', async (req: AuthRequest, res) => {
     }
     const targetSlot = days[toDay]?.[toMeal]
 
+    const moved = moveChanges(
+      { day: fromDay, meal: fromMeal, slot: sourceSlot },
+      { day: toDay, meal: toMeal, slot: targetSlot },
+    )
     // Apply the move/swap on the in-memory copy then persist once.
     if (targetSlot && targetSlot.dishes && targetSlot.dishes.length > 0) {
       // Swap: both slots keep their other metadata (servings overrides, etc).
@@ -837,6 +873,7 @@ router.post('/menu/:menuId/move-slot', async (req: AuthRequest, res) => {
       .set({ days })
       .where(eq(menus.id, menuId))
       .returning()
+    await recordMenuEdits(req, menu, moved)
     res.json(await hydrateMenuImages(updated))
   } catch (err) {
     console.error('Move meal slot error:', err)
@@ -987,6 +1024,7 @@ router.post('/menu/:menuId/ban', async (req: AuthRequest, res) => {
       .set({ bannedRecipeIds: next })
       .where(eq(menus.id, menuId))
       .returning()
+    await recordMenuEdits(req, menu, [{ action: 'ban', before: { id: recipeId, name: null } }])
     res.json(await hydrateMenuImages(updated))
   } catch (err) {
     console.error('Ban recipe error:', err)
@@ -1109,6 +1147,18 @@ router.post('/menu/:menuId/day/:day/leftover', async (req: AuthRequest, res) => 
       .set({ days })
       .where(eq(menus.id, menuId))
       .returning()
+    await recordMenuEdits(
+      req,
+      menu,
+      slotRecipes({ dishes: clonedDishes }).map((r) => ({
+        action: 'leftover' as const,
+        day: targetDay,
+        meal: targetMeal,
+        fromDay: sourceDay,
+        fromMeal: sourceMeal,
+        after: r,
+      })),
+    )
     res.status(201).json(await hydrateMenuImages(updated))
   } catch (err) {
     console.error('Leftover error:', err)
@@ -1147,12 +1197,16 @@ router.post('/menu/:menuId/day/:day/skip', async (req: AuthRequest, res) => {
     // Empty every non-locked slot in this day.
     const dayLocks = locked[String(dayIndex)] ?? {}
     const nextDay: DayMenu = {}
+    const skipped: MenuEditChange[] = []
     for (const meal of Object.keys(days[dayIndex] ?? {})) {
       if (dayLocks[meal]) nextDay[meal] = days[dayIndex][meal]
+      else skipped.push(...slotRemoved('skip_day', dayIndex, meal, days[dayIndex][meal]))
     }
     days[dayIndex] = nextDay
 
     const existing = menu.skippedDays ?? []
+    // A day with nothing planned still leaves one row: «este día no se cocina» is the signal.
+    if (skipped.length === 0 && !existing.includes(dayIndex)) skipped.push({ action: 'skip_day', day: dayIndex })
     const nextSkipped = existing.includes(dayIndex) ? existing : [...existing, dayIndex].sort((a, b) => a - b)
 
     const [updated] = await db
@@ -1160,6 +1214,7 @@ router.post('/menu/:menuId/day/:day/skip', async (req: AuthRequest, res) => {
       .set({ days, skippedDays: nextSkipped })
       .where(eq(menus.id, menuId))
       .returning()
+    await recordMenuEdits(req, menu, skipped)
     res.json(await hydrateMenuImages(updated))
   } catch (err) {
     console.error('Skip day error:', err)
@@ -1238,6 +1293,11 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish', async (req: AuthRequest, r
     if (!days[day]) days[day] = {}
     days[day][meal] = { ...slot, dishes: next }
     await db.update(menus).set({ days: days as any }).where(eq(menus.id, menuId))
+    const added = dishRecipe(next[next.length - 1])
+    if (added) {
+      const freezer = parsed.data.kind === 'recipe' && parsed.data.variant === 'freezer'
+      await recordMenuEdits(req, menu, [{ action: freezer ? 'freezer' : 'add', day, meal, after: added }])
+    }
     res.json({ position: next.length - 1, dish: next[next.length - 1] })
   } catch (err: any) {
     res.status(500).json({ error: err.message })
@@ -1259,9 +1319,11 @@ router.delete('/menu/:menuId/day/:day/meal/:meal/dish/:position', async (req: Au
     if (position < 0 || position >= slot.dishes.length) {
       res.status(400).json({ error: 'Position out of range' }); return
     }
+    const removed = dishRecipe(slot.dishes[position])
     const next = removeDishAt(slot.dishes, position)
     days[day][meal] = { ...slot, dishes: next }
     await db.update(menus).set({ days: days as any }).where(eq(menus.id, menuId))
+    if (removed) await recordMenuEdits(req, menu, [{ action: 'remove', day, meal, before: removed }])
     res.json({ dishes: next })
   } catch (err: any) {
     res.status(500).json({ error: err.message })
@@ -1406,6 +1468,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
     }
     days[day][meal] = { ...slot, dishes: next }
     await db.update(menus).set({ days: days as any }).where(eq(menus.id, menuId))
+    await recordMenuEdits(req, menu, slotDiff(day, meal, [dish], [next[position]]))
     res.json({ dish: next[position] })
   } catch (err: any) {
     res.status(500).json({ error: err.message })
@@ -1563,6 +1626,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/random', async (req: AuthReq
     if (!days[day]) days[day] = {}
     days[day][meal] = { ...slot, dishes: next }
     await db.update(menus).set({ days: days as any }).where(eq(menus.id, menuId))
+    await recordMenuEdits(req, menu, [{ action: 'add', day, meal, after: { id: picked.id, name: picked.name } }])
     res.json({ position: next.length - 1, dish: next[next.length - 1] })
   } catch (err: any) {
     res.status(500).json({ error: err.message })

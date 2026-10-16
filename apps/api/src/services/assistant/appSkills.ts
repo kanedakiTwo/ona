@@ -26,7 +26,8 @@ const DAY_NAMES = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábad
 const MEALS = ['breakfast', 'lunch', 'snack', 'dinner'] as const
 const MEAL_ES: Record<string, string> = { breakfast: 'desayuno', lunch: 'comida', snack: 'merienda', dinner: 'cena' }
 
-const api = (ctx: SkillContext): AppApi => ctx.api ?? appApiFor(ctx.userId)
+const api = (ctx: SkillContext): AppApi =>
+  ctx.api ?? appApiFor(ctx.userId, { channel: ctx.channel === 'whatsapp' ? 'whatsapp' : 'web' })
 const text = (summary: string, data: unknown = null): SkillResult => ({ data, summary, uiHint: 'text' })
 const menuDone = (summary: string, data: unknown = null): SkillResult => ({ data, summary, uiHint: 'menu' })
 

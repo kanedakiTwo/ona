@@ -386,6 +386,13 @@
       "when": 1792146402098,
       "tag": "0054_referral_rewards",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1792192045781,
+      "tag": "0056_menu_edits",
+      "breakpoints": true
     }
   ]
 }

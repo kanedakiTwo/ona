@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "whatsapp_nudge_at" timestamp with time zone;

@@ -46,6 +46,11 @@ export const users = pgTable('users', {
    * never see the guide. Seeing it (or skipping it) sets it back to false.
    */
   firstStepsPending: boolean('first_steps_pending').notNull().default(false),
+  /**
+   * The one WhatsApp reminder card on /menu (PRO-107): stamped the first time
+   * it is shown, so it never shows again (nor after «Ahora no»).
+   */
+  whatsappNudgeAt: timestamp('whatsapp_nudge_at', { withTimezone: true }),
   // Authorization
   role: text('role').notNull().default('user'),
   // Suspension (admin gate). NULL = active.

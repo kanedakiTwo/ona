@@ -365,6 +365,13 @@
       "when": 1792074839982,
       "tag": "0051_user_feedback",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1792142113202,
+      "tag": "0052_whatsapp_nudge",
+      "breakpoints": true
     }
   ]
 }

@@ -15,6 +15,7 @@
 import { NoHealthDataNotice } from "@/components/menu/NoHealthDataNotice"
 import { FirstStepsGuide } from "@/components/menu/FirstStepsGuide"
 import { PriceSurveySheet } from "@/components/menu/PriceSurveySheet"
+import { WhatsAppNudgeCard } from "@/components/menu/WhatsAppNudgeCard"
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react"
 import { useRouter } from "next/navigation"
 import { ChevronLeft, ChevronRight, MoreHorizontal, RefreshCw, Share2, Sparkles } from "lucide-react"
@@ -626,6 +627,7 @@ export default function MenuPage() {
               <>
                 {header}
                 <NoHealthDataNotice />
+                <WhatsAppNudgeCard />
                 {statusCard}
               </>
             }
@@ -661,6 +663,7 @@ export default function MenuPage() {
           <div className="mx-auto flex max-w-[1180px] flex-col gap-4 px-12 pt-8 pb-10">
             {header}
             <NoHealthDataNotice />
+            <WhatsAppNudgeCard />
             {statusCard}
           </div>
         )}
@@ -688,6 +691,7 @@ export default function MenuPage() {
       </header>
 
       <NoHealthDataNotice />
+      <WhatsAppNudgeCard />
 
       {!showWeekGrid && (
         <WeekStrip

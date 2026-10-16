@@ -128,7 +128,7 @@ export function buildCheckoutParams(i: CheckoutInput): Stripe.Checkout.SessionCr
 
 const MONTHS_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
 
-/** «12 de enero de 2027», in Madrid. */
+/** «15 de diciembre de 2026», in Madrid. */
 export function formatDayEs(d: Date): string {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d)
   const [y, m, day] = parts.split('-').map(Number)

@@ -36,8 +36,8 @@ Every paid provider call writes one row — user (nullable), household (user's p
 
 | Feature | Provider / model | Billed to |
 |---|---|---|
-| `assistant_chat` (web chat turn, all tool rounds) | Anthropic Haiku 4.5 | user |
-| `whatsapp_chat` | Anthropic Haiku 4.5 | user (WhatsApp turn) |
+| `assistant_chat` (web chat turn, all tool rounds) | Anthropic Sonnet 5.5 (`ASSISTANT_MODEL`, since 2026-10-12; Haiku 4.5 before) | user |
+| `whatsapp_chat` | Anthropic Sonnet 5.5 (same model as the web chat) | user (WhatsApp turn) |
 | `voice_note_transcription` (WhatsApp voice notes) | OpenAI `OPENAI_TRANSCRIBE_MODEL` | user |
 | `mimo_voice_transcription` (Mimo's voice in the app, `POST /stt`) | OpenAI `OPENAI_TRANSCRIBE_MODEL` | user |
 | `chat_tts` (Mimo's replies read aloud, `POST /tts`; units = characters, priced per 1,000 chars) | ElevenLabs `ELEVENLABS_MODEL` | user |
@@ -61,7 +61,7 @@ Not costs, so not recorded: USDA / BEDCA lookups, YouTube/article fetches.
 
 ## Prices
 
-All rates live in `config/pricing.ts` (source + date in comments), in the provider's currency; USD is converted with `ADVISOR_EUR_PER_USD` (the same knob the advisor budget uses, default 0.92). The advisor's € budget prices Haiku from the same table, so budget and ledger never disagree. `COST_PRICE_OVERRIDES` (JSON, e.g. `{"openai/gpt-realtime":{"perMinute":0.15}}`) corrects or adds a price without a code change; malformed values are ignored with a warning.
+All rates live in `config/pricing.ts` (source + date in comments), in the provider's currency; USD is converted with `ADVISOR_EUR_PER_USD` (the same knob the advisor budget uses, default 0.92). The advisor's € budget prices the assistant's model (`ADVISOR_PRICE_MODEL` in `advisorBudget.ts`, kept in sync with `ASSISTANT_MODEL`) from the same table, so budget and ledger never disagree. `COST_PRICE_OVERRIDES` (JSON, e.g. `{"openai/gpt-realtime":{"perMinute":0.15}}`) corrects or adds a price without a code change; malformed values are ignored with a warning.
 
 The `openai/gpt-realtime*` entries stay in the table so historical `voice_realtime` rows keep their price. ElevenLabs is priced per 1,000 characters by model (`elevenlabs/<model>`). Marked UNVERIFIED (estimates, override when known): Realtime voice blended **$0.10 / session-minute** (historical; token rates verified, the per-minute blend is derived), AIKIT image **$0.04**. Meta WhatsApp Spain is verified against Meta's EUR list rates effective 2026-10-01 (checked 2026-10-13): utility template and service message **€0.0166**, marketing **€0.0585**.
 

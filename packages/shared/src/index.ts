@@ -186,6 +186,7 @@ export { buyableUnitFor, unitAfterQuantity, quantityHintFor, RECIPE_UNIT_LABELS 
 export { buildRecipePayload } from './recipeFormPayload.js'
 export type { IngredientRowState, RecipeFormState } from './recipeFormPayload.js'
 export { RATING_PROMPT_CHOICES, RATING_PROMPT_COOLDOWN_DAYS, shouldAskRating } from './ratingPrompt.js'
+export { FEATURED_RECIPES, RETIRED_RECIPE_TAG } from './featuredRecipes.js'
 
 // Units
 export { normalizeTerm } from './units/normalize.js'

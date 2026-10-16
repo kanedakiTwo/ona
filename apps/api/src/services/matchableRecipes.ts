@@ -5,6 +5,7 @@ import { recipes, recipeIngredients, recipeSteps, ingredients } from '../db/sche
 import { visibleAuthorIds, visibleRecipeWhere } from './recipeVisibility.js'
 import type { RecipeWithIngredients } from './recipeMatcher.js'
 import { catalogAuditIssuesFor } from './catalogRecipeAudit.js'
+import { isRetiredRecipe } from './recipeCatalogOrder.js'
 
 export type RecipeWithCourse = RecipeWithIngredients & { course: Course | null }
 
@@ -18,9 +19,12 @@ export type RecipeWithCourse = RecipeWithIngredients & { course: Course | null }
  * never other users' private recipes (specs/recipes.md).
  * Allergens: the recipe's union plus each ingredient's catalogue tags, so
  * the restriction check doesn't depend on a stale recipe-level union.
+ * Retired catalogue recipes (PRO-140) are never picked or suggested.
  */
 export async function loadMatchableRecipes(userId: string, db: any = defaultDb): Promise<RecipeWithCourse[]> {
-  const allRecipes = await db.select().from(recipes).where(visibleRecipeWhere(await visibleAuthorIds(userId, db)))
+  const allRecipes = (await db.select().from(recipes).where(visibleRecipeWhere(await visibleAuthorIds(userId, db)))).filter(
+    (r: any) => !isRetiredRecipe(r),
+  )
 
   const recipeIds = allRecipes.map((r: any) => r.id)
   if (recipeIds.length === 0) return []

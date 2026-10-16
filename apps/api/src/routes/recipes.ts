@@ -49,6 +49,7 @@ import {
   MEALS,
   SEASONS,
   DIFFICULTIES,
+  RETIRED_RECIPE_TAG,
   type Difficulty,
   type Meal,
   type Recipe,
@@ -59,6 +60,7 @@ import {
   type Unit,
 } from '@ona/shared'
 import { extractRecipeFromImage } from '../services/recipeExtractor.js'
+import { sortCatalog, type CatalogOrderRow } from '../services/recipeCatalogOrder.js'
 import { saveExtractedRecipe } from '../services/recipeImport.js'
 import { AnthropicProvider } from '../services/providers/anthropic.js'
 import { runWithCostUser } from '../services/costLedger.js'
@@ -461,17 +463,35 @@ router.get('/recipes', optionalAuthMiddleware, async (req: AuthRequest, res) => 
         if (excluded.length > 0) conditions.push(notInArray(recipes.id, excluded))
       }
     }
+    // Retired catalogue recipes (PRO-140) never list; they still open by id.
+    conditions.push(sql`NOT (${recipes.authorId} IS NULL AND ${RETIRED_RECIPE_TAG} = ANY(coalesce(${recipes.internalTags}, ARRAY[]::text[])))`)
     const where = conditions.length > 0 ? and(...conditions) : undefined
 
-    const [{ total }] = await db.select({ total: count() }).from(recipes).where(where)
-
-    const rows = (await db
-      .select()
+    // Order (PRO-140, services/recipeCatalogOrder.ts): households with it in
+    // favourites, then Miguel's featured list, then oldest first. The
+    // catalogue is small, so the order is computed over the matching ids and
+    // only the page's rows are loaded.
+    const orderRows = (await db
+      .select({
+        id: recipes.id,
+        name: recipes.name,
+        createdAt: recipes.createdAt,
+        // Raw, table-qualified SQL: drizzle prints bare column names in a
+        // one-table select, and a bare "id" would bind to user_favorites.
+        favoriteHouseholds: sql<number>`(SELECT count(DISTINCT coalesce(uf.household_id, uf.user_id)) FROM user_favorites uf WHERE uf.recipe_id = "recipes"."id")::int`,
+      })
       .from(recipes)
-      .where(where)
-      .limit(perPage)
-      .offset(offset)
-      .orderBy(recipes.createdAt)) as RecipeRow[]
+      .where(where)) as CatalogOrderRow[]
+    const total = orderRows.length
+    const pageIds = sortCatalog(orderRows.map((r) => ({ ...r, favoriteHouseholds: Number(r.favoriteHouseholds) })))
+      .slice(offset, offset + perPage)
+      .map((r) => r.id)
+
+    const pageRows = pageIds.length
+      ? ((await db.select().from(recipes).where(inArray(recipes.id, pageIds))) as RecipeRow[])
+      : []
+    const byId = new Map(pageRows.map((r) => [r.id, r]))
+    const rows = pageIds.map((id) => byId.get(id)).filter((r): r is RecipeRow => r != null)
 
     const cards = rows.map(toCard)
 

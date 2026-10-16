@@ -31,7 +31,8 @@ import {
 } from '../db/schema.js'
 import { seedIngredients } from './ingredients.js'
 import { seedRecipes, type SeedRecipe } from './recipes.js'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
+import { CATALOG_RENAMES } from '../services/recipeRenames.js'
 import { applyCatalogSourceLinks } from '../services/catalogSourceLinks.js'
 import { applyCatalogRecipeFixes } from '../services/catalogRecipeFixes.js'
 import type { Meal, Season, Unit } from '@ona/shared'
@@ -64,6 +65,15 @@ async function seed(): Promise<void> {
   const ingredientIdByName = new Map(allIngredients.map((i) => [i.name, i.id]))
 
   // 2. Recipes (legacy seed shape → new schema)
+  // Renamed catalogue recipes (PRO-140): rename the old row first, so the
+  // upsert by name below updates it instead of adding a second one.
+  for (const [oldName, newName] of CATALOG_RENAMES) {
+    await db.execute(sql`
+      UPDATE recipes SET name = ${newName}
+       WHERE author_id IS NULL AND name = ${oldName}
+         AND NOT EXISTS (SELECT 1 FROM recipes WHERE author_id IS NULL AND name = ${newName})
+    `)
+  }
   console.log(`Inserting ${seedRecipes.length} recipes...`)
   let inserted = 0
   let skipped = 0

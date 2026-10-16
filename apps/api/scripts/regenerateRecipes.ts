@@ -389,7 +389,7 @@ ${catalogList}
 }
 
 const EXAMPLE_INPUT: OldRecipe = {
-  name: 'Albondigas en salsa espanola',
+  name: 'Albóndigas en salsa española',
   prepTime: 0,
   meals: ['lunch', 'dinner'],
   seasons: ['spring', 'summer', 'autumn', 'winter'],

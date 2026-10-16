@@ -412,6 +412,7 @@ export default function MenuPage() {
       onClose={() => setWeekSheetOpen(false)}
       weekLabel={weekLabel(weekStart)}
       weekRange={weekRange}
+      printHref={`/menu/imprimir?week=${weekStart}`}
       isCurrentWeek={isCurrentWeek}
       isPastWeek={isPastWeek}
       hasMenu={Boolean(menu)}

@@ -6,7 +6,7 @@
  *
  * The snowball pillar must only promise what the menu learns from today
  * (what you tell Mimo, favourites, vetoed recipes), never "every change"
- * (Legal review of 2026-10-16, ONA HQ approval «efecto bola de nieve»).
+ * (Legal review of 2026-10-16, Mimoia HQ approval «efecto bola de nieve»).
  */
 
 import { test, expect } from '@playwright/test'

@@ -556,7 +556,7 @@ function Differential() {
 
 /* ═══════════════════════════════════════════
    05 — Manifesto (mission, vision, snowball effect)
-   Mission and vision are Miguel's own words (ONA HQ constitution §1, D-031).
+   Mission and vision are Miguel's own words (Mimoia HQ constitution §1, D-031).
    The snowball promise only claims what the menu learns from today —
    what you tell Mimo, favourites, vetoed recipes — never "every change".
    ═══════════════════════════════════════════ */

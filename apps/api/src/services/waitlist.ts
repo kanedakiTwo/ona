@@ -43,6 +43,7 @@ import { users, waitlistEntries } from '../db/schema.js'
 import { record as recordAudit } from './auditLog.js'
 import { MADRID_TZ, addDays, madridParts } from './madridTime.js'
 import { hashInviteToken, waitlistEntryUrl, waitlistInviteToken } from './waitlistInvites.js'
+import { forgetNewsletterSends } from './newsletter.js'
 
 type Db = typeof defaultDb
 
@@ -499,16 +500,20 @@ export function createDbWaitlistRepo(db: Db = defaultDb): WaitlistRepo {
     },
     async unsubscribe(token) {
       const [row] = await db
-        .select({ id: waitlistEntries.id, status: waitlistEntries.status })
+        .select({ id: waitlistEntries.id, status: waitlistEntries.status, email: waitlistEntries.email })
         .from(waitlistEntries)
         .where(eq(waitlistEntries.unsubscribeToken, token))
         .limit(1)
       if (!row) return 'not_found'
       if (row.status === 'unsubscribed') return 'already'
-      await db
-        .update(waitlistEntries)
-        .set({ status: 'unsubscribed', email: null, firstName: null, supermarket: null, newsletterOptIn: false })
-        .where(eq(waitlistEntries.id, row.id))
+      await db.transaction(async (tx) => {
+        await tx
+          .update(waitlistEntries)
+          .set({ status: 'unsubscribed', email: null, firstName: null, supermarket: null, newsletterOptIn: false })
+          .where(eq(waitlistEntries.id, row.id))
+        // PRO-132: the newsletter's send traces (a hash of the email) go too.
+        await forgetNewsletterSends(tx, row.email)
+      })
       return 'unsubscribed'
     },
   }

@@ -255,6 +255,23 @@ export function recipientHash(email: string): string {
   return createHash('sha256').update(email.trim().toLowerCase()).digest('hex')
 }
 
+/**
+ * Forget the send traces of an address (PRO-132): delete every
+ * `newsletter_sends` row with its hash — a hash of an email is still
+ * pseudonymised personal data. Called when someone leaves the waitlist
+ * (`/lista/baja`) or deletes their account; NOT on the newsletter-only
+ * opt-out (the rows stop the same issue going out twice). Accepts a
+ * transaction. Returns how many rows went.
+ */
+export async function forgetNewsletterSends(db: Pick<Db, 'delete'>, email: string | null | undefined): Promise<number> {
+  if (!email?.trim()) return 0
+  const rows = await db
+    .delete(newsletterSends)
+    .where(eq(newsletterSends.recipientHash, recipientHash(email)))
+    .returning({ h: newsletterSends.recipientHash })
+  return rows.length
+}
+
 /** The newsletter-only opt-out token of a waitlist entry: `w.` + its private opt-out token. */
 export function newsletterTokenForWaitlist(unsubscribeToken: string): string {
   return `w.${unsubscribeToken}`

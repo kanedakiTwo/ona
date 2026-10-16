@@ -38,6 +38,19 @@ test('footer → /aviso-legal shows the holder; /privacidad names the controller
   await expect(page.locator('script[src*="cloudflareinsights"]')).toHaveCount(0)
 })
 
+// PRO-132: Legal's exact precisions on email (Resend, third-party advertising, the newsletter box).
+test('/privacidad: Resend is a US company, no third-party advertising, the new newsletter box', async ({ page }) => {
+  await page.goto('/privacidad')
+  const main = page.getByTestId('reading-column')
+  await expect(main).toContainText('Resend (empresa de EE. UU.)')
+  await expect(main).toContainText('pero Resend puede tratar los datos en Estados Unidos.')
+  await expect(main).toContainText('No vendemos tus datos ni los usamos para publicidad de terceros.')
+  await expect(main).toContainText('No se comparten con nadie más ni se usan para publicidad de terceros.')
+  await expect(main).toContainText('(art. 6.1.a RGPD y art. 21 de la LSSI)')
+  await expect(main).toContainText('«Quiero recibir cada viernes por email una receta de la semana y novedades de Mimoia»')
+  await expect(main).not.toContainText('envía desde la Unión Europea')
+})
+
 // PRO-70: the intended purpose (D-038, constitution §6), word for word, in its own section.
 const INTENDED_PURPOSE =
   'Mimoia es un planificador de menús, recetas y lista de la compra para hogares, según sus gustos, preferencias y restricciones declaradas. Ofrece información general de alimentación. No está destinado a diagnosticar, prevenir, predecir, tratar ni controlar ninguna enfermedad, ni sustituye a un profesional sanitario.'

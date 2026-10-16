@@ -12,6 +12,7 @@ import { afterAll, describe, expect, it, vi } from 'vitest'
 import { createNewsletterRouter } from '../routes/newsletter.js'
 import {
   buildNewsletterMessage,
+  forgetNewsletterSends,
   newsletterSendSchema,
   newsletterTokenForUser,
   newsletterTokenForWaitlist,
@@ -72,6 +73,30 @@ const ISSUE: NewsletterSendInput = newsletterSendSchema.parse({
     cta: { label: 'Abrir Mimoia', url: 'https://mimoia.com/menu' },
     note: 'Las fotos de las recetas están hechas con IA.',
   },
+})
+
+describe('forgetNewsletterSends (PRO-132)', () => {
+  function fakeDb(deleted: number) {
+    const calls: unknown[] = []
+    const db = {
+      delete: vi.fn((table: unknown) => {
+        calls.push(table)
+        return { where: () => ({ returning: async () => Array.from({ length: deleted }, () => ({ h: 'x' })) }) }
+      }),
+    }
+    return { db: db as any, calls }
+  }
+  it('deletes the rows of that email and says how many', async () => {
+    const { db, calls } = fakeDb(2)
+    expect(await forgetNewsletterSends(db, ' Ana@Example.com ')).toBe(2)
+    expect(calls).toHaveLength(1)
+  })
+  it('does nothing without an email (an already-anonymised entry)', async () => {
+    const { db } = fakeDb(5)
+    expect(await forgetNewsletterSends(db, null)).toBe(0)
+    expect(await forgetNewsletterSends(db, '  ')).toBe(0)
+    expect(db.delete).not.toHaveBeenCalled()
+  })
 })
 
 describe('selectNewsletterRecipients', () => {

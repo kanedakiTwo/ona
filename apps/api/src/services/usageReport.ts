@@ -10,6 +10,7 @@ import { sql } from 'drizzle-orm'
 import { db as defaultDb } from '../db/connection.js'
 import { addDays, madridMidnightUtc, madridParts } from './madridTime.js'
 import { isoWeekLabel, weekOfDay } from './businessMetrics.js'
+import { buildReferralReport, loadInvitedSignups } from './referralRewards.js'
 import { PASSIVE_USAGE_EVENTS, USAGE_CHANNELS, USAGE_EVENTS, type UsageEventName } from './usageEvents.js'
 
 type Db = typeof defaultDb
@@ -269,6 +270,7 @@ export const USAGE_DEFINITIONS = {
   households: 'Right now, not windowed. Households with at least one counted member; withWhatsapp = a member has WhatsApp connected; withWhatsappNotify = one with proactive messages on; withPush = a member has a push subscription; withNotices = either; withTwoPlusMembers = 2 or more counted members.',
   channelSplit: 'Active households per ISO week by channel used: webOnly (app, web chat or voice), whatsappOnly, both; unknownOnly = active only through events without a channel.',
   onboardingWhatsappChosen: 'Event onboarding_whatsapp_chosen: «Por WhatsApp» tapped on the first onboarding screen (POST /whatsapp/link-code with from=onboarding); see householdsByEvent for distinct households.',
+  referrals: 'By ISO week (inviteShared: of the tap; the rest: of the invited sign-up), all time, not the window. signupsWithInviter = accounts that signed up with someone else’s «Invitar a otro hogar» code (not into the inviter’s own household); week3Resolved = of those, households with a menu generated and the shopping list opened on days 14–20 after signing up; inviters = distinct codes. Counts only.',
 }
 
 export interface UsageLoadOptions {
@@ -316,7 +318,22 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
       GROUP BY 1
   `)
   const sinceQ = db.execute(sql`SELECT MIN(created_at) AS since FROM usage_events`)
-  const [counts, householdDays, since, householdState] = await Promise.all([countsQ, householdDaysQ, sinceQ, householdStateQ])
+  // Referrals (PRO-165): every invited account (not just the window) and the taps on «Invitar a otro hogar».
+  const invitedQ = loadInvitedSignups(db, inc)
+  const inviteSharedQ = db.execute(sql`
+    SELECT ${dayOf} AS day, COUNT(*)::int AS count
+      FROM usage_events e LEFT JOIN users u ON u.id = e.user_id
+      WHERE e.name = 'invite_shared' AND ${counted}
+      GROUP BY 1
+  `)
+  const [counts, householdDays, since, householdState, invited, inviteShared] = await Promise.all([
+    countsQ,
+    householdDaysQ,
+    sinceQ,
+    householdStateQ,
+    invitedQ,
+    inviteSharedQ,
+  ])
 
   const input: UsageInput = {
     days: dayRange(fromDay, today),
@@ -350,6 +367,7 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
         pushEnabled: Number(r.push_enabled),
       })),
     ),
+    referrals: buildReferralReport(invited, (inviteShared.rows as any[]).map((r) => ({ day: r.day, count: Number(r.count) }))),
     definitions: USAGE_DEFINITIONS,
     dataSince: sinceRaw ? new Date(sinceRaw).toISOString() : null,
   }

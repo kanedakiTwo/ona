@@ -89,6 +89,7 @@ Analítica de producto en una tabla propia, sin terceros. Una fila por cada cosa
 | `meal_cooked` | `POST /cook-logs` | `log_cooked` |
 | `mimo_message` (por `channel`; en WhatsApp `props.kind` text/voice_note/photo) | `POST /assistant/:id/chat` (`mode: voice` → voice) | cada turno de WhatsApp que llega a Mimo (`inbound.ts`) |
 | `whatsapp_linked` | — | código de vinculación aceptado (`inbound.ts`) |
+| `invite_shared` (PRO-165) | toque en «Invitar a otro hogar» (el botón llega con PRO-163; hasta entonces no hay eventos) | — |
 | `app_opened_installed` (`props.device` android/ios/desktop; pasivo, ver abajo) | `POST /usage/app-opened` (la web, al abrirse instalada) | — |
 | `shop_order_prepared` (`props.orders` desde Mimo) | `POST /shop-orders/prepare` | `prepare_shop_orders` con al menos un pedido |
 | `carrefour_click` (`props.items` = líneas de la tarjeta del súper) | `POST /shop-orders/:id/carrefour-click` (botón «Hacer este pedido en Carrefour.es», PRO-84) | — |
@@ -103,6 +104,8 @@ Sin dobles recuentos: las herramientas que llaman a la propia API REST (`appApi.
 - `totals`: `{ events, byChannel, activeHouseholds, householdsByEvent }` de la ventana. `definitions` repite las reglas.
 - `channelSplit[]` (PRO-106), por semana ISO: `{ week, isoWeek, webOnly, whatsappOnly, both, unknownOnly }` — hogares activos que solo usaron la app o la web (la voz cuenta como app), solo WhatsApp, o los dos; `unknownOnly` = activos solo por eventos sin canal (el alta, por ejemplo).
 - `households` (PRO-106), el estado de **ahora**, no de la ventana: `{ households, withWhatsapp, withWhatsappNotify, withPush, withNotices, withTwoPlusMembers }` — hogares con al menos un miembro contado; con algún miembro con WhatsApp conectado; con los mensajes de Mimo por WhatsApp activados; con avisos push en algún navegador; con cualquiera de los dos avisos; con 2 o más miembros. Las cuentas admin y suspendidas no cuentan como miembros salvo `includeInternal=1`. Solo cifras: los ids se quedan en la consulta. Cuántos eligen «Por WhatsApp» en el alta: `totals.householdsByEvent.onboarding_whatsapp_chosen`.
+- `referrals[]` (PRO-165, «Referidos»), por semana ISO y de todo el histórico (no de la ventana): `{ week, isoWeek, inviteShared, signupsWithInviter, week3Resolved, inviters }` — toques en «Invitar a otro hogar» esa semana; cuentas que se registraron esa semana con el código de otra (sin contar a quien entra en el hogar de quien invita); de ellas, hogares con **semana resuelta en su 3.ª semana** (menú generado y lista abierta entre los días 14 y 20 desde el alta); y número de códigos distintos detrás. Solo cifras: nunca correos ni códigos.
+- **Premio pendiente** (PRO-165, D-059): cada hogar invitado que llega a su semana 3 resuelta deja una fila en `referral_rewards` (código de quien invitó, su cuenta si la tiene, la cuenta invitada, `status` `pendiente`; migración 0054), **una sola vez por pareja** (índice único). Lo crea el planificador como mucho una vez por hora (`recordPendingReferralRewardsIfDue`, `services/referralRewards.ts`). Todavía no se da nada: darlo es PRO-166. Tests: `referralRewards.test.ts`, `referralRewards.smoke.ts` (API y base de datos reales).
 
 ## App instalada y avisos (PRO-83)
 

@@ -798,6 +798,24 @@ export const pushSubscriptions = pgTable('push_subscriptions', {
 
 // ─── WhatsApp channel ─────────────────────────────────────────────
 //
+// ─── referral_rewards (PRO-165) ──────────────────────────────
+// One pending reward per (inviter code, invited account) once the invited
+// household resolves a week in its 3rd week since sign-up (D-059). Nothing is
+// given yet: giving it is PRO-166. No emails, only the codes and the account.
+export const referralRewards = pgTable('referral_rewards', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  inviterCode: text('inviter_code').notNull(),
+  /** The inviter's account when the code is an account's (null for a waitlist person without one). */
+  inviterUserId: uuid('inviter_user_id').references(() => users.id, { onDelete: 'set null' }),
+  inviteeUserId: uuid('invitee_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** 'pendiente' until PRO-166 gives it. */
+  status: text('status').notNull().default('pendiente'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_referral_rewards_pair').on(t.inviterCode, t.inviteeUserId),
+  check('referral_rewards_status_check', sql.raw("status IN ('pendiente','dado')")),
+])
+
 // WhatsApp is another transport for the assistant (see specs/whatsapp.md).
 // A phone is linked to exactly one user and vice versa; the link is proven
 // by sending a one-time code (generated in /profile) from the phone.

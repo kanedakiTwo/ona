@@ -45,6 +45,7 @@ export const USAGE_EVENTS = [
   'meal_cooked',
   'mimo_message',
   'whatsapp_linked',
+  'invite_shared',
   'shop_order_prepared',
   'carrefour_click',
 ] as const

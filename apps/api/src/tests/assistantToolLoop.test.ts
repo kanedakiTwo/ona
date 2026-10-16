@@ -167,6 +167,13 @@ describe('model request (2026-10-12: Sonnet 5.5)', () => {
     expect(call.messages.at(-1).content.at(-1)).toMatchObject({ type: 'text', text: 'hola', cache_control: { type: 'ephemeral' } })
   })
 
+  it('runs another model or effort when asked (scripts/compareMimoModels.ts), Sonnet 5.5 at medium otherwise', async () => {
+    const f = fakeClient([text('hola')])
+    await runToolLoop({ ...base(f.client, []), model: 'claude-haiku-5-5', effort: 'high' })
+    expect(f.calls[0].model).toBe('claude-haiku-5-5')
+    expect(f.calls[0].output_config).toEqual({ effort: 'high' })
+  })
+
   it('withLastMessageCached marks only the newest block and never mutates history', () => {
     const history: any[] = [
       { role: 'user', content: 'uno' },

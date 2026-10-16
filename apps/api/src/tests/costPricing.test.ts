@@ -45,6 +45,12 @@ describe('computeCostMicros', () => {
     expect(computeCostMicros('anthropic', 'claude-opus-5-5', { cacheReadTokens: 1e6 }, FX)).toBe(180_000)
   })
 
+  it('prices Sonnet 5.5 cache reads at 0.05× ($0.10) and Haiku 5.5 at $0.10 / $0.50 (2026-10-16)', () => {
+    expect(computeCostMicros('anthropic', 'claude-sonnet-5-5', { cacheReadTokens: 1e6 }, FX)).toBe(90_000)
+    expect(computeCostMicros('anthropic', 'claude-haiku-5-5', { inputTokens: 1e6, outputTokens: 1e6 }, FX)).toBe(540_000)
+    expect(computeCostMicros('anthropic', 'claude-haiku-5-5', { cacheWriteTokens: 1e6, cacheReadTokens: 1e6 }, FX)).toBe(121_500)
+  })
+
   it('prices per-minute audio (realtime voice) and per-token transcription', () => {
     const perMin = PRICES['openai/gpt-realtime'].perMinute!
     expect(computeCostMicros('openai', 'gpt-realtime', { minutes: 10 }, FX)).toBe(Math.round(10 * perMin * 0.9 * 1e6))

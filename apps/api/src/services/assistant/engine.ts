@@ -190,8 +190,13 @@ export async function runToolLoop(params: {
   ctx: SkillContext
   maxRounds?: number
   onToolStart?: (toolNames: string[]) => void
+  /** Model and effort for this turn (default `ASSISTANT_MODEL` / `ASSISTANT_EFFORT`); `scripts/compareMimoModels.ts` runs the same turn on several. */
+  model?: string
+  effort?: string
 }): Promise<AssistantResponse & { usage: TokenUsage }> {
   const maxRounds = params.maxRounds ?? MAX_TOOL_ROUNDS
+  const model = params.model ?? ASSISTANT_MODEL
+  const effort = params.effort ?? ASSISTANT_EFFORT
   const messages = [...params.messages]
   const executed: ExecutedTool[] = []
   let usage: TokenUsage = EMPTY_USAGE
@@ -201,9 +206,9 @@ export async function runToolLoop(params: {
   for (let round = 0; ; round += 1) {
     const response = await params.client.messages.create(
       {
-        model: ASSISTANT_MODEL,
+        model,
         max_tokens: ASSISTANT_MAX_TOKENS,
-        output_config: { effort: ASSISTANT_EFFORT },
+        output_config: { effort },
         fallbacks: 'default',
         system: params.system,
         messages: withLastMessageCached(messages),

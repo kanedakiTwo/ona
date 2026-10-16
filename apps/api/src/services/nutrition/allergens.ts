@@ -95,6 +95,23 @@ function containsAny(haystack: string, needles: readonly string[]): boolean {
   return false
 }
 
+const termRegexCache = new Map<string, RegExp>()
+
+/**
+ * Whole-word, plural-tolerant match of a normalised term in a normalised name.
+ * A term starting with ^ only matches at the start of the name.
+ */
+export function nameHasTerm(normalizedName: string, term: string): boolean {
+  let re = termRegexCache.get(term)
+  if (!re) {
+    const anchored = term.startsWith('^')
+    const escaped = (anchored ? term.slice(1) : term).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    re = new RegExp(`${anchored ? '^' : '(^|[^a-z0-9])'}${escaped}(e?s)?($|[^a-z0-9])`)
+    termRegexCache.set(term, re)
+  }
+  return re.test(normalizedName)
+}
+
 // Each rule's keyword list is stored already normalized (no diacritics,
 // lowercase) so we only normalize the input once.
 //
@@ -191,6 +208,9 @@ const TREE_NUT_KEYWORDS = [
   'frutos secos',
 ]
 
+// Peanut is matched by whole word (PRO-160): as a substring «mani» tagged
+// «manitas de cerdo» and «mandarina». The other lists stay substring on
+// purpose — whole-word would miss panko, empanadilla, apionabo, salmonete.
 const PEANUT_KEYWORDS = ['cacahuete', 'mani']
 
 const SOY_KEYWORDS = [
@@ -276,7 +296,7 @@ export function inferAllergenTagsFromName(name: string): AllergenTag[] {
   if (containsAny(n, LACTOSE_KEYWORDS)) tags.add('lactosa')
   if (containsAny(n, EGG_KEYWORDS)) tags.add('huevo')
   if (containsAny(n, TREE_NUT_KEYWORDS)) tags.add('frutos_secos')
-  if (containsAny(n, PEANUT_KEYWORDS)) tags.add('cacahuetes')
+  if (PEANUT_KEYWORDS.some((k) => nameHasTerm(n, k))) tags.add('cacahuetes')
   if (containsAny(n, SOY_KEYWORDS)) tags.add('soja')
   if (containsAny(n, FISH_KEYWORDS)) tags.add('pescado')
   if (containsAny(n, CRUSTACEAN_KEYWORDS)) {

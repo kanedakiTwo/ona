@@ -15,7 +15,7 @@
  *
  * Spec: specs/menus.md ("Restrictions & allergies").
  */
-import { ALLERGEN_TAGS, inferAllergenTagsFromName, type AllergenTag } from './nutrition/allergens.js'
+import { ALLERGEN_TAGS, inferAllergenTagsFromName, nameHasTerm, type AllergenTag } from './nutrition/allergens.js'
 
 export function normalizeText(s: string): string {
   return s
@@ -213,22 +213,9 @@ export function compileRestrictions(restrictions: readonly string[], dislikes: r
   return { allergens, terms: [...terms] }
 }
 
-const termRegexCache = new Map<string, RegExp>()
-
-/**
- * Whole-word, plural-tolerant match of a normalised term in a normalised name.
- * A term starting with ^ only matches at the start of the name.
- */
-export function nameHasTerm(normalizedName: string, term: string): boolean {
-  let re = termRegexCache.get(term)
-  if (!re) {
-    const anchored = term.startsWith('^')
-    const escaped = (anchored ? term.slice(1) : term).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    re = new RegExp(`${anchored ? '^' : '(^|[^a-z0-9])'}${escaped}(e?s)?($|[^a-z0-9])`)
-    termRegexCache.set(term, re)
-  }
-  return re.test(normalizedName)
-}
+// nameHasTerm lives in nutrition/allergens.ts (PRO-160: the peanut rule
+// uses it too); re-exported here for the existing callers.
+export { nameHasTerm }
 
 export interface RestrictableRecipe {
   /** Recipe-level allergen union (recipes.allergens). */

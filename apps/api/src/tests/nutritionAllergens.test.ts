@@ -266,3 +266,28 @@ describe('PRO-61 — gluten rules and effectiveAllergens', () => {
     expect(effectiveAllergens(['inventado'], [])).toEqual([])
   })
 })
+
+describe('PRO-160 — peanut is matched by whole word', () => {
+  it('does not tag words that merely contain «mani»', () => {
+    for (const name of ['manitas de cerdo', 'Manitas', 'mandarina', 'manzana']) {
+      expect(inferAllergenTagsFromName(name)).not.toContain('cacahuetes')
+    }
+  })
+
+  it('still tags maní / cacahuete in any form', () => {
+    for (const name of ['maní tostado', 'Maní', 'mani', 'cacahuetes', 'crema de cacahuete']) {
+      expect(inferAllergenTagsFromName(name)).toContain('cacahuetes')
+    }
+  })
+
+  it('keeps substring matching for the other lists (panko, empanadilla, apionabo, salmonete)', () => {
+    expect(inferAllergenTagsFromName('panko')).toContain('gluten')
+    expect(inferAllergenTagsFromName('empanadilla')).toContain('gluten')
+    expect(inferAllergenTagsFromName('apionabo')).toContain('apio')
+    expect(inferAllergenTagsFromName('salmonete')).toContain('pescado')
+  })
+
+  it('effectiveAllergens does not add cacahuetes for «Manitas de cerdo»', () => {
+    expect(effectiveAllergens([], ['Manitas de cerdo'])).not.toContain('cacahuetes')
+  })
+})

@@ -649,7 +649,7 @@ describe('processInbound — the reply carries the menu / list, not just a link 
       menuDigest,
     })
     await processInbound(msg({ text: 'genera el menú de la semana' }), t.deps)
-    expect(menuDigest).toHaveBeenCalledWith('user-1', 'm-9')
+    expect(menuDigest).toHaveBeenCalledWith('user-1', 'm-9', 'generated')
     expect(t.sent).toEqual([{ type: 'text', text: MENU_TEXT }])
     const text = textOf(t.sent)
     expect(text.startsWith('Listo: tu menú hasta el domingo 🍽️')).toBe(true)
@@ -737,7 +737,7 @@ describe('processInbound — the generated week goes out as ONE picture with a s
     const menuImage = vi.fn(async () => ({ jpeg: JPEG, caption: CAPTION }))
     const t = setup({ chatReply: generated(), menuDigest: async () => MENU_TEXT, menuImage })
     await processInbound(msg({ text: 'genera el menú de la semana' }), t.deps)
-    expect(menuImage).toHaveBeenCalledWith('user-1', 'm-9')
+    expect(menuImage).toHaveBeenCalledWith('user-1', 'm-9', 'generated')
     expect(t.sent).toHaveLength(1)
     const m = t.sent[0]
     expect(m).toMatchObject({ type: 'image', mimeType: 'image/jpeg', image: JPEG })
@@ -766,7 +766,7 @@ describe('processInbound — the generated week goes out as ONE picture with a s
     expect(history.at(-1)!.content).toContain('Listo: tu menú hasta el domingo')
   })
 
-  it("the model's other words go in the caption, above the opener", async () => {
+  it("the model's other words go in the caption, above the opener (an empty «Hecho:» goes)", async () => {
     const t = setup({
       chatReply: generated('Hecho:\n- Menú de la semana listo\n\nNo había dorada; he puesto lubina.'),
       menuDigest: async () => MENU_TEXT,
@@ -774,7 +774,7 @@ describe('processInbound — the generated week goes out as ONE picture with a s
     })
     await processInbound(msg({ text: 'genera el menú' }), t.deps)
     expect(t.sent).toHaveLength(1)
-    expect(t.sent[0].text).toBe(`Hecho:\n\nNo había dorada; he puesto lubina.\n\n${CAPTION}`)
+    expect(t.sent[0].text).toBe(`No había dorada; he puesto lubina.\n\n${CAPTION}`)
   })
 
   it('buttons from the model go after the picture, without a second menu link', async () => {
@@ -830,6 +830,27 @@ describe('processInbound — the generated week goes out as ONE picture with a s
     await processInbound(msg(), t.deps)
     expect(menuImage).not.toHaveBeenCalled()
     expect(t.sent.every((m) => m.type !== 'image')).toBe(true)
+  })
+
+  it('«dame el menú de la semana» (get_weekly_menu) → the same picture with a «Tu menú» caption, not the model\'s list', async () => {
+    const VIEW_CAPTION = weekMenuCaption(WEEK, { ...OPTS, view: 'viewing' })
+    const menuImage = vi.fn(async () => ({ jpeg: JPEG, caption: VIEW_CAPTION }))
+    const t = setup({
+      chatReply: {
+        message: 'Tu menú de esta semana:\n*Jueves 15*\n- Comida: Lentejas\n- Cena: Crema',
+        uiHint: 'menu',
+        data: { menuId: 'm-1', weekStart: '2026-10-12', days: WEEK.days, skippedDays: [] },
+        toolsUsed: ['get_weekly_menu'],
+      },
+      menuDigest: async () => weekMenuDigest(WEEK, { ...OPTS, view: 'viewing' }),
+      menuImage,
+    })
+    await processInbound(msg({ text: 'dame el menú de la semana' }), t.deps)
+    expect(menuImage).toHaveBeenCalledWith('user-1', 'm-1', 'viewing')
+    expect(t.sent).toHaveLength(1)
+    expect(t.sent[0]).toMatchObject({ type: 'image', text: VIEW_CAPTION })
+    expect(VIEW_CAPTION.startsWith('Tu menú de esta semana 🍽️\n')).toBe(true)
+    expect(t.outbound[0].body).toBe(`⟦imagen enviada: ${WEEK_IMAGE_ALT}⟧\n${VIEW_CAPTION}`)
   })
 
   it('the first menu of the WhatsApp sign-up is a picture too, then the health link and the opt-in', async () => {

@@ -176,6 +176,48 @@ describe('get_todays_menu', () => {
   })
 })
 
+// ─── 1b. get_weekly_menu (the whole week, 2026-10-15) ─────────────────────
+
+describe('get_weekly_menu', () => {
+  const skill = get('get_weekly_menu')
+  const at = <T,>(fn: () => Promise<T>) => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-15T10:00:00Z')) // Thursday
+    return fn().finally(() => vi.useRealTimers())
+  }
+
+  it('returns the week day by day with its menu id (WhatsApp draws it from there)', async () => {
+    const days = [
+      { lunch: { dishes: [{ kind: 'recipe', recipeId: 'a', recipeName: 'Lentejas' }] } },
+      {},
+      { dinner: { dishes: [{ kind: 'note', text: 'Cenamos fuera' }] } },
+      {}, {}, {}, {},
+    ]
+    const db = makeDb([{ id: 'm-7', days, skippedDays: [1] }])
+    const r = await at(() => skill.handler({}, ctx(db)))
+    expect(r.uiHint).toBe('menu')
+    expect(r.data).toMatchObject({ menuId: 'm-7', weekStart: '2026-10-12', skippedDays: [1] })
+    expect(r.summary).toBe(
+      'Menu de la semana del lunes 12 de octubre:\nlunes 12 de octubre: comida: Lentejas\nmartes 13 de octubre: sin cocinar\nmiércoles 14 de octubre: cena: Cenamos fuera',
+    )
+  })
+
+  it('nextWeek reads next week', async () => {
+    const db = makeDb([{ id: 'm-8', days: [{ lunch: { dishes: [{ kind: 'recipe', recipeId: 'a', recipeName: 'Paella' }] } }], skippedDays: [] }])
+    const r = await at(() => skill.handler({ nextWeek: true }, ctx(db)))
+    expect(r.data).toMatchObject({ menuId: 'm-8', weekStart: '2026-10-19' })
+  })
+
+  it('no menu, or nothing planned → text without menu data (no picture on WhatsApp)', async () => {
+    const none = await at(() => skill.handler({}, ctx(makeDb([]))))
+    expect(none).toMatchObject({ data: null, uiHint: 'text' })
+    expect(none.summary).toContain('No hay menu para la semana del lunes 12 de octubre')
+    const empty = await at(() => skill.handler({}, ctx(makeDb([{ id: 'm-9', days: [{}, {}, {}, {}, {}, {}, {}], skippedDays: [] }]))))
+    expect(empty).toMatchObject({ data: null, uiHint: 'text' })
+    expect(empty.summary).toContain('no tiene nada planificado')
+  })
+})
+
 // ─── 2. get_recipe_details ────────────────────────────────────────────────
 
 describe('get_recipe_details', () => {
@@ -1103,8 +1145,9 @@ describe('skill export coverage', () => {
     // 65 with cook_with_what_i_have («Con lo que tengo», PRO-31, tested in
     // withWhatIHave.test.ts), and to 66 with add_freezer_dish (táper del
     // congelador, PRO-82, tested in appSkills.test.ts), and to 67 with
-    // leave_feedback (beta feedback box, 2026-10-15, tested in feedback.test.ts).
-    expect(skills.length).toBe(67)
+    // leave_feedback (beta feedback box, 2026-10-15, tested in feedback.test.ts),
+    // and to 68 with get_weekly_menu (the whole week, 2026-10-15).
+    expect(skills.length).toBe(68)
   })
 
   it('every skill has a unique name', () => {

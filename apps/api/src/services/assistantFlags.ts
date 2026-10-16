@@ -34,7 +34,7 @@ export type FlagCategory = (typeof FLAG_CATEGORIES)[number]
  * "Hecho:" true. Anything else that ran without error counts as a change.
  */
 export const READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
-  'get_todays_menu', 'get_recipe_details', 'get_weekly_nutrition', 'suggest_recipes', 'cook_with_what_i_have',
+  'get_todays_menu', 'get_weekly_menu', 'get_recipe_details', 'get_weekly_nutrition', 'suggest_recipes', 'cook_with_what_i_have',
   'search_recipes', 'nutrition_advice', 'recipe_variation', 'get_pantry_stock', 'get_my_recipes', 'get_menu_history',
   'scale_recipe', 'evaluate_food_health', 'suggest_substitution', 'get_variety_score', 'get_eating_window',
   'get_week_balance', 'start_cooking_mode', 'set_timer', 'cooking_step', 'get_shopping_list', 'get_shop_orders',

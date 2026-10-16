@@ -24,6 +24,9 @@ async function onboardWithGlutenFree(page: Page) {
   await next.click()
   await page.getByRole('button', { name: /3-4 veces/i }).click()
   await next.click()
+  // PRO-138: «Entre semana, ¿cómo te gusta cocinar?»
+  await page.getByRole('button', { name: /sin prisa/i }).click()
+  await next.click()
   await page.getByRole('checkbox', { name: /datos de salud/i }).check()
   await page.getByRole('button', { name: /sin gluten/i }).click()
   await next.click()

@@ -367,6 +367,19 @@ describe('renderNewsletterEmail / buildNewsletterMessage', () => {
     expect(m.text).toMatch(/Un abrazo,\nMiguel\nFundador de Mimoia/)
   })
 
+  it('the greeting goes above the headline, and escaped (Miguel, 2026-10-16)', () => {
+    const x = newsletterSendSchema.parse({
+      ...ISSUE,
+      content: { ...ISSUE.content, preface: 'Hola a todos <b>', headline: 'Los macarrones de *casa*', intro: 'La historia.' },
+    })
+    const { html, text } = renderNewsletterEmail(x, { unsubscribeUrl: 'https://mimoia.com/x' })
+    expect(html.indexOf('Hola a todos')).toBeGreaterThan(-1)
+    expect(html.indexOf('Hola a todos')).toBeLessThan(html.indexOf('Los macarrones de'))
+    expect(html.indexOf('Los macarrones de')).toBeLessThan(html.indexOf('La historia.'))
+    expect(html).not.toContain('<b>')
+    expect(text.indexOf('Hola a todos')).toBeLessThan(text.indexOf('Los macarrones de casa'))
+  })
+
   it('the headline accent cannot smuggle markup', () => {
     const x = newsletterSendSchema.parse({ ...ISSUE, content: { ...ISSUE.content, headline: '*<img src=x onerror=alert(1)>*' } })
     const { html } = renderNewsletterEmail(x, { unsubscribeUrl: 'https://mimoia.com/x' })

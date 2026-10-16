@@ -74,6 +74,8 @@ const section = z.object({
 export const newsletterContentSchema = z.object({
   /** Under the masthead, e.g. «N.º 1 · 16 de octubre de 2026». */
   edition: z.string().trim().max(80).optional(),
+  /** A short greeting above the headline (Miguel, 2026-10-16: «Hola a todos…»). */
+  preface: z.string().trim().max(600).optional(),
   /** The issue's one headline; `*word*` sets that word in the accent italic. */
   headline: z.string().trim().max(160).optional(),
   /** Opening letter (or a line from Mimo). */
@@ -155,7 +157,7 @@ function sectionBlock(s: NonNullable<NewsletterContent['sections']>[number]): st
 
 /**
  * The visual newsletter, on the shared brand shell (emailBrand.ts): masthead
- * with the logo → headline → letter → the star recipe's photo full width →
+ * with the logo → greeting (optional) → headline → letter → the star recipe's photo full width →
  * sections → cards → signature → footer band. Absolute image URLs with `alt`.
  * `unsubscribeUrl` is per recipient.
  */
@@ -165,6 +167,7 @@ export function renderNewsletterEmail(
 ): { html: string; text: string } {
   const c = input.content
   const brand = esc(BRAND_NAME)
+  const preface = c.preface ? row(paragraphs(c.preface, `${BODY}font-size:17px;line-height:1.65;`, 16), '24px 28px 0') : ''
   const intro = c.intro ? row(paragraphs(c.intro, `${BODY}font-size:17px;line-height:1.65;`, 16), '24px 28px 14px') : ''
   const star = `${row(img(c.star.imageUrl, c.star.imageAlt, c.star.url), '10px 28px 22px')}
 ${row(
@@ -179,6 +182,7 @@ ${button(c.cta.label, c.cta.url, '6px 28px 38px')}`
     input.preheader,
     [
       masthead(links, 'El menú de los viernes', c.edition),
+      preface,
       c.headline ? headlineRow(c.headline) : '',
       intro,
       star,
@@ -199,6 +203,7 @@ ${button(c.cta.label, c.cta.url, '6px 28px 38px')}`
   const text = [
     `${BRAND_NAME} · El menú de los viernes${c.edition ? ` · ${c.edition}` : ''}`,
     '',
+    ...(c.preface ? [c.preface, ''] : []),
     ...(c.headline ? [plainHeadline(c.headline), ''] : []),
     ...(c.intro ? [c.intro, ''] : []),
     `LA RECETA DE LA SEMANA: ${c.star.title}`,

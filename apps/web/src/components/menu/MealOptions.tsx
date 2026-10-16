@@ -59,6 +59,7 @@ import { MEAL_TYPE_TAGS, MEAL_TYPE_TAG_LABELS, type Dish, type MealSlot, type Re
 import { mealLabel } from "@/lib/labels"
 import { useRecipeCookStats, useRecordCook } from "@/hooks/useCookLogs"
 import { ConfirmSheet, MenuSheet, SheetAction } from "./MenuSheet"
+import { RatingPromptSheet } from "@/components/cooking/RatingPromptSheet"
 import { RecipePickerSheet } from "./RecipePickerSheet"
 import { AddDishSheet } from "./AddDishSheet"
 import { DishRow } from "./DishRow"
@@ -111,7 +112,7 @@ export function slotRecipeHref(recipeId: string, ctx: SlotContext): string {
   return `/recipes/${recipeId}?servings=${slotServings(ctx)}`
 }
 
-type OpenSheet = null | "actions" | "picker" | "pin" | "addDish" | "confirmBan" | "confirmRemove"
+type OpenSheet = null | "actions" | "picker" | "pin" | "addDish" | "confirmBan" | "confirmRemove" | "rate"
 
 export function useMealOptions() {
   const [open, setOpen] = useState<OpenSheet>(null)
@@ -253,7 +254,7 @@ export function MealOptionsSheets({
               onClick={() => setOpen("confirmBan")}
             />
           )}
-          {first && <CookedAction recipeId={first.recipeId} ctx={ctx} />}
+          {first && <CookedAction recipeId={first.recipeId} ctx={ctx} onAskRating={() => setOpen("rate")} />}
         </div>
 
         <DinerStepper
@@ -275,6 +276,13 @@ export function MealOptionsSheets({
         </div>
       </MenuSheet>
 
+      {first && (
+        <RatingPromptSheet
+          recipeId={open === "rate" ? first.recipeId : null}
+          recipeName={first.recipeName}
+          onDone={close}
+        />
+      )}
       {first && (
         <ConfirmSheet
           open={open === "confirmBan"}
@@ -339,7 +347,7 @@ export function MealOptionsSheets({
 }
 
 /* ── "Marcar como cocinada" — records a cook event with the slot as context. */
-function CookedAction({ recipeId, ctx }: { recipeId: string; ctx: SlotContext }) {
+function CookedAction({ recipeId, ctx, onAskRating }: { recipeId: string; ctx: SlotContext; onAskRating: () => void }) {
   const { data } = useRecipeCookStats(recipeId)
   const record = useRecordCook()
   const count = data?.count ?? 0
@@ -350,7 +358,11 @@ function CookedAction({ recipeId, ctx }: { recipeId: string; ctx: SlotContext })
       hint={count > 0 ? `La has cocinado ${count} ${count === 1 ? "vez" : "veces"}` : undefined}
       disabled={record.isPending}
       onClick={() =>
-        record.mutate({ recipeId, menuId: ctx.menuId, dayIndex: ctx.day, meal: ctx.meal })
+        record.mutate(
+          { recipeId, menuId: ctx.menuId, dayIndex: ctx.day, meal: ctx.meal },
+          // «¿Qué tal?» (PRO-110) replaces this sheet when the API asks for it.
+          { onSuccess: (res) => res.askRating && onAskRating() },
+        )
       }
     />
   )

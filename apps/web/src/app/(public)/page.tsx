@@ -555,7 +555,10 @@ function Differential() {
 }
 
 /* ═══════════════════════════════════════════
-   05 — Manifesto
+   05 — Manifesto (mission, vision, snowball effect)
+   Mission and vision are Miguel's own words (ONA HQ constitution §1, D-031).
+   The snowball promise only claims what the menu learns from today —
+   what you tell Mimo, favourites, vetoed recipes — never "every change".
    ═══════════════════════════════════════════ */
 function Manifesto() {
   const ref = useRef<HTMLDivElement>(null)
@@ -566,8 +569,57 @@ function Manifesto() {
   const y1 = useTransform(scrollYProgress, [0, 1], [60, -60])
   const y2 = useTransform(scrollYProgress, [0, 1], [-30, 30])
 
+  const pillars = [
+    {
+      eyebrow: "01 · La misión",
+      body: (
+        <>
+          Cocinar debería ser divertido. Lo es cuando sabes qué vas a hacer, tienes los ingredientes y
+          tienes tiempo; entonces cocinas con cariño. Deja de serlo cuando no sabes qué hacer, te falta
+          algo y toca malimprovisar: ahí se pierde el amor.{" "}
+          <strong className="font-medium text-[#FAF6EE]">
+            Nuestra misión es quitar de en medio todo lo que no sea divertido
+          </strong>{" "}
+          (decidir el menú, planificar, comprar) para que tu tiempo sea para cocinar.
+        </>
+      ),
+    },
+    {
+      eyebrow: "02 · La visión",
+      body: (
+        <>
+          Con la IA llega una época de abundancia, y no va a tardar. Una de las grandes preguntas será a
+          qué dedicamos el tiempo. Creemos que la mayoría encontrará su refugio en sus aficiones, sobre
+          todo en las que obligan a estar aquí y ahora y a usar los sentidos. Pocas usan tantos como
+          cocinar: el olor al dorar, el tacto al amasar, el crujido de un buen pan.{" "}
+          <strong className="font-medium text-[#FAF6EE]">
+            La cocina va a ser un refugio para quien tenga los medios para disfrutarla. Mimoia quiere
+            ayudar a que los tengas.
+          </strong>
+        </>
+      ),
+    },
+    {
+      eyebrow: "03 · El efecto bola de nieve",
+      body: (
+        <>
+          Las primeras semanas, Mimo acertará menos con los gustos de tu casa. Cada cosa que le cuentas
+          se queda: lo que no gusta en casa, tus favoritos, lo que no quieres volver a ver.{" "}
+          <strong className="font-medium text-[#FAF6EE]">
+            Y cada semana acierta un poco más.
+          </strong>{" "}
+          Hoy no podemos quitarte todo lo que no es divertido; semana a semana, lo iremos consiguiendo.
+        </>
+      ),
+    },
+  ]
+
   return (
-    <section ref={ref} className="relative overflow-hidden bg-[#1B4332] px-6 py-32 text-[#FAF6EE] md:px-10 md:py-40">
+    <section
+      id="manifiesto"
+      ref={ref}
+      className="relative scroll-mt-20 overflow-hidden bg-[#1B4332] px-6 py-28 text-[#FAF6EE] md:px-10 md:py-40"
+    >
       <motion.div
         className="animate-blob absolute -right-32 top-1/2 h-96 w-96 -translate-y-1/2 bg-[#2D6A4F] opacity-30"
         style={{ y: y1 }}
@@ -577,16 +629,33 @@ function Manifesto() {
         style={{ animationDelay: "-4s", y: y2 }}
       />
 
-      <div className="relative mx-auto max-w-5xl text-center">
-        <div className="text-eyebrow mb-8 text-[#95D5B2]">Manifiesto</div>
-        <p className="text-editorial-lg text-[#FAF6EE]">
-          No te pedimos que apuntes
-          <br />
-          lo que <span className="font-italic italic">ya</span> comiste.
-          <br />
-          Te pensamos lo que vais a comer
-          <br />
-          con <span className="font-italic italic text-[#52B788]">lo que ya nos contaste</span>.
+      <div className="relative mx-auto max-w-6xl">
+        <div className="text-center">
+          <div className="text-eyebrow mb-8 text-[#95D5B2]!">Manifiesto</div>
+          <h2 className="text-editorial-lg mx-auto max-w-4xl text-[#FAF6EE]">
+            Que en casa solo quede la parte{" "}
+            <span className="font-italic italic text-[#52B788]">divertida</span> de cocinar.
+          </h2>
+        </div>
+
+        <motion.div
+          className="mt-16 grid grid-cols-1 gap-10 md:mt-24 md:grid-cols-3 md:gap-12"
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.2 }}
+          variants={{ visible: { transition: { staggerChildren: 0.12 } } }}
+        >
+          {pillars.map((p) => (
+            <motion.div key={p.eyebrow} variants={fadeUp} className="border-t border-[#FAF6EE]/20 pt-6">
+              <div className="text-eyebrow mb-4 text-[#95D5B2]!">{p.eyebrow}</div>
+              <p className="text-base leading-relaxed text-[#FAF6EE]/75">{p.body}</p>
+            </motion.div>
+          ))}
+        </motion.div>
+
+        <p className="mx-auto mt-16 max-w-2xl text-center font-italic text-xl leading-snug text-[#FAF6EE]/85 md:mt-24 md:text-2xl">
+          Mimoia nació en una cocina de casa, como un proyecto personal para no perder tiempo en lo que no
+          es cocinar. Lo usamos en casa cuatro años antes de pensar que podía servirle a más gente.
         </p>
       </div>
     </section>

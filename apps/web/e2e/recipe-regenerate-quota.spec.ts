@@ -44,9 +44,12 @@ for (const viewport of [
     await page.goto(`/recipes/${own.id}`)
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible({ timeout: 15_000 })
     // On mobile the author controls live in the «Notas» tab.
+    // Wait for either (the tabs render after hydration; checking at once
+    // raced on a cold runner and skipped the click).
     const notas = page.getByRole('tab', { name: 'Notas' })
-    if (await notas.isVisible()) await notas.click()
     const section = page.getByRole('region', { name: 'Tu receta' })
+    await expect(notas.or(section).first()).toBeVisible({ timeout: 15_000 })
+    if (await notas.isVisible()) await notas.click()
     const edit = section.getByRole('link', { name: /Editar receta/ })
     const regen = section.getByRole('button', { name: /Regenerar imagen/ })
     const counter = section.getByText(/\d+\/\d+ este mes/)

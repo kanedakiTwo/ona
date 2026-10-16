@@ -2,6 +2,7 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator'
 import { db, pool } from './connection.js'
 import { applyCatalogSourceLinks } from '../services/catalogSourceLinks.js'
 import { applyCatalogRecipeFixes } from '../services/catalogRecipeFixes.js'
+import { applyProfileFromMemories } from '../services/profileFromMemories.js'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -24,6 +25,12 @@ async function main() {
     await applyCatalogRecipeFixes(db)
   } catch (err) {
     console.error('[catalog-recipe-fixes] failed:', err)
+  }
+  // Idempotent data copy (PRO-150): `user_memories` → the household's ficha.
+  try {
+    await applyProfileFromMemories(db)
+  } catch (err) {
+    console.error('[profile-from-memories] failed:', err)
   }
   await pool.end()
 }

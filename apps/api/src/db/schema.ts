@@ -1281,3 +1281,110 @@ export const userFeedback = pgTable('user_feedback', {
   index('idx_user_feedback_created').on(t.createdAt),
   check('user_feedback_channel_check', sql.raw("channel IN ('app','chat','whatsapp')")),
 ])
+
+// ─── Ficha del hogar (specs/household-profile.md, PRO-150) ──
+// Everything Mimoia knows about a household, with a section per person.
+// Types and value schemas live in `@ona/shared` (householdProfile.ts).
+
+/** People without an account: an alias and an age band. A minor's name is never stored. */
+export const householdPersons = pgTable('household_persons', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  /** «la pequeña», «la abuela». For minors only a generic alias (`MINOR_ALIASES`). */
+  alias: text('alias').notNull(),
+  /** '0-2' | '3-5' | '6-12' | '13-17' | 'adulto'. */
+  ageBand: text('age_band').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_household_persons_household').on(t.householdId),
+  check('household_persons_age_band_check', sql.raw("age_band IN ('0-2','3-5','6-12','13-17','adulto')")),
+])
+
+/** One fact of the ficha. No subject = about the whole household. */
+export const profileFacts = pgTable('profile_facts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  /** About a person with an account. */
+  subjectUserId: uuid('subject_user_id').references(() => users.id, { onDelete: 'cascade' }),
+  /** About a person without one. */
+  subjectPersonId: uuid('subject_person_id').references(() => householdPersons.id, { onDelete: 'cascade' }),
+  /** `PROFILE_FACT_TYPES` in @ona/shared. */
+  type: text('type').notNull(),
+  value: jsonb('value').notNull(),
+  /** 'user' | 'onboarding' | 'ai_realtime' | 'ai_nightly' | 'ai_weekly'. */
+  origin: text('origin').notNull(),
+  confidence: real('confidence').notNull().default(1),
+  /** [{ signal, date, summary }]. */
+  evidence: jsonb('evidence').notNull().default([]),
+  validUntil: timestamp('valid_until', { withTimezone: true }),
+  /** 'active' | 'retired'. */
+  status: text('status').notNull().default('active'),
+  /** The `user_memories` row this fact was copied from (PRO-150 migration); keeps the copy idempotent. */
+  sourceMemoryId: uuid('source_memory_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_profile_facts_household_status').on(t.householdId, t.status),
+  index('idx_profile_facts_subject_user').on(t.subjectUserId),
+  uniqueIndex('uq_profile_facts_source_memory').on(t.sourceMemoryId),
+  check('profile_facts_origin_check', sql.raw("origin IN ('user','onboarding','ai_realtime','ai_nightly','ai_weekly')")),
+  check('profile_facts_status_check', sql.raw("status IN ('active','retired')")),
+  check('profile_facts_confidence_check', sql.raw('confidence >= 0 AND confidence <= 1')),
+  check('profile_facts_one_subject_check', sql.raw('subject_user_id IS NULL OR subject_person_id IS NULL')),
+])
+
+/** The portrait: ≤ 250 words, one row per household, versioned. */
+export const householdProfiles = pgTable('household_profiles', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  portrait: text('portrait').notNull(),
+  version: integer('version').notNull().default(1),
+  /** Model that wrote it. */
+  model: text('model').notNull(),
+  generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_household_profiles_household').on(t.householdId),
+])
+
+/** What the AI suspects but doesn't know («¿seguís sin horno?»). */
+export const profileQuestions = pgTable('profile_questions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  subjectUserId: uuid('subject_user_id').references(() => users.id, { onDelete: 'cascade' }),
+  subjectPersonId: uuid('subject_person_id').references(() => householdPersons.id, { onDelete: 'cascade' }),
+  question: text('question').notNull(),
+  factType: text('fact_type'),
+  origin: text('origin').notNull(),
+  /** 'pending' | 'asked' | 'answered' | 'dismissed'. */
+  status: text('status').notNull().default('pending'),
+  askedAt: timestamp('asked_at', { withTimezone: true }),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_profile_questions_household_status').on(t.householdId, t.status),
+  check('profile_questions_status_check', sql.raw("status IN ('pending','asked','answered','dismissed')")),
+  check('profile_questions_origin_check', sql.raw("origin IN ('user','onboarding','ai_realtime','ai_nightly','ai_weekly')")),
+])
+
+/** History of the ficha: what changed, before, after, why, who. */
+export const profileChanges = pgTable('profile_changes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  factId: uuid('fact_id').references(() => profileFacts.id, { onDelete: 'set null' }),
+  /** `PROFILE_CHANGE_ACTIONS` in @ona/shared. */
+  action: text('action').notNull(),
+  factType: text('fact_type'),
+  before: jsonb('before'),
+  after: jsonb('after'),
+  reason: text('reason').notNull(),
+  origin: text('origin').notNull(),
+  /** Who made it, when it was a person. */
+  actorUserId: uuid('actor_user_id').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_profile_changes_household_created').on(t.householdId, t.createdAt),
+  check('profile_changes_origin_check', sql.raw("origin IN ('user','onboarding','ai_realtime','ai_nightly','ai_weekly')")),
+])

@@ -315,3 +315,9 @@ Editorial design system, brand Mimoia everywhere users see it (`BRAND_NAME`, ren
 **Source**: `apps/web/src/app/globals.css`, `apps/web/src/app/layout.tsx`, `apps/web/src/components/shared/`, `apps/web/src/components/mimo/`
 
 ---
+
+## [Ficha del hogar](./household-profile.md)
+
+Household profile / ficha viva (D-064, PRO-150): data model of everything Mimoia knows about a household, per person. `profile_facts` (subject household / member / person without account, type, value, origin user|onboarding|ai_realtime|ai_nightly|ai_weekly, confidence 0–1, evidence, valid_until, status active|retired), new fact types (fixed_dish, skipped_meal, dish_frequency, affinity −2..+2, effort, temporary_situation, shopping, batch_cooking, novelty) plus every user_memories key, `household_persons` (alias + age band, never a minor's name, `MINOR_ALIASES`), `household_profiles` (portrait / retrato ≤ 250 words, version, model), `profile_questions` (pending questions), `profile_changes` (history). Health rules (consent, nothing from WhatsApp, never deduced at night), visibility per fact (health only for its owner; adults see the rest; `visibleProfileFacts`). Idempotent boot copy from `user_memories` (`applyProfileFromMemories`). Migration 0057. No UI or REST yet.
+
+**Source**: `packages/shared/src/types/householdProfile.ts`, `apps/api/src/services/profileFromMemories.ts`, `apps/api/src/db/schema.ts`, `apps/api/src/db/migrations/0057_household_profile.sql`

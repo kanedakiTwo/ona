@@ -379,6 +379,13 @@
       "when": 1792145904419,
       "tag": "0053_referral_codes",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1792146402098,
+      "tag": "0054_referral_rewards",
+      "breakpoints": true
     }
   ]
 }

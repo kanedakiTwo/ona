@@ -14,8 +14,9 @@
 import { Suspense, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { LAUNCH_DATE_LABEL, PLAN_CAPS_NOTE, trialLastDayLabel, planByKey, subscriptionSummary, type BillingPeriod, type PlanKey } from '@ona/shared'
+import { LAUNCH_DATE_LABEL, PLAN_CAPS_NOTE, founderOfferText, trialLastDayLabel, planByKey, subscriptionSummary, type BillingPeriod, type PlanKey } from '@ona/shared'
 import { PlanCards } from '@/components/billing/PlanCards'
+import { chargeNoticeLine } from '@/components/billing/AccountAccessNotice'
 import { useBilling, useCheckout, usePortal } from '@/hooks/useBilling'
 import { Accent, PILL_INK, PILL_OUTLINE, SUB_CARD, SUB_EYEBROW, SubNotice, SubPage } from '@/components/profile/SubPage'
 import { SubLoadError, useQueryLoad } from '@/components/profile/SubLoadError'
@@ -37,6 +38,8 @@ function Suscripcion() {
   const params = useSearchParams()
   const justPaid = params.get('estado') === 'ok'
   const cancelled = params.get('estado') === 'cancelado'
+  // The legal notice's «Cancelar mi suscripción» link (PRO-136).
+  const wantsCancel = params.get('cancelar') === '1'
   const billing = useBilling({ poll: justPaid })
   const checkout = useCheckout()
   const portal = usePortal()
@@ -112,8 +115,30 @@ function Suscripcion() {
           <p className="mt-2 text-[14px] leading-relaxed text-ink-mid" data-testid="subscription-line">
             {summary!.line}
           </p>
+          {sub.founderPrice && (
+            <p className="mt-2 text-[14px] leading-relaxed text-ink-mid" data-testid="subscription-founder">
+              Tienes el precio de fundador: no te sube mientras sigas suscrito.
+            </p>
+          )}
+          {sub.upcomingCharge && (
+            // PRO-136: the legal notice, in the app (text for Legal to review).
+            <div className="mt-4 rounded-2xl bg-cream-deep px-4 py-3 text-[14px] leading-relaxed text-ink" data-testid="charge-notice">
+              {chargeNoticeLine(sub.upcomingCharge)}
+            </div>
+          )}
+          {state.canManage && wantsCancel && !sub.cancelAtPeriodEnd && (
+            <button
+              type="button"
+              className={`${PILL_INK} mt-5 w-full sm:w-auto`}
+              disabled={portal.isPending}
+              onClick={() => portal.mutate({ cancel: true })}
+              data-testid="cancel-subscription"
+            >
+              Cancelar mi suscripción
+            </button>
+          )}
           {state.canManage ? (
-            <button type="button" className={`${PILL_OUTLINE} mt-5`} disabled={portal.isPending} onClick={() => portal.mutate()}>
+            <button type="button" className={`${PILL_OUTLINE} mt-5`} disabled={portal.isPending} onClick={() => portal.mutate({})}>
               Gestionar mi suscripción
             </button>
           ) : (
@@ -146,6 +171,19 @@ function Suscripcion() {
                   ? `Si ya sabes que te quedas, déjalo pagado con tu precio de fundador: guardamos la tarjeta hoy y el primer cobro es el ${fmt(state.firstChargeAt)} (como todos, tienes 14 días de prueba desde la salida, el ${LAUNCH_DATE_LABEL}). Hasta entonces puedes cancelar sin pagar nada.`
                   : `Guardamos la tarjeta hoy y el primer cobro es el ${fmt(state.firstChargeAt)}. Hasta entonces puedes cancelar sin pagar nada.`}
               </p>
+              {state.founder?.offer && (
+                <div className="mb-5 rounded-2xl border border-border-soft bg-paper px-4 py-3" data-testid="founder-offer">
+                  <p className="font-serif-text text-[17px] font-[650] leading-snug text-ink">Quédate el precio de fundador</p>
+                  <p className="mt-1 text-[14px] leading-relaxed text-ink-mid">
+                    {founderOfferText({ trialLastDay: state.access.trialLastDay, firstChargeAt: state.firstChargeAt })}
+                  </p>
+                </div>
+              )}
+              {state.founder?.household && (
+                <p className="mb-5 text-[14px] leading-relaxed text-ink-mid" data-testid="founder-household">
+                  Tu hogar es fundador: cuando te suscribas, tienes el precio de fundador para siempre (no te sube mientras sigas suscrito).
+                </p>
+              )}
               <PlanCards period={period} onPeriodChange={setPeriod} selected={plan} onSelect={setPlan} testIdPrefix="subscribe" />
               <button
                 type="button"

@@ -29,7 +29,8 @@ export function useCheckout() {
 /** Opens Stripe's customer portal (change card, receipts, change plan, cancel). */
 export function usePortal() {
   return useMutation({
-    mutationFn: () => api.post<{ url: string }>("/billing/portal", {}),
+    // `cancel: true`: straight to Stripe's cancel flow (the legal notice's link, PRO-136).
+    mutationFn: (opts?: { cancel?: boolean }) => api.post<{ url: string }>("/billing/portal", opts?.cancel ? { cancel: true } : {}),
     onSuccess: ({ url }) => {
       window.location.assign(url)
     },

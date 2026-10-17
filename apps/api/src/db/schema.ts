@@ -561,6 +561,8 @@ export const households = pgTable('households', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   /** PRO-135: when the «te quedan 2 días de prueba» email went to the owner (once). */
   trialEndingEmailAt: timestamp('trial_ending_email_at', { withTimezone: true }),
+  /** PRO-136: when the day-7 founder-price offer went out by email / WhatsApp (once). */
+  founderOfferAt: timestamp('founder_offer_at', { withTimezone: true }),
 }, (t) => [
   index('idx_households_owner').on(t.ownerId),
 ])
@@ -1336,6 +1338,10 @@ export const subscriptions = pgTable('subscriptions', {
   trialEnd: timestamp('trial_end', { withTimezone: true }),
   cancelAtPeriodEnd: boolean('cancel_at_period_end').notNull().default(false),
   canceledAt: timestamp('canceled_at', { withTimezone: true }),
+  /** PRO-136: founder price (from the Stripe metadata `founder_price`): never moved to a new price. */
+  founderPrice: boolean('founder_price').notNull().default(false),
+  /** PRO-136: when the legal notice «15 días antes del primer cobro» went out (once; never written by the webhook). */
+  chargeNoticeAt: timestamp('charge_notice_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [

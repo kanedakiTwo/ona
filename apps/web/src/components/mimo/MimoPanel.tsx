@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Mic, Send, Square, Volume2, VolumeX, X, Headphones, RotateCcw } from 'lucide-react'
-import { AI_DISCLOSURE } from '@ona/shared'
+import { AI_DISCLOSURE, founderOfferText } from '@ona/shared'
 import { useMimo, type MimoStatus } from './MimoProvider'
 import { isCookPath, isRecipeDetailPath } from './MimoButton'
 import { MimoAvatar } from '@/components/brand/Mimoia'
@@ -36,7 +36,9 @@ export default function MimoPanel() {
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const busy = mimo.status === 'thinking' || mimo.status === 'transcribing'
-  const paused = isPaused(useBilling().data)
+  const billing = useBilling()
+  const paused = isPaused(billing.data)
+  const offer = !paused && !!billing.data?.founder?.offer
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
@@ -122,8 +124,21 @@ export default function MimoPanel() {
 
         {/* Conversation */}
         <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4" data-testid="mimo-messages">
+          {/* PRO-136: the day-7 founder-price offer, as a message from Mimo (text for Legal to review). */}
+          {offer && billing.data && (
+            <div className="flex justify-start" data-testid="mimo-founder-offer">
+              <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-[#F2EDE0] px-3.5 py-2.5 text-[14px] leading-relaxed text-[#1A1612]">
+                {founderOfferText({ trialLastDay: billing.data.access.trialLastDay, firstChargeAt: billing.data.firstChargeAt })}{' '}
+                {billing.data.canManage && (
+                  <Link href="/profile/suscripcion" onClick={mimo.close} className="font-medium text-[#C65D38] underline underline-offset-2">
+                    Ver los planes
+                  </Link>
+                )}
+              </div>
+            </div>
+          )}
           {mimo.messages.length === 0 && !busy && !listening && (
-            <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
+            <div className={`flex ${offer ? 'pt-6' : 'h-full'} flex-col items-center justify-center gap-4 text-center`}>
               <p className="max-w-[260px] text-[14px] leading-snug text-[#4A4239]">
                 Soy Mimo. Pregúntame lo que quieras de tu menú, tus recetas o la compra, escribiendo o con la voz.
               </p>

@@ -88,6 +88,18 @@ async function notifiableLink(userId: string): Promise<LinkWithUser | null> {
   return link
 }
 
+/**
+ * A one-off message only inside the 24 h service window (never a template),
+ * to a linked number that accepts proactive messages (PRO-136: the day-7
+ * offer). Outside the window → skipped.
+ */
+export async function sendInsideServiceWindow(userId: string, text: string, kind: string, now: Date = new Date()): Promise<ChannelOutcome> {
+  const link = await notifiableLink(userId)
+  if (!link) return { status: 'skipped' }
+  if (chooseDelivery(link.lastInboundAt, now, false) !== 'session') return { status: 'skipped', error: 'outside-24h-window' }
+  return sendProactive(link, [{ type: 'text', text }], kind, now)
+}
+
 /** Prep alert from `notification_schedule` → WhatsApp (in addition to Web Push). */
 export async function deliverAlertOverWhatsApp(
   userId: string,

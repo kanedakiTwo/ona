@@ -300,6 +300,11 @@ export {
   ACCOUNT_PAUSED_MESSAGE,
   trialLastDayLabel,
   trialDaysLeftLabel,
+  FOUNDER_OFFER_DAY,
+  founderPriceIfSubscribing,
+  founderOfferStands,
+  founderOfferText,
+  euros,
 } from './types/plans.js'
 export type {
   PlanKey,

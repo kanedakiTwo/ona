@@ -52,6 +52,8 @@ import { CHAT_RETENTION_DAYS, purgeOldChatMessagesIfDue } from './chatMessages.j
 import { sendWaitlistInviteRemindersIfDue } from './waitlistInvites.js'
 import { isAccountPaused } from './accountAccess.js'
 import { sendTrialEndingEmailsIfDue } from './trialEmails.js'
+import { sendFounderOffersIfDue } from './founderOffer.js'
+import { sendChargeNoticesIfDue } from './chargeNotice.js'
 import { combineDelivery, type ChannelOutcome } from './whatsapp/proactive.js'
 
 // ─── Habit → method matcher ─────────────────────────────────────
@@ -569,6 +571,21 @@ async function tickOnce(): Promise<true> {
     }
   } catch (err) {
     console.error('[notificationScheduler] trial ending emails failed:', err)
+  }
+
+  // PRO-136: the day-7 founder-price offer (from launch day) and the legal
+  // notice 15 days before a first charge (checked once an hour each).
+  try {
+    const r = await sendFounderOffersIfDue(now)
+    if (r && r.offered > 0) console.log(`[founder-offer] ${r.offered} offered (${r.email.sent} emails, ${r.whatsapp} WhatsApp)`)
+  } catch (err) {
+    console.error('[notificationScheduler] founder offers failed:', err)
+  }
+  try {
+    const r = await sendChargeNoticesIfDue(now)
+    if (r && r.sent + r.failed + r.skipped > 0) console.log(`[charge-notice] ${r.sent} sent, ${r.failed} failed, ${r.skipped} skipped`)
+  } catch (err) {
+    console.error('[notificationScheduler] charge notices failed:', err)
   }
   return true
 }

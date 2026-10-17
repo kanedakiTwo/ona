@@ -36,7 +36,7 @@ describe('accountAccess (pure rule)', () => {
   })
 
   it('a beta household: its 14 days start on launch day (15 → 28 December)', () => {
-    expect(trialEndsAt(BETA_HOUSEHOLD)).toEqual({ endsAt: new Date('2026-12-28T23:00:00Z'), lastDay: '2026-12-28' })
+    expect(trialEndsAt(BETA_HOUSEHOLD)).toMatchObject({ endsAt: new Date('2026-12-28T23:00:00Z'), lastDay: '2026-12-28' })
     const at = (iso: string) => accountAccess({ householdCreatedAt: BETA_HOUSEHOLD, paid: false, now: new Date(iso) })
     expect(at('2026-12-14T23:00:00Z')).toMatchObject({ state: 'trial', daysLeft: 13 }) // 00:00 Madrid on launch day
     expect(at('2026-12-26T10:00:00Z')).toMatchObject({ state: 'trial', daysLeft: 2 })
@@ -58,7 +58,7 @@ describe('accountAccess (pure rule)', () => {
   })
 
   it('in summer time the trial still ends at midnight in Madrid', () => {
-    expect(trialEndsAt(new Date('2027-06-01T10:00:00Z'))).toEqual({ endsAt: new Date('2027-06-15T22:00:00Z'), lastDay: '2027-06-15' })
+    expect(trialEndsAt(new Date('2027-06-01T10:00:00Z'))).toMatchObject({ endsAt: new Date('2027-06-15T22:00:00Z'), lastDay: '2027-06-15' })
   })
 
   it('labels', () => {

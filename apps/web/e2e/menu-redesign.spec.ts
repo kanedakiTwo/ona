@@ -12,18 +12,28 @@
 
 import { test, expect, type Page } from '@playwright/test'
 import { completeOnboarding, registerFreshUser } from './_helpers'
+import { pinClock, pinnedDay } from './_clock'
 
 const API = process.env.API_URL ?? 'http://localhost:8765'
 const MEAL_ORDER = ['breakfast', 'lunch', 'snack', 'dinner']
 
-function thisMonday(): string {
-  const d = new Date()
-  d.setDate(d.getDate() + (d.getDay() === 0 ? -6 : 1 - d.getDay()))
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
+// The browser clock is pinned to one weekday of the current week (Friday by
+// default, `E2E_WEEKDAY` to pick another): these specs read «today» and failed
+// on weekends, when the generator leaves Saturday and Sunday empty (PRO-186).
+test.use({ timezoneId: 'Europe/Madrid' })
 
-/** Register, skip onboarding, generate this week's menu; returns the menu as the API sees it. */
+const thisMonday = () => pinnedDay().weekStart
+/** Index (0 = Monday) of the pinned «today». */
+const today = () => pinnedDay().dayIdx
+
+/**
+ * Register, skip onboarding, generate this week's menu; returns the menu as
+ * the API sees it. The API generates with the server's real date (it may
+ * leave the weekend empty), so the days the specs read — the pinned today,
+ * Monday and Tuesday — get a lunch when they have no recipe.
+ */
 async function userWithMenu(page: Page) {
+  await pinClock(page)
   await registerFreshUser(page)
   await completeOnboarding(page)
   const token = await page.evaluate(() => localStorage.getItem('ona_token'))
@@ -32,8 +42,25 @@ async function userWithMenu(page: Page) {
   const headers = { Authorization: `Bearer ${token}` }
   const gen = await page.request.post(`${API}/menu/generate`, { headers, data: { userId, weekStart, force: true } })
   expect(gen.ok(), `generate: ${gen.status()}`).toBeTruthy()
+  const generated = await (await page.request.get(`${API}/menu/${userId}/${weekStart}`, { headers })).json()
+  for (const d of new Set([today(), 0, 1])) {
+    if (featuredRecipeId(generated.days[d])) continue
+    if (generated.days[d]?.lunch) await page.request.delete(`${API}/menu/${generated.id}/day/${d}/meal/lunch`, { headers })
+    // The small CI catalogue may have no free recipe left: repeat one of the week.
+    let r = await page.request.post(`${API}/menu/${generated.id}/day/${d}/meal/lunch`, { headers })
+    if (!r.ok()) r = await page.request.post(`${API}/menu/${generated.id}/day/${d}/meal/lunch`, { headers, data: { recipeId: anyRecipeId(generated) } })
+    expect(r.ok(), `add day ${d} lunch: ${r.status()}`).toBeTruthy()
+  }
   const menu = await (await page.request.get(`${API}/menu/${userId}/${weekStart}`, { headers })).json()
   return { menu, weekStart }
+}
+
+/** Some recipe already in the week. */
+function anyRecipeId(menu: { days: Record<string, { dishes?: { kind: string; recipeId?: string }[] }>[] }): string | undefined {
+  for (const day of menu.days) {
+    const id = featuredRecipeId(day)
+    if (id) return id
+  }
 }
 
 /** Recipe id of the day's featured meal: first meal (chronologically) holding a recipe. */
@@ -48,7 +75,7 @@ function featuredRecipeId(day: Record<string, { dishes?: { kind: string; recipeI
 test("today's first meal is the hero; meal and week actions live in sheets; the tab bar has labels", async ({ page }) => {
   test.setTimeout(90_000)
   const { menu } = await userWithMenu(page)
-  const todayIdx = (new Date().getDay() + 6) % 7
+  const todayIdx = today()
   const expectedId = featuredRecipeId(menu.days[todayIdx])
   test.skip(!expectedId, 'the generator left today without recipes (empty catalogue?)')
 
@@ -102,7 +129,7 @@ const MENU_GET = /\/menu\/[0-9a-f-]{36}\/\d{4}-\d{2}-\d{2}$/
 
 /** Serve the week with today's featured dish stripped of its photo; returns that dish's name. */
 async function featuredWithoutPhoto(page: Page, menu: { days: Record<string, any>[] }): Promise<string | null> {
-  const todayIdx = (new Date().getDay() + 6) % 7
+  const todayIdx = today()
   const meal = MEAL_ORDER.find((m) => menu.days[todayIdx]?.[m]?.dishes?.some((d: any) => d.kind === 'recipe'))
   if (!meal) return null
   const dish = menu.days[todayIdx][meal].dishes.find((d: any) => d.kind === 'recipe')
@@ -140,7 +167,7 @@ test('a featured meal without a photo is one compact card with its name once', a
 test('the day strip switches the day shown', async ({ page }) => {
   test.setTimeout(90_000)
   const { menu } = await userWithMenu(page)
-  const todayIdx = (new Date().getDay() + 6) % 7
+  const todayIdx = today()
   const other = todayIdx === 0 ? 1 : 0
   const expectedId = featuredRecipeId(menu.days[other])
   test.skip(!expectedId, 'no recipe on the other day')

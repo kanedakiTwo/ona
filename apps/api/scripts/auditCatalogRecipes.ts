@@ -48,6 +48,7 @@ async function fromDatabase(): Promise<AuditableRecipe[]> {
         unit: recipeIngredients.unit,
         unitWeight: ingredients.unitWeight,
         density: ingredients.density,
+        edibleFraction: ingredients.edibleFraction,
         calories: ingredients.calories,
       })
       .from(recipeIngredients)

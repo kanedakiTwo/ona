@@ -125,6 +125,7 @@ export async function applyCatalogRecipeFixes(
       salt: ing.salt ?? 0,
       density: ing.density,
       unitWeight: ing.unitWeight,
+      edibleFraction: ing.edibleFraction,
     })
     allergenCatalog.set(ing.id, { allergenTags: ing.allergenTags ?? [] })
   }

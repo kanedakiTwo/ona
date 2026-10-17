@@ -39,6 +39,7 @@ async function main() {
       allergenTags: ingredientsTable.allergenTags,
       density: ingredientsTable.density,
       unitWeight: ingredientsTable.unitWeight,
+      edibleFraction: ingredientsTable.edibleFraction,
       calories: ingredientsTable.calories,
       protein: ingredientsTable.protein,
       carbs: ingredientsTable.carbs,
@@ -62,6 +63,7 @@ async function main() {
       salt: r.salt ?? 0,
       density: r.density,
       unitWeight: r.unitWeight,
+      edibleFraction: r.edibleFraction,
     })
     allergenCatalog.set(r.id, { allergenTags: r.allergenTags ?? [] })
   }

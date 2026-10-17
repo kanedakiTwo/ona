@@ -41,7 +41,7 @@ Allergens are not provided by USDA. Each ingredient has an `allergenTags` string
    - `cda` → 15 g equivalent if `ingredient.density` is missing; else `15 ml × density`
    - `cdita` → 5 g equivalent
    - `pizca` and `al_gusto` are treated as 0 g (negligible)
-2. Multiply each ingredient's grams by its per-100 g nutrient values from the `ingredients` row
+2. Multiply each ingredient's grams (× `edible_fraction` for bone-in cuts, see Edible weight) by its per-100 g nutrient values from the `ingredients` row
    - **Frying and confit fat** count only what the food absorbs: a fat (aceite, manteca, mantequilla… or ≥ 80 g fat/100 g) whose line note starts with «para freír» / «para la fritura» counts 15 %, «para confitar» 25 %. The recipe keeps the real amount the cook needs in the pan («500 ml, para freír; se recupera casi todo»). A mixed note («40 ml para el pisto y el resto para freír») doesn't qualify: split it into two lines (`cookingMedium.ts`)
 3. Sum across all ingredients to get totals
 4. Divide by `recipe.servings` to get the per-serving values
@@ -57,6 +57,15 @@ A skipped line (step 1: `u` without `unitWeight`, `ml` without `density`, no cat
 - Saving a recipe stores it in `recipes.nutrition_incomplete` (migration 0065). The cached figures are still stored (the menu generator keeps using them), but the ficha shows none: «Aún no podemos calcular la nutrición de esta receta» (see [Recipes](./recipes.md))
 - On every API boot, after `db:migrate`, `applyNutritionCompleteness` recomputes **only the mark** of every recipe from today's catalogue (a unit weight added by Cocina clears it); figures are not touched — `scripts/recomputeRecipeNutrition.ts` does that, and also writes the mark
 - The fix for a marked recipe is data: give the ingredient a `unitWeight` / `density` (the catalogue audit lists them, Constraints below), or write the line in grams
+
+## Edible weight
+
+Recipes give meat as bought, with bone («1.350 g de gallina», «5 manitas de cerdo», «1,1 kg de chuletón»), while the per-100 g values are of the edible part. Since PRO-194 `ingredients.edible_fraction` (0–1, default 1, migration 0066) holds the share that is eaten, and both the aggregator (step 2) and the catalogue audit ([Menus](./menus.md) → Catalogue quality gate) multiply the line's grams by it, whatever its unit:
+
+- Values (`nutrition/edibleFraction.ts`): USDA SR Legacy refuse of the closest raw entry, rounded — pollo entero 0.68, gallina 0.70, muslo 0.70, contramuslo 0.80, alitas 0.54 — and estimates [E] for Spanish cuts without an exact entry, for Cocina to review: alas de pavo 0.60, costillas 0.70, chuletón 0.85, chuletas 0.80, chuletillas 0.70, manitas/pies de cerdo 0.50, rabo 0.50, osobuco 0.80, codillo 0.70, paletilla/pierna 0.75, conejo entero 0.73, codorniz 0.65
+- Only names that are the bone-in cut get one: «deshuesado», «sin hueso», «filete», «picado», «carne de…», stocks, tins and «pechuga» never do; nor does «conejo» alone, whose unit weight Cocina already set as the meat (700 g)
+- On every boot, after `db:migrate`, `applyEdibleFractions` sets the rule's value on matching ingredients still at 1 (a hand-set value ≠ 1 is never changed) and recomputes `nutritionPerServing` + the «incompleta» mark of every recipe (system and user) that uses one of them — the equivalent of `recomputeRecipeNutrition --scope=all --execute`, limited to those recipes. Idempotent: the next boot finds nothing to do. `scripts/recomputeRecipeNutrition.ts` also uses the fraction
+- A new ingredient (auto-create, imports) starts at 1; the next boot gives it its value if its name matches a rule
 
 ## Lint Hooks
 
@@ -91,10 +100,11 @@ Warnings are surfaced to the recipe author / curator but do not block saving.
 
 ## Source
 
-- [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts) — `ingredients` (per-100 g nutrition columns + density/unitWeight/aisle/allergenTags)
+- [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts) — `ingredients` (per-100 g nutrition columns + density/unitWeight/edibleFraction/aisle/allergenTags)
 - [apps/api/src/services/nutrition/usdaClient.ts](../apps/api/src/services/nutrition/usdaClient.ts) — USDA FDC API client with on-disk cache
 - [apps/api/src/services/nutrition/aggregate.ts](../apps/api/src/services/nutrition/aggregate.ts) — recipe-level aggregation
 - [apps/api/src/services/nutrition/negligible.ts](../apps/api/src/services/nutrition/negligible.ts) — salt, water, spices, «al gusto»: lines whose skip doesn't make a recipe incomplete
+- [apps/api/src/services/nutrition/edibleFraction.ts](../apps/api/src/services/nutrition/edibleFraction.ts) — edible share of bone-in cuts and its boot step
 - [apps/api/src/services/nutritionCompleteness.ts](../apps/api/src/services/nutritionCompleteness.ts) — boot recompute of `recipes.nutrition_incomplete`
 - [apps/api/src/services/nutrition/cookingMedium.ts](../apps/api/src/services/nutrition/cookingMedium.ts) — frying/confit fat: absorbed share for nutrition and the lint
 - [apps/api/src/services/nutrition/allergens.ts](../apps/api/src/services/nutrition/allergens.ts) — allergen union and mapping helpers

@@ -178,6 +178,13 @@ export const ingredients = pgTable('ingredients', {
   // Conversion factors so we can normalize ml/u quantities to grams
   density: real('density'),
   unitWeight: real('unit_weight'),
+  /**
+   * PRO-194: share of the weight as bought that is eaten (0–1, default 1).
+   * Bone-in cuts (gallina, muslo, alitas, costillas, chuletón, manitas…)
+   * carry the USDA refuse: the per-100 g values are of the edible part.
+   * Nutrition and the catalogue audit multiply grams by it.
+   */
+  edibleFraction: real('edible_fraction').notNull().default(1),
   // Allergen tags (e.g. "gluten", "lactose", "egg", "fish")
   allergenTags: text('allergen_tags').array().default([]),
   // Per-100 g nutrition (existing columns; salt added here)

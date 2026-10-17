@@ -442,6 +442,13 @@
       "when": 1792278747858,
       "tag": "0065_nutrition_incomplete",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1792279623031,
+      "tag": "0066_edible_fraction",
+      "breakpoints": true
     }
   ]
 }

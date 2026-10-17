@@ -204,6 +204,7 @@ interface FullCatalogRow extends CatalogIngredient {
   fat: number
   fiber: number
   salt: number
+  edibleFraction: number
 }
 
 interface BuiltCatalog {
@@ -229,6 +230,7 @@ async function loadCatalog(): Promise<BuiltCatalog> {
       fdcId: ingredientsTable.fdcId,
       density: ingredientsTable.density,
       unitWeight: ingredientsTable.unitWeight,
+      edibleFraction: ingredientsTable.edibleFraction,
       calories: ingredientsTable.calories,
       protein: ingredientsTable.protein,
       carbs: ingredientsTable.carbs,
@@ -245,6 +247,7 @@ async function loadCatalog(): Promise<BuiltCatalog> {
     fdcId: r.fdcId,
     density: r.density,
     unitWeight: r.unitWeight,
+    edibleFraction: r.edibleFraction,
     calories: r.calories ?? 0,
     protein: r.protein ?? 0,
     carbs: r.carbs ?? 0,
@@ -275,6 +278,7 @@ async function loadCatalog(): Promise<BuiltCatalog> {
       salt: c.salt,
       density: c.density,
       unitWeight: c.unitWeight,
+      edibleFraction: c.edibleFraction,
     })
   }
 

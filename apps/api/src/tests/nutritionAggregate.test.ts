@@ -579,3 +579,36 @@ describe('aggregateNutrition — incomplete mark (PRO-176)', () => {
     expect(aggregateNutrition({ servings: 2, ingredients: [], catalog }).incomplete).toBe(false)
   })
 })
+
+// ─── PRO-194: edible weight of bone-in cuts ────────────────────
+
+describe('aggregateNutrition — edible fraction (PRO-194)', () => {
+  it('counts only the edible part of a bone-in cut, in grams and by units', () => {
+    const gallina = makeEntry({ id: 'gallina', name: 'gallina', calories: 200, protein: 20, edibleFraction: 0.7 })
+    const manitas = makeEntry({ id: 'manitas', name: 'manitas de cerdo', calories: 212, protein: 23, unitWeight: 300, edibleFraction: 0.5 })
+    const catalog = catalogOf([gallina, manitas])
+    const g = aggregateNutrition({
+      servings: 6,
+      ingredients: [makeIngredient({ ingredientId: 'gallina', quantity: 1350, unit: 'g' })] as any,
+      catalog,
+    })
+    // 1350 g × 0.7 = 945 g eaten → 189 g protein / 6
+    expect(g.perServing.proteinG).toBeCloseTo(31.5, 1)
+    expect(g.perServing.kcal).toBe(315)
+    const m = aggregateNutrition({
+      servings: 4,
+      ingredients: [makeIngredient({ ingredientId: 'manitas', quantity: 5, unit: 'u' })] as any,
+      catalog,
+    })
+    // 5 × 300 g × 0.5 = 750 g → 172.5 g protein / 4
+    expect(m.perServing.proteinG).toBeCloseTo(43.1, 1)
+  })
+
+  it('treats a missing or out-of-range fraction as 1', () => {
+    for (const edibleFraction of [undefined, null, 0, 1.5, Number.NaN]) {
+      const e = makeEntry({ id: 'x', name: 'ternera', protein: 20, edibleFraction })
+      const r = aggregateNutrition({ servings: 1, ingredients: [makeIngredient({ ingredientId: 'x', quantity: 100, unit: 'g' })] as any, catalog: catalogOf([e]) })
+      expect(r.perServing.proteinG).toBe(20)
+    }
+  })
+})

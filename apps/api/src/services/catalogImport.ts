@@ -105,6 +105,7 @@ export interface MatchedIngredient {
   unit: Unit
   unitWeight?: number | null
   density?: number | null
+  edibleFraction?: number | null
 }
 
 export interface PersistDraftInput {
@@ -272,7 +273,7 @@ export async function importCatalogRecipe(
     name: draft.name,
     servings: HOUSE_SERVINGS,
     stepCount: rewrite.steps.length,
-    ingredients: matched.map((m) => ({ name: m.name, quantity: m.quantity, unit: m.unit, unitWeight: m.unitWeight ?? null, density: m.density ?? null })),
+    ingredients: matched.map((m) => ({ name: m.name, quantity: m.quantity, unit: m.unit, unitWeight: m.unitWeight ?? null, density: m.density ?? null, edibleFraction: m.edibleFraction ?? null })),
   })
   const { tags, internalTags } = catalogTags(rewrite, draft.tags ?? [])
   const { prepTime, cookTime } = timesFrom(rewrite, draft)

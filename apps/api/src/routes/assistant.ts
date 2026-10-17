@@ -5,6 +5,7 @@ import { chat } from '../services/assistant/engine.js'
 import type { ChatMessage } from '../services/assistant/types.js'
 import { checkAdvisorBudget, recordAdvisorUsage } from '../services/advisorBudget.js'
 import { requireSpendCapacity } from '../middleware/spendCap.js'
+import { requireActiveAccount } from '../services/accountAccess.js'
 import { eq } from 'drizzle-orm'
 import { recipes } from '../db/schema.js'
 import { describePage, pageContextNote, withPageContext } from '../services/assistant/pageContext.js'
@@ -23,7 +24,7 @@ const router = Router()
 router.use(authMiddleware)
 
 // POST /assistant/:userId/chat
-router.post('/assistant/:userId/chat', requireSpendCapacity(), async (req: AuthRequest, res) => {
+router.post('/assistant/:userId/chat', requireActiveAccount(), requireSpendCapacity(), async (req: AuthRequest, res) => {
   try {
     const userId = String(req.params.userId)
 

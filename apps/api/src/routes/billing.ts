@@ -1,6 +1,6 @@
 import express, { Router, type RequestHandler } from 'express'
 import { eq } from 'drizzle-orm'
-import { checkoutRequestSchema } from '@ona/shared'
+import { checkoutRequestSchema, founderPriceIfSubscribing } from '@ona/shared'
 import { env } from '../config/env.js'
 import { db } from '../db/connection.js'
 import { households, users } from '../db/schema.js'
@@ -23,7 +23,7 @@ import {
  *
  *   GET  /billing            auth: plan state of the caller's household
  *   POST /billing/checkout   auth, household owner: Stripe Checkout URL for a plan + period
- *   POST /billing/portal     auth, household owner: Stripe customer portal URL (change card, cancel)
+ *   POST /billing/portal     auth, household owner: Stripe customer portal URL (change card, cancel); { cancel: true } → cancel flow
  *   POST /billing/webhook    Stripe → us, signed; mounted BEFORE express.json() (raw body)
  */
 
@@ -33,6 +33,8 @@ export interface Payer {
   isOwner: boolean
   /** Sign-up: the 14-day trial counts from it (or from launch day for the beta). */
   createdAt: Date | null
+  /** The household's creation: its 14-day trial counts from it (PRO-135). */
+  householdCreatedAt?: Date | null
 }
 
 export interface BillingDeps {
@@ -53,8 +55,18 @@ async function loadPayer(userId: string): Promise<Payer | null> {
     .where(eq(users.id, userId))
     .limit(1)
   if (!u?.householdId) return null
-  const [h] = await db.select({ ownerId: households.ownerId }).from(households).where(eq(households.id, u.householdId)).limit(1)
-  return { householdId: u.householdId, email: u.email, isOwner: h?.ownerId === userId, createdAt: u.createdAt ?? null }
+  const [h] = await db
+    .select({ ownerId: households.ownerId, createdAt: households.createdAt })
+    .from(households)
+    .where(eq(households.id, u.householdId))
+    .limit(1)
+  return {
+    householdId: u.householdId,
+    email: u.email,
+    isOwner: h?.ownerId === userId,
+    createdAt: u.createdAt ?? null,
+    householdCreatedAt: h?.createdAt ?? null,
+  }
 }
 
 function defaults(): BillingDeps {
@@ -80,7 +92,7 @@ export function createBillingRouter(overrides: Partial<BillingDeps> = {}): Route
   router.get('/billing', d.auth, async (req: AuthRequest, res) => {
     const payer = await d.payer(req.userId!)
     const row = payer ? await d.repo.latestForHousehold(payer.householdId) : null
-    res.json(billingStateFor(row, { enabled: d.enabled(), canManage: !!payer?.isOwner, now: d.now(), userCreatedAt: payer?.createdAt ?? null }))
+    res.json(billingStateFor(row, { enabled: d.enabled(), canManage: !!payer?.isOwner, now: d.now(), userCreatedAt: payer?.createdAt ?? null, householdCreatedAt: payer?.householdCreatedAt ?? null }))
   })
 
   router.post('/billing/checkout', d.auth, async (req: AuthRequest, res) => {
@@ -103,6 +115,7 @@ export function createBillingRouter(overrides: Partial<BillingDeps> = {}): Route
       res.status(409).json({ error: 'Tu hogar ya tiene una suscripción. Puedes cambiarla desde «Gestionar mi suscripción».', code: 'ALREADY_SUBSCRIBED' })
       return
     }
+    const now = d.now()
     try {
       const priceId = await d.gateway.priceId(parsed.data.plan, parsed.data.period)
       const { url } = await d.gateway.createCheckout(
@@ -112,7 +125,9 @@ export function createBillingRouter(overrides: Partial<BillingDeps> = {}): Route
           email: payer.email,
           userId: req.userId!,
           householdId: payer.householdId,
-          firstCharge: firstChargeInstant({ userCreatedAt: payer.createdAt, now: d.now() }),
+          // The Stripe trial ends at max(end of the household's trial, today + 15 days) (PRO-136).
+          firstCharge: firstChargeInstant({ userCreatedAt: payer.householdCreatedAt ?? payer.createdAt, now }),
+          founderPrice: founderPriceIfSubscribing(payer.householdCreatedAt ?? payer.createdAt, now),
           webUrl: d.webUrl,
           customerId: latest?.stripeCustomerId ?? null,
         }),
@@ -140,7 +155,15 @@ export function createBillingRouter(overrides: Partial<BillingDeps> = {}): Route
       return
     }
     try {
-      res.json(await d.gateway.createPortal(latest.stripeCustomerId, `${d.webUrl}/profile/suscripcion`))
+      // `{ cancel: true }` (the link of the legal notice): straight to cancelling a live subscription.
+      const cancel = req.body?.cancel === true && LIVE_STATUSES.includes(latest.status) && !latest.cancelAtPeriodEnd
+      res.json(
+        await d.gateway.createPortal(
+          latest.stripeCustomerId,
+          `${d.webUrl}/profile/suscripcion`,
+          cancel ? { cancelSubscriptionId: latest.stripeSubscriptionId } : undefined,
+        ),
+      )
     } catch (err) {
       console.error('[billing] portal failed', err)
       res.status(502).json({ error: STRIPE_DOWN })

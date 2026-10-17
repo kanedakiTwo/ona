@@ -64,6 +64,7 @@ function setup(overrides: {
   outboundKinds?: Map<string, Date>
   supportEmail?: string
   guided?: InboundDeps['guided']
+  paused?: boolean
 } = {}) {
   const sent: OutboundMessage[] = []
   const outbound: { kind: string; body: string; status: string; meta?: unknown }[] = []
@@ -119,6 +120,7 @@ function setup(overrides: {
     menuDigest: overrides.menuDigest,
     menuImage: overrides.menuImage,
     guided: overrides.guided,
+    ...(overrides.paused !== undefined ? { isPaused: async () => overrides.paused! } : {}),
   }
   return { deps, sent, outbound, inboundUpdates, chat, recordUsage, historyUserIds, setNotify, checkBudget }
 }
@@ -199,6 +201,22 @@ describe('processInbound — unlinked numbers', () => {
 })
 
 describe('processInbound — gates', () => {
+  it('a paused account (PRO-135) gets only the notice to choose a plan: no Mimo, no budget check', async () => {
+    const t = setup({ paused: true })
+    await processInbound(msg(), t.deps)
+    expect(t.sent).toEqual([{ type: 'text', text: COPY.paused(`${WEB}/profile/suscripcion`) }])
+    expect(t.outbound[0]).toMatchObject({ kind: 'paused' })
+    expect(t.chat).not.toHaveBeenCalled()
+    expect(t.checkBudget).not.toHaveBeenCalled()
+    expect(COPY.paused('x')).toMatch(/No se ha borrado nada/)
+  })
+
+  it('an account that is not paused talks to Mimo as always', async () => {
+    const t = setup({ paused: false })
+    await processInbound(msg(), t.deps)
+    expect(t.chat).toHaveBeenCalledOnce()
+  })
+
   it('refuses suspended accounts', async () => {
     const t = setup({ link: { ...LINK, suspendedAt: new Date() } })
     await processInbound(msg(), t.deps)

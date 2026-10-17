@@ -119,6 +119,14 @@ export function PricingPage() {
             se cobra nada hasta el {BETA_FIRST_CHARGE_LABEL}.
           </p>
 
+          {billing.data?.founder?.household && (
+            // D-066: beta households keep the founder price for good, whenever they subscribe.
+            <p className="mt-4 max-w-2xl text-[14px] font-medium leading-relaxed text-[#1A1612]" data-testid="pricing-founder">
+              Tu hogar es fundador: cuando te suscribas, tienes el precio de fundador para siempre (no te sube mientras sigas
+              suscrito).
+            </p>
+          )}
+
           {checkout.isError && (
             <p role="alert" className="mt-6 rounded-xl border border-[#C65D38]/30 bg-[#FDEEE8] px-4 py-3 text-[13px] text-[#B5451B]">
               {checkout.error instanceof Error ? checkout.error.message : "No hemos podido abrir el pago."}

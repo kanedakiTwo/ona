@@ -9,7 +9,7 @@ import type { AddressInfo } from 'node:net'
 import type { Server } from 'node:http'
 import type Stripe from 'stripe'
 import { afterAll, describe, expect, it } from 'vitest'
-import { FOUNDER_PLANS, PLANS, PLAN_FEATURE_GROUPS, checkoutRequestSchema, stripeLookupKey, subscriptionSummary } from '@ona/shared'
+import { FOUNDER_PLANS, PLANS, founderPriceIfSubscribing, PLAN_FEATURE_GROUPS, checkoutRequestSchema, stripeLookupKey, subscriptionSummary } from '@ona/shared'
 import { createBillingRouter, createBillingWebhookRouter, type Payer } from '../routes/billing.js'
 import {
   billingStateFor,
@@ -197,6 +197,7 @@ function row(over: Partial<SubscriptionRow> = {}): SubscriptionRow {
     trialEnd: BETA_FIRST,
     cancelAtPeriodEnd: false,
     canceledAt: null,
+    founderPrice: false,
     ...over,
   }
 }
@@ -205,6 +206,10 @@ describe('billingStateFor', () => {
   it('beta, nothing paid', () => {
     expect(billingStateFor(null, { enabled: true, canManage: true, now: BETA_NOW, userCreatedAt: new Date('2026-10-21T09:00:00Z') })).toEqual({
       enabled: true, beta: true, launchDate: '2026-12-15', canManage: true, firstChargeAt: '2026-12-29T11:00:00.000Z', subscription: null,
+      // PRO-135: before launch day nobody is in a trial or paused.
+      access: { state: 'beta', trialEndsAt: '2026-12-28T23:00:00.000Z', trialLastDay: '2026-12-28', daysLeft: null, trialDay: null },
+      // PRO-136: a beta household is a founding one.
+      founder: { household: true, priceIfSubscribing: true, offer: false },
     })
   })
 
@@ -243,12 +248,16 @@ function memoryRepo(initial: SubscriptionRow[] = []): SubscriptionRepo & { rows:
   }
 }
 
-function fakeGateway(over: Partial<BillingGateway> = {}): BillingGateway & { checkouts: Stripe.Checkout.SessionCreateParams[]; cancelled: string[] } {
+function fakeGateway(
+  over: Partial<BillingGateway> = {},
+): BillingGateway & { checkouts: Stripe.Checkout.SessionCreateParams[]; cancelled: string[]; portals: Array<{ cancelSubscriptionId?: string } | undefined> } {
   const checkouts: Stripe.Checkout.SessionCreateParams[] = []
   const cancelled: string[] = []
+  const portals: Array<{ cancelSubscriptionId?: string } | undefined> = []
   return {
     checkouts,
     cancelled,
+    portals,
     async priceId(plan, period) {
       return `price_${plan}_${period}`
     },
@@ -256,7 +265,8 @@ function fakeGateway(over: Partial<BillingGateway> = {}): BillingGateway & { che
       checkouts.push(p)
       return { url: 'https://checkout.stripe.com/c/pay/cs_test_1' }
     },
-    async createPortal(customer) {
+    async createPortal(customer, _returnUrl, opts) {
+      portals.push(opts)
       return { url: `https://billing.stripe.com/p/session/${customer}` }
     },
     parseWebhook(raw, sig) {
@@ -303,9 +313,11 @@ const fakeAuth: RequestHandler = (req, res, next) => {
 const PAYERS: Record<string, Payer> = {
   owner: { householdId: 'h1', email: 'ana@example.com', isOwner: true, createdAt: new Date('2026-10-21T09:00:00Z') },
   member: { householdId: 'h1', email: 'leo@example.com', isOwner: false, createdAt: new Date('2026-10-22T09:00:00Z') },
+  // PRO-136: a household created after launch, at 15:00 Madrid on 10 January 2027.
+  newOwner: { householdId: 'h2', email: 'eva@example.com', isOwner: true, createdAt: new Date('2027-01-10T14:00:00Z'), householdCreatedAt: new Date('2027-01-10T14:00:00Z') },
 }
 
-async function app(opts: { enabled?: boolean; repo?: ReturnType<typeof memoryRepo>; gateway?: ReturnType<typeof fakeGateway> } = {}) {
+async function app(opts: { enabled?: boolean; repo?: ReturnType<typeof memoryRepo>; gateway?: ReturnType<typeof fakeGateway>; now?: Date } = {}) {
   const repo = opts.repo ?? memoryRepo()
   const gateway = opts.gateway ?? fakeGateway()
   const enabled = () => opts.enabled ?? true
@@ -318,7 +330,7 @@ async function app(opts: { enabled?: boolean; repo?: ReturnType<typeof memoryRep
       gateway,
       enabled,
       payer: async (id) => PAYERS[id] ?? null,
-      now: () => BETA_NOW,
+      now: () => opts.now ?? BETA_NOW,
       webUrl: 'https://mimoia.com',
       auth: fakeAuth,
     }),
@@ -390,6 +402,22 @@ describe('routes', () => {
     expect(repo.rows[0]).toMatchObject({ householdId: 'h1', plan: 'plus', period: 'anual', status: 'trialing' })
   })
 
+  it('PRO-135: after the trial the household is paused; paying (the webhook) takes it out of the pause', async () => {
+    // The owner's household (created 2026-10-21, beta) after its trial: 2027-02-01.
+    const { call } = await app({ now: AFTER_LAUNCH })
+    expect((await (await call('GET', '/billing', 'owner')).json()).access).toMatchObject({ state: 'paused', trialLastDay: '2026-12-28' })
+    const event = { type: 'customer.subscription.created', data: { object: { id: 'sub_1' } } }
+    expect((await call('POST', '/billing/webhook', undefined, event, { 'stripe-signature': 'good' })).status).toBe(200)
+    expect((await (await call('GET', '/billing', 'owner')).json()).access).toMatchObject({ state: 'subscribed' })
+    // The whole household: the member too.
+    expect((await (await call('GET', '/billing', 'member')).json()).access).toMatchObject({ state: 'subscribed' })
+  })
+
+  it('PRO-135: during the beta GET /billing says beta, never paused', async () => {
+    const { call } = await app()
+    expect((await (await call('GET', '/billing', 'owner')).json()).access).toMatchObject({ state: 'beta', daysLeft: null })
+  })
+
   it('webhook: checkout.session.completed links the subscription; other events are ignored', async () => {
     const { call, repo } = await app()
     const done = { type: 'checkout.session.completed', data: { object: { mode: 'subscription', subscription: 'sub_1' } } }
@@ -397,6 +425,77 @@ describe('routes', () => {
     const other = { type: 'invoice.paid', data: { object: {} } }
     expect(await (await call('POST', '/billing/webhook', undefined, other, { 'stripe-signature': 'good' })).json()).toMatchObject({ outcome: 'ignored' })
     expect(repo.rows).toHaveLength(1)
+  })
+})
+
+describe('PRO-136: founder price, the Stripe trial and the cancel link', () => {
+  const NEW = new Date('2027-01-10T14:00:00Z')
+  const day = (n: number) => new Date(NEW.getTime() + n * 86_400_000)
+
+  it('buildCheckoutParams marks the founder price in both metadata; rowFromStripeSubscription reads it back', () => {
+    const p = buildCheckoutParams({
+      plan: 'plus', period: 'anual', priceId: 'p', email: 'a@example.com', userId: 'u1', householdId: 'h1',
+      webUrl: 'https://mimoia.com', firstCharge: BETA_FIRST, founderPrice: true,
+    })
+    expect(p.metadata?.founder_price).toBe('true')
+    expect(p.subscription_data?.metadata?.founder_price).toBe('true')
+    const plain = buildCheckoutParams({
+      plan: 'plus', period: 'anual', priceId: 'p', email: 'a@example.com', userId: 'u1', householdId: 'h1',
+      webUrl: 'https://mimoia.com', firstCharge: BETA_FIRST,
+    })
+    expect(plain.subscription_data?.metadata).not.toHaveProperty('founder_price')
+    const meta = { householdId: 'h1', userId: 'u1', plan: 'plus', period: 'anual' }
+    expect(rowFromStripeSubscription(stripeSub({ metadata: { ...meta, founder_price: 'true' } }))?.founderPrice).toBe(true)
+    expect(rowFromStripeSubscription(stripeSub({ metadata: meta }))?.founderPrice).toBe(false)
+  })
+
+  it('who keeps the founder price: a beta household always; a new one while in trial; not once paused', () => {
+    expect(founderPriceIfSubscribing(new Date('2026-10-21T09:00:00Z'), new Date('2027-06-01T10:00:00Z'))).toBe(true)
+    expect(founderPriceIfSubscribing(NEW, day(3))).toBe(true)
+    expect(founderPriceIfSubscribing(NEW, day(13))).toBe(true)
+    expect(founderPriceIfSubscribing(NEW, day(15))).toBe(false)
+  })
+
+  it('checkout: trial_end = max(end of the trial, today + 15 days), at noon Madrid; founder in the metadata', async () => {
+    // Day 7 (17 January, 15:00): today + 15 days (1 February, 15:00) is later than the end of the trial → noon on 2 February.
+    const a = await app({ now: day(7) })
+    expect((await a.call('POST', '/billing/checkout', 'newOwner', { plan: 'esencial', period: 'mensual' })).status).toBe(200)
+    expect(a.gateway.checkouts[0].subscription_data?.trial_end).toBe(Math.floor(new Date('2027-02-02T11:00:00Z').getTime() / 1000))
+    expect(a.gateway.checkouts[0].subscription_data?.metadata?.founder_price).toBe('true')
+    // Paused (day 20): 15 days from the card, no founder price.
+    const b = await app({ now: day(20) })
+    await b.call('POST', '/billing/checkout', 'newOwner', { plan: 'esencial', period: 'mensual' })
+    expect(b.gateway.checkouts[0].subscription_data?.trial_end).toBe(Math.floor(new Date('2027-02-15T11:00:00Z').getTime() / 1000))
+    expect(b.gateway.checkouts[0].subscription_data?.metadata).not.toHaveProperty('founder_price')
+    // A beta household (the owner): founder, first charge 29 December.
+    const c = await app()
+    await c.call('POST', '/billing/checkout', 'owner', { plan: 'plus', period: 'mensual' })
+    expect(c.gateway.checkouts[0].subscription_data?.metadata?.founder_price).toBe('true')
+  })
+
+  it('GET /billing: the day-7 offer from day 7 and not before; not with a plan', async () => {
+    const at = async (n: number, repo = memoryRepo()) => (await (await (await app({ now: day(n), repo })).call('GET', '/billing', 'newOwner')).json()).founder
+    expect((await at(6)).offer).toBe(false)
+    expect((await at(7)).offer).toBe(true)
+    expect((await at(13)).offer).toBe(true)
+    expect((await at(15)).offer).toBe(false)
+    expect((await at(8, memoryRepo([row({ householdId: 'h2' })]))).offer).toBe(false)
+  })
+
+  it('billingStateFor: the legal notice in the app from 15 days before the first charge, with the amount', () => {
+    const sub = row({ householdId: 'h2', founderPrice: true, trialEnd: new Date('2027-02-01T11:00:00Z'), currentPeriodEnd: new Date('2027-02-01T11:00:00Z') })
+    const at = (iso: string) => billingStateFor(sub, { enabled: true, canManage: true, now: new Date(iso), householdCreatedAt: NEW }).subscription
+    expect(at('2027-01-16T22:00:00Z')?.upcomingCharge).toBeNull() // 16 Jan 23:00 Madrid: 16 days before
+    expect(at('2027-01-17T09:00:00Z')).toMatchObject({ founderPrice: true, upcomingCharge: { at: '2027-02-01T11:00:00.000Z', amount: '4,99 €' } })
+    expect(billingStateFor({ ...sub, cancelAtPeriodEnd: true }, { enabled: true, canManage: true, now: new Date('2027-01-20T09:00:00Z') }).subscription?.upcomingCharge).toBeNull()
+  })
+
+  it('POST /billing/portal { cancel: true } opens the cancel flow of the live subscription', async () => {
+    const { call, gateway } = await app({ repo: memoryRepo([row()]) })
+    expect((await call('POST', '/billing/portal', 'owner', { cancel: true })).status).toBe(200)
+    expect(gateway.portals.at(-1)).toEqual({ cancelSubscriptionId: 'sub_1' })
+    await call('POST', '/billing/portal', 'owner', {})
+    expect(gateway.portals.at(-1)).toBeUndefined()
   })
 })
 

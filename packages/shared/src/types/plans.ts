@@ -184,6 +184,118 @@ export type SubscriptionStatus =
   | 'incomplete_expired'
   | 'paused'
 
+/**
+ * The 14-day trial and the paused account (PRO-135, D-056/D-057). Only from
+ * launch day: before it, everybody is in the beta (`beta`) and nobody is
+ * paused. From launch day a household has `TRIAL_DAYS` with everything from
+ * when it was created (beta households: from launch day); after that, without
+ * a plan, it is **paused**: it still sees its menu, recipes and list, but it
+ * can't generate new menus or use Mimo. Nothing is ever deleted.
+ */
+export type AccessState = 'beta' | 'trial' | 'paused' | 'subscribed'
+
+export interface AccountAccess {
+  state: AccessState
+  /** When the household's trial ends (ISO): midnight in Madrid after its last day, whatever the state. */
+  trialEndsAt: string
+  /** Last day of the trial, `YYYY-MM-DD` in Madrid (included). */
+  trialLastDay: string
+  /**
+   * While `trial`: whole days left after today (Madrid calendar), 0 on the
+   * last day. Day 12 of 14 → 2. Otherwise null.
+   */
+  daysLeft: number | null
+  /** While `trial`: days since its first day (Madrid calendar), 0 on the first day. Otherwise null. */
+  trialDay: number | null
+}
+
+/** Day of the trial when the founder-price offer goes out (PRO-136, D-056). */
+export const FOUNDER_OFFER_DAY = 7
+
+/** «Te quedan 2 días»: the in-app notice and the email go from this many days before the last day (day 12). */
+export const TRIAL_ENDING_NOTICE_DAYS = 2
+
+/** Stripe statuses that give the plan (and so keep the account out of the pause). */
+export const PAID_ACCESS_STATUSES: readonly SubscriptionStatus[] = ['trialing', 'active', 'past_due']
+
+const ACCESS_DAY_MS = 24 * 60 * 60 * 1000
+
+function launchStart(launchDate: string): number {
+  return Date.parse(`${launchDate}T00:00:00+01:00`)
+}
+
+/** `YYYY-MM-DD` of an instant in Madrid. */
+function madridIsoDate(t: number): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(t))
+}
+
+/** 00:00 in Madrid of a `YYYY-MM-DD` (CET or CEST). */
+function madridMidnight(day: string): number {
+  const cet = Date.parse(`${day}T00:00:00+01:00`)
+  // In summer time that instant is 01:00 in Madrid: midnight is an hour earlier.
+  return madridIsoDate(cet - 60 * 60 * 1000) === day ? cet - 60 * 60 * 1000 : cet
+}
+
+function nextDay(day: string): string {
+  const d = new Date(`${day}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + 1)
+  return d.toISOString().slice(0, 10)
+}
+
+function daysBetween(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / ACCESS_DAY_MS)
+}
+
+/**
+ * The household's trial: from max(created, launch day), 14 days, to the end
+ * of that day in Madrid. A beta household: 15 → 28 December, both included.
+ */
+export function trialEndsAt(
+  householdCreatedAt: Date | string | null,
+  launchDate: string = LAUNCH_DATE,
+): { endsAt: Date; lastDay: string; firstDay: string } {
+  const created = householdCreatedAt == null ? NaN : typeof householdCreatedAt === 'string' ? Date.parse(householdCreatedAt) : householdCreatedAt.getTime()
+  const start = Math.max(Number.isFinite(created) ? created : 0, launchStart(launchDate))
+  // The last instant of the 14 days, then the end of that Madrid day.
+  const lastDay = madridIsoDate(start + TRIAL_DAYS * ACCESS_DAY_MS - 1)
+  return { endsAt: new Date(madridMidnight(nextDay(lastDay))), lastDay, firstDay: madridIsoDate(start) }
+}
+
+export function accountAccess(i: {
+  householdCreatedAt: Date | string | null
+  /** The household has a subscription in `PAID_ACCESS_STATUSES`. */
+  paid: boolean
+  now: Date
+  launchDate?: string
+}): AccountAccess {
+  const launchDate = i.launchDate ?? LAUNCH_DATE
+  const { endsAt, lastDay, firstDay } = trialEndsAt(i.householdCreatedAt, launchDate)
+  const base = { trialEndsAt: endsAt.toISOString(), trialLastDay: lastDay, daysLeft: null, trialDay: null }
+  const now = i.now.getTime()
+  if (now < launchStart(launchDate)) return { state: 'beta', ...base }
+  if (i.paid) return { state: 'subscribed', ...base }
+  if (now < endsAt.getTime()) {
+    const today = madridIsoDate(now)
+    return { state: 'trial', ...base, daysLeft: daysBetween(today, lastDay), trialDay: daysBetween(firstDay, today) }
+  }
+  return { state: 'paused', ...base }
+}
+
+/** «el 28 de diciembre» → the last day of the trial, for copy. */
+export function trialLastDayLabel(access: Pick<AccountAccess, 'trialLastDay'>): string {
+  return new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(`${access.trialLastDay}T12:00:00Z`))
+}
+
+/** «Te quedan 2 días» / «Te queda 1 día» / «Hoy es tu último día». */
+export function trialDaysLeftLabel(daysLeft: number): string {
+  if (daysLeft <= 0) return 'Hoy es el último día de tu prueba'
+  return daysLeft === 1 ? 'Te queda 1 día de prueba' : `Te quedan ${daysLeft} días de prueba`
+}
+
+/** What a paused account is told when it tries to generate a menu or talk to Mimo (API 402 `ACCOUNT_PAUSED`). */
+export const ACCOUNT_PAUSED_MESSAGE =
+  'Tu prueba ha terminado y tu cuenta está en pausa. Elige un plan en Perfil → Suscripción para volver a generar menús y hablar con Mimo. No se ha borrado nada.'
+
 /** What `GET /billing` answers (specs/billing.md). */
 export interface BillingState {
   /** Payments are switched on (the API has Stripe keys). */
@@ -195,6 +307,17 @@ export interface BillingState {
   canManage: boolean
   /** If the owner subscribed now, the first charge would be on this day (ISO). */
   firstChargeAt: string
+  /** Trial / paused / subscribed, from launch day (PRO-135). */
+  access: AccountAccess
+  /** Founder price (PRO-136, D-056/D-066). */
+  founder: {
+    /** «Hogar fundador» (a beta household): the founder price for good, whenever it subscribes. */
+    household: boolean
+    /** Subscribing now keeps the founder price (a founding household, or still in its trial). */
+    priceIfSubscribing: boolean
+    /** The day-7 offer stands: in trial from day 7, no plan. */
+    offer: boolean
+  }
   subscription: {
     plan: PlanKey
     period: BillingPeriod
@@ -204,6 +327,10 @@ export interface BillingState {
     /** Cancelled: it stays until this date and then ends. */
     cancelAtPeriodEnd: boolean
     endsAt: string | null
+    /** Founder price: it doesn't go up while the subscription lasts (PRO-136). */
+    founderPrice?: boolean
+    /** First charge within 15 days (the legal notice, PRO-136): when and how much. */
+    upcomingCharge?: { at: string; amount: string } | null
   } | null
 }
 
@@ -217,6 +344,40 @@ export const FOUNDING_HOUSEHOLD_LABEL = 'Hogar fundador'
 export function isFoundingHousehold(createdAt: Date | string, launchDate: string = LAUNCH_DATE): boolean {
   const t = typeof createdAt === 'string' ? Date.parse(createdAt) : createdAt.getTime()
   return Number.isFinite(t) && t < Date.parse(`${launchDate}T00:00:00+01:00`)
+}
+
+/**
+ * Does a subscription started now keep the founder price? (D-056, D-066):
+ * a founding household always; from launch day, anyone who leaves the card
+ * before their trial ends. A paused household subscribing doesn't.
+ */
+export function founderPriceIfSubscribing(householdCreatedAt: Date | string | null, now: Date, launchDate: string = LAUNCH_DATE): boolean {
+  if (householdCreatedAt != null && isFoundingHousehold(householdCreatedAt, launchDate)) return true
+  const s = accountAccess({ householdCreatedAt, paid: false, now, launchDate }).state
+  return s === 'beta' || s === 'trial'
+}
+
+/** The day-7 offer stands (PRO-136): in trial, from day 7, no plan. */
+export function founderOfferStands(access: AccountAccess): boolean {
+  return access.state === 'trial' && access.trialDay !== null && access.trialDay >= FOUNDER_OFFER_DAY
+}
+
+/**
+ * The day-7 offer, short (PRO-136, D-056): Mimo on WhatsApp and in the web
+ * panel, and the offer card. Text for Legal to review.
+ */
+export function founderOfferText(i: { trialLastDay: string; firstChargeAt: string }): string {
+  const last = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(`${i.trialLastDay}T12:00:00Z`))
+  return (
+    `Llevas una semana con Mimoia. Si ya sabes que te quedas, deja la tarjeta antes de que acabe tu prueba ` +
+    `(dura hasta el ${last}) y te quedas el precio de fundador para siempre: no te sube mientras sigas suscrito. ` +
+    `No se cobra nada hasta el ${dayEs(i.firstChargeAt, true)} y puedes cancelar antes sin pagar nada.`
+  )
+}
+
+/** «4,99 €» from cents. */
+export function euros(cents: number): string {
+  return `${(cents / 100).toFixed(2).replace('.', ',').replace(/,00$/, '')} €`
 }
 
 /** «29 de diciembre de 2026» (long) / «29 de diciembre» (short), in Madrid. */

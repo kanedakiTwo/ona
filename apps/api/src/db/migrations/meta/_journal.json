@@ -463,6 +463,20 @@
       "when": 1792278515686,
       "tag": "0068_onboarding_draft",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1792279751300,
+      "tag": "0069_trial_ending_email",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1792279786654,
+      "tag": "0070_founder_offer",
+      "breakpoints": true
     }
   ]
 }

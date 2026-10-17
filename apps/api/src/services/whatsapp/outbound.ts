@@ -34,6 +34,7 @@ import { recordServiceMessageCost } from './serviceCost.js'
 import { budgetMicros, getMonthlySpendMicros } from '../advisorBudget.js'
 import { spendCapStatus } from '../spendCap.js'
 import { composeGuided, guidedMeta, type GuideSpec, type GuidedContext, type GuidedResult } from './guided.js'
+import { isAccountPaused } from '../accountAccess.js'
 
 /** Per-kind templates (WHATSAPP_TEMPLATES), parsed once. */
 const TEMPLATES = parseTemplateMap(env.WHATSAPP_TEMPLATES)
@@ -92,6 +93,18 @@ async function notifiableLink(userId: string): Promise<LinkWithUser | null> {
   const link = await store.getLinkByUser(userId)
   if (!link || !link.notify || link.suspendedAt || !isUserAllowed(link.email)) return null
   return link
+}
+
+/**
+ * A one-off message only inside the 24 h service window (never a template),
+ * to a linked number that accepts proactive messages (PRO-136: the day-7
+ * offer). Outside the window → skipped.
+ */
+export async function sendInsideServiceWindow(userId: string, text: string, kind: string, now: Date = new Date()): Promise<ChannelOutcome> {
+  const link = await notifiableLink(userId)
+  if (!link) return { status: 'skipped' }
+  if (chooseDelivery(link.lastInboundAt, now, false) !== 'session') return { status: 'skipped', error: 'outside-24h-window' }
+  return sendProactive(link, [{ type: 'text', text }], kind, now)
 }
 
 /** Prep alert from `notification_schedule` → WhatsApp (in addition to Web Push). */
@@ -237,6 +250,8 @@ export async function runProactiveTick(now: Date = new Date()): Promise<void> {
   for (const link of links) {
     if (!isUserAllowed(link.email)) continue
     try {
+      // PRO-135: a paused account gets no proactive message (never before launch day).
+      if (await isAccountPaused(link.userId, now)) continue
       const times = await loadMealTimes(link.userId)
       // Only touch the DB for cooldowns inside a window that could fire.
       if (!anyProactiveWindow(parts, times.breakfast, times.dinner)) continue

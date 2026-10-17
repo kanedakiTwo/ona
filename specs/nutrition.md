@@ -54,13 +54,13 @@ Optional ingredients are included by default; recipes can mark them `optional: t
 A skipped line (step 1: `u` without `unitWeight`, `ml` without `density`, no catalogue row) used to vanish silently, so the recipe showed a low figure that looked right («Salmón a la plancha con calabacín», 54 kcal). Since PRO-176:
 
 - `aggregateNutrition` returns `incomplete: true` when some skipped line is **not negligible**. Negligible: salt, water, spices and seasoning herbs (pimienta, pimentón, comino, laurel, perejil…, `negligible.ts`) and any line whose note says «al gusto». `pizca` / `al_gusto` units count 0 g and are never skipped
-- Saving a recipe stores it in `recipes.nutrition_incomplete` (migration 0065). The cached figures are still stored (the menu generator keeps using them), but the ficha shows none: «Aún no podemos calcular la nutrición de esta receta» (see [Recipes](./recipes.md))
+- Saving a recipe stores it in `recipes.nutrition_incomplete` (migration 0066). The cached figures are still stored (the menu generator keeps using them), but the ficha shows none: «Aún no podemos calcular la nutrición de esta receta» (see [Recipes](./recipes.md))
 - On every API boot, after `db:migrate`, `applyNutritionCompleteness` recomputes **only the mark** of every recipe from today's catalogue (a unit weight added by Cocina clears it); figures are not touched — `scripts/recomputeRecipeNutrition.ts` does that, and also writes the mark
 - The fix for a marked recipe is data: give the ingredient a `unitWeight` / `density` (the catalogue audit lists them, Constraints below), or write the line in grams
 
 ## Edible weight
 
-Recipes give meat as bought, with bone («1.350 g de gallina», «5 manitas de cerdo», «1,1 kg de chuletón»), while the per-100 g values are of the edible part. Since PRO-194 `ingredients.edible_fraction` (0–1, default 1, migration 0066) holds the share that is eaten, and both the aggregator (step 2) and the catalogue audit ([Menus](./menus.md) → Catalogue quality gate) multiply the line's grams by it, whatever its unit:
+Recipes give meat as bought, with bone («1.350 g de gallina», «5 manitas de cerdo», «1,1 kg de chuletón»), while the per-100 g values are of the edible part. Since PRO-194 `ingredients.edible_fraction` (0–1, default 1, migration 0067) holds the share that is eaten, and both the aggregator (step 2) and the catalogue audit ([Menus](./menus.md) → Catalogue quality gate) multiply the line's grams by it, whatever its unit:
 
 - Values (`nutrition/edibleFraction.ts`): USDA SR Legacy refuse of the closest raw entry, rounded — pollo entero 0.68, gallina 0.70, muslo 0.70, contramuslo 0.80, alitas 0.54 — and estimates [E] for Spanish cuts without an exact entry, for Cocina to review: alas de pavo 0.60, costillas 0.70, chuletón 0.85, chuletas 0.80, chuletillas 0.70, manitas/pies de cerdo 0.50, rabo 0.50, osobuco 0.80, codillo 0.70, paletilla/pierna 0.75, conejo entero 0.73, codorniz 0.65
 - Only names that are the bone-in cut get one: «deshuesado», «sin hueso», «filete», «picado», «carne de…», stocks, tins and «pechuga» never do; nor does «conejo» alone, whose unit weight Cocina already set as the meat (700 g)

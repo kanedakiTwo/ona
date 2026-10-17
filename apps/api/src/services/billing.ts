@@ -8,8 +8,9 @@
  *
  * During the beta (until LAUNCH_DATE) a subscription starts as a trial that
  * ends on launch day: the card is saved now and the first charge happens
- * then. Nothing about the plan is enforced yet: the beta runs with Plus for
- * everyone (TODO(billing): plan limits and the paused account from launch day).
+ * then. The beta runs with Plus for everyone. From launch day a household
+ * without a plan is paused when its 14-day trial ends (PRO-135,
+ * `services/accountAccess.ts`). TODO(billing): per-plan caps (PRO-15).
  */
 import Stripe from 'stripe'
 import { and, desc, eq, inArray } from 'drizzle-orm'
@@ -17,6 +18,13 @@ import {
   LAUNCH_DATE,
   MIN_DAYS_CARD_TO_CHARGE,
   TRIAL_DAYS,
+  PAID_ACCESS_STATUSES,
+  accountAccess,
+  euros,
+  founderOfferStands,
+  founderPriceIfSubscribing,
+  isFoundingHousehold,
+  planByKey,
   PLAN_KEYS,
   BILLING_PERIODS,
   stripeLookupKey,
@@ -85,6 +93,10 @@ export interface SubscriptionRow {
   trialEnd: Date | null
   cancelAtPeriodEnd: boolean
   canceledAt: Date | null
+  /** Founder price (Stripe metadata `founder_price`, PRO-136). */
+  founderPrice: boolean
+  /** When the legal notice before the first charge went out. Ours only: the webhook never writes it. */
+  chargeNoticeAt?: Date | null
 }
 
 export interface CheckoutInput {
@@ -99,6 +111,8 @@ export interface CheckoutInput {
   webUrl: string
   /** Reuse the household's Stripe customer when it had a subscription before. */
   customerId?: string | null
+  /** Keeps the founder price (`founderPriceIfSubscribing`): marked in the Stripe metadata. */
+  founderPrice?: boolean
 }
 
 /**
@@ -108,7 +122,15 @@ export interface CheckoutInput {
  * payment_method_types, custom_text…) are never sent: Stripe answers 400.
  */
 export function buildCheckoutParams(i: CheckoutInput): Stripe.Checkout.SessionCreateParams {
-  const meta = { userId: i.userId, householdId: i.householdId, plan: i.plan, period: i.period }
+  // PRO-136: the founder price lives in Stripe's metadata (the source of truth
+  // the webhook rewrites our row from), on the session and on the subscription.
+  const meta: Record<string, string> = {
+    userId: i.userId,
+    householdId: i.householdId,
+    plan: i.plan,
+    period: i.period,
+    ...(i.founderPrice ? { founder_price: 'true' } : {}),
+  }
   return {
     mode: 'subscription',
     managed_payments: { enabled: true },
@@ -179,22 +201,50 @@ export function rowFromStripeSubscription(sub: Stripe.Subscription): Subscriptio
     trialEnd: toDate(sub.trial_end),
     cancelAtPeriodEnd: !!sub.cancel_at_period_end || !!sub.cancel_at,
     canceledAt: toDate(sub.canceled_at),
+    founderPrice: meta.founder_price === 'true',
   }
+}
+
+/** Days before the first charge when the legal notice goes (D-056). */
+export const CHARGE_NOTICE_DAYS = 15
+
+/**
+ * The legal notice is due from the Madrid day that is 15 days before the
+ * first charge (the trial end), while the trial runs and it isn't cancelled.
+ */
+export function isChargeNoticeDue(row: Pick<SubscriptionRow, 'status' | 'trialEnd' | 'cancelAtPeriodEnd'>, now: Date): boolean {
+  if (row.status !== 'trialing' || row.cancelAtPeriodEnd || !row.trialEnd) return false
+  if (now.getTime() >= row.trialEnd.getTime()) return false
+  return madridDay(now) >= madridDay(new Date(row.trialEnd.getTime() - CHARGE_NOTICE_DAYS * DAY_MS))
+}
+
+/** «4,99 €» for the plan and period. */
+export function chargeAmount(plan: PlanKey, period: BillingPeriod): string {
+  return euros(planByKey(plan).prices[period].cents)
 }
 
 /** What `GET /billing` answers, from the household's latest subscription. */
 export function billingStateFor(
   row: SubscriptionRow | null,
-  opts: { enabled: boolean; canManage: boolean; now: Date; userCreatedAt?: Date | null },
+  opts: { enabled: boolean; canManage: boolean; now: Date; userCreatedAt?: Date | null; householdCreatedAt?: Date | null },
 ): BillingState {
   const live = row && LIVE_STATUSES.includes(row.status) ? row : null
+  const paid = !!row && PAID_ACCESS_STATUSES.includes(row.status)
+  const householdCreatedAt = opts.householdCreatedAt ?? opts.userCreatedAt ?? null
+  const access = accountAccess({ householdCreatedAt, paid, now: opts.now })
   const nextCharge = live && !live.cancelAtPeriodEnd ? (live.status === 'trialing' ? live.trialEnd : live.currentPeriodEnd) : null
   return {
     enabled: opts.enabled,
     beta: isBeta(opts.now),
     launchDate: LAUNCH_DATE,
     canManage: opts.canManage,
-    firstChargeAt: firstChargeInstant({ userCreatedAt: opts.userCreatedAt ?? null, now: opts.now }).toISOString(),
+    firstChargeAt: firstChargeInstant({ userCreatedAt: householdCreatedAt, now: opts.now }).toISOString(),
+    access,
+    founder: {
+      household: householdCreatedAt != null && isFoundingHousehold(householdCreatedAt),
+      priceIfSubscribing: founderPriceIfSubscribing(householdCreatedAt, opts.now),
+      offer: !live && founderOfferStands(access),
+    },
     subscription: live
       ? {
           plan: live.plan,
@@ -205,6 +255,11 @@ export function billingStateFor(
           endsAt: live.cancelAtPeriodEnd
             ? (live.status === 'trialing' ? live.trialEnd : live.currentPeriodEnd)?.toISOString() ?? null
             : null,
+          founderPrice: live.founderPrice,
+          upcomingCharge:
+            isChargeNoticeDue(live, opts.now) && live.trialEnd
+              ? { at: live.trialEnd.toISOString(), amount: chargeAmount(live.plan, live.period) }
+              : null,
         }
       : null,
   }
@@ -233,6 +288,8 @@ export function createDbSubscriptionRepo(db: typeof defaultDb = defaultDb): Subs
     trialEnd: r.trialEnd,
     cancelAtPeriodEnd: r.cancelAtPeriodEnd,
     canceledAt: r.canceledAt,
+    founderPrice: r.founderPrice,
+    chargeNoticeAt: r.chargeNoticeAt,
   })
   return {
     async latestForHousehold(householdId) {
@@ -248,7 +305,7 @@ export function createDbSubscriptionRepo(db: typeof defaultDb = defaultDb): Subs
       const now = new Date()
       await db
         .insert(subscriptions)
-        .values({ ...row, createdAt: now, updatedAt: now })
+        .values({ ...row, chargeNoticeAt: row.chargeNoticeAt ?? null, createdAt: now, updatedAt: now })
         .onConflictDoUpdate({
           target: subscriptions.stripeSubscriptionId,
           set: {
@@ -260,6 +317,7 @@ export function createDbSubscriptionRepo(db: typeof defaultDb = defaultDb): Subs
             cancelAtPeriodEnd: row.cancelAtPeriodEnd,
             canceledAt: row.canceledAt,
             stripeCustomerId: row.stripeCustomerId,
+            founderPrice: row.founderPrice,
             updatedAt: now,
           },
         })
@@ -280,7 +338,8 @@ export function createDbSubscriptionRepo(db: typeof defaultDb = defaultDb): Subs
 export interface BillingGateway {
   priceId(plan: PlanKey, period: BillingPeriod): Promise<string>
   createCheckout(params: Stripe.Checkout.SessionCreateParams): Promise<{ url: string }>
-  createPortal(customerId: string, returnUrl: string): Promise<{ url: string }>
+  /** `cancelSubscriptionId`: open straight on the cancel flow of that subscription (PRO-136). */
+  createPortal(customerId: string, returnUrl: string, opts?: { cancelSubscriptionId?: string }): Promise<{ url: string }>
   /** Verifies the signature; throws when it doesn't match. */
   parseWebhook(raw: Buffer, signature: string | undefined): Stripe.Event
   retrieveSubscription(id: string): Promise<Stripe.Subscription>
@@ -315,8 +374,22 @@ export function createStripeGateway(): BillingGateway {
       if (!s.url) throw new Error('Stripe returned a Checkout Session without url')
       return { url: s.url }
     },
-    async createPortal(customerId, returnUrl) {
-      const s = await stripe().billingPortal.sessions.create({ customer: customerId, return_url: returnUrl, locale: 'es' })
+    async createPortal(customerId, returnUrl, opts) {
+      const base = { customer: customerId, return_url: returnUrl, locale: 'es' as const }
+      if (opts?.cancelSubscriptionId) {
+        // The direct «cancelar» link of the legal notice. If Stripe refuses the
+        // flow (e.g. with Managed Payments), the normal portal still lets them cancel.
+        try {
+          const s = await stripe().billingPortal.sessions.create({
+            ...base,
+            flow_data: { type: 'subscription_cancel', subscription_cancel: { subscription: opts.cancelSubscriptionId } },
+          })
+          return { url: s.url }
+        } catch (err) {
+          console.warn('[billing] cancel flow refused, opening the portal:', (err as Error)?.message ?? err)
+        }
+      }
+      const s = await stripe().billingPortal.sessions.create(base)
       return { url: s.url }
     },
     parseWebhook(raw, signature) {

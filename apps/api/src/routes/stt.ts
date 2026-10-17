@@ -12,6 +12,7 @@ import multer from 'multer'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { rateLimit } from '../middleware/rateLimit.js'
 import { requireSpendCapacity } from '../middleware/spendCap.js'
+import { requireActiveAccount } from '../services/accountAccess.js'
 import { runWithCostUser } from '../services/costLedger.js'
 import { isSttConfigured, transcribeAudio } from '../services/stt.js'
 
@@ -29,7 +30,7 @@ const sttLimiter = rateLimit({
   keyFn: (req) => (req as AuthRequest).userId ?? req.ip ?? 'unknown',
 })
 
-router.post('/stt', authMiddleware, sttLimiter, requireSpendCapacity(), upload.single('audio'), async (req: AuthRequest, res) => {
+router.post('/stt', authMiddleware, requireActiveAccount(), sttLimiter, requireSpendCapacity(), upload.single('audio'), async (req: AuthRequest, res) => {
   if (!isSttConfigured()) {
     res.status(503).json({ error: 'La transcripción no está disponible', code: 'STT_DISABLED' })
     return

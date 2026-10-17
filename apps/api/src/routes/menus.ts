@@ -12,6 +12,7 @@ import { validate } from '../middleware/validate.js'
 import { generateMenuSchema, lockMealSchema, MEALS, MEAL_TYPE_TAGS, courseSchema } from '@ona/shared'
 import type { DayMenu, Dish, LockedSlots, Meal, MealSlot, RecipeDish } from '@ona/shared'
 import { defaultTemplate, generateMenu, extractMealDishCounts, normalizeMealTemplate } from '../services/menuGenerator.js'
+import { evaluateAndSaveMenuFit } from '../services/menuFit.js'
 import { calculateMenuCaloriesFromDB } from '../services/calorieCalculator.js'
 import { calculateMenuNutrientsFromDB } from '../services/nutrientCalculator.js'
 import { updateBalance } from '../services/nutrientBalance.js'
@@ -261,8 +262,12 @@ router.post('/menu/generate', authMiddleware, validate(generateMenuSchema), asyn
       console.warn('[menus.generate] enqueuePrepAlertsForMenu failed:', err)
     })
 
+    // «Cuánto ha acertado» (PRO-155): one small Haiku call, stored on the
+    // row. Null (no key, error, slow) → the menu goes out without the line.
+    const fit = await evaluateAndSaveMenuFit({ userId, menuId: menu.id, days })
+
     const hydrated = await hydrateMenuImages(menu)
-    res.status(201).json({ ...hydrated, warnings })
+    res.status(201).json({ ...hydrated, fit, warnings })
   } catch (err) {
     console.error('Generate menu error:', err)
     res.status(500).json({ error: 'Internal server error' })

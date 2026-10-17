@@ -21,7 +21,8 @@ export type {
   RecipeFrequency,
   Course,
 } from './types/recipe.js'
-export type { Menu, DayMenu, MealSlot, LockedSlots, MealDishCounts } from './types/menu.js'
+export type { Menu, DayMenu, MealSlot, LockedSlots, MealDishCounts, MenuFit, MenuFitLevel, MenuFitMissReason, RecipeAddMethod } from './types/menu.js'
+export { menuFitLevel } from './types/menu.js'
 export type { Dish, RecipeDish, NoteDish } from './types/menuDish.js'
 export { isRecipeDish, isNoteDish, recipeDishesOf } from './types/menuDish.js'
 export type {

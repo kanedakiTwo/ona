@@ -181,6 +181,16 @@ user could read/modify any menu by id.
 - The matcher (`recipeMatcher.ts`, step 6, `fitsTimeBudget`): a «total» day compares `totalTime` (else `prepTime + cookTime`); a «trabajo» day compares `activeTime` (else `prepTime`). **With a limit, a recipe without that time does not pass** (until 2026-10-17 it always passed and only `prepTime` was compared, so a 3-hour stew with 20 min of prep reached a 30-minute Tuesday). Without a limit every recipe passes. A cocido with 15 min of work and 200 in total fits a «20 min de trabajo» day. Tests: `recipeMatcher.test.ts`, `onboardingPreferences.test.ts`.
 - Catalogue times: on every boot (`db:migrate`) and at the end of `db:seed`, `catalogRecipeTimes.ts` fills **only empty** times of system recipes: Cocina's prep/cook/total for the 10 recipes that had none, `totalTime = prepTime + cookTime` when missing, and `activeTime` from the steps (sum of hands-on steps; simmering, oven, resting, marinating and soaking steps don't count; a hands-on step without minutes → `prepTime`; never above the total). Each filled recipe is logged as `[catalog-recipe-times] «…»: … trabajo N (de pasos|de preparación) min` for Cocina to review, plus a «N de M recetas del sistema con tiempo total y de trabajo» line. Tests: `catalogRecipeTimes.test.ts`.
 
+## Acierto: cuánto se parece a lo que os gusta (PRO-155)
+
+- Right after a week is generated (web `POST /menu/generate`, Mimo's `generate_weekly_menu` / `complete_onboarding`), one small **Claude Haiku** call (`services/menuFit.ts`, `claude-haiku-4-5`, feature `menu_fit` billed to the household) compares the week's recipes with what we know the household likes: the favourite dishes it told us (`users.favorite_dishes`) and its «Me encanta» (`recipe_verdicts`). For each dish the model also sees the catalogue recipes sharing a word with it (published catalogue + own recipes).
+- Result (`MenuFit`, `@ona/shared`, stored in `menus.fit`, migration 0065): `score` 0–100 and level (**alto** ≥ 70, **medio** ≥ 40, **bajo**), what's met (with the recipe) and what's missing and why: **no está en el catálogo** or **no cabía esta semana**. Hand check: a dish that a catalogue recipe covers word for word (`catalogCoversDish`) or a «Me encanta» is never «no está en el catálogo». Also `unusedAddMethods`: photo, link or written recipe the household hasn't used yet (`usage_events` `recipe_imported` / `recipe_created`).
+- Missing favourites («no está en el catálogo», only dishes they told us) become **deseos del catálogo** (`recordCatalogWish`, source `evaluador`; [Catalog import](./catalog-import.md)).
+- `/menu` shows **one line under the week** (`MenuFitLine`, `data-testid="menu-fit"`, current and future weeks): alto «Este menú se acerca mucho a lo que os gusta (85 %): hay …»; medio «Se acerca bastante… No he podido meter …; puedes ponerlo en lugar de otro plato»; bajo «Con las recetas que tengo no me he acercado mucho a lo que os gusta (5 %): aún no tengo …. Si añades tus recetas, las tendré en cuenta.» + «Añadir una receta» → `/recipes/new`. Mimo tells it in its own words ([Advisor](./advisor.md)).
+- **Best effort**: no API key, error, > 8 s or an unusable answer → `fit: null`, the menu goes out the same and no line is shown. Without favourites or «Me encanta» there is nothing to compare: no call. «Vaciar semana» / empty weeks don't run it.
+- Limits: the verdict is about the week **as generated**; later swaps don't update it (the next generation does). Only the generating user's favourites and «Me encanta» count (not the rest of the household, not the ficha yet). The menu matcher still weighs favourites by shared words (`recipesMatchingDishes`): the smart menu is PRO-139.
+- Tests: `menuFit.test.ts` (the real case of 2026-10-16, reasons, wishes, cost, fallbacks), `assistant-skills.test.ts` (reaches Mimo), `e2e/menu-fit.spec.ts` (the line, and none without a verdict).
+
 ## Constraints
 
 - All menu routes require auth (including `POST /menu/generate`, which also
@@ -205,6 +215,7 @@ user could read/modify any menu by id.
 - [apps/api/src/services/catalogRecipeTimes.ts](../apps/api/src/services/catalogRecipeTimes.ts) — boot-time fill of catalogue times (PRO-138)
 
 - [apps/api/src/routes/menus.ts](../apps/api/src/routes/menus.ts)
+- [apps/api/src/services/menuFit.ts](../apps/api/src/services/menuFit.ts) — «cuánto ha acertado» (PRO-155) · [apps/web/src/components/menu/MenuFitLine.tsx](../apps/web/src/components/menu/MenuFitLine.tsx)
 - [apps/api/src/services/menuGenerator.ts](../apps/api/src/services/menuGenerator.ts) — core algorithm
 - [apps/api/src/services/metabolicScore.ts](../apps/api/src/services/metabolicScore.ts) — per-recipe metabolic profile + weekly quality/variety for the fitness
 - [apps/api/src/services/menuEdits.ts](../apps/api/src/services/menuEdits.ts) — registro de cambios del menú (PRO-149)

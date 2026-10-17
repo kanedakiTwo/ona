@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { api, ApiError } from "@/lib/api"
 import { enqueue } from "@/lib/pwa/offlineQueue"
+import type { MenuFit } from "@ona/shared"
 
 interface MealSlot {
   recipeId: string
@@ -31,6 +32,8 @@ interface Menu {
   bannedRecipeIds: string[]
   /** Day indices (0-6) the user marked "sin cocinar". */
   skippedDays: number[]
+  /** «Cuánto ha acertado» (PRO-155): set when the week was generated; null without it. */
+  fit?: MenuFit | null
   createdAt: string
 }
 

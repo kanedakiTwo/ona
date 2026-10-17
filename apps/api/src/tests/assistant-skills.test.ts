@@ -57,6 +57,11 @@ vi.mock('../services/notificationScheduler.js', () => ({
 vi.mock('../services/userMemoryStore.js', () => ({
   getMemoryForUser: vi.fn(async () => ({})),
 }))
+// PRO-155: the menu evaluator is a Haiku call — off by default here, one test turns it on.
+vi.mock('../services/menuFit.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../services/menuFit.js')>()),
+  evaluateAndSaveMenuFit: vi.fn(async () => null),
+}))
 vi.mock('../services/scopeResolver.js', () => ({
   resolveScope: vi.fn(async (userId: string) => ({ kind: 'user', value: userId })),
   scopeWhere: vi.fn(() => ({ /* drizzle SQL stub — proxy db ignores it */ })),
@@ -366,6 +371,28 @@ describe('generate_weekly_menu', () => {
     const r = await skill.handler({}, ctx(db))
     expect(r.uiHint).toBe('menu')
     expect(r.summary).toContain('Menu generado')
+  })
+
+  it('hands Mimo how close the week came to their tastes (PRO-155), and nothing when the evaluator fails', async () => {
+    const { evaluateAndSaveMenuFit } = await import('../services/menuFit.js')
+    const fit = {
+      score: 5, level: 'bajo' as const, met: [],
+      missed: [{ preference: 'carbonara', reason: 'no_catalogo' as const }, { preference: 'cremas y sopas', reason: 'no_cabia' as const }],
+      unusedAddMethods: ['foto' as const], evaluatedAt: '2026-10-18T00:00:00Z',
+    }
+    vi.mocked(evaluateAndSaveMenuFit).mockResolvedValueOnce(fit)
+    const inserted = { id: 'm-new', days: [{}, {}, {}, {}, {}, {}, {}] }
+    const r = await skill.handler({}, ctx(makeDb([], [inserted], [{ id: 'log-1' }])))
+    expect(vi.mocked(evaluateAndSaveMenuFit).mock.calls[0][0]).toMatchObject({ userId: 'u-1', menuId: 'm-new' })
+    expect(r.data.fit).toEqual(fit)
+    expect(r.summary).toContain('Acierto con sus gustos: 5/100 (bajo)')
+    expect(r.summary).toContain('No estan en el catalogo: carbonara')
+    expect(r.summary).toContain('mandarme una foto de la receta')
+
+    const plain = await skill.handler({}, ctx(makeDb([], [inserted], [{ id: 'log-2' }])))
+    expect(plain.summary).toContain('Menu generado')
+    expect(plain.summary).not.toContain('Acierto')
+    expect(plain.data.fit).toBeNull()
   })
 
   it('keeps the current week\'s locked slots, vetoes and skipped days', async () => {

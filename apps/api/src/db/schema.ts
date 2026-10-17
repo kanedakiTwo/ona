@@ -14,7 +14,7 @@ import {
   check,
 } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
-import { UNITS, type NutritionPerServing } from '@ona/shared'
+import { UNITS, type MenuFit, type NutritionPerServing } from '@ona/shared'
 
 // ─── 1. users ───────────────────────────────────────────────
 export const users = pgTable('users', {
@@ -410,6 +410,11 @@ export const menus = pgTable('menus', {
    * back manually.
    */
   skippedDays: integer('skipped_days').array().notNull().default(sql`ARRAY[]::integer[]`),
+  /**
+   * «Cuánto ha acertado» (PRO-155, services/menuFit.ts): the evaluator's
+   * verdict on the week as generated. Null when it didn't run or failed.
+   */
+  fit: jsonb('fit').$type<MenuFit>(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => [
   index('idx_menus_user_week').on(table.userId, table.weekStart),

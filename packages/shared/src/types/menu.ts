@@ -34,7 +34,38 @@ export interface Menu {
    * back manually after un-skipping.
    */
   skippedDays: number[]
+  /** «Cuánto ha acertado» (PRO-155): set when the week is generated; null without it. */
+  fit?: MenuFit | null
   createdAt: Date
+}
+
+/**
+ * PRO-155 · how close a generated week came to what the household likes
+ * (favourite dishes, «Me encanta»). Written by a small Claude Haiku call
+ * right after generating; null when the call failed or there was nothing
+ * to compare with.
+ */
+export type MenuFitLevel = 'alto' | 'medio' | 'bajo'
+/** Why a liked dish is not in the week: we don't have it, or it didn't fit this week. */
+export type MenuFitMissReason = 'no_catalogo' | 'no_cabia'
+/** Ways to add a recipe of your own: photo, link, or writing it. */
+export type RecipeAddMethod = 'foto' | 'enlace' | 'escrita'
+
+export interface MenuFit {
+  /** 0–100. */
+  score: number
+  level: MenuFitLevel
+  /** Liked things the week has, with the recipe that covers each. */
+  met: Array<{ preference: string; recipe: string | null }>
+  missed: Array<{ preference: string; reason: MenuFitMissReason }>
+  /** Ways to add recipes this household hasn't used yet (Mimo suggests one). */
+  unusedAddMethods: RecipeAddMethod[]
+  evaluatedAt: string
+}
+
+/** Pure: 0–100 → level. ≥ 70 alto, ≥ 40 medio, below bajo. */
+export function menuFitLevel(score: number): MenuFitLevel {
+  return score >= 70 ? 'alto' : score >= 40 ? 'medio' : 'bajo'
 }
 
 export interface LockedSlots {

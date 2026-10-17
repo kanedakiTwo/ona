@@ -16,6 +16,12 @@
  * simulated and returns "(simulado) Hecho: …", so nothing is written and no
  * message is sent. Caveat: the user context is loaded as of NOW, so a turn
  * from another day may get dates mixed up ("hoy es lunes, no jueves").
+ *
+ * Menu fit cases (PRO-155): `--fit-cases=scripts/replayMenuFitCases.json
+ * --user=<uuid>` sends, as that user, «hazme el menú de la semana» once per
+ * case, with generate_weekly_menu simulated to return the case's menu and
+ * «Acierto con sus gustos» lines (alto / medio / bajo). Check that the three
+ * replies say different things and the low one invites to add recipes.
  */
 import Anthropic from '@anthropic-ai/sdk'
 import { readFile, writeFile } from 'node:fs/promises'
@@ -34,14 +40,42 @@ const READ_SKILLS = new Set([
 
 const arg = (name: string) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3)
 const turnsPath = arg('turns')
-if (!turnsPath) throw new Error('--turns=<file.json> is required (see the header)')
+if (!turnsPath && !arg('fit-cases')) throw new Error('--turns=<file.json> or --fit-cases=<file.json> is required (see the header)')
 
 const ro = await pool.query('show default_transaction_read_only')
 if (ro.rows[0].default_transaction_read_only !== 'on') throw new Error('The database session is not read-only — refusing to replay.')
 
-const turns = JSON.parse(await readFile(turnsPath, 'utf8')) as Record<string, string>
 const anthropic = new Anthropic()
 const out: unknown[] = []
+
+const fitCasesPath = arg('fit-cases')
+if (fitCasesPath) {
+  const userId = arg('user')
+  if (!userId) throw new Error('--fit-cases needs --user=<uuid> (whose context Mimo loads)')
+  const cases = JSON.parse(await readFile(fitCasesPath, 'utf8')) as Array<{ label: string; user: string; summary: string }>
+  const { instructions, context } = buildSystemParts(await loadUserContext(userId, db), 'whatsapp')
+  for (const c of cases) {
+    const skills: SkillDefinition[] = toolsFor({ mode: 'whatsapp' }).map((s) =>
+      s.name === 'generate_weekly_menu'
+        ? { ...s, handler: async () => ({ data: null, summary: c.summary, uiHint: 'text' as const }) }
+        : READ_SKILLS.has(s.name)
+          ? s
+          : { ...s, handler: async (input: unknown) => ({ data: null, summary: `(simulado) Hecho: ${s.name} ${JSON.stringify(input).slice(0, 200)}`, uiHint: 'text' as const }) },
+    )
+    const r = await runToolLoop({
+      client: anthropic as never,
+      system: [{ type: 'text', text: instructions, cache_control: { type: 'ephemeral' } }, { type: 'text', text: context }],
+      tools: getToolDefinitions({ mode: 'whatsapp' }),
+      skills,
+      messages: [{ role: 'user' as const, content: c.user }],
+      ctx: { userId, db, channel: 'whatsapp' },
+    })
+    out.push({ label: c.label, user: c.user, reply: r.message, trace: r.toolTrace })
+    console.log(`\n### ${c.label}\n  MIMO: ${r.message.replace(/\n+/g, ' ⏎ ')}`)
+  }
+}
+
+const turns = turnsPath ? (JSON.parse(await readFile(turnsPath, 'utf8')) as Record<string, string>) : {}
 
 for (const [label, ts] of Object.entries(turns)) {
   const { rows: [msg] } = await pool.query(

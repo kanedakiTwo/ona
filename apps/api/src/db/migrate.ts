@@ -4,6 +4,7 @@ import { applyCatalogSourceLinks } from '../services/catalogSourceLinks.js'
 import { applyCatalogRecipeFixes } from '../services/catalogRecipeFixes.js'
 import { applyProfileFromMemories } from '../services/profileFromMemories.js'
 import { applyCatalogRecipeTimes } from '../services/catalogRecipeTimes.js'
+import { applyCatalogIngredientAisles } from '../services/catalogIngredientAisles.js'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -39,6 +40,13 @@ async function main() {
     await applyCatalogRecipeTimes(db)
   } catch (err) {
     console.error('[catalog-recipe-times] failed:', err)
+  }
+  // Idempotent data fix (PRO-177): eggs and tofu leave «Carnes y pescados»
+  // for «Lácteos y huevos» (only exact names still in `proteinas`).
+  try {
+    await applyCatalogIngredientAisles(db)
+  } catch (err) {
+    console.error('[catalog-ingredient-aisles] failed:', err)
   }
   await pool.end()
 }

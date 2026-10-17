@@ -94,6 +94,7 @@ import { canViewRecipe, isHiddenDraft, PUBLISHED } from '../services/recipeVisib
 import { requestCatalogPhotos } from '../services/catalogImageOnDemand.js'
 import { z } from 'zod'
 import { requireSpendCapacity } from '../middleware/spendCap.js'
+import { requireRecipeId } from '../middleware/recipeId.js'
 
 const router = Router()
 
@@ -565,7 +566,7 @@ router.get('/recipes/with-what-i-have', authMiddleware, async (req: AuthRequest,
 // Anonymous callers can only fetch system recipes (`authorId IS NULL`);
 // requesting another user's recipe returns 404 (same shape as "not found"
 // so we don't leak the existence of private recipes).
-router.get('/recipes/:id', optionalAuthMiddleware, async (req: AuthRequest, res) => {
+router.get('/recipes/:id', requireRecipeId(), optionalAuthMiddleware, async (req: AuthRequest, res) => {
   try {
     const id = String(req.params.id)
     const row = await fetchRecipeById(id)
@@ -840,6 +841,7 @@ router.post(
 // PUT /recipes/:id — update (auth required, author only, lint-validated).
 router.put(
   '/recipes/:id',
+  requireRecipeId(),
   authMiddleware,
   validate(updateRecipeSchema),
   async (req: AuthRequest, res) => {
@@ -935,7 +937,7 @@ router.put(
 // are remapped from the source rows to the freshly-minted ones so step → ingredient
 // links stay valid in the copy. The user can edit the copy freely without
 // affecting the source.
-router.post('/recipes/:id/copy', authMiddleware, async (req: AuthRequest, res) => {
+router.post('/recipes/:id/copy', requireRecipeId(), authMiddleware, async (req: AuthRequest, res) => {
   try {
     const sourceId = String(req.params.id)
 
@@ -1069,7 +1071,7 @@ router.post('/recipes/:id/copy', authMiddleware, async (req: AuthRequest, res) =
 
 // DELETE /recipes/:id — delete (auth required, author only).
 // Cascades to recipe_ingredients and recipe_steps via FK ON DELETE CASCADE.
-router.delete('/recipes/:id', authMiddleware, async (req: AuthRequest, res) => {
+router.delete('/recipes/:id', requireRecipeId(), authMiddleware, async (req: AuthRequest, res) => {
   try {
     const recipeId = String(req.params.id)
 
@@ -1123,6 +1125,7 @@ async function refundImageQuota(userId: string, monthKey: string): Promise<void>
 // failed attempt doesn't burn one of the user's 20 monthly slots.
 router.post(
   '/recipes/:id/regenerate-image',
+  requireRecipeId(),
   authMiddleware,
   requireSpendCapacity(),
   async (req: AuthRequest, res) => {
@@ -1260,6 +1263,7 @@ function receiveOwnImage(req: AuthRequest, res: Response, next: NextFunction) {
 
 router.post(
   '/recipes/:id/upload-image',
+  requireRecipeId(),
   authMiddleware,
   receiveOwnImage,
   async (req: AuthRequest, res) => {
@@ -1366,6 +1370,7 @@ router.get('/user/:id/recipes', authMiddleware, async (req: AuthRequest, res) =>
 router.post(
   '/user/:id/recipes/:recipeId/favorite',
   authMiddleware,
+  requireRecipeId('recipeId'),
   async (req: AuthRequest, res) => {
     try {
       if (req.userId !== String(req.params.id)) {

@@ -103,6 +103,8 @@ export async function insertOutbound(row: {
   status: 'sent' | 'failed'
   wamid?: string | null
   errorMessage?: string | null
+  /** PRO-156: `{ guided: 'guide' | 'fallback', guidedReason? }` for messages written from a guide. */
+  meta?: { guided?: 'guide' | 'fallback'; guidedReason?: string } | null
 }): Promise<void> {
   // The message is already out at this point; a duplicate wamid must not
   // turn a delivered message into a "failed" one.
@@ -117,6 +119,7 @@ export async function insertOutbound(row: {
       body: row.body,
       status: row.status,
       errorMessage: row.errorMessage ?? null,
+      ...(row.meta ? { meta: row.meta } : {}),
     })
     .onConflictDoNothing({ target: whatsappMessages.wamid })
 }
@@ -253,6 +256,17 @@ export async function setPrefs(userId: string, patch: Record<string, boolean>): 
 }
 
 /** Outbound kinds sent to `phone` since `since`, with their latest time. */
+/** Bodies of the last `limit` messages of `kind` sent to `phone`, newest first (PRO-156: so the writer doesn't repeat itself). */
+export async function recentOutboundBodies(phone: string, kind: string, limit = 5): Promise<string[]> {
+  const rows = await db
+    .select({ body: whatsappMessages.body })
+    .from(whatsappMessages)
+    .where(and(eq(whatsappMessages.phone, phone), eq(whatsappMessages.direction, 'out'), eq(whatsappMessages.kind, kind), eq(whatsappMessages.status, 'sent')))
+    .orderBy(desc(whatsappMessages.createdAt))
+    .limit(limit)
+  return rows.map((r) => r.body ?? '').filter(Boolean)
+}
+
 export async function recentOutboundKinds(phone: string, since: Date): Promise<Map<string, Date>> {
   const rows = await db
     .select({ kind: whatsappMessages.kind, createdAt: whatsappMessages.createdAt })

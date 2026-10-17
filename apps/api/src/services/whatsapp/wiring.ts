@@ -14,6 +14,7 @@ import { importRecipeFromImage, setRecipeSourceUrl } from '../recipeImport.js'
 import { isUserAllowed } from './config.js'
 import * as store from './store.js'
 import * as client from './client.js'
+import { writeGuided } from './outbound.js'
 import type { InboundDeps } from './inbound.js'
 import type { InboundMessage } from './webhookParser.js'
 
@@ -113,6 +114,8 @@ export function buildInboundDeps(): InboundDeps {
     transcribe: isSttConfigured() ? transcribeAudio : undefined,
     importRecipeFromImage: env.ANTHROPIC_API_KEY ? importRecipeFromImage : undefined,
     setRecipeSource: setRecipeSourceUrl,
+    // PRO-156: the end of the sign-up written from its guide (fixed text as the safety net).
+    guided: (userId, phone, spec, fallback) => writeGuided({ userId, phone }, spec, fallback),
   }
 }
 

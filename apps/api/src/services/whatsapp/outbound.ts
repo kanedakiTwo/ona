@@ -1,8 +1,8 @@
 import { and, desc, eq, gte, inArray } from 'drizzle-orm'
-import type { DayMenu } from '@ona/shared'
+import { isHealthMemoryKey, type DayMenu } from '@ona/shared'
 import { env } from '../../config/env.js'
 import { db } from '../../db/connection.js'
-import { cookLogs, menus, recipes, userMemories } from '../../db/schema.js'
+import { cookLogs, menus, recipes, userMemories, users } from '../../db/schema.js'
 import { appApiFor } from '../assistant/appApi.js'
 import { resolveScope, scopeWhere } from '../scopeResolver.js'
 import { isUserAllowed, isWhatsAppConfigured } from './config.js'
@@ -21,6 +21,7 @@ import {
   planProactive,
   templateParamFrom,
   templateFor,
+  withText,
   parseTemplateMap,
   PROACTIVE_KINDS,
   type ChannelOutcome,
@@ -30,6 +31,9 @@ import {
 } from './proactive.js'
 import { recordCost } from '../costLedger.js'
 import { recordServiceMessageCost } from './serviceCost.js'
+import { budgetMicros, getMonthlySpendMicros } from '../advisorBudget.js'
+import { spendCapStatus } from '../spendCap.js'
+import { composeGuided, guidedMeta, type GuideSpec, type GuidedContext, type GuidedResult } from './guided.js'
 
 /** Per-kind templates (WHATSAPP_TEMPLATES), parsed once. */
 const TEMPLATES = parseTemplateMap(env.WHATSAPP_TEMPLATES)
@@ -46,7 +50,9 @@ export async function sendProactive(
   messages: OutboundMessage[],
   kind: string,
   now: Date = new Date(),
+  opts: { meta?: ReturnType<typeof guidedMeta> } = {},
 ): Promise<ChannelOutcome> {
+  const meta = opts.meta
   const template = templateFor(kind, TEMPLATES, env.WHATSAPP_TEMPLATE_NAME)
   const delivery = chooseDelivery(link.lastInboundAt, now, Boolean(template))
   if (delivery === 'skip') return { status: 'skipped', error: 'outside-24h-window' }
@@ -55,14 +61,14 @@ export async function sendProactive(
       for (const m of messages) {
         const wamid = await client.sendMessage(link.phone, m)
         void recordServiceMessageCost(link.userId)
-        await store.insertOutbound({ phone: link.phone, userId: link.userId, kind, body: m.text, status: 'sent', wamid })
+        await store.insertOutbound({ phone: link.phone, userId: link.userId, kind, body: m.text, status: 'sent', wamid, meta })
       }
     } else {
       const text = templateParamFrom(messages)
       const wamid = await client.sendTemplate(link.phone, template!, env.WHATSAPP_TEMPLATE_LANG, text)
       // Every template is billed, inside or outside the 24 h window.
       recordCost({ feature: 'whatsapp_template', provider: 'meta_whatsapp', model: 'utility_template', units: { messages: 1 }, userId: link.userId })
-      await store.insertOutbound({ phone: link.phone, userId: link.userId, kind, body: text, status: 'sent', wamid })
+      await store.insertOutbound({ phone: link.phone, userId: link.userId, kind, body: text, status: 'sent', wamid, meta })
     }
     return { status: 'ok' }
   } catch (err: any) {
@@ -75,6 +81,7 @@ export async function sendProactive(
       body: templateParamFrom(messages),
       status: 'failed',
       errorMessage: error,
+      meta,
     })
     return { status: 'error', error }
   }
@@ -162,6 +169,50 @@ async function pendingShopping(userId: string): Promise<string[]> {
   return (list?.items ?? []).filter((i) => !i.checked && !i.inStock).map((i) => i.name)
 }
 
+// ─── Guided messages (PRO-156) ───────────────────────────────────
+
+/**
+ * Has this user used up the month's AI allowance? The chat's € budget or the
+ * monthly cap on all paid AI work (admins exempt from the cap), as a WhatsApp
+ * turn checks it. Then the fixed text goes out instead of a guided one.
+ */
+export async function guidedOverBudget(userId: string): Promise<boolean> {
+  if ((await getMonthlySpendMicros(userId, db)) >= budgetMicros()) return true
+  const [row] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1)
+  if (row?.role === 'admin') return false
+  return (await spendCapStatus(userId)).exceeded
+}
+
+const NOT_CONVERSATION = new Set(['system', 'link', 'ack', 'review', 'optout', 'optin', 'optin_prompt', 'image_failed'])
+const GUIDE_MEMORY_SKIP = new Set(['meal_times', 'time_available'])
+
+/** What the writer knows of the house: memory (never health keys), the last 12 h of chat, earlier messages of the kind. */
+export async function guidedContextFor(link: Pick<LinkWithUser, 'userId' | 'phone'>, kind: string, now: Date = new Date()): Promise<GuidedContext> {
+  const [memRows, history, previous] = await Promise.all([
+    db.select({ key: userMemories.key, value: userMemories.value }).from(userMemories).where(eq(userMemories.userId, link.userId)),
+    store.loadHistoryRows(link.phone, new Date(now.getTime() - 12 * 60 * 60 * 1000), link.userId),
+    store.recentOutboundBodies(link.phone, kind, 5),
+  ])
+  const memory = memRows
+    .filter((r) => !isHealthMemoryKey(r.key) && !GUIDE_MEMORY_SKIP.has(r.key) && !r.key.startsWith('physical.'))
+    .map((r) => `${r.key}: ${typeof r.value === 'string' ? r.value : JSON.stringify(r.value)}`)
+    .slice(0, 20)
+  const recent = history
+    .filter((r) => r.body && !NOT_CONVERSATION.has(r.kind ?? '') && (r.direction === 'in' ? r.status === 'processed' : r.status === 'sent'))
+    .slice(-8)
+    .map((r) => ({ who: r.direction === 'in' ? ('usuario' as const) : ('mimo' as const), text: r.body! }))
+  return { memory, recent, previous }
+}
+
+/** Write one message from its guide for this link, or the fixed text. Never throws. */
+export function writeGuided(link: Pick<LinkWithUser, 'userId' | 'phone'>, spec: GuideSpec, fallback: string, now: Date = new Date()): Promise<GuidedResult> {
+  return composeGuided(spec, fallback, {
+    userId: link.userId,
+    overBudget: () => guidedOverBudget(link.userId),
+    context: () => guidedContextFor(link, spec.kind, now),
+  })
+}
+
 /** Cooldown per kind: the Sunday nudge every 3 days, everything else daily. */
 const COOLDOWN_MS: Record<ProactiveKind, number> = {
   daily_brief: DAILY_BRIEF_COOLDOWN_MS,
@@ -210,7 +261,15 @@ export async function runProactiveTick(now: Date = new Date()): Promise<void> {
           Boolean(await latestMenuForWeek(link.userId, mondayOf(parts.isoDate, parts.weekday, 1))),
         webUrl: env.WEB_PUBLIC_URL,
       })
-      for (const p of planned) await sendProactive(link, p.messages, p.kind, now)
+      for (const p of planned) {
+        const fixed = p.messages.length === 1 && (p.messages[0].type === 'text' || p.messages[0].type === 'buttons') ? p.messages[0].text : null
+        if (!p.guide || fixed === null) {
+          await sendProactive(link, p.messages, p.kind, now)
+          continue
+        }
+        const written = await writeGuided(link, p.guide, fixed, now)
+        await sendProactive(link, withText(p.messages, written.text), p.kind, now, { meta: guidedMeta(written) })
+      }
     } catch (err: any) {
       console.error(`[whatsapp] proactive tick failed for ${link.userId}:`, err?.message ?? err)
     }

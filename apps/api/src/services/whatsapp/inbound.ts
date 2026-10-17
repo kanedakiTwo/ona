@@ -10,6 +10,7 @@ import { extractOptions, toWhatsAppMarkup } from './format.js'
 import { isShoppingItemList, shoppingListDigest } from '../shoppingText.js'
 import type { WeekView } from '../menuText.js'
 import { AI_DISCLOSURE_FIRST_PERSON } from '@ona/shared'
+import { guidedMeta, type GuideSpec, type GuidedResult } from './guided.js'
 import { controlCommand, OPT_IN_NO, OPT_IN_YES } from './commands.js'
 import { trackEvent } from '../usageEvents.js'
 import { recordServiceMessageCost } from './serviceCost.js'
@@ -62,6 +63,7 @@ export interface InboundDeps {
       status: 'sent' | 'failed'
       wamid?: string | null
       errorMessage?: string | null
+      meta?: { guided?: 'guide' | 'fallback'; guidedReason?: string } | null
     }) => Promise<void>
     loadHistoryRows: (phone: string, since: Date, userId: string) => Promise<HistoryRow[]>
     hasRecentOutbound: (phone: string, kinds: string[], since: Date) => Promise<boolean>
@@ -114,6 +116,11 @@ export interface InboundDeps {
   ) => Promise<{ recipeId: string; name: string; warnings: string[]; looksLikeScreenshot?: boolean }>
   /** The link to the original of a screenshot's recipe (PRO-66). False = not the user's recipe. */
   setRecipeSource?: (userId: string, recipeId: string, url: string) => Promise<boolean>
+  /**
+   * PRO-156: write a message from its guide (Claude Haiku), or return the
+   * fixed text. Absent → the fixed text (COPY).
+   */
+  guided?: (userId: string, phone: string, spec: GuideSpec, fallback: string) => Promise<GuidedResult>
 }
 
 /** Skills after which the reply carries the week's menu (not just a link to it). */
@@ -339,6 +346,19 @@ export function withoutMenuReadyLines(message: string): string {
   return out.join('\n').replace(/\n{3,}/g, '\n\n').trim()
 }
 
+/** PRO-156: what the end of the sign-up must carry when it's written from its guide. */
+export function firstStepsGuide(url: string): GuideSpec {
+  return {
+    kind: 'first_steps',
+    facts: [
+      'Acaba de terminar el alta por WhatsApp y de contestar si quiere avisos.',
+      'Ejemplos: mandar una foto o un enlace de una receta (la proceso y la guardo en sus recetas); «¿Qué cenamos hoy?»; «Hazme la lista de la compra».',
+      `En la web tiene su menú de la semana y un recorrido rápido por todo lo demás: ${url}`,
+    ],
+    required: ['¿Qué cenamos hoy?', 'Hazme la lista de la compra', url],
+  }
+}
+
 const humanContact = (email?: string) =>
   email ? `escribe a ${email}` : 'escribe a la persona de Mimoia que te invitó a la beta'
 
@@ -474,13 +494,13 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     return
   }
 
-  const send = async (userId: string | null, kind: string, messages: OutboundMessage[]) => {
+  const send = async (userId: string | null, kind: string, messages: OutboundMessage[], meta?: ReturnType<typeof guidedMeta>) => {
     for (const m of messages) {
       const body = outboundBody(m)
       try {
         const wamid = await client.sendMessage(msg.from, m)
         void recordServiceMessageCost(userId)
-        await store.insertOutbound({ phone: msg.from, userId, kind, body, status: 'sent', wamid })
+        await store.insertOutbound({ phone: msg.from, userId, kind, body, status: 'sent', wamid, ...(meta ? { meta } : {}) })
       } catch (err: any) {
         console.error('[whatsapp] send failed:', err?.message ?? err)
         const fallback = m.type === 'image' ? m.fallback : []
@@ -520,8 +540,14 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     const sent = await store.recentOutboundKinds(msg.from, new Date(0))
     return sent.has('onboarding') && sent.has('optin_prompt') && !sent.has('first_steps')
   }
-  const sendFirstSteps = (userId: string) =>
-    sendText(userId, 'first_steps', COPY.firstSteps(`${deps.webUrl.replace(/\/$/, '')}/menu`))
+  const sendFirstSteps = async (userId: string) => {
+    const url = `${deps.webUrl.replace(/\/$/, '')}/menu`
+    const fixed = COPY.firstSteps(url)
+    if (!deps.guided) return sendText(userId, 'first_steps', fixed)
+    // PRO-156: written from its guide; the fixed text is the safety net.
+    const written = await deps.guided(userId, msg.from, firstStepsGuide(url), fixed)
+    return send(userId, 'first_steps', renderPlainText(written.text), guidedMeta(written))
+  }
 
   await client.markReadWithTyping(msg.wamid)
 

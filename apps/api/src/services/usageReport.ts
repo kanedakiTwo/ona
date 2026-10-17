@@ -11,6 +11,7 @@ import { db as defaultDb } from '../db/connection.js'
 import { addDays, madridMidnightUtc, madridParts } from './madridTime.js'
 import { isoWeekLabel, weekOfDay } from './businessMetrics.js'
 import { buildReferralReport, loadInvitedSignups } from './referralRewards.js'
+import { loadProactiveReport } from './proactiveReport.js'
 import { PASSIVE_USAGE_EVENTS, USAGE_CHANNELS, USAGE_EVENTS, type UsageEventName } from './usageEvents.js'
 
 type Db = typeof defaultDb
@@ -270,6 +271,7 @@ export const USAGE_DEFINITIONS = {
   households: 'Right now, not windowed. Households with at least one counted member; withWhatsapp = a member has WhatsApp connected; withWhatsappNotify = one with proactive messages on; withPush = a member has a push subscription; withNotices = either; withTwoPlusMembers = 2 or more counted members.',
   channelSplit: 'Active households per ISO week by channel used: webOnly (app, web chat or voice), whatsappOnly, both; unknownOnly = active only through events without a channel.',
   onboardingWhatsappChosen: 'Event onboarding_whatsapp_chosen: «Por WhatsApp» tapped on the first onboarding screen (POST /whatsapp/link-code with from=onboarding); see householdsByEvent for distinct households.',
+  proactive: 'WhatsApp messages Mimo sends by itself (PRO-156), by ISO week of the window: sent = delivered daily_brief, cooking_reminder, dinner_checkin, shopping_reminder, weekly_nudge and alert; replied = followed by any message from the same number within replyWindowHours; replyRate = replied / sent; guided / fallback = written from the guide vs. the fixed text (rows before PRO-156 count in neither); optouts = BAJA from a linked account. byKind splits the same counts. Counts only.',
   referrals: 'By ISO week (inviteShared: of the tap; the rest: of the invited sign-up), all time, not the window. signupsWithInviter = accounts that signed up with someone else’s «Invitar a otro hogar» code (not into the inviter’s own household); week3Resolved = of those, households with a menu generated and the shopping list opened on days 14–20 after signing up; inviters = distinct codes. Counts only.',
 }
 
@@ -326,17 +328,19 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
       WHERE e.name = 'invite_shared' AND ${counted}
       GROUP BY 1
   `)
-  const [counts, householdDays, since, householdState, invited, inviteShared] = await Promise.all([
+  const days = dayRange(fromDay, today)
+  const [counts, householdDays, since, householdState, invited, inviteShared, proactive] = await Promise.all([
     countsQ,
     householdDaysQ,
     sinceQ,
     householdStateQ,
     invitedQ,
     inviteSharedQ,
+    loadProactiveReport(days, from, inc, db),
   ])
 
   const input: UsageInput = {
-    days: dayRange(fromDay, today),
+    days,
     today,
     counts: (counts.rows as any[]).map((r) => ({ day: r.day, name: r.name, channel: r.channel ?? null, count: Number(r.count) })),
     // Passive signals (opening the installed app) are counted in `events` but never make a household active.
@@ -367,6 +371,7 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
         pushEnabled: Number(r.push_enabled),
       })),
     ),
+    proactive,
     referrals: buildReferralReport(invited, (inviteShared.rows as any[]).map((r) => ({ day: r.day, count: Number(r.count) }))),
     definitions: USAGE_DEFINITIONS,
     dataSince: sinceRaw ? new Date(sinceRaw).toISOString() : null,

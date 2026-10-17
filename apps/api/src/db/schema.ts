@@ -921,9 +921,10 @@ export const whatsappMessages = pgTable('whatsapp_messages', {
   errorMessage: text('error_message'),
   /**
    * Inbound turns: what the assistant did — `{ tools, corrections, ms }` —
-   * so the daily conversation review has objective signals.
+   * so the daily conversation review has objective signals. Outbound
+   * messages written from a guide (PRO-156): `{ guided, guidedReason }`.
    */
-  meta: jsonb('meta').$type<{ tools?: string[]; corrections?: string[]; ms?: number }>(),
+  meta: jsonb('meta').$type<{ tools?: string[]; corrections?: string[]; ms?: number; guided?: 'guide' | 'fallback'; guidedReason?: string }>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_wa_messages_phone_created').on(t.phone, t.createdAt),

@@ -39,6 +39,9 @@ describe.skipIf(!reachable || !METRICS_TOKEN)('usage events + conversation flags
   it('records a new household’s first steps and reports them as counts only', async () => {
     const before = await call('GET', '/admin/usage?days=1', undefined, metrics)
     expect(before.status).toBe(200)
+    // PRO-156: reply rate to Mimo's own messages and BAJA, counts only.
+    expect(before.body.proactive).toMatchObject({ replyWindowHours: 6, totals: { sent: expect.any(Number), optouts: expect.any(Number) } })
+    expect(Array.isArray(before.body.proactive.weekly)).toBe(true)
     const count = (r: any, name: string) => Number(r.body.totals.events[name] ?? 0)
 
     const reg = await call('POST', '/register', { username: tag, email: `${tag}@test.local`, password: 'e2epass123', ageConfirmed: true })

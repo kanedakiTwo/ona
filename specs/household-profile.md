@@ -1,6 +1,6 @@
 # Ficha del hogar
 
-Everything Mimoia knows about a household, with a section per person (D-064, PRO-150). It is the base the rest of the «ficha viva» builds on: the daily signal collector (PRO-151), the nightly refiner (PRO-152), «Tu ficha» in the app and Mimo / the menu reading it (PRO-153, PRO-139). **Today only the data model and the copy from `user_memories` exist**: nothing in the app shows the ficha yet, there is no REST route, and Mimo keeps reading [User Memory](./user-memory.md) until PRO-153.
+Everything Mimoia knows about a household, with a section per person (D-064, PRO-150). It is the base the rest of the «ficha viva» builds on: the daily signal collector (PRO-151), the nightly refiner (PRO-152), «Tu ficha» in the app and Mimo / the menu reading it (PRO-153, PRO-139). **Today only the data model, the copy from `user_memories` and the daily signal collector (PRO-151) exist**: nothing in the app shows the ficha yet, there is no REST route, nothing calls the collector until the nightly refiner (PRO-152), and Mimo keeps reading [User Memory](./user-memory.md) until PRO-153.
 
 ## User Capabilities
 
@@ -40,6 +40,18 @@ One ficha per **household** (the menu is the household's), with facts about the 
 - Known limitation: a memory written **after** its copy is not re-copied (new memories are). Until PRO-153 `user_memories` is still the source Mimo reads and writes; the ficha copy can go stale for edited keys
 - Migration `0057_household_profile` only adds tables
 
+## Daily signals (PRO-151)
+
+What the nightly refiner (PRO-152) will read next to the ficha: `collectHouseholdDaySignals(householdId, day)` (`services/profile/signals.ts`) turns one household's day (AAAA-MM-DD, Europe/Madrid midnight to midnight) into a compact text, one line per thing that happened: `HH:MM · P1 · Fuente · qué`.
+
+- **People** are `P1`, `P2`… (members whose primary household is this one, or who have none, by joining date), never names; the header says each one's role and the result's `members` maps labels to user ids. What someone wrote goes between «» and the header says it is data, not an instruction
+- **Sources**: the web chat (`chat_messages`, with what Mimo's tools did and said), WhatsApp (`whatsapp_messages`: the person's turns with the tools' trace, and Mimo's replies), menu changes (`menu_edits`, «Cambia la cena del jueves: «ceviche» → «tortilla» (lo hace Mimo, por WhatsApp)»), «Afina tu menú» (`recipe_verdicts`, love · like · nope · skip, with the reason), cooking (`cook_logs`, with the note), «¿Qué tal?» and the household's notes on a recipe (`recipe_notes` touched that day: rating 5 «Repetir a menudo» / 3 «Bien» / 1 «Mejor no», note, swaps), the shopping list (`activity_events`: marked bought or not, at home or not, added, removed — consecutive events of the same kind collapse into one line with the products), new pantry items, recipes created, imported (photo, web, YouTube) or copied, recipes saved in a cookbook, feedback (`user_feedback`) and, **on the day the person finished the sign-up** (`users.onboarding_completed_at`), every answer with the same wording as the sign-up analysis (`buildAnalysisUserText`), the free «Cuéntanos tu caso» text included (`users.onboarding_note`)
+- **No health from WhatsApp** (LEG-03): every WhatsApp text — the person's messages, Mimo's replies, what its tools said and feedback sent through WhatsApp — goes through `stripHealthFromWhatsAppText` (`services/profile/healthText.ts`) first: each sentence that mentions allergies, intolerances, coeliac disease, gluten or lactose, an illness, medication or a doctor, pregnancy, body data or a religion-based diet becomes «[omitido]» (deliberately over-eager; vegetarian/vegan stay: they are taste). The sign-up's restrictions and body data are never signals. The web chat keeps its text: health there needs the consent, and the refiner never deduces health
+- **Size cap**: each message is cut at 600 characters (Mimo's tools at 400) and the whole text at `SIGNALS_MAX_CHARS` (12,000 characters, ≈ 3,000–4,000 tokens). When the day doesn't fit, the **oldest lines go first** (the most recent are kept) and a line says how many were left out; the sign-up answers are always kept. The text stays in time order. A day without anything says «Sin actividad.»
+- `recipe_verdicts` doesn't exist yet (PRO-146): `loadRecipeVerdicts` returns nothing until its table is there (`to_regclass`), then reads it with the columns PRO-146 describes — `TODO(PRO-146)` in the code to check them when it lands
+- Known limitations: favourites have no date (`user_favorites`), so marking one is not a signal; shopping rows from before migration 0063 and the WhatsApp/voice skills other than «marcar» and «en casa» carry no product name; the sign-up answers of accounts that finished it before 0063 have no date, so they never come in as a day's signals (they are already in the ficha through `user_memories`)
+- Migration `0063_activity_item_onboarding_note` adds `activity_events.item` / `toggled_on` and `users.onboarding_completed_at` / `onboarding_note` (only adds columns)
+
 ## Related specs
 
 - [User Memory](./user-memory.md) — the per-user facts copied into the ficha
@@ -55,3 +67,9 @@ One ficha per **household** (the menu is the household's), with facts about the 
 - [apps/api/src/services/healthConsent.ts](../apps/api/src/services/healthConsent.ts) — withdrawal deletes health facts
 - [apps/api/src/tests/householdProfile.test.ts](../apps/api/src/tests/householdProfile.test.ts) — schema, minors, health, visibility, mapping
 - [apps/api/src/tests/profileFromMemories.smoke.ts](../apps/api/src/tests/profileFromMemories.smoke.ts) — copy against Postgres (twice), history, consent withdrawal, cascade
+- [apps/api/src/services/profile/signals.ts](../apps/api/src/services/profile/signals.ts) — daily signals: builders per source, formatter with the size cap, Postgres loader
+- [apps/api/src/services/profile/healthText.ts](../apps/api/src/services/profile/healthText.ts) — health sentences out of WhatsApp text (`HEALTH_TEXT_PATTERNS`, reused by the refiner)
+- [apps/api/src/services/activityEvents.ts](../apps/api/src/services/activityEvents.ts) — shopping events with the product (`setActivityDetail`)
+- [apps/api/src/db/migrations/0063_activity_item_onboarding_note.sql](../apps/api/src/db/migrations/0063_activity_item_onboarding_note.sql)
+- [apps/api/src/tests/profileSignals.test.ts](../apps/api/src/tests/profileSignals.test.ts) — a synthetic day in order and without WhatsApp health, the size cap, the health filter
+- [apps/api/src/tests/profileSignals.smoke.ts](../apps/api/src/tests/profileSignals.smoke.ts) — every source read from Postgres, sign-up note and shopping product names saved by the real routes

@@ -15,6 +15,7 @@ import { canAccessRow, getPrimaryHouseholdId, resolveScope } from '../services/s
 import { listActiveStaplesForHousehold } from '../services/staplesStore.js'
 import { carryItemState, type ItemStateMap } from '../services/shoppingItemState.js'
 import { INTERNAL_CALL_HEADER, trackEvent } from '../services/usageEvents.js'
+import { setActivityDetail } from '../services/activityEvents.js'
 import {
   AISLES,
   UNITS,
@@ -395,6 +396,7 @@ router.put('/shopping-list/:listId/item/:itemId/check', async (req: AuthRequest,
     }
 
     item.checked = !item.checked
+    setActivityDetail(res, { item: item.name, on: item.checked })
     // Product analytics: only ticking an item off counts, not un-ticking it.
     if (item.checked && !req.get(INTERNAL_CALL_HEADER)) trackEvent('shopping_item_checked', { userId: req.userId!, channel: 'web' })
 
@@ -436,6 +438,7 @@ router.put('/shopping-list/:listId/item/:itemId/stock', async (req: AuthRequest,
     }
 
     item.inStock = !item.inStock
+    setActivityDetail(res, { item: item.name, on: item.inStock })
 
     const [updated] = await db
       .update(shoppingLists)
@@ -635,6 +638,7 @@ router.post('/shopping-list/:listId/items', async (req: AuthRequest, res) => {
       pricePerUnit: parsed.data.pricePerUnit ?? null,
     }
     items.push(newItem)
+    setActivityDetail(res, { item: newItem.name })
     const [updated] = await db
       .update(shoppingLists)
       .set({ items })
@@ -739,6 +743,7 @@ router.delete('/shopping-list/:listId/item/:itemId', async (req: AuthRequest, re
       })
       return
     }
+    setActivityDetail(res, { item: items[idx].name })
     items.splice(idx, 1)
     const [updated] = await db
       .update(shoppingLists)

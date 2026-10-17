@@ -184,6 +184,11 @@ export default function RecipeDetailPage() {
       if (publicChrome && error instanceof ApiError && error.status === 404) {
         return <PrivateRecipeNotice />
       }
+      // Signed in, a 404 is a recipe that was deleted or a broken link
+      // (PRO-181: a malformed id is a 404 too, not a server error).
+      if (error instanceof ApiError && error.status === 404) {
+        return <RecipeGoneNotice />
+      }
       return (
         <div className={`min-h-screen bg-[#FAF6EE] px-5 text-center ${publicChrome ? "pt-32" : "pt-12"}`}>
           <p className="font-display text-2xl text-[#1A1612]">Receta no encontrada.</p>
@@ -869,6 +874,33 @@ function PrivateRecipeNotice() {
           className="inline-flex min-h-11 items-center rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-6 text-[15px] font-semibold text-[#1A1612] transition-colors hover:border-[#1A1612]"
         >
           Ver el catálogo
+        </Link>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Signed in, a 404 from `GET /recipes/:id`: the recipe was deleted, isn't
+ * shared with this household, or the link is broken (PRO-181). One way out:
+ * the menu.
+ */
+function RecipeGoneNotice() {
+  return (
+    <div className="min-h-[70vh] bg-[#FAF6EE] px-6 pb-24 pt-16 text-center" data-testid="recipe-gone">
+      <div className="text-eyebrow text-[#7A7066]">Receta no encontrada</div>
+      <h1 className="mx-auto mt-5 max-w-md font-display text-[30px] leading-tight text-[#1A1612]">
+        Esta receta ya no está.
+      </h1>
+      <p className="mx-auto mt-4 max-w-md text-[15px] leading-relaxed text-[#4A4239]">
+        Puede que se haya borrado o que el enlace esté incompleto.
+      </p>
+      <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+        <Link
+          href="/menu"
+          className="inline-flex min-h-11 items-center rounded-full bg-[#1A1612] px-6 text-[15px] font-semibold text-[#FAF6EE] transition-colors hover:bg-[#2D6A4F]"
+        >
+          Ir al menú
         </Link>
       </div>
     </div>

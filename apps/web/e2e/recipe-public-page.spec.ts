@@ -128,3 +128,16 @@ test('signed in: /recipes/<id> keeps the app shell', async ({ page, request }) =
   await expect(page.getByTestId('recipe-waitlist-cta')).toHaveCount(0)
   await expect(page.getByRole('button', { name: /añadir al menú/i })).toBeVisible()
 })
+
+test('signed in: a broken recipe link says the recipe is gone, with a way to the menu (PRO-181)', async ({ page }) => {
+  test.setTimeout(60_000)
+  await registerFreshUser(page)
+  if (page.url().includes('/onboarding')) await completeOnboarding(page)
+  // A malformed id (cut link) and a well-formed one that doesn't exist.
+  for (const id of ['no-es-un-id', '00000000-0000-4000-8000-000000000000']) {
+    await page.goto(`/recipes/${id}`)
+    const gone = page.getByTestId('recipe-gone')
+    await expect(gone.getByRole('heading', { name: /esta receta ya no está/i })).toBeVisible({ timeout: 20_000 })
+    await expect(gone.getByRole('link', { name: /ir al menú/i })).toHaveAttribute('href', '/menu')
+  }
+})

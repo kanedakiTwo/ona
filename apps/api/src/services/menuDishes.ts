@@ -1,4 +1,4 @@
-import type { Dish, MealDishCounts, Course, Meal } from '@ona/shared'
+import type { Dish, MealDishCounts, Course, Meal, MealSlot, DayMenu } from '@ona/shared'
 
 export function addDish(dishes: Dish[], next: Dish): Dish[] {
   return [...dishes, next]
@@ -66,4 +66,59 @@ export function coursesFor(count: 1 | 2 | 3): (Course | null)[] {
   if (count === 1) return [null]
   if (count === 2) return ['starter', 'main']
   return ['starter', 'main', 'dessert']
+}
+
+/**
+ * The slot with new dishes, keeping the rest of it — above all `servings`
+ * («Solo hoy: N»). PRO-102: changing a dish with Mimo (`swap_meal`) used to
+ * write `{ dishes }` alone, and the Ruiz family's «Solo hoy: 4» went back to
+ * the household's 5.
+ */
+export function slotWithDishes(slot: MealSlot | null | undefined, dishes: Dish[]): MealSlot {
+  return { ...(slot ?? {}), dishes }
+}
+
+/**
+ * Pure: moves the slot `from` to `to` in a week (or swaps them when `to` has
+ * dishes). Each slot travels whole («Solo hoy» included), and the leftovers
+ * that point at a moved slot (`leftoverOf`) point at its new place, so the
+ * dish still cooks the táper (PRO-102: Laura moved Monday's curry for 2 with
+ * leftovers to Thursday and its batch lost the leftover's servings). Returns
+ * a new array; the input isn't mutated.
+ */
+export function moveSlotInWeek(
+  days: DayMenu[],
+  from: { day: number; meal: string },
+  to: { day: number; meal: string },
+): DayMenu[] {
+  const next: DayMenu[] = days.map((d) => ({ ...(d ?? {}) }))
+  const source = next[from.day]?.[from.meal]
+  const target = next[to.day]?.[to.meal]
+  const swap = !!target && Array.isArray(target.dishes) && target.dishes.length > 0
+  next[to.day] = next[to.day] ?? {}
+  next[to.day][to.meal] = source
+  if (swap) next[from.day][from.meal] = target
+  else delete next[from.day][from.meal]
+
+  const repoint = (ref: { day: number; meal: string }) => {
+    if (ref.day === from.day && ref.meal === from.meal) return to
+    if (swap && ref.day === to.day && ref.meal === to.meal) return from
+    return null
+  }
+  for (const day of next) {
+    for (const meal of Object.keys(day)) {
+      const slot = day[meal]
+      if (!slot || !Array.isArray(slot.dishes)) continue
+      let changed = false
+      const dishes = slot.dishes.map((d) => {
+        if (d.kind !== 'recipe' || d.variant !== 'leftover' || !d.leftoverOf) return d
+        const moved = repoint(d.leftoverOf)
+        if (!moved) return d
+        changed = true
+        return { ...d, leftoverOf: { ...d.leftoverOf, day: moved.day, meal: moved.meal } }
+      })
+      if (changed) day[meal] = { ...slot, dishes }
+    }
+  }
+  return next
 }

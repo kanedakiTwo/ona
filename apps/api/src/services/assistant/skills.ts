@@ -24,6 +24,7 @@ import { getSummary } from '../advisor.js'
 import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../scopeResolver.js'
 import { importRecipeFromUrl, createRecipeFromParts, type RecipeParts } from '../recipeImport.js'
 import { mealLinesForDay } from '../menuText.js'
+import { slotWithDishes } from '../menuDishes.js'
 import { madridWeekStart } from '../madridTime.js'
 import { DAY_PROP, dateLabel, isMenuDayError, menuDayOf, resolveMenuDay, type MenuDay } from './menuDay.js'
 import { appSkills, bestMatch, dishNoteText, searchWords } from './appSkills.js'
@@ -870,7 +871,7 @@ const swapMeal: SkillDefinition = {
         // its ingredients reach the shopping list; the note is the fallback.
         const created = await createDishRecipe(userId, params.recipeName, params.newRecipe)
         if (created) {
-          days[dayIndex][meal] = { dishes: [{ kind: 'recipe', recipeId: created.id, recipeName: created.name }] }
+          days[dayIndex][meal] = slotWithDishes(days[dayIndex][meal], [{ kind: 'recipe', recipeId: created.id, recipeName: created.name }])
           const [updatedNew] = await db.update(menus).set({ days }).where(eq(menus.id, menu.id)).returning()
           if (dishNow(updatedNew, dayIndex, meal) !== created.name) return notSaved(slotLabel)
           return {
@@ -880,7 +881,7 @@ const swapMeal: SkillDefinition = {
           }
         }
         const note = dishNoteText(params.recipeName)
-        days[dayIndex][meal] = { dishes: [{ kind: 'note', text: note }] }
+        days[dayIndex][meal] = slotWithDishes(days[dayIndex][meal], [{ kind: 'note', text: note }])
         const [updatedNote] = await db
           .update(menus)
           .set({ days })
@@ -911,7 +912,7 @@ const swapMeal: SkillDefinition = {
           uiHint: 'text',
         }
       }
-      days[dayIndex][meal] = { dishes: [{ kind: 'recipe', recipeId: chosen.id, recipeName: chosen.name }] }
+      days[dayIndex][meal] = slotWithDishes(days[dayIndex][meal], [{ kind: 'recipe', recipeId: chosen.id, recipeName: chosen.name }])
       const [updatedManual] = await db
         .update(menus)
         .set({ days })
@@ -966,8 +967,8 @@ const swapMeal: SkillDefinition = {
       return { data: null, summary: 'No he encontrado una receta alternativa para ese hueco.', uiHint: 'text' }
     }
 
-    // Update the menu
-    days[dayIndex][meal] = { dishes: [{ kind: 'recipe', recipeId: newRecipe.id, recipeName: newRecipe.name }] }
+    // Update the menu (the slot keeps its «Solo hoy», PRO-102)
+    days[dayIndex][meal] = slotWithDishes(days[dayIndex][meal], [{ kind: 'recipe', recipeId: newRecipe.id, recipeName: newRecipe.name }])
 
     const [updated] = await db
       .update(menus)

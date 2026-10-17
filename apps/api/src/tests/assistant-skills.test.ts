@@ -430,6 +430,37 @@ describe('swap_meal', () => {
     expect(r.summary).toContain('Cambiado')
   })
 
+  // PRO-102 (Familia Ruiz, 2026-10-14): «4 RACIONES · Solo hoy: 4» became
+  // «5 RACIONES · Alitas de pollo al horno» after a swap with Mimo.
+  describe('the slot keeps its «Solo hoy» diners', () => {
+    const menuWithServings = () => ({
+      id: 'm-1',
+      days: Array.from({ length: 7 }, () => ({ lunch: { servings: 4, dishes: [{ kind: 'recipe', recipeId: 'r-old', recipeName: 'Antiguo' }] } as any })),
+    })
+
+    it('when the system picks the new dish', async () => {
+      const menu = menuWithServings()
+      const db = makeDb(
+        [menu],
+        [{ restrictions: [] }],
+        [],
+        [{ id: 'r-1', name: 'Plato', authorId: 'u-1', meals: ['lunch'], seasons: [], tags: [] }],
+        [],
+        [],
+        [{ ...menu, days: [...menu.days] }],
+      )
+      await skill.handler({ dayIndex: 3, meal: 'lunch' }, ctx(db))
+      expect(menu.days[3].lunch).toEqual({ servings: 4, dishes: [{ kind: 'recipe', recipeId: 'r-new', recipeName: 'Receta nueva' }] })
+    })
+
+    it('when the named dish goes in as a note', async () => {
+      const menu = menuWithServings()
+      const db = makeDb([menu], [], [], [{ ...menu }])
+      await skill.handler({ dayIndex: 3, meal: 'lunch', recipeName: 'pizza casera de mi abuela' }, ctx(db))
+      expect(menu.days[3].lunch).toEqual({ servings: 4, dishes: [{ kind: 'note', text: 'Pizza casera de mi abuela' }] })
+    })
+  })
+
   describe('a named dish that is not in the catalogue (2026-10-08)', () => {
     const freshMenu = () => ({
       id: 'm-1',

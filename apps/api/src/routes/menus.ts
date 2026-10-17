@@ -18,7 +18,7 @@ import { updateBalance } from '../services/nutrientBalance.js'
 import { findRecipeForSlot, normaliseEquipment, type RecipeWithIngredients } from '../services/recipeMatcher.js'
 import { findForCourse } from '../services/courseAwareMatcher.js'
 import { loadHouseholdRatingSets, withHouseholdRatings } from '../services/householdRatings.js'
-import { addDish, removeDishAt, patchDish, reorderDish, coursesFor, dishCountFor } from '../services/menuDishes.js'
+import { addDish, removeDishAt, patchDish, reorderDish, coursesFor, dishCountFor, moveSlotInWeek } from '../services/menuDishes.js'
 import { getMemoryForUser } from '../services/userMemoryStore.js'
 import {
   recordMenuEdits,
@@ -855,20 +855,13 @@ router.post('/menu/:menuId/move-slot', async (req: AuthRequest, res) => {
       { day: fromDay, meal: fromMeal, slot: sourceSlot },
       { day: toDay, meal: toMeal, slot: targetSlot },
     )
-    // Apply the move/swap on the in-memory copy then persist once.
-    if (targetSlot && targetSlot.dishes && targetSlot.dishes.length > 0) {
-      // Swap: both slots keep their other metadata (servings overrides, etc).
-      days[toDay][toMeal] = sourceSlot
-      days[fromDay][fromMeal] = targetSlot
-    } else {
-      days[toDay] = days[toDay] ?? {}
-      days[toDay][toMeal] = sourceSlot
-      delete days[fromDay][fromMeal]
-    }
+    // Move (or swap): both slots keep their metadata («Solo hoy») and the
+    // leftovers of a moved slot follow it (PRO-102, `moveSlotInWeek`).
+    const movedDays = moveSlotInWeek(days, { day: fromDay, meal: fromMeal }, { day: toDay, meal: toMeal })
 
     const [updated] = await db
       .update(menus)
-      .set({ days })
+      .set({ days: movedDays })
       .where(eq(menus.id, menuId))
       .returning()
     await recordMenuEdits(req, menu, moved)

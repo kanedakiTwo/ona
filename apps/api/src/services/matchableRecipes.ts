@@ -83,6 +83,9 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
     tags: r.tags ?? [],
     equipment: r.equipment ?? [],
     prepTime: r.prepTime ?? null,
+    cookTime: r.cookTime ?? null,
+    activeTime: r.activeTime ?? null,
+    totalTime: r.totalTime ?? null,
     allergens: r.allergens ?? [],
     // Course classification for multi-dish slot building (starter/main/dessert).
     course: (r.course as Course | null | undefined) ?? null,

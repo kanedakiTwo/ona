@@ -3,6 +3,7 @@ import { unlink } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { env } from '../config/env.js'
 import { db as defaultDb } from '../db/connection.js'
+import { forgetNewsletterSends } from './newsletter.js'
 import {
   adminAuditLog,
   householdMembers,
@@ -31,7 +32,8 @@ import {
  *    here (the audit trail must survive).
  *
  * Also removed: WhatsApp messages from the linked phone (incl. those sent
- * before linking) and image files on the volume for deleted recipes/photos.
+ * before linking), image files on the volume for deleted recipes/photos, and
+ * the newsletter's send traces for the account's email (PRO-132).
  */
 
 export class AdminAccountDeletionError extends Error {
@@ -72,7 +74,7 @@ export async function deleteAccount(
   const removeFile = deps.removeFile ?? ((p: string) => unlink(p))
 
   const [admin] = await db
-    .select({ role: users.role })
+    .select({ role: users.role, email: users.email })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1)
@@ -147,7 +149,10 @@ export async function deleteAccount(
     const [link] = await tx.select({ phone: whatsappLinks.phone }).from(whatsappLinks).where(eq(whatsappLinks.userId, userId)).limit(1)
     if (link) await tx.delete(whatsappMessages).where(eq(whatsappMessages.phone, link.phone))
 
-    // 4. Households nobody is left in, then the user (cascades the rest).
+    // 4. The newsletter's send traces for this email (a hash is still personal data, PRO-132).
+    await forgetNewsletterSends(tx, admin?.email)
+
+    // 5. Households nobody is left in, then the user (cascades the rest).
     if (deadHouseholds.length > 0) await tx.delete(households).where(inArray(households.id, deadHouseholds))
     await tx.delete(users).where(eq(users.id, userId))
 
@@ -158,7 +163,7 @@ export async function deleteAccount(
     }
   })
 
-  // 5. Files, after the commit (a failed unlink must not resurrect the account).
+  // 6. Files, after the commit (a failed unlink must not resurrect the account).
   let imagesRemoved = 0
   for (const p of new Set(filesToRemove)) {
     try {

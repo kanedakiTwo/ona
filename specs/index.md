@@ -248,6 +248,8 @@ Lint validator for recipe data integrity, blocks save on missing ingredients in 
 
 Weekly meal planning, menu generation algorithm using cached `nutritionPerServing`, recipe matcher, slot regeneration, meal locking, calorie targets, BMR, season detection, favorites boost, no-repeats, week navigation, WeekStrip day strip, "D · Luz y foto" layout, featured-meal photo hero, "Empezar a cocinar", meal "···" sheet (Vetar, Tipo, Fijar, Comensales, Quitar), week "···" sheet (Regenerar semana, Compartir, Vaciar semana, Vista semana, Historial), desktop "La semana" columns, drag and drop move-slot, editorial photo-less cover, menu history, day index 0-6 (Monday-Sunday), household-weighted scaling (`adults + 0.5 × kidsCount`), catalogue quality gate / auditoría del catálogo (recipes without steps, too few ingredients, quantities per serving out of range skipped by the generator, PRO-73).
 
+Registro de cambios del menú / menu edits / `menu_edits` (swap, add, remove, ban, skip_day, move, leftover, freezer; quién user/mimo; canal web/whatsapp; `GET /menu/:menuId/edits`; señal de la ficha viva, PRO-149) → `apps/api/src/services/menuEdits.ts`.
+
 **Source**: `apps/api/src/routes/menus.ts`, `apps/api/src/services/menuGenerator.ts`, `apps/api/src/services/recipeMatcher.ts`, `apps/api/src/services/catalogRecipeAudit.ts`, `apps/api/scripts/auditCatalogRecipes.ts`, `apps/web/src/app/menu/`, `apps/web/src/components/menu/`, `apps/web/src/hooks/useMenu.ts`
 
 ---
@@ -315,6 +317,20 @@ Editorial design system, brand Mimoia everywhere users see it (`BRAND_NAME`, ren
 **Source**: `apps/web/src/app/globals.css`, `apps/web/src/app/layout.tsx`, `apps/web/src/components/shared/`, `apps/web/src/components/mimo/`
 
 ---
+
+## [Ficha del hogar](./household-profile.md)
+
+Household profile / ficha viva (D-064, PRO-150): data model of everything Mimoia knows about a household, per person. `profile_facts` (subject household / member / person without account, type, value, origin user|onboarding|ai_realtime|ai_nightly|ai_weekly, confidence 0–1, evidence, valid_until, status active|retired), new fact types (fixed_dish, skipped_meal, dish_frequency, affinity −2..+2, effort, temporary_situation, shopping, batch_cooking, novelty) plus every user_memories key, `household_persons` (alias + age band, never a minor's name, `MINOR_ALIASES`), `household_profiles` (portrait / retrato ≤ 250 words, version, model), `profile_questions` (pending questions), `profile_changes` (history). Health rules (consent, nothing from WhatsApp, never deduced at night), visibility per fact (health only for its owner; adults see the rest; `visibleProfileFacts`). Idempotent boot copy from `user_memories` (`applyProfileFromMemories`). Migration 0057. No UI or REST yet.
+
+**Source**: `packages/shared/src/types/householdProfile.ts`, `apps/api/src/services/profileFromMemories.ts`, `apps/api/src/db/schema.ts`, `apps/api/src/db/migrations/0057_household_profile.sql`
+
+---
+
+## [Catalogue import & «deseos del catálogo»](./catalog-import.md)
+
+Catalogue to 1.000 recipes (PRO-154, D-065): batch import `scripts/catalogImport.ts` (`import | status | sample | review | publish`, `catalog:import`) from page photos, PDF pages (pdftoppm) or Cocina JSON; extraction, duplicates (`findDuplicate`), quantities for 4, steps rewritten in the house's words (never the book's text, 7-word phrase check `copiedPhrases`), labels (meal, season, dish type, protein, technique, cuisine, active/total time, difficulty, allergen doubt), new ingredients auto-created, audit + recipeLint, nutrition, allergens; recipes saved as `draft` (`recipes.status`, `catalog_source` book + page, `import_batch`, migration 0058) hidden from `GET /recipes`, the menu and Mimo (admins open them by link); publishing rule: Miguel's sources publish when the audit passes, Cocina's after Miguel reviews one in ten (`pickReviewSample`, + allergen doubts, `planBatchPublish`); photos on demand on first menu / first view (`catalogImageOnDemand`); «deseos del catálogo» (`catalog_wishes`, `catalog_wish_votes`, households count, sign-up favourites with no similar recipe, `recordCatalogWish`, `GET /admin/catalog-wishes` with metrics token, Admin → Catálogo tab).
+
+**Source**: `apps/api/scripts/catalogImport.ts`, `apps/api/src/services/catalogImport.ts`, `apps/api/src/services/catalogRewriter.ts`, `apps/api/src/services/catalogImportDb.ts`, `apps/api/src/services/catalogWishes.ts`, `apps/api/src/services/catalogImageOnDemand.ts`, `apps/api/src/routes/catalogWishes.ts`, `apps/web/src/app/admin/sections/CatalogWishesSection.tsx`
 
 ---
 

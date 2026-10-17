@@ -3,8 +3,9 @@
 /**
  * «Afina tu menú» first (PRO-146): 10 recipe cards with «Saltar» always
  * visible, right after creating the account and before choosing WhatsApp or
- * the web, so everyone does it. Then the four-question onboarding (the
- * three favourite dishes went away: «Me encanta» replaces them).
+ * the web, so everyone does it. Then the five-question onboarding (the
+ * three favourite dishes went away: «Me encanta» replaces them; the weekday
+ * time question is PRO-138).
  *
  * The questions ("D · Luz y foto", PRO-37): one question per
  * screen with a compact header (eyebrow + Fraunces h1 with a terracotta
@@ -19,7 +20,7 @@ import { api } from "@/lib/api"
 import { useRouter } from "next/navigation"
 import { Check, ChevronLeft, Minus, Plus, X } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { RESTRICTION_PRESETS, firstMenuWeeks } from "@ona/shared"
+import { RESTRICTION_PRESETS, firstMenuWeeks, type WeekdayCookingChoice } from "@ona/shared"
 import { HealthConsentCheckbox } from "@/components/HealthConsentCheckbox"
 import { Accent, OnboardingHeader, OnboardingShell } from "./OnboardingShell"
 import { OnboardingChannelChoice, OnboardingWhatsAppLink } from "./OnboardingWhatsApp"
@@ -38,7 +39,16 @@ interface OnboardingData {
   cookingFreq: string | null
   restrictions: string[]
   priority: string | null
+  weekdayCooking: WeekdayCookingChoice | null
+  cookingNote: string
 }
+
+/** PRO-138: «Entre semana, ¿cómo te gusta cocinar?» — the weekend is «sin prisa». */
+const WEEKDAY_COOKING_OPTIONS: Array<{ value: WeekdayCookingChoice; label: string; desc: string }> = [
+  { value: "rapido", label: "Rápido", desc: "En media hora, a la mesa" },
+  { value: "poco_trabajo", label: "Poco rato de trabajo", desc: "Aunque luego se haga solo" },
+  { value: "sin_prisa", label: "Sin prisa", desc: "Me da igual lo que tarde" },
+]
 
 const FIELD =
   "h-12 w-full rounded-2xl border border-border bg-paper px-4 text-[15px] text-ink placeholder:text-ink-light transition-colors focus:border-ink focus:outline-none disabled:opacity-60"
@@ -139,13 +149,15 @@ export default function OnboardingFlow() {
     cookingFreq: null,
     restrictions: [],
     priority: null,
+    weekdayCooking: null,
+    cookingNote: "",
   })
 
   const [tagInput, setTagInput] = useState("")
   // RGPD art. 9 (PRO-21): restrictions are health data, only with this box.
   const [healthConsent, setHealthConsent] = useState(false)
 
-  const totalSteps = 4
+  const totalSteps = 5
 
   // WhatsApp-first (2026-10-10): when the channel is available, the first
   // screen offers to do the first steps with Mimo in WhatsApp. Already linked
@@ -219,6 +231,8 @@ export default function OnboardingFlow() {
         restrictions: healthConsent ? data.restrictions : [],
         priority: data.priority,
         healthConsent,
+        weekdayCooking: data.weekdayCooking ?? undefined,
+        cookingNote: data.cookingNote.trim() || undefined,
       }
       const result = await api.post<any>(`/user/${user.id}/onboarding`, payload)
 
@@ -253,8 +267,10 @@ export default function OnboardingFlow() {
       case 2:
         return data.cookingFreq !== null
       case 3:
-        return true
+        return data.weekdayCooking !== null
       case 4:
+        return true
+      case 5:
         return data.priority !== null
       default:
         return false
@@ -405,10 +421,44 @@ export default function OnboardingFlow() {
               </section>
             )}
 
-            {/* Step 3: Restrictions */}
+            {/* Step 3: Time to cook on weekdays (PRO-138) */}
             {step === 3 && (
               <section>
                 <OnboardingHeader eyebrow={`Primeros pasos · 3 de ${totalSteps}`}>
+                  Entre semana, ¿cómo te gusta <Accent>cocinar</Accent>?
+                </OnboardingHeader>
+                <Lead>El fin de semana, sin prisa.</Lead>
+                <div className="mt-6 space-y-3">
+                  {WEEKDAY_COOKING_OPTIONS.map((opt) => (
+                    <OptionCard
+                      key={opt.value}
+                      stacked
+                      selected={data.weekdayCooking === opt.value}
+                      onClick={() => setData({ ...data, weekdayCooking: opt.value })}
+                      label={opt.label}
+                      desc={opt.desc}
+                    />
+                  ))}
+                </div>
+                <label htmlFor="onboarding-cooking-note" className="mt-6 block text-[14px] font-semibold text-ink">
+                  ¿Algo más? Cuéntanos tu caso <span className="font-normal text-ink-muted">(opcional)</span>
+                </label>
+                <textarea
+                  id="onboarding-cooking-note"
+                  value={data.cookingNote}
+                  onChange={(e) => setData({ ...data, cookingNote: e.target.value })}
+                  maxLength={500}
+                  rows={3}
+                  placeholder="P. ej. «los lunes ceno tarde», «a mediodía como fuera», «teletrabajo y puedo dejar algo al fuego»"
+                  className="mt-2 w-full rounded-2xl border border-border bg-paper px-4 py-3 text-[15px] leading-snug text-ink placeholder:text-ink-light transition-colors focus:border-ink focus:outline-none"
+                />
+              </section>
+            )}
+
+            {/* Step 4: Restrictions */}
+            {step === 4 && (
+              <section>
+                <OnboardingHeader eyebrow={`Primeros pasos · 4 de ${totalSteps}`}>
                   ¿Hay algo que <Accent>no comas</Accent>?
                 </OnboardingHeader>
                 <Lead>Alergias, intolerancias o preferencias.</Lead>
@@ -488,10 +538,10 @@ export default function OnboardingFlow() {
               </section>
             )}
 
-            {/* Step 4: Priority */}
-            {step === 4 && (
+            {/* Step 5: Priority */}
+            {step === 5 && (
               <section>
-                <OnboardingHeader eyebrow={`Primeros pasos · 4 de ${totalSteps}`}>
+                <OnboardingHeader eyebrow={`Primeros pasos · 5 de ${totalSteps}`}>
                   ¿Qué quieres que Mimoia <Accent>priorice</Accent>?
                 </OnboardingHeader>
                 <Lead>Elegimos el enfoque de tus menús.</Lead>

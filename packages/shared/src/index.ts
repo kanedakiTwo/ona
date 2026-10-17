@@ -37,6 +37,29 @@ export {
   validateMemoryFactValue,
   buildMemoryDigestText,
 } from './types/userMemory.js'
+export type {
+  CookingWeekday,
+  TimeBudgetMode,
+  DayTimeBudget,
+  WeekdayCookingChoice,
+  RecipeTimes,
+} from './types/cookingTime.js'
+export {
+  COOKING_WEEKDAYS,
+  TIME_BUDGET_MODES,
+  dayTimeBudgetSchema,
+  toDayTimeBudget,
+  dayTimeBudget,
+  timeBudgetsByDay,
+  formatDayTimeBudget,
+  WEEKDAY_COOKING_CHOICES,
+  QUICK_TOTAL_MINUTES,
+  LITTLE_WORK_ACTIVE_MINUTES,
+  timeAvailableForChoice,
+  recipeTotalMinutes,
+  recipeActiveMinutes,
+  fitsTimeBudget,
+} from './types/cookingTime.js'
 export type { ShoppingItem, ShoppingList, BuyableUnit } from './types/shopping.js'
 export type {
   ShopKind,
@@ -204,8 +227,16 @@ export {
   buildClientErrorReport,
   clientErrorDedupeKey,
   isIgnorableClientError,
+  API_SLOW_MS,
+  MAX_API_PROBLEM_REPORTS_PER_SESSION,
+  apiPathPattern,
+  buildApiProblemMessage,
+  shouldReportApiStatus,
+  CHUNK_RELOAD_WINDOW_MS,
+  isChunkLoadError,
+  shouldReloadForChunkError,
 } from './types/clientErrors.js'
-export type { ClientErrorReport, ClientErrorInput } from './types/clientErrors.js'
+export type { ClientErrorReport, ClientErrorInput, ApiProblem } from './types/clientErrors.js'
 
 // Founder pricing signal on the waitlist (PRO-26)
 export {
@@ -348,3 +379,53 @@ export type {
   TasteStatus,
   TasteVerdictRow,
 } from './types/taste.js'
+export type {
+  ProfileFactOrigin,
+  ProfileFactStatus,
+  ProfileQuestionStatus,
+  ProfileChangeAction,
+  PersonAgeBand,
+  ProfileFactType,
+  HouseholdPersonInput,
+  ProfileSubject,
+  ProfileEvidence,
+  ProfileFactInput,
+  ProfileFact,
+  ProfileWriteChannel,
+  HouseholdPortrait,
+  ProfileQuestion,
+  ProfileChange,
+  ProfileViewer,
+  ProfileFactVisibilityRow,
+} from './types/householdProfile.js'
+export {
+  PROFILE_FACT_ORIGINS,
+  PROFILE_FACT_STATUSES,
+  PROFILE_QUESTION_STATUSES,
+  PROFILE_CHANGE_ACTIONS,
+  PERSON_AGE_BANDS,
+  isMinorAgeBand,
+  NEW_PROFILE_FACT_TYPES,
+  PROFILE_FACT_TYPES,
+  NEW_PROFILE_FACT_VALUE_SCHEMAS,
+  PROFILE_FACT_VALUE_SCHEMAS,
+  HEALTH_PROFILE_FACT_TYPES,
+  isHealthProfileFactType,
+  MINOR_ALIASES,
+  isAllowedMinorAlias,
+  householdPersonSchema,
+  profileSubjectSchema,
+  profileEvidenceSchema,
+  profileFactSchema,
+  canWriteProfileFact,
+  PORTRAIT_MAX_WORDS,
+  countPortraitWords,
+  householdPortraitSchema,
+  profileQuestionSchema,
+  profileChangeSchema,
+  canSeeProfileFact,
+  visibleProfileFacts,
+  MEMORY_SOURCE_TO_ORIGIN,
+  HOUSEHOLD_LEVEL_MEMORY_KEYS,
+  memoryKeyIsHouseholdLevel,
+} from './types/householdProfile.js'

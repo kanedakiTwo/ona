@@ -136,41 +136,62 @@ describe('matchRecipes: availableEquipment (user_memories.equipment)', () => {
   })
 })
 
-describe('matchRecipes: maxPrepMinutes (user_memories.time_available[weekday])', () => {
-  const quick = {
+describe('matchRecipes: time budget (user_memories.time_available, PRO-138)', () => {
+  const base = {
     id: 'q1',
     name: 'Tostada',
     meals: ['breakfast', 'lunch'],
     seasons: ['spring'],
     tags: [],
-    prepTime: 10,
     ingredients: [],
   }
-  const slow = { ...quick, id: 'q2', name: 'Cocido', prepTime: 90 }
-  const unknown = { ...quick, id: 'q3', name: 'Pan crudo', prepTime: undefined }
+  const ids = (out: Array<{ id: string }>) => out.map((r) => r.id).sort()
 
-  it('excludes recipes whose prepTime exceeds the day\'s budget', () => {
-    const out = matchRecipes([quick, slow, unknown], {
-      ...baseOptions,
-      maxPrepMinutes: 30,
-    })
-    // Quick passes (10 ≤ 30); slow fails (90 > 30); unknown passes (no data,
-    // err on inclusion — better one extra question to the user than empty pool)
-    expect(out.map((r) => r.id).sort()).toEqual(['q1', 'q3'])
+  it('total mode: 20 min of prep but 120 in total does not fit in 30', () => {
+    const stew = { ...base, id: 'stew', prepTime: 20, totalTime: 120 }
+    expect(matchRecipes([stew], { ...baseOptions, timeBudget: { mode: 'total', minutes: 30 } })).toHaveLength(0)
   })
 
-  it('treats absent maxPrepMinutes as no-op', () => {
-    const out = matchRecipes([quick, slow, unknown], baseOptions)
-    expect(out.length).toBe(3)
+  it('total mode without totalTime uses prep + cook', () => {
+    const a = { ...base, id: 'a', prepTime: 10, cookTime: 15 }
+    const b = { ...base, id: 'b', prepTime: 10, cookTime: 40 }
+    expect(ids(matchRecipes([a, b], { ...baseOptions, timeBudget: { mode: 'total', minutes: 30 } }))).toEqual(['a'])
   })
 
-  it('zero or negative cap is treated as "no cap" (defensive)', () => {
-    expect(
-      matchRecipes([slow], { ...baseOptions, maxPrepMinutes: 0 }).length,
-    ).toBe(1)
-    expect(
-      matchRecipes([slow], { ...baseOptions, maxPrepMinutes: -5 }).length,
-    ).toBe(1)
+  it('work mode: 15 min of work and 200 in total fits in 20', () => {
+    const cocido = { ...base, id: 'cocido', prepTime: 20, activeTime: 15, totalTime: 200 }
+    expect(ids(matchRecipes([cocido], { ...baseOptions, timeBudget: { mode: 'activo', minutes: 20 } }))).toEqual(['cocido'])
+  })
+
+  it('work mode without activeTime uses prepTime', () => {
+    const a = { ...base, id: 'a', prepTime: 15, totalTime: 90 }
+    const b = { ...base, id: 'b', prepTime: 35, totalTime: 50 }
+    expect(ids(matchRecipes([a, b], { ...baseOptions, timeBudget: { mode: 'activo', minutes: 20 } }))).toEqual(['a'])
+  })
+
+  it('a recipe without the time the limit is about does not pass on a limited day', () => {
+    const none = { ...base, id: 'none' }
+    const onlyCook = { ...base, id: 'onlyCook', cookTime: 10 }
+    expect(matchRecipes([none], { ...baseOptions, timeBudget: { mode: 'total', minutes: 30 } })).toHaveLength(0)
+    expect(matchRecipes([none, onlyCook], { ...baseOptions, timeBudget: { mode: 'activo', minutes: 30 } })).toHaveLength(0)
+  })
+
+  it('without a limit every recipe passes, timed or not', () => {
+    const recipes = [
+      { ...base, id: 'none' },
+      { ...base, id: 'slow', prepTime: 30, totalTime: 240 },
+    ]
+    expect(matchRecipes(recipes, baseOptions)).toHaveLength(2)
+    expect(matchRecipes(recipes, { ...baseOptions, timeBudget: null })).toHaveLength(2)
+    expect(matchRecipes(recipes, { ...baseOptions, timeBudget: { mode: 'total', minutes: 0 } })).toHaveLength(2)
+  })
+
+  it('legacy maxPrepMinutes is a total-time limit', () => {
+    const quick = { ...base, id: 'quick', prepTime: 10 }
+    const slow = { ...base, id: 'slow', prepTime: 10, totalTime: 90 }
+    expect(ids(matchRecipes([quick, slow], { ...baseOptions, maxPrepMinutes: 30 }))).toEqual(['quick'])
+    expect(matchRecipes([slow], { ...baseOptions, maxPrepMinutes: 0 })).toHaveLength(1)
+    expect(matchRecipes([slow], { ...baseOptions, maxPrepMinutes: -5 })).toHaveLength(1)
   })
 })
 

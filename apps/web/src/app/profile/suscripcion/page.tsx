@@ -18,6 +18,7 @@ import { LAUNCH_DATE_LABEL, PLAN_CAPS_NOTE, planByKey, subscriptionSummary, type
 import { PlanCards } from '@/components/billing/PlanCards'
 import { useBilling, useCheckout, usePortal } from '@/hooks/useBilling'
 import { Accent, PILL_INK, PILL_OUTLINE, SUB_CARD, SUB_EYEBROW, SubNotice, SubPage } from '@/components/profile/SubPage'
+import { SubLoadError, useQueryLoad } from '@/components/profile/SubLoadError'
 
 const shortDay = (iso: string) =>
   new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'long', timeZone: 'Europe/Madrid' }).format(new Date(iso))
@@ -39,6 +40,8 @@ function Suscripcion() {
   const billing = useBilling({ poll: justPaid })
   const checkout = useCheckout()
   const portal = usePortal()
+  // PRO-143: failed or > 8 s → «No hemos podido cargar esto» + «Reintentar».
+  const load = useQueryLoad([['billing'], billing])
   const [plan, setPlan] = useState<PlanKey>('esencial')
   const [period, setPeriod] = useState<BillingPeriod>('mensual')
 
@@ -68,7 +71,11 @@ function Suscripcion() {
         </div>
       )}
 
-      {billing.isLoading && <div className="text-eyebrow">Cargando…</div>}
+      {load.failed ? (
+        <SubLoadError onRetry={load.retry} retrying={load.retrying} />
+      ) : (
+        billing.isLoading && <div className="text-eyebrow">Cargando…</div>
+      )}
 
       {state && sub && (
         <section className={`${SUB_CARD} p-5`} data-testid="subscription-current">

@@ -1,5 +1,5 @@
-import type { FitLevel, Meal, RecipeFrequency, Season } from '@ona/shared'
-import { FIT_WEIGHT, FREQUENCY_WEIGHT, isInSeason } from '@ona/shared'
+import type { DayTimeBudget, FitLevel, Meal, RecipeFrequency, Season } from '@ona/shared'
+import { FIT_WEIGHT, FREQUENCY_WEIGHT, fitsTimeBudget, isInSeason } from '@ona/shared'
 import { compileRestrictions, violatesRestrictions } from './dietaryRestrictions.js'
 
 export interface RecipeWithIngredients {
@@ -26,8 +26,15 @@ export interface RecipeWithIngredients {
   tags: string[]
   /** Equipment the recipe needs ('horno', 'freidora', 'olla express'…). Empty / undefined = no equipment requirement. */
   equipment?: string[]
-  /** Prep time in minutes. Used by the time-budget filter (user_memories.time_available). */
+  /**
+   * Times in minutes, for the time-budget filter (user_memories.time_available,
+   * PRO-138): a «total» day compares `totalTime` (else prep + cook), a
+   * «trabajo» day compares `activeTime` (else `prepTime`).
+   */
   prepTime?: number | null
+  cookTime?: number | null
+  activeTime?: number | null
+  totalTime?: number | null
   /** Recipe-level allergen union (recipes.allergens). Checked by the restriction filter. */
   allergens?: string[] | null
   /**
@@ -93,10 +100,13 @@ export interface MatcherOptions {
    */
   availableEquipment?: Set<string>
   /**
-   * Maximum prep-time minutes allowed for this slot (from user_memories
-   * `time_available[weekday]`, looked up by the route). Recipes whose
-   * `prepTime` exceeds this are excluded. Null/absent = no filter.
+   * This slot's day limit (from user_memories `time_available[weekday]`,
+   * PRO-138): on the total time or on the hands-on time. A recipe that goes
+   * over it — or lacks the time it is about — is excluded. Null/absent = no
+   * filter.
    */
+  timeBudget?: DayTimeBudget | null
+  /** Legacy shape of `timeBudget`: N minutes in total. */
   maxPrepMinutes?: number | null
 }
 
@@ -124,8 +134,11 @@ export function matchRecipes(
     dislikes,
     availableEquipment,
     maxPrepMinutes,
+    timeBudget,
     dayIndex,
   } = options
+  const budget: DayTimeBudget | null =
+    timeBudget ?? (maxPrepMinutes != null && maxPrepMinutes > 0 ? { mode: 'total', minutes: maxPrepMinutes } : null)
   const isWeekday = typeof dayIndex === 'number' && dayIndex < 5
 
   // Restrictions (allergies, diets, free text) + dislikes compile once per
@@ -176,13 +189,10 @@ export function matchRecipes(
       if (!ok) return false
     }
 
-    // 6. Time-budget check — recipe.prepTime must fit the slot's window.
-    //    Recipes with no prepTime (data gap) pass freely.
-    if (maxPrepMinutes != null && maxPrepMinutes > 0) {
-      if (typeof recipe.prepTime === 'number' && recipe.prepTime > maxPrepMinutes) {
-        return false
-      }
-    }
+    // 6. Time budget (PRO-138): a «total» day compares totalTime (else
+    //    prep + cook), a «trabajo» day activeTime (else prepTime). With a
+    //    limit, a recipe without that time does not pass.
+    if (!fitsTimeBudget(recipe, budget)) return false
 
     return true
   })

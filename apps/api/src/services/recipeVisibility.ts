@@ -1,4 +1,4 @@
-import { eq, inArray, isNull, or, type SQL } from 'drizzle-orm'
+import { and, eq, inArray, isNull, or, type SQL } from 'drizzle-orm'
 import { db as defaultDb } from '../db/connection.js'
 import { householdMembers, recipes } from '../db/schema.js'
 import { getPrimaryHouseholdId } from './scopeResolver.js'
@@ -10,6 +10,10 @@ import { getPrimaryHouseholdId } from './scopeResolver.js'
  * week). Never to anyone else — specs/recipes.md "Other users' recipes are
  * never returned". Every recipe query that can surface user recipes
  * (catalogue, matcher, assistant, pantry match…) must go through here.
+ *
+ * Catalogue drafts (PRO-154, `status = 'draft'`, specs/catalog-import.md)
+ * are visible to nobody here: not in listings, not to the menu, not to Mimo.
+ * Only an admin opens one by id (the review sample), see `isHiddenDraft`.
  */
 
 type Db = typeof defaultDb
@@ -27,9 +31,18 @@ export async function visibleAuthorIds(userId: string, db: Db = defaultDb): Prom
 
 /** WHERE fragment: catalogue recipes or recipes authored by `authorIds`. */
 export function visibleRecipeWhere(authorIds: readonly string[]): SQL {
-  return authorIds.length > 0
+  const who = authorIds.length > 0
     ? (or(isNull(recipes.authorId), inArray(recipes.authorId, [...authorIds])) as SQL)
     : (isNull(recipes.authorId) as SQL)
+  return and(eq(recipes.status, PUBLISHED), who) as SQL
+}
+
+export const PUBLISHED = 'published'
+export const DRAFT = 'draft'
+
+/** A catalogue draft (PRO-154) that this viewer can't open: everyone but admins. */
+export function isHiddenDraft(row: { status?: string | null }, isAdmin: boolean): boolean {
+  return row.status === DRAFT && !isAdmin
 }
 
 /** Convenience for one-off checks (detail pages, copy). */
@@ -45,7 +58,7 @@ export async function canViewRecipe(
 }
 
 /** Pure filter for already-loaded rows (matcher candidate lists, tests). */
-export function filterVisible<T extends { authorId?: string | null }>(rows: readonly T[], authorIds: readonly string[]): T[] {
+export function filterVisible<T extends { authorId?: string | null; status?: string | null }>(rows: readonly T[], authorIds: readonly string[]): T[] {
   const allowed = new Set(authorIds)
-  return rows.filter((r) => r.authorId == null || allowed.has(r.authorId))
+  return rows.filter((r) => r.status !== DRAFT && (r.authorId == null || allowed.has(r.authorId)))
 }

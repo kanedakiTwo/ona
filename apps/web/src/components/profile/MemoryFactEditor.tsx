@@ -13,7 +13,8 @@
  */
 import { useState } from "react"
 import { Plus, X } from "lucide-react"
-import type { MemoryKey } from "@ona/shared"
+import type { MemoryKey, TimeBudgetMode } from "@ona/shared"
+import { toDayTimeBudget } from "@ona/shared"
 
 interface Props {
   memoryKey: MemoryKey
@@ -124,19 +125,41 @@ export function MemoryFactEditor({ memoryKey, initial, onSave, onCancel, disable
         />
       )
 
-    case "time_available":
+    case "time_available": {
+      // PRO-138: a day is minutes in total or `{ mode: 'activo', minutes }`.
+      // The editor shows minutes and keeps each day's mode on save.
+      const stored = (initial as Record<string, unknown> | null) ?? {}
+      const minutes: Record<string, number> = {}
+      const modes: Record<string, TimeBudgetMode> = {}
+      for (const [day, v] of Object.entries(stored)) {
+        const b = toDayTimeBudget(v)
+        if (b) {
+          minutes[day] = b.minutes
+          modes[day] = b.mode
+        }
+      }
       return (
         <RecordEditor
-          fields={WEEKDAYS.map((d) => ({ key: d, label: capitalize(d) }))}
-          initial={(initial as Record<string, number> | null) ?? {}}
+          fields={WEEKDAYS.map((d) => ({ key: d, label: capitalize(d) + (modes[d] === "activo" ? " (trabajo)" : "") }))}
+          initial={minutes}
           unit="min"
           min={0}
           max={480}
-          onSave={onSave}
+          onSave={(next) =>
+            onSave(
+              Object.fromEntries(
+                Object.entries(next as Record<string, number>).map(([day, n]) => [
+                  day,
+                  modes[day] === "activo" ? { mode: "activo", minutes: n } : n,
+                ]),
+              ),
+            )
+          }
           onCancel={onCancel}
           disabled={disabled}
         />
       )
+    }
     case "meal_times":
       return (
         <TimeRecordEditor

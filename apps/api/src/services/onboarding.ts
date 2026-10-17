@@ -2,6 +2,9 @@ import { eq } from 'drizzle-orm'
 import { db as defaultDb } from '../db/connection.js'
 import { users } from '../db/schema.js'
 import { grantHealthConsent, hasHealthConsent } from './healthConsent.js'
+import { recordWishesFromFavoriteDishes } from './catalogWishes.js'
+import { timeAvailableForChoice, type WeekdayCookingChoice } from '@ona/shared'
+import { setMemoryFact } from './userMemoryStore.js'
 
 /**
  * Save the first-steps answers and mark the user onboarded. Shared by the web
@@ -20,6 +23,11 @@ export interface OnboardingInput {
   priority: 'quick' | 'varied' | 'healthy' | 'cheap'
   restrictions?: string[]
   healthConsent?: boolean
+  /**
+   * PRO-138 «Entre semana, ¿cómo te gusta cocinar?» → `time_available`
+   * (source onboarding). Absent (WhatsApp onboarding) leaves it as it is.
+   */
+  weekdayCooking?: WeekdayCookingChoice
 }
 
 export const onboardedUserColumns = {
@@ -56,5 +64,12 @@ export async function saveOnboarding(userId: string, input: OnboardingInput, dat
     set.restrictions = healthConsent === true || (await hasHealthConsent(userId)) ? input.restrictions : []
   }
   const [updated] = await database.update(users).set(set).where(eq(users.id, userId)).returning(onboardedUserColumns)
+  // PRO-154: favourites the catalogue doesn't have become «deseos del
+  // catálogo» (web and WhatsApp sign-up both land here). Best effort, real
+  // database only (unit tests pass their own `database`).
+  if (updated && database === defaultDb) await recordWishesFromFavoriteDishes(userId, favoriteDishes)
+  if (updated && input.weekdayCooking) {
+    await setMemoryFact(userId, 'time_available', timeAvailableForChoice(input.weekdayCooking), 'onboarding')
+  }
   return updated ?? null
 }

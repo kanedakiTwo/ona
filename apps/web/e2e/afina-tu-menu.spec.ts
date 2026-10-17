@@ -86,7 +86,7 @@ test('sign-up: 10 cards with buttons, then the questions; the first menu has no 
   await expect(web.or(firstQuestion)).toBeVisible({ timeout: 15_000 })
   if (await web.isVisible()) await web.click()
   await expect(firstQuestion).toBeVisible()
-  await expect(page.getByText('Primeros pasos · 1 de 4')).toBeVisible()
+  await expect(page.getByText('Primeros pasos · 1 de 5')).toBeVisible()
 
   const headers = await auth(page)
   const memory = await (await page.request.get(`${API_URL}/memory`, { headers })).json()
@@ -103,6 +103,8 @@ test('sign-up: 10 cards with buttons, then the questions; the first menu has no 
   const next = page.getByRole('button', { name: /siguiente/i })
   await next.click()
   await page.getByRole('button', { name: /3-4 veces/i }).click()
+  await next.click()
+  await page.getByRole('button', { name: /sin prisa/i }).click() // PRO-138
   await next.click()
   await next.click() // no restrictions
   await page.getByRole('button', { name: /salud/i }).click()

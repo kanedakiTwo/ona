@@ -17,6 +17,8 @@ export const RESTRICTION_PRESETS = [
   'soja',
   'vegetariano',
   'vegano',
+  // PRO-144: skips recipes with wine, sherry, beer… (not health data per se).
+  'sin alcohol',
 ] as const
 
 export type RestrictionPreset = (typeof RESTRICTION_PRESETS)[number]

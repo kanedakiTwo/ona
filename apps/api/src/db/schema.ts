@@ -276,9 +276,45 @@ export const recipes = pgTable('recipes', {
     .notNull()
     .default('explicit'),
 
+  /**
+   * PRO-154 (specs/catalog-import.md): a catalogue recipe brought in by the
+   * batch import starts as 'draft' — nobody sees it and the menu never picks
+   * it — until the batch is published. Everything else is 'published'.
+   */
+  status: text('status').notNull().default('published'),
+  /**
+   * Where a batch-imported catalogue recipe comes from (book and page, never
+   * its text), whose source it is (`miguel` | `cocina`), the batch, and the
+   * review state: `{ origin, book?, page?, file?, batch, auditIssues[],
+   * allergenDoubt, sampled?, reviewedAt? }`. Null for every other recipe.
+   */
+  catalogSource: jsonb('catalog_source').$type<CatalogSourceInfo>(),
+  /** Batch id of the catalogue import (PRO-154); null otherwise. */
+  importBatch: text('import_batch'),
+
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
-})
+}, (t) => [
+  index('idx_recipes_import_batch').on(t.importBatch),
+  check('recipes_status_check', sql.raw("status IN ('draft','published')")),
+])
+
+/** `recipes.catalog_source` (PRO-154). */
+export interface CatalogSourceInfo {
+  origin: 'miguel' | 'cocina'
+  book?: string | null
+  page?: string | null
+  file?: string | null
+  batch: string
+  auditIssues: string[]
+  allergenDoubt: boolean
+  /** Picked for Miguel's one-in-ten review (Cocina batches). */
+  sampled?: boolean
+  /** Miguel's verdict on a sampled recipe (true OK / false not OK). */
+  reviewOk?: boolean
+  /** When Miguel gave it. */
+  reviewedAt?: string | null
+}
 
 // ─── 5. recipe_ingredients (M:N join) ───────────────────────
 // CHECK constraint on `unit` enforces the Unit enum from @ona/shared.
@@ -886,6 +922,43 @@ export const whatsappMessages = pgTable('whatsapp_messages', {
 ])
 
 /**
+ * Mimo's web chat (PRO-148, D-064): every web turn is kept server-side for
+ * 90 days so the household profile can learn from it, like WhatsApp already
+ * does with `whatsapp_messages`. Purged by the scheduler tick
+ * (`purgeOldChatMessagesIfDue`); deleting the account deletes the rows
+ * (cascade). The companion panel still shows the conversation from
+ * `sessionStorage`: nothing reads this table back into the chat.
+ */
+export const chatMessages = pgTable('chat_messages', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** The user's household at the time of the turn (null if none). */
+  householdId: uuid('household_id').references(() => households.id, { onDelete: 'set null' }),
+  /** 'web' for now (WhatsApp keeps its own table). */
+  channel: text('channel').notNull().default('web'),
+  /** 'user' | 'assistant' */
+  role: text('role').notNull(),
+  /** What the user typed or said (without the page note), or Mimo's reply. */
+  body: text('body').notNull(),
+  /**
+   * Assistant rows: what Mimo did this turn — `{ mode, tools, corrections,
+   * toolTrace, ms }` — as in `whatsapp_messages.meta`. User rows: `{ mode, path }`.
+   */
+  meta: jsonb('meta').$type<{
+    mode?: string
+    path?: string | null
+    tools?: string[]
+    corrections?: string[]
+    toolTrace?: { name: string; input: string; summary: string; error?: boolean }[]
+    ms?: number
+  }>(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_chat_messages_user_created').on(t.userId, t.createdAt),
+  index('idx_chat_messages_created').on(t.createdAt),
+])
+
+/**
  * Daily review of WhatsApp conversations by an LLM "reviewer agent"
  * (services/whatsapp/reviewer.ts): what went wrong and what to fix.
  * One row per Madrid day reviewed.
@@ -1305,4 +1378,184 @@ export const recipeVerdicts = pgTable('recipe_verdicts', {
 }, (t) => [
   uniqueIndex('uq_recipe_verdicts_user_recipe').on(t.userId, t.recipeId),
   check('recipe_verdicts_verdict_check', sql.raw("verdict IN ('love','like','nope','skip')")),
+])
+
+// ─── Ficha del hogar (specs/household-profile.md, PRO-150) ──
+// Everything Mimoia knows about a household, with a section per person.
+// Types and value schemas live in `@ona/shared` (householdProfile.ts).
+
+/** People without an account: an alias and an age band. A minor's name is never stored. */
+export const householdPersons = pgTable('household_persons', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  /** «la pequeña», «la abuela». For minors only a generic alias (`MINOR_ALIASES`). */
+  alias: text('alias').notNull(),
+  /** '0-2' | '3-5' | '6-12' | '13-17' | 'adulto'. */
+  ageBand: text('age_band').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_household_persons_household').on(t.householdId),
+  check('household_persons_age_band_check', sql.raw("age_band IN ('0-2','3-5','6-12','13-17','adulto')")),
+])
+
+/** One fact of the ficha. No subject = about the whole household. */
+export const profileFacts = pgTable('profile_facts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  /** About a person with an account. */
+  subjectUserId: uuid('subject_user_id').references(() => users.id, { onDelete: 'cascade' }),
+  /** About a person without one. */
+  subjectPersonId: uuid('subject_person_id').references(() => householdPersons.id, { onDelete: 'cascade' }),
+  /** `PROFILE_FACT_TYPES` in @ona/shared. */
+  type: text('type').notNull(),
+  value: jsonb('value').notNull(),
+  /** 'user' | 'onboarding' | 'ai_realtime' | 'ai_nightly' | 'ai_weekly'. */
+  origin: text('origin').notNull(),
+  confidence: real('confidence').notNull().default(1),
+  /** [{ signal, date, summary }]. */
+  evidence: jsonb('evidence').notNull().default([]),
+  validUntil: timestamp('valid_until', { withTimezone: true }),
+  /** 'active' | 'retired'. */
+  status: text('status').notNull().default('active'),
+  /** The `user_memories` row this fact was copied from (PRO-150 migration); keeps the copy idempotent. */
+  sourceMemoryId: uuid('source_memory_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_profile_facts_household_status').on(t.householdId, t.status),
+  index('idx_profile_facts_subject_user').on(t.subjectUserId),
+  uniqueIndex('uq_profile_facts_source_memory').on(t.sourceMemoryId),
+  check('profile_facts_origin_check', sql.raw("origin IN ('user','onboarding','ai_realtime','ai_nightly','ai_weekly')")),
+  check('profile_facts_status_check', sql.raw("status IN ('active','retired')")),
+  check('profile_facts_confidence_check', sql.raw('confidence >= 0 AND confidence <= 1')),
+  check('profile_facts_one_subject_check', sql.raw('subject_user_id IS NULL OR subject_person_id IS NULL')),
+])
+
+/** The portrait: ≤ 250 words, one row per household, versioned. */
+export const householdProfiles = pgTable('household_profiles', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  portrait: text('portrait').notNull(),
+  version: integer('version').notNull().default(1),
+  /** Model that wrote it. */
+  model: text('model').notNull(),
+  generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_household_profiles_household').on(t.householdId),
+])
+
+/** What the AI suspects but doesn't know («¿seguís sin horno?»). */
+export const profileQuestions = pgTable('profile_questions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  subjectUserId: uuid('subject_user_id').references(() => users.id, { onDelete: 'cascade' }),
+  subjectPersonId: uuid('subject_person_id').references(() => householdPersons.id, { onDelete: 'cascade' }),
+  question: text('question').notNull(),
+  factType: text('fact_type'),
+  origin: text('origin').notNull(),
+  /** 'pending' | 'asked' | 'answered' | 'dismissed'. */
+  status: text('status').notNull().default('pending'),
+  askedAt: timestamp('asked_at', { withTimezone: true }),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_profile_questions_household_status').on(t.householdId, t.status),
+  check('profile_questions_status_check', sql.raw("status IN ('pending','asked','answered','dismissed')")),
+  check('profile_questions_origin_check', sql.raw("origin IN ('user','onboarding','ai_realtime','ai_nightly','ai_weekly')")),
+])
+
+/** History of the ficha: what changed, before, after, why, who. */
+export const profileChanges = pgTable('profile_changes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  factId: uuid('fact_id').references(() => profileFacts.id, { onDelete: 'set null' }),
+  /** `PROFILE_CHANGE_ACTIONS` in @ona/shared. */
+  action: text('action').notNull(),
+  factType: text('fact_type'),
+  before: jsonb('before'),
+  after: jsonb('after'),
+  reason: text('reason').notNull(),
+  origin: text('origin').notNull(),
+  /** Who made it, when it was a person. */
+  actorUserId: uuid('actor_user_id').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_profile_changes_household_created').on(t.householdId, t.createdAt),
+  check('profile_changes_origin_check', sql.raw("origin IN ('user','onboarding','ai_realtime','ai_nightly','ai_weekly')")),
+])
+
+// ─── Menu edits (specs/menus.md "Registro de cambios", PRO-149) ─────
+// One row per recipe that a change to a menu touched: which plate went out
+// and which came in, on which day and meal, who did it (the user in the app
+// or Mimo) and where (web or WhatsApp). Generating a menu is not an edit.
+// Signal for the household's «ficha viva» (D-064). Recipe names are copied so
+// the row still reads well if the recipe is deleted later.
+export const menuEdits = pgTable('menu_edits', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').references(() => households.id, { onDelete: 'cascade' }),
+  menuId: uuid('menu_id').notNull().references(() => menus.id, { onDelete: 'cascade' }),
+  /** Account that made the change (Mimo acts as the user it talks to). */
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  /** Day index 0-6 (Monday = 0); null for a week-wide veto (`ban`). */
+  day: integer('day'),
+  meal: text('meal'),
+  /** Origin slot for `move` and `leftover`. */
+  fromDay: integer('from_day'),
+  fromMeal: text('from_meal'),
+  action: text('action').notNull(),
+  beforeRecipeId: uuid('before_recipe_id'),
+  beforeRecipeName: text('before_recipe_name'),
+  afterRecipeId: uuid('after_recipe_id'),
+  afterRecipeName: text('after_recipe_name'),
+  actor: text('actor').notNull(),
+  channel: text('channel').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_menu_edits_household_created').on(t.householdId, t.createdAt),
+  index('idx_menu_edits_menu').on(t.menuId),
+  check('menu_edits_action_check', sql.raw("action IN ('swap','add','remove','ban','skip_day','move','leftover','freezer')")),
+  check('menu_edits_actor_check', sql.raw("actor IN ('user','mimo')")),
+  check('menu_edits_channel_check', sql.raw("channel IN ('web','whatsapp')")),
+])
+
+// ─── Catalogue wishes (PRO-154, specs/catalog-import.md) ────
+// Dishes someone wants and the catalogue doesn't have: favourites from the
+// sign-up with no similar recipe, a menu's «no está en el catálogo» (PRO-155),
+// requests to Mimo that end as a note. One row per dish (normalised key);
+// one vote per household, so the count is «cuántos hogares lo piden». No
+// personal data leaves through the read: dish, sources and household count.
+export const catalogWishes = pgTable('catalog_wishes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  /** The dish as first written (trimmed), e.g. «Croquetas de cocido». */
+  dish: text('dish').notNull(),
+  /** Normalised key (accents, plurals, stopwords out) — one row per dish. */
+  dishKey: text('dish_key').notNull(),
+  /** 'abierto' (we don't have it) | 'cubierto' (a recipe now covers it) | 'descartado'. */
+  status: text('status').notNull().default('abierto'),
+  /** The catalogue recipe that covered it, once there is one. */
+  recipeId: uuid('recipe_id').references(() => recipes.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_catalog_wishes_key').on(t.dishKey),
+  check('catalog_wishes_status_check', sql.raw("status IN ('abierto','cubierto','descartado')")),
+])
+
+export const catalogWishVotes = pgTable('catalog_wish_votes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  wishId: uuid('wish_id').notNull().references(() => catalogWishes.id, { onDelete: 'cascade' }),
+  /** Household id, or the user id when the user has no household — one vote each. */
+  voterKey: text('voter_key').notNull(),
+  householdId: uuid('household_id').references(() => households.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  /** 'alta' | 'me_encanta' | 'mimo' | 'evaluador'. */
+  source: text('source').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_catalog_wish_votes_voter').on(t.wishId, t.voterKey, t.source),
+  index('idx_catalog_wish_votes_wish').on(t.wishId),
+  check('catalog_wish_votes_source_check', sql.raw("source IN ('alta','me_encanta','mimo','evaluador')")),
 ])

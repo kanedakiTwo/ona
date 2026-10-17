@@ -2,7 +2,9 @@
  * Smoke test for the newsletter (PRO-94, specs/newsletter.md) against a
  * running API + its Postgres: the newsletter-only opt-out over HTTP (the
  * place on the list stays) and the real SQL of the send claims (unique
- * issue + recipient, release, candidates).
+ * issue + recipient, release, candidates). PRO-132: leaving the list or
+ * deleting the account deletes the email's send traces; the
+ * newsletter-only opt-out keeps them.
  *
  *   API_URL=http://localhost:8790 DATABASE_URL=… SMOKE_USER_TOKEN=x \
  *     pnpm --filter @ona/api exec vitest run src/tests/newsletter.smoke.ts
@@ -69,6 +71,9 @@ describe.skipIf(!reachable)('newsletter (real API + DB)', () => {
     const repo = createDbNewsletterRepo()
     const picked = selectNewsletterRecipients(await repo.candidates(), new Set())
     expect(picked.some((p) => p.email === email)).toBe(true)
+    // PRO-130: the entry's own invite code travels with it, for the footer link.
+    expect(code).toBeTruthy()
+    expect(picked.find((p) => p.email === email)?.referralCode).toBe(code)
   })
 
   it('claims are unique per issue + recipient; release lets a re-run claim again', async () => {
@@ -115,5 +120,33 @@ describe.skipIf(!reachable)('newsletter (real API + DB)', () => {
     const repo = createDbNewsletterRepo()
     expect((await repo.candidates()).some((c) => c.email === email)).toBe(false)
     expect((await call('POST', '/newsletter/unsubscribe', { token: 'w.nonexistent-token-123456' })).status).toBe(404)
+    // PRO-132: the newsletter-only opt-out keeps the send traces (no re-send of the same issue).
+    expect(await sendsFor(email)).toBe(1)
+  })
+
+  it('leaving the list (/lista/baja) deletes the send traces of that email (PRO-132)', async () => {
+    const r = await call('POST', '/waitlist/unsubscribe', { token: leaveToken })
+    expect(r.status).toBe(200)
+    expect(await sendsFor(email)).toBe(0)
+  })
+
+  it('deleting the account deletes the send traces of its email (PRO-132)', async () => {
+    const userEmail = `nl_del_${id}@test.local`
+    const reg = await call('POST', '/register', { username: `nl_del_${id}`, email: userEmail, password: 'smokepass123', ageConfirmed: true })
+    expect(reg.status).toBe(201)
+    await db.insert(newsletterSends).values({ issueId: ISSUE, recipientHash: recipientHash(userEmail), source: 'user', status: 'sent' })
+    expect(await sendsFor(userEmail)).toBe(1)
+    const del = await fetch(`${API_URL}/user/${reg.body.user.id}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${reg.body.token}` },
+      body: JSON.stringify({ password: 'smokepass123' }),
+    })
+    expect(del.status).toBe(200)
+    expect(await sendsFor(userEmail)).toBe(0)
   })
 })
+
+async function sendsFor(address: string): Promise<number> {
+  const rows = await db.select({ h: newsletterSends.recipientHash }).from(newsletterSends).where(eq(newsletterSends.recipientHash, recipientHash(address)))
+  return rows.length
+}

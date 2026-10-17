@@ -92,6 +92,15 @@ const GLUTEN_FREE = [
   'Vegan butter chicken (con tofu)',
 ]
 
+/** PRO-144: an alcoholic drink among the ingredients or in the name (read by hand). */
+const HAS_ALCOHOL = [
+  'Carrilleras de ternera con vino tinto', 'Conejo confitado con ajo y romero', 'Contramuslos de pollo guisados',
+  'Dorada a la marsellesa', 'Riñones al jerez',
+]
+
+/** «Vinagre de vino» is not alcohol: these stay. */
+const WINE_VINEGAR_ONLY = ['Garbanzos con espinacas', 'Onigirazu', 'Pollo agridulce']
+
 const SEASONS: Season[] = ['spring', 'summer', 'autumn', 'winter']
 
 function generatedNames(restrictions: string[], season: Season): string[] {
@@ -108,7 +117,7 @@ function generatedNames(restrictions: string[], season: Season): string[] {
 describe('fixture', () => {
   it('every hand-written name is in the catalogue', () => {
     const names = new Set(fixture.map((r) => r.name))
-    for (const n of [...NOT_VEGETARIAN, ...VEGETARIAN, ...HAS_GLUTEN, ...GLUTEN_FREE]) expect(names.has(n), n).toBe(true)
+    for (const n of [...NOT_VEGETARIAN, ...VEGETARIAN, ...HAS_GLUTEN, ...GLUTEN_FREE, ...HAS_ALCOHOL, ...WINE_VINEGAR_ONLY]) expect(names.has(n), n).toBe(true)
   })
 })
 
@@ -164,6 +173,32 @@ describe('«sin gluten» over the whole catalogue', () => {
         expect(names.filter((n) => HAS_GLUTEN.includes(n)), `${season} #${i}`).toEqual([])
       }
     }
+  })
+})
+
+describe('PRO-144 — «sin alcohol» over the whole catalogue', () => {
+  const rules = compileRestrictions(['sin alcohol'])
+  const byName = new Map(pool.map((r) => [r.name, r]))
+
+  it('excludes exactly the recipes with wine, sherry… (and keeps the ones with wine vinegar)', () => {
+    const hidden = pool.filter((r) => violatesRestrictions(r, rules)).map((r) => r.name).sort()
+    expect(hidden).toEqual([...HAS_ALCOHOL].sort())
+    expect(WINE_VINEGAR_ONLY.filter((n) => violatesRestrictions(byName.get(n)!, rules))).toEqual([])
+  })
+
+  it('generated weeks never contain them', () => {
+    for (const season of SEASONS) {
+      for (let i = 0; i < 5; i++) {
+        const names = generatedNames(['sin alcohol'], season)
+        expect(names.length).toBeGreaterThan(0)
+        expect(names.filter((n) => HAS_ALCOHOL.includes(n)), `${season} #${i}`).toEqual([])
+      }
+    }
+  })
+
+  it('the «Elegir otra receta» list (fitsMe) hides the same recipes', () => {
+    const hidden = new Set(recipeIdsBreakingRestrictions(pool, ['sin alcohol']))
+    expect(pool.filter((r) => hidden.has(r.id)).map((r) => r.name).sort()).toEqual([...HAS_ALCOHOL].sort())
   })
 })
 

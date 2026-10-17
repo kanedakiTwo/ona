@@ -388,9 +388,37 @@
       "breakpoints": true
     },
     {
+      "idx": 55,
+      "version": "7",
+      "when": 1792146403098,
+      "tag": "0055_chat_messages",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1792146404098,
+      "tag": "0056_menu_edits",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1792146405098,
+      "tag": "0057_household_profile",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1792146406098,
+      "tag": "0058_catalog_drafts_wishes",
+      "breakpoints": true
+    },
+    {
       "idx": 60,
       "version": "7",
-      "when": 1792192202371,
+      "when": 1792146408098,
       "tag": "0060_recipe_verdicts",
       "breakpoints": true
     }

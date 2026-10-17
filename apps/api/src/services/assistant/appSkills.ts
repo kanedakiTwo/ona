@@ -26,7 +26,8 @@ const DAY_NAMES = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábad
 const MEALS = ['breakfast', 'lunch', 'snack', 'dinner'] as const
 const MEAL_ES: Record<string, string> = { breakfast: 'desayuno', lunch: 'comida', snack: 'merienda', dinner: 'cena' }
 
-const api = (ctx: SkillContext): AppApi => ctx.api ?? appApiFor(ctx.userId)
+const api = (ctx: SkillContext): AppApi =>
+  ctx.api ?? appApiFor(ctx.userId, { channel: ctx.channel === 'whatsapp' ? 'whatsapp' : 'web' })
 const text = (summary: string, data: unknown = null): SkillResult => ({ data, summary, uiHint: 'text' })
 const menuDone = (summary: string, data: unknown = null): SkillResult => ({ data, summary, uiHint: 'menu' })
 
@@ -983,7 +984,7 @@ const regenerateRecipeImage: SkillDefinition = {
 const updateProfile: SkillDefinition = {
   name: 'update_profile',
   description:
-    'Actualiza el perfil: restricciones alimentarias del perfil (addRestrictions / removeRestrictions, ej. "sin gluten", "vegetariano"), prioridad (quick, varied, healthy, cheap), sexo, edad, peso (kg), altura (cm), actividad (none, light, moderate, high). Para gustos y disgustos usa update_memory.',
+    'Actualiza el perfil: restricciones alimentarias del perfil (addRestrictions / removeRestrictions, ej. "sin gluten", "vegetariano", "sin alcohol"; lo que el menu debe evitar siempre va aqui, no en notes: "cocinamos siempre sin alcohol" → addRestrictions ["sin alcohol"]), prioridad (quick, varied, healthy, cheap), sexo, edad, peso (kg), altura (cm), actividad (none, light, moderate, high). Para gustos y disgustos usa update_memory.',
   parameters: {
     type: 'object',
     properties: {

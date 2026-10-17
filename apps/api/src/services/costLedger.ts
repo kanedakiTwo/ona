@@ -61,6 +61,13 @@ export interface CostEvent {
   units: CostUnits
   /** Explicit attribution. `undefined` → the ambient context user; `null` → system job. */
   userId?: string | null
+  /** Explicit household (e.g. the ficha refiner, PRO-152). Default: the user's primary household. */
+  householdId?: string | null
+  /**
+   * Multiplier on the list price (default 1), for discounts the price table
+   * doesn't know about — e.g. 0.5 for Anthropic's Message Batches API.
+   */
+  priceFactor?: number
 }
 
 export interface CostRow {
@@ -70,6 +77,8 @@ export interface CostRow {
   model: string
   units: CostUnits
   costMicros: number | null
+  /** Explicit household; null → resolved from the user's primary household. */
+  householdId?: string | null
 }
 
 type CostSink = (row: CostRow) => Promise<void>
@@ -82,7 +91,7 @@ const dbSink: CostSink = async (row) => {
     INSERT INTO cost_events (user_id, household_id, feature, provider, model, units, cost_micros)
     VALUES (
       ${row.userId}::uuid,
-      (SELECT primary_household_id FROM users WHERE id = ${row.userId}::uuid),
+      COALESCE(${row.householdId ?? null}::uuid, (SELECT primary_household_id FROM users WHERE id = ${row.userId}::uuid)),
       ${row.feature},
       ${row.provider},
       ${row.model},
@@ -102,13 +111,16 @@ export function setCostSinkForTests(fake: CostSink | null): void {
 /** Record one paid call. Synchronous and never throws; the insert runs in the background. */
 export function recordCost(event: CostEvent): void {
   try {
+    const listMicros = computeCostMicros(event.provider, event.model, event.units)
+    const factor = event.priceFactor !== undefined && Number.isFinite(event.priceFactor) && event.priceFactor >= 0 ? event.priceFactor : 1
     const row: CostRow = {
       userId: event.userId === undefined ? currentCostUserId() : event.userId,
       feature: event.feature,
       provider: event.provider,
       model: event.model,
       units: event.units,
-      costMicros: computeCostMicros(event.provider, event.model, event.units),
+      costMicros: listMicros === null ? null : Math.round(listMicros * factor),
+      ...(event.householdId ? { householdId: event.householdId } : {}),
     }
     if (row.costMicros === null) {
       console.warn(`[costLedger] no price for ${event.provider}/${event.model} — recorded as unpriced`)

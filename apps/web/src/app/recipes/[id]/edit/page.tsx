@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { Sparkles, Trash2, Upload } from "lucide-react"
+import { Camera, Sparkles, Trash2 } from "lucide-react"
 import { useAuth } from "@/lib/auth"
 import {
   useIngredients,
@@ -270,6 +270,12 @@ export default function EditRecipePage() {
       prev.map((r) => (r.rowId === rowId ? { ...r, optional: !r.optional } : r)),
     )
   }
+  function updateIngredientNote(rowId: string, value: string) {
+    setIngredientRows((prev) =>
+      prev.map((r) => (r.rowId === rowId ? { ...r, note: value } : r)),
+    )
+  }
+
   function addIngredientRow() {
     setIngredientRows((prev) => [...prev, emptyRow()])
   }
@@ -322,7 +328,7 @@ export default function EditRecipePage() {
         quantity: typeof r.quantity === "number" ? r.quantity : 0,
         unit: r.unit || "g",
         optional: r.optional,
-        ...(r.note ? { note: r.note } : {}),
+        ...(r.note?.trim() ? { note: r.note.trim() } : {}),
         ...(r.section ? { section: r.section } : {}),
       }))
 
@@ -730,6 +736,8 @@ export default function EditRecipePage() {
                         onUnit={(v) => updateIngredientUnit(row.rowId, v)}
                         optional={row.optional}
                         onToggleOptional={() => toggleIngredientOptional(row.rowId)}
+                        note={row.note}
+                        onNote={(v) => updateIngredientNote(row.rowId, v)}
                         onRemove={() => removeIngredientRow(row.rowId)}
                         removable={ingredientRows.length > 1}
                         hint={hint}
@@ -810,7 +818,7 @@ export default function EditRecipePage() {
 }
 
 /* ─────────────────────────────────────────────
-   Photo section — preview + "Regenerar imagen" + "Subir foto"
+   Photo section — preview + "Regenerar imagen" + "Subir mi foto" (PRO-145)
    Its buttons are type="button", so it never submits the form.
    ───────────────────────────────────────────── */
 function PhotoSection({ recipeId, userId }: { recipeId: string; userId: string }) {
@@ -821,6 +829,12 @@ function PhotoSection({ recipeId, userId }: { recipeId: string; userId: string }
   const quota = regen.data?.quota ?? profile?.imageGenQuota
   const exhausted = quota ? quota.used >= quota.limit : false
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // /recipes/new sends `?foto=fallo` when the recipe saved but its own
+  // photo didn't upload (PRO-145).
+  const [ownPhotoFailed, setOwnPhotoFailed] = useState(false)
+  useEffect(() => {
+    setOwnPhotoFailed(new URLSearchParams(window.location.search).get("foto") === "fallo")
+  }, [])
 
   // Same own-host cache-bust rule the detail page now follows: external
   // URLs (i.ytimg, og:image hosts that hot-link-block unknown params) must
@@ -836,7 +850,10 @@ function PhotoSection({ recipeId, userId }: { recipeId: string; userId: string }
 
   function handleFilePick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
-    if (file) upload.mutate(file)
+    if (file) {
+      setOwnPhotoFailed(false)
+      upload.mutate(file)
+    }
     // Reset so picking the same file twice still triggers onChange.
     e.target.value = ""
   }
@@ -872,15 +889,16 @@ function PhotoSection({ recipeId, userId }: { recipeId: string; userId: string }
             ? "Generando…"
             : recipe?.imageUrl
               ? "Regenerar imagen"
-              : "Generar imagen"}
+              : "Generar con IA"}
         </button>
         {/* Manual upload — available to authors on their own recipes and
             to admins on any recipe (the API enforces it, the UI just
             presents the affordance). Doesn't consume the AI quota. */}
+        {/* image/* lets iPhones hand over a JPEG instead of HEIC. */}
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/jpeg,image/png,image/webp"
+          accept="image/*"
           onChange={handleFilePick}
           className="hidden"
         />
@@ -890,8 +908,8 @@ function PhotoSection({ recipeId, userId }: { recipeId: string; userId: string }
           disabled={upload.isPending || regen.isPending}
           className={PHOTO_PILL}
         >
-          <Upload size={15} aria-hidden />
-          {upload.isPending ? "Subiendo…" : "Subir foto"}
+          <Camera size={15} aria-hidden />
+          {upload.isPending ? "Subiendo…" : "Subir mi foto"}
         </button>
       </div>
       <div className="mt-3 flex flex-col gap-1.5">
@@ -906,9 +924,15 @@ function PhotoSection({ recipeId, userId }: { recipeId: string; userId: string }
         {upload.error ? (
           <span className="text-[13px] italic text-terracotta-deep">{upload.error.message}</span>
         ) : null}
+        {ownPhotoFailed && !upload.isSuccess ? (
+          <span className="text-[13px] italic text-terracotta-deep">
+            La receta está guardada, pero tu foto no se ha podido subir. Prueba otra vez.
+          </span>
+        ) : null}
         <p className="text-[13px] leading-snug text-ink-muted">
-          Genera con IA a partir del nombre y los ingredientes, o sube tu
-          propia foto (JPG / PNG / WebP, hasta 10 MB).
+          Sube tu propia foto (JPG, PNG, WebP o HEIC, hasta 10 MB; se recorta a
+          4:3 y no gasta del límite de IA) o genérala con IA a partir del
+          nombre y los ingredientes.
         </p>
       </div>
     </FormCard>

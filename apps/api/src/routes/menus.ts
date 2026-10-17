@@ -1,11 +1,12 @@
 import { Router } from 'express'
 import { visibleAuthorIds, visibleRecipeWhere } from '../services/recipeVisibility.js'
 import { loadMatchableRecipes } from '../services/matchableRecipes.js'
+import { requestCatalogPhotos } from '../services/catalogImageOnDemand.js'
 import { mergeRestrictions } from '../services/dietaryRestrictions.js'
 import { keepLockedSlots, loadPreviousWeek, menuHasDishes } from '../services/menuWeek.js'
-import { eq, and, desc, inArray } from 'drizzle-orm'
+import { eq, and, asc, desc, inArray } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { menus, menuLogs, users, userSettings } from '../db/schema.js'
+import { menus, menuEdits, menuLogs, users, userSettings } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
 import { generateMenuSchema, lockMealSchema, MEALS, MEAL_TYPE_TAGS, courseSchema } from '@ona/shared'
@@ -16,9 +17,19 @@ import { calculateMenuNutrientsFromDB } from '../services/nutrientCalculator.js'
 import { updateBalance } from '../services/nutrientBalance.js'
 import { findRecipeForSlot, normaliseEquipment, type RecipeWithIngredients } from '../services/recipeMatcher.js'
 import { findForCourse } from '../services/courseAwareMatcher.js'
+import { loadHouseholdRatingSets, withHouseholdRatings } from '../services/householdRatings.js'
 import { addDish, removeDishAt, patchDish, reorderDish, coursesFor, dishCountFor } from '../services/menuDishes.js'
 import { getMemoryForUser } from '../services/userMemoryStore.js'
-import { detectSeason } from '@ona/shared'
+import {
+  recordMenuEdits,
+  slotDiff,
+  slotRemoved,
+  slotRecipes,
+  moveChanges,
+  dishRecipe,
+  type MenuEditChange,
+} from '../services/menuEdits.js'
+import { dayTimeBudget, detectSeason } from '@ona/shared'
 import { recipeIngredients, ingredients, recipes, userFavorites } from '../db/schema.js'
 import { resolveScope, scopeWhere, getPrimaryHouseholdId, canAccessRow } from '../services/scopeResolver.js'
 import {
@@ -70,6 +81,8 @@ async function hydrateMenuImages<T extends { days: unknown }>(menu: T): Promise<
   const rows = await db
     .select({
       id: recipes.id,
+      authorId: recipes.authorId,
+      status: recipes.status,
       imageUrl: recipes.imageUrl,
       // Hydrating prep + total time so the week-list view can show a time
       // chip on every row without an extra per-recipe fetch. Pulled from
@@ -83,6 +96,8 @@ async function hydrateMenuImages<T extends { days: unknown }>(menu: T): Promise<
     })
     .from(recipes)
     .where(inArray(recipes.id, [...ids]))
+  // PRO-154: a catalogue recipe gets its photo the first time it's in a menu.
+  requestCatalogPhotos(rows)
   const recipeById = new Map(
     rows.map((r) => [
       r.id,
@@ -313,6 +328,24 @@ async function resolveReadScopeForCaller(callerId: string, pathUserId: string) {
   return { scope, allowed: false as const }
 }
 
+// GET /menu/:menuId/edits — the menu's change log (PRO-149), oldest first.
+// Same access as every `/menu/:menuId` route (param guard above). Declared
+// before `/menu/:userId/:weekId`, which would otherwise swallow the path. Read by the
+// household's «ficha viva» and by the route smoke test; no UI yet.
+router.get('/menu/:menuId/edits', async (req: AuthRequest, res) => {
+  try {
+    const rows = await db
+      .select()
+      .from(menuEdits)
+      .where(eq(menuEdits.menuId, String(req.params.menuId)))
+      .orderBy(asc(menuEdits.createdAt))
+    res.json(rows)
+  } catch (err) {
+    console.error('Menu edits error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
 // GET /menu/:userId/history - list past menus
 router.get('/menu/:userId/history', async (req: AuthRequest, res) => {
   try {
@@ -456,6 +489,7 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
         .set({ days })
         .where(eq(menus.id, menuId))
         .returning()
+      await recordMenuEdits(req, menu, slotDiff(dayIndex, meal, slot.dishes, newDishes))
       // Re-enqueue prep alerts after a manual swap — clear the menu's
       // pending rows first so old-recipe alerts disappear, then rebuild.
       // Best-effort: never block the swap response on this.
@@ -498,11 +532,8 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
     const availableEquipment = Array.isArray(equipmentValue)
       ? new Set<string>((equipmentValue as string[]).map(normaliseEquipment))
       : undefined
-    const timeValue = memory?.time_available?.value as Record<string, number> | undefined
-    const SPANISH_DAY_KEYS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'] as const
-    const maxPrepMinutes = timeValue && typeof timeValue === 'object'
-      ? (timeValue[SPANISH_DAY_KEYS[dayIndex]] ?? null)
-      : null
+    // PRO-138: the day's limit on total or hands-on time.
+    const timeBudget = dayTimeBudget(memory?.time_available?.value, dayIndex)
 
     // Fetch favorites — household-scoped when the flag is on so the
     // matcher boosts recipes any household member has starred.
@@ -512,7 +543,12 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       .from(userFavorites)
       .where(scopeWhere(userFavorites.userId, userFavorites.householdId, favScope))
 
-    const favoriteRecipeIds = new Set<string>(favRows.map((f: any) => f.recipeId))
+    // «¿Qué tal?» ratings (PRO-111): 5 stars boost, 1 star never auto-picked.
+    const rated = withHouseholdRatings(
+      new Set<string>(favRows.map((f: any) => f.recipeId)),
+      new Set(menu.bannedRecipeIds ?? []),
+      await loadHouseholdRatingSets(req.userId!),
+    )
 
     // Load all recipes with ingredients for matching
     // Same loader as the weekly generator: visibility, fit maps, frequency, allergens.
@@ -525,11 +561,10 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       season,
       usedRecipeIds,
       restrictions,
-      favoriteRecipeIds,
-      bannedRecipeIds: new Set(menu.bannedRecipeIds ?? []),
+      ...rated,
       dislikes,
       availableEquipment,
-      maxPrepMinutes,
+      timeBudget,
     }
 
     // Re-pick a recipe for each existing recipe-dish, preserving the dish's course.
@@ -556,6 +591,7 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       .set({ days })
       .where(eq(menus.id, menuId))
       .returning()
+    await recordMenuEdits(req, menu, slotDiff(dayIndex, meal, slot.dishes, newDishes))
 
     res.json(await hydrateMenuImages(updated))
   } catch (err) {
@@ -652,17 +688,17 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
       const availableEquipment = Array.isArray(equipmentValue2)
         ? new Set<string>((equipmentValue2 as string[]).map(normaliseEquipment))
         : undefined
-      const SPANISH_DAY_KEYS2 = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'] as const
-      const timeValue2 = memory2?.time_available?.value as Record<string, number> | undefined
-      const maxPrepMinutes = timeValue2 && typeof timeValue2 === 'object'
-        ? (timeValue2[SPANISH_DAY_KEYS2[dayIndex]] ?? null)
-        : null
+      const timeBudget = dayTimeBudget(memory2?.time_available?.value, dayIndex)
 
       const favRows = await db
         .select({ recipeId: userFavorites.recipeId })
         .from(userFavorites)
         .where(eq(userFavorites.userId, menu.userId))
-      const favoriteRecipeIds = new Set<string>(favRows.map((f: any) => f.recipeId))
+      const rated = withHouseholdRatings(
+        new Set<string>(favRows.map((f: any) => f.recipeId)),
+        new Set(menu.bannedRecipeIds ?? []),
+        await loadHouseholdRatingSets(req.userId!),
+      )
 
       // Same loader as the weekly generator: visibility, fit maps, frequency, allergens.
       const recipesWithIngredients = await loadMatchableRecipes(req.userId!)
@@ -672,11 +708,10 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
         season: detectSeason(),
         usedRecipeIds,
         restrictions,
-        favoriteRecipeIds,
-        bannedRecipeIds: new Set(menu.bannedRecipeIds ?? []),
+        ...rated,
         dislikes,
         availableEquipment,
-        maxPrepMinutes,
+        timeBudget,
       })
       if (!newRecipe) {
         res.status(404).json({ error: 'No matching recipe found for this slot' })
@@ -694,6 +729,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
     }
     days[dayIndex][meal] = { dishes: [initialDish] }
     const [updated] = await db.update(menus).set({ days }).where(eq(menus.id, menuId)).returning()
+    await recordMenuEdits(req, menu, [{ action: 'add', day: dayIndex, meal, after: { id: chosenId, name: chosenName } }])
     res.status(201).json(await hydrateMenuImages(updated))
   } catch (err) {
     console.error('Add meal slot error:', err)
@@ -744,8 +780,10 @@ router.delete('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res)
       return
     }
 
+    const removedSlot = days[dayIndex][meal]
     delete days[dayIndex][meal]
     const [updated] = await db.update(menus).set({ days }).where(eq(menus.id, menuId)).returning()
+    await recordMenuEdits(req, menu, slotRemoved('remove', dayIndex, meal, removedSlot))
     res.json(await hydrateMenuImages(updated))
   } catch (err) {
     console.error('Delete meal slot error:', err)
@@ -813,6 +851,10 @@ router.post('/menu/:menuId/move-slot', async (req: AuthRequest, res) => {
     }
     const targetSlot = days[toDay]?.[toMeal]
 
+    const moved = moveChanges(
+      { day: fromDay, meal: fromMeal, slot: sourceSlot },
+      { day: toDay, meal: toMeal, slot: targetSlot },
+    )
     // Apply the move/swap on the in-memory copy then persist once.
     if (targetSlot && targetSlot.dishes && targetSlot.dishes.length > 0) {
       // Swap: both slots keep their other metadata (servings overrides, etc).
@@ -829,6 +871,7 @@ router.post('/menu/:menuId/move-slot', async (req: AuthRequest, res) => {
       .set({ days })
       .where(eq(menus.id, menuId))
       .returning()
+    await recordMenuEdits(req, menu, moved)
     res.json(await hydrateMenuImages(updated))
   } catch (err) {
     console.error('Move meal slot error:', err)
@@ -979,6 +1022,7 @@ router.post('/menu/:menuId/ban', async (req: AuthRequest, res) => {
       .set({ bannedRecipeIds: next })
       .where(eq(menus.id, menuId))
       .returning()
+    await recordMenuEdits(req, menu, [{ action: 'ban', before: { id: recipeId, name: null } }])
     res.json(await hydrateMenuImages(updated))
   } catch (err) {
     console.error('Ban recipe error:', err)
@@ -1101,6 +1145,18 @@ router.post('/menu/:menuId/day/:day/leftover', async (req: AuthRequest, res) => 
       .set({ days })
       .where(eq(menus.id, menuId))
       .returning()
+    await recordMenuEdits(
+      req,
+      menu,
+      slotRecipes({ dishes: clonedDishes }).map((r) => ({
+        action: 'leftover' as const,
+        day: targetDay,
+        meal: targetMeal,
+        fromDay: sourceDay,
+        fromMeal: sourceMeal,
+        after: r,
+      })),
+    )
     res.status(201).json(await hydrateMenuImages(updated))
   } catch (err) {
     console.error('Leftover error:', err)
@@ -1139,12 +1195,16 @@ router.post('/menu/:menuId/day/:day/skip', async (req: AuthRequest, res) => {
     // Empty every non-locked slot in this day.
     const dayLocks = locked[String(dayIndex)] ?? {}
     const nextDay: DayMenu = {}
+    const skipped: MenuEditChange[] = []
     for (const meal of Object.keys(days[dayIndex] ?? {})) {
       if (dayLocks[meal]) nextDay[meal] = days[dayIndex][meal]
+      else skipped.push(...slotRemoved('skip_day', dayIndex, meal, days[dayIndex][meal]))
     }
     days[dayIndex] = nextDay
 
     const existing = menu.skippedDays ?? []
+    // A day with nothing planned still leaves one row: «este día no se cocina» is the signal.
+    if (skipped.length === 0 && !existing.includes(dayIndex)) skipped.push({ action: 'skip_day', day: dayIndex })
     const nextSkipped = existing.includes(dayIndex) ? existing : [...existing, dayIndex].sort((a, b) => a - b)
 
     const [updated] = await db
@@ -1152,6 +1212,7 @@ router.post('/menu/:menuId/day/:day/skip', async (req: AuthRequest, res) => {
       .set({ days, skippedDays: nextSkipped })
       .where(eq(menus.id, menuId))
       .returning()
+    await recordMenuEdits(req, menu, skipped)
     res.json(await hydrateMenuImages(updated))
   } catch (err) {
     console.error('Skip day error:', err)
@@ -1230,6 +1291,11 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish', async (req: AuthRequest, r
     if (!days[day]) days[day] = {}
     days[day][meal] = { ...slot, dishes: next }
     await db.update(menus).set({ days: days as any }).where(eq(menus.id, menuId))
+    const added = dishRecipe(next[next.length - 1])
+    if (added) {
+      const freezer = parsed.data.kind === 'recipe' && parsed.data.variant === 'freezer'
+      await recordMenuEdits(req, menu, [{ action: freezer ? 'freezer' : 'add', day, meal, after: added }])
+    }
     res.json({ position: next.length - 1, dish: next[next.length - 1] })
   } catch (err: any) {
     res.status(500).json({ error: err.message })
@@ -1251,9 +1317,11 @@ router.delete('/menu/:menuId/day/:day/meal/:meal/dish/:position', async (req: Au
     if (position < 0 || position >= slot.dishes.length) {
       res.status(400).json({ error: 'Position out of range' }); return
     }
+    const removed = dishRecipe(slot.dishes[position])
     const next = removeDishAt(slot.dishes, position)
     days[day][meal] = { ...slot, dishes: next }
     await db.update(menus).set({ days: days as any }).where(eq(menus.id, menuId))
+    if (removed) await recordMenuEdits(req, menu, [{ action: 'remove', day, meal, before: removed }])
     res.json({ dishes: next })
   } catch (err: any) {
     res.status(500).json({ error: err.message })
@@ -1354,18 +1422,18 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
     const availEquipRegen = Array.isArray(equipValRegen)
       ? new Set<string>((equipValRegen as string[]).map(normaliseEquipment))
       : undefined
-    const SPANISH_DAY_KEYS_REGEN = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'] as const
-    const timeValRegen = memRegen?.time_available?.value as Record<string, number> | undefined
-    const maxPrepRegen = timeValRegen && typeof timeValRegen === 'object'
-      ? (timeValRegen[SPANISH_DAY_KEYS_REGEN[day]] ?? null)
-      : null
+    const timeBudgetRegen = dayTimeBudget(memRegen?.time_available?.value, day)
 
     const favScopeRegen = await resolveScope(menu.userId)
     const favRowsRegen = await db
       .select({ recipeId: userFavorites.recipeId })
       .from(userFavorites)
       .where(scopeWhere(userFavorites.userId, userFavorites.householdId, favScopeRegen))
-    const favoriteRecipeIdsRegen = new Set<string>(favRowsRegen.map((f: any) => f.recipeId))
+    const ratedRegen = withHouseholdRatings(
+      new Set<string>(favRowsRegen.map((f: any) => f.recipeId)),
+      new Set(menu.bannedRecipeIds ?? []),
+      await loadHouseholdRatingSets(req.userId!),
+    )
 
     // Same loader as the weekly generator: visibility, fit maps, frequency, allergens.
     const recipesWithIngredientsRegen = await loadMatchableRecipes(req.userId!)
@@ -1375,11 +1443,10 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
       season: detectSeason(),
       usedRecipeIds,
       restrictions,
-      favoriteRecipeIds: favoriteRecipeIdsRegen,
-      bannedRecipeIds: new Set(menu.bannedRecipeIds ?? []),
+      ...ratedRegen,
       dislikes: dislikesRegen,
       availableEquipment: availEquipRegen,
-      maxPrepMinutes: maxPrepRegen,
+      timeBudget: timeBudgetRegen,
     }
 
     const picked = findForCourse(recipesWithIngredientsRegen, dish.course ?? null, matcherOptionsRegen)
@@ -1395,6 +1462,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
     }
     days[day][meal] = { ...slot, dishes: next }
     await db.update(menus).set({ days: days as any }).where(eq(menus.id, menuId))
+    await recordMenuEdits(req, menu, slotDiff(day, meal, [dish], [next[position]]))
     res.json({ dish: next[position] })
   } catch (err: any) {
     res.status(500).json({ error: err.message })
@@ -1440,18 +1508,18 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/random', async (req: AuthReq
     const availEquipR = Array.isArray(equipValR)
       ? new Set<string>((equipValR as string[]).map(normaliseEquipment))
       : undefined
-    const SPANISH_DAY_KEYS_R = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'] as const
-    const timeValR = memR?.time_available?.value as Record<string, number> | undefined
-    const maxPrepR = timeValR && typeof timeValR === 'object'
-      ? (timeValR[SPANISH_DAY_KEYS_R[day]] ?? null)
-      : null
+    const timeBudgetR = dayTimeBudget(memR?.time_available?.value, day)
 
     const favScopeR = await resolveScope(menu.userId)
     const favRowsR = await db
       .select({ recipeId: userFavorites.recipeId })
       .from(userFavorites)
       .where(scopeWhere(userFavorites.userId, userFavorites.householdId, favScopeR))
-    const favoriteRecipeIdsR = new Set<string>(favRowsR.map((f: any) => f.recipeId))
+    const ratedR = withHouseholdRatings(
+      new Set<string>(favRowsR.map((f: any) => f.recipeId)),
+      new Set(menu.bannedRecipeIds ?? []),
+      await loadHouseholdRatingSets(req.userId!),
+    )
 
     // Same loader as the weekly generator: visibility, fit maps, frequency, allergens.
     const recipesWithIngredientsR = await loadMatchableRecipes(req.userId!)
@@ -1461,11 +1529,10 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/random', async (req: AuthReq
       season: detectSeason(),
       usedRecipeIds,
       restrictions,
-      favoriteRecipeIds: favoriteRecipeIdsR,
-      bannedRecipeIds: new Set(menu.bannedRecipeIds ?? []),
+      ...ratedR,
       dislikes: dislikesR,
       availableEquipment: availEquipR,
-      maxPrepMinutes: maxPrepR,
+      timeBudget: timeBudgetR,
     }
 
     // Decide which course to look for, based on the user's plantilla
@@ -1549,6 +1616,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/random', async (req: AuthReq
     if (!days[day]) days[day] = {}
     days[day][meal] = { ...slot, dishes: next }
     await db.update(menus).set({ days: days as any }).where(eq(menus.id, menuId))
+    await recordMenuEdits(req, menu, [{ action: 'add', day, meal, after: { id: picked.id, name: picked.name } }])
     res.json({ position: next.length - 1, dish: next[next.length - 1] })
   } catch (err: any) {
     res.status(500).json({ error: err.message })

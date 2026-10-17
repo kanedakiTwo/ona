@@ -15,7 +15,7 @@
  *
  * Spec: specs/menus.md ("Restrictions & allergies").
  */
-import { ALLERGEN_TAGS, inferAllergenTagsFromName, type AllergenTag } from './nutrition/allergens.js'
+import { ALLERGEN_TAGS, inferAllergenTagsFromName, nameHasTerm, type AllergenTag } from './nutrition/allergens.js'
 
 export function normalizeText(s: string): string {
   return s
@@ -119,9 +119,38 @@ const ANIMAL_PRODUCT_TERMS = [
   'miel', 'gelatina',
 ]
 
+// PRO-144 (beta, 2026-10-16: «Riñones al jerez» to a household with a
+// 3-year-old). «Sin alcohol» skips any recipe with an alcoholic drink among
+// its ingredients — even the wine of a sofrito, which could be left out:
+// better too many than too few. Whole words, so «ron» doesn't hit «ronqueta»
+// nor «cava» «cavar». Vinegars («vinagre de vino / de jerez / de sidra») and
+// brewer's yeast («levadura de cerveza») have no alcohol and don't count.
+// Also checked against the recipe's name when the caller passes it
+// («Carrilleras de ternera con vino tinto»).
+export const ALCOHOL_TERMS = [
+  'alcohol', 'vino', 'jerez', 'cerveza', 'sidra', 'brandy', 'conac', 'cognac', 'licor', 'ron', 'oporto',
+  'vermut', 'vermu', 'cava', 'champan', 'champagne', 'whisky', 'whiskey', 'bourbon', 'ginebra', 'vodka',
+  'tequila', 'orujo', 'aguardiente', 'pacharan', 'marsala', 'pedro ximenez', 'amontillado', 'sake', 'mirin',
+  'calvados', 'armagnac', 'kirsch', 'amaretto', 'cointreau', 'grand marnier', 'triple seco',
+]
+
+const NOT_ALCOHOL = [
+  /(^|[^a-z0-9])vinagre(ta)?s?(( de| del| al)? (vino|vinos|jerez|sidra|cava|cerveza|oporto|pedro ximenez|moscatel|modena|manzana|arroz|blanco|tinto|rosado|balsamico))+/g,
+  /(^|[^a-z0-9])levadura (de )?cerveza/g,
+]
+
+/** True when a normalised ingredient (or recipe) name has an alcoholic drink. */
+export function nameHasAlcohol(normalizedName: string): boolean {
+  let n = normalizedName
+  for (const re of NOT_ALCOHOL) n = n.replace(re, ' ')
+  return ALCOHOL_TERMS.some((t) => nameHasTerm(n, t))
+}
+
 interface DietRule {
   allergens: AllergenTag[]
   terms: string[]
+  /** Also excludes alcoholic drinks (ALCOHOL_TERMS, vinegars excepted). */
+  alcohol?: boolean
 }
 
 const DIETS: Record<string, DietRule> = {
@@ -134,7 +163,9 @@ const DIETS: Record<string, DietRule> = {
   pescetariana: { allergens: [], terms: MEAT_TERMS },
   carne: { allergens: [], terms: MEAT_TERMS }, // "sin carne"
   cerdo: { allergens: [], terms: PORK_TERMS },
-  halal: { allergens: [], terms: [...PORK_TERMS, 'vino', 'cerveza', 'licor', 'brandy', 'ron', 'conac'] },
+  halal: { allergens: [], terms: PORK_TERMS, alcohol: true },
+  alcohol: { allergens: [], terms: [], alcohol: true }, // "sin alcohol"
+  'bebidas alcoholicas': { allergens: [], terms: [], alcohol: true },
 }
 
 const PREFIXES = [
@@ -181,6 +212,8 @@ export interface CompiledRestrictions {
   allergens: Set<AllergenTag>
   /** Normalised ingredient terms (whole word, plural-tolerant). */
   terms: string[]
+  /** «Sin alcohol» (or halal): no alcoholic drink in the ingredients or the name. */
+  alcohol: boolean
 }
 
 /**
@@ -190,13 +223,16 @@ export interface CompiledRestrictions {
 export function compileRestrictions(restrictions: readonly string[], dislikes: readonly string[] = []): CompiledRestrictions {
   const allergens = new Set<AllergenTag>()
   const terms = new Set<string>()
+  let alcohol = false
   for (const raw of restrictions) {
     const key = restrictionKey(raw)
     if (!key) continue
-    const diet = DIETS[key]
+    // «cocinamos siempre sin alcohol», «nada con alcohol»…
+    const diet = DIETS[key] ?? (nameHasTerm(key, 'alcohol') ? DIETS.alcohol : undefined)
     if (diet) {
       diet.allergens.forEach((a) => allergens.add(a))
       diet.terms.forEach((t) => terms.add(t))
+      if (diet.alcohol) alcohol = true
       continue
     }
     const tags = ALLERGEN_ALIASES[key] ?? ((ALLERGEN_TAGS as readonly string[]).includes(key) ? [key as AllergenTag] : null)
@@ -210,27 +246,16 @@ export function compileRestrictions(restrictions: readonly string[], dislikes: r
     const key = restrictionKey(raw)
     if (key) terms.add(key)
   }
-  return { allergens, terms: [...terms] }
+  return { allergens, terms: [...terms], alcohol }
 }
 
-const termRegexCache = new Map<string, RegExp>()
-
-/**
- * Whole-word, plural-tolerant match of a normalised term in a normalised name.
- * A term starting with ^ only matches at the start of the name.
- */
-export function nameHasTerm(normalizedName: string, term: string): boolean {
-  let re = termRegexCache.get(term)
-  if (!re) {
-    const anchored = term.startsWith('^')
-    const escaped = (anchored ? term.slice(1) : term).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    re = new RegExp(`${anchored ? '^' : '(^|[^a-z0-9])'}${escaped}(e?s)?($|[^a-z0-9])`)
-    termRegexCache.set(term, re)
-  }
-  return re.test(normalizedName)
-}
+// nameHasTerm lives in nutrition/allergens.ts (PRO-160: the peanut rule
+// uses it too); re-exported here for the existing callers.
+export { nameHasTerm }
 
 export interface RestrictableRecipe {
+  /** Recipe name: only the alcohol rule reads it («Riñones al jerez»). */
+  name?: string | null
   /** Recipe-level allergen union (recipes.allergens). */
   allergens?: readonly string[] | null
   ingredients: ReadonlyArray<{ ingredientName: string; allergenTags?: readonly string[] | null }>
@@ -238,7 +263,8 @@ export interface RestrictableRecipe {
 
 /** True when the recipe contains something the compiled restrictions exclude. */
 export function violatesRestrictions(recipe: RestrictableRecipe, rules: CompiledRestrictions): boolean {
-  if (rules.allergens.size === 0 && rules.terms.length === 0) return false
+  if (rules.allergens.size === 0 && rules.terms.length === 0 && !rules.alcohol) return false
+  if (rules.alcohol && recipe.name && nameHasAlcohol(normalizeText(recipe.name))) return true
   if (rules.allergens.size > 0) {
     if ((recipe.allergens ?? []).some((a) => rules.allergens.has(a as AllergenTag))) return true
   }
@@ -247,9 +273,10 @@ export function violatesRestrictions(recipe: RestrictableRecipe, rules: Compiled
       if ((ing.allergenTags ?? []).some((a) => rules.allergens.has(a as AllergenTag))) return true
       if (inferAllergenTagsFromName(ing.ingredientName).some((a) => rules.allergens.has(a))) return true
     }
-    if (rules.terms.length > 0) {
+    if (rules.terms.length > 0 || rules.alcohol) {
       const name = normalizeText(ing.ingredientName)
       if (rules.terms.some((t) => nameHasTerm(name, t))) return true
+      if (rules.alcohol && nameHasAlcohol(name)) return true
     }
   }
   return false
@@ -264,6 +291,6 @@ export function recipeIdsBreakingRestrictions(
   restrictions: readonly string[],
 ): string[] {
   const rules = compileRestrictions(restrictions)
-  if (rules.allergens.size === 0 && rules.terms.length === 0) return []
+  if (rules.allergens.size === 0 && rules.terms.length === 0 && !rules.alcohol) return []
   return recipes.filter((r) => violatesRestrictions(r, rules)).map((r) => r.id)
 }

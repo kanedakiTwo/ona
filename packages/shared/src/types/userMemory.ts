@@ -15,6 +15,7 @@
  * ("APUNTA que odio el cilantro" → 1.0).
  */
 import { z } from 'zod'
+import { dayTimeBudgetSchema, timeBudgetsByDay, COOKING_WEEKDAYS } from './cookingTime.js'
 
 export const MEMORY_SOURCES = ['onboarding', 'manual', 'inferred'] as const
 export type MemorySource = (typeof MEMORY_SOURCES)[number]
@@ -42,7 +43,8 @@ export const MEMORY_KEYS = [
   'dislikes',
   // Kitchen capability
   'equipment',
-  // Time budget per weekday (max minutes for cooking)
+  // Time budget per weekday: minutes (total) or { mode: 'total'|'activo',
+  // minutes } (PRO-138, types/cookingTime.ts). Missing day / 0 = no limit.
   'time_available',
   // Weekly budget in euros
   'weekly_budget_eur',
@@ -102,7 +104,7 @@ export const MEMORY_VALUE_SCHEMAS: Record<MemoryKey, z.ZodTypeAny> = {
   restrictions: z.array(z.string().min(1)),
   dislikes: z.array(z.string().min(1)),
   equipment: z.array(z.string().min(1)),
-  time_available: z.record(weekdayKey, z.number().int().min(0).max(480)),
+  time_available: z.record(weekdayKey, dayTimeBudgetSchema),
   weekly_budget_eur: z.number().min(0).max(5000),
   cuisine_bias: z.record(z.string().min(1), z.number().int().min(0).max(100)),
   cooking_skill: cookingSkillSchema,
@@ -190,11 +192,18 @@ export function buildMemoryDigestText(memory: UserMemory): string {
     .map(([k]) => k)
   if (liked.length > 0) lines.push(`Prefiere cocina: ${liked.join(', ')}.`)
 
-  const time = (m.time_available?.value as Record<string, number> | undefined) ?? {}
-  const tight = Object.entries(time)
-    .filter(([_, v]) => v > 0 && v <= 30)
-    .map(([k]) => k)
+  // PRO-138: a day's limit is on the total time or on the hands-on time.
+  const budgets = timeBudgetsByDay(m.time_available?.value)
+  const tight = Object.entries(budgets)
+    .filter(([_, b]) => b.mode === 'total' && b.minutes <= 30)
+    .map(([i]) => COOKING_WEEKDAYS[Number(i)])
   if (tight.length > 0) lines.push(`Días con poco tiempo (≤30 min): ${tight.join(', ')}.`)
+  const littleWork = Object.entries(budgets)
+    .filter(([_, b]) => b.mode === 'activo')
+    .map(([i, b]) => `${COOKING_WEEKDAYS[Number(i)]} (${b.minutes} min)`)
+  if (littleWork.length > 0) {
+    lines.push(`Días con poco rato de trabajo (el total da igual, puede dejar algo al fuego o en el horno): ${littleWork.join(', ')}.`)
+  }
 
   const notes = (m.notes?.value as string[] | undefined) ?? []
   if (notes.length > 0) lines.push(`Notas: ${notes.join('; ')}.`)

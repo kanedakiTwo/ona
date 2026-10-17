@@ -409,7 +409,7 @@ export default function RecipeDetailPage() {
       {user && <RecipeNotesSection recipeId={recipe.id} />}
 
       {/* Household photo gallery — distinct from the hero shot. */}
-      {user && <RecipePhotoGallery recipeId={recipe.id} />}
+      {user && <RecipePhotoGallery recipeId={recipe.id} canSetMain={canEdit} />}
 
       {/* Author + admin: edit + regenerate-image affordances. Admins can
           curate the whole catalogue so they see the same controls. */}

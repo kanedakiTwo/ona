@@ -36,8 +36,8 @@ Every paid provider call writes one row — user (nullable), household (user's p
 
 | Feature | Provider / model | Billed to |
 |---|---|---|
-| `assistant_chat` (web chat turn, all tool rounds) | Anthropic Haiku 4.5 | user |
-| `whatsapp_chat` | Anthropic Haiku 4.5 | user (WhatsApp turn) |
+| `assistant_chat` (web chat turn, all tool rounds) | Anthropic Sonnet 5.5 (`ASSISTANT_MODEL`, since 2026-10-12; Haiku 4.5 before) | user |
+| `whatsapp_chat` | Anthropic Sonnet 5.5 (same model as the web chat) | user (WhatsApp turn) |
 | `voice_note_transcription` (WhatsApp voice notes) | OpenAI `OPENAI_TRANSCRIBE_MODEL` | user |
 | `mimo_voice_transcription` (Mimo's voice in the app, `POST /stt`) | OpenAI `OPENAI_TRANSCRIBE_MODEL` | user |
 | `chat_tts` (Mimo's replies read aloud, `POST /tts`; units = characters, priced per 1,000 chars) | ElevenLabs `ELEVENLABS_MODEL` | user |
@@ -61,7 +61,7 @@ Not costs, so not recorded: USDA / BEDCA lookups, YouTube/article fetches.
 
 ## Prices
 
-All rates live in `config/pricing.ts` (source + date in comments), in the provider's currency; USD is converted with `ADVISOR_EUR_PER_USD` (the same knob the advisor budget uses, default 0.92). The advisor's € budget prices Haiku from the same table, so budget and ledger never disagree. `COST_PRICE_OVERRIDES` (JSON, e.g. `{"openai/gpt-realtime":{"perMinute":0.15}}`) corrects or adds a price without a code change; malformed values are ignored with a warning.
+All rates live in `config/pricing.ts` (source + date in comments), in the provider's currency; USD is converted with `ADVISOR_EUR_PER_USD` (the same knob the advisor budget uses, default 0.92). The advisor's € budget prices the assistant's model (`ADVISOR_PRICE_MODEL` in `advisorBudget.ts`, kept in sync with `ASSISTANT_MODEL`) from the same table, so budget and ledger never disagree. `COST_PRICE_OVERRIDES` (JSON, e.g. `{"openai/gpt-realtime":{"perMinute":0.15}}`) corrects or adds a price without a code change; malformed values are ignored with a warning.
 
 The `openai/gpt-realtime*` entries stay in the table so historical `voice_realtime` rows keep their price. ElevenLabs is priced per 1,000 characters by model (`elevenlabs/<model>`). Marked UNVERIFIED (estimates, override when known): Realtime voice blended **$0.10 / session-minute** (historical; token rates verified, the per-minute blend is derived), AIKIT image **$0.04**. Meta WhatsApp Spain is verified against Meta's EUR list rates effective 2026-10-01 (checked 2026-10-13): utility template and service message **€0.0166**, marketing **€0.0585**.
 
@@ -77,6 +77,7 @@ Analítica de producto en una tabla propia, sin terceros. Una fila por cada cosa
 |---|---|---|
 | `signup_completed` (`props.access`: open/admin/campaign/waitlist/household) | `POST /register` | — |
 | `onboarding_completed` | `POST /user/:id/onboarding` | `complete_onboarding` (cuenta también `menu_generated`) |
+| `onboarding_whatsapp_chosen` (PRO-106) | `POST /whatsapp/link-code` con `{ from: "onboarding" }`: «Por WhatsApp» en la primera pantalla del alta (Perfil y `/whatsapp/conectar` no lo mandan, así que no cuentan) | — |
 | `first_steps_completed` / `first_steps_skipped` | `POST /user/:id/first-steps` con `{ outcome }` (lo envía la guía; sin cuerpo no cuenta) | — |
 | `menu_generated` | `POST /menu/generate` | `generate_weekly_menu` |
 | `meal_swapped` (`props.target` meal/dish, `props.how` picked/auto) | `PUT /menu/:id/day/:d/meal/:m`, `POST …/dish/:p/regenerate` | `swap_meal` |
@@ -88,6 +89,7 @@ Analítica de producto en una tabla propia, sin terceros. Una fila por cada cosa
 | `meal_cooked` | `POST /cook-logs` | `log_cooked` |
 | `mimo_message` (por `channel`; en WhatsApp `props.kind` text/voice_note/photo) | `POST /assistant/:id/chat` (`mode: voice` → voice) | cada turno de WhatsApp que llega a Mimo (`inbound.ts`) |
 | `whatsapp_linked` | — | código de vinculación aceptado (`inbound.ts`) |
+| `invite_shared` (PRO-165) | toque en «Invitar a otro hogar» (el botón llega con PRO-163; hasta entonces no hay eventos) | — |
 | `app_opened_installed` (`props.device` android/ios/desktop; pasivo, ver abajo) | `POST /usage/app-opened` (la web, al abrirse instalada) | — |
 | `shop_order_prepared` (`props.orders` desde Mimo) | `POST /shop-orders/prepare` | `prepare_shop_orders` con al menos un pedido |
 | `carrefour_click` (`props.items` = líneas de la tarjeta del súper) | `POST /shop-orders/:id/carrefour-click` (botón «Hacer este pedido en Carrefour.es», PRO-84) | — |
@@ -100,6 +102,10 @@ Sin dobles recuentos: las herramientas que llaman a la propia API REST (`appApi.
 - `weekly[]`: `{ week (lunes), isoWeek, partial, activeHouseholds, events }`.
 - `funnel[]`, por semana ISO de alta: `{ week, isoWeek, signups, firstMenu, shoppingListViewed, cooked, week2Eligible, activeWeek2 }`. `firstMenu → shoppingListViewed → cooked` son pasos encadenados dentro de los 7 primeros días (día del alta … +6); `cooked` = `cook_mode_started` o `meal_cooked`. `activeWeek2` no está encadenado: algún evento en los días 7–13, sobre `week2Eligible` (altas cuyo día 7 ya ha llegado).
 - `totals`: `{ events, byChannel, activeHouseholds, householdsByEvent }` de la ventana. `definitions` repite las reglas.
+- `channelSplit[]` (PRO-106), por semana ISO: `{ week, isoWeek, webOnly, whatsappOnly, both, unknownOnly }` — hogares activos que solo usaron la app o la web (la voz cuenta como app), solo WhatsApp, o los dos; `unknownOnly` = activos solo por eventos sin canal (el alta, por ejemplo).
+- `households` (PRO-106), el estado de **ahora**, no de la ventana: `{ households, withWhatsapp, withWhatsappNotify, withPush, withNotices, withTwoPlusMembers }` — hogares con al menos un miembro contado; con algún miembro con WhatsApp conectado; con los mensajes de Mimo por WhatsApp activados; con avisos push en algún navegador; con cualquiera de los dos avisos; con 2 o más miembros. Las cuentas admin y suspendidas no cuentan como miembros salvo `includeInternal=1`. Solo cifras: los ids se quedan en la consulta. Cuántos eligen «Por WhatsApp» en el alta: `totals.householdsByEvent.onboarding_whatsapp_chosen`.
+- `referrals[]` (PRO-165, «Referidos»), por semana ISO y de todo el histórico (no de la ventana): `{ week, isoWeek, inviteShared, signupsWithInviter, week3Resolved, inviters }` — toques en «Invitar a otro hogar» esa semana; cuentas que se registraron esa semana con el código de otra (sin contar a quien entra en el hogar de quien invita); de ellas, hogares con **semana resuelta en su 3.ª semana** (menú generado y lista abierta entre los días 14 y 20 desde el alta); y número de códigos distintos detrás. Solo cifras: nunca correos ni códigos.
+- **Premio pendiente** (PRO-165, D-059): cada hogar invitado que llega a su semana 3 resuelta deja una fila en `referral_rewards` (código de quien invitó, su cuenta si la tiene, la cuenta invitada, `status` `pendiente`; migración 0054), **una sola vez por pareja** (índice único). Lo crea el planificador como mucho una vez por hora (`recordPendingReferralRewardsIfDue`, `services/referralRewards.ts`). Todavía no se da nada: darlo es PRO-166. Tests: `referralRewards.test.ts`, `referralRewards.smoke.ts` (API y base de datos reales).
 
 ## App instalada y avisos (PRO-83)
 

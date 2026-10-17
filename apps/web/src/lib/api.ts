@@ -1,4 +1,6 @@
+import { API_SLOW_MS, shouldReportApiStatus } from "@ona/shared"
 import { clearSessionData } from "@/lib/pwa/sessionData"
+import { reportApiProblem } from "@/lib/errorReporter"
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 
@@ -70,13 +72,30 @@ export async function apiFetch<T = unknown>(
     }
   }
 
-  const response = await fetch(`${BASE_URL}${path}`, {
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-    ...rest,
-  })
+  // PRO-143 (specs/errors.md): a request that fails or hangs used to leave a
+  // page loading with no trace. Report it — method + route pattern only.
+  const method = rest.method ?? "GET"
+  const slowTimer = setTimeout(() => reportApiProblem({ method, path, problem: "slow" }), API_SLOW_MS)
+  let response: Response
+  try {
+    response = await fetch(`${BASE_URL}${path}`, {
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+      ...rest,
+    })
+  } catch (err) {
+    if (!(err instanceof DOMException && err.name === "AbortError")) {
+      reportApiProblem({ method, path, problem: "network" })
+    }
+    throw err
+  } finally {
+    clearTimeout(slowTimer)
+  }
 
   if (!response.ok) {
+    if (shouldReportApiStatus(response.status)) {
+      reportApiProblem({ method, path, problem: "status", status: response.status })
+    }
     const error = await response.json().catch(() => ({ error: response.statusText }))
 
     // Stale token (signed by us but for a deleted user, e.g. after a reseed),

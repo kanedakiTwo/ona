@@ -30,6 +30,8 @@ Talk to **Mimo**, Mimoia's assistant, from WhatsApp (the bot speaks as Mimo / Mi
 - One message can trigger several actions ("genérame el menú y dime qué ceno hoy") — the engine runs up to 4 tool rounds per turn (see [Advisor](./advisor.md)).
 - Sending a sticker, location or other unsupported type gets a polite "todavía no entiendo ese tipo de mensaje".
 - **"Hazme la compra"** → one short link per shop (`<WEB_PUBLIC_URL>/c/<token>`) that opens the user's own WhatsApp chat with that shop and the order already written; the user sends it. Forwarding (or pasting) the shop's answer back to Mimo gets a line-by-line check and reply buttons to approve, then a second link with the confirmation. Our number never writes to a shop. See [Compra en mis tiendas](./shop-orders.md). These `/c/` links are the only URLs the model may write in a reply, and only the ones returned **this turn**: asking for the shopping again re-runs `prepare_shop_orders` (2026-10-08: "dame la compra otra vez" re-sent the morning's links from history, so shops got the pre-v1.1 message).
+- **The one reminder (PRO-107, Miguel 2026-10-15: «solo dos veces en total»).** Whoever didn't connect WhatsApp is offered it in the sign-up and **once** more: a card on `/menu` (above the week), «¿Te lo mando por WhatsApp? Le escribes a Mimo «¿qué cenamos?» y te contesta con tu menú.» → «Conectar WhatsApp» (`/whatsapp/conectar`) / «Ahora no». It shows when WhatsApp is available, not connected, and the household has generated a menu and opened the shopping list (its first week resolved, from `usage_events`). Showing it stamps `users.whatsapp_nudge_at`, so it never comes back — after «Ahora no», a reload or on another device. Nothing in «Primeros pasos» and no other reminders; the Perfil card stays as it is.
+- **QR on a computer (PRO-123, D-052).** Where the code is already offered — `/onboarding` «Por WhatsApp» and Perfil → WhatsApp → «Conectar WhatsApp» — screens `lg+` also show a QR of the **same `wa.me` link** as the button (code already written), «¿Estás en el ordenador? Escanea este código con la cámara del móvil…» (`components/whatsapp/WhatsAppQr.tsx`, drawn locally with `qrcode`). Not on phones. It is not another offer: it only goes where WhatsApp is already offered. e2e `whatsapp-qr.spec.ts` (1440 and 390).
 
 ## Proactive messages ("Avisos por WhatsApp")
 
@@ -106,13 +108,14 @@ Migration `0032_assistant_reviews.sql` (new table + nullable `meta` column; idem
   - Inbound statuses: `received` / `processed` / `failed` / `ignored`.
   - Outbound statuses: `sent` / `failed`.
   - Outbound kinds `system` (budget, linked, errors), `link` (how to connect) and `ack` ("me pongo con ello") are left out of chat history. `image_failed`: a week picture whose send failed and whose text went out instead (status `failed`, also out of history).
-- Migration `0030_whatsapp.sql`, which only creates new tables and is idempotent.
+- Migration `0030_whatsapp.sql`, which only creates new tables and is idempotent. `users.whatsapp_nudge_at` (migration `0052_whatsapp_nudge.sql`, additive): when the reminder card was shown.
 
 ## API
 
 - `GET /whatsapp/webhook` (public): Meta's verification handshake. It echoes `hub.challenge` when `hub.verify_token` matches `WHATSAPP_VERIFY_TOKEN`; otherwise **403**.
 - `POST /whatsapp/webhook` (public, signed): **503** when the channel isn't configured.
-- `GET /whatsapp/status` (auth): `{ available, linked, phone, notify, prefs, chatLink }`. `available` = configured AND email allowed. The profile card is hidden unless `available || linked`, so a user can always disconnect.
+- `GET /whatsapp/status` (auth): `{ available, linked, nudge, phone, notify, prefs, chatLink }`. `nudge` = show the one reminder card on `/menu` (PRO-107, rule in `services/whatsapp/nudge.ts`). `available` = configured AND email allowed. The profile card is hidden unless `available || linked`, so a user can always disconnect.
+- `POST /whatsapp/nudge/seen` (auth): the reminder card was shown; stamps `users.whatsapp_nudge_at` once (keeps the first date). **204**.
 - `POST /whatsapp/link-code` (auth): `{ code, expiresAt, message, waLink }`. **403** `WHATSAPP_UNAVAILABLE` when not available.
 - `PATCH /whatsapp/link` (auth) `{ notify?: boolean, prefs?: { <kind>: boolean } }`: **404** when not linked.
 - `DELETE /whatsapp/link` (auth): **204**.
@@ -159,6 +162,7 @@ Migration `0032_assistant_reviews.sql` (new table + nullable `meta` column; idem
   - `store.ts`: DB.
   - `client.ts`: Graph API.
   - `commands.ts`: BAJA / ALTA / HUMANO control words.
+  - `nudge.ts`: the one reminder card on `/menu` (PRO-107).
   - `webhookParser.ts`, `signature.ts`, `linking.ts`, `history.ts`, `format.ts`, `render.ts`, `config.ts`.
 - [apps/api/src/services/weekImage/](../apps/api/src/services/weekImage/): the week picture — `model.ts` (pure: week → format A/B, columns, rows, cells), `render.ts` (satori + resvg + sharp), `photos.ts` (photo downloads), `index.ts` (`weekMenuImage`); assets in [apps/api/assets/](../apps/api/assets/). [apps/api/src/services/menuText.ts](../apps/api/src/services/menuText.ts): `weekMenuDigest`, `weekMenuCaption`.
 - [apps/api/src/services/assistant/systemPrompt.ts](../apps/api/src/services/assistant/systemPrompt.ts): `mode: 'whatsapp'`.
@@ -166,6 +170,6 @@ Migration `0032_assistant_reviews.sql` (new table + nullable `meta` column; idem
 - [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts): `whatsappLinks`, `whatsappLinkCodes`, `whatsappMessages`; [migration 0030](../apps/api/src/db/migrations/0030_whatsapp.sql).
 - [apps/api/src/config/env.ts](../apps/api/src/config/env.ts): `WHATSAPP_*`, `WEB_PUBLIC_URL`.
 - [apps/web/src/app/whatsapp/conectar/page.tsx](../apps/web/src/app/whatsapp/conectar/page.tsx) (WhatsApp-first: login/register → send the code from WhatsApp), [apps/web/src/lib/safeNext.ts](../apps/web/src/lib/safeNext.ts) (`?next=` for login/register),
-- [apps/web/src/components/profile/WhatsAppCard.tsx](../apps/web/src/components/profile/WhatsAppCard.tsx), [apps/web/src/hooks/useWhatsApp.ts](../apps/web/src/hooks/useWhatsApp.ts), [apps/web/src/app/profile/page.tsx](../apps/web/src/app/profile/page.tsx) («WhatsApp» card).
+- [apps/web/src/components/profile/WhatsAppCard.tsx](../apps/web/src/components/profile/WhatsAppCard.tsx), [apps/web/src/hooks/useWhatsApp.ts](../apps/web/src/hooks/useWhatsApp.ts), [apps/web/src/components/menu/WhatsAppNudgeCard.tsx](../apps/web/src/components/menu/WhatsAppNudgeCard.tsx) (the reminder card), [apps/web/src/app/profile/page.tsx](../apps/web/src/app/profile/page.tsx) («WhatsApp» card).
 - Conversation flags: [apps/api/src/services/assistantFlags.ts](../apps/api/src/services/assistantFlags.ts), [apps/api/src/services/anonymise.ts](../apps/api/src/services/anonymise.ts), [apps/api/src/services/assistant/claims.ts](../apps/api/src/services/assistant/claims.ts) (`claimsAction`), `HEALTH_CLAIM_PATTERNS` in [healthGuard.ts](../apps/api/src/services/assistant/healthGuard.ts); route in `routes/metrics.ts`.
-- Tests: `apps/api/src/tests/assistantFlags.test.ts`, `anonymise.test.ts`, `whatsappReviewer.test.ts`, `whatsappWebhook.test.ts`, `whatsappFormat.test.ts`, `whatsappInbound.test.ts` (incl. control words + opt-in + the PRO-07 suggestions + the week picture and its fallbacks), `weekImageModel.test.ts`, `weekImageRender.test.ts` (draws A and B for real; `WEEK_IMAGE_OUT_DIR` writes them out), `whatsappClientImage.test.ts`, `weekMenuDigest.test.ts`, `whatsappScope.test.ts` (food-only), `whatsappProactive.test.ts`; `apps/web/e2e/whatsapp-link.spec.ts`, `apps/web/e2e/whatsapp-connect.spec.ts`.
+- Tests: `apps/api/src/tests/assistantFlags.test.ts`, `anonymise.test.ts`, `whatsappReviewer.test.ts`, `whatsappWebhook.test.ts`, `whatsappFormat.test.ts`, `whatsappInbound.test.ts` (incl. control words + opt-in + the PRO-07 suggestions + the week picture and its fallbacks), `weekImageModel.test.ts`, `weekImageRender.test.ts` (draws A and B for real; `WEEK_IMAGE_OUT_DIR` writes them out), `whatsappClientImage.test.ts`, `weekMenuDigest.test.ts`, `whatsappScope.test.ts` (food-only), `whatsappProactive.test.ts`, `whatsappNudge.test.ts`; `apps/web/e2e/whatsapp-link.spec.ts`, `apps/web/e2e/whatsapp-nudge.spec.ts`, `apps/web/e2e/whatsapp-connect.spec.ts`.

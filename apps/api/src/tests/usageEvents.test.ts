@@ -48,6 +48,12 @@ describe('sanitizeProps', () => {
 })
 
 describe('routeUsageEvent (web requests)', () => {
+  it('PRO-106: «Por WhatsApp» in onboarding counts; the code from Perfil does not', () => {
+    expect(routeUsageEvent(req('POST', '/whatsapp/link-code', { from: 'onboarding' }))).toEqual({ name: 'onboarding_whatsapp_chosen', channel: 'web' })
+    expect(routeUsageEvent(req('POST', '/whatsapp/link-code'))).toBeNull()
+    expect(routeUsageEvent(req('POST', '/whatsapp/link-code', { from: 'perfil' }))).toBeNull()
+  })
+
   it('maps the tracked routes to their events, channel web', () => {
     expect(routeUsageEvent(req('POST', '/menu/generate'))).toEqual({ name: 'menu_generated', channel: 'web' })
     expect(routeUsageEvent(req('POST', '/user/u1/onboarding'))?.name).toBe('onboarding_completed')

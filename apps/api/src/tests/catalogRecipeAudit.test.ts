@@ -243,18 +243,18 @@ describe('the real catalogue (staging, copy of production, 2026-10-15)', () => {
  */
 const SEED_WITHOUT_STEPS_2026_10_15 = [
   'Arroz al caldero', 'Carrilleras de ternera con vino tinto', 'Lubina', 'Espaguetti carbonara', 'Cocido N',
-  'Sushi en bowl', 'Huevos al plato', 'Arroz con conejo', 'Fidegua gipsy', 'Berenjenas con chermoula',
+  'Sushi en bowl', 'Huevos al plato', 'Arroz con conejo', 'Fideuá', 'Berenjenas con chermoula',
   'Sandwich mixto', 'Osobuco a la milanesa', 'Pechuga pollo baja temperatura', 'Lasana',
-  'Salmon al horno con brocoli', 'Crema zanahorias', 'Crema de calabaza', 'Pastela vegetariana Gipsy', 'Pizza',
+  'Salmon al horno con brocoli', 'Crema zanahorias', 'Crema de calabaza', 'Pastela vegetariana', 'Pizza',
   'Muslos de pavo a la catalana', 'Pisto (Shakshuka)', 'Aguachile de salmon', 'Ensalada thai de ternera', 'Migas',
   'Arroz mexicano', 'Paella de sepia y gambas', 'Arroz al horno', 'Tian de verduras', 'Wok de ternera y verduras',
   'Cochinita pibil', 'Pescado al horno', 'Pollo al mole', 'Romanescu', 'Cinta de lomo con brocoli',
-  'Tiradito de bacalao', 'Magret pekinesa', 'Salteado de salmon', 'Tacos gipsy', 'Quesadillas de sobrasada',
+  'Tiradito de bacalao', 'Magret pekinesa', 'Salteado de salmon', 'Tacos caseros', 'Quesadillas de sobrasada',
   'Arroz con bacalao', 'Alitas de pollo', 'Vichisoisse', 'Dorada a la marsellesa', 'Verduras estofadas',
   'Sopa Juliana', 'Onigirazu Sandwich de sushi', 'Espinacas a la crema', 'Curry de patatas y guisantes',
   'Wrap de lechuga con noodles', 'Berenjenas rellenas', 'Fajitas de pollo', 'Ramen', 'Sopa Miso',
-  'Vegan butter chicken', 'Tzatziki', 'Contramuslos de pollo guisados', 'Tabule', 'Berenjenas con queso',
-  'Pollo agridulce gipsy', 'Lasana de verduras', 'Tajin de verduras y cordero', 'Albondigas gipsy',
+  'Curry cremoso de tofu', 'Tzatziki', 'Contramuslos de pollo guisados', 'Tabule', 'Berenjenas con queso',
+  'Pollo agridulce', 'Lasana de verduras', 'Tajin de verduras y cordero', 'Albóndigas express',
   'Garbanzos con sobrasada', 'Ensalada thai', 'Revuelto de espinacas y atun',
 ]
 

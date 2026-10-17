@@ -34,6 +34,7 @@ import {
   SubNotice,
   SubPage,
 } from "@/components/profile/SubPage"
+import { SubLoadError, useQueryLoad } from "@/components/profile/SubLoadError"
 
 const UNIT_OPTIONS: { value: BuyableUnit; label: string }[] = [
   { value: "u", label: "unidades" },
@@ -59,7 +60,10 @@ function expiryPill(expiresAt: string | null): { label: string; tone: string } |
 const FIELD_LABEL = "mb-1 block text-[12px] font-medium text-ink-muted"
 
 export default function PantryPage() {
-  const { data: items, isLoading } = usePantry()
+  const listQuery = usePantry()
+  const { data: items, isLoading } = listQuery
+  // PRO-143: failed or > 8 s → «No hemos podido cargar esto» + «Reintentar».
+  const load = useQueryLoad([["pantry"], listQuery])
   const add = useAddPantry()
   const del = useDeletePantry()
 
@@ -160,7 +164,9 @@ export default function PantryPage() {
 
         <section>
           <h2 className={`${SUB_EYEBROW} mb-3`}>Despensa · {items?.length ?? 0}</h2>
-          {isLoading ? (
+          {load.failed ? (
+            <SubLoadError onRetry={load.retry} retrying={load.retrying} />
+          ) : isLoading ? (
             <SubNotice>
               <p className="font-serif-text text-[18px] italic text-ink-mid">Cargando…</p>
             </SubNotice>

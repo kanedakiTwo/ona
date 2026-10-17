@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 import { RESTRICTION_PRESETS } from '@ona/shared'
 import {
   compileRestrictions,
+  nameHasAlcohol,
   nameHasTerm,
   restrictionKey,
   violatesRestrictions,
@@ -110,7 +111,7 @@ describe('presets offered in onboarding and profile', () => {
   it('every preset compiles to a real rule (never a no-op exact-name match)', () => {
     for (const preset of RESTRICTION_PRESETS) {
       const rules = compileRestrictions([preset])
-      const meaningful = rules.allergens.size > 0 || rules.terms.length > 1
+      const meaningful = rules.allergens.size > 0 || rules.terms.length > 1 || rules.alcohol
       expect(meaningful, preset).toBe(true)
     }
   })
@@ -144,5 +145,50 @@ describe('PRO-61 — prudent rules (Miguel, 2026-10-12)', () => {
     ]) {
       expect(blocks(['sin gluten'], recipe([ok])), ok).toBe(false)
     }
+  })
+})
+
+describe('PRO-144 — «sin alcohol»', () => {
+  it('excludes every alcoholic drink, also the wine of a sofrito', () => {
+    for (const a of [
+      'vino blanco', 'Vino tinto', 'vino de jerez', 'Jerez seco', 'cerveza', 'sidra natural', 'brandy', 'coñac',
+      'licor de naranja', 'ron añejo', 'ron', 'Oporto', 'vermut rojo', 'cava brut', 'whisky', 'mirin', 'sake',
+      'cerveza sin alcohol', 'un chorrito de vino',
+    ]) {
+      expect(blocks(['sin alcohol'], recipe(['cebolla', a])), a).toBe(true)
+    }
+  })
+
+  it('matches whole words: «ron» and «cava» don\'t hit look-alikes, vinegars and yeast don\'t count', () => {
+    for (const ok of [
+      'ronqueta', 'cavar', 'excavado', 'cavallo', 'pimienta de cayena', 'vinagre de vino', 'Vinagre de vino blanco',
+      'vinagre de Jerez', 'vinagre de sidra', 'vinagreta', 'levadura de cerveza', 'uva', 'vinagre balsámico de Módena',
+      'toronja', 'cerezas', 'caviar', 'lirón', 'turrón',
+    ]) {
+      expect(nameHasAlcohol(ok.normalize('NFD').replace(/\p{Diacritic}+/gu, '').toLowerCase()), ok).toBe(false)
+      expect(blocks(['sin alcohol'], recipe([ok])), ok).toBe(false)
+    }
+  })
+
+  it('reads the recipe name too («Carrilleras de ternera con vino tinto», «Riñones al jerez»)', () => {
+    expect(blocks(['sin alcohol'], { ...recipe(['ternera', 'cebolla']), name: 'Carrilleras de ternera con vino tinto' })).toBe(true)
+    expect(blocks(['sin alcohol'], { ...recipe(['riñones']), name: 'Riñones al jerez' })).toBe(true)
+    expect(blocks(['sin alcohol'], { ...recipe(['garbanzos']), name: 'Garbanzos con vinagre de Jerez' })).toBe(false)
+    // Without the restriction the name changes nothing.
+    expect(blocks(['sin gluten'], { ...recipe(['riñones']), name: 'Riñones al jerez' })).toBe(false)
+  })
+
+  it('understands how people say it', () => {
+    for (const r of ['sin alcohol', 'Sin alcohol', 'nada de alcohol', 'cocinamos siempre sin alcohol', 'sin bebidas alcohólicas']) {
+      expect(compileRestrictions([r]).alcohol, r).toBe(true)
+      expect(blocks([r], recipe(['vino blanco'])), r).toBe(true)
+    }
+    expect(compileRestrictions(['sin gluten']).alcohol).toBe(false)
+  })
+
+  it('halal shares the rule (pork + alcohol, but not wine vinegar)', () => {
+    expect(blocks(['halal'], recipe(['vino blanco']))).toBe(true)
+    expect(blocks(['halal'], recipe(['panceta']))).toBe(true)
+    expect(blocks(['halal'], recipe(['vinagre de vino']))).toBe(false)
   })
 })

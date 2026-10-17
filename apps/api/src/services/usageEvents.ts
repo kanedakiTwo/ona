@@ -32,6 +32,7 @@ export const USAGE_EVENTS = [
   'signup_completed',
   'app_opened_installed',
   'onboarding_completed',
+  'onboarding_whatsapp_chosen',
   'first_steps_completed',
   'first_steps_skipped',
   'menu_generated',
@@ -44,6 +45,7 @@ export const USAGE_EVENTS = [
   'meal_cooked',
   'mimo_message',
   'whatsapp_linked',
+  'invite_shared',
   'shop_order_prepared',
   'carrefour_click',
 ] as const
@@ -163,6 +165,12 @@ const ROUTE_EVENTS: RouteEvent[] = [
       if (outcome === 'skipped') return { name: 'first_steps_skipped' }
       return null
     },
+  },
+  {
+    // «Por WhatsApp» on the first onboarding screen (PRO-106). Perfil and /whatsapp/conectar send no `from`.
+    method: 'POST',
+    re: /^\/whatsapp\/link-code\/?$/,
+    event: (req) => (req.body?.from === 'onboarding' ? { name: 'onboarding_whatsapp_chosen' } : null),
   },
   { method: 'POST', re: /^\/menu\/generate\/?$/, event: () => ({ name: 'menu_generated' }) },
   {

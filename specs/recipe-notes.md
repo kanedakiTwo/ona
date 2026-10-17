@@ -7,7 +7,7 @@ Per-household personal notes / 1-5 star rating / free-form substitutions / free-
 ## User Capabilities
 
 - On a recipe detail page, an authed user sees a "Tus notas" card (mobile: in the **Notas** tab; desktop: the Notas section at the end of the right column) with:
-  - **5-star rating** (terracotta) — tap a star to set, tap the same star again to clear, or tap "Quitar".
+  - **5-star rating** (terracotta) — tap a star to set, tap the same star again to clear, or tap "Quitar". It is also set by «¿Qué tal?» after cooking (Repetir a menudo 5 · Bien 3 · Mejor no 1, PRO-110, see [Cook log](./cook-log.md)). Each star is a button named «N de 5» with `aria-pressed` when filled.
   - **Notas personales** — free-form 1000-char note. Click to edit, save / cancel buttons.
   - **Sustituciones tuyas** — free-form 1000-char swaps note. Same inline-edit pattern.
 - All three fields are independent and partial: editing the rating doesn't touch notes / substitutions, and vice versa.

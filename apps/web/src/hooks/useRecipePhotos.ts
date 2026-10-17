@@ -67,3 +67,19 @@ export function useDeleteRecipePhoto() {
     },
   })
 }
+
+/**
+ * «Usar como foto principal» (PRO-145): a gallery photo becomes the recipe's
+ * main photo. Recipe author or admin only (the API answers 403 otherwise).
+ */
+export function useUseRecipePhotoAsMain() {
+  const qc = useQueryClient()
+  return useMutation<{ imageUrl: string }, Error, { recipeId: string; photoId: string }>({
+    mutationFn: ({ recipeId, photoId }) =>
+      api.post<{ imageUrl: string }>(`/recipes/${recipeId}/photos/${photoId}/use-as-recipe-image`),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["recipe", vars.recipeId] })
+      qc.invalidateQueries({ queryKey: ["recipes"] })
+    },
+  })
+}

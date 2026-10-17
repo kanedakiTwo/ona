@@ -15,6 +15,9 @@
 import { NoHealthDataNotice } from "@/components/menu/NoHealthDataNotice"
 import { FirstStepsGuide } from "@/components/menu/FirstStepsGuide"
 import { PriceSurveySheet } from "@/components/menu/PriceSurveySheet"
+import { WhatsAppNudgeCard } from "@/components/menu/WhatsAppNudgeCard"
+import { TasteIntroScreen, TasteMenuCard } from "@/components/taste/TasteOffers"
+import { useTasteStatus } from "@/hooks/useTaste"
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react"
 import { useRouter } from "next/navigation"
 import { ChevronLeft, ChevronRight, MoreHorizontal, RefreshCw, Share2, Sparkles } from "lucide-react"
@@ -176,6 +179,7 @@ export default function MenuPage() {
 
   // Household diner count — the fallback when a slot has no override.
   const { data: profile } = useUser(user?.id)
+  const tasteStatus = useTasteStatus()
   const householdDiners =
     ((profile?.adults as number | undefined) ?? user?.adults ?? 0) +
     ((profile?.kidsCount as number | undefined) ?? user?.kidsCount ?? 0)
@@ -395,7 +399,11 @@ export default function MenuPage() {
   const banned = !isPastWeek && menu ? menu.bannedRecipeIds ?? [] : []
 
   // «Primeros pasos» (PRO-07): once the week is on screen, so step 1 has a dish to light up.
-  const firstSteps = <FirstStepsGuide userId={user.id} ready={Boolean(menu) && !menuLoading && !isPastWeek} />
+  // The «Novedad» screen (PRO-146) covers the menu: the first-steps guide waits until it's answered.
+  const tasteIntroOpen = Boolean(tasteStatus.data?.showIntro)
+  const firstSteps = (
+    <FirstStepsGuide userId={user.id} ready={Boolean(menu) && !menuLoading && !isPastWeek && !tasteStatus.isPending && !tasteIntroOpen} />
+  )
 
   const weekSheet = (
     <>
@@ -412,6 +420,7 @@ export default function MenuPage() {
       onClose={() => setWeekSheetOpen(false)}
       weekLabel={weekLabel(weekStart)}
       weekRange={weekRange}
+      printHref={`/menu/imprimir?week=${weekStart}`}
       isCurrentWeek={isCurrentWeek}
       isPastWeek={isPastWeek}
       hasMenu={Boolean(menu)}
@@ -626,6 +635,8 @@ export default function MenuPage() {
               <>
                 {header}
                 <NoHealthDataNotice />
+                <TasteMenuCard />
+                <WhatsAppNudgeCard />
                 {statusCard}
               </>
             }
@@ -661,11 +672,14 @@ export default function MenuPage() {
           <div className="mx-auto flex max-w-[1180px] flex-col gap-4 px-12 pt-8 pb-10">
             {header}
             <NoHealthDataNotice />
+            <TasteMenuCard />
+            <WhatsAppNudgeCard />
             {statusCard}
           </div>
         )}
         {weekSheet}
         {firstSteps}
+        <TasteIntroScreen />
         <PriceSurveySheet />
       </div>
     )
@@ -688,6 +702,8 @@ export default function MenuPage() {
       </header>
 
       <NoHealthDataNotice />
+      <TasteMenuCard />
+      <WhatsAppNudgeCard />
 
       {!showWeekGrid && (
         <WeekStrip
@@ -806,6 +822,7 @@ export default function MenuPage() {
 
       {weekSheet}
       {firstSteps}
+      <TasteIntroScreen />
       <PriceSurveySheet />
     </div>
   )

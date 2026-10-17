@@ -10,12 +10,16 @@ Before this, a broken screen or a failing endpoint was only visible if a user co
 
 - A user whose screen fails to render sees **"Algo se ha torcido"** (route error boundary, inside the normal app chrome) with **Reintentar** (re-render) and **Ir al inicio**, instead of a blank page. If the root layout itself fails, a full-page fallback with **Recargar** replaces it. Both say an automatic notice reaches the team; the user does nothing.
 - Uncaught errors and unhandled promise rejections anywhere in the web app are reported silently.
+- A web → API request that fails or hangs is reported silently too (PRO-143), so a page left loading leaves a trace. The profile sub-pages also stop waiting after 8 s and offer «Reintentar» ([design-system.md](./design-system.md)).
+- A tab opened before a deploy that asks for a JS/CSS chunk the new build no longer serves (`ChunkLoadError`, typically on navigation) **reloads the page once** by itself, and the error is reported. No second automatic reload in that tab for 5 min (`CHUNK_RELOAD_WINDOW_MS`), so a chunk that is really missing can't loop; the error screen's «Reintentar» remains. If `sessionStorage` is blocked it doesn't reload (it couldn't remember having done it).
 - An admin (JWT) or an agent holding the read-only metrics token reads error groups at `GET /admin/errors`; the weekly `GET /admin/metrics` carries a small `errors` summary ([metrics.md](./metrics.md)).
 - An admin (JWT only) marks a group resolved with `POST /admin/errors/:id/resolve` (audited as `app_error.resolve`). A new occurrence reopens it.
 
 ## What is recorded
 
 **Client** (`kind = client`), from `apps/web/src/lib/errorReporter.ts`: `window` `error` and `unhandledrejection` listeners (installed once from the root layout) and the App Router boundaries `app/error.tsx` / `app/global-error.tsx`. Ignored as noise: `ResizeObserver loop…`, opaque `Script error.`, errors from browser extensions, `AbortError`.
+
+**Client requests** (`kind = client`, PRO-143), from `lib/api.ts` (`apiFetch`, i.e. `api.get/post/put/patch/delete` and `apiPublic`) via `reportApiProblem`: a response with status ≥ 400 except 401 (session ended → logout) and 422 (form validation) — `API GET /memory → HTTP 500`; a fetch that throws (offline, CORS, DNS; not `AbortError`) — `API POST /pantry: sin respuesta (red)`; a request still pending after 8 s (`API_SLOW_MS`; reported once, even if it answers later) — `API GET /user/:id: más de 8 s sin respuesta`. Only the method and the **route pattern** (`apiPathPattern`: plain lowercase route words survive; ids, numbers, dates, tokens, emails and encoded text become `:id`; no query string) plus the page path leave the browser — never the request or response body. `api.upload` / `api.audio` are not covered. **ChunkLoadError** (`isChunkLoadError`: `name === 'ChunkLoadError'`, `Loading (CSS) chunk … failed`, `Failed to load chunk`, `Failed to fetch dynamically imported module`, `Importing a module script failed`): reported like any error from the window listeners (`installChunkReload`, installed from the root layout even when reporting is off) and from both boundaries, then the page reloads once (`handleChunkLoadError`, marker `ona_chunk_reload_at` in `sessionStorage`).
 
 **Server** (`kind = server`), from `middleware/errorCapture.ts`:
 - any response with status ≥ 500. Most handlers catch their error, `console.error` it and answer 500, so each request runs in an AsyncLocalStorage context and the patched `console.error` keeps the last Error (or text) logged while serving it: that becomes the message and stack. With nothing logged: `HTTP <status>: <response "error" text>`;
@@ -39,6 +43,7 @@ Row: `fingerprint` (unique), `kind`, `message` (normalised, ≤ 500 chars), `sam
 | Where | Limit | Over it |
 |---|---|---|
 | Browser | same error from the same place once per page load; ≤ 10 reports per page load | not sent |
+| Browser, request problems | additionally ≤ 20 per browser session (`MAX_API_PROBLEM_REPORTS_PER_SESSION`, counter in `sessionStorage`, in memory if blocked) | not sent |
 | `POST /client-errors` body | 8 KB (any content type; read before the global JSON parser) | 413 `ERROR_REPORT_TOO_LARGE` |
 | Payload | `clientErrorReportSchema` (`@ona/shared`): `kind: 'client'`, `message` 1–4000, `stack` ≤ 8000, `path` ≤ 2048, `release` ≤ 100 | 400 `INVALID_ERROR_REPORT` |
 | Per IP | 30 reports / min (in-memory, per process) | 204, not recorded |
@@ -89,6 +94,7 @@ The browser reporter is **off in development** unless `NEXT_PUBLIC_ERROR_REPORTI
 - [apps/api/src/middleware/errorCapture.ts](../apps/api/src/middleware/errorCapture.ts) — 5xx observer, error middleware, console capture, `unhandledRejection`
 - [apps/api/src/index.ts](../apps/api/src/index.ts) — mount order
 - [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts) (`appErrors`), [apps/api/src/db/migrations/0036_app_errors.sql](../apps/api/src/db/migrations/0036_app_errors.sql)
-- [packages/shared/src/types/clientErrors.ts](../packages/shared/src/types/clientErrors.ts) — `clientErrorReportSchema`, `buildClientErrorReport`, dedupe key, noise filter
+- [packages/shared/src/types/clientErrors.ts](../packages/shared/src/types/clientErrors.ts) — `clientErrorReportSchema`, `buildClientErrorReport`, dedupe key, noise filter; `apiPathPattern`, `buildApiProblemMessage`, `shouldReportApiStatus`, `isChunkLoadError`, `shouldReloadForChunkError`, `API_SLOW_MS`
+- [apps/web/src/lib/api.ts](../apps/web/src/lib/api.ts) — `apiFetch` reports failed / slow requests
 - [apps/web/src/lib/errorReporter.ts](../apps/web/src/lib/errorReporter.ts), [apps/web/src/app/error.tsx](../apps/web/src/app/error.tsx), [apps/web/src/app/global-error.tsx](../apps/web/src/app/global-error.tsx), [apps/web/src/app/layout.tsx](../apps/web/src/app/layout.tsx) (install), [apps/web/next.config.ts](../apps/web/next.config.ts) (`NEXT_PUBLIC_RELEASE`)
-- Tests: `apps/api/src/tests/appErrors.test.ts`, `appErrorsRoute.test.ts`, `errorCapture.test.ts`, `clientErrorReport.test.ts` (contract), `apps/web/e2e/error-reporting.spec.ts`
+- Tests: `apps/api/src/tests/appErrors.test.ts`, `appErrorsRoute.test.ts`, `errorCapture.test.ts`, `clientErrorReport.test.ts` (contract), `clientRequestProblems.test.ts`, `apps/web/e2e/error-reporting.spec.ts`, `apps/web/e2e/profile-load-retry.spec.ts` (request report, retry, chunk reload once)

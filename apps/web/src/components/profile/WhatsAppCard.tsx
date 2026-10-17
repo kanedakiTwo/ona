@@ -10,6 +10,7 @@ import {
   type WhatsAppLinkCode,
   type WhatsAppStatus,
 } from '@/hooks/useWhatsApp'
+import { WhatsAppQr } from "@/components/whatsapp/WhatsAppQr"
 
 /**
  * "Mimo en WhatsApp" block inside the WhatsApp card on /profile ("D · Luz y
@@ -102,6 +103,11 @@ function UnlinkedState() {
                   Esperando tu mensaje… caduca en 10 min.
                 </span>
               </div>
+              {pending.waLink && (
+                <div className="mt-3">
+                  <WhatsAppQr href={pending.waLink} />
+                </div>
+              )}
             </div>
           )}
         </div>

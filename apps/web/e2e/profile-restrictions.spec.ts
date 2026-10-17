@@ -24,10 +24,11 @@ async function onboardWithGlutenFree(page: Page) {
   await next.click()
   await page.getByRole('button', { name: /3-4 veces/i }).click()
   await next.click()
+  // PRO-138: «Entre semana, ¿cómo te gusta cocinar?»
+  await page.getByRole('button', { name: /sin prisa/i }).click()
+  await next.click()
   await page.getByRole('checkbox', { name: /datos de salud/i }).check()
   await page.getByRole('button', { name: /sin gluten/i }).click()
-  await next.click()
-  await page.getByPlaceholder('Plato 1').fill('Lentejas')
   await next.click()
   await page.getByRole('button', { name: /salud/i }).click()
   await page.getByRole('button', { name: /empezar/i }).click()
@@ -63,4 +64,40 @@ test('the profile shows the onboarding restriction and saving keeps it in both p
   await page.reload()
   await expect(page.getByRole('button', { name: 'Quitar sin gluten' })).toBeVisible({ timeout: 15_000 })
   await expect(page.getByRole('button', { name: 'Quitar vegetariano' })).toBeVisible()
+})
+
+test('PRO-144: «sin alcohol» is a chip in onboarding and in the profile, and it is saved', async ({ page }) => {
+  test.setTimeout(90_000)
+  await registerFreshUser(page)
+
+  // Onboarding offers it next to the allergies (enabled once the health box is ticked).
+  await page.goto('/onboarding')
+  const next = page.getByRole('button', { name: /siguiente/i })
+  await next.click()
+  await page.getByRole('button', { name: /3-4 veces/i }).click()
+  await next.click()
+  // PRO-138: «Entre semana, ¿cómo te gusta cocinar?»
+  await page.getByRole('button', { name: /sin prisa/i }).click()
+  await next.click()
+  await page.getByRole('checkbox', { name: /datos de salud/i }).check()
+  await expect(page.getByRole('button', { name: /^sin alcohol$/i })).toBeEnabled()
+  await page.getByRole('button', { name: /sin gluten/i }).click()
+  await next.click()
+  await page.getByRole('button', { name: /salud/i }).click()
+  await page.getByRole('button', { name: /empezar/i }).click()
+  await expect(page).toHaveURL(/\/menu/, { timeout: 30_000 })
+
+  // In the profile: pick it and save.
+  await page.goto('/profile')
+  await page.getByRole('button', { name: /^sin alcohol$/i }).click()
+  await expect(page.getByRole('button', { name: 'Quitar sin alcohol' })).toBeVisible()
+  await page.getByRole('button', { name: /guardar/i }).click()
+  await expect(page.getByText(/guardado/i).first()).toBeVisible({ timeout: 10_000 })
+
+  const s = await session(page)
+  const account = await (await page.request.get(`${API_URL}/user/${s.userId}`, { headers: s.auth })).json()
+  expect(account.restrictions).toEqual(['sin gluten', 'sin alcohol'])
+
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Quitar sin alcohol' })).toBeVisible({ timeout: 15_000 })
 })

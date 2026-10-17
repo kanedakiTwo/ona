@@ -9,7 +9,7 @@ Household-shared photo gallery per recipe. Distinct from `recipes.image_url` (th
 - On a recipe detail page, an authed user sees a "Galería" section below the household notes (mobile: in the **Notas** tab).
 - Tap "Añadir foto" → opens the system file picker (camera + library on mobile). Accepted: `image/jpeg`, `image/png`, `image/webp`, `image/heic`, `image/heif`. Max 8 MB.
 - Preview the picked file, add an optional caption (≤ 280 chars), tap "Subir foto" to upload.
-- Tap any thumbnail to open the full-resolution lightbox.
+- Tap any thumbnail to open the full-resolution lightbox. The recipe's author (or an admin) sees **«Usar como foto principal»** there (PRO-145): the photo becomes the recipe's main photo (cropped to 4:3, see [recipe-images.md](./recipe-images.md) → Own photo) and stays in the gallery; «Ya es la foto principal» confirms it.
 - Tap the trash icon on any thumbnail to delete (any household member can delete any photo).
 
 ## Data Model
@@ -43,8 +43,9 @@ Reuses the existing Railway volume:
 | GET | `/recipes/:recipeId/photos` | List household gallery for the recipe, newest first; returns `[]` if none. Each row includes `uploadedByUsername` for the audit label |
 | POST | `/recipes/:recipeId/photos` | `multipart/form-data` with `photo` (required, ≤ 8 MB) and optional `caption`. Returns the persisted row |
 | DELETE | `/recipes/:recipeId/photos/:photoId` | Hard delete. 204 on success. 404 if the photo isn't in the caller's household |
+| POST | `/recipes/:recipeId/photos/:photoId/use-as-recipe-image` | «Usar como foto principal»: recipe author or admin (403 otherwise), photo in the caller's household for that recipe (404 otherwise). Copies it through the 4:3 hero pipeline to `<recipeId>.jpg` and updates `recipes.image_url`; returns `{ imageUrl }` |
 
-All routes are auth-only + household-scoped (any household member can read or write).
+All routes are auth-only + household-scoped (any household member can read or write; «use-as-recipe-image» additionally needs the recipe's author or an admin).
 
 ## Constraints
 
@@ -63,7 +64,7 @@ All routes are auth-only + household-scoped (any household member can read or wr
 
 - `apps/api/src/db/schema.ts` — `recipePhotos`
 - `apps/api/src/db/migrations/0019_pr8c_recipe_photos.sql`
-- `apps/api/src/services/recipePhotosStore.ts` — sharp pipeline + CRUD
+- `apps/api/src/services/recipePhotosStore.ts` — sharp pipeline + CRUD + `usePhotoAsRecipeImage`
 - `apps/api/src/routes/recipePhotos.ts` — REST surface, `multer` config
 - `apps/web/src/hooks/useRecipePhotos.ts`
 - `apps/web/src/components/recipes/RecipePhotoGallery.tsx`

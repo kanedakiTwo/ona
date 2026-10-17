@@ -23,9 +23,11 @@ interface Props {
   eyebrow?: string
   title: ReactNode
   children: ReactNode
+  /** Stacking layer; cook mode (z-[100]) needs a higher one. */
+  layerClassName?: string
 }
 
-export function MenuSheet({ open, onClose, eyebrow, title, children }: Props) {
+export function MenuSheet({ open, onClose, eyebrow, title, children, layerClassName = "z-[70]" }: Props) {
   const reduce = useReducedMotion()
   const panelRef = useRef<HTMLDivElement>(null)
   const returnFocusRef = useRef<HTMLElement | null>(null)
@@ -56,7 +58,7 @@ export function MenuSheet({ open, onClose, eyebrow, title, children }: Props) {
   return createPortal(
     <AnimatePresence>
       {open && (
-        <div className="fixed inset-0 z-[70] flex items-end justify-center lg:items-center">
+        <div className={`fixed inset-0 ${layerClassName} flex items-end justify-center lg:items-center`}>
           <motion.div
             aria-hidden="true"
             initial={{ opacity: 0 }}

@@ -170,16 +170,6 @@ async function run() {
     assert(status === 400, `Expected 400, got ${status}`)
   })
 
-  await test('Onboarding rejects empty favoriteDishes', async () => {
-    const { status } = await api('POST', `/user/${USER_ID}/onboarding`, {
-      householdSize: 'solo',
-      cookingFreq: 'daily',
-      restrictions: [],
-      favoriteDishes: [],
-      priority: 'healthy',
-    })
-    assert(status === 400, `Expected 400, got ${status}`)
-  })
 
   await test('Complete onboarding with all valid values', async () => {
     const { status, data } = await api('POST', `/user/${USER_ID}/onboarding`, {

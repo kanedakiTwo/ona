@@ -43,6 +43,8 @@ import inviteCampaignRoutes from './routes/inviteCampaigns.js'
 import billingRoutes, { billingWebhookRouter } from './routes/billing.js'
 import priceSurveyRoutes from './routes/priceSurvey.js'
 import feedbackRoutes from './routes/feedback.js'
+import tasteRoutes from './routes/taste.js'
+import catalogWishesRoutes from './routes/catalogWishes.js'
 import { trackShoppingActivity } from './services/activityEvents.js'
 import { trackUsageRoutes } from './services/usageEvents.js'
 import { startScheduler } from './services/notificationScheduler.js'
@@ -133,6 +135,9 @@ app.use(emailSinkRoutes)
 app.use(billingRoutes)
 app.use(priceSurveyRoutes)
 app.use(feedbackRoutes)
+// «Afina tu menú» (PRO-146): per-route auth.
+app.use(tasteRoutes)
+app.use(catalogWishesRoutes)
 app.use(recipeRoutes)
 app.use(ingredientRoutes)
 // pushRoutes is mostly auth-protected (per-route authMiddleware) but the

@@ -46,6 +46,17 @@ export const users = pgTable('users', {
    * never see the guide. Seeing it (or skipping it) sets it back to false.
    */
   firstStepsPending: boolean('first_steps_pending').notNull().default(false),
+  /**
+   * The one WhatsApp reminder card on /menu (PRO-107): stamped the first time
+   * it is shown, so it never shows again (nor after «Ahora no»).
+   */
+  whatsappNudgeAt: timestamp('whatsapp_nudge_at', { withTimezone: true }),
+  /**
+   * «Afina tu menú» (PRO-146) offers: `{ introAt?, introChoice?: 'start'|'later',
+   * cardDismissedAt?, onboardingAt?, whatsappOfferedAt?, flags?: ('carne'|'pescado')[] }`.
+   * Each offer is stamped once so it never repeats.
+   */
+  tasteState: jsonb('taste_state').notNull().default(sql`'{}'::jsonb`),
   // Authorization
   role: text('role').notNull().default('user'),
   // Suspension (admin gate). NULL = active.
@@ -68,6 +79,16 @@ export const users = pgTable('users', {
   healthConsentAt: timestamp('health_consent_at', { withTimezone: true }),
   healthConsentVersion: text('health_consent_version'),
   healthConsentWithdrawnAt: timestamp('health_consent_withdrawn_at', { withTimezone: true }),
+  /**
+   * Personal invitation code (PRO-162): `<web>/?invita=<code>`, same format
+   * as the waitlist's. Reuses the person's waitlist code when they came from
+   * the list; assigned on sign-up or the first time it's asked for.
+   */
+  referralCode: text('referral_code'),
+  /** Code of whoever invited this account (an account's or a waitlist person's), never their email. */
+  invitedByCode: text('invited_by_code'),
+  /** Where the sign-up came from: `?ref` and `utm_*` carried from the landing (PRO-162). */
+  signupAttribution: jsonb('signup_attribution').$type<{ source: string | null; utmSource: string | null; utmMedium: string | null; utmCampaign: string | null }>(),
   /** Campaign invitation link the account signed up with (PRO-27); null = none. */
   inviteCampaignId: uuid('invite_campaign_id').references(() => inviteCampaigns.id, { onDelete: 'set null' }),
   /**
@@ -98,9 +119,18 @@ export const users = pgTable('users', {
    * a fully-migrated user somehow lands here without a primary household.
    */
   primaryHouseholdId: uuid('primary_household_id'),
+  /**
+   * When the first-steps answers were saved (web or WhatsApp, PRO-151): the
+   * day the household's ficha reads the sign-up answers as signals. Kept from
+   * the first time; null for accounts onboarded before 0063.
+   */
+  onboardingCompletedAt: timestamp('onboarding_completed_at', { withTimezone: true }),
+  /** The free «tu caso» text of the sign-up (PRO-138), ≤ 500 chars, as typed. */
+  onboardingNote: text('onboarding_note'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => [
   check('users_role_check', sql.raw("role IN ('user','admin')")),
+  uniqueIndex('uq_users_referral_code').on(table.referralCode),
   index('idx_users_suspended').on(table.suspendedAt),
 ])
 
@@ -254,9 +284,45 @@ export const recipes = pgTable('recipes', {
     .notNull()
     .default('explicit'),
 
+  /**
+   * PRO-154 (specs/catalog-import.md): a catalogue recipe brought in by the
+   * batch import starts as 'draft' — nobody sees it and the menu never picks
+   * it — until the batch is published. Everything else is 'published'.
+   */
+  status: text('status').notNull().default('published'),
+  /**
+   * Where a batch-imported catalogue recipe comes from (book and page, never
+   * its text), whose source it is (`miguel` | `cocina`), the batch, and the
+   * review state: `{ origin, book?, page?, file?, batch, auditIssues[],
+   * allergenDoubt, sampled?, reviewedAt? }`. Null for every other recipe.
+   */
+  catalogSource: jsonb('catalog_source').$type<CatalogSourceInfo>(),
+  /** Batch id of the catalogue import (PRO-154); null otherwise. */
+  importBatch: text('import_batch'),
+
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
-})
+}, (t) => [
+  index('idx_recipes_import_batch').on(t.importBatch),
+  check('recipes_status_check', sql.raw("status IN ('draft','published')")),
+])
+
+/** `recipes.catalog_source` (PRO-154). */
+export interface CatalogSourceInfo {
+  origin: 'miguel' | 'cocina'
+  book?: string | null
+  page?: string | null
+  file?: string | null
+  batch: string
+  auditIssues: string[]
+  allergenDoubt: boolean
+  /** Picked for Miguel's one-in-ten review (Cocina batches). */
+  sampled?: boolean
+  /** Miguel's verdict on a sampled recipe (true OK / false not OK). */
+  reviewOk?: boolean
+  /** When Miguel gave it. */
+  reviewedAt?: string | null
+}
 
 // ─── 5. recipe_ingredients (M:N join) ───────────────────────
 // CHECK constraint on `unit` enforces the Unit enum from @ona/shared.
@@ -782,6 +848,24 @@ export const pushSubscriptions = pgTable('push_subscriptions', {
 
 // ─── WhatsApp channel ─────────────────────────────────────────────
 //
+// ─── referral_rewards (PRO-165) ──────────────────────────────
+// One pending reward per (inviter code, invited account) once the invited
+// household resolves a week in its 3rd week since sign-up (D-059). Nothing is
+// given yet: giving it is PRO-166. No emails, only the codes and the account.
+export const referralRewards = pgTable('referral_rewards', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  inviterCode: text('inviter_code').notNull(),
+  /** The inviter's account when the code is an account's (null for a waitlist person without one). */
+  inviterUserId: uuid('inviter_user_id').references(() => users.id, { onDelete: 'set null' }),
+  inviteeUserId: uuid('invitee_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** 'pendiente' until PRO-166 gives it. */
+  status: text('status').notNull().default('pendiente'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_referral_rewards_pair').on(t.inviterCode, t.inviteeUserId),
+  check('referral_rewards_status_check', sql.raw("status IN ('pendiente','dado')")),
+])
+
 // WhatsApp is another transport for the assistant (see specs/whatsapp.md).
 // A phone is linked to exactly one user and vice versa; the link is proven
 // by sending a one-time code (generated in /profile) from the phone.
@@ -846,6 +930,43 @@ export const whatsappMessages = pgTable('whatsapp_messages', {
 ])
 
 /**
+ * Mimo's web chat (PRO-148, D-064): every web turn is kept server-side for
+ * 90 days so the household profile can learn from it, like WhatsApp already
+ * does with `whatsapp_messages`. Purged by the scheduler tick
+ * (`purgeOldChatMessagesIfDue`); deleting the account deletes the rows
+ * (cascade). The companion panel still shows the conversation from
+ * `sessionStorage`: nothing reads this table back into the chat.
+ */
+export const chatMessages = pgTable('chat_messages', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** The user's household at the time of the turn (null if none). */
+  householdId: uuid('household_id').references(() => households.id, { onDelete: 'set null' }),
+  /** 'web' for now (WhatsApp keeps its own table). */
+  channel: text('channel').notNull().default('web'),
+  /** 'user' | 'assistant' */
+  role: text('role').notNull(),
+  /** What the user typed or said (without the page note), or Mimo's reply. */
+  body: text('body').notNull(),
+  /**
+   * Assistant rows: what Mimo did this turn — `{ mode, tools, corrections,
+   * toolTrace, ms }` — as in `whatsapp_messages.meta`. User rows: `{ mode, path }`.
+   */
+  meta: jsonb('meta').$type<{
+    mode?: string
+    path?: string | null
+    tools?: string[]
+    corrections?: string[]
+    toolTrace?: { name: string; input: string; summary: string; error?: boolean }[]
+    ms?: number
+  }>(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_chat_messages_user_created').on(t.userId, t.createdAt),
+  index('idx_chat_messages_created').on(t.createdAt),
+])
+
+/**
  * Daily review of WhatsApp conversations by an LLM "reviewer agent"
  * (services/whatsapp/reviewer.ts): what went wrong and what to fix.
  * One row per Madrid day reviewed.
@@ -907,6 +1028,14 @@ export const activityEvents = pgTable('activity_events', {
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   householdId: uuid('household_id').references(() => households.id, { onDelete: 'set null' }),
   kind: text('kind').notNull(),
+  /**
+   * The product touched (≤ 80 chars, PRO-151): «leche», «tomate». A signal
+   * for the household's ficha; null on rows from before 0063 and on Mimo's
+   * skills that don't report it.
+   */
+  item: text('item'),
+  /** check / stock toggles: the new state (true = marked / at home). Null otherwise. */
+  toggledOn: boolean('toggled_on'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_activity_events_created').on(t.createdAt),
@@ -1246,4 +1375,263 @@ export const userFeedback = pgTable('user_feedback', {
 }, (t) => [
   index('idx_user_feedback_created').on(t.createdAt),
   check('user_feedback_channel_check', sql.raw("channel IN ('app','chat','whatsapp')")),
+])
+
+// ─── «Afina tu menú» (specs/taste.md, PRO-146) ──────────────
+// One row per user and recipe: the last verdict wins. «nope» keeps the
+// recipe out of the automatic menu of the whole household; «love» weighs
+// like a favourite; «like» a little more than nothing.
+export const recipeVerdicts = pgTable('recipe_verdicts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  recipeId: uuid('recipe_id').notNull().references(() => recipes.id, { onDelete: 'cascade' }),
+  /** 'love' | 'like' | 'nope' | 'skip' */
+  verdict: text('verdict').notNull(),
+  /** «¿Qué es lo que no?»: `{ kind: 'ingredient'|'dish'|'long'|'other'|'none', text? }`. */
+  reason: jsonb('reason'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_recipe_verdicts_user_recipe').on(t.userId, t.recipeId),
+  check('recipe_verdicts_verdict_check', sql.raw("verdict IN ('love','like','nope','skip')")),
+])
+
+// ─── Ficha del hogar (specs/household-profile.md, PRO-150) ──
+// Everything Mimoia knows about a household, with a section per person.
+// Types and value schemas live in `@ona/shared` (householdProfile.ts).
+
+/** People without an account: an alias and an age band. A minor's name is never stored. */
+export const householdPersons = pgTable('household_persons', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  /** «la pequeña», «la abuela». For minors only a generic alias (`MINOR_ALIASES`). */
+  alias: text('alias').notNull(),
+  /** '0-2' | '3-5' | '6-12' | '13-17' | 'adulto'. */
+  ageBand: text('age_band').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_household_persons_household').on(t.householdId),
+  check('household_persons_age_band_check', sql.raw("age_band IN ('0-2','3-5','6-12','13-17','adulto')")),
+])
+
+/** One fact of the ficha. No subject = about the whole household. */
+export const profileFacts = pgTable('profile_facts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  /** About a person with an account. */
+  subjectUserId: uuid('subject_user_id').references(() => users.id, { onDelete: 'cascade' }),
+  /** About a person without one. */
+  subjectPersonId: uuid('subject_person_id').references(() => householdPersons.id, { onDelete: 'cascade' }),
+  /** `PROFILE_FACT_TYPES` in @ona/shared. */
+  type: text('type').notNull(),
+  value: jsonb('value').notNull(),
+  /** 'user' | 'onboarding' | 'ai_realtime' | 'ai_nightly' | 'ai_weekly'. */
+  origin: text('origin').notNull(),
+  confidence: real('confidence').notNull().default(1),
+  /** [{ signal, date, summary }]. */
+  evidence: jsonb('evidence').notNull().default([]),
+  validUntil: timestamp('valid_until', { withTimezone: true }),
+  /** 'active' | 'retired'. */
+  status: text('status').notNull().default('active'),
+  /** The `user_memories` row this fact was copied from (PRO-150 migration); keeps the copy idempotent. */
+  sourceMemoryId: uuid('source_memory_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_profile_facts_household_status').on(t.householdId, t.status),
+  index('idx_profile_facts_subject_user').on(t.subjectUserId),
+  uniqueIndex('uq_profile_facts_source_memory').on(t.sourceMemoryId),
+  check('profile_facts_origin_check', sql.raw("origin IN ('user','onboarding','ai_realtime','ai_nightly','ai_weekly')")),
+  check('profile_facts_status_check', sql.raw("status IN ('active','retired')")),
+  check('profile_facts_confidence_check', sql.raw('confidence >= 0 AND confidence <= 1')),
+  check('profile_facts_one_subject_check', sql.raw('subject_user_id IS NULL OR subject_person_id IS NULL')),
+])
+
+/** The portrait: ≤ 250 words, one row per household, versioned. */
+export const householdProfiles = pgTable('household_profiles', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  portrait: text('portrait').notNull(),
+  version: integer('version').notNull().default(1),
+  /** Model that wrote it. */
+  model: text('model').notNull(),
+  generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_household_profiles_household').on(t.householdId),
+])
+
+/** What the AI suspects but doesn't know («¿seguís sin horno?»). */
+export const profileQuestions = pgTable('profile_questions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  subjectUserId: uuid('subject_user_id').references(() => users.id, { onDelete: 'cascade' }),
+  subjectPersonId: uuid('subject_person_id').references(() => householdPersons.id, { onDelete: 'cascade' }),
+  question: text('question').notNull(),
+  factType: text('fact_type'),
+  origin: text('origin').notNull(),
+  /** 'pending' | 'asked' | 'answered' | 'dismissed'. */
+  status: text('status').notNull().default('pending'),
+  askedAt: timestamp('asked_at', { withTimezone: true }),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_profile_questions_household_status').on(t.householdId, t.status),
+  check('profile_questions_status_check', sql.raw("status IN ('pending','asked','answered','dismissed')")),
+  check('profile_questions_origin_check', sql.raw("origin IN ('user','onboarding','ai_realtime','ai_nightly','ai_weekly')")),
+])
+
+/** History of the ficha: what changed, before, after, why, who. */
+export const profileChanges = pgTable('profile_changes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  factId: uuid('fact_id').references(() => profileFacts.id, { onDelete: 'set null' }),
+  /** `PROFILE_CHANGE_ACTIONS` in @ona/shared. */
+  action: text('action').notNull(),
+  factType: text('fact_type'),
+  before: jsonb('before'),
+  after: jsonb('after'),
+  reason: text('reason').notNull(),
+  origin: text('origin').notNull(),
+  /** Who made it, when it was a person. */
+  actorUserId: uuid('actor_user_id').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_profile_changes_household_created').on(t.householdId, t.createdAt),
+  check('profile_changes_origin_check', sql.raw("origin IN ('user','onboarding','ai_realtime','ai_nightly','ai_weekly')")),
+])
+
+// ─── Refinador de la ficha (PRO-152, services/profile/refiner.ts) ──
+/**
+ * One nightly run of the refiner: the Madrid day it read and the Anthropic
+ * Message Batch it sent. `empty` = no household to refine that night.
+ * Unique per (day, kind) so a run is sent once.
+ */
+export const profileRefinerRuns = pgTable('profile_refiner_runs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  /** AAAA-MM-DD, Europe/Madrid. */
+  day: text('day').notNull(),
+  /** 'nightly' (weekly and real-time come later). */
+  kind: text('kind').notNull().default('nightly'),
+  /** 'empty' | 'submitted' | 'ended' | 'failed'. */
+  status: text('status').notNull(),
+  batchId: text('batch_id'),
+  model: text('model').notNull(),
+  /** Households sent in the batch. */
+  requested: integer('requested').notNull().default(0),
+  /** Why the other households were left out: { no_activity, paused, not_subscribed, spend_cap, no_members }. */
+  skipped: jsonb('skipped').notNull().default({}),
+  errorMessage: text('error_message'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  endedAt: timestamp('ended_at', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('uq_profile_refiner_runs_day_kind').on(t.day, t.kind),
+  index('idx_profile_refiner_runs_status').on(t.status),
+  check('profile_refiner_runs_status_check', sql.raw("status IN ('empty','submitted','ended','failed')")),
+])
+
+/**
+ * One household inside a run: whether its changes were applied, how many,
+ * and what the rules threw away (reason and type only — never the content,
+ * so a discarded health deduction is not stored anywhere).
+ */
+export const profileRefinements = pgTable('profile_refinements', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  runId: uuid('run_id').notNull().references(() => profileRefinerRuns.id, { onDelete: 'cascade' }),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  /** Who the cost goes to (the household's owner). */
+  billedUserId: uuid('billed_user_id').references(() => users.id, { onDelete: 'set null' }),
+  /** 'pending' | 'applied' | 'failed'. */
+  status: text('status').notNull().default('pending'),
+  /** Changes written to the ficha. */
+  applied: integer('applied').notNull().default(0),
+  /**
+   * The short references the model saw (F1 → fact id, P1 → user id, X1 →
+   * person id), so its answer is read against the ficha as it was sent.
+   */
+  refs: jsonb('refs').notNull().default({}),
+  /** [{ reason, op, type }] — see `DiscardReason` in refiner.ts. */
+  discarded: jsonb('discarded').notNull().default([]),
+  errorMessage: text('error_message'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('uq_profile_refinements_run_household').on(t.runId, t.householdId),
+  index('idx_profile_refinements_household').on(t.householdId),
+  check('profile_refinements_status_check', sql.raw("status IN ('pending','applied','failed')")),
+])
+
+// ─── Menu edits (specs/menus.md "Registro de cambios", PRO-149) ─────
+// One row per recipe that a change to a menu touched: which plate went out
+// and which came in, on which day and meal, who did it (the user in the app
+// or Mimo) and where (web or WhatsApp). Generating a menu is not an edit.
+// Signal for the household's «ficha viva» (D-064). Recipe names are copied so
+// the row still reads well if the recipe is deleted later.
+export const menuEdits = pgTable('menu_edits', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').references(() => households.id, { onDelete: 'cascade' }),
+  menuId: uuid('menu_id').notNull().references(() => menus.id, { onDelete: 'cascade' }),
+  /** Account that made the change (Mimo acts as the user it talks to). */
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  /** Day index 0-6 (Monday = 0); null for a week-wide veto (`ban`). */
+  day: integer('day'),
+  meal: text('meal'),
+  /** Origin slot for `move` and `leftover`. */
+  fromDay: integer('from_day'),
+  fromMeal: text('from_meal'),
+  action: text('action').notNull(),
+  beforeRecipeId: uuid('before_recipe_id'),
+  beforeRecipeName: text('before_recipe_name'),
+  afterRecipeId: uuid('after_recipe_id'),
+  afterRecipeName: text('after_recipe_name'),
+  actor: text('actor').notNull(),
+  channel: text('channel').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_menu_edits_household_created').on(t.householdId, t.createdAt),
+  index('idx_menu_edits_menu').on(t.menuId),
+  check('menu_edits_action_check', sql.raw("action IN ('swap','add','remove','ban','skip_day','move','leftover','freezer')")),
+  check('menu_edits_actor_check', sql.raw("actor IN ('user','mimo')")),
+  check('menu_edits_channel_check', sql.raw("channel IN ('web','whatsapp')")),
+])
+
+// ─── Catalogue wishes (PRO-154, specs/catalog-import.md) ────
+// Dishes someone wants and the catalogue doesn't have: favourites from the
+// sign-up with no similar recipe, a menu's «no está en el catálogo» (PRO-155),
+// requests to Mimo that end as a note. One row per dish (normalised key);
+// one vote per household, so the count is «cuántos hogares lo piden». No
+// personal data leaves through the read: dish, sources and household count.
+export const catalogWishes = pgTable('catalog_wishes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  /** The dish as first written (trimmed), e.g. «Croquetas de cocido». */
+  dish: text('dish').notNull(),
+  /** Normalised key (accents, plurals, stopwords out) — one row per dish. */
+  dishKey: text('dish_key').notNull(),
+  /** 'abierto' (we don't have it) | 'cubierto' (a recipe now covers it) | 'descartado'. */
+  status: text('status').notNull().default('abierto'),
+  /** The catalogue recipe that covered it, once there is one. */
+  recipeId: uuid('recipe_id').references(() => recipes.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_catalog_wishes_key').on(t.dishKey),
+  check('catalog_wishes_status_check', sql.raw("status IN ('abierto','cubierto','descartado')")),
+])
+
+export const catalogWishVotes = pgTable('catalog_wish_votes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  wishId: uuid('wish_id').notNull().references(() => catalogWishes.id, { onDelete: 'cascade' }),
+  /** Household id, or the user id when the user has no household — one vote each. */
+  voterKey: text('voter_key').notNull(),
+  householdId: uuid('household_id').references(() => households.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  /** 'alta' | 'me_encanta' | 'mimo' | 'evaluador'. */
+  source: text('source').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_catalog_wish_votes_voter').on(t.wishId, t.voterKey, t.source),
+  index('idx_catalog_wish_votes_wish').on(t.wishId),
+  check('catalog_wish_votes_source_check', sql.raw("source IN ('alta','me_encanta','mimo','evaluador')")),
 ])

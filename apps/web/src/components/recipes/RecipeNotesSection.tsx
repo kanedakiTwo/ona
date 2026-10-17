@@ -90,6 +90,7 @@ export function RecipeNotesSection({ recipeId }: Props) {
                 onClick={() => setRating(n)}
                 disabled={save.isPending}
                 aria-label={`${n} de 5`}
+                aria-pressed={filled}
                 className="rounded-full p-1 transition-all hover:scale-110 disabled:opacity-50"
               >
                 <Star

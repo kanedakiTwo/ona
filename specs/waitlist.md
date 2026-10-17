@@ -10,7 +10,7 @@ The public waitlist that comes before the launch. The product launches publicly 
   - email (required) and first name (optional);
   - **four one-tap questions** (all required): household size (`Solo yo / Dos / 3 o 4 / 5 o más`), who plans and shops (`Yo / Otra persona / Lo compartimos`), how they organise today (`Improviso / Lista en papel o en notas / Con una app / Menú fijo / Casi no cocino en casa`) and phone (`iPhone / Android / Otro`; it decides the Android app on 2026-11-16, D-042, and which install instructions to send);
   - optional: where they usually shop, and "Quiero usar Mimoia por WhatsApp cuando entre";
-  - a **separate, optional, unchecked** "Quiero recibir cada viernes el menú de la semana por email" (newsletter opt-in), with the hint «Te lo recomendamos: te va a sorprender. Es opcional y aparte de la lista; te das de baja con un clic.» (PRO-94; it is sent as described in [Newsletter](./newsletter.md));
+  - a **separate, optional, unchecked** «Quiero recibir cada viernes por email una receta de la semana y novedades de Mimoia» (newsletter opt-in; `NEWSLETTER_OPT_IN_LABEL`, PRO-132), with the hint «Te lo recomendamos: te va a sorprender. Es opcional y aparte de la lista; te das de baja con un clic.» (PRO-94; it is sent as described in [Newsletter](./newsletter.md));
   - the **required** consent checkbox, which links to `/privacidad#lista-de-espera`.
   - No health data, ever.
 - The submit button stays disabled until the email, the four answers and the consent are in.
@@ -20,9 +20,10 @@ The public waitlist that comes before the launch. The product launches publicly 
   - "Enviar por WhatsApp" (`https://wa.me/?text=…`, the first-person share text from `waitlistShareText`);
   - "Ver a cuántas personas has invitado" (→ `/lista/<code>`);
   - "Date de baja aquí" (only on the submission that created the entry).
+- The same personal link goes at the foot of every Friday newsletter the person receives («Invita a tu hogar y entráis antes: …», PRO-130, see [Newsletter](./newsletter.md)).
 - **No price questions on the waitlist (since 2026-10-15).** Until then the success state asked four Van Westendorp questions and offered a founder reservation (PRO-26, D-020/D-021). Miguel moved the questions to beta users after a week of use ([billing.md](./billing.md) → Beta price survey) and dropped the reservation: people hadn't tried Mimoia yet. `POST /waitlist/pricing` and `POST /waitlist/reservation` still exist and the admin report still reads the answers already stored, but no screen calls them.
 - **Owner page `/lista/[code]`**: "Aún no has invitado a nadie." / "Has invitado a 1 persona." / "Has invitado a N personas.", plus the link to share again. It shows a count only: never who those people are, nor the owner's own status. Unknown or left codes say "Este enlace no existe (o ya no está en la lista)".
-- **Opt-out `/lista/baja?t=<token>`**: one button, "Darme de baja". It works on click, not on page load, so mail scanners can't unsubscribe anyone. Leaving deletes the email, name and supermarket, turns the newsletter off, and the person's link stops working. The same email can sign up again later as a fresh entry.
+- **Opt-out `/lista/baja?t=<token>`**: one button, "Darme de baja". It works on click, not on page load, so mail scanners can't unsubscribe anyone. Leaving deletes the email, name and supermarket, turns the newsletter off, deletes the newsletter's send traces for that email (PRO-132, see [Newsletter](./newsletter.md)), and the person's link stops working. The same email can sign up again later as a fresh entry.
 - **Admins / Mimoia HQ agents** read `GET /admin/waitlist?days=30&batchSize=20` with an admin JWT **or** `x-metrics-token` (the same read-only token as [metrics](./metrics.md)). The report has:
   - `totals`: entries, active, last7Days, wantsWhatsapp, newsletterOptIns, inTargetSegment, referredSignups;
   - `status` counts;
@@ -44,7 +45,7 @@ The public waitlist that comes before the launch. The product launches publicly 
 
 Only `waiting` entries. The ranking:
 1. **Target segment** first: household of 2 or more, plans alone or shared (`yo` / `compartido`), and doesn't answer "casi no cocino".
-2. Within a tier, people who **brought someone** (an active signup with their link) or whose **own referrer is already invited/joined**.
+2. Within a tier, people who **brought someone** (an active signup with their link) or whose **own referrer is already invited/joined** — or is an account: a waitlist signup with an account's «Invitar a otro hogar» code (PRO-162) counts as «their referrer is in» (`POST /waitlist` accepts account codes as `referredByCode`).
 3. Earliest signup (ties by id).
 
 Each picked person **pulls in** the waiting people who signed up with their link, and theirs down the chain, right after them, until the batch is full. That is how "entráis antes, y juntos" is kept. Only ids and counts are returned.
@@ -66,7 +67,7 @@ Each picked person **pulls in** the waiting people who signed up with their link
   - referral code: 8 chars of lowercase Crockford base32 (40 random bits, no i/l/o/u), retried on collision;
   - opt-out token: 24 random bytes, base64url;
   - both are unique in the DB.
-- **Consent**: `consent_version` + `consent_at` on every entry (`WAITLIST_CONSENT_VERSION`, `2026-10-15` since Resend joined `/privacidad`; the newsletter's `WAITLIST_NEWSLETTER_CONSENT_VERSION` is `2026-10-15` too, for the new hint). The newsletter is a separate consent (LSSI art. 21–22): `newsletter_opt_in` defaults to false, and `newsletter_consent_at` + `newsletter_consent_version` are stored only when ticked. Bump the versions when the copy or `/privacidad` changes.
+- **Consent**: `consent_version` + `consent_at` on every entry (`WAITLIST_CONSENT_VERSION`, `2026-10-17` since Legal's precisions to `/privacidad` (PRO-132); the newsletter's `WAITLIST_NEWSLETTER_CONSENT_VERSION` is `2026-10-17` too, for the box's new words; consents already given keep the version they were given with). The newsletter is a separate consent (LSSI art. 21–22): `newsletter_opt_in` defaults to false, and `newsletter_consent_at` + `newsletter_consent_version` are stored only when ticked. Bump the versions when the copy or `/privacidad` changes.
 - **Opt-out anonymises in place**: `status='unsubscribed'`, email/name/supermarket set to NULL, newsletter off. The anonymous answers stay for the counts (`email` is nullable; the unique index tolerates NULLs).
 - Referral links point to `WEB_PUBLIC_URL` in API responses; the web shows `window.location.origin`, so the link matches the domain the person used.
 - `/lista/*` renders with the public chrome (`PUBLIC_PREFIXES` in `app/layout.tsx`).
@@ -77,7 +78,6 @@ Each picked person **pulls in** the waiting people who signed up with their link
 - **Emails sent**: the invitation (PRO-93) and the Friday newsletter (PRO-94, [newsletter.md](./newsletter.md); its own opt-out turns off only the newsletter). There is no confirmation email (no double opt-in).
 - No phone number is collected, so "por WhatsApp" is a stated preference, honoured by sending the invitation with the WhatsApp link (since 2026-10-14 Mimo is on a real number, so the 5-recipient limit of Meta's test number no longer applies; access is still gated by `WHATSAPP_ALLOWED_EMAILS`, see [WhatsApp](./whatsapp.md)).
 - Retention (until 6 months after public launch) is not automated yet: the purge job is in the CLAUDE.md backlog.
-- `?ref` / `?utm_*` are read only on the landing URL. They are not carried across pages, and `/register` doesn't record them.
 - The opt-out link is shown only on the device and submission that created the entry. Otherwise it comes in Miguel's emails, or via the contact in `/privacidad` (which needs `NEXT_PUBLIC_SUPPORT_EMAIL`, see CLAUDE.md → Todo Miguel).
 
 ## Related specs

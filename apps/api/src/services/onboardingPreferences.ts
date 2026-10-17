@@ -1,3 +1,4 @@
+import { QUICK_TOTAL_MINUTES, timeBudgetsByDay, type DayTimeBudget } from '@ona/shared'
 import { nameHasTerm, normalizeText } from './dietaryRestrictions.js'
 
 /**
@@ -36,20 +37,24 @@ export function recipesMatchingDishes(
   return out
 }
 
-/** Weekday prep-time cap (minutes) for "Rapidez" / "Cocino poco" users. */
-export const QUICK_WEEKDAY_PREP_MINUTES = 30
+/** Weekday cap (minutes, total time) for "Rapidez" / "Cocino poco" users with no time answer. */
+export const QUICK_WEEKDAY_PREP_MINUTES = QUICK_TOTAL_MINUTES
 
 /**
- * Per-day prep-time budget. Explicit `time_available` memory wins; otherwise
- * a user who chose priority "quick" or cooks "rarely" gets ≤ 30 min Mon–Fri.
+ * Per-day time limits for the week (0 = Monday), PRO-138. A stored
+ * `time_available` wins — even an empty one, which is the onboarding's
+ * «Sin prisa» (no limit). Without one, a user who chose priority "quick" or
+ * cooks "rarely" gets ≤ 30 min in total Mon–Fri.
  */
-export function prepBudgetByDay(
-  fromMemory: Record<number, number>,
+export function weekTimeBudgets(
+  timeAvailable: unknown,
   user: { priority?: string | null; cookingFreq?: string | null },
-): Record<number, number> {
-  if (Object.keys(fromMemory).length > 0) return fromMemory
-  if (user.priority !== 'quick' && user.cookingFreq !== 'rarely') return fromMemory
-  const out: Record<number, number> = {}
-  for (let d = 0; d < 5; d++) out[d] = QUICK_WEEKDAY_PREP_MINUTES
+): Record<number, DayTimeBudget> {
+  if (timeAvailable && typeof timeAvailable === 'object' && !Array.isArray(timeAvailable)) {
+    return timeBudgetsByDay(timeAvailable)
+  }
+  const out: Record<number, DayTimeBudget> = {}
+  if (user.priority !== 'quick' && user.cookingFreq !== 'rarely') return out
+  for (let d = 0; d < 5; d++) out[d] = { mode: 'total', minutes: QUICK_WEEKDAY_PREP_MINUTES }
   return out
 }

@@ -16,7 +16,7 @@ import { api } from "@/lib/api"
 import { isCookPath, isRecipeDetailPath } from "@/components/mimo/MimoButton"
 
 export function feedbackButtonHidden(pathname: string | null): boolean {
-  return !pathname || isCookPath(pathname) || pathname.startsWith("/onboarding")
+  return !pathname || isCookPath(pathname) || pathname.startsWith("/onboarding") || pathname.startsWith("/afinar")
 }
 
 /** Mirror of Mimo's button, on the left, clear of each page's fixed bars. */

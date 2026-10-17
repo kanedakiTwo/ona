@@ -1,7 +1,13 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 import { and, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { ASSISTANT_NAME, BRAND_NAME, WAITLIST_NEWSLETTER_CONSENT_VERSION, waitlistUnsubscribePath } from '@ona/shared'
+import {
+  ASSISTANT_NAME,
+  BRAND_NAME,
+  WAITLIST_NEWSLETTER_CONSENT_VERSION,
+  waitlistReferralUrl,
+  waitlistUnsubscribePath,
+} from '@ona/shared'
 import { env } from '../config/env.js'
 import { db as defaultDb } from '../db/connection.js'
 import { newsletterSends, users, waitlistEntries } from '../db/schema.js'
@@ -46,6 +52,8 @@ import {
  *     unconfigured send releases the claim so a re-run retries only those.
  *   - One-click opt-out that turns off ONLY the newsletter (the place on the
  *     list stays): `/newsletter/baja?t=<token>` + `List-Unsubscribe(-Post)`.
+ *   - Waitlist recipients get their own invite link in the footer (PRO-130):
+ *     «Invita a tu hogar y entráis antes: <web>/?invita=<their code>».
  */
 
 // ─── Content ─────────────────────────────────────────────────────
@@ -155,15 +163,18 @@ function sectionBlock(s: NonNullable<NewsletterContent['sections']>[number]): st
   return row(`<div style="border-top:1px solid ${BORDER};padding-top:26px;">${label}${title}${quote}${body}</div>`, '0 28px 18px')
 }
 
+/** Footer call for waitlist recipients (PRO-130). Until the 16-nov opening; PRO-167 changes it. */
+export const NEWSLETTER_INVITE_LINE = 'Invita a tu hogar y entráis antes:'
+
 /**
  * The visual newsletter, on the shared brand shell (emailBrand.ts): masthead
  * with the logo → greeting (optional) → headline → letter → the star recipe's photo full width →
  * sections → cards → signature → footer band. Absolute image URLs with `alt`.
- * `unsubscribeUrl` is per recipient.
+ * `unsubscribeUrl`, `leaveListUrl` and `inviteUrl` are per recipient.
  */
 export function renderNewsletterEmail(
   input: Pick<NewsletterSendInput, 'subject' | 'preheader' | 'content'>,
-  links: { unsubscribeUrl: string; leaveListUrl?: string } & BrandAssets,
+  links: { unsubscribeUrl: string; leaveListUrl?: string; inviteUrl?: string } & BrandAssets,
 ): { html: string; text: string } {
   const c = input.content
   const brand = esc(BRAND_NAME)
@@ -191,6 +202,11 @@ ${button(c.cta.label, c.cta.url, '6px 28px 38px')}`
       c.tip ? sideBlock(`Un truco con ${ASSISTANT_NAME}`, c.tip) : '',
       signature(c.signoff, c.from),
       footerBand(links, [
+        ...(links.inviteUrl
+          ? [
+              `<span style="color:${INK};">${esc(NEWSLETTER_INVITE_LINE)}</span> <a href="${esc(links.inviteUrl)}" style="color:${TERRACOTTA_DEEP};font-weight:600;">${esc(links.inviteUrl.replace(/^https?:\/\//, ''))}</a>`,
+            ]
+          : []),
         ...(c.note ? [esc(c.note)] : []),
         `Te llega porque pediste el menú de los viernes de ${brand}.`,
         `<a href="${esc(links.unsubscribeUrl)}" style="color:${MUTED};">No quiero recibir más el menú de los viernes</a>${links.leaveListUrl ? ` · <a href="${esc(links.leaveListUrl)}" style="color:${MUTED};">Salir de la lista de espera</a>` : ''}`,
@@ -224,6 +240,7 @@ ${button(c.cta.label, c.cta.url, '6px 28px 38px')}`
     ...(c.signoff ? [c.signoff] : []),
     ...(c.from ? [c.from.name, ...(c.from.role ? [c.from.role] : [])] : []),
     ...(c.signoff || c.from ? [''] : []),
+    ...(links.inviteUrl ? [`${NEWSLETTER_INVITE_LINE} ${links.inviteUrl}`, ''] : []),
     ...(c.note ? [c.note, ''] : []),
     `Te llega porque pediste el menú de los viernes de ${BRAND_NAME}.`,
     `No quiero recibir más el menú de los viernes: ${links.unsubscribeUrl}`,
@@ -236,6 +253,23 @@ ${button(c.cta.label, c.cta.url, '6px 28px 38px')}`
 
 export function recipientHash(email: string): string {
   return createHash('sha256').update(email.trim().toLowerCase()).digest('hex')
+}
+
+/**
+ * Forget the send traces of an address (PRO-132): delete every
+ * `newsletter_sends` row with its hash — a hash of an email is still
+ * pseudonymised personal data. Called when someone leaves the waitlist
+ * (`/lista/baja`) or deletes their account; NOT on the newsletter-only
+ * opt-out (the rows stop the same issue going out twice). Accepts a
+ * transaction. Returns how many rows went.
+ */
+export async function forgetNewsletterSends(db: Pick<Db, 'delete'>, email: string | null | undefined): Promise<number> {
+  if (!email?.trim()) return 0
+  const rows = await db
+    .delete(newsletterSends)
+    .where(eq(newsletterSends.recipientHash, recipientHash(email)))
+    .returning({ h: newsletterSends.recipientHash })
+  return rows.length
 }
 
 /** The newsletter-only opt-out token of a waitlist entry: `w.` + its private opt-out token. */
@@ -282,6 +316,8 @@ export interface NewsletterCandidate {
   token: string
   /** Full waitlist opt-out token (for «Salir de la lista de espera»); waitlist only. */
   leaveToken?: string
+  /** The entry's public invite code (`/?invita=<code>`, PRO-130); waitlist only. */
+  referralCode?: string
 }
 
 export interface NewsletterRecipient {
@@ -290,6 +326,7 @@ export interface NewsletterRecipient {
   hash: string
   token: string
   leaveToken?: string
+  referralCode?: string
 }
 
 /**
@@ -313,6 +350,7 @@ export function selectNewsletterRecipients(
       hash,
       token: c.token,
       ...(c.leaveToken ? { leaveToken: c.leaveToken } : {}),
+      ...(c.source === 'waitlist' && c.referralCode ? { referralCode: c.referralCode } : {}),
     })
   }
   return out
@@ -354,6 +392,7 @@ export function createDbNewsletterRepo(db: Db = defaultDb): NewsletterRepo {
           email: waitlistEntries.email,
           status: waitlistEntries.status,
           unsubscribeToken: waitlistEntries.unsubscribeToken,
+          referralCode: waitlistEntries.referralCode,
         })
         .from(waitlistEntries)
         .where(and(eq(waitlistEntries.newsletterOptIn, true), ne(waitlistEntries.status, 'unsubscribed')))
@@ -372,6 +411,7 @@ export function createDbNewsletterRepo(db: Db = defaultDb): NewsletterRepo {
           newsletterOptIn: true,
           token: newsletterTokenForWaitlist(r.unsubscribeToken),
           leaveToken: r.unsubscribeToken,
+          referralCode: r.referralCode,
         })),
       ]
     },
@@ -504,15 +544,16 @@ export function defaultNewsletterDeps(urls: { publicUrl: string; apiUrl: string 
 export function buildNewsletterMessage(
   input: Pick<NewsletterSendInput, 'subject' | 'preheader' | 'content'>,
   to: string,
-  tokens: { token: string; leaveToken?: string },
+  tokens: { token: string; leaveToken?: string; referralCode?: string },
   urls: { publicUrl: string; apiUrl: string },
 ): EmailMessage {
   const web = urls.publicUrl.replace(/\/+$/, '')
   const api = urls.apiUrl.replace(/\/+$/, '')
   const unsubscribeUrl = `${web}${newsletterUnsubscribePath(tokens.token)}`
   const leaveListUrl = tokens.leaveToken ? `${web}${waitlistUnsubscribePath(tokens.leaveToken)}` : undefined
+  const inviteUrl = tokens.referralCode ? waitlistReferralUrl(web, tokens.referralCode) : undefined
   const oneClick = `${api}/newsletter/unsubscribe?t=${encodeURIComponent(tokens.token)}`
-  const { html, text } = renderNewsletterEmail(input, { unsubscribeUrl, leaveListUrl, ...brandAssets(web) })
+  const { html, text } = renderNewsletterEmail(input, { unsubscribeUrl, leaveListUrl, inviteUrl, ...brandAssets(web) })
   return {
     to,
     subject: input.subject,
@@ -572,7 +613,7 @@ export async function sendNewsletter(input: NewsletterSendInput, deps: Newslette
   const claimed = await deps.repo.claim(input.issueId, recipients)
   const mine = recipients.filter((r) => claimed.has(r.hash))
   const results = await deps.sendBatch(
-    mine.map((r) => buildNewsletterMessage(input, r.email, { token: r.token, leaveToken: r.leaveToken }, urls)),
+    mine.map((r) => buildNewsletterMessage(input, r.email, { token: r.token, leaveToken: r.leaveToken, referralCode: r.referralCode }, urls)),
   )
   const sent: { hash: string; providerId: string | null }[] = []
   const notSent: string[] = []

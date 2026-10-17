@@ -2,6 +2,8 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator'
 import { db, pool } from './connection.js'
 import { applyCatalogSourceLinks } from '../services/catalogSourceLinks.js'
 import { applyCatalogRecipeFixes } from '../services/catalogRecipeFixes.js'
+import { applyProfileFromMemories } from '../services/profileFromMemories.js'
+import { applyCatalogRecipeTimes } from '../services/catalogRecipeTimes.js'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -24,6 +26,19 @@ async function main() {
     await applyCatalogRecipeFixes(db)
   } catch (err) {
     console.error('[catalog-recipe-fixes] failed:', err)
+  }
+  // Idempotent data copy (PRO-150): `user_memories` → the household's ficha.
+  try {
+    await applyProfileFromMemories(db)
+  } catch (err) {
+    console.error('[profile-from-memories] failed:', err)
+  }
+  // Idempotent data fix (PRO-138): system recipes get the total and hands-on
+  // times the menu's time limits need (only empty fields).
+  try {
+    await applyCatalogRecipeTimes(db)
+  } catch (err) {
+    console.error('[catalog-recipe-times] failed:', err)
   }
   await pool.end()
 }

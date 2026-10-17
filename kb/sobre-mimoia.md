@@ -18,7 +18,7 @@ Mimo es su asistente: una inteligencia artificial que habla contigo en la app y 
 ## Qué puedes hacer con Mimoia
 
 - **Menú de la semana:** Mimoia te propone comidas y cenas para toda la semana según tu hogar, tus gustos y tus restricciones. Puedes cambiar un plato, bloquear los que quieras conservar, mover comidas de día, poner notas («comemos fuera»), saltar un día, aprovechar sobras para otro día y rehacer la semana.
-- **Recetas:** un catálogo de recetas caseras y tus propias recetas. Puedes guardar una receta desde un enlace (web, YouTube, Instagram o TikTok), desde una foto (un libro, una nota a mano, una captura) o escribirla. Puedes editarla, ajustar raciones, apuntar notas y trucos, marcar favoritas y ordenarlas en recetarios («Recetas de mi madre»). Las recetas guardadas desde un enlace llevan el enlace a su original.
+- **Recetas:** un catálogo de recetas caseras y tus propias recetas. Puedes guardar una receta desde un enlace (web, YouTube, Instagram o TikTok), desde una foto (un libro, una nota a mano, una captura) o escribirla. Cada receta lleva una foto: puedes subir la tuya (desde la cámara o la galería, al crearla o al editarla, o elegir una de las fotos «así me quedó») o dejar que se genere con IA si no subes ninguna. Puedes editarla, ajustar raciones, apuntar notas y trucos, marcar favoritas y ordenarlas en recetarios («Recetas de mi madre»). Las recetas guardadas desde un enlace llevan el enlace a su original.
 - **Información nutricional:** cada receta trae una estimación por ración calculada a partir de sus ingredientes. Es una estimación orientativa, no consejo médico.
 - **Lista de la compra:** se hace sola con el menú, agrupada por pasillos y para el número de personas de tu hogar. Puedes marcar lo comprado, decir lo que ya tienes, añadir cosas sueltas y fijar básicos que se añaden cada semana (pan, leche, café).
 - **Despensa:** en la lista puedes marcar lo que ya tienes en casa («Ya en casa») para no comprarlo, y Mimoia te sugiere qué cocinar con lo que tienes.
@@ -26,6 +26,7 @@ Mimo es su asistente: una inteligencia artificial que habla contigo en la app y 
 - **Modo cocina:** paso a paso con la pantalla siempre encendida, temporizadores y manos libres por voz («siguiente», «repite»).
 - **Tu hogar:** invita a tu familia al mismo hogar desde Perfil → Mi casa. Compartís menú, lista de la compra, favoritos y despensa, cada uno con su usuario.
 - **Lo que Mimo recuerda:** gustos, cosas que no te gustan, el equipo de tu cocina, días con poco tiempo… para que el menú se parezca cada vez más a tu casa.
+- **Afina tu menú:** Mimoia te enseña recetas una a una y dices si te apetecen («Me apetece», «Me encanta» o «No para mí»), deslizando o con botones. Lo que no te apetece no vuelve a salir en el menú y lo que te encanta sale más a menudo. Se hace al registrarte (se puede saltar) y siempre en mimoia.com/afinar o en Perfil → Afina tu menú.
 
 ## Dónde se usa
 
@@ -46,6 +47,7 @@ Los planes, precios y condiciones vigentes van en el bloque «Planes y precios»
 
 - No vendemos tus datos ni los usamos para publicidad. Mimoia no usa cookies de publicidad ni de analítica.
 - Tus alergias, intolerancias y otros datos de salud solo se guardan si das tu permiso, y solo desde la web o la app; por WhatsApp no se guardan.
+- Lo que hablas con Mimo en la web se guarda 90 días, para conocer mejor los gustos y costumbres de tu hogar, y después se borra solo. Si borras la cuenta, se borra al momento.
 - Puedes borrar tu cuenta en Perfil → Borrar mi cuenta. Mimo no puede borrarla por chat.
 - Más detalle en mimoia.com/privacidad, mimoia.com/terminos y mimoia.com/aviso-legal.
 

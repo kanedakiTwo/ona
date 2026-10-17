@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { AnimatePresence, motion } from "motion/react"
 import {
   ChevronLeft,
+  Check,
   ChevronRight,
   Headphones,
   ListChecks,
@@ -21,6 +22,8 @@ import { useAuth } from "@/lib/auth"
 import { useOptionalMimo } from "@/components/mimo/MimoProvider"
 import { StepCard, buildIngredientRefCounts } from "./StepCard"
 import { ChecklistPanel } from "./ChecklistPanel"
+import { RatingPromptSheet } from "./RatingPromptSheet"
+import { useRecordCook } from "@/hooks/useCookLogs"
 
 interface CookingShellProps {
   recipe: Recipe
@@ -195,6 +198,21 @@ export function CookingShell({
   function handleExit() {
     haptic.medium()
     router.push(`/recipes/${recipe.id}`)
+  }
+
+  // «Terminar» on the last step (PRO-110): records the dish as cooked, asks
+  // «¿Qué tal?» when the API says so, then back to the recipe.
+  const recordCook = useRecordCook()
+  const [ratingOpen, setRatingOpen] = useState(false)
+  function handleFinish() {
+    haptic.medium()
+    recordCook.mutate(
+      { recipeId: recipe.id, servings },
+      {
+        onSuccess: (res) => (res.askRating ? setRatingOpen(true) : handleExit()),
+        onError: () => handleExit(),
+      },
+    )
   }
 
   /* ─── Active timer chips (top of screen) ─── */
@@ -411,16 +429,27 @@ export function CookingShell({
             <ChevronLeft size={18} />
             Anterior
           </button>
-          <button
-            type="button"
-            onClick={goNext}
-            disabled={safeIdx >= totalSteps - 1}
-            className="inline-flex h-[50px] flex-[1.4] items-center justify-center gap-1.5 rounded-full bg-ink text-[16px] font-semibold text-paper transition-transform active:scale-[0.98] disabled:opacity-40"
-            aria-label="Paso siguiente"
-          >
-            Siguiente
-            <ChevronRight size={18} />
-          </button>
+          {safeIdx >= totalSteps - 1 ? (
+            <button
+              type="button"
+              onClick={handleFinish}
+              disabled={recordCook.isPending}
+              className="inline-flex h-[50px] flex-[1.4] items-center justify-center gap-1.5 rounded-full bg-ink text-[16px] font-semibold text-paper transition-transform active:scale-[0.98] disabled:opacity-40"
+            >
+              <Check size={18} />
+              {recordCook.isPending ? "Guardando…" : "Terminar"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={goNext}
+              className="inline-flex h-[50px] flex-[1.4] items-center justify-center gap-1.5 rounded-full bg-ink text-[16px] font-semibold text-paper transition-transform active:scale-[0.98] disabled:opacity-40"
+              aria-label="Paso siguiente"
+            >
+              Siguiente
+              <ChevronRight size={18} />
+            </button>
+          )}
         </div>
       </nav>
 
@@ -431,6 +460,15 @@ export function CookingShell({
         ingredients={recipe.ingredients}
         checkedIngredientIds={checked}
         onToggle={toggleIngredient}
+      />
+      <RatingPromptSheet
+        recipeId={ratingOpen ? recipe.id : null}
+        recipeName={recipe.name}
+        onDone={() => {
+          setRatingOpen(false)
+          handleExit()
+        }}
+        layerClassName="z-[110]"
       />
     </div>
   )

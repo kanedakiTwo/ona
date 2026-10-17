@@ -22,11 +22,15 @@ import {
   SubNotice,
   SubPage,
 } from "@/components/profile/SubPage"
+import { SubLoadError, useQueryLoad } from "@/components/profile/SubLoadError"
 
 const EMOJI_SUGGESTIONS = ['📖', '⭐', '🥗', '🍝', '🍰', '🥩', '🌮', '🍲', '☕']
 
 export default function CookbooksPage() {
-  const { data: books, isLoading } = useCookbooks()
+  const listQuery = useCookbooks()
+  const { data: books, isLoading } = listQuery
+  // PRO-143: failed or > 8 s → «No hemos podido cargar esto» + «Reintentar».
+  const load = useQueryLoad([["cookbooks"], listQuery])
   const create = useCreateCookbook()
 
   const [open, setOpen] = useState(false)
@@ -116,7 +120,9 @@ export default function CookbooksPage() {
 
       <section className="mt-8">
         <h2 className={`${SUB_EYEBROW} mb-3`}>Lista · {books?.length ?? 0}</h2>
-        {isLoading ? (
+        {load.failed ? (
+            <SubLoadError onRetry={load.retry} retrying={load.retrying} />
+          ) : isLoading ? (
           <SubNotice>
             <p className="font-serif-text text-[18px] italic text-ink-mid">Cargando…</p>
           </SubNotice>

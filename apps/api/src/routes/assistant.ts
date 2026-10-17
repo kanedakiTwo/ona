@@ -10,6 +10,7 @@ import { recipes } from '../db/schema.js'
 import { describePage, pageContextNote, withPageContext } from '../services/assistant/pageContext.js'
 import { canViewRecipe } from '../services/recipeVisibility.js'
 import type { AssistantMode } from '../services/assistant/systemPrompt.js'
+import { recordWebChatTurn } from '../services/chatMessages.js'
 
 /** Web modes: the companion's chat and voice, and the voice onboarding. WhatsApp has its own route. */
 const WEB_MODES: AssistantMode[] = ['text', 'voice', 'onboarding']
@@ -64,6 +65,7 @@ router.post('/assistant/:userId/chat', requireSpendCapacity(), async (req: AuthR
     }
     const modelMessage = mode === 'onboarding' ? message : withPageContext(message, pageContextNote(page, recipeName))
 
+    const startedAt = Date.now()
     const { usage, ...response } = await chat(userId, modelMessage, chatHistory, db, { mode })
 
     // Meter this turn's real token cost against the monthly budget. Awaited so
@@ -73,6 +75,15 @@ router.post('/assistant/:userId/chat', requireSpendCapacity(), async (req: AuthR
       await recordAdvisorUsage(userId, usage, db)
     } catch (e) {
       console.warn('[assistant] recordAdvisorUsage failed (continuing):', e)
+    }
+
+    // Keep the turn server-side for 90 days (PRO-148): the user's own words
+    // (without the page note) and Mimo's reply with what it did. A failure
+    // here must not fail the chat — swallow and log.
+    try {
+      await recordWebChatTurn({ userId, userMessage: message, response, mode, path, ms: Date.now() - startedAt }, db)
+    } catch (e) {
+      console.warn('[assistant] recordWebChatTurn failed (continuing):', e)
     }
 
     res.json(response)

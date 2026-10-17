@@ -5,6 +5,8 @@
  *   GET    /recipes/:recipeId/photos               — list household gallery
  *   POST   /recipes/:recipeId/photos               — multipart upload, max 8 MB
  *   DELETE /recipes/:recipeId/photos/:photoId      — owner / member only
+ *   POST   /recipes/:recipeId/photos/:photoId/use-as-recipe-image
+ *          — «Usar como foto principal» (recipe author or admin, PRO-145)
  */
 
 import { Router } from 'express'
@@ -14,8 +16,12 @@ import {
   deletePhotoForUser,
   listPhotosForRecipe,
   NoHouseholdError,
+  NotRecipeAuthorError,
+  PhotoNotFoundError,
   uploadPhotoForRecipe,
+  usePhotoAsRecipeImage,
 } from '../services/recipePhotosStore.js'
+import { UnreadableImageError } from '../services/recipeOwnImage.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -89,6 +95,34 @@ router.delete('/recipes/:recipeId/photos/:photoId', async (req: AuthRequest, res
     res.status(204).send()
   } catch (err) {
     console.error('DELETE /recipes/:id/photos/:id error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+router.post('/recipes/:recipeId/photos/:photoId/use-as-recipe-image', async (req: AuthRequest, res) => {
+  try {
+    const recipeId = String(req.params.recipeId)
+    const photoId = String(req.params.photoId)
+    if (!UUID_RE.test(recipeId) || !UUID_RE.test(photoId)) {
+      res.status(400).json({ error: 'IDs must be UUIDs' })
+      return
+    }
+    const out = await usePhotoAsRecipeImage({ userId: req.userId!, isAdmin: req.user?.role === 'admin' }, recipeId, photoId)
+    res.json(out)
+  } catch (err) {
+    if (err instanceof PhotoNotFoundError) {
+      res.status(404).json({ error: 'Foto no encontrada' })
+      return
+    }
+    if (err instanceof NotRecipeAuthorError) {
+      res.status(403).json({ error: err.message })
+      return
+    }
+    if (err instanceof UnreadableImageError) {
+      res.status(422).json({ error: err.message })
+      return
+    }
+    console.error('POST /recipes/:id/photos/:id/use-as-recipe-image error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

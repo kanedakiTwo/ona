@@ -51,17 +51,19 @@ export const WAITLIST_PLATFORM_LABELS: Record<WaitlistPlatform, string> = {
 }
 
 /** Stored with each entry. Bump it whenever the consent text on the form or the privacy section changes. */
-export const WAITLIST_CONSENT_VERSION = '2026-10-15'
+export const WAITLIST_CONSENT_VERSION = '2026-10-17'
 
 /**
  * The optional "menú de la semana por email" opt-in is a SEPARATE consent
  * (LSSI art. 21–22, RGPD art. 7): unchecked by default, never bundled with
  * the waitlist consent. Its version is stored only when it is given.
+ * 2026-10-17 (PRO-132): the box names the recipe and Mimoia's news; consents
+ * already given keep their old version.
  */
-export const WAITLIST_NEWSLETTER_CONSENT_VERSION = '2026-10-15'
+export const WAITLIST_NEWSLETTER_CONSENT_VERSION = '2026-10-17'
 
 /** The newsletter box, same words on the waitlist, /register and the profile (PRO-95). */
-export const NEWSLETTER_OPT_IN_LABEL = 'Quiero recibir cada viernes el menú de la semana por email'
+export const NEWSLETTER_OPT_IN_LABEL = 'Quiero recibir cada viernes por email una receta de la semana y novedades de Mimoia'
 export const NEWSLETTER_OPT_IN_HINT = 'Te lo recomendamos: te va a sorprender.'
 
 // ─── Referral codes ──────────────────────────────────────────────
@@ -89,7 +91,7 @@ export function normalizeSource(raw: unknown): string | null {
   return /^[a-z0-9_-]{1,32}$/.test(s) ? s : null
 }
 
-function cleanAttributionText(raw: unknown, max: number): string | null {
+export function cleanAttributionText(raw: unknown, max: number): string | null {
   if (typeof raw !== 'string') return null
   const t = raw.replace(CONTROL_CHARS, '').trim().slice(0, max)
   return t || null

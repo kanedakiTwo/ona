@@ -20,6 +20,7 @@ const NAV_ITEMS: { href: string; label: string; icon: typeof CalendarDays; also?
 const HIDDEN_ON: RegExp[] = [
   /^\/recipes\/[^/]+\/cook(\/|$)/,
   /^\/recipes\/(?!new\/?$)[^/]+\/?$/, // recipe detail has its own sticky action bar
+  /^\/afinar(\/|$)/, // «Afina tu menú» is full screen
 ]
 
 /**

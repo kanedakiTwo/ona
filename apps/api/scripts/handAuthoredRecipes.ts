@@ -458,7 +458,7 @@ const RECIPES: AuthoredRecipe[] = [
     ],
   },
   {
-    name: 'Vegan butter chicken (con tofu)',
+    name: 'Curry cremoso de tofu',
     servings: 4,
     prepTime: 20, cookTime: 30, difficulty: 'medium',
     meals: ['lunch', 'dinner'], seasons: ['autumn', 'winter'],

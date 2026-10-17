@@ -45,7 +45,10 @@ import {
 } from './pushNotifier.js'
 import { deliverAlertOverWhatsApp, runProactiveTick } from './whatsapp/outbound.js'
 import { runDailyReviewIfDue } from './whatsapp/reviewer.js'
+import { runProfileRefinerIfDue } from './profile/refiner.js'
+import { recordPendingReferralRewardsIfDue } from './referralRewards.js'
 import { purgeOldUsageEventsIfDue } from './usageEvents.js'
+import { CHAT_RETENTION_DAYS, purgeOldChatMessagesIfDue } from './chatMessages.js'
 import { sendWaitlistInviteRemindersIfDue } from './waitlistInvites.js'
 import { combineDelivery, type ChannelOutcome } from './whatsapp/proactive.js'
 
@@ -507,12 +510,39 @@ async function tickOnce(): Promise<true> {
     console.error('[notificationScheduler] conversation review failed:', err)
   }
 
+  // Household ficha (PRO-152, in the shadow): after 03:00 Madrid send the
+  // nightly refiner's batch for yesterday (once); collect ended batches.
+  try {
+    const r = await runProfileRefinerIfDue(now)
+    if (r?.submit) console.log(`[refiner] ${r.submit.day}: ${r.submit.status}, ${r.submit.requested} hogares, omitidos ${JSON.stringify(r.submit.skipped)}`)
+    if (r?.collected) console.log(`[refiner] ${r.collected} fichas refinadas`)
+  } catch (err) {
+    console.error('[notificationScheduler] profile refiner failed:', err)
+  }
+
   // Product analytics retention: usage events older than 180 days (once a day).
   try {
     const purged = await purgeOldUsageEventsIfDue(now)
     if (purged) console.log(`[usage] purged ${purged} events older than 180 days`)
   } catch (err) {
     console.error('[notificationScheduler] usage events purge failed:', err)
+  }
+
+  // Web chat retention (PRO-148): messages older than 90 days (once a day).
+  try {
+    const purged = await purgeOldChatMessagesIfDue(now)
+    if (purged) console.log(`[chat] purged ${purged} web chat messages older than ${CHAT_RETENTION_DAYS} days`)
+  } catch (err) {
+    console.error('[notificationScheduler] web chat purge failed:', err)
+  }
+
+  // Referrals (PRO-165): a pending reward per invited household that reached
+  // its week 3 (checked once an hour; giving it is PRO-166).
+  try {
+    const created = await recordPendingReferralRewardsIfDue(now)
+    if (created) console.log(`[referrals] ${created} pending rewards`)
+  } catch (err) {
+    console.error('[notificationScheduler] referral rewards failed:', err)
   }
 
   // Waitlist (PRO-97): one reminder 3 days after the invitation, if they

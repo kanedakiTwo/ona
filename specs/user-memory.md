@@ -2,6 +2,8 @@
 
 Typed long-term storage of everything the assistant has learned (or the user has told it) about the user. Read on every advisor skill call as a Spanish-language digest; written manually via `/profile/memoria` or inferred by the assistant via the `update_memory` skill.
 
+> **Ficha del hogar (PRO-150):** these facts are copied, with their origin, into the household's ficha — see [Ficha del hogar](./household-profile.md). `user_memories` is still what Mimo reads and writes until Mimo reads the ficha (PRO-153).
+
 ## User Capabilities
 
 - Users can **personalize Mimoia's nutritional philosophy** at `/profile/creencias` (each own principle is removed from its row's "···" sheet → "Eliminar principio"). The page ("Tu filosofía, no la de Mimoia") lists the 5 default principles ("Principios por defecto de Mimoia", read-only, informational; `ONA_PRINCIPLES` — since 2026-10-11 «Equilibrio en la cocina de la semana» replaces the old anti-inflammation one, PRO-09, and since 2026-10-13 «Comida de verdad, poco ultraprocesado» replaces the one about glucose and «resistencia insulínica», PRO-67; none mentions inflammation, insulin, glucose or diseases, guarded by `tests/weekBalance.test.ts` and `tests/principiosMimo.test.ts`) and a user-controlled list of custom principles. Each custom principle is a short Spanish sentence (3-280 chars). The advisor's system prompt carries them with an explicit override flag — "RESPÉTALOS aunque entren en conflicto con tus principios de cocina por defecto" — so a "creo en el ayuno intermitente" beats any Mimoia default that suggests otherwise. Add via the page or via voice ("recuerda que sigo dieta cetogénica") through the `update_memory` skill
@@ -9,6 +11,7 @@ Typed long-term storage of everything the assistant has learned (or the user has
 - Users can see every fact the assistant remembers about them at `/profile/memoria` — grouped by category (Perfil físico, Hogar, Restricciones y gustos, Cocina, Rutina, Otras notas), with a source badge per row (**Tú** ink para datos manuales, **Asistente** terracota para inferidos, **Onboarding** neutral). Each stored fact has a "···" sheet with "Editar <dato>" (inline editor in the row) and "Olvidar <dato>" (with a confirm); empty keys (and empty lists) show "Añadir". In list editors (restricciones, disgustos, equipo, notas, creencias, hábitos) «Guardar» also keeps the text still typed in the box, so an entry isn't lost when the user skips the «+» (e2e `profile-memory-save-draft.spec.ts`)
 - Users can ask the assistant to remember any preference mid-conversation: "recuerda que no me gusta el cilantro", "tengo freidora de aire", "los lunes no cocino más de 20 minutos", "preferimos cocina mediterránea". The advisor calls the `update_memory` skill and persists the fact with `source: 'inferred'` and confidence 0.8 (or 1.0 if the user is emphatic — "APUNTA…")
 - Users can delete any single fact from the memory page with a confirm dialog (full inline edit lands in the next PR; in the meantime the user can ask the assistant to overwrite a value)
+- **«Afina tu menú»** (PRO-146, [taste.md](./taste.md)) writes here too: an ingredient picked in «¿Qué es lo que no?» → `dislikes`; the free text «¿Es otra cosa? Cuéntamelo» is read like `update_memory` (Claude Haiku, plain rules without it): «no tengo horno» → `equipment` without it (the usual kit minus it when there was no list), home habits → `prep_habits`, the rest → `notes`. Confidence 1, a `manual` fact keeps its source. `/profile/memoria` also lists every rated recipe («Afina tu menú» section) to change or forget
 - The assistant injects the memory into every system prompt — so a request like "recomiéndame algo para cenar" automatically filters out recipes whose ingredients hit the user's `dislikes` or `restrictions`, and prefers recipes that fit the user's `equipment` and `time_available` for that weekday
 
 ## Schema
@@ -39,7 +42,7 @@ Stable forever — never rename, only add. Adding a key is a one-line change in 
 | `restrictions` | `string[]` | non-empty strings; e.g. `['sin gluten', 'sin lactosa']` |
 | `dislikes` | `string[]` | e.g. `['cilantro', 'hígado']` |
 | `equipment` | `string[]` | e.g. `['horno', 'freidora de aire', 'olla express']` |
-| `time_available` | `{ [weekday-spanish]: minutes 0..480 }` | weekdays: lunes, martes, miercoles, jueves, viernes, sabado, domingo |
+| `time_available` | `{ [weekday-spanish]: minutes 0..480 \| { mode: 'total'\|'activo', minutes 0..480 } }` | weekdays: lunes, martes, miercoles, jueves, viernes, sabado, domingo. A number = minutes in total; `activo` = minutes of work (the rest can cook by itself). Missing day / 0 = no limit; `{}` = «Sin prisa» from the onboarding. The memory page shows «lunes: 20 min de trabajo» and the editor keeps each day's mode (PRO-138) |
 | `weekly_budget_eur` | number 0..5000 | |
 | `cuisine_bias` | `{ [cuisine]: 0..100 }` | slider per cuisine — only values ≥70 surface in the digest |
 | `cooking_skill` | `'easy'\|'medium'\|'advanced'` | |
@@ -71,9 +74,11 @@ All endpoints require auth.
 
 The `update_memory` skill (declared in `assistant/skills.ts`) takes a `facts: Array<{ key, value, confidence?, remove?, replace? }>` payload, merges it with what's stored (`mergeMemoryFacts`: lists are added to without duplicates, `remove` takes items out, `replace: true` rebuilds the list; a fact with `source: manual` is kept unless the user asked for the change, confidence 1) and routes it through `setMemoryBatch` with `source='inferred'`. Until 2026-10-12 a list was replaced whole, so a model that resent it without an old entry deleted it. Validation errors return a Spanish summary the model relays back to the user.
 
+- **Onboarding analysis (PRO-138, first step of PRO-91).** The web onboarding stores its weekday answer as `time_available` (source `onboarding`). Then, in the background, one Claude Sonnet call (`services/onboardingMemoryAnalysis.ts`) reads all the answers and the optional «¿Algo más? Cuéntanos tu caso» text and writes what it finds through the same rules as `update_memory` (`mergeMemoryFacts` + `setMemoryBatch`, source `inferred` → label «Asistente»): days with another limit (merged over the onboarding answer), meal times, habits, dislikes, equipment, and `notes` for what has no field («Come fuera a mediodía entre semana»). Never health keys (`physical.*`, `restrictions`); a fact set by hand is kept. Billed to the user in `cost_events` (`onboarding_analysis`). No API key or a model error → nothing written, the onboarding goes on. Tests: `onboardingMemoryAnalysis.test.ts` (model simulated)
+
 ## Constraints
 
-- **Health keys need consent** (PRO-21): `physical.*` and `restrictions` are written only while the user's health-data consent is in force (`HEALTH_MEMORY_KEYS`, `isHealthMemoryKey` in `@ona/shared`). Otherwise `setMemoryFact`/`setMemoryBatch` throw `HealthConsentRequiredError` → `PATCH /memory` 403 `HEALTH_CONSENT_REQUIRED`, `update_memory` replies with the profile link. Withdrawing the consent deletes those rows. See [Privacy](./privacy.md)
+- **Health keys need consent** (PRO-21): `physical.*` and `restrictions` are written only while the user's health-data consent is in force (`HEALTH_MEMORY_KEYS`, `isHealthMemoryKey` in `@ona/shared`). Otherwise `setMemoryFact`/`setMemoryBatch` throw `HealthConsentRequiredError` → `PATCH /memory` 403 `HEALTH_CONSENT_REQUIRED`, `update_memory` replies with the profile link. Withdrawing the consent deletes those rows (and the ficha’s copies, [Ficha del hogar](./household-profile.md)). See [Privacy](./privacy.md)
 - The `user_memories` table is **truth**. `users.adults` / `users.kids_2_to_10` are still written for legacy reads, but new code reading the household composition should prefer the memory entries (PR 3 will deprecate the mirror)
 - Inferred facts default to confidence 0.8. The `update_memory` skill writes 1.0 only when the user explicitly asks ("APUNTA", "GUÁRDATE", "no se te olvide")
 - Manual writes (PATCH /memory) always set source='manual' and confidence 1.0 — they can override a previous inferred guess
@@ -82,14 +87,17 @@ The `update_memory` skill (declared in `assistant/skills.ts`) takes a `facts: Ar
 
 ## Related specs
 
+- [Ficha del hogar](./household-profile.md) — the household profile these facts are copied into (PRO-150)
 - [Advisor](./advisor.md) — the assistant integration point that reads memory at every skill call
 - [Auth](./auth.md) — `users.adults` / `users.kids_2_to_10` are mirrored here for backward compat
+- [Afina tu menú](./taste.md) — recipe verdicts and «¿Qué es lo que no?» writes to `dislikes` / `equipment` / `prep_habits` / `notes`
 - [Menus](./menus.md) — future PR will pipe `dislikes` + `equipment` + `time_available` into the matcher's predicates
 
 ## Source
 
 - [packages/shared/src/types/userMemory.ts](../packages/shared/src/types/userMemory.ts) — key registry + per-key Zod schemas + digest builder
 - [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts) — `user_memories` table
+- [apps/api/src/services/onboardingMemoryAnalysis.ts](../apps/api/src/services/onboardingMemoryAnalysis.ts) — the onboarding answers read into the memory (PRO-138)
 - [apps/api/src/services/userMemoryStore.ts](../apps/api/src/services/userMemoryStore.ts) — get / set / batch / delete + digest
 - [apps/api/src/routes/memory.ts](../apps/api/src/routes/memory.ts) — REST surface
 - [apps/api/src/services/assistant/contextLoader.ts](../apps/api/src/services/assistant/contextLoader.ts) — injection point

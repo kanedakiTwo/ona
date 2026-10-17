@@ -17,6 +17,8 @@ export interface WhatsAppStatus {
   notify: boolean
   /** wa.me link to open the chat with Mimo once linked. */
   chatLink: string | null
+  /** Show the one WhatsApp reminder card on /menu (PRO-107). */
+  nudge?: boolean
 }
 
 export interface WhatsAppLinkCode {
@@ -41,8 +43,9 @@ export function useWhatsAppStatus(opts: { pollWhilePending?: boolean } = {}) {
 }
 
 export function useWhatsAppLinkCode() {
-  return useMutation<WhatsAppLinkCode, Error, void>({
-    mutationFn: () => api.post<WhatsAppLinkCode>("/whatsapp/link-code"),
+  // `from: "onboarding"` only counts the choice in analytics (PRO-106); the code is the same.
+  return useMutation<WhatsAppLinkCode, Error, { from?: "onboarding" } | void>({
+    mutationFn: (opts) => api.post<WhatsAppLinkCode>("/whatsapp/link-code", opts ? { from: opts.from } : undefined),
   })
 }
 

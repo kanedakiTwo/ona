@@ -1,5 +1,5 @@
-import type { FitLevel, Meal, RecipeFrequency, Season } from '@ona/shared'
-import { FIT_WEIGHT, FREQUENCY_WEIGHT, isInSeason } from '@ona/shared'
+import type { DayTimeBudget, FitLevel, Meal, RecipeFrequency, Season } from '@ona/shared'
+import { FIT_WEIGHT, FREQUENCY_WEIGHT, fitsTimeBudget, isInSeason } from '@ona/shared'
 import { compileRestrictions, violatesRestrictions } from './dietaryRestrictions.js'
 
 export interface RecipeWithIngredients {
@@ -26,8 +26,15 @@ export interface RecipeWithIngredients {
   tags: string[]
   /** Equipment the recipe needs ('horno', 'freidora', 'olla express'…). Empty / undefined = no equipment requirement. */
   equipment?: string[]
-  /** Prep time in minutes. Used by the time-budget filter (user_memories.time_available). */
+  /**
+   * Times in minutes, for the time-budget filter (user_memories.time_available,
+   * PRO-138): a «total» day compares `totalTime` (else prep + cook), a
+   * «trabajo» day compares `activeTime` (else `prepTime`).
+   */
   prepTime?: number | null
+  cookTime?: number | null
+  activeTime?: number | null
+  totalTime?: number | null
   /** Recipe-level allergen union (recipes.allergens). Checked by the restriction filter. */
   allergens?: string[] | null
   /**
@@ -53,6 +60,11 @@ export interface MatcherOptions {
   usedRecipeIds: Set<string>
   restrictions: string[]
   favoriteRecipeIds: Set<string>
+  /**
+   * «Me apetece» in «Afina tu menú» (PRO-146): a small extra weight
+   * (`LIKE_WEIGHT`), less than a favourite's 2×. Absent = no-op.
+   */
+  likedRecipeIds?: Set<string>
   /**
    * Recipes the user vetoed for this week. The matcher filters them out
    * before season / restriction checks, so a vetoed favourite is still
@@ -88,10 +100,13 @@ export interface MatcherOptions {
    */
   availableEquipment?: Set<string>
   /**
-   * Maximum prep-time minutes allowed for this slot (from user_memories
-   * `time_available[weekday]`, looked up by the route). Recipes whose
-   * `prepTime` exceeds this are excluded. Null/absent = no filter.
+   * This slot's day limit (from user_memories `time_available[weekday]`,
+   * PRO-138): on the total time or on the hands-on time. A recipe that goes
+   * over it — or lacks the time it is about — is excluded. Null/absent = no
+   * filter.
    */
+  timeBudget?: DayTimeBudget | null
+  /** Legacy shape of `timeBudget`: N minutes in total. */
   maxPrepMinutes?: number | null
 }
 
@@ -119,8 +134,11 @@ export function matchRecipes(
     dislikes,
     availableEquipment,
     maxPrepMinutes,
+    timeBudget,
     dayIndex,
   } = options
+  const budget: DayTimeBudget | null =
+    timeBudget ?? (maxPrepMinutes != null && maxPrepMinutes > 0 ? { mode: 'total', minutes: maxPrepMinutes } : null)
   const isWeekday = typeof dayIndex === 'number' && dayIndex < 5
 
   // Restrictions (allergies, diets, free text) + dislikes compile once per
@@ -171,13 +189,10 @@ export function matchRecipes(
       if (!ok) return false
     }
 
-    // 6. Time-budget check — recipe.prepTime must fit the slot's window.
-    //    Recipes with no prepTime (data gap) pass freely.
-    if (maxPrepMinutes != null && maxPrepMinutes > 0) {
-      if (typeof recipe.prepTime === 'number' && recipe.prepTime > maxPrepMinutes) {
-        return false
-      }
-    }
+    // 6. Time budget (PRO-138): a «total» day compares totalTime (else
+    //    prep + cook), a «trabajo» day activeTime (else prepTime). With a
+    //    limit, a recipe without that time does not pass.
+    if (!fitsTimeBudget(recipe, budget)) return false
 
     return true
   })
@@ -210,6 +225,9 @@ export function seasonFitFor(
   return isInSeason(recipe.seasons as Season[], season) ? 'perfect' : null
 }
 
+/** «Me apetece» (PRO-146): ×1.5 on top of the rounded weight — a favourite is ×2. */
+export const LIKE_WEIGHT = 1.5
+
 /**
  * Pick a random recipe from the filtered pool.
  *
@@ -217,6 +235,7 @@ export function seasonFitFor(
  *   - meal fit:   mid = 1×, perfect = 3×.
  *   - season fit: same scale, multiplicative against meal weight.
  *   - favourite:  2× on top.
+ *   - «Me apetece» (PRO-146): ×1.5 on the rounded weight.
  *
  * So a perfect-meal / perfect-season favourite weighs 18 against a
  * mid-meal / mid-season non-favourite at 1 — strong but not crushing,
@@ -226,11 +245,13 @@ export function seasonFitFor(
 export function pickRandom(
   candidates: RecipeWithIngredients[],
   favoriteRecipeIds: Set<string>,
-  ctx?: { meal?: Meal; season?: Season },
+  ctx?: { meal?: Meal; season?: Season; likedRecipeIds?: Set<string> },
 ): RecipeWithIngredients | undefined {
   if (candidates.length === 0) return undefined
 
-  const pool: RecipeWithIngredients[] = []
+  // Weighted draw: each recipe's integer weight (as before), «Me apetece» ×1.5.
+  const weights: number[] = []
+  let total = 0
   for (const recipe of candidates) {
     let weight = 1
     if (ctx?.meal) {
@@ -247,16 +268,20 @@ export function pickRandom(
       weight *= FREQUENCY_WEIGHT[recipe.frequency]
     }
     if (favoriteRecipeIds.has(recipe.id)) weight *= 2
-    // Float weights are fine — duplicate the recipe into the pool an
-    // integer number of times. Round so the loop terminates cleanly, with
+    // Round to an integer weight (as when the pool held copies), with
     // a floor of 1 so an "occasional" recipe still has a non-zero chance
     // when it's the only option.
-    const count = Math.max(1, Math.round(weight))
-    for (let i = 0; i < count; i++) pool.push(recipe)
+    const count = Math.max(1, Math.round(weight)) * (ctx?.likedRecipeIds?.has(recipe.id) ? LIKE_WEIGHT : 1)
+    weights.push(count)
+    total += count
   }
 
-  const index = Math.floor(Math.random() * pool.length)
-  return pool[index]
+  let r = Math.random() * total
+  for (let i = 0; i < candidates.length; i++) {
+    r -= weights[i]
+    if (r < 0) return candidates[i]
+  }
+  return candidates[candidates.length - 1]
 }
 
 /**
@@ -284,5 +309,6 @@ export function findRecipeForSlot(
   return pickRandom(candidates, options.favoriteRecipeIds, {
     meal: options.meal,
     season: options.season,
+    likedRecipeIds: options.likedRecipeIds,
   })
 }

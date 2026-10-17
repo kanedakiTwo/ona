@@ -18,6 +18,7 @@ import { useAuth } from "@/lib/auth"
 import { api } from "@/lib/api"
 import { useWhatsAppStatus, type useWhatsAppLinkCode } from "@/hooks/useWhatsApp"
 import { Accent, OnboardingHeader } from "./OnboardingShell"
+import { WhatsAppQr } from "@/components/whatsapp/WhatsAppQr"
 
 const PILL =
   "flex h-[52px] w-full items-center justify-center gap-2 rounded-full bg-ink px-6 text-[16px] font-semibold text-cream transition-colors hover:bg-ink-mid active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
@@ -159,9 +160,12 @@ export function OnboardingWhatsAppLink({
             {linkCode.data.message}
           </p>
           {linkCode.data.waLink ? (
-            <a href={linkCode.data.waLink} className={PILL}>
-              <MessageCircle size={18} aria-hidden="true" /> Enviar desde WhatsApp
-            </a>
+            <>
+              <a href={linkCode.data.waLink} className={PILL}>
+                <MessageCircle size={18} aria-hidden="true" /> Enviar desde WhatsApp
+              </a>
+              <WhatsAppQr href={linkCode.data.waLink} />
+            </>
           ) : (
             <p className="text-[14px] text-ink-muted">Envía ese mensaje a Mimo desde tu WhatsApp.</p>
           )}

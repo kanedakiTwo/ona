@@ -30,7 +30,7 @@ export default function PrivacidadPage() {
         <h1 className="font-display text-4xl text-[#1A1612] md:text-5xl">Política de privacidad</h1>
 
         <div className="mt-8 space-y-5 text-[15px] leading-relaxed text-[#4A4239]">
-          <p className="text-sm text-[#7A7066]">Última actualización: 7 de octubre de 2026</p>
+          <p className="text-sm text-[#7A7066]">Última actualización: 17 de octubre de 2026</p>
 
           <H2>1. Quién trata tus datos</H2>
           <p data-testid="privacy-controller">
@@ -61,7 +61,11 @@ export default function PrivacidadPage() {
             </li>
             <li>
               <strong>Conversaciones con el asistente</strong> (chat, voz y WhatsApp): el texto de los mensajes y la
-              transcripción de las notas de voz. Si conectas WhatsApp, también tu número de teléfono.
+              transcripción de las notas de voz. Si conectas WhatsApp, también tu número de teléfono.{' '}
+              <span data-testid="privacy-web-chat">
+                Lo que hablas con Mimo en la web (lo que le escribes o le dices, lo que te responde y lo que hizo por
+                ti) se guarda durante 90 días y después se borra solo.
+              </span>
             </li>
             <li>
               <strong>Datos técnicos:</strong> suscripción a notificaciones push, un registro del coste de cada uso de
@@ -74,6 +78,10 @@ export default function PrivacidadPage() {
           <ul className="ml-5 list-disc space-y-2">
             <li>Generar tu menú semanal, la lista de la compra y los avisos que hayas activado.</li>
             <li>Responder a lo que le pidas al asistente y hacer los cambios que le pidas.</li>
+            <li>
+              Preparar la ficha de tu hogar (vuestros gustos y costumbres a la hora de comer) a partir de lo que hablas
+              con Mimo en la web y por WhatsApp, para que tus menús y sus respuestas se ajusten mejor a vosotros.
+            </li>
             <li>Revisar, de forma interna, conversaciones de WhatsApp para detectar errores del asistente y corregirlos.</li>
             <li>Controlar el gasto en IA por usuario y mantener el servicio seguro.</li>
             <li>Detectar y arreglar los fallos de la aplicación, con un registro propio que no se comparte con terceros.</li>
@@ -81,7 +89,7 @@ export default function PrivacidadPage() {
             <li>Cobrar tu suscripción, si tienes una, y decidir los precios con lo que opina la beta.</li>
           </ul>
           <p>
-            No vendemos tus datos ni los usamos para publicidad. Mimoia es un asistente con inteligencia
+            No vendemos tus datos ni los usamos para publicidad de terceros. Mimoia es un asistente con inteligencia
             artificial: puede equivocarse y no sustituye a un profesional sanitario.
           </p>
 
@@ -90,7 +98,8 @@ export default function PrivacidadPage() {
             La ejecución del servicio que pides al registrarte y, para los datos de salud, tu consentimiento
             explícito (art. 9.2.a RGPD), que puedes retirar en cualquier momento borrando esos datos o tu cuenta.
             Los avisos proactivos por WhatsApp solo se envían si los activas, y puedes darte de baja escribiendo BAJA.
-            El menú de los viernes por email es un consentimiento aparte (art. 21 de la LSSI): lo quitas en tu
+            El menú de los viernes por email es un consentimiento aparte (art. 6.1.a RGPD y art. 21 de la LSSI): lo
+            quitas en tu
             perfil o con el enlace de cada email.
           </p>
 
@@ -104,7 +113,7 @@ export default function PrivacidadPage() {
             <li><strong>Railway</strong>: alojamiento de la aplicación y de la base de datos.</li>
             <li><strong>AiKit</strong>: generación de imágenes de recetas cuando lo pides (solo recibe el nombre e ingredientes de la receta).</li>
             <li><strong>Cloudflare</strong>: estadísticas agregadas de visitas a la web, sin cookies (ver el punto 8).</li>
-            <li><strong>Resend</strong>: el envío de los emails de Mimoia, como la invitación de la lista de espera (recibe tu email, tu nombre y el contenido del mensaje; envía desde la Unión Europea).</li>
+            <li><strong>Resend</strong> (empresa de EE. UU.): el envío de los emails de Mimoia, como la invitación de la lista de espera y el menú de los viernes. Recibe tu email, tu nombre y el contenido del mensaje. Los correos salen desde servidores de la Unión Europea, pero Resend puede tratar los datos en Estados Unidos.</li>
             <li><strong>Stripe (a través de Link)</strong>: el cobro de las suscripciones. Recibe tu email y, cuando pagas, los datos de pago que escribes directamente en su página; Link actúa como vendedor registrado y emite los recibos. Nosotros guardamos solo el plan, su estado, sus fechas y las referencias de Stripe, nunca tu tarjeta.</li>
           </ul>
           <p>
@@ -114,8 +123,9 @@ export default function PrivacidadPage() {
 
           <H2>6. Cuánto tiempo</H2>
           <p>
-            Mientras tengas la cuenta. Puedes borrarla tú mismo en <strong>Perfil → Borrar mi cuenta</strong>: se
-            eliminan al momento tu perfil, tus menús, tu memoria, tus recetas propias y tu historial de WhatsApp. Si
+            Mientras tengas la cuenta, salvo el chat con Mimo en la web, que se borra solo a los 90 días. Puedes
+            borrar la cuenta tú mismo en <strong>Perfil → Borrar mi cuenta</strong>: se eliminan al momento tu perfil, tus
+            menús, tu memoria, tus recetas propias, tus conversaciones con Mimo en la web y tu historial de WhatsApp. Si
             compartes hogar, el hogar sigue para los demás miembros. Los registros de costes y de fallos se conservan
             sin vincularlos a ti. Si pagas una suscripción, se cancela en ese momento; Stripe y Link conservan los
             recibos el tiempo que exige la ley fiscal.
@@ -172,8 +182,8 @@ export default function PrivacidadPage() {
             cuántas personas se apuntan gracias a ti (en tu página solo se ve ese número, nunca quiénes son).
           </p>
           <p>
-            <strong>El menú de los viernes:</strong> si además marcas la casilla «Quiero recibir cada viernes el
-            menú de la semana por email», usamos tu email también para mandarte ese correo. Es opcional, va aparte
+            <strong>El menú de los viernes:</strong> si además marcas la casilla «Quiero recibir cada viernes por
+            email una receta de la semana y novedades de Mimoia», usamos tu email también para mandarte ese correo. Es opcional, va aparte
             de la lista y puedes retirarlo en cualquier momento con un clic.
           </p>
           <p>
@@ -199,7 +209,7 @@ export default function PrivacidadPage() {
           <p>
             Los datos de la lista se guardan en Railway (nuestro alojamiento). Los emails que te mandamos (la
             invitación y, si lo pediste, el menú de los viernes) salen a través de Resend, que recibe tu email, tu
-            nombre y el mensaje. No se comparten con nadie más ni se usan para publicidad.
+            nombre y el mensaje. No se comparten con nadie más ni se usan para publicidad de terceros.
           </p>
         </div>
       </div>

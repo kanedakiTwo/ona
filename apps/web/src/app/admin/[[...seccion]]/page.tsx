@@ -14,7 +14,8 @@
  *   7. Recent regen output (failed/skipped JSONL)
  *   8. Usuarios — search + suspend + reset-link generator
  *   9. Auditoría — reverse-chronological feed of admin actions
- *  10. Lista de espera — suggested batch with names, «Invitar a estas N
+ *  10. Deseos del catálogo — dishes households want that we lack (PRO-154)
+ *  11. Lista de espera — suggested batch with names, «Invitar a estas N
  *      personas» (one-time link by email), per-batch results (PRO-97)
  *
  * Each row offers an inline edit (PATCH) or a "Re-mapear a USDA" modal.
@@ -51,6 +52,7 @@ import { AuditLogSection } from "../sections/AuditLogSection"
 import { VoiceTranscriptsSection } from "../sections/VoiceTranscriptsSection"
 import { InvitationsSection } from "../sections/InvitationsSection"
 import { FeedbackSection } from "../sections/FeedbackSection"
+import { CatalogWishesSection } from "../sections/CatalogWishesSection"
 import { WaitlistAdminSection } from "../sections/WaitlistAdminSection"
 import { DISPLAY_UI } from "@/components/recipes/RecipeCard"
 
@@ -62,6 +64,7 @@ type SectionKey =
   | "allergens"
   | "recipes"
   | "regen"
+  | "wishes"
   | "users"
   | "audit"
   | "voice"
@@ -77,6 +80,7 @@ const SECTIONS: Array<{ key: SectionKey; label: string }> = [
   { key: "allergens", label: "Alérgenos sugeridos" },
   { key: "recipes", label: "Recetas con kcal=0" },
   { key: "regen", label: "Output de regen" },
+  { key: "wishes", label: "Deseos del catálogo" },
   { key: "users", label: "Usuarios" },
   { key: "audit", label: "Auditoría" },
   { key: "voice", label: "Voz" },
@@ -178,6 +182,7 @@ export default function AdminPage() {
     allergens: ingredientGaps.data?.allergenSuggestions.length ?? 0,
     recipes: recipeGaps.data?.missingNutrition.length ?? 0,
     regen: regen.data?.length ?? 0,
+    wishes: 0,
     users: 0,
     audit: 0,
     voice: 0,
@@ -193,7 +198,8 @@ export default function AdminPage() {
     active === "unit" ||
     active === "allergens" ||
     active === "recipes" ||
-    active === "regen"
+    active === "regen" ||
+    active === "wishes"
   const isLoading =
     isCatalogTab &&
     (ingredientGaps.isLoading || recipeGaps.isLoading || regen.isLoading)
@@ -264,7 +270,7 @@ export default function AdminPage() {
               }`}
             >
               {s.label}
-              {s.key !== "users" && s.key !== "audit" && s.key !== "voice" && s.key !== "waitlist" && (
+              {s.key !== "users" && s.key !== "audit" && s.key !== "voice" && s.key !== "waitlist" && s.key !== "wishes" && (
                 <span className="ml-1.5 text-[10px] opacity-60">
                   {counts[s.key]}
                 </span>
@@ -309,6 +315,7 @@ export default function AdminPage() {
         {active === "invites" && <InvitationsSection />}
         {active === "waitlist" && <WaitlistAdminSection />}
         {active === "feedback" && <FeedbackSection />}
+        {active === "wishes" && <CatalogWishesSection />}
       </main>
 
       {remapTarget && (

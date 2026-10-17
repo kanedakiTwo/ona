@@ -3,7 +3,8 @@
 import { Suspense, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/lib/auth"
-import { useCreateRecipe, useIngredients } from "@/hooks/useRecipes"
+import { uploadRecipeImage, useCreateRecipe, useIngredients } from "@/hooks/useRecipes"
+import { NewRecipePhotoCard } from "@/components/recipes/form/NewRecipePhotoCard"
 import { LintFailureError } from "@/lib/api"
 import { PhotoRecipeUpload } from "@/components/recipes/PhotoRecipeUpload"
 import { UrlRecipeImport } from "@/components/recipes/UrlRecipeImport"
@@ -63,6 +64,8 @@ interface IngredientRow {
   /** When true, the ingredient renders with an "opcional" badge on the
    *  detail view and the shopping aggregator skips it. */
   optional: boolean
+  /** «en lomos», «picada»… (PRO-109). */
+  note: string
 }
 
 function emptyRow(): IngredientRow {
@@ -73,6 +76,7 @@ function emptyRow(): IngredientRow {
     quantity: "",
     unit: "g",
     optional: false,
+    note: "",
   }
 }
 
@@ -124,6 +128,10 @@ function NewRecipePageInner() {
   // form-local: the server still receives `{ index, text }`.
   const [steps, setSteps] = useState<StepDraft[]>([makeStep()])
   const [photoExtracted, setPhotoExtracted] = useState(false)
+  // «Subir mi foto» (PRO-145): uploaded right after the create; while it is
+  // set the API skips the AI photo.
+  const [ownPhoto, setOwnPhoto] = useState<File | null>(null)
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
   // «Enlace del original» (PRO-66): optional; highlighted when the imported
   // photo looks like a screenshot of a web page or a social network.
   const [sourceUrl, setSourceUrl] = useState("")
@@ -163,6 +171,7 @@ function NewRecipePageInner() {
             quantity: ing.quantity,
             unit: ing.unit || "g",
             optional: false,
+            note: "",
           }))
         : [emptyRow()]
     )
@@ -219,6 +228,12 @@ function NewRecipePageInner() {
   function toggleIngredientOptional(rowId: string) {
     setIngredientRows((prev) =>
       prev.map((r) => (r.rowId === rowId ? { ...r, optional: !r.optional } : r)),
+    )
+  }
+
+  function updateIngredientNote(rowId: string, value: string) {
+    setIngredientRows((prev) =>
+      prev.map((r) => (r.rowId === rowId ? { ...r, note: value } : r)),
     )
   }
 
@@ -328,12 +343,24 @@ function NewRecipePageInner() {
       return
     }
 
-    createRecipe.mutate({ ...parsed.data, force: useForce }, {
-      onSuccess: (created) => {
+    createRecipe.mutate({ ...parsed.data, force: useForce, ownPhoto: !!ownPhoto }, {
+      onSuccess: async (created) => {
+        // Own photo first, then away. If the upload fails the recipe is
+        // still saved: the editor says so and offers both buttons again.
+        let photoFailed = false
+        if (ownPhoto) {
+          setUploadingPhoto(true)
+          try {
+            await uploadRecipeImage(created.id, ownPhoto)
+          } catch {
+            photoFailed = true
+          }
+          setUploadingPhoto(false)
+        }
         // Land on the edit screen — the user just wrote/imported the recipe,
         // they want to fine-tune ingredients/steps without an extra "Editar"
         // click. The detail view is one tap away from there.
-        router.push(`/recipes/${created.id}/edit`)
+        router.push(`/recipes/${created.id}/edit${photoFailed ? "?foto=fallo" : ""}`)
       },
       onError: (err) => {
         // If the server returned a typed lint failure, route each issue to
@@ -583,6 +610,8 @@ function NewRecipePageInner() {
                   </Field>
                 </div>
               </FormCard>
+
+              <NewRecipePhotoCard file={ownPhoto} onChange={setOwnPhoto} />
             </div>
 
             {/* Right column — ingredients and steps. */}
@@ -622,6 +651,8 @@ function NewRecipePageInner() {
                         onUnit={(v) => updateIngredientUnit(row.rowId, v)}
                         optional={row.optional}
                         onToggleOptional={() => toggleIngredientOptional(row.rowId)}
+                        note={row.note}
+                        onNote={(v) => updateIngredientNote(row.rowId, v)}
                         onRemove={() => removeIngredientRow(row.rowId)}
                         removable={ingredientRows.length > 1}
                         hint={hint}
@@ -679,8 +710,10 @@ function NewRecipePageInner() {
             </FormErrors>
           </div>
           <SaveBar
-            submitLabel={createRecipe.isPending ? "Guardando..." : "Crear receta"}
-            disabled={createRecipe.isPending}
+            submitLabel={
+              uploadingPhoto ? "Subiendo tu foto..." : createRecipe.isPending ? "Guardando..." : "Crear receta"
+            }
+            disabled={createRecipe.isPending || uploadingPhoto}
             cancelHref="/recipes"
           />
         </form>

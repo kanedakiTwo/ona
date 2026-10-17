@@ -30,10 +30,16 @@ import {
   SUB_LIST,
   SubPage,
 } from "@/components/profile/SubPage"
+import { SubLoadError, useQueryLoad } from "@/components/profile/SubLoadError"
 
 export default function BeliefsPage() {
   const { user } = useAuth()
-  const { data: memory } = useUserMemory()
+  const memoryQuery = useUserMemory()
+  const { data: memory } = memoryQuery
+  // PRO-143: failed or > 8 s → «Reintentar». Until the memory is here, adding
+  // a principle is off: it would overwrite the ones we haven't loaded.
+  const load = useQueryLoad([["memory"], memoryQuery])
+  const ready = memory !== undefined
   const update = useUpdateMemory()
   const del = useDeleteMemoryFact()
   const [draft, setDraft] = useState("")
@@ -95,8 +101,21 @@ export default function BeliefsPage() {
     >
       <div className="grid gap-10 lg:grid-cols-2 lg:items-start">
         {/* User principles */}
+        {load.failed ? (
+          <section>
+            <h2 className={SUB_EYEBROW}>Tus principios</h2>
+            <div className="mt-3">
+              <SubLoadError onRetry={load.retry} retrying={load.retrying} />
+            </div>
+          </section>
+        ) : (
         <section>
-          <h2 className={SUB_EYEBROW}>Tus principios ({principles.length})</h2>
+          <h2 className={SUB_EYEBROW}>Tus principios{ready ? ` (${principles.length})` : ""}</h2>
+          {!ready && (
+            <div className="mt-3 animate-pulse space-y-3" aria-hidden="true">
+              <div className="h-14 rounded-[20px] bg-bone" />
+            </div>
+          )}
           {principles.length > 0 && (
             <ul className={`${SUB_LIST} mt-3`}>
               {principles.map((p, i) => (
@@ -126,7 +145,7 @@ export default function BeliefsPage() {
               <button
                 type="button"
                 onClick={handleAdd}
-                disabled={draft.trim().length < 3 || submitting}
+                disabled={!ready || draft.trim().length < 3 || submitting}
                 className={PILL_INK}
               >
                 <Plus size={16} />
@@ -136,6 +155,7 @@ export default function BeliefsPage() {
             {error ? <p className="mt-2 text-[13px] italic text-terracotta-deep">{error}</p> : null}
           </div>
         </section>
+        )}
 
         {/* Mimoia defaults — informational, can't be removed (but a user
             principle that contradicts them wins). */}

@@ -1,7 +1,13 @@
 "use client"
 
 /**
- * The five-question onboarding ("D · Luz y foto", PRO-37): one question per
+ * «Afina tu menú» first (PRO-146): 10 recipe cards with «Saltar» always
+ * visible, right after creating the account and before choosing WhatsApp or
+ * the web, so everyone does it. Then the five-question onboarding (the
+ * three favourite dishes went away: «Me encanta» replaces them; the weekday
+ * time question is PRO-138).
+ *
+ * The questions ("D · Luz y foto", PRO-37): one question per
  * screen with a compact header (eyebrow + Fraunces h1 with a terracotta
  * italic accent), answers as paper cards or chips, and an ink pill pinned to
  * the bottom. At `lg+` the column is 560 px with a dish photo beside it
@@ -14,11 +20,13 @@ import { api } from "@/lib/api"
 import { useRouter } from "next/navigation"
 import { Check, ChevronLeft, Minus, Plus, X } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { RESTRICTION_PRESETS, firstMenuWeeks } from "@ona/shared"
+import { RESTRICTION_PRESETS, firstMenuWeeks, type WeekdayCookingChoice } from "@ona/shared"
 import { HealthConsentCheckbox } from "@/components/HealthConsentCheckbox"
 import { Accent, OnboardingHeader, OnboardingShell } from "./OnboardingShell"
 import { OnboardingChannelChoice, OnboardingWhatsAppLink } from "./OnboardingWhatsApp"
 import { useWhatsAppLinkCode, useWhatsAppStatus } from "@/hooks/useWhatsApp"
+import { postTasteOffer, useTasteStatus } from "@/hooks/useTaste"
+import { TasteSwiper } from "@/components/taste/TasteSwiper"
 
 // Shared with the profile so both offer the same chips (@ona/shared).
 const PRESET_RESTRICTIONS = RESTRICTION_PRESETS
@@ -30,9 +38,17 @@ interface OnboardingData {
   kidsCount: number
   cookingFreq: string | null
   restrictions: string[]
-  favoriteDishes: string[]
   priority: string | null
+  weekdayCooking: WeekdayCookingChoice | null
+  cookingNote: string
 }
+
+/** PRO-138: «Entre semana, ¿cómo te gusta cocinar?» — the weekend is «sin prisa». */
+const WEEKDAY_COOKING_OPTIONS: Array<{ value: WeekdayCookingChoice; label: string; desc: string }> = [
+  { value: "rapido", label: "Rápido", desc: "En media hora, a la mesa" },
+  { value: "poco_trabajo", label: "Poco rato de trabajo", desc: "Aunque luego se haga solo" },
+  { value: "sin_prisa", label: "Sin prisa", desc: "Me da igual lo que tarde" },
+]
 
 const FIELD =
   "h-12 w-full rounded-2xl border border-border bg-paper px-4 text-[15px] text-ink placeholder:text-ink-light transition-colors focus:border-ink focus:outline-none disabled:opacity-60"
@@ -132,8 +148,9 @@ export default function OnboardingFlow() {
     kidsCount: 0,
     cookingFreq: null,
     restrictions: [],
-    favoriteDishes: ["", "", ""],
     priority: null,
+    weekdayCooking: null,
+    cookingNote: "",
   })
 
   const [tagInput, setTagInput] = useState("")
@@ -153,6 +170,22 @@ export default function OnboardingFlow() {
     setChannel(whatsapp.data?.available ? (whatsapp.data.linked ? "whatsapp" : "choose") : "web")
   }, [channel, whatsapp.isLoading, whatsapp.data])
   const canBackToChannel = Boolean(whatsapp.data?.available)
+
+  // «Afina tu menú» step (PRO-146): decided once from the first status, so
+  // stamping it as shown doesn't hide it halfway through.
+  const tasteStatus = useTasteStatus()
+  const [tasteStep, setTasteStep] = useState<"pending" | "show" | "done">("pending")
+  useEffect(() => {
+    if (tasteStep !== "pending") return
+    if (tasteStatus.isError) setTasteStep("done")
+    else if (tasteStatus.data) {
+      if (tasteStatus.data.offeredInOnboarding) setTasteStep("done")
+      else {
+        setTasteStep("show")
+        postTasteOffer("onboarding").catch(() => {})
+      }
+    }
+  }, [tasteStep, tasteStatus.data, tasteStatus.isError])
 
   function next() {
     if (step < totalSteps) setStep(step + 1)
@@ -185,12 +218,6 @@ export default function OnboardingFlow() {
     }
   }
 
-  function setFavoriteDish(index: number, value: string) {
-    const dishes = [...data.favoriteDishes]
-    dishes[index] = value
-    setData({ ...data, favoriteDishes: dishes })
-  }
-
   async function handleComplete() {
     if (!user) return
     setIsSubmitting(true)
@@ -202,9 +229,10 @@ export default function OnboardingFlow() {
         kidsCount: data.kidsCount,
         cookingFreq: data.cookingFreq,
         restrictions: healthConsent ? data.restrictions : [],
-        favoriteDishes: data.favoriteDishes.filter((d) => d.trim() !== ""),
         priority: data.priority,
         healthConsent,
+        weekdayCooking: data.weekdayCooking ?? undefined,
+        cookingNote: data.cookingNote.trim() || undefined,
       }
       const result = await api.post<any>(`/user/${user.id}/onboarding`, payload)
 
@@ -239,9 +267,9 @@ export default function OnboardingFlow() {
       case 2:
         return data.cookingFreq !== null
       case 3:
-        return true
+        return data.weekdayCooking !== null
       case 4:
-        return data.favoriteDishes.some((d) => d.trim() !== "")
+        return true
       case 5:
         return data.priority !== null
       default:
@@ -251,6 +279,24 @@ export default function OnboardingFlow() {
 
   const pill =
     "flex h-[52px] w-full items-center justify-center rounded-full bg-ink px-6 text-[16px] font-semibold text-cream transition-colors hover:bg-ink-mid active:scale-[0.98] disabled:opacity-40 disabled:active:scale-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+
+  if (tasteStep !== "done") {
+    return (
+      <div className="min-h-[100dvh] bg-cream lg:py-8">
+        <OnboardingShell photo={PHOTO}>
+          <div data-testid="onboarding-taste" className="flex min-h-[100dvh] flex-col pt-[var(--safe-top)] lg:min-h-[calc(100dvh-4rem)]">
+            {tasteStep === "pending" ? (
+              <p role="status" className="px-4 pt-6 text-[14px] text-ink-muted">
+                Cargando…
+              </p>
+            ) : (
+              <TasteSwiper mode="onboarding" onDone={() => setTasteStep("done")} />
+            )}
+          </div>
+        </OnboardingShell>
+      </div>
+    )
+  }
 
   if (channel !== "web") {
     return (
@@ -265,7 +311,7 @@ export default function OnboardingFlow() {
               ) : channel === "choose" ? (
                 <OnboardingChannelChoice
                   onWhatsApp={() => {
-                    linkCode.mutate()
+                    linkCode.mutate({ from: "onboarding" })
                     setChannel("whatsapp")
                   }}
                   onWeb={() => setChannel("web")}
@@ -375,10 +421,44 @@ export default function OnboardingFlow() {
               </section>
             )}
 
-            {/* Step 3: Restrictions */}
+            {/* Step 3: Time to cook on weekdays (PRO-138) */}
             {step === 3 && (
               <section>
                 <OnboardingHeader eyebrow={`Primeros pasos · 3 de ${totalSteps}`}>
+                  Entre semana, ¿cómo te gusta <Accent>cocinar</Accent>?
+                </OnboardingHeader>
+                <Lead>El fin de semana, sin prisa.</Lead>
+                <div className="mt-6 space-y-3">
+                  {WEEKDAY_COOKING_OPTIONS.map((opt) => (
+                    <OptionCard
+                      key={opt.value}
+                      stacked
+                      selected={data.weekdayCooking === opt.value}
+                      onClick={() => setData({ ...data, weekdayCooking: opt.value })}
+                      label={opt.label}
+                      desc={opt.desc}
+                    />
+                  ))}
+                </div>
+                <label htmlFor="onboarding-cooking-note" className="mt-6 block text-[14px] font-semibold text-ink">
+                  ¿Algo más? Cuéntanos tu caso <span className="font-normal text-ink-muted">(opcional)</span>
+                </label>
+                <textarea
+                  id="onboarding-cooking-note"
+                  value={data.cookingNote}
+                  onChange={(e) => setData({ ...data, cookingNote: e.target.value })}
+                  maxLength={500}
+                  rows={3}
+                  placeholder="P. ej. «los lunes ceno tarde», «a mediodía como fuera», «teletrabajo y puedo dejar algo al fuego»"
+                  className="mt-2 w-full rounded-2xl border border-border bg-paper px-4 py-3 text-[15px] leading-snug text-ink placeholder:text-ink-light transition-colors focus:border-ink focus:outline-none"
+                />
+              </section>
+            )}
+
+            {/* Step 4: Restrictions */}
+            {step === 4 && (
+              <section>
+                <OnboardingHeader eyebrow={`Primeros pasos · 4 de ${totalSteps}`}>
                   ¿Hay algo que <Accent>no comas</Accent>?
                 </OnboardingHeader>
                 <Lead>Alergias, intolerancias o preferencias.</Lead>
@@ -454,28 +534,6 @@ export default function OnboardingFlow() {
                       ))}
                     </div>
                   )}
-                </div>
-              </section>
-            )}
-
-            {/* Step 4: Favorite dishes */}
-            {step === 4 && (
-              <section>
-                <OnboardingHeader eyebrow={`Primeros pasos · 4 de ${totalSteps}`}>
-                  Dame 3 platos que te <Accent>encanten</Accent>
-                </OnboardingHeader>
-                <Lead>Para entender tus gustos.</Lead>
-                <div className="mt-6 space-y-3">
-                  {[0, 1, 2].map((i) => (
-                    <input
-                      key={i}
-                      type="text"
-                      value={data.favoriteDishes[i]}
-                      onChange={(e) => setFavoriteDish(i, e.target.value)}
-                      placeholder={`Plato ${i + 1}`}
-                      className={FIELD}
-                    />
-                  ))}
                 </div>
               </section>
             )}

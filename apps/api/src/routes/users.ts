@@ -15,6 +15,7 @@ import bcrypt from 'bcryptjs'
 import { AdminAccountDeletionError, deleteAccount } from '../services/accountDeletion.js'
 import { cancelSubscriptionsPaidBy } from '../services/billing.js'
 import { saveOnboarding } from '../services/onboarding.js'
+import { analyzeOnboardingIntoMemory } from '../services/onboardingMemoryAnalysis.js'
 import {
   getHealthConsent,
   grantHealthConsent,
@@ -191,17 +192,24 @@ router.post('/user/:id/onboarding', validate(onboardingSchema), async (req: Auth
       return
     }
 
-    const { adults, kidsCount, cookingFreq, favoriteDishes, priority, healthConsent, restrictions } = req.body
+    const { adults, kidsCount, cookingFreq, favoriteDishes, priority, healthConsent, restrictions, weekdayCooking, cookingNote } = req.body
     // Allergies / restrictions are health data: stored only with the
     // separate consent box ticked (RGPD art. 9, PRO-21) — see saveOnboarding.
     const updated = await saveOnboarding(req.params.id, {
-      adults, kidsCount, cookingFreq, favoriteDishes, priority, healthConsent, restrictions,
+      adults, kidsCount, cookingFreq, favoriteDishes, priority, healthConsent, restrictions, weekdayCooking, cookingNote,
     })
 
     if (!updated) {
       res.status(404).json({ error: 'User not found' })
       return
     }
+
+    // PRO-138: the AI reads the answers (and the free «tu caso» text) into the
+    // memory, in the background — the first menu doesn't wait for it.
+    const userId = req.params.id
+    void analyzeOnboardingIntoMemory(userId, {
+      adults, kidsCount, cookingFreq, favoriteDishes, priority, weekdayCooking, cookingNote,
+    }).catch((err) => console.warn('[onboarding-analysis] failed:', err?.message ?? err))
 
     res.json(updated)
   } catch (err) {

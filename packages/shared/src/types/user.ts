@@ -1,5 +1,7 @@
 import { z } from 'zod'
+import { WEEKDAY_COOKING_CHOICES } from './cookingTime.js'
 import type { ActivityLevel, CookingFrequency, HouseholdSize, Priority, Sex } from '../constants/enums.js'
+import { cleanAttributionText, normalizeReferralCode, normalizeSource } from './waitlist.js'
 
 export const ROLES = ['user', 'admin'] as const
 export type Role = (typeof ROLES)[number]
@@ -73,6 +75,15 @@ export const registerSchema = z.object({
   waitlistToken: z.string().trim().max(128).optional(),
   /** «Quiero recibir cada viernes el menú de la semana por email» (PRO-95): separate, optional, unticked. */
   newsletterOptIn: z.boolean().optional(),
+  /**
+   * Attribution carried from the landing (PRO-162): `?invita=<code>` of whoever
+   * invited them, `?ref=` and `utm_*`. Bad values are dropped, never an error.
+   */
+  invitedBy: z.unknown().transform(normalizeReferralCode).optional(),
+  signupSource: z.unknown().transform(normalizeSource).optional(),
+  utmSource: z.unknown().transform((v) => cleanAttributionText(v, 100)).optional(),
+  utmMedium: z.unknown().transform((v) => cleanAttributionText(v, 100)).optional(),
+  utmCampaign: z.unknown().transform((v) => cleanAttributionText(v, 100)).optional(),
 })
 
 export const loginSchema = z.object({
@@ -85,13 +96,22 @@ export const onboardingSchema = z.object({
   kidsCount: z.number().int().min(0).max(20),
   cookingFreq: z.enum(['daily', '3_4_times', 'rarely']),
   restrictions: z.array(z.string()),
-  favoriteDishes: z.array(z.string()).min(1).max(5),
+  /** Legacy (PRO-146): «Afina tu menú» replaced the three favourite dishes; still accepted, no longer asked. */
+  favoriteDishes: z.array(z.string()).max(5).default([]),
   priority: z.enum(['quick', 'varied', 'healthy', 'cheap']),
   /**
    * The separate, unticked health-data box (RGPD art. 9, PRO-21). Without it
    * `restrictions` is not stored.
    */
   healthConsent: z.boolean().optional(),
+  /**
+   * PRO-138: «Entre semana, ¿cómo te gusta cocinar?» — stored as
+   * `time_available` in the memory. Optional: Mimo's WhatsApp onboarding
+   * doesn't ask it.
+   */
+  weekdayCooking: z.enum(WEEKDAY_COOKING_CHOICES).optional(),
+  /** «¿Algo más? Cuéntanos tu caso» — free text the AI reads into the memory. */
+  cookingNote: z.string().trim().max(500).optional(),
 })
 
 export const updateProfileSchema = z.object({

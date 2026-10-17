@@ -8,10 +8,15 @@
  * Now they confirm in the app's own sheet. This spec never accepts a browser
  * dialog (Playwright dismisses them, like those browsers) and fails if one
  * shows up at all.
+ *
+ * The browser clock is pinned to one weekday of the current week (Friday by
+ * default, `E2E_WEEKDAY` to pick another — PRO-142): the spec used to read the
+ * real «today» and failed from Friday to Sunday.
  */
 
 import { test, expect, type Page } from '@playwright/test'
 import { completeOnboarding, registerFreshUser } from './_helpers'
+import { pinClock, pinnedDay } from './_clock'
 
 const API = process.env.API_URL ?? 'http://localhost:8765'
 const MEAL_ORDER = ['breakfast', 'lunch', 'snack', 'dinner'] as const
@@ -20,11 +25,9 @@ const MEAL_LABEL: Record<string, string> = { breakfast: 'desayuno', lunch: 'comi
 type Slot = { dishes?: { kind: string; recipeId?: string }[] }
 type Menu = { id: string; days: Record<string, Slot>[]; skippedDays?: number[] }
 
-function thisMonday(): string {
-  const d = new Date()
-  d.setDate(d.getDate() + (d.getDay() === 0 ? -6 : 1 - d.getDay()))
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
+test.use({ timezoneId: 'Europe/Madrid' })
+
+const thisMonday = () => pinnedDay().weekStart
 
 async function session(page: Page) {
   const token = await page.evaluate(() => localStorage.getItem('ona_token'))
@@ -54,6 +57,7 @@ test('skip day, remove a meal and ban a recipe confirm in the app sheet, without
     void d.dismiss()
   })
 
+  const { dayIdx: todayIdx } = await pinClock(page)
   await registerFreshUser(page)
   await completeOnboarding(page)
   const { headers, userId } = await session(page)
@@ -63,17 +67,14 @@ test('skip day, remove a meal and ban a recipe confirm in the app sheet, without
   })
   expect(gen.ok(), `generate: ${gen.status()}`).toBeTruthy()
 
-  const todayIdx = (new Date().getDay() + 6) % 7
-  const generated = await fetchMenu(page)
-  const first = featured(generated.days[todayIdx])
-  test.skip(!first, 'the generator left today without recipes (empty catalogue?)')
-  // The CI seed catalogue is small (16 recipes, fewer once PRO-73's quality
-  // gate skips the incomplete ones), so a full week can use every eligible
-  // recipe and leave none to swap in after a veto. Empty the other days so
-  // the matcher has free recipes, as a real catalogue does. One other day
-  // keeps its dishes so the week never ends up empty (an empty week is a
-  // different screen).
+  // The API generates with the server's real date (the weekend after a
+  // Friday stays empty, PRO-65), so the spec arranges the week itself:
+  // today with lunch and dinner, one other day with its dishes so the week is
+  // never empty (an empty week is a different screen), and the rest cleared
+  // so the small CI seed catalogue (16 recipes, fewer after PRO-73's quality
+  // gate) has free recipes to swap in after a veto, as a real catalogue does.
   const keep = (todayIdx + 1) % 7
+  const generated = await fetchMenu(page)
   for (const [d, day] of generated.days.entries()) {
     if (d === todayIdx || d === keep) continue
     for (const meal of Object.keys(day ?? {})) {
@@ -81,6 +82,19 @@ test('skip day, remove a meal and ban a recipe confirm in the app sheet, without
       expect(r.ok(), `clear day ${d} ${meal}: ${r.status()}`).toBeTruthy()
     }
   }
+  for (const [d, meals] of [[todayIdx, ['lunch', 'dinner']], [keep, ['lunch']]] as const) {
+    for (const meal of meals) {
+      if (featured({ [meal]: generated.days[d]?.[meal] } as Record<string, Slot>)) continue
+      if (generated.days[d]?.[meal]) {
+        const r = await page.request.delete(`${API}/menu/${generated.id}/day/${d}/meal/${meal}`, { headers })
+        expect(r.ok(), `empty day ${d} ${meal}: ${r.status()}`).toBeTruthy()
+      }
+      const r = await page.request.post(`${API}/menu/${generated.id}/day/${d}/meal/${meal}`, { headers })
+      expect(r.ok(), `add day ${d} ${meal}: ${r.status()}`).toBeTruthy()
+    }
+  }
+  const first = featured((await fetchMenu(page)).days[todayIdx])
+  test.skip(!first, 'no recipe for today (empty catalogue?)')
 
   await page.goto('/menu')
   const hero = page.getByTestId('menu-hero')

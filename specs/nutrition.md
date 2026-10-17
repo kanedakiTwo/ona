@@ -25,6 +25,7 @@ Allergens are not provided by USDA. Each ingredient has an `allergenTags` string
 
 - Tags follow EU labelling categories: `gluten`, `lactosa`, `huevo`, `frutos_secos`, `cacahuetes`, `soja`, `pescado`, `marisco`, `crustaceos`, `moluscos`, `apio`, `mostaza`, `sesamo`, `altramuces`, `sulfitos`
 - Helper rules collapse common ingredients (e.g. "trigo", "harina de trigo", "cebada", "centeno", "avena" → `gluten`; "leche", "queso", "mantequilla", "nata" → `lactosa`). Gluten is prudent (PRO-61): any flour/pasta/noodle/dough unless it names arroz, maíz, garbanzo, almendra, trigo sarraceno or mandioca; soy sauce/tamari unless «sin gluten»; «sin gluten» never counts. «Mayonesa» → `huevo`; Worcestershire → `pescado` + `gluten`
+- Name matching is accent- and case-insensitive. Peanut (`cacahuetes`) matches **whole words** only («maní», «mani», «cacahuete(s)»), so «manitas de cerdo» or «mandarina» don't count (PRO-160). Every other list matches **substrings on purpose**, so «panko», «empanadilla», «apionabo» and «salmonete» are still caught; the known extra hits (panceta/panela → `gluten`, grapefruit → `pescado`) err on the safe side
 - The recipe ficha shows `effectiveAllergens` (stored union + name inference, additive, computed on read), so a stale stored union is corrected without touching the database
 - A recipe's `allergens` is the union of all its ingredients' `allergenTags`, including `optional` ingredients (so the badge is conservative)
 

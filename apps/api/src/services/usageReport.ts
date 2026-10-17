@@ -10,6 +10,7 @@ import { sql } from 'drizzle-orm'
 import { db as defaultDb } from '../db/connection.js'
 import { addDays, madridMidnightUtc, madridParts } from './madridTime.js'
 import { isoWeekLabel, weekOfDay } from './businessMetrics.js'
+import { buildReferralReport, loadInvitedSignups } from './referralRewards.js'
 import { PASSIVE_USAGE_EVENTS, USAGE_CHANNELS, USAGE_EVENTS, type UsageEventName } from './usageEvents.js'
 
 type Db = typeof defaultDb
@@ -26,6 +27,8 @@ export interface UsageHouseholdDay {
   householdId: string
   day: string
   name: string
+  /** web | whatsapp | voice | null (system / unknown). Optional: only the channel split reads it. */
+  channel?: string | null
 }
 
 export interface UsageInput {
@@ -192,12 +195,82 @@ export function buildTotals(input: UsageInput) {
   return { events, byChannel, activeHouseholds: all.size, householdsByEvent }
 }
 
+export interface ChannelSplitWeek {
+  week: string
+  isoWeek: string
+  webOnly: number
+  whatsappOnly: number
+  both: number
+  /** Active only through events without a channel (system: signup…). */
+  unknownOnly: number
+}
+
+/**
+ * Pure (PRO-106): active households per ISO week by the channels they used —
+ * only the app/web (voice is Mimo inside the app), only WhatsApp, or both.
+ */
+export function buildChannelSplit(input: UsageInput): ChannelSplitWeek[] {
+  const weeks = [...new Set(input.days.map(weekOfDay))]
+  const perWeek = new Map<string, Map<string, { web: boolean; whatsapp: boolean }>>(weeks.map((w) => [w, new Map()]))
+  for (const h of input.householdDays) {
+    const hh = perWeek.get(weekOfDay(h.day))
+    if (!hh) continue
+    const cur = hh.get(h.householdId) ?? { web: false, whatsapp: false }
+    if (h.channel === 'whatsapp') cur.whatsapp = true
+    else if (h.channel === 'web' || h.channel === 'voice') cur.web = true
+    hh.set(h.householdId, cur)
+  }
+  return weeks.map((week) => {
+    const out: ChannelSplitWeek = { week, isoWeek: isoWeekLabel(week), webOnly: 0, whatsappOnly: 0, both: 0, unknownOnly: 0 }
+    for (const c of perWeek.get(week)!.values()) {
+      if (c.web && c.whatsapp) out.both += 1
+      else if (c.web) out.webOnly += 1
+      else if (c.whatsapp) out.whatsappOnly += 1
+      else out.unknownOnly += 1
+    }
+    return out
+  })
+}
+
+export interface HouseholdStateRow {
+  householdId: string
+  /** Counted members (no admin / suspended accounts unless includeInternal). */
+  members: number
+  whatsappLinked: number
+  whatsappNotify: number
+  pushEnabled: number
+}
+
+/**
+ * Pure (PRO-106): how many households have WhatsApp connected, avisos on
+ * (WhatsApp with notify, or a push subscription) and 2+ members, right now.
+ */
+export function buildHouseholdSnapshot(rows: HouseholdStateRow[]) {
+  let withWhatsapp = 0
+  let withWhatsappNotify = 0
+  let withPush = 0
+  let withNotices = 0
+  let withTwoPlusMembers = 0
+  for (const r of rows) {
+    if (r.whatsappLinked > 0) withWhatsapp += 1
+    if (r.whatsappNotify > 0) withWhatsappNotify += 1
+    if (r.pushEnabled > 0) withPush += 1
+    if (r.whatsappNotify > 0 || r.pushEnabled > 0) withNotices += 1
+    if (r.members >= 2) withTwoPlusMembers += 1
+  }
+  return { households: rows.length, withWhatsapp, withWhatsappNotify, withPush, withNotices, withTwoPlusMembers }
+}
+
 export const USAGE_DEFINITIONS = {
   activeHouseholds: 'Distinct households with at least one usage event that day / ISO week (Europe/Madrid), not counting app_opened_installed (opening the installed app is not using it). Events without a household (deleted accounts) are counted in events but not here.',
   funnel: 'Signup-week cohorts (signup_completed). firstMenu → shoppingListViewed → cooked are nested steps within the first 7 days (signup day … +6): menu_generated, then shopping_list_viewed, then cook_mode_started or meal_cooked. activeWeek2 is not nested: signups with any event on days 7–13, over week2Eligible (signups whose day 7 has arrived).',
   channels: 'web (app and web chat), voice (Mimo with the voice in the app), whatsapp; unknown = system.',
   excluded: 'Admin and suspended accounts are excluded unless includeInternal=1. Events of deleted accounts stay as anonymous counts.',
   retention: 'Events are kept 180 days.',
+  households: 'Right now, not windowed. Households with at least one counted member; withWhatsapp = a member has WhatsApp connected; withWhatsappNotify = one with proactive messages on; withPush = a member has a push subscription; withNotices = either; withTwoPlusMembers = 2 or more counted members.',
+  channelSplit: 'Active households per ISO week by channel used: webOnly (app, web chat or voice), whatsappOnly, both; unknownOnly = active only through events without a channel.',
+  onboardingWhatsappChosen: 'Event onboarding_whatsapp_chosen: «Por WhatsApp» tapped on the first onboarding screen (POST /whatsapp/link-code with from=onboarding); see householdsByEvent for distinct households.',
+  referrals: 'By ISO week (inviteShared: of the tap; the rest: of the invited sign-up), all time, not the window. signupsWithInviter = accounts that signed up with someone else’s «Invitar a otro hogar» code (not into the inviter’s own household); week3Resolved = of those, households with a menu generated and the shopping list opened on days 14–20 after signing up; inviters = distinct codes. Counts only.',
 }
 
 export interface UsageLoadOptions {
@@ -224,13 +297,43 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
       GROUP BY 1, 2, 3
   `)
   const householdDaysQ = db.execute(sql`
-    SELECT e.household_id::text AS household_id, ${dayOf} AS day, e.name
+    SELECT e.household_id::text AS household_id, ${dayOf} AS day, e.name, e.channel
       FROM usage_events e LEFT JOIN users u ON u.id = e.user_id
       WHERE e.created_at >= ${from} AND e.household_id IS NOT NULL AND ${counted}
-      GROUP BY 1, 2, 3
+      GROUP BY 1, 2, 3, 4
+  `)
+  // Current state per household (PRO-106). Ids stay in this process: only counts leave.
+  const member = sql`(${inc}::boolean OR (mu.role <> 'admin' AND mu.suspended_at IS NULL))`
+  const householdStateQ = db.execute(sql`
+    SELECT hm.household_id::text AS household_id,
+           COUNT(DISTINCT mu.id)::int AS members,
+           COUNT(DISTINCT wl.user_id)::int AS whatsapp_linked,
+           COUNT(DISTINCT wl.user_id) FILTER (WHERE wl.notify)::int AS whatsapp_notify,
+           COUNT(DISTINCT ps.user_id)::int AS push_enabled
+      FROM household_members hm
+      JOIN users mu ON mu.id = hm.user_id
+      LEFT JOIN whatsapp_links wl ON wl.user_id = mu.id
+      LEFT JOIN push_subscriptions ps ON ps.user_id = mu.id
+      WHERE ${member}
+      GROUP BY 1
   `)
   const sinceQ = db.execute(sql`SELECT MIN(created_at) AS since FROM usage_events`)
-  const [counts, householdDays, since] = await Promise.all([countsQ, householdDaysQ, sinceQ])
+  // Referrals (PRO-165): every invited account (not just the window) and the taps on «Invitar a otro hogar».
+  const invitedQ = loadInvitedSignups(db, inc)
+  const inviteSharedQ = db.execute(sql`
+    SELECT ${dayOf} AS day, COUNT(*)::int AS count
+      FROM usage_events e LEFT JOIN users u ON u.id = e.user_id
+      WHERE e.name = 'invite_shared' AND ${counted}
+      GROUP BY 1
+  `)
+  const [counts, householdDays, since, householdState, invited, inviteShared] = await Promise.all([
+    countsQ,
+    householdDaysQ,
+    sinceQ,
+    householdStateQ,
+    invitedQ,
+    inviteSharedQ,
+  ])
 
   const input: UsageInput = {
     days: dayRange(fromDay, today),
@@ -239,7 +342,7 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
     // Passive signals (opening the installed app) are counted in `events` but never make a household active.
     householdDays: (householdDays.rows as any[])
       .filter((r) => !PASSIVE_USAGE_EVENTS.has(r.name))
-      .map((r) => ({ householdId: r.household_id, day: r.day, name: r.name })),
+      .map((r) => ({ householdId: r.household_id, day: r.day, name: r.name, channel: r.channel ?? null })),
   }
   const sinceRaw = (since.rows as any[])[0]?.since
   return {
@@ -254,6 +357,17 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
     weekly: buildWeekly(input),
     funnel: buildFunnel(input),
     totals: buildTotals(input),
+    channelSplit: buildChannelSplit(input),
+    households: buildHouseholdSnapshot(
+      (householdState.rows as any[]).map((r) => ({
+        householdId: r.household_id,
+        members: Number(r.members),
+        whatsappLinked: Number(r.whatsapp_linked),
+        whatsappNotify: Number(r.whatsapp_notify),
+        pushEnabled: Number(r.push_enabled),
+      })),
+    ),
+    referrals: buildReferralReport(invited, (inviteShared.rows as any[]).map((r) => ({ day: r.day, count: Number(r.count) }))),
     definitions: USAGE_DEFINITIONS,
     dataSince: sinceRaw ? new Date(sinceRaw).toISOString() : null,
   }

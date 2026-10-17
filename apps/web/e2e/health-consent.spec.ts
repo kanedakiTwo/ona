@@ -22,12 +22,15 @@ async function getUser(page: Page) {
   return (await page.request.get(`${API_URL}/user/${s.userId}`, { headers: s.auth })).json()
 }
 
-/** Walk the onboarding UI; on step 3 optionally tick the consent box and pick "sin gluten". */
+/** Walk the onboarding UI; on step 4 (restrictions) optionally tick the consent box and pick "sin gluten". */
 async function onboard(page: Page, consent: boolean) {
   await page.goto('/onboarding')
   const next = page.getByRole('button', { name: /siguiente/i })
   await next.click()
   await page.getByRole('button', { name: /3-4 veces/i }).click()
+  await next.click()
+  // PRO-138: «Entre semana, ¿cómo te gusta cocinar?»
+  await page.getByRole('button', { name: /sin prisa/i }).click()
   await next.click()
   const box = page.getByRole('checkbox', { name: /datos de salud/i })
   await expect(box).not.toBeChecked()
@@ -38,8 +41,6 @@ async function onboard(page: Page, consent: boolean) {
   } else {
     await expect(chip).toBeDisabled()
   }
-  await next.click()
-  await page.getByPlaceholder('Plato 1').fill('Lentejas')
   await next.click()
   await page.getByRole('button', { name: /salud/i }).click()
   await page.getByRole('button', { name: /empezar/i }).click()

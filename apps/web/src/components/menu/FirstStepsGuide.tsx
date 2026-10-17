@@ -2,7 +2,7 @@
 
 /**
  * «Primeros pasos» (PRO-07): the first time a new account lands on /menu,
- * three steps over the real screen — the «···» button of the day's dish
+ * three steps over the real screen (two for who talks to Mimo by WhatsApp, PRO-161) — the «···» button of the day's dish
  * (tapping the dish opens the recipe; changing it goes through «···»), the
  * shopping tab and Mimo's button — each lit up with the rest dimmed. Skippable at any step;
  * finishing or skipping calls POST /user/:id/first-steps, so it never comes
@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useLayoutEffect, useState, type CSSProperties } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
+import { useWhatsAppStatus } from "@/hooks/useWhatsApp"
 
 /** Each step lights up the first selector that is on screen (fallbacks after the first). */
 export const FIRST_STEPS = [
@@ -24,6 +25,16 @@ export const FIRST_STEPS = [
   { targets: ['[data-first-steps="shopping"]'], text: "Aquí tienes la lista de la compra: se hace sola" },
   { targets: ['[data-testid="mimo-button"]'], text: "Este es Mimo: pídele lo que quieras" },
 ] as const
+
+/**
+ * PRO-161: who talks to Mimo by WhatsApp (linked) gets the first two steps,
+ * without the one about Mimo's button in the web.
+ */
+const FIRST_STEPS_WHATSAPP = FIRST_STEPS.slice(0, 2)
+
+export function firstStepsFor(whatsappLinked: boolean): readonly (typeof FIRST_STEPS)[number][] {
+  return whatsappLinked ? FIRST_STEPS_WHATSAPP : FIRST_STEPS
+}
 
 type Rect = { top: number; left: number; width: number; height: number }
 
@@ -52,7 +63,9 @@ export function FirstStepsGuide({ userId, ready }: { userId: string; ready: bool
   const [step, setStep] = useState(0)
   const [closed, setClosed] = useState(false)
   const [rect, setRect] = useState<Rect | null>(null)
-  const open = ready && pending === true && !closed
+  const whatsapp = useWhatsAppStatus()
+  const steps = firstStepsFor(Boolean(whatsapp.data?.linked))
+  const open = ready && pending === true && !closed && !whatsapp.isPending
 
   // `outcome` only feeds the product analytics (first_steps_completed / _skipped).
   const finish = useCallback((outcome: "completed" | "skipped") => {
@@ -66,7 +79,7 @@ export function FirstStepsGuide({ userId, ready }: { userId: string; ready: bool
   // Follow the highlighted element (scroll, resize, late layout).
   useLayoutEffect(() => {
     if (!open) return
-    const selector = FIRST_STEPS[step].targets
+    const selector = steps[step].targets
     const el = findTarget(selector)
     if (el && step === 0) el.scrollIntoView({ block: "center", behavior: "instant" as ScrollBehavior })
     const measure = () => {
@@ -84,7 +97,7 @@ export function FirstStepsGuide({ userId, ready }: { userId: string; ready: bool
       window.removeEventListener("resize", measure)
       window.removeEventListener("scroll", measure, true)
     }
-  }, [open, step])
+  }, [open, step, steps])
 
   useEffect(() => {
     if (!open) return
@@ -97,7 +110,7 @@ export function FirstStepsGuide({ userId, ready }: { userId: string; ready: bool
 
   if (!open) return null
 
-  const last = step === FIRST_STEPS.length - 1
+  const last = step === steps.length - 1
   const pad = 6
   const vh = typeof window !== "undefined" ? window.innerHeight : 800
   // Card on the other half of the screen from the lit element.
@@ -135,10 +148,10 @@ export function FirstStepsGuide({ userId, ready }: { userId: string; ready: bool
         style={cardStyle}
       >
         <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-muted">
-          Primeros pasos · {step + 1} de {FIRST_STEPS.length}
+          Primeros pasos · {step + 1} de {steps.length}
         </p>
         <h2 id="first-steps-title" className="mt-1.5 font-serif-text text-[22px] font-[650] leading-[1.2] text-ink">
-          {FIRST_STEPS[step].text}
+          {steps[step].text}
         </h2>
         <div className="mt-4 flex items-center justify-between gap-3">
           <button

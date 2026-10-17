@@ -14,22 +14,19 @@
  * (`OnboardingShell`). Behaviour is unchanged: same steps, same payload,
  * same first-menu generation before landing on /menu.
  */
-import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { useAuth } from "@/lib/auth"
 import { api } from "@/lib/api"
 import { useRouter } from "next/navigation"
-import { Check, ChevronLeft, Minus, Plus, X } from "lucide-react"
+import { Check, ChevronLeft, Minus, Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { RESTRICTION_PRESETS, firstMenuWeeks, type WeekdayCookingChoice } from "@ona/shared"
-import { HealthConsentCheckbox } from "@/components/HealthConsentCheckbox"
+import { firstMenuWeeks, type OnboardingDraft, type WeekdayCookingChoice } from "@ona/shared"
+import { RestrictionsPicker } from "./RestrictionsPicker"
 import { Accent, OnboardingHeader, OnboardingShell } from "./OnboardingShell"
 import { OnboardingChannelChoice, OnboardingWhatsAppLink } from "./OnboardingWhatsApp"
 import { useWhatsAppLinkCode, useWhatsAppStatus } from "@/hooks/useWhatsApp"
 import { postTasteOffer, useTasteStatus } from "@/hooks/useTaste"
 import { TasteSwiper } from "@/components/taste/TasteSwiper"
-
-// Shared with the profile so both offer the same chips (@ona/shared).
-const PRESET_RESTRICTIONS = RESTRICTION_PRESETS
 
 const PHOTO = "/images/recipes/lentejas-estofadas.jpg"
 
@@ -49,9 +46,6 @@ const WEEKDAY_COOKING_OPTIONS: Array<{ value: WeekdayCookingChoice; label: strin
   { value: "poco_trabajo", label: "Poco rato de trabajo", desc: "Aunque luego se haga solo" },
   { value: "sin_prisa", label: "Sin prisa", desc: "Me da igual lo que tarde" },
 ]
-
-const FIELD =
-  "h-12 w-full rounded-2xl border border-border bg-paper px-4 text-[15px] text-ink placeholder:text-ink-light transition-colors focus:border-ink focus:outline-none disabled:opacity-60"
 
 /** Paper answer card; selected = ink border + ink check. */
 function OptionCard({
@@ -135,25 +129,47 @@ function Lead({ children }: { children: ReactNode }) {
   return <p className="mt-2 text-[14px] leading-relaxed text-ink-muted">{children}</p>
 }
 
-export default function OnboardingFlow() {
+/**
+ * PRO-178: the step to resume on. Allergies are never in the draft (health
+ * data, only stored with the consent at the end), so a sign-up left on the
+ * last question resumes on «¿Hay algo que no comas?» instead of skipping it.
+ */
+export function resumeStep(draft: OnboardingDraft | null): number {
+  if (!draft) return 1
+  return Math.min(Math.max(1, draft.step), 4)
+}
+
+/** PRO-178: what «Siguiente» saves (`PUT /user/:id/onboarding-draft`). */
+export function onboardingDraftPayload(step: number, data: OnboardingData): OnboardingDraft {
+  return {
+    step,
+    adults: data.adults,
+    kidsCount: data.kidsCount,
+    cookingFreq: data.cookingFreq as OnboardingDraft["cookingFreq"],
+    weekdayCooking: data.weekdayCooking,
+    cookingNote: data.cookingNote.slice(0, 500),
+    priority: data.priority as OnboardingDraft["priority"],
+  }
+}
+
+export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDraft | null } = {}) {
   const { user, updateUser } = useAuth()
   const router = useRouter()
-  const [step, setStep] = useState(1)
+  const [step, setStep] = useState(() => resumeStep(draft))
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [preparingMenu, setPreparingMenu] = useState(false)
   const [error, setError] = useState("")
 
-  const [data, setData] = useState<OnboardingData>({
-    adults: 2,
-    kidsCount: 0,
-    cookingFreq: null,
+  const [data, setData] = useState<OnboardingData>(() => ({
+    adults: draft?.adults ?? 2,
+    kidsCount: draft?.kidsCount ?? 0,
+    cookingFreq: draft?.cookingFreq ?? null,
     restrictions: [],
-    priority: null,
-    weekdayCooking: null,
-    cookingNote: "",
-  })
+    priority: draft?.priority ?? null,
+    weekdayCooking: draft?.weekdayCooking ?? null,
+    cookingNote: draft?.cookingNote ?? "",
+  }))
 
-  const [tagInput, setTagInput] = useState("")
   // RGPD art. 9 (PRO-21): restrictions are health data, only with this box.
   const [healthConsent, setHealthConsent] = useState(false)
 
@@ -167,8 +183,9 @@ export default function OnboardingFlow() {
   const [channel, setChannel] = useState<"choose" | "whatsapp" | "web" | null>(null)
   useEffect(() => {
     if (channel !== null || whatsapp.isLoading) return
-    setChannel(whatsapp.data?.available ? (whatsapp.data.linked ? "whatsapp" : "choose") : "web")
-  }, [channel, whatsapp.isLoading, whatsapp.data])
+    // A web sign-up left halfway (PRO-178) goes back to its questions.
+    setChannel(whatsapp.data?.available ? (whatsapp.data.linked ? "whatsapp" : draft ? "web" : "choose") : "web")
+  }, [channel, whatsapp.isLoading, whatsapp.data, draft])
   const canBackToChannel = Boolean(whatsapp.data?.available)
 
   // «Afina tu menú» step (PRO-146): decided once from the first status, so
@@ -188,34 +205,15 @@ export default function OnboardingFlow() {
   }, [tasteStep, tasteStatus.data, tasteStatus.isError])
 
   function next() {
-    if (step < totalSteps) setStep(step + 1)
+    if (step >= totalSteps) return
+    setStep(step + 1)
+    // PRO-178: the next visit (any device) resumes here with these answers.
+    if (user) api.put(`/user/${user.id}/onboarding-draft`, onboardingDraftPayload(step + 1, data)).catch(() => {})
   }
 
   function prev() {
     if (step > 1) setStep(step - 1)
     else if (canBackToChannel) setChannel("choose")
-  }
-
-  function addRestriction(tag: string) {
-    const trimmed = tag.trim().toLowerCase()
-    if (trimmed && !data.restrictions.includes(trimmed)) {
-      setData({ ...data, restrictions: [...data.restrictions, trimmed] })
-    }
-    setTagInput("")
-  }
-
-  function removeRestriction(tag: string) {
-    setData({
-      ...data,
-      restrictions: data.restrictions.filter((r) => r !== tag),
-    })
-  }
-
-  function handleTagKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter" || e.key === ",") {
-      e.preventDefault()
-      addRestriction(tagInput)
-    }
   }
 
   async function handleComplete() {
@@ -462,79 +460,12 @@ export default function OnboardingFlow() {
                   ¿Hay algo que <Accent>no comas</Accent>?
                 </OnboardingHeader>
                 <Lead>Alergias, intolerancias o preferencias.</Lead>
-                <div className="mt-5">
-                  <HealthConsentCheckbox
-                    checked={healthConsent}
-                    onChange={(v) => {
-                      setHealthConsent(v)
-                      if (!v) setData({ ...data, restrictions: [] })
-                    }}
-                  />
-                  {!healthConsent && (
-                    <p className="mt-2 text-[13px] text-ink-muted">
-                      Sin tu consentimiento no guardamos alergias ni restricciones; puedes seguir sin marcarlo.
-                    </p>
-                  )}
-                </div>
-                <div
-                  className={cn("mt-6", !healthConsent && "pointer-events-none opacity-40")}
-                  aria-disabled={!healthConsent}
-                >
-                  <div className="flex flex-wrap gap-2">
-                    {PRESET_RESTRICTIONS.map((tag) => {
-                      const active = data.restrictions.includes(tag)
-                      return (
-                        <button
-                          key={tag}
-                          type="button"
-                          disabled={!healthConsent}
-                          aria-pressed={active}
-                          onClick={() => (active ? removeRestriction(tag) : addRestriction(tag))}
-                          // 36 px visual + a pseudo-element that stretches the hit area to 44 px.
-                          className={cn(
-                            "relative h-9 rounded-full border px-3.5 text-[14px] transition-colors before:absolute before:inset-x-0 before:-inset-y-1 active:scale-[0.97]",
-                            active
-                              ? "border-ink bg-ink font-medium text-cream"
-                              : "border-border bg-paper text-ink hover:border-ink",
-                          )}
-                        >
-                          {tag}
-                        </button>
-                      )
-                    })}
-                  </div>
-                  <div className="mt-4">
-                    <input
-                      type="text"
-                      value={tagInput}
-                      onChange={(e) => setTagInput(e.target.value)}
-                      onKeyDown={handleTagKeyDown}
-                      disabled={!healthConsent}
-                      placeholder="Escribe y pulsa Enter para añadir..."
-                      className={FIELD}
-                    />
-                  </div>
-                  {data.restrictions.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {data.restrictions.map((tag) => (
-                        <span
-                          key={tag}
-                          className="inline-flex h-9 items-center gap-1 rounded-full border border-border-soft bg-paper pl-3.5 text-[14px] text-ink"
-                        >
-                          {tag}
-                          <button
-                            type="button"
-                            onClick={() => removeRestriction(tag)}
-                            aria-label={`Quitar ${tag}`}
-                            className="flex h-9 w-9 items-center justify-center rounded-full text-ink-muted hover:text-ink"
-                          >
-                            <X size={14} />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <RestrictionsPicker
+                  consent={healthConsent}
+                  onConsentChange={setHealthConsent}
+                  restrictions={data.restrictions}
+                  onChange={(restrictions) => setData({ ...data, restrictions })}
+                />
               </section>
             )}
 

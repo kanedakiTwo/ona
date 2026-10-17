@@ -127,6 +127,12 @@ export const users = pgTable('users', {
   onboardingCompletedAt: timestamp('onboarding_completed_at', { withTimezone: true }),
   /** The free «tu caso» text of the sign-up (PRO-138), ≤ 500 chars, as typed. */
   onboardingNote: text('onboarding_note'),
+  /**
+   * The web sign-up in progress (PRO-178): step + answers so far
+   * (`onboardingDraftSchema`, never health data), so a return visit resumes
+   * there. Cleared when the sign-up is saved.
+   */
+  onboardingDraft: jsonb('onboarding_draft'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => [
   check('users_role_check', sql.raw("role IN ('user','admin')")),

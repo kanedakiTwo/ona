@@ -114,7 +114,8 @@ export type {
 } from './constants/enums.js'
 
 // Zod schemas
-export { registerSchema, loginSchema, onboardingSchema, updateProfileSchema } from './types/user.js'
+export { registerSchema, loginSchema, onboardingSchema, onboardingDraftSchema, updateProfileSchema } from './types/user.js'
+export type { OnboardingDraft } from './types/user.js'
 export { createIngredientSchema, updateIngredientSchema } from './types/ingredient.js'
 export {
   createRecipeSchema,

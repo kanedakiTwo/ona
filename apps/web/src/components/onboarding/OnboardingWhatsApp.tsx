@@ -10,8 +10,7 @@
  * "Prefiero seguir en la web" keeps the classic five questions.
  */
 
-import { useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useEffect, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { MessageCircle, Monitor } from "lucide-react"
 import { useAuth } from "@/lib/auth"
@@ -19,6 +18,7 @@ import { api } from "@/lib/api"
 import { useWhatsAppStatus, type useWhatsAppLinkCode } from "@/hooks/useWhatsApp"
 import { Accent, OnboardingHeader } from "./OnboardingShell"
 import { WhatsAppQr } from "@/components/whatsapp/WhatsAppQr"
+import { OnboardingMenuReady } from "./OnboardingMenuReady"
 
 const PILL =
   "flex h-[52px] w-full items-center justify-center gap-2 rounded-full bg-ink px-6 text-[16px] font-semibold text-cream transition-colors hover:bg-ink-mid active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
@@ -86,23 +86,27 @@ export function OnboardingWhatsAppLink({
   linkCode: ReturnType<typeof useWhatsAppLinkCode>
 }) {
   const { user, updateUser } = useAuth()
-  const router = useRouter()
   const status = useWhatsAppStatus({ pollWhilePending: true })
   const linked = Boolean(status.data?.linked)
 
   // Mimo finishes the first steps in the chat; follow the account until it's onboarded.
+  // PRO-161: once Mimo has finished, «Tu menú está listo» asks for allergies
+  // here (never asked in WhatsApp) before /menu.
+  const [menuReady, setMenuReady] = useState(false)
   const account = useQuery({
     queryKey: ["user", user?.id, "onboarding"],
     queryFn: () => api.get<any>(`/user/${user!.id}`),
-    enabled: Boolean(user?.id) && linked,
+    enabled: Boolean(user?.id) && linked && !menuReady,
     refetchInterval: 4_000,
   })
   useEffect(() => {
-    if (account.data?.onboardingDone) {
+    if (account.data?.onboardingDone && !menuReady) {
       updateUser(account.data)
-      router.push("/menu")
+      setMenuReady(true)
     }
-  }, [account.data, updateUser, router])
+  }, [account.data, updateUser, menuReady])
+
+  if (menuReady) return <OnboardingMenuReady />
 
   if (linked) {
     return (

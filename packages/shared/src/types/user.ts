@@ -118,6 +118,24 @@ export const onboardingSchema = z.object({
   cookingNote: z.string().trim().max(500).optional(),
 })
 
+/**
+ * The web sign-up in progress (PRO-178): the step reached and the answers so
+ * far, saved on every «Siguiente» so the next visit (any device) resumes
+ * there. Never carries allergies or restrictions (health data, PRO-21): they
+ * are only stored with the consent, when the sign-up is finished.
+ */
+export const onboardingDraftSchema = z.object({
+  step: z.number().int().min(1).max(5),
+  adults: z.number().int().min(1).max(20),
+  kidsCount: z.number().int().min(0).max(20),
+  cookingFreq: z.enum(['daily', '3_4_times', 'rarely']).nullable(),
+  weekdayCooking: z.enum(WEEKDAY_COOKING_CHOICES).nullable(),
+  cookingNote: z.string().max(500),
+  priority: z.enum(['quick', 'varied', 'healthy', 'cheap']).nullable(),
+}).strict()
+
+export type OnboardingDraft = z.infer<typeof onboardingDraftSchema>
+
 export const updateProfileSchema = z.object({
   sex: z.enum(['male', 'female']).optional(),
   age: z.number().int().min(1).max(120).optional(),

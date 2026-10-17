@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { eq, ilike } from 'drizzle-orm'
+import { and, eq, ilike, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import {
   recipeIngredients,
@@ -9,12 +9,12 @@ import {
 } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
-import { updateProfileSchema, onboardingSchema } from '@ona/shared'
+import { updateProfileSchema, onboardingSchema, onboardingDraftSchema } from '@ona/shared'
 import { env } from '../config/env.js'
 import bcrypt from 'bcryptjs'
 import { AdminAccountDeletionError, deleteAccount } from '../services/accountDeletion.js'
 import { cancelSubscriptionsPaidBy } from '../services/billing.js'
-import { saveOnboarding } from '../services/onboarding.js'
+import { onboardingStatus, saveOnboarding } from '../services/onboarding.js'
 import { analyzeOnboardingIntoMemory } from '../services/onboardingMemoryAnalysis.js'
 import {
   getHealthConsent,
@@ -119,9 +119,14 @@ router.get('/user/:id', async (req: AuthRequest, res) => {
     const monthKey = new Date().toISOString().slice(0, 7)
     const used = user.imageGenMonthKey === monthKey ? (user.imageGenCount ?? 0) : 0
     const { imageGenMonthKey: _omit1, imageGenCount: _omit2, ...rest } = user
+    // PRO-178: whether /menu sends the account back to the sign-up, and
+    // where the sign-up in progress was left.
+    const status = await onboardingStatus(user.id)
 
     res.json({
       ...rest,
+      onboardingRequired: status?.onboardingRequired ?? !user.onboardingDone,
+      onboardingDraft: status?.onboardingDraft ?? null,
       imageGenQuota: { used, limit: env.IMAGE_GEN_MONTHLY_LIMIT, monthKey },
     })
   } catch (err) {
@@ -180,6 +185,26 @@ router.put('/user/:id', validate(updateProfileSchema), async (req: AuthRequest, 
     res.json(updated)
   } catch (err) {
     console.error('Update user error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// PUT /user/:id/onboarding-draft — the web sign-up in progress (PRO-178):
+// step + answers, saved on every «Siguiente». Ignored once onboarded.
+router.put('/user/:id/onboarding-draft', validate(onboardingDraftSchema), async (req: AuthRequest, res) => {
+  try {
+    if (req.userId !== req.params.id) {
+      res.status(403).json({ error: 'Forbidden' })
+      return
+    }
+    const [row] = await db
+      .update(users)
+      .set({ onboardingDraft: req.body })
+      .where(and(eq(users.id, req.params.id), sql`${users.onboardingDone} IS NOT TRUE`))
+      .returning({ id: users.id })
+    res.json({ saved: Boolean(row) })
+  } catch (err) {
+    console.error('Onboarding draft error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

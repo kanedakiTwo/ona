@@ -1,6 +1,6 @@
 import { eq, sql } from 'drizzle-orm'
 import { db as defaultDb } from '../db/connection.js'
-import { users } from '../db/schema.js'
+import { households, users } from '../db/schema.js'
 import { grantHealthConsent, hasHealthConsent } from './healthConsent.js'
 import { recordWishesFromFavoriteDishes } from './catalogWishes.js'
 import { timeAvailableForChoice, type WeekdayCookingChoice } from '@ona/shared'
@@ -66,6 +66,8 @@ export async function saveOnboarding(userId: string, input: OnboardingInput, dat
     favoriteDishes,
     priority,
     onboardingDone: true,
+    // The sign-up in progress (PRO-178) is over.
+    onboardingDraft: null,
     // The first time only: the day the ficha reads the sign-up answers (PRO-151).
     onboardingCompletedAt: sql`COALESCE(${users.onboardingCompletedAt}, now())`,
   }
@@ -83,4 +85,32 @@ export async function saveOnboarding(userId: string, input: OnboardingInput, dat
     await setMemoryFact(userId, 'time_available', timeAvailableForChoice(input.weekdayCooking), 'onboarding')
   }
   return updated ?? null
+}
+
+/**
+ * PRO-178: does this account still have to go through /onboarding? Not when
+ * it finished it, and not when it joined someone else's household through an
+ * invitation (it reads that household's menu; the sign-up would generate on
+ * top of it). Only an account whose own household drives the app is sent
+ * back to the sign-up.
+ */
+export function needsOnboarding(row: { onboardingDone: boolean | null; householdOwnerId: string | null; id: string }): boolean {
+  if (row.onboardingDone) return false
+  return row.householdOwnerId === null || row.householdOwnerId === row.id
+}
+
+export async function onboardingStatus(userId: string, database: any = defaultDb) {
+  const [row] = await database
+    .select({
+      id: users.id,
+      onboardingDone: users.onboardingDone,
+      onboardingDraft: users.onboardingDraft,
+      householdOwnerId: households.ownerId,
+    })
+    .from(users)
+    .leftJoin(households, eq(households.id, users.primaryHouseholdId))
+    .where(eq(users.id, userId))
+    .limit(1)
+  if (!row) return null
+  return { onboardingRequired: needsOnboarding(row), onboardingDraft: row.onboardingDraft ?? null }
 }

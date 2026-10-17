@@ -45,6 +45,7 @@ import {
   useAddRandomDish,
 } from "@/hooks/useMenu"
 import { useUser } from "@/hooks/useUser"
+import { useOnboardingGate } from "@/hooks/useOnboardingGate"
 import { haptic } from "@/lib/pwa/haptics"
 import { recordMenuVisit } from "@/lib/pwa/installPrompt"
 import { share } from "@/lib/pwa/share"
@@ -128,6 +129,9 @@ function todayIndexIn(weekStart: string): number {
 export default function MenuPage() {
   const { user, isLoading: authLoading } = useAuth()
   const router = useRouter()
+  // PRO-178: without the sign-up finished, /menu goes to /onboarding. The
+  // week isn't loaded meanwhile, so no empty week is created on top.
+  const onboardingGate = useOnboardingGate()
   const isDesktop = useIsDesktop()
 
   // Initial week from `?week=YYYY-MM-DD` (shareable / back-forward-able).
@@ -159,7 +163,7 @@ export default function MenuPage() {
     isError: menuFailed,
     refetch: refetchMenu,
     isFetching: menuFetching,
-  } = useMenu(user?.id, weekStart)
+  } = useMenu(onboardingGate === "ok" ? user?.id : undefined, weekStart)
   const generateMenu = useGenerateMenu()
   const regenerateMeal = useRegenerateMeal()
   const lockMeal = useLockMeal()
@@ -381,7 +385,7 @@ export default function MenuPage() {
     [menu],
   )
 
-  if (authLoading || !user) {
+  if (authLoading || !user || onboardingGate !== "ok") {
     // Not `return null`: a blank cream screen while auth re-hydrates read as
     // a broken page. Quiet, in place — no full-screen splash.
     return (

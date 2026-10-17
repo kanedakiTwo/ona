@@ -3,7 +3,7 @@
  * the first screen of /onboarding offers to do the first steps with Mimo in
  * the chat. Sending the code links the phone; Mimo asks there and builds the
  * first menu (complete_onboarding, covered in the API tests); this page
- * follows the account and lands on /menu when it's done. "Prefiero la web"
+ * follows the account and, when it's done, asks for allergies («Tu menú está listo», PRO-161) before /menu. "Prefiero la web"
  * keeps the classic questions. /whatsapp/* and the account poll are mocked.
  */
 import { test, expect, type Page, type Route } from '@playwright/test'
@@ -64,8 +64,11 @@ test('WhatsApp first: send the code, Mimo writes, and the page lands on /menu wh
   await expect(page.getByTestId('onboarding-whatsapp-linked')).toBeVisible({ timeout: 8_000 })
   await expect(page.getByRole('link', { name: /abrir whatsapp/i })).toHaveAttribute('href', 'https://wa.me/15550001111')
 
-  // complete_onboarding ran in the chat → the account is onboarded → /menu.
+  // complete_onboarding ran in the chat → the account is onboarded →
+  // «Tu menú está listo» asks for allergies (PRO-161) → «Ver mi menú» → /menu.
   wa.onboardingDone = true
+  await expect(page.getByTestId('onboarding-menu-ready')).toBeVisible({ timeout: 15_000 })
+  await page.getByRole('button', { name: 'Ver mi menú' }).click()
   await expect(page).toHaveURL(/\/menu/, { timeout: 15_000 })
 })
 

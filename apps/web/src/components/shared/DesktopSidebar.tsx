@@ -44,7 +44,9 @@ export default function DesktopSidebar() {
       aria-label="Navegación principal"
     >
       <div className="mb-8 px-3">
-        <MimoiaLogo size={22} testId="app-wordmark" />
+        <TransitionLink href="/menu" className="inline-flex rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink">
+          <MimoiaLogo size={22} testId="app-wordmark" />
+        </TransitionLink>
       </div>
       <nav className="flex flex-col gap-1">
         {NAV_ITEMS.map((item) => {

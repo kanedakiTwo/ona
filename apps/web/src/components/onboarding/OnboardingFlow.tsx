@@ -20,7 +20,7 @@ import { api } from "@/lib/api"
 import { useRouter } from "next/navigation"
 import { Check, ChevronLeft, Minus, Plus, X } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { RESTRICTION_PRESETS, firstMenuWeeks, type WeekdayCookingChoice } from "@ona/shared"
+import { RESTRICTION_PRESETS, firstMenuWeeks, type OnboardingDraft, type WeekdayCookingChoice } from "@ona/shared"
 import { HealthConsentCheckbox } from "@/components/HealthConsentCheckbox"
 import { Accent, OnboardingHeader, OnboardingShell } from "./OnboardingShell"
 import { OnboardingChannelChoice, OnboardingWhatsAppLink } from "./OnboardingWhatsApp"
@@ -135,23 +135,46 @@ function Lead({ children }: { children: ReactNode }) {
   return <p className="mt-2 text-[14px] leading-relaxed text-ink-muted">{children}</p>
 }
 
-export default function OnboardingFlow() {
+/**
+ * PRO-178: the step to resume on. Allergies are never in the draft (health
+ * data, only stored with the consent at the end), so a sign-up left on the
+ * last question resumes on «¿Hay algo que no comas?» instead of skipping it.
+ */
+export function resumeStep(draft: OnboardingDraft | null): number {
+  if (!draft) return 1
+  return Math.min(Math.max(1, draft.step), 4)
+}
+
+/** PRO-178: what «Siguiente» saves (`PUT /user/:id/onboarding-draft`). */
+export function onboardingDraftPayload(step: number, data: OnboardingData): OnboardingDraft {
+  return {
+    step,
+    adults: data.adults,
+    kidsCount: data.kidsCount,
+    cookingFreq: data.cookingFreq as OnboardingDraft["cookingFreq"],
+    weekdayCooking: data.weekdayCooking,
+    cookingNote: data.cookingNote.slice(0, 500),
+    priority: data.priority as OnboardingDraft["priority"],
+  }
+}
+
+export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDraft | null } = {}) {
   const { user, updateUser } = useAuth()
   const router = useRouter()
-  const [step, setStep] = useState(1)
+  const [step, setStep] = useState(() => resumeStep(draft))
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [preparingMenu, setPreparingMenu] = useState(false)
   const [error, setError] = useState("")
 
-  const [data, setData] = useState<OnboardingData>({
-    adults: 2,
-    kidsCount: 0,
-    cookingFreq: null,
+  const [data, setData] = useState<OnboardingData>(() => ({
+    adults: draft?.adults ?? 2,
+    kidsCount: draft?.kidsCount ?? 0,
+    cookingFreq: draft?.cookingFreq ?? null,
     restrictions: [],
-    priority: null,
-    weekdayCooking: null,
-    cookingNote: "",
-  })
+    priority: draft?.priority ?? null,
+    weekdayCooking: draft?.weekdayCooking ?? null,
+    cookingNote: draft?.cookingNote ?? "",
+  }))
 
   const [tagInput, setTagInput] = useState("")
   // RGPD art. 9 (PRO-21): restrictions are health data, only with this box.
@@ -167,8 +190,9 @@ export default function OnboardingFlow() {
   const [channel, setChannel] = useState<"choose" | "whatsapp" | "web" | null>(null)
   useEffect(() => {
     if (channel !== null || whatsapp.isLoading) return
-    setChannel(whatsapp.data?.available ? (whatsapp.data.linked ? "whatsapp" : "choose") : "web")
-  }, [channel, whatsapp.isLoading, whatsapp.data])
+    // A web sign-up left halfway (PRO-178) goes back to its questions.
+    setChannel(whatsapp.data?.available ? (whatsapp.data.linked ? "whatsapp" : draft ? "web" : "choose") : "web")
+  }, [channel, whatsapp.isLoading, whatsapp.data, draft])
   const canBackToChannel = Boolean(whatsapp.data?.available)
 
   // «Afina tu menú» step (PRO-146): decided once from the first status, so
@@ -188,7 +212,10 @@ export default function OnboardingFlow() {
   }, [tasteStep, tasteStatus.data, tasteStatus.isError])
 
   function next() {
-    if (step < totalSteps) setStep(step + 1)
+    if (step >= totalSteps) return
+    setStep(step + 1)
+    // PRO-178: the next visit (any device) resumes here with these answers.
+    if (user) api.put(`/user/${user.id}/onboarding-draft`, onboardingDraftPayload(step + 1, data)).catch(() => {})
   }
 
   function prev() {

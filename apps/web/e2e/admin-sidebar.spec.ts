@@ -7,7 +7,7 @@
 
 import { test, expect, type Page } from '@playwright/test'
 import { E2E_ADMIN } from './global-setup'
-import { registerFreshUser } from './_helpers'
+import { completeOnboarding, registerFreshUser } from './_helpers'
 
 const API_URL = process.env.API_URL ?? 'http://localhost:8765'
 
@@ -54,9 +54,14 @@ test.describe('desktop', () => {
 
   test('a normal user has no Admin block', async ({ page }) => {
     await registerFreshUser(page)
-    await page.goto('/menu')
+    // /menu needs the sign-up finished (PRO-178).
+    await completeOnboarding(page)
     await expect(page.getByRole('complementary', { name: 'Navegación principal' })).toBeVisible()
     await expect(page.getByRole('navigation', { name: 'Admin', exact: true })).toHaveCount(0)
+    // The sidebar logo leads to the menu (it used to lead nowhere).
+    await page.goto('/profile')
+    await page.getByRole('complementary', { name: 'Navegación principal' }).getByTestId('app-wordmark').click()
+    await expect(page).toHaveURL(/\/menu$/)
   })
 })
 

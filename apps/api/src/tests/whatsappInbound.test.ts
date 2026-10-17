@@ -63,9 +63,10 @@ function setup(overrides: {
   sendFails?: boolean
   outboundKinds?: Map<string, Date>
   supportEmail?: string
+  guided?: InboundDeps['guided']
 } = {}) {
   const sent: OutboundMessage[] = []
-  const outbound: { kind: string; body: string; status: string }[] = []
+  const outbound: { kind: string; body: string; status: string; meta?: unknown }[] = []
   const historyUserIds: string[] = []
   const inboundUpdates: { status: string; body?: string | null; userId?: string | null; errorMessage?: string | null; meta?: unknown }[] = []
   const chat = vi.fn(async () => ({
@@ -88,7 +89,7 @@ function setup(overrides: {
         inboundUpdates.push(patch)
       },
       insertOutbound: async (row) => {
-        outbound.push({ kind: row.kind, body: row.body, status: row.status })
+        outbound.push({ kind: row.kind, body: row.body, status: row.status, ...(row.meta ? { meta: row.meta } : {}) })
       },
       loadHistoryRows: async (_phone, _since, userId) => {
         historyUserIds.push(userId)
@@ -117,6 +118,7 @@ function setup(overrides: {
     setRecipeSource: overrides.setRecipeSource,
     menuDigest: overrides.menuDigest,
     menuImage: overrides.menuImage,
+    guided: overrides.guided,
   }
   return { deps, sent, outbound, inboundUpdates, chat, recordUsage, historyUserIds, setNotify, checkBudget }
 }
@@ -931,6 +933,26 @@ describe('processInbound — WhatsApp-first sign-up (2026-10-10)', () => {
       // 2026-10-15: the WhatsApp sign-up ends sending them back to the web.
       expect(COPY.firstSteps(`${WEB}/menu`)).toMatch(new RegExp(`vuelve a Mimoia en la web[\\s\\S]*${WEB}/menu$`))
       expect(t.chat).not.toHaveBeenCalled()
+    })
+
+    // PRO-156: written from its guide when the writer is there; the fixed text otherwise.
+    it('the suggestions come from their guide (PRO-156), with the fixed text as the safety net', async () => {
+      const written = `¡Ya está! Prueba a pedirme:\n📸 una foto de una receta\n🍽️ «¿Qué cenamos hoy?»\n🛒 «Hazme la lista de la compra»\n\nTu menú, en la web: ${WEB}/menu`
+      const guided = vi.fn(async (_u: string, _p: string, spec: any, fallback: string) => {
+        expect(spec).toMatchObject({ kind: 'first_steps', required: expect.arrayContaining([`${WEB}/menu`, '¿Qué cenamos hoy?']) })
+        expect(fallback).toBe(COPY.firstSteps(`${WEB}/menu`))
+        return { text: written, source: 'guide' as const }
+      })
+      const t = setup({ outboundKinds: afterSignup(), guided })
+      await processInbound(msg({ kind: 'interactive', text: 'Sí, avísame', rawType: 'interactive' }), t.deps)
+      expect(guided).toHaveBeenCalledWith('user-1', PHONE, expect.anything(), expect.any(String))
+      expect(t.sent[0]).toEqual({ type: 'text', text: written })
+      expect(t.outbound[0]).toMatchObject({ kind: 'first_steps', meta: { guided: 'guide' } })
+
+      const fixed = setup({ outboundKinds: afterSignup(), guided: async (_u, _p, _s, fallback) => ({ text: fallback, source: 'fallback', reason: 'over_budget' }) })
+      await processInbound(msg({ kind: 'interactive', text: 'Sí, avísame', rawType: 'interactive' }), fixed.deps)
+      expect(fixed.sent[0]).toEqual({ type: 'text', text: COPY.firstSteps(`${WEB}/menu`) })
+      expect(fixed.outbound[0]).toMatchObject({ meta: { guided: 'fallback', guidedReason: 'over_budget' } })
     })
 
     it('"No, gracias" → straight to the suggestions, no confirmation line', async () => {

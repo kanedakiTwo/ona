@@ -1,6 +1,7 @@
 import type { DayMenu } from '@ona/shared'
-import { mealEntriesForDay, recipeLinkLines, recipesOfDay } from '../menuText.js'
+import { mealEntriesForDay, recipeLinkLines, recipesOfDay, shortRecipeLink } from '../menuText.js'
 import type { OutboundMessage } from './render.js'
+import type { GuideSpec } from './guided.js'
 
 /**
  * Pure planning for messages Mimoia sends first (the Instinct-style "it texts
@@ -114,6 +115,56 @@ export function formatDailyBrief(day: DayMenu | null | undefined, webUrl: string
   return `Buenos días. Hoy toca:\n${lines.join('\n')}\n\n¿Quieres cambiar algo?\n\nVer menú: ${webUrl}/menu`
 }
 
+/**
+ * PRO-156: what the writer may use for the morning brief and what it must
+ * carry (every dish, every recipe link, the menu link). Null when the day is empty.
+ */
+export function dailyBriefGuide(day: DayMenu | null | undefined, webUrl: string): GuideSpec | null {
+  const entries = mealEntriesForDay(day).filter((e) => e.meal !== 'breakfast')
+  if (entries.length === 0) return null
+  const facts: string[] = []
+  const required: string[] = []
+  for (const e of entries) {
+    facts.push(`${capitalize(e.label)}: ${e.dishes.join(' + ')}`)
+    required.push(...e.dishes)
+    for (const r of recipesOfDay(day, [e.meal])) {
+      const link = shortRecipeLink(webUrl, r.id)
+      facts.push(`  enlace de ${r.name}: ${link}`)
+      required.push(link)
+    }
+  }
+  facts.push(`Enlace «Ver menú»: Ver menú: ${webUrl}/menu`)
+  required.push(`${webUrl}/menu`)
+  return { kind: 'daily_brief', facts, required: [...new Set(required)] }
+}
+
+export function cookingReminderGuide(name: string, totalMinutes: number, dinnerTime: string | null): GuideSpec {
+  const at = hhmm(minutesOf(dinnerTime, DEFAULT_DINNER_MIN))
+  return {
+    kind: 'cooking_reminder',
+    facts: [`Plato de la cena: ${name}`, `Hora de la cena: ${at}`, `Lleva unos ${totalMinutes} min`],
+    required: [name, at, String(totalMinutes)],
+  }
+}
+
+export function dinnerCheckinGuide(name: string): GuideSpec {
+  return { kind: 'dinner_checkin', facts: [`Cena de hoy en el menú: ${name}`, 'Botones debajo: «Sí, la hice» / «No»'], required: [name] }
+}
+
+export function shoppingReminderGuide(pending: string[], webUrl: string): GuideSpec {
+  return {
+    kind: 'shopping_reminder',
+    facts: [`Cosas pendientes en la lista: ${pending.length}`, `Algunas: ${pending.slice(0, 8).join(', ')}`, `Enlace a la lista: ${webUrl}/shopping`],
+    required: [String(pending.length), `${webUrl}/shopping`],
+  }
+}
+
+export const WEEKLY_NUDGE_GUIDE: GuideSpec = {
+  kind: 'weekly_nudge',
+  facts: ['Es domingo y la semana que viene aún no tiene menú.', 'Botones debajo: «Sí, prepáralo» / «Ahora no»'],
+  required: [],
+}
+
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
@@ -142,7 +193,10 @@ export interface ProactiveInput {
 
 export interface PlannedMessage {
   kind: ProactiveKind
+  /** Today's fixed text: what goes out when the guided writer can't (PRO-156). */
   messages: OutboundMessage[]
+  /** How to write the (single) message from its guide instead. */
+  guide?: GuideSpec
 }
 
 export async function planProactive(input: ProactiveInput): Promise<PlannedMessage[]> {
@@ -151,8 +205,10 @@ export async function planProactive(input: ProactiveInput): Promise<PlannedMessa
   const p = input.parts
 
   if (can('daily_brief') && isDailyBriefWindow(p, input.breakfastTime)) {
-    const text = formatDailyBrief(await input.todayDay(), input.webUrl)
-    if (text) out.push({ kind: 'daily_brief', messages: [{ type: 'text', text }] })
+    const day = await input.todayDay()
+    const text = formatDailyBrief(day, input.webUrl)
+    const guide = dailyBriefGuide(day, input.webUrl)
+    if (text && guide) out.push({ kind: 'daily_brief', messages: [{ type: 'text', text }], guide })
   }
 
   if (can('cooking_reminder') && couldNeedCookingReminder(p, input.dinnerTime)) {
@@ -161,6 +217,7 @@ export async function planProactive(input: ProactiveInput): Promise<PlannedMessa
       out.push({
         kind: 'cooking_reminder',
         messages: [{ type: 'text', text: formatCookingReminder(dinner.names[0], dinner.totalMinutes, input.dinnerTime) }],
+        guide: cookingReminderGuide(dinner.names[0], dinner.totalMinutes, input.dinnerTime),
       })
     }
   }
@@ -180,6 +237,7 @@ export async function planProactive(input: ProactiveInput): Promise<PlannedMessa
             ],
           },
         ],
+        guide: dinnerCheckinGuide(dinner.names[0]),
       })
     }
   }
@@ -187,7 +245,11 @@ export async function planProactive(input: ProactiveInput): Promise<PlannedMessa
   if (can('shopping_reminder') && isShoppingReminderWindow(p)) {
     const pending = await input.pendingShopping()
     if (pending.length >= 3) {
-      out.push({ kind: 'shopping_reminder', messages: [{ type: 'text', text: formatShoppingReminder(pending, input.webUrl) }] })
+      out.push({
+        kind: 'shopping_reminder',
+        messages: [{ type: 'text', text: formatShoppingReminder(pending, input.webUrl) }],
+        guide: shoppingReminderGuide(pending, input.webUrl),
+      })
     }
   }
 
@@ -204,6 +266,7 @@ export async function planProactive(input: ProactiveInput): Promise<PlannedMessa
           ],
         },
       ],
+      guide: WEEKLY_NUDGE_GUIDE,
     })
   }
 
@@ -219,6 +282,15 @@ export function anyProactiveWindow(p: MadridParts, breakfastTime: string | null,
     isShoppingReminderWindow(p) ||
     isWeeklyNudgeWindow(p)
   )
+}
+
+/** Swap the text of a planned message for the guided one (buttons stay as they are). */
+export function withText(messages: OutboundMessage[], text: string): OutboundMessage[] {
+  if (messages.length !== 1) return messages
+  const [m] = messages
+  if (m.type === 'text') return [{ ...m, text }]
+  if (m.type === 'buttons') return [{ ...m, text }]
+  return messages
 }
 
 // ─── Delivery channel choice ─────────────────────────────────────

@@ -52,6 +52,8 @@ describe('computeStats', () => {
       healthTalk: 0,
       healthClaims: 0,
       unverifiedDone: 0,
+      guidedWritten: 0,
+      guidedFallback: 0,
     })
   })
 })

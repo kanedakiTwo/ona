@@ -156,6 +156,8 @@ describe('planProactive', () => {
       {
         kind: 'dinner_checkin',
         messages: [{ type: 'buttons', text: '¿Hiciste hoy la cena (*Carrilleras de ternera*)? Así lo apunto.', buttons: [{ id: 'checkin:yes', title: 'Sí, la hice' }, { id: 'checkin:no', title: 'No' }] }],
+        // PRO-156: the text above is the safety net; the guide says what a written one must carry.
+        guide: expect.objectContaining({ kind: 'dinner_checkin', required: ['Carrilleras de ternera'] }),
       },
     ])
     expect(await planProactive({ ...base, cookedToday: async () => true, parts: at22 })).toEqual([])
@@ -175,6 +177,7 @@ describe('planProactive', () => {
       {
         kind: 'weekly_nudge',
         messages: [{ type: 'buttons', text: WEEKLY_NUDGE_TEXT, buttons: [{ id: 'nudge:yes', title: 'Sí, prepáralo' }, { id: 'nudge:no', title: 'Ahora no' }] }],
+        guide: expect.objectContaining({ kind: 'weekly_nudge' }),
       },
     ])
   })

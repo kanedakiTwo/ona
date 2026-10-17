@@ -36,7 +36,16 @@ export interface ReviewRow {
   body: string | null
   status: string
   errorMessage: string | null
-  meta: { tools?: string[]; corrections?: string[]; ms?: number; toolTrace?: import('../assistant/types.js').ToolTrace[]; photo?: boolean } | null
+  meta: {
+    tools?: string[]
+    corrections?: string[]
+    ms?: number
+    toolTrace?: import('../assistant/types.js').ToolTrace[]
+    photo?: boolean
+    /** Outbound, PRO-156: written from its guide, or the fixed text (and why). */
+    guided?: 'guide' | 'fallback'
+    guidedReason?: string
+  } | null
   createdAt: Date
 }
 
@@ -59,6 +68,9 @@ export interface ReviewStats {
   healthClaims: number
   /** "Hecho:" / "he cambiado…" with no tool that changed anything in the turn's trace. */
   unverifiedDone: number
+  /** PRO-156: messages Mimo sent by itself written from their guide / sent as the fixed text instead. */
+  guidedWritten: number
+  guidedFallback: number
 }
 
 /** Pure: counts of objective signals for the day. */
@@ -77,6 +89,8 @@ export function computeStats(rows: readonly ReviewRow[]): ReviewStats {
       (r) => r.direction === 'out' && ['daily_brief', 'weekly_nudge', 'alert', 'cooking_reminder', 'dinner_checkin', 'shopping_reminder'].includes(r.kind),
     ).length,
     sendFailures: rows.filter((r) => r.direction === 'out' && r.status === 'failed').length,
+    guidedWritten: rows.filter((r) => r.direction === 'out' && r.meta?.guided === 'guide').length,
+    guidedFallback: rows.filter((r) => r.direction === 'out' && r.meta?.guided === 'fallback').length,
     ...detectorCounts(rows),
   }
 }
@@ -135,7 +149,15 @@ export function buildTranscripts(rows: readonly ReviewRow[]): string[] {
         }
         if (t?.photo) lines.push('      · (con foto: Mimo la ha visto)')
       } else {
-        lines.push(`[${hhmm(r.createdAt)}] MIMO (${r.kind}${r.status !== 'sent' ? `, ${r.status}` : ''}): ${body}`)
+        // PRO-156: say how a message Mimo sent by itself was made, so the reviewer judges the guide too.
+        const guided =
+          r.meta?.guided === 'guide' ? ', redactado con guía' : r.meta?.guided === 'fallback' ? `, texto fijo${r.meta.guidedReason ? `: ${r.meta.guidedReason}` : ''}` : ''
+        lines.push(`[${hhmm(r.createdAt)}] MIMO (${r.kind}${guided}${r.status !== 'sent' ? `, ${r.status}` : ''}): ${body}`)
+        if (r.meta?.guided === 'guide') {
+          const { categories, claimWords } = replyFlags(r.body ?? '', null)
+          const labels = categories.map((c) => (c === 'health_claim' ? `${SIGNAL_LABEL[c]}: ${claimWords.join(', ')}` : SIGNAL_LABEL[c]))
+          if (labels.length) lines.push(`   ⚑ señales automáticas: ${labels.join(' · ')}`)
+        }
         // Deterministic detectors (assistantFlags.ts): facts for the reviewer, not verdicts.
         if (r.kind === 'reply' && !answered) {
           answered = true
@@ -216,7 +238,7 @@ Reglas del producto (contra ellas evaluas cada turno):
 4b. Util e inteligente: contesta de verdad a lo que se pregunta. Una pregunta de cocina (como se hace algo, tiempos, trucos, utensilios, el enlace de una receta) se responde con conocimiento, no con una busqueda que no lleva a nada ni con la frase de "solo te puedo ayudar con tu comida" (eso solo vale para temas que no son de comida: si no, es "rechazo_indebido"). Una respuesta correcta pero que no ayuda, evasiva o que pregunta lo obvio es "respuesta_poco_util".
 5. Lo que el usuario pide explicitamente manda sobre lo guardado (gustos, disgustos), salvo alergias.
 6. Rapido: mas de 20 s sin respuesta es lento (salvo importar recetas o generar menus, que llevan un aviso "me pongo con ello").
-7. Proactividad util: los avisos (resumen, cocinar, ¿hiciste la cena?, compra, menu del domingo) aportan y no molestan.
+7. Proactividad util: los avisos (resumen, cocinar, ¿hiciste la cena?, compra, menu del domingo) aportan y no molestan. Desde PRO-156 los escribe un redactor con una guia por tipo (marcados "redactado con guia"; "texto fijo: motivo" cuando salio el texto de respaldo). Revisa tambien esos mensajes: que suenen naturales y distintos de un dia a otro, que encajen con lo que paso en la conversacion, que no inventen nada, que no hablen de salud y que no repitan siempre lo mismo (categoria "proactividad"). Muchos "texto fijo" seguidos tambien son un hallazgo.
 8. Las notas de voz llegan transcritas: si la transcripcion parece erronea, es un hallazgo de "transcripcion".
 
 Debajo de algunas respuestas veras "⚑ señales automaticas": las ponen detectores automaticos (hablar de efectos en el cuerpo, reclamos de salud prohibidos, decir "hecho" sin que ninguna herramienta cambiara nada). Son pistas, no veredictos: compruebalas con la conversacion y la traza; si son reales, crea el hallazgo; si no, ignoralas.

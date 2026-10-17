@@ -15,7 +15,8 @@
  * skills (menu, recipes, searches) run for real; every other skill is
  * simulated and returns "(simulado) Hecho: …", so nothing is written and no
  * message is sent. Caveat: the user context is loaded as of NOW, so a turn
- * from another day may get dates mixed up ("hoy es lunes, no jueves").
+ * from another day may get dates mixed up ("hoy es lunes, no jueves"); the
+ * clock on the message is the original one.
  */
 import Anthropic from '@anthropic-ai/sdk'
 import { readFile, writeFile } from 'node:fs/promises'
@@ -23,7 +24,7 @@ import { db, pool } from '../src/db/connection.js'
 import { loadUserContext } from '../src/services/assistant/contextLoader.js'
 import { buildSystemParts } from '../src/services/assistant/systemPrompt.js'
 import { getToolDefinitions, toolsFor } from '../src/services/assistant/skills.js'
-import { runToolLoop } from '../src/services/assistant/engine.js'
+import { buildTurnMessages, runToolLoop } from '../src/services/assistant/engine.js'
 import { buildChatHistory } from '../src/services/whatsapp/history.js'
 import type { SkillDefinition } from '../src/services/assistant/types.js'
 
@@ -71,7 +72,7 @@ for (const [label, ts] of Object.entries(turns)) {
     system: [{ type: 'text', text: instructions, cache_control: { type: 'ephemeral' } }, { type: 'text', text: context }],
     tools: getToolDefinitions({ mode: 'whatsapp' }),
     skills,
-    messages: [...history.map((h) => ({ role: h.role, content: h.content })), { role: 'user' as const, content: msg.body }],
+    messages: buildTurnMessages(history, msg.body, [], new Date(msg.created_at)),
     ctx: { userId: msg.user_id, db, channel: 'whatsapp' },
   })
   const secs = (Date.now() - t0) / 1000

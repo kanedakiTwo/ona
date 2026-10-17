@@ -122,7 +122,7 @@ test('«Saltar» in the sign-up goes straight on to the questions', async ({ pag
   await registerFreshUser(page, { keepTaste: true })
   await page.goto('/onboarding')
   await expect(page.getByRole('heading', { name: /dime qué te apetece/i })).toBeVisible({ timeout: 20_000 })
-  await page.getByRole('button', { name: 'Saltar' }).click()
+  await page.getByRole('button', { name: 'Saltar', exact: true }).click()
   const web = page.getByRole('button', { name: /prefiero la web/i })
   const firstQuestion = page.getByRole('heading', { name: /para cuántos cocinas/i })
   await expect(web.or(firstQuestion)).toBeVisible({ timeout: 15_000 })
@@ -140,14 +140,19 @@ test('an account onboarded without it: «Novedad» once, then the card until «A
       ? route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' })
       : route.continue(),
   )
-  await registerFreshUser(page, { keepTaste: true })
-  await completeOnboarding(page, { keepTaste: true })
+  await registerFreshUser(page, { keepTaste: true, keepFirstSteps: true })
+  await completeOnboarding(page, { keepTaste: true, keepFirstSteps: true })
 
   const intro = page.getByTestId('taste-intro')
   await expect(intro).toBeVisible({ timeout: 20_000 })
+  // The first-steps guide never shows on top of «Novedad»; it comes after.
+  await page.waitForTimeout(1500)
+  await expect(page.getByText(/primeros pasos/i)).toHaveCount(0)
   await expect(intro.getByRole('heading', { name: /afina tu menú en un minuto/i })).toBeVisible()
   await intro.getByRole('button', { name: 'Ahora no' }).click()
   await expect(intro).toHaveCount(0)
+  await expect(page.getByText(/primeros pasos/i).first()).toBeVisible({ timeout: 15_000 })
+  await page.getByRole('button', { name: 'Saltar', exact: true }).click()
 
   const offer = page.getByTestId('taste-card-offer')
   await expect(offer).toBeVisible({ timeout: 15_000 })

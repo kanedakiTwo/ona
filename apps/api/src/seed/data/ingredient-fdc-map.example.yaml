@@ -43,7 +43,7 @@
 
 - name: huevo
   fdcId: 171287          # Egg, whole, raw, fresh (SR Legacy)
-  aisle: proteinas
+  aisle: lacteos
   density: null
   unitWeight: 50         # 1 huevo M ≈ 50 g
   allergenTags: [huevo]

@@ -100,7 +100,7 @@
     - pescado
 - name: huevo
   fdcId: 171287
-  aisle: proteinas
+  aisle: lacteos
   density: null
   unitWeight: 50
   allergenTags:
@@ -531,7 +531,7 @@
     - soja
 - name: tofu
   fdcId: 172475
-  aisle: proteinas
+  aisle: lacteos
   density: null
   unitWeight: null
   allergenTags:

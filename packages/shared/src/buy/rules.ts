@@ -9,6 +9,8 @@
  * in the research are design estimates to be tuned with real orders.
  */
 
+import type { Aisle } from '../constants/enums.js'
+
 export type BuyShop = 'fruteria' | 'carniceria' | 'charcuteria' | 'pescaderia' | 'supermercado' | 'despensa'
 export type BuyBy = 'pieza' | 'peso' | 'envase'
 export type BuyTier = 'despensa' | 'nevera' | 'normal' | 'especial'
@@ -62,7 +64,44 @@ export interface BuyRule {
   edibleG?: number
   /** Pieces to ask for when the user typed it with no amount ("plátanos" → 6). */
   defaultN?: number
+  /** Shopping-list aisle that beats the catalogue's (PRO-177: eggs and tofu were under «Carnes y pescados»). */
+  aisle?: Aisle
+  /** Never a line of the shopping list (tap water, salt — PRO-177). Exact names only. */
+  notBought?: boolean
 }
+
+/**
+ * Rules whose names are different products for the shopping list even though
+ * a shop asks for them the same way (lombarda ≠ repollo, balsámico ≠ vinagre
+ * de vino, langostinos ≠ gambas): the list joins their lines only when the
+ * names are the same, never by rule (PRO-177). Rules with `{name}` in the
+ * noun (spices, sauces, cold cuts) behave the same way.
+ */
+export const LIST_SPLIT_RULES: ReadonlySet<string> = new Set([
+  'repollo',
+  'rucula',
+  'menta',
+  'gambas',
+  'calamares',
+  'pasta',
+  'arroz',
+  'alubias',
+  'vinagre',
+  'azucar',
+  'levadura',
+  'pimienta',
+  'leche',
+  'pasas',
+  'merluza',
+  'caldo de pollo',
+  'queso en lonchas',
+  'pan de molde',
+  'ternera',
+  'esparragos',
+  'aceitunas verdes',
+  'salsa de soja',
+  'panceta curada',
+])
 
 const piece = (key: string, names: BuyRule['names'], noun: [string, string], g: number, extra: Partial<BuyRule> = {}): BuyRule => ({
   key,
@@ -273,7 +312,7 @@ const PESCADERIA: BuyRule[] = [
 ]
 
 const SUPER: BuyRule[] = [
-  pack('huevos', ['huevo', 'huevos', 'yema de huevo', 'yemas de huevo', 'yema', 'yemas', 'clara de huevo', 'claras'], 'huevos', ['docena', 'docenas'], '', 50, { tier: 'nevera', eci: 'huevos' }),
+  pack('huevos', ['huevo', 'huevos', 'yema de huevo', 'yemas de huevo', 'yema', 'yemas', 'clara de huevo', 'claras de huevo', 'clara', 'claras'], 'huevos', ['docena', 'docenas'], '', 50, { tier: 'nevera', eci: 'huevos', aisle: 'lacteos' }),
   pack('mantequilla', ['mantequilla'], 'mantequilla', ['tarrina', 'tarrinas'], '250 g', 250, { tier: 'nevera', eci: 'mantequilla 250 g' }),
   pack('leche', ['leche', 'leche entera', 'leche semidesnatada', 'leche desnatada'], 'leche entera', ['brik', 'briks'], '1 l', 1000, { tier: 'nevera', eci: 'leche entera' }),
   pack('bebida de avena', ['leche avena', 'leche de avena', 'bebida de avena'], 'bebida de avena', ['brik', 'briks'], '1 l', 1000, { eci: 'bebida de avena' }),
@@ -326,7 +365,7 @@ const SUPER: BuyRule[] = [
   pack('atun', ['atun', 'atun en lata', 'atun en aceite'], 'atún en aceite de oliva', ['pack de 3 latas', 'packs de 3 latas'], '', 200, { eci: 'atun aceite de oliva pack 3' }),
   pack('guisantes', ['guisantes', 'guisante', 'guisantes congelados'], 'guisantes congelados', ['bolsa', 'bolsas'], '400 g', 400, { eci: 'guisantes congelados' }),
   pack('surimi', ['surimi', 'palitos de cangrejo', 'palitos de cangrejo (surimi)'], 'palitos de surimi', ['paquete', 'paquetes'], '250 g', 250, { eci: 'palitos de surimi' }),
-  pack('tofu', ['tofu'], 'tofu', ['paquete', 'paquetes'], '250 g', 250, { eci: 'tofu' }),
+  pack('tofu', ['tofu', 'tofu firme', 'tofu sedoso', 'tofu ahumado'], 'tofu', ['paquete', 'paquetes'], '250 g', 250, { eci: 'tofu', aisle: 'lacteos' }),
   pack('avena', ['avena', 'copos de avena'], 'copos de avena', ['paquete', 'paquetes'], '500 g', 500, { eci: 'copos de avena' }),
   pack('quinoa', ['quinoa'], 'quinoa', ['paquete', 'paquetes'], '500 g', 500, { eci: 'quinoa' }),
   pack('cuscus', ['cuscus'], 'cuscús', ['paquete', 'paquetes'], '500 g', 500, { eci: 'cuscus' }),
@@ -345,7 +384,7 @@ const SUPER: BuyRule[] = [
 ]
 
 const DESPENSA: BuyRule[] = [
-  pantry('sal', ['sal', 'sal fina', 'sal gorda', 'sal en escamas'], 'sal fina', ['paquete', 'paquetes'], '1 kg', 1000, { eci: 'sal fina' }),
+  pantry('sal', ['sal', 'sal fina', 'sal gorda', 'sal en escamas'], 'sal fina', ['paquete', 'paquetes'], '1 kg', 1000, { eci: 'sal fina', notBought: true }),
   pantry('pimienta', ['pimienta', 'pimienta negra', 'pimienta blanca'], 'pimienta negra molida', ['bote', 'botes'], '', 50, { eci: 'pimienta negra molida' }),
   pantry('aceite de oliva', ['aceite de oliva', 'aceite de oliva virgen', 'aceite de oliva virgen extra', 'aceite', 'aove'], 'aceite de oliva virgen extra', ['botella', 'botellas'], '1 l', 1000, { eci: 'aceite de oliva virgen extra 1 l' }),
   pantry('aceite de girasol', ['aceite de girasol'], 'aceite de girasol', ['botella', 'botellas'], '1 l', 1000, { eci: 'aceite de girasol' }),
@@ -356,7 +395,7 @@ const DESPENSA: BuyRule[] = [
   pantry('salsa de soja', ['salsa de soja', 'soja'], 'salsa de soja', ['botella', 'botellas'], '250 ml', 250, { eci: 'salsa de soja' }),
   pantry('especias', ['oregano', 'comino', 'canela', 'curcuma', 'pimenton', 'pimenton dulce', 'pimenton picante', 'laurel', 'nuez moscada', 'tomillo seco', 'romero seco', 'azafran', 'clavo', 'jengibre molido', 'curry', 'hierbas provenzales'], '{name}', ['bote', 'botes'], '', 40, { eci: '{name}' }),
   pantry('levadura', ['levadura', 'levadura quimica', 'levadura de panaderia', 'bicarbonato'], 'levadura', ['sobre', 'sobres'], '', 15, { eci: 'levadura' }),
-  pantry('agua', ['agua'], 'agua', ['botella', 'botellas'], '', 1500),
+  pantry('agua', ['agua', 'agua del grifo', 'agua caliente', 'agua fria', 'agua tibia', 'agua templada', 'agua hirviendo'], 'agua', ['botella', 'botellas'], '', 1500, { notBought: true }),
   pantry('salsas', ['salsa worcestershire', 'salsa sriracha', 'vino de jerez', 'sirope de arce', 'pasta de tomate', 'tomate concentrado'], '{name}', ['bote', 'botes'], '', 150, { eci: '{name}', shop: 'supermercado', tier: 'normal' }),
 ]
 

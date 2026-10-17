@@ -33,6 +33,12 @@ export interface ShoppingItem {
   notes?: string[]
   /** Manual items: 'default' when the user typed no amount (stored as 1 u). */
   quantitySource?: 'user' | 'default'
+  /**
+   * Menu items: other catalogue ingredients joined into this line because
+   * they are the same product («huevos» + «yema de huevo», PRO-177). What was
+   * marked on any of them carries over to this line.
+   */
+  mergedIngredientIds?: string[]
 }
 
 export interface ShoppingList {

@@ -198,13 +198,15 @@ export {
 export type { HouseholdSnapshot } from './utils/household.js'
 
 export { formatQty, prettyName, capitalize, ingredientDisplayName } from './utils/shopFormat.js'
-export { BUY_RULES } from './buy/rules.js'
+export { BUY_RULES, LIST_SPLIT_RULES } from './buy/rules.js'
 export type { BuyRule, BuyShop, BuyBy, BuyTier, BuyChoice } from './buy/rules.js'
 export { toOrderQty, resolveBuyRule, buyRuleByKey, splitCompound, normalizeBuyName, weightPhrase } from './buy/convert.js'
 export type { OrderQty, OrderQtyInput, ResolvedRule } from './buy/convert.js'
 export { CARREFOUR_SEARCH_URL, carrefourSearchUrl, carrefourLinks } from './buy/carrefour.js'
 export type { CarrefourLineInput } from './buy/carrefour.js'
 export { buyableUnitFor, unitAfterQuantity, quantityHintFor, RECIPE_UNIT_LABELS } from './buy/recipeUnits.js'
+export { shoppingGroupOf, isNotBought, catalogAisleFix } from './buy/listGroup.js'
+export type { ShoppingGroup } from './buy/listGroup.js'
 
 export { buildRecipePayload } from './recipeFormPayload.js'
 export type { IngredientRowState, RecipeFormState } from './recipeFormPayload.js'

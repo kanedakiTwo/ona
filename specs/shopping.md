@@ -5,7 +5,8 @@ Weekly shopping list and pantry stock management. Aggregates ingredients across 
 ## User Capabilities
 
 - Users can see a shopping list auto-generated from the current week's menu
-- The list aggregates ingredients across all recipes in the week, summing quantities **per ingredient** with proper unit handling
+- The list aggregates ingredients across all recipes in the week, summing quantities **per product** with proper unit handling: lines that are the same product join into one even when the catalogue has them under different names («Huevo 4 u» + «Huevos 6 u» + «Yema de huevo» → «Huevos 10 u»; the two olive oils; «Jamón cocido» + «Jamón de york»; «Limón» / «Limon»; «Salmón» + «Lomo de salmón sin piel») — see Aggregation (PRO-177)
+- Tap water («agua», «agua del grifo», «agua caliente»…) and salt never show up as something to buy; «agua de coco» or «agua con gas» do
 - Users can check items off as they buy them (visual strikethrough, persisted)
 - Users can mark items as already in their pantry (stock manager)
 - Items in stock are excluded from the active shopping list
@@ -29,6 +30,7 @@ Each item in `shopping_lists.items` (JSONB array) has:
 - `quantity` — aggregated number, in `unit`
 - `unit` — `g | ml | u | cda | cdita`
 - `aisle` — `produce | proteinas | lacteos | panaderia | despensa | congelados | otros`
+- `mergedIngredientIds` — (menu items, optional) the other catalogue ingredients joined into this line because they are the same product (PRO-177)
 - `checked` — boolean, user has bought this
 - `inStock` — boolean, user already had this in pantry
 
@@ -46,11 +48,19 @@ Each item in `shopping_lists.items` (JSONB array) has:
 7. Skips ingredients tagged `optional: true` unless the user opts in (future toggle)
 8. `pizca` and `al_gusto` are dropped from the list (not buyable)
 
-Then the list aggregator merges items by `ingredientId`:
+Then the list aggregator (`aggregateScaledRows`, pure) drops what is never bought — exact names of the buy rules flagged `notBought`: tap water and salt (`isNotBought`) — and merges items by **product** (`shoppingGroupOf`, `packages/shared/src/buy/listGroup.ts`, PRO-177):
 
-- Same ingredient with the **same unit** → quantities sum directly
-- Same ingredient with **compatible units** → converted to the canonical unit using `ingredient.density` (g↔ml) or `ingredient.unitWeight` (g↔u). Conversion target prefers what the user actually buys (whole units when sensible — eggs, lemons, onions; otherwise grams)
-- Same ingredient with **incompatible units** (e.g. one recipe uses `cda`, another uses `g`, no density) → kept as separate line items with a small "·" merge hint
+- Same catalogue ingredient → one product, as before.
+- Names that are *exactly* the same buy rule (plus harmless words like «fresco», «sin piel») and the same preset choice → one product: «huevo», «huevos», «yema de huevo», «clara»; «aceite de oliva virgen» and «virgen extra»; «jamón cocido» and «jamón de york». «Tomate pera» and «tomate de rama», or «jamón serrano» and «ibérico», stay apart (different preset). A name that only reaches a rule by dropping a meaningful word doesn't join it («aceite de coco» isn't olive oil, «pan rallado» isn't bread).
+- Rules whose names are different products for the list (`LIST_SPLIT_RULES`: repollo/lombarda, gambas/langostinos, vinagres, pastas, arroces…) and rules with `{name}` nouns (spices, sauces, cold cuts) join only by name; so does any name without a rule. Names compare without case or accents, so «Limón» / «Limon» or a duplicated «Pimentón dulce» (1 cdita + 3 cdita → 4 cdita) are one line.
+- The joined line keeps a representative ingredient (shortest name) for its id and lists the rest in `mergedIngredientIds`; when several names were joined it shows what the shop calls the product (the rule's noun: «huevos», «aceite de oliva virgen extra»). Each part converts with its own density / unit weight, falling back to the group's.
+- **Aisle:** a buy rule with its own `aisle` beats the catalogue's: eggs (huevo, yema, clara) and tofu go to `lacteos` («Lácteos y huevos»), not `proteinas` («Carnes y pescados»). The catalogue itself was corrected too: on every boot `applyCatalogIngredientAisles` (after `db:migrate`) moves the exact egg / tofu names still under `proteinas` to `lacteos`, and leaves anything else (or a second run) alone; the seed mapping has them in `lacteos`.
+
+Within a product:
+
+- Same unit → quantities sum directly
+- **Compatible units** → converted to the canonical unit using `ingredient.density` (g↔ml) or `ingredient.unitWeight` (g↔u). Conversion target prefers what the user actually buys (whole units when sensible — eggs, lemons, onions; otherwise grams)
+- **Incompatible units** (e.g. one recipe uses `cda`, another uses `g`, no density) → kept as separate line items with a small "·" merge hint
 
 Quantities are then rounded to friendly values (kg above 1 kg, 50 g bands above 250 g, 25 g bands below) and grouped by `aisle` for display.
 
@@ -106,7 +116,7 @@ At `lg+` the `/shopping` page uses the "D" 1180 px container: header with the "P
 - Field names are camelCase (`inStock`, `checked`, `ingredientId`) end-to-end — frontend, types, and DB JSONB
 - While the list is being fetched again (another date range, or after a menu change) the row buttons (✓ and "En casa") are disabled and the previous range stays on screen: every GET rebuilds the row with a new id, so a tick sent with the old id used to be lost (404) when coming back to a range already seen (2026-10-10). Now the page always refetches a range (`staleTime: 0`), and the write routes (check, stock, add, edit, delete item) that get the id of a list rebuilt since apply the change to the caller's current list (item ids are deterministic, `menu:<ingredientId>:<unit>`; `loadListForCaller` in `routes/shopping.ts`, `shoppingRoute.smoke.ts`). A state mutation's response is written only into the cached rolling list with the same id — never into other ranges or the `totals` query.
 - The list is regenerated on every GET — there is no longer a manual "Regenerar" button on `/shopping`. The cache invalidates automatically when any menu mutation succeeds, so editing the menu, swapping slots, or skipping a day reflects in the basket on the next render.
-- **What the user marked is remembered across ranges** (2026-10-10): each rebuild merges the previous rows' `checked` / `inStock` / `pricePerUnit` into the new rows by `(ingredientId|unit)` **and** keeps them in `shopping_lists.item_state` (migration 0043), so a product absent from the range on screen gets its state back when it reappears (mark onions "en casa", look at next week, come back → still "en casa"). The newest rows win over the older memory; up to 400 products, oldest dropped; manual rows travel as before (`services/shoppingItemState.ts`, `shoppingItemState.test.ts`, `e2e/week-arrows.spec.ts`).
+- **What the user marked is remembered across ranges** (2026-10-10): each rebuild merges the previous rows' `checked` / `inStock` / `pricePerUnit` into the new rows by `(ingredientId|unit)` **and** keeps them in `shopping_lists.item_state` (migration 0043); a line that joined several ingredients (PRO-177) gathers the state of all of them (marked on any old line → marked on the joined line; price only from the same unit), so a product absent from the range on screen gets its state back when it reappears (mark onions "en casa", look at next week, come back → still "en casa"). The newest rows win over the older memory; up to 400 products, oldest dropped; manual rows travel as before (`services/shoppingItemState.ts`, `shoppingItemState.test.ts`, `e2e/week-arrows.spec.ts`).
 - The progress bar uses `shoppingProgress(items).ratio` = (bought-and-not-at-home + at-home) / rows, capped at 100 % by construction
 - Export format is plain text suitable for paste into messaging apps; it preserves aisle grouping and ends with a "Hecho con Mimoia" line + link (the shared title is "Lista de compra · Mimoia") (`/?ref=lista`, `withOnaFooter`), so a shared list can bring another household
 - **Ingredient names on screen (detail, shopping list, pantry, staples)** read as a sentence — «Aceite de oliva virgen», «Pimentón dulce» — via `ingredientDisplayName` (`packages/shared/src/utils/shopFormat.ts`): only the first letter is raised and catalogue accents are restored; brands/acronyms the user typed («Kerrygold», «AOVE») stay. Display-only; stored names are untouched (PRO-02).
@@ -128,6 +138,9 @@ At `lg+` the `/shopping` page uses the "D" 1180 px container: header with the "P
 - [apps/web/src/lib/shoppingRange.ts](../apps/web/src/lib/shoppingRange.ts) — «Hoy» / «Mañana» / «Esta semana» shortcuts and `shiftIso`
 - [apps/api/src/routes/shopping.ts](../apps/api/src/routes/shopping.ts)
 - [apps/api/src/services/shoppingList.ts](../apps/api/src/services/shoppingList.ts) — aggregation + unit conversion + aisle grouping
+- [packages/shared/src/buy/listGroup.ts](../packages/shared/src/buy/listGroup.ts) — same product, never bought, catalogue aisle fix (PRO-177; tests `shoppingListMerge.test.ts`)
+- [apps/api/src/services/catalogIngredientAisles.ts](../apps/api/src/services/catalogIngredientAisles.ts) — boot data fix: eggs and tofu to `lacteos`
+- [apps/api/src/services/shoppingItemState.ts](../apps/api/src/services/shoppingItemState.ts) — check / at-home / price memory
 - [apps/web/src/app/shopping/page.tsx](../apps/web/src/app/shopping/page.tsx)
 - [apps/web/src/components/shopping/ShoppingExtensions.tsx](../apps/web/src/components/shopping/ShoppingExtensions.tsx) — € total card, manual-item form, inline price, delete
 - [apps/web/src/hooks/useShopping.ts](../apps/web/src/hooks/useShopping.ts)

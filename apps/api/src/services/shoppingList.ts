@@ -13,7 +13,7 @@ import type {
   ShoppingItem,
   Unit,
 } from '@ona/shared'
-import { recipeDishesOf, resolveBuyRule } from '@ona/shared'
+import { isNotBought, recipeDishesOf, resolveBuyRule, shoppingGroupOf } from '@ona/shared'
 import { randomUUID } from 'crypto'
 
 /**
@@ -148,7 +148,7 @@ function convert(
 
 // ─── Aggregator state ────────────────────────────────────────
 
-interface CatalogRow {
+export interface CatalogRow {
   id: string
   name: string
   aisle: Aisle | null
@@ -164,15 +164,24 @@ interface IngredientLineUnit {
 }
 
 interface IngredientBucket {
+  /** Representative ingredient: its id and name go on the line. */
   ingredientId: string
   catalog: CatalogRow
+  /** Every catalogue ingredient joined into this product (PRO-177). */
+  members: Map<string, CatalogRow>
+  /** What the shop calls the product when several names were joined. */
+  label: string | null
+  /** Aisle the buy rule gives the product (beats the catalogue's). */
+  ruleAisle: Aisle | null
   /** Per-unit accumulators before canonicalisation. */
   byUnit: Map<BuyableUnit, IngredientLineUnit>
+  /** Raw contributions, each converted with its own ingredient's density / unit weight. */
+  parts: Array<{ unit: BuyableUnit; quantity: number; catalog: CatalogRow }>
   /** Distinct recipe notes for this ingredient (shop orders use them). */
   notes: Set<string>
 }
 
-interface ScaledRow {
+export interface ScaledRow {
   ingredientId: string
   quantity: number
   unit: Unit
@@ -553,29 +562,76 @@ export async function generateShoppingList(
     })
   }
 
-  // 4. Bucket by ingredientId, accumulating per unit.
+  return aggregateScaledRows(scaled, catalogById)
+}
+
+/**
+ * Steps 4–6 of the aggregator, pure (PRO-177 tests drive it directly).
+ *
+ *   - Tap water and salt never become lines (`isNotBought`).
+ *   - Lines that are the same product join into one: same catalogue
+ *     ingredient, same buy rule («huevo» + «huevos» + «yema», the two olive
+ *     oils, «jamón cocido» + «jamón de york») or the same name spelled two
+ *     ways («Limón» / «Limon», a duplicated «Pimentón dulce»). Quantities are
+ *     summed in one unit, each part converted with its own density / unit
+ *     weight (falling back to the group's).
+ *   - The line keeps a representative ingredient (shortest name) for its id;
+ *     the others go in `mergedIngredientIds` so what was marked on any of the
+ *     old lines stays marked (`carryItemState`).
+ *   - The aisle comes from the buy rule when it has one (eggs, tofu →
+ *     «Lácteos y huevos»), else from the catalogue.
+ */
+export function aggregateScaledRows(scaled: ScaledRow[], catalogById: Map<string, CatalogRow>): ShoppingItem[] {
   const buckets = new Map<string, IngredientBucket>()
   for (const s of scaled) {
     const cat = catalogById.get(s.ingredientId)
     if (!cat) continue
-    let bucket = buckets.get(s.ingredientId)
+    if (!BUYABLE.has(s.unit)) continue
+    if (isNotBought(cat.name)) continue
+    const group = shoppingGroupOf(cat.name)
+    let bucket = buckets.get(group.key)
     if (!bucket) {
-      bucket = { ingredientId: s.ingredientId, catalog: cat, byUnit: new Map(), notes: new Set() }
-      buckets.set(s.ingredientId, bucket)
+      bucket = {
+        ingredientId: s.ingredientId,
+        catalog: cat,
+        members: new Map(),
+        label: group.rule && !group.rule.noun[0].includes('{') && group.rule.noun[0] ? group.rule.noun[0] : null,
+        ruleAisle: group.aisle,
+        byUnit: new Map(),
+        parts: [],
+        notes: new Set(),
+      }
+      buckets.set(group.key, bucket)
     }
+    bucket.members.set(cat.id, cat)
     const unit = s.unit as BuyableUnit
     const cur = bucket.byUnit.get(unit) ?? { quantity: 0, explicit: false }
     cur.quantity += s.quantity
     cur.explicit = true
     bucket.byUnit.set(unit, cur)
+    bucket.parts.push({ unit, quantity: s.quantity, catalog: cat })
     const note = s.note?.trim()
     if (note && !/añadido automáticamente/i.test(note)) bucket.notes.add(note)
   }
 
-  // 5. Pick canonical unit per ingredient, fold compatible units into it.
+  // 5. Pick canonical unit per product, fold compatible units into it.
   //    Anything that can't be folded keeps its own line item.
   const items: ShoppingItem[] = []
   for (const bucket of buckets.values()) {
+    const members = [...bucket.members.values()].sort(
+      (a, b) => a.name.length - b.name.length || a.name.localeCompare(b.name) || a.id.localeCompare(b.id),
+    )
+    const rep = members[0]!
+    bucket.ingredientId = rep.id
+    bucket.catalog = {
+      ...rep,
+      aisle: rep.aisle ?? members.find((m) => m.aisle)?.aisle ?? null,
+      density: rep.density ?? members.find((m) => m.density != null)?.density ?? null,
+      unitWeight: rep.unitWeight ?? members.find((m) => m.unitWeight != null)?.unitWeight ?? null,
+    }
+    const distinctNames = new Set(members.map((m) => m.name.trim().toLowerCase()))
+    const baseName = (distinctNames.size > 1 && bucket.label ? bucket.label : rep.name).toLowerCase()
+    const others = members.slice(1).map((m) => m.id)
     const lines = pickCanonicalLines(bucket)
     for (const line of lines) {
       if (line.quantity <= 0) continue
@@ -596,14 +652,13 @@ export async function generateShoppingList(
         // colliding with manual / staple uuids.
         id: `menu:${bucket.ingredientId}:${line.unit}`,
         ingredientId: bucket.ingredientId,
-        name: line.suffix
-          ? `${bucket.catalog.name.toLowerCase()} · ${line.suffix}`
-          : bucket.catalog.name.toLowerCase(),
+        name: line.suffix ? `${baseName} · ${line.suffix}` : baseName,
         quantity: rounded,
         unit: line.unit,
-        aisle: bucket.catalog.aisle ?? 'otros',
+        aisle: bucket.ruleAisle ?? bucket.catalog.aisle ?? 'otros',
         checked: false,
         inStock: false,
+        ...(others.length ? { mergedIngredientIds: others } : {}),
         ...(bucket.notes.size ? { notes: [...bucket.notes] } : {}),
       })
     }
@@ -655,19 +710,21 @@ function pickCanonicalLines(bucket: IngredientBucket): CanonicalLine[] {
     canonical = [...byUnit.entries()].sort((a, b) => b[1].quantity - a[1].quantity)[0]![0]
   }
 
-  // Try to convert every unit's accumulator into the canonical unit.
+  // Try to convert every part into the canonical unit, each with its own
+  // ingredient's density / unit weight and the group's as a fallback
+  // (PRO-177: «aceite de oliva virgen» in ml + «virgen extra» in g).
   let canonicalQty = 0
   const orphans: Array<{ unit: BuyableUnit; quantity: number }> = []
-  for (const [unit, info] of byUnit.entries()) {
+  for (const part of bucket.parts) {
     const converted = convert(
-      info.quantity,
-      unit,
+      part.quantity,
+      part.unit,
       canonical,
-      catalog.density,
-      catalog.unitWeight,
+      part.catalog.density ?? catalog.density,
+      part.catalog.unitWeight ?? catalog.unitWeight,
     )
     if (converted == null || !Number.isFinite(converted)) {
-      orphans.push({ unit, quantity: info.quantity })
+      orphans.push({ unit: part.unit, quantity: part.quantity })
     } else {
       canonicalQty += converted
     }

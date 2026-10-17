@@ -1,10 +1,11 @@
 # Ficha del hogar
 
-Everything Mimoia knows about a household, with a section per person (D-064, PRO-150). It is the base the rest of the «ficha viva» builds on: the daily signal collector (PRO-151), the nightly refiner (PRO-152), «Tu ficha» in the app and Mimo / the menu reading it (PRO-153, PRO-139). **Today only the data model, the copy from `user_memories` and the daily signal collector (PRO-151) exist**: nothing in the app shows the ficha yet, there is no REST route, nothing calls the collector until the nightly refiner (PRO-152), and Mimo keeps reading [User Memory](./user-memory.md) until PRO-153.
+Everything Mimoia knows about a household, with a section per person (D-064, PRO-150). It is the base the rest of the «ficha viva» builds on: the daily signal collector (PRO-151), the nightly refiner (PRO-152), «Tu ficha» in the app and Mimo / the menu reading it (PRO-153, PRO-139). **Today the data model, the copy from `user_memories`, the daily signal collector (PRO-151) and the nightly refiner (PRO-152) exist, in the shadow**: the refiner writes the ficha and its history every night, but nothing in the app shows it yet, there is no REST route, and Mimo and the menu keep reading [User Memory](./user-memory.md) until PRO-153 / PRO-139.
 
 ## User Capabilities
 
-- None visible yet. A user's existing memory facts (what they told Mimo, what came from sign-up and what Mimo deduced) are already copied into their household's ficha, with where each one came from, so the ficha starts with what Mimoia knows today
+- None visible yet. Every night, a household that used Mimoia that day gets its ficha refined from what happened (see «Nightly refiner»), but nobody reads it yet
+- A user's existing memory facts (what they told Mimo, what came from sign-up and what Mimo deduced) are already copied into their household's ficha, with where each one came from, so the ficha starts with what Mimoia knows today
 
 ## Model
 
@@ -52,6 +53,25 @@ What the nightly refiner (PRO-152) will read next to the ficha: `collectHousehol
 - Known limitations: favourites have no date (`user_favorites`), so marking one is not a signal; shopping rows from before migration 0063 and the WhatsApp/voice skills other than «marcar» and «en casa» carry no product name; the sign-up answers of accounts that finished it before 0063 have no date, so they never come in as a day's signals (they are already in the ficha through `user_memories`)
 - Migration `0063_activity_item_onboarding_note` adds `activity_events.item` / `toggled_on` and `users.onboarding_completed_at` / `onboarding_note` (only adds columns)
 
+## Nightly refiner (PRO-152)
+
+`services/profile/refiner.ts`, from the scheduler tick (`notificationScheduler`, like the conversation reviewer). **In the shadow**: it writes `profile_facts`, `household_profiles`, `profile_questions` and `profile_changes` (origin `ai_nightly`); nothing reads them yet.
+
+- **When**: from 03:00 Madrid (`REFINER_HOUR`), once per day, for the day that just ended (`profile_refiner_runs`, unique per day and kind; claimed before calling Anthropic so a second tick or process never sends it twice). Results are collected on the following ticks (every 5 min) once the batch has ended. Without `ANTHROPIC_API_KEY` it doesn't run
+- **Which households**: with activity that day (`collectHouseholdDaySignals` returns at least one signal) **and** with an active plan, in trial (`trialing`, `active`) or **in the beta** (before `LAUNCH_DATE`) — never a `paused` subscription nor a suspended owner — **and** whose owner is under the monthly AI cap (`spendCapStatus`, `USER_MONTHLY_SPEND_CAP_EUR`; if used up, the ficha waits). Plan, pause and cap are checked before reading the day. The run records how many were left out and why (`skipped`: `no_activity`, `paused`, `not_subscribed`, `suspended`, `spend_cap`, `no_members`)
+- **The call**: one request per household in one **Message Batch** (Anthropic Batches API, half price, results within 24 h): Claude Sonnet 5.5 (`REFINER_MODEL`) with adaptive thinking at effort `medium`, `max_tokens` 16 000, the rules as a cached system prompt, and as user text the ficha between `<ficha>` and the day's signals between `<senales>`. The model sees short references only — facts `F1…`, members `P1…` (as in the signals), people without an account `X1…` — and the household row of the run stores what each reference meant (`profile_refinements.refs`), so the answer is read against the ficha as it was sent
+- **The answer** is a closed JSON format (structured outputs, `REFINER_OUTPUT_SCHEMA`, checked again with Zod) with **only changes**: facts to `add` / `update` / `retire` (subject, type, value as JSON, confidence, evidence, valid until, reason, and a question in case it contradicts the user), a new portrait (or empty) and pending questions. A refusal, a cut answer or a broken format writes nothing
+- **Rules in code** (`planRefinement`, never trusting the model):
+  - **No deduced health**: a change on a health type, or whose value, reason, question or evidence mentions health (`HEALTH_TEXT_PATTERNS`: «diabético», «celíaca», «embarazada», «alergia»…), is discarded; the same for the portrait and questions. It is recorded in `profile_refinements.discarded` as `{ reason: 'health', op, type }` only — the content is never stored — and logged
+  - **What the user said wins**: an update or retirement of a fact with origin `user` (also an `add` of a single-valued type that already has a user fact for that subject) becomes a pending question (the model's, or «¿Sigue siendo así lo que nos contaste (tipo)?»)
+  - **At most 10 changes a night** (`REFINER_MAX_CHANGES`; facts, portrait and questions, in the model's order); the rest is recorded as `over_limit`
+  - **Only its own ficha**: unknown references (`unknown_fact`, `unknown_subject`), values that fail the type's schema or lack evidence (`invalid`), no-op updates and repeated questions (`no_change`, `duplicate_question`) are discarded and recorded. A second fact of a single-valued type (every memory key, `shopping`, `batch_cooking`, `novelty`) becomes an update of the first; `fixed_dish`, `skipped_meal`, `dish_frequency`, `affinity`, `effort` and `temporary_situation` may have several
+  - What people wrote is data between marks; the prompt says so, and the rules above hold whatever the text asks
+- **Writing**: one transaction per household; each change adds a `profile_changes` row (`fact_added` / `fact_updated` with before and after / `fact_retired` / `question_added` / `portrait_updated`). An updated fact takes origin `ai_nightly` and keeps its earlier evidence (last 20). Valid-until dates are the end of that Madrid day. The portrait row's `version` goes up by one
+- **Cost**: each succeeded result goes to `cost_events` with feature `ficha`, the household explicit and the owner as user (so it counts for their monthly cap), at **half** the Sonnet 5.5 list price (`BATCH_PRICE_FACTOR`, applied in the service: `config/pricing.ts` has no batch rate)
+- **Records**: `profile_refiner_runs` (day, batch id, status `empty` · `submitted` · `ended` · `failed`, how many were sent and left out) and `profile_refinements` (per household: `pending` · `applied` · `failed`, changes written, discarded, error). Migration `0064_profile_refiner` (only adds tables)
+- Known limitations: only the nightly run exists — the real-time run (sign-up, «Afina tu menú») and the weekly consolidation are still to build; nobody reads the ficha (PRO-153, PRO-139); there is no undo yet (the history has before/after for it); the batch is not cancelled if a household is deleted meanwhile (its row cascades and the result is ignored)
+
 ## Related specs
 
 - [User Memory](./user-memory.md) — the per-user facts copied into the ficha
@@ -73,3 +93,9 @@ What the nightly refiner (PRO-152) will read next to the ficha: `collectHousehol
 - [apps/api/src/db/migrations/0063_activity_item_onboarding_note.sql](../apps/api/src/db/migrations/0063_activity_item_onboarding_note.sql)
 - [apps/api/src/tests/profileSignals.test.ts](../apps/api/src/tests/profileSignals.test.ts) — a synthetic day in order and without WhatsApp health, the size cap, the health filter
 - [apps/api/src/tests/profileSignals.smoke.ts](../apps/api/src/tests/profileSignals.smoke.ts) — every source read from Postgres, sign-up note and shopping product names saved by the real routes
+- [apps/api/src/services/profile/refiner.ts](../apps/api/src/services/profile/refiner.ts) — nightly refiner: eligibility, prompt and batch request, closed format, rules (`planRefinement`), writing, cost, scheduler entry (`runProfileRefinerIfDue`)
+- [apps/api/src/services/notificationScheduler.ts](../apps/api/src/services/notificationScheduler.ts) — calls the refiner on every tick
+- [apps/api/src/services/costLedger.ts](../apps/api/src/services/costLedger.ts) — `householdId` and `priceFactor` on a cost event
+- [apps/api/src/db/migrations/0064_profile_refiner.sql](../apps/api/src/db/migrations/0064_profile_refiner.sql)
+- [apps/api/src/tests/profileRefiner.test.ts](../apps/api/src/tests/profileRefiner.test.ts) — simulated model: «sin horno» → fact with evidence, deduced health discarded and recorded, the user's fact becomes a question, more than 10 changes cut, households without activity / paused / over the cap left out, cost at the batch price
+- [apps/api/src/tests/profileRefiner.smoke.ts](../apps/api/src/tests/profileRefiner.smoke.ts) — one night end to end against Postgres with a simulated batch

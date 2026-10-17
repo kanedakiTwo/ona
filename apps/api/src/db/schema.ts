@@ -1503,6 +1503,66 @@ export const profileChanges = pgTable('profile_changes', {
   check('profile_changes_origin_check', sql.raw("origin IN ('user','onboarding','ai_realtime','ai_nightly','ai_weekly')")),
 ])
 
+// ─── Refinador de la ficha (PRO-152, services/profile/refiner.ts) ──
+/**
+ * One nightly run of the refiner: the Madrid day it read and the Anthropic
+ * Message Batch it sent. `empty` = no household to refine that night.
+ * Unique per (day, kind) so a run is sent once.
+ */
+export const profileRefinerRuns = pgTable('profile_refiner_runs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  /** AAAA-MM-DD, Europe/Madrid. */
+  day: text('day').notNull(),
+  /** 'nightly' (weekly and real-time come later). */
+  kind: text('kind').notNull().default('nightly'),
+  /** 'empty' | 'submitted' | 'ended' | 'failed'. */
+  status: text('status').notNull(),
+  batchId: text('batch_id'),
+  model: text('model').notNull(),
+  /** Households sent in the batch. */
+  requested: integer('requested').notNull().default(0),
+  /** Why the other households were left out: { no_activity, paused, not_subscribed, spend_cap, no_members }. */
+  skipped: jsonb('skipped').notNull().default({}),
+  errorMessage: text('error_message'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  endedAt: timestamp('ended_at', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('uq_profile_refiner_runs_day_kind').on(t.day, t.kind),
+  index('idx_profile_refiner_runs_status').on(t.status),
+  check('profile_refiner_runs_status_check', sql.raw("status IN ('empty','submitted','ended','failed')")),
+])
+
+/**
+ * One household inside a run: whether its changes were applied, how many,
+ * and what the rules threw away (reason and type only — never the content,
+ * so a discarded health deduction is not stored anywhere).
+ */
+export const profileRefinements = pgTable('profile_refinements', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  runId: uuid('run_id').notNull().references(() => profileRefinerRuns.id, { onDelete: 'cascade' }),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  /** Who the cost goes to (the household's owner). */
+  billedUserId: uuid('billed_user_id').references(() => users.id, { onDelete: 'set null' }),
+  /** 'pending' | 'applied' | 'failed'. */
+  status: text('status').notNull().default('pending'),
+  /** Changes written to the ficha. */
+  applied: integer('applied').notNull().default(0),
+  /**
+   * The short references the model saw (F1 → fact id, P1 → user id, X1 →
+   * person id), so its answer is read against the ficha as it was sent.
+   */
+  refs: jsonb('refs').notNull().default({}),
+  /** [{ reason, op, type }] — see `DiscardReason` in refiner.ts. */
+  discarded: jsonb('discarded').notNull().default([]),
+  errorMessage: text('error_message'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('uq_profile_refinements_run_household').on(t.runId, t.householdId),
+  index('idx_profile_refinements_household').on(t.householdId),
+  check('profile_refinements_status_check', sql.raw("status IN ('pending','applied','failed')")),
+])
+
 // ─── Menu edits (specs/menus.md "Registro de cambios", PRO-149) ─────
 // One row per recipe that a change to a menu touched: which plate went out
 // and which came in, on which day and meal, who did it (the user in the app

@@ -45,6 +45,7 @@ import {
 } from './pushNotifier.js'
 import { deliverAlertOverWhatsApp, runProactiveTick } from './whatsapp/outbound.js'
 import { runDailyReviewIfDue } from './whatsapp/reviewer.js'
+import { runProfileRefinerIfDue } from './profile/refiner.js'
 import { recordPendingReferralRewardsIfDue } from './referralRewards.js'
 import { purgeOldUsageEventsIfDue } from './usageEvents.js'
 import { CHAT_RETENTION_DAYS, purgeOldChatMessagesIfDue } from './chatMessages.js'
@@ -507,6 +508,16 @@ async function tickOnce(): Promise<true> {
     if (review) console.log(`[reviewer] ${review.day}: ${review.status}, ${review.findings?.length ?? 0} findings`)
   } catch (err) {
     console.error('[notificationScheduler] conversation review failed:', err)
+  }
+
+  // Household ficha (PRO-152, in the shadow): after 03:00 Madrid send the
+  // nightly refiner's batch for yesterday (once); collect ended batches.
+  try {
+    const r = await runProfileRefinerIfDue(now)
+    if (r?.submit) console.log(`[refiner] ${r.submit.day}: ${r.submit.status}, ${r.submit.requested} hogares, omitidos ${JSON.stringify(r.submit.skipped)}`)
+    if (r?.collected) console.log(`[refiner] ${r.collected} fichas refinadas`)
+  } catch (err) {
+    console.error('[notificationScheduler] profile refiner failed:', err)
   }
 
   // Product analytics retention: usage events older than 180 days (once a day).

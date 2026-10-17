@@ -7,8 +7,10 @@ import { describe, expect, it } from 'vitest'
 import {
   CATALOG_RECIPE_TIMES,
   computeActiveTime,
+  computeActiveTimeLegacy,
   isPassiveStep,
   knownTimesFor,
+  planActiveTimeRecalc,
   planRecipeTimes,
   stepMinutes,
 } from '../services/catalogRecipeTimes.js'
@@ -101,5 +103,65 @@ describe('the catalogue after the fix', () => {
       expect(after.activeTime, r.name).toBeGreaterThan(0)
       expect(after.activeTime!, r.name).toBeLessThanOrEqual(after.totalTime!)
     }
+  })
+})
+
+describe('PRO-187: cooling, fridge, freezing, rising and boiling are not work', () => {
+  it('enfriar, nevera, frigorífico, congelar, templar, levar, fermentar and cocer/hervir with minutes go by themselves', () => {
+    for (const text of [
+      'Deja enfriar 1 hora en el frigorífico',
+      'Enfría el melón en la nevera 1 hora',
+      'Guarda en el frigorífico 2 horas',
+      'Congelar al menos 4 horas',
+      'Dejar templar 10 minutos',
+      'Dejar levar la masa 1 hora',
+      'Dejar fermentar 12 horas',
+      'Cuece a fuego medio 40 minutos',
+      'Hervir los garbanzos 90 minutos',
+      'Cuando hierva, cocer 10 min',
+    ]) {
+      expect(isPassiveStep({ text }), text).toBe(true)
+    }
+  })
+
+  it('boiling without minutes is still work; other steps too', () => {
+    expect(isPassiveStep({ text: 'Cuece la pasta' })).toBe(false)
+    expect(isPassiveStep({ text: 'Lleva el agua a ebullición' })).toBe(false)
+    expect(isPassiveStep({ text: 'Corta el melón en tajadas, 10 min' })).toBe(false)
+    expect(isPassiveStep({ text: 'Sirve con levadura nutricional' })).toBe(false)
+  })
+
+  it('computeActiveTime: an hour of fridge or 40 minutes of boiling no longer count', () => {
+    const melon = [{ text: 'Enfría el melón en la nevera 1 hora' }, { text: 'Pela y corta el melón en tajadas, 10 min' }]
+    expect(computeActiveTimeLegacy(melon, null)).toBe(70)
+    expect(computeActiveTime(melon, null)).toBe(10)
+    const stew = [{ text: 'Sofríe la cebolla 10 minutos' }, { text: 'Cuece a fuego medio 40 minutos' }]
+    expect(computeActiveTime(stew, null)).toBe(10)
+    expect(computeActiveTime([{ text: 'Congelar 4 horas' }, { text: 'Batir 5 min' }], null)).toBe(5)
+    expect(computeActiveTime([{ text: 'Templar 10 min' }, { text: 'Amasar 15 min' }, { text: 'Levar 1 hora' }, { text: 'Fermentar 12 horas' }], null)).toBe(15)
+  })
+})
+
+describe('PRO-187: recompute what the old rule wrote', () => {
+  const melonSteps = [{ text: 'Enfría el melón en la nevera 1 hora' }, { text: 'Pela y corta el melón en tajadas, 10 min' }]
+  const row = (activeTime: number | null) => ({ name: 'Melón con jamón', prepTime: null, cookTime: null, totalTime: 70, activeTime })
+
+  it('a value the old rule computed is recomputed with the new one', () => {
+    expect(planActiveTimeRecalc(row(70), melonSteps)).toEqual({ from: 70, to: 10, activeFrom: 'pasos' })
+  })
+
+  it('a value set by hand (or by Cocina) is left alone', () => {
+    expect(planActiveTimeRecalc(row(15), melonSteps)).toBeNull()
+    expect(planActiveTimeRecalc(row(5), melonSteps)).toBeNull()
+  })
+
+  it('nothing to do when both rules agree, with no steps, or with no time', () => {
+    expect(planActiveTimeRecalc(row(15), [{ text: 'Picar 5 min' }, { text: 'Sofreír 10 min' }])).toBeNull()
+    expect(planActiveTimeRecalc(row(70), [])).toBeNull()
+    expect(planActiveTimeRecalc(row(null), melonSteps)).toBeNull()
+  })
+
+  it('once recomputed, a second boot changes nothing (idempotent)', () => {
+    expect(planActiveTimeRecalc(row(10), melonSteps)).toBeNull()
   })
 })

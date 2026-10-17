@@ -12,6 +12,7 @@ vi.mock('../services/recipeImport.js', () => ({
 import { appSkills, bestMatch, toBuyable, applyTemplateChange, normalize, findSameProduct } from '../services/assistant/appSkills.js'
 import { AppApiError, type AppApi } from '../services/assistant/appApi.js'
 import { madridWeekStart } from '../services/madridTime.js'
+import { buildSystemParts } from '../services/assistant/systemPrompt.js'
 import { updateProfileSchema } from '@ona/shared'
 import { compileRestrictions, violatesRestrictions } from '../services/dietaryRestrictions.js'
 
@@ -192,9 +193,88 @@ describe('menu skills', () => {
   })
 
   it('ban_recipe_this_week resolves the recipe from the menu first', async () => {
-    const f = fakeApi()
-    await get('ban_recipe_this_week').handler({ recipeName: 'lentejas' }, ctx(f.api))
-    expect(writes(f.calls)).toEqual([{ method: 'POST', path: '/menu/m1/ban', body: { recipeId: 'r-lent' } }])
+    // Sunday: Monday's lentils are past, so only the veto is written.
+    vi.useFakeTimers({ now: new Date('2026-10-18T10:00:00+02:00'), toFake: ['Date'] })
+    try {
+      const f = fakeApi()
+      const r = await get('ban_recipe_this_week').handler({ recipeName: 'lentejas' }, ctx(f.api))
+      expect(writes(f.calls)).toEqual([{ method: 'POST', path: '/menu/m1/ban', body: { recipeId: 'r-lent' } }])
+      expect(r.summary).toContain('No estaba en el menu de hoy en adelante')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // PRO-113 (reviewer, 2026-10-10): «vetado de toda la semana» and the recipe
+  // stayed on the menu. Now each appearance from today on is changed.
+  describe('ban_recipe_this_week changes the dishes already on the menu', () => {
+    const lent = { kind: 'recipe', recipeId: 'r-lent', recipeName: 'Lentejas estofadas' }
+    const WEEK = {
+      id: 'm1',
+      locked: { '5': { lunch: true } },
+      days: [
+        { lunch: { dishes: [lent] } },                                                   // lunes: ya pasado
+        { lunch: { dishes: [{ ...lent, variant: 'freezer' }] } },                         // martes (hoy): táper del congelador
+        { dinner: { dishes: [lent, { kind: 'recipe', recipeId: 'r-ens', recipeName: 'Ensalada verde' }] } }, // miércoles
+        {},
+        { dinner: { servings: 2, dishes: [{ ...lent, variant: 'leftover', leftoverOf: { day: 2, meal: 'dinner', dishPosition: 0 } }] } }, // viernes: sobras del miércoles
+        { lunch: { dishes: [lent] } },                                                   // sábado: fijada
+        { dinner: { dishes: [lent] } },                                                  // domingo: sin alternativa
+      ],
+    }
+    const run = async () => {
+      vi.useFakeTimers({ now: new Date('2026-10-13T10:00:00+02:00'), toFake: ['Date'] })
+      try {
+        const f = fakeApi({
+          'GET /menu/u1/*': WEEK,
+          'POST /menu/m1/day/2/meal/dinner/dish/0/regenerate': { dish: { kind: 'recipe', recipeId: 'r-gar', recipeName: 'Garbanzos con espinacas' } },
+          'POST /menu/m1/day/6/meal/dinner/dish/0/regenerate': new AppApiError(409, 'No candidates'),
+        })
+        const r = await get('ban_recipe_this_week').handler({ recipeName: 'lentejas' }, ctx(f.api))
+        return { f, r }
+      } finally {
+        vi.useRealTimers()
+      }
+    }
+
+    it('vetoes, then regenerates each cooked appearance from today and moves its tápers to the new dish', async () => {
+      const { f } = await run()
+      expect(writes(f.calls)).toEqual([
+        { method: 'POST', path: '/menu/m1/ban', body: { recipeId: 'r-lent' } },
+        { method: 'POST', path: '/menu/m1/day/2/meal/dinner/dish/0/regenerate', body: undefined },
+        { method: 'POST', path: '/menu/m1/day/6/meal/dinner/dish/0/regenerate', body: undefined },
+        { method: 'DELETE', path: '/menu/m1/day/4/meal/dinner', body: undefined },
+        { method: 'POST', path: '/menu/m1/day/4/leftover', body: { sourceDay: 2, sourceMeal: 'dinner', targetMeal: 'dinner' } },
+        { method: 'PATCH', path: '/menu/m1/day/4/meal/dinner', body: { servings: 2 } },
+      ])
+    })
+
+    it('says what it put on each day and what it left as it was', async () => {
+      const { r } = await run()
+      expect(r.uiHint).toBe('menu')
+      expect(r.summary).toContain('Hecho: "Lentejas estofadas" no volvera a salir la semana del lunes 12 de octubre y la he cambiado en el menu:')
+      expect(r.summary).toContain('- Miércoles 14 de octubre, cena: "Garbanzos con espinacas"')
+      expect(r.summary).toContain('- Viernes 16 de octubre, cena: sobras de "Garbanzos con espinacas"')
+      expect(r.summary).toContain('Martes 13 de octubre, comida (es un taper del congelador)')
+      expect(r.summary).toContain('Sábado 17 de octubre, comida (esta fijada)')
+      expect(r.summary).toContain('Domingo 18 de octubre, cena (no hay otra receta que encaje)')
+      expect(r.summary).not.toContain('Lunes 12')
+      expect((r.data as any).changes.map((c: any) => [c.date, c.meal, c.recipeName])).toEqual([
+        ['2026-10-14', 'dinner', 'Garbanzos con espinacas'],
+        ['2026-10-16', 'dinner', 'Garbanzos con espinacas'],
+      ])
+    })
+  })
+
+  it('«no comemos en casa» empties the meal (clear_meal) instead of leaving a note', () => {
+    expect(get('clear_meal').description).toMatch(/no comemos en casa/)
+    expect(get('set_meal_note').description).toMatch(/Si no comen en casa .* no la uses: clear_meal quita esa comida y set_day_skipped el dia entero/)
+    for (const mode of ['text', 'whatsapp'] as const) {
+      const { instructions } = buildSystemParts('ctx', mode)
+      expect(instructions).toContain('quitala con clear_meal; si es el dia entero, set_day_skipped. No la dejes como nota.')
+      expect(instructions).toMatch(/ban_recipe_this_week: tambien cambia cada vez que ya estaba en el menu/)
+    }
+    expect(buildSystemParts('ctx', 'whatsapp').instructions).not.toMatch(/set_meal_note \(sabado, cena, "Cenamos fuera"\)/)
   })
 
   it('set_leftovers clears an occupied target first', async () => {

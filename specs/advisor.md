@@ -66,11 +66,11 @@ The assistant can call back-end skills (function calling). Each skill has a name
 
 **UI-parity skills** (`services/assistant/appSkills.ts`, 2026-10). The goal is that anything the web app can do is reachable from chat. These skills call the app's own REST API as the user (`appApi.ts`: loopback + a 5-min JWT), so validation, side effects and permissions match the UI exactly.
 - **Menu:**
-  - `set_meal_note`: "el sábado cenamos fuera" (replaces the slot's dishes with a note by default).
-  - `clear_meal`, `set_day_skipped` (day without cooking / back on).
+  - `set_meal_note`: "apunta que el jueves viene la abuela" (replaces the slot's dishes with a note by default).
+  - `clear_meal`, `set_day_skipped` (day without cooking / back on). **A meal not eaten at home is removed, not noted (PRO-113, 2026-10-18):** "el viernes no comemos en casa", "cenamos fuera", "comemos en casa de Paqui" → `clear_meal` (its ingredients leave the list); the whole day → `set_day_skipped`. The prompt and both tools' descriptions say so; before, Mimo left a «Cenamos fuera» note (reviewer, 2026-10-10).
   - `add_dish`, `remove_dish`: multi-dish slots.
   - `set_meal_servings`, `lock_meal`, `move_meal` (move/swap slots).
-  - `ban_recipe_this_week`.
+  - `ban_recipe_this_week`: vetoes the recipe for the week **and changes it where it already is**, like «Vetar esta receta» on the web (PRO-113; PRO-72 on the web). After `POST /menu/:id/ban`, each appearance from today on (every day for a future week; past days stay) is regenerated with `POST …/dish/:position/regenerate` (the matcher skips vetoed recipes); a táper of it whose source changed becomes sobras of the new dish (slot cleared, `POST …/leftover`, its «Solo hoy» put back). Left as they are, and said so: locked meals, freezer tápers, sobras of a dish already cooked, meals with no other recipe that fits (409). The summary lists what each meal got («- Miércoles 14 de octubre, cena: "Garbanzos con espinacas"») and `data.changes` carries date, meal and dish; the prompt tells Mimo to repeat it. Before, it only blocked the recipe and Mimo said «vetado de toda la semana» while it stayed on the menu.
   - `set_leftovers`.
   - `add_freezer_dish` (PRO-82): "esta noche comemos táper de lentejas" → that meal becomes the recipe with `variant: 'freezer'` («Del congelador», adds nothing to the list); replaces the meal's dishes unless `keepDishes`; a dish not in their recipes or the catalogue goes as a «Táper: …» note.
 - **Shopping:** `add_shopping_items` (units normalised to g/ml/u/cda/cdita; never duplicates: a product already pending — same words, or a list name starting with what was said, "leche" → "Leche entera", "huevos" ↔ "Huevo" — is reported as "ya estaba"; one marked bought or "en casa" goes back to pending; "leche de coco" is never "Leche"), `remove_shopping_items`, `regenerate_shopping_list`, `manage_staples`.

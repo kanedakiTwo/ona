@@ -49,6 +49,15 @@ Allergens are not provided by USDA. Each ingredient has an `allergenTags` string
 
 Optional ingredients are included by default; recipes can mark them `optional: true` for display but they still count toward the cached nutrition (the user knows the worst case).
 
+## Incomplete nutrition
+
+A skipped line (step 1: `u` without `unitWeight`, `ml` without `density`, no catalogue row) used to vanish silently, so the recipe showed a low figure that looked right («Salmón a la plancha con calabacín», 54 kcal). Since PRO-176:
+
+- `aggregateNutrition` returns `incomplete: true` when some skipped line is **not negligible**. Negligible: salt, water, spices and seasoning herbs (pimienta, pimentón, comino, laurel, perejil…, `negligible.ts`) and any line whose note says «al gusto». `pizca` / `al_gusto` units count 0 g and are never skipped
+- Saving a recipe stores it in `recipes.nutrition_incomplete` (migration 0065). The cached figures are still stored (the menu generator keeps using them), but the ficha shows none: «Aún no podemos calcular la nutrición de esta receta» (see [Recipes](./recipes.md))
+- On every API boot, after `db:migrate`, `applyNutritionCompleteness` recomputes **only the mark** of every recipe from today's catalogue (a unit weight added by Cocina clears it); figures are not touched — `scripts/recomputeRecipeNutrition.ts` does that, and also writes the mark
+- The fix for a marked recipe is data: give the ingredient a `unitWeight` / `density` (the catalogue audit lists them, Constraints below), or write the line in grams
+
 ## Lint Hooks
 
 The recipe lint validator (see [Recipe Quality](./recipe-quality.md)) emits warnings — not errors — when:
@@ -85,6 +94,8 @@ Warnings are surfaced to the recipe author / curator but do not block saving.
 - [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts) — `ingredients` (per-100 g nutrition columns + density/unitWeight/aisle/allergenTags)
 - [apps/api/src/services/nutrition/usdaClient.ts](../apps/api/src/services/nutrition/usdaClient.ts) — USDA FDC API client with on-disk cache
 - [apps/api/src/services/nutrition/aggregate.ts](../apps/api/src/services/nutrition/aggregate.ts) — recipe-level aggregation
+- [apps/api/src/services/nutrition/negligible.ts](../apps/api/src/services/nutrition/negligible.ts) — salt, water, spices, «al gusto»: lines whose skip doesn't make a recipe incomplete
+- [apps/api/src/services/nutritionCompleteness.ts](../apps/api/src/services/nutritionCompleteness.ts) — boot recompute of `recipes.nutrition_incomplete`
 - [apps/api/src/services/nutrition/cookingMedium.ts](../apps/api/src/services/nutrition/cookingMedium.ts) — frying/confit fat: absorbed share for nutrition and the lint
 - [apps/api/src/services/nutrition/allergens.ts](../apps/api/src/services/nutrition/allergens.ts) — allergen union and mapping helpers
 - [apps/api/src/services/nutrition/index.ts](../apps/api/src/services/nutrition/index.ts) — public surface re-exports

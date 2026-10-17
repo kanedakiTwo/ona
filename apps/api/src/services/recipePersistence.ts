@@ -498,6 +498,7 @@ export async function persistRecipe(
       substitutions: input.substitutions ?? null,
       storage: input.storage ?? null,
       nutritionPerServing: aggregate.perServing,
+      nutritionIncomplete: aggregate.incomplete,
       tags: input.tags ?? [],
       internalTags: input.internalTags ?? [],
       sourceUrl: input.sourceUrl ?? null,

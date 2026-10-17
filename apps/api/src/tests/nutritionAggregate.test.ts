@@ -514,3 +514,68 @@ describe('aggregateNutrition — frying and confit fat', () => {
     expect(perServing.kcal).toBe(40)
   })
 })
+
+// ─── PRO-176: «nutrición incompleta» ───────────────────────────
+
+describe('aggregateNutrition — incomplete mark (PRO-176)', () => {
+  const muslo = makeEntry({ id: 'muslo', name: 'Muslo de pollo', calories: 177, protein: 18, fat: 11.6, unitWeight: null })
+  const arroz = makeEntry({ id: 'arroz', name: 'Arroz', calories: 360, protein: 7, carbs: 79 })
+  const sal = makeEntry({ id: 'sal', name: 'Sal', salt: 100, unitWeight: null })
+  const pimienta = makeEntry({ id: 'pimienta', name: 'Pimienta negra molida', density: null })
+  const caldo = makeEntry({ id: 'caldo', name: 'Caldo de pollo', calories: 5, density: null })
+  const catalog = catalogOf([muslo, arroz, sal, pimienta, caldo])
+
+  it('«1 ud» de muslo without a weight per unit makes the recipe incomplete', () => {
+    const r = aggregateNutrition({
+      servings: 2,
+      ingredients: [
+        makeIngredient({ ingredientId: 'arroz', quantity: 200, unit: 'g' }),
+        makeIngredient({ ingredientId: 'muslo', quantity: 1, unit: 'u' }),
+      ] as any,
+      catalog,
+    })
+    expect(r.skipped).toEqual([{ ingredientId: 'muslo', reason: 'no-unit-weight' }])
+    expect(r.incomplete).toBe(true)
+  })
+
+  it('salt «al gusto» (or by units), spices and a note «al gusto» do not', () => {
+    const r = aggregateNutrition({
+      servings: 2,
+      ingredients: [
+        makeIngredient({ ingredientId: 'arroz', quantity: 200, unit: 'g' }),
+        makeIngredient({ ingredientId: 'sal', quantity: 0, unit: 'al_gusto' }),
+        makeIngredient({ ingredientId: 'sal', quantity: 1, unit: 'u' }),
+        makeIngredient({ ingredientId: 'pimienta', quantity: 2, unit: 'ml' }),
+        makeIngredient({ ingredientId: 'caldo', quantity: 1, unit: 'ml', note: 'al gusto' }),
+      ] as any,
+      catalog,
+    })
+    expect(r.skipped.length).toBe(3)
+    expect(r.incomplete).toBe(false)
+  })
+
+  it('an ml line without density or a missing catalogue row also counts', () => {
+    const noDensity = aggregateNutrition({
+      servings: 2,
+      ingredients: [makeIngredient({ ingredientId: 'caldo', quantity: 500, unit: 'ml' })] as any,
+      catalog,
+    })
+    expect(noDensity.incomplete).toBe(true)
+    const unmapped = aggregateNutrition({
+      servings: 2,
+      ingredients: [makeIngredient({ ingredientId: 'nope', quantity: 100, unit: 'g' })] as any,
+      catalog,
+    })
+    expect(unmapped.incomplete).toBe(true)
+  })
+
+  it('a recipe with nothing skipped is complete', () => {
+    const r = aggregateNutrition({
+      servings: 2,
+      ingredients: [makeIngredient({ ingredientId: 'arroz', quantity: 200, unit: 'g' })] as any,
+      catalog,
+    })
+    expect(r.incomplete).toBe(false)
+    expect(aggregateNutrition({ servings: 2, ingredients: [], catalog }).incomplete).toBe(false)
+  })
+})

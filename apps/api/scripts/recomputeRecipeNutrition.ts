@@ -131,6 +131,7 @@ async function main() {
         .update(recipes)
         .set({
           nutritionPerServing: agg.perServing,
+          nutritionIncomplete: agg.incomplete,
           allergens,
           updatedAt: new Date(),
         })
@@ -138,7 +139,7 @@ async function main() {
     }
     updated++
     console.log(
-      `  ${EXECUTE ? '[ok]' : '[dry]'} ${r.name.padEnd(40)} kcal=${agg.perServing.kcal} allergens=[${allergens.join(', ')}]${agg.skipped.length > 0 ? `  (${agg.skipped.length} ing skipped)` : ''}`,
+      `  ${EXECUTE ? '[ok]' : '[dry]'} ${r.name.padEnd(40)} kcal=${agg.perServing.kcal} allergens=[${allergens.join(', ')}]${agg.skipped.length > 0 ? `  (${agg.skipped.length} ing skipped)` : ''}${agg.incomplete ? '  [incompleta]' : ''}`,
     )
   }
 

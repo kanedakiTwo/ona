@@ -20,6 +20,7 @@
 
 import type { NutritionPerServing, RecipeIngredient } from '@ona/shared'
 import { cookingMediumFactor } from './cookingMedium.js'
+import { isNegligibleForNutrition } from './negligible.js'
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -66,6 +67,11 @@ export type SkippedIngredient = {
 export type AggregateResult = {
   perServing: NutritionPerServing
   skipped: SkippedIngredient[]
+  /**
+   * PRO-176: true when a skipped line is not salt, water, a spice/herb or
+   * «al gusto» — the figures are short and the ficha must not show them.
+   */
+  incomplete: boolean
 }
 
 // ─── Constants ──────────────────────────────────────────────────
@@ -149,6 +155,8 @@ function round1(n: number): number {
  * - Frying/confit fat (note «para freír…» / «para confitar…») counts only
  *   the absorbed share (`cookingMedium.ts`).
  * - kcal is rounded to integer; macros to 1 decimal.
+ * - `incomplete` (PRO-176): some skipped line matters (not salt, water,
+ *   spices/herbs or «al gusto», see `negligible.ts`).
  *
  * @throws if `servings <= 0` or not finite.
  */
@@ -163,7 +171,7 @@ export function aggregateNutrition(input: AggregateInput): AggregateResult {
 
   // Empty recipe → all-zeros, no skips.
   if (ingredients.length === 0) {
-    return { perServing: { ...ZERO_PER_SERVING }, skipped: [] }
+    return { perServing: { ...ZERO_PER_SERVING }, skipped: [], incomplete: false }
   }
 
   let totalKcal = 0
@@ -173,17 +181,20 @@ export function aggregateNutrition(input: AggregateInput): AggregateResult {
   let totalFiber = 0
   let totalSalt = 0
   const skipped: SkippedIngredient[] = []
+  let incomplete = false
 
   for (const ing of ingredients) {
     const entry = catalog.get(ing.ingredientId)
     if (!entry) {
       skipped.push({ ingredientId: ing.ingredientId, reason: 'unmapped' })
+      if (!isNegligibleForNutrition(ing.ingredientName, ing.note)) incomplete = true
       continue
     }
 
     const conv = toGrams(ing.unit, ing.quantity, entry)
     if ('skip' in conv) {
       skipped.push({ ingredientId: ing.ingredientId, reason: conv.skip })
+      if (!isNegligibleForNutrition(entry.name, ing.note)) incomplete = true
       continue
     }
 
@@ -206,5 +217,5 @@ export function aggregateNutrition(input: AggregateInput): AggregateResult {
     saltG: round1(totalSalt / servings),
   }
 
-  return { perServing, skipped }
+  return { perServing, skipped, incomplete }
 }

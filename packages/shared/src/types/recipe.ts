@@ -142,6 +142,12 @@ export interface Recipe {
 
   /** Cached nutrition per serving — recomputed on every save */
   nutritionPerServing?: NutritionPerServing | null
+  /**
+   * PRO-176: an ingredient that matters couldn't be counted (no weight per
+   * unit, density or catalogue data), so `nutritionPerServing` is short. The
+   * ficha shows no figures: «Aún no podemos calcular la nutrición de esta receta».
+   */
+  nutritionIncomplete?: boolean
 
   /** Public-facing tags (already filtered: no internal labels, no meal/difficulty duplicates) */
   tags: string[]

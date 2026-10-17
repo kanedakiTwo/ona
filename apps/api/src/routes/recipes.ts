@@ -167,6 +167,8 @@ interface RecipeRow {
   substitutions: string | null
   storage: string | null
   nutritionPerServing: Recipe['nutritionPerServing']
+  /** PRO-176 (migration 0065); absent on pre-migration rows. */
+  nutritionIncomplete?: boolean | null
   tags: string[] | null
   internalTags: string[] | null
   sourceUrl: string | null
@@ -315,6 +317,7 @@ function toDetailRecipe(
     // stale unions like «Harina de fuerza» without gluten, with no DB write.
     allergens: effectiveAllergens(row.allergens, ings.map((i) => i.ingredientName)),
     nutritionPerServing: row.nutritionPerServing ?? null,
+    nutritionIncomplete: row.nutritionIncomplete === true,
     tags: publicTagsOf(row),
     internalTags: [], // never leak internalTags in public payload
     ingredients: recipeIngredients,
@@ -1004,6 +1007,7 @@ router.post('/recipes/:id/copy', authMiddleware, async (req: AuthRequest, res) =
           substitutions: source.substitutions,
           storage: source.storage,
           nutritionPerServing: source.nutritionPerServing,
+          nutritionIncomplete: source.nutritionIncomplete ?? false,
           tags: source.tags ?? [],
           internalTags: baseInternalTags,
           sourceUrl: source.sourceUrl,

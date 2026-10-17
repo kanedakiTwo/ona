@@ -253,6 +253,13 @@ export const recipes = pgTable('recipes', {
 
   /** Cached nutrition per serving — recomputed on every save. NULL until first compute. */
   nutritionPerServing: jsonb('nutrition_per_serving').$type<NutritionPerServing>(),
+  /**
+   * PRO-176: true when the last compute had to skip an ingredient that
+   * matters (no unit weight / density / catalogue row; salt, water, spices
+   * and «al gusto» don't count). The ficha then shows no figures. Set on
+   * save and recomputed on every boot (`nutritionCompleteness.ts`).
+   */
+  nutritionIncomplete: boolean('nutrition_incomplete').notNull().default(false),
 
   /** Public-facing tags */
   tags: text('tags').array().default([]),

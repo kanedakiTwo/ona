@@ -4,6 +4,7 @@ import { applyCatalogSourceLinks } from '../services/catalogSourceLinks.js'
 import { applyCatalogRecipeFixes } from '../services/catalogRecipeFixes.js'
 import { applyProfileFromMemories } from '../services/profileFromMemories.js'
 import { applyCatalogRecipeTimes } from '../services/catalogRecipeTimes.js'
+import { applyNutritionCompleteness } from '../services/nutritionCompleteness.js'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -39,6 +40,13 @@ async function main() {
     await applyCatalogRecipeTimes(db)
   } catch (err) {
     console.error('[catalog-recipe-times] failed:', err)
+  }
+  // Idempotent (PRO-176): recompute only the «nutrición incompleta» mark of
+  // every recipe; the cached figures are left as they are.
+  try {
+    await applyNutritionCompleteness(db)
+  } catch (err) {
+    console.error('[nutrition-completeness] failed:', err)
   }
   await pool.end()
 }

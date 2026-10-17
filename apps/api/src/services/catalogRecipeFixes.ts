@@ -157,7 +157,7 @@ export async function applyCatalogRecipeFixes(
       await tx.insert(recipeIngredients).values(rows)
       await tx
         .update(recipes)
-        .set({ allergens, nutritionPerServing: agg.perServing, updatedAt: new Date() })
+        .set({ allergens, nutritionPerServing: agg.perServing, nutritionIncomplete: agg.incomplete, updatedAt: new Date() })
         .where(and(eq(recipes.id, r.id), isNull(recipes.authorId)))
       result.fixed++
     })

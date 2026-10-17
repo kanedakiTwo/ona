@@ -21,6 +21,7 @@ Runs in one transaction; image files are removed after the commit.
   Households left with no one are deleted (cascade).
 - **WhatsApp:** messages from the linked phone are deleted, including the ones received before linking (`user_id` null). The link cascades.
 - **Web chat with Mimo** (`chat_messages`, PRO-148): the user's rows cascade with the user.
+- **Signals for the household ficha** (PRO-151): the free sign-up text (`users.onboarding_note`) goes with the user row; the shopping events with product names (`activity_events.item`) cascade with the user.
 - Everything else keyed by the user cascades (memory, favourites, cook log, pantry rows of a deleted household, push subscriptions, notification schedule…). `cost_events` / `shop_orders` keep their rows with `user_id = NULL` (anonymous accounting); `app_errors` keeps its error groups with `last_user_id = NULL` ([Error tracking](./errors.md)).
 - Image files on the volume (`IMAGE_STORAGE_DIR/<uuid>.jpg`) for the deleted recipes and for photos of deleted recipes/households. Seed images (`/images/recipes/<slug>.jpg`) are never touched.
 - The old session stops working: its next request gets `401 USER_NOT_FOUND` (web logs out).

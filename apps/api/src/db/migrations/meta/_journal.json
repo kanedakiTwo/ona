@@ -414,6 +414,13 @@
       "when": 1792146406098,
       "tag": "0058_catalog_drafts_wishes",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1792195105025,
+      "tag": "0063_activity_item_onboarding_note",
+      "breakpoints": true
     }
   ]
 }

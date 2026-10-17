@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { db as defaultDb } from '../db/connection.js'
 import { users } from '../db/schema.js'
 import { grantHealthConsent, hasHealthConsent } from './healthConsent.js'
@@ -28,7 +28,14 @@ export interface OnboardingInput {
    * (source onboarding). Absent (WhatsApp onboarding) leaves it as it is.
    */
   weekdayCooking?: WeekdayCookingChoice
+  /**
+   * PRO-138 free «tu caso» text. Kept (≤ 500 chars) for the household's ficha
+   * (PRO-151): the sign-up day's signals read it. Absent leaves it as it is.
+   */
+  cookingNote?: string | null
 }
+
+export const ONBOARDING_NOTE_MAX = 500
 
 export const onboardedUserColumns = {
   id: users.id,
@@ -59,7 +66,11 @@ export async function saveOnboarding(userId: string, input: OnboardingInput, dat
     favoriteDishes,
     priority,
     onboardingDone: true,
+    // The first time only: the day the ficha reads the sign-up answers (PRO-151).
+    onboardingCompletedAt: sql`COALESCE(${users.onboardingCompletedAt}, now())`,
   }
+  const note = typeof input.cookingNote === 'string' ? input.cookingNote.trim().slice(0, ONBOARDING_NOTE_MAX) : undefined
+  if (note) set.onboardingNote = note
   if (input.restrictions !== undefined) {
     set.restrictions = healthConsent === true || (await hasHealthConsent(userId)) ? input.restrictions : []
   }

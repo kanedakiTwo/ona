@@ -114,6 +114,8 @@ At `lg+` the `/shopping` page uses the "D" 1180 px container: header with the "P
 - Check / stock mutations work offline; the request is held in the PWA queue until reconnect. The local UI updates optimistically and a "Pendiente de sincronizar" indicator shows while pending
 - **Household scope (PR 1B):** shopping lists carry both `user_id` and `household_id`. Reads + access checks on `POST /shopping-list/:listId/regenerate` honour the env flag `SHARED_HOUSEHOLD_SCOPE`; with the flag on, any household member can regenerate the household's list. See [Household](./household.md)
 
+- **Shopping events for the household ficha (PRO-151):** each item mutation that succeeds — tick (`…/check`), «En casa» (`…/stock`), manual add (`POST …/items`) and manual remove (`DELETE …/item/:itemId`) — leaves an `activity_events` row (`shopping_check` / `shopping_stock` / `shopping_add` / `shopping_remove`) with the product's name (`item`, ≤ 80 chars) and, for the toggles, the new state (`toggled_on`). Mimo's «marcar» and «en casa» skills do the same. They are signals of the [Ficha del hogar](./household-profile.md) (Daily signals); deleting the account deletes them
+
 ## Related specs
 
 - [Menus](./menus.md) — source of recipes; provides `recipe.servings` for scaling math

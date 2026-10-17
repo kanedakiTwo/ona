@@ -113,6 +113,14 @@ export const users = pgTable('users', {
    * a fully-migrated user somehow lands here without a primary household.
    */
   primaryHouseholdId: uuid('primary_household_id'),
+  /**
+   * When the first-steps answers were saved (web or WhatsApp, PRO-151): the
+   * day the household's ficha reads the sign-up answers as signals. Kept from
+   * the first time; null for accounts onboarded before 0063.
+   */
+  onboardingCompletedAt: timestamp('onboarding_completed_at', { withTimezone: true }),
+  /** The free «tu caso» text of the sign-up (PRO-138), ≤ 500 chars, as typed. */
+  onboardingNote: text('onboarding_note'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => [
   check('users_role_check', sql.raw("role IN ('user','admin')")),
@@ -1014,6 +1022,14 @@ export const activityEvents = pgTable('activity_events', {
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   householdId: uuid('household_id').references(() => households.id, { onDelete: 'set null' }),
   kind: text('kind').notNull(),
+  /**
+   * The product touched (≤ 80 chars, PRO-151): «leche», «tomate». A signal
+   * for the household's ficha; null on rows from before 0063 and on Mimo's
+   * skills that don't report it.
+   */
+  item: text('item'),
+  /** check / stock toggles: the new state (true = marked / at home). Null otherwise. */
+  toggledOn: boolean('toggled_on'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_activity_events_created').on(t.createdAt),

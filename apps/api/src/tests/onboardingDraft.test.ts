@@ -59,7 +59,7 @@ describe('saving the sign-up clears the draft', () => {
   })
 
   it('the migration adds a nullable column (no existing row changes)', () => {
-    const sql = readFileSync(join(__dirname, '../db/migrations/0065_onboarding_draft.sql'), 'utf8')
+    const sql = readFileSync(join(__dirname, '../db/migrations/0068_onboarding_draft.sql'), 'utf8')
     expect(sql.trim()).toBe('ALTER TABLE "users" ADD COLUMN "onboarding_draft" jsonb;')
   })
 })

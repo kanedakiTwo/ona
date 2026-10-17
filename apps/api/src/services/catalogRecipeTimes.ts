@@ -9,11 +9,16 @@
  * - `totalTime` missing → `prepTime + cookTime` (or the sum of the steps'
  *   minutes when every step has them, like recipePersistence).
  * - `activeTime` missing → computed from the steps: the sum of the hands-on
- *   steps; simmering, oven, resting, marinating and soaking steps don't count.
- *   If a hands-on step has no minutes, `prepTime` is used instead.
+ *   steps; simmering, oven, resting, marinating, soaking, cooling, fridge,
+ *   freezing, «templar», rising, fermenting and boiling-with-minutes steps
+ *   don't count (the last six since PRO-187). If a hands-on step has no
+ *   minutes, `prepTime` is used instead.
  *
  * Only empty fields of system recipes (`author_id IS NULL`) are filled —
  * never a user's recipe, never a value someone already set: idempotent.
+ * One exception (PRO-187): a hands-on time equal to what the rule before
+ * PRO-187 computed is recomputed with the new rule (and logged); any other
+ * value stays.
  * Runs after `db:migrate` (every API boot) and at the end of `db:seed`, like
  * PRO-57/PRO-78. Every recipe it fills is logged («[catalog-recipe-times] …»)
  * so Cocina can review the computed hands-on times.
@@ -59,14 +64,29 @@ export interface StepForTime {
 
 /**
  * Steps that go on by themselves: simmering, oven, resting, marinating,
- * soaking (also «la noche anterior»). Matched on the text and the technique, accent-insensitive.
+ * soaking (also «la noche anterior»); since PRO-187 also cooling, the fridge,
+ * freezing, «templar», rising and fermenting (see `isPassiveStep` for boiling).
+ * Matched on the text and the technique, accent-insensitive.
  */
 const PASSIVE_STEP =
+  /\b(fuego (lento|bajo|suave|minimo)|horn(o|ear|ea|eamos|eado)|gratin(ar|a)|repos(ar|e|a|o)|marin(ar|e|a|ado|ada)|remoj(o|ar|e|a)|noche (anterior|antes)|enfri(ar|e|a|en|an|ado|ada)|nevera|frigorifico|frigo|congel(ar|e|a|en|an|ado|ada|ador)|templ(ar|e|a|en|an|ado|ada)|lev(ar|e|en|ado|ada)|ferment(ar|e|a|en|an|ado|ada|acion))\b/
+
+/** Boiling («cuece», «hierve», «cocer», «hervir»…): goes by itself when the step gives its minutes (PRO-187). */
+const BOILING_STEP = /\b(cocer|cocemos|cociendo|cuece|cuecen|cueza|cuezan|hervir|hervimos|hierve|hierven|hierva|hiervan|hirviendo)\b/
+
+/** The rule before PRO-187 (only simmering, oven, resting, marinating, soaking). Kept to recognise what it computed. */
+const LEGACY_PASSIVE_STEP =
   /\b(fuego (lento|bajo|suave|minimo)|horn(o|ear|ea|eamos|eado)|gratin(ar|a)|repos(ar|e|a|o)|marin(ar|e|a|ado|ada)|remoj(o|ar|e|a)|noche (anterior|antes))\b/
 
 export function isPassiveStep(step: StepForTime): boolean {
   const text = normalizeRecipeName(`${step.technique ?? ''} ${step.text}`)
-  return PASSIVE_STEP.test(text)
+  if (PASSIVE_STEP.test(text)) return true
+  return BOILING_STEP.test(text) && (stepMinutes(step) ?? 0) > 0
+}
+
+/** `isPassiveStep` as it was before PRO-187. */
+export function isPassiveStepLegacy(step: StepForTime): boolean {
+  return LEGACY_PASSIVE_STEP.test(normalizeRecipeName(`${step.technique ?? ''} ${step.text}`))
 }
 
 /** Minutes a step gives: `durationMin`, else the minutes/hours written in its text (summed; the upper end of a range). */
@@ -95,8 +115,26 @@ export function computeActiveTime(
   prepTime: number | null | undefined,
   totalTime?: number | null,
 ): number | null {
+  return activeTimeWith(isPassiveStep, steps, prepTime, totalTime)
+}
+
+/** `computeActiveTime` with the rule before PRO-187: what the fill wrote until then. */
+export function computeActiveTimeLegacy(
+  steps: readonly StepForTime[],
+  prepTime: number | null | undefined,
+  totalTime?: number | null,
+): number | null {
+  return activeTimeWith(isPassiveStepLegacy, steps, prepTime, totalTime)
+}
+
+function activeTimeWith(
+  passive: (s: StepForTime) => boolean,
+  steps: readonly StepForTime[],
+  prepTime: number | null | undefined,
+  totalTime?: number | null,
+): number | null {
   const prep = typeof prepTime === 'number' && prepTime > 0 ? prepTime : null
-  const active = steps.filter((s) => !isPassiveStep(s))
+  const active = steps.filter((s) => !passive(s))
   let minutes: number | null = null
   if (active.length > 0) {
     const each = active.map(stepMinutes)
@@ -155,6 +193,25 @@ export function planRecipeTimes(recipe: RecipeTimeRow, steps: readonly StepForTi
   return patch
 }
 
+/**
+ * PRO-187: a hands-on time that the old rule computed (the stored value is
+ * exactly what `computeActiveTimeLegacy` gives) is recomputed with the new
+ * one. Any other value — set by hand or by Cocina — is left alone. Null =
+ * nothing to change.
+ */
+export function planActiveTimeRecalc(
+  recipe: RecipeTimeRow,
+  steps: readonly StepForTime[],
+): { from: number; to: number; activeFrom: 'pasos' | 'preparación' } | null {
+  if (!has(recipe.activeTime) || steps.length === 0) return null
+  const prep = has(recipe.prepTime) ? recipe.prepTime : null
+  const total = has(recipe.totalTime) ? recipe.totalTime : null
+  if (computeActiveTimeLegacy(steps, prep, total) !== recipe.activeTime) return null
+  const to = computeActiveTime(steps, prep, total)
+  if (to == null || to === recipe.activeTime) return null
+  return { from: recipe.activeTime, to, activeFrom: fromSteps(steps) ? 'pasos' : 'preparación' }
+}
+
 function fromSteps(steps: readonly StepForTime[]): boolean {
   const active = steps.filter((s) => !isPassiveStep(s))
   return active.length > 0 && active.every((s) => stepMinutes(s) != null) && active.some((s) => (stepMinutes(s) ?? 0) > 0)
@@ -163,6 +220,8 @@ function fromSteps(steps: readonly StepForTime[]): boolean {
 export interface CatalogRecipeTimesResult {
   systemRecipes: number
   filled: number
+  /** Hands-on times the old rule computed, recomputed with the new one (PRO-187). */
+  recomputed: number
   /** System recipes with both a total and a hands-on time after the fix. */
   complete: number
   missing: string[]
@@ -185,7 +244,7 @@ export async function applyCatalogRecipeTimes(
     })
     .from(recipes)
     .where(isNull(recipes.authorId))
-  const result: CatalogRecipeTimesResult = { systemRecipes: rows.length, filled: 0, complete: 0, missing: [] }
+  const result: CatalogRecipeTimesResult = { systemRecipes: rows.length, filled: 0, recomputed: 0, complete: 0, missing: [] }
   if (rows.length === 0) return result
 
   const stepRows = await db
@@ -200,6 +259,21 @@ export async function applyCatalogRecipeTimes(
   }
 
   for (const r of rows) {
+    // PRO-187: a hands-on time the old rule computed is recomputed (only if
+    // it still holds that value when written).
+    const recalc = planActiveTimeRecalc(r, stepsBy.get(r.id) ?? [])
+    if (recalc) {
+      const updated = await db
+        .update(recipes)
+        .set({ activeTime: recalc.to })
+        .where(and(eq(recipes.id, r.id), isNull(recipes.authorId), eq(recipes.activeTime, recalc.from)))
+        .returning({ id: recipes.id })
+      if (updated.length > 0) {
+        r.activeTime = recalc.to
+        result.recomputed++
+        log(`[catalog-recipe-times] «${r.name}»: trabajo ${recalc.from} → ${recalc.to} min (recalculado con la regla nueva, de ${recalc.activeFrom})`)
+      }
+    }
     const patch = planRecipeTimes(r, stepsBy.get(r.id) ?? [])
     const { activeFrom, ...fields } = patch
     const after = { ...r, ...fields }
@@ -231,7 +305,7 @@ export async function applyCatalogRecipeTimes(
     )
   }
   log(
-    `[catalog-recipe-times] ${result.filled} receta(s) completadas; ${result.complete} de ${result.systemRecipes} recetas del sistema con tiempo total y de trabajo` +
+    `[catalog-recipe-times] ${result.filled} receta(s) completadas; ${result.recomputed} con el tiempo de trabajo recalculado; ${result.complete} de ${result.systemRecipes} recetas del sistema con tiempo total y de trabajo` +
       (result.missing.length > 0 ? `; sin tiempo: ${result.missing.join(', ')}` : ''),
   )
   return result

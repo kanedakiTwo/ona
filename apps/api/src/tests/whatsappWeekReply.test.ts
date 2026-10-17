@@ -9,7 +9,7 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 import { replyMessages, weekViewOf, withoutMenuReadyLines, WEEK_IMAGE_ALT, type InboundDeps } from '../services/whatsapp/inbound.js'
-import { SNOWBALL_LINE, SNOWBALL_WEEKS, showsSnowball, weekMenuCaption, weekMenuDigest, type WeekMenuInput } from '../services/menuText.js'
+import { SNOWBALL_LINE, SNOWBALL_WEEKS, generatedMenuThisTurn, showsSnowball, weekMenuCaption, weekMenuDigest, withSnowballLine, type WeekMenuInput } from '../services/menuText.js'
 import type { AssistantResponse } from '../services/assistant/types.js'
 
 const WEB = 'https://mimoia.com'
@@ -70,28 +70,29 @@ describe('withoutMenuReadyLines — the model\'s «menú listo» in every shape'
 })
 
 describe('captions (Thursday 15 October 2026)', () => {
-  it('generated week 1–3: the snowball line above «Listo: …»', () => {
-    for (const generatedWeeks of [1, 2, 3]) {
+  it('generated week 1–2: the snowball line above «Listo: …»', () => {
+    for (const generatedWeeks of [1, 2]) {
       expect(weekMenuCaption(NEXT_WEEK, { today: THU, webUrl: WEB, view: 'generated', generatedWeeks })).toBe(
         `${SNOWBALL_LINE}\n\nListo: tu menú de la semana del 19 al 25 de octubre 🍽️\n📖 Recetas y lista de la compra: mimoia.com/menu\n¿Cambio algo? Dímelo, p. ej. «el martes, pescado».`,
       )
     }
-    expect(SNOWBALL_LINE).toBe('Al principio acertaré menos con vuestros gustos; según me vayas corrigiendo, iré aprendiendo. Es el efecto bola de nieve ⛄')
-    expect(SNOWBALL_WEEKS).toBe(3)
+    // PRO-170: Marketing's version A, approved 2026-10-17, for the first 2 weeks.
+    expect(SNOWBALL_LINE).toBe('Las primeras semanas acertaré menos con los gustos de tu casa. Dime qué cambiarías y lo apunto: así iré acertando cada vez más. Es el efecto bola de nieve ⛄')
+    expect(SNOWBALL_WEEKS).toBe(2)
   })
 
-  it('generated week 4 and later (or unknown count): no snowball line', () => {
-    for (const generatedWeeks of [4, 5, 20, undefined]) {
+  it('generated week 3 and later (or unknown count): no snowball line', () => {
+    for (const generatedWeeks of [3, 4, 20, undefined]) {
       expect(weekMenuCaption(NEXT_WEEK, { today: THU, webUrl: WEB, view: 'generated', generatedWeeks })).toBe(
         'Listo: tu menú de la semana del 19 al 25 de octubre 🍽️\n📖 Recetas y lista de la compra: mimoia.com/menu\n¿Cambio algo? Dímelo, p. ej. «el martes, pescado».',
       )
     }
   })
 
-  it('the text fallback of a generated week 1–3 carries the snowball line too, first', () => {
+  it('the text fallback of a generated week 1–2 carries the snowball line too, first', () => {
     const digest = weekMenuDigest(NEXT_WEEK, { today: THU, webUrl: WEB, view: 'generated', generatedWeeks: 2 })
     expect(digest.startsWith(`${SNOWBALL_LINE}\n\nListo: tu menú de la semana del 19 al 25 de octubre 🍽️\n\n*Lunes 19*`)).toBe(true)
-    expect(weekMenuDigest(NEXT_WEEK, { today: THU, webUrl: WEB, view: 'generated', generatedWeeks: 4 })).not.toContain('bola de nieve')
+    expect(weekMenuDigest(NEXT_WEEK, { today: THU, webUrl: WEB, view: 'generated', generatedWeeks: 3 })).not.toContain('bola de nieve')
   })
 
   it('viewing this week: «Tu menú de esta semana», never «Listo:» nor the snowball line', () => {
@@ -109,10 +110,10 @@ describe('captions (Thursday 15 October 2026)', () => {
     expect(digest.startsWith('Tu menú de esta semana 🍽️\n\n*Jueves 15 · hoy*')).toBe(true)
   })
 
-  it('showsSnowball: only generated weeks 1–3', () => {
+  it('showsSnowball: only generated weeks 1–2', () => {
     expect(showsSnowball({ view: 'generated', generatedWeeks: 1 })).toBe(true)
-    expect(showsSnowball({ generatedWeeks: 3 })).toBe(true)
-    expect(showsSnowball({ view: 'generated', generatedWeeks: 4 })).toBe(false)
+    expect(showsSnowball({ generatedWeeks: 2 })).toBe(true)
+    expect(showsSnowball({ view: 'generated', generatedWeeks: 3 })).toBe(false)
     expect(showsSnowball({ view: 'generated', generatedWeeks: 0 })).toBe(false)
     expect(showsSnowball({ view: 'viewing', generatedWeeks: 1 })).toBe(false)
   })
@@ -226,5 +227,27 @@ describe('replyMessages — a generated week asks for its caption as «generated
     expect(out[0].text).toBe(caption)
     expect(out[0].text.startsWith(SNOWBALL_LINE)).toBe(true)
     expect(out[0].text).not.toMatch(/Hecho|que viene listo/)
+  })
+})
+
+// PRO-170: the same line in the web chat, after Mimo generates a menu, in the
+// same weeks (routes/assistant.ts).
+describe('web chat: the snowball line above Mimo\'s reply after generating', () => {
+  const reply = 'Hecho:\n- Menú de la semana listo'
+  it('turns that generate a menu: generate_weekly_menu or complete_onboarding', () => {
+    expect(generatedMenuThisTurn(['generate_weekly_menu'])).toBe(true)
+    expect(generatedMenuThisTurn(['complete_onboarding', 'update_memory'])).toBe(true)
+    expect(generatedMenuThisTurn(['swap_meal', 'get_weekly_menu'])).toBe(false)
+    expect(generatedMenuThisTurn(undefined)).toBe(false)
+  })
+  it('weeks 1–2: the line goes first; week 3 or an unknown count: the reply as it was', () => {
+    expect(withSnowballLine(reply, 1)).toBe(`${SNOWBALL_LINE}\n\n${reply}`)
+    expect(withSnowballLine(reply, 2)).toBe(`${SNOWBALL_LINE}\n\n${reply}`)
+    expect(withSnowballLine(reply, 3)).toBe(reply)
+    expect(withSnowballLine(reply, undefined)).toBe(reply)
+  })
+  it('never twice, and an empty reply is just the line', () => {
+    expect(withSnowballLine(withSnowballLine(reply, 1), 1)).toBe(`${SNOWBALL_LINE}\n\n${reply}`)
+    expect(withSnowballLine('', 1)).toBe(SNOWBALL_LINE)
   })
 })

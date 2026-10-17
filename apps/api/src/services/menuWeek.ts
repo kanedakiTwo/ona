@@ -1,7 +1,7 @@
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, sql } from 'drizzle-orm'
 import type { DayMenu, LockedSlots } from '@ona/shared'
 import { db as defaultDb } from '../db/connection.js'
-import { menus } from '../db/schema.js'
+import { menuLogs, menus } from '../db/schema.js'
 import { resolveScope, scopeWhere } from './scopeResolver.js'
 
 /**
@@ -73,4 +73,22 @@ export function keepLockedSlots(days: DayMenu[], previous: DayMenu[] | undefined
     }
   }
   return days
+}
+
+/**
+ * How many different weeks the caller's household has had GENERATED (the
+ * snowball line, 2026-10-15): menus with a `menu_logs` row — written only by
+ * generate_weekly_menu / POST /menu/generate, never by the empty row the web
+ * creates when opening a week — counted by `week_start`, so regenerating the
+ * same week doesn't count twice. Read after the turn: includes this week.
+ * Used by WhatsApp (week digest/caption) and the web chat (PRO-170).
+ */
+export async function generatedWeeksOf(userId: string, db: any = defaultDb): Promise<number> {
+  const scope = scopeWhere(menus.userId, menus.householdId, await resolveScope(userId, db))
+  const [row] = await db
+    .select({ n: sql<number>`count(distinct ${menus.weekStart})::int` })
+    .from(menus)
+    .innerJoin(menuLogs, eq(menuLogs.menuId, menus.id))
+    .where(scope)
+  return Number(row?.n ?? 0)
 }

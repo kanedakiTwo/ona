@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { Dish, RecipeDish } from '@ona/shared'
+import type { DayMenu, Dish, RecipeDish } from '@ona/shared'
 import {
   addDish,
   removeDishAt,
@@ -7,6 +7,8 @@ import {
   patchDish,
   dishCountFor,
   coursesFor,
+  slotWithDishes,
+  moveSlotInWeek,
 } from '../services/menuDishes.js'
 
 const r = (id: string, course?: 'starter' | 'main' | 'dessert'): RecipeDish => ({
@@ -87,5 +89,65 @@ describe('dishCountFor + coursesFor', () => {
     expect(coursesFor(1)).toEqual([null])
     expect(coursesFor(2)).toEqual(['starter', 'main'])
     expect(coursesFor(3)).toEqual(['starter', 'main', 'dessert'])
+  })
+})
+
+// PRO-102: a changed or moved dish keeps its diners and its leftovers.
+describe('slotWithDishes', () => {
+  it('keeps «Solo hoy» (servings) when the dishes change', () => {
+    const slot = { servings: 4, dishes: [r('old')] as Dish[] }
+    expect(slotWithDishes(slot, [r('new')])).toEqual({ servings: 4, dishes: [r('new')] })
+    expect(slot.dishes).toEqual([r('old')])
+  })
+  it('a slot without diners stays without them; a missing slot gets just the dishes', () => {
+    expect(slotWithDishes({ dishes: [r('old')] }, [r('new')])).toEqual({ dishes: [r('new')] })
+    expect(slotWithDishes(undefined, [r('new')])).toEqual({ dishes: [r('new')] })
+  })
+})
+
+describe('moveSlotInWeek', () => {
+  const curry: RecipeDish = { kind: 'recipe', recipeId: 'curry', recipeName: 'Curry de garbanzos' }
+  const leftover = (day: number, meal: string): RecipeDish => ({ ...curry, variant: 'leftover', leftoverOf: { day, meal, dishPosition: 0 } })
+  // Laura, 2026-10-14: Monday's curry, cooked for 2 with a táper for Saturday.
+  const week = (): DayMenu[] => {
+    const days: DayMenu[] = Array.from({ length: 7 }, () => ({}))
+    days[0].dinner = { servings: 2, dishes: [curry] }
+    days[3].dinner = { dishes: [r('tortilla')] }
+    days[5].lunch = { servings: 1, dishes: [leftover(0, 'dinner')] }
+    return days
+  }
+
+  it('moving a dish to an empty slot carries its «Solo hoy» and its leftovers follow it', () => {
+    const days = week()
+    delete days[3].dinner
+    const out = moveSlotInWeek(days, { day: 0, meal: 'dinner' }, { day: 3, meal: 'dinner' })
+    expect(out[0].dinner).toBeUndefined()
+    expect(out[3].dinner).toEqual({ servings: 2, dishes: [curry] })
+    expect(out[5].lunch).toEqual({ servings: 1, dishes: [leftover(3, 'dinner')] })
+    // the input is untouched
+    expect(days[0].dinner).toEqual({ servings: 2, dishes: [curry] })
+    expect(days[5].lunch!.dishes[0]).toEqual(leftover(0, 'dinner'))
+  })
+
+  it('a swap moves both slots whole and repoints the leftovers of each', () => {
+    const days = week()
+    days[6].lunch = { dishes: [{ ...r('tortilla'), variant: 'leftover', leftoverOf: { day: 3, meal: 'dinner', dishPosition: 0 } }] }
+    const out = moveSlotInWeek(days, { day: 0, meal: 'dinner' }, { day: 3, meal: 'dinner' })
+    expect(out[3].dinner).toEqual({ servings: 2, dishes: [curry] })
+    expect(out[0].dinner).toEqual({ dishes: [r('tortilla')] })
+    expect((out[5].lunch!.dishes[0] as RecipeDish).leftoverOf).toEqual({ day: 3, meal: 'dinner', dishPosition: 0 })
+    expect((out[6].lunch!.dishes[0] as RecipeDish).leftoverOf).toEqual({ day: 0, meal: 'dinner', dishPosition: 0 })
+  })
+
+  it('the batch the moved dish cooks still counts the táper (same rule as the shopping list)', async () => {
+    const { withLeftoverBatches } = await import('../services/shoppingList.js')
+    const days = week()
+    delete days[3].dinner
+    const out = moveSlotInWeek(days, { day: 0, meal: 'dinner' }, { day: 3, meal: 'dinner' })
+    // Monday's «Solo hoy: 2» already covers Saturday's táper: before and
+    // after the move, the leftover adds nothing to the list.
+    expect(withLeftoverBatches(days)[5].lunch!.dishes).toEqual([])
+    expect(withLeftoverBatches(out)[5].lunch!.dishes).toEqual([])
+    expect(withLeftoverBatches(out)[3].dinner).toEqual({ servings: 2, dishes: [curry] })
   })
 })

@@ -5,15 +5,14 @@
 #
 # All fdcIds below were chosen to favour Foundation / SR Legacy entries
 # (per-100 g values). They should be re-verified against the live USDA API by
-# the curator; if a kcal/macro looks wrong the fix is to change the fdcId, not
-# to hand-edit the nutrition columns.
+# the curator; if a kcal/macro looks wrong, fix the fdcId here.
+#
+# Rows Cocina corrected by hand on 2026-10-17 (BEDCA, typical labels, or the
+# USDA entry the old fdcId missed: several pointed at the wrong food or at
+# Foundation entries with no energy value) are left out of this map, so a
+# re-seed doesn't bring the wrong values back. `auditCatalogRecipes.ts` lists
+# any ingredient left at 0 kcal or without unit weight / density.
 
-- name: cebolla
-  fdcId: 170000
-  aisle: produce
-  density: null
-  unitWeight: 110
-  allergenTags: []
 - name: ajo
   fdcId: 169230
   aisle: produce
@@ -68,12 +67,6 @@
   density: null
   unitWeight: 150
   allergenTags: []
-- name: aguacate
-  fdcId: 171705
-  aisle: produce
-  density: null
-  unitWeight: 200
-  allergenTags: []
 - name: manzana
   fdcId: 171688
   aisle: produce
@@ -100,13 +93,6 @@
   allergenTags: []
 - name: salmon
   fdcId: 175167
-  aisle: proteinas
-  density: null
-  unitWeight: null
-  allergenTags:
-    - pescado
-- name: atun
-  fdcId: 173706
   aisle: proteinas
   density: null
   unitWeight: null
@@ -152,13 +138,6 @@
   unitWeight: null
   allergenTags:
     - lactosa
-- name: mantequilla
-  fdcId: 173410
-  aisle: lacteos
-  density: 0.91
-  unitWeight: null
-  allergenTags:
-    - lactosa
 - name: arroz
   fdcId: 169756
   aisle: despensa
@@ -199,26 +178,8 @@
   density: 0.91
   unitWeight: null
   allergenTags: []
-- name: aceite de girasol
-  fdcId: 1750349
-  aisle: despensa
-  density: 0.92
-  unitWeight: null
-  allergenTags: []
-- name: aceitunas negras
-  fdcId: 169095
-  aisle: despensa
-  density: null
-  unitWeight: null
-  allergenTags: []
 - name: aceitunas verdes
   fdcId: 169096
-  aisle: despensa
-  density: null
-  unitWeight: null
-  allergenTags: []
-- name: alcaparras
-  fdcId: 172238
   aisle: despensa
   density: null
   unitWeight: null
@@ -237,42 +198,6 @@
   unitWeight: null
   allergenTags:
     - frutos_secos
-- name: azucar
-  fdcId: 746784
-  aisle: despensa
-  density: null
-  unitWeight: null
-  allergenTags: []
-- name: caldo de pollo
-  fdcId: 172884
-  aisle: despensa
-  density: 1
-  unitWeight: null
-  allergenTags: []
-- name: caldo de verduras
-  fdcId: 171180
-  aisle: despensa
-  density: 1
-  unitWeight: null
-  allergenTags: []
-- name: canela
-  fdcId: 171320
-  aisle: despensa
-  density: null
-  unitWeight: null
-  allergenTags: []
-- name: comino
-  fdcId: 170923
-  aisle: despensa
-  density: null
-  unitWeight: null
-  allergenTags: []
-- name: curcuma
-  fdcId: 172231
-  aisle: despensa
-  density: null
-  unitWeight: null
-  allergenTags: []
 - name: cuscus
   fdcId: 169699
   aisle: despensa
@@ -280,12 +205,6 @@
   unitWeight: null
   allergenTags:
     - gluten
-- name: fideos
-  fdcId: 169731
-  aisle: despensa
-  density: null
-  unitWeight: null
-  allergenTags: []
 - name: judias blancas
   fdcId: 175202
   aisle: despensa
@@ -298,89 +217,8 @@
   density: null
   unitWeight: null
   allergenTags: []
-- name: ketchup
-  fdcId: 168556
-  aisle: despensa
-  density: null
-  unitWeight: null
-  allergenTags: []
-- name: laurel
-  fdcId: 168416
-  aisle: despensa
-  density: null
-  unitWeight: null
-  allergenTags: []
-- name: levadura
-  fdcId: 175043
-  aisle: despensa
-  density: null
-  unitWeight: null
-  allergenTags: []
-- name: mayonesa
-  fdcId: 2758986
-  aisle: despensa
-  density: null
-  unitWeight: null
-  allergenTags: []
-- name: miel
-  fdcId: 169640
-  aisle: despensa
-  density: null
-  unitWeight: null
-  allergenTags: []
-- name: mostaza
-  fdcId: 326698
-  aisle: despensa
-  density: null
-  unitWeight: null
-  allergenTags:
-    - mostaza
-- name: nueces
-  fdcId: 170187
-  aisle: despensa
-  density: null
-  unitWeight: null
-  allergenTags: []
-- name: nuez moscada
-  fdcId: 171326
-  aisle: despensa
-  density: null
-  unitWeight: null
-  allergenTags:
-    - frutos_secos
-- name: oregano
-  fdcId: 171328
-  aisle: despensa
-  density: null
-  unitWeight: null
-  allergenTags: []
-- name: pasas
-  fdcId: 2758980
-  aisle: despensa
-  density: null
-  unitWeight: null
-  allergenTags: []
-- name: pasta de tomate
-  fdcId: 2685580
-  aisle: despensa
-  density: null
-  unitWeight: null
-  allergenTags:
-    - gluten
-- name: pimenton dulce
-  fdcId: 171329
-  aisle: despensa
-  density: null
-  unitWeight: null
-  allergenTags: []
 - name: pimenton picante
   fdcId: 171329
-  aisle: despensa
-  density: null
-  unitWeight: null
-  allergenTags: []
-- name: pimienta negra
-  fdcId: 170931
   aisle: despensa
   density: null
   unitWeight: null
@@ -403,19 +241,6 @@
   density: null
   unitWeight: null
   allergenTags: []
-- name: sal
-  fdcId: 173468
-  aisle: despensa
-  density: null
-  unitWeight: null
-  allergenTags: []
-- name: salsa de soja
-  fdcId: 174278
-  aisle: despensa
-  density: 1.05
-  unitWeight: null
-  allergenTags:
-    - soja
 - name: sesamo
   fdcId: 170150
   aisle: despensa
@@ -498,29 +323,8 @@
   unitWeight: null
   allergenTags:
     - lactosa
-- name: queso cheddar
-  fdcId: 328637
-  aisle: lacteos
-  density: null
-  unitWeight: null
-  allergenTags:
-    - lactosa
 - name: queso de cabra
   fdcId: 173435
-  aisle: lacteos
-  density: null
-  unitWeight: null
-  allergenTags:
-    - lactosa
-- name: queso fresco
-  fdcId: 172180
-  aisle: lacteos
-  density: null
-  unitWeight: null
-  allergenTags:
-    - lactosa
-- name: queso manchego
-  fdcId: 169081
   aisle: lacteos
   density: null
   unitWeight: null
@@ -552,30 +356,11 @@
   density: null
   unitWeight: null
   allergenTags: []
-- name: apio
-  fdcId: 2346405
-  aisle: produce
-  density: null
-  unitWeight: null
-  allergenTags:
-    - apio
-- name: arandanos
-  fdcId: 2346411
-  aisle: produce
-  density: null
-  unitWeight: null
-  allergenTags: []
 - name: berenjena
   fdcId: 169228
   aisle: produce
   density: null
   unitWeight: 250
-  allergenTags: []
-- name: boniato
-  fdcId: 169303
-  aisle: produce
-  density: null
-  unitWeight: 130
   allergenTags: []
 - name: calabaza
   fdcId: 168448
@@ -585,18 +370,6 @@
   allergenTags: []
 - name: champinones
   fdcId: 169251
-  aisle: produce
-  density: null
-  unitWeight: null
-  allergenTags: []
-- name: cilantro
-  fdcId: 169997
-  aisle: produce
-  density: null
-  unitWeight: null
-  allergenTags: []
-- name: frambuesas
-  fdcId: 2346410
   aisle: produce
   density: null
   unitWeight: null
@@ -619,35 +392,11 @@
   density: null
   unitWeight: null
   allergenTags: []
-- name: jengibre fresco
-  fdcId: 169231
-  aisle: produce
-  density: null
-  unitWeight: null
-  allergenTags: []
-- name: judias verdes
-  fdcId: 2346400
-  aisle: produce
-  density: null
-  unitWeight: null
-  allergenTags: []
-- name: lechuga
-  fdcId: 2346388
-  aisle: produce
-  density: null
-  unitWeight: null
-  allergenTags: []
 - name: lima
   fdcId: 168155
   aisle: produce
   density: null
   unitWeight: 60
-  allergenTags: []
-- name: limon
-  fdcId: 167747
-  aisle: produce
-  density: null
-  unitWeight: 70
   allergenTags: []
 - name: mango
   fdcId: 169910
@@ -667,12 +416,6 @@
   density: null
   unitWeight: null
   allergenTags: []
-- name: naranja
-  fdcId: 169103
-  aisle: produce
-  density: null
-  unitWeight: 130
-  allergenTags: []
 - name: pepino
   fdcId: 169225
   aisle: produce
@@ -685,23 +428,11 @@
   density: null
   unitWeight: 175
   allergenTags: []
-- name: perejil
-  fdcId: 170416
-  aisle: produce
-  density: null
-  unitWeight: null
-  allergenTags: []
 - name: pimiento verde
   fdcId: 170427
   aisle: produce
   density: null
   unitWeight: 120
-  allergenTags: []
-- name: pina
-  fdcId: 2346398
-  aisle: produce
-  density: null
-  unitWeight: null
   allergenTags: []
 - name: puerro
   fdcId: 169246
@@ -711,18 +442,6 @@
   allergenTags: []
 - name: rabanitos
   fdcId: 169276
-  aisle: produce
-  density: null
-  unitWeight: null
-  allergenTags: []
-- name: remolacha
-  fdcId: 2685576
-  aisle: produce
-  density: null
-  unitWeight: null
-  allergenTags: []
-- name: romero
-  fdcId: 173473
   aisle: produce
   density: null
   unitWeight: null
@@ -745,12 +464,6 @@
   density: null
   unitWeight: null
   allergenTags: []
-- name: tomillo
-  fdcId: 173470
-  aisle: produce
-  density: null
-  unitWeight: null
-  allergenTags: []
 - name: bacalao
   fdcId: 171955
   aisle: proteinas
@@ -766,20 +479,8 @@
   allergenTags:
     - marisco
     - moluscos
-- name: cerdo
-  fdcId: 2646168
-  aisle: proteinas
-  density: null
-  unitWeight: null
-  allergenTags: []
 - name: cordero
   fdcId: 174370  # Lamb, ground, raw (SR Legacy). Was 168148 (Frog legs, raw) — yaml typo.
-  aisle: proteinas
-  density: null
-  unitWeight: null
-  allergenTags: []
-- name: costillas de cerdo
-  fdcId: 167895
   aisle: proteinas
   density: null
   unitWeight: null
@@ -792,12 +493,6 @@
   allergenTags:
     - crustaceos
     - marisco
-- name: jamon
-  fdcId: 167909
-  aisle: proteinas
-  density: null
-  unitWeight: null
-  allergenTags: []
 - name: mejillones
   fdcId: 174216
   aisle: proteinas
@@ -806,13 +501,6 @@
   allergenTags:
     - marisco
     - moluscos
-- name: merluza
-  fdcId: 171949
-  aisle: proteinas
-  density: null
-  unitWeight: null
-  allergenTags:
-    - pescado
 - name: pavo
   fdcId: 171098
   aisle: proteinas
@@ -834,13 +522,6 @@
   unitWeight: null
   allergenTags:
     - pescado
-- name: seitan
-  fdcId: 168147
-  aisle: proteinas
-  density: null
-  unitWeight: null
-  allergenTags:
-    - gluten
 - name: tempeh
   fdcId: 174272
   aisle: proteinas

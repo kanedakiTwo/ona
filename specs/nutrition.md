@@ -67,7 +67,7 @@ Warnings are surfaced to the recipe author / curator but do not block saving.
 ## Constraints
 
 - All nutrition values are stored as numbers in standard SI units (g, mg) per 100 g of ingredient; the API rounds for display (kcal → integer, macros → 1 decimal)
-- Values come from USDA through `fdcId` when there is a reliable match. Spanish products with no USDA equivalent (chorizo, morcilla, lacón…) and rows the USDA auto-create got wrong carry BEDCA or typical-label values set by Cocina; a wrong value is fixed in place, and its `fdcId` cleared when the mapping caused it, so a USDA re-seed doesn't bring it back
+- Values come from USDA through `fdcId` when there is a reliable match. Spanish products with no USDA equivalent (chorizo, morcilla, lacón…) and rows the USDA auto-create got wrong carry BEDCA or typical-label values set by Cocina; a wrong value is fixed in place and the row is left out of `seed/data/ingredient-fdc-map.yaml`, so a USDA re-seed doesn't bring it back (2026-10-17: Cocina corrected 149 rows; 52 mappings came out of the map)
 - An ingredient at 0 kcal (other than agua and sal), or used in `u` without `unitWeight` / in `ml` without `density`, under-counts every recipe that uses it: the catalogue audit flags them
 - Allergen tags are authoritative for badges and filters but are advisory, not legal — the UI shows a small disclaimer
 - Recomputation on save is synchronous; large recipes (> 30 ingredients) must still complete inside one HTTP request

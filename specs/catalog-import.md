@@ -39,7 +39,7 @@ Run from a laptop with `DATABASE_URL` and `ANTHROPIC_API_KEY` (see the file head
 
 - **What counts as «we don't have it»** (`catalogCoversDish`): a dish is covered when every significant word of it is in one published recipe's name («carbonara» ⊂ «Espaguetis a la carbonara»). One shared word isn't enough («pastel de carne» is not covered by «Menestra de verduras con carne»). An answer like «cremas y sopas» means either, so a crema *or* a sopa covers it.
 - **One wish per dish** (`dish_key`: accents, plurals, order and filler words aside) and **one vote per household** per source (the user's own id when they have no household); the count is distinct households.
-- **Sources today**: `alta` — the favourite dishes of the sign-up (web and WhatsApp, both through `saveOnboarding`) that the catalogue doesn't cover; best effort, never breaks the sign-up. `evaluador` (PRO-155) and `mimo` are accepted by `recordCatalogWish` for those callers.
+- **Sources today**: `alta` — the favourite dishes of the sign-up (web and WhatsApp, both through `saveOnboarding`) that the catalogue doesn't cover; best effort, never breaks the sign-up. `evaluador` (PRO-155) — favourite dishes the menu evaluator finds «no está en el catálogo» after each generated week (`services/menuFit.ts`). `mimo` is accepted by `recordCatalogWish` for that caller.
 - `GET /admin/catalog-wishes?status=abierto|cubierto|descartado|todos&limit=` — admin JWT or `x-metrics-token` (Cocina's read). Returns dish, households, sources, status, covering recipe and dates; never who asked.
 
 ## Constraints
@@ -53,7 +53,6 @@ Run from a laptop with `DATABASE_URL` and `ANTHROPIC_API_KEY` (see the file head
 
 - **Requests to Mimo that end as a note** → wish (`source: 'mimo'`): the call belongs in `assistant/skills.ts` (`recordCatalogWish({ dish, source: 'mimo', userId })`), left out because that file is being changed in another branch.
 - **«Me encanta» with no similar recipe** (`me_encanta`): today every «Me encanta» (rating 5) is on a recipe we have; the source is reserved for when the household profile records loved dishes without a recipe.
-- **«No está en el catálogo» from the menu evaluator** (PRO-155) → `recordCatalogWish({ source: 'evaluador' })`.
 - No admin buttons yet to mark a wish «descartado» or to publish from the web; both are done from the command for now.
 
 ## Related specs

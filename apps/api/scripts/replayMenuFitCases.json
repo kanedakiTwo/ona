@@ -1,0 +1,17 @@
+[
+  {
+    "label": "acierto alto",
+    "user": "Hazme el menú de la semana",
+    "summary": "Menu generado para la semana del 2026-10-19. lunes: lunch: Espaguetis a la carbonara, dinner: Crema de calabaza; martes: lunch: Rodaballo al horno con patatas, dinner: Sopa juliana; miercoles: lunch: Lentejas estofadas; jueves: lunch: Croquetas de cocido; viernes: lunch: Chuletón con pimientos\nAcierto con sus gustos: 86/100 (alto). Se cumplen: carbonara (Espaguetis a la carbonara), cremas y sopas (Crema de calabaza), rodaballo al horno (Rodaballo al horno con patatas), croquetas de cocido (Croquetas de cocido), chuletón (Chuletón con pimientos). No cabian esta semana (las tenemos): buñuelos de bacalao."
+  },
+  {
+    "label": "acierto medio",
+    "user": "Hazme el menú de la semana",
+    "summary": "Menu generado para la semana del 2026-10-19. lunes: lunch: Espaguetis a la carbonara, dinner: Ensalada de garbanzos; martes: lunch: Curry de tofu, dinner: Crema de calabaza; miercoles: lunch: Lentejas estofadas; jueves: lunch: Pollo al horno; viernes: lunch: Merluza en salsa verde\nAcierto con sus gustos: 52/100 (medio). Se cumplen: carbonara (Espaguetis a la carbonara), cremas y sopas (Crema de calabaza). No estan en el catalogo: pastel de carne con pure, chuleton. No cabian esta semana (las tenemos): rodaballo al horno."
+  },
+  {
+    "label": "acierto bajo (el caso real del 2026-10-16)",
+    "user": "Hazme el menú de la semana",
+    "summary": "Menu generado para la semana del 2026-10-19. lunes: lunch: Lentejas estofadas, dinner: Onigirazu de salmon; martes: lunch: Menestra de verduras con carne, dinner: Curry de tofu; miercoles: lunch: Oreja a la plancha; jueves: lunch: Curry de patatas y guisantes\nAcierto con sus gustos: 6/100 (bajo). No estan en el catalogo: carbonara, pastel de carne con pure, rodaballo al horno, croquetas de cocido, buñuelos de bacalao, chuleton. No cabian esta semana (las tenemos): cremas y sopas. Formas de añadir recetas que este hogar aun no ha usado: mandarme una foto de la receta; pasarme el enlace de una receta (web, YouTube, Instagram); escribirmela por aqui (ingredientes y pasos, o solo el nombre y la creo yo)."
+  }
+]

@@ -43,6 +43,7 @@ import { PageFetchError, UnsafeUrlError } from '../net/publicFetch.js'
 import type { SkillDefinition, SkillContext, SkillResult } from './types.js'
 import { HEALTH_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY } from '../healthConsent.js'
 import { saveOnboarding } from '../onboarding.js'
+import { evaluateAndSaveMenuFit, menuFitSummary } from '../menuFit.js'
 import { isHealthMemoryKey } from '@ona/shared'
 
 /**
@@ -674,9 +675,13 @@ const generateWeeklyMenu: SkillDefinition = {
       return `${dayNames[i]}: ${meals.join(', ')}`
     }).join('; ')
 
+    // «Cuánto ha acertado» (PRO-155): Mimo tells it following the prompt's guide.
+    const fit = await evaluateAndSaveMenuFit({ userId, menuId: menu.id, days }, db)
+    const fitLine = menuFitSummary(fit)
+
     return {
-      data: menu,
-      summary: `Menu generado para la semana del ${weekStart}. ${menuSummary}`,
+      data: { ...menu, fit },
+      summary: `Menu generado para la semana del ${weekStart}. ${menuSummary}${fitLine ? `\n${fitLine}` : ''}`,
       uiHint: 'menu',
     }
   },
@@ -708,8 +713,8 @@ const completeOnboarding: SkillDefinition = {
         type: 'array',
         items: { type: 'string' },
         minItems: 1,
-        maxItems: 5,
-        description: 'Platos que les gustan, tal como los dice el usuario.',
+        maxItems: 30,
+        description: 'Platos que les gustan, tal como los dice el usuario: todos los que diga, no hay tope de cinco.',
       },
       priority: {
         type: 'string',
@@ -735,7 +740,7 @@ const completeOnboarding: SkillDefinition = {
     const favoriteDishes = (Array.isArray(params?.favoriteDishes) ? params.favoriteDishes : [])
       .map((d) => String(d).trim())
       .filter(Boolean)
-      .slice(0, 5)
+      .slice(0, 30)
     const missing = [
       !(adults >= 1 && adults <= 20) && 'cuantos adultos son',
       !(kidsCount >= 0 && kidsCount <= 20) && 'cuantos niños',

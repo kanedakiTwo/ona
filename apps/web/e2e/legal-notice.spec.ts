@@ -37,6 +37,9 @@ test('footer → /aviso-legal shows the holder; /privacidad names the controller
   await expect(page.getByTestId('privacy-web-analytics')).toContainText('sin cookies')
   // PRO-148: the web chat with Mimo is kept 90 days.
   await expect(page.getByTestId('privacy-web-chat')).toContainText('90 días')
+  // PRO-151: Legal's text for the free sign-up note and the products ticked in the list.
+  await expect(page.getByTestId('privacy-signup-shopping')).toContainText('Lo que nos cuentas al darte de alta y lo que compras')
+  await expect(page.getByTestId('privacy-signup-shopping')).toContainText('Anthropic')
   await expect(page.locator('script[src*="cloudflareinsights"]')).toHaveCount(0)
 })
 

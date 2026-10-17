@@ -50,6 +50,13 @@ export default function PrivacidadPage() {
               puedes borrarlos cuando quieras desde tu perfil.
             </li>
             <li><strong>Tu uso de Mimoia:</strong> menús, lista de la compra, despensa, recetas propias y fotos que subas.</li>
+            <li data-testid="privacy-signup-shopping">
+              <strong>Lo que nos cuentas al darte de alta y lo que compras.</strong> Si escribes algo con tus palabras al
+              darte de alta (lo que os gusta, cómo cocináis) y los productos que marcas en la lista de la compra, los usamos
+              para conocer los gustos de tu hogar y ajustar tu menú. Los analiza una inteligencia artificial de Anthropic,
+              que trabaja para nosotros como encargada del tratamiento. No escribas ahí datos de salud: para alergias e
+              intolerancias está el apartado de salud, que pide tu permiso. Lo guardamos mientras tengas la cuenta.
+            </li>
             <li>
               <strong>Tus opiniones sobre Mimoia:</strong> lo que nos cuentas desde el botón «Opinión» o le dices a Mimo
               para el equipo (sugerencias, fallos, quejas), con la página desde la que lo enviaste.

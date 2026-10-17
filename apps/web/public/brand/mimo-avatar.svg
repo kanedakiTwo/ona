@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Mimo">
+  <title>Mimo</title>
+  <defs><clipPath id="mimo-c"><circle cx="50" cy="50" r="50"/></clipPath></defs>
+  <circle cx="50" cy="50" r="50" fill="#2D6A4F"/>
+  <g clip-path="url(#mimo-c)">
+    <path d="M41 54 Q46 60 45.6 68 L44 104 L56 104 L54.4 68 Q54 60 59 54 Z" fill="#FAF6EE"/>
+    <ellipse cx="50" cy="38" rx="21" ry="24" fill="#FAF6EE"/>
+  </g>
+  <circle cx="42.5" cy="34" r="2.6" fill="#2D6A4F"/>
+  <circle cx="57.5" cy="34" r="2.6" fill="#2D6A4F"/>
+  <path d="M44.5 42.5 Q50 47.5 55.5 42.5" fill="none" stroke="#2D6A4F" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M62.5 46.2 C59.6 44.2 58.6 42 60.2 40.6 C61.2 39.8 62.2 40.3 62.5 41.2 C62.8 40.3 63.8 39.8 64.8 40.6 C66.4 42 65.4 44.2 62.5 46.2 Z" fill="#2D6A4F"/>
+</svg>

@@ -9,6 +9,8 @@ import { useMimo, type MimoStatus } from './MimoProvider'
 import { isCookPath, isRecipeDetailPath } from './MimoButton'
 import { MimoAvatar } from '@/components/brand/Mimoia'
 import { linkRecipeNames } from '@/lib/mimoRecipeLinks'
+import { useBilling } from '@/hooks/useBilling'
+import { AccountAccessNotice, isPaused } from '@/components/billing/AccountAccessNotice'
 
 /** Suggestions for an empty conversation, by page. */
 export function suggestionsFor(pathname: string | null): string[] {
@@ -34,6 +36,7 @@ export default function MimoPanel() {
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const busy = mimo.status === 'thinking' || mimo.status === 'transcribing'
+  const paused = isPaused(useBilling().data)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
@@ -178,7 +181,13 @@ export default function MimoPanel() {
           <div ref={bottomRef} />
         </div>
 
-        {/* Composer */}
+        {/* PRO-135: a paused account can't talk to Mimo; the panel says why and offers the plans. */}
+        {paused ? (
+        <div className="flex-none border-t border-[#DDD6C5] bg-[#FFFEFA] px-4 pb-[max(var(--safe-bottom),12px)] pt-3">
+          <AccountAccessNotice variant="panel" />
+        </div>
+        ) : (
+        /* Composer */
         <div className="flex-none border-t border-[#DDD6C5] bg-[#FFFEFA] px-4 pb-[max(var(--safe-bottom),12px)] pt-3">
           {mimo.canListen && (
             <div className="mb-2 flex items-center justify-between">
@@ -260,6 +269,7 @@ export default function MimoPanel() {
             {AI_DISCLOSURE}
           </p>
         </div>
+        )}
       </section>
     </>
   )

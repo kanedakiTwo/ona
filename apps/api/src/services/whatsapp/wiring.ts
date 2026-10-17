@@ -12,6 +12,7 @@ import { checkAdvisorBudget, recordAdvisorUsage } from '../advisorBudget.js'
 import { isSttConfigured, transcribeAudio } from '../stt.js'
 import { importRecipeFromImage, setRecipeSourceUrl } from '../recipeImport.js'
 import { isUserAllowed } from './config.js'
+import { isAccountPaused } from '../accountAccess.js'
 import * as store from './store.js'
 import * as client from './client.js'
 import type { InboundDeps } from './inbound.js'
@@ -91,6 +92,7 @@ export function buildInboundDeps(): InboundDeps {
       return cap.exceeded ? { exceeded: true, budgetMicros: Math.round(cap.capEur * 1_000_000) } : advisor
     },
     recordUsage: (userId, usage) => recordAdvisorUsage(userId, usage, db),
+    isPaused: (userId) => isAccountPaused(userId),
     // The week the turn generated or read (or the user's latest), read back
     // after the whole turn, scoped to the caller's household like every menu read.
     menuDigest: async (userId, menuId, view) => {

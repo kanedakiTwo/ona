@@ -50,6 +50,8 @@ import { recordPendingReferralRewardsIfDue } from './referralRewards.js'
 import { purgeOldUsageEventsIfDue } from './usageEvents.js'
 import { CHAT_RETENTION_DAYS, purgeOldChatMessagesIfDue } from './chatMessages.js'
 import { sendWaitlistInviteRemindersIfDue } from './waitlistInvites.js'
+import { isAccountPaused } from './accountAccess.js'
+import { sendTrialEndingEmailsIfDue } from './trialEmails.js'
 import { combineDelivery, type ChannelOutcome } from './whatsapp/proactive.js'
 
 // ─── Habit → method matcher ─────────────────────────────────────
@@ -463,6 +465,8 @@ async function tickOnce(): Promise<true> {
       // A failed check must not swallow a real alert: send it as before.
       console.warn('[notificationScheduler] prep alert check failed (sending anyway):', err)
     }
+    // PRO-135: a paused account gets no alerts (only the notice to choose a plan).
+    if (!stale && (await isAccountPaused(row.userId, now))) stale = 'cuenta en pausa'
     if (stale) {
       await db
         .update(notificationSchedule)
@@ -554,6 +558,17 @@ async function tickOnce(): Promise<true> {
     }
   } catch (err) {
     console.error('[notificationScheduler] waitlist invite reminders failed:', err)
+  }
+
+  // PRO-135: «te quedan 2 días de prueba» to each household owner, once
+  // (from launch day only; checked once an hour).
+  try {
+    const r = await sendTrialEndingEmailsIfDue(now)
+    if (r && r.sent + r.failed + r.skipped > 0) {
+      console.log(`[trial] ending emails: ${r.sent} sent, ${r.failed} failed, ${r.skipped} skipped`)
+    }
+  } catch (err) {
+    console.error('[notificationScheduler] trial ending emails failed:', err)
   }
   return true
 }

@@ -83,6 +83,11 @@ export interface InboundDeps {
     opts: ChatOptions,
   ) => Promise<AssistantResponse & { usage: TokenUsage }>
   checkBudget: (userId: string) => Promise<{ exceeded: boolean; budgetMicros: number }>
+  /**
+   * PRO-135: the account is paused (trial over, no plan; never before launch
+   * day). Its messages get only the notice to choose a plan. Absent → never paused.
+   */
+  isPaused?: (userId: string) => Promise<boolean>
   recordUsage: (userId: string, usage: TokenUsage) => Promise<void>
   /** Speech-to-text for voice notes. Absent → voice notes get a polite "escríbemelo". */
   transcribe?: (audio: Buffer, mimeType: string) => Promise<string>
@@ -392,6 +397,9 @@ export const COPY = {
   suspended: (email?: string) =>
     `Tu cuenta de Mimoia está suspendida. Si crees que es un error, ${humanContact(email)}.`,
   notAllowed: 'WhatsApp todavía no está disponible para tu cuenta de Mimoia.',
+  /** PRO-135: trial over without a plan. The only thing a paused account hears from Mimo (Legal reviews it). */
+  paused: (url: string) =>
+    `Tu prueba de Mimoia ha terminado y tu cuenta está en pausa, así que ahora no puedo ayudarte por aquí. No se ha borrado nada: tu menú, tus recetas y tu lista siguen en la app.\n\nSi quieres que sigamos, elige un plan (o pídeselo a quien gestiona tu hogar):\n${url}`,
   budget: (euros: string) =>
     `Has alcanzado tu límite mensual del asistente (€${euros}). Se renueva el mes que viene.`,
   unsupported: 'Todavía no entiendo ese tipo de mensaje. Escríbeme, mándame una nota de voz o una foto de una receta.',
@@ -639,6 +647,12 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
   if (!deps.isUserAllowed(link.email)) {
     await store.updateInbound(msg.wamid, { status: 'ignored', userId })
     await sendText(userId, 'system', COPY.notAllowed)
+    return
+  }
+  // PRO-135: a paused account gets only the notice to choose a plan, no Mimo.
+  if (deps.isPaused && (await deps.isPaused(userId))) {
+    await store.updateInbound(msg.wamid, { status: 'ignored', userId, errorMessage: 'account-paused' })
+    await sendText(userId, 'paused', COPY.paused(`${deps.webUrl.replace(/\/$/, '')}/profile/suscripcion`))
     return
   }
 

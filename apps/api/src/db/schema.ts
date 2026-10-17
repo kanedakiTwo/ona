@@ -559,6 +559,8 @@ export const households = pgTable('households', {
   name: text('name').notNull().default('Mi casa'),
   ownerId: uuid('owner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  /** PRO-135: when the «te quedan 2 días de prueba» email went to the owner (once). */
+  trialEndingEmailAt: timestamp('trial_ending_email_at', { withTimezone: true }),
 }, (t) => [
   index('idx_households_owner').on(t.ownerId),
 ])

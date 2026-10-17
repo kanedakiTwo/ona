@@ -9,6 +9,7 @@ User registration, login, and session management for Mimoia.
 - Users can log in with either username or email plus password
 - **«¿Has olvidado la contraseña?»** under the password on `/login` → `/recuperar`: they write their email, «Enviarme el enlace» → `POST /auth/forgot { email }` and the page always says «Si hay una cuenta con <email>, te acabamos de mandar un enlace. Caduca en 1 hora. Si no lo ves en unos minutos, mira en la carpeta de spam.», whether or not the account exists. An existing, not suspended account gets the reset email ([Email](./email.md)) with a one-time `/reset?token=…` link valid 1 hour (at most 3 an hour per account); `/reset` sets the new password as before
 - Every new account gets a welcome email, beta / household / general ([Email](./email.md)); it never delays or fails the registration
+- **From launch day (2026-12-15) signing up starts the 14-day trial without card** (PRO-135): it counts from the creation of the household (beta households: from launch day). Without a plan when it ends, the account is **paused** — it can log in and see everything, but not generate new menus or use Mimo — until someone in the household chooses a plan; nothing is deleted. Before launch day nobody is paused. See [Billing](./billing.md)
 - Logged-in users receive a JWT token used for subsequent API calls
 - Users can log out (clears local token; no server-side invalidation)
 - Newly registered users are redirected to onboarding before accessing the app

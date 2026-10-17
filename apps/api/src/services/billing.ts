@@ -8,8 +8,9 @@
  *
  * During the beta (until LAUNCH_DATE) a subscription starts as a trial that
  * ends on launch day: the card is saved now and the first charge happens
- * then. Nothing about the plan is enforced yet: the beta runs with Plus for
- * everyone (TODO(billing): plan limits and the paused account from launch day).
+ * then. The beta runs with Plus for everyone. From launch day a household
+ * without a plan is paused when its 14-day trial ends (PRO-135,
+ * `services/accountAccess.ts`). TODO(billing): per-plan caps (PRO-15).
  */
 import Stripe from 'stripe'
 import { and, desc, eq, inArray } from 'drizzle-orm'
@@ -17,6 +18,8 @@ import {
   LAUNCH_DATE,
   MIN_DAYS_CARD_TO_CHARGE,
   TRIAL_DAYS,
+  PAID_ACCESS_STATUSES,
+  accountAccess,
   PLAN_KEYS,
   BILLING_PERIODS,
   stripeLookupKey,
@@ -185,9 +188,10 @@ export function rowFromStripeSubscription(sub: Stripe.Subscription): Subscriptio
 /** What `GET /billing` answers, from the household's latest subscription. */
 export function billingStateFor(
   row: SubscriptionRow | null,
-  opts: { enabled: boolean; canManage: boolean; now: Date; userCreatedAt?: Date | null },
+  opts: { enabled: boolean; canManage: boolean; now: Date; userCreatedAt?: Date | null; householdCreatedAt?: Date | null },
 ): BillingState {
   const live = row && LIVE_STATUSES.includes(row.status) ? row : null
+  const paid = !!row && PAID_ACCESS_STATUSES.includes(row.status)
   const nextCharge = live && !live.cancelAtPeriodEnd ? (live.status === 'trialing' ? live.trialEnd : live.currentPeriodEnd) : null
   return {
     enabled: opts.enabled,
@@ -195,6 +199,7 @@ export function billingStateFor(
     launchDate: LAUNCH_DATE,
     canManage: opts.canManage,
     firstChargeAt: firstChargeInstant({ userCreatedAt: opts.userCreatedAt ?? null, now: opts.now }).toISOString(),
+    access: accountAccess({ householdCreatedAt: opts.householdCreatedAt ?? opts.userCreatedAt ?? null, paid, now: opts.now }),
     subscription: live
       ? {
           plan: live.plan,

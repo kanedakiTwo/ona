@@ -184,6 +184,107 @@ export type SubscriptionStatus =
   | 'incomplete_expired'
   | 'paused'
 
+/**
+ * The 14-day trial and the paused account (PRO-135, D-056/D-057). Only from
+ * launch day: before it, everybody is in the beta (`beta`) and nobody is
+ * paused. From launch day a household has `TRIAL_DAYS` with everything from
+ * when it was created (beta households: from launch day); after that, without
+ * a plan, it is **paused**: it still sees its menu, recipes and list, but it
+ * can't generate new menus or use Mimo. Nothing is ever deleted.
+ */
+export type AccessState = 'beta' | 'trial' | 'paused' | 'subscribed'
+
+export interface AccountAccess {
+  state: AccessState
+  /** When the household's trial ends (ISO): midnight in Madrid after its last day, whatever the state. */
+  trialEndsAt: string
+  /** Last day of the trial, `YYYY-MM-DD` in Madrid (included). */
+  trialLastDay: string
+  /**
+   * While `trial`: whole days left after today (Madrid calendar), 0 on the
+   * last day. Day 12 of 14 → 2. Otherwise null.
+   */
+  daysLeft: number | null
+}
+
+/** «Te quedan 2 días»: the in-app notice and the email go from this many days before the last day (day 12). */
+export const TRIAL_ENDING_NOTICE_DAYS = 2
+
+/** Stripe statuses that give the plan (and so keep the account out of the pause). */
+export const PAID_ACCESS_STATUSES: readonly SubscriptionStatus[] = ['trialing', 'active', 'past_due']
+
+const ACCESS_DAY_MS = 24 * 60 * 60 * 1000
+
+function launchStart(launchDate: string): number {
+  return Date.parse(`${launchDate}T00:00:00+01:00`)
+}
+
+/** `YYYY-MM-DD` of an instant in Madrid. */
+function madridIsoDate(t: number): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(t))
+}
+
+/** 00:00 in Madrid of a `YYYY-MM-DD` (CET or CEST). */
+function madridMidnight(day: string): number {
+  const cet = Date.parse(`${day}T00:00:00+01:00`)
+  // In summer time that instant is 01:00 in Madrid: midnight is an hour earlier.
+  return madridIsoDate(cet - 60 * 60 * 1000) === day ? cet - 60 * 60 * 1000 : cet
+}
+
+function nextDay(day: string): string {
+  const d = new Date(`${day}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + 1)
+  return d.toISOString().slice(0, 10)
+}
+
+function daysBetween(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / ACCESS_DAY_MS)
+}
+
+/**
+ * The household's trial: from max(created, launch day), 14 days, to the end
+ * of that day in Madrid. A beta household: 15 → 28 December, both included.
+ */
+export function trialEndsAt(householdCreatedAt: Date | string | null, launchDate: string = LAUNCH_DATE): { endsAt: Date; lastDay: string } {
+  const created = householdCreatedAt == null ? NaN : typeof householdCreatedAt === 'string' ? Date.parse(householdCreatedAt) : householdCreatedAt.getTime()
+  const start = Math.max(Number.isFinite(created) ? created : 0, launchStart(launchDate))
+  // The last instant of the 14 days, then the end of that Madrid day.
+  const lastDay = madridIsoDate(start + TRIAL_DAYS * ACCESS_DAY_MS - 1)
+  return { endsAt: new Date(madridMidnight(nextDay(lastDay))), lastDay }
+}
+
+export function accountAccess(i: {
+  householdCreatedAt: Date | string | null
+  /** The household has a subscription in `PAID_ACCESS_STATUSES`. */
+  paid: boolean
+  now: Date
+  launchDate?: string
+}): AccountAccess {
+  const launchDate = i.launchDate ?? LAUNCH_DATE
+  const { endsAt, lastDay } = trialEndsAt(i.householdCreatedAt, launchDate)
+  const base = { trialEndsAt: endsAt.toISOString(), trialLastDay: lastDay, daysLeft: null }
+  const now = i.now.getTime()
+  if (now < launchStart(launchDate)) return { state: 'beta', ...base }
+  if (i.paid) return { state: 'subscribed', ...base }
+  if (now < endsAt.getTime()) return { state: 'trial', ...base, daysLeft: daysBetween(madridIsoDate(now), lastDay) }
+  return { state: 'paused', ...base }
+}
+
+/** «el 28 de diciembre» → the last day of the trial, for copy. */
+export function trialLastDayLabel(access: Pick<AccountAccess, 'trialLastDay'>): string {
+  return new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(`${access.trialLastDay}T12:00:00Z`))
+}
+
+/** «Te quedan 2 días» / «Te queda 1 día» / «Hoy es tu último día». */
+export function trialDaysLeftLabel(daysLeft: number): string {
+  if (daysLeft <= 0) return 'Hoy es el último día de tu prueba'
+  return daysLeft === 1 ? 'Te queda 1 día de prueba' : `Te quedan ${daysLeft} días de prueba`
+}
+
+/** What a paused account is told when it tries to generate a menu or talk to Mimo (API 402 `ACCOUNT_PAUSED`). */
+export const ACCOUNT_PAUSED_MESSAGE =
+  'Tu prueba ha terminado y tu cuenta está en pausa. Elige un plan en Perfil → Suscripción para volver a generar menús y hablar con Mimo. No se ha borrado nada.'
+
 /** What `GET /billing` answers (specs/billing.md). */
 export interface BillingState {
   /** Payments are switched on (the API has Stripe keys). */
@@ -195,6 +296,8 @@ export interface BillingState {
   canManage: boolean
   /** If the owner subscribed now, the first charge would be on this day (ISO). */
   firstChargeAt: string
+  /** Trial / paused / subscribed, from launch day (PRO-135). */
+  access: AccountAccess
   subscription: {
     plan: PlanKey
     period: BillingPeriod

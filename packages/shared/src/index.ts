@@ -293,6 +293,13 @@ export {
   FOUNDING_HOUSEHOLD_LABEL,
   isFoundingHousehold,
   subscriptionSummary,
+  TRIAL_ENDING_NOTICE_DAYS,
+  PAID_ACCESS_STATUSES,
+  trialEndsAt,
+  accountAccess,
+  ACCOUNT_PAUSED_MESSAGE,
+  trialLastDayLabel,
+  trialDaysLeftLabel,
 } from './types/plans.js'
 export type {
   PlanKey,
@@ -306,6 +313,8 @@ export type {
   SubscriptionStatus,
   BillingState,
   SubscriptionSummary,
+  AccessState,
+  AccountAccess,
 } from './types/plans.js'
 
 export { LEGAL_OWNER } from './constants/legal.js'

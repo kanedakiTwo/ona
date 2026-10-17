@@ -30,6 +30,7 @@ import {
 } from './proactive.js'
 import { recordCost } from '../costLedger.js'
 import { recordServiceMessageCost } from './serviceCost.js'
+import { isAccountPaused } from '../accountAccess.js'
 
 /** Per-kind templates (WHATSAPP_TEMPLATES), parsed once. */
 const TEMPLATES = parseTemplateMap(env.WHATSAPP_TEMPLATES)
@@ -186,6 +187,8 @@ export async function runProactiveTick(now: Date = new Date()): Promise<void> {
   for (const link of links) {
     if (!isUserAllowed(link.email)) continue
     try {
+      // PRO-135: a paused account gets no proactive message (never before launch day).
+      if (await isAccountPaused(link.userId, now)) continue
       const times = await loadMealTimes(link.userId)
       // Only touch the DB for cooldowns inside a window that could fire.
       if (!anyProactiveWindow(parts, times.breakfast, times.dinner)) continue

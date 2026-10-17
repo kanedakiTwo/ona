@@ -33,6 +33,8 @@ export interface Payer {
   isOwner: boolean
   /** Sign-up: the 14-day trial counts from it (or from launch day for the beta). */
   createdAt: Date | null
+  /** The household's creation: its 14-day trial counts from it (PRO-135). */
+  householdCreatedAt?: Date | null
 }
 
 export interface BillingDeps {
@@ -53,8 +55,18 @@ async function loadPayer(userId: string): Promise<Payer | null> {
     .where(eq(users.id, userId))
     .limit(1)
   if (!u?.householdId) return null
-  const [h] = await db.select({ ownerId: households.ownerId }).from(households).where(eq(households.id, u.householdId)).limit(1)
-  return { householdId: u.householdId, email: u.email, isOwner: h?.ownerId === userId, createdAt: u.createdAt ?? null }
+  const [h] = await db
+    .select({ ownerId: households.ownerId, createdAt: households.createdAt })
+    .from(households)
+    .where(eq(households.id, u.householdId))
+    .limit(1)
+  return {
+    householdId: u.householdId,
+    email: u.email,
+    isOwner: h?.ownerId === userId,
+    createdAt: u.createdAt ?? null,
+    householdCreatedAt: h?.createdAt ?? null,
+  }
 }
 
 function defaults(): BillingDeps {
@@ -80,7 +92,7 @@ export function createBillingRouter(overrides: Partial<BillingDeps> = {}): Route
   router.get('/billing', d.auth, async (req: AuthRequest, res) => {
     const payer = await d.payer(req.userId!)
     const row = payer ? await d.repo.latestForHousehold(payer.householdId) : null
-    res.json(billingStateFor(row, { enabled: d.enabled(), canManage: !!payer?.isOwner, now: d.now(), userCreatedAt: payer?.createdAt ?? null }))
+    res.json(billingStateFor(row, { enabled: d.enabled(), canManage: !!payer?.isOwner, now: d.now(), userCreatedAt: payer?.createdAt ?? null, householdCreatedAt: payer?.householdCreatedAt ?? null }))
   })
 
   router.post('/billing/checkout', d.auth, async (req: AuthRequest, res) => {

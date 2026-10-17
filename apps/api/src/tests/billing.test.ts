@@ -205,6 +205,8 @@ describe('billingStateFor', () => {
   it('beta, nothing paid', () => {
     expect(billingStateFor(null, { enabled: true, canManage: true, now: BETA_NOW, userCreatedAt: new Date('2026-10-21T09:00:00Z') })).toEqual({
       enabled: true, beta: true, launchDate: '2026-12-15', canManage: true, firstChargeAt: '2026-12-29T11:00:00.000Z', subscription: null,
+      // PRO-135: before launch day nobody is in a trial or paused.
+      access: { state: 'beta', trialEndsAt: '2026-12-28T23:00:00.000Z', trialLastDay: '2026-12-28', daysLeft: null },
     })
   })
 
@@ -305,7 +307,7 @@ const PAYERS: Record<string, Payer> = {
   member: { householdId: 'h1', email: 'leo@example.com', isOwner: false, createdAt: new Date('2026-10-22T09:00:00Z') },
 }
 
-async function app(opts: { enabled?: boolean; repo?: ReturnType<typeof memoryRepo>; gateway?: ReturnType<typeof fakeGateway> } = {}) {
+async function app(opts: { enabled?: boolean; repo?: ReturnType<typeof memoryRepo>; gateway?: ReturnType<typeof fakeGateway>; now?: Date } = {}) {
   const repo = opts.repo ?? memoryRepo()
   const gateway = opts.gateway ?? fakeGateway()
   const enabled = () => opts.enabled ?? true
@@ -318,7 +320,7 @@ async function app(opts: { enabled?: boolean; repo?: ReturnType<typeof memoryRep
       gateway,
       enabled,
       payer: async (id) => PAYERS[id] ?? null,
-      now: () => BETA_NOW,
+      now: () => opts.now ?? BETA_NOW,
       webUrl: 'https://mimoia.com',
       auth: fakeAuth,
     }),
@@ -388,6 +390,22 @@ describe('routes', () => {
     expect(await r.json()).toEqual({ received: true, outcome: 'saved' })
     expect(repo.rows).toHaveLength(1)
     expect(repo.rows[0]).toMatchObject({ householdId: 'h1', plan: 'plus', period: 'anual', status: 'trialing' })
+  })
+
+  it('PRO-135: after the trial the household is paused; paying (the webhook) takes it out of the pause', async () => {
+    // The owner's household (created 2026-10-21, beta) after its trial: 2027-02-01.
+    const { call } = await app({ now: AFTER_LAUNCH })
+    expect((await (await call('GET', '/billing', 'owner')).json()).access).toMatchObject({ state: 'paused', trialLastDay: '2026-12-28' })
+    const event = { type: 'customer.subscription.created', data: { object: { id: 'sub_1' } } }
+    expect((await call('POST', '/billing/webhook', undefined, event, { 'stripe-signature': 'good' })).status).toBe(200)
+    expect((await (await call('GET', '/billing', 'owner')).json()).access).toMatchObject({ state: 'subscribed' })
+    // The whole household: the member too.
+    expect((await (await call('GET', '/billing', 'member')).json()).access).toMatchObject({ state: 'subscribed' })
+  })
+
+  it('PRO-135: during the beta GET /billing says beta, never paused', async () => {
+    const { call } = await app()
+    expect((await (await call('GET', '/billing', 'owner')).json()).access).toMatchObject({ state: 'beta', daysLeft: null })
   })
 
   it('webhook: checkout.session.completed links the subscription; other events are ignored', async () => {

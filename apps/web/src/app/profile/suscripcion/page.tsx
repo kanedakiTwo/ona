@@ -14,7 +14,7 @@
 import { Suspense, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { LAUNCH_DATE_LABEL, PLAN_CAPS_NOTE, planByKey, subscriptionSummary, type BillingPeriod, type PlanKey } from '@ona/shared'
+import { LAUNCH_DATE_LABEL, PLAN_CAPS_NOTE, trialLastDayLabel, planByKey, subscriptionSummary, type BillingPeriod, type PlanKey } from '@ona/shared'
 import { PlanCards } from '@/components/billing/PlanCards'
 import { useBilling, useCheckout, usePortal } from '@/hooks/useBilling'
 import { Accent, PILL_INK, PILL_OUTLINE, SUB_CARD, SUB_EYEBROW, SubNotice, SubPage } from '@/components/profile/SubPage'
@@ -58,7 +58,19 @@ function Suscripcion() {
           <Accent>Suscripción</Accent>
         </>
       }
-      intro={state?.beta ? `Durante la beta tienes Plus gratis hasta el ${LAUNCH_DATE_LABEL}.` : undefined}
+      intro={
+        state?.beta ? (
+          `Durante la beta tienes Plus gratis hasta el ${LAUNCH_DATE_LABEL}.`
+        ) : state?.access?.state === 'paused' ? (
+          // PRO-135: texts for Legal to review.
+          <span data-testid="subscription-paused">
+            Tu prueba ha terminado y tu cuenta está en pausa. Elige un plan para volver a generar menús y hablar con Mimo. No se ha
+            borrado nada.
+          </span>
+        ) : state?.access?.state === 'trial' ? (
+          <span data-testid="subscription-trial">Estás en tu prueba de 14 días: dura hasta el {trialLastDayLabel(state.access)}, incluido.</span>
+        ) : undefined
+      }
     >
       {error && (
         <div role="alert" className="mb-5 rounded-2xl border border-terracotta-deep/25 bg-warn-bg px-4 py-3 text-[14px] text-terracotta-deep">

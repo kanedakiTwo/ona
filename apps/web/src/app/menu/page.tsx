@@ -16,6 +16,7 @@ import { NoHealthDataNotice } from "@/components/menu/NoHealthDataNotice"
 import { FirstStepsGuide } from "@/components/menu/FirstStepsGuide"
 import { PriceSurveySheet } from "@/components/menu/PriceSurveySheet"
 import { WhatsAppNudgeCard } from "@/components/menu/WhatsAppNudgeCard"
+import { AccountAccessNotice } from "@/components/billing/AccountAccessNotice"
 import { TasteIntroScreen, TasteMenuCard } from "@/components/taste/TasteOffers"
 import { useTasteStatus } from "@/hooks/useTaste"
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react"
@@ -634,6 +635,7 @@ export default function MenuPage() {
             header={
               <>
                 {header}
+                <AccountAccessNotice />
                 <NoHealthDataNotice />
                 <TasteMenuCard />
                 <WhatsAppNudgeCard />
@@ -671,6 +673,7 @@ export default function MenuPage() {
         ) : (
           <div className="mx-auto flex max-w-[1180px] flex-col gap-4 px-12 pt-8 pb-10">
             {header}
+            <AccountAccessNotice />
             <NoHealthDataNotice />
             <TasteMenuCard />
             <WhatsAppNudgeCard />
@@ -700,6 +703,8 @@ export default function MenuPage() {
         </div>
         {moreButton}
       </header>
+
+      <AccountAccessNotice />
 
       <NoHealthDataNotice />
       <TasteMenuCard />

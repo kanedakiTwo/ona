@@ -5,6 +5,8 @@
  *
  *   source (page photo / PDF page / Cocina JSON)
  *     → duplicate check against the catalogue (published + drafts) and the batch
+ *     → frying/confit oil: note «para freír…» / «para confitar…», mixed
+ *       lines split in two (PRO-195)
  *     → quantities for 4
  *     → steps rewritten in the house's own words (never the book's text) +
  *       tags (meal, season, dish type, protein, technique, cuisine, active and
@@ -28,6 +30,7 @@ import { COURSES, DIFFICULTIES, MEALS, SEASONS, UNITS } from '@ona/shared'
 import { auditCatalogRecipe, type CatalogAuditIssue } from './catalogRecipeAudit.js'
 import { dishKey } from './catalogWishes.js'
 import { levenshtein, normalize } from './recipeLint.js'
+import { isCookingMediumNote, isFatName } from './nutrition/cookingMedium.js'
 
 export type CatalogOrigin = 'miguel' | 'cocina'
 
@@ -205,6 +208,88 @@ export function scaleToHouseServings(ings: readonly DraftIngredient[], servings:
   return ings.map((i) => (i.unit === 'al_gusto' || i.unit === 'pizca' || !(i.quantity > 0) ? { ...i } : { ...i, quantity: roundQty(i.quantity * k, i.unit) }))
 }
 
+// ─── Frying / confit oil (PRO-195) ──────────────────────────────
+
+const ML_PER: Record<string, number> = { ml: 1, cda: 15, cdas: 15, cucharada: 15, cucharadas: 15, cdita: 5, cditas: 5, cucharadita: 5, cucharaditas: 5 }
+const MEDIUM_PHRASE = /\bpara\s+(?:freir|la\s+fritura|confitar)\b|\b(?:freir|fritura|confitar)\b/
+const NAME_MEDIUM = /\s*,?\s*para\s+(?:freír|freir|la\s+fritura|confitar)\b.*$/i
+const MIXED_NOTE = /^\s*(\d+(?:[.,]\d+)?)\s*(ml|g|cdas?|cucharadas?|cditas?|cucharaditas?)\s+(para\s+[^,;]+?)\s*(?:,|\by\b)\s*(?:el\s+resto|lo\s+dem[aá]s)\s+(para\s+(?:freír|freir|la\s+fritura|confitar)\b[^;]*)$/i
+
+function foldText(s: string): string {
+  return s.toLowerCase().normalize('NFD').replace(/\p{Mn}/gu, '').trim()
+}
+
+/** «para freír» or «para confitar», by what the text says. */
+function mediumLabel(text: string): string {
+  return /confitar/.test(foldText(text)) ? 'para confitar' : 'para freír'
+}
+
+/** Amount of `qty unitFrom` expressed in `unitTo`, or null when they don't convert. */
+function convertAmount(qty: number, unitFrom: string, unitTo: string): number | null {
+  const from = unitFrom.toLowerCase()
+  if (from === unitTo) return qty
+  if (from === 'g' || unitTo === 'g') return null
+  const a = ML_PER[from]
+  const b = ML_PER[unitTo]
+  return a && b ? (qty * a) / b : null
+}
+
+/**
+ * Pure (PRO-195): the oil that is only the frying or confit medium gets a
+ * note that starts with «para freír» / «para confitar», so nutrition counts
+ * only what the food absorbs (`cookingMedium.ts`) and the reviewer accepts
+ * the amount. A mixed line («540 ml, 40 ml para el sofrito y el resto para
+ * freír») is split into two lines. Lines that aren't a fat, notes that
+ * already start right, and mixed notes it can't read are left as they are.
+ */
+export function markCookingMediumLines(ings: readonly DraftIngredient[]): DraftIngredient[] {
+  const out: DraftIngredient[] = []
+  for (const ing of ings) {
+    let name = ing.name
+    let note = ing.note?.trim() || null
+    if (!isFatName(name)) {
+      out.push({ ...ing })
+      continue
+    }
+    // «Aceite de girasol para freír» as the name: the purpose goes to the note.
+    if (NAME_MEDIUM.test(name)) {
+      const purpose = name.match(NAME_MEDIUM)![0].replace(/^\s*,?\s*/, '')
+      name = name.replace(NAME_MEDIUM, '').trim()
+      note = note ? `${mediumLabel(purpose)}; ${note}` : mediumLabel(purpose)
+    }
+    if (!note || isCookingMediumNote(note)) {
+      out.push({ ...ing, name, note })
+      continue
+    }
+    const mixed = note.match(MIXED_NOTE)
+    if (mixed) {
+      const other = convertAmount(Number(mixed[1].replace(',', '.')), mixed[2], ing.unit)
+      const rest = other != null ? ing.quantity - other : 0
+      if (other != null && other > 0 && rest > 0) {
+        out.push({ ...ing, name, quantity: roundQty(other, ing.unit), note: mixed[3].trim() })
+        out.push({ ...ing, name, quantity: roundQty(rest, ing.unit), note: mixed[4].trim() })
+        continue
+      }
+      out.push({ ...ing, name, note })
+      continue
+    }
+    const folded = foldText(note)
+    // Only the medium: «abundante para freír», «para la fritura», «de freír».
+    const purposes = (folded.match(/\bpara\b/g) ?? []).length
+    if (MEDIUM_PHRASE.test(folded) && purposes <= 1) {
+      // «abundante para freír las patatas» → «para freír las patatas; abundante»
+      const tail = note.match(/para\s+(?:freír|freir|la\s+fritura|confitar)\b.*$/i)
+      const before = (tail ? note.slice(0, tail.index) : note.replace(/\s*,?\s*(?:de\s+|para\s+)?(?:freír|freir|la\s+fritura|fritura|confitar)\b/i, ''))
+        .replace(/^[\s,;]+|[\s,;]+$/g, '')
+      const head = tail ? tail[0].trim() : mediumLabel(note)
+      out.push({ ...ing, name, note: before ? `${head}; ${before}` : head })
+      continue
+    }
+    out.push({ ...ing, name, note })
+  }
+  return out
+}
+
 const pick = <T extends string>(allowed: readonly T[], vals: readonly string[] | undefined, fallback: T[]): T[] => {
   const out = (vals ?? []).filter((v): v is T => (allowed as readonly string[]).includes(v))
   return out.length > 0 ? [...new Set(out)] : fallback
@@ -252,7 +337,9 @@ export async function importCatalogRecipe(
   const dup = findDuplicate(draft.name, known)
   if (dup) return { ...base, status: 'duplicate', duplicateOf: dup }
 
-  const ingredients = scaleToHouseServings(draft.ingredients, draft.servings)
+  // Frying/confit oil marked (and mixed lines split) before scaling, while
+  // the amounts in a note still match the line's (PRO-195).
+  const ingredients = scaleToHouseServings(markCookingMediumLines(draft.ingredients), draft.servings)
   const forFour: CatalogDraftInput = { ...draft, servings: HOUSE_SERVINGS, ingredients }
 
   let rewrite = await deps.rewrite(forFour, {})

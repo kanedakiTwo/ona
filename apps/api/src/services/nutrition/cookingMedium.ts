@@ -24,6 +24,17 @@ function fold(s: string): string {
   return s.toLowerCase().normalize('NFD').replace(/\p{Mn}/gu, '').trim()
 }
 
+/** True for a fat by its name (aceite, manteca, mantequilla, grasa…). */
+export function isFatName(name: string | null | undefined): boolean {
+  return FAT_NAME_RE.test(fold(name ?? ''))
+}
+
+/** True when the note already makes the line a frying / confit medium. */
+export function isCookingMediumNote(note: string | null | undefined): boolean {
+  const n = fold(note ?? '')
+  return FRYING_NOTE_RE.test(n) || CONFIT_NOTE_RE.test(n)
+}
+
 /**
  * 1 for an ordinary line; the absorbed share for a frying/confit fat.
  * A note like «40 ml para el pisto y el resto para freír» doesn't qualify:

@@ -280,7 +280,7 @@ describe('PRO-160 — peanut is matched by whole word', () => {
     }
   })
 
-  it('keeps substring matching for the other lists (panko, empanadilla, apionabo, salmonete)', () => {
+  it('still catches the compounds substring matching used to catch (panko, empanadilla, apionabo, salmonete)', () => {
     expect(inferAllergenTagsFromName('panko')).toContain('gluten')
     expect(inferAllergenTagsFromName('empanadilla')).toContain('gluten')
     expect(inferAllergenTagsFromName('apionabo')).toContain('apio')
@@ -289,5 +289,43 @@ describe('PRO-160 — peanut is matched by whole word', () => {
 
   it('effectiveAllergens does not add cacahuetes for «Manitas de cerdo»', () => {
     expect(effectiveAllergens([], ['Manitas de cerdo'])).not.toContain('cacahuetes')
+  })
+})
+
+describe('PRO-193 — whole words, with explicit exceptions', () => {
+  it('does not tag words that only contain a keyword', () => {
+    expect(inferAllergenTagsFromName('panceta')).not.toContain('gluten')
+    expect(inferAllergenTagsFromName('Panceta ahumada')).not.toContain('gluten')
+    expect(inferAllergenTagsFromName('pasta de tomate')).not.toContain('gluten')
+    expect(inferAllergenTagsFromName('leche de coco')).not.toContain('lactosa')
+    expect(inferAllergenTagsFromName('nuez moscada')).not.toContain('frutos_secos')
+    expect(inferAllergenTagsFromName('manitas de cerdo')).not.toContain('cacahuetes')
+  })
+
+  it('pastes and plant drinks keep the allergens they do have', () => {
+    expect(inferAllergenTagsFromName('pasta de curry')).toEqual([])
+    expect(inferAllergenTagsFromName('pasta de sésamo')).toEqual(['sesamo'])
+    expect(inferAllergenTagsFromName('leche de almendra')).toEqual(['frutos_secos'])
+    expect(inferAllergenTagsFromName('leche de avena')).toEqual(['gluten'])
+    expect(inferAllergenTagsFromName('leche de coco y leche entera')).toContain('lactosa')
+    expect(inferAllergenTagsFromName('nueces y nuez moscada')).toContain('frutos_secos')
+  })
+
+  it('keeps every tag that must be there', () => {
+    for (const name of ['pan rallado', 'pan', 'panes de pita', 'pasta', 'pasta fresca', 'espaguetis', 'macarrones', 'galletas', 'rebozado', 'cerveza'])
+      expect(inferAllergenTagsFromName(name), name).toContain('gluten')
+    for (const name of ['leche', 'leche entera', 'leches', 'quesitos', 'natillas', 'yogures', 'mantequilla'])
+      expect(inferAllergenTagsFromName(name), name).toContain('lactosa')
+    for (const name of ['nueces', 'nuez', 'nueces de macadamia', 'almendras', 'avellanas', 'castañas'])
+      expect(inferAllergenTagsFromName(name), name).toContain('frutos_secos')
+    for (const name of ['cacahuete', 'cacahuetes', 'maní', 'mani'])
+      expect(inferAllergenTagsFromName(name), name).toContain('cacahuetes')
+    for (const name of ['calamares', 'mejillones', 'langostinos', 'pescadilla', 'sardinillas', 'boquerones'])
+      expect(inferAllergenTagsFromName(name).length, name).toBeGreaterThan(0)
+    expect(inferAllergenTagsFromName('vinagreta')).toContain('sulfitos')
+  })
+
+  it('the ficha (effectiveAllergens) no longer adds the wrong tags', () => {
+    expect(effectiveAllergens([], ['Panceta', 'Manitas de cerdo', 'Nuez moscada', 'Leche de coco', 'Pasta de tomate'])).toEqual([])
   })
 })

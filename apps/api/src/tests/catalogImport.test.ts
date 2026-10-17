@@ -11,6 +11,7 @@ import {
   draftsFromCocinaJson,
   findDuplicate,
   importCatalogBatch,
+  markCookingMediumLines,
   pickReviewSample,
   planBatchPublish,
   scaleToHouseServings,
@@ -21,6 +22,7 @@ import {
   type PersistDraftInput,
 } from '../services/catalogImport.js'
 import { parseRewrite, rewriteMessage } from '../services/catalogRewriter.js'
+import { aggregateNutrition, type IngredientCatalogEntry } from '../services/nutrition/aggregate.js'
 
 // Three made-up pages of a made-up book.
 const PAGES: CatalogDraftInput[] = [
@@ -255,5 +257,66 @@ describe('publishing (rule of Miguel, 2026-10-16)', () => {
     const no = planBatchPublish([rec('a', { sampled: true, reviewOk: false }), rec('b')])
     expect(no.publish).toEqual([])
     expect(no.hold).toEqual([{ id: 'a', name: 'a', reason: 'rechazada' }, { id: 'b', name: 'b', reason: 'muestra_con_rechazos' }])
+  })
+})
+
+// ─── PRO-195: frying oil in batch imports ──────────────────────
+
+describe('frying / confit oil in batch imports (PRO-195)', () => {
+  it('markCookingMediumLines puts «para freír…» / «para confitar…» first and splits mixed lines', () => {
+    const out = markCookingMediumLines([
+      { name: 'aceite de oliva', quantity: 500, unit: 'ml', note: 'abundante para freír' },
+      { name: 'aceite de oliva virgen extra', quantity: 540, unit: 'ml', note: '40 ml para el sofrito y el resto para freír' },
+      { name: 'aceite de girasol para freír', quantity: 1, unit: 'al_gusto' },
+      { name: 'Aceite de oliva', quantity: 400, unit: 'ml', note: 'para confitar' },
+      { name: 'aceite', quantity: 300, unit: 'ml', note: 'de freír' },
+      { name: 'patatas', quantity: 800, unit: 'g', note: 'para freír' },
+      { name: 'aceite de oliva', quantity: 2, unit: 'cda', note: 'para el sofrito' },
+      { name: 'aceite de oliva', quantity: 3, unit: 'cda', note: '1 cda para el sofrito y el resto para la fritura' },
+    ])
+    expect(out.map((i) => [i.name, i.quantity, i.unit, i.note ?? null])).toEqual([
+      ['aceite de oliva', 500, 'ml', 'para freír; abundante'],
+      ['aceite de oliva virgen extra', 40, 'ml', 'para el sofrito'],
+      ['aceite de oliva virgen extra', 500, 'ml', 'para freír'],
+      ['aceite de girasol', 1, 'al_gusto', 'para freír'],
+      ['Aceite de oliva', 400, 'ml', 'para confitar'],
+      ['aceite', 300, 'ml', 'para freír'],
+      ['patatas', 800, 'g', 'para freír'],
+      ['aceite de oliva', 2, 'cda', 'para el sofrito'],
+      ['aceite de oliva', 1, 'cda', 'para el sofrito'],
+      ['aceite de oliva', 2, 'cda', 'para la fritura'],
+    ])
+  })
+
+  it('a frying recipe is saved with the note and its nutrition counts 15 % of the oil', async () => {
+    const page: CatalogDraftInput = {
+      name: 'Berenjenas fritas de prueba',
+      servings: 4,
+      ingredients: [
+        { name: 'berenjena', quantity: 600, unit: 'g' },
+        { name: 'aceite de oliva', quantity: 500, unit: 'ml', note: 'abundante para freír' },
+      ],
+      sourceSteps: ['Cortamos la berenjena en bastones finos y la freímos por tandas en aceite bien caliente.'],
+      source: { origin: 'cocina', book: 'Inventado', page: '1' },
+    }
+    const { deps, saved } = fakeDeps({
+      rewrite: async (d) => rewriteFor(d, ['Cortar la berenjena en tiras.', 'Freír en tandas y escurrir.']),
+    })
+    const [res] = await importCatalogBatch([page], 'prueba-195', deps)
+    expect(res.status).toBe('draft')
+    const oil = saved[0].ingredients[1]
+    expect(oil.note).toBe('para freír; abundante')
+
+    const catalog = new Map<string, IngredientCatalogEntry>([
+      ['ing-0', { id: 'ing-0', name: 'berenjena', calories: 25, protein: 1, carbs: 6, fat: 0.2, fiber: 3, salt: 0 }],
+      ['ing-1', { id: 'ing-1', name: 'aceite de oliva', calories: 884, protein: 0, carbs: 0, fat: 100, fiber: 0, salt: 0, density: 0.92 }],
+    ])
+    const agg = aggregateNutrition({
+      servings: saved[0].servings,
+      ingredients: saved[0].ingredients.map((i, k) => ({ ...i, id: String(k), note: i.note ?? undefined, optional: false, displayOrder: k })) as any,
+      catalog,
+    })
+    // 600 g berenjena = 150 kcal; 500 ml × 0.92 × 15 % = 69 g oil = 610 kcal → 760 / 4
+    expect(agg.perServing.kcal).toBe(190)
   })
 })

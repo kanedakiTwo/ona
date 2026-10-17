@@ -5,6 +5,8 @@ import { applyCatalogRecipeFixes } from '../services/catalogRecipeFixes.js'
 import { applyProfileFromMemories } from '../services/profileFromMemories.js'
 import { applyCatalogRecipeTimes } from '../services/catalogRecipeTimes.js'
 import { applyCatalogIngredientAisles } from '../services/catalogIngredientAisles.js'
+import { applyNutritionCompleteness } from '../services/nutritionCompleteness.js'
+import { applyEdibleFractions } from '../services/nutrition/edibleFraction.js'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -47,6 +49,20 @@ async function main() {
     await applyCatalogIngredientAisles(db)
   } catch (err) {
     console.error('[catalog-ingredient-aisles] failed:', err)
+  }
+  // Idempotent (PRO-194): bone-in cuts get their edible fraction (only rows
+  // still at the default 1) and the recipes that use them are recomputed.
+  try {
+    await applyEdibleFractions(db)
+  } catch (err) {
+    console.error('[edible-fraction] failed:', err)
+  }
+  // Idempotent (PRO-176): recompute only the «nutrición incompleta» mark of
+  // every recipe; the cached figures are left as they are.
+  try {
+    await applyNutritionCompleteness(db)
+  } catch (err) {
+    console.error('[nutrition-completeness] failed:', err)
   }
   await pool.end()
 }

@@ -39,6 +39,7 @@ async function main() {
       allergenTags: ingredientsTable.allergenTags,
       density: ingredientsTable.density,
       unitWeight: ingredientsTable.unitWeight,
+      edibleFraction: ingredientsTable.edibleFraction,
       calories: ingredientsTable.calories,
       protein: ingredientsTable.protein,
       carbs: ingredientsTable.carbs,
@@ -62,6 +63,7 @@ async function main() {
       salt: r.salt ?? 0,
       density: r.density,
       unitWeight: r.unitWeight,
+      edibleFraction: r.edibleFraction,
     })
     allergenCatalog.set(r.id, { allergenTags: r.allergenTags ?? [] })
   }
@@ -131,6 +133,7 @@ async function main() {
         .update(recipes)
         .set({
           nutritionPerServing: agg.perServing,
+          nutritionIncomplete: agg.incomplete,
           allergens,
           updatedAt: new Date(),
         })
@@ -138,7 +141,7 @@ async function main() {
     }
     updated++
     console.log(
-      `  ${EXECUTE ? '[ok]' : '[dry]'} ${r.name.padEnd(40)} kcal=${agg.perServing.kcal} allergens=[${allergens.join(', ')}]${agg.skipped.length > 0 ? `  (${agg.skipped.length} ing skipped)` : ''}`,
+      `  ${EXECUTE ? '[ok]' : '[dry]'} ${r.name.padEnd(40)} kcal=${agg.perServing.kcal} allergens=[${allergens.join(', ')}]${agg.skipped.length > 0 ? `  (${agg.skipped.length} ing skipped)` : ''}${agg.incomplete ? '  [incompleta]' : ''}`,
     )
   }
 

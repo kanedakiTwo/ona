@@ -22,7 +22,7 @@ import { IngredientsSection } from "@/components/recipes/detail/IngredientsSecti
 import { useRecipeNotes, useSaveRecipeNotes } from "@/hooks/useRecipeNotes"
 import type { IngredientOverride, Recipe } from "@ona/shared"
 import { StepsSection } from "@/components/recipes/detail/StepsSection"
-import { NutritionCard } from "@/components/recipes/detail/NutritionCard"
+import { NutritionCard, NutritionUnavailable } from "@/components/recipes/detail/NutritionCard"
 import {
   RecipeTabs,
   recipePanelId,
@@ -246,7 +246,7 @@ export default function RecipeDetailPage() {
   }
 
   const stepCount = recipe.steps?.length ?? 0
-  const hasNutrition = recipe.nutritionPerServing != null
+  const hasNutrition = recipe.nutritionPerServing != null || recipe.nutritionIncomplete === true
   const tabs: RecipeTab<TabKey>[] = [
     { key: "ingredientes", label: "Ingredientes" },
     { key: "pasos", label: stepCount > 0 ? `Pasos · ${stepCount}` : "Pasos" },
@@ -337,7 +337,11 @@ export default function RecipeDetailPage() {
     (recipe.seasons?.length ?? 0) > 0 ||
     tags.length > 0
 
-  const nutritionBlock = recipe.nutritionPerServing ? (
+  // PRO-176: with an ingredient that couldn't be counted the figures are
+  // short, so the ficha shows none.
+  const nutritionBlock = recipe.nutritionIncomplete ? (
+    <NutritionUnavailable />
+  ) : recipe.nutritionPerServing ? (
     <NutritionCard nutrition={recipe.nutritionPerServing} />
   ) : null
 
@@ -688,7 +692,7 @@ function RecipeHeader({
   )
   const total = minutesLabel(recipeTotalMinutes(recipe))
   const difficulty = recipe.difficulty ? DIFFICULTY_LABELS[recipe.difficulty] : ""
-  const kcal = recipe.nutritionPerServing?.kcal
+  const kcal = recipe.nutritionIncomplete ? undefined : recipe.nutritionPerServing?.kcal
   const metaParts = [
     total,
     difficulty,

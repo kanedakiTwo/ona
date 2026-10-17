@@ -24,6 +24,7 @@
  * Spec: specs/menus.md («Catalogue quality gate»).
  */
 import { normalizeText } from './dietaryRestrictions.js'
+import { edibleShare } from './nutrition/aggregate.js'
 
 export const MAIN_PROTEIN_RANGE_G = { min: 80, max: 300 } as const
 export const STARCH_RANGE_G = { min: 50, max: 150 } as const
@@ -38,6 +39,8 @@ export interface AuditIngredient {
   unitWeight?: number | null
   /** ingredients.density (g per ml), when known. */
   density?: number | null
+  /** ingredients.edible_fraction (PRO-194): bone-in cuts count their edible part. */
+  edibleFraction?: number | null
 }
 
 export interface AuditableRecipe {
@@ -118,8 +121,13 @@ export function isStarchBase(name: string): boolean {
 /** Typical weights when the catalogue has none (only what the catalogue lists by units). */
 const FALLBACK_UNIT_WEIGHT_G: Array<[string, number]> = [['huevo', 55]]
 
-/** Grams for an ingredient line, or null when its weight is unknown. */
+/** Edible grams for an ingredient line (bone off, PRO-194), or null when its weight is unknown. */
 export function lineGrams(ing: AuditIngredient): number | null {
+  const g = rawLineGrams(ing)
+  return g == null ? null : g * edibleShare(ing.edibleFraction)
+}
+
+function rawLineGrams(ing: AuditIngredient): number | null {
   const q = Number(ing.quantity)
   if (!Number.isFinite(q)) return null
   switch (ing.unit) {

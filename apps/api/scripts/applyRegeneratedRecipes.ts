@@ -142,6 +142,7 @@ interface FullCatalogRow extends CatalogIngredient {
   fat: number
   fiber: number
   salt: number
+  edibleFraction: number
 }
 
 async function loadFullCatalog(): Promise<FullCatalogRow[]> {
@@ -153,6 +154,7 @@ async function loadFullCatalog(): Promise<FullCatalogRow[]> {
       fdcId: ingredientsTable.fdcId,
       density: ingredientsTable.density,
       unitWeight: ingredientsTable.unitWeight,
+      edibleFraction: ingredientsTable.edibleFraction,
       calories: ingredientsTable.calories,
       protein: ingredientsTable.protein,
       carbs: ingredientsTable.carbs,
@@ -168,6 +170,7 @@ async function loadFullCatalog(): Promise<FullCatalogRow[]> {
     fdcId: r.fdcId,
     density: r.density,
     unitWeight: r.unitWeight,
+    edibleFraction: r.edibleFraction,
     calories: r.calories ?? 0,
     protein: r.protein ?? 0,
     carbs: r.carbs ?? 0,
@@ -204,6 +207,7 @@ function buildNutritionCatalog(
       salt: c.salt,
       density: c.density,
       unitWeight: c.unitWeight,
+      edibleFraction: c.edibleFraction,
     })
   }
   return m
@@ -442,6 +446,7 @@ async function autoCreateMissingForRecipe(
       fdcId: bestFdcId,
       density: null,
       unitWeight: null,
+      edibleFraction: inserted.edibleFraction ?? 1,
       calories: nutrition.kcal,
       protein: nutrition.proteinG,
       carbs: nutrition.carbsG,

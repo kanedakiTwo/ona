@@ -1,0 +1,1 @@
+ALTER TABLE "ingredients" ADD COLUMN "edible_fraction" real DEFAULT 1 NOT NULL;

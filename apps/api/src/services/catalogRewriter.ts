@@ -21,6 +21,7 @@ Reglas de escritura (obligatorias):
 - Las cantidades son para 4 personas (ya están escaladas en la lista de ingredientes); no las repitas en los pasos salvo que haga falta.
 - Cada ingrediente de la lista (salvo los opcionales) tiene que salir en algún paso, nombrado como en la lista, y el paso lo enlaza en "ingredientRefs" (índices desde 0 de la lista).
 - No menciones ingredientes que no están en la lista.
+- Una línea de aceite con la nota «para freír…» o «para confitar…» se enlaza en el paso donde se fríe o se confita; si el mismo aceite sale en dos líneas, cada una va en su paso.
 - Pon "durationMin" en los pasos que llevan tiempo (cocer, hornear, reposar) y "temperature" (°C) si hay horno.
 - No hagas afirmaciones de salud ni nutricionales.
 

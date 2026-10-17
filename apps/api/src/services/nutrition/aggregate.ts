@@ -20,6 +20,7 @@
 
 import type { NutritionPerServing, RecipeIngredient } from '@ona/shared'
 import { cookingMediumFactor } from './cookingMedium.js'
+import { isNegligibleForNutrition } from './negligible.js'
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -43,6 +44,8 @@ export type IngredientCatalogEntry = {
   density?: number | null
   /** g per unit — null/undefined if not unit-buyable (e.g. flour). */
   unitWeight?: number | null
+  /** PRO-194: edible share of the weight as bought (bone-in cuts < 1). */
+  edibleFraction?: number | null
 }
 
 export type AggregateInput = {
@@ -66,6 +69,11 @@ export type SkippedIngredient = {
 export type AggregateResult = {
   perServing: NutritionPerServing
   skipped: SkippedIngredient[]
+  /**
+   * PRO-176: true when a skipped line is not salt, water, a spice/herb or
+   * «al gusto» — the figures are short and the ficha must not show them.
+   */
+  incomplete: boolean
 }
 
 // ─── Constants ──────────────────────────────────────────────────
@@ -133,6 +141,11 @@ function toGrams(
   }
 }
 
+/** Edible share (PRO-194): 1 when unset or out of range. */
+export function edibleShare(fraction: number | null | undefined): number {
+  return fraction != null && Number.isFinite(fraction) && fraction > 0 && fraction <= 1 ? fraction : 1
+}
+
 /** Round to 1 decimal — kcal is rounded to integer separately. */
 function round1(n: number): number {
   return Math.round(n * 10) / 10
@@ -149,6 +162,9 @@ function round1(n: number): number {
  * - Frying/confit fat (note «para freír…» / «para confitar…») counts only
  *   the absorbed share (`cookingMedium.ts`).
  * - kcal is rounded to integer; macros to 1 decimal.
+ * - Bone-in cuts count only their `edibleFraction` (PRO-194).
+ * - `incomplete` (PRO-176): some skipped line matters (not salt, water,
+ *   spices/herbs or «al gusto», see `negligible.ts`).
  *
  * @throws if `servings <= 0` or not finite.
  */
@@ -163,7 +179,7 @@ export function aggregateNutrition(input: AggregateInput): AggregateResult {
 
   // Empty recipe → all-zeros, no skips.
   if (ingredients.length === 0) {
-    return { perServing: { ...ZERO_PER_SERVING }, skipped: [] }
+    return { perServing: { ...ZERO_PER_SERVING }, skipped: [], incomplete: false }
   }
 
   let totalKcal = 0
@@ -173,22 +189,26 @@ export function aggregateNutrition(input: AggregateInput): AggregateResult {
   let totalFiber = 0
   let totalSalt = 0
   const skipped: SkippedIngredient[] = []
+  let incomplete = false
 
   for (const ing of ingredients) {
     const entry = catalog.get(ing.ingredientId)
     if (!entry) {
       skipped.push({ ingredientId: ing.ingredientId, reason: 'unmapped' })
+      if (!isNegligibleForNutrition(ing.ingredientName, ing.note)) incomplete = true
       continue
     }
 
     const conv = toGrams(ing.unit, ing.quantity, entry)
     if ('skip' in conv) {
       skipped.push({ ingredientId: ing.ingredientId, reason: conv.skip })
+      if (!isNegligibleForNutrition(entry.name, ing.note)) incomplete = true
       continue
     }
 
-    // Per-100g → grams eaten (frying/confit fat: only what the food absorbs).
-    const factor = (conv.grams * cookingMediumFactor(ing.note, entry)) / 100
+    // Per-100g → grams eaten (frying/confit fat: only what the food absorbs;
+    // bone-in cuts: only the edible part, PRO-194).
+    const factor = (conv.grams * cookingMediumFactor(ing.note, entry) * edibleShare(entry.edibleFraction)) / 100
     totalKcal += entry.calories * factor
     totalProtein += entry.protein * factor
     totalCarbs += entry.carbs * factor
@@ -206,5 +226,5 @@ export function aggregateNutrition(input: AggregateInput): AggregateResult {
     saltG: round1(totalSalt / servings),
   }
 
-  return { perServing, skipped }
+  return { perServing, skipped, incomplete }
 }

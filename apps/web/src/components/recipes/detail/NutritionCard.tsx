@@ -77,3 +77,25 @@ export function NutritionCard({ nutrition, chapter }: Props) {
     </section>
   )
 }
+
+export const NUTRITION_UNAVAILABLE_TEXT = "Aún no podemos calcular la nutrición de esta receta."
+
+/**
+ * PRO-176: shown instead of the figures when an ingredient that matters
+ * couldn't be counted (`recipe.nutritionIncomplete`) — a short figure looks
+ * right and misleads, so none is shown.
+ */
+export function NutritionUnavailable() {
+  return (
+    <section data-testid="nutrition-unavailable">
+      <div className="mb-5">
+        <h2 className="font-display text-[1.6rem] leading-tight text-[#1A1612]">
+          <span className="font-italic italic">Nutrición</span> por ración
+        </h2>
+      </div>
+      <div className="rounded-2xl border border-[#DDD6C5] bg-[#FAF6EE] p-5">
+        <p className="text-[15px] leading-relaxed text-[#4A4239]">{NUTRITION_UNAVAILABLE_TEXT}</p>
+      </div>
+    </section>
+  )
+}

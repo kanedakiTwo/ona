@@ -442,6 +442,20 @@
       "when": 1792278643001,
       "tag": "0065_menu_fit",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1792278747858,
+      "tag": "0066_nutrition_incomplete",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1792279623031,
+      "tag": "0067_edible_fraction",
+      "breakpoints": true
     }
   ]
 }

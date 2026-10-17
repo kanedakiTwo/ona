@@ -29,7 +29,7 @@ export async function matchDraftIngredients(recipeName: string, ings: DraftIngre
   )
   const ids = matched.map((m) => m.ingredientId).filter((x): x is string => !!x)
   const info = ids.length
-    ? await db.select({ id: ingredients.id, name: ingredients.name, unitWeight: ingredients.unitWeight, density: ingredients.density }).from(ingredients).where(inArray(ingredients.id, ids))
+    ? await db.select({ id: ingredients.id, name: ingredients.name, unitWeight: ingredients.unitWeight, density: ingredients.density, edibleFraction: ingredients.edibleFraction }).from(ingredients).where(inArray(ingredients.id, ids))
     : []
   const byId = new Map(info.map((r) => [r.id, r]))
   return matched.map((m, i) => {
@@ -42,6 +42,7 @@ export async function matchDraftIngredients(recipeName: string, ings: DraftIngre
       quantity: m.quantity,
       unit,
       unitWeight: row?.unitWeight ?? null,
+      edibleFraction: row?.edibleFraction ?? null,
       density: row?.density ?? null,
     }
   })

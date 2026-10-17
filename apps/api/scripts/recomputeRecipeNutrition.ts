@@ -89,6 +89,7 @@ async function main() {
         ingredientId: recipeIngredients.ingredientId,
         quantity: recipeIngredients.quantity,
         unit: recipeIngredients.unit,
+        note: recipeIngredients.note,
       })
       .from(recipeIngredients)
       .where(inArray(recipeIngredients.recipeId, recipeIds))
@@ -114,6 +115,7 @@ async function main() {
         ingredientId: ing.ingredientId,
         quantity: ing.quantity,
         unit: ing.unit as any,
+        note: ing.note ?? undefined,
       })),
       catalog: nutritionCatalog,
     })

@@ -24,7 +24,7 @@ The previous seed contained recipes that referenced ingredients in their steps t
    - Be linked through `step.ingredientRefs`
    - Detection uses fuzzy matching against the ingredient catalog (handles plurals and inflections in Spanish)
 3. **No orphan ingredients** — every `RecipeIngredient` must be either listed prominently in `step.text` or referenced by at least one step's `ingredientRefs` (catches dead entries)
-4. **Quantity sanity** — for every ingredient, `quantity / servings` must fall inside a per-ingredient sensible range (e.g. ternera: 80–250 g/serving). Out-of-range quantities block save with a clear message; the user can override with a `force: true` flag for special cases (e.g. roasts)
+4. **Quantity sanity** — for every ingredient, `quantity / servings` must fall inside a per-ingredient sensible range (e.g. ternera: 80–250 g/serving). Out-of-range quantities block save with a clear message; the user can override with a `force: true` flag for special cases (e.g. roasts). Frying/confit fat noted «para freír…» / «para confitar…» is checked by what the food absorbs (15 % / 25 % of the pan amount) against the ceiling only, so «500 ml para freír» for 4 passes and 2 l for 2 doesn't (see [nutrition.md](./nutrition.md))
 5. **Step references resolve** — every id in `step.ingredientRefs` must exist in the recipe's `RecipeIngredient` set
 6. **Time consistency** — if `prepTime`, `cookTime`, and step durations are all set, the sum of `step.durationMin` must not exceed `prepTime + cookTime` by more than 20 % (catches typos)
 7. **Public tag hygiene** — no tag in the public `tags` array equals a meal name, season, difficulty, or any value in `internalTags`

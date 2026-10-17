@@ -24,6 +24,7 @@ import {
 } from '@ona/shared'
 import { INGREDIENT_RANGES, globalCeiling, type QuantityRange } from './recipeLint.ranges.js'
 import { shoppabilityIssues } from './recipeShoppability.js'
+import { cookingMediumFactor } from './nutrition/cookingMedium.js'
 
 // ─── Public types ────────────────────────────────────────────────
 
@@ -495,16 +496,19 @@ export function lintRecipe(recipe: RecipeInput, opts: LintOptions): LintResult {
     ingredients.forEach((ing, i) => {
       if (!ML_OR_G.has(ing.unit)) return
       const cat = catalog.byId.get(ing.ingredientId)
-      const perServing = ing.quantity / recipe.servings!
+      // Frying/confit fat: the range applies to what is eaten, not to the pan,
+      // and only its ceiling (a small fry absorbs less than the usual minimum).
+      const medium = cookingMediumFactor(ing.note, cat)
+      const perServing = (ing.quantity * medium) / recipe.servings!
       const range = pickRange(cat?.name)
       const max = range?.maxPerServingG ?? globalCeiling
-      const min = range?.minPerServingG ?? 0
+      const min = medium < 1 ? 0 : (range?.minPerServingG ?? 0)
       if (perServing > max || perServing < min) {
         if (!opts.force) {
           const label = cat?.name ?? `ingrediente #${i + 1}`
           errors.push({
             code: 'QUANTITY_OUT_OF_RANGE',
-            message: `La cantidad de "${label}" (${perServing.toFixed(0)} ${ing.unit} por ración) está fuera del rango razonable (${min}-${max} ${ing.unit}).`,
+            message: `La cantidad de "${label}" (${perServing.toFixed(0)} ${ing.unit} por ración${medium < 1 ? ', lo que absorbe la fritura' : ''}) está fuera del rango razonable (${min}-${max} ${ing.unit}).`,
             path: `ingredients[${i}]`,
           })
         }

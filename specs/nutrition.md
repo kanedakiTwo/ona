@@ -41,6 +41,7 @@ Allergens are not provided by USDA. Each ingredient has an `allergenTags` string
    - `cdita` → 5 g equivalent
    - `pizca` and `al_gusto` are treated as 0 g (negligible)
 2. Multiply each ingredient's grams by its per-100 g nutrient values from the `ingredients` row
+   - **Frying and confit fat** count only what the food absorbs: a fat (aceite, manteca, mantequilla… or ≥ 80 g fat/100 g) whose line note starts with «para freír» / «para la fritura» counts 15 %, «para confitar» 25 %. The recipe keeps the real amount the cook needs in the pan («500 ml, para freír; se recupera casi todo»). A mixed note («40 ml para el pisto y el resto para freír») doesn't qualify: split it into two lines (`cookingMedium.ts`)
 3. Sum across all ingredients to get totals
 4. Divide by `recipe.servings` to get the per-serving values
 5. Cache the result in `recipe.nutritionPerServing`
@@ -66,7 +67,8 @@ Warnings are surfaced to the recipe author / curator but do not block saving.
 ## Constraints
 
 - All nutrition values are stored as numbers in standard SI units (g, mg) per 100 g of ingredient; the API rounds for display (kcal → integer, macros → 1 decimal)
-- USDA values are not edited manually; if a value is wrong, the fix is to re-map the `fdcId`
+- Values come from USDA through `fdcId` when there is a reliable match. Spanish products with no USDA equivalent (chorizo, morcilla, lacón…) and rows the USDA auto-create got wrong carry BEDCA or typical-label values set by Cocina; a wrong value is fixed in place and the row is left out of `seed/data/ingredient-fdc-map.yaml`, so a USDA re-seed doesn't bring it back (2026-10-17: Cocina corrected 149 rows; 52 mappings came out of the map)
+- An ingredient at 0 kcal (other than agua and sal), or used in `u` without `unitWeight` / in `ml` without `density`, under-counts every recipe that uses it: the catalogue audit flags them
 - Allergen tags are authoritative for badges and filters but are advisory, not legal — the UI shows a small disclaimer
 - Recomputation on save is synchronous; large recipes (> 30 ingredients) must still complete inside one HTTP request
 
@@ -82,6 +84,7 @@ Warnings are surfaced to the recipe author / curator but do not block saving.
 - [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts) — `ingredients` (per-100 g nutrition columns + density/unitWeight/aisle/allergenTags)
 - [apps/api/src/services/nutrition/usdaClient.ts](../apps/api/src/services/nutrition/usdaClient.ts) — USDA FDC API client with on-disk cache
 - [apps/api/src/services/nutrition/aggregate.ts](../apps/api/src/services/nutrition/aggregate.ts) — recipe-level aggregation
+- [apps/api/src/services/nutrition/cookingMedium.ts](../apps/api/src/services/nutrition/cookingMedium.ts) — frying/confit fat: absorbed share for nutrition and the lint
 - [apps/api/src/services/nutrition/allergens.ts](../apps/api/src/services/nutrition/allergens.ts) — allergen union and mapping helpers
 - [apps/api/src/services/nutrition/index.ts](../apps/api/src/services/nutrition/index.ts) — public surface re-exports
 - [apps/api/src/seed/usda.ts](../apps/api/src/seed/usda.ts) — one-time population script: reads `ingredient-fdc-map.yaml`, fetches per-100 g nutrition from USDA, writes to the catalog

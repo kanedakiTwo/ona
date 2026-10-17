@@ -83,8 +83,17 @@ export function recipeLinkLines(recipes: { id: string; name: string }[], webUrl:
   return recipes.map((r) => `→ ${r.name}: ${shortRecipeLink(webUrl, r.id)}`)
 }
 
+/**
+ * What the assistant reads of a day. A slot with diners set by hand («Solo
+ * hoy: 4» in the app) says `[solo hoy: 4]` (PRO-101: Mimo said «el menú no
+ * me muestra cuántos comensales hay» when the app showed them).
+ */
 export function mealLinesForDay(day: DayMenu | null | undefined): string[] {
-  return mealEntriesForDay(day).map((e) => `${e.label}: ${e.dishes.join(' + ')}`)
+  return mealEntriesForDay(day).map((e) => {
+    const servings = day?.[e.meal]?.servings
+    const diners = typeof servings === 'number' && servings > 0 ? ` [solo hoy: ${servings}]` : ''
+    return `${e.label}${diners}: ${e.dishes.join(' + ')}`
+  })
 }
 
 export const DAY_NAME_ES = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']

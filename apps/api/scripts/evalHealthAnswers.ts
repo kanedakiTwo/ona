@@ -1,5 +1,8 @@
 /**
- * Live evaluation of Mimo on health questions (PRO-62). Sends the questions
+ * Live evaluation of Mimo: the health questions (PRO-62) and the rest of the
+ * battery (`MIMO_EVAL_CASES` in src/services/assistant/mimoEvalCases.ts,
+ * graded by `mimoReplyProblems`; e.g. PRO-101, a change made in an earlier
+ * turn is confirmed from the saved menu). For health, it sends the questions
  * that went wrong in the test households (2026-10-11 and 2026-10-12;
  * `HEALTH_EVAL_CASES` in src/services/assistant/healthGuard.ts) through the
  * CURRENT engine (model, prompt, tools of the channel) and grades each reply
@@ -22,6 +25,7 @@ import { buildSystemParts, knowledgeBaseReady, type AssistantMode } from '../src
 import { getToolDefinitions, toolsFor } from '../src/services/assistant/skills.js'
 import { runToolLoop } from '../src/services/assistant/engine.js'
 import { HEALTH_EVAL_CASES, healthReplyProblems } from '../src/services/assistant/healthGuard.js'
+import { MIMO_EVAL_CASES, mimoReplyProblems } from '../src/services/assistant/mimoEvalCases.js'
 import type { SkillDefinition } from '../src/services/assistant/types.js'
 
 const arg = (name: string) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3)
@@ -32,25 +36,32 @@ if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is requir
 
 await knowledgeBaseReady
 const anthropic = new Anthropic()
-const skills: SkillDefinition[] = toolsFor({ mode }).map((s) => ({
-  ...s,
-  handler: async (input: unknown) => ({ data: null, summary: `(simulado) ${s.name} ${JSON.stringify(input).slice(0, 200)}`, uiHint: 'text' as const }),
-}))
+/** Every tool is simulated; a case can say what a read tool answers. */
+const simulated = (results: Record<string, string> = {}): SkillDefinition[] =>
+  toolsFor({ mode }).map((s) => ({
+    ...s,
+    handler: async (input: unknown) => ({ data: null, summary: results[s.name] ?? `(simulado) ${s.name} ${JSON.stringify(input).slice(0, 200)}`, uiHint: 'text' as const }),
+  }))
 
 const out: unknown[] = []
 let failed = 0
-for (const c of HEALTH_EVAL_CASES.filter((x) => !only || x.id === only)) {
+type EvalCase = { id: string; context: string; history: { role: 'user' | 'assistant'; content: string }[]; message: string; grade: (reply: string, tools: string[]) => string[]; toolResults?: Record<string, string> }
+const cases: EvalCase[] = [
+  ...HEALTH_EVAL_CASES.map((c) => ({ ...c, grade: (reply: string) => healthReplyProblems(reply, c) })),
+  ...MIMO_EVAL_CASES.map((c) => ({ ...c, grade: (reply: string, tools: string[]) => mimoReplyProblems(reply, c, tools) })),
+]
+for (const c of cases.filter((x) => !only || x.id === only)) {
   const { instructions, context } = buildSystemParts(c.context, mode)
   for (let i = 1; i <= runs; i += 1) {
     const r = await runToolLoop({
       client: anthropic as never,
       system: [{ type: 'text', text: instructions, cache_control: { type: 'ephemeral' } }, { type: 'text', text: context }],
       tools: getToolDefinitions({ mode }),
-      skills,
+      skills: simulated(c.toolResults),
       messages: [...c.history, { role: 'user' as const, content: c.message }],
       ctx: { userId: 'eval-health', db: null, channel: mode },
     })
-    const problems = healthReplyProblems(r.message, c)
+    const problems = c.grade(r.message, r.toolsUsed ?? [])
     if (problems.length) failed += 1
     out.push({ case: c.id, run: i, mode, user: c.message, reply: r.message, tools: r.toolsUsed, flags: r.corrections, problems })
     console.log(`\n### ${c.id} (${i}/${runs}) ${problems.length ? `FALLA: ${problems.join(', ')}` : 'ok'}`)

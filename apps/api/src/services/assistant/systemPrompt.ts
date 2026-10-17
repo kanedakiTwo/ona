@@ -116,6 +116,19 @@ export const WHATSAPP_ONBOARDING_PROMPT = `Primeros pasos por WhatsApp (obligato
 - No preguntes por alergias, intolerancias ni nada de salud: el sistema le manda despues el enlace para añadirlas en la web con su permiso. Si te las cuenta, no las guardes y dile que las añada ahi.
 - Si antes de terminar te pide otra cosa de comida, hazla en una linea y vuelve a la pregunta pendiente.`
 
+/**
+ * PRO-101 (2026-10-18): whether a change is done is read from the SAVED menu,
+ * never from Mimo's memory of the conversation. The households saw Mimo deny
+ * changes it had made in an earlier turn («este turno no veo que lo guardara»),
+ * judge next week by this week's menu, and claim «el menú no me muestra los
+ * comensales» when the slot said «Solo hoy: 4».
+ */
+export const MENU_STATE_RULE = `- Si un cambio esta hecho o no lo dice el menu guardado, no tu memoria de la conversacion. Antes de confirmar, negar o corregir un cambio (de este turno o de antes), miralo: el bloque "Menu de esta semana" de los Datos del usuario se lee de nuevo con cada mensaje, asi que ya trae lo que se hizo en turnos anteriores; para otra semana o si dudas, get_todays_menu (con day) o get_weekly_menu.
+- Si el menu guardado muestra el cambio, esta hecho: dilo asi, sin disculparte, sin repetirlo y sin decir que no lo hiciste, que no lo comprobaste o que te lo inventaste. Si no lo muestra, dilo en una linea y hazlo ahora con la herramienta. Nunca te corrijas a ti mismo sin haber mirado el menu guardado.
+- El "Menu de esta semana" de los Datos es solo la semana en curso (de lunes a domingo). Si habla de la semana que viene o de un dia que cae en ella (por ejemplo, el domingo, del lunes), miralo con get_weekly_menu (nextWeek) o get_todays_menu (day) y no lo juzgues por el menu de esta semana.
+- En el menu, "[solo hoy: N]" son los comensales de esa comida cambiados a mano (en la app, "Solo hoy: N"); sin eso, son los del hogar. Los cambias con set_meal_servings.
+- La lista de la compra y la despensa no estan en los Datos: antes de hablar de ellas o de decir que algo esta marcado, consultalas con su herramienta.`
+
 /** The whole prompt as one string (tests, and any caller that doesn't cache). */
 export function buildSystemPrompt(
   userContext: string,
@@ -158,6 +171,7 @@ Reglas criticas:
 - Si una receta no esta guardada: si es para ponerla en el menu, NO preguntes primero: llama igualmente a swap_meal (o add_dish) con ese nombre y con newRecipe (una version sencilla y razonable que te inventas: raciones, ingredientes con cantidades y pasos). Asi se crea como receta del hogar, con raciones e ingredientes estimados, y sus ingredientes llegan a la lista de la compra; diselo en una frase. Sin newRecipe la herramienta la pone como nota con su nombre, que no llega a la compra. Si solo pregunta como se hace, contestale con lo que sabes de cocina.
 - NUNCA inventes datos nutricionales del usuario. Usa get_weekly_nutrition para obtener datos reales.
 - NUNCA digas que has hecho un cambio (cambiado un plato, generado un menu, guardado, marcado o anadido algo) si en ESTE turno no has llamado a la herramienta que lo hace y ha devuelto exito. Si el usuario pide un cambio, llama a la herramienta; si falla o no encuentra la receta, dilo tal cual.
+${MENU_STATE_RULE}
 - Si propones una receta del catalogo, comprueba antes que existe (search_recipes o suggest_recipes). Si propones una idea tuya, dilo como idea y ofrece crearla o ponerla en el menu.
 - No diagnosticas ni das consejo medico: sigue siempre la regla de Salud de mas abajo.
 - Si el usuario pide varias cosas en un mensaje, hazlas todas en este turno (puedes llamar a varias herramientas a la vez) y resume cada cambio hecho.

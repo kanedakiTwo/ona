@@ -1,9 +1,9 @@
 import { env } from '../../config/env.js'
 import { db } from '../../db/connection.js'
-import { and, desc, eq, inArray } from 'drizzle-orm'
-import { menus, recipes, users } from '../../db/schema.js'
+import { and, desc, eq, inArray, sql } from 'drizzle-orm'
+import { menuLogs, menus, recipes, users } from '../../db/schema.js'
 import { resolveScope, scopeWhere } from '../scopeResolver.js'
-import { weekMenuCaption, weekMenuDigest, type WeekMenuInput } from '../menuText.js'
+import { weekMenuCaption, weekMenuDigest, type WeekMenuInput, type WeekReplyOptions, type WeekView } from '../menuText.js'
 import { weekMenuImage } from '../weekImage/index.js'
 import { madridParts } from '../madridTime.js'
 import { spendCapStatus } from '../spendCap.js'
@@ -31,6 +31,36 @@ async function loadWeekMenu(userId: string, menuId: string | null): Promise<Week
     .limit(1)
   if (!row) return null
   return { weekStart: String(row.weekStart), days: row.days as any, skippedDays: row.skippedDays }
+}
+
+/**
+ * How many different weeks the caller's household has had GENERATED (the
+ * snowball line, 2026-10-15): menus with a `menu_logs` row — written only by
+ * generate_weekly_menu / POST /menu/generate, never by the empty row the web
+ * creates when opening a week — counted by `week_start`, so regenerating the
+ * same week doesn't count twice. Read after the turn: includes this week.
+ */
+async function generatedWeeksOf(userId: string): Promise<number> {
+  const scope = scopeWhere(menus.userId, menus.householdId, await resolveScope(userId, db))
+  const [row] = await db
+    .select({ n: sql<number>`count(distinct ${menus.weekStart})::int` })
+    .from(menus)
+    .innerJoin(menuLogs, eq(menuLogs.menuId, menus.id))
+    .where(scope)
+  return Number(row?.n ?? 0)
+}
+
+/** Options for the week text and caption: the view, and for a generated week its rank. */
+async function weekReplyOptions(userId: string, view: WeekView): Promise<WeekReplyOptions> {
+  const opts: WeekReplyOptions = { today: madridParts(new Date()).isoDate, webUrl: env.WEB_PUBLIC_URL, view }
+  if (view !== 'generated') return opts
+  try {
+    return { ...opts, generatedWeeks: await generatedWeeksOf(userId) }
+  } catch (err) {
+    // No count → no snowball line; the week still goes out.
+    console.warn('[whatsapp] generated weeks count failed (no snowball line):', err)
+    return opts
+  }
 }
 
 /** recipe id → `image_url` (the menu JSON doesn't store photos). */
@@ -61,24 +91,24 @@ export function buildInboundDeps(): InboundDeps {
       return cap.exceeded ? { exceeded: true, budgetMicros: Math.round(cap.capEur * 1_000_000) } : advisor
     },
     recordUsage: (userId, usage) => recordAdvisorUsage(userId, usage, db),
-    // The week the turn just generated (or the user's latest), read back after
-    // the whole turn, scoped to the caller's household like every menu read.
-    menuDigest: async (userId, menuId) => {
+    // The week the turn generated or read (or the user's latest), read back
+    // after the whole turn, scoped to the caller's household like every menu read.
+    menuDigest: async (userId, menuId, view) => {
       const menu = await loadWeekMenu(userId, menuId)
       if (!menu) return null
-      return weekMenuDigest(menu, { today: madridParts(new Date()).isoDate, webUrl: env.WEB_PUBLIC_URL })
+      return weekMenuDigest(menu, await weekReplyOptions(userId, view))
     },
-    // The same week as a picture + short caption (2026-10-15). Throws or
-    // returns null → inbound sends the digest text above instead.
-    menuImage: async (userId, menuId) => {
+    // The same week as a picture + short caption (2026-10-15). Throws → inbound
+    // sends the digest text above instead; null = nothing to draw.
+    menuImage: async (userId, menuId, view) => {
       const menu = await loadWeekMenu(userId, menuId)
       if (!menu) return null
-      const today = madridParts(new Date()).isoDate
+      const opts = await weekReplyOptions(userId, view)
       const t0 = Date.now()
-      const jpeg = await weekMenuImage(menu, { today, webUrl: env.WEB_PUBLIC_URL, photoUrls: recipePhotoUrls })
+      const jpeg = await weekMenuImage(menu, { today: opts.today, webUrl: env.WEB_PUBLIC_URL, photoUrls: recipePhotoUrls })
       if (!jpeg) return null
       console.log(`[whatsapp] week image drawn in ${Date.now() - t0} ms (${Math.round(jpeg.length / 1024)} KB)`)
-      return { jpeg, caption: weekMenuCaption(menu, { today, webUrl: env.WEB_PUBLIC_URL }) }
+      return { jpeg, caption: weekMenuCaption(menu, opts) }
     },
     transcribe: isSttConfigured() ? transcribeAudio : undefined,
     importRecipeFromImage: env.ANTHROPIC_API_KEY ? importRecipeFromImage : undefined,

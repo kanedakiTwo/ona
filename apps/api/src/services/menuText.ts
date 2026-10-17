@@ -135,9 +135,13 @@ const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
  * only today and the days after it are shown; any other week shows its seven
  * days. A skipped day reads "Sin cocinar"; a day with nothing planned is left
  * out; a meal a day doesn't have gets no line.
+ *
+ * `view: 'viewing'` (the user asked to see the week) opens with «Tu menú de
+ * esta semana 🍽️» instead of «Listo: …»; a generated week among the
+ * household's first `SNOWBALL_WEEKS` starts with `SNOWBALL_LINE`.
  */
-export function weekMenuDigest(menu: WeekMenuInput, opts: { today: string; webUrl?: string }): string {
-  const { opener, shown, link, invite, today, tomorrow } = weekDigestParts(menu, opts)
+export function weekMenuDigest(menu: WeekMenuInput, opts: WeekReplyOptions): string {
+  const { snowball, opener, shown, link, invite, today, tomorrow } = weekDigestParts(menu, opts)
   const blocks = shown.map((d) => {
     const when = d.date === today ? ' · hoy' : d.date === tomorrow ? ' · mañana' : ''
     const title = `*${capitalize(DAY_NAME_ES[d.i])} ${Number(d.date.slice(8, 10))}${when}*`
@@ -148,7 +152,7 @@ export function weekMenuDigest(menu: WeekMenuInput, opts: { today: string; webUr
     })
     return [title, ...lines].join('\n')
   })
-  return [opener, ...blocks, ...(link ? [link] : []), invite].join('\n\n')
+  return [...(snowball ? [snowball] : []), opener, ...blocks, ...(link ? [link] : []), invite].join('\n\n')
 }
 
 /**
@@ -158,9 +162,50 @@ export function weekMenuDigest(menu: WeekMenuInput, opts: { today: string; webUr
  * `weekMenuDigest`, so the image and its text fallback never say different
  * things.
  */
-export function weekMenuCaption(menu: WeekMenuInput, opts: { today: string; webUrl?: string }): string {
-  const { opener, link, invite } = weekDigestParts(menu, opts)
-  return [opener, ...(link ? [link] : []), invite].join('\n')
+export function weekMenuCaption(menu: WeekMenuInput, opts: WeekReplyOptions): string {
+  const { snowball, opener, link, invite } = weekDigestParts(menu, opts)
+  const caption = [opener, ...(link ? [link] : []), invite].join('\n')
+  return snowball ? `${snowball}\n\n${caption}` : caption
+}
+
+/**
+ * Why WhatsApp shows the week (2026-10-15): Mimo just made it (`generated`,
+ * «Listo: …») or the user asked to see it (`viewing`, «Tu menú de esta
+ * semana 🍽️»). Same pieces either way, only the opener changes.
+ */
+export type WeekView = 'generated' | 'viewing'
+
+export interface WeekReplyOptions {
+  /** Europe/Madrid date, `YYYY-MM-DD`. */
+  today: string
+  /** `WEB_PUBLIC_URL`; absent → no menu link line. */
+  webUrl?: string
+  /** Default `generated`. */
+  view?: WeekView
+  /**
+   * How many different weeks the household has had generated so far, this
+   * one included (menus with a `menu_logs` row, counted by `week_start`).
+   * Only read for a generated week: up to `SNOWBALL_WEEKS` → `SNOWBALL_LINE`.
+   */
+  generatedWeeks?: number
+}
+
+/**
+ * «Efecto bola de nieve» (Miguel, 2026-10-15): the first generated weeks
+ * guess less; saying so up front turns corrections into part of the deal.
+ * Marketing will refine the wording — it is this one constant.
+ */
+export const SNOWBALL_LINE =
+  'Al principio acertaré menos con vuestros gustos; según me vayas corrigiendo, iré aprendiendo. Es el efecto bola de nieve ⛄'
+/** The snowball line goes with the household's first this-many generated weeks. */
+export const SNOWBALL_WEEKS = 3
+
+/** Pure: does a generated week carry the snowball line? (1st–3rd generated week: yes.) */
+export function showsSnowball(opts: Pick<WeekReplyOptions, 'view' | 'generatedWeeks'>): boolean {
+  return (opts.view ?? 'generated') === 'generated'
+    && typeof opts.generatedWeeks === 'number'
+    && opts.generatedWeeks >= 1
+    && opts.generatedWeeks <= SNOWBALL_WEEKS
 }
 
 export interface WeekMenuInput {
@@ -170,7 +215,7 @@ export interface WeekMenuInput {
 }
 
 /** The pieces both the week digest and the week image caption are made of. */
-function weekDigestParts(menu: WeekMenuInput, opts: { today: string; webUrl?: string }) {
+function weekDigestParts(menu: WeekMenuInput, opts: WeekReplyOptions) {
   const days = Array.isArray(menu.days) ? menu.days : []
   const weekStart = menu.weekStart.slice(0, 10)
   const today = opts.today.slice(0, 10)
@@ -188,14 +233,21 @@ function weekDigestParts(menu: WeekMenuInput, opts: { today: string; webUrl?: st
   const fromToday = todayIndex >= 0 && visibleFrom(todayIndex).length > 0
   const shown = visibleFrom(fromToday ? todayIndex : 0)
 
-  const opener = !fromToday
-    ? `Listo: tu menú de la semana ${weekRangeEs(weekStart)} 🍽️`
-    : todayIndex === 6
-      ? 'Listo: tu menú de hoy 🍽️'
-      : 'Listo: tu menú hasta el domingo 🍽️'
+  // Asked to see it: "Tu menú de esta semana" / "…de la semana del 19 al 25
+  // de octubre", never «Listo:» (nothing was just made).
+  const opener = opts.view === 'viewing'
+    ? todayIndex >= 0
+      ? 'Tu menú de esta semana 🍽️'
+      : `Tu menú de la semana ${weekRangeEs(weekStart)} 🍽️`
+    : !fromToday
+      ? `Listo: tu menú de la semana ${weekRangeEs(weekStart)} 🍽️`
+      : todayIndex === 6
+        ? 'Listo: tu menú de hoy 🍽️'
+        : 'Listo: tu menú hasta el domingo 🍽️'
+  const snowball = showsSnowball(opts) ? SNOWBALL_LINE : null
   const link = opts.webUrl ? `📖 Recetas y lista de la compra: ${shortWebLink(opts.webUrl, '/menu')}` : null
   const invite = menuDigestInvite(shown.filter((d) => !d.skipped && d.date !== today).map((d) => d.i))
-  return { opener, shown, link, invite, today, tomorrow }
+  return { snowball, opener, shown, link, invite, today, tomorrow }
 }
 
 /**

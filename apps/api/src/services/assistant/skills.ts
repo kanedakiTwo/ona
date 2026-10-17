@@ -25,7 +25,7 @@ import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../scopeResolve
 import { importRecipeFromUrl, createRecipeFromParts, type RecipeParts } from '../recipeImport.js'
 import { mealLinesForDay } from '../menuText.js'
 import { madridWeekStart } from '../madridTime.js'
-import { DAY_PROP, dateLabel, isMenuDayError, resolveMenuDay, type MenuDay } from './menuDay.js'
+import { DAY_PROP, dateLabel, isMenuDayError, menuDayOf, resolveMenuDay, type MenuDay } from './menuDay.js'
 import { appSkills, bestMatch, dishNoteText, searchWords } from './appSkills.js'
 import { createDishRecipe, NEW_RECIPE_PROP, NOTE_THEN_RECIPE_HINT, type NewRecipeParam } from './dishRecipe.js'
 import { shopOrderSkills } from './shopOrderSkills.js'
@@ -187,6 +187,52 @@ const getTodaysMenu: SkillDefinition = {
       : `No hay comidas planificadas para el ${t.label}.`
 
     return { data: { dayIndex: t.dayIndex, date: t.isoDate, weekStart: t.weekStart, menuId: menu.id, day }, summary, uiHint: 'menu' }
+  },
+}
+
+/**
+ * The whole week's menu (2026-10-15). On WhatsApp, a turn that reads it sends
+ * the week as ONE picture (inbound.ts), not the model's long day-by-day list
+ * nor one day's recipe links; on the web the model writes it from `summary`.
+ * A week with nothing planned answers in text (no menu data) so WhatsApp
+ * keeps the model's words.
+ */
+const getWeeklyMenu: SkillDefinition = {
+  name: 'get_weekly_menu',
+  description: 'Obtiene el menu de la semana entera (esta o, con nextWeek, la que viene), dia a dia. Usalo cuando pida ver el menu de la semana; para un solo dia usa get_todays_menu. Una sola llamada, nunca get_todays_menu dia a dia.',
+  parameters: {
+    type: 'object',
+    properties: {
+      nextWeek: { type: 'boolean', description: 'true si pide la semana que viene.' },
+    },
+    required: [],
+  },
+  async handler(params: { nextWeek?: boolean }, ctx: SkillContext): Promise<SkillResult> {
+    const weekStart = getWeekStart(params?.nextWeek === true ? 1 : 0)
+    const menu = await menuOfWeek(ctx, weekStart)
+    if (!menu) {
+      return { data: null, summary: `No hay menu para la semana del ${dateLabel(weekStart)}. Puedes generarlo con generate_weekly_menu.`, uiHint: 'text' }
+    }
+    const days = Array.isArray(menu.days) ? (menu.days as DayMenu[]) : []
+    const skipped = new Set<number>(menu.skippedDays ?? [])
+    const lines: string[] = []
+    for (let i = 0; i < 7; i++) {
+      const label = menuDayOf(weekStart, i).label
+      if (skipped.has(i)) {
+        lines.push(`${label}: sin cocinar`)
+        continue
+      }
+      const meals = mealLinesForDay(days[i])
+      if (meals.length > 0) lines.push(`${label}: ${meals.join(', ')}`)
+    }
+    if (lines.length === 0) {
+      return { data: null, summary: `La semana del ${dateLabel(weekStart)} no tiene nada planificado todavia.`, uiHint: 'text' }
+    }
+    return {
+      data: { menuId: menu.id, weekStart, days, skippedDays: [...skipped] },
+      summary: `Menu de la semana del ${dateLabel(weekStart)}:\n${lines.join('\n')}`,
+      uiHint: 'menu',
+    }
   },
 }
 
@@ -2468,6 +2514,7 @@ export const importRecipeFromUrlSkill: SkillDefinition = {
 
 export const skills: SkillDefinition[] = [
   getTodaysMenu,
+  getWeeklyMenu,
   getRecipeDetails,
   getWeeklyNutrition,
   suggestRecipes,

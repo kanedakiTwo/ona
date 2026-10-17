@@ -8,6 +8,7 @@ import { connectUrl, extractLinkCodeCandidates, isLinkAttempt } from './linking.
 import { dropRepeatedButtons, lastSentButtons, outboundBody, renderAssistantReply, renderPlainText, WA_CAPTION_MAX, type OutboundMessage } from './render.js'
 import { extractOptions, toWhatsAppMarkup } from './format.js'
 import { isShoppingItemList, shoppingListDigest } from '../shoppingText.js'
+import type { WeekView } from '../menuText.js'
 import { AI_DISCLOSURE_FIRST_PERSON } from '@ona/shared'
 import { controlCommand, OPT_IN_NO, OPT_IN_YES } from './commands.js'
 import { trackEvent } from '../usageEvents.js'
@@ -89,15 +90,17 @@ export interface InboundDeps {
   ackAfterMs?: number
   /**
    * Compact text of a week's menu, appended to the reply of a turn that
-   * generated it so the user can read it and iterate here (menuId = the one
-   * the turn touched, null = the user's latest). Absent → no digest.
+   * generated it (or that asked to see it, `view`) so the user can read it
+   * and iterate here (menuId = the one the turn touched, null = the user's
+   * latest). Absent → no digest.
    */
-  menuDigest?: (userId: string, menuId: string | null) => Promise<string | null>
+  menuDigest?: (userId: string, menuId: string | null, view: WeekView) => Promise<string | null>
   /**
    * The same week as one picture plus a short caption (2026-10-15), sent
-   * instead of the digest text. Absent, null or throwing → the digest text.
+   * instead of the digest text. Throwing → the digest text. Null (nothing to
+   * draw) → the digest text after generating, the model's words after a read.
    */
-  menuImage?: (userId: string, menuId: string | null) => Promise<WeekImage | null>
+  menuImage?: (userId: string, menuId: string | null, view: WeekView) => Promise<WeekImage | null>
   /**
    * Photo of a recipe → saved recipe. Absent → photos get a polite "todavía no".
    * `sourceUrl` = the link saved as its source (PRO-66); `looksLikeScreenshot`
@@ -115,6 +118,10 @@ export interface InboundDeps {
 
 /** Skills after which the reply carries the week's menu (not just a link to it). */
 const MENU_DIGEST_TOOLS = new Set(['generate_weekly_menu', 'complete_onboarding'])
+/** The read that shows the whole week (2026-10-15): the same picture, a «Tu menú…» caption. */
+const WEEK_READ_TOOL = 'get_weekly_menu'
+/** Menu reads: a turn made only of these has nothing to say that the week doesn't. */
+const MENU_READ_TOOLS = new Set([WEEK_READ_TOOL, 'get_todays_menu'])
 /** …and the shopping list. */
 const SHOPPING_DIGEST_TOOLS = new Set(['get_shopping_list'])
 
@@ -129,7 +136,9 @@ export async function withDigests(
   userId: string,
   deps: Pick<InboundDeps, 'menuDigest'>,
 ): Promise<AssistantResponse> {
-  return appendDigests(response, await loadMenuDigest(response, userId, deps))
+  const view = weekViewOf(response)
+  const digest = await loadMenuDigest(response, userId, deps, view)
+  return withWeekText(response, view, digest)
 }
 
 /** The week picture the WhatsApp reply carries: the JPG and its caption. */
@@ -138,7 +147,19 @@ export interface WeekImage {
   caption: string
 }
 
-const generatedMenu = (response: AssistantResponse) => (response.toolsUsed ?? []).some((t) => MENU_DIGEST_TOOLS.has(t))
+/**
+ * Why this turn's reply shows the whole week: Mimo generated it, the user
+ * asked to see it (get_weekly_menu, with the menu it read), or neither.
+ * One-day reads (get_todays_menu) are neither: they stay text with links.
+ */
+export function weekViewOf(response: AssistantResponse): WeekView | null {
+  const tools = response.toolsUsed ?? []
+  if (tools.some((t) => MENU_DIGEST_TOOLS.has(t))) return 'generated'
+  // A week with nothing planned answers without menu data: no picture, the
+  // model's words as before.
+  if (tools.includes(WEEK_READ_TOOL) && menuIdOf(response)) return 'viewing'
+  return null
+}
 
 /** The menu the turn touched (null = the user's latest). */
 function menuIdOf(response: AssistantResponse): string | null {
@@ -154,10 +175,11 @@ async function loadMenuDigest(
   response: AssistantResponse,
   userId: string,
   deps: Pick<InboundDeps, 'menuDigest'>,
+  view: WeekView | null,
 ): Promise<string | null> {
-  if (!deps.menuDigest || !generatedMenu(response)) return null
+  if (!deps.menuDigest || !view) return null
   try {
-    return await deps.menuDigest(userId, menuIdOf(response))
+    return await deps.menuDigest(userId, menuIdOf(response), view)
   } catch (err) {
     console.warn('[whatsapp] menuDigest failed (sending the reply without it):', err)
     return null
@@ -171,31 +193,49 @@ function shoppingDigestOf(response: AssistantResponse): string | null {
     : null
 }
 
-function appendDigests(response: AssistantResponse, menuDigest: string | null): AssistantResponse {
-  const digests: string[] = []
-  let message = response.message?.trim() ?? ''
-  if (menuDigest) {
-    digests.push(menuDigest)
-    // The digest opens with "Listo: tu menú…": the model's own
-    // "Hecho: - Menú de la semana listo" would say it twice (2026-10-15).
-    message = withoutMenuReadyLines(message)
-  }
+/**
+ * The model's words that go with the week. Its "menú listo" lines go (the
+ * opener says it). After a read, nothing: the week IS the answer — its own
+ * day-by-day list is exactly what the picture replaces — unless the turn
+ * also changed something ("Hecho: - Martes 20, …"), which stays.
+ */
+function modelWordsWithWeek(response: AssistantResponse, view: WeekView): string {
+  const tools = response.toolsUsed ?? []
+  if (view === 'viewing' && tools.every((t) => MENU_READ_TOOLS.has(t))) return ''
+  return withoutMenuReadyLines(response.message?.trim() ?? '')
+}
+
+/**
+ * The reply as text: the model's words, the week digest, the shopping list.
+ * The digest links the menu page, so no "Ver menú" (nor one day's recipe
+ * links) again. Without a digest the model's words stay as they were.
+ */
+function withWeekText(response: AssistantResponse, view: WeekView | null, digest: string | null): AssistantResponse {
   const shopping = shoppingDigestOf(response)
-  if (shopping) digests.push(shopping)
-  if (digests.length === 0) return response
-  return { ...response, message: [message, ...digests].filter(Boolean).join('\n\n') }
+  if (!view || !digest) {
+    if (!shopping) return response
+    return { ...response, message: [response.message?.trim() ?? '', shopping].filter(Boolean).join('\n\n') }
+  }
+  return {
+    ...response,
+    message: [modelWordsWithWeek(response, view), digest, shopping].filter(Boolean).join('\n\n'),
+    uiHint: response.uiHint === 'menu' ? undefined : response.uiHint,
+  }
 }
 
 /** What the history says the week picture showed. */
 export const WEEK_IMAGE_ALT = 'el menú de la semana, día a día'
 
 /**
- * The WhatsApp messages answering a turn. A turn that generated the week
- * sends ONE picture of it with a short caption (2026-10-15, Miguel: the text
- * digest was «overwhelming»): the model's own words (minus its "menú listo"
- * line), then the opener, the menu link and the invite. If the picture can't
- * be drawn, or its upload/send fails later, the text digest goes out
- * instead — exactly what a turn without the picture sends.
+ * The WhatsApp messages answering a turn. A turn that generated the week —
+ * or asked to see it (get_weekly_menu, 2026-10-15) — sends ONE picture of it
+ * with a short caption (Miguel: the text digest was «overwhelming»): the
+ * model's own words (minus its "menú listo" line; none at all after a plain
+ * read), then the opener («Listo: …» / «Tu menú de esta semana»), the menu
+ * link and the invite. If the picture can't be drawn, or its upload/send
+ * fails later, the text digest goes out instead — exactly what a turn without
+ * the picture sends. A read whose week has nothing to draw keeps the model's
+ * words, as before.
  *
  * When the model's words carry buttons (or a shopping list came in the same
  * turn, or it all doesn't fit in a caption), they go after the picture as
@@ -208,17 +248,21 @@ export async function replyMessages(
   lastButtons: string[] | null,
 ): Promise<OutboundMessage[]> {
   const asText = (r: AssistantResponse) => dropRepeatedButtons(renderAssistantReply(r, deps.webUrl), lastButtons)
-  const digest = await loadMenuDigest(response, userId, deps)
-  const textVersion = asText(appendDigests(response, digest))
-  if (!deps.menuImage || !generatedMenu(response)) return textVersion
+  const view = weekViewOf(response)
+  const digest = await loadMenuDigest(response, userId, deps, view)
+  const textVersion = asText(withWeekText(response, view, digest))
+  if (!deps.menuImage || !view) return textVersion
 
   let image: WeekImage | null = null
   try {
-    image = await deps.menuImage(userId, menuIdOf(response))
+    image = await deps.menuImage(userId, menuIdOf(response), view)
   } catch (err) {
     console.warn('[whatsapp] week image failed (sending the text digest):', err)
+    return textVersion
   }
-  if (!image) return textVersion
+  // Nothing to draw: the digest after generating; after a read, the model's
+  // words as before (it said what there is, or that there's nothing).
+  if (!image) return view === 'viewing' ? asText(response) : textVersion
 
   const picture = (caption: string, fallback: OutboundMessage[]): OutboundMessage => ({
     type: 'image',
@@ -228,7 +272,7 @@ export async function replyMessages(
     alt: WEEK_IMAGE_ALT,
     fallback,
   })
-  const rest = withoutMenuReadyLines(response.message?.trim() ?? '')
+  const rest = modelWordsWithWeek(response, view)
   const shopping = shoppingDigestOf(response)
   const { text: restText, options } = extractOptions(rest)
   if (!shopping && options.length === 0) {
@@ -247,22 +291,52 @@ export async function replyMessages(
   return [picture(image.caption.slice(0, WA_CAPTION_MAX), digest ? renderPlainText(digest) : []), ...after]
 }
 
-/** "- Menú de la semana listo", "Tu primer menú de la semana está listo.", "Hecho: menú de la semana listo"… */
-const MENU_READY_LINE =
-  /^\s*(?:hecho\s*:\s*)?(?:[-•*]\s*)?(?:tu\s+)?(?:primer\s+)?men[uú]\s+(?:de\s+(?:la|esta|tu)\s+semana\s+)?(?:est[aá]\s+)?(?:listo|generado|preparado)\s*[.!]?\s*$/i
-/** A line that only acknowledges: "Hecho:", "Hecho.", "Listo." */
-const BARE_ACK_LINE = /^\s*(?:hecho|listo|vale)\s*[:.!]?\s*$/i
+/** Accents off, lower case, `*bold*` / `_italic_` marks off: what the "menú listo" match compares. */
+function foldLine(line: string): string {
+  return line.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[*_~]/g, '').trim()
+}
+
+/**
+ * The model's "menu ready" line in all the shapes seen (2026-10-15): "- Menú
+ * de la semana que viene listo (semana del 19 de octubre)", "• Tu primer menú
+ * de esta semana está listo.", "*Menú para la semana del 19 de octubre
+ * generado*", "Hecho: menú de la semana listo"… Matched on the folded line
+ * (no accents, lower case, no bold marks).
+ */
+// "de la semana", "para esta semana que viene", "de la semana del 19 al 25 de octubre"…
+const WEEK_WORDS =
+  '(?:\\s+(?:de|para)\\s+(?:(?:la|esta|tu)\\s+)?(?:(?:proxima|siguiente)\\s+)?semana' +
+  '(?:\\s+(?:que\\s+viene|proxima|siguiente|actual|del?\\s+\\d{1,2}(?:\\s+de\\s+[a-z]+)?(?:\\s+al\\s+\\d{1,2}(?:\\s+de\\s+[a-z]+)?)?))?)?'
+/** "(semana del 19 de octubre)", then closing punctuation or an emoji. */
+const LINE_END = '(?:\\s*\\([^)]*\\))?[\\s.!:✅👌🍽️\\uFE0F]*$'
+const MENU_WORD = '(?:ya\\s+)?(?:tienes\\s+)?(?:(?:tu|el)\\s+)?(?:primer\\s+)?menu(?:\\s+(?:semanal|nuevo))?'
+const BULLET = '(?:[-•·–]\\s*)?'
+const MENU_READY_LINES = [
+  // "- Tu primer menú de la semana que viene (ya) está listo (…)"
+  new RegExp(`^(?:hecho\\s*[:.!]?\\s*)?${BULLET}${MENU_WORD}${WEEK_WORDS}(?:\\s+ya)?(?:\\s+(?:esta|queda))?(?:\\s+ya)?\\s+(?:listo|generado|preparado|hecho|creado)${LINE_END}`, 'u'),
+  // "Listo: tu menú de la semana que viene", "Hecho, tu primer menú de esta semana"
+  new RegExp(`^${BULLET}(?:listo|hecho)\\s*[:,.!]?\\s+${MENU_WORD}${WEEK_WORDS}${LINE_END}`, 'u'),
+]
+/** A line that only acknowledges: "Hecho:", "Hecho.", "Listo." (folded). */
+const BARE_ACK_LINE = /^(?:hecho|listo|vale)\s*[:.!]?$/
 
 /**
  * Pure: the model's reply to a turn that generated the menu, minus the
- * "menú listo" line the digest already says. What's left only stays when it
- * says something else (another change of the turn, a warning); a bare
- * "Hecho:" goes too.
+ * "menú listo" line the opener already says. What's left only stays when it
+ * says something else (another change of the turn, a warning); a "Hecho:"
+ * with nothing under it goes too.
  */
 export function withoutMenuReadyLines(message: string): string {
-  const lines = message.split('\n').filter((l) => !MENU_READY_LINE.test(l))
-  if (lines.every((l) => !l.trim() || BARE_ACK_LINE.test(l))) return ''
-  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+  const lines = message.split('\n').filter((l) => !MENU_READY_LINES.some((re) => re.test(foldLine(l))))
+  if (lines.every((l) => !l.trim() || BARE_ACK_LINE.test(foldLine(l)))) return ''
+  // A "Hecho:" whose only change was the menu, with a warning further down:
+  // drop the empty header, keep the warning. One with changes under it stays.
+  const out = lines.filter((l, i) => {
+    if (!BARE_ACK_LINE.test(foldLine(l))) return true
+    const next = lines.slice(i + 1).find((x) => x.trim())
+    return next !== undefined && /^\s*[-•·–*]\s/.test(next)
+  })
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim()
 }
 
 const humanContact = (email?: string) =>

@@ -28,7 +28,7 @@ import { buildChatHistory } from '../src/services/whatsapp/history.js'
 import type { SkillDefinition } from '../src/services/assistant/types.js'
 
 const READ_SKILLS = new Set([
-  'get_todays_menu', 'get_recipe_details', 'search_recipes', 'suggest_recipes', 'get_my_recipes',
+  'get_todays_menu', 'get_weekly_menu', 'get_recipe_details', 'search_recipes', 'suggest_recipes', 'get_my_recipes',
   'get_menu_history', 'get_weekly_nutrition', 'get_variety_score', 'scale_recipe',
 ])
 

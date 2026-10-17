@@ -33,9 +33,18 @@ test('ask Mimo from the menu, keep the conversation on another page, page contex
   await expect(panel.getByText('Hoy toca lentejas con verduras.')).toBeVisible()
   expect(bodies[0]).toMatchObject({ message: '¿Qué toca hoy?', mode: 'text', context: { path: '/menu' } })
 
+  // Mimo's own face (PRO-137) in the header and beside Mimo's bubble — not
+  // beside the user's; the floating button keeps the logo.
+  const headerAvatar = panel.locator('header').getByTestId('mimo-avatar')
+  await expect(headerAvatar).toHaveAttribute('src', '/brand/mimo-avatar-64.svg')
+  await expect.poll(() => headerAvatar.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true)
+  await expect(panel.getByTestId('mimo-messages').getByTestId('mimo-avatar')).toHaveCount(1)
+
   // Close, go elsewhere, reopen: the conversation is still there.
   await page.getByRole('button', { name: 'Cerrar' }).click()
   await expect(panel).toHaveCount(0)
+  await expect(page.getByTestId('mimo-button').getByTestId('mimoia-symbol')).toBeVisible()
+  await expect(page.getByTestId('mimo-button').getByTestId('mimo-avatar')).toHaveCount(0)
   await page.goto('/recipes')
   await page.getByTestId('mimo-button').click()
   await expect(page.getByTestId('mimo-panel').getByText('Hoy toca lentejas con verduras.')).toBeVisible()

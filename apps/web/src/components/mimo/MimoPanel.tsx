@@ -140,7 +140,8 @@ export default function MimoPanel() {
           )}
 
           {mimo.messages.map((m) => (
-            <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'items-end justify-start gap-2'}`}>
+              {m.role === 'assistant' && <MimoAvatar size={28} className="mb-0.5" />}
               <div
                 className={`max-w-[85%] whitespace-pre-line rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed ${
                   m.role === 'user' ? 'rounded-br-md bg-[#1A1612] text-[#FFFEFA]' : 'rounded-bl-md bg-[#F2EDE0] text-[#1A1612]'

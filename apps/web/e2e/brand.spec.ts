@@ -62,6 +62,8 @@ test('the logged-in app says Mimoia: desktop wordmark and recipe eyebrow', async
   await expect(page.getByTestId('app-wordmark')).toHaveText('mimoia', { timeout: 10_000 })
   await expect(page.getByTestId('app-wordmark').getByTestId('mimoia-symbol')).toBeVisible()
   await expect(page.getByTestId('mimo-button').getByTestId('mimoia-symbol')).toBeVisible()
+  // The floating button keeps the logo; Mimo's own face is only in the chat (PRO-137).
+  await expect(page.getByTestId('mimo-button').getByTestId('mimo-avatar')).toHaveCount(0)
 
   await page.setViewportSize({ width: 390, height: 844 })
   const list: Array<{ id: string }> = await (await page.request.get(`${apiUrl}/recipes?perPage=1`)).json()

@@ -1,7 +1,8 @@
 /**
  * Mimoia's imagotipo (2026-10-09, direction A3 "cuchara calada"): a wooden
- * spoon with a heart cut out of the bowl — "comida con cariño". The same
- * symbol is Mimo's face (floating button, panel, WhatsApp profile photo).
+ * spoon with a heart cut out of the bowl — "comida con cariño". It stays on
+ * the app icon, favicon, Mimo's floating button and WhatsApp profile photo;
+ * where Mimo talks (the chat panel) Mimo has its own face, `MimoAvatar`.
  *
  * MIMOIA_SYMBOL_PATH is the single source of truth: one path, fill-rule
  * nonzero (bowl and handle clockwise, heart counter-clockwise, so the heart
@@ -58,16 +59,27 @@ export function MimoiaLogo({ size = 24, className, testId }: { size?: number; cl
   )
 }
 
-/** Mimo's face: cream spoon on a terracotta circle (button, panel, WhatsApp photo). */
+/**
+ * Mimo's own face (D-058, PRO-137): the spoon upright with two dots for eyes,
+ * a short smile and the heart as a cheek, cream on a forest circle. Only where
+ * Mimo talks: the chat panel's header and Mimo's bubbles. The files are
+ * Marketing's, copied as they are from ona-hq `brand/logos/`
+ * (`public/brand/mimo-avatar.svg`; `mimo-avatar-64.svg`, with thicker
+ * features, for 64 px or less). Decorative: the caller names Mimo.
+ */
 export function MimoAvatar({ size = 32, className }: { size?: number; className?: string }) {
   return (
-    <span
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
       data-testid="mimo-avatar"
-      className={`inline-flex flex-none items-center justify-center rounded-full bg-[#C65D38] text-[#FAF6EE] ${className ?? ""}`}
-      style={{ width: size, height: size }}
+      src={size <= 64 ? "/brand/mimo-avatar-64.svg" : "/brand/mimo-avatar.svg"}
+      width={size}
+      height={size}
+      alt=""
       aria-hidden
-    >
-      <MimoiaSymbol size={Math.round(size * 0.62)} />
-    </span>
+      draggable={false}
+      className={`inline-block flex-none rounded-full ${className ?? ""}`}
+      style={{ width: size, height: size }}
+    />
   )
 }

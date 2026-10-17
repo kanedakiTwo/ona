@@ -202,14 +202,33 @@ export interface WeekReplyOptions {
 /**
  * «Efecto bola de nieve» (Miguel, 2026-10-15): the first generated weeks
  * guess less; saying so up front turns corrections into part of the deal.
- * Marketing will refine the wording — it is this one constant.
+ * Wording: Marketing's version A, approved 2026-10-17 (PRO-170), on WhatsApp
+ * and in the web chat.
  */
 export const SNOWBALL_LINE =
-  'Al principio acertaré menos con vuestros gustos; según me vayas corrigiendo, iré aprendiendo. Es el efecto bola de nieve ⛄'
-/** The snowball line goes with the household's first this-many generated weeks. */
-export const SNOWBALL_WEEKS = 3
+  'Las primeras semanas acertaré menos con los gustos de tu casa. Dime qué cambiarías y lo apunto: así iré acertando cada vez más. Es el efecto bola de nieve ⛄'
+/** The snowball line goes with the household's first this-many generated weeks (PRO-170: 2). */
+export const SNOWBALL_WEEKS = 2
 
-/** Pure: does a generated week carry the snowball line? (1st–3rd generated week: yes.) */
+/** The tools that generate a week's menu (WhatsApp shows the week after them). */
+export const MENU_GENERATING_TOOLS: ReadonlySet<string> = new Set(['generate_weekly_menu', 'complete_onboarding'])
+
+/** Did this turn generate a week's menu? */
+export function generatedMenuThisTurn(toolsUsed: readonly string[] | undefined): boolean {
+  return (toolsUsed ?? []).some((t) => MENU_GENERATING_TOOLS.has(t))
+}
+
+/**
+ * Pure: Mimo's web chat reply after generating a menu, with the snowball line
+ * on top in the household's first `SNOWBALL_WEEKS` generated weeks, as on
+ * WhatsApp (PRO-170). Anything else comes back as it was.
+ */
+export function withSnowballLine(message: string, generatedWeeks: number | undefined): string {
+  if (!showsSnowball({ view: 'generated', generatedWeeks }) || message.includes(SNOWBALL_LINE)) return message
+  return message.trim() ? `${SNOWBALL_LINE}\n\n${message}` : SNOWBALL_LINE
+}
+
+/** Pure: does a generated week carry the snowball line? (1st–2nd generated week: yes.) */
 export function showsSnowball(opts: Pick<WeekReplyOptions, 'view' | 'generatedWeeks'>): boolean {
   return (opts.view ?? 'generated') === 'generated'
     && typeof opts.generatedWeeks === 'number'

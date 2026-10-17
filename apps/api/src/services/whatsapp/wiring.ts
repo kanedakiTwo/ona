@@ -6,6 +6,7 @@ import { resolveScope, scopeWhere } from '../scopeResolver.js'
 import { weekMenuCaption, weekMenuDigest, type WeekMenuInput, type WeekReplyOptions, type WeekView } from '../menuText.js'
 import { weekMenuImage } from '../weekImage/index.js'
 import { madridParts } from '../madridTime.js'
+import { generatedWeeksOf } from '../menuWeek.js'
 import { spendCapStatus } from '../spendCap.js'
 import { chat } from '../assistant/engine.js'
 import { checkAdvisorBudget, recordAdvisorUsage } from '../advisorBudget.js'
@@ -31,23 +32,6 @@ async function loadWeekMenu(userId: string, menuId: string | null): Promise<Week
     .limit(1)
   if (!row) return null
   return { weekStart: String(row.weekStart), days: row.days as any, skippedDays: row.skippedDays }
-}
-
-/**
- * How many different weeks the caller's household has had GENERATED (the
- * snowball line, 2026-10-15): menus with a `menu_logs` row — written only by
- * generate_weekly_menu / POST /menu/generate, never by the empty row the web
- * creates when opening a week — counted by `week_start`, so regenerating the
- * same week doesn't count twice. Read after the turn: includes this week.
- */
-async function generatedWeeksOf(userId: string): Promise<number> {
-  const scope = scopeWhere(menus.userId, menus.householdId, await resolveScope(userId, db))
-  const [row] = await db
-    .select({ n: sql<number>`count(distinct ${menus.weekStart})::int` })
-    .from(menus)
-    .innerJoin(menuLogs, eq(menuLogs.menuId, menus.id))
-    .where(scope)
-  return Number(row?.n ?? 0)
 }
 
 /** Options for the week text and caption: the view, and for a generated week its rank. */

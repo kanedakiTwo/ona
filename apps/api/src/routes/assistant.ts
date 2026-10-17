@@ -11,6 +11,8 @@ import { describePage, pageContextNote, withPageContext } from '../services/assi
 import { canViewRecipe } from '../services/recipeVisibility.js'
 import type { AssistantMode } from '../services/assistant/systemPrompt.js'
 import { recordWebChatTurn } from '../services/chatMessages.js'
+import { generatedMenuThisTurn, withSnowballLine } from '../services/menuText.js'
+import { generatedWeeksOf } from '../services/menuWeek.js'
 
 /** Web modes: the companion's chat and voice, and the voice onboarding. WhatsApp has its own route. */
 const WEB_MODES: AssistantMode[] = ['text', 'voice', 'onboarding']
@@ -67,6 +69,17 @@ router.post('/assistant/:userId/chat', requireSpendCapacity(), async (req: AuthR
 
     const startedAt = Date.now()
     const { usage, ...response } = await chat(userId, modelMessage, chatHistory, db, { mode })
+
+    // «Efecto bola de nieve» (PRO-170): after generating a menu in the
+    // household's first generated weeks, the reply opens with the same line
+    // WhatsApp puts above «Listo: …». No count → no line; the reply still goes.
+    if (generatedMenuThisTurn(response.toolsUsed)) {
+      try {
+        response.message = withSnowballLine(response.message, await generatedWeeksOf(userId, db))
+      } catch (e) {
+        console.warn('[assistant] generated weeks count failed (no snowball line):', e)
+      }
+    }
 
     // Meter this turn's real token cost against the monthly budget. Awaited so
     // the next request sees the updated total, but a metering failure must not

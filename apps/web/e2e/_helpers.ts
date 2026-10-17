@@ -83,7 +83,7 @@ export async function submitLoginForm(page: Page, creds: Pick<TestCreds, 'userna
  */
 export async function registerFreshUser(
   page: Page,
-  opts: { keepFirstSteps?: boolean } = {},
+  opts: { keepFirstSteps?: boolean; keepTaste?: boolean } = {},
 ): Promise<TestCreds> {
   const creds = freshCreds()
   await page.goto('/register')
@@ -92,7 +92,27 @@ export async function registerFreshUser(
     submitRegisterForm(page, creds),
   ])
   if (!opts.keepFirstSteps) await skipFirstSteps(page)
+  if (!opts.keepTaste) await skipTasteOffer(page)
   return creds
+}
+
+/**
+ * «Afina tu menú» (PRO-146) comes first in the sign-up and, for accounts
+ * onboarded without it, as a full-screen «Novedad» over /menu. Every spec
+ * that isn't about it marks the sign-up step as already shown (same endpoint
+ * the sign-up step calls), which turns both off; `afina-tu-menu.spec.ts`
+ * passes `{ keepTaste: true }`. Specs that reach /onboarding must navigate
+ * there after this (they all `page.goto('/onboarding')`).
+ */
+export async function skipTasteOffer(page: Page): Promise<void> {
+  const apiUrl = process.env.API_URL ?? 'http://localhost:8765'
+  const token = await page.evaluate(() => localStorage.getItem('ona_token'))
+  if (!token) return
+  const res = await page.request.post(`${apiUrl}/taste/offers`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { event: 'onboarding' },
+  })
+  if (!res.ok()) throw new Error(`taste offer failed: ${res.status()} ${await res.text()}`)
 }
 
 /**
@@ -121,7 +141,7 @@ export async function skipFirstSteps(page: Page): Promise<void> {
  */
 export async function completeOnboarding(
   page: Page,
-  opts: { keepFirstSteps?: boolean } = {},
+  opts: { keepFirstSteps?: boolean; keepTaste?: boolean } = {},
 ): Promise<void> {
   const apiUrl = process.env.API_URL ?? 'http://localhost:8765'
 
@@ -137,7 +157,6 @@ export async function completeOnboarding(
       kidsCount: 0,
       cookingFreq: 'daily',
       restrictions: [],
-      favoriteDishes: ['pasta', 'pollo', 'ensalada'],
       priority: 'healthy',
     },
   })
@@ -145,6 +164,7 @@ export async function completeOnboarding(
   if (!res.ok()) throw new Error(`onboarding failed: ${res.status()} ${await res.text()}`)
   // Specs that sign up without registerFreshUser (closed-beta) land here.
   if (!opts.keepFirstSteps) await skipFirstSteps(page)
+  if (!opts.keepTaste) await skipTasteOffer(page)
 
   // Reflect onboardingDone in the local copy so AuthProvider doesn't bounce
   // us back to /onboarding on the next navigation.

@@ -36,6 +36,8 @@ ROUTES=(
   "/recipes/${UUID}/edit"
   /profile
   /profile/casa
+  /profile/memoria
+  /afinar
   /whatsapp/conectar
   /advisor
   "/recipes/${UUID}/cook"

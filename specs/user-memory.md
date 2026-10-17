@@ -11,6 +11,7 @@ Typed long-term storage of everything the assistant has learned (or the user has
 - Users can see every fact the assistant remembers about them at `/profile/memoria` — grouped by category (Perfil físico, Hogar, Restricciones y gustos, Cocina, Rutina, Otras notas), with a source badge per row (**Tú** ink para datos manuales, **Asistente** terracota para inferidos, **Onboarding** neutral). Each stored fact has a "···" sheet with "Editar <dato>" (inline editor in the row) and "Olvidar <dato>" (with a confirm); empty keys (and empty lists) show "Añadir". In list editors (restricciones, disgustos, equipo, notas, creencias, hábitos) «Guardar» also keeps the text still typed in the box, so an entry isn't lost when the user skips the «+» (e2e `profile-memory-save-draft.spec.ts`)
 - Users can ask the assistant to remember any preference mid-conversation: "recuerda que no me gusta el cilantro", "tengo freidora de aire", "los lunes no cocino más de 20 minutos", "preferimos cocina mediterránea". The advisor calls the `update_memory` skill and persists the fact with `source: 'inferred'` and confidence 0.8 (or 1.0 if the user is emphatic — "APUNTA…")
 - Users can delete any single fact from the memory page with a confirm dialog (full inline edit lands in the next PR; in the meantime the user can ask the assistant to overwrite a value)
+- **«Afina tu menú»** (PRO-146, [taste.md](./taste.md)) writes here too: an ingredient picked in «¿Qué es lo que no?» → `dislikes`; the free text «¿Es otra cosa? Cuéntamelo» is read like `update_memory` (Claude Haiku, plain rules without it): «no tengo horno» → `equipment` without it (the usual kit minus it when there was no list), home habits → `prep_habits`, the rest → `notes`. Confidence 1, a `manual` fact keeps its source. `/profile/memoria` also lists every rated recipe («Afina tu menú» section) to change or forget
 - The assistant injects the memory into every system prompt — so a request like "recomiéndame algo para cenar" automatically filters out recipes whose ingredients hit the user's `dislikes` or `restrictions`, and prefers recipes that fit the user's `equipment` and `time_available` for that weekday
 
 ## Schema
@@ -89,6 +90,7 @@ The `update_memory` skill (declared in `assistant/skills.ts`) takes a `facts: Ar
 - [Ficha del hogar](./household-profile.md) — the household profile these facts are copied into (PRO-150)
 - [Advisor](./advisor.md) — the assistant integration point that reads memory at every skill call
 - [Auth](./auth.md) — `users.adults` / `users.kids_2_to_10` are mirrored here for backward compat
+- [Afina tu menú](./taste.md) — recipe verdicts and «¿Qué es lo que no?» writes to `dislikes` / `equipment` / `prep_habits` / `notes`
 - [Menus](./menus.md) — future PR will pipe `dislikes` + `equipment` + `time_available` into the matcher's predicates
 
 ## Source

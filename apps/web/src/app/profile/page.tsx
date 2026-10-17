@@ -20,6 +20,7 @@ import {
   ChefHat,
   CreditCard,
   Compass,
+  Heart,
   Home,
   LogOut,
   MessageCircle,
@@ -42,6 +43,7 @@ import { usePantry } from '@/hooks/usePantry'
 import { useStaples } from '@/hooks/useStaples'
 import { useCookbooks } from '@/hooks/useCookbooks'
 import { useBilling } from '@/hooks/useBilling'
+import { useTasteStatus } from '@/hooks/useTaste'
 import { FoundingBadge } from '@/components/profile/FoundingBadge'
 import { GroupLabel, MoreButton, ProfileCard, ProfileHubLink, Switch } from './sections/ProfileCards'
 import { useAuth } from '@/lib/auth'
@@ -1017,6 +1019,7 @@ function ProfileHub() {
   const staples = useStaples()
   const cookbooks = useCookbooks()
   const billing = useBilling()
+  const taste = useTasteStatus()
 
   const memoryCount = memory.data
     ? Object.keys(memory.data).filter((k) => k !== 'nutrition_principles').length
@@ -1033,6 +1036,12 @@ function ProfileHub() {
         icon={Home}
         title="Casa"
         status={members == null ? (household.isError ? 'Tu hogar' : loading) : members === 1 ? 'Solo tú' : plural(members, 'persona', 'personas')}
+      />
+      <ProfileHubLink
+        href="/afinar"
+        icon={Heart}
+        title="Afina tu menú"
+        status={taste.data == null ? loading : `${taste.data.rated} de ${taste.data.total} valoradas`}
       />
       <ProfileHubLink
         href="/profile/memoria"

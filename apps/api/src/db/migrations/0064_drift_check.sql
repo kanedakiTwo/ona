@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "taste_state" jsonb DEFAULT '{}'::jsonb NOT NULL;

@@ -1,7 +1,13 @@
 "use client"
 
 /**
- * The six-question onboarding ("D · Luz y foto", PRO-37; the weekday time question, PRO-138): one question per
+ * «Afina tu menú» first (PRO-146): 10 recipe cards with «Saltar» always
+ * visible, right after creating the account and before choosing WhatsApp or
+ * the web, so everyone does it. Then the five-question onboarding (the
+ * three favourite dishes went away: «Me encanta» replaces them; the weekday
+ * time question is PRO-138).
+ *
+ * The questions ("D · Luz y foto", PRO-37): one question per
  * screen with a compact header (eyebrow + Fraunces h1 with a terracotta
  * italic accent), answers as paper cards or chips, and an ink pill pinned to
  * the bottom. At `lg+` the column is 560 px with a dish photo beside it
@@ -19,6 +25,8 @@ import { HealthConsentCheckbox } from "@/components/HealthConsentCheckbox"
 import { Accent, OnboardingHeader, OnboardingShell } from "./OnboardingShell"
 import { OnboardingChannelChoice, OnboardingWhatsAppLink } from "./OnboardingWhatsApp"
 import { useWhatsAppLinkCode, useWhatsAppStatus } from "@/hooks/useWhatsApp"
+import { postTasteOffer, useTasteStatus } from "@/hooks/useTaste"
+import { TasteSwiper } from "@/components/taste/TasteSwiper"
 
 // Shared with the profile so both offer the same chips (@ona/shared).
 const PRESET_RESTRICTIONS = RESTRICTION_PRESETS
@@ -30,7 +38,6 @@ interface OnboardingData {
   kidsCount: number
   cookingFreq: string | null
   restrictions: string[]
-  favoriteDishes: string[]
   priority: string | null
   weekdayCooking: WeekdayCookingChoice | null
   cookingNote: string
@@ -141,7 +148,6 @@ export default function OnboardingFlow() {
     kidsCount: 0,
     cookingFreq: null,
     restrictions: [],
-    favoriteDishes: ["", "", ""],
     priority: null,
     weekdayCooking: null,
     cookingNote: "",
@@ -151,7 +157,7 @@ export default function OnboardingFlow() {
   // RGPD art. 9 (PRO-21): restrictions are health data, only with this box.
   const [healthConsent, setHealthConsent] = useState(false)
 
-  const totalSteps = 6
+  const totalSteps = 5
 
   // WhatsApp-first (2026-10-10): when the channel is available, the first
   // screen offers to do the first steps with Mimo in WhatsApp. Already linked
@@ -164,6 +170,22 @@ export default function OnboardingFlow() {
     setChannel(whatsapp.data?.available ? (whatsapp.data.linked ? "whatsapp" : "choose") : "web")
   }, [channel, whatsapp.isLoading, whatsapp.data])
   const canBackToChannel = Boolean(whatsapp.data?.available)
+
+  // «Afina tu menú» step (PRO-146): decided once from the first status, so
+  // stamping it as shown doesn't hide it halfway through.
+  const tasteStatus = useTasteStatus()
+  const [tasteStep, setTasteStep] = useState<"pending" | "show" | "done">("pending")
+  useEffect(() => {
+    if (tasteStep !== "pending") return
+    if (tasteStatus.isError) setTasteStep("done")
+    else if (tasteStatus.data) {
+      if (tasteStatus.data.offeredInOnboarding) setTasteStep("done")
+      else {
+        setTasteStep("show")
+        postTasteOffer("onboarding").catch(() => {})
+      }
+    }
+  }, [tasteStep, tasteStatus.data, tasteStatus.isError])
 
   function next() {
     if (step < totalSteps) setStep(step + 1)
@@ -196,12 +218,6 @@ export default function OnboardingFlow() {
     }
   }
 
-  function setFavoriteDish(index: number, value: string) {
-    const dishes = [...data.favoriteDishes]
-    dishes[index] = value
-    setData({ ...data, favoriteDishes: dishes })
-  }
-
   async function handleComplete() {
     if (!user) return
     setIsSubmitting(true)
@@ -213,7 +229,6 @@ export default function OnboardingFlow() {
         kidsCount: data.kidsCount,
         cookingFreq: data.cookingFreq,
         restrictions: healthConsent ? data.restrictions : [],
-        favoriteDishes: data.favoriteDishes.filter((d) => d.trim() !== ""),
         priority: data.priority,
         healthConsent,
         weekdayCooking: data.weekdayCooking ?? undefined,
@@ -256,8 +271,6 @@ export default function OnboardingFlow() {
       case 4:
         return true
       case 5:
-        return data.favoriteDishes.some((d) => d.trim() !== "")
-      case 6:
         return data.priority !== null
       default:
         return false
@@ -266,6 +279,24 @@ export default function OnboardingFlow() {
 
   const pill =
     "flex h-[52px] w-full items-center justify-center rounded-full bg-ink px-6 text-[16px] font-semibold text-cream transition-colors hover:bg-ink-mid active:scale-[0.98] disabled:opacity-40 disabled:active:scale-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+
+  if (tasteStep !== "done") {
+    return (
+      <div className="min-h-[100dvh] bg-cream lg:py-8">
+        <OnboardingShell photo={PHOTO}>
+          <div data-testid="onboarding-taste" className="flex min-h-[100dvh] flex-col pt-[var(--safe-top)] lg:min-h-[calc(100dvh-4rem)]">
+            {tasteStep === "pending" ? (
+              <p role="status" className="px-4 pt-6 text-[14px] text-ink-muted">
+                Cargando…
+              </p>
+            ) : (
+              <TasteSwiper mode="onboarding" onDone={() => setTasteStep("done")} />
+            )}
+          </div>
+        </OnboardingShell>
+      </div>
+    )
+  }
 
   if (channel !== "web") {
     return (
@@ -507,32 +538,10 @@ export default function OnboardingFlow() {
               </section>
             )}
 
-            {/* Step 5: Favorite dishes */}
+            {/* Step 5: Priority */}
             {step === 5 && (
               <section>
                 <OnboardingHeader eyebrow={`Primeros pasos · 5 de ${totalSteps}`}>
-                  Dame 3 platos que te <Accent>encanten</Accent>
-                </OnboardingHeader>
-                <Lead>Para entender tus gustos.</Lead>
-                <div className="mt-6 space-y-3">
-                  {[0, 1, 2].map((i) => (
-                    <input
-                      key={i}
-                      type="text"
-                      value={data.favoriteDishes[i]}
-                      onChange={(e) => setFavoriteDish(i, e.target.value)}
-                      placeholder={`Plato ${i + 1}`}
-                      className={FIELD}
-                    />
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {/* Step 6: Priority */}
-            {step === 6 && (
-              <section>
-                <OnboardingHeader eyebrow={`Primeros pasos · 6 de ${totalSteps}`}>
                   ¿Qué quieres que Mimoia <Accent>priorice</Accent>?
                 </OnboardingHeader>
                 <Lead>Elegimos el enfoque de tus menús.</Lead>

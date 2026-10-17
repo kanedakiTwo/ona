@@ -96,7 +96,8 @@ export const onboardingSchema = z.object({
   kidsCount: z.number().int().min(0).max(20),
   cookingFreq: z.enum(['daily', '3_4_times', 'rarely']),
   restrictions: z.array(z.string()),
-  favoriteDishes: z.array(z.string()).min(1).max(5),
+  /** Legacy (PRO-146): «Afina tu menú» replaced the three favourite dishes; still accepted, no longer asked. */
+  favoriteDishes: z.array(z.string()).max(5).default([]),
   priority: z.enum(['quick', 'varied', 'healthy', 'cheap']),
   /**
    * The separate, unticked health-data box (RGPD art. 9, PRO-21). Without it

@@ -1,6 +1,6 @@
 {
   "id": "f1336daa-a142-4658-a230-12c1e852ed53",
-  "prevId": "e561d261-b20e-4215-9dfb-4eafc75569c1",
+  "prevId": "84f1c696-6456-4311-88c0-380721090447",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -7323,6 +7323,118 @@
         "catalog_wishes_status_check": {
           "name": "catalog_wishes_status_check",
           "value": "status IN ('abierto','cubierto','descartado')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.recipe_verdicts": {
+      "name": "recipe_verdicts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recipe_id": {
+          "name": "recipe_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verdict": {
+          "name": "verdict",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "uq_recipe_verdicts_user_recipe": {
+          "name": "uq_recipe_verdicts_user_recipe",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "recipe_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "recipe_verdicts_user_id_users_id_fk": {
+          "name": "recipe_verdicts_user_id_users_id_fk",
+          "tableFrom": "recipe_verdicts",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "recipe_verdicts_recipe_id_recipes_id_fk": {
+          "name": "recipe_verdicts_recipe_id_recipes_id_fk",
+          "tableFrom": "recipe_verdicts",
+          "tableTo": "recipes",
+          "columnsFrom": [
+            "recipe_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "recipe_verdicts_verdict_check": {
+          "name": "recipe_verdicts_verdict_check",
+          "value": "verdict IN ('love','like','nope','skip')"
         }
       },
       "isRLSEnabled": false

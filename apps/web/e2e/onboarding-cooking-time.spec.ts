@@ -26,7 +26,7 @@ test('weekday cooking question + «tu caso» field → time limits in the memory
 
   // Step 3: the new question, one tap, and the optional field.
   await expect(page.getByRole('heading', { name: /entre semana, ¿cómo te gusta cocinar/i })).toBeVisible()
-  await expect(page.getByText('Primeros pasos · 3 de 6')).toBeVisible()
+  await expect(page.getByText('Primeros pasos · 3 de 5')).toBeVisible()
   await expect(page.getByText('El fin de semana, sin prisa.')).toBeVisible()
   await expect(next).toBeDisabled()
   for (const label of [/^rápido/i, /^poco rato de trabajo/i, /^sin prisa/i]) {
@@ -44,8 +44,6 @@ test('weekday cooking question + «tu caso» field → time limits in the memory
   const onboarding = page.waitForRequest((r) => r.method() === 'POST' && /\/user\/[^/]+\/onboarding$/.test(r.url()))
   await next.click()
   await next.click() // no restrictions
-  await page.getByPlaceholder('Plato 1').fill('Cocido')
-  await next.click()
   await page.getByRole('button', { name: /salud/i }).click()
   await page.getByRole('button', { name: /empezar/i }).click()
 

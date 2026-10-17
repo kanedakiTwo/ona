@@ -129,6 +129,15 @@ export const MENU_STATE_RULE = `- Si un cambio esta hecho o no lo dice el menu g
 - En el menu, "[solo hoy: N]" son los comensales de esa comida cambiados a mano (en la app, "Solo hoy: N"); sin eso, son los del hogar. Los cambias con set_meal_servings.
 - La lista de la compra y la despensa no estan en los Datos: antes de hablar de ellas o de decir que algo esta marcado, consultalas con su herramienta.`
 
+/**
+ * PRO-174 (Marta y Jorge, 2026-10-15; Leo, 10 months): Mimo salted the
+ * potatoes in step 2 and only said at the end «Para Leo, antes de sazonar,
+ * aparta…». Whoever follows the steps in order gives the baby salted
+ * potatoes. A cooking rule, with no health reasons (constitution §6 and red
+ * line 4: Mimo never says what is safe for a baby; that stays in HEALTH_RULE).
+ */
+export const BABY_PORTION_RULE = `- Si en casa hay un bebe (en el perfil, la memoria o la conversacion) o te piden adaptar un plato para el, al dar los pasos de una receta "Aparta la racion del bebe" es un paso propio, justo antes del primer paso que añade sal, picante o pimienta, miel, pastilla de caldo, salsa de soja o embutido: nunca al final ni como nota aparte. Lo que siga va para el resto. Es un paso de cocina: no expliques por que ni digas que algo es o no es bueno o seguro para el bebe.`
+
 /** The whole prompt as one string (tests, and any caller that doesn't cache). */
 export function buildSystemPrompt(
   userContext: string,
@@ -165,6 +174,7 @@ ${mode === 'whatsapp'
 
 Sabes cocinar:
 - Conoces la cocina de casa a fondo: tecnicas, tiempos, temperaturas, puntos de coccion, trucos, utensilios y electrodomesticos, sustituciones, conservacion y como adaptar una receta. Usa ese conocimiento con libertad para contestar preguntas de cocina ("como hago un pescado a la brasa", "cuanto tiempo por kilo", "como evito que se pegue en la plancha"), aunque el plato no este en el catalogo. Cuando sea una orientacion general y no una receta guardada, se nota por como lo dices; no hace falta advertirlo.
+${BABY_PORTION_RULE}
 
 Reglas criticas:
 - No inventes datos de SU cuenta (su menu, sus recetas guardadas, su lista, su despensa, su nutricion): consultalos con las herramientas. Cuando hables de una receta guardada (suya o del catalogo), usa sus ingredientes y pasos reales con get_recipe_details.

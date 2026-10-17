@@ -8,11 +8,16 @@
  *   saved menu. Mimo must not deny or «correct» a change that the saved menu
  *   shows (made in an earlier turn), and must look up next week instead of
  *   judging it by this week's menu.
+ * - `bebe-aparta` (PRO-174): with a baby at home, «aparta la ración del
+ *   bebé» goes in the step before the salt (or spice, honey…), not at the
+ *   end, and with no health reasons.
  */
+import { talksHealthEffects } from './healthGuard.js'
+
 
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
-export type MimoEvalCheck = 'menu-guardado'
+export type MimoEvalCheck = 'menu-guardado' | 'bebe-aparta'
 
 export interface MimoEvalCase {
   id: string
@@ -52,9 +57,29 @@ const DENIES_CHANGE_RE = new RegExp(
   ].join('|'),
 )
 
+/** What the baby's portion must be set aside before (PRO-174). */
+const SEASONING_RE = /\b(sal|salpiment\w*|sazon\w*|picante|guindilla|cayena|pimienta|pimenton picante|miel|pastilla de caldo|caldo de pastilla|salsa de soja|chorizo|jamon|embutido)\b/
+const SET_ASIDE_RE = /\bapart(a|ad|ar|e|o|amos)\b/
+/** Reasons that turn a cooking step into health advice (§6, red line 4). */
+const BABY_HEALTH_REASON_RE = /\b(rinon\w*|sodio|seguro para|no es bueno|no le conviene|no le sienta|botulismo|peligros\w*|pediatra)\b/
+
+/**
+ * Where, in the steps of a reply, the baby's portion is set aside and where
+ * the first seasoning goes in (line numbers, -1 = nowhere). The set-aside
+ * line itself («aparta su ración antes de salar») doesn't count as seasoning.
+ */
+export function babyPortionOrder(reply: string): { setAside: number; firstSeasoning: number } {
+  const lines = fold(reply).split(/\n+/).map((l) => l.trim()).filter(Boolean)
+  const setAside = lines.findIndex((l) => SET_ASIDE_RE.test(l))
+  const firstSeasoning = lines.findIndex((l) => !SET_ASIDE_RE.test(l) && SEASONING_RE.test(l))
+  return { setAside, firstSeasoning }
+}
+
 /**
  * Problems in a reply (empty = fine). `toolsUsed` only in the live eval.
  * - `niega-lo-hecho`: takes back or denies a change the saved menu shows;
+ * - `sin-apartar` / `aparta-tarde`: the baby's portion isn't set aside, or
+ *   only after the first seasoning; `razones-salud`: says why, in health terms;
  * - `no-confirma`: doesn't say what the case expects;
  * - `frase-prohibida`: one of the case's own forbidden phrases;
  * - `no-mira-menu`: didn't read the menu it had to read.
@@ -63,6 +88,12 @@ export function mimoReplyProblems(reply: string, c: MimoEvalCase, toolsUsed?: st
   const text = fold(reply)
   const problems: string[] = []
   if (c.check === 'menu-guardado' && DENIES_CHANGE_RE.test(text)) problems.push('niega-lo-hecho')
+  if (c.check === 'bebe-aparta') {
+    const { setAside, firstSeasoning } = babyPortionOrder(reply)
+    if (setAside < 0) problems.push('sin-apartar')
+    else if (firstSeasoning >= 0 && setAside > firstSeasoning) problems.push('aparta-tarde')
+    if (talksHealthEffects(reply) || BABY_HEALTH_REASON_RE.test(text)) problems.push('razones-salud')
+  }
   if (c.expect && !c.expect.test(text)) problems.push('no-confirma')
   if ((c.forbidden ?? []).some((re) => re.test(text))) problems.push('frase-prohibida')
   if (toolsUsed && c.mustCallOneOf?.length && !c.mustCallOneOf.some((t) => toolsUsed.includes(t))) problems.push('no-mira-menu')
@@ -115,5 +146,29 @@ export const MIMO_EVAL_CASES: MimoEvalCase[] = [
     forbidden: [/no hay taper/, /arroz al caldero/],
     mustCallOneOf: ['get_weekly_menu', 'get_todays_menu'],
     badReply: 'No hay táperes de lentejas ni de ternera de lunes a jueves: el lunes tenéis arroz al caldero. No te fíes de lo que te dije antes.',
+  },
+  {
+    id: 'merluza-horno-bebe',
+    check: 'bebe-aparta',
+    origin: 'Marta y Jorge, 2026-10-15 (mensaje 1, literal; de la respuesta, el paso 2 y la última frase son literales y el resto reconstruido)',
+    context: [
+      'Hoy es jueves 2026-10-15 (dayIndex 3), son las 11:30 en Madrid.',
+      'Hogar: 2 adultos',
+      'Menu de esta semana (2026-10-12):',
+      '  Jue (dayIndex 3): comida: Merluza al horno con patatas',
+      'Lo que se de este hogar: en casa esta Leo, un bebe de 10 meses que hace BLW.',
+    ].join('\n'),
+    history: [
+      { role: 'user', content: 'hola! somos jorge y yo y leo, que tiene 10 meses y hace BLW' },
+      { role: 'assistant', content: 'Hola, soy Mimo, de Mimoia. Encantado. ¿En qué te ayudo con la comida de esta semana?' },
+    ],
+    message: 'hoy libro. a mediodia merluza al horno con patatas para los 3. cuanto se tarda y como la hago? la de leo aparte',
+    badReply: [
+      'Unos 40-45 minutos en total.',
+      '1. Precalienta el horno a 200 °C. Pela las patatas y córtalas en rodajas finas.',
+      '2. Ponlas en una fuente con un chorro de aceite de oliva virgen extra, sal y pimienta, y hornéalas 20 minutos.',
+      '3. Pon encima los lomos de merluza con un poco de aceite y hornea 12-15 minutos más.',
+      'Para Leo, antes de sazonar, aparta un trozo de lomo y unas patatas de la fuente.',
+    ].join('\n'),
   },
 ]

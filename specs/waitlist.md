@@ -92,7 +92,7 @@ Each picked person **pulls in** the waiting people who signed up with their link
 
 ## Source
 
-- [packages/shared/src/types/founderPricing.ts](../packages/shared/src/types/founderPricing.ts), [apps/api/src/services/waitlistPricing.ts](../apps/api/src/services/waitlistPricing.ts), [apps/web/src/components/waitlist/FounderPricing.tsx](../apps/web/src/components/waitlist/FounderPricing.tsx) — founder pricing signal (PRO-26; migration 0041)
+- [packages/shared/src/types/founderPricing.ts](../packages/shared/src/types/founderPricing.ts), [apps/api/src/services/waitlistPricing.ts](../apps/api/src/services/waitlistPricing.ts) — founder pricing signal (PRO-26; migration 0041)
 - [packages/shared/src/types/waitlist.ts](../packages/shared/src/types/waitlist.ts): enums, labels, `waitlistSignupSchema`, form state + `buildWaitlistPayload`, `readWaitlistAttribution`, link/share helpers
 - [packages/shared/src/constants/brand.ts](../packages/shared/src/constants/brand.ts): `BRAND_NAME`
 - [apps/api/src/services/waitlist.ts](../apps/api/src/services/waitlist.ts): code/token generators, `isTargetSegment`, `suggestNextBatch`, `buildWaitlistReport`, `signupToWaitlist`, DB repo, `loadWaitlistReport`, `loadWaitlistSummary`, `loadNextBatchPeople` + `nextBatchPeople`, `inviteWaitlistEntries`, `markWaitlistJoined`

@@ -155,5 +155,5 @@ USDA fetches are sequential to stay within the rate budget. Each extracted recip
 - [apps/api/scripts/applyRegeneratedRecipes.ts](../apps/api/scripts/applyRegeneratedRecipes.ts) — `--auto-create-missing` flag
 - [apps/web/src/components/recipes/IngredientAutocomplete.tsx](../apps/web/src/components/recipes/IngredientAutocomplete.tsx) — picker + modal (manual search, translations, BEDCA, estimate button)
 - [apps/web/src/components/recipes/IngredientCandidateCard.tsx](../apps/web/src/components/recipes/IngredientCandidateCard.tsx) — shared candidate card for both modals
-- [apps/web/src/app/curator/sections/RemapModal.tsx](../apps/web/src/app/curator/sections/RemapModal.tsx) — re-map modal mirroring the auto-create UX
+- [apps/web/src/app/admin/sections/RemapModal.tsx](../apps/web/src/app/admin/sections/RemapModal.tsx) — re-map modal mirroring the auto-create UX
 - [apps/web/src/hooks/useIngredients.ts](../apps/web/src/hooks/useIngredients.ts) — `useSearchIngredients`, `useSuggestIngredient`, `useAutoCreateIngredient`, `useEstimateNutrition`, `useEstimateNutritionPreview`

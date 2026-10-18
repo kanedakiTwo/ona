@@ -72,10 +72,10 @@ export const MESSAGE_GUIDES: Record<GuidedKind, MessageGuide> = {
     maxChars: 280,
   },
   dinner_checkin: {
-    purpose: 'Preguntar si hicieron hoy la cena del menú, para apuntarlo (los botones responden Sí / No).',
-    mustCarry: 'El nombre exacto del plato y la pregunta de si lo hicieron.',
+    purpose: 'Preguntar si hicieron hoy la cena del menú, para apuntarlo (los botones responden). Si los datos lo piden, en el mismo mensaje también qué tal estuvo y si la repetimos (PRO-235).',
+    mustCarry: 'El nombre exacto del plato y la pregunta de si lo hicieron (y, si los datos lo piden, si la repetimos).',
     tone: 'Una o dos frases, ligero, sin presionar ni sonar a control.',
-    maxChars: 240,
+    maxChars: 280,
     asks: true,
   },
   shopping_reminder: {

@@ -178,8 +178,58 @@ export function cookingReminderGuide(name: string, totalMinutes: number, dinnerT
   }
 }
 
-export function dinnerCheckinGuide(name: string): GuideSpec {
+export function dinnerCheckinGuide(name: string, askRating = false): GuideSpec {
+  if (askRating) {
+    return {
+      kind: 'dinner_checkin',
+      facts: [
+        `Cena de hoy en el menú: ${name}`,
+        'En el mismo mensaje: si la hizo, qué tal estuvo y si la repetimos; si no les gustó, que lo diga y no vuelve a salir sola.',
+        `Botones debajo: «${CHECKIN_RATING_BUTTONS[0].title}» / «${CHECKIN_RATING_BUTTONS[1].title}» / «${CHECKIN_RATING_BUTTONS[2].title}»`,
+      ],
+      required: [name],
+    }
+  }
   return { kind: 'dinner_checkin', facts: [`Cena de hoy en el menú: ${name}`, 'Botones debajo: «Sí, la hice» / «No»'], required: [name] }
+}
+
+/**
+ * PRO-235: «¿hiciste la cena?» and «¿repetimos?» (PRO-110) are ONE message.
+ * When the household hasn't rated tonight's recipe (30-day rule,
+ * `shouldAskRating`), the check-in asks both and its buttons answer both
+ * (5 = «Repetir a menudo», 3 = «Bien»); «mejor no» (1) by text.
+ */
+export const CHECKIN_RATING_BUTTONS = [
+  { id: 'checkin:yes:5', title: 'Sí, ¡a repetir!' },
+  { id: 'checkin:yes:3', title: 'Sí, estuvo bien' },
+  { id: 'checkin:no', title: 'No la hice' },
+] as const
+export function formatDinnerCheckin(name: string, askRating: boolean): OutboundMessage {
+  if (!askRating) {
+    return {
+      type: 'buttons',
+      text: `¿Hiciste hoy la cena (*${name}*)? Así lo apunto.`,
+      buttons: [
+        { id: 'checkin:yes', title: 'Sí, la hice' },
+        { id: 'checkin:no', title: 'No' },
+      ],
+    }
+  }
+  return {
+    type: 'buttons',
+    text: `¿Hiciste hoy la cena (*${name}*)? Si la hiciste, ¿qué tal? ¿La repetimos? Si no os gustó, dímelo y no vuelve a salir sola.`,
+    buttons: CHECKIN_RATING_BUTTONS.map((b) => ({ ...b })),
+  }
+}
+
+/**
+ * PRO-235: tools that show today's menu in a conversation. If the person
+ * already saw it this morning (asked Mimo, or generated the week), the
+ * morning brief doesn't repeat it.
+ */
+export const MENU_VIEW_TOOLS: ReadonlySet<string> = new Set(['get_todays_menu', 'get_weekly_menu', 'generate_weekly_menu', 'complete_onboarding'])
+export function sawTodaysMenu(turns: ReadonlyArray<{ tools?: readonly string[] | null }>): boolean {
+  return turns.some((t) => (t.tools ?? []).some((name) => MENU_VIEW_TOOLS.has(name)))
 }
 
 export function shoppingReminderGuide(pending: string[], webUrl: string): GuideSpec {
@@ -202,6 +252,8 @@ function capitalize(s: string): string {
 
 export interface TodayDinner {
   names: string[]
+  /** Recipe ids, same order as `names` (PRO-235: to ask «¿repetimos?» about the first). */
+  recipeIds?: string[]
   /** Longest total time among today's dinner recipes (min), null if unknown. */
   totalMinutes: number | null
 }
@@ -219,6 +271,10 @@ export interface ProactiveInput {
   cookedToday: () => Promise<boolean>
   pendingShopping: () => Promise<string[]>
   hasNextWeekMenu: () => Promise<boolean>
+  /** PRO-235: the person already saw today's menu this morning in a conversation. */
+  sawTodaysMenu?: () => Promise<boolean>
+  /** PRO-235: ask «¿qué tal? ¿repetimos?» about this recipe (not rated in the last 30 days). */
+  askRating?: (recipeId: string) => Promise<boolean>
   webUrl: string
 }
 
@@ -239,7 +295,7 @@ export async function planProactive(input: ProactiveInput): Promise<PlannedMessa
     const day = await input.todayDay()
     const text = formatDailyBrief(day, input.webUrl)
     const guide = dailyBriefGuide(day, input.webUrl)
-    if (text && guide) out.push({ kind: 'daily_brief', messages: [{ type: 'text', text }], guide })
+    if (text && guide && !(await input.sawTodaysMenu?.())) out.push({ kind: 'daily_brief', messages: [{ type: 'text', text }], guide })
   }
 
   if (can('cooking_reminder') && couldNeedCookingReminder(p, input.dinnerTime)) {
@@ -256,19 +312,12 @@ export async function planProactive(input: ProactiveInput): Promise<PlannedMessa
   if (can('dinner_checkin') && isDinnerCheckinWindow(p, input.dinnerTime)) {
     const dinner = await input.todayDinner()
     if (dinner?.names.length && !(await input.cookedToday())) {
+      const recipeId = dinner.recipeIds?.[0]
+      const rate = Boolean(recipeId && input.askRating && (await input.askRating(recipeId)))
       out.push({
         kind: 'dinner_checkin',
-        messages: [
-          {
-            type: 'buttons',
-            text: `¿Hiciste hoy la cena (*${dinner.names[0]}*)? Así lo apunto.`,
-            buttons: [
-              { id: 'checkin:yes', title: 'Sí, la hice' },
-              { id: 'checkin:no', title: 'No' },
-            ],
-          },
-        ],
-        guide: dinnerCheckinGuide(dinner.names[0]),
+        messages: [formatDinnerCheckin(dinner.names[0], rate)],
+        guide: dinnerCheckinGuide(dinner.names[0], rate),
       })
     }
   }

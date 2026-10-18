@@ -1,8 +1,10 @@
-import { and, desc, eq, gte, inArray } from 'drizzle-orm'
-import { isHealthMemoryKey, type DayMenu } from '@ona/shared'
+import { and, desc, eq, gte, inArray, lte } from 'drizzle-orm'
+import { isHealthMemoryKey, shouldAskRating, type DayMenu } from '@ona/shared'
 import { env } from '../../config/env.js'
 import { db } from '../../db/connection.js'
-import { cookLogs, householdMembers, households, menus, recipes, userMemories, users } from '../../db/schema.js'
+import { chatMessages, cookLogs, householdMembers, households, menus, recipes, userMemories, users, whatsappMessages } from '../../db/schema.js'
+import { getRecipeNotesForUser } from '../recipeNotesStore.js'
+import { madridMidnightUtc } from '../madridTime.js'
 import { appApiFor } from '../assistant/appApi.js'
 import { resolveScope, scopeWhere } from '../scopeResolver.js'
 import { isUserAllowed, isWhatsAppConfigured } from './config.js'
@@ -20,6 +22,7 @@ import {
   mergeMessages,
   mondayOf,
   planProactive,
+  sawTodaysMenu,
   templateParamFrom,
   templateFor,
   withText,
@@ -168,6 +171,7 @@ async function loadTodayDinner(userId: string, parts: MadridParts): Promise<Toda
     .filter((m): m is number => typeof m === 'number' && m > 0)
   return {
     names: recipeDishes.map((d) => d.recipeName ?? 'la cena'),
+    recipeIds: recipeDishes.map((d) => d.recipeId!),
     totalMinutes: minutes.length ? Math.max(...minutes) : null,
   }
 }
@@ -186,6 +190,22 @@ async function cookedToday(userId: string, parts: MadridParts): Promise<boolean>
 async function pendingShopping(userId: string): Promise<string[]> {
   const list = await appApiFor(userId)<{ items?: Array<{ name: string; checked?: boolean; inStock?: boolean }> }>('GET', '/shopping-list')
   return (list?.items ?? []).filter((i) => !i.checked && !i.inStock).map((i) => i.name)
+}
+
+/** PRO-235: did today's menu come up in a conversation (WhatsApp or the web chat) since midnight? */
+async function sawMenuThisMorning(userId: string, parts: MadridParts, now: Date): Promise<boolean> {
+  const since = madridMidnightUtc(parts.isoDate)
+  const [wa, web] = await Promise.all([
+    db
+      .select({ meta: whatsappMessages.meta })
+      .from(whatsappMessages)
+      .where(and(eq(whatsappMessages.userId, userId), eq(whatsappMessages.direction, 'in'), gte(whatsappMessages.createdAt, since), lte(whatsappMessages.createdAt, now))),
+    db
+      .select({ meta: chatMessages.meta })
+      .from(chatMessages)
+      .where(and(eq(chatMessages.userId, userId), eq(chatMessages.role, 'assistant'), gte(chatMessages.createdAt, since), lte(chatMessages.createdAt, now))),
+  ])
+  return sawTodaysMenu([...wa, ...web].map((r) => ({ tools: r.meta?.tools ?? [] })))
 }
 
 // ─── Guided messages (PRO-156) ───────────────────────────────────
@@ -353,6 +373,8 @@ export async function runProactiveTick(now: Date = new Date()): Promise<void> {
         pendingShopping: () => pendingShopping(link.userId),
         hasNextWeekMenu: async () =>
           Boolean(await latestMenuForWeek(link.userId, mondayOf(parts.isoDate, parts.weekday, 1))),
+        sawTodaysMenu: () => sawMenuThisMorning(link.userId, parts, now),
+        askRating: async (recipeId) => shouldAskRating(await getRecipeNotesForUser(link.userId, recipeId)),
         webUrl: env.WEB_PUBLIC_URL,
       })
       if (planned.length === 0) continue

@@ -35,6 +35,7 @@ import { budgetMicros, getMonthlySpendMicros } from '../advisorBudget.js'
 import { spendCapStatus } from '../spendCap.js'
 import { composeGuided, guidedMeta, type GuideSpec, type GuidedContext, type GuidedResult } from './guided.js'
 import { isAccountPaused } from '../accountAccess.js'
+import { loadUserAlertPrefs, mergeAlertPrefs } from '../notifications/alertPrefs.js'
 import { fallbackKindsToday, pushFallbackForProactive, type WhatsAppAlertState } from '../notifications/channels.js'
 
 /** Per-kind templates (WHATSAPP_TEMPLATES), parsed once. */
@@ -270,6 +271,8 @@ export async function runProactiveTick(now: Date = new Date()): Promise<void> {
       // PRO-234: a kind that already went out today as a phone notification
       // (WhatsApp couldn't) counts as sent too.
       const fellBack = await fallbackKindsToday(link.userId, parts.isoDate)
+      // PRO-237: the «Avisos» switches (users.alert_prefs) count as well.
+      const prefs = mergeAlertPrefs(link.prefs, await loadUserAlertPrefs(link.userId))
       const sentRecently: Partial<Record<ProactiveKind, boolean>> = {}
       for (const k of PROACTIVE_KINDS) {
         const at = recent.get(k)
@@ -280,7 +283,7 @@ export async function runProactiveTick(now: Date = new Date()): Promise<void> {
         parts,
         breakfastTime: times.breakfast,
         dinnerTime: times.dinner,
-        prefs: link.prefs ?? {},
+        prefs,
         sentRecently,
         todayDay: () => loadTodayDay(link.userId, parts),
         todayDinner: () => (dinnerCache ??= loadTodayDinner(link.userId, parts)),

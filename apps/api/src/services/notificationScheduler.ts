@@ -36,6 +36,7 @@ import {
   userMemories,
 } from '../db/schema.js'
 import {
+  alertKindOn,
   PREP_METHOD_HOURS_BEFORE,
   type PrepMethod,
   type Meal,
@@ -51,6 +52,7 @@ import { isAccountPaused } from './accountAccess.js'
 import { sendTrialEndingEmailsIfDue } from './trialEmails.js'
 import { sendFounderOffersIfDue } from './founderOffer.js'
 import { sendChargeNoticesIfDue } from './chargeNotice.js'
+import { loadUserAlertPrefs } from './notifications/alertPrefs.js'
 import { channelsFor, deliverInOrder, pushOutcome, type WhatsAppAlertState } from './notifications/channels.js'
 
 // ─── Habit → method matcher ─────────────────────────────────────
@@ -477,6 +479,8 @@ async function tickOnce(): Promise<true> {
     let waState: WhatsAppAlertState = 'none'
     try {
       waState = await whatsAppAlertState(row.userId, 'prep_alerts')
+      // PRO-237: switched off in «Avisos» → off on every channel.
+      if (!alertKindOn('prep_alerts', await loadUserAlertPrefs(row.userId))) waState = 'kind_off'
     } catch (err) {
       console.warn('[notificationScheduler] whatsapp state failed (trying push):', err)
     }

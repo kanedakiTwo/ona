@@ -447,3 +447,14 @@ export {
   HOUSEHOLD_LEVEL_MEMORY_KEYS,
   memoryKeyIsHouseholdLevel,
 } from './types/householdProfile.js'
+export {
+  ALERT_KINDS,
+  ALERT_LABELS,
+  alertKindOn,
+  buildAlertRows,
+  isAlertKind,
+  type AlertChannel,
+  type AlertKind,
+  type AlertRow,
+  type AlertsOverview,
+} from './types/alerts.js'

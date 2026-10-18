@@ -52,6 +52,7 @@ SW push event ◄─────────────────────
 - `GET /push/public-key` (no auth) — returns `{ publicKey }`. 503 when VAPID is not configured. Used as a runtime feature-detection fallback (the canonical source for the frontend is the `NEXT_PUBLIC_VAPID_PUBLIC_KEY` build env).
 - `POST /push/subscribe` (auth) — body `{ subscription: { endpoint, keys: { p256dh, auth } }, userAgent? }`. Upserts on the endpoint. Returns 200/201 + `subscriptionId`.
 - `DELETE /push/subscribe` (auth) — body `{ endpoint }`. 204 on success. Used on logout and explicit user opt-out.
+- `GET /notifications/prefs` (auth) — the «Avisos» list: `{ whatsapp: { linked, notify }, push: { subscribed }, kinds: AlertRow[] }`. `PATCH /notifications/prefs` (auth) — body `{ prefs: { <kind>: boolean } }`, returns the same list (PRO-237).
 - `POST /push/test` (auth) — sends a "Mimoia · Test" notification to every active subscription of the caller. Returns the `{ sent, failed, removedDeadSubscriptions }` from `sendPushToUser`. 503 when VAPID is missing.
 
 ## Notification scheduler (heartbeat)
@@ -90,8 +91,21 @@ D-080 (PRO-234, `services/notifications/channels.ts`, tests in `notificationChan
 | Day-7 founder offer | In the app + Mimo on WhatsApp (inside the 24 h window) | In the app + email |
 
 - **Fallback only if it fails** (`channelsFor` → `deliverInOrder`): outside the 24 h window without an approved template, or a Meta error, the alert goes by the phone notification if the person turned it on; otherwise it stays as not sent. The next channel is never tried when the first delivered, so nothing arrives twice. For Mimo's WhatsApp messages (`runProactiveTick`) the fallback goes out at most once per kind and Madrid day (`fallback:<kind>:<userId>:<YYYY-MM-DD>` row in `notification_schedule`).
-- A kind switched off in `whatsapp_links.prefs` goes out by no channel.
+- A kind switched off (Perfil → Avisos, `users.alert_prefs`, or `whatsapp_links.prefs`) goes out by no channel.
 - The local meal-time notification «Es hora de comer» (browser `setTimeout`, profile times) was **removed**: it repeated the morning menu with other hours and only rang with the app open.
+
+## Avisos (Perfil → Avisos)
+
+PRO-237 (D-080). `/profile/avisos`, linked from Perfil → Recordatorios → «Avisos». Users can:
+- see every alert Mimo sends first — Menú del día, Hora de empezar a cocinar, Sacar del congelador y poner en remojo, ¿Hiciste la cena?, ¿Toca compra?, Domingo de planificar — with one line on **where it arrives** («Por WhatsApp · si no sale, notificación del móvil», «Notificación del móvil», «Apagado», or why it doesn't: «Solo llega por WhatsApp.», «Conecta WhatsApp o activa las notificaciones del móvil.», «Activa los avisos por WhatsApp.»);
+- switch each one on or off (saved on tap; off = off on every channel);
+- see the state of WhatsApp and the phone notification (link back to Perfil), and that email only carries the account plus the Friday menu (its switch, the same as in Perfil).
+
+The rows come from `buildAlertRows` (`@ona/shared`, `types/alerts.ts`), the same rules as *Channels*. Switches live in `users.alert_prefs` (migration `0071_alert_prefs`, missing key = on) and are mirrored into `whatsapp_links.prefs` when WhatsApp is linked; a kind is off if either says off (`mergeAlertPrefs`, read by `runProactiveTick` and the prep-alert tick). Turning a kind on with WhatsApp linked also turns on «Avisos por WhatsApp». `PATCH /whatsapp/link { prefs }` goes through the same code.
+
+**Mimo (D-051, web chat and WhatsApp):** `get_alerts` reads the same list («¿qué avisos tengo?», «¿por dónde me avisas?») and `set_alerts { kind | all, enabled }` flips the same switches («no me mandes el menú del día»); `all` with WhatsApp linked also flips «Avisos por WhatsApp». Before PRO-237 this was `set_whatsapp_notifications`, WhatsApp switches only.
+
+Tests: `alertPrefs.test.ts` (rows, merge, both skills on both channels), `apps/web/e2e/profile-avisos.spec.ts` (390×844).
 
 ## Required env vars
 
@@ -123,6 +137,9 @@ When any of these is missing the pipe degrades to "not configured" instead of cr
 - [apps/api/src/db/migrations/0022_notification_schedule.sql](../apps/api/src/db/migrations/0022_notification_schedule.sql)
 - [apps/api/src/services/pushNotifier.ts](../apps/api/src/services/pushNotifier.ts) — VAPID-configured dispatcher with dead-endpoint reaping
 - [apps/api/src/services/notificationScheduler.ts](../apps/api/src/services/notificationScheduler.ts) — enqueue / clear / tick / start
+- [apps/api/src/services/notifications/alertPrefs.ts](../apps/api/src/services/notifications/alertPrefs.ts), [apps/api/src/routes/notifications.ts](../apps/api/src/routes/notifications.ts), [packages/shared/src/types/alerts.ts](../packages/shared/src/types/alerts.ts) — «Avisos» switches and rows (PRO-237)
+- [apps/web/src/app/profile/avisos/page.tsx](../apps/web/src/app/profile/avisos/page.tsx), [apps/web/src/hooks/useAlerts.ts](../apps/web/src/hooks/useAlerts.ts) — the «Avisos» screen
+- [apps/api/src/db/migrations/0071_alert_prefs.sql](../apps/api/src/db/migrations/0071_alert_prefs.sql)
 - [apps/api/src/services/notifications/channels.ts](../apps/api/src/services/notifications/channels.ts) — one channel per kind, fallback, push stand-in for WhatsApp messages (PRO-234)
 - [apps/api/src/routes/push.ts](../apps/api/src/routes/push.ts) — `/push/*` endpoints
 - [apps/api/src/routes/menus.ts](../apps/api/src/routes/menus.ts) — calls `enqueuePrepAlertsForMenu` after `POST /menu/generate` and the manual swap path

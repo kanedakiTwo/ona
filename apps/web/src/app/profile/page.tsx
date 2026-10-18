@@ -18,6 +18,7 @@ import {
   Brain,
   CalendarDays,
   ChefHat,
+  ChevronRight,
   CreditCard,
   Compass,
   Heart,
@@ -36,6 +37,7 @@ import {
   Wrench,
   X,
 } from 'lucide-react'
+import Link from 'next/link'
 import { MenuSheet, SheetAction } from '@/components/menu/MenuSheet'
 import { DISPLAY_UI } from '@/components/recipes/RecipeCard'
 import { useUserMemory } from '@/hooks/useUserMemory'
@@ -767,6 +769,19 @@ export default function ProfilePage() {
                 avisos de preparación (sacar del congelador, poner en remojo) te
                 llegan como notificación del móvil.
               </p>
+
+              {/* PRO-237: every alert, by where it arrives, with its switch. */}
+              <Link
+                href="/profile/avisos"
+                data-testid="profile-avisos-link"
+                className="mt-2 flex min-h-[56px] w-full items-center justify-between gap-3 border-t border-border-soft py-2"
+              >
+                <div className="min-w-0 text-left">
+                  <div className="text-[14px] font-medium text-ink">Avisos</div>
+                  <div className="truncate text-[12px] text-ink-muted">Qué te llega, por dónde, y apagarlos</div>
+                </div>
+                <ChevronRight size={18} strokeWidth={1.8} aria-hidden="true" className="text-ink-light" />
+              </Link>
 
               {/* Web Push — server-side notifications that survive a closed tab. */}
               <PushNotificationsCard />

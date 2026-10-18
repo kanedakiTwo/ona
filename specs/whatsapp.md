@@ -63,7 +63,7 @@ When the master toggle is on (default after linking), Mimo writes first. All tim
   - **Master:** `whatsapp_links.notify`, the profile toggle. **Opt-in**: a new link starts with `notify = false`, and right after "¡Listo!" ("Tu WhatsApp ya está conectado con Mimoia…") Mimo asks "¿Quieres que también te escriba yo?…" with [Sí, avísame] [No, gracias] (outbound kind `optin_prompt`). Links made before 2026-10-07 kept their setting.
   - **BAJA / ALTA** (see *Control words*) flip the master switch from the chat.
   - **Per kind:** `whatsapp_links.prefs` (missing key = on), migration `0031_whatsapp_prefs.sql`.
-  - Users change them **by chat** via the `set_whatsapp_notifications` skill, e.g. "no me mandes el resumen de la mañana ni el recordatorio de la compra". `PATCH /whatsapp/link` accepts `{ notify?, prefs? }`, and `GET /whatsapp/status` returns `prefs`.
+  - Users change them in **Perfil → Avisos** or **by chat** via the `set_alerts` skill (PRO-237; `get_alerts` lists them), e.g. "no me mandes el resumen de la mañana ni el recordatorio de la compra" — see [Notifications → Avisos](./notifications.md#avisos-perfil--avisos). The switch also lives in `users.alert_prefs`; a kind is off if either says off. `PATCH /whatsapp/link` accepts `{ notify?, prefs? }` (prefs through the same code), and `GET /whatsapp/status` returns `prefs`.
 - Everything runs inside the existing 5-minute `notificationScheduler` tick (`runProactiveTick`). It's a no-op when WhatsApp isn't configured, and DB work only happens while one of the time windows is open.
 
 Delivery follows Meta's 24 h customer-service window, measured from `last_inbound_at` with a 30-min safety margin:

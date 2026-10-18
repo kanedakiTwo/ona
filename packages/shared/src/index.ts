@@ -447,3 +447,17 @@ export {
   HOUSEHOLD_LEVEL_MEMORY_KEYS,
   memoryKeyIsHouseholdLevel,
 } from './types/householdProfile.js'
+export type { FoodGroup, SchoolLunch, SchoolMenuSave } from './types/schoolMenu.js'
+export {
+  FOOD_GROUPS,
+  FOOD_GROUP_LABELS,
+  isFoodGroup,
+  schoolLunchSchema,
+  schoolMenuSaveSchema,
+  SCHOOL_DISH_MAX,
+  SCHOOL_MENU_MAX_DAYS,
+  dishFoodGroup,
+  recipeFoodGroup,
+  NotASchoolMenuError,
+  schoolLunchLines,
+} from './types/schoolMenu.js'

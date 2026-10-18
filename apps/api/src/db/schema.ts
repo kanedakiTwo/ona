@@ -1669,3 +1669,23 @@ export const catalogWishVotes = pgTable('catalog_wish_votes', {
   index('idx_catalog_wish_votes_wish').on(t.wishId),
   check('catalog_wish_votes_source_check', sql.raw("source IN ('alta','me_encanta','mimo','evaluador')")),
 ])
+
+// ─── school_lunches (PRO-224) ─────────────────────────────────
+// Menú del comedor escolar: per household and school day, the main dish the
+// kids eat at lunch and its group. The dinner that day doesn't repeat the
+// group. Read from a photo/PDF of the school's monthly menu and corrected by
+// the household. No child data: only the dish of a date.
+export const schoolLunches = pgTable('school_lunches', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  date: date('date', { mode: 'string' }).notNull(),
+  dish: text('dish').notNull(),
+  /** legumbre | pescado | carne | huevo | pasta_arroz | verdura; null = unknown. */
+  foodGroup: text('food_group'),
+  createdByUserId: uuid('created_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_school_lunches_household_date').on(t.householdId, t.date),
+  check('school_lunches_group_check', sql.raw("food_group IS NULL OR food_group IN ('legumbre','pescado','carne','huevo','pasta_arroz','verdura')")),
+])

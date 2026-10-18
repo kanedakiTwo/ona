@@ -45,6 +45,7 @@ import priceSurveyRoutes from './routes/priceSurvey.js'
 import feedbackRoutes from './routes/feedback.js'
 import tasteRoutes from './routes/taste.js'
 import catalogWishesRoutes from './routes/catalogWishes.js'
+import schoolMenuRoutes from './routes/schoolMenu.js'
 import { trackShoppingActivity } from './services/activityEvents.js'
 import { trackUsageRoutes } from './services/usageEvents.js'
 import { startScheduler } from './services/notificationScheduler.js'
@@ -138,6 +139,8 @@ app.use(feedbackRoutes)
 // «Afina tu menú» (PRO-146): per-route auth.
 app.use(tasteRoutes)
 app.use(catalogWishesRoutes)
+// Menú del cole (PRO-224): per-route auth.
+app.use(schoolMenuRoutes)
 app.use(recipeRoutes)
 app.use(ingredientRoutes)
 // pushRoutes is mostly auth-protected (per-route authMiddleware) but the

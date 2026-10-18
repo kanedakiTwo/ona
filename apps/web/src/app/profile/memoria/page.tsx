@@ -22,6 +22,7 @@ import { Accent, MoreButton, SUB_EYEBROW, SUB_LIST, SubPage } from "@/components
 import { SubLoadError, useQueryLoad } from "@/components/profile/SubLoadError"
 import type { MemoryKey, MemoryFact } from "@ona/shared"
 import { TasteMemorySection } from "@/components/taste/TasteMemorySection"
+import { FreezeHabitQuestion } from "@/components/profile/FreezeHabitQuestion"
 import { formatDayTimeBudget, toDayTimeBudget } from "@ona/shared"
 
 interface Group {
@@ -277,6 +278,9 @@ export default function MemoryPage() {
               )
             })}
           </div>
+
+          {/* PRO-221: the sign-up's freezing question, to change it with one tap. */}
+          <FreezeHabitQuestion memory={memory} />
         </>
       )}
 

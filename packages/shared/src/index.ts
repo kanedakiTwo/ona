@@ -73,6 +73,19 @@ export {
   cookingStyleFactValueSchema,
   setCookingStyleSchema,
 } from './types/cookingStyle.js'
+export type { FreezeAnswer } from './types/freezeHabit.js'
+export {
+  FREEZE_ANSWERS,
+  FREEZE_QUESTION,
+  FREEZE_ANSWER_LABELS,
+  FREEZE_HABIT_ALWAYS,
+  FREEZE_HABIT_SOMETIMES,
+  THAW_CONDITIONAL_TEXT,
+  freezeAnswerSchema,
+  applyFreezeAnswer,
+  freezeAnswerFromHabits,
+  thawIsConditional,
+} from './types/freezeHabit.js'
 export type { ShoppingItem, ShoppingList, BuyableUnit } from './types/shopping.js'
 export type {
   ShopKind,

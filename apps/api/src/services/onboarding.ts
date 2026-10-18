@@ -3,8 +3,8 @@ import { db as defaultDb } from '../db/connection.js'
 import { households, users } from '../db/schema.js'
 import { grantHealthConsent, hasHealthConsent } from './healthConsent.js'
 import { recordWishesFromFavoriteDishes } from './catalogWishes.js'
-import { timeAvailableForChoice, type CookingStyle, type WeekdayCookingChoice } from '@ona/shared'
-import { setMemoryFact } from './userMemoryStore.js'
+import { applyFreezeAnswer, timeAvailableForChoice, type CookingStyle, type FreezeAnswer, type WeekdayCookingChoice } from '@ona/shared'
+import { getMemoryForUser, setMemoryFact } from './userMemoryStore.js'
 import { cookingStyleHousehold, setCookingStyle } from './profile/cookingStyle.js'
 
 /**
@@ -39,6 +39,12 @@ export interface OnboardingInput {
    * (`cooking_style`, origin onboarding). Absent leaves it as it is.
    */
   cookingStyle?: CookingStyle
+  /**
+   * PRO-221 «¿Congeláis la carne o el pescado cuando compráis?» → a habit in
+   * `prep_habits` (source onboarding): «Sí» / «A veces» save their sentence,
+   * «No» saves nothing. Absent leaves it as it is.
+   */
+  freezesMeatFish?: FreezeAnswer
 }
 
 export const ONBOARDING_NOTE_MAX = 500
@@ -90,6 +96,9 @@ export async function saveOnboarding(userId: string, input: OnboardingInput, dat
   if (updated && input.weekdayCooking) {
     await setMemoryFact(userId, 'time_available', timeAvailableForChoice(input.weekdayCooking), 'onboarding')
   }
+  if (updated && input.freezesMeatFish && database === defaultDb) {
+    await saveFreezeAnswer(userId, input.freezesMeatFish)
+  }
   if (updated && input.cookingStyle && database === defaultDb) {
     const home = await cookingStyleHousehold(userId)
     if (home?.canEdit) {
@@ -97,6 +106,15 @@ export async function saveOnboarding(userId: string, input: OnboardingInput, dat
     }
   }
   return updated ?? null
+}
+
+/** PRO-221: the freezing answer into `prep_habits`, keeping the other habits; nothing when it doesn't change. */
+export async function saveFreezeAnswer(userId: string, answer: FreezeAnswer): Promise<void> {
+  const memory = await getMemoryForUser(userId)
+  const current = Array.isArray(memory.prep_habits?.value) ? (memory.prep_habits!.value as string[]) : []
+  const next = applyFreezeAnswer(current, answer)
+  if (next.length === current.length && next.every((h, i) => h === current[i])) return
+  await setMemoryFact(userId, 'prep_habits', next, 'onboarding')
 }
 
 /**

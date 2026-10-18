@@ -217,11 +217,11 @@ router.post('/user/:id/onboarding', validate(onboardingSchema), async (req: Auth
       return
     }
 
-    const { adults, kidsCount, cookingFreq, favoriteDishes, priority, healthConsent, restrictions, weekdayCooking, cookingNote, cookingStyle } = req.body
+    const { adults, kidsCount, cookingFreq, favoriteDishes, priority, healthConsent, restrictions, weekdayCooking, cookingNote, cookingStyle, freezesMeatFish } = req.body
     // Allergies / restrictions are health data: stored only with the
     // separate consent box ticked (RGPD art. 9, PRO-21) — see saveOnboarding.
     const updated = await saveOnboarding(req.params.id, {
-      adults, kidsCount, cookingFreq, favoriteDishes, priority, healthConsent, restrictions, weekdayCooking, cookingNote, cookingStyle,
+      adults, kidsCount, cookingFreq, favoriteDishes, priority, healthConsent, restrictions, weekdayCooking, cookingNote, cookingStyle, freezesMeatFish,
     })
 
     if (!updated) {

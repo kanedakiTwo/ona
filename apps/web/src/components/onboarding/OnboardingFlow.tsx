@@ -22,9 +22,13 @@ import { Check, ChevronLeft, Minus, Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
   COOKING_STYLES,
+  FREEZE_ANSWERS,
+  FREEZE_ANSWER_LABELS,
+  FREEZE_QUESTION,
   cookingStyleParts,
   firstMenuWeeks,
   type CookingStyle,
+  type FreezeAnswer,
   type OnboardingDraft,
   type WeekdayCookingChoice,
 } from "@ona/shared"
@@ -43,6 +47,8 @@ interface OnboardingData {
   cookingFreq: string | null
   /** PRO-217 «¿Cómo cocináis en casa?» */
   cookingStyle: CookingStyle | null
+  /** PRO-221 «¿Congeláis la carne o el pescado cuando compráis?» (optional) */
+  freezesMeatFish: FreezeAnswer | null
   restrictions: string[]
   priority: string | null
   weekdayCooking: WeekdayCookingChoice | null
@@ -159,6 +165,7 @@ export function onboardingDraftPayload(step: number, data: OnboardingData): Onbo
     kidsCount: data.kidsCount,
     cookingFreq: data.cookingFreq as OnboardingDraft["cookingFreq"],
     cookingStyle: data.cookingStyle,
+    freezesMeatFish: data.freezesMeatFish,
     weekdayCooking: data.weekdayCooking,
     cookingNote: data.cookingNote.slice(0, 500),
     priority: data.priority as OnboardingDraft["priority"],
@@ -178,6 +185,7 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
     kidsCount: draft?.kidsCount ?? 0,
     cookingFreq: draft?.cookingFreq ?? null,
     cookingStyle: draft?.cookingStyle ?? null,
+    freezesMeatFish: draft?.freezesMeatFish ?? null,
     restrictions: [],
     priority: draft?.priority ?? null,
     weekdayCooking: draft?.weekdayCooking ?? null,
@@ -246,6 +254,7 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
         weekdayCooking: data.weekdayCooking ?? undefined,
         cookingNote: data.cookingNote.trim() || undefined,
         cookingStyle: data.cookingStyle ?? undefined,
+        freezesMeatFish: data.freezesMeatFish ?? undefined,
       }
       const result = await api.post<any>(`/user/${user.id}/onboarding`, payload)
 
@@ -458,6 +467,29 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
                     )
                   })}
                 </div>
+                {/* PRO-221: one tap, optional; «Sí» or «A veces» turns on «hoy toca descongelar». */}
+                <fieldset className="mt-7" data-testid="onboarding-freeze">
+                  <legend className="text-[15px] font-semibold text-ink">{FREEZE_QUESTION}</legend>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {FREEZE_ANSWERS.map((answer) => {
+                      const selected = data.freezesMeatFish === answer
+                      return (
+                        <button
+                          key={answer}
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() => setData({ ...data, freezesMeatFish: selected ? null : answer })}
+                          className={cn(
+                            "min-h-[44px] rounded-full border px-4 text-[14px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink",
+                            selected ? "border-ink bg-ink text-cream" : "border-border bg-paper text-ink hover:border-ink",
+                          )}
+                        >
+                          {FREEZE_ANSWER_LABELS[answer]}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </fieldset>
               </section>
             )}
 

@@ -36,6 +36,8 @@ import {
 } from '../db/schema.js'
 import {
   PREP_METHOD_HOURS_BEFORE,
+  THAW_CONDITIONAL_TEXT,
+  thawIsConditional,
   type PrepMethod,
   type Meal,
 } from '@ona/shared'
@@ -76,6 +78,8 @@ const HABIT_KEYWORDS_BY_METHOD: Record<PrepMethod, RegExp> = {
   marinate_overnight: /marino|marinad/i,
   dough_rise_overnight: /masa|levado|fermenta/i,
 }
+
+const isThaw = (method: PrepMethod) => method === 'thaw_24h' || method === 'thaw_48h'
 
 function habitMatches(method: PrepMethod, habits: readonly string[]): boolean {
   const re = HABIT_KEYWORDS_BY_METHOD[method]
@@ -255,9 +259,11 @@ export async function enqueuePrepAlertsForMenu(
 
       const dedupKey = `menu:${menuId}:day:${slot.dayIndex}:meal:${slot.meal}:ing:${ing.ingredientId}:method:${req.method}`
       const title = `Acuérdate: ${ing.ingredientName}`
-      const body =
-        req.notes ??
-        `${describeMethod(req.method)} para la cena del día ${slot.dayIndex + 1}.`
+      // PRO-221: a household that freezes only «a veces» gets the conditional text.
+      const body = isThaw(req.method) && thawIsConditional(habits)
+        ? THAW_CONDITIONAL_TEXT
+        : req.notes ??
+          `${describeMethod(req.method)} para la cena del día ${slot.dayIndex + 1}.`
 
       try {
         await db.insert(notificationSchedule).values({

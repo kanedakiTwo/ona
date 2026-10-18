@@ -7,11 +7,11 @@
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import type { TasteProteinGroup, TasteReason, TasteStatus, TasteVerdict, TasteVerdictRow } from '@ona/shared'
 import { db as defaultDb } from '../db/connection.js'
-import { householdMembers, recipeVerdicts, recipes, users } from '../db/schema.js'
+import { householdMembers, recipeVerdicts, recipes, userMemories, users } from '../db/schema.js'
 import { loadMatchableRecipes } from './matchableRecipes.js'
 import { getPrimaryHouseholdId } from './scopeResolver.js'
 import { getMemoryForUser, setMemoryFact } from './userMemoryStore.js'
-import { normalizeText } from './dietaryRestrictions.js'
+import { compileRestrictions, mergeRestrictions, normalizeText, violatesRestrictions, type CompiledRestrictions, type RestrictableRecipe } from './dietaryRestrictions.js'
 import type { TasteRecipe } from './tasteDeck.js'
 import type { TasteMemoryFact } from './tasteAI.js'
 
@@ -26,16 +26,85 @@ export interface TasteState {
   flags?: TasteProteinGroup[]
 }
 
-/** Catalogue recipes the user can rate: the catalogue as the user sees it (not retired). */
+/**
+ * Pure (PRO-197): what no one in the household may be shown — every member's
+ * allergies, diets and free-text restrictions (profile + memory, merged like
+ * the menu generator does) plus every member's ingredient vetoes (`dislikes`),
+ * compiled into one rule set for `violatesRestrictions`.
+ */
+export function householdTasteRules(
+  members: ReadonlyArray<{
+    restrictions?: readonly string[] | null
+    memory?: { restrictions?: { value?: unknown } | null; dislikes?: { value?: unknown } | null } | null
+  }>,
+): CompiledRestrictions {
+  const restrictions: string[] = []
+  const dislikes: string[] = []
+  for (const m of members) {
+    restrictions.push(...mergeRestrictions(m.restrictions, m.memory))
+    const d = m.memory?.dislikes?.value
+    if (Array.isArray(d)) dislikes.push(...d.filter((x): x is string => typeof x === 'string'))
+  }
+  return compileRestrictions(restrictions, dislikes)
+}
+
+/** The user plus every member of their primary household. */
+export async function householdMemberIds(userId: string, db: Db = defaultDb): Promise<string[]> {
+  const householdId = await getPrimaryHouseholdId(userId, db)
+  if (!householdId) return [userId]
+  const rows = await db.select({ userId: householdMembers.userId }).from(householdMembers).where(eq(householdMembers.householdId, householdId))
+  return Array.from(new Set([userId, ...rows.map((r) => r.userId)]))
+}
+
+/** Every member's restrictions and vetoes, from the DB (PRO-197). */
+export async function loadHouseholdTasteRules(userId: string, db: Db = defaultDb): Promise<CompiledRestrictions> {
+  const memberIds = await householdMemberIds(userId, db)
+  const [profiles, memories] = await Promise.all([
+    db.select({ id: users.id, restrictions: users.restrictions }).from(users).where(inArray(users.id, memberIds)),
+    db
+      .select({ userId: userMemories.userId, key: userMemories.key, value: userMemories.value })
+      .from(userMemories)
+      .where(and(inArray(userMemories.userId, memberIds), inArray(userMemories.key, ['restrictions', 'dislikes']))),
+  ])
+  return householdTasteRules(
+    profiles.map((p) => {
+      const mine = memories.filter((m) => m.userId === p.id)
+      const fact = (key: string) => {
+        const row = mine.find((m) => m.key === key)
+        return row ? { value: row.value } : null
+      }
+      return { restrictions: p.restrictions ?? [], memory: { restrictions: fact('restrictions'), dislikes: fact('dislikes') } }
+    }),
+  )
+}
+
+/**
+ * Pure (PRO-197): the menu's check plus the recipe's **name** read as one more
+ * ingredient, since the card shows it: «Bacalao con tomate» whose stored
+ * ingredients lost the cod is still fish to a vegetarian, «Salmón al horno con
+ * patatas» still potato to whoever vetoed it. Stricter than the menu on
+ * purpose (a false positive costs a card, a false negative a reaction).
+ */
+export function breaksTasteRules(recipe: RestrictableRecipe & { name: string }, rules: CompiledRestrictions): boolean {
+  return violatesRestrictions({ ...recipe, ingredients: [...recipe.ingredients, { ingredientName: recipe.name }] }, rules)
+}
+
+/**
+ * Catalogue recipes the user can rate: the catalogue as the user sees it (not
+ * retired) minus what the menu generator would never put on this household's
+ * table (PRO-197, beta 2026-10-17: a coeliac was shown pizza and a
+ * vegetarian cocido). Same filter as the matcher (`violatesRestrictions`), with
+ * the restrictions and vetoes of every member of the household.
+ */
 export async function loadTasteCatalog(userId: string, db: Db = defaultDb): Promise<TasteRecipe[]> {
-  const matchable = await loadMatchableRecipes(userId, db)
+  const [matchable, rules] = await Promise.all([loadMatchableRecipes(userId, db), loadHouseholdTasteRules(userId, db)])
   const extra = await db
     .select({ id: recipes.id, imageUrl: recipes.imageUrl, totalTime: recipes.totalTime })
     .from(recipes)
     .where(isNull(recipes.authorId))
   const byId = new Map(extra.map((r) => [r.id, r]))
   return matchable
-    .filter((r) => byId.has(r.id))
+    .filter((r) => byId.has(r.id) && !breaksTasteRules(r, rules))
     .map((r) => ({
       id: r.id,
       name: r.name,
@@ -180,12 +249,7 @@ export function verdictSets(rows: ReadonlyArray<{ recipeId: string; verdict: str
 
 /** Verdicts of every member of the user's household (just the user when there is none). */
 export async function loadHouseholdVerdictSets(userId: string, db: Db = defaultDb) {
-  const householdId = await getPrimaryHouseholdId(userId, db)
-  let memberIds = [userId]
-  if (householdId) {
-    const rows = await db.select({ userId: householdMembers.userId }).from(householdMembers).where(eq(householdMembers.householdId, householdId))
-    memberIds = Array.from(new Set([userId, ...rows.map((r) => r.userId)]))
-  }
+  const memberIds = await householdMemberIds(userId, db)
   const rows = await db
     .select({ recipeId: recipeVerdicts.recipeId, verdict: recipeVerdicts.verdict })
     .from(recipeVerdicts)

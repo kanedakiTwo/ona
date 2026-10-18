@@ -175,6 +175,8 @@ const PREFIXES = [
   /^nada de /,
   /^sin /,
   /^dieta /,
+  // PRO-197: «soy celíaco», «soy vegetariana» (as told to Mimo) → the diet itself.
+  /^(soy|somos|es) /,
 ]
 
 /** "Sin gluten" → "gluten", "alergia a los frutos secos" → "frutos secos". */

@@ -49,6 +49,23 @@ export function kindEnabled(prefs: Record<string, boolean> | null | undefined, k
   return prefs?.[kind] !== false
 }
 
+/**
+ * PRO-216: which avisos a PATCH switches off (for the `notifications_off`
+ * usage event): `all` when the master switch goes from on to off, plus each
+ * kind that was on and now isn't.
+ */
+export function kindsSwitchedOff(
+  before: { notify: boolean; prefs: Record<string, boolean> | null | undefined },
+  patch: { notify?: boolean; prefs?: Record<string, boolean> },
+): string[] {
+  const out: string[] = []
+  if (before.notify && patch.notify === false) out.push('all')
+  for (const [k, v] of Object.entries(patch.prefs ?? {})) {
+    if (v === false && (PROACTIVE_KINDS as readonly string[]).includes(k) && kindEnabled(before.prefs, k as ProactiveKind)) out.push(k)
+  }
+  return out
+}
+
 /** "20:30" → 1230; garbage → fallback. */
 export function minutesOf(time: string | null | undefined, fallback: number): number {
   const m = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(time ?? '')

@@ -15,6 +15,7 @@ import { addDays, madridMidnightUtc, madridWeekStart } from './madridTime.js'
 import { loadErrorSummary } from './appErrors.js'
 import { loadWaitlistSummary } from './waitlist.js'
 import { buildInstalledOpens, buildPushEnabled, deviceCountsFor, loadInstallRows } from './appInstalls.js'
+import { NOTICE_DEFINITIONS, loadNoticeMetrics } from './notifications/metrics.js'
 
 type Db = typeof defaultDb
 
@@ -282,6 +283,7 @@ export const DEFINITIONS = {
     'Households (counted users) that opened Mimoia as an installed app (display-mode standalone) at least once that week, by device (android / ios / desktop, deduced from the browser; total counts each household once). The web reports at most one open per household and day. Starts when this shipped (PRO-83): earlier weeks read 0.',
   pushEnabledHouseholds:
     'Households (counted users) with push notifications on at the end of the week: a push subscription that still exists today and was created on or before that Sunday, by device (from the browser). Turning notifications off deletes the subscription, so past weeks are a lower bound.',
+  notifications: NOTICE_DEFINITIONS,
   waitlist:
     'Pre-launch waitlist (specs/waitlist.md), all time: entries by status, last7Days = signups in the last 7 × 24 h, referredSignups / newsletterOptIns = active entries (not unsubscribed) that came with someone’s link / opted in to the weekly menu email. Segments, sources and the suggested next batch: GET /admin/waitlist.',
 } as const
@@ -392,9 +394,10 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
            (SELECT MIN(created_at) FROM activity_events) AS activity_log
   `)
 
-  const [activity, menuRows, shopping, signups, costs, since, errors, waitlist, campaignRows, installs] = await Promise.all([
+  const [activity, menuRows, shopping, signups, costs, since, errors, waitlist, campaignRows, installs, notifications] = await Promise.all([
     activityQ, menusQ, shoppingQ, signupsQ, costsQ, sinceQ, loadErrorSummary(7, db, now), loadWaitlistSummary(db, now),
     campaignsQ, loadInstallRows({ from, includeInternal: inc }, db),
+    loadNoticeMetrics({ weeks, currentWeek: weeks[weeks.length - 1], from, includeInternal: inc }, db),
   ])
 
   const input: MetricsInput = {
@@ -439,6 +442,7 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
     totals: buildTotals(input, weekly),
     errors,
     waitlist,
+    notifications,
     definitions: DEFINITIONS,
   }
 }

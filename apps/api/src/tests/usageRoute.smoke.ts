@@ -106,6 +106,13 @@ describe.skipIf(!reachable || !METRICS_TOKEN)('usage events + conversation flags
     expect(after.body.weekly.at(-1).pushEnabledHouseholds).toEqual(
       expect.objectContaining({ android: expect.any(Number), ios: expect.any(Number), desktop: expect.any(Number), total: expect.any(Number) }),
     )
+    // PRO-216: the weekly aviso budget block (real SQL against notice_candidates).
+    expect(after.body.notifications.enabledHouseholdsNow).toEqual(
+      expect.objectContaining({ whatsapp: expect.any(Number), push: expect.any(Number), total: expect.any(Number) }),
+    )
+    expect(after.body.notifications.weekly.at(-1)).toEqual(
+      expect.objectContaining({ candidates: expect.any(Number), droppedByBudget: expect.any(Number), priority1Dropped: expect.any(Number) }),
+    )
   }, 30_000)
 
   it('serves the anonymised conversation flags to the token', async () => {

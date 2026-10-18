@@ -101,8 +101,18 @@ export function isDailyBriefWindow(p: MadridParts, breakfastTime: string | null 
 export const DAILY_BRIEF_COOLDOWN_MS = 20 * 60 * 60 * 1000
 export const WEEKLY_NUDGE_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000
 
+/**
+ * PRO-225: the questions asked before planning go in the same Sunday message
+ * (not another one). Answered in free text («el jueves cenamos fuera, el
+ * sábado somos 6»), they shape only next week's menu (`generate_weekly_menu`
+ * `mealsOut` / `guests`); «Sí, prepáralo» generates it as usual.
+ */
+export const WEEK_PLAN_QUESTIONS = ['¿Alguna comida fuera de casa esta semana?', '¿Viene alguien?'] as const
+
 export const WEEKLY_NUDGE_TEXT =
-  'Domingo de planificar: ¿te preparo el menú de la semana que viene?'
+  'Domingo de planificar: ¿te preparo el menú de la semana que viene?\n\n' +
+  `Antes, por si acaso: ${WEEK_PLAN_QUESTIONS.join(' ')} ` +
+  'Dímelo con tus palabras (p. ej. «el jueves cenamos fuera, el sábado somos 6») y lo tengo en cuenta solo esa semana.'
 
 export function formatDailyBrief(day: DayMenu | null | undefined, webUrl: string): string | null {
   const entries = mealEntriesForDay(day).filter((e) => e.meal !== 'breakfast')
@@ -161,8 +171,15 @@ export function shoppingReminderGuide(pending: string[], webUrl: string): GuideS
 
 export const WEEKLY_NUDGE_GUIDE: GuideSpec = {
   kind: 'weekly_nudge',
-  facts: ['Es domingo y la semana que viene aún no tiene menú.', 'Botones debajo: «Sí, prepáralo» / «Ahora no»'],
-  required: [],
+  facts: [
+    'Es domingo y la semana que viene aún no tiene menú.',
+    'Botones debajo: «Sí, prepáralo» / «Ahora no»',
+    // PRO-225: both questions, in this same message, to answer in free text.
+    `Pregunta antes de planificar, tal cual: «${WEEK_PLAN_QUESTIONS[0]}»`,
+    `Pregunta antes de planificar, tal cual: «${WEEK_PLAN_QUESTIONS[1]}»`,
+    'Se contestan con texto libre (p. ej. «el jueves cenamos fuera, el sábado somos 6») y solo cambian esa semana.',
+  ],
+  required: [...WEEK_PLAN_QUESTIONS],
 }
 
 function capitalize(s: string): string {

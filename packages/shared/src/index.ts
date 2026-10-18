@@ -137,6 +137,8 @@ export {
   courseSchema,
 } from './types/recipe.js'
 export { generateMenuSchema, lockMealSchema } from './types/menu.js'
+export { weekPlanSchema, weekPlanIsEmpty, parseWeekPlanAnswer } from './types/weekPlan.js'
+export type { WeekPlan, WeekPlanMealOut, WeekPlanGuests } from './types/weekPlan.js'
 
 // Constants
 export {

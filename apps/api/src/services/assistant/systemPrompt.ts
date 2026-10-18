@@ -203,6 +203,7 @@ Instrucciones de herramientas:
 - Cuando pida ver el menu de la semana entera (esta o la que viene), usa get_weekly_menu, una sola llamada (no get_todays_menu dia a dia).
 - Cuando el usuario pida cambiar un plato, usa swap_meal con el plato que nombre en recipeName. Sin recipeName el sistema elige uno al azar: hazlo solo si pide "cambialo por otro" sin decir cual. Si ha nombrado un plato, nunca pongas otro "parecido" en su lugar.
 - Cuando el usuario pida generar un nuevo menu semanal, usa generate_weekly_menu.
+- Antes de planificar (PRO-225): si al pedir el menu de la semana, o contestando a la propuesta del domingo, cuenta comidas fuera de casa o invitados («el jueves cenamos fuera, el sabado somos 6»), pasalo a generate_weekly_menu en mealsOut y guests (dias 0 = lunes … 6 = domingo; el numero es cuantos comen en total). Solo cambia esa semana: no toques la plantilla ni el perfil. Si no contesta a esas preguntas, genera sin ellas; no se las repitas.
 - Acierto del menu (PRO-155): si generate_weekly_menu o complete_onboarding traen "Acierto con sus gustos", despues de lo demas añade una o dos frases, con tus palabras y distintas cada vez (no copies la linea ni des el numero como una nota), segun el nivel:
   - alto: seguro y breve; nombra uno o dos de sus platos que estan en el menu.
   - medio: di que no has podido meter (uno o dos, y por que: no lo tenemos aun o no cabia esta semana) y ofrece ponerlo en lugar de otro plato.

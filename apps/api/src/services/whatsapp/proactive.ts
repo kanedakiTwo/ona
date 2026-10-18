@@ -37,8 +37,15 @@ export const PROACTIVE_LABELS: Record<ProactiveKind, string> = {
   shopping_reminder: 'recordatorio de la compra',
 }
 
-/** Missing key = on; the master `notify` switch is checked separately. */
+/**
+ * Kinds that only go to whoever asked for them (PRO-215, D-069: «el resumen
+ * de cada mañana sale solo a quien lo pida»): off unless `prefs[kind] === true`.
+ */
+export const OPT_IN_KINDS: ReadonlySet<ProactiveKind> = new Set<ProactiveKind>(['daily_brief'])
+
+/** Missing key = on (except the opt-in kinds: missing = off); the master `notify` switch is checked separately. */
 export function kindEnabled(prefs: Record<string, boolean> | null | undefined, kind: ProactiveKind): boolean {
+  if (OPT_IN_KINDS.has(kind)) return prefs?.[kind] === true
   return prefs?.[kind] !== false
 }
 
@@ -282,6 +289,31 @@ export function anyProactiveWindow(p: MadridParts, breakfastTime: string | null,
     isShoppingReminderWindow(p) ||
     isWeeklyNudgeWindow(p)
   )
+}
+
+/**
+ * PRO-215: the avisos of one moment go out as ONE message (they spend one
+ * unit of the weekly budget). `parts` come highest priority first; their
+ * texts are joined, and the first one with buttons keeps them, with its
+ * text last so the question sits right above its buttons. Only when that
+ * would pass WhatsApp's 1,024-character limit for a message with buttons
+ * do the buttons go in a second message.
+ */
+export const MERGED_BUTTON_BODY_MAX = 1024
+export function mergeMessages(parts: ReadonlyArray<readonly OutboundMessage[]>): OutboundMessage[] {
+  if (parts.length === 1) return [...parts[0]]
+  const texts: string[] = []
+  let withButtons: Extract<OutboundMessage, { type: 'buttons' }> | null = null
+  for (const msgs of parts) {
+    for (const m of msgs) {
+      if (m.type === 'buttons' && !withButtons) withButtons = m
+      else if (m.type === 'text' || m.type === 'buttons') texts.push(m.text)
+    }
+  }
+  if (!withButtons) return [{ type: 'text', text: texts.join('\n\n') }]
+  const body = [...texts, withButtons.text].join('\n\n')
+  if (body.length <= MERGED_BUTTON_BODY_MAX) return [{ ...withButtons, text: body }]
+  return [{ type: 'text', text: texts.join('\n\n') }, withButtons]
 }
 
 /** Swap the text of a planned message for the guided one (buttons stay as they are). */

@@ -34,7 +34,7 @@ Mimo es su asistente: una inteligencia artificial que habla contigo en la app y 
 - **En la web y en el móvil:** en mimoia.com. En el móvil se puede instalar desde el navegador («Añadir a pantalla de inicio») y se abre como una app. Todavía no está en App Store ni en Google Play.
 - **Por WhatsApp:** escribes a Mimo como a un amigo que cocina: «¿qué ceno hoy?», «el jueves pon lentejas», «añade leche a la lista», «hazme la compra». Le puedes mandar audios, enlaces y fotos de recetas. Se conecta desde Perfil → WhatsApp con un código. Si quieres hablar con una persona, escribe HUMANO; para dejar de recibir avisos, BAJA (y ALTA para volver).
 - **Por voz:** en la app puedes hablar con Mimo y escuchar sus respuestas, también con las manos ocupadas mientras cocinas.
-- **Avisos:** recordatorios en el móvil y, por WhatsApp, el resumen de la mañana, la propuesta de menú del domingo, avisos de preparación (descongelar, poner en remojo), el aviso de empezar a cocinar, «¿hiciste la cena?» y el recordatorio de la compra. Cada uno se activa y desactiva cuando quieras.
+- **Avisos:** recordatorios en el móvil y, por WhatsApp, la propuesta de menú del domingo, avisos de preparación (descongelar, poner en remojo), el aviso de empezar a cocinar, «¿hiciste la cena?» y el recordatorio de la compra. El resumen de la mañana con el menú del día solo llega si lo pides. Cada uno se activa y desactiva cuando quieras. Mimo escribe poco: como mucho 4 avisos a la semana por hogar (varios del mismo momento van en un solo mensaje), y primero lo que no tiene arreglo si se olvida, como descongelar o empezar a cocinar.
 
 ## Cómo empezar
 

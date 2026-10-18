@@ -153,9 +153,10 @@ function LinkedState({ status }: { status: WhatsAppStatus }) {
         <div className="text-left min-w-0">
           <div className="text-[14px] font-medium text-ink">Avisos por WhatsApp</div>
           <div className="text-[12px] leading-snug text-ink-muted">
-            Resumen de la mañana, aviso para empezar a cocinar, “¿hiciste la cena?”,
-            recordatorio de la compra y menú del domingo. Para quitar alguno, díselo a
-            Mimo por WhatsApp (“no me mandes el resumen de la mañana”).
+            Aviso para empezar a cocinar, “¿hiciste la cena?”, recordatorio de la compra
+            y menú del domingo; el resumen de la mañana, solo si se lo pides. Como mucho
+            4 a la semana. Para quitar o pedir alguno, díselo a Mimo por WhatsApp
+            (“mándame el menú cada mañana”).
           </div>
         </div>
         <span

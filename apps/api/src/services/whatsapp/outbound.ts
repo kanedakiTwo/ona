@@ -17,6 +17,7 @@ import {
   chooseDelivery,
   kindEnabled,
   madridParts,
+  mergeMessages,
   mondayOf,
   planProactive,
   templateParamFrom,
@@ -26,6 +27,7 @@ import {
   PROACTIVE_KINDS,
   type ChannelOutcome,
   type MadridParts,
+  type PlannedMessage,
   type ProactiveKind,
   type TodayDinner,
 } from './proactive.js'
@@ -35,6 +37,8 @@ import { budgetMicros, getMonthlySpendMicros } from '../advisorBudget.js'
 import { spendCapStatus } from '../spendCap.js'
 import { composeGuided, guidedMeta, type GuideSpec, type GuidedContext, type GuidedResult } from './guided.js'
 import { isAccountPaused } from '../accountAccess.js'
+import { logEntriesFor, noticePriority, planMoment, countsAgainstBudget, type DeliveryResult } from '../notifications/budget.js'
+import { budgetKeyFor, loadFullBudgetState, recentNoticeKinds, recordNotices } from '../notifications/budgetStore.js'
 
 /** Per-kind templates (WHATSAPP_TEMPLATES), parsed once. */
 const TEMPLATES = parseTemplateMap(env.WHATSAPP_TEMPLATES)
@@ -226,6 +230,36 @@ export function writeGuided(link: Pick<LinkWithUser, 'userId' | 'phone'>, spec: 
   })
 }
 
+/**
+ * PRO-215: the avisos planned for one person in one tick are one moment.
+ * The weekly budget decides which go (`planMoment`); those go out as ONE
+ * message (each written from its guide, then merged) that spends at most
+ * one unit; every candidate is logged with its outcome.
+ */
+async function sendMoment(link: LinkWithUser, planned: PlannedMessage[], now: Date): Promise<void> {
+  const budgetKey = await budgetKeyFor(link.userId)
+  const needReserve = !planned.some((p) => countsAgainstBudget(p.kind) && noticePriority(p.kind) === 1)
+  const plan = planMoment(planned, await loadFullBudgetState(budgetKey, now, needReserve))
+  let delivery: DeliveryResult | null = null
+  if (plan.send.length > 0) {
+    const written: OutboundMessage[][] = []
+    let meta: ReturnType<typeof guidedMeta> | undefined
+    for (const p of plan.send) {
+      const fixed = p.messages.length === 1 && (p.messages[0].type === 'text' || p.messages[0].type === 'buttons') ? p.messages[0].text : null
+      if (!p.guide || fixed === null) {
+        written.push(p.messages)
+        continue
+      }
+      const w = await writeGuided(link, p.guide, fixed, now)
+      written.push(withText(p.messages, w.text))
+      meta ??= guidedMeta(w)
+    }
+    const outcome = await sendProactive(link, mergeMessages(written), plan.send[0].kind, now, { meta })
+    delivery = outcome.status === 'ok' ? 'ok' : outcome.error === 'outside-24h-window' ? 'outside-window' : 'error'
+  }
+  await recordNotices({ budgetKey, userId: link.userId, entries: logEntriesFor(plan, delivery), channel: 'whatsapp', now })
+}
+
 /** Cooldown per kind: the Sunday nudge every 3 days, everything else daily. */
 const COOLDOWN_MS: Record<ProactiveKind, number> = {
   daily_brief: DAILY_BRIEF_COOLDOWN_MS,
@@ -255,10 +289,13 @@ export async function runProactiveTick(now: Date = new Date()): Promise<void> {
       const times = await loadMealTimes(link.userId)
       // Only touch the DB for cooldowns inside a window that could fire.
       if (!anyProactiveWindow(parts, times.breakfast, times.dinner)) continue
-      const recent = await store.recentOutboundKinds(link.phone, new Date(now.getTime() - WEEKLY_NUDGE_COOLDOWN_MS))
+      const since = new Date(now.getTime() - WEEKLY_NUDGE_COOLDOWN_MS)
+      const [recent, noticed] = await Promise.all([store.recentOutboundKinds(link.phone, since), recentNoticeKinds(link.userId, since)])
       const sentRecently: Partial<Record<ProactiveKind, boolean>> = {}
       for (const k of PROACTIVE_KINDS) {
-        const at = recent.get(k)
+        // PRO-215: an aviso merged into another message or dropped by the
+        // weekly budget is in its cooldown too (logged in notice_candidates).
+        const at = [recent.get(k), noticed.get(k)].filter((d): d is Date => Boolean(d)).sort((a, b) => b.getTime() - a.getTime())[0]
         sentRecently[k] = Boolean(at && now.getTime() - at.getTime() < COOLDOWN_MS[k])
       }
       let dinnerCache: Promise<TodayDinner | null> | null = null
@@ -276,15 +313,8 @@ export async function runProactiveTick(now: Date = new Date()): Promise<void> {
           Boolean(await latestMenuForWeek(link.userId, mondayOf(parts.isoDate, parts.weekday, 1))),
         webUrl: env.WEB_PUBLIC_URL,
       })
-      for (const p of planned) {
-        const fixed = p.messages.length === 1 && (p.messages[0].type === 'text' || p.messages[0].type === 'buttons') ? p.messages[0].text : null
-        if (!p.guide || fixed === null) {
-          await sendProactive(link, p.messages, p.kind, now)
-          continue
-        }
-        const written = await writeGuided(link, p.guide, fixed, now)
-        await sendProactive(link, withText(p.messages, written.text), p.kind, now, { meta: guidedMeta(written) })
-      }
+      if (planned.length === 0) continue
+      await sendMoment(link, planned, now)
     } catch (err: any) {
       console.error(`[whatsapp] proactive tick failed for ${link.userId}:`, err?.message ?? err)
     }

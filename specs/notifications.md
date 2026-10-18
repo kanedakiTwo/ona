@@ -68,7 +68,7 @@ The push transport above is the *delivery* mechanism; the *timing* lives in `not
      - inserts one `notification_schedule` row per surviving (slot × ingredient × method) with a `dedup_key` = `menu:<id>:day:<n>:meal:<m>:ing:<id>:method:<x>` so re-enqueuing after a swap is idempotent. `INSERT … ON CONFLICT DO NOTHING` semantics via the unique constraint.
   2. **Swap path** also calls `clearPendingForMenu(menuId)` before the re-enqueue — pending rows tied to the menu are dropped so old-recipe alerts disappear cleanly. Already-sent rows are kept for audit.
   3. **Checked right before sending (since 2026-10-12).** Other changes don't re-enqueue (regenerating the week creates a new menu row; skipping a day, notes, moves and the assistant's REST paths don't touch alerts), so on 2026-10-10/11 alerts went out for dishes no longer in the menu. Each due prep alert (`dedup_key` `menu:…`) is checked by `prepAlertStaleReasonFor` → pure `prepAlertStaleReason`: the menu must still be the newest for its week (same household or user, like the shopping list), the day must not be in `skippedDays`, and that slot must still hold a recipe using the alert's ingredient. Otherwise the row becomes `cancelled` with `error_message = "cancelado al enviar: <motivo>"` and nothing is sent. A failed check sends the alert as before. Tests in `mimoBrain.test.ts`.
-  3. **Tick** — `startScheduler()` is called from `apps/api/src/index.ts` at boot. It runs a `setInterval` every 5 min (configurable). On each tick `tickScheduler()` does `SELECT * FROM notification_schedule WHERE status='pending' AND fire_at <= now()`, dispatches each via `sendPushToUser`, and updates `status` to `'sent'` or `'failed'` with `sent_at` and an optional `error_message`.
+  3. **Tick** — `startScheduler()` is called from `apps/api/src/index.ts` at boot. It runs a `setInterval` every 5 min (configurable). On each tick `tickScheduler()` does `SELECT * FROM notification_schedule WHERE status='pending' AND fire_at <= now()`, groups the live rows per user, passes them through the weekly budget (below) and dispatches them merged via `sendPushToUser`, then updates `status` to `'sent'` or `'failed'` with `sent_at` and an optional `error_message`.
 
 Migration `0022_notification_schedule.sql` adds the table + the `(fire_at, status)` index used by the poll. Failure modes: a missing VAPID configuration causes the dispatch to fail and the row to land in `status='failed'` with `error_message='push-not-configured'`; the user can opt in later and a manual re-run is trivial. The tick never throws — DB errors are logged and the loop continues.
 
@@ -77,6 +77,19 @@ Migration `0022_notification_schedule.sql` adds the table + the `(fire_at, statu
 Ticks never overlap. Within a process, `startScheduler` skips a tick while the previous one is still running, because WhatsApp sends can make a tick outlast the interval. **Across processes**, every tick runs under a Postgres session advisory lock (`withSchedulerLock`, key `SCHEDULER_LOCK_KEY`). Railway starts the new container before stopping the old one, so during a deploy two schedulers would otherwise send the same alert or brief; the one that doesn't get the lock skips that tick. If the process dies, Postgres releases the lock.
 
 This spec covers the transport AND the heartbeat. Event sources beyond the prep-alert pipeline (assistant reflection, menu reminders, etc) plug in by calling `db.insert(notificationSchedule)` directly with a `fireAt` + `payload` + a stable `dedupKey`.
+
+## Tope semanal de avisos (PRO-215, D-069)
+
+Mimo writes little: every aviso it sends by itself (prep alerts by push and/or WhatsApp, and the WhatsApp proactive messages) goes through one budget per household (`services/notifications/budget.ts` rules, `budgetStore.ts` DB).
+
+- **4 messages per household and ISO week** (Europe/Madrid; `WEEKLY_NOTICE_BUDGET`, one constant). **No daily cap:** a day where several coincide isn't penalised. The household is the user's primary household (each user alone without one).
+- **Counts messages, not topics.** Everything due for one person in one scheduler tick goes out as **one message** (prep alerts: one push + one WhatsApp, «Acuérdate: Merluza y Garbanzos» with a line each, `mergeAlertPayloads`; WhatsApp proactive messages: each written from its guide, then joined, the first one with buttons keeping them, `mergeMessages`) and spends one unit. Two people of the same house reached in the same tick spend one unit between them.
+- **Never count:** the morning brief (`daily_brief`, only for whoever asked, see [WhatsApp](./whatsapp.md)), replies to what the person writes (they don't go through here), account emails, the day-7 offer and the 15-day charge notice (D-056) and the admins' daily review.
+- **Priority** (`NOTICE_PRIORITY`): 1 = no fix if forgotten (`prep_alerts`, `cooking_reminder`); 2 = food that goes off (no kind yet); 3 = helps to plan (`shopping_reminder`, `weekly_nudge`); 4 = the rest (`dinner_checkin`, unknown kinds).
+- **Reserve:** a moment with priority 1 goes while the week has a unit left. A moment with only priority 2–4 goes only if a unit is left **after** the priority-1 moments already known for the rest of the week: pending prep alerts of the household, and cooking reminders of this week's dinners of 40+ min when someone in the house gets them (`reservedP1For`; avisos less than 5 min apart are one moment).
+- **Every candidate is logged** in `notice_candidates` (migration `0071_notice_candidates.sql`): household key, user, kind, priority, outcome (`enviado`, `fusionado` = went inside another's message, `descartado_tope`, `fuera_ventana` = Meta's 24 h window without a template, `fallido`), whether it spent the unit, channel and ISO week. The budget is counted from these rows. A dropped prep alert becomes `cancelled` with «tope semanal de avisos». A logged kind is in its cooldown like a sent one, so a dropped aviso isn't re-tried every 5 minutes.
+- A prep alert with no push subscription reached and no WhatsApp is not delivered (before 2026-10-19 a user with no subscription counted as `sent`).
+- Limitation: a prep alert and a WhatsApp proactive message due in the same tick still go as two messages (they spend one unit).
 
 ## Required env vars
 
@@ -109,6 +122,8 @@ When any of these is missing the pipe degrades to "not configured" instead of cr
 - [apps/api/src/db/migrations/0022_notification_schedule.sql](../apps/api/src/db/migrations/0022_notification_schedule.sql)
 - [apps/api/src/services/pushNotifier.ts](../apps/api/src/services/pushNotifier.ts) — VAPID-configured dispatcher with dead-endpoint reaping
 - [apps/api/src/services/notificationScheduler.ts](../apps/api/src/services/notificationScheduler.ts) — enqueue / clear / tick / start
+- [apps/api/src/services/notifications/budget.ts](../apps/api/src/services/notifications/budget.ts), [budgetStore.ts](../apps/api/src/services/notifications/budgetStore.ts) — weekly budget (PRO-215); tests `noticeBudget.test.ts`
+- [apps/api/src/db/migrations/0071_notice_candidates.sql](../apps/api/src/db/migrations/0071_notice_candidates.sql)
 - [apps/api/src/routes/push.ts](../apps/api/src/routes/push.ts) — `/push/*` endpoints
 - [apps/api/src/routes/menus.ts](../apps/api/src/routes/menus.ts) — calls `enqueuePrepAlertsForMenu` after `POST /menu/generate` and the manual swap path
 - [apps/api/src/config/env.ts](../apps/api/src/config/env.ts) — `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`

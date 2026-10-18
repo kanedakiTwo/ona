@@ -56,6 +56,15 @@ test('/privacidad: Resend is a US company, no third-party advertising, the new n
   await expect(main).not.toContainText('envía desde la Unión Europea')
 })
 
+// PRO-171 (LEG-17): the waitlist's retention date, in Legal's exact words.
+test('/privacidad: the waitlist is kept until 16 May 2027', async ({ page }) => {
+  await page.goto('/privacidad')
+  await expect(page.getByTestId('privacy-waitlist-retention')).toContainText(
+    'Cuánto tiempo: hasta el 16 de mayo de 2027 (seis meses después de abrir el registro a todo el mundo, el 16 de noviembre de 2026) o hasta que te des de baja, lo que ocurra antes. Si pediste el menú de los viernes, guardamos tu email para ese correo mientras no te des de baja. Si te invitamos y creas una cuenta, desde ese momento se aplica el resto de esta política.',
+  )
+  await expect(page.getByTestId('reading-column')).not.toContainText('después de que abramos al público')
+})
+
 // PRO-70: the intended purpose (D-038, constitution §6), word for word, in its own section.
 const INTENDED_PURPOSE =
   'Mimoia es un planificador de menús, recetas y lista de la compra para hogares, según sus gustos, preferencias y restricciones declaradas. Ofrece información general de alimentación. No está destinado a diagnosticar, prevenir, predecir, tratar ni controlar ninguna enfermedad, ni sustituye a un profesional sanitario.'

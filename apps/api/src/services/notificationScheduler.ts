@@ -50,6 +50,7 @@ import { recordPendingReferralRewardsIfDue } from './referralRewards.js'
 import { purgeOldUsageEventsIfDue } from './usageEvents.js'
 import { CHAT_RETENTION_DAYS, purgeOldChatMessagesIfDue } from './chatMessages.js'
 import { sendWaitlistInviteRemindersIfDue } from './waitlistInvites.js'
+import { WAITLIST_RETENTION_DATE, purgeWaitlistPersonalDataIfDue } from './waitlistRetention.js'
 import { isAccountPaused } from './accountAccess.js'
 import { sendTrialEndingEmailsIfDue } from './trialEmails.js'
 import { sendFounderOffersIfDue } from './founderOffer.js'
@@ -560,6 +561,15 @@ async function tickOnce(): Promise<true> {
     }
   } catch (err) {
     console.error('[notificationScheduler] waitlist invite reminders failed:', err)
+  }
+
+  // Waitlist retention (PRO-171): from 2027-05-16 (Madrid), once a day,
+  // remove email and name of every entry without the Friday newsletter.
+  try {
+    const purged = await purgeWaitlistPersonalDataIfDue(now)
+    if (purged) console.log(`[waitlist] anonymised ${purged} entries (retention ${WAITLIST_RETENTION_DATE})`)
+  } catch (err) {
+    console.error('[notificationScheduler] waitlist retention purge failed:', err)
   }
 
   // PRO-135: «te quedan 2 días de prueba» to each household owner, once

@@ -67,8 +67,9 @@ Each picked person **pulls in** the waiting people who signed up with their link
   - referral code: 8 chars of lowercase Crockford base32 (40 random bits, no i/l/o/u), retried on collision;
   - opt-out token: 24 random bytes, base64url;
   - both are unique in the DB.
-- **Consent**: `consent_version` + `consent_at` on every entry (`WAITLIST_CONSENT_VERSION`, `2026-10-17` since Legal's precisions to `/privacidad` (PRO-132); the newsletter's `WAITLIST_NEWSLETTER_CONSENT_VERSION` is `2026-10-17` too, for the box's new words; consents already given keep the version they were given with). The newsletter is a separate consent (LSSI art. 21–22): `newsletter_opt_in` defaults to false, and `newsletter_consent_at` + `newsletter_consent_version` are stored only when ticked. Bump the versions when the copy or `/privacidad` changes.
+- **Consent**: `consent_version` + `consent_at` on every entry (`WAITLIST_CONSENT_VERSION`, `2026-10-19` since the retention date in `/privacidad` (PRO-171; `2026-10-17` for Legal's precisions, PRO-132); the newsletter's `WAITLIST_NEWSLETTER_CONSENT_VERSION` is `2026-10-17` too, for the box's new words; consents already given keep the version they were given with). The newsletter is a separate consent (LSSI art. 21–22): `newsletter_opt_in` defaults to false, and `newsletter_consent_at` + `newsletter_consent_version` are stored only when ticked. Bump the versions when the copy or `/privacidad` changes.
 - **Opt-out anonymises in place**: `status='unsubscribed'`, email/name/supermarket set to NULL, newsletter off. The anonymous answers stay for the counts (`email` is nullable; the unique index tolerates NULLs).
+- **Retention (PRO-171, LEG-17)**: entries are kept until **2027-05-16** (six months after registration opened to everyone on 2026-11-16) or until opt-out, whichever comes first; `/privacidad` says so word for word. From that day (Madrid), once a day, the scheduler (`purgeWaitlistPersonalDataIfDue`, `services/waitlistRetention.ts`) sets email/name/supermarket to NULL on every entry that still has an email and **doesn't** have the Friday newsletter on, and deletes that email's newsletter send traces; answers, status and codes stay for the counts. Newsletter readers keep their email while subscribed; if they turn it off later, the next daily run anonymises them. Tested in `waitlistRetention.test.ts`.
 - Referral links point to `WEB_PUBLIC_URL` in API responses; the web shows `window.location.origin`, so the link matches the domain the person used.
 - `/lista/*` renders with the public chrome (`PUBLIC_PREFIXES` in `app/layout.tsx`).
 - Public copy in `components/waitlist/` is scanned by `publicHealthClaims.test.ts`.
@@ -77,7 +78,6 @@ Each picked person **pulls in** the waiting people who signed up with their link
 
 - **Emails sent**: the invitation (PRO-93) and the Friday newsletter (PRO-94, [newsletter.md](./newsletter.md); its own opt-out turns off only the newsletter). There is no confirmation email (no double opt-in).
 - No phone number is collected, so "por WhatsApp" is a stated preference, honoured by sending the invitation with the WhatsApp link (since 2026-10-14 Mimo is on a real number, so the 5-recipient limit of Meta's test number no longer applies; access is still gated by `WHATSAPP_ALLOWED_EMAILS`, see [WhatsApp](./whatsapp.md)).
-- Retention (until 6 months after public launch) is not automated yet: the purge job is in the CLAUDE.md backlog.
 - The opt-out link is shown only on the device and submission that created the entry. Otherwise it comes in Miguel's emails, or via the contact in `/privacidad` (which needs `NEXT_PUBLIC_SUPPORT_EMAIL`, see CLAUDE.md → Todo Miguel).
 
 ## Related specs
@@ -96,6 +96,7 @@ Each picked person **pulls in** the waiting people who signed up with their link
 - [packages/shared/src/types/waitlist.ts](../packages/shared/src/types/waitlist.ts): enums, labels, `waitlistSignupSchema`, form state + `buildWaitlistPayload`, `readWaitlistAttribution`, link/share helpers
 - [packages/shared/src/constants/brand.ts](../packages/shared/src/constants/brand.ts): `BRAND_NAME`
 - [apps/api/src/services/waitlist.ts](../apps/api/src/services/waitlist.ts): code/token generators, `isTargetSegment`, `suggestNextBatch`, `buildWaitlistReport`, `signupToWaitlist`, DB repo, `loadWaitlistReport`, `loadWaitlistSummary`, `loadNextBatchPeople` + `nextBatchPeople`, `inviteWaitlistEntries`, `markWaitlistJoined`
+- [apps/api/src/services/waitlistRetention.ts](../apps/api/src/services/waitlistRetention.ts): `WAITLIST_RETENTION_DATE` (2027-05-16) and the daily anonymisation from that day (PRO-171)
 - [apps/api/src/routes/waitlist.ts](../apps/api/src/routes/waitlist.ts): public + admin routers (mounted in `index.ts`)
 - [apps/api/src/services/waitlistEmails.ts](../apps/api/src/services/waitlistEmails.ts): `waitlistInviteEmail`, `waitlistInviteReminderEmail`
 - [apps/api/src/services/waitlistInvites.ts](../apps/api/src/services/waitlistInvites.ts): one-time link (token, hash, check, use up), reminder; [migration 0048](../apps/api/src/db/migrations/0048_waitlist_invite_token.sql)

@@ -263,6 +263,13 @@ export const recipes = pgTable('recipes', {
   tips: text('tips'),
   substitutions: text('substitutions'),
   storage: text('storage'),
+  /**
+   * PRO-220 (D-069): «preparativos con antelación» of the recipe itself —
+   * `[{ text: 'Saca el filete del frigorífico', hoursBefore: 1.5 }]`. Prep
+   * alerts come from these without the household's prep habits. Filled by
+   * Cocina (COC-12). Empty = none.
+   */
+  advancePrep: jsonb('advance_prep').notNull().default([]).$type<Array<{ text: string; hoursBefore: number }>>(),
 
   /** Cached nutrition per serving — recomputed on every save. NULL until first compute. */
   nutritionPerServing: jsonb('nutrition_per_serving').$type<NutritionPerServing>(),
@@ -837,7 +844,7 @@ export const notificationSchedule = pgTable('notification_schedule', {
   dedupKey: text('dedup_key').notNull().unique(),
   fireAt: timestamp('fire_at', { withTimezone: true }).notNull(),
   /** JSON payload passed directly to `sendPushToUser` at dispatch time. */
-  payload: jsonb('payload').notNull().$type<{ title: string; body: string; url?: string; tag?: string }>(),
+  payload: jsonb('payload').notNull().$type<{ title: string; body: string; url?: string; tag?: string; /** Weekly-cap priority (PRO-215); prep alerts are 1. */ priority?: number }>(),
   /** 'pending' | 'sent' | 'failed' | 'cancelled' */
   status: text('status').notNull().default('pending'),
   sentAt: timestamp('sent_at', { withTimezone: true }),

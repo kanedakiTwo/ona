@@ -167,6 +167,8 @@ interface RecipeRow {
   tips: string | null
   substitutions: string | null
   storage: string | null
+  /** PRO-220 (migration 0071); absent on pre-migration rows. */
+  advancePrep?: Array<{ text: string; hoursBefore: number }> | null
   nutritionPerServing: Recipe['nutritionPerServing']
   /** PRO-176 (migration 0065); absent on pre-migration rows. */
   nutritionIncomplete?: boolean | null
@@ -334,6 +336,7 @@ function toDetailRecipe(
   if (row.totalTime != null) detail.totalTime = row.totalTime
   if (row.sourceUrl != null) detail.sourceUrl = row.sourceUrl
   if (row.sourceType != null) detail.sourceType = row.sourceType as SourceType
+  if (row.advancePrep?.length) detail.advancePrep = row.advancePrep
   // notes/tips/substitutions/storage are intentionally NOT exposed on the
   // public detail payload — see spec "Tag Visibility" / "Display Constraints".
 
@@ -1008,6 +1011,7 @@ router.post('/recipes/:id/copy', requireRecipeId(), authMiddleware, async (req: 
           tips: source.tips,
           substitutions: source.substitutions,
           storage: source.storage,
+          advancePrep: source.advancePrep ?? [],
           nutritionPerServing: source.nutritionPerServing,
           nutritionIncomplete: source.nutritionIncomplete ?? false,
           tags: source.tags ?? [],

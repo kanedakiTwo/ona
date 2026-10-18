@@ -118,6 +118,8 @@ export { registerSchema, loginSchema, onboardingSchema, onboardingDraftSchema, u
 export type { OnboardingDraft } from './types/user.js'
 export { createIngredientSchema, updateIngredientSchema } from './types/ingredient.js'
 export {
+  advancePrepSchema,
+  type AdvancePrep,
   createRecipeSchema,
   updateRecipeSchema,
   recipeIngredientSchema,

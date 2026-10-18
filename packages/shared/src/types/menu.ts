@@ -7,6 +7,13 @@ export interface MealSlot {
   servings?: number | null
   /** Ordered list of dishes; length ≥ 1 after at least one populate, but `[]` is transient and valid. */
   dishes: Dish[]
+  /**
+   * Eaten (PRO-185): set by Mimo (`mark_meal_eaten`) or «Marcar como
+   * cocinada» on the web; the menu card shows «✓ Comido» instead of
+   * «Empezar a cocinar». `eatenAt` is the ISO time it was marked.
+   */
+  eaten?: boolean
+  eatenAt?: string
 }
 
 export interface DayMenu {

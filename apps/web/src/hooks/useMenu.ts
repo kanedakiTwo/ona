@@ -234,6 +234,23 @@ export function useUpdateSlotServings() {
   })
 }
 
+/** «Marcar como cocinada» / «Desmarcar» (PRO-185): the slot's `eaten`, the same Mimo sets. */
+export function useSetSlotEaten() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (params: { menuId: string; day: number; meal: string; eaten: boolean }) => {
+      const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}`
+      return api.patch<Menu>(url, { eaten: params.eaten })
+    },
+    onSuccess: (data) => {
+      if (data?.userId && data?.weekStart) {
+        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
+      }
+      queryClient.invalidateQueries({ queryKey: ["menu"] })
+    },
+  })
+}
+
 /**
  * Pin a meal-type tag (cremas, legumbres, pizza, …) onto a slot. The matcher
  * then restricts every Aleatorio / Añadir pick on this slot to recipes whose

@@ -932,6 +932,22 @@ router.patch('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) 
       }
     }
 
+    // PRO-185: «Marcar como cocinada» / «Desmarcar» from the web — the same
+    // `eaten` / `eatenAt` Mimo's `mark_meal_eaten` writes.
+    if ('eaten' in (req.body ?? {})) {
+      if (typeof req.body.eaten !== 'boolean') {
+        res.status(400).json({ error: 'eaten must be a boolean' })
+        return
+      }
+      if (req.body.eaten) {
+        slot.eaten = true
+        slot.eatenAt = new Date().toISOString()
+      } else {
+        delete slot.eaten
+        delete slot.eatenAt
+      }
+    }
+
     days[dayIndex][meal] = slot
     const [updated] = await db.update(menus).set({ days }).where(eq(menus.id, menuId)).returning()
     res.json(await hydrateMenuImages(updated))

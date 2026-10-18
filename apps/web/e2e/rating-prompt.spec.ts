@@ -58,7 +58,10 @@ test('menu: «Marcar como cocinada» asks «¿Qué tal?»; «Repetir a menudo» 
   await page.goto(`/recipes/${recipeId}#notas`)
   await expect(page.getByRole('button', { name: '5 de 5' })).toHaveAttribute('aria-pressed', 'true', { timeout: 15_000 })
 
-  // Second time within 30 days: no question.
+  // Second time within 30 days: no question. The meal is now «Comido»
+  // (PRO-185), so «Desmarcar» it first to get «Marcar como cocinada» back.
+  const meal = MEALS.find((m) => today[m]?.dishes?.some((d: any) => d.kind === 'recipe'))
+  expect((await page.request.patch(`${API}/menu/${menu.id}/day/${(new Date().getDay() + 6) % 7}/meal/${meal}`, { headers, data: { eaten: false } })).ok()).toBeTruthy()
   await page.goto('/menu')
   await expect(hero).toBeVisible({ timeout: 20_000 })
   await hero.getByRole('button', { name: /más opciones/i }).click()

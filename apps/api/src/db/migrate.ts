@@ -7,6 +7,7 @@ import { applyCatalogRecipeTimes } from '../services/catalogRecipeTimes.js'
 import { applyCatalogIngredientAisles } from '../services/catalogIngredientAisles.js'
 import { applyNutritionCompleteness } from '../services/nutritionCompleteness.js'
 import { applyEdibleFractions } from '../services/nutrition/edibleFraction.js'
+import { applyCompoundIngredientTags } from '../services/compoundIngredients.js'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -56,6 +57,14 @@ async function main() {
     await applyEdibleFractions(db)
   } catch (err) {
     console.error('[edible-fraction] failed:', err)
+  }
+  // Idempotent (PRO-198): the obvious compound ingredients («Sobras del
+  // cocido», «Caldo de cocido», generic sausages…) get what they contain,
+  // only while they have no contains tag.
+  try {
+    await applyCompoundIngredientTags(db)
+  } catch (err) {
+    console.error('[compound-tags] failed:', err)
   }
   // Idempotent (PRO-176): recompute only the «nutrición incompleta» mark of
   // every recipe; the cached figures are left as they are.

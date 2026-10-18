@@ -51,6 +51,8 @@ export interface RecipeWithIngredients {
     unit: string
     /** The ingredient's catalogue allergen tags (ingredients.allergen_tags). */
     allergenTags?: string[] | null
+    /** What a compound ingredient contains (ingredients.contains_tags, PRO-198). */
+    containsTags?: string[] | null
   }>
 }
 

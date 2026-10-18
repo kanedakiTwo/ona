@@ -77,6 +77,7 @@ import { diff, record, type AdminAction } from '../services/auditLog.js'
 import { mintToken } from '../services/passwordReset.js'
 import { reviewDay } from '../services/whatsapp/reviewer.js'
 import { madridParts } from '../services/madridTime.js'
+import { CONTAINS_TAGS, compoundIngredientsWithoutTags } from '../services/compoundIngredients.js'
 
 const router = Router()
 
@@ -206,6 +207,9 @@ router.get(
         missingUnitWeight,
         aisleOtros,
         allergenSuggestions,
+        // PRO-198: compound ingredients (sobras, caldos, embutidos…) with no
+        // `containsTags` yet — Cocina labels them with PATCH /ingredients/:id.
+        compoundWithoutTags: compoundIngredientsWithoutTags(all).map((r) => ({ id: r.id, name: r.name })),
       })
     } catch (err) {
       console.error('admin/ingredient-gaps error:', err)
@@ -366,6 +370,8 @@ const patchBodySchema = z.object({
   density: z.number().positive().nullable().optional(),
   unitWeight: z.number().positive().nullable().optional(),
   allergenTags: z.array(z.enum(ALLERGEN_TAGS)).optional(),
+  /** PRO-198: what a compound ingredient contains (Cocina labels them from the audit). */
+  containsTags: z.array(z.enum(CONTAINS_TAGS)).optional(),
 })
 
 router.patch(
@@ -384,6 +390,7 @@ router.patch(
       if ('density' in parsed.data) update.density = parsed.data.density
       if ('unitWeight' in parsed.data) update.unitWeight = parsed.data.unitWeight
       if ('allergenTags' in parsed.data) update.allergenTags = parsed.data.allergenTags
+      if ('containsTags' in parsed.data) update.containsTags = parsed.data.containsTags
 
       const id = String(req.params.id)
       const adminId = req.user!.id
@@ -407,12 +414,14 @@ router.patch(
           density: before.density,
           unitWeight: before.unitWeight,
           allergenTags: before.allergenTags,
+          containsTags: before.containsTags,
         }
         const afterFields = {
           aisle: after.aisle,
           density: after.density,
           unitWeight: after.unitWeight,
           allergenTags: after.allergenTags,
+          containsTags: after.containsTags,
         }
         const changes = diff(
           beforeFields as Record<string, unknown>,

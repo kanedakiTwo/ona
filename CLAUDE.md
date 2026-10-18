@@ -198,7 +198,7 @@ This is the **single source of truth** for work that's pending on Miguel's side 
 - [ ] **MIG-10 · Probar en tu móvil lo que no se puede probar solo** — Hay cosas que solo se ven en un teléfono de verdad.
   - Instalar la app en Android (Chrome) y en iPhone (Safari): que se abra a pantalla completa, con el color crema y respetando la barra de estado.
   - En una receta, «Empezar a cocinar» y bloquear el móvil: la pantalla debe seguir encendida al volver.
-  - Avisos a la hora de comer: en el perfil, actívalos con la hora 1 minuto después y deja la app abierta; al tocar el aviso debe abrir la app.
+  - Notificaciones del móvil: en el perfil, «Activar notificaciones» y «Enviar prueba»; al tocar el aviso debe abrir la app.
   - Vibración al tocar (solo Android), botón de compartir en una receta y en la lista de la compra, y la sensación general al cambiar de pantalla y deslizar entre pestañas.
 
 - [ ] **MIG-12 · Revisión legal de la privacidad y los términos** · *antes del 11 de diciembre* (D-078, haya SL o no: se cobra como autónomo desde el 15-dic) — Revisión de bajo coste del 1 al 10 de diciembre para publicar el 11; el presupuesto te llega como aprobación. Un abogado tiene que revisar `/privacidad` y los términos de contratación: responsable con nombre real, datos de salud con consentimiento explícito, envíos a EE. UU. y el apartado de la lista de espera.

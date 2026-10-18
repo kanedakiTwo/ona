@@ -13,8 +13,9 @@
  *     constraint — re-running after a swap_meal is safe.
  *
  *   - `tickScheduler()` — periodic poll (every 5 min) that picks up any
- *     `pending` row whose `fire_at` has elapsed, dispatches via
- *     `sendPushToUser`, and marks it sent / failed.
+ *     `pending` row whose `fire_at` has elapsed, sends it by ONE channel
+ *     (WhatsApp, or the phone notification without it or as its fallback;
+ *     PRO-234, `notifications/channels.ts`), and marks it sent / failed.
  *
  * The tick also sends the waitlist invitation reminder (PRO-97,
  * `sendWaitlistInviteRemindersIfDue`, once an hour).
@@ -39,11 +40,7 @@ import {
   type PrepMethod,
   type Meal,
 } from '@ona/shared'
-import {
-  sendPushToUser,
-  PushNotConfiguredError,
-} from './pushNotifier.js'
-import { deliverAlertOverWhatsApp, runProactiveTick } from './whatsapp/outbound.js'
+import { deliverAlertOverWhatsApp, runProactiveTick, whatsAppAlertState } from './whatsapp/outbound.js'
 import { runDailyReviewIfDue } from './whatsapp/reviewer.js'
 import { runProfileRefinerIfDue } from './profile/refiner.js'
 import { recordPendingReferralRewardsIfDue } from './referralRewards.js'
@@ -54,7 +51,7 @@ import { isAccountPaused } from './accountAccess.js'
 import { sendTrialEndingEmailsIfDue } from './trialEmails.js'
 import { sendFounderOffersIfDue } from './founderOffer.js'
 import { sendChargeNoticesIfDue } from './chargeNotice.js'
-import { combineDelivery, type ChannelOutcome } from './whatsapp/proactive.js'
+import { channelsFor, deliverInOrder, pushOutcome, type WhatsAppAlertState } from './notifications/channels.js'
 
 // ─── Habit → method matcher ─────────────────────────────────────
 //
@@ -457,8 +454,6 @@ async function tickOnce(): Promise<true> {
       ),
     )
 
-  // Each due alert goes out over Web Push AND WhatsApp (when the user linked
-  // a phone and opted into "Avisos por WhatsApp"). Sent if either delivered.
   for (const row of due) {
     let stale: string | null = null
     try {
@@ -476,25 +471,27 @@ async function tickOnce(): Promise<true> {
         .where(eq(notificationSchedule.id, row.id))
       continue
     }
-    let push: ChannelOutcome
+    // PRO-234 (D-080): one channel. WhatsApp when linked with «avisos» on;
+    // the phone notification only as its fallback, or as the channel when
+    // there is no WhatsApp. Switched off by the person → not sent anywhere.
+    let waState: WhatsAppAlertState = 'none'
     try {
-      await sendPushToUser(row.userId, row.payload)
-      push = { status: 'ok' }
-    } catch (err: any) {
-      push = {
-        status: 'error',
-        error: err instanceof PushNotConfiguredError
-          ? 'push-not-configured'
-          : String(err?.message ?? err).slice(0, 500),
-      }
+      waState = await whatsAppAlertState(row.userId, 'prep_alerts')
+    } catch (err) {
+      console.warn('[notificationScheduler] whatsapp state failed (trying push):', err)
     }
-    let whatsapp: ChannelOutcome
-    try {
-      whatsapp = await deliverAlertOverWhatsApp(row.userId, row.payload, now)
-    } catch (err: any) {
-      whatsapp = { status: 'error', error: String(err?.message ?? err).slice(0, 300) }
+    const channels = channelsFor('prep_alerts', waState)
+    if (channels.length === 0) {
+      await db
+        .update(notificationSchedule)
+        .set({ status: 'cancelled', errorMessage: 'cancelado al enviar: aviso apagado' })
+        .where(eq(notificationSchedule.id, row.id))
+      continue
     }
-    const { status, errorMessage } = combineDelivery(push, whatsapp)
+    const { status, errorMessage } = await deliverInOrder(channels, {
+      whatsapp: () => deliverAlertOverWhatsApp(row.userId, row.payload, now),
+      push: () => pushOutcome(row.userId, row.payload),
+    })
     await db
       .update(notificationSchedule)
       .set({ status, sentAt: new Date(), errorMessage })

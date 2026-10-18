@@ -50,16 +50,6 @@ import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
 import { useWebPush } from '@/hooks/useWebPush'
 import { useMimo } from '@/components/mimo/MimoProvider'
-import {
-  getEnabled as getNotifEnabled,
-  setEnabled as setNotifEnabledLS,
-  getMealTimes,
-  setMealTimes,
-  requestPermission as requestNotifPermission,
-  scheduleMealReminders,
-  clearAllReminders,
-  type MealTimes,
-} from '@/lib/pwa/notifications'
 import { MyRecipesSection } from './sections/MyRecipesSection'
 import { MealDishCountControls } from '@/components/profile/MealDishCountControls'
 import { WhatsAppCard } from '@/components/profile/WhatsAppCard'
@@ -166,40 +156,6 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
-
-  const [notifEnabled, setNotifEnabled] = useState(false)
-  const [mealTimes, setLocalMealTimes] = useState<MealTimes>({
-    breakfast: '08:00',
-    lunch: '14:00',
-    dinner: '21:00',
-    snack: '17:00',
-  })
-
-  useEffect(() => {
-    setNotifEnabled(getNotifEnabled())
-    setLocalMealTimes(getMealTimes())
-  }, [])
-
-  async function handleToggleNotif() {
-    if (!notifEnabled) {
-      const perm = await requestNotifPermission()
-      if (perm !== 'granted') return
-      setNotifEnabledLS(true)
-      setNotifEnabled(true)
-      scheduleMealReminders(mealTimes)
-    } else {
-      setNotifEnabledLS(false)
-      setNotifEnabled(false)
-      clearAllReminders()
-    }
-  }
-
-  function handleMealTimeChange(meal: keyof MealTimes, value: string) {
-    const next = { ...mealTimes, [meal]: value }
-    setLocalMealTimes(next)
-    setMealTimes(next)
-    if (notifEnabled) scheduleMealReminders(next)
-  }
 
   useEffect(() => {
     if (!user) return
@@ -804,67 +760,13 @@ export default function ProfilePage() {
             <ProfileCard
               icon={Bell}
               title="Recordatorios"
-              status={notifEnabled ? 'Recordatorios de comidas activados' : 'Recordatorios de comidas desactivados'}
+              status="Avisos de Mimo y el correo de los viernes"
             >
               <p className="mt-3 text-[13px] leading-snug text-ink-muted">
-                Te avisamos a las horas que prefieras para que no se te pase. Las
-                notificaciones son locales: solo suenan si tienes la app abierta o
-                instalada.
+                Si tienes WhatsApp conectado, Mimo te avisa por ahí. Si no, los
+                avisos de preparación (sacar del congelador, poner en remojo) te
+                llegan como notificación del móvil.
               </p>
-
-              <button
-                type="button"
-                onClick={handleToggleNotif}
-                className="mt-2 flex min-h-[56px] w-full items-center justify-between gap-3 border-t border-border-soft py-2"
-                aria-pressed={notifEnabled}
-              >
-                <div className="min-w-0 text-left">
-                  <div className="text-[14px] font-medium text-ink">
-                    Recibir recordatorios de comidas
-                  </div>
-                  <div className="truncate text-[12px] text-ink-muted">
-                    {notifEnabled ? 'Activado' : 'Desactivado'}
-                  </div>
-                </div>
-                <Switch on={notifEnabled} />
-              </button>
-
-              {notifEnabled && (
-                <div className="mt-2 grid grid-cols-2 gap-4 border-t border-border-soft pt-4">
-                  <Field label="Desayuno">
-                    <input
-                      type="time"
-                      value={mealTimes.breakfast}
-                      onChange={(e) => handleMealTimeChange('breakfast', e.target.value)}
-                      className="input-line"
-                    />
-                  </Field>
-                  <Field label="Comida">
-                    <input
-                      type="time"
-                      value={mealTimes.lunch}
-                      onChange={(e) => handleMealTimeChange('lunch', e.target.value)}
-                      className="input-line"
-                    />
-                  </Field>
-                  <Field label="Merienda">
-                    <input
-                      type="time"
-                      value={mealTimes.snack}
-                      onChange={(e) => handleMealTimeChange('snack', e.target.value)}
-                      className="input-line"
-                    />
-                  </Field>
-                  <Field label="Cena">
-                    <input
-                      type="time"
-                      value={mealTimes.dinner}
-                      onChange={(e) => handleMealTimeChange('dinner', e.target.value)}
-                      className="input-line"
-                    />
-                  </Field>
-                </div>
-              )}
 
               {/* Web Push — server-side notifications that survive a closed tab. */}
               <PushNotificationsCard />
@@ -1138,12 +1040,12 @@ function PushNotificationsCard() {
         )}
         <div className="min-w-0 flex-1">
           <div className="text-[14px] font-medium text-ink">
-            Notificaciones push del asistente
+            Notificaciones del móvil
           </div>
           <div className="mt-1 text-[12px] leading-snug text-ink-muted">
-            Avisos que llegan aunque la app esté cerrada — futura base para
-            recordatorios de prep (sacar pescado del congelador, poner
-            legumbres en remojo…).{' '}
+            Llegan aunque la app esté cerrada. Sin WhatsApp, por aquí te llegan
+            los avisos de preparación; con WhatsApp, solo si un aviso no puede
+            salir por WhatsApp.{' '}
             {state === 'denied' && (
               <span className="text-terracotta-deep">
                 Has denegado el permiso; cámbialo en los ajustes del

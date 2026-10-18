@@ -48,7 +48,7 @@ When the master toggle is on (default after linking), Mimo writes first. All tim
 | `dinner_checkin` | 2–3 h after dinner time, if dinner has a recipe and nothing was cooked-logged today | "¿Hiciste hoy la cena (*X*)? Así lo apunto." [Sí, la hice] [No]. "Sí, la hice" → the assistant calls `log_cooked` (cook log + pantry decrement) |
 | `shopping_reminder` | Saturday 10:00–12:59, if the current list has ≥ 3 unchecked items | "¿Toca compra? Te faltan N cosas: …" + list link |
 | `weekly_nudge` | Sunday 18:00–21:59, if next week has no menu | "Domingo de planificar: ¿te preparo el menú de la semana que viene?" [Sí, prepáralo] [Ahora no] → `generate_weekly_menu(nextWeek: true)` |
-| `prep_alerts` | from `notification_schedule` | "Acuérdate: Merluza — sácalo del congelador…" (also sent by Web Push; the row is `sent` if either channel delivers) |
+| `prep_alerts` | from `notification_schedule` | "Acuérdate: Merluza — sácalo del congelador…" (only here when WhatsApp is linked with avisos on; the phone notification is just its fallback — see [Notifications → Channels](./notifications.md#channels-one-alert-one-channel)) |
 
 **Written from a guide, not a fixed text** (PRO-156, D-065; `services/whatsapp/guided.ts`). The texts in the table above are the **safety net**; normally each of those messages (all but `prep_alerts`) and the end of the WhatsApp sign-up (`first_steps`, see *First steps in the chat* above) is written each time by a writer, Claude Haiku 4.5:
 - **Guide per kind** (`MESSAGE_GUIDES`): what it is for, what it must carry (dishes, hours, links; buttons stay in code), tone and maximum length; plus fixed rules (`COMMON_RULES`): only cooking, menu and shopping; nothing about health or nutrition; never «no puedo»; invent nothing; don't repeat earlier messages. The planner adds the facts and the literal strings each message must contain (`dailyBriefGuide`, `cookingReminderGuide`…).
@@ -69,7 +69,7 @@ When the master toggle is on (default after linking), Mimo writes first. All tim
 Delivery follows Meta's 24 h customer-service window, measured from `last_inbound_at` with a 30-min safety margin:
 - **Inside the window:** free-form messages with buttons.
 - **Outside the window:** the approved template `WHATSAPP_TEMPLATE_NAME` (language `WHATSAPP_TEMPLATE_LANG`, default `es`), whose single `{{1}}` body variable carries the message flattened to one line. Buttons are folded in as "Responde: Sí / No.", because Meta rejects newlines in template parameters.
-- **Outside the window with no template:** skipped silently and retried on the next tick while the time window is still open.
+- **Outside the window with no template, or a Meta error (PRO-234, D-080):** the same message goes out once as a **phone notification** (Web Push, title «Mimo», links and bold removed, opens `/menu` or `/shopping`) if the person turned those on; recorded in `notification_schedule` as `fallback:<kind>:<userId>:<day>`, so it counts as that kind's send for the day. With no phone notification either, it stays as not sent (`failed`) and isn't retried that day. See [Notifications → Channels](./notifications.md#channels-one-alert-one-channel).
 
 ## Conversation reviewer agent
 

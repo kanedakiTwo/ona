@@ -35,6 +35,7 @@ import { budgetMicros, getMonthlySpendMicros } from '../advisorBudget.js'
 import { spendCapStatus } from '../spendCap.js'
 import { composeGuided, guidedMeta, type GuideSpec, type GuidedContext, type GuidedResult } from './guided.js'
 import { isAccountPaused } from '../accountAccess.js'
+import { fallbackKindsToday, pushFallbackForProactive, type WhatsAppAlertState } from '../notifications/channels.js'
 
 /** Per-kind templates (WHATSAPP_TEMPLATES), parsed once. */
 const TEMPLATES = parseTemplateMap(env.WHATSAPP_TEMPLATES)
@@ -107,7 +108,17 @@ export async function sendInsideServiceWindow(userId: string, text: string, kind
   return sendProactive(link, [{ type: 'text', text }], kind, now)
 }
 
-/** Prep alert from `notification_schedule` → WhatsApp (in addition to Web Push). */
+/**
+ * Can WhatsApp carry this person's alerts of `kind` (PRO-234)? `kind_off`
+ * when they switched that kind off: then it goes out nowhere.
+ */
+export async function whatsAppAlertState(userId: string, kind: ProactiveKind): Promise<WhatsAppAlertState> {
+  const link = await notifiableLink(userId)
+  if (!link) return 'none'
+  return kindEnabled(link.prefs, kind) ? 'ready' : 'kind_off'
+}
+
+/** Prep alert from `notification_schedule` → WhatsApp (its only channel when linked; PRO-234). */
 export async function deliverAlertOverWhatsApp(
   userId: string,
   payload: { title: string; body: string; url?: string },
@@ -256,10 +267,13 @@ export async function runProactiveTick(now: Date = new Date()): Promise<void> {
       // Only touch the DB for cooldowns inside a window that could fire.
       if (!anyProactiveWindow(parts, times.breakfast, times.dinner)) continue
       const recent = await store.recentOutboundKinds(link.phone, new Date(now.getTime() - WEEKLY_NUDGE_COOLDOWN_MS))
+      // PRO-234: a kind that already went out today as a phone notification
+      // (WhatsApp couldn't) counts as sent too.
+      const fellBack = await fallbackKindsToday(link.userId, parts.isoDate)
       const sentRecently: Partial<Record<ProactiveKind, boolean>> = {}
       for (const k of PROACTIVE_KINDS) {
         const at = recent.get(k)
-        sentRecently[k] = Boolean(at && now.getTime() - at.getTime() < COOLDOWN_MS[k])
+        sentRecently[k] = Boolean(at && now.getTime() - at.getTime() < COOLDOWN_MS[k]) || fellBack.has(k)
       }
       let dinnerCache: Promise<TodayDinner | null> | null = null
       const planned = await planProactive({
@@ -278,12 +292,19 @@ export async function runProactiveTick(now: Date = new Date()): Promise<void> {
       })
       for (const p of planned) {
         const fixed = p.messages.length === 1 && (p.messages[0].type === 'text' || p.messages[0].type === 'buttons') ? p.messages[0].text : null
+        let sent: ChannelOutcome
+        let text: string
         if (!p.guide || fixed === null) {
-          await sendProactive(link, p.messages, p.kind, now)
-          continue
+          sent = await sendProactive(link, p.messages, p.kind, now)
+          text = p.messages.map((m) => m.text).join('\n')
+        } else {
+          const written = await writeGuided(link, p.guide, fixed, now)
+          sent = await sendProactive(link, withText(p.messages, written.text), p.kind, now, { meta: guidedMeta(written) })
+          text = written.text
         }
-        const written = await writeGuided(link, p.guide, fixed, now)
-        await sendProactive(link, withText(p.messages, written.text), p.kind, now, { meta: guidedMeta(written) })
+        // PRO-234 (D-080): WhatsApp couldn't (outside the 24 h window without
+        // a template, or a Meta error) → the phone notification, once a day.
+        if (sent.status !== 'ok') await pushFallbackForProactive(link.userId, p.kind, text, parts.isoDate, now)
       }
     } catch (err: any) {
       console.error(`[whatsapp] proactive tick failed for ${link.userId}:`, err?.message ?? err)

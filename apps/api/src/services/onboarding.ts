@@ -3,8 +3,9 @@ import { db as defaultDb } from '../db/connection.js'
 import { households, users } from '../db/schema.js'
 import { grantHealthConsent, hasHealthConsent } from './healthConsent.js'
 import { recordWishesFromFavoriteDishes } from './catalogWishes.js'
-import { timeAvailableForChoice, type WeekdayCookingChoice } from '@ona/shared'
+import { timeAvailableForChoice, type CookingStyle, type WeekdayCookingChoice } from '@ona/shared'
 import { setMemoryFact } from './userMemoryStore.js'
+import { cookingStyleHousehold, setCookingStyle } from './profile/cookingStyle.js'
 
 /**
  * Save the first-steps answers and mark the user onboarded. Shared by the web
@@ -33,6 +34,11 @@ export interface OnboardingInput {
    * (PRO-151): the sign-up day's signals read it. Absent leaves it as it is.
    */
   cookingNote?: string | null
+  /**
+   * PRO-217 «¿Cómo cocináis en casa?» → the household's ficha
+   * (`cooking_style`, origin onboarding). Absent leaves it as it is.
+   */
+  cookingStyle?: CookingStyle
 }
 
 export const ONBOARDING_NOTE_MAX = 500
@@ -83,6 +89,12 @@ export async function saveOnboarding(userId: string, input: OnboardingInput, dat
   if (updated && database === defaultDb) await recordWishesFromFavoriteDishes(userId, favoriteDishes)
   if (updated && input.weekdayCooking) {
     await setMemoryFact(userId, 'time_available', timeAvailableForChoice(input.weekdayCooking), 'onboarding')
+  }
+  if (updated && input.cookingStyle && database === defaultDb) {
+    const home = await cookingStyleHousehold(userId)
+    if (home?.canEdit) {
+      await setCookingStyle({ householdId: home.householdId, style: input.cookingStyle, origin: 'onboarding', actorUserId: userId, signal: 'onboarding' })
+    }
   }
   return updated ?? null
 }

@@ -23,10 +23,13 @@ test('weekday cooking question + «tu caso» field → time limits in the memory
   await next.click()
   await page.getByRole('button', { name: /3-4 veces/i }).click()
   await next.click()
+  // PRO-217: «¿Cómo cocináis en casa?»
+  await page.getByRole('button', { name: /^cocino cada día/i }).click()
+  await next.click()
 
-  // Step 3: the new question, one tap, and the optional field.
+  // Step 4 (3 before PRO-217): the question, one tap, and the optional field.
   await expect(page.getByRole('heading', { name: /entre semana, ¿cómo te gusta cocinar/i })).toBeVisible()
-  await expect(page.getByText('Primeros pasos · 3 de 5')).toBeVisible()
+  await expect(page.getByText('Primeros pasos · 4 de 6')).toBeVisible()
   await expect(page.getByText('El fin de semana, sin prisa.')).toBeVisible()
   await expect(next).toBeDisabled()
   for (const label of [/^rápido/i, /^poco rato de trabajo/i, /^sin prisa/i]) {

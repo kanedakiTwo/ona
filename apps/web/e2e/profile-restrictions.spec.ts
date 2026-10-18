@@ -24,6 +24,9 @@ async function onboardWithGlutenFree(page: Page) {
   await next.click()
   await page.getByRole('button', { name: /3-4 veces/i }).click()
   await next.click()
+  // PRO-217: «¿Cómo cocináis en casa?»
+  await page.getByRole('button', { name: /^cocino cada día/i }).click()
+  await next.click()
   // PRO-138: «Entre semana, ¿cómo te gusta cocinar?»
   await page.getByRole('button', { name: /sin prisa/i }).click()
   await next.click()
@@ -75,6 +78,9 @@ test('PRO-144: «sin alcohol» is a chip in onboarding and in the profile, and i
   const next = page.getByRole('button', { name: /siguiente/i })
   await next.click()
   await page.getByRole('button', { name: /3-4 veces/i }).click()
+  await next.click()
+  // PRO-217: «¿Cómo cocináis en casa?»
+  await page.getByRole('button', { name: /^cocino cada día/i }).click()
   await next.click()
   // PRO-138: «Entre semana, ¿cómo te gusta cocinar?»
   await page.getByRole('button', { name: /sin prisa/i }).click()

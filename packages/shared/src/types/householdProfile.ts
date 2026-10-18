@@ -18,6 +18,7 @@ import { z } from 'zod'
 import { HEALTH_MEMORY_KEYS } from '../constants/healthConsent.js'
 import { MEALS } from '../constants/enums.js'
 import { MEMORY_KEYS, MEMORY_VALUE_SCHEMAS, type MemorySource } from './userMemory.js'
+import { cookingStyleFactValueSchema } from './cookingStyle.js'
 
 // ─── Enums ──────────────────────────────────────────────────────
 
@@ -71,6 +72,7 @@ export const NEW_PROFILE_FACT_TYPES = [
   'shopping',
   'batch_cooking',
   'novelty',
+  'cooking_style',
 ] as const
 
 export const PROFILE_FACT_TYPES = [...MEMORY_KEYS, ...NEW_PROFILE_FACT_TYPES] as const
@@ -131,6 +133,8 @@ export const NEW_PROFILE_FACT_VALUE_SCHEMAS = {
   novelty: z.object({
     score: affinityScore,
   }).strict(),
+  /** How the household cooks (PRO-217): «Cocino cada día», batch cooking… About the household. */
+  cooking_style: cookingStyleFactValueSchema,
 } satisfies Record<(typeof NEW_PROFILE_FACT_TYPES)[number], z.ZodTypeAny>
 
 export const PROFILE_FACT_VALUE_SCHEMAS: Record<ProfileFactType, z.ZodTypeAny> = {

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { WEEKDAY_COOKING_CHOICES } from './cookingTime.js'
+import { COOKING_STYLES } from './cookingStyle.js'
 import type { ActivityLevel, CookingFrequency, HouseholdSize, Priority, Sex } from '../constants/enums.js'
 import { cleanAttributionText, normalizeReferralCode, normalizeSource } from './waitlist.js'
 
@@ -116,6 +117,11 @@ export const onboardingSchema = z.object({
   weekdayCooking: z.enum(WEEKDAY_COOKING_CHOICES).optional(),
   /** «¿Algo más? Cuéntanos tu caso» — free text the AI reads into the memory. */
   cookingNote: z.string().trim().max(500).optional(),
+  /**
+   * PRO-217 «¿Cómo cocináis en casa?» — stored in the household's ficha
+   * (`cooking_style`). Optional: Mimo's WhatsApp sign-up doesn't ask it.
+   */
+  cookingStyle: z.enum(COOKING_STYLES).optional(),
 })
 
 /**
@@ -125,10 +131,12 @@ export const onboardingSchema = z.object({
  * are only stored with the consent, when the sign-up is finished.
  */
 export const onboardingDraftSchema = z.object({
-  step: z.number().int().min(1).max(5),
+  step: z.number().int().min(1).max(6),
   adults: z.number().int().min(1).max(20),
   kidsCount: z.number().int().min(0).max(20),
   cookingFreq: z.enum(['daily', '3_4_times', 'rarely']).nullable(),
+  /** PRO-217. Optional so a draft saved before the question still resumes. */
+  cookingStyle: z.enum(COOKING_STYLES).nullable().optional(),
   weekdayCooking: z.enum(WEEKDAY_COOKING_CHOICES).nullable(),
   cookingNote: z.string().max(500),
   priority: z.enum(['quick', 'varied', 'healthy', 'cheap']).nullable(),

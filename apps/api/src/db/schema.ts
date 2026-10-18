@@ -1669,3 +1669,23 @@ export const catalogWishVotes = pgTable('catalog_wish_votes', {
   index('idx_catalog_wish_votes_wish').on(t.wishId),
   check('catalog_wish_votes_source_check', sql.raw("source IN ('alta','me_encanta','mimo','evaluador')")),
 ])
+
+// ─── household_notices (PRO-205) ────────────────────────────
+// One-off notices to a household, once per (key, household): the apology for
+// «Afina tu menú» showing dishes that broke allergies or diets (PRO-197).
+// `household_id` null = the key's scan marker (its `created_at` is the cutoff).
+// `user_id` = the member Mimo writes to on WhatsApp (null = app only).
+export const householdNotices = pgTable('household_notices', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  key: text('key').notNull(),
+  householdId: uuid('household_id').references(() => households.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  whatsappSentAt: timestamp('whatsapp_sent_at', { withTimezone: true }),
+  /** From when the card shows in the app (no WhatsApp, or 3 days without it going out). */
+  appSince: timestamp('app_since', { withTimezone: true }),
+  dismissedAt: timestamp('dismissed_at', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('uq_household_notices_key_household').on(t.key, t.householdId),
+  index('idx_household_notices_household').on(t.householdId),
+])

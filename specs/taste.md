@@ -15,6 +15,16 @@
 - **Accounts that finished the sign-up before** (criterion: onboarded and no verdict at all): (a) once, before the menu, a full screen «Novedad · Afina tu menú en un *minuto*.» with «Empezar» (→ `/afinar?empezar=1`) and «Ahora no»; (b) after «Ahora no», the card «Afina tu menú en un minuto» above the menu (3 photos of the next cards, «Empezar» / «Ahora no») until the user rates a recipe or closes it with its «Ahora no», which removes it for good. Both stamped on `users.taste_state`, never repeated, on any device (`components/taste/TasteOffers.tsx`). While «Novedad» is up, the «Primeros pasos» guide waits and starts after it is answered, never on top of it (`app/menu/page.tsx`, e2e `afina-tu-menu.spec.ts`)
 - Always in **Perfil → «Afina tu menú»** («N de 78 valoradas», over the catalogue that fits the household) and in **«Lo que recuerdo de ti»** (`/profile/memoria`): every verdict with a selector to change it and «Olvidar», the protein flags, and «Empezar»/«Seguir» to `/afinar`
 
+## Aviso a los hogares afectados (PRO-205)
+
+Before PRO-197 the cards ignored allergies and diets. Miguel (2026-10-18): an automatic notice, by WhatsApp to those who use it and in the app to the rest; nothing manual.
+- **Who**: households with a verdict given before the fix and allergies, intolerances or a diet on some member (profile or memory `restrictions`; `dislikes` don't count). Computed on the server the first time this version runs against a database (`services/afinaNotice.ts`, scan under an advisory lock; the marker row's time is the cutoff), so it ships with the fix: staging gets it when the version reaches staging (where it can be checked), production when it's published, each **once**. Only a deployed API runs it (`isDeployedRuntime`), never CI or a laptop; `AFINA_NOTICE=off` stops it
+- **WhatsApp**: Mimo sends Legal's text to a member with WhatsApp connected who accepts messages (the ones who rated first, then the owner), only inside the 24 h window (there's no approved template for it): with the window closed it goes the next time they write (checked every 10 minutes). Claimed before sending, so never twice; a Meta error or a closed window isn't counted as sent
+- **App**: without WhatsApp, straight away; with WhatsApp, also from day 3 if it hasn't gone out. A card above the menu (`AfinaNoticeCard`, «Aviso · Un fallo en «Afina tu menú», ya arreglado», Legal's text, «Ir a mi perfil» and «Entendido») until anyone in the household closes it; once closed, no WhatsApp either
+- Text (Legal, 2026-10-18; not to be changed without Legal) in `AFINA_NOTICE_TEXT`. The «sin cerdo» add-on isn't there: PRO-198 ships in the same version
+- `GET /notices/afina` (`{ show, text }`), `POST /notices/afina/dismiss`, `GET /notices/afina/stats` (admin or metrics token: households, WhatsApp sent / pending, app only, in the app, closed; aggregates only) in `routes/notices.ts`; the API log prints the same line after each pass that changes something
+- Doesn't go through PRO-215's weekly cap of Mimo's messages (built in parallel); to check when both land
+
 ## Menu generator
 
 - A recipe with «No para mí» from **anyone in the household** never comes out in the automatic menu (weekly generator, «Cambiar al azar», added meal, regenerated dish: everything that reads `loadHouseholdRatingSets`); it can still be picked by hand. It beats a 5-star rating and another member's «Me encanta»
@@ -31,6 +41,7 @@
 ## Data
 
 - `recipe_verdicts` (migration `0060_recipe_verdicts`): `user_id` (cascade), `recipe_id` (cascade), `verdict` (check `love|like|nope|skip`), `reason` jsonb, `created_at`, `updated_at`; unique `(user_id, recipe_id)`
+- `household_notices` (migration `0071_household_notices`, PRO-205): `key`, `household_id` (cascade; null = the key's scan marker), `user_id` (WhatsApp recipient, set null), `created_at`, `whatsapp_sent_at`, `app_since`, `dismissed_at`; unique `(key, household_id)`
 - `users.taste_state` jsonb (same migration, default `{}`): `introAt`, `introChoice`, `cardDismissedAt`, `onboardingAt`, `whatsappOfferedAt` (reserved), `flags`
 - Cost: both Claude calls (`taste_next`, `taste_reason`, `claude-haiku-4-5`) are billed to the household in `cost_events` like every paid call
 
@@ -62,4 +73,5 @@
 - [apps/api/src/services/tasteStore.ts](../apps/api/src/services/tasteStore.ts) — catalogue, verdicts, offers, household sets, memory writes
 - [apps/api/src/services/householdRatings.ts](../apps/api/src/services/householdRatings.ts) · [recipeMatcher.ts](../apps/api/src/services/recipeMatcher.ts) · [menuGenerator.ts](../apps/api/src/services/menuGenerator.ts)
 - [apps/web/src/app/afinar/page.tsx](../apps/web/src/app/afinar/page.tsx) · [components/taste/](../apps/web/src/components/taste/) · [hooks/useTaste.ts](../apps/web/src/hooks/useTaste.ts) · [lib/tasteText.ts](../apps/web/src/lib/tasteText.ts)
+- [apps/api/src/services/afinaNotice.ts](../apps/api/src/services/afinaNotice.ts) · [routes/notices.ts](../apps/api/src/routes/notices.ts) · [components/taste/AfinaNoticeCard.tsx](../apps/web/src/components/taste/AfinaNoticeCard.tsx) — the notice (PRO-205); tests `afinaNotice.test.ts`, `afinaNotice.smoke.ts`, `e2e/afina-notice.spec.ts`
 - Tests: `apps/api/src/tests/taste.test.ts`, `apps/api/src/tests/tasteRestrictions.test.ts` (coeliac, vegetarian, vetoes over the catalogue fixture), `apps/api/src/tests/tasteText.test.ts` (chips, streak), `apps/api/src/tests/tasteRoute.smoke.ts`, `apps/web/e2e/afina-tu-menu.spec.ts`

@@ -104,7 +104,7 @@ function roundForUnit(quantity: number, unit: BuyableUnit): number {
 
 /** Convert one quantity from `from` unit into `to` unit using density (g/ml)
  * and unitWeight (g/u). Returns null when no conversion path exists. */
-function convert(
+export function convert(
   quantity: number,
   from: BuyableUnit,
   to: BuyableUnit,

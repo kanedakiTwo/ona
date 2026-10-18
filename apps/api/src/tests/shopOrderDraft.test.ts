@@ -193,3 +193,13 @@ describe('re-preparing keeps the user\'s edits', () => {
     expect(fruOut).toMatchObject({ fulfilment: 'domicilio', address: 'C/ Real 1' })
   })
 })
+
+describe('a line partly bought for an earlier menu (PRO-199)', () => {
+  it('orders only what is missing', () => {
+    const r = draftOrdersFromItems(
+      [item({ name: 'limón', quantity: 5, unit: 'u', aisle: 'produce', haveQuantity: 3, haveSource: 'checked' })],
+      shops,
+    )
+    expect(texts(r, 'fru')).toEqual(['2 limones'])
+  })
+})

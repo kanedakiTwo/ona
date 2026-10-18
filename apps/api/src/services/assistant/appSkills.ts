@@ -647,7 +647,7 @@ const addFreezerDish: SkillDefinition = {
 
 // ─── Shopping list ───────────────────────────────────────────────
 
-type ListItem = Pick<ShoppingItem, 'id' | 'name'> & Partial<Pick<ShoppingItem, 'quantity' | 'unit' | 'aisle' | 'checked' | 'inStock' | 'kind'>>
+type ListItem = Pick<ShoppingItem, 'id' | 'name'> & Partial<Pick<ShoppingItem, 'quantity' | 'unit' | 'aisle' | 'checked' | 'inStock' | 'kind' | 'haveQuantity'>>
 interface ListDoc { id: string; items: ListItem[] }
 // The rolling list /shopping shows (today → next Sunday): menu items, staples
 // and manual items, with their checked / inStock state.
@@ -658,6 +658,10 @@ const pending = (i: ListItem) => !i.checked && !i.inStock
 /** "Tomate (1 kg)", "Huevos (12 unidades)", "Leche" (1 unidad says nothing). */
 export function itemLabel(i: ListItem): string {
   const name = prettyName(i.name)
+  // Part of it already bought or at home for an earlier menu (PRO-199): say only the rest.
+  if (i.quantity && i.unit && i.haveQuantity && i.haveQuantity > 0) {
+    return `${name} (faltan ${formatQty(Math.max(0, i.quantity - i.haveQuantity), i.unit)}; ya tienes ${formatQty(i.haveQuantity, i.unit)})`
+  }
   if (!i.quantity || !i.unit || (i.unit === 'u' && i.quantity === 1)) return name
   return `${name} (${formatQty(i.quantity, i.unit)})`
 }

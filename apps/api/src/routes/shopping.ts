@@ -3,17 +3,18 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
 import { z } from 'zod'
 import { db } from '../db/connection.js'
-import { menus, shoppingLists, users } from '../db/schema.js'
+import { ingredients, menus, shoppingLists, users } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import {
   computeListTotal,
   generateShoppingList,
   withLeftoverBatches,
   mergeStaplesIntoItems,
+  convert as convertUnits,
 } from '../services/shoppingList.js'
 import { canAccessRow, getPrimaryHouseholdId, resolveScope } from '../services/scopeResolver.js'
 import { listActiveStaplesForHousehold } from '../services/staplesStore.js'
-import { carryItemState, type ItemStateMap } from '../services/shoppingItemState.js'
+import { carryItemState, type ConvertQty, type ItemStateMap } from '../services/shoppingItemState.js'
 import { INTERNAL_CALL_HEADER, trackEvent } from '../services/usageEvents.js'
 import { setActivityDetail } from '../services/activityEvents.js'
 import {
@@ -121,6 +122,28 @@ function filterPastTodayMeals(day: DayMenu | undefined, hour: number): DayMenu {
     if (!past.has(k)) out[k] = day[k]
   }
   return out
+}
+
+/** Unit conversion for the ingredients of these rows (density g/ml, unit weight g/u). */
+async function ingredientConverter(rows: ShoppingItem[]): Promise<ConvertQty> {
+  const ids = [...new Set(rows.map((r) => r.ingredientId).filter((id): id is string => !!id))]
+  const found = ids.length
+    ? await db
+        .select({ id: ingredients.id, density: ingredients.density, unitWeight: ingredients.unitWeight })
+        .from(ingredients)
+        .where(inArray(ingredients.id, ids))
+    : []
+  const byId = new Map(found.map((r) => [r.id, r]))
+  return (id, quantity, from, to) => {
+    const ing = byId.get(id)
+    return convertUnits(quantity, from, to, ing?.density, ing?.unitWeight)
+  }
+}
+
+/** Ticking a line (or its «en casa») is about the whole line: forget the partial «ya tienes» (PRO-199). */
+function clearHave(item: ShoppingItem) {
+  delete item.haveQuantity
+  delete item.haveSource
 }
 
 // GET /shopping-list/:menuId - generate shopping list from menu
@@ -252,11 +275,16 @@ router.get('/shopping-list', async (req: AuthRequest, res) => {
     // "jengibre · 50 g" + "jengibre · 1 u"). The previous rows win; products
     // absent from the previous range come back from `item_state`, so looking
     // at another week no longer wipes what was marked (2026-10-10).
+    //
+    // What was marked follows the ingredient even when its line changes unit
+    // («Ajo · 8 u» → «Ajo · 25 g», PRO-199): amounts are compared with the
+    // ingredient's density / unit weight.
     const manualSurviving: ShoppingItem[] = prevItems.filter((it) => it.kind === 'manual')
     const { items: mergedMenuItems, state: itemState } = carryItemState(
       menuItems,
       prevItems,
       (previous?.itemState ?? null) as ItemStateMap | null,
+      await ingredientConverter(menuItems),
     )
 
     // Re-merge staples (PR 10B) on top of the menu-derived items so they
@@ -396,6 +424,7 @@ router.put('/shopping-list/:listId/item/:itemId/check', async (req: AuthRequest,
     }
 
     item.checked = !item.checked
+    clearHave(item)
     setActivityDetail(res, { item: item.name, on: item.checked })
     // Product analytics: only ticking an item off counts, not un-ticking it.
     if (item.checked && !req.get(INTERNAL_CALL_HEADER)) trackEvent('shopping_item_checked', { userId: req.userId!, channel: 'web' })
@@ -438,6 +467,7 @@ router.put('/shopping-list/:listId/item/:itemId/stock', async (req: AuthRequest,
     }
 
     item.inStock = !item.inStock
+    clearHave(item)
     setActivityDetail(res, { item: item.name, on: item.inStock })
 
     const [updated] = await db

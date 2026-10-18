@@ -35,7 +35,7 @@ import {
   ItemDeleteButton,
 } from '@/components/shopping/ShoppingExtensions'
 import { MenuSheet, SheetAction } from '@/components/menu/MenuSheet'
-import { ingredientDisplayName, shoppingProgress, withOnaFooter } from '@ona/shared'
+import { ingredientDisplayName, missingQuantity, shoppingProgress, withOnaFooter } from '@ona/shared'
 
 function todayIso(): string {
   const now = new Date()
@@ -653,6 +653,11 @@ function StockList({ items, listId, aisle, busy }: { items: any[]; listId: strin
   )
 }
 
+/** 12.5 → "12,5"; whole numbers as they are. */
+function formatAmount(n: number): string {
+  return (Math.round(n * 10) / 10).toLocaleString('es-ES')
+}
+
 function ItemRow({
   item,
   index,
@@ -708,7 +713,17 @@ function ItemRow({
           {ingredientDisplayName(item.name)}
         </p>
         <p className="font-mono text-[13px] tracking-tight text-ink-muted tabular-nums">
-          {item.quantity} {item.unit}
+          {item.haveQuantity > 0 ? (
+            // Part already bought / at home for an earlier menu (PRO-199).
+            <span data-testid="shopping-missing">
+              Te faltan {formatAmount(missingQuantity(item))} {item.unit}
+              <span className="font-sans text-[12px]"> · ya tienes {formatAmount(item.haveQuantity)}</span>
+            </span>
+          ) : (
+            <>
+              {item.quantity} {item.unit}
+            </>
+          )}
           {isManual && (
             <span className="ml-2 font-sans text-[11px] font-semibold uppercase tracking-[0.12em] text-terracotta-deep">
               Manual

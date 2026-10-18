@@ -91,6 +91,13 @@ Mimo writes little: every aviso it sends by itself (prep alerts by push and/or W
 - A prep alert with no push subscription reached and no WhatsApp is not delivered (before 2026-10-19 a user with no subscription counted as `sent`).
 - Limitation: a prep alert and a WhatsApp proactive message due in the same tick still go as two messages (they spend one unit).
 
+## Horario y avisos del hogar (PRO-236, D-080)
+
+- **Never before 08:00 nor after 22:30** (Europe/Madrid, `services/notifications/hours.ts`). The scheduler tick sends no prep alert and runs no WhatsApp proactive message outside those hours; due alerts wait for 08:00.
+- **What can't come late moves earlier:** a prep alert whose time falls in the night (e.g. «en remojo toda la noche» for a 14:00 lunch → 02:00) is enqueued for **22:25 the evening before**; if that has already passed when the menu is made, for the next 08:00 if that's still before the meal; otherwise it isn't enqueued (`awakeFireAt`).
+- **What can wait just waits** or moves inside the hours: «¿hiciste la cena?» goes 2–3 h after dinner but never after 22:30 — with dinner at 21:00 it's 22:00–22:30; with dinner after 21:00 there is none that day (it must be at least 1 h after dinner).
+- **Household avisos to one person** (`recipient.ts`): with the household sharing menu and list (`SHARED_HOUSEHOLD_SCOPE`), the shopping reminder and the Sunday nudge go only to whoever manages the household (owner); if the owner turned that aviso off or gets no avisos, to the next person who gets it (by join date). To have it go to someone else, the owner asks Mimo to turn it off for them. The rest (cooking, check-in, prep alerts, the morning brief) stay per person.
+
 ## Required env vars
 
 API (`ona-api` on Railway):
@@ -123,6 +130,7 @@ When any of these is missing the pipe degrades to "not configured" instead of cr
 - [apps/api/src/services/pushNotifier.ts](../apps/api/src/services/pushNotifier.ts) — VAPID-configured dispatcher with dead-endpoint reaping
 - [apps/api/src/services/notificationScheduler.ts](../apps/api/src/services/notificationScheduler.ts) — enqueue / clear / tick / start
 - [apps/api/src/services/notifications/budget.ts](../apps/api/src/services/notifications/budget.ts), [budgetStore.ts](../apps/api/src/services/notifications/budgetStore.ts) — weekly budget (PRO-215); tests `noticeBudget.test.ts`
+- [apps/api/src/services/notifications/hours.ts](../apps/api/src/services/notifications/hours.ts), [recipient.ts](../apps/api/src/services/notifications/recipient.ts) — 08:00–22:30 and household avisos to one person (PRO-236); tests `noticeHours.test.ts`
 - [apps/api/src/db/migrations/0071_notice_candidates.sql](../apps/api/src/db/migrations/0071_notice_candidates.sql)
 - [apps/api/src/routes/push.ts](../apps/api/src/routes/push.ts) — `/push/*` endpoints
 - [apps/api/src/routes/menus.ts](../apps/api/src/routes/menus.ts) — calls `enqueuePrepAlertsForMenu` after `POST /menu/generate` and the manual swap path

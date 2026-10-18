@@ -45,7 +45,7 @@ When the master toggle is on (default after linking), Mimo writes first. All tim
 |---|---|---|
 | `daily_brief` | breakfast time, for 90 min — **only for whoever asked for it** (PRO-215: `prefs.daily_brief === true`, by chat with `set_whatsapp_notifications`; missing = off) and it never spends the weekly budget | "Buenos días. Hoy toca: - Comida: … - Cena: … ¿Quieres cambiar algo?" + menu link; under each meal, one "→ <receta>: mimoia.com/recipes/<id>" line per recipe (PRO-85; notes get none); skipped if the day is empty |
 | `cooking_reminder` | only if today's dinner takes ≥ 40 min (`recipes.total_time`, else prep+cook): around dinner time − total − 10 min | "Si quieres cenar a las 20:00, toca empezar con *Carrilleras* (unos 90 min)." |
-| `dinner_checkin` | 2–3 h after dinner time, if dinner has a recipe and nothing was cooked-logged today | "¿Hiciste hoy la cena (*X*)? Así lo apunto." [Sí, la hice] [No]. "Sí, la hice" → the assistant calls `log_cooked` (cook log + pantry decrement) |
+| `dinner_checkin` | 2–3 h after dinner time (never after 22:30: dinner 21:00 → 22:00–22:30; dinner after 21:00 → none), if dinner has a recipe and nothing was cooked-logged today | "¿Hiciste hoy la cena (*X*)? Así lo apunto." [Sí, la hice] [No]. "Sí, la hice" → the assistant calls `log_cooked` (cook log + pantry decrement) |
 | `shopping_reminder` | Saturday 10:00–12:59, if the current list has ≥ 3 unchecked items | "¿Toca compra? Te faltan N cosas: …" + list link |
 | `weekly_nudge` | Sunday 18:00–21:59, if next week has no menu | "Domingo de planificar: ¿te preparo el menú de la semana que viene?" [Sí, prepáralo] [Ahora no] → `generate_weekly_menu(nextWeek: true)` |
 | `prep_alerts` | from `notification_schedule` | "Acuérdate: Merluza — sácalo del congelador…" (also sent by Web Push; the row is `sent` if either channel delivers) |
@@ -58,6 +58,7 @@ When the master toggle is on (default after linking), Mimo writes first. All tim
 - Outside the 24 h window the Meta template is fixed, but its `{{1}}` is this same written text, flattened.
 - **Cost:** one Haiku call per message (~1,500 input + 200 output tokens ≈ $0.0025), billed to the user as `whatsapp_guided` in the cost ledger, so it counts against the monthly cap. Replay: `scripts/replayGuidedBrief.ts` writes five mornings of the same household with the real model and fails if any sentence repeats.
 
+- **Hours (PRO-236):** nothing goes out before 08:00 or after 22:30 (Madrid); the shopping reminder and the Sunday nudge go to one person per household (owner first). See [Notifications](./notifications.md) → «Horario y avisos del hogar».
 - **Weekly budget (PRO-215):** at most 4 messages per household and week, with priorities and room reserved for prep alerts and cooking reminders; the avisos of one tick go out as one message. See [Notifications](./notifications.md) → «Tope semanal de avisos».
 - **Cooldowns:** 20 h per kind; 3 days for the Sunday nudge and the shopping reminder. They are stored as outbound rows (and, since PRO-215, `notice_candidates` rows, so a merged or dropped aviso is in its cooldown too), so the 5-minute scheduler tick is idempotent. Proactive messages land in chat history, so a short reply ("sí") makes sense to the assistant.
 - **Switches:**

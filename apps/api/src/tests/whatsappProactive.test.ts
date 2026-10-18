@@ -207,7 +207,7 @@ describe('planProactive', () => {
   it('anyProactiveWindow is false in a quiet hour; kindEnabled defaults to on except the morning brief', async () => {
     const { anyProactiveWindow, kindEnabled } = await import('../services/whatsapp/proactive.js')
     expect(anyProactiveWindow(parts({ weekday: 3, hour: 12 }), null, '20:00')).toBe(false)
-    expect(anyProactiveWindow(parts({ weekday: 3, hour: 22, minute: 30 }), null, '20:00')).toBe(true)
+    expect(anyProactiveWindow(parts({ weekday: 3, hour: 22, minute: 15 }), null, '20:00')).toBe(true)
     expect(kindEnabled({}, 'cooking_reminder')).toBe(true)
     expect(kindEnabled({}, 'daily_brief')).toBe(false)
     expect(kindEnabled({ daily_brief: true }, 'daily_brief')).toBe(true)

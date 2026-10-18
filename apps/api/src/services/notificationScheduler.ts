@@ -57,6 +57,7 @@ import { sendChargeNoticesIfDue } from './chargeNotice.js'
 import { combineDelivery, type ChannelOutcome } from './whatsapp/proactive.js'
 import { logEntriesFor, planMoment, type DeliveryResult } from './notifications/budget.js'
 import { budgetKeyFor, loadFullBudgetState, recordNotices } from './notifications/budgetStore.js'
+import { awakeFireAt, isAwakeInstant } from './notifications/hours.js'
 
 // ─── Habit → method matcher ─────────────────────────────────────
 //
@@ -249,8 +250,11 @@ export async function enqueuePrepAlertsForMenu(
         continue
       }
       const hoursBefore = PREP_METHOD_HOURS_BEFORE[req.method]
-      const fireAt = new Date(cookAt.getTime() - hoursBefore * 60 * 60 * 1000)
-      if (fireAt <= now) {
+      // PRO-236: never between 22:30 and 08:00 — a prep alert can't come
+      // late, so it moves to the evening before (or, if that has passed,
+      // the next 08:00 still before the meal).
+      const fireAt = awakeFireAt(new Date(cookAt.getTime() - hoursBefore * 60 * 60 * 1000), now, cookAt)
+      if (!fireAt || fireAt <= now) {
         skipped += 1
         continue
       }
@@ -512,7 +516,8 @@ export async function tickScheduler(): Promise<void> {
 
 async function tickOnce(): Promise<true> {
   const now = new Date()
-  const due = await db
+  // PRO-236: between 22:30 and 08:00 (Madrid) due alerts wait for the morning.
+  const due = !isAwakeInstant(now) ? [] : await db
     .select()
     .from(notificationSchedule)
     .where(

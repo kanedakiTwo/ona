@@ -86,10 +86,17 @@ export function isCookingReminderWindow(p: MadridParts, dinnerTime: string | nul
   const start = minutesOf(dinnerTime, DEFAULT_DINNER_MIN) - totalMinutes - 10
   return nowMinutes(p) >= start - 10 && nowMinutes(p) < start + 10
 }
-/** Between 2 h and 3 h after dinner time. */
+/**
+ * Between 2 h and 3 h after dinner time — but never after 22:30 (PRO-236):
+ * a late dinner moves it to 22:00–22:30, as long as that's at least 1 h
+ * after dinner (dinner after 21:00 → no check-in that day).
+ */
 export function isDinnerCheckinWindow(p: MadridParts, dinnerTime: string | null): boolean {
   const d = minutesOf(dinnerTime, DEFAULT_DINNER_MIN)
-  return nowMinutes(p) >= d + 120 && nowMinutes(p) < d + 180
+  const start = Math.min(d + 120, 22 * 60)
+  const end = Math.min(d + 180, 22 * 60 + 30)
+  if (start < d + 60) return false
+  return nowMinutes(p) >= start && nowMinutes(p) < end
 }
 /** Saturday 10:00–12:59 Madrid. */
 export function isShoppingReminderWindow(p: MadridParts): boolean {

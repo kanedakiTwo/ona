@@ -2,7 +2,7 @@ import { and, desc, eq, gte, inArray } from 'drizzle-orm'
 import { isHealthMemoryKey, type DayMenu } from '@ona/shared'
 import { env } from '../../config/env.js'
 import { db } from '../../db/connection.js'
-import { cookLogs, menus, recipes, userMemories, users } from '../../db/schema.js'
+import { cookLogs, householdMembers, households, menus, recipes, userMemories, users } from '../../db/schema.js'
 import { appApiFor } from '../assistant/appApi.js'
 import { resolveScope, scopeWhere } from '../scopeResolver.js'
 import { isUserAllowed, isWhatsAppConfigured } from './config.js'
@@ -39,6 +39,8 @@ import { composeGuided, guidedMeta, type GuideSpec, type GuidedContext, type Gui
 import { isAccountPaused } from '../accountAccess.js'
 import { logEntriesFor, noticePriority, planMoment, countsAgainstBudget, type DeliveryResult } from '../notifications/budget.js'
 import { budgetKeyFor, loadFullBudgetState, recentNoticeKinds, recordNotices } from '../notifications/budgetStore.js'
+import { isAwakeTime } from '../notifications/hours.js'
+import { HOUSEHOLD_NOTICE_KINDS, householdNoticeRecipient, type HouseholdMember } from '../notifications/recipient.js'
 
 /** Per-kind templates (WHATSAPP_TEMPLATES), parsed once. */
 const TEMPLATES = parseTemplateMap(env.WHATSAPP_TEMPLATES)
@@ -260,6 +262,44 @@ async function sendMoment(link: LinkWithUser, planned: PlannedMessage[], now: Da
   await recordNotices({ budgetKey, userId: link.userId, entries: logEntriesFor(plan, delivery), channel: 'whatsapp', now })
 }
 
+/**
+ * PRO-236: the household avisos (shopping, Sunday) go to one person per
+ * household — only when the household shares its menu and list
+ * (`SHARED_HOUSEHOLD_SCOPE`). `offFor(userId)` = the household kinds that
+ * person doesn't get (to merge into their prefs for this tick).
+ */
+async function householdNoticeRecipients(links: LinkWithUser[]): Promise<{ offFor: (userId: string) => Record<string, boolean> }> {
+  const none = { offFor: () => ({}) }
+  if (!env.SHARED_HOUSEHOLD_SCOPE || links.length < 2) return none
+  const rows = await db
+    .select({ userId: users.id, householdId: users.primaryHouseholdId, ownerId: households.ownerId, joinedAt: householdMembers.joinedAt })
+    .from(users)
+    .leftJoin(households, eq(households.id, users.primaryHouseholdId))
+    .leftJoin(householdMembers, and(eq(householdMembers.householdId, users.primaryHouseholdId), eq(householdMembers.userId, users.id)))
+    .where(inArray(users.id, links.map((l) => l.userId)))
+  const byHousehold = new Map<string, HouseholdMember[]>()
+  const householdOf = new Map<string, string>()
+  for (const r of rows) {
+    if (!r.householdId) continue
+    householdOf.set(r.userId, r.householdId)
+    byHousehold.set(r.householdId, [...(byHousehold.get(r.householdId) ?? []), { userId: r.userId, isOwner: r.ownerId === r.userId, joinedAt: r.joinedAt }])
+  }
+  const prefsOf = new Map(links.map((l) => [l.userId, l.prefs ?? {}]))
+  return {
+    offFor(userId) {
+      const hh = householdOf.get(userId)
+      const members = hh ? byHousehold.get(hh) : undefined
+      if (!members || members.length < 2) return {}
+      const off: Record<string, boolean> = {}
+      for (const kind of HOUSEHOLD_NOTICE_KINDS) {
+        const to = householdNoticeRecipient(members, (id) => kindEnabled(prefsOf.get(id), kind as ProactiveKind))
+        if (to !== userId) off[kind] = false
+      }
+      return off
+    },
+  }
+}
+
 /** Cooldown per kind: the Sunday nudge every 3 days, everything else daily. */
 const COOLDOWN_MS: Record<ProactiveKind, number> = {
   daily_brief: DAILY_BRIEF_COOLDOWN_MS,
@@ -280,9 +320,11 @@ const COOLDOWN_MS: Record<ProactiveKind, number> = {
 export async function runProactiveTick(now: Date = new Date()): Promise<void> {
   if (!isWhatsAppConfigured()) return
   const parts = madridParts(now)
-  const links = await store.listNotifiableLinks()
+  // PRO-236: never before 08:00 nor after 22:30 (Madrid).
+  if (!isAwakeTime(parts)) return
+  const links = (await store.listNotifiableLinks()).filter((l) => isUserAllowed(l.email))
+  const household = await householdNoticeRecipients(links)
   for (const link of links) {
-    if (!isUserAllowed(link.email)) continue
     try {
       // PRO-135: a paused account gets no proactive message (never before launch day).
       if (await isAccountPaused(link.userId, now)) continue
@@ -303,7 +345,7 @@ export async function runProactiveTick(now: Date = new Date()): Promise<void> {
         parts,
         breakfastTime: times.breakfast,
         dinnerTime: times.dinner,
-        prefs: link.prefs ?? {},
+        prefs: { ...(link.prefs ?? {}), ...household.offFor(link.userId) },
         sentRecently,
         todayDay: () => loadTodayDay(link.userId, parts),
         todayDinner: () => (dinnerCache ??= loadTodayDinner(link.userId, parts)),

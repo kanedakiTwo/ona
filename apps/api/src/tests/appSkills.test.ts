@@ -511,6 +511,16 @@ describe('recipes, profile, household', () => {
     const r = await get('invite_to_household').handler({}, ctx(f.api))
     expect(r.summary).toMatch(/\/invites\/abc123/)
   })
+
+  // PRO-163 (D-051): the same «Invitar a otro hogar» as the button.
+  it('share_invite_link gives the personal link with the approved message and counts the share', async () => {
+    const f = fakeApi({ 'GET /referrals/me': { code: 'abcd2345', link: 'https://mimoia.com/?invita=abcd2345' } })
+    const r = await get('share_invite_link').handler({}, ctx(f.api))
+    expect(r.summary).toContain(
+      'Yo uso Mimoia para el menú de la semana: le escribes por WhatsApp y te lo hace, con la lista de la compra. Pruébalo con mi enlace: https://mimoia.com/?invita=abcd2345',
+    )
+    expect(writes(f.calls)).toEqual([{ method: 'POST', path: '/usage/invite-shared', body: { channel: 'web' } }])
+  })
 })
 
 describe('add_freezer_dish (PRO-82)', () => {

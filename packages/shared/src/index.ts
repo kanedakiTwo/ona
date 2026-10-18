@@ -360,6 +360,7 @@ export {
   waitlistUnsubscribePath,
   waitlistShareText,
   whatsappShareHref,
+  inviteHouseholdShareText,
 } from './types/waitlist.js'
 export type {
   WaitlistHouseholdSize,

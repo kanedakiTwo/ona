@@ -26,6 +26,7 @@ import {
 import { useMenu } from '@/hooks/useMenu'
 import { haptic } from '@/lib/pwa/haptics'
 import { share } from '@/lib/pwa/share'
+import { InviteHouseholdButton } from '@/components/referrals/InviteHouseholdButton'
 import { AISLE_LABELS, AISLE_ORDER, aisleLabel } from '@/lib/labels'
 import { activeQuickRange, quickRanges, shiftIso, totalTitle } from '@/lib/shoppingRange'
 import {
@@ -365,6 +366,8 @@ export default function ShoppingPage() {
               </motion.div>
             </AnimatePresence>
           )}
+          {/* PRO-163: «Invitar a otro hogar», under the list. */}
+          <InviteHouseholdButton place="compra" className="mt-8" />
         </div>
       </div>
 

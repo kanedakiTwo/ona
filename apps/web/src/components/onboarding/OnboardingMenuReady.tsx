@@ -56,8 +56,8 @@ export function OnboardingMenuReady() {
           Tu menú está <Accent>listo</Accent>
         </OnboardingHeader>
         <p className="mt-2 text-[14px] leading-relaxed text-ink-muted">
-          Antes de verlo: ¿hay algo que no comáis en casa? Alergias, intolerancias o cosas que no os gustan. Por
-          WhatsApp no guardamos datos de salud; aquí sí, si nos das permiso. Si añades algo, rehacemos el menú sin ello.
+          Antes de verlo: ¿hay algo que no comáis en casa? Alergias, intolerancias o cosas que no os gustan. Las
+          alergias e intolerancias se guardan en tu perfil solo si nos das permiso, y el menú las tiene en cuenta. Si añades algo, rehacemos el menú sin ello.
         </p>
         {error && (
           <div role="alert" className="mt-4 rounded-2xl bg-warn-bg p-3 text-[14px] text-terracotta-deep">

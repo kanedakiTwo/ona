@@ -18,6 +18,7 @@ import {
   accountAccess,
   founderOfferStands,
   founderOfferText,
+  founderPriceAmounts,
   planByKey,
   trialLastDayLabel,
   type AccountAccess,
@@ -50,7 +51,7 @@ export function founderOfferEmail(i: OfferCopyInput & { email: string; publicUrl
     heading: 'Quédate el precio de *fundador*',
     paragraphs: [
       'Hola:',
-      `Llevas una semana con ${BRAND_NAME}. Si ya sabes que te quedas, deja la tarjeta antes de que acabe tu prueba (dura hasta el ${trialLastDayLabel(i.access)}, incluido) y te quedas el precio de fundador para siempre: no te sube mientras sigas suscrito.`,
+      `Llevas una semana con ${BRAND_NAME}. Si ya sabes que te quedas, deja la tarjeta antes de que acabe tu prueba (dura hasta el ${trialLastDayLabel(i.access)}, incluido) y te quedas el precio de fundador para siempre (${founderPriceAmounts()}): no te sube mientras sigas suscrito.`,
       `No se cobra nada hasta el ${formatDayEs(i.firstCharge)}. Quince días antes te avisamos de la fecha y del importe, y puedes cancelar antes sin pagar nada.`,
       `Esencial cuesta ${esencial} y Plus ${plus}, para todo tu hogar e IVA incluido.`,
     ],

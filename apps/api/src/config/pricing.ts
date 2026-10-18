@@ -57,12 +57,15 @@ export type PriceTable = Record<string, Price>
 
 export const PRICES: PriceTable = {
   // ── Anthropic ────────────────────────────────────────────────
-  // Source: Anthropic pricing via the claude-api model table (cached
-  // 2026-09-25). Cache writes (5 min) = 1.25× input; cache reads = 0.1× input
-  // except Opus 5.5 (0.05×).
+  // Source: platform.claude.com/docs/en/about-claude/pricing, checked
+  // 2026-10-16. Cache writes (5 min) = 1.25× input; cache reads = 0.1× input
+  // except Opus 5.5 and Sonnet 5.5 (0.05×: Sonnet 5.5 reads were priced at
+  // 0.2 until 2026-10-16, double the real rate). Haiku 5.5: prompts up to
+  // 100 000 tokens (Mimo's are ~60 000 at most).
   'anthropic/claude-haiku-4-5': { currency: 'USD', inputPerMTok: 1, outputPerMTok: 5, cacheWritePerMTok: 1.25, cacheReadPerMTok: 0.1 },
+  'anthropic/claude-haiku-5-5': { currency: 'USD', inputPerMTok: 0.1, outputPerMTok: 0.5, cacheWritePerMTok: 0.125, cacheReadPerMTok: 0.01 },
   'anthropic/claude-sonnet-4-6': { currency: 'USD', inputPerMTok: 3, outputPerMTok: 15, cacheWritePerMTok: 3.75, cacheReadPerMTok: 0.3 },
-  'anthropic/claude-sonnet-5-5': { currency: 'USD', inputPerMTok: 2, outputPerMTok: 10, cacheWritePerMTok: 2.5, cacheReadPerMTok: 0.2 },
+  'anthropic/claude-sonnet-5-5': { currency: 'USD', inputPerMTok: 2, outputPerMTok: 10, cacheWritePerMTok: 2.5, cacheReadPerMTok: 0.1 },
   'anthropic/claude-opus-4-6': { currency: 'USD', inputPerMTok: 5, outputPerMTok: 25, cacheWritePerMTok: 6.25, cacheReadPerMTok: 0.5 },
   'anthropic/claude-opus-5-5': { currency: 'USD', inputPerMTok: 4, outputPerMTok: 20, cacheWritePerMTok: 5, cacheReadPerMTok: 0.2 },
 

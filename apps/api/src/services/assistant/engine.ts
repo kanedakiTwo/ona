@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { env } from '../../config/env.js'
-import { loadUserContext } from './contextLoader.js'
+import { clockNote, loadUserContext } from './contextLoader.js'
 import { buildSystemParts, type AssistantMode } from './systemPrompt.js'
 import { skills, getToolDefinitions } from './skills.js'
 import type { AssistantResponse, ChatMessage, SkillContext, SkillDefinition, SkillResult, ToolTrace } from './types.js'
@@ -63,34 +63,21 @@ export async function chat(
   const userContext = await loadUserContext(userId, db)
 
   // 2. System prompt in two blocks: the instructions (identical for every
-  // user of a channel → cached) and this user's data (date and time, menu,
-  // memory → changes often, so it goes after the cache breakpoint). Until
-  // 2026-10-12 it was one block with "son las HH:MM" inside, so the cache
-  // never survived from one message to the next.
+  // user of a channel → cached) and this user's data (date, menu, memory →
+  // changes when the menu or memory does, so it goes after the instructions'
+  // breakpoint). Until 2026-10-12 it was one block with "son las HH:MM"
+  // inside, so the cache never survived from one message to the next; until
+  // 2026-10-16 the time was still in the context block, which re-wrote the
+  // context and the history on every message. The clock now rides on the
+  // newest message (buildTurnMessages).
   const { instructions, context } = buildSystemParts(userContext, mode, { onboarding: opts.onboarding === true })
   const system = [
     { type: 'text' as const, text: instructions, cache_control: { type: 'ephemeral' as const } },
     { type: 'text' as const, text: context },
   ]
 
-  // 3. Build messages array from history + new message
-  const messages: Anthropic.MessageParam[] = history.map(msg => ({
-    role: msg.role,
-    content: msg.content,
-  }))
-  const images = (opts.images ?? []).slice(0, 4)
-  messages.push({
-    role: 'user',
-    content: images.length
-      ? [
-          ...images.map((img) => ({
-            type: 'image' as const,
-            source: { type: 'base64' as const, media_type: img.mediaType as 'image/jpeg', data: img.data },
-          })),
-          { type: 'text' as const, text: message || '(foto sin texto)' },
-        ]
-      : message,
-  })
+  // 3. History (cache breakpoint at its end) + the new message with the clock.
+  const messages = buildTurnMessages(history, message, opts.images ?? [], new Date())
 
   // 4. Tools for this channel, the last one marked as a cache breakpoint.
   const baseTools = getToolDefinitions({ mode, onboarding: opts.onboarding === true })
@@ -141,6 +128,36 @@ const REFUSAL_REPLY = 'Perdona, con eso no te puedo ayudar. ¿Te echo una mano c
 
 type MessagesClient = { messages: { create: (args: any, options?: any) => Promise<any> } }
 
+/**
+ * Messages for one turn: the history, with a cache breakpoint on its last
+ * block, then the new user message: the clock first (`clockNote`), up to 4
+ * photos, then the text. The next turn's history starts with exactly the same
+ * messages, so it reads context + history from the cache written here (as
+ * long as the 5-minute cache is alive and the menu/memory didn't change).
+ * Breakpoints in a request: tools, instructions, history end and the newest
+ * block (`withLastMessageCached`) — the API's maximum of 4.
+ */
+export function buildTurnMessages(
+  history: readonly { role: 'user' | 'assistant'; content: string }[],
+  message: string,
+  images: readonly { mediaType: string; data: string }[],
+  now: Date,
+): Anthropic.MessageParam[] {
+  const messages = withLastMessageCached(history.map((msg) => ({ role: msg.role, content: msg.content })))
+  messages.push({
+    role: 'user',
+    content: [
+      { type: 'text' as const, text: clockNote(now) },
+      ...images.slice(0, 4).map((img) => ({
+        type: 'image' as const,
+        source: { type: 'base64' as const, media_type: img.mediaType as 'image/jpeg', data: img.data },
+      })),
+      ...(message || images.length ? [{ type: 'text' as const, text: message || '(foto sin texto)' }] : []),
+    ],
+  })
+  return messages
+}
+
 /** Copy of `messages` with a cache breakpoint on the last block, so later rounds of the same turn reuse the prefix. */
 export function withLastMessageCached(messages: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
   if (messages.length === 0) return messages
@@ -173,8 +190,13 @@ export async function runToolLoop(params: {
   ctx: SkillContext
   maxRounds?: number
   onToolStart?: (toolNames: string[]) => void
+  /** Model and effort for this turn (default `ASSISTANT_MODEL` / `ASSISTANT_EFFORT`); `scripts/compareMimoModels.ts` runs the same turn on several. */
+  model?: string
+  effort?: string
 }): Promise<AssistantResponse & { usage: TokenUsage }> {
   const maxRounds = params.maxRounds ?? MAX_TOOL_ROUNDS
+  const model = params.model ?? ASSISTANT_MODEL
+  const effort = params.effort ?? ASSISTANT_EFFORT
   const messages = [...params.messages]
   const executed: ExecutedTool[] = []
   let usage: TokenUsage = EMPTY_USAGE
@@ -184,9 +206,9 @@ export async function runToolLoop(params: {
   for (let round = 0; ; round += 1) {
     const response = await params.client.messages.create(
       {
-        model: ASSISTANT_MODEL,
+        model,
         max_tokens: ASSISTANT_MAX_TOKENS,
-        output_config: { effort: ASSISTANT_EFFORT },
+        output_config: { effort },
         fallbacks: 'default',
         system: params.system,
         messages: withLastMessageCached(messages),

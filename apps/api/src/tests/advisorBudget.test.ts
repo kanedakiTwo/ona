@@ -64,11 +64,11 @@ describe('usageCostUsd (Sonnet 5.5 list price)', () => {
     expect(usageCostUsd({ inputTokens: 0, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 1_000_000 })).toBeCloseTo(ASSISTANT_USD_PER_MTOK.cacheRead, 6)
   })
 
-  it('sums a mixed turn (cache read is ~10x cheaper than fresh input)', () => {
+  it('sums a mixed turn (cache read is 20x cheaper than fresh input on Sonnet 5.5)', () => {
     // 3k fresh input + 5k cache read + 400 output
     const usd = usageCostUsd({ inputTokens: 3000, outputTokens: 400, cacheWriteTokens: 0, cacheReadTokens: 5000 })
-    // 3000*2 + 400*10 + 5000*0.2 = 6000 + 4000 + 1000 = 11000 micro-USD = $0.011
-    expect(usd).toBeCloseTo(0.011, 6)
+    // 3000*2 + 400*10 + 5000*0.1 = 6000 + 4000 + 500 = 10500 micro-USD = $0.0105
+    expect(usd).toBeCloseTo(0.0105, 6)
   })
 })
 
@@ -80,8 +80,8 @@ describe('usageCostMicros (EUR conversion + integer micro-euros)', () => {
 
   it('rounds sub-cent turns to an integer rather than dropping them', () => {
     const micros = usageCostMicros({ inputTokens: 3000, outputTokens: 400, cacheWriteTokens: 0, cacheReadTokens: 5000 }, 0.92)
-    // $0.011 * 0.92 = €0.01012 → 10120 micro-euros
-    expect(micros).toBe(10120)
+    // $0.0105 * 0.92 = €0.00966 → 9660 micro-euros
+    expect(micros).toBe(9660)
   })
 
   it('a €5 budget covers a few hundred typical turns', () => {

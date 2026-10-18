@@ -195,11 +195,6 @@ This is the **single source of truth** for work that's pending on Miguel's side 
   - Al avisarlas, pregunta: mínimo de jamón y de picada (Ben-Car), pedido mínimo y franja de reparto a domicilio, y si les vale una línea sin cantidad («Galletas Daniela»). Revisa también los valores por defecto (tomate de ensalada, pimiento verde italiano, naranja de zumo, carne picada mixta, dorada).
   - Opcional: Los Alonso reparte gratis en Pozuelo/Boadilla si pides antes de las 13:00; para usarlo, cambia la entrega a «A domicilio» en `/compra/tiendas`.
 
-- [ ] **MIG-05 · Poner al día las plantillas de WhatsApp** — Sin plantillas aprobadas, Mimo no puede escribirte primero cuando llevas más de 24 h sin hablarle, y las que hay aún llevan el nombre antiguo de la app.
-  - **Estado (2026-10-15):** Claude creó el 14 las 7 plantillas en la cuenta buena por la API (`mimoia_aviso`, `mimoia_menu_de_hoy`, `mimoia_aviso_preparacion`, `mimoia_compra_pendiente`, `mimoia_registro_cena`, `mimoia_plan_semana` —marketing— y `mimoia_lista_compra` —Meta la pasó a marketing—). Siguen «en revisión»; puede que Meta espere a la verificación del negocio (MIG-22). No tienes que crear nada: cuando se aprueben, Claude las conecta.
-  - Cómo: desde el 2026-10-14 Mimo usa el número real (+34 626 68 55 11) en tu cuenta de WhatsApp «mimoia» (ID 1785790632633447). Las plantillas aprobadas en la app antigua no sirven aquí: créalas en esa cuenta, en WhatsApp Manager → Plantillas de mensajes (`ona_aviso`: «Aviso de Mimoia: {{1}} Respóndeme por aquí si quieres cambiar algo.»).
-  - Crea plantillas de tipo *Utilidad*, en español, una por aviso: `ona_menu_de_hoy`, `ona_aviso_preparacion`, `ona_lista_compra`, `ona_plan_semana` (cuerpo con un único `{{1}}`). Cuando estén aprobadas, pásale los nombres a Claude.
-
 - [ ] **MIG-10 · Probar en tu móvil lo que no se puede probar solo** — Hay cosas que solo se ven en un teléfono de verdad.
   - Instalar la app en Android (Chrome) y en iPhone (Safari): que se abra a pantalla completa, con el color crema y respetando la barra de estado.
   - En una receta, «Empezar a cocinar» y bloquear el móvil: la pantalla debe seguir encendida al volver.

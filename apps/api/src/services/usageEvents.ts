@@ -193,6 +193,8 @@ const ROUTE_EVENTS: RouteEvent[] = [
   },
   { method: 'POST', re: /^\/recipes\/?$/, event: (req) => ({ name: 'recipe_created', props: { withSource: Boolean(req.body?.sourceUrl) } }) },
   { method: 'POST', re: /^\/cook-logs\/?$/, event: () => ({ name: 'meal_cooked' }) },
+  // Opening cook mode on the web (PRO-188): the page pings this once on open.
+  { method: 'POST', re: /^\/usage\/cook-mode-started\/?$/, event: () => ({ name: 'cook_mode_started' }) },
   {
     method: 'POST',
     re: /^\/assistant\/[^/]+\/chat\/?$/,
@@ -265,6 +267,9 @@ export function skillUsageEvents(
       return [{ name: 'cook_mode_started' }]
     case 'log_cooked':
       return [{ name: 'meal_cooked' }]
+    // «Ya lo hemos comido» told to Mimo (PRO-188): cooked too, unless it un-marks.
+    case 'mark_meal_eaten':
+      return input?.eaten === true ? [{ name: 'meal_cooked', props: { via: 'eaten' } }] : []
     case 'prepare_shop_orders':
       return Array.isArray(result.data?.orderIds) && result.data.orderIds.length > 0
         ? [{ name: 'shop_order_prepared', props: { orders: result.data.orderIds.length } }]

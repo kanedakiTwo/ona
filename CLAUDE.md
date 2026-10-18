@@ -201,7 +201,7 @@ This is the **single source of truth** for work that's pending on Miguel's side 
   - Avisos a la hora de comer: en el perfil, actívalos con la hora 1 minuto después y deja la app abierta; al tocar el aviso debe abrir la app.
   - Vibración al tocar (solo Android), botón de compartir en una receta y en la lista de la compra, y la sensación general al cambiar de pantalla y deslizar entre pestañas.
 
-- [ ] **MIG-12 · Revisión legal de la privacidad** · *desde el 16 de noviembre (decisión de la SL)* — Cuando exista la SL, un abogado tiene que revisar `/privacidad`: responsable con nombre real, datos de salud con consentimiento explícito, envíos a EE. UU. y el apartado de la lista de espera.
+- [ ] **MIG-12 · Revisión legal de la privacidad y los términos** · *antes del 11 de diciembre* (D-078, haya SL o no: se cobra como autónomo desde el 15-dic) — Revisión de bajo coste del 1 al 10 de diciembre para publicar el 11; el presupuesto te llega como aprobación. Un abogado tiene que revisar `/privacidad` y los términos de contratación: responsable con nombre real, datos de salud con consentimiento explícito, envíos a EE. UU. y el apartado de la lista de espera.
   - Cuándo: con la forma jurídica decidida (16 de noviembre). Ver `specs/privacy.md`.
 
 - [ ] **MIG-13 · Registrar la marca Mimoia** · *aplazada hasta el 16 de noviembre (D-024)* — Nadie tiene MIMOIA, pero hay muchas marcas «MIMO» (Starship, para apps de pedir comida; Mimo GmbH; Xiaomi).

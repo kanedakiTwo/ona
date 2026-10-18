@@ -50,6 +50,7 @@ Stable forever — never rename, only add. Adding a key is a one-line change in 
 | `notes` | `string[]` | free-form facts ("mi hija no come pescado") |
 | `nutrition_principles` | `string[]` (3..280 chars each) | user-authored beliefs that override Mimoia's defaults. e.g. `['Ayuno intermitente 16/8', 'Sin azúcar refinado']`. The digest tags them as "RESPÉTALOS aunque entren en conflicto con tus principios de cocina por defecto" so the model doesn't try to correct the user against their own beliefs |
 | `prep_habits` | `string[]` (3..280 chars each) | recurring prep-time habits. e.g. `['Siempre congelo el pescado', 'Pongo las legumbres en remojo la noche antes', 'Saco la carne 30 min antes para que tempere']`. The notification scheduler (see [Notifications](./notifications.md)) reads this together with `ingredients.prep_requirements` to decide when to fire a heads-up push ("saca los boquerones del congelador en 2 días"). The advisor's `update_memory` skill writes here whenever it picks up a habit in conversation |
+| `region` | ISO 3166-2:ES code of the comunidad autónoma (`AN`, `AR`, `AS`, `IB`, `CN`, `CB`, `CM`, `CL`, `CT`, `EX`, `GA`, `MD`, `MC`, `NC`, `PV`, `RI`, `VC`, `CE`, `ML`) | PRO-226: its national and regional holidays count as weekend in the menu (see [Menus → Festivos](./menus.md)). The memory page shows the name («Comunidad de Madrid») with a picker under «Hogar»; the digest says «Comunidad autónoma: …». Household-level in the ficha |
 
 ## API
 

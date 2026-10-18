@@ -447,3 +447,13 @@ export {
   HOUSEHOLD_LEVEL_MEMORY_KEYS,
   memoryKeyIsHouseholdLevel,
 } from './types/householdProfile.js'
+export type { SpanishRegion, PublicHoliday } from './constants/holidays.js'
+export {
+  SPANISH_REGIONS,
+  SPANISH_REGION_CODES,
+  isSpanishRegion,
+  HOLIDAY_YEARS,
+  PUBLIC_HOLIDAYS,
+  holidayOn,
+  weekHolidays,
+} from './constants/holidays.js'

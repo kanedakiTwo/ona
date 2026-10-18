@@ -4,6 +4,7 @@ import { visibleAuthorIds, visibleRecipeWhere } from './recipeVisibility.js'
 import { loadMatchableRecipes, type RecipeWithCourse } from './matchableRecipes.js'
 import { mergeRestrictions } from './dietaryRestrictions.js'
 import { recipesMatchingDishes, weekTimeBudgets } from './onboardingPreferences.js'
+import { holidayTimeBudgets, regionFromMemory } from './menuHolidays.js'
 import { menuMetabolicQuality, recipeMetabolicProfile, type MetabolicProfile } from './metabolicScore.js'
 import {
   users,
@@ -473,7 +474,13 @@ export async function generateMenu(
     : undefined
   // Per-day time limits (PRO-138): total or hands-on minutes; «Rapidez» /
   // «Cocino poco» without an answer → ≤ 30 min in total Mon–Fri.
-  const timeBudgetByDay = weekTimeBudgets(memory?.time_available?.value, user)
+  // Festivos (PRO-226): a weekday holiday of the household's comunidad
+  // autónoma takes Saturday's limit (usually none).
+  const timeBudgetByDay = holidayTimeBudgets(
+    weekTimeBudgets(memory?.time_available?.value, user),
+    weekStart,
+    regionFromMemory(memory?.region?.value),
+  ).budgets
 
   // 5b. Onboarding answers: dishes they love join the favourites weighting;
   // time limits come from weekTimeBudgets (onboardingPreferences.ts).

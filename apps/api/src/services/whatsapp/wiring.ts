@@ -7,6 +7,8 @@ import { weekMenuCaption, weekMenuDigest, type WeekMenuInput, type WeekReplyOpti
 import { weekMenuImage } from '../weekImage/index.js'
 import { madridParts } from '../madridTime.js'
 import { generatedWeeksOf } from '../menuWeek.js'
+import { getMemoryForUser } from '../userMemoryStore.js'
+import { regionFromMemory } from '../menuHolidays.js'
 import { spendCapStatus } from '../spendCap.js'
 import { chat } from '../assistant/engine.js'
 import { checkAdvisorBudget, recordAdvisorUsage } from '../advisorBudget.js'
@@ -41,6 +43,10 @@ async function weekReplyOptions(userId: string, view: WeekView): Promise<WeekRep
   const opts: WeekReplyOptions = { today: madridParts(new Date()).isoDate, webUrl: env.WEB_PUBLIC_URL, view }
   if (view !== 'generated') return opts
   try {
+    // PRO-226: the holiday line needs the household's region and time limits.
+    const memory = await getMemoryForUser(userId).catch(() => null)
+    const region = regionFromMemory(memory?.region?.value)
+    if (region) Object.assign(opts, { region, timeAvailable: memory?.time_available?.value })
     return { ...opts, generatedWeeks: await generatedWeeksOf(userId) }
   } catch (err) {
     // No count → no snowball line; the week still goes out.

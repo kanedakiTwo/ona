@@ -22,7 +22,7 @@ import { Accent, MoreButton, SUB_EYEBROW, SUB_LIST, SubPage } from "@/components
 import { SubLoadError, useQueryLoad } from "@/components/profile/SubLoadError"
 import type { MemoryKey, MemoryFact } from "@ona/shared"
 import { TasteMemorySection } from "@/components/taste/TasteMemorySection"
-import { formatDayTimeBudget, toDayTimeBudget } from "@ona/shared"
+import { formatDayTimeBudget, isSpanishRegion, SPANISH_REGIONS, toDayTimeBudget } from "@ona/shared"
 
 interface Group {
   title: string
@@ -42,7 +42,7 @@ const GROUPS: Group[] = [
   },
   {
     title: "Hogar",
-    keys: ["household.adults", "household.kids_2_to_10"],
+    keys: ["household.adults", "household.kids_2_to_10", "region"],
   },
   {
     title: "Restricciones y gustos",
@@ -89,6 +89,7 @@ const LABELS: Partial<Record<MemoryKey, string>> = {
   notes: "Notas del asistente",
   nutrition_principles: "Principios nutricionales",
   prep_habits: "Hábitos de preparación",
+  region: "Comunidad autónoma",
 }
 
 const SOURCE_BADGES: Record<MemoryFact["source"], { label: string; color: string }> = {
@@ -99,6 +100,8 @@ const SOURCE_BADGES: Record<MemoryFact["source"], { label: string; color: string
 
 function formatValue(key: MemoryKey, value: unknown): string {
   if (value == null) return "—"
+  // PRO-226: the code ('MD') → «Comunidad de Madrid».
+  if (key === "region") return isSpanishRegion(value) ? SPANISH_REGIONS[value] : String(value)
   // PRO-138: «lunes: 20 min de trabajo», «martes: 30 min en total».
   if (key === "time_available" && typeof value === "object" && !Array.isArray(value)) {
     const days = Object.entries(value as Record<string, unknown>)

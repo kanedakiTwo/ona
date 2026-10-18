@@ -91,6 +91,11 @@ describe('normalize / stem / levenshtein', () => {
     expect(stem('cebollas')).toBe(stem('cebolla'))
     expect(stem('huevos')).toBe('huev')
     expect(stem('tomates')).toBe('tomat')
+    // PRO-203: singular and plural share the root, short words included
+    for (const [one, many] of [['sopa', 'sopas'], ['crema', 'cremas'], ['croqueta', 'croquetas'], ['tomate', 'tomates'], ['limon', 'limones'], ['ajo', 'ajos'], ['pan', 'panes']]) {
+      expect(stem(one), one).toBe(stem(many))
+    }
+    expect(stem('sopas')).toBe('sop')
     // short words are not stemmed
     expect(stem('pan')).toBe('pan')
     expect(stem('ajo')).toBe('ajo')

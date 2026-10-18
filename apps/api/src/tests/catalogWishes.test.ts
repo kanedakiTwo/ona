@@ -43,6 +43,11 @@ describe('what the catalogue covers', () => {
     expect(catalogCoversDish('pastel de carne', CATALOG)).toBe(false) // «carne» alone is not enough
     expect(catalogCoversDish('cremas y sopas', CATALOG)).toBe(true) // either one
     expect(catalogCoversDish('Crema de calabaza', CATALOG)).toBe(true)
+    // PRO-203: a plural dish finds the singular recipe and the other way round.
+    expect(catalogCoversDish('sopas', ['Sopa miso'])).toBe(true)
+    expect(catalogCoversDish('sopa', ['Sopas de ajo'])).toBe(true)
+    expect(catalogCoversDish('cremas', ['Crema de calabacín'])).toBe(true)
+    expect(catalogCoversDish('croqueta', ['Croquetas de jamón'])).toBe(true)
   })
 
   it('the D-065 favourites → wishes for the ones we lack', () => {

@@ -3,6 +3,7 @@ import Link from "next/link"
 import { ArrowUpRight } from "lucide-react"
 import { BRAND_NAME } from "@ona/shared"
 import { getPublishedPosts } from "@/lib/blog/posts"
+import { SignupCtaLink, WaitlistOnly } from "@/components/shared/SignupCta"
 import { formatBlogDate } from "@/lib/blog/markdown"
 import { SITE_URL } from "@/lib/site"
 import { BLOG_WAITLIST_HREF } from "@/components/blog/BlogWaitlistCta"
@@ -53,15 +54,15 @@ export default function BlogIndexPage() {
             <div data-testid="blog-empty" className="border-t border-[#DDD6C5] pt-10">
               <p className="font-display text-2xl text-[#1A1612]">Pronto, los primeros artículos.</p>
               <p className="mt-3 max-w-md text-base text-[#4A4239]">
-                Mientras tanto, apúntate a la lista de espera y te avisamos cuando entres.
+                <WaitlistOnly>Mientras tanto, apúntate a la lista de espera y te avisamos cuando entres.</WaitlistOnly>
               </p>
-              <Link
-                href={BLOG_WAITLIST_HREF}
+              <SignupCtaLink
+                waitlistHref={BLOG_WAITLIST_HREF}
+                waitlistLabel="Únete a la lista de espera"
+                openRef="blog"
                 className="mt-8 inline-flex items-center gap-2.5 rounded-full bg-[#1A1612] px-7 py-4 text-base font-medium text-[#FAF6EE] transition-all hover:gap-3.5 hover:bg-[#2D6A4F]"
-              >
-                Únete a la lista de espera
-                <ArrowUpRight size={18} />
-              </Link>
+                icon={<ArrowUpRight size={18} />}
+              />
             </div>
           ) : (
             <ul data-testid="blog-list" className="grid grid-cols-1 gap-12 md:grid-cols-2 md:gap-x-10 md:gap-y-16">

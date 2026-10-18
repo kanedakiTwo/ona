@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
+import { SignupCtaLink } from "@/components/shared/SignupCta"
 import { Check, Minus } from "lucide-react"
 import {
   BETA_FIRST_CHARGE_LABEL,
@@ -60,9 +61,13 @@ export function PricingPage() {
     } disabled:opacity-50`
     if (!user) {
       return (
-        <Link href={WAITLIST_HREF} className={cls} data-testid={`cta-${plan.key}`}>
-          Apúntate a la lista de espera
-        </Link>
+        <SignupCtaLink
+          waitlistHref={WAITLIST_HREF}
+          waitlistLabel="Apúntate a la lista de espera"
+          openRef="precios"
+          className={cls}
+          testId={`cta-${plan.key}`}
+        />
       )
     }
     const state = billing.data

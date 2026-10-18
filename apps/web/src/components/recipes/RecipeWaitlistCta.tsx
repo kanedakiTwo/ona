@@ -1,6 +1,6 @@
-import Link from "next/link"
 import { ArrowUpRight } from "lucide-react"
 import { BRAND_NAME } from "@ona/shared"
+import { SignupCtaLink, WaitlistOnly } from "@/components/shared/SignupCta"
 
 /** Where every public recipe CTA leads (specs/waitlist.md): the landing's waitlist, tagged as coming from a recipe. */
 export const RECIPE_WAITLIST_HREF = "/?ref=receta#lista-de-espera"
@@ -24,13 +24,14 @@ export function RecipeWaitlistCta({ recipeName, className = "" }: { recipeName: 
       <p className="mx-auto mt-5 max-w-md text-sm text-[#FAF6EE]/70 md:text-base">
         Cuando entres, podrás marcarla como favorita, ponerla en tu menú semanal y que {BRAND_NAME} te haga la lista de la compra.
       </p>
-      <Link
-        href={RECIPE_WAITLIST_HREF}
+      <SignupCtaLink
+        waitlistHref={RECIPE_WAITLIST_HREF}
+        waitlistLabel="Únete a la lista de espera"
+        openRef="receta"
+        testId="recipe-signup-cta-link"
         className="mt-8 inline-flex items-center gap-2.5 rounded-full bg-[#FAF6EE] px-7 py-4 text-base font-medium text-[#1A1612] transition-all hover:gap-3.5 hover:bg-[#C65D38] hover:text-[#FAF6EE]"
-      >
-        Únete a la lista de espera
-        <ArrowUpRight size={18} />
-      </Link>
+        icon={<ArrowUpRight size={18} />}
+      />
     </section>
   )
 }
@@ -51,15 +52,16 @@ export function CatalogueWaitlistCta({ className = "" }: { className?: string })
         Apúntate y <span className="font-italic italic">{BRAND_NAME} te plantea la semana</span> con ellas.
       </h2>
       <p className="mx-auto mt-5 max-w-md text-sm text-[#FAF6EE]/70 md:text-base">
-        Cuando entres, te propone el menú de cada semana, te hace la lista de la compra y guarda tus favoritas. Entramos por tandas, sin tarjeta.
+        Cuando entres, te propone el menú de cada semana, te hace la lista de la compra y guarda tus favoritas. <WaitlistOnly>Entramos por tandas, sin tarjeta.</WaitlistOnly>
       </p>
-      <Link
-        href={CATALOGUE_WAITLIST_HREF}
+      <SignupCtaLink
+        waitlistHref={CATALOGUE_WAITLIST_HREF}
+        waitlistLabel="Únete a la lista de espera"
+        openRef="recetas"
+        testId="recipes-signup-cta-link"
         className="mt-8 inline-flex items-center gap-2.5 rounded-full bg-[#FAF6EE] px-7 py-4 text-base font-medium text-[#1A1612] transition-all hover:gap-3.5 hover:bg-[#C65D38] hover:text-[#FAF6EE]"
-      >
-        Únete a la lista de espera
-        <ArrowUpRight size={18} />
-      </Link>
+        icon={<ArrowUpRight size={18} />}
+      />
     </section>
   )
 }

@@ -86,9 +86,11 @@ export const MESSAGE_GUIDES: Record<GuidedKind, MessageGuide> = {
   },
   weekly_nudge: {
     purpose: 'El domingo, ofrecer preparar el menú de la semana que viene (los botones responden Sí / Ahora no).',
-    mustCarry: 'La pregunta de si le preparas el menú de la semana que viene.',
-    tone: 'Una o dos frases, de domingo tranquilo, sin presionar.',
-    maxChars: 260,
+    // PRO-225: the questions before planning go in this same message.
+    mustCarry:
+      'La pregunta de si le preparas el menú de la semana que viene y, tal cual, las dos preguntas de antes de planificar («¿Alguna comida fuera de casa esta semana?» y «¿Viene alguien?»), diciendo que puede contestarlas con sus palabras y que solo cambian esa semana.',
+    tone: 'Dos o tres frases, de domingo tranquilo, sin presionar.',
+    maxChars: 420,
     asks: true,
   },
   first_steps: {

@@ -5,6 +5,7 @@ Mimo thinks the household's week with everything Mimoia knows about it, and fixe
 ## User Capabilities
 
 - Nothing visible yet. Every time a week is generated (the menu page or Mimo's `generate_weekly_menu`, web or WhatsApp), Mimo also thinks the same week in the background and stores its proposal; the household keeps seeing today's menu (PRO-255)
+- When a menu comes from the planner, opening a dish's «···» sheet shows «Por qué te lo propongo» with Mimo's line, and Mimo tells it when asked «¿por qué me has puesto esto?», in the app and on WhatsApp (PRO-259). Today's generator never writes it, so nothing shows until PRO-257 turns the planner on
 - The week rules score weeks for the shadow planner and the blind comparison; no menu changes because of them
 
 ## Reglas de una semana bien hecha (PRO-254)
@@ -40,6 +41,13 @@ After `POST /menu/generate` (not the empty week) and Mimo's `generate_weekly_men
 - Tests: `menuPlanner.test.ts` (candidates and prompt; the checker with an allergy that slips through and a repeated dish, leftovers, vetoes, equipment, time, a weak day; the merge; the run with the model simulated: Opus 5.5 with thinking and the closed format, cost recorded, no key / over the cap / refusal / broken / error / timeout) and `menuPlanner.smoke.ts` (against Postgres: a «Sin horno hasta nuevo aviso» fact reaches the prompt and no oven recipe is a candidate or in the generated menu, every generated menu gets its row, one simulated run stored, the household's menu untouched)
 - Known limitations: one main dish per slot (a second course stays the generator's); the «sobras o táper» the model plans are not yet shown anywhere; batch on Saturday night is PRO-258; nobody sees the «why» until PRO-257/259
 
+## La línea de por qué en cada plato (PRO-259)
+
+- A recipe dish may carry `why` (`RecipeDish.why`, in the menu's JSONB). `mergeWithGenerator` sets it on the planner's dishes (never on the generator's); nothing else writes it. A new dish (swap, «Cambiar al azar», «Elegir otra receta») is built without it; leftovers cloned from a dish keep it
+- **Web:** the meal sheet (`MealOptions`) shows a «Por qué te lo propongo» card above the actions when the slot's first recipe dish has a `why` (`data-testid="dish-why"`)
+- **Mimo (web and WhatsApp):** `mealLinesForDay` adds `(por qué: «…»)` after the slot's dishes — the menu block of its context and the menu tools (`get_todays_menu`, `get_weekly_menu`) read it, so it can answer «¿por qué me has puesto esto?». Each why is clipped at 200 characters
+- Tests: `menuDishWhy.test.ts` (Mimo's lines with and without a why), `menuPlanner.test.ts` (the merge sets it only on the planner's dishes), e2e `menu-dish-why.spec.ts` (no card for a generator menu; the card with the why injected into GET /menu, 390 px)
+
 ## Related specs
 
 - [Menus](./menus.md) — today's generator, which stays as the fallback
@@ -52,4 +60,6 @@ After `POST /menu/generate` (not the empty week) and Mimo's `generate_weekly_men
 - [apps/api/src/services/menuPlanner.ts](../apps/api/src/services/menuPlanner.ts) — candidates, prompt, closed format, checker, merge (pure)
 - [apps/api/src/services/menuPlannerShadow.ts](../apps/api/src/services/menuPlannerShadow.ts) — context from the DB, the call, cost, `menu_plans`, `startShadowPlan`
 - [apps/api/src/db/migrations/0074_menu_plans.sql](../apps/api/src/db/migrations/0074_menu_plans.sql)
+- [packages/shared/src/types/menuDish.ts](../packages/shared/src/types/menuDish.ts) — `why` · [apps/api/src/services/menuText.ts](../apps/api/src/services/menuText.ts) — `dishWhys` · [apps/web/src/components/menu/MealOptions.tsx](../apps/web/src/components/menu/MealOptions.tsx) — the card
+- [apps/api/src/tests/menuDishWhy.test.ts](../apps/api/src/tests/menuDishWhy.test.ts) · [apps/web/e2e/menu-dish-why.spec.ts](../apps/web/e2e/menu-dish-why.spec.ts)
 - [apps/api/src/tests/menuPlanner.test.ts](../apps/api/src/tests/menuPlanner.test.ts) · [apps/api/src/tests/menuPlanner.smoke.ts](../apps/api/src/tests/menuPlanner.smoke.ts)

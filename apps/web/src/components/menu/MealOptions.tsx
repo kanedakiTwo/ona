@@ -185,6 +185,14 @@ export function MealOptionsSheets({
         eyebrow={`${label} · ${ctx.dayLabel}`}
         title={first?.recipeName ?? (dishes.length > 0 ? label : "Sin plato todavía")}
       >
+        {/* PRO-259: why Mimo chose it — only menus from the planner carry it. */}
+        {first?.why && (
+          <div data-testid="dish-why" className="mb-3 rounded-2xl bg-cream-deep px-4 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">Por qué te lo propongo</p>
+            <p className="mt-1 text-[15px] leading-snug text-ink">{first.why}</p>
+          </div>
+        )}
+
         {!isSingleRecipe && dishes.length > 0 && (
           <DishList
             dishes={dishes}

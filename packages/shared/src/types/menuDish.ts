@@ -16,6 +16,12 @@ export interface RecipeDish {
   variant?: 'planned' | 'leftover' | 'freezer'
   /** Back-reference when `variant === 'leftover'`. Carries the dish position because a slot can have multiple recipes now. */
   leftoverOf?: { day: number; meal: string; dishPosition: number } | null
+  /**
+   * PRO-259: the line of why Mimo chose this dish («lentejas porque os
+   * gustan los guisos…»). Only set when the menu comes from the planner
+   * (menú inteligente, specs/smart-menu.md); today's generator never sets it.
+   */
+  why?: string | null
   /** Hydrated from `recipes.image_url` on every menu response; NOT persisted in JSONB. */
   imageUrl?: string | null
   /** Hydrated alongside `imageUrl`. */

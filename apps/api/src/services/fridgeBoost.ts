@@ -63,7 +63,7 @@ export function ensureFridgeRecipe(
       const slot = days[dayIndex]?.[meal]
       if (!slot || locked[String(dayIndex)]?.[meal]) continue
       const at = (slot.dishes ?? []).findIndex(
-        (d) => d.kind === 'recipe' && !d.variant && !d.leftoverOf && (d.course == null || d.course === 'main'),
+        (d) => d.kind === 'recipe' && (d.variant ?? 'planned') === 'planned' && !d.leftoverOf && (d.course == null || d.course === 'main'),
       )
       if (at < 0) continue
       const recipe = pick(dayIndex, meal, used)

@@ -55,8 +55,9 @@ function isPreferredName(candidate: string, current: string): boolean {
 /**
  * Los artículos que junta una línea de pedido, agrupados con el criterio de
  * la lista de la compra (`shoppingGroupOf`). null = todo es el mismo producto.
- * Nada depende del orden de entrada, salvo el orden de `sourceItemIds` y un
- * empate de tamaño (abajo).
+ * Nada depende del orden de entrada, salvo el orden de los grupos del
+ * resultado (el de su primer artículo, y con él las claves `l3.1`, `l3.2`… de
+ * la cesta), el orden de `sourceItemIds` y un empate de tamaño (abajo).
  *
  * - Nombre: el representante de la lista (`isPreferredName`).
  * - Cantidades: con la misma unidad se suman; con unidades distintas que se
@@ -136,12 +137,59 @@ export function orderMembers(members: OrderMemberInput[], ruleKey: string | null
   return specific.map(({ generic: _generic, real: _real, ...rest }) => rest)
 }
 
-export function buildExtensionBasket(_lines: ShopOrderLine[]): BasketLine[] {
-  return []
+/** La cesta que se manda a la extensión (líneas incluidas; las fusionadas, por grupo). */
+export function buildExtensionBasket(lines: ShopOrderLine[]): BasketLine[] {
+  const out: BasketLine[] = []
+  for (const line of lines) {
+    if (line.included === false) continue
+    if (line.members && line.members.length >= 2) {
+      line.members.forEach((mem, i) => {
+        const name = basketBaseName(mem.name)
+        out.push({
+          key: `${line.key}.${i + 1}`,
+          name,
+          choice: null,
+          quantity: mem.quantity,
+          unit: mem.unit,
+          grams: mem.unit === 'g' || mem.unit === 'ml' ? mem.quantity : null,
+          piezas: null,
+          search: name,
+        })
+      })
+      continue
+    }
+    const name = basketBaseName(line.name)
+    const choice = line.needsChoice ? null : line.choice ?? null
+    const grams = line.needsQuantity
+      ? line.needsQuantity.grams
+      : line.ruleKey
+        ? line.grams ?? null
+        : line.unit === 'g' || line.unit === 'ml'
+          ? line.quantity
+          : null
+    const rule = line.ruleKey ? buyRuleByKey(line.ruleKey) : null
+    const piezas = rule?.by === 'pieza' && rule.g && grams ? Math.max(1, Math.round(grams / rule.g)) : null
+    // «Jamón serrano» + serrano → «Jamón serrano», no «Jamón serrano serrano».
+    const search = choice && !normalizeBuyName(name).includes(normalizeBuyName(choice)) ? `${name} ${choice}` : name
+    out.push({ key: line.key, name, choice, quantity: line.quantity, unit: line.unit, grams, piezas, search })
+  }
+  return out
 }
-export function sourceItemsForBasketKey(_lines: ShopOrderLine[], _key: string): string[] {
-  return []
+
+/**
+ * ¿Puede haber algo de este envío en el carro? Sí si entró algo o si hay
+ * líneas sin verificar (un envío a medias). Decide si el pedido pasa a «Enviado»
+ * y si se ofrece «Quitar lo que añadió Mimoia».
+ */
+export function basketMayBeInCart(r: Pick<BasketSendResult, 'anadidas' | 'lineas'>): boolean {
+  return r.anadidas > 0 || r.lineas.some((l) => l.estado === 'no_verificada')
 }
-export function basketMayBeInCart(_r: { anadidas: number; lineas: Array<{ estado: string }> }): boolean {
-  return false
+
+/** Artículos de la lista que hay detrás de una clave de la cesta («l3» o «l3.2»). */
+export function sourceItemsForBasketKey(lines: ShopOrderLine[], key: string): string[] {
+  const [lineKey, member] = key.split('.')
+  const line = lines.find((l) => l.key === lineKey)
+  if (!line) return []
+  if (member) return line.members?.[Number(member) - 1]?.sourceItemIds ?? []
+  return line.sourceItemIds ?? (line.sourceItemId ? [line.sourceItemId] : [])
 }

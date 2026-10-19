@@ -7,7 +7,16 @@
  * Run: pnpm --filter @ona/api test src/tests/extensionBasket.test.ts
  */
 import { describe, it, expect } from 'vitest'
-import { buyRuleByKey, orderMembers, orderQtyInGrams, type BuyableUnit } from '@ona/shared'
+import {
+  basketMayBeInCart,
+  buildExtensionBasket,
+  buyRuleByKey,
+  orderMembers,
+  orderQtyInGrams,
+  sourceItemsForBasketKey,
+  type BuyableUnit,
+  type ShopOrderLine,
+} from '@ona/shared'
 
 const m = (id: string, name: string, quantity: number, unit: 'g' | 'ml' | 'u' = 'g') => ({ id, name, quantity, unit })
 /** Tecleado sin cantidad: el «1 u» por defecto. */
@@ -178,5 +187,111 @@ describe('orderQtyInGrams', () => {
   })
   it('sin la guarda de cantidad positiva de toOrderQty: 0 u son 0 g', () => {
     expect(orderQtyInGrams(0, 'u', 'alubias')).toBe(0)
+  })
+})
+
+const line = (over: Partial<ShopOrderLine> & { key: string; name: string }): ShopOrderLine => ({
+  sourceItemId: null,
+  sourceItemIds: [`id-${over.key}`],
+  ingredientId: null,
+  quantity: 1,
+  unit: 'u',
+  note: null,
+  estimateEur: null,
+  estimateSource: null,
+  volatile: false,
+  quote: null,
+  verdict: null,
+  reasons: [],
+  decision: null,
+  ...over,
+})
+
+describe('buildExtensionBasket', () => {
+  it('con regla: gramos de la regla, piezas si es por pieza, elección y búsqueda', () => {
+    const [ajo, jamon] = buildExtensionBasket([
+      line({ key: 'l1', name: 'ajo', quantity: 3, unit: 'u', ruleKey: 'ajo', grams: 50 }),
+      line({ key: 'l2', name: 'Jamón serrano', quantity: 50, unit: 'g', ruleKey: 'jamon', grams: 100, choice: 'serrano' }),
+    ])
+    expect(ajo).toEqual({ key: 'l1', name: 'ajo', choice: null, quantity: 3, unit: 'u', grams: 50, piezas: 1, search: 'ajo' })
+    expect(jamon).toMatchObject({ key: 'l2', choice: 'serrano', grams: 100, piezas: null, search: 'Jamón serrano' })
+  })
+  it('la búsqueda añade la elección si el nombre no la lleva ya («jamon» + ibérico)', () => {
+    const [jamon] = buildExtensionBasket([line({ key: 'l1', name: 'jamon', quantity: 50, unit: 'g', ruleKey: 'jamon', grams: 100, choice: 'ibérico' })])
+    expect(jamon).toMatchObject({ name: 'jamon', choice: 'ibérico', search: 'jamon ibérico' })
+  })
+  it('sin regla: gramos solo si la unidad es g/ml; sufijo fuera', () => {
+    const [kombu, tortillas] = buildExtensionBasket([
+      line({ key: 'l1', name: 'kombu · varias presentaciones', quantity: 10, unit: 'g' }),
+      line({ key: 'l2', name: 'tortillas de trigo', quantity: 8, unit: 'u' }),
+    ])
+    expect(kombu).toMatchObject({ name: 'kombu', grams: 10, search: 'kombu' })
+    expect(tortillas).toMatchObject({ grams: null, quantity: 8, unit: 'u', piezas: null })
+  })
+  it('deja fuera «probablemente lo tienes» sin marcar; elección pendiente → null; «¿cuánto?» → gramos sugeridos', () => {
+    const lines = buildExtensionBasket([
+      line({ key: 'l1', name: 'mantequilla', ruleKey: 'mantequilla', grams: 250, included: false }),
+      line({ key: 'l2', name: 'jamon', ruleKey: 'jamon', grams: null, choice: null, needsChoice: { question: '¿Serrano o ibérico?', options: ['serrano', 'ibérico'] } }),
+      line({ key: 'l3', name: 'queso', ruleKey: 'queso', grams: null, needsQuantity: { suggestion: '250 g', grams: 250 } }),
+    ])
+    expect(lines.map((l) => l.key)).toEqual(['l2', 'l3'])
+    expect(lines[0].choice).toBeNull()
+    expect(lines[1].grams).toBe(250)
+  })
+  it('una línea con members sale como un grupo por producto (l3.1, l3.2)', () => {
+    const lines = buildExtensionBasket([
+      line({
+        key: 'l3', name: 'alubias blancas', quantity: 800, unit: 'g', ruleKey: 'alubias', grams: 1000,
+        members: [
+          { name: 'alubias blancas', quantity: 400, unit: 'g', sourceItemIds: ['a'] },
+          { name: 'alubias rojas', quantity: 400, unit: 'g', sourceItemIds: ['b'] },
+        ],
+      }),
+    ])
+    expect(lines).toEqual([
+      { key: 'l3.1', name: 'alubias blancas', choice: null, quantity: 400, unit: 'g', grams: 400, piezas: null, search: 'alubias blancas' },
+      { key: 'l3.2', name: 'alubias rojas', choice: null, quantity: 400, unit: 'g', grams: 400, piezas: null, search: 'alubias rojas' },
+    ])
+  })
+  it('con los grupos de orderMembers: mezcla de unidades en gramos, u sin gramos, nombre sin sufijo y cada clave con sus artículos', () => {
+    // 1500 ml de leche (genérico) + 1 u de entera + 1 u de desnatada: el genérico se suma a la entera, que pasa a gramos.
+    // La desnatada solo viene con « · varias presentaciones»: el grupo conserva ese nombre y la cesta le quita el sufijo.
+    const members = orderMembers(
+      [m('g', 'leche', 1500, 'ml'), m('e', 'leche entera', 1, 'u'), m('d', 'leche desnatada · varias presentaciones', 1, 'u')],
+      'leche',
+    )
+    expect(members?.[1].name).toBe('leche desnatada · varias presentaciones')
+    const lines = [line({ key: 'l4', name: 'leche', quantity: 1500 + 2 * perUnit('leche'), unit: 'g', ruleKey: 'leche', sourceItemIds: ['g', 'e', 'd'], members })]
+    const entera = perUnit('leche') + 1500
+    expect(buildExtensionBasket(lines)).toEqual([
+      { key: 'l4.1', name: 'leche entera', choice: null, quantity: entera, unit: 'g', grams: entera, piezas: null, search: 'leche entera' },
+      { key: 'l4.2', name: 'leche desnatada', choice: null, quantity: 1, unit: 'u', grams: null, piezas: null, search: 'leche desnatada' },
+    ])
+    expect(sourceItemsForBasketKey(lines, 'l4.1')).toEqual(['e', 'g'])
+    expect(sourceItemsForBasketKey(lines, 'l4.2')).toEqual(['d'])
+  })
+})
+
+describe('basketMayBeInCart', () => {
+  it('algo entró, o hay líneas sin verificar', () => {
+    expect(basketMayBeInCart({ anadidas: 1, lineas: [] })).toBe(true)
+    expect(basketMayBeInCart({ anadidas: 0, lineas: [{ key: 'l1', estado: 'no_verificada' }] })).toBe(true)
+    expect(basketMayBeInCart({ anadidas: 0, lineas: [{ key: 'l1', estado: 'fallida' }] })).toBe(false)
+  })
+})
+
+describe('sourceItemsForBasketKey', () => {
+  const lines = [
+    line({ key: 'l1', name: 'arroz', sourceItemIds: ['x', 'y'] }),
+    line({ key: 'l3', name: 'alubias', members: [
+      { name: 'alubias blancas', quantity: 400, unit: 'g', sourceItemIds: ['a'] },
+      { name: 'alubias rojas', quantity: 400, unit: 'g', sourceItemIds: ['b', 'c'] },
+    ] }),
+  ]
+  it('línea entera, grupo, y claves que no existen', () => {
+    expect(sourceItemsForBasketKey(lines, 'l1')).toEqual(['x', 'y'])
+    expect(sourceItemsForBasketKey(lines, 'l3.2')).toEqual(['b', 'c'])
+    expect(sourceItemsForBasketKey(lines, 'l9')).toEqual([])
+    expect(sourceItemsForBasketKey(lines, 'l3.7')).toEqual([])
   })
 })

@@ -23,6 +23,7 @@
  * billed to the user in `cost_events` (feature `onboarding_analysis`).
  */
 import Anthropic from '@anthropic-ai/sdk'
+import { applyTemplateChange } from './assistant/appSkills.js'
 import {
   COOKING_WEEKDAYS,
   householdToDiners,
@@ -33,7 +34,6 @@ import {
 import { env } from '../config/env.js'
 import { recordAnthropicCost } from './costLedger.js'
 import { mergeMemoryFacts, type MemoryFactInput } from './assistant/skills.js'
-import { applyTemplateChange } from './assistant/appSkills.js'
 
 /** Same model as Mimo (ASSISTANT_MODEL in assistant/engine.ts). */
 export const ONBOARDING_ANALYSIS_MODEL = 'claude-sonnet-5-5'

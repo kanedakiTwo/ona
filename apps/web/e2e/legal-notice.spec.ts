@@ -56,14 +56,6 @@ test('/privacidad: Resend is a US company, no third-party advertising, the new n
   await expect(main).not.toContainText('envía desde la Unión Europea')
 })
 
-// PRO-179: without NEXT_PUBLIC_SUPPORT_EMAIL (as in CI) the contact is hola@mimoia.com, never «quien te invitó».
-test('/privacidad: the contact falls back to hola@mimoia.com', async ({ page }) => {
-  await page.goto('/privacidad')
-  const main = page.getByTestId('reading-column')
-  await expect(main.locator('a[href="mailto:hola@mimoia.com"]').first()).toBeVisible()
-  await expect(main).not.toContainText('te invitó a la beta')
-})
-
 // PRO-70: the intended purpose (D-038, constitution §6), word for word, in its own section.
 const INTENDED_PURPOSE =
   'Mimoia es un planificador de menús, recetas y lista de la compra para hogares, según sus gustos, preferencias y restricciones declaradas. Ofrece información general de alimentación. No está destinado a diagnosticar, prevenir, predecir, tratar ni controlar ninguna enfermedad, ni sustituye a un profesional sanitario.'
@@ -72,4 +64,12 @@ test('/terminos says what Mimoia is for, in the exact §6 words', async ({ page 
   await page.goto('/terminos')
   await expect(page.getByRole('heading', { level: 2, name: /Para qué sirve Mimoia/ })).toBeVisible({ timeout: 15_000 })
   await expect(page.getByTestId('terms-intended-purpose')).toHaveText(INTENDED_PURPOSE)
+})
+
+// PRO-179: without NEXT_PUBLIC_SUPPORT_EMAIL (as in CI) the contact is hola@mimoia.com, never «quien te invitó».
+test('/privacidad: the contact falls back to hola@mimoia.com', async ({ page }) => {
+  await page.goto('/privacidad')
+  const main = page.getByTestId('reading-column')
+  await expect(main.locator('a[href="mailto:hola@mimoia.com"]').first()).toBeVisible()
+  await expect(main).not.toContainText('te invitó a la beta')
 })

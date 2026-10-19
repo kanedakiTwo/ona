@@ -14,7 +14,7 @@ One box for what users want to tell the team about Mimoia itself: suggestions, t
 ## API
 
 - `POST /feedback` (auth) `{ text, page?, channel? = 'app' }` → 201. 400 for empty, > 2000 characters or an unknown channel (`app | chat | whatsapp`).
-- `GET /admin/feedback?days=30&limit=200` (admin JWT, or `x-metrics-token` for the agents) → `{ days, count, items[] }`, newest first. With the token, items carry no `username`/`email` (ona-hq: no personal data).
+- `GET /admin/feedback?days=30&limit=200` (admin JWT, or `x-metrics-token` for the agents) → `{ days, count, items[] }`, newest first. With the token, items carry no `username`/`email` and, since PRO-180 (2026-10-19), the text goes through the same anonymiser as the Mimo reviewer (`services/anonymise.ts`, `anonymiseFeedback` in `routes/feedback.ts`): names (every username and email handle in the batch, plus any name a text reveals after a cue such as «mi marido Antonio», masked in every item of the batch), emails, phones, addresses, DNI and IBAN → «[nombre]», «[email]», «[teléfono]»… (ona-hq: no personal data; the nightly snapshot can copy it to `data/`). The admin JWT still sees the text as written. Test: `feedback.test.ts`.
 
 ## Data
 

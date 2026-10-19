@@ -505,6 +505,13 @@
       "when": 1792452332559,
       "tag": "0074_menu_plans",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1792453419914,
+      "tag": "0075_menu_planner_runs",
+      "breakpoints": true
     }
   ]
 }

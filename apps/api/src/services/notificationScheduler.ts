@@ -46,6 +46,7 @@ import {
 import { deliverAlertOverWhatsApp, runProactiveTick } from './whatsapp/outbound.js'
 import { runDailyReviewIfDue } from './whatsapp/reviewer.js'
 import { runProfileRefinerIfDue } from './profile/refiner.js'
+import { runWeeklyPlannerIfDue } from './menuPlannerWeekly.js'
 import { recordPendingReferralRewardsIfDue } from './referralRewards.js'
 import { purgeOldUsageEventsIfDue } from './usageEvents.js'
 import { CHAT_RETENTION_DAYS, purgeOldChatMessagesIfDue } from './chatMessages.js'
@@ -524,6 +525,16 @@ async function tickOnce(): Promise<true> {
     if (r?.collected) console.log(`[refiner] ${r.collected} fichas refinadas`)
   } catch (err) {
     console.error('[notificationScheduler] profile refiner failed:', err)
+  }
+
+  // Menú inteligente (PRO-258): on Saturday night, send next week's batch
+  // (once); collect ended batches. In the shadow until PRO-257.
+  try {
+    const w = await runWeeklyPlannerIfDue(now)
+    if (w?.submit) console.log(`[menuPlannerWeekly] ${w.submit.weekStart}: ${w.submit.status}, ${w.submit.requested} hogares, omitidos ${JSON.stringify(w.submit.skipped)}`)
+    if (w?.collected) console.log(`[menuPlannerWeekly] ${w.collected} semanas pensadas`)
+  } catch (err) {
+    console.error('[notificationScheduler] weekly planner failed:', err)
   }
 
   // Product analytics retention: usage events older than 180 days (once a day).

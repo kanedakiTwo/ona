@@ -316,6 +316,61 @@ export function buildPlannerRequest(prompt: string): Anthropic.MessageCreatePara
 const scoreOf = (days: DayMenu[], recipes: PlannerRecipe[], ctx: Pick<ShadowContext, 'season' | 'lightDinners'>) =>
   scoreWeek(days, new Map(recipes.map((r) => [r.id, r as WeekRecipe])), { season: ctx.season, lightDinners: ctx.lightDinners })
 
+/** What the checker needs of a context (a live one, or one rebuilt after a batch, PRO-258). */
+export type CheckableContext = Pick<ShadowContext, 'householdId' | 'recipes' | 'candidates' | 'slots' | 'restrictions' | 'dislikes' | 'availableEquipment' | 'unavailableEquipment' | 'fixedRecipeIds' | 'season' | 'lightDinners'>
+
+/**
+ * Claude's answer → the row's plan: cost recorded (to the user and the
+ * household; `priceFactor` 0.5 for a batch), the answer checked and merged
+ * with the generator's week, both weeks scored.
+ */
+export function finishPlan(
+  message: Awaited<ReturnType<PlannerCall>>,
+  ctx: CheckableContext,
+  generatorDays: DayMenu[],
+  bannedRecipeIds: Set<string> | undefined,
+  opts: { userId: string; priceFactor?: number },
+): Partial<ShadowPlanRow> {
+  const factor = opts.priceFactor ?? 1
+  const units = message.usage ? anthropicUnits(message.usage) : null
+  if (units) {
+    recordCost({ feature: PLANNER_FEATURE, provider: 'anthropic', model: PLANNER_MODEL, units, userId: opts.userId, householdId: ctx.householdId, priceFactor: factor })
+  }
+  const list = units ? computeCostMicros('anthropic', PLANNER_MODEL, units) : null
+  const usage = {
+    model: PLANNER_MODEL,
+    inputTokens: units?.inputTokens ?? null,
+    outputTokens: units?.outputTokens ?? null,
+    costMicros: list === null ? null : Math.round(list * factor),
+    generatorScore: scoreOf(generatorDays, ctx.recipes, ctx),
+    candidates: ctx.candidates.length,
+    householdId: ctx.householdId,
+  }
+  const output = parsePlannerMessage(message)
+  if (!output) return { ...usage, status: 'fallback', reason: message.stop_reason === 'refusal' ? 'refusal' : 'invalid', days: generatorDays }
+  const check: PlanCheck = checkPlan(output, {
+    slots: ctx.slots,
+    candidates: ctx.candidates,
+    recipesById: new Map(ctx.recipes.map((r) => [r.id, r])),
+    restrictions: ctx.restrictions,
+    dislikes: ctx.dislikes,
+    bannedRecipeIds,
+    availableEquipment: ctx.availableEquipment,
+    unavailableEquipment: ctx.unavailableEquipment,
+    fixedRecipeIds: ctx.fixedRecipeIds,
+  })
+  const merged = mergeWithGenerator(generatorDays, check)
+  return {
+    ...usage,
+    status: merged.status,
+    reason: merged.status === 'fallback' ? 'all_slots_failed' : null,
+    days: merged.days,
+    slots: check.slots.map((s) => ({ ...s, source: s.problems.length || !s.recipeId ? 'generator' : 'planner' })),
+    check: { ok: check.ok, problems: check.problems, extra: check.extra },
+    plannerScore: scoreOf(merged.days, ctx.recipes, ctx),
+  }
+}
+
 /**
  * Plan one menu in the shadow and return the row to store. Never throws:
  * any failure becomes a `fallback` / `skipped` row.
@@ -338,36 +393,7 @@ export async function planMenuInShadow(input: ShadowPlanInput, deps: ShadowDeps,
     if (!ctx.candidates.length) return done({ reason: 'no_candidates' })
 
     const message = await withTimeout(deps.call(buildPlannerRequest(ctx.prompt)), deps.timeoutMs)
-    const units = message.usage ? anthropicUnits(message.usage) : null
-    if (message.usage) {
-      recordCost({ feature: PLANNER_FEATURE, provider: 'anthropic', model: PLANNER_MODEL, units: units!, userId: input.userId, householdId: ctx.householdId })
-    }
-    const costMicros = units ? computeCostMicros('anthropic', PLANNER_MODEL, units) : null
-    const usage = { model: PLANNER_MODEL, inputTokens: units?.inputTokens ?? null, outputTokens: units?.outputTokens ?? null, costMicros }
-    const output = parsePlannerMessage(message)
-    if (!output) return done({ ...usage, status: 'fallback', reason: message.stop_reason === 'refusal' ? 'refusal' : 'invalid', days: input.days })
-
-    const check: PlanCheck = checkPlan(output, {
-      slots: ctx.slots,
-      candidates: ctx.candidates,
-      recipesById: new Map(ctx.recipes.map((r) => [r.id, r])),
-      restrictions: ctx.restrictions,
-      dislikes: ctx.dislikes,
-      bannedRecipeIds: input.bannedRecipeIds,
-      availableEquipment: ctx.availableEquipment,
-      unavailableEquipment: ctx.unavailableEquipment,
-      fixedRecipeIds: ctx.fixedRecipeIds,
-    })
-    const merged = mergeWithGenerator(input.days, check)
-    return done({
-      ...usage,
-      status: merged.status,
-      reason: merged.status === 'fallback' ? 'all_slots_failed' : null,
-      days: merged.days,
-      slots: check.slots.map((s) => ({ ...s, source: s.problems.length || !s.recipeId ? 'generator' : 'planner' })),
-      check: { ok: check.ok, problems: check.problems, extra: check.extra },
-      plannerScore: scoreOf(merged.days, ctx.recipes, ctx),
-    })
+    return done(finishPlan(message, ctx, input.days, input.bannedRecipeIds, { userId: input.userId }))
   } catch (err) {
     const msg = (err as Error)?.message ?? String(err)
     console.warn('[menuPlanner] shadow plan failed (the menu is unaffected):', msg)

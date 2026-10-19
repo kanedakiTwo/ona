@@ -43,6 +43,14 @@ export interface EmailMessage {
   text: string
   /** Extra headers, e.g. `List-Unsubscribe`. */
   headers?: Record<string, string>
+  /**
+   * Display name for this message only, on `EMAIL_FROM`'s address (PRO-190:
+   * «Miguel de Mimoia <hola@mimoia.com>» on the waitlist invitation). Unset =
+   * `EMAIL_FROM` as it is.
+   */
+  fromName?: string
+  /** PRO-190: `reply_to` = `EMAIL_FROM`'s address, so a reply reaches the same inbox. */
+  replyToSender?: boolean
 }
 
 export type EmailResult =
@@ -88,9 +96,17 @@ export function listUnsubscribeHeaders(url: string): Record<string, string> {
   return { 'List-Unsubscribe': `<${url}>` }
 }
 
+/** `Mimoia <hola@mimoia.com>` → `hola@mimoia.com`; a bare address stays as it is. */
+export function senderAddress(from: string): string {
+  const m = from.match(/<([^>]+)>/)
+  return (m ? m[1] : from).trim()
+}
+
 function toResendBody(msg: EmailMessage, from: string): Record<string, unknown> {
+  const address = senderAddress(from)
   return {
-    from,
+    from: msg.fromName ? `${msg.fromName} <${address}>` : from,
+    ...(msg.replyToSender ? { reply_to: address } : {}),
     to: [msg.to],
     subject: msg.subject,
     html: msg.html,

@@ -5,11 +5,11 @@
  * Run: pnpm --filter @ona/api test src/tests/basketExtension.test.ts
  */
 import { describe, it, expect } from 'vitest'
-import { basketSendResultSchema, type BasketSendResult, type ShopOrderLine, type StoredBasketResult } from '@ona/shared'
+import { basketSendResultSchema, type BasketSendResult, type ShopOrderLine, type ShoppingItem, type StoredBasketResult } from '@ona/shared'
 import { aggregateBasketGaps, decideBasketResult, isBasketExtensionAllowed } from '../services/basketExtension.js'
-import { saveBasketResult } from '../services/shopOrders/store.js'
+import { closeOrder, saveBasketResult, undoBasketSend } from '../services/shopOrders/store.js'
 import { buildLine } from '../services/shopOrders/lines.js'
-import { shopOrders, users } from '../db/schema.js'
+import { shopOrders, shoppingLists, users } from '../db/schema.js'
 
 export const okResult = (over: Partial<BasketSendResult> = {}): BasketSendResult => ({
   envioId: 'e1',
@@ -197,74 +197,186 @@ describe('aggregateBasketGaps', () => {
   })
 })
 
-describe('saveBasketResult', () => {
-  type OrderRow = typeof shopOrders.$inferSelect
-  /** Base de datos falsa: el hogar del usuario, el pedido y lo que se escribe en él. */
-  function fakeDb(row: OrderRow) {
-    const writes: Array<Partial<OrderRow>> = []
-    const db = {
-      select: () => ({ from: (table: unknown) => ({ where: () => ({ limit: async () => (table === users ? [{ primaryHouseholdId: row.householdId }] : [row]) }) }) }),
-      update: () => ({
-        set: (values: Partial<OrderRow>) => {
-          writes.push(values)
-          return { where: () => ({ returning: async () => [{ ...row, ...values }] }) }
-        },
-      }),
-    }
-    return { db: db as any, writes }
-  }
-  const input = (key: string, name: string, over: Partial<Parameters<typeof buildLine>[0]> = {}) =>
-    buildLine({ key, sourceItemIds: [`id-${key}`], ingredientId: null, name, quantity: 400, unit: 'g', quantitySource: 'recipe', notes: [], note: null, choice: null, included: true, ...over }, 'supermercado', {}, {})
-  const lines = [
-    input('l1', 'Jamón', { quantity: 100, choice: 'serrano' }),
-    input('l2', 'alubias', {
-      quantity: 800,
-      members: [
-        { name: 'alubias blancas', quantity: 400, unit: 'g', sourceItemIds: ['a'] },
-        { name: 'alubias rojas', quantity: 400, unit: 'g', sourceItemIds: ['b'] },
-      ],
-    }),
-    input('l3', 'sal', { included: false }),
-  ]
-  const row: OrderRow = {
-    id: 'o1',
-    householdId: 'hh1',
-    userId: 'u1',
-    shopId: 's1',
-    shopSnapshot: { name: 'Súper', kind: 'supermercado', channel: 'web', whatsapp: null, email: null, webUrl: 'https://super.example/', phone: null, deliveryMinEur: null, deliveryFeeEur: null },
-    status: 'draft',
-    token: 'tok',
-    lines,
-    estimateEur: null,
-    capEur: null,
-    messageText: '',
-    fulfilment: 'recoger',
-    address: null,
-    shopReplyText: null,
-    quoteSummary: null,
-    confirmationText: null,
-    finalTotalEur: null,
-    extensionResult: null,
-    createdAt: NOW,
-    updatedAt: NOW,
-    sentAt: null,
-    quotedAt: null,
-    approvedAt: null,
-    closedAt: null,
-  }
+// ─── El pedido en la base de datos (falsa: sin conexión) ─────────────────
 
+type OrderRow = typeof shopOrders.$inferSelect
+type ListRow = { id: string; items: ShoppingItem[] }
+/**
+ * Base de datos falsa para las funciones del store: el hogar del usuario, el
+ * pedido, la última lista de la compra y lo que se escribe en cada tabla.
+ */
+function fakeDb(row: OrderRow, list: ListRow | null = null) {
+  const writes: Array<{ table: unknown; values: Record<string, unknown> }> = []
+  const rowsOf = (table: unknown) => (table === users ? [{ primaryHouseholdId: row.householdId }] : table === shoppingLists ? (list ? [list] : []) : [row])
+  const db = {
+    select: () => ({
+      from: (table: unknown) => {
+        const q = { where: () => q, orderBy: () => q, limit: async () => rowsOf(table) }
+        return q
+      },
+    }),
+    update: (table: unknown) => ({
+      set: (values: Record<string, unknown>) => {
+        writes.push({ table, values })
+        return { where: () => ({ returning: async () => [{ ...row, ...values }] }) }
+      },
+    }),
+  }
+  return {
+    db: db as any,
+    /** Lo escrito en el pedido. */
+    orderWrites: () => writes.filter((w) => w.table === shopOrders).map((w) => w.values as Partial<OrderRow>),
+    /** Los artículos tachados en la lista, o null si no se escribió. */
+    checked: () => {
+      const w = writes.find((x) => x.table === shoppingLists)
+      return w ? (w.values.items as ShoppingItem[]).filter((i) => i.checked).map((i) => i.id).sort() : null
+    },
+  }
+}
+const input = (key: string, name: string, over: Partial<Parameters<typeof buildLine>[0]> = {}) =>
+  buildLine({ key, sourceItemIds: [`id-${key}`], ingredientId: null, name, quantity: 400, unit: 'g', quantitySource: 'recipe', notes: [], note: null, choice: null, included: true, ...over }, 'supermercado', {}, {})
+const lines = [
+  input('l1', 'Jamón', { quantity: 100, choice: 'serrano' }),
+  input('l2', 'alubias', {
+    sourceItemIds: ['a', 'b'],
+    quantity: 800,
+    members: [
+      { name: 'alubias blancas', quantity: 400, unit: 'g', sourceItemIds: ['a'] },
+      { name: 'alubias rojas', quantity: 400, unit: 'g', sourceItemIds: ['b'] },
+    ],
+  }),
+  input('l3', 'sal', { included: false }),
+]
+const row: OrderRow = {
+  id: 'o1',
+  householdId: 'hh1',
+  userId: 'u1',
+  shopId: 's1',
+  shopSnapshot: { name: 'Súper', kind: 'supermercado', channel: 'web', whatsapp: null, email: null, webUrl: 'https://super.example/', phone: null, deliveryMinEur: null, deliveryFeeEur: null },
+  status: 'draft',
+  token: 'tok',
+  lines,
+  estimateEur: null,
+  capEur: null,
+  messageText: '',
+  fulfilment: 'recoger',
+  address: null,
+  shopReplyText: null,
+  quoteSummary: null,
+  confirmationText: null,
+  finalTotalEur: null,
+  extensionResult: null,
+  createdAt: NOW,
+  updatedAt: NOW,
+  sentAt: null,
+  quotedAt: null,
+  approvedAt: null,
+  closedAt: null,
+}
+
+describe('saveBasketResult', () => {
   it('guarda con el resultado la foto de la cesta del pedido: clave, nombre y elección de cada línea', async () => {
-    const { db, writes } = fakeDb(row)
+    const { db, orderWrites } = fakeDb(row)
     const r = await saveBasketResult('u1', 'o1', okResult(), db)
     expect(r).toMatchObject({ deshecho: false, guardado: true })
     expect(r.order.status).toBe('sent')
-    expect(writes).toHaveLength(1)
+    expect(orderWrites()).toHaveLength(1)
     const cesta = [
       { key: 'l1', name: 'Jamón', choice: 'serrano' },
       { key: 'l2.1', name: 'alubias blancas', choice: null },
       { key: 'l2.2', name: 'alubias rojas', choice: null },
     ]
-    expect((writes[0].extensionResult as StoredBasketResult).cesta).toEqual(cesta)
+    expect((orderWrites()[0].extensionResult as StoredBasketResult).cesta).toEqual(cesta)
     expect(r.order.extensionResult?.cesta).toEqual(cesta)
+  })
+})
+
+describe('closeOrder con la extensión', () => {
+  /** El pedido enviado: jamón, alubias blancas y rojas (fusionadas), sal (excluida), arroz, leche y detergente. */
+  const sentRow = (extensionResult: StoredBasketResult | null): OrderRow => ({
+    ...row,
+    status: 'sent',
+    sentAt: NOW,
+    lines: [...lines, input('l4', 'arroz'), input('l5', 'leche'), input('l6', 'detergente')],
+    extensionResult,
+  })
+  const list = (): ListRow => ({
+    id: 'list1',
+    items: ['id-l1', 'a', 'b', 'id-l3', 'id-l4', 'id-l5', 'id-l6', 'otro'].map((id) => ({ id, name: id, checked: false }) as unknown as ShoppingItem),
+  })
+  const vivo = stored({
+    envioId: 'e1',
+    anadidas: 3,
+    lineas: [
+      { key: 'l1', estado: 'tabla', productoId: '1', unidades: 1 },
+      { key: 'l2.1', estado: 'tabla', productoId: '2', unidades: 1 },
+      { key: 'l2.2', estado: 'fallida', motivo: 'no_encontrado' },
+      { key: 'l4', estado: 'busqueda', productoId: '4', unidades: 1 },
+      { key: 'l5', estado: 'no_verificada', productoId: '5' },
+      { key: 'l6', estado: 'fallida', motivo: 'no_encontrado' },
+    ],
+  })
+  const close = async (extensionResult: StoredBasketResult | null) => {
+    const f = fakeDb(sentRow(extensionResult), list())
+    const order = await closeOrder('u1', 'o1', {}, f.db)
+    expect(order.status).toBe('closed')
+    return f.checked()
+  }
+
+  it('con un envío vivo tacha lo que llegó como tabla o búsqueda', async () => {
+    expect(await close(vivo)).toEqual(expect.arrayContaining(['id-l1', 'id-l4']))
+  })
+  it('con un envío vivo deja pendiente lo fallido y lo no verificado', async () => {
+    const checked = await close(vivo)
+    expect(checked).not.toContain('id-l6')
+    expect(checked).not.toContain('id-l5')
+  })
+  it('en una línea fusionada en la que entró l2.1 y falló l2.2, tacha solo los artículos de l2.1', async () => {
+    const checked = await close(vivo)
+    expect(checked).toContain('a')
+    expect(checked).not.toContain('b')
+    expect(checked).toEqual(['a', 'id-l1', 'id-l4'])
+  })
+  it('con un envío deshecho, uno sin nada en el carro o sin resultado, tacha como antes: todas las líneas incluidas', async () => {
+    const antes = ['a', 'b', 'id-l1', 'id-l4', 'id-l5', 'id-l6']
+    expect(await close(null)).toEqual(antes)
+    expect(await close({ ...vivo, deshechoAt: '2026-10-19T10:30:00.000Z', deshechos: ['e1'] })).toEqual(antes)
+    expect(await close(stored({ envioId: '', ok: false, error: 'red', lineas: [], anadidas: 0 }))).toEqual(antes)
+  })
+})
+
+describe('undoBasketSend', () => {
+  const vivo = stored({ envioId: 'e2', deshechos: ['e1'] })
+  const sentRow: OrderRow = { ...row, status: 'sent', sentAt: NOW, extensionResult: vivo }
+
+  it('marca deshechoAt y añade el envioId a deshechos, sin tocar el resto del resultado', async () => {
+    const { db, orderWrites } = fakeDb(sentRow)
+    const order = await undoBasketSend('u1', 'o1', db)
+    const r = orderWrites()[0].extensionResult as StoredBasketResult
+    expect(r.deshechoAt).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+    expect(r.deshechos).toEqual(['e1', 'e2'])
+    expect(r).toEqual({ ...vivo, deshechoAt: r.deshechoAt, deshechos: ['e1', 'e2'] })
+    expect(order.extensionResult?.deshechos).toEqual(['e1', 'e2'])
+  })
+  it('vuelve a borrador sin sentAt y no toca nada más del pedido', async () => {
+    const { db, orderWrites } = fakeDb(sentRow)
+    const order = await undoBasketSend('u1', 'o1', db)
+    expect(orderWrites()).toHaveLength(1)
+    expect(Object.keys(orderWrites()[0]).sort()).toEqual(['extensionResult', 'sentAt', 'status', 'updatedAt'])
+    expect(orderWrites()[0]).toMatchObject({ status: 'draft', sentAt: null })
+    expect(order).toMatchObject({ status: 'draft', sentAt: null })
+    expect(order.lines).toEqual(lines)
+  })
+  it('un segundo deshacer no rompe nada: 409 y no se escribe otra vez', async () => {
+    const first = fakeDb(sentRow)
+    await undoBasketSend('u1', 'o1', first.db)
+    const after = { ...sentRow, ...first.orderWrites()[0] } as OrderRow
+    const second = fakeDb(after)
+    await expect(undoBasketSend('u1', 'o1', second.db)).rejects.toMatchObject({ name: 'ShopOrderError', status: 409 })
+    expect(second.orderWrites()).toHaveLength(0)
+    // Aunque el pedido haya vuelto a «Enviado» a mano, un envío ya deshecho no se deshace dos veces.
+    const resent = fakeDb({ ...after, status: 'sent', sentAt: NOW })
+    await expect(undoBasketSend('u1', 'o1', resent.db)).rejects.toMatchObject({ status: 409, code: 'NO_EXTENSION_SEND' })
+    expect(resent.orderWrites()).toHaveLength(0)
   })
 })

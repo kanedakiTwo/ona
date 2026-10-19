@@ -118,6 +118,7 @@ When the user changes the diner count from `recipe.servings` to `target`:
 - Each ingredient `quantity` is multiplied by `target / recipe.servings`
 - Counted units (`u`) round to the nearest whole; if the result is non-integer, the UI shows a small note (e.g. "1.5 huevos → redondea a 2")
 - `pizca` and `al_gusto` never scale
+- **The note's countable amount scales too** (PRO-184, Laura 2026-10-16: «Para 1 ración · Ajo · 6 dientes, laminados · 6 g»): when an ingredient's note starts with a number and a unit you count (diente, hoja, rama, ramita, hebra, rodaja, loncha, trozo, tira, cabeza, vaina, guindilla, cayena, pieza, unidad, bola, gajo, tallo, manojo — singular or plural), that number is multiplied by the same factor and rounded to halves, never below ½, with singular/plural fixed («6 dientes, laminados» for 4 → «1½ dientes, laminados» for 1; «2 hojas» → «½ hoja»). Any other note («laminados», «200 g de…», «2 latas») is shown as written. Done in `scaleRecipe` (`?servings=N`) with `scaleIngredientNote` (`@ona/shared`), so the detail and cooking mode show it (`ingredientNoteScaling.test.ts`, `e2e/recipe-note-servings.spec.ts`). Mimo's «la herramienta de raciones me devolvió otra receta» is PRO-183
 - Mass and volume units round to a culinary-friendly precision (1 g, 5 g, 25 g, 50 g bands depending on magnitude)
 - Step text references via `ingredientRefs` are recomputed at the same scale
 
@@ -191,6 +192,7 @@ Population:
 ## Source
 
 - [apps/api/src/routes/recipes.ts](../apps/api/src/routes/recipes.ts)
+- [packages/shared/src/utils/ingredientNote.ts](../packages/shared/src/utils/ingredientNote.ts) — scales the countable amount a note starts with (PRO-184)
 - [apps/api/src/middleware/recipeId.ts](../apps/api/src/middleware/recipeId.ts) — `requireRecipeId`: a malformed recipe id is a 404 before the database (PRO-181)
 - [apps/api/src/services/recipeVisibility.ts](../apps/api/src/services/recipeVisibility.ts) — who can see which recipe (`visibleAuthorIds`, `visibleRecipeWhere`, `canViewRecipe`); used by the generator, menu routes, pantry matcher, advisor and assistant skills
 - [apps/api/src/services/withWhatIHave.ts](../apps/api/src/services/withWhatIHave.ts) — «Con lo que tengo» search (`rankWithWhatIHave`, basics, `loadUserRestrictions` shared with the assistant); picker in `components/recipes/WithWhatIHavePicker.tsx`; tests `withWhatIHave.test.ts` + `e2e/recipes-with-what-i-have.spec.ts`

@@ -36,6 +36,7 @@ The previous seed contained recipes that referenced ingredients in their steps t
 - Computed `kcal/servings` falls outside [150, 1500] → suspect quantity error
 - Step lacks `durationMin` while `step.text` contains a time hint ("30 minutos", "media hora") → suggest extracting it
 - Recipe has no `equipment` set → curator may want to add at least one tool
+- `NOTE_STARTS_WITH_NUMBER` (PRO-184) — an ingredient's note starts with a number («6 dientes, laminados», «200 g de…») → put that amount in quantity + unit (e.g. `6 u`) and keep only the how in the note («laminados»). The ficha still scales a countable amount at the start of a note (see [Recipes → Quantity Scaling](./recipes.md)), but new recipes (the catalogue import of PRO-154) shouldn't rely on it
 - `BUY_*` — the Shoppability checks below
 
 ### Shoppability (`BUY_*` warnings, 2026-10-08)

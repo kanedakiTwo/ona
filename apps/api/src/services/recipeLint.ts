@@ -25,6 +25,7 @@ import {
 import { INGREDIENT_RANGES, globalCeiling, type QuantityRange } from './recipeLint.ranges.js'
 import { shoppabilityIssues } from './recipeShoppability.js'
 import { cookingMediumFactor } from './nutrition/cookingMedium.js'
+import { noteStartsWithNumber } from '@ona/shared'
 
 // ─── Public types ────────────────────────────────────────────────
 
@@ -616,6 +617,17 @@ export function lintRecipe(recipe: RecipeInput, opts: LintOptions): LintResult {
         path: `steps[${i}].durationMin`,
       })
     }
+  })
+
+  // NOTE_STARTS_WITH_NUMBER (PRO-184): «6 dientes, laminados» belongs in
+  // quantity + unit; the ficha scales only a countable amount of the note.
+  ingredients.forEach((ing, i) => {
+    if (!noteStartsWithNumber(ing.note)) return
+    warnings.push({
+      code: 'NOTE_STARTS_WITH_NUMBER',
+      message: `La nota del ingrediente ${i + 1} empieza por un número («${String(ing.note).trim()}»): pon esa cantidad en cantidad y unidad (p. ej. 6 u) y deja en la nota solo cómo va («laminados»).`,
+      path: `ingredients[${i}].note`,
+    })
   })
 
   // BUY_* — rows the shopping list / shop orders can't use (recipeShoppability.ts)

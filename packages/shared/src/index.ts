@@ -447,3 +447,4 @@ export {
   HOUSEHOLD_LEVEL_MEMORY_KEYS,
   memoryKeyIsHouseholdLevel,
 } from './types/householdProfile.js'
+export { scaleIngredientNote, noteStartsWithCount, noteStartsWithNumber, formatHalves } from './utils/ingredientNote.js'

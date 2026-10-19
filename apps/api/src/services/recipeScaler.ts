@@ -17,6 +17,7 @@
  */
 
 import type { Recipe, RecipeIngredient, Unit } from '@ona/shared'
+import { scaleIngredientNote } from '@ona/shared'
 
 // ─── Public types ────────────────────────────────────────────────
 
@@ -192,6 +193,8 @@ export function scaleRecipe(recipe: Recipe, targetServings: number): ScaledRecip
 
   const factor = targetServings / recipe.servings
   const scaled: ScaledIngredient[] = ingredients.map(ing => {
+    // PRO-184: «6 dientes, laminados» in the note scales too («1½ dientes»).
+    if (ing.note) ing = { ...ing, note: scaleIngredientNote(ing.note, factor) ?? ing.note }
     if (NON_SCALING.has(ing.unit)) {
       // pizca / al_gusto: preserve the original quantity verbatim.
       return {

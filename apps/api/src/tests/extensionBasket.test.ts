@@ -93,7 +93,7 @@ describe('orderMembers', () => {
       { name: 'jamón ibérico', quantity: 50, unit: 'g', sourceItemIds: ['i'] },
     ])
   })
-  it('el grupo se llama como su nombre más corto (a igual longitud, el primero por localeCompare), venga en el orden que venga', () => {
+  it('el grupo se llama como su nombre base más corto (a igual longitud, el primero por localeCompare), venga en el orden que venga', () => {
     const serrano = { name: 'Jamón serrano', quantity: 200, unit: 'g' }
     expect(orderMembers([m('f', 'jamón serrano fileteado', 100), m('s', 'Jamón serrano', 100), m('i', 'jamón ibérico', 50)], 'jamon')?.[0]).toEqual({ ...serrano, sourceItemIds: ['f', 's'] })
     expect(orderMembers([m('s', 'Jamón serrano', 100), m('f', 'jamón serrano fileteado', 100), m('i', 'jamón ibérico', 50)], 'jamon')?.[0]).toEqual({ ...serrano, sourceItemIds: ['s', 'f'] })
@@ -106,6 +106,15 @@ describe('orderMembers', () => {
       unit: 'g',
       sourceItemIds: ['t', 'v'],
     })
+    // Se compara el nombre base, sin « · varias presentaciones» (como los nombres de catálogo de la lista); el grupo conserva el completo.
+    const varias = 'Jamón serrano · varias presentaciones'
+    expect(orderMembers([m('f', 'jamón serrano fileteado', 100), m('v', varias, 100), m('i', 'jamón ibérico', 50)], 'jamon')?.[0].name).toBe(varias)
+    expect(orderMembers([m('v', varias, 100), m('f', 'jamón serrano fileteado', 100), m('i', 'jamón ibérico', 50)], 'jamon')?.[0].name).toBe(varias)
+    // Bases distintas de igual longitud: decide la base, no el nombre completo.
+    const minuscula = 'jamón serrano · varias presentaciones'
+    expect(orderMembers([m('S', 'Jamón serrano', 100), m('v', minuscula, 100), m('i', 'jamón ibérico', 50)], 'jamon')?.[0].name).toBe(minuscula)
+    // Con la misma base, el nombre completo que va primero por localeCompare.
+    expect(orderMembers([m('v', 'alubias rojas · varias presentaciones', 400), m('r', 'alubias rojas', 400), m('b', 'alubias blancas', 300)], 'alubias')?.[0].name).toBe('alubias rojas')
   })
   it('lo tecleado sin cantidad solo cuenta si su grupo no tiene ninguna cantidad real, y siempre aporta sus artículos', () => {
     const blancas = { name: 'alubias blancas', quantity: 300, unit: 'g', sourceItemIds: ['b'] }

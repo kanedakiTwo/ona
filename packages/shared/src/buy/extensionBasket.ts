@@ -40,9 +40,16 @@ export interface OrderMember {
   sourceItemIds: string[]
 }
 
-/** El nombre que representa al grupo, como en la lista: el más corto y, a igual longitud, el primero por `localeCompare`. */
+/**
+ * El nombre que representa al grupo, como en la lista (que compara nombres de
+ * catálogo, sin « · varias presentaciones»): el de nombre base más corto; a
+ * igual longitud, el de base primera por `localeCompare`; con la misma base,
+ * el nombre completo primero por `localeCompare`.
+ */
 function isPreferredName(candidate: string, current: string): boolean {
-  return (candidate.length - current.length || candidate.localeCompare(current)) < 0
+  const a = basketBaseName(candidate)
+  const b = basketBaseName(current)
+  return (a.length - b.length || a.localeCompare(b) || candidate.localeCompare(current)) < 0
 }
 
 /**

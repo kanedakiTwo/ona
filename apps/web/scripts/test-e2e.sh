@@ -48,6 +48,9 @@ export JWT_SECRET="e2e-only-do-not-use-anywhere-else"
 # Ignored by a deployed API (NODE_ENV=production or Railway).
 export RATE_LIMIT_DISABLED="true"
 export ADMIN_EMAILS="e2e-admin@test.local"  # globalSetup creates the e2e campaign (PRO-27)
+# «Enviar a <cadena>» (compra-extension.spec.ts): API y web (la web, con una extensión simulada).
+export BASKET_EXTENSION_EMAILS="@test.local"
+export NEXT_PUBLIC_BASKET_EXTENSION_ID="e2e-basket-extension"
 # Simulated email (PRO-97): Playwright's globalSetup starts a fake Resend here.
 export RESEND_API_KEY="e2e-fake-key"
 export RESEND_BASE_URL="http://127.0.0.1:8799"

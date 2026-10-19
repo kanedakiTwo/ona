@@ -254,6 +254,11 @@ jobs:
       RESEND_API_KEY: e2e-fake-key
       RESEND_BASE_URL: http://127.0.0.1:8799
       E2E_MAIL_URL: http://127.0.0.1:8799
+      # «Enviar la cesta a la extensión del navegador» (compra-extension.spec.ts):
+      # los usuarios de e2e son @test.local y la web habla con una extensión
+      # simulada con este id. Solo aquí: nunca en el despliegue.
+      BASKET_EXTENSION_EMAILS: '@test.local'
+      NEXT_PUBLIC_BASKET_EXTENSION_ID: e2e-basket-extension
       API_PORT: 8765
       API_URL: http://localhost:8765
       WEB_URL: http://localhost:3001

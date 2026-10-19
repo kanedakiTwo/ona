@@ -3,7 +3,7 @@
  * quién lo ve, qué se hace con cada resultado que llega y el agregado de lo
  * que la extensión no encontró en su tabla (para hacerla crecer).
  */
-import { and, eq, gte, isNotNull } from 'drizzle-orm'
+import { and, eq, isNotNull, sql } from 'drizzle-orm'
 import { basketMayBeInCart, buildExtensionBasket, type BasketSendResult, type ShopOrderLine, type StoredBasketResult } from '@ona/shared'
 import { db as defaultDb } from '../db/connection.js'
 import { shopOrders, users } from '../db/schema.js'
@@ -72,11 +72,20 @@ export function aggregateBasketGaps(rows: Array<{ lines: ShopOrderLine[]; result
   return [...out.values()].sort((a, b) => b.veces - a.veces || a.name.localeCompare(b.name))
 }
 
+/**
+ * Los resultados recibidos en los últimos `days` días. Manda `recibidoAt` del
+ * resultado guardado, no `updated_at`: cualquier otro cambio en el pedido no
+ * lo vuelve a meter en la ventana.
+ */
 export async function loadBasketGaps(days: number, db: Db = defaultDb): Promise<BasketGap[]> {
-  const since = new Date(Date.now() - days * 24 * 3600 * 1000)
   const rows = await db
     .select({ lines: shopOrders.lines, result: shopOrders.extensionResult })
     .from(shopOrders)
-    .where(and(isNotNull(shopOrders.extensionResult), gte(shopOrders.updatedAt, since)))
+    .where(
+      and(
+        isNotNull(shopOrders.extensionResult),
+        sql`(${shopOrders.extensionResult}->>'recibidoAt')::timestamptz >= now() - make_interval(days => ${days})`,
+      ),
+    )
   return aggregateBasketGaps(rows.map((r) => ({ lines: r.lines as ShopOrderLine[], result: r.result as StoredBasketResult })))
 }

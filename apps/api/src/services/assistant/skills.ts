@@ -34,6 +34,7 @@ import { visibleAuthorIds, visibleRecipeWhere } from '../recipeVisibility.js'
 import { loadMatchableRecipes } from '../matchableRecipes.js'
 import { loadPreviousWeek } from '../menuWeek.js'
 import { loadUserRestrictions, findRecipesWithWhatIHave } from '../withWhatIHave.js'
+import { isBrandDependentGlutenCharcuterie, isCoeliacHousehold, recipeDietNotices } from '../glutenFreeCharcuterie.js'
 import { compileRestrictions, nameHasTerm, normalizeText, violatesRestrictions, type RestrictableRecipe } from '../dietaryRestrictions.js'
 import { addPantryForUser, deletePantryForUser, listPantryForUser, NoHouseholdError } from '../pantryStore.js'
 import { enqueuePrepAlertsForMenu } from '../notificationScheduler.js'
@@ -396,7 +397,12 @@ const getRecipeDetails: SkillDefinition = {
     const steps: string[] = (stepRows ?? []).map((s: any) => String(s.text ?? '').trim()).filter(Boolean)
 
     const ingredientList = riRows.map((r: any) => `${r.ingredientName}: ${r.quantity}${r.unit ?? 'g'}`)
-    const summary = recipeDetailsSummary({
+    // PRO-196: same notice as the web ficha for a coeliac household.
+    const ingNames = riRows.map((r: any) => String(r.ingredientName))
+    const dietNotices = ingNames.some(isBrandDependentGlutenCharcuterie)
+      ? recipeDietNotices(ingNames, isCoeliacHousehold((await restrictionsFor(ctx)).restrictions))
+      : []
+    const details = recipeDetailsSummary({
       name: recipe.name,
       prepTime: recipe.prepTime,
       servings: recipe.servings,
@@ -405,6 +411,7 @@ const getRecipeDetails: SkillDefinition = {
       tips: recipe.tips,
       sourceUrl: recipe.sourceUrl,
     })
+    const summary = dietNotices.length > 0 ? `${details}\nAviso para este hogar: ${dietNotices.join('. ')}.` : details
 
     return {
       data: {
@@ -416,6 +423,7 @@ const getRecipeDetails: SkillDefinition = {
         steps,
         sourceUrl: recipe.sourceUrl ?? null,
         ingredients: riRows,
+        dietNotices,
       },
       summary,
       uiHint: 'recipe',

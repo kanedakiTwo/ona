@@ -89,6 +89,7 @@ import { findPantryMatches } from '../services/pantryMatcher.js'
 import { chosenFromIds, findRecipesWithWhatIHave, loadUserRestrictions, MAX_CHOSEN_INGREDIENTS } from '../services/withWhatIHave.js'
 import { loadMatchableRecipes } from '../services/matchableRecipes.js'
 import { recipeIdsBreakingRestrictions } from '../services/dietaryRestrictions.js'
+import { isCoeliacHousehold, recipeDietNotices } from '../services/glutenFreeCharcuterie.js'
 import { effectiveAllergens } from '../services/nutrition/allergens.js'
 import { canViewRecipe, isHiddenDraft, PUBLISHED } from '../services/recipeVisibility.js'
 import { requestCatalogPhotos } from '../services/catalogImageOnDemand.js'
@@ -602,6 +603,15 @@ router.get('/recipes/:id', requireRecipeId(), optionalAuthMiddleware, async (req
       recipe.shoppingIssues = recipeShoppingIssues(
         ings.map((i) => ({ id: i.id, name: i.ingredientName, quantity: i.quantity, unit: i.unit as Unit, note: i.note, optional: i.optional })),
       )
+    }
+
+    // PRO-196: a coeliac household is told to pick gluten-free cured meats.
+    if (req.userId) {
+      const notices = recipeDietNotices(
+        ings.map((i) => i.ingredientName),
+        isCoeliacHousehold((await loadUserRestrictions(req.userId, db)).restrictions),
+      )
+      if (notices.length > 0) recipe.dietNotices = notices
     }
 
     const servingsParam = req.query.servings

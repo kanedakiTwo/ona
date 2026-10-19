@@ -484,6 +484,13 @@
       "when": 1792364911340,
       "tag": "0071_contains_tags",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1792364912340,
+      "tag": "0072_embutidos_sin_gluten",
+      "breakpoints": true
     }
   ]
 }

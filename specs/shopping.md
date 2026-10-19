@@ -7,6 +7,7 @@ Weekly shopping list and pantry stock management. Aggregates ingredients across 
 - Users can see a shopping list auto-generated from the current week's menu
 - The list aggregates ingredients across all recipes in the week, summing quantities **per product** with proper unit handling: lines that are the same product join into one even when the catalogue has them under different names («Huevo 4 u» + «Huevos 6 u» + «Yema de huevo» → «Huevos 10 u»; the two olive oils; «Jamón cocido» + «Jamón de york»; «Limón» / «Limon»; «Salmón» + «Lomo de salmón sin piel») — see Aggregation (PRO-177)
 - Tap water («agua», «agua del grifo», «agua caliente»…) and salt never show up as something to buy; «agua de coco» or «agua con gas» do
+- **Coeliac household** (PRO-196, Miguel 2026-10-18): when the user's restrictions (profile + memory) include gluten, a menu row that is a cured meat whose gluten depends on the brand (chorizo, chistorra, morcilla, butifarra, salchicha, salchichón, fuet, longaniza, sobrasada, mortadela, salami, foie, paté, jamón de york/cocido, fiambre, embutido; not the cocido leftovers nor a stock) is asked for as «<name> sin gluten» («Chorizo oreado sin gluten»). Done in `GET /shopping-list` (and the legacy `/:menuId`) after the aggregation, so Mimo (`get_shopping_list`) and shop orders see the same name; staples and manual items keep the user's words, and the bought/«en casa» overlay is unaffected (`services/glutenFreeCharcuterie.ts`, `glutenFreeCharcuterie.test.ts`). The catalogue no longer tags those cured meats `gluten` (migration `0072_embutidos_sin_gluten.sql`), so a coeliac household gets lentejas con chorizo, fabada or cocido again; the «Sobras del cocido» keep the tag
 - Users can check items off as they buy them (visual strikethrough, persisted)
 - Users can mark items as already in their pantry (stock manager)
 - Items in stock are excluded from the active shopping list
@@ -138,6 +139,7 @@ At `lg+` the `/shopping` page uses the "D" 1180 px container: header with the "P
 
 - [apps/web/src/lib/shoppingRange.ts](../apps/web/src/lib/shoppingRange.ts) — «Hoy» / «Mañana» / «Esta semana» shortcuts and `shiftIso`
 - [apps/api/src/routes/shopping.ts](../apps/api/src/routes/shopping.ts)
+- [apps/api/src/services/glutenFreeCharcuterie.ts](../apps/api/src/services/glutenFreeCharcuterie.ts) — «<embutido> sin gluten» on a coeliac household's list, «Elige embutido sin gluten» on the recipe (PRO-196)
 - [apps/api/src/services/shoppingList.ts](../apps/api/src/services/shoppingList.ts) — aggregation + unit conversion + aisle grouping
 - [packages/shared/src/buy/listGroup.ts](../packages/shared/src/buy/listGroup.ts) — same product, never bought, catalogue aisle fix (PRO-177; tests `shoppingListMerge.test.ts`)
 - [apps/api/src/services/catalogIngredientAisles.ts](../apps/api/src/services/catalogIngredientAisles.ts) — boot data fix: eggs and tofu to `lacteos`

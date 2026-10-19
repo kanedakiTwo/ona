@@ -259,6 +259,21 @@ describe('get_recipe_details', () => {
     expect(r.summary).toContain('4 raciones')
   })
 
+  // PRO-196: same notice as the web ficha, only for a coeliac household.
+  it('tells a coeliac household to pick gluten-free cured meats', async () => {
+    const recipe = { id: 'r-3', name: 'Lentejas con chorizo', prepTime: 40, servings: 4 }
+    const ings = [
+      { ingredientName: 'lentejas', quantity: 300, unit: 'g' },
+      { ingredientName: 'chorizo oreado', quantity: 150, unit: 'g' },
+    ]
+    const coeliac = await skill.handler({ recipeName: 'lentejas con chorizo' }, ctx(makeDb([recipe], ings, [], [{ restrictions: ['Sin gluten'] }])))
+    expect(coeliac.summary).toContain('Elige embutido sin gluten')
+    expect(coeliac.data?.dietNotices).toEqual(['Elige embutido sin gluten'])
+    const other = await skill.handler({ recipeName: 'lentejas con chorizo' }, ctx(makeDb([recipe], ings, [], [{ restrictions: ['vegetariano'] }])))
+    expect(other.summary).not.toContain('sin gluten')
+    expect(other.data?.dietNotices).toEqual([])
+  })
+
   it('says so when a recipe has no saved steps', async () => {
     const db = makeDb([{ id: 'r-2', name: 'Ensalada', prepTime: 10 }], [], [])
     const r = await skill.handler({ recipeName: 'ensalada' }, ctx(db))

@@ -13,6 +13,7 @@ import { useIsDesktop } from "@/hooks/useMediaQuery"
 import { useAuth } from "@/lib/auth"
 import { FavoriteButton } from "@/components/recipes/FavoriteButton"
 import { ShoppingIssues } from "@/components/recipes/ShoppingIssues"
+import { DietNotices } from "@/components/recipes/DietNotices"
 import { CookedBadge } from "@/components/recipes/CookedBadge"
 import { RecipeNotesSection } from "@/components/recipes/RecipeNotesSection"
 import { AddToCookbookButton } from "@/components/recipes/AddToCookbookButton"
@@ -284,6 +285,8 @@ export default function RecipeDetailPage() {
   const ingredientsList =
     recipe.ingredients?.length > 0 ? (
       <>
+        {/* PRO-196: «Elige embutido sin gluten» for a coeliac household. */}
+        <DietNotices notices={recipe.dietNotices} />
         <IngredientsSection
           variant="plain"
           columns={isDesktop ? 2 : 1}

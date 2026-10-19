@@ -15,6 +15,8 @@ import {
 import { canAccessRow, getPrimaryHouseholdId, resolveScope } from '../services/scopeResolver.js'
 import { listActiveStaplesForHousehold } from '../services/staplesStore.js'
 import { carryItemState, type ConvertQty, type ItemStateMap } from '../services/shoppingItemState.js'
+import { isCoeliacHousehold, withGlutenFreeCharcuterieNames } from '../services/glutenFreeCharcuterie.js'
+import { loadUserRestrictions } from '../services/withWhatIHave.js'
 import { INTERNAL_CALL_HEADER, trackEvent } from '../services/usageEvents.js'
 import { setActivityDetail } from '../services/activityEvents.js'
 import {
@@ -291,8 +293,10 @@ router.get('/shopping-list', async (req: AuthRequest, res) => {
     // keep their `inStock` / pricing.
     const staples = householdId ? await listActiveStaplesForHousehold(householdId) : []
     const stapleMerged = mergeStaplesIntoItems(mergedMenuItems, staples)
+    // PRO-196: a coeliac household asks for «<embutido> sin gluten».
+    const coeliac = isCoeliacHousehold((await loadUserRestrictions(userId, db)).restrictions)
     // Manual items always at the end, preserving order.
-    const finalItems = [...stapleMerged, ...manualSurviving]
+    const finalItems = [...withGlutenFreeCharcuterieNames(stapleMerged, coeliac), ...manualSurviving]
 
     // Overwrite the persisted row — one shopping list per user. Delete
     // any prior rows so historical churn doesn't pile up.
@@ -378,7 +382,8 @@ router.get('/shopping-list/:menuId', async (req: AuthRequest, res) => {
     // before scaling.
     const menuItems = await generateShoppingList(withLeftoverBatches(days), multiplier, db, householdId)
     const staples = householdId ? await listActiveStaplesForHousehold(householdId) : []
-    const items = mergeStaplesIntoItems(menuItems, staples)
+    const coeliac = isCoeliacHousehold((await loadUserRestrictions(menu.userId, db)).restrictions)
+    const items = withGlutenFreeCharcuterieNames(mergeStaplesIntoItems(menuItems, staples), coeliac)
 
     // Save to shopping_lists table — dual-write the menu's household id
     // (resolves on user when missing) so household members share the list.

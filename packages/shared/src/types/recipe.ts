@@ -172,6 +172,12 @@ export interface Recipe {
    * and admins on GET /recipes/:id; empty = ready to shop.
    */
   shoppingIssues?: RecipeShoppingIssue[]
+  /**
+   * PRO-196: notices for the signed-in household on GET /recipes/:id, e.g.
+   * «Elige embutido sin gluten» for a coeliac household when the recipe has a
+   * cured meat whose gluten depends on the brand. Absent when none apply.
+   */
+  dietNotices?: string[]
   createdAt: Date
   updatedAt: Date
 }

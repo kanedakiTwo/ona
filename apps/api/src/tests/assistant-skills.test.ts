@@ -1222,6 +1222,9 @@ describe('skill export coverage', () => {
     // and to 68 with get_weekly_menu (the whole week, 2026-10-15), and to 69
     // with share_invite_link («Invitar a otro hogar», PRO-163, tested in appSkills.test.ts),
     // and to 70 with set_cooking_style (PRO-217, tested in cookingStyle.test.ts).
+    // and to 68 with get_weekly_menu (the whole week, 2026-10-15), and to 70
+    // with get_fixed_meals + set_fixed_meal (comidas fijas, PRO-218, tested
+    // in fixedMeals.test.ts).
     expect(skills.length).toBe(70)
   })
 

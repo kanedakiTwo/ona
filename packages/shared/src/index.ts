@@ -498,3 +498,19 @@ export {
   memoryKeyIsHouseholdLevel,
 } from './types/householdProfile.js'
 export { scaleIngredientNote, noteStartsWithCount, noteStartsWithNumber, formatHalves } from './utils/ingredientNote.js'
+export type { FixedMeal, FixedMealItem, FixedMealType, FixedItemUnit } from './types/fixedMeals.js'
+export {
+  FIXED_MEALS,
+  FIXED_MEAL_LABELS,
+  FIXED_ITEM_UNITS,
+  FIXED_UNIT_LABELS,
+  FIXED_LABEL_MAX,
+  FIXED_ITEMS_MAX,
+  fixedMealItemSchema,
+  fixedMealSchema,
+  fixedMealsSchema,
+  fixedMealsFromTemplate,
+  fixedMealFor,
+  fixedNoteText,
+  fixedItemsText,
+} from './types/fixedMeals.js'

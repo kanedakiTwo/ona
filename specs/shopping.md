@@ -89,6 +89,12 @@ Both toggle endpoints flip the field (no payload value used) and return the full
 - Each item carries an optional **`pricePerUnit`** (€ per `unit`). A tiny inline number input next to every row lets the user enter it; menu-derived items accept price edits, but only manual items accept name/quantity/aisle edits or deletes. Trying to rename a menu item returns 400 with a Spanish hint.
 - The page shows a **weekly-total banner** at the top: `€X.XX · Y con precio · Z sin precio`. Sum is `Σ quantity × pricePerUnit` over non-`inStock`, positive-quantity, priced items. Items the user already has at home are excluded from spend. The pure reducer `computeListTotal(items)` is unit-tested.
 
+## Comidas fijas (PRO-218)
+
+- A «Fijo: …» slot (a fixed meal the generator placed, see [Menus → Comidas fijas](./menus.md)) carries its items per person (`NoteDish.fixed.items`). The list adds them × the slot's diners (`servings`, else the household multiplier) for every such slot in the range (`sumFixedItems`): a 7-day breakfast for 1 with 1 yogur, 40 g de cereales and 2 galletas → 7 yogures, 280 g de cereales, 14 galletas.
+- An item whose name is a catalogue ingredient (accents, case and plural «s»/«es» ignored: «galletas» → «galleta», «yogures» → «yogur») joins that ingredient's line and its rounding (`splitFixedLines`); any other gets its own line in «Otros» with the household's exact amount (`fixedLinesToItems`, id `fixed:<name>:<unit>`, so ticks survive the rolling rebuild). Ordinary notes still add nothing.
+- Tests: `fixedMeals.test.ts`, smoke `fixedMealsRoute.smoke.ts`.
+
 ## Recurring staples (PR 10B)
 
 - `household_staples(id, household_id, name, quantity, unit, aisle, price_per_unit?, active, created_at)` stores the items the household always needs (bread, milk, coffee). Any member can add / edit / delete; the row is per-household, not per-user.

@@ -31,6 +31,7 @@ import { appSkills, bestMatch, dishNoteText, searchWords } from './appSkills.js'
 import { createDishRecipe, NEW_RECIPE_PROP, NOTE_THEN_RECIPE_HINT, type NewRecipeParam } from './dishRecipe.js'
 import { shopOrderSkills } from './shopOrderSkills.js'
 import { householdHabitsSkills } from './householdHabitsSkills.js'
+import { fixedMealSkills } from './fixedMealSkills.js'
 import { visibleAuthorIds, visibleRecipeWhere } from '../recipeVisibility.js'
 import { loadMatchableRecipes } from '../matchableRecipes.js'
 import { loadPreviousWeek } from '../menuWeek.js'
@@ -2667,6 +2668,8 @@ export const skills: SkillDefinition[] = [
   ...shopOrderSkills,
   // Cómo cocina el hogar (PRO-217) — householdHabitsSkills.ts:
   ...householdHabitsSkills,
+  // Comidas fijas (PRO-218, specs/menus.md):
+  ...fixedMealSkills,
 ]
 
 /**

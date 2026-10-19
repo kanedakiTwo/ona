@@ -27,6 +27,12 @@ export interface NoteDish {
   kind: 'note'
   /** Free-text dish. Max 120 chars enforced at the API. */
   text: string
+  /**
+   * PRO-218: a «comida fija» placed by the generator («Fijo: yogur con
+   * cereales»). Its items (per person) go to the shopping list, scaled by the
+   * slot's diners. Absent on ordinary notes, which add nothing to the list.
+   */
+  fixed?: { items: Array<{ name: string; quantity: number; unit: 'u' | 'g' | 'ml' }> }
 }
 
 export type Dish = RecipeDish | NoteDish

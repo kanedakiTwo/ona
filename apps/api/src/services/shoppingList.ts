@@ -376,14 +376,16 @@ export async function generateShoppingList(
   // Per-slot `servings` overrides win over the household-level multiplier;
   // see `sumDinersByRecipe` for the math (extracted for unit testing).
   let dinersByRecipe = sumDinersByRecipe(menuDays, householdMultiplier)
-  if (dinersByRecipe.size === 0) return []
+  // Comidas fijas (PRO-218): their items, per person × the slot's diners.
+  const fixedLines = sumFixedItems(menuDays, householdMultiplier)
+  if (dinersByRecipe.size === 0 && fixedLines.length === 0) return []
   const recipeIds = [...dinersByRecipe.keys()]
 
   // householdMultiplier is provided by the caller (adults + 0.5 × kidsCount).
   // The fallback for legacy/unknown households happens at the route layer.
 
   // 2. Fetch recipe servings + ingredient rows + catalog density/unitWeight/aisle.
-  const recipeRows: { id: string; servings: number }[] = await db
+  const recipeRows: { id: string; servings: number }[] = recipeIds.length === 0 ? [] : await db
     .select({ id: recipesTable.id, servings: recipesTable.servings })
     .from(recipesTable)
     .where(inArray(recipesTable.id, recipeIds))
@@ -406,7 +408,7 @@ export async function generateShoppingList(
     unitWeight: number | null
     /** Recipe note ("picada", "morada en juliana") — the shop order reads it. */
     note?: string | null
-  }> = await db
+  }> = recipeIds.length === 0 ? [] : await db
     .select({
       recipeId: recipeIngredients.recipeId,
       recipeIngredientId: recipeIngredients.id,
@@ -434,7 +436,7 @@ export async function generateShoppingList(
     list.push(r)
     rowsByRecipe.set(r.recipeId, list)
   }
-  if (householdId) {
+  if (householdId && recipeIds.length > 0) {
     const overrideRows: Array<{ recipeId: string; ingredientOverrides: unknown; minServings: number | null }> =
       await db
         .select({
@@ -562,7 +564,118 @@ export async function generateShoppingList(
     })
   }
 
-  return aggregateScaledRows(scaled, catalogById)
+  // Comidas fijas (PRO-218): an item named like a catalogue ingredient joins
+  // that line (the eggs of the breakfast + the eggs of a recipe); any other
+  // goes in its own line.
+  let fixedExtra: ShoppingItem[] = []
+  if (fixedLines.length > 0) {
+    const catalogRows: CatalogRow[] = await db
+      .select({ id: ingredients.id, name: ingredients.name, aisle: ingredients.aisle, density: ingredients.density, unitWeight: ingredients.unitWeight })
+      .from(ingredients)
+    const byKey = new Map<string, CatalogRow>()
+    for (const c of catalogRows) if (!byKey.has(foldName(c.name))) byKey.set(foldName(c.name), c)
+    const { matched, unmatched } = splitFixedLines(fixedLines, byKey)
+    for (const m of matched) {
+      catalogById.set(m.catalog.id, m.catalog)
+      scaled.push({ ingredientId: m.catalog.id, quantity: m.quantity, unit: m.unit, note: null })
+    }
+    fixedExtra = fixedLinesToItems(unmatched)
+  }
+
+  const items = aggregateScaledRows(scaled, catalogById)
+  return fixedExtra.length > 0 ? [...items, ...fixedExtra] : items
+}
+
+// ─── Comidas fijas (PRO-218) ─────────────────────────────────────────
+
+export interface FixedLine {
+  name: string
+  quantity: number
+  unit: BuyableUnit
+}
+
+const foldName = (name: string) => name.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ')
+
+/** Folded name for matching and ids: lowercase, no accents, no plural «s». */
+export function fixedItemKey(name: string): string {
+  return foldName(name)
+    .split(' ')
+    .map((w) => (w.length > 3 && w.endsWith('s') ? w.slice(0, -1) : w))
+    .join(' ')
+}
+
+/** The keys a fixed item may match: «yogures» → «yogure», «yogur». */
+function fixedItemCandidates(name: string): string[] {
+  let combos = ['']
+  for (const w of foldName(name).split(' ')) {
+    const forms = new Set([w])
+    if (w.length > 3 && w.endsWith('s')) forms.add(w.slice(0, -1))
+    if (w.length > 4 && w.endsWith('es')) forms.add(w.slice(0, -2))
+    combos = combos.flatMap((c) => [...forms].map((f) => (c ? `${c} ${f}` : f))).slice(0, 32)
+  }
+  return combos
+}
+
+/**
+ * Pure: every «Fijo: …» slot's items (per person) × the slot's diners
+ * (`servings`, else the household multiplier), summed per item and unit.
+ * A 7-day breakfast for 1 with 1 yogur, 40 g de cereales and 2 galletas →
+ * 7 yogures, 280 g de cereales, 14 galletas.
+ */
+export function sumFixedItems(menuDays: DayMenu[], householdMultiplier: number): FixedLine[] {
+  const out = new Map<string, FixedLine>()
+  for (const day of menuDays) {
+    for (const meal of Object.keys(day ?? {})) {
+      const slot = day[meal as keyof DayMenu]
+      if (!slot) continue
+      const diners = typeof slot.servings === 'number' && slot.servings > 0 ? slot.servings : householdMultiplier
+      for (const dish of slot.dishes ?? []) {
+        if (dish.kind !== 'note' || !dish.fixed) continue
+        for (const item of dish.fixed.items ?? []) {
+          if (!item?.name || !(item.quantity > 0) || !BUYABLE.has(item.unit)) continue
+          const key = `${fixedItemKey(item.name)}|${item.unit}`
+          const cur = out.get(key)
+          if (cur) cur.quantity += item.quantity * diners
+          else out.set(key, { name: item.name.trim(), quantity: item.quantity * diners, unit: item.unit as BuyableUnit })
+        }
+      }
+    }
+  }
+  return [...out.values()]
+}
+
+/** Pure: which fixed lines are a catalogue ingredient (by folded name) and which aren't. */
+export function splitFixedLines(
+  lines: FixedLine[],
+  catalogByKey: ReadonlyMap<string, CatalogRow>,
+): { matched: Array<FixedLine & { catalog: CatalogRow }>; unmatched: FixedLine[] } {
+  const matched: Array<FixedLine & { catalog: CatalogRow }> = []
+  const unmatched: FixedLine[] = []
+  for (const l of lines) {
+    const catalog = fixedItemCandidates(l.name).map((k) => catalogByKey.get(k)).find(Boolean)
+    if (catalog) matched.push({ ...l, catalog })
+    else unmatched.push(l)
+  }
+  return { matched, unmatched }
+}
+
+/** Pure: fixed lines without a catalogue ingredient → their own list lines («Otros»), with their exact amounts. */
+export function fixedLinesToItems(lines: FixedLine[]): ShoppingItem[] {
+  return lines
+    .map((l) => ({
+      id: `fixed:${fixedItemKey(l.name).replace(/\s+/g, '-')}:${l.unit}`,
+      ingredientId: null,
+      name: l.name.toLowerCase(),
+      // The household's own amounts: whole grams / units, not the list's
+      // rounding to 50 g (280 g of cereales stays 280 g).
+      quantity: l.unit === 'cda' || l.unit === 'cdita' ? roundForUnit(l.quantity, l.unit) : Math.round(l.quantity),
+      unit: l.unit,
+      aisle: 'otros' as Aisle,
+      checked: false,
+      inStock: false,
+      kind: 'menu' as const,
+    }))
+    .filter((i) => i.quantity > 0)
 }
 
 /**

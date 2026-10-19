@@ -172,7 +172,8 @@ function toGrams(rule: BuyRule | null, q: number, unit: BuyableUnit): number | n
  * A list amount in grams (or ml), to add up amounts written in different
  * units: the order draft merging duplicates, the extension basket grouping
  * a merged line. null = it can't be weighed (u with no rule, or a rule that
- * doesn't know what one unit weighs).
+ * doesn't know what one unit weighs). No `q > 0` guard, unlike the private
+ * `toGrams` behind `toOrderQty`: 0 u of alubias is 0 g, not null.
  */
 export function orderQtyInGrams(quantity: number, unit: BuyableUnit, ruleKey: string | null): number | null {
   return gramsWith(ruleKey ? buyRuleByKey(ruleKey) : null, quantity, unit)

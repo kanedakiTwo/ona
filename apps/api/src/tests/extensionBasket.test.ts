@@ -10,6 +10,8 @@ import { describe, it, expect } from 'vitest'
 import { buyRuleByKey, orderMembers, orderQtyInGrams, type BuyableUnit } from '@ona/shared'
 
 const m = (id: string, name: string, quantity: number, unit: 'g' | 'ml' | 'u' = 'g') => ({ id, name, quantity, unit })
+/** Tecleado sin cantidad: el «1 u» por defecto. */
+const p = (id: string, name: string) => ({ id, name, quantity: 1, unit: 'u' as const, placeholder: true })
 
 /** Gramos de una unidad con la regla real (`ug`, si no `g`). */
 const perUnit = (ruleKey: string) => {
@@ -80,11 +82,65 @@ describe('orderMembers', () => {
     ])
     expect(totalGrams(l!, 'leche')).toBe(totalGrams(leche, 'leche'))
   })
-  it('si una cantidad no se puede pesar, el grupo se queda con la suya (pérdida conocida)', () => {
+  it('si una cantidad no se puede pesar, gana la pesable, venga antes o después (pérdida conocida)', () => {
     // `jamon` se vende al peso y no sabe cuánto pesa 1 u (ver orderQtyInGrams).
     expect(orderMembers([m('s', 'Jamón serrano', 100), m('u', 'Jamón serrano', 1, 'u'), m('i', 'jamón ibérico', 50)], 'jamon')).toEqual([
       { name: 'Jamón serrano', quantity: 100, unit: 'g', sourceItemIds: ['s', 'u'] },
       { name: 'jamón ibérico', quantity: 50, unit: 'g', sourceItemIds: ['i'] },
+    ])
+    expect(orderMembers([m('u', 'Jamón serrano', 1, 'u'), m('s', 'Jamón serrano', 100), m('i', 'jamón ibérico', 50)], 'jamon')).toEqual([
+      { name: 'Jamón serrano', quantity: 100, unit: 'g', sourceItemIds: ['u', 's'] },
+      { name: 'jamón ibérico', quantity: 50, unit: 'g', sourceItemIds: ['i'] },
+    ])
+  })
+  it('el grupo se llama como su nombre más corto (a igual longitud, el primero por localeCompare), venga en el orden que venga', () => {
+    const serrano = { name: 'Jamón serrano', quantity: 200, unit: 'g' }
+    expect(orderMembers([m('f', 'jamón serrano fileteado', 100), m('s', 'Jamón serrano', 100), m('i', 'jamón ibérico', 50)], 'jamon')?.[0]).toEqual({ ...serrano, sourceItemIds: ['f', 's'] })
+    expect(orderMembers([m('s', 'Jamón serrano', 100), m('f', 'jamón serrano fileteado', 100), m('i', 'jamón ibérico', 50)], 'jamon')?.[0]).toEqual({ ...serrano, sourceItemIds: ['s', 'f'] })
+    expect(orderMembers([m('S', 'Jamón serrano', 100), m('s', 'jamón serrano', 100), m('i', 'jamón ibérico', 50)], 'jamon')?.[0].name).toBe('jamón serrano')
+    expect(orderMembers([m('s', 'jamón serrano', 100), m('S', 'Jamón serrano', 100), m('i', 'jamón ibérico', 50)], 'jamon')?.[0].name).toBe('jamón serrano')
+    // Gana el más corto aunque vaya detrás por orden alfabético.
+    expect(orderMembers([m('t', 'aguja de ternera', 300), m('v', 'aguja de vaca', 200), m('c', 'aguja de cerdo', 400)], 'aguja')?.[0]).toEqual({
+      name: 'aguja de vaca',
+      quantity: 500,
+      unit: 'g',
+      sourceItemIds: ['t', 'v'],
+    })
+  })
+  it('lo tecleado sin cantidad solo cuenta si su grupo no tiene ninguna cantidad real, y siempre aporta sus artículos', () => {
+    const blancas = { name: 'alubias blancas', quantity: 300, unit: 'g', sourceItemIds: ['b'] }
+    expect(orderMembers([p('t', 'alubias rojas'), m('r', 'alubias rojas', 200), m('b', 'alubias blancas', 300)], 'alubias')).toEqual([
+      { name: 'alubias rojas', quantity: 200, unit: 'g', sourceItemIds: ['t', 'r'] },
+      blancas,
+    ])
+    expect(orderMembers([m('r', 'alubias rojas', 200), p('t', 'alubias rojas'), m('b', 'alubias blancas', 300)], 'alubias')).toEqual([
+      { name: 'alubias rojas', quantity: 200, unit: 'g', sourceItemIds: ['r', 't'] },
+      blancas,
+    ])
+    expect(orderMembers([p('t', 'alubias rojas'), m('b', 'alubias blancas', 300)], 'alubias')).toEqual([
+      { name: 'alubias rojas', quantity: 1, unit: 'u', sourceItemIds: ['t'] },
+      blancas,
+    ])
+    // Dos sin cantidad no se suman: se queda 1 u, como el borrador cuando todo va por defecto.
+    expect(orderMembers([p('t', 'alubias rojas'), p('t2', 'alubias rojas'), m('b', 'alubias blancas', 300)], 'alubias')).toEqual([
+      { name: 'alubias rojas', quantity: 1, unit: 'u', sourceItemIds: ['t', 't2'] },
+      blancas,
+    ])
+  })
+  it('un genérico sin cantidad solo aporta sus artículos, y un grupo sin cantidad mide 0 para llevárselo', () => {
+    expect(orderMembers([p('G', 'alubias'), m('b', 'alubias blancas', 400), m('r', 'alubias rojas', 300)], 'alubias')).toEqual([
+      { name: 'alubias blancas', quantity: 400, unit: 'g', sourceItemIds: ['b', 'G'] },
+      { name: 'alubias rojas', quantity: 300, unit: 'g', sourceItemIds: ['r'] },
+    ])
+    // 1 u de blancas pesaría más que 100 g de rojas, pero va sin cantidad: el genérico va a las rojas.
+    expect(orderMembers([m('G', 'alubias', 200), p('t', 'alubias blancas'), m('r', 'alubias rojas', 100)], 'alubias')).toEqual([
+      { name: 'alubias blancas', quantity: 1, unit: 'u', sourceItemIds: ['t'] },
+      { name: 'alubias rojas', quantity: 300, unit: 'g', sourceItemIds: ['r', 'G'] },
+    ])
+    // Si ninguno tiene cantidad (empate a 0), el genérico le da la suya al primero.
+    expect(orderMembers([m('G', 'alubias', 200), p('t', 'alubias blancas'), p('t2', 'alubias rojas')], 'alubias')).toEqual([
+      { name: 'alubias blancas', quantity: 200, unit: 'g', sourceItemIds: ['t', 'G'] },
+      { name: 'alubias rojas', quantity: 1, unit: 'u', sourceItemIds: ['t2'] },
     ])
   })
 })
@@ -110,5 +166,8 @@ describe('orderQtyInGrams', () => {
     const jamon = buyRuleByKey('jamon')!
     expect(jamon.ug ?? jamon.g).toBeUndefined()
     expect(orderQtyInGrams(1, 'u', 'jamon')).toBeNull()
+  })
+  it('sin la guarda de cantidad positiva de toOrderQty: 0 u son 0 g', () => {
+    expect(orderQtyInGrams(0, 'u', 'alubias')).toBe(0)
   })
 })

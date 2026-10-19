@@ -527,4 +527,25 @@ describe('borrador: members', () => {
       ['alubias rojas', 400, 'g'],
     ])
   })
+  it('la cantidad que puso el usuario manda al rehacer los pedidos: 800 g, sin members, una sola línea en la cesta', () => {
+    const lista = [typed('alubias blancas'), typed('alubias rojas')]
+    const { byShop } = draftOrdersFromItems(lista, SUPER)
+    const l = byShop[0].lines[0]
+    expect(l.members).toHaveLength(2)
+    // Lo que hace patchOrder al poner 800 g en la línea.
+    const input = { ...inputOf(l), quantity: 800, unit: 'g' as const, quantitySource: 'user' as const, members: null }
+    const editada = buildLine(input, 'supermercado', {}, {})
+    const fresh = draftOrdersFromItems(lista, SUPER).byShop[0]
+    const [rehecho] = carryDraftEdits(
+      [{ shopId: 'sup', kind: 'supermercado', lines: fresh.lines, priceMemory: {} }],
+      [{ shopId: 'sup', lines: [editada], fulfilment: null, address: null }],
+      [{ id: 'sup', kind: 'supermercado', priceMemory: {} }],
+      {},
+    )
+    const linea = rehecho.lines[0]
+    expect([linea.quantity, linea.unit, linea.quantitySource]).toEqual([800, 'g', 'user'])
+    expect(linea.members ?? null).toBeNull()
+    const cesta = buildExtensionBasket(rehecho.lines)
+    expect(cesta.map((b) => b.key)).toEqual([linea.key])
+  })
 })

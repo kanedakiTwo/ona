@@ -366,6 +366,8 @@ export function carryDraftEdits(
         input.quantity = prev.quantity
         input.unit = prev.unit
         input.quantitySource = 'user'
+        // La cantidad la puso el usuario: manda la línea entera, como en patchOrder.
+        input.members = null
       }
       if (prev.maybeHave && prev.included !== undefined) input.included = prev.included
       if (prev.note) input.note = prev.note

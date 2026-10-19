@@ -13,7 +13,9 @@ import {
   shoppingLists,
 } from '../../db/schema.js'
 import { nutrientsToPercentages, TARGET_MACROS, detectSeason, recipeDishesOf, isPantryLocation } from '@ona/shared'
-import type { DayMenu, Meal, NutrientBalance } from '@ona/shared'
+import type { DayMenu, Meal, NutrientBalance, WeekPlan } from '@ona/shared'
+import { parseWeekPlanAnswer, weekPlanIsEmpty, weekPlanSchema } from '@ona/shared'
+import { describeWeekPlan } from '../weekPlan.js'
 import { householdMultiplier } from '@ona/shared'
 import { generateMenu } from '../menuGenerator.js'
 import { findRecipeForSlot, type RecipeWithIngredients } from '../recipeMatcher.js'
@@ -597,6 +599,23 @@ export function weekHasDishes(days: DayMenu[] | undefined): boolean {
   )
 }
 
+/**
+ * PRO-225: the week-only answers to «¿Alguna comida fuera?» / «¿Viene
+ * alguien?». Structured fields from the model win; the user's raw text is
+ * read as a fallback. Out-of-range entries are dropped. Undefined when empty.
+ */
+export function weekPlanFromParams(params: { mealsOut?: unknown; guests?: unknown; answer?: unknown } | undefined): WeekPlan | undefined {
+  const structured = weekPlanSchema.safeParse({
+    mealsOut: Array.isArray(params?.mealsOut) ? params!.mealsOut : undefined,
+    guests: Array.isArray(params?.guests) ? params!.guests : undefined,
+  })
+  let plan: WeekPlan | undefined = structured.success ? structured.data : undefined
+  if (weekPlanIsEmpty(plan) && typeof params?.answer === 'string' && params.answer.trim()) {
+    plan = parseWeekPlanAnswer(params.answer)
+  }
+  return weekPlanIsEmpty(plan) ? undefined : plan
+}
+
 const generateWeeklyMenu: SkillDefinition = {
   name: 'generate_weekly_menu',
   description: 'Genera un menu semanal completo (todos los dias) y lo guarda. Solo cuando el usuario pida un menu nuevo para la semana entera; NUNCA para cambiar o poner uno o varios platos (eso es swap_meal / add_dish / set_meal_note). Con nextWeek=true lo genera para la semana que viene (por ejemplo si el usuario dice "la semana que viene" o acepta la propuesta del domingo). Si esa semana ya tiene platos no la toca y te lo dice: solo con replaceExisting=true, cuando el usuario ha confirmado que quiere rehacer la semana entera.',
@@ -605,12 +624,42 @@ const generateWeeklyMenu: SkillDefinition = {
     properties: {
       nextWeek: { type: 'boolean', description: 'true para generar el menu de la semana que viene en lugar de la actual.' },
       replaceExisting: { type: 'boolean', description: 'true solo si el usuario ha confirmado que quiere rehacer entera una semana que ya tiene platos.' },
+      mealsOut: {
+        type: 'array',
+        description: 'Comidas que esa semana se hacen fuera de casa (respuesta a «¿Alguna comida fuera de casa esta semana?»). Se quitan solo de esa semana; la plantilla no cambia. Sin meal = el dia entero.',
+        items: {
+          type: 'object',
+          properties: {
+            day: { type: 'integer', minimum: 0, maximum: 6, description: '0 = lunes … 6 = domingo' },
+            meal: { type: 'string', enum: ['breakfast', 'lunch', 'dinner', 'snack'] },
+          },
+          required: ['day'],
+        },
+      },
+      guests: {
+        type: 'array',
+        description: 'Dias con invitados (respuesta a «¿Viene alguien?»): cuantos comen en total ese dia o esa comida, p. ej. «el sabado somos 6» → { day: 5, diners: 6 }. Solo esa semana.',
+        items: {
+          type: 'object',
+          properties: {
+            day: { type: 'integer', minimum: 0, maximum: 6, description: '0 = lunes … 6 = domingo' },
+            meal: { type: 'string', enum: ['breakfast', 'lunch', 'dinner', 'snack'] },
+            diners: { type: 'integer', minimum: 1, maximum: 24 },
+          },
+          required: ['day', 'diners'],
+        },
+      },
+      answer: { type: 'string', description: 'El texto tal cual del usuario cuando contesta a las preguntas de antes de planificar (p. ej. «el jueves cenamos fuera y el sabado somos 6»). Se usa solo si no pasas mealsOut ni guests.' },
     },
     required: [],
   },
-  async handler(params: { nextWeek?: boolean; replaceExisting?: boolean }, ctx: SkillContext): Promise<SkillResult> {
+  async handler(
+    params: { nextWeek?: boolean; replaceExisting?: boolean; mealsOut?: WeekPlan['mealsOut']; guests?: WeekPlan['guests']; answer?: string },
+    ctx: SkillContext,
+  ): Promise<SkillResult> {
     const { userId, db } = ctx
     const weekStart = getWeekStart(params?.nextWeek === true ? 1 : 0)
+    const weekPlan = weekPlanFromParams(params)
 
     // Same promises as POST /menu/generate: locked slots, vetoes and
     // "sin cocinar" days of the current week survive the regeneration.
@@ -629,6 +678,7 @@ const generateWeeklyMenu: SkillDefinition = {
     const { days } = await generateMenu(
       userId, weekStart, undefined, db,
       previous.locked, previous.days, previous.bannedRecipeIds, previous.skippedDays,
+      weekPlan,
     )
 
     // Save to menus table — dual-write household_id so shared-scope reads
@@ -680,9 +730,10 @@ const generateWeeklyMenu: SkillDefinition = {
     const fit = await evaluateAndSaveMenuFit({ userId, menuId: menu.id, days }, db)
     const fitLine = menuFitSummary(fit)
 
+    const planLine = weekPlan ? `\nSolo esta semana (la plantilla no cambia): ${describeWeekPlan(weekPlan)}.` : ''
     return {
       data: { ...menu, fit },
-      summary: `Menu generado para la semana del ${weekStart}. ${menuSummary}${fitLine ? `\n${fitLine}` : ''}`,
+      summary: `Menu generado para la semana del ${weekStart}. ${menuSummary}${planLine}${fitLine ? `\n${fitLine}` : ''}`,
       uiHint: 'menu',
     }
   },

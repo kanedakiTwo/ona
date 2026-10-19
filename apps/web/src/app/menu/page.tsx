@@ -59,6 +59,9 @@ import { MenuFitLine } from "@/components/menu/MenuFitLine"
 import { WeekActionsSheet } from "@/components/menu/WeekActionsSheet"
 import { ConfirmSheet } from "@/components/menu/MenuSheet"
 import { MenuDesktop } from "@/components/menu/MenuDesktop"
+import { WeekPlanQuestions } from "@/components/menu/WeekPlanQuestions"
+import { mealsByDay } from "@/lib/weekPlanForm"
+import type { WeekPlan } from "@ona/shared"
 import { DayFooter, DayMeals, SkippedDay, type SlotPropsFn } from "@/components/menu/DayMeals"
 import type { SlotHandlers } from "@/components/menu/MealOptions"
 
@@ -242,10 +245,14 @@ export default function MenuPage() {
     await share({ title: "Mi menú de la semana", text: menuShareText(menu.days as never, window.location.origin) })
   }
 
+  // PRO-225 · «Antes de planificar»: the blank week's optional answers.
+  const [weekPlan, setWeekPlan] = useState<WeekPlan | undefined>(undefined)
   function handleGenerate() {
     if (!user) return
     haptic.medium()
-    generateMenu.mutate({ userId: user.id, weekStart })
+    // Only the blank week asks the questions; «Regenerar semana» sends none.
+    const plan = !menu || blankWeek ? weekPlan : undefined
+    generateMenu.mutate({ userId: user.id, weekStart, ...(plan ? { weekPlan: plan } : {}) })
   }
 
   /**
@@ -554,6 +561,14 @@ export default function MenuPage() {
           ? "Esta semana ya pasó. Vuelve a la actual para planificar."
           : "Genera tu menú y la lista de la compra sale automática. O rellena tú los huecos."}
       </p>
+      {!isPastWeek && (
+        <WeekPlanQuestions
+          key={weekStart}
+          meals={mealsByDay(menu?.days as Array<Record<string, unknown>> | undefined)}
+          defaultDiners={defaultDiners}
+          onChange={setWeekPlan}
+        />
+      )}
       {!isPastWeek && (
         <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
           <button

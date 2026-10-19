@@ -149,7 +149,7 @@ async function hydrateMenuImages<T extends { days: unknown }>(menu: T): Promise<
 // A paused account (PRO-135) can't generate a new menu; an empty week stays open.
 router.post('/menu/generate', authMiddleware, requireActiveAccount({ skip: (req) => req.body?.empty === true }), validate(generateMenuSchema), async (req: AuthRequest, res) => {
   try {
-    const { userId, weekStart, customTemplate, empty, force } = req.body
+    const { userId, weekStart, customTemplate, empty, force, weekPlan } = req.body
 
     if (userId !== req.userId) {
       res.status(403).json({ error: 'No puedes generar el menú de otro usuario.' })
@@ -224,6 +224,7 @@ router.post('/menu/generate', authMiddleware, requireActiveAccount({ skip: (req)
       previous.days,
       carryBanned,
       carrySkipped,
+      weekPlan,
     )
 
     // Save to menus table — carry the lists forward so the matcher honours

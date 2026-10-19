@@ -139,6 +139,8 @@ export {
 export { generateMenuSchema, lockMealSchema } from './types/menu.js'
 export { PANTRY_LOCATIONS, PANTRY_LOCATION_LABELS, isPantryLocation, groupPantryByLocation, freezerItemsDue, FREEZER_REVIEW_MIN_DAYS } from './types/pantry.js'
 export type { PantryLocation } from './types/pantry.js'
+export { weekPlanSchema, weekPlanIsEmpty, parseWeekPlanAnswer } from './types/weekPlan.js'
+export type { WeekPlan, WeekPlanMealOut, WeekPlanGuests } from './types/weekPlan.js'
 
 // Constants
 export {

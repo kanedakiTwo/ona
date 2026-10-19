@@ -21,7 +21,8 @@ import {
   TARGET_MACROS,
   MENU_GENERATION,
 } from '@ona/shared'
-import type { DayMenu, DayTemplate, DayTimeBudget, Meal, Season, Sex, ActivityLevel, LockedSlots } from '@ona/shared'
+import type { DayMenu, DayTemplate, DayTimeBudget, Meal, Season, Sex, ActivityLevel, LockedSlots, WeekPlan } from '@ona/shared'
+import { applyWeekPlan } from './weekPlan.js'
 import { findRecipeForSlot, normaliseEquipment, type RecipeWithIngredients } from './recipeMatcher.js'
 import { findForCourse } from './courseAwareMatcher.js'
 import { dishCountFor, coursesFor } from './menuDishes.js'
@@ -393,6 +394,7 @@ export async function generateMenu(
   existingDays?: DayMenu[],
   bannedRecipeIds?: Set<string>,
   skippedDays?: Set<number>,
+  weekPlan?: WeekPlan,
 ): Promise<{ days: DayMenu[]; warnings: string[] }> {
   // 1. Fetch user profile
   const [user] = await db
@@ -414,12 +416,18 @@ export async function generateMenu(
   // preferences + mealTemplate); normalize it back to DayTemplate[] before
   // letting the matcher loop over it.
   const rawTemplate = customTemplate ?? settings?.template
-  const template = normalizeMealTemplate(rawTemplate) ?? defaultTemplate()
   // Per-slot diner counts (only present when the profile's plantilla uses the
   // numeric shape `{ [day]: { [meal]: number } }`). Slots that didn't carry an
   // explicit count keep `servings` undefined and fall back to the household
   // multiplier in the shopping-list aggregator.
-  const mealDiners = extractMealDiners(rawTemplate)
+  // PRO-225: «¿Alguna comida fuera?» / «¿Viene alguien?» shape this week
+  // only (copies; the saved plantilla is never written).
+  const { template, mealDiners } = applyWeekPlan(
+    normalizeMealTemplate(rawTemplate) ?? defaultTemplate(),
+    extractMealDiners(rawTemplate),
+    weekPlan,
+    (d, m) => !!(existingDays?.[d]?.[m] && lockedSlots[String(d)]?.[m]),
+  )
   // Per-meal-type dish count from the same junk-drawer blob:
   // `{ mealDishCounts: { lunch: 2, dinner: 3 } }`. Absent = all 1-dish.
   const mealDishCounts = extractMealDishCounts(rawTemplate)

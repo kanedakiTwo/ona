@@ -117,15 +117,20 @@ export function normalize(s: string): string {
     .trim()
 }
 
-/** Trivial Spanish noun stem: drop common plural / gender suffixes. */
+/**
+ * Trivial Spanish noun stem: drop the plural «s», then the final vowel
+ * (a/o/e), so singular and plural share a root: «sopa»/«sopas» → «sop»,
+ * «tomate»/«tomates» → «tomat», «limón»/«limones» → «limon». Words of 3
+ * letters or fewer stay as they are («pan», «ajo»).
+ *
+ * PRO-203 (2026-10-18): the old rule dropped «as» only from words of 5+
+ * letters, so «sopas» → «sop» but «sopa» stayed «sopa» and the catalogue
+ * didn't seem to have «sopas» (catalogue wishes, PRO-154).
+ */
 export function stem(word: string): string {
-  const w = word
-  if (w.length > 4) {
-    if (w.endsWith('es')) return w.slice(0, -2)
-    if (w.endsWith('as') || w.endsWith('os')) return w.slice(0, -2)
-    if (w.endsWith('a') || w.endsWith('o')) return w.slice(0, -1)
-  }
-  if (w.length > 3 && w.endsWith('s')) return w.slice(0, -1)
+  let w = word
+  if (w.length > 3 && w.endsWith('s')) w = w.slice(0, -1)
+  if (w.length > 3 && /[aoe]$/.test(w)) w = w.slice(0, -1)
   return w
 }
 

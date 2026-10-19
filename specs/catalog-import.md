@@ -39,7 +39,7 @@ Run from a laptop with `DATABASE_URL` and `ANTHROPIC_API_KEY` (see the file head
 ## Deseos del catálogo
 
 - **What counts as «we don't have it»** (`catalogCoversDish`): a dish is covered when every significant word of it is in one published recipe's name («carbonara» ⊂ «Espaguetis a la carbonara»). One shared word isn't enough («pastel de carne» is not covered by «Menestra de verduras con carne»). An answer like «cremas y sopas» means either, so a crema *or* a sopa covers it.
-- **One wish per dish** (`dish_key`: accents, plurals, order and filler words aside) and **one vote per household** per source (the user's own id when they have no household); the count is distinct households.
+- **One wish per dish** (`dish_key`: accents, plurals, order and filler words aside) — singular and plural share the root since PRO-203 (`stem()` in `recipeLint.ts`: «sopa»/«sopas» → «sop», so «sopas» is covered by «Sopa miso»; wishes saved before keep their old key, so a vote for «sopa» may open a second wish next to an older «sopa» one) and **one vote per household** per source (the user's own id when they have no household); the count is distinct households.
 - **Sources today**: `alta` — the favourite dishes of the sign-up (web and WhatsApp, both through `saveOnboarding`) that the catalogue doesn't cover; best effort, never breaks the sign-up. `evaluador` (PRO-155) — favourite dishes the menu evaluator finds «no está en el catálogo» after each generated week (`services/menuFit.ts`). `mimo` is accepted by `recordCatalogWish` for that caller.
 - `GET /admin/catalog-wishes?status=abierto|cubierto|descartado|todos&limit=` — admin JWT or `x-metrics-token` (Cocina's read). Returns dish, households, sources, status, covering recipe and dates; never who asked.
 

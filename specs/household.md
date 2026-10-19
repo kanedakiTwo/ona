@@ -33,6 +33,7 @@ A "household" is the shared unit that owns menus, shopping lists, favourites and
 - The first tap of either stamps `household_invites.shared_at` (`POST /households/me/invites/:id/shared`, owner-only, idempotent): an invite prepared but never handed on keeps it null.
 - Every invite records **where it was prepared** in `household_invites.source` (`HOUSEHOLD_INVITE_SOURCES`): `casa` (Mi casa, and every invite before 2026-10-20), `alta`, `compra`, `mimo`. `POST /households/me/invites` takes `source` (unknown → `casa`) and `shared: true` (Mimo hands the link over in the same reply, so it counts as sent at once). Migration `0074_household_invite_source.sql` (additive).
 - Mimo (`invite_to_household`, web chat and WhatsApp, D-051) creates the invite with `source: 'mimo'` and gives the same written message; in the web chat also the `wa.me` link to send it in one tap.
+- **Measured** (PRO-263): `GET /admin/usage` → `familyInvites` counts invites prepared, sent and accepted per moment, and the goal (households with 2 adults or more that have 2 accounts) — see [metrics.md](./metrics.md).
 - Not «Invitar a otro hogar» (PRO-163), which brings a different household to Mimoia with the account's referral link.
 
 ## Ofrecer la invitación (PRO-261, D-088)

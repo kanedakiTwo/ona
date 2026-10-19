@@ -83,6 +83,12 @@ describe.skipIf(!reachable || !METRICS_TOKEN)('usage events + conversation flags
       expect.objectContaining({ withWhatsapp: expect.any(Number), withNotices: expect.any(Number), withTwoPlusMembers: expect.any(Number) }),
     )
     expect(after.body.channelSplit.at(-1).webOnly).toBeGreaterThanOrEqual(1)
+    // PRO-263: household invitations per moment (real SQL on source / shared_at / consumed_at).
+    expect(Object.keys(after.body.familyInvites.bySource).sort()).toEqual(['alta', 'casa', 'compra', 'mimo'])
+    expect(after.body.familyInvites.totals).toEqual(
+      expect.objectContaining({ prepared: expect.any(Number), sent: expect.any(Number), accepted: expect.any(Number) }),
+    )
+    expect(after.body.familyInvites.goal.withTwoPlusAdults).toEqual(expect.any(Number))
     // Counts only: no ids, usernames or emails anywhere in the payload.
     const raw = JSON.stringify(after.body)
     expect(raw).not.toContain(userId)

@@ -418,12 +418,6 @@ export const COPY = {
   stoppedUnlinked: 'De acuerdo, no te volveré a escribir.',
   started:
     'Hecho: vuelvo a enviarte avisos (menú del día, aviso antes de cocinar, lista de la compra). Escribe BAJA para dejar de recibirlos.',
-  /** PRO-248: the one extra offer of the avisos, in one line, with the same two buttons. */
-  optInReoffer:
-    'Por cierto, ¿quieres que te escriba yo? Te mandaría el menú del día, un aviso antes de cocinar y la lista de la compra los sábados. Solo te lo pregunto esta vez.',
-  /** PRO-248: the first «sí» to the avisos (nothing to «volver a» enviar yet). */
-  startedFirst:
-    'Hecho: te enviaré avisos (menú del día, aviso antes de cocinar, lista de la compra). Escribe BAJA para dejar de recibirlos.',
   human: (email?: string) =>
     `Soy un asistente con IA. Para hablar con una persona del equipo de Mimoia, ${humanContact(email)}. Si es sobre tu menú, la compra o una receta, cuéntamelo y lo hago.`,
   badCode: 'Ese código no es válido o ha caducado. Genera uno nuevo en Mimoia → Perfil → Mimo en WhatsApp.',
@@ -432,6 +426,13 @@ export const COPY = {
   suspended: (email?: string) =>
     `Tu cuenta de Mimoia está suspendida. Si crees que es un error, ${humanContact(email)}.`,
   notAllowed: 'WhatsApp todavía no está disponible para tu cuenta de Mimoia.',
+  /** PRO-248: the one extra offer of the avisos, in one line, with the same two buttons. */
+  optInReoffer:
+    'Por cierto, ¿quieres que también te escriba yo? Solo lo importante: un aviso antes de cocinar y la lista de la compra los sábados. Solo te lo pregunto esta vez.',
+  /** PRO-248: the first «sí» to the avisos: `started` saying «te enviaré», not «vuelvo a enviarte». */
+  get startedFirst(): string {
+    return this.started.replace('vuelvo a enviarte', 'te enviaré')
+  },
   /** PRO-135: trial over without a plan. The only thing a paused account hears from Mimo (Legal reviews it). */
   paused: (url: string) =>
     `Tu prueba de Mimoia ha terminado y tu cuenta está en pausa, así que ahora no puedo ayudarte por aquí. No se ha borrado nada: tu menú, tus recetas y tu lista siguen en la app.\n\nSi quieres que sigamos, elige un plan (o pídeselo a quien gestiona tu hogar):\n${url}`,

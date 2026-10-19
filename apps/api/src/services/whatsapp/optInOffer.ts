@@ -63,7 +63,7 @@ export async function claimOptInReoffer(userId: string, now: Date = new Date(), 
  * line; «sí» → Mimo's set_whatsapp_notifications.
  */
 export const REOFFER_WEB =
-  'Por cierto: si quieres, también te escribo yo por WhatsApp (el menú del día, un aviso antes de cocinar y la lista de la compra los sábados). Dime «sí, avísame» y lo activo; solo te lo pregunto esta vez.'
+  'Por cierto: si quieres, también te escribo yo por WhatsApp, solo lo importante (un aviso antes de cocinar y la lista de la compra los sábados). Dime «sí, avísame» y lo activo; solo te lo pregunto esta vez.'
 
 /** Pure: Mimo's web reply with the extra offer as its last line. */
 export function withReofferLine(message: string): string {

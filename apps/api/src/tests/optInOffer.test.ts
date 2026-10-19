@@ -17,7 +17,7 @@ describe('the extra avisos offer in the web chat (PRO-248)', () => {
 
   it('offers the same avisos as WhatsApp and says it is the only time', () => {
     for (const text of [REOFFER_WEB, COPY.optInReoffer]) {
-      expect(text).toMatch(/menú del día/)
+      expect(text).toMatch(/aviso antes de cocinar/)
       expect(text).toMatch(/lista de la compra los sábados/)
       expect(text).toMatch(/[Ss]olo te lo pregunto esta vez/)
     }

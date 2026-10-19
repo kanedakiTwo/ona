@@ -50,6 +50,7 @@ import { HEALTH_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY } from '../healt
 import { saveOnboarding } from '../onboarding.js'
 import { evaluateAndSaveMenuFit, menuFitSummary } from '../menuFit.js'
 import { schoolDinnerPool } from '../schoolMenu.js'
+import { weekHolidaySummary } from '../menuHolidays.js'
 import { isHealthMemoryKey } from '@ona/shared'
 
 /**
@@ -787,10 +788,12 @@ const generateWeeklyMenu: SkillDefinition = {
     // «Cuánto ha acertado» (PRO-155): Mimo tells it following the prompt's guide.
     const fit = await evaluateAndSaveMenuFit({ userId, menuId: menu.id, days }, db)
     const fitLine = menuFitSummary(fit)
+    // Festivos (PRO-226): Mimo mentions them.
+    const holidayLine = await weekHolidaySummary(userId, weekStart)
 
     return {
       data: { ...menu, fit },
-      summary: `Menu generado para la semana del ${weekStart}. ${menuSummary}${fitLine ? `\n${fitLine}` : ''}`,
+      summary: `Menu generado para la semana del ${weekStart}. ${menuSummary}${fitLine ? `\n${fitLine}` : ''}${holidayLine ? `\n${holidayLine}` : ''}`,
       uiHint: 'menu',
     }
   },
@@ -2478,7 +2481,7 @@ const addRecipeToMine: SkillDefinition = {
 const updateMemory: SkillDefinition = {
   name: 'update_memory',
   description:
-    'Guarda en la memoria del usuario un dato persistente que mencione en la conversación (disgustos, equipo de cocina, presupuesto, preferencias de cocina, días con poco tiempo, hábitos de preparación, etc.). Llámalo SIEMPRE que el usuario diga "recuerda que…", "ya no me gusta…", "no me apetece nunca…", "tengo / no tengo (electrodoméstico)", "los lunes no cocino", "el presupuesto semanal es…", "preferimos cocina mediterránea", "siempre congelo el pescado", "pongo las legumbres en remojo la noche antes". Acepta un array de hechos para cubrir varios cambios en un único turno. Usa claves canónicas: dislikes (array), equipment (array), restrictions (array), weekly_budget_eur (number), cuisine_bias (object cuisine->0..100), time_available (object weekday->minutes), cooking_skill ("easy"|"medium"|"advanced"), meal_times (object meal->"HH:MM"), notes (array), nutrition_principles (array), prep_habits (array), physical.age, physical.weight_kg, physical.height_cm, physical.activity_level, household.adults, household.kids_2_to_10.',
+    'Guarda en la memoria del usuario un dato persistente que mencione en la conversación (disgustos, equipo de cocina, presupuesto, preferencias de cocina, días con poco tiempo, hábitos de preparación, etc.). Llámalo SIEMPRE que el usuario diga "recuerda que…", "ya no me gusta…", "no me apetece nunca…", "tengo / no tengo (electrodoméstico)", "los lunes no cocino", "el presupuesto semanal es…", "preferimos cocina mediterránea", "siempre congelo el pescado", "pongo las legumbres en remojo la noche antes". Acepta un array de hechos para cubrir varios cambios en un único turno. Usa claves canónicas: dislikes (array), equipment (array), restrictions (array), weekly_budget_eur (number), cuisine_bias (object cuisine->0..100), time_available (object weekday->minutes), cooking_skill ("easy"|"medium"|"advanced"), meal_times (object meal->"HH:MM"), notes (array), nutrition_principles (array), prep_habits (array), physical.age, physical.weight_kg, physical.height_cm, physical.activity_level, household.adults, household.kids_2_to_10, region (comunidad autónoma del hogar, código: AN Andalucía, AR Aragón, AS Asturias, IB Illes Balears, CN Canarias, CB Cantabria, CM Castilla-La Mancha, CL Castilla y León, CT Cataluña, EX Extremadura, GA Galicia, MD Madrid, MC Murcia, NC Navarra, PV País Vasco, RI La Rioja, VC Comunitat Valenciana, CE Ceuta, ML Melilla; sus festivos van como fin de semana en el menú).',
   parameters: {
     type: 'object',
     properties: {

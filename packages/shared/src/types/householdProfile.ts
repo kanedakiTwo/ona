@@ -332,6 +332,7 @@ export const HOUSEHOLD_LEVEL_MEMORY_KEYS = [
   'household.kids_2_to_10',
   'equipment',
   'weekly_budget_eur',
+  'region',
 ] as const
 
 export function memoryKeyIsHouseholdLevel(key: string): boolean {

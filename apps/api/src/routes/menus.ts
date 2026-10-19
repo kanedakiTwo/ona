@@ -34,6 +34,7 @@ import {
 } from '../services/menuEdits.js'
 import { dayTimeBudget, detectSeason } from '@ona/shared'
 import { schoolDinnerPool } from '../services/schoolMenu.js'
+import { slotTimeBudget } from '../services/menuHolidays.js'
 import { recipeIngredients, ingredients, recipes, userFavorites } from '../db/schema.js'
 import { resolveScope, scopeWhere, getPrimaryHouseholdId, canAccessRow } from '../services/scopeResolver.js'
 import {
@@ -558,7 +559,7 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       ? new Set<string>((equipmentValue as string[]).map(normaliseEquipment))
       : undefined
     // PRO-138: the day's limit on total or hands-on time.
-    const timeBudget = dayTimeBudget(memory?.time_available?.value, dayIndex)
+    const timeBudget = slotTimeBudget(memory, menu.weekStart, dayIndex)
 
     // Fetch favorites — household-scoped when the flag is on so the
     // matcher boosts recipes any household member has starred.
@@ -714,7 +715,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
       const availableEquipment = Array.isArray(equipmentValue2)
         ? new Set<string>((equipmentValue2 as string[]).map(normaliseEquipment))
         : undefined
-      const timeBudget = dayTimeBudget(memory2?.time_available?.value, dayIndex)
+      const timeBudget = slotTimeBudget(memory2, menu.weekStart, dayIndex)
 
       const favRows = await db
         .select({ recipeId: userFavorites.recipeId })
@@ -1526,7 +1527,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
     const availEquipRegen = Array.isArray(equipValRegen)
       ? new Set<string>((equipValRegen as string[]).map(normaliseEquipment))
       : undefined
-    const timeBudgetRegen = dayTimeBudget(memRegen?.time_available?.value, day)
+    const timeBudgetRegen = slotTimeBudget(memRegen, menu.weekStart, day)
 
     const favScopeRegen = await resolveScope(menu.userId)
     const favRowsRegen = await db
@@ -1613,7 +1614,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/random', async (req: AuthReq
     const availEquipR = Array.isArray(equipValR)
       ? new Set<string>((equipValR as string[]).map(normaliseEquipment))
       : undefined
-    const timeBudgetR = dayTimeBudget(memR?.time_available?.value, day)
+    const timeBudgetR = slotTimeBudget(memR, menu.weekStart, day)
 
     const favScopeR = await resolveScope(menu.userId)
     const favRowsR = await db

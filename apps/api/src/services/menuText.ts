@@ -1,4 +1,5 @@
-import type { DayMenu, Dish } from '@ona/shared'
+import { timeBudgetsByDay, type DayMenu, type Dish, type SpanishRegion } from '@ona/shared'
+import { holidayRelaxedDay, holidayTimeBudgets } from './menuHolidays.js'
 
 /**
  * Pure: a menu day → Spanish lines the assistant (and WhatsApp messages) can
@@ -150,7 +151,7 @@ const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
  * household's first `SNOWBALL_WEEKS` starts with `SNOWBALL_LINE`.
  */
 export function weekMenuDigest(menu: WeekMenuInput, opts: WeekReplyOptions): string {
-  const { snowball, opener, shown, link, invite, today, tomorrow } = weekDigestParts(menu, opts)
+  const { snowball, opener, holiday, shown, link, invite, today, tomorrow } = weekDigestParts(menu, opts)
   const blocks = shown.map((d) => {
     const when = d.date === today ? ' · hoy' : d.date === tomorrow ? ' · mañana' : ''
     const title = `*${capitalize(DAY_NAME_ES[d.i])} ${Number(d.date.slice(8, 10))}${when}*`
@@ -161,7 +162,7 @@ export function weekMenuDigest(menu: WeekMenuInput, opts: WeekReplyOptions): str
     })
     return [title, ...lines].join('\n')
   })
-  return [...(snowball ? [snowball] : []), opener, ...blocks, ...(link ? [link] : []), invite].join('\n\n')
+  return [...(snowball ? [snowball] : []), opener, ...(holiday ? [holiday] : []), ...blocks, ...(link ? [link] : []), invite].join('\n\n')
 }
 
 /**
@@ -172,8 +173,8 @@ export function weekMenuDigest(menu: WeekMenuInput, opts: WeekReplyOptions): str
  * things.
  */
 export function weekMenuCaption(menu: WeekMenuInput, opts: WeekReplyOptions): string {
-  const { snowball, opener, link, invite } = weekDigestParts(menu, opts)
-  const caption = [opener, ...(link ? [link] : []), invite].join('\n')
+  const { snowball, opener, holiday, link, invite } = weekDigestParts(menu, opts)
+  const caption = [opener, ...(holiday ? [holiday] : []), ...(link ? [link] : []), invite].join('\n')
   return snowball ? `${snowball}\n\n${caption}` : caption
 }
 
@@ -197,6 +198,31 @@ export interface WeekReplyOptions {
    * Only read for a generated week: up to `SNOWBALL_WEEKS` → `SNOWBALL_LINE`.
    */
   generatedWeeks?: number
+  /**
+   * The household's comunidad autónoma (memory `region`, PRO-226) and its
+   * `time_available`: a generated week with a holiday says so
+   * («El jueves es festivo: te he puesto algo con más calma.»).
+   */
+  region?: SpanishRegion | null
+  timeAvailable?: unknown
+}
+
+/**
+ * Pure: the holiday line of a generated week (PRO-226), about the days the
+ * message shows. «con más calma» only when the holiday lifted a weekday
+ * limit; otherwise it just says the day is a holiday. Null without one.
+ */
+export function holidayLine(weekStart: string, shownDayIndexes: number[], opts: Pick<WeekReplyOptions, 'region' | 'timeAvailable'>): string | null {
+  if (!opts.region) return null
+  const before = timeBudgetsByDay(opts.timeAvailable)
+  const { budgets: after, holidays } = holidayTimeBudgets(before, weekStart, opts.region)
+  const days = holidays.filter((h) => shownDayIndexes.includes(h.dayIndex))
+  if (days.length === 0) return null
+  const names = days.map((h) => `el ${DAY_NAME_ES[h.dayIndex]}`)
+  const who = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]}`
+  const subject = capitalize(who) + (names.length === 1 ? ' es festivo' : ' son festivos')
+  const relaxed = days.some((h) => holidayRelaxedDay(before, after, h.dayIndex))
+  return relaxed ? `${subject}: te he puesto algo con más calma.` : `${subject}.`
 }
 
 /**
@@ -273,9 +299,12 @@ function weekDigestParts(menu: WeekMenuInput, opts: WeekReplyOptions) {
         ? 'Listo: tu menú de hoy 🍽️'
         : 'Listo: tu menú hasta el domingo 🍽️'
   const snowball = showsSnowball(opts) ? SNOWBALL_LINE : null
+  const holiday = (opts.view ?? 'generated') === 'generated'
+    ? holidayLine(weekStart, shown.filter((d) => !d.skipped).map((d) => d.i), opts)
+    : null
   const link = opts.webUrl ? `📖 Recetas y lista de la compra: ${shortWebLink(opts.webUrl, '/menu')}` : null
   const invite = menuDigestInvite(shown.filter((d) => !d.skipped && d.date !== today).map((d) => d.i))
-  return { snowball, opener, shown, link, invite, today, tomorrow }
+  return { snowball, opener, holiday, shown, link, invite, today, tomorrow }
 }
 
 /**

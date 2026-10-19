@@ -10,7 +10,7 @@ import { menus, menuEdits, menuLogs, users, userSettings } from '../db/schema.js
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { requireActiveAccount } from '../services/accountAccess.js'
 import { validate } from '../middleware/validate.js'
-import { generateMenuSchema, lockMealSchema, MEALS, MEAL_TYPE_TAGS, courseSchema } from '@ona/shared'
+import { generateMenuSchema, isTaperDish, lockMealSchema, MEALS, MEAL_TYPE_TAGS, courseSchema } from '@ona/shared'
 import type { DayMenu, Dish, LockedSlots, Meal, MealSlot, RecipeDish } from '@ona/shared'
 import { defaultTemplate, generateMenu, extractMealDishCounts, normalizeMealTemplate } from '../services/menuGenerator.js'
 import { evaluateAndSaveMenuFit } from '../services/menuFit.js'
@@ -86,6 +86,9 @@ async function hydrateMenuImages<T extends { days: unknown }>(menu: T): Promise<
       authorId: recipes.authorId,
       status: recipes.status,
       imageUrl: recipes.imageUrl,
+      // PRO-240: dishes saved without a name (Mimo's tápers, the recipes it
+      // creates) get it from the recipe.
+      name: recipes.name,
       // Hydrating prep + total time so the week-list view can show a time
       // chip on every row without an extra per-recipe fetch. Pulled from
       // the same `recipes` row that already gives us the image URL.
@@ -103,7 +106,7 @@ async function hydrateMenuImages<T extends { days: unknown }>(menu: T): Promise<
   const recipeById = new Map(
     rows.map((r) => [
       r.id,
-      { imageUrl: r.imageUrl, prepTime: r.prepTime, totalTime: r.totalTime, course: r.course },
+      { name: r.name, imageUrl: r.imageUrl, prepTime: r.prepTime, totalTime: r.totalTime, course: r.course },
     ]),
   )
   const hydratedDays = days.map((day) => {
@@ -123,6 +126,7 @@ async function hydrateMenuImages<T extends { days: unknown }>(menu: T): Promise<
               : null)
           return {
             ...dish,
+            recipeName: dish.recipeName?.trim() ? dish.recipeName : info?.name ?? dish.recipeName,
             imageUrl: info?.imageUrl ?? null,
             prepTime: info?.prepTime ?? null,
             totalTime: info?.totalTime ?? null,
@@ -1128,7 +1132,7 @@ router.post('/menu/:menuId/day/:day/leftover', async (req: AuthRequest, res) => 
     // Prevent chaining: reject if every recipe-dish in the source is already a leftover.
     const hasPlannedRecipe = sourceSlot.dishes.some(
       // A freezer táper (PRO-82) isn't cooked here either, so it can't be a source.
-      (d) => d.kind === 'recipe' && d.variant !== 'leftover' && d.variant !== 'freezer',
+      (d) => d.kind === 'recipe' && d.variant !== 'leftover' && !isTaperDish(d),
     )
     if (!hasPlannedRecipe) {
       res.status(400).json({ error: 'Cannot chain leftovers — pick a planned source slot' })
@@ -1142,7 +1146,7 @@ router.post('/menu/:menuId/day/:day/leftover', async (req: AuthRequest, res) => 
     // Clone only the recipe dishes from the source slot (notes dropped).
     const clonedDishes: RecipeDish[] = []
     sourceSlot.dishes.forEach((d, sourcePos) => {
-      if (d.kind !== 'recipe' || d.variant === 'freezer') return  // notes and freezer tápers don't propagate as leftovers
+      if (d.kind !== 'recipe' || isTaperDish(d)) return  // notes and tápers (freezer/fridge) don't propagate as leftovers
       clonedDishes.push({
         ...d,
         variant: 'leftover',
@@ -1280,13 +1284,20 @@ const addDishSchema = z.union([
     course: courseSchema.optional(),
     pinnedType: z.string().nullable().optional(),
     /** PRO-82: «Del congelador» — never adds to the shopping list. */
-    variant: z.enum(['planned', 'freezer']).optional(),
+    variant: z.enum(['planned', 'freezer', 'fridge']).optional(),
   }),
   z.object({
     kind: z.literal('note'),
     text: z.string().min(1).max(120),
   }),
 ])
+
+/** A recipe dish without a name gets its recipe's (PRO-240). Notes and named dishes pass through. */
+async function withRecipeNameStored(dish: Dish): Promise<Dish> {
+  if (dish.kind !== 'recipe' || dish.recipeName?.trim()) return dish
+  const [row] = await db.select({ name: recipes.name }).from(recipes).where(eq(recipes.id, dish.recipeId)).limit(1)
+  return row ? { ...dish, recipeName: row.name } : dish
+}
 
 // B.1: POST /menu/:menuId/day/:day/meal/:meal/dish — append a dish to a slot.
 router.post('/menu/:menuId/day/:day/meal/:meal/dish', async (req: AuthRequest, res) => {
@@ -1303,13 +1314,16 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish', async (req: AuthRequest, r
     if (!menu) { res.status(404).json({ error: 'Menu not found' }); return }
     const days = menu.days as DayMenu[]
     const slot = days[day]?.[meal] ?? { servings: null, dishes: [] }
-    const next = addDish(slot.dishes, parsed.data as Dish)
+    // PRO-240: the dish is stored with its recipe's name (Mimo's tápers
+    // came without one and the menu showed «Receta»).
+    const named = await withRecipeNameStored(parsed.data as Dish)
+    const next = addDish(slot.dishes, named)
     if (!days[day]) days[day] = {}
     days[day][meal] = { ...slot, dishes: next }
     await db.update(menus).set({ days: days as any }).where(eq(menus.id, menuId))
     const added = dishRecipe(next[next.length - 1])
     if (added) {
-      const freezer = parsed.data.kind === 'recipe' && parsed.data.variant === 'freezer'
+      const freezer = parsed.data.kind === 'recipe' && (parsed.data.variant === 'freezer' || parsed.data.variant === 'fridge')
       await recordMenuEdits(req, menu, [{ action: freezer ? 'freezer' : 'add', day, meal, after: added }])
     }
     res.json({ position: next.length - 1, dish: next[next.length - 1] })

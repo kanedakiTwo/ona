@@ -138,7 +138,7 @@ function flattenMenuSlots(days: unknown): SlotEntry[] {
         if (d.kind !== 'recipe') continue
         // Skip leftover dishes — they share the source's prep alerts.
         // …and freezer tápers (PRO-82): nothing to prepare.
-        if (d.variant === 'leftover' || d.variant === 'freezer') continue
+        if (d.variant === 'leftover' || d.variant === 'freezer' || d.variant === 'fridge') continue
         if (typeof d.recipeId === 'string' && d.recipeId.length > 0) {
           out.push({ dayIndex: i, meal: meal as Meal, recipeId: d.recipeId })
         }

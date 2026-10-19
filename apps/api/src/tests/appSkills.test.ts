@@ -526,6 +526,16 @@ describe('add_freezer_dish (PRO-82)', () => {
     expect(r.summary).toContain('no suma nada a la lista de la compra')
   })
 
+  it('«lo tenemos en la nevera» → place nevera saves a «Táper de la nevera» (PRO-240)', async () => {
+    const f = fakeApi({ 'GET /recipes': [{ id: 'r-lg', name: 'Lentejas guisadas' }] })
+    const r = await get('add_freezer_dish').handler({ dayIndex: 0, meal: 'lunch', recipeName: 'lentejas', place: 'nevera' }, ctx(f.api))
+    expect(writes(f.calls).at(-1)).toEqual({
+      method: 'POST', path: '/menu/m1/day/0/meal/lunch/dish', body: { kind: 'recipe', recipeId: 'r-lg', variant: 'fridge' },
+    })
+    expect(r.summary).toContain('taper de la nevera')
+    expect(r.summary).not.toContain('congelador')
+  })
+
   it('an empty meal is not cleared first; unknown dishes go as a «Táper: …» note', async () => {
     const f = fakeApi({ 'GET /recipes': [] })
     await get('add_freezer_dish').handler({ dayIndex: 1, meal: 'dinner', recipeName: 'cocido de la abuela' }, ctx(f.api))

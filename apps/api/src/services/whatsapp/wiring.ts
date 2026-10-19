@@ -18,6 +18,7 @@ import * as store from './store.js'
 import * as client from './client.js'
 import { writeGuided } from './outbound.js'
 import type { InboundDeps } from './inbound.js'
+import { fillRecipeNames } from '../menuNames.js'
 import type { InboundMessage } from './webhookParser.js'
 
 /**
@@ -33,7 +34,8 @@ async function loadWeekMenu(userId: string, menuId: string | null): Promise<Week
     .orderBy(desc(menus.createdAt))
     .limit(1)
   if (!row) return null
-  return { weekStart: String(row.weekStart), days: row.days as any, skippedDays: row.skippedDays }
+  // PRO-240: dishes saved without a name are named from their recipe.
+  return { weekStart: String(row.weekStart), days: (await fillRecipeNames(row.days, db)) as any, skippedDays: row.skippedDays }
 }
 
 /** Options for the week text and caption: the view, and for a generated week its rank. */

@@ -1204,8 +1204,9 @@ describe('skill export coverage', () => {
     // withWhatIHave.test.ts), and to 66 with add_freezer_dish (táper del
     // congelador, PRO-82, tested in appSkills.test.ts), and to 67 with
     // leave_feedback (beta feedback box, 2026-10-15, tested in feedback.test.ts),
-    // and to 68 with get_weekly_menu (the whole week, 2026-10-15).
-    expect(skills.length).toBe(68)
+    // and to 68 with get_weekly_menu (the whole week, 2026-10-15), and to 69
+    // with share_invite_link («Invitar a otro hogar», PRO-163, tested in appSkills.test.ts).
+    expect(skills.length).toBe(69)
   })
 
   it('every skill has a unique name', () => {

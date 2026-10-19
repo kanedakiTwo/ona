@@ -1226,6 +1226,8 @@ describe('skill export coverage', () => {
     // with get_fixed_meals + set_fixed_meal (comidas fijas, PRO-218, tested
     // in fixedMeals.test.ts).
     expect(skills.length).toBe(70)
+    // with set_taper («mañana me llevo táper», PRO-223, tested in taper.test.ts).
+    expect(skills.length).toBe(69)
   })
 
   it('every skill has a unique name', () => {

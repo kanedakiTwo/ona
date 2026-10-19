@@ -44,6 +44,7 @@ import { logEntriesFor, noticePriority, planMoment, countsAgainstBudget, type De
 import { budgetKeyFor, loadFullBudgetState, recentNoticeKinds, recordNotices } from '../notifications/budgetStore.js'
 import { isAwakeTime } from '../notifications/hours.js'
 import { HOUSEHOLD_NOTICE_KINDS, householdNoticeRecipient, type HouseholdMember } from '../notifications/recipient.js'
+import { taperTomorrow } from '../taper.js'
 
 /** Per-kind templates (WHATSAPP_TEMPLATES), parsed once. */
 const TEMPLATES = parseTemplateMap(env.WHATSAPP_TEMPLATES)
@@ -375,6 +376,10 @@ export async function runProactiveTick(now: Date = new Date()): Promise<void> {
           Boolean(await latestMenuForWeek(link.userId, mondayOf(parts.isoDate, parts.weekday, 1))),
         sawTodaysMenu: () => sawMenuThisMorning(link.userId, parts, now),
         askRating: async (recipeId) => shouldAskRating(await getRecipeNotesForUser(link.userId, recipeId)),
+        taperTonight: async () => {
+          const menu = await latestMenuForWeek(link.userId, mondayOf(parts.isoDate, parts.weekday))
+          return menu ? taperTomorrow(menu.days as DayMenu[], parts.weekday) : null
+        },
         webUrl: env.WEB_PUBLIC_URL,
       })
       if (planned.length === 0) continue

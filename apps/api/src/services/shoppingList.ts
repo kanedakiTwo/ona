@@ -218,6 +218,8 @@ export function withLeftoverBatches(weekDays: DayMenu[]): DayMenu[] {
         const sourceCooksIt = (source?.dishes ?? []).some(
           (d) => d.kind === 'recipe' && d.variant !== 'leftover' && d.recipeId === dish.recipeId,
         )
+        // PRO-223: a táper is one ration more on top of «Solo hoy», never covered by it.
+        if (slot.taper) return true
         return !(sourceCooksIt && hasServingsOverride(source))
       })
       if (kept.length !== slot.dishes.length) {

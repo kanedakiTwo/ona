@@ -14,6 +14,12 @@ export interface MealSlot {
    */
   eaten?: boolean
   eatenAt?: string
+  /**
+   * PRO-223 · «El táper de mañana»: how many tápers this meal is. The slot
+   * holds the previous day's dinner as a leftover and `servings` = this count,
+   * so that dinner is cooked with one more ration per táper.
+   */
+  taper?: number
 }
 
 export interface DayMenu {

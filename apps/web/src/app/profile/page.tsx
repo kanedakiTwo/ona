@@ -164,6 +164,8 @@ export default function ProfilePage() {
   const [mealDishCounts, setMealDishCounts] = useState<Partial<Record<Meal, 1 | 2 | 3>>>({})
   // Comidas fijas (PRO-218): saved in the same blob as the plantilla.
   const [fixedMeals, setFixedMeals] = useState<FixedMeal[]>([])
+  // PRO-223: days whose lunch is a táper of the dinner before (never Monday).
+  const [taperDays, setTaperDays] = useState<string[]>([])
   const [restrictionInput, setRestrictionInput] = useState('')
   // RGPD art. 9 (PRO-21): physical data and restrictions only with consent.
   const [healthConsent, setHealthConsent] = useState<HealthConsentState | null>(null)
@@ -271,6 +273,9 @@ export default function ProfilePage() {
         setMealTemplate(next)
       }
       setFixedMeals(fixedMealsFromTemplate(blob))
+      if (Array.isArray(blob?.taperDays)) {
+        setTaperDays((blob.taperDays as unknown[]).filter((d): d is string => typeof d === 'string' && (DAYS as readonly string[]).includes(d) && d !== 'lunes'))
+      }
       const rawMdc = blob?.mealDishCounts
       if (rawMdc && typeof rawMdc === 'object') {
         const cleaned: Partial<Record<Meal, 1 | 2 | 3>> = {}
@@ -408,15 +413,15 @@ export default function ProfilePage() {
       }
       calls.push(api.put(`/user/${user.id}/settings`, {
         template: healthActive
-          ? { physical, preferences, mealTemplate, mealDishCounts, fixedMeals }
-          : { preferences: { ...preferences, restrictions: [] }, mealTemplate, mealDishCounts, fixedMeals },
+          ? { physical, preferences, mealTemplate, mealDishCounts, fixedMeals, taperDays }
+          : { preferences: { ...preferences, restrictions: [] }, mealTemplate, mealDishCounts, fixedMeals, taperDays },
       }))
       await Promise.all(calls)
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
     } catch (e) { console.error(e) }
     finally { setSaving(false) }
-  }, [user, physical, preferences, household, mealTemplate, mealDishCounts, fixedMeals, healthActive])
+  }, [user, physical, preferences, household, mealTemplate, mealDishCounts, fixedMeals, taperDays, healthActive])
 
 
   if (authLoading || !user) {
@@ -812,6 +817,33 @@ export default function ProfilePage() {
               </div>
 
               <FixedMealsEditor value={fixedMeals} onChange={setFixedMeals} />
+
+              {/* PRO-223 · «El táper de mañana» on fixed days. */}
+              <div className="mt-4" role="group" aria-label="Días de táper">
+                <div className="text-[14px] font-medium text-ink">Días de táper</div>
+                <p className="mt-1 text-[12px] leading-snug text-ink-muted">
+                  Los días que comes fuera y te llevas la cena de la víspera: esa cena se hace con una ración más.
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {DAYS.slice(1).map((day, i) => {
+                    const on = taperDays.includes(day)
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        aria-pressed={on}
+                        aria-label={`Táper el ${day}`}
+                        onClick={() => setTaperDays((prev) => (on ? prev.filter((d) => d !== day) : [...prev, day]))}
+                        className={`min-h-[40px] min-w-[40px] rounded-full border px-3 text-[13px] ${
+                          on ? 'border-ink bg-ink text-cream' : 'border-border bg-paper text-ink-mid'
+                        }`}
+                      >
+                        {DAYS_SHORT[i + 1]}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
             </ProfileCard>
 
             {/* Recordatorios */}

@@ -45,13 +45,14 @@ import {
   usePatchDish,
   useRegenerateDish,
   useAddRandomDish,
+  useSetTaper,
 } from "@/hooks/useMenu"
 import { useUser } from "@/hooks/useUser"
 import { useOnboardingGate } from "@/hooks/useOnboardingGate"
 import { haptic } from "@/lib/pwa/haptics"
 import { recordMenuVisit } from "@/lib/pwa/installPrompt"
 import { share } from "@/lib/pwa/share"
-import { batchServings, dateOfDay, dayHeading, missingMeals, orderedSlots, splitDay, weekHasDishes, weekRangeLabel, weekdayName, type MealKey } from "@/lib/menuDay"
+import { batchServings, dateOfDay, dayHeading, missingMeals, orderedSlots, splitDay, taperSourceOf, weekHasDishes, weekRangeLabel, weekdayName, type MealKey } from "@/lib/menuDay"
 import { WeekGridView } from "@/components/menu/WeekGridView"
 import { WeekStrip } from "@/components/menu/WeekStrip"
 import { PantryMatchCard } from "@/components/menu/PantryMatchCard"
@@ -183,6 +184,7 @@ export default function MenuPage() {
   const patchDish = usePatchDish()
   const regenerateDish = useRegenerateDish()
   const addRandomDish = useAddRandomDish()
+  const setTaper = useSetTaper()
 
   // Household diner count — the fallback when a slot has no override.
   const { data: profile } = useUser(user?.id)
@@ -346,6 +348,11 @@ export default function MenuPage() {
           editNote: (position, text) => patchDish.mutate({ ...base, position, patch: { text } }),
           // PRO-74: «Usar "<lo escrito>" como plato» swaps the dish for the
           // text (before, a note was only added next to it). Keeps «Solo hoy».
+          // PRO-223: «Me lo llevo en táper» / «Quitar táper».
+          setTaper: (on) => {
+            haptic.medium()
+            setTaper.mutate({ ...base, on })
+          },
           replaceWithNote: (text) => {
             haptic.medium()
             deleteMealSlot.mutate(base, {
@@ -368,6 +375,7 @@ export default function MenuPage() {
             isLocked: isLockedAt(day, meal),
             defaultDiners,
             batchServings: batchServings((menu!.days ?? []) as DayMenu[], day, meal, defaultDiners),
+            taperFrom: taperSourceOf((menu!.days ?? []) as DayMenu[], day, meal, weekdayName),
             isRegenerating: regenerateMeal.isPending,
           },
         }

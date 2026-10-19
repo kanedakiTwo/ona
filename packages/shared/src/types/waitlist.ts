@@ -51,7 +51,8 @@ export const WAITLIST_PLATFORM_LABELS: Record<WaitlistPlatform, string> = {
 }
 
 /** Stored with each entry. Bump it whenever the consent text on the form or the privacy section changes. */
-export const WAITLIST_CONSENT_VERSION = '2026-10-17'
+// 2026-10-19 (PRO-171): the retention date (16 May 2027) in /privacidad «11. Lista de espera».
+export const WAITLIST_CONSENT_VERSION = '2026-10-19'
 
 /**
  * The optional "menú de la semana por email" opt-in is a SEPARATE consent

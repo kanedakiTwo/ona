@@ -10,6 +10,7 @@
  */
 
 import {
+  orderMembers,
   orderQtyInGrams,
   resolveBuyRule,
   splitCompound,
@@ -120,6 +121,11 @@ function merge(members: Entry[], ruleKey: string | null, key: string): LineInput
     pricePerUnit: members.length === 1 ? members[0].pricePerUnit : null,
     // Typed by the user → they want it, even if the recipe amount alone would be "probablemente lo tienes".
     included: members.some((m) => m.source !== 'recipe') ? true : undefined,
+    members: orderMembers(
+      // Sin cantidad (el «1 u» por defecto): no cuenta si su grupo tiene una real, como arriba.
+      members.map((m) => ({ id: m.id, name: m.name, quantity: m.quantity, unit: m.unit, placeholder: m.source === 'default' })),
+      ruleKey,
+    ),
   }
 }
 

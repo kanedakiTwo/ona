@@ -4,7 +4,7 @@
  * (specs/shop-orders.md → Buy rules).
  */
 
-import { capitalize, formatQty, prettyName, toOrderQty, type BuyableUnit, type ShopKind, type ShopOrderLine } from '@ona/shared'
+import { capitalize, formatQty, prettyName, toOrderQty, type BuyableUnit, type OrderMember, type ShopKind, type ShopOrderLine } from '@ona/shared'
 import { estimateLine, type PriceMemory } from './estimate.js'
 import { isVolatileFish } from './fish.js'
 import { lineRequestText } from './format.js'
@@ -22,6 +22,8 @@ export interface LineInput {
   choice: string | null
   included?: boolean
   pricePerUnit?: number | null
+  /** Grupos de una línea fusionada (alubias blancas + rojas); ver orderMembers. */
+  members?: OrderMember[] | null
 }
 
 export function buildLine(input: LineInput, kind: ShopKind, prefs: Record<string, string>, memory: PriceMemory): ShopOrderLine {
@@ -56,6 +58,7 @@ export function buildLine(input: LineInput, kind: ShopKind, prefs: Record<string
     grams,
     choice: conv.choice,
     options: conv.options,
+    ...(input.members && input.members.length >= 2 ? { members: input.members } : {}),
     needsChoice: conv.needsChoice,
     needsQuantity: conv.needsQuantity,
     maybeHave: conv.maybeHave,
@@ -85,6 +88,7 @@ export function inputOf(line: ShopOrderLine): LineInput {
     note: line.note,
     choice: line.choice ?? null,
     included: line.included,
+    members: line.members ?? null,
   }
 }
 

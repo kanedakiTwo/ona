@@ -549,6 +549,8 @@ export async function patchOrder(userId: string, id: string, patch: OrderPatch, 
       input.quantity = p.quantity
       input.unit = p.unit ?? (input.quantitySource === 'default' ? 'g' : input.unit)
       input.quantitySource = 'user'
+      // La cantidad la ha puesto el usuario: manda la línea entera (spec: «si el usuario cambia la cantidad de una línea con miembros»).
+      input.members = null
     }
     if (p.include !== undefined) input.included = p.include
     if (p.choice !== undefined) {

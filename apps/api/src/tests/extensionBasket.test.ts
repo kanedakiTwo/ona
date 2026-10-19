@@ -17,8 +17,11 @@ import {
   toOrderQty,
   type BuyableUnit,
   type ShopOrderLine,
+  type ShoppingItem,
 } from '@ona/shared'
-import { buildLine } from '../services/shopOrders/lines.js'
+import { draftOrdersFromItems } from '../services/shopOrders/draft.js'
+import { buildLine, inputOf } from '../services/shopOrders/lines.js'
+import { carryDraftEdits } from '../services/shopOrders/store.js'
 
 const m = (id: string, name: string, quantity: number, unit: 'g' | 'ml' | 'u' = 'g') => ({ id, name, quantity, unit })
 /** Tecleado sin cantidad: el «1 u» por defecto. */
@@ -448,5 +451,80 @@ describe('sourceItemsForBasketKey', () => {
   })
   it('si la parte de grupo no es un entero ≥ 1 escrito como lo escribe la cesta, la clave no vale: ningún artículo', () => {
     for (const key of ['l3.', 'l3.0', 'l3.x', 'l3.1.2', 'l3.01', 'l1.']) expect(sourceItemsForBasketKey(lines, key), key).toEqual([])
+  })
+})
+
+const item = (over: Partial<ShoppingItem> & { name: string }): ShoppingItem => ({
+  id: `id-${over.name}`, ingredientId: null, quantity: 1, unit: 'u', aisle: 'otros',
+  checked: false, inStock: false, kind: 'menu', pricePerUnit: null, ...over,
+})
+const typed = (name: string) => item({ name, kind: 'manual', id: `m-${name}` })
+const SUPER = [{ id: 'sup', kind: 'supermercado' as const, position: 0, priceMemory: {} }]
+
+describe('borrador: members', () => {
+  it('alubias blancas + rojas → una línea con dos grupos; jamón + jamón serrano y leche + leche entera → sin members', () => {
+    const { byShop } = draftOrdersFromItems(
+      [
+        item({ name: 'alubias blancas', quantity: 400, unit: 'g' }),
+        item({ name: 'alubias rojas', quantity: 400, unit: 'g' }),
+        item({ name: 'jamon', quantity: 50, unit: 'g' }),
+        typed('Jamón serrano'),
+        typed('leche'),
+        item({ name: 'leche entera', quantity: 50, unit: 'ml' }),
+      ],
+      [{ id: 'sup', kind: 'supermercado' as const, position: 0, priceMemory: {} }, { id: 'car', kind: 'carniceria' as const, position: 1, priceMemory: {} }],
+    )
+    const lines = byShop.flatMap((s) => s.lines)
+    const alubias = lines.find((l) => l.ruleKey === 'alubias')!
+    expect(alubias.members?.map((m) => m.name)).toEqual(['alubias blancas', 'alubias rojas'])
+    expect(alubias.members?.map((m) => m.sourceItemIds)).toEqual([['id-alubias blancas'], ['id-alubias rojas']])
+    expect(lines.find((l) => l.ruleKey === 'jamon')!.members ?? null).toBeNull()
+    expect(lines.find((l) => l.ruleKey === 'leche')!.members ?? null).toBeNull()
+  })
+  it('members sobrevive a inputOf → buildLine (mover) y a carryDraftEdits (rehacer los pedidos)', () => {
+    const { byShop } = draftOrdersFromItems(
+      [item({ name: 'alubias blancas', quantity: 400, unit: 'g' }), item({ name: 'alubias rojas', quantity: 400, unit: 'g' })],
+      SUPER,
+    )
+    const l = byShop[0].lines[0]
+    expect(l.members).toHaveLength(2)
+    const again = buildLine(inputOf(l), 'supermercado', {}, {})
+    expect(again.members).toEqual(l.members)
+    const [rehecho] = carryDraftEdits(
+      [{ shopId: 'sup', kind: 'supermercado', lines: byShop[0].lines, priceMemory: {} }],
+      [{ shopId: 'sup', lines: byShop[0].lines, fulfilment: null, address: null }],
+      [{ id: 'sup', kind: 'supermercado', priceMemory: {} }],
+      {},
+    )
+    expect(rehecho.lines[0].members).toEqual(l.members)
+  })
+  it('tecleado sin cantidad junto a la misma cosa de receta: su «1 u» no se suma, sus ids sí', () => {
+    const { byShop } = draftOrdersFromItems(
+      [
+        typed('alubias rojas'),
+        item({ name: 'alubias rojas', quantity: 1200, unit: 'g', id: 'r-alubias rojas' }),
+        item({ name: 'alubias blancas', quantity: 400, unit: 'g' }),
+      ],
+      SUPER,
+    )
+    const alubias = byShop[0].lines.find((l) => l.ruleKey === 'alubias')!
+    expect(alubias.members).toEqual([
+      { name: 'alubias rojas', quantity: 1200, unit: 'g', sourceItemIds: ['m-alubias rojas', 'r-alubias rojas'] },
+      { name: 'alubias blancas', quantity: 400, unit: 'g', sourceItemIds: ['id-alubias blancas'] },
+    ])
+  })
+  it('un artículo comprado en parte (PRO-199) aporta a su grupo solo lo que falta', () => {
+    const { byShop } = draftOrdersFromItems(
+      [
+        item({ name: 'alubias blancas', quantity: 400, unit: 'g', haveQuantity: 300 }),
+        item({ name: 'alubias rojas', quantity: 400, unit: 'g' }),
+      ],
+      SUPER,
+    )
+    const alubias = byShop[0].lines.find((l) => l.ruleKey === 'alubias')!
+    expect(alubias.members?.map((m) => [m.name, m.quantity, m.unit])).toEqual([
+      ['alubias blancas', 100, 'g'],
+      ['alubias rojas', 400, 'g'],
+    ])
   })
 })

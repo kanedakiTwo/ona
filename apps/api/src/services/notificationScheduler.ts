@@ -51,6 +51,7 @@ import { purgeOldUsageEventsIfDue } from './usageEvents.js'
 import { CHAT_RETENTION_DAYS, purgeOldChatMessagesIfDue } from './chatMessages.js'
 import { sendWaitlistInviteRemindersIfDue } from './waitlistInvites.js'
 import { isAccountPaused } from './accountAccess.js'
+import { cooksOfWeek } from './cookToday.js'
 import { sendTrialEndingEmailsIfDue } from './trialEmails.js'
 import { sendFounderOffersIfDue } from './founderOffer.js'
 import { sendChargeNoticesIfDue } from './chargeNotice.js'
@@ -230,6 +231,8 @@ export async function enqueuePrepAlertsForMenu(
 
   const now = new Date()
   const weekStart = String(menu.weekStart)
+  // PRO-230: «hoy cocina Pablo» — that day's alerts go to whoever cooks.
+  const cooks = menu.householdId ? await cooksOfWeek(menu.householdId, weekStart) : new Map<number, string>()
 
   let inserted = 0
   let skipped = 0
@@ -261,7 +264,7 @@ export async function enqueuePrepAlertsForMenu(
 
       try {
         await db.insert(notificationSchedule).values({
-          userId: menu.userId,
+          userId: cooks.get(slot.dayIndex) ?? menu.userId,
           dedupKey,
           fireAt,
           payload: {

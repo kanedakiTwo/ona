@@ -71,6 +71,14 @@ Delivery follows Meta's 24 h customer-service window, measured from `last_inboun
 - **Outside the window:** the approved template `WHATSAPP_TEMPLATE_NAME` (language `WHATSAPP_TEMPLATE_LANG`, default `es`), whose single `{{1}}` body variable carries the message flattened to one line. Buttons are folded in as "Responde: Sí / No.", because Meta rejects newlines in template parameters.
 - **Outside the window with no template:** skipped silently and retried on the next tick while the time window is still open.
 
+## Who cooks today («hoy cocina Pablo»)
+
+PRO-230 (D-069), only when asked — nothing new in the app. In the web chat or on WhatsApp, «hoy cocina Pablo, mándale la receta» (or «el jueves cocina Ana») → Mimo's `set_cook_today { name, day?, meal? }` → `POST /households/me/cook-today` (`services/cookToday.ts`):
+- finds that person among the household's adults (first name, accents and case ignored); refuses when alone at home, for an unknown name (lists who is there), for oneself, or when that meal has no recipe;
+- **with WhatsApp linked and avisos on**, sends them (outbound kind `cook_today`, 24 h window or template like any proactive message) «Hoy cocinas tú la cena (te lo pide <quien>): → <receta>: <enlace> · Con antelación: - <preparativo> (a las HH:MM) · Te aviso yo a esa hora.»; records the cook in `cook_of_day` (migration `0071_cook_of_day`, one per household and Madrid day) and moves that day's pending prep alerts to them. Alerts enqueued later for that day are theirs too (`cooksOfWeek` in `enqueuePrepAlertsForMenu`). The requester no longer gets them;
+- **without WhatsApp** (or avisos off, or the message can't go out), nothing is sent or moved: Mimo says why and gives a `https://wa.me/?text=…` link with the same text to forward it.
+- Meal: the one asked, else dinner, else lunch. Tests: `cookToday.test.ts` (two-person household, with and without WhatsApp, the skill), `cookToday.smoke.ts` (alerts moved and re-enqueued to the cook).
+
 ## Conversation reviewer agent
 
 Every day after 07:00 Madrid, the scheduler tick runs `runDailyReviewIfDue` (`services/whatsapp/reviewer.ts`) once for **yesterday's** WhatsApp conversations:
@@ -166,6 +174,7 @@ Migration `0032_assistant_reviews.sql` (new table + nullable `meta` column; idem
 
 ## Source
 
+- [apps/api/src/services/cookToday.ts](../apps/api/src/services/cookToday.ts) — «hoy cocina Pablo» (PRO-230); route in [apps/api/src/routes/households.ts](../apps/api/src/routes/households.ts)
 - [apps/api/src/services/onboarding.ts](../apps/api/src/services/onboarding.ts): `saveOnboarding`, shared by `POST /user/:id/onboarding` and `complete_onboarding`.
 - [apps/web/src/components/onboarding/OnboardingWhatsApp.tsx](../apps/web/src/components/onboarding/OnboardingWhatsApp.tsx): the «Por WhatsApp» first screen of `/onboarding`.
 - [apps/web/src/components/onboarding/OnboardingMenuReady.tsx](../apps/web/src/components/onboarding/OnboardingMenuReady.tsx): «Tu menú está listo», allergies after the WhatsApp sign-up (PRO-161); [RestrictionsPicker.tsx](../apps/web/src/components/onboarding/RestrictionsPicker.tsx): consent box + chips, shared with step 4.

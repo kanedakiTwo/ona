@@ -48,7 +48,7 @@ Every paid provider call writes one row — user (nullable), household (user's p
 | `unit_fallback` (odd units → grams/ml) | Anthropic Haiku 4.5 | user |
 | `usda_translation` (ingredient auto-create) | Anthropic Haiku 4.5 | user |
 | `ingredient_nutrition_estimate` ("Estimar con Mimoia") | Anthropic Opus 4.6 | user |
-| `recipe_image` (regenerate image) | AIKIT Imagen-fal | user (seed script: system) |
+| `recipe_image` (house photo: create/import, regenerate image) | AiKit `AIKIT_IMAGE_MODEL` (`gpt-image-2`, PRO-265); OpenAI `OPENAI_IMAGE_MODEL` (`gpt-image-1`) when AiKit fails. Historical rows: AiKit `imagen-fal` | user (seed script: system) |
 | `whatsapp_review` (daily conversation reviewer) | Anthropic Opus 5.5 | system |
 | `whatsapp_guided` (PRO-156: the writer of the messages Mimo sends by itself, ≈ $0.0025 each) | Anthropic Haiku 4.5 | user (counts against the monthly cap) |
 | `whatsapp_template` (Mimoia-initiated template, outside the 24 h window) | Meta `utility_template` | user |
@@ -64,7 +64,7 @@ Not costs, so not recorded: USDA / BEDCA lookups, YouTube/article fetches.
 
 All rates live in `config/pricing.ts` (source + date in comments), in the provider's currency; USD is converted with `ADVISOR_EUR_PER_USD` (the same knob the advisor budget uses, default 0.92). The advisor's € budget prices the assistant's model (`ADVISOR_PRICE_MODEL` in `advisorBudget.ts`, kept in sync with `ASSISTANT_MODEL`) from the same table, so budget and ledger never disagree. Anthropic rates checked against the official page on 2026-10-16: Sonnet 5.5 and Opus 5.5 cache reads are 0.05× input (Sonnet 5.5 reads were recorded at double the real rate until then); Haiku 5.5 ($0.10 / $0.50) is in the table for model comparisons. `COST_PRICE_OVERRIDES` (JSON, e.g. `{"openai/gpt-realtime":{"perMinute":0.15}}`) corrects or adds a price without a code change; malformed values are ignored with a warning.
 
-The `openai/gpt-realtime*` entries stay in the table so historical `voice_realtime` rows keep their price. ElevenLabs is priced per 1,000 characters by model (`elevenlabs/<model>`). Marked UNVERIFIED (estimates, override when known): Realtime voice blended **$0.10 / session-minute** (historical; token rates verified, the per-minute blend is derived), AIKIT image **$0.04**. Meta WhatsApp Spain is verified against Meta's EUR list rates effective 2026-10-01 (checked 2026-10-13): utility template and service message **€0.0166**, marketing **€0.0585**.
+The `openai/gpt-realtime*` entries stay in the table so historical `voice_realtime` rows keep their price. ElevenLabs is priced per 1,000 characters by model (`elevenlabs/<model>`). Marked UNVERIFIED (estimates, override when known): Realtime voice blended **$0.10 / session-minute** (historical; token rates verified, the per-minute blend is derived), AIKIT Imagen-fal image **$0.04** (historical rows only). AiKit `gpt-image-2` is **€0.0044 a photo**, in euros: what AiKit charges, read off the key's spend counter on 2026-10-19 (D-090); OpenAI `gpt-image-1` medium 1536×1024 **$0.063** (measured 2026-10-08). Meta WhatsApp Spain is verified against Meta's EUR list rates effective 2026-10-01 (checked 2026-10-13): utility template and service message **€0.0166**, marketing **€0.0585**.
 
 ## Activity log (`activity_events`)
 

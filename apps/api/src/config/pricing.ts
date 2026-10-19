@@ -103,7 +103,11 @@ export const PRICES: PriceTable = {
   'meta_whatsapp/marketing_template': { currency: 'EUR', perMessage: 0.0585 }, // not sent by Mimoia today
   'meta_whatsapp/service_message': { currency: 'EUR', perMessage: 0.0166 },
 
-  // ── AIKIT image generation (Imagen via fal, behind AiKit's CMS) ──
+  // ── AIKIT image generation ──
+  // gpt-image-2 through AiKit's inference API (PRO-265): 0.0044 € per photo,
+  // what AiKit charges — read off the key's spend counter (2026-10-19, D-090).
+  'aikit/gpt-image-2': { currency: 'EUR', perImage: 0.0044 },
+  // Historical: the old Imagen-fal route (403 to keys since 2026-10-08); kept so old rows keep their price.
   'aikit/imagen-fal': { currency: 'USD', perImage: 0.04 }, // UNVERIFIED (fal Imagen list price; AiKit's own markup unknown)
   // gpt-image-1, quality medium, 1536×1024: ~1,570 output image tokens at $40/MTok (measured 2026-10-08).
   'openai/gpt-image-1': { currency: 'USD', perImage: 0.063 },

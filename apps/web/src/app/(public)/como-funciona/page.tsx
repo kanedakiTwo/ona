@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react"
 import Link from "next/link"
+import { SignupCtaLink, WaitlistOnly } from "@/components/shared/SignupCta"
 import { motion, useScroll, useTransform, useInView } from "motion/react"
 import { ArrowUpRight, Plus, Minus } from "lucide-react"
 
@@ -224,15 +225,16 @@ function CTA() {
           <span className="font-italic italic text-[#C65D38]">Listo</span> para empezar.
         </h2>
         <p className="mt-8 max-w-xl mx-auto text-base text-[#4A4239] md:text-lg">
-          Entramos por tandas, cada dos a cuatro semanas. Sin tarjeta. Sin compromiso.
+          <WaitlistOnly>Entramos por tandas, cada dos a cuatro semanas. </WaitlistOnly>Sin tarjeta. Sin compromiso.
         </p>
-        <Link
-          href="/?ref=como-funciona#lista-de-espera"
+        <SignupCtaLink
+          waitlistHref="/?ref=como-funciona#lista-de-espera"
+          waitlistLabel="Únete a la lista de espera"
+          openRef="como-funciona"
+          testId="como-funciona-cta"
           className="mt-10 inline-flex items-center gap-2.5 rounded-full bg-[#1A1612] px-7 py-4 text-base font-medium text-[#FAF6EE] transition-all hover:gap-3.5 hover:bg-[#2D6A4F]"
-        >
-          Únete a la lista de espera
-          <ArrowUpRight size={18} />
-        </Link>
+          icon={<ArrowUpRight size={18} />}
+        />
       </div>
     </section>
   )

@@ -347,6 +347,10 @@ export type {
 
 export { LEGAL_OWNER } from './constants/legal.js'
 
+// Open registration (PRO-167, D-057)
+export { REGISTRATION_MODES, OPEN_SIGNUP_CTA_LABEL, openRegistrationHref } from './types/registration.js'
+export type { RegistrationMode, PublicConfig } from './types/registration.js'
+
 // Public brand (D-012) + pre-launch waitlist (specs/waitlist.md)
 export { BRAND_NAME, ASSISTANT_NAME, BRAND_SUPPORT_EMAIL, BRAND_SOCIAL_LINKS } from './constants/brand.js'
 export {

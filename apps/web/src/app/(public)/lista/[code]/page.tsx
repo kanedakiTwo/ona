@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
+import { SignupCtaLink } from "@/components/shared/SignupCta"
 import { useParams } from "next/navigation"
 import { ArrowUpRight } from "lucide-react"
 import { BRAND_NAME, waitlistReferralUrl, type WaitlistStatusResponse } from "@ona/shared"
@@ -92,12 +93,12 @@ export default function WaitlistOwnerPage() {
 
 function JoinLink() {
   return (
-    <Link
-      href="/#lista-de-espera"
+    <SignupCtaLink
+      waitlistHref="/#lista-de-espera"
+      waitlistLabel="Únete a la lista de espera"
+      openRef={null}
       className="mt-10 inline-flex items-center gap-2.5 rounded-full bg-[#1A1612] px-7 py-4 text-base font-medium text-[#FAF6EE] transition-colors hover:bg-[#2D6A4F]"
-    >
-      Únete a la lista de espera
-      <ArrowUpRight size={18} />
-    </Link>
+      icon={<ArrowUpRight size={18} />}
+    />
   )
 }

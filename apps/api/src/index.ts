@@ -11,6 +11,7 @@ import {
   observeServerErrors,
 } from './middleware/errorCapture.js'
 import authRoutes from './routes/auth.js'
+import publicConfigRoutes from './routes/publicConfig.js'
 import userRoutes from './routes/users.js'
 import recipeRoutes from './routes/recipes.js'
 import ingredientRoutes from './routes/ingredients.js'
@@ -124,6 +125,8 @@ app.get('/health', (_req, res) => {
 // individual public routes (e.g. /invites/:token) MUST be mounted first so
 // they get a chance to respond before the catch-all auth.
 app.use(authRoutes)
+// Public config (PRO-167): the registration mode the web follows.
+app.use(publicConfigRoutes)
 app.use(publicHouseholdRouter)
 // Public short links (/shop-orders/link/:token) for the order messages.
 app.use(publicShopOrdersRouter)

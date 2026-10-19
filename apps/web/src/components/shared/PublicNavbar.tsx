@@ -5,8 +5,12 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { ArrowRight, Menu, X } from "lucide-react"
 import { MimoiaLogo } from "@/components/brand/Mimoia"
+import { useSignupCta } from "@/hooks/useRegistrationMode"
 
-/** Every public CTA leads to the waitlist on the landing (specs/waitlist.md). */
+/**
+ * Every public CTA leads to the waitlist on the landing (specs/waitlist.md);
+ * with open registration (PRO-167), to `/register` instead.
+ */
 const WAITLIST_HREF = "/#lista-de-espera"
 
 /** On the landing itself, scroll instead of navigating, so `?invita=` / `?ref=` stay in the URL. */
@@ -28,6 +32,8 @@ export default function PublicNavbar() {
   const pathname = usePathname()
   const [scrolled, setScrolled] = useState(false)
   const [open, setOpen] = useState(false)
+  const desktopCta = useSignupCta(WAITLIST_HREF, "Lista de espera", null)
+  const mobileCta = useSignupCta(WAITLIST_HREF, "Únete a la lista de espera", null)
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 40)
@@ -69,12 +75,12 @@ export default function PublicNavbar() {
               Entrar
             </Link>
             <Link
-              href={WAITLIST_HREF}
-              onClick={scrollToWaitlistIfHere}
+              href={desktopCta.href}
+              onClick={desktopCta.open ? undefined : scrollToWaitlistIfHere}
               className="btn-editorial btn-editorial-primary text-xs"
               data-testid="public-nav-cta"
             >
-              Lista de espera
+              {desktopCta.label}
               <ArrowRight size={14} />
             </Link>
           </div>
@@ -113,14 +119,15 @@ export default function PublicNavbar() {
           </div>
           <div className="public-container pb-12">
             <Link
-              href={WAITLIST_HREF}
+              href={mobileCta.href}
               onClick={(e) => {
                 setOpen(false)
-                scrollToWaitlistIfHere(e)
+                if (!mobileCta.open) scrollToWaitlistIfHere(e)
               }}
               className="btn-editorial btn-editorial-primary w-full justify-center text-base"
+              data-testid="public-nav-cta-mobile"
             >
-              Únete a la lista de espera
+              {mobileCta.label}
               <ArrowRight size={16} />
             </Link>
           </div>

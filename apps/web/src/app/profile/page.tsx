@@ -62,6 +62,8 @@ import {
 } from '@/lib/pwa/notifications'
 import { MyRecipesSection } from './sections/MyRecipesSection'
 import { MealDishCountControls } from '@/components/profile/MealDishCountControls'
+import { FixedMealsEditor } from '@/components/profile/FixedMealsEditor'
+import { fixedMealsFromTemplate, type FixedMeal } from '@ona/shared'
 import { WhatsAppCard } from '@/components/profile/WhatsAppCard'
 import { DeleteAccountCard } from '@/components/profile/DeleteAccountCard'
 import { NewsletterToggle } from '@/components/profile/NewsletterToggle'
@@ -158,6 +160,8 @@ export default function ProfilePage() {
     return t
   })
   const [mealDishCounts, setMealDishCounts] = useState<Partial<Record<Meal, 1 | 2 | 3>>>({})
+  // Comidas fijas (PRO-218): saved in the same blob as the plantilla.
+  const [fixedMeals, setFixedMeals] = useState<FixedMeal[]>([])
   const [restrictionInput, setRestrictionInput] = useState('')
   // RGPD art. 9 (PRO-21): physical data and restrictions only with consent.
   const [healthConsent, setHealthConsent] = useState<HealthConsentState | null>(null)
@@ -264,6 +268,7 @@ export default function ProfilePage() {
         }
         setMealTemplate(next)
       }
+      setFixedMeals(fixedMealsFromTemplate(blob))
       const rawMdc = blob?.mealDishCounts
       if (rawMdc && typeof rawMdc === 'object') {
         const cleaned: Partial<Record<Meal, 1 | 2 | 3>> = {}
@@ -401,15 +406,15 @@ export default function ProfilePage() {
       }
       calls.push(api.put(`/user/${user.id}/settings`, {
         template: healthActive
-          ? { physical, preferences, mealTemplate, mealDishCounts }
-          : { preferences: { ...preferences, restrictions: [] }, mealTemplate, mealDishCounts },
+          ? { physical, preferences, mealTemplate, mealDishCounts, fixedMeals }
+          : { preferences: { ...preferences, restrictions: [] }, mealTemplate, mealDishCounts, fixedMeals },
       }))
       await Promise.all(calls)
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
     } catch (e) { console.error(e) }
     finally { setSaving(false) }
-  }, [user, physical, preferences, household, mealTemplate, mealDishCounts, healthActive])
+  }, [user, physical, preferences, household, mealTemplate, mealDishCounts, fixedMeals, healthActive])
 
 
   if (authLoading || !user) {
@@ -798,6 +803,8 @@ export default function ProfilePage() {
                   ))}
                 </div>
               </div>
+
+              <FixedMealsEditor value={fixedMeals} onChange={setFixedMeals} />
             </ProfileCard>
 
             {/* Recordatorios */}

@@ -9,7 +9,7 @@ import {
 } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
-import { updateProfileSchema, onboardingSchema, onboardingDraftSchema } from '@ona/shared'
+import { updateProfileSchema, onboardingSchema, onboardingDraftSchema, fixedMealsFromTemplate } from '@ona/shared'
 import { env } from '../config/env.js'
 import bcrypt from 'bcryptjs'
 import { AdminAccountDeletionError, deleteAccount } from '../services/accountDeletion.js'
@@ -340,6 +340,10 @@ router.put('/user/:id/settings', async (req: AuthRequest, res) => {
     const template = (await hasHealthConsent(req.params.id))
       ? req.body.template
       : stripHealthFromTemplate(req.body.template)
+    // Comidas fijas (PRO-218): keep only well-formed ones.
+    if (template && typeof template === 'object' && !Array.isArray(template) && 'fixedMeals' in template) {
+      ;(template as { fixedMeals?: unknown }).fixedMeals = fixedMealsFromTemplate(template)
+    }
 
     const [existing] = await db
       .select({ id: userSettings.id })

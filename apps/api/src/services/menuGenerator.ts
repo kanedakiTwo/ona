@@ -29,7 +29,8 @@ import { getMemoryForUser } from './userMemoryStore.js'
 import { resolveScope, scopeWhere } from './scopeResolver.js'
 import { calculateRecipeCaloriesFromDB, calculateMenuCaloriesFromDB } from './calorieCalculator.js'
 import { calculateMenuNutrientsFromDB } from './nutrientCalculator.js'
-import type { MealDishCounts, Dish, RecipeDish, Course } from '@ona/shared'
+import type { MealDishCounts, Dish, RecipeDish, Course, FixedMeal } from '@ona/shared'
+import { fixedMealFor, fixedMealsFromTemplate, fixedNoteText } from '@ona/shared'
 
 /**
  * Lunch + dinner every day, until the user sets their own plantilla in the
@@ -178,6 +179,51 @@ export function extractMealDishCounts(raw: unknown): MealDishCounts {
     }
   }
   return out
+}
+
+/**
+ * Pure (PRO-218): the template without the fixed meals' slots, so the
+ * generator never picks a recipe for them.
+ */
+export function templateWithoutFixed(template: DayTemplate[], fixed: readonly FixedMeal[]): DayTemplate[] {
+  if (fixed.length === 0) return template
+  return template.map((day, i) => {
+    const out: DayTemplate = { ...day }
+    for (const meal of Object.keys(out)) if (fixedMealFor(fixed, i, meal)) delete out[meal]
+    return out
+  })
+}
+
+/**
+ * Pure (PRO-218): put the fixed meals into the generated week as one note
+ * «Fijo: <label>» carrying its items (the shopping list reads them). A locked
+ * slot keeps what it had; a «sin cocinar» day stays empty; the slot takes the
+ * plantilla's diners when it has them.
+ */
+export function withFixedMeals(
+  days: DayMenu[],
+  fixed: readonly FixedMeal[],
+  opts: { lockedSlots?: LockedSlots; existingDays?: DayMenu[]; skippedDays?: Set<number>; mealDiners?: Record<Meal, number>[] } = {},
+): DayMenu[] {
+  if (fixed.length === 0) return days
+  return days.map((day, i) => {
+    if (opts.skippedDays?.has(i)) return day
+    const out: DayMenu = { ...day }
+    for (const f of fixed) {
+      if (!fixedMealFor(fixed, i, f.meal)) continue
+      const locked = opts.lockedSlots?.[String(i)]?.[f.meal] && opts.existingDays?.[i]?.[f.meal]
+      if (locked) {
+        out[f.meal] = opts.existingDays![i][f.meal]
+        continue
+      }
+      const diners = opts.mealDiners?.[i]?.[f.meal as Meal]
+      out[f.meal] = {
+        ...(diners && diners > 0 ? { servings: diners } : {}),
+        dishes: [{ kind: 'note', text: fixedNoteText(f), fixed: { items: f.items.map((x) => ({ ...x })) } }],
+      }
+    }
+    return out
+  })
 }
 
 /**
@@ -414,7 +460,11 @@ export async function generateMenu(
   // preferences + mealTemplate); normalize it back to DayTemplate[] before
   // letting the matcher loop over it.
   const rawTemplate = customTemplate ?? settings?.template
-  const template = normalizeMealTemplate(rawTemplate) ?? defaultTemplate()
+  // Comidas fijas (PRO-218): those slots are not generated; they are put back
+  // as «Fijo: …» at the end (withFixedMeals). The fixed list lives in the
+  // saved settings blob even when a custom template is passed.
+  const fixedMeals = fixedMealsFromTemplate(settings?.template)
+  const template = templateWithoutFixed(normalizeMealTemplate(rawTemplate) ?? defaultTemplate(), fixedMeals)
   // Per-slot diner counts (only present when the profile's plantilla uses the
   // numeric shape `{ [day]: { [meal]: number } }`). Slots that didn't carry an
   // explicit count keep `servings` undefined and fall back to the household
@@ -530,8 +580,9 @@ export async function generateMenu(
     if (bestFitness < MENU_GENERATION.OPTIMAL_FITNESS) break
   }
 
+  const fixedOpts = { lockedSlots, existingDays, skippedDays, mealDiners }
   if (bestDays) {
-    return { days: bestDays, warnings: bestWarnings }
+    return { days: withFixedMeals(bestDays, fixedMeals, fixedOpts), warnings: bestWarnings }
   }
 
   const fallback = buildRandomMenu(
@@ -551,5 +602,5 @@ export async function generateMenu(
     mealDishCounts,
     rated.likedRecipeIds,
   )
-  return { days: fallback.days, warnings: fallback.warnings }
+  return { days: withFixedMeals(fallback.days, fixedMeals, fixedOpts), warnings: fallback.warnings }
 }

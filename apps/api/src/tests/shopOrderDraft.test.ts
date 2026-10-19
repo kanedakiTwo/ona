@@ -203,3 +203,16 @@ describe('a line partly bought for an earlier menu (PRO-199)', () => {
     expect(texts(r, 'fru')).toEqual(['2 limones'])
   })
 })
+
+describe('duplicates written in different units', () => {
+  it('add up in grams: 1 limón + 60 ml of lemon juice → 180 g, 2 limones', () => {
+    const r = draftOrdersFromItems(
+      [
+        item({ name: 'limón', quantity: 1, unit: 'u', aisle: 'produce' }),
+        item({ name: 'zumo de limón', quantity: 60, unit: 'ml', aisle: 'produce' }),
+      ],
+      shops,
+    )
+    expect(r.byShop.find((g) => g.shop.id === 'fru')!.lines).toMatchObject([{ quantity: 180, unit: 'g', text: '2 limones' }])
+  })
+})

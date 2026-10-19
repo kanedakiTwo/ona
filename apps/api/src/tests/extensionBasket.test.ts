@@ -7,9 +7,19 @@
  * Run: pnpm --filter @ona/api test src/tests/extensionBasket.test.ts
  */
 import { describe, it, expect } from 'vitest'
-import { orderMembers } from '@ona/shared'
+import { buyRuleByKey, orderMembers, orderQtyInGrams, type BuyableUnit } from '@ona/shared'
 
 const m = (id: string, name: string, quantity: number, unit: 'g' | 'ml' | 'u' = 'g') => ({ id, name, quantity, unit })
+
+/** Gramos de una unidad con la regla real (`ug`, si no `g`). */
+const perUnit = (ruleKey: string) => {
+  const rule = buyRuleByKey(ruleKey)!
+  return rule.ug ?? rule.g!
+}
+
+/** Lo que pesan juntas unas cantidades, con la regla de la línea. */
+const totalGrams = (xs: Array<{ quantity: number; unit: BuyableUnit }>, ruleKey: string) =>
+  xs.reduce((sum, x) => sum + orderQtyInGrams(x.quantity, x.unit, ruleKey)!, 0)
 
 describe('orderMembers', () => {
   it('separa productos que la lista separa (alubias blancas + rojas)', () => {
@@ -32,5 +42,73 @@ describe('orderMembers', () => {
   it('una sola línea o una línea sin regla con un solo nombre: null', () => {
     expect(orderMembers([m('a', 'arroz', 500)], 'arroz')).toBeNull()
     expect(orderMembers([m('a', 'kombu', 10), m('b', 'Kombu', 5)], null)).toBeNull()
+  })
+  it('el genérico es el grupo de la lista al que va la clave de la regla, en cualquier orden', () => {
+    // El catálogo dice «huevo» y la regla se llama `huevos`: es el mismo grupo de la lista.
+    expect(orderMembers([m('h', 'huevo', 6, 'u'), m('c', 'Huevos camperos', 1, 'u')], 'huevos')).toBeNull()
+    expect(orderMembers([m('t', 'tomates', 4, 'u'), m('p', 'tomate pera', 1, 'u')], 'tomate')).toBeNull()
+    expect(orderMembers([m('h', 'huevo', 6, 'u'), m('G', 'huevos', 1, 'u'), m('c', 'Huevos camperos', 1, 'u')], 'huevos')).toBeNull()
+  })
+  it('el genérico se suma al grupo específico más grande y le pasa sus artículos', () => {
+    expect(orderMembers([m('g', 'alubias', 200), m('b', 'alubias blancas', 400), m('r', 'alubias rojas', 300)], 'alubias')).toEqual([
+      { name: 'alubias blancas', quantity: 600, unit: 'g', sourceItemIds: ['b', 'g'] },
+      { name: 'alubias rojas', quantity: 300, unit: 'g', sourceItemIds: ['r'] },
+    ])
+  })
+  it('el grupo más grande se mide en gramos, no por el número (2 u de alubias pesan más que 100 g)', () => {
+    expect(orderMembers([m('g', 'alubias', 1, 'u'), m('b', 'alubias blancas', 2, 'u'), m('r', 'alubias rojas', 100)], 'alubias')).toEqual([
+      { name: 'alubias blancas', quantity: 3, unit: 'u', sourceItemIds: ['b', 'g'] },
+      { name: 'alubias rojas', quantity: 100, unit: 'g', sourceItemIds: ['r'] },
+    ])
+  })
+  it('con unidades distintas suma en gramos y no se pierde ninguna cantidad', () => {
+    // Dentro de un grupo: «alubias rojas» en g y «alubias rojas · varias presentaciones» en u.
+    const alubias = [m('r', 'alubias rojas', 400), m('v', 'alubias rojas · varias presentaciones', 2, 'u'), m('b', 'alubias blancas', 300)]
+    const a = orderMembers(alubias, 'alubias')
+    expect(a).toEqual([
+      { name: 'alubias rojas', quantity: 400 + 2 * perUnit('alubias'), unit: 'g', sourceItemIds: ['r', 'v'] },
+      { name: 'alubias blancas', quantity: 300, unit: 'g', sourceItemIds: ['b'] },
+    ])
+    expect(totalGrams(a!, 'alubias')).toBe(totalGrams(alubias, 'alubias'))
+
+    // En la absorción: el genérico (1500 ml) va a un grupo en u. Entera y desnatada pesan lo mismo: gana la primera.
+    const leche = [m('g', 'leche', 1500, 'ml'), m('e', 'leche entera', 1, 'u'), m('d', 'leche desnatada', 1, 'u')]
+    const l = orderMembers(leche, 'leche')
+    expect(l).toEqual([
+      { name: 'leche entera', quantity: perUnit('leche') + 1500, unit: 'g', sourceItemIds: ['e', 'g'] },
+      { name: 'leche desnatada', quantity: 1, unit: 'u', sourceItemIds: ['d'] },
+    ])
+    expect(totalGrams(l!, 'leche')).toBe(totalGrams(leche, 'leche'))
+  })
+  it('si una cantidad no se puede pesar, el grupo se queda con la suya (pérdida conocida)', () => {
+    // `jamon` se vende al peso y no sabe cuánto pesa 1 u (ver orderQtyInGrams).
+    expect(orderMembers([m('s', 'Jamón serrano', 100), m('u', 'Jamón serrano', 1, 'u'), m('i', 'jamón ibérico', 50)], 'jamon')).toEqual([
+      { name: 'Jamón serrano', quantity: 100, unit: 'g', sourceItemIds: ['s', 'u'] },
+      { name: 'jamón ibérico', quantity: 50, unit: 'g', sourceItemIds: ['i'] },
+    ])
+  })
+})
+
+describe('orderQtyInGrams', () => {
+  it('g y ml tal cual; la cucharada son 15 g y la cucharadita 5 g', () => {
+    expect(orderQtyInGrams(250, 'g', null)).toBe(250)
+    expect(orderQtyInGrams(330, 'ml', null)).toBe(330)
+    expect(orderQtyInGrams(2, 'cda', null)).toBe(30)
+    expect(orderQtyInGrams(3, 'cdita', null)).toBe(15)
+  })
+  it('u: los gramos de una unidad de la regla, `ug` si lo tiene y si no `g`', () => {
+    const ajo = buyRuleByKey('ajo')! // ug: un diente; g: la cabeza
+    expect(ajo.ug).toBeTruthy()
+    expect(ajo.ug).not.toBe(ajo.g)
+    expect(orderQtyInGrams(2, 'u', 'ajo')).toBe(2 * ajo.ug!)
+    const tomate = buyRuleByKey('tomate')! // solo g
+    expect(tomate.ug).toBeUndefined()
+    expect(orderQtyInGrams(3, 'u', 'tomate')).toBe(3 * tomate.g!)
+  })
+  it('u sin regla, o con una regla que no sabe cuánto pesa una unidad: null', () => {
+    expect(orderQtyInGrams(1, 'u', null)).toBeNull()
+    const jamon = buyRuleByKey('jamon')!
+    expect(jamon.ug ?? jamon.g).toBeUndefined()
+    expect(orderQtyInGrams(1, 'u', 'jamon')).toBeNull()
   })
 })

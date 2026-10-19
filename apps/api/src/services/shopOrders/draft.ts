@@ -10,7 +10,7 @@
  */
 
 import {
-  buyRuleByKey,
+  orderQtyInGrams,
   resolveBuyRule,
   splitCompound,
   missingQuantity,
@@ -85,23 +85,6 @@ function expand(item: ShoppingItem): Entry[] {
   return parts.map((name) => ({ ...base, ingredientId: null, name, quantity: 1, unit: 'u', source: 'default', notes: [], pricePerUnit: null }))
 }
 
-function gramsOf(e: Entry, ruleKey: string | null): number | null {
-  switch (e.unit) {
-    case 'g':
-    case 'ml':
-      return e.quantity
-    case 'cda':
-      return e.quantity * 15
-    case 'cdita':
-      return e.quantity * 5
-    case 'u': {
-      const rule = ruleKey ? buyRuleByKey(ruleKey) : null
-      const per = rule?.ug ?? rule?.g
-      return per ? e.quantity * per : null
-    }
-  }
-}
-
 /** Duplicates of the same product → one line input. */
 function merge(members: Entry[], ruleKey: string | null, key: string): LineInput {
   const quantified = members.filter((m) => m.source !== 'default')
@@ -116,7 +99,7 @@ function merge(members: Entry[], ruleKey: string | null, key: string): LineInput
     if (units.size === 1) {
       quantity = quantified.reduce((acc, m) => acc + m.quantity, 0)
     } else {
-      const grams = quantified.map((m) => gramsOf(m, ruleKey))
+      const grams = quantified.map((m) => orderQtyInGrams(m.quantity, m.unit, ruleKey))
       if (grams.every((g) => g != null)) {
         quantity = (grams as number[]).reduce((a, b) => a + b, 0)
         unit = 'g'

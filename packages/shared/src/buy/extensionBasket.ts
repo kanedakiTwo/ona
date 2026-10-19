@@ -6,7 +6,7 @@
 import type { BuyableUnit } from '../types/shopping.js'
 import type { ShopOrderLine } from '../types/shopOrders.js'
 import type { BasketLine, BasketSendResult } from '../types/basketExtension.js'
-import { buyRuleByKey, normalizeBuyName } from './convert.js'
+import { buyRuleByKey, normalizeBuyName, orderQtyInGrams } from './convert.js'
 import { shoppingGroupOf } from './listGroup.js'
 
 /** «Tomate · varias presentaciones» → «Tomate». */
@@ -36,19 +36,41 @@ export interface OrderMember {
 
 /**
  * Los artículos que junta una línea de pedido, agrupados con el criterio de
- * la lista de la compra (`shoppingGroupOf`). El nombre genérico de la regla
- * (su clave: «leche», «jamon», «alubias») no es un producto aparte: se suma
- * al grupo específico de más cantidad. null = todo es el mismo producto.
+ * la lista de la compra (`shoppingGroupOf`). null = todo es el mismo producto.
+ *
+ * El grupo genérico es el grupo de la lista al que va la clave de la regla
+ * (para `huevos`: «huevo», «huevos», «yema de huevo»…), vengan en el orden que
+ * vengan. No es un producto aparte: su cantidad y sus artículos se suman al
+ * grupo específico más grande, medido en gramos (`orderQtyInGrams`; si no se
+ * puede pesar, por su número). En empate, el primero en orden de entrada.
+ *
+ * Cantidades: con la misma unidad se suman; con unidades distintas que se
+ * pueden pesar, el grupo pasa a 'g' con la suma en gramos. Si una no se puede
+ * pesar (1 u de una regla sin gramos por unidad), el grupo se queda con su
+ * cantidad y la otra se pierde (pérdida conocida); sus artículos sí quedan en
+ * `sourceItemIds`.
  */
 export function orderMembers(members: OrderMemberInput[], ruleKey: string | null): OrderMember[] | null {
   if (members.length < 2) return null
-  const generic = ruleKey ? normalizeBuyName(ruleKey) : null
+  const genericKey = ruleKey ? shoppingGroupOf(ruleKey).key : null
+  const grams = (quantity: number, unit: BuyableUnit) => orderQtyInGrams(quantity, unit, ruleKey)
+  const add = (g: OrderMember, quantity: number, unit: BuyableUnit) => {
+    if (g.unit === unit) {
+      g.quantity += quantity
+      return
+    }
+    const a = grams(g.quantity, g.unit)
+    const b = grams(quantity, unit)
+    if (a == null || b == null) return
+    g.quantity = a + b
+    g.unit = 'g'
+  }
   const groups = new Map<string, OrderMember & { generic: boolean }>()
   for (const mem of members) {
     const key = shoppingGroupOf(mem.name).key
     const g = groups.get(key)
     if (g) {
-      if (g.unit === mem.unit) g.quantity += mem.quantity
+      add(g, mem.quantity, mem.unit)
       g.sourceItemIds.push(mem.id)
       continue
     }
@@ -57,16 +79,17 @@ export function orderMembers(members: OrderMemberInput[], ruleKey: string | null
       quantity: mem.quantity,
       unit: mem.unit,
       sourceItemIds: [mem.id],
-      generic: generic != null && normalizeBuyName(basketBaseName(mem.name)) === generic,
+      generic: key === genericKey,
     })
   }
   const all = [...groups.values()]
   const specific = all.filter((g) => !g.generic)
   if (specific.length < 2) return null
+  const size = (g: OrderMember) => grams(g.quantity, g.unit) ?? g.quantity
   for (const g of all.filter((x) => x.generic)) {
-    const target = specific.reduce((a, b) => (b.quantity > a.quantity ? b : a))
+    const target = specific.reduce((a, b) => (size(b) > size(a) ? b : a))
     target.sourceItemIds.push(...g.sourceItemIds)
-    if (target.unit === g.unit) target.quantity += g.quantity
+    add(target, g.quantity, g.unit)
   }
   return specific.map(({ generic: _generic, ...rest }) => rest)
 }

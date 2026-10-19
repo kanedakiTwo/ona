@@ -147,8 +147,8 @@ export function weightPhrase(grams: number): string {
   return grams >= 1000 ? `${num(grams / 1000)} kg` : `${Math.round(grams)} g`
 }
 
-function toGrams(rule: BuyRule | null, q: number, unit: BuyableUnit): number | null {
-  if (!(q > 0)) return null
+/** g/ml as they are, cda 15 g, cdita 5 g, u × the rule's grams per unit (`ug`, else `g`); null = no known weight. */
+function gramsWith(rule: BuyRule | null, q: number, unit: BuyableUnit): number | null {
   switch (unit) {
     case 'g':
     case 'ml':
@@ -162,6 +162,20 @@ function toGrams(rule: BuyRule | null, q: number, unit: BuyableUnit): number | n
       return per ? q * per : null
     }
   }
+}
+
+function toGrams(rule: BuyRule | null, q: number, unit: BuyableUnit): number | null {
+  return q > 0 ? gramsWith(rule, q, unit) : null
+}
+
+/**
+ * A list amount in grams (or ml), to add up amounts written in different
+ * units: the order draft merging duplicates, the extension basket grouping
+ * a merged line. null = it can't be weighed (u with no rule, or a rule that
+ * doesn't know what one unit weighs).
+ */
+export function orderQtyInGrams(quantity: number, unit: BuyableUnit, ruleKey: string | null): number | null {
+  return gramsWith(ruleKey ? buyRuleByKey(ruleKey) : null, quantity, unit)
 }
 
 function roundUp(grams: number, step: number, min: number): number {

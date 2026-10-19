@@ -108,6 +108,8 @@ jobs:
       # Read-only token for GET /admin/metrics + /admin/waitlist + /admin/errors,
       # so waitlistRoute.smoke.ts checks the admin aggregates against real SQL.
       METRICS_READ_TOKEN: ci-smoke-metrics-token
+      # «Enviar la cesta a la extensión del navegador»: los usuarios de smoke y e2e son @test.local.
+      BASKET_EXTENSION_EMAILS: '@test.local'
       API_PORT: 8765
       API_URL: http://localhost:8765
 

@@ -58,6 +58,7 @@ export RATE_LIMIT_DISABLED="true"
 export REGISTRATION_MODE="open"  # closed beta off for the smoke suite (PRO-27)
 # Lets waitlistRoute.smoke.ts read GET /admin/waitlist + /admin/metrics.
 export METRICS_READ_TOKEN="smoke-metrics-token"
+export BASKET_EXTENSION_EMAILS="@test.local"   # basketExtensionRoute.smoke.ts
 export API_PORT
 # Same path production takes on deploy (not `drizzle-kit push`).
 pnpm --filter @ona/api db:migrate >/dev/null

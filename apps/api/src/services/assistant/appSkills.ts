@@ -7,6 +7,7 @@ import { env } from '../../config/env.js'
 import { HEALTH_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY } from '../healthConsent.js'
 import { PROACTIVE_KINDS, PROACTIVE_LABELS, type ProactiveKind } from '../whatsapp/proactive.js'
 import { createDishRecipe, NEW_RECIPE_PROP, NOTE_THEN_RECIPE_HINT } from './dishRecipe.js'
+import { repeatNote } from './weekRepeats.js'
 
 /**
  * UI-parity skills: everything the web app can do, reachable from chat
@@ -301,7 +302,7 @@ const addDish: SkillDefinition = {
         if (notePos >= 0) await api(ctx)('DELETE', `${path}/dish/${notePos}`)
         await api(ctx)('POST', `${path}/dish`, { kind: 'recipe', recipeId: created.id })
         return menuDone(
-          `Hecho: "${created.name}" no estaba en sus recetas ni en el catalogo; la he creado como receta del hogar (raciones e ingredientes estimados; se puede revisar en la app) y la he añadido a ${where(t, p.meal)}. Sus ingredientes ya salen en la lista de la compra.`,
+          `Hecho: "${created.name}" no estaba en sus recetas ni en el catalogo; la he creado como receta del hogar (raciones e ingredientes estimados; se puede revisar en la app) y la he añadido a ${where(t, p.meal)}. Sus ingredientes ya salen en la lista de la compra.${repeatNote(menu.days, t.weekStart, t.dayIndex, p.meal, { recipeId: created.id, name: created.name })}`,
           changed(t, p.meal, { recipeId: created.id, recipeName: created.name }),
         )
       }
@@ -309,13 +310,16 @@ const addDish: SkillDefinition = {
       await api(ctx)('POST', `${path}/dish`, { kind: 'note', text: note })
       const closest = recipe ? ` Lo mas parecido que si hay es "${recipe.name}".` : ''
       return menuDone(
-        `Hecho: he añadido "${note}" a ${where(t, p.meal)} como nota, porque no esta en sus recetas ni en el catalogo.${closest} ${NOTE_THEN_RECIPE_HINT}${recipe ? ` Si prefiere "${recipe.name}", ofrecele cambiar la nota por esa receta.` : ''}`,
+        `Hecho: he añadido "${note}" a ${where(t, p.meal)} como nota, porque no esta en sus recetas ni en el catalogo.${repeatNote(menu.days, t.weekStart, t.dayIndex, p.meal, { name: note })}${closest} ${NOTE_THEN_RECIPE_HINT}${recipe ? ` Si prefiere "${recipe.name}", ofrecele cambiar la nota por esa receta.` : ''}`,
         changed(t, p.meal, { note }),
       )
     }
     if (!recipe) return text(`No encontre la receta "${p.recipeId}"; no he añadido nada.`)
     await api(ctx)('POST', `${path}/dish`, { kind: 'recipe', recipeId: recipe.id })
-    return menuDone(`Hecho: he añadido "${recipe.name}" a ${where(t, p.meal)}.`, changed(t, p.meal, { recipeId: recipe.id, recipeName: recipe.name }))
+    return menuDone(
+      `Hecho: he añadido "${recipe.name}" a ${where(t, p.meal)}.${repeatNote(menu.days, t.weekStart, t.dayIndex, p.meal, { recipeId: recipe.id, name: recipe.name })}`,
+      changed(t, p.meal, { recipeId: recipe.id, recipeName: recipe.name }),
+    )
   },
 }
 

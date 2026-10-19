@@ -25,7 +25,7 @@ import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../scopeResolve
 import { importRecipeFromUrl, createRecipeFromParts, type RecipeParts } from '../recipeImport.js'
 import { mealLinesForDay } from '../menuText.js'
 import { slotWithDishes } from '../menuDishes.js'
-import { madridWeekStart } from '../madridTime.js'
+import { madridParts, madridWeekStart } from '../madridTime.js'
 import { DAY_PROP, dateLabel, isMenuDayError, menuDayOf, resolveMenuDay, type MenuDay } from './menuDay.js'
 import { appSkills, bestMatch, dishNoteText, searchWords } from './appSkills.js'
 import { createDishRecipe, NEW_RECIPE_PROP, NOTE_THEN_RECIPE_HINT, type NewRecipeParam } from './dishRecipe.js'
@@ -515,39 +515,135 @@ const suggestRecipes: SkillDefinition = {
 }
 
 // «Con lo que tengo» (PRO-31): same search as the /recipes filter.
+// «¿Qué hago hoy con lo que tengo?» (PRO-222, D-069): 3 recipes with their
+// time and what is missing, never one that breaks allergies, diet, dislikes
+// or the week's menu vetoes; from a fridge photo it first says what it saw;
+// `pickRecipeId` puts the chosen one in the day, with or without a menu.
+const WHAT_I_HAVE_MAX = 8
+const WHAT_I_HAVE_RESULTS = 3
+
+/** The meal still ahead today in Madrid: lunch until 16:00, then dinner. */
+function nextMealNow(now: Date = new Date()): 'lunch' | 'dinner' {
+  return madridParts(now).hour < 16 ? 'lunch' : 'dinner'
+}
+
+/** «pollo, calabacín y arroz». */
+function listEs(items: readonly string[]): string {
+  return items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} y ${items[items.length - 1]}`
+}
+
 const cookWithWhatIHave: SkillDefinition = {
   name: 'cook_with_what_i_have',
-  description: 'Cuando el usuario dice que tiene ciertos ingredientes y pregunta que puede cocinar (ej. "tengo calabacin y huevos, que hago?", "que hago con un pollo y unos pimientos"), busca recetas suyas y del catalogo que usen esos ingredientes (hasta 3), ordenadas por cuantos usan, y dice que faltaria sin contar los basicos (sal, aceite, agua, pimienta, harina). Nunca devuelve recetas que choquen con sus alergias, dieta o lo que no le gusta.',
+  description:
+    'Cuando el usuario dice lo que tiene y pregunta que puede cocinar ("que hago hoy con lo que tengo", "tengo pollo, calabacin y arroz", "que hago con un pollo y unos pimientos") o manda una foto de su nevera o despensa: propone 3 recetas suyas o del catalogo que usen esos ingredientes, ordenadas por cuantos usan, con su tiempo y lo que faltaria (sin contar sal, aceite, agua, pimienta, harina). Nunca devuelve recetas que choquen con sus alergias, dieta, lo que no le gusta o lo vetado en el menu de la semana. Funciona sin menu de la semana. Si los ingredientes los has visto en una foto, pasa fromPhoto: true y la respuesta empieza diciendo lo que has visto, para que lo pueda corregir. Cuando elija una, llama otra vez solo con pickRecipeId (el id que te devolvi) y, si lo dice, day y meal; por defecto la pongo en la proxima comida de hoy (comida hasta las 16:00, si no cena).',
   parameters: {
     type: 'object',
     properties: {
       ingredients: {
         type: 'array',
         items: { type: 'string' },
-        description: 'Ingredientes que tiene, de 1 a 3, en singular y sin cantidades (ej: ["calabacin", "huevo"])',
+        description: `Ingredientes que tiene, hasta ${WHAT_I_HAVE_MAX}, en singular y sin cantidades (ej: ["pollo", "calabacin", "arroz"])`,
       },
+      fromPhoto: { type: 'boolean', description: 'true si los ingredientes los has sacado de una foto que te ha mandado (nevera, despensa).' },
+      pickRecipeId: { type: 'string', description: 'Id de la receta que ha elegido de las que propuse: la pongo en el dia.' },
+      day: DAY_PROP,
+      meal: { type: 'string', description: 'Con pickRecipeId: breakfast, lunch, snack o dinner. Por defecto, la proxima comida de hoy.' },
     },
-    required: ['ingredients'],
+    required: [],
   },
-  async handler(params: { ingredients?: string[] | string }, ctx: SkillContext): Promise<SkillResult> {
+  async handler(
+    params: { ingredients?: string[] | string; fromPhoto?: boolean; pickRecipeId?: string; day?: string; meal?: string },
+    ctx: SkillContext,
+  ): Promise<SkillResult> {
+    if (params.pickRecipeId) return pickWhatIHaveRecipe(params, ctx)
     const raw = Array.isArray(params.ingredients) ? params.ingredients : String(params.ingredients ?? '').split(/,| y /)
-    const names = raw.map((n) => String(n).trim()).filter(Boolean)
+    const names = [...new Set(raw.map((n) => String(n).trim()).filter(Boolean))]
     if (names.length === 0) {
-      return { data: [], summary: 'Dime que ingredientes tienes (hasta 3) y busco que puedes cocinar.', uiHint: 'text' }
+      return { data: [], summary: 'Dime que ingredientes tienes (o mandame una foto de la nevera) y busco que puedes cocinar hoy.', uiHint: 'text' }
     }
-    const chosen = names.slice(0, 3).map((name) => ({ name }))
-    const hits = await findRecipesWithWhatIHave(ctx.userId, chosen, ctx.db, 5)
-    const ignored = names.length > 3 ? ` (solo miro los 3 primeros: ${names.slice(0, 3).join(', ')})` : ''
-    if (hits.length === 0) {
-      return { data: [], summary: `No he encontrado recetas con ${names.slice(0, 3).join(' y ')} que encajen contigo${ignored}.`, uiHint: 'text' }
-    }
-    const data = hits.map((h) => ({ id: h.recipe.id, name: h.recipe.name, uses: h.uses, missing: h.missing }))
-    const lines = data.map((h) => {
-      const falta = h.missing.length === 0 ? 'no te falta nada mas' : `te faltaria ${h.missing.join(', ')}`
-      return `${h.name} (usa ${h.uses.join(' y ')}; ${falta})`
+    const used = names.slice(0, WHAT_I_HAVE_MAX)
+    // From a photo, say first what was seen so the user can correct it.
+    const seen = params.fromPhoto === true ? `En la foto he visto: ${listEs(used)}. Si me he equivocado en algo, dimelo y lo cambio. ` : ''
+    const ignored = names.length > WHAT_I_HAVE_MAX ? ` (solo miro los ${WHAT_I_HAVE_MAX} primeros)` : ''
+    // The week's vetoes count too (PRO-197's lesson: every proposal goes through the same filters as the menu).
+    const menu = await menuOfWeek(ctx, getWeekStart())
+    const banned = new Set<string>(((menu?.bannedRecipeIds as string[] | null) ?? []).filter(Boolean))
+    const hits = await findRecipesWithWhatIHave(ctx.userId, used.map((name) => ({ name })), ctx.db, WHAT_I_HAVE_RESULTS, {
+      excludeIds: banned,
+      maxChosen: WHAT_I_HAVE_MAX,
     })
-    return { data, summary: `Con lo que tienes${ignored}: ${lines.join('; ')}.`, uiHint: 'recipe' }
+    if (hits.length === 0) {
+      return {
+        data: { seen: params.fromPhoto ? used : undefined, recipes: [] },
+        summary: `${seen}No he encontrado recetas con ${listEs(used)} que encajen contigo${ignored}.`,
+        uiHint: 'text',
+      }
+    }
+    const recipesOut = hits.map((h) => ({
+      id: h.recipe.id,
+      name: h.recipe.name,
+      totalTime: (h.recipe.row as { totalTime?: number | null }).totalTime ?? null,
+      uses: h.uses,
+      missing: h.missing,
+    }))
+    const lines = recipesOut.map((h) => {
+      const time = h.totalTime ? `${h.totalTime} min; ` : ''
+      const falta = h.missing.length === 0 ? 'no te falta nada mas' : `te faltaria ${h.missing.join(', ')}`
+      return `${h.name} (${time}usa ${listEs(h.uses)}; ${falta})`
+    })
+    return {
+      data: { seen: params.fromPhoto ? used : undefined, recipes: recipesOut },
+      summary: `${seen}Con lo que tienes${ignored}: ${lines.join('; ')}. Si eliges una, la pongo en el dia.`,
+      uiHint: 'recipe',
+    }
   },
+}
+
+/** `pickRecipeId`: the chosen recipe goes into the day's meal; a week without a menu gets one with just that dish. */
+async function pickWhatIHaveRecipe(
+  params: { pickRecipeId?: string; day?: string; meal?: string },
+  ctx: SkillContext,
+): Promise<SkillResult> {
+  const { db, userId } = ctx
+  const meal = params.meal && MEAL_KEYS.includes(params.meal) ? params.meal : nextMealNow()
+  const t = menuDayParam({ day: params.day ?? 'hoy' })
+  if (isMenuDayError(t)) return { data: null, summary: t.error, uiHint: 'text' }
+  const [recipe] = await db
+    .select({ id: recipes.id, name: recipes.name })
+    .from(recipes)
+    .where(and(await visibleWhere(ctx), eq(recipes.id, params.pickRecipeId!)))
+    .limit(1)
+  if (!recipe) return { data: null, summary: 'No encuentro esa receta; no he cambiado nada.', uiHint: 'text' }
+  const slotLabel = `${MEAL_LABEL[meal]} del ${t.label}`
+  const menu = await menuOfWeek(ctx, t.weekStart)
+  if ((menu?.bannedRecipeIds as string[] | undefined)?.includes(recipe.id)) {
+    return { data: null, summary: `"${recipe.name}" esta vetada esta semana; no la he puesto.`, uiHint: 'text' }
+  }
+  if ((menu?.locked as Record<string, Record<string, boolean>> | undefined)?.[String(t.dayIndex)]?.[meal]) {
+    return { data: null, summary: `La ${slotLabel} esta fijada; no la he cambiado. Si quieres, desfijala primero.`, uiHint: 'text' }
+  }
+  const dish = { kind: 'recipe' as const, recipeId: recipe.id, recipeName: recipe.name }
+  let saved: { days?: unknown } | undefined
+  if (menu) {
+    const days = menu.days as DayMenu[]
+    days[t.dayIndex] = { ...(days[t.dayIndex] ?? {}), [meal]: slotWithDishes(days[t.dayIndex]?.[meal], [dish]) }
+    ;[saved] = await db.update(menus).set({ days }).where(eq(menus.id, menu.id)).returning()
+  } else {
+    // No menu this week: one with only this dish (the rest stays empty).
+    const days: DayMenu[] = Array.from({ length: 7 }, () => ({}))
+    days[t.dayIndex] = { [meal]: { dishes: [dish] } }
+    const householdId = await getPrimaryHouseholdId(userId, db)
+    ;[saved] = await db
+      .insert(menus)
+      .values({ userId, householdId, weekStart: t.weekStart, days, locked: {}, bannedRecipeIds: [], skippedDays: [] })
+      .returning()
+  }
+  if (dishNow(saved, t.dayIndex, meal) !== recipe.name) return notSaved(slotLabel)
+  return {
+    data: { ...(saved as object), change: changeOf(t, meal, recipe.name), recipeId: recipe.id },
+    summary: `Hecho: "${recipe.name}" en la ${slotLabel}. Sus ingredientes ya salen en la lista de la compra.`,
+    uiHint: 'menu',
+  }
 }
 
 const searchRecipes: SkillDefinition = {

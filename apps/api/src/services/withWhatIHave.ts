@@ -93,10 +93,11 @@ export function rankWithWhatIHave<R extends CandidateRecipe>(
   candidates: readonly R[],
   chosen: readonly ChosenIngredient[],
   rules: CompiledRestrictions,
+  maxChosen: number = MAX_CHOSEN_INGREDIENTS,
 ): WithWhatIHaveHit<R>[] {
   const picks = chosen
     .filter((c) => c.name.trim().length > 0 || c.id)
-    .slice(0, MAX_CHOSEN_INGREDIENTS)
+    .slice(0, maxChosen)
     .map((c) => ({ chosen: c, term: singularTerm(c.name) }))
   if (picks.length === 0) return []
 
@@ -156,6 +157,12 @@ export async function findRecipesWithWhatIHave(
   chosen: readonly ChosenIngredient[],
   db: any = defaultDb,
   limit = 100,
+  opts: {
+    /** Recipes never to propose: the week's menu vetoes (PRO-222). */
+    excludeIds?: ReadonlySet<string>
+    /** How many named ingredients count (the `/recipes` picker: 3; Mimo, from a fridge photo: more). */
+    maxChosen?: number
+  } = {},
 ): Promise<WithWhatIHaveHit<CandidateRecipe & { row: RecipeRow }>[]> {
   if (chosen.length === 0) return []
   const { restrictions, dislikes } = await loadUserRestrictions(userId, db)
@@ -163,7 +170,7 @@ export async function findRecipesWithWhatIHave(
 
   const rows: RecipeRow[] = await db.select().from(recipes).where(visibleRecipeWhere(await visibleAuthorIds(userId, db)))
   const copied = new Set(rows.filter((r) => r.authorId && r.copiedFromRecipeId).map((r) => r.copiedFromRecipeId as string))
-  const visible = rows.filter((r) => !copied.has(r.id))
+  const visible = rows.filter((r) => !copied.has(r.id) && !opts.excludeIds?.has(r.id))
   if (visible.length === 0) return []
 
   const ingRows = await db
@@ -192,7 +199,7 @@ export async function findRecipesWithWhatIHave(
     ingredients: byRecipe.get(row.id) ?? [],
     row,
   }))
-  return rankWithWhatIHave(candidates, chosen, rules).slice(0, limit)
+  return rankWithWhatIHave(candidates, chosen, rules, opts.maxChosen).slice(0, limit)
 }
 
 /** Catalogue ingredient names for the ids the `/recipes` picker sends. */

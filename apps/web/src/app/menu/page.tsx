@@ -263,8 +263,14 @@ export default function MenuPage() {
       generateMenu.mutate({ userId: user.id, weekStart, empty: true })
       return
     }
+    // A week whose days are all empty because the user skipped them («Saltar
+    // día» empties the day) is a real week, not a legacy `[{}, …]` row:
+    // healing it brought the removed meals back as empty slots (PRO-115).
     const malformed =
-      Array.isArray(menu.days) && menu.days.length > 0 && menu.days.every((d) => !d || Object.keys(d).length === 0)
+      Array.isArray(menu.days) &&
+      menu.days.length > 0 &&
+      (menu.skippedDays ?? []).length === 0 &&
+      menu.days.every((d) => !d || Object.keys(d).length === 0)
     if (malformed) generateMenu.mutate({ userId: user.id, weekStart, empty: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, menu?.id, menuLoading, isPastWeek, weekStart])

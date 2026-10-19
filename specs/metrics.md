@@ -86,8 +86,8 @@ Analítica de producto en una tabla propia, sin terceros. Una fila por cada cosa
 | `shopping_item_checked` (solo al marcar, no al desmarcar) | `PUT /shopping-list/:l/item/:i/check` | `check_shopping_item` |
 | `recipe_imported` (`props.source` url / photo / whatsapp_photo / whatsapp_url / social; `props.kind` article/youtube/instagram/tiktok) | `POST /recipes/extract-from-url`, `POST /recipes/extract-from-image` (el borrador, antes de guardar) | `import_recipe_from_url`; foto de WhatsApp guardada como receta (`inbound.ts`) |
 | `recipe_created` (`props.withSource`) | `POST /recipes` | `create_recipe` |
-| `cook_mode_started` | — (el modo cocina de la web no llama al servidor) | `start_cooking_mode` |
-| `meal_cooked` | `POST /cook-logs` | `log_cooked` |
+| `cook_mode_started` | `POST /usage/cook-mode-started` (la página del modo cocina lo llama una vez al abrirse, sin datos, PRO-188) | `start_cooking_mode` |
+| `meal_cooked` | `POST /cook-logs` | `log_cooked`; `mark_meal_eaten` con `eaten: true` («ya lo hemos comido», `via: 'eaten'`, PRO-188) |
 | `mimo_message` (por `channel`; en WhatsApp `props.kind` text/voice_note/photo) | `POST /assistant/:id/chat` (`mode: voice` → voice) | cada turno de WhatsApp que llega a Mimo (`inbound.ts`) |
 | `whatsapp_linked` | — | código de vinculación aceptado (`inbound.ts`) |
 | `invite_shared` (PRO-165) | toque en «Invitar a otro hogar» (el botón llega con PRO-163; hasta entonces no hay eventos) | — |
@@ -126,7 +126,7 @@ Conservación: el tick del planificador borra una vez al día los eventos de má
 
 ## Known limitations
 
-- **Los eventos de uso empiezan cuando se despliega esto.** Sin relleno hacia atrás: el embudo solo conoce las altas registradas desde entonces. El modo cocina de la web («Empezar a cocinar») no llama al servidor, así que `cook_mode_started` solo llega desde Mimo; `meal_cooked` cubre la web. Abrir una pantalla sin llamada a la API (detalle de receta, perfil) no se registra. Las conversaciones de Mimo en la web no se guardan: `mimo_message` las cuenta, pero no hay texto que revisar.
+- **Los eventos de uso empiezan cuando se despliega esto.** Sin relleno hacia atrás: el embudo solo conoce las altas registradas desde entonces. Desde el 2026-10-19 (PRO-188) «ha cocinado» cuenta todos los canales: abrir el modo cocina en la web (`cook_mode_started`), «Marcar como cocinada» (`meal_cooked`) y lo que se le dice a Mimo por WhatsApp o en el chat (`log_cooked`, `start_cooking_mode`, `mark_meal_eaten` con `eaten: true`); antes, el modo cocina de la web y «ya lo hemos comido» no contaban. Abrir una pantalla sin llamada a la API (detalle de receta, perfil) no se registra. Las conversaciones de Mimo en la web no se guardan: `mimo_message` las cuenta, pero no hay texto que revisar.
 - **History starts at deploy.** No backfill: weeks before `dataSince` under-report cost and resolved weeks (the old per-user advisor counter has no per-call history).
 - **WhatsApp service messages are counted when sent, not when delivered** (Meta bills delivered ones), and the free tier is counted on the Madrid calendar month and over all `whatsapp_service` rows, so a second number or a failed delivery would make the estimate slightly high. Two messages sent at the same instant can both see the same count at the 1,000 boundary.
 - Historical `voice_realtime` rows (until 2026-10-09) trusted client-reported minutes (the retired `POST /realtime/:userId/usage`); a crashed tab reported nothing.

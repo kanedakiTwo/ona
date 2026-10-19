@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { useRecipe } from "@/hooks/useRecipes"
 import { useAuth } from "@/lib/auth"
+import { api } from "@/lib/api"
 import { householdToDinersOrNull } from "@/lib/recipeView"
 import { CookingShell } from "@/components/cooking/CookingShell"
 
@@ -59,6 +60,15 @@ export default function CookPage() {
     setServings(initial)
     seededRef.current = true
   }, [recipe, user?.adults, user?.kidsCount, user?.householdSize])
+
+  // «Ha cocinado» counts opening cook mode on the web too (PRO-188): one
+  // light ping per open, no body. Analytics never breaks cooking.
+  const pingedRef = useRef(false)
+  useEffect(() => {
+    if (pingedRef.current || !user) return
+    pingedRef.current = true
+    api.post("/usage/cook-mode-started").catch(() => {})
+  }, [user])
 
   // Keep the URL in sync with the live scaler value so refresh / share
   // preserves the chosen portion size.

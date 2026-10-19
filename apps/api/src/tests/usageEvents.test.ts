@@ -60,6 +60,8 @@ describe('routeUsageEvent (web requests)', () => {
     expect(routeUsageEvent(req('GET', '/shopping-list'))?.name).toBe('shopping_list_viewed')
     expect(routeUsageEvent(req('GET', '/shopping-list/m1'))?.name).toBe('shopping_list_viewed')
     expect(routeUsageEvent(req('POST', '/cook-logs'))?.name).toBe('meal_cooked')
+    // PRO-188: opening cook mode on the web.
+    expect(routeUsageEvent(req('POST', '/usage/cook-mode-started'))).toEqual({ name: 'cook_mode_started', channel: 'web' })
     expect(routeUsageEvent(req('POST', '/shop-orders/prepare'))?.name).toBe('shop_order_prepared')
     expect(routeUsageEvent(req('POST', '/recipes', { sourceUrl: 'https://x' }))).toEqual({ name: 'recipe_created', channel: 'web', props: { withSource: true } })
   })
@@ -106,6 +108,12 @@ describe('skillUsageEvents (Mimo)', () => {
     expect(skillUsageEvents('start_cooking_mode', { data: { recipeId: 'r' } }, 'voice')).toEqual([{ name: 'cook_mode_started' }])
     expect(skillUsageEvents('log_cooked', { data: {} }, 'web')).toEqual([{ name: 'meal_cooked' }])
     expect(skillUsageEvents('swap_meal', { data: {} }, 'web', { recipeName: 'lentejas' })).toEqual([{ name: 'meal_swapped', props: { target: 'meal', how: 'picked' } }])
+  })
+
+  it('PRO-188: «ya lo hemos comido» (mark_meal_eaten, eaten: true) counts as cooked; un-marking does not', () => {
+    expect(skillUsageEvents('mark_meal_eaten', { data: {} }, 'whatsapp', { meal: 'lunch', eaten: true })).toEqual([{ name: 'meal_cooked', props: { via: 'eaten' } }])
+    expect(skillUsageEvents('mark_meal_eaten', { data: {} }, 'web', { meal: 'lunch', eaten: false })).toEqual([])
+    expect(skillUsageEvents('mark_meal_eaten', { data: null }, 'web', { meal: 'lunch', eaten: true })).toEqual([])
   })
 
   it('a recipe link sent over WhatsApp is whatsapp_url; a reel is social', () => {

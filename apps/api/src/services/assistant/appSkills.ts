@@ -1200,7 +1200,7 @@ const updateWeeklyTemplate: SkillDefinition = {
 
 const inviteToHousehold: SkillDefinition = {
   name: 'invite_to_household',
-  description: 'Crea un enlace de invitacion para que otra persona se una al hogar (comparten menu, lista y despensa). Devuelve el mensaje ya escrito con el enlace para reenviarlo por WhatsApp.',
+  description: 'Crea un enlace de invitacion para que otra persona se una al hogar (comparten menu, lista y despensa). Devuelve el mensaje ya escrito con el enlace para reenviarlo por WhatsApp. Usala tambien cuando el usuario diga que si a tu oferta de mandarle el menu y la lista a su pareja o a quien vive con el.',
   parameters: { type: 'object', properties: { role: { type: 'string', enum: ['member', 'child'] } }, required: [] },
   async handler(p, ctx) {
     // PRO-260/263: prepared by Mimo and handed over in this reply (counts as sent).

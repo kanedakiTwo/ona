@@ -43,6 +43,22 @@ import { z } from 'zod'
 const router = Router()
 
 /**
+ * PRO-220: a dish chosen or changed by hand (also late, «a las 13:00 la
+ * cena») gets its prep alerts now. Clears the menu's pending ones first so
+ * old-recipe alerts disappear. Best-effort, never blocks the response.
+ */
+function refreshPrepAlerts(menuId: string): void {
+  ;(async () => {
+    try {
+      await clearPendingForMenu(menuId)
+      await enqueuePrepAlertsForMenu(menuId)
+    } catch (err) {
+      console.warn('[menus] re-enqueue prep alerts failed:', err)
+    }
+  })()
+}
+
+/**
  * Allow only the canonical meal types in the slot-mutation routes. Without
  * this, a malicious caller could persist `meal: 'foo'` in the menu jsonb and
  * the shopping list aggregator would skip it silently. PUT keeps its current
@@ -599,6 +615,7 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       .where(eq(menus.id, menuId))
       .returning()
     await recordMenuEdits(req, menu, slotDiff(dayIndex, meal, slot.dishes, newDishes))
+    refreshPrepAlerts(menuId)
 
     res.json(await hydrateMenuImages(updated))
   } catch (err) {
@@ -1312,6 +1329,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish', async (req: AuthRequest, r
       const freezer = parsed.data.kind === 'recipe' && parsed.data.variant === 'freezer'
       await recordMenuEdits(req, menu, [{ action: freezer ? 'freezer' : 'add', day, meal, after: added }])
     }
+    refreshPrepAlerts(menuId)
     res.json({ position: next.length - 1, dish: next[next.length - 1] })
   } catch (err: any) {
     res.status(500).json({ error: err.message })
@@ -1479,6 +1497,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
     days[day][meal] = { ...slot, dishes: next }
     await db.update(menus).set({ days: days as any }).where(eq(menus.id, menuId))
     await recordMenuEdits(req, menu, slotDiff(day, meal, [dish], [next[position]]))
+    refreshPrepAlerts(menuId)
     res.json({ dish: next[position] })
   } catch (err: any) {
     res.status(500).json({ error: err.message })
@@ -1633,6 +1652,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/random', async (req: AuthReq
     days[day][meal] = { ...slot, dishes: next }
     await db.update(menus).set({ days: days as any }).where(eq(menus.id, menuId))
     await recordMenuEdits(req, menu, [{ action: 'add', day, meal, after: { id: picked.id, name: picked.name } }])
+    refreshPrepAlerts(menuId)
     res.json({ position: next.length - 1, dish: next[next.length - 1] })
   } catch (err: any) {
     res.status(500).json({ error: err.message })

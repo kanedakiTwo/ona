@@ -210,37 +210,159 @@ export interface EnqueueResult {
   skipped: number
 }
 
+// ─── Recipe «preparativos con antelación» (PRO-220, D-069) ─────────
+
+/**
+ * Priority of every prep alert in the weekly cap (PRO-215, D-069): 1 = what
+ * can't be fixed if forgotten (thaw, soak, temper, start cooking). Carried in
+ * the row's payload (`payload.priority`) for the cap to read.
+ */
+export const PREP_ALERT_PRIORITY = 1
+
+/** A late pick still gets its alert only for short preps (≤ 3 h) with at least half the time left. */
+export const LATE_PREP_MAX_HOURS = 3
+
+export interface RecipePrepPlan {
+  fireAt: Date
+  /** The dish was picked with less notice than the prep needs: send now. */
+  late: boolean
+}
+
+/**
+ * Pure: when the alert for a prep of `hoursBefore` goes out for a meal at
+ * `cookAt`. Never in the past: if its time already went by, it goes out now
+ * when there's still time (short preps, half the time left — «Para la cena:
+ * saca ya el filete»), otherwise nothing (a 10 h soak picked at 13:00 for a
+ * 14:30 meal).
+ */
+export function planRecipePrep(cookAt: Date, hoursBefore: number, now: Date): RecipePrepPlan | null {
+  const leadMs = hoursBefore * 3_600_000
+  const fireAt = new Date(cookAt.getTime() - leadMs)
+  if (fireAt.getTime() > now.getTime()) return { fireAt, late: false }
+  const leftMs = cookAt.getTime() - now.getTime()
+  if (leftMs <= 0) return null
+  if (hoursBefore <= LATE_PREP_MAX_HOURS && leftMs >= leadMs / 2) return { fireAt: now, late: true }
+  return null
+}
+
+const MEAL_ES: Record<Meal, string> = { breakfast: 'el desayuno', lunch: 'la comida', snack: 'la merienda', dinner: 'la cena' }
+const DAY_ES = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
+const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1)
+const noDot = (s: string) => s.trim().replace(/[.。]+$/, '')
+
+/** Pure: the alert's words. */
+export function recipePrepCopy(p: {
+  text: string
+  meal: Meal
+  dayIndex: number
+  recipeName: string
+  late: boolean
+}): { title: string; body: string } {
+  if (p.late) {
+    return { title: `Para ${MEAL_ES[p.meal]}: ${lowerFirst(noDot(p.text))}`, body: `Hazlo ya, que aún da tiempo (${p.recipeName}).` }
+  }
+  return { title: `Acuérdate: ${noDot(p.text)}`, body: `Para ${MEAL_ES[p.meal]} del ${DAY_ES[p.dayIndex] ?? 'día'}: ${p.recipeName}.` }
+}
+
+/** `menu:<id>:day:<n>:meal:<m>:recipe:<recipeId>:prep:<i>` */
+export function recipePrepKey(menuId: string, dayIndex: number, meal: string, recipeId: string, i: number): string {
+  return `menu:${menuId}:day:${dayIndex}:meal:${meal}:recipe:${recipeId}:prep:${i}`
+}
+
+export function parseRecipePrepKey(key: string): { menuId: string; dayIndex: number; meal: string; recipeId: string } | null {
+  const m = /^menu:([0-9a-f-]{36}):day:(\d):meal:([a-z]+):recipe:([0-9a-f-]{36}):prep:\d+$/i.exec(key)
+  if (!m) return null
+  return { menuId: m[1], dayIndex: Number(m[2]), meal: m[3], recipeId: m[4] }
+}
+
+interface RecipePrepRow {
+  id: string
+  name: string
+  advancePrep: Array<{ text: string; hoursBefore: number }> | null
+}
+
+async function loadRecipePreps(recipeIds: string[]): Promise<Map<string, RecipePrepRow>> {
+  if (recipeIds.length === 0) return new Map()
+  const rows = await db
+    .select({ id: recipes.id, name: recipes.name, advancePrep: recipes.advancePrep })
+    .from(recipes)
+    .where(inArray(recipes.id, recipeIds))
+  return new Map(rows.filter((r) => Array.isArray(r.advancePrep) && r.advancePrep.length > 0).map((r) => [r.id, r as RecipePrepRow]))
+}
+
+async function insertAlert(values: typeof notificationSchedule.$inferInsert): Promise<boolean> {
+  try {
+    await db.insert(notificationSchedule).values(values)
+    return true
+  } catch (err: any) {
+    // 23505 = unique_violation on dedupKey. Idempotency by design.
+    if (err?.code !== '23505') throw err
+    return false
+  }
+}
+
 export async function enqueuePrepAlertsForMenu(
   menuId: string,
+  now: Date = new Date(),
 ): Promise<EnqueueResult> {
   const [menu] = await db.select().from(menus).where(eq(menus.id, menuId)).limit(1)
   if (!menu) return { inserted: 0, skipped: 0 }
 
   const { habits, mealTimes } = await loadUserHabits(menu.userId)
-  if (habits.length === 0) {
-    // No opt-in habits → nothing to enqueue. The user can grow into
-    // the feature by telling the assistant about their habits later.
-    return { inserted: 0, skipped: 0 }
-  }
-
   const slots = flattenMenuSlots(menu.days)
   const recipeIds = Array.from(new Set(slots.map((s) => s.recipeId)))
+  const weekStart = String(menu.weekStart)
+
+  let inserted = 0
+  let skipped = 0
+
+  // PRO-220: the recipe's own «preparativos con antelación» — no prep habits
+  // needed, they belong to the recipe, not to the household.
+  const recipePreps = await loadRecipePreps(recipeIds)
+  for (const slot of slots) {
+    const r = recipePreps.get(slot.recipeId)
+    if (!r?.advancePrep) continue
+    const cookAt = resolveCookAt(weekStart, slot.dayIndex, slot.meal, mealTimes)
+    for (let k = 0; k < r.advancePrep.length; k += 1) {
+      const prep = r.advancePrep[k]
+      const plan = planRecipePrep(cookAt, prep.hoursBefore, now)
+      if (!plan) {
+        skipped += 1
+        continue
+      }
+      const dedupKey = recipePrepKey(menuId, slot.dayIndex, slot.meal, slot.recipeId, k)
+      const copy = recipePrepCopy({ text: prep.text, meal: slot.meal, dayIndex: slot.dayIndex, recipeName: r.name, late: plan.late })
+      const ok = await insertAlert({
+        userId: menu.userId,
+        dedupKey,
+        fireAt: plan.fireAt,
+        payload: { ...copy, url: `/menu?day=${slot.dayIndex}`, tag: dedupKey, priority: PREP_ALERT_PRIORITY },
+        status: 'pending',
+      })
+      if (ok) inserted += 1
+      else skipped += 1
+    }
+  }
+
+  if (habits.length === 0) {
+    // Ingredient-based alerts stay opt-in: no habit → none of them. The user
+    // can grow into the feature by telling the assistant about their habits.
+    return { inserted, skipped }
+  }
+
   const prepIngs = await loadPrepIngredientsForRecipes(recipeIds)
 
   // Build a recipeId → list of prep-bearing ingredients.
   const byRecipe = new Map<string, PrepIngredient[]>()
   for (const p of prepIngs) {
     if (!p.prepRequirements) continue
+    // A recipe with its own preparativos already says what to soak, temper or
+    // marinate; from its ingredients only thawing is still asked (PRO-220).
+    if (recipePreps.has(p.recipeId) && !p.prepRequirements.method.startsWith('thaw_')) continue
     const list = byRecipe.get(p.recipeId) ?? []
     list.push(p)
     byRecipe.set(p.recipeId, list)
   }
-
-  const now = new Date()
-  const weekStart = String(menu.weekStart)
-
-  let inserted = 0
-  let skipped = 0
 
   for (const slot of slots) {
     const ings = byRecipe.get(slot.recipeId) ?? []
@@ -272,25 +394,15 @@ export async function enqueuePrepAlertsForMenu(
         : req.notes ??
           `${describeMethod(req.method)} para la cena del día ${slot.dayIndex + 1}.`
 
-      try {
-        await db.insert(notificationSchedule).values({
-          userId: menu.userId,
-          dedupKey,
-          fireAt,
-          payload: {
-            title,
-            body,
-            url: `/menu?day=${slot.dayIndex}`,
-            tag: dedupKey,
-          },
-          status: 'pending',
-        })
-        inserted += 1
-      } catch (err: any) {
-        // 23505 = unique_violation on dedupKey. Idempotency by design.
-        if (err?.code !== '23505') throw err
-        skipped += 1
-      }
+      const ok = await insertAlert({
+        userId: menu.userId,
+        dedupKey,
+        fireAt,
+        payload: { title, body, url: `/menu?day=${slot.dayIndex}`, tag: dedupKey, priority: PREP_ALERT_PRIORITY },
+        status: 'pending',
+      })
+      if (ok) inserted += 1
+      else skipped += 1
     }
   }
 
@@ -383,7 +495,10 @@ export function prepAlertStaleReason(
 
 /** Loads the current state for `prepAlertStaleReason`. Null for non-prep alerts. */
 export async function prepAlertStaleReasonFor(dedupKey: string): Promise<string | null> {
-  const key = parsePrepKey(dedupKey)
+  const recipeKey = parseRecipePrepKey(dedupKey)
+  const key: PrepKey | null = recipeKey
+    ? { menuId: recipeKey.menuId, dayIndex: recipeKey.dayIndex, meal: recipeKey.meal, ingredientId: '' }
+    : parsePrepKey(dedupKey)
   if (!key) return null
   const [menu] = await db
     .select({ userId: menus.userId, householdId: menus.householdId, weekStart: menus.weekStart })
@@ -408,7 +523,10 @@ export async function prepAlertStaleReasonFor(dedupKey: string): Promise<string 
         .filter((x) => x.dayIndex === key.dayIndex && x.meal === key.meal)
         .map((x) => x.recipeId)
     : []
-  const withIngredient = slotRecipeIds.length
+  // PRO-220: a recipe's preparativo applies while that recipe is still in the slot.
+  const withIngredient = recipeKey
+    ? slotRecipeIds.filter((id) => id === recipeKey.recipeId).map((recipeId) => ({ recipeId }))
+    : slotRecipeIds.length
     ? await db
         .select({ recipeId: recipeIngredients.recipeId })
         .from(recipeIngredients)

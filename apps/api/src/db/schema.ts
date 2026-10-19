@@ -52,6 +52,13 @@ export const users = pgTable('users', {
    */
   whatsappNudgeAt: timestamp('whatsapp_nudge_at', { withTimezone: true }),
   /**
+   * Mimo's one offer to invite another household after a resolved week
+   * (PRO-164): stamped when it is appended to a reply, so it never repeats.
+   */
+  inviteOfferAt: timestamp('invite_offer_at', { withTimezone: true }),
+  /** A «no» to that offer (PRO-164): it stays off for good. */
+  inviteOfferDeclinedAt: timestamp('invite_offer_declined_at', { withTimezone: true }),
+  /**
    * «Afina tu menú» (PRO-146) offers: `{ introAt?, introChoice?: 'start'|'later',
    * cardDismissedAt?, onboardingAt?, whatsappOfferedAt?, flags?: ('carne'|'pescado')[] }`.
    * Each offer is stamped once so it never repeats.

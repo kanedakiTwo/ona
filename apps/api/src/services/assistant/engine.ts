@@ -8,6 +8,7 @@ import { recordSkillActivity } from '../activityEvents.js'
 import { recordSkillUsage } from '../usageEvents.js'
 import { claimsAction } from './claims.js'
 import { ensureHealthDisclaimer, talksHealthEffects } from './healthGuard.js'
+import { maybeAppendInviteOffer, recordInviteOfferAnswer } from '../inviteOffer.js'
 import {
   EMPTY_USAGE,
   addAnthropicUsage,
@@ -87,8 +88,12 @@ export async function chat(
       : t,
   )
 
+  // PRO-164: a «no» right after Mimo's offer to invite another household turns it off for good.
+  const offerApplies = (mode === 'text' || mode === 'whatsapp') && opts.onboarding !== true
+  if (offerApplies) await recordInviteOfferAnswer(userId, message, history)
+
   // 5. Model ↔ tools loop (see runToolLoop).
-  return runToolLoop({
+  const result = await runToolLoop({
     client: anthropic,
     system,
     tools,
@@ -97,6 +102,11 @@ export async function chat(
     ctx: { userId, db, channel: mode },
     onToolStart: opts.onToolStart,
   })
+
+  // 6. PRO-164: after the first resolved week, once, the invite line at the
+  // end of this reply (a reply, so on WhatsApp always inside the 24 h window).
+  if (offerApplies && result.message) result.message = await maybeAppendInviteOffer(userId, result.message)
+  return result
 }
 
 /**

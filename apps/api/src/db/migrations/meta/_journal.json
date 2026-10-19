@@ -505,6 +505,13 @@
       "when": 1792451168183,
       "tag": "0074_household_notices",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1792451188205,
+      "tag": "0075_invite_offer",
+      "breakpoints": true
     }
   ]
 }

@@ -2,6 +2,7 @@ import type { DayMenu } from '@ona/shared'
 import { mealEntriesForDay, recipeLinkLines, recipesOfDay, shortRecipeLink } from '../menuText.js'
 import type { OutboundMessage } from './render.js'
 import type { GuideSpec } from './guided.js'
+import { taperReminderLine } from '../taper.js'
 
 /**
  * Pure planning for messages Mimoia sends first (the Instinct-style "it texts
@@ -188,6 +189,8 @@ export interface ProactiveInput {
   cookedToday: () => Promise<boolean>
   pendingShopping: () => Promise<string[]>
   hasNextWeekMenu: () => Promise<boolean>
+  /** PRO-223: tápers of tomorrow that come from tonight's dinner (null if none). */
+  taperTonight?: () => Promise<{ recipeNames: string[]; count: number } | null>
   webUrl: string
 }
 
@@ -250,6 +253,24 @@ export async function planProactive(input: ProactiveInput): Promise<PlannedMessa
         messages: [{ type: 'text', text: formatShoppingReminder(pending, input.webUrl) }],
         guide: shoppingReminderGuide(pending, input.webUrl),
       })
+    }
+  }
+
+  // PRO-223: «haz una ración más, mañana te llevas táper» rides on a message
+  // that goes out anyway today (morning brief or «toca empezar»), never alone.
+  const carrier = out.find((m) => m.kind === 'cooking_reminder') ?? out.find((m) => m.kind === 'daily_brief')
+  if (carrier && input.taperTonight) {
+    const t = await input.taperTonight()
+    if (t) {
+      const line = taperReminderLine(t)
+      carrier.messages = carrier.messages.map((m, i) => (i === 0 && (m.type === 'text' || m.type === 'buttons') ? { ...m, text: `${m.text}\n\n${line}` } : m))
+      if (carrier.guide) {
+        carrier.guide = {
+          ...carrier.guide,
+          facts: [...carrier.guide.facts, `Recordatorio del táper, tal cual: ${line}`],
+          required: [...carrier.guide.required, 'táper'],
+        }
+      }
     }
   }
 

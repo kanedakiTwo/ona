@@ -7,6 +7,12 @@ export interface MealSlot {
   servings?: number | null
   /** Ordered list of dishes; length ≥ 1 after at least one populate, but `[]` is transient and valid. */
   dishes: Dish[]
+  /**
+   * PRO-223 · «El táper de mañana»: how many tápers this meal is. The slot
+   * holds the previous day's dinner as a leftover and `servings` = this count,
+   * so that dinner is cooked with one more ration per táper.
+   */
+  taper?: number
 }
 
 export interface DayMenu {

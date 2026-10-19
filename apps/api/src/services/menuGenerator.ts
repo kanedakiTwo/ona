@@ -21,6 +21,7 @@ import {
   TARGET_MACROS,
   MENU_GENERATION,
 } from '@ona/shared'
+import { applyTemplateTapers } from './taper.js'
 import type { DayMenu, DayTemplate, DayTimeBudget, Meal, Season, Sex, ActivityLevel, LockedSlots } from '@ona/shared'
 import { findRecipeForSlot, normaliseEquipment, type RecipeWithIngredients } from './recipeMatcher.js'
 import { findForCourse } from './courseAwareMatcher.js'
@@ -530,8 +531,11 @@ export async function generateMenu(
     if (bestFitness < MENU_GENERATION.OPTIMAL_FITNESS) break
   }
 
+  // PRO-223: the plantilla's «días de táper» — that lunch is a táper of the dinner before.
+  const withTapers = (days: DayMenu[]) => applyTemplateTapers(days, rawTemplate, lockedSlots, skippedDays ?? [])
+
   if (bestDays) {
-    return { days: bestDays, warnings: bestWarnings }
+    return { days: withTapers(bestDays), warnings: bestWarnings }
   }
 
   const fallback = buildRandomMenu(
@@ -551,5 +555,5 @@ export async function generateMenu(
     mealDishCounts,
     rated.likedRecipeIds,
   )
-  return { days: fallback.days, warnings: fallback.warnings }
+  return { days: withTapers(fallback.days), warnings: fallback.warnings }
 }

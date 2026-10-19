@@ -12,6 +12,7 @@ import { requireActiveAccount } from '../services/accountAccess.js'
 import { validate } from '../middleware/validate.js'
 import { generateMenuSchema, lockMealSchema, MEALS, MEAL_TYPE_TAGS, courseSchema } from '@ona/shared'
 import type { DayMenu, Dish, LockedSlots, Meal, MealSlot, RecipeDish } from '@ona/shared'
+import { applyTaper, removeTaper } from '../services/taper.js'
 import { defaultTemplate, generateMenu, extractMealDishCounts, normalizeMealTemplate } from '../services/menuGenerator.js'
 import { evaluateAndSaveMenuFit } from '../services/menuFit.js'
 import { calculateMenuCaloriesFromDB } from '../services/calorieCalculator.js'
@@ -1160,6 +1161,74 @@ router.post('/menu/:menuId/day/:day/leftover', async (req: AuthRequest, res) => 
     res.status(201).json(await hydrateMenuImages(updated))
   } catch (err) {
     console.error('Leftover error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// PRO-223 · «El táper de mañana». POST marks a meal as táper (body
+// `{ count?: 1-6 }`, default 1): it becomes the previous day's dinner as a
+// leftover with `servings` = count and `taper` = count, so that dinner is
+// cooked (and bought) with one more ration per táper. DELETE undoes it and
+// leaves the meal empty. Same IDOR guard as every `/menu/:menuId` route.
+router.post('/menu/:menuId/day/:day/meal/:meal/taper', async (req: AuthRequest, res) => {
+  try {
+    const menuId = String(req.params.menuId)
+    const day = parseInt(String(req.params.day), 10)
+    const meal = String(req.params.meal)
+    if (!Number.isFinite(day) || day < 0 || day > 6 || !isValidMeal(meal)) {
+      res.status(400).json({ error: 'Invalid day or meal' })
+      return
+    }
+    const count = req.body?.count === undefined ? 1 : Number(req.body.count)
+    const [menu] = await db.select().from(menus).where(eq(menus.id, menuId)).limit(1)
+    if (!menu) {
+      res.status(404).json({ error: 'Menu not found' })
+      return
+    }
+    const before = (menu.days as DayMenu[])[day]?.[meal]
+    const r = applyTaper(menu.days as DayMenu[], day, meal, count, (menu.locked ?? {}) as LockedSlots)
+    if (!r.ok) {
+      res.status(r.status).json({ error: r.error })
+      return
+    }
+    const [updated] = await db.update(menus).set({ days: r.days }).where(eq(menus.id, menuId)).returning()
+    const slot = r.days[day][meal]!
+    await recordMenuEdits(req, menu, [
+      ...slotRecipes(before).map((b) => ({ action: 'remove' as const, day, meal, before: b })),
+      ...slotRecipes(slot).map((a) => ({ action: 'leftover' as const, day, meal, fromDay: day - 1, fromMeal: 'dinner', after: a })),
+    ])
+    res.status(201).json(await hydrateMenuImages(updated))
+  } catch (err) {
+    console.error('Taper error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+router.delete('/menu/:menuId/day/:day/meal/:meal/taper', async (req: AuthRequest, res) => {
+  try {
+    const menuId = String(req.params.menuId)
+    const day = parseInt(String(req.params.day), 10)
+    const meal = String(req.params.meal)
+    if (!Number.isFinite(day) || day < 0 || day > 6 || !isValidMeal(meal)) {
+      res.status(400).json({ error: 'Invalid day or meal' })
+      return
+    }
+    const [menu] = await db.select().from(menus).where(eq(menus.id, menuId)).limit(1)
+    if (!menu) {
+      res.status(404).json({ error: 'Menu not found' })
+      return
+    }
+    const before = (menu.days as DayMenu[])[day]?.[meal]
+    const r = removeTaper(menu.days as DayMenu[], day, meal)
+    if (!r.ok) {
+      res.status(r.status).json({ error: r.error })
+      return
+    }
+    const [updated] = await db.update(menus).set({ days: r.days }).where(eq(menus.id, menuId)).returning()
+    await recordMenuEdits(req, menu, slotRecipes(before).map((b) => ({ action: 'remove' as const, day, meal, before: b })))
+    res.json(await hydrateMenuImages(updated))
+  } catch (err) {
+    console.error('Taper delete error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

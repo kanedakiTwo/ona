@@ -35,6 +35,7 @@ import { budgetMicros, getMonthlySpendMicros } from '../advisorBudget.js'
 import { spendCapStatus } from '../spendCap.js'
 import { composeGuided, guidedMeta, type GuideSpec, type GuidedContext, type GuidedResult } from './guided.js'
 import { isAccountPaused } from '../accountAccess.js'
+import { taperTomorrow } from '../taper.js'
 
 /** Per-kind templates (WHATSAPP_TEMPLATES), parsed once. */
 const TEMPLATES = parseTemplateMap(env.WHATSAPP_TEMPLATES)
@@ -274,6 +275,10 @@ export async function runProactiveTick(now: Date = new Date()): Promise<void> {
         pendingShopping: () => pendingShopping(link.userId),
         hasNextWeekMenu: async () =>
           Boolean(await latestMenuForWeek(link.userId, mondayOf(parts.isoDate, parts.weekday, 1))),
+        taperTonight: async () => {
+          const menu = await latestMenuForWeek(link.userId, mondayOf(parts.isoDate, parts.weekday))
+          return menu ? taperTomorrow(menu.days as DayMenu[], parts.weekday) : null
+        },
         webUrl: env.WEB_PUBLIC_URL,
       })
       for (const p of planned) {

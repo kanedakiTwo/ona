@@ -436,6 +436,27 @@ export function useAddDish() {
 }
 
 /**
+ * PRO-223 · «Me lo llevo en táper»: the meal becomes the previous day's
+ * dinner as a leftover, and that dinner is cooked with one more ration.
+ * `on: false` undoes it (the meal is left empty).
+ */
+export function useSetTaper() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (params: { menuId: string; day: number; meal: string; on: boolean; count?: number }) => {
+      const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}/taper`
+      return params.on ? api.post<Menu>(url, { count: params.count ?? 1 }) : api.delete<Menu>(url)
+    },
+    onSuccess: (data) => {
+      if (data?.userId && data?.weekStart) {
+        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
+      }
+      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
+    },
+  })
+}
+
+/**
  * Remove a dish from a meal slot by position (0-indexed).
  */
 export function useRemoveDish() {

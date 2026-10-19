@@ -37,6 +37,7 @@ import {
   Trash2,
   Unlock,
   Users,
+  Package,
 } from "lucide-react"
 import {
   DndContext,
@@ -85,6 +86,8 @@ export interface SlotHandlers {
   editNote: (position: number, text: string) => void
   /** PRO-74: the slot's dishes become this written dish (a note). */
   replaceWithNote: (text: string) => void
+  /** PRO-223: mark / unmark this meal as the táper of the dinner before. */
+  setTaper?: (on: boolean) => void
 }
 
 export interface SlotContext {
@@ -99,6 +102,8 @@ export interface SlotContext {
   defaultDiners: number
   /** Servings the batch cooks, táper included (`batchServings`, PRO-75). */
   batchServings?: number
+  /** PRO-223: name of the dinner before («Lentejas», cena del lunes) when this meal can be its táper. */
+  taperFrom?: { dayLabel: string; recipeName: string } | null
   isRegenerating?: boolean
 }
 
@@ -255,6 +260,30 @@ export function MealOptionsSheets({
             />
           )}
           {first && <CookedAction recipeId={first.recipeId} ctx={ctx} onAskRating={() => setOpen("rate")} />}
+          {/* PRO-223 · «El táper de mañana». */}
+          {handlers.setTaper && ctx.slot.taper ? (
+            <SheetAction
+              icon={Package}
+              label="Quitar táper"
+              hint="La comida queda vacía para poner otra cosa"
+              disabled={locked}
+              onClick={() => {
+                handlers.setTaper?.(false)
+                close()
+              }}
+            />
+          ) : handlers.setTaper && ctx.taperFrom ? (
+            <SheetAction
+              icon={Package}
+              label="Me lo llevo en táper"
+              hint={lockedHint ?? `Sobras de la cena del ${ctx.taperFrom.dayLabel}: se hace una ración más`}
+              disabled={locked}
+              onClick={() => {
+                handlers.setTaper?.(true)
+                close()
+              }}
+            />
+          ) : null}
         </div>
 
         <DinerStepper

@@ -75,27 +75,39 @@ const AISLE_INDEX: Record<Aisle, number> = AISLE_ORDER.reduce(
  * into g/ml when possible). pizca/al_gusto are dropped earlier. */
 const BUYABLE: ReadonlySet<Unit> = new Set<Unit>(['g', 'ml', 'u', 'cda', 'cdita'])
 
-/** g/ml friendly rounding: kg above 1 kg, 50 g bands above 250 g, 25 g below. */
-function roundMassVolume(value: number): number {
-  if (value <= 0) return 0
-  if (value >= 1000) {
-    // Round to 100 g increments and render as kg downstream.
-    return Math.round(value / 100) * 100
-  }
-  if (value > 250) return Math.round(value / 50) * 50
-  return Math.round(value / 25) * 25
+/**
+ * Rounds **up** to `step` (PRO-241): the list never asks for less than the
+ * recipes add up to. A hair over a step from float noise (6.0000001 eggs)
+ * doesn't jump to the next one.
+ */
+function ceilTo(value: number, step: number): number {
+  return Math.ceil(value / step - 1e-6) * step
 }
 
-function roundUnitWhole(value: number): number {
-  const r = Math.round(value)
+/**
+ * g/ml friendly amounts, always rounded up (PRO-241; it used `Math.round`, so
+ * 60 g of basmati read 50 g and 8 g read 0): 100 g steps from 1 kg (shown as
+ * kg downstream), 50 g steps above 250 g, 25 g steps below.
+ */
+export function roundMassVolume(value: number): number {
+  if (value <= 0) return 0
+  if (value >= 1000) return ceilTo(value, 100)
+  if (value > 250) return ceilTo(value, 50)
+  return ceilTo(value, 25)
+}
+
+/** Whole units, rounded up: 1,2 huevos → 2 (PRO-241). */
+export function roundUnitWhole(value: number): number {
+  const r = ceilTo(value, 1)
   return r < 1 ? 1 : r
 }
 
+/** Half spoons, rounded up. */
 function roundSpoon(value: number): number {
-  return Math.round(value * 2) / 2
+  return ceilTo(value, 0.5)
 }
 
-function roundForUnit(quantity: number, unit: BuyableUnit): number {
+export function roundForUnit(quantity: number, unit: BuyableUnit): number {
   if (unit === 'g' || unit === 'ml') return roundMassVolume(quantity)
   if (unit === 'u') return roundUnitWhole(quantity)
   // cda / cdita

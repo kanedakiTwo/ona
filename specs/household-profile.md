@@ -1,10 +1,11 @@
 # Ficha del hogar
 
-Everything Mimoia knows about a household, with a section per person (D-064, PRO-150). It is the base the rest of the «ficha viva» builds on: the daily signal collector (PRO-151), the nightly refiner (PRO-152), «Tu ficha» in the app and Mimo / the menu reading it (PRO-153, PRO-139). **Today the data model, the copy from `user_memories`, the daily signal collector (PRO-151) and the nightly refiner (PRO-152) exist, in the shadow**: the refiner writes the ficha and its history every night, but nothing in the app shows it yet, there is no REST route, and Mimo and the menu keep reading [User Memory](./user-memory.md) until PRO-153 / PRO-139.
+Everything Mimoia knows about a household, with a section per person (D-064, PRO-150). It is the base the rest of the «ficha viva» builds on: the daily signal collector (PRO-151), the nightly refiner (PRO-152), «Tu ficha» in the app and Mimo / the menu reading it (PRO-153, PRO-139). **Today the data model, the copy from `user_memories`, the daily signal collector (PRO-151) and the nightly refiner (PRO-152) exist, in the shadow**: the refiner writes the ficha and its history every night, but nothing in the app shows it yet, and Mimo and the menu keep reading [User Memory](./user-memory.md) until PRO-153 / PRO-139. The one exception is **how the household cooks** (PRO-217, below): asked in the sign-up, shown and changed in Perfil and by Mimo.
 
 ## User Capabilities
 
-- None visible yet. Every night, a household that used Mimoia that day gets its ficha refined from what happened (see «Nightly refiner»), but nobody reads it yet
+- **«¿Cómo cocináis en casa?»** (PRO-217, D-069): «Cocino cada día» · «Cocino unos días y aprovecho para otros» · «Batch cooking: cocino una o dos veces y dejo hecha la semana» · «Improviso: decido cada día». Asked in the web sign-up right after how often they cook ([Auth](./auth.md)); on `/profile` the card «Cómo cocináis» (`profile-cooking-style`) shows the answer (or «Sin contestar») and changes it with one tap, no «Guardar cambios»; Mimo changes it when the household says so («ahora hacemos batch los domingos», tool `set_cooking_style`, web chat, voice and WhatsApp) and reads it in its context. Only collected and shown: the menu uses it with PRO-219
+- Nothing else of the ficha is visible yet. Every night, a household that used Mimoia that day gets its ficha refined from what happened (see «Nightly refiner»), but nobody reads it yet
 - A user's existing memory facts (what they told Mimo, what came from sign-up and what Mimo deduced) are already copied into their household's ficha, with where each one came from, so the ficha starts with what Mimoia knows today
 
 ## Model
@@ -25,6 +26,7 @@ One ficha per **household** (the menu is the household's), with facts about the 
 | `shopping` | `{ places?, days?, note? }` | frutería del barrio los sábados |
 | `batch_cooking` | `{ batches, days?, lunchboxes? }` | cocina por tandas el domingo, con táperes |
 | `novelty` | `{ score −2..+2 }` | prefiere la rutina (−2) |
+| `cooking_style` | `{ style: daily\|cook_and_reuse\|batch\|improvise }` | «Batch cooking: cocino una o dos veces y dejo hecha la semana» (PRO-217) |
 
   Days are `lunes`…`domingo`; meals `breakfast` · `lunch` · `snack` · `dinner`.
 - **People without an account** (`household_persons`): `alias` and `age_band` (`0-2` · `3-5` · `6-12` · `13-17` · `adulto`). **A minor's name is never stored**: the schema has no name field (`.strict()`), and a minor's alias must be one of `MINOR_ALIASES` («la pequeña», «el mayor», «hija»…), optionally with a number («hija 2»). An adult (the grandmother) may have any alias up to 40 characters
@@ -40,6 +42,7 @@ One ficha per **household** (the menu is the household's), with facts about the 
 - **Copy from `user_memories`** (`applyProfileFromMemories`, after `db:migrate` on every boot): each memory row → one fact in the user's primary household (else the first one they joined; users with none are skipped and counted). Origin: `manual` → `user`, `onboarding` → `onboarding`, `inferred` → `ai_realtime`; same confidence; one evidence item (`signal: user_memories`). `household.adults`, `household.kids_2_to_10`, `equipment` and `weekly_budget_eur` are about the household; every other key is about the user. Each copy writes a `fact_added` history row. Idempotent: `source_memory_id` is unique and a copied memory is skipped
 - Known limitation: a memory written **after** its copy is not re-copied (new memories are). Until PRO-153 `user_memories` is still the source Mimo reads and writes; the ficha copy can go stale for edited keys
 - Migration `0057_household_profile` only adds tables
+- **How the household cooks** (PRO-217, `services/profile/cookingStyle.ts`): one `cooking_style` fact about the household (no subject), single-valued. `GET /household/cooking-style` → `{ style | null, canEdit }` and `PUT /household/cooking-style { style }` → `{ style, changed }` (auth; the caller's primary household; a `child` member gets 403). Perfil calls it directly and Mimo's `set_cooking_style` calls it as the user (loopback), so both write the same fact. The sign-up writes it with origin `onboarding`; Perfil and Mimo with origin `user` (the household said it). Each write adds an evidence item (`onboarding` · `profile` · `chat` · `whatsapp`) and a `fact_added` / `fact_updated` history row; the same answer again changes nothing. No migration (facts are typed by `type` text). The nightly refiner treats it as single-valued (its prompt doesn't list the type yet). Mimo's WhatsApp-first sign-up doesn't ask it (it saves it if the household tells)
 
 ## Daily signals (PRO-151)
 
@@ -86,6 +89,13 @@ What the nightly refiner (PRO-152) will read next to the ficha: `collectHousehol
 - [apps/api/src/services/profileFromMemories.ts](../apps/api/src/services/profileFromMemories.ts) — idempotent copy from `user_memories`, run from `db/migrate.ts`
 - [apps/api/src/services/healthConsent.ts](../apps/api/src/services/healthConsent.ts) — withdrawal deletes health facts
 - [apps/api/src/tests/householdProfile.test.ts](../apps/api/src/tests/householdProfile.test.ts) — schema, minors, health, visibility, mapping
+- [packages/shared/src/types/cookingStyle.ts](../packages/shared/src/types/cookingStyle.ts) — the question, the four answers, the route path (PRO-217)
+- [apps/api/src/services/profile/cookingStyle.ts](../apps/api/src/services/profile/cookingStyle.ts) — read and write the `cooking_style` fact with its history
+- [apps/api/src/routes/householdHabits.ts](../apps/api/src/routes/householdHabits.ts) — `GET`/`PUT /household/cooking-style`
+- [apps/api/src/services/assistant/householdHabitsSkills.ts](../apps/api/src/services/assistant/householdHabitsSkills.ts) — Mimo's `set_cooking_style`
+- [apps/web/src/components/profile/CookingStyleCard.tsx](../apps/web/src/components/profile/CookingStyleCard.tsx) — «Cómo cocináis» on `/profile` (`hooks/useCookingStyle.ts`)
+- [apps/api/src/tests/cookingStyle.test.ts](../apps/api/src/tests/cookingStyle.test.ts), [apps/api/src/tests/cookingStyleRoute.smoke.ts](../apps/api/src/tests/cookingStyleRoute.smoke.ts) — answers, schemas, Mimo and Perfil through the same route; sign-up, Perfil and Mimo on the same fact against Postgres
+- [apps/web/e2e/onboarding-cooking-style.spec.ts](../apps/web/e2e/onboarding-cooking-style.spec.ts) — the sign-up question and the Perfil card at 390×844
 - [apps/api/src/tests/profileFromMemories.smoke.ts](../apps/api/src/tests/profileFromMemories.smoke.ts) — copy against Postgres (twice), history, consent withdrawal, cascade
 - [apps/api/src/services/profile/signals.ts](../apps/api/src/services/profile/signals.ts) — daily signals: builders per source, formatter with the size cap, Postgres loader
 - [apps/api/src/services/profile/healthText.ts](../apps/api/src/services/profile/healthText.ts) — health sentences out of WhatsApp text (`HEALTH_TEXT_PATTERNS`, reused by the refiner)

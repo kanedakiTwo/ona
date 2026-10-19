@@ -1220,8 +1220,9 @@ describe('skill export coverage', () => {
     // congelador, PRO-82, tested in appSkills.test.ts), and to 67 with
     // leave_feedback (beta feedback box, 2026-10-15, tested in feedback.test.ts),
     // and to 68 with get_weekly_menu (the whole week, 2026-10-15), and to 69
-    // with share_invite_link («Invitar a otro hogar», PRO-163, tested in appSkills.test.ts).
-    expect(skills.length).toBe(69)
+    // with share_invite_link («Invitar a otro hogar», PRO-163, tested in appSkills.test.ts),
+    // and to 70 with set_cooking_style (PRO-217, tested in cookingStyle.test.ts).
+    expect(skills.length).toBe(70)
   })
 
   it('every skill has a unique name', () => {

@@ -61,6 +61,31 @@ export {
   recipeActiveMinutes,
   fitsTimeBudget,
 } from './types/cookingTime.js'
+export type { CookingStyle } from './types/cookingStyle.js'
+export {
+  COOKING_STYLES,
+  COOKING_STYLE_QUESTION,
+  COOKING_STYLE_PATH,
+  COOKING_STYLE_LABELS,
+  cookingStyleParts,
+  isCookingStyle,
+  cookingStyleSchema,
+  cookingStyleFactValueSchema,
+  setCookingStyleSchema,
+} from './types/cookingStyle.js'
+export type { FreezeAnswer } from './types/freezeHabit.js'
+export {
+  FREEZE_ANSWERS,
+  FREEZE_QUESTION,
+  FREEZE_ANSWER_LABELS,
+  FREEZE_HABIT_ALWAYS,
+  FREEZE_HABIT_SOMETIMES,
+  THAW_CONDITIONAL_TEXT,
+  freezeAnswerSchema,
+  applyFreezeAnswer,
+  freezeAnswerFromHabits,
+  thawIsConditional,
+} from './types/freezeHabit.js'
 export type { ShoppingItem, ShoppingList, BuyableUnit } from './types/shopping.js'
 export { missingQuantity } from './types/shopping.js'
 export type {

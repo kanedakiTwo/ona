@@ -20,7 +20,18 @@ import { api } from "@/lib/api"
 import { useRouter } from "next/navigation"
 import { Check, ChevronLeft, Minus, Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { firstMenuWeeks, type OnboardingDraft, type WeekdayCookingChoice } from "@ona/shared"
+import {
+  COOKING_STYLES,
+  FREEZE_ANSWERS,
+  FREEZE_ANSWER_LABELS,
+  FREEZE_QUESTION,
+  cookingStyleParts,
+  firstMenuWeeks,
+  type CookingStyle,
+  type FreezeAnswer,
+  type OnboardingDraft,
+  type WeekdayCookingChoice,
+} from "@ona/shared"
 import { RestrictionsPicker } from "./RestrictionsPicker"
 import { Accent, OnboardingHeader, OnboardingShell } from "./OnboardingShell"
 import { OnboardingChannelChoice, OnboardingWhatsAppLink } from "./OnboardingWhatsApp"
@@ -34,6 +45,10 @@ interface OnboardingData {
   adults: number
   kidsCount: number
   cookingFreq: string | null
+  /** PRO-217 «¿Cómo cocináis en casa?» */
+  cookingStyle: CookingStyle | null
+  /** PRO-221 «¿Congeláis la carne o el pescado cuando compráis?» (optional) */
+  freezesMeatFish: FreezeAnswer | null
   restrictions: string[]
   priority: string | null
   weekdayCooking: WeekdayCookingChoice | null
@@ -58,7 +73,7 @@ function OptionCard({
   selected: boolean
   onClick: () => void
   label: string
-  desc: string
+  desc?: string | null
   stacked?: boolean
 }) {
   return (
@@ -75,7 +90,7 @@ function OptionCard({
       <span className={cn("font-serif-text text-[17px] font-[650] leading-tight text-ink", !stacked && "mr-2")}>
         {label}
       </span>
-      <span className="text-[13px] leading-snug text-ink-muted">{desc}</span>
+      {desc && <span className="text-[13px] leading-snug text-ink-muted">{desc}</span>}
       <span
         aria-hidden="true"
         className={cn(
@@ -129,6 +144,9 @@ function Lead({ children }: { children: ReactNode }) {
   return <p className="mt-2 text-[14px] leading-relaxed text-ink-muted">{children}</p>
 }
 
+/** The restrictions step (allergies): 5 since PRO-217 added «¿Cómo cocináis en casa?» as step 3. */
+export const RESTRICTIONS_STEP = 5
+
 /**
  * PRO-178: the step to resume on. Allergies are never in the draft (health
  * data, only stored with the consent at the end), so a sign-up left on the
@@ -136,7 +154,7 @@ function Lead({ children }: { children: ReactNode }) {
  */
 export function resumeStep(draft: OnboardingDraft | null): number {
   if (!draft) return 1
-  return Math.min(Math.max(1, draft.step), 4)
+  return Math.min(Math.max(1, draft.step), RESTRICTIONS_STEP)
 }
 
 /** PRO-178: what «Siguiente» saves (`PUT /user/:id/onboarding-draft`). */
@@ -146,6 +164,8 @@ export function onboardingDraftPayload(step: number, data: OnboardingData): Onbo
     adults: data.adults,
     kidsCount: data.kidsCount,
     cookingFreq: data.cookingFreq as OnboardingDraft["cookingFreq"],
+    cookingStyle: data.cookingStyle,
+    freezesMeatFish: data.freezesMeatFish,
     weekdayCooking: data.weekdayCooking,
     cookingNote: data.cookingNote.slice(0, 500),
     priority: data.priority as OnboardingDraft["priority"],
@@ -164,6 +184,8 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
     adults: draft?.adults ?? 2,
     kidsCount: draft?.kidsCount ?? 0,
     cookingFreq: draft?.cookingFreq ?? null,
+    cookingStyle: draft?.cookingStyle ?? null,
+    freezesMeatFish: draft?.freezesMeatFish ?? null,
     restrictions: [],
     priority: draft?.priority ?? null,
     weekdayCooking: draft?.weekdayCooking ?? null,
@@ -173,7 +195,7 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
   // RGPD art. 9 (PRO-21): restrictions are health data, only with this box.
   const [healthConsent, setHealthConsent] = useState(false)
 
-  const totalSteps = 5
+  const totalSteps = 6
 
   // WhatsApp-first (2026-10-10): when the channel is available, the first
   // screen offers to do the first steps with Mimo in WhatsApp. Already linked
@@ -231,6 +253,8 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
         healthConsent,
         weekdayCooking: data.weekdayCooking ?? undefined,
         cookingNote: data.cookingNote.trim() || undefined,
+        cookingStyle: data.cookingStyle ?? undefined,
+        freezesMeatFish: data.freezesMeatFish ?? undefined,
       }
       const result = await api.post<any>(`/user/${user.id}/onboarding`, payload)
 
@@ -265,10 +289,12 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
       case 2:
         return data.cookingFreq !== null
       case 3:
-        return data.weekdayCooking !== null
+        return data.cookingStyle !== null
       case 4:
-        return true
+        return data.weekdayCooking !== null
       case 5:
+        return true
+      case 6:
         return data.priority !== null
       default:
         return false
@@ -419,10 +445,58 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
               </section>
             )}
 
-            {/* Step 3: Time to cook on weekdays (PRO-138) */}
+            {/* Step 3: How the household cooks (PRO-217) */}
             {step === 3 && (
-              <section>
+              <section data-testid="onboarding-cooking-style">
                 <OnboardingHeader eyebrow={`Primeros pasos · 3 de ${totalSteps}`}>
+                  ¿Cómo cocináis <Accent>en casa</Accent>?
+                </OnboardingHeader>
+                <Lead>Cada casa se organiza a su manera.</Lead>
+                <div className="mt-6 space-y-3">
+                  {COOKING_STYLES.map((style) => {
+                    const { title, detail } = cookingStyleParts(style)
+                    return (
+                      <OptionCard
+                        key={style}
+                        stacked={Boolean(detail)}
+                        selected={data.cookingStyle === style}
+                        onClick={() => setData({ ...data, cookingStyle: style })}
+                        label={title}
+                        desc={detail}
+                      />
+                    )
+                  })}
+                </div>
+                {/* PRO-221: one tap, optional; «Sí» or «A veces» turns on «hoy toca descongelar». */}
+                <fieldset className="mt-7" data-testid="onboarding-freeze">
+                  <legend className="text-[15px] font-semibold text-ink">{FREEZE_QUESTION}</legend>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {FREEZE_ANSWERS.map((answer) => {
+                      const selected = data.freezesMeatFish === answer
+                      return (
+                        <button
+                          key={answer}
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() => setData({ ...data, freezesMeatFish: selected ? null : answer })}
+                          className={cn(
+                            "min-h-[44px] rounded-full border px-4 text-[14px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink",
+                            selected ? "border-ink bg-ink text-cream" : "border-border bg-paper text-ink hover:border-ink",
+                          )}
+                        >
+                          {FREEZE_ANSWER_LABELS[answer]}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </fieldset>
+              </section>
+            )}
+
+            {/* Step 4: Time to cook on weekdays (PRO-138) */}
+            {step === 4 && (
+              <section>
+                <OnboardingHeader eyebrow={`Primeros pasos · 4 de ${totalSteps}`}>
                   Entre semana, ¿cómo te gusta <Accent>cocinar</Accent>?
                 </OnboardingHeader>
                 <Lead>El fin de semana, sin prisa.</Lead>
@@ -453,10 +527,10 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
               </section>
             )}
 
-            {/* Step 4: Restrictions */}
-            {step === 4 && (
+            {/* Step 5: Restrictions */}
+            {step === RESTRICTIONS_STEP && (
               <section>
-                <OnboardingHeader eyebrow={`Primeros pasos · 4 de ${totalSteps}`}>
+                <OnboardingHeader eyebrow={`Primeros pasos · ${RESTRICTIONS_STEP} de ${totalSteps}`}>
                   ¿Hay algo que <Accent>no comas</Accent>?
                 </OnboardingHeader>
                 <Lead>Alergias, intolerancias o preferencias.</Lead>
@@ -469,10 +543,10 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
               </section>
             )}
 
-            {/* Step 5: Priority */}
-            {step === 5 && (
+            {/* Step 6: Priority */}
+            {step === 6 && (
               <section>
-                <OnboardingHeader eyebrow={`Primeros pasos · 5 de ${totalSteps}`}>
+                <OnboardingHeader eyebrow={`Primeros pasos · 6 de ${totalSteps}`}>
                   ¿Qué quieres que Mimoia <Accent>priorice</Accent>?
                 </OnboardingHeader>
                 <Lead>Elegimos el enfoque de tus menús.</Lead>

@@ -64,6 +64,7 @@ import {
 import { MyRecipesSection } from './sections/MyRecipesSection'
 import { MealDishCountControls } from '@/components/profile/MealDishCountControls'
 import { WhatsAppCard } from '@/components/profile/WhatsAppCard'
+import { CookingStyleCard } from '@/components/profile/CookingStyleCard'
 import { DeleteAccountCard } from '@/components/profile/DeleteAccountCard'
 import { NewsletterToggle } from '@/components/profile/NewsletterToggle'
 import { useWhatsAppStatus } from '@/hooks/useWhatsApp'
@@ -442,6 +443,9 @@ export default function ProfilePage() {
         </div>
 
         <div className="mt-3 grid gap-3 px-5 lg:mt-4 lg:grid-cols-2 lg:items-start lg:gap-4 lg:px-0">
+          {/* Cómo cocináis (PRO-217): saved on tap in the household's ficha. */}
+          <CookingStyleCard />
+
           {/* Voz (D-023: one assistant, the floating button on every page) */}
           <ProfileCard
             icon={Mic}

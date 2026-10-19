@@ -1,11 +1,12 @@
 import { and, eq, desc } from 'drizzle-orm'
 import { users, menus, userNutrientBalance } from '../../db/schema.js'
-import { nutrientsToPercentages, TARGET_MACROS } from '@ona/shared'
+import { COOKING_STYLE_LABELS, nutrientsToPercentages, TARGET_MACROS } from '@ona/shared'
 import type { NutrientBalance } from '@ona/shared'
 import { buildMemoryDigest } from '../userMemoryStore.js'
 import { madridParts, mondayOf } from '../madridTime.js'
 import { mealLinesForDay } from '../menuText.js'
 import { resolveScope, scopeWhere } from '../scopeResolver.js'
+import { getCookingStyle } from '../profile/cookingStyle.js'
 
 const DAY_NAMES_LONG = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo']
 const hhmm = (h: number, m: number) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
@@ -97,6 +98,14 @@ export async function loadUserContext(userId: string, db: any): Promise<string> 
     contextParts.push(legacyHouseholdLabels[user.householdSize] ?? user.householdSize)
   }
   if (user.cookingFreq) contextParts.push(cookingLabels[user.cookingFreq] ?? user.cookingFreq)
+  // PRO-217: how they cook, from the household's ficha (set_cooking_style changes it).
+  try {
+    const householdId = (user as { primaryHouseholdId?: string | null }).primaryHouseholdId
+    const style = householdId ? await getCookingStyle(householdId, db) : null
+    if (style) contextParts.push(`como cocinan: «${COOKING_STYLE_LABELS[style]}»`)
+  } catch {
+    // The context never fails for this line.
+  }
   if (contextParts.length > 0) {
     parts.push(`Hogar: ${contextParts.join(', ')}`)
   }

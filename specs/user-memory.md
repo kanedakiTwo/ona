@@ -49,7 +49,7 @@ Stable forever — never rename, only add. Adding a key is a one-line change in 
 | `meal_times` | `{ [breakfast\|lunch\|snack\|dinner]: 'HH:MM' }` | 24h regex-enforced |
 | `notes` | `string[]` | free-form facts ("mi hija no come pescado") |
 | `nutrition_principles` | `string[]` (3..280 chars each) | user-authored beliefs that override Mimoia's defaults. e.g. `['Ayuno intermitente 16/8', 'Sin azúcar refinado']`. The digest tags them as "RESPÉTALOS aunque entren en conflicto con tus principios de cocina por defecto" so the model doesn't try to correct the user against their own beliefs |
-| `prep_habits` | `string[]` (3..280 chars each) | recurring prep-time habits. e.g. `['Siempre congelo el pescado', 'Pongo las legumbres en remojo la noche antes', 'Saco la carne 30 min antes para que tempere']`. The notification scheduler (see [Notifications](./notifications.md)) reads this together with `ingredients.prep_requirements` to decide when to fire a heads-up push ("saca los boquerones del congelador en 2 días"). The advisor's `update_memory` skill writes here whenever it picks up a habit in conversation |
+| `prep_habits` | `string[]` (3..280 chars each) | recurring prep-time habits. e.g. `['Siempre congelo el pescado', 'Pongo las legumbres en remojo la noche antes', 'Saco la carne 30 min antes para que tempere']`. The notification scheduler (see [Notifications](./notifications.md)) reads this together with `ingredients.prep_requirements` to decide when to fire a heads-up push ("saca los boquerones del congelador en 2 días"). The advisor's `update_memory` skill writes here whenever it picks up a habit in conversation. **The sign-up asks it once** (PRO-221): «¿Congeláis la carne o el pescado cuando compráis?» — «Sí, casi siempre» saves «Congelo la carne y el pescado», «A veces» saves «A veces congelo la carne y el pescado» (the thaw alert then says «Si lo tienes congelado, sácalo hoy.»), «No» saves nothing (source `onboarding`, other habits kept). `/profile/memoria` shows the same question under the groups (`memory-freeze`): a tap replaces every freezing habit with the answer's sentence («No» removes them), so the alert does what it shows; Mimo changes it with `update_memory`. Known limitation: a change applies to the alerts of menus generated afterwards (alerts already queued for this week stay) |
 
 ## API
 
@@ -94,6 +94,10 @@ The `update_memory` skill (declared in `assistant/skills.ts`) takes a `facts: Ar
 - [Menus](./menus.md) — future PR will pipe `dislikes` + `equipment` + `time_available` into the matcher's predicates
 
 ## Source
+
+- [packages/shared/src/types/freezeHabit.ts](../packages/shared/src/types/freezeHabit.ts) — the freezing question, its sentences in `prep_habits`, when the thaw alert is conditional (PRO-221)
+- [apps/web/src/components/profile/FreezeHabitQuestion.tsx](../apps/web/src/components/profile/FreezeHabitQuestion.tsx) — the question in «Lo que recuerdo de ti»
+- Tests: `apps/api/src/tests/freezeHabit.test.ts`, `apps/api/src/tests/freezeHabit.smoke.ts` (Sí / No / A veces against a menu with merluza), `apps/web/e2e/onboarding-freeze.spec.ts`
 
 - [packages/shared/src/types/userMemory.ts](../packages/shared/src/types/userMemory.ts) — key registry + per-key Zod schemas + digest builder
 - [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts) — `user_memories` table

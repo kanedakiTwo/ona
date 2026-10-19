@@ -23,6 +23,7 @@ A "household" is the shared unit that owns menus, shopping lists, favourites and
   - Atomically marks the invite consumed and inserts the `household_members` row.
   - Updates `users.primary_household_id` so subsequent reads scope to the new household.
   - Rejects with 410 `InviteExpiredError` if the token is already consumed or past its `expires_at`.
+- **Menú del cole** (PRO-224, see [Menus](./menus.md) → Menú del comedor escolar): when the household has a child (a «Niñ@» member, or a member who counted children 2–10 at sign-up), `/profile/casa` shows a discreet «Menú del cole» row to `/profile/casa/cole`, where the school's monthly menu is uploaded (photo or PDF), checked and saved per household (`school_lunches`). Without a child the row isn't shown; Mimo still takes it
 
 ## REST Surface
 
@@ -95,6 +96,7 @@ Edge cases:
 - The shopping-list access check (`POST /shopping-list/:listId/regenerate`) accepts the request if (a) the requester is the list's owner OR (b) the requester's primary household matches the list's `household_id` (only when flag is on). Cross-household requests still 403.
 
 ## Source
+- `apps/web/src/components/profile/SchoolMenuLink.tsx` — the «Menú del cole» row (PRO-224)
 
 - `apps/api/src/db/schema.ts` — `households`, `household_members`, `household_invites`, `users.primary_household_id`, plus `household_id` on `menus`/`shopping_lists`/`user_favorites`
 - `apps/api/src/db/migrations/0011_married_speedball.sql` — tables + backfill

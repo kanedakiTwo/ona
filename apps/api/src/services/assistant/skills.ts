@@ -33,6 +33,7 @@ import { shopOrderSkills } from './shopOrderSkills.js'
 import { householdHabitsSkills } from './householdHabitsSkills.js'
 import { fixedMealSkills } from './fixedMealSkills.js'
 import { taperSkills } from './taperSkills.js'
+import { schoolMenuSkills } from './schoolMenuSkills.js'
 import { visibleAuthorIds, visibleRecipeWhere } from '../recipeVisibility.js'
 import { loadMatchableRecipes } from '../matchableRecipes.js'
 import { loadPreviousWeek } from '../menuWeek.js'
@@ -48,6 +49,7 @@ import type { SkillDefinition, SkillContext, SkillResult } from './types.js'
 import { HEALTH_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY } from '../healthConsent.js'
 import { saveOnboarding } from '../onboarding.js'
 import { evaluateAndSaveMenuFit, menuFitSummary } from '../menuFit.js'
+import { schoolDinnerPool } from '../schoolMenu.js'
 import { isHealthMemoryKey } from '@ona/shared'
 
 /**
@@ -1062,8 +1064,9 @@ const swapMeal: SkillDefinition = {
 
     const favoriteRecipeIds = new Set<string>(favRows.map((f: any) => f.recipeId))
 
-    // Load recipes with ingredients for matching
-    const allRecipes = await loadMatchableRecipes(userId, db)
+    // Load recipes with ingredients for matching (a school-day dinner skips
+    // the group of the kids' lunch, PRO-224).
+    const allRecipes = await schoolDinnerPool(await loadMatchableRecipes(userId, db), menu, dayIndex, meal, db)
     const season = detectSeason()
 
     const newRecipe = findRecipeForSlot(allRecipes, {
@@ -2673,6 +2676,8 @@ export const skills: SkillDefinition[] = [
   ...fixedMealSkills,
   // PRO-223: «mañana me llevo táper».
   ...taperSkills,
+  // Menú del cole (PRO-224, specs/menus.md):
+  ...schoolMenuSkills,
 ]
 
 /**

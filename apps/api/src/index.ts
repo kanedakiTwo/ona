@@ -49,6 +49,7 @@ import noticesRoutes from './routes/notices.js'
 import { startAfinaNotice } from './services/afinaNotice.js'
 import catalogWishesRoutes from './routes/catalogWishes.js'
 import householdHabitsRoutes from './routes/householdHabits.js'
+import schoolMenuRoutes from './routes/schoolMenu.js'
 import { trackShoppingActivity } from './services/activityEvents.js'
 import { trackUsageRoutes } from './services/usageEvents.js'
 import { startScheduler } from './services/notificationScheduler.js'
@@ -147,6 +148,8 @@ app.use(noticesRoutes)
 app.use(catalogWishesRoutes)
 // How the household cooks (PRO-217): per-route auth.
 app.use(householdHabitsRoutes)
+// Menú del cole (PRO-224): per-route auth.
+app.use(schoolMenuRoutes)
 app.use(recipeRoutes)
 app.use(ingredientRoutes)
 // pushRoutes is mostly auth-protected (per-route authMiddleware) but the

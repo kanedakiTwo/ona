@@ -1228,6 +1228,10 @@ describe('skill export coverage', () => {
     expect(skills.length).toBe(70)
     // with set_taper («mañana me llevo táper», PRO-223, tested in taper.test.ts).
     expect(skills.length).toBe(69)
+    // and to 68 with get_weekly_menu (the whole week, 2026-10-15), and to 70
+    // with get_school_menu + set_school_menu_days (menú del cole, PRO-224,
+    // tested in schoolMenuSkills.test.ts).
+    expect(skills.length).toBe(70)
   })
 
   it('every skill has a unique name', () => {

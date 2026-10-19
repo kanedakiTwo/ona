@@ -29,6 +29,7 @@ import {
   SubPage,
 } from '@/components/profile/SubPage'
 import { FoundingBadge } from '@/components/profile/FoundingBadge'
+import { SchoolMenuLink } from '@/components/profile/SchoolMenuLink'
 import { SubLoadError, useSlowLoad } from '@/components/profile/SubLoadError'
 
 type Role = 'owner' | 'member' | 'child'
@@ -394,6 +395,9 @@ export default function HouseholdPage() {
           </section>
         )}
       </div>
+
+      {/* PRO-224: «Menú del cole», only with a child in the household. */}
+      <SchoolMenuLink />
 
       {/* Household "···": rename (owner) + leave (everyone — even a sole
           owner can leave; the API auto-creates a new solo household). */}

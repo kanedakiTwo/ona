@@ -7,6 +7,10 @@ import { weekMenuCaption, weekMenuDigest, type WeekMenuInput, type WeekReplyOpti
 import { weekMenuImage } from '../weekImage/index.js'
 import { madridParts } from '../madridTime.js'
 import { generatedWeeksOf } from '../menuWeek.js'
+import { isSchoolMenuMimeType, readSchoolMenu, saveSchoolLunches } from '../schoolMenu.js'
+import { getPrimaryHouseholdId } from '../scopeResolver.js'
+import { runWithCostUser } from '../costLedger.js'
+import type { SchoolLunch } from '@ona/shared'
 import { spendCapStatus } from '../spendCap.js'
 import { chat } from '../assistant/engine.js'
 import { checkAdvisorBudget, recordAdvisorUsage } from '../advisorBudget.js'
@@ -47,6 +51,16 @@ async function weekReplyOptions(userId: string, view: WeekView): Promise<WeekRep
     console.warn('[whatsapp] generated weeks count failed (no snowball line):', err)
     return opts
   }
+}
+
+/** PRO-224: read a school menu file, save it for the household and return the days. */
+async function readAndSaveSchoolMenu(file: Buffer, mimeType: string, userId: string): Promise<SchoolLunch[]> {
+  const mime = isSchoolMenuMimeType(mimeType) ? mimeType : 'image/jpeg'
+  const today = madridParts(new Date()).isoDate
+  const days = await runWithCostUser(userId, () => readSchoolMenu({ data: file, mimeType: mime }, today, userId))
+  const householdId = await getPrimaryHouseholdId(userId)
+  if (householdId) await saveSchoolLunches(householdId, userId, days)
+  return days
 }
 
 /** recipe id → `image_url` (the menu JSON doesn't store photos). */
@@ -100,6 +114,8 @@ export function buildInboundDeps(): InboundDeps {
     transcribe: isSttConfigured() ? transcribeAudio : undefined,
     importRecipeFromImage: env.ANTHROPIC_API_KEY ? importRecipeFromImage : undefined,
     setRecipeSource: setRecipeSourceUrl,
+    // PRO-224: the school menu (photo or PDF), read and saved for the household.
+    readSchoolMenu: env.ANTHROPIC_API_KEY ? readAndSaveSchoolMenu : undefined,
     // PRO-156: the end of the sign-up written from its guide (fixed text as the safety net).
     guided: (userId, phone, spec, fallback) => writeGuided({ userId, phone }, spec, fallback),
   }
@@ -115,6 +131,8 @@ export function initialInboundBody(msg: InboundMessage): string | null {
       return '[nota de voz]'
     case 'image':
       return msg.text ? `[foto] ${msg.text}` : '[foto]'
+    case 'document':
+      return msg.text ? `[pdf] ${msg.text}` : '[pdf]'
     default:
       return `[${msg.rawType}]`
   }

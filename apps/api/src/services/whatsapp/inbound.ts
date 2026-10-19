@@ -9,7 +9,7 @@ import { dropRepeatedButtons, lastSentButtons, outboundBody, renderAssistantRepl
 import { extractOptions, toWhatsAppMarkup } from './format.js'
 import { isShoppingItemList, shoppingListDigest } from '../shoppingText.js'
 import type { WeekView } from '../menuText.js'
-import { AI_DISCLOSURE_FIRST_PERSON } from '@ona/shared'
+import { AI_DISCLOSURE_FIRST_PERSON, NotASchoolMenuError, schoolLunchLines, type SchoolLunch } from '@ona/shared'
 import { guidedMeta, type GuideSpec, type GuidedResult } from './guided.js'
 import { controlCommand, OPT_IN_NO, OPT_IN_YES } from './commands.js'
 import { trackEvent } from '../usageEvents.js'
@@ -119,6 +119,12 @@ export interface InboundDeps {
     userId: string,
     opts?: { sourceUrl?: string },
   ) => Promise<{ recipeId: string; name: string; warnings: string[]; looksLikeScreenshot?: boolean }>
+  /**
+   * PRO-224: a photo or PDF of the school's monthly menu → read, saved for the
+   * household, and the days back to show. Throws NotASchoolMenuError when it
+   * isn't one. Absent → those files go the usual way.
+   */
+  readSchoolMenu?: (file: Buffer, mimeType: string, userId: string) => Promise<SchoolLunch[]>
   /** The link to the original of a screenshot's recipe (PRO-66). False = not the user's recipe. */
   setRecipeSource?: (userId: string, recipeId: string, url: string) => Promise<boolean>
   /**
@@ -433,6 +439,9 @@ export const COPY = {
   error: 'Vaya, algo ha fallado. Inténtalo de nuevo en un momento.',
   working: 'Un momento, me pongo con ello…',
   ackPhoto: 'Recibida la foto. Voy a leer la receta, dame unos segundos…',
+  ackSchoolMenu: 'Recibido. Voy a leer el menú del cole, dame unos segundos…',
+  schoolMenuNotFound: 'No he encontrado el menú del cole en ese archivo. Prueba con una foto más nítida o con el PDF del cole.',
+  schoolMenuFailed: 'No he podido leer el menú del cole. Inténtalo de nuevo en un momento.',
 }
 
 /** Slow skills get an immediate, specific "on it" instead of waiting for the timer. */
@@ -741,7 +750,15 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
         }
         break
       }
+      case 'document': {
+        // PRO-224: a PDF is read only as the school menu.
+        if (await handleSchoolMenu(msg, userId, now, deps, out, acker, true)) return
+        await store.updateInbound(msg.wamid, { status: 'ignored', userId })
+        await outText('system', COPY.unsupported)
+        return
+      }
       case 'image': {
+        if (await handleSchoolMenu(msg, userId, now, deps, out, acker, false)) return
         const photo = await handleImage(msg, userId, now, deps, out, acker)
         if (photo === 'done') return
         text = photo.text
@@ -859,6 +876,63 @@ async function attachSourceLink(
   })
   const recipeUrl = `${deps.webUrl.replace(/\/$/, '')}/recipes/${pending.recipeId}`
   await outText('reply', `${COPY.sourceSaved(pending.name)}\nVer receta: ${recipeUrl}`)
+  return true
+}
+
+/** PRO-224: «menú del cole / comedor» in the caption or in a message of the last 30 min. */
+const SCHOOL_MENU_RE = /\b(men[uú]s?\s+(del|de\s+el)\s+(cole|colegio|comedor)|comedor\s+(escolar|del\s+cole)|men[uú]\s+escolar)\b/i
+export const SCHOOL_MENU_WINDOW_MS = 30 * 60 * 1000
+
+export function schoolMenuIntent(caption: string | null | undefined, rows: readonly HistoryRow[], now: Date): boolean {
+  if (SCHOOL_MENU_RE.test(caption ?? '')) return true
+  return rows.some(
+    (r) => r.direction === 'in' && now.getTime() - r.createdAt.getTime() <= SCHOOL_MENU_WINDOW_MS && SCHOOL_MENU_RE.test(r.body ?? '') && !/^\[menú del cole\]/i.test(r.body ?? ''),
+  )
+}
+
+/** Pure: the reply after reading the school menu. */
+export function schoolMenuReply(days: SchoolLunch[]): string {
+  return [
+    `He apuntado el menú del cole (${days.length} ${days.length === 1 ? 'día' : 'días'}):`,
+    ...schoolLunchLines(days),
+    '',
+    'Las cenas de esos días no repetirán lo que coman allí. Si algo no está bien, dímelo (p. ej. «el martes 4 era merluza»).',
+  ].join('\n')
+}
+
+/** True = handled (read, or explained why not). False = not a school menu message. */
+async function handleSchoolMenu(
+  msg: InboundMessage,
+  userId: string,
+  now: Date,
+  deps: InboundDeps,
+  out: (kind: string, messages: OutboundMessage[]) => Promise<void>,
+  acker: ReturnType<typeof createAcker>,
+  isPdf: boolean,
+): Promise<boolean> {
+  const { store, client } = deps
+  if (!deps.readSchoolMenu || !msg.mediaId) return false
+  const rows = await store.loadHistoryRows(msg.from, new Date(now.getTime() - SCHOOL_MENU_WINDOW_MS), userId)
+  // A PDF is only ever a school menu here; a photo needs the words.
+  if (!isPdf && !schoolMenuIntent(msg.text, rows, now)) return false
+  acker.now(COPY.ackSchoolMenu)
+  const caption = msg.text?.trim() ?? ''
+  try {
+    const media = await client.downloadMedia(msg.mediaId)
+    const days = await deps.readSchoolMenu(media.buffer, msg.mimeType ?? media.mimeType ?? 'image/jpeg', userId)
+    await store.updateInbound(msg.wamid, {
+      status: 'processed',
+      userId,
+      body: `[Menú del cole] ${caption}`.trim(),
+      meta: { tools: ['school_menu_read'], toolTrace: [{ name: 'school_menu_read', input: '{}', summary: schoolLunchLines(days).join('; ') }] },
+    })
+    await out('reply', renderPlainText(schoolMenuReply(days)))
+  } catch (err: any) {
+    const notMenu = err instanceof NotASchoolMenuError
+    if (!notMenu) console.error('[whatsapp] school menu read failed:', err?.message ?? err)
+    await store.updateInbound(msg.wamid, { status: notMenu ? 'processed' : 'failed', userId, errorMessage: notMenu ? undefined : String(err?.message ?? err).slice(0, 500) })
+    await out('system', renderPlainText(notMenu ? COPY.schoolMenuNotFound : COPY.schoolMenuFailed))
+  }
   return true
 }
 

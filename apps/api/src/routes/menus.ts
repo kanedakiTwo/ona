@@ -33,6 +33,7 @@ import {
   type MenuEditChange,
 } from '../services/menuEdits.js'
 import { dayTimeBudget, detectSeason } from '@ona/shared'
+import { schoolDinnerPool } from '../services/schoolMenu.js'
 import { recipeIngredients, ingredients, recipes, userFavorites } from '../db/schema.js'
 import { resolveScope, scopeWhere, getPrimaryHouseholdId, canAccessRow } from '../services/scopeResolver.js'
 import {
@@ -576,7 +577,7 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
 
     // Load all recipes with ingredients for matching
     // Same loader as the weekly generator: visibility, fit maps, frequency, allergens.
-    const recipesWithIngredients = await loadMatchableRecipes(req.userId!)
+    const recipesWithIngredients = await schoolDinnerPool(await loadMatchableRecipes(req.userId!), menu, dayIndex, meal)
 
     const season = detectSeason()
 
@@ -726,7 +727,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
       )
 
       // Same loader as the weekly generator: visibility, fit maps, frequency, allergens.
-      const recipesWithIngredients = await loadMatchableRecipes(req.userId!)
+      const recipesWithIngredients = await schoolDinnerPool(await loadMatchableRecipes(req.userId!), menu, dayIndex, meal)
 
       const newRecipe = findRecipeForSlot(recipesWithIngredients, {
         meal: meal as Meal,
@@ -1539,7 +1540,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
     )
 
     // Same loader as the weekly generator: visibility, fit maps, frequency, allergens.
-    const recipesWithIngredientsRegen = await loadMatchableRecipes(req.userId!)
+    const recipesWithIngredientsRegen = await schoolDinnerPool(await loadMatchableRecipes(req.userId!), menu, day, meal)
 
     const matcherOptionsRegen = {
       meal: meal as Meal,
@@ -1626,7 +1627,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/random', async (req: AuthReq
     )
 
     // Same loader as the weekly generator: visibility, fit maps, frequency, allergens.
-    const recipesWithIngredientsR = await loadMatchableRecipes(req.userId!)
+    const recipesWithIngredientsR = await schoolDinnerPool(await loadMatchableRecipes(req.userId!), menu, day, meal)
 
     const matcherOptionsR = {
       meal: meal as Meal,

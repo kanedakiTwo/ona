@@ -30,8 +30,10 @@ import { getMemoryForUser } from './userMemoryStore.js'
 import { resolveScope, scopeWhere } from './scopeResolver.js'
 import { calculateRecipeCaloriesFromDB, calculateMenuCaloriesFromDB } from './calorieCalculator.js'
 import { calculateMenuNutrientsFromDB } from './nutrientCalculator.js'
-import type { MealDishCounts, Dish, RecipeDish, Course, FixedMeal } from '@ona/shared'
+import type { MealDishCounts, Dish, RecipeDish, Course, FixedMeal, FoodGroup } from '@ona/shared'
 import { fixedMealFor, fixedMealsFromTemplate, fixedNoteText } from '@ona/shared'
+import { loadSchoolDinnerAvoidGroups, withoutFoodGroup } from './schoolMenu.js'
+import { getPrimaryHouseholdId } from './scopeResolver.js'
 
 /**
  * Lunch + dinner every day, until the user sets their own plantilla in the
@@ -260,6 +262,8 @@ export function buildRandomMenu(
   mealDiners?: Record<Meal, number>[],
   mealDishCounts?: MealDishCounts,
   likedRecipeIds?: Set<string>,
+  /** PRO-224: day index → the group the kids ate at school; that dinner avoids it. */
+  dinnerAvoidGroups?: Record<number, FoodGroup>,
 ): { days: DayMenu[]; warnings: string[] } {
   const usedRecipeIds = new Set<string>()
   const days: DayMenu[] = []
@@ -315,8 +319,12 @@ export function buildRandomMenu(
       const wantedCourses = coursesFor(wantedCount)
       const dishes: Dish[] = []
 
+      // Menú del cole (PRO-224): «si comieron lentejas, la cena no es de legumbres».
+      const avoidGroup = meal === 'dinner' ? dinnerAvoidGroups?.[dayIndex] : undefined
+      const slotPool = avoidGroup ? withoutFoodGroup(allRecipes, avoidGroup) : allRecipes
+
       for (const course of wantedCourses) {
-        const picked = findForCourse(allRecipes, course, {
+        const picked = findForCourse(slotPool, course, {
           meal: meal as Meal,
           season,
           usedRecipeIds,
@@ -536,6 +544,10 @@ export async function generateMenu(
   // «Me apetece» gets a small extra. Matcher-only sets: the week's vetoes stay as they are.
   const rated = withHouseholdRatings(favoriteRecipeIds, bannedRecipeIds, await loadHouseholdRatingSets(userId, db).catch(() => ({ boost: new Set<string>(), exclude: new Set<string>(), like: new Set<string>() })))
 
+  // 5d. Menú del cole (PRO-224): the dinner of a school day avoids the
+  // group of the kids' lunch.
+  const dinnerAvoidGroups = await loadSchoolDinnerAvoidGroups(await getPrimaryHouseholdId(userId, db).catch(() => null), weekStart, db)
+
   // Per-recipe metabolic profile, once (scoreMenu runs every iteration).
   const metabolic = new Map(allRecipes.map((r) => [r.id, recipeMetabolicProfile(r.ingredients.map((i) => i.ingredientName), season)]))
 
@@ -561,6 +573,7 @@ export async function generateMenu(
       mealDiners,
       mealDishCounts,
       rated.likedRecipeIds,
+      dinnerAvoidGroups,
     )
 
     // Verify the menu has at least some recipes
@@ -607,6 +620,7 @@ export async function generateMenu(
     mealDiners,
     mealDishCounts,
     rated.likedRecipeIds,
+    dinnerAvoidGroups,
   )
   return { days: finish(fallback.days), warnings: fallback.warnings }
 }

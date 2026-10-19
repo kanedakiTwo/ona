@@ -32,6 +32,7 @@ import {
   MoreHorizontal,
   Plus,
   Replace,
+  RotateCcw,
   Shuffle,
   Tag,
   Trash2,
@@ -58,6 +59,7 @@ import { CSS } from "@dnd-kit/utilities"
 import { MEAL_TYPE_TAGS, MEAL_TYPE_TAG_LABELS, type Dish, type MealSlot, type RecipeDish } from "@ona/shared"
 import { mealLabel } from "@/lib/labels"
 import { useRecipeCookStats, useRecordCook } from "@/hooks/useCookLogs"
+import { useSetSlotEaten } from "@/hooks/useMenu"
 import { ConfirmSheet, MenuSheet, SheetAction } from "./MenuSheet"
 import { RatingPromptSheet } from "@/components/cooking/RatingPromptSheet"
 import { RecipePickerSheet } from "./RecipePickerSheet"
@@ -254,7 +256,7 @@ export function MealOptionsSheets({
               onClick={() => setOpen("confirmBan")}
             />
           )}
-          {first && <CookedAction recipeId={first.recipeId} ctx={ctx} onAskRating={() => setOpen("rate")} />}
+          {first && <CookedAction recipeId={first.recipeId} ctx={ctx} onAskRating={() => setOpen("rate")} onUnmarked={close} />}
         </div>
 
         <DinerStepper
@@ -346,24 +348,50 @@ export function MealOptionsSheets({
   )
 }
 
-/* ── "Marcar como cocinada" — records a cook event with the slot as context. */
-function CookedAction({ recipeId, ctx, onAskRating }: { recipeId: string; ctx: SlotContext; onAskRating: () => void }) {
+/* ── "Marcar como cocinada" — records a cook event with the slot as context
+ *    and marks the slot eaten (PRO-185), so the card shows «✓ Comido». An
+ *    eaten slot (also when Mimo marked it) offers «Desmarcar» instead. */
+function CookedAction({
+  recipeId,
+  ctx,
+  onAskRating,
+  onUnmarked,
+}: {
+  recipeId: string
+  ctx: SlotContext
+  onAskRating: () => void
+  onUnmarked: () => void
+}) {
   const { data } = useRecipeCookStats(recipeId)
   const record = useRecordCook()
+  const setEaten = useSetSlotEaten()
   const count = data?.count ?? 0
+  const slotKey = { menuId: ctx.menuId, day: ctx.day, meal: ctx.meal }
+  if (ctx.slot.eaten) {
+    return (
+      <SheetAction
+        icon={RotateCcw}
+        label={setEaten.isPending ? "Guardando…" : "Desmarcar"}
+        hint="Comido · vuelve a quedar por cocinar"
+        disabled={setEaten.isPending}
+        onClick={() => setEaten.mutate({ ...slotKey, eaten: false }, { onSuccess: onUnmarked })}
+      />
+    )
+  }
   return (
     <SheetAction
       icon={ChefHat}
       label={record.isPending ? "Guardando…" : "Marcar como cocinada"}
       hint={count > 0 ? `La has cocinado ${count} ${count === 1 ? "vez" : "veces"}` : undefined}
       disabled={record.isPending}
-      onClick={() =>
+      onClick={() => {
+        setEaten.mutate({ ...slotKey, eaten: true })
         record.mutate(
           { recipeId, menuId: ctx.menuId, dayIndex: ctx.day, meal: ctx.meal },
           // «¿Qué tal?» (PRO-110) replaces this sheet when the API asks for it.
           { onSuccess: (res) => res.askRating && onAskRating() },
         )
-      }
+      }}
     />
   )
 }

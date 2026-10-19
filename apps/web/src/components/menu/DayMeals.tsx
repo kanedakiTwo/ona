@@ -13,7 +13,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { motion, useReducedMotion } from "motion/react"
-import { CalendarX, Lock, Play, Plus, RotateCw, Snowflake, Utensils } from "lucide-react"
+import { BookOpen, CalendarX, Check, Lock, Play, Plus, RotateCw, Snowflake, Utensils } from "lucide-react"
 import { FreezerDishSheets } from "./FreezerDishSheets"
 import type { Dish, MealSlot, RecipeDish } from "@ona/shared"
 import { mealLabel } from "@/lib/labels"
@@ -41,13 +41,29 @@ function cookHref(recipeId: string, servings: number) {
 }
 
 /** Small state chips under a title — only rendered when there is state to show. */
-function SlotChips({ ctx, first }: { ctx: SlotContext; first: RecipeDish | null }) {
+function SlotChips({
+  ctx,
+  first,
+  showEatenElsewhere = false,
+}: {
+  ctx: SlotContext
+  first: RecipeDish | null
+  /** The hero shows «✓ Comido» in its action row instead of a chip. */
+  showEatenElsewhere?: boolean
+}) {
   const leftover = first?.variant === "leftover" && first.leftoverOf
   const fromFreezer = first?.variant === "freezer"
-  const others = (ctx.slot.dishes ?? []).filter((d) => d !== first)
-  if (!ctx.isLocked && !leftover && !fromFreezer && ctx.slot.servings == null && others.length === 0) return null
+  // Without a recipe the title already lists the notes («Cenamos fuera»): don't repeat them (PRO-185).
+  const others = first ? (ctx.slot.dishes ?? []).filter((d) => d !== first) : []
+  const eaten = !!ctx.slot.eaten && !showEatenElsewhere
+  if (!ctx.isLocked && !leftover && !fromFreezer && !eaten && ctx.slot.servings == null && others.length === 0) return null
   return (
     <div className="flex flex-wrap items-center gap-1.5 text-[12px] text-ink-mid">
+      {eaten && (
+        <span data-testid="meal-eaten" className="inline-flex items-center gap-1 rounded-full bg-forest/10 px-2 py-0.5 font-semibold text-forest">
+          <Check size={11} strokeWidth={2.6} /> Comido
+        </span>
+      )}
       {ctx.isLocked && (
         <span className="inline-flex items-center gap-1 rounded-full bg-cream-deep px-2 py-0.5 font-medium text-ink">
           <Lock size={11} strokeWidth={2.2} /> Fijada
@@ -107,11 +123,30 @@ export function MealHero({
           {name}
         </Link>
       </h2>
-      <SlotChips ctx={ctx} first={first} />
+      <SlotChips ctx={ctx} first={first} showEatenElsewhere />
     </div>
   )
   const captionActions = (
     <div className="flex gap-2">
+      {ctx.slot.eaten ? (
+        // Eaten (Mimo or «Marcar como cocinada», PRO-185): no «Empezar a cocinar».
+        <>
+          <span
+            data-testid="meal-eaten"
+            className="flex h-[46px] flex-1 items-center justify-center gap-2 rounded-full bg-forest/10 px-[22px] text-[15px] font-semibold text-forest lg:flex-none"
+          >
+            <Check size={16} strokeWidth={2.6} />
+            Comido
+          </span>
+          <Link
+            href={slotRecipeHref(first.recipeId, ctx)}
+            className="flex h-[46px] items-center justify-center gap-2 rounded-full border border-border bg-paper px-[18px] text-[15px] font-medium text-ink transition-colors hover:border-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+          >
+            <BookOpen size={15} />
+            Ver receta
+          </Link>
+        </>
+      ) : (
       <Link
         href={cookHref(first.recipeId, servingsOf(ctx))}
         className="flex h-[46px] flex-1 items-center justify-center gap-2 rounded-full bg-ink px-[22px] text-[15px] font-semibold text-cream transition-colors hover:bg-forest focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink lg:flex-none"
@@ -119,6 +154,7 @@ export function MealHero({
         <Play size={15} fill="currentColor" strokeWidth={0} />
         Empezar a cocinar
       </Link>
+      )}
       {!readOnly && (
         <MealOptionsButton
           ctl={ctl}

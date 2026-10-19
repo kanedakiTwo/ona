@@ -1,8 +1,8 @@
 /**
  * Nightly refiner of the household's ficha (PRO-152, D-064,
- * specs/household-profile.md → «Nightly refiner»). **In the shadow**: it
- * writes the ficha and its history, but nothing reads them yet (Mimo and the
- * menu keep reading `user_memories` until PRO-153 / PRO-139).
+ * specs/household-profile.md → «Nightly refiner»). It writes the ficha and
+ * its history; Mimo's context and the menu's fixed filters read it
+ * (`profile/reader.ts`, PRO-253).
  *
  * Each night (from 03:00 Madrid, `notificationScheduler`) it looks at the day
  * that just ended and, for every household

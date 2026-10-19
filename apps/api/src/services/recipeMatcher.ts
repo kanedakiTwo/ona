@@ -102,6 +102,13 @@ export interface MatcherOptions {
    */
   availableEquipment?: Set<string>
   /**
+   * Equipment the household doesn't have right now (normalised; from the
+   * ficha's temporary situations, «sin horno hasta nuevo aviso», PRO-253).
+   * A recipe that needs any of it is filtered out, with or without an
+   * equipment list. Empty / absent = no filter.
+   */
+  unavailableEquipment?: Set<string>
+  /**
    * This slot's day limit (from user_memories `time_available[weekday]`,
    * PRO-138): on the total time or on the hands-on time. A recipe that goes
    * over it — or lacks the time it is about — is excluded. Null/absent = no
@@ -135,6 +142,7 @@ export function matchRecipes(
     pinnedType,
     dislikes,
     availableEquipment,
+    unavailableEquipment,
     maxPrepMinutes,
     timeBudget,
     dayIndex,
@@ -189,6 +197,10 @@ export function matchRecipes(
       const required = recipe.equipment ?? []
       const ok = required.every((e) => availableEquipment.has(normaliseEquipment(e)))
       if (!ok) return false
+    }
+    // 5b. Equipment missing right now (the ficha, PRO-253).
+    if (unavailableEquipment && unavailableEquipment.size > 0) {
+      if ((recipe.equipment ?? []).some((e) => unavailableEquipment.has(normaliseEquipment(e)))) return false
     }
 
     // 6. Time budget (PRO-138): a «total» day compares totalTime (else

@@ -231,11 +231,12 @@ describe('buildExtensionBasket', () => {
   it('deja fuera «probablemente lo tienes» sin marcar; elección pendiente → null; «¿cuánto?» → gramos sugeridos', () => {
     const lines = buildExtensionBasket([
       line({ key: 'l1', name: 'mantequilla', ruleKey: 'mantequilla', grams: 250, included: false }),
-      line({ key: 'l2', name: 'jamon', ruleKey: 'jamon', grams: null, choice: null, needsChoice: { question: '¿Serrano o ibérico?', options: ['serrano', 'ibérico'] } }),
+      line({ key: 'l2', name: 'jamon', ruleKey: 'jamon', grams: null, choice: 'serrano', needsChoice: { question: '¿Serrano o ibérico?', options: ['serrano', 'ibérico'] } }),
       line({ key: 'l3', name: 'queso', ruleKey: 'queso', grams: null, needsQuantity: { suggestion: '250 g', grams: 250 } }),
     ])
     expect(lines.map((l) => l.key)).toEqual(['l2', 'l3'])
-    expect(lines[0].choice).toBeNull()
+    // Con la elección pendiente no vale la que traiga la línea.
+    expect(lines[0]).toMatchObject({ choice: null, search: 'jamon' })
     expect(lines[1].grams).toBe(250)
   })
   it('una línea con members sale como un grupo por producto (l3.1, l3.2)', () => {
@@ -253,7 +254,7 @@ describe('buildExtensionBasket', () => {
       { key: 'l3.2', name: 'alubias rojas', choice: null, quantity: 400, unit: 'g', grams: 400, piezas: null, search: 'alubias rojas' },
     ])
   })
-  it('con los grupos de orderMembers: mezcla de unidades en gramos, u sin gramos, nombre sin sufijo y cada clave con sus artículos', () => {
+  it('con los grupos de orderMembers: mezcla de unidades en gramos, nombre sin sufijo y cada clave con sus artículos', () => {
     // 1500 ml de leche (genérico) + 1 u de entera + 1 u de desnatada: el genérico se suma a la entera, que pasa a gramos.
     // La desnatada solo viene con « · varias presentaciones»: el grupo conserva ese nombre y la cesta le quita el sufijo.
     const members = orderMembers(
@@ -265,10 +266,50 @@ describe('buildExtensionBasket', () => {
     const entera = perUnit('leche') + 1500
     expect(buildExtensionBasket(lines)).toEqual([
       { key: 'l4.1', name: 'leche entera', choice: null, quantity: entera, unit: 'g', grams: entera, piezas: null, search: 'leche entera' },
-      { key: 'l4.2', name: 'leche desnatada', choice: null, quantity: 1, unit: 'u', grams: null, piezas: null, search: 'leche desnatada' },
+      { key: 'l4.2', name: 'leche desnatada', choice: null, quantity: 1, unit: 'u', grams: perUnit('leche'), piezas: null, search: 'leche desnatada' },
     ])
     expect(sourceItemsForBasketKey(lines, 'l4.1')).toEqual(['e', 'g'])
     expect(sourceItemsForBasketKey(lines, 'l4.2')).toEqual(['d'])
+  })
+  it('un grupo en u lleva los gramos de la regla, como una línea (2 u de leche → 2 briks)', () => {
+    const [entera] = buildExtensionBasket([
+      line({
+        key: 'l5', name: 'leche', quantity: 3, unit: 'u', ruleKey: 'leche', grams: 3 * perUnit('leche'),
+        members: [
+          { name: 'leche entera', quantity: 2, unit: 'u', sourceItemIds: ['e'] },
+          { name: 'leche desnatada', quantity: 1, unit: 'u', sourceItemIds: ['d'] },
+        ],
+      }),
+    ])
+    expect(entera).toMatchObject({ key: 'l5.1', quantity: 2, unit: 'u', grams: 2 * perUnit('leche'), piezas: null })
+  })
+  it('un grupo de una regla por pieza da sus piezas, como una línea (ajo: la u es un diente y la pieza, una cabeza)', () => {
+    const ajo = buyRuleByKey('ajo')!
+    expect(ajo).toMatchObject({ by: 'pieza', g: 50, ug: 5 })
+    const [morado, negro] = buildExtensionBasket([
+      line({
+        key: 'l6', name: 'ajo', quantity: 22, unit: 'u', ruleKey: 'ajo', grams: 150,
+        members: [
+          { name: 'ajo morado', quantity: 20, unit: 'u', sourceItemIds: ['m'] },
+          { name: 'ajo negro', quantity: 2, unit: 'u', sourceItemIds: ['n'] },
+        ],
+      }),
+    ])
+    expect(morado).toMatchObject({ key: 'l6.1', quantity: 20, unit: 'u', grams: 100, piezas: 2 })
+    expect(negro).toMatchObject({ key: 'l6.2', quantity: 2, unit: 'u', grams: 10, piezas: 1 })
+  })
+  it('un grupo en u de una regla que no sabe lo que pesa una unidad (jamón) va sin gramos ni piezas', () => {
+    const [serrano, iberico] = buildExtensionBasket([
+      line({
+        key: 'l7', name: 'jamon', quantity: 50, unit: 'g', ruleKey: 'jamon', grams: 100,
+        members: [
+          { name: 'Jamón serrano', quantity: 1, unit: 'u', sourceItemIds: ['s'] },
+          { name: 'jamón ibérico', quantity: 50, unit: 'g', sourceItemIds: ['i'] },
+        ],
+      }),
+    ])
+    expect(serrano).toMatchObject({ key: 'l7.1', quantity: 1, unit: 'u', grams: null, piezas: null })
+    expect(iberico).toMatchObject({ key: 'l7.2', grams: 50, piezas: null })
   })
 })
 
@@ -293,5 +334,8 @@ describe('sourceItemsForBasketKey', () => {
     expect(sourceItemsForBasketKey(lines, 'l3.2')).toEqual(['b', 'c'])
     expect(sourceItemsForBasketKey(lines, 'l9')).toEqual([])
     expect(sourceItemsForBasketKey(lines, 'l3.7')).toEqual([])
+  })
+  it('si la parte de grupo no es un entero ≥ 1 escrito como lo escribe la cesta, la clave no vale: ningún artículo', () => {
+    for (const key of ['l3.', 'l3.0', 'l3.x', 'l3.1.2', 'l3.01', 'l1.']) expect(sourceItemsForBasketKey(lines, key), key).toEqual([])
   })
 })

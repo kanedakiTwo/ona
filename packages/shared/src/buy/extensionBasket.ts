@@ -137,22 +137,36 @@ export function orderMembers(members: OrderMemberInput[], ruleKey: string | null
   return specific.map(({ generic: _generic, real: _real, ...rest }) => rest)
 }
 
-/** La cesta que se manda a la extensión (líneas incluidas; las fusionadas, por grupo). */
+/**
+ * La cesta que se manda a la extensión: las líneas incluidas y, de una línea
+ * fusionada (`members`), un grupo por producto (`l3.1`, `l3.2`…). Un grupo es
+ * una línea más: sus gramos (`orderQtyInGrams`) y sus piezas salen de su
+ * cantidad con la regla de la línea.
+ *
+ * Limitación conocida: en una línea fusionada en la que nada traía cantidad
+ * (todo el «1 u» por defecto), cada producto va como 1 unidad (con los gramos
+ * de una unidad si la regla los sabe) y la sugerencia de gramos de
+ * `needsQuantity` no se reparte entre ellos.
+ */
 export function buildExtensionBasket(lines: ShopOrderLine[]): BasketLine[] {
   const out: BasketLine[] = []
   for (const line of lines) {
     if (line.included === false) continue
+    const rule = line.ruleKey ? buyRuleByKey(line.ruleKey) : null
+    /** Piezas si la regla es por pieza («1 cabeza de ajos»). */
+    const piezasOf = (grams: number | null) => (rule?.by === 'pieza' && rule.g && grams ? Math.max(1, Math.round(grams / rule.g)) : null)
     if (line.members && line.members.length >= 2) {
       line.members.forEach((mem, i) => {
         const name = basketBaseName(mem.name)
+        const grams = orderQtyInGrams(mem.quantity, mem.unit, line.ruleKey ?? null)
         out.push({
           key: `${line.key}.${i + 1}`,
           name,
           choice: null,
           quantity: mem.quantity,
           unit: mem.unit,
-          grams: mem.unit === 'g' || mem.unit === 'ml' ? mem.quantity : null,
-          piezas: null,
+          grams,
+          piezas: piezasOf(grams),
           search: name,
         })
       })
@@ -167,11 +181,9 @@ export function buildExtensionBasket(lines: ShopOrderLine[]): BasketLine[] {
         : line.unit === 'g' || line.unit === 'ml'
           ? line.quantity
           : null
-    const rule = line.ruleKey ? buyRuleByKey(line.ruleKey) : null
-    const piezas = rule?.by === 'pieza' && rule.g && grams ? Math.max(1, Math.round(grams / rule.g)) : null
     // «Jamón serrano» + serrano → «Jamón serrano», no «Jamón serrano serrano».
     const search = choice && !normalizeBuyName(name).includes(normalizeBuyName(choice)) ? `${name} ${choice}` : name
-    out.push({ key: line.key, name, choice, quantity: line.quantity, unit: line.unit, grams, piezas, search })
+    out.push({ key: line.key, name, choice, quantity: line.quantity, unit: line.unit, grams, piezas: piezasOf(grams), search })
   }
   return out
 }
@@ -185,11 +197,17 @@ export function basketMayBeInCart(r: Pick<BasketSendResult, 'anadidas' | 'lineas
   return r.anadidas > 0 || r.lineas.some((l) => l.estado === 'no_verificada')
 }
 
-/** Artículos de la lista que hay detrás de una clave de la cesta («l3» o «l3.2»). */
+/**
+ * Artículos de la lista que hay detrás de una clave de la cesta («l3» o
+ * «l3.2»). Estricta: si la parte de grupo no es un entero ≥ 1 escrito como lo
+ * escribe `buildExtensionBasket` («l3.», «l3.0», «l3.x», «l3.1.2», «l3.01»),
+ * no hay ninguno.
+ */
 export function sourceItemsForBasketKey(lines: ShopOrderLine[], key: string): string[] {
-  const [lineKey, member] = key.split('.')
+  const [lineKey, member, ...rest] = key.split('.')
   const line = lines.find((l) => l.key === lineKey)
   if (!line) return []
-  if (member) return line.members?.[Number(member) - 1]?.sourceItemIds ?? []
-  return line.sourceItemIds ?? (line.sourceItemId ? [line.sourceItemId] : [])
+  if (member === undefined) return line.sourceItemIds ?? (line.sourceItemId ? [line.sourceItemId] : [])
+  if (rest.length > 0 || !/^[1-9]\d*$/.test(member)) return []
+  return line.members?.[Number(member) - 1]?.sourceItemIds ?? []
 }

@@ -244,6 +244,14 @@ Lint validator for recipe data integrity, blocks save on missing ingredients in 
 
 ---
 
+## [Menú inteligente](./smart-menu.md)
+
+Smart menu / planificador de la semana con IA (D-087), built in the shadow: reglas de una semana bien hecha (COC-14) as checks, `scoreWeek` — legumbre de cuchara ≥ 2, pescado 2–3, misma proteína a mediodía y cena, platos repetidos salvo sobras o táper (PRO-238), aprovechar ingredientes, cenas ligeras, temporada (PRO-254).
+
+**Source**: `apps/api/src/services/weekRules.ts`
+
+---
+
 ## [Menus](./menus.md)
 
 Weekly meal planning, menu generation algorithm using cached `nutritionPerServing`, recipe matcher, slot regeneration, meal locking, calorie targets, BMR, season detection, favorites boost, no-repeats, week navigation, WeekStrip day strip, "D · Luz y foto" layout, featured-meal photo hero, "Empezar a cocinar", meal "···" sheet (Vetar, Tipo, Fijar, Comensales, Quitar), week "···" sheet (Regenerar semana, Compartir, Vaciar semana, Vista semana, Historial), desktop "La semana" columns, drag and drop move-slot, editorial photo-less cover, menu history, day index 0-6 (Monday-Sunday), household-weighted scaling (`adults + 0.5 × kidsCount`), catalogue quality gate / auditoría del catálogo (recipes without steps, too few ingredients, quantities per serving out of range skipped by the generator, PRO-73).

@@ -13,7 +13,8 @@
  *
  *   - Once: `users.family_invite_offers.mimo`, stamped atomically.
  *   - Never to a household with 2 accounts or more, to a member who isn't
- *     the owner, or with 1 adult.
+ *     the owner, or with 1 adult; nor while an invitation is pending (the
+ *     person is already inviting, e.g. this very turn).
  *   - A «no» as the next message (`mimoDeclined`) switches it off for good
  *     (and the list card too).
  *   - Inside the weekly aviso budget (D-069): `familyOfferBudgetGate` decides
@@ -47,6 +48,8 @@ export function familyResolvedWeeks(menuWeeks: readonly string[], shoppingDays: 
 export interface FamilyMimoOfferInput extends FamilyOfferInput {
   /** Mondays (YYYY-MM-DD, Madrid) of the household's resolved weeks. */
   resolvedWeeks: readonly string[]
+  /** Invitations to this household still pending (they're already inviting: don't ask). */
+  pendingInvites?: number
   now: Date
 }
 
@@ -54,6 +57,7 @@ export interface FamilyMimoOfferInput extends FamilyOfferInput {
 export function shouldOfferFamilyInvite(i: FamilyMimoOfferInput): boolean {
   if (i.state.mimo || i.state.mimoDeclined) return false
   if (i.adults < 2 || !familyOfferEligible(i)) return false
+  if ((i.pendingInvites ?? 0) > 0) return false
   const week = madridWeekStart(i.now)
   if (i.resolvedWeeks.includes(week)) return true
   // At the weekend, the coming week already resolved (menu for Monday + the weekend shop).
@@ -121,7 +125,14 @@ export async function loadFamilyMimoOfferInput(userId: string, db: Db = defaultD
   const cheapNo = base.state.mimo || base.state.mimoDeclined || base.adults < 2 || !familyOfferEligible(base)
   if (cheapNo) return { ...base, resolvedWeeks: [], now }
   const [u] = (await db.execute(sql`SELECT primary_household_id AS h FROM users WHERE id = ${userId}::uuid`)).rows as any[]
-  return { ...base, resolvedWeeks: u?.h ? await loadResolvedWeeks(String(u.h), db) : [], now }
+  if (!u?.h) return { ...base, resolvedWeeks: [], now }
+  const [p] = (
+    await db.execute(sql`
+      SELECT COUNT(*)::int AS n FROM household_invites
+       WHERE household_id = ${String(u.h)}::uuid AND consumed_at IS NULL AND expires_at > now()
+    `)
+  ).rows as any[]
+  return { ...base, pendingInvites: Number(p?.n ?? 0), resolvedWeeks: await loadResolvedWeeks(String(u.h), db), now }
 }
 
 /** A «no» right after the offer: off for good. Never throws. */

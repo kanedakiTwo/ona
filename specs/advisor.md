@@ -50,7 +50,7 @@ The assistant can call back-end skills (function calling). Each skill has a name
 - `recipe_variation` — generate a variation of a recipe (e.g., dairy-free version)
 - `nutrition_advice` — return advisor summary based on `user_nutrient_balance`
 - `get_pantry_stock` — what's at home: the real pantry (`pantry_items`, with quantities and expiry dates, what `/pantry` shows) plus items marked "ya lo tengo" on the latest shopping list, deduped by name. It used to read only the list flags, so the pantry kept in the app was invisible to the assistant
-- `mark_in_stock` — "tengo X" / "se me acabó X": sets the list item's `inStock` **and** adds the item to (or removes it from) the pantry, whichever exist. With no list it still writes the pantry
+- `mark_in_stock` — "tengo X" / "se me acabó X": sets the list item's `inStock` **and** adds the item to (or removes it from) the pantry, whichever exist. With no list it still writes the pantry. With `quantity` (+ `unit`) on a menu line — «nos queda una cebolla y medio pimiento», one call per ingredient — it records how much is at home instead (PRO-182): the list keeps only the rest to buy and the answer says how much («quedan 6 u por comprar»); a unit it can't convert to the line's is asked back
 - `check_shopping_item` — set/toggle the `checked` flag of a shopping-list item (mark groceries as bought)
 - `get_my_recipes` — list recipes authored by the user (`recipes.authorId = user.id`)
 - `get_menu_history` — list past weeks' menus to answer "when did I last eat X"

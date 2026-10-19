@@ -27,7 +27,9 @@ import { mealLinesForDay } from '../menuText.js'
 import { slotWithDishes } from '../menuDishes.js'
 import { madridParts, madridWeekStart } from '../madridTime.js'
 import { DAY_PROP, dateLabel, isMenuDayError, menuDayOf, resolveMenuDay, type MenuDay } from './menuDay.js'
-import { appSkills, bestMatch, dishNoteText, searchWords } from './appSkills.js'
+import { appSkills, bestMatch, dishNoteText, searchWords, toBuyable } from './appSkills.js'
+import { setHaveAtHome } from '../shoppingItemState.js'
+import { convert as convertUnits } from '../shoppingList.js'
 import { createDishRecipe, NEW_RECIPE_PROP, NOTE_THEN_RECIPE_HINT, type NewRecipeParam } from './dishRecipe.js'
 import { shopOrderSkills } from './shopOrderSkills.js'
 import { visibleAuthorIds, visibleRecipeWhere } from '../recipeVisibility.js'
@@ -1439,16 +1441,19 @@ function findPantryRow<T extends { name: string }>(rows: T[], query: string): T 
 
 const markInStock: SkillDefinition = {
   name: 'mark_in_stock',
-  description: 'El usuario dice que tiene o que se le ha acabado un ingrediente. "tengo X" → inStock:true (lo apunta en la despensa y lo marca "ya lo tengo" en la lista); "se acabo X" / "ya no tengo X" → false (lo quita de ambas). Sin inStock alterna.',
+  description:
+    'El usuario dice que tiene o que se le ha acabado un ingrediente. "tengo X" → inStock:true (lo apunta en la despensa y lo marca "ya lo tengo" en la lista); "se acabo X" / "ya no tengo X" → false (lo quita de ambas). Sin inStock alterna. Si dice CUANTO le queda ("nos queda una cebolla y medio pimiento", "tengo 200 g de arroz"), pasa quantity (y unit si la dice): la lista compra solo lo que falta en vez de marcar toda la linea; una llamada por ingrediente.',
   parameters: {
     type: 'object',
     properties: {
       ingredient: { type: 'string', description: 'Nombre del ingrediente (acepta coincidencia parcial)' },
       inStock: { type: 'boolean', description: 'true si tiene, false si no. Si se omite, alterna el estado.' },
+      quantity: { type: 'number', description: 'Cuanto le queda en casa (0.5 = medio). Solo si lo dice.' },
+      unit: { type: 'string', description: 'Unidad de quantity: unidades, g, kg, ml, l… Sin unidad = unidades.' },
     },
     required: ['ingredient'],
   },
-  async handler(params: { ingredient: string; inStock?: boolean }, ctx) {
+  async handler(params: { ingredient: string; inStock?: boolean; quantity?: number; unit?: string }, ctx) {
     const { userId, db } = ctx
     const pantry = await listPantryForUser(userId, db).catch(() => [])
     const list = await latestShoppingList(ctx)
@@ -1457,6 +1462,38 @@ const markInStock: SkillDefinition = {
     const pantryHit = findPantryRow(pantry, params.ingredient)
     const current = item ? Boolean(item.inStock) : Boolean(pantryHit)
     const next = params.inStock != null ? !!params.inStock : !current
+
+    // «Nos queda una cebolla» (PRO-182): the list buys only the rest of a menu line.
+    if (item && item.ingredientId && item.kind !== 'manual' && item.kind !== 'staple' && params.quantity != null && params.quantity >= 0 && params.inStock !== false) {
+      const b = toBuyable(params.quantity, params.unit)
+      let have: number | null = b.quantity ?? (params.quantity === 0 ? 0 : null)
+      if (have != null && have > 0 && b.unit && b.unit !== item.unit) {
+        const [ing] = await db
+          .select({ density: ingredients.density, unitWeight: ingredients.unitWeight })
+          .from(ingredients)
+          .where(eq(ingredients.id, item.ingredientId))
+          .limit(1)
+        have = convertUnits(have, b.unit as any, item.unit, ing?.density, ing?.unitWeight)
+      }
+      if (have == null) {
+        return {
+          data: null,
+          summary: `No he podido pasar esa cantidad a la unidad de la lista (${item.unit}). ¿Cuánto ${item.name} os queda en ${item.unit}?`,
+          uiHint: 'text',
+        }
+      }
+      setHaveAtHome(item, have)
+      await db.update(shoppingLists).set({ items }).where(eq(shoppingLists.id, list.id))
+      const left = item.inStock ? 0 : Math.max(0, item.quantity - (item.haveQuantity ?? 0))
+      const fmt = (n: number) => `${Math.round(n * 10) / 10} ${item.unit}`
+      return {
+        data: { name: item.name, inStock: item.inStock, haveQuantity: item.haveQuantity ?? null, toBuy: left },
+        summary: item.inStock
+          ? `${item.name}: con lo que tenéis llega; marcado como en casa.`
+          : `${item.name}: apuntado lo que os queda; en la lista quedan ${fmt(left)} por comprar (el menú pide ${fmt(item.quantity)}).`,
+        uiHint: 'confirmation',
+      }
+    }
 
     let touched = false
     if (item) {

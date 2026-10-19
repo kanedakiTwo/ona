@@ -32,6 +32,8 @@ export const ACTIVITY_ITEM_MAX = 80
 const SHOPPING_ROUTES: Array<{ method: string; re: RegExp; kind: ActivityKind }> = [
   { method: 'PUT', re: /^\/shopping-list\/[^/]+\/item\/[^/]+\/check\/?$/, kind: 'shopping_check' },
   { method: 'PUT', re: /^\/shopping-list\/[^/]+\/item\/[^/]+\/stock\/?$/, kind: 'shopping_stock' },
+  // «Nos queda una cebolla» (PRO-182): an amount at home is an «en casa» signal.
+  { method: 'PUT', re: /^\/shopping-list\/[^/]+\/item\/[^/]+\/have\/?$/, kind: 'shopping_stock' },
   { method: 'POST', re: /^\/shopping-list\/[^/]+\/items\/?$/, kind: 'shopping_add' },
   { method: 'DELETE', re: /^\/shopping-list\/[^/]+\/item\/[^/]+\/?$/, kind: 'shopping_remove' },
 ]

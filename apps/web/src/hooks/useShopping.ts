@@ -217,6 +217,22 @@ export function useEditMenuLine() {
 }
 
 /**
+ * «Nos queda una cebolla» (PRO-182): how much of a menu line is at home, in
+ * the line's unit. The list then buys only the rest; 0 clears it.
+ */
+export function useHaveAtHome() {
+  const qc = useQueryClient()
+  return useMutation<ShoppingList, Error, { listId: string; itemId: string; quantity: number }>({
+    mutationFn: ({ listId, itemId, quantity }) =>
+      api.put(`/shopping-list/${listId}/item/${encodeURIComponent(itemId)}/have`, { quantity }),
+    onSuccess: (data, vars) => {
+      if (data && typeof data === "object" && "items" in data) putList(qc, data)
+      qc.invalidateQueries({ queryKey: ["shopping-list", vars.listId, "totals"] })
+    },
+  })
+}
+
+/**
  * @deprecated The rolling endpoint regenerates on every GET, so manual
  * regeneration isn't needed. Kept as a no-op for old callers.
  */

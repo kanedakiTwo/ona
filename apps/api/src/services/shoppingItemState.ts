@@ -87,7 +87,10 @@ export function carryItemState(
   const items = menuItems.map((raw) => {
     if (!raw.ingredientId) return raw
     const it = applyEdit(raw, state.get(itemStateKey(raw))?.edit, range.rangeTo)
-    if ((it.mergedIngredientIds ?? []).length > 0) {
+    // A joined line (PRO-177) marked on itself keeps its amount like any other
+    // («nos quedan 4 huevos», PRO-182); otherwise it gathers its parts' marks.
+    const own = fresh.has(itemStateKey(it)) ? state.get(itemStateKey(it)) : undefined
+    if ((it.mergedIngredientIds ?? []).length > 0 && !(own && (own.checked || own.inStock))) {
       const s = mergedStateFor(it, state)
       return s ? { ...it, checked: s.checked, inStock: s.inStock, pricePerUnit: s.pricePerUnit } : it
     }
@@ -211,6 +214,36 @@ function applyState(it: ShoppingItem, state: Map<string, ItemState>, fresh: Set<
     haveQuantity: it.quantity - missing,
     haveSource: s.inStock ? 'inStock' : 'checked',
   }
+}
+
+/**
+ * «Nos queda una cebolla» (PRO-182): how much of a menu line the household
+ * has at home, in the line's unit. The line stays pending for the rest
+ * («Te faltan 6 · ya tienes 1»), the same partial state a menu change leaves
+ * (PRO-199), so the next rebuild carries it and subtracts it from whatever
+ * the menu asks then. 0 clears it; as much as the line (or more) marks the
+ * whole line «en casa». Pure: mutates and returns the row.
+ */
+export function setHaveAtHome(item: ShoppingItem, have: number): ShoppingItem {
+  delete item.haveQuantity
+  delete item.haveSource
+  item.checked = false
+  if (!(have > 0)) {
+    item.inStock = false
+    return item
+  }
+  const missing = roundMissing(item.quantity - have, item.unit)
+  if (missing <= 0) {
+    item.inStock = true
+    return item
+  }
+  item.inStock = false
+  const covered = item.quantity - missing
+  if (covered > 0) {
+    item.haveQuantity = covered
+    item.haveSource = 'inStock'
+  }
+  return item
 }
 
 /** What is left to buy, in amounts a shop sells; 0 when the gap is rounding noise (≤ 2 %). */

@@ -83,4 +83,21 @@ describe('mark_in_stock', () => {
     expect(deletePantryForUser).toHaveBeenCalledWith('u-1', 'p-9', expect.anything())
     expect(r.summary).toContain('eliminado de la despensa')
   })
+
+  // PRO-182: «nos queda una cebolla y medio pimiento» marked the week's 7 onions «en casa».
+  it('"nos queda una cebolla" → the list buys only the rest', async () => {
+    const cebolla = { id: 'menu:ceb:u', ingredientId: 'ceb', name: 'Cebolla', quantity: 7, unit: 'u', inStock: false, checked: false }
+    const r = await get('mark_in_stock').handler({ ingredient: 'cebolla', quantity: 1 }, ctx(makeDb([{ id: 'sl-1', items: [cebolla] }], undefined)))
+    expect(cebolla).toMatchObject({ inStock: false, haveQuantity: 1, haveSource: 'inStock' })
+    expect(r.summary).toContain('quedan 6 u por comprar')
+    expect(addPantryForUser).not.toHaveBeenCalled()
+  })
+
+  it('an amount in another unit is converted with the catalogue (1 pimiento → 150 g)', async () => {
+    const pimiento = { id: 'menu:pim:g', ingredientId: 'pim', name: 'Pimiento rojo', quantity: 600, unit: 'g', inStock: false, checked: false }
+    const db = makeDb([{ id: 'sl-1', items: [pimiento] }], [{ density: null, unitWeight: 150 }], undefined)
+    const r = await get('mark_in_stock').handler({ ingredient: 'pimiento', quantity: 1, unit: 'unidad' }, ctx(db))
+    expect(pimiento).toMatchObject({ haveQuantity: 150 })
+    expect(r.summary).toContain('quedan 450 g por comprar')
+  })
 })

@@ -2,6 +2,7 @@
  * PRO-175: a line of the list can be changed or left out, and it stays so
  * after reloading. Menu lines: «No lo compro esta semana» (and «Volver a
  * añadir»), or the household's own amount. Manual lines: deleted for good.
+ * PRO-182: «¿Cuánto os queda en casa?» leaves only the rest to buy.
  */
 import { test, expect, type Page } from '@playwright/test'
 import { registerFreshUser, completeOnboarding } from './_helpers'
@@ -111,4 +112,25 @@ test('a manual line is deleted and does not come back after a reload', async ({ 
   await page.reload()
   await firstLine(page)
   await expect(page.getByText('Pañales talla 4')).toHaveCount(0)
+})
+
+test('a menu line: what is left at home is subtracted, also after a reload (PRO-182)', async ({ page }) => {
+  await page.goto('/shopping')
+  const name = await firstLine(page)
+  const row = page.getByRole('button', { name: `Cambiar ${name}`, exact: true })
+  // Raise the amount first so «1» at home always leaves something to buy.
+  await row.click()
+  await page.getByLabel('Cantidad a comprar').fill('500')
+  await page.getByRole('button', { name: 'Guardar cantidad' }).click()
+  await expect(row).toContainText('500')
+
+  await row.click()
+  await page.getByLabel('Cuánto queda en casa').fill('100')
+  await page.getByRole('button', { name: 'Comprar solo lo que falta' }).click()
+  await expect(row.getByTestId('shopping-missing')).toContainText('Te faltan 400')
+  await expect(row.getByTestId('shopping-missing')).toContainText('ya tienes 100')
+
+  await page.reload()
+  const again = page.getByRole('button', { name: `Cambiar ${name}`, exact: true })
+  await expect(again.getByTestId('shopping-missing')).toContainText('Te faltan 400', { timeout: 15_000 })
 })

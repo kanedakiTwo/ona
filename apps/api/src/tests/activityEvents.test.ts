@@ -10,6 +10,7 @@ describe('shoppingActivityKind (HTTP routes)', () => {
   it('maps the shopping-list item mutations', () => {
     expect(shoppingActivityKind('PUT', '/shopping-list/l1/item/i1/check')).toBe('shopping_check')
     expect(shoppingActivityKind('PUT', '/shopping-list/l1/item/i1/stock')).toBe('shopping_stock')
+    expect(shoppingActivityKind('PUT', '/shopping-list/l1/item/i1/have')).toBe('shopping_stock') // PRO-182
     expect(shoppingActivityKind('POST', '/shopping-list/l1/items')).toBe('shopping_add')
     expect(shoppingActivityKind('DELETE', '/shopping-list/l1/item/i1')).toBe('shopping_remove')
   })

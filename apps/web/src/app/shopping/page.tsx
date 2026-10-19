@@ -23,6 +23,7 @@ import {
   useCheckItem,
   useStockItem,
   useEditMenuLine,
+  useHaveAtHome,
   usePatchShoppingItem,
   useDeleteShoppingItem,
 } from '@/hooks/useShopping'
@@ -681,16 +682,27 @@ function LineSheet({ item, listId, onClose }: { item: any | null; listId: string
   const editLine = useEditMenuLine()
   const patch = usePatchShoppingItem()
   const del = useDeleteShoppingItem()
+  const haveAtHome = useHaveAtHome()
   const [draft, setDraft] = useState('')
+  const [haveDraft, setHaveDraft] = useState('')
   const [error, setError] = useState<string | null>(null)
   const isManual = item?.kind === 'manual'
   const isStaple = item?.kind === 'staple'
   useEffect(() => {
     setError(null)
     if (item) setDraft(item.amountText ?? formatAmount(item.quantity))
+    setHaveDraft(item?.haveQuantity > 0 ? formatAmount(item.haveQuantity) : '')
   }, [item])
   const done = { onSuccess: onClose, onError: () => setError('No se ha podido guardar. Prueba otra vez.') }
-  const pending = editLine.isPending || patch.isPending || del.isPending
+  const pending = editLine.isPending || patch.isPending || del.isPending || haveAtHome.isPending
+
+  /** «Nos queda una cebolla» (PRO-182): the list buys only the rest. Empty = nothing at home. */
+  function saveHave() {
+    if (!item) return
+    const amount = haveDraft.trim() ? parseShoppingAmount(haveDraft) : { quantity: 0 }
+    if (!amount || !('quantity' in amount)) return setError(`Escribe un número (en ${UNIT_WORD[item.unit] ?? item.unit}).`)
+    haveAtHome.mutate({ listId, itemId: item.id, quantity: amount.quantity }, done)
+  }
 
   function save(e: React.FormEvent) {
     e.preventDefault()
@@ -763,6 +775,33 @@ function LineSheet({ item, listId, onClose }: { item: any | null; listId: string
           >
             {isManual ? 'Quitar de la lista' : 'No lo compro esta semana'}
           </button>
+          {!isManual && (
+            <div className="mt-2 rounded-xl bg-cream-deep/60 p-3">
+              <label className="block">
+                <span className="mb-1 block text-[13px] text-ink-muted">
+                  ¿Cuánto os queda en casa? (en {UNIT_WORD[item.unit] ?? item.unit})
+                </span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={haveDraft}
+                  maxLength={10}
+                  placeholder="0"
+                  onChange={(e) => setHaveDraft(e.target.value)}
+                  aria-label="Cuánto queda en casa"
+                  className="h-11 w-full rounded-xl border border-border bg-paper px-3 text-[15px] text-ink outline-none focus:border-ink"
+                />
+              </label>
+              <button
+                type="button"
+                disabled={pending}
+                onClick={saveHave}
+                className="mt-2 min-h-[44px] w-full rounded-full border border-ink bg-paper text-[14px] font-medium text-ink transition-colors hover:bg-ink hover:text-cream disabled:opacity-40"
+              >
+                Comprar solo lo que falta
+              </button>
+            </div>
+          )}
         </form>
       ) : null}
     </MenuSheet>

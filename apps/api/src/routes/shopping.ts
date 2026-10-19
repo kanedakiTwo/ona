@@ -14,7 +14,7 @@ import {
 } from '../services/shoppingList.js'
 import { canAccessRow, getPrimaryHouseholdId, resolveScope } from '../services/scopeResolver.js'
 import { listActiveStaplesForHousehold } from '../services/staplesStore.js'
-import { carryItemState, editMenuLine, type ConvertQty, type ItemStateMap } from '../services/shoppingItemState.js'
+import { carryItemState, editMenuLine, setHaveAtHome, type ConvertQty, type ItemStateMap } from '../services/shoppingItemState.js'
 import { isCoeliacHousehold, withGlutenFreeCharcuterieNames } from '../services/glutenFreeCharcuterie.js'
 import { loadUserRestrictions } from '../services/withWhatIHave.js'
 import { INTERNAL_CALL_HEADER, trackEvent } from '../services/usageEvents.js'
@@ -546,6 +546,68 @@ router.put('/shopping-list/:listId/item/:itemId/edit', async (req: AuthRequest, 
     res.json(updated)
   } catch (err) {
     console.error('Edit line error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// PUT /shopping-list/:listId/item/:itemId/have — «nos queda una cebolla»
+// (PRO-182): how much of a menu line is at home. `{ quantity, unit? }`, in the
+// line's unit unless `unit` says otherwise (converted with the ingredient's
+// density / unit weight). The line stays pending for the rest; 0 clears it,
+// as much as the line marks it «en casa». The next rebuild subtracts it.
+const haveSchema = z.object({
+  quantity: z.number().nonnegative().max(100_000),
+  unit: z.string().refine((u) => BUYABLE_UNITS.has(u)).optional(),
+})
+
+router.put('/shopping-list/:listId/item/:itemId/have', async (req: AuthRequest, res) => {
+  try {
+    const listId = String(req.params.listId)
+    const itemId = String(req.params.itemId)
+    const parsed = haveSchema.safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Datos invalidos', issues: parsed.error.issues })
+      return
+    }
+    const { list, forbidden } = await loadListForCaller(listId, req.userId!)
+    if (forbidden) {
+      res.status(403).json({ error: 'No tienes acceso a esta lista.' })
+      return
+    }
+    if (!list) {
+      res.status(404).json({ error: 'Shopping list not found' })
+      return
+    }
+    const items = list.items as ShoppingItem[]
+    const item = items.find((i) => i.id === itemId)
+    if (!item) {
+      res.status(404).json({ error: 'Item not found' })
+      return
+    }
+    if (!item.ingredientId || item.kind === 'manual' || item.kind === 'staple') {
+      res.status(400).json({ error: 'Solo en las líneas que vienen del menú; en las demás, marca «En casa».' })
+      return
+    }
+    let have = parsed.data.quantity
+    const unit = parsed.data.unit as ShoppingItem['unit'] | undefined
+    if (unit && unit !== item.unit) {
+      const converted = (await ingredientConverter([item]))(item.ingredientId, have, unit, item.unit)
+      if (converted == null) {
+        res.status(400).json({ error: `Esa cantidad no se puede pasar a ${item.unit}.` })
+        return
+      }
+      have = converted
+    }
+    setHaveAtHome(item, have)
+    setActivityDetail(res, { item: item.name, on: have > 0 })
+    const [updated] = await db
+      .update(shoppingLists)
+      .set({ items })
+      .where(eq(shoppingLists.id, list.id))
+      .returning()
+    res.json(updated)
+  } catch (err) {
+    console.error('Have at home error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

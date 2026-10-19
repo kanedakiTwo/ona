@@ -32,7 +32,7 @@ This is separate from the legacy `inStock` boolean inside `shopping_lists.items`
 | `quantity` | real | non-negative; default 0 |
 | `unit` | text | `g \| ml \| u \| cda \| cdita` (also accepts `kg \| l` at the route for convenience; stored as-given) |
 | `expires_at` | date? | YYYY-MM-DD, null = no expiry |
-| `location` | text | `nevera` / `congelador` / `despensa` (PRO-228, migration `0071_pantry_location`), NOT NULL default `despensa` |
+| `location` | text | `nevera` / `congelador` / `despensa` (PRO-228, migration `0079_pantry_location`), NOT NULL default `despensa` |
 | `stored_at` | timestamptz? | when it went into that place (PRO-228); null = `created_at` |
 | `last_updated_at` | timestamptz | bumped on every edit + every auto-decrement |
 | `created_at` | timestamptz | bookkeeping |
@@ -96,7 +96,7 @@ Numeric rounding uses `Math.round(x * 1000) / 1000` to dodge 0.999… artefacts 
 - `apps/api/src/services/pantryStore.ts` — `applyPantryDeduct`, `decrementPantryForRecipe`, `resolveCookScale`, CRUD helpers
 - `apps/api/src/routes/pantry.ts` — REST surface
 - `packages/shared/src/types/pantry.ts` — `PANTRY_LOCATIONS`, `groupPantryByLocation`, `freezerItemsDue` (PRO-228)
-- `apps/api/src/db/migrations/0071_pantry_location.sql` — `location` + `stored_at`
+- `apps/api/src/db/migrations/0079_pantry_location.sql` — `location` + `stored_at`
 - `apps/api/src/services/whatsapp/freezerReview.ts` — monthly review message · `apps/api/src/services/assistant/freezerSkills.ts` — `plan_freezer_items`
 - `apps/api/src/tests/pantryFreezer.test.ts`, `pantryLocationRoute.smoke.ts`, `apps/web/e2e/pantry-locations.spec.ts`
 - `apps/api/src/routes/cookLogs.ts` — calls `decrementPantryForRecipe` post-insert

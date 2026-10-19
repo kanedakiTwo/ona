@@ -1205,7 +1205,7 @@ describe('cooking_step', () => {
 // ─── Sanity: every skill in the export array has at least one test ────────
 
 describe('skill export coverage', () => {
-  it('there are exactly 67 registered skills', () => {
+  it('there are exactly 77 registered skills', () => {
     // Bumped from 30 when PR 2 added `update_memory` (persists inferred
     // facts to user_memories from "recuerda que..." utterances), and to 32
     // with `import_recipe_from_url` (WhatsApp channel, 2026-10), and to 56
@@ -1219,23 +1219,16 @@ describe('skill export coverage', () => {
     // withWhatIHave.test.ts), and to 66 with add_freezer_dish (táper del
     // congelador, PRO-82, tested in appSkills.test.ts), and to 67 with
     // leave_feedback (beta feedback box, 2026-10-15, tested in feedback.test.ts),
-    // and to 68 with get_weekly_menu (the whole week, 2026-10-15), and to 69
-    // with share_invite_link («Invitar a otro hogar», PRO-163, tested in appSkills.test.ts),
-    // and to 70 with set_cooking_style (PRO-217, tested in cookingStyle.test.ts).
-    // and to 68 with get_weekly_menu (the whole week, 2026-10-15), and to 70
-    // with get_fixed_meals + set_fixed_meal (comidas fijas, PRO-218, tested
-    // in fixedMeals.test.ts).
-    expect(skills.length).toBe(70)
-    // with set_taper («mañana me llevo táper», PRO-223, tested in taper.test.ts).
-    expect(skills.length).toBe(69)
-    // and to 68 with get_weekly_menu (the whole week, 2026-10-15), and to 70
-    // with get_school_menu + set_school_menu_days (menú del cole, PRO-224,
-    // tested in schoolMenuSkills.test.ts).
-    expect(skills.length).toBe(70)
-    // with plan_freezer_items (repaso del congelador, PRO-228, tested in
-    // pantryFreezer.test.ts).
-    // with set_cook_today («hoy cocina Pablo», PRO-230, cookToday.test.ts).
-    expect(skills.length).toBe(69)
+    // and to 68 with get_weekly_menu (the whole week, 2026-10-15). Taller
+    // 2026-10-20: to 69 with share_invite_link («Invitar a otro hogar»,
+    // PRO-163, appSkills.test.ts), 70 with set_cooking_style (PRO-217,
+    // cookingStyle.test.ts), 72 with get_fixed_meals + set_fixed_meal
+    // (PRO-218, fixedMeals.test.ts), 73 with set_taper (PRO-223,
+    // taper.test.ts), 75 with get_school_menu + set_school_menu_days
+    // (PRO-224, schoolMenuSkills.test.ts), 76 with plan_freezer_items
+    // (PRO-228, pantryFreezer.test.ts) and 77 with set_cook_today (PRO-230,
+    // cookToday.test.ts).
+    expect(skills.length).toBe(77)
   })
 
   it('every skill has a unique name', () => {

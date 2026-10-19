@@ -41,7 +41,7 @@ Before PRO-197 the cards ignored allergies and diets. Miguel (2026-10-18): an au
 ## Data
 
 - `recipe_verdicts` (migration `0060_recipe_verdicts`): `user_id` (cascade), `recipe_id` (cascade), `verdict` (check `love|like|nope|skip`), `reason` jsonb, `created_at`, `updated_at`; unique `(user_id, recipe_id)`
-- `household_notices` (migration `0071_household_notices`, PRO-205): `key`, `household_id` (cascade; null = the key's scan marker), `user_id` (WhatsApp recipient, set null), `created_at`, `whatsapp_sent_at`, `app_since`, `dismissed_at`; unique `(key, household_id)`
+- `household_notices` (migration `0074_household_notices`, PRO-205): `key`, `household_id` (cascade; null = the key's scan marker), `user_id` (WhatsApp recipient, set null), `created_at`, `whatsapp_sent_at`, `app_since`, `dismissed_at`; unique `(key, household_id)`
 - `users.taste_state` jsonb (same migration, default `{}`): `introAt`, `introChoice`, `cardDismissedAt`, `onboardingAt`, `whatsappOfferedAt` (reserved), `flags`
 - Cost: both Claude calls (`taste_next`, `taste_reason`, Claude Opus 5.5 at effort low, `CLAUDE_MODEL`, 15 s limit) are billed to the household in `cost_events` like every paid call
 

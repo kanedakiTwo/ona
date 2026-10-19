@@ -30,7 +30,7 @@ const row = (over: Record<string, unknown>) => ({ id: String(over.name), name: '
 
 describe('the migration', () => {
   it('only adds columns: the place (default «despensa») and when it went in', () => {
-    const sql = readFileSync(join(__dirname, '../db/migrations/0071_pantry_location.sql'), 'utf8')
+    const sql = readFileSync(join(__dirname, '../db/migrations/0079_pantry_location.sql'), 'utf8')
     expect(sql.trim()).toBe(
       'ALTER TABLE "pantry_items" ADD COLUMN "location" text DEFAULT \'despensa\' NOT NULL;--> statement-breakpoint\nALTER TABLE "pantry_items" ADD COLUMN "stored_at" timestamp with time zone;',
     )

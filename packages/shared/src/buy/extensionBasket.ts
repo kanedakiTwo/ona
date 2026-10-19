@@ -6,7 +6,7 @@
 import type { BuyableUnit } from '../types/shopping.js'
 import type { ShopOrderLine } from '../types/shopOrders.js'
 import type { BasketLine, BasketSendResult } from '../types/basketExtension.js'
-import { buyRuleByKey, normalizeBuyName, orderQtyInGrams } from './convert.js'
+import { buyRuleByKey, normalizeBuyName, orderQtyInGrams, pieceCount } from './convert.js'
 import { shoppingGroupOf } from './listGroup.js'
 
 /** «Tomate · varias presentaciones» → «Tomate». */
@@ -141,7 +141,9 @@ export function orderMembers(members: OrderMemberInput[], ruleKey: string | null
  * La cesta que se manda a la extensión: las líneas incluidas y, de una línea
  * fusionada (`members`), un grupo por producto (`l3.1`, `l3.2`…). Un grupo es
  * una línea más: sus gramos (`orderQtyInGrams`) y sus piezas salen de su
- * cantidad con la regla de la línea.
+ * cantidad con la regla de la línea. Las piezas se cuentan como en el pedido
+ * (`pieceCount`, lo mismo que `toOrderQty`): las de un grupo, con su cantidad;
+ * las de una línea, con sus gramos, que ya son piezas enteras de la regla.
  *
  * Limitación conocida: en una línea fusionada en la que nada traía cantidad
  * (todo el «1 u» por defecto), cada producto va como 1 unidad (con los gramos
@@ -153,8 +155,8 @@ export function buildExtensionBasket(lines: ShopOrderLine[]): BasketLine[] {
   for (const line of lines) {
     if (line.included === false) continue
     const rule = line.ruleKey ? buyRuleByKey(line.ruleKey) : null
-    /** Piezas si la regla es por pieza («1 cabeza de ajos»). */
-    const piezasOf = (grams: number | null) => (rule?.by === 'pieza' && rule.g && grams ? Math.max(1, Math.round(grams / rule.g)) : null)
+    /** La regla, si es por pieza («1 cabeza de ajos»): solo entonces hay piezas. */
+    const byPiece = rule?.by === 'pieza' ? rule : null
     if (line.members && line.members.length >= 2) {
       line.members.forEach((mem, i) => {
         const name = basketBaseName(mem.name)
@@ -166,7 +168,7 @@ export function buildExtensionBasket(lines: ShopOrderLine[]): BasketLine[] {
           quantity: mem.quantity,
           unit: mem.unit,
           grams,
-          piezas: piezasOf(grams),
+          piezas: byPiece && grams ? pieceCount(byPiece, mem.quantity, mem.unit, grams) : null,
           search: name,
         })
       })
@@ -181,9 +183,11 @@ export function buildExtensionBasket(lines: ShopOrderLine[]): BasketLine[] {
         : line.unit === 'g' || line.unit === 'ml'
           ? line.quantity
           : null
+    // Sus gramos son los que pide el pedido, de pieza entera (n × g): se pesan contra `g`, no contra lo comestible del pescado.
+    const piezas = byPiece && grams ? pieceCount(byPiece, grams, 'g', grams, byPiece.g ?? 100) : null
     // «Jamón serrano» + serrano → «Jamón serrano», no «Jamón serrano serrano».
     const search = choice && !normalizeBuyName(name).includes(normalizeBuyName(choice)) ? `${name} ${choice}` : name
-    out.push({ key: line.key, name, choice, quantity: line.quantity, unit: line.unit, grams, piezas: piezasOf(grams), search })
+    out.push({ key: line.key, name, choice, quantity: line.quantity, unit: line.unit, grams, piezas, search })
   }
   return out
 }

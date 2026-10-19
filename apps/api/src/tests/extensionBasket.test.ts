@@ -14,6 +14,7 @@ import {
   orderMembers,
   orderQtyInGrams,
   sourceItemsForBasketKey,
+  toOrderQty,
   type BuyableUnit,
   type ShopOrderLine,
 } from '@ona/shared'
@@ -297,6 +298,48 @@ describe('buildExtensionBasket', () => {
     ])
     expect(morado).toMatchObject({ key: 'l6.1', quantity: 20, unit: 'u', grams: 100, piezas: 2 })
     expect(negro).toMatchObject({ key: 'l6.2', quantity: 2, unit: 'u', grams: 10, piezas: 1 })
+  })
+  it('un grupo cuenta sus piezas como el pedido (14 dientes de ajo, 70 g → 2 cabezas; 1,1 tomates → 2)', () => {
+    expect(toOrderQty({ name: 'ajo morado', quantity: 14, unit: 'u' }).text).toBe('2 cabezas de ajos')
+    expect(toOrderQty({ name: 'tomate pera', quantity: 1.1, unit: 'u' }).text).toBe('2 tomates pera')
+    const [ajoMorado, , tomatePera] = buildExtensionBasket([
+      line({
+        key: 'l8', name: 'ajo', quantity: 16, unit: 'u', ruleKey: 'ajo', grams: 100,
+        members: [
+          { name: 'ajo morado', quantity: 14, unit: 'u', sourceItemIds: ['m'] },
+          { name: 'ajo negro', quantity: 2, unit: 'u', sourceItemIds: ['n'] },
+        ],
+      }),
+      line({
+        key: 'l9', name: 'tomate', quantity: 2.1, unit: 'u', ruleKey: 'tomate', grams: 450,
+        members: [
+          { name: 'tomate pera', quantity: 1.1, unit: 'u', sourceItemIds: ['p'] },
+          { name: 'tomate de rama', quantity: 1, unit: 'u', sourceItemIds: ['r'] },
+        ],
+      }),
+    ])
+    expect(ajoMorado).toMatchObject({ key: 'l8.1', grams: 70, piezas: 2 })
+    expect(tomatePera).toMatchObject({ key: 'l9.1', piezas: 2 })
+  })
+  it('pescado entero: la línea cuenta piezas enteras y el grupo, gramos limpios, como el pedido', () => {
+    const pescado = buyRuleByKey('pescado entero')!
+    expect(pescado).toMatchObject({ by: 'pieza', g: 550, edibleG: 300 })
+    // El pedido: 400 g limpios de dorada son 2 doradas; la línea guarda los gramos de 2 piezas enteras.
+    const pedido = toOrderQty({ name: 'dorada', quantity: 400, unit: 'g' })
+    expect(pedido).toMatchObject({ ruleKey: 'pescado entero', grams: 2 * pescado.g! })
+    const [linea, dorada, lubina] = buildExtensionBasket([
+      line({ key: 'l1', name: 'dorada', quantity: 400, unit: 'g', ruleKey: 'pescado entero', grams: pedido.grams }),
+      line({
+        key: 'l2', name: 'pescado entero', quantity: 700, unit: 'g', ruleKey: 'pescado entero', grams: 3 * pescado.g!,
+        members: [
+          { name: 'dorada', quantity: 400, unit: 'g', sourceItemIds: ['d'] },
+          { name: 'lubina', quantity: 300, unit: 'g', sourceItemIds: ['l'] },
+        ],
+      }),
+    ])
+    expect(linea.piezas).toBe(2) // 1100 g de pieza entera, no 1100 / 300
+    expect(dorada).toMatchObject({ key: 'l2.1', grams: 400, piezas: 2 })
+    expect(lubina).toMatchObject({ key: 'l2.2', grams: 300, piezas: 1 })
   })
   it('un grupo en u de una regla que no sabe lo que pesa una unidad (jamón) va sin gramos ni piezas', () => {
     const [serrano, iberico] = buildExtensionBasket([

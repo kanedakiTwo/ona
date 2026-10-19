@@ -17,7 +17,12 @@ export interface BasketLine {
   choice: string | null
   quantity: number
   unit: 'g' | 'ml' | 'u' | 'cda' | 'cdita'
-  /** Gramos o ml a comprar: los de la regla si hay regla; si no, quantity si es g/ml; si no, null. */
+  /**
+   * Gramos o ml a comprar. Línea: los de la regla si hay regla (los sugeridos
+   * si falta la cantidad); si no, quantity si es g/ml; si no, null. Grupo de
+   * una línea fusionada: los de su cantidad con la regla de la línea
+   * (`orderQtyInGrams`), o null si no se pueden calcular.
+   */
   grams: number | null
   /** Piezas a comprar si la regla es por pieza («1 cabeza de ajos»); si no, null. */
   piezas: number | null

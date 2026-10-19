@@ -179,6 +179,20 @@ export function orderQtyInGrams(quantity: number, unit: BuyableUnit, ruleKey: st
   return gramsWith(ruleKey ? buyRuleByKey(ruleKey) : null, quantity, unit)
 }
 
+/**
+ * Pieces of a by-piece rule as the order counts them ("2 cebollas", "1 cabeza
+ * de ajos") for a list amount (`quantity` `unit`, weighing `grams`): u
+ * without `ug` are already pieces; anything else is weighed against a piece
+ * (`perPiece`: by default its edible grams for a whole fish, else `g`),
+ * rounding up from 15 % of a piece. Never below `min` (1). Shared by
+ * `toOrderQty` and the extension basket, which weighs an order line's grams
+ * (whole pieces already: n × g) against `g`.
+ */
+export function pieceCount(rule: BuyRule, quantity: number, unit: BuyableUnit, grams: number, perPiece = rule.edibleG ?? rule.g ?? 100): number {
+  const n = unit === 'u' && !rule.ug ? Math.ceil(quantity - 1e-9) : Math.ceil(grams / perPiece - 0.15)
+  return Math.max(rule.min ?? 1, n)
+}
+
 function roundUp(grams: number, step: number, min: number): number {
   return Math.max(min, Math.ceil(grams / step - 1e-9) * step)
 }
@@ -282,11 +296,7 @@ export function toOrderQty(input: OrderQtyInput, prefs: Record<string, string> =
 
   if (rule.by === 'pieza') {
     const g = rule.g ?? 100
-    let n: number
-    if (grams == null) n = rule.defaultN ?? rule.min ?? 1
-    else if (input.unit === 'u' && !rule.ug) n = Math.ceil(input.quantity - 1e-9)
-    else n = Math.ceil(grams / (rule.edibleG ?? g) - 0.15)
-    n = Math.max(rule.min ?? 1, n)
+    const n = grams == null ? Math.max(rule.min ?? 1, rule.defaultN ?? rule.min ?? 1) : pieceCount(rule, input.quantity, input.unit, grams)
     if (rule.half && grams != null && grams <= 0.55 * g) {
       return { ...base, text: rule.half + suffix(rule, false, prep, choice, options) + ask, grams: g / 2 }
     }

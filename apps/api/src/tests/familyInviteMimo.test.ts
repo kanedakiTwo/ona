@@ -77,6 +77,10 @@ describe('shouldOfferFamilyInvite', () => {
     expect(shouldOfferFamilyInvite(base({ adults: 1 }))).toBe(false)
   })
 
+  it('not while an invitation is pending (already inviting, e.g. this very turn)', () => {
+    expect(shouldOfferFamilyInvite(base({ pendingInvites: 1 }))).toBe(false)
+  })
+
   it('never to someone who said no', () => {
     expect(shouldOfferFamilyInvite(base({ state: { mimoDeclined: '2026-10-20T10:00:00Z' } }))).toBe(false)
   })

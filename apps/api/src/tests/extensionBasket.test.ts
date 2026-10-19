@@ -223,12 +223,14 @@ describe('buildExtensionBasket', () => {
     expect(jamon).toMatchObject({ name: 'jamon', choice: 'ibérico', search: 'jamon ibérico' })
   })
   it('sin regla: gramos solo si la unidad es g/ml; sufijo fuera', () => {
-    const [kombu, tortillas] = buildExtensionBasket([
+    const [kombu, tortillas, caldo] = buildExtensionBasket([
       line({ key: 'l1', name: 'kombu · varias presentaciones', quantity: 10, unit: 'g' }),
       line({ key: 'l2', name: 'tortillas de trigo', quantity: 8, unit: 'u' }),
+      line({ key: 'l3', name: 'caldo de verduras', quantity: 500, unit: 'ml' }),
     ])
     expect(kombu).toMatchObject({ name: 'kombu', grams: 10, search: 'kombu' })
     expect(tortillas).toMatchObject({ grams: null, quantity: 8, unit: 'u', piezas: null })
+    expect(caldo).toMatchObject({ grams: 500, unit: 'ml' })
   })
   it('deja fuera «probablemente lo tienes» sin marcar; elección pendiente → null; «¿cuánto?» → gramos sugeridos', () => {
     const lines = buildExtensionBasket([
@@ -344,18 +346,20 @@ describe('buildExtensionBasket', () => {
     expect(dorada).toMatchObject({ key: 'l2.1', grams: 1100, piezas: 2 }) // gramos del pedido, redondeados a la unidad de compra
     expect(lubina).toMatchObject({ key: 'l2.2', grams: 550, piezas: 1 })
   })
-  it('un grupo en u de una regla que no sabe lo que pesa una unidad (jamón) va sin gramos ni piezas', () => {
+  it('un grupo en u de una regla al peso que no sabe lo que pesa una unidad (jamón) lleva la sugerencia de «¿cuánto?», como una línea; no hereda la elección ni la sugerencia de la línea', () => {
     const [serrano, iberico] = buildExtensionBasket([
       line({
-        key: 'l7', name: 'jamon', quantity: 50, unit: 'g', ruleKey: 'jamon', grams: 100,
+        key: 'l7', name: 'jamon', quantity: 50, unit: 'g', ruleKey: 'jamon', grams: null, choice: 'serrano',
+        needsQuantity: { suggestion: '250 g', grams: 250 },
         members: [
           { name: 'Jamón serrano', quantity: 1, unit: 'u', sourceItemIds: ['s'] },
           { name: 'jamón ibérico', quantity: 50, unit: 'g', sourceItemIds: ['i'] },
         ],
       }),
     ])
-    expect(serrano).toMatchObject({ key: 'l7.1', quantity: 1, unit: 'u', grams: null, piezas: null })
-    expect(iberico).toMatchObject({ key: 'l7.2', grams: 100, piezas: null }) // gramos del pedido, redondeados a la unidad de compra
+    expect(toOrderQty({ name: 'Jamón serrano', quantity: 1, unit: 'u' }).needsQuantity?.grams).toBe(100)
+    expect(serrano).toMatchObject({ key: 'l7.1', quantity: 1, unit: 'u', grams: 100, piezas: null, choice: null, search: 'Jamón serrano' })
+    expect(iberico).toMatchObject({ key: 'l7.2', grams: 100, piezas: null, choice: null, search: 'jamón ibérico' }) // gramos del pedido, redondeados a la unidad de compra
   })
   /** La línea que haría el borrador con un artículo de la lista (`buildLine`). */
   const orderLine = (key: string, name: string, quantity: number, unit: BuyableUnit, notes: string[] = []) =>
@@ -401,6 +405,21 @@ describe('buildExtensionBasket', () => {
     expect(amounts(comoLinea)).toEqual({ grams: 400, piezas: 2 })
     expect(amounts(comoGrupo)).toEqual(amounts(comoLinea))
   })
+  it('si la regla de la línea no sale de su nombre y sus notas (guardada con otras reglas), el grupo lleva los gramos de su cantidad con ella', () => {
+    // «cebolla» hoy es la regla cebolla (400 g → 3 cebollas, 450 g), pero la línea se guardó como alubias.
+    expect(toOrderQty({ name: 'cebolla', quantity: 400, unit: 'g' })).toMatchObject({ ruleKey: 'cebolla', grams: 450 })
+    const [rojas, blancas] = buildExtensionBasket([
+      line({
+        key: 'l1', name: 'cebolla', quantity: 700, unit: 'g', ruleKey: 'alubias', grams: 1000,
+        members: [
+          { name: 'alubias rojas', quantity: 400, unit: 'g', sourceItemIds: ['r'] },
+          { name: 'alubias blancas', quantity: 2, unit: 'u', sourceItemIds: ['b'] },
+        ],
+      }),
+    ])
+    expect(rojas).toMatchObject({ key: 'l1.1', grams: 400, piezas: null })
+    expect(blancas).toMatchObject({ key: 'l1.2', grams: 2 * perUnit('alubias'), piezas: null })
+  })
 })
 
 describe('basketMayBeInCart', () => {
@@ -424,6 +443,8 @@ describe('sourceItemsForBasketKey', () => {
     expect(sourceItemsForBasketKey(lines, 'l3.2')).toEqual(['b', 'c'])
     expect(sourceItemsForBasketKey(lines, 'l9')).toEqual([])
     expect(sourceItemsForBasketKey(lines, 'l3.7')).toEqual([])
+    // Una línea v1 solo tiene `sourceItemId`.
+    expect(sourceItemsForBasketKey([line({ key: 'l1', name: 'arroz', sourceItemIds: undefined, sourceItemId: 'v1' })], 'l1')).toEqual(['v1'])
   })
   it('si la parte de grupo no es un entero ≥ 1 escrito como lo escribe la cesta, la clave no vale: ningún artículo', () => {
     for (const key of ['l3.', 'l3.0', 'l3.x', 'l3.1.2', 'l3.01', 'l1.']) expect(sourceItemsForBasketKey(lines, key), key).toEqual([])

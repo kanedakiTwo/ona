@@ -161,12 +161,14 @@ function basketLine(l: LineLike): BasketLine {
 
 /**
  * Un grupo de una línea fusionada, hecho línea: los gramos que pediría el
- * pedido con su cantidad (`toOrderQty`). Se piden con el nombre y las notas de
- * la línea, que dan su regla y su variante («pollo» + «pechuga» → pechuga de
- * pollo; el nombre del grupo, «pollo», daría otra regla); sin «sin cantidad»:
- * un grupo de solo artículos sin cantidad pide su 1 u tal cual. Si aun así no
- * saliera la regla de la línea, los gramos de su cantidad con ella
- * (`orderQtyInGrams`).
+ * pedido con su cantidad (`toOrderQty`), o los sugeridos si pregunta «¿cuánto?»
+ * (una regla al peso que no sabe lo que pesa una unidad). Se piden con el
+ * nombre y las notas de la línea, de los que `buildLine` sacó su regla y su
+ * variante («pollo» + «pechuga» → pechuga de pollo): con esas notas, el nombre
+ * del grupo da la misma regla. Sin «sin cantidad»: un grupo de solo artículos
+ * sin cantidad pide su 1 u tal cual. No hereda la elección ni la sugerencia de
+ * la línea. Si la regla de la línea no saliera (guardada con otras reglas),
+ * los gramos de su cantidad con ella (`orderQtyInGrams`).
  */
 function groupAsLine(line: ShopOrderLine, mem: OrderMember, i: number): LineLike {
   const ruleKey = line.ruleKey ?? null
@@ -177,7 +179,7 @@ function groupAsLine(line: ShopOrderLine, mem: OrderMember, i: number): LineLike
     quantity: mem.quantity,
     unit: mem.unit,
     ruleKey,
-    grams: (ordered.ruleKey === ruleKey ? ordered.grams : null) ?? orderQtyInGrams(mem.quantity, mem.unit, ruleKey),
+    grams: (ordered.ruleKey === ruleKey ? ordered.grams ?? ordered.needsQuantity?.grams ?? null : null) ?? orderQtyInGrams(mem.quantity, mem.unit, ruleKey),
     choice: null,
     needsChoice: null,
     needsQuantity: null,
@@ -193,9 +195,10 @@ function groupAsLine(line: ShopOrderLine, mem: OrderMember, i: number): LineLike
  * enteras de la regla.
  *
  * Limitación conocida: en una línea fusionada en la que nada traía cantidad
- * (todo el «1 u» por defecto), cada producto va como 1 unidad (con los gramos
- * que pide el pedido por 1 unidad, si la regla los sabe) y la sugerencia de
- * gramos de `needsQuantity` no se reparte entre ellos.
+ * (todo el «1 u» por defecto), cada producto va como si se pidiera 1 unidad:
+ * los gramos que pide el pedido por ella o, en una regla al peso, los
+ * sugeridos de «¿cuánto?» para cada uno; la sugerencia de la línea no se
+ * reparte entre ellos.
  */
 export function buildExtensionBasket(lines: ShopOrderLine[]): BasketLine[] {
   const out: BasketLine[] = []

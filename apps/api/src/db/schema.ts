@@ -633,6 +633,16 @@ export const householdInvites = pgTable('household_invites', {
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   consumedAt: timestamp('consumed_at', { withTimezone: true }),
   consumedByUserId: uuid('consumed_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+  /**
+   * Where it was prepared (PRO-260/263, `HOUSEHOLD_INVITE_SOURCES`): `casa`
+   * (Mi casa; also every invite before 2026-10-20), `alta`, `compra`, `mimo`.
+   */
+  source: text('source').notNull().default('casa'),
+  /**
+   * First time it was handed on: «Enviar por WhatsApp» or «Copiar» tapped,
+   * or Mimo giving the link (PRO-260). Null = prepared but never sent.
+   */
+  sharedAt: timestamp('shared_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   uniqueIndex('uq_household_invite_token').on(t.token),

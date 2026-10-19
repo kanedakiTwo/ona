@@ -467,3 +467,12 @@ export {
   memoryKeyIsHouseholdLevel,
 } from './types/householdProfile.js'
 export { scaleIngredientNote, noteStartsWithCount, noteStartsWithNumber, formatHalves } from './utils/ingredientNote.js'
+export {
+  HOUSEHOLD_INVITE_TTL_DAYS,
+  HOUSEHOLD_INVITE_SOURCES,
+  isHouseholdInviteSource,
+  householdInviteExpiresAt,
+  householdInvitePath,
+  familyInviteShareText,
+} from './types/familyInvite.js'
+export type { HouseholdInviteSource } from './types/familyInvite.js'

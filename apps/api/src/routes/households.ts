@@ -3,19 +3,22 @@
  *
  *   GET    /households/me                        — read current household (auth)
  *   PATCH  /households/me            { name }    — owner-only rename
- *   POST   /households/me/invites    { role, email? } — owner generates a token
+ *   POST   /households/me/invites    { role, email?, source?, shared? } — owner generates a token (30 days, one use)
  *   POST   /households/me/invites/:inviteId/revoke   — owner revokes a pending invite
+ *   POST   /households/me/invites/:inviteId/shared   — owner tapped «Enviar por WhatsApp» / «Copiar» (PRO-260)
  *   POST   /households/me/members/:userId/remove     — owner kicks a member
  *   POST   /households/me/leave                       — current user leaves; auto solo household
  *   GET    /invites/:token                            — preview (public, no auth — recipient may not have an account)
  *   POST   /invites/:token/accept                     — accept (auth)
  */
 import { Router } from 'express'
+import { isHouseholdInviteSource } from '@ona/shared'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import {
   loadHouseholdForUser,
   renameHousehold,
   createInvite,
+  markInviteShared,
   revokeInvite,
   removeMember,
   leaveHousehold,
@@ -101,7 +104,9 @@ router.post('/households/me/invites', async (req: AuthRequest, res) => {
     }
     const role = req.body?.role === 'child' ? 'child' : 'member'
     const email = typeof req.body?.email === 'string' ? req.body.email : null
-    const result = await createInvite(req.userId!, current.id, role, email)
+    // Where it was prepared (PRO-263 counts by moment); `shared` = Mimo hands it over now.
+    const source = isHouseholdInviteSource(req.body?.source) ? req.body.source : 'casa'
+    const result = await createInvite(req.userId!, current.id, role, email, { source, shared: req.body?.shared === true })
     res.status(201).json(result)
   } catch (err) {
     if (err instanceof NotHouseholdOwnerError) {
@@ -127,6 +132,24 @@ router.post('/households/me/invites/:inviteId/revoke', async (req: AuthRequest, 
       return
     }
     console.error('Revoke invite error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+router.post('/households/me/invites/:inviteId/shared', async (req: AuthRequest, res) => {
+  try {
+    await markInviteShared(req.userId!, String(req.params.inviteId))
+    res.status(204).send()
+  } catch (err) {
+    if (err instanceof HouseholdNotFoundError) {
+      res.status(404).json({ error: 'Invite not found' })
+      return
+    }
+    if (err instanceof NotHouseholdOwnerError) {
+      res.status(403).json({ error: err.message })
+      return
+    }
+    console.error('Shared invite error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

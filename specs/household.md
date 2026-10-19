@@ -11,7 +11,8 @@ A "household" is the shared unit that owns menus, shopping lists, favourites and
 - A registered user lands on a one-member household called **"Mi casa"** with role `owner`.
 - The owner can:
   - Rename the household (`PATCH /households/me`).
-  - Generate an invite for role `member` or `child`. The token is 32 hex chars and expires after 7 days.
+  - Generate an invite for role `member` or `child`. The token is 32 hex chars, expires after **30 days** (`HOUSEHOLD_INVITE_TTL_DAYS`, was 7 until PRO-260) and works **once**.
+  - Send it from «Mi casa» with **«Enviar por WhatsApp»** (opens `wa.me` with the message already written and the link) or **«Copiar»** (copies the same message). See «Invitar al hogar por WhatsApp» below.
   - Revoke any pending invite before it's consumed.
   - Remove any non-owner member.
 - Any member (including the owner) can leave their household via `POST /households/me/leave`:
@@ -22,7 +23,17 @@ A "household" is the shared unit that owns menus, shopping lists, favourites and
 - An authed user can accept at `POST /invites/:token/accept`. The accept call:
   - Atomically marks the invite consumed and inserts the `household_members` row.
   - Updates `users.primary_household_id` so subsequent reads scope to the new household.
-  - Rejects with 410 `InviteExpiredError` if the token is already consumed or past its `expires_at`.
+  - Rejects with 410 `InviteExpiredError` if the token is already consumed or past its `expires_at`. The consume is atomic (`UPDATE … WHERE consumed_at IS NULL`, before the membership insert), so two people opening the same link at once can't both join.
+
+## Invitar al hogar por WhatsApp (PRO-260, D-088)
+
+«Familia en el mismo hogar»: the couple or the family in the same account, so both see the menu and the list.
+
+- In `/profile/casa`, every pending invite shows its link plus **«Enviar por WhatsApp»** and **«Copiar»** (`components/household/FamilyInviteShare.tsx`). The message (`familyInviteShareText` in `@ona/shared`): «Te invito a nuestra casa en Mimoia: así compartimos el menú de la semana y la lista de la compra, y lo que uno apunta lo ve el otro. Entra con este enlace (vale 30 días): <enlace>». No health claims.
+- The first tap of either stamps `household_invites.shared_at` (`POST /households/me/invites/:id/shared`, owner-only, idempotent): an invite prepared but never handed on keeps it null.
+- Every invite records **where it was prepared** in `household_invites.source` (`HOUSEHOLD_INVITE_SOURCES`): `casa` (Mi casa, and every invite before 2026-10-20), `alta`, `compra`, `mimo`. `POST /households/me/invites` takes `source` (unknown → `casa`) and `shared: true` (Mimo hands the link over in the same reply, so it counts as sent at once). Migration `0074_household_invite_source.sql` (additive).
+- Mimo (`invite_to_household`, web chat and WhatsApp, D-051) creates the invite with `source: 'mimo'` and gives the same written message; in the web chat also the `wa.me` link to send it in one tap.
+- Not «Invitar a otro hogar» (PRO-163), which brings a different household to Mimoia with the account's referral link.
 
 ## REST Surface
 
@@ -52,12 +63,12 @@ The 0011 migration includes an **idempotent backfill** (NOT EXISTS guards) so ev
 - **Register fallback.** If the auto-create solo-household helper throws during registration, we swallow the error and let the auth middleware surface `code: 'NO_HOUSEHOLD'` on the next read — registration must never fail because of household plumbing.
 - **Owner self-leave.** The leaver gets a new solo household; the next-oldest member of the original household is promoted to owner. The original household never ends up ownerless.
 - **Pending vs consumed invites.** `pendingInvites` in `HouseholdDetails` only includes invites with `consumed_at IS NULL` AND `expires_at > now()`.
-- **Email field on invites is informational.** Today we don't email anything — the owner copies the share URL manually. The field is stored to give future automation a target.
+- **Email field on invites is informational.** Today we don't email anything — the owner sends the link by WhatsApp or copies it. The field is stored to give future automation a target.
 - **Mimo's monthly budget is per person, not per household.** `ADVISOR_MONTHLY_BUDGET_EUR` caps each account's own spend (`users.advisor_spend_micros`, see [Advisor](./advisor.md)); members of a household don't share one cap.
 
 ## Frontend
 
-- `/profile/casa` — on phones the members/invites column is `grid-cols-1` (`minmax(0,1fr)`) so the long `/invites/<token>` URL truncates instead of widening the cards past the screen edge (fixed 2026-10-14, pinned by `e2e/household-casa.spec.ts`). Owner sees full management UI (rename, invite, revoke, remove). Members see the member list and can leave. Since PRO-40 (2026-10-10) the secondary actions live in "···" sheets: the header one ("Cambiar nombre" — owner; tapping the name still renames — and "Salir del hogar"), one per member ("Quitar del hogar") and one per pending invite ("Revocar invitación"). "Invitar a alguien" → role → "Crear invitación" and "Copiar enlace" stay inline.
+- `/profile/casa` — each pending invite: role, «Caduca <fecha>», the link, «Enviar por WhatsApp» and «Copiar» (PRO-260; the old icon that copied only the link is gone). On phones the members/invites column is `grid-cols-1` (`minmax(0,1fr)`) so the long `/invites/<token>` URL truncates instead of widening the cards past the screen edge (fixed 2026-10-14, pinned by `e2e/household-casa.spec.ts`). Owner sees full management UI (rename, invite, revoke, remove). Members see the member list and can leave. Since PRO-40 (2026-10-10) the secondary actions live in "···" sheets: the header one ("Cambiar nombre" — owner; tapping the name still renames — and "Salir del hogar"), one per member ("Quitar del hogar") and one per pending invite ("Revocar invitación"). "Invitar a alguien" → role → "Crear invitación" and "Copiar enlace" stay inline.
 - `/invites/[token]` — public preview page; if the visitor isn't authed, the accept button routes through `/register?next=/invites/:token`, and registration returns them to the invite (`next` honoured since 2026-10, see [Auth](./auth.md)).
 - `/profile` links to `/profile/casa` from the "Memoria del asistente" section's button row.
 
@@ -110,4 +121,7 @@ Edge cases:
 - `apps/api/src/index.ts` — mount order (`publicHouseholdRouter` before `userRoutes`)
 - `apps/web/src/app/profile/casa/page.tsx` — household management UI
 - `apps/web/src/app/invites/[token]/page.tsx` — public preview + accept page
-- `apps/web/e2e/household-casa.spec.ts` — Playwright regression for the happy path
+- `apps/web/e2e/household-casa.spec.ts` — Playwright regression for the happy path and «Enviar por WhatsApp» at 390 px (PRO-260)
+- `packages/shared/src/types/familyInvite.ts` — TTL, sources, `familyInviteShareText` (tests `apps/api/src/tests/familyInvite.test.ts`)
+- `apps/web/src/components/household/FamilyInviteShare.tsx` — «Enviar por WhatsApp» + «Copiar»
+- `apps/api/src/db/migrations/0074_household_invite_source.sql` — `household_invites.source`, `shared_at`

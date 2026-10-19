@@ -41,8 +41,11 @@ export interface MetricsInput {
   currentWeek: Week
   /** Households with any meaningful activity in a week. */
   activity: HouseholdWeek[]
-  /** Households that have a menu whose `week_start` is that week. */
-  menus: HouseholdWeek[]
+  /**
+   * Households that have a menu whose `week_start` is that week, with when
+   * the household's first menu for that week was created (ISO, PRO-246).
+   */
+  menus: Array<HouseholdWeek & { firstCreatedAt?: string | null }>
   /** Days a household interacted with its shopping list. */
   shoppingDays: HouseholdDay[]
   /** Household creation day. */
@@ -63,6 +66,10 @@ export interface WeeklyMetrics {
   partial: boolean
   activeHouseholds: number
   resolvedWeekHouseholds: number
+  /** Households with a menu whose week_start is this week (PRO-246). */
+  menuHouseholds: number
+  /** …of which the first one was created before Monday 00:00 Madrid (PRO-246). */
+  menuReadyByMondayHouseholds: number
   newHouseholds: number
   costEur: CostBreakdown
   internalCostEur: number
@@ -160,6 +167,12 @@ export function buildWeekly(input: MetricsInput): WeeklyMetrics[] {
     const menuSet = menus.get(week) ?? new Set<string>()
     const shopSet = shopped.get(week) ?? new Set<string>()
     const resolved = [...menuSet].filter((h) => shopSet.has(h)).length
+    const mondayCutoff = madridMidnightUtc(week).getTime()
+    const readyByMonday = new Set(
+      input.menus
+        .filter((m) => m.week === week && m.firstCreatedAt && new Date(m.firstCreatedAt).getTime() < mondayCutoff)
+        .map((m) => m.householdId),
+    )
     const weekCosts = input.costs.filter((c) => c.week === week)
     const counted = weekCosts.filter((c) => !c.internal)
     const costEur = costBreakdown(counted)
@@ -170,6 +183,8 @@ export function buildWeekly(input: MetricsInput): WeeklyMetrics[] {
       partial: week === input.currentWeek,
       activeHouseholds,
       resolvedWeekHouseholds: resolved,
+      menuHouseholds: menuSet.size,
+      menuReadyByMondayHouseholds: readyByMonday.size,
       newHouseholds: signups.get(week)?.size ?? 0,
       costEur,
       internalCostEur: eur(internalMicros),
@@ -280,6 +295,10 @@ export const DEFINITIONS = {
     'Distinct households with at least one meaningful action in the week: generated a menu, logged a cooked meal, used the shopping list (checked / in-stock / added an item), created a recipe, sent a WhatsApp message to Mimo, or triggered a paid AI feature (talking to Mimo typed or spoken, recipe import, image). Weeks before 2026-10-09 also count OpenAI Realtime voice sessions (retired, D-023). Opening a screen is not tracked.',
   resolvedWeekHouseholds:
     'Households that (a) have a menu whose week_start is that week AND (b) used the shopping list (checked an item, toggled in-stock, or added an item — web or assistant) during that week or the Saturday/Sunday right before it. Opening the list does not count: the list row is rewritten on every read, including by the WhatsApp shopping reminder.',
+  menuHouseholds:
+    'Households with a menu whose week_start is that week (generated, regenerated or emptied — any menu row for the week). Counts only.',
+  menuReadyByMondayHouseholds:
+    "Of menuHouseholds, those whose first menu for that week was created before 00:00 of that Monday, Europe/Madrid: they prepared the week before it started. A later regenerate doesn't move the first creation time.",
   newHouseholds: 'Households created (at registration) that week and still primary for a counted user.',
   costEur:
     'Estimated provider cost (EUR) from the cost ledger for counted users plus system jobs (userId null, e.g. the daily conversation reviewer), split by provider and feature. Prices in config/pricing.ts; USD converted with ADVISOR_EUR_PER_USD. WhatsApp service messages sent by Mimo are recorded one row each (feature whatsapp_service): 0 € for the first 1,000 of the month, €0.0166 from the 1,001st.',
@@ -390,7 +409,8 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
   `)
 
   const menusQ = db.execute(sql`
-    SELECT COALESCE(m.household_id, u.primary_household_id)::text AS household_id, to_char(m.week_start, 'YYYY-MM-DD') AS week
+    SELECT COALESCE(m.household_id, u.primary_household_id)::text AS household_id, to_char(m.week_start, 'YYYY-MM-DD') AS week,
+           MIN(m.created_at) AS first_created_at
       FROM menus m JOIN users u ON u.id = m.user_id
       WHERE m.week_start >= ${fromDay}::date AND ${counted}
         AND COALESCE(m.household_id, u.primary_household_id) IS NOT NULL
@@ -449,7 +469,11 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
     weeks,
     currentWeek: weeks[weeks.length - 1],
     activity: (activity.rows as any[]).map((r) => ({ householdId: r.household_id, week: r.week })),
-    menus: (menuRows.rows as any[]).map((r) => ({ householdId: r.household_id, week: r.week })),
+    menus: (menuRows.rows as any[]).map((r) => ({
+      householdId: r.household_id,
+      week: r.week,
+      firstCreatedAt: r.first_created_at ? new Date(r.first_created_at).toISOString() : null,
+    })),
     shoppingDays: (shopping.rows as any[]).map((r) => ({ householdId: r.household_id, day: r.day })),
     signups: (signups.rows as any[]).map((r) => ({ householdId: r.household_id, day: r.day })),
     costs: (costs.rows as any[]).map((r) => ({

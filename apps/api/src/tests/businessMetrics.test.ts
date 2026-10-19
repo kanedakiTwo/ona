@@ -161,6 +161,39 @@ describe('buildWeekly', () => {
   })
 })
 
+describe('menu households per week (PRO-246): who prepared the week, and who had it before Monday', () => {
+  it('menuHouseholds = distinct households with a menu for that week; menuReadyByMondayHouseholds = first one created before Monday 00:00 Madrid', () => {
+    const weekly = buildWeekly(
+      input({
+        menus: [
+          { householdId: 'h1', week: '2026-09-28', firstCreatedAt: '2026-09-26T09:00:00Z' }, // Saturday
+          { householdId: 'h2', week: '2026-09-28', firstCreatedAt: '2026-09-28T08:00:00Z' }, // Monday morning
+          { householdId: 'h3', week: '2026-09-28', firstCreatedAt: null }, // unknown → not ready
+          { householdId: 'h1', week: '2026-10-05', firstCreatedAt: '2026-10-04T20:00:00Z' }, // Sunday 22:00 Madrid
+          { householdId: 'h9', week: '2026-09-14', firstCreatedAt: '2026-09-10T09:00:00Z' }, // outside the window
+        ],
+      }),
+    )
+    expect(weekly.map((w) => w.menuHouseholds)).toEqual([0, 3, 1])
+    expect(weekly.map((w) => w.menuReadyByMondayHouseholds)).toEqual([0, 1, 1])
+  })
+
+  it('the Monday cut-off is 00:00 Madrid, not UTC (CEST: 22:00 UTC on Sunday)', () => {
+    const at = (iso: string) =>
+      buildWeekly(input({ menus: [{ householdId: 'h1', week: '2026-10-05', firstCreatedAt: iso }] }))[2].menuReadyByMondayHouseholds
+    expect(at('2026-10-04T21:59:59Z')).toBe(1) // Sunday 23:59:59 in Madrid
+    expect(at('2026-10-04T22:00:00Z')).toBe(0) // Monday 00:00 in Madrid
+    expect(at('2026-10-04T23:30:00Z')).toBe(0) // still Sunday in UTC, already Monday in Madrid
+  })
+
+  it('in winter (CET) the cut-off is 23:00 UTC on Sunday', () => {
+    const at = (iso: string) =>
+      buildWeekly(input({ weeks: ['2026-11-02'], currentWeek: '2026-11-02', menus: [{ householdId: 'h1', week: '2026-11-02', firstCreatedAt: iso }] }))[0].menuReadyByMondayHouseholds
+    expect(at('2026-11-01T22:59:00Z')).toBe(1)
+    expect(at('2026-11-01T23:00:00Z')).toBe(0)
+  })
+})
+
 describe('eventsByFeature (PRO-247): how many paid calls sit behind each feature', () => {
   const costs: MetricsInput['costs'] = [
     { week: '2026-09-28', provider: 'anthropic', feature: 'whatsapp_guided', micros: 40_000, events: 17, unpriced: 0, internal: false },

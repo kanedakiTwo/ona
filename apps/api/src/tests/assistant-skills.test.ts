@@ -1232,6 +1232,9 @@ describe('skill export coverage', () => {
     // with get_school_menu + set_school_menu_days (menú del cole, PRO-224,
     // tested in schoolMenuSkills.test.ts).
     expect(skills.length).toBe(70)
+    // with plan_freezer_items (repaso del congelador, PRO-228, tested in
+    // pantryFreezer.test.ts).
+    expect(skills.length).toBe(69)
   })
 
   it('every skill has a unique name', () => {

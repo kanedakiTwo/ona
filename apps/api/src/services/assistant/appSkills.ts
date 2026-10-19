@@ -881,7 +881,7 @@ interface PantryRow { id: string; name: string; quantity: number; unit: string; 
 const updatePantry: SkillDefinition = {
   name: 'update_pantry',
   description:
-    'Actualiza la despensa real: action add ("he comprado 1 kg de arroz"), set (fija la cantidad), remove ("se acabo el aceite"). expiresAt opcional YYYY-MM-DD.',
+    'Actualiza la despensa real: action add ("he comprado 1 kg de arroz"), set (fija la cantidad), remove ("se acabo el aceite"). expiresAt opcional YYYY-MM-DD. location: donde esta (nevera, congelador o despensa), p. ej. "he congelado 4 pechugas" → congelador; con set y solo location lo cambia de sitio.',
   parameters: {
     type: 'object',
     properties: {
@@ -890,6 +890,7 @@ const updatePantry: SkillDefinition = {
       quantity: { type: 'number' },
       unit: { type: 'string' },
       expiresAt: { type: 'string', description: 'YYYY-MM-DD' },
+      location: { type: 'string', enum: ['nevera', 'congelador', 'despensa'] },
     },
     required: ['action', 'name'],
   },
@@ -898,6 +899,8 @@ const updatePantry: SkillDefinition = {
     const hit = bestMatch(rows, p.name, (r) => r.name)
     const b = toBuyable(p.quantity, p.unit)
     const exp = typeof p.expiresAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.expiresAt) ? p.expiresAt : undefined
+    // PRO-228: where it is; a move restarts its date in the new place.
+    const location = ['nevera', 'congelador', 'despensa'].includes(p.location) ? (p.location as string) : undefined
     if (p.action === 'remove') {
       if (!hit) return text(`"${p.name}" no estaba en la despensa.`)
       await api(ctx)('DELETE', `/pantry/${hit.id}`)
@@ -909,15 +912,17 @@ const updatePantry: SkillDefinition = {
         ...(quantity != null ? { quantity } : {}),
         ...(b.unit ? { unit: b.unit } : {}),
         ...(exp ? { expiresAt: exp } : {}),
+        ...(location ? { location } : {}),
       })
-      return text(`Hecho: "${hit.name}" actualizado en la despensa${quantity != null ? ` (${quantity} ${b.unit ?? hit.unit})` : ''}.`)
+      return text(`Hecho: "${hit.name}" actualizado en la despensa${quantity != null ? ` (${quantity} ${b.unit ?? hit.unit})` : ''}${location ? ` (${location})` : ''}.`)
     }
     await api(ctx)('POST', '/pantry', {
       name: String(b.suffix ? `${p.name} (${b.suffix})` : p.name).slice(0, 80),
       ...(b.quantity != null ? { quantity: b.quantity, unit: b.unit } : {}),
       ...(exp ? { expiresAt: exp } : {}),
+      ...(location ? { location } : {}),
     })
-    return text(`Hecho: "${p.name}" añadido a la despensa.`)
+    return text(`Hecho: "${p.name}" añadido a la despensa${location && location !== 'despensa' ? ` (${location})` : ''}.`)
   },
 }
 

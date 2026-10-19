@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { api, ApiError } from "@/lib/api"
 import { enqueue } from "@/lib/pwa/offlineQueue"
-import type { MenuFit } from "@ona/shared"
+import type { MenuFit, WeekPlan } from "@ona/shared"
 
 interface MealSlot {
   recipeId: string
@@ -62,7 +62,7 @@ export function useGenerateMenu() {
     /** `empty: true` skips the matcher and creates a row with all 7 days
      *  scaffolded per the user's mealTemplate but every slot empty
      *  (`dishes: []`). Powers "Vaciar semana" + "Empezar de cero". */
-    mutationFn: (params: { userId: string; weekStart: string; empty?: boolean; force?: boolean }) =>
+    mutationFn: (params: { userId: string; weekStart: string; empty?: boolean; force?: boolean; weekPlan?: WeekPlan }) =>
       api.post<Menu>("/menu/generate", params),
     onError: (err) => {
       // 409 MENU_NOT_EMPTY: the week has dishes we didn't know about (an

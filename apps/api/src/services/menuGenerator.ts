@@ -23,7 +23,9 @@ import {
   MENU_GENERATION,
 } from '@ona/shared'
 import { applyTemplateTapers } from './taper.js'
-import type { DayMenu, DayTemplate, DayTimeBudget, Meal, Season, Sex, ActivityLevel, LockedSlots } from '@ona/shared'
+import type { DayMenu, DayTemplate, DayTimeBudget, Meal, Season, Sex, ActivityLevel, LockedSlots, WeekPlan } from '@ona/shared'
+import { applyWeekPlan } from './weekPlan.js'
+import { ensureFridgeRecipe, loadFridgeTerms, recipesUsingFridge, rememberFridge } from './fridgeBoost.js'
 import { findRecipeForSlot, normaliseEquipment, type RecipeWithIngredients } from './recipeMatcher.js'
 import { findForCourse } from './courseAwareMatcher.js'
 import { dishCountFor, coursesFor } from './menuDishes.js'
@@ -449,6 +451,7 @@ export async function generateMenu(
   existingDays?: DayMenu[],
   bannedRecipeIds?: Set<string>,
   skippedDays?: Set<number>,
+  weekPlan?: WeekPlan,
 ): Promise<{ days: DayMenu[]; warnings: string[] }> {
   // 1. Fetch user profile
   const [user] = await db
@@ -474,18 +477,30 @@ export async function generateMenu(
   // as «Fijo: …» at the end (withFixedMeals). The fixed list lives in the
   // saved settings blob even when a custom template is passed.
   const fixedMeals = fixedMealsFromTemplate(settings?.template)
-  const template = templateWithoutFixed(normalizeMealTemplate(rawTemplate) ?? defaultTemplate(), fixedMeals)
   // Per-slot diner counts (only present when the profile's plantilla uses the
   // numeric shape `{ [day]: { [meal]: number } }`). Slots that didn't carry an
   // explicit count keep `servings` undefined and fall back to the household
   // multiplier in the shopping-list aggregator.
-  const mealDiners = extractMealDiners(rawTemplate)
+  // PRO-225: «¿Alguna comida fuera?» / «¿Viene alguien?» shape this week
+  // only (copies; the saved plantilla is never written).
+  const { template: plannedTemplate, mealDiners } = applyWeekPlan(
+    normalizeMealTemplate(rawTemplate) ?? defaultTemplate(),
+    extractMealDiners(rawTemplate),
+    weekPlan,
+    (d, m) => !!(existingDays?.[d]?.[m] && lockedSlots[String(d)]?.[m]),
+  )
+  const template = templateWithoutFixed(plannedTemplate, fixedMeals)
   // Per-meal-type dish count from the same junk-drawer blob:
   // `{ mealDishCounts: { lunch: 2, dinner: 3 } }`. Absent = all 1-dish.
   const mealDishCounts = extractMealDishCounts(rawTemplate)
 
   // Fetch all recipes with ingredients
   const allRecipes = await loadMatchableRecipes(userId, db)
+
+  // PRO-229 · «¿Qué te queda en la nevera?»: what was said goes into the
+  // despensa (nevera); recipes that use what's in the fridge weigh more.
+  await rememberFridge(userId, weekPlan?.fridge, db).catch(() => {})
+  const fridgeRecipeIds = recipesUsingFridge(allRecipes, await loadFridgeTerms(userId, db).catch(() => []))
 
   // Identify recipes whose nutritionPerServing isn't cached yet — they get a
   // tiny fitness penalty so the algorithm prefers fully-mapped alternatives.
@@ -544,6 +559,7 @@ export async function generateMenu(
   // 5b. Onboarding answers: dishes they love join the favourites weighting;
   // time limits come from weekTimeBudgets (onboardingPreferences.ts).
   for (const id of recipesMatchingDishes(allRecipes, user.favoriteDishes)) favoriteRecipeIds.add(id)
+  for (const id of fridgeRecipeIds) favoriteRecipeIds.add(id)
 
   // 5c. «¿Qué tal?» (PRO-111): 5 stars weigh like a favourite, 1 star never
   // comes out on its own. «Afina tu menú» (PRO-146): «Me encanta» weighs like
@@ -601,11 +617,37 @@ export async function generateMenu(
     if (bestFitness < MENU_GENERATION.OPTIMAL_FITNESS) break
   }
 
+  // PRO-229: if the draw left out everything that uses the fridge, put one in
+  // (first free lunch/dinner it fits, Monday first), with the same matcher rules.
+  const withFridge = (days: DayMenu[]) =>
+    ensureFridgeRecipe(
+      days,
+      fridgeRecipeIds,
+      (dayIndex, meal, used) =>
+        findForCourse(allRecipes.filter((r) => fridgeRecipeIds.has(r.id)), null, {
+          meal: meal as Meal,
+          season,
+          usedRecipeIds: used,
+          restrictions,
+          favoriteRecipeIds: rated.favoriteRecipeIds,
+          likedRecipeIds: rated.likedRecipeIds,
+          bannedRecipeIds: rated.bannedRecipeIds,
+          dayIndex,
+          dislikes,
+          availableEquipment,
+          timeBudget: timeBudgetByDay?.[dayIndex] ?? null,
+        }),
+      lockedSlots,
+      skippedDays,
+    ).days
+
+
+  // Order: the fridge dish (PRO-229) on the drawn week, then tápers (PRO-223), then fixed meals (PRO-218).
   const fixedOpts = { lockedSlots, existingDays, skippedDays, mealDiners }
   // PRO-223: the plantilla's «días de táper» — that lunch is a táper of the dinner before.
   // Fixed meals (PRO-218) go last, so a fixed slot wins over a táper.
   const finish = (days: DayMenu[]) =>
-    withFixedMeals(applyTemplateTapers(days, rawTemplate, lockedSlots, skippedDays ?? []), fixedMeals, fixedOpts)
+    withFixedMeals(applyTemplateTapers(withFridge(days), rawTemplate, lockedSlots, skippedDays ?? []), fixedMeals, fixedOpts)
 
   if (bestDays) {
     return { days: finish(bestDays), warnings: bestWarnings }

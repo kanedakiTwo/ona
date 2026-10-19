@@ -45,6 +45,8 @@ import { budgetKeyFor, loadFullBudgetState, recentNoticeKinds, recordNotices } f
 import { isAwakeTime } from '../notifications/hours.js'
 import { HOUSEHOLD_NOTICE_KINDS, householdNoticeRecipient, type HouseholdMember } from '../notifications/recipient.js'
 import { taperTomorrow } from '../taper.js'
+import { listPantryForUser } from '../pantryStore.js'
+import { freezerItemsDue } from '@ona/shared'
 
 /** Per-kind templates (WHATSAPP_TEMPLATES), parsed once. */
 const TEMPLATES = parseTemplateMap(env.WHATSAPP_TEMPLATES)
@@ -329,6 +331,8 @@ const COOLDOWN_MS: Record<ProactiveKind, number> = {
   cooking_reminder: DAILY_BRIEF_COOLDOWN_MS,
   dinner_checkin: DAILY_BRIEF_COOLDOWN_MS,
   shopping_reminder: 3 * 24 * 60 * 60 * 1000,
+  // PRO-228: «once a month» is checked by calendar month in planProactive.
+  freezer_review: 0,
 }
 
 /**
@@ -380,6 +384,10 @@ export async function runProactiveTick(now: Date = new Date()): Promise<void> {
           const menu = await latestMenuForWeek(link.userId, mondayOf(parts.isoDate, parts.weekday))
           return menu ? taperTomorrow(menu.days as DayMenu[], parts.weekday) : null
         },
+        lastFreezerReviewAt: async () =>
+          (await store.recentOutboundKinds(link.phone, new Date(now.getTime() - 40 * 24 * 60 * 60 * 1000))).get('freezer_review') ?? null,
+        freezerItemsDue: async () =>
+          freezerItemsDue(await listPantryForUser(link.userId, undefined, { location: 'congelador' }), now),
         webUrl: env.WEB_PUBLIC_URL,
       })
       if (planned.length === 0) continue

@@ -936,6 +936,15 @@ async function handleSchoolMenu(
   return true
 }
 
+/** How long after the Sunday message a bare photo still answers «¿Qué te queda en la nevera?». */
+export const FRIDGE_PHOTO_WINDOW_MS = 12 * 60 * 60 * 1000
+
+/** True when the last thing Mimo sent (in the rows given) is the Sunday planning message. */
+export function askedForFridge(rows: ReadonlyArray<{ direction?: string | null; kind?: string | null; status?: string | null }>): boolean {
+  const lastOut = [...rows].reverse().find((r) => r.direction === 'out' && r.status !== 'failed' && r.kind !== 'ack')
+  return lastOut?.kind === 'weekly_nudge'
+}
+
 async function handleImage(
   msg: InboundMessage,
   userId: string,
@@ -957,6 +966,12 @@ async function handleImage(
     images: [{ mediaType: mimeType, data: media.buffer.toString('base64') }],
   }
   if (photoIntent(msg.text) === 'ask' || !deps.importRecipeFromImage) return forMimo
+  // PRO-229: a photo with no caption right after the Sunday «¿Qué te queda en
+  // la nevera?» is the fridge, not a recipe: Mimo reads it.
+  if (!msg.text?.trim()) {
+    const recent = await store.loadHistoryRows(msg.from, new Date(now.getTime() - FRIDGE_PHOTO_WINDOW_MS), userId)
+    if (askedForFridge(recent)) return { ...forMimo, text: 'Esto es lo que me queda en la nevera.' }
+  }
 
   // Reading a recipe photo always takes a while (vision + ingredient matching).
   acker.now(COPY.ackPhoto)

@@ -3,6 +3,7 @@ import { mealEntriesForDay, recipeLinkLines, recipesOfDay, shortRecipeLink } fro
 import type { OutboundMessage } from './render.js'
 import type { GuideSpec } from './guided.js'
 import { taperReminderLine } from '../taper.js'
+import { freezerReviewDue, freezerReviewGuide, freezerReviewMessages, isFreezerReviewWindow, type FreezerItem } from './freezerReview.js'
 
 /**
  * Pure planning for messages Mimoia sends first (the Instinct-style "it texts
@@ -26,6 +27,7 @@ export const PROACTIVE_KINDS = [
   'cooking_reminder',
   'dinner_checkin',
   'shopping_reminder',
+  'freezer_review',
 ] as const
 export type ProactiveKind = (typeof PROACTIVE_KINDS)[number]
 
@@ -36,6 +38,7 @@ export const PROACTIVE_LABELS: Record<ProactiveKind, string> = {
   cooking_reminder: 'aviso de empezar a cocinar',
   dinner_checkin: '"¿hiciste la cena?"',
   shopping_reminder: 'recordatorio de la compra',
+  freezer_review: 'repaso del congelador (una vez al mes)',
 }
 
 /**
@@ -133,8 +136,20 @@ export function isDailyBriefWindow(p: MadridParts, breakfastTime: string | null 
 export const DAILY_BRIEF_COOLDOWN_MS = 20 * 60 * 60 * 1000
 export const WEEKLY_NUDGE_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000
 
+/**
+ * PRO-225: the questions asked before planning go in the same Sunday message
+ * (not another one). Answered in free text («el jueves cenamos fuera, el
+ * sábado somos 6»), they shape only next week's menu (`generate_weekly_menu`
+ * `mealsOut` / `guests`); «Sí, prepáralo» generates it as usual.
+ */
+export const WEEK_PLAN_QUESTIONS = ['¿Alguna comida fuera de casa esta semana?', '¿Viene alguien?'] as const
+/** PRO-229: once a week, in this same Sunday message (not another one); text or a photo. */
+export const FRIDGE_QUESTION = '¿Qué te queda en la nevera?'
+
 export const WEEKLY_NUDGE_TEXT =
-  'Domingo de planificar: ¿te preparo el menú de la semana que viene?'
+  'Domingo de planificar: ¿te preparo el menú de la semana que viene?\n\n' +
+  `Antes, por si acaso: ${WEEK_PLAN_QUESTIONS.join(' ')} ${FRIDGE_QUESTION} ` +
+  'Dímelo con tus palabras o mándame una foto de la nevera (p. ej. «el jueves cenamos fuera, el sábado somos 6, queda medio calabacín») y lo tengo en cuenta solo esa semana.'
 
 export function formatDailyBrief(day: DayMenu | null | undefined, webUrl: string): string | null {
   const entries = mealEntriesForDay(day).filter((e) => e.meal !== 'breakfast')
@@ -243,8 +258,17 @@ export function shoppingReminderGuide(pending: string[], webUrl: string): GuideS
 
 export const WEEKLY_NUDGE_GUIDE: GuideSpec = {
   kind: 'weekly_nudge',
-  facts: ['Es domingo y la semana que viene aún no tiene menú.', 'Botones debajo: «Sí, prepáralo» / «Ahora no»'],
-  required: [],
+  facts: [
+    'Es domingo y la semana que viene aún no tiene menú.',
+    'Botones debajo: «Sí, prepáralo» / «Ahora no»',
+    // PRO-225: both questions, in this same message, to answer in free text.
+    `Pregunta antes de planificar, tal cual: «${WEEK_PLAN_QUESTIONS[0]}»`,
+    `Pregunta antes de planificar, tal cual: «${WEEK_PLAN_QUESTIONS[1]}»`,
+    'Se contestan con texto libre (p. ej. «el jueves cenamos fuera, el sábado somos 6») y solo cambian esa semana.',
+    // PRO-229: the fridge question goes in the same message; a photo of the fridge also works.
+    `Pregunta, tal cual: «${FRIDGE_QUESTION}» (vale contestar con texto o con una foto de la nevera)`,
+  ],
+  required: [...WEEK_PLAN_QUESTIONS, FRIDGE_QUESTION],
 }
 
 function capitalize(s: string): string {
@@ -278,6 +302,10 @@ export interface ProactiveInput {
   askRating?: (recipeId: string) => Promise<boolean>
   /** PRO-223: tápers of tomorrow that come from tonight's dinner (null if none). */
   taperTonight?: () => Promise<{ recipeNames: string[]; count: number } | null>
+  /** PRO-228: when the last freezer review went out (any time), null if never. */
+  lastFreezerReviewAt?: () => Promise<Date | null>
+  /** PRO-228: freezer rows that went in 4+ weeks ago. */
+  freezerItemsDue?: () => Promise<FreezerItem[]>
   webUrl: string
 }
 
@@ -354,6 +382,18 @@ export async function planProactive(input: ProactiveInput): Promise<PlannedMessa
     }
   }
 
+  // PRO-228: once a month, only with something 4+ weeks in the freezer.
+  // Priority 2 of the weekly cap (FREEZER_REVIEW_PRIORITY, PRO-215).
+  if (
+    can('freezer_review') && isFreezerReviewWindow(p) && input.freezerItemsDue && input.lastFreezerReviewAt &&
+    freezerReviewDue(p, await input.lastFreezerReviewAt())
+  ) {
+    const items = await input.freezerItemsDue()
+    if (items.length > 0) {
+      out.push({ kind: 'freezer_review', messages: freezerReviewMessages(items), guide: freezerReviewGuide(items) })
+    }
+  }
+
   if (can('weekly_nudge') && isWeeklyNudgeWindow(p) && !(await input.hasNextWeekMenu())) {
     out.push({
       kind: 'weekly_nudge',
@@ -381,7 +421,8 @@ export function anyProactiveWindow(p: MadridParts, breakfastTime: string | null,
     couldNeedCookingReminder(p, dinnerTime) ||
     isDinnerCheckinWindow(p, dinnerTime) ||
     isShoppingReminderWindow(p) ||
-    isWeeklyNudgeWindow(p)
+    isWeeklyNudgeWindow(p) ||
+    isFreezerReviewWindow(p)
   )
 }
 

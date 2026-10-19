@@ -43,6 +43,7 @@ export const GUIDED_KINDS = [
   'shopping_reminder',
   'weekly_nudge',
   'first_steps',
+  'freezer_review',
 ] as const
 export type GuidedKind = (typeof GUIDED_KINDS)[number]
 
@@ -86,9 +87,18 @@ export const MESSAGE_GUIDES: Record<GuidedKind, MessageGuide> = {
   },
   weekly_nudge: {
     purpose: 'El domingo, ofrecer preparar el menú de la semana que viene (los botones responden Sí / Ahora no).',
-    mustCarry: 'La pregunta de si le preparas el menú de la semana que viene.',
-    tone: 'Una o dos frases, de domingo tranquilo, sin presionar.',
-    maxChars: 260,
+    // PRO-225: the questions before planning go in this same message.
+    mustCarry:
+      'La pregunta de si le preparas el menú de la semana que viene y, tal cual, las preguntas de antes de planificar («¿Alguna comida fuera de casa esta semana?», «¿Viene alguien?» y «¿Qué te queda en la nevera?»), diciendo que puede contestarlas con sus palabras (o con una foto de la nevera) y que solo cambian esa semana.',
+    tone: 'Dos o tres frases, de domingo tranquilo, sin presionar.',
+    maxChars: 520,
+    asks: true,
+  },
+  freezer_review: {
+    purpose: 'Una vez al mes: contar qué lleva un mes o más en el congelador y ofrecer meterlo en el menú de las dos próximas semanas (los botones responden Sí / Ahora no).',
+    mustCarry: 'Cada cosa del congelador con su nombre exacto (y desde cuándo, si cabe) y, tal cual, la pregunta «¿Lo meto en el menú de estas semanas?».',
+    tone: 'Práctico y amable, sin reñir por tenerlo olvidado. Una lista corta.',
+    maxChars: 600,
     asks: true,
   },
   first_steps: {

@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { Meal } from '../constants/enums.js'
 import type { Dish } from './menuDish.js'
+import { weekPlanSchema } from './weekPlan.js'
 
 export interface MealSlot {
   /** Slot-level diner override; replaces the household default for every dish in this slot. */
@@ -103,6 +104,11 @@ export const generateMenuSchema = z.object({
    * "Vaciar semana" sends it. Stops a failed GET from wiping a week.
    */
   force: z.boolean().optional(),
+  /**
+   * PRO-225 · «Antes de planificar»: meals out and guests for this week
+   * only. Shapes the generated week, never the saved plantilla.
+   */
+  weekPlan: weekPlanSchema.optional(),
 })
 
 export const lockMealSchema = z.object({

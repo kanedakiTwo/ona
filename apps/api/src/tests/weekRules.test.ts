@@ -152,7 +152,7 @@ describe('rule 5 · aprovechar un ingrediente en dos platos', () => {
     expect(res.detail).not.toMatch(/ajo|cebolla/)
     expect(res.score).toBeLessThan(1)
   })
-  it('passes with two shared fresh ingredients (calabacín, espinacas)', () => {
+  it('passes with a shared fresh ingredient (here two: calabacín, espinacas)', () => {
     const days = week([[R.salmon, R.crema], [R.garbanzos, R.tortilla]])
     const res = rule(days, 'aprovechar')
     expect(res.ok).toBe(true)

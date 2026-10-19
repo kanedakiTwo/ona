@@ -48,8 +48,8 @@ export const WEEK_RULES_CONFIG = {
   minSlotsForCounts: 6,
   /** Una cena con más kcal por ración que esto no es ligera. */
   lightDinnerMaxKcal: 600,
-  /** Ingredientes compartidos que se buscan (más da la nota completa). */
-  sharedIngredientsTarget: 2,
+  /** Ingredientes frescos compartidos que se piden (al menos uno). */
+  sharedIngredientsTarget: 1,
 } as const
 
 export const WEEK_RULE_LABEL: Record<WeekRuleId, string> = {

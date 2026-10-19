@@ -16,7 +16,7 @@ Mimo thinks the household's week with everything Mimoia knows about it, and fixe
 | `pescado` | fish or seafood as the main in 2–3 lunches/dinners (a fish stock doesn't count) | fewer than 6 slots, or `fishAllowed: false` |
 | `proteina_mismo_dia` | no day has the same main protein family (pollo, ternera, cerdo, cordero, pescado, huevo, legumbre, tofu…) at lunch and dinner | no day with both |
 | `plato_repetido` (PRO-238) | no recipe — and no two recipes with the same name — twice in the week, except a dish marked `leftover` or `freezer` (sobras, táper) | empty week |
-| `aprovechar` | ≥ 2 fresh ingredients shared by two different dishes (staples such as aceite, ajo, cebolla, huevo, especias don't count; 1 shared = 0.5) | fewer than 2 different dishes |
+| `aprovechar` | at least one fresh ingredient shared by two different dishes (staples such as aceite, ajo, cebolla, huevo, especias don't count) | fewer than 2 different dishes |
 | `cenas_ligeras` | every dinner is light: not a heavy dish type (guiso, arroz, pasta, frito, asado, legumbre…), not red meat or pulses as the main, ≤ 600 kcal per serving when known | the household didn't ask (`lightDinners`, see `asksLightDinners`: «cenas ligeras», «cenar ligero», «por la noche algo ligero») |
 | `temporada` | every recipe fits the season (`seasonFit`, else `seasons`, empty = all year) | empty week |
 

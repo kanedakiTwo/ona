@@ -327,6 +327,7 @@ export {
   founderPriceIfSubscribing,
   founderOfferStands,
   founderOfferText,
+  founderPriceAmounts,
   euros,
 } from './types/plans.js'
 export type {

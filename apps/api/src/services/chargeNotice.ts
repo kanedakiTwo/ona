@@ -52,7 +52,7 @@ export function chargeNoticeEmail(i: ChargeNoticeInput): EmailMessage {
     button: { label: 'Cancelar mi suscripción', url: cancelUrl(web) },
     after: [
       'Para cambiar de plan o de tarjeta, entra en Perfil → Suscripción.',
-      'El cobro lo hace Stripe; en tu extracto aparecerá «LINK.COM* MIMOIA».',
+      `El cobro y el recibo los hace Link, de Stripe, que te vende la suscripción de ${BRAND_NAME}; en tu extracto aparecerá «LINK.COM* MIMOIA».`,
     ],
     footer: [`Te escribimos porque tienes una suscripción a ${BRAND_NAME} y su primer cobro es dentro de ${CHARGE_NOTICE_DAYS} días o menos.`],
     assets: brandAssets(web),

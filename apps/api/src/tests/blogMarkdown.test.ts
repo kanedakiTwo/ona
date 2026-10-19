@@ -5,13 +5,13 @@
  * what decides what the public sees: a bad header must throw (the build fails)
  * instead of the article silently vanishing or showing, and unsafe links must
  * never become <a>. Also checks that every real article in
- * apps/web/content/blog parses.
+ * apps/web/content/blog parses, has its own cover and that its images exist.
  *
  * Run: pnpm --filter @ona/api test src/tests/blogMarkdown.test.ts
  */
 
 import { describe, expect, it } from 'vitest'
-import { readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import {
   formatBlogDate,
@@ -131,6 +131,7 @@ describe('slugs and dates', () => {
 
 describe('real articles in apps/web/content/blog', () => {
   const dir = resolve(__dirname, '../../../web/content/blog')
+  const publicDir = resolve(__dirname, '../../../web/public')
   const files = readdirSync(dir).filter((f) => f.endsWith('.md'))
 
   it('there is at least the example article', () => {
@@ -141,6 +142,21 @@ describe('real articles in apps/web/content/blog', () => {
     it(`${file} has a valid name and header`, () => {
       expect(isValidSlug(file.slice(0, -3))).toBe(true)
       expect(() => parseArticle(readFileSync(join(dir, file), 'utf8'))).not.toThrow()
+    })
+
+    // The card and the hero show the cover right above the text: a cover that
+    // is a body photo, or a crop of one named after it, reads twice in a row.
+    it(`${file} has its own cover, and every local image exists`, () => {
+      const { meta, body } = parseArticle(readFileSync(join(dir, file), 'utf8'))
+      const bodyImages = parseMarkdown(body).flatMap((b) => (b.type === 'image' ? [b.src] : []))
+      const stem = (src: string) => src.replace(/\.[a-z]+$/i, '')
+      for (const src of bodyImages) {
+        expect(meta.imagen).not.toBe(src)
+        expect(stem(meta.imagen).startsWith(`${stem(src)}-`)).toBe(false)
+      }
+      for (const src of [meta.imagen, ...bodyImages].filter((s) => s.startsWith('/'))) {
+        expect(existsSync(join(publicDir, src)), src).toBe(true)
+      }
     })
   }
 })

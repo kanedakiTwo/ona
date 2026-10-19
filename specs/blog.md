@@ -26,8 +26,10 @@ Public articles on mimoia.com (PRO-92). Each article is a Markdown file in the r
   ```
 - Body Markdown subset: `##` / `###` headings (a `#` in the body becomes `<h2>`: the page `<h1>` is the title), paragraphs, `-` and `1.` lists, `>` quotes, `---` rules, `![alt](src)` images (`/…` or `https://…` only), and inline **bold**, *italic*, `code` and `[links](url)` (site paths, `#`, `https://`, `http://`, `mailto:`; external links open in a new tab with `rel="noopener noreferrer"`). Anything else, raw HTML included, is shown as text — the page renders parsed tokens as React elements, never HTML.
 - A bad header (missing field, date not `AAAA-MM-DD`, `publicado` not `true`/`false`, image not `/` or `https://`) or a bad file name **throws**: the build and the unit test fail instead of the article silently vanishing.
+- The cover (`imagen`) is its own photo: never one used in the body, not even a crop of it. The listing card and the hero already show it right above the text, so a repeat reads twice in a row.
 - Copy follows the claims guide: no health claims (guarded by `publicHealthClaims.test.ts`, which scans every article, published or not, and `components/blog/`), brand Mimoia (`brandName.test.ts`). Never copy text from `kb/`.
 - The repo ships one **example article, unpublished**: `decidir-la-cena-cansa-mas-que-cocinarla.md`.
+- **Published:** `la-cocina-sera-nuestro-refugio.md` (2026-10-19, by Miguel; photos in `apps/web/public/blog/`: the cover `refugio-pan-portada.jpg`, hands breaking a loaf, generated with gpt-image-2 (D-090) and chosen by Miguel the same day so it does not repeat the inline photo `origen-panel-cocina.jpg`, the real reward chart; the waitlist link carries `?ref=articulo-refugio`). Its line «Vamos dejando entrar a los hogares por tandas» must change on 2026-11-16, when sign-up opens (MKT-30).
 
 ## SEO
 

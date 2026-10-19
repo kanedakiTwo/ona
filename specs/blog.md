@@ -28,6 +28,7 @@ Public articles on mimoia.com (PRO-92). Each article is a Markdown file in the r
 - A bad header (missing field, date not `AAAA-MM-DD`, `publicado` not `true`/`false`, image not `/` or `https://`) or a bad file name **throws**: the build and the unit test fail instead of the article silently vanishing.
 - Copy follows the claims guide: no health claims (guarded by `publicHealthClaims.test.ts`, which scans every article, published or not, and `components/blog/`), brand Mimoia (`brandName.test.ts`). Never copy text from `kb/`.
 - The repo ships one **example article, unpublished**: `decidir-la-cena-cansa-mas-que-cocinarla.md`.
+- **Published:** `la-cocina-sera-nuestro-refugio.md` (2026-10-19, by Miguel; cover and inline photo in `apps/web/public/blog/`; the waitlist link carries `?ref=articulo-refugio`). Its line «Vamos dejando entrar a los hogares por tandas» must change on 2026-11-16, when sign-up opens (MKT-30).
 
 ## SEO
 

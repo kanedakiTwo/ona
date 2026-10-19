@@ -531,7 +531,11 @@ describe('borrador: members', () => {
     const lista = [typed('alubias blancas'), typed('alubias rojas')]
     const { byShop } = draftOrdersFromItems(lista, SUPER)
     const l = byShop[0].lines[0]
-    expect(l.members).toHaveLength(2)
+    // Tecleados sin cantidad: cada grupo va con su «1 u» (placeholder), no con 0.
+    expect(l.members?.map((m) => [m.name, m.quantity, m.unit])).toEqual([['alubias blancas', 1, 'u'], ['alubias rojas', 1, 'u']])
+    const grupos = buildExtensionBasket([l])
+    expect(grupos).toHaveLength(2)
+    for (const g of grupos) expect(g.grams).toBeGreaterThan(0)
     // Lo que hace patchOrder al poner 800 g en la línea.
     const input = { ...inputOf(l), quantity: 800, unit: 'g' as const, quantitySource: 'user' as const, members: null }
     const editada = buildLine(input, 'supermercado', {}, {})

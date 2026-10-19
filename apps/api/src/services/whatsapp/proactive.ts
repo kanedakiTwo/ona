@@ -111,11 +111,13 @@ export const WEEKLY_NUDGE_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000
  * `mealsOut` / `guests`); «Sí, prepáralo» generates it as usual.
  */
 export const WEEK_PLAN_QUESTIONS = ['¿Alguna comida fuera de casa esta semana?', '¿Viene alguien?'] as const
+/** PRO-229: once a week, in this same Sunday message (not another one); text or a photo. */
+export const FRIDGE_QUESTION = '¿Qué te queda en la nevera?'
 
 export const WEEKLY_NUDGE_TEXT =
   'Domingo de planificar: ¿te preparo el menú de la semana que viene?\n\n' +
-  `Antes, por si acaso: ${WEEK_PLAN_QUESTIONS.join(' ')} ` +
-  'Dímelo con tus palabras (p. ej. «el jueves cenamos fuera, el sábado somos 6») y lo tengo en cuenta solo esa semana.'
+  `Antes, por si acaso: ${WEEK_PLAN_QUESTIONS.join(' ')} ${FRIDGE_QUESTION} ` +
+  'Dímelo con tus palabras o mándame una foto de la nevera (p. ej. «el jueves cenamos fuera, el sábado somos 6, queda medio calabacín») y lo tengo en cuenta solo esa semana.'
 
 export function formatDailyBrief(day: DayMenu | null | undefined, webUrl: string): string | null {
   const entries = mealEntriesForDay(day).filter((e) => e.meal !== 'breakfast')
@@ -181,8 +183,10 @@ export const WEEKLY_NUDGE_GUIDE: GuideSpec = {
     `Pregunta antes de planificar, tal cual: «${WEEK_PLAN_QUESTIONS[0]}»`,
     `Pregunta antes de planificar, tal cual: «${WEEK_PLAN_QUESTIONS[1]}»`,
     'Se contestan con texto libre (p. ej. «el jueves cenamos fuera, el sábado somos 6») y solo cambian esa semana.',
+    // PRO-229: the fridge question goes in the same message; a photo of the fridge also works.
+    `Pregunta, tal cual: «${FRIDGE_QUESTION}» (vale contestar con texto o con una foto de la nevera)`,
   ],
-  required: [...WEEK_PLAN_QUESTIONS],
+  required: [...WEEK_PLAN_QUESTIONS, FRIDGE_QUESTION],
 }
 
 function capitalize(s: string): string {

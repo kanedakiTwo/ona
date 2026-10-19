@@ -2,7 +2,8 @@
  * PRO-225 · «Antes de planificar» on /menu: two optional taps above
  * «Generar mi menú». Skipped, the week is generated as always; answered
  * («Jue · Cena fuera», «Mar: somos 6»), that week has no Thursday dinner and
- * 6 diners on Tuesday, and the saved plantilla is untouched.
+ * 6 diners on Tuesday, and the saved plantilla is untouched. PRO-229: what's
+ * left in the fridge goes in the same step and lands in the despensa (nevera).
  */
 import { test, expect, type Page } from '@playwright/test'
 import { completeOnboarding, registerFreshUser } from './_helpers'
@@ -65,16 +66,27 @@ test('answering them: no Thursday dinner, 6 on Tuesday, plantilla untouched', as
   }
   await expect(count).toHaveText('6')
 
+  // PRO-229: what's left in the fridge, in the same step.
+  await page.getByRole('button', { name: '¿Qué te queda en la nevera?' }).click()
+  await page.getByLabel('Lo que queda en la nevera').fill('medio calabacín, nata')
+
   const [res] = await Promise.all([
     page.waitForResponse((r) => r.url().endsWith('/menu/generate') && r.request().method() === 'POST' && !!r.request().postDataJSON()?.weekPlan),
     page.getByRole('button', { name: 'Generar mi menú' }).click(),
   ])
-  expect(res.request().postDataJSON().weekPlan).toEqual({ mealsOut: [{ day: 3, meal: 'dinner' }], guests: [{ day: 1, diners: 6 }] })
+  expect(res.request().postDataJSON().weekPlan).toEqual({
+    mealsOut: [{ day: 3, meal: 'dinner' }],
+    guests: [{ day: 1, diners: 6 }],
+    fridge: ['medio calabacín', 'nata'],
+  })
   expect(res.status()).toBe(201)
   const menu = await res.json()
   expect(menu.days[3].dinner).toBeUndefined()
   expect(menu.days[1].lunch?.servings).toBe(6)
   expect(menu.days[1].dinner?.servings).toBe(6)
+
+  const fridge = await (await page.request.get(`${API}/pantry?location=nevera`, { headers })).json()
+  expect(fridge.map((r: { name: string }) => r.name).sort()).toEqual(['medio calabacín', 'nata'])
 
   const settingsAfter = await (await page.request.get(`${API}/user/${userId}/settings`, { headers })).text()
   expect(settingsAfter).toBe(settingsBefore)

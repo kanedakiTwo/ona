@@ -604,14 +604,15 @@ export function weekHasDishes(days: DayMenu[] | undefined): boolean {
  * alguien?». Structured fields from the model win; the user's raw text is
  * read as a fallback. Out-of-range entries are dropped. Undefined when empty.
  */
-export function weekPlanFromParams(params: { mealsOut?: unknown; guests?: unknown; answer?: unknown } | undefined): WeekPlan | undefined {
+export function weekPlanFromParams(params: { mealsOut?: unknown; guests?: unknown; fridge?: unknown; answer?: unknown } | undefined): WeekPlan | undefined {
   const structured = weekPlanSchema.safeParse({
     mealsOut: Array.isArray(params?.mealsOut) ? params!.mealsOut : undefined,
     guests: Array.isArray(params?.guests) ? params!.guests : undefined,
+    fridge: Array.isArray(params?.fridge) ? (params!.fridge as unknown[]).filter((f) => typeof f === 'string' && f.trim()).slice(0, 20) : undefined,
   })
   let plan: WeekPlan | undefined = structured.success ? structured.data : undefined
-  if (weekPlanIsEmpty(plan) && typeof params?.answer === 'string' && params.answer.trim()) {
-    plan = parseWeekPlanAnswer(params.answer)
+  if ((plan?.mealsOut?.length ?? 0) === 0 && (plan?.guests?.length ?? 0) === 0 && typeof params?.answer === 'string' && params.answer.trim()) {
+    plan = { ...parseWeekPlanAnswer(params.answer), ...(plan?.fridge?.length ? { fridge: plan.fridge } : {}) }
   }
   return weekPlanIsEmpty(plan) ? undefined : plan
 }
@@ -649,12 +650,17 @@ const generateWeeklyMenu: SkillDefinition = {
           required: ['day', 'diners'],
         },
       },
+      fridge: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Lo que le queda en la nevera (respuesta a «¿Qué te queda en la nevera?», por texto o leyendo su foto), una cosa por elemento tal como lo dice: ["medio calabacin", "nata"]. Se apunta en la despensa (nevera) y el menu da mas peso a las recetas que lo usan.',
+      },
       answer: { type: 'string', description: 'El texto tal cual del usuario cuando contesta a las preguntas de antes de planificar (p. ej. «el jueves cenamos fuera y el sabado somos 6»). Se usa solo si no pasas mealsOut ni guests.' },
     },
     required: [],
   },
   async handler(
-    params: { nextWeek?: boolean; replaceExisting?: boolean; mealsOut?: WeekPlan['mealsOut']; guests?: WeekPlan['guests']; answer?: string },
+    params: { nextWeek?: boolean; replaceExisting?: boolean; mealsOut?: WeekPlan['mealsOut']; guests?: WeekPlan['guests']; fridge?: string[]; answer?: string },
     ctx: SkillContext,
   ): Promise<SkillResult> {
     const { userId, db } = ctx

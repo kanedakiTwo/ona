@@ -23,6 +23,7 @@ import {
 } from '@ona/shared'
 import type { DayMenu, DayTemplate, DayTimeBudget, Meal, Season, Sex, ActivityLevel, LockedSlots, WeekPlan } from '@ona/shared'
 import { applyWeekPlan } from './weekPlan.js'
+import { ensureFridgeRecipe, loadFridgeTerms, recipesUsingFridge, rememberFridge } from './fridgeBoost.js'
 import { findRecipeForSlot, normaliseEquipment, type RecipeWithIngredients } from './recipeMatcher.js'
 import { findForCourse } from './courseAwareMatcher.js'
 import { dishCountFor, coursesFor } from './menuDishes.js'
@@ -435,6 +436,11 @@ export async function generateMenu(
   // Fetch all recipes with ingredients
   const allRecipes = await loadMatchableRecipes(userId, db)
 
+  // PRO-229 · «¿Qué te queda en la nevera?»: what was said goes into the
+  // despensa (nevera); recipes that use what's in the fridge weigh more.
+  await rememberFridge(userId, weekPlan?.fridge, db).catch(() => {})
+  const fridgeRecipeIds = recipesUsingFridge(allRecipes, await loadFridgeTerms(userId, db).catch(() => []))
+
   // Identify recipes whose nutritionPerServing isn't cached yet — they get a
   // tiny fitness penalty so the algorithm prefers fully-mapped alternatives.
   const nutritionRows = await db
@@ -486,6 +492,7 @@ export async function generateMenu(
   // 5b. Onboarding answers: dishes they love join the favourites weighting;
   // time limits come from weekTimeBudgets (onboardingPreferences.ts).
   for (const id of recipesMatchingDishes(allRecipes, user.favoriteDishes)) favoriteRecipeIds.add(id)
+  for (const id of fridgeRecipeIds) favoriteRecipeIds.add(id)
 
   // 5c. «¿Qué tal?» (PRO-111): 5 stars weigh like a favourite, 1 star never
   // comes out on its own. «Afina tu menú» (PRO-146): «Me encanta» weighs like
@@ -538,8 +545,32 @@ export async function generateMenu(
     if (bestFitness < MENU_GENERATION.OPTIMAL_FITNESS) break
   }
 
+  // PRO-229: if the draw left out everything that uses the fridge, put one in
+  // (first free lunch/dinner it fits, Monday first), with the same matcher rules.
+  const withFridge = (days: DayMenu[]) =>
+    ensureFridgeRecipe(
+      days,
+      fridgeRecipeIds,
+      (dayIndex, meal, used) =>
+        findForCourse(allRecipes.filter((r) => fridgeRecipeIds.has(r.id)), null, {
+          meal: meal as Meal,
+          season,
+          usedRecipeIds: used,
+          restrictions,
+          favoriteRecipeIds: rated.favoriteRecipeIds,
+          likedRecipeIds: rated.likedRecipeIds,
+          bannedRecipeIds: rated.bannedRecipeIds,
+          dayIndex,
+          dislikes,
+          availableEquipment,
+          timeBudget: timeBudgetByDay?.[dayIndex] ?? null,
+        }),
+      lockedSlots,
+      skippedDays,
+    ).days
+
   if (bestDays) {
-    return { days: bestDays, warnings: bestWarnings }
+    return { days: withFridge(bestDays), warnings: bestWarnings }
   }
 
   const fallback = buildRandomMenu(
@@ -559,5 +590,5 @@ export async function generateMenu(
     mealDishCounts,
     rated.likedRecipeIds,
   )
-  return { days: fallback.days, warnings: fallback.warnings }
+  return { days: withFridge(fallback.days), warnings: fallback.warnings }
 }

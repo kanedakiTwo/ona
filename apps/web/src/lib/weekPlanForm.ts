@@ -1,4 +1,4 @@
-import type { WeekPlan } from "@ona/shared"
+import { splitFridgeAnswer, type WeekPlan } from "@ona/shared"
 
 /**
  * PRO-225 · «Antes de planificar» on /menu: what the two optional questions
@@ -7,7 +7,7 @@ import type { WeekPlan } from "@ona/shared"
  * how many eat at home that day. Undefined when nothing was answered, so
  * skipping the questions sends exactly what «Generar mi menú» always sent.
  */
-export function buildWeekPlan(out: Iterable<string>, guests: Record<number, number>): WeekPlan | undefined {
+export function buildWeekPlan(out: Iterable<string>, guests: Record<number, number>, fridgeText: string = ""): WeekPlan | undefined {
   const mealsOut = [...out]
     .map((key) => {
       const [d, meal] = key.split(":")
@@ -19,10 +19,13 @@ export function buildWeekPlan(out: Iterable<string>, guests: Record<number, numb
     .map(([d, n]) => ({ day: Number(d), diners: Math.round(n) }))
     .filter((g) => Number.isInteger(g.day) && g.day >= 0 && g.day <= 6 && g.diners >= 1 && g.diners <= 24)
     .sort((a, b) => a.day - b.day)
-  if (mealsOut.length === 0 && guestList.length === 0) return undefined
+  // PRO-229: «¿Qué te queda en la nevera?» → one entry per thing said.
+  const fridge = splitFridgeAnswer(fridgeText)
+  if (mealsOut.length === 0 && guestList.length === 0 && fridge.length === 0) return undefined
   return {
     ...(mealsOut.length ? { mealsOut } : {}),
     ...(guestList.length ? { guests: guestList } : {}),
+    ...(fridge.length ? { fridge } : {}),
   }
 }
 

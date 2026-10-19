@@ -57,5 +57,7 @@ export function describeWeekPlan(plan: WeekPlan | null | undefined): string {
   for (const g of plan?.guests ?? []) {
     parts.push(`${g.meal ? `${MEAL_NAMES[g.meal]} del ` : ''}${DAY_NAMES[g.day]}: ${g.diners} comensales`)
   }
+  // PRO-229: what's left in the fridge (saved in the despensa, weighs in the menu).
+  if (plan?.fridge?.length) parts.push(`en la nevera: ${plan.fridge.join(', ')}`)
   return parts.join('; ')
 }

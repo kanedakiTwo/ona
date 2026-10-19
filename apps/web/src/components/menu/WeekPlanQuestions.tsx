@@ -8,9 +8,10 @@ const DAY_SHORT = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 const MEAL_LABEL: Record<string, string> = { breakfast: "Desayuno", lunch: "Comida", snack: "Merienda", dinner: "Cena" }
 
 /**
- * PRO-225 · «Antes de planificar»: two optional taps above «Generar mi menú»
- * («¿Alguna comida fuera de casa?», «¿Viene alguien?»). Closed by default:
- * skipping them is just generating. What's answered shapes only this week.
+ * PRO-225 · «Antes de planificar»: optional taps above «Generar mi menú»
+ * («¿Alguna comida fuera de casa?», «¿Viene alguien?» and, PRO-229, «¿Qué te
+ * queda en la nevera?»). Closed by default: skipping them is just generating.
+ * What's answered shapes only this week; the fridge goes into the despensa.
  */
 export function WeekPlanQuestions({
   meals,
@@ -22,13 +23,14 @@ export function WeekPlanQuestions({
   defaultDiners: number
   onChange: (plan: WeekPlan | undefined) => void
 }) {
-  const [open, setOpen] = useState<"out" | "guests" | null>(null)
+  const [open, setOpen] = useState<"out" | "guests" | "fridge" | null>(null)
+  const [fridge, setFridge] = useState("")
   const [out, setOut] = useState<Set<string>>(new Set())
   const [guests, setGuests] = useState<Record<number, number>>({})
 
   useEffect(() => {
-    onChange(buildWeekPlan(out, guests))
-  }, [out, guests, onChange])
+    onChange(buildWeekPlan(out, guests, fridge))
+  }, [out, guests, fridge, onChange])
 
   const toggleOut = (key: string) =>
     setOut((prev) => {
@@ -79,7 +81,34 @@ export function WeekPlanQuestions({
         >
           ¿Viene alguien?{guestCount > 0 ? ` · ${guestCount}` : ""}
         </button>
+        <button
+          type="button"
+          aria-expanded={open === "fridge"}
+          onClick={() => setOpen(open === "fridge" ? null : "fridge")}
+          className={pill(open === "fridge" || fridge.trim().length > 0)}
+        >
+          ¿Qué te queda en la nevera?
+        </button>
       </div>
+
+      {open === "fridge" && (
+        <div className="mt-3 rounded-[18px] border border-border bg-cream px-3 py-3">
+          <label className="block">
+            <span className="mb-2 block text-[13px] text-ink-soft">
+              Lo apunto en tu despensa y tiro de ello en el menú. Sepáralo con comas.
+            </span>
+            <textarea
+              value={fridge}
+              onChange={(e) => setFridge(e.target.value)}
+              rows={2}
+              maxLength={400}
+              placeholder="Medio calabacín, nata, dos yogures…"
+              aria-label="Lo que queda en la nevera"
+              className="w-full rounded-xl border border-border-soft bg-paper px-3 py-2 text-[15px] text-ink outline-none focus:border-ink"
+            />
+          </label>
+        </div>
+      )}
 
       {open === "out" && (
         <div className="mt-3 rounded-[18px] border border-border bg-cream px-3 py-3" role="group" aria-label="Comidas fuera de casa">

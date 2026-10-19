@@ -202,6 +202,15 @@ export const env = {
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean),
   /**
+   * Emails (o `@dominio`) que ven «Enviar a <cadena>» en la tarjeta del súper
+   * (specs/shop-orders.md → «Enviar a la extensión del navegador»). Vacía =
+   * nadie: es el interruptor del experimento.
+   */
+  BASKET_EXTENSION_EMAILS: (process.env.BASKET_EXTENSION_EMAILS || '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean),
+  /**
    * Optional approved utility template (one `{{1}}` body variable) used for
    * proactive messages outside Meta's 24 h customer-service window. Without
    * it, proactive messages only go out while the window is open.

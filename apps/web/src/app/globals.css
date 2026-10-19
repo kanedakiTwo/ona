@@ -110,6 +110,15 @@
   --safe-right: env(safe-area-inset-right);
 }
 
+/* PRO-122: below md the tab bar and the floating buttons (Mimo, «Opinión»)
+   take the bottom ~140 px. Scrolling a control into view (focus, links,
+   scrollIntoView) keeps it above them. */
+@media (width < 48rem) {
+  html {
+    scroll-padding-bottom: calc(150px + var(--safe-bottom));
+  }
+}
+
 html, body {
   background: var(--color-cream);
   color: var(--color-ink);

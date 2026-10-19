@@ -1162,6 +1162,8 @@ export const shopOrders = pgTable('shop_orders', {
   quoteSummary: jsonb('quote_summary'),
   confirmationText: text('confirmation_text'),
   finalTotalEur: real('final_total_eur'),
+  /** Último envío a la extensión del navegador (StoredBasketResult); null si nunca. */
+  extensionResult: jsonb('extension_result'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   sentAt: timestamp('sent_at', { withTimezone: true }),

@@ -9,14 +9,16 @@ import {
   type BasketUndoResult,
   type ShopOrder,
 } from "@ona/shared"
-import { api, ApiError } from "@/lib/api"
-import { askExtension, hostOf, pingExtension, SEND_TIMEOUT_MS } from "@/lib/basketExtension"
+import { api, apiFetch, ApiError } from "@/lib/api"
+import { askExtension, hostOf, messageExtension, pingExtension, SEND_TIMEOUT_MS } from "@/lib/basketExtension"
 
 /** ¿Sale «Enviar a <etiqueta>» para la web de esta tienda? */
 export function useBasketExtension(shopWebUrl: string | null) {
+  const host = hostOf(shopWebUrl)
   const status = useQuery<{ enabled: boolean }>({
     queryKey: ["shop-extension-status"],
     queryFn: () => api.get<{ enabled: boolean }>("/shop-extension/status"),
+    enabled: !!host,
     staleTime: 5 * 60_000,
   })
   const ping = useQuery({
@@ -26,22 +28,67 @@ export function useBasketExtension(shopWebUrl: string | null) {
     staleTime: 60_000,
     retry: false,
   })
-  const host = hostOf(shopWebUrl)
   const p = ping.data ?? null
-  return { available: !!(status.data?.enabled && p && host && p.hosts.includes(host)), etiqueta: p?.etiqueta ?? null }
+  return {
+    available: !!(status.data?.enabled && p && host && p.hosts.includes(host)),
+    etiqueta: p?.etiqueta ?? null,
+    /** Se está comprobando (el estado o el ping): mientras tanto no se pinta nada de la extensión. */
+    checking: status.isLoading || ping.isLoading,
+  }
 }
 
 /**
- * La extensión no contestó (tiempo agotado o se cortó) o contestó algo que no
- * es un resultado de envío: no sabemos qué ha pasado en el carro.
+ * La extensión no contestó a tiempo, se cortó o contestó algo que no es un
+ * resultado: no sabemos qué ha pasado en el carro. El mensaje es para la persona.
  */
 export class ExtensionNoAnswer extends Error {
+  constructor(message = "No sabemos si ha entrado; abre tu carro. Si vuelves a pulsar no se duplica.") {
+    super(message)
+    this.name = "ExtensionNoAnswer"
+  }
+}
+
+/**
+ * Tras un envío deshecho («Ya lo he quitado yo»), el reenvío sigue trayendo
+ * aquel envío (la extensión no lo olvidó). Volver a pulsar es seguro.
+ */
+export class ExtensionStaleSend extends Error {
   constructor() {
-    super("sin_respuesta")
+    super("No hemos podido rehacer el envío. Vuelve a pulsar.")
+    this.name = "ExtensionStaleSend"
   }
 }
 
 type Saved = { order: ShopOrder; deshecho: boolean }
+
+/** Tiempo máximo de cada llamada a la API de estas mutaciones. */
+const API_TIMEOUT_MS = 20_000
+/** Espera antes del segundo y del tercer intento. */
+const RETRY_DELAYS_MS = [1_000, 3_000]
+
+function postWithTimeout<T>(path: string, body: unknown): Promise<T> {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
+  return apiFetch<T>(path, { method: "POST", body, signal: ctrl.signal }).finally(() => clearTimeout(timer))
+}
+
+/** Sin red, tiempo agotado o 5xx. Un 4xx no se arregla reintentando (permiso, validación, estado del pedido). */
+function retryable(err: unknown): boolean {
+  if (err instanceof ApiError) return err.status >= 500
+  return err instanceof TypeError || (err instanceof DOMException && err.name === "AbortError")
+}
+
+/** Hasta 3 intentos. Repetir es seguro: el resultado lleva su `envioId` y deshacer dos veces da 409. */
+async function postWithRetries<T>(path: string, body: unknown): Promise<T> {
+  for (let i = 0; ; i++) {
+    try {
+      return await postWithTimeout<T>(path, body)
+    } catch (err) {
+      if (i >= RETRY_DELAYS_MS.length || !retryable(err)) throw err
+      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[i]))
+    }
+  }
+}
 
 /**
  * Manda la cesta del pedido a la extensión. Devuelve su resultado solo si es un
@@ -57,18 +104,8 @@ async function sendToExtension(order: ShopOrder): Promise<BasketSendResult | nul
   return parsed.success ? parsed.data : null
 }
 
-async function postResult(orderId: string, result: BasketSendResult): Promise<Saved> {
-  let last: unknown = null
-  for (let i = 0; i < 3; i++) {
-    try {
-      return await api.post<Saved>(`/shop-orders/${orderId}/extension-result`, result)
-    } catch (err) {
-      last = err
-      // Un 4xx no se arregla reintentando (permiso, validación, estado del pedido).
-      if (err instanceof ApiError && err.status >= 400 && err.status < 500) break
-    }
-  }
-  throw last
+function postResult(orderId: string, result: BasketSendResult): Promise<Saved> {
+  return postWithRetries<Saved>(`/shop-orders/${orderId}/extension-result`, result)
 }
 
 export function useSendToExtension() {
@@ -84,6 +121,8 @@ export function useSendToExtension() {
         result = await sendToExtension(order)
         if (!result) throw new ExtensionNoAnswer()
         saved = await postResult(order.id, result)
+        // Sigue llegando el envío deshecho (la extensión no lo olvidó): no se queda en silencio.
+        if (saved.deshecho) throw new ExtensionStaleSend()
       }
       return saved
     },
@@ -107,16 +146,22 @@ export function useUndoExtensionSend() {
   return useMutation<{ manualNeeded: boolean }, Error, { order: ShopOrder; manual?: boolean }>({
     mutationFn: async ({ order, manual }) => {
       if (!manual) {
-        const r = await askExtension<BasketUndoResult>({ protocolo: BASKET_EXTENSION_PROTOCOL, tipo: "deshacer", pedidoId: order.id }, 60_000)
+        const reply = await messageExtension<BasketUndoResult>(
+          { protocolo: BASKET_EXTENSION_PROTOCOL, tipo: "deshacer", pedidoId: order.id },
+          SEND_TIMEOUT_MS,
+        )
         // Sin extensión en este navegador (otro miembro del hogar, el móvil): se ofrece «Ya lo he quitado yo».
-        if (!r) return { manualNeeded: true }
+        if (reply.kind === "none") return { manualNeeded: true }
+        // Tarda demasiado: puede que siga restando. No es «sin extensión».
+        if (reply.kind === "timeout") throw new ExtensionNoAnswer("No sabemos si se ha quitado; mira tu carro.")
+        const r = reply.value
         if (!r.ok) {
           if (r.error === "nada_que_deshacer") return { manualNeeded: true }
           throw new Error(r.error)
         }
       }
       try {
-        await api.post<ShopOrder>(`/shop-orders/${order.id}/extension-undo`, { manual: !!manual })
+        await postWithRetries<ShopOrder>(`/shop-orders/${order.id}/extension-undo`, { manual: !!manual })
       } catch (err) {
         // Ya estaba deshecho: es un éxito, sin mensaje de error; `onSettled` refresca el pedido.
         if (!alreadyUndone(err)) throw err

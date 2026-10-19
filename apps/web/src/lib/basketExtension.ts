@@ -6,7 +6,11 @@
 import { BASKET_EXTENSION_PROTOCOL, type BasketMessage, type BasketPing } from "@ona/shared"
 
 export const BASKET_EXTENSION_ID = process.env.NEXT_PUBLIC_BASKET_EXTENSION_ID ?? ""
-/** Peor caso de un envío: 40 búsquedas a 1,2 s + carro + 3 relecturas ≈ 70 s. */
+/**
+ * Espera máxima a `enviar` y a `deshacer`. La extensión deja de escribir a los
+ * 150 s y verifica después: 180 s lo cubre. Si aun así se pasa, al volver a
+ * pulsar llega el `repetido` con lo que hizo.
+ */
 export const SEND_TIMEOUT_MS = 180_000
 
 type Runtime = { sendMessage?: (id: string, msg: unknown, cb: (r: unknown) => void) => void; lastError?: unknown }
@@ -17,30 +21,54 @@ function runtime(): Runtime | null {
   return rt?.sendMessage ? rt : null
 }
 
-/** null = no hay extensión, no contesta, da error o se acaba el tiempo. Nunca lanza. */
-export function askExtension<T>(msg: BasketMessage, timeoutMs: number): Promise<T | null> {
+/**
+ * Qué pasó con un mensaje:
+ * - `answer`: la extensión contestó (la forma de `value` está sin comprobar);
+ * - `none`: no hay extensión en este navegador (sin `chrome.runtime`, `lastError`, sin respuesta o error al mandar);
+ * - `timeout`: se acabó el tiempo sin respuesta (puede que la extensión siga trabajando).
+ */
+export type ExtensionReply<T> = { kind: "answer"; value: T } | { kind: "none" } | { kind: "timeout" }
+
+/** Como `askExtension`, pero distingue «no hay extensión» de «se acabó el tiempo». Nunca lanza. */
+export function messageExtension<T>(msg: BasketMessage, timeoutMs: number): Promise<ExtensionReply<T>> {
   const rt = runtime()
-  if (!rt) return Promise.resolve(null)
+  if (!rt) return Promise.resolve({ kind: "none" })
   return new Promise((resolve) => {
     let done = false
-    const finish = (v: T | null) => {
+    const finish = (v: ExtensionReply<T>) => {
       if (done) return
       done = true
       clearTimeout(timer)
       resolve(v)
     }
-    const timer = setTimeout(() => finish(null), timeoutMs)
+    const timer = setTimeout(() => finish({ kind: "timeout" }), timeoutMs)
     try {
-      rt.sendMessage!(BASKET_EXTENSION_ID, msg, (resp) => finish(rt.lastError || resp == null ? null : (resp as T)))
+      rt.sendMessage!(BASKET_EXTENSION_ID, msg, (resp) =>
+        finish(rt.lastError || resp == null ? { kind: "none" } : { kind: "answer", value: resp as T }),
+      )
     } catch {
-      finish(null)
+      finish({ kind: "none" })
     }
   })
 }
 
+/** null = no hay extensión, no contesta, da error o se acaba el tiempo. Nunca lanza. */
+export async function askExtension<T>(msg: BasketMessage, timeoutMs: number): Promise<T | null> {
+  const r = await messageExtension<T>(msg, timeoutMs)
+  return r.kind === "answer" ? r.value : null
+}
+
 export async function pingExtension(): Promise<BasketPing | null> {
   const r = await askExtension<BasketPing>({ protocolo: BASKET_EXTENSION_PROTOCOL, tipo: "ping" }, 1500)
-  return r && r.ok === true && r.protocolo === BASKET_EXTENSION_PROTOCOL && Array.isArray(r.hosts) ? r : null
+  return r &&
+    r.ok === true &&
+    r.protocolo === BASKET_EXTENSION_PROTOCOL &&
+    typeof r.etiqueta === "string" &&
+    r.etiqueta.trim() !== "" &&
+    Array.isArray(r.hosts) &&
+    r.hosts.every((h) => typeof h === "string")
+    ? r
+    : null
 }
 
 export function hostOf(url: string | null | undefined): string | null {

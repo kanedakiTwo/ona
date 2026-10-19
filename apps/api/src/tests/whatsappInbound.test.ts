@@ -12,7 +12,7 @@ import type { LinkWithUser } from '../services/whatsapp/store.js'
 import type { HistoryRow } from '../services/whatsapp/history.js'
 import type { OutboundMessage } from '../services/whatsapp/render.js'
 import { EMPTY_USAGE } from '../services/advisorBudget.js'
-import { AI_DISCLOSURE_FIRST_PERSON } from '@ona/shared'
+import { AI_DISCLOSURE_FIRST_PERSON, BRAND_SUPPORT_EMAIL } from '@ona/shared'
 
 const NOW = new Date('2026-10-06T12:00:00Z')
 const PHONE = '34600111222'
@@ -621,6 +621,16 @@ describe('processInbound — control words (BAJA / ALTA / HUMANO)', () => {
     await processInbound(msg({ text: 'Quiero hablar con una persona' }), t.deps)
     expect(t.chat).not.toHaveBeenCalled()
     expect(t.sent[0].text).toContain('hola@ona.test')
+  })
+
+  it('PRO-179: without SUPPORT_EMAIL, HUMANO and the suspended notice give hola@mimoia.com', async () => {
+    const t = setup()
+    await processInbound(msg({ text: 'Quiero hablar con una persona' }), t.deps)
+    expect(t.sent[0].text).toContain(BRAND_SUPPORT_EMAIL)
+    expect(t.sent[0].text).not.toContain('te invitó')
+    expect(COPY.suspended(undefined)).toContain(BRAND_SUPPORT_EMAIL)
+    expect(COPY.suspended('')).toContain(BRAND_SUPPORT_EMAIL)
+    expect(COPY.suspended(undefined)).not.toContain('te invitó')
   })
 
   it('"para la cena pon lentejas" is a request, not an opt-out', async () => {

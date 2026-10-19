@@ -7,6 +7,9 @@
 import { describe, it, expect } from 'vitest'
 import { basketSendResultSchema, type BasketSendResult, type ShopOrderLine, type StoredBasketResult } from '@ona/shared'
 import { aggregateBasketGaps, decideBasketResult, isBasketExtensionAllowed } from '../services/basketExtension.js'
+import { saveBasketResult } from '../services/shopOrders/store.js'
+import { buildLine } from '../services/shopOrders/lines.js'
+import { shopOrders, users } from '../db/schema.js'
 
 export const okResult = (over: Partial<BasketSendResult> = {}): BasketSendResult => ({
   envioId: 'e1',
@@ -191,5 +194,77 @@ describe('aggregateBasketGaps', () => {
       ['sal', 'busqueda', '300', null, 1],
       ['sal', 'fallida', '300', null, 1],
     ])
+  })
+})
+
+describe('saveBasketResult', () => {
+  type OrderRow = typeof shopOrders.$inferSelect
+  /** Base de datos falsa: el hogar del usuario, el pedido y lo que se escribe en él. */
+  function fakeDb(row: OrderRow) {
+    const writes: Array<Partial<OrderRow>> = []
+    const db = {
+      select: () => ({ from: (table: unknown) => ({ where: () => ({ limit: async () => (table === users ? [{ primaryHouseholdId: row.householdId }] : [row]) }) }) }),
+      update: () => ({
+        set: (values: Partial<OrderRow>) => {
+          writes.push(values)
+          return { where: () => ({ returning: async () => [{ ...row, ...values }] }) }
+        },
+      }),
+    }
+    return { db: db as any, writes }
+  }
+  const input = (key: string, name: string, over: Partial<Parameters<typeof buildLine>[0]> = {}) =>
+    buildLine({ key, sourceItemIds: [`id-${key}`], ingredientId: null, name, quantity: 400, unit: 'g', quantitySource: 'recipe', notes: [], note: null, choice: null, included: true, ...over }, 'supermercado', {}, {})
+  const lines = [
+    input('l1', 'Jamón', { quantity: 100, choice: 'serrano' }),
+    input('l2', 'alubias', {
+      quantity: 800,
+      members: [
+        { name: 'alubias blancas', quantity: 400, unit: 'g', sourceItemIds: ['a'] },
+        { name: 'alubias rojas', quantity: 400, unit: 'g', sourceItemIds: ['b'] },
+      ],
+    }),
+    input('l3', 'sal', { included: false }),
+  ]
+  const row: OrderRow = {
+    id: 'o1',
+    householdId: 'hh1',
+    userId: 'u1',
+    shopId: 's1',
+    shopSnapshot: { name: 'Súper', kind: 'supermercado', channel: 'web', whatsapp: null, email: null, webUrl: 'https://super.example/', phone: null, deliveryMinEur: null, deliveryFeeEur: null },
+    status: 'draft',
+    token: 'tok',
+    lines,
+    estimateEur: null,
+    capEur: null,
+    messageText: '',
+    fulfilment: 'recoger',
+    address: null,
+    shopReplyText: null,
+    quoteSummary: null,
+    confirmationText: null,
+    finalTotalEur: null,
+    extensionResult: null,
+    createdAt: NOW,
+    updatedAt: NOW,
+    sentAt: null,
+    quotedAt: null,
+    approvedAt: null,
+    closedAt: null,
+  }
+
+  it('guarda con el resultado la foto de la cesta del pedido: clave, nombre y elección de cada línea', async () => {
+    const { db, writes } = fakeDb(row)
+    const r = await saveBasketResult('u1', 'o1', okResult(), db)
+    expect(r).toMatchObject({ deshecho: false, guardado: true })
+    expect(r.order.status).toBe('sent')
+    expect(writes).toHaveLength(1)
+    const cesta = [
+      { key: 'l1', name: 'Jamón', choice: 'serrano' },
+      { key: 'l2.1', name: 'alubias blancas', choice: null },
+      { key: 'l2.2', name: 'alubias rojas', choice: null },
+    ]
+    expect((writes[0].extensionResult as StoredBasketResult).cesta).toEqual(cesta)
+    expect(r.order.extensionResult?.cesta).toEqual(cesta)
   })
 })

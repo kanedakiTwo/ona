@@ -13,8 +13,9 @@
 
 import { randomBytes } from 'crypto'
 import { and, asc, desc, eq, gte, inArray } from 'drizzle-orm'
-import { normalizeBuyName, resolveBuyRule, splitCompound } from '@ona/shared'
+import { basketMayBeInCart, buildExtensionBasket, normalizeBuyName, resolveBuyRule, sourceItemsForBasketKey, splitCompound } from '@ona/shared'
 import type {
+  BasketSendResult,
   BuyableUnit,
   DeliveryCheck,
   ShopFulfilment,
@@ -28,11 +29,13 @@ import type {
   ShopSnapshot,
   ShoppingItem,
   LineDecision,
+  StoredBasketResult,
 } from '@ona/shared'
 import { db as defaultDb } from '../../db/connection.js'
 import { householdBuyPrefs, householdShops, shopOrders, shoppingLists } from '../../db/schema.js'
 import { env } from '../../config/env.js'
 import { getPrimaryHouseholdId } from '../scopeResolver.js'
+import { decideBasketResult } from '../basketExtension.js'
 import type { PriceMemory } from './estimate.js'
 import { capForLines, draftOrdersFromItems, sumEstimate } from './draft.js'
 import {
@@ -264,6 +267,7 @@ export function presentOrder(r: OrderRow): ShopOrder {
     blockers,
     delivery: deliveryCheck(lines, fulfilment, shop),
     searchLinks,
+    extensionResult: (r.extensionResult as StoredBasketResult | null) ?? null,
     createdAt: r.createdAt.toISOString(),
     sentAt: r.sentAt?.toISOString() ?? null,
     quotedAt: r.quotedAt?.toISOString() ?? null,
@@ -614,6 +618,42 @@ export async function markSent(userId: string, id: string, db: Db = defaultDb): 
   return update(row.id, { status: 'sent', sentAt: row.sentAt ?? new Date() }, db)
 }
 
+/**
+ * Resultado de la extensión del navegador para la tarjeta del súper (spec: «Rutas»).
+ * Se guarda con la foto de la cesta que salió de este pedido (`buildExtensionBasket`),
+ * para que el agregado de huecos sepa qué era cada clave aunque las líneas cambien.
+ * `guardado` = este resultado se ha guardado (uno por envío): solo entonces cuenta en la métrica.
+ */
+export async function saveBasketResult(userId: string, id: string, incoming: BasketSendResult, db: Db = defaultDb): Promise<{ order: ShopOrder; deshecho: boolean; guardado: boolean }> {
+  const { row } = await loadOrder(userId, id, db)
+  if ((row.shopSnapshot as ShopSnapshot).kind !== 'supermercado') throw new ShopOrderError(400, 'NOT_SUPER', 'Solo para el pedido del súper.')
+  requireStatus(row, ['draft', 'sent'], 'guardar el envío')
+  const cesta = buildExtensionBasket(row.lines as ShopOrderLine[])
+  const d = decideBasketResult((row.extensionResult as StoredBasketResult | null) ?? null, row.status, incoming, new Date(), cesta)
+  if (d.action === 'deshecho') return { order: presentOrder(row), deshecho: true, guardado: false }
+  if (d.action === 'keep') return { order: presentOrder(row), deshecho: false, guardado: false }
+  const order = await update(
+    row.id,
+    { extensionResult: d.stored, status: d.status, sentAt: d.status === 'sent' ? row.sentAt ?? new Date() : row.sentAt },
+    db,
+  )
+  return { order, deshecho: false, guardado: true }
+}
+
+/** Deshacer el envío vivo: vuelve a borrador y apunta el envioId como deshecho. */
+export async function undoBasketSend(userId: string, id: string, db: Db = defaultDb): Promise<ShopOrder> {
+  const { row } = await loadOrder(userId, id, db)
+  requireStatus(row, ['sent'], 'deshacer el envío')
+  const current = (row.extensionResult as StoredBasketResult | null) ?? null
+  if (!current || !basketMayBeInCart(current) || current.deshechoAt) throw new ShopOrderError(409, 'NO_EXTENSION_SEND', 'Este pedido no se envió con la extensión.')
+  const now = new Date().toISOString()
+  return update(
+    row.id,
+    { status: 'draft', sentAt: null, extensionResult: { ...current, deshechoAt: now, deshechos: [...(current.deshechos ?? []), current.envioId] } },
+    db,
+  )
+}
+
 type Parser = (input: Parameters<typeof parseShopReply>[0]) => Promise<ParsedReply | null>
 
 /** The shop answered: parse its reply, assess every line against estimate, band and cap. */
@@ -689,10 +729,15 @@ export async function approveOrder(
 export async function closeOrder(userId: string, id: string, body: { finalTotalEur?: number | null }, db: Db = defaultDb): Promise<ShopOrder> {
   const { row } = await loadOrder(userId, id, db)
   requireStatus(row, OPEN_STATUSES, 'cerrar')
+  const lines = row.lines as ShopOrderLine[]
+  const ext = (row.extensionResult as StoredBasketResult | null) ?? null
+  const viaExtension = !!ext && basketMayBeInCart(ext) && !ext.deshechoAt
   const bought = new Set(
-    (row.lines as ShopOrderLine[])
-      .filter((l) => l.included !== false && l.decision !== 'remove' && l.verdict !== 'no_hay')
-      .flatMap((l) => l.sourceItemIds ?? (l.sourceItemId ? [l.sourceItemId] : [])),
+    viaExtension
+      ? ext!.lineas.filter((r) => r.estado === 'tabla' || r.estado === 'busqueda').flatMap((r) => sourceItemsForBasketKey(lines, r.key))
+      : lines
+          .filter((l) => l.included !== false && l.decision !== 'remove' && l.verdict !== 'no_hay')
+          .flatMap((l) => l.sourceItemIds ?? (l.sourceItemId ? [l.sourceItemId] : [])),
   )
   if (bought.size) {
     const [list] = await db.select().from(shoppingLists).where(eq(shoppingLists.userId, userId)).orderBy(desc(shoppingLists.createdAt)).limit(1)

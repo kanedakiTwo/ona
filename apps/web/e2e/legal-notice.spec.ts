@@ -43,6 +43,14 @@ test('footer → /aviso-legal shows the holder; /privacidad names the controller
   await expect(page.locator('script[src*="cloudflareinsights"]')).toHaveCount(0)
 })
 
+// PRO-179: without NEXT_PUBLIC_SUPPORT_EMAIL (as in CI) the contact is hola@mimoia.com, never «quien te invitó».
+test('/privacidad: the contact falls back to hola@mimoia.com', async ({ page }) => {
+  await page.goto('/privacidad')
+  const main = page.getByTestId('reading-column')
+  await expect(main.locator('a[href="mailto:hola@mimoia.com"]').first()).toBeVisible()
+  await expect(main).not.toContainText('te invitó a la beta')
+})
+
 // PRO-132: Legal's exact precisions on email (Resend, third-party advertising, the newsletter box).
 test('/privacidad: Resend is a US company, no third-party advertising, the new newsletter box', async ({ page }) => {
   await page.goto('/privacidad')
@@ -64,12 +72,4 @@ test('/terminos says what Mimoia is for, in the exact §6 words', async ({ page 
   await page.goto('/terminos')
   await expect(page.getByRole('heading', { level: 2, name: /Para qué sirve Mimoia/ })).toBeVisible({ timeout: 15_000 })
   await expect(page.getByTestId('terms-intended-purpose')).toHaveText(INTENDED_PURPOSE)
-})
-
-// PRO-179: without NEXT_PUBLIC_SUPPORT_EMAIL (as in CI) the contact is hola@mimoia.com, never «quien te invitó».
-test('/privacidad: the contact falls back to hola@mimoia.com', async ({ page }) => {
-  await page.goto('/privacidad')
-  const main = page.getByTestId('reading-column')
-  await expect(main.locator('a[href="mailto:hola@mimoia.com"]').first()).toBeVisible()
-  await expect(main).not.toContainText('te invitó a la beta')
 })

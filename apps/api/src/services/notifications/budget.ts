@@ -44,6 +44,7 @@ export const NOTICE_PRIORITY: Readonly<Record<string, NoticePriority>> = {
   weekly_nudge: 3,
   dinner_checkin: 4,
   daily_brief: 4,
+  family_invite: 4,
 }
 
 /**

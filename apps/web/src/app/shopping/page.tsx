@@ -10,6 +10,8 @@
  * ingredient rows: dashed dividers, 16 px name, JetBrains quantity, a big
  * check. Secondary actions (Compartir lo que queda, Añadir a mano, Pedir a
  * mis tiendas, Cambiar fechas) live in the "···" sheet (`MenuSheet`).
+ * The first time the list opens, once, «Compártela con quien compra contigo»
+ * (PRO-261, `FamilyInviteOffer`) under the header.
  * Desktop (lg+): 1180 px container, aisles as paper cards in 2–3 columns.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -29,6 +31,7 @@ import { share } from '@/lib/pwa/share'
 import { InviteHouseholdButton } from '@/components/referrals/InviteHouseholdButton'
 import { AISLE_LABELS, AISLE_ORDER, aisleLabel } from '@/lib/labels'
 import { activeQuickRange, quickRanges, shiftIso, totalTitle } from '@/lib/shoppingRange'
+import { FamilyInviteOffer, useFamilyOfferOnce } from '@/components/household/FamilyInviteOffer'
 import {
   ListTotalBanner,
   AddManualItemForm,
@@ -114,6 +117,9 @@ export default function ShoppingPage() {
   const tabGroups = groupByAisle(tabItems)
   const aislesInTab = AISLE_ORDER.filter((a) => (tabGroups[a]?.length ?? 0) > 0)
   const effectiveAisle = aisleFilter && aislesInTab.includes(aisleFilter) ? aisleFilter : null
+
+  // «Familia en el mismo hogar» (PRO-261): once, the first time the list is on screen.
+  const familyOffer = useFamilyOfferOnce('compra', !!user && !authLoading && !menuLoading && !!menuId && !!shoppingList)
 
   async function handleExport() {
     haptic.light()
@@ -215,6 +221,13 @@ export default function ShoppingPage() {
             </button>
           </div>
         </header>
+
+        {/* PRO-261: the first time the list opens, once: «Compártela con quien compra contigo». */}
+        {familyOffer.show && (
+          <div className="mt-3 px-5 lg:mt-5 lg:px-0">
+            <FamilyInviteOffer moment="compra" onDismiss={familyOffer.dismiss} />
+          </div>
+        )}
 
         {/* ONE chip row: date range (opens the dates sheet) + aisles (filter).
             On a phone it slides sideways; the trailing spacer keeps a visible

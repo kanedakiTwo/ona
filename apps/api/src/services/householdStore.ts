@@ -10,15 +10,15 @@
  *   - Tokens for invites are 32 random hex chars (16 bytes). The owner
  *     shares the link manually (no email auto-sent).
  */
-import { and, eq, asc, isNotNull } from 'drizzle-orm'
+import { and, eq, asc, isNotNull, isNull } from 'drizzle-orm'
 import { randomBytes } from 'node:crypto'
-import { isFoundingHousehold } from '@ona/shared'
+import { householdInviteExpiresAt, isFoundingHousehold, type HouseholdInviteSource } from '@ona/shared'
 import { db } from '../db/connection.js'
 import { households, householdMembers, householdInvites, users } from '../db/schema.js'
 
 export type HouseholdRole = 'owner' | 'member' | 'child'
 
-const INVITE_TTL_DAYS = 7
+// Invitation links last HOUSEHOLD_INVITE_TTL_DAYS (30, PRO-260) and work once.
 
 export class HouseholdNotFoundError extends Error {
   constructor() {
@@ -181,22 +181,49 @@ export async function createInvite(
   householdId: string,
   role: HouseholdRole = 'member',
   email: string | null = null,
-): Promise<{ token: string; expiresAt: string }> {
+  opts: { source?: HouseholdInviteSource; shared?: boolean } = {},
+): Promise<{ id: string; token: string; expiresAt: string }> {
   await assertHouseholdOwner(inviterId, householdId)
   if (role !== 'member' && role !== 'child') {
     throw new Error('Solo se pueden invitar miembros o niños')
   }
   const token = randomBytes(16).toString('hex')
-  const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000)
-  await db.insert(householdInvites).values({
-    householdId,
-    invitedByUserId: inviterId,
-    role,
-    email: email?.toLowerCase().trim() || null,
-    token,
-    expiresAt,
-  })
-  return { token, expiresAt: expiresAt.toISOString() }
+  const now = new Date()
+  const expiresAt = householdInviteExpiresAt(now)
+  const [row] = await db
+    .insert(householdInvites)
+    .values({
+      householdId,
+      invitedByUserId: inviterId,
+      role,
+      email: email?.toLowerCase().trim() || null,
+      token,
+      expiresAt,
+      source: opts.source ?? 'casa',
+      // Mimo hands the link over in the same reply: it counts as sent.
+      sharedAt: opts.shared ? now : null,
+    })
+    .returning({ id: householdInvites.id })
+  return { id: row.id, token, expiresAt: expiresAt.toISOString() }
+}
+
+/**
+ * «Enviar por WhatsApp» or «Copiar» tapped (PRO-260): stamp the first time
+ * the invitation was handed on. Owner-only; idempotent; a consumed or
+ * unknown invite is a no-op.
+ */
+export async function markInviteShared(userId: string, inviteId: string): Promise<void> {
+  const [invite] = await db
+    .select({ householdId: householdInvites.householdId })
+    .from(householdInvites)
+    .where(eq(householdInvites.id, inviteId))
+    .limit(1)
+  if (!invite) throw new HouseholdNotFoundError()
+  await assertHouseholdOwner(userId, invite.householdId)
+  await db
+    .update(householdInvites)
+    .set({ sharedAt: new Date() })
+    .where(and(eq(householdInvites.id, inviteId), isNull(householdInvites.sharedAt)))
 }
 
 /** Revoke a pending invite. Owner-only. */
@@ -256,6 +283,14 @@ export async function acceptInvite(userId: string, token: string): Promise<House
   if (invite.expiresAt < new Date()) throw new InviteExpiredError()
 
   await db.transaction(async (tx) => {
+    // Mark invite consumed — atomically, so a link works once even if two
+    // people open it at the same time (PRO-260).
+    const taken = await tx
+      .update(householdInvites)
+      .set({ consumedAt: new Date(), consumedByUserId: userId })
+      .where(and(eq(householdInvites.id, invite.id), isNull(householdInvites.consumedAt)))
+      .returning({ id: householdInvites.id })
+    if (taken.length === 0) throw new InviteExpiredError()
     // Add the membership (idempotent — uniqueIndex catches dupes).
     try {
       await tx.insert(householdMembers).values({
@@ -268,11 +303,6 @@ export async function acceptInvite(userId: string, token: string): Promise<House
       if (code !== '23505') throw err
       // already a member — fall through
     }
-    // Mark invite consumed.
-    await tx
-      .update(householdInvites)
-      .set({ consumedAt: new Date(), consumedByUserId: userId })
-      .where(eq(householdInvites.id, invite.id))
     // Set primary household to the one just joined (so the user immediately
     // sees the shared menu / shopping after accepting).
     await tx.update(users).set({ primaryHouseholdId: invite.householdId }).where(eq(users.id, userId))

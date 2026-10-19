@@ -1,5 +1,16 @@
 import type { CookTodayResult } from '../cookToday.js'
-import { AISLES, capitalize, formatQty, inviteHouseholdShareText, prettyName, type ShoppingItem } from '@ona/shared'
+import {
+  AISLES,
+  HOUSEHOLD_INVITE_TTL_DAYS,
+  capitalize,
+  familyInviteShareText,
+  formatQty,
+  householdInvitePath,
+  inviteHouseholdShareText,
+  prettyName,
+  whatsappShareHref,
+  type ShoppingItem,
+} from '@ona/shared'
 import type { SkillContext, SkillDefinition, SkillResult } from './types.js'
 import { appApiFor, AppApiError, type AppApi } from './appApi.js'
 import { madridParts, madridWeekStart } from '../madridTime.js'
@@ -1196,12 +1207,26 @@ const updateWeeklyTemplate: SkillDefinition = {
 
 const inviteToHousehold: SkillDefinition = {
   name: 'invite_to_household',
-  description: 'Crea un enlace de invitacion para que otra persona se una al hogar (comparten menu, lista y despensa). Devuelve el enlace para reenviarlo.',
+  description: 'Crea un enlace de invitacion para que otra persona se una al hogar (comparten menu, lista y despensa). Devuelve el mensaje ya escrito con el enlace para reenviarlo por WhatsApp. Usala tambien cuando el usuario diga que si a tu oferta de mandarle el menu y la lista a su pareja o a quien vive con el.',
   parameters: { type: 'object', properties: { role: { type: 'string', enum: ['member', 'child'] } }, required: [] },
   async handler(p, ctx) {
-    const inv = await api(ctx)<{ token: string; expiresAt?: string }>('POST', '/households/me/invites', { role: p.role === 'child' ? 'child' : 'member' })
-    const url = `${env.WEB_PUBLIC_URL}/invites/${inv.token}`
-    return text(`Hecho: enlace de invitacion (caduca en 7 dias): ${url} — dale este enlace tal cual al usuario para que lo reenvie.`, { url })
+    // PRO-260/263: prepared by Mimo and handed over in this reply (counts as sent).
+    const inv = await api(ctx)<{ token: string; expiresAt?: string }>('POST', '/households/me/invites', {
+      role: p.role === 'child' ? 'child' : 'member',
+      source: 'mimo',
+      shared: true,
+    })
+    const url = `${env.WEB_PUBLIC_URL}${householdInvitePath(inv.token)}`
+    const message = familyInviteShareText(url)
+    const wa = whatsappShareHref(message)
+    const how =
+      ctx.channel === 'whatsapp'
+        ? 'Dale el mensaje tal cual, en un bloque aparte, para que lo reenvie a esa persona.'
+        : `Dale el mensaje tal cual y este enlace para mandarlo por WhatsApp de un toque: ${wa}`
+    return text(
+      `Hecho: invitacion al hogar (caduca en ${HOUSEHOLD_INVITE_TTL_DAYS} dias, sirve una vez). Mensaje para reenviar:\n${message}\n${how}`,
+      { url, message, whatsappHref: wa },
+    )
   },
 }
 

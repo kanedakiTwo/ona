@@ -10,12 +10,14 @@
  *
  * Skin: "D · Luz y foto" (PRO-40). Secondary actions live in "···" sheets:
  * the header one (Cambiar nombre, Salir del hogar), one per member (Quitar
- * del hogar) and one per invite (Revocar invitación). Copying an invite link
- * and creating an invite stay inline.
+ * del hogar) and one per invite (Revocar invitación). Creating an invite and
+ * sending it («Enviar por WhatsApp» with the message written, «Copiar»,
+ * PRO-260) stay inline.
  */
 
 import { useCallback, useEffect, useState } from 'react'
-import { Copy, Plus, LogOut, Pencil, UserMinus, XCircle } from 'lucide-react'
+import { Plus, LogOut, Pencil, UserMinus, XCircle } from 'lucide-react'
+import { HOUSEHOLD_INVITE_TTL_DAYS } from '@ona/shared'
 import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
 import { MenuSheet, SheetAction } from '@/components/menu/MenuSheet'
@@ -30,6 +32,7 @@ import {
 } from '@/components/profile/SubPage'
 import { FoundingBadge } from '@/components/profile/FoundingBadge'
 import { SchoolMenuLink } from '@/components/profile/SchoolMenuLink'
+import { FamilyInviteShare } from '@/components/household/FamilyInviteShare'
 import { SubLoadError, useSlowLoad } from '@/components/profile/SubLoadError'
 
 type Role = 'owner' | 'member' | 'child'
@@ -83,7 +86,6 @@ export default function HouseholdPage() {
   const [newInviteRole, setNewInviteRole] = useState<Role>('member')
   const [busy, setBusy] = useState(false)
   const [sheet, setSheet] = useState<SheetState>(null)
-  const [copiedToken, setCopiedToken] = useState<string | null>(null)
 
   // PRO-143: still loading after 8 s → «Reintentar» (the request may hang).
   const slowLoad = useSlowLoad(authLoading || loading)
@@ -179,14 +181,6 @@ export default function HouseholdPage() {
     } finally {
       setBusy(false)
     }
-  }
-
-  function copyInviteUrl(token: string) {
-    const url = `${window.location.origin}/invites/${token}`
-    void navigator.clipboard
-      .writeText(url)
-      .then(() => setCopiedToken(token))
-      .catch(() => {})
   }
 
   // PRO-143: a failed or hung first load shows «Reintentar», not «Cargando…»
@@ -302,7 +296,11 @@ export default function HouseholdPage() {
         {/* Invites — owner only */}
         {isOwner && (
           <section>
-            <h2 className={`${SUB_EYEBROW} mb-3`}>Invitaciones pendientes</h2>
+            <h2 className={`${SUB_EYEBROW} mb-1`}>Invitaciones pendientes</h2>
+            <p className="mb-3 text-[13px] leading-snug text-ink-muted">
+              Quien entre verá el mismo menú, la lista y la despensa. Cada enlace vale {HOUSEHOLD_INVITE_TTL_DAYS} días y sirve
+              una vez.
+            </p>
             {household.pendingInvites.length === 0 ? (
               <p className="mb-4 text-[14px] text-ink-soft">Aún no hay invitaciones activas.</p>
             ) : (
@@ -331,22 +329,11 @@ export default function HouseholdPage() {
                           onClick={() => setSheet({ kind: 'invite', invite: inv })}
                         />
                       </div>
-                      <div className="mb-2 mr-2 mt-1 flex items-center gap-1 rounded-xl bg-cream-deep pl-3">
-                        <code className="min-w-0 flex-1 truncate text-[12px] text-ink">{inviteUrl}</code>
-                        <button
-                          type="button"
-                          onClick={() => copyInviteUrl(inv.token)}
-                          aria-label="Copiar enlace"
-                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink-mid transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-ink"
-                        >
-                          <Copy size={16} />
-                        </button>
+                      <div className="mb-2 mr-2 mt-1 rounded-xl bg-cream-deep px-3 py-2">
+                        <code className="block min-w-0 truncate text-[12px] text-ink">{inviteUrl}</code>
                       </div>
-                      {copiedToken === inv.token && (
-                        <p role="status" className="mb-2 text-[12px] text-ink-muted">
-                          Enlace copiado.
-                        </p>
-                      )}
+                      {/* PRO-260: the message already written, by WhatsApp or copied. */}
+                      <FamilyInviteShare inviteId={inv.id} token={inv.token} className="mb-2 mr-2" />
                     </li>
                   )
                 })}

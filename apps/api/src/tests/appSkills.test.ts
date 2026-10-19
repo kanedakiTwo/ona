@@ -506,10 +506,16 @@ describe('recipes, profile, household', () => {
     expect(writes(f.calls)).toEqual([{ method: 'PUT', path: '/user/u1/settings', body: { template: { mealTemplate: { sabado: { cena: 0 } } } } }])
   })
 
-  it('invite_to_household returns a shareable link', async () => {
+  it('invite_to_household returns the written message with the link, counted as sent by Mimo (PRO-260)', async () => {
     const f = fakeApi({ 'POST /households/me/invites': { token: 'abc123' } })
     const r = await get('invite_to_household').handler({}, ctx(f.api))
     expect(r.summary).toMatch(/\/invites\/abc123/)
+    expect(r.summary).toContain('Te invito a nuestra casa en Mimoia')
+    expect(r.summary).toContain('caduca en 30 dias')
+    expect(r.summary).toContain('https://wa.me/?text=')
+    expect(writes(f.calls)).toEqual([
+      { method: 'POST', path: '/households/me/invites', body: { role: 'member', source: 'mimo', shared: true } },
+    ])
   })
 
   // PRO-163 (D-051): the same «Invitar a otro hogar» as the button.

@@ -9,6 +9,7 @@ import { recordSkillUsage } from '../usageEvents.js'
 import { claimsAction } from './claims.js'
 import { ensureHealthDisclaimer, talksHealthEffects } from './healthGuard.js'
 import { maybeAppendInviteOffer, recordInviteOfferAnswer } from '../inviteOffer.js'
+import { maybeAppendFamilyInviteOffer, recordFamilyInviteAnswer } from '../familyInviteMimo.js'
 import {
   EMPTY_USAGE,
   addAnthropicUsage,
@@ -92,6 +93,9 @@ export async function chat(
   // PRO-164: a «no» right after Mimo's offer to invite another household turns it off for good.
   const offerApplies = (mode === 'text' || mode === 'whatsapp') && opts.onboarding !== true
   if (offerApplies) await recordInviteOfferAnswer(userId, message, history)
+  // PRO-262: a «no» right after Mimo's offer to invite the family turns it off for good.
+  const familyOfferMode = (mode === 'text' || mode === 'whatsapp') && opts.onboarding !== true ? mode : null
+  if (familyOfferMode) await recordFamilyInviteAnswer(userId, message, history)
 
   // 5. Model ↔ tools loop (see runToolLoop).
   const result = await runToolLoop({
@@ -104,9 +108,15 @@ export async function chat(
     onToolStart: opts.onToolStart,
   })
 
-  // 6. PRO-164: after the first resolved week, once, the invite line at the
-  // end of this reply (a reply, so on WhatsApp always inside the 24 h window).
-  if (offerApplies && result.message) result.message = await maybeAppendInviteOffer(userId, result.message)
+  // 6. After the first resolved week, once, an invite line at the end of
+  // this reply (a reply, so on WhatsApp always inside the 24 h window). The
+  // family offer (PRO-262, inside the weekly aviso budget) goes first; the
+  // other-household offer (PRO-164) only when this reply didn't carry it.
+  if (familyOfferMode && result.message) {
+    const before = result.message
+    result.message = await maybeAppendFamilyInviteOffer(userId, result.message, familyOfferMode)
+    if (offerApplies && result.message === before) result.message = await maybeAppendInviteOffer(userId, result.message)
+  }
   return result
 }
 

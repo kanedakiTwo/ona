@@ -154,9 +154,12 @@ function basketLine(l: LineLike): BasketLine {
   const rule = l.ruleKey ? buyRuleByKey(l.ruleKey) : null
   // Sus gramos son los que pide el pedido, de pieza entera (n × g): se pesan contra `g`, no contra lo comestible del pescado.
   const piezas = rule?.by === 'pieza' && grams ? pieceCount(rule, grams, 'g', grams, rule.g ?? 100) : null
-  // «Jamón serrano» + serrano → «Jamón serrano», no «Jamón serrano serrano».
-  const search = choice && !normalizeBuyName(name).includes(normalizeBuyName(choice)) ? `${name} ${choice}` : name
-  return { key: l.key, name, choice, quantity: l.quantity, unit: l.unit, grams, piezas, search }
+  return { key: l.key, name, choice, quantity: l.quantity, unit: l.unit, grams, piezas, search: basketSearch(name, choice) }
+}
+
+/** Texto de búsqueda: el nombre, más « » + la elección si el nombre no la lleva ya («Jamón serrano» + serrano → «Jamón serrano»). */
+export function basketSearch(name: string, choice: string | null): string {
+  return choice && !normalizeBuyName(name).includes(normalizeBuyName(choice)) ? `${name} ${choice}` : name
 }
 
 /**

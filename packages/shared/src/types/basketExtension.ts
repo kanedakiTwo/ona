@@ -52,29 +52,36 @@ export type BasketLineState = (typeof BASKET_LINE_STATES)[number]
 export const BASKET_SEND_ERRORS = ['sin_zona', 'sin_sesion', 'contrato', 'verificacion', 'red'] as const
 export type BasketSendError = (typeof BASKET_SEND_ERRORS)[number]
 
-export const basketSendResultSchema = z.object({
-  envioId: z.string().max(64),
-  ok: z.boolean(),
-  error: z.enum(BASKET_SEND_ERRORS).optional(),
-  repetido: z.literal(true).optional(),
-  lineas: z
-    .array(
-      z.object({
-        key: z.string().min(1).max(16),
-        estado: z.enum(BASKET_LINE_STATES),
-        productoId: z.string().max(32).optional(),
-        producto: z.string().max(160).optional(),
-        unidades: z.number().int().min(0).max(999).optional(),
-        motivo: z.enum(['no_encontrado', 'no_publicado', 'error']).optional(),
-      }),
-    )
-    .max(200),
-  anadidas: z.number().int().min(0).max(200),
-  totalEur: z.number().min(0).max(100000).nullable(),
-  bajoMinimo: z.boolean(),
-  version: z.string().max(32),
-  contrato: z.string().max(64),
-})
+export const basketSendResultSchema = z
+  .object({
+    envioId: z.string().max(64),
+    ok: z.boolean(),
+    error: z.enum(BASKET_SEND_ERRORS).optional(),
+    repetido: z.literal(true).optional(),
+    lineas: z
+      .array(
+        z.object({
+          key: z.string().min(1).max(16),
+          estado: z.enum(BASKET_LINE_STATES),
+          productoId: z.string().max(32).optional(),
+          producto: z.string().max(160).optional(),
+          unidades: z.number().int().min(0).max(999).optional(),
+          motivo: z.enum(['no_encontrado', 'no_publicado', 'error']).optional(),
+        }),
+      )
+      .max(200),
+    anadidas: z.number().int().min(0).max(200),
+    totalEur: z.number().min(0).max(100000).nullable(),
+    bajoMinimo: z.boolean(),
+    version: z.string().max(32),
+    contrato: z.string().max(64),
+  })
+  // Si puede haber algo en el carro (lo mismo que `basketMayBeInCart`, aquí en línea para no
+  // hacer circular el tipo), el envío necesita su id: con él se reconoce un reintento y se deshace.
+  .refine((r) => r.envioId !== '' || !(r.anadidas > 0 || r.lineas.some((l) => l.estado === 'no_verificada')), {
+    message: 'envioId vacío en un envío que puede haber tocado el carro',
+    path: ['envioId'],
+  })
 export type BasketSendResult = z.infer<typeof basketSendResultSchema>
 
 export type BasketUndoResult =
@@ -88,4 +95,10 @@ export interface StoredBasketResult extends BasketSendResult {
   deshechoAt: string | null
   /** envioId de los envíos de este pedido que se deshicieron. */
   deshechos: string[]
+  /**
+   * La cesta tal como se mandó (clave, nombre y elección de cada línea), para
+   * saber qué era cada clave aunque las líneas del pedido cambien después.
+   * Falta en los resultados guardados antes de existir.
+   */
+  cesta?: Array<{ key: string; name: string; choice: string | null }>
 }

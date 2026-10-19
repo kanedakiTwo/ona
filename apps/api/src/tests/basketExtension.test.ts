@@ -41,6 +41,12 @@ describe('basketSendResultSchema', () => {
     expect(basketSendResultSchema.safeParse({ ...okResult(), lineas: [{ key: 'l1', estado: 'fallida', motivo: 'otro' }] }).success).toBe(false)
     expect(basketSendResultSchema.safeParse({ ...okResult(), lineas: [{ key: 'l1', estado: 'tabla', unidades: 1.5 }] }).success).toBe(false)
   })
+  it('si puede haber algo en el carro, el envioId no puede ir vacío', () => {
+    expect(basketSendResultSchema.safeParse(okResult({ envioId: '' })).success).toBe(false)
+    const aMedias = okResult({ envioId: '', ok: false, error: 'verificacion', anadidas: 0, lineas: [{ key: 'l1', estado: 'no_verificada' }] })
+    expect(basketSendResultSchema.safeParse(aMedias).success).toBe(false)
+    expect(basketSendResultSchema.safeParse({ ...aMedias, envioId: 'e1' }).success).toBe(true)
+  })
 })
 
 const stored = (over: Partial<StoredBasketResult> = {}): StoredBasketResult => ({ ...okResult(), recibidoAt: '2026-10-19T10:00:00.000Z', deshechoAt: null, deshechos: [], ...over })
@@ -53,6 +59,10 @@ describe('isBasketExtensionAllowed', () => {
     expect(isBasketExtensionAllowed('x_1@test.local', ['@test.local'])).toBe(true)
     expect(isBasketExtensionAllowed('x@otro.es', ['@test.local'])).toBe(false)
     expect(isBasketExtensionAllowed(null, ['@test.local'])).toBe(false)
+  })
+  it('el dominio se compara con su @ y el email se recorta', () => {
+    expect(isBasketExtensionAllowed('x@eviltest.local', ['@test.local'])).toBe(false)
+    expect(isBasketExtensionAllowed(' Ana@B.es ', ['ana@b.es'])).toBe(true)
   })
 })
 
@@ -85,6 +95,38 @@ describe('decideBasketResult', () => {
     expect(d).toMatchObject({ action: 'save', status: 'sent' })
     if (d.action === 'save') expect(d.stored).toMatchObject({ envioId: 'e2', deshechoAt: null, deshechos: ['e1'], recibidoAt: NOW.toISOString() })
   })
+  it('el mismo envioId otra vez no cambia nada aunque el guardado no esté vivo (todo fallida)', () => {
+    const todoFallida = okResult({ ok: false, anadidas: 0, lineas: [{ key: 'l1', estado: 'fallida', motivo: 'no_encontrado' }] })
+    expect(decideBasketResult(stored(todoFallida), 'draft', todoFallida, NOW)).toEqual({ action: 'keep' })
+  })
+  it('un guardado que no está vivo se sustituye; dos fallos sin envioId no se confunden', () => {
+    const todoFallida = okResult({ ok: false, anadidas: 0, lineas: [{ key: 'l1', estado: 'fallida', motivo: 'no_encontrado' }] })
+    const fallo = okResult({ envioId: '', ok: false, error: 'red', lineas: [], anadidas: 0 })
+    expect(decideBasketResult(stored(todoFallida), 'draft', fallo, NOW)).toMatchObject({ action: 'save', status: 'draft' })
+    const otroFallo = okResult({ envioId: '', ok: false, error: 'sin_sesion', lineas: [], anadidas: 0 })
+    expect(decideBasketResult(stored(fallo), 'draft', otroFallo, NOW)).toMatchObject({ action: 'save', status: 'draft', stored: { error: 'sin_sesion' } })
+  })
+  it('un fallo no saca de sent un pedido enviado; tras deshacer, un fallo vacío se guarda en draft', () => {
+    const fallo = okResult({ envioId: '', ok: false, error: 'red', lineas: [], anadidas: 0 })
+    expect(decideBasketResult(null, 'sent', fallo, NOW)).toMatchObject({ action: 'save', status: 'sent' })
+    const undone = stored({ deshechoAt: '2026-10-19T10:30:00.000Z', deshechos: ['e1'] })
+    const d = decideBasketResult(undone, 'draft', fallo, NOW)
+    expect(d).toMatchObject({ action: 'save', status: 'draft' })
+    if (d.action === 'save') expect(d.stored.deshechos).toEqual(['e1'])
+  })
+  it('un pedido que no está en draft ni en sent no se toca', () => {
+    expect(decideBasketResult(null, 'closed', okResult(), NOW)).toEqual({ action: 'keep' })
+    expect(decideBasketResult(null, 'cancelled', okResult({ envioId: '', ok: false, error: 'red', lineas: [], anadidas: 0 }), NOW)).toEqual({ action: 'keep' })
+  })
+  it('guarda la foto de la cesta tal como se mandó (solo clave, nombre y elección)', () => {
+    const cesta = [{ key: 'l1', name: 'Arroz', choice: null, quantity: 1000, unit: 'g' as const, grams: 1000, piezas: null, search: 'Arroz' }]
+    const d = decideBasketResult(null, 'draft', okResult(), NOW, cesta)
+    if (d.action !== 'save') throw new Error(d.action)
+    expect(d.stored.cesta).toEqual([{ key: 'l1', name: 'Arroz', choice: null }])
+    const sin = decideBasketResult(null, 'draft', okResult(), NOW)
+    if (sin.action !== 'save') throw new Error(sin.action)
+    expect('cesta' in sin.stored).toBe(false)
+  })
 })
 
 describe('aggregateBasketGaps', () => {
@@ -98,6 +140,56 @@ describe('aggregateBasketGaps', () => {
       { key: 'l2', estado: 'busqueda', productoId: '200', producto: 'Detergente', unidades: 1 },
     ] })
     const gaps = aggregateBasketGaps([{ lines, result }, { lines, result }])
-    expect(gaps).toEqual([{ name: 'detergente', choice: null, search: 'detergente', estado: 'busqueda', productoId: '200', producto: 'Detergente', veces: 2 }])
+    expect(gaps).toEqual([{ name: 'detergente', choice: null, search: 'detergente', estado: 'busqueda', productoId: '200', producto: 'Detergente', motivo: null, veces: 2 }])
+  })
+  const linea = (key: string, name: string) => ({ key, name, quantity: 1, unit: 'u' }) as unknown as ShopOrderLine
+  it('usa la foto de la cesta si la hay, aunque las líneas de ahora digan otra cosa', () => {
+    const result = stored({
+      lineas: [{ key: 'l2', estado: 'busqueda', productoId: '200' }],
+      cesta: [{ key: 'l2', name: 'Jamón', choice: 'serrano' }],
+    })
+    expect(aggregateBasketGaps([{ lines: [linea('l2', 'lejía')], result }])).toEqual([
+      { name: 'Jamón', choice: 'serrano', search: 'Jamón serrano', estado: 'busqueda', productoId: '200', producto: null, motivo: null, veces: 1 },
+    ])
+  })
+  it('salta las claves que ya no están, sin lanzar; los envíos deshechos cuentan; no_verificada no', () => {
+    const result = stored({
+      deshechoAt: '2026-10-19T10:30:00.000Z',
+      deshechos: ['e1'],
+      lineas: [
+        { key: 'l9', estado: 'fallida', motivo: 'no_encontrado' },
+        { key: 'l1', estado: 'no_verificada', productoId: '1' },
+        { key: 'l2', estado: 'fallida', motivo: 'no_encontrado' },
+      ],
+    })
+    expect(aggregateBasketGaps([{ lines: [linea('l1', 'arroz'), linea('l2', 'sal')], result }])).toEqual([
+      { name: 'sal', choice: null, search: 'sal', estado: 'fallida', productoId: null, producto: null, motivo: 'no_encontrado', veces: 1 },
+    ])
+  })
+  it('agrupa por nombre normalizado, producto, estado y motivo; ordena por veces y luego por nombre', () => {
+    const lines = [linea('l1', 'Detergente'), linea('l2', 'detergente'), linea('l3', 'Detergente · varias presentaciones'), linea('l4', 'sal'), linea('l5', 'azúcar')]
+    const r = (lineas: StoredBasketResult['lineas']) => ({ lines, result: stored({ lineas }) })
+    const gaps = aggregateBasketGaps([
+      r([
+        { key: 'l1', estado: 'busqueda', productoId: '200' },
+        { key: 'l2', estado: 'busqueda', productoId: '200' },
+        { key: 'l3', estado: 'busqueda', productoId: '200' },
+        { key: 'l4', estado: 'busqueda', productoId: '300' },
+        { key: 'l5', estado: 'fallida', motivo: 'no_encontrado' },
+      ]),
+      r([
+        { key: 'l1', estado: 'busqueda', productoId: '201' },
+        { key: 'l4', estado: 'fallida', productoId: '300' },
+        { key: 'l5', estado: 'fallida', motivo: 'error' },
+      ]),
+    ])
+    expect(gaps.map((g) => [g.name, g.estado, g.productoId, g.motivo, g.veces])).toEqual([
+      ['Detergente', 'busqueda', '200', null, 3],
+      ['azúcar', 'fallida', null, 'no_encontrado', 1],
+      ['azúcar', 'fallida', null, 'error', 1],
+      ['Detergente', 'busqueda', '201', null, 1],
+      ['sal', 'busqueda', '300', null, 1],
+      ['sal', 'fallida', '300', null, 1],
+    ])
   })
 })

@@ -12,6 +12,7 @@ import { addDays, madridMidnightUtc, madridParts } from './madridTime.js'
 import { isoWeekLabel, weekOfDay } from './businessMetrics.js'
 import { buildReferralReport, loadInvitedSignups } from './referralRewards.js'
 import { loadProactiveReport } from './proactiveReport.js'
+import { optInDeclinedSql } from './whatsapp/optInOffer.js'
 import { PASSIVE_USAGE_EVENTS, USAGE_CHANNELS, USAGE_EVENTS, type UsageEventName } from './usageEvents.js'
 
 type Db = typeof defaultDb
@@ -239,6 +240,8 @@ export interface HouseholdStateRow {
   members: number
   whatsappLinked: number
   whatsappNotify: number
+  /** PRO-248: linked members with avisos off who said no («No, gracias» or BAJA). */
+  whatsappDeclined?: number
   pushEnabled: number
 }
 
@@ -252,14 +255,30 @@ export function buildHouseholdSnapshot(rows: HouseholdStateRow[]) {
   let withPush = 0
   let withNotices = 0
   let withTwoPlusMembers = 0
+  let withWhatsappDeclined = 0
+  let withWhatsappNoAnswer = 0
   for (const r of rows) {
     if (r.whatsappLinked > 0) withWhatsapp += 1
     if (r.whatsappNotify > 0) withWhatsappNotify += 1
+    // PRO-248: WhatsApp without avisos splits into «said no» and «didn't answer».
+    if (r.whatsappLinked > 0 && r.whatsappNotify === 0) {
+      if ((r.whatsappDeclined ?? 0) > 0) withWhatsappDeclined += 1
+      else withWhatsappNoAnswer += 1
+    }
     if (r.pushEnabled > 0) withPush += 1
     if (r.whatsappNotify > 0 || r.pushEnabled > 0) withNotices += 1
     if (r.members >= 2) withTwoPlusMembers += 1
   }
-  return { households: rows.length, withWhatsapp, withWhatsappNotify, withPush, withNotices, withTwoPlusMembers }
+  return {
+    households: rows.length,
+    withWhatsapp,
+    withWhatsappNotify,
+    withWhatsappDeclined,
+    withWhatsappNoAnswer,
+    withPush,
+    withNotices,
+    withTwoPlusMembers,
+  }
 }
 
 export const USAGE_DEFINITIONS = {
@@ -268,7 +287,7 @@ export const USAGE_DEFINITIONS = {
   channels: 'web (app and web chat), voice (Mimo with the voice in the app), whatsapp; unknown = system.',
   excluded: 'Admin and suspended accounts are excluded unless includeInternal=1. Events of deleted accounts stay as anonymous counts.',
   retention: 'Events are kept 180 days.',
-  households: 'Right now, not windowed. Households with at least one counted member; withWhatsapp = a member has WhatsApp connected; withWhatsappNotify = one with proactive messages on; withPush = a member has a push subscription; withNotices = either; withTwoPlusMembers = 2 or more counted members.',
+  households: 'Right now, not windowed. Households with at least one counted member; withWhatsapp = a member has WhatsApp connected; withWhatsappNotify = one with proactive messages on; withWhatsappDeclined / withWhatsappNoAnswer (PRO-248) = WhatsApp but avisos off, split into «said no» («No, gracias» or BAJA by a member) and «did not answer» (the rest); withPush = a member has a push subscription; withNotices = either; withTwoPlusMembers = 2 or more counted members.',
   channelSplit: 'Active households per ISO week by channel used: webOnly (app, web chat or voice), whatsappOnly, both; unknownOnly = active only through events without a channel.',
   onboardingWhatsappChosen: 'Event onboarding_whatsapp_chosen: «Por WhatsApp» tapped on the first onboarding screen (POST /whatsapp/link-code with from=onboarding); see householdsByEvent for distinct households.',
   proactive: 'WhatsApp messages Mimo sends by itself (PRO-156), by ISO week of the window: sent = delivered daily_brief, cooking_reminder, dinner_checkin, shopping_reminder, weekly_nudge and alert; replied = followed by any message from the same number within replyWindowHours; replyRate = replied / sent; guided / fallback = written from the guide vs. the fixed text (rows before PRO-156 count in neither); optouts = BAJA from a linked account. byKind splits the same counts. Counts only.',
@@ -311,6 +330,7 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
            COUNT(DISTINCT mu.id)::int AS members,
            COUNT(DISTINCT wl.user_id)::int AS whatsapp_linked,
            COUNT(DISTINCT wl.user_id) FILTER (WHERE wl.notify)::int AS whatsapp_notify,
+           COUNT(DISTINCT wl.user_id) FILTER (WHERE NOT wl.notify AND ${optInDeclinedSql()})::int AS whatsapp_declined,
            COUNT(DISTINCT ps.user_id)::int AS push_enabled
       FROM household_members hm
       JOIN users mu ON mu.id = hm.user_id
@@ -368,6 +388,7 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
         members: Number(r.members),
         whatsappLinked: Number(r.whatsapp_linked),
         whatsappNotify: Number(r.whatsapp_notify),
+        whatsappDeclined: Number(r.whatsapp_declined ?? 0),
         pushEnabled: Number(r.push_enabled),
       })),
     ),

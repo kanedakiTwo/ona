@@ -1,4 +1,5 @@
 import { env } from '../../config/env.js'
+import { claimOptInReoffer, markOptInDeclined } from './optInOffer.js'
 import { db } from '../../db/connection.js'
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { menuLogs, menus, recipes, users } from '../../db/schema.js'
@@ -61,6 +62,10 @@ export function buildInboundDeps(): InboundDeps {
   return {
     webUrl: env.WEB_PUBLIC_URL,
     supportEmail: env.SUPPORT_EMAIL || undefined,
+    optIn: {
+      markDeclined: (userId) => markOptInDeclined(userId),
+      claimReoffer: (userId, now) => claimOptInReoffer(userId, now),
+    },
     now: () => new Date(),
     isUserAllowed: (email) => isUserAllowed(email),
     store,

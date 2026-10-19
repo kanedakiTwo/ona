@@ -73,6 +73,15 @@ export interface InboundDeps {
   }
   /** Where to reach a human (env SUPPORT_EMAIL). Empty → point to the app. */
   supportEmail?: string
+  /**
+   * PRO-248: the avisos answer. `markDeclined` records a «No, gracias» or a
+   * BAJA; `claimReoffer` is true only the one time the extra offer is due
+   * (optInOffer.ts). Absent → no record, no extra offer.
+   */
+  optIn?: {
+    markDeclined: (userId: string) => Promise<void>
+    claimReoffer: (userId: string, now: Date) => Promise<boolean>
+  }
   client: {
     sendMessage: (to: string, msg: OutboundMessage) => Promise<string | null>
     markReadWithTyping: (wamid: string) => Promise<void>
@@ -409,6 +418,12 @@ export const COPY = {
   stoppedUnlinked: 'De acuerdo, no te volveré a escribir.',
   started:
     'Hecho: vuelvo a enviarte avisos (menú del día, aviso antes de cocinar, lista de la compra). Escribe BAJA para dejar de recibirlos.',
+  /** PRO-248: the one extra offer of the avisos, in one line, with the same two buttons. */
+  optInReoffer:
+    'Por cierto, ¿quieres que te escriba yo? Te mandaría el menú del día, un aviso antes de cocinar y la lista de la compra los sábados. Solo te lo pregunto esta vez.',
+  /** PRO-248: the first «sí» to the avisos (nothing to «volver a» enviar yet). */
+  startedFirst:
+    'Hecho: te enviaré avisos (menú del día, aviso antes de cocinar, lista de la compra). Escribe BAJA para dejar de recibirlos.',
   human: (email?: string) =>
     `Soy un asistente con IA. Para hablar con una persona del equipo de Mimoia, ${humanContact(email)}. Si es sobre tu menú, la compra o una receta, cuéntamelo y lo hago.`,
   badCode: 'Ese código no es válido o ha caducado. Genera uno nuevo en Mimoia → Perfil → Mimo en WhatsApp.',
@@ -566,14 +581,19 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     await store.updateInbound(msg.wamid, { status: 'ignored', userId })
     if (command === 'stop') {
       if (link) await store.setNotify(link.userId, false)
+      if (link) await deps.optIn?.markDeclined(link.userId)
       await sendText(userId, 'optout', link ? COPY.stopped : COPY.stoppedUnlinked)
     } else if (command === 'start') {
       if (link) {
         await store.setNotify(link.userId, true)
-        // End of the WhatsApp sign-up (2026-10-15, Miguel): no confirmation
-        // line, straight to the suggestions. Otherwise, confirm.
-        if (await signupEnding()) await sendFirstSteps(link.userId)
-        else await sendText(userId, 'optin', COPY.started)
+        // PRO-248: the confirmation always goes out (also at the end of the
+        // WhatsApp sign-up, before the suggestions), and the first time it
+        // says «te enviaré», not «vuelvo a enviarte».
+        const sentKinds = await store.recentOutboundKinds(msg.from, new Date(0))
+        const first = !sentKinds.has('optin') && !sentKinds.has('optout')
+        const ending = await signupEnding()
+        await sendText(userId, 'optin', first ? COPY.startedFirst : COPY.started)
+        if (ending) await sendFirstSteps(link.userId)
       } else {
         await sendText(null, 'optin', COPY.connect(connectUrl(deps.webUrl)))
       }
@@ -588,8 +608,11 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     const prompt = kinds.get('optin_prompt')
     if (prompt && [...kinds.values()].every((t) => t <= prompt)) {
       await store.updateInbound(msg.wamid, { status: 'ignored', userId: link.userId })
-      if (await signupEnding()) await sendFirstSteps(link.userId)
-      else await sendText(link.userId, 'system', COPY.optInDeclined)
+      await deps.optIn?.markDeclined(link.userId)
+      // PRO-248: the answer is always confirmed, also before the suggestions.
+      const ending = await signupEnding()
+      await sendText(link.userId, 'system', COPY.optInDeclined)
+      if (ending) await sendFirstSteps(link.userId)
       return
     }
   }
@@ -804,6 +827,20 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
       await outText('system', COPY.healthOnWeb(`${deps.webUrl.replace(/\/$/, '')}/profile`))
       await acker.settle()
       await sendOptInPrompt(userId)
+    } else if (link.onboardingDone !== false && deps.optIn && (await deps.optIn.claimReoffer(userId, now).catch(() => false))) {
+      // PRO-248: whoever never answered the avisos question hears it one more
+      // time, in one line, after their first week with a menu and the list.
+      await acker.settle()
+      await send(userId, 'optin_prompt', [
+        {
+          type: 'buttons',
+          text: COPY.optInReoffer,
+          buttons: [
+            { id: 'optin_yes', title: OPT_IN_YES },
+            { id: 'optin_no', title: OPT_IN_NO },
+          ],
+        },
+      ])
     }
   } catch (err: any) {
     console.error('[whatsapp] processing failed:', err?.message ?? err)

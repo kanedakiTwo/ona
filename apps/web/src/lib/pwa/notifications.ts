@@ -23,7 +23,7 @@ const MEAL_LABELS: Record<keyof MealTimes, string> = {
   breakfast: "Desayuno",
   lunch: "Comida",
   dinner: "Cena",
-  snack: "Snack",
+  snack: "Merienda",
 }
 
 let scheduledTimers: ReturnType<typeof setTimeout>[] = []

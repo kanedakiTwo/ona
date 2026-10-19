@@ -13,10 +13,12 @@ import {
   PLAN_CAPS_NOTE,
   PLAN_FEATURE_GROUPS,
   PLAN_HOUSEHOLD,
+  supportPhoneLine,
   type FeatureValue,
 } from '@ona/shared'
 import { HEALTH_RULE } from './healthGuard.js'
 import { isBillingConfigured } from '../billing.js'
+import { env } from '../../config/env.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -78,6 +80,18 @@ ${table}
 - Cambiar de plan, la tarjeta o cancelar: Perfil → Suscripcion → Gestionar mi suscripcion. Si cancela, sigue con su plan hasta el final de lo pagado.
 - Quien cobra: Stripe a traves de Link, que emite los recibos; en el extracto aparece LINK.COM* MIMOIA.
 - Si pregunta algo de precios que no este aqui (descuentos, empresas, otros paises), di que no lo sabes y que escriba a ${BRAND_SUPPORT_EMAIL}.`
+}
+
+/**
+ * How to reach a person (D-071, PRO-249). The phone comes from `SUPPORT_PHONE`
+ * (the repo is public, the number never goes in the code); without it Mimo
+ * says there is no phone yet and gives the email, never a made-up number.
+ */
+export function contactBlock(phone: string | null | undefined = env.SUPPORT_PHONE): string {
+  const line = supportPhoneLine(phone)
+  return line
+    ? `Contacto con una persona del equipo: ${BRAND_SUPPORT_EMAIL}. ${line}. Si pregunta si hay telefono, dale este numero con su horario tal cual.`
+    : `Contacto con una persona del equipo: ${BRAND_SUPPORT_EMAIL}. Ahora mismo no hay telefono de atencion publicado: si pregunta por uno, dilo asi y dale el email. Nunca inventes un numero.`
 }
 
 /** Resolves once kb/ is read (scripts and tests that need it in the prompt await it). */
@@ -249,7 +263,9 @@ Sobre ${BRAND_NAME}. Si te preguntan que es ${BRAND_NAME}, que puede hacer, como
 
 ${aboutMimoia}
 
-${pricingBlock()}`
+${pricingBlock()}
+
+${contactBlock()}`
   }
 
   if (mode === 'onboarding') {

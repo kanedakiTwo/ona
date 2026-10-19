@@ -59,7 +59,7 @@ Ninguna marca ni supermercado paga por aparecer en un menú o en una receta. Si 
 
 ## Contacto
 
-Para lo que Mimo no sepa contestar: hola@mimoia.com (o HUMANO por WhatsApp).
+Para lo que Mimo no sepa contestar: hola@mimoia.com (o HUMANO por WhatsApp). Hay un teléfono de atención en el aviso legal (mimoia.com/aviso-legal).
 
 Para contarle al equipo una sugerencia, algo que no funciona o lo que le sobra o le falta: el botón «Opinión» de la app, o decírselo a Mimo («quiero dejar una sugerencia»), que lo guarda tal cual. El equipo lo lee todo.
 

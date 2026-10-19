@@ -348,7 +348,16 @@ export type {
 export { LEGAL_OWNER } from './constants/legal.js'
 
 // Public brand (D-012) + pre-launch waitlist (specs/waitlist.md)
-export { BRAND_NAME, ASSISTANT_NAME, BRAND_SUPPORT_EMAIL, BRAND_SOCIAL_LINKS } from './constants/brand.js'
+export {
+  BRAND_NAME,
+  ASSISTANT_NAME,
+  BRAND_SUPPORT_EMAIL,
+  BRAND_SOCIAL_LINKS,
+  SUPPORT_PHONE_HOURS,
+  supportPhone,
+  supportPhoneLine,
+  supportPhoneNote,
+} from './constants/brand.js'
 export {
   WAITLIST_HOUSEHOLD_SIZES,
   WAITLIST_PLANNER_ROLES,

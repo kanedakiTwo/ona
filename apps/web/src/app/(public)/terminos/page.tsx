@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { CONTACT_EMAIL } from "@/lib/contact"
+import { SupportPhone } from "@/components/legal/SupportPhone"
 
 /**
  * Intended purpose (D-038, Mimoia HQ constitution §6), word for word. Do not
@@ -116,6 +117,7 @@ export default function TerminosPage() {
             Para cualquier consulta sobre estos términos, escríbenos a{" "}
             <a href={`mailto:${CONTACT_EMAIL}`} className="underline underline-offset-4">{CONTACT_EMAIL}</a>.
           </p>
+          <SupportPhone />
         </div>
       </div>
     </div>

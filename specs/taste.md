@@ -46,9 +46,9 @@
 - In the **sign-up**, the 10 cards come right after creating the account and **before** the allergies question, so a new user's first deck can't know their restrictions yet (only what Mimo or a household member already stored). Their verdicts never put a forbidden dish on the menu (the generator filters it), but they can see it
 - Verdicts given **before** PRO-197 to recipes that break a restriction stay in `recipe_verdicts` (they're hidden from the deck and the counter but still listed in «Lo que recuerdo de ti»); the menu never serves them anyway
 
-- Mimo doesn't mention it on WhatsApp yet (the one-time mention with the `/afinar` link to WhatsApp-first users, `whatsappOfferedAt`), nor reads the verdicts in its single-dish swap, nor dropped «tres platos que os gusten mucho» from its WhatsApp sign-up message: those live in `assistant/skills.ts`, `systemPrompt.ts` and `whatsapp/inbound.ts`, which were closed for this change
+- Mimo doesn't mention it on WhatsApp yet (the one-time mention with the `/afinar` link to WhatsApp-first users, `whatsappOfferedAt`), nor reads the verdicts in its single-dish swap, (its WhatsApp sign-up message dropped «tres platos que os gusten mucho» with PRO-245, 2026-10-19): those live in `assistant/skills.ts`, `systemPrompt.ts` and `whatsapp/inbound.ts`, which were closed for this change
 - «Me apetece» weighs only in the weekly generator, not in the single-slot pickers
-- «Deseos del catálogo» (PRO-154) took its `alta` source from the sign-up's favourite dishes: with the question gone, only Mimo's WhatsApp sign-up still sends them. A «Me encanta» is always on a catalogue recipe, so it adds no wish
+- «Deseos del catálogo» (PRO-154) took its `alta` source from the sign-up's favourite dishes: with the question gone on the web and on WhatsApp (PRO-245), only dishes a person tells Mimo unprompted during the WhatsApp sign-up still reach it. A «Me encanta» is always on a catalogue recipe, so it adds no wish
 - The starter deck was drafted by Producto from the catalogue; Cocina should review it (`TASTE_STARTER_DECK`)
 
 ## Source

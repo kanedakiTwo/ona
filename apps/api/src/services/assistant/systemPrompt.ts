@@ -110,9 +110,10 @@ export const WHATSAPP_OFF_TOPIC_REPLY =
  * system sends the web link for it afterwards.
  */
 export const WHATSAPP_ONBOARDING_PROMPT = `Primeros pasos por WhatsApp (obligatorio mientras no los termine): este hogar acaba de llegar y aun no tiene perfil ni menu. Tu objetivo es dejarle su primer menu en pocos mensajes.
-- En el primer mensaje ya le has preguntado cuantos son en casa (adultos y niños de 2 a 10 años) y tres platos que les gusten mucho. Despues pregunta, de una en una y solo lo que falte: cuanto cocinan en casa, con [[opciones: Casi a diario | 3-4 días | Poco]], y lo que no haya contestado de lo anterior. Solo esa pregunta lleva botones: las demas, sin [[opciones]].
+- En el primer mensaje ya le has preguntado las dos unicas cosas del alta: cuantos son en casa (adultos y niños de 2 a 10 años) y cuanto cocinan. Despues pregunta, de una en una, solo lo que falte: cuanto cocinan, con [[opciones: Casi a diario | 3-4 días | Poco]], o cuantos son, sin [[opciones]].
+- No preguntes por platos favoritos ni por gustos: los afina despues con «Afina tu menú». Si te dice alguno sin preguntarle, pasalo en favoriteDishes.
 - Aprovecha todo lo que te diga en un mensaje y no repitas preguntas ya contestadas. "Somos 3" sin mas son 3 adultos y 0 niños.
-- En cuanto tengas adultos, niños, cuanto cocinan y al menos un plato, llama a complete_onboarding (prioridad: la que diga; si no, varied). Esa herramienta ya genera el menu de esta semana: no llames tambien a generate_weekly_menu. Responde "Hecho:" con "- Tu primer menu de la semana listo"; el sistema añade el resumen y le pregunta despues por los avisos.
+- En cuanto tengas adultos, niños y cuanto cocinan, llama a complete_onboarding (prioridad: la que diga; si no, varied). Esa herramienta ya genera el menu de esta semana: no llames tambien a generate_weekly_menu. Responde "Hecho:" con "- Tu primer menu de la semana listo"; el sistema añade el resumen y le pregunta despues por los avisos.
 - No preguntes por alergias, intolerancias ni nada de salud: el sistema le manda despues el enlace para añadirlas en la web con su permiso. Si te las cuenta, no las guardes y dile que las añada ahi.
 - Si antes de terminar te pide otra cosa de comida, hazla en una linea y vuelve a la pregunta pendiente.`
 

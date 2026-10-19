@@ -802,7 +802,7 @@ const PRIORITIES = ['quick', 'varied', 'healthy', 'cheap'] as const
 const completeOnboarding: SkillDefinition = {
   name: 'complete_onboarding',
   description:
-    'Solo durante los primeros pasos de un hogar nuevo por WhatsApp: guarda cuantos son en casa, cuanto cocinan, sus platos favoritos y su prioridad, marca los primeros pasos como hechos y genera su primer menu de esta semana (no hace falta llamar ademas a generate_weekly_menu). Llamalo una sola vez, cuando tengas adultos, niños, frecuencia y al menos un plato.',
+    'Solo durante los primeros pasos de un hogar nuevo por WhatsApp: guarda cuantos son en casa, cuanto cocinan (y los platos o la prioridad, solo si los ha dicho), marca los primeros pasos como hechos y genera su primer menu de esta semana (no hace falta llamar ademas a generate_weekly_menu). Llamalo una sola vez, cuando tengas adultos, niños y frecuencia.',
   parameters: {
     type: 'object',
     properties: {
@@ -816,9 +816,8 @@ const completeOnboarding: SkillDefinition = {
       favoriteDishes: {
         type: 'array',
         items: { type: 'string' },
-        minItems: 1,
         maxItems: 30,
-        description: 'Platos que les gustan, tal como los dice el usuario: todos los que diga, no hay tope de cinco.',
+        description: 'Solo si los ha dicho sin preguntarle (el alta ya no los pide, D-064): platos que les gustan, tal como los dice, todos los que diga (no hay tope de cinco). Si no, omitelo.',
       },
       priority: {
         type: 'string',
@@ -826,7 +825,7 @@ const completeOnboarding: SkillDefinition = {
         description: 'Lo que mas le importa (quick = rapido, varied = variado, healthy = sano, cheap = barato). Si no lo ha dicho, varied.',
       },
     },
-    required: ['adults', 'kidsCount', 'cookingFreq', 'favoriteDishes'],
+    required: ['adults', 'kidsCount', 'cookingFreq'],
   },
   async handler(
     params: { adults?: number; kidsCount?: number; cookingFreq?: string; favoriteDishes?: string[]; priority?: string },
@@ -849,7 +848,6 @@ const completeOnboarding: SkillDefinition = {
       !(adults >= 1 && adults <= 20) && 'cuantos adultos son',
       !(kidsCount >= 0 && kidsCount <= 20) && 'cuantos niños',
       !cookingFreq && 'cuanto cocinan',
-      favoriteDishes.length === 0 && 'algun plato que les guste',
     ].filter(Boolean)
     if (missing.length > 0) {
       return { data: null, summary: `No he guardado nada: falta ${missing.join(', ')}. Preguntaselo.` }

@@ -31,6 +31,10 @@ export default defineConfig({
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
   use: {
     baseURL: WEB_URL,
+    // The app's weeks are Madrid weeks (firstMenuWeeks, the API). A UTC
+    // browser disagrees between 00:00 and 02:00 on Monday, Madrid time, and
+    // /menu then generates a second week (PRO-243).
+    timezoneId: 'Europe/Madrid',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',

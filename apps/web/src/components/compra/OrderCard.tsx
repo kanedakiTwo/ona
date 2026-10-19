@@ -36,8 +36,8 @@ import { useBasketExtension } from "@/hooks/useBasketExtension"
 import { haptic } from "@/lib/pwa/haptics"
 import { api } from "@/lib/api"
 import { ExtensionSendPanel, ExtensionSentBody } from "./ExtensionOrder"
+import { eur, ghostBtn, primaryBtn } from "./styles"
 
-const eur = (n: number | null | undefined) => (n == null ? "—" : `${String(Math.round(n * 100) / 100).replace(".", ",")} €`)
 const lineName = (l: ShopOrderLine) => capitalize(prettyName(l.name))
 
 function parseEuros(s: string): number | null {
@@ -53,10 +53,6 @@ const STATUS_TONE: Record<ShopOrder["status"], string> = {
   closed: "bg-[#F2EDE0] text-[#7A7066]",
   cancelled: "bg-[#F2EDE0] text-[#A39A8E]",
 }
-
-const primaryBtn =
-  "inline-flex items-center justify-center gap-2 rounded-full bg-[#1A1612] px-5 py-2.5 text-[12px] uppercase tracking-[0.12em] text-[#FAF6EE] disabled:opacity-40"
-const ghostBtn = "inline-flex items-center gap-1.5 text-[12px] text-[#7A7066] hover:text-[#1A1612]"
 
 function CopyButton({ text, label = "Copiar" }: { text: string; label?: string }) {
   const [done, setDone] = useState(false)

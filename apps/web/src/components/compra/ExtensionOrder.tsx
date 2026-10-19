@@ -13,13 +13,11 @@ import { useCloseShopOrder } from "@/hooks/useShopOrders"
 import { ExtensionNoAnswer, ExtensionStaleSend, useSendToExtension, useUndoExtensionSend } from "@/hooks/useBasketExtension"
 import { ApiError } from "@/lib/api"
 import { haptic } from "@/lib/pwa/haptics"
+import { eur, ghostBtn as ghostBase, primaryBtn } from "./styles"
 
-const primaryBtn =
-  "inline-flex items-center justify-center gap-2 rounded-full bg-[#1A1612] px-5 py-2.5 text-[12px] uppercase tracking-[0.12em] text-[#FAF6EE] disabled:opacity-40"
-const ghostBtn = "inline-flex items-center gap-1.5 text-[12px] text-[#7A7066] hover:text-[#1A1612] disabled:opacity-40"
+const ghostBtn = `${ghostBase} disabled:opacity-40`
 const alertText = "text-[12px] text-[#C65D38]"
 const sectionTitle = "text-[11px] uppercase tracking-[0.12em]"
-const eur = (n: number) => `${String(Math.round(n * 100) / 100).replace(".", ",")} €`
 
 /** El último envío no llegó al carro: por qué, para la persona. */
 const SEND_RESULT_ERROR: Record<BasketSendError, (etiqueta: string) => string> = {
@@ -30,14 +28,15 @@ const SEND_RESULT_ERROR: Record<BasketSendError, (etiqueta: string) => string> =
   verificacion: () => "Puede que algo no haya entrado; revisa tu carro.",
 }
 
-const MOTIVO: Record<string, string> = {
-  no_encontrado: "no lo hemos encontrado",
-  no_publicado: "no está disponible",
-  error: "no hemos podido añadirlo",
+/** Por qué no entró una línea. */
+const MOTIVO: Record<string, (etiqueta: string) => string> = {
+  no_encontrado: (e) => `no aparece en ${e}`,
+  no_publicado: () => "no está disponible",
+  error: () => "no se ha podido añadir",
 }
 
 /** No hay respuesta de la extensión o no se ha podido guardar: volver a pulsar es seguro (spec). */
-const SEND_UNKNOWN = "No sabemos si ha entrado; abre tu carro. Si vuelves a pulsar no se duplica."
+const SEND_UNKNOWN = new ExtensionNoAnswer().message
 
 function sendErrorText(err: Error, etiqueta: string): string {
   if (err instanceof ExtensionNoAnswer || err instanceof ExtensionStaleSend) return err.message
@@ -47,8 +46,15 @@ function sendErrorText(err: Error, etiqueta: string): string {
   return SEND_UNKNOWN
 }
 
-function undoErrorText(err: Error, etiqueta: string): string {
+/** Falló la llamada a la API (respuesta de error, sin red o tiempo agotado), no la extensión. */
+function isApiFailure(err: Error): boolean {
+  return err instanceof ApiError || err instanceof TypeError || err.name === "AbortError"
+}
+
+function undoErrorText(err: Error, etiqueta: string, manual: boolean): string {
   if (err instanceof ExtensionNoAnswer) return err.message
+  // Sin `manual`, la API solo se llama cuando la extensión ya ha restado.
+  if (!manual && isApiFailure(err)) return "Lo hemos quitado de tu carro, pero no hemos podido guardarlo. Vuelve a pulsar."
   if (err.message === "sin_sesion") return `Entra en tu cuenta de ${etiqueta} en este navegador y vuelve a intentarlo.`
   return "No hemos podido deshacerlo. Vuelve a intentarlo."
 }
@@ -78,6 +84,7 @@ export function ExtensionSendPanel({ order, etiqueta }: { order: ShopOrder; etiq
 
   return (
     <div className="space-y-2 border-t border-[#EFE8D8] pt-3" data-testid="basket-extension">
+      {showPrev && r?.deshechoAt && <p className="text-[12px] text-[#7A7066]">Envío deshecho; puedes volver a enviarlo.</p>}
       {showPrev && prev?.error && (
         <p role="alert" className={alertText}>
           {SEND_RESULT_ERROR[prev.error](etiqueta)}
@@ -113,20 +120,27 @@ export function ExtensionSendPanel({ order, etiqueta }: { order: ShopOrder; etiq
   )
 }
 
+/**
+ * Por qué hay que quitarlo a mano: en este navegador no hay nada que deshacer
+ * (otro navegador, otro miembro del hogar) o la web de la cadena ha cambiado.
+ */
+type ManualReason = "nada" | "contrato"
+
 export function ExtensionSentBody({ order, etiqueta }: { order: ShopOrder; etiqueta: string }) {
   const undo = useUndoExtensionSend()
   const close = useCloseShopOrder()
-  /** La extensión de este navegador no puede deshacerlo (otro navegador u otro miembro del hogar). */
-  const [manual, setManual] = useState(false)
+  const [manual, setManual] = useState<ManualReason | null>(null)
   const r = order.extensionResult
   if (!r) return null
 
   const names = basketNames(order)
   const nameOf = (key: string) => names.get(key) ?? "Un producto"
+  const anadido = r.lineas.filter((l) => l.estado === "tabla" || l.estado === "busqueda")
   const revisar = r.lineas.filter((l) => l.estado === "busqueda")
   const dudosas = r.lineas.filter((l) => l.estado === "no_verificada")
   const fallidas = r.lineas.filter((l) => l.estado === "fallida")
-  const busy = undo.isPending || close.isPending
+  // Tras cerrar, hasta que llega el pedido cerrado, nada más.
+  const busy = undo.isPending || close.isPending || close.isSuccess
   const undoingManual = undo.isPending && !!undo.variables?.manual
 
   return (
@@ -160,7 +174,9 @@ export function ExtensionSentBody({ order, etiqueta }: { order: ShopOrder; etiqu
       {dudosas.length > 0 && (
         <section>
           <h3 className={`${sectionTitle} text-[#7A7066]`}>Sin confirmar</h3>
-          <p className="text-[11px] text-[#7A7066]">No sabemos si han entrado: revísalas en tu carro.</p>
+          <p className="text-[11px] text-[#7A7066]">
+            No sabemos si han entrado: revísalos en tu carro. Al cerrar el pedido seguirán en tu lista: márcalos allí si estaban.
+          </p>
           <ul className="divide-y divide-[#EFE8D8]">
             {dudosas.map((l) => (
               <li key={l.key} className="py-1.5 text-[12px] text-[#1A1612]">
@@ -176,44 +192,68 @@ export function ExtensionSentBody({ order, etiqueta }: { order: ShopOrder; etiqu
           <ul className="divide-y divide-[#EFE8D8]">
             {fallidas.map((l) => (
               <li key={l.key} className="py-1.5 text-[12px] text-[#1A1612]">
-                {nameOf(l.key)} — {MOTIVO[l.motivo ?? "error"] ?? MOTIVO.error}
+                {nameOf(l.key)} — {(MOTIVO[l.motivo ?? "error"] ?? MOTIVO.error)(etiqueta)}
               </li>
             ))}
           </ul>
         </section>
       )}
 
-      <div className="flex flex-wrap items-center gap-3">
-        {order.shop.webUrl && (
-          <a href={order.shop.webUrl} target="_blank" rel="noopener noreferrer" className={primaryBtn}>
-            <ExternalLink size={14} /> Abrir el carro
-          </a>
-        )}
-        <button
-          type="button"
-          className={ghostBtn}
-          disabled={busy}
-          onClick={() => {
-            // Un intento nuevo: lo que dijo el anterior («Ya lo he quitado yo») ya no vale.
-            setManual(false)
-            undo.mutate({ order }, { onSuccess: (x) => setManual(x.manualNeeded) })
-          }}
-        >
-          <Undo2 size={12} /> {undo.isPending && !undoingManual ? "Quitando…" : "Quitar lo que añadió Mimoia"}
-        </button>
-        <button type="button" className={ghostBtn} disabled={busy} onClick={() => close.mutate({ id: order.id })}>
-          <Check size={12} /> {close.isPending ? "Cerrando…" : "Ya está pedido"}
-        </button>
-      </div>
-      {undo.isPending && !undoingManual && (
-        <p className="text-[11px] text-[#7A7066]" aria-live="polite">
-          Puede tardar un poco. No cierres la pestaña de {etiqueta}.
+      <div>
+        <div className="flex flex-wrap items-center gap-3">
+          {order.shop.webUrl && (
+            <a href={order.shop.webUrl} target="_blank" rel="noopener noreferrer" className={primaryBtn}>
+              <ExternalLink size={14} /> Abrir el carro
+            </a>
+          )}
+          <button
+            type="button"
+            className={ghostBtn}
+            disabled={busy}
+            onClick={() => {
+              // Un intento nuevo: lo que dijo el anterior («Ya lo he quitado yo») ya no vale.
+              setManual(null)
+              undo.mutate(
+                { order },
+                {
+                  onSuccess: (x) => setManual(x.manualNeeded ? "nada" : null),
+                  // La web de la cadena ha cambiado: se puede quitar a mano.
+                  onError: (err) => setManual(!isApiFailure(err) && err.message === "contrato" ? "contrato" : null),
+                },
+              )
+            }}
+          >
+            <Undo2 size={12} /> {undo.isPending && !undoingManual ? "Quitando…" : "Quitar lo que añadió Mimoia"}
+          </button>
+          <button type="button" className={ghostBtn} disabled={busy} onClick={() => close.mutate({ id: order.id })}>
+            <Check size={12} /> {close.isPending ? "Cerrando…" : "Ya está pedido"}
+          </button>
+        </div>
+        {/* Siempre montado: así el lector de pantalla anuncia el aviso al aparecer. */}
+        <p className="text-[11px] text-[#7A7066] [&:not(:empty)]:mt-2" aria-live="polite">
+          {undo.isPending && !undoingManual ? `Puede tardar un poco. No cierres la pestaña de ${etiqueta}.` : ""}
         </p>
+      </div>
+      {anadido.length > 0 && (
+        // Para quitarlo a mano hay que saber qué es: abierto cuando toca hacerlo.
+        <details open={manual !== null} className="rounded-xl bg-[#F7F2E7] px-3 py-2" data-testid="basket-extension-added">
+          <summary className="cursor-pointer text-[12px] text-[#7A7066]">Lo que añadió Mimoia</summary>
+          <ul className="mt-1 divide-y divide-[#EFE8D8]">
+            {anadido.map((l) => (
+              <li key={l.key} className="py-1.5 text-[12px] text-[#1A1612]">
+                {l.producto ?? nameOf(l.key)}
+                {l.unidades ? ` × ${l.unidades}` : ""}
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
       {manual && (
         <div className="space-y-1">
           <p className="text-[12px] text-[#7A7066]">
-            Solo se puede deshacer desde el navegador que lo envió. Quita los productos en tu carro de {etiqueta}.
+            {manual === "nada"
+              ? `En este navegador no hay nada que quitar. Puedes quitarlo desde el navegador que lo envió o a mano en tu carro de ${etiqueta}. Cuando ya no esté, pulsa «Ya lo he quitado yo».`
+              : `También puedes quitarlo a mano en tu carro de ${etiqueta}. Cuando ya no esté, pulsa «Ya lo he quitado yo».`}
           </p>
           <button type="button" className={ghostBtn} disabled={busy} onClick={() => undo.mutate({ order, manual: true })}>
             <Check size={12} /> {undoingManual ? "Un momento…" : "Ya lo he quitado yo"}
@@ -222,7 +262,7 @@ export function ExtensionSentBody({ order, etiqueta }: { order: ShopOrder; etiqu
       )}
       {undo.error && (
         <p role="alert" className={alertText}>
-          {undoErrorText(undo.error, etiqueta)}
+          {undoErrorText(undo.error, etiqueta, !!undo.variables?.manual)}
         </p>
       )}
       {close.error && (

@@ -5,6 +5,7 @@
 #
 #   scripts/sync-staging-catalog.sh             # compare, then copy
 #   scripts/sync-staging-catalog.sh --dry-run   # compare only, change nothing
+#   scripts/sync-staging-catalog.sh --no-remap  # refuse on an ingredient with another id
 #
 # What is copied: the `ingredients` table, the catalogue recipes (author_id
 # IS NULL), their `recipe_ingredients` and `recipe_steps`. Catalogue recipes
@@ -14,8 +15,15 @@
 #
 # Production is only read, inside a read-only transaction. Staging is written
 # in one transaction (all or nothing). Refuses to run if both databases are
-# not on the same migrations, or if an ingredient name exists in staging with
-# a different id (a user-created ingredient would be clobbered).
+# not on the same migrations.
+#
+# Same ingredient, two ids (PRO-206): when staging has an ingredient whose
+# name production has under another id (a test household's recipe created it
+# first), staging's references — recipes, pantry, unit cache, shopping lists,
+# shop price memory — are moved to production's id and the duplicate is
+# deleted. Staging only holds test households, so nothing personal is lost;
+# the list is printed (also with --dry-run). With --no-remap it refuses
+# instead, as it did before.
 #
 # Database URLs come from Railway (service `Postgres`, DATABASE_PUBLIC_URL of
 # each environment; needs a directory linked to the `ona-app` project) unless
@@ -28,10 +36,12 @@
 set -euo pipefail
 
 DRY_RUN=0
+REMAP=1
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY_RUN=1 ;;
-    -h|--help) sed -n '2,28p' "$0"; exit 0 ;;
+    --no-remap) REMAP=0 ;;
+    -h|--help) sed -n '2,34p' "$0"; exit 0 ;;
     *) echo "Unknown argument: $arg (see --help)" >&2; exit 2 ;;
   esac
 done
@@ -124,6 +134,19 @@ staging -c "create temp table p_recipes as select $REC_COLS from recipes limit 0
       union all select '  - ' || s.name from recipes s where s.author_id is null and not exists (select 1 from p_recipes p where p.id = s.id)" \
   | head -60
 
+# Ingredients staging has under another id than production (same name).
+DUPES="$(staging -c "create temp table p_ingredients as select $ING_COLS from ingredients limit 0" \
+  -c "\copy p_ingredients from '$WORK/ingredients.csv' csv" \
+  -c "select '  = ' || s.name || ' (' || (select count(*) from recipe_ingredients ri where ri.ingredient_id = s.id) || ' recipe line(s), '
+              || (select count(*) from pantry_items pi where pi.ingredient_id = s.id) || ' pantry row(s))'
+        from ingredients s join p_ingredients p on p.name = s.name and p.id <> s.id order by s.name")"
+if [ -n "$DUPES" ]; then
+  [ "$REMAP" -eq 1 ] || die "ingredient names in staging with a different id than production (--no-remap):
+$DUPES"
+  echo "Ingredients with another id in staging — their references move to production's id and the duplicate goes:"
+  echo "$DUPES"
+fi
+
 if [ "$DRY_RUN" -eq 1 ]; then
   echo "Dry run: staging differs from production (above). Nothing written."
   exit 0
@@ -142,18 +165,36 @@ create temp table p_ri as select $RI_COLS from recipe_ingredients limit 0;
 create temp table p_steps as select $ST_COLS from recipe_steps limit 0;
 \copy p_steps from '$WORK/recipe_steps.csv' csv
 
-do \$\$
-declare clash text;
-begin
-  select string_agg(s.name, ', ') into clash
-    from ingredients s join p_ingredients p on p.name = s.name and p.id <> s.id;
-  if clash is not null then
-    raise exception 'ingredient names in staging with a different id than production: % (resolve by hand)', clash;
-  end if;
-end \$\$;
+-- Same name, another id (PRO-206): production's row goes in, staging's
+-- references move to its id and the staging duplicate is deleted.
+create temp table remap as
+  select s.id as old_id, p.id as new_id from ingredients s join p_ingredients p on p.name = s.name and p.id <> s.id;
+-- Out of the way of production's row (names are unique) until it is deleted below.
+update ingredients i set name = i.name || ' · duplicado ' || i.id from remap m where i.id = m.old_id;
 
 insert into ingredients ($ING_COLS) select $ING_COLS from p_ingredients
   on conflict (id) do update set $(set_list "$ING_COLS");
+
+update recipe_ingredients ri set ingredient_id = m.new_id from remap m where ri.ingredient_id = m.old_id;
+delete from unit_conversion_cache u using remap m
+ where u.ingredient_id = m.old_id
+   and exists (select 1 from unit_conversion_cache v where v.ingredient_id = m.new_id and v.display_unit = u.display_unit);
+update unit_conversion_cache u set ingredient_id = m.new_id from remap m where u.ingredient_id = m.old_id;
+-- A household with both keeps the production one linked; the other stays as free text.
+update pantry_items pi set ingredient_id = m.new_id from remap m
+ where pi.ingredient_id = m.old_id
+   and not exists (select 1 from pantry_items q where q.household_id = pi.household_id and q.ingredient_id = m.new_id);
+update pantry_items pi set ingredient_id = null from remap m where pi.ingredient_id = m.old_id;
+do \$\$
+declare r record;
+begin
+  for r in select old_id::text as o, new_id::text as n from remap loop
+    update shopping_lists set items = replace(items::text, r.o, r.n)::jsonb where items::text like '%' || r.o || '%';
+    update shopping_lists set item_state = replace(item_state::text, r.o, r.n)::jsonb where item_state::text like '%' || r.o || '%';
+    update household_shops set price_memory = replace(price_memory::text, r.o, r.n)::jsonb where price_memory::text like '%' || r.o || '%';
+  end loop;
+end \$\$;
+delete from ingredients where id in (select old_id from remap);
 
 -- Catalogue recipes gone from production leave staging too (their children cascade).
 delete from recipes where author_id is null and id not in (select id from p_recipes);

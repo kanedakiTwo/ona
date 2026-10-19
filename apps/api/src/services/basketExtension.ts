@@ -119,6 +119,12 @@ export function aggregateBasketGaps(rows: Array<{ lines: ShopOrderLine[]; result
   return [...out.values()].sort((a, b) => b.veces - a.veces || a.name.localeCompare(b.name))
 }
 
+/**
+ * Los resultados recibidos en los últimos `days` días. Se filtra por
+ * `recibidoAt` del resultado guardado, no por `updated_at` del pedido:
+ * cualquier cambio posterior en el pedido (editarlo, cerrarlo) lo volvería a
+ * meter en la ventana.
+ */
 export async function loadBasketGaps(days: number, db: Db = defaultDb): Promise<BasketGap[]> {
   const rows = await db
     .select({ lines: shopOrders.lines, result: shopOrders.extensionResult })

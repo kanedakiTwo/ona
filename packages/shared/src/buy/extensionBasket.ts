@@ -5,7 +5,7 @@
  */
 import type { BuyableUnit } from '../types/shopping.js'
 import type { ShopOrderLine } from '../types/shopOrders.js'
-import type { BasketLine, BasketSendResult } from '../types/basketExtension.js'
+import type { BasketLine } from '../types/basketExtension.js'
 import { buyRuleByKey, normalizeBuyName, orderQtyInGrams, pieceCount, toOrderQty } from './convert.js'
 import { shoppingGroupOf } from './listGroup.js'
 
@@ -216,9 +216,11 @@ export function buildExtensionBasket(lines: ShopOrderLine[]): BasketLine[] {
 /**
  * ¿Puede haber algo de este envío en el carro? Sí si entró algo o si hay
  * líneas sin verificar (un envío a medias). Decide si el pedido pasa a «Enviado»
- * y si se ofrece «Quitar lo que añadió Mimoia».
+ * y si se ofrece «Quitar lo que añadió Mimoia». La forma es estructural (no
+ * `BasketSendResult`) para que el esquema de ese tipo pueda llamarla sin que
+ * su tipo dependa de sí mismo.
  */
-export function basketMayBeInCart(r: Pick<BasketSendResult, 'anadidas' | 'lineas'>): boolean {
+export function basketMayBeInCart(r: { anadidas: number; lineas: Array<{ estado: string }> }): boolean {
   return r.anadidas > 0 || r.lineas.some((l) => l.estado === 'no_verificada')
 }
 

@@ -428,8 +428,8 @@ describe('buildExtensionBasket', () => {
 describe('basketMayBeInCart', () => {
   it('algo entró, o hay líneas sin verificar', () => {
     expect(basketMayBeInCart({ anadidas: 1, lineas: [] })).toBe(true)
-    expect(basketMayBeInCart({ anadidas: 0, lineas: [{ key: 'l1', estado: 'no_verificada' }] })).toBe(true)
-    expect(basketMayBeInCart({ anadidas: 0, lineas: [{ key: 'l1', estado: 'fallida' }] })).toBe(false)
+    expect(basketMayBeInCart({ anadidas: 0, lineas: [{ estado: 'no_verificada' }] })).toBe(true)
+    expect(basketMayBeInCart({ anadidas: 0, lineas: [{ estado: 'fallida' }] })).toBe(false)
   })
 })
 

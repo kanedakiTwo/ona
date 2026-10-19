@@ -5,6 +5,7 @@
  * cualquier cambio sube `BASKET_EXTENSION_PROTOCOL`.
  */
 import { z } from 'zod'
+import { basketMayBeInCart } from '../buy/extensionBasket.js'
 
 export const BASKET_EXTENSION_PROTOCOL = 1 as const
 
@@ -76,9 +77,8 @@ export const basketSendResultSchema = z
     version: z.string().max(32),
     contrato: z.string().max(64),
   })
-  // Si puede haber algo en el carro (lo mismo que `basketMayBeInCart`, aquí en línea para no
-  // hacer circular el tipo), el envío necesita su id: con él se reconoce un reintento y se deshace.
-  .refine((r) => r.envioId !== '' || !(r.anadidas > 0 || r.lineas.some((l) => l.estado === 'no_verificada')), {
+  // Si puede haber algo en el carro, el envío necesita su id: con él se reconoce un reintento y se deshace.
+  .refine((r) => r.envioId !== '' || !basketMayBeInCart(r), {
     message: 'envioId vacío en un envío que puede haber tocado el carro',
     path: ['envioId'],
   })

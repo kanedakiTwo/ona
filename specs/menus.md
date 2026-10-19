@@ -109,6 +109,8 @@ For each meal slot, the matcher (`recipeMatcher.ts`) filters recipes by:
 
 Then picks one at random from the pool. **Favorites get double weight** — they appear twice in the random pool.
 
+**Menú inteligente a la sombra (PRO-255):** after a week is generated, Mimo thinks the same week in the background and stores its proposal in `menu_plans`; the menu the household sees is still this generator's — see [Menú inteligente](./smart-menu.md).
+
 ## Single-Meal Regeneration
 
 `PUT /menu/:menuId/day/:day/meal/:meal` replaces one slot:

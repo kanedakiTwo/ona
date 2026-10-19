@@ -23,6 +23,7 @@ import { loadHouseholdRatingSets, withHouseholdRatings } from '../services/house
 import { addDish, removeDishAt, patchDish, reorderDish, coursesFor, dishCountFor, moveSlotInWeek } from '../services/menuDishes.js'
 import { getMemoryForUser } from '../services/userMemoryStore.js'
 import { loadFichaMenuConstraints, withFichaFilters } from '../services/profile/reader.js'
+import { startShadowPlan } from '../services/menuPlannerShadow.js'
 import {
   recordMenuEdits,
   slotDiff,
@@ -263,6 +264,19 @@ router.post('/menu/generate', authMiddleware, requireActiveAccount({ skip: (req)
     // Opt-in: only fires when the user has matching `prep_habits`.
     enqueuePrepAlertsForMenu(menu.id).catch((err) => {
       console.warn('[menus.generate] enqueuePrepAlertsForMenu failed:', err)
+    })
+
+    // Menú inteligente a la sombra (PRO-255): Mimo piensa la misma semana
+    // and stores its proposal in `menu_plans`; the household keeps seeing
+    // this one. Not awaited: it never delays or breaks the menu.
+    startShadowPlan({
+      menuId: menu.id,
+      userId,
+      weekStart,
+      days,
+      locked: previous.locked,
+      bannedRecipeIds: carryBanned,
+      skippedDays: carrySkipped,
     })
 
     // «Cuánto ha acertado» (PRO-155): one small Haiku call, stored on the

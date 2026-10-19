@@ -44,6 +44,10 @@ export interface RecipeWithIngredients {
    * skips it. Absent / empty for users' own recipes.
    */
   catalogAuditIssues?: readonly string[]
+  /** Internal tags (`tipo:<slug>`, `proteina:<slug>`), for the week rules (PRO-254). */
+  internalTags?: string[] | null
+  /** Cached per-serving nutrition; only `kcal` is read here (the planner's day floor). */
+  nutritionPerServing?: { kcal?: number | null } | null
   ingredients: Array<{
     ingredientId: string
     ingredientName: string

@@ -767,6 +767,18 @@ const generateWeeklyMenu: SkillDefinition = {
       console.warn('[assistant.generate_weekly_menu] enqueuePrepAlertsForMenu failed:', err)
     })
 
+    // Menú inteligente a la sombra (PRO-255), as in POST /menu/generate.
+    const { startShadowPlan } = await import('../menuPlannerShadow.js')
+    startShadowPlan({
+      menuId: menu.id,
+      userId,
+      weekStart,
+      days,
+      locked: previous.locked,
+      bannedRecipeIds: previous.bannedRecipeIds,
+      skippedDays: previous.skippedDays,
+    })
+
     // Build summary
     const dayNames = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo']
     const menuSummary = days.map((day: DayMenu, i: number) => {

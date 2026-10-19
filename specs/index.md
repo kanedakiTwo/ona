@@ -246,9 +246,9 @@ Lint validator for recipe data integrity, blocks save on missing ingredients in 
 
 ## [Menú inteligente](./smart-menu.md)
 
-Smart menu / planificador de la semana con IA (D-087), built in the shadow: reglas de una semana bien hecha (COC-14) as checks, `scoreWeek` — legumbre de cuchara ≥ 2, pescado 2–3, misma proteína a mediodía y cena, platos repetidos salvo sobras o táper (PRO-238), aprovechar ingredientes, cenas ligeras, temporada (PRO-254).
+Smart menu / planificador de la semana con IA (D-087), built in the shadow: reglas de una semana bien hecha (COC-14) as checks, `scoreWeek` — legumbre de cuchara ≥ 2, pescado 2–3, misma proteína a mediodía y cena, platos repetidos salvo sobras o táper (PRO-238), aprovechar ingredientes, cenas ligeras, temporada (PRO-254); planificador a la sombra con Claude Opus 5.5 (candidatas, comprobador fijo de alergias/dietas/vetos/equipo/tiempo/repetidos/día flojo, `menu_plans`, coste `menu_planner`, `MENU_PLANNER_SHADOW`, PRO-255).
 
-**Source**: `apps/api/src/services/weekRules.ts`
+**Source**: `apps/api/src/services/weekRules.ts`, `apps/api/src/services/menuPlanner.ts`, `apps/api/src/services/menuPlannerShadow.ts`
 
 ---
 

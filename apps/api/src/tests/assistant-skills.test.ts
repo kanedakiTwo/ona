@@ -181,6 +181,51 @@ describe('get_todays_menu', () => {
   })
 })
 
+// ─── 1a. PRO-183: the menu tools say what the app shows ──────────────────
+
+describe('menu tools cite the app\'s servings and minutes (PRO-183)', () => {
+  // A recipe for 2 (300 g de pollo, 25 min, 10 de trabajo) in a meal of 4.
+  const days = [
+    { dinner: { servings: 4, dishes: [{ kind: 'recipe', recipeId: 'pollo', recipeName: 'Pollo a la plancha' }] } },
+    {}, {}, {}, {}, {}, {},
+  ]
+  const times = [{ id: 'pollo', totalTime: 25, activeTime: 10, prepTime: 10 }]
+  const at = <T,>(fn: () => Promise<T>) => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-19T10:00:00Z')) // Monday
+    return fn().finally(() => vi.useRealTimers())
+  }
+
+  it('get_todays_menu: servings of the meal and minutes of the dish', async () => {
+    const db = makeDb([{ id: 'm-1', days }], [{ adults: 2, kidsCount: 0 }], times)
+    const r = await at(() => get('get_todays_menu').handler({ day: 'hoy' }, ctx(db)))
+    expect(r.summary).toBe('Menu del lunes 19 de octubre: cena [solo hoy: 4] · 4 raciones: Pollo a la plancha (25 min en total, 10 de trabajo)')
+  })
+
+  it('get_weekly_menu: the same facts day by day', async () => {
+    const db = makeDb([{ id: 'm-1', days, skippedDays: [] }], [{ adults: 2, kidsCount: 0 }], times)
+    const r = await at(() => get('get_weekly_menu').handler({}, ctx(db)))
+    expect(r.summary).toContain('lunes 19 de octubre: cena [solo hoy: 4] · 4 raciones: Pollo a la plancha (25 min en total, 10 de trabajo)')
+  })
+
+  it('get_recipe_details with the menu\'s servings: amounts already scaled and total minutes', async () => {
+    const recipe = { id: 'pollo', name: 'Pollo a la plancha', prepTime: 10, totalTime: 25, activeTime: 10, servings: 2 }
+    const ings = [
+      { ingredientName: 'pechuga de pollo', quantity: 300, unit: 'g' },
+      { ingredientName: 'limón', quantity: 1, unit: 'u' },
+    ]
+    const r = await get('get_recipe_details').handler({ recipeName: 'pollo a la plancha', servings: 4 }, ctx(makeDb([recipe], ings, [])))
+    expect(r.summary).toContain('Pollo a la plancha (25 min en total, 10 de trabajo; cantidades para 4 raciones, la receta base es para 2)')
+    expect(r.summary).toContain('pechuga de pollo: 600g')
+    expect(r.summary).toContain('limón: 2u')
+    expect(r.data).toMatchObject({ servings: 4, baseServings: 2, totalTime: 25 })
+    // Without servings: the recipe's own amounts.
+    const base = await get('get_recipe_details').handler({ recipeName: 'pollo a la plancha' }, ctx(makeDb([recipe], ings, [])))
+    expect(base.summary).toContain('Pollo a la plancha (25 min en total, 10 de trabajo, 2 raciones)')
+    expect(base.summary).toContain('pechuga de pollo: 300g')
+  })
+})
+
 // ─── 1b. get_weekly_menu (the whole week, 2026-10-15) ─────────────────────
 
 describe('get_weekly_menu', () => {

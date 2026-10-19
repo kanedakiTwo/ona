@@ -4,7 +4,8 @@
  * One shop order on /compra (specs/shop-orders.md), by status:
  *   draft    → review lines, notes, cap → send from the user's own WhatsApp / mail
  *              (web shops: checklist with a search link per product)
- *   sent     → paste the shop's reply
+ *   sent     → paste the shop's reply (súper sent through the browser
+ *              extension: its result instead — ExtensionOrder.tsx)
  *   quoted   → ok / revisar / no hay per line; the user decides the doubtful ones
  *   approved → send the confirmation; close when collected
  */
@@ -12,6 +13,7 @@ import { useState } from "react"
 import { ArrowRightLeft, Check, Copy, ExternalLink, Globe, Mail, MessageCircle, Phone, Plus, X } from "lucide-react"
 import {
   SHOP_KIND_LABELS,
+  basketMayBeInCart,
   carrefourLinks,
   SHOP_ORDER_STATUS_LABELS,
   capitalize,
@@ -30,8 +32,10 @@ import {
   usePatchShopOrder,
   useSubmitShopReply,
 } from "@/hooks/useShopOrders"
+import { useBasketExtension } from "@/hooks/useBasketExtension"
 import { haptic } from "@/lib/pwa/haptics"
 import { api } from "@/lib/api"
+import { ExtensionSendPanel, ExtensionSentBody } from "./ExtensionOrder"
 
 const eur = (n: number | null | undefined) => (n == null ? "—" : `${String(Math.round(n * 100) / 100).replace(".", ",")} €`)
 const lineName = (l: ShopOrderLine) => capitalize(prettyName(l.name))
@@ -77,6 +81,9 @@ function CopyButton({ text, label = "Copiar" }: { text: string; label?: string }
 
 export function OrderCard({ order, shops }: { order: ShopOrder; shops: Shop[] }) {
   const cancel = useCancelShopOrder()
+  const ext = useBasketExtension(order.shop.kind === "supermercado" ? order.shop.webUrl : null)
+  // Enviado con la extensión y puede haber algo en el carro: su propio cuerpo, no el de WhatsApp.
+  const extSent = order.status === "sent" && !!order.extensionResult && basketMayBeInCart(order.extensionResult) && !order.extensionResult.deshechoAt
   return (
     <article className="rounded-2xl border border-[#DDD6C5] bg-[#FFFEFA]" data-testid={`order-${order.shop.kind}`}>
       <header className="flex items-start justify-between gap-3 px-4 pt-4">
@@ -96,7 +103,8 @@ export function OrderCard({ order, shops }: { order: ShopOrder; shops: Shop[] })
 
       <div className="px-4 pb-4 pt-3">
         {order.status === "draft" && <DraftBody order={order} shops={shops} />}
-        {order.status === "sent" && <SentBody order={order} />}
+        {order.status === "sent" &&
+          (extSent ? <ExtensionSentBody order={order} etiqueta={ext.etiqueta ?? order.shop.name} /> : <SentBody order={order} />)}
         {order.status === "quoted" && <QuotedBody order={order} />}
         {order.status === "approved" && <ApprovedBody order={order} />}
         {order.status === "closed" && (
@@ -358,9 +366,21 @@ function DraftBody({ order, shops }: { order: ShopOrder; shops: Shop[] }) {
       {order.links.tooLong && !blocked && (
         <p className="text-[11px] text-[#C65D38]">El pedido es largo para escribirlo solo: copia el mensaje y pégalo en el chat que se abre.</p>
       )}
-      {order.shop.kind === "supermercado" && <CarrefourOrder order={order} />}
+      {order.shop.kind === "supermercado" && <SuperExtras order={order} />}
     </div>
   )
+}
+
+/**
+ * Tarjeta del súper: «Enviar a <cadena>» si hay extensión para su web; si no,
+ * los enlaces de Carrefour (PRO-84). Mientras se comprueba, ninguno de los dos:
+ * así no aparece uno para cambiarse luego por el otro.
+ */
+function SuperExtras({ order }: { order: ShopOrder }) {
+  const ext = useBasketExtension(order.shop.webUrl)
+  if (ext.checking) return null
+  if (ext.available) return <ExtensionSendPanel order={order} etiqueta={ext.etiqueta ?? order.shop.name} />
+  return <CarrefourOrder order={order} />
 }
 
 /**

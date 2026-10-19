@@ -30,6 +30,12 @@ Allergens are not provided by USDA. Each ingredient has an `allergenTags` string
 - The recipe ficha shows `effectiveAllergens` (stored union + name inference, additive, computed on read), so a stale stored union is corrected without touching the database
 - A recipe's `allergens` is the union of all its ingredients' `allergenTags`, including `optional` ingredients (so the badge is conservative)
 
+### What a compound ingredient contains (PRO-198)
+
+A compound ingredient (leftovers, stocks, the dish «cocido», generic cured meats, patés) can hide what it's made of: «Sobras del cocido madrileño» names no pork. `ingredients.contains_tags` says it (`CONTAINS_TAGS` in `services/compoundIngredients.ts`: `cerdo`, `ternera`, `pollo`, `cordero`, `carne`, `alcohol`, the EU allergen tags, and `vegetal` = reviewed, nothing animal). The diet and allergy filter reads them (see [Menus → Restrictions & allergies](./menus.md)).
+- On every boot (after `db:migrate`) `applyCompoundIngredientTags` labels the obvious compounds while they still have no tag: «Sobras del cocido (madrileño)» → cerdo, ternera, pollo, gluten; «Caldo de cocido» → cerdo, ternera, pollo; «Caldo de pollo/gallina» → pollo; «Caldo de pescado», «Fumet» → pescado; «Caldo de verduras» → vegetal; generic «Embutido(s)», «Salchicha(s)», «Salchichas frescas», «Foie gras de untar» → cerdo (prudent, PRO-61). A label set by Cocina is never overwritten
+- The rest is labelled by Cocina, without Miguel: `scripts/auditCompoundIngredients.ts` (`DATABASE_URL=…`, `--fixture=…`, `--json`) and `GET /admin/ingredient-gaps` → `compoundWithoutTags` list the compounds with no tag («sobras de…», «caldo», «fondo de», «fumet», «cocido», «embutido», «fiambre», «salchicha», «paté», «foie», «relleno», «cubito»); `PATCH /ingredients/:id` takes `containsTags`
+
 ## Recipe Aggregation
 
 `nutritionPerServing` is computed when a recipe is saved (create, update, or seed):
@@ -100,7 +106,9 @@ Warnings are surfaced to the recipe author / curator but do not block saving.
 
 ## Source
 
-- [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts) — `ingredients` (per-100 g nutrition columns + density/unitWeight/edibleFraction/aisle/allergenTags)
+- [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts) — `ingredients` (per-100 g nutrition columns + density/unitWeight/edibleFraction/aisle/allergenTags/containsTags)
+- [apps/api/src/services/compoundIngredients.ts](../apps/api/src/services/compoundIngredients.ts) — what compound ingredients contain: allowed tags, known labels and their boot step, audit
+- [apps/api/scripts/auditCompoundIngredients.ts](../apps/api/scripts/auditCompoundIngredients.ts) — read-only list of compound ingredients with no contains tag, for Cocina
 - [apps/api/src/services/nutrition/usdaClient.ts](../apps/api/src/services/nutrition/usdaClient.ts) — USDA FDC API client with on-disk cache
 - [apps/api/src/services/nutrition/aggregate.ts](../apps/api/src/services/nutrition/aggregate.ts) — recipe-level aggregation
 - [apps/api/src/services/nutrition/negligible.ts](../apps/api/src/services/nutrition/negligible.ts) — salt, water, spices, «al gusto»: lines whose skip doesn't make a recipe incomplete

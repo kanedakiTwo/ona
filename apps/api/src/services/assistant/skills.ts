@@ -139,7 +139,7 @@ async function restrictionConflicts(ctx: SkillContext, recipeId: string): Promis
     .where(eq(recipes.id, recipeId))
     .limit(1)
   const ings = await ctx.db
-    .select({ ingredientName: ingredients.name, allergenTags: ingredients.allergenTags })
+    .select({ ingredientName: ingredients.name, allergenTags: ingredients.allergenTags, containsTags: ingredients.containsTags })
     .from(recipeIngredients)
     .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
     .where(eq(recipeIngredients.recipeId, recipeId))

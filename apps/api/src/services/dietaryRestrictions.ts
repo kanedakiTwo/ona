@@ -260,7 +260,16 @@ export interface RestrictableRecipe {
   name?: string | null
   /** Recipe-level allergen union (recipes.allergens). */
   allergens?: readonly string[] | null
-  ingredients: ReadonlyArray<{ ingredientName: string; allergenTags?: readonly string[] | null }>
+  ingredients: ReadonlyArray<{
+    ingredientName: string
+    allergenTags?: readonly string[] | null
+    /**
+     * PRO-198: what a compound ingredient contains (`ingredients.contains_tags`:
+     * «cerdo», «pollo», «gluten»…). Each tag counts as an allergen tag when it
+     * is one, and as a word of the name for diets, dislikes and alcohol.
+     */
+    containsTags?: readonly string[] | null
+  }>
 }
 
 /** True when the recipe contains something the compiled restrictions exclude. */
@@ -279,6 +288,15 @@ export function violatesRestrictions(recipe: RestrictableRecipe, rules: Compiled
       const name = normalizeText(ing.ingredientName)
       if (rules.terms.some((t) => nameHasTerm(name, t))) return true
       if (rules.alcohol && nameHasAlcohol(name)) return true
+    }
+    // PRO-198: what a compound ingredient contains counts as an allergen tag
+    // and as a word of its name.
+    for (const raw of ing.containsTags ?? []) {
+      const tag = normalizeText(raw)
+      if (!tag) continue
+      if (rules.allergens.has(tag as AllergenTag)) return true
+      if (rules.terms.some((t) => nameHasTerm(tag, t))) return true
+      if (rules.alcohol && nameHasAlcohol(tag)) return true
     }
   }
   return false

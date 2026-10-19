@@ -1,0 +1,1 @@
+ALTER TABLE "ingredients" ADD COLUMN "contains_tags" text[] DEFAULT '{}' NOT NULL;

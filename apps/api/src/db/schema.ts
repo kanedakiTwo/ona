@@ -193,6 +193,13 @@ export const ingredients = pgTable('ingredients', {
   edibleFraction: real('edible_fraction').notNull().default(1),
   // Allergen tags (e.g. "gluten", "lactose", "egg", "fish")
   allergenTags: text('allergen_tags').array().default([]),
+  /**
+   * PRO-198: what a compound ingredient is made of («Sobras del cocido» →
+   * cerdo, ternera, pollo, gluten), from `CONTAINS_TAGS`
+   * (services/compoundIngredients.ts). The diet filter reads these tags like
+   * words of the name, so «sin cerdo» sees pork its name doesn't say.
+   */
+  containsTags: text('contains_tags').array().notNull().default([]),
   // Per-100 g nutrition (existing columns; salt added here)
   calories: real('calories').notNull().default(0),
   protein: real('protein').default(0),

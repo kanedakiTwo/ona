@@ -42,6 +42,7 @@ export interface CandidateIngredient {
   ingredientName: string
   optional?: boolean
   allergenTags?: readonly string[] | null
+  containsTags?: readonly string[] | null
 }
 
 export interface CandidateRecipe {
@@ -180,6 +181,7 @@ export async function findRecipesWithWhatIHave(
       ingredientName: ingredients.name,
       optional: recipeIngredients.optional,
       allergenTags: ingredients.allergenTags,
+      containsTags: ingredients.containsTags,
     })
     .from(recipeIngredients)
     .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
@@ -187,7 +189,7 @@ export async function findRecipesWithWhatIHave(
   const byRecipe = new Map<string, CandidateIngredient[]>()
   for (const r of ingRows as any[]) {
     const list = byRecipe.get(r.recipeId) ?? []
-    list.push({ ingredientId: r.ingredientId, ingredientName: r.ingredientName, optional: !!r.optional, allergenTags: r.allergenTags ?? [] })
+    list.push({ ingredientId: r.ingredientId, ingredientName: r.ingredientName, optional: !!r.optional, allergenTags: r.allergenTags ?? [], containsTags: r.containsTags ?? [] })
     byRecipe.set(r.recipeId, list)
   }
 

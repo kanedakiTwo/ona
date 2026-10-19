@@ -477,6 +477,13 @@
       "when": 1792279786654,
       "tag": "0070_founder_offer",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1792364911340,
+      "tag": "0071_contains_tags",
+      "breakpoints": true
     }
   ]
 }

@@ -37,6 +37,7 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
       unit: recipeIngredients.unit,
       ingredientName: ingredients.name,
       allergenTags: ingredients.allergenTags,
+      containsTags: ingredients.containsTags,
       unitWeight: ingredients.unitWeight,
       density: ingredients.density,
       edibleFraction: ingredients.edibleFraction,
@@ -66,6 +67,7 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
       quantity: row.quantity,
       unit: row.unit ?? 'g',
       allergenTags: row.allergenTags ?? [],
+      containsTags: row.containsTags ?? [],
     })
     ingredientsByRecipe.set(row.recipeId, list)
   }

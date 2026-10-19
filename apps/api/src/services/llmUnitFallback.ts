@@ -2,6 +2,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { recordAnthropicCost } from './costLedger.js'
 import { env } from '../config/env.js'
+import { CLAUDE_MODEL, LOW_EFFORT, withThinkingRoom } from '../config/models.js'
 
 export interface LlmUnitInput {
   displayQuantity: number
@@ -43,7 +44,7 @@ Output: { "gramsPerUnit": 8, "mlPerUnit": null, "rationale": "Una rodajita fina 
 Input: { "unit": "buen chorro", "ingredient": null }
 Output: { "gramsPerUnit": null, "mlPerUnit": 40, "rationale": "Un buen chorro de líquido suele rondar 40 ml." }`
 
-const UNIT_FALLBACK_MODEL = 'claude-haiku-4-5-20251001'
+const UNIT_FALLBACK_MODEL = CLAUDE_MODEL
 
 class AnthropicLlmUnitClient implements LlmUnitClient {
   private client: Anthropic
@@ -63,7 +64,8 @@ class AnthropicLlmUnitClient implements LlmUnitClient {
     })
     const response = await this.client.messages.create({
       model: UNIT_FALLBACK_MODEL,
-      max_tokens: 200,
+      max_tokens: withThinkingRoom(200),
+      ...LOW_EFFORT,
       messages: [
         { role: 'user', content: `${PROMPT}\n\nInput: ${userMessage}\nOutput:` },
       ],

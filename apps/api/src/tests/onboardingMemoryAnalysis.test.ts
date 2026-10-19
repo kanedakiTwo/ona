@@ -84,7 +84,8 @@ describe('onboarding answers → memory (PRO-138)', () => {
 
     // The free text reaches the model as data, with the weekday answer.
     expect(calls[0].model).toBe(ONBOARDING_ANALYSIS_MODEL)
-    expect(calls[0].tool_choice).toEqual({ type: 'tool', name: 'update_memory' })
+    // Forced tool_choice is a 400 on Opus 5.5: auto, the prompt asks for update_memory (PRO-232).
+    expect(calls[0].tool_choice).toEqual({ type: 'auto' })
     expect(calls[0].messages[0].content).toContain('teletrabajo y a mediodía como fuera')
     expect(calls[0].messages[0].content).toContain('Poco rato de trabajo')
 

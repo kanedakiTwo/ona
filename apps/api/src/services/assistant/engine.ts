@@ -14,6 +14,7 @@ import {
   addAnthropicUsage,
   type TokenUsage,
 } from '../advisorBudget.js'
+import { CLAUDE_MODEL } from '../../config/models.js'
 
 let client: Anthropic | null = null
 
@@ -115,7 +116,7 @@ export async function chat(
  * claimed changes it hadn't made, invented menu facts, ran out of tokens);
  * Sonnet 5.5 got none badly wrong. `advisorBudget.ts` prices its tokens.
  */
-export const ASSISTANT_MODEL = 'claude-sonnet-5-5'
+export const ASSISTANT_MODEL = CLAUDE_MODEL
 /** Thinking depth. `medium` is enough for multi-change requests; `low` lost steps in the replay. */
 export const ASSISTANT_EFFORT = 'medium'
 /** Thinking + text + tool input share it; 1024 cut long create_recipe calls mid-way. */

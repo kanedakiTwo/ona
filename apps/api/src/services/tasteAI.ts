@@ -20,10 +20,11 @@ import { env } from '../config/env.js'
 import { recordAnthropicCost } from './costLedger.js'
 import { normalizeText } from './dietaryRestrictions.js'
 import { dishType, proteinKind, type TasteRecipe } from './tasteDeck.js'
+import { CLAUDE_MODEL, LOW_EFFORT, withThinkingRoom } from '../config/models.js'
 
-export const TASTE_MODEL = 'claude-haiku-4-5-20251001'
+export const TASTE_MODEL = CLAUDE_MODEL
 /** Past this the batch falls back to the variety order (the client asked at card 5, so there is margin). */
-export const TASTE_AI_TIMEOUT_MS = 8000
+export const TASTE_AI_TIMEOUT_MS = 15000
 
 type CreateFn = (params: Anthropic.MessageCreateParamsNonStreaming) => Promise<Pick<Anthropic.Message, 'content' | 'usage'>>
 
@@ -130,7 +131,8 @@ export async function pickNextWithClaude(input: PickInput, deps: { create?: Crea
     response = await withTimeout(
       create({
         model: TASTE_MODEL,
-        max_tokens: 200,
+        max_tokens: withThinkingRoom(200),
+        ...LOW_EFFORT,
         system: PICK_SYSTEM,
         messages: [{ role: 'user', content: `LO QUE HA RESPONDIDO:\n${answered || '(nada aún)'}${dislikes}\n\nCANDIDATAS:\n${list}\n\nElige ${Math.min(input.limit, candidates.length)}.` }],
       }),
@@ -220,7 +222,8 @@ export async function analyseTasteReason(text: string, recipeName: string, deps:
     const response = await withTimeout(
       create({
         model: TASTE_MODEL,
-        max_tokens: 300,
+        max_tokens: withThinkingRoom(300),
+        ...LOW_EFFORT,
         system: REASON_SYSTEM,
         messages: [{ role: 'user', content: `RECETA: ${recipeName}\nLO QUE HA ESCRITO: ${text.slice(0, 280)}` }],
       }),

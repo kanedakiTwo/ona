@@ -6,6 +6,7 @@
  *
  * Wording rule (constitution §6): «para no repetir», never «para equilibrar».
  */
+import { CLAUDE_MODEL } from '../config/models.js'
 import Anthropic from '@anthropic-ai/sdk'
 import { and, between, eq, gt, inArray, or } from 'drizzle-orm'
 import {
@@ -26,7 +27,7 @@ import { recordAnthropicCost } from './costLedger.js'
 type Db = typeof defaultDb
 
 /** D-070: at least Opus 5.5 in every product call. */
-export const SCHOOL_MENU_MODEL = 'claude-opus-5-5'
+export const SCHOOL_MENU_MODEL = CLAUDE_MODEL
 
 export const SCHOOL_MENU_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'] as const
 export type SchoolMenuMimeType = (typeof SCHOOL_MENU_MIME_TYPES)[number]

@@ -29,7 +29,7 @@ This closes the case where the small inline dictionary produces a poor English k
 
 USDA descriptions are English-only ("Pork sausage, fresh, cooked"). To make them comparable to Spanish names ("chorizo asturiano"), each candidate is augmented with a `descriptionEs` field holding a Spanish translation. The translator:
 
-- Uses Claude Haiku 4.5 (cheap, fast)
+- Uses Claude Opus 5.5 at effort low (`CLAUDE_MODEL`, PRO-232; Haiku 4.5 until 2026-10-19)
 - Batches up to 5 descriptions per call to keep token overhead low
 - Caches every English→Spanish pair in-memory and on disk under `apps/api/.cache/translations/usda/<sha1>.json` — first request is slow (~300 ms), subsequent requests are immediate
 - Falls back to `null` (no translation) when `ANTHROPIC_API_KEY` is missing or the API call fails — the UI then shows the raw English
@@ -87,7 +87,7 @@ Behaviour:
 - With `query`: the value is sent to USDA verbatim — the dictionary is bypassed.
 - USDA candidates rank Foundation > SR Legacy > FNDDS. Branded entries are filtered out.
 - If USDA returns 0 candidates, BEDCA is queried as a fallback.
-- USDA candidate descriptions are translated to Spanish via Claude Haiku (batched + cached); BEDCA descriptions are already Spanish.
+- USDA candidate descriptions are translated to Spanish via Claude Opus 5.5 at effort low (batched + cached); BEDCA descriptions are already Spanish.
 
 ### `POST /ingredients/auto-create` (auth)
 
@@ -149,7 +149,7 @@ USDA fetches are sequential to stay within the rate budget. Each extracted recip
 - [apps/api/src/routes/ingredients.ts](../apps/api/src/routes/ingredients.ts) — `GET /suggest`, `POST /auto-create`, `POST /estimate-nutrition`, `POST /:id/estimate-nutrition`
 - [apps/api/src/services/nutrition/usdaClient.ts](../apps/api/src/services/nutrition/usdaClient.ts) — underlying USDA fetcher
 - [apps/api/src/services/nutrition/bedcaClient.ts](../apps/api/src/services/nutrition/bedcaClient.ts) — Spanish-government nutrition DB scraper, on-disk cached
-- [apps/api/src/services/nutrition/usdaTranslator.ts](../apps/api/src/services/nutrition/usdaTranslator.ts) — batched Claude Haiku translator with disk + memory cache
+- [apps/api/src/services/nutrition/usdaTranslator.ts](../apps/api/src/services/nutrition/usdaTranslator.ts) — batched Claude Opus 5.5 translator with disk + memory cache
 - [apps/api/src/services/nutrition/allergens.ts](../apps/api/src/services/nutrition/allergens.ts) — `inferAllergenTagsFromName`
 - [apps/api/src/services/recipeExtractor.ts](../apps/api/src/services/recipeExtractor.ts) — auto-creates unknown extracted ingredients
 - [apps/api/scripts/applyRegeneratedRecipes.ts](../apps/api/scripts/applyRegeneratedRecipes.ts) — `--auto-create-missing` flag

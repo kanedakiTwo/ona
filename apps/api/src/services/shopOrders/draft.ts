@@ -13,6 +13,7 @@ import {
   buyRuleByKey,
   resolveBuyRule,
   splitCompound,
+  missingQuantity,
   toOrderQty,
   normalizeBuyName,
   type BuyableUnit,
@@ -149,7 +150,9 @@ export function draftOrdersFromItems<S extends DraftShop>(
   const groups = new Map<string, { shop: S; kind: ShopKind; members: Entry[]; ruleKey: string | null; order: number }>()
   let order = 0
 
-  for (const item of items) {
+  for (const row of items) {
+    // A line partly bought for an earlier menu orders only the rest (PRO-199).
+    const item = row.haveQuantity && row.haveQuantity > 0 ? { ...row, quantity: missingQuantity(row) } : row
     if (item.checked || item.inStock || !(item.quantity > 0)) continue
     if (opts.alreadyOrdered?.has(item.id)) {
       result.skipped.push({ name: item.name, reason: 'ya está en un pedido abierto' })

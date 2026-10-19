@@ -62,6 +62,7 @@ export {
   fitsTimeBudget,
 } from './types/cookingTime.js'
 export type { ShoppingItem, ShoppingList, BuyableUnit } from './types/shopping.js'
+export { missingQuantity } from './types/shopping.js'
 export type {
   ShopKind,
   ShopChannel,

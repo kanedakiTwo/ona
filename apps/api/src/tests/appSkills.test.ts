@@ -534,3 +534,10 @@ describe('add_freezer_dish (PRO-82)', () => {
     ])
   })
 })
+
+describe('itemLabel with a line partly bought (PRO-199)', () => {
+  it('says only what is missing', async () => {
+    const { itemLabel } = await import('../services/assistant/appSkills.js')
+    expect(itemLabel({ id: 'a', name: 'ajo', quantity: 40, unit: 'g', haveQuantity: 25 })).toBe('ajo (faltan 15 g; ya tienes 25 g)')
+  })
+})

@@ -39,6 +39,22 @@ export interface ShoppingItem {
    * marked on any of them carries over to this line.
    */
   mergedIngredientIds?: string[]
+  /**
+   * Menu items: part of `quantity` the household already has — bought or at
+   * home for an earlier version of the menu (PRO-199). The line stays pending
+   * for the rest («Te faltan 10 g»). Set only when the menu now asks for more
+   * than what was marked and both amounts can be compared (same unit or a
+   * known conversion). Ticking or un-ticking the line clears it.
+   */
+  haveQuantity?: number
+  /** What `haveQuantity` came from: marked bought or marked at home. */
+  haveSource?: 'checked' | 'inStock'
+}
+
+/** What is still to buy of a line: its quantity minus what the household already has. */
+export function missingQuantity(item: Pick<ShoppingItem, 'quantity' | 'haveQuantity'>): number {
+  const have = item.haveQuantity ?? 0
+  return have > 0 ? Math.max(0, item.quantity - have) : item.quantity
 }
 
 export interface ShoppingList {

@@ -1,3 +1,4 @@
+import type { CookTodayResult } from '../cookToday.js'
 import { AISLES, capitalize, formatQty, inviteHouseholdShareText, prettyName, type ShoppingItem } from '@ona/shared'
 import type { SkillContext, SkillDefinition, SkillResult } from './types.js'
 import { appApiFor, AppApiError, type AppApi } from './appApi.js'
@@ -1245,6 +1246,43 @@ const setWhatsappNotifications: SkillDefinition = {
 }
 
 /**
+ * PRO-230 (D-069): «hoy cocina Pablo, mándale la receta». No UI: only here.
+ */
+const setCookToday: SkillDefinition = {
+  name: 'set_cook_today',
+  description:
+    'Cuando el usuario dice que otra persona de su hogar cocina un dia ("hoy cocina Pablo, mandale la receta", "el jueves cocina Ana"): manda a esa persona por WhatsApp la receta de ese dia con los preparativos pendientes, y desde entonces los avisos de preparacion de ese dia le llegan a ella y no al usuario. name: el nombre que dice el usuario. day: sus palabras ("hoy" por defecto). meal: solo si lo dice (por defecto la cena, o la comida si no hay cena). Si esa persona no tiene WhatsApp conectado, devuelve un enlace para que el usuario se la reenvie.',
+  parameters: {
+    type: 'object',
+    properties: {
+      name: { type: 'string' },
+      day: DAY_PROP,
+      meal: { type: 'string', enum: ['breakfast', 'lunch', 'snack', 'dinner'] },
+    },
+    required: ['name'],
+  },
+  async handler(p, ctx) {
+    const r = await api(ctx)<CookTodayResult>('POST', '/households/me/cook-today', {
+      name: String(p.name ?? ''),
+      ...(typeof p.day === 'string' && p.day ? { day: p.day } : {}),
+      ...(p.meal ? { meal: p.meal } : {}),
+    })
+    if (r.status === 'error') return text(`No hecho: ${r.message}`)
+    if (r.status === 'sent') return text(`Hecho: le he mandado a ${r.cook} por WhatsApp la receta y los preparativos; los avisos de preparación de ese día le llegan a ${r.cook}.`, { cook: r.cook })
+    const why =
+      r.reason === 'no_whatsapp'
+        ? `${r.cook} no tiene WhatsApp conectado con Mimoia`
+        : r.reason === 'avisos_off'
+          ? `${r.cook} tiene apagados los avisos de Mimo por WhatsApp`
+          : `ahora no puedo escribir a ${r.cook} por WhatsApp (lleva más de un día sin escribirme)`
+    return text(
+      `No enviado: ${why}. Los avisos de ese día te siguen llegando a ti. Dale al usuario este enlace para reenviársela tal cual: ${r.forwardUrl}`,
+      { cook: r.cook, forwardUrl: r.forwardUrl },
+    )
+  },
+}
+
+/**
  * Beta feedback (specs/feedback.md): what the user wants to tell the team
  * about Mimoia itself goes, verbatim, to the same box as the app's «Opinión»
  * button. Not for recipe notes or food preferences.
@@ -1295,4 +1333,5 @@ export const appSkills: SkillDefinition[] = [
   shareInviteLink,
   setWhatsappNotifications,
   leaveFeedback,
+  setCookToday,
 ]

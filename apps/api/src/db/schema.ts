@@ -630,6 +630,18 @@ export const householdMembers = pgTable('household_members', {
   check('household_members_role_check', sql.raw("role IN ('owner','member','child')")),
 ])
 
+// PRO-230 (D-069): «hoy cocina Pablo» — who cooks a given day, only when
+// someone asks Mimo. That day's prep alerts go to this person.
+export const cookOfDay = pgTable('cook_of_day', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  /** Madrid calendar day (YYYY-MM-DD). */
+  day: date('day').notNull(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  assignedBy: uuid('assigned_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex('uq_cook_of_day').on(t.householdId, t.day)])
+
 // ─── 18. household_invites ──────────────────────────────────
 // One-time tokens the owner generates and shares manually (mirrors the
 // admin password-reset flow — no email is auto-sent). Token is a 32-char

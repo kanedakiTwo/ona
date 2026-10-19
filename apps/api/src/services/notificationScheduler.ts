@@ -54,6 +54,7 @@ import { CHAT_RETENTION_DAYS, purgeOldChatMessagesIfDue } from './chatMessages.j
 import { sendWaitlistInviteRemindersIfDue } from './waitlistInvites.js'
 import { WAITLIST_RETENTION_DATE, purgeWaitlistPersonalDataIfDue } from './waitlistRetention.js'
 import { isAccountPaused } from './accountAccess.js'
+import { cooksOfWeek } from './cookToday.js'
 import { sendTrialEndingEmailsIfDue } from './trialEmails.js'
 import { sendFounderOffersIfDue } from './founderOffer.js'
 import { sendChargeNoticesIfDue } from './chargeNotice.js'
@@ -315,6 +316,8 @@ export async function enqueuePrepAlertsForMenu(
 
   let inserted = 0
   let skipped = 0
+  // PRO-230: «hoy cocina Pablo» — that day's alerts go to whoever cooks.
+  const cooks = menu.householdId ? await cooksOfWeek(menu.householdId, weekStart) : new Map<number, string>()
 
   // PRO-220: the recipe's own «preparativos con antelación» — no prep habits
   // needed, they belong to the recipe, not to the household.
@@ -333,7 +336,7 @@ export async function enqueuePrepAlertsForMenu(
       const dedupKey = recipePrepKey(menuId, slot.dayIndex, slot.meal, slot.recipeId, k)
       const copy = recipePrepCopy({ text: prep.text, meal: slot.meal, dayIndex: slot.dayIndex, recipeName: r.name, late: plan.late })
       const ok = await insertAlert({
-        userId: menu.userId,
+        userId: cooks.get(slot.dayIndex) ?? menu.userId,
         dedupKey,
         fireAt: plan.fireAt,
         payload: { ...copy, url: `/menu?day=${slot.dayIndex}`, tag: dedupKey, priority: PREP_ALERT_PRIORITY },
@@ -395,7 +398,7 @@ export async function enqueuePrepAlertsForMenu(
           `${describeMethod(req.method)} para la cena del día ${slot.dayIndex + 1}.`
 
       const ok = await insertAlert({
-        userId: menu.userId,
+        userId: cooks.get(slot.dayIndex) ?? menu.userId,
         dedupKey,
         fireAt,
         payload: { title, body, url: `/menu?day=${slot.dayIndex}`, tag: dedupKey, priority: PREP_ALERT_PRIORITY },

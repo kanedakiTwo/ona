@@ -2,6 +2,7 @@
  * Household management REST surface.
  *
  *   GET    /households/me                        — read current household (auth)
+ *   POST   /households/me/cook-today { name, day?, meal? } — «hoy cocina Pablo» (PRO-230, Mimo only)
  *   PATCH  /households/me            { name }    — owner-only rename
  *   POST   /households/me/invites    { role, email? } — owner generates a token
  *   POST   /households/me/invites/:inviteId/revoke   — owner revokes a pending invite
@@ -11,7 +12,9 @@
  *   POST   /invites/:token/accept                     — accept (auth)
  */
 import { Router } from 'express'
+import { z } from 'zod'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
+import { assignCookToday, dbCookTodayDeps } from '../services/cookToday.js'
 import {
   loadHouseholdForUser,
   renameHousehold,
@@ -54,6 +57,26 @@ publicHouseholdRouter.get('/invites/:token', async (req, res) => {
 const router = Router()
 
 router.use(authMiddleware)
+
+// PRO-230: «hoy cocina Pablo, mándale la receta» — only through Mimo (no UI).
+const cookTodaySchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  day: z.string().trim().max(60).optional(),
+  meal: z.enum(['breakfast', 'lunch', 'snack', 'dinner']).optional(),
+})
+router.post('/households/me/cook-today', async (req: AuthRequest, res) => {
+  const parsed = cookTodaySchema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Body inválido: { name, day?, meal? }' })
+    return
+  }
+  try {
+    res.json(await assignCookToday(req.userId!, parsed.data, dbCookTodayDeps()))
+  } catch (err) {
+    console.error('cook-today error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
 
 router.get('/households/me', async (req: AuthRequest, res) => {
   try {

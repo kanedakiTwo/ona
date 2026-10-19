@@ -1234,6 +1234,7 @@ describe('skill export coverage', () => {
     expect(skills.length).toBe(70)
     // with plan_freezer_items (repaso del congelador, PRO-228, tested in
     // pantryFreezer.test.ts).
+    // with set_cook_today («hoy cocina Pablo», PRO-230, cookToday.test.ts).
     expect(skills.length).toBe(69)
   })
 

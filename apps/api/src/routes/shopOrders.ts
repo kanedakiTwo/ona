@@ -16,18 +16,22 @@
  *   POST   /shop-orders/:id/close       — collected / delivered (ticks the list)
  *   POST   /shop-orders/:id/cancel
  *   POST   /shop-orders/:id/carrefour-click — the user tapped «Hacer este pedido en Carrefour.es» on a súper card (counts the click, 204)
+ *   GET    /shop-extension/status          — ¿ve este usuario «Enviar a <cadena>»? (BASKET_EXTENSION_EMAILS)
+ *   POST   /shop-orders/:id/extension-result — resultado de la extensión del navegador (súper)
+ *   POST   /shop-orders/:id/extension-undo   — deshacer el envío vivo (vuelve a borrador)
  *
  *   GET    /shop-orders/link/:token     — PUBLIC: the wa.me/mailto behind a short link (no side effects)
  */
 
 import { Router, type Response } from 'express'
 import { z } from 'zod'
-import { approveShopOrderSchema, patchShopOrderSchema, shopInputSchema } from '@ona/shared'
+import { approveShopOrderSchema, basketSendResultSchema, patchShopOrderSchema, shopInputSchema } from '@ona/shared'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { requireSpendCapacity } from '../middleware/spendCap.js'
 import { appApiFor } from '../services/assistant/appApi.js'
 import { addDays, madridParts } from '../services/madridTime.js'
-import { carrefourClickProps, trackEvent } from '../services/usageEvents.js'
+import { basketSentProps, carrefourClickProps, trackEvent } from '../services/usageEvents.js'
+import { basketExtensionEnabledFor } from '../services/basketExtension.js'
 import {
   addShop,
   approveOrder,
@@ -42,8 +46,10 @@ import {
   patchShop,
   prepareOrders,
   resolveShortLink,
+  saveBasketResult,
   ShopOrderError,
   submitQuote,
+  undoBasketSend,
 } from '../services/shopOrders/store.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -87,7 +93,7 @@ publicShopOrdersRouter.get('/shop-orders/link/:token', async (req, res) => {
 })
 
 const router = Router()
-router.use(['/shops', '/shop-orders'], authMiddleware)
+router.use(['/shops', '/shop-orders', '/shop-extension'], authMiddleware)
 
 router.get('/shops', async (req: AuthRequest, res) => {
   try {
@@ -219,5 +225,31 @@ router.post('/shop-orders/:id/carrefour-click', withOrder(async (req, res) => {
   trackEvent('carrefour_click', { userId: req.userId!, channel: 'web', props: carrefourClickProps(order.lines) })
   res.status(204).end()
 }, 'POST /shop-orders/:id/carrefour-click'))
+
+router.get('/shop-extension/status', async (req: AuthRequest, res) => {
+  try {
+    res.json({ enabled: await basketExtensionEnabledFor(req.userId!) })
+  } catch (err) {
+    fail(res, err, 'GET /shop-extension/status')
+  }
+})
+
+router.post('/shop-orders/:id/extension-result', withOrder(async (req, res) => {
+  if (!(await basketExtensionEnabledFor(req.userId!))) return void res.status(403).json({ error: 'No disponible.' })
+  const parsed = basketSendResultSchema.safeParse(req.body)
+  if (!parsed.success) return badRequest(res, parsed.error.issues)
+  const { guardado, ...saved } = await saveBasketResult(req.userId!, String(req.params.id), parsed.data)
+  // Una vez por envío: un POST reintentado o un repetido del mismo envioId no se guarda y no cuenta;
+  // el primer POST que llega como repetido (tras quedarse sin respuesta) sí se guarda y sí cuenta.
+  if (guardado) trackEvent('basket_extension_sent', { userId: req.userId!, channel: 'web', props: basketSentProps(parsed.data) })
+  res.json(saved)
+}, 'POST /shop-orders/:id/extension-result'))
+
+// Deshacer no mira el interruptor: si se apaga el experimento, lo ya enviado se tiene que poder deshacer.
+router.post('/shop-orders/:id/extension-undo', withOrder(async (req, res) => {
+  const order = await undoBasketSend(req.userId!, String(req.params.id))
+  trackEvent('basket_extension_undo', { userId: req.userId!, channel: 'web', props: { manual: req.body?.manual === true } })
+  res.json(order)
+}, 'POST /shop-orders/:id/extension-undo'))
 
 export default router

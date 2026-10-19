@@ -3,6 +3,7 @@ import { metricsAuth } from '../middleware/metricsAuth.js'
 import { loadBusinessMetrics } from '../services/businessMetrics.js'
 import { loadUsageReport } from '../services/usageReport.js'
 import { loadAssistantFlags } from '../services/assistantFlags.js'
+import { loadBasketGaps } from '../services/basketExtension.js'
 
 /**
  * Read-only aggregates for Miguel and the Mimoia HQ agents. Admin JWT or
@@ -14,7 +15,9 @@ import { loadAssistantFlags } from '../services/assistantFlags.js'
  *     funnel (specs/metrics.md "Usage events");
  *   - GET /admin/assistant-reviews/flags?days=7 — anonymised conversation flags
  *     (health talk, health claims, unverified "hecho", errors) plus the daily
- *     reviewer's findings (specs/whatsapp.md).
+ *     reviewer's findings (specs/whatsapp.md);
+ *   - GET /admin/extension-gaps?days=7 — lo que la extensión del navegador no
+ *     tenía en su tabla (búsqueda o fallo), sin usuarios (specs/shop-orders.md).
  *
  * Own router, mounted in index.ts BEFORE the routers that `router.use(authMiddleware)`
  * as a catch-all — otherwise a token-only request would be 401'd before it
@@ -54,6 +57,16 @@ router.get('/admin/assistant-reviews/flags', metricsAuth, async (req, res) => {
     res.json(await loadAssistantFlags({ days }))
   } catch (err: any) {
     console.error('[assistant-flags] failed:', err?.message ?? err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+router.get('/admin/extension-gaps', metricsAuth, async (req, res) => {
+  try {
+    const days = intParam(req.query.days, 7, 1, 90)
+    res.json({ days, gaps: await loadBasketGaps(days) })
+  } catch (err: any) {
+    console.error('[extension-gaps] failed:', err?.message ?? err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

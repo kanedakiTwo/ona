@@ -24,7 +24,7 @@
 import type { NextFunction, Request, Response } from 'express'
 import { sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { carrefourLinks, type CarrefourLineInput } from '@ona/shared'
+import { carrefourLinks, type BasketSendResult, type CarrefourLineInput } from '@ona/shared'
 import { detectSocialPlatform } from './sources/social.js'
 import { detectSourceType } from './sources/sourceType.js'
 
@@ -48,6 +48,8 @@ export const USAGE_EVENTS = [
   'invite_shared',
   'shop_order_prepared',
   'carrefour_click',
+  'basket_extension_sent',
+  'basket_extension_undo',
 ] as const
 export type UsageEventName = (typeof USAGE_EVENTS)[number]
 
@@ -144,6 +146,23 @@ export function urlImportProps(url: unknown, channel: UsageChannel): UsageProps 
  */
 export function carrefourClickProps(lines: CarrefourLineInput[]): UsageProps {
   return { items: carrefourLinks(lines).length }
+}
+
+/**
+ * Puro: props de `basket_extension_sent` (spec: «Rutas»): recuentos por
+ * estado y el código de error. Nunca nombres de productos.
+ */
+export function basketSentProps(r: BasketSendResult): UsageProps {
+  const count = (estado: string) => r.lineas.filter((l) => l.estado === estado).length
+  return {
+    lineas: r.lineas.length,
+    tabla: count('tabla'),
+    busqueda: count('busqueda'),
+    fallidas: count('fallida') + count('no_verificada'),
+    ok: r.ok,
+    error: r.error ?? 'ninguno',
+    bajoMinimo: r.bajoMinimo,
+  }
 }
 
 // ─── Web routes (middleware) ───────────────────────────────────────

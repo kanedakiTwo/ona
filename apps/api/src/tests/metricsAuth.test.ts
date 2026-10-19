@@ -112,12 +112,12 @@ describe('createMetricsAuth', () => {
 })
 
 describe('routes open to the read-only token', () => {
-  it('are exactly the GET aggregates the Mimoia HQ agents read (metrics, usage, conversation flags)', async () => {
+  it('are exactly the GET aggregates the Mimoia HQ agents read (metrics, usage, conversation flags, extension gaps)', async () => {
     const { default: router } = await import('../routes/metrics.js')
     const routes = (router as any).stack
       .filter((l: any) => l.route)
       .map((l: any) => `${Object.keys(l.route.methods).join(',').toUpperCase()} ${l.route.path}`)
       .sort()
-    expect(routes).toEqual(['GET /admin/assistant-reviews/flags', 'GET /admin/metrics', 'GET /admin/usage'])
+    expect(routes).toEqual(['GET /admin/assistant-reviews/flags', 'GET /admin/extension-gaps', 'GET /admin/metrics', 'GET /admin/usage'])
   })
 })

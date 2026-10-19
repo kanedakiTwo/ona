@@ -10,6 +10,7 @@ import { aggregateBasketGaps, decideBasketResult, isBasketExtensionAllowed } fro
 import { closeOrder, saveBasketResult, undoBasketSend } from '../services/shopOrders/store.js'
 import { buildLine } from '../services/shopOrders/lines.js'
 import { shopOrders, shoppingLists, users } from '../db/schema.js'
+import { basketSentProps, sanitizeProps } from '../services/usageEvents.js'
 
 export const okResult = (over: Partial<BasketSendResult> = {}): BasketSendResult => ({
   envioId: 'e1',
@@ -204,13 +205,15 @@ type ListRow = { id: string; items: ShoppingItem[] }
 /**
  * Base de datos falsa para las funciones del store: el hogar del usuario, el
  * pedido, la última lista de la compra y lo que se escribe en cada tabla.
- * `log` apunta, en orden, la transacción y cada lectura o escritura del pedido:
- * por dónde va (`db` o la transacción, `tx`) y si la lectura bloquea la fila.
+ * `log` apunta, en orden, la transacción y cada lectura o escritura del pedido
+ * y de la lista: por dónde va (`db` o la transacción, `tx`) y si la lectura
+ * bloquea la fila. Con `row` null, el pedido no está (otro hogar o borrado).
  */
-function fakeDb(row: OrderRow, list: ListRow | null = null) {
+function fakeDb(row: OrderRow | null, list: ListRow | null = null) {
   const writes: Array<{ table: unknown; values: Record<string, unknown> }> = []
   const log: string[] = []
-  const rowsOf = (table: unknown) => (table === users ? [{ primaryHouseholdId: row.householdId }] : table === shoppingLists ? (list ? [list] : []) : [row])
+  const rowsOf = (table: unknown) =>
+    table === users ? [{ primaryHouseholdId: row?.householdId ?? 'hh1' }] : table === shoppingLists ? (list ? [list] : []) : row ? [row] : []
   const client = (via: 'db' | 'tx') => ({
     select: () => ({
       from: (table: unknown) => {
@@ -225,6 +228,7 @@ function fakeDb(row: OrderRow, list: ListRow | null = null) {
           },
           then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) => {
             if (table === shopOrders) log.push(`${via}: leer el pedido${lock}`)
+            if (table === shoppingLists) log.push(`${via}: leer la lista`)
             return Promise.resolve(rowsOf(table)).then(ok, ko)
           },
         }
@@ -235,6 +239,7 @@ function fakeDb(row: OrderRow, list: ListRow | null = null) {
       set: (values: Record<string, unknown>) => {
         writes.push({ table, values })
         if (table === shopOrders) log.push(`${via}: escribir el pedido`)
+        if (table === shoppingLists) log.push(`${via}: tachar la lista`)
         return { where: () => ({ returning: async () => [{ ...row, ...values }] }) }
       },
     }),
@@ -449,7 +454,7 @@ describe('undoBasketSend', () => {
   })
 })
 
-describe('resultado y deshacer, sin carreras', () => {
+describe('resultado, deshacer y cerrar, sin carreras', () => {
   const LOCKED = ['begin', 'tx: leer el pedido for update']
   it('saveBasketResult lee el pedido bloqueado (FOR UPDATE) y escribe en la misma transacción', async () => {
     const f = fakeDb(row)
@@ -468,5 +473,43 @@ describe('resultado y deshacer, sin carreras', () => {
     const g = fakeDb({ ...row, status: 'sent', sentAt: NOW, extensionResult: stored({ deshechoAt: NOW.toISOString(), deshechos: ['e1'] }) })
     await expect(undoBasketSend('u1', 'o1', g.db)).rejects.toMatchObject({ status: 409 })
     expect(g.log).toEqual([...LOCKED, 'rollback'])
+  })
+  it('closeOrder lee el pedido bloqueado, y tacha la lista y cierra el pedido en la misma transacción', async () => {
+    const list: ListRow = { id: 'list1', items: [{ id: 'id-l1', name: 'jamón', checked: false } as unknown as ShoppingItem] }
+    const f = fakeDb({ ...row, status: 'sent', sentAt: NOW, extensionResult: stored() }, list)
+    expect((await closeOrder('u1', 'o1', {}, f.db)).status).toBe('closed')
+    expect(f.log).toEqual([...LOCKED, 'tx: leer la lista', 'tx: tachar la lista', 'tx: escribir el pedido', 'commit'])
+    expect(f.checked()).toEqual(['id-l1'])
+  })
+  it('closeOrder de un pedido ya cerrado: 409 con la fila bloqueada, sin escribir', async () => {
+    const f = fakeDb({ ...row, status: 'closed' })
+    await expect(closeOrder('u1', 'o1', {}, f.db)).rejects.toMatchObject({ status: 409, code: 'BAD_STATUS' })
+    expect(f.log).toEqual([...LOCKED, 'rollback'])
+  })
+  it('sin el pedido (otro hogar o borrado): guardar, deshacer y cerrar dan 404 NOT_FOUND, no 500, y no escriben', async () => {
+    const calls: Array<[string, (db: any) => Promise<unknown>]> = [
+      ['guardar', (db) => saveBasketResult('u1', 'o1', okResult(), db)],
+      ['deshacer', (db) => undoBasketSend('u1', 'o1', db)],
+      ['cerrar', (db) => closeOrder('u1', 'o1', {}, db)],
+    ]
+    for (const [what, call] of calls) {
+      const f = fakeDb(null)
+      await expect(call(f.db), what).rejects.toMatchObject({ name: 'ShopOrderError', status: 404, code: 'NOT_FOUND' })
+      expect(f.log, what).toEqual([...LOCKED, 'rollback'])
+      expect(f.orderWrites(), what).toHaveLength(0)
+    }
+  })
+})
+
+describe('basketSentProps', () => {
+  it('solo recuentos y códigos, nunca nombres de productos, y cabe en sanitizeProps', () => {
+    const props = basketSentProps(okResult({ lineas: [
+      { key: 'l1', estado: 'tabla', producto: 'Arroz' },
+      { key: 'l2', estado: 'busqueda' },
+      { key: 'l3', estado: 'fallida', motivo: 'no_encontrado' },
+      { key: 'l4', estado: 'no_verificada' },
+    ], anadidas: 2 }))
+    expect(props).toEqual({ lineas: 4, tabla: 1, busqueda: 1, fallidas: 2, ok: true, error: 'ninguno', bajoMinimo: true })
+    expect(sanitizeProps(props)).toEqual(props)
   })
 })

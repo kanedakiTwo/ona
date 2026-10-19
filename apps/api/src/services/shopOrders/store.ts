@@ -748,28 +748,33 @@ export async function approveOrder(
   return update(row.id, { status: 'approved', approvedAt: new Date(), lines, capEur, confirmationText }, db)
 }
 
-/** Done (collected / delivered / ordered on the web). Ticks the bought items off the list. */
+/**
+ * Done (collected / delivered / ordered on the web). Ticks the bought items off the list.
+ * Con el pedido bloqueado (`withLockedOrder`): un cierre cruzado con un deshacer o con un
+ * resultado de la extensión tacha según el resultado que queda, no según uno viejo.
+ */
 export async function closeOrder(userId: string, id: string, body: { finalTotalEur?: number | null }, db: Db = defaultDb): Promise<ShopOrder> {
-  const { row } = await loadOrder(userId, id, db)
-  requireStatus(row, OPEN_STATUSES, 'cerrar')
-  const lines = row.lines as ShopOrderLine[]
-  const ext = (row.extensionResult as StoredBasketResult | null) ?? null
-  const viaExtension = !!ext && basketMayBeInCart(ext) && !ext.deshechoAt
-  const bought = new Set(
-    viaExtension
-      ? ext!.lineas.filter((r) => r.estado === 'tabla' || r.estado === 'busqueda').flatMap((r) => sourceItemsForBasketKey(lines, r.key))
-      : lines
-          .filter((l) => l.included !== false && l.decision !== 'remove' && l.verdict !== 'no_hay')
-          .flatMap((l) => l.sourceItemIds ?? (l.sourceItemId ? [l.sourceItemId] : [])),
-  )
-  if (bought.size) {
-    const [list] = await db.select().from(shoppingLists).where(eq(shoppingLists.userId, userId)).orderBy(desc(shoppingLists.createdAt)).limit(1)
-    if (list) {
-      const items = (list.items as ShoppingItem[]).map((i) => (bought.has(i.id) ? { ...i, checked: true } : i))
-      await db.update(shoppingLists).set({ items }).where(eq(shoppingLists.id, list.id))
+  return withLockedOrder(userId, id, db, async (row, tx) => {
+    requireStatus(row, OPEN_STATUSES, 'cerrar')
+    const lines = row.lines as ShopOrderLine[]
+    const ext = (row.extensionResult as StoredBasketResult | null) ?? null
+    const viaExtension = !!ext && basketMayBeInCart(ext) && !ext.deshechoAt
+    const bought = new Set(
+      viaExtension
+        ? ext!.lineas.filter((r) => r.estado === 'tabla' || r.estado === 'busqueda').flatMap((r) => sourceItemsForBasketKey(lines, r.key))
+        : lines
+            .filter((l) => l.included !== false && l.decision !== 'remove' && l.verdict !== 'no_hay')
+            .flatMap((l) => l.sourceItemIds ?? (l.sourceItemId ? [l.sourceItemId] : [])),
+    )
+    if (bought.size) {
+      const [list] = await tx.select().from(shoppingLists).where(eq(shoppingLists.userId, userId)).orderBy(desc(shoppingLists.createdAt)).limit(1)
+      if (list) {
+        const items = (list.items as ShoppingItem[]).map((i) => (bought.has(i.id) ? { ...i, checked: true } : i))
+        await tx.update(shoppingLists).set({ items }).where(eq(shoppingLists.id, list.id))
+      }
     }
-  }
-  return update(row.id, { status: 'closed', closedAt: new Date(), finalTotalEur: body.finalTotalEur ?? null }, db)
+    return update(row.id, { status: 'closed', closedAt: new Date(), finalTotalEur: body.finalTotalEur ?? null }, tx)
+  })
 }
 
 export async function cancelOrder(userId: string, id: string, db: Db = defaultDb): Promise<ShopOrder> {

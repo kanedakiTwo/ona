@@ -113,10 +113,11 @@ export const env = {
    */
   COST_PRICE_OVERRIDES: process.env.COST_PRICE_OVERRIDES || '',
   /**
-   * Read-only token for `GET /admin/metrics`, `GET /admin/errors` and
-   * `GET /admin/waitlist` (header `x-metrics-token`), so an agent can read
-   * business metrics, the error log and the waitlist aggregates without an
-   * admin JWT. Grants access to those three endpoints only.
+   * Read-only token for `GET /admin/metrics`, `GET /admin/errors`,
+   * `GET /admin/waitlist`, `GET /admin/extension-gaps` and the other GET
+   * routes listed in middleware/metricsAuth.ts (header `x-metrics-token`), so
+   * an agent can read aggregates without an admin JWT. Grants access to those
+   * read-only routes only.
    * Empty → token auth disabled (admin JWT still works).
    */
   METRICS_READ_TOKEN: process.env.METRICS_READ_TOKEN || '',

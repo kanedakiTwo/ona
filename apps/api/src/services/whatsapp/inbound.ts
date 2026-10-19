@@ -389,7 +389,7 @@ export const COPY = {
     `¡Listo${name ? `, ${name}` : ''}! Tu WhatsApp ya está conectado con Mimoia. Pregúntame qué toca hoy, pídeme la lista de la compra, mándame un audio o compárteme una receta (enlace o foto) para guardarla.\n\n${AI_DISCLOSURE_FIRST_PERSON}`,
   /** Explicit opt-in for proactive messages, asked once right after linking. */
   optInPrompt:
-    '¿Quieres que también te escriba yo? No escribo mucho, solo te mandaría el menú del día, un aviso antes de cocinar (congelados, tiempos) y la lista de la compra los sábados. Puedes cambiarlo cuando quieras simplemente pidiéndomelo.',
+    '¿Quieres que también te escriba yo? No escribo mucho, solo lo importante: un aviso antes de cocinar (congelados, tiempos) y la lista de la compra los sábados. Si quieres el menú cada mañana, pídemelo. Puedes cambiarlo cuando quieras simplemente pidiéndomelo.',
   optInDeclined: 'Vale, no te escribiré por mi cuenta. Si cambias de idea, escribe ALTA.',
   /**
    * Last message of the WhatsApp-first sign-up (PRO-07): once the opt-in
@@ -408,7 +408,7 @@ export const COPY = {
     'Hecho: no te enviaré más avisos por WhatsApp. Puedes seguir escribiéndome cuando quieras. Para volver a recibirlos, escribe ALTA.',
   stoppedUnlinked: 'De acuerdo, no te volveré a escribir.',
   started:
-    'Hecho: vuelvo a enviarte avisos (menú del día, aviso antes de cocinar, lista de la compra). Escribe BAJA para dejar de recibirlos.',
+    'Hecho: vuelvo a enviarte avisos (aviso antes de cocinar, lista de la compra). Escribe BAJA para dejar de recibirlos.',
   human: (email?: string) =>
     `Soy un asistente con IA. Para hablar con una persona del equipo de Mimoia, ${humanContact(email)}. Si es sobre tu menú, la compra o una receta, cuéntamelo y lo hago.`,
   badCode: 'Ese código no es válido o ha caducado. Genera uno nuevo en Mimoia → Perfil → Mimo en WhatsApp.',

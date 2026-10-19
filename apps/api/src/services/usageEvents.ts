@@ -50,6 +50,7 @@ export const USAGE_EVENTS = [
   'carrefour_click',
   'basket_extension_sent',
   'basket_extension_undo',
+  'notifications_off',
 ] as const
 export type UsageEventName = (typeof USAGE_EVENTS)[number]
 
@@ -57,7 +58,7 @@ export type UsageEventName = (typeof USAGE_EVENTS)[number]
  * Passive signals: counted as events, but they don't make a household
  * "active" in GET /admin/usage (opening the app is not using it).
  */
-export const PASSIVE_USAGE_EVENTS: ReadonlySet<string> = new Set<UsageEventName>(['app_opened_installed'])
+export const PASSIVE_USAGE_EVENTS: ReadonlySet<string> = new Set<UsageEventName>(['app_opened_installed', 'notifications_off'])
 
 export const USAGE_CHANNELS = ['web', 'whatsapp', 'voice'] as const
 export type UsageChannel = (typeof USAGE_CHANNELS)[number]

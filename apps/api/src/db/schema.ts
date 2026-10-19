@@ -863,6 +863,39 @@ export const notificationSchedule = pgTable('notification_schedule', {
   index('idx_notif_sched_user').on(t.userId),
 ])
 
+// ─── Avisos candidatos (PRO-215 / PRO-216) ────────────────────────
+//
+// One row per aviso Mimo could have sent by itself (prep alert, cooking
+// reminder, Sunday nudge…) and what happened to it under the weekly budget
+// (`services/notifications/budget.ts`). The budget is counted from here:
+// rows with `counted = true` are the messages that spent one unit of the
+// household's week. Read in aggregate only (GET /admin/metrics).
+export const noticeCandidates = pgTable('notice_candidates', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  /** The household (primary) the budget belongs to, or the user when there is none. */
+  budgetKey: uuid('budget_key').notNull(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+  /** `prep_alerts`, `cooking_reminder`, `weekly_nudge`… (see NOTICE_PRIORITY). */
+  kind: text('kind').notNull(),
+  /** 1–4, see `noticePriority`. */
+  priority: integer('priority').notNull(),
+  /** enviado | fusionado | descartado_tope | fuera_ventana | fallido */
+  outcome: text('outcome').notNull(),
+  /** This row spent one unit of the weekly budget. */
+  counted: boolean('counted').notNull().default(false),
+  /** whatsapp | push | both */
+  channel: text('channel'),
+  /** Monday (YYYY-MM-DD, Europe/Madrid) of the ISO week. */
+  week: text('week').notNull(),
+  /** The scheduler tick it belongs to: avisos of the same moment share it. */
+  momentAt: timestamp('moment_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_notice_candidates_key_week').on(t.budgetKey, t.week),
+  index('idx_notice_candidates_user_created').on(t.userId, t.createdAt),
+  index('idx_notice_candidates_week').on(t.week),
+])
+
 // ─── Web Push subscriptions (PR-B) ────────────────────────────────
 //
 // One row per (user, browser endpoint). Browsers identify themselves by

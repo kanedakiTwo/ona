@@ -12,7 +12,8 @@ import { enqueueInbound } from '../services/whatsapp/inbound.js'
 import { buildInboundDeps, initialInboundBody } from '../services/whatsapp/wiring.js'
 import * as store from '../services/whatsapp/store.js'
 import { buildWaLink, linkMessageText, maskPhone } from '../services/whatsapp/linking.js'
-import { PROACTIVE_KINDS } from '../services/whatsapp/proactive.js'
+import { PROACTIVE_KINDS, kindsSwitchedOff } from '../services/whatsapp/proactive.js'
+import { trackEvent } from '../services/usageEvents.js'
 import { runWithCostUser } from '../services/costLedger.js'
 import { loadNudgeState, markNudgeShown, shouldShowWhatsAppNudge } from '../services/whatsapp/nudge.js'
 
@@ -179,6 +180,8 @@ router.patch('/whatsapp/link', authMiddleware, async (req: AuthRequest, res) => 
     }
     if (parsed.data.notify !== undefined) await store.setNotify(req.userId!, parsed.data.notify)
     const prefs = parsed.data.prefs ? await store.setPrefs(req.userId!, parsed.data.prefs) : link.prefs
+    // PRO-216: households that switch avisos off, for the weekly review.
+    for (const kind of kindsSwitchedOff(link, parsed.data)) trackEvent('notifications_off', { userId: req.userId!, props: { kind } })
     res.json({ notify: parsed.data.notify ?? link.notify, prefs: prefs ?? {} })
   } catch (err: any) {
     console.error('[whatsapp] patch link error:', err?.message ?? err)

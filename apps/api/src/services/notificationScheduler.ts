@@ -56,6 +56,9 @@ import { sendTrialEndingEmailsIfDue } from './trialEmails.js'
 import { sendFounderOffersIfDue } from './founderOffer.js'
 import { sendChargeNoticesIfDue } from './chargeNotice.js'
 import { combineDelivery, type ChannelOutcome } from './whatsapp/proactive.js'
+import { logEntriesFor, planMoment, type DeliveryResult } from './notifications/budget.js'
+import { budgetKeyFor, loadFullBudgetState, recordNotices } from './notifications/budgetStore.js'
+import { awakeFireAt, isAwakeInstant } from './notifications/hours.js'
 
 // ─── Habit → method matcher ─────────────────────────────────────
 //
@@ -248,8 +251,11 @@ export async function enqueuePrepAlertsForMenu(
         continue
       }
       const hoursBefore = PREP_METHOD_HOURS_BEFORE[req.method]
-      const fireAt = new Date(cookAt.getTime() - hoursBefore * 60 * 60 * 1000)
-      if (fireAt <= now) {
+      // PRO-236: never between 22:30 and 08:00 — a prep alert can't come
+      // late, so it moves to the evening before (or, if that has passed,
+      // the next 08:00 still before the meal).
+      const fireAt = awakeFireAt(new Date(cookAt.getTime() - hoursBefore * 60 * 60 * 1000), now, cookAt)
+      if (!fireAt || fireAt <= now) {
         skipped += 1
         continue
       }
@@ -410,6 +416,69 @@ export async function prepAlertStaleReasonFor(dedupKey: string): Promise<string 
   })
 }
 
+// ─── One moment of prep alerts (PRO-215) ────────────────────────
+
+type AlertPayload = { title: string; body: string; url?: string; tag?: string }
+
+/**
+ * Pure: several alerts due at once → one notification. One alert stays as
+ * it is; more become «Acuérdate: A y B» with one line per alert.
+ */
+export function mergeAlertPayloads(payloads: readonly AlertPayload[]): AlertPayload {
+  if (payloads.length === 1) return payloads[0]
+  const names = payloads.map((p) => p.title.replace(/^Acuérdate:\s*/i, '').trim())
+  const unique = [...new Set(names)]
+  const title = `Acuérdate: ${unique.length > 1 ? `${unique.slice(0, -1).join(', ')} y ${unique[unique.length - 1]}` : unique[0]}`
+  const body = payloads.map((p, i) => `${names[i]}: ${p.body}`).join('\n')
+  return { title, body, url: payloads[0].url, tag: payloads[0].tag }
+}
+
+async function deliverPrepMoment(userId: string, rows: Array<typeof notificationSchedule.$inferSelect>, now: Date): Promise<void> {
+  const budgetKey = await budgetKeyFor(userId)
+  const candidates = rows.map((row) => ({ kind: 'prep_alerts', row }))
+  const plan = planMoment(candidates, await loadFullBudgetState(budgetKey, now, false))
+  for (const c of plan.dropped) {
+    await db
+      .update(notificationSchedule)
+      .set({ status: 'cancelled', errorMessage: 'tope semanal de avisos' })
+      .where(eq(notificationSchedule.id, c.row.id))
+  }
+  let delivery: DeliveryResult | null = null
+  let channel: 'push' | 'whatsapp' | 'both' | null = null
+  if (plan.send.length > 0) {
+    const payload = mergeAlertPayloads(plan.send.map((c) => c.row.payload))
+    let push: ChannelOutcome
+    try {
+      // No subscription reached → not delivered (it must not spend the budget).
+      const r = await sendPushToUser(userId, payload)
+      push = r.sent > 0 ? { status: 'ok' } : { status: 'skipped', error: 'no-push-subscription' }
+    } catch (err: any) {
+      push = {
+        status: 'error',
+        error: err instanceof PushNotConfiguredError
+          ? 'push-not-configured'
+          : String(err?.message ?? err).slice(0, 500),
+      }
+    }
+    let whatsapp: ChannelOutcome
+    try {
+      whatsapp = await deliverAlertOverWhatsApp(userId, payload, now)
+    } catch (err: any) {
+      whatsapp = { status: 'error', error: String(err?.message ?? err).slice(0, 300) }
+    }
+    const { status, errorMessage } = combineDelivery(push, whatsapp)
+    for (const c of plan.send) {
+      await db
+        .update(notificationSchedule)
+        .set({ status, sentAt: new Date(), errorMessage })
+        .where(eq(notificationSchedule.id, c.row.id))
+    }
+    delivery = status === 'sent' ? 'ok' : whatsapp.error === 'outside-24h-window' ? 'outside-window' : 'error'
+    channel = push.status === 'ok' && whatsapp.status === 'ok' ? 'both' : whatsapp.status === 'ok' ? 'whatsapp' : 'push'
+  }
+  await recordNotices({ budgetKey, userId, entries: logEntriesFor(plan, delivery), channel, now })
+}
+
 // ─── Tick ───────────────────────────────────────────────────────
 
 /** App-wide key for the scheduler's Postgres advisory lock. */
@@ -448,7 +517,8 @@ export async function tickScheduler(): Promise<void> {
 
 async function tickOnce(): Promise<true> {
   const now = new Date()
-  const due = await db
+  // PRO-236: between 22:30 and 08:00 (Madrid) due alerts wait for the morning.
+  const due = !isAwakeInstant(now) ? [] : await db
     .select()
     .from(notificationSchedule)
     .where(
@@ -460,6 +530,9 @@ async function tickOnce(): Promise<true> {
 
   // Each due alert goes out over Web Push AND WhatsApp (when the user linked
   // a phone and opted into "Avisos por WhatsApp"). Sent if either delivered.
+  // PRO-215: the alerts due for one person in this tick are one moment: one
+  // merged message that spends at most one unit of the weekly budget.
+  const live = new Map<string, typeof due>()
   for (const row of due) {
     let stale: string | null = null
     try {
@@ -477,29 +550,15 @@ async function tickOnce(): Promise<true> {
         .where(eq(notificationSchedule.id, row.id))
       continue
     }
-    let push: ChannelOutcome
+    live.set(row.userId, [...(live.get(row.userId) ?? []), row])
+  }
+
+  for (const [userId, rows] of live) {
     try {
-      await sendPushToUser(row.userId, row.payload)
-      push = { status: 'ok' }
-    } catch (err: any) {
-      push = {
-        status: 'error',
-        error: err instanceof PushNotConfiguredError
-          ? 'push-not-configured'
-          : String(err?.message ?? err).slice(0, 500),
-      }
+      await deliverPrepMoment(userId, rows, now)
+    } catch (err) {
+      console.error(`[notificationScheduler] prep alerts failed for ${userId}:`, err)
     }
-    let whatsapp: ChannelOutcome
-    try {
-      whatsapp = await deliverAlertOverWhatsApp(row.userId, row.payload, now)
-    } catch (err: any) {
-      whatsapp = { status: 'error', error: String(err?.message ?? err).slice(0, 300) }
-    }
-    const { status, errorMessage } = combineDelivery(push, whatsapp)
-    await db
-      .update(notificationSchedule)
-      .set({ status, sentAt: new Date(), errorMessage })
-      .where(eq(notificationSchedule.id, row.id))
   }
 
   // WhatsApp daily brief + Sunday menu nudge (no-op when not configured).

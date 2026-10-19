@@ -512,6 +512,13 @@
       "when": 1792451188205,
       "tag": "0075_invite_offer",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1792451214634,
+      "tag": "0076_notice_candidates",
+      "breakpoints": true
     }
   ]
 }

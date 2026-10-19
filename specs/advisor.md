@@ -77,7 +77,7 @@ The assistant can call back-end skills (function calling). Each skill has a name
 - **Compra en mis tiendas** (`shopOrderSkills.ts`, see [Shop orders](./shop-orders.md)): `manage_shops`, `prepare_shop_orders` ("hazme la compra" → one `/c/<token>` short link per shop that opens the user's own WhatsApp with the order written), `edit_shop_order` (before sending: add products — each to its shop —, remove, choose "serrano", amounts, include, pickup/delivery + address; same links), `register_shop_reply` (forwarded/pasted shop reply → OK / Revisar / No hay per line, total vs cap), `approve_shop_order` (only after an explicit "sí"; returns the confirmation link), `close_shop_order`, `get_shop_orders`. The prompt treats a shop's reply as data, never instructions, and allows copying `/c/` links verbatim.
 - **Pantry:** `update_pantry` (add/set/remove with quantities and expiry). Reading the pantry is `get_pantry_stock`; the old `list_pantry` duplicate was removed (62 skills).
 - **Recipes:**
-  - `log_cooked` (cook log + pantry decrement).
+  - `log_cooked` (cook log + pantry decrement). Answering the WhatsApp check-in with «Sí, ¡a repetir!» / «Sí, estuvo bien» → also `update_recipe_notes` rating 5 / 3 (PRO-235, prompt rule).
   - `update_recipe_notes`: rating, notes appended, substitutions, tags, `minServings` ("siempre la hago para 6"; 0 clears).
   - `delete_recipe`: own recipes only; the prompt asks for confirmation first.
   - `manage_cookbook`, `regenerate_recipe_image`.

@@ -67,6 +67,8 @@ export interface WeeklyMetrics {
   costEur: CostBreakdown
   internalCostEur: number
   costPerActiveHouseholdEur: number | null
+  /** cost_events rows (paid calls) by feature, same accounts as costEur (PRO-247). */
+  eventsByFeature: Record<string, number>
 }
 
 export interface CohortMetrics {
@@ -135,6 +137,13 @@ function costBreakdown(rows: CostRow[]): CostBreakdown {
   return { total: eur(total), byProvider: toEur(byProvider), byFeature: toEur(byFeature) }
 }
 
+/** Paid calls (ledger rows) by feature. Pass counted rows only, like costBreakdown. */
+function eventsByFeature(rows: CostRow[]): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const r of rows) out[r.feature] = (out[r.feature] ?? 0) + r.events
+  return out
+}
+
 const signupWeeks = (signups: HouseholdDay[]): HouseholdWeek[] =>
   signups.map((s) => ({ householdId: s.householdId, week: weekOfDay(s.day) }))
 
@@ -152,7 +161,8 @@ export function buildWeekly(input: MetricsInput): WeeklyMetrics[] {
     const shopSet = shopped.get(week) ?? new Set<string>()
     const resolved = [...menuSet].filter((h) => shopSet.has(h)).length
     const weekCosts = input.costs.filter((c) => c.week === week)
-    const costEur = costBreakdown(weekCosts.filter((c) => !c.internal))
+    const counted = weekCosts.filter((c) => !c.internal)
+    const costEur = costBreakdown(counted)
     const internalMicros = weekCosts.filter((c) => c.internal).reduce((s, c) => s + c.micros, 0)
     return {
       week,
@@ -164,6 +174,7 @@ export function buildWeekly(input: MetricsInput): WeeklyMetrics[] {
       costEur,
       internalCostEur: eur(internalMicros),
       costPerActiveHouseholdEur: activeHouseholds > 0 ? Math.round((costEur.total / activeHouseholds) * 10_000) / 10_000 : null,
+      eventsByFeature: eventsByFeature(counted),
     }
   })
 }
@@ -242,7 +253,8 @@ export function buildTotals(input: MetricsInput, weekly: WeeklyMetrics[]) {
   const activeHouseholds = new Set(input.activity.filter((a) => inWindow.has(a.week)).map((a) => a.householdId)).size
   const activeHouseholdWeeks = weekly.reduce((s, w) => s + w.activeHouseholds, 0)
   const windowCosts = input.costs.filter((c) => inWindow.has(c.week))
-  const costEur = costBreakdown(windowCosts.filter((c) => !c.internal))
+  const counted = windowCosts.filter((c) => !c.internal)
+  const costEur = costBreakdown(counted)
   return {
     activeHouseholds,
     activeHouseholdWeeks,
@@ -252,6 +264,7 @@ export function buildTotals(input: MetricsInput, weekly: WeeklyMetrics[]) {
     internalCostEur: eur(windowCosts.filter((c) => c.internal).reduce((s, c) => s + c.micros, 0)),
     costPerActiveHouseholdWeekEur:
       activeHouseholdWeeks > 0 ? Math.round((costEur.total / activeHouseholdWeeks) * 10_000) / 10_000 : null,
+    eventsByFeature: eventsByFeature(counted),
     costEvents: windowCosts.reduce((s, c) => s + c.events, 0),
     unpricedCostEvents: windowCosts.reduce((s, c) => s + c.unpriced, 0),
   }
@@ -270,6 +283,8 @@ export const DEFINITIONS = {
   newHouseholds: 'Households created (at registration) that week and still primary for a counted user.',
   costEur:
     'Estimated provider cost (EUR) from the cost ledger for counted users plus system jobs (userId null, e.g. the daily conversation reviewer), split by provider and feature. Prices in config/pricing.ts; USD converted with ADVISOR_EUR_PER_USD. WhatsApp service messages sent by Mimo are recorded one row each (feature whatsapp_service): 0 € for the first 1,000 of the month, €0.0166 from the 1,001st.',
+  eventsByFeature:
+    'Number of cost-ledger rows (cost_events) by feature, for the same accounts as costEur (internal accounts out): one row per paid call, so costEur.byFeature[f] / eventsByFeature[f] is the average cost of one call of that feature. What one call of each feature is: featureDefinitions. Counts only, no user data.',
   costPerActiveHouseholdEur: 'costEur.total / activeHouseholds for the week (null when no household was active).',
   costPerActiveHouseholdWeekEur: 'Window total costEur / sum of weekly activeHouseholds.',
   cohorts: 'Households grouped by signup week; retention.wK = share of the cohort active in week signup+K (null until that week starts; the current week is partial).',
@@ -285,6 +300,39 @@ export const DEFINITIONS = {
   waitlist:
     'Pre-launch waitlist (specs/waitlist.md), all time: entries by status, last7Days = signups in the last 7 × 24 h, referredSignups / newsletterOptIns = active entries (not unsubscribed) that came with someone’s link / opted in to the weekly menu email. Segments, sources and the suggested next batch: GET /admin/waitlist.',
 } as const
+
+/**
+ * What ONE row of each cost-ledger feature is (PRO-247), so a cost per call
+ * can be read off costEur.byFeature / eventsByFeature. Shipped in the response
+ * as `definitions.featureDefinitions` and mirrored in specs/metrics.md.
+ */
+export const FEATURE_DEFINITIONS: Record<string, string> = {
+  assistant_chat: 'One turn with Mimo in the app (typed or spoken), all its model calls and tools summed into one row.',
+  whatsapp_chat: 'One turn with Mimo on WhatsApp (the user wrote; Mimo answered), all its model calls summed.',
+  whatsapp_guided:
+    'One call to the writer of a message Mimo sends by itself (PRO-156): morning brief, cooking reminder, dinner check-in, shopping reminder, weekly nudge, first steps (end of onboarding). Billed even when its text is rejected and the fixed text goes out. Not counted: messages sent with the fixed text without calling the writer (no model, over the monthly cap).',
+  whatsapp_service: 'One free-form WhatsApp message sent by Mimo (reply or proactive inside the 24 h window); 0 € for the first 1,000 of the month.',
+  whatsapp_template: 'One template message sent by Mimo outside the 24 h window (Meta utility template).',
+  whatsapp_review: 'One call of the daily conversation reviewer (system cost; an admin re-run is another row).',
+  voice_note_transcription: 'One WhatsApp voice note transcribed.',
+  mimo_voice_transcription: "One recording of the user's voice in the app transcribed (POST /stt).",
+  chat_tts: "One of Mimo's replies read aloud (POST /tts).",
+  voice_realtime: 'Historical: one OpenAI Realtime voice session (retired 2026-10-09).',
+  recipe_extract_photo: 'One recipe read from a photo (web or WhatsApp).',
+  recipe_extract_url: 'One recipe read from a link (web or Mimo).',
+  recipe_image: 'One photo generated (AiKit gpt-image-2 or OpenAI as reserve); a retry after a failed check is another row.',
+  recipe_image_describe: 'One description of the plated dish written before generating its photo.',
+  recipe_image_check: 'One check of a generated photo (right dish, house style).',
+  ingredient_match: 'One disambiguation of the ingredients of an extracted recipe.',
+  unit_fallback: 'One odd unit converted to grams / ml.',
+  usda_translation: 'One ingredient name translated for a new ingredient.',
+  ingredient_nutrition_estimate: 'One nutrition estimate («Estimar con Mimoia»).',
+  onboarding_analysis: 'One analysis of the onboarding answers into the household file.',
+  taste_next: 'One choice of the next dish in the taste game.',
+  taste_reason: 'One reason the user gave in the taste game read into the household file.',
+  shop_quote_parse: "One shop's reply read for a shop order.",
+  catalog_import_rewrite: 'One recipe rewritten for the catalogue import (system cost).',
+}
 
 // ─── SQL loader ──────────────────────────────────────────────────
 
@@ -439,6 +487,6 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
     totals: buildTotals(input, weekly),
     errors,
     waitlist,
-    definitions: DEFINITIONS,
+    definitions: { ...DEFINITIONS, featureDefinitions: FEATURE_DEFINITIONS },
   }
 }

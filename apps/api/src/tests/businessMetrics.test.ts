@@ -14,6 +14,8 @@ import {
   buildWeekly,
   buildCohorts,
   buildTotals,
+  DEFINITIONS,
+  FEATURE_DEFINITIONS,
   type MetricsInput,
 } from '../services/businessMetrics.js'
 
@@ -156,6 +158,42 @@ describe('buildWeekly', () => {
   it('ignores pairs outside the requested window', () => {
     const weekly = buildWeekly(input({ activity: [{ householdId: 'h1', week: '2026-09-14' }] }))
     expect(weekly.map((w) => w.activeHouseholds)).toEqual([0, 0, 0])
+  })
+})
+
+describe('eventsByFeature (PRO-247): how many paid calls sit behind each feature', () => {
+  const costs: MetricsInput['costs'] = [
+    { week: '2026-09-28', provider: 'anthropic', feature: 'whatsapp_guided', micros: 40_000, events: 17, unpriced: 0, internal: false },
+    // Same feature, another provider row in the same week: counts add up.
+    { week: '2026-09-28', provider: 'openai', feature: 'whatsapp_guided', micros: 1_000, events: 2, unpriced: 1, internal: false },
+    { week: '2026-09-28', provider: 'anthropic', feature: 'assistant_chat', micros: 30_000, events: 5, unpriced: 0, internal: false },
+    // Admin / suspended spend stays out, like costEur.
+    { week: '2026-09-28', provider: 'anthropic', feature: 'assistant_chat', micros: 900_000, events: 40, unpriced: 0, internal: true },
+    { week: '2026-10-05', provider: 'aikit', feature: 'recipe_image', micros: 4_400, events: 1, unpriced: 0, internal: false },
+    // Outside the window: ignored.
+    { week: '2026-09-14', provider: 'aikit', feature: 'recipe_image', micros: 4_400, events: 9, unpriced: 0, internal: false },
+  ]
+
+  it('per week: number of cost_events rows by feature, counted accounts only', () => {
+    const weekly = buildWeekly(input({ costs }))
+    expect(weekly.map((w) => w.eventsByFeature)).toEqual([
+      {},
+      { whatsapp_guided: 19, assistant_chat: 5 },
+      { recipe_image: 1 },
+    ])
+  })
+
+  it('in the totals: the window summed, same rule', () => {
+    const inp = input({ costs })
+    const totals = buildTotals(inp, buildWeekly(inp))
+    expect(totals.eventsByFeature).toEqual({ whatsapp_guided: 19, assistant_chat: 5, recipe_image: 1 })
+  })
+
+  it('every feature in the price ledger is explained in the definitions', () => {
+    expect(DEFINITIONS.eventsByFeature).toMatch(/one row per paid call/i)
+    for (const f of ['assistant_chat', 'whatsapp_guided', 'whatsapp_service', 'whatsapp_template', 'recipe_image', 'whatsapp_review']) {
+      expect(FEATURE_DEFINITIONS[f], f).toBeTruthy()
+    }
   })
 })
 

@@ -220,7 +220,7 @@ export function buildExtensionBasket(lines: ShopOrderLine[]): BasketLine[] {
  * `BasketSendResult`) para que el esquema de ese tipo pueda llamarla sin que
  * su tipo dependa de sí mismo.
  */
-export function basketMayBeInCart(r: { anadidas: number; lineas: Array<{ estado: string }> }): boolean {
+export function basketMayBeInCart(r: { anadidas: number; lineas: ReadonlyArray<{ estado: string }> }): boolean {
   return r.anadidas > 0 || r.lineas.some((l) => l.estado === 'no_verificada')
 }
 

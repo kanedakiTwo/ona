@@ -204,26 +204,58 @@ type ListRow = { id: string; items: ShoppingItem[] }
 /**
  * Base de datos falsa para las funciones del store: el hogar del usuario, el
  * pedido, la última lista de la compra y lo que se escribe en cada tabla.
+ * `log` apunta, en orden, la transacción y cada lectura o escritura del pedido:
+ * por dónde va (`db` o la transacción, `tx`) y si la lectura bloquea la fila.
  */
 function fakeDb(row: OrderRow, list: ListRow | null = null) {
   const writes: Array<{ table: unknown; values: Record<string, unknown> }> = []
+  const log: string[] = []
   const rowsOf = (table: unknown) => (table === users ? [{ primaryHouseholdId: row.householdId }] : table === shoppingLists ? (list ? [list] : []) : [row])
-  const db = {
+  const client = (via: 'db' | 'tx') => ({
     select: () => ({
       from: (table: unknown) => {
-        const q = { where: () => q, orderBy: () => q, limit: async () => rowsOf(table) }
+        let lock = ''
+        const q: any = {
+          where: () => q,
+          orderBy: () => q,
+          limit: () => q,
+          for: (strength: string) => {
+            lock = ` for ${strength}`
+            return q
+          },
+          then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) => {
+            if (table === shopOrders) log.push(`${via}: leer el pedido${lock}`)
+            return Promise.resolve(rowsOf(table)).then(ok, ko)
+          },
+        }
         return q
       },
     }),
     update: (table: unknown) => ({
       set: (values: Record<string, unknown>) => {
         writes.push({ table, values })
+        if (table === shopOrders) log.push(`${via}: escribir el pedido`)
         return { where: () => ({ returning: async () => [{ ...row, ...values }] }) }
       },
     }),
+  })
+  const db = {
+    ...client('db'),
+    transaction: async <T>(fn: (tx: unknown) => Promise<T>): Promise<T> => {
+      log.push('begin')
+      try {
+        const out = await fn(client('tx'))
+        log.push('commit')
+        return out
+      } catch (e) {
+        log.push('rollback')
+        throw e
+      }
+    },
   }
   return {
     db: db as any,
+    log,
     /** Lo escrito en el pedido. */
     orderWrites: () => writes.filter((w) => w.table === shopOrders).map((w) => w.values as Partial<OrderRow>),
     /** Los artículos tachados en la lista, o null si no se escribió. */
@@ -288,6 +320,36 @@ describe('saveBasketResult', () => {
     ]
     expect((orderWrites()[0].extensionResult as StoredBasketResult).cesta).toEqual(cesta)
     expect(r.order.extensionResult?.cesta).toEqual(cesta)
+  })
+  const fallo = okResult({ envioId: '', ok: false, error: 'sin_sesion', lineas: [], anadidas: 0, totalEur: null })
+  it('el mismo envioId otra vez: guardado false y no escribe', async () => {
+    const f = fakeDb({ ...row, status: 'sent', sentAt: NOW, extensionResult: stored() })
+    expect(await saveBasketResult('u1', 'o1', okResult({ repetido: true }), f.db)).toMatchObject({ deshecho: false, guardado: false })
+    expect(f.orderWrites()).toHaveLength(0)
+  })
+  it('un repetido de un envío deshecho: deshecho true, guardado false y no escribe', async () => {
+    const f = fakeDb({ ...row, extensionResult: stored({ deshechoAt: NOW.toISOString(), deshechos: ['e1'] }) })
+    expect(await saveBasketResult('u1', 'o1', okResult({ repetido: true }), f.db)).toMatchObject({ deshecho: true, guardado: false })
+    expect(f.orderWrites()).toHaveLength(0)
+  })
+  it('un fallo antes de escribir en borrador: se guarda y cuenta, pero sigue en borrador sin sentAt', async () => {
+    const f = fakeDb(row)
+    const r = await saveBasketResult('u1', 'o1', fallo, f.db)
+    expect(r).toMatchObject({ deshecho: false, guardado: true, order: { status: 'draft', sentAt: null } })
+    expect(f.orderWrites()[0]).toMatchObject({ status: 'draft', sentAt: null })
+  })
+  it('un pedido en sent (marcado como enviado a mano) conserva su sentAt', async () => {
+    const f = fakeDb({ ...row, status: 'sent', sentAt: NOW })
+    const r = await saveBasketResult('u1', 'o1', okResult(), f.db)
+    expect(r).toMatchObject({ guardado: true, order: { status: 'sent', sentAt: NOW.toISOString() } })
+  })
+  it('solo para el súper (una frutería: 400 NOT_SUPER) y no en un pedido cerrado (409 BAD_STATUS); sin escribir', async () => {
+    const fruteria = fakeDb({ ...row, shopSnapshot: { ...(row.shopSnapshot as object), kind: 'fruteria' } })
+    await expect(saveBasketResult('u1', 'o1', okResult(), fruteria.db)).rejects.toMatchObject({ status: 400, code: 'NOT_SUPER' })
+    expect(fruteria.orderWrites()).toHaveLength(0)
+    const cerrado = fakeDb({ ...row, status: 'closed' })
+    await expect(saveBasketResult('u1', 'o1', okResult(), cerrado.db)).rejects.toMatchObject({ status: 409, code: 'BAD_STATUS' })
+    expect(cerrado.orderWrites()).toHaveLength(0)
   })
 })
 
@@ -367,6 +429,12 @@ describe('undoBasketSend', () => {
     expect(order).toMatchObject({ status: 'draft', sentAt: null })
     expect(order.lines).toEqual(lines)
   })
+  it('deshacer un pedido enviado a mano con un envío fallido (nada en el carro): 409 NO_EXTENSION_SEND, sin escribir', async () => {
+    const fallido = stored({ envioId: '', ok: false, error: 'sin_sesion', lineas: [], anadidas: 0, totalEur: null })
+    const f = fakeDb({ ...row, status: 'sent', sentAt: NOW, extensionResult: fallido })
+    await expect(undoBasketSend('u1', 'o1', f.db)).rejects.toMatchObject({ status: 409, code: 'NO_EXTENSION_SEND' })
+    expect(f.orderWrites()).toHaveLength(0)
+  })
   it('un segundo deshacer no rompe nada: 409 y no se escribe otra vez', async () => {
     const first = fakeDb(sentRow)
     await undoBasketSend('u1', 'o1', first.db)
@@ -378,5 +446,27 @@ describe('undoBasketSend', () => {
     const resent = fakeDb({ ...after, status: 'sent', sentAt: NOW })
     await expect(undoBasketSend('u1', 'o1', resent.db)).rejects.toMatchObject({ status: 409, code: 'NO_EXTENSION_SEND' })
     expect(resent.orderWrites()).toHaveLength(0)
+  })
+})
+
+describe('resultado y deshacer, sin carreras', () => {
+  const LOCKED = ['begin', 'tx: leer el pedido for update']
+  it('saveBasketResult lee el pedido bloqueado (FOR UPDATE) y escribe en la misma transacción', async () => {
+    const f = fakeDb(row)
+    await saveBasketResult('u1', 'o1', okResult(), f.db)
+    expect(f.log).toEqual([...LOCKED, 'tx: escribir el pedido', 'commit'])
+  })
+  it('también decide con la fila bloqueada cuando no escribe (el mismo envío otra vez)', async () => {
+    const f = fakeDb({ ...row, status: 'sent', sentAt: NOW, extensionResult: stored() })
+    expect(await saveBasketResult('u1', 'o1', okResult({ repetido: true }), f.db)).toMatchObject({ guardado: false })
+    expect(f.log).toEqual([...LOCKED, 'commit'])
+  })
+  it('undoBasketSend lee el pedido bloqueado y escribe en la misma transacción; si no puede, no escribe', async () => {
+    const f = fakeDb({ ...row, status: 'sent', sentAt: NOW, extensionResult: stored() })
+    await undoBasketSend('u1', 'o1', f.db)
+    expect(f.log).toEqual([...LOCKED, 'tx: escribir el pedido', 'commit'])
+    const g = fakeDb({ ...row, status: 'sent', sentAt: NOW, extensionResult: stored({ deshechoAt: NOW.toISOString(), deshechos: ['e1'] }) })
+    await expect(undoBasketSend('u1', 'o1', g.db)).rejects.toMatchObject({ status: 409 })
+    expect(g.log).toEqual([...LOCKED, 'rollback'])
   })
 })

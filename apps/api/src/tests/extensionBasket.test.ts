@@ -431,6 +431,10 @@ describe('basketMayBeInCart', () => {
     expect(basketMayBeInCart({ anadidas: 0, lineas: [{ estado: 'no_verificada' }] })).toBe(true)
     expect(basketMayBeInCart({ anadidas: 0, lineas: [{ estado: 'fallida' }] })).toBe(false)
   })
+  it('acepta líneas de solo lectura', () => {
+    const lineas: ReadonlyArray<{ estado: string }> = [{ estado: 'no_verificada' }]
+    expect(basketMayBeInCart({ anadidas: 0, lineas })).toBe(true)
+  })
 })
 
 describe('sourceItemsForBasketKey', () => {

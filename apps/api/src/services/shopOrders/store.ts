@@ -52,6 +52,8 @@ import { capitalize, prettyName } from './format.js'
 import { parseShopReply, type ParsedReply } from './quoteParser.js'
 
 type Db = typeof defaultDb
+/** `db` o una transacción: con lo que se lee y se escribe un pedido. */
+type DbOrTx = Pick<Db, 'select' | 'update'>
 type ShopRow = typeof householdShops.$inferSelect
 type OrderRow = typeof shopOrders.$inferSelect
 
@@ -297,13 +299,28 @@ async function loadOrder(userId: string, id: string, db: Db): Promise<{ row: Ord
   return { row, householdId: hh }
 }
 
+/**
+ * Leer, decidir y escribir un pedido sin carreras: dentro de una transacción,
+ * con la fila del pedido bloqueada (`SELECT … FOR UPDATE`) hasta el final. Dos
+ * llamadas a la vez sobre el mismo pedido van una detrás de otra, y la segunda
+ * decide con lo que escribió la primera.
+ */
+async function withLockedOrder<T>(userId: string, id: string, db: Db, fn: (row: OrderRow, tx: DbOrTx) => Promise<T>): Promise<T> {
+  const hh = await householdOf(userId, db)
+  return db.transaction(async (tx) => {
+    const [row] = await tx.select().from(shopOrders).where(and(eq(shopOrders.id, id), eq(shopOrders.householdId, hh))).limit(1).for('update')
+    if (!row) throw new ShopOrderError(404, 'NOT_FOUND', 'Pedido no encontrado.')
+    return fn(row, tx)
+  })
+}
+
 function requireStatus(row: OrderRow, allowed: ShopOrderStatus[], what: string) {
   if (!allowed.includes(row.status as ShopOrderStatus)) {
     throw new ShopOrderError(409, 'BAD_STATUS', `No se puede ${what}: el pedido está ${row.status}.`)
   }
 }
 
-async function update(id: string, values: Partial<typeof shopOrders.$inferInsert>, db: Db): Promise<ShopOrder> {
+async function update(id: string, values: Partial<typeof shopOrders.$inferInsert>, db: DbOrTx): Promise<ShopOrder> {
   const [row] = await db.update(shopOrders).set({ ...values, updatedAt: new Date() }).where(eq(shopOrders.id, id)).returning()
   return presentOrder(row)
 }
@@ -623,35 +640,41 @@ export async function markSent(userId: string, id: string, db: Db = defaultDb): 
  * Se guarda con la foto de la cesta que salió de este pedido (`buildExtensionBasket`),
  * para que el agregado de huecos sepa qué era cada clave aunque las líneas cambien.
  * `guardado` = este resultado se ha guardado (uno por envío): solo entonces cuenta en la métrica.
+ * Con el pedido bloqueado (`withLockedOrder`): dos POST a la vez del mismo envío no cuentan dos veces.
  */
 export async function saveBasketResult(userId: string, id: string, incoming: BasketSendResult, db: Db = defaultDb): Promise<{ order: ShopOrder; deshecho: boolean; guardado: boolean }> {
-  const { row } = await loadOrder(userId, id, db)
-  if ((row.shopSnapshot as ShopSnapshot).kind !== 'supermercado') throw new ShopOrderError(400, 'NOT_SUPER', 'Solo para el pedido del súper.')
-  requireStatus(row, ['draft', 'sent'], 'guardar el envío')
-  const cesta = buildExtensionBasket(row.lines as ShopOrderLine[])
-  const d = decideBasketResult((row.extensionResult as StoredBasketResult | null) ?? null, row.status, incoming, new Date(), cesta)
-  if (d.action === 'deshecho') return { order: presentOrder(row), deshecho: true, guardado: false }
-  if (d.action === 'keep') return { order: presentOrder(row), deshecho: false, guardado: false }
-  const order = await update(
-    row.id,
-    { extensionResult: d.stored, status: d.status, sentAt: d.status === 'sent' ? row.sentAt ?? new Date() : row.sentAt },
-    db,
-  )
-  return { order, deshecho: false, guardado: true }
+  return withLockedOrder(userId, id, db, async (row, tx) => {
+    if ((row.shopSnapshot as ShopSnapshot).kind !== 'supermercado') throw new ShopOrderError(400, 'NOT_SUPER', 'Solo para el pedido del súper.')
+    requireStatus(row, ['draft', 'sent'], 'guardar el envío')
+    const cesta = buildExtensionBasket(row.lines as ShopOrderLine[])
+    const d = decideBasketResult((row.extensionResult as StoredBasketResult | null) ?? null, row.status, incoming, new Date(), cesta)
+    if (d.action === 'deshecho') return { order: presentOrder(row), deshecho: true, guardado: false }
+    if (d.action === 'keep') return { order: presentOrder(row), deshecho: false, guardado: false }
+    const order = await update(
+      row.id,
+      { extensionResult: d.stored, status: d.status, sentAt: d.status === 'sent' ? row.sentAt ?? new Date() : row.sentAt },
+      tx,
+    )
+    return { order, deshecho: false, guardado: true }
+  })
 }
 
-/** Deshacer el envío vivo: vuelve a borrador y apunta el envioId como deshecho. */
+/**
+ * Deshacer el envío vivo: vuelve a borrador y apunta el envioId como deshecho.
+ * Con el pedido bloqueado (`withLockedOrder`): no se pierde cruzado con otro envío.
+ */
 export async function undoBasketSend(userId: string, id: string, db: Db = defaultDb): Promise<ShopOrder> {
-  const { row } = await loadOrder(userId, id, db)
-  requireStatus(row, ['sent'], 'deshacer el envío')
-  const current = (row.extensionResult as StoredBasketResult | null) ?? null
-  if (!current || !basketMayBeInCart(current) || current.deshechoAt) throw new ShopOrderError(409, 'NO_EXTENSION_SEND', 'Este pedido no se envió con la extensión.')
-  const now = new Date().toISOString()
-  return update(
-    row.id,
-    { status: 'draft', sentAt: null, extensionResult: { ...current, deshechoAt: now, deshechos: [...(current.deshechos ?? []), current.envioId] } },
-    db,
-  )
+  return withLockedOrder(userId, id, db, async (row, tx) => {
+    requireStatus(row, ['sent'], 'deshacer el envío')
+    const current = (row.extensionResult as StoredBasketResult | null) ?? null
+    if (!current || !basketMayBeInCart(current) || current.deshechoAt) throw new ShopOrderError(409, 'NO_EXTENSION_SEND', 'Este pedido no se envió con la extensión.')
+    const now = new Date().toISOString()
+    return update(
+      row.id,
+      { status: 'draft', sentAt: null, extensionResult: { ...current, deshechoAt: now, deshechos: [...(current.deshechos ?? []), current.envioId] } },
+      tx,
+    )
+  })
 }
 
 type Parser = (input: Parameters<typeof parseShopReply>[0]) => Promise<ParsedReply | null>

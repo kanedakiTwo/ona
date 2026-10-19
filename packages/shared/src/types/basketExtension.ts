@@ -2,8 +2,8 @@
  * Mensajes entre la web de Mimoia y la extensión del navegador que suma la
  * cesta del súper al carro de la cadena (specs/shop-orders.md → «Enviar a la
  * extensión del navegador»). La extensión no importa este fichero: solo sigue
- * la forma de estos mensajes (devuelve objetos planos), así que cualquier cambio
- * en ella sube `BASKET_EXTENSION_PROTOCOL`.
+ * la forma de estos mensajes (devuelve objetos planos). Cualquier cambio en la
+ * forma de los mensajes sube `BASKET_EXTENSION_PROTOCOL`.
  */
 import { z } from 'zod'
 import { basketMayBeInCart } from '../buy/extensionBasket.js'

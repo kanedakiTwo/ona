@@ -137,6 +137,8 @@ export {
   courseSchema,
 } from './types/recipe.js'
 export { generateMenuSchema, lockMealSchema } from './types/menu.js'
+export { PANTRY_LOCATIONS, PANTRY_LOCATION_LABELS, isPantryLocation, groupPantryByLocation, freezerItemsDue, FREEZER_REVIEW_MIN_DAYS } from './types/pantry.js'
+export type { PantryLocation } from './types/pantry.js'
 
 // Constants
 export {

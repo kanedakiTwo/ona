@@ -738,6 +738,10 @@ export const pantryItems = pgTable('pantry_items', {
   unit: text('unit').notNull().default('u'),
   /** Best-before date the user entered. null = no expiry tracked. */
   expiresAt: date('expires_at'),
+  /** PRO-228: where it is — 'nevera' | 'congelador' | 'despensa' (PANTRY_LOCATIONS). */
+  location: text('location').notNull().default('despensa'),
+  /** PRO-228: when it went into that place (reset when it moves); null = created_at. */
+  storedAt: timestamp('stored_at', { withTimezone: true }),
   /** Bumped every time we decrement or the user edits. */
   lastUpdatedAt: timestamp('last_updated_at', { withTimezone: true }).notNull().defaultNow(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

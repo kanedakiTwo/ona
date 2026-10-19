@@ -2,6 +2,7 @@ import type { DayMenu } from '@ona/shared'
 import { mealEntriesForDay, recipeLinkLines, recipesOfDay, shortRecipeLink } from '../menuText.js'
 import type { OutboundMessage } from './render.js'
 import type { GuideSpec } from './guided.js'
+import { freezerReviewDue, freezerReviewGuide, freezerReviewMessages, isFreezerReviewWindow, type FreezerItem } from './freezerReview.js'
 
 /**
  * Pure planning for messages Mimoia sends first (the Instinct-style "it texts
@@ -25,6 +26,7 @@ export const PROACTIVE_KINDS = [
   'cooking_reminder',
   'dinner_checkin',
   'shopping_reminder',
+  'freezer_review',
 ] as const
 export type ProactiveKind = (typeof PROACTIVE_KINDS)[number]
 
@@ -35,6 +37,7 @@ export const PROACTIVE_LABELS: Record<ProactiveKind, string> = {
   cooking_reminder: 'aviso de empezar a cocinar',
   dinner_checkin: '"¿hiciste la cena?"',
   shopping_reminder: 'recordatorio de la compra',
+  freezer_review: 'repaso del congelador (una vez al mes)',
 }
 
 /** Missing key = on; the master `notify` switch is checked separately. */
@@ -188,6 +191,10 @@ export interface ProactiveInput {
   cookedToday: () => Promise<boolean>
   pendingShopping: () => Promise<string[]>
   hasNextWeekMenu: () => Promise<boolean>
+  /** PRO-228: when the last freezer review went out (any time), null if never. */
+  lastFreezerReviewAt?: () => Promise<Date | null>
+  /** PRO-228: freezer rows that went in 4+ weeks ago. */
+  freezerItemsDue?: () => Promise<FreezerItem[]>
   webUrl: string
 }
 
@@ -253,6 +260,18 @@ export async function planProactive(input: ProactiveInput): Promise<PlannedMessa
     }
   }
 
+  // PRO-228: once a month, only with something 4+ weeks in the freezer.
+  // Priority 2 of the weekly cap (FREEZER_REVIEW_PRIORITY, PRO-215).
+  if (
+    can('freezer_review') && isFreezerReviewWindow(p) && input.freezerItemsDue && input.lastFreezerReviewAt &&
+    freezerReviewDue(p, await input.lastFreezerReviewAt())
+  ) {
+    const items = await input.freezerItemsDue()
+    if (items.length > 0) {
+      out.push({ kind: 'freezer_review', messages: freezerReviewMessages(items), guide: freezerReviewGuide(items) })
+    }
+  }
+
   if (can('weekly_nudge') && isWeeklyNudgeWindow(p) && !(await input.hasNextWeekMenu())) {
     out.push({
       kind: 'weekly_nudge',
@@ -280,7 +299,8 @@ export function anyProactiveWindow(p: MadridParts, breakfastTime: string | null,
     couldNeedCookingReminder(p, dinnerTime) ||
     isDinnerCheckinWindow(p, dinnerTime) ||
     isShoppingReminderWindow(p) ||
-    isWeeklyNudgeWindow(p)
+    isWeeklyNudgeWindow(p) ||
+    isFreezerReviewWindow(p)
   )
 }
 

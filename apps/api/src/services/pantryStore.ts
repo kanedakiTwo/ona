@@ -19,7 +19,8 @@ import { and, eq, isNotNull, sql } from 'drizzle-orm'
 import { db as defaultDb } from '../db/connection.js'
 import { pantryItems, recipeIngredients, recipes, ingredients } from '../db/schema.js'
 import { getPrimaryHouseholdId } from './scopeResolver.js'
-import type { Aisle, BuyableUnit } from '@ona/shared'
+import type { Aisle, BuyableUnit, PantryLocation } from '@ona/shared'
+import { isPantryLocation } from '@ona/shared'
 
 type Db = typeof defaultDb
 
@@ -86,6 +87,10 @@ export interface PantryRow {
   quantity: number
   unit: BuyableUnit
   expiresAt: string | null
+  /** PRO-228: nevera | congelador | despensa. */
+  location: PantryLocation
+  /** PRO-228: when it went into that place (created_at for older rows). */
+  storedAt: string
   lastUpdatedAt: string
   createdAt: string
 }
@@ -99,6 +104,8 @@ function toRow(r: typeof pantryItems.$inferSelect): PantryRow {
     quantity: r.quantity,
     unit: r.unit as BuyableUnit,
     expiresAt: r.expiresAt ?? null,
+    location: isPantryLocation(r.location) ? r.location : 'despensa',
+    storedAt: (r.storedAt ?? r.createdAt).toISOString(),
     lastUpdatedAt: r.lastUpdatedAt.toISOString(),
     createdAt: r.createdAt.toISOString(),
   }
@@ -114,13 +121,18 @@ export class NoHouseholdError extends Error {
 export async function listPantryForUser(
   userId: string,
   db: Db = defaultDb,
+  opts: { location?: PantryLocation } = {},
 ): Promise<PantryRow[]> {
   const householdId = await getPrimaryHouseholdId(userId, db)
   if (!householdId) return []
   const rows = await db
     .select()
     .from(pantryItems)
-    .where(eq(pantryItems.householdId, householdId))
+    .where(
+      opts.location
+        ? and(eq(pantryItems.householdId, householdId), eq(pantryItems.location, opts.location))
+        : eq(pantryItems.householdId, householdId),
+    )
     .orderBy(pantryItems.name)
   return rows.map(toRow)
 }
@@ -131,6 +143,8 @@ export interface AddPantryInput {
   unit?: BuyableUnit
   ingredientId?: string | null
   expiresAt?: string | null
+  /** PRO-228: default «despensa». */
+  location?: PantryLocation
 }
 
 export async function addPantryForUser(
@@ -157,12 +171,16 @@ export async function addPantryForUser(
       )
       .limit(1)
     if (existing) {
+      // One row per catalogue ingredient: saying where it is now moves it
+      // (and its date restarts there).
+      const moved = input.location !== undefined && input.location !== existing.location
       const [updated] = await db
         .update(pantryItems)
         .set({
           quantity: existing.quantity + (input.quantity ?? 1),
           unit: input.unit ?? existing.unit,
           expiresAt: input.expiresAt ?? existing.expiresAt,
+          ...(moved ? { location: input.location, storedAt: new Date() } : {}),
           lastUpdatedAt: new Date(),
         })
         .where(eq(pantryItems.id, existing.id))
@@ -178,6 +196,8 @@ export async function addPantryForUser(
         quantity: input.quantity ?? 1,
         unit: input.unit ?? 'u',
         expiresAt: input.expiresAt ?? null,
+        location: input.location ?? 'despensa',
+        storedAt: new Date(),
       })
       .returning()
     return toRow(inserted)
@@ -191,6 +211,8 @@ export async function addPantryForUser(
       quantity: input.quantity ?? 1,
       unit: input.unit ?? 'u',
       expiresAt: input.expiresAt ?? null,
+      location: input.location ?? 'despensa',
+      storedAt: new Date(),
     })
     .returning()
   return toRow(inserted)
@@ -201,6 +223,9 @@ export interface PatchPantryInput {
   unit?: BuyableUnit
   expiresAt?: string | null
   name?: string
+  /** PRO-228: moving it restarts its date (`storedAt`) unless one is given. */
+  location?: PantryLocation
+  storedAt?: string
 }
 
 export async function patchPantryForUser(
@@ -216,6 +241,16 @@ export async function patchPantryForUser(
   if (patch.unit !== undefined) update.unit = patch.unit
   if (patch.expiresAt !== undefined) update.expiresAt = patch.expiresAt
   if (patch.name !== undefined) update.name = patch.name.trim()
+  if (patch.location !== undefined) {
+    update.location = patch.location
+    // Only a real move restarts the date; «Congelador» again on a row that's
+    // already there keeps when it went in.
+    update.storedAt = patch.storedAt
+      ? new Date(patch.storedAt)
+      : (sql`CASE WHEN ${pantryItems.location} = ${patch.location} THEN ${pantryItems.storedAt} ELSE now() END` as any)
+  } else if (patch.storedAt !== undefined) {
+    update.storedAt = new Date(patch.storedAt)
+  }
   const [updated] = await db
     .update(pantryItems)
     .set(update)

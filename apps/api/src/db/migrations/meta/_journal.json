@@ -477,6 +477,13 @@
       "when": 1792279786654,
       "tag": "0070_founder_offer",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1792367098029,
+      "tag": "0071_pantry_location",
+      "breakpoints": true
     }
   ]
 }

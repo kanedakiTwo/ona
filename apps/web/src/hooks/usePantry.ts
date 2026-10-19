@@ -5,7 +5,7 @@
  * lists + lets the user edit qty / unit / expiry manually.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import type { BuyableUnit } from "@ona/shared"
+import type { BuyableUnit, PantryLocation } from "@ona/shared"
 import { api } from "@/lib/api"
 
 export interface PantryItem {
@@ -16,6 +16,10 @@ export interface PantryItem {
   quantity: number
   unit: BuyableUnit
   expiresAt: string | null
+  /** PRO-228: nevera | congelador | despensa. */
+  location: PantryLocation
+  /** PRO-228: when it went into that place. */
+  storedAt: string
   lastUpdatedAt: string
   createdAt: string
 }
@@ -39,6 +43,7 @@ export function useAddPantry() {
       unit?: BuyableUnit
       ingredientId?: string | null
       expiresAt?: string | null
+      location?: PantryLocation
     }
   >({
     mutationFn: (body) => api.post<PantryItem>("/pantry", body),
@@ -53,7 +58,7 @@ export function usePatchPantry() {
     Error,
     {
       id: string
-      patch: Partial<Pick<PantryItem, "name" | "quantity" | "unit" | "expiresAt">>
+      patch: Partial<Pick<PantryItem, "name" | "quantity" | "unit" | "expiresAt" | "location">>
     }
   >({
     mutationFn: ({ id, patch }) => api.patch<PantryItem>(`/pantry/${id}`, patch),

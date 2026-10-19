@@ -48,6 +48,7 @@ When the master toggle is on (default after linking), Mimo writes first. All tim
 | `dinner_checkin` | 2–3 h after dinner time, if dinner has a recipe and nothing was cooked-logged today | "¿Hiciste hoy la cena (*X*)? Así lo apunto." [Sí, la hice] [No]. "Sí, la hice" → the assistant calls `log_cooked` (cook log + pantry decrement) |
 | `shopping_reminder` | Saturday 10:00–12:59, if the current list has ≥ 3 unchecked items | "¿Toca compra? Te faltan N cosas: …" + list link |
 | `weekly_nudge` | Sunday 18:00–21:59, if next week has no menu | "Domingo de planificar: ¿te preparo el menú de la semana que viene?" [Sí, prepáralo] [Ahora no] → `generate_weekly_menu(nextWeek: true)` |
+| `freezer_review` | once a calendar month, Sunday 11:00–13:59, only with something 4+ weeks in the freezer (PRO-228; priority 2 of the weekly cap) | «En el congelador tienes: - Merluza (4 u), desde el 2 de octubre … ¿Lo meto en el menú de estas semanas?» [Sí, mételo] [Ahora no] → `plan_freezer_items` (see [Pantry](./pantry.md)) |
 | `prep_alerts` | from `notification_schedule` | "Acuérdate: Merluza — sácalo del congelador…" (also sent by Web Push; the row is `sent` if either channel delivers) |
 
 **Written from a guide, not a fixed text** (PRO-156, D-065; `services/whatsapp/guided.ts`). The texts in the table above are the **safety net**; normally each of those messages (all but `prep_alerts`) and the end of the WhatsApp sign-up (`first_steps`, see *First steps in the chat* above) is written each time by a writer, Claude Haiku 4.5:

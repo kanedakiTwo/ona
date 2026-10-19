@@ -12,7 +12,7 @@ import {
   menuLogs,
   shoppingLists,
 } from '../../db/schema.js'
-import { nutrientsToPercentages, TARGET_MACROS, detectSeason, recipeDishesOf } from '@ona/shared'
+import { nutrientsToPercentages, TARGET_MACROS, detectSeason, recipeDishesOf, isPantryLocation } from '@ona/shared'
 import type { DayMenu, Meal, NutrientBalance } from '@ona/shared'
 import { householdMultiplier } from '@ona/shared'
 import { generateMenu } from '../menuGenerator.js'
@@ -30,12 +30,13 @@ import { DAY_PROP, dateLabel, isMenuDayError, menuDayOf, resolveMenuDay, type Me
 import { appSkills, bestMatch, dishNoteText, searchWords } from './appSkills.js'
 import { createDishRecipe, NEW_RECIPE_PROP, NOTE_THEN_RECIPE_HINT, type NewRecipeParam } from './dishRecipe.js'
 import { shopOrderSkills } from './shopOrderSkills.js'
+import { freezerSkills } from './freezerSkills.js'
 import { visibleAuthorIds, visibleRecipeWhere } from '../recipeVisibility.js'
 import { loadMatchableRecipes } from '../matchableRecipes.js'
 import { loadPreviousWeek } from '../menuWeek.js'
 import { loadUserRestrictions, findRecipesWithWhatIHave } from '../withWhatIHave.js'
 import { compileRestrictions, nameHasTerm, normalizeText, violatesRestrictions, type RestrictableRecipe } from '../dietaryRestrictions.js'
-import { addPantryForUser, deletePantryForUser, listPantryForUser, NoHouseholdError } from '../pantryStore.js'
+import { addPantryForUser, deletePantryForUser, listPantryForUser, NoHouseholdError, patchPantryForUser } from '../pantryStore.js'
 import { enqueuePrepAlertsForMenu } from '../notificationScheduler.js'
 import { NotARecipeError, SocialCaptionUnavailableError } from '../recipeUrlExtractor.js'
 import { NoExtractableContentError } from '../sources/youtube.js'
@@ -1311,8 +1312,11 @@ const getPantryStock: SkillDefinition = {
         uiHint: 'text',
       }
     }
-    const fmt = (r: { name: string; quantity: number; unit: string; expiresAt: string | null }) =>
-      `${r.name}${r.quantity ? ` ${r.quantity} ${r.unit}` : ''}${r.expiresAt ? ` (caduca ${String(r.expiresAt).slice(0, 10)})` : ''}`
+    // PRO-228: where it is (nevera / congelador; «despensa» is the default and goes unsaid) and since when.
+    const place = (r: { location?: string; storedAt?: string }) =>
+      r.location === 'congelador' ? ` [congelador desde ${String(r.storedAt ?? '').slice(0, 10)}]` : r.location === 'nevera' ? ' [nevera]' : ''
+    const fmt = (r: { name: string; quantity: number; unit: string; expiresAt: string | null; location?: string; storedAt?: string }) =>
+      `${r.name}${r.quantity ? ` ${r.quantity} ${r.unit}` : ''}${r.expiresAt ? ` (caduca ${String(r.expiresAt).slice(0, 10)})` : ''}${place(r)}`
     const all = [...pantry.map(fmt), ...fromList.map((i) => String(i.name))]
     return {
       data: { pantry, fromList },
@@ -1341,10 +1345,11 @@ const markInStock: SkillDefinition = {
     properties: {
       ingredient: { type: 'string', description: 'Nombre del ingrediente (acepta coincidencia parcial)' },
       inStock: { type: 'boolean', description: 'true si tiene, false si no. Si se omite, alterna el estado.' },
+      location: { type: 'string', enum: ['nevera', 'congelador', 'despensa'], description: 'Donde lo tiene, si lo dice ("tengo pollo en el congelador"). Si ya estaba apuntado en otro sitio, lo cambia de sitio.' },
     },
     required: ['ingredient'],
   },
-  async handler(params: { ingredient: string; inStock?: boolean }, ctx) {
+  async handler(params: { ingredient: string; inStock?: boolean; location?: string }, ctx) {
     const { userId, db } = ctx
     const pantry = await listPantryForUser(userId, db).catch(() => [])
     const list = await latestShoppingList(ctx)
@@ -1360,9 +1365,14 @@ const markInStock: SkillDefinition = {
       await db.update(shoppingLists).set({ items }).where(eq(shoppingLists.id, list.id))
       touched = true
     }
+    const location = isPantryLocation(params.location) ? params.location : undefined
+    if (next && pantryHit && location && (pantryHit as { location?: string }).location !== location) {
+      await patchPantryForUser(userId, pantryHit.id, { location }, db)
+      touched = true
+    }
     if (next && !pantryHit) {
       try {
-        await addPantryForUser(userId, { name: String(item?.name ?? params.ingredient).trim().slice(0, 80) }, db)
+        await addPantryForUser(userId, { name: String(item?.name ?? params.ingredient).trim().slice(0, 80), location }, db)
         touched = true
       } catch (err) {
         if (!(err instanceof NoHouseholdError)) throw err
@@ -1384,7 +1394,7 @@ const markInStock: SkillDefinition = {
     const name = item?.name ?? pantryHit?.name ?? params.ingredient
     return {
       data: { name, inStock: next },
-      summary: next ? `${name} marcado como en casa.` : `${name} eliminado de la despensa.`,
+      summary: next ? `${name} marcado como en casa${location && location !== 'despensa' ? ` (${location})` : ''}.` : `${name} eliminado de la despensa.`,
       uiHint: 'confirmation',
     }
   },
@@ -2560,6 +2570,8 @@ export const skills: SkillDefinition[] = [
   ...appSkills,
   // Compra en mis tiendas (specs/shop-orders.md) — shopOrderSkills.ts:
   ...shopOrderSkills,
+  // PRO-228: «Sí, mételo» al repaso mensual del congelador.
+  ...freezerSkills,
 ]
 
 /**

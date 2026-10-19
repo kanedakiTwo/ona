@@ -28,6 +28,7 @@ import householdRoutes, { publicHouseholdRouter } from './routes/households.js'
 import cookLogRoutes from './routes/cookLogs.js'
 import staplesRoutes from './routes/staples.js'
 import pushRoutes from './routes/push.js'
+import notificationRoutes from './routes/notifications.js'
 import recipeNotesRoutes from './routes/recipeNotes.js'
 import pantryRoutes from './routes/pantry.js'
 import cookbooksRoutes from './routes/cookbooks.js'
@@ -156,6 +157,8 @@ app.use(ingredientRoutes)
 // `GET /push/public-key` endpoint is intentionally public — must be
 // mounted BEFORE userRoutes so the catch-all auth there doesn't block it.
 app.use(pushRoutes)
+// «Avisos» in Perfil (PRO-237): per-route auth.
+app.use(notificationRoutes)
 app.use(usageRoutes)
 // Per-route authMiddleware (no catch-all) — kept next to pushRoutes for the
 // same mount-order reason.

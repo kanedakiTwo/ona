@@ -55,22 +55,15 @@ Premium Progressive Web App layer that makes Mimoia feel like a native iOS/Andro
 - A small badge appears: "Pantalla activa"
 - The button toggles to "Salir de cocina"; the lock is released when the user taps it or navigates away
 
-### Local notifications
+### Local notifications (removed)
 
-- Users can opt in to meal-time reminders from the profile page ("Recordatorios" card)
-- The chapter exposes 4 time inputs (breakfast / lunch / snack / dinner) plus a master toggle
-- After permission is granted, the app schedules **local** notifications based on the saved meal-time preferences
-- A notification fires at the configured times (e.g., "Es hora de comer · Pollo al limón con verduras")
-- Tapping a notification opens the app
-- Notifications are scheduled client-side via `setTimeout` and re-armed on every app open (root layout `useEffect`)
-- The user can disable reminders globally from the same chapter
+- The local meal-time reminder («Es hora de comer», four times in the profile, browser `setTimeout`) was removed on 2026-10-19 (PRO-234, D-080): it repeated Mimo's morning menu with other hours and only rang with the app open. Server notifications are in [Notifications](./notifications.md).
 
 ## Constraints
 
 - **iOS Safari** does not support: `beforeinstallprompt`, `Vibration API`, `Notifications API` (in non-installed PWAs prior to iOS 16.4 — only the installed PWA supports them on 16.4+), Web Share for arbitrary file types
 - **Background Sync API** is Chromium-only; on other browsers, queued mutations replay on the next `online` event instead of in the background
 - **Wake Lock API** is supported on Chromium and Safari 16.4+; falls back to no-op
-- **Notifications scheduled with `setTimeout`** only fire while the page is alive — they're a best-effort approximation, not a substitute for server-side push (deferred to a future spec)
 - **View Transitions API** is Chromium-only as of writing; the `motion/react` fallback covers the rest
 - The service worker only caches GET requests; all mutations go through the network or the offline queue
 - `api-cache` keys responses by URL only (no `Authorization`), which is why its routes must be network-first and anchored on the API origin (`^<NEXT_PUBLIC_API_URL>/recipes|menu|shopping-list`). Workbox silently ignores a cross-origin regex that doesn't match at index 0, which is why the pre-2026-10-07 `/\/menu\/.*$/` rule cached only page shells and no API data. `scripts/verify-sw.mjs` runs in `postbuild` and fails the build if any `api-cache` route breaks either rule

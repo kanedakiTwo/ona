@@ -15,7 +15,8 @@ import {
 } from '../services/notifications/budget.js'
 import { cookingReminderTimes } from '../services/notifications/budgetStore.js'
 import { mergeMessages, planProactive, type MadridParts } from '../services/whatsapp/proactive.js'
-import { mergeAlertPayloads } from '../services/notificationScheduler.js'
+import { mergeAlertPayloads, prepMomentDelivery } from '../services/notificationScheduler.js'
+import { momentDelivery } from '../services/whatsapp/outbound.js'
 
 const state = (over: Partial<BudgetState> = {}): BudgetState => ({ budget: WEEKLY_NOTICE_BUDGET, used: 0, reservedP1: 0, ...over })
 
@@ -173,5 +174,33 @@ describe('prep alerts of one moment', () => {
       url: '/menu?day=2',
       tag: 'a',
     })
+  })
+})
+
+
+describe('one channel per moment, fallback counted once (PRO-234)', () => {
+  const two = [{ kind: 'cooking_reminder' }, { kind: 'dinner_checkin' }]
+  it('WhatsApp outside the window, push delivers → one enviado, one unit, channel push', () => {
+    const d = momentDelivery({ status: 'skipped', error: 'outside-24h-window' }, { status: 'ok' })
+    expect(d).toEqual({ delivery: 'ok', channel: 'push' })
+    const entries = logEntriesFor(planMoment(two, state()), d.delivery)
+    expect(entries.filter((e) => e.counted)).toHaveLength(1)
+    expect(entries.map((e) => e.outcome)).toEqual(['enviado', 'fusionado'])
+  })
+  it('WhatsApp delivers → push is not tried and the channel is whatsapp', () => {
+    expect(momentDelivery({ status: 'ok' }, null)).toEqual({ delivery: 'ok', channel: 'whatsapp' })
+  })
+  it('neither channel delivers → fuera_ventana / fallido and nothing spent', () => {
+    const out = momentDelivery({ status: 'skipped', error: 'outside-24h-window' }, { status: 'skipped', error: 'no-push-subscription' })
+    expect(out).toEqual({ delivery: 'outside-window', channel: null })
+    expect(logEntriesFor(planMoment(two, state()), out.delivery).some((e) => e.counted)).toBe(false)
+    expect(momentDelivery({ status: 'error', error: 'graph 500' }, { status: 'error', error: 'push-failed' }).delivery).toBe('error')
+  })
+  it('prep alerts: a moment sent by push as fallback is one unit too', () => {
+    const plan = planMoment([{ kind: 'prep_alerts' }, { kind: 'prep_alerts' }], state({ used: 3 }))
+    const entries = logEntriesFor(plan, prepMomentDelivery({ status: 'sent', errorMessage: null }))
+    expect(entries.filter((e) => e.counted)).toHaveLength(1)
+    expect(prepMomentDelivery({ status: 'failed', errorMessage: 'whatsapp: outside-24h-window · push: no-push-subscription' })).toBe('outside-window')
+    expect(prepMomentDelivery({ status: 'failed', errorMessage: 'push: push-failed' })).toBe('error')
   })
 })

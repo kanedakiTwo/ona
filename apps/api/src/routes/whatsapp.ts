@@ -11,6 +11,7 @@ import { parseWebhookPayload } from '../services/whatsapp/webhookParser.js'
 import { enqueueInbound } from '../services/whatsapp/inbound.js'
 import { buildInboundDeps, initialInboundBody } from '../services/whatsapp/wiring.js'
 import * as store from '../services/whatsapp/store.js'
+import { setAlertPrefs } from '../services/notifications/alertPrefs.js'
 import { buildWaLink, linkMessageText, maskPhone } from '../services/whatsapp/linking.js'
 import { PROACTIVE_KINDS, kindsSwitchedOff } from '../services/whatsapp/proactive.js'
 import { trackEvent } from '../services/usageEvents.js'
@@ -178,11 +179,13 @@ router.patch('/whatsapp/link', authMiddleware, async (req: AuthRequest, res) => 
       res.status(404).json({ error: 'No tienes WhatsApp conectado.' })
       return
     }
+    // PRO-237: through the «Avisos» switches, so both stores keep agreeing.
+    if (parsed.data.prefs) await setAlertPrefs(req.userId!, parsed.data.prefs)
     if (parsed.data.notify !== undefined) await store.setNotify(req.userId!, parsed.data.notify)
-    const prefs = parsed.data.prefs ? await store.setPrefs(req.userId!, parsed.data.prefs) : link.prefs
     // PRO-216: households that switch avisos off, for the weekly review.
     for (const kind of kindsSwitchedOff(link, parsed.data)) trackEvent('notifications_off', { userId: req.userId!, props: { kind } })
-    res.json({ notify: parsed.data.notify ?? link.notify, prefs: prefs ?? {} })
+    const after = await store.getLinkByUser(req.userId!)
+    res.json({ notify: after?.notify ?? parsed.data.notify ?? link.notify, prefs: after?.prefs ?? {} })
   } catch (err: any) {
     console.error('[whatsapp] patch link error:', err?.message ?? err)
     res.status(500).json({ error: 'Internal server error' })

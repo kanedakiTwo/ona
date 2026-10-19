@@ -92,7 +92,7 @@ describe('day-7 founder-price offer', () => {
     expect(isFounderOfferDue(beta, new Date('2026-12-22T10:00:00Z'))).not.toBeNull()
   })
 
-  it('sent once (email + WhatsApp), nothing before launch day', async () => {
+  it('sent once, ONE message (WhatsApp when it gets through, no email; PRO-234), nothing before launch day', async () => {
     const repo: OfferRepo & { marked: Set<unknown> } = memory([candidate], 'householdId')
     const mail = sentMail()
     const wa: Array<{ userId: string; text: string }> = []
@@ -108,13 +108,27 @@ describe('day-7 founder-price offer', () => {
     expect((await sendFounderOffers(dayAt11(6), deps)).offered).toBe(0)
     expect((await sendFounderOffers(dayAt11(7), deps)).offered).toBe(1)
     expect((await sendFounderOffers(dayAt11(8), deps)).offered).toBe(0)
-    expect(mail.sent).toHaveLength(1)
+    expect(mail.sent).toHaveLength(0)
     expect(wa).toEqual([{ userId: 'u1', text: expect.stringContaining('precio de fundador para siempre') }])
     expect(wa[0].text).toContain('https://mimoia.com/profile/suscripcion')
 
     const before = memory([{ ...candidate, householdCreatedAt: new Date('2026-10-01T10:00:00Z') }], 'householdId')
     expect((await sendFounderOffers(new Date('2026-12-10T10:00:00Z'), { ...deps, repo: before })).offered).toBe(0)
     expect(await sendFounderOffersIfDue(new Date('2026-12-10T10:00:00Z'), () => ({ ...deps, repo: before }))).toBeNull()
+  })
+
+  it('without WhatsApp (or its window closed) it goes by email instead (PRO-234)', async () => {
+    const repo = memory([candidate], 'householdId')
+    const mail = sentMail()
+    const r = await sendFounderOffers(dayAt11(7), {
+      repo,
+      sendEmail: mail.send,
+      sendWhatsApp: async () => ({ status: 'skipped', error: 'outside-24h-window' }),
+      publicUrl: 'https://mimoia.com',
+    })
+    expect(r.offered).toBe(1)
+    expect(r.whatsapp).toBe(0)
+    expect(mail.sent).toHaveLength(1)
   })
 
   it('if no channel got it out (no email key, WhatsApp window closed), it stays pending', async () => {

@@ -498,6 +498,13 @@
       "when": 1792409641479,
       "tag": "0073_shop_order_extension_result",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1792451168183,
+      "tag": "0074_household_notices",
+      "breakpoints": true
     }
   ]
 }

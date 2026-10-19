@@ -44,6 +44,8 @@ import billingRoutes, { billingWebhookRouter } from './routes/billing.js'
 import priceSurveyRoutes from './routes/priceSurvey.js'
 import feedbackRoutes from './routes/feedback.js'
 import tasteRoutes from './routes/taste.js'
+import noticesRoutes from './routes/notices.js'
+import { startAfinaNotice } from './services/afinaNotice.js'
 import catalogWishesRoutes from './routes/catalogWishes.js'
 import { trackShoppingActivity } from './services/activityEvents.js'
 import { trackUsageRoutes } from './services/usageEvents.js'
@@ -137,6 +139,7 @@ app.use(priceSurveyRoutes)
 app.use(feedbackRoutes)
 // «Afina tu menú» (PRO-146): per-route auth.
 app.use(tasteRoutes)
+app.use(noticesRoutes)
 app.use(catalogWishesRoutes)
 app.use(recipeRoutes)
 app.use(ingredientRoutes)
@@ -186,6 +189,8 @@ app.listen(env.PORT, () => {
   // dispatches due prep alerts via Web Push. Started once at boot;
   // idempotent if startup runs twice. See PR-D / notifications spec.
   startScheduler()
+  // PRO-205: the one-off «Afina tu menú» notice (once per database and household).
+  startAfinaNotice()
 })
 
 export default app

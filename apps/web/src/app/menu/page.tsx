@@ -18,6 +18,7 @@ import { PriceSurveySheet } from "@/components/menu/PriceSurveySheet"
 import { WhatsAppNudgeCard } from "@/components/menu/WhatsAppNudgeCard"
 import { AccountAccessNotice } from "@/components/billing/AccountAccessNotice"
 import { TasteIntroScreen, TasteMenuCard } from "@/components/taste/TasteOffers"
+import { AfinaNoticeCard } from "@/components/taste/AfinaNoticeCard"
 import { useTasteStatus } from "@/hooks/useTaste"
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react"
 import { useRouter } from "next/navigation"
@@ -643,6 +644,7 @@ export default function MenuPage() {
                 {header}
                 <AccountAccessNotice />
                 <NoHealthDataNotice />
+                <AfinaNoticeCard />
                 <TasteMenuCard />
                 <WhatsAppNudgeCard />
                 {statusCard}
@@ -681,6 +683,7 @@ export default function MenuPage() {
             {header}
             <AccountAccessNotice />
             <NoHealthDataNotice />
+            <AfinaNoticeCard />
             <TasteMenuCard />
             <WhatsAppNudgeCard />
             {statusCard}
@@ -713,6 +716,7 @@ export default function MenuPage() {
       <AccountAccessNotice />
 
       <NoHealthDataNotice />
+      <AfinaNoticeCard />
       <TasteMenuCard />
       <WhatsAppNudgeCard />
 

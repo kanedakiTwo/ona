@@ -30,14 +30,14 @@ async function call(method: string, path: string, payload?: unknown, headers: Re
   return { status: r.status, body }
 }
 
-async function freshUser() {
+async function freshUser(restrictions: string[] = []) {
   const tag = `taste_${Date.now()}${Math.random().toString(36).slice(2, 6)}`
   const reg = await call('POST', '/register', { username: tag, email: `${tag}@test.local`, password: 'e2epass123', ageConfirmed: true })
   expect(reg.status).toBe(201)
   const auth = { Authorization: `Bearer ${reg.body.token}` }
   const userId = reg.body.user.id as string
   // No favourite dishes any more: «Afina tu menú» replaced them.
-  const onboarding = await call('POST', `/user/${userId}/onboarding`, { adults: 2, kidsCount: 0, cookingFreq: 'daily', restrictions: [], priority: 'varied' }, auth)
+  const onboarding = await call('POST', `/user/${userId}/onboarding`, { adults: 2, kidsCount: 0, cookingFreq: 'daily', restrictions, healthConsent: restrictions.length > 0, priority: 'varied' }, auth)
   expect(onboarding.status).toBe(200)
   return { auth, userId }
 }
@@ -88,7 +88,11 @@ describe.skipIf(!reachable)('«Afina tu menú» smoke', () => {
     for (const x of batch.cards) expect(nextIds).not.toContain(x.recipeId)
 
     const status1 = await call('GET', '/taste/status', undefined, auth)
-    expect(status1.body).toMatchObject({ rated: 3, showIntro: false })
+    // PRO-197: the vetoed ingredient also takes its recipe(s) out of the deck,
+    // and only verdicts on recipes still in the deck count.
+    expect(status1.body).toMatchObject({ showIntro: false })
+    expect(status1.body.rated).toBeGreaterThanOrEqual(1)
+    expect(status1.body.rated).toBeLessThanOrEqual(3)
 
     const now = new Date()
     const monday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - ((now.getUTCDay() + 6) % 7)))
@@ -99,6 +103,39 @@ describe.skipIf(!reachable)('«Afina tu menú» smoke', () => {
     expect((await call('DELETE', `/taste/${b.recipeId}`, undefined, auth)).status).toBe(204)
     expect((await call('GET', '/taste/verdicts', undefined, auth)).body.verdicts).toHaveLength(2)
   }, 60_000)
+
+  // PRO-197: the cards go through the menu's own restriction filter.
+  async function everyCard(auth: Record<string, string>) {
+    const seen: TasteNextResponse['cards'] = []
+    let total = 0
+    for (let i = 0; i < 15; i++) {
+      const r = await call('GET', `/taste/next?limit=20&exclude=${seen.map((x) => x.recipeId).join(',')}`, undefined, auth)
+      expect(r.status).toBe(200)
+      const body = r.body as TasteNextResponse
+      total = body.total
+      if (body.cards.length === 0) break
+      seen.push(...body.cards)
+    }
+    return { names: seen.map((x) => norm(x.name)), total }
+  }
+
+  it('a coeliac and a vegetarian never see a recipe the menu would refuse them', async () => {
+    const free = await freshUser()
+    const all = await everyCard(free.auth)
+
+    const coeliac = await freshUser(['Sin gluten'])
+    const g = await everyCard(coeliac.auth)
+    expect(g.total).toBeLessThan(all.total)
+    expect(g.names.length).toBeGreaterThan(0)
+    for (const n of g.names) expect(n).not.toMatch(/pizza|espagueti|ramen|falafel|boquerones fritos|carbonara|lasana|macarrones/)
+
+    const veg = await freshUser(['Vegetariano'])
+    const v = await everyCard(veg.auth)
+    expect(v.total).toBeLessThan(all.total)
+    for (const n of v.names) expect(n).not.toMatch(/pollo|bacalao|cocido|ternera|salmon|cerdo|oreja|steak|chuleton|conejo|merluza|atun|jamon/)
+    const status = await call('GET', '/taste/status', undefined, veg.auth)
+    expect(status.body.total).toBe(v.total)
+  }, 90_000)
 
   it('offers: «Novedad» once, then the card until «Ahora no»', async () => {
     const { auth } = await freshUser()

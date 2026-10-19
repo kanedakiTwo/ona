@@ -122,7 +122,8 @@ Both are configured in the Railway dashboard, not committed.
 | `RESEND_API_KEY` / `EMAIL_FROM` / `RESEND_BASE_URL` | Optional: email through Resend (`specs/email.md`, PRO-93). Unset key = no email (each send logs `[email] not configured`). `EMAIL_FROM` defaults to `Mimoia <hola@mimoia.com>` (mimoia.com verified in Resend, EU region); `RESEND_BASE_URL` only for a mock. **Production: a session of Miguel sets the key, after Legal reviews `/privacidad` (D-050). Never in staging.** |
 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | Optional: subscriptions ([specs/billing.md](../specs/billing.md)). Payments are on only when both are set; otherwise every pay button says payments aren't open yet. Staging: test keys (`sk_test_…`). Production: live keys only once there's a business to invoice (MIG-21). The webhook secret comes from `apps/api/scripts/stripeSetup.ts --webhook-url=<api>/billing/webhook --secret-out=<file>`, which also creates the products, prices and portal. |
 | `USDA_FDC_API_KEY` | For ingredient auto-create |
-| `METRICS_READ_TOKEN` | Read-only token (header `x-metrics-token`, GET only) for `GET /admin/metrics`, `GET /admin/usage`, `GET /admin/errors`, `GET /admin/waitlist` and `GET /admin/assistant-reviews/flags`, used by the Mimoia HQ agents; unset = token access off. See `specs/metrics.md`, `specs/errors.md`, `specs/waitlist.md`, `specs/whatsapp.md` |
+| `METRICS_READ_TOKEN` | Read-only token (header `x-metrics-token`, GET only) for `GET /admin/metrics`, `GET /admin/usage`, `GET /admin/errors`, `GET /admin/waitlist`, `GET /admin/price-survey`, `GET /admin/feedback`, `GET /admin/assistant-reviews/flags`, `GET /admin/catalog-wishes` and `GET /admin/extension-gaps`, used by the Mimoia HQ agents; unset = token access off. See `specs/metrics.md`, `specs/errors.md`, `specs/waitlist.md`, `specs/whatsapp.md`, `specs/shop-orders.md` |
+| `BASKET_EXTENSION_EMAILS` | Quién ve «Enviar a <cadena>» en la tarjeta del súper (extensión del navegador, experimento cerrado; `specs/shop-orders.md`): emails exactos o `@dominio`, separados por comas. **Vacía = nadie** (es el interruptor; deshacer lo ya enviado funciona igual). **Nunca un `@dominio` que no controléis**, como el `@test.local` de los e2e y del smoke o el `@example.com` de staging: cualquiera que se registre con ese dominio vería el botón. ona-api la lee al arrancar |
 | `COST_PRICE_OVERRIDES` | Optional JSON over the cost-ledger price table, e.g. `{"openai/gpt-realtime":{"perMinute":0.15}}` |
 
 `ona-web`:
@@ -135,6 +136,7 @@ Both are configured in the Railway dashboard, not committed.
 | `NEXT_PUBLIC_ERROR_REPORTING` | Optional. `false` switches the browser error reporter off (it is on in production builds by default); `true` turns it on under `next dev`. See `specs/errors.md` |
 | `NEXT_PUBLIC_RELEASE` | Optional build label sent with client error reports. Unset → `RAILWAY_GIT_COMMIT_SHA` or `RAILWAY_DEPLOYMENT_ID` if Railway exposes them at build time, else none |
 | `NEXT_PUBLIC_CF_BEACON_TOKEN` | Optional. Cloudflare Web Analytics site token (cookieless, aggregated visits; `specs/privacy.md`). Baked at build time: set it, then redeploy ona-web. Unset → no beacon |
+| `NEXT_PUBLIC_BASKET_EXTENSION_ID` | Opcional. Id de la extensión del navegador a la que la web manda la cesta del súper (`specs/shop-orders.md`). Se mete en la build: ponla **antes** de desplegar ona-web (cambiarla = volver a desplegar). Vacía = la web no habla con ninguna extensión y no sale el botón. Va con `BASKET_EXTENSION_EMAILS` en ona-api |
 | `PORT` | `3000` |
 
 ## Schema migrations

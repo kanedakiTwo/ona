@@ -234,6 +234,12 @@ export function ExtensionSentBody({ order, etiqueta }: { order: ShopOrder; etiqu
           {undo.isPending && !undoingManual ? `Puede tardar un poco. No cierres la pestaña de ${etiqueta}.` : ""}
         </p>
       </div>
+      {/* Antes del bloque manual: «También puedes quitarlo a mano…» se refiere a este aviso. */}
+      {undo.error && (
+        <p role="alert" className={alertText}>
+          {undoErrorText(undo.error, etiqueta, !!undo.variables?.manual)}
+        </p>
+      )}
       {anadido.length > 0 && (
         // Para quitarlo a mano hay que saber qué es: abierto cuando toca hacerlo.
         <details open={manual !== null} className="rounded-xl bg-[#F7F2E7] px-3 py-2" data-testid="basket-extension-added">
@@ -259,11 +265,6 @@ export function ExtensionSentBody({ order, etiqueta }: { order: ShopOrder; etiqu
             <Check size={12} /> {undoingManual ? "Un momento…" : "Ya lo he quitado yo"}
           </button>
         </div>
-      )}
-      {undo.error && (
-        <p role="alert" className={alertText}>
-          {undoErrorText(undo.error, etiqueta, !!undo.variables?.manual)}
-        </p>
       )}
       {close.error && (
         <p role="alert" className={alertText}>

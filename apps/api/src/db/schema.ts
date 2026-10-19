@@ -1318,6 +1318,39 @@ export const newsletterSends = pgTable('newsletter_sends', {
 ])
 
 /**
+ * PRO-191: our own aggregated click counter for the newsletter. One row per
+ * issue and link (the links of the content, rewritten at send to
+ * `<web>/n/<issue>/<index>`); the redirect goes only to `destination`, saved
+ * here at send, never to a URL that comes in the request. No IP, browser or
+ * recipient: just how many times each link was opened.
+ */
+export const newsletterClicks = pgTable('newsletter_clicks', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  issueId: text('issue_id').notNull(),
+  linkIndex: integer('link_index').notNull(),
+  destination: text('destination').notNull(),
+  clicks: integer('clicks').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_newsletter_clicks_issue_link').on(t.issueId, t.linkIndex),
+])
+
+/**
+ * PRO-191: one row per newsletter opt-out done from an issue's link (counts
+ * only: the issue, whether it was an account or a waitlist entry, and when).
+ * `issue_id` is null when the link carried no issue (older emails).
+ */
+export const newsletterUnsubscribes = pgTable('newsletter_unsubscribes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  issueId: text('issue_id'),
+  /** user | waitlist */
+  source: text('source').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_newsletter_unsubscribes_issue').on(t.issueId),
+])
+
+/**
  * What this household chose when a product needs a choice (jamón → serrano,
  * pescado entero → lubina, carne picada → de ternera). Applied the next time
  * Mimoia drafts an order (specs/shop-orders.md → Buy rules).

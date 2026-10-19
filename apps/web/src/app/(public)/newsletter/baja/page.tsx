@@ -16,11 +16,15 @@ type State = "ready" | "sending" | "done" | "already" | "invalid" | "error"
 
 export default function NewsletterUnsubscribePage() {
   const [token, setToken] = useState<string | null>(null)
+  // PRO-191: the issue the link came from, so the opt-out is counted under it (no person stored).
+  const [issueId, setIssueId] = useState<string | null>(null)
   const [state, setState] = useState<State>("ready")
 
   useEffect(() => {
-    const t = new URLSearchParams(window.location.search).get("t")
+    const params = new URLSearchParams(window.location.search)
+    const t = params.get("t")
     setToken(t)
+    setIssueId(params.get("i"))
     if (!t) setState("invalid")
   }, [])
 
@@ -28,7 +32,7 @@ export default function NewsletterUnsubscribePage() {
     if (!token) return
     setState("sending")
     try {
-      const res = await apiPublic.post<{ ok: boolean; alreadyUnsubscribed: boolean }>("/newsletter/unsubscribe", { token })
+      const res = await apiPublic.post<{ ok: boolean; alreadyUnsubscribed: boolean }>("/newsletter/unsubscribe", { token, ...(issueId ? { issueId } : {}) })
       setState(res.alreadyUnsubscribed ? "already" : "done")
     } catch (err) {
       setState(err instanceof ApiError && err.status === 404 ? "invalid" : "error")

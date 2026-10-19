@@ -23,10 +23,20 @@ The weekly email for people who ticked «Quiero recibir cada viernes por email u
 - `issueId`: lowercase slug (`2026-10-16`), the idempotency key.
 - `content`: `{ edition?, preface?, headline?, intro?, star { title, body, imageUrl, imageAlt, url, meta? }, sections?, news?, tip?, cta { label, url }, note?, signoff?, from? }`; `news`/`tip` = `{ title, body, imageUrl?, imageAlt?, url? }`; `sections` = up to 4 × `{ label?, title?, quote?, body, tone?: 'band' | 'plain' }`; `from` = `{ name, role? }`. Image and link URLs must be absolute (`http(s)://`), the star needs `alt`. The template lays it out; nobody sends raw HTML.
 - `dryRun: true` → `{ mode: 'dry_run', recipients, alreadySent, bySource { waitlist, user }, includes? }`, sends nothing; `includes: <email>` says whether that address would get it.
-- `testTo` → one proof, subject prefixed «[Prueba] », only to the email of an **admin** account (else 400 `NEWSLETTER_TEST_NOT_ADMIN`); its opt-out links are dummies; nothing recorded.
+- `testTo` → one proof, subject prefixed «[Prueba] », only to the email of an **admin** account (else 400 `NEWSLETTER_TEST_NOT_ADMIN`); its opt-out links are dummies; nothing recorded but the issue's links (its tracked links carry `?prueba=1` and never count).
 - Otherwise → `{ mode: 'send', sent, failed, skipped, alreadySent }`, through Resend's batch API (≤ 100 per call), audited as `newsletter.send` (counts only).
 
 Recommended order (D-027 style): `dryRun` → `testTo` to Miguel → send.
+
+## Clicks and opt-outs per issue (PRO-191, 2026-10-19)
+
+Resend's open and click tracking stay **off** on mimoia.com (the open pixel needs consent; Resend's click tracking keeps who clicked). Instead, our own aggregated counter:
+- At send, the content's links (star recipe, call to action, news, tip; the same URL twice is one link, numbered from 1: `contentLinks`) are saved in `newsletter_clicks (issue_id, link_index, destination, clicks)` and every email carries `https://mimoia.com/n/<issue>/<n>` instead (`withTrackedLinks`). The footer's personal links (opt-out, invite) are never rewritten.
+- `mimoia.com/n/<issue>/<n>` (web route `app/n/[issue]/[n]/route.ts`) asks `GET /newsletter/click/:issueId/:n` (public), which adds 1 and answers `{ url }` with the destination **saved at send**; the web redirects there with a 302. Never to a URL that comes in the request (no open redirect). An unknown issue or link → 404, no redirect.
+- Not clicks: `HEAD` requests, proofs (`?prueba=1`) and known mail scanners or link previewers by user-agent (`countsAsClick`). The metric is clicks, not people. No IP, browser or recipient is stored.
+- Opt-outs: the opt-out page and the one-click URL carry `i=<issue>`; a successful opt-out adds a row to `newsletter_unsubscribes (issue_id, source user|waitlist, created_at)` — counts only. Earlier emails have no issue and count under `unsubscribesWithoutIssue`.
+- `GET /admin/newsletter/stats` (admin JWT or the agents' `x-metrics-token`) → `{ issues: [{ issueId, firstSentAt, sent { total, user, waitlist }, clicks { total, links [{ index, destination, clicks }] }, unsubscribes { total, user, waitlist } }], unsubscribesWithoutIssue, definitions }`. The Observatorio (private repo `ona-hq-datos`) is what copies it to ona-hq `data/`.
+- Migration `0074_newsletter_clicks` (adds the two tables). `/privacidad` changes only if Legal asks (proposed line: «contamos cuántas veces se pulsa cada enlace, sin saber quién»).
 
 ## Constraints
 
@@ -45,7 +55,7 @@ Recommended order (D-027 style): `dryRun` → `testTo` to Miguel → send.
 
 - Same issue for everyone (apart from the per-recipient links); no personalisation by diet or usage yet (v2 in Marketing's approach).
 - Accounts get no invite link in the footer yet, even though they have one (PRO-162, Perfil); its copy is still to be decided.
-- No open/click tracking in the product; Resend's dashboard has the numbers.
+- No opens: only clicks per link (PRO-191) and opt-outs per issue. Scanners not in the user-agent list still count as clicks.
 - Unsubscribing from the newsletter has no "subscribe again" button: write to the contact in `/privacidad`.
 
 ## Related specs
@@ -59,8 +69,9 @@ Recommended order (D-027 style): `dryRun` → `testTo` to Miguel → send.
 ## Source
 
 - [apps/api/src/services/newsletter.ts](../apps/api/src/services/newsletter.ts) — schema, template, recipients, repo, `sendNewsletter`; the shell pieces come from [emailBrand.ts](../apps/api/src/services/emailBrand.ts)
-- [apps/api/src/routes/newsletter.ts](../apps/api/src/routes/newsletter.ts) — `POST /admin/newsletter/send`, `POST /newsletter/unsubscribe`
+- [apps/api/src/routes/newsletter.ts](../apps/api/src/routes/newsletter.ts) — `POST /admin/newsletter/send`, `POST /newsletter/unsubscribe`, `GET /newsletter/click/:issueId/:n`, `GET /admin/newsletter/stats`
+- [apps/api/src/services/newsletterStats.ts](../apps/api/src/services/newsletterStats.ts) — tracked links, what counts as a click, per-issue stats (PRO-191); [apps/web/src/app/n/[issue]/[n]/route.ts](../apps/web/src/app/n/[issue]/[n]/route.ts) — the redirect; migration [0074_newsletter_clicks.sql](../apps/api/src/db/migrations/0074_newsletter_clicks.sql)
 - [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts) (`newsletterSends`), [apps/api/src/db/migrations/0046_newsletter_sends.sql](../apps/api/src/db/migrations/0046_newsletter_sends.sql)
 - [apps/web/src/app/(public)/newsletter/baja/page.tsx](../apps/web/src/app/(public)/newsletter/baja/page.tsx)
 - [apps/web/src/components/profile/NewsletterToggle.tsx](../apps/web/src/components/profile/NewsletterToggle.tsx) (profile), [apps/web/src/app/(auth)/register/page.tsx](../apps/web/src/app/(auth)/register/page.tsx) (box), [apps/api/src/routes/auth.ts](../apps/api/src/routes/auth.ts) (`newsletterOptIn`), migration [0047_users_newsletter.sql](../apps/api/src/db/migrations/0047_users_newsletter.sql)
-- Tests: `apps/api/src/tests/newsletter.test.ts` (recipients, idempotency, opt-out keeps the entry, template, routes, `forgetNewsletterSends`), `newsletter.smoke.ts` (real API + DB, incl. register with the box and the profile switch; traces kept after the newsletter opt-out and gone after `/lista/baja` and after deleting the account), `apps/web/e2e/newsletter-unsubscribe.spec.ts`, `apps/web/e2e/newsletter-optin.spec.ts` (390×844: register with the box → dry run includes them → profile switch off)
+- Tests: `apps/api/src/tests/newsletter.test.ts` (recipients, idempotency, opt-out keeps the entry, template, routes, `forgetNewsletterSends`, clicks: 2 links, one clicked twice → 2 and 0, unknown → 404, HEAD/scanner/proof not counted), `newsletter.smoke.ts` (real API + DB, incl. register with the box and the profile switch; traces kept after the newsletter opt-out and gone after `/lista/baja` and after deleting the account), `apps/web/e2e/newsletter-unsubscribe.spec.ts`, `apps/web/e2e/newsletter-optin.spec.ts` (390×844: register with the box → dry run includes them → profile switch off)

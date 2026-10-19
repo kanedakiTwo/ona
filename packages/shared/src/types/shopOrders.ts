@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { BuyableUnit } from './shopping.js'
+import type { StoredBasketResult } from './basketExtension.js'
 
 /**
  * "Compra en mis tiendas" — the household's own shops (frutería,
@@ -93,6 +94,12 @@ export interface ShopOrderLine {
   /** Chosen option for rules that need one (serrano, dorada…) and the options to switch. */
   choice?: string | null
   options?: string[] | null
+  /**
+   * Artículos de la lista que esta línea junta y que la lista separaría
+   * (alubias blancas + rojas). Solo los usa la cesta de la extensión del
+   * navegador; null/ausente = un solo producto.
+   */
+  members?: Array<{ name: string; quantity: number; unit: BuyableUnit; sourceItemIds: string[] }> | null
   /** The order can't go out until someone chooses ("¿serrano o ibérico?"). */
   needsChoice?: { question: string; options: string[] } | null
   /** Sold by weight but typed with no amount ("¿cuánto jamón?"); suggestion = sensible minimum. */
@@ -178,6 +185,8 @@ export interface ShopOrder {
   delivery: DeliveryCheck | null
   /** Per-line product search on the shop's web (El Corte Inglés today). */
   searchLinks: Record<string, string>
+  /** Último envío a la extensión del navegador (tarjeta del súper); null si nunca. */
+  extensionResult?: StoredBasketResult | null
   createdAt: string
   sentAt: string | null
   quotedAt: string | null

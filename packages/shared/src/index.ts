@@ -98,6 +98,22 @@ export {
   approveShopOrderSchema,
   patchShopOrderSchema,
 } from './types/shopOrders.js'
+export {
+  BASKET_EXTENSION_PROTOCOL,
+  BASKET_LINE_STATES,
+  BASKET_SEND_ERRORS,
+  basketSendResultSchema,
+} from './types/basketExtension.js'
+export type {
+  BasketLine,
+  BasketMessage,
+  BasketPing,
+  BasketLineState,
+  BasketSendError,
+  BasketSendResult,
+  BasketUndoResult,
+  StoredBasketResult,
+} from './types/basketExtension.js'
 export type { Macros, Vitamins, Minerals, AminoAcids, FatAcids, CarbTypes, NutrientBalance } from './types/nutrition.js'
 export type {
   Meal,

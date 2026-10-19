@@ -62,7 +62,7 @@ export {
   fitsTimeBudget,
 } from './types/cookingTime.js'
 export type { ShoppingItem, ShoppingList, BuyableUnit } from './types/shopping.js'
-export { missingQuantity } from './types/shopping.js'
+export { missingQuantity, activeShoppingItems } from './types/shopping.js'
 export type {
   ShopKind,
   ShopChannel,
@@ -205,7 +205,7 @@ export {
 } from './utils/catalog.js'
 export type { CatalogScope, CatalogRecipeLike, CatalogFilterState } from './utils/catalog.js'
 export { menuShareText, recipeSharePayload, withOnaFooter } from './utils/sharePayloads.js'
-export { shoppingProgress } from './utils/shoppingProgress.js'
+export { shoppingProgress, parseShoppingAmount } from './utils/shoppingProgress.js'
 export type { ShoppingProgress } from './utils/shoppingProgress.js'
 export type { SharePayload } from './utils/sharePayloads.js'
 export {

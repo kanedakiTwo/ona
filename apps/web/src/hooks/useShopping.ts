@@ -16,6 +16,14 @@ export interface ShoppingItem {
   kind?: 'menu' | 'manual' | 'staple'
   /** € per `unit`. Null/undefined = no price entered yet. PR 10. */
   pricePerUnit?: number | null
+  /** Part already bought / at home (PRO-199). */
+  haveQuantity?: number
+  /** Menu line left out: «No lo compro esta semana» (PRO-175). */
+  skipped?: boolean
+  /** Menu line with the household's own amount: what the menu asked (PRO-175). */
+  menuQuantity?: number
+  /** Manual line: amount in the household's words, «2 paquetes» (PRO-175). */
+  amountText?: string
 }
 
 export interface ShoppingList {
@@ -142,6 +150,7 @@ export function useAddShoppingItem() {
       unit?: BuyableUnit
       aisle?: Aisle
       pricePerUnit?: number | null
+      amountText?: string
     }
   >({
     mutationFn: ({ listId, ...body }) => api.post(`/shopping-list/${listId}/items`, body),
@@ -162,7 +171,7 @@ export function usePatchShoppingItem() {
     {
       listId: string
       itemId: string
-      patch: Partial<Pick<ShoppingItem, "name" | "quantity" | "unit" | "aisle" | "pricePerUnit">>
+      patch: Partial<Pick<ShoppingItem, "name" | "quantity" | "unit" | "aisle" | "pricePerUnit">> & { amountText?: string | null }
     }
   >({
     mutationFn: ({ listId, itemId, patch }) =>
@@ -185,6 +194,23 @@ export function useDeleteShoppingItem() {
       if (data && typeof data === "object" && "items" in data) {
         putList(qc, data)
       }
+      qc.invalidateQueries({ queryKey: ["shopping-list", vars.listId, "totals"] })
+    },
+  })
+}
+
+/**
+ * Change a line that comes from the menu (PRO-175): `skipped` = «No lo compro
+ * esta semana» (false puts it back), `quantity` = the household's amount in
+ * the line's unit (null = back to the menu's). Kept across rebuilds.
+ */
+export function useEditMenuLine() {
+  const qc = useQueryClient()
+  return useMutation<ShoppingList, Error, { listId: string; itemId: string; skipped?: boolean; quantity?: number | null }>({
+    mutationFn: ({ listId, itemId, ...body }) =>
+      api.put(`/shopping-list/${listId}/item/${encodeURIComponent(itemId)}/edit`, body),
+    onSuccess: (data, vars) => {
+      if (data && typeof data === "object" && "items" in data) putList(qc, data)
       qc.invalidateQueries({ queryKey: ["shopping-list", vars.listId, "totals"] })
     },
   })

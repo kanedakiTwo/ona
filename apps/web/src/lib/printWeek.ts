@@ -25,7 +25,7 @@ export function printCell(slot: Slot): { names: string[]; minutes: number | null
 
 /** Shopping items still to buy (not in stock), grouped by aisle in store order; empty aisles dropped. */
 export function printShoppingByAisle(items: ShoppingItem[]): Array<{ aisle: Aisle; items: ShoppingItem[] }> {
-  const toBuy = items.filter((i) => !i.inStock)
+  const toBuy = items.filter((i) => !i.inStock && !(i as { skipped?: boolean }).skipped)
   return AISLES.map((aisle) => ({
     aisle,
     items: toBuy.filter((i) => (i.aisle ?? "otros") === aisle).sort((a, b) => a.name.localeCompare(b.name, "es")),

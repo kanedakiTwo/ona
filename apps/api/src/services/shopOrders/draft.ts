@@ -69,6 +69,10 @@ function sourceOf(item: ShoppingItem): Entry['source'] {
 }
 
 function expand(item: ShoppingItem): Entry[] {
+  // «Pañales talla 4» + «2 paquetes» (PRO-175): the household's words go in the line as they are.
+  if (item.kind === 'manual' && item.amountText) {
+    return [{ id: item.id, ingredientId: null, name: `${item.name} (${item.amountText})`, quantity: 1, unit: 'u', source: 'default', notes: item.notes ?? [], aisle: item.aisle, pricePerUnit: null, kind: item.kind }]
+  }
   const base: Entry = {
     id: item.id,
     ingredientId: item.ingredientId,
@@ -142,7 +146,7 @@ export function draftOrdersFromItems<S extends DraftShop>(
   for (const row of items) {
     // A line partly bought for an earlier menu orders only the rest (PRO-199).
     const item = row.haveQuantity && row.haveQuantity > 0 ? { ...row, quantity: missingQuantity(row) } : row
-    if (item.checked || item.inStock || !(item.quantity > 0)) continue
+    if (item.checked || item.inStock || item.skipped || !(item.quantity > 0)) continue
     if (opts.alreadyOrdered?.has(item.id)) {
       result.skipped.push({ name: item.name, reason: 'ya está en un pedido abierto' })
       continue

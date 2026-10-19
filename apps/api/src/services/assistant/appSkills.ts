@@ -647,17 +647,21 @@ const addFreezerDish: SkillDefinition = {
 
 // ─── Shopping list ───────────────────────────────────────────────
 
-type ListItem = Pick<ShoppingItem, 'id' | 'name'> & Partial<Pick<ShoppingItem, 'quantity' | 'unit' | 'aisle' | 'checked' | 'inStock' | 'kind' | 'haveQuantity'>>
+type ListItem = Pick<ShoppingItem, 'id' | 'name'> &
+  Partial<Pick<ShoppingItem, 'ingredientId' | 'quantity' | 'unit' | 'aisle' | 'checked' | 'inStock' | 'kind' | 'haveQuantity' | 'skipped' | 'menuQuantity' | 'amountText'>>
 interface ListDoc { id: string; items: ListItem[] }
 // The rolling list /shopping shows (today → next Sunday): menu items, staples
 // and manual items, with their checked / inStock state.
 const currentList = (ctx: SkillContext) => api(ctx)<ListDoc>('GET', '/shopping-list')
 
-const pending = (i: ListItem) => !i.checked && !i.inStock
+const pending = (i: ListItem) => !i.checked && !i.inStock && !i.skipped
+/** A line the recipes of the menu put on the list (not typed by hand, not a staple). */
+const fromMenu = (i: ListItem) => i.kind !== 'manual' && i.kind !== 'staple' && !!i.ingredientId
 
 /** "Tomate (1 kg)", "Huevos (12 unidades)", "Leche" (1 unidad says nothing). */
 export function itemLabel(i: ListItem): string {
   const name = prettyName(i.name)
+  if (i.amountText) return `${name} (${i.amountText})`
   // Part of it already bought or at home for an earlier menu (PRO-199): say only the rest.
   if (i.quantity && i.unit && i.haveQuantity && i.haveQuantity > 0) {
     return `${name} (faltan ${formatQty(Math.max(0, i.quantity - i.haveQuantity), i.unit)}; ya tienes ${formatQty(i.haveQuantity, i.unit)})`
@@ -708,8 +712,13 @@ const getShoppingList: SkillDefinition = {
     }
     const missing = items.filter(pending).sort((a, b) => AISLES.indexOf(a.aisle ?? 'otros') - AISLES.indexOf(b.aisle ?? 'otros'))
     const bought = items.filter((i) => i.checked).length
-    const atHome = items.filter((i) => i.inStock && !i.checked).length
-    const extra = [bought ? `Ya comprado: ${bought}.` : '', atHome ? `En casa: ${atHome}.` : ''].filter(Boolean).join(' ')
+    const atHome = items.filter((i) => i.inStock && !i.checked && !i.skipped).length
+    const skipped = items.filter((i) => i.skipped).map((i) => prettyName(i.name))
+    const extra = [
+      bought ? `Ya comprado: ${bought}.` : '',
+      atHome ? `En casa: ${atHome}.` : '',
+      skipped.length ? `Quitado de esta compra: ${skipped.join(', ')}.` : '',
+    ].filter(Boolean).join(' ')
     if (missing.length === 0) {
       return { data, summary: `Ya lo tienes todo. ${extra}`.trim(), uiHint: 'shopping_list' }
     }
@@ -766,6 +775,12 @@ const addShoppingItems: SkillDefinition = {
       // pending is a no-op, and with it bought it means "we need it again".
       const same = findSameProduct(items, String(it.name ?? ''))
       if (same) {
+        if (same.skipped) {
+          await api(ctx)('PUT', `/shopping-list/${list.id}/item/${same.id}/edit`, { skipped: false })
+          same.skipped = false
+          back.push(prettyName(same.name))
+          continue
+        }
         if (pending(same)) {
           already.push(prettyName(same.name))
           continue
@@ -778,9 +793,11 @@ const addShoppingItems: SkillDefinition = {
         continue
       }
       const b = toBuyable(it.quantity, it.unit)
-      const name = String(b.suffix ? `${it.name} (${b.suffix})` : it.name).slice(0, 80)
+      const name = String(it.name).slice(0, 80)
       await api(ctx)('POST', `/shopping-list/${list.id}/items`, {
         name,
+        // «2 paquetes» stays as the household said it, not in the name (PRO-175).
+        ...(b.suffix ? { amountText: b.suffix.slice(0, 30) } : {}),
         ...(b.quantity ? { quantity: b.quantity } : {}),
         ...(b.unit ? { unit: b.unit } : {}),
       })
@@ -789,7 +806,7 @@ const addShoppingItems: SkillDefinition = {
     }
     const parts: string[] = []
     if (added.length) parts.push(`añadido a la lista: ${added.join(', ')}.`)
-    if (back.length) parts.push(`vuelve a estar pendiente (estaba comprado o en casa): ${back.join(', ')}.`)
+    if (back.length) parts.push(`vuelve a estar pendiente (estaba comprado, en casa o quitado): ${back.join(', ')}.`)
     const changed = parts.length > 0
     if (already.length) parts.push(`${changed ? 'Ya estaba' : 'No he cambiado nada, ya estaba'} en la lista: ${already.join(', ')}.`)
     const sentences = parts.map((s, i) => (i === 0 ? s : capitalize(s)))
@@ -800,27 +817,71 @@ const addShoppingItems: SkillDefinition = {
 
 const removeShoppingItems: SkillDefinition = {
   name: 'remove_shopping_items',
-  description: 'Quita productos de la lista de la compra (no es lo mismo que marcarlos como comprados: para eso usa check_shopping_item).',
+  description:
+    'Quita productos de la lista de la compra ("quita la patata", "esta semana no compro pan"). Lo añadido a mano se borra; lo que viene del menu queda quitado de esta compra («No lo compro esta semana») y se puede volver a poner con add_shopping_items. No es lo mismo que marcarlo como comprado (check_shopping_item) ni "en casa" (mark_in_stock).',
   parameters: { type: 'object', properties: { names: { type: 'array', items: { type: 'string' } } }, required: ['names'] },
   async handler(p, ctx) {
     const list = await currentList(ctx)
     const removed: string[] = []
     const missing: string[] = []
-    let items = [...(list.items ?? [])]
+    const staples: string[] = []
+    let items = [...(list.items ?? [])].filter((i) => !i.skipped)
     for (const name of p.names ?? []) {
       const hit = bestMatch(items, name, (i) => i.name)
       if (!hit) {
         missing.push(name)
         continue
       }
-      await api(ctx)('DELETE', `/shopping-list/${list.id}/item/${hit.id}`)
-      removed.push(hit.name)
       items = items.filter((i) => i.id !== hit.id)
+      if (hit.kind === 'staple') {
+        staples.push(prettyName(hit.name))
+        continue
+      }
+      // A menu line can't be deleted (the next rebuild brings it back): it is left out of this shopping (PRO-175).
+      if (fromMenu(hit)) await api(ctx)('PUT', `/shopping-list/${list.id}/item/${hit.id}/edit`, { skipped: true })
+      else await api(ctx)('DELETE', `/shopping-list/${list.id}/item/${hit.id}`)
+      removed.push(prettyName(hit.name))
     }
     const parts = []
     if (removed.length) parts.push(`Quitado de la lista: ${removed.join(', ')}.`)
+    if (staples.length) parts.push(`${staples.join(', ')} ${staples.length === 1 ? 'es uno de tus básicos' : 'son de tus básicos'}: si quieres, lo pauso (manage_staples).`)
     if (missing.length) parts.push(`No estaban en la lista: ${missing.join(', ')}.`)
     return { data: null, summary: parts.join(' '), uiHint: 'shopping_list' }
+  },
+}
+
+/** «Pon 2 kilos de patatas», «yogures, 8», «pañales, 2 paquetes» (PRO-175). */
+const changeShoppingItemAmount: SkillDefinition = {
+  name: 'change_shopping_item_amount',
+  description:
+    'Cambia la cantidad que se compra de un producto de la lista ("de patatas pon 2 kilos", "los yogures, 8", "pañales, 2 paquetes"). En lo que viene del menu la cantidad va en la unidad de la linea (g, ml, unidades…); en lo añadido a mano vale cualquier cantidad ("2 paquetes"). Sin quantity vuelve a la cantidad del menu.',
+  parameters: {
+    type: 'object',
+    properties: { name: { type: 'string' }, quantity: { type: 'number' }, unit: { type: 'string' } },
+    required: ['name'],
+  },
+  async handler(p, ctx) {
+    const list = await currentList(ctx)
+    const hit = bestMatch(list.items ?? [], String(p.name ?? ''), (i) => i.name)
+    if (!hit) return text(`"${p.name}" no está en la lista; no he cambiado nada.`)
+    const name = prettyName(hit.name)
+    const b = toBuyable(p.quantity, p.unit)
+    if (hit.kind === 'staple') return text(`${name} es uno de tus básicos: su cantidad se cambia en tus básicos (manage_staples).`)
+    if (!fromMenu(hit)) {
+      if (b.suffix) await api(ctx)('PATCH', `/shopping-list/${list.id}/item/${hit.id}`, { amountText: b.suffix.slice(0, 30) })
+      else if (b.quantity) await api(ctx)('PATCH', `/shopping-list/${list.id}/item/${hit.id}`, { quantity: b.quantity, unit: b.unit })
+      else return text(`¿Cuánto ${name.toLowerCase()} pongo?`)
+      return { data: { listId: list.id }, summary: `Hecho: ${name}, ${b.suffix ?? formatQty(b.quantity!, b.unit as ShoppingItem['unit'])}.`, uiHint: 'shopping_list' }
+    }
+    if (p.quantity == null) {
+      await api(ctx)('PUT', `/shopping-list/${list.id}/item/${hit.id}/edit`, { quantity: null })
+      return { data: { listId: list.id }, summary: `Hecho: ${name} vuelve a lo que pide el menú.`, uiHint: 'shopping_list' }
+    }
+    if (!b.quantity || !hit.unit || b.unit !== hit.unit) {
+      return text(`En ${name} la cantidad va en ${hit.unit === 'u' ? 'unidades' : hit.unit} (ahora ${formatQty(hit.quantity ?? 0, hit.unit ?? 'u')}). ¿Cuánto pongo?`)
+    }
+    await api(ctx)('PUT', `/shopping-list/${list.id}/item/${hit.id}/edit`, { quantity: b.quantity })
+    return { data: { listId: list.id }, summary: `Hecho: ${name}, ${formatQty(b.quantity, hit.unit)} (el menú pedía ${formatQty(hit.menuQuantity ?? hit.quantity ?? 0, hit.unit)}).`, uiHint: 'shopping_list' }
   },
 }
 
@@ -1262,6 +1323,7 @@ export const appSkills: SkillDefinition[] = [
   getShoppingList,
   addShoppingItems,
   removeShoppingItems,
+  changeShoppingItemAmount,
   regenerateShoppingList,
   manageStaples,
   updatePantry,

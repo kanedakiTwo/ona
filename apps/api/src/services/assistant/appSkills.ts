@@ -1,4 +1,4 @@
-import { AISLES, capitalize, formatQty, prettyName, type ShoppingItem } from '@ona/shared'
+import { AISLES, capitalize, formatQty, inviteHouseholdShareText, prettyName, type ShoppingItem } from '@ona/shared'
 import type { SkillContext, SkillDefinition, SkillResult } from './types.js'
 import { appApiFor, AppApiError, type AppApi } from './appApi.js'
 import { madridParts, madridWeekStart } from '../madridTime.js'
@@ -1199,6 +1199,20 @@ const inviteToHousehold: SkillDefinition = {
   },
 }
 
+/** PRO-163 (D-051): the same «Invitar a otro hogar» as the button, in the chat and on WhatsApp. */
+const shareInviteLink: SkillDefinition = {
+  name: 'share_invite_link',
+  description:
+    'Da el enlace personal del usuario para invitar a OTRO hogar (amigos o familia que viven en otra casa) a probar Mimoia, con el mensaje listo para reenviar. No sirve para unir a alguien a su propio hogar: para eso es invite_to_household.',
+  parameters: { type: 'object', properties: {}, required: [] },
+  async handler(_p, ctx) {
+    const { link } = await api(ctx)<{ code: string; link: string }>('GET', '/referrals/me')
+    await api(ctx)('POST', '/usage/invite-shared', { channel: ctx.channel === 'whatsapp' ? 'whatsapp' : 'web' }).catch(() => {})
+    const message = inviteHouseholdShareText(link)
+    return text(`Hecho: su enlace para invitar a otro hogar es ${link}. Dale este mensaje tal cual para que lo reenvie: «${message}»`, { link, message })
+  },
+}
+
 const setWhatsappNotifications: SkillDefinition = {
   name: 'set_whatsapp_notifications',
   description:
@@ -1273,6 +1287,7 @@ export const appSkills: SkillDefinition[] = [
   updateProfile,
   updateWeeklyTemplate,
   inviteToHousehold,
+  shareInviteLink,
   setWhatsappNotifications,
   leaveFeedback,
 ]

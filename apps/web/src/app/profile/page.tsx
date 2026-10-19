@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { motion } from 'motion/react'
 import { useQuery } from '@tanstack/react-query'
+import { InviteHouseholdButton } from '@/components/referrals/InviteHouseholdButton'
 import {
   Archive,
   Bell,
@@ -436,6 +437,8 @@ export default function ProfilePage() {
         <div className="mt-6 px-5 lg:mt-8 lg:px-0">
           <GroupLabel>Tu casa y Mimo</GroupLabel>
           <ProfileHub />
+          {/* PRO-163: another household, not someone of this one (that's «Invitar a alguien» in Casa). */}
+          <InviteHouseholdButton place="perfil" className="mt-3 lg:mt-4" />
         </div>
 
         <div className="mt-3 grid gap-3 px-5 lg:mt-4 lg:grid-cols-2 lg:items-start lg:gap-4 lg:px-0">

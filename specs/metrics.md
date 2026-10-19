@@ -90,7 +90,7 @@ Analítica de producto en una tabla propia, sin terceros. Una fila por cada cosa
 | `meal_cooked` | `POST /cook-logs` | `log_cooked`; `mark_meal_eaten` con `eaten: true` («ya lo hemos comido», `via: 'eaten'`, PRO-188) |
 | `mimo_message` (por `channel`; en WhatsApp `props.kind` text/voice_note/photo) | `POST /assistant/:id/chat` (`mode: voice` → voice) | cada turno de WhatsApp que llega a Mimo (`inbound.ts`) |
 | `whatsapp_linked` | — | código de vinculación aceptado (`inbound.ts`) |
-| `invite_shared` (PRO-165) | toque en «Invitar a otro hogar» (el botón llega con PRO-163; hasta entonces no hay eventos) | — |
+| `invite_shared` (PRO-165) | toque en «Invitar a otro hogar» (PRO-163: el botón de WhatsApp o «Copiar» en Perfil y bajo la lista de la compra, y Mimo cuando da el enlace con `share_invite_link`; `POST /usage/invite-shared`, sin props) | — |
 | `app_opened_installed` (`props.device` android/ios/desktop; pasivo, ver abajo) | `POST /usage/app-opened` (la web, al abrirse instalada) | — |
 | `shop_order_prepared` (`props.orders` desde Mimo) | `POST /shop-orders/prepare` | `prepare_shop_orders` con al menos un pedido |
 | `carrefour_click` (`props.items` = líneas de la tarjeta del súper) | `POST /shop-orders/:id/carrefour-click` (botón «Hacer este pedido en Carrefour.es», PRO-84) | — |

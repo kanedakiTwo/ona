@@ -3,7 +3,7 @@ titulo: La cocina será nuestro refugio
 fecha: 2026-10-19
 autor: Miguel Martín
 resumen: Cocinar me divierte; lo que me quita las ganas es todo lo que lo rodea. Por qué empecé Mimoia en una tabla de recompensas de mi hija y por qué creo que la cocina va a importar más que nunca.
-imagen: /blog/origen-panel-cocina-portada.jpg
+imagen: /blog/refugio-pan-portada.jpg
 publicado: true
 ---
 Hay dos maneras de llegar a la cocina un martes a las ocho de la tarde.

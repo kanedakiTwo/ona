@@ -226,7 +226,7 @@ export type { CarrefourLineInput } from './buy/carrefour.js'
 export { buyableUnitFor, unitAfterQuantity, quantityHintFor, RECIPE_UNIT_LABELS } from './buy/recipeUnits.js'
 export { shoppingGroupOf, isNotBought, catalogAisleFix } from './buy/listGroup.js'
 export type { ShoppingGroup } from './buy/listGroup.js'
-export { basketBaseName, basketMayBeInCart, basketSearch, extensionKey, orderMembers, buildExtensionBasket, sourceItemsForBasketKey } from './buy/extensionBasket.js'
+export { basketBaseName, basketMayBeInCart, basketSearch, extensionKey, isLiveBasketSend, orderMembers, buildExtensionBasket, sourceItemsForBasketKey } from './buy/extensionBasket.js'
 export type { OrderMember, OrderMemberInput } from './buy/extensionBasket.js'
 
 export { buildRecipePayload } from './recipeFormPayload.js'

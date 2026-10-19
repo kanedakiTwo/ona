@@ -21,6 +21,7 @@ const UNDO = 'Quitar lo que añadió Mimoia'
 const MANUAL = 'Ya lo he quitado yo'
 const NO_ANSWER = 'No sabemos si ha entrado; abre tu carro. Si vuelves a pulsar no se duplica.'
 const UNDONE = 'Envío deshecho; puedes volver a enviarlo.'
+const CANCEL = 'Cancelar pedido'
 /** Lo que se teclea en la lista (pasillo «otros»: todo al súper). La lista puede traer además lo del menú. */
 const ITEMS = ['detergente', 'suavizante', 'lejía', 'papel de cocina']
 /** Un envío con una línea de cada estado (las del menú, si las hay, entran por la tabla). */
@@ -49,6 +50,8 @@ interface ExtCfg {
   enviar?: Reply & {
     /** Estado de las líneas cuyo nombre (sin tildes, en minúsculas) contiene la clave; `*` = todas. Por defecto, `tabla`. */
     estados?: Record<string, Estado>
+    /** Motivo de las líneas `fallida`, con la misma clave que `estados`. Por defecto, `no_encontrado`. */
+    motivos?: Record<string, 'no_encontrado' | 'no_publicado' | 'error'>
     error?: 'sin_zona' | 'sin_sesion' | 'contrato' | 'red' | 'verificacion'
     bajoMinimo?: boolean
     /** Claves que no son del protocolo, en el resultado y en cada línea. */
@@ -98,11 +101,12 @@ async function fakeExtension(page: Page, cfg: ExtCfg = {}) {
           return answer({ envioId: '', ok: false, error: r.error, lineas: [], anadidas: 0, totalEur: null, bajoMinimo: false, version: 'e2e', contrato: 'e2e' })
         if (fake.ultimo) return answer({ ...fake.ultimo, repetido: true })
         const estados = Object.entries(r.estados ?? {})
+        const motivos = Object.entries(r.motivos ?? {})
         const lineas: Linea[] = (msg.lineas ?? []).map((l, i) => {
           const estado = estados.find(([k]) => k === '*' || norm(l.name).includes(k))?.[1] ?? 'tabla'
           const linea: Linea = { key: l.key, estado }
           if (estado === 'tabla' || estado === 'busqueda') Object.assign(linea, { productoId: String(100 + i), producto: `Producto de ${l.name}`, unidades: 1 })
-          if (estado === 'fallida') linea.motivo = 'no_encontrado'
+          if (estado === 'fallida') linea.motivo = motivos.find(([k]) => k === '*' || norm(l.name).includes(k))?.[1] ?? 'no_encontrado'
           if (r.extra) linea.pista = 'solo de la extensión'
           return linea
         })
@@ -440,6 +444,32 @@ test.describe('móvil 390×844', () => {
     await expect(alert).not.toContainText('un producto')
   })
 
+  test('fallidas por error de la búsqueda: aparte de las no encontradas; si fallan todas, el aviso de la web que no responde', async ({ page }) => {
+    await fakeExtension(page, { enviar: { estados: { '*': 'fallida' }, motivos: { detergente: 'error' } } })
+    const card = await superOrder(page)
+    const errored = card.getByRole('alert').filter({ hasText: `No se han podido añadir (la búsqueda de ${ETIQUETA} falló):` })
+    const notFound = card.getByRole('alert').filter({ hasText: `No hemos encontrado estos productos en ${ETIQUETA}:` })
+    const saved = () => page.waitForResponse((r) => r.url().endsWith('/extension-result') && r.request().method() === 'POST')
+
+    let done = saved()
+    await sendButton(card).click()
+    await done
+    await expect(errored).toHaveText(`No se han podido añadir (la búsqueda de ${ETIQUETA} falló): Detergente. Añádelos a mano.`, { timeout: 10_000 })
+    await expect(notFound).toContainText('Papel de cocina')
+    await expect(notFound).not.toContainText('Detergente')
+    await expect(badge(card, 'Borrador')).toBeVisible()
+    await shot(page, 'm-fallida-error', card)
+
+    // Todas por error: es la web de la cadena, no los productos.
+    await setExt(page, { enviar: { estados: { '*': 'fallida' }, motivos: { '*': 'error' } } })
+    done = saved()
+    await sendButton(card).click()
+    await done
+    await expect(card.getByRole('alert').filter({ hasText: `La web de ${ETIQUETA} no responde o ha cambiado; no hemos tocado tu carro.` })).toBeVisible({ timeout: 10_000 })
+    await expect(card.getByRole('alert')).toHaveCount(1)
+    await expect(badge(card, 'Borrador')).toBeVisible()
+  })
+
   test('lo que contesta la extensión se valida: sin un resultado válido no va nada a la API; las claves de más no pasan', async ({ page }) => {
     await fakeExtension(page, { enviar: { lastError: true } })
     const posts = watchPosts(page, '/extension-result')
@@ -552,12 +582,14 @@ test.describe('móvil 390×844', () => {
 
     await expect(card.getByRole('button', { name: 'Quitando…' })).toBeDisabled()
     await expect(card.getByRole('button', { name: 'Ya está pedido' })).toBeDisabled()
+    await expect(card.getByRole('button', { name: CANCEL })).toBeDisabled()
     await expect(card.getByText(`Puede tardar un poco. No cierres la pestaña de ${ETIQUETA}.`)).toBeVisible()
     await shot(page, 'm-quitando', card)
 
     await expect(card.getByText(UNDONE)).toBeVisible({ timeout: 10_000 })
     await expect(sendButton(card)).toBeVisible()
     await expect(badge(card, 'Borrador')).toBeVisible()
+    await expect(card.getByRole('button', { name: CANCEL })).toBeEnabled()
     expect(posts).toEqual([{ manual: false }])
   })
 
@@ -702,6 +734,69 @@ test.describe('móvil 390×844', () => {
     await expectBought(/^suavizante$/i, true) // búsqueda
     await expectBought(/^lejía$/i, false) // sin confirmar
     await expectBought(/^papel de cocina$/i, false) // no entró
+  })
+
+  test('«Cancelar pedido» con un envío vivo: avisa de que lo añadido sigue en el carro; desactivado mientras se cierra', async ({ page }) => {
+    await fakeExtension(page)
+    const card = await superOrder(page)
+    const dialogs: string[] = []
+    page.on('dialog', (d) => {
+      dialogs.push(d.message())
+      void d.dismiss()
+    })
+    const question = '¿Cancelar el pedido a Súper del barrio?'
+
+    // En borrador, sin nada en el carro: la pregunta de siempre.
+    await expect(sendButton(card)).toBeVisible({ timeout: 10_000 })
+    await card.getByRole('button', { name: CANCEL }).click()
+    await expect.poll(() => dialogs.length).toBe(1)
+    expect(dialogs[0]).toBe(question)
+
+    await sendOk(card)
+    await card.getByRole('button', { name: CANCEL }).click()
+    await expect.poll(() => dialogs.length).toBe(2)
+    expect(dialogs[1]).toBe(
+      `${question}\n\nLo que añadió Mimoia seguirá en tu carro de ${ETIQUETA}. Si no lo quieres, quítalo antes con «Quitar lo que añadió Mimoia».`,
+    )
+    // Sin aceptar, sigue enviado.
+    await expect(badge(card, 'Enviado')).toBeVisible()
+
+    // Mientras se cierra, tampoco se puede cancelar.
+    let release!: () => void
+    const held = new Promise<void>((resolve) => (release = resolve))
+    await page.route('**/shop-orders/*/close', async (route) => {
+      await held
+      await route.continue()
+    })
+    await card.getByRole('button', { name: 'Ya está pedido' }).click()
+    await expect(card.getByRole('button', { name: 'Cerrando…' })).toBeDisabled()
+    await expect(card.getByRole('button', { name: CANCEL })).toBeDisabled()
+    release()
+    await expect(page.getByText('Pedidos cerrados · 1')).toBeVisible({ timeout: 10_000 })
+    expect(dialogs).toHaveLength(2)
+  })
+
+  test('«Abrir el carro» solo con una web http(s)', async ({ page }) => {
+    await fakeExtension(page)
+    const card = await superOrder(page)
+    const sent = await sendOk(card)
+    await expect(sent.getByRole('link', { name: 'Abrir el carro' })).toHaveAttribute('href', 'https://tienda.example/')
+
+    // Una web que no es http(s) (llegue como llegue): sin enlace.
+    await page.route(
+      (url) => url.pathname === '/shop-orders',
+      async (route) => {
+        if (route.request().method() !== 'GET') return route.fallback()
+        const response = await route.fetch()
+        const orders = (await response.json()) as Array<{ shop: { kind: string; webUrl: string | null } }>
+        for (const o of orders) if (o.shop.kind === 'supermercado') o.shop.webUrl = 'javascript:alert(1)'
+        await route.fulfill({ response, json: orders })
+      },
+    )
+    await page.reload()
+    const again = page.getByTestId('order-supermercado').getByTestId('basket-extension-sent')
+    await expect(again.getByRole('button', { name: UNDO })).toBeVisible({ timeout: 15_000 })
+    await expect(again.getByRole('link', { name: 'Abrir el carro' })).toHaveCount(0)
   })
 
   test('pedido de antes, enviado sin resultado de la extensión: el cuerpo de enviado de siempre', async ({ page }) => {

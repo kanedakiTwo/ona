@@ -10,7 +10,7 @@ import {
   type ShopOrder,
 } from "@ona/shared"
 import { api, apiFetch, ApiError } from "@/lib/api"
-import { askExtension, hostOf, messageExtension, pingExtension, SEND_TIMEOUT_MS } from "@/lib/basketExtension"
+import { askExtension, BASKET_EXTENSION_ID, hostOf, messageExtension, pingExtension, SEND_TIMEOUT_MS } from "@/lib/basketExtension"
 
 /** ¿Sale «Enviar a <etiqueta>» para la web de esta tienda? */
 export function useBasketExtension(shopWebUrl: string | null) {
@@ -18,7 +18,9 @@ export function useBasketExtension(shopWebUrl: string | null) {
   const status = useQuery<{ enabled: boolean }>({
     queryKey: ["shop-extension-status"],
     queryFn: () => api.get<{ enabled: boolean }>("/shop-extension/status"),
-    enabled: !!host,
+    // Sin id de extensión en la build no hay a quién hablar: ni se pregunta (y los enlaces de Carrefour no esperan).
+    // TODO(test): sin test; la web no tiene tests unitarios y los e2e se construyen con id.
+    enabled: !!host && !!BASKET_EXTENSION_ID,
     staleTime: 5 * 60_000,
   })
   const ping = useQuery({

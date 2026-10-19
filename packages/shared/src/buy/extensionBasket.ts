@@ -225,6 +225,18 @@ export function basketMayBeInCart(r: { anadidas: number; lineas: ReadonlyArray<{
 }
 
 /**
+ * ¿Es un envío vivo? Hay resultado, puede haber algo de él en el carro
+ * (`basketMayBeInCart`) y no se ha deshecho. Es la única condición: la usan
+ * guardar el resultado, deshacer, cerrar y la tarjeta. Estructural, como
+ * `basketMayBeInCart`.
+ */
+export function isLiveBasketSend(
+  r: { anadidas: number; lineas: ReadonlyArray<{ estado: string }>; deshechoAt?: string | null } | null | undefined,
+): boolean {
+  return !!r && basketMayBeInCart(r) && !r.deshechoAt
+}
+
+/**
  * Artículos de la lista que hay detrás de una clave de la cesta («l3» o
  * «l3.2»). Estricta: si la parte de grupo no es un entero ≥ 1 escrito como lo
  * escribe `buildExtensionBasket` («l3.», «l3.0», «l3.x», «l3.1.2», «l3.01»),

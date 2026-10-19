@@ -6,9 +6,9 @@
  * extensión, que la suma al carro de la cadena en el navegador del usuario.
  * La cadena solo se nombra con la `etiqueta` que da la extensión.
  */
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Check, ExternalLink, ShoppingCart, Undo2 } from "lucide-react"
-import { basketMayBeInCart, buildExtensionBasket, capitalize, prettyName, type BasketSendError, type ShopOrder } from "@ona/shared"
+import { buildExtensionBasket, capitalize, isLiveBasketSend, prettyName, type BasketSendError, type ShopOrder } from "@ona/shared"
 import { useCloseShopOrder } from "@/hooks/useShopOrders"
 import { ExtensionNoAnswer, ExtensionStaleSend, useSendToExtension, useUndoExtensionSend } from "@/hooks/useBasketExtension"
 import { ApiError } from "@/lib/api"
@@ -33,6 +33,17 @@ const MOTIVO: Record<string, (etiqueta: string) => string> = {
   no_encontrado: (e) => `no aparece en ${e}`,
   no_publicado: () => "no está disponible",
   error: () => "no se ha podido añadir",
+}
+
+/** La web de la tienda, solo si es http(s): otra cosa (`javascript:`, `data:`…) no se pinta como enlace. */
+function httpUrl(url: string | null): string | null {
+  if (!url) return null
+  try {
+    const { protocol } = new URL(url)
+    return protocol === "http:" || protocol === "https:" ? url : null
+  } catch {
+    return null
+  }
 }
 
 /** No hay respuesta de la extensión o no se ha podido guardar: volver a pulsar es seguro (spec). */
@@ -77,9 +88,14 @@ export function ExtensionSendPanel({ order, etiqueta }: { order: ShopOrder; etiq
 
   const r = order.extensionResult
   // El último envío no dejó nada en el carro (y no se deshizo): se dice por qué encima del botón.
-  const prev = r && !r.deshechoAt && !basketMayBeInCart(r) ? r : null
+  const prev = r && !r.deshechoAt && !isLiveBasketSend(r) ? r : null
   const names = basketNames(order, basket)
-  const notFound = prev && !prev.error ? prev.lineas.filter((l) => l.estado === "fallida") : []
+  const nameList = (ls: Array<{ key: string }>) => ls.map((l) => names.get(l.key) ?? "un producto").join(", ")
+  const fallidas = prev && !prev.error ? prev.lineas.filter((l) => l.estado === "fallida") : []
+  // Falló la búsqueda (`error`): no es que no estén. Si fallaron todas así, es la web de la cadena.
+  const errored = fallidas.filter((l) => l.motivo === "error")
+  const notFound = fallidas.filter((l) => l.motivo !== "error")
+  const allErrored = !!prev && errored.length > 0 && errored.length === prev.lineas.length
   const showPrev = !send.isPending && !send.error
 
   return (
@@ -90,9 +106,19 @@ export function ExtensionSendPanel({ order, etiqueta }: { order: ShopOrder; etiq
           {SEND_RESULT_ERROR[prev.error](etiqueta)}
         </p>
       )}
+      {showPrev && allErrored && (
+        <p role="alert" className={alertText}>
+          {SEND_RESULT_ERROR.red(etiqueta)}
+        </p>
+      )}
       {showPrev && notFound.length > 0 && (
         <p role="alert" className={alertText}>
-          No hemos encontrado estos productos en {etiqueta}: {notFound.map((l) => names.get(l.key) ?? "un producto").join(", ")}.
+          No hemos encontrado estos productos en {etiqueta}: {nameList(notFound)}.
+        </p>
+      )}
+      {showPrev && errored.length > 0 && !allErrored && (
+        <p role="alert" className={alertText}>
+          No se han podido añadir (la búsqueda de {etiqueta} falló): {nameList(errored)}. Añádelos a mano.
         </p>
       )}
       {send.error && (
@@ -126,10 +152,25 @@ export function ExtensionSendPanel({ order, etiqueta }: { order: ShopOrder; etiq
  */
 type ManualReason = "nada" | "contrato"
 
-export function ExtensionSentBody({ order, etiqueta }: { order: ShopOrder; etiqueta: string }) {
+/** `onBusyChange`: la tarjeta desactiva «Cancelar pedido» mientras se deshace o se cierra. */
+export function ExtensionSentBody({
+  order,
+  etiqueta,
+  onBusyChange,
+}: {
+  order: ShopOrder
+  etiqueta: string
+  onBusyChange?: (busy: boolean) => void
+}) {
   const undo = useUndoExtensionSend()
   const close = useCloseShopOrder()
   const [manual, setManual] = useState<ManualReason | null>(null)
+  // Tras cerrar, hasta que llega el pedido cerrado, nada más.
+  const busy = undo.isPending || close.isPending || close.isSuccess
+  useEffect(() => {
+    onBusyChange?.(busy)
+    return () => onBusyChange?.(false)
+  }, [busy, onBusyChange])
   const r = order.extensionResult
   if (!r) return null
 
@@ -139,8 +180,7 @@ export function ExtensionSentBody({ order, etiqueta }: { order: ShopOrder; etiqu
   const revisar = r.lineas.filter((l) => l.estado === "busqueda")
   const dudosas = r.lineas.filter((l) => l.estado === "no_verificada")
   const fallidas = r.lineas.filter((l) => l.estado === "fallida")
-  // Tras cerrar, hasta que llega el pedido cerrado, nada más.
-  const busy = undo.isPending || close.isPending || close.isSuccess
+  const cartUrl = httpUrl(order.shop.webUrl)
   const undoingManual = undo.isPending && !!undo.variables?.manual
 
   return (
@@ -201,8 +241,8 @@ export function ExtensionSentBody({ order, etiqueta }: { order: ShopOrder; etiqu
 
       <div>
         <div className="flex flex-wrap items-center gap-3">
-          {order.shop.webUrl && (
-            <a href={order.shop.webUrl} target="_blank" rel="noopener noreferrer" className={primaryBtn}>
+          {cartUrl && (
+            <a href={cartUrl} target="_blank" rel="noopener noreferrer" className={primaryBtn}>
               <ExternalLink size={14} /> Abrir el carro
             </a>
           )}

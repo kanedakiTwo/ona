@@ -13,7 +13,7 @@
 
 import { randomBytes } from 'crypto'
 import { and, asc, desc, eq, gte, inArray } from 'drizzle-orm'
-import { basketMayBeInCart, buildExtensionBasket, normalizeBuyName, resolveBuyRule, sourceItemsForBasketKey, splitCompound } from '@ona/shared'
+import { buildExtensionBasket, isLiveBasketSend, normalizeBuyName, resolveBuyRule, sourceItemsForBasketKey, splitCompound } from '@ona/shared'
 import type {
   BasketSendResult,
   BuyableUnit,
@@ -667,7 +667,7 @@ export async function undoBasketSend(userId: string, id: string, db: Db = defaul
   return withLockedOrder(userId, id, db, async (row, tx) => {
     requireStatus(row, ['sent'], 'deshacer el envío')
     const current = (row.extensionResult as StoredBasketResult | null) ?? null
-    if (!current || !basketMayBeInCart(current) || current.deshechoAt) throw new ShopOrderError(409, 'NO_EXTENSION_SEND', 'Este pedido no se envió con la extensión.')
+    if (!current || !isLiveBasketSend(current)) throw new ShopOrderError(409, 'NO_EXTENSION_SEND', 'Este pedido no se envió con la extensión.')
     const now = new Date().toISOString()
     return update(
       row.id,
@@ -758,7 +758,7 @@ export async function closeOrder(userId: string, id: string, body: { finalTotalE
     requireStatus(row, OPEN_STATUSES, 'cerrar')
     const lines = row.lines as ShopOrderLine[]
     const ext = (row.extensionResult as StoredBasketResult | null) ?? null
-    const viaExtension = !!ext && basketMayBeInCart(ext) && !ext.deshechoAt
+    const viaExtension = isLiveBasketSend(ext)
     const bought = new Set(
       viaExtension
         ? ext!.lineas.filter((r) => r.estado === 'tabla' || r.estado === 'busqueda').flatMap((r) => sourceItemsForBasketKey(lines, r.key))

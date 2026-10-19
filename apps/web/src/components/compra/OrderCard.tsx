@@ -13,8 +13,8 @@ import { useState } from "react"
 import { ArrowRightLeft, Check, Copy, ExternalLink, Globe, Mail, MessageCircle, Phone, Plus, X } from "lucide-react"
 import {
   SHOP_KIND_LABELS,
-  basketMayBeInCart,
   carrefourLinks,
+  isLiveBasketSend,
   SHOP_ORDER_STATUS_LABELS,
   capitalize,
   formatQty,
@@ -79,7 +79,15 @@ export function OrderCard({ order, shops }: { order: ShopOrder; shops: Shop[] })
   const cancel = useCancelShopOrder()
   const ext = useBasketExtension(order.shop.kind === "supermercado" ? order.shop.webUrl : null)
   // Enviado con la extensión y puede haber algo en el carro: su propio cuerpo, no el de WhatsApp.
-  const extSent = order.status === "sent" && !!order.extensionResult && basketMayBeInCart(order.extensionResult) && !order.extensionResult.deshechoAt
+  const extSent = order.status === "sent" && isLiveBasketSend(order.extensionResult)
+  const etiqueta = ext.etiqueta ?? order.shop.name
+  // Mientras se deshace o se cierra el envío, no se cancela.
+  const [extBusy, setExtBusy] = useState(false)
+  const cancelQuestion = `¿Cancelar el pedido a ${order.shop.name}?`
+  // Cancelar no toca el carro: con un envío vivo, lo que sumó Mimoia se queda allí.
+  const cancelConfirm = extSent
+    ? `${cancelQuestion}\n\nLo que añadió Mimoia seguirá en tu carro de ${etiqueta}. Si no lo quieres, quítalo antes con «Quitar lo que añadió Mimoia».`
+    : cancelQuestion
   return (
     <article className="rounded-2xl border border-[#DDD6C5] bg-[#FFFEFA]" data-testid={`order-${order.shop.kind}`}>
       <header className="flex items-start justify-between gap-3 px-4 pt-4">
@@ -100,7 +108,7 @@ export function OrderCard({ order, shops }: { order: ShopOrder; shops: Shop[] })
       <div className="px-4 pb-4 pt-3">
         {order.status === "draft" && <DraftBody order={order} shops={shops} />}
         {order.status === "sent" &&
-          (extSent ? <ExtensionSentBody order={order} etiqueta={ext.etiqueta ?? order.shop.name} /> : <SentBody order={order} />)}
+          (extSent ? <ExtensionSentBody order={order} etiqueta={etiqueta} onBusyChange={setExtBusy} /> : <SentBody order={order} />)}
         {order.status === "quoted" && <QuotedBody order={order} />}
         {order.status === "approved" && <ApprovedBody order={order} />}
         {order.status === "closed" && (
@@ -112,9 +120,10 @@ export function OrderCard({ order, shops }: { order: ShopOrder; shops: Shop[] })
         <footer className="border-t border-[#EFE8D8] px-4 py-2 text-right">
           <button
             type="button"
-            className="text-[11px] text-[#A39A8E] hover:text-[#C65D38]"
+            className="text-[11px] text-[#A39A8E] enabled:hover:text-[#C65D38] disabled:opacity-40"
+            disabled={extSent && extBusy}
             onClick={() => {
-              if (typeof window === "undefined" || window.confirm(`¿Cancelar el pedido a ${order.shop.name}?`)) cancel.mutate({ id: order.id })
+              if (typeof window === "undefined" || window.confirm(cancelConfirm)) cancel.mutate({ id: order.id })
             }}
           >
             Cancelar pedido

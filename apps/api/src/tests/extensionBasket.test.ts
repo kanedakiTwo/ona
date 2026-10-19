@@ -11,6 +11,7 @@ import {
   basketMayBeInCart,
   buildExtensionBasket,
   buyRuleByKey,
+  isLiveBasketSend,
   orderMembers,
   orderQtyInGrams,
   sourceItemsForBasketKey,
@@ -434,6 +435,21 @@ describe('basketMayBeInCart', () => {
   it('acepta líneas de solo lectura', () => {
     const lineas: ReadonlyArray<{ estado: string }> = [{ estado: 'no_verificada' }]
     expect(basketMayBeInCart({ anadidas: 0, lineas })).toBe(true)
+  })
+})
+
+describe('isLiveBasketSend', () => {
+  it('vivo: puede haber algo en el carro y no se ha deshecho', () => {
+    expect(isLiveBasketSend({ anadidas: 1, lineas: [], deshechoAt: null })).toBe(true)
+    expect(isLiveBasketSend({ anadidas: 0, lineas: [{ estado: 'no_verificada' }], deshechoAt: null })).toBe(true)
+    // Un resultado guardado antes de existir `deshechoAt`.
+    expect(isLiveBasketSend({ anadidas: 1, lineas: [] })).toBe(true)
+  })
+  it('no vivo: sin resultado, sin nada en el carro o deshecho', () => {
+    expect(isLiveBasketSend(null)).toBe(false)
+    expect(isLiveBasketSend(undefined)).toBe(false)
+    expect(isLiveBasketSend({ anadidas: 0, lineas: [{ estado: 'fallida' }], deshechoAt: null })).toBe(false)
+    expect(isLiveBasketSend({ anadidas: 2, lineas: [], deshechoAt: '2026-10-19T10:00:00.000Z' })).toBe(false)
   })
 })
 

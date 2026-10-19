@@ -9,6 +9,7 @@ import {
   basketSearch,
   buildExtensionBasket,
   extensionKey,
+  isLiveBasketSend,
   type BasketLine,
   type BasketSendResult,
   type ShopOrderLine,
@@ -61,7 +62,7 @@ export function decideBasketResult(
   if (status !== 'draft' && status !== 'sent') return { action: 'keep' }
   if (incoming.envioId && current?.deshechos?.includes(incoming.envioId)) return { action: 'deshecho' }
   if (incoming.envioId && incoming.envioId === current?.envioId) return { action: 'keep' }
-  const live = !!current && basketMayBeInCart(current) && !current.deshechoAt
+  const live = isLiveBasketSend(current)
   if (live && !basketMayBeInCart(incoming)) return { action: 'keep' }
   const stored: StoredBasketResult = {
     ...incoming,

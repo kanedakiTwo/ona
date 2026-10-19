@@ -31,10 +31,11 @@ import { AI_DISCLOSURE, AI_DISCLOSURE_FIRST_PERSON, AI_DISCLOSURE_SHORT } from '
 import { env } from '../../config/env.js'
 import { recordAnthropicCost, type AnthropicUsageLike } from '../costLedger.js'
 import { healthClaimWords, talksHealthEffects } from '../assistant/healthGuard.js'
+import { CLAUDE_MODEL, LOW_EFFORT, withThinkingRoom } from '../../config/models.js'
 
-export const GUIDED_MODEL = 'claude-haiku-4-5-20251001'
+export const GUIDED_MODEL = CLAUDE_MODEL
 /** The scheduler tick and the chat can't wait long: past this, the fixed text. */
-export const GUIDED_TIMEOUT_MS = 8000
+export const GUIDED_TIMEOUT_MS = 15000
 
 export const GUIDED_KINDS = [
   'daily_brief',
@@ -253,8 +254,9 @@ export function defaultGuidedWriter(): GuidedWriter | null {
   return async (system, prompt) => {
     const res = await client!.messages.create({
       model: GUIDED_MODEL,
-      max_tokens: 500,
-      temperature: 1,
+      // Opus 5.5 takes no `temperature` (400) and always thinks (PRO-232).
+      max_tokens: withThinkingRoom(500),
+      ...LOW_EFFORT,
       system,
       messages: [{ role: 'user', content: prompt }],
     })

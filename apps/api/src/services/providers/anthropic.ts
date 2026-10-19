@@ -8,6 +8,7 @@ import type {
   TextExtractionResult,
   VisionProvider,
 } from '../recipeExtractor.js'
+import { CLAUDE_MODEL } from '../../config/models.js'
 
 const EXTRACTION_PROMPT = `Eres un asistente especializado en extraer recetas de fotografias.
 Analiza la imagen proporcionada que contiene una receta escrita o impresa.
@@ -155,7 +156,7 @@ Reglas de COHERENCIA:
  * tokenizer with ~30% more tokens, so max_tokens has headroom for thinking +
  * the JSON; effort `medium` ≈ Sonnet 4.6 at its default.
  */
-const EXTRACTION_MODEL = 'claude-sonnet-5-5'
+const EXTRACTION_MODEL = CLAUDE_MODEL
 const EXTRACTION_OPTS = { max_tokens: 8000, output_config: { effort: 'medium' as const } }
 
 export class AnthropicProvider implements VisionProvider, TextExtractionProvider {

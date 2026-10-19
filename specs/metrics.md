@@ -36,23 +36,25 @@ Every paid provider call writes one row — user (nullable), household (user's p
 
 | Feature | Provider / model | Billed to |
 |---|---|---|
-| `assistant_chat` (web chat turn, all tool rounds) | Anthropic Sonnet 5.5 (`ASSISTANT_MODEL`, since 2026-10-12; Haiku 4.5 before) | user |
-| `whatsapp_chat` | Anthropic Sonnet 5.5 (same model as the web chat) | user (WhatsApp turn) |
+| `assistant_chat` (web chat turn, all tool rounds) | Anthropic Opus 5.5 (`ASSISTANT_MODEL` = `CLAUDE_MODEL`, since 2026-10-19, PRO-232; Sonnet 5.5 from 2026-10-12, Haiku 4.5 before) | user |
+| `whatsapp_chat` | Anthropic Opus 5.5 (same model as the web chat) | user (WhatsApp turn) |
 | `voice_note_transcription` (WhatsApp voice notes) | OpenAI `OPENAI_TRANSCRIBE_MODEL` | user |
 | `mimo_voice_transcription` (Mimo's voice in the app, `POST /stt`) | OpenAI `OPENAI_TRANSCRIBE_MODEL` | user |
 | `chat_tts` (Mimo's replies read aloud, `POST /tts`; units = characters, priced per 1,000 chars) | ElevenLabs `ELEVENLABS_MODEL` | user |
 | `voice_realtime` (**historical**: OpenAI Realtime voice mode, client-reported minutes; retired 2026-10-09, old rows kept) | OpenAI `gpt-realtime*` | user |
-| `recipe_extract_photo` (web photo, WhatsApp photo) | Anthropic Sonnet 5.5 | user |
-| `recipe_extract_url` (web URL import, `import_recipe_from_url`) | Anthropic Sonnet 5.5 | user |
-| `ingredient_match` (extraction disambiguation) | Anthropic Sonnet 5.5 | user |
-| `unit_fallback` (odd units → grams/ml) | Anthropic Haiku 4.5 | user |
-| `usda_translation` (ingredient auto-create) | Anthropic Haiku 4.5 | user |
-| `ingredient_nutrition_estimate` ("Estimar con Mimoia") | Anthropic Opus 4.6 | user |
+| `recipe_extract_photo` (web photo, WhatsApp photo) | Anthropic Opus 5.5 (`CLAUDE_MODEL`) | user |
+| `recipe_extract_url` (web URL import, `import_recipe_from_url`) | Anthropic Opus 5.5 (`CLAUDE_MODEL`) | user |
+| `ingredient_match` (extraction disambiguation) | Anthropic Opus 5.5 (`CLAUDE_MODEL`) | user |
+| `unit_fallback` (odd units → grams/ml) | Anthropic Opus 5.5 (`CLAUDE_MODEL`), effort low | user |
+| `usda_translation` (ingredient auto-create) | Anthropic Opus 5.5 (`CLAUDE_MODEL`), effort low | user |
+| `ingredient_nutrition_estimate` ("Estimar con Mimoia") | Anthropic Opus 5.5 (`CLAUDE_MODEL`), effort low | user |
 | `recipe_image` (regenerate image) | AIKIT Imagen-fal | user (seed script: system) |
 | `whatsapp_review` (daily conversation reviewer) | Anthropic Opus 5.5 | system |
-| `whatsapp_guided` (PRO-156: the writer of the messages Mimo sends by itself, ≈ $0.0025 each) | Anthropic Haiku 4.5 | user (counts against the monthly cap) |
+| `whatsapp_guided` (PRO-156: the writer of the messages Mimo sends by itself) | Anthropic Opus 5.5 (`CLAUDE_MODEL`), effort low | user (counts against the monthly cap) |
 | `whatsapp_template` (Mimoia-initiated template, outside the 24 h window) | Meta `utility_template` | user |
 | `whatsapp_service` (each free-form message Mimo sends: replies, and proactive messages inside the 24 h window) | Meta `service_message` | user (`null` for a number not linked yet) |
+
+**One model for every Claude call (PRO-232, D-070, 2026-10-19).** `CLAUDE_MODEL = 'claude-opus-5-5'` in `config/models.ts` is the only model id in `apps/api/src` (besides `config/pricing.ts`); `modelIds.test.ts` fails on any other. The rows above that don't say a model (`whatsapp_review`, `taste_next` / `taste_reason`, `menu_fit`, `shop_quote_parse`, `recipe_image_describe` / `recipe_image_check`, `catalog_import_rewrite`, `onboarding_analysis`, `ficha`) use it too. Opus 5.5 always thinks (thinking counts toward `max_tokens`), takes no `temperature` and no forced `tool_choice`; the short calls that were on Haiku 4.5 run at effort `low` with `max_tokens` + 2 000 (`LOW_EFFORT`, `withThinkingRoom`), and their time limits went up: «Afina tu menú» and the guided WhatsApp texts 8 → 15 s, the menu fit line 8 → 12 s (`TASTE_AI_TIMEOUT_MS`, `GUIDED_TIMEOUT_MS`, `MENU_FIT_TIMEOUT_MS`). TODO(spec): measured latency on Opus 5.5 — `scripts/measureClaudeLatency.ts` and `scripts/replayWhatsAppTurns.ts` (seconds per turn) have not been run yet (no API key in the build environment). Price: $4 / $20 per MTok (`pricing.ts`); with Opus, `ADVISOR_MONTHLY_BUDGET_EUR` covers about half as many Mimo turns as with Sonnet 5.5 (FIN-09).
 
 Attribution: every authed request runs in a per-request context carrying the user, so deep calls (matcher, unit fallback, translator) are billed without threading ids. Multipart routes (photo extraction, `POST /stt`) re-enter it after the upload parser. Each WhatsApp inbound turn runs in its own context that the budget check fills in once the phone resolves to a user. Schedulers and scripts have no context → system.
 

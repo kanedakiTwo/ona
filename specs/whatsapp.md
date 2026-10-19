@@ -56,7 +56,7 @@ When the master toggle is on (default after linking), Mimo writes first. All tim
 - **Checked in code before sending** (`validateGuided`): every required string present, within the length, no banned word (salud, sano, calorías, dieta, proteínas, médico, alergias, «no puedo»…), no §6 health claim or body-effect talk, no link that isn't in the fixed text, a question where the buttons answer one, and no sentence (4+ words) already sent in those last messages of the kind. An AI disclosure (`AI_DISCLOSURE*`) in the fixed text must appear literally, and no other «IA» mention is allowed.
 - **Fixed text** when there is no API key, the writer fails or takes more than 8 s, the text fails validation, or the user is over the chat's € budget or the monthly AI cap (`guidedOverBudget`). Each outbound row stores `meta.guided` = `guide` | `fallback` (+ `guidedReason`).
 - Outside the 24 h window the Meta template is fixed, but its `{{1}}` is this same written text, flattened.
-- **Cost:** one Haiku call per message (~1,500 input + 200 output tokens ≈ $0.0025), billed to the user as `whatsapp_guided` in the cost ledger, so it counts against the monthly cap. Replay: `scripts/replayGuidedBrief.ts` writes five mornings of the same household with the real model and fails if any sentence repeats.
+- **Cost:** one Claude Opus 5.5 call per message at effort low (`CLAUDE_MODEL`, PRO-232; time limit 15 s), billed to the user as `whatsapp_guided` in the cost ledger, so it counts against the monthly cap. Replay: `scripts/replayGuidedBrief.ts` writes five mornings of the same household with the real model and fails if any sentence repeats.
 
 - **Cooldowns:** 20 h per kind; 3 days for the Sunday nudge and the shopping reminder. They are stored as outbound rows, so the 5-minute scheduler tick is idempotent. Proactive messages land in chat history, so a short reply ("sí") makes sense to the assistant.
 - **Switches:**
@@ -172,7 +172,7 @@ Migration `0032_assistant_reviews.sql` (new table + nullable `meta` column; idem
 - [apps/api/src/routes/whatsapp.ts](../apps/api/src/routes/whatsapp.ts): webhook router (raw body) + authed endpoints.
 - [apps/api/src/services/whatsapp/](../apps/api/src/services/whatsapp/)
   - `inbound.ts`: orchestrator + per-phone queue; `replyMessages` (week picture or text digest).
-  - `guided.ts`: guides, validation and the Haiku writer of the messages Mimo sends by itself (PRO-156); `guidedReplay.ts`: the five-day replay; `proactive.ts`: windows, fixed texts and guide facts; `outbound.ts`: sending, `writeGuided`.
+  - `guided.ts`: guides, validation and the Claude writer of the messages Mimo sends by itself (PRO-156); `guidedReplay.ts`: the five-day replay; `proactive.ts`: windows, fixed texts and guide facts; `outbound.ts`: sending, `writeGuided`.
   - `photoSource.ts`: the link to the original of a screenshot's recipe (PRO-66), pure over stored rows.
   - `wiring.ts`: real dependencies.
   - `store.ts`: DB.

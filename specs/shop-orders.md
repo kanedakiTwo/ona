@@ -53,7 +53,7 @@ Mimoia splits what's left on the shopping list for the next 7 days into one orde
 - Line estimate: the user's own `pricePerUnit` on the list (`manual`) → the €/kg this shop quoted last time (`historial`, remembered on approval in `household_shops.price_memory`) → national €/kg for the shop kind (`referencia`, MAPA 2025 traditional shop: fruta/verdura 2.3, carne 10, pescado 11.6; produce by unit 0.6 €).
 - Default cap is proposed **only** when ≥ 50 % of the estimate is `manual`/`historial`: estimate +10 % (+20 % with wild fish), rounded up to the euro. Otherwise there's no cap until the user sets one — Mimoia never invents a margin.
 - Quote assessment (`validation.ts`): line not mentioned → Revisar; `no_hay` → No hay, dropped (never substituted); `sustituto` / cantidad distinta → Revisar; wild fish → always Revisar; > 10 % above a `manual`/`historial` estimate → Revisar; else OK. Basket over the cap → needs a decision. Approving keeps every line the user didn't remove.
-- Reading the reply: one Claude Haiku 4.5 call (`quoteParser.ts`, cost feature `shop_quote_parse`) returns JSON that a pure normaliser cleans (unknown keys/statuses dropped, "12,50 €" → 12.5). A bad answer can only send a line back to the user, never invent a price. If the model is down: 502 "No he podido leer la respuesta".
+- Reading the reply: one Claude Opus 5.5 call at effort low (`quoteParser.ts`, cost feature `shop_quote_parse`) returns JSON that a pure normaliser cleans (unknown keys/statuses dropped, "12,50 €" → 12.5). A bad answer can only send a line back to the user, never invent a price. If the model is down: 502 "No he podido leer la respuesta".
 
 ## Data Model
 

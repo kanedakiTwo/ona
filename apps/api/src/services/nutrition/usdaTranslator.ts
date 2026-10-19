@@ -27,6 +27,7 @@ import { fileURLToPath } from 'node:url'
 import Anthropic from '@anthropic-ai/sdk'
 import { recordAnthropicCost } from '../costLedger.js'
 import { env } from '../../config/env.js'
+import { CLAUDE_MODEL, LOW_EFFORT, withThinkingRoom } from '../../config/models.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -41,7 +42,7 @@ const DEFAULT_CACHE_DIR = path.resolve(
 )
 
 const BATCH_MAX = 5
-const MODEL = 'claude-haiku-4-5-20251001'
+const MODEL = CLAUDE_MODEL
 
 // In-memory cache, keyed by sha1(en).
 const memCache = new Map<string, string>()
@@ -149,7 +150,8 @@ ${numbered}`
     try {
       const response = await client.messages.create({
         model: MODEL,
-        max_tokens: 60 * batch.length, // ~60 tokens per item is plenty for terse USDA strings
+        max_tokens: withThinkingRoom(60 * batch.length), // ~60 tokens per item is plenty for terse USDA strings
+        ...LOW_EFFORT,
         messages: [{ role: 'user', content: userMsg }],
       })
       recordAnthropicCost('usda_translation', MODEL, response.usage)

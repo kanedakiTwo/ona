@@ -25,9 +25,10 @@ import {
 import { env } from '../config/env.js'
 import { recordAnthropicCost } from './costLedger.js'
 import { mergeMemoryFacts, type MemoryFactInput } from './assistant/skills.js'
+import { CLAUDE_MODEL, withThinkingRoom } from '../config/models.js'
 
 /** Same model as Mimo (ASSISTANT_MODEL in assistant/engine.ts). */
-export const ONBOARDING_ANALYSIS_MODEL = 'claude-sonnet-5-5'
+export const ONBOARDING_ANALYSIS_MODEL = CLAUDE_MODEL
 
 /** Keys this analysis may write. No health keys (physical.*, restrictions). */
 export const ANALYSIS_KEYS = [
@@ -182,10 +183,12 @@ export async function analyzeOnboardingIntoMemory(
   try {
     response = await create({
       model: ONBOARDING_ANALYSIS_MODEL,
-      max_tokens: 1024,
+      max_tokens: withThinkingRoom(1024),
       system: ANALYSIS_SYSTEM_PROMPT,
       tools: [UPDATE_MEMORY_TOOL],
-      tool_choice: { type: 'tool', name: 'update_memory' },
+      // Forced tool_choice is a 400 on Opus 5.5 (and was on Sonnet 5.5): the
+      // prompt asks for update_memory; no call → nothing saved, as before.
+      tool_choice: { type: 'auto' },
       messages: [{ role: 'user', content: buildAnalysisUserText(answers) }],
     })
   } catch (err) {

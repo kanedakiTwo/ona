@@ -28,13 +28,14 @@ import { db as defaultDb } from '../db/connection.js'
 import { menus, recipes, recipeVerdicts, users } from '../db/schema.js'
 import { recordAnthropicCost } from './costLedger.js'
 import { catalogCoversDish, publishedCatalogNames, recordCatalogWish, wishWords } from './catalogWishes.js'
+import { CLAUDE_MODEL, LOW_EFFORT, withThinkingRoom } from '../config/models.js'
 
 type Db = typeof defaultDb
 
-export const MENU_FIT_MODEL = 'claude-haiku-4-5-20251001'
+export const MENU_FIT_MODEL = CLAUDE_MODEL
 export const MENU_FIT_FEATURE = 'menu_fit'
 /** The user is waiting for the menu: past this it goes out without the line. */
-export const MENU_FIT_TIMEOUT_MS = 8000
+export const MENU_FIT_TIMEOUT_MS = 12000
 /** Caps that keep the call small. */
 const MAX_PREFERENCES = 20
 const MAX_CANDIDATES = 8
@@ -205,7 +206,8 @@ export async function evaluateMenuFit(
     const response = await withTimeout(
       create({
         model: MENU_FIT_MODEL,
-        max_tokens: 900,
+        max_tokens: withThinkingRoom(900),
+        ...LOW_EFFORT,
         system: FIT_SYSTEM,
         messages: [{ role: 'user', content: buildFitPrompt(input) }],
       }),

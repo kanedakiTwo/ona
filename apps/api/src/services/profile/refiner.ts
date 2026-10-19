@@ -64,13 +64,14 @@ import { addDays, madridMidnightUtc, madridParts } from '../madridTime.js'
 import { spendCapStatus } from '../spendCap.js'
 import { mentionsHealth } from './healthText.js'
 import { collectHouseholdDaySignals, type HouseholdDaySignals, type SignalMember } from './signals.js'
+import { CLAUDE_MODEL } from '../../config/models.js'
 
 type Db = typeof defaultDb
 
 // ─── Settings ───────────────────────────────────────────────────
 
 /** Same Sonnet as Mimo (assistant/engine.ts ASSISTANT_MODEL). */
-export const REFINER_MODEL = 'claude-sonnet-5-5'
+export const REFINER_MODEL = CLAUDE_MODEL
 /** Runs from 03:00 Madrid, for the day that just ended. */
 export const REFINER_HOUR = 3
 export const REFINER_MAX_CHANGES = 10

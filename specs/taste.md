@@ -31,7 +31,7 @@
 
 - `recipe_verdicts` (migration `0060_recipe_verdicts`): `user_id` (cascade), `recipe_id` (cascade), `verdict` (check `love|like|nope|skip`), `reason` jsonb, `created_at`, `updated_at`; unique `(user_id, recipe_id)`
 - `users.taste_state` jsonb (same migration, default `{}`): `introAt`, `introChoice`, `cardDismissedAt`, `onboardingAt`, `whatsappOfferedAt` (reserved), `flags`
-- Cost: both Claude calls (`taste_next`, `taste_reason`, `claude-haiku-4-5`) are billed to the household in `cost_events` like every paid call
+- Cost: both Claude calls (`taste_next`, `taste_reason`, Claude Opus 5.5 at effort low, `CLAUDE_MODEL`, 15 s limit) are billed to the household in `cost_events` like every paid call
 
 ## Constraints
 

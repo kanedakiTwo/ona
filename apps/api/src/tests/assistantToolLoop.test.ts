@@ -5,6 +5,7 @@
  * uiHint/data the web card renders.
  */
 import { describe, it, expect, vi } from 'vitest'
+import { CLAUDE_MODEL } from '../config/models.js'
 import { runToolLoop, MAX_TOOL_ROUNDS, ASSISTANT_MODEL, TRUNCATED_NOTE, claimsAction, withLastMessageCached } from '../services/assistant/engine.js'
 import type { SkillDefinition } from '../services/assistant/types.js'
 
@@ -153,12 +154,12 @@ describe('primary skill for the card / app link', () => {
 })
 
 describe('model request (2026-10-12: Sonnet 5.5)', () => {
-  it('asks Sonnet 5.5 with effort, refusal fallback and a cache breakpoint on the last message', async () => {
+  it('asks Opus 5.5 (PRO-232) with effort, refusal fallback and a cache breakpoint on the last message', async () => {
     const f = fakeClient([text('hola')])
     await runToolLoop(base(f.client, []))
     const call = f.calls[0]
     expect(call.model).toBe(ASSISTANT_MODEL)
-    expect(ASSISTANT_MODEL).toBe('claude-sonnet-5-5')
+    expect(ASSISTANT_MODEL).toBe(CLAUDE_MODEL)
     expect(call.max_tokens).toBeGreaterThanOrEqual(4096)
     expect(call.output_config).toEqual({ effort: 'medium' })
     expect(call.fallbacks).toBe('default')
@@ -167,7 +168,7 @@ describe('model request (2026-10-12: Sonnet 5.5)', () => {
     expect(call.messages.at(-1).content.at(-1)).toMatchObject({ type: 'text', text: 'hola', cache_control: { type: 'ephemeral' } })
   })
 
-  it('runs another model or effort when asked (scripts/compareMimoModels.ts), Sonnet 5.5 at medium otherwise', async () => {
+  it('runs another model or effort when asked (scripts/compareMimoModels.ts), the product model at medium otherwise', async () => {
     const f = fakeClient([text('hola')])
     await runToolLoop({ ...base(f.client, []), model: 'claude-haiku-5-5', effort: 'high' })
     expect(f.calls[0].model).toBe('claude-haiku-5-5')

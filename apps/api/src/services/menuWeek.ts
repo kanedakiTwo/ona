@@ -1,5 +1,5 @@
 import { and, desc, eq, sql } from 'drizzle-orm'
-import type { DayMenu, LockedSlots } from '@ona/shared'
+import { pastDayIndexes, type DayMenu, type LockedSlots } from '@ona/shared'
 import { db as defaultDb } from '../db/connection.js'
 import { menuLogs, menus } from '../db/schema.js'
 import { resolveScope, scopeWhere } from './scopeResolver.js'
@@ -91,4 +91,15 @@ export async function generatedWeeksOf(userId: string, db: any = defaultDb): Pro
     .innerJoin(menuLogs, eq(menuLogs.menuId, menus.id))
     .where(scope)
   return Number(row?.n ?? 0)
+}
+
+/**
+ * PRO-244: the days the matcher leaves empty — the week's "sin cocinar"
+ * days plus, for a first menu (`fromDate`, the sign-up day), the days of
+ * the week that already went by. Only for generation: the stored
+ * `skippedDays` stay the user's own.
+ */
+export function generationSkips(skippedDays: Set<number>, weekStart: string, fromDate?: string | null): Set<number> {
+  if (!fromDate) return skippedDays
+  return new Set<number>([...skippedDays, ...pastDayIndexes(weekStart, fromDate)])
 }

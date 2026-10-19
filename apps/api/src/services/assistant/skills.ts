@@ -12,7 +12,7 @@ import {
   menuLogs,
   shoppingLists,
 } from '../../db/schema.js'
-import { nutrientsToPercentages, TARGET_MACROS, detectSeason, recipeDishesOf } from '@ona/shared'
+import { nutrientsToPercentages, TARGET_MACROS, detectSeason, recipeDishesOf, firstMenuWeeks, pastDayIndexes } from '@ona/shared'
 import type { DayMenu, Meal, NutrientBalance } from '@ona/shared'
 import { householdMultiplier } from '@ona/shared'
 import { generateMenu } from '../menuGenerator.js'
@@ -32,7 +32,7 @@ import { createDishRecipe, NEW_RECIPE_PROP, NOTE_THEN_RECIPE_HINT, type NewRecip
 import { shopOrderSkills } from './shopOrderSkills.js'
 import { visibleAuthorIds, visibleRecipeWhere } from '../recipeVisibility.js'
 import { loadMatchableRecipes } from '../matchableRecipes.js'
-import { loadPreviousWeek } from '../menuWeek.js'
+import { generationSkips, loadPreviousWeek } from '../menuWeek.js'
 import { loadUserRestrictions, findRecipesWithWhatIHave } from '../withWhatIHave.js'
 import { isBrandDependentGlutenCharcuterie, isCoeliacHousehold, recipeDietNotices } from '../glutenFreeCharcuterie.js'
 import { compileRestrictions, nameHasTerm, normalizeText, violatesRestrictions, type RestrictableRecipe } from '../dietaryRestrictions.js'
@@ -729,9 +729,25 @@ const generateWeeklyMenu: SkillDefinition = {
         uiHint: 'text',
       }
     }
+    return generateAndSaveWeek(ctx, weekStart, previous)
+  },
+}
+
+/**
+ * Generate and save one week (generate_weekly_menu, and complete_onboarding
+ * for each first-menu week). `fromDate` (PRO-244, the sign-up day): days
+ * before it are not generated.
+ */
+async function generateAndSaveWeek(
+  ctx: SkillContext,
+  weekStart: string,
+  previous: Awaited<ReturnType<typeof loadPreviousWeek>>,
+  fromDate?: string,
+): Promise<SkillResult> {
+    const { userId, db } = ctx
     const { days } = await generateMenu(
       userId, weekStart, undefined, db,
-      previous.locked, previous.days, previous.bannedRecipeIds, previous.skippedDays,
+      previous.locked, previous.days, previous.bannedRecipeIds, generationSkips(previous.skippedDays, weekStart, fromDate),
     )
 
     // Save to menus table — dual-write household_id so shared-scope reads
@@ -776,8 +792,12 @@ const generateWeeklyMenu: SkillDefinition = {
           const firstName = slot.dishes.find((d: any) => d.kind === 'recipe')?.recipeName ?? ''
           return `${meal}: ${firstName}`
         })
-      return `${dayNames[i]}: ${meals.join(', ')}`
-    }).join('; ')
+      return meals.length > 0 ? `${dayNames[i]}: ${meals.join(', ')}` : null
+    }).filter(Boolean).join('; ')
+    const past = fromDate ? pastDayIndexes(weekStart, fromDate) : []
+    const pastLine = past.length > 0
+      ? ` Empieza hoy (${dayNames[past.length]}): los dias que ya han pasado no se han generado.`
+      : ''
 
     // «Cuánto ha acertado» (PRO-155): Mimo tells it following the prompt's guide.
     const fit = await evaluateAndSaveMenuFit({ userId, menuId: menu.id, days }, db)
@@ -785,10 +805,9 @@ const generateWeeklyMenu: SkillDefinition = {
 
     return {
       data: { ...menu, fit },
-      summary: `Menu generado para la semana del ${weekStart}. ${menuSummary}${fitLine ? `\n${fitLine}` : ''}`,
+      summary: `Menu generado para la semana del ${weekStart}.${pastLine} ${menuSummary}${fitLine ? `\n${fitLine}` : ''}`,
       uiHint: 'menu',
     }
-  },
 }
 
 const COOKING_FREQS = ['daily', '3_4_times', 'rarely'] as const
@@ -802,7 +821,7 @@ const PRIORITIES = ['quick', 'varied', 'healthy', 'cheap'] as const
 const completeOnboarding: SkillDefinition = {
   name: 'complete_onboarding',
   description:
-    'Solo durante los primeros pasos de un hogar nuevo por WhatsApp: guarda cuantos son en casa, cuanto cocinan, sus platos favoritos y su prioridad, marca los primeros pasos como hechos y genera su primer menu de esta semana (no hace falta llamar ademas a generate_weekly_menu). Llamalo una sola vez, cuando tengas adultos, niños, frecuencia y al menos un plato.',
+    'Solo durante los primeros pasos de un hogar nuevo por WhatsApp: guarda cuantos son en casa, cuanto cocinan, sus platos favoritos y su prioridad, marca los primeros pasos como hechos y genera su primer menu: desde hoy hasta el domingo y, si es de viernes a domingo, tambien la semana que viene (no hace falta llamar ademas a generate_weekly_menu). Llamalo una sola vez, cuando tengas adultos, niños, frecuencia y al menos un plato.',
   parameters: {
     type: 'object',
     properties: {
@@ -856,10 +875,22 @@ const completeOnboarding: SkillDefinition = {
     }
     // No restrictions or consent here: health data never goes through WhatsApp.
     await saveOnboarding(userId, { adults, kidsCount, cookingFreq: cookingFreq!, favoriteDishes, priority }, db)
-    const menu = await generateWeeklyMenu.handler({}, ctx)
+    // Same first menu as the web sign-up (PRO-65, PRO-244): it starts today
+    // (days already gone are not generated) and, Friday to Sunday, next week
+    // comes too. The reply (and the WhatsApp picture) shows this week from
+    // today; next week is waiting in the app.
+    const plan = firstMenuWeeks()
+    const results: SkillResult[] = []
+    for (const weekStart of plan.weeks) {
+      const previous = await loadPreviousWeek(userId, weekStart, db)
+      if (weekHasDishes(previous.days)) continue
+      results.push(await generateAndSaveWeek(ctx, weekStart, previous, plan.today))
+    }
+    const menu = results[0] ?? (await generateWeeklyMenu.handler({}, ctx))
+    const nextLine = results.length > 1 ? ` Tambien he generado la semana que viene (${results[1].summary})` : ''
     return {
       ...menu,
-      summary: `Primeros pasos guardados (${adults} adultos, ${kidsCount} niños). ${menu.summary}`,
+      summary: `Primeros pasos guardados (${adults} adultos, ${kidsCount} niños). ${menu.summary}${nextLine}`,
     }
   },
 }

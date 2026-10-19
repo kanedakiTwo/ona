@@ -35,6 +35,8 @@ import { budgetMicros, getMonthlySpendMicros } from '../advisorBudget.js'
 import { spendCapStatus } from '../spendCap.js'
 import { composeGuided, guidedMeta, type GuideSpec, type GuidedContext, type GuidedResult } from './guided.js'
 import { isAccountPaused } from '../accountAccess.js'
+import { quietAfterSignUp } from './signUpQuiet.js'
+import { isShoppingReminderWindow } from './proactive.js'
 
 /** Per-kind templates (WHATSAPP_TEMPLATES), parsed once. */
 const TEMPLATES = parseTemplateMap(env.WHATSAPP_TEMPLATES)
@@ -260,6 +262,11 @@ export async function runProactiveTick(now: Date = new Date()): Promise<void> {
       for (const k of PROACTIVE_KINDS) {
         const at = recent.get(k)
         sentRecently[k] = Boolean(at && now.getTime() - at.getTime() < COOLDOWN_MS[k])
+      }
+      // PRO-244: no shopping reminder in the first hours after the sign-up.
+      if (isShoppingReminderWindow(parts) && !sentRecently.shopping_reminder) {
+        const [u] = await db.select({ at: users.onboardingCompletedAt }).from(users).where(eq(users.id, link.userId)).limit(1)
+        if (quietAfterSignUp('shopping_reminder', u?.at ?? null, now)) sentRecently.shopping_reminder = true
       }
       let dinnerCache: Promise<TodayDinner | null> | null = null
       const planned = await planProactive({

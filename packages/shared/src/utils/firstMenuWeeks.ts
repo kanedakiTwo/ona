@@ -5,10 +5,16 @@
  * Friday to Sunday the current week is nearly over, so the next one is
  * generated too and `/menu` opens on it (`open`). Weeks are Mondays as
  * YYYY-MM-DD, oldest first.
+ *
+ * PRO-244: the first menu starts on the sign-up day (`today`): the days of
+ * the current week that already went by are not generated
+ * (`pastDayIndexes`). Web and WhatsApp sign-ups use the same rule.
  */
 export interface FirstMenuWeeks {
   weeks: string[]
   open: string
+  /** The sign-up day, Europe/Madrid, YYYY-MM-DD: the first menu starts here. */
+  today: string
 }
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -31,7 +37,23 @@ export function firstMenuWeeks(now: Date = new Date()): FirstMenuWeeks {
   const isoDate = `${get('year')}-${get('month')}-${get('day')}`
   const weekday = WEEKDAYS.indexOf(get('weekday')) // 0 = Monday … 6 = Sunday
   const current = mondayPlus(isoDate, weekday, 0)
-  if (weekday < 4) return { weeks: [current], open: current }
+  if (weekday < 4) return { weeks: [current], open: current, today: isoDate }
   const next = mondayPlus(isoDate, weekday, 1)
-  return { weeks: [current, next], open: next }
+  return { weeks: [current, next], open: next, today: isoDate }
+}
+
+/**
+ * PRO-244: indexes (0 = Monday … 6 = Sunday) of the days of the week starting
+ * `weekStart` that come before `fromDate` (both YYYY-MM-DD). A week wholly
+ * after `fromDate` → []; wholly before → all seven.
+ */
+export function pastDayIndexes(weekStart: string, fromDate: string): number[] {
+  const start = new Date(`${weekStart.slice(0, 10)}T12:00:00Z`)
+  const out: number[] = []
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(start)
+    d.setUTCDate(start.getUTCDate() + i)
+    if (d.toISOString().slice(0, 10) < fromDate.slice(0, 10)) out.push(i)
+  }
+  return out
 }

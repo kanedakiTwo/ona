@@ -35,6 +35,17 @@ A "household" is the shared unit that owns menus, shopping lists, favourites and
 - Mimo (`invite_to_household`, web chat and WhatsApp, D-051) creates the invite with `source: 'mimo'` and gives the same written message; in the web chat also the `wa.me` link to send it in one tap.
 - Not «Invitar a otro hogar» (PRO-163), which brings a different household to Mimoia with the account's referral link.
 
+## Ofrecer la invitación (PRO-261, D-088)
+
+The invitation is offered in three moments, **once each and never again** (like D-052 with WhatsApp). The sign-up and the list are PRO-261; Mimo after the first resolved week is PRO-262.
+
+- **Who:** only a household with **one account** whose user is the owner (only the owner can invite), and **2 adults or more** (`users.adults`; in the sign-up, what the form says at that moment). Never after a «no» to Mimo's offer. Pure rules in `services/familyInviteOffers.ts` (`familyOfferDue`, tests `familyInviteOffers.test.ts`).
+- **Sign-up (`alta`):** on «¿Para cuántos cocinas?» (step 1 of the web sign-up), with 2 adults or more: «¿Quieres que la otra persona vea también el menú y la lista?» · «Te preparo el mensaje con el enlace para que entre en tu casa.» It hides if the count drops to 1 and comes back within the same visit.
+- **Shopping list (`compra`):** the first time the list is on screen, under the header: «Compártela con quien compra contigo» · «Si entra en tu casa, ve esta lista al momento y lo que tacha uno lo ve el otro.»
+- Both cards (`components/household/FamilyInviteOffer.tsx`): «Te preparo el mensaje» creates the invite (`source` = the moment) and turns into «Enviar por WhatsApp» + «Copiar» (as in Mi casa); a ✕ («Ahora no») hides it. A failure says to do it from Perfil → Mi casa.
+- **Once:** `users.family_invite_offers` (jsonb `{ alta?, compra?, mimo?, mimoDeclined? }`, migration `0075_family_invite_offers.sql`, additive) is stamped atomically the first time each card is shown (`POST /households/me/family-offer { moment }`); `GET /households/me/family-offer` → `{ alta, compra }` (`alta` = may still be offered, the form checks its own adults). The card stays for the rest of that visit and never comes back (reload, other device, navigating back).
+- Not offered in the WhatsApp sign-up (Mimo asks the questions there): the Mimo moment (PRO-262) covers those households.
+
 ## REST Surface
 
 | Method | Path | Auth | Notes |
@@ -124,4 +135,7 @@ Edge cases:
 - `apps/web/e2e/household-casa.spec.ts` — Playwright regression for the happy path and «Enviar por WhatsApp» at 390 px (PRO-260)
 - `packages/shared/src/types/familyInvite.ts` — TTL, sources, `familyInviteShareText` (tests `apps/api/src/tests/familyInvite.test.ts`)
 - `apps/web/src/components/household/FamilyInviteShare.tsx` — «Enviar por WhatsApp» + «Copiar»
+- `apps/web/src/components/household/FamilyInviteOffer.tsx` — the offer card and `useFamilyOfferOnce` (sign-up `OnboardingFlow.tsx`, `/shopping`)
+- `apps/api/src/services/familyInviteOffers.ts` — who gets the offer, once per moment; `0075_family_invite_offers.sql`
+- `apps/web/e2e/family-invite-offer.spec.ts` — sign-up with 2 adults and first visit to the list, once each (PRO-261)
 - `apps/api/src/db/migrations/0074_household_invite_source.sql` — `household_invites.source`, `shared_at`

@@ -6,6 +6,8 @@
  *   POST   /households/me/invites    { role, email?, source?, shared? } — owner generates a token (30 days, one use)
  *   POST   /households/me/invites/:inviteId/revoke   — owner revokes a pending invite
  *   POST   /households/me/invites/:inviteId/shared   — owner tapped «Enviar por WhatsApp» / «Copiar» (PRO-260)
+ *   GET    /households/me/family-offer                — show the invitation offer in the sign-up / list? (PRO-261)
+ *   POST   /households/me/family-offer { moment }     — the offer was shown: never again (PRO-261)
  *   POST   /households/me/members/:userId/remove     — owner kicks a member
  *   POST   /households/me/leave                       — current user leaves; auto solo household
  *   GET    /invites/:token                            — preview (public, no auth — recipient may not have an account)
@@ -14,6 +16,7 @@
 import { Router } from 'express'
 import { isHouseholdInviteSource } from '@ona/shared'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
+import { familyOfferDue, familyOfferEligible, loadFamilyOfferInput, stampFamilyOffer } from '../services/familyInviteOffers.js'
 import {
   loadHouseholdForUser,
   renameHousehold,
@@ -150,6 +153,43 @@ router.post('/households/me/invites/:inviteId/shared', async (req: AuthRequest, 
       return
     }
     console.error('Shared invite error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+/**
+ * «Familia en el mismo hogar» offers (PRO-261, D-088). `alta` is whether the
+ * sign-up may offer it (the form checks its own adults count, ≥ 2, since it
+ * isn't saved yet); `compra` already includes `users.adults` ≥ 2.
+ */
+router.get('/households/me/family-offer', async (req: AuthRequest, res) => {
+  try {
+    const input = await loadFamilyOfferInput(req.userId!)
+    if (!input) {
+      res.json({ alta: false, compra: false })
+      return
+    }
+    res.json({
+      alta: !input.state.alta && familyOfferEligible(input),
+      compra: familyOfferDue('compra', input),
+    })
+  } catch (err) {
+    console.error('GET /households/me/family-offer error:', err)
+    res.json({ alta: false, compra: false })
+  }
+})
+
+router.post('/households/me/family-offer', async (req: AuthRequest, res) => {
+  const moment = req.body?.moment
+  if (moment !== 'alta' && moment !== 'compra') {
+    res.status(400).json({ error: 'moment debe ser alta o compra' })
+    return
+  }
+  try {
+    await stampFamilyOffer(req.userId!, moment)
+    res.status(204).send()
+  } catch (err) {
+    console.error('POST /households/me/family-offer error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

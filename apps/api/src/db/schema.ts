@@ -57,6 +57,12 @@ export const users = pgTable('users', {
    * Each offer is stamped once so it never repeats.
    */
   tasteState: jsonb('taste_state').notNull().default(sql`'{}'::jsonb`),
+  /**
+   * «Familia en el mismo hogar» offers (D-088): `{ alta?, compra?, mimo?,
+   * mimoDeclined? }` ISO dates. Each moment is stamped the first time it is
+   * shown, so it never repeats (PRO-261 sign-up and list, PRO-262 Mimo).
+   */
+  familyInviteOffers: jsonb('family_invite_offers').notNull().default(sql`'{}'::jsonb`),
   // Authorization
   role: text('role').notNull().default('user'),
   // Suspension (admin gate). NULL = active.

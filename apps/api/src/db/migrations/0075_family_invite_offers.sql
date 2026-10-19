@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "family_invite_offers" jsonb DEFAULT '{}'::jsonb NOT NULL;

@@ -27,6 +27,7 @@ import { OnboardingChannelChoice, OnboardingWhatsAppLink } from "./OnboardingWha
 import { useWhatsAppLinkCode, useWhatsAppStatus } from "@/hooks/useWhatsApp"
 import { postTasteOffer, useTasteStatus } from "@/hooks/useTaste"
 import { TasteSwiper } from "@/components/taste/TasteSwiper"
+import { FamilyInviteOffer, useFamilyOfferOnce } from "@/components/household/FamilyInviteOffer"
 
 const PHOTO = "/images/recipes/lentejas-estofadas.jpg"
 
@@ -203,6 +204,10 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
       }
     }
   }, [tasteStep, tasteStatus.data, tasteStatus.isError])
+
+  // «Familia en el mismo hogar» (PRO-261): with 2 adults or more, step 1
+  // offers once to prepare the message for the other person.
+  const familyOffer = useFamilyOfferOnce("alta", channel === "web" && tasteStep === "done" && step === 1 && data.adults >= 2)
 
   function next() {
     if (step >= totalSteps) return
@@ -391,6 +396,7 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
                 <p className="mt-3 text-[13px] italic text-ink-muted">
                   Cada niño cuenta como media ración para la lista de la compra.
                 </p>
+                {familyOffer.show && <FamilyInviteOffer moment="alta" onDismiss={familyOffer.dismiss} className="mt-5" />}
               </section>
             )}
 

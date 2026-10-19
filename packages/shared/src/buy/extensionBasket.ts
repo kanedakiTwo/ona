@@ -6,7 +6,7 @@
 import type { BuyableUnit } from '../types/shopping.js'
 import type { ShopOrderLine } from '../types/shopOrders.js'
 import type { BasketLine, BasketSendResult } from '../types/basketExtension.js'
-import { buyRuleByKey, normalizeBuyName, orderQtyInGrams, pieceCount } from './convert.js'
+import { buyRuleByKey, normalizeBuyName, orderQtyInGrams, pieceCount, toOrderQty } from './convert.js'
 import { shoppingGroupOf } from './listGroup.js'
 
 /** «Tomate · varias presentaciones» → «Tomate». */
@@ -137,57 +137,72 @@ export function orderMembers(members: OrderMemberInput[], ruleKey: string | null
   return specific.map(({ generic: _generic, real: _real, ...rest }) => rest)
 }
 
+/** Lo que la cesta lee de una línea del pedido, o de un grupo hecho línea. */
+type LineLike = Pick<ShopOrderLine, 'key' | 'name' | 'quantity' | 'unit' | 'ruleKey' | 'grams' | 'choice' | 'needsChoice' | 'needsQuantity'>
+
+/** Una línea de la cesta: las líneas del pedido y los grupos salen por aquí, igual. */
+function basketLine(l: LineLike): BasketLine {
+  const name = basketBaseName(l.name)
+  const choice = l.needsChoice ? null : l.choice ?? null
+  const grams = l.needsQuantity
+    ? l.needsQuantity.grams
+    : l.ruleKey
+      ? l.grams ?? null
+      : l.unit === 'g' || l.unit === 'ml'
+        ? l.quantity
+        : null
+  const rule = l.ruleKey ? buyRuleByKey(l.ruleKey) : null
+  // Sus gramos son los que pide el pedido, de pieza entera (n × g): se pesan contra `g`, no contra lo comestible del pescado.
+  const piezas = rule?.by === 'pieza' && grams ? pieceCount(rule, grams, 'g', grams, rule.g ?? 100) : null
+  // «Jamón serrano» + serrano → «Jamón serrano», no «Jamón serrano serrano».
+  const search = choice && !normalizeBuyName(name).includes(normalizeBuyName(choice)) ? `${name} ${choice}` : name
+  return { key: l.key, name, choice, quantity: l.quantity, unit: l.unit, grams, piezas, search }
+}
+
+/**
+ * Un grupo de una línea fusionada, hecho línea: los gramos que pediría el
+ * pedido con su cantidad (`toOrderQty`). Se piden con el nombre y las notas de
+ * la línea, que dan su regla y su variante («pollo» + «pechuga» → pechuga de
+ * pollo; el nombre del grupo, «pollo», daría otra regla); sin «sin cantidad»:
+ * un grupo de solo artículos sin cantidad pide su 1 u tal cual. Si aun así no
+ * saliera la regla de la línea, los gramos de su cantidad con ella
+ * (`orderQtyInGrams`).
+ */
+function groupAsLine(line: ShopOrderLine, mem: OrderMember, i: number): LineLike {
+  const ruleKey = line.ruleKey ?? null
+  const ordered = toOrderQty({ name: line.name, quantity: mem.quantity, unit: mem.unit, notes: line.notes })
+  return {
+    key: `${line.key}.${i + 1}`,
+    name: mem.name,
+    quantity: mem.quantity,
+    unit: mem.unit,
+    ruleKey,
+    grams: (ordered.ruleKey === ruleKey ? ordered.grams : null) ?? orderQtyInGrams(mem.quantity, mem.unit, ruleKey),
+    choice: null,
+    needsChoice: null,
+    needsQuantity: null,
+  }
+}
+
 /**
  * La cesta que se manda a la extensión: las líneas incluidas y, de una línea
  * fusionada (`members`), un grupo por producto (`l3.1`, `l3.2`…). Un grupo es
- * una línea más: sus gramos (`orderQtyInGrams`) y sus piezas salen de su
- * cantidad con la regla de la línea. Las piezas se cuentan como en el pedido
- * (`pieceCount`, lo mismo que `toOrderQty`): las de un grupo, con su cantidad;
- * las de una línea, con sus gramos, que ya son piezas enteras de la regla.
+ * una línea más: lleva los gramos y las piezas de una línea del pedido con su
+ * cantidad (`groupAsLine`), redondeados a la unidad de compra. Las piezas se
+ * cuentan como en el pedido (`pieceCount`), con sus gramos, que ya son piezas
+ * enteras de la regla.
  *
  * Limitación conocida: en una línea fusionada en la que nada traía cantidad
  * (todo el «1 u» por defecto), cada producto va como 1 unidad (con los gramos
- * de una unidad si la regla los sabe) y la sugerencia de gramos de
- * `needsQuantity` no se reparte entre ellos.
+ * que pide el pedido por 1 unidad, si la regla los sabe) y la sugerencia de
+ * gramos de `needsQuantity` no se reparte entre ellos.
  */
 export function buildExtensionBasket(lines: ShopOrderLine[]): BasketLine[] {
   const out: BasketLine[] = []
   for (const line of lines) {
     if (line.included === false) continue
-    const rule = line.ruleKey ? buyRuleByKey(line.ruleKey) : null
-    /** La regla, si es por pieza («1 cabeza de ajos»): solo entonces hay piezas. */
-    const byPiece = rule?.by === 'pieza' ? rule : null
-    if (line.members && line.members.length >= 2) {
-      line.members.forEach((mem, i) => {
-        const name = basketBaseName(mem.name)
-        const grams = orderQtyInGrams(mem.quantity, mem.unit, line.ruleKey ?? null)
-        out.push({
-          key: `${line.key}.${i + 1}`,
-          name,
-          choice: null,
-          quantity: mem.quantity,
-          unit: mem.unit,
-          grams,
-          piezas: byPiece && grams ? pieceCount(byPiece, mem.quantity, mem.unit, grams) : null,
-          search: name,
-        })
-      })
-      continue
-    }
-    const name = basketBaseName(line.name)
-    const choice = line.needsChoice ? null : line.choice ?? null
-    const grams = line.needsQuantity
-      ? line.needsQuantity.grams
-      : line.ruleKey
-        ? line.grams ?? null
-        : line.unit === 'g' || line.unit === 'ml'
-          ? line.quantity
-          : null
-    // Sus gramos son los que pide el pedido, de pieza entera (n × g): se pesan contra `g`, no contra lo comestible del pescado.
-    const piezas = byPiece && grams ? pieceCount(byPiece, grams, 'g', grams, byPiece.g ?? 100) : null
-    // «Jamón serrano» + serrano → «Jamón serrano», no «Jamón serrano serrano».
-    const search = choice && !normalizeBuyName(name).includes(normalizeBuyName(choice)) ? `${name} ${choice}` : name
-    out.push({ key: line.key, name, choice, quantity: line.quantity, unit: line.unit, grams, piezas, search })
+    if (line.members && line.members.length >= 2) line.members.forEach((mem, i) => out.push(basketLine(groupAsLine(line, mem, i))))
+    else out.push(basketLine(line))
   }
   return out
 }

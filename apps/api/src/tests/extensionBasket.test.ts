@@ -18,6 +18,7 @@ import {
   type BuyableUnit,
   type ShopOrderLine,
 } from '@ona/shared'
+import { buildLine } from '../services/shopOrders/lines.js'
 
 const m = (id: string, name: string, quantity: number, unit: 'g' | 'ml' | 'u' = 'g') => ({ id, name, quantity, unit })
 /** Tecleado sin cantidad: el «1 u» por defecto. */
@@ -250,9 +251,10 @@ describe('buildExtensionBasket', () => {
         ],
       }),
     ])
+    // Gramos del pedido, redondeados a la unidad de compra: 1 paquete de 1 kg de cada una.
     expect(lines).toEqual([
-      { key: 'l3.1', name: 'alubias blancas', choice: null, quantity: 400, unit: 'g', grams: 400, piezas: null, search: 'alubias blancas' },
-      { key: 'l3.2', name: 'alubias rojas', choice: null, quantity: 400, unit: 'g', grams: 400, piezas: null, search: 'alubias rojas' },
+      { key: 'l3.1', name: 'alubias blancas', choice: null, quantity: 400, unit: 'g', grams: 1000, piezas: null, search: 'alubias blancas' },
+      { key: 'l3.2', name: 'alubias rojas', choice: null, quantity: 400, unit: 'g', grams: 1000, piezas: null, search: 'alubias rojas' },
     ])
   })
   it('con los grupos de orderMembers: mezcla de unidades en gramos, nombre sin sufijo y cada clave con sus artículos', () => {
@@ -265,8 +267,9 @@ describe('buildExtensionBasket', () => {
     expect(members?.[1].name).toBe('leche desnatada · varias presentaciones')
     const lines = [line({ key: 'l4', name: 'leche', quantity: 1500 + 2 * perUnit('leche'), unit: 'g', ruleKey: 'leche', sourceItemIds: ['g', 'e', 'd'], members })]
     const entera = perUnit('leche') + 1500
+    // Gramos del pedido, redondeados a la unidad de compra: 2500 g son 3 briks.
     expect(buildExtensionBasket(lines)).toEqual([
-      { key: 'l4.1', name: 'leche entera', choice: null, quantity: entera, unit: 'g', grams: entera, piezas: null, search: 'leche entera' },
+      { key: 'l4.1', name: 'leche entera', choice: null, quantity: entera, unit: 'g', grams: 3 * perUnit('leche'), piezas: null, search: 'leche entera' },
       { key: 'l4.2', name: 'leche desnatada', choice: null, quantity: 1, unit: 'u', grams: perUnit('leche'), piezas: null, search: 'leche desnatada' },
     ])
     expect(sourceItemsForBasketKey(lines, 'l4.1')).toEqual(['e', 'g'])
@@ -297,9 +300,9 @@ describe('buildExtensionBasket', () => {
       }),
     ])
     expect(morado).toMatchObject({ key: 'l6.1', quantity: 20, unit: 'u', grams: 100, piezas: 2 })
-    expect(negro).toMatchObject({ key: 'l6.2', quantity: 2, unit: 'u', grams: 10, piezas: 1 })
+    expect(negro).toMatchObject({ key: 'l6.2', quantity: 2, unit: 'u', grams: 50, piezas: 1 }) // gramos del pedido: 1 cabeza
   })
-  it('un grupo cuenta sus piezas como el pedido (14 dientes de ajo, 70 g → 2 cabezas; 1,1 tomates → 2)', () => {
+  it('un grupo cuenta sus piezas como el pedido (14 dientes de ajo → 2 cabezas, 100 g; 1,1 tomates → 2)', () => {
     expect(toOrderQty({ name: 'ajo morado', quantity: 14, unit: 'u' }).text).toBe('2 cabezas de ajos')
     expect(toOrderQty({ name: 'tomate pera', quantity: 1.1, unit: 'u' }).text).toBe('2 tomates pera')
     const [ajoMorado, , tomatePera] = buildExtensionBasket([
@@ -318,10 +321,10 @@ describe('buildExtensionBasket', () => {
         ],
       }),
     ])
-    expect(ajoMorado).toMatchObject({ key: 'l8.1', grams: 70, piezas: 2 })
+    expect(ajoMorado).toMatchObject({ key: 'l8.1', grams: 100, piezas: 2 }) // gramos del pedido, redondeados a la unidad de compra
     expect(tomatePera).toMatchObject({ key: 'l9.1', piezas: 2 })
   })
-  it('pescado entero: la línea cuenta piezas enteras y el grupo, gramos limpios, como el pedido', () => {
+  it('pescado entero: línea y grupo llevan los gramos de pieza entera del pedido y cuentan sus piezas contra la pieza entera', () => {
     const pescado = buyRuleByKey('pescado entero')!
     expect(pescado).toMatchObject({ by: 'pieza', g: 550, edibleG: 300 })
     // El pedido: 400 g limpios de dorada son 2 doradas; la línea guarda los gramos de 2 piezas enteras.
@@ -338,8 +341,8 @@ describe('buildExtensionBasket', () => {
       }),
     ])
     expect(linea.piezas).toBe(2) // 1100 g de pieza entera, no 1100 / 300
-    expect(dorada).toMatchObject({ key: 'l2.1', grams: 400, piezas: 2 })
-    expect(lubina).toMatchObject({ key: 'l2.2', grams: 300, piezas: 1 })
+    expect(dorada).toMatchObject({ key: 'l2.1', grams: 1100, piezas: 2 }) // gramos del pedido, redondeados a la unidad de compra
+    expect(lubina).toMatchObject({ key: 'l2.2', grams: 550, piezas: 1 })
   })
   it('un grupo en u de una regla que no sabe lo que pesa una unidad (jamón) va sin gramos ni piezas', () => {
     const [serrano, iberico] = buildExtensionBasket([
@@ -352,7 +355,51 @@ describe('buildExtensionBasket', () => {
       }),
     ])
     expect(serrano).toMatchObject({ key: 'l7.1', quantity: 1, unit: 'u', grams: null, piezas: null })
-    expect(iberico).toMatchObject({ key: 'l7.2', grams: 50, piezas: null })
+    expect(iberico).toMatchObject({ key: 'l7.2', grams: 100, piezas: null }) // gramos del pedido, redondeados a la unidad de compra
+  })
+  /** La línea que haría el borrador con un artículo de la lista (`buildLine`). */
+  const orderLine = (key: string, name: string, quantity: number, unit: BuyableUnit, notes: string[] = []) =>
+    buildLine({ key, sourceItemIds: [`id-${key}`], ingredientId: null, name, quantity, unit, quantitySource: 'recipe', notes, note: null, choice: null, included: true }, 'supermercado', {}, {})
+  const amounts = (l: { grams: number | null; piezas: number | null }) => ({ grams: l.grams, piezas: l.piezas })
+  it('un grupo lleva los mismos gramos y piezas que una línea normal con su cantidad (toOrderQty)', () => {
+    // [nombre, cantidad, unidad, otro producto de la misma regla que la lista separa]
+    const cases: Array<[string, number, BuyableUnit, string]> = [
+      ['cebolla', 160, 'g', 'cebolla dulce'],
+      ['dorada', 400, 'g', 'lubina'],
+      ['ajo morado', 14, 'u', 'ajo negro'],
+      ['leche entera', 2, 'u', 'leche desnatada'],
+      ['alubias blancas', 600, 'g', 'alubias rojas'],
+      ['Huevos camperos', 18, 'u', 'huevos de codorniz'],
+    ]
+    for (const [name, quantity, unit, other] of cases) {
+      const normal = orderLine('l1', name, quantity, unit)
+      const [comoLinea] = buildExtensionBasket([normal])
+      const [comoGrupo] = buildExtensionBasket([
+        { ...normal, key: 'l2', members: [
+          { name, quantity, unit, sourceItemIds: ['a'] },
+          { name: other, quantity: 1, unit: 'u', sourceItemIds: ['b'] },
+        ] },
+      ])
+      expect(amounts(comoGrupo), name).toEqual(amounts(comoLinea))
+    }
+    // 160 g de cebolla son 1 cebolla (150 g); 400 g limpios de dorada, 2 doradas enteras (1100 g).
+    expect(amounts(buildExtensionBasket([orderLine('l1', 'cebolla', 160, 'g')])[0])).toEqual({ grams: 150, piezas: 1 })
+    expect(amounts(buildExtensionBasket([orderLine('l1', 'dorada', 400, 'g')])[0])).toEqual({ grams: 1100, piezas: 2 })
+  })
+  it('con una nota que cambia el producto («pollo» + «pechuga»), el grupo usa la regla de la línea', () => {
+    const normal = orderLine('l1', 'pollo', 300, 'g', ['pechuga'])
+    expect(normal.ruleKey).toBe('pechuga de pollo')
+    // Por su nombre, «pollo» sería otra regla: «medio kilo de pollo troceado».
+    expect(toOrderQty({ name: 'pollo', quantity: 300, unit: 'g' }).ruleKey).toBe('pollo')
+    const [comoLinea] = buildExtensionBasket([normal])
+    const [comoGrupo] = buildExtensionBasket([
+      { ...normal, key: 'l2', members: [
+        { name: 'pollo', quantity: 300, unit: 'g', sourceItemIds: ['a'] },
+        { name: 'pechuga de pollo de corral', quantity: 200, unit: 'g', sourceItemIds: ['b'] },
+      ] },
+    ])
+    expect(amounts(comoLinea)).toEqual({ grams: 400, piezas: 2 })
+    expect(amounts(comoGrupo)).toEqual(amounts(comoLinea))
   })
 })
 

@@ -128,6 +128,7 @@ export {
   BASKET_LINE_ORIGINS,
   BASKET_LINE_STATES,
   BASKET_SEND_ERRORS,
+  BASKET_SEND_MAX_DURATION_MS,
   basketSendResultSchema,
 } from './types/basketExtension.js'
 export type {

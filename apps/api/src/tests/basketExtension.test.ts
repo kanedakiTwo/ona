@@ -45,6 +45,11 @@ describe('basketSendResultSchema', () => {
     expect(basketSendResultSchema.safeParse({ ...okResult(), lineas: [{ key: 'l1', estado: 'fallida', motivo: 'otro' }] }).success).toBe(false)
     expect(basketSendResultSchema.safeParse({ ...okResult(), lineas: [{ key: 'l1', estado: 'tabla', unidades: 1.5 }] }).success).toBe(false)
   })
+  it('duracionMs: opcional, entero de 0 a 1 h; sin él vale (versiones viejas de la extensión)', () => {
+    for (const ok of [0, 31_000, 3_600_000]) expect(basketSendResultSchema.safeParse(okResult({ duracionMs: ok })).success).toBe(true)
+    expect(basketSendResultSchema.safeParse(okResult()).success).toBe(true)
+    for (const mal of [-1, 1.5, 3_600_001, '25000', null]) expect(basketSendResultSchema.safeParse({ ...okResult(), duracionMs: mal }).success).toBe(false)
+  })
   it('si puede haber algo en el carro, el envioId no puede ir vacío', () => {
     expect(basketSendResultSchema.safeParse(okResult({ envioId: '' })).success).toBe(false)
     const aMedias = okResult({ envioId: '', ok: false, error: 'verificacion', anadidas: 0, lineas: [{ key: 'l1', estado: 'no_verificada' }] })
@@ -130,6 +135,11 @@ describe('decideBasketResult', () => {
     const sin = decideBasketResult(null, 'draft', okResult(), NOW)
     if (sin.action !== 'save') throw new Error(sin.action)
     expect('cesta' in sin.stored).toBe(false)
+  })
+  it('guarda duracionMs con el resultado', () => {
+    const d = decideBasketResult(null, 'draft', okResult({ duracionMs: 31_000 }), NOW)
+    if (d.action !== 'save') throw new Error(d.action)
+    expect(d.stored.duracionMs).toBe(31_000)
   })
 })
 

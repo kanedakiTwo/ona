@@ -155,6 +155,12 @@ describe('POST /shop-orders/:id/extension-result', () => {
       ],
     ])
   })
+  it('duracionMs llega al store con el resultado', async () => {
+    h.save.mockResolvedValue({ order: { id: ID }, deshecho: false, guardado: true })
+    expect((await call('POST', path, { ...good, duracionMs: 31_000 })).status).toBe(200)
+    expect(h.save.mock.calls[0][2]).toMatchObject({ duracionMs: 31_000 })
+    expect((await call('POST', path, { ...good, duracionMs: -1 })).status).toBe(400)
+  })
   it('no guardado (el mismo envío otra vez, o uno deshecho): responde igual y no cuenta', async () => {
     h.save.mockResolvedValue({ order: { id: ID }, deshecho: true, guardado: false })
     expect(await call('POST', path, good)).toEqual({ status: 200, body: { order: { id: ID }, deshecho: true } })

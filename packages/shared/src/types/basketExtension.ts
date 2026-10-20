@@ -4,6 +4,7 @@
  * extensión del navegador»). La extensión no importa este fichero: solo sigue
  * la forma de estos mensajes (devuelve objetos planos). Cualquier cambio en la
  * forma de los mensajes sube `BASKET_EXTENSION_PROTOCOL`.
+ * Un campo opcional que las versiones viejas pueden no mandar (como `duracionMs`) no lo sube.
  */
 import { z } from 'zod'
 import { basketMayBeInCart } from '../buy/extensionBasket.js'
@@ -54,6 +55,9 @@ export type BasketLineState = (typeof BASKET_LINE_STATES)[number]
 export const BASKET_SEND_ERRORS = ['sin_zona', 'sin_sesion', 'contrato', 'verificacion', 'red'] as const
 export type BasketSendError = (typeof BASKET_SEND_ERRORS)[number]
 
+/** Lo más que puede valer `duracionMs` (1 h): la extensión recorta a esto lo que mide. */
+export const BASKET_SEND_MAX_DURATION_MS = 3_600_000
+
 export const basketSendResultSchema = z
   .object({
     envioId: z.string().max(64),
@@ -77,6 +81,8 @@ export const basketSendResultSchema = z
     bajoMinimo: z.boolean(),
     version: z.string().max(32),
     contrato: z.string().max(64),
+    /** Lo que tardó la extensión desde que recibió «enviar» hasta que respondió. Falta en las versiones viejas. */
+    duracionMs: z.number().int().min(0).max(BASKET_SEND_MAX_DURATION_MS).optional(),
   })
   // Si puede haber algo en el carro, el envío necesita su id: con él se reconoce un reintento y se deshace.
   .refine((r) => r.envioId !== '' || !basketMayBeInCart(r), {

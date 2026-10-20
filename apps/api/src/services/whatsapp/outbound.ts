@@ -244,10 +244,12 @@ const GUIDE_MEMORY_SKIP = new Set(['meal_times', 'time_available'])
 
 /** What the writer knows of the house: memory (never health keys), the last 12 h of chat, earlier messages of the kind. */
 export async function guidedContextFor(link: Pick<LinkWithUser, 'userId' | 'phone'>, kind: string, now: Date = new Date()): Promise<GuidedContext> {
-  const [memRows, history, previous] = await Promise.all([
+  const [memRows, history, previous, lastAvisos] = await Promise.all([
     db.select({ key: userMemories.key, value: userMemories.value }).from(userMemories).where(eq(userMemories.userId, link.userId)),
     store.loadHistoryRows(link.phone, new Date(now.getTime() - 12 * 60 * 60 * 1000), link.userId),
     store.recentOutboundBodies(link.phone, kind, 5),
+    // PRO-274: the last avisos of any kind, so two in a row don't open the same.
+    store.recentOutboundBodiesOfKinds(link.phone, [...PROACTIVE_KINDS, 'alert'], 3),
   ])
   const memory = memRows
     .filter((r) => !isHealthMemoryKey(r.key) && !GUIDE_MEMORY_SKIP.has(r.key) && !r.key.startsWith('physical.'))
@@ -257,7 +259,7 @@ export async function guidedContextFor(link: Pick<LinkWithUser, 'userId' | 'phon
     .filter((r) => r.body && !NOT_CONVERSATION.has(r.kind ?? '') && (r.direction === 'in' ? r.status === 'processed' : r.status === 'sent'))
     .slice(-8)
     .map((r) => ({ who: r.direction === 'in' ? ('usuario' as const) : ('mimo' as const), text: r.body! }))
-  return { memory, recent, previous }
+  return { memory, recent, previous, lastAvisos }
 }
 
 /** Write one message from its guide for this link, or the fixed text. Never throws. */

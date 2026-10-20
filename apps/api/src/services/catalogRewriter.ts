@@ -33,7 +33,7 @@ Etiquetas:
 - "protein": proteína principal en minúscula (pollo, ternera, cerdo, cordero, pescado blanco, pescado azul, marisco, huevo, legumbre, tofu, queso, ninguna).
 - "techniques": técnicas en minúscula (sofreír, guisar, hornear, freír, plancha, vapor, hervir, crudo…).
 - "cuisine": cocina en minúscula (española, mediterránea, italiana, mexicana, japonesa…).
-- "activeTime": minutos de trabajo; "totalTime": minutos totales (incluye horno y reposos).
+- "activeTime": minutos de trabajo (con las manos) para alguien que cocina en casa con soltura; no cuentes lo que va solo (horno, fuego lento, olla, reposo). "totalTime": minutos de principio a fin para esa misma persona, contando que lo que se puede preparar mientras algo está en el horno, al fuego lento, en la olla o reposando se hace a la vez (no lo sumes dos veces); incluye horno y reposos y nunca es menor que los minutos de los pasos que van solos.
 - "difficulty": "easy" | "medium" | "hard".
 - "allergenDoubt": true si no se puede descartar un alérgeno por cómo está escrito (por ejemplo «salsa al gusto», «caldo» sin decir de qué, trazas); "allergenNote": por qué, en una frase.
 - "tips": un consejo corto con tus palabras, o null.

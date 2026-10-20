@@ -13,6 +13,10 @@
  *   --json=…    Cocina's batch file (hand-authored shape, see draftsFromCocinaJson)
  *   --origin=…  miguel (Miguel's books, his mother's recipe book) | cocina (found or written by Cocina)
  *   --book=…    source title, saved with the recipe (never its text)
+ *   --credit=…  the line the recipe page shows under the title, as it must read
+ *               («Receta de la Yaya», «Inspirada en una receta de <autor>, «<libro>»»).
+ *               Without it, Miguel's sources read «Inspirada en <book>»; Cocina's, nothing.
+ *               In a --json file, `source.credit` (file or recipe; the recipe's wins) beats it.
  *   --batch=…   batch id (default: today's date + origin)
  *   --dry-run   read and rewrite, but save nothing
  *
@@ -74,13 +78,14 @@ async function runImport() {
   const origin = flag('origin') === 'miguel' ? 'miguel' : flag('origin') === 'cocina' ? 'cocina' : null
   if (!origin) throw new Error('Falta --origin=miguel|cocina')
   const book = flag('book') ?? null
+  const credit = flag('credit') ?? null
   const batch = flag('batch') ?? `${new Date().toISOString().slice(0, 10)}-${origin}`
   const dryRun = has('dry-run')
 
   type Draft = Parameters<typeof importCatalogBatch>[0][number]
   const drafts: Draft[] = []
   if (flag('json')) {
-    drafts.push(...draftsFromCocinaJson(JSON.parse(readFileSync(flag('json')!, 'utf8')), { origin, book, file: path.basename(flag('json')!) }))
+    drafts.push(...draftsFromCocinaJson(JSON.parse(readFileSync(flag('json')!, 'utf8')), { origin, book, credit, file: path.basename(flag('json')!) }))
   } else if (flag('dir')) {
     const { AnthropicProvider } = await import('../src/services/providers/anthropic.js')
     const vision = new AnthropicProvider()
@@ -98,7 +103,7 @@ async function runImport() {
           tags: [],
           ingredients: raw.ingredients.map((i) => (i.quantity > 0 ? { name: i.name, quantity: i.quantity, unit: i.unit } : { name: i.name, quantity: 1, unit: 'al_gusto' })),
           sourceSteps: raw.steps,
-          source: { origin, book, page: p.page, file: p.file },
+          source: { origin, book, credit, page: p.page, file: p.file },
         })
         console.log(`· leída ${p.file}: ${raw.name}`)
       } catch (err) {

@@ -6,6 +6,7 @@ How Mimoia's recipe catalogue grows from ~80 to 1.000 recipes (D-065, PRO-154): 
 
 - **Households never see a draft.** A catalogue recipe in `draft` is not in `/recipes` (signed in or out), doesn't open by link (404, same as a missing recipe), the menu never picks it and Mimo never offers it. Once published it behaves like any other catalogue recipe.
 - **An admin opens a draft by its link** (`/recipes/<id>` with an admin account): that is how Miguel reviews the sample of a Cocina batch.
+- **The ficha says where it comes from** (D-067): a published recipe shows one line under its title — the batch's `credit` as written («Receta de la Yaya», «Inspirada en una receta de <autor>, «<libro>»»); without a credit, Miguel's sources read «Inspirada en <book>» and Cocina's show nothing. See [Recipes](./recipes.md).
 - **Photos on demand**: an imported recipe has no photo at first. The house photo ([Recipe Images](./recipe-images.md)) is made in the background the first time the recipe appears in a menu (any menu read) or someone opens it; until then the card shows the usual no-photo placeholder.
 - **Admin → Catálogo → «Deseos del catálogo»**: the dishes households asked for that we don't have, most-asked first, with how many households ask and where it came from («favoritos del alta», «menú sin acierto», «petición a Mimo», «Me encanta»). Filters: «Pendientes», «Ya cubiertos» (with a link to the recipe that covers it), «Todos». No names, no emails.
 
@@ -13,7 +14,7 @@ How Mimoia's recipe catalogue grows from ~80 to 1.000 recipes (D-065, PRO-154): 
 
 Run from a laptop with `DATABASE_URL` and `ANTHROPIC_API_KEY` (see the file header for every flag):
 
-1. `import --dir=<folder> --origin=miguel|cocina --book="…" --batch=<id>` — a folder of page photos (`.jpg/.png/.webp`) or PDFs (split into pages with `pdftoppm`; page number from the file name or the PDF page). `--json=<file>` takes Cocina's batch file instead (hand-authored shape: ingredients by name with `qty`/`unit`, steps, optional `source` for the file or per recipe). `--dry-run` saves nothing.
+1. `import --dir=<folder> --origin=miguel|cocina --book="…" [--credit="…"] --batch=<id>` — a folder of page photos (`.jpg/.png/.webp`) or PDFs (split into pages with `pdftoppm`; page number from the file name or the PDF page). `--json=<file>` takes Cocina's batch file instead (hand-authored shape: ingredients by name with `qty`/`unit`, steps, optional `source` for the file or per recipe). `--credit` is the ficha's line, as it must read («Receta de la Yaya»); in a JSON file `source.credit` goes for the file or per recipe — the recipe's wins, then the file's, then `--credit`; blank = none (`draftsFromCocinaJson`). `--dry-run` saves nothing.
 2. Per recipe, in order (`services/catalogImport.ts`, orchestration with injected AI and database):
    - **reading**: the photo extractor that `POST /recipes/extract-from-image` uses (`AnthropicProvider.extractRecipe`);
    - **duplicates**: against every catalogue recipe (published and drafts) and the batch itself — same dish when the significant words match (accents, plurals, order and filler words aside: «Tortilla de patata» = «Tortilla de patatas») or the names are ≤ 2 letters apart → skipped, «ya está: …»;
@@ -25,7 +26,7 @@ Run from a laptop with `DATABASE_URL` and `ANTHROPIC_API_KEY` (see the file head
    - **audit** (`auditCatalogRecipe`: no steps, ≤ 2 ingredients, protein or starch per serving out of range) — the issues travel with the draft;
    - **reviewer** (`recipeLint`, strict, inside `persistRecipe`), **nutrition** and **allergens** (computed from the ingredients on save). Reviewer errors reject the recipe with its messages;
    - **saved as `draft`**: the row is created as a draft first and then filled, so it is never visible, not even for a moment. Labels go to `tags` (dish type, cuisine) and hidden `internal_tags` (`catalogo-tanda`, `tipo:`, `proteina:`, `tecnica:`, `cocina:`, `alergenos:duda`); `prepTime` = active time, `cookTime` = the rest of the total.
-   - The source is kept in `recipes.catalog_source` (origin, book, page, file, batch — **never its text**), with the audit issues and the allergen doubt; `recipes.import_batch` holds the batch id.
+   - The source is kept in `recipes.catalog_source` (origin, book, page, file, credit, batch — **never its text**; `catalogSourceRecord`), with the audit issues and the allergen doubt; `recipes.import_batch` holds the batch id.
 3. One failure never stops the batch; the command prints ✓ / = (duplicate) / ✗ (reason) per recipe and a summary with the allergen doubts.
 
 ## Publishing (rule of Miguel, 2026-10-16)
@@ -49,6 +50,7 @@ Run from a laptop with `DATABASE_URL` and `ANTHROPIC_API_KEY` (see the file head
 - Every query that serves recipes to a household goes through `visibleRecipeWhere`, which now also requires `published`; `GET /recipes` filters it explicitly; `GET /recipes/:id` and `POST /recipes/:id/copy` answer 404 for a draft unless the caller is an admin.
 - The photo-on-demand request is once per recipe per API process (a rejected photo isn't retried on every view; a restart lets it try again), only for published catalogue recipes with no image at all, and a no-op without an image provider. Cost lands on Mimoia (no author).
 - Never put a book's text in tests, fixtures or the database: tests use invented sentences.
+- Of `catalog_source`, only the credit line leaves the API (`sourceCredit` on `GET /recipes/:id`, via `catalogSourceCredit`); the file, batch, audit notes and review state stay inside.
 
 ## Pending
 
@@ -67,7 +69,7 @@ Run from a laptop with `DATABASE_URL` and `ANTHROPIC_API_KEY` (see the file head
 ## Source
 
 - [apps/api/scripts/catalogImport.ts](../apps/api/scripts/catalogImport.ts) — `import | status | sample | review | publish` (`pnpm --filter @ona/api catalog:import …`)
-- [apps/api/src/services/catalogImport.ts](../apps/api/src/services/catalogImport.ts) — orchestration and rules (`importCatalogBatch`, `copiedPhrases`, `findDuplicate`, `scaleToHouseServings`, `draftsFromCocinaJson`, `pickReviewSample`, `planBatchPublish`)
+- [apps/api/src/services/catalogImport.ts](../apps/api/src/services/catalogImport.ts) — orchestration and rules (`importCatalogBatch`, `copiedPhrases`, `findDuplicate`, `scaleToHouseServings`, `draftsFromCocinaJson`, `catalogSourceRecord`, `catalogSourceCredit`, `pickReviewSample`, `planBatchPublish`)
 - [apps/api/src/services/catalogRewriter.ts](../apps/api/src/services/catalogRewriter.ts) — the house rewrite prompt and parser (Claude Opus 5.5, cost `catalog_import_rewrite`)
 - [apps/api/src/services/catalogImportDb.ts](../apps/api/src/services/catalogImportDb.ts) — real deps (draft-first persist, ingredient matching), batch load / sample / review / publish
 - [apps/api/src/services/catalogWishes.ts](../apps/api/src/services/catalogWishes.ts) — wishes (`recordCatalogWish`, `recordWishesFromFavoriteDishes`, `catalogCoversDish`, `listCatalogWishes`, `markWishesCovered`); [routes/catalogWishes.ts](../apps/api/src/routes/catalogWishes.ts) — `GET /admin/catalog-wishes`
@@ -75,4 +77,4 @@ Run from a laptop with `DATABASE_URL` and `ANTHROPIC_API_KEY` (see the file head
 - [apps/api/src/services/recipeVisibility.ts](../apps/api/src/services/recipeVisibility.ts) — drafts hidden (`visibleRecipeWhere`, `isHiddenDraft`)
 - [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts) — `recipes.status`, `catalog_source`, `import_batch`; `catalog_wishes`, `catalog_wish_votes` (migration `0058_catalog_drafts_wishes`)
 - [apps/web/src/app/admin/sections/CatalogWishesSection.tsx](../apps/web/src/app/admin/sections/CatalogWishesSection.tsx) — the admin tab
-- Tests: `catalogImport.test.ts` (three invented pages, phrase check, duplicates, sample and publish rule), `catalogWishes.test.ts` (wishes, photos on demand, drafts hidden), `catalogImport.smoke.ts` (real API + DB: draft not in `GET /recipes` nor in the generator's loader, publish, wishes read), `e2e/catalog-wishes.spec.ts` (sign-up favourite → admin tab, 390×844)
+- Tests: `catalogImport.test.ts` (three invented pages, phrase check, duplicates, sample and publish rule, the credit), `catalogWishes.test.ts` (wishes, photos on demand, drafts hidden), `catalogImport.smoke.ts` (real API + DB: draft not in `GET /recipes` nor in the generator's loader, publish, `sourceCredit` on the detail and nothing else of the source, wishes read), `e2e/recipe-credit.spec.ts` (the line under the title, 390×844), `e2e/catalog-wishes.spec.ts` (sign-up favourite → admin tab, 390×844)

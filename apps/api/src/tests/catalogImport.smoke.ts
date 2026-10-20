@@ -4,6 +4,8 @@
  *     an admin, and the menu never picks it (loadMatchableRecipes, the same
  *     loader the generator and Mimo's swaps use);
  *   - publishing it makes it appear, and closes the wish it covers;
+ *   - once published, GET /recipes/:id carries its `sourceCredit` (D-067)
+ *     and nothing else of `catalog_source`;
  *   - a request with no recipe creates or adds to a «deseo del catálogo»,
  *     readable with the metrics token without personal data.
  *
@@ -20,6 +22,7 @@ import { recordCatalogWish } from '../services/catalogWishes.js'
 
 const tag = `pro154${Date.now().toString(36)}`
 const DRAFT_NAME = `Guiso de prueba ${tag}`
+const CREDIT = 'Receta de la tía Inventada'
 const METRICS_TOKEN = process.env.METRICS_READ_TOKEN ?? ''
 const created: string[] = []
 const wishIds: string[] = []
@@ -36,7 +39,7 @@ async function insertDraft(): Promise<string> {
   const { id: _id, createdAt: _c, updatedAt: _u, ...rest } = src
   const [row] = await db
     .insert(recipes)
-    .values({ ...rest, name: DRAFT_NAME, imageUrl: '/images/recipes/placeholder.jpg', status: 'draft', importBatch: tag, catalogSource: { origin: 'cocina', book: 'Libro inventado', page: '7', batch: tag, auditIssues: [], allergenDoubt: false } })
+    .values({ ...rest, name: DRAFT_NAME, imageUrl: '/images/recipes/placeholder.jpg', status: 'draft', importBatch: tag, catalogSource: { origin: 'cocina', book: 'Libro inventado', page: '7', file: 'tanda-inventada.json', credit: CREDIT, batch: tag, auditIssues: ['nota_interna'], allergenDoubt: false } })
     .returning({ id: recipes.id })
   const ings = await db.select().from(recipeIngredients).where(eq(recipeIngredients.recipeId, src.id))
   if (ings.length) await db.insert(recipeIngredients).values(ings.map(({ id: _i, ...i }) => ({ ...i, recipeId: row.id })))
@@ -75,7 +78,14 @@ describe.skipIf(!reachable)('catalogue drafts and wishes (PRO-154)', () => {
     expect(res).toEqual({ published: 1, wishesCovered: 1 })
     const after = await call('GET', `/recipes?search=${encodeURIComponent(tag)}`)
     expect(after.body.map((r: { id: string }) => r.id)).toContain(id)
-    expect((await call('GET', `/recipes/${id}`)).status).toBe(200)
+    const detail = await call('GET', `/recipes/${id}`)
+    expect(detail.status).toBe(200)
+    // D-067: the ficha says where it comes from — only that line, never the
+    // rest of catalog_source (file, batch, audit notes).
+    expect(detail.body.sourceCredit).toBe(CREDIT)
+    expect(detail.body.catalogSource).toBeUndefined()
+    expect(JSON.stringify(detail.body)).not.toContain('tanda-inventada')
+    expect(JSON.stringify(detail.body)).not.toContain('nota_interna')
     expect((await loadMatchableRecipes(USER_ID)).map((r) => r.id)).toContain(id)
     const [w] = await db.select().from(catalogWishes).where(eq(catalogWishes.id, wish!.wishId))
     expect(w).toMatchObject({ status: 'cubierto', recipeId: id })

@@ -719,6 +719,14 @@ function RecipeHeader({
       >
         {recipe.name}
       </h1>
+      {recipe.sourceCredit && (
+        <p
+          className={`font-italic text-ink-muted ${isDesktop ? "text-[21px]" : "text-[18px]"} leading-[1.25]`}
+          data-testid="recipe-credit"
+        >
+          {recipe.sourceCredit}
+        </p>
+      )}
       {isDesktop && metaParts.length > 0 && (
         <div className="mt-1 flex flex-wrap gap-x-[18px] gap-y-1 text-[15px] text-[#4A4239]">
           {metaParts.map((p) => (

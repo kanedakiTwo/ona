@@ -31,6 +31,7 @@ import { auditCatalogRecipe, type CatalogAuditIssue } from './catalogRecipeAudit
 import { dishKey } from './catalogWishes.js'
 import { levenshtein, normalize } from './recipeLint.js'
 import { isCookingMediumNote, isFatName } from './nutrition/cookingMedium.js'
+import type { CatalogSourceInfo } from '../db/schema.js'
 
 export type CatalogOrigin = 'miguel' | 'cocina'
 
@@ -42,6 +43,12 @@ export interface CatalogSourceRef {
   page?: string | null
   /** File the recipe came from, relative to the batch folder. */
   file?: string | null
+  /**
+   * The line the recipe page shows under the title, as it must read (D-067):
+   * «Receta de la Yaya», «Inspirada en una receta de <autor>, «<libro>»».
+   * Without it, `catalogSourceCredit` falls back to the book for Miguel's sources.
+   */
+  credit?: string | null
 }
 
 export interface DraftIngredient {
@@ -323,6 +330,43 @@ export function timesFrom(r: CatalogRewrite, draft: CatalogDraftInput): { prepTi
   return { prepTime: active, cookTime: total - active || null }
 }
 
+// ─── Where the recipe comes from (D-067) ────────────────────────
+
+function cleanText(v: unknown): string | null {
+  if (typeof v !== 'string') return null
+  const s = v.replace(/\s+/g, ' ').trim()
+  return s || null
+}
+
+/**
+ * Pure (D-067): the line the recipe page shows under the title, from
+ * `recipes.catalog_source`. The `credit` as written («Receta de la Yaya»,
+ * «Inspirada en una receta de <autor>, «<libro>»»); without one, a book of
+ * Miguel's (`origin: 'miguel'`) reads «Inspirada en <libro>». Cocina's
+ * recipes (found or written by Cocina) and every other recipe: null.
+ */
+export function catalogSourceCredit(source: { origin?: unknown; book?: unknown; credit?: unknown } | null | undefined): string | null {
+  if (!source || typeof source !== 'object') return null
+  const credit = cleanText(source.credit)
+  if (credit) return credit
+  const book = cleanText(source.book)
+  return book && source.origin === 'miguel' ? `Inspirada en ${book}` : null
+}
+
+/** Pure: what is kept in `recipes.catalog_source` — the reference (never the text), the batch and the audit. */
+export function catalogSourceRecord(src: PersistDraftInput['catalogSource']): CatalogSourceInfo {
+  return {
+    origin: src.origin,
+    book: src.book ?? null,
+    page: src.page ?? null,
+    file: src.file ?? null,
+    credit: cleanText(src.credit),
+    batch: src.batch,
+    auditIssues: src.auditIssues,
+    allergenDoubt: src.allergenDoubt,
+  }
+}
+
 // ─── Orchestration ──────────────────────────────────────────────
 
 export async function importCatalogRecipe(
@@ -427,7 +471,8 @@ export async function importCatalogBatch(drafts: readonly CatalogDraftInput[], b
 /**
  * Cocina's batch file: an array of recipes in the hand-authored shape
  * (`scripts/handAuthoredRecipes.ts`: ingredients by name with `qty`/`unit`,
- * steps as `{ text }` or strings) plus `source` per recipe or for the file.
+ * steps as `{ text }` or strings) plus `source` per recipe or for the file
+ * (the recipe's wins, key by key — `credit` included).
  */
 export function draftsFromCocinaJson(json: unknown, fallback: CatalogSourceRef): CatalogDraftInput[] {
   const root = json as { source?: Partial<CatalogSourceRef>; recipes?: unknown[] } | unknown[]
@@ -455,7 +500,13 @@ export function draftsFromCocinaJson(json: unknown, fallback: CatalogSourceRef):
         section: i.section ?? null,
       })),
       sourceSteps: (r.steps ?? []).map((s: any) => (typeof s === 'string' ? s : String(s?.text ?? ''))).filter(Boolean),
-      source: { origin: src.origin === 'miguel' ? 'miguel' : 'cocina', book: src.book ?? null, page: src.page != null ? String(src.page) : null, file: src.file ?? null },
+      source: {
+        origin: src.origin === 'miguel' ? 'miguel' : 'cocina',
+        book: src.book ?? null,
+        page: src.page != null ? String(src.page) : null,
+        file: src.file ?? null,
+        credit: cleanText(src.credit),
+      },
     }
   })
 }

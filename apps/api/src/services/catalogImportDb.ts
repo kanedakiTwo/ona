@@ -11,7 +11,7 @@ import { matchIngredients } from './recipeExtractor.js'
 import { persistRecipe } from './recipePersistence.js'
 import { markWishesCovered } from './catalogWishes.js'
 import { DRAFT, PUBLISHED } from './recipeVisibility.js'
-import type { BatchRecipe, CatalogImportDeps, CatalogRewrite, CatalogDraftInput, DraftIngredient, MatchedIngredient, PersistDraftInput } from './catalogImport.js'
+import { catalogSourceRecord, type BatchRecipe, type CatalogImportDeps, type CatalogRewrite, type CatalogDraftInput, type DraftIngredient, type MatchedIngredient, type PersistDraftInput } from './catalogImport.js'
 
 type Db = typeof defaultDb
 
@@ -54,15 +54,7 @@ export async function matchDraftIngredients(recipeName: string, ings: DraftIngre
  * for a moment. Reviewer (lint) errors → the empty row is removed.
  */
 export async function persistCatalogDraft(input: PersistDraftInput, db: Db = defaultDb): Promise<{ ok: true; recipeId: string } | { ok: false; errors: string[] }> {
-  const catalogSource: CatalogSourceInfo = {
-    origin: input.catalogSource.origin,
-    book: input.catalogSource.book ?? null,
-    page: input.catalogSource.page ?? null,
-    file: input.catalogSource.file ?? null,
-    batch: input.catalogSource.batch,
-    auditIssues: input.catalogSource.auditIssues,
-    allergenDoubt: input.catalogSource.allergenDoubt,
-  }
+  const catalogSource = catalogSourceRecord(input.catalogSource)
   const [row] = await db
     .insert(recipes)
     .values({ name: input.name, servings: input.servings, authorId: null, status: DRAFT, importBatch: input.catalogSource.batch, catalogSource })

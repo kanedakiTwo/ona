@@ -345,8 +345,9 @@ export const recipes = pgTable('recipes', {
   status: text('status').notNull().default('published'),
   /**
    * Where a batch-imported catalogue recipe comes from (book and page, never
-   * its text), whose source it is (`miguel` | `cocina`), the batch, and the
-   * review state: `{ origin, book?, page?, file?, batch, auditIssues[],
+   * its text), whose source it is (`miguel` | `cocina`), the credit line the
+   * recipe page shows, the batch, and the review state:
+   * `{ origin, book?, page?, file?, credit?, batch, auditIssues[],
    * allergenDoubt, sampled?, reviewedAt? }`. Null for every other recipe.
    */
   catalogSource: jsonb('catalog_source').$type<CatalogSourceInfo>(),
@@ -366,6 +367,12 @@ export interface CatalogSourceInfo {
   book?: string | null
   page?: string | null
   file?: string | null
+  /**
+   * D-067: the line the recipe page shows under the title («Receta de la
+   * Yaya», «Inspirada en una receta de <autor>, «<libro>»»). Only this —
+   * through `catalogSourceCredit` — ever leaves the API; the rest stays inside.
+   */
+  credit?: string | null
   batch: string
   auditIssues: string[]
   allergenDoubt: boolean

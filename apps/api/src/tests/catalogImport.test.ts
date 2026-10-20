@@ -7,6 +7,8 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
+  catalogSourceCredit,
+  catalogSourceRecord,
   copiedPhrases,
   draftsFromCocinaJson,
   findDuplicate,
@@ -318,5 +320,71 @@ describe('frying / confit oil in batch imports (PRO-195)', () => {
     })
     // 600 g berenjena = 150 kcal; 500 ml × 0.92 × 15 % = 69 g oil = 610 kcal → 760 / 4
     expect(agg.perServing.kcal).toBe(190)
+  })
+})
+
+// D-067: the ficha says where a catalogue recipe comes from. Invented names
+// and phrases only — never a real book's text.
+describe('where the recipe comes from (D-067)', () => {
+  const CREDIT = 'Inspirada en una receta de Autora Inventada, «Cuaderno de pruebas»'
+
+  it('catalogSourceCredit: the credit as written; else Miguel\'s book; Cocina\'s and the rest, nothing', () => {
+    expect(catalogSourceCredit({ origin: 'miguel', book: 'Cuaderno azul', credit: 'Receta de la tía Prueba' })).toBe('Receta de la tía Prueba')
+    expect(catalogSourceCredit({ origin: 'cocina', book: 'Recogidas en la red', credit: `  ${CREDIT}  ` })).toBe(CREDIT)
+    expect(catalogSourceCredit({ origin: 'miguel', book: 'Cuaderno azul' })).toBe('Inspirada en Cuaderno azul')
+    expect(catalogSourceCredit({ origin: 'miguel', book: 'Cuaderno azul', credit: '   ' })).toBe('Inspirada en Cuaderno azul')
+    expect(catalogSourceCredit({ origin: 'miguel', book: 'Cuaderno azul', credit: null })).toBe('Inspirada en Cuaderno azul')
+    expect(catalogSourceCredit({ origin: 'cocina', book: 'Recogidas en la red' })).toBeNull()
+    expect(catalogSourceCredit({ origin: 'miguel', book: '  ' })).toBeNull()
+    expect(catalogSourceCredit({ origin: 'miguel' })).toBeNull()
+    expect(catalogSourceCredit({ origin: 'miguel', book: 42, credit: 7 })).toBeNull()
+    expect(catalogSourceCredit(null)).toBeNull()
+    expect(catalogSourceCredit(undefined)).toBeNull()
+  })
+
+  it('draftsFromCocinaJson keeps the credit: the file\'s, the recipe\'s when it has one', () => {
+    const drafts = draftsFromCocinaJson(
+      {
+        source: { origin: 'miguel', book: 'Cuaderno de pruebas', credit: CREDIT },
+        recipes: [
+          { name: 'Sopa de ajo inventada', ingredients: [{ name: 'ajo', qty: 4, unit: 'u' }], steps: ['Paso inventado.'] },
+          { name: 'Tortilla de la tía Prueba', source: { credit: ' Receta de la tía Prueba ', page: 3 }, ingredients: [{ name: 'huevo', qty: 4, unit: 'u' }], steps: ['Paso inventado.'] },
+          { name: 'Caldo sin crédito', source: { credit: '' }, ingredients: [{ name: 'agua', qty: 1, unit: 'l' }], steps: ['Paso inventado.'] },
+        ],
+      },
+      { origin: 'cocina', credit: 'Crédito de la línea de comandos' },
+    )
+    expect(drafts[0].source).toMatchObject({ origin: 'miguel', book: 'Cuaderno de pruebas', credit: CREDIT })
+    expect(drafts[1].source).toMatchObject({ origin: 'miguel', book: 'Cuaderno de pruebas', page: '3', credit: 'Receta de la tía Prueba' })
+    expect(drafts[2].source.credit).toBeNull()
+    // No `source.credit` anywhere in the file → the command's --credit.
+    const [plain] = draftsFromCocinaJson([{ name: 'Puré inventado', ingredients: [{ name: 'patata', qty: 500, unit: 'g' }] }], { origin: 'miguel', credit: 'Receta de la Yaya inventada' })
+    expect(plain.source.credit).toBe('Receta de la Yaya inventada')
+  })
+
+  it('the credit reaches recipes.catalog_source, with the book and page and no text of the source', async () => {
+    const { deps, saved } = fakeDeps()
+    const page = { ...PAGES[0], source: { ...PAGES[0].source, credit: 'Receta de la tía Prueba' } }
+    const [out] = await importCatalogBatch([page], 'tia-01', deps)
+    expect(out.status).toBe('draft')
+    expect(saved[0].catalogSource).toMatchObject({ origin: 'miguel', book: 'Cuaderno azul', page: '12', credit: 'Receta de la tía Prueba', batch: 'tia-01' })
+
+    // What persistCatalogDraft writes to the column.
+    const row = catalogSourceRecord(saved[0].catalogSource)
+    expect(row).toEqual({
+      origin: 'miguel',
+      book: 'Cuaderno azul',
+      page: '12',
+      file: null,
+      credit: 'Receta de la tía Prueba',
+      batch: 'tia-01',
+      auditIssues: [],
+      allergenDoubt: false,
+    })
+    expect(catalogSourceCredit(row)).toBe('Receta de la tía Prueba')
+    // A draft without credit stores null, and Miguel's book stands in.
+    const bare = catalogSourceRecord({ ...saved[0].catalogSource, credit: undefined })
+    expect(bare.credit).toBeNull()
+    expect(catalogSourceCredit(bare)).toBe('Inspirada en Cuaderno azul')
   })
 })

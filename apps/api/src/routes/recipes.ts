@@ -25,6 +25,7 @@ import {
   userFavorites,
   users,
   recipeNotes,
+  type CatalogSourceInfo,
 } from '../db/schema.js'
 import { env } from '../config/env.js'
 import {
@@ -93,6 +94,7 @@ import { isCoeliacHousehold, recipeDietNotices } from '../services/glutenFreeCha
 import { effectiveAllergens } from '../services/nutrition/allergens.js'
 import { canViewRecipe, isHiddenDraft, PUBLISHED } from '../services/recipeVisibility.js'
 import { requestCatalogPhotos } from '../services/catalogImageOnDemand.js'
+import { catalogSourceCredit } from '../services/catalogImport.js'
 import { z } from 'zod'
 import { requireSpendCapacity } from '../middleware/spendCap.js'
 import { requireRecipeId } from '../middleware/recipeId.js'
@@ -177,6 +179,8 @@ interface RecipeRow {
   internalTags: string[] | null
   sourceUrl: string | null
   sourceType: string | null
+  /** PRO-154 batch-import source (book, page, batch, audit…). Internal: only its credit line goes out. */
+  catalogSource?: CatalogSourceInfo | null
   createdAt: Date | null
   updatedAt: Date | null
 }
@@ -337,6 +341,10 @@ function toDetailRecipe(
   if (row.totalTime != null) detail.totalTime = row.totalTime
   if (row.sourceUrl != null) detail.sourceUrl = row.sourceUrl
   if (row.sourceType != null) detail.sourceType = row.sourceType as SourceType
+  // D-067: where a catalogue recipe comes from («Receta de la Yaya»,
+  // «Inspirada en…»). Only this line — never the rest of catalog_source
+  // (file, batch, audit notes).
+  detail.sourceCredit = catalogSourceCredit(row.catalogSource)
   if (row.advancePrep?.length) detail.advancePrep = row.advancePrep
   // notes/tips/substitutions/storage are intentionally NOT exposed on the
   // public detail payload — see spec "Tag Visibility" / "Display Constraints".

@@ -204,8 +204,8 @@ const NOT_PASTA_PHRASES = ['pasta de tomate', 'pasta de curry', 'pasta de sesamo
 const GLUTEN_FREE_BASES = ['arroz', 'maiz', 'garbanzo', 'almendra', 'trigo sarraceno', 'mandioca']
 
 const SOY_SAUCE_KEYWORDS = ['salsa de soja', 'tamari', 'shoyu']
-/** Usually made or thickened with wheat: oyster sauce, Shaoxing wine. */
-const USUALLY_WHEAT_KEYWORDS = ['salsa de ostras', 'shaoxing']
+/** Usually made or thickened with wheat: oyster sauce, Shaoxing wine, teriyaki and hoisin (soy-based too). */
+const USUALLY_WHEAT_KEYWORDS = ['salsa de ostras', 'shaoxing', 'teriyaki', 'hoisin']
 
 function hasGluten(n: string): boolean {
   if (n.includes('sin gluten')) return false
@@ -273,6 +273,8 @@ const SOY_KEYWORDS = [
   'edamame',
   'tamari',
   'miso',
+  'teriyaki',
+  'hoisin',
 ]
 
 const FISH_KEYWORDS = [

@@ -350,6 +350,8 @@ describe('Tandas libros-01 y yaya-01 (2026-10-21) — ingredientes nuevos que sa
     expect(inferAllergenTagsFromName('vino shaoxing')).toEqual(['gluten', 'sulfitos'])
     expect(inferAllergenTagsFromName('salsa de ostras')).toEqual(['gluten', 'marisco', 'moluscos'])
     expect(inferAllergenTagsFromName('shichimi togarashi')).toEqual(['sesamo'])
+    expect(inferAllergenTagsFromName('salsa teriyaki')).toEqual(['gluten', 'soja'])
+    expect(inferAllergenTagsFromName('salsa hoisin')).toEqual(['gluten', 'soja'])
   })
 
   it('no confunde la carne de buey ni otras palabras', () => {

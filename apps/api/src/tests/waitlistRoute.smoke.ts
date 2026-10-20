@@ -84,6 +84,9 @@ describe.skipIf(!reachable)('waitlist route smoke', () => {
     expect(r.body.suggestedNextBatch.ids).toBeUndefined()
     expect(r.body.suggestedNextBatch.counts.waiting).toBeGreaterThanOrEqual(1)
     expect(r.body.sources.byUtm.find((u: any) => u.utmSource === 'otro')?.count).toBeGreaterThanOrEqual(1)
+    // The smoke's own `?ref=` label is not in the closed list: it is counted as «otro».
+    expect(r.body.sources.bySource.find((s: any) => s.source === 'smoke')).toBeUndefined()
+    expect(r.body.sources.bySource.find((s: any) => s.source === 'otro')?.count).toBeGreaterThanOrEqual(2)
     const text = JSON.stringify(r.body)
     for (const leak of [ownerEmail, owner.code, id]) expect(text).not.toContain(leak)
 

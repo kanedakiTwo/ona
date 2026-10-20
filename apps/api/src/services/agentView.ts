@@ -1,73 +1,86 @@
 /**
  * What the read-only metrics token (`x-metrics-token`) sees of the routes that hold text written
- * by or about users: counts, categories, severity and route words from a fixed vocabulary — never
+ * by or about users: counts, categories, severity and routes in the shape of real templates — never
  * that text, never user ids, referral codes or tokens (specs/metrics.md, constraints). Some of these
  * strings come from anyone (POST /client-errors is public, the feedback page and the utm values are
  * set by the client), so every string that reaches the token is checked against a closed list.
  * The admin JWT keeps the full view. Pure, unit-tested in tests/agentView.test.ts.
  */
+import {
+  FOUNDER_DECLINE_REASONS,
+  FOUNDER_PLAN_IDS,
+  PRICE_QUESTIONS,
+  WAITLIST_CURRENT_METHODS,
+  WAITLIST_HOUSEHOLD_SIZES,
+  WAITLIST_PLANNER_ROLES,
+  WAITLIST_PLATFORMS,
+  WAITLIST_STATUSES,
+} from '@ona/shared'
 import type { HouseholdComparison } from './blindComparison.js'
 import { madridParts } from './madridTime.js'
+import { API_ROUTE_TEMPLATES, WEB_PAGE_TEMPLATES } from './routeTemplates.js'
 
 // ─── Routes and pages ────────────────────────────────────────────
 
-/**
- * Every static word of a real route: the Express path literals in apps/api/src and the page
- * folders in apps/web/src/app. tests/agentView.test.ts recomputes it from the code and fails when
- * they differ, so a new route means adding its words here.
- */
-export const ROUTE_WORDS: ReadonlySet<string> = new Set([
-  'a-ciegas', 'accept', 'admin', 'advisor', 'afina', 'afinar', 'app-opened', 'approve', 'ask',
-  'assistant', 'assistant-reviews', 'audit-log', 'auth', 'auto-create', 'aviso-legal', 'avisos',
-  'baja', 'ban', 'billing', 'blog', 'c', 'cancel', 'carrefour-click', 'casa', 'catalog-wishes',
-  'chat', 'check', 'checkout', 'click', 'client-errors', 'close', 'cole', 'como-funciona',
-  'comparison', 'compra', 'conectar', 'config', 'cook', 'cook-logs', 'cook-mode-started',
-  'cook-today', 'cookbooks', 'copy', 'creencias', 'curator', 'custom-tags', 'day', 'debug-advisor',
-  'dish', 'dismiss', 'edit', 'edits', 'email-sink', 'entrar', 'errors', 'estimate-nutrition',
-  'extension-gaps', 'extension-result', 'extension-undo', 'extract-from-image', 'extract-from-url',
-  'family-offer', 'favorite', 'feedback', 'first-steps', 'flags', 'forgot', 'gaps', 'generate',
-  'have', 'health', 'health-consent', 'history', 'households', 'i', 'images', 'imprimir',
-  'ingredient-gaps', 'ingredients', 'invite', 'invite-campaigns', 'invite-shared', 'invites', 'item',
-  'items', 'leave', 'leftover', 'link', 'link-code', 'lista', 'lock', 'login', 'match-pantry', 'me',
-  'meal', 'members', 'memoria', 'memory', 'menu', 'menu-planner', 'metrics', 'move-slot', 'n', 'new',
-  'newsletter', 'next', 'next-batch', 'notes', 'notices', 'notifications', 'nudge', 'offers',
-  'offline', 'onboarding', 'onboarding-draft', 'pantry', 'photos', 'portal', 'precios', 'prefs',
-  'prepare', 'price-survey', 'pricing', 'privacidad', 'profile', 'public', 'public-key', 'push',
-  'quote', 'random', 'read', 'recipe', 'recipe-gaps', 'recipes', 'recipes-curator', 'recuperar',
-  'referrals', 'regen-output', 'regenerate', 'regenerate-image', 'register', 'remap', 'remove',
-  'reservation', 'reset', 'reset-password-token', 'resolve', 'revoke', 'run', 'school-menu',
-  'sections', 'seen', 'send', 'sent', 'sessions', 'settings', 'shared', 'shop-extension',
-  'shop-orders', 'shopping', 'shopping-list', 'shops', 'skip', 'staples', 'stats', 'status', 'stock',
-  'stt', 'subscribe', 'suggest', 'summary', 'suscripcion', 'suspend', 'taper', 'taste', 'terminos',
-  'test', 'tiendas', 'totals', 'tts', 'units', 'unsubscribe', 'unsuspend', 'upload-image', 'usage',
-  'use-as-recipe-image', 'user', 'users', 'verdicts', 'voice-transcripts', 'voices', 'voz',
-  'waitlist', 'webhook', 'whatsapp', 'with-what-i-have'
-])
-
 const METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])
-const MAX_SEGMENTS = 12
+const toSegments = (t: string) => t.split('/').filter(Boolean)
+const API_TEMPLATES = API_ROUTE_TEMPLATES.map(toSegments)
+const WEB_TEMPLATES = WEB_PAGE_TEMPLATES.map(toSegments)
+const ALL_TEMPLATES = [...API_TEMPLATES, ...WEB_TEMPLATES]
+/** The longest real template: a longer path cannot match any. */
+const MAX_SEGMENTS = Math.max(...ALL_TEMPLATES.map((t) => t.length))
 
-/**
- * A route (`GET /menu/:userId`) or page (`/recipes/<id>?x=1`) with every segment that isn't a
- * route word as `:x` (ids, codes, tokens, anything typed by someone), lowercased, without the
- * query. Anything that isn't a path becomes 'otra'.
- */
-export function normalisePath(raw: unknown): string | null {
+/** The template with this shape and the most fixed words in common, or null. */
+function matchTemplate(segments: readonly string[], templates: ReadonlyArray<readonly string[]>): string | null {
+  let best: readonly string[] | null = null
+  let bestScore = -1
+  for (const t of templates) {
+    if (t.length !== segments.length) continue
+    let score = 0
+    let ok = true
+    for (let i = 0; i < t.length && ok; i++) {
+      if (t[i] === ':x') continue
+      if (t[i] === segments[i]) score++
+      else ok = false
+    }
+    if (ok && score > bestScore) {
+      best = t
+      bestScore = score
+    }
+  }
+  return best ? `/${best.join('/')}` : null
+}
+
+function normaliseAgainst(raw: unknown, templates: ReadonlyArray<readonly string[]>, allowMethod: boolean): string | null {
   if (typeof raw !== 'string' || !raw.trim()) return null
   let path = raw.trim()
   let method = ''
   const m = /^([A-Za-z]+) (.*)$/.exec(path)
   if (m) {
-    if (!METHODS.has(m[1].toUpperCase())) return 'otra'
+    if (!allowMethod || !METHODS.has(m[1].toUpperCase())) return 'otra'
     method = `${m[1].toUpperCase()} `
     path = m[2]
   }
   path = path.split(/[?#]/)[0]
   if (!path.startsWith('/')) return 'otra'
-  const segments = path.split('/').filter(Boolean)
-  const kept = segments.slice(0, MAX_SEGMENTS).map((s) => (ROUTE_WORDS.has(s.toLowerCase()) ? s.toLowerCase() : ':x'))
-  return `${method}/${kept.join('/')}${segments.length > MAX_SEGMENTS ? '/…' : ''}`
+  const segments = toSegments(path.toLowerCase())
+  if (segments.length > MAX_SEGMENTS) return 'otra'
+  const template = matchTemplate(segments, templates)
+  return template ? `${method}${template}` : 'otra'
 }
+
+/**
+ * An API route (`GET /menu/:userId/:weekId`, `/memory/<key>`) in the shape of a real Express
+ * template (services/routeTemplates.ts), lowercased, every parameter as `:x`, no query; anything
+ * that matches no template is 'otra'.
+ */
+export const normaliseApiRoute = (raw: unknown): string | null => normaliseAgainst(raw, API_TEMPLATES, true)
+
+/** A page of the web (`/recipes/<id>?x=1`) in the shape of a real page template; else 'otra'. */
+export const normalisePage = (raw: unknown): string | null => normaliseAgainst(raw, WEB_TEMPLATES, false)
+
+/** Either: for a path whose origin is unknown. */
+export const normalisePath = (raw: unknown): string | null => normaliseAgainst(raw, ALL_TEMPLATES, true)
 
 // ─── Errors ──────────────────────────────────────────────────────
 
@@ -113,14 +126,15 @@ const API_PROBLEM = /^API ([A-Za-z]+) (\/\S*?)(?: → HTTP (<n>|\d{3})|(: sin re
 function apiProblemType(text: string): string | null {
   const m = API_PROBLEM.exec(text)
   if (!m || !METHODS.has(m[1].toUpperCase())) return null
-  const head = `API ${m[1].toUpperCase()} ${normalisePath(m[2])}`
+  const head = `API ${m[1].toUpperCase()} ${normaliseApiRoute(m[2])}`
   if (m[3]) return `${head} → HTTP ${m[3]}`
   return m[4] ? `${head}: sin respuesta (red)` : `${head}: más de <n> s sin respuesta`
 }
 
 /**
  * What kind of error, never what it said: a known class ('TypeError', 'ZodError'…), the web's
- * report of a failed API call rebuilt from closed parts ('API GET /menu/:x/:x → HTTP <n>'),
+ * report of a failed API call rebuilt from closed parts ('API GET /menu/:x/:x → HTTP <n>', or
+ * 'API GET otra → …' when the route matches no template),
  * 'Error' for any other class and 'other' when the message names none.
  */
 export function errorType(message: unknown): string {
@@ -172,7 +186,8 @@ export function errorsForAgents(report: object) {
         id: typeof g.id === 'string' && /^[0-9A-Za-z-]{1,64}$/.test(g.id) ? g.id : null,
         kind: oneOf(g.kind, ['client', 'server'] as const),
         type: errorType(g.message),
-        path: normalisePath(g.path),
+        // Client groups carry the page; server groups, `METHOD /route`.
+        path: g.kind === 'server' ? normaliseApiRoute(g.path) : g.kind === 'client' ? normalisePage(g.path) : normalisePath(g.path),
         release: releaseForAgents(g.kind, g.release),
         userAgentFamily: typeof g.userAgentFamily === 'string' && UA_FAMILY.test(g.userAgentFamily) ? g.userAgentFamily : null,
         count: num(g.count),
@@ -223,7 +238,7 @@ export function feedbackForAgents(days: number, rows: ReadonlyArray<FeedbackLike
   for (const r of rows) {
     const channel = oneOf(r.channel, FEEDBACK_CHANNELS) ?? 'otro'
     byChannel[channel] = (byChannel[channel] ?? 0) + 1
-    const page = normalisePath(r.page) ?? 'none'
+    const page = normalisePage(r.page) ?? 'none'
     byPage[page] = (byPage[page] ?? 0) + 1
     if (possibleAllergy(r.text)) possibleAllergies.push({ date: madridParts(r.createdAt).isoDate, channel })
   }
@@ -311,44 +326,131 @@ export function utmSourceForAgents(raw: unknown): string {
   return UTM_SOURCES[s] ?? 'otro'
 }
 
-function utmCounts(rows: unknown): Array<{ utmSource: string; count: number }> {
+/**
+ * `?ref=` labels the token may name: every label the code puts in a link (links, `openRef`, the
+ * share footers; tests/agentView.test.ts collects them and fails if one is missing) plus the two
+ * fallbacks. `POST /waitlist` is public, so any other label — campaign links included — is 'otro'
+ * until it is added here.
+ */
+export const KNOWN_REF_SOURCES: ReadonlySet<string> = new Set([
+  'directo', 'invita',
+  'articulo-refugio', 'blog', 'circulo-miguel', 'como-funciona', 'e2e', 'lista', 'menu', 'precios', 'receta', 'recetas',
+])
+
+export function refSourceForAgents(raw: unknown): string {
+  return typeof raw === 'string' && KNOWN_REF_SOURCES.has(raw) ? raw : 'otro'
+}
+
+/** Rows `{ <key>, count }` re-counted under a closed label. */
+function recount(rows: unknown, key: string, label: (raw: unknown) => string): Array<Record<string, string | number>> {
   const by = new Map<string, number>()
   for (const raw of Array.isArray(rows) ? rows : []) {
     const r = asLoose(raw)
-    const k = utmSourceForAgents(r.utmSource)
+    const k = label(r[key])
     by.set(k, (by.get(k) ?? 0) + (num(r.count) ?? 0))
   }
   return [...by.entries()]
-    .map(([utmSource, count]) => ({ utmSource, count }))
-    .sort((a, b) => b.count - a.count || a.utmSource.localeCompare(b.utmSource))
+    .map(([k, count]) => ({ [key]: k, count }))
+    .sort((a, b) => (b.count as number) - (a.count as number) || String(a[key]).localeCompare(String(b[key])))
+}
+
+const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : [])
+/** Only the listed keys that hold strings (the server's own definitions). */
+function pickStrings(o: unknown, keys: readonly string[]): Record<string, string> {
+  const src = asLoose(o)
+  const out: Record<string, string> = {}
+  for (const k of keys) if (typeof src[k] === 'string') out[k] = src[k] as string
+  return out
+}
+
+const WAITLIST_TOTALS = ['entries', 'active', 'last7Days', 'wantsWhatsapp', 'newsletterOptIns', 'inTargetSegment', 'referredSignups'] as const
+const BATCH_COUNTS = ['waiting', 'waitingInTarget', 'selected', 'selectedInTarget', 'selectedReferrers', 'pulledInByReferrer'] as const
+const WAITLIST_DEFINITION_KEYS = ['active', 'last7Days', 'byDay', 'segments', 'targetSegment', 'referredSignups', 'newsletterOptIns', 'suggestedNextBatch'] as const
+
+function pricingForAgents(raw: unknown) {
+  const p = asLoose(raw)
+  const questions = asLoose(p.questions)
+  const reservations = asLoose(p.reservations)
+  const none = asLoose(p.none)
+  return {
+    answeredPriceQuestions: num(p.answeredPriceQuestions),
+    questions: Object.fromEntries(
+      PRICE_QUESTIONS.filter((q) => questions[q.key] != null).map((q) => {
+        const d = asLoose(questions[q.key])
+        return [
+          q.key,
+          {
+            text: q.text,
+            answers: num(d.answers),
+            min: num(d.min),
+            p25: num(d.p25),
+            median: num(d.median),
+            p75: num(d.p75),
+            max: num(d.max),
+            histogram: arr(d.histogram).map((h) => ({ eur: num(asLoose(h).eur), count: num(asLoose(h).count) })),
+          },
+        ]
+      }),
+    ),
+    reservations: { total: num(reservations.total), byPlan: pickNumbers(reservations.byPlan, FOUNDER_PLAN_IDS) },
+    none: { total: num(none.total), byReason: pickNumbers(none.byReason, FOUNDER_DECLINE_REASONS) },
+    definitions: pickStrings(p.definitions, ['questions', 'reservations', 'none']),
+  }
 }
 
 /**
- * GET /admin/waitlist for the token: everything the report counts, with the utm values as counts
- * by channel (they are free text), and without referral codes or entry ids (they point at people).
+ * GET /admin/waitlist for the token: what the report counts, every object an explicit list of
+ * fields with values from their enums; the `?ref=` labels and the utm values (set by whoever signs
+ * up) as counts under closed lists; no referral codes or entry ids (they point at people).
  */
 export function waitlistForAgents(report: object) {
   const r = asLoose(report)
-  const sources = r.sources == null ? undefined : asLoose(r.sources)
-  const referrals = r.referrals == null ? undefined : asLoose(r.referrals)
-  const batch = r.suggestedNextBatch == null ? undefined : asLoose(r.suggestedNextBatch)
+  const present = (k: string) => r[k] != null
+  const segments = asLoose(r.segments)
+  const sources = asLoose(r.sources)
+  const referrals = asLoose(r.referrals)
+  const batch = asLoose(r.suggestedNextBatch)
   return {
-    generatedAt: r.generatedAt,
-    timezone: r.timezone,
-    totals: r.totals,
-    status: r.status,
-    byDay: r.byDay,
-    segments: r.segments,
-    sources: sources && { bySource: sources.bySource, byUtm: utmCounts(sources.byUtm) },
-    referrals: referrals && {
-      referredSignups: num(referrals.referredSignups) ?? undefined,
-      referrers: num(referrals.referrers) ?? undefined,
-      topReferrers: (Array.isArray(referrals.topReferrers) ? referrals.topReferrers : []).map((t) => ({ count: num(asLoose(t).count) })),
-    },
-    batches: r.batches,
-    suggestedNextBatch: batch && { size: num(batch.size) ?? undefined, counts: batch.counts },
-    pricing: r.pricing,
-    definitions: r.definitions,
+    generatedAt: str(r.generatedAt) ?? undefined,
+    timezone: str(r.timezone) ?? undefined,
+    totals: present('totals') ? pickNumbers(r.totals, WAITLIST_TOTALS) : undefined,
+    status: present('status') ? pickNumbers(r.status, WAITLIST_STATUSES) : undefined,
+    byDay: present('byDay') ? arr(r.byDay).map((d) => ({ day: isoDay(asLoose(d).day), signups: num(asLoose(d).signups) })) : undefined,
+    segments: present('segments')
+      ? {
+          householdSize: pickNumbers(segments.householdSize, WAITLIST_HOUSEHOLD_SIZES),
+          plannerRole: pickNumbers(segments.plannerRole, WAITLIST_PLANNER_ROLES),
+          currentMethod: pickNumbers(segments.currentMethod, WAITLIST_CURRENT_METHODS),
+          platform: pickNumbers(segments.platform, WAITLIST_PLATFORMS),
+          cross: arr(segments.cross).map((raw) => {
+            const c = asLoose(raw)
+            return {
+              householdSize: oneOf(c.householdSize, WAITLIST_HOUSEHOLD_SIZES),
+              plannerRole: oneOf(c.plannerRole, WAITLIST_PLANNER_ROLES),
+              currentMethod: oneOf(c.currentMethod, WAITLIST_CURRENT_METHODS),
+              count: num(c.count),
+              target: c.target === true,
+            }
+          }),
+        }
+      : undefined,
+    sources: present('sources') ? { bySource: recount(sources.bySource, 'source', refSourceForAgents), byUtm: recount(sources.byUtm, 'utmSource', utmSourceForAgents) } : undefined,
+    referrals: present('referrals')
+      ? {
+          referredSignups: num(referrals.referredSignups) ?? undefined,
+          referrers: num(referrals.referrers) ?? undefined,
+          topReferrers: arr(referrals.topReferrers).map((t) => ({ count: num(asLoose(t).count) })),
+        }
+      : undefined,
+    batches: present('batches')
+      ? arr(r.batches).map((raw) => {
+          const b = asLoose(raw)
+          return { batch: num(b.batch), size: num(b.size), joined: num(b.joined), unsubscribed: num(b.unsubscribed) }
+        })
+      : undefined,
+    suggestedNextBatch: present('suggestedNextBatch') ? { size: num(batch.size) ?? undefined, counts: pickNumbers(batch.counts, BATCH_COUNTS) } : undefined,
+    pricing: present('pricing') ? pricingForAgents(r.pricing) : undefined,
+    definitions: present('definitions') ? pickStrings(r.definitions, WAITLIST_DEFINITION_KEYS) : undefined,
   }
 }
 

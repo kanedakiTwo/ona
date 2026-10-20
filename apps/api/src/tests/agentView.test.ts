@@ -1,6 +1,6 @@
 /**
  * What the read token sees (specs/metrics.md, constraints): counts, categories,
- * severity and route words from a fixed vocabulary — never text written by or
+ * severity and routes in the shape of real templates — never text written by or
  * about a user, never user ids, codes or tokens. Anyone can write an error
  * report (POST /client-errors is public), so every string that reaches the
  * token comes from a closed list.
@@ -13,89 +13,118 @@ import { buildApiProblemMessage } from '@ona/shared'
 import {
   FLAG_CATEGORY_LIST,
   KNOWN_ERROR_CLASSES,
+  KNOWN_REF_SOURCES,
   REVIEWER_CATEGORY_LIST,
   REVIEWER_SEVERITY_LIST,
-  ROUTE_WORDS,
   comparisonForAgents,
   errorType,
   errorsForAgents,
   feedbackForAgents,
   flagsForAgents,
+  normaliseApiRoute,
+  normalisePage,
   normalisePath,
   possibleAllergy,
+  refSourceForAgents,
   releaseForAgents,
   utmSourceForAgents,
   waitlistForAgents,
 } from '../services/agentView.js'
+import { API_ROUTE_TEMPLATES, WEB_PAGE_TEMPLATES } from '../services/routeTemplates.js'
 import { buildAppErrorRow, normalizeMessage } from '../services/appErrors.js'
 import { FLAG_CATEGORIES } from '../services/assistantFlags.js'
+import { WAITLIST_DEFINITIONS, buildWaitlistReport } from '../services/waitlist.js'
 import { REVIEW_SCHEMA } from '../services/whatsapp/reviewer.js'
+import { normalizeSource, waitlistSignupSchema } from '@ona/shared'
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '../../../..')
 
-/** Static route words: every Express path literal in apps/api/src and every page folder in apps/web/src/app. */
-function collectRouteWords(): string[] {
-  const words = new Set<string>()
-  const add = (path: string) => {
-    for (const seg of path.split('/')) {
-      const w = seg.toLowerCase()
-      if (/^[a-z0-9][a-z0-9_.-]*$/.test(w)) words.add(w)
-    }
+const walk = (dir: string, f: (path: string, isDir: boolean, name: string) => void) => {
+  for (const name of readdirSync(dir)) {
+    if (name === 'node_modules') continue
+    const p = join(dir, name)
+    const isDir = statSync(p).isDirectory()
+    f(p, isDir, name)
+    if (isDir) walk(p, f)
   }
-  const walk = (dir: string, f: (path: string, isDir: boolean, name: string) => void) => {
-    for (const name of readdirSync(dir)) {
-      const p = join(dir, name)
-      const isDir = statSync(p).isDirectory()
-      f(p, isDir, name)
-      if (isDir) walk(p, f)
-    }
-  }
-  const api = join(REPO, 'apps/api/src')
-  const route = /\.(?:get|post|put|patch|delete|all|use)\(\s*(['"`])(\/[^'"`]*)\1/g
-  walk(api, (p, isDir) => {
+}
+
+/** Route templates from the code: Express path literals in apps/api/src, page folders in apps/web/src/app. */
+function collectTemplates(): { api: string[]; web: string[] } {
+  const tpl = (segs: string[]) => '/' + segs.map((s) => (s.startsWith(':') ? ':x' : s.toLowerCase())).join('/')
+  const api = new Set<string>()
+  const route = /\.(?:get|post|put|patch|delete|all)\(\s*(['"`])(\/[^'"`]*)\1/g
+  walk(join(REPO, 'apps/api/src'), (p, isDir) => {
     if (isDir || !p.endsWith('.ts') || p.includes('/tests/')) return
-    for (const m of readFileSync(p, 'utf8').matchAll(route)) if (!m[2].includes('${')) add(m[2])
+    for (const m of readFileSync(p, 'utf8').matchAll(route)) {
+      if (m[2].includes('${')) continue
+      api.add(tpl(m[2].split('/').filter(Boolean)))
+    }
   })
-  const web = join(REPO, 'apps/web/src/app')
-  walk(web, (p, isDir, name) => {
-    if (!isDir) return
-    // Private folders (`_x`) are not routes; groups `(x)`, dynamic `[x]` and slots `@x` are not words.
-    if (p.slice(web.length).split('/').some((s) => s.startsWith('_'))) return
-    if (/^[([@]/.test(name)) return
-    add(name)
+  const web = new Set<string>()
+  const app = join(REPO, 'apps/web/src/app')
+  if (readdirSync(app).some((f) => /^page\.tsx?$/.test(f))) web.add('/')
+  walk(app, (p, isDir) => {
+    if (!isDir || !readdirSync(p).some((f) => /^(page|route)\.(tsx?|jsx?)$/.test(f))) return
+    const segs = p.slice(app.length).split('/').filter(Boolean)
+    // Private folders (`_x`) are not routes; groups `(x)` and slots `@x` add no segment; `[x]` is a parameter.
+    if (segs.some((s) => s.startsWith('_'))) return
+    web.add(tpl(segs.filter((s) => !/^\(.*\)$/.test(s) && !s.startsWith('@')).map((s) => (/^\[.*\]$/.test(s) ? ':x' : s))))
   })
-  return [...words].sort()
+  return { api: [...api].sort(), web: [...web].sort() }
+}
+
+/** `?ref=` labels in the code: links, `openRef` props and the share footers. */
+function collectRefSources(): string[] {
+  const out = new Set<string>()
+  const patterns = [/[?&]ref=([a-z0-9_-]{1,32})(?![a-z0-9_-])/g, /openRef="([a-z0-9_-]{1,32})"/g, /(?<!function )withOnaFooter\([\s\S]*?'([a-z0-9_-]{1,32})',?\s*\)/g]
+  for (const dir of ['apps/web/src', 'apps/web/content', 'apps/web/e2e', 'packages/shared/src', 'apps/api/src']) {
+    walk(join(REPO, dir), (p, isDir) => {
+      if (isDir || !/\.(tsx?|mdx?)$/.test(p) || p.includes('/apps/api/src/tests/')) return
+      const text = readFileSync(p, 'utf8')
+      for (const re of patterns) for (const m of text.matchAll(re)) out.add(m[1])
+    })
+  }
+  return [...out].sort()
 }
 
 const LEAK = /ana|garc[ií]a|celiac|lucas|calle|mayor|pozuelo|ignora|token|instruc|612|hijo/i
 
-describe('route vocabulary', () => {
-  it('is exactly the static words of the real routes (Express + web pages): add new ones to ROUTE_WORDS', () => {
-    expect([...ROUTE_WORDS].sort()).toEqual(collectRouteWords())
+describe('route templates', () => {
+  it('are exactly the real ones (Express + web pages): add a new route to services/routeTemplates.ts', () => {
+    const real = collectTemplates()
+    expect([...API_ROUTE_TEMPLATES]).toEqual(real.api)
+    expect([...WEB_PAGE_TEMPLATES]).toEqual(real.web)
   })
 
-  it('codes and tokens in the path never survive', () => {
-    expect(normalisePath('/lista/k3mzabqr')).toBe('/lista/:x')
-    expect(normalisePath('/LISTA/AnaGarcia')).toBe('/lista/:x')
-    expect(normalisePath('/i/ab12cd34')).toBe('/i/:x')
-    expect(normalisePath('/invites/0123456789abcdef0123')).toBe('/invites/:x')
-    expect(normalisePath('/entrar/AbCdEfGhIjKlMnOpQrStUvWx12')).toBe('/entrar/:x')
-    expect(normalisePath('/c/AbCdEf12')).toBe('/c/:x')
+  it('codes and tokens in a page never survive', () => {
+    expect(normalisePage('/lista/k3mzabqr')).toBe('/lista/:x')
+    expect(normalisePage('/LISTA/AnaGarcia')).toBe('/lista/:x')
+    expect(normalisePage('/i/ab12cd34')).toBe('/i/:x')
+    expect(normalisePage('/invites/0123456789abcdef0123')).toBe('/invites/:x')
+    expect(normalisePage('/entrar/AbCdEfGhIjKlMnOpQrStUvWx12')).toBe('/entrar/:x')
+    expect(normalisePage('/c/AbCdEf12')).toBe('/c/:x')
   })
 })
 
-describe('normalisePath', () => {
-  it('keeps route words (lowercased), turns everything else into :x and drops the query', () => {
-    expect(normalisePath('/recipes/3F2A9C1E-1234-4ABC-9DEF-0123456789AB?ref=x')).toBe('/recipes/:x')
-    expect(normalisePath('/recipes?q=ana@example.com')).toBe('/recipes')
-    expect(normalisePath('GET /menu/:userId/:weekId')).toBe('GET /menu/:x/:x')
-    expect(normalisePath('get /Shopping-List')).toBe('GET /shopping-list')
-    expect(normalisePath('/hola-soy-ana-garcia/mi-hijo-lucas-es-celiaco')).toBe('/:x/:x')
-    expect(normalisePath('/menu/')).toBe('/menu')
-    expect(normalisePath('/')).toBe('/')
-    expect(normalisePath('<script>')).toBe('otra')
-    expect(normalisePath('PURGE /menu')).toBe('otra')
-    expect(normalisePath(null)).toBeNull()
+describe('normalisePage / normaliseApiRoute', () => {
+  it('only the shape of a real template, parameters as :x; anything else is otra', () => {
+    expect(normalisePage('/recipes/3F2A9C1E-1234-4ABC-9DEF-0123456789AB?ref=x')).toBe('/recipes/:x')
+    expect(normalisePage('/recipes/new')).toBe('/recipes/new')
+    expect(normalisePage('/recipes?q=ana@example.com')).toBe('/recipes')
+    expect(normalisePage('/menu/')).toBe('/menu')
+    expect(normalisePage('/')).toBe('/')
+    expect(normalisePage('/hola-soy-ana-garcia/mi-hijo-lucas-es-celiaco')).toBe('otra')
+    expect(normalisePage('/admin/users/ban/revoke/unsuspend/me')).toBe('otra')
+    expect(normalisePage('/ask/admin/approve/me')).toBe('otra')
+    expect(normalisePage('<script>')).toBe('otra')
+    expect(normalisePage(null)).toBeNull()
+    expect(normaliseApiRoute('GET /menu/:userId/:weekId')).toBe('GET /menu/:x/:x')
+    expect(normaliseApiRoute('get /Shopping-List')).toBe('GET /shopping-list')
+    expect(normaliseApiRoute('DELETE /memory/hijo_lucas_celiaco')).toBe('DELETE /memory/:x')
+    expect(normaliseApiRoute('/send/admin/reset-password-token/link/me')).toBe('otra')
+    expect(normaliseApiRoute('PURGE /menu')).toBe('otra')
+    expect(normalisePath('/recipes/3F2A9C1E-1234-4ABC-9DEF-0123456789AB')).toBe('/recipes/:x')
   })
 })
 
@@ -118,7 +147,8 @@ describe('errorType', () => {
     expect(errorType('API POST /billing/checkout → HTTP 500')).toBe('API POST /billing/checkout → HTTP 500')
     expect(errorType('API POST /recipes/extract-from-image: sin respuesta (red)')).toBe('API POST /recipes/extract-from-image: sin respuesta (red)')
     expect(errorType('API GET /shopping-list: más de <n> s sin respuesta')).toBe('API GET /shopping-list: más de <n> s sin respuesta')
-    expect(errorType('API GET /ana-garcia-lopez/es-celiaca/vive-en-calle-mayor → HTTP <n>')).toBe('API GET /:x/:x/:x → HTTP <n>')
+    expect(errorType('API GET /ana-garcia-lopez/es-celiaca/vive-en-calle-mayor → HTTP <n>')).toBe('API GET otra → HTTP <n>')
+    expect(errorType('API POST /send/admin/reset-password-token/link/me → HTTP 500')).toBe('API POST otra → HTTP 500')
     expect(errorType('API DELETE /memory/hijo_lucas_celiaco → HTTP <n>')).toBe('API DELETE /memory/:x → HTTP <n>')
     // Anything else after the route is not that format.
     expect(errorType('API GET /recipes Ana → HTTP <n>')).toBe('other')
@@ -154,19 +184,25 @@ describe('errorsForAgents', () => {
       { message: 'TypeError: x', path: '/LISTA/AnaGarcia', release: 'r' },
       { message: 'API DELETE /memory/hijo_lucas_celiaco → HTTP 500', path: '/profile', release: 'r' },
     ]
+    cases.push(
+      { message: 'API POST /send/admin/reset-password-token/link/me → HTTP 500', path: '/ask/admin/approve/me', release: 'r' },
+      { message: 'TypeError: x', path: '/run/admin/debug-advisor/config/send/public-key/email-sink', release: 'r' },
+    )
     const groups = cases.map((c, i) => {
       const row = buildAppErrorRow({ kind: 'client', ...c })
       return { id: `g${i}`, kind: row.kind, message: row.message, path: row.samplePath, release: row.release, userAgentFamily: row.userAgentFamily, lastUserId: null, count: 1, firstSeen: 'a', lastSeen: 'b', resolvedAt: null, sampleStack: null }
     })
     const v = errorsForAgents({ groups })
     expect(v.groups.map((g) => [g.type, g.path, g.release])).toEqual([
-      ['API GET /:x/:x/:x → HTTP <n>', '/menu', null],
+      ['API GET otra → HTTP <n>', '/menu', null],
       ['Error', '/menu', null],
       ['Error', '/menu', null],
-      ['TypeError', '/:x/:x', null],
+      ['TypeError', 'otra', null],
       ['TypeError', '/lista/:x', null],
       ['TypeError', '/lista/:x', null],
       ['API DELETE /memory/:x → HTTP <n>', '/profile', null],
+      ['API POST otra → HTTP <n>', 'otra', null],
+      ['TypeError', 'otra', null],
     ])
     expect(JSON.stringify(v)).not.toMatch(LEAK)
   })
@@ -178,7 +214,7 @@ describe('errorsForAgents', () => {
       includeResolved: false,
       kind: null,
       totals: { groups: 1, newGroups: 1, clientGroups: 0, serverGroups: 1, events: 2, note: 'Ana' },
-      groups: [{ id: 'g1', kind: 'server', message: 'TypeError: x of Ana', path: 'GET /menu/:userId', release: '8b9ac87e', userAgentFamily: 'Chrome · Android', lastUserId: 'u-1', count: 2, firstSeen: 'a', lastSeen: 'b', resolvedAt: null, sampleStack: 'at f', extra: 'Ana' }],
+      groups: [{ id: 'g1', kind: 'server', message: 'TypeError: x of Ana', path: 'GET /menu/:userId/:weekId', release: '8b9ac87e', userAgentFamily: 'Chrome · Android', lastUserId: 'u-1', count: 2, firstSeen: 'a', lastSeen: 'b', resolvedAt: null, sampleStack: 'at f', extra: 'Ana' }],
       definitions: { group: 'One row per fingerprint' },
       extra: 'Ana',
     })
@@ -188,14 +224,14 @@ describe('errorsForAgents', () => {
       includeResolved: false,
       kind: null,
       totals: { groups: 1, newGroups: 1, clientGroups: 0, serverGroups: 1, events: 2 },
-      groups: [{ id: 'g1', kind: 'server', type: 'TypeError', path: 'GET /menu/:x', release: '8b9ac87e', userAgentFamily: 'Chrome · Android', count: 2, firstSeen: 'a', lastSeen: 'b', resolvedAt: null }],
+      groups: [{ id: 'g1', kind: 'server', type: 'TypeError', path: 'GET /menu/:x/:x', release: '8b9ac87e', userAgentFamily: 'Chrome · Android', count: 2, firstSeen: 'a', lastSeen: 'b', resolvedAt: null }],
       definitions: { group: 'One row per fingerprint' },
     })
   })
 })
 
 describe('feedbackForAgents', () => {
-  it('counts by channel and page (route words only), possible allergies with their Madrid date', () => {
+  it('counts by channel and page (real page templates only), possible allergies with their Madrid date', () => {
     const at = new Date('2026-10-20T10:00:00Z')
     const v = feedbackForAgents(1, [
       { channel: 'whatsapp', page: null, text: 'Soy celíaca y Mimo me puso pan', createdAt: new Date('2026-10-20T23:30:00Z') },
@@ -207,10 +243,11 @@ describe('feedbackForAgents', () => {
       days: 1,
       count: 4,
       byChannel: { whatsapp: 1, app: 3 },
-      byPage: { none: 1, '/recipes/:x': 1, '/:x': 1, '/entrar/:x': 1 },
+      byPage: { none: 1, '/recipes/:x': 1, otra: 1, '/entrar/:x': 1 },
       possibleAllergies: [{ date: '2026-10-21', channel: 'whatsapp' }],
     })
     expect(JSON.stringify(v)).not.toMatch(/celíaca|encanta|AbCdEf/)
+    expect(feedbackForAgents(1, [{ channel: 'app', page: '/admin/users/ban/revoke/unsuspend/me', text: 'x', createdAt: at }]).byPage).toEqual({ otra: 1 })
     expect(JSON.stringify(v)).not.toMatch(LEAK)
   })
 
@@ -275,6 +312,31 @@ describe('flagsForAgents', () => {
 })
 
 describe('waitlistForAgents', () => {
+  it('ref labels: a closed list with every label the code puts in a link (+ directo, invita)', () => {
+    for (const ref of collectRefSources()) expect(KNOWN_REF_SOURCES.has(ref), `add «${ref}» to KNOWN_REF_SOURCES`).toBe(true)
+    expect(KNOWN_REF_SOURCES.has('directo') && KNOWN_REF_SOURCES.has('invita')).toBe(true)
+    for (const ref of KNOWN_REF_SOURCES) expect(normalizeSource(ref)).toBe(ref)
+    expect(refSourceForAgents('receta')).toBe('receta')
+    expect(refSourceForAgents('ana-garcia-celiaca-calle-mayor-5')).toBe('otro')
+    expect(refSourceForAgents(null)).toBe('otro')
+  })
+
+  it("the reviewer's attack: a public signup with its own label comes out as otro", () => {
+    const signup = waitlistSignupSchema.parse({
+      email: 'x@example.com', householdSize: '2', plannerRole: 'yo', currentMethod: 'lista', platform: 'ios', consent: true,
+      source: 'Ana-Garcia-celiaca-calle-mayor-5',
+    })
+    const report = buildWaitlistReport(
+      [{ id: 'e1', householdSize: '2', plannerRole: 'yo', currentMethod: 'lista', status: 'waiting', referralCode: 'k3mzabqr', referredByCode: null, createdAt: new Date('2026-10-20T10:00:00Z'), platform: 'ios', wantsWhatsapp: false, newsletterOptIn: false, source: signup.source, utmSource: null, utmMedium: null, utmCampaign: null, batch: null }],
+      { now: new Date('2026-10-20T12:00:00Z'), days: 30, batchSize: 20 },
+    )
+    const v = waitlistForAgents(report)
+    expect(v.sources?.bySource).toEqual([{ source: 'otro', count: 1 }])
+    expect(JSON.stringify(v)).not.toMatch(/\bana\b|garcia|celiaca|calle|k3mzabqr|"e1"/i)
+    expect(v.definitions?.suggestedNextBatch).toBe(WAITLIST_DEFINITIONS.suggestedNextBatch)
+    expect(WAITLIST_DEFINITIONS.suggestedNextBatch).not.toMatch(/Solo ids/)
+  })
+
   it('utm only as counts by a closed list of sources; no referral codes, no entry ids', () => {
     const v = waitlistForAgents({
       generatedAt: 'g',
@@ -284,7 +346,7 @@ describe('waitlistForAgents', () => {
       byDay: [{ day: '2026-10-20', signups: 4 }],
       segments: { householdSize: {} },
       sources: {
-        bySource: [{ source: 'directo', count: 4 }],
+        bySource: [{ source: 'directo', count: 3 }, { source: 'receta', count: 1 }],
         byUtm: [
           { utmSource: 'Instagram', utmMedium: 'post', utmCampaign: 'semana-2026-W44', count: 1 },
           { utmSource: 'ig', utmMedium: 'story', utmCampaign: null, count: 1 },
@@ -299,7 +361,7 @@ describe('waitlistForAgents', () => {
       definitions: { active: 'x' },
     } as any)
     expect(v.sources).toEqual({
-      bySource: [{ source: 'directo', count: 4 }],
+      bySource: [{ source: 'directo', count: 3 }, { source: 'receta', count: 1 }],
       byUtm: [
         { utmSource: 'instagram', count: 2 },
         { utmSource: 'ninguna', count: 1 },
@@ -310,6 +372,51 @@ describe('waitlistForAgents', () => {
     expect(v.suggestedNextBatch).toEqual({ size: 20, counts: { waiting: 4, selected: 1 } })
     expect(v).toMatchObject({ totals: { entries: 4 }, status: { waiting: 4 }, batches: [{ batch: 1, size: 2 }], pricing: { answeredPriceQuestions: 0 } })
     expect(JSON.stringify(v)).not.toMatch(/k3mzabqr|3f2a9c1e|Pozuelo|612|semana-2026|post|story/)
+  })
+
+  it('every nested object is an explicit list of fields, values from their enums', () => {
+    const v = waitlistForAgents({
+      generatedAt: 'g',
+      timezone: 'Europe/Madrid',
+      totals: { entries: 2, active: 2, last7Days: 1, note: 'Ana' },
+      status: { waiting: 2, invited: 0, joined: 0, unsubscribed: 0, Ana: 1 },
+      byDay: [{ day: '2026-10-20', signups: 2, who: 'Ana' }, { day: 'Ana', signups: 1 }],
+      segments: {
+        householdSize: { '2': 2, Ana: 1 },
+        plannerRole: { yo: 2 },
+        currentMethod: { lista: 2 },
+        platform: { ios: 2 },
+        cross: [{ householdSize: '2', plannerRole: 'yo', currentMethod: 'lista', count: 2, target: true, who: 'Ana' }, { householdSize: 'Ana', plannerRole: 'yo', currentMethod: 'lista', count: 1, target: false }],
+        extra: 'Ana',
+      },
+      batches: [{ batch: 1, size: 2, joined: 1, unsubscribed: 0, ids: ['3f2a9c1e'] }],
+      suggestedNextBatch: { size: 20, ids: ['3f2a9c1e'], counts: { waiting: 2, selected: 1, Ana: 1 } },
+      pricing: {
+        answeredPriceQuestions: 1,
+        questions: { good: { text: '¿Qué precio te parece bien?', answers: 1, min: 5, p25: 5, median: 5, p75: 5, max: 5, histogram: [{ eur: 5, count: 1, who: 'Ana' }], note: 'Ana' }, Ana: { answers: 1 } },
+        reservations: { total: 1, byPlan: { 'esencial-mensual': 1, Ana: 1 } },
+        none: { total: 0, byReason: { caro: 0, Ana: 1 } },
+        definitions: { questions: 'q', reservations: 'r', none: 'n', Ana: 'Ana' },
+        extra: 'Ana',
+      },
+      definitions: { active: 'Entradas activas.', Ana: 'Ana' },
+      extra: 'Ana',
+    } as any)
+    expect(v.totals).toEqual({ entries: 2, active: 2, last7Days: 1 })
+    expect(v.status).toEqual({ waiting: 2, invited: 0, joined: 0, unsubscribed: 0 })
+    expect(v.byDay).toEqual([{ day: '2026-10-20', signups: 2 }, { day: null, signups: 1 }])
+    expect(v.segments).toEqual({
+      householdSize: { '2': 2 },
+      plannerRole: { yo: 2 },
+      currentMethod: { lista: 2 },
+      platform: { ios: 2 },
+      cross: [{ householdSize: '2', plannerRole: 'yo', currentMethod: 'lista', count: 2, target: true }, { householdSize: null, plannerRole: 'yo', currentMethod: 'lista', count: 1, target: false }],
+    })
+    expect(v.batches).toEqual([{ batch: 1, size: 2, joined: 1, unsubscribed: 0 }])
+    expect(v.suggestedNextBatch).toEqual({ size: 20, counts: { waiting: 2, selected: 1 } })
+    expect(v.pricing).toMatchObject({ answeredPriceQuestions: 1, reservations: { total: 1, byPlan: { 'esencial-mensual': 1 } }, none: { total: 0, byReason: { caro: 0 } } })
+    expect(v.definitions).toEqual({ active: 'Entradas activas.' })
+    expect(JSON.stringify(v)).not.toMatch(/Ana|3f2a9c1e/)
   })
 
   it('utm sources: aliases, domains, case and accents', () => {

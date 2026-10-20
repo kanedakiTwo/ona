@@ -1,18 +1,23 @@
 /**
  * «Enviar la cesta a la extensión del navegador» (specs/shop-orders.md):
- * quién lo ve, qué se hace con cada resultado que llega y el agregado de lo
- * que la extensión no encontró en su tabla (para hacerla crecer).
+ * quién lo ve, qué se hace con cada resultado que llega y lo que ven los
+ * agentes (specs/metrics.md): los huecos de la tabla y un registro por envío,
+ * siempre con el nombre recortado (`publicLineName`), nunca texto tecleado.
  */
 import { and, eq, isNotNull, sql } from 'drizzle-orm'
 import {
+  basketBaseName,
   basketMayBeInCart,
   basketSearch,
   buildExtensionBasket,
+  buyRuleByKey,
   extensionKey,
   isLiveBasketSend,
+  normalizeBuyName,
   type BasketLine,
-  type BasketSnapshotLine,
+  type BasketLineOrigin,
   type BasketSendResult,
+  type BasketSnapshotLine,
   type ShopOrderLine,
   type StoredBasketResult,
 } from '@ona/shared'
@@ -78,6 +83,59 @@ export function decideBasketResult(
 /** Solo lo de la foto: clave, nombre, elección y, si lo hay, el origen con su `ruleKey`. */
 function snapshotLine({ key, name, choice, origen, ruleKey }: BasketSnapshotLine): BasketSnapshotLine {
   return { key, name, choice, ...(origen ? { origen, ruleKey: ruleKey ?? null } : {}) }
+}
+
+// ─── Lo que ven los agentes (norma de privacidad: nada tecleado por un hogar) ───
+
+/**
+ * Texto que puede llegar a los agentes: hasta `max` caracteres, sin @, sin URLs y sin
+ * cifras que parezcan un teléfono. Si no, null (falla cerrado).
+ */
+export function agentSafeText(raw: unknown, max: number): string | null {
+  if (typeof raw !== 'string') return null
+  const t = raw.trim()
+  if (!t || t.length > max) return null
+  if (/@|https?:|www\.|\d[\d\s.-]{5,}\d/i.test(t)) return null
+  return t
+}
+
+/** Id de producto de la tienda que puede llegar a los agentes: letras, cifras, «_», «.» o «-»; si no, null. */
+export function agentSafeId(raw: unknown): string | null {
+  return typeof raw === 'string' && /^[A-Za-z0-9_.-]{1,32}$/.test(raw) ? raw : null
+}
+
+/**
+ * El nombre de una línea de la foto que puede llegar a los agentes:
+ * - de una regla de compra: su clave (`ruleKey`), si la regla existe;
+ * - de catálogo: el nombre de catálogo, sin « · varias presentaciones», si pasa `agentSafeText`;
+ * - si no (tecleado, foto antigua sin origen, regla que ya no existe o nombre raro): null.
+ */
+export function publicLineName(l: Pick<BasketSnapshotLine, 'name' | 'origen' | 'ruleKey'>): string | null {
+  if (l.origen === 'regla') return l.ruleKey && buyRuleByKey(l.ruleKey) ? l.ruleKey : null
+  if (l.origen === 'catalogo') return agentSafeText(basketBaseName(l.name), 80)
+  return null
+}
+
+export interface PublicBasketLine {
+  name: string | null
+  /** Solo una opción fija de la regla (serrano, dorada…); nunca la que se tecleó. */
+  choice: string | null
+  /** `tecleado` también cuando el nombre no puede salir (`publicLineName` null). */
+  origen: BasketLineOrigin
+}
+
+/** La línea tal como la ven los agentes: `publicLineName`, la elección si es una opción de su regla, y el origen. */
+export function publicBasketLine(l: Pick<BasketSnapshotLine, 'name' | 'choice' | 'origen' | 'ruleKey'>): PublicBasketLine {
+  const name = publicLineName(l)
+  if (name === null || !l.origen) return { name: null, choice: null, origen: 'tecleado' }
+  return { name, choice: l.origen === 'regla' ? ruleOption(name, l.choice) : null, origen: l.origen }
+}
+
+/** La elección escrita como la regla, si es una de sus opciones fijas; si no, null. */
+function ruleOption(ruleKey: string, choice: string | null): string | null {
+  if (!choice) return null
+  const c = normalizeBuyName(choice)
+  return buyRuleByKey(ruleKey)?.choice?.options.find((o) => normalizeBuyName(o) === c) ?? null
 }
 
 export interface BasketGap {

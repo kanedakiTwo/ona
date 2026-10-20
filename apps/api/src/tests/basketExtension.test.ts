@@ -1,12 +1,20 @@
 /**
  * «Enviar la cesta a la extensión del navegador» (specs/shop-orders.md):
- * el esquema del resultado, la lista de emails y qué hace la API con cada resultado.
+ * el esquema del resultado, la lista de emails, qué hace la API con cada
+ * resultado y lo que ven los agentes (nombre recortado, nunca texto tecleado).
  *
  * Run: pnpm --filter @ona/api test src/tests/basketExtension.test.ts
  */
 import { describe, it, expect } from 'vitest'
 import { basketSendResultSchema, type BasketSendResult, type ShopOrderLine, type ShoppingItem, type StoredBasketResult } from '@ona/shared'
-import { aggregateBasketGaps, decideBasketResult, isBasketExtensionAllowed } from '../services/basketExtension.js'
+import {
+  agentSafeText,
+  aggregateBasketGaps,
+  decideBasketResult,
+  isBasketExtensionAllowed,
+  publicBasketLine,
+  publicLineName,
+} from '../services/basketExtension.js'
 import { closeOrder, saveBasketResult, undoBasketSend } from '../services/shopOrders/store.js'
 import { buildLine } from '../services/shopOrders/lines.js'
 import { shopOrders, shoppingLists, users } from '../db/schema.js'
@@ -150,6 +158,37 @@ describe('decideBasketResult', () => {
     const d = decideBasketResult(null, 'draft', okResult({ duracionMs: 31_000 }), NOW)
     if (d.action !== 'save') throw new Error(d.action)
     expect(d.stored.duracionMs).toBe(31_000)
+  })
+})
+
+/** Una línea del pedido con lo justo para la cesta. */
+const linea = (key: string, name: string, over: Partial<ShopOrderLine> = {}) => ({ key, name, quantity: 1, unit: 'u', ...over }) as unknown as ShopOrderLine
+
+describe('publicLineName y publicBasketLine', () => {
+  it('regla → su clave; catálogo → el nombre de catálogo sin sufijo; tecleado → null', () => {
+    expect(publicLineName({ name: 'Jamón serrano', origen: 'regla', ruleKey: 'jamon' })).toBe('jamon')
+    expect(publicLineName({ name: 'Tomate triturado · varias presentaciones', origen: 'catalogo', ruleKey: null })).toBe('Tomate triturado')
+    expect(publicLineName({ name: 'galletas de Lucía', origen: 'tecleado', ruleKey: null })).toBeNull()
+  })
+  it('foto antigua sin origen, regla que ya no existe o nombre de catálogo raro: null', () => {
+    expect(publicLineName({ name: 'galletas de Lucía' })).toBeNull()
+    expect(publicLineName({ name: 'Jamón', origen: 'regla', ruleKey: 'no-existe' })).toBeNull()
+    expect(publicLineName({ name: 'Salsa de ana@example.com', origen: 'catalogo', ruleKey: null })).toBeNull()
+    expect(publicLineName({ name: 'Llamar al 600 123 456', origen: 'catalogo', ruleKey: null })).toBeNull()
+    expect(publicLineName({ name: 'Ver https://x.es', origen: 'catalogo', ruleKey: null })).toBeNull()
+    expect(publicLineName({ name: 'x'.repeat(81), origen: 'catalogo', ruleKey: null })).toBeNull()
+  })
+  it('la elección solo si es una opción fija de su regla (escrita como la regla); sin nombre, tecleado', () => {
+    expect(publicBasketLine({ name: 'Jamón', choice: 'Serrano', origen: 'regla', ruleKey: 'jamon' })).toEqual({ name: 'jamon', choice: 'serrano', origen: 'regla' })
+    expect(publicBasketLine({ name: 'Jamón', choice: 'el de Lucía', origen: 'regla', ruleKey: 'jamon' })).toEqual({ name: 'jamon', choice: null, origen: 'regla' })
+    expect(publicBasketLine({ name: 'Kombu', choice: null, origen: 'catalogo', ruleKey: null })).toEqual({ name: 'Kombu', choice: null, origen: 'catalogo' })
+    expect(publicBasketLine({ name: 'galletas de Lucía', choice: null, origen: 'tecleado', ruleKey: null })).toEqual({ name: null, choice: null, origen: 'tecleado' })
+    expect(publicBasketLine({ name: 'Jamón', choice: 'serrano', origen: 'regla', ruleKey: 'no-existe' })).toEqual({ name: null, choice: null, origen: 'tecleado' })
+  })
+  it('agentSafeText: corto y sin @, URLs ni cifras de teléfono', () => {
+    expect(agentSafeText('Galletas de canela Marca', 160)).toBe('Galletas de canela Marca')
+    expect(agentSafeText('Leche semidesnatada 6 x 1 l', 160)).toBe('Leche semidesnatada 6 x 1 l')
+    for (const mal of ['a@b.es', 'www.x.es', 'http://x', '600123456', '600 12 34 56', '', '   ', 'x'.repeat(161), 42, null]) expect(agentSafeText(mal, 160)).toBeNull()
   })
 })
 

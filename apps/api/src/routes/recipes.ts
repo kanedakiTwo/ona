@@ -863,6 +863,17 @@ router.post(
 )
 
 // PUT /recipes/:id — update (auth required, author only, lint-validated).
+/**
+ * The edit form never sends `internalTags` (the public payload strips them),
+ * so a save used to wipe them: `compartida`, `retirada`, `tiempos-pro284`
+ * (PRO-284: without it the next boot would cut the prep a second time).
+ * Kept unless the body sends its own.
+ */
+export function withKeptInternalTags<T extends { internalTags?: string[] | null }>(body: T, existing: string[] | null | undefined): T {
+  if (body.internalTags !== undefined) return body
+  return { ...body, internalTags: existing ?? [] }
+}
+
 router.put(
   '/recipes/:id',
   requireRecipeId(),
@@ -873,7 +884,7 @@ router.put(
       const recipeId = String(req.params.id)
 
       const [existing] = await db
-        .select({ authorId: recipes.authorId })
+        .select({ authorId: recipes.authorId, internalTags: recipes.internalTags })
         .from(recipes)
         .where(eq(recipes.id, recipeId))
         .limit(1)
@@ -921,7 +932,7 @@ router.put(
       const force =
         req.query.force === '1' ||
         (req.body && (req.body as { force?: unknown }).force === true)
-      const result = await persistRecipe(body as RecipeWriteInput, {
+      const result = await persistRecipe(withKeptInternalTags(body, existing.internalTags) as RecipeWriteInput, {
         authorId: existing.authorId,
         recipeId,
         softLint: force,

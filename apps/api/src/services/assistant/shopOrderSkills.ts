@@ -4,6 +4,7 @@ import type { SkillContext, SkillDefinition, SkillResult } from './types.js'
 import { appApiFor, AppApiError, type AppApi } from './appApi.js'
 import { bestMatch, toBuyable } from './appSkills.js'
 import { classifyShopKind, kindForBuyShop } from '../shopOrders/classify.js'
+import { shoppingLineSkills } from './shoppingLineSkills.js'
 
 /**
  * "Compra en mis tiendas" from chat (specs/shop-orders.md). Same REST calls
@@ -399,4 +400,15 @@ const getShopOrders: SkillDefinition = {
   },
 }
 
-export const shopOrderSkills: SkillDefinition[] = [manageShops, prepareShopOrders, editShopOrder, registerShopReply, approveShopOrder, closeShopOrder, getShopOrders]
+// The list's own lines (PRO-292, shoppingLineSkills.ts) ride along here so
+// they reach the registry (skills.ts) without another entry there.
+export const shopOrderSkills: SkillDefinition[] = [
+  manageShops,
+  prepareShopOrders,
+  editShopOrder,
+  registerShopReply,
+  approveShopOrder,
+  closeShopOrder,
+  getShopOrders,
+  ...shoppingLineSkills,
+]

@@ -40,8 +40,8 @@ import {
   ListTotalBanner,
   AddManualItemForm,
   ItemPriceField,
-  ItemDeleteButton,
 } from '@/components/shopping/ShoppingExtensions'
+import { AddToListField, LineAmount, RemoveLineButton, UNIT_LABEL, useRemoveWithUndo } from '@/components/shopping/LineControls'
 import { MenuSheet, SheetAction } from '@/components/menu/MenuSheet'
 import { ingredientDisplayName, missingQuantity, parseShoppingAmount, shoppingProgress, withOnaFooter } from '@ona/shared'
 
@@ -607,6 +607,9 @@ function BuyList({
   const editLine = useEditMenuLine()
   // The line whose sheet is open (PRO-175): change the amount or leave it out.
   const [editing, setEditing] = useState<any | null>(null)
+  // PRO-292: «Quitar» on the line itself, with «Deshacer»; «Añadir a la lista» on top.
+  const undoable = useRemoveWithUndo(listId)
+  const addField = <AddToListField listId={listId} disabled={busy} />
 
   const buyable = items.filter((i) => !i.inStock)
   const grouped = groupByAisle(buyable)
@@ -618,9 +621,11 @@ function BuyList({
   if (buyable.length === 0) {
     return (
       <>
+        {addField}
         <EmptyCard title="Nada que comprar." />
         <SkippedLines items={skippedHere} busy={busy || editLine.isPending} onRestore={(it) => editLine.mutate({ listId, itemId: it.id, skipped: false })} />
         {sheet}
+        {undoable.toast}
       </>
     )
   }
@@ -628,6 +633,7 @@ function BuyList({
   let runningIndex = 0
   return (
     <>
+    {addField}
     <AisleGrid>
       {AISLE_ORDER.filter((a) => !aisle || a === aisle).flatMap((a) => {
         const rows = grouped[a]
@@ -648,6 +654,7 @@ function BuyList({
                   onCheck={() => checkItem.mutate({ listId, itemId: item.id, checked: !item.checked })}
                   onStock={() => stockItem.mutate({ listId, itemId: item.id, inStock: true })}
                   onEdit={() => setEditing(item)}
+                  onRemove={() => undoable.remove(item)}
                 />
               )
             })}
@@ -657,6 +664,7 @@ function BuyList({
     </AisleGrid>
     <SkippedLines items={skippedHere} busy={busy || editLine.isPending} onRestore={(it) => editLine.mutate({ listId, itemId: it.id, skipped: false })} />
     {sheet}
+    {undoable.toast}
     </>
   )
 }
@@ -760,11 +768,11 @@ function LineSheet({ item, listId, onClose }: { item: any | null; listId: string
           </label>
           {!isManual && item.menuQuantity != null && (
             <p className="text-[13px] text-ink-muted">
-              El menú pide {formatAmount(item.menuQuantity)} {item.unit}.{' '}
+              El menú pide {formatAmount(item.menuQuantity)} {item.menuUnit ?? item.unit}.{' '}
               <button
                 type="button"
                 disabled={pending}
-                onClick={() => editLine.mutate({ listId, itemId: item.id, quantity: null }, done)}
+                onClick={() => editLine.mutate({ listId, itemId: item.id, ...(item.menuUnit ? { unit: item.menuUnit } : { quantity: null }) }, done)}
                 className="underline underline-offset-2 hover:text-ink"
               >
                 Volver a lo del menú
@@ -882,6 +890,7 @@ function ItemRow({
   onCheck,
   onStock,
   onEdit,
+  onRemove,
   busy,
 }: {
   item: any
@@ -892,16 +901,21 @@ function ItemRow({
   onStock: () => void
   /** Opens the line's sheet: amount, «No lo compro esta semana» (PRO-175). */
   onEdit?: () => void
+  /** «Quitar» with «Deshacer» (PRO-292). */
+  onRemove?: () => void
   busy?: boolean
 }) {
   const isManual = item.kind === 'manual'
+  const buy = variant === 'buy'
   return (
     <motion.li
       initial={{ opacity: 0, x: -8 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: Math.min(index, 20) * 0.03, duration: 0.4 }}
-      className="flex items-center gap-2 border-b border-dashed border-border py-1.5 last:border-b-0"
+      className="border-b border-dashed border-border py-1.5 last:border-b-0"
+      data-testid="shopping-line"
     >
+      <div className="flex items-center gap-2">
       {variant === 'buy' ? (
         <button
           type="button"
@@ -944,7 +958,7 @@ function ItemRow({
               Te faltan {formatAmount(missingQuantity(item))} {item.unit}
               <span className="font-sans text-[12px]"> · ya tienes {formatAmount(item.haveQuantity)}</span>
             </span>
-          ) : item.amountText ? (
+          ) : buy ? null : item.amountText ? (
             <span className="font-sans">{item.amountText}</span>
           ) : (
             <>
@@ -952,8 +966,10 @@ function ItemRow({
             </>
           )}
           {item.menuQuantity != null && (
-            // The household's own amount (PRO-175).
-            <span className="font-sans text-[12px]" data-testid="shopping-changed"> · cambiada (menú: {formatAmount(item.menuQuantity)})</span>
+            // The household's own amount or unit (PRO-175, PRO-292).
+            <span className="font-sans text-[12px]" data-testid="shopping-changed">
+              {buy && !(item.haveQuantity > 0) ? '' : ' · '}cambiada (menú: {formatAmount(item.menuQuantity)} {UNIT_LABEL[item.menuUnit ?? item.unit] ?? item.unit})
+            </span>
           )}
           {isManual && (
             <span className="ml-2 font-sans text-[11px] font-semibold uppercase tracking-[0.12em] text-terracotta-deep">
@@ -962,9 +978,6 @@ function ItemRow({
           )}
         </span>
       </button>
-
-      {variant === 'buy' && <ItemPriceField listId={listId} item={item} />}
-      {variant === 'buy' && isManual && <ItemDeleteButton listId={listId} itemId={item.id} />}
 
       <button
         type="button"
@@ -979,6 +992,16 @@ function ItemRow({
       >
         {variant === 'stock' ? 'Quitar' : 'En casa'}
       </button>
+      </div>
+      {buy && (
+        // PRO-292: amount, unit, price and «Quitar», on the line itself.
+        <div className="flex items-center gap-1.5 pb-1 pl-[44px]">
+          <LineAmount item={item} listId={listId} busy={busy} />
+          <span className="flex-1" />
+          <ItemPriceField listId={listId} item={item} />
+          {onRemove && <RemoveLineButton item={item} onRemove={onRemove} busy={busy} />}
+        </div>
+      )}
     </motion.li>
   )
 }

@@ -14,7 +14,7 @@ import {
 } from '../services/shoppingList.js'
 import { canAccessRow, getPrimaryHouseholdId, resolveScope } from '../services/scopeResolver.js'
 import { listActiveStaplesForHousehold } from '../services/staplesStore.js'
-import { carryItemState, editMenuLine, setHaveAtHome, type ConvertQty, type ItemStateMap } from '../services/shoppingItemState.js'
+import { carryItemState, editMenuLine, setHaveAtHome, UnitChangeError, type ConvertQty, type ItemStateMap } from '../services/shoppingItemState.js'
 import { isCoeliacHousehold, withGlutenFreeCharcuterieNames } from '../services/glutenFreeCharcuterie.js'
 import { loadUserRestrictions } from '../services/withWhatIHave.js'
 import { INTERNAL_CALL_HEADER, trackEvent } from '../services/usageEvents.js'
@@ -27,6 +27,7 @@ import {
   resolveBuyRule,
   type Aisle,
   type DayMenu,
+  type BuyableUnit,
   type HouseholdSize,
   type ShoppingItem,
 } from '@ona/shared'
@@ -141,6 +142,52 @@ async function ingredientConverter(rows: ShoppingItem[]): Promise<ConvertQty> {
     return convertUnits(quantity, from, to, ing?.density, ing?.unitWeight)
   }
 }
+
+/**
+ * Grams of one piece as the shop sells it (cebolla 150 g, limón 120 g) when
+ * the catalogue has no unit weight: what lets a line switch g ↔ u (PRO-292).
+ * Only by-piece products sold as themselves (not «1 cabeza de ajos»).
+ */
+function shopPieceGrams(name: string): number | null {
+  const rule = resolveBuyRule(name)?.rule
+  if (!rule || rule.by !== 'pieza') return null
+  const g = rule.ug ?? (rule.unit ? undefined : rule.g)
+  return g && g > 0 ? g : null
+}
+
+/**
+ * Conversion for switching a line's unit (PRO-292): the ingredient's density
+ * / unit weight, and the shop's piece weight when the catalogue has none.
+ */
+async function lineConverter(rows: ShoppingItem[]): Promise<ConvertQty> {
+  const ids = [...new Set(rows.map((r) => r.ingredientId).filter((id): id is string => !!id))]
+  const found = ids.length
+    ? await db
+        .select({ id: ingredients.id, name: ingredients.name, density: ingredients.density, unitWeight: ingredients.unitWeight })
+        .from(ingredients)
+        .where(inArray(ingredients.id, ids))
+    : []
+  const byId = new Map(found.map((r) => [r.id, { ...r, unitWeight: r.unitWeight ?? shopPieceGrams(r.name) }]))
+  return (id, quantity, from, to) => {
+    const ing = byId.get(id)
+    return convertUnits(quantity, from, to, ing?.density, ing?.unitWeight)
+  }
+}
+
+const SWITCH_UNITS: BuyableUnit[] = ['g', 'ml', 'u']
+
+/** The units a menu line can be bought in (PRO-292): the menu's first, then what it converts to. */
+function withUnitOptions(items: ShoppingItem[], convert: ConvertQty): ShoppingItem[] {
+  return items.map((it) => {
+    if (!it.ingredientId || it.kind === 'manual' || it.kind === 'staple') return it
+    const base = it.menuUnit ?? it.unit
+    const options = [base, ...SWITCH_UNITS.filter((u) => u !== base && convert(it.ingredientId!, 1, base, u) != null)]
+    if (!options.includes(it.unit)) options.push(it.unit)
+    return { ...it, unitOptions: options }
+  })
+}
+
+const UNIT_WORDS: Record<string, string> = { g: 'gramos', ml: 'mililitros', u: 'unidades', cda: 'cucharadas', cdita: 'cucharaditas' }
 
 /** Ticking a line (or its «en casa») is about the whole line: forget the partial «ya tienes» (PRO-199). */
 function clearHave(item: ShoppingItem) {
@@ -298,7 +345,11 @@ router.get('/shopping-list', async (req: AuthRequest, res) => {
     // PRO-196: a coeliac household asks for «<embutido> sin gluten».
     const coeliac = isCoeliacHousehold((await loadUserRestrictions(userId, db)).restrictions)
     // Manual items always at the end, preserving order.
-    const finalItems = [...withGlutenFreeCharcuterieNames(stapleMerged, coeliac), ...manualSurviving]
+    // PRO-292: which units each menu line can switch to.
+    const finalItems = [
+      ...withUnitOptions(withGlutenFreeCharcuterieNames(stapleMerged, coeliac), await lineConverter(menuItems)),
+      ...manualSurviving,
+    ]
 
     // Overwrite the persisted row — one shopping list per user. Delete
     // any prior rows so historical churn doesn't pile up.
@@ -494,14 +545,18 @@ router.put('/shopping-list/:listId/item/:itemId/stock', async (req: AuthRequest,
 // from the menu (PRO-175): `{ skipped: true }` = «No lo compro esta semana»,
 // `{ skipped: false }` puts it back; `{ quantity: n }` = the household's own
 // amount (in the line's unit), `{ quantity: null }` = back to the menu's.
+// `{ unit }` (PRO-292) switches the line to another unit, converting what it
+// shows (or taking `quantity` in that unit); the menu's unit alone goes back
+// to the menu's amount. 400 when the ingredient doesn't convert.
 // The change is also written into `item_state`, so the rebuild on the next
 // GET keeps it, for lists ending on or before this list's last day.
 const editLineSchema = z
   .object({
     skipped: z.boolean().optional(),
     quantity: z.number().nonnegative().max(100_000).nullable().optional(),
+    unit: z.string().refine((u) => BUYABLE_UNITS.has(u)).optional(),
   })
-  .refine((v) => v.skipped !== undefined || v.quantity !== undefined, { message: 'Nada que cambiar' })
+  .refine((v) => v.skipped !== undefined || v.quantity !== undefined || v.unit !== undefined, { message: 'Nada que cambiar' })
 
 router.put('/shopping-list/:listId/item/:itemId/edit', async (req: AuthRequest, res) => {
   try {
@@ -537,7 +592,15 @@ router.put('/shopping-list/:listId/item/:itemId/edit', async (req: AuthRequest, 
       return
     }
     const until = list.rangeEndDate ?? shiftDate(mondayOf(todayInMadrid()), 13)
-    const itemState = editMenuLine(item, list.itemState as ItemStateMap | null, parsed.data, until)
+    const change = { ...parsed.data, unit: parsed.data.unit as BuyableUnit | undefined }
+    let itemState: ItemStateMap
+    try {
+      itemState = editMenuLine(item, list.itemState as ItemStateMap | null, change, until, change.unit ? await lineConverter([item]) : undefined)
+    } catch (e) {
+      if (!(e instanceof UnitChangeError)) throw e
+      res.status(400).json({ error: `${item.name} no se puede pasar a ${UNIT_WORDS[e.unit] ?? e.unit}; se compra en ${(item.unitOptions ?? [item.unit]).map((u) => UNIT_WORDS[u] ?? u).join(' o ')}.` })
+      return
+    }
     const [updated] = await db
       .update(shoppingLists)
       .set({ items, itemState })
@@ -829,7 +892,8 @@ router.patch('/shopping-list/:listId/item/:itemId', async (req: AuthRequest, res
   try {
     const listId = String(req.params.listId)
     const itemId = String(req.params.itemId)
-    if (!UUID_RE.test(listId) || !UUID_RE.test(itemId)) {
+    // Menu and staple lines have ids like `menu:<ingredientId>:<unit>`: their price is set here too.
+    if (!UUID_RE.test(listId) || !itemId || itemId.length > 300) {
       res.status(400).json({ error: 'IDs must be UUIDs' })
       return
     }

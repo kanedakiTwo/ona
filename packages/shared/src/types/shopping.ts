@@ -61,6 +61,20 @@ export interface ShoppingItem {
    */
   menuQuantity?: number
   /**
+   * Menu items: the unit the menu asked in, when the household switched the
+   * line to another one (PRO-292: «Cebolla · 700 g» → «3 u»). `unit` and
+   * `quantity` are then theirs; `menuQuantity` is in this unit. What was
+   * marked follows the line's current unit.
+   */
+  menuUnit?: BuyableUnit
+  /**
+   * Menu items: the units this line can be bought in (PRO-292), the menu's
+   * own first: the ones the ingredient converts to (density g↔ml, unit
+   * weight or the shop's piece weight g↔u). Just the line's own unit when
+   * nothing converts. Filled by `GET /shopping-list`.
+   */
+  unitOptions?: BuyableUnit[]
+  /**
    * Manual items: an amount in the household's own words («2 paquetes», «1
    * bote») when it isn't g / ml / u / cda / cdita (PRO-175). Shown instead of
    * `quantity` + `unit`.

@@ -24,6 +24,12 @@ export interface ShoppingItem {
   menuQuantity?: number
   /** Manual line: amount in the household's words, «2 paquetes» (PRO-175). */
   amountText?: string
+  /** Menu line switched to another unit: the menu's unit (PRO-292). */
+  menuUnit?: BuyableUnit
+  /** Menu line: the units it can be bought in, the menu's first (PRO-292). */
+  unitOptions?: BuyableUnit[]
+  /** Manual line typed with no amount (stored as 1 u). */
+  quantitySource?: 'user' | 'default'
 }
 
 export interface ShoppingList {
@@ -202,11 +208,13 @@ export function useDeleteShoppingItem() {
 /**
  * Change a line that comes from the menu (PRO-175): `skipped` = «No lo compro
  * esta semana» (false puts it back), `quantity` = the household's amount in
- * the line's unit (null = back to the menu's). Kept across rebuilds.
+ * the line's unit (null = back to the menu's), `unit` = buy it in another
+ * unit (PRO-292; the menu's unit alone goes back to the menu's amount).
+ * Kept across rebuilds.
  */
 export function useEditMenuLine() {
   const qc = useQueryClient()
-  return useMutation<ShoppingList, Error, { listId: string; itemId: string; skipped?: boolean; quantity?: number | null }>({
+  return useMutation<ShoppingList, Error, { listId: string; itemId: string; skipped?: boolean; quantity?: number | null; unit?: BuyableUnit }>({
     mutationFn: ({ listId, itemId, ...body }) =>
       api.put(`/shopping-list/${listId}/item/${encodeURIComponent(itemId)}/edit`, body),
     onSuccess: (data, vars) => {

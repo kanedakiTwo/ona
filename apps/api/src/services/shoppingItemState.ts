@@ -34,6 +34,11 @@ export interface ItemState {
 export interface LineEdit {
   skipped?: boolean
   quantity?: number
+  /**
+   * The unit the household buys it in when it isn't the menu's (PRO-292):
+   * `quantity` is then in this unit. Stored under the menu's key.
+   */
+  unit?: BuyableUnit
   /** ISO `YYYY-MM-DD`: last day of the list it was set on. */
   until: string
 }
@@ -43,6 +48,32 @@ export type ItemStateMap = Record<string, ItemState>
 export const ITEM_STATE_MAX = 400
 
 export const itemStateKey = (it: Pick<ShoppingItem, 'ingredientId' | 'unit'>) => `${it.ingredientId}|${it.unit}`
+
+/** Key of a menu line's edit: the unit the menu asked in, even after the household switched it (PRO-292). */
+export const menuLineKey = (it: Pick<ShoppingItem, 'ingredientId' | 'unit' | 'menuUnit'>) => `${it.ingredientId}|${it.menuUnit ?? it.unit}`
+
+/** A line can't be switched to that unit: the ingredient has no density / unit weight for it (PRO-292). */
+export class UnitChangeError extends Error {
+  constructor(public unit: BuyableUnit) {
+    super(`No se puede pasar a ${unit}`)
+    this.name = 'UnitChangeError'
+  }
+}
+
+/**
+ * An amount converted to another unit, rounded up to what a shop sells
+ * (whole units, 25 / 50 / 100 g steps, half spoons): 700 g of onion at
+ * 150 g each → 5 u, never 4,7.
+ */
+export function roundUpForUnit(q: number, unit: BuyableUnit): number {
+  if (!(q > 0)) return 0
+  if (unit === 'u') return Math.max(1, Math.ceil(q - 0.05))
+  if (unit === 'g' || unit === 'ml') {
+    const step = q < 250 ? 25 : q < 1000 ? 50 : 100
+    return Math.ceil(q / step - 1e-9) * step
+  }
+  return Math.max(0.5, Math.ceil(q * 2 - 1e-9) / 2)
+}
 
 /** Converts an amount of one ingredient between buyable units; null when there is no known conversion. */
 export type ConvertQty = (ingredientId: string, quantity: number, from: BuyableUnit, to: BuyableUnit) => number | null
@@ -110,7 +141,11 @@ const UNITS: ShoppingItem['unit'][] = ['g', 'ml', 'u', 'cda', 'cdita']
 export function applyEdit(it: ShoppingItem, edit: LineEdit | undefined, rangeTo: string | undefined): ShoppingItem {
   if (!edit || (rangeTo && rangeTo > edit.until)) return it
   let out = it
-  if (edit.quantity != null && edit.quantity >= 0) out = { ...out, quantity: edit.quantity, menuQuantity: it.quantity }
+  if (edit.quantity != null && edit.quantity >= 0) {
+    // In another unit (PRO-292): the row now reads in the household's unit.
+    if (edit.unit && edit.unit !== it.unit) out = { ...out, quantity: edit.quantity, unit: edit.unit, menuQuantity: it.quantity, menuUnit: it.unit }
+    else out = { ...out, quantity: edit.quantity, menuQuantity: it.quantity }
+  }
   if (edit.skipped) out = { ...out, skipped: true }
   return out
 }
@@ -120,14 +155,23 @@ export function applyEdit(it: ShoppingItem, edit: LineEdit | undefined, rangeTo:
  * into the remembered state, so it survives the rebuild on the next GET.
  * `skipped: false` / `quantity: null` undo it. Pure: mutates the given row
  * and returns the new state map.
+ *
+ * `unit` (PRO-292) switches the line to another unit: without `quantity`
+ * the amount on screen is converted (`convert`, rounded up to what a shop
+ * sells); with it, `quantity` is in that unit. Going back to the menu's unit
+ * without `quantity` goes back to the menu's amount. The edit stays under
+ * the menu's key; bought / «en casa» stay on the row and follow its unit on
+ * the next rebuild. Throws `UnitChangeError` when the ingredient can't be
+ * converted to that unit.
  */
 export function editMenuLine(
   item: ShoppingItem,
   state: ItemStateMap | null | undefined,
-  change: { skipped?: boolean; quantity?: number | null },
+  change: { skipped?: boolean; quantity?: number | null; unit?: BuyableUnit },
   until: string,
+  convert?: ConvertQty,
 ): ItemStateMap {
-  const key = itemStateKey(item)
+  const key = menuLineKey(item)
   const next: ItemStateMap = { ...(state ?? {}) }
   const prev = next[key] ?? { checked: !!item.checked, inStock: !!item.inStock, pricePerUnit: item.pricePerUnit ?? null }
   const edit: Partial<LineEdit> = { ...(prev.edit ?? {}) }
@@ -140,16 +184,45 @@ export function editMenuLine(
       delete item.skipped
     }
   }
-  if (change.quantity !== undefined) {
+  if (change.quantity !== undefined || change.unit !== undefined) {
+    const menuUnit = item.menuUnit ?? item.unit
     const menuQty = item.menuQuantity ?? item.quantity
-    if (change.quantity == null || Math.abs(change.quantity - menuQty) < 1e-9) {
-      delete edit.quantity
-      item.quantity = menuQty
-      delete item.menuQuantity
+    const target = change.unit ?? item.unit
+    const before = { quantity: item.quantity, unit: item.unit }
+    if (target === menuUnit) {
+      // Back in the menu's unit: «g» alone goes back to the menu's amount.
+      const q = change.quantity === undefined ? null : change.quantity
+      delete edit.unit
+      delete item.menuUnit
+      item.unit = menuUnit
+      if (q == null || Math.abs(q - menuQty) < 1e-9) {
+        delete edit.quantity
+        item.quantity = menuQty
+        delete item.menuQuantity
+      } else {
+        edit.quantity = q
+        item.menuQuantity = menuQty
+        item.quantity = q
+      }
     } else {
-      edit.quantity = change.quantity
+      const id = item.ingredientId ?? ''
+      if (convert?.(id, 1, menuUnit, target) == null) throw new UnitChangeError(target)
+      let q = change.quantity ?? null
+      if (q == null) {
+        const c = convert!(id, item.quantity, item.unit, target)
+        if (c == null) throw new UnitChangeError(target)
+        q = roundUpForUnit(c, target)
+      }
+      edit.unit = target
+      edit.quantity = q
+      item.unit = target
+      item.quantity = q
+      item.menuUnit = menuUnit
       item.menuQuantity = menuQty
-      item.quantity = change.quantity
+    }
+    // A price is € per unit: in another unit, keep what the line costs.
+    if (item.unit !== before.unit && item.pricePerUnit != null) {
+      item.pricePerUnit = item.quantity > 0 ? (item.pricePerUnit * before.quantity) / item.quantity : null
     }
     // The amount changed: the partial «ya tienes» no longer adds up.
     delete item.haveQuantity
@@ -157,7 +230,16 @@ export function editMenuLine(
   }
   const has = edit.skipped || edit.quantity != null
   const { edit: _old, ...rest } = prev
-  if (has) next[key] = { ...rest, edit: { ...(edit.skipped ? { skipped: true } : {}), ...(edit.quantity != null ? { quantity: edit.quantity } : {}), until } }
+  if (has)
+    next[key] = {
+      ...rest,
+      edit: {
+        ...(edit.skipped ? { skipped: true } : {}),
+        ...(edit.quantity != null ? { quantity: edit.quantity } : {}),
+        ...(edit.quantity != null && edit.unit ? { unit: edit.unit } : {}),
+        until,
+      },
+    }
   else if (rest.checked || rest.inStock || rest.pricePerUnit != null) next[key] = rest
   else delete next[key]
   return next

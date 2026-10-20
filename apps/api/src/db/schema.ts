@@ -1876,3 +1876,56 @@ export const menuPlans = pgTable('menu_plans', {
   index('idx_menu_plans_household_created').on(t.householdId, t.createdAt),
   check('menu_plans_status_check', sql.raw("status IN ('ok','partial','fallback','skipped')")),
 ])
+
+/**
+ * PRO-258: the week is thought on Saturday night, in one Message Batch (half
+ * price). One run per target week (the Monday after); while PRO-257 is off
+ * it runs in the shadow, like `menu_plans`.
+ */
+export const menuPlannerRuns = pgTable('menu_planner_runs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  /** Monday of the week being planned, AAAA-MM-DD (Europe/Madrid). */
+  weekStart: text('week_start').notNull(),
+  /** 'empty' | 'submitted' | 'ended' | 'failed'. */
+  status: text('status').notNull(),
+  batchId: text('batch_id'),
+  model: text('model').notNull(),
+  requested: integer('requested').notNull().default(0),
+  /** Why the other households were left out: { paused, not_subscribed, suspended, spend_cap, inactive, no_slots, no_candidates, error }. */
+  skipped: jsonb('skipped').notNull().default({}),
+  errorMessage: text('error_message'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  endedAt: timestamp('ended_at', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('uq_menu_planner_runs_week').on(t.weekStart),
+  index('idx_menu_planner_runs_status').on(t.status),
+  check('menu_planner_runs_status_check', sql.raw("status IN ('empty','submitted','ended','failed')")),
+])
+
+/** One household of a Saturday run: what was sent, and the plan once the batch ends (same fields as `menu_plans`). */
+export const menuPlannerRunItems = pgTable('menu_planner_run_items', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  runId: uuid('run_id').notNull().references(() => menuPlannerRuns.id, { onDelete: 'cascade' }),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  /** The owner: whose recipes, memory and AI cap. */
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** 'pending' | 'ok' | 'partial' | 'fallback' | 'failed'. */
+  status: text('status').notNull().default('pending'),
+  /** What the checker needs when the result arrives: the generator's week, slots, candidate refs, filters. */
+  context: jsonb('context').notNull(),
+  days: jsonb('days'),
+  slots: jsonb('slots').notNull().default([]),
+  check: jsonb('check'),
+  plannerScore: jsonb('planner_score'),
+  generatorScore: jsonb('generator_score'),
+  inputTokens: integer('input_tokens'),
+  outputTokens: integer('output_tokens'),
+  costMicros: integer('cost_micros'),
+  errorMessage: text('error_message'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('uq_menu_planner_run_items_run_household').on(t.runId, t.householdId),
+  index('idx_menu_planner_run_items_household').on(t.householdId),
+  check('menu_planner_run_items_status_check', sql.raw("status IN ('pending','ok','partial','fallback','failed')")),
+])

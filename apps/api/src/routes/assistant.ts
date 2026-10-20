@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { claimOptInReoffer, withReofferLine } from '../services/whatsapp/optInOffer.js'
 import { db } from '../db/connection.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { chat } from '../services/assistant/engine.js'
@@ -79,6 +80,18 @@ router.post('/assistant/:userId/chat', requireActiveAccount(), requireSpendCapac
         response.message = withSnowballLine(response.message, await generatedWeeksOf(userId, db))
       } catch (e) {
         console.warn('[assistant] generated weeks count failed (no snowball line):', e)
+      }
+    }
+
+    // PRO-248: whoever has WhatsApp linked and never answered the avisos
+    // question hears it one more time, here or on WhatsApp (whichever comes
+    // first), after their first week with a menu and the list.
+    // Never in the same reply as an invite offer.
+    if (mode !== 'onboarding' && !response.offerAdded) {
+      try {
+        if (await claimOptInReoffer(userId, new Date(), db)) response.message = withReofferLine(response.message)
+      } catch (e) {
+        console.warn('[assistant] avisos re-offer check failed (continuing):', e)
       }
     }
 

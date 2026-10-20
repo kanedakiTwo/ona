@@ -1002,6 +1002,13 @@ export const whatsappLinks = pgTable('whatsapp_links', {
   linkedAt: timestamp('linked_at', { withTimezone: true }).notNull().defaultNow(),
   /** Last inbound message — Meta's 24 h customer-service window starts here. */
   lastInboundAt: timestamp('last_inbound_at', { withTimezone: true }),
+  /**
+   * PRO-248: when the person said no to the avisos («No, gracias» or BAJA).
+   * Older answers are read from the messages (`optInDeclinedSql`).
+   */
+  optInDeclinedAt: timestamp('opt_in_declined_at', { withTimezone: true }),
+  /** PRO-248: when Mimo offered the avisos the one extra time (WhatsApp or web chat). */
+  optInReofferedAt: timestamp('opt_in_reoffered_at', { withTimezone: true }),
 })
 
 export const whatsappLinkCodes = pgTable('whatsapp_link_codes', {

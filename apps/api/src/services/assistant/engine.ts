@@ -116,6 +116,7 @@ export async function chat(
     const before = result.message
     result.message = await maybeAppendFamilyInviteOffer(userId, result.message, familyOfferMode)
     if (offerApplies && result.message === before) result.message = await maybeAppendInviteOffer(userId, result.message)
+    if (result.message !== before) result.offerAdded = true
   }
   return result
 }

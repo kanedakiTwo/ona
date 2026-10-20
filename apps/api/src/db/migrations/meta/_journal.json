@@ -554,6 +554,13 @@
       "when": 1792452734951,
       "tag": "0081_household_invite_source",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1792455258715,
+      "tag": "0082_whatsapp_opt_in_answer",
+      "breakpoints": true
     }
   ]
 }

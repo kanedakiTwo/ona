@@ -12,6 +12,7 @@ import { env } from '../config/env.js'
 import { db as defaultDb } from '../db/connection.js'
 import { newsletterSends, users, waitlistEntries } from '../db/schema.js'
 import { maskEmail, sendEmail, sendEmailBatch, type EmailMessage, type EmailResult } from './email.js'
+import { contentLinks, createDbNewsletterStatsRepo, withTrackedLinks, type NewsletterStatsRepo } from './newsletterStats.js'
 import {
   ACCENT,
   BODY,
@@ -286,8 +287,9 @@ export function newsletterTokenForUser(userId: string): string {
   return `u.${userId}.${userSig(userId)}`
 }
 
-export function newsletterUnsubscribePath(token: string): string {
-  return `/newsletter/baja?t=${encodeURIComponent(token)}`
+/** `i=<issueId>` (PRO-191): the opt-out is counted under that issue; no person is stored. */
+export function newsletterUnsubscribePath(token: string, issueId?: string): string {
+  return `/newsletter/baja?t=${encodeURIComponent(token)}${issueId ? `&i=${encodeURIComponent(issueId)}` : ''}`
 }
 
 export type NewsletterTokenRef = { kind: 'waitlist'; token: string } | { kind: 'user'; userId: string }
@@ -530,6 +532,11 @@ export interface NewsletterDeps {
   publicUrl: string
   /** API origin for the RFC 8058 one-click POST. */
   apiUrl: string
+  /**
+   * PRO-191: our own click counter. Present → the content's links go through
+   * `<web>/n/<issue>/<index>` and are saved before sending. Absent → links as written.
+   */
+  stats?: NewsletterStatsRepo
 }
 
 export function defaultNewsletterDeps(urls: { publicUrl: string; apiUrl: string }): NewsletterDeps {
@@ -537,6 +544,7 @@ export function defaultNewsletterDeps(urls: { publicUrl: string; apiUrl: string 
     repo: createDbNewsletterRepo(),
     sendBatch: (m) => sendEmailBatch(m),
     sendOne: (m) => sendEmail(m),
+    stats: createDbNewsletterStatsRepo(),
     ...urls,
   }
 }
@@ -546,13 +554,14 @@ export function buildNewsletterMessage(
   to: string,
   tokens: { token: string; leaveToken?: string; referralCode?: string },
   urls: { publicUrl: string; apiUrl: string },
+  issueId?: string,
 ): EmailMessage {
   const web = urls.publicUrl.replace(/\/+$/, '')
   const api = urls.apiUrl.replace(/\/+$/, '')
-  const unsubscribeUrl = `${web}${newsletterUnsubscribePath(tokens.token)}`
+  const unsubscribeUrl = `${web}${newsletterUnsubscribePath(tokens.token, issueId)}`
   const leaveListUrl = tokens.leaveToken ? `${web}${waitlistUnsubscribePath(tokens.leaveToken)}` : undefined
   const inviteUrl = tokens.referralCode ? waitlistReferralUrl(web, tokens.referralCode) : undefined
-  const oneClick = `${api}/newsletter/unsubscribe?t=${encodeURIComponent(tokens.token)}`
+  const oneClick = `${api}/newsletter/unsubscribe?t=${encodeURIComponent(tokens.token)}${issueId ? `&i=${encodeURIComponent(issueId)}` : ''}`
   const { html, text } = renderNewsletterEmail(input, { unsubscribeUrl, leaveListUrl, inviteUrl, ...brandAssets(web) })
   return {
     to,
@@ -580,12 +589,24 @@ export type NewsletterOutcome =
 
 export class NewsletterTestAddressError extends Error {}
 
+/**
+ * PRO-191: with a stats repo, save the issue's links and return the content
+ * with them going through our counter (a proof's links never count).
+ */
+async function trackContent(input: NewsletterSendInput, deps: NewsletterDeps, proof: boolean): Promise<NewsletterSendInput> {
+  if (!deps.stats) return input
+  const links = contentLinks(input.content)
+  await deps.stats.registerLinks(input.issueId, links)
+  return { ...input, content: withTrackedLinks(input.content, links, deps.publicUrl, input.issueId, proof) }
+}
+
 export async function sendNewsletter(input: NewsletterSendInput, deps: NewsletterDeps): Promise<NewsletterOutcome> {
   const urls = { publicUrl: deps.publicUrl, apiUrl: deps.apiUrl }
   if (input.testTo) {
     if (!(await deps.repo.isAdminEmail(input.testTo))) throw new NewsletterTestAddressError(input.testTo)
+    const tracked = await trackContent(input, deps, true)
     const msg = buildNewsletterMessage(
-      { ...input, subject: `[Prueba] ${input.subject}` },
+      { ...tracked, subject: `[Prueba] ${input.subject}` },
       input.testTo,
       { token: 'w.prueba-no-da-de-baja-a-nadie' },
       urls,
@@ -610,10 +631,14 @@ export async function sendNewsletter(input: NewsletterSendInput, deps: Newslette
     }
   }
 
+  // Links saved before claiming anyone: a failure here sends nothing and leaves no claim behind.
+  const tracked = recipients.length > 0 ? await trackContent(input, deps, false) : input
   const claimed = await deps.repo.claim(input.issueId, recipients)
   const mine = recipients.filter((r) => claimed.has(r.hash))
   const results = await deps.sendBatch(
-    mine.map((r) => buildNewsletterMessage(input, r.email, { token: r.token, leaveToken: r.leaveToken, referralCode: r.referralCode }, urls)),
+    mine.map((r) =>
+      buildNewsletterMessage(tracked, r.email, { token: r.token, leaveToken: r.leaveToken, referralCode: r.referralCode }, urls, input.issueId),
+    ),
   )
   const sent: { hash: string; providerId: string | null }[] = []
   const notSent: string[] = []

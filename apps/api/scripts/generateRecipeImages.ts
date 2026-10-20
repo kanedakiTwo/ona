@@ -1,6 +1,6 @@
 /**
  * Generate editorial-style cookbook photos for every recipe in the catalog
- * using AiKit's Imagen-fal endpoint, then save them as JPEGs and update each
+ * using the house image provider (AiKit gpt-image-2, OpenAI as reserve), then save them as JPEGs and update each
  * recipe's `image_url`.
  *
  * Why this exists: the seed shipped with ~7 hand-picked photos and ~70
@@ -19,7 +19,7 @@
  *                           tweaking 1-2 prompts).
  *   --include-user          Include user-authored recipes (default: skip).
  *   --concurrency=N         Max in-flight API calls (default 3).
- *   --aspect=4:3|1:1|3:4    Aspect ratio sent to Imagen-fal (default 4:3).
+ *   --aspect=4:3|1:1|3:4    Aspect ratio asked of the image model (default 4:3).
  *   --skip-existing         Leave recipes that already have a non-null
  *                           image_url untouched.
  *   --no-db                 Generate the JPEGs but don't update the DB row

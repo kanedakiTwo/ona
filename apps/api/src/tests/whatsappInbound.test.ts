@@ -12,7 +12,7 @@ import type { LinkWithUser } from '../services/whatsapp/store.js'
 import type { HistoryRow } from '../services/whatsapp/history.js'
 import type { OutboundMessage } from '../services/whatsapp/render.js'
 import { EMPTY_USAGE } from '../services/advisorBudget.js'
-import { AI_DISCLOSURE_FIRST_PERSON } from '@ona/shared'
+import { AI_DISCLOSURE_FIRST_PERSON, BRAND_SUPPORT_EMAIL } from '@ona/shared'
 
 const NOW = new Date('2026-10-06T12:00:00Z')
 const PHONE = '34600111222'
@@ -158,7 +158,9 @@ describe('processInbound — unlinked numbers', () => {
     expect(m).toMatch(/puedo equivocarme y no sustituyo a un profesional sanitario/)
     expect(m).toMatch(/Puedes escribirme o mandarme notas de voz/)
     expect(m).toMatch(/\*1\.\* ¿Cuántos sois en casa\?/)
-    expect(m).toMatch(/\*2\.\* Dime tres platos que os gusten mucho\./)
+    expect(m).toMatch(/\*2\.\* ¿Cuánto cocináis en casa/)
+    // PRO-245 / D-064: no favourite dishes in the sign-up any more.
+    expect(m).not.toMatch(/platos/)
   })
 
   it('the opt-in question says it can be changed just by asking (Mimo has the tool)', () => {
@@ -609,11 +611,27 @@ describe('processInbound — control words (BAJA / ALTA / HUMANO)', () => {
     expect(t.sent[0]).toEqual({ type: 'text', text: COPY.stopped })
   })
 
-  it('ALTA (or the "Sí, avísame" button) turns them back on', async () => {
+  it('ALTA (or the "Sí, avísame" button) turns them on: «te enviaré» the first time (PRO-248)', async () => {
     const t = setup()
     await processInbound(msg({ kind: 'interactive', text: 'Sí, avísame', rawType: 'interactive' }), t.deps)
     expect(t.setNotify).toHaveBeenCalledWith('user-1', true)
+    expect(t.sent[0]).toEqual({ type: 'text', text: COPY.startedFirst })
+    expect(COPY.startedFirst).toMatch(/te enviaré avisos/)
+    expect(COPY.startedFirst).not.toMatch(/vuelvo/)
+  })
+
+  it('ALTA after a BAJA (or a previous yes) turns them back on: «vuelvo a enviarte»', async () => {
+    const t = setup({ outboundKinds: new Map([['optout', new Date(NOW.getTime() - 86_400_000)]]) })
+    await processInbound(msg({ text: 'ALTA' }), t.deps)
     expect(t.sent[0]).toEqual({ type: 'text', text: COPY.started })
+  })
+
+  it('PRO-248: BAJA records the «no» so the avisos are never offered again', async () => {
+    const t = setup()
+    const markDeclined = vi.fn(async () => undefined)
+    t.deps.optIn = { markDeclined, claimReoffer: vi.fn(async () => false) }
+    await processInbound(msg({ text: 'BAJA' }), t.deps)
+    expect(markDeclined).toHaveBeenCalledWith('user-1')
   })
 
   it('HUMANO gives the support contact without calling the model', async () => {
@@ -621,6 +639,16 @@ describe('processInbound — control words (BAJA / ALTA / HUMANO)', () => {
     await processInbound(msg({ text: 'Quiero hablar con una persona' }), t.deps)
     expect(t.chat).not.toHaveBeenCalled()
     expect(t.sent[0].text).toContain('hola@ona.test')
+  })
+
+  it('PRO-179: without SUPPORT_EMAIL, HUMANO and the suspended notice give hola@mimoia.com', async () => {
+    const t = setup()
+    await processInbound(msg({ text: 'Quiero hablar con una persona' }), t.deps)
+    expect(t.sent[0].text).toContain(BRAND_SUPPORT_EMAIL)
+    expect(t.sent[0].text).not.toContain('te invitó')
+    expect(COPY.suspended(undefined)).toContain(BRAND_SUPPORT_EMAIL)
+    expect(COPY.suspended('')).toContain(BRAND_SUPPORT_EMAIL)
+    expect(COPY.suspended(undefined)).not.toContain('te invitó')
   })
 
   it('"para la cena pon lentejas" is a request, not an opt-out', async () => {
@@ -939,12 +967,13 @@ describe('processInbound — WhatsApp-first sign-up (2026-10-10)', () => {
     const afterSignup = () =>
       new Map([['onboarding', at(600_000)], ['reply', at(180_000)], ['system', at(120_000)], ['optin_prompt', at(60_000)]])
 
-    it('"Sí, avísame" → avisos on and straight to the suggestions, no confirmation line (2026-10-15)', async () => {
+    it('"Sí, avísame" → avisos on, the confirmation (PRO-248: always, «te enviaré») and the suggestions', async () => {
       const t = setup({ outboundKinds: afterSignup() })
       await processInbound(msg({ kind: 'interactive', text: 'Sí, avísame', rawType: 'interactive' }), t.deps)
       expect(t.setNotify).toHaveBeenCalledWith('user-1', true)
-      expect(t.outbound.map((o) => o.kind)).toEqual(['first_steps'])
-      expect(t.sent[0]).toEqual({ type: 'text', text: COPY.firstSteps(`${WEB}/menu`) })
+      expect(t.outbound.map((o) => o.kind)).toEqual(['optin', 'first_steps'])
+      expect(t.sent[0]).toEqual({ type: 'text', text: COPY.startedFirst })
+      expect(t.sent[1]).toEqual({ type: 'text', text: COPY.firstSteps(`${WEB}/menu`) })
       expect(COPY.firstSteps('x')).toMatch(/foto o un enlace de una receta/)
       expect(COPY.firstSteps('x')).toMatch(/¿Qué cenamos hoy\?/)
       expect(COPY.firstSteps('x')).toMatch(/Hazme la lista de la compra/)
@@ -964,20 +993,24 @@ describe('processInbound — WhatsApp-first sign-up (2026-10-10)', () => {
       const t = setup({ outboundKinds: afterSignup(), guided })
       await processInbound(msg({ kind: 'interactive', text: 'Sí, avísame', rawType: 'interactive' }), t.deps)
       expect(guided).toHaveBeenCalledWith('user-1', PHONE, expect.anything(), expect.any(String))
-      expect(t.sent[0]).toEqual({ type: 'text', text: written })
-      expect(t.outbound[0]).toMatchObject({ kind: 'first_steps', meta: { guided: 'guide' } })
+      expect(t.sent[1]).toEqual({ type: 'text', text: written })
+      expect(t.outbound[1]).toMatchObject({ kind: 'first_steps', meta: { guided: 'guide' } })
 
       const fixed = setup({ outboundKinds: afterSignup(), guided: async (_u, _p, _s, fallback) => ({ text: fallback, source: 'fallback', reason: 'over_budget' }) })
       await processInbound(msg({ kind: 'interactive', text: 'Sí, avísame', rawType: 'interactive' }), fixed.deps)
-      expect(fixed.sent[0]).toEqual({ type: 'text', text: COPY.firstSteps(`${WEB}/menu`) })
-      expect(fixed.outbound[0]).toMatchObject({ meta: { guided: 'fallback', guidedReason: 'over_budget' } })
+      expect(fixed.sent[1]).toEqual({ type: 'text', text: COPY.firstSteps(`${WEB}/menu`) })
+      expect(fixed.outbound[1]).toMatchObject({ meta: { guided: 'fallback', guidedReason: 'over_budget' } })
     })
 
-    it('"No, gracias" → straight to the suggestions, no confirmation line', async () => {
+    it('"No, gracias" → the confirmation (PRO-248: always), the «no» recorded, then the suggestions', async () => {
       const t = setup({ outboundKinds: afterSignup() })
+      const markDeclined = vi.fn(async () => undefined)
+      t.deps.optIn = { markDeclined, claimReoffer: vi.fn(async () => false) }
       await processInbound(msg({ kind: 'interactive', text: 'No, gracias', rawType: 'interactive' }), t.deps)
-      expect(t.outbound.map((o) => o.kind)).toEqual(['first_steps'])
-      expect(t.sent[0]).toEqual({ type: 'text', text: COPY.firstSteps(`${WEB}/menu`) })
+      expect(t.outbound.map((o) => o.kind)).toEqual(['system', 'first_steps'])
+      expect(t.sent[0]).toEqual({ type: 'text', text: COPY.optInDeclined })
+      expect(t.sent[1]).toEqual({ type: 'text', text: COPY.firstSteps(`${WEB}/menu`) })
+      expect(markDeclined).toHaveBeenCalledWith('user-1')
     })
 
     it('only once: not again on a later ALTA', async () => {
@@ -1003,6 +1036,37 @@ describe('processInbound — WhatsApp-first sign-up (2026-10-10)', () => {
       await processInbound(msg({ text: 'Lentejas y tortilla' }), t.deps)
       expect(t.outbound.map((o) => o.kind)).not.toContain('first_steps')
       expect(t.outbound.at(-1)?.kind).toBe('optin_prompt')
+    })
+  })
+
+  describe('the one extra offer of the avisos (PRO-248)', () => {
+    it('when due, it goes after the reply, in one line, with the same two buttons', async () => {
+      const t = setup({ chatReply: { message: 'Hoy toca lentejas.' } })
+      const claimReoffer = vi.fn(async () => true)
+      t.deps.optIn = { markDeclined: vi.fn(async () => undefined), claimReoffer }
+      await processInbound(msg({ text: '¿Qué comemos hoy?' }), t.deps)
+      expect(claimReoffer).toHaveBeenCalledWith('user-1', NOW)
+      expect(t.outbound.map((o) => o.kind)).toEqual(['reply', 'optin_prompt'])
+      const offer = t.sent.at(-1) as any
+      expect(offer.type).toBe('buttons')
+      expect(offer.text).toBe(COPY.optInReoffer)
+      expect(offer.text.split('\n')).toHaveLength(1)
+      expect(offer.buttons.map((b: any) => b.title)).toEqual(['Sí, avísame', 'No, gracias'])
+    })
+
+    it('not when it is not due (said no, already offered, avisos on, too soon: claimReoffer decides)', async () => {
+      const t = setup({ chatReply: { message: 'Hoy toca lentejas.' } })
+      t.deps.optIn = { markDeclined: vi.fn(async () => undefined), claimReoffer: vi.fn(async () => false) }
+      await processInbound(msg({ text: '¿Qué comemos hoy?' }), t.deps)
+      expect(t.outbound.map((o) => o.kind)).toEqual(['reply'])
+    })
+
+    it('never during the WhatsApp sign-up', async () => {
+      const t = setup({ link: NEW_LINK, chatReply: { message: '¿Cuántos sois?' } })
+      const claimReoffer = vi.fn(async () => true)
+      t.deps.optIn = { markDeclined: vi.fn(async () => undefined), claimReoffer }
+      await processInbound(msg({ text: 'hola' }), t.deps)
+      expect(claimReoffer).not.toHaveBeenCalled()
     })
   })
 })
@@ -1048,5 +1112,25 @@ describe('processInbound — a linked number sends a link code', () => {
     const t = setup({ consume: () => ({ userId: 'user-2' }) })
     await processInbound(msg({ text: 'Ponme el plato 2 del menú, el de la receta ABC2DE que vi ayer' }), t.deps)
     expect(t.chat).toHaveBeenCalled()
+  })
+})
+
+describe('processInbound — late answer to «¿hiciste la cena?» (PRO-250)', () => {
+  const checkin: HistoryRow = { direction: 'out', kind: 'dinner_checkin', body: '¿Hiciste hoy la cena (*Hummus casero*)? Así lo apunto.', status: 'sent', createdAt: new Date('2026-10-16T21:10:00Z') }
+
+  it('at 00:30 Mimo is told the reply is about Friday 16; history keeps the user words only', async () => {
+    const t = setup({ history: [checkin] })
+    t.deps.now = () => new Date('2026-10-16T22:30:00Z')
+    await processInbound(msg({ kind: 'interactive', text: 'Sí, la hice', replyId: 'checkin:yes', timestamp: Math.floor(new Date('2026-10-16T22:30:00Z').getTime() / 1000) }), t.deps)
+    const sentText = (t.chat.mock.calls[0] as unknown[])[1] as string
+    expect(sentText).toContain('contesta al aviso de la cena del viernes 16 de octubre')
+    expect(sentText.endsWith('Sí, la hice')).toBe(true)
+    expect(t.inboundUpdates.find((u) => u.status === 'processed')?.body).toBe('Sí, la hice')
+  })
+
+  it('during the day nothing is added', async () => {
+    const t = setup({ history: [checkin] })
+    await processInbound(msg({ text: 'Sí, la hice' }), t.deps)
+    expect((t.chat.mock.calls[0] as unknown[])[1]).toBe('Sí, la hice')
   })
 })

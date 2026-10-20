@@ -33,6 +33,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { recordAnthropicCost } from './costLedger.js'
 import { env } from '../config/env.js'
+import { CLAUDE_MODEL } from '../config/models.js'
 
 export interface LlmCandidate {
   /** The raw extracted name (e.g. "pechuga de pollo"). */
@@ -81,7 +82,7 @@ export interface DisambiguateOutput {
 }
 
 // Sonnet 5.5: adaptive thinking on by default, so max_tokens leaves room for it.
-const MODEL = 'claude-sonnet-5-5'
+const MODEL = CLAUDE_MODEL
 
 /**
  * Batch-disambiguate a list of unmatched ingredient names against the

@@ -9,10 +9,18 @@ import {
   createDbNewsletterRepo,
   defaultNewsletterDeps,
   newsletterSendSchema,
+  parseNewsletterToken,
   sendNewsletter,
   type NewsletterDeps,
   type NewsletterRepo,
 } from '../services/newsletter.js'
+import {
+  NEWSLETTER_STATS_DEFINITIONS,
+  countsAsClick,
+  createDbNewsletterStatsRepo,
+  type NewsletterStatsRepo,
+} from '../services/newsletterStats.js'
+import { metricsAuth } from '../middleware/metricsAuth.js'
 
 /**
  * Newsletter «El menú de los viernes» (PRO-94, specs/newsletter.md).
@@ -21,9 +29,16 @@ import {
  *   GET  /newsletter/me            JWT: { optIn } — the profile switch (PRO-95)
  *   PUT  /newsletter/me { optIn }  JWT: on (consent date + version) / off (also the waitlist entry)
  *   POST /newsletter/unsubscribe   public: newsletter off, the place on the list stays.
- *                                  JSON `{ token }` from /newsletter/baja, or the RFC 8058
- *                                  one-click POST to `?t=<token>` from the inbox.
+ *                                  JSON `{ token, issueId? }` from /newsletter/baja, or the RFC 8058
+ *                                  one-click POST to `?t=<token>&i=<issue>` from the inbox.
+ *   GET  /newsletter/click/:issueId/:n  public, for the web's /n/<issue>/<n> (PRO-191):
+ *                                  `{ url }` = the destination saved at send (+1 click
+ *                                  unless HEAD, a proof or a scanner); unknown → 404.
+ *   GET  /admin/newsletter/stats   admin JWT or x-metrics-token: per issue sent, clicks
+ *                                  per link and opt-outs. Counts only.
  */
+
+const ISSUE_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/
 
 const unsubscribeSchema = z.object({ token: z.string().trim().min(3).max(200) })
 const optInSchema = z.object({ optIn: z.boolean() })
@@ -42,17 +57,24 @@ export interface NewsletterRouterDeps {
   makeDeps: (urls: { publicUrl: string; apiUrl: string }) => NewsletterDeps
   audit: typeof recordAudit
   publicUrl: () => string
+  /** PRO-191: clicks and opt-outs per issue. */
+  stats: NewsletterStatsRepo
+  /** Admin JWT or the agents' x-metrics-token. */
+  statsAuth: RequestHandler
 }
 
 export function createNewsletterRouter(overrides: Partial<NewsletterRouterDeps> = {}): Router {
   const repo = overrides.repo ?? createDbNewsletterRepo()
+  const stats = overrides.stats ?? createDbNewsletterStatsRepo()
   const deps: NewsletterRouterDeps = {
     repo,
+    stats,
+    statsAuth: metricsAuth as RequestHandler,
     adminAuth: [authMiddleware as RequestHandler, requireAdmin as RequestHandler],
     userAuth: authMiddleware as RequestHandler,
     unsubscribeLimiter: rateLimit({ max: 30, windowMs: 60 * 60_000 }),
     send: sendNewsletter,
-    makeDeps: (urls) => ({ ...defaultNewsletterDeps(urls), repo }),
+    makeDeps: (urls) => ({ ...defaultNewsletterDeps(urls), repo, stats }),
     audit: recordAudit,
     publicUrl: () => env.WEB_PUBLIC_URL,
     ...overrides,
@@ -139,10 +161,51 @@ export function createNewsletterRouter(overrides: Partial<NewsletterRouterDeps> 
         notFound()
         return
       }
+      // PRO-191: count the opt-out under the issue it came from (counts only).
+      if (outcome === 'ok') {
+        const rawIssue = typeof req.query.i === 'string' ? req.query.i : req.body?.issueId
+        const issueId = typeof rawIssue === 'string' && ISSUE_ID_RE.test(rawIssue) ? rawIssue : null
+        const ref = parseNewsletterToken(parsed.data.token)
+        await deps.stats
+          .recordUnsubscribe(issueId, ref?.kind === 'user' ? 'user' : 'waitlist')
+          .catch((err) => console.warn('[newsletter] opt-out not counted:', err?.message ?? err))
+      }
       res.json({ ok: true, alreadyUnsubscribed: outcome === 'already' })
     } catch (err: any) {
       console.error('[newsletter] unsubscribe failed:', err?.message ?? err)
       res.status(500).json({ error: 'No hemos podido darte de baja. Inténtalo de nuevo en un momento.' })
+    }
+  })
+
+  router.get('/newsletter/click/:issueId/:n', async (req: Request, res: Response) => {
+    const issueId = String(req.params.issueId)
+    const n = Number(req.params.n)
+    if (!ISSUE_ID_RE.test(issueId) || !Number.isInteger(n) || n < 1 || n > 50) {
+      res.status(404).json({ error: 'Este enlace no existe.', code: 'NEWSLETTER_LINK_NOT_FOUND' })
+      return
+    }
+    try {
+      // The web route passes a HEAD on as `x-newsletter-head` (its fetch is a GET).
+      const method = req.get('x-newsletter-head') === '1' ? 'HEAD' : req.method
+      const count = countsAsClick({ method, userAgent: req.get('user-agent'), proof: req.query.prueba === '1' })
+      const url = await deps.stats.click(issueId, n, count)
+      if (!url) {
+        res.status(404).json({ error: 'Este enlace no existe.', code: 'NEWSLETTER_LINK_NOT_FOUND' })
+        return
+      }
+      res.set('Cache-Control', 'no-store').json({ url })
+    } catch (err: any) {
+      console.error('[newsletter] click failed:', err?.message ?? err)
+      res.status(500).json({ error: 'Internal server error' })
+    }
+  })
+
+  router.get('/admin/newsletter/stats', deps.statsAuth, async (_req: Request, res: Response) => {
+    try {
+      res.json({ ...(await deps.stats.stats()), definitions: NEWSLETTER_STATS_DEFINITIONS })
+    } catch (err: any) {
+      console.error('[newsletter] stats failed:', err?.message ?? err)
+      res.status(500).json({ error: 'Internal server error' })
     }
   })
 

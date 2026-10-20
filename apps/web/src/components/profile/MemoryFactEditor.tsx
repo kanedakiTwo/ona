@@ -14,7 +14,7 @@
 import { useState } from "react"
 import { Plus, X } from "lucide-react"
 import type { MemoryKey, TimeBudgetMode } from "@ona/shared"
-import { toDayTimeBudget } from "@ona/shared"
+import { SPANISH_REGIONS, toDayTimeBudget } from "@ona/shared"
 
 interface Props {
   memoryKey: MemoryKey
@@ -45,6 +45,8 @@ const ACTIVITY_OPTIONS = [
   { value: "moderate", label: "Moderada" },
   { value: "high", label: "Alta" },
 ]
+// PRO-226: comunidad autónoma (its holidays count as weekend in the menu).
+const REGION_OPTIONS = Object.entries(SPANISH_REGIONS).map(([value, label]) => ({ value, label }))
 const COOKING_SKILL_OPTIONS = [
   { value: "easy", label: "Básico" },
   { value: "medium", label: "Medio" },
@@ -72,6 +74,17 @@ export function MemoryFactEditor({ memoryKey, initial, onSave, onCancel, disable
           onSave={onSave}
           onCancel={onCancel}
           disabled={disabled}
+        />
+      )
+    case "region":
+      return (
+        <EnumEditor
+          options={REGION_OPTIONS}
+          initial={initial as string | null}
+          onSave={onSave}
+          onCancel={onCancel}
+          disabled={disabled}
+          ariaLabel="Comunidad autónoma"
         />
       )
     case "cooking_skill":
@@ -197,8 +210,10 @@ function EnumEditor({
   onSave,
   onCancel,
   disabled,
+  ariaLabel,
 }: {
   options: Array<{ value: string; label: string }>
+  ariaLabel?: string
   initial: string | null
   onSave: (next: unknown) => void
   onCancel: () => void
@@ -208,6 +223,7 @@ function EnumEditor({
   return (
     <EditorFrame onSave={() => onSave(value)} onCancel={onCancel} disabled={disabled}>
       <select
+        aria-label={ariaLabel}
         value={value}
         onChange={(e) => setValue(e.target.value)}
         className="w-full min-h-[44px] rounded-xl border border-border-soft bg-paper px-3.5 text-[15px] text-ink focus:border-ink focus:outline-none"

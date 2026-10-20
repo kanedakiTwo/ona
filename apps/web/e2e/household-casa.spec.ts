@@ -62,3 +62,41 @@ test('the page fits the phone width with a pending invite', async ({ page }) => 
     if (box) expect(box.x + box.width).toBeLessThanOrEqual(vw + 1)
   }
 })
+
+// PRO-260 (D-088): «Enviar por WhatsApp» opens wa.me with the message
+// already written and the invitation link; the tap counts the invite as
+// sent. 390 px.
+test.describe('390 px', () => {
+  test.use({ viewport: { width: 390, height: 844 } })
+
+  test('«Enviar por WhatsApp» opens wa.me with the written message and the link', async ({ page, context }) => {
+    await page.goto('/profile/casa')
+    await page.getByRole('button', { name: /invitar a alguien/i }).first().click()
+    await page.getByRole('button', { name: /crear invitaci/i }).first().click()
+    const code = page.locator('code', { hasText: /\/invites\// }).first()
+    await expect(code).toBeVisible({ timeout: 8_000 })
+    const inviteUrl = (await code.textContent())!.trim()
+    expect(inviteUrl).toMatch(/\/invites\/[0-9a-f]{32}$/)
+
+    const button = page.getByTestId('family-invite-whatsapp').first()
+    await expect(button).toHaveText(/Enviar por WhatsApp/)
+    const href = (await button.getAttribute('href'))!
+    expect(href.startsWith('https://wa.me/?text=')).toBe(true)
+    const text = decodeURIComponent(href.slice('https://wa.me/?text='.length))
+    expect(text).toContain('Te invito a nuestra casa en Mimoia')
+    expect(text).toContain('30 días')
+    expect(text.endsWith(inviteUrl)).toBe(true)
+    await expect(page.getByTestId('family-invite-copy').first()).toBeVisible()
+
+    // Don't actually leave for wa.me: the new tab is closed as soon as it opens.
+    context.on('page', (p) => void p.close().catch(() => {}))
+    await page.route(/wa\.me/, (route) => route.fulfill({ status: 204, body: '' }))
+    const shared = page.waitForResponse((r) => /\/households\/me\/invites\/[^/]+\/shared$/.test(r.url()) && r.request().method() === 'POST')
+    await button.click()
+    expect((await shared).status()).toBe(204)
+
+    // The link expires in 30 days (shown as «Caduca <día mes>»).
+    const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })
+    await expect(page.getByText(`Caduca ${expires}`).first()).toBeVisible()
+  })
+})

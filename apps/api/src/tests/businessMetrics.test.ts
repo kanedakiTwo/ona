@@ -14,6 +14,8 @@ import {
   buildWeekly,
   buildCohorts,
   buildTotals,
+  DEFINITIONS,
+  FEATURE_DEFINITIONS,
   type MetricsInput,
 } from '../services/businessMetrics.js'
 
@@ -156,6 +158,75 @@ describe('buildWeekly', () => {
   it('ignores pairs outside the requested window', () => {
     const weekly = buildWeekly(input({ activity: [{ householdId: 'h1', week: '2026-09-14' }] }))
     expect(weekly.map((w) => w.activeHouseholds)).toEqual([0, 0, 0])
+  })
+})
+
+describe('menu households per week (PRO-246): who prepared the week, and who had it before Monday', () => {
+  it('menuHouseholds = distinct households with a menu for that week; menuReadyByMondayHouseholds = first one created before Monday 00:00 Madrid', () => {
+    const weekly = buildWeekly(
+      input({
+        menus: [
+          { householdId: 'h1', week: '2026-09-28', firstCreatedAt: '2026-09-26T09:00:00Z' }, // Saturday
+          { householdId: 'h2', week: '2026-09-28', firstCreatedAt: '2026-09-28T08:00:00Z' }, // Monday morning
+          { householdId: 'h3', week: '2026-09-28', firstCreatedAt: null }, // unknown → not ready
+          { householdId: 'h1', week: '2026-10-05', firstCreatedAt: '2026-10-04T20:00:00Z' }, // Sunday 22:00 Madrid
+          { householdId: 'h9', week: '2026-09-14', firstCreatedAt: '2026-09-10T09:00:00Z' }, // outside the window
+        ],
+      }),
+    )
+    expect(weekly.map((w) => w.menuHouseholds)).toEqual([0, 3, 1])
+    expect(weekly.map((w) => w.menuReadyByMondayHouseholds)).toEqual([0, 1, 1])
+  })
+
+  it('the Monday cut-off is 00:00 Madrid, not UTC (CEST: 22:00 UTC on Sunday)', () => {
+    const at = (iso: string) =>
+      buildWeekly(input({ menus: [{ householdId: 'h1', week: '2026-10-05', firstCreatedAt: iso }] }))[2].menuReadyByMondayHouseholds
+    expect(at('2026-10-04T21:59:59Z')).toBe(1) // Sunday 23:59:59 in Madrid
+    expect(at('2026-10-04T22:00:00Z')).toBe(0) // Monday 00:00 in Madrid
+    expect(at('2026-10-04T23:30:00Z')).toBe(0) // still Sunday in UTC, already Monday in Madrid
+  })
+
+  it('in winter (CET) the cut-off is 23:00 UTC on Sunday', () => {
+    const at = (iso: string) =>
+      buildWeekly(input({ weeks: ['2026-11-02'], currentWeek: '2026-11-02', menus: [{ householdId: 'h1', week: '2026-11-02', firstCreatedAt: iso }] }))[0].menuReadyByMondayHouseholds
+    expect(at('2026-11-01T22:59:00Z')).toBe(1)
+    expect(at('2026-11-01T23:00:00Z')).toBe(0)
+  })
+})
+
+describe('eventsByFeature (PRO-247): how many paid calls sit behind each feature', () => {
+  const costs: MetricsInput['costs'] = [
+    { week: '2026-09-28', provider: 'anthropic', feature: 'whatsapp_guided', micros: 40_000, events: 17, unpriced: 0, internal: false },
+    // Same feature, another provider row in the same week: counts add up.
+    { week: '2026-09-28', provider: 'openai', feature: 'whatsapp_guided', micros: 1_000, events: 2, unpriced: 1, internal: false },
+    { week: '2026-09-28', provider: 'anthropic', feature: 'assistant_chat', micros: 30_000, events: 5, unpriced: 0, internal: false },
+    // Admin / suspended spend stays out, like costEur.
+    { week: '2026-09-28', provider: 'anthropic', feature: 'assistant_chat', micros: 900_000, events: 40, unpriced: 0, internal: true },
+    { week: '2026-10-05', provider: 'aikit', feature: 'recipe_image', micros: 4_400, events: 1, unpriced: 0, internal: false },
+    // Outside the window: ignored.
+    { week: '2026-09-14', provider: 'aikit', feature: 'recipe_image', micros: 4_400, events: 9, unpriced: 0, internal: false },
+  ]
+
+  it('per week: number of cost_events rows by feature, counted accounts only', () => {
+    const weekly = buildWeekly(input({ costs }))
+    expect(weekly.map((w) => w.eventsByFeature)).toEqual([
+      {},
+      { whatsapp_guided: 19, assistant_chat: 5 },
+      { recipe_image: 1 },
+    ])
+  })
+
+  it('in the totals: the window summed, same rule', () => {
+    const inp = input({ costs })
+    const totals = buildTotals(inp, buildWeekly(inp))
+    expect(totals.eventsByFeature).toEqual({ whatsapp_guided: 19, assistant_chat: 5, recipe_image: 1 })
+  })
+
+  it('every feature in the price ledger is explained in the definitions', () => {
+    expect(DEFINITIONS.eventsByFeature).toMatch(/one row per paid call/i)
+    for (const f of ['assistant_chat', 'whatsapp_guided', 'whatsapp_service', 'whatsapp_template', 'recipe_image', 'whatsapp_review']) {
+      expect(FEATURE_DEFINITIONS[f], f).toBeTruthy()
+    }
   })
 })
 

@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { motion } from 'motion/react'
 import { useQuery } from '@tanstack/react-query'
+import { InviteHouseholdButton } from '@/components/referrals/InviteHouseholdButton'
 import {
   Archive,
   Bell,
@@ -18,6 +19,7 @@ import {
   Brain,
   CalendarDays,
   ChefHat,
+  ChevronRight,
   CreditCard,
   Compass,
   Heart,
@@ -36,6 +38,7 @@ import {
   Wrench,
   X,
 } from 'lucide-react'
+import Link from 'next/link'
 import { MenuSheet, SheetAction } from '@/components/menu/MenuSheet'
 import { DISPLAY_UI } from '@/components/recipes/RecipeCard'
 import { useUserMemory } from '@/hooks/useUserMemory'
@@ -50,19 +53,12 @@ import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
 import { useWebPush } from '@/hooks/useWebPush'
 import { useMimo } from '@/components/mimo/MimoProvider'
-import {
-  getEnabled as getNotifEnabled,
-  setEnabled as setNotifEnabledLS,
-  getMealTimes,
-  setMealTimes,
-  requestPermission as requestNotifPermission,
-  scheduleMealReminders,
-  clearAllReminders,
-  type MealTimes,
-} from '@/lib/pwa/notifications'
 import { MyRecipesSection } from './sections/MyRecipesSection'
 import { MealDishCountControls } from '@/components/profile/MealDishCountControls'
+import { FixedMealsEditor } from '@/components/profile/FixedMealsEditor'
+import { fixedMealsFromTemplate, type FixedMeal } from '@ona/shared'
 import { WhatsAppCard } from '@/components/profile/WhatsAppCard'
+import { CookingStyleCard } from '@/components/profile/CookingStyleCard'
 import { DeleteAccountCard } from '@/components/profile/DeleteAccountCard'
 import { NewsletterToggle } from '@/components/profile/NewsletterToggle'
 import { useWhatsAppStatus } from '@/hooks/useWhatsApp'
@@ -158,6 +154,10 @@ export default function ProfilePage() {
     return t
   })
   const [mealDishCounts, setMealDishCounts] = useState<Partial<Record<Meal, 1 | 2 | 3>>>({})
+  // Comidas fijas (PRO-218): saved in the same blob as the plantilla.
+  const [fixedMeals, setFixedMeals] = useState<FixedMeal[]>([])
+  // PRO-223: days whose lunch is a táper of the dinner before (never Monday).
+  const [taperDays, setTaperDays] = useState<string[]>([])
   const [restrictionInput, setRestrictionInput] = useState('')
   // RGPD art. 9 (PRO-21): physical data and restrictions only with consent.
   const [healthConsent, setHealthConsent] = useState<HealthConsentState | null>(null)
@@ -166,40 +166,6 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
-
-  const [notifEnabled, setNotifEnabled] = useState(false)
-  const [mealTimes, setLocalMealTimes] = useState<MealTimes>({
-    breakfast: '08:00',
-    lunch: '14:00',
-    dinner: '21:00',
-    snack: '17:00',
-  })
-
-  useEffect(() => {
-    setNotifEnabled(getNotifEnabled())
-    setLocalMealTimes(getMealTimes())
-  }, [])
-
-  async function handleToggleNotif() {
-    if (!notifEnabled) {
-      const perm = await requestNotifPermission()
-      if (perm !== 'granted') return
-      setNotifEnabledLS(true)
-      setNotifEnabled(true)
-      scheduleMealReminders(mealTimes)
-    } else {
-      setNotifEnabledLS(false)
-      setNotifEnabled(false)
-      clearAllReminders()
-    }
-  }
-
-  function handleMealTimeChange(meal: keyof MealTimes, value: string) {
-    const next = { ...mealTimes, [meal]: value }
-    setLocalMealTimes(next)
-    setMealTimes(next)
-    if (notifEnabled) scheduleMealReminders(next)
-  }
 
   useEffect(() => {
     if (!user) return
@@ -263,6 +229,10 @@ export default function ProfilePage() {
           }
         }
         setMealTemplate(next)
+      }
+      setFixedMeals(fixedMealsFromTemplate(blob))
+      if (Array.isArray(blob?.taperDays)) {
+        setTaperDays((blob.taperDays as unknown[]).filter((d): d is string => typeof d === 'string' && (DAYS as readonly string[]).includes(d) && d !== 'lunes'))
       }
       const rawMdc = blob?.mealDishCounts
       if (rawMdc && typeof rawMdc === 'object') {
@@ -401,15 +371,15 @@ export default function ProfilePage() {
       }
       calls.push(api.put(`/user/${user.id}/settings`, {
         template: healthActive
-          ? { physical, preferences, mealTemplate, mealDishCounts }
-          : { preferences: { ...preferences, restrictions: [] }, mealTemplate, mealDishCounts },
+          ? { physical, preferences, mealTemplate, mealDishCounts, fixedMeals, taperDays }
+          : { preferences: { ...preferences, restrictions: [] }, mealTemplate, mealDishCounts, fixedMeals, taperDays },
       }))
       await Promise.all(calls)
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
     } catch (e) { console.error(e) }
     finally { setSaving(false) }
-  }, [user, physical, preferences, household, mealTemplate, mealDishCounts, healthActive])
+  }, [user, physical, preferences, household, mealTemplate, mealDishCounts, fixedMeals, taperDays, healthActive])
 
 
   if (authLoading || !user) {
@@ -436,9 +406,14 @@ export default function ProfilePage() {
         <div className="mt-6 px-5 lg:mt-8 lg:px-0">
           <GroupLabel>Tu casa y Mimo</GroupLabel>
           <ProfileHub />
+          {/* PRO-163: another household, not someone of this one (that's «Invitar a alguien» in Casa). */}
+          <InviteHouseholdButton place="perfil" className="mt-3 lg:mt-4" />
         </div>
 
         <div className="mt-3 grid gap-3 px-5 lg:mt-4 lg:grid-cols-2 lg:items-start lg:gap-4 lg:px-0">
+          {/* Cómo cocináis (PRO-217): saved on tap in the household's ficha. */}
+          <CookingStyleCard />
+
           {/* Voz (D-023: one assistant, the floating button on every page) */}
           <ProfileCard
             icon={Mic}
@@ -798,73 +773,61 @@ export default function ProfilePage() {
                   ))}
                 </div>
               </div>
+
+              <FixedMealsEditor value={fixedMeals} onChange={setFixedMeals} />
+
+              {/* PRO-223 · «El táper de mañana» on fixed days. */}
+              <div className="mt-4" role="group" aria-label="Días de táper">
+                <div className="text-[14px] font-medium text-ink">Días de táper</div>
+                <p className="mt-1 text-[12px] leading-snug text-ink-muted">
+                  Los días que comes fuera y te llevas la cena de la víspera: esa cena se hace con una ración más.
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {DAYS.slice(1).map((day, i) => {
+                    const on = taperDays.includes(day)
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        aria-pressed={on}
+                        aria-label={`Táper el ${day}`}
+                        onClick={() => setTaperDays((prev) => (on ? prev.filter((d) => d !== day) : [...prev, day]))}
+                        className={`min-h-[40px] min-w-[40px] rounded-full border px-3 text-[13px] ${
+                          on ? 'border-ink bg-ink text-cream' : 'border-border bg-paper text-ink-mid'
+                        }`}
+                      >
+                        {DAYS_SHORT[i + 1]}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
             </ProfileCard>
 
             {/* Recordatorios */}
             <ProfileCard
               icon={Bell}
               title="Recordatorios"
-              status={notifEnabled ? 'Recordatorios de comidas activados' : 'Recordatorios de comidas desactivados'}
+              status="Avisos de Mimo y el correo de los viernes"
             >
               <p className="mt-3 text-[13px] leading-snug text-ink-muted">
-                Te avisamos a las horas que prefieras para que no se te pase. Las
-                notificaciones son locales: solo suenan si tienes la app abierta o
-                instalada.
+                Si tienes WhatsApp conectado, Mimo te avisa por ahí. Si no, los
+                avisos de preparación (sacar del congelador, poner en remojo) te
+                llegan como notificación del móvil.
               </p>
 
-              <button
-                type="button"
-                onClick={handleToggleNotif}
+              {/* PRO-237: every alert, by where it arrives, with its switch. */}
+              <Link
+                href="/profile/avisos"
+                data-testid="profile-avisos-link"
                 className="mt-2 flex min-h-[56px] w-full items-center justify-between gap-3 border-t border-border-soft py-2"
-                aria-pressed={notifEnabled}
               >
                 <div className="min-w-0 text-left">
-                  <div className="text-[14px] font-medium text-ink">
-                    Recibir recordatorios de comidas
-                  </div>
-                  <div className="truncate text-[12px] text-ink-muted">
-                    {notifEnabled ? 'Activado' : 'Desactivado'}
-                  </div>
+                  <div className="text-[14px] font-medium text-ink">Avisos</div>
+                  <div className="truncate text-[12px] text-ink-muted">Qué te llega, por dónde, y apagarlos</div>
                 </div>
-                <Switch on={notifEnabled} />
-              </button>
-
-              {notifEnabled && (
-                <div className="mt-2 grid grid-cols-2 gap-4 border-t border-border-soft pt-4">
-                  <Field label="Desayuno">
-                    <input
-                      type="time"
-                      value={mealTimes.breakfast}
-                      onChange={(e) => handleMealTimeChange('breakfast', e.target.value)}
-                      className="input-line"
-                    />
-                  </Field>
-                  <Field label="Comida">
-                    <input
-                      type="time"
-                      value={mealTimes.lunch}
-                      onChange={(e) => handleMealTimeChange('lunch', e.target.value)}
-                      className="input-line"
-                    />
-                  </Field>
-                  <Field label="Merienda">
-                    <input
-                      type="time"
-                      value={mealTimes.snack}
-                      onChange={(e) => handleMealTimeChange('snack', e.target.value)}
-                      className="input-line"
-                    />
-                  </Field>
-                  <Field label="Cena">
-                    <input
-                      type="time"
-                      value={mealTimes.dinner}
-                      onChange={(e) => handleMealTimeChange('dinner', e.target.value)}
-                      className="input-line"
-                    />
-                  </Field>
-                </div>
-              )}
+                <ChevronRight size={18} strokeWidth={1.8} aria-hidden="true" className="text-ink-light" />
+              </Link>
 
               {/* Web Push — server-side notifications that survive a closed tab. */}
               <PushNotificationsCard />
@@ -1138,12 +1101,12 @@ function PushNotificationsCard() {
         )}
         <div className="min-w-0 flex-1">
           <div className="text-[14px] font-medium text-ink">
-            Notificaciones push del asistente
+            Notificaciones del móvil
           </div>
           <div className="mt-1 text-[12px] leading-snug text-ink-muted">
-            Avisos que llegan aunque la app esté cerrada — futura base para
-            recordatorios de prep (sacar pescado del congelador, poner
-            legumbres en remojo…).{' '}
+            Llegan aunque la app esté cerrada. Sin WhatsApp, por aquí te llegan
+            los avisos de preparación; con WhatsApp, solo si un aviso no puede
+            salir por WhatsApp.{' '}
             {state === 'denied' && (
               <span className="text-terracotta-deep">
                 Has denegado el permiso; cámbialo en los ajustes del

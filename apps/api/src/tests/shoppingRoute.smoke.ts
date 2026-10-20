@@ -9,6 +9,7 @@
  *   - PUT /shopping-list/:listId/item/:itemId/check toggles `checked`
  *   - PUT /shopping-list/:listId/item/:itemId/stock toggles `inStock`
  *   - a tick sent with the id of a list rebuilt since lands on the current list
+ *   - PUT …/edit: «No lo compro» and the household's amount survive the rebuild (PRO-175)
  */
 
 import { describe, it, expect, beforeAll } from 'vitest'
@@ -119,5 +120,30 @@ describe('shopping route smoke', () => {
       expect(Boolean(body.items.find((i: any) => i.id === itemId)?.checked)).toBe(!before)
     },
     60_000,
+  )
+
+  it.skipIf(!reachable || !TOKEN || !USER_ID)(
+    'PUT …/edit leaves a menu line out and sets its amount, and the next GET keeps both (PRO-175)',
+    async () => {
+      const list = await (await fetch(`${API_URL}/shopping-list`, { headers: auth() })).json()
+      const lines = (list?.items ?? []).filter((i: any) => i.ingredientId && i.kind !== 'manual' && i.kind !== 'staple')
+      if (!list?.id || lines.length < 2) return
+      const [a, b] = lines
+      const edit = (id: string, body: unknown) =>
+        fetch(`${API_URL}/shopping-list/${list.id}/item/${encodeURIComponent(id)}/edit`, { method: 'PUT', headers: auth(), body: JSON.stringify(body) })
+      expect((await edit(a.id, { skipped: true })).status).toBe(200)
+      expect((await edit(b.id, { quantity: b.quantity + 3 })).status).toBe(200)
+
+      const again = await (await fetch(`${API_URL}/shopping-list`, { headers: auth() })).json()
+      expect(again.items.find((i: any) => i.id === a.id)?.skipped).toBe(true)
+      expect(again.items.find((i: any) => i.id === b.id)).toMatchObject({ quantity: b.quantity + 3, menuQuantity: b.quantity })
+
+      // Undo both: the line comes back as the menu asks.
+      expect((await edit(a.id, { skipped: false })).status).toBe(200)
+      expect((await edit(b.id, { quantity: null })).status).toBe(200)
+      const back = await (await fetch(`${API_URL}/shopping-list`, { headers: auth() })).json()
+      expect(back.items.find((i: any) => i.id === a.id)?.skipped).toBeFalsy()
+      expect(back.items.find((i: any) => i.id === b.id)?.menuQuantity).toBeUndefined()
+    },
   )
 })

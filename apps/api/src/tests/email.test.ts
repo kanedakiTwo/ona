@@ -163,8 +163,39 @@ describe('waitlistInviteEmail', () => {
     const m = waitlistInviteEmail({ ...base, firstName: null, wantsWhatsapp: true })
     expect(m.subject).toBe('¡Te toca! Ya puedes entrar en Mimoia')
     expect(m.text).toContain('«Conectar WhatsApp»')
-    expect(m.text).toContain('pídeselo todo a Mimo')
+    expect(m.text).toContain('pídele a Mimo el menú como a cualquier contacto')
     expect(m.text).toContain('Miguel\nFundador de Mimoia')
+  })
+
+  // PRO-190 (MKT-25, with Legal's changes of 2026-10-17).
+  it('comes from «Miguel de Mimoia», replies reach the same inbox, and says so', () => {
+    const m = waitlistInviteEmail({ ...base, firstName: 'Laura', wantsWhatsapp: false })
+    expect(m.fromName).toBe('Miguel de Mimoia')
+    expect(m.replyToSender).toBe(true)
+    expect(m.text).toContain('Si tienes cualquier duda, responde a este correo: me llega a mí.')
+    expect(m.text).not.toContain('lo leo yo')
+    expect(m.html).toContain('Tu invitación a Mimoia está lista.')
+    expect(m.html).not.toContain('plaza')
+    expect(m.text).not.toContain('caduca')
+  })
+
+  it('puts the WhatsApp line right under the button, for whoever asked for it', () => {
+    const m = waitlistInviteEmail({ ...base, firstName: 'Laura', wantsWhatsapp: true })
+    const button = m.text.indexOf('Crear mi cuenta: https://mimoia.com/entrar/TOKEN123')
+    const whatsapp = m.text.indexOf('Nos dijiste que te interesa WhatsApp')
+    const linkNote = m.text.indexOf('sirve una vez')
+    expect(button).toBeGreaterThan(-1)
+    expect(whatsapp).toBeGreaterThan(button)
+    expect(linkNote).toBeGreaterThan(whatsapp)
+  })
+
+  it('is sent as «Miguel de Mimoia <hola@mimoia.com>» with reply_to on the same address', async () => {
+    const f = okFetch()
+    await sendEmail(waitlistInviteEmail({ ...base, firstName: 'Laura', wantsWhatsapp: false }), cfg(f))
+    const [, init] = f.mock.calls[0] as unknown as [string, RequestInit]
+    const body = JSON.parse(String(init.body))
+    expect(body.from).toBe('Miguel de Mimoia <hola@mimoia.com>')
+    expect(body.reply_to).toBe('hola@mimoia.com')
   })
 })
 
@@ -181,5 +212,24 @@ describe('waitlistInviteReminderEmail', () => {
     expect(m.text).toContain('Crear mi cuenta: https://mimoia.com/entrar/TOKEN123')
     expect(m.text).toContain('único recordatorio')
     expect(m.headers).toEqual({ 'List-Unsubscribe': '<https://mimoia.com/lista/baja?t=tok>' })
+  })
+
+  // PRO-190: same sender, «sigue funcionando» without pressure, no «plaza», no expiry.
+  it('says the link still works, comes from Miguel, and never talks of a «plaza» or an expiry', () => {
+    const m = waitlistInviteReminderEmail({
+      email: 'laura@example.com',
+      firstName: 'Laura',
+      wantsWhatsapp: true,
+      entryUrl: 'https://mimoia.com/entrar/TOKEN123',
+      unsubscribeUrl: 'https://mimoia.com/lista/baja?t=tok',
+    })
+    expect(m.fromName).toBe('Miguel de Mimoia')
+    expect(m.replyToSender).toBe(true)
+    expect(m.text).toContain('El enlace sigue funcionando: úsalo cuando te venga bien.')
+    expect(m.text).toContain('Si tienes cualquier duda, responde a este correo: me llega a mí.')
+    expect(m.text).toContain('Tu invitación sigue aquí')
+    expect(m.text.toLowerCase()).not.toContain('plaza')
+    expect(m.text).not.toContain('caduca')
+    expect(m.text.indexOf('Nos dijiste que te interesa WhatsApp')).toBeGreaterThan(m.text.indexOf('Crear mi cuenta: '))
   })
 })

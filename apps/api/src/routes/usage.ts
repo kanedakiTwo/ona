@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { deviceFromUserAgent, recordInstalledOpen } from '../services/appInstalls.js'
+import { trackEvent } from '../services/usageEvents.js'
 
 /**
  * Usage signals the web sends itself (specs/metrics.md "App instalada y avisos"):
@@ -12,6 +13,10 @@ import { deviceFromUserAgent, recordInstalledOpen } from '../services/appInstall
  *   POST /usage/cook-mode-started — cook mode was opened on the web
  *   (PRO-188). No body; the `trackUsageRoutes` middleware records
  *   `cook_mode_started` (channel web) on the 204. Nothing else is stored.
+ *   POST /usage/invite-shared — a tap on «Invitar a otro hogar» (WhatsApp or
+ *   «Copiar»), or Mimo handing out the link (PRO-163). Counted as
+ *   `invite_shared`, only the number: no props. Body `{ channel? }`
+ *   (`web` by default, `whatsapp` from Mimo there). 204 always.
  */
 const router = Router()
 
@@ -21,6 +26,11 @@ router.post('/usage/app-opened', authMiddleware, async (req: AuthRequest, res) =
 })
 
 router.post('/usage/cook-mode-started', authMiddleware, (_req: AuthRequest, res) => {
+  res.status(204).end()
+})
+
+router.post('/usage/invite-shared', authMiddleware, (req: AuthRequest, res) => {
+  trackEvent('invite_shared', { userId: req.userId!, channel: req.body?.channel === 'whatsapp' ? 'whatsapp' : 'web' })
   res.status(204).end()
 })
 

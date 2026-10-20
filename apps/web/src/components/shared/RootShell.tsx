@@ -93,7 +93,7 @@ export function RootShell({ pathname, children }: { pathname: string; children: 
     <MimoProvider>
       <OfflineBanner />
       <DesktopSidebar />
-      <main className="standalone-pt mx-auto max-w-[430px] pb-[calc(5rem+var(--safe-bottom))] md:ml-[calc(var(--sidebar-width)+var(--sidebar-gap))] md:max-w-none md:mr-0 md:pb-0 lg:pr-[var(--mimo-panel-width,0px)] lg:transition-[padding] lg:duration-300">
+      <main className="standalone-pt mx-auto max-w-[430px] pb-[calc(9.5rem+var(--safe-bottom))] md:ml-[calc(var(--sidebar-width)+var(--sidebar-gap))] md:max-w-none md:mr-0 md:pb-0 lg:pr-[var(--mimo-panel-width,0px)] lg:transition-[padding] lg:duration-300">
         <SwipeNavigator>
           <PageTransition>{children}</PageTransition>
         </SwipeNavigator>

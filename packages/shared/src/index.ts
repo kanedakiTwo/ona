@@ -24,7 +24,7 @@ export type {
 export type { Menu, DayMenu, MealSlot, LockedSlots, MealDishCounts, MenuFit, MenuFitLevel, MenuFitMissReason, RecipeAddMethod } from './types/menu.js'
 export { menuFitLevel } from './types/menu.js'
 export type { Dish, RecipeDish, NoteDish } from './types/menuDish.js'
-export { isRecipeDish, isNoteDish, recipeDishesOf } from './types/menuDish.js'
+export { isRecipeDish, isNoteDish, isTaperDish, recipeDishesOf } from './types/menuDish.js'
 export type {
   MemoryKey,
   MemorySource,
@@ -61,8 +61,33 @@ export {
   recipeActiveMinutes,
   fitsTimeBudget,
 } from './types/cookingTime.js'
+export type { CookingStyle } from './types/cookingStyle.js'
+export {
+  COOKING_STYLES,
+  COOKING_STYLE_QUESTION,
+  COOKING_STYLE_PATH,
+  COOKING_STYLE_LABELS,
+  cookingStyleParts,
+  isCookingStyle,
+  cookingStyleSchema,
+  cookingStyleFactValueSchema,
+  setCookingStyleSchema,
+} from './types/cookingStyle.js'
+export type { FreezeAnswer } from './types/freezeHabit.js'
+export {
+  FREEZE_ANSWERS,
+  FREEZE_QUESTION,
+  FREEZE_ANSWER_LABELS,
+  FREEZE_HABIT_ALWAYS,
+  FREEZE_HABIT_SOMETIMES,
+  THAW_CONDITIONAL_TEXT,
+  freezeAnswerSchema,
+  applyFreezeAnswer,
+  freezeAnswerFromHabits,
+  thawIsConditional,
+} from './types/freezeHabit.js'
 export type { ShoppingItem, ShoppingList, BuyableUnit } from './types/shopping.js'
-export { missingQuantity } from './types/shopping.js'
+export { missingQuantity, activeShoppingItems } from './types/shopping.js'
 export type {
   ShopKind,
   ShopChannel,
@@ -135,6 +160,8 @@ export { registerSchema, loginSchema, onboardingSchema, onboardingDraftSchema, u
 export type { OnboardingDraft } from './types/user.js'
 export { createIngredientSchema, updateIngredientSchema } from './types/ingredient.js'
 export {
+  advancePrepSchema,
+  type AdvancePrep,
   createRecipeSchema,
   updateRecipeSchema,
   recipeIngredientSchema,
@@ -154,6 +181,10 @@ export {
   courseSchema,
 } from './types/recipe.js'
 export { generateMenuSchema, lockMealSchema } from './types/menu.js'
+export { PANTRY_LOCATIONS, PANTRY_LOCATION_LABELS, isPantryLocation, groupPantryByLocation, freezerItemsDue, FREEZER_REVIEW_MIN_DAYS } from './types/pantry.js'
+export type { PantryLocation } from './types/pantry.js'
+export { weekPlanSchema, weekPlanIsEmpty, parseWeekPlanAnswer, splitFridgeAnswer, fridgeTerm } from './types/weekPlan.js'
+export type { WeekPlan, WeekPlanMealOut, WeekPlanGuests } from './types/weekPlan.js'
 
 // Constants
 export {
@@ -193,7 +224,7 @@ export type { RestrictionPreset } from './constants/restrictions.js'
 export { calculateBMR, getActivityFactor, calculateTDEE, calculateMenuTargetCalories } from './utils/bmr.js'
 export { ingredientCalories, recipeCalories, dayCalories, menuCalories } from './utils/calories.js'
 export { ingredientNutrients, sumNutrients, nutrientsToPercentages, updateNutrientBalance, normalizeDeviation } from './utils/nutrients.js'
-export { firstMenuWeeks } from './utils/firstMenuWeeks.js'
+export { firstMenuWeeks, pastDayIndexes } from './utils/firstMenuWeeks.js'
 export type { FirstMenuWeeks } from './utils/firstMenuWeeks.js'
 export { detectSeason, isInSeason } from './utils/seasons.js'
 export {
@@ -205,7 +236,7 @@ export {
 } from './utils/catalog.js'
 export type { CatalogScope, CatalogRecipeLike, CatalogFilterState } from './utils/catalog.js'
 export { menuShareText, recipeSharePayload, withOnaFooter } from './utils/sharePayloads.js'
-export { shoppingProgress } from './utils/shoppingProgress.js'
+export { shoppingProgress, parseShoppingAmount } from './utils/shoppingProgress.js'
 export type { ShoppingProgress } from './utils/shoppingProgress.js'
 export type { SharePayload } from './utils/sharePayloads.js'
 export {
@@ -327,6 +358,7 @@ export {
   founderPriceIfSubscribing,
   founderOfferStands,
   founderOfferText,
+  founderPriceAmounts,
   euros,
 } from './types/plans.js'
 export type {
@@ -347,8 +379,21 @@ export type {
 
 export { LEGAL_OWNER } from './constants/legal.js'
 
+// Open registration (PRO-167, D-057)
+export { REGISTRATION_MODES, OPEN_SIGNUP_CTA_LABEL, openRegistrationHref } from './types/registration.js'
+export type { RegistrationMode, PublicConfig } from './types/registration.js'
+
 // Public brand (D-012) + pre-launch waitlist (specs/waitlist.md)
-export { BRAND_NAME, ASSISTANT_NAME, BRAND_SUPPORT_EMAIL, BRAND_SOCIAL_LINKS } from './constants/brand.js'
+export {
+  BRAND_NAME,
+  ASSISTANT_NAME,
+  BRAND_SUPPORT_EMAIL,
+  BRAND_SOCIAL_LINKS,
+  SUPPORT_PHONE_HOURS,
+  supportPhone,
+  supportPhoneLine,
+  supportPhoneNote,
+} from './constants/brand.js'
 export {
   WAITLIST_HOUSEHOLD_SIZES,
   WAITLIST_PLANNER_ROLES,
@@ -379,6 +424,7 @@ export {
   waitlistUnsubscribePath,
   waitlistShareText,
   whatsappShareHref,
+  inviteHouseholdShareText,
 } from './types/waitlist.js'
 export type {
   WaitlistHouseholdSize,
@@ -467,3 +513,64 @@ export {
   memoryKeyIsHouseholdLevel,
 } from './types/householdProfile.js'
 export { scaleIngredientNote, noteStartsWithCount, noteStartsWithNumber, formatHalves } from './utils/ingredientNote.js'
+export type { FixedMeal, FixedMealItem, FixedMealType, FixedItemUnit } from './types/fixedMeals.js'
+export {
+  FIXED_MEALS,
+  FIXED_MEAL_LABELS,
+  FIXED_ITEM_UNITS,
+  FIXED_UNIT_LABELS,
+  FIXED_LABEL_MAX,
+  FIXED_ITEMS_MAX,
+  fixedMealItemSchema,
+  fixedMealSchema,
+  fixedMealsSchema,
+  fixedMealsFromTemplate,
+  fixedMealFor,
+  fixedNoteText,
+  fixedItemsText,
+} from './types/fixedMeals.js'
+export type { FoodGroup, SchoolLunch, SchoolMenuSave } from './types/schoolMenu.js'
+export {
+  FOOD_GROUPS,
+  FOOD_GROUP_LABELS,
+  isFoodGroup,
+  schoolLunchSchema,
+  schoolMenuSaveSchema,
+  SCHOOL_DISH_MAX,
+  SCHOOL_MENU_MAX_DAYS,
+  dishFoodGroup,
+  recipeFoodGroup,
+  NotASchoolMenuError,
+  schoolLunchLines,
+} from './types/schoolMenu.js'
+export type { SpanishRegion, PublicHoliday } from './constants/holidays.js'
+export {
+  SPANISH_REGIONS,
+  SPANISH_REGION_CODES,
+  isSpanishRegion,
+  HOLIDAY_YEARS,
+  PUBLIC_HOLIDAYS,
+  holidayOn,
+  weekHolidays,
+} from './constants/holidays.js'
+export {
+  HOUSEHOLD_INVITE_TTL_DAYS,
+  HOUSEHOLD_INVITE_SOURCES,
+  isHouseholdInviteSource,
+  householdInviteExpiresAt,
+  householdInvitePath,
+  familyInviteShareText,
+} from './types/familyInvite.js'
+export type { HouseholdInviteSource } from './types/familyInvite.js'
+export {
+  ALERT_KINDS,
+  ALERT_LABELS,
+  ALERT_OPT_IN_KINDS,
+  alertKindOn,
+  buildAlertRows,
+  isAlertKind,
+  type AlertChannel,
+  type AlertKind,
+  type AlertRow,
+  type AlertsOverview,
+} from './types/alerts.js'

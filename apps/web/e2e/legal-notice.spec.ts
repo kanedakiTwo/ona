@@ -43,6 +43,14 @@ test('footer → /aviso-legal shows the holder; /privacidad names the controller
   await expect(page.locator('script[src*="cloudflareinsights"]')).toHaveCount(0)
 })
 
+// PRO-179: without NEXT_PUBLIC_SUPPORT_EMAIL (as in CI) the contact is hola@mimoia.com, never «quien te invitó».
+test('/privacidad: the contact falls back to hola@mimoia.com', async ({ page }) => {
+  await page.goto('/privacidad')
+  const main = page.getByTestId('reading-column')
+  await expect(main.locator('a[href="mailto:hola@mimoia.com"]').first()).toBeVisible()
+  await expect(main).not.toContainText('te invitó a la beta')
+})
+
 // PRO-132: Legal's exact precisions on email (Resend, third-party advertising, the newsletter box).
 test('/privacidad: Resend is a US company, no third-party advertising, the new newsletter box', async ({ page }) => {
   await page.goto('/privacidad')
@@ -56,6 +64,15 @@ test('/privacidad: Resend is a US company, no third-party advertising, the new n
   await expect(main).not.toContainText('envía desde la Unión Europea')
 })
 
+// PRO-171 (LEG-17): the waitlist's retention date, in Legal's exact words.
+test('/privacidad: the waitlist is kept until 16 May 2027', async ({ page }) => {
+  await page.goto('/privacidad')
+  await expect(page.getByTestId('privacy-waitlist-retention')).toContainText(
+    'Cuánto tiempo: hasta el 16 de mayo de 2027 (seis meses después de abrir el registro a todo el mundo, el 16 de noviembre de 2026) o hasta que te des de baja, lo que ocurra antes. Si pediste el menú de los viernes, guardamos tu email para ese correo mientras no te des de baja. Si te invitamos y creas una cuenta, desde ese momento se aplica el resto de esta política.',
+  )
+  await expect(page.getByTestId('reading-column')).not.toContainText('después de que abramos al público')
+})
+
 // PRO-70: the intended purpose (D-038, constitution §6), word for word, in its own section.
 const INTENDED_PURPOSE =
   'Mimoia es un planificador de menús, recetas y lista de la compra para hogares, según sus gustos, preferencias y restricciones declaradas. Ofrece información general de alimentación. No está destinado a diagnosticar, prevenir, predecir, tratar ni controlar ninguna enfermedad, ni sustituye a un profesional sanitario.'
@@ -64,4 +81,14 @@ test('/terminos says what Mimoia is for, in the exact §6 words', async ({ page 
   await page.goto('/terminos')
   await expect(page.getByRole('heading', { level: 2, name: /Para qué sirve Mimoia/ })).toBeVisible({ timeout: 15_000 })
   await expect(page.getByTestId('terms-intended-purpose')).toHaveText(INTENDED_PURPOSE)
+})
+
+// PRO-249 (D-071): without NEXT_PUBLIC_SUPPORT_PHONE (as in CI) no page shows a phone line.
+test('/aviso-legal and /terminos show no phone without NEXT_PUBLIC_SUPPORT_PHONE', async ({ page }) => {
+  for (const path of ['/aviso-legal', '/terminos']) {
+    await page.goto(path)
+    await expect(page.getByTestId('reading-column')).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByTestId('support-phone')).toHaveCount(0)
+    await expect(page.getByTestId('reading-column')).not.toContainText('Teléfono:')
+  }
 })

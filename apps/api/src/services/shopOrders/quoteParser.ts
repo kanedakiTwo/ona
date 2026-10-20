@@ -14,8 +14,9 @@ import type { LineQuote, LineQuoteStatus, ShopKind, ShopOrderLine } from '@ona/s
 import { env } from '../../config/env.js'
 import { recordAnthropicCost } from '../costLedger.js'
 import { lineRequestText } from './format.js'
+import { CLAUDE_MODEL, LOW_EFFORT, withThinkingRoom } from '../../config/models.js'
 
-const MODEL = 'claude-haiku-4-5-20251001'
+const MODEL = CLAUDE_MODEL
 const STATUSES = new Set<LineQuoteStatus>(['ok', 'no_hay', 'sustituto', 'parcial'])
 
 export interface ParsedReply {
@@ -116,7 +117,8 @@ export async function parseShopReply(input: ParseInput, deps: { create?: CreateF
   try {
     response = await create({
       model: MODEL,
-      max_tokens: 1500,
+      max_tokens: withThinkingRoom(1500),
+      ...LOW_EFFORT,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: `PEDIDO:\n${order}\n\nRESPUESTA DE LA TIENDA:\n${input.text.slice(0, 4000)}` }],
     })

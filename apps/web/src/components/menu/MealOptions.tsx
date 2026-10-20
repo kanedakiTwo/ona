@@ -39,6 +39,7 @@ import {
   Trash2,
   Unlock,
   Users,
+  Package,
 } from "lucide-react"
 import {
   DndContext,
@@ -68,7 +69,7 @@ import { AddDishSheet } from "./AddDishSheet"
 import { DishRow } from "./DishRow"
 
 export type DishPayload =
-  | { kind: "recipe"; recipeId: string; variant?: "planned" | "freezer" }
+  | { kind: "recipe"; recipeId: string; variant?: "planned" | "freezer" | "fridge" }
   | { kind: "note"; text: string }
 
 /** Mutations for one (day, meal) slot. Built once per slot by the page. */
@@ -90,6 +91,8 @@ export interface SlotHandlers {
   replaceWithNote: (text: string) => void
   /** «Es del congelador» / «No es del congelador» on the recipe dish at `position` (2026-10-20). */
   setFreezer: (position: number, on: boolean) => void
+  /** PRO-223: mark / unmark this meal as the táper of the dinner before. */
+  setTaper?: (on: boolean) => void
 }
 
 export interface SlotContext {
@@ -104,6 +107,8 @@ export interface SlotContext {
   defaultDiners: number
   /** Servings the batch cooks, táper included (`batchServings`, PRO-75). */
   batchServings?: number
+  /** PRO-223: name of the dinner before («Lentejas», cena del lunes) when this meal can be its táper. */
+  taperFrom?: { dayLabel: string; recipeName: string } | null
   isRegenerating?: boolean
   /** Other days eat this slot's leftovers: it's the batch, never a freezer táper. */
   feedsLeftovers?: boolean
@@ -174,11 +179,13 @@ export function MealOptionsSheets({
   const first = dishes.find((d): d is RecipeDish => d.kind === "recipe") ?? null
   const isSingleRecipe = dishes.length === 1 && dishes[0].kind === "recipe"
   const isLeftover = first?.variant === "leftover"
-  // A freezer táper (PRO-82) is a given dish: no Elegir / Cambiar / Tipo / Vetar.
-  const fromFreezer = first?.variant === "freezer"
+  // A táper (freezer PRO-82, fridge PRO-240) is a given dish: no Elegir / Cambiar / Tipo / Vetar.
+  const fromFreezer = first?.variant === "freezer" || first?.variant === "fridge"
   const canReshape = isSingleRecipe && !isLeftover && !fromFreezer
-  // A dish already in the menu can be a táper you have (Miguel, 2026-10-20), unless it's the batch of planned leftovers.
-  const canFreeze = isSingleRecipe && !isLeftover && (fromFreezer || !ctx.feedsLeftovers)
+  // A dish already in the menu can be a freezer táper you have (Miguel, 2026-10-20), unless it's
+  // the batch of planned leftovers (a táper for tomorrow included) or already a fridge táper.
+  const isFreezer = first?.variant === "freezer"
+  const canFreeze = isSingleRecipe && !isLeftover && first?.variant !== "fridge" && (isFreezer || !ctx.feedsLeftovers)
   const pinnedType = first?.pinnedType ?? null
   const label = mealLabel(ctx.meal)
   const locked = ctx.isLocked
@@ -192,6 +199,14 @@ export function MealOptionsSheets({
         eyebrow={`${label} · ${ctx.dayLabel}`}
         title={first?.recipeName ?? (dishes.length > 0 ? label : "Sin plato todavía")}
       >
+        {/* PRO-259: why Mimo chose it — only menus from the planner carry it. */}
+        {first?.why && (
+          <div data-testid="dish-why" className="mb-3 rounded-2xl bg-cream-deep px-4 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">Por qué te lo propongo</p>
+            <p className="mt-1 text-[15px] leading-snug text-ink">{first.why}</p>
+          </div>
+        )}
+
         {!isSingleRecipe && dishes.length > 0 && (
           <DishList
             dishes={dishes}
@@ -228,11 +243,11 @@ export function MealOptionsSheets({
           {canFreeze && (
             <SheetAction
               icon={Snowflake}
-              label={fromFreezer ? "No es del congelador" : "Es del congelador"}
-              hint={lockedHint ?? (fromFreezer ? "Vuelve a sumar a la compra" : "Un táper que ya tienes: no suma a la compra")}
+              label={isFreezer ? "No es del congelador" : "Es del congelador"}
+              hint={lockedHint ?? (isFreezer ? "Vuelve a sumar a la compra" : "Un táper que ya tienes: no suma a la compra")}
               disabled={locked}
               onClick={() => {
-                handlers.setFreezer(0, !fromFreezer)
+                handlers.setFreezer(0, !isFreezer)
                 close()
               }}
             />
@@ -276,6 +291,30 @@ export function MealOptionsSheets({
             />
           )}
           {first && <CookedAction recipeId={first.recipeId} ctx={ctx} onAskRating={() => setOpen("rate")} onUnmarked={close} />}
+          {/* PRO-223 · «El táper de mañana». */}
+          {handlers.setTaper && ctx.slot.taper ? (
+            <SheetAction
+              icon={Package}
+              label="Quitar táper"
+              hint="La comida queda vacía para poner otra cosa"
+              disabled={locked}
+              onClick={() => {
+                handlers.setTaper?.(false)
+                close()
+              }}
+            />
+          ) : handlers.setTaper && ctx.taperFrom ? (
+            <SheetAction
+              icon={Package}
+              label="Me lo llevo en táper"
+              hint={lockedHint ?? `Sobras de la cena del ${ctx.taperFrom.dayLabel}: se hace una ración más`}
+              disabled={locked}
+              onClick={() => {
+                handlers.setTaper?.(true)
+                close()
+              }}
+            />
+          ) : null}
         </div>
 
         <DinerStepper

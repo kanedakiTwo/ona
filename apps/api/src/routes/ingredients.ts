@@ -23,6 +23,7 @@ import { createUsdaClient } from '../services/nutrition/usdaClient.js'
 import { fetchBedcaNutrition } from '../services/nutrition/bedcaClient.js'
 import { inferAllergenTagsFromName } from '../services/nutrition/allergens.js'
 import { env } from '../config/env.js'
+import { CLAUDE_MODEL, LOW_EFFORT, withThinkingRoom } from '../config/models.js'
 import { requireSpendCapacity } from '../middleware/spendCap.js'
 
 const router = Router()
@@ -290,14 +291,14 @@ async function estimateNutritionForName(
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
   const prompt = `Eres un nutricionista. Dame los valores por 100g de "${promptName}". Si es producto compuesto (caldo, salsa, embutido), estima conservadoramente. Responde SOLO JSON: {"kcal": n, "proteinG": n, "carbsG": n, "fatG": n, "fiberG": n, "saltG": n}. Sin texto adicional.`
   const response = await client.messages.create({
-    // Opus is overkill for a 6-number response, but the spec calls for
-    // accuracy here — these values land in the catalog and influence
-    // every recipe that uses the ingredient. Worth the extra cents.
-    model: 'claude-opus-4-6',
-    max_tokens: 200,
+    // These values land in the catalog and influence every recipe that
+    // uses the ingredient: the product model (Opus 5.5, D-070), low effort.
+    model: CLAUDE_MODEL,
+    max_tokens: withThinkingRoom(200),
+    ...LOW_EFFORT,
     messages: [{ role: 'user', content: prompt }],
   })
-  recordAnthropicCost('ingredient_nutrition_estimate', 'claude-opus-4-6', response.usage)
+  recordAnthropicCost('ingredient_nutrition_estimate', CLAUDE_MODEL, response.usage)
   const block = response.content.find((b) => b.type === 'text')
   if (!block || block.type !== 'text') {
     const e = new Error('Respuesta vacía del modelo.') as Error & { status?: number }

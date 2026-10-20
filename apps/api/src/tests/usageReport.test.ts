@@ -125,11 +125,34 @@ describe('PRO-106 — households: WhatsApp, avisos, members, channel split', () 
         { householdId: 'h3', members: 3, whatsappLinked: 0, whatsappNotify: 0, pushEnabled: 2 },
         { householdId: 'h4', members: 1, whatsappLinked: 0, whatsappNotify: 0, pushEnabled: 0 },
       ]),
-    ).toEqual({ households: 4, withWhatsapp: 2, withWhatsappNotify: 1, withPush: 2, withNotices: 3, withTwoPlusMembers: 2 })
+    ).toEqual({
+      households: 4,
+      withWhatsapp: 2,
+      withWhatsappNotify: 1,
+      withWhatsappDeclined: 0,
+      withWhatsappNoAnswer: 1,
+      withPush: 2,
+      withNotices: 3,
+      withTwoPlusMembers: 2,
+    })
+  })
+
+  it('PRO-248: WhatsApp without avisos splits into «dijo que no» and «no contestó»', () => {
+    const s = buildHouseholdSnapshot([
+      { householdId: 'on', members: 1, whatsappLinked: 1, whatsappNotify: 1, whatsappDeclined: 0, pushEnabled: 0 },
+      { householdId: 'no', members: 1, whatsappLinked: 1, whatsappNotify: 0, whatsappDeclined: 1, pushEnabled: 0 },
+      { householdId: 'silent', members: 2, whatsappLinked: 2, whatsappNotify: 0, whatsappDeclined: 0, pushEnabled: 0 },
+      { householdId: 'web', members: 1, whatsappLinked: 0, whatsappNotify: 0, whatsappDeclined: 0, pushEnabled: 0 },
+    ])
+    expect(s.withWhatsapp).toBe(3)
+    expect(s.withWhatsappNotify).toBe(1)
+    expect(s.withWhatsappDeclined).toBe(1)
+    expect(s.withWhatsappNoAnswer).toBe(1)
+    expect(s.withWhatsappNotify + s.withWhatsappDeclined + s.withWhatsappNoAnswer).toBe(s.withWhatsapp)
   })
 
   it('snapshot of nothing is zeros', () => {
-    expect(buildHouseholdSnapshot([])).toEqual({ households: 0, withWhatsapp: 0, withWhatsappNotify: 0, withPush: 0, withNotices: 0, withTwoPlusMembers: 0 })
+    expect(buildHouseholdSnapshot([])).toEqual({ households: 0, withWhatsapp: 0, withWhatsappNotify: 0, withWhatsappDeclined: 0, withWhatsappNoAnswer: 0, withPush: 0, withNotices: 0, withTwoPlusMembers: 0 })
   })
 
   it('weekly split: web only / WhatsApp only / both; voice is the app; unknown-only apart', () => {

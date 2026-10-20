@@ -11,7 +11,8 @@ A "household" is the shared unit that owns menus, shopping lists, favourites and
 - A registered user lands on a one-member household called **"Mi casa"** with role `owner`.
 - The owner can:
   - Rename the household (`PATCH /households/me`).
-  - Generate an invite for role `member` or `child`. The token is 32 hex chars and expires after 7 days.
+  - Generate an invite for role `member` or `child`. The token is 32 hex chars, expires after **30 days** (`HOUSEHOLD_INVITE_TTL_DAYS`, was 7 until PRO-260) and works **once**.
+  - Send it from «Mi casa» with **«Enviar por WhatsApp»** (opens `wa.me` with the message already written and the link) or **«Copiar»** (copies the same message). See «Invitar al hogar por WhatsApp» below.
   - Revoke any pending invite before it's consumed.
   - Remove any non-owner member.
 - Any member (including the owner) can leave their household via `POST /households/me/leave`:
@@ -22,7 +23,31 @@ A "household" is the shared unit that owns menus, shopping lists, favourites and
 - An authed user can accept at `POST /invites/:token/accept`. The accept call:
   - Atomically marks the invite consumed and inserts the `household_members` row.
   - Updates `users.primary_household_id` so subsequent reads scope to the new household.
-  - Rejects with 410 `InviteExpiredError` if the token is already consumed or past its `expires_at`.
+  - Rejects with 410 `InviteExpiredError` if the token is already consumed or past its `expires_at`. The consume is atomic (`UPDATE … WHERE consumed_at IS NULL`, before the membership insert), so two people opening the same link at once can't both join.
+- **Menú del cole** (PRO-224, see [Menus](./menus.md) → Menú del comedor escolar): when the household has a child (a «Niñ@» member, or a member who counted children 2–10 at sign-up), `/profile/casa` shows a discreet «Menú del cole» row to `/profile/casa/cole`, where the school's monthly menu is uploaded (photo or PDF), checked and saved per household (`school_lunches`). Without a child the row isn't shown; Mimo still takes it
+
+## Invitar al hogar por WhatsApp (PRO-260, D-088)
+
+«Familia en el mismo hogar»: the couple or the family in the same account, so both see the menu and the list.
+
+- In `/profile/casa`, every pending invite shows its link plus **«Enviar por WhatsApp»** and **«Copiar»** (`components/household/FamilyInviteShare.tsx`). The message (`familyInviteShareText` in `@ona/shared`): «Te invito a nuestra casa en Mimoia: así compartimos el menú de la semana y la lista de la compra, y lo que uno apunta lo ve el otro. Entra con este enlace (vale 30 días): <enlace>». No health claims.
+- The first tap of either stamps `household_invites.shared_at` (`POST /households/me/invites/:id/shared`, owner-only, idempotent): an invite prepared but never handed on keeps it null.
+- Every invite records **where it was prepared** in `household_invites.source` (`HOUSEHOLD_INVITE_SOURCES`): `casa` (Mi casa, and every invite before 2026-10-20), `alta`, `compra`, `mimo`. `POST /households/me/invites` takes `source` (unknown → `casa`) and `shared: true` (Mimo hands the link over in the same reply, so it counts as sent at once). Migration `0081_household_invite_source.sql` (additive).
+- Mimo (`invite_to_household`, web chat and WhatsApp, D-051) creates the invite with `source: 'mimo'` and gives the same written message; in the web chat also the `wa.me` link to send it in one tap.
+- **Measured** (PRO-263): `GET /admin/usage` → `familyInvites` counts invites prepared, sent and accepted per moment, and the goal (households with 2 adults or more that have 2 accounts) — see [metrics.md](./metrics.md).
+- Not «Invitar a otro hogar» (PRO-163), which brings a different household to Mimoia with the account's referral link.
+
+## Ofrecer la invitación (PRO-261, D-088)
+
+The invitation is offered in three moments, **once each and never again** (like D-052 with WhatsApp). The sign-up and the list are PRO-261; Mimo after the first resolved week is PRO-262.
+
+- **Who:** only a household with **one account** whose user is the owner (only the owner can invite), and **2 adults or more** (`users.adults`; in the sign-up, what the form says at that moment). Never after a «no» to Mimo's offer. Pure rules in `services/familyInviteOffers.ts` (`familyOfferDue`, tests `familyInviteOffers.test.ts`).
+- **Sign-up (`alta`):** on «¿Para cuántos cocinas?» (step 1 of the web sign-up), with 2 adults or more: «¿Quieres que la otra persona vea también el menú y la lista?» · «Te preparo el mensaje con el enlace para que entre en tu casa.» It hides if the count drops to 1 and comes back within the same visit.
+- **Shopping list (`compra`):** the first time the list is on screen, under the header: «Compártela con quien compra contigo» · «Si entra en tu casa, ve esta lista al momento y lo que tacha uno lo ve el otro.»
+- Both cards (`components/household/FamilyInviteOffer.tsx`): «Te preparo el mensaje» creates the invite (`source` = the moment) and turns into «Enviar por WhatsApp» + «Copiar» (as in Mi casa); a ✕ («Ahora no») hides it. A failure says to do it from Perfil → Mi casa.
+- **Once:** `users.family_invite_offers` (jsonb `{ alta?, compra?, mimo?, mimoDeclined? }`, migration `0081_household_invite_source.sql`, additive) is stamped atomically the first time each card is shown (`POST /households/me/family-offer { moment }`); `GET /households/me/family-offer` → `{ alta, compra }` (`alta` = may still be offered, the form checks its own adults). The card stays for the rest of that visit and never comes back (reload, other device, navigating back).
+- Not offered in the WhatsApp sign-up (Mimo asks the questions there): the Mimo moment (PRO-262) covers those households.
+- **Mimo (`mimo`, PRO-262):** the same in the web chat and on WhatsApp (D-051; `chat()` in `engine.ts`, text and WhatsApp modes, never voice or the sign-up chat). Once the household has a **resolved week** (a menu for that week and the list used that week or the weekend before — the `/admin/metrics` definition), Mimo adds once, at the end of its next reply: «Esta semana ya tienes menú y lista. ¿Se los mando también a tu pareja o a quien vive contigo? Si me dices que sí, te preparo el mensaje con el enlace para que entre en tu casa y lo vea todo.» A «sí» → `invite_to_household` (`source: 'mimo'`). Only in a reply, so on WhatsApp always inside the 24-hour window, never a message of its own or a template. Same «who» as above, and not while an invitation is pending (they're already inviting, e.g. in that same turn). Stamped atomically (`mimo`); a «no» as the next message (the whole message: «no», «no gracias», «vivo sola»…; not «No, cámbiame el jueves») stamps `mimoDeclined` and it never comes back, nor the list card. **Weekly aviso budget (D-069):** `familyOfferBudgetGate` must say yes (and spend the unit, kind `family_invite`, priority 4) before it's stamped; until the PRO-215 budget is merged the gate lets it through (`TODO(PRO-215)` in `services/familyInviteMimo.ts`). A failure leaves the reply as it was. Tests `familyInviteMimo.test.ts`.
 
 ## REST Surface
 
@@ -52,12 +77,12 @@ The 0011 migration includes an **idempotent backfill** (NOT EXISTS guards) so ev
 - **Register fallback.** If the auto-create solo-household helper throws during registration, we swallow the error and let the auth middleware surface `code: 'NO_HOUSEHOLD'` on the next read — registration must never fail because of household plumbing.
 - **Owner self-leave.** The leaver gets a new solo household; the next-oldest member of the original household is promoted to owner. The original household never ends up ownerless.
 - **Pending vs consumed invites.** `pendingInvites` in `HouseholdDetails` only includes invites with `consumed_at IS NULL` AND `expires_at > now()`.
-- **Email field on invites is informational.** Today we don't email anything — the owner copies the share URL manually. The field is stored to give future automation a target.
+- **Email field on invites is informational.** Today we don't email anything — the owner sends the link by WhatsApp or copies it. The field is stored to give future automation a target.
 - **Mimo's monthly budget is per person, not per household.** `ADVISOR_MONTHLY_BUDGET_EUR` caps each account's own spend (`users.advisor_spend_micros`, see [Advisor](./advisor.md)); members of a household don't share one cap.
 
 ## Frontend
 
-- `/profile/casa` — on phones the members/invites column is `grid-cols-1` (`minmax(0,1fr)`) so the long `/invites/<token>` URL truncates instead of widening the cards past the screen edge (fixed 2026-10-14, pinned by `e2e/household-casa.spec.ts`). Owner sees full management UI (rename, invite, revoke, remove). Members see the member list and can leave. Since PRO-40 (2026-10-10) the secondary actions live in "···" sheets: the header one ("Cambiar nombre" — owner; tapping the name still renames — and "Salir del hogar"), one per member ("Quitar del hogar") and one per pending invite ("Revocar invitación"). "Invitar a alguien" → role → "Crear invitación" and "Copiar enlace" stay inline.
+- `/profile/casa` — each pending invite: role, «Caduca <fecha>», the link, «Enviar por WhatsApp» and «Copiar» (PRO-260; the old icon that copied only the link is gone). On phones the members/invites column is `grid-cols-1` (`minmax(0,1fr)`) so the long `/invites/<token>` URL truncates instead of widening the cards past the screen edge (fixed 2026-10-14, pinned by `e2e/household-casa.spec.ts`). Owner sees full management UI (rename, invite, revoke, remove). Members see the member list and can leave. Since PRO-40 (2026-10-10) the secondary actions live in "···" sheets: the header one ("Cambiar nombre" — owner; tapping the name still renames — and "Salir del hogar"), one per member ("Quitar del hogar") and one per pending invite ("Revocar invitación"). "Invitar a alguien" → role → "Crear invitación" and "Copiar enlace" stay inline.
 - `/invites/[token]` — public preview page; if the visitor isn't authed, the accept button routes through `/register?next=/invites/:token`, and registration returns them to the invite (`next` honoured since 2026-10, see [Auth](./auth.md)).
 - `/profile` links to `/profile/casa` from the "Memoria del asistente" section's button row.
 
@@ -95,6 +120,7 @@ Edge cases:
 - The shopping-list access check (`POST /shopping-list/:listId/regenerate`) accepts the request if (a) the requester is the list's owner OR (b) the requester's primary household matches the list's `household_id` (only when flag is on). Cross-household requests still 403.
 
 ## Source
+- `apps/web/src/components/profile/SchoolMenuLink.tsx` — the «Menú del cole» row (PRO-224)
 
 - `apps/api/src/db/schema.ts` — `households`, `household_members`, `household_invites`, `users.primary_household_id`, plus `household_id` on `menus`/`shopping_lists`/`user_favorites`
 - `apps/api/src/db/migrations/0011_married_speedball.sql` — tables + backfill
@@ -110,4 +136,11 @@ Edge cases:
 - `apps/api/src/index.ts` — mount order (`publicHouseholdRouter` before `userRoutes`)
 - `apps/web/src/app/profile/casa/page.tsx` — household management UI
 - `apps/web/src/app/invites/[token]/page.tsx` — public preview + accept page
-- `apps/web/e2e/household-casa.spec.ts` — Playwright regression for the happy path
+- `apps/web/e2e/household-casa.spec.ts` — Playwright regression for the happy path and «Enviar por WhatsApp» at 390 px (PRO-260)
+- `packages/shared/src/types/familyInvite.ts` — TTL, sources, `familyInviteShareText` (tests `apps/api/src/tests/familyInvite.test.ts`)
+- `apps/web/src/components/household/FamilyInviteShare.tsx` — «Enviar por WhatsApp» + «Copiar»
+- `apps/web/src/components/household/FamilyInviteOffer.tsx` — the offer card and `useFamilyOfferOnce` (sign-up `OnboardingFlow.tsx`, `/shopping`)
+- `apps/api/src/services/familyInviteOffers.ts` — who gets the offer, once per moment; `0081_household_invite_source.sql`
+- `apps/api/src/services/familyInviteMimo.ts` — Mimo's offer after the first resolved week (PRO-262), called from `assistant/engine.ts`
+- `apps/web/e2e/family-invite-offer.spec.ts` — sign-up with 2 adults and first visit to the list, once each (PRO-261)
+- `apps/api/src/db/migrations/0081_household_invite_source.sql` — `household_invites.source`, `shared_at`

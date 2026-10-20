@@ -15,7 +15,7 @@
 import { useState } from "react"
 import { Plus, Trash2, Wallet } from "lucide-react"
 import type { Aisle, BuyableUnit } from "@ona/shared"
-import { AISLES } from "@ona/shared"
+import { AISLES, parseShoppingAmount } from "@ona/shared"
 import {
   useAddShoppingItem,
   useDeleteShoppingItem,
@@ -109,21 +109,25 @@ export function AddManualItemForm({
     e.preventDefault()
     const trimmed = name.trim()
     if (!trimmed) return
-    const quantity = qty.trim() ? Number(qty.replace(",", ".")) : null
-    if (quantity !== null && (!Number.isFinite(quantity) || quantity <= 0)) return
+    // «2» is an amount in the chosen unit; «2 paquetes» is kept as written (PRO-175).
+    const amount = parseShoppingAmount(qty)
+    if (qty.trim() && !amount) return
+    const quantity = amount && "quantity" in amount ? amount.quantity : null
+    const amountText = amount && "amountText" in amount ? amount.amountText : undefined
     // The manual-add form now asks for the **total** price for the line
     // (matching the new inline price input behaviour). Convert to
     // per-unit so the wire shape stays the same.
     const totalParsed = price.trim() ? Number(price.replace(",", ".")) : null
     const pricePerUnit =
       totalParsed !== null && Number.isFinite(totalParsed) && totalParsed >= 0
-        ? totalParsed / (quantity ?? 1)
+        ? totalParsed / (quantity ?? (Number(amountText?.match(/^\d+(?:[.,]\d+)?/)?.[0]?.replace(",", ".")) || 1))
         : null
     add.mutate(
       {
         listId,
         name: trimmed,
         ...(quantity !== null ? { quantity, unit } : {}),
+        ...(amountText ? { amountText } : {}),
         aisle,
         pricePerUnit,
       },
@@ -169,13 +173,12 @@ export function AddManualItemForm({
       />
       <div className="grid grid-cols-[1fr_1fr_1fr] gap-2">
         <input
-          type="number"
-          inputMode="decimal"
-          min={0}
-          step={0.5}
+          type="text"
           value={qty}
+          maxLength={30}
           placeholder="Cantidad"
-          aria-label="Cantidad (opcional)"
+          title="Un número, o como lo dices tú: «2 paquetes»"
+          aria-label="Cantidad (opcional): un número o «2 paquetes»"
           onChange={(e) => setQty(e.target.value)}
           className={field}
         />

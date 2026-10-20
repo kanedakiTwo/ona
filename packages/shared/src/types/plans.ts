@@ -363,6 +363,16 @@ export function founderOfferStands(access: AccountAccess): boolean {
 }
 
 /**
+ * The founder price, with its amounts (PRO-204, Legal LEG-23: leaving the
+ * figure out could be misleading by omission). Read from `PLANS`, never by
+ * hand: «Esencial, 4,99 € al mes o 49,99 € al año; Plus, 8,99 € al mes o
+ * 59,99 € al año». The offer goes out before a plan is chosen, so both plans.
+ */
+export function founderPriceAmounts(): string {
+  return PLANS.map((p) => `${p.name}, ${euros(p.prices.mensual.cents)} al mes o ${euros(p.prices.anual.cents)} al año`).join('; ')
+}
+
+/**
  * The day-7 offer, short (PRO-136, D-056): Mimo on WhatsApp and in the web
  * panel, and the offer card. Text for Legal to review.
  */
@@ -370,7 +380,7 @@ export function founderOfferText(i: { trialLastDay: string; firstChargeAt: strin
   const last = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(`${i.trialLastDay}T12:00:00Z`))
   return (
     `Llevas una semana con Mimoia. Si ya sabes que te quedas, deja la tarjeta antes de que acabe tu prueba ` +
-    `(dura hasta el ${last}) y te quedas el precio de fundador para siempre: no te sube mientras sigas suscrito. ` +
+    `(dura hasta el ${last}) y te quedas el precio de fundador para siempre (${founderPriceAmounts()}): no te sube mientras sigas suscrito. ` +
     `No se cobra nada hasta el ${dayEs(i.firstChargeAt, true)} y puedes cancelar antes sin pagar nada.`
   )
 }

@@ -86,7 +86,7 @@ describe('guides', () => {
       parts: { isoDate: '2026-10-13', weekday: 1, hour: 9, minute: 5 },
       breakfastTime: null,
       dinnerTime: null,
-      prefs: {},
+      prefs: { daily_brief: true },
       sentRecently: {},
       todayDay: async () => day,
       todayDinner: async () => null,

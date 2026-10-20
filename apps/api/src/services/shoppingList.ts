@@ -13,7 +13,7 @@ import type {
   ShoppingItem,
   Unit,
 } from '@ona/shared'
-import { isNotBought, recipeDishesOf, resolveBuyRule, shoppingGroupOf } from '@ona/shared'
+import { isNotBought, isTaperDish, recipeDishesOf, resolveBuyRule, shoppingGroupOf } from '@ona/shared'
 import { randomUUID } from 'crypto'
 
 /**
@@ -75,27 +75,39 @@ const AISLE_INDEX: Record<Aisle, number> = AISLE_ORDER.reduce(
  * into g/ml when possible). pizca/al_gusto are dropped earlier. */
 const BUYABLE: ReadonlySet<Unit> = new Set<Unit>(['g', 'ml', 'u', 'cda', 'cdita'])
 
-/** g/ml friendly rounding: kg above 1 kg, 50 g bands above 250 g, 25 g below. */
-function roundMassVolume(value: number): number {
-  if (value <= 0) return 0
-  if (value >= 1000) {
-    // Round to 100 g increments and render as kg downstream.
-    return Math.round(value / 100) * 100
-  }
-  if (value > 250) return Math.round(value / 50) * 50
-  return Math.round(value / 25) * 25
+/**
+ * Rounds **up** to `step` (PRO-241): the list never asks for less than the
+ * recipes add up to. A hair over a step from float noise (6.0000001 eggs)
+ * doesn't jump to the next one.
+ */
+function ceilTo(value: number, step: number): number {
+  return Math.ceil(value / step - 1e-6) * step
 }
 
-function roundUnitWhole(value: number): number {
-  const r = Math.round(value)
+/**
+ * g/ml friendly amounts, always rounded up (PRO-241; it used `Math.round`, so
+ * 60 g of basmati read 50 g and 8 g read 0): 100 g steps from 1 kg (shown as
+ * kg downstream), 50 g steps above 250 g, 25 g steps below.
+ */
+export function roundMassVolume(value: number): number {
+  if (value <= 0) return 0
+  if (value >= 1000) return ceilTo(value, 100)
+  if (value > 250) return ceilTo(value, 50)
+  return ceilTo(value, 25)
+}
+
+/** Whole units, rounded up: 1,2 huevos → 2 (PRO-241). */
+export function roundUnitWhole(value: number): number {
+  const r = ceilTo(value, 1)
   return r < 1 ? 1 : r
 }
 
+/** Half spoons, rounded up. */
 function roundSpoon(value: number): number {
-  return Math.round(value * 2) / 2
+  return ceilTo(value, 0.5)
 }
 
-function roundForUnit(quantity: number, unit: BuyableUnit): number {
+export function roundForUnit(quantity: number, unit: BuyableUnit): number {
   if (unit === 'g' || unit === 'ml') return roundMassVolume(quantity)
   if (unit === 'u') return roundUnitWhole(quantity)
   // cda / cdita
@@ -215,9 +227,15 @@ export function withLeftoverBatches(weekDays: DayMenu[]): DayMenu[] {
       const kept = slot.dishes.filter((dish) => {
         if (dish.kind !== 'recipe' || dish.variant !== 'leftover' || !dish.leftoverOf) return true
         const source = weekDays[dish.leftoverOf.day]?.[dish.leftoverOf.meal as keyof DayMenu]
+        // PRO-240: the source became a táper (already cooked, in the fridge
+        // or freezer): its leftovers came out of that same batch — nothing
+        // to buy for them either.
+        if ((source?.dishes ?? []).some((d) => isTaperDish(d) && d.kind === 'recipe' && d.recipeId === dish.recipeId)) return false
         const sourceCooksIt = (source?.dishes ?? []).some(
           (d) => d.kind === 'recipe' && d.variant !== 'leftover' && d.recipeId === dish.recipeId,
         )
+        // PRO-223: a táper is one ration more on top of «Solo hoy», never covered by it.
+        if (slot.taper) return true
         return !(sourceCooksIt && hasServingsOverride(source))
       })
       if (kept.length !== slot.dishes.length) {
@@ -260,9 +278,9 @@ export function sumDinersByRecipe(
           ? slot.servings
           : householdMultiplier
       for (const dish of recipeDishesOf(slot.dishes)) {
-        // A táper from the freezer (PRO-82) was bought and cooked some other
-        // time: no ingredients, not a cooking.
-        if (dish.variant === 'freezer') continue
+        // A táper from the freezer (PRO-82) or the fridge (PRO-240) was
+        // bought and cooked some other time: no ingredients, not a cooking.
+        if (isTaperDish(dish)) continue
         out.set(dish.recipeId, (out.get(dish.recipeId) ?? 0) + diners)
         if (dish.variant !== 'leftover') timesCooked.set(dish.recipeId, (timesCooked.get(dish.recipeId) ?? 0) + 1)
       }
@@ -376,14 +394,16 @@ export async function generateShoppingList(
   // Per-slot `servings` overrides win over the household-level multiplier;
   // see `sumDinersByRecipe` for the math (extracted for unit testing).
   let dinersByRecipe = sumDinersByRecipe(menuDays, householdMultiplier)
-  if (dinersByRecipe.size === 0) return []
+  // Comidas fijas (PRO-218): their items, per person × the slot's diners.
+  const fixedLines = sumFixedItems(menuDays, householdMultiplier)
+  if (dinersByRecipe.size === 0 && fixedLines.length === 0) return []
   const recipeIds = [...dinersByRecipe.keys()]
 
   // householdMultiplier is provided by the caller (adults + 0.5 × kidsCount).
   // The fallback for legacy/unknown households happens at the route layer.
 
   // 2. Fetch recipe servings + ingredient rows + catalog density/unitWeight/aisle.
-  const recipeRows: { id: string; servings: number }[] = await db
+  const recipeRows: { id: string; servings: number }[] = recipeIds.length === 0 ? [] : await db
     .select({ id: recipesTable.id, servings: recipesTable.servings })
     .from(recipesTable)
     .where(inArray(recipesTable.id, recipeIds))
@@ -406,7 +426,7 @@ export async function generateShoppingList(
     unitWeight: number | null
     /** Recipe note ("picada", "morada en juliana") — the shop order reads it. */
     note?: string | null
-  }> = await db
+  }> = recipeIds.length === 0 ? [] : await db
     .select({
       recipeId: recipeIngredients.recipeId,
       recipeIngredientId: recipeIngredients.id,
@@ -434,7 +454,7 @@ export async function generateShoppingList(
     list.push(r)
     rowsByRecipe.set(r.recipeId, list)
   }
-  if (householdId) {
+  if (householdId && recipeIds.length > 0) {
     const overrideRows: Array<{ recipeId: string; ingredientOverrides: unknown; minServings: number | null }> =
       await db
         .select({
@@ -562,7 +582,118 @@ export async function generateShoppingList(
     })
   }
 
-  return aggregateScaledRows(scaled, catalogById)
+  // Comidas fijas (PRO-218): an item named like a catalogue ingredient joins
+  // that line (the eggs of the breakfast + the eggs of a recipe); any other
+  // goes in its own line.
+  let fixedExtra: ShoppingItem[] = []
+  if (fixedLines.length > 0) {
+    const catalogRows: CatalogRow[] = await db
+      .select({ id: ingredients.id, name: ingredients.name, aisle: ingredients.aisle, density: ingredients.density, unitWeight: ingredients.unitWeight })
+      .from(ingredients)
+    const byKey = new Map<string, CatalogRow>()
+    for (const c of catalogRows) if (!byKey.has(foldName(c.name))) byKey.set(foldName(c.name), c)
+    const { matched, unmatched } = splitFixedLines(fixedLines, byKey)
+    for (const m of matched) {
+      catalogById.set(m.catalog.id, m.catalog)
+      scaled.push({ ingredientId: m.catalog.id, quantity: m.quantity, unit: m.unit, note: null })
+    }
+    fixedExtra = fixedLinesToItems(unmatched)
+  }
+
+  const items = aggregateScaledRows(scaled, catalogById)
+  return fixedExtra.length > 0 ? [...items, ...fixedExtra] : items
+}
+
+// ─── Comidas fijas (PRO-218) ─────────────────────────────────────────
+
+export interface FixedLine {
+  name: string
+  quantity: number
+  unit: BuyableUnit
+}
+
+const foldName = (name: string) => name.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ')
+
+/** Folded name for matching and ids: lowercase, no accents, no plural «s». */
+export function fixedItemKey(name: string): string {
+  return foldName(name)
+    .split(' ')
+    .map((w) => (w.length > 3 && w.endsWith('s') ? w.slice(0, -1) : w))
+    .join(' ')
+}
+
+/** The keys a fixed item may match: «yogures» → «yogure», «yogur». */
+function fixedItemCandidates(name: string): string[] {
+  let combos = ['']
+  for (const w of foldName(name).split(' ')) {
+    const forms = new Set([w])
+    if (w.length > 3 && w.endsWith('s')) forms.add(w.slice(0, -1))
+    if (w.length > 4 && w.endsWith('es')) forms.add(w.slice(0, -2))
+    combos = combos.flatMap((c) => [...forms].map((f) => (c ? `${c} ${f}` : f))).slice(0, 32)
+  }
+  return combos
+}
+
+/**
+ * Pure: every «Fijo: …» slot's items (per person) × the slot's diners
+ * (`servings`, else the household multiplier), summed per item and unit.
+ * A 7-day breakfast for 1 with 1 yogur, 40 g de cereales and 2 galletas →
+ * 7 yogures, 280 g de cereales, 14 galletas.
+ */
+export function sumFixedItems(menuDays: DayMenu[], householdMultiplier: number): FixedLine[] {
+  const out = new Map<string, FixedLine>()
+  for (const day of menuDays) {
+    for (const meal of Object.keys(day ?? {})) {
+      const slot = day[meal as keyof DayMenu]
+      if (!slot) continue
+      const diners = typeof slot.servings === 'number' && slot.servings > 0 ? slot.servings : householdMultiplier
+      for (const dish of slot.dishes ?? []) {
+        if (dish.kind !== 'note' || !dish.fixed) continue
+        for (const item of dish.fixed.items ?? []) {
+          if (!item?.name || !(item.quantity > 0) || !BUYABLE.has(item.unit)) continue
+          const key = `${fixedItemKey(item.name)}|${item.unit}`
+          const cur = out.get(key)
+          if (cur) cur.quantity += item.quantity * diners
+          else out.set(key, { name: item.name.trim(), quantity: item.quantity * diners, unit: item.unit as BuyableUnit })
+        }
+      }
+    }
+  }
+  return [...out.values()]
+}
+
+/** Pure: which fixed lines are a catalogue ingredient (by folded name) and which aren't. */
+export function splitFixedLines(
+  lines: FixedLine[],
+  catalogByKey: ReadonlyMap<string, CatalogRow>,
+): { matched: Array<FixedLine & { catalog: CatalogRow }>; unmatched: FixedLine[] } {
+  const matched: Array<FixedLine & { catalog: CatalogRow }> = []
+  const unmatched: FixedLine[] = []
+  for (const l of lines) {
+    const catalog = fixedItemCandidates(l.name).map((k) => catalogByKey.get(k)).find(Boolean)
+    if (catalog) matched.push({ ...l, catalog })
+    else unmatched.push(l)
+  }
+  return { matched, unmatched }
+}
+
+/** Pure: fixed lines without a catalogue ingredient → their own list lines («Otros»), with their exact amounts. */
+export function fixedLinesToItems(lines: FixedLine[]): ShoppingItem[] {
+  return lines
+    .map((l) => ({
+      id: `fixed:${fixedItemKey(l.name).replace(/\s+/g, '-')}:${l.unit}`,
+      ingredientId: null,
+      name: l.name.toLowerCase(),
+      // The household's own amounts: whole grams / units, not the list's
+      // rounding to 50 g (280 g of cereales stays 280 g).
+      quantity: l.unit === 'cda' || l.unit === 'cdita' ? roundForUnit(l.quantity, l.unit) : Math.round(l.quantity),
+      unit: l.unit,
+      aisle: 'otros' as Aisle,
+      checked: false,
+      inStock: false,
+      kind: 'menu' as const,
+    }))
+    .filter((i) => i.quantity > 0)
 }
 
 /**
@@ -828,12 +959,14 @@ export interface ListTotal {
  *   - `inStock === true` → user already has it, exclude from spend (but
  *     still counted as priced).
  *   - `quantity <= 0` → defensive, exclude from spend.
+ *   - `skipped` («No lo compro esta semana», PRO-175) → not counted at all.
  */
 export function computeListTotal(items: ShoppingItem[]): ListTotal {
   let totalEur = 0
   let pricedCount = 0
   let unpricedCount = 0
   for (const it of items) {
+    if (it.skipped) continue // «No lo compro esta semana» (PRO-175)
     const price = it.pricePerUnit
     const hasPrice = typeof price === 'number' && Number.isFinite(price)
     if (!hasPrice) {

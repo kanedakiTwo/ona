@@ -4,6 +4,7 @@ import { visibleAuthorIds, visibleRecipeWhere } from './recipeVisibility.js'
 import { loadMatchableRecipes, type RecipeWithCourse } from './matchableRecipes.js'
 import { mergeRestrictions } from './dietaryRestrictions.js'
 import { recipesMatchingDishes, weekTimeBudgets } from './onboardingPreferences.js'
+import { holidayTimeBudgets, regionFromMemory } from './menuHolidays.js'
 import { menuMetabolicQuality, recipeMetabolicProfile, type MetabolicProfile } from './metabolicScore.js'
 import {
   users,
@@ -21,15 +22,23 @@ import {
   TARGET_MACROS,
   MENU_GENERATION,
 } from '@ona/shared'
-import type { DayMenu, DayTemplate, DayTimeBudget, Meal, Season, Sex, ActivityLevel, LockedSlots } from '@ona/shared'
+import { applyTemplateTapers } from './taper.js'
+import type { DayMenu, DayTemplate, DayTimeBudget, Meal, Season, Sex, ActivityLevel, LockedSlots, WeekPlan } from '@ona/shared'
+import { applyWeekPlan } from './weekPlan.js'
+import { ensureFridgeRecipe, loadFridgeTerms, recipesUsingFridge, rememberFridge } from './fridgeBoost.js'
 import { findRecipeForSlot, normaliseEquipment, type RecipeWithIngredients } from './recipeMatcher.js'
 import { findForCourse } from './courseAwareMatcher.js'
+import { proteinKind } from './tasteDeck.js'
 import { dishCountFor, coursesFor } from './menuDishes.js'
 import { getMemoryForUser } from './userMemoryStore.js'
+import { loadFichaMenuConstraints, withFichaFilters } from './profile/reader.js'
 import { resolveScope, scopeWhere } from './scopeResolver.js'
 import { calculateRecipeCaloriesFromDB, calculateMenuCaloriesFromDB } from './calorieCalculator.js'
 import { calculateMenuNutrientsFromDB } from './nutrientCalculator.js'
-import type { MealDishCounts, Dish, RecipeDish, Course } from '@ona/shared'
+import type { MealDishCounts, Dish, RecipeDish, Course, FixedMeal, FoodGroup } from '@ona/shared'
+import { fixedMealFor, fixedMealsFromTemplate, fixedNoteText } from '@ona/shared'
+import { loadSchoolDinnerAvoidGroups, withoutFoodGroup } from './schoolMenu.js'
+import { getPrimaryHouseholdId } from './scopeResolver.js'
 
 /**
  * Lunch + dinner every day, until the user sets their own plantilla in the
@@ -181,6 +190,51 @@ export function extractMealDishCounts(raw: unknown): MealDishCounts {
 }
 
 /**
+ * Pure (PRO-218): the template without the fixed meals' slots, so the
+ * generator never picks a recipe for them.
+ */
+export function templateWithoutFixed(template: DayTemplate[], fixed: readonly FixedMeal[]): DayTemplate[] {
+  if (fixed.length === 0) return template
+  return template.map((day, i) => {
+    const out: DayTemplate = { ...day }
+    for (const meal of Object.keys(out)) if (fixedMealFor(fixed, i, meal)) delete out[meal]
+    return out
+  })
+}
+
+/**
+ * Pure (PRO-218): put the fixed meals into the generated week as one note
+ * «Fijo: <label>» carrying its items (the shopping list reads them). A locked
+ * slot keeps what it had; a «sin cocinar» day stays empty; the slot takes the
+ * plantilla's diners when it has them.
+ */
+export function withFixedMeals(
+  days: DayMenu[],
+  fixed: readonly FixedMeal[],
+  opts: { lockedSlots?: LockedSlots; existingDays?: DayMenu[]; skippedDays?: Set<number>; mealDiners?: Record<Meal, number>[] } = {},
+): DayMenu[] {
+  if (fixed.length === 0) return days
+  return days.map((day, i) => {
+    if (opts.skippedDays?.has(i)) return day
+    const out: DayMenu = { ...day }
+    for (const f of fixed) {
+      if (!fixedMealFor(fixed, i, f.meal)) continue
+      const locked = opts.lockedSlots?.[String(i)]?.[f.meal] && opts.existingDays?.[i]?.[f.meal]
+      if (locked) {
+        out[f.meal] = opts.existingDays![i][f.meal]
+        continue
+      }
+      const diners = opts.mealDiners?.[i]?.[f.meal as Meal]
+      out[f.meal] = {
+        ...(diners && diners > 0 ? { servings: diners } : {}),
+        dishes: [{ kind: 'note', text: fixedNoteText(f), fixed: { items: f.items.map((x) => ({ ...x })) } }],
+      }
+    }
+    return out
+  })
+}
+
+/**
  * Count total meal slots in a template.
  */
 function countMealSlots(template: DayTemplate[]): number {
@@ -191,6 +245,18 @@ function countMealSlots(template: DayTemplate[]): number {
     }
   }
   return count
+}
+
+/**
+ * PRO-238 (2026-10-19): the main protein of a dish for the "not the same at
+ * lunch and dinner" rule — `proteinKind` from tasteDeck.ts (carne, pescado,
+ * legumbre, huevo); «verdura» is no protein and never blocks. The test
+ * households got «lentejas estofadas» for lunch and «lentejas guisadas» for
+ * dinner the same Sunday (two recipes, so `usedRecipeIds` let it through).
+ */
+export function mainProteinOf(recipe: Pick<RecipeWithIngredients, 'name' | 'ingredients'>): string | null {
+  const kind = proteinKind({ name: recipe.name, ingredients: recipe.ingredients ?? [] })
+  return kind === 'verdura' ? null : kind
 }
 
 /**
@@ -213,10 +279,23 @@ export function buildRandomMenu(
   mealDiners?: Record<Meal, number>[],
   mealDishCounts?: MealDishCounts,
   likedRecipeIds?: Set<string>,
+  /** PRO-224: day index → the group the kids ate at school; that dinner avoids it. */
+  dinnerAvoidGroups?: Record<number, FoodGroup>,
+  unavailableEquipment?: Set<string>,
 ): { days: DayMenu[]; warnings: string[] } {
   const usedRecipeIds = new Set<string>()
   const days: DayMenu[] = []
   const warnings: string[] = []
+  const proteinById = new Map<string, string | null>()
+  let recipeById: Map<string, RecipeWithCourse> | null = null
+  const proteinOfId = (id: string): string | null => {
+    if (!proteinById.has(id)) {
+      recipeById ??= new Map(allRecipes.map((x) => [x.id, x]))
+      const r = recipeById.get(id)
+      proteinById.set(id, r ? mainProteinOf(r) : null)
+    }
+    return proteinById.get(id) ?? null
+  }
 
   // If there are locked slots, pre-fill them and mark as used
   if (existingDays) {
@@ -247,6 +326,23 @@ export function buildRandomMenu(
       continue
     }
 
+    // Main proteins already in this day's lunch / dinner (PRO-238), locked
+    // slots included, so the other one picks a different protein when it can.
+    const dayProteins = new Map<string, Set<string>>()
+    const noteProteins = (meal: string, dishes: readonly Dish[] | undefined) => {
+      if (meal !== 'lunch' && meal !== 'dinner') return
+      for (const d of dishes ?? []) {
+        if (d.kind !== 'recipe' || ((d as RecipeDish).course != null && (d as RecipeDish).course !== 'main')) continue
+        const k = proteinOfId(d.recipeId)
+        if (k) (dayProteins.get(meal) ?? dayProteins.set(meal, new Set()).get(meal)!).add(k)
+      }
+    }
+    for (const meal of Object.keys(dayTemplate)) {
+      if (dayTemplate[meal] && existingDays && lockedSlots[String(dayIndex)]?.[meal] && existingDays[dayIndex]?.[meal]) {
+        noteProteins(meal, existingDays[dayIndex][meal]?.dishes)
+      }
+    }
+
     for (const meal of Object.keys(dayTemplate)) {
       if (!dayTemplate[meal]) continue
 
@@ -268,8 +364,18 @@ export function buildRandomMenu(
       const wantedCourses = coursesFor(wantedCount)
       const dishes: Dish[] = []
 
+      // Menú del cole (PRO-224): «si comieron lentejas, la cena no es de legumbres».
+      const avoidGroup = meal === 'dinner' ? dinnerAvoidGroups?.[dayIndex] : undefined
+      const slotPool = avoidGroup ? withoutFoodGroup(allRecipes, avoidGroup) : allRecipes
+      const otherMeal = meal === 'lunch' ? 'dinner' : meal === 'dinner' ? 'lunch' : null
+      const avoid = otherMeal ? dayProteins.get(otherMeal) : undefined
+
       for (const course of wantedCourses) {
-        const picked = findForCourse(allRecipes, course, {
+        // Same main protein as the other meal of the day (PRO-238): only if nothing else fits.
+        const pool = avoid?.size && (course === 'main' || course === null)
+          ? slotPool.filter((r) => { const k = proteinOfId(r.id); return !k || !avoid.has(k) })
+          : slotPool
+        const opts = {
           meal: meal as Meal,
           season,
           usedRecipeIds,
@@ -280,8 +386,10 @@ export function buildRandomMenu(
           dayIndex,
           dislikes,
           availableEquipment,
+          unavailableEquipment,
           timeBudget: timeBudgetByDay?.[dayIndex] ?? null,
-        })
+        }
+        const picked = (pool !== slotPool ? findForCourse(pool, course, opts) : undefined) ?? findForCourse(slotPool, course, opts)
         if (!picked) {
           warnings.push(`no_${course ?? 'main'}_available_${meal}_d${dayIndex}`)
           continue
@@ -294,6 +402,8 @@ export function buildRandomMenu(
           course: (picked as RecipeWithCourse).course ?? null,
         } as RecipeDish)
       }
+
+      noteProteins(meal, dishes)
 
       // Set the new-shape slot (only if we got at least one dish)
       if (dishes.length > 0) {
@@ -393,6 +503,7 @@ export async function generateMenu(
   existingDays?: DayMenu[],
   bannedRecipeIds?: Set<string>,
   skippedDays?: Set<number>,
+  weekPlan?: WeekPlan,
 ): Promise<{ days: DayMenu[]; warnings: string[] }> {
   // 1. Fetch user profile
   const [user] = await db
@@ -414,18 +525,34 @@ export async function generateMenu(
   // preferences + mealTemplate); normalize it back to DayTemplate[] before
   // letting the matcher loop over it.
   const rawTemplate = customTemplate ?? settings?.template
-  const template = normalizeMealTemplate(rawTemplate) ?? defaultTemplate()
+  // Comidas fijas (PRO-218): those slots are not generated; they are put back
+  // as «Fijo: …» at the end (withFixedMeals). The fixed list lives in the
+  // saved settings blob even when a custom template is passed.
+  const fixedMeals = fixedMealsFromTemplate(settings?.template)
   // Per-slot diner counts (only present when the profile's plantilla uses the
   // numeric shape `{ [day]: { [meal]: number } }`). Slots that didn't carry an
   // explicit count keep `servings` undefined and fall back to the household
   // multiplier in the shopping-list aggregator.
-  const mealDiners = extractMealDiners(rawTemplate)
+  // PRO-225: «¿Alguna comida fuera?» / «¿Viene alguien?» shape this week
+  // only (copies; the saved plantilla is never written).
+  const { template: plannedTemplate, mealDiners } = applyWeekPlan(
+    normalizeMealTemplate(rawTemplate) ?? defaultTemplate(),
+    extractMealDiners(rawTemplate),
+    weekPlan,
+    (d, m) => !!(existingDays?.[d]?.[m] && lockedSlots[String(d)]?.[m]),
+  )
+  const template = templateWithoutFixed(plannedTemplate, fixedMeals)
   // Per-meal-type dish count from the same junk-drawer blob:
   // `{ mealDishCounts: { lunch: 2, dinner: 3 } }`. Absent = all 1-dish.
   const mealDishCounts = extractMealDishCounts(rawTemplate)
 
   // Fetch all recipes with ingredients
   const allRecipes = await loadMatchableRecipes(userId, db)
+
+  // PRO-229 · «¿Qué te queda en la nevera?»: what was said goes into the
+  // despensa (nevera); recipes that use what's in the fridge weigh more.
+  await rememberFridge(userId, weekPlan?.fridge, db).catch(() => {})
+  const fridgeRecipeIds = recipesUsingFridge(allRecipes, await loadFridgeTerms(userId, db).catch(() => []))
 
   // Identify recipes whose nutritionPerServing isn't cached yet — they get a
   // tiny fitness penalty so the algorithm prefers fully-mapped alternatives.
@@ -466,24 +593,42 @@ export async function generateMenu(
   const memory = await getMemoryForUser(userId).catch(() => null)
   const restrictions = mergeRestrictions(user.restrictions, memory)
   const dislikesValue = memory?.dislikes?.value
-  const dislikes: string[] = Array.isArray(dislikesValue) ? (dislikesValue as string[]) : []
   const equipmentValue = memory?.equipment?.value
-  const availableEquipment = Array.isArray(equipmentValue)
-    ? new Set<string>((equipmentValue as string[]).map(normaliseEquipment))
-    : undefined
+  // The household's ficha on top (PRO-253): every member's dislikes and
+  // equipment missing right now («sin horno hasta nuevo aviso»).
+  const { dislikes, availableEquipment, unavailableEquipment } = withFichaFilters(
+    {
+      dislikes: Array.isArray(dislikesValue) ? (dislikesValue as string[]) : [],
+      availableEquipment: Array.isArray(equipmentValue)
+        ? new Set<string>((equipmentValue as string[]).map(normaliseEquipment))
+        : undefined,
+    },
+    await loadFichaMenuConstraints(userId, { db }),
+  )
   // Per-day time limits (PRO-138): total or hands-on minutes; «Rapidez» /
   // «Cocino poco» without an answer → ≤ 30 min in total Mon–Fri.
-  const timeBudgetByDay = weekTimeBudgets(memory?.time_available?.value, user)
+  // Festivos (PRO-226): a weekday holiday of the household's comunidad
+  // autónoma takes Saturday's limit (usually none).
+  const timeBudgetByDay = holidayTimeBudgets(
+    weekTimeBudgets(memory?.time_available?.value, user),
+    weekStart,
+    regionFromMemory(memory?.region?.value),
+  ).budgets
 
   // 5b. Onboarding answers: dishes they love join the favourites weighting;
   // time limits come from weekTimeBudgets (onboardingPreferences.ts).
   for (const id of recipesMatchingDishes(allRecipes, user.favoriteDishes)) favoriteRecipeIds.add(id)
+  for (const id of fridgeRecipeIds) favoriteRecipeIds.add(id)
 
   // 5c. «¿Qué tal?» (PRO-111): 5 stars weigh like a favourite, 1 star never
   // comes out on its own. «Afina tu menú» (PRO-146): «Me encanta» weighs like
   // a favourite, «No para mí» of anyone in the household never comes out,
   // «Me apetece» gets a small extra. Matcher-only sets: the week's vetoes stay as they are.
   const rated = withHouseholdRatings(favoriteRecipeIds, bannedRecipeIds, await loadHouseholdRatingSets(userId, db).catch(() => ({ boost: new Set<string>(), exclude: new Set<string>(), like: new Set<string>() })))
+
+  // 5d. Menú del cole (PRO-224): the dinner of a school day avoids the
+  // group of the kids' lunch.
+  const dinnerAvoidGroups = await loadSchoolDinnerAvoidGroups(await getPrimaryHouseholdId(userId, db).catch(() => null), weekStart, db)
 
   // Per-recipe metabolic profile, once (scoreMenu runs every iteration).
   const metabolic = new Map(allRecipes.map((r) => [r.id, recipeMetabolicProfile(r.ingredients.map((i) => i.ingredientName), season)]))
@@ -510,6 +655,8 @@ export async function generateMenu(
       mealDiners,
       mealDishCounts,
       rated.likedRecipeIds,
+      dinnerAvoidGroups,
+      unavailableEquipment,
     )
 
     // Verify the menu has at least some recipes
@@ -530,8 +677,40 @@ export async function generateMenu(
     if (bestFitness < MENU_GENERATION.OPTIMAL_FITNESS) break
   }
 
+  // PRO-229: if the draw left out everything that uses the fridge, put one in
+  // (first free lunch/dinner it fits, Monday first), with the same matcher rules.
+  const withFridge = (days: DayMenu[]) =>
+    ensureFridgeRecipe(
+      days,
+      fridgeRecipeIds,
+      (dayIndex, meal, used) =>
+        findForCourse(allRecipes.filter((r) => fridgeRecipeIds.has(r.id)), null, {
+          meal: meal as Meal,
+          season,
+          usedRecipeIds: used,
+          restrictions,
+          favoriteRecipeIds: rated.favoriteRecipeIds,
+          likedRecipeIds: rated.likedRecipeIds,
+          bannedRecipeIds: rated.bannedRecipeIds,
+          dayIndex,
+          dislikes,
+          availableEquipment,
+          timeBudget: timeBudgetByDay?.[dayIndex] ?? null,
+        }),
+      lockedSlots,
+      skippedDays,
+    ).days
+
+
+  // Order: the fridge dish (PRO-229) on the drawn week, then tápers (PRO-223), then fixed meals (PRO-218).
+  const fixedOpts = { lockedSlots, existingDays, skippedDays, mealDiners }
+  // PRO-223: the plantilla's «días de táper» — that lunch is a táper of the dinner before.
+  // Fixed meals (PRO-218) go last, so a fixed slot wins over a táper.
+  const finish = (days: DayMenu[]) =>
+    withFixedMeals(applyTemplateTapers(withFridge(days), rawTemplate, lockedSlots, skippedDays ?? []), fixedMeals, fixedOpts)
+
   if (bestDays) {
-    return { days: bestDays, warnings: bestWarnings }
+    return { days: finish(bestDays), warnings: bestWarnings }
   }
 
   const fallback = buildRandomMenu(
@@ -550,6 +729,8 @@ export async function generateMenu(
     mealDiners,
     mealDishCounts,
     rated.likedRecipeIds,
+    dinnerAvoidGroups,
+    unavailableEquipment,
   )
-  return { days: fallback.days, warnings: fallback.warnings }
+  return { days: finish(fallback.days), warnings: fallback.warnings }
 }

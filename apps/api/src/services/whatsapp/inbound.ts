@@ -4,12 +4,13 @@ import type { TokenUsage } from '../advisorBudget.js'
 import type { InboundMessage } from './webhookParser.js'
 import type { LinkWithUser } from './store.js'
 import { buildChatHistory, HISTORY_WINDOW_MS, type HistoryRow } from './history.js'
+import { lateDinnerCheckinNote } from './lateCheckin.js'
 import { connectUrl, extractLinkCodeCandidates, isLinkAttempt } from './linking.js'
 import { dropRepeatedButtons, lastSentButtons, outboundBody, renderAssistantReply, renderPlainText, WA_CAPTION_MAX, type OutboundMessage } from './render.js'
 import { extractOptions, toWhatsAppMarkup } from './format.js'
 import { isShoppingItemList, shoppingListDigest } from '../shoppingText.js'
 import type { WeekView } from '../menuText.js'
-import { AI_DISCLOSURE_FIRST_PERSON } from '@ona/shared'
+import { AI_DISCLOSURE_FIRST_PERSON, BRAND_SUPPORT_EMAIL, NotASchoolMenuError, schoolLunchLines, type SchoolLunch } from '@ona/shared'
 import { guidedMeta, type GuideSpec, type GuidedResult } from './guided.js'
 import { controlCommand, OPT_IN_NO, OPT_IN_YES } from './commands.js'
 import { trackEvent } from '../usageEvents.js'
@@ -71,8 +72,17 @@ export interface InboundDeps {
     recentOutboundKinds: (phone: string, since: Date) => Promise<Map<string, Date>>
     setNotify: (userId: string, notify: boolean) => Promise<boolean>
   }
-  /** Where to reach a human (env SUPPORT_EMAIL). Empty → point to the app. */
+  /** Where to reach a human (env SUPPORT_EMAIL). Empty → hola@mimoia.com (PRO-179). */
   supportEmail?: string
+  /**
+   * PRO-248: the avisos answer. `markDeclined` records a «No, gracias» or a
+   * BAJA; `claimReoffer` is true only the one time the extra offer is due
+   * (optInOffer.ts). Absent → no record, no extra offer.
+   */
+  optIn?: {
+    markDeclined: (userId: string) => Promise<void>
+    claimReoffer: (userId: string, now: Date) => Promise<boolean>
+  }
   client: {
     sendMessage: (to: string, msg: OutboundMessage) => Promise<string | null>
     markReadWithTyping: (wamid: string) => Promise<void>
@@ -119,6 +129,12 @@ export interface InboundDeps {
     userId: string,
     opts?: { sourceUrl?: string },
   ) => Promise<{ recipeId: string; name: string; warnings: string[]; looksLikeScreenshot?: boolean }>
+  /**
+   * PRO-224: a photo or PDF of the school's monthly menu → read, saved for the
+   * household, and the days back to show. Throws NotASchoolMenuError when it
+   * isn't one. Absent → those files go the usual way.
+   */
+  readSchoolMenu?: (file: Buffer, mimeType: string, userId: string) => Promise<SchoolLunch[]>
   /** The link to the original of a screenshot's recipe (PRO-66). False = not the user's recipe. */
   setRecipeSource?: (userId: string, recipeId: string, url: string) => Promise<boolean>
   /**
@@ -364,8 +380,25 @@ export function firstStepsGuide(url: string): GuideSpec {
   }
 }
 
-const humanContact = (email?: string) =>
-  email ? `escribe a ${email}` : 'escribe a la persona de Mimoia que te invitó a la beta'
+/**
+ * Where to reach a person (PRO-179): `SUPPORT_EMAIL` when set, else the public
+ * address hola@mimoia.com, as the footer and Mimo do. Never "quien te invitó":
+ * with open sign-up nobody invites anybody.
+ */
+export const humanContact = (email?: string) => `escribe a ${email?.trim() || BRAND_SUPPORT_EMAIL}`
+
+/**
+ * PRO-245 (D-064, Miguel 2026-10-19): the WhatsApp sign-up asks exactly these,
+ * and its first message announces as many as it lists. `complete_onboarding`
+ * needs nothing else (adults, kids, cookingFreq).
+ */
+export const WHATSAPP_ONBOARDING_QUESTIONS = [
+  '¿Cuántos sois en casa? Dime adultos y niños de 2 a 10 años.',
+  '¿Cuánto cocináis en casa: casi a diario, 3-4 días a la semana o poco?',
+] as const
+
+const COUNT_WORDS = ['cero', 'una', 'dos', 'tres', 'cuatro', 'cinco']
+export const countWord = (n: number) => COUNT_WORDS[n] ?? String(n)
 
 export const COPY = {
   /**
@@ -376,12 +409,13 @@ export const COPY = {
   /**
    * First message of the WhatsApp sign-up, in Miguel's words (2026-10-15). It
    * keeps the three parts of the AI disclosure (AI, can be wrong, not a health
-   * professional; AI Act art. 50) and asks two of the three questions at once
-   * (household + three dishes) to save a message; the third (how often they
-   * cook) goes with buttons.
+   * professional; AI Act art. 50) and announces and lists exactly the questions
+   * of the sign-up (`WHATSAPP_ONBOARDING_QUESTIONS`, PRO-245): how many they are
+   * and how often they cook. No favourite dishes (D-064: «Afina tu menú» reads
+   * the tastes later).
    */
   linkedOnboarding: (name: string | null) =>
-    `¡Hola${name ? `, ${name}` : ''}! Ya estás conectado: soy Mimo, de Mimoia. Soy un asistente de inteligencia artificial (IA) especializado en cocina: puedo equivocarme y no sustituyo a un profesional sanitario, pero puedo encargarme de las tareas rutinarias para que cocinar vuelva a ser divertido.\n\nPuedes escribirme o mandarme notas de voz, como te sea más cómodo.\n\nPara entrar en calor te propongo preparar tu primer menú en un momento: solo necesito saber tres cosas.\n\n*1.* ¿Cuántos sois en casa? Dime adultos y niños de 2 a 10 años.\n*2.* Dime tres platos que os gusten mucho.`,
+    `¡Hola${name ? `, ${name}` : ''}! Ya estás conectado: soy Mimo, de Mimoia. Soy un asistente de inteligencia artificial (IA) especializado en cocina: puedo equivocarme y no sustituyo a un profesional sanitario, pero puedo encargarme de las tareas rutinarias para que cocinar vuelva a ser divertido.\n\nPuedes escribirme o mandarme notas de voz, como te sea más cómodo.\n\nPara entrar en calor te propongo preparar tu primer menú en un momento: solo necesito saber ${countWord(WHATSAPP_ONBOARDING_QUESTIONS.length)} cosas.\n\n${WHATSAPP_ONBOARDING_QUESTIONS.map((q, i) => `*${i + 1}.* ${q}`).join('\n')}`,
   /** After the first menu: health data goes to the web, never through WhatsApp (PRO-24). */
   healthOnWeb: (url: string) =>
     `Si en casa hay alergias, intolerancias o algo que no podáis o queráis comer, añádelo aquí con tu permiso y lo tendré en cuenta: ${url}\nPor WhatsApp no me dejan guardar datos de salud.`,
@@ -389,7 +423,7 @@ export const COPY = {
     `¡Listo${name ? `, ${name}` : ''}! Tu WhatsApp ya está conectado con Mimoia. Pregúntame qué toca hoy, pídeme la lista de la compra, mándame un audio o compárteme una receta (enlace o foto) para guardarla.\n\n${AI_DISCLOSURE_FIRST_PERSON}`,
   /** Explicit opt-in for proactive messages, asked once right after linking. */
   optInPrompt:
-    '¿Quieres que también te escriba yo? No escribo mucho, solo te mandaría el menú del día, un aviso antes de cocinar (congelados, tiempos) y la lista de la compra los sábados. Puedes cambiarlo cuando quieras simplemente pidiéndomelo.',
+    '¿Quieres que también te escriba yo? No escribo mucho, solo lo importante: un aviso antes de cocinar (congelados, tiempos) y la lista de la compra los sábados. Si quieres el menú cada mañana, pídemelo. Puedes cambiarlo cuando quieras simplemente pidiéndomelo.',
   optInDeclined: 'Vale, no te escribiré por mi cuenta. Si cambias de idea, escribe ALTA.',
   /**
    * Last message of the WhatsApp-first sign-up (PRO-07): once the opt-in
@@ -408,7 +442,7 @@ export const COPY = {
     'Hecho: no te enviaré más avisos por WhatsApp. Puedes seguir escribiéndome cuando quieras. Para volver a recibirlos, escribe ALTA.',
   stoppedUnlinked: 'De acuerdo, no te volveré a escribir.',
   started:
-    'Hecho: vuelvo a enviarte avisos (menú del día, aviso antes de cocinar, lista de la compra). Escribe BAJA para dejar de recibirlos.',
+    'Hecho: vuelvo a enviarte avisos (aviso antes de cocinar, lista de la compra). Escribe BAJA para dejar de recibirlos.',
   human: (email?: string) =>
     `Soy un asistente con IA. Para hablar con una persona del equipo de Mimoia, ${humanContact(email)}. Si es sobre tu menú, la compra o una receta, cuéntamelo y lo hago.`,
   badCode: 'Ese código no es válido o ha caducado. Genera uno nuevo en Mimoia → Perfil → Mimo en WhatsApp.',
@@ -417,6 +451,13 @@ export const COPY = {
   suspended: (email?: string) =>
     `Tu cuenta de Mimoia está suspendida. Si crees que es un error, ${humanContact(email)}.`,
   notAllowed: 'WhatsApp todavía no está disponible para tu cuenta de Mimoia.',
+  /** PRO-248: the one extra offer of the avisos, in one line, with the same two buttons. */
+  optInReoffer:
+    'Por cierto, ¿quieres que también te escriba yo? Solo lo importante: un aviso antes de cocinar y la lista de la compra los sábados. Solo te lo pregunto esta vez.',
+  /** PRO-248: the first «sí» to the avisos: `started` saying «te enviaré», not «vuelvo a enviarte». */
+  get startedFirst(): string {
+    return this.started.replace('vuelvo a enviarte', 'te enviaré')
+  },
   /** PRO-135: trial over without a plan. The only thing a paused account hears from Mimo (Legal reviews it). */
   paused: (url: string) =>
     `Tu prueba de Mimoia ha terminado y tu cuenta está en pausa, así que ahora no puedo ayudarte por aquí. No se ha borrado nada: tu menú, tus recetas y tu lista siguen en la app.\n\nSi quieres que sigamos, elige un plan (o pídeselo a quien gestiona tu hogar):\n${url}`,
@@ -433,6 +474,9 @@ export const COPY = {
   error: 'Vaya, algo ha fallado. Inténtalo de nuevo en un momento.',
   working: 'Un momento, me pongo con ello…',
   ackPhoto: 'Recibida la foto. Voy a leer la receta, dame unos segundos…',
+  ackSchoolMenu: 'Recibido. Voy a leer el menú del cole, dame unos segundos…',
+  schoolMenuNotFound: 'No he encontrado el menú del cole en ese archivo. Prueba con una foto más nítida o con el PDF del cole.',
+  schoolMenuFailed: 'No he podido leer el menú del cole. Inténtalo de nuevo en un momento.',
 }
 
 /** Slow skills get an immediate, specific "on it" instead of waiting for the timer. */
@@ -566,14 +610,19 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     await store.updateInbound(msg.wamid, { status: 'ignored', userId })
     if (command === 'stop') {
       if (link) await store.setNotify(link.userId, false)
+      if (link) await deps.optIn?.markDeclined(link.userId)
       await sendText(userId, 'optout', link ? COPY.stopped : COPY.stoppedUnlinked)
     } else if (command === 'start') {
       if (link) {
         await store.setNotify(link.userId, true)
-        // End of the WhatsApp sign-up (2026-10-15, Miguel): no confirmation
-        // line, straight to the suggestions. Otherwise, confirm.
-        if (await signupEnding()) await sendFirstSteps(link.userId)
-        else await sendText(userId, 'optin', COPY.started)
+        // PRO-248: the confirmation always goes out (also at the end of the
+        // WhatsApp sign-up, before the suggestions), and the first time it
+        // says «te enviaré», not «vuelvo a enviarte».
+        const sentKinds = await store.recentOutboundKinds(msg.from, new Date(0))
+        const first = !sentKinds.has('optin') && !sentKinds.has('optout')
+        const ending = await signupEnding()
+        await sendText(userId, 'optin', first ? COPY.startedFirst : COPY.started)
+        if (ending) await sendFirstSteps(link.userId)
       } else {
         await sendText(null, 'optin', COPY.connect(connectUrl(deps.webUrl)))
       }
@@ -588,8 +637,11 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     const prompt = kinds.get('optin_prompt')
     if (prompt && [...kinds.values()].every((t) => t <= prompt)) {
       await store.updateInbound(msg.wamid, { status: 'ignored', userId: link.userId })
-      if (await signupEnding()) await sendFirstSteps(link.userId)
-      else await sendText(link.userId, 'system', COPY.optInDeclined)
+      await deps.optIn?.markDeclined(link.userId)
+      // PRO-248: the answer is always confirmed, also before the suggestions.
+      const ending = await signupEnding()
+      await sendText(link.userId, 'system', COPY.optInDeclined)
+      if (ending) await sendFirstSteps(link.userId)
       return
     }
   }
@@ -741,7 +793,15 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
         }
         break
       }
+      case 'document': {
+        // PRO-224: a PDF is read only as the school menu.
+        if (await handleSchoolMenu(msg, userId, now, deps, out, acker, true)) return
+        await store.updateInbound(msg.wamid, { status: 'ignored', userId })
+        await outText('system', COPY.unsupported)
+        return
+      }
       case 'image': {
+        if (await handleSchoolMenu(msg, userId, now, deps, out, acker, false)) return
         const photo = await handleImage(msg, userId, now, deps, out, acker)
         if (photo === 'done') return
         text = photo.text
@@ -764,7 +824,10 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     // ── 4. Chat ────────────────────────────────────────────────
     const rows = await store.loadHistoryRows(msg.from, new Date(now.getTime() - HISTORY_WINDOW_MS), userId)
     const history = buildChatHistory(rows, now)
-    const { usage, ...response } = await deps.chat(userId, text, history, {
+    // PRO-250: a reply after midnight to last night's «¿hiciste la cena?» is about that day.
+    const lateCheckin = lateDinnerCheckinNote(rows, now)
+    const chatText = lateCheckin ? `${lateCheckin}\n\n${text}` : text
+    const { usage, ...response } = await deps.chat(userId, chatText, history, {
       mode: 'whatsapp',
       ...(images ? { images } : {}),
       // WhatsApp-first sign-up: Mimo asks the first steps until complete_onboarding.
@@ -804,6 +867,20 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
       await outText('system', COPY.healthOnWeb(`${deps.webUrl.replace(/\/$/, '')}/profile`))
       await acker.settle()
       await sendOptInPrompt(userId)
+    } else if (link.onboardingDone !== false && !response.offerAdded && deps.optIn && (await deps.optIn.claimReoffer(userId, now).catch(() => false))) {
+      // PRO-248: whoever never answered the avisos question hears it one more
+      // time, in one line, after their first week with a menu and the list.
+      await acker.settle()
+      await send(userId, 'optin_prompt', [
+        {
+          type: 'buttons',
+          text: COPY.optInReoffer,
+          buttons: [
+            { id: 'optin_yes', title: OPT_IN_YES },
+            { id: 'optin_no', title: OPT_IN_NO },
+          ],
+        },
+      ])
     }
   } catch (err: any) {
     console.error('[whatsapp] processing failed:', err?.message ?? err)
@@ -862,6 +939,72 @@ async function attachSourceLink(
   return true
 }
 
+/** PRO-224: «menú del cole / comedor» in the caption or in a message of the last 30 min. */
+const SCHOOL_MENU_RE = /\b(men[uú]s?\s+(del|de\s+el)\s+(cole|colegio|comedor)|comedor\s+(escolar|del\s+cole)|men[uú]\s+escolar)\b/i
+export const SCHOOL_MENU_WINDOW_MS = 30 * 60 * 1000
+
+export function schoolMenuIntent(caption: string | null | undefined, rows: readonly HistoryRow[], now: Date): boolean {
+  if (SCHOOL_MENU_RE.test(caption ?? '')) return true
+  return rows.some(
+    (r) => r.direction === 'in' && now.getTime() - r.createdAt.getTime() <= SCHOOL_MENU_WINDOW_MS && SCHOOL_MENU_RE.test(r.body ?? '') && !/^\[menú del cole\]/i.test(r.body ?? ''),
+  )
+}
+
+/** Pure: the reply after reading the school menu. */
+export function schoolMenuReply(days: SchoolLunch[]): string {
+  return [
+    `He apuntado el menú del cole (${days.length} ${days.length === 1 ? 'día' : 'días'}):`,
+    ...schoolLunchLines(days),
+    '',
+    'Las cenas de esos días no repetirán lo que coman allí. Si algo no está bien, dímelo (p. ej. «el martes 4 era merluza»).',
+  ].join('\n')
+}
+
+/** True = handled (read, or explained why not). False = not a school menu message. */
+async function handleSchoolMenu(
+  msg: InboundMessage,
+  userId: string,
+  now: Date,
+  deps: InboundDeps,
+  out: (kind: string, messages: OutboundMessage[]) => Promise<void>,
+  acker: ReturnType<typeof createAcker>,
+  isPdf: boolean,
+): Promise<boolean> {
+  const { store, client } = deps
+  if (!deps.readSchoolMenu || !msg.mediaId) return false
+  const rows = await store.loadHistoryRows(msg.from, new Date(now.getTime() - SCHOOL_MENU_WINDOW_MS), userId)
+  // A PDF is only ever a school menu here; a photo needs the words.
+  if (!isPdf && !schoolMenuIntent(msg.text, rows, now)) return false
+  acker.now(COPY.ackSchoolMenu)
+  const caption = msg.text?.trim() ?? ''
+  try {
+    const media = await client.downloadMedia(msg.mediaId)
+    const days = await deps.readSchoolMenu(media.buffer, msg.mimeType ?? media.mimeType ?? 'image/jpeg', userId)
+    await store.updateInbound(msg.wamid, {
+      status: 'processed',
+      userId,
+      body: `[Menú del cole] ${caption}`.trim(),
+      meta: { tools: ['school_menu_read'], toolTrace: [{ name: 'school_menu_read', input: '{}', summary: schoolLunchLines(days).join('; ') }] },
+    })
+    await out('reply', renderPlainText(schoolMenuReply(days)))
+  } catch (err: any) {
+    const notMenu = err instanceof NotASchoolMenuError
+    if (!notMenu) console.error('[whatsapp] school menu read failed:', err?.message ?? err)
+    await store.updateInbound(msg.wamid, { status: notMenu ? 'processed' : 'failed', userId, errorMessage: notMenu ? undefined : String(err?.message ?? err).slice(0, 500) })
+    await out('system', renderPlainText(notMenu ? COPY.schoolMenuNotFound : COPY.schoolMenuFailed))
+  }
+  return true
+}
+
+/** How long after the Sunday message a bare photo still answers «¿Qué te queda en la nevera?». */
+export const FRIDGE_PHOTO_WINDOW_MS = 12 * 60 * 60 * 1000
+
+/** True when the last thing Mimo sent (in the rows given) is the Sunday planning message. */
+export function askedForFridge(rows: ReadonlyArray<{ direction?: string | null; kind?: string | null; status?: string | null }>): boolean {
+  const lastOut = [...rows].reverse().find((r) => r.direction === 'out' && r.status !== 'failed' && r.kind !== 'ack')
+  return lastOut?.kind === 'weekly_nudge'
+}
+
 async function handleImage(
   msg: InboundMessage,
   userId: string,
@@ -883,6 +1026,12 @@ async function handleImage(
     images: [{ mediaType: mimeType, data: media.buffer.toString('base64') }],
   }
   if (photoIntent(msg.text) === 'ask' || !deps.importRecipeFromImage) return forMimo
+  // PRO-229: a photo with no caption right after the Sunday «¿Qué te queda en
+  // la nevera?» is the fridge, not a recipe: Mimo reads it.
+  if (!msg.text?.trim()) {
+    const recent = await store.loadHistoryRows(msg.from, new Date(now.getTime() - FRIDGE_PHOTO_WINDOW_MS), userId)
+    if (askedForFridge(recent)) return { ...forMimo, text: 'Esto es lo que me queda en la nevera.' }
+  }
 
   // Reading a recipe photo always takes a while (vision + ingredient matching).
   acker.now(COPY.ackPhoto)

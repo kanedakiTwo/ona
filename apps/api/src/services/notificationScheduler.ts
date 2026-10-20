@@ -13,8 +13,9 @@
  *     constraint — re-running after a swap_meal is safe.
  *
  *   - `tickScheduler()` — periodic poll (every 5 min) that picks up any
- *     `pending` row whose `fire_at` has elapsed, dispatches via
- *     `sendPushToUser`, and marks it sent / failed.
+ *     `pending` row whose `fire_at` has elapsed, sends it by ONE channel
+ *     (WhatsApp, or the phone notification without it or as its fallback;
+ *     PRO-234, `notifications/channels.ts`), and marks it sent / failed.
  *
  * The tick also sends the waitlist invitation reminder (PRO-97,
  * `sendWaitlistInviteRemindersIfDue`, once an hour).
@@ -35,26 +36,32 @@ import {
   userMemories,
 } from '../db/schema.js'
 import {
+  alertKindOn,
   PREP_METHOD_HOURS_BEFORE,
+  THAW_CONDITIONAL_TEXT,
+  thawIsConditional,
   type PrepMethod,
   type Meal,
 } from '@ona/shared'
-import {
-  sendPushToUser,
-  PushNotConfiguredError,
-} from './pushNotifier.js'
-import { deliverAlertOverWhatsApp, runProactiveTick } from './whatsapp/outbound.js'
+import { deliverAlertOverWhatsApp, runProactiveTick, whatsAppAlertState } from './whatsapp/outbound.js'
 import { runDailyReviewIfDue } from './whatsapp/reviewer.js'
 import { runProfileRefinerIfDue } from './profile/refiner.js'
+import { runWeeklyPlannerIfDue } from './menuPlannerWeekly.js'
 import { recordPendingReferralRewardsIfDue } from './referralRewards.js'
 import { purgeOldUsageEventsIfDue } from './usageEvents.js'
 import { CHAT_RETENTION_DAYS, purgeOldChatMessagesIfDue } from './chatMessages.js'
 import { sendWaitlistInviteRemindersIfDue } from './waitlistInvites.js'
+import { WAITLIST_RETENTION_DATE, purgeWaitlistPersonalDataIfDue } from './waitlistRetention.js'
 import { isAccountPaused } from './accountAccess.js'
+import { cooksOfWeek } from './cookToday.js'
 import { sendTrialEndingEmailsIfDue } from './trialEmails.js'
 import { sendFounderOffersIfDue } from './founderOffer.js'
 import { sendChargeNoticesIfDue } from './chargeNotice.js'
-import { combineDelivery, type ChannelOutcome } from './whatsapp/proactive.js'
+import { logEntriesFor, planMoment, type DeliveryResult } from './notifications/budget.js'
+import { budgetKeyFor, loadFullBudgetState, recordNotices } from './notifications/budgetStore.js'
+import { awakeFireAt, isAwakeInstant } from './notifications/hours.js'
+import { loadUserAlertPrefs } from './notifications/alertPrefs.js'
+import { channelsFor, deliverInOrder, pushOutcome, type WhatsAppAlertState } from './notifications/channels.js'
 
 // ─── Habit → method matcher ─────────────────────────────────────
 //
@@ -76,6 +83,8 @@ const HABIT_KEYWORDS_BY_METHOD: Record<PrepMethod, RegExp> = {
   marinate_overnight: /marino|marinad/i,
   dough_rise_overnight: /masa|levado|fermenta/i,
 }
+
+const isThaw = (method: PrepMethod) => method === 'thaw_24h' || method === 'thaw_48h'
 
 function habitMatches(method: PrepMethod, habits: readonly string[]): boolean {
   const re = HABIT_KEYWORDS_BY_METHOD[method]
@@ -138,7 +147,7 @@ function flattenMenuSlots(days: unknown): SlotEntry[] {
         if (d.kind !== 'recipe') continue
         // Skip leftover dishes — they share the source's prep alerts.
         // …and freezer tápers (PRO-82): nothing to prepare.
-        if (d.variant === 'leftover' || d.variant === 'freezer') continue
+        if (d.variant === 'leftover' || d.variant === 'freezer' || d.variant === 'fridge') continue
         if (typeof d.recipeId === 'string' && d.recipeId.length > 0) {
           out.push({ dayIndex: i, meal: meal as Meal, recipeId: d.recipeId })
         }
@@ -202,37 +211,161 @@ export interface EnqueueResult {
   skipped: number
 }
 
+// ─── Recipe «preparativos con antelación» (PRO-220, D-069) ─────────
+
+/**
+ * Priority of every prep alert in the weekly cap (PRO-215, D-069): 1 = what
+ * can't be fixed if forgotten (thaw, soak, temper, start cooking). Carried in
+ * the row's payload (`payload.priority`) for the cap to read.
+ */
+export const PREP_ALERT_PRIORITY = 1
+
+/** A late pick still gets its alert only for short preps (≤ 3 h) with at least half the time left. */
+export const LATE_PREP_MAX_HOURS = 3
+
+export interface RecipePrepPlan {
+  fireAt: Date
+  /** The dish was picked with less notice than the prep needs: send now. */
+  late: boolean
+}
+
+/**
+ * Pure: when the alert for a prep of `hoursBefore` goes out for a meal at
+ * `cookAt`. Never in the past: if its time already went by, it goes out now
+ * when there's still time (short preps, half the time left — «Para la cena:
+ * saca ya el filete»), otherwise nothing (a 10 h soak picked at 13:00 for a
+ * 14:30 meal).
+ */
+export function planRecipePrep(cookAt: Date, hoursBefore: number, now: Date): RecipePrepPlan | null {
+  const leadMs = hoursBefore * 3_600_000
+  const fireAt = new Date(cookAt.getTime() - leadMs)
+  if (fireAt.getTime() > now.getTime()) return { fireAt, late: false }
+  const leftMs = cookAt.getTime() - now.getTime()
+  if (leftMs <= 0) return null
+  if (hoursBefore <= LATE_PREP_MAX_HOURS && leftMs >= leadMs / 2) return { fireAt: now, late: true }
+  return null
+}
+
+const MEAL_ES: Record<Meal, string> = { breakfast: 'el desayuno', lunch: 'la comida', snack: 'la merienda', dinner: 'la cena' }
+const DAY_ES = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
+const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1)
+const noDot = (s: string) => s.trim().replace(/[.。]+$/, '')
+
+/** Pure: the alert's words. */
+export function recipePrepCopy(p: {
+  text: string
+  meal: Meal
+  dayIndex: number
+  recipeName: string
+  late: boolean
+}): { title: string; body: string } {
+  if (p.late) {
+    return { title: `Para ${MEAL_ES[p.meal]}: ${lowerFirst(noDot(p.text))}`, body: `Hazlo ya, que aún da tiempo (${p.recipeName}).` }
+  }
+  return { title: `Acuérdate: ${noDot(p.text)}`, body: `Para ${MEAL_ES[p.meal]} del ${DAY_ES[p.dayIndex] ?? 'día'}: ${p.recipeName}.` }
+}
+
+/** `menu:<id>:day:<n>:meal:<m>:recipe:<recipeId>:prep:<i>` */
+export function recipePrepKey(menuId: string, dayIndex: number, meal: string, recipeId: string, i: number): string {
+  return `menu:${menuId}:day:${dayIndex}:meal:${meal}:recipe:${recipeId}:prep:${i}`
+}
+
+export function parseRecipePrepKey(key: string): { menuId: string; dayIndex: number; meal: string; recipeId: string } | null {
+  const m = /^menu:([0-9a-f-]{36}):day:(\d):meal:([a-z]+):recipe:([0-9a-f-]{36}):prep:\d+$/i.exec(key)
+  if (!m) return null
+  return { menuId: m[1], dayIndex: Number(m[2]), meal: m[3], recipeId: m[4] }
+}
+
+interface RecipePrepRow {
+  id: string
+  name: string
+  advancePrep: Array<{ text: string; hoursBefore: number }> | null
+}
+
+async function loadRecipePreps(recipeIds: string[]): Promise<Map<string, RecipePrepRow>> {
+  if (recipeIds.length === 0) return new Map()
+  const rows = await db
+    .select({ id: recipes.id, name: recipes.name, advancePrep: recipes.advancePrep })
+    .from(recipes)
+    .where(inArray(recipes.id, recipeIds))
+  return new Map(rows.filter((r) => Array.isArray(r.advancePrep) && r.advancePrep.length > 0).map((r) => [r.id, r as RecipePrepRow]))
+}
+
+async function insertAlert(values: typeof notificationSchedule.$inferInsert): Promise<boolean> {
+  try {
+    await db.insert(notificationSchedule).values(values)
+    return true
+  } catch (err: any) {
+    // 23505 = unique_violation on dedupKey. Idempotency by design.
+    if (err?.code !== '23505') throw err
+    return false
+  }
+}
+
 export async function enqueuePrepAlertsForMenu(
   menuId: string,
+  now: Date = new Date(),
 ): Promise<EnqueueResult> {
   const [menu] = await db.select().from(menus).where(eq(menus.id, menuId)).limit(1)
   if (!menu) return { inserted: 0, skipped: 0 }
 
   const { habits, mealTimes } = await loadUserHabits(menu.userId)
-  if (habits.length === 0) {
-    // No opt-in habits → nothing to enqueue. The user can grow into
-    // the feature by telling the assistant about their habits later.
-    return { inserted: 0, skipped: 0 }
-  }
-
   const slots = flattenMenuSlots(menu.days)
   const recipeIds = Array.from(new Set(slots.map((s) => s.recipeId)))
+  const weekStart = String(menu.weekStart)
+
+  let inserted = 0
+  let skipped = 0
+  // PRO-230: «hoy cocina Pablo» — that day's alerts go to whoever cooks.
+  const cooks = menu.householdId ? await cooksOfWeek(menu.householdId, weekStart) : new Map<number, string>()
+
+  // PRO-220: the recipe's own «preparativos con antelación» — no prep habits
+  // needed, they belong to the recipe, not to the household.
+  const recipePreps = await loadRecipePreps(recipeIds)
+  for (const slot of slots) {
+    const r = recipePreps.get(slot.recipeId)
+    if (!r?.advancePrep) continue
+    const cookAt = resolveCookAt(weekStart, slot.dayIndex, slot.meal, mealTimes)
+    for (let k = 0; k < r.advancePrep.length; k += 1) {
+      const prep = r.advancePrep[k]
+      const plan = planRecipePrep(cookAt, prep.hoursBefore, now)
+      if (!plan) {
+        skipped += 1
+        continue
+      }
+      const dedupKey = recipePrepKey(menuId, slot.dayIndex, slot.meal, slot.recipeId, k)
+      const copy = recipePrepCopy({ text: prep.text, meal: slot.meal, dayIndex: slot.dayIndex, recipeName: r.name, late: plan.late })
+      const ok = await insertAlert({
+        userId: cooks.get(slot.dayIndex) ?? menu.userId,
+        dedupKey,
+        fireAt: plan.fireAt,
+        payload: { ...copy, url: `/menu?day=${slot.dayIndex}`, tag: dedupKey, priority: PREP_ALERT_PRIORITY },
+        status: 'pending',
+      })
+      if (ok) inserted += 1
+      else skipped += 1
+    }
+  }
+
+  if (habits.length === 0) {
+    // Ingredient-based alerts stay opt-in: no habit → none of them. The user
+    // can grow into the feature by telling the assistant about their habits.
+    return { inserted, skipped }
+  }
+
   const prepIngs = await loadPrepIngredientsForRecipes(recipeIds)
 
   // Build a recipeId → list of prep-bearing ingredients.
   const byRecipe = new Map<string, PrepIngredient[]>()
   for (const p of prepIngs) {
     if (!p.prepRequirements) continue
+    // A recipe with its own preparativos already says what to soak, temper or
+    // marinate; from its ingredients only thawing is still asked (PRO-220).
+    if (recipePreps.has(p.recipeId) && !p.prepRequirements.method.startsWith('thaw_')) continue
     const list = byRecipe.get(p.recipeId) ?? []
     list.push(p)
     byRecipe.set(p.recipeId, list)
   }
-
-  const now = new Date()
-  const weekStart = String(menu.weekStart)
-
-  let inserted = 0
-  let skipped = 0
 
   for (const slot of slots) {
     const ings = byRecipe.get(slot.recipeId) ?? []
@@ -247,37 +380,32 @@ export async function enqueuePrepAlertsForMenu(
         continue
       }
       const hoursBefore = PREP_METHOD_HOURS_BEFORE[req.method]
-      const fireAt = new Date(cookAt.getTime() - hoursBefore * 60 * 60 * 1000)
-      if (fireAt <= now) {
+      // PRO-236: never between 22:30 and 08:00 — a prep alert can't come
+      // late, so it moves to the evening before (or, if that has passed,
+      // the next 08:00 still before the meal).
+      const fireAt = awakeFireAt(new Date(cookAt.getTime() - hoursBefore * 60 * 60 * 1000), now, cookAt)
+      if (!fireAt || fireAt <= now) {
         skipped += 1
         continue
       }
 
       const dedupKey = `menu:${menuId}:day:${slot.dayIndex}:meal:${slot.meal}:ing:${ing.ingredientId}:method:${req.method}`
       const title = `Acuérdate: ${ing.ingredientName}`
-      const body =
-        req.notes ??
-        `${describeMethod(req.method)} para la cena del día ${slot.dayIndex + 1}.`
+      // PRO-221: a household that freezes only «a veces» gets the conditional text.
+      const body = isThaw(req.method) && thawIsConditional(habits)
+        ? THAW_CONDITIONAL_TEXT
+        : req.notes ??
+          `${describeMethod(req.method)} para la cena del día ${slot.dayIndex + 1}.`
 
-      try {
-        await db.insert(notificationSchedule).values({
-          userId: menu.userId,
-          dedupKey,
-          fireAt,
-          payload: {
-            title,
-            body,
-            url: `/menu?day=${slot.dayIndex}`,
-            tag: dedupKey,
-          },
-          status: 'pending',
-        })
-        inserted += 1
-      } catch (err: any) {
-        // 23505 = unique_violation on dedupKey. Idempotency by design.
-        if (err?.code !== '23505') throw err
-        skipped += 1
-      }
+      const ok = await insertAlert({
+        userId: cooks.get(slot.dayIndex) ?? menu.userId,
+        dedupKey,
+        fireAt,
+        payload: { title, body, url: `/menu?day=${slot.dayIndex}`, tag: dedupKey, priority: PREP_ALERT_PRIORITY },
+        status: 'pending',
+      })
+      if (ok) inserted += 1
+      else skipped += 1
     }
   }
 
@@ -370,7 +498,10 @@ export function prepAlertStaleReason(
 
 /** Loads the current state for `prepAlertStaleReason`. Null for non-prep alerts. */
 export async function prepAlertStaleReasonFor(dedupKey: string): Promise<string | null> {
-  const key = parsePrepKey(dedupKey)
+  const recipeKey = parseRecipePrepKey(dedupKey)
+  const key: PrepKey | null = recipeKey
+    ? { menuId: recipeKey.menuId, dayIndex: recipeKey.dayIndex, meal: recipeKey.meal, ingredientId: '' }
+    : parsePrepKey(dedupKey)
   if (!key) return null
   const [menu] = await db
     .select({ userId: menus.userId, householdId: menus.householdId, weekStart: menus.weekStart })
@@ -395,7 +526,10 @@ export async function prepAlertStaleReasonFor(dedupKey: string): Promise<string 
         .filter((x) => x.dayIndex === key.dayIndex && x.meal === key.meal)
         .map((x) => x.recipeId)
     : []
-  const withIngredient = slotRecipeIds.length
+  // PRO-220: a recipe's preparativo applies while that recipe is still in the slot.
+  const withIngredient = recipeKey
+    ? slotRecipeIds.filter((id) => id === recipeKey.recipeId).map((recipeId) => ({ recipeId }))
+    : slotRecipeIds.length
     ? await db
         .select({ recipeId: recipeIngredients.recipeId })
         .from(recipeIngredients)
@@ -407,6 +541,88 @@ export async function prepAlertStaleReasonFor(dedupKey: string): Promise<string 
     skippedDays: (latest?.skippedDays as number[] | undefined) ?? [],
     recipeIdsWithIngredient: new Set(withIngredient.map((r) => r.recipeId)),
   })
+}
+
+// ─── One moment of prep alerts (PRO-215) ────────────────────────
+
+type AlertPayload = { title: string; body: string; url?: string; tag?: string }
+
+/**
+ * Pure: several alerts due at once → one notification. One alert stays as
+ * it is; more become «Acuérdate: A y B» with one line per alert.
+ */
+export function mergeAlertPayloads(payloads: readonly AlertPayload[]): AlertPayload {
+  if (payloads.length === 1) return payloads[0]
+  const names = payloads.map((p) => p.title.replace(/^Acuérdate:\s*/i, '').trim())
+  const unique = [...new Set(names)]
+  const title = `Acuérdate: ${unique.length > 1 ? `${unique.slice(0, -1).join(', ')} y ${unique[unique.length - 1]}` : unique[0]}`
+  const body = payloads.map((p, i) => `${names[i]}: ${p.body}`).join('\n')
+  return { title, body, url: payloads[0].url, tag: payloads[0].tag }
+}
+
+/**
+ * Pure: what the budget log records for a moment that went out (or not) by
+ * one channel (PRO-215 + PRO-234). A phone notification sent as WhatsApp's
+ * fallback is the same message: `ok`, one unit at most (the plan decides).
+ */
+export function prepMomentDelivery(r: { status: 'sent' | 'failed'; errorMessage: string | null }): DeliveryResult {
+  if (r.status === 'sent') return 'ok'
+  return r.errorMessage?.includes('outside-24h-window') ? 'outside-window' : 'error'
+}
+
+async function deliverPrepMoment(userId: string, rows: Array<typeof notificationSchedule.$inferSelect>, now: Date): Promise<void> {
+  // PRO-234 (D-080): one channel. WhatsApp when linked with «avisos» on; the
+  // phone notification only as its fallback, or as the channel when there is
+  // no WhatsApp. PRO-237: switched off in «Avisos» → not sent anywhere.
+  let waState: WhatsAppAlertState = 'none'
+  try {
+    waState = await whatsAppAlertState(userId, 'prep_alerts')
+    if (!alertKindOn('prep_alerts', await loadUserAlertPrefs(userId))) waState = 'kind_off'
+  } catch (err) {
+    console.warn('[notificationScheduler] whatsapp state failed (trying push):', err)
+  }
+  const channels = channelsFor('prep_alerts', waState)
+  if (channels.length === 0) {
+    // Nothing goes out, so nothing is a candidate for the weekly budget.
+    for (const row of rows) {
+      await db
+        .update(notificationSchedule)
+        .set({ status: 'cancelled', errorMessage: 'cancelado al enviar: aviso apagado' })
+        .where(eq(notificationSchedule.id, row.id))
+    }
+    return
+  }
+
+  const budgetKey = await budgetKeyFor(userId)
+  const candidates = rows.map((row) => ({ kind: 'prep_alerts', row }))
+  const plan = planMoment(candidates, await loadFullBudgetState(budgetKey, now, false))
+  for (const c of plan.dropped) {
+    await db
+      .update(notificationSchedule)
+      .set({ status: 'cancelled', errorMessage: 'tope semanal de avisos' })
+      .where(eq(notificationSchedule.id, c.row.id))
+  }
+  let delivery: DeliveryResult | null = null
+  let channel: 'push' | 'whatsapp' | null = null
+  if (plan.send.length > 0) {
+    // PRO-215: the moment is one merged message; PRO-234: it tries WhatsApp,
+    // then push only if WhatsApp failed. Either way it is ONE message and
+    // spends at most one unit (decided above by the plan, not per channel).
+    const payload = mergeAlertPayloads(plan.send.map((c) => c.row.payload))
+    const result = await deliverInOrder(channels, {
+      whatsapp: () => deliverAlertOverWhatsApp(userId, payload, now),
+      push: () => pushOutcome(userId, payload),
+    })
+    for (const c of plan.send) {
+      await db
+        .update(notificationSchedule)
+        .set({ status: result.status, sentAt: new Date(), errorMessage: result.errorMessage })
+        .where(eq(notificationSchedule.id, c.row.id))
+    }
+    delivery = prepMomentDelivery(result)
+    channel = result.channel
+  }
+  await recordNotices({ budgetKey, userId, entries: logEntriesFor(plan, delivery), channel, now })
 }
 
 // ─── Tick ───────────────────────────────────────────────────────
@@ -447,7 +663,8 @@ export async function tickScheduler(): Promise<void> {
 
 async function tickOnce(): Promise<true> {
   const now = new Date()
-  const due = await db
+  // PRO-236: between 22:30 and 08:00 (Madrid) due alerts wait for the morning.
+  const due = !isAwakeInstant(now) ? [] : await db
     .select()
     .from(notificationSchedule)
     .where(
@@ -457,8 +674,10 @@ async function tickOnce(): Promise<true> {
       ),
     )
 
-  // Each due alert goes out over Web Push AND WhatsApp (when the user linked
-  // a phone and opted into "Avisos por WhatsApp"). Sent if either delivered.
+  // PRO-215: the alerts due for one person in this tick are one moment: one
+  // merged message, by one channel (PRO-234), that spends at most one unit of
+  // the weekly budget.
+  const live = new Map<string, typeof due>()
   for (const row of due) {
     let stale: string | null = null
     try {
@@ -476,29 +695,15 @@ async function tickOnce(): Promise<true> {
         .where(eq(notificationSchedule.id, row.id))
       continue
     }
-    let push: ChannelOutcome
+    live.set(row.userId, [...(live.get(row.userId) ?? []), row])
+  }
+
+  for (const [userId, rows] of live) {
     try {
-      await sendPushToUser(row.userId, row.payload)
-      push = { status: 'ok' }
-    } catch (err: any) {
-      push = {
-        status: 'error',
-        error: err instanceof PushNotConfiguredError
-          ? 'push-not-configured'
-          : String(err?.message ?? err).slice(0, 500),
-      }
+      await deliverPrepMoment(userId, rows, now)
+    } catch (err) {
+      console.error(`[notificationScheduler] prep alerts failed for ${userId}:`, err)
     }
-    let whatsapp: ChannelOutcome
-    try {
-      whatsapp = await deliverAlertOverWhatsApp(row.userId, row.payload, now)
-    } catch (err: any) {
-      whatsapp = { status: 'error', error: String(err?.message ?? err).slice(0, 300) }
-    }
-    const { status, errorMessage } = combineDelivery(push, whatsapp)
-    await db
-      .update(notificationSchedule)
-      .set({ status, sentAt: new Date(), errorMessage })
-      .where(eq(notificationSchedule.id, row.id))
   }
 
   // WhatsApp daily brief + Sunday menu nudge (no-op when not configured).
@@ -524,6 +729,16 @@ async function tickOnce(): Promise<true> {
     if (r?.collected) console.log(`[refiner] ${r.collected} fichas refinadas`)
   } catch (err) {
     console.error('[notificationScheduler] profile refiner failed:', err)
+  }
+
+  // Menú inteligente (PRO-258): on Saturday night, send next week's batch
+  // (once); collect ended batches. In the shadow until PRO-257.
+  try {
+    const w = await runWeeklyPlannerIfDue(now)
+    if (w?.submit) console.log(`[menuPlannerWeekly] ${w.submit.weekStart}: ${w.submit.status}, ${w.submit.requested} hogares, omitidos ${JSON.stringify(w.submit.skipped)}`)
+    if (w?.collected) console.log(`[menuPlannerWeekly] ${w.collected} semanas pensadas`)
+  } catch (err) {
+    console.error('[notificationScheduler] weekly planner failed:', err)
   }
 
   // Product analytics retention: usage events older than 180 days (once a day).
@@ -560,6 +775,15 @@ async function tickOnce(): Promise<true> {
     }
   } catch (err) {
     console.error('[notificationScheduler] waitlist invite reminders failed:', err)
+  }
+
+  // Waitlist retention (PRO-171): from 2027-05-16 (Madrid), once a day,
+  // remove email and name of every entry without the Friday newsletter.
+  try {
+    const purged = await purgeWaitlistPersonalDataIfDue(now)
+    if (purged) console.log(`[waitlist] anonymised ${purged} entries (retention ${WAITLIST_RETENTION_DATE})`)
+  } catch (err) {
+    console.error('[notificationScheduler] waitlist retention purge failed:', err)
   }
 
   // PRO-135: «te quedan 2 días de prueba» to each household owner, once

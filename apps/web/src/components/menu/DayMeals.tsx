@@ -15,9 +15,9 @@
 import { useState } from "react"
 import Link from "next/link"
 import { motion, useReducedMotion } from "motion/react"
-import { BookOpen, CalendarX, Check, Lock, Play, Plus, RotateCw, Snowflake, Utensils } from "lucide-react"
-import { FreezerDishSheets } from "./FreezerDishSheets"
-import type { Dish, MealSlot, RecipeDish } from "@ona/shared"
+import { BookOpen, CalendarX, Check, Lock, Play, Plus, Refrigerator, RotateCw, Snowflake, Utensils } from "lucide-react"
+import { FreezerDishSheets, type TaperVariant } from "./FreezerDishSheets"
+import { isTaperDish, type Dish, type MealSlot, type RecipeDish } from "@ona/shared"
 import { mealLabel } from "@/lib/labels"
 import { DAY_MEAL_ORDER, firstRecipeDish, mealEyebrow, slotMinutes, type DaySlot, type MealKey } from "@/lib/menuDay"
 import { RecipeCover, mealIconFor } from "./RecipeCover"
@@ -55,10 +55,11 @@ function SlotChips({
 }) {
   const leftover = first?.variant === "leftover" && first.leftoverOf
   const fromFreezer = first?.variant === "freezer"
+  const fromFridge = first?.variant === "fridge"
   // Without a recipe the title already lists the notes («Cenamos fuera»): don't repeat them (PRO-185).
   const others = first ? (ctx.slot.dishes ?? []).filter((d) => d !== first) : []
   const eaten = !!ctx.slot.eaten && !showEatenElsewhere
-  if (!ctx.isLocked && !leftover && !fromFreezer && !eaten && ctx.slot.servings == null && others.length === 0) return null
+  if (!ctx.isLocked && !leftover && !fromFreezer && !fromFridge && !eaten && ctx.slot.servings == null && others.length === 0) return null
   return (
     <div className="flex flex-wrap items-center gap-1.5 text-[12px] text-ink-mid">
       {eaten && (
@@ -74,6 +75,11 @@ function SlotChips({
       {fromFreezer && (
         <span className="inline-flex items-center gap-1 rounded-full bg-cream-deep px-2 py-0.5 font-medium text-ink">
           <Snowflake size={11} /> Del congelador · no suma a la compra
+        </span>
+      )}
+      {fromFridge && (
+        <span data-testid="taper-fridge" className="inline-flex items-center gap-1 rounded-full bg-cream-deep px-2 py-0.5 font-medium text-ink">
+          <Refrigerator size={11} /> Táper de la nevera · no suma a la compra
         </span>
       )}
       {leftover && first?.leftoverOf && (
@@ -130,7 +136,17 @@ export function MealHero({
   )
   const captionActions = (
     <div className="flex gap-2">
-      {ctx.slot.eaten ? (
+      {isTaperDish(first) && !ctx.slot.eaten ? (
+        // A táper (freezer or fridge, PRO-240) is already cooked: no «Empezar a cocinar».
+        <Link
+          href={slotRecipeHref(first.recipeId, ctx)}
+          data-testid="taper-see-recipe"
+          className="flex h-[46px] flex-1 items-center justify-center gap-2 rounded-full border border-border bg-paper px-[22px] text-[15px] font-medium text-ink transition-colors hover:border-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink lg:flex-none"
+        >
+          <BookOpen size={15} />
+          Ver receta
+        </Link>
+      ) : ctx.slot.eaten ? (
         // Eaten (Mimo or «Marcar como cocinada», PRO-185): no «Empezar a cocinar».
         <>
           <span
@@ -443,10 +459,10 @@ export function DayFooter({
   isAdding: boolean
   onAddMeal: (meal: MealKey) => void
   onSkip: () => void
-  /** «Del congelador» (PRO-82): a táper that never adds to the shopping list. */
-  onAddFreezer?: (meal: MealKey, recipeId: string) => void
+  /** «Del congelador» (PRO-82) / «Táper de la nevera» (PRO-240): a táper that never adds to the shopping list. */
+  onAddFreezer?: (meal: MealKey, recipeId: string, variant: TaperVariant) => void
 }) {
-  const [freezerOpen, setFreezerOpen] = useState(false)
+  const [taperOpen, setTaperOpen] = useState<TaperVariant | null>(null)
   const [open, setOpen] = useState(false)
   const [confirmSkip, setConfirmSkip] = useState(false)
   if (missing.length === 0 && !canSkip) return null
@@ -502,7 +518,17 @@ export function DayFooter({
                 disabled={isAdding}
                 onClick={() => {
                   setOpen(false)
-                  setFreezerOpen(true)
+                  setTaperOpen("freezer")
+                }}
+              />
+              <SheetAction
+                icon={Refrigerator}
+                label="Táper de la nevera"
+                hint="Ya cocinado, en la nevera: no suma a la compra"
+                disabled={isAdding}
+                onClick={() => {
+                  setOpen(false)
+                  setTaperOpen("fridge")
                 }}
               />
             </div>
@@ -511,10 +537,11 @@ export function DayFooter({
       </MenuSheet>
       {onAddFreezer && (
         <FreezerDishSheets
-          open={freezerOpen}
-          onClose={() => setFreezerOpen(false)}
+          open={taperOpen != null}
+          onClose={() => setTaperOpen(null)}
           missing={missing}
-          onAdd={onAddFreezer}
+          variant={taperOpen ?? "freezer"}
+          onAdd={(meal, recipeId) => onAddFreezer(meal, recipeId, taperOpen ?? "freezer")}
         />
       )}
     </div>

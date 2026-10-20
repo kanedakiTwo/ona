@@ -11,17 +11,13 @@
 
 import { test, expect } from '@playwright/test'
 import { registerFreshUser, skipFirstSteps } from './_helpers'
+import { madridTodayIdx, pinClock } from './_clock'
 
 const API = process.env.API_URL ?? 'http://localhost:8765'
 
 // Seed recipes whose meat/fish ingredient exists in the CI ingredient catalog.
 const MEAT_OR_FISH = /ternera|albondiga|carriller|pollo|salmon|salmón|atun|atún|cocido|con carne/i
 
-function thisMonday(): string {
-  const d = new Date()
-  d.setDate(d.getDate() + (d.getDay() === 0 ? -6 : 1 - d.getDay()))
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
 
 function recipeNames(menu: { days: Record<string, { dishes?: { kind: string; recipeName?: string }[] }>[] }): string[] {
   const out: string[] = []
@@ -35,6 +31,8 @@ function recipeNames(menu: { days: Record<string, { dishes?: { kind: string; rec
 
 test('vegetarian: no meat in the week, in the picker list or in «Elegir otra receta»', async ({ page }) => {
   test.setTimeout(120_000)
+  // The page's «today» is Madrid's at midday, the same day the spec reads (PRO-273).
+  const day = await pinClock(page, madridTodayIdx())
   await registerFreshUser(page)
   const token = await page.evaluate(() => localStorage.getItem('ona_token'))
   const userId = await page.evaluate(() => JSON.parse(localStorage.getItem('ona_user') ?? '{}').id as string)
@@ -68,14 +66,13 @@ test('vegetarian: no meat in the week, in the picker list or in «Elegir otra re
   expect(fits.filter((r) => MEAT_OR_FISH.test(r.name))).toEqual([])
 
   // A whole generated week: no meat or fish.
-  const weekStart = thisMonday()
+  const { weekStart, dayIdx: todayIdx } = day
   const gen = await page.request.post(`${API}/menu/generate`, { headers, data: { userId, weekStart, force: true } })
   expect(gen.ok(), `generate: ${gen.status()}`).toBeTruthy()
   const week = await (await page.request.get(`${API}/menu/${userId}/${weekStart}`, { headers })).json()
   expect(recipeNames(week).filter((n) => MEAT_OR_FISH.test(n))).toEqual([])
 
   // Only today's lunch, so the hero is a (vegetarian) recipe to swap.
-  const todayIdx = (new Date().getDay() + 6) % 7
   const customTemplate = Array.from({ length: 7 }, (_, i) => (i === todayIdx ? { lunch: true } : {}))
   const gen2 = await page.request.post(`${API}/menu/generate`, {
     headers,

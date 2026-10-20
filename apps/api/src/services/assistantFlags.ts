@@ -21,7 +21,7 @@ import { and, asc, desc, gte, inArray, lte } from 'drizzle-orm'
 import { db as defaultDb } from '../db/connection.js'
 import { assistantReviews, households, users, whatsappLinks, whatsappMessages } from '../db/schema.js'
 import { addDays, madridMidnightUtc, madridParts } from './madridTime.js'
-import { claimsAction } from './assistant/claims.js'
+import { claimsAction, READ_ONLY_TOOLS, toolMadeChange } from './assistant/claims.js'
 import { healthClaimWords, talksHealthEffects } from './assistant/healthGuard.js'
 import type { ToolTrace } from './assistant/types.js'
 import { anonymise, discoverNames, nameTokens } from './anonymise.js'
@@ -29,19 +29,7 @@ import { anonymise, discoverNames, nameTokens } from './anonymise.js'
 export const FLAG_CATEGORIES = ['health_talk', 'health_claim', 'unverified_done', 'error_refusal', 'other'] as const
 export type FlagCategory = (typeof FLAG_CATEGORIES)[number]
 
-/**
- * Tools that only read (or only answer): running one of them doesn't make a
- * "Hecho:" true. Anything else that ran without error counts as a change.
- */
-export const READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
-  'get_todays_menu', 'get_weekly_menu', 'get_recipe_details', 'get_weekly_nutrition', 'suggest_recipes', 'cook_with_what_i_have',
-  'search_recipes', 'nutrition_advice', 'recipe_variation', 'get_pantry_stock', 'get_my_recipes', 'get_menu_history',
-  'scale_recipe', 'evaluate_food_health', 'suggest_substitution', 'get_variety_score', 'get_eating_window',
-  'get_week_balance', 'start_cooking_mode', 'set_timer', 'cooking_step', 'get_shopping_list', 'get_shop_orders',
-])
-
-/** A tool that ran but reported that nothing changed. */
-const NO_CHANGE_RE = /\bno (?:he|se ha|hay|tienes|existe|encuentro)\b|\bno he (?:cambiado|guardado|encontrado|podido)\b|^error\b/i
+export { READ_ONLY_TOOLS }
 
 /** "Hecho:" opening a line, the format Mimo uses after a change. */
 const HECHO_LINE_RE = /(?:^|\n)\s*\*?hecho\*?\s*[:.!]/i
@@ -54,7 +42,7 @@ export interface TurnMeta {
 
 /** Pure: did any tool of this turn actually change something? */
 export function traceHasChange(trace: ReadonlyArray<ToolTrace> | undefined): boolean {
-  return (trace ?? []).some((t) => !t.error && !READ_ONLY_TOOLS.has(t.name) && !NO_CHANGE_RE.test(String(t.summary ?? '').trim()))
+  return (trace ?? []).some((t) => toolMadeChange(t.name, t.summary, !!t.error))
 }
 
 /**

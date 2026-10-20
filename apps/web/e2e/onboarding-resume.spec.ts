@@ -45,21 +45,22 @@ test('two questions answered, log out, log in → /onboarding on step 3 with the
   const saved = page.waitForResponse((r) => r.request().method() === 'PUT' && /\/onboarding-draft$/.test(r.url()))
   await next.click()
   expect((await saved).ok()).toBe(true)
-  await expect(page.getByText('Primeros pasos · 3 de 5')).toBeVisible()
+  await expect(page.getByText('Primeros pasos · 3 de 6')).toBeVisible()
 
   await logOutAndIn(page, creds)
 
   // Not /menu with a blank week: back to the sign-up, on step 3.
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 20_000 })
-  await expect(page.getByText('Primeros pasos · 3 de 5')).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByRole('heading', { name: /entre semana, ¿cómo te gusta cocinar/i })).toBeVisible()
+  await expect(page.getByText('Primeros pasos · 3 de 6')).toBeVisible({ timeout: 15_000 })
+  // PRO-217: step 3 is «¿Cómo cocináis en casa?».
+  await expect(page.getByRole('heading', { name: /cómo cocináis en casa/i })).toBeVisible()
 
   // What they answered is still there.
   await page.getByRole('button', { name: 'Atrás' }).click()
-  await expect(page.getByText('Primeros pasos · 2 de 5')).toBeVisible()
+  await expect(page.getByText('Primeros pasos · 2 de 6')).toBeVisible()
   await expect(page.getByRole('button', { name: /todos los días/i })).toHaveAttribute('aria-pressed', 'true')
   await page.getByRole('button', { name: 'Atrás' }).click()
-  await expect(page.getByText('Primeros pasos · 1 de 5')).toBeVisible()
+  await expect(page.getByText('Primeros pasos · 1 de 6')).toBeVisible()
   const counters = page.locator('[aria-live="polite"]')
   await expect(counters.nth(0)).toHaveText('3')
   await expect(counters.nth(1)).toHaveText('1')
@@ -67,6 +68,8 @@ test('two questions answered, log out, log in → /onboarding on step 3 with the
 
   // Finishing the sign-up still lands on the menu, and /menu then stays.
   await next.click()
+  await next.click()
+  await page.getByRole('button', { name: /^batch cooking/i }).click()
   await next.click()
   await page.getByRole('button', { name: /^rápido/i }).click()
   await next.click()

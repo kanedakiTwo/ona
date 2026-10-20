@@ -17,9 +17,10 @@ import Anthropic from '@anthropic-ai/sdk'
 import { env } from '../config/env.js'
 import { recordAnthropicCost } from './costLedger.js'
 import { extractJson } from './shopOrders/quoteParser.js'
+import { CLAUDE_MODEL, LOW_EFFORT, withThinkingRoom } from '../config/models.js'
 
-const DESCRIBE_MODEL = 'claude-haiku-4-5-20251001'
-const CHECK_MODEL = 'claude-sonnet-5-5'
+const DESCRIBE_MODEL = CLAUDE_MODEL
+const CHECK_MODEL = CLAUDE_MODEL
 
 type CreateFn = (params: Anthropic.MessageCreateParamsNonStreaming) => Promise<Pick<Anthropic.Message, 'content' | 'usage'>>
 
@@ -60,7 +61,7 @@ export async function describeDish(input: DishInput, deps: { create?: CreateFn }
     .filter(Boolean)
     .join('\n\n')
   try {
-    const res = await create({ model: DESCRIBE_MODEL, max_tokens: 300, system: DESCRIBE_PROMPT, messages: [{ role: 'user', content: body }] })
+    const res = await create({ model: DESCRIBE_MODEL, max_tokens: withThinkingRoom(300), ...LOW_EFFORT, system: DESCRIBE_PROMPT, messages: [{ role: 'user', content: body }] })
     recordAnthropicCost('recipe_image_describe', DESCRIBE_MODEL, res.usage)
     const text = textOf(res)?.trim().replace(/^["«]|["»]$/g, '')
     return text ? text.slice(0, 500) : null
@@ -99,7 +100,7 @@ export async function checkRecipeImage(
   try {
     const res = await create({
       model: CHECK_MODEL,
-      max_tokens: 1500,
+      max_tokens: withThinkingRoom(1500),
       system: CHECK_PROMPT,
       messages: [
         {

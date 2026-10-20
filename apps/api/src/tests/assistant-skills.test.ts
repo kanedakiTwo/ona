@@ -181,6 +181,51 @@ describe('get_todays_menu', () => {
   })
 })
 
+// ─── 1a. PRO-183: the menu tools say what the app shows ──────────────────
+
+describe('menu tools cite the app\'s servings and minutes (PRO-183)', () => {
+  // A recipe for 2 (300 g de pollo, 25 min, 10 de trabajo) in a meal of 4.
+  const days = [
+    { dinner: { servings: 4, dishes: [{ kind: 'recipe', recipeId: 'pollo', recipeName: 'Pollo a la plancha' }] } },
+    {}, {}, {}, {}, {}, {},
+  ]
+  const times = [{ id: 'pollo', totalTime: 25, activeTime: 10, prepTime: 10 }]
+  const at = <T,>(fn: () => Promise<T>) => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-19T10:00:00Z')) // Monday
+    return fn().finally(() => vi.useRealTimers())
+  }
+
+  it('get_todays_menu: servings of the meal and minutes of the dish', async () => {
+    const db = makeDb([{ id: 'm-1', days }], [{ adults: 2, kidsCount: 0 }], times)
+    const r = await at(() => get('get_todays_menu').handler({ day: 'hoy' }, ctx(db)))
+    expect(r.summary).toBe('Menu del lunes 19 de octubre: cena [solo hoy: 4] · 4 raciones: Pollo a la plancha (25 min en total, 10 de trabajo)')
+  })
+
+  it('get_weekly_menu: the same facts day by day', async () => {
+    const db = makeDb([{ id: 'm-1', days, skippedDays: [] }], [{ adults: 2, kidsCount: 0 }], times)
+    const r = await at(() => get('get_weekly_menu').handler({}, ctx(db)))
+    expect(r.summary).toContain('lunes 19 de octubre: cena [solo hoy: 4] · 4 raciones: Pollo a la plancha (25 min en total, 10 de trabajo)')
+  })
+
+  it('get_recipe_details with the menu\'s servings: amounts already scaled and total minutes', async () => {
+    const recipe = { id: 'pollo', name: 'Pollo a la plancha', prepTime: 10, totalTime: 25, activeTime: 10, servings: 2 }
+    const ings = [
+      { ingredientName: 'pechuga de pollo', quantity: 300, unit: 'g' },
+      { ingredientName: 'limón', quantity: 1, unit: 'u' },
+    ]
+    const r = await get('get_recipe_details').handler({ recipeName: 'pollo a la plancha', servings: 4 }, ctx(makeDb([recipe], ings, [])))
+    expect(r.summary).toContain('Pollo a la plancha (25 min en total, 10 de trabajo; cantidades para 4 raciones, la receta base es para 2)')
+    expect(r.summary).toContain('pechuga de pollo: 600g')
+    expect(r.summary).toContain('limón: 2u')
+    expect(r.data).toMatchObject({ servings: 4, baseServings: 2, totalTime: 25 })
+    // Without servings: the recipe's own amounts.
+    const base = await get('get_recipe_details').handler({ recipeName: 'pollo a la plancha' }, ctx(makeDb([recipe], ings, [])))
+    expect(base.summary).toContain('Pollo a la plancha (25 min en total, 10 de trabajo, 2 raciones)')
+    expect(base.summary).toContain('pechuga de pollo: 300g')
+  })
+})
+
 // ─── 1b. get_weekly_menu (the whole week, 2026-10-15) ─────────────────────
 
 describe('get_weekly_menu', () => {
@@ -470,6 +515,29 @@ describe('swap_meal', () => {
     )
     const r = await skill.handler({ dayIndex: 0, meal: 'lunch' }, ctx(db))
     expect(r.summary).toContain('Cambiado')
+  })
+
+  // PRO-238 (Familia Ruiz, 2026-10-18): «pollo empanado» on Tuesday 20 while
+  // Sunday 25 already had it, and Mimo didn't notice.
+  it('says where the same dish already is this week', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-19T10:00:00Z')) // Monday
+    const days: any[] = Array.from({ length: 7 }, () => ({ dinner: { dishes: [{ kind: 'recipe', recipeId: 'r-x', recipeName: 'Crema de calabaza' }] } }))
+    days[6] = { dinner: { dishes: [{ kind: 'recipe', recipeId: 'r-pe', recipeName: 'Pollo empanado' }] } }
+    const menu = { id: 'm-1', days }
+    const db = makeDb([menu], [{ id: 'r-pe', name: 'Pollo empanado', authorId: 'u-1' }], [{ restrictions: [] }], [{ ...menu, days: [...days] }])
+    const r = await skill.handler({ day: 'el martes', meal: 'dinner', recipeName: 'pollo empanado' }, ctx(db)).finally(() => vi.useRealTimers())
+    expect(r.summary).toContain('He puesto "Pollo empanado" en la cena del martes 20 de octubre.')
+    expect(r.summary).toContain('Ojo: "Pollo empanado" ya esta esta semana en la cena del domingo 25 de octubre.')
+  })
+
+  it('no repeat line when the dish is nowhere else', async () => {
+    const days: any[] = Array.from({ length: 7 }, () => ({ dinner: { dishes: [{ kind: 'recipe', recipeId: 'r-x', recipeName: 'Crema de calabaza' }] } }))
+    const menu = { id: 'm-1', days }
+    const db = makeDb([menu], [{ id: 'r-pe', name: 'Pollo empanado', authorId: 'u-1' }], [{ restrictions: [] }], [{ ...menu, days: [...days] }])
+    const r = await skill.handler({ dayIndex: 1, meal: 'dinner', recipeName: 'pollo empanado' }, ctx(db))
+    expect(r.summary).toContain('He puesto "Pollo empanado"')
+    expect(r.summary).not.toContain('Ojo')
   })
 
   // PRO-102 (Familia Ruiz, 2026-10-14): «4 RACIONES · Solo hoy: 4» became
@@ -1205,7 +1273,7 @@ describe('cooking_step', () => {
 // ─── Sanity: every skill in the export array has at least one test ────────
 
 describe('skill export coverage', () => {
-  it('there are exactly 67 registered skills', () => {
+  it('there are exactly 80 registered skills', () => {
     // Bumped from 30 when PR 2 added `update_memory` (persists inferred
     // facts to user_memories from "recuerda que..." utterances), and to 32
     // with `import_recipe_from_url` (WhatsApp channel, 2026-10), and to 56
@@ -1219,8 +1287,18 @@ describe('skill export coverage', () => {
     // withWhatIHave.test.ts), and to 66 with add_freezer_dish (táper del
     // congelador, PRO-82, tested in appSkills.test.ts), and to 67 with
     // leave_feedback (beta feedback box, 2026-10-15, tested in feedback.test.ts),
-    // and to 68 with get_weekly_menu (the whole week, 2026-10-15).
-    expect(skills.length).toBe(68)
+    // and to 68 with get_weekly_menu (the whole week, 2026-10-15). Taller
+    // 2026-10-20: to 69 with share_invite_link («Invitar a otro hogar»,
+    // PRO-163, appSkills.test.ts), 70 with set_cooking_style (PRO-217,
+    // cookingStyle.test.ts), 72 with get_fixed_meals + set_fixed_meal
+    // (PRO-218, fixedMeals.test.ts), 73 with set_taper (PRO-223,
+    // taper.test.ts), 75 with get_school_menu + set_school_menu_days
+    // (PRO-224, schoolMenuSkills.test.ts), 76 with plan_freezer_items
+    // (PRO-228, pantryFreezer.test.ts), 77 with set_cook_today (PRO-230,
+    // cookToday.test.ts) and 79 with get_alerts + set_alerts (the «Avisos»
+    // screen, PRO-237, alertPrefs.test.ts; set_whatsapp_notifications stays)
+    // and 80 with change_shopping_item_amount (PRO-175).
+    expect(skills.length).toBe(80)
   })
 
   it('every skill has a unique name', () => {

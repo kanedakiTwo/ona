@@ -93,6 +93,26 @@ describe('GET /admin/feedback', () => {
     expect(agents.items[0].username).toBeUndefined()
     expect(agents.items[0].email).toBeUndefined()
   })
+
+  it('PRO-180: with the agents\' token, names, emails and phones in the text are masked; the admin sees it as written', async () => {
+    const { call, repo } = await app()
+    const raw = 'Soy Lucía, mi marido Antonio dice que la lista no carga. Llamadme al 612 345 678 o a lucia.perez@gmail.com'
+    repo.rows.push({ id: 'f2', userId: 'u2', channel: 'app', text: raw, page: '/compra', createdAt: NOW, username: 'lucia_perez', email: 'lucia.perez@gmail.com' })
+    repo.rows.push({ id: 'f3', userId: 'u3', channel: 'chat', text: 'Antonio quiere menos pescado', page: null, createdAt: NOW, username: 'otra', email: 'otra@example.com' })
+
+    const agents = await (await call('GET', '/admin/feedback', { 'x-metrics-token': 'ok' })).json()
+    const text = agents.items.find((i: any) => i.id === 'f2').text as string
+    for (const leak of ['Lucía', 'Antonio', '612 345 678', 'lucia.perez@gmail.com']) expect(text).not.toContain(leak)
+    expect(text).toContain('[nombre]')
+    expect(text).toContain('[teléfono]')
+    expect(text).toContain('[email]')
+    expect(text).toContain('la lista no carga')
+    // A name revealed in one opinion is masked in the others of the batch too.
+    expect(agents.items.find((i: any) => i.id === 'f3').text).toBe('[nombre] quiere menos pescado')
+
+    const admin = await (await call('GET', '/admin/feedback', { 'x-admin': '1' })).json()
+    expect(admin.items.find((i: any) => i.id === 'f2').text).toBe(raw)
+  })
 })
 
 describe("Mimo's leave_feedback", () => {

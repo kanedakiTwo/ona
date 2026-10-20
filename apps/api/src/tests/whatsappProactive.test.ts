@@ -13,7 +13,6 @@ import {
   templateParamFrom,
   formatDailyBrief,
   planProactive,
-  combineDelivery,
   WEEKLY_NUDGE_TEXT,
   type MadridParts,
 } from '../services/whatsapp/proactive.js'
@@ -130,15 +129,18 @@ describe('planProactive', () => {
   }
   const kinds = (r: { kind: string }[]) => r.map((p) => p.kind)
 
-  it('sends the daily brief at breakfast time', async () => {
-    expect(kinds(await planProactive({ ...base, parts: parts({ weekday: 2, hour: 9, minute: 10 }) }))).toEqual(['daily_brief'])
+  it('sends the daily brief at breakfast time, only to whoever asked for it (PRO-215)', async () => {
+    const at = parts({ weekday: 2, hour: 9, minute: 10 })
+    expect(kinds(await planProactive({ ...base, prefs: { daily_brief: true }, parts: at }))).toEqual(['daily_brief'])
+    expect(await planProactive({ ...base, parts: at })).toEqual([])
   })
 
   it('respects cooldowns, per-kind switches and empty days', async () => {
     const at9 = parts({ weekday: 2, hour: 9 })
-    expect(await planProactive({ ...base, sentRecently: { daily_brief: true }, parts: at9 })).toEqual([])
+    const asked = { ...base, prefs: { daily_brief: true } }
+    expect(await planProactive({ ...asked, sentRecently: { daily_brief: true }, parts: at9 })).toEqual([])
     expect(await planProactive({ ...base, prefs: { daily_brief: false }, parts: at9 })).toEqual([])
-    expect(await planProactive({ ...base, todayDay: async () => null, parts: at9 })).toEqual([])
+    expect(await planProactive({ ...asked, todayDay: async () => null, parts: at9 })).toEqual([])
   })
 
   it('reminds to start cooking a long dinner in time (90 min recipe, dinner 20:00 → ~18:20)', async () => {
@@ -201,28 +203,14 @@ describe('planProactive', () => {
     expect(pendingShopping).not.toHaveBeenCalled()
   })
 
-  it('anyProactiveWindow is false in a quiet hour and kindEnabled defaults to on', async () => {
+  it('anyProactiveWindow is false in a quiet hour; kindEnabled defaults to on except the morning brief', async () => {
     const { anyProactiveWindow, kindEnabled } = await import('../services/whatsapp/proactive.js')
     expect(anyProactiveWindow(parts({ weekday: 3, hour: 12 }), null, '20:00')).toBe(false)
-    expect(anyProactiveWindow(parts({ weekday: 3, hour: 22, minute: 30 }), null, '20:00')).toBe(true)
-    expect(kindEnabled({}, 'daily_brief')).toBe(true)
+    expect(anyProactiveWindow(parts({ weekday: 3, hour: 22, minute: 15 }), null, '20:00')).toBe(true)
+    expect(kindEnabled({}, 'cooking_reminder')).toBe(true)
+    expect(kindEnabled({}, 'daily_brief')).toBe(false)
+    expect(kindEnabled({ daily_brief: true }, 'daily_brief')).toBe(true)
     expect(kindEnabled({ daily_brief: false }, 'daily_brief')).toBe(false)
-  })
-})
-
-describe('combineDelivery (prep alerts over push + WhatsApp)', () => {
-  it('is sent when either channel delivered', () => {
-    expect(combineDelivery({ status: 'ok' }, { status: 'skipped' })).toEqual({ status: 'sent', errorMessage: null })
-    expect(combineDelivery({ status: 'error', error: 'push-not-configured' }, { status: 'ok' })).toEqual({ status: 'sent', errorMessage: null })
-  })
-  it('keeps the legacy failure when push is not configured and WhatsApp is not linked', () => {
-    expect(combineDelivery({ status: 'error', error: 'push-not-configured' }, { status: 'skipped' })).toEqual({
-      status: 'failed',
-      errorMessage: 'push-not-configured',
-    })
-  })
-  it('reports both errors', () => {
-    expect(combineDelivery({ status: 'error', error: 'boom' }, { status: 'error', error: 'graph 500' }).errorMessage).toBe('boom · whatsapp: graph 500')
   })
 })
 

@@ -9,12 +9,14 @@
  * para mí» and then every 2, and the summary «Tu menú ya te conoce un poco
  * más».
  *
- * `mode="page"` is /afinar: batches of 10, the next one asked in the
- * background at card 5. `mode="onboarding"` is the sign-up step: 10 cards,
+ * `mode="page"` is /afinar: batches of 10 («3 de 10»), the next one asked
+ * in the background at card 5; after each 10 the summary, with «Seguir con
+ * 10 más» (PRO-200). `mode="onboarding"` is the sign-up step: 10 cards,
  * «Saltar» always visible, then `onDone`.
  *
  * The session adapts: after 3 «No para mí» to meat (or fish) it stops
  * showing that group and flags it for the profile («¿No coméis carne?»).
+ * A «No para mí» answered «Es muy largo» doesn't count for that (PRO-200).
  */
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react"
 import {
@@ -26,8 +28,10 @@ import {
   type TasteProteinGroup,
   type TasteReason,
   type TasteVerdict,
+  prettyName,
 } from "@ona/shared"
 import { fetchTasteNext, postTasteFlag, postTasteVerdict } from "@/hooks/useTaste"
+import { dislikeChipText, nextStreak } from "@/lib/tasteText"
 import { useQueryClient } from "@tanstack/react-query"
 
 type Screen = "intro" | "loading" | "cards" | "why" | "done"
@@ -63,10 +67,6 @@ function IconHeart({ size = 18 }: { size?: number }) {
   )
 }
 
-function listText(xs: string[]): string {
-  return xs.length ? xs.join(", ") : "Ninguna por ahora"
-}
-
 /** The «Dime qué te apetece.» screen (also reused by the sign-up step). */
 export function TasteIntro({ onStart, onSkip, startLabel = "Empezar" }: { onStart: () => void; onSkip?: () => void; startLabel?: string }) {
   return (
@@ -76,7 +76,9 @@ export function TasteIntro({ onStart, onSkip, startLabel = "Empezar" }: { onStar
         Dime qué te <span className="font-italic italic text-terracotta">apetece.</span>
       </h1>
       <p className="m-0 text-[16px] leading-[1.5] text-ink-mid">
-        Te enseño recetas una a una. Tú solo dices si te apetece o no, y tu menú empieza a parecerse a tu casa. Para cuando quieras.
+        {onSkip
+          ? "Son 10 platos: dime si te apetecen. Así tu menú empieza a parecerse a tu casa, y después te hago unas preguntas."
+          : "Te enseño recetas de 10 en 10. Tú solo dices si te apetece o no, y tu menú empieza a parecerse a tu casa. Para cuando quieras."}
       </p>
       <ul className="m-0 flex list-none flex-col gap-3 rounded-[18px] border border-border-soft bg-paper p-[18px]">
         <li className="flex items-center gap-3">
@@ -126,8 +128,10 @@ export function TasteSwiper({
   const [avoidIngredients, setAvoidIngredients] = useState<string[]>([])
   const [notes, setNotes] = useState<string[]>([])
   const [whyText, setWhyText] = useState("")
-  const [rated, setRated] = useState(0)
-  const [total, setTotal] = useState(0)
+  /** Answers given before the current batch of 10 (page mode). */
+  const [batchFrom, setBatchFrom] = useState(0)
+  /** Card to resume on from the summary («Seguir con 10 más»). */
+  const [resumeAt, setResumeAt] = useState(0)
   const [drag, setDrag] = useState<{ dx: number; dy: number; active: boolean }>({ dx: 0, dy: 0, active: false })
   const start = useRef<{ x: number; y: number } | null>(null)
   const nopes = useRef(0)
@@ -143,8 +147,6 @@ export function TasteSwiper({
   const load = useCallback(
     async (opts: { exclude: string[]; avoid: TasteProteinGroup[]; limit?: number }) => {
       const res = await fetchTasteNext({ limit: opts.limit ?? TASTE_BATCH_SIZE, exclude: opts.exclude, avoid: opts.avoid })
-      setRated((r) => Math.max(r, res.rated))
-      setTotal(res.total)
       return res.cards
     },
     [],
@@ -179,19 +181,36 @@ export function TasteSwiper({
     prefetch.current = load({ exclude, avoid }).catch(() => [])
   }, [mode, screen, idx, queue, avoid, load])
 
-  const finish = useCallback(() => {
+  /** End of the batch or «Ya está por hoy»: the summary (page) or on with the sign-up. `resume` = the card to go on from. */
+  const finish = useCallback((resume?: number) => {
     qc.invalidateQueries({ queryKey: ["taste"] })
     qc.invalidateQueries({ queryKey: ["memory"] })
-    if (mode === "onboarding") onDone?.()
-    else setScreen("done")
-  }, [mode, onDone, qc])
+    if (mode === "onboarding") return onDone?.()
+    setResumeAt(resume ?? idx)
+    setScreen("done")
+  }, [idx, mode, onDone, qc])
+
+  /** The prefetched batch (or a fresh one), minus what's already queued or avoided. */
+  const fetchMore = useCallback(
+    async (q: TasteCard[]) => {
+      const exclude = q.map((c) => c.recipeId)
+      let more = prefetch.current ? await prefetch.current : []
+      prefetch.current = null
+      more = more.filter((c) => !exclude.includes(c.recipeId) && !(c.protein && avoid.includes(c.protein)))
+      if (more.length === 0) more = await load({ exclude, avoid }).catch(() => [])
+      return more
+    },
+    [avoid, load],
+  )
 
   /** Move to the next card (fetching more when the queue runs out). */
   const advance = useCallback(
     async (answered: number, q: TasteCard[] = queue) => {
       setDrag({ dx: 0, dy: 0, active: false })
       const i = idx + 1
-      if (answered >= limitTotal) return finish()
+      if (answered >= limitTotal) return finish(i)
+      // Page mode: each 10 ends in the summary (PRO-200).
+      if (mode === "page" && answered - batchFrom >= TASTE_BATCH_SIZE) return finish(i)
       if (i < q.length) {
         setIdx(i)
         setScreen("cards")
@@ -199,18 +218,24 @@ export function TasteSwiper({
       }
       if (mode === "onboarding") return finish()
       setScreen("loading")
-      const exclude = q.map((c) => c.recipeId)
-      let more = prefetch.current ? await prefetch.current : []
-      prefetch.current = null
-      more = more.filter((c) => !exclude.includes(c.recipeId) && !(c.protein && avoid.includes(c.protein)))
-      if (more.length === 0) more = await load({ exclude, avoid }).catch(() => [])
-      if (more.length === 0) return finish()
+      const more = await fetchMore(q)
+      if (more.length === 0) return finish(i)
       setQueue([...q, ...more])
       setIdx(i)
       setScreen("cards")
     },
-    [avoid, finish, idx, limitTotal, load, mode, queue],
+    [batchFrom, fetchMore, finish, idx, limitTotal, mode, queue],
   )
+
+  /** «Seguir con 10 más» when the queue ran out right at the summary. */
+  const continueAfter = useCallback(async () => {
+    setScreen("loading")
+    const more = await fetchMore(queue)
+    if (more.length === 0) return setScreen("done")
+    setQueue([...queue, ...more])
+    setIdx(queue.length)
+    setScreen("cards")
+  }, [fetchMore, queue])
 
   /** 3 «No para mí» to one protein group: stop showing it this session and flag it. */
   const adaptTo = useCallback(
@@ -236,36 +261,41 @@ export function TasteSwiper({
     [avoid, idx, limitTotal, load, mode, queue],
   )
 
+  /** Meat/fish streak; 3 «No para mí» in a row → adapt. Returns the (maybe refilled) queue. */
+  const countStreak = useCallback(
+    async (c: TasteCard, verdict: TasteVerdict, reasonKind: TasteReason["kind"] | null, answeredCount: number) => {
+      if (!c.protein) return queue
+      streak.current[c.protein] = nextStreak(streak.current[c.protein], verdict, reasonKind)
+      if (streak.current[c.protein] >= TASTE_PROTEIN_STREAK && !avoid.includes(c.protein)) return adaptTo(c.protein, answeredCount)
+      return queue
+    },
+    [adaptTo, avoid, queue],
+  )
+
   const decide = useCallback(
     async (verdict: TasteVerdict) => {
       if (!card) return
       postTasteVerdict(card.recipeId, verdict).catch(() => {})
       const nextAnswers = [...answers, { card, verdict }]
       setAnswers(nextAnswers)
-      if (verdict !== "skip") setRated((r) => r + 1)
-      let q = queue
-      if (card.protein && verdict !== "skip") {
-        streak.current[card.protein] = verdict === "nope" ? streak.current[card.protein] + 1 : 0
-        if (streak.current[card.protein] >= TASTE_PROTEIN_STREAK && !avoid.includes(card.protein)) {
-          q = await adaptTo(card.protein, nextAnswers.length)
-        }
-      }
       if (verdict === "nope") {
         nopes.current += 1
         if ((nopes.current - 1) % TASTE_WHY_EVERY === 0) {
+          // The streak waits for the reason: «Es muy largo» doesn't count.
           setDrag({ dx: 0, dy: 0, active: false })
           setWhyText("")
           setScreen("why")
           return
         }
       }
+      const q = await countStreak(card, verdict, null, nextAnswers.length)
       await advance(nextAnswers.length, q)
     },
-    [adaptTo, advance, answers, avoid, card, queue],
+    [advance, answers, card, countStreak],
   )
 
   const answerWhy = useCallback(
-    (reason: TasteReason | null) => {
+    async (reason: TasteReason | null) => {
       if (card && reason) {
         postTasteVerdict(card.recipeId, "nope", reason)
           .then(() => qc.invalidateQueries({ queryKey: ["memory"] }))
@@ -273,9 +303,10 @@ export function TasteSwiper({
         if (reason.kind === "ingredient" && reason.text) setAvoidIngredients((a) => [...a, reason.text!])
         if (reason.kind === "other" && reason.text) setNotes((n) => [...n, `${card.name}: «${reason.text}»`])
       }
-      void advance(answers.length)
+      const q = card ? await countStreak(card, "nope", reason?.kind ?? null, answers.length) : queue
+      await advance(answers.length, q)
     },
-    [advance, answers.length, card, qc],
+    [advance, answers.length, card, countStreak, qc, queue],
   )
 
   // ─── Gestures ──────────────────────────────
@@ -301,8 +332,9 @@ export function TasteSwiper({
   const likeOp = Math.max(0, Math.min(1, drag.dx / 100))
   const nopeOp = Math.max(0, Math.min(1, -drag.dx / 100))
   const loveOp = Math.max(0, Math.min(1, -drag.dy / 100)) * (Math.abs(drag.dx) < 60 ? 1 : 0)
-  const shownTotal = mode === "onboarding" ? Math.min(TASTE_BATCH_SIZE, total || TASTE_BATCH_SIZE) : total
-  const position = mode === "onboarding" ? answers.length + 1 : rated + 1
+  // The counter counts the batch: «3 de 10» (PRO-200; before, «1 de 101» over the catalogue).
+  const shownTotal = TASTE_BATCH_SIZE
+  const position = Math.min(shownTotal, answers.length - (mode === "page" ? batchFrom : 0) + 1)
   const progress = shownTotal ? Math.min(100, (position / shownTotal) * 100) : 0
 
   if (screen === "intro") {
@@ -341,19 +373,19 @@ export function TasteSwiper({
           <p className="m-0 text-[14px] leading-[1.45] text-ink-mid">Si es un ingrediente, lo quito también de otras recetas.</p>
           <div className="flex flex-wrap gap-2">
             {card.mainIngredients.map((ing) => (
-              <button key={ing.name} type="button" className={CHIP} onClick={() => answerWhy({ kind: "ingredient", text: ing.name })}>
-                No me gusta {ing.label}
+              <button key={ing.name} type="button" className={CHIP} onClick={() => void answerWhy({ kind: "ingredient", text: ing.name })}>
+                {dislikeChipText(ing.label)}
               </button>
             ))}
-            <button type="button" className={CHIP} onClick={() => answerWhy({ kind: "dish" })}>El plato en sí</button>
-            <button type="button" className={CHIP} onClick={() => answerWhy({ kind: "long" })}>Es muy largo</button>
+            <button type="button" className={CHIP} onClick={() => void answerWhy({ kind: "dish" })}>El plato en sí</button>
+            <button type="button" className={CHIP} onClick={() => void answerWhy({ kind: "long" })}>Es muy largo</button>
           </div>
           <form
             className="flex flex-col gap-2"
             onSubmit={(e) => {
               e.preventDefault()
               const t = whyText.trim()
-              answerWhy(t ? { kind: "other", text: t } : null)
+              void answerWhy(t ? { kind: "other", text: t } : null)
             }}
           >
             <label htmlFor="why-other" className="text-[14px] font-medium text-ink">¿Es otra cosa? Cuéntamelo</label>
@@ -370,7 +402,7 @@ export function TasteSwiper({
               <button type="submit" className="min-h-[44px] rounded-full bg-ink px-4 text-[14px] font-medium text-cream">Enviar</button>
             </div>
           </form>
-          <button type="button" onClick={() => answerWhy({ kind: "none" })} className="min-h-[44px] text-[14px] text-ink-muted">Prefiero no decirlo</button>
+          <button type="button" onClick={() => void answerWhy({ kind: "none" })} className="min-h-[44px] text-[14px] text-ink-muted">Prefiero no decirlo</button>
         </section>
       </div>
     )
@@ -381,34 +413,35 @@ export function TasteSwiper({
     const like = answers.filter((a) => a.verdict === "like").map((a) => a.card.name)
     const nope = [
       ...answers.filter((a) => a.verdict === "nope").map((a) => a.card.name),
-      ...avoidIngredients.map((i) => `todo lo que lleve ${i}`),
+      ...avoidIngredients.map((i) => `todo lo que lleve ${prettyName(i)}`),
     ]
+    // Only what was rated in this session, and only the rows that have something (PRO-200).
+    const rows = [
+      { title: "Saldrán más a menudo", items: love },
+      { title: "Te apetecen", items: like },
+      { title: "No volverán a salir", items: nope },
+      ...(notes.length ? [{ title: "Lo que me has contado", items: notes, sep: " · " }] : []),
+    ].filter((r) => r.items.length > 0)
     return (
       <div className="flex flex-1 flex-col gap-5 px-6 pt-14 pb-8">
         <p className={EYEBROW}>Apuntado</p>
         <h1 className="m-0 font-display text-[40px] font-normal leading-none tracking-[-0.025em] text-ink">
           Tu menú ya te <span className="font-italic italic text-terracotta">conoce</span> un poco más.
         </h1>
-        <dl className="m-0 flex flex-col rounded-[18px] border border-border-soft bg-paper">
-          <div className="flex flex-col gap-1 border-b border-border-soft p-4">
-            <dt className="text-[14px] font-semibold">Saldrán más a menudo</dt>
-            <dd className="m-0 text-[14px] leading-[1.45] text-ink-mid">{listText(love)}</dd>
-          </div>
-          <div className="flex flex-col gap-1 border-b border-border-soft p-4">
-            <dt className="text-[14px] font-semibold">Te apetecen</dt>
-            <dd className="m-0 text-[14px] leading-[1.45] text-ink-mid">{listText(like)}</dd>
-          </div>
-          <div className="flex flex-col gap-1 p-4">
-            <dt className="text-[14px] font-semibold">No volverán a salir</dt>
-            <dd className="m-0 text-[14px] leading-[1.45] text-ink-mid">{listText(nope)}</dd>
-          </div>
-          {notes.length > 0 && (
-            <div className="flex flex-col gap-1 border-t border-border-soft p-4">
-              <dt className="text-[14px] font-semibold">Lo que me has contado</dt>
-              <dd className="m-0 text-[14px] leading-[1.45] text-ink-mid">{notes.join(" · ")}</dd>
-            </div>
-          )}
-        </dl>
+        {rows.length > 0 ? (
+          <dl className="m-0 flex flex-col divide-y divide-border-soft rounded-[18px] border border-border-soft bg-paper" data-testid="taste-summary">
+            {rows.map((r) => (
+              <div key={r.title} className="flex flex-col gap-1 p-4">
+                <dt className="text-[14px] font-semibold">{r.title}</dt>
+                <dd className="m-0 text-[14px] leading-[1.45] text-ink-mid">{r.items.join(r.sep ?? ", ")}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : (
+          <p className="m-0 text-[16px] leading-[1.5] text-ink-mid" data-testid="taste-summary">
+            En esta vuelta no has valorado ninguna receta. Lo que valoraste otros días sigue guardado.
+          </p>
+        )}
         <p className="m-0 text-[14px] leading-[1.45] text-ink-mid">
           Lo tienes todo en Perfil → Lo que recuerdo de ti, y lo puedes cambiar cuando quieras.
         </p>
@@ -417,16 +450,17 @@ export function TasteSwiper({
         <button
           type="button"
           onClick={() => {
-            if (idx + 1 < queue.length) {
-              setIdx(idx + 1)
+            setBatchFrom(answers.length)
+            if (resumeAt < queue.length) {
+              setIdx(resumeAt)
               setScreen("cards")
             } else {
-              void advance(answers.length)
+              void continueAfter()
             }
           }}
           className="min-h-[44px] text-[14px] font-medium text-ink"
         >
-          Seguir con más recetas
+          Seguir con 10 más
         </button>
       </div>
     )
@@ -437,7 +471,7 @@ export function TasteSwiper({
   return (
     <div className="flex flex-1 flex-col gap-4 px-5 pt-5 pb-6">
       <div className="flex items-center justify-between gap-3">
-        <button type="button" onClick={finish} className="min-h-[44px] p-0 text-[14px] font-medium text-ink-mid">
+        <button type="button" onClick={() => finish()} className="min-h-[44px] p-0 text-[14px] font-medium text-ink-mid">
           {mode === "onboarding" ? "Saltar" : "Ya está por hoy"}
         </button>
         <span className="text-[14px] text-ink-muted" data-testid="taste-counter">
@@ -500,15 +534,25 @@ export function TasteSwiper({
         </div>
       </div>
 
-      <div className="flex items-center justify-center gap-5">
-        <button type="button" onClick={() => void decide("nope")} aria-label="No para mí" className="flex h-16 w-16 items-center justify-center rounded-full border border-border bg-paper focus-visible:outline-2 focus-visible:outline-ink">
-          <IconX size={26} />
+      {/* Each button says what it does (PRO-200: ✕ ♥ ✓ alone weren't clear). */}
+      <div className="flex items-start justify-center gap-5">
+        <button type="button" onClick={() => void decide("nope")} aria-label="No para mí" className="group flex w-20 flex-col items-center gap-1.5 focus-visible:outline-none">
+          <span className="flex h-16 w-16 items-center justify-center rounded-full border border-border bg-paper group-focus-visible:outline-2 group-focus-visible:outline-ink">
+            <IconX size={26} />
+          </span>
+          <span aria-hidden="true" className="text-[13px] font-medium text-ink-mid">No</span>
         </button>
-        <button type="button" onClick={() => void decide("love")} aria-label="Me encanta" className="flex h-[52px] w-[52px] items-center justify-center rounded-full border border-border bg-paper focus-visible:outline-2 focus-visible:outline-ink">
-          <IconHeart size={22} />
+        <button type="button" onClick={() => void decide("love")} aria-label="Me encanta" className="group flex w-20 flex-col items-center gap-1.5 pt-1.5 focus-visible:outline-none">
+          <span className="flex h-[52px] w-[52px] items-center justify-center rounded-full border border-border bg-paper group-focus-visible:outline-2 group-focus-visible:outline-ink">
+            <IconHeart size={22} />
+          </span>
+          <span aria-hidden="true" className="text-[13px] font-medium text-terracotta-deep">Me encanta</span>
         </button>
-        <button type="button" onClick={() => void decide("like")} aria-label="Me apetece" className="flex h-16 w-16 items-center justify-center rounded-full bg-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink">
-          <IconCheck color="#faf6ee" size={26} width={2.2} />
+        <button type="button" onClick={() => void decide("like")} aria-label="Me apetece" className="group flex w-20 flex-col items-center gap-1.5 focus-visible:outline-none">
+          <span className="flex h-16 w-16 items-center justify-center rounded-full bg-ink group-focus-visible:outline-2 group-focus-visible:outline-offset-2 group-focus-visible:outline-ink">
+            <IconCheck color="#faf6ee" size={26} width={2.2} />
+          </span>
+          <span aria-hidden="true" className="text-[13px] font-medium text-ink">Me apetece</span>
         </button>
       </div>
       <button type="button" onClick={() => void decide("skip")} className="min-h-[44px] text-[14px] text-ink-muted underline underline-offset-[3px]">

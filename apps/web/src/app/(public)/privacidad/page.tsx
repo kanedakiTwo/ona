@@ -1,21 +1,18 @@
 import Link from "next/link"
 import { LEGAL_OWNER } from "@ona/shared"
+import { CONTACT_EMAIL } from "@/lib/contact"
 
 /**
  * Política de privacidad. Describes what the code actually does (see
  * specs/privacy.md). Pending legal review: the controller's legal identity
- * and the contact address come from Miguel (CLAUDE.md → Todo Miguel).
+ * comes from Miguel (CLAUDE.md → Todo Miguel). The contact address is
+ * `NEXT_PUBLIC_SUPPORT_EMAIL`, else hola@mimoia.com (PRO-179), like the footer.
  */
-const CONTACT = process.env.NEXT_PUBLIC_SUPPORT_EMAIL
-
 function Contact() {
-  return CONTACT ? (
-    <a href={`mailto:${CONTACT}`} className="underline underline-offset-4">
-      {CONTACT}
+  return (
+    <a href={`mailto:${CONTACT_EMAIL}`} className="underline underline-offset-4">
+      {CONTACT_EMAIL}
     </a>
-  ) : (
-    // Until NEXT_PUBLIC_SUPPORT_EMAIL is set (beta, invitation only).
-    <>la persona de Mimoia que te invitó a la beta</>
   )
 }
 
@@ -30,7 +27,7 @@ export default function PrivacidadPage() {
         <h1 className="font-display text-4xl text-[#1A1612] md:text-5xl">Política de privacidad</h1>
 
         <div className="mt-8 space-y-5 text-[15px] leading-relaxed text-[#4A4239]">
-          <p className="text-sm text-[#7A7066]">Última actualización: 17 de octubre de 2026</p>
+          <p className="text-sm text-[#7A7066]">Última actualización: 19 de octubre de 2026</p>
 
           <H2>1. Quién trata tus datos</H2>
           <p data-testid="privacy-controller">
@@ -198,10 +195,11 @@ export default function PrivacidadPage() {
             privacidad y puedes retirar cuando quieras. Para el email de los viernes, un consentimiento aparte
             (art. 21 de la LSSI).
           </p>
-          <p>
-            <strong>Cuánto tiempo:</strong> hasta seis meses después de que abramos al público o hasta que te des de
-            baja, lo que ocurra antes. Si te invitamos y creas una cuenta, desde ese momento se aplica el resto de
-            esta política.
+          <p data-testid="privacy-waitlist-retention">
+            <strong>Cuánto tiempo:</strong> hasta el 16 de mayo de 2027 (seis meses después de abrir el registro a
+            todo el mundo, el 16 de noviembre de 2026) o hasta que te des de baja, lo que ocurra antes. Si pediste el
+            menú de los viernes, guardamos tu email para ese correo mientras no te des de baja. Si te invitamos y
+            creas una cuenta, desde ese momento se aplica el resto de esta política.
           </p>
           <p>
             <strong>Cómo darte de baja:</strong> con un clic en el enlace de baja que te damos al apuntarte y que va

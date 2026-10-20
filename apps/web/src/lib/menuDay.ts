@@ -208,7 +208,18 @@ export function batchServings(
   const slot = days[day]?.[meal as MealKey]
   const own = slotOverride(slot) ?? defaultDiners
   const first = firstRecipeDish(slot)
-  if (!first || first.variant === "leftover" || slotOverride(slot) != null) return own
+  if (!first || first.variant === "leftover") return own
+  // PRO-223: a táper is one ration more even on top of «Solo hoy».
+  if (slotOverride(slot) != null) {
+    let tapers = 0
+    for (const d of days) {
+      for (const s of Object.values(d ?? {}) as (MealSlot | undefined)[]) {
+        const dish = firstRecipeDish(s)
+        if (s?.taper && dish?.recipeId === first.recipeId && dish.leftoverOf?.day === day && dish.leftoverOf?.meal === meal) tapers += s.taper
+      }
+    }
+    return own + tapers
+  }
   let total = own
   for (const d of days) {
     for (const s of Object.values(d ?? {}) as (MealSlot | undefined)[]) {
@@ -224,4 +235,21 @@ export function batchServings(
     }
   }
   return total
+}
+
+/**
+ * PRO-223: the dinner a meal can be the táper of — the day before's dinner
+ * with a cooked recipe, same week (not for Monday, not for a dinner).
+ */
+export function taperSourceOf(
+  days: (DayMenu | undefined | null)[],
+  day: number,
+  meal: string,
+  dayName: (dayIndex: number) => string,
+): { dayLabel: string; recipeName: string } | null {
+  if (day < 1 || meal === "dinner") return null
+  const dinner = days[day - 1]?.dinner
+  const dish = (dinner?.dishes ?? []).find((d) => d.kind === "recipe" && d.variant !== "leftover" && d.variant !== "freezer")
+  if (!dish || dish.kind !== "recipe") return null
+  return { dayLabel: dayName(day - 1), recipeName: dish.recipeName ?? "la cena" }
 }

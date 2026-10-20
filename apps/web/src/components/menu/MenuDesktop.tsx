@@ -75,7 +75,7 @@ interface Props {
   onUnskipDay: (day: number) => void
   onSkipDay: (day: number) => void
   onAddMeal: (day: number, meal: MealKey) => void
-  onAddFreezer?: (day: number, meal: MealKey, recipeId: string) => void
+  onAddFreezer?: (day: number, meal: MealKey, recipeId: string, variant: "freezer" | "fridge") => void
   /** Rendered under the week (vetoes panel, pantry card). */
   footer?: ReactNode
 }
@@ -231,7 +231,7 @@ export function MenuDesktop(p: Props) {
                       isAdding={p.isAddingMeal}
                       onAddMeal={(m) => p.onAddMeal(p.selectedDay, m)}
                       onSkip={() => p.onSkipDay(p.selectedDay)}
-                      onAddFreezer={p.onAddFreezer ? (m, id) => p.onAddFreezer!(p.selectedDay, m, id) : undefined}
+                      onAddFreezer={p.onAddFreezer ? (m, id, v) => p.onAddFreezer!(p.selectedDay, m, id, v) : undefined}
                     />
                   </div>
                 )}

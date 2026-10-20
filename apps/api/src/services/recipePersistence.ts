@@ -137,6 +137,8 @@ export interface RecipeWriteInput {
   tips?: string | null
   substitutions?: string | null
   storage?: string | null
+  /** PRO-220. Undefined on an update keeps what the recipe had (the edit form doesn't send it). */
+  advancePrep?: Array<{ text: string; hoursBefore: number }>
   tags?: string[]
   internalTags?: string[]
   /** Origin URL (article / YouTube) — null when not imported from a URL. */
@@ -527,6 +529,7 @@ export async function persistRecipe(
         .where(eq(recipeIngredientsTable.recipeId, id))
 
       const updateFields: Record<string, unknown> = { ...baseFields }
+      if (input.advancePrep !== undefined) updateFields.advancePrep = input.advancePrep
       if (opts.preserveExistingImage) {
         if (input.imageUrl != null) updateFields.imageUrl = input.imageUrl
       } else {
@@ -539,6 +542,7 @@ export async function persistRecipe(
         .values({
           ...baseFields,
           imageUrl: input.imageUrl ?? null,
+          advancePrep: input.advancePrep ?? [],
         })
         .returning({ id: recipesTable.id })
       id = inserted.id

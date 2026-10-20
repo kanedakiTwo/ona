@@ -7,15 +7,11 @@
  */
 import { test, expect, type Page } from '@playwright/test'
 import { completeOnboarding, registerFreshUser } from './_helpers'
+import { madridTodayIdx, madridWeekStart, pinClock } from './_clock'
 
 const API = process.env.API_URL ?? 'http://localhost:8765'
 const MEALS = ['breakfast', 'lunch', 'snack', 'dinner']
 
-function thisMonday(): string {
-  const d = new Date()
-  d.setDate(d.getDate() + (d.getDay() === 0 ? -6 : 1 - d.getDay()))
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
 
 async function session(page: Page) {
   const token = await page.evaluate(() => localStorage.getItem('ona_token'))
@@ -31,13 +27,14 @@ async function rating(page: Page, recipeId: string): Promise<number | null> {
 
 test('menu: «Marcar como cocinada» asks «¿Qué tal?»; «Repetir a menudo» leaves 5 stars; not asked again', async ({ page }) => {
   test.setTimeout(120_000)
+  await pinClock(page, madridTodayIdx())
   await registerFreshUser(page)
   await completeOnboarding(page)
   const { headers, userId } = await session(page)
-  const gen = await page.request.post(`${API}/menu/generate`, { headers, data: { userId, weekStart: thisMonday(), force: true } })
+  const gen = await page.request.post(`${API}/menu/generate`, { headers, data: { userId, weekStart: madridWeekStart(), force: true } })
   expect(gen.ok()).toBeTruthy()
-  const menu = await (await page.request.get(`${API}/menu/${userId}/${thisMonday()}`, { headers })).json()
-  const today = menu.days[(new Date().getDay() + 6) % 7] ?? {}
+  const menu = await (await page.request.get(`${API}/menu/${userId}/${madridWeekStart()}`, { headers })).json()
+  const today = menu.days[madridTodayIdx()] ?? {}
   const recipeId: string | undefined = MEALS.map((m) => today[m]?.dishes?.find((d: any) => d.kind === 'recipe')?.recipeId).find(Boolean)
   test.skip(!recipeId, 'the generator left today without recipes')
 
@@ -61,7 +58,7 @@ test('menu: «Marcar como cocinada» asks «¿Qué tal?»; «Repetir a menudo» 
   // Second time within 30 days: no question. The meal is now «Comido»
   // (PRO-185), so «Desmarcar» it first to get «Marcar como cocinada» back.
   const meal = MEALS.find((m) => today[m]?.dishes?.some((d: any) => d.kind === 'recipe'))
-  expect((await page.request.patch(`${API}/menu/${menu.id}/day/${(new Date().getDay() + 6) % 7}/meal/${meal}`, { headers, data: { eaten: false } })).ok()).toBeTruthy()
+  expect((await page.request.patch(`${API}/menu/${menu.id}/day/${madridTodayIdx()}/meal/${meal}`, { headers, data: { eaten: false } })).ok()).toBeTruthy()
   await page.goto('/menu')
   await expect(hero).toBeVisible({ timeout: 20_000 })
   await hero.getByRole('button', { name: /más opciones/i }).click()
@@ -74,6 +71,7 @@ test('menu: «Marcar como cocinada» asks «¿Qué tal?»; «Repetir a menudo» 
 
 test('cook mode: «Terminar» on the last step records the dish and asks; «Bien» is 3 stars', async ({ page }) => {
   test.setTimeout(90_000)
+  await pinClock(page, madridTodayIdx())
   await registerFreshUser(page)
   await completeOnboarding(page)
   await page.goto('/recipes')

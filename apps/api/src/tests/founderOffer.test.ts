@@ -4,6 +4,7 @@
  * the legal notice 15 days before the first charge (once, on the right day).
  */
 import { describe, expect, it } from 'vitest'
+import { PLANS, euros, founderPriceAmounts } from '@ona/shared'
 import type { EmailMessage, EmailResult } from '../services/email.js'
 import {
   founderOfferEmail,
@@ -62,13 +63,23 @@ describe('day-7 founder-price offer', () => {
   it('the text: D-056 promise, last day of the trial, nothing charged until the first charge', () => {
     const copy = { access: { trialLastDay: '2027-01-24' }, firstCharge: new Date('2027-02-02T11:00:00Z') }
     expect(founderOfferShort(copy)).toBe(
-      'Llevas una semana con Mimoia. Si ya sabes que te quedas, deja la tarjeta antes de que acabe tu prueba (dura hasta el 24 de enero) y te quedas el precio de fundador para siempre: no te sube mientras sigas suscrito. No se cobra nada hasta el 2 de febrero de 2027 y puedes cancelar antes sin pagar nada.',
+      `Llevas una semana con Mimoia. Si ya sabes que te quedas, deja la tarjeta antes de que acabe tu prueba (dura hasta el 24 de enero) y te quedas el precio de fundador para siempre (${founderPriceAmounts()}): no te sube mientras sigas suscrito. No se cobra nada hasta el 2 de febrero de 2027 y puedes cancelar antes sin pagar nada.`,
     )
     const m = founderOfferEmail({ ...copy, email: 'eva@example.com', publicUrl: 'https://mimoia.com' })
     expect(m.subject).toBe('Quédate el precio de fundador de Mimoia')
-    expect(m.text).toContain('te quedas el precio de fundador para siempre')
+    expect(m.text).toContain(`te quedas el precio de fundador para siempre (${founderPriceAmounts()}): no te sube`)
     expect(m.text).toContain('Quince días antes te avisamos de la fecha y del importe')
     expect(m.text).toContain('https://mimoia.com/profile/suscripcion')
+  })
+
+  it('the founder price carries its amounts, read from PLANS (PRO-204, Legal)', () => {
+    const amounts = founderPriceAmounts()
+    for (const p of PLANS) {
+      expect(amounts).toContain(`${p.name}, ${euros(p.prices.mensual.cents)} al mes o ${euros(p.prices.anual.cents)} al año`)
+    }
+    expect(amounts).toBe('Esencial, 4,99 € al mes o 49,99 € al año; Plus, 8,99 € al mes o 59,99 € al año')
+    const copy = { access: { trialLastDay: '2027-01-24' }, firstCharge: new Date('2027-02-02T11:00:00Z') }
+    expect(founderOfferShort(copy)).toContain(`para siempre (${amounts}): no te sube`)
   })
 
   it('due from day 7, not on day 6, and not after the trial', () => {
@@ -81,7 +92,7 @@ describe('day-7 founder-price offer', () => {
     expect(isFounderOfferDue(beta, new Date('2026-12-22T10:00:00Z'))).not.toBeNull()
   })
 
-  it('sent once (email + WhatsApp), nothing before launch day', async () => {
+  it('sent once, ONE message (WhatsApp when it gets through, no email; PRO-234), nothing before launch day', async () => {
     const repo: OfferRepo & { marked: Set<unknown> } = memory([candidate], 'householdId')
     const mail = sentMail()
     const wa: Array<{ userId: string; text: string }> = []
@@ -97,13 +108,27 @@ describe('day-7 founder-price offer', () => {
     expect((await sendFounderOffers(dayAt11(6), deps)).offered).toBe(0)
     expect((await sendFounderOffers(dayAt11(7), deps)).offered).toBe(1)
     expect((await sendFounderOffers(dayAt11(8), deps)).offered).toBe(0)
-    expect(mail.sent).toHaveLength(1)
+    expect(mail.sent).toHaveLength(0)
     expect(wa).toEqual([{ userId: 'u1', text: expect.stringContaining('precio de fundador para siempre') }])
     expect(wa[0].text).toContain('https://mimoia.com/profile/suscripcion')
 
     const before = memory([{ ...candidate, householdCreatedAt: new Date('2026-10-01T10:00:00Z') }], 'householdId')
     expect((await sendFounderOffers(new Date('2026-12-10T10:00:00Z'), { ...deps, repo: before })).offered).toBe(0)
     expect(await sendFounderOffersIfDue(new Date('2026-12-10T10:00:00Z'), () => ({ ...deps, repo: before }))).toBeNull()
+  })
+
+  it('without WhatsApp (or its window closed) it goes by email instead (PRO-234)', async () => {
+    const repo = memory([candidate], 'householdId')
+    const mail = sentMail()
+    const r = await sendFounderOffers(dayAt11(7), {
+      repo,
+      sendEmail: mail.send,
+      sendWhatsApp: async () => ({ status: 'skipped', error: 'outside-24h-window' }),
+      publicUrl: 'https://mimoia.com',
+    })
+    expect(r.offered).toBe(1)
+    expect(r.whatsapp).toBe(0)
+    expect(mail.sent).toHaveLength(1)
   })
 
   it('if no channel got it out (no email key, WhatsApp window closed), it stays pending', async () => {
@@ -140,6 +165,8 @@ describe('legal notice 15 days before the first charge', () => {
     expect(m.text).toContain('cancela antes de esa fecha y no se te cobrará nada')
     expect(m.text).toContain('Tienes el precio de fundador')
     expect(m.text).toContain(cancelUrl('https://mimoia.com'))
+    // PRO-204 (Legal): who charges and issues the receipt.
+    expect(m.text).toContain('El cobro y el recibo los hace Link, de Stripe, que te vende la suscripción de Mimoia; en tu extracto aparecerá «LINK.COM* MIMOIA».')
     expect(cancelUrl('https://mimoia.com/')).toBe('https://mimoia.com/profile/suscripcion?cancelar=1')
     const anual = chargeNoticeEmail({ ...candidate, plan: 'plus', period: 'anual', founderPrice: false, chargeAt, publicUrl: 'https://mimoia.com' })
     expect(anual.text).toContain('59,99 €')

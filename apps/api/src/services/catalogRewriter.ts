@@ -9,8 +9,9 @@ import Anthropic from '@anthropic-ai/sdk'
 import { env } from '../config/env.js'
 import { recordAnthropicCost } from './costLedger.js'
 import type { CatalogDraftInput, CatalogRewrite } from './catalogImport.js'
+import { CLAUDE_MODEL } from '../config/models.js'
 
-const REWRITE_MODEL = 'claude-sonnet-5-5'
+const REWRITE_MODEL = CLAUDE_MODEL
 
 export const REWRITE_PROMPT = `Eres el equipo de cocina de Mimoia, un planificador de menús para hogares en España.
 Te paso una receta leída de un libro o de una nota. Tu trabajo es escribir los pasos OTRA VEZ, con nuestras palabras, y etiquetarla.

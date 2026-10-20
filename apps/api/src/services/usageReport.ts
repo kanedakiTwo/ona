@@ -7,11 +7,13 @@
  * daily / weekly / funnel blocks and are unit-tested.
  */
 import { sql } from 'drizzle-orm'
+import { HOUSEHOLD_INVITE_SOURCES, isHouseholdInviteSource, type HouseholdInviteSource } from '@ona/shared'
 import { db as defaultDb } from '../db/connection.js'
 import { addDays, madridMidnightUtc, madridParts } from './madridTime.js'
 import { isoWeekLabel, weekOfDay } from './businessMetrics.js'
 import { buildReferralReport, loadInvitedSignups } from './referralRewards.js'
 import { loadProactiveReport } from './proactiveReport.js'
+import { optInDeclinedSql } from './whatsapp/optInOffer.js'
 import { PASSIVE_USAGE_EVENTS, USAGE_CHANNELS, USAGE_EVENTS, type UsageEventName } from './usageEvents.js'
 
 type Db = typeof defaultDb
@@ -239,6 +241,8 @@ export interface HouseholdStateRow {
   members: number
   whatsappLinked: number
   whatsappNotify: number
+  /** PRO-248: linked members with avisos off who said no («No, gracias» or BAJA). */
+  whatsappDeclined?: number
   pushEnabled: number
 }
 
@@ -252,14 +256,84 @@ export function buildHouseholdSnapshot(rows: HouseholdStateRow[]) {
   let withPush = 0
   let withNotices = 0
   let withTwoPlusMembers = 0
+  let withWhatsappDeclined = 0
+  let withWhatsappNoAnswer = 0
   for (const r of rows) {
     if (r.whatsappLinked > 0) withWhatsapp += 1
     if (r.whatsappNotify > 0) withWhatsappNotify += 1
+    // PRO-248: WhatsApp without avisos splits into «said no» and «didn't answer».
+    if (r.whatsappLinked > 0 && r.whatsappNotify === 0) {
+      if ((r.whatsappDeclined ?? 0) > 0) withWhatsappDeclined += 1
+      else withWhatsappNoAnswer += 1
+    }
     if (r.pushEnabled > 0) withPush += 1
     if (r.whatsappNotify > 0 || r.pushEnabled > 0) withNotices += 1
     if (r.members >= 2) withTwoPlusMembers += 1
   }
-  return { households: rows.length, withWhatsapp, withWhatsappNotify, withPush, withNotices, withTwoPlusMembers }
+  return {
+    households: rows.length,
+    withWhatsapp,
+    withWhatsappNotify,
+    withWhatsappDeclined,
+    withWhatsappNoAnswer,
+    withPush,
+    withNotices,
+    withTwoPlusMembers,
+  }
+}
+
+export interface FamilyInviteRow {
+  /** `household_invites.source` (unknown → casa). */
+  source: string
+  /** `shared_at` set: «Enviar por WhatsApp» / «Copiar» tapped, or Mimo gave it. */
+  shared: boolean
+  /** `consumed_at` set: someone joined with it. */
+  accepted: boolean
+}
+
+export interface FamilyGoalRow {
+  /** Adults the household cooks for (the largest `users.adults` among its counted members). */
+  adults: number
+  /** Counted accounts. */
+  members: number
+}
+
+interface FamilyInviteCounts {
+  prepared: number
+  sent: number
+  accepted: number
+}
+
+/**
+ * Pure (PRO-263, D-088): household invitations prepared, sent and accepted
+ * per moment (`HOUSEHOLD_INVITE_SOURCES`), all time; and the goal of the
+ * proposal: of the households with 2 adults or more, how many already have 2
+ * accounts or more. An accepted invite counts as sent (the link got there).
+ */
+export function buildFamilyInviteReport(invites: readonly FamilyInviteRow[], goalRows: readonly FamilyGoalRow[]) {
+  const zero = (): FamilyInviteCounts => ({ prepared: 0, sent: 0, accepted: 0 })
+  const bySource = Object.fromEntries(HOUSEHOLD_INVITE_SOURCES.map((k) => [k, zero()])) as Record<HouseholdInviteSource, FamilyInviteCounts>
+  const totals = zero()
+  for (const i of invites) {
+    const key: HouseholdInviteSource = isHouseholdInviteSource(i.source) ? i.source : 'casa'
+    const sent = i.shared || i.accepted
+    for (const c of [bySource[key], totals]) {
+      c.prepared += 1
+      if (sent) c.sent += 1
+      if (i.accepted) c.accepted += 1
+    }
+  }
+  const base = goalRows.filter((r) => r.adults >= 2)
+  const withTwoPlusAdultsAndMembers = base.filter((r) => r.members >= 2).length
+  return {
+    bySource,
+    totals,
+    goal: {
+      withTwoPlusAdults: base.length,
+      withTwoPlusAdultsAndMembers,
+      share: base.length ? Math.round((withTwoPlusAdultsAndMembers / base.length) * 1000) / 1000 : null,
+    },
+  }
 }
 
 export const USAGE_DEFINITIONS = {
@@ -268,10 +342,11 @@ export const USAGE_DEFINITIONS = {
   channels: 'web (app and web chat), voice (Mimo with the voice in the app), whatsapp; unknown = system.',
   excluded: 'Admin and suspended accounts are excluded unless includeInternal=1. Events of deleted accounts stay as anonymous counts.',
   retention: 'Events are kept 180 days.',
-  households: 'Right now, not windowed. Households with at least one counted member; withWhatsapp = a member has WhatsApp connected; withWhatsappNotify = one with proactive messages on; withPush = a member has a push subscription; withNotices = either; withTwoPlusMembers = 2 or more counted members.',
+  households: 'Right now, not windowed. Households with at least one counted member; withWhatsapp = a member has WhatsApp connected; withWhatsappNotify = one with proactive messages on; withWhatsappDeclined / withWhatsappNoAnswer (PRO-248) = WhatsApp but avisos off, split into «said no» («No, gracias» or BAJA by a member) and «did not answer» (the rest); withPush = a member has a push subscription; withNotices = either; withTwoPlusMembers = 2 or more counted members.',
   channelSplit: 'Active households per ISO week by channel used: webOnly (app, web chat or voice), whatsappOnly, both; unknownOnly = active only through events without a channel.',
   onboardingWhatsappChosen: 'Event onboarding_whatsapp_chosen: «Por WhatsApp» tapped on the first onboarding screen (POST /whatsapp/link-code with from=onboarding); see householdsByEvent for distinct households.',
   proactive: 'WhatsApp messages Mimo sends by itself (PRO-156), by ISO week of the window: sent = delivered daily_brief, cooking_reminder, dinner_checkin, shopping_reminder, weekly_nudge and alert; replied = followed by any message from the same number within replyWindowHours; replyRate = replied / sent; guided / fallback = written from the guide vs. the fixed text (rows before PRO-156 count in neither); optouts = BAJA from a linked account. byKind splits the same counts. Counts only.',
+  familyInvites: 'Invitations to join the same household (PRO-263, D-088), all time, not the window, by where they were prepared: casa (Perfil → Mi casa, and every invite before 2026-10-20), alta (sign-up), compra (first visit to the shopping list), mimo (web chat or WhatsApp). prepared = created; sent = «Enviar por WhatsApp» / «Copiar» tapped, Mimo gave the link, or accepted; accepted = someone joined with it. Invites made by admin or suspended accounts only with includeInternal=1. goal = of the households with 2 adults or more (largest users.adults among counted members), how many have 2 or more counted accounts; share = that ratio (target 0.3 by 2026-11-23). Counts only.',
   referrals: 'By ISO week (inviteShared: of the tap; the rest: of the invited sign-up), all time, not the window. signupsWithInviter = accounts that signed up with someone else’s «Invitar a otro hogar» code (not into the inviter’s own household); week3Resolved = of those, households with a menu generated and the shopping list opened on days 14–20 after signing up; inviters = distinct codes. Counts only.',
 }
 
@@ -311,13 +386,21 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
            COUNT(DISTINCT mu.id)::int AS members,
            COUNT(DISTINCT wl.user_id)::int AS whatsapp_linked,
            COUNT(DISTINCT wl.user_id) FILTER (WHERE wl.notify)::int AS whatsapp_notify,
-           COUNT(DISTINCT ps.user_id)::int AS push_enabled
+           COUNT(DISTINCT wl.user_id) FILTER (WHERE NOT wl.notify AND ${optInDeclinedSql()})::int AS whatsapp_declined,
+           COUNT(DISTINCT ps.user_id)::int AS push_enabled,
+           COALESCE(MAX(mu.adults), 0)::int AS adults
       FROM household_members hm
       JOIN users mu ON mu.id = hm.user_id
       LEFT JOIN whatsapp_links wl ON wl.user_id = mu.id
       LEFT JOIN push_subscriptions ps ON ps.user_id = mu.id
       WHERE ${member}
       GROUP BY 1
+  `)
+  // Household invitations by moment (PRO-263). Counts only leave this process.
+  const familyInvitesQ = db.execute(sql`
+    SELECT hi.source, (hi.shared_at IS NOT NULL) AS shared, (hi.consumed_at IS NOT NULL) AS accepted
+      FROM household_invites hi JOIN users u ON u.id = hi.invited_by_user_id
+      WHERE ${counted}
   `)
   const sinceQ = db.execute(sql`SELECT MIN(created_at) AS since FROM usage_events`)
   // Referrals (PRO-165): every invited account (not just the window) and the taps on «Invitar a otro hogar».
@@ -329,7 +412,7 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
       GROUP BY 1
   `)
   const days = dayRange(fromDay, today)
-  const [counts, householdDays, since, householdState, invited, inviteShared, proactive] = await Promise.all([
+  const [counts, householdDays, since, householdState, invited, inviteShared, proactive, familyInvites] = await Promise.all([
     countsQ,
     householdDaysQ,
     sinceQ,
@@ -337,6 +420,7 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
     invitedQ,
     inviteSharedQ,
     loadProactiveReport(days, from, inc, db),
+    familyInvitesQ,
   ])
 
   const input: UsageInput = {
@@ -368,8 +452,13 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
         members: Number(r.members),
         whatsappLinked: Number(r.whatsapp_linked),
         whatsappNotify: Number(r.whatsapp_notify),
+        whatsappDeclined: Number(r.whatsapp_declined ?? 0),
         pushEnabled: Number(r.push_enabled),
       })),
+    ),
+    familyInvites: buildFamilyInviteReport(
+      (familyInvites.rows as any[]).map((r) => ({ source: String(r.source), shared: r.shared === true, accepted: r.accepted === true })),
+      (householdState.rows as any[]).map((r) => ({ adults: Number(r.adults), members: Number(r.members) })),
     ),
     proactive,
     referrals: buildReferralReport(invited, (inviteShared.rows as any[]).map((r) => ({ day: r.day, count: Number(r.count) }))),

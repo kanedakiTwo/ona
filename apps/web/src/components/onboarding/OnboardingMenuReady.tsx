@@ -37,8 +37,12 @@ export function OnboardingMenuReady() {
         await api.post(`/user/${user.id}/health-consent`, { consent: true })
         const updated = await api.put<{ restrictions?: string[] }>(`/user/${user.id}`, { restrictions })
         updateUser({ restrictions: updated.restrictions ?? restrictions })
-        // The week Mimo built in the chat, again, now without what they don't eat.
-        await api.post("/menu/generate", { userId: user.id, weekStart: firstMenuWeeks().weeks[0] })
+        // The weeks Mimo built in the chat (next week too, Friday to Sunday),
+        // again, now without what they don't eat — from today on (PRO-244).
+        const { weeks, today } = firstMenuWeeks()
+        for (const weekStart of weeks) {
+          await api.post("/menu/generate", { userId: user.id, weekStart, fromDate: today })
+        }
         await queryClient.invalidateQueries({ queryKey: ["menu"] })
       } catch {
         setSaving(false)
@@ -56,8 +60,8 @@ export function OnboardingMenuReady() {
           Tu menú está <Accent>listo</Accent>
         </OnboardingHeader>
         <p className="mt-2 text-[14px] leading-relaxed text-ink-muted">
-          Antes de verlo: ¿hay algo que no comáis en casa? Alergias, intolerancias o cosas que no os gustan. Por
-          WhatsApp no guardamos datos de salud; aquí sí, si nos das permiso. Si añades algo, rehacemos el menú sin ello.
+          Antes de verlo: ¿hay algo que no comáis en casa? Alergias, intolerancias o cosas que no os gustan. Las
+          alergias e intolerancias se guardan en tu perfil solo si nos das permiso, y el menú las tiene en cuenta. Si añades algo, rehacemos el menú sin ello.
         </p>
         {error && (
           <div role="alert" className="mt-4 rounded-2xl bg-warn-bg p-3 text-[14px] text-terracotta-deep">

@@ -9,13 +9,13 @@ import {
 } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
-import { updateProfileSchema, onboardingSchema, onboardingDraftSchema } from '@ona/shared'
+import { updateProfileSchema, onboardingSchema, onboardingDraftSchema, fixedMealsFromTemplate } from '@ona/shared'
 import { env } from '../config/env.js'
 import bcrypt from 'bcryptjs'
 import { AdminAccountDeletionError, deleteAccount } from '../services/accountDeletion.js'
 import { cancelSubscriptionsPaidBy } from '../services/billing.js'
 import { onboardingStatus, saveOnboarding } from '../services/onboarding.js'
-import { analyzeOnboardingIntoMemory } from '../services/onboardingMemoryAnalysis.js'
+import { analyzeOnboardingIntoMemory, trackOnboardingAnalysis } from '../services/onboardingMemoryAnalysis.js'
 import {
   getHealthConsent,
   grantHealthConsent,
@@ -217,11 +217,11 @@ router.post('/user/:id/onboarding', validate(onboardingSchema), async (req: Auth
       return
     }
 
-    const { adults, kidsCount, cookingFreq, favoriteDishes, priority, healthConsent, restrictions, weekdayCooking, cookingNote } = req.body
+    const { adults, kidsCount, cookingFreq, favoriteDishes, priority, healthConsent, restrictions, weekdayCooking, cookingNote, cookingStyle, freezesMeatFish } = req.body
     // Allergies / restrictions are health data: stored only with the
     // separate consent box ticked (RGPD art. 9, PRO-21) — see saveOnboarding.
     const updated = await saveOnboarding(req.params.id, {
-      adults, kidsCount, cookingFreq, favoriteDishes, priority, healthConsent, restrictions, weekdayCooking, cookingNote,
+      adults, kidsCount, cookingFreq, favoriteDishes, priority, healthConsent, restrictions, weekdayCooking, cookingNote, cookingStyle, freezesMeatFish,
     })
 
     if (!updated) {
@@ -230,11 +230,15 @@ router.post('/user/:id/onboarding', validate(onboardingSchema), async (req: Auth
     }
 
     // PRO-138: the AI reads the answers (and the free «tu caso» text) into the
-    // memory, in the background — the first menu doesn't wait for it.
+    // memory and, since PRO-242, the weekly template's diners, in the
+    // background. The first POST /menu/generate waits for it at most 15 s.
     const userId = req.params.id
-    void analyzeOnboardingIntoMemory(userId, {
-      adults, kidsCount, cookingFreq, favoriteDishes, priority, weekdayCooking, cookingNote,
-    }).catch((err) => console.warn('[onboarding-analysis] failed:', err?.message ?? err))
+    void trackOnboardingAnalysis(
+      userId,
+      analyzeOnboardingIntoMemory(userId, {
+        adults, kidsCount, cookingFreq, favoriteDishes, priority, weekdayCooking, cookingNote,
+      }),
+    ).catch((err) => console.warn('[onboarding-analysis] failed:', err?.message ?? err))
 
     res.json(updated)
   } catch (err) {
@@ -340,6 +344,10 @@ router.put('/user/:id/settings', async (req: AuthRequest, res) => {
     const template = (await hasHealthConsent(req.params.id))
       ? req.body.template
       : stripHealthFromTemplate(req.body.template)
+    // Comidas fijas (PRO-218): keep only well-formed ones.
+    if (template && typeof template === 'object' && !Array.isArray(template) && 'fixedMeals' in template) {
+      ;(template as { fixedMeals?: unknown }).fixedMeals = fixedMealsFromTemplate(template)
+    }
 
     const [existing] = await db
       .select({ id: userSettings.id })

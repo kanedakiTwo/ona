@@ -18,6 +18,7 @@ import { PriceSurveySheet } from "@/components/menu/PriceSurveySheet"
 import { WhatsAppNudgeCard } from "@/components/menu/WhatsAppNudgeCard"
 import { AccountAccessNotice } from "@/components/billing/AccountAccessNotice"
 import { TasteIntroScreen, TasteMenuCard } from "@/components/taste/TasteOffers"
+import { AfinaNoticeCard } from "@/components/taste/AfinaNoticeCard"
 import { useTasteStatus } from "@/hooks/useTaste"
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react"
 import { useRouter } from "next/navigation"
@@ -44,13 +45,14 @@ import {
   usePatchDish,
   useRegenerateDish,
   useAddRandomDish,
+  useSetTaper,
 } from "@/hooks/useMenu"
 import { useUser } from "@/hooks/useUser"
 import { useOnboardingGate } from "@/hooks/useOnboardingGate"
 import { haptic } from "@/lib/pwa/haptics"
 import { recordMenuVisit } from "@/lib/pwa/installPrompt"
 import { share } from "@/lib/pwa/share"
-import { absentMeals, batchServings, dateOfDay, feedsLeftovers, dayHeading, missingMeals, orderedSlots, splitDay, weekHasDishes, weekRangeLabel, weekdayName, type MealKey } from "@/lib/menuDay"
+import { absentMeals, batchServings, dateOfDay, dayHeading, feedsLeftovers, missingMeals, orderedSlots, splitDay, taperSourceOf, weekHasDishes, weekRangeLabel, weekdayName, type MealKey } from "@/lib/menuDay"
 import { WeekGridView } from "@/components/menu/WeekGridView"
 import { WeekStrip } from "@/components/menu/WeekStrip"
 import { PantryMatchCard } from "@/components/menu/PantryMatchCard"
@@ -59,6 +61,9 @@ import { MenuFitLine } from "@/components/menu/MenuFitLine"
 import { WeekActionsSheet } from "@/components/menu/WeekActionsSheet"
 import { ConfirmSheet } from "@/components/menu/MenuSheet"
 import { MenuDesktop } from "@/components/menu/MenuDesktop"
+import { WeekPlanQuestions } from "@/components/menu/WeekPlanQuestions"
+import { mealsByDay } from "@/lib/weekPlanForm"
+import type { WeekPlan } from "@ona/shared"
 import { DayFooter, DayMeals, SkippedDay, type SlotPropsFn } from "@/components/menu/DayMeals"
 import type { SlotHandlers } from "@/components/menu/MealOptions"
 
@@ -182,6 +187,7 @@ export default function MenuPage() {
   const patchDish = usePatchDish()
   const regenerateDish = useRegenerateDish()
   const addRandomDish = useAddRandomDish()
+  const setTaper = useSetTaper()
 
   // Household diner count — the fallback when a slot has no override.
   const { data: profile } = useUser(user?.id)
@@ -242,10 +248,14 @@ export default function MenuPage() {
     await share({ title: "Mi menú de la semana", text: menuShareText(menu.days as never, window.location.origin) })
   }
 
+  // PRO-225 · «Antes de planificar»: the blank week's optional answers.
+  const [weekPlan, setWeekPlan] = useState<WeekPlan | undefined>(undefined)
   function handleGenerate() {
     if (!user) return
     haptic.medium()
-    generateMenu.mutate({ userId: user.id, weekStart })
+    // Only the blank week asks the questions; «Regenerar semana» sends none.
+    const plan = !menu || blankWeek ? weekPlan : undefined
+    generateMenu.mutate({ userId: user.id, weekStart, ...(plan ? { weekPlan: plan } : {}) })
   }
 
   /**
@@ -263,8 +273,14 @@ export default function MenuPage() {
       generateMenu.mutate({ userId: user.id, weekStart, empty: true })
       return
     }
+    // A week whose days are all empty because the user skipped them («Saltar
+    // día» empties the day) is a real week, not a legacy `[{}, …]` row:
+    // healing it brought the removed meals back as empty slots (PRO-115).
     const malformed =
-      Array.isArray(menu.days) && menu.days.length > 0 && menu.days.every((d) => !d || Object.keys(d).length === 0)
+      Array.isArray(menu.days) &&
+      menu.days.length > 0 &&
+      (menu.skippedDays ?? []).length === 0 &&
+      menu.days.every((d) => !d || Object.keys(d).length === 0)
     if (malformed) generateMenu.mutate({ userId: user.id, weekStart, empty: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, menu?.id, menuLoading, isPastWeek, weekStart])
@@ -287,11 +303,11 @@ export default function MenuPage() {
     generateMenu.mutate({ userId: user.id, weekStart, empty: true, force: true })
   }
 
-  /** «Añadir comida → Del congelador» (PRO-82): a táper that adds nothing to the list. */
-  function addFreezerDish(day: number, meal: string, recipeId: string) {
+  /** «Añadir comida → Del congelador / Táper de la nevera» (PRO-82, PRO-240): a táper that adds nothing to the list. */
+  function addFreezerDish(day: number, meal: string, recipeId: string, variant: "freezer" | "fridge" = "freezer") {
     if (!menu) return
     haptic.light()
-    addDish.mutate({ menuId: menu.id, day, meal, payload: { kind: "recipe", recipeId, variant: "freezer" } })
+    addDish.mutate({ menuId: menu.id, day, meal, payload: { kind: "recipe", recipeId, variant } })
   }
 
   /** Per-slot mutations + context, shared by every view. */
@@ -349,6 +365,11 @@ export default function MenuPage() {
           },
           // PRO-74: «Usar "<lo escrito>" como plato» swaps the dish for the
           // text (before, a note was only added next to it). Keeps «Solo hoy».
+          // PRO-223: «Me lo llevo en táper» / «Quitar táper».
+          setTaper: (on) => {
+            haptic.medium()
+            setTaper.mutate({ ...base, on })
+          },
           replaceWithNote: (text) => {
             haptic.medium()
             deleteMealSlot.mutate(base, {
@@ -372,6 +393,7 @@ export default function MenuPage() {
             defaultDiners,
             batchServings: batchServings((menu!.days ?? []) as DayMenu[], day, meal, defaultDiners),
             feedsLeftovers: feedsLeftovers((menu!.days ?? []) as DayMenu[], day, meal),
+            taperFrom: taperSourceOf((menu!.days ?? []) as DayMenu[], day, meal, weekdayName),
             isRegenerating: regenerateMeal.isPending,
           },
         }
@@ -560,6 +582,14 @@ export default function MenuPage() {
           : "Genera tu menú y la lista de la compra sale automática. O rellena tú los huecos."}
       </p>
       {!isPastWeek && (
+        <WeekPlanQuestions
+          key={weekStart}
+          meals={mealsByDay(menu?.days as Array<Record<string, unknown>> | undefined)}
+          defaultDiners={defaultDiners}
+          onChange={setWeekPlan}
+        />
+      )}
+      {!isPastWeek && (
         <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
           <button
             type="button"
@@ -648,6 +678,7 @@ export default function MenuPage() {
                 {header}
                 <AccountAccessNotice />
                 <NoHealthDataNotice />
+                <AfinaNoticeCard />
                 <TasteMenuCard />
                 <WhatsAppNudgeCard />
                 {statusCard}
@@ -686,6 +717,7 @@ export default function MenuPage() {
             {header}
             <AccountAccessNotice />
             <NoHealthDataNotice />
+            <AfinaNoticeCard />
             <TasteMenuCard />
             <WhatsAppNudgeCard />
             {statusCard}
@@ -718,6 +750,7 @@ export default function MenuPage() {
       <AccountAccessNotice />
 
       <NoHealthDataNotice />
+      <AfinaNoticeCard />
       <TasteMenuCard />
       <WhatsAppNudgeCard />
 
@@ -840,7 +873,7 @@ export default function MenuPage() {
                     haptic.medium()
                     skipDay.mutate({ menuId: menu.id, day: selectedDay })
                   }}
-                  onAddFreezer={(meal, recipeId) => addFreezerDish(selectedDay, meal, recipeId)}
+                  onAddFreezer={(meal, recipeId, variant) => addFreezerDish(selectedDay, meal, recipeId, variant)}
                 />
               </div>
             )}

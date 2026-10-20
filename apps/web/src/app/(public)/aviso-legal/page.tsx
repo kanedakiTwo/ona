@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { BRAND_NAME, LEGAL_OWNER } from "@ona/shared"
 import { CONTACT_EMAIL } from "@/lib/contact"
+import { SupportPhone } from "@/components/legal/SupportPhone"
 
 /**
  * Aviso legal (LSSI art. 10, PRO-22): who runs the service. Linked from the
@@ -35,6 +36,7 @@ export default function AvisoLegalPage() {
                 {CONTACT_EMAIL}
               </a>
             </li>
+            <SupportPhone as="li" />
           </ul>
 
           <H2>Qué es {BRAND_NAME}</H2>

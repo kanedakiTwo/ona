@@ -3,8 +3,9 @@
  *
  * From launch day, on day 7 of a household's 14-day trial and without a plan,
  * the owner gets the offer once: «Deja la tarjeta antes de que acabe tu prueba
- * y te quedas el precio de fundador para siempre». By email and, if they have
- * WhatsApp and wrote in the last 24 h, by Mimo there (never a template). The
+ * y te quedas el precio de fundador para siempre». ONE message (PRO-234,
+ * D-080): by Mimo on WhatsApp if they have it and wrote in the last 24 h
+ * (never a template); otherwise by email. The
  * app shows it too (cards and Mimo's panel, from `GET /billing` →
  * `founder.offer`). Marked in `households.founder_offer_at`. Between 09:00 and
  * 21:00 Madrid. Texts for Legal to review.
@@ -18,6 +19,7 @@ import {
   accountAccess,
   founderOfferStands,
   founderOfferText,
+  founderPriceAmounts,
   planByKey,
   trialLastDayLabel,
   type AccountAccess,
@@ -50,7 +52,7 @@ export function founderOfferEmail(i: OfferCopyInput & { email: string; publicUrl
     heading: 'Quédate el precio de *fundador*',
     paragraphs: [
       'Hola:',
-      `Llevas una semana con ${BRAND_NAME}. Si ya sabes que te quedas, deja la tarjeta antes de que acabe tu prueba (dura hasta el ${trialLastDayLabel(i.access)}, incluido) y te quedas el precio de fundador para siempre: no te sube mientras sigas suscrito.`,
+      `Llevas una semana con ${BRAND_NAME}. Si ya sabes que te quedas, deja la tarjeta antes de que acabe tu prueba (dura hasta el ${trialLastDayLabel(i.access)}, incluido) y te quedas el precio de fundador para siempre (${founderPriceAmounts()}): no te sube mientras sigas suscrito.`,
       `No se cobra nada hasta el ${formatDayEs(i.firstCharge)}. Quince días antes te avisamos de la fecha y del importe, y puedes cancelar antes sin pagar nada.`,
       `Esencial cuesta ${esencial} y Plus ${plus}, para todo tu hogar e IVA incluido.`,
     ],
@@ -135,8 +137,8 @@ export async function sendFounderOffers(now: Date, deps: OfferDeps) {
     if (!access) continue
     if (!(await deps.repo.claim(c.householdId, now))) continue
     const copy = { access, firstCharge: firstChargeInstant({ userCreatedAt: c.householdCreatedAt, now }) }
-    const mail = c.ownerEmail ? await deps.sendEmail(founderOfferEmail({ ...copy, email: c.ownerEmail, publicUrl: deps.publicUrl })) : null
-    if (mail) out.email[mail.status] += 1
+    // PRO-234 (D-080): ONE message — Mimo on WhatsApp if it gets through,
+    // otherwise the email. Never both.
     let wa: ChannelOutcome = { status: 'skipped' }
     try {
       wa = await deps.sendWhatsApp(c.ownerId, `${founderOfferShort(copy)}\n\n${deps.publicUrl.replace(/\/+$/, '')}/profile/suscripcion`, now)
@@ -144,6 +146,8 @@ export async function sendFounderOffers(now: Date, deps: OfferDeps) {
       console.error('[founder-offer] whatsapp failed:', err)
     }
     if (wa.status === 'ok') out.whatsapp += 1
+    const mail = wa.status !== 'ok' && c.ownerEmail ? await deps.sendEmail(founderOfferEmail({ ...copy, email: c.ownerEmail, publicUrl: deps.publicUrl })) : null
+    if (mail) out.email[mail.status] += 1
     if (mail?.status !== 'sent' && mail?.status !== 'failed' && wa.status !== 'ok') {
       await deps.repo.unclaim(c.householdId)
       continue

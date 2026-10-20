@@ -8,6 +8,7 @@ import { isWhatsAppConfigured } from './config.js'
 import { sendProactive } from './outbound.js'
 import { recordAnthropicCost } from '../costLedger.js'
 import { detectFlags, replyFlags } from '../assistantFlags.js'
+import { CLAUDE_MODEL } from '../../config/models.js'
 
 /**
  * Conversation reviewer agent. Once a day (07:00 Madrid, from the scheduler
@@ -22,7 +23,7 @@ import { detectFlags, replyFlags } from '../assistantFlags.js'
  * which capability is missing. The reviewer never changes user data.
  */
 
-export const REVIEW_MODEL = 'claude-opus-5-5'
+export const REVIEW_MODEL = CLAUDE_MODEL
 /** Run after 07:00 Madrid, before the 09:00 morning brief. */
 export const REVIEW_HOUR = 7
 export const SLOW_TURN_MS = 20_000

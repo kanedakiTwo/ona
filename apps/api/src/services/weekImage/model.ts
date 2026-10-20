@@ -39,7 +39,7 @@ export interface WeekImageRow {
   /** «15 oct» */
   dateLabel: string
   isToday: boolean
-  /** Before today (Europe/Madrid): drawn faded. */
+  /** Before today (Europe/Madrid): drawn faded. Past days with nothing are left out (PRO-244). */
   isPast: boolean
   /** `skipped` → «Sin cocinar»; `empty` → nothing planned at all that day. */
   kind: 'menu' | 'skipped' | 'empty'
@@ -89,7 +89,11 @@ function imageDish(d: Dish | null | undefined): WeekImageDish | null {
   }
   if (d.kind === 'recipe') {
     const base = stripEmoji(d.recipeName?.trim() || '') || 'Receta sin nombre'
-    const name = d.variant === 'freezer' ? `${base} (del congelador)` : d.variant === 'leftover' ? `${base} (sobras)` : base
+    const name = d.variant === 'freezer'
+      ? `${base} (del congelador)`
+      : d.variant === 'fridge'
+        ? `${base} (táper de la nevera)`
+        : d.variant === 'leftover' ? `${base} (sobras)` : base
     return { name, recipeId: d.recipeId || null }
   }
   return null
@@ -159,6 +163,9 @@ export function buildWeekImageModel(menu: WeekMenuInput, opts: { today: string }
     const empty = cells.every((c) => c.dishes.length === 0)
     return { ...base, kind: empty ? ('empty' as const) : ('menu' as const), cells: empty ? [] : cells }
   })
+    // PRO-244: a day that already went by with nothing on it is left out, so
+    // a first menu made mid-week (past days not generated) starts today.
+    .filter((r) => !(r.isPast && r.kind === 'empty'))
 
   const format: WeekImageFormat = columns.length <= 2 && maxDishes <= 1 ? 'A' : 'B'
   const range = capitalize(weekRangeEs(weekStart))

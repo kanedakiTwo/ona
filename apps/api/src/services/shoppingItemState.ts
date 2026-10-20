@@ -22,6 +22,20 @@ export interface ItemState {
    * state saved before 2026-10-19: such a mark covers any new amount.
    */
   quantity?: number
+  /**
+   * What the household changed on a menu line (PRO-175): «No lo compro esta
+   * semana» (`skipped`) and / or their own amount (`quantity`, in the key's
+   * unit). It applies to lists that end on or before `until` (the end of the
+   * list it was set on) and is forgotten after that day. Written by the edit
+   * route, never derived from the rows.
+   */
+  edit?: LineEdit
+}
+export interface LineEdit {
+  skipped?: boolean
+  quantity?: number
+  /** ISO `YYYY-MM-DD`: last day of the list it was set on. */
+  until: string
 }
 export type ItemStateMap = Record<string, ItemState>
 
@@ -50,30 +64,104 @@ export function carryItemState(
   prevItems: ShoppingItem[],
   prevState: ItemStateMap | null | undefined,
   convert?: ConvertQty,
+  /** `today` drops edits past their day; `rangeTo` (the list's last day) decides which apply (PRO-175). */
+  range: { today?: string; rangeTo?: string } = {},
 ): { items: ShoppingItem[]; state: ItemStateMap } {
   const state = new Map<string, ItemState>(Object.entries(prevState ?? {}))
+  for (const [k, s] of state) {
+    if (s.edit && range.today && s.edit.until < range.today) {
+      const { edit: _gone, ...rest } = s
+      state.set(k, rest)
+    }
+  }
   // Keys written from the previous rows: the latest the user saw.
   const fresh = new Set<string>()
   for (const it of prevItems) {
     if (it.kind === 'manual' || !it.ingredientId) continue
     const key = itemStateKey(it)
+    const edit = state.get(key)?.edit
     state.delete(key) // re-insert: most recent last
-    state.set(key, stateOfRow(it))
+    state.set(key, edit ? { ...stateOfRow(it), edit } : stateOfRow(it))
     fresh.add(key)
   }
-  const items = menuItems.map((it) => {
-    if (!it.ingredientId) return it
-    if ((it.mergedIngredientIds ?? []).length > 0) {
+  const items = menuItems.map((raw) => {
+    if (!raw.ingredientId) return raw
+    const it = applyEdit(raw, state.get(itemStateKey(raw))?.edit, range.rangeTo)
+    // A joined line (PRO-177) marked on itself keeps its amount like any other
+    // («nos quedan 4 huevos», PRO-182); otherwise it gathers its parts' marks.
+    const own = fresh.has(itemStateKey(it)) ? state.get(itemStateKey(it)) : undefined
+    if ((it.mergedIngredientIds ?? []).length > 0 && !(own && (own.checked || own.inStock))) {
       const s = mergedStateFor(it, state)
       return s ? { ...it, checked: s.checked, inStock: s.inStock, pricePerUnit: s.pricePerUnit } : it
     }
     return applyState(it, state, fresh, convert)
   })
-  const kept = [...state.entries()].filter(([, s]) => s.checked || s.inStock || s.pricePerUnit != null)
+  const kept = [...state.entries()].filter(([, s]) => s.checked || s.inStock || s.pricePerUnit != null || s.edit)
   return { items, state: Object.fromEntries(kept.slice(-ITEM_STATE_MAX)) }
 }
 
 const UNITS: ShoppingItem['unit'][] = ['g', 'ml', 'u', 'cda', 'cdita']
+
+/**
+ * The household's change on a menu line (PRO-175), when it applies to a list
+ * ending on `rangeTo`: a list that reaches past the day it was set for (the
+ * next weeks) shows the line as the menu asks; coming back shows it changed.
+ */
+export function applyEdit(it: ShoppingItem, edit: LineEdit | undefined, rangeTo: string | undefined): ShoppingItem {
+  if (!edit || (rangeTo && rangeTo > edit.until)) return it
+  let out = it
+  if (edit.quantity != null && edit.quantity >= 0) out = { ...out, quantity: edit.quantity, menuQuantity: it.quantity }
+  if (edit.skipped) out = { ...out, skipped: true }
+  return out
+}
+
+/**
+ * Write a change of the household on a menu line (PRO-175) into the row and
+ * into the remembered state, so it survives the rebuild on the next GET.
+ * `skipped: false` / `quantity: null` undo it. Pure: mutates the given row
+ * and returns the new state map.
+ */
+export function editMenuLine(
+  item: ShoppingItem,
+  state: ItemStateMap | null | undefined,
+  change: { skipped?: boolean; quantity?: number | null },
+  until: string,
+): ItemStateMap {
+  const key = itemStateKey(item)
+  const next: ItemStateMap = { ...(state ?? {}) }
+  const prev = next[key] ?? { checked: !!item.checked, inStock: !!item.inStock, pricePerUnit: item.pricePerUnit ?? null }
+  const edit: Partial<LineEdit> = { ...(prev.edit ?? {}) }
+  if (change.skipped !== undefined) {
+    if (change.skipped) {
+      edit.skipped = true
+      item.skipped = true
+    } else {
+      delete edit.skipped
+      delete item.skipped
+    }
+  }
+  if (change.quantity !== undefined) {
+    const menuQty = item.menuQuantity ?? item.quantity
+    if (change.quantity == null || Math.abs(change.quantity - menuQty) < 1e-9) {
+      delete edit.quantity
+      item.quantity = menuQty
+      delete item.menuQuantity
+    } else {
+      edit.quantity = change.quantity
+      item.menuQuantity = menuQty
+      item.quantity = change.quantity
+    }
+    // The amount changed: the partial «ya tienes» no longer adds up.
+    delete item.haveQuantity
+    delete item.haveSource
+  }
+  const has = edit.skipped || edit.quantity != null
+  const { edit: _old, ...rest } = prev
+  if (has) next[key] = { ...rest, edit: { ...(edit.skipped ? { skipped: true } : {}), ...(edit.quantity != null ? { quantity: edit.quantity } : {}), until } }
+  else if (rest.checked || rest.inStock || rest.pricePerUnit != null) next[key] = rest
+  else delete next[key]
+  return next
+}
 
 /** What a row of the previous list says: its marks and the amount they cover. */
 function stateOfRow(it: ShoppingItem): ItemState {
@@ -126,6 +214,36 @@ function applyState(it: ShoppingItem, state: Map<string, ItemState>, fresh: Set<
     haveQuantity: it.quantity - missing,
     haveSource: s.inStock ? 'inStock' : 'checked',
   }
+}
+
+/**
+ * «Nos queda una cebolla» (PRO-182): how much of a menu line the household
+ * has at home, in the line's unit. The line stays pending for the rest
+ * («Te faltan 6 · ya tienes 1»), the same partial state a menu change leaves
+ * (PRO-199), so the next rebuild carries it and subtracts it from whatever
+ * the menu asks then. 0 clears it; as much as the line (or more) marks the
+ * whole line «en casa». Pure: mutates and returns the row.
+ */
+export function setHaveAtHome(item: ShoppingItem, have: number): ShoppingItem {
+  delete item.haveQuantity
+  delete item.haveSource
+  item.checked = false
+  if (!(have > 0)) {
+    item.inStock = false
+    return item
+  }
+  const missing = roundMissing(item.quantity - have, item.unit)
+  if (missing <= 0) {
+    item.inStock = true
+    return item
+  }
+  item.inStock = false
+  const covered = item.quantity - missing
+  if (covered > 0) {
+    item.haveQuantity = covered
+    item.haveSource = 'inStock'
+  }
+  return item
 }
 
 /** What is left to buy, in amounts a shop sells; 0 when the gap is rounding noise (≤ 2 %). */

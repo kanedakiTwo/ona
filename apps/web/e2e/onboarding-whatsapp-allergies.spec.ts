@@ -74,6 +74,9 @@ async function signUpByWhatsApp(page: Page) {
   const ready = page.getByTestId('onboarding-menu-ready')
   await expect(ready).toBeVisible({ timeout: 15_000 })
   await expect(ready.getByRole('heading', { name: /tu menú está listo/i })).toBeVisible()
+  // PRO-204 (Legal): how health data is kept, word for word.
+  await expect(ready).toContainText('Las alergias e intolerancias se guardan en tu perfil solo si nos das permiso, y el menú las tiene en cuenta.')
+  await expect(ready).not.toContainText('Por WhatsApp no guardamos datos de salud')
   await expect(page).toHaveURL(/\/onboarding/)
 }
 

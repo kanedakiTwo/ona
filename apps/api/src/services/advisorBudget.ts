@@ -18,11 +18,12 @@ import { users } from '../db/schema.js'
 import { env } from '../config/env.js'
 import { ACTIVE_PRICES } from '../config/pricing.js'
 import { attributeCostToUser, currentCostChannel, recordCost } from './costLedger.js'
+import { CLAUDE_MODEL } from '../config/models.js'
 
 type Db = typeof defaultDb
 
 /** Model the advisor budget prices — keep in sync with `ASSISTANT_MODEL` in `services/assistant/engine.ts`. */
-export const ADVISOR_PRICE_MODEL = 'claude-sonnet-5-5'
+export const ADVISOR_PRICE_MODEL = CLAUDE_MODEL
 
 /**
  * The assistant model's list price, USD per million tokens, read from the

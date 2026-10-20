@@ -1,12 +1,31 @@
-import { AISLES, capitalize, formatQty, prettyName, type ShoppingItem } from '@ona/shared'
+import type { CookTodayResult } from '../cookToday.js'
+import {
+  AISLES,
+  ALERT_KINDS,
+  ALERT_LABELS,
+  ALERT_OPT_IN_KINDS,
+  HOUSEHOLD_INVITE_TTL_DAYS,
+  capitalize,
+  familyInviteShareText,
+  formatQty,
+  householdInvitePath,
+  inviteHouseholdShareText,
+  isAlertKind,
+  prettyName,
+  whatsappShareHref,
+  type AlertKind,
+  type AlertsOverview,
+  type ShoppingItem,
+} from '@ona/shared'
 import type { SkillContext, SkillDefinition, SkillResult } from './types.js'
 import { appApiFor, AppApiError, type AppApi } from './appApi.js'
 import { madridParts, madridWeekStart } from '../madridTime.js'
 import { DAY_PROP, dateLabel, isMenuDayError, menuDayOf, resolveMenuDay, type MenuDay } from './menuDay.js'
 import { env } from '../../config/env.js'
 import { HEALTH_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY } from '../healthConsent.js'
-import { PROACTIVE_KINDS, PROACTIVE_LABELS, type ProactiveKind } from '../whatsapp/proactive.js'
 import { createDishRecipe, NEW_RECIPE_PROP, NOTE_THEN_RECIPE_HINT } from './dishRecipe.js'
+import { repeatNote } from './weekRepeats.js'
+import { PROACTIVE_KINDS, PROACTIVE_LABELS, type ProactiveKind } from '../whatsapp/proactive.js'
 
 /**
  * UI-parity skills: everything the web app can do, reachable from chat
@@ -301,7 +320,7 @@ const addDish: SkillDefinition = {
         if (notePos >= 0) await api(ctx)('DELETE', `${path}/dish/${notePos}`)
         await api(ctx)('POST', `${path}/dish`, { kind: 'recipe', recipeId: created.id })
         return menuDone(
-          `Hecho: "${created.name}" no estaba en sus recetas ni en el catalogo; la he creado como receta del hogar (raciones e ingredientes estimados; se puede revisar en la app) y la he añadido a ${where(t, p.meal)}. Sus ingredientes ya salen en la lista de la compra.`,
+          `Hecho: "${created.name}" no estaba en sus recetas ni en el catalogo; la he creado como receta del hogar (raciones e ingredientes estimados; se puede revisar en la app) y la he añadido a ${where(t, p.meal)}. Sus ingredientes ya salen en la lista de la compra.${repeatNote(menu.days, t.weekStart, t.dayIndex, p.meal, { recipeId: created.id, name: created.name })}`,
           changed(t, p.meal, { recipeId: created.id, recipeName: created.name }),
         )
       }
@@ -309,13 +328,16 @@ const addDish: SkillDefinition = {
       await api(ctx)('POST', `${path}/dish`, { kind: 'note', text: note })
       const closest = recipe ? ` Lo mas parecido que si hay es "${recipe.name}".` : ''
       return menuDone(
-        `Hecho: he añadido "${note}" a ${where(t, p.meal)} como nota, porque no esta en sus recetas ni en el catalogo.${closest} ${NOTE_THEN_RECIPE_HINT}${recipe ? ` Si prefiere "${recipe.name}", ofrecele cambiar la nota por esa receta.` : ''}`,
+        `Hecho: he añadido "${note}" a ${where(t, p.meal)} como nota, porque no esta en sus recetas ni en el catalogo.${repeatNote(menu.days, t.weekStart, t.dayIndex, p.meal, { name: note })}${closest} ${NOTE_THEN_RECIPE_HINT}${recipe ? ` Si prefiere "${recipe.name}", ofrecele cambiar la nota por esa receta.` : ''}`,
         changed(t, p.meal, { note }),
       )
     }
     if (!recipe) return text(`No encontre la receta "${p.recipeId}"; no he añadido nada.`)
     await api(ctx)('POST', `${path}/dish`, { kind: 'recipe', recipeId: recipe.id })
-    return menuDone(`Hecho: he añadido "${recipe.name}" a ${where(t, p.meal)}.`, changed(t, p.meal, { recipeId: recipe.id, recipeName: recipe.name }))
+    return menuDone(
+      `Hecho: he añadido "${recipe.name}" a ${where(t, p.meal)}.${repeatNote(menu.days, t.weekStart, t.dayIndex, p.meal, { recipeId: recipe.id, name: recipe.name })}`,
+      changed(t, p.meal, { recipeId: recipe.id, recipeName: recipe.name }),
+    )
   },
 }
 
@@ -530,6 +552,7 @@ async function replaceBannedDishes(
       const dish = dishes[pos]
       if (dish.kind !== 'recipe' || dish.recipeId !== recipeId || dish.variant === 'leftover') continue
       if (dish.variant === 'freezer') { kept.push(`${label(d, meal)} (es un taper del congelador)`); continue }
+      if (dish.variant === 'fridge') { kept.push(`${label(d, meal)} (es un taper de la nevera)`); continue }
       if (locked[String(d)]?.[meal]) { kept.push(`${label(d, meal)} (esta fijada)`); continue }
       const name = await regenerate(d, meal, pos)
       if (!name) { kept.push(`${label(d, meal)} (no hay otra receta que encaje)`); continue }
@@ -600,17 +623,19 @@ const setLeftovers: SkillDefinition = {
 
 // PRO-82: a táper from the freezer is a dish linked to its recipe that never
 // adds to the shopping list (`variant: 'freezer'`), whatever week it was
-// cooked in.
+// cooked in. PRO-240: the same in the fridge (`variant: 'fridge'`,
+// «Táper de la nevera»); Mimo picks by what the household says.
 const addFreezerDish: SkillDefinition = {
   name: 'add_freezer_dish',
   description:
-    'Pone en una comida un taper del congelador ("esta noche comemos taper de lentejas", "el jueves tiramos de las albondigas congeladas"). Queda enlazado a su receta con la etiqueta "Del congelador" y NO suma nada a la lista de la compra. Por defecto sustituye lo que hubiera en esa comida. Para sobras de otra comida de la misma semana usa set_leftovers.',
+    'Pone en una comida un taper ya cocinado ("esta noche comemos taper de lentejas", "el jueves tiramos de las albondigas congeladas", "hemos hecho batch y lo tenemos en tapers"). Queda enlazado a su receta con su nombre, sin "Empezar a cocinar", y NO suma nada a la lista de la compra (tampoco las sobras que salgan del mismo plato). place: "nevera" si el hogar dice que lo guarda en la nevera (o es para estos dias), "congelador" si esta congelado; si no lo dice, congelador. Por defecto sustituye lo que hubiera en esa comida. Para sobras de otra comida de la misma semana usa set_leftovers.',
   parameters: {
     type: 'object',
     properties: {
       ...dayMealProps,
       recipeName: { type: 'string', description: 'El plato del taper, sin "taper de" (ej. "lentejas")' },
       recipeId: { type: 'string' },
+      place: { type: 'string', enum: ['congelador', 'nevera'], description: 'Donde esta el taper. Por defecto congelador.' },
       keepDishes: { type: 'boolean', description: 'true para añadirlo sin quitar los platos de esa comida' },
     },
     required: ['meal', 'recipeName'],
@@ -636,28 +661,34 @@ const addFreezerDish: SkillDefinition = {
         changed(t, p.meal, { menuId: menu.id, note }),
       )
     }
-    await api(ctx)('POST', `${path}/dish`, { kind: 'recipe', recipeId: recipe.id, variant: 'freezer' })
+    const fridge = p.place === 'nevera'
+    const variant = fridge ? 'fridge' : 'freezer'
+    await api(ctx)('POST', `${path}/dish`, { kind: 'recipe', recipeId: recipe.id, variant })
     const approx = 'approximate' in recipe && recipe.approximate ? ` Es la receta mas parecida a "${p.recipeName}" que hay.` : ''
     return menuDone(
-      `Hecho: ${where(t, p.meal)} es "${recipe.name}" del congelador${removed}; no suma nada a la lista de la compra.${approx}`,
-      changed(t, p.meal, { menuId: menu.id, recipeId: recipe.id, recipeName: recipe.name, variant: 'freezer' }),
+      `Hecho: ${where(t, p.meal)} es "${recipe.name}", ${fridge ? 'taper de la nevera' : 'del congelador'}${removed}; no suma nada a la lista de la compra.${approx}`,
+      changed(t, p.meal, { menuId: menu.id, recipeId: recipe.id, recipeName: recipe.name, variant }),
     )
   },
 }
 
 // ─── Shopping list ───────────────────────────────────────────────
 
-type ListItem = Pick<ShoppingItem, 'id' | 'name'> & Partial<Pick<ShoppingItem, 'quantity' | 'unit' | 'aisle' | 'checked' | 'inStock' | 'kind' | 'haveQuantity'>>
+type ListItem = Pick<ShoppingItem, 'id' | 'name'> &
+  Partial<Pick<ShoppingItem, 'ingredientId' | 'quantity' | 'unit' | 'aisle' | 'checked' | 'inStock' | 'kind' | 'haveQuantity' | 'skipped' | 'menuQuantity' | 'amountText'>>
 interface ListDoc { id: string; items: ListItem[] }
 // The rolling list /shopping shows (today → next Sunday): menu items, staples
 // and manual items, with their checked / inStock state.
 const currentList = (ctx: SkillContext) => api(ctx)<ListDoc>('GET', '/shopping-list')
 
-const pending = (i: ListItem) => !i.checked && !i.inStock
+const pending = (i: ListItem) => !i.checked && !i.inStock && !i.skipped
+/** A line the recipes of the menu put on the list (not typed by hand, not a staple). */
+const fromMenu = (i: ListItem) => i.kind !== 'manual' && i.kind !== 'staple' && !!i.ingredientId
 
 /** "Tomate (1 kg)", "Huevos (12 unidades)", "Leche" (1 unidad says nothing). */
 export function itemLabel(i: ListItem): string {
   const name = prettyName(i.name)
+  if (i.amountText) return `${name} (${i.amountText})`
   // Part of it already bought or at home for an earlier menu (PRO-199): say only the rest.
   if (i.quantity && i.unit && i.haveQuantity && i.haveQuantity > 0) {
     return `${name} (faltan ${formatQty(Math.max(0, i.quantity - i.haveQuantity), i.unit)}; ya tienes ${formatQty(i.haveQuantity, i.unit)})`
@@ -708,8 +739,13 @@ const getShoppingList: SkillDefinition = {
     }
     const missing = items.filter(pending).sort((a, b) => AISLES.indexOf(a.aisle ?? 'otros') - AISLES.indexOf(b.aisle ?? 'otros'))
     const bought = items.filter((i) => i.checked).length
-    const atHome = items.filter((i) => i.inStock && !i.checked).length
-    const extra = [bought ? `Ya comprado: ${bought}.` : '', atHome ? `En casa: ${atHome}.` : ''].filter(Boolean).join(' ')
+    const atHome = items.filter((i) => i.inStock && !i.checked && !i.skipped).length
+    const skipped = items.filter((i) => i.skipped).map((i) => prettyName(i.name))
+    const extra = [
+      bought ? `Ya comprado: ${bought}.` : '',
+      atHome ? `En casa: ${atHome}.` : '',
+      skipped.length ? `Quitado de esta compra: ${skipped.join(', ')}.` : '',
+    ].filter(Boolean).join(' ')
     if (missing.length === 0) {
       return { data, summary: `Ya lo tienes todo. ${extra}`.trim(), uiHint: 'shopping_list' }
     }
@@ -766,6 +802,12 @@ const addShoppingItems: SkillDefinition = {
       // pending is a no-op, and with it bought it means "we need it again".
       const same = findSameProduct(items, String(it.name ?? ''))
       if (same) {
+        if (same.skipped) {
+          await api(ctx)('PUT', `/shopping-list/${list.id}/item/${same.id}/edit`, { skipped: false })
+          same.skipped = false
+          back.push(prettyName(same.name))
+          continue
+        }
         if (pending(same)) {
           already.push(prettyName(same.name))
           continue
@@ -778,9 +820,11 @@ const addShoppingItems: SkillDefinition = {
         continue
       }
       const b = toBuyable(it.quantity, it.unit)
-      const name = String(b.suffix ? `${it.name} (${b.suffix})` : it.name).slice(0, 80)
+      const name = String(it.name).slice(0, 80)
       await api(ctx)('POST', `/shopping-list/${list.id}/items`, {
         name,
+        // «2 paquetes» stays as the household said it, not in the name (PRO-175).
+        ...(b.suffix ? { amountText: b.suffix.slice(0, 30) } : {}),
         ...(b.quantity ? { quantity: b.quantity } : {}),
         ...(b.unit ? { unit: b.unit } : {}),
       })
@@ -789,7 +833,7 @@ const addShoppingItems: SkillDefinition = {
     }
     const parts: string[] = []
     if (added.length) parts.push(`añadido a la lista: ${added.join(', ')}.`)
-    if (back.length) parts.push(`vuelve a estar pendiente (estaba comprado o en casa): ${back.join(', ')}.`)
+    if (back.length) parts.push(`vuelve a estar pendiente (estaba comprado, en casa o quitado): ${back.join(', ')}.`)
     const changed = parts.length > 0
     if (already.length) parts.push(`${changed ? 'Ya estaba' : 'No he cambiado nada, ya estaba'} en la lista: ${already.join(', ')}.`)
     const sentences = parts.map((s, i) => (i === 0 ? s : capitalize(s)))
@@ -800,27 +844,71 @@ const addShoppingItems: SkillDefinition = {
 
 const removeShoppingItems: SkillDefinition = {
   name: 'remove_shopping_items',
-  description: 'Quita productos de la lista de la compra (no es lo mismo que marcarlos como comprados: para eso usa check_shopping_item).',
+  description:
+    'Quita productos de la lista de la compra ("quita la patata", "esta semana no compro pan"). Lo añadido a mano se borra; lo que viene del menu queda quitado de esta compra («No lo compro esta semana») y se puede volver a poner con add_shopping_items. No es lo mismo que marcarlo como comprado (check_shopping_item) ni "en casa" (mark_in_stock).',
   parameters: { type: 'object', properties: { names: { type: 'array', items: { type: 'string' } } }, required: ['names'] },
   async handler(p, ctx) {
     const list = await currentList(ctx)
     const removed: string[] = []
     const missing: string[] = []
-    let items = [...(list.items ?? [])]
+    const staples: string[] = []
+    let items = [...(list.items ?? [])].filter((i) => !i.skipped)
     for (const name of p.names ?? []) {
       const hit = bestMatch(items, name, (i) => i.name)
       if (!hit) {
         missing.push(name)
         continue
       }
-      await api(ctx)('DELETE', `/shopping-list/${list.id}/item/${hit.id}`)
-      removed.push(hit.name)
       items = items.filter((i) => i.id !== hit.id)
+      if (hit.kind === 'staple') {
+        staples.push(prettyName(hit.name))
+        continue
+      }
+      // A menu line can't be deleted (the next rebuild brings it back): it is left out of this shopping (PRO-175).
+      if (fromMenu(hit)) await api(ctx)('PUT', `/shopping-list/${list.id}/item/${hit.id}/edit`, { skipped: true })
+      else await api(ctx)('DELETE', `/shopping-list/${list.id}/item/${hit.id}`)
+      removed.push(prettyName(hit.name))
     }
     const parts = []
     if (removed.length) parts.push(`Quitado de la lista: ${removed.join(', ')}.`)
+    if (staples.length) parts.push(`${staples.join(', ')} ${staples.length === 1 ? 'es uno de tus básicos' : 'son de tus básicos'}: si quieres, lo pauso (manage_staples).`)
     if (missing.length) parts.push(`No estaban en la lista: ${missing.join(', ')}.`)
     return { data: null, summary: parts.join(' '), uiHint: 'shopping_list' }
+  },
+}
+
+/** «Pon 2 kilos de patatas», «yogures, 8», «pañales, 2 paquetes» (PRO-175). */
+const changeShoppingItemAmount: SkillDefinition = {
+  name: 'change_shopping_item_amount',
+  description:
+    'Cambia la cantidad que se compra de un producto de la lista ("de patatas pon 2 kilos", "los yogures, 8", "pañales, 2 paquetes"). En lo que viene del menu la cantidad va en la unidad de la linea (g, ml, unidades…); en lo añadido a mano vale cualquier cantidad ("2 paquetes"). Sin quantity vuelve a la cantidad del menu.',
+  parameters: {
+    type: 'object',
+    properties: { name: { type: 'string' }, quantity: { type: 'number' }, unit: { type: 'string' } },
+    required: ['name'],
+  },
+  async handler(p, ctx) {
+    const list = await currentList(ctx)
+    const hit = bestMatch(list.items ?? [], String(p.name ?? ''), (i) => i.name)
+    if (!hit) return text(`"${p.name}" no está en la lista; no he cambiado nada.`)
+    const name = prettyName(hit.name)
+    const b = toBuyable(p.quantity, p.unit)
+    if (hit.kind === 'staple') return text(`${name} es uno de tus básicos: su cantidad se cambia en tus básicos (manage_staples).`)
+    if (!fromMenu(hit)) {
+      if (b.suffix) await api(ctx)('PATCH', `/shopping-list/${list.id}/item/${hit.id}`, { amountText: b.suffix.slice(0, 30) })
+      else if (b.quantity) await api(ctx)('PATCH', `/shopping-list/${list.id}/item/${hit.id}`, { quantity: b.quantity, unit: b.unit })
+      else return text(`¿Cuánto ${name.toLowerCase()} pongo?`)
+      return { data: { listId: list.id }, summary: `Hecho: ${name}, ${b.suffix ?? formatQty(b.quantity!, b.unit as ShoppingItem['unit'])}.`, uiHint: 'shopping_list' }
+    }
+    if (p.quantity == null) {
+      await api(ctx)('PUT', `/shopping-list/${list.id}/item/${hit.id}/edit`, { quantity: null })
+      return { data: { listId: list.id }, summary: `Hecho: ${name} vuelve a lo que pide el menú.`, uiHint: 'shopping_list' }
+    }
+    if (!b.quantity || !hit.unit || b.unit !== hit.unit) {
+      return text(`En ${name} la cantidad va en ${hit.unit === 'u' ? 'unidades' : hit.unit} (ahora ${formatQty(hit.quantity ?? 0, hit.unit ?? 'u')}). ¿Cuánto pongo?`)
+    }
+    await api(ctx)('PUT', `/shopping-list/${list.id}/item/${hit.id}/edit`, { quantity: b.quantity })
+    return { data: { listId: list.id }, summary: `Hecho: ${name}, ${formatQty(b.quantity, hit.unit)} (el menú pedía ${formatQty(hit.menuQuantity ?? hit.quantity ?? 0, hit.unit)}).`, uiHint: 'shopping_list' }
   },
 }
 
@@ -881,7 +969,7 @@ interface PantryRow { id: string; name: string; quantity: number; unit: string; 
 const updatePantry: SkillDefinition = {
   name: 'update_pantry',
   description:
-    'Actualiza la despensa real: action add ("he comprado 1 kg de arroz"), set (fija la cantidad), remove ("se acabo el aceite"). expiresAt opcional YYYY-MM-DD.',
+    'Actualiza la despensa real: action add ("he comprado 1 kg de arroz"), set (fija la cantidad), remove ("se acabo el aceite"). expiresAt opcional YYYY-MM-DD. location: donde esta (nevera, congelador o despensa), p. ej. "he congelado 4 pechugas" → congelador; con set y solo location lo cambia de sitio.',
   parameters: {
     type: 'object',
     properties: {
@@ -890,6 +978,7 @@ const updatePantry: SkillDefinition = {
       quantity: { type: 'number' },
       unit: { type: 'string' },
       expiresAt: { type: 'string', description: 'YYYY-MM-DD' },
+      location: { type: 'string', enum: ['nevera', 'congelador', 'despensa'] },
     },
     required: ['action', 'name'],
   },
@@ -898,6 +987,8 @@ const updatePantry: SkillDefinition = {
     const hit = bestMatch(rows, p.name, (r) => r.name)
     const b = toBuyable(p.quantity, p.unit)
     const exp = typeof p.expiresAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.expiresAt) ? p.expiresAt : undefined
+    // PRO-228: where it is; a move restarts its date in the new place.
+    const location = ['nevera', 'congelador', 'despensa'].includes(p.location) ? (p.location as string) : undefined
     if (p.action === 'remove') {
       if (!hit) return text(`"${p.name}" no estaba en la despensa.`)
       await api(ctx)('DELETE', `/pantry/${hit.id}`)
@@ -909,15 +1000,17 @@ const updatePantry: SkillDefinition = {
         ...(quantity != null ? { quantity } : {}),
         ...(b.unit ? { unit: b.unit } : {}),
         ...(exp ? { expiresAt: exp } : {}),
+        ...(location ? { location } : {}),
       })
-      return text(`Hecho: "${hit.name}" actualizado en la despensa${quantity != null ? ` (${quantity} ${b.unit ?? hit.unit})` : ''}.`)
+      return text(`Hecho: "${hit.name}" actualizado en la despensa${quantity != null ? ` (${quantity} ${b.unit ?? hit.unit})` : ''}${location ? ` (${location})` : ''}.`)
     }
     await api(ctx)('POST', '/pantry', {
       name: String(b.suffix ? `${p.name} (${b.suffix})` : p.name).slice(0, 80),
       ...(b.quantity != null ? { quantity: b.quantity, unit: b.unit } : {}),
       ...(exp ? { expiresAt: exp } : {}),
+      ...(location ? { location } : {}),
     })
-    return text(`Hecho: "${p.name}" añadido a la despensa.`)
+    return text(`Hecho: "${p.name}" añadido a la despensa${location && location !== 'despensa' ? ` (${location})` : ''}.`)
   },
 }
 
@@ -1190,19 +1283,47 @@ const updateWeeklyTemplate: SkillDefinition = {
 
 const inviteToHousehold: SkillDefinition = {
   name: 'invite_to_household',
-  description: 'Crea un enlace de invitacion para que otra persona se una al hogar (comparten menu, lista y despensa). Devuelve el enlace para reenviarlo.',
+  description: 'Crea un enlace de invitacion para que otra persona se una al hogar (comparten menu, lista y despensa). Devuelve el mensaje ya escrito con el enlace para reenviarlo por WhatsApp. Usala tambien cuando el usuario diga que si a tu oferta de mandarle el menu y la lista a su pareja o a quien vive con el.',
   parameters: { type: 'object', properties: { role: { type: 'string', enum: ['member', 'child'] } }, required: [] },
   async handler(p, ctx) {
-    const inv = await api(ctx)<{ token: string; expiresAt?: string }>('POST', '/households/me/invites', { role: p.role === 'child' ? 'child' : 'member' })
-    const url = `${env.WEB_PUBLIC_URL}/invites/${inv.token}`
-    return text(`Hecho: enlace de invitacion (caduca en 7 dias): ${url} — dale este enlace tal cual al usuario para que lo reenvie.`, { url })
+    // PRO-260/263: prepared by Mimo and handed over in this reply (counts as sent).
+    const inv = await api(ctx)<{ token: string; expiresAt?: string }>('POST', '/households/me/invites', {
+      role: p.role === 'child' ? 'child' : 'member',
+      source: 'mimo',
+      shared: true,
+    })
+    const url = `${env.WEB_PUBLIC_URL}${householdInvitePath(inv.token)}`
+    const message = familyInviteShareText(url)
+    const wa = whatsappShareHref(message)
+    const how =
+      ctx.channel === 'whatsapp'
+        ? 'Dale el mensaje tal cual, en un bloque aparte, para que lo reenvie a esa persona.'
+        : `Dale el mensaje tal cual y este enlace para mandarlo por WhatsApp de un toque: ${wa}`
+    return text(
+      `Hecho: invitacion al hogar (caduca en ${HOUSEHOLD_INVITE_TTL_DAYS} dias, sirve una vez). Mensaje para reenviar:\n${message}\n${how}`,
+      { url, message, whatsappHref: wa },
+    )
+  },
+}
+
+/** PRO-163 (D-051): the same «Invitar a otro hogar» as the button, in the chat and on WhatsApp. */
+const shareInviteLink: SkillDefinition = {
+  name: 'share_invite_link',
+  description:
+    'Da el enlace personal del usuario para invitar a OTRO hogar (amigos o familia que viven en otra casa) a probar Mimoia, con el mensaje listo para reenviar. No sirve para unir a alguien a su propio hogar: para eso es invite_to_household.',
+  parameters: { type: 'object', properties: {}, required: [] },
+  async handler(_p, ctx) {
+    const { link } = await api(ctx)<{ code: string; link: string }>('GET', '/referrals/me')
+    await api(ctx)('POST', '/usage/invite-shared', { channel: ctx.channel === 'whatsapp' ? 'whatsapp' : 'web' }).catch(() => {})
+    const message = inviteHouseholdShareText(link)
+    return text(`Hecho: su enlace para invitar a otro hogar es ${link}. Dale este mensaje tal cual para que lo reenvie: «${message}»`, { link, message })
   },
 }
 
 const setWhatsappNotifications: SkillDefinition = {
   name: 'set_whatsapp_notifications',
   description:
-    'Activa o desactiva los avisos que Mimo manda por WhatsApp sin que el usuario escriba. kind: all (todos), daily_brief (resumen de la mañana), weekly_nudge (propuesta de menu del domingo), prep_alerts (descongelar, remojo…), cooking_reminder (empezar a cocinar), dinner_checkin ("¿hiciste la cena?"), shopping_reminder (recordatorio de la compra). Ej: "no me mandes el resumen de la mañana".',
+    'Activa o desactiva los avisos que Mimo manda por WhatsApp sin que el usuario escriba. kind: all (todos), daily_brief (resumen de la mañana con el menú del día: apagado salvo que lo pida, p. ej. "mándame el menú cada mañana"), weekly_nudge (propuesta de menu del domingo), prep_alerts (descongelar, remojo…), cooking_reminder (empezar a cocinar), dinner_checkin ("¿hiciste la cena?"), shopping_reminder (recordatorio de la compra). Ej: "no me mandes el resumen de la mañana". Cambia lo mismo que Perfil → Avisos; para ver por donde llega cada aviso usa get_alerts.',
   parameters: {
     type: 'object',
     properties: {
@@ -1222,6 +1343,93 @@ const setWhatsappNotifications: SkillDefinition = {
     if (enabled) body.notify = true // turning one kind on implies the master switch
     await api(ctx)('PATCH', '/whatsapp/link', body)
     return text(`Hecho: ${PROACTIVE_LABELS[p.kind as ProactiveKind]} ${enabled ? 'activado' : 'desactivado'}.`)
+  },
+}
+
+/** The «Avisos» list as Mimo reads it (PRO-237): one line per kind. */
+export function describeAlerts(o: AlertsOverview): string {
+  const where: Record<string, string> = { whatsapp: 'por WhatsApp', push: 'como notificación del móvil', email: 'por correo', off: 'no llega' }
+  const lines = o.kinds.map((k) => {
+    if (!k.on) return `- ${k.title} (${k.kind}): apagado`
+    const tail = k.channel === 'off' ? `no llega${k.note ? ` (${k.note})` : ''}` : `${where[k.channel]}${k.fallback ? ' (si WhatsApp falla, notificación del móvil)' : ''}`
+    return `- ${k.title} (${k.kind}): encendido, ${tail}`
+  })
+  const wa = o.whatsapp.linked ? (o.whatsapp.notify ? 'WhatsApp conectado con avisos.' : 'WhatsApp conectado, avisos apagados.') : 'WhatsApp sin conectar.'
+  const push = o.push.subscribed ? 'Notificaciones del móvil activadas.' : 'Notificaciones del móvil sin activar.'
+  return `${wa} ${push}\n${lines.join('\n')}\nPor correo solo llega lo de la cuenta (bienvenida, contraseña, invitaciones, la prueba y el aviso antes del primer cobro) y, si lo pidió, el menú de los viernes. Todo esto se ve y se cambia en Perfil → Avisos.`
+}
+
+const getAlerts: SkillDefinition = {
+  name: 'get_alerts',
+  description:
+    'Lista los avisos de Mimo (menu del dia, empezar a cocinar, congelador/remojo, "¿hiciste la cena?", compra, domingo, repaso del congelador), si estan encendidos y por donde llegan (WhatsApp, notificacion del movil o no llegan). Usala cuando pregunte "¿que avisos tengo?", "¿por donde me avisas?".',
+  parameters: { type: 'object', properties: {}, required: [] },
+  async handler(_p, ctx) {
+    const o = await api(ctx)<AlertsOverview>('GET', '/notifications/prefs')
+    return text(describeAlerts(o), o as unknown as Record<string, unknown>)
+  },
+}
+
+const setAlerts: SkillDefinition = {
+  name: 'set_alerts',
+  description:
+    'Enciende o apaga avisos de Mimo, igual que el interruptor de Perfil → Avisos (en todos los canales). kind: all (todos), daily_brief (menu del dia por la mañana), weekly_nudge (propuesta de menu del domingo), prep_alerts (descongelar, remojo…), cooking_reminder (empezar a cocinar), dinner_checkin ("¿hiciste la cena?"), shopping_reminder (recordatorio de la compra), freezer_review (repaso del congelador, una vez al mes). El menu del dia esta apagado salvo que lo pida ("mandame el menu cada mañana"); kind=all encendido no lo enciende. Ej: "no me mandes el resumen de la mañana". Con kind=all y WhatsApp conectado tambien cambia "Avisos por WhatsApp".',
+  parameters: {
+    type: 'object',
+    properties: {
+      kind: { type: 'string', enum: ['all', ...ALERT_KINDS] },
+      enabled: { type: 'boolean' },
+    },
+    required: ['kind', 'enabled'],
+  },
+  async handler(p, ctx) {
+    const enabled = p.enabled !== false
+    if (p.kind !== 'all' && !isAlertKind(p.kind)) return text('Tipo de aviso desconocido.')
+    // PRO-215: «all on» never turns on the opt-in morning menu; it is asked for by name.
+    const kinds = p.kind === 'all' ? ALERT_KINDS.filter((k) => !enabled || !ALERT_OPT_IN_KINDS.has(k)) : [p.kind as AlertKind]
+    const o = await api(ctx)<AlertsOverview>('PATCH', '/notifications/prefs', { prefs: Object.fromEntries(kinds.map((k) => [k, enabled])) })
+    if (p.kind === 'all' && o.whatsapp.linked) await api(ctx)('PATCH', '/whatsapp/link', { notify: enabled })
+    const what = p.kind === 'all' ? 'todos los avisos' : ALERT_LABELS[p.kind as AlertKind].title
+    const row = o.kinds.find((k) => k.kind === kinds[0])
+    const caveat = enabled && row && row.channel === 'off' && row.note ? ` Ojo: ahora no te llegaria: ${row.note}` : ''
+    return text(`Hecho: ${what} ${enabled ? 'encendido' : 'apagado'}.${caveat} Se ve en Perfil → Avisos.`)
+  },
+}
+
+/**
+ * PRO-230 (D-069): «hoy cocina Pablo, mándale la receta». No UI: only here.
+ */
+const setCookToday: SkillDefinition = {
+  name: 'set_cook_today',
+  description:
+    'Cuando el usuario dice que otra persona de su hogar cocina un dia ("hoy cocina Pablo, mandale la receta", "el jueves cocina Ana"): manda a esa persona por WhatsApp la receta de ese dia con los preparativos pendientes, y desde entonces los avisos de preparacion de ese dia le llegan a ella y no al usuario. name: el nombre que dice el usuario. day: sus palabras ("hoy" por defecto). meal: solo si lo dice (por defecto la cena, o la comida si no hay cena). Si esa persona no tiene WhatsApp conectado, devuelve un enlace para que el usuario se la reenvie.',
+  parameters: {
+    type: 'object',
+    properties: {
+      name: { type: 'string' },
+      day: DAY_PROP,
+      meal: { type: 'string', enum: ['breakfast', 'lunch', 'snack', 'dinner'] },
+    },
+    required: ['name'],
+  },
+  async handler(p, ctx) {
+    const r = await api(ctx)<CookTodayResult>('POST', '/households/me/cook-today', {
+      name: String(p.name ?? ''),
+      ...(typeof p.day === 'string' && p.day ? { day: p.day } : {}),
+      ...(p.meal ? { meal: p.meal } : {}),
+    })
+    if (r.status === 'error') return text(`No hecho: ${r.message}`)
+    if (r.status === 'sent') return text(`Hecho: le he mandado a ${r.cook} por WhatsApp la receta y los preparativos; los avisos de preparación de ese día le llegan a ${r.cook}.`, { cook: r.cook })
+    const why =
+      r.reason === 'no_whatsapp'
+        ? `${r.cook} no tiene WhatsApp conectado con Mimoia`
+        : r.reason === 'avisos_off'
+          ? `${r.cook} tiene apagados los avisos de Mimo por WhatsApp`
+          : `ahora no puedo escribir a ${r.cook} por WhatsApp (lleva más de un día sin escribirme)`
+    return text(
+      `No enviado: ${why}. Los avisos de ese día te siguen llegando a ti. Dale al usuario este enlace para reenviársela tal cual: ${r.forwardUrl}`,
+      { cook: r.cook, forwardUrl: r.forwardUrl },
+    )
   },
 }
 
@@ -1262,6 +1470,7 @@ export const appSkills: SkillDefinition[] = [
   getShoppingList,
   addShoppingItems,
   removeShoppingItems,
+  changeShoppingItemAmount,
   regenerateShoppingList,
   manageStaples,
   updatePantry,
@@ -1273,6 +1482,10 @@ export const appSkills: SkillDefinition[] = [
   updateProfile,
   updateWeeklyTemplate,
   inviteToHousehold,
+  shareInviteLink,
   setWhatsappNotifications,
+  getAlerts,
+  setAlerts,
   leaveFeedback,
+  setCookToday,
 ]

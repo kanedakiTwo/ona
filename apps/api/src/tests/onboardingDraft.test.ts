@@ -30,8 +30,9 @@ describe('onboardingDraftSchema', () => {
     expect(onboardingDraftSchema.safeParse({ ...draft, healthConsent: true }).success).toBe(false)
   })
 
-  it('rejects a step outside the five questions', () => {
-    expect(onboardingDraftSchema.safeParse({ ...draft, step: 6 }).success).toBe(false)
+  it('rejects a step outside the six questions (PRO-217 added «¿Cómo cocináis en casa?»)', () => {
+    expect(onboardingDraftSchema.safeParse({ ...draft, step: 6 }).success).toBe(true)
+    expect(onboardingDraftSchema.safeParse({ ...draft, step: 7 }).success).toBe(false)
     expect(onboardingDraftSchema.safeParse({ ...draft, step: 0 }).success).toBe(false)
   })
 })

@@ -37,6 +37,9 @@ test('the onboarding answers produce a real first menu (not an empty week)', asy
   await next.click() // 1 adult (default)
   await page.getByRole('button', { name: /3-4 veces/i }).click()
   await next.click()
+  // PRO-217: «¿Cómo cocináis en casa?»
+  await page.getByRole('button', { name: /^cocino cada día/i }).click()
+  await next.click()
   await page.getByRole('button', { name: /sin prisa/i }).click()
   await next.click()
   // Restrictions are health data: the separate consent box comes first (PRO-21).

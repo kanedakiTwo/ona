@@ -498,6 +498,104 @@
       "when": 1792409641479,
       "tag": "0073_shop_order_extension_result",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1792451168183,
+      "tag": "0074_household_notices",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1792451188205,
+      "tag": "0075_invite_offer",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1792451214634,
+      "tag": "0076_notice_candidates",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1792451261651,
+      "tag": "0077_recipe_advance_prep",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1792451384192,
+      "tag": "0078_school_lunches",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1792451628489,
+      "tag": "0079_pantry_location",
+      "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1792451778449,
+      "tag": "0080_cook_of_day",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1792452734951,
+      "tag": "0081_household_invite_source",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1792455258715,
+      "tag": "0082_whatsapp_opt_in_answer",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1792455340178,
+      "tag": "0083_newsletter_clicks",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1792455533098,
+      "tag": "0084_menu_plans",
+      "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1792455702539,
+      "tag": "0085_menu_planner_runs",
+      "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1792455724997,
+      "tag": "0086_menu_blind_votes",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1792455763114,
+      "tag": "0087_alert_prefs",
+      "breakpoints": true
     }
   ]
 }

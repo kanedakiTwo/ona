@@ -51,7 +51,8 @@ export const WAITLIST_PLATFORM_LABELS: Record<WaitlistPlatform, string> = {
 }
 
 /** Stored with each entry. Bump it whenever the consent text on the form or the privacy section changes. */
-export const WAITLIST_CONSENT_VERSION = '2026-10-17'
+// 2026-10-19 (PRO-171): the retention date (16 May 2027) in /privacidad «11. Lista de espera».
+export const WAITLIST_CONSENT_VERSION = '2026-10-19'
 
 /**
  * The optional "menú de la semana por email" opt-in is a SEPARATE consent
@@ -292,4 +293,13 @@ export function waitlistShareText(referralUrl: string): string {
 
 export function whatsappShareHref(text: string): string {
   return `https://wa.me/?text=${encodeURIComponent(text)}`
+}
+
+/**
+ * «Invitar a otro hogar» (PRO-163, D-059): the message the button opens in
+ * WhatsApp (or copies), with the account's own link (`GET /referrals/me`).
+ * Miguel's text A (2026-10-17); Legal reviews it before publishing. No health claims.
+ */
+export function inviteHouseholdShareText(link: string): string {
+  return `Yo uso ${BRAND_NAME} para el menú de la semana: le escribes por WhatsApp y te lo hace, con la lista de la compra. Pruébalo con mi enlace: ${link}`
 }

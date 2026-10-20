@@ -27,6 +27,49 @@ import {
   type NewsletterSendInput,
 } from '../services/newsletter.js'
 import type { EmailMessage, EmailResult } from '../services/email.js'
+import {
+  buildIssueStats,
+  contentLinks,
+  countsAsClick,
+  type NewsletterStatsRepo,
+  type TrackedLink,
+} from '../services/newsletterStats.js'
+
+/** In-memory clicks / opt-outs with the same semantics as the SQL (PRO-191). */
+function memoryStats(sendsOf: () => Array<{ issueId: string; source: string }> = () => []) {
+  const links = new Map<string, TrackedLink & { clicks: number }>()
+  const unsubs: Array<{ issueId: string | null; source: string }> = []
+  const stats: NewsletterStatsRepo = {
+    async registerLinks(issueId, ls) {
+      for (const l of ls) {
+        const k = `${issueId}|${l.index}`
+        links.set(k, { ...l, clicks: links.get(k)?.clicks ?? 0 })
+      }
+    },
+    async click(issueId, index, count) {
+      const l = links.get(`${issueId}|${index}`)
+      if (!l) return null
+      if (count) l.clicks += 1
+      return l.destination
+    },
+    async recordUnsubscribe(issueId, source) {
+      unsubs.push({ issueId, source })
+    },
+    async stats() {
+      const sends = sendsOf()
+      const ids = [...new Set(sends.map((x) => x.issueId))]
+      return buildIssueStats(
+        ids.map((issueId) => {
+          const mine = sends.filter((x) => x.issueId === issueId)
+          return { issueId, firstSentAt: '2026-10-21T08:00:00.000Z', total: mine.length, user: mine.filter((x) => x.source === 'user').length, waitlist: mine.filter((x) => x.source === 'waitlist').length }
+        }),
+        [...links.entries()].map(([k, l]) => ({ issueId: k.split('|')[0], index: l.index, destination: l.destination, clicks: l.clicks })),
+        unsubs.map((u) => ({ ...u, n: 1 })),
+      )
+    },
+  }
+  return { stats, links, unsubs }
+}
 
 const TOKEN_A = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 const TOKEN_B = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
@@ -527,9 +570,10 @@ describe('newsletter routes', () => {
 
   it('POST /newsletter/unsubscribe: JSON token and the RFC 8058 one-click form both work; unknown → 404', async () => {
     const { repo, entries } = memoryRepo([cand('ana@example.com', { unsubscribeToken: TOKEN_A }), cand('bea@example.com', { unsubscribeToken: TOKEN_B })])
-    const app = express().use(express.json()).use(express.urlencoded({ extended: true })).use(createNewsletterRouter({ repo, unsubscribeLimiter: noLimit }))
+    const { stats, unsubs } = memoryStats()
+    const app = express().use(express.json()).use(express.urlencoded({ extended: true })).use(createNewsletterRouter({ repo, stats, unsubscribeLimiter: noLimit }))
     const b = await serve(app)
-    const json = await fetch(`${b}/newsletter/unsubscribe`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: `w.${TOKEN_A}` }) })
+    const json = await fetch(`${b}/newsletter/unsubscribe`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: `w.${TOKEN_A}`, issueId: '2026-10-16' }) })
     expect(await json.json()).toEqual({ ok: true, alreadyUnsubscribed: false })
     const oneClick = await fetch(`${b}/newsletter/unsubscribe?t=w.${TOKEN_B}`, {
       method: 'POST',
@@ -543,5 +587,99 @@ describe('newsletter routes', () => {
     ])
     const unknown = await fetch(`${b}/newsletter/unsubscribe`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: 'w.zzzzzzzzzzzzzzzzzzzz' }) })
     expect(unknown.status).toBe(404)
+    // PRO-191: counted under its issue when the link carries one (the one-click URL above had none).
+    expect(unsubs).toEqual([
+      { issueId: '2026-10-16', source: 'waitlist' },
+      { issueId: null, source: 'waitlist' },
+    ])
+  })
+})
+
+describe('newsletter clicks, counted by us (PRO-191)', () => {
+  const BROWSER = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1'
+
+  it('a test issue with 2 links: one clicked twice → 2 and 0; unknown issue or index → 404, no redirect', async () => {
+    const { repo, rows } = memoryRepo([cand('ana@example.com', { unsubscribeToken: TOKEN_A }), userCand('bea@example.com')])
+    const sends = () => [...rows.entries()].filter(([, v]) => v.status === 'sent').map(([k]) => ({ issueId: k.split('|')[0], source: 'waitlist' }))
+    const { stats } = memoryStats(sends)
+    const sendBatch = okBatch()
+    const asAdmin: RequestHandler = (req, _res, next) => {
+      ;(req as any).userId = '11111111-1111-4111-8111-111111111111'
+      next()
+    }
+    const app = express()
+      .use(express.json())
+      .use(
+        createNewsletterRouter({
+          repo,
+          stats,
+          adminAuth: [asAdmin],
+          statsAuth: asAdmin,
+          unsubscribeLimiter: noLimit,
+          audit: (async () => 'a1') as any,
+          makeDeps: (urls) => ({ ...deps(repo, sendBatch), ...urls, stats }),
+          publicUrl: () => 'https://mimoia.com',
+        }),
+      )
+    const b = await serve(app)
+    const issue = { ...ISSUE, issueId: 'prueba-clics' }
+    expect(contentLinks(issue.content).map((l) => l.destination)).toEqual(['https://mimoia.com/recipes/lentejas', 'https://mimoia.com/menu'])
+    const sent = await fetch(`${b}/admin/newsletter/send`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(issue) })
+    expect(await sent.json()).toMatchObject({ mode: 'send', sent: 2 })
+
+    // Every email carries our links, never the destinations themselves; the opt-out names the issue.
+    const msg = sendBatch.mock.calls[0][0][0]
+    expect(msg.html).toContain('https://mimoia.com/n/prueba-clics/1')
+    expect(msg.html).toContain('https://mimoia.com/n/prueba-clics/2')
+    expect(msg.html).not.toContain('https://mimoia.com/recipes/lentejas')
+    expect(msg.text).toContain('https://mimoia.com/n/prueba-clics/2')
+    expect(msg.html).toContain('i=prueba-clics')
+
+    const click = (path: string, ua = BROWSER, method = 'GET') => fetch(`${b}${path}`, { method, headers: { 'user-agent': ua } })
+    const first = await click('/newsletter/click/prueba-clics/1')
+    expect(await first.json()).toEqual({ url: 'https://mimoia.com/recipes/lentejas' })
+    await click('/newsletter/click/prueba-clics/1')
+    // Not clicks: a HEAD, a mail scanner, a proof.
+    expect((await click('/newsletter/click/prueba-clics/2', BROWSER, 'HEAD')).status).toBe(200)
+    await click('/newsletter/click/prueba-clics/2', 'Mozilla/5.0 (compatible; Proofpoint URL Defense)')
+    await click('/newsletter/click/prueba-clics/2?prueba=1')
+    await fetch(`${b}/newsletter/click/prueba-clics/2`, { headers: { 'user-agent': BROWSER, 'x-newsletter-head': '1' } })
+
+    // Unknown issue or link: 404, and nothing to redirect to.
+    for (const p of ['/newsletter/click/no-existe/1', '/newsletter/click/prueba-clics/3', '/newsletter/click/prueba-clics/0', '/newsletter/click/Prueba/1']) {
+      const r = await click(p)
+      expect(r.status, p).toBe(404)
+      expect(await r.json()).not.toHaveProperty('url')
+    }
+
+    const report = await (await fetch(`${b}/admin/newsletter/stats`)).json()
+    const row = report.issues.find((i: any) => i.issueId === 'prueba-clics')
+    expect(row.clicks.total).toBe(2)
+    expect(row.clicks.links).toEqual([
+      { index: 1, destination: 'https://mimoia.com/recipes/lentejas', clicks: 2 },
+      { index: 2, destination: 'https://mimoia.com/menu', clicks: 0 },
+    ])
+    expect(row.sent.total).toBe(2)
+    expect(report.definitions.clicks).toMatch(/not people/)
+  })
+
+  it('a proof (testTo) uses the same links with ?prueba=1, which never count', async () => {
+    const { repo } = memoryRepo([cand('ana@example.com')], ['admin@mimoia.com'])
+    const { stats, links } = memoryStats()
+    const sendOne = vi.fn(async () => ({ status: 'sent', id: 'one' }) as EmailResult)
+    await sendNewsletter({ ...ISSUE, issueId: 'n2', testTo: 'admin@mimoia.com' }, { ...deps(repo, okBatch()), sendOne, stats })
+    const html = (sendOne.mock.calls[0] as any)[0].html as string
+    expect(html).toContain('https://mimoia.com/n/n2/1?prueba=1')
+    expect(links.size).toBe(2)
+    expect(countsAsClick({ method: 'GET', userAgent: BROWSER, proof: true })).toBe(false)
+  })
+
+  it('what counts as a click', () => {
+    expect(countsAsClick({ method: 'GET', userAgent: BROWSER })).toBe(true)
+    expect(countsAsClick({ method: 'HEAD', userAgent: BROWSER })).toBe(false)
+    expect(countsAsClick({ method: 'GET', userAgent: '' })).toBe(false)
+    for (const ua of ['Googlebot/2.1', 'Mozilla/5.0 (compatible; Mimecast)', 'Microsoft Office SafeLinks', 'WhatsApp/2.23', 'curl/8.4.0', 'python-requests/2.31']) {
+      expect(countsAsClick({ method: 'GET', userAgent: ua }), ua).toBe(false)
+    }
   })
 })

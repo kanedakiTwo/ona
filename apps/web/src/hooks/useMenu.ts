@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { api, ApiError } from "@/lib/api"
 import { enqueue } from "@/lib/pwa/offlineQueue"
-import type { MenuFit } from "@ona/shared"
+import type { MenuFit, WeekPlan } from "@ona/shared"
 
 interface MealSlot {
   recipeId: string
@@ -62,7 +62,7 @@ export function useGenerateMenu() {
     /** `empty: true` skips the matcher and creates a row with all 7 days
      *  scaffolded per the user's mealTemplate but every slot empty
      *  (`dishes: []`). Powers "Vaciar semana" + "Empezar de cero". */
-    mutationFn: (params: { userId: string; weekStart: string; empty?: boolean; force?: boolean }) =>
+    mutationFn: (params: { userId: string; weekStart: string; empty?: boolean; force?: boolean; weekPlan?: WeekPlan }) =>
       api.post<Menu>("/menu/generate", params),
     onError: (err) => {
       // 409 MENU_NOT_EMPTY: the week has dishes we didn't know about (an
@@ -437,11 +437,32 @@ export function useAddDish() {
       day: number
       meal: string
       payload:
-        | { kind: 'recipe'; recipeId: string; course?: string | null; pinnedType?: string | null; variant?: 'planned' | 'freezer' }
+        | { kind: 'recipe'; recipeId: string; course?: string | null; pinnedType?: string | null; variant?: 'planned' | 'freezer' | 'fridge' }
         | { kind: 'note'; text: string }
     }) => {
       const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}/dish`
       return api.post<Menu>(url, params.payload)
+    },
+    onSuccess: (data) => {
+      if (data?.userId && data?.weekStart) {
+        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
+      }
+      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
+    },
+  })
+}
+
+/**
+ * PRO-223 · «Me lo llevo en táper»: the meal becomes the previous day's
+ * dinner as a leftover, and that dinner is cooked with one more ration.
+ * `on: false` undoes it (the meal is left empty).
+ */
+export function useSetTaper() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (params: { menuId: string; day: number; meal: string; on: boolean; count?: number }) => {
+      const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}/taper`
+      return params.on ? api.post<Menu>(url, { count: params.count ?? 1 }) : api.delete<Menu>(url)
     },
     onSuccess: (data) => {
       if (data?.userId && data?.weekStart) {

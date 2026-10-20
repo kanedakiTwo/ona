@@ -31,10 +31,11 @@ import { AI_DISCLOSURE, AI_DISCLOSURE_FIRST_PERSON, AI_DISCLOSURE_SHORT } from '
 import { env } from '../../config/env.js'
 import { recordAnthropicCost, type AnthropicUsageLike } from '../costLedger.js'
 import { healthClaimWords, talksHealthEffects } from '../assistant/healthGuard.js'
+import { CLAUDE_MODEL, LOW_EFFORT, withThinkingRoom } from '../../config/models.js'
 
-export const GUIDED_MODEL = 'claude-haiku-4-5-20251001'
+export const GUIDED_MODEL = CLAUDE_MODEL
 /** The scheduler tick and the chat can't wait long: past this, the fixed text. */
-export const GUIDED_TIMEOUT_MS = 8000
+export const GUIDED_TIMEOUT_MS = 15000
 
 export const GUIDED_KINDS = [
   'daily_brief',
@@ -43,6 +44,7 @@ export const GUIDED_KINDS = [
   'shopping_reminder',
   'weekly_nudge',
   'first_steps',
+  'freezer_review',
 ] as const
 export type GuidedKind = (typeof GUIDED_KINDS)[number]
 
@@ -72,10 +74,10 @@ export const MESSAGE_GUIDES: Record<GuidedKind, MessageGuide> = {
     maxChars: 280,
   },
   dinner_checkin: {
-    purpose: 'Preguntar si hicieron hoy la cena del menú, para apuntarlo (los botones responden Sí / No).',
-    mustCarry: 'El nombre exacto del plato y la pregunta de si lo hicieron.',
+    purpose: 'Preguntar si hicieron hoy la cena del menú, para apuntarlo (los botones responden). Si los datos lo piden, en el mismo mensaje también qué tal estuvo y si la repetimos (PRO-235).',
+    mustCarry: 'El nombre exacto del plato y la pregunta de si lo hicieron (y, si los datos lo piden, si la repetimos).',
     tone: 'Una o dos frases, ligero, sin presionar ni sonar a control.',
-    maxChars: 240,
+    maxChars: 280,
     asks: true,
   },
   shopping_reminder: {
@@ -86,9 +88,18 @@ export const MESSAGE_GUIDES: Record<GuidedKind, MessageGuide> = {
   },
   weekly_nudge: {
     purpose: 'El domingo, ofrecer preparar el menú de la semana que viene (los botones responden Sí / Ahora no).',
-    mustCarry: 'La pregunta de si le preparas el menú de la semana que viene.',
-    tone: 'Una o dos frases, de domingo tranquilo, sin presionar.',
-    maxChars: 260,
+    // PRO-225: the questions before planning go in this same message.
+    mustCarry:
+      'La pregunta de si le preparas el menú de la semana que viene y, tal cual, las preguntas de antes de planificar («¿Alguna comida fuera de casa esta semana?», «¿Viene alguien?» y «¿Qué te queda en la nevera?»), diciendo que puede contestarlas con sus palabras (o con una foto de la nevera) y que solo cambian esa semana.',
+    tone: 'Dos o tres frases, de domingo tranquilo, sin presionar.',
+    maxChars: 520,
+    asks: true,
+  },
+  freezer_review: {
+    purpose: 'Una vez al mes: contar qué lleva un mes o más en el congelador y ofrecer meterlo en el menú de las dos próximas semanas (los botones responden Sí / Ahora no).',
+    mustCarry: 'Cada cosa del congelador con su nombre exacto (y desde cuándo, si cabe) y, tal cual, la pregunta «¿Lo meto en el menú de estas semanas?».',
+    tone: 'Práctico y amable, sin reñir por tenerlo olvidado. Una lista corta.',
+    maxChars: 600,
     asks: true,
   },
   first_steps: {
@@ -253,8 +264,9 @@ export function defaultGuidedWriter(): GuidedWriter | null {
   return async (system, prompt) => {
     const res = await client!.messages.create({
       model: GUIDED_MODEL,
-      max_tokens: 500,
-      temperature: 1,
+      // Opus 5.5 takes no `temperature` (400) and always thinks (PRO-232).
+      max_tokens: withThinkingRoom(500),
+      ...LOW_EFFORT,
       system,
       messages: [{ role: 'user', content: prompt }],
     })

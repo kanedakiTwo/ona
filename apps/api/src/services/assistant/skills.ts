@@ -12,8 +12,10 @@ import {
   menuLogs,
   shoppingLists,
 } from '../../db/schema.js'
-import { nutrientsToPercentages, TARGET_MACROS, detectSeason, recipeDishesOf } from '@ona/shared'
-import type { DayMenu, Meal, NutrientBalance } from '@ona/shared'
+import { nutrientsToPercentages, TARGET_MACROS, detectSeason, recipeDishesOf, isPantryLocation, firstMenuWeeks, pastDayIndexes } from '@ona/shared'
+import type { DayMenu, Meal, NutrientBalance, WeekPlan } from '@ona/shared'
+import { parseWeekPlanAnswer, weekPlanIsEmpty, weekPlanSchema } from '@ona/shared'
+import { describeWeekPlan } from '../weekPlan.js'
 import { householdMultiplier } from '@ona/shared'
 import { generateMenu } from '../menuGenerator.js'
 import { findRecipeForSlot, type RecipeWithIngredients } from '../recipeMatcher.js'
@@ -24,19 +26,28 @@ import { getSummary } from '../advisor.js'
 import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../scopeResolver.js'
 import { importRecipeFromUrl, createRecipeFromParts, type RecipeParts } from '../recipeImport.js'
 import { mealLinesForDay } from '../menuText.js'
+import { cookedRecipeIds, householdDiners, mealLinesWithFacts, timesLabel, type RecipeTimes } from './menuFacts.js'
+import { repeatNote } from './weekRepeats.js'
 import { slotWithDishes } from '../menuDishes.js'
 import { madridParts, madridWeekStart } from '../madridTime.js'
 import { DAY_PROP, dateLabel, isMenuDayError, menuDayOf, resolveMenuDay, type MenuDay } from './menuDay.js'
-import { appSkills, bestMatch, dishNoteText, searchWords } from './appSkills.js'
+import { appSkills, bestMatch, dishNoteText, searchWords, toBuyable } from './appSkills.js'
+import { setHaveAtHome } from '../shoppingItemState.js'
+import { convert as convertUnits } from '../shoppingList.js'
 import { createDishRecipe, NEW_RECIPE_PROP, NOTE_THEN_RECIPE_HINT, type NewRecipeParam } from './dishRecipe.js'
 import { shopOrderSkills } from './shopOrderSkills.js'
+import { householdHabitsSkills } from './householdHabitsSkills.js'
+import { fixedMealSkills } from './fixedMealSkills.js'
+import { taperSkills } from './taperSkills.js'
+import { schoolMenuSkills } from './schoolMenuSkills.js'
+import { freezerSkills } from './freezerSkills.js'
 import { visibleAuthorIds, visibleRecipeWhere } from '../recipeVisibility.js'
 import { loadMatchableRecipes } from '../matchableRecipes.js'
-import { loadPreviousWeek } from '../menuWeek.js'
+import { generationSkips, loadPreviousWeek } from '../menuWeek.js'
 import { loadUserRestrictions, findRecipesWithWhatIHave } from '../withWhatIHave.js'
 import { isBrandDependentGlutenCharcuterie, isCoeliacHousehold, recipeDietNotices } from '../glutenFreeCharcuterie.js'
 import { compileRestrictions, nameHasTerm, normalizeText, violatesRestrictions, type RestrictableRecipe } from '../dietaryRestrictions.js'
-import { addPantryForUser, deletePantryForUser, listPantryForUser, NoHouseholdError } from '../pantryStore.js'
+import { addPantryForUser, deletePantryForUser, listPantryForUser, NoHouseholdError, patchPantryForUser } from '../pantryStore.js'
 import { enqueuePrepAlertsForMenu } from '../notificationScheduler.js'
 import { NotARecipeError, SocialCaptionUnavailableError } from '../recipeUrlExtractor.js'
 import { NoExtractableContentError } from '../sources/youtube.js'
@@ -45,6 +56,8 @@ import type { SkillDefinition, SkillContext, SkillResult } from './types.js'
 import { HEALTH_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY } from '../healthConsent.js'
 import { saveOnboarding } from '../onboarding.js'
 import { evaluateAndSaveMenuFit, menuFitSummary } from '../menuFit.js'
+import { schoolDinnerPool } from '../schoolMenu.js'
+import { weekHolidaySummary } from '../menuHolidays.js'
 import { isHealthMemoryKey } from '@ona/shared'
 
 /**
@@ -150,9 +163,35 @@ async function restrictionConflicts(ctx: SkillContext, recipeId: string): Promis
 
 // ─── Skill definitions ─────────────────────────────────────
 
+/**
+ * PRO-183: what the menu tools need to say the same as the app — the
+ * household's diners (servings per meal) and each cooked recipe's minutes.
+ * Two reads; if they fail the tools still answer with the bare menu.
+ */
+async function menuFactsFor(ctx: SkillContext, days: readonly (DayMenu | null | undefined)[]): Promise<{ times: Map<string, RecipeTimes>; diners: number } | null> {
+  try {
+    const [u] = await ctx.db
+      .select({ adults: users.adults, kidsCount: users.kidsCount })
+      .from(users)
+      .where(eq(users.id, ctx.userId))
+      .limit(1)
+    const ids = cookedRecipeIds(days)
+    const rows: Array<{ id: string } & RecipeTimes> = ids.length
+      ? await ctx.db
+          .select({ id: recipes.id, totalTime: recipes.totalTime, activeTime: recipes.activeTime, prepTime: recipes.prepTime })
+          .from(recipes)
+          .where(inArray(recipes.id, ids))
+      : []
+    return { times: new Map((rows ?? []).map((r) => [r.id, r])), diners: householdDiners(u) }
+  } catch (err: any) {
+    console.warn('[assistant] menu facts unavailable:', err?.message ?? err)
+    return null
+  }
+}
+
 const getTodaysMenu: SkillDefinition = {
   name: 'get_todays_menu',
-  description: 'Obtiene el menu del dia indicado (o de hoy si no se especifica). Pasa day con las palabras del usuario ("mañana", "el sábado", "el martes de la semana que viene") o la fecha.',
+  description: 'Obtiene el menu del dia indicado (o de hoy si no se especifica): por comida, las raciones que muestra la app y, por plato, los minutos en total y de trabajo. Pasa day con las palabras del usuario ("mañana", "el sábado", "el martes de la semana que viene") o la fecha.',
   parameters: {
     type: 'object',
     properties: {
@@ -183,10 +222,11 @@ const getTodaysMenu: SkillDefinition = {
     const day = days[t.dayIndex]
     // Slots hold `dishes[]` since the multi-dish migration — reading the old
     // `slot.recipeName` made every day look empty ("no hay comidas").
-    const meals = mealLinesForDay(day)
+    const facts = mealLinesForDay(day).length > 0 ? await menuFactsFor(ctx, days) : null
+    const meals = facts ? mealLinesWithFacts(days, t.dayIndex, facts.times, facts.diners) : mealLinesForDay(day)
 
     const summary = meals.length > 0
-      ? `Menu del ${t.label}: ${meals.join(', ')}`
+      ? `Menu del ${t.label}: ${meals.join(facts ? '; ' : ', ')}`
       : `No hay comidas planificadas para el ${t.label}.`
 
     return { data: { dayIndex: t.dayIndex, date: t.isoDate, weekStart: t.weekStart, menuId: menu.id, day }, summary, uiHint: 'menu' }
@@ -202,7 +242,7 @@ const getTodaysMenu: SkillDefinition = {
  */
 const getWeeklyMenu: SkillDefinition = {
   name: 'get_weekly_menu',
-  description: 'Obtiene el menu de la semana entera (esta o, con nextWeek, la que viene), dia a dia. Usalo cuando pida ver el menu de la semana; para un solo dia usa get_todays_menu. Una sola llamada, nunca get_todays_menu dia a dia.',
+  description: 'Obtiene el menu de la semana entera (esta o, con nextWeek, la que viene), dia a dia, con las raciones de cada comida y los minutos de cada plato. Usalo cuando pida ver el menu de la semana; para un solo dia usa get_todays_menu. Una sola llamada, nunca get_todays_menu dia a dia.',
   parameters: {
     type: 'object',
     properties: {
@@ -219,14 +259,16 @@ const getWeeklyMenu: SkillDefinition = {
     const days = Array.isArray(menu.days) ? (menu.days as DayMenu[]) : []
     const skipped = new Set<number>(menu.skippedDays ?? [])
     const lines: string[] = []
+    const planned = days.some((d, i) => !skipped.has(i) && mealLinesForDay(d).length > 0)
+    const facts = planned ? await menuFactsFor(ctx, days) : null
     for (let i = 0; i < 7; i++) {
       const label = menuDayOf(weekStart, i).label
       if (skipped.has(i)) {
         lines.push(`${label}: sin cocinar`)
         continue
       }
-      const meals = mealLinesForDay(days[i])
-      if (meals.length > 0) lines.push(`${label}: ${meals.join(', ')}`)
+      const meals = facts ? mealLinesWithFacts(days, i, facts.times, facts.diners) : mealLinesForDay(days[i])
+      if (meals.length > 0) lines.push(`${label}: ${meals.join(facts ? '; ' : ', ')}`)
     }
     if (lines.length === 0) {
       return { data: null, summary: `La semana del ${dateLabel(weekStart)} no tiene nada planificado todavia.`, uiHint: 'text' }
@@ -248,14 +290,23 @@ const getWeeklyMenu: SkillDefinition = {
 export function recipeDetailsSummary(r: {
   name: string
   prepTime?: number | null
+  totalTime?: number | null
+  activeTime?: number | null
   servings?: number | null
+  /** PRO-183: the servings the ingredients were scaled to (the menu's), when they differ from the recipe's. */
+  scaledTo?: number | null
   ingredients: string[]
   steps: string[]
   tips?: string | null
   sourceUrl?: string | null
 }): string {
-  const head = `${untrustedText(r.name)} (${r.prepTime ?? '?'} min${r.servings ? `, ${r.servings} raciones` : ''})`
+  const minutes = timesLabel(r) ?? '? min'
+  const scaled = r.scaledTo != null && r.scaledTo > 0 && r.scaledTo !== (r.servings ?? 2)
+  const head = scaled
+    ? `${untrustedText(r.name)} (${minutes}; cantidades para ${r.scaledTo} raciones, la receta base es para ${r.servings ?? 2})`
+    : `${untrustedText(r.name)} (${minutes}${r.servings ? `, ${r.servings} raciones` : ''})`
   const lines = [head, `Ingredientes: ${r.ingredients.join(', ')}`]
+  if (scaled) lines.push(`Los pasos pueden citar las cantidades de la receta base (${r.servings ?? 2} raciones): usa las de Ingredientes.`)
   if (r.steps.length) {
     lines.push(`Pasos:\n${r.steps.map((t, i) => `${i + 1}. ${untrustedText(t, 400)}`).join('\n')}`)
   } else {
@@ -332,15 +383,16 @@ export function mergeMemoryFacts(
 
 const getRecipeDetails: SkillDefinition = {
   name: 'get_recipe_details',
-  description: 'Busca una receta (del catalogo o del usuario) por nombre y devuelve sus detalles: ingredientes con cantidades, pasos numerados, raciones, trucos y el enlace a la receta original (video o web) si lo tiene. Usala para explicar como se hace, guiar paso a paso o dar el enlace.',
+  description: 'Busca una receta (del catalogo o del usuario) por nombre y devuelve sus detalles: ingredientes con cantidades, pasos numerados, raciones, minutos en total y de trabajo, trucos y el enlace a la receta original (video o web) si lo tiene. Usala para explicar como se hace, guiar paso a paso o dar el enlace. Si el plato esta en el menu, pasa servings con las raciones que da get_todays_menu o get_weekly_menu para esa comida: las cantidades vuelven ya calculadas para esas raciones.',
   parameters: {
     type: 'object',
     properties: {
       recipeName: { type: 'string', description: 'Nombre de la receta a buscar' },
+      servings: { type: 'number', description: 'Raciones de esa comida en el menu (las que da get_todays_menu / get_weekly_menu). Sin el, las cantidades son las de la receta.' },
     },
     required: ['recipeName'],
   },
-  async handler(params: { recipeName: string }, ctx: SkillContext): Promise<SkillResult> {
+  async handler(params: { recipeName: string; servings?: number }, ctx: SkillContext): Promise<SkillResult> {
     const { db } = ctx
 
     // First try exact match
@@ -396,7 +448,16 @@ const getRecipeDetails: SkillDefinition = {
       .orderBy(recipeSteps.index)
     const steps: string[] = (stepRows ?? []).map((s: any) => String(s.text ?? '').trim()).filter(Boolean)
 
-    const ingredientList = riRows.map((r: any) => `${r.ingredientName}: ${r.quantity}${r.unit ?? 'g'}`)
+    // PRO-183: amounts for the menu's servings, scaled here (Mimo used to
+    // say «600 g para 4» from memory for a recipe of 300 g for 2).
+    const baseServings = Number(recipe.servings) > 0 ? Number(recipe.servings) : 2
+    const target = Number.isFinite(params.servings) && Number(params.servings) > 0 ? Math.round(Number(params.servings)) : null
+    const ratio = target != null ? target / baseServings : 1
+    const scaledRows = (riRows as any[]).map((r) => ({
+      ...r,
+      quantity: ratio === 1 || r.quantity == null ? r.quantity : scaleRound(Number(r.quantity) * ratio, r.unit ?? 'g'),
+    }))
+    const ingredientList = scaledRows.map((r: any) => `${r.ingredientName}: ${r.quantity}${r.unit ?? 'g'}`)
     // PRO-196: same notice as the web ficha for a coeliac household.
     const ingNames = riRows.map((r: any) => String(r.ingredientName))
     const dietNotices = ingNames.some(isBrandDependentGlutenCharcuterie)
@@ -405,7 +466,10 @@ const getRecipeDetails: SkillDefinition = {
     const details = recipeDetailsSummary({
       name: recipe.name,
       prepTime: recipe.prepTime,
+      totalTime: recipe.totalTime,
+      activeTime: recipe.activeTime,
       servings: recipe.servings,
+      scaledTo: target,
       ingredients: ingredientList,
       steps,
       tips: recipe.tips,
@@ -418,11 +482,15 @@ const getRecipeDetails: SkillDefinition = {
         id: recipe.id,
         name: recipe.name,
         prepTime: recipe.prepTime,
+        totalTime: recipe.totalTime ?? null,
+        activeTime: recipe.activeTime ?? null,
+        servings: target ?? recipe.servings ?? null,
+        baseServings: recipe.servings ?? null,
         meals: recipe.meals,
         seasons: recipe.seasons,
         steps,
         sourceUrl: recipe.sourceUrl ?? null,
-        ingredients: riRows,
+        ingredients: scaledRows,
         dietNotices,
       },
       summary,
@@ -649,7 +717,7 @@ async function pickWhatIHaveRecipe(
   if (dishNow(saved, t.dayIndex, meal) !== recipe.name) return notSaved(slotLabel)
   return {
     data: { ...(saved as object), change: changeOf(t, meal, recipe.name), recipeId: recipe.id },
-    summary: `Hecho: "${recipe.name}" en la ${slotLabel}. Sus ingredientes ya salen en la lista de la compra.`,
+    summary: `Hecho: "${recipe.name}" en la ${slotLabel}. Sus ingredientes ya salen en la lista de la compra.${repeatNote(saved?.days as DayMenu[] ?? [], t.weekStart, t.dayIndex, meal, { recipeId: recipe.id, name: recipe.name })}`,
     uiHint: 'menu',
   }
 }
@@ -700,6 +768,24 @@ export function weekHasDishes(days: DayMenu[] | undefined): boolean {
   )
 }
 
+/**
+ * PRO-225: the week-only answers to «¿Alguna comida fuera?» / «¿Viene
+ * alguien?». Structured fields from the model win; the user's raw text is
+ * read as a fallback. Out-of-range entries are dropped. Undefined when empty.
+ */
+export function weekPlanFromParams(params: { mealsOut?: unknown; guests?: unknown; fridge?: unknown; answer?: unknown } | undefined): WeekPlan | undefined {
+  const structured = weekPlanSchema.safeParse({
+    mealsOut: Array.isArray(params?.mealsOut) ? params!.mealsOut : undefined,
+    guests: Array.isArray(params?.guests) ? params!.guests : undefined,
+    fridge: Array.isArray(params?.fridge) ? (params!.fridge as unknown[]).filter((f) => typeof f === 'string' && f.trim()).slice(0, 20) : undefined,
+  })
+  let plan: WeekPlan | undefined = structured.success ? structured.data : undefined
+  if ((plan?.mealsOut?.length ?? 0) === 0 && (plan?.guests?.length ?? 0) === 0 && typeof params?.answer === 'string' && params.answer.trim()) {
+    plan = { ...parseWeekPlanAnswer(params.answer), ...(plan?.fridge?.length ? { fridge: plan.fridge } : {}) }
+  }
+  return weekPlanIsEmpty(plan) ? undefined : plan
+}
+
 const generateWeeklyMenu: SkillDefinition = {
   name: 'generate_weekly_menu',
   description: 'Genera un menu semanal completo (todos los dias) y lo guarda. Solo cuando el usuario pida un menu nuevo para la semana entera; NUNCA para cambiar o poner uno o varios platos (eso es swap_meal / add_dish / set_meal_note). Con nextWeek=true lo genera para la semana que viene (por ejemplo si el usuario dice "la semana que viene" o acepta la propuesta del domingo). Si esa semana ya tiene platos no la toca y te lo dice: solo con replaceExisting=true, cuando el usuario ha confirmado que quiere rehacer la semana entera.',
@@ -708,12 +794,47 @@ const generateWeeklyMenu: SkillDefinition = {
     properties: {
       nextWeek: { type: 'boolean', description: 'true para generar el menu de la semana que viene en lugar de la actual.' },
       replaceExisting: { type: 'boolean', description: 'true solo si el usuario ha confirmado que quiere rehacer entera una semana que ya tiene platos.' },
+      mealsOut: {
+        type: 'array',
+        description: 'Comidas que esa semana se hacen fuera de casa (respuesta a «¿Alguna comida fuera de casa esta semana?»). Se quitan solo de esa semana; la plantilla no cambia. Sin meal = el dia entero.',
+        items: {
+          type: 'object',
+          properties: {
+            day: { type: 'integer', minimum: 0, maximum: 6, description: '0 = lunes … 6 = domingo' },
+            meal: { type: 'string', enum: ['breakfast', 'lunch', 'dinner', 'snack'] },
+          },
+          required: ['day'],
+        },
+      },
+      guests: {
+        type: 'array',
+        description: 'Dias con invitados (respuesta a «¿Viene alguien?»): cuantos comen en total ese dia o esa comida, p. ej. «el sabado somos 6» → { day: 5, diners: 6 }. Solo esa semana.',
+        items: {
+          type: 'object',
+          properties: {
+            day: { type: 'integer', minimum: 0, maximum: 6, description: '0 = lunes … 6 = domingo' },
+            meal: { type: 'string', enum: ['breakfast', 'lunch', 'dinner', 'snack'] },
+            diners: { type: 'integer', minimum: 1, maximum: 24 },
+          },
+          required: ['day', 'diners'],
+        },
+      },
+      fridge: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Lo que le queda en la nevera (respuesta a «¿Qué te queda en la nevera?», por texto o leyendo su foto), una cosa por elemento tal como lo dice: ["medio calabacin", "nata"]. Se apunta en la despensa (nevera) y el menu da mas peso a las recetas que lo usan.',
+      },
+      answer: { type: 'string', description: 'El texto tal cual del usuario cuando contesta a las preguntas de antes de planificar (p. ej. «el jueves cenamos fuera y el sabado somos 6»). Se usa solo si no pasas mealsOut ni guests.' },
     },
     required: [],
   },
-  async handler(params: { nextWeek?: boolean; replaceExisting?: boolean }, ctx: SkillContext): Promise<SkillResult> {
+  async handler(
+    params: { nextWeek?: boolean; replaceExisting?: boolean; mealsOut?: WeekPlan['mealsOut']; guests?: WeekPlan['guests']; fridge?: string[]; answer?: string },
+    ctx: SkillContext,
+  ): Promise<SkillResult> {
     const { userId, db } = ctx
     const weekStart = getWeekStart(params?.nextWeek === true ? 1 : 0)
+    const weekPlan = weekPlanFromParams(params)
 
     // Same promises as POST /menu/generate: locked slots, vetoes and
     // "sin cocinar" days of the current week survive the regeneration.
@@ -729,9 +850,28 @@ const generateWeeklyMenu: SkillDefinition = {
         uiHint: 'text',
       }
     }
+    return generateAndSaveWeek(ctx, weekStart, previous, undefined, weekPlan)
+  },
+}
+
+/**
+ * Generate and save one week (generate_weekly_menu, and complete_onboarding
+ * for each first-menu week). `fromDate` (PRO-244, the sign-up day): days
+ * before it are not generated.
+ */
+async function generateAndSaveWeek(
+  ctx: SkillContext,
+  weekStart: string,
+  previous: Awaited<ReturnType<typeof loadPreviousWeek>>,
+  fromDate?: string,
+  /** PRO-225: meals out and guests for this week only. */
+  weekPlan?: WeekPlan,
+): Promise<SkillResult> {
+    const { userId, db } = ctx
     const { days } = await generateMenu(
       userId, weekStart, undefined, db,
-      previous.locked, previous.days, previous.bannedRecipeIds, previous.skippedDays,
+      previous.locked, previous.days, previous.bannedRecipeIds, generationSkips(previous.skippedDays, weekStart, fromDate),
+      weekPlan,
     )
 
     // Save to menus table — dual-write household_id so shared-scope reads
@@ -767,6 +907,18 @@ const generateWeeklyMenu: SkillDefinition = {
       console.warn('[assistant.generate_weekly_menu] enqueuePrepAlertsForMenu failed:', err)
     })
 
+    // Menú inteligente a la sombra (PRO-255), as in POST /menu/generate.
+    const { startShadowPlan } = await import('../menuPlannerShadow.js')
+    startShadowPlan({
+      menuId: menu.id,
+      userId,
+      weekStart,
+      days,
+      locked: previous.locked,
+      bannedRecipeIds: previous.bannedRecipeIds,
+      skippedDays: previous.skippedDays,
+    })
+
     // Build summary
     const dayNames = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo']
     const menuSummary = days.map((day: DayMenu, i: number) => {
@@ -776,19 +928,25 @@ const generateWeeklyMenu: SkillDefinition = {
           const firstName = slot.dishes.find((d: any) => d.kind === 'recipe')?.recipeName ?? ''
           return `${meal}: ${firstName}`
         })
-      return `${dayNames[i]}: ${meals.join(', ')}`
-    }).join('; ')
+      return meals.length > 0 ? `${dayNames[i]}: ${meals.join(', ')}` : null
+    }).filter(Boolean).join('; ')
+    const past = fromDate ? pastDayIndexes(weekStart, fromDate) : []
+    const pastLine = past.length > 0
+      ? ` Empieza hoy (${dayNames[past.length]}): los dias que ya han pasado no se han generado.`
+      : ''
 
     // «Cuánto ha acertado» (PRO-155): Mimo tells it following the prompt's guide.
     const fit = await evaluateAndSaveMenuFit({ userId, menuId: menu.id, days }, db)
     const fitLine = menuFitSummary(fit)
+    // Festivos (PRO-226): Mimo mentions them.
+    const holidayLine = await weekHolidaySummary(userId, weekStart)
 
+    const planLine = weekPlan ? `\nSolo esta semana (la plantilla no cambia): ${describeWeekPlan(weekPlan)}.` : ''
     return {
       data: { ...menu, fit },
-      summary: `Menu generado para la semana del ${weekStart}. ${menuSummary}${fitLine ? `\n${fitLine}` : ''}`,
+      summary: `Menu generado para la semana del ${weekStart}.${pastLine} ${menuSummary}${planLine}${fitLine ? `\n${fitLine}` : ''}${holidayLine ? `\n${holidayLine}` : ''}`,
       uiHint: 'menu',
     }
-  },
 }
 
 const COOKING_FREQS = ['daily', '3_4_times', 'rarely'] as const
@@ -802,7 +960,7 @@ const PRIORITIES = ['quick', 'varied', 'healthy', 'cheap'] as const
 const completeOnboarding: SkillDefinition = {
   name: 'complete_onboarding',
   description:
-    'Solo durante los primeros pasos de un hogar nuevo por WhatsApp: guarda cuantos son en casa, cuanto cocinan, sus platos favoritos y su prioridad, marca los primeros pasos como hechos y genera su primer menu de esta semana (no hace falta llamar ademas a generate_weekly_menu). Llamalo una sola vez, cuando tengas adultos, niños, frecuencia y al menos un plato.',
+    'Solo durante los primeros pasos de un hogar nuevo por WhatsApp: guarda cuantos son en casa, cuanto cocinan (y los platos o la prioridad, solo si los ha dicho), marca los primeros pasos como hechos y genera su primer menu de esta semana (no hace falta llamar ademas a generate_weekly_menu). Llamalo una sola vez, cuando tengas adultos, niños y frecuencia.',
   parameters: {
     type: 'object',
     properties: {
@@ -816,9 +974,8 @@ const completeOnboarding: SkillDefinition = {
       favoriteDishes: {
         type: 'array',
         items: { type: 'string' },
-        minItems: 1,
         maxItems: 30,
-        description: 'Platos que les gustan, tal como los dice el usuario: todos los que diga, no hay tope de cinco.',
+        description: 'Solo si los ha dicho sin preguntarle (el alta ya no los pide, D-064): platos que les gustan, tal como los dice, todos los que diga (no hay tope de cinco). Si no, omitelo.',
       },
       priority: {
         type: 'string',
@@ -826,7 +983,7 @@ const completeOnboarding: SkillDefinition = {
         description: 'Lo que mas le importa (quick = rapido, varied = variado, healthy = sano, cheap = barato). Si no lo ha dicho, varied.',
       },
     },
-    required: ['adults', 'kidsCount', 'cookingFreq', 'favoriteDishes'],
+    required: ['adults', 'kidsCount', 'cookingFreq'],
   },
   async handler(
     params: { adults?: number; kidsCount?: number; cookingFreq?: string; favoriteDishes?: string[]; priority?: string },
@@ -849,17 +1006,28 @@ const completeOnboarding: SkillDefinition = {
       !(adults >= 1 && adults <= 20) && 'cuantos adultos son',
       !(kidsCount >= 0 && kidsCount <= 20) && 'cuantos niños',
       !cookingFreq && 'cuanto cocinan',
-      favoriteDishes.length === 0 && 'algun plato que les guste',
     ].filter(Boolean)
     if (missing.length > 0) {
       return { data: null, summary: `No he guardado nada: falta ${missing.join(', ')}. Preguntaselo.` }
     }
     // No restrictions or consent here: health data never goes through WhatsApp.
     await saveOnboarding(userId, { adults, kidsCount, cookingFreq: cookingFreq!, favoriteDishes, priority }, db)
-    const menu = await generateWeeklyMenu.handler({}, ctx)
+    // Same first menu as the web sign-up (PRO-65, PRO-244): it starts today
+    // (days already gone are not generated) and, Friday to Sunday, next week
+    // comes too. The reply (and the WhatsApp picture) shows this week from
+    // today; next week is waiting in the app.
+    const plan = firstMenuWeeks()
+    const results: SkillResult[] = []
+    for (const weekStart of plan.weeks) {
+      const previous = await loadPreviousWeek(userId, weekStart, db)
+      if (weekHasDishes(previous.days)) continue
+      results.push(await generateAndSaveWeek(ctx, weekStart, previous, plan.today))
+    }
+    const menu = results[0] ?? (await generateWeeklyMenu.handler({}, ctx))
+    const nextLine = results.length > 1 ? ` Tambien he generado la semana que viene (${results[1].summary})` : ''
     return {
       ...menu,
-      summary: `Primeros pasos guardados (${adults} adultos, ${kidsCount} niños). ${menu.summary}`,
+      summary: `Primeros pasos guardados (${adults} adultos, ${kidsCount} niños). ${menu.summary}${nextLine}`,
     }
   },
 }
@@ -985,7 +1153,7 @@ const swapMeal: SkillDefinition = {
           if (dishNow(updatedNew, dayIndex, meal) !== created.name) return notSaved(slotLabel)
           return {
             data: { ...updatedNew, change: changeOf(t, meal, created.name), recipeId: created.id },
-            summary: `Hecho. "${untrustedText(created.name, 80)}" no estaba en sus recetas ni en el catalogo: la he creado como receta del hogar (raciones e ingredientes estimados; se puede revisar en la app) y la he puesto en la ${slotLabel}. Sus ingredientes ya salen en la lista de la compra.`,
+            summary: `Hecho. "${untrustedText(created.name, 80)}" no estaba en sus recetas ni en el catalogo: la he creado como receta del hogar (raciones e ingredientes estimados; se puede revisar en la app) y la he puesto en la ${slotLabel}. Sus ingredientes ya salen en la lista de la compra.${repeatNote(days, t.weekStart, dayIndex, meal, { recipeId: created.id, name: created.name })}`,
             uiHint: 'menu',
           }
         }
@@ -1000,7 +1168,7 @@ const swapMeal: SkillDefinition = {
         if (dishNow(updatedNote, dayIndex, meal) !== note) return notSaved(slotLabel)
         return {
           data: { ...updatedNote, change: changeOf(t, meal, note) },
-          summary: `Hecho. "${untrustedText(note, 80)}" no esta en sus recetas ni en el catalogo, asi que lo he puesto como nota en la ${slotLabel}.${closest} ${NOTE_THEN_RECIPE_HINT}${chosen ? ` Si prefiere "${chosen.name}", ofrecele cambiar la nota por esa receta.` : ''}`,
+          summary: `Hecho. "${untrustedText(note, 80)}" no esta en sus recetas ni en el catalogo, asi que lo he puesto como nota en la ${slotLabel}.${repeatNote(days, t.weekStart, dayIndex, meal, { name: note })}${closest} ${NOTE_THEN_RECIPE_HINT}${chosen ? ` Si prefiere "${chosen.name}", ofrecele cambiar la nota por esa receta.` : ''}`,
           uiHint: 'menu',
         }
       }
@@ -1030,7 +1198,7 @@ const swapMeal: SkillDefinition = {
       if (dishNow(updatedManual, dayIndex, meal) !== chosen.name) return notSaved(slotLabel)
       return {
         data: { ...updatedManual, change: changeOf(t, meal, chosen.name) },
-        summary: `Hecho. He puesto "${chosen.name}" en la ${slotLabel}.`,
+        summary: `Hecho. He puesto "${chosen.name}" en la ${slotLabel}.${repeatNote(days, t.weekStart, dayIndex, meal, { recipeId: chosen.id, name: chosen.name })}`,
         uiHint: 'menu',
       }
     }
@@ -1059,8 +1227,9 @@ const swapMeal: SkillDefinition = {
 
     const favoriteRecipeIds = new Set<string>(favRows.map((f: any) => f.recipeId))
 
-    // Load recipes with ingredients for matching
-    const allRecipes = await loadMatchableRecipes(userId, db)
+    // Load recipes with ingredients for matching (a school-day dinner skips
+    // the group of the kids' lunch, PRO-224).
+    const allRecipes = await schoolDinnerPool(await loadMatchableRecipes(userId, db), menu, dayIndex, meal, db)
     const season = detectSeason()
 
     const newRecipe = findRecipeForSlot(allRecipes, {
@@ -1088,7 +1257,7 @@ const swapMeal: SkillDefinition = {
     if (dishNow(updated, dayIndex, meal) !== newRecipe.name) return notSaved(slotLabel)
     return {
       data: { ...updated, change: changeOf(t, meal, newRecipe.name) },
-      summary: `Cambiado: la ${slotLabel} ahora es "${newRecipe.name}".`,
+      summary: `Cambiado: la ${slotLabel} ahora es "${newRecipe.name}".${repeatNote(days, t.weekStart, dayIndex, meal, { recipeId: newRecipe.id, name: newRecipe.name })}`,
       uiHint: 'menu',
     }
   },
@@ -1415,8 +1584,11 @@ const getPantryStock: SkillDefinition = {
         uiHint: 'text',
       }
     }
-    const fmt = (r: { name: string; quantity: number; unit: string; expiresAt: string | null }) =>
-      `${r.name}${r.quantity ? ` ${r.quantity} ${r.unit}` : ''}${r.expiresAt ? ` (caduca ${String(r.expiresAt).slice(0, 10)})` : ''}`
+    // PRO-228: where it is (nevera / congelador; «despensa» is the default and goes unsaid) and since when.
+    const place = (r: { location?: string; storedAt?: string }) =>
+      r.location === 'congelador' ? ` [congelador desde ${String(r.storedAt ?? '').slice(0, 10)}]` : r.location === 'nevera' ? ' [nevera]' : ''
+    const fmt = (r: { name: string; quantity: number; unit: string; expiresAt: string | null; location?: string; storedAt?: string }) =>
+      `${r.name}${r.quantity ? ` ${r.quantity} ${r.unit}` : ''}${r.expiresAt ? ` (caduca ${String(r.expiresAt).slice(0, 10)})` : ''}${place(r)}`
     const all = [...pantry.map(fmt), ...fromList.map((i) => String(i.name))]
     return {
       data: { pantry, fromList },
@@ -1439,16 +1611,20 @@ function findPantryRow<T extends { name: string }>(rows: T[], query: string): T 
 
 const markInStock: SkillDefinition = {
   name: 'mark_in_stock',
-  description: 'El usuario dice que tiene o que se le ha acabado un ingrediente. "tengo X" → inStock:true (lo apunta en la despensa y lo marca "ya lo tengo" en la lista); "se acabo X" / "ya no tengo X" → false (lo quita de ambas). Sin inStock alterna.',
+  description:
+    'El usuario dice que tiene o que se le ha acabado un ingrediente. "tengo X" → inStock:true (lo apunta en la despensa y lo marca "ya lo tengo" en la lista); "se acabo X" / "ya no tengo X" → false (lo quita de ambas). Sin inStock alterna. Si dice CUANTO le queda ("nos queda una cebolla y medio pimiento", "tengo 200 g de arroz"), pasa quantity (y unit si la dice): la lista compra solo lo que falta en vez de marcar toda la linea; una llamada por ingrediente.',
   parameters: {
     type: 'object',
     properties: {
       ingredient: { type: 'string', description: 'Nombre del ingrediente (acepta coincidencia parcial)' },
       inStock: { type: 'boolean', description: 'true si tiene, false si no. Si se omite, alterna el estado.' },
+      location: { type: 'string', enum: ['nevera', 'congelador', 'despensa'], description: 'Donde lo tiene, si lo dice ("tengo pollo en el congelador"). Si ya estaba apuntado en otro sitio, lo cambia de sitio.' },
+      quantity: { type: 'number', description: 'Cuanto le queda en casa (0.5 = medio). Solo si lo dice.' },
+      unit: { type: 'string', description: 'Unidad de quantity: unidades, g, kg, ml, l… Sin unidad = unidades.' },
     },
     required: ['ingredient'],
   },
-  async handler(params: { ingredient: string; inStock?: boolean }, ctx) {
+  async handler(params: { ingredient: string; inStock?: boolean; location?: string; quantity?: number; unit?: string }, ctx) {
     const { userId, db } = ctx
     const pantry = await listPantryForUser(userId, db).catch(() => [])
     const list = await latestShoppingList(ctx)
@@ -1458,15 +1634,52 @@ const markInStock: SkillDefinition = {
     const current = item ? Boolean(item.inStock) : Boolean(pantryHit)
     const next = params.inStock != null ? !!params.inStock : !current
 
+    // «Nos queda una cebolla» (PRO-182): the list buys only the rest of a menu line.
+    if (item && item.ingredientId && item.kind !== 'manual' && item.kind !== 'staple' && params.quantity != null && params.quantity >= 0 && params.inStock !== false) {
+      const b = toBuyable(params.quantity, params.unit)
+      let have: number | null = b.quantity ?? (params.quantity === 0 ? 0 : null)
+      if (have != null && have > 0 && b.unit && b.unit !== item.unit) {
+        const [ing] = await db
+          .select({ density: ingredients.density, unitWeight: ingredients.unitWeight })
+          .from(ingredients)
+          .where(eq(ingredients.id, item.ingredientId))
+          .limit(1)
+        have = convertUnits(have, b.unit as any, item.unit, ing?.density, ing?.unitWeight)
+      }
+      if (have == null) {
+        return {
+          data: null,
+          summary: `No he podido pasar esa cantidad a la unidad de la lista (${item.unit}). ¿Cuánto ${item.name} os queda en ${item.unit}?`,
+          uiHint: 'text',
+        }
+      }
+      setHaveAtHome(item, have)
+      await db.update(shoppingLists).set({ items }).where(eq(shoppingLists.id, list.id))
+      const left = item.inStock ? 0 : Math.max(0, item.quantity - (item.haveQuantity ?? 0))
+      const fmt = (n: number) => `${Math.round(n * 10) / 10} ${item.unit}`
+      return {
+        data: { name: item.name, inStock: item.inStock, haveQuantity: item.haveQuantity ?? null, toBuy: left },
+        summary: item.inStock
+          ? `${item.name}: con lo que tenéis llega; marcado como en casa.`
+          : `${item.name}: apuntado lo que os queda; en la lista quedan ${fmt(left)} por comprar (el menú pide ${fmt(item.quantity)}).`,
+        uiHint: 'confirmation',
+      }
+    }
+
     let touched = false
     if (item) {
       item.inStock = next
       await db.update(shoppingLists).set({ items }).where(eq(shoppingLists.id, list.id))
       touched = true
     }
+    const location = isPantryLocation(params.location) ? params.location : undefined
+    if (next && pantryHit && location && (pantryHit as { location?: string }).location !== location) {
+      await patchPantryForUser(userId, pantryHit.id, { location }, db)
+      touched = true
+    }
     if (next && !pantryHit) {
       try {
-        await addPantryForUser(userId, { name: String(item?.name ?? params.ingredient).trim().slice(0, 80) }, db)
+        await addPantryForUser(userId, { name: String(item?.name ?? params.ingredient).trim().slice(0, 80), location }, db)
         touched = true
       } catch (err) {
         if (!(err instanceof NoHouseholdError)) throw err
@@ -1488,7 +1701,7 @@ const markInStock: SkillDefinition = {
     const name = item?.name ?? pantryHit?.name ?? params.ingredient
     return {
       data: { name, inStock: next },
-      summary: next ? `${name} marcado como en casa.` : `${name} eliminado de la despensa.`,
+      summary: next ? `${name} marcado como en casa${location && location !== 'despensa' ? ` (${location})` : ''}.` : `${name} eliminado de la despensa.`,
       uiHint: 'confirmation',
     }
   },
@@ -2472,7 +2685,7 @@ const addRecipeToMine: SkillDefinition = {
 const updateMemory: SkillDefinition = {
   name: 'update_memory',
   description:
-    'Guarda en la memoria del usuario un dato persistente que mencione en la conversación (disgustos, equipo de cocina, presupuesto, preferencias de cocina, días con poco tiempo, hábitos de preparación, etc.). Llámalo SIEMPRE que el usuario diga "recuerda que…", "ya no me gusta…", "no me apetece nunca…", "tengo / no tengo (electrodoméstico)", "los lunes no cocino", "el presupuesto semanal es…", "preferimos cocina mediterránea", "siempre congelo el pescado", "pongo las legumbres en remojo la noche antes". Acepta un array de hechos para cubrir varios cambios en un único turno. Usa claves canónicas: dislikes (array), equipment (array), restrictions (array), weekly_budget_eur (number), cuisine_bias (object cuisine->0..100), time_available (object weekday->minutes), cooking_skill ("easy"|"medium"|"advanced"), meal_times (object meal->"HH:MM"), notes (array), nutrition_principles (array), prep_habits (array), physical.age, physical.weight_kg, physical.height_cm, physical.activity_level, household.adults, household.kids_2_to_10.',
+    'Guarda en la memoria del usuario un dato persistente que mencione en la conversación (disgustos, equipo de cocina, presupuesto, preferencias de cocina, días con poco tiempo, hábitos de preparación, etc.). Llámalo SIEMPRE que el usuario diga "recuerda que…", "ya no me gusta…", "no me apetece nunca…", "tengo / no tengo (electrodoméstico)", "los lunes no cocino", "el presupuesto semanal es…", "preferimos cocina mediterránea", "siempre congelo el pescado", "pongo las legumbres en remojo la noche antes". Acepta un array de hechos para cubrir varios cambios en un único turno. Usa claves canónicas: dislikes (array), equipment (array), restrictions (array), weekly_budget_eur (number), cuisine_bias (object cuisine->0..100), time_available (object weekday->minutes), cooking_skill ("easy"|"medium"|"advanced"), meal_times (object meal->"HH:MM"), notes (array), nutrition_principles (array), prep_habits (array), physical.age, physical.weight_kg, physical.height_cm, physical.activity_level, household.adults, household.kids_2_to_10, region (comunidad autónoma del hogar, código: AN Andalucía, AR Aragón, AS Asturias, IB Illes Balears, CN Canarias, CB Cantabria, CM Castilla-La Mancha, CL Castilla y León, CT Cataluña, EX Extremadura, GA Galicia, MD Madrid, MC Murcia, NC Navarra, PV País Vasco, RI La Rioja, VC Comunitat Valenciana, CE Ceuta, ML Melilla; sus festivos van como fin de semana en el menú).',
   parameters: {
     type: 'object',
     properties: {
@@ -2664,6 +2877,16 @@ export const skills: SkillDefinition[] = [
   ...appSkills,
   // Compra en mis tiendas (specs/shop-orders.md) — shopOrderSkills.ts:
   ...shopOrderSkills,
+  // Cómo cocina el hogar (PRO-217) — householdHabitsSkills.ts:
+  ...householdHabitsSkills,
+  // Comidas fijas (PRO-218, specs/menus.md):
+  ...fixedMealSkills,
+  // PRO-223: «mañana me llevo táper».
+  ...taperSkills,
+  // Menú del cole (PRO-224, specs/menus.md):
+  ...schoolMenuSkills,
+  // PRO-228: «Sí, mételo» al repaso mensual del congelador.
+  ...freezerSkills,
 ]
 
 /**

@@ -7,7 +7,7 @@
  * answer 200 or Meta retries the batch forever.
  */
 
-export type InboundKind = 'text' | 'audio' | 'image' | 'interactive' | 'unsupported'
+export type InboundKind = 'text' | 'audio' | 'image' | 'document' | 'interactive' | 'unsupported'
 
 export interface InboundMessage {
   wamid: string
@@ -82,6 +82,16 @@ function parseMessage(m: any, contacts: any[]): InboundMessage | null {
         mediaId: m.image.id,
         mimeType: m.image.mime_type ?? null,
         text: typeof m.image.caption === 'string' ? m.image.caption : null,
+      }
+    case 'document':
+      // PRO-224: only PDFs (the school menu); any other file stays unsupported.
+      if (typeof m.document?.id !== 'string' || m.document?.mime_type !== 'application/pdf') return base
+      return {
+        ...base,
+        kind: 'document',
+        mediaId: m.document.id,
+        mimeType: 'application/pdf',
+        text: typeof m.document.caption === 'string' ? m.document.caption : null,
       }
     case 'interactive': {
       const reply = m.interactive?.button_reply ?? m.interactive?.list_reply

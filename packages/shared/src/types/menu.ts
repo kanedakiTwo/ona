@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { Meal } from '../constants/enums.js'
 import type { Dish } from './menuDish.js'
+import { weekPlanSchema } from './weekPlan.js'
 
 export interface MealSlot {
   /** Slot-level diner override; replaces the household default for every dish in this slot. */
@@ -14,6 +15,12 @@ export interface MealSlot {
    */
   eaten?: boolean
   eatenAt?: string
+  /**
+   * PRO-223 · «El táper de mañana»: how many tápers this meal is. The slot
+   * holds the previous day's dinner as a leftover and `servings` = this count,
+   * so that dinner is cooked with one more ration per táper.
+   */
+  taper?: number
 }
 
 export interface DayMenu {
@@ -97,6 +104,17 @@ export const generateMenuSchema = z.object({
    * "Vaciar semana" sends it. Stops a failed GET from wiping a week.
    */
   force: z.boolean().optional(),
+  /**
+   * PRO-225 · «Antes de planificar»: meals out and guests for this week
+   * only. Shapes the generated week, never the saved plantilla.
+   */
+  weekPlan: weekPlanSchema.optional(),
+  /**
+   * PRO-244: the first menu starts on the sign-up day. Days of the week
+   * before this date (YYYY-MM-DD) are not generated (they stay without
+   * dishes and add nothing to the shopping list).
+   */
+  fromDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 })
 
 export const lockMealSchema = z.object({

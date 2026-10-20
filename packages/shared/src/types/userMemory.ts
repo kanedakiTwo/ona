@@ -16,6 +16,7 @@
  */
 import { z } from 'zod'
 import { dayTimeBudgetSchema, timeBudgetsByDay, COOKING_WEEKDAYS } from './cookingTime.js'
+import { SPANISH_REGIONS, SPANISH_REGION_CODES, isSpanishRegion, type SpanishRegion } from '../constants/holidays.js'
 
 export const MEMORY_SOURCES = ['onboarding', 'manual', 'inferred'] as const
 export type MemorySource = (typeof MEMORY_SOURCES)[number]
@@ -74,6 +75,9 @@ export const MEMORY_KEYS = [
   // the habit mid-conversation. The scheduler reads it to decide which
   // ingredient prep events deserve a heads-up notification.
   'prep_habits',
+  // Comunidad autónoma del hogar (PRO-226), ISO 3166-2:ES code ('MD', 'CT'…):
+  // its holidays count as weekend in the menu (constants/holidays.ts).
+  'region',
 ] as const
 
 export type MemoryKey = (typeof MEMORY_KEYS)[number]
@@ -115,6 +119,7 @@ export const MEMORY_VALUE_SCHEMAS: Record<MemoryKey, z.ZodTypeAny> = {
   notes: z.array(z.string().min(1)),
   nutrition_principles: z.array(z.string().min(3).max(280)),
   prep_habits: z.array(z.string().min(3).max(280)),
+  region: z.enum(SPANISH_REGION_CODES as [SpanishRegion, ...SpanishRegion[]]),
 }
 
 // ─── Wire shape ─────────────────────────────────────────────────
@@ -182,6 +187,9 @@ export function buildMemoryDigestText(memory: UserMemory): string {
 
   const eq = (m.equipment?.value as string[] | undefined) ?? []
   if (eq.length > 0) lines.push(`Equipo de cocina: ${eq.join(', ')}.`)
+
+  const region = m.region?.value
+  if (isSpanishRegion(region)) lines.push(`Comunidad autónoma: ${SPANISH_REGIONS[region]} (sus festivos cuentan como fin de semana en el menú).`)
 
   if (m.weekly_budget_eur?.value) lines.push(`Presupuesto semanal: ${m.weekly_budget_eur.value} €.`)
   if (m.cooking_skill?.value) lines.push(`Nivel de cocinero: ${m.cooking_skill.value}.`)

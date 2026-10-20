@@ -295,7 +295,8 @@ describe('shopping, pantry, staples', () => {
     const r = await get('add_shopping_items').handler({ items: [{ name: 'leche', quantity: 2, unit: 'litros' }, { name: 'servilletas', quantity: 2, unit: 'paquetes' }] }, ctx(f.api))
     expect(writes(f.calls)).toEqual([
       { method: 'POST', path: '/shopping-list/L1/items', body: { name: 'leche', quantity: 2000, unit: 'ml' } },
-      { method: 'POST', path: '/shopping-list/L1/items', body: { name: 'servilletas (2 paquetes)' } },
+      // PRO-175: «2 paquetes» goes as the amount, not into the name.
+      { method: 'POST', path: '/shopping-list/L1/items', body: { name: 'servilletas', amountText: '2 paquetes' } },
     ])
     expect(r.uiHint).toBe('shopping_list')
   })
@@ -321,7 +322,7 @@ describe('shopping, pantry, staples', () => {
       { method: 'POST', path: '/shopping-list/L1/items', body: { name: 'leche de coco' } },
     ])
     expect(r.summary).toBe(
-      'Hecho: añadido a la lista: leche de coco. Vuelve a estar pendiente (estaba comprado o en casa): Huevo, Aceite de oliva. Ya estaba en la lista: Leche entera, leche de coco.',
+      'Hecho: añadido a la lista: leche de coco. Vuelve a estar pendiente (estaba comprado, en casa o quitado): Huevo, Aceite de oliva. Ya estaba en la lista: Leche entera, leche de coco.',
     )
   })
 
@@ -374,6 +375,71 @@ describe('shopping, pantry, staples', () => {
     const r = await get('remove_shopping_items').handler({ names: ['leche', 'caviar'] }, ctx(f.api))
     expect(writes(f.calls)).toEqual([{ method: 'DELETE', path: '/shopping-list/L1/item/i1', body: undefined }])
     expect(r.summary).toContain('No estaban en la lista: caviar')
+  })
+
+  // PRO-175: Mimo «No he podido quitarlos de la lista. La herramienta ha dado un error» on menu lines.
+  it('remove_shopping_items leaves a menu line out of this shopping instead of deleting it', async () => {
+    const list = {
+      id: 'L1',
+      items: [
+        { id: 'menu:ing-pat:g', ingredientId: 'ing-pat', name: 'Patata', quantity: 1000, unit: 'g', kind: 'menu' },
+        { id: 'menu:ing-hj:u', ingredientId: 'ing-hj', name: 'Hueso de jamón', quantity: 1, unit: 'u' },
+        { id: 'st1', ingredientId: null, name: 'Pan', kind: 'staple' },
+      ],
+    }
+    const f = fakeApi({ 'GET /shopping-list': list })
+    const r = await get('remove_shopping_items').handler({ names: ['patata', 'hueso de jamon', 'pan'] }, ctx(f.api))
+    expect(writes(f.calls)).toEqual([
+      { method: 'PUT', path: '/shopping-list/L1/item/menu:ing-pat:g/edit', body: { skipped: true } },
+      { method: 'PUT', path: '/shopping-list/L1/item/menu:ing-hj:u/edit', body: { skipped: true } },
+    ])
+    expect(r.summary).toContain('Quitado de la lista: Patata, Hueso de jamón')
+    expect(r.summary).toContain('básicos')
+  })
+
+  it('add_shopping_items puts back a line left out', async () => {
+    const list = { id: 'L1', items: [{ id: 'menu:ing-pat:g', ingredientId: 'ing-pat', name: 'Patata', quantity: 1000, unit: 'g', skipped: true }] }
+    const f = fakeApi({ 'GET /shopping-list': list })
+    const r = await get('add_shopping_items').handler({ items: [{ name: 'patatas' }] }, ctx(f.api))
+    expect(writes(f.calls)).toEqual([{ method: 'PUT', path: '/shopping-list/L1/item/menu:ing-pat:g/edit', body: { skipped: false } }])
+    expect(r.summary).toContain('vuelve a estar pendiente')
+  })
+
+  it('get_shopping_list leaves out what was removed from this shopping and says so', async () => {
+    const list = {
+      id: 'L1',
+      items: [
+        { id: 'a', ingredientId: 'ing-pat', name: 'Patata', quantity: 1000, unit: 'g', skipped: true },
+        { id: 'b', ingredientId: 'ing-ceb', name: 'Cebolla', quantity: 2, unit: 'u' },
+        { id: 'c', ingredientId: null, name: 'Pañales talla 4', quantity: 2, unit: 'u', kind: 'manual', amountText: '2 paquetes' },
+      ],
+    }
+    const r = await get('get_shopping_list').handler({}, ctx(fakeApi({ 'GET /shopping-list': list }).api))
+    expect(r.summary).toContain('Te faltan 2 cosas')
+    expect(r.summary).toContain('Pañales talla 4 (2 paquetes)')
+    expect(r.summary).toContain('Quitado de esta compra: Patata')
+  })
+
+  it('change_shopping_item_amount: menu lines in their unit, manual lines in any words', async () => {
+    const list = {
+      id: 'L1',
+      items: [
+        { id: 'menu:ing-pat:g', ingredientId: 'ing-pat', name: 'Patata', quantity: 1000, unit: 'g', kind: 'menu' },
+        { id: 'm1', ingredientId: null, name: 'Yogures', quantity: 1, unit: 'u', kind: 'manual' },
+      ],
+    }
+    const f = fakeApi({ 'GET /shopping-list': list })
+    const ok = await get('change_shopping_item_amount').handler({ name: 'patatas', quantity: 2, unit: 'kilos' }, ctx(f.api))
+    await get('change_shopping_item_amount').handler({ name: 'yogures', quantity: 2, unit: 'paquetes' }, ctx(f.api))
+    const ask = await get('change_shopping_item_amount').handler({ name: 'patata', quantity: 2, unit: 'bolsas' }, ctx(f.api))
+    await get('change_shopping_item_amount').handler({ name: 'patata' }, ctx(f.api))
+    expect(writes(f.calls)).toEqual([
+      { method: 'PUT', path: '/shopping-list/L1/item/menu:ing-pat:g/edit', body: { quantity: 2000 } },
+      { method: 'PATCH', path: '/shopping-list/L1/item/m1', body: { amountText: '2 paquetes' } },
+      { method: 'PUT', path: '/shopping-list/L1/item/menu:ing-pat:g/edit', body: { quantity: null } },
+    ])
+    expect(ok.summary).toMatch(/^Hecho: Patata/)
+    expect(ask.summary).toContain('la cantidad va en g')
   })
 
   it('update_pantry adds to an existing row in the same unit, creates new ones, removes', async () => {
@@ -506,10 +572,26 @@ describe('recipes, profile, household', () => {
     expect(writes(f.calls)).toEqual([{ method: 'PUT', path: '/user/u1/settings', body: { template: { mealTemplate: { sabado: { cena: 0 } } } } }])
   })
 
-  it('invite_to_household returns a shareable link', async () => {
+  it('invite_to_household returns the written message with the link, counted as sent by Mimo (PRO-260)', async () => {
     const f = fakeApi({ 'POST /households/me/invites': { token: 'abc123' } })
     const r = await get('invite_to_household').handler({}, ctx(f.api))
     expect(r.summary).toMatch(/\/invites\/abc123/)
+    expect(r.summary).toContain('Te invito a nuestra casa en Mimoia')
+    expect(r.summary).toContain('caduca en 30 dias')
+    expect(r.summary).toContain('https://wa.me/?text=')
+    expect(writes(f.calls)).toEqual([
+      { method: 'POST', path: '/households/me/invites', body: { role: 'member', source: 'mimo', shared: true } },
+    ])
+  })
+
+  // PRO-163 (D-051): the same «Invitar a otro hogar» as the button.
+  it('share_invite_link gives the personal link with the approved message and counts the share', async () => {
+    const f = fakeApi({ 'GET /referrals/me': { code: 'abcd2345', link: 'https://mimoia.com/?invita=abcd2345' } })
+    const r = await get('share_invite_link').handler({}, ctx(f.api))
+    expect(r.summary).toContain(
+      'Yo uso Mimoia para el menú de la semana: le escribes por WhatsApp y te lo hace, con la lista de la compra. Pruébalo con mi enlace: https://mimoia.com/?invita=abcd2345',
+    )
+    expect(writes(f.calls)).toEqual([{ method: 'POST', path: '/usage/invite-shared', body: { channel: 'web' } }])
   })
 })
 
@@ -524,6 +606,16 @@ describe('add_freezer_dish (PRO-82)', () => {
     expect(r.uiHint).toBe('menu')
     expect(r.summary).toContain('Lentejas guisadas')
     expect(r.summary).toContain('no suma nada a la lista de la compra')
+  })
+
+  it('«lo tenemos en la nevera» → place nevera saves a «Táper de la nevera» (PRO-240)', async () => {
+    const f = fakeApi({ 'GET /recipes': [{ id: 'r-lg', name: 'Lentejas guisadas' }] })
+    const r = await get('add_freezer_dish').handler({ dayIndex: 0, meal: 'lunch', recipeName: 'lentejas', place: 'nevera' }, ctx(f.api))
+    expect(writes(f.calls).at(-1)).toEqual({
+      method: 'POST', path: '/menu/m1/day/0/meal/lunch/dish', body: { kind: 'recipe', recipeId: 'r-lg', variant: 'fridge' },
+    })
+    expect(r.summary).toContain('taper de la nevera')
+    expect(r.summary).not.toContain('congelador')
   })
 
   it('an empty meal is not cleared first; unknown dishes go as a «Táper: …» note', async () => {

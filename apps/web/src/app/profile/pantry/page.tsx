@@ -13,8 +13,8 @@
  */
 import { useState } from "react"
 import { Plus, Trash2 } from "lucide-react"
-import type { BuyableUnit } from "@ona/shared"
-import { ingredientDisplayName } from "@ona/shared"
+import type { BuyableUnit, PantryLocation } from "@ona/shared"
+import { groupPantryByLocation, ingredientDisplayName, PANTRY_LOCATION_LABELS, PANTRY_LOCATIONS } from "@ona/shared"
 import {
   usePantry,
   useAddPantry,
@@ -71,6 +71,8 @@ export default function PantryPage() {
   const [qty, setQty] = useState("1")
   const [unit, setUnit] = useState<BuyableUnit>("u")
   const [exp, setExp] = useState("")
+  // PRO-228: where it goes (default «Despensa»).
+  const [location, setLocation] = useState<PantryLocation>("despensa")
 
   function handleAdd(e: React.FormEvent) {
     e.preventDefault()
@@ -84,6 +86,7 @@ export default function PantryPage() {
         quantity,
         unit,
         expiresAt: exp || null,
+        location,
       },
       {
         onSuccess: () => {
@@ -156,6 +159,21 @@ export default function PantryPage() {
                 aria-label="Caducidad (opcional)"
               />
             </label>
+            <label className="block">
+              <span className={FIELD_LABEL}>Dónde está</span>
+              <select
+                value={location}
+                onChange={(e) => setLocation(e.target.value as PantryLocation)}
+                className={SUB_INPUT}
+                aria-label="Dónde está"
+              >
+                {PANTRY_LOCATIONS.map((l) => (
+                  <option key={l} value={l}>
+                    {PANTRY_LOCATION_LABELS[l]}
+                  </option>
+                ))}
+              </select>
+            </label>
             <button type="submit" disabled={!name.trim() || add.isPending} className={`${PILL_INK} w-full`}>
               <Plus size={16} /> {add.isPending ? "Añadiendo…" : "Añadir a despensa"}
             </button>
@@ -163,7 +181,7 @@ export default function PantryPage() {
         </section>
 
         <section>
-          <h2 className={`${SUB_EYEBROW} mb-3`}>Despensa · {items?.length ?? 0}</h2>
+          <h2 className={`${SUB_EYEBROW} mb-3`}>En casa · {items?.length ?? 0}</h2>
           {load.failed ? (
             <SubLoadError onRetry={load.retry} retrying={load.retrying} />
           ) : isLoading ? (
@@ -176,19 +194,29 @@ export default function PantryPage() {
               <p className="mt-1 text-[14px] text-ink-soft">Añade lo que tengas guardado.</p>
             </SubNotice>
           ) : (
-            <ul className={SUB_LIST}>
-              {items.map((it) => (
-                <PantryRow
-                  key={it.id}
-                  item={it}
-                  onDelete={() => {
-                    if (typeof window === "undefined" || window.confirm(`¿Quitar "${it.name}" de la despensa?`)) {
-                      del.mutate({ id: it.id })
-                    }
-                  }}
-                />
+            // PRO-228: grouped by place (nevera → congelador → despensa).
+            <div className="space-y-6">
+              {groupPantryByLocation(items).map((group) => (
+                <div key={group.location} data-testid={`pantry-group-${group.location}`}>
+                  <h3 className={`${SUB_EYEBROW} mb-2`}>
+                    {PANTRY_LOCATION_LABELS[group.location]} · {group.items.length}
+                  </h3>
+                  <ul className={SUB_LIST}>
+                    {group.items.map((it) => (
+                      <PantryRow
+                        key={it.id}
+                        item={it}
+                        onDelete={() => {
+                          if (typeof window === "undefined" || window.confirm(`¿Quitar "${it.name}" de la despensa?`)) {
+                            del.mutate({ id: it.id })
+                          }
+                        }}
+                      />
+                    ))}
+                  </ul>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
         </section>
       </div>
@@ -222,6 +250,12 @@ function PantryRow({ item, onDelete }: { item: PantryItem; onDelete: () => void 
     <li className="flex min-h-[64px] items-center gap-2 py-2 pl-4 pr-2">
       <div className="min-w-0 flex-1">
         <div className="truncate text-[15px] text-ink">{displayName}</div>
+        {item.location === "congelador" && item.storedAt && (
+          <span className="mt-0.5 block text-[12px] text-ink-soft">
+            En el congelador desde el{" "}
+            {new Date(item.storedAt).toLocaleDateString("es-ES", { day: "numeric", month: "long" })}
+          </span>
+        )}
         {pill && (
           <span
             className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] ${pill.tone}`}
@@ -267,6 +301,26 @@ function PantryRow({ item, onDelete }: { item: PantryItem; onDelete: () => void 
             className="min-h-[44px] w-full rounded-xl border border-border-soft bg-paper px-3.5 text-[15px] text-ink outline-none focus:border-ink"
           />
         </label>
+        <div className="mb-3 px-3" role="group" aria-label="Dónde está">
+          <span className="mb-1 block text-[12px] font-medium text-ink-muted">Dónde está</span>
+          <div className="flex flex-wrap gap-2">
+            {PANTRY_LOCATIONS.map((l) => (
+              <button
+                key={l}
+                type="button"
+                aria-pressed={item.location === l}
+                onClick={() => {
+                  if (item.location !== l) patch.mutate({ id: item.id, patch: { location: l } })
+                }}
+                className={`min-h-[40px] rounded-full border px-4 text-[14px] ${
+                  item.location === l ? "border-ink bg-ink text-cream" : "border-border bg-paper text-ink-mid"
+                }`}
+              >
+                {PANTRY_LOCATION_LABELS[l]}
+              </button>
+            ))}
+          </div>
+        </div>
         <SheetAction
           icon={Trash2}
           label="Quitar de la despensa"

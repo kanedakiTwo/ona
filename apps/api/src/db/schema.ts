@@ -52,11 +52,24 @@ export const users = pgTable('users', {
    */
   whatsappNudgeAt: timestamp('whatsapp_nudge_at', { withTimezone: true }),
   /**
+   * Mimo's one offer to invite another household after a resolved week
+   * (PRO-164): stamped when it is appended to a reply, so it never repeats.
+   */
+  inviteOfferAt: timestamp('invite_offer_at', { withTimezone: true }),
+  /** A «no» to that offer (PRO-164): it stays off for good. */
+  inviteOfferDeclinedAt: timestamp('invite_offer_declined_at', { withTimezone: true }),
+  /**
    * «Afina tu menú» (PRO-146) offers: `{ introAt?, introChoice?: 'start'|'later',
    * cardDismissedAt?, onboardingAt?, whatsappOfferedAt?, flags?: ('carne'|'pescado')[] }`.
    * Each offer is stamped once so it never repeats.
    */
   tasteState: jsonb('taste_state').notNull().default(sql`'{}'::jsonb`),
+  /**
+   * «Familia en el mismo hogar» offers (D-088): `{ alta?, compra?, mimo?,
+   * mimoDeclined? }` ISO dates. Each moment is stamped the first time it is
+   * shown, so it never repeats (PRO-261 sign-up and list, PRO-262 Mimo).
+   */
+  familyInviteOffers: jsonb('family_invite_offers').notNull().default(sql`'{}'::jsonb`),
   // Authorization
   role: text('role').notNull().default('user'),
   // Suspension (admin gate). NULL = active.
@@ -71,6 +84,12 @@ export const users = pgTable('users', {
   newsletterOptIn: boolean('newsletter_opt_in').notNull().default(false),
   newsletterConsentAt: timestamp('newsletter_consent_at', { withTimezone: true }),
   newsletterConsentVersion: text('newsletter_consent_version'),
+  /**
+   * The «Avisos» screen's switches per alert kind (PRO-237, D-080;
+   * specs/notifications.md): `{ prep_alerts: false }` = off on every channel.
+   * Missing key = on. Kept in sync with `whatsapp_links.prefs` on every write.
+   */
+  alertPrefs: jsonb('alert_prefs').notNull().default({}).$type<Record<string, boolean>>(),
   /**
    * Explicit consent for health data (RGPD art. 9, PRO-21): when it was given,
    * which text version, and when it was withdrawn. Both dates stay as the
@@ -270,6 +289,13 @@ export const recipes = pgTable('recipes', {
   tips: text('tips'),
   substitutions: text('substitutions'),
   storage: text('storage'),
+  /**
+   * PRO-220 (D-069): «preparativos con antelación» of the recipe itself —
+   * `[{ text: 'Saca el filete del frigorífico', hoursBefore: 1.5 }]`. Prep
+   * alerts come from these without the household's prep habits. Filled by
+   * Cocina (COC-12). Empty = none.
+   */
+  advancePrep: jsonb('advance_prep').notNull().default([]).$type<Array<{ text: string; hoursBefore: number }>>(),
 
   /** Cached nutrition per serving — recomputed on every save. NULL until first compute. */
   nutritionPerServing: jsonb('nutrition_per_serving').$type<NutritionPerServing>(),
@@ -616,6 +642,18 @@ export const householdMembers = pgTable('household_members', {
   check('household_members_role_check', sql.raw("role IN ('owner','member','child')")),
 ])
 
+// PRO-230 (D-069): «hoy cocina Pablo» — who cooks a given day, only when
+// someone asks Mimo. That day's prep alerts go to this person.
+export const cookOfDay = pgTable('cook_of_day', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  /** Madrid calendar day (YYYY-MM-DD). */
+  day: date('day').notNull(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  assignedBy: uuid('assigned_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex('uq_cook_of_day').on(t.householdId, t.day)])
+
 // ─── 18. household_invites ──────────────────────────────────
 // One-time tokens the owner generates and shares manually (mirrors the
 // admin password-reset flow — no email is auto-sent). Token is a 32-char
@@ -633,6 +671,16 @@ export const householdInvites = pgTable('household_invites', {
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   consumedAt: timestamp('consumed_at', { withTimezone: true }),
   consumedByUserId: uuid('consumed_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+  /**
+   * Where it was prepared (PRO-260/263, `HOUSEHOLD_INVITE_SOURCES`): `casa`
+   * (Mi casa; also every invite before 2026-10-20), `alta`, `compra`, `mimo`.
+   */
+  source: text('source').notNull().default('casa'),
+  /**
+   * First time it was handed on: «Enviar por WhatsApp» or «Copiar» tapped,
+   * or Mimo giving the link (PRO-260). Null = prepared but never sent.
+   */
+  sharedAt: timestamp('shared_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   uniqueIndex('uq_household_invite_token').on(t.token),
@@ -745,6 +793,10 @@ export const pantryItems = pgTable('pantry_items', {
   unit: text('unit').notNull().default('u'),
   /** Best-before date the user entered. null = no expiry tracked. */
   expiresAt: date('expires_at'),
+  /** PRO-228: where it is — 'nevera' | 'congelador' | 'despensa' (PANTRY_LOCATIONS). */
+  location: text('location').notNull().default('despensa'),
+  /** PRO-228: when it went into that place (reset when it moves); null = created_at. */
+  storedAt: timestamp('stored_at', { withTimezone: true }),
   /** Bumped every time we decrement or the user edits. */
   lastUpdatedAt: timestamp('last_updated_at', { withTimezone: true }).notNull().defaultNow(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -844,7 +896,7 @@ export const notificationSchedule = pgTable('notification_schedule', {
   dedupKey: text('dedup_key').notNull().unique(),
   fireAt: timestamp('fire_at', { withTimezone: true }).notNull(),
   /** JSON payload passed directly to `sendPushToUser` at dispatch time. */
-  payload: jsonb('payload').notNull().$type<{ title: string; body: string; url?: string; tag?: string }>(),
+  payload: jsonb('payload').notNull().$type<{ title: string; body: string; url?: string; tag?: string; /** Weekly-cap priority (PRO-215); prep alerts are 1. */ priority?: number }>(),
   /** 'pending' | 'sent' | 'failed' | 'cancelled' */
   status: text('status').notNull().default('pending'),
   sentAt: timestamp('sent_at', { withTimezone: true }),
@@ -854,6 +906,39 @@ export const notificationSchedule = pgTable('notification_schedule', {
 }, (t) => [
   index('idx_notif_sched_due').on(t.fireAt, t.status),
   index('idx_notif_sched_user').on(t.userId),
+])
+
+// ─── Avisos candidatos (PRO-215 / PRO-216) ────────────────────────
+//
+// One row per aviso Mimo could have sent by itself (prep alert, cooking
+// reminder, Sunday nudge…) and what happened to it under the weekly budget
+// (`services/notifications/budget.ts`). The budget is counted from here:
+// rows with `counted = true` are the messages that spent one unit of the
+// household's week. Read in aggregate only (GET /admin/metrics).
+export const noticeCandidates = pgTable('notice_candidates', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  /** The household (primary) the budget belongs to, or the user when there is none. */
+  budgetKey: uuid('budget_key').notNull(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+  /** `prep_alerts`, `cooking_reminder`, `weekly_nudge`… (see NOTICE_PRIORITY). */
+  kind: text('kind').notNull(),
+  /** 1–4, see `noticePriority`. */
+  priority: integer('priority').notNull(),
+  /** enviado | fusionado | descartado_tope | fuera_ventana | fallido */
+  outcome: text('outcome').notNull(),
+  /** This row spent one unit of the weekly budget. */
+  counted: boolean('counted').notNull().default(false),
+  /** whatsapp | push | both */
+  channel: text('channel'),
+  /** Monday (YYYY-MM-DD, Europe/Madrid) of the ISO week. */
+  week: text('week').notNull(),
+  /** The scheduler tick it belongs to: avisos of the same moment share it. */
+  momentAt: timestamp('moment_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_notice_candidates_key_week').on(t.budgetKey, t.week),
+  index('idx_notice_candidates_user_created').on(t.userId, t.createdAt),
+  index('idx_notice_candidates_week').on(t.week),
 ])
 
 // ─── Web Push subscriptions (PR-B) ────────────────────────────────
@@ -923,6 +1008,13 @@ export const whatsappLinks = pgTable('whatsapp_links', {
   linkedAt: timestamp('linked_at', { withTimezone: true }).notNull().defaultNow(),
   /** Last inbound message — Meta's 24 h customer-service window starts here. */
   lastInboundAt: timestamp('last_inbound_at', { withTimezone: true }),
+  /**
+   * PRO-248: when the person said no to the avisos («No, gracias» or BAJA).
+   * Older answers are read from the messages (`optInDeclinedSql`).
+   */
+  optInDeclinedAt: timestamp('opt_in_declined_at', { withTimezone: true }),
+  /** PRO-248: when Mimo offered the avisos the one extra time (WhatsApp or web chat). */
+  optInReofferedAt: timestamp('opt_in_reoffered_at', { withTimezone: true }),
 })
 
 export const whatsappLinkCodes = pgTable('whatsapp_link_codes', {
@@ -1318,6 +1410,39 @@ export const newsletterSends = pgTable('newsletter_sends', {
 ])
 
 /**
+ * PRO-191: our own aggregated click counter for the newsletter. One row per
+ * issue and link (the links of the content, rewritten at send to
+ * `<web>/n/<issue>/<index>`); the redirect goes only to `destination`, saved
+ * here at send, never to a URL that comes in the request. No IP, browser or
+ * recipient: just how many times each link was opened.
+ */
+export const newsletterClicks = pgTable('newsletter_clicks', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  issueId: text('issue_id').notNull(),
+  linkIndex: integer('link_index').notNull(),
+  destination: text('destination').notNull(),
+  clicks: integer('clicks').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_newsletter_clicks_issue_link').on(t.issueId, t.linkIndex),
+])
+
+/**
+ * PRO-191: one row per newsletter opt-out done from an issue's link (counts
+ * only: the issue, whether it was an account or a waitlist entry, and when).
+ * `issue_id` is null when the link carried no issue (older emails).
+ */
+export const newsletterUnsubscribes = pgTable('newsletter_unsubscribes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  issueId: text('issue_id'),
+  /** user | waitlist */
+  source: text('source').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_newsletter_unsubscribes_issue').on(t.issueId),
+])
+
+/**
  * What this household chose when a product needs a choice (jamón → serrano,
  * pescado entero → lubina, carne picada → de ternera). Applied the next time
  * Mimoia drafts an order (specs/shop-orders.md → Buy rules).
@@ -1677,4 +1802,162 @@ export const catalogWishVotes = pgTable('catalog_wish_votes', {
   uniqueIndex('uq_catalog_wish_votes_voter').on(t.wishId, t.voterKey, t.source),
   index('idx_catalog_wish_votes_wish').on(t.wishId),
   check('catalog_wish_votes_source_check', sql.raw("source IN ('alta','me_encanta','mimo','evaluador')")),
+])
+
+// ─── household_notices (PRO-205) ────────────────────────────
+// One-off notices to a household, once per (key, household): the apology for
+// «Afina tu menú» showing dishes that broke allergies or diets (PRO-197).
+// `household_id` null = the key's scan marker (its `created_at` is the cutoff).
+// `user_id` = the member Mimo writes to on WhatsApp (null = app only).
+export const householdNotices = pgTable('household_notices', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  key: text('key').notNull(),
+  householdId: uuid('household_id').references(() => households.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  whatsappSentAt: timestamp('whatsapp_sent_at', { withTimezone: true }),
+  /** From when the card shows in the app (no WhatsApp, or 3 days without it going out). */
+  appSince: timestamp('app_since', { withTimezone: true }),
+  dismissedAt: timestamp('dismissed_at', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('uq_household_notices_key_household').on(t.key, t.householdId),
+  index('idx_household_notices_household').on(t.householdId),
+])
+
+// ─── school_lunches (PRO-224) ─────────────────────────────────
+// Menú del comedor escolar: per household and school day, the main dish the
+// kids eat at lunch and its group. The dinner that day doesn't repeat the
+// group. Read from a photo/PDF of the school's monthly menu and corrected by
+// the household. No child data: only the dish of a date.
+export const schoolLunches = pgTable('school_lunches', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  date: date('date', { mode: 'string' }).notNull(),
+  dish: text('dish').notNull(),
+  /** legumbre | pescado | carne | huevo | pasta_arroz | verdura; null = unknown. */
+  foodGroup: text('food_group'),
+  createdByUserId: uuid('created_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_school_lunches_household_date').on(t.householdId, t.date),
+  check('school_lunches_group_check', sql.raw("food_group IS NULL OR food_group IN ('legumbre','pescado','carne','huevo','pasta_arroz','verdura')")),
+])
+
+// ─── Menú inteligente (specs/smart-menu.md, PRO-255) ─────────
+/**
+ * Mimo's proposal for a generated menu, made in the shadow next to today's
+ * generator: what Claude chose, what the fixed checker said and what the
+ * household would have seen. One row per generated menu.
+ */
+export const menuPlans = pgTable('menu_plans', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  menuId: uuid('menu_id').notNull().references(() => menus.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  householdId: uuid('household_id').references(() => households.id, { onDelete: 'cascade' }),
+  /** 'shadow' (PRO-255); 'live' once PRO-257 turns it on. */
+  mode: text('mode').notNull().default('shadow'),
+  /** 'ok' | 'partial' | 'fallback' | 'skipped'. */
+  status: text('status').notNull(),
+  /** Why it fell back or was skipped: no_key, spend_cap, no_slots, no_candidates, timeout, error, refusal, invalid. */
+  reason: text('reason'),
+  /** The week as it would have been shown (planner slots that passed + the generator's for the rest). */
+  days: jsonb('days'),
+  /** Per planned slot: day, meal, recipeId, recipeName, why, leftoverOf, problems, source. */
+  slots: jsonb('slots').notNull().default([]),
+  /** Checker summary: problems by kind, extra slots. */
+  check: jsonb('check'),
+  /** The generator's week as it was when the plan was made (PRO-256: the household may edit the menu afterwards). */
+  generatorDays: jsonb('generator_days'),
+  /** `scoreWeek` of the proposal and of the generator's week (PRO-254), for the blind comparison. */
+  plannerScore: jsonb('planner_score'),
+  generatorScore: jsonb('generator_score'),
+  candidates: integer('candidates').notNull().default(0),
+  model: text('model'),
+  inputTokens: integer('input_tokens'),
+  outputTokens: integer('output_tokens'),
+  costMicros: integer('cost_micros'),
+  durationMs: integer('duration_ms'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_menu_plans_menu').on(t.menuId),
+  index('idx_menu_plans_household_created').on(t.householdId, t.createdAt),
+  check('menu_plans_status_check', sql.raw("status IN ('ok','partial','fallback','skipped')")),
+])
+
+/**
+ * PRO-258: the week is thought on Saturday night, in one Message Batch (half
+ * price). One run per target week (the Monday after); while PRO-257 is off
+ * it runs in the shadow, like `menu_plans`.
+ */
+export const menuPlannerRuns = pgTable('menu_planner_runs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  /** Monday of the week being planned, AAAA-MM-DD (Europe/Madrid). */
+  weekStart: text('week_start').notNull(),
+  /** 'empty' | 'submitted' | 'ended' | 'failed'. */
+  status: text('status').notNull(),
+  batchId: text('batch_id'),
+  model: text('model').notNull(),
+  requested: integer('requested').notNull().default(0),
+  /** Why the other households were left out: { paused, not_subscribed, suspended, spend_cap, inactive, no_slots, no_candidates, error }. */
+  skipped: jsonb('skipped').notNull().default({}),
+  errorMessage: text('error_message'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  endedAt: timestamp('ended_at', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('uq_menu_planner_runs_week').on(t.weekStart),
+  index('idx_menu_planner_runs_status').on(t.status),
+  check('menu_planner_runs_status_check', sql.raw("status IN ('empty','submitted','ended','failed')")),
+])
+
+/** One household of a Saturday run: what was sent, and the plan once the batch ends (same fields as `menu_plans`). */
+export const menuPlannerRunItems = pgTable('menu_planner_run_items', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  runId: uuid('run_id').notNull().references(() => menuPlannerRuns.id, { onDelete: 'cascade' }),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  /** The owner: whose recipes, memory and AI cap. */
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** 'pending' | 'ok' | 'partial' | 'fallback' | 'failed'. */
+  status: text('status').notNull().default('pending'),
+  /** What the checker needs when the result arrives: the generator's week, slots, candidate refs, filters. */
+  context: jsonb('context').notNull(),
+  days: jsonb('days'),
+  slots: jsonb('slots').notNull().default([]),
+  check: jsonb('check'),
+  plannerScore: jsonb('planner_score'),
+  generatorScore: jsonb('generator_score'),
+  inputTokens: integer('input_tokens'),
+  outputTokens: integer('output_tokens'),
+  costMicros: integer('cost_micros'),
+  errorMessage: text('error_message'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('uq_menu_planner_run_items_run_household').on(t.runId, t.householdId),
+  index('idx_menu_planner_run_items_household').on(t.householdId),
+  check('menu_planner_run_items_status_check', sql.raw("status IN ('pending','ok','partial','fallback','failed')")),
+])
+
+/**
+ * PRO-256: the blind comparison in the test households. Which of the two
+ * weeks (A/B, the planner's and the generator's, in an order fixed per menu)
+ * the household preferred, and why.
+ */
+export const menuBlindVotes = pgTable('menu_blind_votes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  planId: uuid('plan_id').notNull().references(() => menuPlans.id, { onDelete: 'cascade' }),
+  menuId: uuid('menu_id').notNull().references(() => menus.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  householdId: uuid('household_id').references(() => households.id, { onDelete: 'cascade' }),
+  /** What the household saw: 'A' | 'B' | 'igual'. */
+  label: text('label').notNull(),
+  /** What it means: 'planner' | 'generator' | 'tie'. */
+  preferred: text('preferred').notNull(),
+  reason: text('reason'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_menu_blind_votes_plan_user').on(t.planId, t.userId),
+  check('menu_blind_votes_label_check', sql.raw("label IN ('A','B','igual')")),
+  check('menu_blind_votes_preferred_check', sql.raw("preferred IN ('planner','generator','tie')")),
 ])

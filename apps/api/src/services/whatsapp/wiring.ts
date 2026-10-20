@@ -1,4 +1,5 @@
 import { env } from '../../config/env.js'
+import { claimOptInReoffer, markOptInDeclined } from './optInOffer.js'
 import { db } from '../../db/connection.js'
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { menuLogs, menus, recipes, users } from '../../db/schema.js'
@@ -7,6 +8,12 @@ import { weekMenuCaption, weekMenuDigest, type WeekMenuInput, type WeekReplyOpti
 import { weekMenuImage } from '../weekImage/index.js'
 import { madridParts } from '../madridTime.js'
 import { generatedWeeksOf } from '../menuWeek.js'
+import { isSchoolMenuMimeType, readSchoolMenu, saveSchoolLunches } from '../schoolMenu.js'
+import { getPrimaryHouseholdId } from '../scopeResolver.js'
+import { runWithCostUser } from '../costLedger.js'
+import type { SchoolLunch } from '@ona/shared'
+import { getMemoryForUser } from '../userMemoryStore.js'
+import { regionFromMemory } from '../menuHolidays.js'
 import { spendCapStatus } from '../spendCap.js'
 import { chat } from '../assistant/engine.js'
 import { checkAdvisorBudget, recordAdvisorUsage } from '../advisorBudget.js'
@@ -18,6 +25,7 @@ import * as store from './store.js'
 import * as client from './client.js'
 import { writeGuided } from './outbound.js'
 import type { InboundDeps } from './inbound.js'
+import { fillRecipeNames } from '../menuNames.js'
 import type { InboundMessage } from './webhookParser.js'
 
 /**
@@ -33,7 +41,8 @@ async function loadWeekMenu(userId: string, menuId: string | null): Promise<Week
     .orderBy(desc(menus.createdAt))
     .limit(1)
   if (!row) return null
-  return { weekStart: String(row.weekStart), days: row.days as any, skippedDays: row.skippedDays }
+  // PRO-240: dishes saved without a name are named from their recipe.
+  return { weekStart: String(row.weekStart), days: (await fillRecipeNames(row.days, db)) as any, skippedDays: row.skippedDays }
 }
 
 /** Options for the week text and caption: the view, and for a generated week its rank. */
@@ -41,12 +50,26 @@ async function weekReplyOptions(userId: string, view: WeekView): Promise<WeekRep
   const opts: WeekReplyOptions = { today: madridParts(new Date()).isoDate, webUrl: env.WEB_PUBLIC_URL, view }
   if (view !== 'generated') return opts
   try {
+    // PRO-226: the holiday line needs the household's region and time limits.
+    const memory = await getMemoryForUser(userId).catch(() => null)
+    const region = regionFromMemory(memory?.region?.value)
+    if (region) Object.assign(opts, { region, timeAvailable: memory?.time_available?.value })
     return { ...opts, generatedWeeks: await generatedWeeksOf(userId) }
   } catch (err) {
     // No count → no snowball line; the week still goes out.
     console.warn('[whatsapp] generated weeks count failed (no snowball line):', err)
     return opts
   }
+}
+
+/** PRO-224: read a school menu file, save it for the household and return the days. */
+async function readAndSaveSchoolMenu(file: Buffer, mimeType: string, userId: string): Promise<SchoolLunch[]> {
+  const mime = isSchoolMenuMimeType(mimeType) ? mimeType : 'image/jpeg'
+  const today = madridParts(new Date()).isoDate
+  const days = await runWithCostUser(userId, () => readSchoolMenu({ data: file, mimeType: mime }, today, userId))
+  const householdId = await getPrimaryHouseholdId(userId)
+  if (householdId) await saveSchoolLunches(householdId, userId, days)
+  return days
 }
 
 /** recipe id → `image_url` (the menu JSON doesn't store photos). */
@@ -61,6 +84,10 @@ export function buildInboundDeps(): InboundDeps {
   return {
     webUrl: env.WEB_PUBLIC_URL,
     supportEmail: env.SUPPORT_EMAIL || undefined,
+    optIn: {
+      markDeclined: (userId) => markOptInDeclined(userId),
+      claimReoffer: (userId, now) => claimOptInReoffer(userId, now),
+    },
     now: () => new Date(),
     isUserAllowed: (email) => isUserAllowed(email),
     store,
@@ -100,6 +127,8 @@ export function buildInboundDeps(): InboundDeps {
     transcribe: isSttConfigured() ? transcribeAudio : undefined,
     importRecipeFromImage: env.ANTHROPIC_API_KEY ? importRecipeFromImage : undefined,
     setRecipeSource: setRecipeSourceUrl,
+    // PRO-224: the school menu (photo or PDF), read and saved for the household.
+    readSchoolMenu: env.ANTHROPIC_API_KEY ? readAndSaveSchoolMenu : undefined,
     // PRO-156: the end of the sign-up written from its guide (fixed text as the safety net).
     guided: (userId, phone, spec, fallback) => writeGuided({ userId, phone }, spec, fallback),
   }
@@ -115,6 +144,8 @@ export function initialInboundBody(msg: InboundMessage): string | null {
       return '[nota de voz]'
     case 'image':
       return msg.text ? `[foto] ${msg.text}` : '[foto]'
+    case 'document':
+      return msg.text ? `[pdf] ${msg.text}` : '[pdf]'
     default:
       return `[${msg.rawType}]`
   }

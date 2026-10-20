@@ -7,6 +7,8 @@ import { motion, useScroll, useTransform, useInView, animate } from "motion/reac
 import { ArrowUpRight, ArrowRight } from "lucide-react"
 import { useAuth } from "@/lib/auth"
 import WaitlistSection, { WAITLIST_ANCHOR } from "@/components/waitlist/WaitlistSection"
+import { useRegistrationMode, useSignupCta } from "@/hooks/useRegistrationMode"
+import { rememberSignupAttribution } from "@/lib/signupAttribution"
 
 /* ═══════════════════════════════════════════
    Premium Unsplash food photography
@@ -22,6 +24,11 @@ const STEP3_IMG = "https://images.unsplash.com/photo-1542838132-92c53300491e?w=9
 export default function LandingPage() {
   const { user, isLoading } = useAuth()
   const router = useRouter()
+  // PRO-167: with open registration there is no waitlist form; the CTAs go to /register.
+  const registration = useRegistrationMode()
+
+  // `?invita` / `?ref` / `utm_*` go with a sign-up later (PRO-162), form or not.
+  useEffect(() => rememberSignupAttribution(), [])
 
   useEffect(() => {
     if (!isLoading && user) {
@@ -39,7 +46,7 @@ export default function LandingPage() {
       <Differential />
       <Manifesto />
       <Counter />
-      <WaitlistSection />
+      {registration === "open" ? null : <WaitlistSection />}
       <FinalCTA />
     </div>
   )
@@ -57,6 +64,7 @@ function Hero() {
   const y = useTransform(scrollYProgress, [0, 1], [0, 200])
   const scale = useTransform(scrollYProgress, [0, 1], [1, 1.08])
   const opacity = useTransform(scrollYProgress, [0, 0.7], [1, 0])
+  const heroCta = useSignupCta(`#${WAITLIST_ANCHOR}`, "Quiero mi semana pensada", null)
 
   return (
     <section
@@ -113,8 +121,8 @@ function Hero() {
           </motion.p>
 
           <motion.div variants={fadeUp} className="mt-10 flex flex-wrap items-center gap-4">
-            <MagneticButton href={`#${WAITLIST_ANCHOR}`}>
-              Quiero mi semana pensada
+            <MagneticButton href={heroCta.href} testId="hero-cta">
+              {heroCta.label}
               <ArrowUpRight size={16} />
             </MagneticButton>
             <Link
@@ -126,7 +134,9 @@ function Hero() {
           </motion.div>
 
           <motion.p variants={fadeUp} className="mt-10 text-xs text-[#7A7066]">
-            Gratis durante la beta · Entramos por tandas · Te borras con un clic
+            {heroCta.open
+              ? "Gratis durante la beta · Sin tarjeta · Te borras con un clic"
+              : "Gratis durante la beta · Entramos por tandas · Te borras con un clic"}
           </motion.p>
         </motion.div>
 
@@ -719,6 +729,7 @@ function Counter() {
    components/shared/Footer.tsx, rendered by the public layout)
    ═══════════════════════════════════════════ */
 function FinalCTA() {
+  const finalCta = useSignupCta(`#${WAITLIST_ANCHOR}`, "Quiero mi semana pensada", null)
   return (
     <section className="bg-[#F2EDE0] px-6 pb-16 pt-32 md:px-10 md:pb-12 md:pt-48">
       <div className="mx-auto max-w-5xl text-center">
@@ -732,8 +743,8 @@ function FinalCTA() {
           <span className="text-[#C65D38]">también</span>.
         </h2>
         <div className="mt-12 flex flex-col items-center gap-4">
-          <MagneticButton href={`#${WAITLIST_ANCHOR}`} size="lg">
-            Quiero mi semana pensada
+          <MagneticButton href={finalCta.href} size="lg" testId="final-cta">
+            {finalCta.label}
             <ArrowUpRight size={20} />
           </MagneticButton>
           <p className="text-xs text-[#7A7066]">
@@ -752,10 +763,12 @@ function MagneticButton({
   children,
   href,
   size = "md",
+  testId,
 }: {
   children: React.ReactNode
   href: string
   size?: "md" | "lg"
+  testId?: string
 }) {
   const ref = useRef<HTMLAnchorElement>(null)
 
@@ -793,6 +806,7 @@ function MagneticButton({
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
       onClick={handleClick}
+      data-testid={testId}
       className={`btn-magnetic group inline-flex items-center gap-2.5 rounded-full bg-[#1A1612] font-medium text-[#FAF6EE] transition-transform duration-300 ease-out hover:bg-[#2D6A4F] ${
         size === "lg" ? "px-7 py-4 text-base" : "px-6 py-3.5 text-sm"
       }`}

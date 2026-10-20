@@ -11,6 +11,7 @@ import {
   observeServerErrors,
 } from './middleware/errorCapture.js'
 import authRoutes from './routes/auth.js'
+import publicConfigRoutes from './routes/publicConfig.js'
 import userRoutes from './routes/users.js'
 import recipeRoutes from './routes/recipes.js'
 import ingredientRoutes from './routes/ingredients.js'
@@ -27,6 +28,7 @@ import householdRoutes, { publicHouseholdRouter } from './routes/households.js'
 import cookLogRoutes from './routes/cookLogs.js'
 import staplesRoutes from './routes/staples.js'
 import pushRoutes from './routes/push.js'
+import notificationRoutes from './routes/notifications.js'
 import recipeNotesRoutes from './routes/recipeNotes.js'
 import pantryRoutes from './routes/pantry.js'
 import cookbooksRoutes from './routes/cookbooks.js'
@@ -44,7 +46,12 @@ import billingRoutes, { billingWebhookRouter } from './routes/billing.js'
 import priceSurveyRoutes from './routes/priceSurvey.js'
 import feedbackRoutes from './routes/feedback.js'
 import tasteRoutes from './routes/taste.js'
+import noticesRoutes from './routes/notices.js'
+import { startAfinaNotice } from './services/afinaNotice.js'
 import catalogWishesRoutes from './routes/catalogWishes.js'
+import householdHabitsRoutes from './routes/householdHabits.js'
+import schoolMenuRoutes from './routes/schoolMenu.js'
+import blindComparisonRoutes from './routes/blindComparison.js'
 import { trackShoppingActivity } from './services/activityEvents.js'
 import { trackUsageRoutes } from './services/usageEvents.js'
 import { startScheduler } from './services/notificationScheduler.js'
@@ -122,6 +129,8 @@ app.get('/health', (_req, res) => {
 // individual public routes (e.g. /invites/:token) MUST be mounted first so
 // they get a chance to respond before the catch-all auth.
 app.use(authRoutes)
+// Public config (PRO-167): the registration mode the web follows.
+app.use(publicConfigRoutes)
 app.use(publicHouseholdRouter)
 // Public short links (/shop-orders/link/:token) for the order messages.
 app.use(publicShopOrdersRouter)
@@ -137,13 +146,22 @@ app.use(priceSurveyRoutes)
 app.use(feedbackRoutes)
 // «Afina tu menú» (PRO-146): per-route auth.
 app.use(tasteRoutes)
+app.use(noticesRoutes)
 app.use(catalogWishesRoutes)
+// How the household cooks (PRO-217): per-route auth.
+app.use(householdHabitsRoutes)
+// Menú del cole (PRO-224): per-route auth.
+app.use(schoolMenuRoutes)
+// Menú inteligente: comparación a ciegas en los hogares de prueba (PRO-256).
+app.use(blindComparisonRoutes)
 app.use(recipeRoutes)
 app.use(ingredientRoutes)
 // pushRoutes is mostly auth-protected (per-route authMiddleware) but the
 // `GET /push/public-key` endpoint is intentionally public — must be
 // mounted BEFORE userRoutes so the catch-all auth there doesn't block it.
 app.use(pushRoutes)
+// «Avisos» in Perfil (PRO-237): per-route auth.
+app.use(notificationRoutes)
 app.use(usageRoutes)
 // Per-route authMiddleware (no catch-all) — kept next to pushRoutes for the
 // same mount-order reason.
@@ -186,6 +204,8 @@ app.listen(env.PORT, () => {
   // dispatches due prep alerts via Web Push. Started once at boot;
   // idempotent if startup runs twice. See PR-D / notifications spec.
   startScheduler()
+  // PRO-205: the one-off «Afina tu menú» notice (once per database and household).
+  startAfinaNotice()
 })
 
 export default app

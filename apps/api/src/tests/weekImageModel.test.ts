@@ -125,11 +125,24 @@ describe('buildWeekImageModel — rows', () => {
     const days = [...LUIS]
     days[2] = {}
     days[6] = null as any
+    days[5] = {}
     const m = buildWeekImageModel(week(days, [4]), THU)!
-    expect(m.rows[4]).toMatchObject({ kind: 'skipped', cells: [] })
-    expect(m.rows[2]).toMatchObject({ kind: 'empty', cells: [] })
-    expect(m.rows[6].kind).toBe('empty')
-    expect(m.rows[0].kind).toBe('menu')
+    const rowOf = (i: number) => m.rows.find((x) => x.dayIndex === i)
+    expect(rowOf(4)).toMatchObject({ kind: 'skipped', cells: [] })
+    expect(rowOf(5)).toMatchObject({ kind: 'empty', cells: [] })
+    expect(rowOf(6)?.kind).toBe('empty')
+    expect(rowOf(0)?.kind).toBe('menu')
+  })
+
+  it('a day already gone with nothing on it is left out: a first menu made mid-week starts today (PRO-244)', () => {
+    // Sign-up on Thursday: Monday to Wednesday were not generated.
+    const days = [{}, {}, {}, ...LUIS.slice(3)]
+    const m = buildWeekImageModel(week(days), THU)!
+    expect(m.rows.map((x) => x.dayShort)).toEqual(['Jue', 'Vie', 'Sáb', 'Dom'])
+    expect(m.rows[0].isToday).toBe(true)
+    // A past day that does have dishes stays (faded).
+    const full = buildWeekImageModel(week(LUIS), THU)!
+    expect(full.rows).toHaveLength(7)
   })
 
   it('a skipped day does not add columns of its own', () => {

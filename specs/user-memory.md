@@ -2,7 +2,7 @@
 
 Typed long-term storage of everything the assistant has learned (or the user has told it) about the user. Read on every advisor skill call as a Spanish-language digest; written manually via `/profile/memoria` or inferred by the assistant via the `update_memory` skill.
 
-> **Ficha del hogar (PRO-150):** these facts are copied, with their origin, into the household's ficha — see [Ficha del hogar](./household-profile.md). `user_memories` is still what Mimo reads and writes until Mimo reads the ficha (PRO-153).
+> **Ficha del hogar (PRO-150):** these facts are copied, with their origin, into the household's ficha — see [Ficha del hogar](./household-profile.md). `user_memories` is still what Mimo writes; since PRO-253 Mimo reads the household's ficha too, after this digest (see [Ficha del hogar → Who reads the ficha](./household-profile.md)).
 
 ## User Capabilities
 
@@ -49,7 +49,8 @@ Stable forever — never rename, only add. Adding a key is a one-line change in 
 | `meal_times` | `{ [breakfast\|lunch\|snack\|dinner]: 'HH:MM' }` | 24h regex-enforced |
 | `notes` | `string[]` | free-form facts ("mi hija no come pescado") |
 | `nutrition_principles` | `string[]` (3..280 chars each) | user-authored beliefs that override Mimoia's defaults. e.g. `['Ayuno intermitente 16/8', 'Sin azúcar refinado']`. The digest tags them as "RESPÉTALOS aunque entren en conflicto con tus principios de cocina por defecto" so the model doesn't try to correct the user against their own beliefs |
-| `prep_habits` | `string[]` (3..280 chars each) | recurring prep-time habits. e.g. `['Siempre congelo el pescado', 'Pongo las legumbres en remojo la noche antes', 'Saco la carne 30 min antes para que tempere']`. The notification scheduler (see [Notifications](./notifications.md)) reads this together with `ingredients.prep_requirements` to decide when to fire a heads-up push ("saca los boquerones del congelador en 2 días"). The advisor's `update_memory` skill writes here whenever it picks up a habit in conversation |
+| `prep_habits` | `string[]` (3..280 chars each) | recurring prep-time habits. e.g. `['Siempre congelo el pescado', 'Pongo las legumbres en remojo la noche antes', 'Saco la carne 30 min antes para que tempere']`. The notification scheduler (see [Notifications](./notifications.md)) reads this together with `ingredients.prep_requirements` to decide when to fire a heads-up push ("saca los boquerones del congelador en 2 días"). The advisor's `update_memory` skill writes here whenever it picks up a habit in conversation. **The sign-up asks it once** (PRO-221): «¿Congeláis la carne o el pescado cuando compráis?» — «Sí, casi siempre» saves «Congelo la carne y el pescado», «A veces» saves «A veces congelo la carne y el pescado» (the thaw alert then says «Si lo tienes congelado, sácalo hoy.»), «No» saves nothing (source `onboarding`, other habits kept). `/profile/memoria` shows the same question under the groups (`memory-freeze`): a tap replaces every freezing habit with the answer's sentence («No» removes them), so the alert does what it shows; Mimo changes it with `update_memory`. Known limitation: a change applies to the alerts of menus generated afterwards (alerts already queued for this week stay) |
+| `region` | ISO 3166-2:ES code of the comunidad autónoma (`AN`, `AR`, `AS`, `IB`, `CN`, `CB`, `CM`, `CL`, `CT`, `EX`, `GA`, `MD`, `MC`, `NC`, `PV`, `RI`, `VC`, `CE`, `ML`) | PRO-226: its national and regional holidays count as weekend in the menu (see [Menus → Festivos](./menus.md)). The memory page shows the name («Comunidad de Madrid») with a picker under «Hogar»; the digest says «Comunidad autónoma: …». Household-level in the ficha |
 
 ## API
 
@@ -74,7 +75,7 @@ All endpoints require auth.
 
 The `update_memory` skill (declared in `assistant/skills.ts`) takes a `facts: Array<{ key, value, confidence?, remove?, replace? }>` payload, merges it with what's stored (`mergeMemoryFacts`: lists are added to without duplicates, `remove` takes items out, `replace: true` rebuilds the list; a fact with `source: manual` is kept unless the user asked for the change, confidence 1) and routes it through `setMemoryBatch` with `source='inferred'`. Until 2026-10-12 a list was replaced whole, so a model that resent it without an old entry deleted it. Validation errors return a Spanish summary the model relays back to the user.
 
-- **Onboarding analysis (PRO-138, first step of PRO-91).** The web onboarding stores its weekday answer as `time_available` (source `onboarding`). Then, in the background, one Claude Sonnet call (`services/onboardingMemoryAnalysis.ts`) reads all the answers and the optional «¿Algo más? Cuéntanos tu caso» text and writes what it finds through the same rules as `update_memory` (`mergeMemoryFacts` + `setMemoryBatch`, source `inferred` → label «Asistente»): days with another limit (merged over the onboarding answer), meal times, habits, dislikes, equipment, and `notes` for what has no field («Come fuera a mediodía entre semana»). Never health keys (`physical.*`, `restrictions`); a fact set by hand is kept. Billed to the user in `cost_events` (`onboarding_analysis`). No API key or a model error → nothing written, the onboarding goes on. Tests: `onboardingMemoryAnalysis.test.ts` (model simulated)
+- **Onboarding analysis (PRO-138, first step of PRO-91).** The web onboarding stores its weekday answer as `time_available` (source `onboarding`). Then, in the background, one Claude Opus 5.5 call (`services/onboardingMemoryAnalysis.ts`) reads all the answers and the optional «¿Algo más? Cuéntanos tu caso» text and writes what it finds through the same rules as `update_memory` (`mergeMemoryFacts` + `setMemoryBatch`, source `inferred` → label «Asistente»): days with another limit (merged over the onboarding answer), meal times, habits, dislikes, equipment, and `notes` for what has no field («Come fuera a mediodía entre semana»). Never health keys (`physical.*`, `restrictions`); a fact set by hand is kept. Billed to the user in `cost_events` (`onboarding_analysis`). No API key or a model error → nothing written, the onboarding goes on. **Who eats at home (PRO-242, 2026-10-19):** the same call can also change the weekly template's diners (`template_changes`: days, meal, how many people are away), like Mimo's `update_weekly_template`: «a mediodía mi hijo come en el instituto entre semana» in a household of 2 → Monday–Friday lunch with 1 diner, the rest unchanged (without a numeric plantilla it is seeded from the default — lunch + dinner every day at `householdToDiners` — so no meal is switched off; never below 0). The first `POST /menu/generate` after the sign-up **waits for the analysis at most 15 s** (`awaitOnboardingAnalysis`, `FIRST_MENU_WAIT_MS`; in-process registry, so a restart in between just doesn't wait) and, if it takes longer, generates as before. Tests: `onboardingMemoryAnalysis.test.ts` (model simulated)
 
 ## Constraints
 
@@ -95,9 +96,13 @@ The `update_memory` skill (declared in `assistant/skills.ts`) takes a `facts: Ar
 
 ## Source
 
+- [packages/shared/src/types/freezeHabit.ts](../packages/shared/src/types/freezeHabit.ts) — the freezing question, its sentences in `prep_habits`, when the thaw alert is conditional (PRO-221)
+- [apps/web/src/components/profile/FreezeHabitQuestion.tsx](../apps/web/src/components/profile/FreezeHabitQuestion.tsx) — the question in «Lo que recuerdo de ti»
+- Tests: `apps/api/src/tests/freezeHabit.test.ts`, `apps/api/src/tests/freezeHabit.smoke.ts` (Sí / No / A veces against a menu with merluza), `apps/web/e2e/onboarding-freeze.spec.ts`
+
 - [packages/shared/src/types/userMemory.ts](../packages/shared/src/types/userMemory.ts) — key registry + per-key Zod schemas + digest builder
 - [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts) — `user_memories` table
-- [apps/api/src/services/onboardingMemoryAnalysis.ts](../apps/api/src/services/onboardingMemoryAnalysis.ts) — the onboarding answers read into the memory (PRO-138)
+- [apps/api/src/services/onboardingMemoryAnalysis.ts](../apps/api/src/services/onboardingMemoryAnalysis.ts) — the onboarding answers read into the memory (PRO-138) and the weekly template's diners, awaited by the first menu (PRO-242)
 - [apps/api/src/services/userMemoryStore.ts](../apps/api/src/services/userMemoryStore.ts) — get / set / batch / delete + digest
 - [apps/api/src/routes/memory.ts](../apps/api/src/routes/memory.ts) — REST surface
 - [apps/api/src/services/assistant/contextLoader.ts](../apps/api/src/services/assistant/contextLoader.ts) — injection point

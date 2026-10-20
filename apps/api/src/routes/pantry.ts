@@ -1,7 +1,7 @@
 /**
  * pantry_items REST surface (PR 11).
  *
- *   GET    /pantry             — list household pantry
+ *   GET    /pantry             — list household pantry (`?location=` filters by place, PRO-228)
  *   POST   /pantry             — add (upsert when ingredient_id given)
  *   PATCH  /pantry/:id         — partial update
  *   DELETE /pantry/:id         — remove
@@ -12,6 +12,7 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
+import { PANTRY_LOCATIONS, isPantryLocation, type PantryLocation } from '@ona/shared'
 import {
   addPantryForUser,
   deletePantryForUser,
@@ -30,6 +31,7 @@ const addSchema = z.object({
   unit: z.string().refine((u) => BUYABLE_UNITS.has(u)).optional(),
   ingredientId: z.string().regex(UUID_RE).nullable().optional(),
   expiresAt: z.string().regex(DATE_RE).nullable().optional(),
+  location: z.enum(PANTRY_LOCATIONS).optional(),
 })
 
 const patchSchema = z.object({
@@ -37,6 +39,9 @@ const patchSchema = z.object({
   quantity: z.number().nonnegative().max(100_000).optional(),
   unit: z.string().refine((u) => BUYABLE_UNITS.has(u)).optional(),
   expiresAt: z.string().regex(DATE_RE).nullable().optional(),
+  location: z.enum(PANTRY_LOCATIONS).optional(),
+  /** When it went into its place (YYYY-MM-DD); moving it without this restarts the date. */
+  storedAt: z.string().regex(DATE_RE).optional(),
 })
 
 const router = Router()
@@ -44,7 +49,13 @@ router.use(authMiddleware)
 
 router.get('/pantry', async (req: AuthRequest, res) => {
   try {
-    const rows = await listPantryForUser(req.userId!)
+    // PRO-228: `?location=nevera|congelador|despensa` filters by place.
+    const location = req.query.location
+    if (location !== undefined && !isPantryLocation(location)) {
+      res.status(400).json({ error: 'location debe ser nevera, congelador o despensa' })
+      return
+    }
+    const rows = await listPantryForUser(req.userId!, undefined, { location: location as PantryLocation | undefined })
     res.json(rows)
   } catch (err) {
     console.error('GET /pantry error:', err)
@@ -65,6 +76,7 @@ router.post('/pantry', async (req: AuthRequest, res) => {
       unit: parsed.data.unit as any,
       ingredientId: parsed.data.ingredientId ?? null,
       expiresAt: parsed.data.expiresAt ?? null,
+      location: parsed.data.location,
     })
     res.status(201).json(row)
   } catch (err) {

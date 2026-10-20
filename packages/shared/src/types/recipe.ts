@@ -139,6 +139,8 @@ export interface Recipe {
   tips?: string
   substitutions?: string
   storage?: string
+  /** PRO-220: what to do hours before cooking («Pon los garbanzos en remojo» · 10 h). */
+  advancePrep?: AdvancePrep[]
 
   /** Cached nutrition per serving — recomputed on every save */
   nutritionPerServing?: NutritionPerServing | null
@@ -198,6 +200,20 @@ export const COURSE_LABELS: Record<Course, string> = {
 
 export const courseSchema = z.union([z.enum(COURSES), z.null()])
 
+/**
+ * PRO-220 (D-069): a «preparativo con antelación» of a recipe. `hoursBefore`
+ * is counted back from the time the household sits down to that meal.
+ */
+export interface AdvancePrep {
+  text: string
+  hoursBefore: number
+}
+
+export const advancePrepSchema = z.object({
+  text: z.string().trim().min(3).max(140),
+  hoursBefore: z.number().positive().max(72),
+})
+
 // ─── Client → server schemas ──────────────────────────────────
 // Note: `totalTime`, `allergens`, and `nutritionPerServing` are
 // server-derived and intentionally absent from the write schemas.
@@ -229,6 +245,7 @@ export const createRecipeSchema = z.object({
   tips: z.string().optional(),
   substitutions: z.string().optional(),
   storage: z.string().optional(),
+  advancePrep: z.array(advancePrepSchema).max(5).optional(),
 
   tags: z.array(z.string()).default([]),
   internalTags: z.array(z.string()).default([]),

@@ -54,10 +54,13 @@ export const env = {
    * it both code paths return 503.
    */
   AIKIT_API_KEY: process.env.AIKIT_API_KEY || '',
-  // Recipe photo generator: 'auto' = AiKit, then OpenAI when AiKit refuses
-  // (since 2026-10-08 AiKit answers 403 API_KEY_ROUTE_NOT_ALLOWED to keys);
-  // 'aikit' / 'openai' pin one. See services/recipeImageGenerator.ts.
+  // Recipe photo generator: 'auto' = AiKit's inference API (gpt-image-2,
+  // PRO-265), then OpenAI when AiKit refuses (403), is rate-limited or over
+  // budget (429) or fails (5xx); 'aikit' / 'openai' pin one.
+  // See services/recipeImageGenerator.ts.
   RECIPE_IMAGE_PROVIDER: (process.env.RECIPE_IMAGE_PROVIDER || 'auto') as 'auto' | 'aikit' | 'openai',
+  // Model asked of AiKit's images endpoint. Not the `imagen-4` family (500s there).
+  AIKIT_IMAGE_MODEL: process.env.AIKIT_IMAGE_MODEL || 'gpt-image-2',
   OPENAI_IMAGE_MODEL: process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1',
   /**
    * Where generated recipe images are written.
@@ -229,6 +232,12 @@ export const env = {
    * Shown to users as-is. Empty → the copy points to the in-app profile.
    */
   SUPPORT_EMAIL: (process.env.SUPPORT_EMAIL || '').trim(),
+  /**
+   * Support phone (D-071, PRO-249): Mimo gives it, with its hours, when asked.
+   * Never written in the code (public repo). Empty → Mimo says there is no
+   * phone yet and gives the email.
+   */
+  SUPPORT_PHONE: (process.env.SUPPORT_PHONE || '').trim(),
   /**
    * Who receives the daily WhatsApp conversation review (reviewer.ts) on
    * WhatsApp. Comma-separated Mimoia emails; empty → ADMIN_EMAILS.

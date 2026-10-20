@@ -2,6 +2,8 @@ import type { DayMenu } from '@ona/shared'
 import { mealEntriesForDay, recipeLinkLines, recipesOfDay, shortRecipeLink } from '../menuText.js'
 import type { OutboundMessage } from './render.js'
 import type { GuideSpec } from './guided.js'
+import { taperReminderLine } from '../taper.js'
+import { freezerReviewDue, freezerReviewGuide, freezerReviewMessages, isFreezerReviewWindow, type FreezerItem } from './freezerReview.js'
 
 /**
  * Pure planning for messages Mimoia sends first (the Instinct-style "it texts
@@ -25,6 +27,7 @@ export const PROACTIVE_KINDS = [
   'cooking_reminder',
   'dinner_checkin',
   'shopping_reminder',
+  'freezer_review',
 ] as const
 export type ProactiveKind = (typeof PROACTIVE_KINDS)[number]
 
@@ -35,11 +38,36 @@ export const PROACTIVE_LABELS: Record<ProactiveKind, string> = {
   cooking_reminder: 'aviso de empezar a cocinar',
   dinner_checkin: '"¿hiciste la cena?"',
   shopping_reminder: 'recordatorio de la compra',
+  freezer_review: 'repaso del congelador (una vez al mes)',
 }
 
-/** Missing key = on; the master `notify` switch is checked separately. */
+/**
+ * Kinds that only go to whoever asked for them (PRO-215, D-069: «el resumen
+ * de cada mañana sale solo a quien lo pida»): off unless `prefs[kind] === true`.
+ */
+export const OPT_IN_KINDS: ReadonlySet<ProactiveKind> = new Set<ProactiveKind>(['daily_brief'])
+
+/** Missing key = on (except the opt-in kinds: missing = off); the master `notify` switch is checked separately. */
 export function kindEnabled(prefs: Record<string, boolean> | null | undefined, kind: ProactiveKind): boolean {
+  if (OPT_IN_KINDS.has(kind)) return prefs?.[kind] === true
   return prefs?.[kind] !== false
+}
+
+/**
+ * PRO-216: which avisos a PATCH switches off (for the `notifications_off`
+ * usage event): `all` when the master switch goes from on to off, plus each
+ * kind that was on and now isn't.
+ */
+export function kindsSwitchedOff(
+  before: { notify: boolean; prefs: Record<string, boolean> | null | undefined },
+  patch: { notify?: boolean; prefs?: Record<string, boolean> },
+): string[] {
+  const out: string[] = []
+  if (before.notify && patch.notify === false) out.push('all')
+  for (const [k, v] of Object.entries(patch.prefs ?? {})) {
+    if (v === false && (PROACTIVE_KINDS as readonly string[]).includes(k) && kindEnabled(before.prefs, k as ProactiveKind)) out.push(k)
+  }
+  return out
 }
 
 /** "20:30" → 1230; garbage → fallback. */
@@ -62,10 +90,17 @@ export function isCookingReminderWindow(p: MadridParts, dinnerTime: string | nul
   const start = minutesOf(dinnerTime, DEFAULT_DINNER_MIN) - totalMinutes - 10
   return nowMinutes(p) >= start - 10 && nowMinutes(p) < start + 10
 }
-/** Between 2 h and 3 h after dinner time. */
+/**
+ * Between 2 h and 3 h after dinner time — but never after 22:30 (PRO-236):
+ * a late dinner moves it to 22:00–22:30, as long as that's at least 1 h
+ * after dinner (dinner after 21:00 → no check-in that day).
+ */
 export function isDinnerCheckinWindow(p: MadridParts, dinnerTime: string | null): boolean {
   const d = minutesOf(dinnerTime, DEFAULT_DINNER_MIN)
-  return nowMinutes(p) >= d + 120 && nowMinutes(p) < d + 180
+  const start = Math.min(d + 120, 22 * 60)
+  const end = Math.min(d + 180, 22 * 60 + 30)
+  if (start < d + 60) return false
+  return nowMinutes(p) >= start && nowMinutes(p) < end
 }
 /** Saturday 10:00–12:59 Madrid. */
 export function isShoppingReminderWindow(p: MadridParts): boolean {
@@ -101,8 +136,20 @@ export function isDailyBriefWindow(p: MadridParts, breakfastTime: string | null 
 export const DAILY_BRIEF_COOLDOWN_MS = 20 * 60 * 60 * 1000
 export const WEEKLY_NUDGE_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000
 
+/**
+ * PRO-225: the questions asked before planning go in the same Sunday message
+ * (not another one). Answered in free text («el jueves cenamos fuera, el
+ * sábado somos 6»), they shape only next week's menu (`generate_weekly_menu`
+ * `mealsOut` / `guests`); «Sí, prepáralo» generates it as usual.
+ */
+export const WEEK_PLAN_QUESTIONS = ['¿Alguna comida fuera de casa esta semana?', '¿Viene alguien?'] as const
+/** PRO-229: once a week, in this same Sunday message (not another one); text or a photo. */
+export const FRIDGE_QUESTION = '¿Qué te queda en la nevera?'
+
 export const WEEKLY_NUDGE_TEXT =
-  'Domingo de planificar: ¿te preparo el menú de la semana que viene?'
+  'Domingo de planificar: ¿te preparo el menú de la semana que viene?\n\n' +
+  `Antes, por si acaso: ${WEEK_PLAN_QUESTIONS.join(' ')} ${FRIDGE_QUESTION} ` +
+  'Dímelo con tus palabras o mándame una foto de la nevera (p. ej. «el jueves cenamos fuera, el sábado somos 6, queda medio calabacín») y lo tengo en cuenta solo esa semana.'
 
 export function formatDailyBrief(day: DayMenu | null | undefined, webUrl: string): string | null {
   const entries = mealEntriesForDay(day).filter((e) => e.meal !== 'breakfast')
@@ -147,8 +194,58 @@ export function cookingReminderGuide(name: string, totalMinutes: number, dinnerT
   }
 }
 
-export function dinnerCheckinGuide(name: string): GuideSpec {
+export function dinnerCheckinGuide(name: string, askRating = false): GuideSpec {
+  if (askRating) {
+    return {
+      kind: 'dinner_checkin',
+      facts: [
+        `Cena de hoy en el menú: ${name}`,
+        'En el mismo mensaje: si la hizo, qué tal estuvo y si la repetimos; si no les gustó, que lo diga y no vuelve a salir sola.',
+        `Botones debajo: «${CHECKIN_RATING_BUTTONS[0].title}» / «${CHECKIN_RATING_BUTTONS[1].title}» / «${CHECKIN_RATING_BUTTONS[2].title}»`,
+      ],
+      required: [name],
+    }
+  }
   return { kind: 'dinner_checkin', facts: [`Cena de hoy en el menú: ${name}`, 'Botones debajo: «Sí, la hice» / «No»'], required: [name] }
+}
+
+/**
+ * PRO-235: «¿hiciste la cena?» and «¿repetimos?» (PRO-110) are ONE message.
+ * When the household hasn't rated tonight's recipe (30-day rule,
+ * `shouldAskRating`), the check-in asks both and its buttons answer both
+ * (5 = «Repetir a menudo», 3 = «Bien»); «mejor no» (1) by text.
+ */
+export const CHECKIN_RATING_BUTTONS = [
+  { id: 'checkin:yes:5', title: 'Sí, ¡a repetir!' },
+  { id: 'checkin:yes:3', title: 'Sí, estuvo bien' },
+  { id: 'checkin:no', title: 'No la hice' },
+] as const
+export function formatDinnerCheckin(name: string, askRating: boolean): OutboundMessage {
+  if (!askRating) {
+    return {
+      type: 'buttons',
+      text: `¿Hiciste hoy la cena (*${name}*)? Así lo apunto.`,
+      buttons: [
+        { id: 'checkin:yes', title: 'Sí, la hice' },
+        { id: 'checkin:no', title: 'No' },
+      ],
+    }
+  }
+  return {
+    type: 'buttons',
+    text: `¿Hiciste hoy la cena (*${name}*)? Si la hiciste, ¿qué tal? ¿La repetimos? Si no os gustó, dímelo y no vuelve a salir sola.`,
+    buttons: CHECKIN_RATING_BUTTONS.map((b) => ({ ...b })),
+  }
+}
+
+/**
+ * PRO-235: tools that show today's menu in a conversation. If the person
+ * already saw it this morning (asked Mimo, or generated the week), the
+ * morning brief doesn't repeat it.
+ */
+export const MENU_VIEW_TOOLS: ReadonlySet<string> = new Set(['get_todays_menu', 'get_weekly_menu', 'generate_weekly_menu', 'complete_onboarding'])
+export function sawTodaysMenu(turns: ReadonlyArray<{ tools?: readonly string[] | null }>): boolean {
+  return turns.some((t) => (t.tools ?? []).some((name) => MENU_VIEW_TOOLS.has(name)))
 }
 
 export function shoppingReminderGuide(pending: string[], webUrl: string): GuideSpec {
@@ -161,8 +258,17 @@ export function shoppingReminderGuide(pending: string[], webUrl: string): GuideS
 
 export const WEEKLY_NUDGE_GUIDE: GuideSpec = {
   kind: 'weekly_nudge',
-  facts: ['Es domingo y la semana que viene aún no tiene menú.', 'Botones debajo: «Sí, prepáralo» / «Ahora no»'],
-  required: [],
+  facts: [
+    'Es domingo y la semana que viene aún no tiene menú.',
+    'Botones debajo: «Sí, prepáralo» / «Ahora no»',
+    // PRO-225: both questions, in this same message, to answer in free text.
+    `Pregunta antes de planificar, tal cual: «${WEEK_PLAN_QUESTIONS[0]}»`,
+    `Pregunta antes de planificar, tal cual: «${WEEK_PLAN_QUESTIONS[1]}»`,
+    'Se contestan con texto libre (p. ej. «el jueves cenamos fuera, el sábado somos 6») y solo cambian esa semana.',
+    // PRO-229: the fridge question goes in the same message; a photo of the fridge also works.
+    `Pregunta, tal cual: «${FRIDGE_QUESTION}» (vale contestar con texto o con una foto de la nevera)`,
+  ],
+  required: [...WEEK_PLAN_QUESTIONS, FRIDGE_QUESTION],
 }
 
 function capitalize(s: string): string {
@@ -171,6 +277,8 @@ function capitalize(s: string): string {
 
 export interface TodayDinner {
   names: string[]
+  /** Recipe ids, same order as `names` (PRO-235: to ask «¿repetimos?» about the first). */
+  recipeIds?: string[]
   /** Longest total time among today's dinner recipes (min), null if unknown. */
   totalMinutes: number | null
 }
@@ -188,6 +296,16 @@ export interface ProactiveInput {
   cookedToday: () => Promise<boolean>
   pendingShopping: () => Promise<string[]>
   hasNextWeekMenu: () => Promise<boolean>
+  /** PRO-235: the person already saw today's menu this morning in a conversation. */
+  sawTodaysMenu?: () => Promise<boolean>
+  /** PRO-235: ask «¿qué tal? ¿repetimos?» about this recipe (not rated in the last 30 days). */
+  askRating?: (recipeId: string) => Promise<boolean>
+  /** PRO-223: tápers of tomorrow that come from tonight's dinner (null if none). */
+  taperTonight?: () => Promise<{ recipeNames: string[]; count: number } | null>
+  /** PRO-228: when the last freezer review went out (any time), null if never. */
+  lastFreezerReviewAt?: () => Promise<Date | null>
+  /** PRO-228: freezer rows that went in 4+ weeks ago. */
+  freezerItemsDue?: () => Promise<FreezerItem[]>
   webUrl: string
 }
 
@@ -208,7 +326,7 @@ export async function planProactive(input: ProactiveInput): Promise<PlannedMessa
     const day = await input.todayDay()
     const text = formatDailyBrief(day, input.webUrl)
     const guide = dailyBriefGuide(day, input.webUrl)
-    if (text && guide) out.push({ kind: 'daily_brief', messages: [{ type: 'text', text }], guide })
+    if (text && guide && !(await input.sawTodaysMenu?.())) out.push({ kind: 'daily_brief', messages: [{ type: 'text', text }], guide })
   }
 
   if (can('cooking_reminder') && couldNeedCookingReminder(p, input.dinnerTime)) {
@@ -225,19 +343,12 @@ export async function planProactive(input: ProactiveInput): Promise<PlannedMessa
   if (can('dinner_checkin') && isDinnerCheckinWindow(p, input.dinnerTime)) {
     const dinner = await input.todayDinner()
     if (dinner?.names.length && !(await input.cookedToday())) {
+      const recipeId = dinner.recipeIds?.[0]
+      const rate = Boolean(recipeId && input.askRating && (await input.askRating(recipeId)))
       out.push({
         kind: 'dinner_checkin',
-        messages: [
-          {
-            type: 'buttons',
-            text: `¿Hiciste hoy la cena (*${dinner.names[0]}*)? Así lo apunto.`,
-            buttons: [
-              { id: 'checkin:yes', title: 'Sí, la hice' },
-              { id: 'checkin:no', title: 'No' },
-            ],
-          },
-        ],
-        guide: dinnerCheckinGuide(dinner.names[0]),
+        messages: [formatDinnerCheckin(dinner.names[0], rate)],
+        guide: dinnerCheckinGuide(dinner.names[0], rate),
       })
     }
   }
@@ -250,6 +361,36 @@ export async function planProactive(input: ProactiveInput): Promise<PlannedMessa
         messages: [{ type: 'text', text: formatShoppingReminder(pending, input.webUrl) }],
         guide: shoppingReminderGuide(pending, input.webUrl),
       })
+    }
+  }
+
+  // PRO-223: «haz una ración más, mañana te llevas táper» rides on a message
+  // that goes out anyway today (morning brief or «toca empezar»), never alone.
+  const carrier = out.find((m) => m.kind === 'cooking_reminder') ?? out.find((m) => m.kind === 'daily_brief')
+  if (carrier && input.taperTonight) {
+    const t = await input.taperTonight()
+    if (t) {
+      const line = taperReminderLine(t)
+      carrier.messages = carrier.messages.map((m, i) => (i === 0 && (m.type === 'text' || m.type === 'buttons') ? { ...m, text: `${m.text}\n\n${line}` } : m))
+      if (carrier.guide) {
+        carrier.guide = {
+          ...carrier.guide,
+          facts: [...carrier.guide.facts, `Recordatorio del táper, tal cual: ${line}`],
+          required: [...carrier.guide.required, 'táper'],
+        }
+      }
+    }
+  }
+
+  // PRO-228: once a month, only with something 4+ weeks in the freezer.
+  // Priority 2 of the weekly cap (FREEZER_REVIEW_PRIORITY, PRO-215).
+  if (
+    can('freezer_review') && isFreezerReviewWindow(p) && input.freezerItemsDue && input.lastFreezerReviewAt &&
+    freezerReviewDue(p, await input.lastFreezerReviewAt())
+  ) {
+    const items = await input.freezerItemsDue()
+    if (items.length > 0) {
+      out.push({ kind: 'freezer_review', messages: freezerReviewMessages(items), guide: freezerReviewGuide(items) })
     }
   }
 
@@ -280,8 +421,34 @@ export function anyProactiveWindow(p: MadridParts, breakfastTime: string | null,
     couldNeedCookingReminder(p, dinnerTime) ||
     isDinnerCheckinWindow(p, dinnerTime) ||
     isShoppingReminderWindow(p) ||
-    isWeeklyNudgeWindow(p)
+    isWeeklyNudgeWindow(p) ||
+    isFreezerReviewWindow(p)
   )
+}
+
+/**
+ * PRO-215: the avisos of one moment go out as ONE message (they spend one
+ * unit of the weekly budget). `parts` come highest priority first; their
+ * texts are joined, and the first one with buttons keeps them, with its
+ * text last so the question sits right above its buttons. Only when that
+ * would pass WhatsApp's 1,024-character limit for a message with buttons
+ * do the buttons go in a second message.
+ */
+export const MERGED_BUTTON_BODY_MAX = 1024
+export function mergeMessages(parts: ReadonlyArray<readonly OutboundMessage[]>): OutboundMessage[] {
+  if (parts.length === 1) return [...parts[0]]
+  const texts: string[] = []
+  let withButtons: Extract<OutboundMessage, { type: 'buttons' }> | null = null
+  for (const msgs of parts) {
+    for (const m of msgs) {
+      if (m.type === 'buttons' && !withButtons) withButtons = m
+      else if (m.type === 'text' || m.type === 'buttons') texts.push(m.text)
+    }
+  }
+  if (!withButtons) return [{ type: 'text', text: texts.join('\n\n') }]
+  const body = [...texts, withButtons.text].join('\n\n')
+  if (body.length <= MERGED_BUTTON_BODY_MAX) return [{ ...withButtons, text: body }]
+  return [{ type: 'text', text: texts.join('\n\n') }, withButtons]
 }
 
 /** Swap the text of a planned message for the guided one (buttons stay as they are). */
@@ -355,19 +522,9 @@ export function templateParamFrom(messages: OutboundMessage[]): string {
   return text.replace(/\s+/g, ' ').trim().slice(0, 1000)
 }
 
-// ─── Scheduler status for prep alerts sent over two channels ─────
+// ─── Outcome of one channel (see notifications/channels.ts) ─────
 
 export interface ChannelOutcome {
   status: 'ok' | 'skipped' | 'error'
   error?: string
-}
-
-/** A queued alert counts as sent when any channel delivered it. */
-export function combineDelivery(push: ChannelOutcome, whatsapp: ChannelOutcome): {
-  status: 'sent' | 'failed'
-  errorMessage: string | null
-} {
-  if (push.status === 'ok' || whatsapp.status === 'ok') return { status: 'sent', errorMessage: null }
-  const errors = [push.error, whatsapp.status === 'error' ? `whatsapp: ${whatsapp.error}` : null].filter(Boolean)
-  return { status: 'failed', errorMessage: errors.join(' · ').slice(0, 500) || 'no-channel' }
 }

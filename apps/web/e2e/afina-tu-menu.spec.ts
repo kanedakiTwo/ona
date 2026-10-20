@@ -8,7 +8,10 @@
  *  - «Saltar» goes straight on to the questions;
  *  - an account onboarded without it sees «Novedad» once and, after
  *    «Ahora no», the card above the menu until its own «Ahora no»;
- *  - /afinar: dragging a card right is «Me apetece».
+ *  - /afinar: dragging a card right is «Me apetece»;
+ *  - /afinar (PRO-200): the counter counts the batch («3 de 10»), the
+ *    buttons say what they do, and after 10 the summary of the session with
+ *    «Seguir con 10 más».
  */
 import { test, expect, type Page } from '@playwright/test'
 import { completeOnboarding, registerFreshUser } from './_helpers'
@@ -47,6 +50,7 @@ test('sign-up: 10 cards with buttons, then the questions; the first menu has no 
 
   await page.goto('/onboarding')
   await expect(page.getByRole('heading', { name: /dime qué te apetece/i })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByText(/Son 10 platos: dime si te apetecen/)).toBeVisible()
   await expect(page.getByRole('button', { name: 'Saltar' })).toBeVisible()
   await page.getByRole('button', { name: 'Empezar' }).click()
 
@@ -66,8 +70,8 @@ test('sign-up: 10 cards with buttons, then the questions; the first menu has no 
       nopes++
       if (nopes === 1) {
         await expect(page.getByRole('heading', { name: '¿Qué es lo que no?' })).toBeVisible()
-        const chip = page.getByRole('button', { name: /^No me gusta / }).first()
-        pickedIngredient = ((await chip.textContent()) ?? '').replace(/^No me gusta (el|la|los|las) /, '').trim()
+        const chip = page.getByRole('button', { name: /^No me gustan? / }).first()
+        pickedIngredient = ((await chip.textContent()) ?? '').replace(/^No me gustan? (el|la|los|las) /, '').trim()
         await chip.click()
       } else if (nopes === 3) {
         await expect(page.getByRole('heading', { name: '¿Qué es lo que no?' })).toBeVisible()
@@ -86,12 +90,14 @@ test('sign-up: 10 cards with buttons, then the questions; the first menu has no 
   await expect(web.or(firstQuestion)).toBeVisible({ timeout: 15_000 })
   if (await web.isVisible()) await web.click()
   await expect(firstQuestion).toBeVisible()
-  await expect(page.getByText('Primeros pasos · 1 de 5')).toBeVisible()
+  await expect(page.getByText('Primeros pasos · 1 de 6')).toBeVisible()
 
   const headers = await auth(page)
   const memory = await (await page.request.get(`${API_URL}/memory`, { headers })).json()
   expect(pickedIngredient).not.toBe('')
-  expect(memory.dislikes.value).toContain(pickedIngredient)
+  // The chip restores accents («el atún»); memory keeps the catalogue's name.
+  const plain = (x: string) => x.normalize('NFD').replace(/\p{Diacritic}+/gu, '').toLowerCase()
+  expect((memory.dislikes.value as string[]).map(plain)).toContain(plain(pickedIngredient))
   expect(memory.equipment.value).not.toContain('horno')
   const verdicts = (await (await page.request.get(`${API_URL}/taste/verdicts`, { headers })).json()).verdicts as Array<{ recipeId: string; verdict: string }>
   expect(verdicts).toHaveLength(10)
@@ -103,6 +109,9 @@ test('sign-up: 10 cards with buttons, then the questions; the first menu has no 
   const next = page.getByRole('button', { name: /siguiente/i })
   await next.click()
   await page.getByRole('button', { name: /3-4 veces/i }).click()
+  await next.click()
+  // PRO-217: «¿Cómo cocináis en casa?»
+  await page.getByRole('button', { name: /^cocino cada día/i }).click()
   await next.click()
   await page.getByRole('button', { name: /sin prisa/i }).click() // PRO-138
   await next.click()
@@ -179,7 +188,7 @@ test('/afinar: dragging the card to the right is «Me apetece»', async ({ page 
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
   await page.mouse.down()
   await page.mouse.move(box.x + box.width / 2 + 80, box.y + box.height / 2, { steps: 5 })
-  await expect(page.getByText('ME APETECE')).toHaveCSS('opacity', /^(0\.[3-9]\d*|1)$/)
+  await expect(card.getByText('ME APETECE')).toHaveCSS('opacity', /^(0\.[3-9]\d*|1)$/)
   await page.mouse.move(box.x + box.width / 2 + 180, box.y + box.height / 2, { steps: 5 })
   await page.mouse.up()
   await expect(card.getByRole('heading')).not.toHaveText(first, { timeout: 10_000 })
@@ -190,4 +199,33 @@ test('/afinar: dragging the card to the right is «Me apetece»', async ({ page 
 
   const verdicts = (await (await page.request.get(`${API_URL}/taste/verdicts`, { headers: await auth(page) })).json()).verdicts
   expect(verdicts).toEqual([expect.objectContaining({ name: first, verdict: 'like' })])
+})
+
+test('/afinar: «3 de 10», buttons with words, and the summary after 10 (PRO-200)', async ({ page }) => {
+  test.setTimeout(90_000)
+  await registerFreshUser(page)
+  await completeOnboarding(page)
+  await page.goto('/afinar?empezar=1')
+  const card = page.getByTestId('taste-card')
+  const counter = page.getByTestId('taste-counter')
+  await expect(card).toBeVisible({ timeout: 15_000 })
+  // ✕ ♥ ✓ say what they do.
+  for (const word of ['No', 'Me encanta', 'Me apetece']) await expect(page.getByText(word, { exact: true })).toBeVisible()
+
+  const liked: string[] = []
+  for (let i = 1; i <= 10; i++) {
+    await expect(counter).toHaveText(`${i} de 10`, { timeout: 15_000 })
+    const name = (await card.getByRole('heading').textContent())!.trim()
+    if (i % 2) liked.push(name)
+    await page.getByRole('button', { name: i % 2 ? 'Me apetece' : 'No la conozco · saltar' }).click()
+  }
+  // The batch ends in the summary, with what was rated in this session.
+  await expect(page.getByRole('heading', { name: /tu menú ya te conoce un poco más/i })).toBeVisible({ timeout: 15_000 })
+  const summary = page.getByTestId('taste-summary')
+  for (const name of liked) await expect(summary).toContainText(name)
+  await expect(summary).not.toContainText('Ninguna por ahora')
+  await expect(page.getByText('No volverán a salir')).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Seguir con 10 más' }).click()
+  await expect(counter).toHaveText('1 de 10', { timeout: 15_000 })
 })

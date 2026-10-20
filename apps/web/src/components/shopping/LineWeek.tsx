@@ -18,7 +18,7 @@ export function LineWeek({ weeks }: { weeks?: Record<string, number> | null }) {
   return (
     <span
       data-testid="shopping-line-week"
-      className="ml-2 whitespace-nowrap font-sans text-[11px] font-semibold uppercase tracking-[0.12em] text-forest"
+      className="ml-2 whitespace-nowrap font-sans text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-muted"
     >
       {label}
     </span>

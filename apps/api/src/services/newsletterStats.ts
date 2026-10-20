@@ -12,9 +12,9 @@
  *     user-agent) don't count. A click is a click, not a person.
  *   - an opt-out from an issue's link adds a row to
  *     `newsletter_unsubscribes` (issue, user or waitlist, date). The issue
- *     comes in the link, so it is kept only when that issue was sent (has
- *     rows in `newsletter_sends`); otherwise the row has no issue, and the
- *     stats never turn an issue without sends into a row of their own.
+ *     comes in the link, so it is kept only when that issue was sent to
+ *     that very address (`wasSentTo`); otherwise the row has no issue, and
+ *     the stats never turn an issue no admin sent into a row of its own.
  * No IP, browser or recipient is stored.
  */
 import { and, eq, sql } from 'drizzle-orm'
@@ -92,7 +92,7 @@ export interface IssueStats {
 
 export interface NewsletterStats {
   issues: IssueStats[]
-  /** Opt-outs from links without an issue (emails sent before PRO-191) or naming an issue that was never sent. */
+  /** Opt-outs from links without an issue (emails sent before PRO-191) or whose issue doesn't count (see `buildIssueStats`). */
   unsubscribesWithoutIssue: { total: number; user: number; waitlist: number }
 }
 
@@ -101,8 +101,8 @@ export interface NewsletterStatsRepo {
   registerLinks(issueId: string, links: TrackedLink[]): Promise<void>
   /** The saved destination (null = unknown issue or link), adding 1 when `count`. */
   click(issueId: string, index: number, count: boolean): Promise<string | null>
-  /** Was this issue sent (any row in `newsletter_sends`)? */
-  hasSends(issueId: string): Promise<boolean>
+  /** Did this issue go out to this address (`newsletter_sends` row with status sent)? */
+  wasSentTo(issueId: string, recipientHash: string): Promise<boolean>
   recordUnsubscribe(issueId: string | null, source: 'user' | 'waitlist'): Promise<void>
   /** Per issue: sent, clicks per link and in total, opt-outs. Counts only. */
   stats(): Promise<NewsletterStats>
@@ -134,8 +134,19 @@ export function createDbNewsletterStatsRepo(db: Db = defaultDb): NewsletterStats
       const [row] = await db.select({ destination: newsletterClicks.destination }).from(newsletterClicks).where(where).limit(1)
       return row?.destination ?? null
     },
-    async hasSends(issueId) {
-      const [row] = await db.select({ id: newsletterSends.id }).from(newsletterSends).where(eq(newsletterSends.issueId, issueId)).limit(1)
+    async wasSentTo(issueId, recipientHash) {
+      // Served by uq_newsletter_sends_issue_recipient (issue_id, recipient_hash).
+      const [row] = await db
+        .select({ id: newsletterSends.id })
+        .from(newsletterSends)
+        .where(
+          and(
+            eq(newsletterSends.issueId, issueId),
+            eq(newsletterSends.recipientHash, recipientHash),
+            eq(newsletterSends.status, 'sent'),
+          ),
+        )
+        .limit(1)
       return !!row
     },
     async recordUnsubscribe(issueId, source) {
@@ -169,16 +180,18 @@ export function createDbNewsletterStatsRepo(db: Db = defaultDb): NewsletterStats
 
 /**
  * Pure: the per-issue rows from the three aggregates, newest issue first.
- * An opt-out counts under its issue only when that issue has sends; any
- * other issue id (none, or one that was never sent) counts without issue.
+ * An issue is known when it has sends or saved links (only an admin's send
+ * or proof creates them, and links are never deleted, so forgetting an
+ * address's sends doesn't move earlier opt-outs). An opt-out naming any
+ * other issue counts without issue.
  */
 export function buildIssueStats(
   sends: Array<{ issueId: string; firstSentAt: string | null; total: number; user: number; waitlist: number }>,
   clicks: Array<{ issueId: string; index: number; destination: string; clicks: number }>,
   allUnsubs: Array<{ issueId: string | null; source: string; n: number }>,
 ): NewsletterStats {
-  const sent = new Set(sends.map((s) => s.issueId))
-  const unsubs = allUnsubs.map((u) => (u.issueId && sent.has(u.issueId) ? u : { ...u, issueId: null }))
+  const known = new Set([...sends.map((s) => s.issueId), ...clicks.map((c) => c.issueId)])
+  const unsubs = allUnsubs.map((u) => (u.issueId && known.has(u.issueId) ? u : { ...u, issueId: null }))
   const none = unsubs.filter((u) => !u.issueId)
   const user = none.filter((u) => u.source === 'user').reduce((a, u) => a + u.n, 0)
   const waitlist = none.filter((u) => u.source === 'waitlist').reduce((a, u) => a + u.n, 0)
@@ -217,5 +230,5 @@ export const NEWSLETTER_STATS_DEFINITIONS = {
   clicks:
     'Our own counter (PRO-191): times each link of the content was opened through <web>/n/<issue>/<index>. Clicks, not people: one person can click twice and nobody is identified. HEAD requests, proofs (?prueba=1) and known mail scanners or link previewers (by user-agent) do not count. Resend tracking stays off.',
   unsubscribes:
-    'Newsletter-only opt-outs done from that issue’s link (since PRO-191), by source. Opt-outs whose link has no issue (earlier emails) or names an issue that was never sent count under unsubscribesWithoutIssue.',
+    'Newsletter-only opt-outs done from that issue’s link (since PRO-191), by source, counted under the issue only when it was sent to that address. Opt-outs whose link has no issue (earlier emails), or names an issue not sent to that address, count under unsubscribesWithoutIssue.',
 }

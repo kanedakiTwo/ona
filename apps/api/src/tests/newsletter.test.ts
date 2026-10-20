@@ -36,7 +36,7 @@ import {
 } from '../services/newsletterStats.js'
 
 /** In-memory clicks / opt-outs with the same semantics as the SQL (PRO-191). */
-function memoryStats(sendsOf: () => Array<{ issueId: string; source: string }> = () => []) {
+function memoryStats(sendsOf: () => Array<{ issueId: string; source: string; hash?: string }> = () => []) {
   const links = new Map<string, TrackedLink & { clicks: number }>()
   const unsubs: Array<{ issueId: string | null; source: string }> = []
   const stats: NewsletterStatsRepo = {
@@ -52,8 +52,8 @@ function memoryStats(sendsOf: () => Array<{ issueId: string; source: string }> =
       if (count) l.clicks += 1
       return l.destination
     },
-    async hasSends(issueId) {
-      return sendsOf().some((x) => x.issueId === issueId)
+    async wasSentTo(issueId, hash) {
+      return sendsOf().some((x) => x.issueId === issueId && x.hash === hash)
     },
     async recordUnsubscribe(issueId, source) {
       unsubs.push({ issueId, source })
@@ -234,11 +234,11 @@ function memoryRepo(candidates: NewsletterCandidate[], admins: string[] = []) {
       return admins.includes(email)
     },
     async unsubscribe(token) {
-      if (!parseNewsletterToken(token)) return 'not_found'
+      if (!parseNewsletterToken(token)) return { outcome: 'not_found', recipientHash: null }
       const e = entries.find((x) => x.token === token)
-      if (!e) return 'not_found'
-      if (e.status === 'unsubscribed' || !e.email) return 'already'
-      return offByEmail(e.email) > 0 ? 'ok' : 'already'
+      if (!e) return { outcome: 'not_found', recipientHash: null }
+      if (e.status === 'unsubscribed' || !e.email) return { outcome: 'already', recipientHash: null }
+      return { outcome: offByEmail(e.email) > 0 ? 'ok' : 'already', recipientHash: recipientHash(e.email) }
     },
     async getUserOptIn() {
       const u = entries.find((x) => x.source === 'user')
@@ -369,10 +369,10 @@ describe('sendNewsletter', () => {
 
   it('the newsletter opt-out leaves the entry on the list; a second click says already', async () => {
     const { repo, entries } = memoryRepo(people)
-    expect(await repo.unsubscribe(`w.${TOKEN_A}`)).toBe('ok')
+    expect(await repo.unsubscribe(`w.${TOKEN_A}`)).toEqual({ outcome: 'ok', recipientHash: recipientHash('ana@example.com') })
     expect(entries[0]).toMatchObject({ status: 'waiting', email: 'ana@example.com', newsletterOptIn: false })
-    expect(await repo.unsubscribe(`w.${TOKEN_A}`)).toBe('already')
-    expect(await repo.unsubscribe(TOKEN_A)).toBe('not_found')
+    expect((await repo.unsubscribe(`w.${TOKEN_A}`)).outcome).toBe('already')
+    expect((await repo.unsubscribe(TOKEN_A)).outcome).toBe('not_found')
     const batch = okBatch()
     expect(await sendNewsletter(ISSUE, deps(repo, batch))).toMatchObject({ sent: 1 })
     expect(batch.mock.calls[0][0].map((m) => m.to)).toEqual(['bea@example.com'])
@@ -380,11 +380,11 @@ describe('sendNewsletter', () => {
 
   it('one person, one switch: the account opt-out also turns off their waitlist entry, and vice versa', async () => {
     const both = memoryRepo([userCand('ana@example.com'), cand('ana@example.com'), cand('bea@example.com', { unsubscribeToken: TOKEN_B })])
-    expect(await both.repo.unsubscribe(newsletterTokenForUser(USER_ID))).toBe('ok')
+    expect((await both.repo.unsubscribe(newsletterTokenForUser(USER_ID))).outcome).toBe('ok')
     expect(both.entries.map((e) => e.newsletterOptIn)).toEqual([false, false, true])
 
     const again = memoryRepo([userCand('ana@example.com'), cand('ana@example.com')])
-    expect(await again.repo.unsubscribe(`w.${TOKEN_A}`)).toBe('ok')
+    expect((await again.repo.unsubscribe(`w.${TOKEN_A}`)).outcome).toBe('ok')
     expect(again.entries.map((e) => e.newsletterOptIn)).toEqual([false, false])
 
     const prof = memoryRepo([userCand('ana@example.com'), cand('ana@example.com')])
@@ -573,7 +573,7 @@ describe('newsletter routes', () => {
 
   it('POST /newsletter/unsubscribe: JSON token and the RFC 8058 one-click form both work; unknown → 404', async () => {
     const { repo, entries } = memoryRepo([cand('ana@example.com', { unsubscribeToken: TOKEN_A }), cand('bea@example.com', { unsubscribeToken: TOKEN_B })])
-    const { stats, unsubs } = memoryStats(() => [{ issueId: '2026-10-16', source: 'waitlist' }])
+    const { stats, unsubs } = memoryStats(() => [{ issueId: '2026-10-16', source: 'waitlist', hash: recipientHash('ana@example.com') }])
     const app = express().use(express.json()).use(express.urlencoded({ extended: true })).use(createNewsletterRouter({ repo, stats, unsubscribeLimiter: noLimit }))
     const b = await serve(app)
     const json = await fetch(`${b}/newsletter/unsubscribe`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: `w.${TOKEN_A}`, issueId: '2026-10-16' }) })
@@ -597,13 +597,15 @@ describe('newsletter routes', () => {
     ])
   })
 
-  it('POST /newsletter/unsubscribe with an issue that was never sent: the opt-out happens, counted without issue', async () => {
+  it('POST /newsletter/unsubscribe with an issue that was not sent to that person: the opt-out happens, counted without issue', async () => {
     const { repo, entries } = memoryRepo([
       cand('ana@example.com', { unsubscribeToken: TOKEN_A }),
       cand('bea@example.com', { unsubscribeToken: TOKEN_B }),
       userCand('carla@example.com'),
+      cand('dani@example.com', { unsubscribeToken: TOKEN_D }),
     ])
-    const { stats, unsubs } = memoryStats(() => [{ issueId: '2026-10-16', source: 'waitlist' }])
+    // 2026-10-16 went to bea only (dani signed up after it, e.g. to inflate its opt-outs).
+    const { stats, unsubs } = memoryStats(() => [{ issueId: '2026-10-16', source: 'waitlist', hash: recipientHash('bea@example.com') }])
     const app = express().use(express.json()).use(express.urlencoded({ extended: true })).use(createNewsletterRouter({ repo, stats, unsubscribeLimiter: noLimit }))
     const b = await serve(app)
     // An issue id that looks valid but was never sent, by JSON and by the one-click URL.
@@ -619,25 +621,29 @@ describe('newsletter routes', () => {
       body: 'List-Unsubscribe=One-Click',
     })
     expect(await oneClick.json()).toEqual({ ok: true, alreadyUnsubscribed: false })
-    // A real issue still counts under it.
+    // A real issue that this person never got: the opt-out happens, but not under that issue.
+    const notMine = await fetch(`${b}/newsletter/unsubscribe?t=w.${TOKEN_D}&i=2026-10-16`, { method: 'POST' })
+    expect(await notMine.json()).toEqual({ ok: true, alreadyUnsubscribed: false })
+    // The issue sent to this person still counts under it.
     const real = await fetch(`${b}/newsletter/unsubscribe?t=w.${TOKEN_B}&i=2026-10-16`, { method: 'POST' })
     expect(real.status).toBe(200)
-    expect(entries.map((e) => e.newsletterOptIn)).toEqual([false, false, false])
+    expect(entries.map((e) => e.newsletterOptIn)).toEqual([false, false, false, false])
     expect(unsubs).toEqual([
       { issueId: null, source: 'waitlist' },
       { issueId: null, source: 'user' },
+      { issueId: null, source: 'waitlist' },
       { issueId: '2026-10-16', source: 'waitlist' },
     ])
     const report = await stats.stats()
     expect(report.issues.map((i) => i.issueId)).toEqual(['2026-10-16'])
     expect(report.issues[0].unsubscribes).toEqual({ total: 1, user: 0, waitlist: 1 })
-    expect(report.unsubscribesWithoutIssue).toEqual({ total: 2, user: 1, waitlist: 1 })
+    expect(report.unsubscribesWithoutIssue).toEqual({ total: 3, user: 1, waitlist: 2 })
   })
 
-  it('POST /newsletter/unsubscribe: the opt-out holds even if checking the issue fails', async () => {
+  it('POST /newsletter/unsubscribe: if checking the issue fails, the opt-out holds and counts without issue', async () => {
     const { repo, entries } = memoryRepo([cand('ana@example.com', { unsubscribeToken: TOKEN_A })])
-    const { stats, unsubs } = memoryStats(() => [{ issueId: '2026-10-16', source: 'waitlist' }])
-    stats.hasSends = async () => {
+    const { stats, unsubs } = memoryStats(() => [{ issueId: '2026-10-16', source: 'waitlist', hash: recipientHash('ana@example.com') }])
+    stats.wasSentTo = async () => {
       throw new Error('db down')
     }
     const app = express().use(express.json()).use(createNewsletterRouter({ repo, stats, unsubscribeLimiter: noLimit }))
@@ -649,7 +655,7 @@ describe('newsletter routes', () => {
     })
     expect(await r.json()).toEqual({ ok: true, alreadyUnsubscribed: false })
     expect(entries[0].newsletterOptIn).toBe(false)
-    expect(unsubs).toEqual([])
+    expect(unsubs).toEqual([{ issueId: null, source: 'waitlist' }])
   })
 })
 
@@ -668,13 +674,14 @@ describe('buildIssueStats', () => {
     expect(r.unsubscribesWithoutIssue).toEqual({ total: 7, user: 2, waitlist: 5 })
   })
 
-  it('an issue with only saved links (a proof) still shows, but opt-outs need sends to count under it', () => {
-    const r = buildIssueStats(SENDS, [{ issueId: 'solo-prueba', index: 1, destination: 'https://mimoia.com/menu', clicks: 0 }], [
-      { issueId: 'solo-prueba', source: 'waitlist', n: 1 },
+  it('an issue whose sends were forgotten keeps its opt-outs: its saved links make it known', () => {
+    const r = buildIssueStats(SENDS, [{ issueId: '2026-10-09', index: 1, destination: 'https://mimoia.com/menu', clicks: 3 }], [
+      { issueId: '2026-10-09', source: 'waitlist', n: 2 },
+      { issueId: 'inventado', source: 'user', n: 1 },
     ])
-    expect(r.issues.map((i) => i.issueId).sort()).toEqual(['2026-10-16', 'solo-prueba'])
-    expect(r.issues.find((i) => i.issueId === 'solo-prueba')!.unsubscribes.total).toBe(0)
-    expect(r.unsubscribesWithoutIssue).toEqual({ total: 1, user: 0, waitlist: 1 })
+    expect(r.issues.map((i) => i.issueId).sort()).toEqual(['2026-10-09', '2026-10-16'])
+    expect(r.issues.find((i) => i.issueId === '2026-10-09')!.unsubscribes).toEqual({ total: 2, user: 0, waitlist: 2 })
+    expect(r.unsubscribesWithoutIssue).toEqual({ total: 1, user: 1, waitlist: 0 })
   })
 })
 
@@ -683,7 +690,8 @@ describe('newsletter clicks, counted by us (PRO-191)', () => {
 
   it('a test issue with 2 links: one clicked twice → 2 and 0; unknown issue or index → 404, no redirect', async () => {
     const { repo, rows } = memoryRepo([cand('ana@example.com', { unsubscribeToken: TOKEN_A }), userCand('bea@example.com')])
-    const sends = () => [...rows.entries()].filter(([, v]) => v.status === 'sent').map(([k]) => ({ issueId: k.split('|')[0], source: 'waitlist' }))
+    const sends = () =>
+      [...rows.entries()].filter(([, v]) => v.status === 'sent').map(([k]) => ({ issueId: k.split('|')[0], source: 'waitlist', hash: k.split('|')[1] }))
     const { stats } = memoryStats(sends)
     const sendBatch = okBatch()
     const asAdmin: RequestHandler = (req, _res, next) => {

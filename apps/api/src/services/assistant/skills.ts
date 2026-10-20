@@ -26,6 +26,7 @@ import { getSummary } from '../advisor.js'
 import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../scopeResolver.js'
 import { importRecipeFromUrl, createRecipeFromParts, type RecipeParts } from '../recipeImport.js'
 import { mealLinesForDay } from '../menuText.js'
+import { cookedRecipeIds, householdDiners, mealLinesWithFacts, timesLabel, type RecipeTimes } from './menuFacts.js'
 import { slotWithDishes } from '../menuDishes.js'
 import { madridParts, madridWeekStart } from '../madridTime.js'
 import { DAY_PROP, dateLabel, isMenuDayError, menuDayOf, resolveMenuDay, type MenuDay } from './menuDay.js'
@@ -159,9 +160,35 @@ async function restrictionConflicts(ctx: SkillContext, recipeId: string): Promis
 
 // ─── Skill definitions ─────────────────────────────────────
 
+/**
+ * PRO-183: what the menu tools need to say the same as the app — the
+ * household's diners (servings per meal) and each cooked recipe's minutes.
+ * Two reads; if they fail the tools still answer with the bare menu.
+ */
+async function menuFactsFor(ctx: SkillContext, days: readonly (DayMenu | null | undefined)[]): Promise<{ times: Map<string, RecipeTimes>; diners: number } | null> {
+  try {
+    const [u] = await ctx.db
+      .select({ adults: users.adults, kidsCount: users.kidsCount })
+      .from(users)
+      .where(eq(users.id, ctx.userId))
+      .limit(1)
+    const ids = cookedRecipeIds(days)
+    const rows: Array<{ id: string } & RecipeTimes> = ids.length
+      ? await ctx.db
+          .select({ id: recipes.id, totalTime: recipes.totalTime, activeTime: recipes.activeTime, prepTime: recipes.prepTime })
+          .from(recipes)
+          .where(inArray(recipes.id, ids))
+      : []
+    return { times: new Map((rows ?? []).map((r) => [r.id, r])), diners: householdDiners(u) }
+  } catch (err: any) {
+    console.warn('[assistant] menu facts unavailable:', err?.message ?? err)
+    return null
+  }
+}
+
 const getTodaysMenu: SkillDefinition = {
   name: 'get_todays_menu',
-  description: 'Obtiene el menu del dia indicado (o de hoy si no se especifica). Pasa day con las palabras del usuario ("mañana", "el sábado", "el martes de la semana que viene") o la fecha.',
+  description: 'Obtiene el menu del dia indicado (o de hoy si no se especifica): por comida, las raciones que muestra la app y, por plato, los minutos en total y de trabajo. Pasa day con las palabras del usuario ("mañana", "el sábado", "el martes de la semana que viene") o la fecha.',
   parameters: {
     type: 'object',
     properties: {
@@ -192,10 +219,11 @@ const getTodaysMenu: SkillDefinition = {
     const day = days[t.dayIndex]
     // Slots hold `dishes[]` since the multi-dish migration — reading the old
     // `slot.recipeName` made every day look empty ("no hay comidas").
-    const meals = mealLinesForDay(day)
+    const facts = mealLinesForDay(day).length > 0 ? await menuFactsFor(ctx, days) : null
+    const meals = facts ? mealLinesWithFacts(days, t.dayIndex, facts.times, facts.diners) : mealLinesForDay(day)
 
     const summary = meals.length > 0
-      ? `Menu del ${t.label}: ${meals.join(', ')}`
+      ? `Menu del ${t.label}: ${meals.join(facts ? '; ' : ', ')}`
       : `No hay comidas planificadas para el ${t.label}.`
 
     return { data: { dayIndex: t.dayIndex, date: t.isoDate, weekStart: t.weekStart, menuId: menu.id, day }, summary, uiHint: 'menu' }
@@ -211,7 +239,7 @@ const getTodaysMenu: SkillDefinition = {
  */
 const getWeeklyMenu: SkillDefinition = {
   name: 'get_weekly_menu',
-  description: 'Obtiene el menu de la semana entera (esta o, con nextWeek, la que viene), dia a dia. Usalo cuando pida ver el menu de la semana; para un solo dia usa get_todays_menu. Una sola llamada, nunca get_todays_menu dia a dia.',
+  description: 'Obtiene el menu de la semana entera (esta o, con nextWeek, la que viene), dia a dia, con las raciones de cada comida y los minutos de cada plato. Usalo cuando pida ver el menu de la semana; para un solo dia usa get_todays_menu. Una sola llamada, nunca get_todays_menu dia a dia.',
   parameters: {
     type: 'object',
     properties: {
@@ -228,14 +256,16 @@ const getWeeklyMenu: SkillDefinition = {
     const days = Array.isArray(menu.days) ? (menu.days as DayMenu[]) : []
     const skipped = new Set<number>(menu.skippedDays ?? [])
     const lines: string[] = []
+    const planned = days.some((d, i) => !skipped.has(i) && mealLinesForDay(d).length > 0)
+    const facts = planned ? await menuFactsFor(ctx, days) : null
     for (let i = 0; i < 7; i++) {
       const label = menuDayOf(weekStart, i).label
       if (skipped.has(i)) {
         lines.push(`${label}: sin cocinar`)
         continue
       }
-      const meals = mealLinesForDay(days[i])
-      if (meals.length > 0) lines.push(`${label}: ${meals.join(', ')}`)
+      const meals = facts ? mealLinesWithFacts(days, i, facts.times, facts.diners) : mealLinesForDay(days[i])
+      if (meals.length > 0) lines.push(`${label}: ${meals.join(facts ? '; ' : ', ')}`)
     }
     if (lines.length === 0) {
       return { data: null, summary: `La semana del ${dateLabel(weekStart)} no tiene nada planificado todavia.`, uiHint: 'text' }
@@ -257,14 +287,23 @@ const getWeeklyMenu: SkillDefinition = {
 export function recipeDetailsSummary(r: {
   name: string
   prepTime?: number | null
+  totalTime?: number | null
+  activeTime?: number | null
   servings?: number | null
+  /** PRO-183: the servings the ingredients were scaled to (the menu's), when they differ from the recipe's. */
+  scaledTo?: number | null
   ingredients: string[]
   steps: string[]
   tips?: string | null
   sourceUrl?: string | null
 }): string {
-  const head = `${untrustedText(r.name)} (${r.prepTime ?? '?'} min${r.servings ? `, ${r.servings} raciones` : ''})`
+  const minutes = timesLabel(r) ?? '? min'
+  const scaled = r.scaledTo != null && r.scaledTo > 0 && r.scaledTo !== (r.servings ?? 2)
+  const head = scaled
+    ? `${untrustedText(r.name)} (${minutes}; cantidades para ${r.scaledTo} raciones, la receta base es para ${r.servings ?? 2})`
+    : `${untrustedText(r.name)} (${minutes}${r.servings ? `, ${r.servings} raciones` : ''})`
   const lines = [head, `Ingredientes: ${r.ingredients.join(', ')}`]
+  if (scaled) lines.push(`Los pasos pueden citar las cantidades de la receta base (${r.servings ?? 2} raciones): usa las de Ingredientes.`)
   if (r.steps.length) {
     lines.push(`Pasos:\n${r.steps.map((t, i) => `${i + 1}. ${untrustedText(t, 400)}`).join('\n')}`)
   } else {
@@ -341,15 +380,16 @@ export function mergeMemoryFacts(
 
 const getRecipeDetails: SkillDefinition = {
   name: 'get_recipe_details',
-  description: 'Busca una receta (del catalogo o del usuario) por nombre y devuelve sus detalles: ingredientes con cantidades, pasos numerados, raciones, trucos y el enlace a la receta original (video o web) si lo tiene. Usala para explicar como se hace, guiar paso a paso o dar el enlace.',
+  description: 'Busca una receta (del catalogo o del usuario) por nombre y devuelve sus detalles: ingredientes con cantidades, pasos numerados, raciones, minutos en total y de trabajo, trucos y el enlace a la receta original (video o web) si lo tiene. Usala para explicar como se hace, guiar paso a paso o dar el enlace. Si el plato esta en el menu, pasa servings con las raciones que da get_todays_menu o get_weekly_menu para esa comida: las cantidades vuelven ya calculadas para esas raciones.',
   parameters: {
     type: 'object',
     properties: {
       recipeName: { type: 'string', description: 'Nombre de la receta a buscar' },
+      servings: { type: 'number', description: 'Raciones de esa comida en el menu (las que da get_todays_menu / get_weekly_menu). Sin el, las cantidades son las de la receta.' },
     },
     required: ['recipeName'],
   },
-  async handler(params: { recipeName: string }, ctx: SkillContext): Promise<SkillResult> {
+  async handler(params: { recipeName: string; servings?: number }, ctx: SkillContext): Promise<SkillResult> {
     const { db } = ctx
 
     // First try exact match
@@ -405,7 +445,16 @@ const getRecipeDetails: SkillDefinition = {
       .orderBy(recipeSteps.index)
     const steps: string[] = (stepRows ?? []).map((s: any) => String(s.text ?? '').trim()).filter(Boolean)
 
-    const ingredientList = riRows.map((r: any) => `${r.ingredientName}: ${r.quantity}${r.unit ?? 'g'}`)
+    // PRO-183: amounts for the menu's servings, scaled here (Mimo used to
+    // say «600 g para 4» from memory for a recipe of 300 g for 2).
+    const baseServings = Number(recipe.servings) > 0 ? Number(recipe.servings) : 2
+    const target = Number.isFinite(params.servings) && Number(params.servings) > 0 ? Math.round(Number(params.servings)) : null
+    const ratio = target != null ? target / baseServings : 1
+    const scaledRows = (riRows as any[]).map((r) => ({
+      ...r,
+      quantity: ratio === 1 || r.quantity == null ? r.quantity : scaleRound(Number(r.quantity) * ratio, r.unit ?? 'g'),
+    }))
+    const ingredientList = scaledRows.map((r: any) => `${r.ingredientName}: ${r.quantity}${r.unit ?? 'g'}`)
     // PRO-196: same notice as the web ficha for a coeliac household.
     const ingNames = riRows.map((r: any) => String(r.ingredientName))
     const dietNotices = ingNames.some(isBrandDependentGlutenCharcuterie)
@@ -414,7 +463,10 @@ const getRecipeDetails: SkillDefinition = {
     const details = recipeDetailsSummary({
       name: recipe.name,
       prepTime: recipe.prepTime,
+      totalTime: recipe.totalTime,
+      activeTime: recipe.activeTime,
       servings: recipe.servings,
+      scaledTo: target,
       ingredients: ingredientList,
       steps,
       tips: recipe.tips,
@@ -427,11 +479,15 @@ const getRecipeDetails: SkillDefinition = {
         id: recipe.id,
         name: recipe.name,
         prepTime: recipe.prepTime,
+        totalTime: recipe.totalTime ?? null,
+        activeTime: recipe.activeTime ?? null,
+        servings: target ?? recipe.servings ?? null,
+        baseServings: recipe.servings ?? null,
         meals: recipe.meals,
         seasons: recipe.seasons,
         steps,
         sourceUrl: recipe.sourceUrl ?? null,
-        ingredients: riRows,
+        ingredients: scaledRows,
         dietNotices,
       },
       summary,

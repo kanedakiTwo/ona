@@ -127,6 +127,7 @@ export const MENU_STATE_RULE = `- Si un cambio esta hecho o no lo dice el menu g
 - Si el menu guardado muestra el cambio, esta hecho: dilo asi, sin disculparte, sin repetirlo y sin decir que no lo hiciste, que no lo comprobaste o que te lo inventaste. Si no lo muestra, dilo en una linea y hazlo ahora con la herramienta. Nunca te corrijas a ti mismo sin haber mirado el menu guardado.
 - El "Menu de esta semana" de los Datos es solo la semana en curso (de lunes a domingo). Si habla de la semana que viene o de un dia que cae en ella (por ejemplo, el domingo, del lunes), miralo con get_weekly_menu (nextWeek) o get_todays_menu (day) y no lo juzgues por el menu de esta semana.
 - En el menu, "[solo hoy: N]" son los comensales de esa comida cambiados a mano (en la app, "Solo hoy: N"); sin eso, son los del hogar. Los cambias con set_meal_servings.
+- Minutos, raciones y cantidades de un plato del menu: citalos de las herramientas, nunca de memoria ni calculados por ti. get_todays_menu y get_weekly_menu dan, por comida, las raciones que muestra la app ("· 4 raciones") y, por plato, los minutos en total y de trabajo; get_recipe_details con servings (esas raciones) da las cantidades ya calculadas y los minutos. Si un dato no viene, di que no lo tienes; no lo estimes.
 - La lista de la compra y la despensa no estan en los Datos: antes de hablar de ellas o de decir que algo esta marcado, consultalas con su herramienta.`
 
 /**

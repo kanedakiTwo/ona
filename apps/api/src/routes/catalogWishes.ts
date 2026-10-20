@@ -1,5 +1,5 @@
 import { Router, type RequestHandler } from 'express'
-import { metricsAuth } from '../middleware/metricsAuth.js'
+import { metricsAuth, viaMetricsToken } from '../middleware/metricsAuth.js'
 import { listCatalogWishes, type CatalogWishRow } from '../services/catalogWishes.js'
 
 /**
@@ -7,7 +7,8 @@ import { listCatalogWishes, type CatalogWishRow } from '../services/catalogWishe
  *
  *   GET /admin/catalog-wishes?status=abierto&limit=200
  *     admin JWT or x-metrics-token (Cocina reads it). Dish, sources, how many
- *     households and status — never who asked.
+ *     households and status — never who asked. The dish is free text from a
+ *     registered user, accepted as a dish name; the token gets ≤ 80 characters.
  */
 const STATUSES = new Set(['abierto', 'cubierto', 'descartado', 'todos'])
 
@@ -22,12 +23,13 @@ export function createCatalogWishesRouter(
       const status = STATUSES.has(raw) ? raw : 'abierto'
       const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 1000)
       const rows = await d.list({ status: status === 'todos' ? undefined : status, limit })
+      const token = viaMetricsToken(req)
       res.json({
         status,
         count: rows.length,
         items: rows.map((r) => ({
           id: r.id,
-          dish: r.dish,
+          dish: token ? r.dish.slice(0, 80) : r.dish,
           households: r.households,
           sources: r.sources,
           status: r.status,

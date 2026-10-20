@@ -4,6 +4,7 @@
  *   GET  /menu/:menuId/a-ciegas      the two weeks, A and B (test accounts only; 404 otherwise)
  *   POST /menu/:menuId/a-ciegas      { choice: 'A' | 'B' | 'igual', reason? } — the household's pick
  *   GET  /admin/menu-planner/comparison   admin JWT or x-metrics-token: one line per test household
+ *                                         (the token: no household id and no reasons, only their count)
  */
 import { Router } from 'express'
 import { and, desc, eq, gte, inArray, like } from 'drizzle-orm'
@@ -12,7 +13,8 @@ import type { DayMenu } from '@ona/shared'
 import { db } from '../db/connection.js'
 import { menuBlindVotes, menuPlans, menus, users } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
-import { metricsAuth } from '../middleware/metricsAuth.js'
+import { metricsAuth, viaMetricsToken } from '../middleware/metricsAuth.js'
+import { comparisonForAgents } from '../services/agentView.js'
 import { BLIND_TEST_EMAIL_SUFFIX, blindPair, isBlindTestAccount, preferredSource, summarizeComparison } from '../services/blindComparison.js'
 import { canAccessRow, resolveScope } from '../services/scopeResolver.js'
 
@@ -96,7 +98,8 @@ router.get('/admin/menu-planner/comparison', metricsAuth, async (req, res) => {
     }).from(menuPlans).where(and(inArray(menuPlans.userId, ids), gte(menuPlans.createdAt, from)))
     const votes = await db.select({ householdId: menuBlindVotes.householdId, preferred: menuBlindVotes.preferred, reason: menuBlindVotes.reason })
       .from(menuBlindVotes).where(and(inArray(menuBlindVotes.userId, ids), gte(menuBlindVotes.createdAt, from)))
-    res.json({ from: from.toISOString().slice(0, 10), households: summarizeComparison(plans as any, votes) })
+    const households = summarizeComparison(plans as any, votes)
+    res.json({ from: from.toISOString().slice(0, 10), households: viaMetricsToken(req) ? comparisonForAgents(households) : households })
   } catch (err) {
     console.error('[a-ciegas] report failed:', err)
     res.status(500).json({ error: 'Internal server error' })

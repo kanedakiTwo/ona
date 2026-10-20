@@ -121,12 +121,13 @@ describe.skipIf(!reachable || !METRICS_TOKEN)('usage events + conversation flags
     )
   }, 30_000)
 
-  it('serves the anonymised conversation flags to the token', async () => {
+  it('serves the conversation flags to the token: categories and severity, no reply or note', async () => {
     const r = await call('GET', '/admin/assistant-reviews/flags?days=3', undefined, metrics)
     expect(r.status).toBe(200)
     expect(r.body.channels).toEqual(['whatsapp'])
     expect(Object.keys(r.body.counts.byCategory).sort()).toEqual(['error_refusal', 'health_claim', 'health_talk', 'other', 'unverified_done'])
     expect(Array.isArray(r.body.items)).toBe(true)
+    for (const i of r.body.items) expect(Object.keys(i).sort()).toEqual(['category', 'channel', 'date', 'reviewerCategory', 'severity', 'source'])
   })
 
   it('the read-only token never writes, and opens nothing else', async () => {

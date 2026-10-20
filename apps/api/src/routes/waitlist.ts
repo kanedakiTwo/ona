@@ -9,7 +9,8 @@ import {
 } from '@ona/shared'
 import { env } from '../config/env.js'
 import { authMiddleware, requireAdmin, type AuthRequest } from '../middleware/auth.js'
-import { metricsAuth } from '../middleware/metricsAuth.js'
+import { metricsAuth, viaMetricsToken } from '../middleware/metricsAuth.js'
+import { waitlistForAgents } from '../services/agentView.js'
 import { rateLimit } from '../middleware/rateLimit.js'
 import {
   createDbWaitlistRepo,
@@ -34,7 +35,8 @@ import { WAITLIST_INVITE_ERRORS, findWaitlistInvite, inviteLinkState } from '../
  *   POST /waitlist/pricing         public (opt-out token): the 4 price answers (PRO-26)
  *   POST /waitlist/reservation     public (opt-out token): founder plan / «ninguno» / anular
  *   GET  /waitlist/invite/:token   public (the token is the credential): who the one-time link is for (PRO-97)
- *   GET  /admin/waitlist           admin JWT or `x-metrics-token` (agents): aggregates, ids only
+ *   GET  /admin/waitlist           admin JWT or `x-metrics-token`: aggregates and ids; the token gets
+ *                                  utm as counts by channel, no referral codes and no ids
  *   GET  /admin/waitlist/next-batch admin JWT only: the suggested batch with names and emails (PRO-97)
  *   POST /admin/waitlist/invite    admin JWT only: mark a batch invited, email each one its link (PRO-93/97), get their emails
  *
@@ -242,15 +244,15 @@ export function createAdminWaitlistRouter(overrides: Partial<AdminWaitlistDeps> 
   }
   const router = Router()
 
-  // GET /admin/waitlist?days=30&batchSize=20 — no emails, names or supermarkets.
+  // GET /admin/waitlist?days=30&batchSize=20 — no emails, names or supermarkets. The read token
+  // also gets no utm text (counts by channel), referral codes or entry ids (specs/waitlist.md).
   router.get('/admin/waitlist', deps.readAuth, async (req, res) => {
     try {
-      res.json(
-        await deps.load({
-          days: intParam(req.query.days, 30, 1, 365),
-          batchSize: intParam(req.query.batchSize, 20, 1, 500),
-        }),
-      )
+      const report = await deps.load({
+        days: intParam(req.query.days, 30, 1, 365),
+        batchSize: intParam(req.query.batchSize, 20, 1, 500),
+      })
+      res.json(viaMetricsToken(req) ? waitlistForAgents(report) : report)
     } catch (err: any) {
       console.error('[admin/waitlist] failed:', err?.message ?? err)
       res.status(500).json({ error: 'Internal server error' })

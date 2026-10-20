@@ -59,9 +59,9 @@ Before PRO-197 the cards ignored allergies and diets. Miguel (2026-10-18): an au
 
 - «A Vera no»: a verdict is per account, not per person of the household; that waits for the per-person ficha (D-064)
 - A «¿No coméis pescado?» flag stays in «Lo que recuerdo de ti» even after the household says it does eat fish; it can't be removed there yet
-- Mimo doesn't mention it on WhatsApp yet (the one-time mention with the `/afinar` link to WhatsApp-first users, `whatsappOfferedAt`), nor reads the verdicts in its single-dish swap, nor dropped «tres platos que os gusten mucho» from its WhatsApp sign-up message: those live in `assistant/skills.ts`, `systemPrompt.ts` and `whatsapp/inbound.ts`, which were closed for this change
+- Mimo doesn't mention it on WhatsApp yet (the one-time mention with the `/afinar` link to WhatsApp-first users, `whatsappOfferedAt`), nor reads the verdicts in its single-dish swap, (its WhatsApp sign-up message dropped «tres platos que os gusten mucho» with PRO-245, 2026-10-19): those live in `assistant/skills.ts`, `systemPrompt.ts` and `whatsapp/inbound.ts`, which were closed for this change
 - «Me apetece» weighs only in the weekly generator, not in the single-slot pickers
-- «Deseos del catálogo» (PRO-154) took its `alta` source from the sign-up's favourite dishes: with the question gone, only Mimo's WhatsApp sign-up still sends them. A «Me encanta» is always on a catalogue recipe, so it adds no wish
+- «Deseos del catálogo» (PRO-154) took its `alta` source from the sign-up's favourite dishes: with the question gone on the web and on WhatsApp (PRO-245), only dishes a person tells Mimo unprompted during the WhatsApp sign-up still reach it. A «Me encanta» is always on a catalogue recipe, so it adds no wish
 - The starter deck was drafted by Producto from the catalogue; Cocina should review it (`TASTE_STARTER_DECK`)
 
 ## Source

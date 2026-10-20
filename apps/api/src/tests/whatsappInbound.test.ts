@@ -158,7 +158,9 @@ describe('processInbound — unlinked numbers', () => {
     expect(m).toMatch(/puedo equivocarme y no sustituyo a un profesional sanitario/)
     expect(m).toMatch(/Puedes escribirme o mandarme notas de voz/)
     expect(m).toMatch(/\*1\.\* ¿Cuántos sois en casa\?/)
-    expect(m).toMatch(/\*2\.\* Dime tres platos que os gusten mucho\./)
+    expect(m).toMatch(/\*2\.\* ¿Cuánto cocináis en casa/)
+    // PRO-245 / D-064: no favourite dishes in the sign-up any more.
+    expect(m).not.toMatch(/platos/)
   })
 
   it('the opt-in question says it can be changed just by asking (Mimo has the tool)', () => {

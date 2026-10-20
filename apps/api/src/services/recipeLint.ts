@@ -425,14 +425,26 @@ function readsAsIngredient(name: string, w: string[], i: number): boolean {
   return true
 }
 
+/**
+ * «magret de pato» with «magret» listed, «vinagre de vino blanco» with
+ * «vinagre de vino»: the words after «de» qualify one of the recipe's own
+ * ingredients (its line matched a broader catalogue row), so they don't name
+ * another one. «lomos de dorada» with no lomo listed still counts.
+ */
+function qualifiesListedIngredient(w: string[], i: number, lex: RecipeLexicon): boolean {
+  const prep = w[i - 1]
+  return i >= 2 && (prep === 'de' || prep === 'del') && hasSameWord(lex.heads, w[i - 2])
+}
+
 /** Does the step (its words) name this catalog ingredient, read strictly? */
-function mentionsUnlistedIngredient(w: string[], cat: IndexedCatalogRow): boolean {
+function mentionsUnlistedIngredient(w: string[], cat: IndexedCatalogRow, lex: RecipeLexicon): boolean {
   const n = cat.words
   if (n.length === 0 || isFreeStaple(n) || COLLECTIVE_NAMES.has(cat.normName)) return false
   outer: for (let i = 0; i + n.length <= w.length; i++) {
     for (let k = 0; k < n.length; k++) {
       if (!sameWord(w[i + k], n[k])) continue outer
     }
+    if (qualifiesListedIngredient(w, i, lex)) continue
     if (n.length > 1 || readsAsIngredient(n[0], w, i)) return true
   }
   return false
@@ -600,7 +612,7 @@ export function lintRecipe(recipe: RecipeInput, opts: LintOptions): LintResult {
     for (const cat of catalog.rows) {
       if (recipeIngredientIds.has(cat.row.id)) continue
       if (refsCatalogIds.has(cat.row.id)) continue
-      if (!mentionsUnlistedIngredient(data.words, cat)) continue
+      if (!mentionsUnlistedIngredient(data.words, cat, lexicon)) continue
       if (explainedByRecipe(cat, lexicon)) continue
       errors.push({
         code: 'STEP_INGREDIENT_NOT_LISTED',

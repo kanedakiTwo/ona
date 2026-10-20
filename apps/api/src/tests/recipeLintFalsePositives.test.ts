@@ -32,6 +32,8 @@ const NAMES = [
   'boniato', 'tomate', 'copos de avena', 'plátano', 'manzana', 'lentejas cocidas', 'cebolla morada', 'coliflor',
   'pechuga de pavo', 'leche de coco', 'calabacín', 'carne picada mixta', 'guisantes', 'lubina', 'contramuslos de pollo',
   'judías verdes', 'judiones', 'panceta', 'ajo', 'aceite de oliva virgen extra', 'espinacas frescas', 'perejil fresco',
+  // libros-01 (2026-10-21): the line matched a broader catalogue row
+  'magret', 'pato', 'vinagre de vino', 'vino blanco',
 ] as const
 
 const catId = (name: string) => `cat:${name}`
@@ -192,6 +194,25 @@ describe('PRO-289 — tanda cocina-01: lo que el revisor rechazó por error', ()
 
   it('el log tiene 26 rechazos y cada uno es un caso', () => {
     expect(CASES).toHaveLength(26)
+  })
+})
+
+describe('tanda libros-01 — lo que va detrás de «de» completa un ingrediente de la lista', () => {
+  it('«magret de pato» con «magret» listado y «vinagre de vino blanco» con «vinagre de vino» → pasa', () => {
+    const { errors } = lint(recipe(
+      [['magret', 800], ['vinagre de vino', 10, 'ml'], ['cebolla', 100]],
+      ['Pica la cebolla y mézclala con el vinagre de vino blanco.', 'Marca los magrets de pato por la piel.',
+        'Deja reposar el magret de pato y córtalo en láminas.'],
+    ))
+    expect(notListed(errors)).toEqual([])
+  })
+
+  it('el pato suelto, sin un ingrediente listado delante, sigue saltando', () => {
+    const { errors } = lint(recipe(
+      [['magret', 800], ['cebolla', 100]],
+      ['Pica la cebolla.', 'Marca el magret.', 'Sirve el pato con la cebolla.'],
+    ))
+    expect(notListed(errors)).toEqual(['pato'])
   })
 })
 

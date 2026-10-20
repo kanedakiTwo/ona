@@ -24,6 +24,10 @@ import {
   useShoppingList,
   useCheckItem,
   useStockItem,
+  useEditMenuLine,
+  useHaveAtHome,
+  usePatchShoppingItem,
+  useDeleteShoppingItem,
 } from '@/hooks/useShopping'
 import { useMenu } from '@/hooks/useMenu'
 import { haptic } from '@/lib/pwa/haptics'
@@ -39,7 +43,7 @@ import {
   ItemDeleteButton,
 } from '@/components/shopping/ShoppingExtensions'
 import { MenuSheet, SheetAction } from '@/components/menu/MenuSheet'
-import { ingredientDisplayName, missingQuantity, shoppingProgress, withOnaFooter } from '@ona/shared'
+import { ingredientDisplayName, missingQuantity, parseShoppingAmount, shoppingProgress, withOnaFooter } from '@ona/shared'
 
 function todayIso(): string {
   const now = new Date()
@@ -108,7 +112,10 @@ export default function ShoppingPage() {
   const [aisleFilter, setAisleFilter] = useState<Aisle | null>(null)
   const [sheet, setSheet] = useState<null | 'actions' | 'dates' | 'add'>(null)
 
-  const items = (shoppingList?.items ?? []) as any[]
+  const allItems = (shoppingList?.items ?? []) as any[]
+  // «No lo compro esta semana» (PRO-175): out of the list, in its own section to put back.
+  const items = allItems.filter((i) => !i.skipped)
+  const skippedItems = allItems.filter((i) => i.skipped)
   // Each row counts once: bought-then-at-home is "en casa" (never > 100 %).
   const { total: totalCount, bought: checkedCount, atHome: inStockCount, done: doneCount, ratio: progress } = shoppingProgress(items)
 
@@ -130,7 +137,7 @@ export default function ShoppingPage() {
       if (rows.length === 0) return []
       const lines = rows
         .sort((a, b) => a.name.localeCompare(b.name))
-        .map((i) => `- ${i.name}: ${i.quantity} ${i.unit}`)
+        .map((i) => `- ${i.name}: ${i.amountText ?? `${i.quantity} ${i.unit}`}`)
         .join('\n')
       return [`## ${AISLE_LABELS[aisle]}`, lines, '']
     })
@@ -372,7 +379,7 @@ export default function ShoppingPage() {
                 transition={{ duration: 0.3 }}
               >
                 {activeTab === 'list' ? (
-                  <BuyList items={items} listId={shoppingList!.id} aisle={effectiveAisle} busy={listFetching} />
+                  <BuyList items={items} skipped={skippedItems} listId={shoppingList!.id} aisle={effectiveAisle} busy={listFetching} />
                 ) : (
                   <StockList items={items} listId={shoppingList!.id} aisle={effectiveAisle} busy={listFetching} />
                 )}
@@ -582,19 +589,45 @@ function EmptyCard({ title, hint }: { title: string; hint?: string }) {
 }
 
 /** `busy`: the list is being rebuilt (its id changes on every GET), so rows wait instead of writing to the old one. */
-function BuyList({ items, listId, aisle, busy }: { items: any[]; listId: string; aisle: Aisle | null; busy?: boolean }) {
+function BuyList({
+  items,
+  skipped = [],
+  listId,
+  aisle,
+  busy,
+}: {
+  items: any[]
+  skipped?: any[]
+  listId: string
+  aisle: Aisle | null
+  busy?: boolean
+}) {
   const checkItem = useCheckItem()
   const stockItem = useStockItem()
+  const editLine = useEditMenuLine()
+  // The line whose sheet is open (PRO-175): change the amount or leave it out.
+  const [editing, setEditing] = useState<any | null>(null)
 
   const buyable = items.filter((i) => !i.inStock)
   const grouped = groupByAisle(buyable)
+  const skippedHere = skipped.filter((i) => !aisle || i.aisle === aisle)
+  const sheet = (
+    <LineSheet item={editing} listId={listId} onClose={() => setEditing(null)} />
+  )
 
   if (buyable.length === 0) {
-    return <EmptyCard title="Nada que comprar." />
+    return (
+      <>
+        <EmptyCard title="Nada que comprar." />
+        <SkippedLines items={skippedHere} busy={busy || editLine.isPending} onRestore={(it) => editLine.mutate({ listId, itemId: it.id, skipped: false })} />
+        {sheet}
+      </>
+    )
   }
 
   let runningIndex = 0
   return (
+    <>
     <AisleGrid>
       {AISLE_ORDER.filter((a) => !aisle || a === aisle).flatMap((a) => {
         const rows = grouped[a]
@@ -614,6 +647,7 @@ function BuyList({ items, listId, aisle, busy }: { items: any[]; listId: string;
                   variant="buy"
                   onCheck={() => checkItem.mutate({ listId, itemId: item.id, checked: !item.checked })}
                   onStock={() => stockItem.mutate({ listId, itemId: item.id, inStock: true })}
+                  onEdit={() => setEditing(item)}
                 />
               )
             })}
@@ -621,6 +655,172 @@ function BuyList({ items, listId, aisle, busy }: { items: any[]; listId: string;
         ]
       })}
     </AisleGrid>
+    <SkippedLines items={skippedHere} busy={busy || editLine.isPending} onRestore={(it) => editLine.mutate({ listId, itemId: it.id, skipped: false })} />
+    {sheet}
+    </>
+  )
+}
+
+/** «Quitado de esta compra» (PRO-175): menu lines the household won't buy for this list, to put back. */
+function SkippedLines({ items, busy, onRestore }: { items: any[]; busy?: boolean; onRestore: (item: any) => void }) {
+  if (items.length === 0) return null
+  return (
+    <section className="mt-6" aria-label="Quitado de esta compra" data-testid="shopping-skipped">
+      <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">Quitado de esta compra</h3>
+      <ul>
+        {items.map((item) => (
+          <li key={item.id} className="flex items-center gap-2 border-b border-dashed border-border py-1.5 last:border-b-0">
+            <p className="min-w-0 flex-1 break-words text-[15px] text-ink-soft line-through">{ingredientDisplayName(item.name)}</p>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onRestore(item)}
+              className="relative h-8 shrink-0 whitespace-nowrap rounded-full bg-cream-deep px-3 text-[12px] font-medium text-ink-mid transition-colors before:absolute before:inset-x-0 before:-inset-y-1.5 hover:bg-ink hover:text-cream disabled:cursor-wait"
+              aria-label={`Volver a añadir ${ingredientDisplayName(item.name)}`}
+            >
+              Volver a añadir
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+const UNIT_WORD: Record<string, string> = { g: 'gramos', ml: 'ml', u: 'unidades', cda: 'cucharadas', cdita: 'cucharaditas' }
+
+/**
+ * Sheet for one line (PRO-175). Menu lines: change the amount (in the line's
+ * unit), go back to the menu's, or «No lo compro esta semana». Manual lines:
+ * any amount («2 paquetes») or remove. Staples: they are changed in Mis básicos.
+ */
+function LineSheet({ item, listId, onClose }: { item: any | null; listId: string; onClose: () => void }) {
+  const editLine = useEditMenuLine()
+  const patch = usePatchShoppingItem()
+  const del = useDeleteShoppingItem()
+  const haveAtHome = useHaveAtHome()
+  const [draft, setDraft] = useState('')
+  const [haveDraft, setHaveDraft] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const isManual = item?.kind === 'manual'
+  const isStaple = item?.kind === 'staple'
+  useEffect(() => {
+    setError(null)
+    if (item) setDraft(item.amountText ?? formatAmount(item.quantity))
+    setHaveDraft(item?.haveQuantity > 0 ? formatAmount(item.haveQuantity) : '')
+  }, [item])
+  const done = { onSuccess: onClose, onError: () => setError('No se ha podido guardar. Prueba otra vez.') }
+  const pending = editLine.isPending || patch.isPending || del.isPending || haveAtHome.isPending
+
+  /** «Nos queda una cebolla» (PRO-182): the list buys only the rest. Empty = nothing at home. */
+  function saveHave() {
+    if (!item) return
+    const amount = haveDraft.trim() ? parseShoppingAmount(haveDraft) : { quantity: 0 }
+    if (!amount || !('quantity' in amount)) return setError(`Escribe un número (en ${UNIT_WORD[item.unit] ?? item.unit}).`)
+    haveAtHome.mutate({ listId, itemId: item.id, quantity: amount.quantity }, done)
+  }
+
+  function save(e: React.FormEvent) {
+    e.preventDefault()
+    if (!item) return
+    const amount = parseShoppingAmount(draft)
+    if (isManual) {
+      if (!amount) return setError('Escribe una cantidad: «2» o «2 paquetes».')
+      patch.mutate({ listId, itemId: item.id, patch: 'quantity' in amount ? { quantity: amount.quantity, amountText: null } : { amountText: amount.amountText } }, done)
+      return
+    }
+    if (!amount || !('quantity' in amount)) return setError(`Escribe un número (en ${UNIT_WORD[item.unit] ?? item.unit}).`)
+    editLine.mutate({ listId, itemId: item.id, quantity: amount.quantity }, done)
+  }
+
+  return (
+    <MenuSheet open={!!item} onClose={onClose} eyebrow="Lista de la compra" title={item ? ingredientDisplayName(item.name) : ''}>
+      {item && isStaple ? (
+        <div className="space-y-3">
+          <p className="text-[15px] text-ink-soft">Es uno de tus básicos: su cantidad o pausarlo se cambia en Mis básicos.</p>
+          <Link href="/profile/staples" className="inline-flex min-h-[44px] items-center rounded-full bg-ink px-5 text-[14px] font-semibold text-cream">
+            Ir a Mis básicos
+          </Link>
+        </div>
+      ) : item ? (
+        <form onSubmit={save} className="space-y-3" data-testid="line-sheet">
+          <label className="block">
+            <span className="mb-1 block text-[13px] text-ink-muted">
+              {isManual ? 'Cantidad (un número o «2 paquetes»)' : `Cantidad a comprar, en ${UNIT_WORD[item.unit] ?? item.unit}`}
+            </span>
+            <input
+              type="text"
+              inputMode={isManual ? 'text' : 'decimal'}
+              value={draft}
+              maxLength={30}
+              onChange={(e) => setDraft(e.target.value)}
+              aria-label="Cantidad a comprar"
+              className="h-11 w-full rounded-xl border border-border bg-paper px-3 text-[15px] text-ink outline-none focus:border-ink"
+            />
+          </label>
+          {!isManual && item.menuQuantity != null && (
+            <p className="text-[13px] text-ink-muted">
+              El menú pide {formatAmount(item.menuQuantity)} {item.unit}.{' '}
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => editLine.mutate({ listId, itemId: item.id, quantity: null }, done)}
+                className="underline underline-offset-2 hover:text-ink"
+              >
+                Volver a lo del menú
+              </button>
+            </p>
+          )}
+          {error && <p className="text-[13px] text-terracotta-deep" role="alert">{error}</p>}
+          <button
+            type="submit"
+            disabled={pending}
+            className="min-h-[44px] w-full rounded-full bg-ink text-[14px] font-semibold text-cream transition-colors hover:bg-ink-mid disabled:opacity-40"
+          >
+            Guardar cantidad
+          </button>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() =>
+              isManual
+                ? del.mutate({ listId, itemId: item.id }, done)
+                : editLine.mutate({ listId, itemId: item.id, skipped: true }, done)
+            }
+            className="min-h-[44px] w-full rounded-full border border-border bg-paper text-[14px] font-medium text-ink-mid transition-colors hover:border-ink hover:text-ink disabled:opacity-40"
+          >
+            {isManual ? 'Quitar de la lista' : 'No lo compro esta semana'}
+          </button>
+          {!isManual && (
+            <div className="mt-2 rounded-xl bg-cream-deep/60 p-3">
+              <label className="block">
+                <span className="mb-1 block text-[13px] text-ink-muted">
+                  ¿Cuánto os queda en casa? (en {UNIT_WORD[item.unit] ?? item.unit})
+                </span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={haveDraft}
+                  maxLength={10}
+                  placeholder="0"
+                  onChange={(e) => setHaveDraft(e.target.value)}
+                  aria-label="Cuánto queda en casa"
+                  className="h-11 w-full rounded-xl border border-border bg-paper px-3 text-[15px] text-ink outline-none focus:border-ink"
+                />
+              </label>
+              <button
+                type="button"
+                disabled={pending}
+                onClick={saveHave}
+                className="mt-2 min-h-[44px] w-full rounded-full border border-ink bg-paper text-[14px] font-medium text-ink transition-colors hover:bg-ink hover:text-cream disabled:opacity-40"
+              >
+                Comprar solo lo que falta
+              </button>
+            </div>
+          )}
+        </form>
+      ) : null}
+    </MenuSheet>
   )
 }
 
@@ -681,6 +881,7 @@ function ItemRow({
   listId,
   onCheck,
   onStock,
+  onEdit,
   busy,
 }: {
   item: any
@@ -689,6 +890,8 @@ function ItemRow({
   listId: string
   onCheck: () => void
   onStock: () => void
+  /** Opens the line's sheet: amount, «No lo compro esta semana» (PRO-175). */
+  onEdit?: () => void
   busy?: boolean
 }) {
   const isManual = item.kind === 'manual'
@@ -724,29 +927,41 @@ function ItemRow({
         </div>
       )}
 
-      <div className={`min-w-0 flex-1 ${item.checked ? 'opacity-50' : ''}`}>
-        <p className={`break-words text-[16px] leading-snug text-ink ${item.checked ? 'line-through' : ''}`}>
+      <button
+        type="button"
+        onClick={onEdit}
+        disabled={!onEdit || busy}
+        aria-label={onEdit ? `Cambiar ${ingredientDisplayName(item.name)}` : undefined}
+        className={`min-w-0 flex-1 text-left disabled:cursor-default ${item.checked ? 'opacity-50' : ''}`}
+      >
+        <span className={`block break-words text-[16px] leading-snug text-ink ${item.checked ? 'line-through' : ''}`}>
           {ingredientDisplayName(item.name)}
-        </p>
-        <p className="font-mono text-[13px] tracking-tight text-ink-muted tabular-nums">
+        </span>
+        <span className="block font-mono text-[13px] tracking-tight text-ink-muted tabular-nums">
           {item.haveQuantity > 0 ? (
             // Part already bought / at home for an earlier menu (PRO-199).
             <span data-testid="shopping-missing">
               Te faltan {formatAmount(missingQuantity(item))} {item.unit}
               <span className="font-sans text-[12px]"> · ya tienes {formatAmount(item.haveQuantity)}</span>
             </span>
+          ) : item.amountText ? (
+            <span className="font-sans">{item.amountText}</span>
           ) : (
             <>
               {item.quantity} {item.unit}
             </>
+          )}
+          {item.menuQuantity != null && (
+            // The household's own amount (PRO-175).
+            <span className="font-sans text-[12px]" data-testid="shopping-changed"> · cambiada (menú: {formatAmount(item.menuQuantity)})</span>
           )}
           {isManual && (
             <span className="ml-2 font-sans text-[11px] font-semibold uppercase tracking-[0.12em] text-terracotta-deep">
               Manual
             </span>
           )}
-        </p>
-      </div>
+        </span>
+      </button>
 
       {variant === 'buy' && <ItemPriceField listId={listId} item={item} />}
       {variant === 'buy' && isManual && <ItemDeleteButton listId={listId} itemId={item.id} />}

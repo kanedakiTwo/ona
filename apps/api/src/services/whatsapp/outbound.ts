@@ -205,8 +205,8 @@ async function cookedToday(userId: string, parts: MadridParts): Promise<boolean>
 }
 
 async function pendingShopping(userId: string): Promise<string[]> {
-  const list = await appApiFor(userId)<{ items?: Array<{ name: string; checked?: boolean; inStock?: boolean }> }>('GET', '/shopping-list')
-  return (list?.items ?? []).filter((i) => !i.checked && !i.inStock).map((i) => i.name)
+  const list = await appApiFor(userId)<{ items?: Array<{ name: string; checked?: boolean; inStock?: boolean; skipped?: boolean }> }>('GET', '/shopping-list')
+  return (list?.items ?? []).filter((i) => !i.checked && !i.inStock && !i.skipped).map((i) => i.name)
 }
 
 /** PRO-235: did today's menu come up in a conversation (WhatsApp or the web chat) since midnight? */

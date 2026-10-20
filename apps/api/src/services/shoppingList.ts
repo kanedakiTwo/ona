@@ -947,12 +947,14 @@ export interface ListTotal {
  *   - `inStock === true` → user already has it, exclude from spend (but
  *     still counted as priced).
  *   - `quantity <= 0` → defensive, exclude from spend.
+ *   - `skipped` («No lo compro esta semana», PRO-175) → not counted at all.
  */
 export function computeListTotal(items: ShoppingItem[]): ListTotal {
   let totalEur = 0
   let pricedCount = 0
   let unpricedCount = 0
   for (const it of items) {
+    if (it.skipped) continue // «No lo compro esta semana» (PRO-175)
     const price = it.pricePerUnit
     const hasPrice = typeof price === 'number' && Number.isFinite(price)
     if (!hasPrice) {

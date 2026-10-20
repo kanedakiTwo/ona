@@ -14,7 +14,7 @@ import {
 } from '../services/shoppingList.js'
 import { canAccessRow, getPrimaryHouseholdId, resolveScope } from '../services/scopeResolver.js'
 import { listActiveStaplesForHousehold } from '../services/staplesStore.js'
-import { carryItemState, type ConvertQty, type ItemStateMap } from '../services/shoppingItemState.js'
+import { carryItemState, editMenuLine, setHaveAtHome, type ConvertQty, type ItemStateMap } from '../services/shoppingItemState.js'
 import { isCoeliacHousehold, withGlutenFreeCharcuterieNames } from '../services/glutenFreeCharcuterie.js'
 import { loadUserRestrictions } from '../services/withWhatIHave.js'
 import { INTERNAL_CALL_HEADER, trackEvent } from '../services/usageEvents.js'
@@ -287,6 +287,8 @@ router.get('/shopping-list', async (req: AuthRequest, res) => {
       prevItems,
       (previous?.itemState ?? null) as ItemStateMap | null,
       await ingredientConverter(menuItems),
+      // «No lo compro» / own amount apply to lists ending by their day (PRO-175).
+      { today: todayMadrid, rangeTo: to },
     )
 
     // Re-merge staples (PR 10B) on top of the menu-derived items so they
@@ -488,6 +490,128 @@ router.put('/shopping-list/:listId/item/:itemId/stock', async (req: AuthRequest,
   }
 })
 
+// PUT /shopping-list/:listId/item/:itemId/edit — change a line that comes
+// from the menu (PRO-175): `{ skipped: true }` = «No lo compro esta semana»,
+// `{ skipped: false }` puts it back; `{ quantity: n }` = the household's own
+// amount (in the line's unit), `{ quantity: null }` = back to the menu's.
+// The change is also written into `item_state`, so the rebuild on the next
+// GET keeps it, for lists ending on or before this list's last day.
+const editLineSchema = z
+  .object({
+    skipped: z.boolean().optional(),
+    quantity: z.number().nonnegative().max(100_000).nullable().optional(),
+  })
+  .refine((v) => v.skipped !== undefined || v.quantity !== undefined, { message: 'Nada que cambiar' })
+
+router.put('/shopping-list/:listId/item/:itemId/edit', async (req: AuthRequest, res) => {
+  try {
+    const listId = String(req.params.listId)
+    const itemId = String(req.params.itemId)
+    const parsed = editLineSchema.safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Datos invalidos', issues: parsed.error.issues })
+      return
+    }
+    const { list, forbidden } = await loadListForCaller(listId, req.userId!)
+    if (forbidden) {
+      res.status(403).json({ error: 'No tienes acceso a esta lista.' })
+      return
+    }
+    if (!list) {
+      res.status(404).json({ error: 'Shopping list not found' })
+      return
+    }
+    const items = list.items as ShoppingItem[]
+    const item = items.find((i) => i.id === itemId)
+    if (!item) {
+      res.status(404).json({ error: 'Item not found' })
+      return
+    }
+    if (item.kind === 'manual' || item.kind === 'staple' || !item.ingredientId) {
+      res.status(400).json({
+        error:
+          item.kind === 'staple'
+            ? 'Es uno de tus básicos: páusalo en Mis básicos.'
+            : 'Los items añadidos a mano se cambian o se borran directamente.',
+      })
+      return
+    }
+    const until = list.rangeEndDate ?? shiftDate(mondayOf(todayInMadrid()), 13)
+    const itemState = editMenuLine(item, list.itemState as ItemStateMap | null, parsed.data, until)
+    const [updated] = await db
+      .update(shoppingLists)
+      .set({ items, itemState })
+      .where(eq(shoppingLists.id, list.id))
+      .returning()
+    res.json(updated)
+  } catch (err) {
+    console.error('Edit line error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// PUT /shopping-list/:listId/item/:itemId/have — «nos queda una cebolla»
+// (PRO-182): how much of a menu line is at home. `{ quantity, unit? }`, in the
+// line's unit unless `unit` says otherwise (converted with the ingredient's
+// density / unit weight). The line stays pending for the rest; 0 clears it,
+// as much as the line marks it «en casa». The next rebuild subtracts it.
+const haveSchema = z.object({
+  quantity: z.number().nonnegative().max(100_000),
+  unit: z.string().refine((u) => BUYABLE_UNITS.has(u)).optional(),
+})
+
+router.put('/shopping-list/:listId/item/:itemId/have', async (req: AuthRequest, res) => {
+  try {
+    const listId = String(req.params.listId)
+    const itemId = String(req.params.itemId)
+    const parsed = haveSchema.safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Datos invalidos', issues: parsed.error.issues })
+      return
+    }
+    const { list, forbidden } = await loadListForCaller(listId, req.userId!)
+    if (forbidden) {
+      res.status(403).json({ error: 'No tienes acceso a esta lista.' })
+      return
+    }
+    if (!list) {
+      res.status(404).json({ error: 'Shopping list not found' })
+      return
+    }
+    const items = list.items as ShoppingItem[]
+    const item = items.find((i) => i.id === itemId)
+    if (!item) {
+      res.status(404).json({ error: 'Item not found' })
+      return
+    }
+    if (!item.ingredientId || item.kind === 'manual' || item.kind === 'staple') {
+      res.status(400).json({ error: 'Solo en las líneas que vienen del menú; en las demás, marca «En casa».' })
+      return
+    }
+    let have = parsed.data.quantity
+    const unit = parsed.data.unit as ShoppingItem['unit'] | undefined
+    if (unit && unit !== item.unit) {
+      const converted = (await ingredientConverter([item]))(item.ingredientId, have, unit, item.unit)
+      if (converted == null) {
+        res.status(400).json({ error: `Esa cantidad no se puede pasar a ${item.unit}.` })
+        return
+      }
+      have = converted
+    }
+    setHaveAtHome(item, have)
+    setActivityDetail(res, { item: item.name, on: have > 0 })
+    const [updated] = await db
+      .update(shoppingLists)
+      .set({ items })
+      .where(eq(shoppingLists.id, list.id))
+      .returning()
+    res.json(updated)
+  } catch (err) {
+    console.error('Have at home error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
 // POST /shopping-list/:listId/regenerate - rebuild items from the source menu
 router.post('/shopping-list/:listId/regenerate', async (req: AuthRequest, res) => {
   try {
@@ -591,6 +715,8 @@ const addItemSchema = z.object({
   unit: z.string().refine((u) => BUYABLE_UNITS.has(u)).optional(),
   aisle: z.string().refine((a) => AISLE_SET.has(a)).optional(),
   pricePerUnit: z.number().nonnegative().max(10_000).nullable().optional(),
+  /** «2 paquetes», «1 bote»: an amount in the household's words (PRO-175). */
+  amountText: z.string().trim().min(1).max(30).optional(),
 })
 
 const patchItemSchema = z.object({
@@ -599,7 +725,16 @@ const patchItemSchema = z.object({
   unit: z.string().refine((u) => BUYABLE_UNITS.has(u)).optional(),
   aisle: z.string().refine((a) => AISLE_SET.has(a)).optional(),
   pricePerUnit: z.number().nonnegative().max(10_000).nullable().optional(),
+  /** Manual items: «2 paquetes» (PRO-175); null goes back to quantity + unit. */
+  amountText: z.string().trim().min(1).max(30).nullable().optional(),
 })
+
+/** Leading number of «2 paquetes» / «1,5 kg» (1 when there is none). */
+function leadingNumber(text: string): number {
+  const m = text.match(/^\s*(\d+(?:[.,]\d+)?)/)
+  const n = m ? Number(m[1].replace(',', '.')) : NaN
+  return Number.isFinite(n) && n > 0 ? n : 1
+}
 
 /** Access check shared by all item-mutation routes. PR 1B: any household
  *  member can touch the household's list. Pre-PR-1B: list.userId == userId. */
@@ -662,11 +797,12 @@ router.post('/shopping-list/:listId/items', async (req: AuthRequest, res) => {
       id: randomUUID(),
       ingredientId: null,
       name: parsed.data.name.trim(),
-      quantity: parsed.data.quantity ?? 1,
-      unit: (parsed.data.unit as ShoppingItem['unit']) ?? 'u',
+      quantity: parsed.data.amountText ? leadingNumber(parsed.data.amountText) : (parsed.data.quantity ?? 1),
+      unit: parsed.data.amountText ? 'u' : ((parsed.data.unit as ShoppingItem['unit']) ?? 'u'),
       aisle: (parsed.data.aisle as Aisle) ?? aisleForName(parsed.data.name),
       // No amount typed → "default": shop orders write "1 calabacín" or ask "¿cuánto jamón?", never "1 unidad".
-      quantitySource: parsed.data.quantity == null ? 'default' : 'user',
+      quantitySource: parsed.data.quantity == null && !parsed.data.amountText ? 'default' : 'user',
+      ...(parsed.data.amountText ? { amountText: parsed.data.amountText } : {}),
       checked: false,
       inStock: false,
       kind: 'manual',
@@ -723,18 +859,26 @@ router.patch('/shopping-list/:listId/item/:itemId', async (req: AuthRequest, res
       if (patch.quantity !== undefined) {
         next.quantity = patch.quantity
         next.quantitySource = 'user'
+        if (patch.amountText === undefined) delete next.amountText
       }
       if (patch.unit !== undefined) next.unit = patch.unit as ShoppingItem['unit']
+      if (patch.amountText) {
+        next.amountText = patch.amountText
+        next.quantity = leadingNumber(patch.amountText)
+        next.unit = 'u'
+        next.quantitySource = 'user'
+      } else if (patch.amountText === null) delete next.amountText
       if (patch.aisle !== undefined) next.aisle = patch.aisle as Aisle
     } else if (
       patch.name !== undefined ||
       patch.quantity !== undefined ||
       patch.unit !== undefined ||
-      patch.aisle !== undefined
+      patch.aisle !== undefined ||
+      patch.amountText !== undefined
     ) {
       res.status(400).json({
         error:
-          'Solo se puede editar el precio en items generados desde el menu. Crea uno manual para nombre / cantidad / pasillo.',
+          'En las líneas que vienen del menú aquí solo se cambia el precio; para la cantidad o quitarla, toca la línea.',
       })
       return
     }

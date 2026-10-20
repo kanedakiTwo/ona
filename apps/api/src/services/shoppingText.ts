@@ -36,7 +36,9 @@ export function isShoppingItemList(value: unknown): value is ShoppingItem[] {
   return Array.isArray(value) && value.every((i) => i && typeof i === 'object' && typeof (i as any).name === 'string' && 'aisle' in (i as any))
 }
 
-export function shoppingListDigest(items: ShoppingItem[]): string {
+export function shoppingListDigest(all: ShoppingItem[]): string {
+  // «No lo compro esta semana» (PRO-175) is not part of the list.
+  const items = all.filter((i) => !i.skipped)
   const pending = items.filter((i) => !i.checked && !i.inStock)
   const atHome = items.filter((i) => !i.checked && i.inStock)
   if (pending.length === 0) {
@@ -50,7 +52,7 @@ export function shoppingListDigest(items: ShoppingItem[]): string {
     const inAisle = pending.filter((i) => (i.aisle ?? 'otros') === aisle)
     if (inAisle.length === 0) continue
     const parts = inAisle.map((i) => {
-      const q = shoppingQuantity(i.quantity, i.unit)
+      const q = i.amountText ?? shoppingQuantity(i.quantity, i.unit)
       return q ? `${i.name} (${q})` : i.name
     })
     lines.push(`*${AISLE_LABEL[aisle] ?? aisle}:* ${parts.join(', ')}`)

@@ -49,6 +49,28 @@ export interface ShoppingItem {
   haveQuantity?: number
   /** What `haveQuantity` came from: marked bought or marked at home. */
   haveSource?: 'checked' | 'inStock'
+  /**
+   * Menu items: the household won't buy it for this list («No lo compro esta
+   * semana», PRO-175). The line stays (so it can be put back) but counts as
+   * nothing: not to buy, not in the total, not in shop orders.
+   */
+  skipped?: boolean
+  /**
+   * Menu items: what the menu asked for when the household changed the
+   * amount (PRO-175); `quantity` is then their amount.
+   */
+  menuQuantity?: number
+  /**
+   * Manual items: an amount in the household's own words («2 paquetes», «1
+   * bote») when it isn't g / ml / u / cda / cdita (PRO-175). Shown instead of
+   * `quantity` + `unit`.
+   */
+  amountText?: string
+}
+
+/** Lines that are still part of the list (not «No lo compro», PRO-175). */
+export function activeShoppingItems<T extends { skipped?: boolean }>(items: readonly T[]): T[] {
+  return items.filter((i) => !i.skipped)
 }
 
 /** What is still to buy of a line: its quantity minus what the household already has. */

@@ -17,6 +17,7 @@ import {
   catalogAuditIssuesFor,
   isMainProtein,
   isStarchBase,
+  skipsQuantityRanges,
   lineGrams,
   type AuditableRecipe,
 } from '../services/catalogRecipeAudit.js'
@@ -269,5 +270,31 @@ describe('catalogue recipes need steps', () => {
     const byName = new Map(seedRecipes.map((r) => [r.name, r]))
     const fixed = SEED_WITHOUT_STEPS_2026_10_15.filter((n) => (byName.get(n)?.steps.length ?? 0) > 0)
     expect(fixed, 'remove these from SEED_WITHOUT_STEPS_2026_10_15').toEqual([])
+  })
+})
+
+describe('auditCatalogRecipe — desserts and breakfasts skip the quantity ranges (2026-10-20)', () => {
+  it('a dessert with eggs is not held back by the protein range', () => {
+    const flan = { ...recipe(5, [g('huevo', 2, 'u'), g('leche de coco', 250, 'ml'), g('azúcar', 55)]), course: 'dessert' }
+    expect(auditCatalogRecipe(flan).issues).toEqual([])
+  })
+  it('a breakfast-only recipe (crêpes) skips it too, and rice pudding skips the starch range', () => {
+    const crepes = { ...recipe(5, [g('huevo', 4, 'u'), g('harina de trigo', 250), g('leche', 500, 'ml')]), meals: ['breakfast', 'snack'] }
+    expect(auditCatalogRecipe(crepes).issues).toEqual([])
+    const arrozConLeche = { ...recipe(5, [g('arroz', 250), g('leche entera', 1000, 'ml'), g('azúcar', 135)]), course: 'dessert' }
+    expect(auditCatalogRecipe(arrozConLeche).issues).toEqual([])
+  })
+  it('a main with one egg for two is still flagged, also when it is lunch and breakfast', () => {
+    expect(auditCatalogRecipe({ ...recipe(2, [g('huevo', 60), g('patata', 250), g('cebolla', 100)]), course: 'main' }).issues).toEqual(['proteina_fuera_de_rango'])
+    expect(auditCatalogRecipe({ ...recipe(2, [g('huevo', 60), g('patata', 250), g('cebolla', 100)]), meals: ['breakfast', 'lunch'] }).issues).toEqual(['proteina_fuera_de_rango'])
+  })
+  it('steps and ingredient count still apply to desserts', () => {
+    expect(auditCatalogRecipe({ ...recipe(4, [g('fresa', 400), g('azúcar', 40)], 0), course: 'dessert' }).issues).toEqual(['sin_pasos', 'pocos_ingredientes'])
+  })
+  it('skipsQuantityRanges', () => {
+    expect(skipsQuantityRanges({ course: 'dessert' })).toBe(true)
+    expect(skipsQuantityRanges({ course: null, meals: ['snack'] })).toBe(true)
+    expect(skipsQuantityRanges({ course: 'main', meals: ['lunch', 'dinner'] })).toBe(false)
+    expect(skipsQuantityRanges({ course: null, meals: [] })).toBe(false)
   })
 })

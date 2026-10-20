@@ -400,8 +400,11 @@ export async function importCatalogRecipe(
   const missing = matched.filter((m) => !m.ingredientId).map((m) => m.name)
   if (missing.length > 0) return { ...base, status: 'rejected', reason: 'ingredientes', detail: `sin ingrediente en el catálogo: ${missing.join(', ')}` }
 
+  const course = rewrite.course && (COURSES as readonly string[]).includes(rewrite.course) ? rewrite.course : null
   const audit = auditCatalogRecipe({
     name: draft.name,
+    course,
+    meals: rewrite.meals?.length ? rewrite.meals : draft.meals ?? [],
     servings: HOUSE_SERVINGS,
     stepCount: rewrite.steps.length,
     ingredients: matched.map((m) => ({ name: m.name, quantity: m.quantity, unit: m.unit, unitWeight: m.unitWeight ?? null, density: m.density ?? null, edibleFraction: m.edibleFraction ?? null })),
@@ -409,7 +412,6 @@ export async function importCatalogRecipe(
   const { tags, internalTags } = catalogTags(rewrite, draft.tags ?? [])
   const { prepTime, cookTime } = timesFrom(rewrite, draft)
   const n = ingredients.length
-  const course = rewrite.course && (COURSES as readonly string[]).includes(rewrite.course) ? rewrite.course : null
   const difficulty = ((DIFFICULTIES as readonly string[]).includes(rewrite.difficulty ?? '') ? rewrite.difficulty : (DIFFICULTIES as readonly string[]).includes(draft.difficulty ?? '') ? draft.difficulty : 'medium') as Difficulty
 
   const saved = await deps.persistDraft({

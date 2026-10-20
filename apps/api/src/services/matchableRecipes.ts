@@ -103,6 +103,8 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
     catalogAuditIssues: catalogAuditIssuesFor(r.authorId, {
       name: r.name,
       servings: r.servings ?? 4,
+      course: (r.course as string | null | undefined) ?? null,
+      meals: r.meals ?? [],
       stepCount: stepCountByRecipe.get(r.id) ?? 0,
       ingredients: auditLinesByRecipe.get(r.id) ?? [],
     }),

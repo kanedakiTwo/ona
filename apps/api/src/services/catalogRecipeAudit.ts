@@ -16,6 +16,9 @@
  *     80 g or over 300 g;
  *   - its pasta, rice or dry pulses per serving (added up) are under 50 g or
  *     over 150 g.
+ * The two quantity ranges are for a lunch or dinner main: a dessert (course
+ * `dessert`) or a recipe only for breakfast or a snack (crêpes, a flan, rice
+ * pudding) is not held to them — its eggs or rice are not «the main».
  * Quantity checks only run when every counted ingredient converts to grams
  * (g, ml, or units with a known weight); an unknown weight never flags.
  *
@@ -48,6 +51,19 @@ export interface AuditableRecipe {
   servings: number
   stepCount: number
   ingredients: readonly AuditIngredient[]
+  /** starter | main | dessert (null = unknown). */
+  course?: string | null
+  /** breakfast | lunch | dinner | snack. */
+  meals?: readonly string[] | null
+}
+
+const SWEET_MEALS = new Set(['breakfast', 'snack'])
+
+/** Desserts and breakfast/snack-only recipes skip the protein and starch ranges. */
+export function skipsQuantityRanges(recipe: Pick<AuditableRecipe, 'course' | 'meals'>): boolean {
+  if (recipe.course === 'dessert') return true
+  const meals = recipe.meals ?? []
+  return meals.length > 0 && meals.every((m) => SWEET_MEALS.has(m))
 }
 
 export interface CatalogAuditResult {
@@ -166,10 +182,11 @@ export function auditCatalogRecipe(recipe: AuditableRecipe): CatalogAuditResult 
   const servings = recipe.servings > 0 ? recipe.servings : 1
   const proteinPerServingG = perServing(recipe.ingredients.filter((i) => isMainProtein(i.name)), servings)
   const starchPerServingG = perServing(recipe.ingredients.filter((i) => isStarchBase(i.name)), servings)
-  if (proteinPerServingG != null && (proteinPerServingG < MAIN_PROTEIN_RANGE_G.min || proteinPerServingG > MAIN_PROTEIN_RANGE_G.max)) {
+  const ranges = !skipsQuantityRanges(recipe)
+  if (ranges && proteinPerServingG != null && (proteinPerServingG < MAIN_PROTEIN_RANGE_G.min || proteinPerServingG > MAIN_PROTEIN_RANGE_G.max)) {
     issues.push('proteina_fuera_de_rango')
   }
-  if (starchPerServingG != null && (starchPerServingG < STARCH_RANGE_G.min || starchPerServingG > STARCH_RANGE_G.max)) {
+  if (ranges && starchPerServingG != null && (starchPerServingG < STARCH_RANGE_G.min || starchPerServingG > STARCH_RANGE_G.max)) {
     issues.push('base_fuera_de_rango')
   }
   return { issues, proteinPerServingG, starchPerServingG }

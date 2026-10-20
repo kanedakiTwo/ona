@@ -267,11 +267,12 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
       // week. If generation fails, /menu still offers "Generar mi menú".
       // Friday to Sunday (Madrid) the week is nearly over: build the next
       // one too and open it (PRO-65). One after the other, so the second
-      // week's variety sees the first.
+      // week's variety sees the first. The first menu starts today: the
+      // days already gone are not generated (PRO-244, `fromDate`).
       setPreparingMenu(true)
-      const { weeks, open } = firstMenuWeeks()
+      const { weeks, open, today } = firstMenuWeeks()
       for (const weekStart of weeks) {
-        await api.post("/menu/generate", { userId: user.id, weekStart }).catch(() => undefined)
+        await api.post("/menu/generate", { userId: user.id, weekStart, fromDate: today }).catch(() => undefined)
       }
 
       // Only now mark the user as onboarded (auth context + localStorage).

@@ -47,6 +47,8 @@ import { HOUSEHOLD_NOTICE_KINDS, householdNoticeRecipient, type HouseholdMember 
 import { taperTomorrow } from '../taper.js'
 import { listPantryForUser } from '../pantryStore.js'
 import { freezerItemsDue } from '@ona/shared'
+import { quietAfterSignUp } from './signUpQuiet.js'
+import { isShoppingReminderWindow } from './proactive.js'
 
 /** Per-kind templates (WHATSAPP_TEMPLATES), parsed once. */
 const TEMPLATES = parseTemplateMap(env.WHATSAPP_TEMPLATES)
@@ -364,6 +366,11 @@ export async function runProactiveTick(now: Date = new Date()): Promise<void> {
         // weekly budget is in its cooldown too (logged in notice_candidates).
         const at = [recent.get(k), noticed.get(k)].filter((d): d is Date => Boolean(d)).sort((a, b) => b.getTime() - a.getTime())[0]
         sentRecently[k] = Boolean(at && now.getTime() - at.getTime() < COOLDOWN_MS[k])
+      }
+      // PRO-244: no shopping reminder in the first hours after the sign-up.
+      if (isShoppingReminderWindow(parts) && !sentRecently.shopping_reminder) {
+        const [u] = await db.select({ at: users.onboardingCompletedAt }).from(users).where(eq(users.id, link.userId)).limit(1)
+        if (quietAfterSignUp('shopping_reminder', u?.at ?? null, now)) sentRecently.shopping_reminder = true
       }
       let dinnerCache: Promise<TodayDinner | null> | null = null
       const planned = await planProactive({

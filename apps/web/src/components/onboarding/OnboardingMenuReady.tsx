@@ -37,8 +37,12 @@ export function OnboardingMenuReady() {
         await api.post(`/user/${user.id}/health-consent`, { consent: true })
         const updated = await api.put<{ restrictions?: string[] }>(`/user/${user.id}`, { restrictions })
         updateUser({ restrictions: updated.restrictions ?? restrictions })
-        // The week Mimo built in the chat, again, now without what they don't eat.
-        await api.post("/menu/generate", { userId: user.id, weekStart: firstMenuWeeks().weeks[0] })
+        // The weeks Mimo built in the chat (next week too, Friday to Sunday),
+        // again, now without what they don't eat — from today on (PRO-244).
+        const { weeks, today } = firstMenuWeeks()
+        for (const weekStart of weeks) {
+          await api.post("/menu/generate", { userId: user.id, weekStart, fromDate: today })
+        }
         await queryClient.invalidateQueries({ queryKey: ["menu"] })
       } catch {
         setSaving(false)

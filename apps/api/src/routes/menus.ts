@@ -4,7 +4,7 @@ import { visibleAuthorIds, visibleRecipeWhere } from '../services/recipeVisibili
 import { loadMatchableRecipes } from '../services/matchableRecipes.js'
 import { requestCatalogPhotos } from '../services/catalogImageOnDemand.js'
 import { mergeRestrictions } from '../services/dietaryRestrictions.js'
-import { keepLockedSlots, loadPreviousWeek, menuHasDishes } from '../services/menuWeek.js'
+import { generationSkips, keepLockedSlots, loadPreviousWeek, menuHasDishes } from '../services/menuWeek.js'
 import { eq, and, asc, desc, inArray } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { menus, menuEdits, menuLogs, users, userSettings } from '../db/schema.js'
@@ -169,7 +169,7 @@ async function hydrateMenuImages<T extends { days: unknown }>(menu: T): Promise<
 // A paused account (PRO-135) can't generate a new menu; an empty week stays open.
 router.post('/menu/generate', authMiddleware, requireActiveAccount({ skip: (req) => req.body?.empty === true }), validate(generateMenuSchema), async (req: AuthRequest, res) => {
   try {
-    const { userId, weekStart, customTemplate, empty, force, weekPlan } = req.body
+    const { userId, weekStart, customTemplate, empty, force, weekPlan, fromDate } = req.body
 
     if (userId !== req.userId) {
       res.status(403).json({ error: 'No puedes generar el menú de otro usuario.' })
@@ -238,7 +238,9 @@ router.post('/menu/generate', authMiddleware, requireActiveAccount({ skip: (req)
       return
     }
 
-    // Generate the menu
+    // Generate the menu. PRO-244: the first menu starts on the sign-up day —
+    // days before `fromDate` are left out of generation (no dishes, nothing
+    // on the list); they are not stored as "sin cocinar".
     const { days, warnings } = await generateMenu(
       userId,
       weekStart,
@@ -247,7 +249,7 @@ router.post('/menu/generate', authMiddleware, requireActiveAccount({ skip: (req)
       previous.locked,
       previous.days,
       carryBanned,
-      carrySkipped,
+      generationSkips(carrySkipped, weekStart, fromDate),
       weekPlan,
     )
 

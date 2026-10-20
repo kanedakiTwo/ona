@@ -224,7 +224,7 @@ export type { RestrictionPreset } from './constants/restrictions.js'
 export { calculateBMR, getActivityFactor, calculateTDEE, calculateMenuTargetCalories } from './utils/bmr.js'
 export { ingredientCalories, recipeCalories, dayCalories, menuCalories } from './utils/calories.js'
 export { ingredientNutrients, sumNutrients, nutrientsToPercentages, updateNutrientBalance, normalizeDeviation } from './utils/nutrients.js'
-export { firstMenuWeeks } from './utils/firstMenuWeeks.js'
+export { firstMenuWeeks, pastDayIndexes } from './utils/firstMenuWeeks.js'
 export type { FirstMenuWeeks } from './utils/firstMenuWeeks.js'
 export { detectSeason, isInSeason } from './utils/seasons.js'
 export {

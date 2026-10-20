@@ -109,6 +109,12 @@ export const generateMenuSchema = z.object({
    * only. Shapes the generated week, never the saved plantilla.
    */
   weekPlan: weekPlanSchema.optional(),
+  /**
+   * PRO-244: the first menu starts on the sign-up day. Days of the week
+   * before this date (YYYY-MM-DD) are not generated (they stay without
+   * dishes and add nothing to the shopping list).
+   */
+  fromDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 })
 
 export const lockMealSchema = z.object({

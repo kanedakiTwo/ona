@@ -35,7 +35,7 @@ import { db as defaultDb } from '../../db/connection.js'
 import { householdBuyPrefs, householdShops, shopOrders, shoppingLists } from '../../db/schema.js'
 import { env } from '../../config/env.js'
 import { getPrimaryHouseholdId } from '../scopeResolver.js'
-import { decideBasketResult } from '../basketExtension.js'
+import { decideBasketResult, ingredientsInSystemRecipes } from '../basketExtension.js'
 import type { PriceMemory } from './estimate.js'
 import { capForLines, draftOrdersFromItems, sumEstimate } from './draft.js'
 import {
@@ -639,6 +639,8 @@ export async function markSent(userId: string, id: string, db: Db = defaultDb): 
  * Resultado de la extensión del navegador para la tarjeta del súper (spec: «Rutas»).
  * Se guarda con la foto de la cesta que salió de este pedido (`basketSnapshot`: clave, nombre,
  * elección y origen de cada línea), para saber qué era cada clave aunque las líneas cambien.
+ * Una línea sin regla es de catálogo solo si su ingrediente sale en alguna receta del sistema
+ * (`ingredientsInSystemRecipes`, en la misma transacción); si no, tecleada.
  * `guardado` = este resultado se ha guardado (uno por envío): solo entonces cuenta en la métrica.
  * Con el pedido bloqueado (`withLockedOrder`): dos POST a la vez del mismo envío no cuentan dos veces.
  */
@@ -646,7 +648,10 @@ export async function saveBasketResult(userId: string, id: string, incoming: Bas
   return withLockedOrder(userId, id, db, async (row, tx) => {
     if ((row.shopSnapshot as ShopSnapshot).kind !== 'supermercado') throw new ShopOrderError(400, 'NOT_SUPER', 'Solo para el pedido del súper.')
     requireStatus(row, ['draft', 'sent'], 'guardar el envío')
-    const cesta = basketSnapshot(row.lines as ShopOrderLine[])
+    const lines = row.lines as ShopOrderLine[]
+    // Solo es de catálogo un ingrediente que sale en alguna receta del sistema: el resto pudo crearlo un usuario.
+    const sistema = await ingredientsInSystemRecipes(lines.flatMap((l) => (!l.ruleKey && l.ingredientId ? [l.ingredientId] : [])), tx)
+    const cesta = basketSnapshot(lines, (id) => sistema.has(id))
     const d = decideBasketResult((row.extensionResult as StoredBasketResult | null) ?? null, row.status, incoming, new Date(), cesta)
     if (d.action === 'deshecho') return { order: presentOrder(row), deshecho: true, guardado: false }
     if (d.action === 'keep') return { order: presentOrder(row), deshecho: false, guardado: false }

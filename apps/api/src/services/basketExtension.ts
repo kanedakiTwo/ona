@@ -4,7 +4,7 @@
  * agentes (specs/metrics.md): los huecos de la tabla y un registro por envío,
  * siempre con el nombre recortado (`publicLineName`), nunca texto tecleado.
  */
-import { and, eq, isNotNull, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import {
   basketBaseName,
   basketMayBeInCart,
@@ -21,7 +21,7 @@ import {
   type StoredBasketResult,
 } from '@ona/shared'
 import { db as defaultDb } from '../db/connection.js'
-import { shopOrders, users } from '../db/schema.js'
+import { recipeIngredients, recipes, shopOrders, users } from '../db/schema.js'
 import { env } from '../config/env.js'
 
 type Db = typeof defaultDb
@@ -53,9 +53,10 @@ export type BasketDecision =
  *   cambia nada ni cuenta doble, esté vivo el guardado o no;
  * - nunca pisa un envío vivo con uno sin nada en el carro.
  *
- * `cesta` es la foto de la cesta que se mandó (`basketSnapshot(order.lines)`):
- * se guarda la clave, el nombre, la elección y el origen de cada línea, para
- * saber qué era cada clave aunque las líneas cambien después.
+ * `cesta` es la foto de la cesta que se mandó (`basketSnapshot` de las líneas
+ * del pedido, con `ingredientsInSystemRecipes`): se guarda la clave, el nombre,
+ * la elección y el origen de cada línea, para saber qué era cada clave aunque
+ * las líneas cambien después.
  */
 export function decideBasketResult(
   current: StoredBasketResult | null,
@@ -86,15 +87,26 @@ function snapshotLine({ key, name, choice, origen, ruleKey }: BasketSnapshotLine
 
 // ─── Lo que ven los agentes (norma de privacidad: nada tecleado por un hogar) ───
 
+/** Lo único que puede llevar un texto para los agentes: letras, cifras, espacios y `, . ' ( ) % / + · × -`. */
+const AGENT_TEXT = /^[\p{L}\p{N} ,.'()%/+·×-]+$/u
+/** Algo con forma de dominio aunque no lleve `www` («instagram.com/lucia»). */
+const AGENT_DOMAIN = /[\p{L}\p{N}]\.(?:com|es|net|org|io|app|me)(?![\p{L}\p{N}])/iu
+
 /**
- * Texto que puede llegar a los agentes: hasta `max` caracteres, sin @, sin URLs y sin
- * cifras que parezcan un teléfono. Si no, null (falla cerrado).
+ * Texto que puede llegar a los agentes (nombre de catálogo, producto de la tienda): una lista
+ * blanca, mirada también tras normalizar con NFKC («＠» o «６００» de ancho completo pasan a
+ * «@» y «600»). Solo letras, cifras, espacios y `, . ' ( ) % / + · × -` (ni saltos de línea ni
+ * caracteres de control), hasta `max` caracteres, sin @, `www`, dominios ni cifras que parezcan
+ * un teléfono. Si no, null (falla cerrado). No para un nombre de persona con forma de comida
+ * («Tarta de la abuela Carmen»): eso lo para el origen (`ingredientsInSystemRecipes`).
  */
 export function agentSafeText(raw: unknown, max: number): string | null {
   if (typeof raw !== 'string') return null
   const t = raw.trim()
-  if (!t || t.length > max) return null
-  if (/@|https?:|www\.|\d[\d\s.-]{5,}\d/i.test(t)) return null
+  const n = t.normalize('NFKC')
+  if (!t || t.length > max || n.length > max) return null
+  if (!AGENT_TEXT.test(t) || !AGENT_TEXT.test(n)) return null
+  if (/@|https?:|www\./i.test(n) || AGENT_DOMAIN.test(n) || /\d[\d\s.-]{5,}\d/.test(n)) return null
   return t
 }
 
@@ -106,7 +118,8 @@ export function agentSafeId(raw: unknown): string | null {
 /**
  * El nombre de una línea de la foto que puede llegar a los agentes:
  * - de una regla de compra: su clave (`ruleKey`), si la regla existe;
- * - de catálogo: el nombre de catálogo, sin « · varias presentaciones», si pasa `agentSafeText`;
+ * - de catálogo (un ingrediente de alguna receta del sistema, lo decide `saveBasketResult`): el
+ *   nombre de catálogo, sin « · varias presentaciones», si pasa `agentSafeText`;
  * - si no (tecleado, foto antigua sin origen, regla que ya no existe o nombre raro): null.
  */
 export function publicLineName(l: Pick<BasketSnapshotLine, 'name' | 'origen' | 'ruleKey'>): string | null {
@@ -137,9 +150,35 @@ function ruleOption(ruleKey: string, choice: string | null): string | null {
   return buyRuleByKey(ruleKey)?.choice?.options.find((o) => normalizeBuyName(o) === c) ?? null
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * Los ingredientes de `ids` que salen en alguna receta del sistema (`recipes.author_id` nulo; las
+ * recetas de un usuario se borran con su cuenta, no se quedan sin autor). Solo esos cuentan como
+ * `catalogo` en la foto de la cesta: un ingrediente que creó un usuario (`POST
+ * /ingredients/auto-create`, el importador de recetas) puede llevar su texto. Lo usa
+ * `saveBasketResult` al guardar, dentro de su transacción. Un id que no es un uuid no puede estar
+ * en una receta: no se pregunta.
+ */
+export async function ingredientsInSystemRecipes(ids: readonly string[], db: Pick<Db, 'select'>): Promise<Set<string>> {
+  const uuids = [...new Set(ids.filter((id) => UUID.test(id)))]
+  if (uuids.length === 0) return new Set()
+  const rows = await db
+    .select({ id: recipeIngredients.ingredientId })
+    .from(recipeIngredients)
+    .innerJoin(recipes, eq(recipeIngredients.recipeId, recipes.id))
+    .where(and(inArray(recipeIngredients.ingredientId, uuids), isNull(recipes.authorId)))
+    .groupBy(recipeIngredients.ingredientId)
+  return new Set(rows.map((r) => r.id))
+}
+
 type ExtensionRow = { lines: ShopOrderLine[]; result: StoredBasketResult }
 
-/** La foto de un resultado, por clave: la guardada o, si es de antes de la foto, la de las líneas actuales. */
+/**
+ * La foto de un resultado, por clave: la guardada o, si es de antes de la foto, la de las líneas
+ * actuales, donde solo cuentan las reglas (no se comprobó al guardar si cada ingrediente sale en
+ * una receta del sistema: el resto, `tecleado`).
+ */
 function snapshotByKey({ lines, result }: ExtensionRow): Map<string, BasketSnapshotLine> {
   return new Map((result.cesta ?? basketSnapshot(lines)).map((b) => [b.key, b]))
 }

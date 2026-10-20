@@ -95,7 +95,10 @@ export type BasketUndoResult =
   | { ok: true; restadas: number }
   | { ok: false; error: 'nada_que_deshacer' | 'sin_sesion' | 'contrato' | 'red' }
 
-/** De dónde viene una línea de la cesta: una regla de compra, el catálogo (un ingrediente de receta) o lo que tecleó el hogar. */
+/**
+ * De dónde viene una línea de la cesta: una regla de compra, el catálogo (un ingrediente que sale en
+ * alguna receta del sistema) o lo que tecleó el hogar (también un ingrediente que creó un usuario).
+ */
 export const BASKET_LINE_ORIGINS = ['regla', 'catalogo', 'tecleado'] as const
 export type BasketLineOrigin = (typeof BASKET_LINE_ORIGINS)[number]
 

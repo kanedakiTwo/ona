@@ -26,6 +26,7 @@ import { INGREDIENT_RANGES, globalCeiling, type QuantityRange } from './recipeLi
 import { shoppabilityIssues } from './recipeShoppability.js'
 import { cookingMediumFactor } from './nutrition/cookingMedium.js'
 import { noteStartsWithNumber } from '@ona/shared'
+import { DIET_CATEGORY_LABEL, nameHasTerm, unlistedDietMentions } from './stepDietMentions.js'
 
 // ─── Public types ────────────────────────────────────────────────
 
@@ -625,6 +626,29 @@ export function lintRecipe(recipe: RecipeInput, opts: LintOptions): LintResult {
       })
     }
   })
+
+  // 5b. STEP_DIET_INGREDIENT_NOT_LISTED (PRO-268) — meat, fish, shellfish or
+  // an allergen a step names and the ingredients don't account for, read
+  // from a word list of its own (stepDietMentions.ts), so it works whatever
+  // the catalogue has («huesos», a chorizo in a fresh catalogue). A name the
+  // catalogue check above already flagged in that step isn't repeated.
+  {
+    const listedNames = ingredients
+      .map(ing => catalog.byId.get(ing.ingredientId)?.name)
+      .filter((n): n is string => !!n)
+    for (const m of unlistedDietMentions(steps.map(s => s.text ?? ''), listedNames)) {
+      const path = `steps[${m.step}].text`
+      const already = errors.some(e =>
+        e.code === 'STEP_INGREDIENT_NOT_LISTED' && e.path === path &&
+        nameHasTerm(/menciona "([^"]+)"/.exec(e.message)?.[1] ?? '', m.term))
+      if (already) continue
+      errors.push({
+        code: 'STEP_DIET_INGREDIENT_NOT_LISTED',
+        message: `El paso ${m.step + 1} menciona "${m.term}" (${DIET_CATEGORY_LABEL[m.category]}) pero no está en los ingredientes: añádelo o quítalo del paso, que cambia la dieta y los alérgenos.`,
+        path,
+      })
+    }
+  }
 
   // 6. ORPHAN_INGREDIENT
   // For each non-optional ingredient: must be mentioned by name in some step

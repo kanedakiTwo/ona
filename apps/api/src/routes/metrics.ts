@@ -3,7 +3,7 @@ import { metricsAuth } from '../middleware/metricsAuth.js'
 import { loadBusinessMetrics } from '../services/businessMetrics.js'
 import { loadUsageReport } from '../services/usageReport.js'
 import { loadAssistantFlags } from '../services/assistantFlags.js'
-import { loadBasketGaps } from '../services/basketExtension.js'
+import { loadBasketGaps, loadBasketSends } from '../services/basketExtension.js'
 
 /**
  * Read-only aggregates for Miguel and the Mimoia HQ agents. Admin JWT or
@@ -17,7 +17,10 @@ import { loadBasketGaps } from '../services/basketExtension.js'
  *     (health talk, health claims, unverified "hecho", errors) plus the daily
  *     reviewer's findings (specs/whatsapp.md);
  *   - GET /admin/extension-gaps?days=7 — lo que la extensión del navegador no
- *     tenía en su tabla (búsqueda o fallo), sin usuarios (specs/shop-orders.md).
+ *     tenía en su tabla (búsqueda o fallo), sin usuarios (specs/shop-orders.md);
+ *   - GET /admin/extension-sends?days=1 — un registro por envío a la extensión
+ *     guardado esos días, sin hogar, usuario, envioId ni texto tecleado
+ *     (specs/shop-orders.md). Las dos, con el nombre recortado (`publicLineName`).
  *
  * Own router, mounted in index.ts BEFORE the routers that `router.use(authMiddleware)`
  * as a catch-all — otherwise a token-only request would be 401'd before it
@@ -67,6 +70,16 @@ router.get('/admin/extension-gaps', metricsAuth, async (req, res) => {
     res.json({ days, gaps: await loadBasketGaps(days) })
   } catch (err: any) {
     console.error('[extension-gaps] failed:', err?.message ?? err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+router.get('/admin/extension-sends', metricsAuth, async (req, res) => {
+  try {
+    const days = intParam(req.query.days, 1, 1, 90)
+    res.json({ days, sends: await loadBasketSends(days) })
+  } catch (err: any) {
+    console.error('[extension-sends] failed:', err?.message ?? err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

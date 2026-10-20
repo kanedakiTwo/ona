@@ -9,7 +9,8 @@ import { authMiddleware, requireAdmin } from './auth.js'
  * GET /admin/waitlist (specs/waitlist.md), GET /admin/price-survey and GET
  * /admin/feedback (without identity), and GET
  * /admin/assistant-reviews/flags (specs/whatsapp.md), GET /admin/catalog-wishes
- * (specs/catalog-import.md), GET /admin/extension-gaps (specs/shop-orders.md) and GET
+ * (specs/catalog-import.md), GET /admin/extension-gaps and GET /admin/extension-sends
+ * (specs/shop-orders.md) and GET
  * /admin/newsletter/stats (specs/newsletter.md, PRO-191).
  * Either an admin JWT, or
  * the header `x-metrics-token` equal to `METRICS_READ_TOKEN`, so the agents

@@ -10,6 +10,7 @@ import { basketSendResultSchema, type BasketSendResult, type ShopOrderLine, type
 import {
   agentSafeText,
   aggregateBasketGaps,
+  basketSendsForAgents,
   decideBasketResult,
   isBasketExtensionAllowed,
   publicBasketLine,
@@ -268,6 +269,55 @@ describe('aggregateBasketGaps', () => {
     const result = stored({ lineas: [{ key: 'l1', estado: 'busqueda', productoId: 'id con espacios', producto: 'Escríbeme a ana@example.com' }] })
     expect(aggregateBasketGaps([{ lines: [linea('l1', 'arroz', { ruleKey: 'arroz' })], result }])).toEqual([
       { name: 'arroz', choice: null, origen: 'regla', estado: 'busqueda', productoId: null, producto: null, motivo: null, veces: 1 },
+    ])
+  })
+})
+
+describe('basketSendsForAgents', () => {
+  it('un registro por resultado: fecha, ok, error, añadidas, deshecho, duración y líneas públicas', () => {
+    const lines = [linea('l1', 'Jamón serrano', { ruleKey: 'jamon', choice: 'serrano' }), linea('l2', 'galletas de Lucía'), linea('l3', 'Kombu', { ingredientId: 'ing-1' })]
+    const result = stored({
+      envioId: 'e-secreto',
+      duracionMs: 31_000,
+      totalEur: 12.34,
+      anadidas: 2,
+      lineas: [
+        { key: 'l1', estado: 'tabla', productoId: 'p-7', producto: 'Jamón serrano lonchas', unidades: 1 },
+        { key: 'l2', estado: 'busqueda', productoId: '300', producto: 'Galletas de canela', unidades: 2 },
+        { key: 'l3', estado: 'fallida', motivo: 'no_encontrado' },
+        { key: 'l9', estado: 'fallida', motivo: 'error' },
+      ],
+    })
+    expect(basketSendsForAgents([{ lines, result }])).toEqual([
+      {
+        fecha: '2026-10-19T10:00:00.000Z',
+        ok: true,
+        error: null,
+        anadidas: 2,
+        deshecho: false,
+        duracionMs: 31_000,
+        lineas: [
+          { name: 'jamon', choice: 'serrano', origen: 'regla', estado: 'tabla', motivo: null, producto: 'Jamón serrano lonchas', unidades: 1 },
+          { name: null, choice: null, origen: 'tecleado', estado: 'busqueda', motivo: null, producto: 'Galletas de canela', unidades: 2 },
+          { name: 'Kombu', choice: null, origen: 'catalogo', estado: 'fallida', motivo: 'no_encontrado', producto: null, unidades: null },
+          { name: null, choice: null, origen: 'tecleado', estado: 'fallida', motivo: 'error', producto: null, unidades: null },
+        ],
+      },
+    ])
+  })
+  it('sin hogar, usuario, envioId, total del carro ni texto tecleado', () => {
+    const result = stored({ envioId: 'e-secreto', totalEur: 12.34, lineas: [{ key: 'l1', estado: 'busqueda', productoId: '300', producto: 'Galletas de canela', unidades: 1 }] })
+    const [s] = basketSendsForAgents([{ lines: [linea('l1', 'galletas de Lucía')], result }])
+    expect(Object.keys(s).sort()).toEqual(['anadidas', 'deshecho', 'duracionMs', 'error', 'fecha', 'lineas', 'ok'])
+    expect(JSON.stringify(s)).not.toMatch(/Lucía|e-secreto|12\.34/)
+  })
+  it('deshecho y sin duración (versión vieja de la extensión); del más reciente al más antiguo', () => {
+    const viejo = stored({ recibidoAt: '2026-10-18T09:00:00.000Z', deshechoAt: '2026-10-18T09:05:00.000Z', deshechos: ['e1'] })
+    const nuevo = stored({ recibidoAt: '2026-10-19T09:00:00.000Z', envioId: 'e2', duracionMs: 15_000, ok: false, error: 'verificacion' })
+    const sends = basketSendsForAgents([{ lines: [], result: viejo }, { lines: [], result: nuevo }])
+    expect(sends.map((s) => [s.fecha, s.deshecho, s.duracionMs, s.error])).toEqual([
+      ['2026-10-19T09:00:00.000Z', false, 15_000, 'verificacion'],
+      ['2026-10-18T09:00:00.000Z', true, null, null],
     ])
   })
 })

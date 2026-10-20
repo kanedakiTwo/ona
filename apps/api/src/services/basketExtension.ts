@@ -180,6 +180,59 @@ export function aggregateBasketGaps(rows: ExtensionRow[]): BasketGap[] {
   )
 }
 
+export interface BasketSendForAgents {
+  /** `recibidoAt` del resultado. */
+  fecha: string
+  ok: boolean
+  error: BasketSendError | null
+  anadidas: number
+  deshecho: boolean
+  /** null si la versión de la extensión no lo manda. */
+  duracionMs: number | null
+  lineas: Array<
+    PublicBasketLine & {
+      estado: BasketLineState
+      motivo: 'no_encontrado' | 'no_publicado' | 'error' | null
+      producto: string | null
+      unidades: number | null
+    }
+  >
+}
+
+/**
+ * Puro: un registro por resultado guardado, del más reciente al más antiguo:
+ * fecha, ok, error, añadidas, deshecho, duración y cada línea pública con su
+ * estado, motivo, producto de la tienda y unidades. Sin hogar, usuario,
+ * `envioId`, total del carro ni texto tecleado. Una clave que ya no está en la
+ * foto ni en las líneas sale como `tecleado`.
+ */
+export function basketSendsForAgents(rows: ExtensionRow[]): BasketSendForAgents[] {
+  return rows
+    .map((row) => {
+      const { result } = row
+      const basket = snapshotByKey(row)
+      return {
+        fecha: result.recibidoAt,
+        ok: result.ok,
+        error: result.error ?? null,
+        anadidas: result.anadidas,
+        deshecho: !!result.deshechoAt,
+        duracionMs: result.duracionMs ?? null,
+        lineas: result.lineas.map((r) => {
+          const b = basket.get(r.key)
+          return {
+            ...(b ? publicBasketLine(b) : { name: null, choice: null, origen: 'tecleado' as const }),
+            estado: r.estado,
+            motivo: r.motivo ?? null,
+            producto: agentSafeText(r.producto, 160),
+            unidades: r.unidades ?? null,
+          }
+        }),
+      }
+    })
+    .sort((a, b) => b.fecha.localeCompare(a.fecha))
+}
+
 /**
  * Los resultados recibidos en los últimos `days` días, con las líneas de su
  * pedido. Se filtra por `recibidoAt` del resultado guardado, no por
@@ -202,4 +255,8 @@ async function loadExtensionResults(days: number, db: Db): Promise<ExtensionRow[
 
 export async function loadBasketGaps(days: number, db: Db = defaultDb): Promise<BasketGap[]> {
   return aggregateBasketGaps(await loadExtensionResults(days, db))
+}
+
+export async function loadBasketSends(days: number, db: Db = defaultDb): Promise<BasketSendForAgents[]> {
+  return basketSendsForAgents(await loadExtensionResults(days, db))
 }

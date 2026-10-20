@@ -9,6 +9,7 @@
  *                                           400 si el esquema no cumple; cuenta solo si se guardó
  *   POST /shop-orders/:id/extension-undo    sesión, sin mirar la lista; cuenta solo si se deshizo
  *   GET  /admin/extension-gaps              admin o `x-metrics-token`; `days` entero entre 1 y 90
+ *   GET  /admin/extension-sends             admin o `x-metrics-token`; `days` entero entre 1 y 90 (1 por defecto)
  *
  * Run: pnpm --filter @ona/api test src/tests/basketExtensionRoute.test.ts
  */
@@ -32,6 +33,7 @@ vi.mock('../middleware/auth.js', () => ({
 const h = vi.hoisted(() => ({
   enabled: vi.fn(async (_userId: string) => true),
   gaps: vi.fn(async (days: number) => [{ days }]),
+  sends: vi.fn(async (days: number) => [{ days }]),
   save: vi.fn(),
   undo: vi.fn(),
   track: vi.fn(),
@@ -40,6 +42,7 @@ vi.mock('../services/basketExtension.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../services/basketExtension.js')>()),
   basketExtensionEnabledFor: h.enabled,
   loadBasketGaps: h.gaps,
+  loadBasketSends: h.sends,
 }))
 vi.mock('../services/shopOrders/store.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../services/shopOrders/store.js')>()),
@@ -89,6 +92,7 @@ beforeEach(() => {
   h.undo.mockReset()
   h.track.mockReset()
   h.gaps.mockClear()
+  h.sends.mockClear()
 })
 
 const ID = '11111111-2222-4333-8444-555555555555'
@@ -214,5 +218,22 @@ describe('GET /admin/extension-gaps', () => {
     for (const q of ['abc', '0', '-3', '1000', '3.9', '1e9', '30']) got.push(await days(q))
     expect(got).toEqual([7, 1, 1, 90, 3, 1, 30])
     expect(h.gaps.mock.calls.map(([n]) => n)).toEqual(got)
+  })
+})
+
+describe('GET /admin/extension-sends', () => {
+  it('sin token ni sesión 401; sesión normal 403; admin 200; token malo 401; token bueno 200 con { days, sends }', async () => {
+    expect((await call('GET', '/admin/extension-sends', undefined, {})).status).toBe(401)
+    expect((await call('GET', '/admin/extension-sends')).status).toBe(403)
+    expect((await call('GET', '/admin/extension-sends', undefined, { 'x-test-user': 'a', 'x-test-role': 'admin' })).status).toBe(200)
+    expect((await call('GET', '/admin/extension-sends', undefined, { 'x-metrics-token': 'malo' })).status).toBe(401)
+    expect(await call('GET', '/admin/extension-sends', undefined, TOKEN)).toEqual({ status: 200, body: { days: 1, sends: [{ days: 1 }] } })
+  })
+  it('`days` llega a la consulta entero y entre 1 y 90; 1 por defecto', async () => {
+    const days = async (q: string) => (await call('GET', `/admin/extension-sends?days=${q}`, undefined, TOKEN)).body.days
+    const got = []
+    for (const q of ['', 'abc', '0', '-3', '1000', '3.9', '7']) got.push(await days(q))
+    expect(got).toEqual([1, 1, 1, 1, 90, 3, 7])
+    expect(h.sends.mock.calls.map(([n]) => n)).toEqual(got)
   })
 })

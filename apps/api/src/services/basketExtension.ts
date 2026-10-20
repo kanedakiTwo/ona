@@ -87,32 +87,50 @@ function snapshotLine({ key, name, choice, origen, ruleKey }: BasketSnapshotLine
 
 // ─── Lo que ven los agentes (norma de privacidad: nada tecleado por un hogar) ───
 
-/** Lo único que puede llevar un texto para los agentes: letras, cifras, espacios y `, . ' ( ) % / + · × -`. */
-const AGENT_TEXT = /^[\p{L}\p{N} ,.'()%/+·×-]+$/u
-/** Algo con forma de dominio aunque no lleve `www` («instagram.com/lucia»). */
-const AGENT_DOMAIN = /[\p{L}\p{N}]\.(?:com|es|net|org|io|app|me)(?![\p{L}\p{N}])/iu
+/**
+ * Lo único que puede llevar un texto para los agentes, ya normalizado (`agentNormalize`): letras
+ * del alfabeto latino, cifras y `, . ' ( ) % / + · × & ° € -`. Ni `:`, `!`, `¡`, comillas dobles,
+ * `@`, saltos de línea, caracteres de control ni letras de otros alfabetos (una «c» cirílica o un
+ * signo lisu que imitan a «c» y a «.»).
+ */
+const AGENT_TEXT = /^[\p{Script=Latin}0-9 ,.'()%/+·×&°€-]+$/u
+/** Algo con forma de dominio, con o sin `www`: letra o cifra, punto y dos letras o más («lucia.eu», «bit.ly/abc»). */
+const AGENT_DOMAIN = /[\p{L}\p{N}]\.\p{L}{2,}/u
+/** 9 cifras o más pueden ser un teléfono, separadas como sea («600,123,456», «600/12/34/56»). */
+const tooManyDigits = (t: string) => (t.match(/[0-9]/g) ?? []).length >= 9
+
+/**
+ * Comillas y rayas tipográficas a las del teclado (`\u2018 \u2019 \u02BC` → `'`, `\u2013 \u2014` → `-`) y
+ * NFKC: «＠» o «６００» de ancho completo pasan a «@» y «600», y una letra con su tilde por separado
+ * (NFD), a una sola.
+ */
+function agentNormalize(t: string): string {
+  return t.replace(/[\u2018\u2019\u02BC]/g, "'").replace(/[\u2013\u2014]/g, '-').normalize('NFKC')
+}
 
 /**
  * Texto que puede llegar a los agentes (nombre de catálogo, producto de la tienda): una lista
- * blanca, mirada también tras normalizar con NFKC («＠» o «６００» de ancho completo pasan a
- * «@» y «600»). Solo letras, cifras, espacios y `, . ' ( ) % / + · × -` (ni saltos de línea ni
- * caracteres de control), hasta `max` caracteres, sin @, `www`, dominios ni cifras que parezcan
- * un teléfono. Si no, null (falla cerrado). No para un nombre de persona con forma de comida
- * («Tarta de la abuela Carmen»): eso lo para el origen (`ingredientsInSystemRecipes`).
+ * blanca (`AGENT_TEXT`) mirada sobre el texto normalizado, hasta `max` caracteres, sin `www`,
+ * dominios ni 9 cifras o más. Si pasa, sale el texto tal cual (conserva «º»); si no, null (falla
+ * cerrado). No para un nombre de persona con forma de comida («Tarta de la abuela Carmen»): eso
+ * lo para el origen (`ingredientsInSystemRecipes`).
  */
 export function agentSafeText(raw: unknown, max: number): string | null {
   if (typeof raw !== 'string') return null
   const t = raw.trim()
-  const n = t.normalize('NFKC')
+  const n = agentNormalize(t)
   if (!t || t.length > max || n.length > max) return null
-  if (!AGENT_TEXT.test(t) || !AGENT_TEXT.test(n)) return null
-  if (/@|https?:|www\./i.test(n) || AGENT_DOMAIN.test(n) || /\d[\d\s.-]{5,}\d/.test(n)) return null
+  if (!AGENT_TEXT.test(n)) return null
+  if (/www\./i.test(n) || AGENT_DOMAIN.test(n) || tooManyDigits(n)) return null
   return t
 }
 
-/** Id de producto de la tienda que puede llegar a los agentes: letras, cifras, «_», «.» o «-»; si no, null. */
+/**
+ * Id de producto de la tienda que puede llegar a los agentes: letras, cifras, «_», «.» o «-», hasta
+ * 32, y menos de 9 cifras (los de la tienda tienen 4 o 5; con 9 podría ser un teléfono). Si no, null.
+ */
 export function agentSafeId(raw: unknown): string | null {
-  return typeof raw === 'string' && /^[A-Za-z0-9_.-]{1,32}$/.test(raw) ? raw : null
+  return typeof raw === 'string' && /^[A-Za-z0-9_.-]{1,32}$/.test(raw) && !tooManyDigits(raw) ? raw : null
 }
 
 /**

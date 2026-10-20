@@ -22,13 +22,31 @@ export function pinnedWeekday(): number {
 }
 
 /**
+ * Today in Madrid (`YYYY-MM-DD`), not in the process clock: CI runs in UTC,
+ * and from 00:00 to 02:00 Madrid (01:00 in winter) the two disagree on the
+ * day (PRO-272, PRO-273). Use these, never `new Date().getDay()` & co.
+ */
+export function madridToday(now = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(now)
+}
+
+/** Index of today in Madrid within its week (0 = Monday … 6 = Sunday). */
+export function madridTodayIdx(now = new Date()): number {
+  return (new Date(`${madridToday(now)}T12:00:00Z`).getUTCDay() + 6) % 7
+}
+
+/** Monday of the current week in Madrid (`YYYY-MM-DD`, the menu's `weekStart`). */
+export function madridWeekStart(now = new Date()): string {
+  return pinnedDay(0, now).weekStart
+}
+
+/**
  * Monday of the current week in Madrid (`YYYY-MM-DD`, the menu's `weekStart`)
  * and the pinned day of that week at 12:00 Madrid (10:00 UTC in summer time,
  * 11:00 in winter: midday either way, far from any day boundary).
  */
-export function pinnedDay(weekday = pinnedWeekday()): { weekStart: string; dayIdx: number; at: Date } {
-  const todayMadrid = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date())
-  const today = new Date(`${todayMadrid}T10:00:00Z`)
+export function pinnedDay(weekday = pinnedWeekday(), now = new Date()): { weekStart: string; dayIdx: number; at: Date } {
+  const today = new Date(`${madridToday(now)}T10:00:00Z`)
   const monday = new Date(today)
   monday.setUTCDate(today.getUTCDate() - ((today.getUTCDay() + 6) % 7))
   const at = new Date(monday)

@@ -7,21 +7,11 @@
  */
 import { test, expect, type Page } from '@playwright/test'
 import { completeOnboarding, registerFreshUser } from './_helpers'
-import { pinClock, pinnedDay } from './_clock'
+import { madridTodayIdx, madridWeekStart, pinClock } from './_clock'
 
 const API = process.env.API_URL ?? 'http://localhost:8765'
 const MEALS = ['breakfast', 'lunch', 'snack', 'dinner']
 
-/**
- * «Today» in Madrid, not in the runner's clock (UTC on CI): between 00:00
- * and 02:00 Madrid the two disagree on the day and the spec read the wrong
- * day of the menu (PRO-272). The page clock is pinned to 12:00 Madrid today.
- */
-function madridTodayIdx(): number {
-  const ymd = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date())
-  return (new Date(`${ymd}T12:00:00Z`).getUTCDay() + 6) % 7
-}
-const thisMonday = () => pinnedDay(madridTodayIdx()).weekStart
 
 async function session(page: Page) {
   const token = await page.evaluate(() => localStorage.getItem('ona_token'))
@@ -41,9 +31,9 @@ test('menu: «Marcar como cocinada» asks «¿Qué tal?»; «Repetir a menudo» 
   await registerFreshUser(page)
   await completeOnboarding(page)
   const { headers, userId } = await session(page)
-  const gen = await page.request.post(`${API}/menu/generate`, { headers, data: { userId, weekStart: thisMonday(), force: true } })
+  const gen = await page.request.post(`${API}/menu/generate`, { headers, data: { userId, weekStart: madridWeekStart(), force: true } })
   expect(gen.ok()).toBeTruthy()
-  const menu = await (await page.request.get(`${API}/menu/${userId}/${thisMonday()}`, { headers })).json()
+  const menu = await (await page.request.get(`${API}/menu/${userId}/${madridWeekStart()}`, { headers })).json()
   const today = menu.days[madridTodayIdx()] ?? {}
   const recipeId: string | undefined = MEALS.map((m) => today[m]?.dishes?.find((d: any) => d.kind === 'recipe')?.recipeId).find(Boolean)
   test.skip(!recipeId, 'the generator left today without recipes')

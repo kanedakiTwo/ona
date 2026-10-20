@@ -7,15 +7,11 @@
 
 import { test, expect, type Page } from '@playwright/test'
 import { completeOnboarding, registerFreshUser } from './_helpers'
+import { madridTodayIdx, pinClock } from './_clock'
 
 const API = process.env.API_URL ?? 'http://localhost:8765'
 const MEAL_ORDER = ['breakfast', 'lunch', 'snack', 'dinner']
 
-function thisMonday(): string {
-  const d = new Date()
-  d.setDate(d.getDate() + (d.getDay() === 0 ? -6 : 1 - d.getDay()))
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
 
 async function session(page: Page) {
   const token = await page.evaluate(() => localStorage.getItem('ona_token'))
@@ -24,14 +20,15 @@ async function session(page: Page) {
 }
 
 async function todayMenu(page: Page) {
+  // The page's «today» is Madrid's at midday, the same day the spec reads (PRO-273).
+  const day = await pinClock(page, madridTodayIdx())
   await registerFreshUser(page)
   await completeOnboarding(page)
   const { headers, userId } = await session(page)
-  const weekStart = thisMonday()
+  const { weekStart, dayIdx: today } = day
   const gen = await page.request.post(`${API}/menu/generate`, { headers, data: { userId, weekStart, force: true } })
   expect(gen.ok(), `generate: ${gen.status()}`).toBeTruthy()
   const menu = await (await page.request.get(`${API}/menu/${userId}/${weekStart}`, { headers })).json()
-  const today = (new Date().getDay() + 6) % 7
   const withRecipe = MEAL_ORDER.filter((m) => menu.days[today]?.[m]?.dishes?.some((d: { kind: string }) => d.kind === 'recipe'))
   return { headers, userId, weekStart, menu, today, withRecipe }
 }

@@ -52,7 +52,9 @@ test('day 7: the offer on /menu, in Mimo and on Suscripción', async ({ page }) 
   await page.keyboard.press('Escape')
 
   await card.getByTestId('founder-offer-cta').click()
-  await expect(page).toHaveURL(/\/profile\/suscripcion/)
+  // The first visit compiles /profile/suscripcion in the dev server: more than
+  // the default 5 s on CI (the first try failed day and night; PRO-273).
+  await expect(page).toHaveURL(/\/profile\/suscripcion/, { timeout: 20_000 })
   await expect(page.getByTestId('founder-offer')).toContainText('Quédate el precio de fundador')
   await expect(page.getByTestId('subscribe-cta')).toBeVisible()
 })

@@ -6,16 +6,10 @@
 
 import { test, expect, type Page } from '@playwright/test'
 import { completeOnboarding, registerFreshUser } from './_helpers'
+import { madridToday, madridTodayIdx, pinClock } from './_clock'
 
 const API = process.env.API_URL ?? 'http://localhost:8765'
 
-function thisMonday(): string {
-  const d = new Date()
-  d.setDate(d.getDate() + (d.getDay() === 0 ? -6 : 1 - d.getDay()))
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-const iso = (d: Date) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
 async function session(page: Page) {
   const token = await page.evaluate(() => localStorage.getItem('ona_token'))
@@ -25,21 +19,22 @@ async function session(page: Page) {
 
 test('«Añadir comida → Del congelador» adds the táper with its label and the shopping list stays the same', async ({ page }) => {
   test.setTimeout(120_000)
+  // The page's «today» is Madrid's at midday, the same day the spec reads (PRO-273).
+  const day = await pinClock(page, madridTodayIdx())
   await registerFreshUser(page)
   await completeOnboarding(page)
   const { headers, userId } = await session(page)
-  const weekStart = thisMonday()
+  const { weekStart, dayIdx: today } = day
   const gen = await page.request.post(`${API}/menu/generate`, { headers, data: { userId, weekStart, force: true } })
   expect(gen.ok(), `generate: ${gen.status()}`).toBeTruthy()
   const menu = await (await page.request.get(`${API}/menu/${userId}/${weekStart}`, { headers })).json()
 
   // Today without dinner, so «Añadir comida» offers it.
-  const today = (new Date().getDay() + 6) % 7
   if (menu.days[today]?.dinner) {
     const del = await page.request.delete(`${API}/menu/${menu.id}/day/${today}/meal/dinner`, { headers })
     expect(del.ok(), `delete dinner: ${del.status()}`).toBeTruthy()
   }
-  const todayIso = iso(new Date())
+  const todayIso = madridToday()
   const listQuery = `from=${todayIso}&to=${todayIso}`
   const itemsOf = async () =>
     ((await (await page.request.get(`${API}/shopping-list?${listQuery}`, { headers })).json()).items ?? [])

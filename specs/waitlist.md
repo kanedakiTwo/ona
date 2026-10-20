@@ -79,7 +79,7 @@ Each picked person **pulls in** the waiting people who signed up with their link
 
 - **Emails sent**: the invitation (PRO-93) and the Friday newsletter (PRO-94, [newsletter.md](./newsletter.md); its own opt-out turns off only the newsletter). There is no confirmation email (no double opt-in).
 - No phone number is collected, so "por WhatsApp" is a stated preference, honoured by sending the invitation with the WhatsApp link (since 2026-10-14 Mimo is on a real number, so the 5-recipient limit of Meta's test number no longer applies; access is still gated by `WHATSAPP_ALLOWED_EMAILS`, see [WhatsApp](./whatsapp.md)).
-- The opt-out link is shown only on the device and submission that created the entry. Otherwise it comes in Miguel's emails, or via the contact in `/privacidad` (which needs `NEXT_PUBLIC_SUPPORT_EMAIL`, see CLAUDE.md → Todo Miguel).
+- The opt-out link is shown only on the device and submission that created the entry. Otherwise it comes in Miguel's emails, or via the contact in `/privacidad` (`NEXT_PUBLIC_SUPPORT_EMAIL`, else hola@mimoia.com; PRO-179).
 
 ## Related specs
 

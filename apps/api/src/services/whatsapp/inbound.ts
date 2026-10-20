@@ -10,7 +10,7 @@ import { dropRepeatedButtons, lastSentButtons, outboundBody, renderAssistantRepl
 import { extractOptions, toWhatsAppMarkup } from './format.js'
 import { isShoppingItemList, shoppingListDigest } from '../shoppingText.js'
 import type { WeekView } from '../menuText.js'
-import { AI_DISCLOSURE_FIRST_PERSON, NotASchoolMenuError, schoolLunchLines, type SchoolLunch } from '@ona/shared'
+import { AI_DISCLOSURE_FIRST_PERSON, BRAND_SUPPORT_EMAIL, NotASchoolMenuError, schoolLunchLines, type SchoolLunch } from '@ona/shared'
 import { guidedMeta, type GuideSpec, type GuidedResult } from './guided.js'
 import { controlCommand, OPT_IN_NO, OPT_IN_YES } from './commands.js'
 import { trackEvent } from '../usageEvents.js'
@@ -72,7 +72,7 @@ export interface InboundDeps {
     recentOutboundKinds: (phone: string, since: Date) => Promise<Map<string, Date>>
     setNotify: (userId: string, notify: boolean) => Promise<boolean>
   }
-  /** Where to reach a human (env SUPPORT_EMAIL). Empty → point to the app. */
+  /** Where to reach a human (env SUPPORT_EMAIL). Empty → hola@mimoia.com (PRO-179). */
   supportEmail?: string
   client: {
     sendMessage: (to: string, msg: OutboundMessage) => Promise<string | null>
@@ -371,8 +371,12 @@ export function firstStepsGuide(url: string): GuideSpec {
   }
 }
 
-const humanContact = (email?: string) =>
-  email ? `escribe a ${email}` : 'escribe a la persona de Mimoia que te invitó a la beta'
+/**
+ * Where to reach a person (PRO-179): `SUPPORT_EMAIL` when set, else the public
+ * address hola@mimoia.com, as the footer and Mimo do. Never "quien te invitó":
+ * with open sign-up nobody invites anybody.
+ */
+export const humanContact = (email?: string) => `escribe a ${email?.trim() || BRAND_SUPPORT_EMAIL}`
 
 export const COPY = {
   /**

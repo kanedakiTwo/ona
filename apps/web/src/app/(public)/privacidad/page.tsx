@@ -1,21 +1,18 @@
 import Link from "next/link"
 import { LEGAL_OWNER } from "@ona/shared"
+import { CONTACT_EMAIL } from "@/lib/contact"
 
 /**
  * Política de privacidad. Describes what the code actually does (see
  * specs/privacy.md). Pending legal review: the controller's legal identity
- * and the contact address come from Miguel (CLAUDE.md → Todo Miguel).
+ * comes from Miguel (CLAUDE.md → Todo Miguel). The contact address is
+ * `NEXT_PUBLIC_SUPPORT_EMAIL`, else hola@mimoia.com (PRO-179), like the footer.
  */
-const CONTACT = process.env.NEXT_PUBLIC_SUPPORT_EMAIL
-
 function Contact() {
-  return CONTACT ? (
-    <a href={`mailto:${CONTACT}`} className="underline underline-offset-4">
-      {CONTACT}
+  return (
+    <a href={`mailto:${CONTACT_EMAIL}`} className="underline underline-offset-4">
+      {CONTACT_EMAIL}
     </a>
-  ) : (
-    // Until NEXT_PUBLIC_SUPPORT_EMAIL is set (beta, invitation only).
-    <>la persona de Mimoia que te invitó a la beta</>
   )
 }
 

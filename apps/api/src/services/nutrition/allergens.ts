@@ -149,7 +149,8 @@ function stripPhrases(normalizedName: string, phrases: readonly string[]): strin
 //   - any flour / pasta / noodle counts unless it names a gluten-free base
 //     (arroz, maíz, garbanzo, almendra, trigo sarraceno, mandioca);
 //   - soy sauce (salsa de soja, tamari, shoyu) counts — it is usually brewed
-//     with wheat — unless it says «sin gluten»;
+//     with wheat — unless it says «sin gluten»; so do oyster sauce and
+//     Shaoxing wine, usually made or thickened with wheat;
 //   - anything labelled «sin gluten» never counts.
 const GLUTEN_KEYWORDS = [
   'trigo',
@@ -203,6 +204,8 @@ const NOT_PASTA_PHRASES = ['pasta de tomate', 'pasta de curry', 'pasta de sesamo
 const GLUTEN_FREE_BASES = ['arroz', 'maiz', 'garbanzo', 'almendra', 'trigo sarraceno', 'mandioca']
 
 const SOY_SAUCE_KEYWORDS = ['salsa de soja', 'tamari', 'shoyu']
+/** Usually made or thickened with wheat: oyster sauce, Shaoxing wine. */
+const USUALLY_WHEAT_KEYWORDS = ['salsa de ostras', 'shaoxing']
 
 function hasGluten(n: string): boolean {
   if (n.includes('sin gluten')) return false
@@ -210,6 +213,7 @@ function hasGluten(n: string): boolean {
   const s = n.replace(/trigo sarraceno/g, ' ')
   if (hasAnyTerm(s, GLUTEN_KEYWORDS)) return true
   if (hasAnyTerm(n, SOY_SAUCE_KEYWORDS)) return true
+  if (hasAnyTerm(n, USUALLY_WHEAT_KEYWORDS)) return true
   const flour = stripPhrases(n, NOT_PASTA_PHRASES)
   if (hasAnyTerm(flour, GLUTEN_FLOUR_LIKE) && !containsAny(n, GLUTEN_FREE_BASES)) return true
   return false
@@ -298,6 +302,10 @@ const FISH_KEYWORDS = [
   'fumet',
   'worcestershire',
   'perrins',
+  'cabracho',
+  'mero',
+  'dashi',
+  'katsuobushi',
 ]
 
 const CRUSTACEAN_KEYWORDS = [
@@ -307,6 +315,12 @@ const CRUSTACEAN_KEYWORDS = [
   'langosta',
   'cangrejo',
   'bogavante',
+  'galera',
+  'carabinero',
+  'necora',
+  'centollo',
+  'percebe',
+  'buey de mar',
 ]
 
 const MOLLUSC_KEYWORDS = [
@@ -319,11 +333,17 @@ const MOLLUSC_KEYWORDS = [
   'chipiron',
   'vieira',
   'ostra',
+  'chirla',
+  'navaja',
+  'zamburina',
+  'coquina',
+  'bigaro',
+  'caracol',
 ]
 
 const CELERY_KEYWORDS = ['apio', 'apionabo']
 const MUSTARD_KEYWORDS = ['mostaza']
-const SESAME_KEYWORDS = ['sesamo', 'tahini', 'tahina']
+const SESAME_KEYWORDS = ['sesamo', 'tahini', 'tahina', 'shichimi']
 const LUPIN_KEYWORDS = ['altramuz', 'altramuces']
 const SULFITE_KEYWORDS = ['vino', 'vinagre', 'vinagret*']
 

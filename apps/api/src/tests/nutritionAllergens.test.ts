@@ -329,3 +329,31 @@ describe('PRO-193 — whole words, with explicit exceptions', () => {
     expect(effectiveAllergens([], ['Panceta', 'Manitas de cerdo', 'Nuez moscada', 'Leche de coco', 'Pasta de tomate'])).toEqual([])
   })
 })
+
+describe('Tandas libros-01 y yaya-01 (2026-10-21) — ingredientes nuevos que salían sin alérgeno', () => {
+  it('almejas pequeñas, navajas y otros bivalvos son moluscos', () => {
+    for (const name of ['chirlas', 'navajas', 'zamburiñas', 'coquinas', 'berberechos', 'bígaros', 'caracoles'])
+      expect(inferAllergenTagsFromName(name), name).toEqual(['marisco', 'moluscos'])
+  })
+
+  it('galeras, carabineros, nécoras, centollos y percebes son crustáceos', () => {
+    for (const name of ['galeras', 'carabineros', 'nécoras', 'centollo', 'percebes', 'buey de mar'])
+      expect(inferAllergenTagsFromName(name), name).toEqual(['crustaceos', 'marisco'])
+  })
+
+  it('el dashi y el katsuobushi llevan pescado; también el cabracho y el mero', () => {
+    for (const name of ['dashi en polvo', 'katsuobushi', 'cabracho', 'mero'])
+      expect(inferAllergenTagsFromName(name), name).toContain('pescado')
+  })
+
+  it('el vino shaoxing y la salsa de ostras suelen llevar trigo; el shichimi, sésamo', () => {
+    expect(inferAllergenTagsFromName('vino shaoxing')).toEqual(['gluten', 'sulfitos'])
+    expect(inferAllergenTagsFromName('salsa de ostras')).toEqual(['gluten', 'marisco', 'moluscos'])
+    expect(inferAllergenTagsFromName('shichimi togarashi')).toEqual(['sesamo'])
+  })
+
+  it('no confunde la carne de buey ni otras palabras', () => {
+    expect(inferAllergenTagsFromName('carne de buey')).toEqual([])
+    expect(inferAllergenTagsFromName('caracolas de hojaldre')).not.toContain('moluscos')
+  })
+})

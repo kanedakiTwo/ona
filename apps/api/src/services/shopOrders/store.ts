@@ -13,7 +13,7 @@
 
 import { randomBytes } from 'crypto'
 import { and, asc, desc, eq, gte, inArray } from 'drizzle-orm'
-import { buildExtensionBasket, isLiveBasketSend, normalizeBuyName, resolveBuyRule, sourceItemsForBasketKey, splitCompound } from '@ona/shared'
+import { basketSnapshot, isLiveBasketSend, normalizeBuyName, resolveBuyRule, sourceItemsForBasketKey, splitCompound } from '@ona/shared'
 import type {
   BasketSendResult,
   BuyableUnit,
@@ -637,8 +637,8 @@ export async function markSent(userId: string, id: string, db: Db = defaultDb): 
 
 /**
  * Resultado de la extensión del navegador para la tarjeta del súper (spec: «Rutas»).
- * Se guarda con la foto de la cesta que salió de este pedido (`buildExtensionBasket`),
- * para que el agregado de huecos sepa qué era cada clave aunque las líneas cambien.
+ * Se guarda con la foto de la cesta que salió de este pedido (`basketSnapshot`: clave, nombre,
+ * elección y origen de cada línea), para saber qué era cada clave aunque las líneas cambien.
  * `guardado` = este resultado se ha guardado (uno por envío): solo entonces cuenta en la métrica.
  * Con el pedido bloqueado (`withLockedOrder`): dos POST a la vez del mismo envío no cuentan dos veces.
  */
@@ -646,7 +646,7 @@ export async function saveBasketResult(userId: string, id: string, incoming: Bas
   return withLockedOrder(userId, id, db, async (row, tx) => {
     if ((row.shopSnapshot as ShopSnapshot).kind !== 'supermercado') throw new ShopOrderError(400, 'NOT_SUPER', 'Solo para el pedido del súper.')
     requireStatus(row, ['draft', 'sent'], 'guardar el envío')
-    const cesta = buildExtensionBasket(row.lines as ShopOrderLine[])
+    const cesta = basketSnapshot(row.lines as ShopOrderLine[])
     const d = decideBasketResult((row.extensionResult as StoredBasketResult | null) ?? null, row.status, incoming, new Date(), cesta)
     if (d.action === 'deshecho') return { order: presentOrder(row), deshecho: true, guardado: false }
     if (d.action === 'keep') return { order: presentOrder(row), deshecho: false, guardado: false }

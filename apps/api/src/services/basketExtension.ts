@@ -11,6 +11,7 @@ import {
   extensionKey,
   isLiveBasketSend,
   type BasketLine,
+  type BasketSnapshotLine,
   type BasketSendResult,
   type ShopOrderLine,
   type StoredBasketResult,
@@ -48,16 +49,16 @@ export type BasketDecision =
  *   cambia nada ni cuenta doble, esté vivo el guardado o no;
  * - nunca pisa un envío vivo con uno sin nada en el carro.
  *
- * `cesta` es la cesta que se mandó, la de `buildExtensionBasket(order.lines)`:
- * se guarda su clave, nombre y elección para que el agregado de huecos sepa
- * qué era cada clave aunque las líneas cambien después.
+ * `cesta` es la foto de la cesta que se mandó (`basketSnapshot(order.lines)`):
+ * se guarda la clave, el nombre, la elección y el origen de cada línea, para
+ * saber qué era cada clave aunque las líneas cambien después.
  */
 export function decideBasketResult(
   current: StoredBasketResult | null,
   status: string,
   incoming: BasketSendResult,
   now: Date,
-  cesta?: ReadonlyArray<Pick<BasketLine, 'key' | 'name' | 'choice'>>,
+  cesta?: ReadonlyArray<BasketSnapshotLine>,
 ): BasketDecision {
   if (status !== 'draft' && status !== 'sent') return { action: 'keep' }
   if (incoming.envioId && current?.deshechos?.includes(incoming.envioId)) return { action: 'deshecho' }
@@ -69,9 +70,14 @@ export function decideBasketResult(
     recibidoAt: now.toISOString(),
     deshechoAt: null,
     deshechos: current?.deshechos ?? [],
-    ...(cesta ? { cesta: cesta.map(({ key, name, choice }) => ({ key, name, choice })) } : {}),
+    ...(cesta ? { cesta: cesta.map(snapshotLine) } : {}),
   }
   return { action: 'save', status: basketMayBeInCart(incoming) || status === 'sent' ? 'sent' : 'draft', stored }
+}
+
+/** Solo lo de la foto: clave, nombre, elección y, si lo hay, el origen con su `ruleKey`. */
+function snapshotLine({ key, name, choice, origen, ruleKey }: BasketSnapshotLine): BasketSnapshotLine {
+  return { key, name, choice, ...(origen ? { origen, ruleKey: ruleKey ?? null } : {}) }
 }
 
 export interface BasketGap {

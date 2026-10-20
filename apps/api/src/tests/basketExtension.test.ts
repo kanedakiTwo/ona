@@ -127,14 +127,24 @@ describe('decideBasketResult', () => {
     expect(decideBasketResult(null, 'closed', okResult(), NOW)).toEqual({ action: 'keep' })
     expect(decideBasketResult(null, 'cancelled', okResult({ envioId: '', ok: false, error: 'red', lineas: [], anadidas: 0 }), NOW)).toEqual({ action: 'keep' })
   })
-  it('guarda la foto de la cesta tal como se mandó (solo clave, nombre y elección)', () => {
-    const cesta = [{ key: 'l1', name: 'Arroz', choice: null, quantity: 1000, unit: 'g' as const, grams: 1000, piezas: null, search: 'Arroz' }]
-    const d = decideBasketResult(null, 'draft', okResult(), NOW, cesta)
+  it('guarda la foto de la cesta tal como se mandó: clave, nombre, elección y origen, nada más', () => {
+    const cesta = [
+      { key: 'l1', name: 'Arroz', choice: null, origen: 'regla' as const, ruleKey: 'arroz' },
+      { key: 'l2', name: 'Kombu', choice: null, origen: 'catalogo' as const, ruleKey: null },
+    ]
+    const conDeMas = cesta.map((c) => ({ ...c, quantity: 1, search: c.name }))
+    const d = decideBasketResult(null, 'draft', okResult(), NOW, conDeMas)
     if (d.action !== 'save') throw new Error(d.action)
-    expect(d.stored.cesta).toEqual([{ key: 'l1', name: 'Arroz', choice: null }])
+    expect(d.stored.cesta).toEqual(cesta)
+    expect(d.stored.cesta!.map((c) => Object.keys(c).sort())).toEqual([cesta, cesta].map(() => ['choice', 'key', 'name', 'origen', 'ruleKey']))
     const sin = decideBasketResult(null, 'draft', okResult(), NOW)
     if (sin.action !== 'save') throw new Error(sin.action)
     expect('cesta' in sin.stored).toBe(false)
+  })
+  it('una foto sin origen (como las de antes) se guarda tal cual, sin inventarlo', () => {
+    const d = decideBasketResult(null, 'draft', okResult(), NOW, [{ key: 'l1', name: 'Arroz', choice: null }])
+    if (d.action !== 'save') throw new Error(d.action)
+    expect(d.stored.cesta).toEqual([{ key: 'l1', name: 'Arroz', choice: null }])
   })
   it('guarda duracionMs con el resultado', () => {
     const d = decideBasketResult(null, 'draft', okResult({ duracionMs: 31_000 }), NOW)
@@ -322,16 +332,16 @@ const row: OrderRow = {
 }
 
 describe('saveBasketResult', () => {
-  it('guarda con el resultado la foto de la cesta del pedido: clave, nombre y elección de cada línea', async () => {
+  it('guarda con el resultado la foto de la cesta del pedido: clave, nombre, elección y origen de cada línea', async () => {
     const { db, orderWrites } = fakeDb(row)
     const r = await saveBasketResult('u1', 'o1', okResult(), db)
     expect(r).toMatchObject({ deshecho: false, guardado: true })
     expect(r.order.status).toBe('sent')
     expect(orderWrites()).toHaveLength(1)
     const cesta = [
-      { key: 'l1', name: 'Jamón', choice: 'serrano' },
-      { key: 'l2.1', name: 'alubias blancas', choice: null },
-      { key: 'l2.2', name: 'alubias rojas', choice: null },
+      { key: 'l1', name: 'Jamón', choice: 'serrano', origen: 'regla', ruleKey: 'jamon' },
+      { key: 'l2.1', name: 'alubias blancas', choice: null, origen: 'regla', ruleKey: 'alubias' },
+      { key: 'l2.2', name: 'alubias rojas', choice: null, origen: 'regla', ruleKey: 'alubias' },
     ]
     expect((orderWrites()[0].extensionResult as StoredBasketResult).cesta).toEqual(cesta)
     expect(r.order.extensionResult?.cesta).toEqual(cesta)

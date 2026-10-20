@@ -17,7 +17,13 @@ import { join } from 'node:path'
 import { env } from '../config/env.js'
 import { recordCost } from './costLedger.js'
 
-const AIKIT_BASE = 'https://cms.aikit.es/api/free-form-tools/image-generation'
+/**
+ * AiKit's OpenAI-compatible inference API (PRO-265, D-090). The old
+ * Imagen-fal route (`/api/free-form-tools/image-generation/generate-imagen-fal`)
+ * answers 403 `API_KEY_ROUTE_NOT_ALLOWED` to every key since 2026-10-08 and is
+ * gone. Don't point this at the `imagen-4` family: it 500s on this route.
+ */
+export const AIKIT_IMAGES_URL = 'https://cms.aikit.es/api/inference/images/generations'
 
 // "Que no parezca tan perfecto" (Miguel, 2026-10-08): home cooking shot in
 // window light, with the small accidents of a real table — not a studio.
@@ -31,19 +37,19 @@ export type AspectRatio = '4:3' | '1:1' | '3:4'
 
 export interface RecipePromptInput {
   name: string
-  /** Top 3-4 ingredient names by displayOrder; helps Imagen pick the right cuisine and props. */
+  /** Top 3-4 ingredient names by displayOrder; helps the model pick the right cuisine and props. */
   topIngredients: string[]
   /** Recipe `meals` array — only used to pick framing for breakfast/snack. */
   meals: string[]
   /**
    * What the plated dish looks like (`describeDish` in recipeImageCheck.ts).
    * When present it replaces the ingredient line: the name + 4 ingredients
-   * alone often gave Imagen the wrong dish.
+   * alone often gave the model the wrong dish.
    */
   description?: string | null
 }
 
-/** Compose the editorial prompt sent to Imagen-fal. Pure. */
+/** Compose the editorial prompt sent to the image model. Pure. */
 export function buildRecipePrompt(input: RecipePromptInput): string {
   const ingredientsLine = input.description
     ? input.description.replace(/\.?\s*$/, '.')
@@ -94,8 +100,9 @@ export function imageGenerationConfigured(): boolean {
 }
 
 /**
- * Generate one recipe photo and return PNG/JPEG bytes. AiKit's Imagen-fal
- * first (in 'auto'), OpenAI gpt-image when AiKit refuses or isn't set up.
+ * Generate one recipe photo and return PNG bytes. AiKit's gpt-image-2 first
+ * (in 'auto'), OpenAI gpt-image when AiKit refuses (403), is rate-limited or
+ * over budget (429), breaks (5xx) or isn't set up.
  * Exported so callers can decide whether to persist to disk (the bulk
  * script does, the route handler can defer until the quota write commits).
  */
@@ -117,38 +124,31 @@ export async function generateRecipeImage(
   throw lastErr
 }
 
+/** Size asked for each format (gpt-image sizes; the answer is cropped to the exact ratio). */
+export const AIKIT_SIZE: Record<AspectRatio, string> = { '4:3': '1536x1024', '1:1': '1024x1024', '3:4': '1024x1536' }
+const OPENAI_SIZE: Record<AspectRatio, string> = { '4:3': '1536x1024', '1:1': '1024x1024', '3:4': '1024x1536' }
+const RATIO: Record<AspectRatio, number> = { '4:3': 4 / 3, '1:1': 1, '3:4': 3 / 4 }
+
 async function generateWithAikit(prompt: string, aspectRatio: AspectRatio): Promise<Buffer> {
-  const form = new FormData()
-  form.append('prompt', prompt)
-  form.append('aspectRatio', aspectRatio)
-  form.append('numberOfImages', '1')
-
-  const res = await fetch(`${AIKIT_BASE}/generate-imagen-fal`, {
+  const model = env.AIKIT_IMAGE_MODEL
+  const res = await fetch(AIKIT_IMAGES_URL, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${env.AIKIT_API_KEY}` },
-    body: form,
+    headers: { Authorization: `Bearer ${env.AIKIT_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model, prompt, n: 1, size: AIKIT_SIZE[aspectRatio] }),
   })
-
   if (!res.ok) {
     let detail = ''
     try { detail = (await res.text()).slice(0, 300) } catch {}
-    throw new AikitGenerationError(
-      res.status,
-      `AiKit ${res.status} ${res.statusText}: ${detail}`,
-    )
+    throw new AikitGenerationError(res.status, `AiKit images ${res.status}: ${detail}`)
   }
-  const ct = res.headers.get('content-type') ?? ''
-  if (!ct.startsWith('image/')) {
-    throw new AikitGenerationError(502, `Expected image/*, got ${ct}`)
-  }
+  const body = (await res.json()) as { data?: Array<{ b64_json?: string }> }
+  const b64 = body.data?.[0]?.b64_json
+  if (!b64) throw new AikitGenerationError(502, 'AiKit images: empty response')
   // Billed to the requesting user (route context); the bulk seed script has
   // no context and lands as a system cost.
-  recordCost({ feature: 'recipe_image', provider: 'aikit', model: 'imagen-fal', units: { images: 1 } })
-  return Buffer.from(await res.arrayBuffer())
+  recordCost({ feature: 'recipe_image', provider: 'aikit', model, units: { images: 1 } })
+  return cropToRatio(Buffer.from(b64, 'base64'), aspectRatio)
 }
-
-const OPENAI_SIZE: Record<AspectRatio, string> = { '4:3': '1536x1024', '1:1': '1024x1024', '3:4': '1024x1536' }
-const RATIO: Record<AspectRatio, number> = { '4:3': 4 / 3, '1:1': 1, '3:4': 3 / 4 }
 
 async function generateWithOpenAI(prompt: string, aspectRatio: AspectRatio): Promise<Buffer> {
   const res = await fetch('https://api.openai.com/v1/images/generations', {
@@ -165,8 +165,12 @@ async function generateWithOpenAI(prompt: string, aspectRatio: AspectRatio): Pro
   const b64 = body.data?.[0]?.b64_json
   if (!b64) throw new AikitGenerationError(502, 'OpenAI images: empty response')
   recordCost({ feature: 'recipe_image', provider: 'openai', model: env.OPENAI_IMAGE_MODEL, units: { images: 1 } })
-  // gpt-image has no 4:3 — center-crop the 3:2 frame to the ratio asked for.
-  const img = sharp(Buffer.from(b64, 'base64'))
+  return cropToRatio(Buffer.from(b64, 'base64'), aspectRatio)
+}
+
+/** gpt-image has no 4:3 size — center-crop the frame to the ratio asked for. */
+async function cropToRatio(bytes: Buffer, aspectRatio: AspectRatio): Promise<Buffer> {
+  const img = sharp(bytes)
   const { width = 0, height = 0 } = await img.metadata()
   const want = RATIO[aspectRatio]
   if (!width || !height || Math.abs(width / height - want) < 0.01) return img.png().toBuffer()

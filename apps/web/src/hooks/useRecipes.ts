@@ -252,7 +252,7 @@ export interface RegenerateImageResponse {
 }
 
 /**
- * Regenerate the hero photo of an existing recipe via AiKit Imagen-fal.
+ * Regenerate the hero photo of an existing recipe via the house image provider (AiKit gpt-image-2, OpenAI as reserve).
  * Author-only; system recipes return 403. The user has a monthly quota
  * (default 20) — when exhausted the API returns 429 and the mutation
  * rejects; the caller can read the cap from `useUser().imageGenQuota`.

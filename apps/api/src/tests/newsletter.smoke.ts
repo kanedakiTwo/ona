@@ -15,8 +15,9 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { API_URL, reachable } from './smokeEnv.js'
 import { db } from '../db/connection.js'
-import { newsletterSends } from '../db/schema.js'
+import { newsletterSends, newsletterUnsubscribes } from '../db/schema.js'
 import { createDbNewsletterRepo, recipientHash, selectNewsletterRecipients } from '../services/newsletter.js'
+import { createDbNewsletterStatsRepo } from '../services/newsletterStats.js'
 
 const id = `${Date.now()}${Math.random().toString(36).slice(2, 6)}`
 const email = `newsletter_${id}@test.local`
@@ -55,7 +56,9 @@ async function call(method: string, path: string, payload?: unknown) {
 }
 
 afterAll(async () => {
-  if (reachable) await db.delete(newsletterSends).where(eq(newsletterSends.issueId, ISSUE))
+  if (!reachable) return
+  await db.delete(newsletterSends).where(eq(newsletterSends.issueId, ISSUE))
+  await db.delete(newsletterUnsubscribes).where(eq(newsletterUnsubscribes.issueId, ISSUE))
 })
 
 describe.skipIf(!reachable)('newsletter (real API + DB)', () => {
@@ -80,6 +83,9 @@ describe.skipIf(!reachable)('newsletter (real API + DB)', () => {
     const repo = createDbNewsletterRepo()
     const me = selectNewsletterRecipients(await repo.candidates(), new Set()).filter((p) => p.email === email)
     expect((await repo.claim(ISSUE, me)).has(recipientHash(email))).toBe(true)
+    // A claim still pending is not a send: an opt-out can't count under it yet.
+    const stats = createDbNewsletterStatsRepo()
+    expect(await stats.wasSentTo(ISSUE, recipientHash(email))).toBe(false)
     expect((await repo.claim(ISSUE, me)).size).toBe(0)
     expect((await repo.claimedHashes(ISSUE)).has(recipientHash(email))).toBe(true)
     await repo.release(ISSUE, [recipientHash(email)])
@@ -87,6 +93,10 @@ describe.skipIf(!reachable)('newsletter (real API + DB)', () => {
     await repo.markSent(ISSUE, [{ hash: recipientHash(email), providerId: 'smoke' }])
     await repo.release(ISSUE, [recipientHash(email)]) // a sent row is never released
     expect((await repo.claimedHashes(ISSUE)).size).toBe(1)
+    // An opt-out counts under an issue only if that issue was sent to that address.
+    expect(await stats.wasSentTo(ISSUE, recipientHash(email))).toBe(true)
+    expect(await stats.wasSentTo(ISSUE, recipientHash(`otra_${id}@test.local`))).toBe(false)
+    expect(await stats.wasSentTo(`no-enviado-${id}`, recipientHash(email))).toBe(false)
   })
 
   it('a user who registers with the box ticked is a recipient; PUT /newsletter/me false takes them out (PRO-95)', async () => {
@@ -112,9 +122,17 @@ describe.skipIf(!reachable)('newsletter (real API + DB)', () => {
   })
 
   it('POST /newsletter/unsubscribe turns off only the newsletter; the place on the list stays', async () => {
-    const r = await call('POST', '/newsletter/unsubscribe', { token: `w.${leaveToken}` })
+    // Someone who signed up after the issue went out: the opt-out happens, but not under that issue.
+    const late = await call('POST', '/waitlist', signup({ email: `newsletter_late_${id}@test.local` }))
+    expect(late.status).toBe(200)
+    const lateOff = await call('POST', '/newsletter/unsubscribe', { token: `w.${late.body.unsubscribeToken}`, issueId: ISSUE })
+    expect(lateOff.body).toEqual({ ok: true, alreadyUnsubscribed: false })
+    expect(await unsubscribesFor(ISSUE)).toBe(0)
+    // The address the issue was sent to counts under it.
+    const r = await call('POST', '/newsletter/unsubscribe', { token: `w.${leaveToken}`, issueId: ISSUE })
     expect(r.status).toBe(200)
     expect(r.body).toEqual({ ok: true, alreadyUnsubscribed: false })
+    expect(await unsubscribesFor(ISSUE)).toBe(1)
     expect((await call('POST', '/newsletter/unsubscribe', { token: `w.${leaveToken}` })).body.alreadyUnsubscribed).toBe(true)
     expect((await call('GET', `/waitlist/${code}`)).status).toBe(200)
     const repo = createDbNewsletterRepo()
@@ -145,6 +163,11 @@ describe.skipIf(!reachable)('newsletter (real API + DB)', () => {
     expect(await sendsFor(userEmail)).toBe(0)
   })
 })
+
+async function unsubscribesFor(issueId: string): Promise<number> {
+  const rows = await db.select({ id: newsletterUnsubscribes.id }).from(newsletterUnsubscribes).where(eq(newsletterUnsubscribes.issueId, issueId))
+  return rows.length
+}
 
 async function sendsFor(address: string): Promise<number> {
   const rows = await db.select({ h: newsletterSends.recipientHash }).from(newsletterSends).where(eq(newsletterSends.recipientHash, recipientHash(address)))

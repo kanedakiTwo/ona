@@ -1430,7 +1430,8 @@ export const newsletterClicks = pgTable('newsletter_clicks', {
 /**
  * PRO-191: one row per newsletter opt-out done from an issue's link (counts
  * only: the issue, whether it was an account or a waitlist entry, and when).
- * `issue_id` is null when the link carried no issue (older emails).
+ * `issue_id` is null when the link carried no issue (older emails) or named
+ * an issue that wasn't sent to that address (the issue comes in the link).
  */
 export const newsletterUnsubscribes = pgTable('newsletter_unsubscribes', {
   id: uuid('id').primaryKey().defaultRandom(),

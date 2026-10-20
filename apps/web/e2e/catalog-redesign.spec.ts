@@ -46,7 +46,7 @@ test('one chip row replaces the scope tabs + meal chips', async ({ page }) => {
   await expect(page.getByText('Buen', { exact: true })).toHaveCount(0)
 
   const row = chipRow(page)
-  for (const name of ['De temporada', 'En 30 min', 'Desayuno', 'Comida', 'Cena', 'Snack', 'Selección Mimoia', 'Mis recetas']) {
+  for (const name of ['De temporada', 'En 30 min', 'Desayuno', 'Comida', 'Cena', 'Merienda', 'Selección Mimoia', 'Mis recetas']) {
     await expect(row.getByRole('button', { name, exact: true })).toHaveAttribute('aria-pressed', 'false')
   }
   // The old segmented control is gone ("Todas" = no chip active).

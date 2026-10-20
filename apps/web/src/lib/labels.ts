@@ -15,7 +15,7 @@ export const MEAL_LABELS: Record<Meal, string> = {
   breakfast: "Desayuno",
   lunch: "Comida",
   dinner: "Cena",
-  snack: "Snack",
+  snack: "Merienda",
 }
 
 export function mealLabel(value: string | null | undefined): string {

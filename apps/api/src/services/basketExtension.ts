@@ -171,9 +171,11 @@ function ruleOption(ruleKey: string, choice: string | null): string | null {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
- * Los ingredientes de `ids` que salen en alguna receta del sistema (`recipes.author_id` nulo; las
- * recetas de un usuario se borran con su cuenta, no se quedan sin autor). Solo esos cuentan como
- * `catalogo` en la foto de la cesta: un ingrediente que creó un usuario (`POST
+ * Los ingredientes de `ids` que salen en alguna receta del sistema (`recipes.author_id` nulo).
+ * Ojo: `author_id` es `on delete set null`, así que el criterio depende de que
+ * `services/accountDeletion.ts` borre las recetas del usuario antes de borrar su cuenta; si dejara
+ * de hacerlo, una receta de usuario pasaría por receta del sistema. Solo esos ingredientes cuentan
+ * como `catalogo` en la foto de la cesta: un ingrediente que creó un usuario (`POST
  * /ingredients/auto-create`, el importador de recetas) puede llevar su texto. Lo usa
  * `saveBasketResult` al guardar, dentro de su transacción. Un id que no es un uuid no puede estar
  * en una receta: no se pregunta.

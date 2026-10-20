@@ -385,6 +385,10 @@ describe('basketSendsForAgents', () => {
       ['2026-10-18T09:00:00.000Z', true, null, null],
     ])
   })
+  it('deshecho y vuelto a enviar: el envío vivo no sale como deshecho aunque haya uno anterior en deshechos', () => {
+    const reenviado = stored({ envioId: 'e2', deshechos: ['e1'], deshechoAt: null })
+    expect(basketSendsForAgents([{ lines: [], result: reenviado }])[0].deshecho).toBe(false)
+  })
 })
 
 // ─── El pedido en la base de datos (falsa: sin conexión) ─────────────────

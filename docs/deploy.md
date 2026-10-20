@@ -15,11 +15,11 @@ There is **no GitHub-Railway repo connection**. Deploys are manual via the Railw
 **Account (since 2026-10-08):** the `ona-app` project lives in Miguel's **personal** Railway workspace, «Miguel's Projects» (Hobby, `mmartinlacoma@gmail.com`). It was transferred from the AiKit company workspace, which no longer has access. On Miguel's laptop the CLI's own login is the AiKit company account (used for other projects), so don't `railway logout`. Run every Mimoia command with Miguel's personal account token in the environment instead; it overrides the login for that command only:
 
 ```bash
-export RAILWAY_API_TOKEN="$(cat ~/.config/mimoia/railway-token)"   # personal account token, chmod 600, never in a repo
+export RAILWAY_API_TOKEN="$(security find-generic-password -a mimoia -s mimoia/railway-token -w | base64 --decode)"   # personal account token, from the macOS Keychain (asks every time); never in a file or a repo
 railway whoami                             # → Miguel (mmartinlacoma@gmail.com)
 ```
 
-`scripts/deploy.sh` loads that file by itself when neither `RAILWAY_TOKEN` nor `RAILWAY_API_TOKEN` is set. Plain `railway …` commands still need the `export`.
+`scripts/deploy.sh` still falls back to `~/.config/mimoia/railway-token` if that file exists; on Miguel's laptop the token now lives in the Keychain and the file is gone, so export the token first. Plain `railway …` commands still need the `export`.
 
 On a machine without another Railway account:
 

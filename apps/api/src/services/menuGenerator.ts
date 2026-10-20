@@ -28,6 +28,7 @@ import { applyWeekPlan } from './weekPlan.js'
 import { ensureFridgeRecipe, loadFridgeTerms, recipesUsingFridge, rememberFridge } from './fridgeBoost.js'
 import { findRecipeForSlot, normaliseEquipment, type RecipeWithIngredients } from './recipeMatcher.js'
 import { findForCourse } from './courseAwareMatcher.js'
+import { proteinKind } from './tasteDeck.js'
 import { dishCountFor, coursesFor } from './menuDishes.js'
 import { getMemoryForUser } from './userMemoryStore.js'
 import { resolveScope, scopeWhere } from './scopeResolver.js'
@@ -246,6 +247,18 @@ function countMealSlots(template: DayTemplate[]): number {
 }
 
 /**
+ * PRO-238 (2026-10-19): the main protein of a dish for the "not the same at
+ * lunch and dinner" rule — `proteinKind` from tasteDeck.ts (carne, pescado,
+ * legumbre, huevo); «verdura» is no protein and never blocks. The test
+ * households got «lentejas estofadas» for lunch and «lentejas guisadas» for
+ * dinner the same Sunday (two recipes, so `usedRecipeIds` let it through).
+ */
+export function mainProteinOf(recipe: Pick<RecipeWithIngredients, 'name' | 'ingredients'>): string | null {
+  const kind = proteinKind({ name: recipe.name, ingredients: recipe.ingredients ?? [] })
+  return kind === 'verdura' ? null : kind
+}
+
+/**
  * Build a random menu for one iteration.
  */
 /** Exported for tests (restrictions over the full catalogue, PRO-61). */
@@ -271,6 +284,16 @@ export function buildRandomMenu(
   const usedRecipeIds = new Set<string>()
   const days: DayMenu[] = []
   const warnings: string[] = []
+  const proteinById = new Map<string, string | null>()
+  let recipeById: Map<string, RecipeWithCourse> | null = null
+  const proteinOfId = (id: string): string | null => {
+    if (!proteinById.has(id)) {
+      recipeById ??= new Map(allRecipes.map((x) => [x.id, x]))
+      const r = recipeById.get(id)
+      proteinById.set(id, r ? mainProteinOf(r) : null)
+    }
+    return proteinById.get(id) ?? null
+  }
 
   // If there are locked slots, pre-fill them and mark as used
   if (existingDays) {
@@ -301,6 +324,23 @@ export function buildRandomMenu(
       continue
     }
 
+    // Main proteins already in this day's lunch / dinner (PRO-238), locked
+    // slots included, so the other one picks a different protein when it can.
+    const dayProteins = new Map<string, Set<string>>()
+    const noteProteins = (meal: string, dishes: readonly Dish[] | undefined) => {
+      if (meal !== 'lunch' && meal !== 'dinner') return
+      for (const d of dishes ?? []) {
+        if (d.kind !== 'recipe' || ((d as RecipeDish).course != null && (d as RecipeDish).course !== 'main')) continue
+        const k = proteinOfId(d.recipeId)
+        if (k) (dayProteins.get(meal) ?? dayProteins.set(meal, new Set()).get(meal)!).add(k)
+      }
+    }
+    for (const meal of Object.keys(dayTemplate)) {
+      if (dayTemplate[meal] && existingDays && lockedSlots[String(dayIndex)]?.[meal] && existingDays[dayIndex]?.[meal]) {
+        noteProteins(meal, existingDays[dayIndex][meal]?.dishes)
+      }
+    }
+
     for (const meal of Object.keys(dayTemplate)) {
       if (!dayTemplate[meal]) continue
 
@@ -325,9 +365,15 @@ export function buildRandomMenu(
       // Menú del cole (PRO-224): «si comieron lentejas, la cena no es de legumbres».
       const avoidGroup = meal === 'dinner' ? dinnerAvoidGroups?.[dayIndex] : undefined
       const slotPool = avoidGroup ? withoutFoodGroup(allRecipes, avoidGroup) : allRecipes
+      const otherMeal = meal === 'lunch' ? 'dinner' : meal === 'dinner' ? 'lunch' : null
+      const avoid = otherMeal ? dayProteins.get(otherMeal) : undefined
 
       for (const course of wantedCourses) {
-        const picked = findForCourse(slotPool, course, {
+        // Same main protein as the other meal of the day (PRO-238): only if nothing else fits.
+        const pool = avoid?.size && (course === 'main' || course === null)
+          ? slotPool.filter((r) => { const k = proteinOfId(r.id); return !k || !avoid.has(k) })
+          : slotPool
+        const opts = {
           meal: meal as Meal,
           season,
           usedRecipeIds,
@@ -339,7 +385,8 @@ export function buildRandomMenu(
           dislikes,
           availableEquipment,
           timeBudget: timeBudgetByDay?.[dayIndex] ?? null,
-        })
+        }
+        const picked = (pool !== slotPool ? findForCourse(pool, course, opts) : undefined) ?? findForCourse(slotPool, course, opts)
         if (!picked) {
           warnings.push(`no_${course ?? 'main'}_available_${meal}_d${dayIndex}`)
           continue
@@ -352,6 +399,8 @@ export function buildRandomMenu(
           course: (picked as RecipeWithCourse).course ?? null,
         } as RecipeDish)
       }
+
+      noteProteins(meal, dishes)
 
       // Set the new-shape slot (only if we got at least one dish)
       if (dishes.length > 0) {

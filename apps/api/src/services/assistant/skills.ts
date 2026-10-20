@@ -27,6 +27,7 @@ import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../scopeResolve
 import { importRecipeFromUrl, createRecipeFromParts, type RecipeParts } from '../recipeImport.js'
 import { mealLinesForDay } from '../menuText.js'
 import { cookedRecipeIds, householdDiners, mealLinesWithFacts, timesLabel, type RecipeTimes } from './menuFacts.js'
+import { repeatNote } from './weekRepeats.js'
 import { slotWithDishes } from '../menuDishes.js'
 import { madridParts, madridWeekStart } from '../madridTime.js'
 import { DAY_PROP, dateLabel, isMenuDayError, menuDayOf, resolveMenuDay, type MenuDay } from './menuDay.js'
@@ -714,7 +715,7 @@ async function pickWhatIHaveRecipe(
   if (dishNow(saved, t.dayIndex, meal) !== recipe.name) return notSaved(slotLabel)
   return {
     data: { ...(saved as object), change: changeOf(t, meal, recipe.name), recipeId: recipe.id },
-    summary: `Hecho: "${recipe.name}" en la ${slotLabel}. Sus ingredientes ya salen en la lista de la compra.`,
+    summary: `Hecho: "${recipe.name}" en la ${slotLabel}. Sus ingredientes ya salen en la lista de la compra.${repeatNote(saved?.days as DayMenu[] ?? [], t.weekStart, t.dayIndex, meal, { recipeId: recipe.id, name: recipe.name })}`,
     uiHint: 'menu',
   }
 }
@@ -1107,7 +1108,7 @@ const swapMeal: SkillDefinition = {
           if (dishNow(updatedNew, dayIndex, meal) !== created.name) return notSaved(slotLabel)
           return {
             data: { ...updatedNew, change: changeOf(t, meal, created.name), recipeId: created.id },
-            summary: `Hecho. "${untrustedText(created.name, 80)}" no estaba en sus recetas ni en el catalogo: la he creado como receta del hogar (raciones e ingredientes estimados; se puede revisar en la app) y la he puesto en la ${slotLabel}. Sus ingredientes ya salen en la lista de la compra.`,
+            summary: `Hecho. "${untrustedText(created.name, 80)}" no estaba en sus recetas ni en el catalogo: la he creado como receta del hogar (raciones e ingredientes estimados; se puede revisar en la app) y la he puesto en la ${slotLabel}. Sus ingredientes ya salen en la lista de la compra.${repeatNote(days, t.weekStart, dayIndex, meal, { recipeId: created.id, name: created.name })}`,
             uiHint: 'menu',
           }
         }
@@ -1122,7 +1123,7 @@ const swapMeal: SkillDefinition = {
         if (dishNow(updatedNote, dayIndex, meal) !== note) return notSaved(slotLabel)
         return {
           data: { ...updatedNote, change: changeOf(t, meal, note) },
-          summary: `Hecho. "${untrustedText(note, 80)}" no esta en sus recetas ni en el catalogo, asi que lo he puesto como nota en la ${slotLabel}.${closest} ${NOTE_THEN_RECIPE_HINT}${chosen ? ` Si prefiere "${chosen.name}", ofrecele cambiar la nota por esa receta.` : ''}`,
+          summary: `Hecho. "${untrustedText(note, 80)}" no esta en sus recetas ni en el catalogo, asi que lo he puesto como nota en la ${slotLabel}.${repeatNote(days, t.weekStart, dayIndex, meal, { name: note })}${closest} ${NOTE_THEN_RECIPE_HINT}${chosen ? ` Si prefiere "${chosen.name}", ofrecele cambiar la nota por esa receta.` : ''}`,
           uiHint: 'menu',
         }
       }
@@ -1152,7 +1153,7 @@ const swapMeal: SkillDefinition = {
       if (dishNow(updatedManual, dayIndex, meal) !== chosen.name) return notSaved(slotLabel)
       return {
         data: { ...updatedManual, change: changeOf(t, meal, chosen.name) },
-        summary: `Hecho. He puesto "${chosen.name}" en la ${slotLabel}.`,
+        summary: `Hecho. He puesto "${chosen.name}" en la ${slotLabel}.${repeatNote(days, t.weekStart, dayIndex, meal, { recipeId: chosen.id, name: chosen.name })}`,
         uiHint: 'menu',
       }
     }
@@ -1211,7 +1212,7 @@ const swapMeal: SkillDefinition = {
     if (dishNow(updated, dayIndex, meal) !== newRecipe.name) return notSaved(slotLabel)
     return {
       data: { ...updated, change: changeOf(t, meal, newRecipe.name) },
-      summary: `Cambiado: la ${slotLabel} ahora es "${newRecipe.name}".`,
+      summary: `Cambiado: la ${slotLabel} ahora es "${newRecipe.name}".${repeatNote(days, t.weekStart, dayIndex, meal, { recipeId: newRecipe.id, name: newRecipe.name })}`,
       uiHint: 'menu',
     }
   },

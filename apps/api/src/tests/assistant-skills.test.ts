@@ -517,6 +517,29 @@ describe('swap_meal', () => {
     expect(r.summary).toContain('Cambiado')
   })
 
+  // PRO-238 (Familia Ruiz, 2026-10-18): «pollo empanado» on Tuesday 20 while
+  // Sunday 25 already had it, and Mimo didn't notice.
+  it('says where the same dish already is this week', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-19T10:00:00Z')) // Monday
+    const days: any[] = Array.from({ length: 7 }, () => ({ dinner: { dishes: [{ kind: 'recipe', recipeId: 'r-x', recipeName: 'Crema de calabaza' }] } }))
+    days[6] = { dinner: { dishes: [{ kind: 'recipe', recipeId: 'r-pe', recipeName: 'Pollo empanado' }] } }
+    const menu = { id: 'm-1', days }
+    const db = makeDb([menu], [{ id: 'r-pe', name: 'Pollo empanado', authorId: 'u-1' }], [{ restrictions: [] }], [{ ...menu, days: [...days] }])
+    const r = await skill.handler({ day: 'el martes', meal: 'dinner', recipeName: 'pollo empanado' }, ctx(db)).finally(() => vi.useRealTimers())
+    expect(r.summary).toContain('He puesto "Pollo empanado" en la cena del martes 20 de octubre.')
+    expect(r.summary).toContain('Ojo: "Pollo empanado" ya esta esta semana en la cena del domingo 25 de octubre.')
+  })
+
+  it('no repeat line when the dish is nowhere else', async () => {
+    const days: any[] = Array.from({ length: 7 }, () => ({ dinner: { dishes: [{ kind: 'recipe', recipeId: 'r-x', recipeName: 'Crema de calabaza' }] } }))
+    const menu = { id: 'm-1', days }
+    const db = makeDb([menu], [{ id: 'r-pe', name: 'Pollo empanado', authorId: 'u-1' }], [{ restrictions: [] }], [{ ...menu, days: [...days] }])
+    const r = await skill.handler({ dayIndex: 1, meal: 'dinner', recipeName: 'pollo empanado' }, ctx(db))
+    expect(r.summary).toContain('He puesto "Pollo empanado"')
+    expect(r.summary).not.toContain('Ojo')
+  })
+
   // PRO-102 (Familia Ruiz, 2026-10-14): «4 RACIONES · Solo hoy: 4» became
   // «5 RACIONES · Alitas de pollo al horno» after a swap with Mimo.
   describe('the slot keeps its «Solo hoy» diners', () => {

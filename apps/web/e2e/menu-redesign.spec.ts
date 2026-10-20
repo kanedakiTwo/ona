@@ -452,6 +452,85 @@ test.describe('desktop', () => {
     await expect(target).toHaveCount(0, { timeout: 10_000 })
   })
 
+  // Miguel, 2026-10-20: «no funciona el arrastrar entre platos del mismo
+  // día en el resumen de la semana».
+  test('in «La semana», a day\'s lunch and dinner swap by dragging, both ways', async ({ page }) => {
+    test.setTimeout(90_000)
+    const { menu, headers } = await userWithMenu(page)
+    await fillSlot(page, headers, menu, 0, 'dinner')
+
+    await page.goto('/menu')
+    const column = page.locator('[data-day-column="0"]')
+    const cells = column.locator('[aria-roledescription="plato arrastrable"]')
+    await expect(cells.nth(1)).toBeVisible({ timeout: 20_000 })
+    const lunchName = (await cells.nth(0).getAttribute('aria-label'))!.replace(/^Comida: (.*)\. Pulsa.*$/, '$1')
+
+    let moved = moveSlotResponse(page)
+    await dragTo(page, cells.nth(0), cells.nth(1))
+    let res = await moved
+    expect(res.ok(), `lunch → dinner: ${res.status()}`).toBeTruthy()
+    expect(JSON.parse(res.request().postData() ?? '{}')).toEqual({ fromDay: 0, fromMeal: 'lunch', toDay: 0, toMeal: 'dinner' })
+    await expect(column.getByRole('button', { name: new RegExp(`^Cena: ${lunchName}\\.`) })).toBeVisible({ timeout: 10_000 })
+    // dnd-kit doesn't start a new drag a few ms after a drop (a person never
+    // does that); give the drop time to settle.
+    await page.waitForTimeout(500)
+
+    moved = moveSlotResponse(page)
+    await dragTo(page, cells.nth(1), cells.nth(0))
+    res = await moved
+    expect(res.ok(), `dinner → lunch: ${res.status()}`).toBeTruthy()
+    expect(JSON.parse(res.request().postData() ?? '{}')).toEqual({ fromDay: 0, fromMeal: 'dinner', toDay: 0, toMeal: 'lunch' })
+    await expect(column.getByRole('button', { name: new RegExp(`^Comida: ${lunchName}\\.`) })).toBeVisible({ timeout: 10_000 })
+  })
+
+  // Miguel, 2026-10-20: «falta poder arrastrar un plato que no sea una
+  // receta; se arrastra la página entera» and «el arrastrar entre una receta
+  // y un plato no funciona bien» — a written dish couldn't be picked up.
+  async function weekWithNoteDinnerOnMonday(page: Page) {
+    const { menu, headers } = await userWithMenu(page)
+    await page.request.delete(`${API}/menu/${menu.id}/day/0/meal/dinner`, { headers })
+    const r = await page.request.post(`${API}/menu/${menu.id}/day/0/meal/dinner/dish`, {
+      headers,
+      data: { kind: 'note', text: 'Cenamos fuera' },
+    })
+    expect(r.ok(), `note dinner: ${r.status()}`).toBeTruthy()
+    return menu
+  }
+
+  test('a written dish («Cenamos fuera») drags onto another day\'s recipe and they swap', async ({ page }) => {
+    test.setTimeout(90_000)
+    await weekWithNoteDinnerOnMonday(page)
+
+    await page.goto('/menu')
+    const note = page.locator('[data-day-column="0"] [aria-roledescription="plato arrastrable"]').filter({ hasText: 'Cenamos fuera' })
+    await expect(note).toBeVisible({ timeout: 20_000 })
+    const target = page.locator('[data-day-column="1"] [aria-roledescription="plato arrastrable"]').first()
+
+    const moved = moveSlotResponse(page)
+    await dragTo(page, note, target)
+    const res = await moved
+    expect(res.ok()).toBeTruthy()
+    expect(JSON.parse(res.request().postData() ?? '{}')).toEqual({ fromDay: 0, fromMeal: 'dinner', toDay: 1, toMeal: 'lunch' })
+    await expect(page.locator('[data-day-column="1"]')).toContainText('Cenamos fuera', { timeout: 10_000 })
+  })
+
+  test('a recipe dragged onto a written dish swaps them', async ({ page }) => {
+    test.setTimeout(90_000)
+    await weekWithNoteDinnerOnMonday(page)
+
+    await page.goto('/menu')
+    const note = page.locator('[data-day-column="0"] [aria-roledescription="plato arrastrable"]').filter({ hasText: 'Cenamos fuera' })
+    await expect(note).toBeVisible({ timeout: 20_000 })
+    const recipe = page.locator('[data-day-column="1"] [aria-roledescription="plato arrastrable"]').first()
+
+    const moved = moveSlotResponse(page)
+    await dragTo(page, recipe, note)
+    const res = await moved
+    expect(res.ok()).toBeTruthy()
+    expect(JSON.parse(res.request().postData() ?? '{}')).toEqual({ fromDay: 1, fromMeal: 'lunch', toDay: 0, toMeal: 'dinner' })
+    await expect(page.locator('[data-day-column="1"]')).toContainText('Cenamos fuera', { timeout: 10_000 })
+  })
+
   // Miguel, 2026-10-19: «al ponerte sobre la cena u otra comida estaría bien
   // que la imagen cambiase a la de ese plato».
   test('hovering a day\'s dinner line shows its photo on the tile', async ({ page }) => {

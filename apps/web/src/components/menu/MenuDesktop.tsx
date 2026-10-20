@@ -267,18 +267,24 @@ export function MenuDesktop(p: Props) {
 
 /* ─────────────────────────── Drag and drop ─────────────────────────── */
 
-/** A slot's DnD wiring: droppable always, draggable when it holds a recipe. */
+/**
+ * A slot's DnD wiring: droppable always, draggable when it holds a dish — a
+ * recipe or a written one («Cenamos fuera»; until 2026-10-20 only recipes
+ * moved, and pulling a note selected the page instead).
+ */
 function useSlotDnd(scope: DndScope, d: number, meal: MealKey, slot: MealSlot) {
   const first = firstRecipeDish(slot)
+  const dishes = slot.dishes ?? []
+  const movable = dishes.length > 0
+  const name =
+    first?.recipeName ?? (dishes.map((x) => (x.kind === "note" ? x.text : "")).filter(Boolean).join(", ") || mealLabel(meal))
   const drop = useDroppable({ id: `${scope}-slot-${d}-${meal}`, data: { day: d, meal } })
   const drag = useDraggable({
     id: `${scope}-dish-${d}-${meal}`,
-    disabled: !first,
-    data: first
-      ? ({ day: d, meal, name: first.recipeName ?? "Receta", imageUrl: first.imageUrl ?? null } satisfies DragData)
-      : undefined,
+    disabled: !movable,
+    data: movable ? ({ day: d, meal, name, imageUrl: first?.imageUrl ?? null } satisfies DragData) : undefined,
   })
-  return { first, drop, drag }
+  return { first, movable, drop, drag }
 }
 
 /** A meal the day lacks: dropping a dish here moves it to that meal. */
@@ -328,7 +334,7 @@ function HeroSlot({
   className?: string
   children: ReactNode
 }) {
-  const { first, drop, drag } = useSlotDnd(scope, d, meal, slot)
+  const { movable, drop, drag } = useSlotDnd(scope, d, meal, slot)
   const onPointerDown = drag.listeners?.onPointerDown as ((e: React.PointerEvent) => void) | undefined
   return (
     <div
@@ -338,7 +344,7 @@ function HeroSlot({
       }}
       data-dnd-slot={`${d}-${meal}`}
       onPointerDown={
-        first && onPointerDown
+        movable && onPointerDown
           ? (e) => {
               if (e.currentTarget.contains(e.target as Node)) onPointerDown(e)
             }
@@ -637,7 +643,7 @@ function SlotTile({
 }: SlotCellProps & { peeks: { meal: MealKey; src: string | null }[]; peek: MealKey | null }) {
   const ctl = useMealOptions()
   const props = slotProps(s.meal, s.slot)
-  const { first, drop, drag } = useSlotDnd("week", d, s.meal, s.slot)
+  const { first, movable, drop, drag } = useSlotDnd("week", d, s.meal, s.slot)
   const empty = (s.slot.dishes ?? []).length === 0
   const title = first?.recipeName ?? (s.slot.dishes ?? []).map((x) => (x.kind === "note" ? x.text : "")).join(", ")
   const cover = (
@@ -671,8 +677,8 @@ function SlotTile({
       }}
       {...drag.listeners}
       onClickCapture={swallowClickAfterDrag}
-      {...(first ? { tabIndex: 0, "aria-roledescription": "plato arrastrable", "aria-describedby": drag.attributes["aria-describedby"] } : {})}
-      aria-label={first ? `${mealLabel(s.meal)}: ${title}. Pulsa espacio para moverlo a otro día` : undefined}
+      {...(movable ? { tabIndex: 0, "aria-roledescription": "plato arrastrable", "aria-describedby": drag.attributes["aria-describedby"] } : {})}
+      aria-label={movable ? `${mealLabel(s.meal)}: ${title}. Pulsa espacio para moverlo a otro día` : undefined}
       className={`group relative flex flex-col gap-2 rounded-[16px] outline-none transition-opacity focus-visible:ring-2 focus-visible:ring-ink ${
         drag.isDragging ? "opacity-30" : ""
       } ${drop.isOver ? "ring-2 ring-ink/50 ring-offset-2 ring-offset-cream" : ""}`}
@@ -740,7 +746,7 @@ function SlotLine({
 }: SlotCellProps & { onPeek: (on: boolean) => void }) {
   const ctl = useMealOptions()
   const props = slotProps(s.meal, s.slot)
-  const { first, drop, drag } = useSlotDnd("week", d, s.meal, s.slot)
+  const { first, movable, drop, drag } = useSlotDnd("week", d, s.meal, s.slot)
   const empty = (s.slot.dishes ?? []).length === 0
   const text =
     first?.recipeName ?? (s.slot.dishes ?? []).map((x) => (x.kind === "note" ? x.text : "")).filter(Boolean).join(", ")
@@ -758,8 +764,8 @@ function SlotLine({
       onMouseLeave={() => onPeek(false)}
       onFocus={() => onPeek(true)}
       onBlur={() => onPeek(false)}
-      {...(first ? { tabIndex: 0, "aria-roledescription": "plato arrastrable", "aria-describedby": drag.attributes["aria-describedby"] } : {})}
-      aria-label={first ? `${mealLabel(s.meal)}: ${text}. Pulsa espacio para moverlo a otro día` : undefined}
+      {...(movable ? { tabIndex: 0, "aria-roledescription": "plato arrastrable", "aria-describedby": drag.attributes["aria-describedby"] } : {})}
+      aria-label={movable ? `${mealLabel(s.meal)}: ${text}. Pulsa espacio para moverlo a otro día` : undefined}
       className={`group relative flex min-h-[36px] items-start gap-1 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ink ${
         drag.isDragging ? "opacity-30" : ""
       } ${drop.isOver ? "bg-paper ring-2 ring-ink/50" : ""}`}

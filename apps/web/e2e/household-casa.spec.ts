@@ -95,8 +95,14 @@ test.describe('390 px', () => {
     await button.click()
     expect((await shared).status()).toBe(204)
 
-    // The link expires in 30 days (shown as «Caduca <día mes>»).
-    const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })
+    // The link expires in 30 days (shown as «Caduca <día mes>»). The browser
+    // runs in Madrid time (playwright.config.ts) and the runner in UTC: the
+    // date is computed in Madrid, or it fails from 00:00 to 02:00 (PRO-303).
+    const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('es-ES', {
+      day: '2-digit',
+      month: 'short',
+      timeZone: 'Europe/Madrid',
+    })
     await expect(page.getByText(`Caduca ${expires}`).first()).toBeVisible()
   })
 })

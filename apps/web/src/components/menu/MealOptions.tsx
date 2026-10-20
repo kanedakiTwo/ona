@@ -34,6 +34,7 @@ import {
   Replace,
   RotateCcw,
   Shuffle,
+  Snowflake,
   Tag,
   Trash2,
   Unlock,
@@ -88,6 +89,8 @@ export interface SlotHandlers {
   editNote: (position: number, text: string) => void
   /** PRO-74: the slot's dishes become this written dish (a note). */
   replaceWithNote: (text: string) => void
+  /** «Es del congelador» / «No es del congelador» on the recipe dish at `position` (2026-10-20). */
+  setFreezer: (position: number, on: boolean) => void
   /** PRO-223: mark / unmark this meal as the táper of the dinner before. */
   setTaper?: (on: boolean) => void
 }
@@ -107,6 +110,8 @@ export interface SlotContext {
   /** PRO-223: name of the dinner before («Lentejas», cena del lunes) when this meal can be its táper. */
   taperFrom?: { dayLabel: string; recipeName: string } | null
   isRegenerating?: boolean
+  /** Other days eat this slot's leftovers: it's the batch, never a freezer táper. */
+  feedsLeftovers?: boolean
 }
 
 /** Servings a menu dish opens its recipe / cook mode with (PRO-75). */
@@ -177,6 +182,10 @@ export function MealOptionsSheets({
   // A táper (freezer PRO-82, fridge PRO-240) is a given dish: no Elegir / Cambiar / Tipo / Vetar.
   const fromFreezer = first?.variant === "freezer" || first?.variant === "fridge"
   const canReshape = isSingleRecipe && !isLeftover && !fromFreezer
+  // A dish already in the menu can be a freezer táper you have (Miguel, 2026-10-20), unless it's
+  // the batch of planned leftovers (a táper for tomorrow included) or already a fridge táper.
+  const isFreezer = first?.variant === "freezer"
+  const canFreeze = isSingleRecipe && !isLeftover && first?.variant !== "fridge" && (isFreezer || !ctx.feedsLeftovers)
   const pinnedType = first?.pinnedType ?? null
   const label = mealLabel(ctx.meal)
   const locked = ctx.isLocked
@@ -230,6 +239,18 @@ export function MealOptionsSheets({
                 }}
               />
             </>
+          )}
+          {canFreeze && (
+            <SheetAction
+              icon={Snowflake}
+              label={isFreezer ? "No es del congelador" : "Es del congelador"}
+              hint={lockedHint ?? (isFreezer ? "Vuelve a sumar a la compra" : "Un táper que ya tienes: no suma a la compra")}
+              disabled={locked}
+              onClick={() => {
+                handlers.setFreezer(0, !isFreezer)
+                close()
+              }}
+            />
           )}
           <SheetAction
             icon={Plus}

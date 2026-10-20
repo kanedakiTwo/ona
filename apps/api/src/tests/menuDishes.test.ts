@@ -9,6 +9,7 @@ import {
   coursesFor,
   slotWithDishes,
   moveSlotInWeek,
+  isLeftoverSource,
 } from '../services/menuDishes.js'
 
 const r = (id: string, course?: 'starter' | 'main' | 'dessert'): RecipeDish => ({
@@ -77,6 +78,32 @@ describe('patchDish', () => {
     const before: Dish[] = [{ kind: 'note', text: 'x' }]
     const after = patchDish(before, 0, { pinnedType: 'legumbres' })
     expect(after[0]).toEqual(before[0])
+  })
+  // Miguel, 2026-10-20: a dish already in the menu can be marked «del congelador».
+  it('marks a recipe dish as a freezer táper and back', () => {
+    const frozen = patchDish([r('a')], 0, { variant: 'freezer' })
+    expect((frozen[0] as RecipeDish).variant).toBe('freezer')
+    expect((patchDish(frozen, 0, { variant: 'planned' })[0] as RecipeDish).variant).toBe('planned')
+  })
+  it('never turns a leftover or a note into a freezer táper', () => {
+    const leftover: Dish = { ...r('a'), variant: 'leftover', leftoverOf: { day: 0, meal: 'lunch', dishPosition: 0 } }
+    expect(patchDish([leftover], 0, { variant: 'freezer' })[0]).toEqual(leftover)
+    const note: Dish = { kind: 'note', text: 'x' }
+    expect(patchDish([note], 0, { variant: 'freezer' })[0]).toEqual(note)
+  })
+})
+
+describe('isLeftoverSource', () => {
+  const leftoverOf = (day: number, meal: string, dishPosition = 0): Dish => ({
+    ...r('a'),
+    variant: 'leftover',
+    leftoverOf: { day, meal, dishPosition },
+  })
+  it('true when another slot of the week eats its leftovers', () => {
+    const days: DayMenu[] = [{ lunch: { dishes: [r('a')] } }, { dinner: { dishes: [leftoverOf(0, 'lunch')] } }]
+    expect(isLeftoverSource(days, 0, 'lunch', 0)).toBe(true)
+    expect(isLeftoverSource(days, 0, 'lunch', 1)).toBe(false)
+    expect(isLeftoverSource(days, 1, 'dinner', 0)).toBe(false)
   })
 })
 

@@ -194,3 +194,31 @@ export async function useE2ECampaign(page: Page): Promise<void> {
 export function e2eInvite(): { inviteCode?: string } {
   return process.env.E2E_CAMPAIGN_CODE ? { inviteCode: process.env.E2E_CAMPAIGN_CODE } : {}
 }
+
+type WeekMenu = { id: string; days: Record<string, { dishes?: { kind: string; recipeId?: string }[] } | undefined>[] }
+
+/**
+ * Add `meal` to `day` with a recipe (the slot must be absent or empty). The
+ * API leaves it empty when its matcher finds nothing — the small CI
+ * catalogue runs out of free recipes — so then pin one of the week's.
+ */
+export async function addMealWithRecipe(
+  page: Page,
+  headers: Record<string, string>,
+  menu: WeekMenu,
+  day: number,
+  meal: string,
+) {
+  const apiUrl = process.env.API_URL ?? 'http://localhost:8765'
+  const url = `${apiUrl}/menu/${menu.id}/day/${day}/meal/${meal}`
+  const r = await page.request.post(url, { headers })
+  if (r.ok()) {
+    const after = (await r.json()) as WeekMenu
+    if (after.days[day]?.[meal]?.dishes?.some((d) => d.kind === 'recipe')) return r
+  }
+  const recipeId = menu.days
+    .flatMap((d) => Object.values(d ?? {}))
+    .flatMap((s) => s?.dishes ?? [])
+    .find((d) => d.kind === 'recipe')?.recipeId
+  return page.request.post(url, { headers, data: { recipeId } })
+}

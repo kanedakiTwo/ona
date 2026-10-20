@@ -58,8 +58,17 @@ test('«Añadir comida → Del congelador» adds the táper with its label and t
   }
   await expect(page.getByText('Cena · no suma a la compra')).toBeVisible({ timeout: 10_000 })
   const picker = page.getByRole('dialog').filter({ has: page.getByPlaceholder('Buscar receta…') })
-  // Any recipe will do: the list must not change, whichever it is.
-  await picker.getByRole('button').filter({ hasNotText: /^$/ }).filter({ hasNot: page.getByLabel('Cerrar') }).last().click()
+  // Any recipe will do — the list must not change, whichever it is — but not
+  // one today's other meals already have: their «Empezar a cocinar» would point
+  // at the same recipe and the check below would read it as the táper's.
+  const todayNames: string[] = Object.values(menu.days[today] ?? {})
+    .flatMap((slot: any) => slot?.dishes ?? [])
+    .filter((d: { kind: string }) => d.kind === 'recipe')
+    .map((d: { recipeName?: string }) => d.recipeName ?? '')
+    .filter(Boolean)
+  let choices = picker.getByRole('button').filter({ hasNotText: /^$/ }).filter({ hasNot: page.getByLabel('Cerrar') })
+  for (const name of todayNames) choices = choices.filter({ hasNotText: name })
+  await choices.last().click()
 
   await expect(page.getByText('Del congelador · no suma a la compra')).toBeVisible({ timeout: 10_000 })
   const after = await (await page.request.get(`${API}/menu/${userId}/${weekStart}`, { headers })).json()

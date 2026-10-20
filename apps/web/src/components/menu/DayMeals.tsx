@@ -7,6 +7,8 @@
  *     Fraunces title, ink pill "Empezar a cocinar" (→ cook mode) and "···";
  *   - the other meals as horizontal rows (photo, eyebrow, title) + "···";
  *   - empty slots as one quiet "Añadir plato" card + "···";
+ *   - a meal the rest of the week has and this day lacks as «El viernes no
+ *     hay comida» + «Añadir» (`absentMeals`), so a dinner can't pass for lunch;
  *   - a quiet day footer: "Añadir comida" (missing slots) and "Saltar día".
  * Used full-bleed on mobile and inside the desktop hero row.
  */
@@ -17,7 +19,7 @@ import { BookOpen, CalendarX, Check, Lock, Play, Plus, Refrigerator, RotateCw, S
 import { FreezerDishSheets, type TaperVariant } from "./FreezerDishSheets"
 import { isTaperDish, type Dish, type MealSlot, type RecipeDish } from "@ona/shared"
 import { mealLabel } from "@/lib/labels"
-import { firstRecipeDish, mealEyebrow, slotMinutes, type DaySlot, type MealKey } from "@/lib/menuDay"
+import { DAY_MEAL_ORDER, firstRecipeDish, mealEyebrow, slotMinutes, type DaySlot, type MealKey } from "@/lib/menuDay"
 import { RecipeCover, mealIconFor } from "./RecipeCover"
 import { ConfirmSheet, MenuSheet, SheetAction } from "./MenuSheet"
 import {
@@ -365,6 +367,61 @@ export function EmptyMealCard({
   )
 }
 
+/* ─────────────────────────── Absent meal ─────────────────────────── */
+
+/** The day's meals the rest of the week has and it lacks (`absentMeals`). */
+export interface AbsentMeals {
+  meals: MealKey[]
+  dayName: string
+  isAdding: boolean
+  onAdd: (meal: MealKey) => void
+}
+
+/**
+ * «El viernes no hay comida» + «Añadir» (Miguel, 2026-10-19: the day's
+ * dinner passed for its lunch). «Añadir» creates the slot, same as
+ * «Añadir comida → Comida».
+ */
+export function AbsentMealCard({
+  meal,
+  dayName,
+  isAdding,
+  onAdd,
+  readOnly,
+  compact = false,
+}: Omit<AbsentMeals, "meals"> & { meal: MealKey; readOnly: boolean; compact?: boolean }) {
+  const label = mealLabel(meal)
+  const Icon = mealIconFor(meal)
+  return (
+    <div
+      data-testid="absent-meal"
+      data-meal={meal}
+      className={`flex items-center gap-3 rounded-2xl border border-dashed border-border p-1.5 pl-2.5 ${compact ? "" : "mx-4"}`}
+    >
+      <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-bone text-clay">
+        <Icon size={18} strokeWidth={1.6} />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col py-1">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">{label}</span>
+        <span className="text-[15px] italic text-ink-mid">
+          El {dayName} no hay {label.toLowerCase()}
+        </span>
+      </span>
+      {!readOnly && (
+        <button
+          type="button"
+          onClick={() => onAdd(meal)}
+          disabled={isAdding}
+          aria-label={`Añadir ${label.toLowerCase()} al ${dayName}`}
+          className="inline-flex min-h-[44px] shrink-0 items-center gap-1 rounded-full border border-border bg-paper px-3.5 text-[14px] font-medium text-ink transition-colors hover:border-ink disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-ink"
+        >
+          <Plus size={14} /> Añadir
+        </button>
+      )}
+    </div>
+  )
+}
+
 /* ───────────────────────── Skipped day ───────────────────────── */
 
 export function SkippedDay({ readOnly, onUnskip }: { readOnly: boolean; onUnskip: () => void }) {
@@ -438,7 +495,7 @@ export function DayFooter({
         message="Se quitan sus platos, salvo los fijados. Con «Reactivar día» puedes volver a llenarlo."
         confirmLabel="Saltar día"
       />
-      <MenuSheet open={open} onClose={() => setOpen(false)} eyebrow="Solo afecta a esta semana" title="Añadir comida">
+      <MenuSheet open={open} onClose={() => setOpen(false)} eyebrow="Solo afecta a esta semana" title={`Añadir comida al ${dayName}`}>
         <div className="flex flex-col gap-0.5">
           {missing.map((m) => (
             <SheetAction
@@ -496,11 +553,13 @@ export function DayFooter({
 export function DayMeals({
   featured,
   rest,
+  absent,
   slotProps,
   readOnly,
 }: {
   featured: DaySlot | null
   rest: DaySlot[]
+  absent?: AbsentMeals
   slotProps: SlotPropsFn
   readOnly: boolean
 }) {
@@ -513,9 +572,22 @@ export function DayMeals({
         </div>
       )}
       <div className={`flex flex-col gap-3.5 ${featured ? "mt-3.5" : "mt-4"}`}>
-        {rest.map(({ meal, slot }) => (
-          <MealRow key={meal} {...slotProps(meal, slot)} readOnly={readOnly} />
-        ))}
+        {DAY_MEAL_ORDER.map((m) => {
+          const s = rest.find((r) => r.meal === m)
+          if (s) return <MealRow key={m} {...slotProps(m, s.slot)} readOnly={readOnly} />
+          if (absent?.meals.includes(m))
+            return (
+              <AbsentMealCard
+                key={m}
+                meal={m}
+                dayName={absent.dayName}
+                isAdding={absent.isAdding}
+                onAdd={absent.onAdd}
+                readOnly={readOnly}
+              />
+            )
+          return null
+        })}
       </div>
     </>
   )

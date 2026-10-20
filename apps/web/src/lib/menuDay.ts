@@ -108,20 +108,60 @@ export function orderedSlots(day: DayMenu | undefined | null): DaySlot[] {
 }
 
 /**
- * Split a day into the featured meal (the first one, in chronological
- * order, that has a recipe — it gets the photo hero and "Empezar a
- * cocinar") and the rest, which keep their chronological order. A day
- * with no recipe at all has no featured meal.
+ * Which meal takes the photo places first: lunch, then dinner; breakfast
+ * and snack only when neither has a recipe (Miguel, 2026-10-20: «la comida
+ * y la cena siempre en los lugares destacados»).
+ */
+export const FEATURED_MEAL_ORDER: MealKey[] = ["lunch", "dinner", "breakfast", "snack"]
+
+/**
+ * Split a day into the featured meal (the first one, in
+ * `FEATURED_MEAL_ORDER`, that has a recipe — it gets the photo hero and
+ * "Empezar a cocinar") and the rest, which keep their chronological order.
+ * A day with no recipe at all has no featured meal.
  */
 export function splitDay(day: DayMenu | undefined | null): { featured: DaySlot | null; rest: DaySlot[] } {
   const slots = orderedSlots(day)
-  const featured = slots.find((s) => firstRecipeDish(s.slot) != null) ?? null
+  const featured =
+    FEATURED_MEAL_ORDER.map((m) => slots.find((s) => s.meal === m)).find((s) => s && firstRecipeDish(s.slot) != null) ??
+    null
   return { featured, rest: slots.filter((s) => s !== featured) }
 }
 
 /** Meals the day doesn't have yet (what "Añadir comida" can create). */
 export function missingMeals(day: DayMenu | undefined | null): MealKey[] {
   return DAY_MEAL_ORDER.filter((m) => !day || day[m] == null)
+}
+
+/**
+ * Meals the rest of the week has and this day lacks (no slot at all), so the
+ * day can say «El viernes no hay comida» instead of letting its dinner pass
+ * for lunch (Miguel, 2026-10-19). A meal is the week's when at least half of
+ * the cooked (not skipped) days have it, and two at least: a household that
+ * never has lunch at home sees nothing. A skipped day lacks nothing.
+ */
+export function absentMeals(
+  days: (DayMenu | undefined | null)[],
+  dayIndex: number,
+  skippedDays: number[],
+): MealKey[] {
+  if (skippedDays.includes(dayIndex)) return []
+  const cooked = days.filter((_, i) => !skippedDays.includes(i))
+  const needed = Math.max(2, Math.ceil(cooked.length / 2))
+  return DAY_MEAL_ORDER.filter(
+    (m) => days[dayIndex]?.[m] == null && cooked.filter((d) => d?.[m] != null).length >= needed,
+  )
+}
+
+/** True when a leftover of the week points at this slot: it's the batch, so it can't be a freezer táper. */
+export function feedsLeftovers(days: (DayMenu | undefined | null)[], day: number, meal: string): boolean {
+  return days.some((d) =>
+    Object.values(d ?? {}).some((s) =>
+      ((s as MealSlot | undefined)?.dishes ?? []).some(
+        (x) => x.kind === "recipe" && x.variant === "leftover" && x.leftoverOf?.day === day && x.leftoverOf?.meal === meal,
+      ),
+    ),
+  )
 }
 
 /** Minutes shown for a slot: the first recipe's total time, else its prep time. */

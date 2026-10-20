@@ -12,6 +12,7 @@
 
 import { describe, expect, it } from 'vitest'
 import {
+  absentMeals,
   dayHeading,
   mealEyebrow,
   missingMeals,
@@ -87,6 +88,22 @@ describe('splitDay', () => {
     expect(rest.map((s) => s.meal)).toEqual(['breakfast', 'lunch'])
   })
 
+  // Miguel, 2026-10-20: «la comida y la cena siempre deberían ir en los
+  // lugares destacados; el desayuno y la merienda, en los huecos sin foto».
+  it('features lunch, then dinner, over a breakfast or a snack with a recipe', () => {
+    const full = {
+      breakfast: { dishes: [recipe('Tostadas')] },
+      lunch: { dishes: [recipe('Lentejas')] },
+      snack: { dishes: [recipe('Yogur')] },
+      dinner: { dishes: [recipe('Crema')] },
+    }
+    expect(splitDay(full).featured?.meal).toBe('lunch')
+    expect(splitDay(full).rest.map((s) => s.meal)).toEqual(['breakfast', 'snack', 'dinner'])
+    const noLunch = { breakfast: { dishes: [recipe('Tostadas')] }, dinner: { dishes: [recipe('Crema')] } }
+    expect(splitDay(noLunch).featured?.meal).toBe('dinner')
+    expect(splitDay({ breakfast: { dishes: [recipe('Tostadas')] }, lunch: { dishes: [] } }).featured?.meal).toBe('breakfast')
+  })
+
   it('a day without recipes has no featured meal', () => {
     expect(splitDay({ lunch: { dishes: [] } }).featured).toBeNull()
     expect(splitDay(undefined)).toEqual({ featured: null, rest: [] })
@@ -101,6 +118,37 @@ describe('splitDay', () => {
 describe('missingMeals', () => {
   it('lists the meals the day can still add', () => {
     expect(missingMeals({ lunch: { dishes: [] }, dinner: { dishes: [] } })).toEqual(['breakfast', 'snack'])
+  })
+})
+
+// Miguel, 2026-10-19: «no se ve que el viernes no hay comida». A day that
+// lacks a meal the rest of the week has says so («El viernes no hay comida»).
+describe('absentMeals', () => {
+  const both = { lunch: { dishes: [recipe('a')] }, dinner: { dishes: [recipe('b')] } }
+  const lunchOnly = { lunch: { dishes: [recipe('a')] } }
+  const dinnerOnly = { dinner: { dishes: [recipe('b')] } }
+
+  it('a day without the lunch the other days have', () => {
+    const days = [both, both, both, lunchOnly, dinnerOnly, {}, both]
+    expect(absentMeals(days, 4, [5])).toEqual(['lunch'])
+    expect(absentMeals(days, 3, [5])).toEqual(['dinner'])
+    expect(absentMeals(days, 0, [5])).toEqual([])
+  })
+  it('an empty slot is not absent: it already shows «Añadir plato»', () => {
+    const days = [both, both, both, both, { lunch: { dishes: [] }, dinner: { dishes: [recipe('b')] } }, both, both]
+    expect(absentMeals(days, 4, [])).toEqual([])
+  })
+  it('meals the week rarely has are not flagged (a household that never has lunch at home)', () => {
+    const days = [dinnerOnly, dinnerOnly, dinnerOnly, dinnerOnly, dinnerOnly, dinnerOnly, { ...dinnerOnly, breakfast: { dishes: [] } }]
+    expect(absentMeals(days, 0, [])).toEqual([])
+  })
+  it('a skipped day lacks nothing, and skipped days do not count', () => {
+    const days = [both, both, {}, {}, {}, {}, {}]
+    expect(absentMeals(days, 2, [2, 3, 4, 5, 6])).toEqual([])
+    expect(absentMeals(days, 2, [3, 4, 5, 6])).toEqual(['lunch', 'dinner'])
+  })
+  it('one day alone does not make a meal usual', () => {
+    expect(absentMeals([both, {}, {}, {}, {}, {}, {}], 1, [2, 3, 4, 5, 6])).toEqual([])
   })
 })
 

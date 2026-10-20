@@ -51,8 +51,10 @@ export interface ShoppingItem {
   haveSource?: 'checked' | 'inStock'
   /**
    * Menu items: how much of the line each week's dishes ask for (PRO-270),
-   * `{ <Monday YYYY-MM-DD>: amount }` in `unit`; adds up to `quantity`. Set by
-   * the rolling list. A tick covers the weeks it was made for, not others.
+   * `{ <Monday YYYY-MM-DD>: amount }` in `unit`, each as that week's own list
+   * asks (rounded on its own, so they can add up to a bit more than
+   * `quantity`). Set by the rolling list. A tick covers the weeks it was made
+   * for, not others.
    */
   weeks?: Record<string, number>
   /**

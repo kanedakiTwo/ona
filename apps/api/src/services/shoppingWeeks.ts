@@ -3,11 +3,14 @@ import type { ConvertQty } from './shoppingItemState.js'
 
 /**
  * How much of each line of the rolling list each week's dishes ask for
- * (PRO-270): `weeks = { <Monday>: amount }` in the line's unit, adding up to
- * its quantity. The rolling route aggregates the whole range once (the line
- * the household sees) and each week of it apart; this spreads the line over
- * those weeks in proportion, so a tick can say which weeks it was bought for
- * and the merluza bought for Saturday 17 doesn't tick Monday 26's.
+ * (PRO-270): `weeks = { <Monday>: amount }` in the line's unit. The rolling
+ * route aggregates the whole range once (the line the household sees) and
+ * each week of it apart; each week keeps the amount its own list asks
+ * (rounded up on its own, so the weeks can add up to a bit more than the
+ * line: 37,5 g of oil a week is «50 g» on «Esta semana»). A tick then says
+ * which weeks it was bought for, and the merluza bought for Saturday 17
+ * doesn't tick Monday 26's; ticking the two weeks and looking at «Esta
+ * semana» finds this week's whole amount bought.
  *
  * Week lines match a range line by ingredient (its own or a joined one,
  * PRO-177) and are converted to its unit; what can't be converted doesn't
@@ -38,9 +41,8 @@ export function withWeekShares(
       }
       if (total > 0) raw[week] = total
     }
-    const sum = Object.values(raw).reduce((a, b) => a + b, 0)
-    if (!(sum > 0)) return it
-    const weeks = Object.fromEntries(Object.entries(raw).map(([w, q]) => [w, Math.round((it.quantity * q * 1000) / sum) / 1000]))
+    if (Object.keys(raw).length === 0) return it
+    const weeks = Object.fromEntries(Object.entries(raw).map(([w, q]) => [w, Math.round(q * 1000) / 1000]))
     return { ...it, weeks }
   })
 }

@@ -303,7 +303,8 @@ function applyState(
       const c = conv(q)
       if (c != null && c > 0) weeks[w] = c
     }
-    have = Object.entries(it.weeks!).reduce((acc, [w, need]) => acc + Math.min(weeks![w] ?? 0, need), 0)
+    // Each week's amount is rounded on its own: never more than the line.
+    have = Math.min(it.quantity, Object.entries(it.weeks!).reduce((acc, [w, need]) => acc + Math.min(weeks![w] ?? 0, need), 0))
   }
   const mark: ShoppingItem['mark'] = { source: s.inStock ? 'inStock' : 'checked', quantity: total, ...(weeks ? { weeks } : {}) }
   const missing = roundMissing(it.quantity - have, it.unit)

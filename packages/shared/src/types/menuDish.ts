@@ -11,9 +11,10 @@ export interface RecipeDish {
   /**
    * `planned` (default) | `leftover` (cloned from a previous slot's recipe-dish)
    * | `freezer` (a táper from the freezer, PRO-82: linked to its recipe, never
-   * adds to the shopping list, whatever week it was cooked in).
+   * adds to the shopping list, whatever week it was cooked in)
+   * | `fridge` («Táper de la nevera», PRO-240: the same, kept in the fridge).
    */
-  variant?: 'planned' | 'leftover' | 'freezer'
+  variant?: 'planned' | 'leftover' | 'freezer' | 'fridge'
   /** Back-reference when `variant === 'leftover'`. Carries the dish position because a slot can have multiple recipes now. */
   leftoverOf?: { day: number; meal: string; dishPosition: number } | null
   /** Hydrated from `recipes.image_url` on every menu response; NOT persisted in JSONB. */
@@ -43,6 +44,14 @@ export function isRecipeDish(d: Dish): d is RecipeDish {
 
 export function isNoteDish(d: Dish): d is NoteDish {
   return d.kind === 'note'
+}
+
+/**
+ * A táper already cooked (PRO-82 freezer, PRO-240 fridge): linked to its
+ * recipe, never adds to the shopping list, nothing to cook.
+ */
+export function isTaperDish(d: Dish | null | undefined): boolean {
+  return !!d && d.kind === 'recipe' && (d.variant === 'freezer' || d.variant === 'fridge')
 }
 
 /** Returns only the recipe dishes, in their original order. */

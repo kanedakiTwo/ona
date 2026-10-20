@@ -13,7 +13,7 @@ import type {
   ShoppingItem,
   Unit,
 } from '@ona/shared'
-import { isNotBought, recipeDishesOf, resolveBuyRule, shoppingGroupOf } from '@ona/shared'
+import { isNotBought, isTaperDish, recipeDishesOf, resolveBuyRule, shoppingGroupOf } from '@ona/shared'
 import { randomUUID } from 'crypto'
 
 /**
@@ -215,6 +215,10 @@ export function withLeftoverBatches(weekDays: DayMenu[]): DayMenu[] {
       const kept = slot.dishes.filter((dish) => {
         if (dish.kind !== 'recipe' || dish.variant !== 'leftover' || !dish.leftoverOf) return true
         const source = weekDays[dish.leftoverOf.day]?.[dish.leftoverOf.meal as keyof DayMenu]
+        // PRO-240: the source became a táper (already cooked, in the fridge
+        // or freezer): its leftovers came out of that same batch — nothing
+        // to buy for them either.
+        if ((source?.dishes ?? []).some((d) => isTaperDish(d) && d.kind === 'recipe' && d.recipeId === dish.recipeId)) return false
         const sourceCooksIt = (source?.dishes ?? []).some(
           (d) => d.kind === 'recipe' && d.variant !== 'leftover' && d.recipeId === dish.recipeId,
         )
@@ -262,9 +266,9 @@ export function sumDinersByRecipe(
           ? slot.servings
           : householdMultiplier
       for (const dish of recipeDishesOf(slot.dishes)) {
-        // A táper from the freezer (PRO-82) was bought and cooked some other
-        // time: no ingredients, not a cooking.
-        if (dish.variant === 'freezer') continue
+        // A táper from the freezer (PRO-82) or the fridge (PRO-240) was
+        // bought and cooked some other time: no ingredients, not a cooking.
+        if (isTaperDish(dish)) continue
         out.set(dish.recipeId, (out.get(dish.recipeId) ?? 0) + diners)
         if (dish.variant !== 'leftover') timesCooked.set(dish.recipeId, (timesCooked.get(dish.recipeId) ?? 0) + 1)
       }

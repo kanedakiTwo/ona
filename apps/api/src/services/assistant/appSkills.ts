@@ -546,6 +546,7 @@ async function replaceBannedDishes(
       const dish = dishes[pos]
       if (dish.kind !== 'recipe' || dish.recipeId !== recipeId || dish.variant === 'leftover') continue
       if (dish.variant === 'freezer') { kept.push(`${label(d, meal)} (es un taper del congelador)`); continue }
+      if (dish.variant === 'fridge') { kept.push(`${label(d, meal)} (es un taper de la nevera)`); continue }
       if (locked[String(d)]?.[meal]) { kept.push(`${label(d, meal)} (esta fijada)`); continue }
       const name = await regenerate(d, meal, pos)
       if (!name) { kept.push(`${label(d, meal)} (no hay otra receta que encaje)`); continue }
@@ -616,17 +617,19 @@ const setLeftovers: SkillDefinition = {
 
 // PRO-82: a táper from the freezer is a dish linked to its recipe that never
 // adds to the shopping list (`variant: 'freezer'`), whatever week it was
-// cooked in.
+// cooked in. PRO-240: the same in the fridge (`variant: 'fridge'`,
+// «Táper de la nevera»); Mimo picks by what the household says.
 const addFreezerDish: SkillDefinition = {
   name: 'add_freezer_dish',
   description:
-    'Pone en una comida un taper del congelador ("esta noche comemos taper de lentejas", "el jueves tiramos de las albondigas congeladas"). Queda enlazado a su receta con la etiqueta "Del congelador" y NO suma nada a la lista de la compra. Por defecto sustituye lo que hubiera en esa comida. Para sobras de otra comida de la misma semana usa set_leftovers.',
+    'Pone en una comida un taper ya cocinado ("esta noche comemos taper de lentejas", "el jueves tiramos de las albondigas congeladas", "hemos hecho batch y lo tenemos en tapers"). Queda enlazado a su receta con su nombre, sin "Empezar a cocinar", y NO suma nada a la lista de la compra (tampoco las sobras que salgan del mismo plato). place: "nevera" si el hogar dice que lo guarda en la nevera (o es para estos dias), "congelador" si esta congelado; si no lo dice, congelador. Por defecto sustituye lo que hubiera en esa comida. Para sobras de otra comida de la misma semana usa set_leftovers.',
   parameters: {
     type: 'object',
     properties: {
       ...dayMealProps,
       recipeName: { type: 'string', description: 'El plato del taper, sin "taper de" (ej. "lentejas")' },
       recipeId: { type: 'string' },
+      place: { type: 'string', enum: ['congelador', 'nevera'], description: 'Donde esta el taper. Por defecto congelador.' },
       keepDishes: { type: 'boolean', description: 'true para añadirlo sin quitar los platos de esa comida' },
     },
     required: ['meal', 'recipeName'],
@@ -652,11 +655,13 @@ const addFreezerDish: SkillDefinition = {
         changed(t, p.meal, { menuId: menu.id, note }),
       )
     }
-    await api(ctx)('POST', `${path}/dish`, { kind: 'recipe', recipeId: recipe.id, variant: 'freezer' })
+    const fridge = p.place === 'nevera'
+    const variant = fridge ? 'fridge' : 'freezer'
+    await api(ctx)('POST', `${path}/dish`, { kind: 'recipe', recipeId: recipe.id, variant })
     const approx = 'approximate' in recipe && recipe.approximate ? ` Es la receta mas parecida a "${p.recipeName}" que hay.` : ''
     return menuDone(
-      `Hecho: ${where(t, p.meal)} es "${recipe.name}" del congelador${removed}; no suma nada a la lista de la compra.${approx}`,
-      changed(t, p.meal, { menuId: menu.id, recipeId: recipe.id, recipeName: recipe.name, variant: 'freezer' }),
+      `Hecho: ${where(t, p.meal)} es "${recipe.name}", ${fridge ? 'taper de la nevera' : 'del congelador'}${removed}; no suma nada a la lista de la compra.${approx}`,
+      changed(t, p.meal, { menuId: menu.id, recipeId: recipe.id, recipeName: recipe.name, variant }),
     )
   },
 }

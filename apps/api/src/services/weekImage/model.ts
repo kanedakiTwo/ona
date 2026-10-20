@@ -89,7 +89,11 @@ function imageDish(d: Dish | null | undefined): WeekImageDish | null {
   }
   if (d.kind === 'recipe') {
     const base = stripEmoji(d.recipeName?.trim() || '') || 'Receta sin nombre'
-    const name = d.variant === 'freezer' ? `${base} (del congelador)` : d.variant === 'leftover' ? `${base} (sobras)` : base
+    const name = d.variant === 'freezer'
+      ? `${base} (del congelador)`
+      : d.variant === 'fridge'
+        ? `${base} (táper de la nevera)`
+        : d.variant === 'leftover' ? `${base} (sobras)` : base
     return { name, recipeId: d.recipeId || null }
   }
   return null

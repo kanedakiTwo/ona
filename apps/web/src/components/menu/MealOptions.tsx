@@ -68,7 +68,7 @@ import { AddDishSheet } from "./AddDishSheet"
 import { DishRow } from "./DishRow"
 
 export type DishPayload =
-  | { kind: "recipe"; recipeId: string; variant?: "planned" | "freezer" }
+  | { kind: "recipe"; recipeId: string; variant?: "planned" | "freezer" | "fridge" }
   | { kind: "note"; text: string }
 
 /** Mutations for one (day, meal) slot. Built once per slot by the page. */
@@ -174,8 +174,8 @@ export function MealOptionsSheets({
   const first = dishes.find((d): d is RecipeDish => d.kind === "recipe") ?? null
   const isSingleRecipe = dishes.length === 1 && dishes[0].kind === "recipe"
   const isLeftover = first?.variant === "leftover"
-  // A freezer táper (PRO-82) is a given dish: no Elegir / Cambiar / Tipo / Vetar.
-  const fromFreezer = first?.variant === "freezer"
+  // A táper (freezer PRO-82, fridge PRO-240) is a given dish: no Elegir / Cambiar / Tipo / Vetar.
+  const fromFreezer = first?.variant === "freezer" || first?.variant === "fridge"
   const canReshape = isSingleRecipe && !isLeftover && !fromFreezer
   const pinnedType = first?.pinnedType ?? null
   const label = mealLabel(ctx.meal)

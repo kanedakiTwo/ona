@@ -437,7 +437,7 @@ export function useAddDish() {
       day: number
       meal: string
       payload:
-        | { kind: 'recipe'; recipeId: string; course?: string | null; pinnedType?: string | null; variant?: 'planned' | 'freezer' }
+        | { kind: 'recipe'; recipeId: string; course?: string | null; pinnedType?: string | null; variant?: 'planned' | 'freezer' | 'fridge' }
         | { kind: 'note'; text: string }
     }) => {
       const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}/dish`

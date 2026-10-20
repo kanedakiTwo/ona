@@ -297,11 +297,11 @@ export default function MenuPage() {
     generateMenu.mutate({ userId: user.id, weekStart, empty: true, force: true })
   }
 
-  /** «Añadir comida → Del congelador» (PRO-82): a táper that adds nothing to the list. */
-  function addFreezerDish(day: number, meal: string, recipeId: string) {
+  /** «Añadir comida → Del congelador / Táper de la nevera» (PRO-82, PRO-240): a táper that adds nothing to the list. */
+  function addFreezerDish(day: number, meal: string, recipeId: string, variant: "freezer" | "fridge" = "freezer") {
     if (!menu) return
     haptic.light()
-    addDish.mutate({ menuId: menu.id, day, meal, payload: { kind: "recipe", recipeId, variant: "freezer" } })
+    addDish.mutate({ menuId: menu.id, day, meal, payload: { kind: "recipe", recipeId, variant } })
   }
 
   /** Per-slot mutations + context, shared by every view. */
@@ -848,7 +848,7 @@ export default function MenuPage() {
                     haptic.medium()
                     skipDay.mutate({ menuId: menu.id, day: selectedDay })
                   }}
-                  onAddFreezer={(meal, recipeId) => addFreezerDish(selectedDay, meal, recipeId)}
+                  onAddFreezer={(meal, recipeId, variant) => addFreezerDish(selectedDay, meal, recipeId, variant)}
                 />
               </div>
             )}

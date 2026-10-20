@@ -288,35 +288,45 @@ export function createUsdaClient(opts?: { apiKey?: string; cacheDir?: string }):
     ): Promise<UsdaSearchResult[]> {
       const apiKey = resolveKey()
       const limit = Math.max(1, Math.min(50, opts?.limit ?? 10))
-      const params = new URLSearchParams({
-        query,
-        pageSize: String(limit),
-        api_key: apiKey,
-      })
-      if (opts?.preferDataTypes && opts.preferDataTypes.length > 0) {
+      const types = opts?.preferDataTypes ?? []
+      // USDA answers 400 to about half the searches that name «Survey
+      // (FNDDS)» (2026-10-21; the same URL alternates 400/200). Try twice,
+      // then without the types with parentheses, so auto-create doesn't
+      // save an ingredient with no nutrition because of it.
+      const plain = types.filter((t) => !t.includes('('))
+      const attempts = plain.length < types.length ? [types, types, plain] : [types]
+
+      let res: Response | null = null
+      let lastMsg = ''
+      for (const dataTypes of attempts) {
+        const params = new URLSearchParams({
+          query,
+          pageSize: String(limit),
+          api_key: apiKey,
+        })
         // USDA allows repeated dataType params.
-        for (const dt of opts.preferDataTypes) params.append('dataType', dt)
-      }
-
-      const url = `${FDC_BASE}/foods/search?${params.toString()}`
-      let res: Response
-      try {
-        res = await fetch(url)
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        throw new UsdaError(`USDA search network error: ${truncate(msg)}`)
-      }
-
-      if (!res.ok) {
+        for (const dt of dataTypes) params.append('dataType', dt)
+        const url = `${FDC_BASE}/foods/search?${params.toString()}`
+        try {
+          res = await fetch(url)
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          throw new UsdaError(`USDA search network error: ${truncate(msg)}`)
+        }
+        if (res.ok) break
         let body = ''
         try {
           body = await res.text()
         } catch {
           /* ignore */
         }
-        const msg = `USDA search failed status=${res.status} body=${truncate(body)}`
-        console.error(`[usda] ${msg}`)
-        throw new UsdaError(msg, undefined, res.status)
+        lastMsg = `USDA search failed status=${res.status} body=${truncate(body)}`
+        if (res.status !== 400) break
+      }
+
+      if (!res || !res.ok) {
+        console.error(`[usda] ${lastMsg}`)
+        throw new UsdaError(lastMsg, undefined, res?.status)
       }
 
       const json = (await res.json()) as { foods?: Array<Record<string, unknown>> }

@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { ingredients } from '../db/schema.js'
-import { suggestIngredient } from './ingredientAutoCreate.js'
+import { pickNutritionCandidate, suggestIngredient } from './ingredientAutoCreate.js'
 import { tokenSetMatch } from './ingredientTokenMatch.js'
 import { disambiguateIngredients } from './ingredientMatcherLLM.js'
 import { inferAllergenTagsFromName } from './nutrition/allergens.js'
@@ -130,9 +130,7 @@ async function autoCreateMissingIngredient(
 
   try {
     const suggestion = await suggestIngredient(trimmed, { limit: 3 })
-    const top = suggestion.candidates.find(
-      (c) => c.dataType === 'Foundation' || c.dataType === 'SR Legacy',
-    ) ?? suggestion.candidates[0]
+    const top = pickNutritionCandidate(suggestion.candidates)
     if (top) {
       bestFdcId = top.fdcId
       nutrition = top.per100g

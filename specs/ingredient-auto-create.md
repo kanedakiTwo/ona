@@ -132,6 +132,7 @@ USDA fetches are sequential to stay within the rate budget. Each extracted recip
 ## Constraints
 
 - When two lines of one import create the same new ingredient (two «aceite de oliva suave» lines), the second insert hits the unique name and reuses the row the first created (`isUniqueViolation` in `recipeExtractor.ts` reads the Postgres code on the error or on Drizzle's `cause`; until 2026-10-20 it only read the error, so the recipe was rejected with «sin ingrediente en el catálogo»).
+- USDA's search answers 400 to about half the requests that name the «Survey (FNDDS)» data type (seen 2026-10-21: the same URL alternates 400/200), and a failed search left the new ingredient as a zero-nutrition stub. The client retries once and then searches without that type (`searchByName` in `usdaClient.ts`). Ingredients already saved with no nutrition are filled with `scripts/refillIngredientNutrition.ts` (same lookup as auto-create, `pickNutritionCandidate`; `--queries=<json>` takes curated English queries), then `recomputeRecipeNutrition.ts --only=<ids>` for the recipes it lists.
 - A recipe that uses an ingredient created seconds before is saved against a fresh catalogue: `persistRecipe` keeps a 1-minute cache of the ingredient catalogue and reloads it when the recipe names an ingredient the cache doesn't have (`catalogCacheIsUsable` in `recipePersistence.ts`). Until 2026-10-20 the stale cache made the reviewer reject steps that named the new ingredient («El paso 6 menciona "pasta"…» with «pasta lazos» just created), and the recipe's allergens and nutrition left it out.
 - The es→en translation dictionary lives next to `ingredientAutoCreate.ts`; extending it is a one-line PR. For dishes USDA doesn't recognise, the user always has the "Crear sin nutrición" escape hatch.
 - Branded USDA entries are excluded server-side. The product team chose Foundation/SR Legacy/FNDDS to avoid serving-size confusion; Branded entries store nutrition per arbitrary serving and would corrupt aggregations.
@@ -155,6 +156,7 @@ USDA fetches are sequential to stay within the rate budget. Each extracted recip
 - [apps/api/src/services/nutrition/allergens.ts](../apps/api/src/services/nutrition/allergens.ts) — `inferAllergenTagsFromName`
 - [apps/api/src/services/recipeExtractor.ts](../apps/api/src/services/recipeExtractor.ts) — auto-creates unknown extracted ingredients
 - [apps/api/scripts/applyRegeneratedRecipes.ts](../apps/api/scripts/applyRegeneratedRecipes.ts) — `--auto-create-missing` flag
+- [apps/api/scripts/refillIngredientNutrition.ts](../apps/api/scripts/refillIngredientNutrition.ts) — fills ingredients saved as zero-nutrition stubs
 - [apps/web/src/components/recipes/IngredientAutocomplete.tsx](../apps/web/src/components/recipes/IngredientAutocomplete.tsx) — picker + modal (manual search, translations, BEDCA, estimate button)
 - [apps/web/src/components/recipes/IngredientCandidateCard.tsx](../apps/web/src/components/recipes/IngredientCandidateCard.tsx) — shared candidate card for both modals
 - [apps/web/src/app/admin/sections/RemapModal.tsx](../apps/web/src/app/admin/sections/RemapModal.tsx) — re-map modal mirroring the auto-create UX

@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { awaitOnboardingAnalysis } from '../services/onboardingMemoryAnalysis.js'
 import { visibleAuthorIds, visibleRecipeWhere } from '../services/recipeVisibility.js'
 import { loadMatchableRecipes } from '../services/matchableRecipes.js'
 import { requestCatalogPhotos } from '../services/catalogImageOnDemand.js'
@@ -174,6 +175,10 @@ router.post('/menu/generate', authMiddleware, requireActiveAccount({ skip: (req)
       res.status(403).json({ error: 'No puedes generar el menú de otro usuario.' })
       return
     }
+
+    // PRO-242: right after the sign-up, the AI is still reading «Cuéntanos tu
+    // caso» (memory + who eats at home): wait for it, at most 15 s.
+    if (!empty) await awaitOnboardingAnalysis(userId)
 
     // PR 1B: writes dual-populate `household_id` so the column stays
     // consistent; loadPreviousWeek reads by household scope when it's on.

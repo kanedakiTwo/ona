@@ -7,7 +7,13 @@
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi
 const SAFE_PATH = /^(?:(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) )?\/[A-Za-z0-9/_:.-]*$/
 const ERROR_CLASS = /^(?:Uncaught\s+)?(?:\w+\.)?((?:[A-Z][A-Za-z]*)?(?:Error|Exception))\b/
-const ALLERGY = /alerg|al[eé]rgic|cel[ií]ac|intoleran|anafil|gluten|lactosa/i
+const ALLERGY = /al[eé]rg|cel[ií]a(?:c|qu)|intoleran|anafil|gluten|lactosa/i
+/**
+ * The web's own report of a failed or slow API call (`buildApiProblemMessage` in @ona/shared, numbers
+ * stored as `<n>`): a fixed format over a route pattern that only keeps lowercase route words.
+ */
+const API_PROBLEM =
+  /^API (?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) \/[a-z_.:/-]{0,200}(?: → HTTP (?:<n>|\d{3})|: sin respuesta \(red\)|: más de (?:<n>|\d+) s sin respuesta)$/
 
 /** A route or page without the query string and with ids as `:id`; anything odd becomes 'otra'. */
 export function normalisePath(raw: unknown): string | null {
@@ -16,9 +22,14 @@ export function normalisePath(raw: unknown): string | null {
   return SAFE_PATH.test(path) ? path.slice(0, 120) : 'otra'
 }
 
-/** The error class at the start of a message ('TypeError', 'ZodError'…), never the message. */
+/**
+ * The error class at the start of a message ('TypeError', 'ZodError'…), or the web's report of a
+ * failed API call as is ('API GET /menu/:id/:id → HTTP <n>'); never anything else of the message.
+ */
 export function errorType(message: unknown): string {
-  const m = ERROR_CLASS.exec(String(message ?? '').trim())
+  const text = String(message ?? '').trim()
+  if (API_PROBLEM.test(text)) return text
+  const m = ERROR_CLASS.exec(text)
   return m ? m[1] : 'other'
 }
 

@@ -14,7 +14,7 @@ One box for what users want to tell the team about Mimoia itself: suggestions, t
 ## API
 
 - `POST /feedback` (auth) `{ text, page?, channel? = 'app' }` → 201. 400 for empty, > 2000 characters or an unknown channel (`app | chat | whatsapp`).
-- `GET /admin/feedback?days=30&limit=200` (admin JWT, or `x-metrics-token` for the agents). Admin: `{ days, count, items[] }`, newest first, with `username` and `email`. Read token: counts only — `{ days, count, byChannel, byPage, possibleAllergies[] { date, channel } }` — no text, no identity (`services/agentView.ts`). `byPage` keys drop the query string and turn ids into `:id` (`none` when there is no page, `otra` for anything odd); a possible allergy is an opinion whose text mentions an allergy, coeliac disease, an intolerance, gluten or lactose, reported as its date and channel only. Since 2026-10-20 this replaces the masked text the token got with PRO-180. Tests: `feedback.test.ts`, `agentView.test.ts`.
+- `GET /admin/feedback?days=30&limit=200` (admin JWT, or `x-metrics-token` for the agents). Admin: `{ days, count, items[] }`, newest first, with `username` and `email`. Read token: counts only — `{ days, count, byChannel, byPage, possibleAllergies[] { date, channel } }` — no text, no identity (`services/agentView.ts`). `byPage` keys drop the query string and turn ids into `:id` (`none` when there is no page, `otra` for anything odd); a possible allergy is an opinion whose text mentions an allergy or allergens («alérg…»), coeliac disease («celíac…», «celiaquía»), an intolerance, anaphylaxis, gluten or lactose, reported as its date and channel only. Since 2026-10-20 this replaces the masked text the token got with PRO-180. Tests: `feedback.test.ts`, `agentView.test.ts`.
 
 ## Data
 

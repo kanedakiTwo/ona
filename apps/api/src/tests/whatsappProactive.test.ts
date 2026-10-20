@@ -157,7 +157,7 @@ describe('planProactive', () => {
     expect(r).toEqual([
       {
         kind: 'dinner_checkin',
-        messages: [{ type: 'buttons', text: '¿Hiciste hoy la cena (*Carrilleras de ternera*)? Así lo apunto.', buttons: [{ id: 'checkin:yes', title: 'Sí, la hice' }, { id: 'checkin:no', title: 'No' }] }],
+        messages: [{ type: 'buttons', text: '¿Hiciste hoy la cena (*Carrilleras de ternera*)? Así lo apunto.', buttons: [{ id: 'checkin:yes', title: 'Sí, hecho' }, { id: 'checkin:no', title: 'No' }] }],
         // PRO-156: the text above is the safety net; the guide says what a written one must carry.
         guide: expect.objectContaining({ kind: 'dinner_checkin', required: ['Carrilleras de ternera'] }),
       },

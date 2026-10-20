@@ -267,6 +267,18 @@ export async function recentOutboundBodies(phone: string, kind: string, limit = 
   return rows.map((r) => r.body ?? '').filter(Boolean)
 }
 
+/** PRO-274: the last bodies sent to this number among `kinds` (any of them), newest first. */
+export async function recentOutboundBodiesOfKinds(phone: string, kinds: readonly string[], limit = 3): Promise<string[]> {
+  if (kinds.length === 0) return []
+  const rows = await db
+    .select({ body: whatsappMessages.body })
+    .from(whatsappMessages)
+    .where(and(eq(whatsappMessages.phone, phone), eq(whatsappMessages.direction, 'out'), inArray(whatsappMessages.kind, [...kinds]), eq(whatsappMessages.status, 'sent')))
+    .orderBy(desc(whatsappMessages.createdAt))
+    .limit(limit)
+  return rows.map((r) => r.body ?? '').filter(Boolean)
+}
+
 export async function recentOutboundKinds(phone: string, since: Date): Promise<Map<string, Date>> {
   const rows = await db
     .select({ kind: whatsappMessages.kind, createdAt: whatsappMessages.createdAt })

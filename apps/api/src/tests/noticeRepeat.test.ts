@@ -65,6 +65,6 @@ describe('«¿hiciste la cena?» and «¿repetimos?» are one message', () => {
   it('keeps the plain question when the household rated it in the last 30 days', async () => {
     const r = await planProactive({ ...base, prefs: {}, parts: at22, askRating: async () => false })
     const m = r[0].messages[0]
-    expect(m.type === 'buttons' && m.buttons.map((b) => b.title)).toEqual(['Sí, la hice', 'No'])
+    expect(m.type === 'buttons' && m.buttons.map((b) => b.title)).toEqual(['Sí, hecho', 'No'])
   })
 })

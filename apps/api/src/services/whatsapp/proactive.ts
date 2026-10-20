@@ -3,6 +3,7 @@ import { mealEntriesForDay, recipeLinkLines, recipesOfDay, shortRecipeLink } fro
 import type { OutboundMessage } from './render.js'
 import type { GuideSpec } from './guided.js'
 import { taperReminderLine } from '../taper.js'
+import { agreementFacts } from './dishAgreement.js'
 import { freezerReviewDue, freezerReviewGuide, freezerReviewMessages, isFreezerReviewWindow, type FreezerItem } from './freezerReview.js'
 
 /**
@@ -182,15 +183,19 @@ export function dailyBriefGuide(day: DayMenu | null | undefined, webUrl: string)
   }
   facts.push(`Enlace «Ver menú»: Ver menú: ${webUrl}/menu`)
   required.push(`${webUrl}/menu`)
-  return { kind: 'daily_brief', facts, required: [...new Set(required)] }
+  // PRO-274: gender and number of each dish, so articles and adjectives agree.
+  const dishes = [...new Set(entries.flatMap((e) => e.dishes))]
+  facts.push(...agreementFacts(dishes))
+  return { kind: 'daily_brief', facts, required: [...new Set(required)], dishes }
 }
 
 export function cookingReminderGuide(name: string, totalMinutes: number, dinnerTime: string | null): GuideSpec {
   const at = hhmm(minutesOf(dinnerTime, DEFAULT_DINNER_MIN))
   return {
     kind: 'cooking_reminder',
-    facts: [`Plato de la cena: ${name}`, `Hora de la cena: ${at}`, `Lleva unos ${totalMinutes} min`],
+    facts: [`Plato de la cena: ${name}`, ...agreementFacts([name]), `Hora de la cena: ${at}`, `Lleva unos ${totalMinutes} min`],
     required: [name, at, String(totalMinutes)],
+    dishes: [name],
   }
 }
 
@@ -200,14 +205,31 @@ export function dinnerCheckinGuide(name: string, askRating = false): GuideSpec {
       kind: 'dinner_checkin',
       facts: [
         `Cena de hoy en el menú: ${name}`,
+        ...agreementFacts([name]),
         'En el mismo mensaje: si la hizo, qué tal estuvo y si la repetimos; si no les gustó, que lo diga y no vuelve a salir sola.',
         `Botones debajo: «${CHECKIN_RATING_BUTTONS[0].title}» / «${CHECKIN_RATING_BUTTONS[1].title}» / «${CHECKIN_RATING_BUTTONS[2].title}»`,
       ],
       required: [name],
+      dishes: [name],
     }
   }
-  return { kind: 'dinner_checkin', facts: [`Cena de hoy en el menú: ${name}`, 'Botones debajo: «Sí, la hice» / «No»'], required: [name] }
+  return {
+    kind: 'dinner_checkin',
+    facts: [`Cena de hoy en el menú: ${name}`, ...agreementFacts([name]), `Botones debajo: «${CHECKIN_BUTTONS[0].title}» / «${CHECKIN_BUTTONS[1].title}»`],
+    required: [name],
+    dishes: [name],
+  }
 }
+
+/**
+ * PRO-274: the buttons don't carry the dish's gender («Sí, la hice» read
+ * wrong under «Sándwich vegetal»): «Sí, hecho» fits any dish. The ids are
+ * what counts; the reply's title reaches Mimo as the user's words.
+ */
+export const CHECKIN_BUTTONS = [
+  { id: 'checkin:yes', title: 'Sí, hecho' },
+  { id: 'checkin:no', title: 'No' },
+] as const
 
 /**
  * PRO-235: «¿hiciste la cena?» and «¿repetimos?» (PRO-110) are ONE message.
@@ -218,17 +240,14 @@ export function dinnerCheckinGuide(name: string, askRating = false): GuideSpec {
 export const CHECKIN_RATING_BUTTONS = [
   { id: 'checkin:yes:5', title: 'Sí, ¡a repetir!' },
   { id: 'checkin:yes:3', title: 'Sí, estuvo bien' },
-  { id: 'checkin:no', title: 'No la hice' },
+  { id: 'checkin:no', title: 'No' },
 ] as const
 export function formatDinnerCheckin(name: string, askRating: boolean): OutboundMessage {
   if (!askRating) {
     return {
       type: 'buttons',
       text: `¿Hiciste hoy la cena (*${name}*)? Así lo apunto.`,
-      buttons: [
-        { id: 'checkin:yes', title: 'Sí, la hice' },
-        { id: 'checkin:no', title: 'No' },
-      ],
+      buttons: CHECKIN_BUTTONS.map((b) => ({ ...b })),
     }
   }
   return {

@@ -82,3 +82,13 @@ test('/terminos says what Mimoia is for, in the exact §6 words', async ({ page 
   await expect(page.getByRole('heading', { level: 2, name: /Para qué sirve Mimoia/ })).toBeVisible({ timeout: 15_000 })
   await expect(page.getByTestId('terms-intended-purpose')).toHaveText(INTENDED_PURPOSE)
 })
+
+// PRO-249 (D-071): without NEXT_PUBLIC_SUPPORT_PHONE (as in CI) no page shows a phone line.
+test('/aviso-legal and /terminos show no phone without NEXT_PUBLIC_SUPPORT_PHONE', async ({ page }) => {
+  for (const path of ['/aviso-legal', '/terminos']) {
+    await page.goto(path)
+    await expect(page.getByTestId('reading-column')).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByTestId('support-phone')).toHaveCount(0)
+    await expect(page.getByTestId('reading-column')).not.toContainText('Teléfono:')
+  }
+})

@@ -233,6 +233,12 @@ export const env = {
    */
   SUPPORT_EMAIL: (process.env.SUPPORT_EMAIL || '').trim(),
   /**
+   * Support phone (D-071, PRO-249): Mimo gives it, with its hours, when asked.
+   * Never written in the code (public repo). Empty → Mimo says there is no
+   * phone yet and gives the email.
+   */
+  SUPPORT_PHONE: (process.env.SUPPORT_PHONE || '').trim(),
+  /**
    * Who receives the daily WhatsApp conversation review (reviewer.ts) on
    * WhatsApp. Comma-separated Mimoia emails; empty → ADMIN_EMAILS.
    */

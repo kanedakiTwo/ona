@@ -8,16 +8,10 @@
 
 import { test, expect, type Page } from '@playwright/test'
 import { completeOnboarding, registerFreshUser } from './_helpers'
+import { madridToday, madridTodayIdx, pinClock } from './_clock'
 
 const API = process.env.API_URL ?? 'http://localhost:8765'
 
-function thisMonday(): string {
-  const d = new Date()
-  d.setDate(d.getDate() + (d.getDay() === 0 ? -6 : 1 - d.getDay()))
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-const iso = (d: Date) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
 async function session(page: Page) {
   const token = await page.evaluate(() => localStorage.getItem('ona_token'))
@@ -27,21 +21,22 @@ async function session(page: Page) {
 
 test('«Añadir comida → Del congelador» adds the táper with its label and the shopping list stays the same', async ({ page }) => {
   test.setTimeout(120_000)
+  // The page's «today» is Madrid's at midday, the same day the spec reads (PRO-273).
+  const day = await pinClock(page, madridTodayIdx())
   await registerFreshUser(page)
   await completeOnboarding(page)
   const { headers, userId } = await session(page)
-  const weekStart = thisMonday()
+  const { weekStart, dayIdx: today } = day
   const gen = await page.request.post(`${API}/menu/generate`, { headers, data: { userId, weekStart, force: true } })
   expect(gen.ok(), `generate: ${gen.status()}`).toBeTruthy()
   const menu = await (await page.request.get(`${API}/menu/${userId}/${weekStart}`, { headers })).json()
 
   // Today without dinner, so «Añadir comida» offers it.
-  const today = (new Date().getDay() + 6) % 7
   if (menu.days[today]?.dinner) {
     const del = await page.request.delete(`${API}/menu/${menu.id}/day/${today}/meal/dinner`, { headers })
     expect(del.ok(), `delete dinner: ${del.status()}`).toBeTruthy()
   }
-  const todayIso = iso(new Date())
+  const todayIso = madridToday()
   const listQuery = `from=${todayIso}&to=${todayIso}`
   const itemsOf = async () =>
     ((await (await page.request.get(`${API}/shopping-list?${listQuery}`, { headers })).json()).items ?? [])
@@ -81,21 +76,22 @@ test('«Añadir comida → Del congelador» adds the táper with its label and t
 
 test('«Táper de la nevera» (PRO-240): its own label, its name, no «Empezar a cocinar», and the list stays the same', async ({ page }) => {
   test.setTimeout(120_000)
+  const day = await pinClock(page, madridTodayIdx())
   await registerFreshUser(page)
   await completeOnboarding(page)
   const { headers, userId } = await session(page)
-  const weekStart = thisMonday()
+  const weekStart = day.weekStart
   const gen = await page.request.post(`${API}/menu/generate`, { headers, data: { userId, weekStart, force: true } })
   expect(gen.ok(), `generate: ${gen.status()}`).toBeTruthy()
   const menu = await (await page.request.get(`${API}/menu/${userId}/${weekStart}`, { headers })).json()
-  const today = (new Date().getDay() + 6) % 7
+  const today = day.dayIdx
   // Every meal of today becomes a táper of the nevera, saved without a name
   // (as Mimo saved them): the hero is one of them, whichever it is.
   const meals = Object.keys(menu.days[today] ?? {})
   expect(meals.length).toBeGreaterThan(0)
   const recipeId = menu.days[today][meals[0]].dishes.find((d: { kind: string }) => d.kind === 'recipe')?.recipeId
   expect(recipeId, 'a recipe on today').toBeTruthy()
-  const todayIso = iso(new Date())
+  const todayIso = madridToday()
   const itemsOf = async () =>
     ((await (await page.request.get(`${API}/shopping-list?from=${todayIso}&to=${todayIso}`, { headers })).json()).items ?? [])
       .filter((i: { kind?: string }) => i.kind !== 'manual' && i.kind !== 'staple')

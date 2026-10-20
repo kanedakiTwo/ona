@@ -107,6 +107,8 @@ test('no floating button covers a control at 390×844; both hide with a sheet or
   await ingredient.focus()
   await expectHidden(page, 'typing an ingredient (keyboard up)')
   await ingredient.blur()
+  // A tap outside closes the suggestions, as on the phone (blur() alone leaves them open).
+  await page.locator('main').click({ position: { x: 2, y: 2 } })
   await expect(page.getByTestId('feedback-button')).toBeVisible()
   const submit = page.locator('main').getByRole('button', { name: /crear receta/i })
   await expectClear(page, submit, '«Crear receta»')

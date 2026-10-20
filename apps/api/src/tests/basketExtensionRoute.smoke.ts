@@ -7,6 +7,7 @@
  *   pnpm --filter @ona/api smoke     # levanta Postgres + API y pasa todos los *.smoke.ts
  */
 import { describe, it, expect, beforeAll } from 'vitest'
+import { basketBaseName, resolveBuyRule } from '@ona/shared'
 import { API_URL, reachable } from './smokeEnv.js'
 
 const METRICS = process.env.METRICS_READ_TOKEN
@@ -18,8 +19,8 @@ async function session(prefix: string, domain = 'test.local') {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username: `${prefix}_${id}`, email: `${prefix}_${id}@${domain}`, password: 'smokepass123', ageConfirmed: true }),
   })
-  const { token } = (await r.json()) as { token: string }
-  return async (method: string, path: string, data?: unknown) => {
+  const { token, user } = (await r.json()) as { token: string; user: { id: string } }
+  const api = async (method: string, path: string, data?: unknown) => {
     const res = await fetch(`${API_URL}${path}`, {
       method,
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -28,8 +29,18 @@ async function session(prefix: string, domain = 'test.local') {
     const text = await res.text()
     return { status: res.status, body: text ? JSON.parse(text) : null }
   }
+  return Object.assign(api, { userId: user.id })
 }
 type Api = Awaited<ReturnType<typeof session>>
+
+/** Fechas YYYY-MM-DD en la hora de Madrid, como la API. */
+const madridToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date())
+function addDaysIso(iso: string, n: number): string {
+  const d = new Date(`${iso}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+const mondayOf = (iso: string) => addDaysIso(iso, -((new Date(`${iso}T12:00:00Z`).getUTCDay() + 6) % 7))
 
 async function superOrder(api: Api, items: Array<{ name: string; quantity: number; unit: string }>) {
   await api('POST', '/shops', { name: 'Súper de prueba', kind: 'supermercado', channel: 'web', webUrl: 'https://tienda.example/', customerName: 'Ana' })
@@ -187,6 +198,50 @@ describe.skipIf(!reachable)('extensión del navegador · rutas', () => {
     expect(send.lineas.map((l: { name: string | null; origen: string }) => ({ name: l.name, origen: l.origen }))).toEqual(esperado)
     expect(JSON.stringify(body)).not.toMatch(/servilletas|smoke-\d/)
   }, 30_000)
+
+  it.skipIf(!METRICS)('una línea de una receta del sistema sale como catálogo con su nombre: la consulta de recetas del sistema, contra la base sembrada', async () => {
+    const hogar = await session('extc')
+    // Esta semana y la siguiente: así siempre hay una comida entre mañana y dentro de 6 días, lo que entra en el pedido.
+    const hoy = madridToday()
+    const menus: Array<{ id: string; weekStart: string; days: Array<Record<string, unknown>> }> = []
+    for (const weekStart of [mondayOf(hoy), addDaysIso(mondayOf(hoy), 7)]) {
+      const m = await hogar('POST', '/menu/generate', { userId: hogar.userId, weekStart })
+      expect(m.status).toBeLessThan(300)
+      menus.push(m.body)
+    }
+    const hueco = menus
+      .flatMap((m) => m.days.flatMap((d, day) => ['lunch', 'dinner'].filter((meal) => d[meal]).map((meal) => ({ menuId: m.id, day, meal, date: addDaysIso(m.weekStart, day) }))))
+      .find((h) => h.date > hoy && h.date <= addDaysIso(hoy, 6))
+    expect(hueco, 'tiene que haber una comida entre mañana y dentro de 6 días').toBeTruthy()
+    // Una receta del sistema con un ingrediente sin regla de compra (en la semilla, «Arroz al caldero»).
+    type Receta = { id: string; authorId: string | null; ingredients: Array<{ ingredientName: string }> }
+    let receta: Receta | undefined
+    for (const { id } of (await hogar('GET', '/recipes')).body as Array<{ id: string }>) {
+      const r = (await hogar('GET', `/recipes/${id}`)).body as Receta
+      if (r.authorId == null && r.ingredients.some((i) => !resolveBuyRule(i.ingredientName))) {
+        receta = r
+        break
+      }
+    }
+    expect(receta, 'la semilla tiene que traer una receta del sistema con un ingrediente sin regla').toBeTruthy()
+    expect((await hogar('PUT', `/menu/${hueco!.menuId}/day/${hueco!.day}/meal/${hueco!.meal}`, { recipeId: receta!.id })).status).toBe(200)
+    const order = await superOrder(hogar, [{ name: 'servilletas', quantity: 1, unit: 'u' }])
+    type Line = { key: string; name: string; ingredientId?: string | null; ruleKey?: string | null; included?: boolean; members?: unknown[] }
+    const enCesta = (order.lines as Line[]).filter((l) => l.included !== false)
+    const catalogo = enCesta.find((l) => l.ingredientId && !l.ruleKey && !(l.members && l.members.length >= 2))
+    const tecleada = enCesta.find((l) => l.name === 'servilletas')
+    expect(catalogo, 'el menú tiene que traer algún ingrediente sin regla').toBeTruthy()
+    expect(tecleada).toBeTruthy()
+    const duracionMs = 1000 + Math.floor(Math.random() * 1_000_000)
+    const lineas = enCesta.map((l, i) => ({ key: l.key, estado: 'busqueda', productoId: String(i + 1), producto: `Producto ${i + 1}`, unidades: 1 }))
+    const saved = await hogar('POST', `/shop-orders/${order.id}/extension-result`, result({ envioId: `smoke-${duracionMs}`, duracionMs, lineas, anadidas: lineas.length }))
+    expect(saved.status).toBe(200)
+    const r = await fetch(`${API_URL}/admin/extension-sends?days=1`, { headers: { 'x-metrics-token': METRICS! } })
+    const send = (await r.json()).sends.find((s: { duracionMs: number | null }) => s.duracionMs === duracionMs)
+    const linea = (key: string) => send.lineas[lineas.findIndex((l) => l.key === key)]
+    expect(linea(catalogo!.key)).toMatchObject({ origen: 'catalogo', name: basketBaseName(catalogo!.name) })
+    expect(linea(tecleada!.key)).toMatchObject({ origen: 'tecleado', name: null })
+  }, 60_000)
 
   it('sin permiso: status false y 403 al guardar un resultado', async () => {
     const fuera = await session('noext', 'otro.example')

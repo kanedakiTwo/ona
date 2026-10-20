@@ -214,6 +214,7 @@ describe('publicLineName y publicBasketLine', () => {
       'goo.gl/maps/xyz',
       'lucia.eu',
       'mi-blog.cat/receta',
+      'www.4chan', // www sin dominio detrás
       'instagram\uA4F8com/lucia', // punto lisu
       'lucia.\u0441om', // la c es cirílica
       '\u042F\u0431\u044A\u043B\u043A\u0438', // otro alfabeto
@@ -232,6 +233,10 @@ describe('publicLineName y publicBasketLine', () => {
       'Chocolate 70 % \u2013 100 g', // raya
     ]
     for (const t of bien) expect(agentSafeText(t, 160), t).toBe(t)
+  })
+  it('agentSafeText: el tope de longitud vale también para el texto normalizado («\u2167» pasa a «VIII»)', () => {
+    expect(agentSafeText('\u2167'.repeat(10), 80)).toBe('\u2167'.repeat(10))
+    expect(agentSafeText('\u2167'.repeat(30), 80)).toBeNull()
   })
   it('agentSafeText: un nombre en NFD (letra y tilde por separado) vale como en NFC y sale tal cual', () => {
     const nfd = 'Jamón ibérico'.normalize('NFD')
@@ -322,6 +327,18 @@ describe('aggregateBasketGaps', () => {
       ['Azúcar moreno', 'catalogo', 'fallida', null, 'no_encontrado', 1],
       ['Azúcar moreno', 'catalogo', 'fallida', null, 'error', 1],
       ['Kombu', 'catalogo', 'busqueda', '201', null, 1],
+    ])
+  })
+  it('la misma línea pública con otro origen va aparte (la regla «arroz» y un ingrediente de catálogo «arroz»)', () => {
+    const lines = [linea('l1', 'arroz', { ruleKey: 'arroz' }), linea('l2', 'arroz', { ingredientId: 'ing-1' })]
+    const lineas: StoredBasketResult['lineas'] = [
+      { key: 'l1', estado: 'busqueda', productoId: '100' },
+      { key: 'l2', estado: 'busqueda', productoId: '100' },
+    ]
+    const gaps = aggregateBasketGaps([{ lines, result: stored({ lineas, cesta: basketSnapshot(lines, () => true) }) }])
+    expect(gaps.map((g) => [g.name, g.origen, g.veces]).sort()).toEqual([
+      ['arroz', 'catalogo', 1],
+      ['arroz', 'regla', 1],
     ])
   })
   it('el producto y su id de la tienda pasan el filtro: con @, URL, cifras de teléfono o espacios en el id, null', () => {

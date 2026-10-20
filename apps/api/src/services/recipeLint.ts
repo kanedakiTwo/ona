@@ -395,13 +395,16 @@ const PASTA_OF = new Set(['trigo', 'semola', 'espelta', 'lentejas', 'lenteja', '
 /** Cooking noodles: «cuece la pasta», «escúrrela», «al dente». («cocina» is not a cue: batters are cooked too.) */
 const NOODLE_COOKING_RE = /^(cuec|cuez|cocer|hierv|herv|escurr)/
 const UTENSILS = new Set(['sarten', 'cazo', 'cazuela', 'olla', 'cuchillo', 'cuchara', 'paleta', 'espatula', 'rallador'])
+/** «las tazas de café», «una cucharilla de café»: a cup or a spoon, not coffee. */
+const COFFEE_CUPS = new Set(['taza', 'tazas', 'tacita', 'tacitas', 'cucharilla', 'cucharillas', 'cucharita', 'cucharitas'])
 
 /**
  * The step word at `i` matched a single-word catalog name: is it that
  * ingredient here, or a homograph? Participles/adjectives («hasta que esté
  * dorada», «la carne picada») count only after an article, a number or «de»;
  * «pasas» only as a noun, not the verb; «pasta» only when the step cooks
- * noodles and it isn't a paste or a batter; «mango» not as a pan's handle.
+ * noodles and it isn't a paste or a batter; «mango» not as a pan's handle;
+ * «café» not in «las tazas de café».
  */
 function readsAsIngredient(name: string, w: string[], i: number): boolean {
   const word = w[i]
@@ -417,6 +420,7 @@ function readsAsIngredient(name: string, w: string[], i: number): boolean {
     if (next === 'de' && !PASTA_OF.has(w[i + 2] ?? '')) return false
     return w.some(x => NOODLE_COOKING_RE.test(x) || x === 'dente')
   }
+  if (sameWord(name, 'cafe') && prev === 'de' && COFFEE_CUPS.has(w[i - 2] ?? '')) return false // «las tazas de café»
   if (sameWord(name, 'mango')) {
     if (next === 'de' && (UTENSILS.has(w[i + 2] ?? '') || UTENSILS.has(w[i + 3] ?? ''))) return false
     if (prev === 'el' && w[i - 2] === 'por') return false // «sujétala por el mango»

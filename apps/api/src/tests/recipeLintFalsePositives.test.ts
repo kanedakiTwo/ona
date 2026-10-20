@@ -33,7 +33,7 @@ const NAMES = [
   'pechuga de pavo', 'leche de coco', 'calabacín', 'carne picada mixta', 'guisantes', 'lubina', 'contramuslos de pollo',
   'judías verdes', 'judiones', 'panceta', 'ajo', 'aceite de oliva virgen extra', 'espinacas frescas', 'perejil fresco',
   // libros-01 (2026-10-21): the line matched a broader catalogue row
-  'magret', 'pato', 'vinagre de vino', 'vino blanco',
+  'magret', 'pato', 'vinagre de vino', 'vino blanco', 'café', 'azúcar',
 ] as const
 
 const catId = (name: string) => `cat:${name}`
@@ -205,6 +205,22 @@ describe('tanda libros-01 — lo que va detrás de «de» completa un ingredient
         'Deja reposar el magret de pato y córtalo en láminas.'],
     ))
     expect(notListed(errors)).toEqual([])
+  })
+
+  it('«las tazas de café» y «una cucharilla de café» son el recipiente, no el café', () => {
+    const { errors } = lint(recipe(
+      [['azúcar', 200], ['huevo', 6, 'u']],
+      ['Bate los huevos con el azúcar.', 'Vierte la mezcla en las tazas de café.', 'Sirve con una cucharilla de café.'],
+    ))
+    expect(notListed(errors)).toEqual([])
+  })
+
+  it('el café como ingrediente sigue saltando', () => {
+    const { errors } = lint(recipe(
+      [['azúcar', 200], ['huevo', 6, 'u']],
+      ['Bate los huevos con el azúcar.', 'Añade el café frío y mezcla.'],
+    ))
+    expect(notListed(errors)).toEqual(['café'])
   })
 
   it('el pato suelto, sin un ingrediente listado delante, sigue saltando', () => {

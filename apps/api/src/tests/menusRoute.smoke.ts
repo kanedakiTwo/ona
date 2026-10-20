@@ -160,8 +160,13 @@ describe('menus route smoke', () => {
         headers: auth(),
         body: '{}',
       })
-      // 201 (created) | 404 (no matching snack recipe) | 409 (already there).
-      expect([201, 404, 409]).toContain(r.status)
+      // 201 (created; empty when no snack recipe fits) | 409 (already there).
+      // Never 404 for "no recipe": the web's «Añadir comida» showed nothing.
+      expect([201, 409]).toContain(r.status)
+      if (r.status === 201) {
+        const menu = (await r.json()) as { days: Record<string, { dishes?: unknown[] }>[] }
+        expect(Array.isArray(menu.days[0]?.snack?.dishes)).toBe(true)
+      }
     },
   )
 

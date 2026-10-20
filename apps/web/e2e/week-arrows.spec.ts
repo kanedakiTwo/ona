@@ -5,7 +5,7 @@
  * then marked "en casa" counts once (it showed "72/56 · 129 % listo").
  */
 import { test, expect, type Page } from '@playwright/test'
-import { registerFreshUser, completeOnboarding } from './_helpers'
+import { addMealWithRecipe, registerFreshUser, completeOnboarding } from './_helpers'
 import { pinClock, pinnedDay } from './_clock'
 
 // Pinned to one weekday of the current week (Friday by default,
@@ -30,15 +30,7 @@ async function generateThisWeek(page: Page) {
   )
   if (!hasRecipe) {
     if (menu.days?.[dayIdx]?.lunch) await page.request.delete(`${apiUrl}/menu/${menu.id}/day/${dayIdx}/meal/lunch`, { headers })
-    let add = await page.request.post(`${apiUrl}/menu/${menu.id}/day/${dayIdx}/meal/lunch`, { headers })
-    if (!add.ok()) {
-      // The small CI catalogue may have no free recipe left: repeat one of the week.
-      const recipeId = (menu.days ?? [])
-        .flatMap((day: Record<string, any>) => Object.values(day ?? {}))
-        .flatMap((slot: any) => slot?.dishes ?? [])
-        .find((d: { kind: string; recipeId?: string }) => d.kind === 'recipe')?.recipeId
-      add = await page.request.post(`${apiUrl}/menu/${menu.id}/day/${dayIdx}/meal/lunch`, { headers, data: { recipeId } })
-    }
+    const add = await addMealWithRecipe(page, headers, menu, dayIdx, 'lunch')
     expect(add.ok(), `add lunch ${add.status()}`).toBeTruthy()
   }
 }

@@ -124,6 +124,26 @@ export function missingMeals(day: DayMenu | undefined | null): MealKey[] {
   return DAY_MEAL_ORDER.filter((m) => !day || day[m] == null)
 }
 
+/**
+ * Meals the rest of the week has and this day lacks (no slot at all), so the
+ * day can say «El viernes no hay comida» instead of letting its dinner pass
+ * for lunch (Miguel, 2026-10-19). A meal is the week's when at least half of
+ * the cooked (not skipped) days have it, and two at least: a household that
+ * never has lunch at home sees nothing. A skipped day lacks nothing.
+ */
+export function absentMeals(
+  days: (DayMenu | undefined | null)[],
+  dayIndex: number,
+  skippedDays: number[],
+): MealKey[] {
+  if (skippedDays.includes(dayIndex)) return []
+  const cooked = days.filter((_, i) => !skippedDays.includes(i))
+  const needed = Math.max(2, Math.ceil(cooked.length / 2))
+  return DAY_MEAL_ORDER.filter(
+    (m) => days[dayIndex]?.[m] == null && cooked.filter((d) => d?.[m] != null).length >= needed,
+  )
+}
+
 /** Minutes shown for a slot: the first recipe's total time, else its prep time. */
 export function slotMinutes(slot: MealSlot | undefined | null): number | null {
   const r = firstRecipeDish(slot)

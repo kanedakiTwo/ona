@@ -50,7 +50,7 @@ import { useOnboardingGate } from "@/hooks/useOnboardingGate"
 import { haptic } from "@/lib/pwa/haptics"
 import { recordMenuVisit } from "@/lib/pwa/installPrompt"
 import { share } from "@/lib/pwa/share"
-import { batchServings, dateOfDay, dayHeading, missingMeals, orderedSlots, splitDay, weekHasDishes, weekRangeLabel, weekdayName, type MealKey } from "@/lib/menuDay"
+import { absentMeals, batchServings, dateOfDay, dayHeading, missingMeals, orderedSlots, splitDay, weekHasDishes, weekRangeLabel, weekdayName, type MealKey } from "@/lib/menuDay"
 import { WeekGridView } from "@/components/menu/WeekGridView"
 import { WeekStrip } from "@/components/menu/WeekStrip"
 import { PantryMatchCard } from "@/components/menu/PantryMatchCard"
@@ -805,7 +805,21 @@ export default function MenuPage() {
           />
         ) : (
           <>
-            <DayMeals featured={featured} rest={rest} slotProps={slotPropsFor(selectedDay)} readOnly={isPastWeek} />
+            <DayMeals
+              featured={featured}
+              rest={rest}
+              absent={{
+                meals: absentMeals(days, selectedDay, skippedDays),
+                dayName: weekdayName(selectedDay),
+                isAdding: addMealSlot.isPending,
+                onAdd: (meal) => {
+                  haptic.light()
+                  addMealSlot.mutate({ menuId: menu.id, day: selectedDay, meal })
+                },
+              }}
+              slotProps={slotPropsFor(selectedDay)}
+              readOnly={isPastWeek}
+            />
             {!isPastWeek && (
               <div className="mt-5">
                 <DayFooter

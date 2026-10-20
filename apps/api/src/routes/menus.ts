@@ -615,8 +615,9 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
 // Saturday. Scoped to THIS menu only — does not touch userSettings.template.
 //
 // Body shape mirrors PUT: optional `{ recipeId }` to pin a specific recipe,
-// otherwise the matcher picks one. Returns 409 if the slot already exists
-// (use PUT to replace it).
+// otherwise the matcher picks one; when nothing fits, the slot is created
+// empty (201). Returns 409 if the slot already exists with dishes (use PUT
+// to replace it).
 router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) => {
   try {
     const menuId = String(req.params.menuId)
@@ -721,7 +722,13 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
         timeBudget,
       })
       if (!newRecipe) {
-        res.status(404).json({ error: 'No matching recipe found for this slot' })
+        // Nothing fits (no breakfast in the catalogue, or all used this
+        // week): the meal is still added, empty, and the user picks its
+        // dish («Añadir plato»). A 404 here left «Añadir comida → Desayuno»
+        // doing nothing on screen (Miguel, 2026-10-19).
+        days[dayIndex][meal] = { dishes: [] }
+        const [updated] = await db.update(menus).set({ days }).where(eq(menus.id, menuId)).returning()
+        res.status(201).json(await hydrateMenuImages(updated))
         return
       }
       chosenId = newRecipe.id

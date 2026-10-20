@@ -15,7 +15,7 @@
  */
 
 import { test, expect, type Page } from '@playwright/test'
-import { completeOnboarding, registerFreshUser } from './_helpers'
+import { addMealWithRecipe, completeOnboarding, registerFreshUser } from './_helpers'
 import { pinClock, pinnedDay } from './_clock'
 
 const API = process.env.API_URL ?? 'http://localhost:8765'
@@ -89,7 +89,7 @@ test('skip day, remove a meal and ban a recipe confirm in the app sheet, without
         const r = await page.request.delete(`${API}/menu/${generated.id}/day/${d}/meal/${meal}`, { headers })
         expect(r.ok(), `empty day ${d} ${meal}: ${r.status()}`).toBeTruthy()
       }
-      const r = await page.request.post(`${API}/menu/${generated.id}/day/${d}/meal/${meal}`, { headers })
+      const r = await addMealWithRecipe(page, headers, generated, d, meal)
       expect(r.ok(), `add day ${d} ${meal}: ${r.status()}`).toBeTruthy()
     }
   }

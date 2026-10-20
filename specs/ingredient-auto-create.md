@@ -131,6 +131,7 @@ USDA fetches are sequential to stay within the rate budget. Each extracted recip
 
 ## Constraints
 
+- When two lines of one import create the same new ingredient (two «aceite de oliva suave» lines), the second insert hits the unique name and reuses the row the first created (`isUniqueViolation` in `recipeExtractor.ts` reads the Postgres code on the error or on Drizzle's `cause`; until 2026-10-20 it only read the error, so the recipe was rejected with «sin ingrediente en el catálogo»).
 - The es→en translation dictionary lives next to `ingredientAutoCreate.ts`; extending it is a one-line PR. For dishes USDA doesn't recognise, the user always has the "Crear sin nutrición" escape hatch.
 - Branded USDA entries are excluded server-side. The product team chose Foundation/SR Legacy/FNDDS to avoid serving-size confusion; Branded entries store nutrition per arbitrary serving and would corrupt aggregations.
 - Fuzzy dedupe uses normalized form (lowercase + diacritic-stripped) and Levenshtein ≤ 2. "salmon" matches "salmón" (distance 0 after normalization); "atun" matches "atún". This is conservative — false positives are corrected by the curator dashboard later.

@@ -100,6 +100,18 @@ function coerceUnit(raw: string): Unit {
 // ─── Ingredient matching ────────────────────────────────────────────
 
 /**
+ * Postgres «duplicate key» (23505). Drizzle wraps the driver error in a
+ * DrizzleQueryError and leaves the code on `cause`, so look at both: two lines
+ * of one recipe that create the same new ingredient (two «aceite de oliva
+ * suave» lines) must end up on the row the first one created, not reject the
+ * recipe.
+ */
+export function isUniqueViolation(err: unknown): boolean {
+  const e = err as { code?: string; cause?: { code?: string } } | null | undefined
+  return e?.code === '23505' || e?.cause?.code === '23505'
+}
+
+/**
  * For an unmatched ingredient name, ask USDA for the best Foundation
  * candidate and persist a new row. On any USDA failure (network, no
  * matches, rate limit) fall back to a stub row with allergens inferred
@@ -150,8 +162,7 @@ async function autoCreateMissingIngredient(
       .returning({ id: ingredients.id, name: ingredients.name })
     return { id: row.id, name: row.name, warning }
   } catch (err) {
-    const code = (err as { code?: string })?.code
-    if (code === '23505') {
+    if (isUniqueViolation(err)) {
       const [hit] = await db
         .select({ id: ingredients.id, name: ingredients.name })
         .from(ingredients)

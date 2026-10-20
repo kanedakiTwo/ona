@@ -14,7 +14,8 @@ import {
 } from '../services/shoppingList.js'
 import { canAccessRow, getPrimaryHouseholdId, resolveScope } from '../services/scopeResolver.js'
 import { listActiveStaplesForHousehold } from '../services/staplesStore.js'
-import { carryItemState, editMenuLine, setHaveAtHome, type ConvertQty, type ItemStateMap } from '../services/shoppingItemState.js'
+import { carryItemState, editMenuLine, setHaveAtHome, toggleChecked, type ConvertQty, type ItemStateMap } from '../services/shoppingItemState.js'
+import { withWeekShares } from '../services/shoppingWeeks.js'
 import { isCoeliacHousehold, withGlutenFreeCharcuterieNames } from '../services/glutenFreeCharcuterie.js'
 import { loadUserRestrictions } from '../services/withWhatIHave.js'
 import { INTERNAL_CALL_HEADER, trackEvent } from '../services/usageEvents.js'
@@ -146,6 +147,7 @@ async function ingredientConverter(rows: ShoppingItem[]): Promise<ConvertQty> {
 function clearHave(item: ShoppingItem) {
   delete item.haveQuantity
   delete item.haveSource
+  delete item.mark
 }
 
 // GET /shopping-list/:menuId - generate shopping list from menu
@@ -254,12 +256,31 @@ router.get('/shopping-list', async (req: AuthRequest, res) => {
     }
 
     // Aggregate with the existing pipeline (handles overrides + scaling).
-    const menuItems = await generateShoppingList(
+    const rangeItems = await generateShoppingList(
       aggregatedDays,
       multiplier,
       db,
       householdId,
     )
+    // PRO-270: how much of each line each week asks for, so a tick covers
+    // the weeks it was bought for and not the next ones.
+    const convertQty = await ingredientConverter(rangeItems)
+    const weekStarts = [...new Set(aggregatedDays.map((_, i) => mondayOf(shiftDate(from, i))))]
+    const perWeek =
+      weekStarts.length === 1
+        ? [{ week: weekStarts[0], items: [] as ShoppingItem[] }]
+        : await Promise.all(
+            weekStarts.map(async (week) => ({
+              week,
+              items: await generateShoppingList(
+                aggregatedDays.map((d, i) => (mondayOf(shiftDate(from, i)) === week ? d : {})),
+                multiplier,
+                db,
+                householdId,
+              ),
+            })),
+          )
+    const menuItems = withWeekShares(rangeItems, perWeek, convertQty)
 
     // Load the user's previous list (if any) so we can merge state +
     // manual items into the freshly-aggregated set.
@@ -286,7 +307,7 @@ router.get('/shopping-list', async (req: AuthRequest, res) => {
       menuItems,
       prevItems,
       (previous?.itemState ?? null) as ItemStateMap | null,
-      await ingredientConverter(menuItems),
+      convertQty,
       // «No lo compro» / own amount apply to lists ending by their day (PRO-175).
       { today: todayMadrid, rangeTo: to },
     )
@@ -430,8 +451,8 @@ router.put('/shopping-list/:listId/item/:itemId/check', async (req: AuthRequest,
       return
     }
 
-    item.checked = !item.checked
-    clearHave(item)
+    // Bought for this line's weeks, on top of other weeks' (PRO-270).
+    toggleChecked(item)
     setActivityDetail(res, { item: item.name, on: item.checked })
     // Product analytics: only ticking an item off counts, not un-ticking it.
     if (item.checked && !req.get(INTERNAL_CALL_HEADER)) trackEvent('shopping_item_checked', { userId: req.userId!, channel: 'web' })

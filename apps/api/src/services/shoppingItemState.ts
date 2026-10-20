@@ -23,6 +23,14 @@ export interface ItemState {
    */
   quantity?: number
   /**
+   * A bought mark (PRO-270): how much of `quantity` was for each week's
+   * dishes, `{ <Monday>: amount }` in the key's unit. It covers only those
+   * weeks: merluza bought for Saturday 17 doesn't tick the merluza of
+   * Monday 26. Missing on bought marks saved before 2026-10-21: they count
+   * as bought for the current week.
+   */
+  weeks?: Record<string, number>
+  /**
    * What the household changed on a menu line (PRO-175): «No lo compro esta
    * semana» (`skipped`) and / or their own amount (`quantity`, in the key's
    * unit). It applies to lists that end on or before `until` (the end of the
@@ -64,9 +72,13 @@ export function carryItemState(
   prevItems: ShoppingItem[],
   prevState: ItemStateMap | null | undefined,
   convert?: ConvertQty,
-  /** `today` drops edits past their day; `rangeTo` (the list's last day) decides which apply (PRO-175). */
+  /**
+   * `today` drops edits past their day and bought weeks already gone;
+   * `rangeTo` (the list's last day) decides which edits apply (PRO-175).
+   */
   range: { today?: string; rangeTo?: string } = {},
 ): { items: ShoppingItem[]; state: ItemStateMap } {
+  const thisWeek = range.today ? mondayOfIso(range.today) : undefined
   const state = new Map<string, ItemState>(Object.entries(prevState ?? {}))
   for (const [k, s] of state) {
     if (s.edit && range.today && s.edit.until < range.today) {
@@ -91,13 +103,56 @@ export function carryItemState(
     // («nos quedan 4 huevos», PRO-182); otherwise it gathers its parts' marks.
     const own = fresh.has(itemStateKey(it)) ? state.get(itemStateKey(it)) : undefined
     if ((it.mergedIngredientIds ?? []).length > 0 && !(own && (own.checked || own.inStock))) {
-      const s = mergedStateFor(it, state)
+      const s = mergedStateFor(it, state, thisWeek)
       return s ? { ...it, checked: s.checked, inStock: s.inStock, pricePerUnit: s.pricePerUnit } : it
     }
-    return applyState(it, state, fresh, convert)
+    return applyState(it, state, fresh, convert, thisWeek)
   })
-  const kept = [...state.entries()].filter(([, s]) => s.checked || s.inStock || s.pricePerUnit != null || s.edit)
+  const kept = [...state.entries()]
+    .map(([k, s]) => [k, withoutPastWeeks(s, thisWeek)] as const)
+    .filter(([, s]) => s.checked || s.inStock || s.pricePerUnit != null || s.edit)
   return { items, state: Object.fromEntries(kept.slice(-ITEM_STATE_MAX)) }
+}
+
+/** Monday (ISO `YYYY-MM-DD`) of the week of an ISO date. */
+export function mondayOfIso(iso: string): string {
+  const d = new Date(`${iso}T12:00:00Z`)
+  const back = (d.getUTCDay() + 6) % 7
+  d.setUTCDate(d.getUTCDate() - back)
+  return d.toISOString().slice(0, 10)
+}
+
+/** A bought mark forgets the weeks already gone; with none left, the mark goes. */
+function withoutPastWeeks(s: ItemState, thisWeek: string | undefined): ItemState {
+  if (!s.weeks || !thisWeek) return s
+  const weeks = Object.fromEntries(Object.entries(s.weeks).filter(([w, q]) => w >= thisWeek && q > 0))
+  if (Object.keys(weeks).length === Object.keys(s.weeks).length) return s
+  if (Object.keys(weeks).length > 0) return { ...s, weeks, quantity: sum(weeks) }
+  const { weeks: _gone, quantity: _q, ...rest } = s
+  return { ...rest, checked: false }
+}
+
+const sum = (weeks: Record<string, number>) => Object.values(weeks).reduce((a, b) => a + b, 0)
+
+/**
+ * Ticking a line on or off (the check route and Mimo, PRO-270). On: what
+ * this line asks is bought, for its weeks, on top of what was bought for
+ * other weeks (ticked on «La que viene», then again on «Esta semana»). Off:
+ * nothing of it is bought. Either way the partial «ya tienes» goes. Pure:
+ * mutates and returns the row.
+ */
+export function toggleChecked(item: ShoppingItem): ShoppingItem {
+  item.checked = !item.checked
+  const prev = item.mark
+  delete item.haveQuantity
+  delete item.haveSource
+  delete item.mark
+  if (item.checked && !item.inStock && item.weeks && prev?.source === 'checked' && prev.weeks) {
+    const weeks: Record<string, number> = { ...prev.weeks }
+    for (const [w, q] of Object.entries(item.weeks)) weeks[w] = Math.max(weeks[w] ?? 0, q)
+    item.mark = { source: 'checked', quantity: sum(weeks), weeks, covered: true }
+  }
+  return item
 }
 
 const UNITS: ShoppingItem['unit'][] = ['g', 'ml', 'u', 'cda', 'cdita']
@@ -166,7 +221,32 @@ export function editMenuLine(
 /** What a row of the previous list says: its marks and the amount they cover. */
 function stateOfRow(it: ShoppingItem): ItemState {
   const pricePerUnit = it.pricePerUnit ?? null
-  if (it.checked || it.inStock) return { checked: !!it.checked, inStock: !!it.inStock, pricePerUnit, quantity: it.quantity }
+  // A mark carried from memory stays whole until the household touches the
+  // line (PRO-270): 15 eggs at home shown on a «Hoy» that asks for 2 are
+  // still 15 when the next two weeks come back (Familia Ruiz, 2026-10-20).
+  // Only while the row still shows that mark: a flag changed by a path that
+  // doesn't know about `mark` (an old client, Mimo's «en casa») wins.
+  const m = it.mark
+  const carried =
+    m &&
+    (it.haveQuantity
+      ? !it.checked && !it.inStock && it.haveSource === m.source
+      : it.checked || it.inStock
+        ? !!m.covered && (m.source === 'inStock' ? !!it.inStock : !!it.checked && !it.inStock)
+        : !m.covered && m.source === 'checked' && !!m.weeks)
+  if (m && carried) {
+    return {
+      checked: m.source === 'checked',
+      inStock: m.source === 'inStock',
+      pricePerUnit,
+      quantity: m.quantity,
+      ...(m.source === 'checked' && m.weeks ? { weeks: m.weeks } : {}),
+    }
+  }
+  if (it.checked || it.inStock) {
+    const weeks = it.checked && !it.inStock && it.weeks ? { weeks: it.weeks } : {}
+    return { checked: !!it.checked, inStock: !!it.inStock, pricePerUnit, quantity: it.quantity, ...weeks }
+  }
   // A line left pending for the rest still remembers what the household had.
   if (it.haveQuantity && it.haveQuantity > 0 && it.haveSource) {
     return { checked: it.haveSource === 'checked', inStock: it.haveSource === 'inStock', pricePerUnit, quantity: it.haveQuantity }
@@ -180,7 +260,13 @@ function stateOfRow(it: ShoppingItem): ItemState {
  * same ingredient in another unit. Entries from the previous rows win over
  * the older memory.
  */
-function applyState(it: ShoppingItem, state: Map<string, ItemState>, fresh: Set<string>, convert?: ConvertQty): ShoppingItem {
+function applyState(
+  it: ShoppingItem,
+  state: Map<string, ItemState>,
+  fresh: Set<string>,
+  convert?: ConvertQty,
+  thisWeek?: string,
+): ShoppingItem {
   const id = it.ingredientId!
   const keyOf = (u: BuyableUnit) => `${id}|${u}`
   const inFresh = UNITS.some((u) => fresh.has(keyOf(u)))
@@ -202,17 +288,34 @@ function applyState(it: ShoppingItem, state: Map<string, ItemState>, fresh: Set<
   const pricePerUnit = unit === it.unit ? s.pricePerUnit : (it.pricePerUnit ?? null)
   const base = { ...it, checked: s.checked, inStock: s.inStock, pricePerUnit }
   if (!(s.checked || s.inStock) || s.quantity == null) return base
-  const have = unit === it.unit ? s.quantity : (convert?.(id, s.quantity, unit, it.unit) ?? null)
-  if (have == null) return base // can't compare: stays marked
+  const conv = (q: number) => (unit === it.unit ? q : (convert?.(id, q, unit!, it.unit) ?? null))
+  const total = conv(s.quantity)
+  if (total == null) return base // can't compare: stays marked
+  // A bought mark covers the weeks it was bought for (PRO-270, Familia Ruiz
+  // 2026-10-19: merluza bought for Saturday 17 ticked the merluza of Monday
+  // 26). «En casa» is what's in the pantry: it covers any week.
+  const byWeek = !s.inStock && it.weeks && (s.weeks || thisWeek)
+  let have = total
+  let weeks: Record<string, number> | undefined
+  if (byWeek) {
+    weeks = {}
+    for (const [w, q] of Object.entries(s.weeks ?? { [thisWeek!]: s.quantity })) {
+      const c = conv(q)
+      if (c != null && c > 0) weeks[w] = c
+    }
+    have = Object.entries(it.weeks!).reduce((acc, [w, need]) => acc + Math.min(weeks![w] ?? 0, need), 0)
+  }
+  const mark: ShoppingItem['mark'] = { source: s.inStock ? 'inStock' : 'checked', quantity: total, ...(weeks ? { weeks } : {}) }
   const missing = roundMissing(it.quantity - have, it.unit)
-  if (missing <= 0) return base
+  if (missing <= 0) return { ...base, mark: { ...mark, covered: true } }
+  const covered = it.quantity - missing
   return {
     ...it,
     checked: false,
     inStock: false,
     pricePerUnit,
-    haveQuantity: it.quantity - missing,
-    haveSource: s.inStock ? 'inStock' : 'checked',
+    ...(covered > 0 ? { haveQuantity: covered, haveSource: s.inStock ? ('inStock' as const) : ('checked' as const) } : {}),
+    mark,
   }
 }
 
@@ -227,6 +330,7 @@ function applyState(it: ShoppingItem, state: Map<string, ItemState>, fresh: Set<
 export function setHaveAtHome(item: ShoppingItem, have: number): ShoppingItem {
   delete item.haveQuantity
   delete item.haveSource
+  delete item.mark
   item.checked = false
   if (!(have > 0)) {
     item.inStock = false
@@ -235,6 +339,8 @@ export function setHaveAtHome(item: ShoppingItem, have: number): ShoppingItem {
   const missing = roundMissing(item.quantity - have, item.unit)
   if (missing <= 0) {
     item.inStock = true
+    // «Tengo una docena» on a line of 4: the 12 are remembered (PRO-270).
+    if (have > item.quantity) item.mark = { source: 'inStock', quantity: have, covered: true }
     return item
   }
   item.inStock = false
@@ -266,20 +372,27 @@ function splitKey(key: string): [string, string] {
  * join keeps «huevos 10 u» ticked); the price comes from the first one in the
  * same unit that has it.
  */
-function mergedStateFor(it: ShoppingItem, state: Map<string, ItemState>): ItemState | undefined {
+function mergedStateFor(it: ShoppingItem, state: Map<string, ItemState>, thisWeek?: string): ItemState | undefined {
   const merged = it.mergedIngredientIds ?? []
   const found: ItemState[] = []
   // A price is € per unit: only one remembered in this line's unit applies.
   const priced: ItemState[] = []
+  // A bought mark only counts for the weeks it was bought for (PRO-270).
+  const otherWeeks = (s: ItemState) => {
+    if (s.inStock || !s.checked || !it.weeks) return false
+    const weeks = s.weeks ? Object.keys(s.weeks) : thisWeek ? [thisWeek] : null
+    return weeks != null && !weeks.some((w) => (it.weeks![w] ?? 0) > 0)
+  }
   for (const id of [it.ingredientId, ...merged]) {
-    const same = state.get(`${id}|${it.unit}`)
+    const raw = state.get(`${id}|${it.unit}`)
+    const same = raw && otherWeeks(raw) ? { ...raw, checked: false } : raw
     if (same) {
       found.push(same)
       priced.push(same)
       continue
     }
     const other = UNITS.map((u) => state.get(`${id}|${u}`)).find(Boolean)
-    if (other) found.push(other)
+    if (other) found.push(otherWeeks(other) ? { ...other, checked: false } : other)
   }
   if (found.length === 0) return undefined
   return {

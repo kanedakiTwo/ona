@@ -50,6 +50,21 @@ export interface ShoppingItem {
   /** What `haveQuantity` came from: marked bought or marked at home. */
   haveSource?: 'checked' | 'inStock'
   /**
+   * Menu items: how much of the line each week's dishes ask for (PRO-270),
+   * `{ <Monday YYYY-MM-DD>: amount }` in `unit`; adds up to `quantity`. Set by
+   * the rolling list. A tick covers the weeks it was made for, not others.
+   */
+  weeks?: Record<string, number>
+  /**
+   * Menu items: what the household marked, carried from the list's memory
+   * into this line's unit (PRO-270). It can be more than the line asks (a
+   * shorter range, «tengo una docena») and is kept as it is until the
+   * household touches the line, so looking at «Hoy» doesn't shrink it. A
+   * bought mark lists the weeks it was bought for; `covered` says whether
+   * it covered the whole line when the list was built. Internal: not shown.
+   */
+  mark?: { source: 'checked' | 'inStock'; quantity: number; weeks?: Record<string, number>; covered?: boolean }
+  /**
    * Menu items: the household won't buy it for this list («No lo compro esta
    * semana», PRO-175). The line stays (so it can be put back) but counts as
    * nothing: not to buy, not in the total, not in shop orders.

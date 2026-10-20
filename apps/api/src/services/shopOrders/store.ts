@@ -36,6 +36,7 @@ import { householdBuyPrefs, householdShops, shopOrders, shoppingLists } from '..
 import { env } from '../../config/env.js'
 import { getPrimaryHouseholdId } from '../scopeResolver.js'
 import { decideBasketResult, ingredientsInSystemRecipes, withBasketPhoto } from '../basketExtension.js'
+import { toggleChecked } from '../shoppingItemState.js'
 import type { PriceMemory } from './estimate.js'
 import { capForLines, draftOrdersFromItems, sumEstimate } from './draft.js'
 import {
@@ -775,7 +776,8 @@ export async function closeOrder(userId: string, id: string, body: { finalTotalE
     if (bought.size) {
       const [list] = await tx.select().from(shoppingLists).where(eq(shoppingLists.userId, userId)).orderBy(desc(shoppingLists.createdAt)).limit(1)
       if (list) {
-        const items = (list.items as ShoppingItem[]).map((i) => (bought.has(i.id) ? { ...i, checked: true } : i))
+        // Bought for the line's weeks, like a tick on /shopping (PRO-270).
+        const items = (list.items as ShoppingItem[]).map((i) => (bought.has(i.id) && !i.checked ? toggleChecked({ ...i }) : i))
         await tx.update(shoppingLists).set({ items }).where(eq(shoppingLists.id, list.id))
       }
     }

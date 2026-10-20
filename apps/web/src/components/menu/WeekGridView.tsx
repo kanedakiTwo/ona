@@ -813,7 +813,7 @@ function FilledRow({
           meal={meal}
           className="h-full w-full"
         />
-        {firstRecipe?.variant === "leftover" && (
+        {(firstRecipe?.variant === "leftover" || firstRecipe?.variant === "cooked") && (
           <span className="absolute bottom-0 left-0 right-0 bg-[#1A1612]/85 px-1 py-[1px] text-center text-[8px] font-medium uppercase tracking-[0.1em] text-[#FAF6EE]">
             Sobras
           </span>

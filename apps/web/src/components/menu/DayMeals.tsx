@@ -15,7 +15,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { motion, useReducedMotion } from "motion/react"
-import { BookOpen, CalendarX, Check, Lock, Play, Plus, Refrigerator, RotateCw, Snowflake, Utensils } from "lucide-react"
+import { BookOpen, CalendarX, Check, History, Lock, Play, Plus, Refrigerator, RotateCw, Snowflake, Utensils } from "lucide-react"
 import { FreezerDishSheets, type TaperVariant } from "./FreezerDishSheets"
 import { isTaperDish, type Dish, type MealSlot, type RecipeDish } from "@ona/shared"
 import { mealLabel } from "@/lib/labels"
@@ -56,10 +56,11 @@ function SlotChips({
   const leftover = first?.variant === "leftover" && first.leftoverOf
   const fromFreezer = first?.variant === "freezer"
   const fromFridge = first?.variant === "fridge"
+  const fromOtherDay = first?.variant === "cooked"
   // Without a recipe the title already lists the notes («Cenamos fuera»): don't repeat them (PRO-185).
   const others = first ? (ctx.slot.dishes ?? []).filter((d) => d !== first) : []
   const eaten = !!ctx.slot.eaten && !showEatenElsewhere
-  if (!ctx.isLocked && !leftover && !fromFreezer && !fromFridge && !eaten && ctx.slot.servings == null && others.length === 0) return null
+  if (!ctx.isLocked && !leftover && !fromFreezer && !fromFridge && !fromOtherDay && !eaten && ctx.slot.servings == null && others.length === 0) return null
   return (
     <div className="flex flex-wrap items-center gap-1.5 text-[12px] text-ink-mid">
       {eaten && (
@@ -80,6 +81,11 @@ function SlotChips({
       {fromFridge && (
         <span data-testid="taper-fridge" className="inline-flex items-center gap-1 rounded-full bg-cream-deep px-2 py-0.5 font-medium text-ink">
           <Refrigerator size={11} /> Táper de la nevera · no suma a la compra
+        </span>
+      )}
+      {fromOtherDay && (
+        <span data-testid="taper-other-day" className="inline-flex items-center gap-1 rounded-full bg-cream-deep px-2 py-0.5 font-medium text-ink">
+          <History size={11} /> Sobras de otro día · no suma a la compra
         </span>
       )}
       {leftover && first?.leftoverOf && (

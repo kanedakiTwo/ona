@@ -37,6 +37,7 @@ import {
 } from '../db/schema.js'
 import {
   alertKindOn,
+  isTaperVariant,
   PREP_METHOD_HOURS_BEFORE,
   THAW_CONDITIONAL_TEXT,
   thawIsConditional,
@@ -147,7 +148,7 @@ function flattenMenuSlots(days: unknown): SlotEntry[] {
         if (d.kind !== 'recipe') continue
         // Skip leftover dishes — they share the source's prep alerts.
         // …and freezer tápers (PRO-82): nothing to prepare.
-        if (d.variant === 'leftover' || d.variant === 'freezer' || d.variant === 'fridge') continue
+        if (d.variant === 'leftover' || isTaperVariant(d.variant)) continue
         if (typeof d.recipeId === 'string' && d.recipeId.length > 0) {
           out.push({ dayIndex: i, meal: meal as Meal, recipeId: d.recipeId })
         }

@@ -31,8 +31,8 @@ export interface DishPatch {
   text?: string
   pinnedType?: string | null
   course?: Course | null
-  /** «Es del congelador» on a dish already in the menu (2026-10-20); never on a leftover. */
-  variant?: 'planned' | 'freezer'
+  /** «Son sobras de otro día» (`cooked`) on a dish already in the menu (2026-10-20); never on a leftover. */
+  variant?: 'planned' | 'freezer' | 'cooked'
 }
 
 export function patchDish(dishes: Dish[], index: number, patch: DishPatch): Dish[] {

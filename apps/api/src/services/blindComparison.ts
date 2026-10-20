@@ -12,6 +12,8 @@
  */
 import { createHash } from 'node:crypto'
 import type { DayMenu } from '@ona/shared'
+import { isTaperDish } from '@ona/shared'
+import { dishLabel } from './menuText.js'
 
 /** Email domain of the test households' staging accounts (ona-hq `hogares-prueba/cuentas.json`). */
 export const BLIND_TEST_EMAIL_SUFFIX = '@example.com'
@@ -50,7 +52,7 @@ export function blindWeek(days: readonly DayMenu[] | null | undefined): BlindDay
       const dishes = (day?.[meal]?.dishes ?? []).flatMap((d) => {
         if (d.kind === 'note') return d.text ? [d.text] : []
         const name = d.recipeName?.trim() || 'Receta'
-        return [d.variant === 'leftover' ? `${name} (sobras)` : d.variant === 'freezer' ? `${name} (del congelador)` : name]
+        return [d.kind === 'recipe' && d.variant !== 'leftover' && isTaperDish(d) ? dishLabel(d) ?? name : d.variant === 'leftover' ? `${name} (sobras)` : name]
       })
       return dishes.length ? [{ meal: MEAL_LABEL[meal] ?? meal, dishes }] : []
     }),

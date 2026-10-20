@@ -1,3 +1,4 @@
+import { isTaperVariant } from '@ona/shared'
 import { normalizeText } from '../dietaryRestrictions.js'
 import { MEAL_LABEL_ES } from '../menuText.js'
 import { menuDayOf } from './menuDay.js'
@@ -28,7 +29,7 @@ export function sameDishElsewhere(
       if (d === dayIndex && m === meal) continue
       const hit = (slot?.dishes ?? []).some((x) => {
         if (x.kind === 'recipe') {
-          if (x.variant === 'leftover' || x.variant === 'freezer') return false
+          if (x.variant === 'leftover' || isTaperVariant(x.variant)) return false
           return (dish.recipeId != null && x.recipeId === dish.recipeId) || (!!name && normalizeText(x.recipeName ?? '').trim() === name)
         }
         return x.kind === 'note' && !!name && normalizeText(x.text ?? '').trim() === name

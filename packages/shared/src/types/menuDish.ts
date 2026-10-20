@@ -12,9 +12,12 @@ export interface RecipeDish {
    * `planned` (default) | `leftover` (cloned from a previous slot's recipe-dish)
    * | `freezer` (a táper from the freezer, PRO-82: linked to its recipe, never
    * adds to the shopping list, whatever week it was cooked in)
-   * | `fridge` («Táper de la nevera», PRO-240: the same, kept in the fridge).
+   * | `fridge` («Táper de la nevera», PRO-240: the same, kept in the fridge)
+   * | `cooked` («Sobras de otro día», 2026-10-20: a dish already in the menu
+   * that the household already has cooked — fridge, freezer or anywhere —
+   * set from its «···»; the same as the other tápers).
    */
-  variant?: 'planned' | 'leftover' | 'freezer' | 'fridge'
+  variant?: 'planned' | 'leftover' | 'freezer' | 'fridge' | 'cooked'
   /** Back-reference when `variant === 'leftover'`. Carries the dish position because a slot can have multiple recipes now. */
   leftoverOf?: { day: number; meal: string; dishPosition: number } | null
   /**
@@ -53,11 +56,16 @@ export function isNoteDish(d: Dish): d is NoteDish {
 }
 
 /**
- * A táper already cooked (PRO-82 freezer, PRO-240 fridge): linked to its
- * recipe, never adds to the shopping list, nothing to cook.
+ * A táper already cooked (PRO-82 freezer, PRO-240 fridge, «sobras de otro
+ * día»): linked to its recipe, never adds to the shopping list, nothing to cook.
  */
 export function isTaperDish(d: Dish | null | undefined): boolean {
-  return !!d && d.kind === 'recipe' && (d.variant === 'freezer' || d.variant === 'fridge')
+  return !!d && d.kind === 'recipe' && isTaperVariant(d.variant)
+}
+
+/** The same test on a bare variant, for loosely typed dishes. */
+export function isTaperVariant(variant: string | null | undefined): boolean {
+  return variant === 'freezer' || variant === 'fridge' || variant === 'cooked'
 }
 
 /** Returns only the recipe dishes, in their original order. */

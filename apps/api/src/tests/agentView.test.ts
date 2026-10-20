@@ -16,6 +16,8 @@ import {
   CODE_REF_SOURCES,
   knownRefSources,
   parseExtraRefSources,
+  readExtraRefSources,
+  warnDroppedExtraRefSources,
   REVIEWER_CATEGORY_LIST,
   REVIEWER_SEVERITY_LIST,
   comparisonForAgents,
@@ -81,7 +83,8 @@ function collectTemplates(): { api: string[]; web: string[] } {
 function collectRefSources(): string[] {
   const out = new Set<string>()
   const patterns = [/[?&]ref=([a-z0-9_-]{1,32})(?![a-z0-9_-])/g, /openRef="([a-z0-9_-]{1,32})"/g, /(?<!function )withOnaFooter\([\s\S]*?'([a-z0-9_-]{1,32})',?\s*\)/g]
-  for (const dir of ['apps/web/src', 'apps/web/content', 'apps/web/e2e', 'packages/shared/src', 'apps/api/src']) {
+  // The product's own links only: tests and e2e use labels of their own.
+  for (const dir of ['apps/web/src', 'apps/web/content', 'packages/shared/src', 'apps/api/src']) {
     walk(join(REPO, dir), (p, isDir) => {
       if (isDir || !/\.(tsx?|mdx?)$/.test(p) || p.includes('/apps/api/src/tests/')) return
       const text = readFileSync(p, 'utf8')
@@ -316,8 +319,8 @@ describe('flagsForAgents', () => {
 
 describe('waitlistForAgents', () => {
   it('ref labels: a closed list with every label the code puts in a link (+ directo, invita)', () => {
-    for (const ref of collectRefSources()) expect(CODE_REF_SOURCES.has(ref), `add «${ref}» to CODE_REF_SOURCES`).toBe(true)
-    expect(CODE_REF_SOURCES.has('directo') && CODE_REF_SOURCES.has('invita')).toBe(true)
+    // Exactly the code's labels plus the two fallbacks: campaign labels never live in the code.
+    expect([...CODE_REF_SOURCES].sort()).toEqual([...collectRefSources(), 'directo', 'invita'].sort())
     for (const ref of CODE_REF_SOURCES) expect(normalizeSource(ref)).toBe(ref)
     expect(refSourceForAgents('receta')).toBe('receta')
     expect(refSourceForAgents('ana-garcia-celiaca-calle-mayor-5')).toBe('otro')
@@ -344,6 +347,20 @@ describe('waitlistForAgents', () => {
     } finally {
       env.METRICS_EXTRA_REF_SOURCES = before
     }
+  })
+
+  it('at most 50 extra labels; at boot, a warning with how many were dropped, never which', () => {
+    const many = Array.from({ length: 60 }, (_, i) => `campana-${i}`).join(',')
+    expect(readExtraRefSources(many)).toEqual({ labels: Array.from({ length: 50 }, (_, i) => `campana-${i}`), dropped: 10 })
+    expect(readExtraRefSources(' campana-uno, Mala_Etiqueta,,cr-*')).toEqual({ labels: ['campana-uno'], dropped: 2 })
+
+    const warnings: string[] = []
+    expect(warnDroppedExtraRefSources('campana-uno,Ana_Garcia_celiaca,cr-*', (m) => warnings.push(m))).toBe(2)
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toMatch(/METRICS_EXTRA_REF_SOURCES: 2 /)
+    expect(warnings[0]).not.toMatch(/Ana|cr-\*|campana/)
+    expect(warnDroppedExtraRefSources('campana-uno,campana-dos', (m) => warnings.push(m))).toBe(0)
+    expect(warnings).toHaveLength(1)
   })
 
   it("the reviewer's attack: a public signup with its own label comes out as otro", () => {

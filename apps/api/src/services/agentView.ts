@@ -337,14 +337,36 @@ export function utmSourceForAgents(raw: unknown): string {
  */
 export const CODE_REF_SOURCES: ReadonlySet<string> = new Set([
   'directo', 'invita',
-  'articulo-refugio', 'blog', 'circulo-miguel', 'como-funciona', 'e2e', 'lista', 'menu', 'precios', 'receta', 'recetas',
+  'articulo-refugio', 'blog', 'como-funciona', 'lista', 'menu', 'precios', 'receta', 'recetas',
 ])
 
 const EXTRA_REF_LABEL = /^[a-z0-9-]{1,32}$/
+const MAX_EXTRA_REF_SOURCES = 50
 
-/** `METRICS_EXTRA_REF_SOURCES`: comma-separated exact labels; a value that isn't `^[a-z0-9-]{1,32}$` is dropped (no patterns). */
+/**
+ * `METRICS_EXTRA_REF_SOURCES`: comma-separated exact labels (no patterns). Kept: the first 50 that
+ * match `^[a-z0-9-]{1,32}$`; `dropped` counts the rest (bad format or over the cap).
+ */
+export function readExtraRefSources(raw: string | null | undefined): { labels: string[]; dropped: number } {
+  const values = (raw ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+  const labels = values.filter((s) => EXTRA_REF_LABEL.test(s)).slice(0, MAX_EXTRA_REF_SOURCES)
+  return { labels, dropped: values.length - labels.length }
+}
+
 export function parseExtraRefSources(raw: string | null | undefined): string[] {
-  return (raw ?? '').split(',').map((s) => s.trim()).filter((s) => EXTRA_REF_LABEL.test(s))
+  return readExtraRefSources(raw).labels
+}
+
+/** At boot (index.ts): how many extra labels were dropped, in the log — never the values. */
+export function warnDroppedExtraRefSources(
+  raw: string = env.METRICS_EXTRA_REF_SOURCES,
+  warn: (message: string) => void = console.warn,
+): number {
+  const { dropped } = readExtraRefSources(raw)
+  if (dropped > 0) {
+    warn(`[metrics] METRICS_EXTRA_REF_SOURCES: ${dropped} label(s) dropped (not ^[a-z0-9-]{1,32}$, or over the cap of ${MAX_EXTRA_REF_SOURCES})`)
+  }
+  return dropped
 }
 
 export function knownRefSources(extra: string = env.METRICS_EXTRA_REF_SOURCES): ReadonlySet<string> {

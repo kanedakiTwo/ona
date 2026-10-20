@@ -54,6 +54,7 @@ import schoolMenuRoutes from './routes/schoolMenu.js'
 import blindComparisonRoutes from './routes/blindComparison.js'
 import { trackShoppingActivity } from './services/activityEvents.js'
 import { trackUsageRoutes } from './services/usageEvents.js'
+import { warnDroppedExtraRefSources } from './services/agentView.js'
 import { startScheduler } from './services/notificationScheduler.js'
 
 // In-house error tracker (specs/errors.md): remember what handlers log with
@@ -200,6 +201,8 @@ app.use(errorHandler)
 
 app.listen(env.PORT, () => {
   console.log(`Mimoia API running on port ${env.PORT}`)
+  // How many extra `?ref=` labels for the read token were dropped (never which).
+  warnDroppedExtraRefSources()
   // Notification scheduler — periodic poll over `notification_schedule`
   // dispatches due prep alerts via Web Push. Started once at boot;
   // idempotent if startup runs twice. See PR-D / notifications spec.

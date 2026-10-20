@@ -1050,3 +1050,23 @@ describe('processInbound — a linked number sends a link code', () => {
     expect(t.chat).toHaveBeenCalled()
   })
 })
+
+describe('processInbound — late answer to «¿hiciste la cena?» (PRO-250)', () => {
+  const checkin: HistoryRow = { direction: 'out', kind: 'dinner_checkin', body: '¿Hiciste hoy la cena (*Hummus casero*)? Así lo apunto.', status: 'sent', createdAt: new Date('2026-10-16T21:10:00Z') }
+
+  it('at 00:30 Mimo is told the reply is about Friday 16; history keeps the user words only', async () => {
+    const t = setup({ history: [checkin] })
+    t.deps.now = () => new Date('2026-10-16T22:30:00Z')
+    await processInbound(msg({ kind: 'interactive', text: 'Sí, la hice', replyId: 'checkin:yes', timestamp: Math.floor(new Date('2026-10-16T22:30:00Z').getTime() / 1000) }), t.deps)
+    const sentText = (t.chat.mock.calls[0] as unknown[])[1] as string
+    expect(sentText).toContain('contesta al aviso de la cena del viernes 16 de octubre')
+    expect(sentText.endsWith('Sí, la hice')).toBe(true)
+    expect(t.inboundUpdates.find((u) => u.status === 'processed')?.body).toBe('Sí, la hice')
+  })
+
+  it('during the day nothing is added', async () => {
+    const t = setup({ history: [checkin] })
+    await processInbound(msg({ text: 'Sí, la hice' }), t.deps)
+    expect((t.chat.mock.calls[0] as unknown[])[1]).toBe('Sí, la hice')
+  })
+})

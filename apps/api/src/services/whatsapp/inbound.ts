@@ -4,6 +4,7 @@ import type { TokenUsage } from '../advisorBudget.js'
 import type { InboundMessage } from './webhookParser.js'
 import type { LinkWithUser } from './store.js'
 import { buildChatHistory, HISTORY_WINDOW_MS, type HistoryRow } from './history.js'
+import { lateDinnerCheckinNote } from './lateCheckin.js'
 import { connectUrl, extractLinkCodeCandidates, isLinkAttempt } from './linking.js'
 import { dropRepeatedButtons, lastSentButtons, outboundBody, renderAssistantReply, renderPlainText, WA_CAPTION_MAX, type OutboundMessage } from './render.js'
 import { extractOptions, toWhatsAppMarkup } from './format.js'
@@ -781,7 +782,10 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     // ── 4. Chat ────────────────────────────────────────────────
     const rows = await store.loadHistoryRows(msg.from, new Date(now.getTime() - HISTORY_WINDOW_MS), userId)
     const history = buildChatHistory(rows, now)
-    const { usage, ...response } = await deps.chat(userId, text, history, {
+    // PRO-250: a reply after midnight to last night's «¿hiciste la cena?» is about that day.
+    const lateCheckin = lateDinnerCheckinNote(rows, now)
+    const chatText = lateCheckin ? `${lateCheckin}\n\n${text}` : text
+    const { usage, ...response } = await deps.chat(userId, chatText, history, {
       mode: 'whatsapp',
       ...(images ? { images } : {}),
       // WhatsApp-first sign-up: Mimo asks the first steps until complete_onboarding.

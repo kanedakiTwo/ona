@@ -360,6 +360,11 @@ export function selectNewsletterRecipients(
 
 // ─── Repo ────────────────────────────────────────────────────────
 
+export interface NewsletterUnsubscribeResult {
+  outcome: 'ok' | 'already' | 'not_found'
+  recipientHash: string | null
+}
+
 export interface NewsletterRepo {
   candidates(): Promise<NewsletterCandidate[]>
   /** Hashes already claimed for this issue (pending or sent). */
@@ -373,8 +378,10 @@ export interface NewsletterRepo {
   /**
    * Newsletter off for the token's address, in the waitlist AND the account
    * with that email (one person, one switch). The place on the list stays.
+   * `recipientHash` is that address's hash (as in `newsletter_sends`), null
+   * when no address was found.
    */
-  unsubscribe(token: string): Promise<'ok' | 'already' | 'not_found'>
+  unsubscribe(token: string): Promise<NewsletterUnsubscribeResult>
   /** The profile switch (PRO-95). Off also turns off the waitlist entry with that email. */
   getUserOptIn(userId: string): Promise<boolean | null>
   setUserOptIn(userId: string, optIn: boolean): Promise<boolean | null>
@@ -466,8 +473,9 @@ export function createDbNewsletterRepo(db: Db = defaultDb): NewsletterRepo {
       return !!row
     },
     async unsubscribe(token) {
+      const notFound = { outcome: 'not_found', recipientHash: null } as const
       const ref = parseNewsletterToken(token)
-      if (!ref) return 'not_found'
+      if (!ref) return notFound
       let email: string | null = null
       if (ref.kind === 'waitlist') {
         const [entry] = await db
@@ -475,15 +483,16 @@ export function createDbNewsletterRepo(db: Db = defaultDb): NewsletterRepo {
           .from(waitlistEntries)
           .where(eq(waitlistEntries.unsubscribeToken, ref.token))
           .limit(1)
-        if (!entry) return 'not_found'
-        if (entry.status === 'unsubscribed' || !entry.email) return 'already'
+        if (!entry) return notFound
+        if (entry.status === 'unsubscribed' || !entry.email) return { outcome: 'already', recipientHash: null }
         email = entry.email
       } else {
         const [user] = await db.select({ email: users.email }).from(users).where(eq(users.id, ref.userId)).limit(1)
-        if (!user) return 'not_found'
+        if (!user) return notFound
         email = user.email
       }
-      return (await turnOffByEmail(db, email)) > 0 ? 'ok' : 'already'
+      const outcome = (await turnOffByEmail(db, email)) > 0 ? 'ok' : 'already'
+      return { outcome, recipientHash: recipientHash(email) }
     },
     async getUserOptIn(userId) {
       const [u] = await db.select({ on: users.newsletterOptIn }).from(users).where(eq(users.id, userId)).limit(1)

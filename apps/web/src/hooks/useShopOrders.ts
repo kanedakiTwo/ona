@@ -36,6 +36,18 @@ export function useDeleteShop() {
   })
 }
 
+/** Move a shop up / down (or to the front) among the shops of its kind (PRO-287): the first súper gets the súper order. */
+export function useMoveShop() {
+  const qc = useQueryClient()
+  return useMutation<Shop[], Error, { id: string; to: "up" | "down" | "first" }>({
+    mutationFn: ({ id, to }) => api.post<Shop[]>(`/shops/${id}/move`, { to }),
+    onSuccess: (shops) => {
+      qc.setQueryData(["shops"], shops)
+      qc.invalidateQueries({ queryKey: ["shops"] })
+    },
+  })
+}
+
 export function useShopOrders(includeClosed = false) {
   return useQuery<ShopOrder[]>({
     queryKey: ["shop-orders", includeClosed],

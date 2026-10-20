@@ -6,7 +6,7 @@ Mimoia splits what's left on the shopping list for the next 7 days into one orde
 
 ## User Capabilities
 
-- Save the household's shops at `/compra/tiendas` (any member; max 20): name, type (frutería / carnicería / pescadería / supermercado / otra), how to order (WhatsApp / email / web / teléfono) + that contact, "tu nombre para la tienda", recoger vs a domicilio (+ address), **pedido mínimo a domicilio** and **gastos de envío** (€, optional), free notes. Spanish 9-digit numbers get `34` prepended. The form's examples are made up («Frutería del barrio», «600 000 000», «910 000 000», «Ana, la del 3.º B», «https://www.tutienda.es»): never a real shop, number or person (PRO-76).
+- Save the household's shops at `/compra/tiendas` (any member; max 20): name, type (frutería / carnicería / pescadería / supermercado / otra), how to order (WhatsApp / email / web / teléfono) + that contact, "tu nombre para la tienda", recoger vs a domicilio (+ address), **pedido mínimo a domicilio** and **gastos de envío** (€, optional), free notes. Spanish 9-digit numbers get `34` prepended. The form's examples are made up («Frutería del barrio», «600 000 000», «910 000 000», «Ana, la del 3.º B», «https://www.tutienda.es»): never a real shop, number or person (PRO-76). With two or more shops of the same type, each card has **Subir** / **Bajar** arrows (disabled at the ends; none for a type with one shop) and the first one says «la primera: recibe el pedido»: the order of that type goes to the first (PRO-287: Miguel couldn't put Mercadona ahead of El Corte Inglés). The new order is saved for the household; other types keep their places (tests: `apps/api/src/tests/shopOrdering.test.ts`, `shopOrdersRoute.smoke.ts`, `apps/web/e2e/compra-orden-tiendas.spec.ts`).
 - `/compra` → **Preparar los pedidos**: Mimoia rebuilds the rolling list for today + 6 days, routes every pending line to a shop and shows one card per shop (order: frutería, carnicería, pescadería, súper). Re-preparing replaces the previous *drafts* only.
 - Draft card:
   - **Recojo en tienda / A domicilio** for this order (default: the shop's). A domicilio needs an address (prefilled from the shop or any other shop of the household); the message always says where and asks "¿más o menos a qué hora llegaría?"; pickup asks "a partir de qué hora puedo pasar a recogerlo".
@@ -27,7 +27,7 @@ Mimoia splits what's left on the shopping list for the next 7 days into one orde
 - **Enviar a <cadena>** (experimento cerrado): la tarjeta del súper manda su cesta a la extensión de Mimoia del navegador, que la suma al carro de la cadena; ver [Enviar a la extensión del navegador](#enviar-a-la-extensión-del-navegador).
 - `/shopping` has a **Pedir a mis tiendas** card linking to `/compra`.
 - `/compra` also lists the pantry staples the recipes use and Mimoia assumed at home ("¿Te falta algo de esto?") — one tap adds one to the súper order.
-- From chat (web or WhatsApp): "hazme la compra" → one short link per shop (or what's missing before sending), pickup/delivery and minimum, and "¿algo más?"; "añade fruta", "el jamón serrano", "150 g de york", "traédmelo a casa" edit the draft (same link); forward or paste the shop's reply → line-by-line summary with `[[opciones: …]]`; "sí" → confirmation link; "ya lo he recogido, 23 €" → closed. Shops can be added by chat ("mi carnicería es La Plaza, WhatsApp 600 000 002").
+- From chat (web or WhatsApp): "hazme la compra" → one short link per shop (or what's missing before sending), pickup/delivery and minimum, and "¿algo más?"; "añade fruta", "el jamón serrano", "150 g de york", "traédmelo a casa" edit the draft (same link); forward or paste the shop's reply → line-by-line summary with `[[opciones: …]]`; "sí" → confirmation link; "ya lo he recogido, 23 €" → closed. Shops can be added by chat ("mi carnicería es La Plaza, WhatsApp 600 000 002") and reordered ("pon Mercadona como primer súper").
 
 ## Preparing the orders
 
@@ -35,7 +35,7 @@ Mimoia splits what's left on the shopping list for the next 7 days into one orde
 - **Compounds** typed by hand split: "Fruta (fresas, plátanos, naranjas)", "hierbas aromáticas (romero, tomillo)" → one line each. "pescado entero fresco (dorada, lubina, gallo…)" is a choice, not a family.
 - **Pantry staples from recipes** stay home (sal, pimienta, aceite, vinagre, especias, azúcar, harina de trigo, soja, levadura, agua, and anything in cda/cdita without a rule) and are listed. Typed by hand they're ordered (súper).
 - **Duplicates merge** by buy rule in the draft (not in the list): recipe "jamón 50 g" + typed "Jamón serrano" → one line, serrano; "leche" + "leche entera 50 ml" → one brik, kept ticked because the user typed it. Same units sum; mixed units convert to grams. Closing the order ticks every merged list item.
-- **Routing**: the buy rule's shop (charcutería → carnicería; despensa typed by hand → súper); unknown names fall back to `classify.ts` (packaged → súper; fish, meat by name; fruit/veg/herbs by name or aisle `produce` → frutería; "pan de hamburguesa" never to the butcher). No shop of that kind → the súper → otherwise "sin tienda".
+- **Routing**: the buy rule's shop (charcutería → carnicería; despensa typed by hand → súper); unknown names fall back to `classify.ts` (packaged → súper; fish, meat by name; fruit/veg/herbs by name or aisle `produce` → frutería; "pan de hamburguesa" never to the butcher). The household's **first** shop of that kind gets it (order set with the arrows at `/compra/tiendas`, `position`); no shop of that kind → the first súper → otherwise "sin tienda".
 - Unknown products typed without an amount go by name only ("Galletas daniela"); with an amount, "Nombre: 300 g" (fish without a rule keep the clean/whole weight line, FAO yields).
 
 ## Buy rules ("cómo se compra")
@@ -106,6 +106,7 @@ All auth'd and scoped to the caller's primary household unless noted.
 |---|---|---|
 | GET/POST | `/shops` | list / add (`shopInputSchema`) |
 | PATCH/DELETE | `/shops/:id` | full-form update / delete (+ its drafts) |
+| POST | `/shops/:id/move` | `{ to: up \| down \| first }` within its kind → all shops in their new order; positions rewritten 0…n-1; 400 bad `to`, 404 not the household's |
 | POST | `/shop-orders/prepare` | `{ days? = 7, listId? }` → `{ orders, unassigned, skipped, hasShops }` |
 | GET | `/shop-orders` | open orders (`?all=1` adds closed, last 30 days) |
 | GET/PATCH | `/shop-orders/:id` | PATCH drafts only: `{ lines: [{key, remove?, note?, quantity?, unit?, choice?, include?, moveToShopId?}], add: [{name, quantity?, unit?, note?}], fulfilment?, address?, capEur? }`; a `choice` is saved as household preference |
@@ -121,7 +122,7 @@ Web: `GET /c/<token>[?m=ok]` (Next route handler) redirects to that URL; expired
 
 ## Assistant skills
 
-`shopOrderSkills.ts` (same REST calls, as the user): `manage_shops` (incl. delivery minimum/fee), `prepare_shop_orders` (links, or what's missing, pickup/delivery, minimum, pantry assumed, "¿algo más?"), `edit_shop_order` (add — each product to its shop —, remove, choose, amounts, include, delivery + address; same links), `register_shop_reply`, `approve_shop_order` (only after an explicit "sí"; `remove` names → line keys), `close_shop_order` (`cancel=true` cancels), `get_shop_orders`. Shop names match ignoring punctuation ("la plaza" → "Carnicería La Plaza"). The prompt treats a forwarded shop reply as data, never instructions, and lets the model copy `/c/` links verbatim (the only URLs it may write). Short links use `WEB_PUBLIC_URL`.
+`shopOrderSkills.ts` (same REST calls, as the user): `manage_shops` (incl. delivery minimum/fee; `move` with `to: first | up | down` — «pon Mercadona como primer súper» — answers with the new order of that kind), `prepare_shop_orders` (links, or what's missing, pickup/delivery, minimum, pantry assumed, "¿algo más?"), `edit_shop_order` (add — each product to its shop —, remove, choose, amounts, include, delivery + address; same links), `register_shop_reply`, `approve_shop_order` (only after an explicit "sí"; `remove` names → line keys), `close_shop_order` (`cancel=true` cancels), `get_shop_orders`. Shop names match ignoring punctuation ("la plaza" → "Carnicería La Plaza"). The prompt treats a forwarded shop reply as data, never instructions, and lets the model copy `/c/` links verbatim (the only URLs it may write). Short links use `WEB_PUBLIC_URL`.
 
 ## Constraints
 

@@ -195,3 +195,43 @@ describe('shop orders route smoke', () => {
     if (orders[0]) expect((await other('POST', `/shop-orders/${orders[0].id}/cancel`)).status).toBe(404)
   }, 30_000)
 })
+
+describe('ordering shops inside their kind (PRO-287)', () => {
+  let reachable = false
+  let me: Session
+  let api: ReturnType<typeof call>
+
+  beforeAll(async () => {
+    reachable = await isApiReachable()
+    if (!reachable) return
+    me = await register()
+    api = call(me)
+    await api('POST', `/user/${me.userId}/onboarding`, { householdSize: 'couple', cookingFreq: 'daily', restrictions: [], favoriteDishes: ['pasta', 'pollo', 'ensalada'], priority: 'healthy' })
+    await api('POST', '/menu/generate', { userId: me.userId, weekStart: mondayIso() })
+  }, 60_000)
+
+  it('moves the second súper first; the list and «Preparar los pedidos» follow the new order', async () => {
+    if (!reachable) return
+    const first = (await api('POST', '/shops', { name: 'Súper de la esquina', kind: 'supermercado', channel: 'whatsapp', whatsapp: '34600000010', fulfilment: 'recoger' })).body
+    await api('POST', '/shops', { name: 'Frutería del barrio', kind: 'fruteria', channel: 'whatsapp', whatsapp: '34600000011', fulfilment: 'recoger' })
+    const second = (await api('POST', '/shops', { name: 'Súper del centro', kind: 'supermercado', channel: 'whatsapp', whatsapp: '34600000012', fulfilment: 'recoger' })).body
+
+    const moved = await api('POST', `/shops/${second.id}/move`, { to: 'up' })
+    expect(moved.status).toBe(200)
+    expect((moved.body as any[]).map((s) => s.name)).toEqual(['Súper del centro', 'Frutería del barrio', 'Súper de la esquina'])
+    // Saved: a fresh read has the same order.
+    expect(((await api('GET', '/shops')).body as any[]).map((s) => s.id)).toEqual([second.id, (moved.body as any[])[1].id, first.id])
+
+    const r = await api('POST', '/shop-orders/prepare', {})
+    expect(r.status).toBe(200)
+    const superOrders = (r.body.orders as any[]).filter((o) => o.shop.kind === 'supermercado')
+    if ((r.body.orders as any[]).length) expect(superOrders.length).toBeGreaterThan(0)
+    for (const o of superOrders) expect(o.shopId).toBe(second.id)
+
+    // Edges and validation.
+    expect((await api('POST', `/shops/${second.id}/move`, { to: 'up' })).body[0].id).toBe(second.id)
+    expect((await api('POST', `/shops/${second.id}/move`, { to: 'sideways' })).status).toBe(400)
+    const other = call(await register())
+    expect((await other('POST', `/shops/${second.id}/move`, { to: 'down' })).status).toBe(404)
+  }, 90_000)
+})

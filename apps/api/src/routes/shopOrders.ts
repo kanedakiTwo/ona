@@ -5,6 +5,7 @@
  *   POST   /shops                       — add a shop
  *   PATCH  /shops/:id                   — edit a shop
  *   DELETE /shops/:id                   — delete a shop (and its drafts)
+ *   POST   /shops/:id/move              — { to: up | down | first } within its kind → the shops in their new order
  *
  *   POST   /shop-orders/prepare         — draft one order per shop from the list for the next `days` (default 7)
  *   GET    /shop-orders                 — open orders (?all=1 adds closed ones, last 30 days)
@@ -42,6 +43,7 @@ import {
   listOrders,
   listShops,
   markSent,
+  moveShop,
   patchOrder,
   patchShop,
   prepareOrders,
@@ -54,6 +56,7 @@ import {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+const moveSchema = z.object({ to: z.enum(['up', 'down', 'first']) })
 const quoteSchema = z.object({ text: z.string().trim().min(2).max(4000) })
 const closeSchema = z.object({ finalTotalEur: z.number().nonnegative().max(5000).nullable().optional() })
 const prepareSchema = z.object({
@@ -124,6 +127,19 @@ router.patch('/shops/:id', async (req: AuthRequest, res) => {
     res.json(shop)
   } catch (err) {
     fail(res, err, 'PATCH /shops/:id')
+  }
+})
+
+router.post('/shops/:id/move', async (req: AuthRequest, res) => {
+  if (!UUID_RE.test(String(req.params.id))) return void res.status(404).json({ error: 'Tienda no encontrada.' })
+  const parsed = moveSchema.safeParse(req.body)
+  if (!parsed.success) return badRequest(res, parsed.error.issues)
+  try {
+    const shops = await moveShop(req.userId!, String(req.params.id), parsed.data.to)
+    if (!shops) return void res.status(404).json({ error: 'Tienda no encontrada.' })
+    res.json(shops)
+  } catch (err) {
+    fail(res, err, 'POST /shops/:id/move')
   }
 })
 

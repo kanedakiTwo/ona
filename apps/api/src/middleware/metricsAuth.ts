@@ -4,13 +4,16 @@ import { env } from '../config/env.js'
 import { authMiddleware, requireAdmin } from './auth.js'
 
 /**
- * Guard for the read-only routes the Mimoia HQ agents use: GET /admin/metrics
+ * Guard for the twelve read-only routes the Mimoia HQ agents use: GET /admin/metrics
  * and GET /admin/usage (specs/metrics.md), GET /admin/errors (specs/errors.md),
  * GET /admin/waitlist (specs/waitlist.md), GET /admin/price-survey and GET
  * /admin/feedback (counts only), and GET
  * /admin/assistant-reviews/flags (specs/whatsapp.md), GET /admin/catalog-wishes
- * (specs/catalog-import.md), GET /admin/extension-gaps (specs/shop-orders.md) and GET
- * /admin/newsletter/stats (specs/newsletter.md, PRO-191).
+ * (specs/catalog-import.md), GET /admin/extension-gaps (specs/shop-orders.md), GET
+ * /admin/newsletter/stats (specs/newsletter.md, PRO-191), GET
+ * /admin/menu-planner/comparison (specs/smart-menu.md) and GET /notices/afina/stats
+ * (specs/taste.md). Routes that hold user text answer the token through
+ * services/agentView.ts (`viaMetricsToken`).
  * Either an admin JWT, or
  * the header `x-metrics-token` equal to `METRICS_READ_TOKEN`, so the agents
  * read aggregates without holding an admin session. The token is mounted on

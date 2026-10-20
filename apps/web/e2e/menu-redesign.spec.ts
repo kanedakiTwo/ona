@@ -192,6 +192,10 @@ async function expectCompactHero(page: Page, name: string, maxHeight: number) {
   await expect(hero.getByText(name, { exact: true })).toHaveCount(1)
   await expect(hero.getByRole('link', { name: /empezar a cocinar/i })).toBeVisible()
   await expect(hero.getByRole('button', { name: /más opciones/i })).toBeVisible()
+  // Miguel, 2026-10-20: «el icono del plato debería ser algo más cercano a la
+  // comida» — a pot or a soup bowl, not the sun or the moon of the meal's time.
+  await expect(hero.locator('svg.lucide-cooking-pot, svg.lucide-soup, svg.lucide-coffee, svg.lucide-apple')).toHaveCount(1)
+  await expect(hero.locator('svg.lucide-sun, svg.lucide-moon, svg.lucide-sunrise, svg.lucide-sunset')).toHaveCount(0)
   expect((await hero.boundingBox())!.height).toBeLessThan(maxHeight)
 }
 

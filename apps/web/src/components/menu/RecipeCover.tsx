@@ -2,8 +2,9 @@
 
 /**
  * A recipe's photo, or — when the recipe has none (about a third of the
- * catalogue today) or the image fails to load — a calm bone block with the
- * meal's small icon (sunrise / sun / sunset / moon). Never a grey fork box,
+ * catalogue today) or the image fails to load — a calm bone block with a
+ * small food icon for the meal (coffee / pot / apple / soup; until 2026-10-20
+ * sunrise / sun / sunset / moon, which read as the time, not the food). Never a grey fork box,
  * and never the dish name again: wherever a cover is shown, the name is
  * already printed next to it.
  *
@@ -11,13 +12,13 @@
  * the image area altogether (see MealHero in DayMeals.tsx).
  */
 import { useState } from "react"
-import { Moon, Sun, Sunrise, Sunset } from "lucide-react"
+import { Apple, Coffee, CookingPot, Soup } from "lucide-react"
 
-const MEAL_ICON = { breakfast: Sunrise, lunch: Sun, snack: Sunset, dinner: Moon } as const
+const MEAL_ICON = { breakfast: Coffee, lunch: CookingPot, snack: Apple, dinner: Soup } as const
 
-/** Lucide icon for a meal key (falls back to the sun). */
+/** Lucide food icon for a meal key (falls back to the pot). */
 export function mealIconFor(meal?: string) {
-  return MEAL_ICON[(meal ?? "lunch") as keyof typeof MEAL_ICON] ?? Sun
+  return MEAL_ICON[(meal ?? "lunch") as keyof typeof MEAL_ICON] ?? CookingPot
 }
 
 interface Props {

@@ -3,6 +3,7 @@ import { users, menus, userNutrientBalance } from '../../db/schema.js'
 import { COOKING_STYLE_LABELS, nutrientsToPercentages, TARGET_MACROS } from '@ona/shared'
 import type { NutrientBalance } from '@ona/shared'
 import { buildMemoryDigest } from '../userMemoryStore.js'
+import { buildFichaDigest, loadHouseholdFicha } from '../profile/reader.js'
 import { madridParts, mondayOf } from '../madridTime.js'
 import { mealLinesForDay } from '../menuText.js'
 import { resolveScope, scopeWhere } from '../scopeResolver.js'
@@ -163,6 +164,13 @@ export async function loadUserContext(userId: string, db: any): Promise<string> 
   // hasn't recorded any preferences (no extra noise on the prompt).
   const memoryDigest = await buildMemoryDigest(userId).catch(() => '')
   if (memoryDigest) parts.push(memoryDigest)
+
+  // ── Household ficha (PRO-253) ─────────────────────────────
+  // Portrait and facts in force of the household, without health and
+  // without what the memory digest above already says. Same text on the
+  // web and on WhatsApp (both go through this loader).
+  const fichaDigest = buildFichaDigest(await loadHouseholdFicha(userId, { db }).catch(() => null), userId)
+  if (fichaDigest) parts.push(fichaDigest)
 
   return parts.join('\n')
 }

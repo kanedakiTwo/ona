@@ -31,6 +31,7 @@ import { findForCourse } from './courseAwareMatcher.js'
 import { proteinKind } from './tasteDeck.js'
 import { dishCountFor, coursesFor } from './menuDishes.js'
 import { getMemoryForUser } from './userMemoryStore.js'
+import { loadFichaMenuConstraints, withFichaFilters } from './profile/reader.js'
 import { resolveScope, scopeWhere } from './scopeResolver.js'
 import { calculateRecipeCaloriesFromDB, calculateMenuCaloriesFromDB } from './calorieCalculator.js'
 import { calculateMenuNutrientsFromDB } from './nutrientCalculator.js'
@@ -280,6 +281,7 @@ export function buildRandomMenu(
   likedRecipeIds?: Set<string>,
   /** PRO-224: day index → the group the kids ate at school; that dinner avoids it. */
   dinnerAvoidGroups?: Record<number, FoodGroup>,
+  unavailableEquipment?: Set<string>,
 ): { days: DayMenu[]; warnings: string[] } {
   const usedRecipeIds = new Set<string>()
   const days: DayMenu[] = []
@@ -384,6 +386,7 @@ export function buildRandomMenu(
           dayIndex,
           dislikes,
           availableEquipment,
+          unavailableEquipment,
           timeBudget: timeBudgetByDay?.[dayIndex] ?? null,
         }
         const picked = (pool !== slotPool ? findForCourse(pool, course, opts) : undefined) ?? findForCourse(slotPool, course, opts)
@@ -590,11 +593,18 @@ export async function generateMenu(
   const memory = await getMemoryForUser(userId).catch(() => null)
   const restrictions = mergeRestrictions(user.restrictions, memory)
   const dislikesValue = memory?.dislikes?.value
-  const dislikes: string[] = Array.isArray(dislikesValue) ? (dislikesValue as string[]) : []
   const equipmentValue = memory?.equipment?.value
-  const availableEquipment = Array.isArray(equipmentValue)
-    ? new Set<string>((equipmentValue as string[]).map(normaliseEquipment))
-    : undefined
+  // The household's ficha on top (PRO-253): every member's dislikes and
+  // equipment missing right now («sin horno hasta nuevo aviso»).
+  const { dislikes, availableEquipment, unavailableEquipment } = withFichaFilters(
+    {
+      dislikes: Array.isArray(dislikesValue) ? (dislikesValue as string[]) : [],
+      availableEquipment: Array.isArray(equipmentValue)
+        ? new Set<string>((equipmentValue as string[]).map(normaliseEquipment))
+        : undefined,
+    },
+    await loadFichaMenuConstraints(userId, { db }),
+  )
   // Per-day time limits (PRO-138): total or hands-on minutes; «Rapidez» /
   // «Cocino poco» without an answer → ≤ 30 min in total Mon–Fri.
   // Festivos (PRO-226): a weekday holiday of the household's comunidad
@@ -646,6 +656,7 @@ export async function generateMenu(
       mealDishCounts,
       rated.likedRecipeIds,
       dinnerAvoidGroups,
+      unavailableEquipment,
     )
 
     // Verify the menu has at least some recipes
@@ -719,6 +730,7 @@ export async function generateMenu(
     mealDishCounts,
     rated.likedRecipeIds,
     dinnerAvoidGroups,
+    unavailableEquipment,
   )
   return { days: finish(fallback.days), warnings: fallback.warnings }
 }

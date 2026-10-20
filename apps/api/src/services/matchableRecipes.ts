@@ -92,6 +92,10 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
     allergens: r.allergens ?? [],
     // Course classification for multi-dish slot building (starter/main/dessert).
     course: (r.course as Course | null | undefined) ?? null,
+    // Dish type / main protein (`tipo:`, `proteina:`) and kcal per serving,
+    // for the week rules and the planner (PRO-254/255).
+    internalTags: r.internalTags ?? [],
+    nutritionPerServing: r.nutritionPerServing ?? null,
     ingredients: ingredientsByRecipe.get(r.id) ?? [],
     // PRO-73: catalogue recipes with no steps, too few ingredients or
     // quantities out of range are skipped by the matcher. Computed here, on

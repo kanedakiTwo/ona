@@ -1837,3 +1837,42 @@ export const schoolLunches = pgTable('school_lunches', {
   uniqueIndex('uq_school_lunches_household_date').on(t.householdId, t.date),
   check('school_lunches_group_check', sql.raw("food_group IS NULL OR food_group IN ('legumbre','pescado','carne','huevo','pasta_arroz','verdura')")),
 ])
+
+// ─── Menú inteligente (specs/smart-menu.md, PRO-255) ─────────
+/**
+ * Mimo's proposal for a generated menu, made in the shadow next to today's
+ * generator: what Claude chose, what the fixed checker said and what the
+ * household would have seen. One row per generated menu.
+ */
+export const menuPlans = pgTable('menu_plans', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  menuId: uuid('menu_id').notNull().references(() => menus.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  householdId: uuid('household_id').references(() => households.id, { onDelete: 'cascade' }),
+  /** 'shadow' (PRO-255); 'live' once PRO-257 turns it on. */
+  mode: text('mode').notNull().default('shadow'),
+  /** 'ok' | 'partial' | 'fallback' | 'skipped'. */
+  status: text('status').notNull(),
+  /** Why it fell back or was skipped: no_key, spend_cap, no_slots, no_candidates, timeout, error, refusal, invalid. */
+  reason: text('reason'),
+  /** The week as it would have been shown (planner slots that passed + the generator's for the rest). */
+  days: jsonb('days'),
+  /** Per planned slot: day, meal, recipeId, recipeName, why, leftoverOf, problems, source. */
+  slots: jsonb('slots').notNull().default([]),
+  /** Checker summary: problems by kind, extra slots. */
+  check: jsonb('check'),
+  /** `scoreWeek` of the proposal and of the generator's week (PRO-254), for the blind comparison. */
+  plannerScore: jsonb('planner_score'),
+  generatorScore: jsonb('generator_score'),
+  candidates: integer('candidates').notNull().default(0),
+  model: text('model'),
+  inputTokens: integer('input_tokens'),
+  outputTokens: integer('output_tokens'),
+  costMicros: integer('cost_micros'),
+  durationMs: integer('duration_ms'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_menu_plans_menu').on(t.menuId),
+  index('idx_menu_plans_household_created').on(t.householdId, t.createdAt),
+  check('menu_plans_status_check', sql.raw("status IN ('ok','partial','fallback','skipped')")),
+])

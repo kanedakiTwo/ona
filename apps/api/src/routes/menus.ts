@@ -24,6 +24,8 @@ import { findForCourse } from '../services/courseAwareMatcher.js'
 import { loadHouseholdRatingSets, withHouseholdRatings } from '../services/householdRatings.js'
 import { addDish, removeDishAt, patchDish, reorderDish, coursesFor, dishCountFor, moveSlotInWeek } from '../services/menuDishes.js'
 import { getMemoryForUser } from '../services/userMemoryStore.js'
+import { loadFichaMenuConstraints, withFichaFilters } from '../services/profile/reader.js'
+import { startShadowPlan } from '../services/menuPlannerShadow.js'
 import {
   recordMenuEdits,
   slotDiff,
@@ -298,6 +300,19 @@ router.post('/menu/generate', authMiddleware, requireActiveAccount({ skip: (req)
       console.warn('[menus.generate] enqueuePrepAlertsForMenu failed:', err)
     })
 
+    // Menú inteligente a la sombra (PRO-255): Mimo piensa la misma semana
+    // and stores its proposal in `menu_plans`; the household keeps seeing
+    // this one. Not awaited: it never delays or breaks the menu.
+    startShadowPlan({
+      menuId: menu.id,
+      userId,
+      weekStart,
+      days,
+      locked: previous.locked,
+      bannedRecipeIds: carryBanned,
+      skippedDays: carrySkipped,
+    })
+
     // «Cuánto ha acertado» (PRO-155): one small Haiku call, stored on the
     // row. Null (no key, error, slow) → the menu goes out without the line.
     const fit = await evaluateAndSaveMenuFit({ userId, menuId: menu.id, days })
@@ -568,11 +583,15 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
     const memory = await getMemoryForUser(menu.userId).catch(() => null)
     const restrictions = mergeRestrictions(user?.restrictions, memory)
     const dislikesValue = memory?.dislikes?.value
-    const dislikes: string[] = Array.isArray(dislikesValue) ? (dislikesValue as string[]) : []
     const equipmentValue = memory?.equipment?.value
-    const availableEquipment = Array.isArray(equipmentValue)
-      ? new Set<string>((equipmentValue as string[]).map(normaliseEquipment))
-      : undefined
+    // The household's ficha on top (PRO-253): dislikes of every member, equipment missing right now.
+    const { dislikes, availableEquipment, unavailableEquipment: unavailEquip1 } = withFichaFilters(
+      {
+        dislikes: Array.isArray(dislikesValue) ? (dislikesValue as string[]) : [],
+        availableEquipment: Array.isArray(equipmentValue) ? new Set<string>((equipmentValue as string[]).map(normaliseEquipment)) : undefined,
+      },
+      await loadFichaMenuConstraints(menu.userId),
+    )
     // PRO-138: the day's limit on total or hands-on time.
     const timeBudget = slotTimeBudget(memory, menu.weekStart, dayIndex)
 
@@ -605,6 +624,7 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       ...rated,
       dislikes,
       availableEquipment,
+      unavailableEquipment: unavailEquip1,
       timeBudget,
     }
 
@@ -725,11 +745,15 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
       const memory2 = await getMemoryForUser(menu.userId).catch(() => null)
       const restrictions = mergeRestrictions(user?.restrictions, memory2)
       const dislikesValue2 = memory2?.dislikes?.value
-      const dislikes: string[] = Array.isArray(dislikesValue2) ? (dislikesValue2 as string[]) : []
       const equipmentValue2 = memory2?.equipment?.value
-      const availableEquipment = Array.isArray(equipmentValue2)
-        ? new Set<string>((equipmentValue2 as string[]).map(normaliseEquipment))
-        : undefined
+      // The household's ficha on top (PRO-253): dislikes of every member, equipment missing right now.
+      const { dislikes, availableEquipment, unavailableEquipment: unavailEquip2 } = withFichaFilters(
+        {
+          dislikes: Array.isArray(dislikesValue2) ? (dislikesValue2 as string[]) : [],
+          availableEquipment: Array.isArray(equipmentValue2) ? new Set<string>((equipmentValue2 as string[]).map(normaliseEquipment)) : undefined,
+        },
+        await loadFichaMenuConstraints(menu.userId),
+      )
       const timeBudget = slotTimeBudget(memory2, menu.weekStart, dayIndex)
 
       const favRows = await db
@@ -753,6 +777,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
         ...rated,
         dislikes,
         availableEquipment,
+        unavailableEquipment: unavailEquip2,
         timeBudget,
       })
       if (!newRecipe) {
@@ -1547,11 +1572,15 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
     const memRegen = await getMemoryForUser(menu.userId).catch(() => null)
     const restrictions = mergeRestrictions(user?.restrictions, memRegen)
     const dislikesValRegen = memRegen?.dislikes?.value
-    const dislikesRegen: string[] = Array.isArray(dislikesValRegen) ? (dislikesValRegen as string[]) : []
     const equipValRegen = memRegen?.equipment?.value
-    const availEquipRegen = Array.isArray(equipValRegen)
-      ? new Set<string>((equipValRegen as string[]).map(normaliseEquipment))
-      : undefined
+    // The household's ficha on top (PRO-253): dislikes of every member, equipment missing right now.
+    const { dislikes: dislikesRegen, availableEquipment: availEquipRegen, unavailableEquipment: unavailEquip3 } = withFichaFilters(
+      {
+        dislikes: Array.isArray(dislikesValRegen) ? (dislikesValRegen as string[]) : [],
+        availableEquipment: Array.isArray(equipValRegen) ? new Set<string>((equipValRegen as string[]).map(normaliseEquipment)) : undefined,
+      },
+      await loadFichaMenuConstraints(menu.userId),
+    )
     const timeBudgetRegen = slotTimeBudget(memRegen, menu.weekStart, day)
 
     const favScopeRegen = await resolveScope(menu.userId)
@@ -1576,6 +1605,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
       ...ratedRegen,
       dislikes: dislikesRegen,
       availableEquipment: availEquipRegen,
+      unavailableEquipment: unavailEquip3,
       timeBudget: timeBudgetRegen,
     }
 
@@ -1634,11 +1664,15 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/random', async (req: AuthReq
     const memR = await getMemoryForUser(menu.userId).catch(() => null)
     const restrictions = mergeRestrictions(user?.restrictions, memR)
     const dislikesValR = memR?.dislikes?.value
-    const dislikesR: string[] = Array.isArray(dislikesValR) ? (dislikesValR as string[]) : []
     const equipValR = memR?.equipment?.value
-    const availEquipR = Array.isArray(equipValR)
-      ? new Set<string>((equipValR as string[]).map(normaliseEquipment))
-      : undefined
+    // The household's ficha on top (PRO-253): dislikes of every member, equipment missing right now.
+    const { dislikes: dislikesR, availableEquipment: availEquipR, unavailableEquipment: unavailEquip4 } = withFichaFilters(
+      {
+        dislikes: Array.isArray(dislikesValR) ? (dislikesValR as string[]) : [],
+        availableEquipment: Array.isArray(equipValR) ? new Set<string>((equipValR as string[]).map(normaliseEquipment)) : undefined,
+      },
+      await loadFichaMenuConstraints(menu.userId),
+    )
     const timeBudgetR = slotTimeBudget(memR, menu.weekStart, day)
 
     const favScopeR = await resolveScope(menu.userId)
@@ -1663,6 +1697,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/random', async (req: AuthReq
       ...ratedR,
       dislikes: dislikesR,
       availableEquipment: availEquipR,
+      unavailableEquipment: unavailEquip4,
       timeBudget: timeBudgetR,
     }
 

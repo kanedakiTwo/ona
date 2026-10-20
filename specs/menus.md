@@ -95,6 +95,7 @@ For each meal slot, the matcher (`recipeMatcher.ts`) filters recipes by:
 - Recipe ID is not already used elsewhere in the menu (no repeats within the week)
 - **One main protein per day (PRO-238, 2026-10-19):** lunch and dinner of the same day don't share the main protein (`mainProteinOf` in `menuGenerator.ts`, the classification of `tasteDeck.ts`: carne, pescado, legumbre, huevo; «verdura» never blocks). Only main/single dishes count, locked slots included. If nothing else fits the slot, the same protein is allowed. Why: «lentejas estofadas» for lunch and «lentejas guisadas» for dinner the same Sunday (two recipes, so the no-repeat rule let it through). **Tests:** `tests/menuSameProtein.test.ts`.
 - The recipe doesn't break the user's **restrictions** (allergies, diets, free text) or **dislikes** — see *Restrictions & allergies* below
+- **The household's ficha** (PRO-253, [Ficha del hogar → Who reads the ficha](./household-profile.md)): equipment a fact in force says is missing right now («Sin horno hasta nuevo aviso», «el horno está roto») takes out every recipe that needs it — even for a household without an equipment list — and the dislikes of every member and an ingredient the household rejects (affinity −2) join the user's dislikes. Weekly generation and every «Aleatorio» / add-course path (`withFichaFilters`, `services/profile/reader.ts`); no ficha or a read error = today's filters only
 - **Catalogue quality gate** (PRO-73, Miguel 2026-10-13, answer C): a system recipe is skipped while it has no steps, 2 ingredients or fewer, a main protein per serving under 80 g or over 300 g (meat, fish, seafood, eggs, tofu added up; cured meats and yolks are garnish and don't count), or pasta/rice/dry pulses per serving under 50 g or over 150 g. Computed on read in `matchableRecipes.ts` (`catalogAuditIssues`, rule in `catalogRecipeAudit.ts`); nothing is written, so a recipe comes back as soon as Cocina fixes it. Users' own recipes are never audited. Applies to every `matchRecipes` path (weekly generation, «Aleatorio», add-course, the assistant's random swap); not to `suggest_recipes`, the «Elegir otra receta» picker or an explicitly named recipe. A unit weight the catalogue doesn't know (e.g. «dorada 2 u») never flags (eggs default to 55 g). Bone-in cuts count their edible grams (`ingredients.edible_fraction`, PRO-194, see [Nutrition](./nutrition.md) → Edible weight). Read-only report: `scripts/auditCatalogRecipes.ts` (`--seed`, `--fixture=`, or a `DATABASE_URL`). On the 2026-10-15 catalogue (78 recipes) it flags 32; full lunch+dinner weeks remain with no restrictions in every season and in autumn also for vegetarian or gluten-free; vegetarian + gluten-free drops to ~10 of 14 in autumn, and vegetarian to ~9 in spring/summer, until the vegetarian fixes land (`catalogRecipeAudit.test.ts`)
 
 ### Restrictions & allergies
@@ -112,6 +113,8 @@ For each meal slot, the matcher (`recipeMatcher.ts`) filters recipes by:
 - The onboarding and profile chips share one list, `RESTRICTION_PRESETS` (`@ona/shared`), and a test checks that every preset compiles to a real rule.
 
 Then picks one at random from the pool. **Favorites get double weight** — they appear twice in the random pool.
+
+**Menú inteligente a la sombra (PRO-255):** after a week is generated, Mimo thinks the same week in the background and stores its proposal in `menu_plans`; the menu the household sees is still this generator's — see [Menú inteligente](./smart-menu.md).
 
 ## Single-Meal Regeneration
 
@@ -260,6 +263,7 @@ user could read/modify any menu by id.
 - [apps/api/src/services/dietaryRestrictions.ts](../apps/api/src/services/dietaryRestrictions.ts) — restrictions/dislikes → allergen tags + ingredient terms · [packages/shared/src/constants/restrictions.ts](../packages/shared/src/constants/restrictions.ts) — `RESTRICTION_PRESETS`
 - [apps/api/src/services/matchableRecipes.ts](../apps/api/src/services/matchableRecipes.ts) — the one recipe loader for every matcher path (visibility, fit maps, frequency, allergens)
 - [apps/api/src/services/recipeMatcher.ts](../apps/api/src/services/recipeMatcher.ts) — slot matcher
+- [apps/api/src/services/profile/reader.ts](../apps/api/src/services/profile/reader.ts) — the ficha's filters for the menu (PRO-253)
 - [apps/api/src/services/calorieCalculator.ts](../apps/api/src/services/calorieCalculator.ts) · [nutrientCalculator.ts](../apps/api/src/services/nutrientCalculator.ts)
 - [apps/api/src/services/catalogRecipeAudit.ts](../apps/api/src/services/catalogRecipeAudit.ts) — catalogue quality gate (PRO-73) · report [scripts/auditCatalogRecipes.ts](../apps/api/scripts/auditCatalogRecipes.ts)
 - [apps/web/src/app/menu/page.tsx](../apps/web/src/app/menu/page.tsx)

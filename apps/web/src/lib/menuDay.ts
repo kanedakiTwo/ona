@@ -108,14 +108,23 @@ export function orderedSlots(day: DayMenu | undefined | null): DaySlot[] {
 }
 
 /**
- * Split a day into the featured meal (the first one, in chronological
- * order, that has a recipe — it gets the photo hero and "Empezar a
- * cocinar") and the rest, which keep their chronological order. A day
- * with no recipe at all has no featured meal.
+ * Which meal takes the photo places first: lunch, then dinner; breakfast
+ * and snack only when neither has a recipe (Miguel, 2026-10-20: «la comida
+ * y la cena siempre en los lugares destacados»).
+ */
+export const FEATURED_MEAL_ORDER: MealKey[] = ["lunch", "dinner", "breakfast", "snack"]
+
+/**
+ * Split a day into the featured meal (the first one, in
+ * `FEATURED_MEAL_ORDER`, that has a recipe — it gets the photo hero and
+ * "Empezar a cocinar") and the rest, which keep their chronological order.
+ * A day with no recipe at all has no featured meal.
  */
 export function splitDay(day: DayMenu | undefined | null): { featured: DaySlot | null; rest: DaySlot[] } {
   const slots = orderedSlots(day)
-  const featured = slots.find((s) => firstRecipeDish(s.slot) != null) ?? null
+  const featured =
+    FEATURED_MEAL_ORDER.map((m) => slots.find((s) => s.meal === m)).find((s) => s && firstRecipeDish(s.slot) != null) ??
+    null
   return { featured, rest: slots.filter((s) => s !== featured) }
 }
 
@@ -141,6 +150,17 @@ export function absentMeals(
   const needed = Math.max(2, Math.ceil(cooked.length / 2))
   return DAY_MEAL_ORDER.filter(
     (m) => days[dayIndex]?.[m] == null && cooked.filter((d) => d?.[m] != null).length >= needed,
+  )
+}
+
+/** True when a leftover of the week points at this slot: it's the batch, so it can't be a freezer táper. */
+export function feedsLeftovers(days: (DayMenu | undefined | null)[], day: number, meal: string): boolean {
+  return days.some((d) =>
+    Object.values(d ?? {}).some((s) =>
+      ((s as MealSlot | undefined)?.dishes ?? []).some(
+        (x) => x.kind === "recipe" && x.variant === "leftover" && x.leftoverOf?.day === day && x.leftoverOf?.meal === meal,
+      ),
+    ),
   )
 }
 

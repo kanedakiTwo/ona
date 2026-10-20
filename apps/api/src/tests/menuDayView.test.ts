@@ -88,6 +88,22 @@ describe('splitDay', () => {
     expect(rest.map((s) => s.meal)).toEqual(['breakfast', 'lunch'])
   })
 
+  // Miguel, 2026-10-20: «la comida y la cena siempre deberían ir en los
+  // lugares destacados; el desayuno y la merienda, en los huecos sin foto».
+  it('features lunch, then dinner, over a breakfast or a snack with a recipe', () => {
+    const full = {
+      breakfast: { dishes: [recipe('Tostadas')] },
+      lunch: { dishes: [recipe('Lentejas')] },
+      snack: { dishes: [recipe('Yogur')] },
+      dinner: { dishes: [recipe('Crema')] },
+    }
+    expect(splitDay(full).featured?.meal).toBe('lunch')
+    expect(splitDay(full).rest.map((s) => s.meal)).toEqual(['breakfast', 'snack', 'dinner'])
+    const noLunch = { breakfast: { dishes: [recipe('Tostadas')] }, dinner: { dishes: [recipe('Crema')] } }
+    expect(splitDay(noLunch).featured?.meal).toBe('dinner')
+    expect(splitDay({ breakfast: { dishes: [recipe('Tostadas')] }, lunch: { dishes: [] } }).featured?.meal).toBe('breakfast')
+  })
+
   it('a day without recipes has no featured meal', () => {
     expect(splitDay({ lunch: { dishes: [] } }).featured).toBeNull()
     expect(splitDay(undefined)).toEqual({ featured: null, rest: [] })

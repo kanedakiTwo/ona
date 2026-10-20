@@ -44,6 +44,7 @@ import { mealLabel } from "@/lib/labels"
 import {
   absentMeals,
   DAY_MEAL_ORDER,
+  FEATURED_MEAL_ORDER,
   dateOfDay,
   firstRecipeDish,
   mealEyebrow,
@@ -145,9 +146,14 @@ export function MenuDesktop(p: Props) {
     }
   }
 
-  /** The day's other meals and the ones it lacks, in the order of the day. */
+  // The other main meal (lunch / dinner) takes the photo card; breakfast and
+  // snack go in the small rows under it — unless there's no main meal with a
+  // dish left, then the first of them gets the photo (Miguel, 2026-10-20).
+  const bigMeal = FEATURED_MEAL_ORDER.find((m) => rest.some((r) => r.meal === m && (r.slot.dishes ?? []).length > 0))
+
+  /** The day's other meals and the ones it lacks: main meals first, then the rest in the order of the day. */
   const sideMeals = (cards: (s: DaySlot) => ReactNode) =>
-    DAY_MEAL_ORDER.map((m) => {
+    FEATURED_MEAL_ORDER.map((m) => {
       const s = rest.find((r) => r.meal === m)
       if (s) return cards(s)
       if (!absent.includes(m)) return null
@@ -209,7 +215,7 @@ export function MenuDesktop(p: Props) {
                       d={p.selectedDay}
                       meal={meal}
                       slot={slot}
-                      big={meal === rest[0]?.meal}
+                      big={meal === bigMeal}
                       slotProps={slotProps}
                       readOnly={p.readOnly}
                     />
@@ -325,6 +331,7 @@ function HeroSlot({
   meal,
   slot,
   className = "",
+  size,
   children,
 }: {
   scope: DndScope
@@ -332,6 +339,8 @@ function HeroSlot({
   meal: MealKey
   slot: MealSlot
   className?: string
+  /** Side meals: `big` = the photo card, `small` = a row (data attribute, for tests). */
+  size?: "big" | "small"
   children: ReactNode
 }) {
   const { movable, drop, drag } = useSlotDnd(scope, d, meal, slot)
@@ -343,6 +352,7 @@ function HeroSlot({
         drag.setNodeRef(el)
       }}
       data-dnd-slot={`${d}-${meal}`}
+      data-size={size}
       onPointerDown={
         movable && onPointerDown
           ? (e) => {
@@ -409,7 +419,7 @@ function SideMeal({
     </>
   )
   return (
-    <HeroSlot scope="hero" d={d} meal={meal} slot={slot} className={big ? "rounded-[20px]" : "rounded-xl"}>
+    <HeroSlot scope="hero" d={d} meal={meal} slot={slot} className={big ? "rounded-[20px]" : "rounded-xl"} size={big ? "big" : "small"}>
       {first ? (
         <Link
           href={slotRecipeHref(first.recipeId, props.ctx)}

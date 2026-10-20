@@ -15,7 +15,8 @@ import { addMealWithRecipe, completeOnboarding, registerFreshUser } from './_hel
 import { pinClock, pinnedDay } from './_clock'
 
 const API = process.env.API_URL ?? 'http://localhost:8765'
-const MEAL_ORDER = ['breakfast', 'lunch', 'snack', 'dinner']
+/** Which meal is featured first (lib/menuDay.ts `FEATURED_MEAL_ORDER`): lunch, then dinner. */
+const MEAL_ORDER = ['lunch', 'dinner', 'breakfast', 'snack']
 
 // The browser clock is pinned to one weekday of the current week (Friday by
 // default, `E2E_WEEKDAY` to pick another): these specs read «today» and failed
@@ -102,7 +103,7 @@ function anyRecipeId(menu: { days: Record<string, { dishes?: { kind: string; rec
   }
 }
 
-/** Recipe id of the day's featured meal: first meal (chronologically) holding a recipe. */
+/** Recipe id of the day's featured meal: lunch, else dinner, else the first other meal holding a recipe. */
 function featuredRecipeId(day: Record<string, { dishes?: { kind: string; recipeId?: string }[] }>): string | null {
   for (const meal of MEAL_ORDER) {
     const r = day?.[meal]?.dishes?.find((d) => d.kind === 'recipe')
@@ -336,11 +337,10 @@ test.describe('desktop', () => {
   // the lunch was missing.
   test('a day without the week\'s lunch says so, and its tile names the meal', async ({ page }) => {
     test.setTimeout(90_000)
-    const { menu, headers } = await userWithMenu(page)
     const other = today() === 0 ? 1 : 0
-    const del = await page.request.delete(`${API}/menu/${menu.id}/day/${other}/meal/lunch`, { headers })
-    expect(del.ok(), `delete lunch: ${del.status()}`).toBeTruthy()
-    const dinnerName = menu.days[other]?.dinner?.dishes?.find((d: { kind: string }) => d.kind === 'recipe')?.recipeName
+    const { menu, headers } = await weekWithoutLunchOn(page, other)
+    const week = await (await page.request.get(`${API}/menu/${menu.userId}/${menu.weekStart}`, { headers })).json()
+    const dinnerName = week.days[other]?.dinner?.dishes?.find((d: { kind: string }) => d.kind === 'recipe')?.recipeName
 
     await page.goto('/menu')
     const column = page.locator(`[data-day-column="${other}"]`)
@@ -450,6 +450,45 @@ test.describe('desktop', () => {
     expect(res.ok()).toBeTruthy()
     expect(JSON.parse(res.request().postData() ?? '{}')).toEqual({ fromDay: other + 1, fromMeal: 'lunch', toDay: other, toMeal: 'lunch' })
     await expect(target).toHaveCount(0, { timeout: 10_000 })
+  })
+
+  // Miguel, 2026-10-20: «la comida y la cena siempre deberían ir en los
+  // lugares destacados; el desayuno y la merienda, si hay comida y cena, en
+  // los huecos sin foto». Before, a breakfast with a recipe took the hero.
+  test('lunch is the hero and dinner the photo card; breakfast and snack go in the small rows', async ({ page }) => {
+    test.setTimeout(90_000)
+    const { menu, headers } = await userWithMenu(page)
+    const other = today() === 0 ? 1 : 0
+    for (const meal of ['breakfast', 'snack', 'dinner']) {
+      if (menu.days[other]?.[meal]) await page.request.delete(`${API}/menu/${menu.id}/day/${other}/meal/${meal}`, { headers })
+      const r = await page.request.post(`${API}/menu/${menu.id}/day/${other}/meal/${meal}`, { headers, data: { recipeId: anyRecipeId(menu) } })
+      expect(r.ok(), `${meal}: ${r.status()}`).toBeTruthy()
+    }
+    const lunchId = featuredRecipeId(menu.days[other])
+
+    await page.goto('/menu')
+    await page
+      .locator(`[data-day-column="${other}"]`)
+      .getByRole('button', { name: new RegExp(`ver el ${WEEKDAYS[other]}`, 'i') })
+      .first()
+      .click({ timeout: 20_000 })
+    await expect(page.getByTestId('menu-hero').getByText(/^Comida · /)).toBeVisible()
+    await expect(page.getByTestId('menu-hero').getByRole('link', { name: /empezar a cocinar/i })).toHaveAttribute(
+      'href',
+      new RegExp(`^/recipes/${lunchId}/cook`),
+    )
+    await expect(page.locator(`[data-dnd-slot="${other}-dinner"]`)).toHaveAttribute('data-size', 'big')
+    await expect(page.locator(`[data-dnd-slot="${other}-breakfast"]`)).toHaveAttribute('data-size', 'small')
+    await expect(page.locator(`[data-dnd-slot="${other}-snack"]`)).toHaveAttribute('data-size', 'small')
+    // The photo card comes first, then the small rows.
+    const dinnerBox = (await page.locator(`[data-dnd-slot="${other}-dinner"]`).boundingBox())!
+    const breakfastBox = (await page.locator(`[data-dnd-slot="${other}-breakfast"]`).boundingBox())!
+    expect(dinnerBox.y).toBeLessThan(breakfastBox.y)
+    // «La semana»: the day's tile is its lunch, too.
+    await expect(page.locator(`[data-day-column="${other}"] [aria-roledescription="plato arrastrable"]`).first()).toHaveAttribute(
+      'aria-label',
+      /^Comida: /,
+    )
   })
 
   // Miguel, 2026-10-20: «no funciona el arrastrar entre platos del mismo
@@ -586,4 +625,31 @@ test('Vista día: a day without the week\'s lunch says «El lunes no hay comida�
   const absent = page.locator('[data-testid="absent-meal"][data-meal="lunch"]')
   await expect(absent).toContainText(`El ${WEEKDAYS[other]} no hay comida`)
   await expect(absent.getByRole('button', { name: `Añadir comida al ${WEEKDAYS[other]}` })).toBeVisible()
+})
+
+// Miguel, 2026-10-20: «se puede añadir una receta como del congelador, pero
+// no se puede poner una receta ya añadida al menú como del congelador».
+test('a dish already in the menu can be marked «del congelador» and back', async ({ page }) => {
+  test.setTimeout(90_000)
+  const { menu } = await userWithMenu(page)
+  test.skip(!featuredRecipeId(menu.days[today()]), 'no recipe today')
+
+  await page.goto('/menu')
+  const hero = page.getByTestId('menu-hero')
+  await expect(hero).toBeVisible({ timeout: 20_000 })
+
+  await hero.getByRole('button', { name: /más opciones/i }).click()
+  let patched = page.waitForResponse((r) => r.request().method() === 'PATCH' && /\/dish\/0$/.test(r.url()))
+  await page.getByRole('dialog').getByRole('button', { name: /^es del congelador/i }).click()
+  let res = await patched
+  expect(res.ok(), `freezer: ${res.status()}`).toBeTruthy()
+  expect(JSON.parse(res.request().postData() ?? '{}')).toEqual({ variant: 'freezer' })
+  await expect(hero.getByText('Del congelador · no suma a la compra')).toBeVisible({ timeout: 10_000 })
+
+  await hero.getByRole('button', { name: /más opciones/i }).click()
+  patched = page.waitForResponse((r) => r.request().method() === 'PATCH' && /\/dish\/0$/.test(r.url()))
+  await page.getByRole('dialog').getByRole('button', { name: /^no es del congelador/i }).click()
+  res = await patched
+  expect(res.ok(), `planned: ${res.status()}`).toBeTruthy()
+  await expect(hero.getByText('Del congelador · no suma a la compra')).toHaveCount(0, { timeout: 10_000 })
 })

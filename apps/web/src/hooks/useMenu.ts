@@ -488,7 +488,7 @@ export function usePatchDish() {
       day: number
       meal: string
       position: number
-      patch: { text?: string; pinnedType?: string | null; newPosition?: number; course?: string | null }
+      patch: { text?: string; pinnedType?: string | null; newPosition?: number; course?: string | null; variant?: 'planned' | 'freezer' }
     }) => {
       const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}/dish/${params.position}`
       return api.patch<Menu>(url, params.patch)

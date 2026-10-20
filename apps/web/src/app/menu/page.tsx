@@ -50,7 +50,7 @@ import { useOnboardingGate } from "@/hooks/useOnboardingGate"
 import { haptic } from "@/lib/pwa/haptics"
 import { recordMenuVisit } from "@/lib/pwa/installPrompt"
 import { share } from "@/lib/pwa/share"
-import { absentMeals, batchServings, dateOfDay, dayHeading, missingMeals, orderedSlots, splitDay, weekHasDishes, weekRangeLabel, weekdayName, type MealKey } from "@/lib/menuDay"
+import { absentMeals, batchServings, dateOfDay, feedsLeftovers, dayHeading, missingMeals, orderedSlots, splitDay, weekHasDishes, weekRangeLabel, weekdayName, type MealKey } from "@/lib/menuDay"
 import { WeekGridView } from "@/components/menu/WeekGridView"
 import { WeekStrip } from "@/components/menu/WeekStrip"
 import { PantryMatchCard } from "@/components/menu/PantryMatchCard"
@@ -343,6 +343,10 @@ export default function MenuPage() {
           },
           reorderDish: (from, to) => patchDish.mutate({ ...base, position: from, patch: { newPosition: to } }),
           editNote: (position, text) => patchDish.mutate({ ...base, position, patch: { text } }),
+          setFreezer: (position, on) => {
+            haptic.light()
+            patchDish.mutate({ ...base, position, patch: { variant: on ? "freezer" : "planned" } })
+          },
           // PRO-74: «Usar "<lo escrito>" como plato» swaps the dish for the
           // text (before, a note was only added next to it). Keeps «Solo hoy».
           replaceWithNote: (text) => {
@@ -367,6 +371,7 @@ export default function MenuPage() {
             isLocked: isLockedAt(day, meal),
             defaultDiners,
             batchServings: batchServings((menu!.days ?? []) as DayMenu[], day, meal, defaultDiners),
+            feedsLeftovers: feedsLeftovers((menu!.days ?? []) as DayMenu[], day, meal),
             isRegenerating: regenerateMeal.isPending,
           },
         }

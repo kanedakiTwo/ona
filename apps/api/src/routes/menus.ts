@@ -20,7 +20,7 @@ import { updateBalance } from '../services/nutrientBalance.js'
 import { findRecipeForSlot, normaliseEquipment, type RecipeWithIngredients } from '../services/recipeMatcher.js'
 import { findForCourse } from '../services/courseAwareMatcher.js'
 import { loadHouseholdRatingSets, withHouseholdRatings } from '../services/householdRatings.js'
-import { addDish, removeDishAt, patchDish, reorderDish, coursesFor, dishCountFor, moveSlotInWeek } from '../services/menuDishes.js'
+import { addDish, removeDishAt, patchDish, reorderDish, coursesFor, dishCountFor, moveSlotInWeek, isLeftoverSource } from '../services/menuDishes.js'
 import { getMemoryForUser } from '../services/userMemoryStore.js'
 import {
   recordMenuEdits,
@@ -1356,6 +1356,7 @@ const patchDishSchema = z.object({
   pinnedType: z.string().nullable().optional(),
   newPosition: z.number().int().nonnegative().optional(),
   course: courseSchema.optional(),
+  variant: z.enum(['planned', 'freezer']).optional(),
 })
 
 // B.3: PATCH /menu/:menuId/day/:day/meal/:meal/dish/:position — patch or reorder a dish.
@@ -1387,10 +1388,26 @@ router.patch('/menu/:menuId/day/:day/meal/:meal/dish/:position', async (req: Aut
       }
       next = reorderDish(slot.dishes, position, body.newPosition)
     } else {
-      next = patchDish(slot.dishes, position, { text: body.text, pinnedType: body.pinnedType, course: body.course })
+      if (body.variant !== undefined) {
+        // «Es del congelador» on a dish already in the menu (Miguel, 2026-10-20):
+        // only a recipe cooked here; never a leftover, and never the batch other
+        // days eat as leftovers — a táper can't be their source (PRO-82).
+        const target = slot.dishes[position]
+        if (target.kind !== 'recipe' || target.variant === 'leftover') {
+          res.status(400).json({ error: 'Only a recipe dish can come from the freezer' }); return
+        }
+        if (body.variant === 'freezer' && isLeftoverSource(days, day, meal, position)) {
+          res.status(409).json({ error: 'This dish feeds planned leftovers' }); return
+        }
+      }
+      next = patchDish(slot.dishes, position, { text: body.text, pinnedType: body.pinnedType, course: body.course, variant: body.variant })
     }
     days[day][meal] = { ...slot, dishes: next }
     await db.update(menus).set({ days: days as any }).where(eq(menus.id, menuId))
+    if (body.variant === 'freezer') {
+      const frozen = dishRecipe(next[position])
+      if (frozen) await recordMenuEdits(req, menu, [{ action: 'freezer', day, meal, after: frozen }])
+    }
     res.json({ dish: next[body.newPosition ?? position] })
   } catch (err: any) {
     res.status(500).json({ error: err.message })

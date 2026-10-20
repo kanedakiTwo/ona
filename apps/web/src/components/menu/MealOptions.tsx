@@ -34,6 +34,7 @@ import {
   Replace,
   RotateCcw,
   Shuffle,
+  Snowflake,
   Tag,
   Trash2,
   Unlock,
@@ -87,6 +88,8 @@ export interface SlotHandlers {
   editNote: (position: number, text: string) => void
   /** PRO-74: the slot's dishes become this written dish (a note). */
   replaceWithNote: (text: string) => void
+  /** «Es del congelador» / «No es del congelador» on the recipe dish at `position` (2026-10-20). */
+  setFreezer: (position: number, on: boolean) => void
 }
 
 export interface SlotContext {
@@ -102,6 +105,8 @@ export interface SlotContext {
   /** Servings the batch cooks, táper included (`batchServings`, PRO-75). */
   batchServings?: number
   isRegenerating?: boolean
+  /** Other days eat this slot's leftovers: it's the batch, never a freezer táper. */
+  feedsLeftovers?: boolean
 }
 
 /** Servings a menu dish opens its recipe / cook mode with (PRO-75). */
@@ -172,6 +177,8 @@ export function MealOptionsSheets({
   // A freezer táper (PRO-82) is a given dish: no Elegir / Cambiar / Tipo / Vetar.
   const fromFreezer = first?.variant === "freezer"
   const canReshape = isSingleRecipe && !isLeftover && !fromFreezer
+  // A dish already in the menu can be a táper you have (Miguel, 2026-10-20), unless it's the batch of planned leftovers.
+  const canFreeze = isSingleRecipe && !isLeftover && (fromFreezer || !ctx.feedsLeftovers)
   const pinnedType = first?.pinnedType ?? null
   const label = mealLabel(ctx.meal)
   const locked = ctx.isLocked
@@ -217,6 +224,18 @@ export function MealOptionsSheets({
                 }}
               />
             </>
+          )}
+          {canFreeze && (
+            <SheetAction
+              icon={Snowflake}
+              label={fromFreezer ? "No es del congelador" : "Es del congelador"}
+              hint={lockedHint ?? (fromFreezer ? "Vuelve a sumar a la compra" : "Un táper que ya tienes: no suma a la compra")}
+              disabled={locked}
+              onClick={() => {
+                handlers.setFreezer(0, !fromFreezer)
+                close()
+              }}
+            />
           )}
           <SheetAction
             icon={Plus}

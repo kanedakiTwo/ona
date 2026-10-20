@@ -31,6 +31,8 @@ export interface DishPatch {
   text?: string
   pinnedType?: string | null
   course?: Course | null
+  /** «Es del congelador» on a dish already in the menu (2026-10-20); never on a leftover. */
+  variant?: 'planned' | 'freezer'
 }
 
 export function patchDish(dishes: Dish[], index: number, patch: DishPatch): Dish[] {
@@ -44,12 +46,32 @@ export function patchDish(dishes: Dish[], index: number, patch: DishPatch): Dish
           ...current,
           ...(patch.pinnedType !== undefined && { pinnedType: patch.pinnedType }),
           ...(patch.course !== undefined && { course: patch.course }),
+          ...(patch.variant !== undefined && current.variant !== 'leftover' && { variant: patch.variant }),
         }
       : {
           ...current,
           ...(patch.text !== undefined && { text: patch.text }),
         }
   return [...dishes.slice(0, index), next, ...dishes.slice(index + 1)]
+}
+
+/**
+ * True when a leftover somewhere in the week points at this dish: it is the
+ * batch that gets cooked, so it can't become a freezer táper (PRO-82).
+ */
+export function isLeftoverSource(days: DayMenu[], day: number, meal: string, position: number): boolean {
+  return days.some((d) =>
+    Object.values(d ?? {}).some((slot) =>
+      (slot?.dishes ?? []).some(
+        (x) =>
+          x.kind === 'recipe' &&
+          x.variant === 'leftover' &&
+          x.leftoverOf?.day === day &&
+          x.leftoverOf?.meal === meal &&
+          (x.leftoverOf?.dishPosition ?? 0) === position,
+      ),
+    ),
+  )
 }
 
 export function dishCountFor(meal: Meal, counts: MealDishCounts): 1 | 2 | 3 {

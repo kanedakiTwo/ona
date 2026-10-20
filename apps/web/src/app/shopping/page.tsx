@@ -34,7 +34,8 @@ import { haptic } from '@/lib/pwa/haptics'
 import { share } from '@/lib/pwa/share'
 import { InviteHouseholdButton } from '@/components/referrals/InviteHouseholdButton'
 import { AISLE_LABELS, AISLE_ORDER, aisleLabel } from '@/lib/labels'
-import { activeQuickRange, quickRanges, shiftIso, totalTitle } from '@/lib/shoppingRange'
+import { activeQuickRange, quickRanges, shiftIso, spansWeeks, totalTitle, type QuickRangeKey } from '@/lib/shoppingRange'
+import { LineWeek, LineWeekContext } from '@/components/shopping/LineWeek'
 import { FamilyInviteOffer, useFamilyOfferOnce } from '@/components/household/FamilyInviteOffer'
 import {
   ListTotalBanner,
@@ -78,16 +79,20 @@ export default function ShoppingPage() {
   const { user, isLoading: authLoading } = useAuth()
 
   // Rolling date range. Default: today → end of next week. The user can
-  // narrow it in the dates sheet; "Esta + sig" resets to the default.
+  // narrow it in the dates sheet; «Dos semanas» resets to the default.
   const today = useMemo(() => todayIso(), [])
   const defaultTo = useMemo(() => shiftIso(mondayOfTodayIso(), 13), [])
   const [from, setFrom] = useState<string>(today)
   const [to, setTo] = useState<string>(defaultTo)
   const range = useMemo(() => ({ from, to }), [from, to])
   const rangeLabel = formatRangeLabel(from, to)
-  // «Hoy» · «Mañana» · «Esta semana» (PRO-33): one tap instead of the dates sheet.
-  const shortcuts = useMemo(() => quickRanges(today, defaultTo), [today, defaultTo])
-  const activeShortcut = activeQuickRange(shortcuts, from, to)
+  // «Hoy» · «Mañana» · «Esta semana» · «La que viene» · «Dos semanas» (PRO-33,
+  // PRO-269): one tap instead of the dates sheet; the chip says what it shows.
+  const shortcuts = useMemo(() => quickRanges(today), [today])
+  const [tappedShortcut, setTappedShortcut] = useState<QuickRangeKey | null>('dos')
+  const activeShortcut = activeQuickRange(shortcuts, from, to, tappedShortcut)
+  // PRO-269: with more than one week on screen, each line says its week.
+  const lineWeek = useMemo(() => ({ show: spansWeeks(from, to), today }), [from, to, today])
   // PRO-69: slide the pressed shortcut fully into view once the row has
   // re-rendered with the new range (the date chip changes width, so doing it
   // in the click handler left «Esta semana» half cut on a phone).
@@ -200,6 +205,7 @@ export default function ShoppingPage() {
   }
 
   return (
+    <LineWeekContext.Provider value={lineWeek}>
     <div className="min-h-screen bg-cream">
       <div className="mx-auto w-full max-w-[1180px] pb-12 lg:px-12 lg:pt-8">
         {/* Compact header: range eyebrow + title + "···" */}
@@ -278,6 +284,7 @@ export default function ShoppingPage() {
               onClick={() => {
                 haptic.light()
                 shortcutTapped.current = true
+                setTappedShortcut(r.key)
                 setFrom(r.from)
                 setTo(r.to)
               }}
@@ -454,12 +461,13 @@ export default function ShoppingPage() {
           type="button"
           onClick={() => {
             haptic.light()
+            setTappedShortcut('dos')
             setFrom(today)
             setTo(defaultTo)
           }}
           className="mt-4 inline-flex min-h-[44px] items-center rounded-full border border-border bg-paper px-5 text-[14px] font-medium text-ink transition-colors hover:border-ink"
         >
-          Esta + sig
+          Dos semanas
         </button>
       </MenuSheet>
 
@@ -468,6 +476,7 @@ export default function ShoppingPage() {
         {shoppingList && <AddManualItemForm listId={shoppingList.id} embedded onClose={() => setSheet(null)} />}
       </MenuSheet>
     </div>
+    </LineWeekContext.Provider>
   )
 }
 
@@ -955,6 +964,7 @@ function ItemRow({
             // The household's own amount (PRO-175).
             <span className="font-sans text-[12px]" data-testid="shopping-changed"> · cambiada (menú: {formatAmount(item.menuQuantity)})</span>
           )}
+          {!isManual && <LineWeek weeks={item.weeks} />}
           {isManual && (
             <span className="ml-2 font-sans text-[11px] font-semibold uppercase tracking-[0.12em] text-terracotta-deep">
               Manual

@@ -178,6 +178,16 @@ describe('GET /admin/errors', () => {
     await fetch(`${base}/admin/errors?kind=bogus`, { headers: { 'x-metrics-token': 'errors-test-token' } })
     expect(load).toHaveBeenCalledWith({ days: 7, includeResolved: false, kind: undefined, limit: 100 })
   })
+
+  it('with the read token, groups carry no message, user id or stack', async () => {
+    load.mockResolvedValueOnce({
+      totals: { groups: 1 },
+      groups: [{ id: 'g1', kind: 'server', message: 'Error con ana@example.com', path: 'GET /users/42/menu', release: null, userAgentFamily: null, lastUserId: 'u-1', count: 1, firstSeen: 'a', lastSeen: 'b', resolvedAt: null, sampleStack: 'at x' }],
+    } as any)
+    const body = await (await fetch(`${base}/admin/errors`, { headers: { 'x-metrics-token': 'errors-test-token' } })).json()
+    expect(body.groups[0]).toEqual({ id: 'g1', kind: 'server', release: null, userAgentFamily: null, count: 1, firstSeen: 'a', lastSeen: 'b', resolvedAt: null, type: 'Error', path: 'GET /users/:id/menu' })
+    expect(JSON.stringify(body)).not.toMatch(/ana@example\.com|u-1|at x/)
+  })
 })
 
 describe('POST /admin/errors/:id/resolve', () => {

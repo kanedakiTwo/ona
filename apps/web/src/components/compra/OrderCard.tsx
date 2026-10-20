@@ -108,7 +108,7 @@ export function OrderCard({ order, shops }: { order: ShopOrder; shops: Shop[] })
       <div className="px-4 pb-4 pt-3">
         {order.status === "draft" && <DraftBody order={order} shops={shops} />}
         {order.status === "sent" &&
-          (extSent ? <ExtensionSentBody order={order} etiqueta={etiqueta} onBusyChange={setExtBusy} /> : <SentBody order={order} />)}
+          (extSent ? <ExtensionSentBody order={order} etiqueta={etiqueta} extensionId={ext.extensionId} onBusyChange={setExtBusy} /> : <SentBody order={order} />)}
         {order.status === "quoted" && <QuotedBody order={order} />}
         {order.status === "approved" && <ApprovedBody order={order} />}
         {order.status === "closed" && (
@@ -384,7 +384,7 @@ function DraftBody({ order, shops }: { order: ShopOrder; shops: Shop[] }) {
 function SuperExtras({ order }: { order: ShopOrder }) {
   const ext = useBasketExtension(order.shop.webUrl)
   if (ext.checking) return null
-  if (ext.available) return <ExtensionSendPanel order={order} etiqueta={ext.etiqueta ?? order.shop.name} />
+  if (ext.available) return <ExtensionSendPanel order={order} etiqueta={ext.etiqueta ?? order.shop.name} extensionId={ext.extensionId} />
   return <CarrefourOrder order={order} />
 }
 

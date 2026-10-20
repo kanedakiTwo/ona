@@ -151,8 +151,12 @@ export default function PrivacidadPage() {
           <p data-testid="privacy-web-analytics">
             Para saber cuántas personas visitan la web usamos Cloudflare Web Analytics, que cuenta las visitas de
             forma agregada (páginas vistas, país, tipo de dispositivo) sin cookies, sin guardar nada en tu navegador y
-            sin crear un perfil tuyo. Dentro de la app contamos, también solo de forma agregada, qué funciones se usan
-            (por ejemplo, cuántos menús se generan) para saber qué mejorar; esos registros se borran a los 180 días.
+            sin crear un perfil tuyo.
+          </p>
+          <p data-testid="privacy-app-usage">
+            Dentro de la app apuntamos qué funciones y pantallas usas (por ejemplo, que has generado un menú o abierto la
+            lista de la compra), nunca lo que escribes. Lo usamos solo en recuentos, para saber qué mejorar, y se borra a
+            los 180 días.
           </p>
 
           <H2>9. Menores</H2>

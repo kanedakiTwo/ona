@@ -52,17 +52,36 @@ self.addEventListener("push", (event: any) => {
   )
 })
 
+/**
+ * PRO-120: the kind of a tapped notification, for the aggregate count
+ * (`push_opened`): `proactive:<kind>` → that kind; the menu's prep reminders
+ * (any other tag) → `prep_alerts`. The API keeps only known kinds.
+ */
+function pushKindOf(tag: string | undefined): string {
+  if (!tag) return "otro"
+  if (tag.startsWith("proactive:")) return tag.slice("proactive:".length)
+  return "prep_alerts"
+}
+
+function withParam(url: string, key: string, value: string): string {
+  const [base, hash = ""] = url.split("#")
+  return `${base}${base.includes("?") ? "&" : "?"}${key}=${encodeURIComponent(value)}${hash ? `#${hash}` : ""}`
+}
+
 self.addEventListener("notificationclick", (event: any) => {
   event.notification.close()
   const url = (event.notification.data as { url?: string })?.url ?? "/"
+  const kind = pushKindOf(event.notification.tag)
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList: readonly WindowClient[]) => {
       for (const client of clientList) {
         if (client.url.endsWith(url) && "focus" in client) {
+          client.postMessage({ type: "mimoia:push-opened", kind })
           return client.focus()
         }
       }
-      return self.clients.openWindow(url)
+      // The page counts it and drops the param (lib/usageEvents.ts).
+      return self.clients.openWindow(withParam(url, "aviso", kind))
     })
   )
 })

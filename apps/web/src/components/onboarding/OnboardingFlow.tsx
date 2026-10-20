@@ -38,6 +38,7 @@ import { OnboardingChannelChoice, OnboardingWhatsAppLink } from "./OnboardingWha
 import { useWhatsAppLinkCode, useWhatsAppStatus } from "@/hooks/useWhatsApp"
 import { postTasteOffer, useTasteStatus } from "@/hooks/useTaste"
 import { TasteSwiper } from "@/components/taste/TasteSwiper"
+import { onboardingStepKey, trackUsage, type OnboardingStep } from "@/lib/usageEvents"
 import { FamilyInviteOffer, useFamilyOfferOnce } from "@/components/household/FamilyInviteOffer"
 
 const PHOTO = "/images/recipes/lentejas-estofadas.jpg"
@@ -231,8 +232,19 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
   // offers once to prepare the message for the other person.
   const familyOffer = useFamilyOfferOnce("alta", channel === "web" && tasteStep === "done" && step === 1 && data.adults >= 2)
 
+  // PRO-120: each step seen and passed, for the sign-up funnel (the API keeps one per person, step and day).
+  const shownStep: OnboardingStep | null =
+    tasteStep === "show" ? "afina" : tasteStep !== "done" ? null : channel === "choose" ? "canal" : channel === "web" ? onboardingStepKey(step) : null
+  useEffect(() => {
+    if (shownStep) trackUsage("onboarding_step", { step: shownStep, action: "visto" })
+  }, [shownStep])
+  const stepDone = (key: OnboardingStep | null, via?: "web" | "whatsapp") => {
+    if (key) trackUsage("onboarding_step", { step: key, action: "hecho", ...(via ? { via } : {}) })
+  }
+
   function next() {
     if (step >= totalSteps) return
+    stepDone(onboardingStepKey(step))
     setStep(step + 1)
     // PRO-178: the next visit (any device) resumes here with these answers.
     if (user) api.put(`/user/${user.id}/onboarding-draft`, onboardingDraftPayload(step + 1, data)).catch(() => {})
@@ -247,6 +259,7 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
     if (!user) return
     setIsSubmitting(true)
     setError("")
+    stepDone("prioridad")
 
     try {
       const payload = {
@@ -320,7 +333,13 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
                 Cargando…
               </p>
             ) : (
-              <TasteSwiper mode="onboarding" onDone={() => setTasteStep("done")} />
+              <TasteSwiper
+                mode="onboarding"
+                onDone={() => {
+                  stepDone("afina")
+                  setTasteStep("done")
+                }}
+              />
             )}
           </div>
         </OnboardingShell>
@@ -341,10 +360,14 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
               ) : channel === "choose" ? (
                 <OnboardingChannelChoice
                   onWhatsApp={() => {
+                    stepDone("canal", "whatsapp")
                     linkCode.mutate({ from: "onboarding" })
                     setChannel("whatsapp")
                   }}
-                  onWeb={() => setChannel("web")}
+                  onWeb={() => {
+                    stepDone("canal", "web")
+                    setChannel("web")
+                  }}
                 />
               ) : (
                 <OnboardingWhatsAppLink linkCode={linkCode} onWeb={() => setChannel("web")} />

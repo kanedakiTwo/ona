@@ -73,6 +73,9 @@ const FDC_BASE = 'https://api.nal.usda.gov/fdc/v1'
  */
 const NUTRIENT_IDS = {
   energyKcal: 1008,
+  // Foundation entries report energy only as Atwater factors.
+  energyAtwaterGeneral: 2047,
+  energyAtwaterSpecific: 2048,
   proteinG: 1003,
   carbsG: 1005,
   fatG: 1004,
@@ -103,6 +106,16 @@ async function readCache(cacheDir: string, fdcId: number): Promise<UsdaNutrientP
     const raw = await fs.readFile(file, 'utf8')
     const parsed = JSON.parse(raw) as CacheFile
     if (parsed && parsed.profile && typeof parsed.profile.fdcId === 'number') {
+      // Re-parse the stored response, so a parser fix (Atwater energy,
+      // 2026-10-21) reaches entries cached before it.
+      const raw = parsed.profile.raw
+      if (raw && typeof raw === 'object') {
+        try {
+          return parseProfile(raw as Record<string, unknown>, parsed.profile.fdcId)
+        } catch {
+          return parsed.profile
+        }
+      }
       return parsed.profile
     }
     return null
@@ -142,7 +155,7 @@ function findNutrient(food: { foodNutrients?: FoodNutrient[] }, id: number): num
   return undefined
 }
 
-function parseProfile(food: Record<string, unknown>, fdcId: number): UsdaNutrientProfile {
+export function parseProfile(food: Record<string, unknown>, fdcId: number): UsdaNutrientProfile {
   const dataType = String(food.dataType ?? '')
   if (dataType === 'Branded') {
     throw new UsdaError(
@@ -158,7 +171,10 @@ function parseProfile(food: Record<string, unknown>, fdcId: number): UsdaNutrien
     console.warn(`[usda] missing nutrient ${label} for fdc=${fdcId}`)
   }
 
-  const kcalRaw = findNutrient(foodLike, NUTRIENT_IDS.energyKcal)
+  const kcalRaw =
+    findNutrient(foodLike, NUTRIENT_IDS.energyKcal) ??
+    findNutrient(foodLike, NUTRIENT_IDS.energyAtwaterGeneral) ??
+    findNutrient(foodLike, NUTRIENT_IDS.energyAtwaterSpecific)
   if (kcalRaw === undefined) warnMissing('Energy(kcal)')
   const proteinRaw = findNutrient(foodLike, NUTRIENT_IDS.proteinG)
   if (proteinRaw === undefined) warnMissing('Protein')
@@ -172,14 +188,18 @@ function parseProfile(food: Record<string, unknown>, fdcId: number): UsdaNutrien
   if (sodiumMg === undefined) warnMissing('Sodium')
 
   const saltG = sodiumMg !== undefined ? (sodiumMg * 2.5) / 1000 : 0
+  // Carbs «by difference» can come out slightly negative (wings: -0.46).
+  const carbsG = Math.max(0, carbsRaw ?? 0)
+  // No energy reported at all: 4 kcal/g protein and carbs, 9 kcal/g fat.
+  const kcal = kcalRaw ?? Math.round((proteinRaw ?? 0) * 4 + carbsG * 4 + (fatRaw ?? 0) * 9)
 
   return {
     fdcId,
     description,
     per100g: {
-      kcal: kcalRaw ?? 0,
+      kcal,
       proteinG: proteinRaw ?? 0,
-      carbsG: carbsRaw ?? 0,
+      carbsG,
       fatG: fatRaw ?? 0,
       fiberG: fiberRaw ?? 0,
       saltG,

@@ -567,10 +567,14 @@ export async function suggestIngredient(
 /**
  * The candidate whose nutrition a new ingredient takes: the first USDA
  * Foundation or SR Legacy one, else the first of any kind (FNDDS, BEDCA).
+ * An entry with every value at zero (some Foundation samples carry no
+ * nutrients) is skipped while another one has data; water keeps its zeros.
  * Used by auto-create and by `scripts/refillIngredientNutrition.ts`.
  */
 export function pickNutritionCandidate(candidates: readonly AutoCreateCandidate[]): AutoCreateCandidate | null {
-  return candidates.find((c) => c.dataType === 'Foundation' || c.dataType === 'SR Legacy') ?? candidates[0] ?? null
+  const hasData = (c: AutoCreateCandidate) => Object.values(c.per100g).some((v) => v > 0)
+  const pool = candidates.some(hasData) ? candidates.filter(hasData) : candidates
+  return pool.find((c) => c.dataType === 'Foundation' || c.dataType === 'SR Legacy') ?? pool[0] ?? null
 }
 
 /** Wrap searchBedca so a thrown / hung scrape never crashes the suggestion. */

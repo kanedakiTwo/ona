@@ -201,6 +201,11 @@ describe('pickNutritionCandidate — the nutrition a new ingredient takes', () =
     expect(pickNutritionCandidate([c('Survey (FNDDS)', 1), c('SR Legacy', 2)])?.per100g.kcal).toBe(2)
   })
 
+  it('skips an entry with no nutrients at all when another one has them (a Foundation sample with every value missing)', () => {
+    expect(pickNutritionCandidate([c('Foundation', 0), c('SR Legacy', 321)])?.per100g.kcal).toBe(321)
+    expect(pickNutritionCandidate([c('SR Legacy', 0)])?.per100g.kcal).toBe(0) // water: zero is its value
+  })
+
   it('falls back to the first candidate (BEDCA) and to null when there is none', () => {
     expect(pickNutritionCandidate([c('BEDCA', 3)])?.dataType).toBe('BEDCA')
     expect(pickNutritionCandidate([])).toBeNull()

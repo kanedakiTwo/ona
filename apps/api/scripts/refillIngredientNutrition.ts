@@ -7,6 +7,11 @@
  * (`suggestIngredient` → `pickNutritionCandidate`: USDA, then BEDCA).
  * Allergen tags gain what the name rules infer; none is removed.
  *
+ * A curated query (`--queries`) is written like an SR Legacy description
+ * («spices pepper red or cayenne»), so it is searched in SR Legacy first,
+ * in USDA's relevance order; auto-create's «Foundation first» ranking would
+ * pick a bell pepper over cayenne or red rice over spaghetti.
+ *
  * Afterwards run `recomputeRecipeNutrition.ts --only=<ids>` with the recipe
  * ids this script prints, so their cached nutrition picks up the new values.
  *
@@ -20,13 +25,30 @@ import { readFileSync } from 'node:fs'
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { db, pool } from '../src/db/connection.js'
 import { ingredients, recipeIngredients } from '../src/db/schema.js'
-import { pickNutritionCandidate, suggestIngredient } from '../src/services/ingredientAutoCreate.js'
+import { pickNutritionCandidate, suggestIngredient, type AutoCreateCandidate } from '../src/services/ingredientAutoCreate.js'
+import { createUsdaClient } from '../src/services/nutrition/usdaClient.js'
 import { inferAllergenTagsFromName } from '../src/services/nutrition/allergens.js'
 
 const EXECUTE = process.argv.includes('--execute')
 const arg = (k: string) => process.argv.find((a) => a.startsWith(`--${k}=`))?.slice(k.length + 3)
 const QUERIES: Record<string, string> = arg('queries') ? JSON.parse(readFileSync(arg('queries')!, 'utf8')) : {}
 const ONLY = arg('only')?.split('|').map((s) => s.trim()).filter(Boolean) ?? null
+
+const usda = createUsdaClient()
+
+/** First entry with data for a curated query: SR Legacy, then Foundation/FNDDS, in relevance order. */
+async function curatedCandidate(query: string): Promise<AutoCreateCandidate | null> {
+  for (const types of [['SR Legacy'], ['Foundation', 'Survey (FNDDS)']]) {
+    const hits = await usda.searchByName(query, { limit: 5, preferDataTypes: types }).catch(() => [])
+    for (const h of hits.slice(0, 3)) {
+      const p = await usda.fetchByFdcId(h.fdcId).catch(() => null)
+      if (p && Object.values(p.per100g).some((v) => v > 0)) {
+        return { fdcId: h.fdcId, bedcaId: null, description: h.description, descriptionEs: null, dataType: h.dataType, per100g: p.per100g }
+      }
+    }
+  }
+  return null
+}
 
 async function main() {
   if (!process.env.USDA_FDC_API_KEY) throw new Error('Falta USDA_FDC_API_KEY')
@@ -48,12 +70,13 @@ async function main() {
   const missed: string[] = []
   for (const row of rows) {
     const query = QUERIES[row.name]
-    const suggestion = await suggestIngredient(row.name, { limit: 3, query })
-    const top = pickNutritionCandidate(suggestion.candidates)
+    const curated = query ? await curatedCandidate(query) : null
+    const suggestion = curated ? null : await suggestIngredient(row.name, { limit: 3, query })
+    const top = curated ?? pickNutritionCandidate(suggestion!.candidates)
     const allergens = [...new Set([...(row.allergenTags ?? []), ...inferAllergenTagsFromName(row.name)])].sort()
     if (!top) {
       missed.push(row.name)
-      console.log(`  ✗ ${row.name.padEnd(34)} sin candidato («${suggestion.queryUsed}»)`)
+      console.log(`  ✗ ${row.name.padEnd(34)} sin candidato («${query ?? suggestion?.queryUsed}»)`)
       continue
     }
     const n = top.per100g

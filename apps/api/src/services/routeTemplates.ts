@@ -172,6 +172,7 @@ export const API_ROUTE_TEMPLATES: readonly string[] = [
   '/units/resolve',
   '/usage/app-opened',
   '/usage/cook-mode-started',
+  '/usage/event',
   '/usage/invite-shared',
   '/user/:x',
   '/user/:x/first-steps',

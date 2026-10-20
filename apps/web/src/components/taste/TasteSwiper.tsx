@@ -33,6 +33,7 @@ import {
 import { fetchTasteNext, postTasteFlag, postTasteVerdict } from "@/hooks/useTaste"
 import { dislikeChipText, nextStreak } from "@/lib/tasteText"
 import { useQueryClient } from "@tanstack/react-query"
+import { trackUsage } from "@/lib/usageEvents"
 
 type Screen = "intro" | "loading" | "cards" | "why" | "done"
 
@@ -140,6 +141,8 @@ export function TasteSwiper({
   const prefetchedFor = useRef(-1)
   const [error, setError] = useState("")
 
+  const started = useRef(false)
+  const where = mode === "onboarding" ? "alta" : "pagina"
   const limitTotal = mode === "onboarding" ? TASTE_BATCH_SIZE : Infinity
   const card = queue[idx]
   const next = queue[idx + 1]
@@ -160,6 +163,11 @@ export function TasteSwiper({
       setQueue(cards)
       setIdx(0)
       setScreen(cards.length ? "cards" : "done")
+      // PRO-120: «Afina tu menú» started (counts only: action and how many cards).
+      if (cards.length && !started.current) {
+        started.current = true
+        trackUsage("taste_tuning", { action: "empezado", cards: 0, where })
+      }
     } catch {
       setError("No he podido cargar las recetas. Prueba otra vez en un momento.")
       setScreen("intro")
@@ -182,13 +190,20 @@ export function TasteSwiper({
   }, [mode, screen, idx, queue, avoid, load])
 
   /** End of the batch or «Ya está por hoy»: the summary (page) or on with the sign-up. `resume` = the card to go on from. */
-  const finish = useCallback((resume?: number) => {
+  const finish = useCallback((resume?: number, answered?: number) => {
+    // PRO-120: `answered` comes from the end of a batch (terminado); «Saltar» / «Ya está por hoy» pass none.
+    if (started.current) {
+      const total = answered ?? answers.length
+      const inBatch = total - (mode === "page" ? batchFrom : 0)
+      const action = answered !== undefined || inBatch >= TASTE_BATCH_SIZE ? "terminado" : "abandonado"
+      trackUsage("taste_tuning", { action, cards: Math.max(0, inBatch), where })
+    }
     qc.invalidateQueries({ queryKey: ["taste"] })
     qc.invalidateQueries({ queryKey: ["memory"] })
     if (mode === "onboarding") return onDone?.()
     setResumeAt(resume ?? idx)
     setScreen("done")
-  }, [idx, mode, onDone, qc])
+  }, [answers.length, batchFrom, idx, mode, onDone, qc, where])
 
   /** The prefetched batch (or a fresh one), minus what's already queued or avoided. */
   const fetchMore = useCallback(
@@ -208,18 +223,18 @@ export function TasteSwiper({
     async (answered: number, q: TasteCard[] = queue) => {
       setDrag({ dx: 0, dy: 0, active: false })
       const i = idx + 1
-      if (answered >= limitTotal) return finish(i)
+      if (answered >= limitTotal) return finish(i, answered)
       // Page mode: each 10 ends in the summary (PRO-200).
-      if (mode === "page" && answered - batchFrom >= TASTE_BATCH_SIZE) return finish(i)
+      if (mode === "page" && answered - batchFrom >= TASTE_BATCH_SIZE) return finish(i, answered)
       if (i < q.length) {
         setIdx(i)
         setScreen("cards")
         return
       }
-      if (mode === "onboarding") return finish()
+      if (mode === "onboarding") return finish(undefined, answered)
       setScreen("loading")
       const more = await fetchMore(q)
-      if (more.length === 0) return finish(i)
+      if (more.length === 0) return finish(i, answered)
       setQueue([...q, ...more])
       setIdx(i)
       setScreen("cards")
@@ -451,6 +466,8 @@ export function TasteSwiper({
           type="button"
           onClick={() => {
             setBatchFrom(answers.length)
+            // PRO-120: each batch of 10 is one «empezado».
+            trackUsage("taste_tuning", { action: "empezado", cards: 0, where })
             if (resumeAt < queue.length) {
               setIdx(resumeAt)
               setScreen("cards")

@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { deviceFromUserAgent, recordInstalledOpen } from '../services/appInstalls.js'
-import { trackEvent } from '../services/usageEvents.js'
+import { clientEventProps, recordClientEvent, trackEvent } from '../services/usageEvents.js'
 
 /**
  * Usage signals the web sends itself (specs/metrics.md "App instalada y avisos"):
@@ -17,6 +17,13 @@ import { trackEvent } from '../services/usageEvents.js'
  *   «Copiar»), or Mimo handing out the link (PRO-163). Counted as
  *   `invite_shared`, only the number: no props. Body `{ channel? }`
  *   (`web` by default, `whatsapp` from Mimo there). 204 always.
+ *   POST /usage/event — what the web sees and the API can't (PRO-120):
+ *   `{ name, props }` with `name` one of CLIENT_USAGE_EVENTS (onboarding_step,
+ *   screen_viewed, recipe_viewed, taste_tuning, push_opened) and props from
+ *   closed lists only (`clientEventProps`; anything else is dropped). The
+ *   once-per-day cap of screens and sign-up steps is applied here, per person
+ *   and Madrid day: the browser keeps nothing. 200 `{ counted }` always
+ *   (false = invalid or already counted today).
  */
 const router = Router()
 
@@ -32,6 +39,11 @@ router.post('/usage/cook-mode-started', authMiddleware, (_req: AuthRequest, res)
 router.post('/usage/invite-shared', authMiddleware, (req: AuthRequest, res) => {
   trackEvent('invite_shared', { userId: req.userId!, channel: req.body?.channel === 'whatsapp' ? 'whatsapp' : 'web' })
   res.status(204).end()
+})
+
+router.post('/usage/event', authMiddleware, async (req: AuthRequest, res) => {
+  const ev = clientEventProps(req.body?.name, req.body?.props)
+  res.json({ counted: ev ? await recordClientEvent(req.userId!, ev) : false })
 })
 
 export default router

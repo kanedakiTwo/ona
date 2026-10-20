@@ -27,7 +27,7 @@ export default function PrivacidadPage() {
         <h1 className="font-display text-4xl text-[#1A1612] md:text-5xl">Política de privacidad</h1>
 
         <div className="mt-8 space-y-5 text-[15px] leading-relaxed text-[#4A4239]">
-          <p className="text-sm text-[#7A7066]">Última actualización: 19 de octubre de 2026</p>
+          <p className="text-sm text-[#7A7066]">Última actualización: 21 de octubre de 2026</p>
 
           <H2>1. Quién trata tus datos</H2>
           <p data-testid="privacy-controller">
@@ -115,7 +115,7 @@ export default function PrivacidadPage() {
             <li><strong>ElevenLabs</strong>: la voz de Mimo cuando lee sus respuestas en voz alta (solo recibe el texto de la respuesta).</li>
             <li><strong>Meta (WhatsApp Business)</strong>: si conectas WhatsApp, para enviar y recibir los mensajes.</li>
             <li><strong>Railway</strong>: alojamiento de la aplicación y de la base de datos.</li>
-            <li><strong>AiKit</strong>: generación de imágenes de recetas cuando lo pides (solo recibe el nombre e ingredientes de la receta).</li>
+            <li data-testid="privacy-processor-aikit"><strong>AiKit</strong>: generación de imágenes de recetas (solo recibe el nombre y los ingredientes de la receta). Para hacerlas usa modelos de OpenAI (EE. UU.), que reciben ese mismo texto.</li>
             <li><strong>Cloudflare</strong>: estadísticas agregadas de visitas a la web, sin cookies (ver el punto 8).</li>
             <li><strong>Resend</strong> (empresa de EE. UU.): el envío de los emails de Mimoia, como la invitación de la lista de espera y el menú de los viernes. Recibe tu email, tu nombre y el contenido del mensaje. Los correos salen desde servidores de la Unión Europea, pero Resend puede tratar los datos en Estados Unidos.</li>
             <li><strong>Stripe (a través de Link)</strong>: el cobro de las suscripciones. Recibe tu email y, cuando pagas, los datos de pago que escribes directamente en su página; Link actúa como vendedor registrado y emite los recibos. Nosotros guardamos solo el plan, su estado, sus fechas y las referencias de Stripe, nunca tu tarjeta.</li>
@@ -151,8 +151,12 @@ export default function PrivacidadPage() {
           <p data-testid="privacy-web-analytics">
             Para saber cuántas personas visitan la web usamos Cloudflare Web Analytics, que cuenta las visitas de
             forma agregada (páginas vistas, país, tipo de dispositivo) sin cookies, sin guardar nada en tu navegador y
-            sin crear un perfil tuyo. Dentro de la app contamos, también solo de forma agregada, qué funciones se usan
-            (por ejemplo, cuántos menús se generan) para saber qué mejorar; esos registros se borran a los 180 días.
+            sin crear un perfil tuyo.
+          </p>
+          <p data-testid="privacy-app-usage">
+            Dentro de la app apuntamos qué funciones y pantallas usas (por ejemplo, que has generado un menú o abierto la
+            lista de la compra), nunca lo que escribes. Lo usamos solo en recuentos, para saber qué mejorar, y se borra a
+            los 180 días.
           </p>
 
           <H2>9. Menores</H2>

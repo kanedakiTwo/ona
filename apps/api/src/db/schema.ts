@@ -1861,6 +1861,8 @@ export const menuPlans = pgTable('menu_plans', {
   slots: jsonb('slots').notNull().default([]),
   /** Checker summary: problems by kind, extra slots. */
   check: jsonb('check'),
+  /** The generator's week as it was when the plan was made (PRO-256: the household may edit the menu afterwards). */
+  generatorDays: jsonb('generator_days'),
   /** `scoreWeek` of the proposal and of the generator's week (PRO-254), for the blind comparison. */
   plannerScore: jsonb('planner_score'),
   generatorScore: jsonb('generator_score'),
@@ -1928,4 +1930,28 @@ export const menuPlannerRunItems = pgTable('menu_planner_run_items', {
   uniqueIndex('uq_menu_planner_run_items_run_household').on(t.runId, t.householdId),
   index('idx_menu_planner_run_items_household').on(t.householdId),
   check('menu_planner_run_items_status_check', sql.raw("status IN ('pending','ok','partial','fallback','failed')")),
+])
+
+/**
+ * PRO-256: the blind comparison in the test households. Which of the two
+ * weeks (A/B, the planner's and the generator's, in an order fixed per menu)
+ * the household preferred, and why.
+ */
+export const menuBlindVotes = pgTable('menu_blind_votes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  planId: uuid('plan_id').notNull().references(() => menuPlans.id, { onDelete: 'cascade' }),
+  menuId: uuid('menu_id').notNull().references(() => menus.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  householdId: uuid('household_id').references(() => households.id, { onDelete: 'cascade' }),
+  /** What the household saw: 'A' | 'B' | 'igual'. */
+  label: text('label').notNull(),
+  /** What it means: 'planner' | 'generator' | 'tie'. */
+  preferred: text('preferred').notNull(),
+  reason: text('reason'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_menu_blind_votes_plan_user').on(t.planId, t.userId),
+  check('menu_blind_votes_label_check', sql.raw("label IN ('A','B','igual')")),
+  check('menu_blind_votes_preferred_check', sql.raw("preferred IN ('planner','generator','tie')")),
 ])

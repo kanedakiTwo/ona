@@ -582,6 +582,13 @@
       "when": 1792455702539,
       "tag": "0085_menu_planner_runs",
       "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1792455724997,
+      "tag": "0086_menu_blind_votes",
+      "breakpoints": true
     }
   ]
 }

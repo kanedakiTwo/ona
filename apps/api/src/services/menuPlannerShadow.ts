@@ -289,6 +289,8 @@ export interface ShadowPlanRow {
   status: 'ok' | 'partial' | 'fallback' | 'skipped'
   reason: string | null
   days: DayMenu[] | null
+  /** The generator's week at plan time (PRO-256). */
+  generatorDays?: DayMenu[] | null
   slots: unknown[]
   check: unknown
   plannerScore: unknown
@@ -381,7 +383,7 @@ export async function planMenuInShadow(input: ShadowPlanInput, deps: ShadowDeps,
     menuId: input.menuId, userId: input.userId, householdId: null, status: 'skipped', reason: null, days: null, slots: [], check: null,
     plannerScore: null, generatorScore: null, candidates: 0, model: null, inputTokens: null, outputTokens: null, costMicros: null, durationMs: 0,
   }
-  const done = (row: Partial<ShadowPlanRow>): ShadowPlanRow => ({ ...base, ...row, durationMs: deps.now().getTime() - started })
+  const done = (row: Partial<ShadowPlanRow>): ShadowPlanRow => ({ ...base, generatorDays: input.days, ...row, durationMs: deps.now().getTime() - started })
   if (!deps.call) return done({ reason: 'no_key' })
   try {
     if (await deps.capExceeded(input.userId)) return done({ reason: 'spend_cap' })
@@ -410,6 +412,7 @@ export async function saveShadowPlan(row: ShadowPlanRow, db: Db = defaultDb): Pr
     status: row.status,
     reason: row.reason,
     days: row.days,
+    generatorDays: row.generatorDays ?? null,
     slots: row.slots,
     check: row.check,
     plannerScore: row.plannerScore,

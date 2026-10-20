@@ -54,6 +54,17 @@ After `POST /menu/generate` (not the empty week) and Mimo's `generate_weekly_men
 - Still to do with PRO-257: show the thought week on Sunday, and «Mimo está pensando tu semana» while the on-the-spot planner runs in the sign-up and «Regenerar semana»
 - Tests: `menuPlannerWeekly.test.ts` (when it is due, who goes and who is left out and why, once per week, half price, collecting leaves each household's week thought, a failed batch, rebuilding the context) and `menuPlannerWeekly.smoke.ts` (one Saturday against Postgres with the real generator and catalogue and a simulated batch)
 
+## Comparación a ciegas en los hogares de prueba (PRO-256)
+
+Only for the test households' staging accounts (`@example.com`, `BLIND_TEST_EMAIL_SUFFIX`); for any other account the routes don't exist (404). No screen in the app: the «Hogares» routine uses the API.
+
+- `GET /menu/:menuId/a-ciegas` (the menu's household): the two weeks of the menu's latest usable shadow plan (`ok`/`partial`) as **A** and **B** — the planner's and the generator's as it was when the plan was made (`menu_plans.generator_days`), in an order fixed per menu (hash of the id, about half and half) and never said. Each week is only days, meals and dish names (leftovers and tápers say so); no «por qué», ids or anything else that gives away its origin. Also the question and the household's earlier pick (`choice`). 404 `NO_PLAN` without a usable plan
+- `POST /menu/:menuId/a-ciegas` `{ choice: 'A' | 'B' | 'igual', reason? }` (≤ 500 characters): stored in `menu_blind_votes` (one per plan and person, a new pick replaces it) with what it means (`planner` · `generator` · `tie`); the answer doesn't say which was which
+- `GET /admin/menu-planner/comparison?from=AAAA-MM-DD` (admin JWT or `x-metrics-token`; default the last 14 days): one line per test household — plans by status, the checker's problems by kind, Cocina's rules for each week (mean `scoreWeek`, 0–100), votes and reasons, and whether it prefers the planner's week. Only test accounts
+- Migration `0076_menu_blind_votes` (adds the table and the `menu_plans.generator_days` column)
+- Not done here: the routine's afternoons and the report in `hogares-prueba/informes/` (Mimoia HQ)
+- Tests: `blindComparison.test.ts` (test accounts, A/B fixed and balanced, nothing gives the origin away, the pick mapped back, the report) and `blindComparison.smoke.ts` (read, vote, change the vote, report, 404 for other accounts and other households' menus)
+
 ## La línea de por qué en cada plato (PRO-259)
 
 - A recipe dish may carry `why` (`RecipeDish.why`, in the menu's JSONB). `mergeWithGenerator` sets it on the planner's dishes (never on the generator's); nothing else writes it. A new dish (swap, «Cambiar al azar», «Elegir otra receta») is built without it; leftovers cloned from a dish keep it
@@ -72,6 +83,8 @@ After `POST /menu/generate` (not the empty week) and Mimo's `generate_weekly_men
 - [apps/api/src/tests/weekRules.test.ts](../apps/api/src/tests/weekRules.test.ts)
 - [apps/api/src/services/menuPlanner.ts](../apps/api/src/services/menuPlanner.ts) — candidates, prompt, closed format, checker, merge (pure)
 - [apps/api/src/services/menuPlannerShadow.ts](../apps/api/src/services/menuPlannerShadow.ts) — context from the DB, the call, cost, `menu_plans`, `startShadowPlan`
+- [apps/api/src/services/blindComparison.ts](../apps/api/src/services/blindComparison.ts) · [apps/api/src/routes/blindComparison.ts](../apps/api/src/routes/blindComparison.ts) · [apps/api/src/db/migrations/0076_menu_blind_votes.sql](../apps/api/src/db/migrations/0076_menu_blind_votes.sql) — comparación a ciegas
+- [apps/api/src/tests/blindComparison.test.ts](../apps/api/src/tests/blindComparison.test.ts) · [apps/api/src/tests/blindComparison.smoke.ts](../apps/api/src/tests/blindComparison.smoke.ts)
 - [apps/api/src/services/menuPlannerWeekly.ts](../apps/api/src/services/menuPlannerWeekly.ts) — Saturday batch: due, eligibility, submit, collect · [apps/api/src/db/migrations/0075_menu_planner_runs.sql](../apps/api/src/db/migrations/0075_menu_planner_runs.sql)
 - [apps/api/src/tests/menuPlannerWeekly.test.ts](../apps/api/src/tests/menuPlannerWeekly.test.ts) · [apps/api/src/tests/menuPlannerWeekly.smoke.ts](../apps/api/src/tests/menuPlannerWeekly.smoke.ts)
 - [apps/api/src/db/migrations/0074_menu_plans.sql](../apps/api/src/db/migrations/0074_menu_plans.sql)

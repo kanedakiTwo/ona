@@ -50,6 +50,7 @@ import { startAfinaNotice } from './services/afinaNotice.js'
 import catalogWishesRoutes from './routes/catalogWishes.js'
 import householdHabitsRoutes from './routes/householdHabits.js'
 import schoolMenuRoutes from './routes/schoolMenu.js'
+import blindComparisonRoutes from './routes/blindComparison.js'
 import { trackShoppingActivity } from './services/activityEvents.js'
 import { trackUsageRoutes } from './services/usageEvents.js'
 import { startScheduler } from './services/notificationScheduler.js'
@@ -150,6 +151,8 @@ app.use(catalogWishesRoutes)
 app.use(householdHabitsRoutes)
 // Menú del cole (PRO-224): per-route auth.
 app.use(schoolMenuRoutes)
+// Menú inteligente: comparación a ciegas en los hogares de prueba (PRO-256).
+app.use(blindComparisonRoutes)
 app.use(recipeRoutes)
 app.use(ingredientRoutes)
 // pushRoutes is mostly auth-protected (per-route authMiddleware) but the

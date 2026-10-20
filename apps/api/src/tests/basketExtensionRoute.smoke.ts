@@ -151,14 +151,42 @@ describe.skipIf(!reachable)('extensión del navegador · rutas', () => {
     expect((await api('GET', '/admin/extension-gaps?days=1')).status).toBe(403)
   })
 
-  it.skipIf(!METRICS)('huecos con el token de métricas (sin sesión), con estado y motivo', async () => {
+  it.skipIf(!METRICS)('huecos con el token de métricas (sin sesión): nombre recortado, sin búsqueda, con estado y motivo', async () => {
     const r = await fetch(`${API_URL}/admin/extension-gaps?days=1`, { headers: { 'x-metrics-token': METRICS! } })
     expect(r.status).toBe(200)
     const { gaps } = await r.json()
     expect(Array.isArray(gaps)).toBe(true)
-    const name = lineNameWith((await api('GET', `/shop-orders/${orderId}`)).body, 'fallida')
-    expect(gaps).toContainEqual(expect.objectContaining({ name, estado: 'fallida', motivo: 'no_encontrado' }))
+    const order = (await api('GET', `/shop-orders/${orderId}`)).body
+    const key = order.extensionResult.lineas.find((l: { estado: string }) => l.estado === 'fallida').key
+    const line = order.lines.find((l: { key: string }) => l.key === key)
+    // Lo tecleado sin regla no llega: solo su categoría; con regla, la clave de la regla.
+    const esperado = line.ruleKey ? { name: line.ruleKey, origen: 'regla' } : { name: null, origen: 'tecleado' }
+    expect(gaps).toContainEqual(expect.objectContaining({ ...esperado, estado: 'fallida', motivo: 'no_encontrado' }))
+    for (const g of gaps) expect(g).not.toHaveProperty('search')
   })
+
+  it.skipIf(!METRICS)('envíos con el token: uno por resultado, nombres recortados, sin envioId ni texto tecleado', async () => {
+    const otro = await session('exts')
+    const order = await superOrder(otro, [
+      { name: 'arroz', quantity: 1000, unit: 'g' },
+      { name: 'servilletas', quantity: 1, unit: 'u' },
+    ])
+    // Una duración única para encontrar este envío entre los de las demás pruebas.
+    const duracionMs = 1000 + Math.floor(Math.random() * 1_000_000)
+    const lineas = order.lines.map((l: { key: string }, i: number) => ({ key: l.key, estado: 'busqueda', productoId: String(i + 1), producto: `Producto ${i + 1}`, unidades: 1 }))
+    const saved = await otro('POST', `/shop-orders/${order.id}/extension-result`, result({ envioId: `smoke-${duracionMs}`, duracionMs, lineas, anadidas: lineas.length }))
+    expect(saved.status).toBe(200)
+    const r = await fetch(`${API_URL}/admin/extension-sends?days=1`, { headers: { 'x-metrics-token': METRICS! } })
+    expect(r.status).toBe(200)
+    const body = await r.json()
+    expect(body.days).toBe(1)
+    const send = body.sends.find((s: { duracionMs: number | null }) => s.duracionMs === duracionMs)
+    expect(Object.keys(send).sort()).toEqual(['anadidas', 'deshecho', 'duracionMs', 'error', 'fecha', 'lineas', 'ok'])
+    for (const l of send.lineas) expect(Object.keys(l).sort()).toEqual(['choice', 'estado', 'motivo', 'name', 'origen', 'producto', 'unidades'])
+    const esperado = order.lines.map((l: { ruleKey?: string | null }) => (l.ruleKey ? { name: l.ruleKey, origen: 'regla' } : { name: null, origen: 'tecleado' }))
+    expect(send.lineas.map((l: { name: string | null; origen: string }) => ({ name: l.name, origen: l.origen }))).toEqual(esperado)
+    expect(JSON.stringify(body)).not.toMatch(/servilletas|smoke-\d/)
+  }, 30_000)
 
   it('sin permiso: status false y 403 al guardar un resultado', async () => {
     const fuera = await session('noext', 'otro.example')

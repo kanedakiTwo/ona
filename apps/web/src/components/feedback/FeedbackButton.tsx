@@ -14,6 +14,7 @@ import { MessageSquareHeart, X } from "lucide-react"
 import { useMutation } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { isCookPath, isRecipeDetailPath } from "@/components/mimo/MimoButton"
+import { useFloatingButtonsHidden } from "@/hooks/useFloatingButtonsHidden"
 
 export function feedbackButtonHidden(pathname: string | null): boolean {
   return !pathname || isCookPath(pathname) || pathname.startsWith("/onboarding") || pathname.startsWith("/afinar")
@@ -30,6 +31,8 @@ export function FeedbackButton() {
   const [open, setOpen] = useState(false)
   const [text, setText] = useState("")
   const [thanks, setThanks] = useState(false)
+  // PRO-122: out of the way while a sheet is open or the keyboard is up.
+  const floatingHidden = useFloatingButtonsHidden()
   const send = useMutation({
     mutationFn: () => api.post("/feedback", { text: text.trim(), page: pathname, channel: "app" }),
     onSuccess: () => {
@@ -51,6 +54,7 @@ export function FeedbackButton() {
 
   return (
     <>
+      {!floatingHidden && (
       <button
         type="button"
         onClick={() => setOpen(true)}
@@ -61,6 +65,7 @@ export function FeedbackButton() {
         <MessageSquareHeart size={16} strokeWidth={1.9} aria-hidden="true" className="text-terracotta" />
         Opinión
       </button>
+      )}
 
       {open && (
         <div className="fixed inset-0 z-[80] flex items-end justify-center bg-ink/30 md:items-center" onClick={() => setOpen(false)}>

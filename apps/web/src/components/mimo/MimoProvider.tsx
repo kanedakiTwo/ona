@@ -28,6 +28,7 @@ import { recipeRefsFrom, type RecipeRef } from '@/lib/mimoRecipeLinks'
 import { createPendingListen } from '@/lib/pendingListen'
 import MimoPanel from './MimoPanel'
 import MimoButton from './MimoButton'
+import { useFloatingButtonsHidden } from '@/hooks/useFloatingButtonsHidden'
 
 export interface MimoMessage {
   id: string
@@ -379,7 +380,9 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
     [isOpen, open, close, messages, status, error, send, toggleListening, recorder.level, canListen, handsFree, setHandsFree, speakReplies, setSpeakReplies, voice, pendingListen],
   )
 
-  const showButton = !!userId && !isOpen && !mimoHiddenOn(pathname)
+  // PRO-122: also out of the way while a sheet is open or the keyboard is up.
+  const floatingHidden = useFloatingButtonsHidden()
+  const showButton = !!userId && !isOpen && !mimoHiddenOn(pathname) && !floatingHidden
 
   return (
     <MimoContext.Provider value={value}>

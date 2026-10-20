@@ -388,7 +388,7 @@ export function SaveBar({
   cancelHref: string
 }) {
   return (
-    <div className="sticky bottom-[calc(72px+var(--safe-bottom))] z-30 mt-4 pr-[68px] md:bottom-4 md:pr-[76px] lg:pr-0">
+    <div className="sticky bottom-[calc(140px+var(--safe-bottom))] z-30 mt-4 md:bottom-4 md:pr-[76px] lg:pr-0">
       <div className="flex items-center gap-2 rounded-full border border-border-soft bg-paper/95 p-1.5 shadow-[0_8px_24px_-12px_rgba(26,22,18,0.35)] backdrop-blur lg:mx-auto lg:max-w-[560px]">
         <button
           type="submit"

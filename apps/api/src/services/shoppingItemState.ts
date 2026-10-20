@@ -303,8 +303,11 @@ function applyState(
       const c = conv(q)
       if (c != null && c > 0) weeks[w] = c
     }
-    // Each week's amount is rounded on its own: never more than the line.
-    have = Math.min(it.quantity, Object.entries(it.weeks!).reduce((acc, [w, need]) => acc + Math.min(weeks![w] ?? 0, need), 0))
+    // Each week's amount is rounded on its own, so the weeks don't add up to
+    // the line exactly: every week covered is the whole line; never more.
+    const lineWeeks = Object.entries(it.weeks!).filter(([, need]) => need > 0)
+    const allCovered = lineWeeks.length > 0 && lineWeeks.every(([w, need]) => (weeks![w] ?? 0) >= need - 1e-6)
+    have = allCovered ? it.quantity : Math.min(it.quantity, lineWeeks.reduce((acc, [w, need]) => acc + Math.min(weeks![w] ?? 0, need), 0))
   }
   const mark: ShoppingItem['mark'] = { source: s.inStock ? 'inStock' : 'checked', quantity: total, ...(weeks ? { weeks } : {}) }
   const missing = roundMissing(it.quantity - have, it.unit)

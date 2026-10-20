@@ -190,6 +190,19 @@ describe('each week rounded on its own (PRO-270)', () => {
   })
 })
 
+describe('weeks that add up to less than the line (PRO-270)', () => {
+  it('162,5 g of tomato a week: 175 g each alone, 350 g together → bought everywhere', () => {
+    let list = rebuild([line('tomate', 350, { [W19]: 175, [W26]: 175 })], { items: [], state: {} }, '2026-10-21')
+    toggleChecked(list.items[0])
+    list = rebuild([line('tomate', 175, { [W19]: 175 })], list, '2026-10-21')
+    expect(list.items[0].checked).toBe(true)
+    list = rebuild([line('tomate', 400, { [W19]: 175, [W26]: 200 })], list, '2026-10-21')
+    expect(list.items[0]).toMatchObject({ checked: false, haveQuantity: 350 })
+    list = rebuild([line('tomate', 350, { [W19]: 150, [W26]: 175 })], list, '2026-10-21')
+    expect(list.items[0].checked).toBe(true)
+  })
+})
+
 describe('ticks from paths that only flip the flag (Mimo, PRO-270)', () => {
   it('Mimo ticks a line whose old tick was for another week → bought for this one', () => {
     let list = rebuild([line('calabacin', 400, { [W26]: 400 })], { items: [], state: {} }, '2026-10-19')

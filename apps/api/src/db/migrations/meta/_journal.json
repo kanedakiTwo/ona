@@ -561,6 +561,13 @@
       "when": 1792455258715,
       "tag": "0082_whatsapp_opt_in_answer",
       "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1792455340178,
+      "tag": "0083_newsletter_clicks",
+      "breakpoints": true
     }
   ]
 }

@@ -6,7 +6,7 @@ import { skills, getToolDefinitions } from './skills.js'
 import type { AssistantResponse, ChatMessage, SkillContext, SkillDefinition, SkillResult, ToolTrace } from './types.js'
 import { recordSkillActivity } from '../activityEvents.js'
 import { recordSkillUsage } from '../usageEvents.js'
-import { claimsAction } from './claims.js'
+import { claimsAction, toolMadeChange } from './claims.js'
 import { ensureHealthDisclaimer, talksHealthEffects } from './healthGuard.js'
 import { maybeAppendInviteOffer, recordInviteOfferAnswer } from '../inviteOffer.js'
 import { maybeAppendFamilyInviteOffer, recordFamilyInviteAnswer } from '../familyInviteMimo.js'
@@ -145,6 +145,15 @@ const FALLBACK_BETA = 'server-side-fallback-2026-07-01'
 export const TRUNCATED_NOTE =
   '[Nota del sistema, no la menciones] Tu respuesta anterior era demasiado larga y se ha cortado antes de terminar, asi que no se ha ejecutado. Hazlo por partes: menos herramientas a la vez y textos mas cortos (por ejemplo, una receta con los pasos justos).'
 
+/**
+ * PRO-239: the reply says it changed something ("Hecho", "ya está apuntado")
+ * but no tool that changes anything ran this turn (none, or only reads like
+ * `get_shopping_list`). The engine gives the model ONE more round with this
+ * note instead of sending the claim.
+ */
+export const UNBACKED_CLAIM_NOTE =
+  '[Nota del sistema, no la menciones] En este turno no has hecho ningun cambio: no ha corrido ninguna herramienta que cambie algo. Si el usuario te ha pedido un cambio, hazlo ahora con la herramienta. Si no puedes hacerlo, o ya estaba asi de antes y lo has comprobado, dilo con claridad sin afirmar que acabas de hacerlo. No pidas perdon por esta nota ni hables de herramientas.'
+
 const REFUSAL_REPLY = 'Perdona, con eso no te puedo ayudar. ¿Te echo una mano con el menú, una receta o la compra?'
 
 type MessagesClient = { messages: { create: (args: any, options?: any) => Promise<any> } }
@@ -222,6 +231,7 @@ export async function runToolLoop(params: {
   const executed: ExecutedTool[] = []
   let usage: TokenUsage = EMPTY_USAGE
   let retriedTruncation = false
+  let retriedClaim = false
   const flags: string[] = []
 
   for (let round = 0; ; round += 1) {
@@ -272,11 +282,25 @@ export async function runToolLoop(params: {
     }
 
     if (toolUses.length === 0 || round >= maxRounds) {
-      // Saying "hecho / he cambiado" without having run a tool this turn is
-      // flagged for the daily review. Until 2026-10-12 the engine forced a
-      // rewrite instead, which produced the oddest replies of all ("Tienes
-      // razón, ya estaba hecho desde hace un turno").
-      if (executed.length === 0 && claimsAction(text)) flags.push('unverified_claim')
+      // Saying "hecho / ya está apuntado" when no tool that changes something
+      // ran this turn (none, or only reads): one more round asking the model
+      // to do it with the tool or say it hasn't (PRO-239, 2026-10-19). Until
+      // 2026-10-12 the engine rewrote the reply, which produced the oddest
+      // replies of all; since then it only flagged turns with no tool at all,
+      // so «Ya está apuntado como cocinado» after `get_shopping_list` slipped
+      // through. The note goes as an extra round, never shown to the user.
+      const changed = executed.some((e) => toolMadeChange(e.name, e.result.summary, e.isError))
+      if (!changed && claimsAction(text)) {
+        if (!retriedClaim && round < maxRounds) {
+          retriedClaim = true
+          flags.push('claim_retry')
+          console.warn('[assistant] claimed a change without a changing tool; one more round')
+          messages.push({ role: 'assistant', content: content as any })
+          messages.push({ role: 'user', content: UNBACKED_CLAIM_NOTE })
+          continue
+        }
+        flags.push('unverified_claim')
+      }
       return buildResponse(text, executed, usage, flags)
     }
 

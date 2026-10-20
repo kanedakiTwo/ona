@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 import { CLAUDE_MODEL } from '../config/models.js'
-import { runToolLoop, MAX_TOOL_ROUNDS, ASSISTANT_MODEL, TRUNCATED_NOTE, claimsAction, withLastMessageCached } from '../services/assistant/engine.js'
+import { runToolLoop, MAX_TOOL_ROUNDS, ASSISTANT_MODEL, TRUNCATED_NOTE, UNBACKED_CLAIM_NOTE, claimsAction, withLastMessageCached } from '../services/assistant/engine.js'
 import type { SkillDefinition } from '../services/assistant/types.js'
 
 const usage = { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 }
@@ -188,7 +188,7 @@ describe('model request (2026-10-12: Sonnet 5.5)', () => {
   })
 })
 
-describe('no more forced rewrites (2026-10-12)', () => {
+describe('claimsAction', () => {
   it('still recognises Spanish "I did it" claims', () => {
     expect(claimsAction('Perfecto, listo. Cambiado: hoy cenas pollo con calabacín.')).toBe(true)
     expect(claimsAction('Ya he añadido la leche.')).toBe(true)
@@ -196,12 +196,77 @@ describe('no more forced rewrites (2026-10-12)', () => {
     expect(claimsAction('Te sugiero unas lentejas con verduras.')).toBe(false)
   })
 
-  it('flags a claim made without tools for the daily review, without a second round', async () => {
-    const f = fakeClient([text('Perfecto, he cambiado la cena de hoy.')])
+  it('recognises "ya está apuntado" and "ya salían como" (PRO-239)', () => {
+    expect(claimsAction('Ya está apuntado como cocinado: lentejas, ternera con pimientos y crema.')).toBe(true)
+    expect(claimsAction('Los pañales ya salían como "pañales talla 4" con cantidad 2 paquetes, no en el nombre.')).toBe(true)
+    expect(claimsAction('Ya lo he corregido.')).toBe(true)
+    expect(claimsAction('Ya he corregido el nombre del táper.')).toBe(true)
+    expect(claimsAction('¿Quieres que lo apunte como cocinado?')).toBe(false)
+  })
+})
+
+describe('claims without a changing tool get one more round (PRO-239)', () => {
+  it('a claim with no tool at all: one more round with the note; a second claim is flagged', async () => {
+    const f = fakeClient([text('Perfecto, he cambiado la cena de hoy.'), text('Hecho: cambiada.')])
     const r = await runToolLoop(base(f.client, []))
-    expect(f.calls).toHaveLength(1)
-    expect(r.message).toBe('Perfecto, he cambiado la cena de hoy.')
-    expect(r.corrections).toEqual(['unverified_claim'])
+    expect(f.calls).toHaveLength(2)
+    expect(JSON.stringify(f.calls[1].messages.at(-1))).toContain(UNBACKED_CLAIM_NOTE.slice(0, 40))
+    expect(r.message).toBe('Hecho: cambiada.')
+    expect(r.corrections).toEqual(['claim_retry', 'unverified_claim'])
+  })
+
+  it('Dani y Sara: «ya está apuntado como cocinado» after only get_shopping_list → does it with the tool', async () => {
+    const list = skill('get_shopping_list', 'shopping_list')
+    const eaten = skill('mark_meal_eaten', 'confirmation')
+    const f = fakeClient([
+      tools({ id: 'l1', name: 'get_shopping_list' }),
+      text('Ya está apuntado como cocinado: lentejas, ternera con pimientos y crema de zanahoria.'),
+      tools({ id: 'm1', name: 'mark_meal_eaten', input: { day: 'domingo' } }),
+      text('Hecho: lentejas, ternera y crema apuntadas como cocinadas.'),
+    ])
+    const r = await runToolLoop(base(f.client, [list, eaten]))
+    expect(eaten.handler).toHaveBeenCalledOnce()
+    expect(f.calls).toHaveLength(4)
+    // The note rides after the claimed reply, never in the answer.
+    const second = f.calls[2].messages
+    expect(JSON.stringify(second.at(-1))).toContain(UNBACKED_CLAIM_NOTE.slice(0, 40))
+    expect(JSON.stringify(second.at(-2))).toContain('Ya está apuntado como cocinado')
+    expect(r.message).toBe('Hecho: lentejas, ternera y crema apuntadas como cocinadas.')
+    expect(r.corrections).toEqual(['claim_retry'])
+    expect(r.toolsUsed).toEqual(['get_shopping_list', 'mark_meal_eaten'])
+  })
+
+  it('Marta y Jorge: «los pañales ya salían como…» after only reading → honest answer goes out', async () => {
+    const list = skill('get_shopping_list', 'shopping_list')
+    const f = fakeClient([
+      tools({ id: 'l1', name: 'get_shopping_list' }),
+      text('Los pañales ya salían como "pañales talla 4" con cantidad 2 paquetes, no en el nombre.'),
+      text('En la lista pone «Pañales talla 4 (2 paquete) · 1 u». ¿Lo dejo como «Pañales talla 4 · 2 u»?'),
+    ])
+    const r = await runToolLoop(base(f.client, [list]))
+    expect(f.calls).toHaveLength(3)
+    expect(r.message).toContain('¿Lo dejo como')
+    expect(r.corrections).toEqual(['claim_retry'])
+  })
+
+  it('no extra round when a changing tool ran', async () => {
+    const eaten = skill('mark_meal_eaten', 'confirmation')
+    const f = fakeClient([tools({ id: 'm1', name: 'mark_meal_eaten' }), text('Hecho: apuntado como cocinado.')])
+    const r = await runToolLoop(base(f.client, [eaten]))
+    expect(f.calls).toHaveLength(2)
+    expect(r.corrections).toEqual([])
+  })
+
+  it('a changing tool that failed does not back the claim', async () => {
+    const broken: SkillDefinition = { ...skill('mark_meal_eaten', 'confirmation'), handler: vi.fn(async () => { throw new Error('boom') }) }
+    const f = fakeClient([
+      tools({ id: 'm1', name: 'mark_meal_eaten' }),
+      text('Hecho: apuntado.'),
+      text('No he podido apuntarlo; ¿lo intento otra vez?'),
+    ])
+    const r = await runToolLoop(base(f.client, [broken]))
+    expect(f.calls).toHaveLength(3)
+    expect(r.message).toContain('No he podido')
   })
 
   it('returns an honest "no se puede" as it is (no refusal round)', async () => {

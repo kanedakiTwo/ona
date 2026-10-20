@@ -379,6 +379,8 @@ export function mergeWithGenerator(generatorDays: readonly DayMenu[], check: Pla
       recipeId: s.recipeId,
       recipeName: s.recipeName ?? undefined,
       course: 'main',
+      // PRO-259: the line of why travels with the dish; shown only when the menu comes from the planner.
+      ...(s.why ? { why: s.why } : {}),
       ...(s.leftoverOf ? { variant: 'leftover' as const, leftoverOf: { day: s.leftoverOf.day, meal: s.leftoverOf.meal, dishPosition: 0 } } : {}),
     }
     if (!days[s.dayIndex]) continue

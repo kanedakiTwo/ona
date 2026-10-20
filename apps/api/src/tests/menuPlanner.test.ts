@@ -130,6 +130,9 @@ describe('checkPlan (the fixed checker)', () => {
     const id = (d: number, m: string) => (merged.days[d][m]!.dishes[0] as any).recipeId
     expect([id(0, 'lunch'), id(0, 'dinner'), id(1, 'lunch'), id(1, 'dinner')]).toEqual(['merluza', 'crema', 'lentejas', 'crema'])
     expect(generator[0].lunch!.dishes[0]).toMatchObject({ recipeId: 'lentejas' })
+    // PRO-259: the planner's dishes carry their why; the generator's don't.
+    expect((merged.days[0].lunch!.dishes[0] as any).why).toBe(`por ${ref('merluza')}`)
+    expect((merged.days[0].dinner!.dishes[0] as any).why).toBeUndefined()
     expect(mergeWithGenerator(generator, checkPlan(out([]), ctx)).status).toBe('fallback')
   })
 })

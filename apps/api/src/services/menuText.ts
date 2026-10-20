@@ -94,7 +94,21 @@ export function mealLinesForDay(day: DayMenu | null | undefined): string[] {
   return mealEntriesForDay(day).map((e) => {
     const servings = day?.[e.meal]?.servings
     const diners = typeof servings === 'number' && servings > 0 ? ` [solo hoy: ${servings}]` : ''
-    return `${e.label}${diners}: ${e.dishes.join(' + ')}`
+    const whys = dishWhys(day?.[e.meal]?.dishes)
+    return `${e.label}${diners}: ${e.dishes.join(' + ')}${whys.length ? ` (por qué: ${whys.join('; ')})` : ''}`
+  })
+}
+
+/**
+ * PRO-259: the planner's line of why for each recipe dish of a slot that has
+ * one, so Mimo can answer «¿por qué me has puesto esto?» (web and WhatsApp
+ * read the same lines). Empty for menus from today's generator.
+ */
+export function dishWhys(dishes: readonly Dish[] | null | undefined): string[] {
+  if (!Array.isArray(dishes)) return []
+  return dishes.flatMap((d) => {
+    const why = d?.kind === 'recipe' && typeof d.why === 'string' ? d.why.replace(/\s+/g, ' ').trim() : ''
+    return why ? [`«${why.length > 200 ? `${why.slice(0, 199)}…` : why}»`] : []
   })
 }
 

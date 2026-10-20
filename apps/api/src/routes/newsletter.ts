@@ -48,6 +48,24 @@ function apiOrigin(req: Request): string {
   return `${req.protocol}://${req.get('host')}`
 }
 
+/**
+ * The `i` of an opt-out link comes from the request: anyone with an opt-out
+ * token (a public waitlist signup gives one) could put any text there. It
+ * counts under that issue only when the issue was sent to this very address;
+ * otherwise, or if that check fails, the opt-out is counted without an
+ * issue, like the emails from before PRO-191.
+ */
+async function countUnsubscribe(
+  stats: NewsletterStatsRepo,
+  rawIssue: unknown,
+  hash: string | null,
+  source: 'user' | 'waitlist',
+): Promise<void> {
+  const asked = typeof rawIssue === 'string' && ISSUE_ID_RE.test(rawIssue) ? rawIssue : null
+  const mine = asked && hash ? await stats.wasSentTo(asked, hash).catch(() => false) : false
+  await stats.recordUnsubscribe(mine ? asked : null, source)
+}
+
 export interface NewsletterRouterDeps {
   repo: NewsletterRepo
   adminAuth: RequestHandler[]
@@ -59,7 +77,7 @@ export interface NewsletterRouterDeps {
   publicUrl: () => string
   /** PRO-191: clicks and opt-outs per issue. */
   stats: NewsletterStatsRepo
-  /** Admin JWT or the agents' x-metrics-token. */
+  /** Admin JWT or the read-only metrics token used by internal reporting. */
   statsAuth: RequestHandler
 }
 
@@ -156,7 +174,7 @@ export function createNewsletterRouter(overrides: Partial<NewsletterRouterDeps> 
       return
     }
     try {
-      const outcome = await deps.repo.unsubscribe(parsed.data.token)
+      const { outcome, recipientHash } = await deps.repo.unsubscribe(parsed.data.token)
       if (outcome === 'not_found') {
         notFound()
         return
@@ -164,11 +182,10 @@ export function createNewsletterRouter(overrides: Partial<NewsletterRouterDeps> 
       // PRO-191: count the opt-out under the issue it came from (counts only).
       if (outcome === 'ok') {
         const rawIssue = typeof req.query.i === 'string' ? req.query.i : req.body?.issueId
-        const issueId = typeof rawIssue === 'string' && ISSUE_ID_RE.test(rawIssue) ? rawIssue : null
         const ref = parseNewsletterToken(parsed.data.token)
-        await deps.stats
-          .recordUnsubscribe(issueId, ref?.kind === 'user' ? 'user' : 'waitlist')
-          .catch((err) => console.warn('[newsletter] opt-out not counted:', err?.message ?? err))
+        await countUnsubscribe(deps.stats, rawIssue, recipientHash, ref?.kind === 'user' ? 'user' : 'waitlist').catch((err) =>
+          console.warn('[newsletter] opt-out not counted:', err?.message ?? err),
+        )
       }
       res.json({ ok: true, alreadyUnsubscribed: outcome === 'already' })
     } catch (err: any) {

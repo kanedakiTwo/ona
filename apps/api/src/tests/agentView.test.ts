@@ -13,7 +13,9 @@ import { buildApiProblemMessage } from '@ona/shared'
 import {
   FLAG_CATEGORY_LIST,
   KNOWN_ERROR_CLASSES,
-  KNOWN_REF_SOURCES,
+  CODE_REF_SOURCES,
+  knownRefSources,
+  parseExtraRefSources,
   REVIEWER_CATEGORY_LIST,
   REVIEWER_SEVERITY_LIST,
   comparisonForAgents,
@@ -32,6 +34,7 @@ import {
 } from '../services/agentView.js'
 import { API_ROUTE_TEMPLATES, WEB_PAGE_TEMPLATES } from '../services/routeTemplates.js'
 import { buildAppErrorRow, normalizeMessage } from '../services/appErrors.js'
+import { env } from '../config/env.js'
 import { FLAG_CATEGORIES } from '../services/assistantFlags.js'
 import { WAITLIST_DEFINITIONS, buildWaitlistReport } from '../services/waitlist.js'
 import { REVIEW_SCHEMA } from '../services/whatsapp/reviewer.js'
@@ -313,12 +316,34 @@ describe('flagsForAgents', () => {
 
 describe('waitlistForAgents', () => {
   it('ref labels: a closed list with every label the code puts in a link (+ directo, invita)', () => {
-    for (const ref of collectRefSources()) expect(KNOWN_REF_SOURCES.has(ref), `add «${ref}» to KNOWN_REF_SOURCES`).toBe(true)
-    expect(KNOWN_REF_SOURCES.has('directo') && KNOWN_REF_SOURCES.has('invita')).toBe(true)
-    for (const ref of KNOWN_REF_SOURCES) expect(normalizeSource(ref)).toBe(ref)
+    for (const ref of collectRefSources()) expect(CODE_REF_SOURCES.has(ref), `add «${ref}» to CODE_REF_SOURCES`).toBe(true)
+    expect(CODE_REF_SOURCES.has('directo') && CODE_REF_SOURCES.has('invita')).toBe(true)
+    for (const ref of CODE_REF_SOURCES) expect(normalizeSource(ref)).toBe(ref)
     expect(refSourceForAgents('receta')).toBe('receta')
     expect(refSourceForAgents('ana-garcia-celiaca-calle-mayor-5')).toBe('otro')
     expect(refSourceForAgents(null)).toBe('otro')
+  })
+
+  it('campaign labels come from METRICS_EXTRA_REF_SOURCES: exact values only, each checked against ^[a-z0-9-]{1,32}$', () => {
+    expect(parseExtraRefSources(' campana-uno, Mala_Etiqueta,campana-dos,cr-*,,x'.repeat(1) + ',' + 'a'.repeat(33))).toEqual(['campana-uno', 'campana-dos', 'x'])
+    expect(parseExtraRefSources('')).toEqual([])
+    const before = env.METRICS_EXTRA_REF_SOURCES
+    try {
+      env.METRICS_EXTRA_REF_SOURCES = ''
+      expect(refSourceForAgents('campana-uno')).toBe('otro')
+      expect(knownRefSources().has('receta')).toBe(true)
+      env.METRICS_EXTRA_REF_SOURCES = 'campana-uno,cr-*,Mala_Etiqueta'
+      expect(refSourceForAgents('campana-uno')).toBe('campana-uno')
+      expect(refSourceForAgents('receta')).toBe('receta')
+      // No prefixes or patterns: only the exact value.
+      expect(refSourceForAgents('cr-alguien')).toBe('otro')
+      expect(refSourceForAgents('campana-uno-bis')).toBe('otro')
+      expect(refSourceForAgents('Mala_Etiqueta')).toBe('otro')
+      const v = waitlistForAgents({ sources: { bySource: [{ source: 'campana-uno', count: 2 }, { source: 'ana-garcia', count: 1 }], byUtm: [] } })
+      expect(v.sources?.bySource).toEqual([{ source: 'campana-uno', count: 2 }, { source: 'otro', count: 1 }])
+    } finally {
+      env.METRICS_EXTRA_REF_SOURCES = before
+    }
   })
 
   it("the reviewer's attack: a public signup with its own label comes out as otro", () => {

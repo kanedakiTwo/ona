@@ -4,7 +4,8 @@
  * that text, never user ids, referral codes or tokens (specs/metrics.md, constraints). Some of these
  * strings come from anyone (POST /client-errors is public, the feedback page and the utm values are
  * set by the client), so every string that reaches the token is checked against a closed list.
- * The admin JWT keeps the full view. Pure, unit-tested in tests/agentView.test.ts.
+ * The admin JWT keeps the full view. Pure (only the extra `?ref=` labels come from the
+ * environment), unit-tested in tests/agentView.test.ts.
  */
 import {
   FOUNDER_DECLINE_REASONS,
@@ -16,6 +17,7 @@ import {
   WAITLIST_PLATFORMS,
   WAITLIST_STATUSES,
 } from '@ona/shared'
+import { env } from '../config/env.js'
 import type { HouseholdComparison } from './blindComparison.js'
 import { madridParts } from './madridTime.js'
 import { API_ROUTE_TEMPLATES, WEB_PAGE_TEMPLATES } from './routeTemplates.js'
@@ -327,18 +329,30 @@ export function utmSourceForAgents(raw: unknown): string {
 }
 
 /**
- * `?ref=` labels the token may name: every label the code puts in a link (links, `openRef`, the
- * share footers; tests/agentView.test.ts collects them and fails if one is missing) plus the two
- * fallbacks. `POST /waitlist` is public, so any other label — campaign links included — is 'otro'
- * until it is added here.
+ * `?ref=` labels the token may name, from the code: every label the code puts in a link (links,
+ * `openRef`, the share footers; tests/agentView.test.ts collects them and fails if one is missing)
+ * plus the two fallbacks. Campaign labels that only live in links outside the code are added on the
+ * API with `METRICS_EXTRA_REF_SOURCES` (`knownRefSources`). `POST /waitlist` is public, so any
+ * other label is 'otro'.
  */
-export const KNOWN_REF_SOURCES: ReadonlySet<string> = new Set([
+export const CODE_REF_SOURCES: ReadonlySet<string> = new Set([
   'directo', 'invita',
   'articulo-refugio', 'blog', 'circulo-miguel', 'como-funciona', 'e2e', 'lista', 'menu', 'precios', 'receta', 'recetas',
 ])
 
-export function refSourceForAgents(raw: unknown): string {
-  return typeof raw === 'string' && KNOWN_REF_SOURCES.has(raw) ? raw : 'otro'
+const EXTRA_REF_LABEL = /^[a-z0-9-]{1,32}$/
+
+/** `METRICS_EXTRA_REF_SOURCES`: comma-separated exact labels; a value that isn't `^[a-z0-9-]{1,32}$` is dropped (no patterns). */
+export function parseExtraRefSources(raw: string | null | undefined): string[] {
+  return (raw ?? '').split(',').map((s) => s.trim()).filter((s) => EXTRA_REF_LABEL.test(s))
+}
+
+export function knownRefSources(extra: string = env.METRICS_EXTRA_REF_SOURCES): ReadonlySet<string> {
+  return new Set([...CODE_REF_SOURCES, ...parseExtraRefSources(extra)])
+}
+
+export function refSourceForAgents(raw: unknown, known: ReadonlySet<string> = knownRefSources()): string {
+  return typeof raw === 'string' && known.has(raw) ? raw : 'otro'
 }
 
 /** Rows `{ <key>, count }` re-counted under a closed label. */
@@ -410,6 +424,7 @@ export function waitlistForAgents(report: object) {
   const sources = asLoose(r.sources)
   const referrals = asLoose(r.referrals)
   const batch = asLoose(r.suggestedNextBatch)
+  const refs = knownRefSources()
   return {
     generatedAt: str(r.generatedAt) ?? undefined,
     timezone: str(r.timezone) ?? undefined,
@@ -434,7 +449,7 @@ export function waitlistForAgents(report: object) {
           }),
         }
       : undefined,
-    sources: present('sources') ? { bySource: recount(sources.bySource, 'source', refSourceForAgents), byUtm: recount(sources.byUtm, 'utmSource', utmSourceForAgents) } : undefined,
+    sources: present('sources') ? { bySource: recount(sources.bySource, 'source', (raw) => refSourceForAgents(raw, refs)), byUtm: recount(sources.byUtm, 'utmSource', utmSourceForAgents) } : undefined,
     referrals: present('referrals')
       ? {
           referredSignups: num(referrals.referredSignups) ?? undefined,

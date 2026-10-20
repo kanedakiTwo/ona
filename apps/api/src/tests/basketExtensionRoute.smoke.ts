@@ -7,7 +7,8 @@
  *   pnpm --filter @ona/api smoke     # levanta Postgres + API y pasa todos los *.smoke.ts
  */
 import { describe, it, expect, beforeAll } from 'vitest'
-import { basketBaseName, resolveBuyRule } from '@ona/shared'
+import { basketBaseName, isNotBought, resolveBuyRule } from '@ona/shared'
+import { isPantryBasic } from '../services/shopOrders/draft.js'
 import { API_URL, reachable } from './smokeEnv.js'
 
 const METRICS = process.env.METRICS_READ_TOKEN
@@ -213,24 +214,31 @@ describe.skipIf(!reachable)('extensión del navegador · rutas', () => {
       .flatMap((m) => m.days.flatMap((d, day) => ['lunch', 'dinner'].filter((meal) => d[meal]).map((meal) => ({ menuId: m.id, day, meal, date: addDaysIso(m.weekStart, day) }))))
       .find((h) => h.date > hoy && h.date <= addDaysIso(hoy, 6))
     expect(hueco, 'tiene que haber una comida entre mañana y dentro de 6 días').toBeTruthy()
-    // Una receta del sistema con un ingrediente sin regla de compra (en la semilla, «Arroz al caldero»).
-    type Receta = { id: string; authorId: string | null; ingredients: Array<{ ingredientName: string }> }
+    // Una receta del sistema con un ingrediente sin regla de compra que sí se compra (ni de despensa
+    // ni de los que no se compran, que el pedido deja fuera); en la semilla, «Arroz al caldero».
+    type Ingrediente = { ingredientId: string; ingredientName: string; quantity: number; unit: string }
+    type Receta = { id: string; authorId: string | null; ingredients: Ingrediente[] }
+    const comprable = (i: Ingrediente) =>
+      !resolveBuyRule(i.ingredientName) && !isNotBought(i.ingredientName) && !isPantryBasic({ name: i.ingredientName, unit: i.unit as never, quantity: i.quantity, kind: 'menu' })
     let receta: Receta | undefined
+    let ingrediente: Ingrediente | undefined
     for (const { id } of (await hogar('GET', '/recipes')).body as Array<{ id: string }>) {
       const r = (await hogar('GET', `/recipes/${id}`)).body as Receta
-      if (r.authorId == null && r.ingredients.some((i) => !resolveBuyRule(i.ingredientName))) {
+      ingrediente = r.authorId == null ? r.ingredients.find(comprable) : undefined
+      if (ingrediente) {
         receta = r
         break
       }
     }
-    expect(receta, 'la semilla tiene que traer una receta del sistema con un ingrediente sin regla').toBeTruthy()
+    expect(receta, 'la semilla tiene que traer una receta del sistema con un ingrediente sin regla que se compre').toBeTruthy()
     expect((await hogar('PUT', `/menu/${hueco!.menuId}/day/${hueco!.day}/meal/${hueco!.meal}`, { recipeId: receta!.id })).status).toBe(200)
     const order = await superOrder(hogar, [{ name: 'servilletas', quantity: 1, unit: 'u' }])
     type Line = { key: string; name: string; ingredientId?: string | null; ruleKey?: string | null; included?: boolean; members?: unknown[] }
     const enCesta = (order.lines as Line[]).filter((l) => l.included !== false)
-    const catalogo = enCesta.find((l) => l.ingredientId && !l.ruleKey && !(l.members && l.members.length >= 2))
+    const catalogo = enCesta.find((l) => l.ingredientId === ingrediente!.ingredientId)
     const tecleada = enCesta.find((l) => l.name === 'servilletas')
-    expect(catalogo, 'el menú tiene que traer algún ingrediente sin regla').toBeTruthy()
+    expect(catalogo, `el pedido tiene que traer ${ingrediente!.ingredientName}`).toBeTruthy()
+    expect(catalogo!.ruleKey ?? null).toBeNull()
     expect(tecleada).toBeTruthy()
     const duracionMs = 1000 + Math.floor(Math.random() * 1_000_000)
     const lineas = enCesta.map((l, i) => ({ key: l.key, estado: 'busqueda', productoId: String(i + 1), producto: `Producto ${i + 1}`, unidades: 1 }))

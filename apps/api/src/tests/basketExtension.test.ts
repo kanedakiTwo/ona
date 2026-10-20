@@ -755,6 +755,19 @@ describe('resultado, deshacer y cerrar, sin carreras', () => {
     expect(await saveBasketResult('u1', 'o1', okResult({ repetido: true }), f.db)).toMatchObject({ guardado: false })
     expect(f.log).toEqual([...LOCKED, 'commit'])
   })
+  it('la foto, con su consulta de recetas del sistema, solo cuando se guarda: ni con el mismo envío otra vez ni con uno deshecho', async () => {
+    const conIngrediente = [...lines, input('l4', 'Kombu', { ingredientId: ING_SISTEMA })]
+    const repetido = fakeDb({ ...row, lines: conIngrediente, status: 'sent', sentAt: NOW, extensionResult: stored() }, null, [ING_SISTEMA])
+    expect(await saveBasketResult('u1', 'o1', okResult({ repetido: true }), repetido.db)).toMatchObject({ guardado: false, deshecho: false })
+    expect(repetido.log).toEqual([...LOCKED, 'commit'])
+    const deshecho = fakeDb({ ...row, lines: conIngrediente, extensionResult: stored({ deshechoAt: NOW.toISOString(), deshechos: ['e1'] }) }, null, [ING_SISTEMA])
+    expect(await saveBasketResult('u1', 'o1', okResult({ repetido: true }), deshecho.db)).toMatchObject({ guardado: false, deshecho: true })
+    expect(deshecho.log).toEqual([...LOCKED, 'commit'])
+    const nuevo = fakeDb({ ...row, lines: conIngrediente }, null, [ING_SISTEMA])
+    await saveBasketResult('u1', 'o1', okResult(), nuevo.db)
+    expect(nuevo.log).toEqual([...LOCKED, 'tx: leer recetas del sistema', 'tx: escribir el pedido', 'commit'])
+    expect((nuevo.orderWrites()[0].extensionResult as StoredBasketResult).cesta?.find((b) => b.key === 'l4')).toMatchObject({ origen: 'catalogo' })
+  })
   it('undoBasketSend lee el pedido bloqueado y escribe en la misma transacción; si no puede, no escribe', async () => {
     const f = fakeDb({ ...row, status: 'sent', sentAt: NOW, extensionResult: stored() })
     await undoBasketSend('u1', 'o1', f.db)

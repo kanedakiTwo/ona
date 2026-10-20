@@ -35,7 +35,7 @@ import { db as defaultDb } from '../../db/connection.js'
 import { householdBuyPrefs, householdShops, shopOrders, shoppingLists } from '../../db/schema.js'
 import { env } from '../../config/env.js'
 import { getPrimaryHouseholdId } from '../scopeResolver.js'
-import { decideBasketResult, ingredientsInSystemRecipes } from '../basketExtension.js'
+import { decideBasketResult, ingredientsInSystemRecipes, withBasketPhoto } from '../basketExtension.js'
 import type { PriceMemory } from './estimate.js'
 import { capForLines, draftOrdersFromItems, sumEstimate } from './draft.js'
 import {
@@ -648,16 +648,17 @@ export async function saveBasketResult(userId: string, id: string, incoming: Bas
   return withLockedOrder(userId, id, db, async (row, tx) => {
     if ((row.shopSnapshot as ShopSnapshot).kind !== 'supermercado') throw new ShopOrderError(400, 'NOT_SUPER', 'Solo para el pedido del súper.')
     requireStatus(row, ['draft', 'sent'], 'guardar el envío')
-    const lines = row.lines as ShopOrderLine[]
-    // Solo es de catálogo un ingrediente que sale en alguna receta del sistema: el resto pudo crearlo un usuario.
-    const sistema = await ingredientsInSystemRecipes(lines.flatMap((l) => (!l.ruleKey && l.ingredientId ? [l.ingredientId] : [])), tx)
-    const cesta = basketSnapshot(lines, (id) => sistema.has(id))
-    const d = decideBasketResult((row.extensionResult as StoredBasketResult | null) ?? null, row.status, incoming, new Date(), cesta)
+    const d = decideBasketResult((row.extensionResult as StoredBasketResult | null) ?? null, row.status, incoming, new Date())
     if (d.action === 'deshecho') return { order: presentOrder(row), deshecho: true, guardado: false }
     if (d.action === 'keep') return { order: presentOrder(row), deshecho: false, guardado: false }
+    // La foto, con su consulta, solo cuando se guarda. Solo es de catálogo un ingrediente que sale
+    // en alguna receta del sistema: el resto pudo crearlo un usuario.
+    const lines = row.lines as ShopOrderLine[]
+    const sistema = await ingredientsInSystemRecipes(lines.flatMap((l) => (!l.ruleKey && l.ingredientId ? [l.ingredientId] : [])), tx)
+    const stored = withBasketPhoto(d.stored, basketSnapshot(lines, (id) => sistema.has(id)))
     const order = await update(
       row.id,
-      { extensionResult: d.stored, status: d.status, sentAt: d.status === 'sent' ? row.sentAt ?? new Date() : row.sentAt },
+      { extensionResult: stored, status: d.status, sentAt: d.status === 'sent' ? row.sentAt ?? new Date() : row.sentAt },
       tx,
     )
     return { order, deshecho: false, guardado: true }

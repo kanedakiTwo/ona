@@ -53,10 +53,11 @@ export type BasketDecision =
  *   cambia nada ni cuenta doble, esté vivo el guardado o no;
  * - nunca pisa un envío vivo con uno sin nada en el carro.
  *
- * `cesta` es la foto de la cesta que se mandó (`basketSnapshot` de las líneas
- * del pedido, con `ingredientsInSystemRecipes`): se guarda la clave, el nombre,
- * la elección y el origen de cada línea, para saber qué era cada clave aunque
- * las líneas cambien después.
+ * `cesta` (opcional) es la foto de la cesta que se mandó (`basketSnapshot` de las
+ * líneas del pedido, con `ingredientsInSystemRecipes`): se guarda la clave, el
+ * nombre, la elección y el origen de cada línea, para saber qué era cada clave
+ * aunque las líneas cambien después. `saveBasketResult` no la pasa: decide antes
+ * y, solo si guarda, la añade con `withBasketPhoto`.
  */
 export function decideBasketResult(
   current: StoredBasketResult | null,
@@ -75,9 +76,17 @@ export function decideBasketResult(
     recibidoAt: now.toISOString(),
     deshechoAt: null,
     deshechos: current?.deshechos ?? [],
-    ...(cesta ? { cesta: cesta.map(snapshotLine) } : {}),
   }
-  return { action: 'save', status: basketMayBeInCart(incoming) || status === 'sent' ? 'sent' : 'draft', stored }
+  return { action: 'save', status: basketMayBeInCart(incoming) || status === 'sent' ? 'sent' : 'draft', stored: cesta ? withBasketPhoto(stored, cesta) : stored }
+}
+
+/**
+ * El resultado con la foto de la cesta (solo clave, nombre, elección y origen de cada línea).
+ * `saveBasketResult` la añade después de decidir, para no hacer la consulta de la foto
+ * (`ingredientsInSystemRecipes`) cuando no se guarda.
+ */
+export function withBasketPhoto(stored: StoredBasketResult, cesta: ReadonlyArray<BasketSnapshotLine>): StoredBasketResult {
+  return { ...stored, cesta: cesta.map(snapshotLine) }
 }
 
 /** Solo lo de la foto: clave, nombre, elección y, si lo hay, el origen con su `ruleKey`. */

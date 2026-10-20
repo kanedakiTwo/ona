@@ -15,8 +15,9 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { API_URL, reachable } from './smokeEnv.js'
 import { db } from '../db/connection.js'
-import { newsletterSends } from '../db/schema.js'
+import { newsletterSends, newsletterUnsubscribes } from '../db/schema.js'
 import { createDbNewsletterRepo, recipientHash, selectNewsletterRecipients } from '../services/newsletter.js'
+import { createDbNewsletterStatsRepo } from '../services/newsletterStats.js'
 
 const id = `${Date.now()}${Math.random().toString(36).slice(2, 6)}`
 const email = `newsletter_${id}@test.local`
@@ -87,6 +88,10 @@ describe.skipIf(!reachable)('newsletter (real API + DB)', () => {
     await repo.markSent(ISSUE, [{ hash: recipientHash(email), providerId: 'smoke' }])
     await repo.release(ISSUE, [recipientHash(email)]) // a sent row is never released
     expect((await repo.claimedHashes(ISSUE)).size).toBe(1)
+    // An opt-out counts under an issue only if it has sends.
+    const stats = createDbNewsletterStatsRepo()
+    expect(await stats.hasSends(ISSUE)).toBe(true)
+    expect(await stats.hasSends(`no-enviado-${id}`)).toBe(false)
   })
 
   it('a user who registers with the box ticked is a recipient; PUT /newsletter/me false takes them out (PRO-95)', async () => {
@@ -112,9 +117,12 @@ describe.skipIf(!reachable)('newsletter (real API + DB)', () => {
   })
 
   it('POST /newsletter/unsubscribe turns off only the newsletter; the place on the list stays', async () => {
-    const r = await call('POST', '/newsletter/unsubscribe', { token: `w.${leaveToken}` })
+    // With an issue that was never sent: the opt-out happens, but no row names that issue.
+    const invented = `inventado-${id}`
+    const r = await call('POST', '/newsletter/unsubscribe', { token: `w.${leaveToken}`, issueId: invented })
     expect(r.status).toBe(200)
     expect(r.body).toEqual({ ok: true, alreadyUnsubscribed: false })
+    expect(await db.select().from(newsletterUnsubscribes).where(eq(newsletterUnsubscribes.issueId, invented))).toEqual([])
     expect((await call('POST', '/newsletter/unsubscribe', { token: `w.${leaveToken}` })).body.alreadyUnsubscribed).toBe(true)
     expect((await call('GET', `/waitlist/${code}`)).status).toBe(200)
     const repo = createDbNewsletterRepo()

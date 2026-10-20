@@ -48,6 +48,18 @@ function apiOrigin(req: Request): string {
   return `${req.protocol}://${req.get('host')}`
 }
 
+/**
+ * The `i` of an opt-out link comes from the request: anyone with an opt-out
+ * token could put any text there. It counts under that issue only when the
+ * issue was actually sent (has rows in `newsletter_sends`); otherwise the
+ * opt-out is counted without an issue, like the emails from before PRO-191.
+ */
+async function countUnsubscribe(stats: NewsletterStatsRepo, rawIssue: unknown, source: 'user' | 'waitlist'): Promise<void> {
+  const asked = typeof rawIssue === 'string' && ISSUE_ID_RE.test(rawIssue) ? rawIssue : null
+  const issueId = asked && (await stats.hasSends(asked)) ? asked : null
+  await stats.recordUnsubscribe(issueId, source)
+}
+
 export interface NewsletterRouterDeps {
   repo: NewsletterRepo
   adminAuth: RequestHandler[]
@@ -164,11 +176,10 @@ export function createNewsletterRouter(overrides: Partial<NewsletterRouterDeps> 
       // PRO-191: count the opt-out under the issue it came from (counts only).
       if (outcome === 'ok') {
         const rawIssue = typeof req.query.i === 'string' ? req.query.i : req.body?.issueId
-        const issueId = typeof rawIssue === 'string' && ISSUE_ID_RE.test(rawIssue) ? rawIssue : null
         const ref = parseNewsletterToken(parsed.data.token)
-        await deps.stats
-          .recordUnsubscribe(issueId, ref?.kind === 'user' ? 'user' : 'waitlist')
-          .catch((err) => console.warn('[newsletter] opt-out not counted:', err?.message ?? err))
+        await countUnsubscribe(deps.stats, rawIssue, ref?.kind === 'user' ? 'user' : 'waitlist').catch((err) =>
+          console.warn('[newsletter] opt-out not counted:', err?.message ?? err),
+        )
       }
       res.json({ ok: true, alreadyUnsubscribed: outcome === 'already' })
     } catch (err: any) {

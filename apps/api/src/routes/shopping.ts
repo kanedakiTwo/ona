@@ -13,7 +13,8 @@ import {
   convert as convertUnits,
 } from '../services/shoppingList.js'
 import { canAccessRow, getPrimaryHouseholdId, resolveScope } from '../services/scopeResolver.js'
-import { listActiveStaplesForHousehold } from '../services/staplesStore.js'
+import { listActiveStaplesForHousehold, NoHouseholdError } from '../services/staplesStore.js'
+import { applyHabitualToRows, setStapleForLine, withHabitual } from '../services/shoppingHabitual.js'
 import { carryItemState, editMenuLine, setHaveAtHome, UnitChangeError, type ConvertQty, type ItemStateMap } from '../services/shoppingItemState.js'
 import { isCoeliacHousehold, withGlutenFreeCharcuterieNames } from '../services/glutenFreeCharcuterie.js'
 import { loadUserRestrictions } from '../services/withWhatIHave.js'
@@ -341,14 +342,15 @@ router.get('/shopping-list', async (req: AuthRequest, res) => {
     // Re-merge staples (PR 10B) on top of the menu-derived items so they
     // keep their `inStock` / pricing.
     const staples = householdId ? await listActiveStaplesForHousehold(householdId) : []
-    const stapleMerged = mergeStaplesIntoItems(mergedMenuItems, staples)
+    // PRO-293: menu lines that are also a staple read «Habitual».
+    const stapleMerged = withHabitual(mergeStaplesIntoItems(mergedMenuItems, staples), staples.map((s) => s.name))
     // PRO-196: a coeliac household asks for «<embutido> sin gluten».
     const coeliac = isCoeliacHousehold((await loadUserRestrictions(userId, db)).restrictions)
     // Manual items always at the end, preserving order.
     // PRO-292: which units each menu line can switch to.
     const finalItems = [
       ...withUnitOptions(withGlutenFreeCharcuterieNames(stapleMerged, coeliac), await lineConverter(menuItems)),
-      ...manualSurviving,
+      ...withHabitual(manualSurviving, staples.map((s) => s.name)),
     ]
 
     // Overwrite the persisted row — one shopping list per user. Delete
@@ -548,6 +550,10 @@ router.put('/shopping-list/:listId/item/:itemId/stock', async (req: AuthRequest,
 // `{ unit }` (PRO-292) switches the line to another unit, converting what it
 // shows (or taking `quantity` in that unit); the menu's unit alone goes back
 // to the menu's amount. 400 when the ingredient doesn't convert.
+// `{ habitual: true|false }` (PRO-293), on any line: creates or switches on
+// the household's staple for it (name, amount, unit, aisle, price), or pauses
+// it; a manual line becomes the staple line, a staple line switched off
+// leaves the list.
 // The change is also written into `item_state`, so the rebuild on the next
 // GET keeps it, for lists ending on or before this list's last day.
 const editLineSchema = z
@@ -555,8 +561,10 @@ const editLineSchema = z
     skipped: z.boolean().optional(),
     quantity: z.number().nonnegative().max(100_000).nullable().optional(),
     unit: z.string().refine((u) => BUYABLE_UNITS.has(u)).optional(),
+    /** «Habitual» (PRO-293): any line, also manual and staple ones; alone in the body. */
+    habitual: z.boolean().optional(),
   })
-  .refine((v) => v.skipped !== undefined || v.quantity !== undefined || v.unit !== undefined, { message: 'Nada que cambiar' })
+  .refine((v) => v.skipped !== undefined || v.quantity !== undefined || v.unit !== undefined || v.habitual !== undefined, { message: 'Nada que cambiar' })
 
 router.put('/shopping-list/:listId/item/:itemId/edit', async (req: AuthRequest, res) => {
   try {
@@ -580,6 +588,18 @@ router.put('/shopping-list/:listId/item/:itemId/edit', async (req: AuthRequest, 
     const item = items.find((i) => i.id === itemId)
     if (!item) {
       res.status(404).json({ error: 'Item not found' })
+      return
+    }
+    if (parsed.data.habitual !== undefined) {
+      const on = parsed.data.habitual
+      await setStapleForLine(req.userId!, item, on)
+      setActivityDetail(res, { item: item.name, on })
+      const [saved] = await db
+        .update(shoppingLists)
+        .set({ items: applyHabitualToRows(items, item, on) })
+        .where(eq(shoppingLists.id, list.id))
+        .returning()
+      res.json(saved)
       return
     }
     if (item.kind === 'manual' || item.kind === 'staple' || !item.ingredientId) {
@@ -608,6 +628,10 @@ router.put('/shopping-list/:listId/item/:itemId/edit', async (req: AuthRequest, 
       .returning()
     res.json(updated)
   } catch (err) {
+    if (err instanceof NoHouseholdError) {
+      res.status(400).json({ error: err.message, code: 'NO_HOUSEHOLD' })
+      return
+    }
     console.error('Edit line error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }

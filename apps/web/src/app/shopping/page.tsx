@@ -42,6 +42,7 @@ import {
   ItemPriceField,
 } from '@/components/shopping/ShoppingExtensions'
 import { AddToListField, LineAmount, RemoveLineButton, UNIT_LABEL, useRemoveWithUndo } from '@/components/shopping/LineControls'
+import { HabitualStar, HabitualSwitch, HabitualTag, isHabitual } from '@/components/shopping/HabitualToggle'
 import { MenuSheet, SheetAction } from '@/components/menu/MenuSheet'
 import { ingredientDisplayName, missingQuantity, parseShoppingAmount, shoppingProgress, withOnaFooter } from '@ona/shared'
 
@@ -745,7 +746,9 @@ function LineSheet({ item, listId, onClose }: { item: any | null; listId: string
     <MenuSheet open={!!item} onClose={onClose} eyebrow="Lista de la compra" title={item ? ingredientDisplayName(item.name) : ''}>
       {item && isStaple ? (
         <div className="space-y-3">
-          <p className="text-[15px] text-ink-soft">Es uno de tus básicos: su cantidad o pausarlo se cambia en Mis básicos.</p>
+          <p className="text-[15px] text-ink-soft">Es uno de tus básicos: su cantidad se cambia en Mis básicos.</p>
+          {/* PRO-293: pause it from here. */}
+          <HabitualSwitch key={item.id} item={item} listId={listId} />
           <Link href="/profile/staples" className="inline-flex min-h-[44px] items-center rounded-full bg-ink px-5 text-[14px] font-semibold text-cream">
             Ir a Mis básicos
           </Link>
@@ -826,6 +829,8 @@ function LineSheet({ item, listId, onClose }: { item: any | null; listId: string
               </button>
             </div>
           )}
+          {/* PRO-293: «Habitual» — comes back by itself on every new list. */}
+          <HabitualSwitch key={item.id} item={item} listId={listId} />
         </form>
       ) : null}
     </MenuSheet>
@@ -971,14 +976,16 @@ function ItemRow({
               {buy && !(item.haveQuantity > 0) ? '' : ' · '}cambiada (menú: {formatAmount(item.menuQuantity)} {UNIT_LABEL[item.menuUnit ?? item.unit] ?? item.unit})
             </span>
           )}
-          {isManual && (
+          {isManual && !isHabitual(item) && (
             <span className="ml-2 font-sans text-[11px] font-semibold uppercase tracking-[0.12em] text-terracotta-deep">
               Manual
             </span>
           )}
+          {buy && isHabitual(item) && <HabitualTag />}
         </span>
       </button>
 
+      {buy && <HabitualStar item={item} listId={listId} busy={busy} />}
       <button
         type="button"
         onClick={onStock}

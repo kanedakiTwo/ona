@@ -28,6 +28,8 @@ export interface ShoppingItem {
   menuUnit?: BuyableUnit
   /** Menu line: the units it can be bought in, the menu's first (PRO-292). */
   unitOptions?: BuyableUnit[]
+  /** Line whose name is one of the household's active staples («Habitual», PRO-293). */
+  habitual?: boolean
   /** Manual line typed with no amount (stored as 1 u). */
   quantitySource?: 'user' | 'default'
 }
@@ -220,6 +222,23 @@ export function useEditMenuLine() {
     onSuccess: (data, vars) => {
       if (data && typeof data === "object" && "items" in data) putList(qc, data)
       qc.invalidateQueries({ queryKey: ["shopping-list", vars.listId, "totals"] })
+    },
+  })
+}
+
+/**
+ * «Habitual» (PRO-293): `on` creates or switches on the household's staple
+ * for this line, so it comes back on every new list; off pauses it.
+ */
+export function useHabitualLine() {
+  const qc = useQueryClient()
+  return useMutation<ShoppingList, Error, { listId: string; itemId: string; on: boolean }>({
+    mutationFn: ({ listId, itemId, on }) =>
+      api.put(`/shopping-list/${listId}/item/${encodeURIComponent(itemId)}/edit`, { habitual: on }),
+    onSuccess: (data, vars) => {
+      if (data && typeof data === "object" && "items" in data) putList(qc, data)
+      qc.invalidateQueries({ queryKey: ["shopping-list", vars.listId, "totals"] })
+      qc.invalidateQueries({ queryKey: ["staples"] })
     },
   })
 }

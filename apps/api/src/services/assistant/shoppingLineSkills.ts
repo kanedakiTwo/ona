@@ -9,7 +9,8 @@ import { bestMatch, toBuyable } from './appSkills.js'
  * unit and leaving a line out are `change_shopping_item_amount` and
  * `remove_shopping_items` (appSkills.ts); this file adds switching the unit
  * («de cebolla pon 3 unidades», «las patatas en kilos»). Same REST calls as
- * the page, as the user.
+ * the page, as the user. `set_shopping_habitual` is the line's «Habitual»
+ * switch (PRO-293).
  */
 
 const api = (ctx: SkillContext): AppApi =>
@@ -88,4 +89,47 @@ const changeShoppingItemUnit: SkillDefinition = {
   },
 }
 
-export const shoppingLineSkills: SkillDefinition[] = [changeShoppingItemUnit]
+/** «Pon la leche como habitual», «quita el pan de habituales» (PRO-293). */
+const setShoppingHabitual: SkillDefinition = {
+  name: 'set_shopping_habitual',
+  description:
+    'Marca o desmarca un producto como HABITUAL de la compra: «pon la leche como habitual» (habitual: true) hace que salga solo en cada lista nueva, con la cantidad que tiene ahora en la lista; «quita el pan de habituales» (habitual: false) lo deja en pausa (no lo borra: vuelve si se marca otra vez). Es lo mismo que el interruptor «Habitual» de la lista y que los básicos del hogar. Para quitar un producto solo de esta compra, remove_shopping_items.',
+  parameters: {
+    type: 'object',
+    properties: { name: { type: 'string' }, habitual: { type: 'boolean' } },
+    required: ['name', 'habitual'],
+  },
+  async handler(p, ctx) {
+    const on = p.habitual !== false
+    const asked = String(p.name ?? '').trim()
+    if (!asked) return text('¿Qué producto?')
+    const list = await api(ctx)<ListDoc>('GET', '/shopping-list')
+    const hit = bestMatch((list.items ?? []).filter((i) => !i.skipped), asked, (i) => i.name)
+    if (hit) {
+      const name = capitalize(prettyName(hit.name))
+      await api(ctx)('PUT', `/shopping-list/${list.id}/item/${encodeURIComponent(hit.id)}/edit`, { habitual: on })
+      const amount = hit.amountText ?? (hit.quantity && hit.unit ? formatQty(hit.quantity, hit.unit) : '')
+      return {
+        data: { listId: list.id },
+        summary: on
+          ? `Hecho: ${name} es habitual${amount ? ` (${amount})` : ''}; saldrá solo en cada lista nueva.`
+          : `Hecho: ${name} ya no es habitual; queda en pausa en tus básicos.`,
+        uiHint: 'shopping_list',
+      }
+    }
+    // Not on the list now: the staples themselves.
+    const staples = await api(ctx)<Array<{ id: string; name: string; active: boolean }>>('GET', '/staples')
+    const staple = bestMatch(staples ?? [], asked, (s) => s.name)
+    const name = capitalize(prettyName(staple?.name ?? asked))
+    if (!on) {
+      if (!staple || !staple.active) return text(`${name} no está entre tus habituales; no he cambiado nada.`)
+      await api(ctx)('PATCH', `/staples/${staple.id}`, { active: false })
+      return text(`Hecho: ${name} ya no es habitual; queda en pausa en tus básicos.`)
+    }
+    if (staple) await api(ctx)('PATCH', `/staples/${staple.id}`, { active: true })
+    else await api(ctx)('POST', '/staples', { name: asked.slice(0, 80) })
+    return { data: null, summary: `Hecho: ${name} es habitual; saldrá solo en cada lista nueva.`, uiHint: 'shopping_list' }
+  },
+}
+
+export const shoppingLineSkills: SkillDefinition[] = [changeShoppingItemUnit, setShoppingHabitual]

@@ -94,3 +94,31 @@ describe('change_shopping_item_unit (PRO-292)', () => {
     expect(missing.summary).toContain('no está en la lista')
   })
 })
+
+describe('set_shopping_habitual (PRO-293)', () => {
+  it('«pon la cebolla como habitual» uses the line on the list', async () => {
+    const f = fakeApi({ 'GET /shopping-list': LIST })
+    const r = await get('set_shopping_habitual').handler({ name: 'cebolla', habitual: true }, ctx(f.api))
+    expect(writes(f.calls)).toEqual([{ method: 'PUT', path: '/shopping-list/L1/item/menu%3Aceb%3Ag/edit', body: { habitual: true } }])
+    expect(r.summary).toContain('Cebolla es habitual (700 g)')
+  })
+
+  it('«quita el pan de habituales» pauses the staple line', async () => {
+    const f = fakeApi({ 'GET /shopping-list': LIST })
+    const r = await get('set_shopping_habitual').handler({ name: 'el pan', habitual: false }, ctx(f.api))
+    expect(writes(f.calls)).toEqual([{ method: 'PUT', path: '/shopping-list/L1/item/staple%3Apan/edit', body: { habitual: false } }])
+    expect(r.summary).toContain('ya no es habitual')
+  })
+
+  it('a product not on the list: switches its staple on, or creates it; pausing one that is not there changes nothing', async () => {
+    const f = fakeApi({ 'GET /shopping-list': LIST, 'GET /staples': [{ id: 's1', name: 'Leche', active: false }] })
+    await get('set_shopping_habitual').handler({ name: 'leche', habitual: true }, ctx(f.api))
+    await get('set_shopping_habitual').handler({ name: 'café', habitual: true }, ctx(f.api))
+    const none = await get('set_shopping_habitual').handler({ name: 'yogures', habitual: false }, ctx(f.api))
+    expect(writes(f.calls)).toEqual([
+      { method: 'PATCH', path: '/staples/s1', body: { active: true } },
+      { method: 'POST', path: '/staples', body: { name: 'café' } },
+    ])
+    expect(none.summary).toContain('no está entre tus habituales')
+  })
+})

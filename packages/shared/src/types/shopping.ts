@@ -75,6 +75,12 @@ export interface ShoppingItem {
    */
   unitOptions?: BuyableUnit[]
   /**
+   * Menu or manual line whose name is one of the household's active staples
+   * («Habitual», PRO-293): it comes back by itself on every new list. Staple
+   * lines (`kind: 'staple'`) are habitual by kind. Filled by `GET /shopping-list`.
+   */
+  habitual?: boolean
+  /**
    * Manual items: an amount in the household's own words («2 paquetes», «1
    * bote») when it isn't g / ml / u / cda / cdita (PRO-175). Shown instead of
    * `quantity` + `unit`.

@@ -193,29 +193,32 @@ describe('publicLineName y publicBasketLine', () => {
 })
 
 describe('aggregateBasketGaps', () => {
-  it('cuenta lo que llegó por búsqueda o falló, con su nombre en la lista', () => {
-    const lines = [
-      { key: 'l1', name: 'arroz', quantity: 1000, unit: 'g', ruleKey: 'arroz', grams: 1000 },
-      { key: 'l2', name: 'detergente', quantity: 1, unit: 'u' },
-    ] as unknown as ShopOrderLine[]
+  it('cuenta lo que llegó por búsqueda o falló, con el nombre público y sin el texto tecleado ni su búsqueda', () => {
+    const lines = [linea('l1', 'arroz', { ruleKey: 'arroz', grams: 1000, quantity: 1000, unit: 'g' }), linea('l2', 'galletas de Lucía')]
     const result = stored({ lineas: [
-      { key: 'l1', estado: 'tabla', productoId: '100', unidades: 1 },
-      { key: 'l2', estado: 'busqueda', productoId: '200', producto: 'Detergente', unidades: 1 },
+      { key: 'l1', estado: 'busqueda', productoId: '100', producto: 'Arroz redondo', unidades: 1 },
+      { key: 'l2', estado: 'busqueda', productoId: '200', producto: 'Galletas de canela', unidades: 1 },
     ] })
     const gaps = aggregateBasketGaps([{ lines, result }, { lines, result }])
-    expect(gaps).toEqual([{ name: 'detergente', choice: null, search: 'detergente', estado: 'busqueda', productoId: '200', producto: 'Detergente', motivo: null, veces: 2 }])
+    expect(gaps).toEqual([
+      { name: 'arroz', choice: null, origen: 'regla', estado: 'busqueda', productoId: '100', producto: 'Arroz redondo', motivo: null, veces: 2 },
+      { name: null, choice: null, origen: 'tecleado', estado: 'busqueda', productoId: '200', producto: 'Galletas de canela', motivo: null, veces: 2 },
+    ])
+    expect(JSON.stringify(gaps)).not.toMatch(/Lucía/)
+    for (const g of gaps) expect(g).not.toHaveProperty('search')
   })
-  const linea = (key: string, name: string) => ({ key, name, quantity: 1, unit: 'u' }) as unknown as ShopOrderLine
-  it('usa la foto de la cesta si la hay, aunque las líneas de ahora digan otra cosa', () => {
-    const result = stored({
-      lineas: [{ key: 'l2', estado: 'busqueda', productoId: '200' }],
-      cesta: [{ key: 'l2', name: 'Jamón', choice: 'serrano' }],
-    })
-    expect(aggregateBasketGaps([{ lines: [linea('l2', 'lejía')], result }])).toEqual([
-      { name: 'Jamón', choice: 'serrano', search: 'Jamón serrano', estado: 'busqueda', productoId: '200', producto: null, motivo: null, veces: 1 },
+  it('usa la foto con su origen aunque las líneas de ahora digan otra cosa; una foto antigua sin origen cuenta como tecleado', () => {
+    const conOrigen = stored({ lineas: [{ key: 'l2', estado: 'busqueda', productoId: '200' }], cesta: [{ key: 'l2', name: 'Jamón', choice: 'serrano', origen: 'regla', ruleKey: 'jamon' }] })
+    const antigua = stored({ lineas: [{ key: 'l2', estado: 'busqueda', productoId: '200' }], cesta: [{ key: 'l2', name: 'Jamón', choice: 'serrano' }] })
+    const ahora = [linea('l2', 'lejía')]
+    expect(aggregateBasketGaps([{ lines: ahora, result: conOrigen }])).toEqual([
+      { name: 'jamon', choice: 'serrano', origen: 'regla', estado: 'busqueda', productoId: '200', producto: null, motivo: null, veces: 1 },
+    ])
+    expect(aggregateBasketGaps([{ lines: ahora, result: antigua }])).toEqual([
+      { name: null, choice: null, origen: 'tecleado', estado: 'busqueda', productoId: '200', producto: null, motivo: null, veces: 1 },
     ])
   })
-  it('salta las claves que ya no están, sin lanzar; los envíos deshechos cuentan; no_verificada no', () => {
+  it('sin foto, el origen sale de las líneas actuales; salta las claves que ya no están; los deshechos cuentan; no_verificada no', () => {
     const result = stored({
       deshechoAt: '2026-10-19T10:30:00.000Z',
       deshechos: ['e1'],
@@ -225,34 +228,46 @@ describe('aggregateBasketGaps', () => {
         { key: 'l2', estado: 'fallida', motivo: 'no_encontrado' },
       ],
     })
-    expect(aggregateBasketGaps([{ lines: [linea('l1', 'arroz'), linea('l2', 'sal')], result }])).toEqual([
-      { name: 'sal', choice: null, search: 'sal', estado: 'fallida', productoId: null, producto: null, motivo: 'no_encontrado', veces: 1 },
+    expect(aggregateBasketGaps([{ lines: [linea('l1', 'arroz'), linea('l2', 'Kombu', { ingredientId: 'ing-1' })], result }])).toEqual([
+      { name: 'Kombu', choice: null, origen: 'catalogo', estado: 'fallida', productoId: null, producto: null, motivo: 'no_encontrado', veces: 1 },
     ])
   })
-  it('agrupa por nombre normalizado, producto, estado y motivo; ordena por veces y luego por nombre', () => {
-    const lines = [linea('l1', 'Detergente'), linea('l2', 'detergente'), linea('l3', 'Detergente · varias presentaciones'), linea('l4', 'sal'), linea('l5', 'azúcar')]
+  it('agrupa por la línea pública (el mismo nombre de catálogo con otra grafía va junto), producto, estado y motivo; ordena por veces, con nombre antes que sin él', () => {
+    const lines = [
+      linea('l1', 'Kombu', { ingredientId: 'a' }),
+      linea('l2', 'kombu', { ingredientId: 'b' }),
+      linea('l3', 'Kombu · varias presentaciones', { ingredientId: 'c' }),
+      linea('l4', 'servilletas'),
+      linea('l5', 'detergente'),
+      linea('l6', 'Azúcar moreno', { ingredientId: 'd' }),
+    ]
     const r = (lineas: StoredBasketResult['lineas']) => ({ lines, result: stored({ lineas }) })
     const gaps = aggregateBasketGaps([
       r([
         { key: 'l1', estado: 'busqueda', productoId: '200' },
         { key: 'l2', estado: 'busqueda', productoId: '200' },
         { key: 'l3', estado: 'busqueda', productoId: '200' },
-        { key: 'l4', estado: 'busqueda', productoId: '300' },
+        { key: 'l4', estado: 'fallida', motivo: 'no_encontrado' },
         { key: 'l5', estado: 'fallida', motivo: 'no_encontrado' },
+        { key: 'l6', estado: 'fallida', motivo: 'no_encontrado' },
       ]),
       r([
         { key: 'l1', estado: 'busqueda', productoId: '201' },
-        { key: 'l4', estado: 'fallida', productoId: '300' },
-        { key: 'l5', estado: 'fallida', motivo: 'error' },
+        { key: 'l6', estado: 'fallida', motivo: 'error' },
       ]),
     ])
-    expect(gaps.map((g) => [g.name, g.estado, g.productoId, g.motivo, g.veces])).toEqual([
-      ['Detergente', 'busqueda', '200', null, 3],
-      ['azúcar', 'fallida', null, 'no_encontrado', 1],
-      ['azúcar', 'fallida', null, 'error', 1],
-      ['Detergente', 'busqueda', '201', null, 1],
-      ['sal', 'busqueda', '300', null, 1],
-      ['sal', 'fallida', '300', null, 1],
+    expect(gaps.map((g) => [g.name, g.origen, g.estado, g.productoId, g.motivo, g.veces])).toEqual([
+      ['Kombu', 'catalogo', 'busqueda', '200', null, 3],
+      [null, 'tecleado', 'fallida', null, 'no_encontrado', 2],
+      ['Azúcar moreno', 'catalogo', 'fallida', null, 'no_encontrado', 1],
+      ['Azúcar moreno', 'catalogo', 'fallida', null, 'error', 1],
+      ['Kombu', 'catalogo', 'busqueda', '201', null, 1],
+    ])
+  })
+  it('el producto y su id de la tienda pasan el filtro: con @, URL, cifras de teléfono o espacios en el id, null', () => {
+    const result = stored({ lineas: [{ key: 'l1', estado: 'busqueda', productoId: 'id con espacios', producto: 'Escríbeme a ana@example.com' }] })
+    expect(aggregateBasketGaps([{ lines: [linea('l1', 'arroz', { ruleKey: 'arroz' })], result }])).toEqual([
+      { name: 'arroz', choice: null, origen: 'regla', estado: 'busqueda', productoId: null, producto: null, motivo: null, veces: 1 },
     ])
   })
 })

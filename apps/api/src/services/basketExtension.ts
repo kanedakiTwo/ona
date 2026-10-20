@@ -8,14 +8,13 @@ import { and, eq, isNotNull, sql } from 'drizzle-orm'
 import {
   basketBaseName,
   basketMayBeInCart,
-  basketSearch,
-  buildExtensionBasket,
+  basketSnapshot,
   buyRuleByKey,
-  extensionKey,
   isLiveBasketSend,
   normalizeBuyName,
-  type BasketLine,
   type BasketLineOrigin,
+  type BasketLineState,
+  type BasketSendError,
   type BasketSendResult,
   type BasketSnapshotLine,
   type ShopOrderLine,
@@ -138,10 +137,14 @@ function ruleOption(ruleKey: string, choice: string | null): string | null {
   return buyRuleByKey(ruleKey)?.choice?.options.find((o) => normalizeBuyName(o) === c) ?? null
 }
 
-export interface BasketGap {
-  name: string
-  choice: string | null
-  search: string
+type ExtensionRow = { lines: ShopOrderLine[]; result: StoredBasketResult }
+
+/** La foto de un resultado, por clave: la guardada o, si es de antes de la foto, la de las líneas actuales. */
+function snapshotByKey({ lines, result }: ExtensionRow): Map<string, BasketSnapshotLine> {
+  return new Map((result.cesta ?? basketSnapshot(lines)).map((b) => [b.key, b]))
+}
+
+export interface BasketGap extends PublicBasketLine {
   estado: 'busqueda' | 'fallida'
   productoId: string | null
   producto: string | null
@@ -150,47 +153,40 @@ export interface BasketGap {
 }
 
 /**
- * Puro: lo que llegó por búsqueda o falló, agrupado por producto de la lista
- * (`extensionKey`: «Detergente» y «detergente» van juntos; se muestra el primer
- * nombre visto), producto elegido, estado y motivo. Cada clave se lee en la
- * foto de la cesta guardada con el resultado; los resultados de antes de la
- * foto, en las líneas actuales del pedido. Las claves que ya no están se saltan.
+ * Puro: lo que llegó por búsqueda o falló, agrupado por la línea pública
+ * (origen, nombre normalizado y elección), producto, estado y motivo. Nunca
+ * lleva el texto tecleado ni su búsqueda. Cada clave se lee en la foto de la
+ * cesta; los resultados de antes de la foto, en las líneas actuales del
+ * pedido. Las claves que ya no están se saltan.
  */
-export function aggregateBasketGaps(rows: Array<{ lines: ShopOrderLine[]; result: StoredBasketResult }>): BasketGap[] {
+export function aggregateBasketGaps(rows: ExtensionRow[]): BasketGap[] {
   const out = new Map<string, BasketGap>()
-  for (const { lines, result } of rows) {
-    const sent: ReadonlyArray<Pick<BasketLine, 'key' | 'name' | 'choice'>> = result.cesta ?? buildExtensionBasket(lines)
-    const basket = new Map(sent.map((b) => [b.key, b]))
-    for (const r of result.lineas) {
+  for (const row of rows) {
+    const basket = snapshotByKey(row)
+    for (const r of row.result.lineas) {
       if (r.estado !== 'busqueda' && r.estado !== 'fallida') continue
       const b = basket.get(r.key)
       if (!b) continue
-      const k = [extensionKey(b.name, b.choice), r.productoId ?? '', r.estado, r.motivo ?? ''].join('|')
+      const pub = publicBasketLine(b)
+      const productoId = agentSafeId(r.productoId)
+      const k = JSON.stringify([pub.origen, pub.name && normalizeBuyName(pub.name), pub.choice, productoId, r.estado, r.motivo ?? null])
       const g = out.get(k)
       if (g) g.veces += 1
-      else
-        out.set(k, {
-          name: b.name,
-          choice: b.choice,
-          search: basketSearch(b.name, b.choice),
-          estado: r.estado,
-          productoId: r.productoId ?? null,
-          producto: r.producto ?? null,
-          motivo: r.motivo ?? null,
-          veces: 1,
-        })
+      else out.set(k, { ...pub, estado: r.estado, productoId, producto: agentSafeText(r.producto, 160), motivo: r.motivo ?? null, veces: 1 })
     }
   }
-  return [...out.values()].sort((a, b) => b.veces - a.veces || a.name.localeCompare(b.name))
+  return [...out.values()].sort(
+    (a, b) => b.veces - a.veces || Number(a.name === null) - Number(b.name === null) || (a.name ?? '').localeCompare(b.name ?? ''),
+  )
 }
 
 /**
- * Los resultados recibidos en los últimos `days` días. Se filtra por
- * `recibidoAt` del resultado guardado, no por `updated_at` del pedido:
- * cualquier cambio posterior en el pedido (editarlo, cerrarlo) lo volvería a
- * meter en la ventana.
+ * Los resultados recibidos en los últimos `days` días, con las líneas de su
+ * pedido. Se filtra por `recibidoAt` del resultado guardado, no por
+ * `updated_at` del pedido: cualquier cambio posterior en el pedido (editarlo,
+ * cerrarlo) lo volvería a meter en la ventana.
  */
-export async function loadBasketGaps(days: number, db: Db = defaultDb): Promise<BasketGap[]> {
+async function loadExtensionResults(days: number, db: Db): Promise<ExtensionRow[]> {
   const rows = await db
     .select({ lines: shopOrders.lines, result: shopOrders.extensionResult })
     .from(shopOrders)
@@ -201,5 +197,9 @@ export async function loadBasketGaps(days: number, db: Db = defaultDb): Promise<
         sql`(case when ${shopOrders.extensionResult}->>'recibidoAt' ~ '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}' then (${shopOrders.extensionResult}->>'recibidoAt')::timestamptz end) >= now() - make_interval(days => ${days})`,
       ),
     )
-  return aggregateBasketGaps(rows.map((r) => ({ lines: r.lines as ShopOrderLine[], result: r.result as StoredBasketResult })))
+  return rows.map((r) => ({ lines: r.lines as ShopOrderLine[], result: r.result as StoredBasketResult }))
+}
+
+export async function loadBasketGaps(days: number, db: Db = defaultDb): Promise<BasketGap[]> {
+  return aggregateBasketGaps(await loadExtensionResults(days, db))
 }

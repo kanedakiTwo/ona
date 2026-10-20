@@ -164,8 +164,8 @@ describe('withWeekShares', () => {
     const convert = (_id: string, q: number, from: string, to: string) => (from === 'g' && to === 'u' ? q / 50 : null)
     const out = withWeekShares(range, perWeek, convert)
     expect(out[0].weeks).toEqual({ [W19]: 600, [W26]: 900 })
-    // 2 yolks + 300 g (6 eggs) → 10 eggs split 2 : 6.
-    expect(out[1].weeks).toEqual({ [W19]: 2.5, [W26]: 7.5 })
+    // 2 yolks this week; 300 g of egg (6 eggs) the next.
+    expect(out[1].weeks).toEqual({ [W19]: 2, [W26]: 6 })
   })
 
   it('one week: the whole line is that week', () => {
@@ -175,6 +175,18 @@ describe('withWeekShares', () => {
   it('mondayOfIso', () => {
     expect(mondayOfIso('2026-10-25')).toBe(W19)
     expect(mondayOfIso('2026-10-26')).toBe(W26)
+  })
+})
+
+describe('each week rounded on its own (PRO-270)', () => {
+  it('ticked on the two weeks → «Esta semana» (rounded up alone) is still bought', () => {
+    // 37,5 g of oil a week: the two weeks ask 75 g, this week alone 50 g.
+    let list = rebuild([line('aceite', 75, { [W19]: 50, [W26]: 50 })], { items: [], state: {} }, '2026-10-21')
+    toggleChecked(list.items[0])
+    list = rebuild([line('aceite', 50, { [W19]: 50 })], list, '2026-10-21')
+    expect(list.items[0].checked).toBe(true)
+    list = rebuild([line('aceite', 75, { [W19]: 50, [W26]: 50 })], list, '2026-10-21')
+    expect(list.items[0].checked).toBe(true)
   })
 })
 

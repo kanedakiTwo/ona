@@ -22,9 +22,9 @@
  *
  * Review and publish:
  *   … status  --batch=…              what's in the batch and what publish would do
- *   … sample  --batch=…              Cocina batches: pick Miguel's one in ten (+ allergen doubts) and list the links
- *   … review  --ok=id,id --no=id     Miguel's verdict on the sample
- *   … publish --batch=… [--dry-run]  publish what the rule allows (Miguel's: audit OK; Cocina's: sample seen and OK)
+ *   … sample  --batch=…              Cocina batches: list the links of every draft for Miguel (D-099), allergen doubts first
+ *   … review  --ok=id,id --no=id     Miguel's verdict, recipe by recipe
+ *   … publish --batch=… [--dry-run]  publish what the rule allows (Miguel's: audit OK; Cocina's: only those Miguel said OK to)
  */
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
@@ -137,19 +137,20 @@ async function runStatus() {
 }
 
 async function runSample() {
-  const { pickReviewSample } = await import('../src/services/catalogImport.js')
+  const { listForReview } = await import('../src/services/catalogImport.js')
   const { loadBatch, saveSample } = await import('../src/services/catalogImportDb.js')
   const batch = flag('batch')
   if (!batch) throw new Error('Falta --batch=')
   const rows = (await loadBatch(batch)).filter((r) => r.origin === 'cocina')
-  const sample = pickReviewSample(rows)
-  await saveSample(batch, sample)
-  console.log(`Muestra para Miguel (${sample.length} de ${rows.filter((r) => r.status === 'draft').length}); se abren con una cuenta de admin:`)
-  for (const id of sample) {
+  const list = listForReview(rows)
+  await saveSample(list)
+  const verdict = (ok: boolean | undefined) => (ok === true ? ' · ya dijo que sí' : ok === false ? ' · ya dijo que no' : '')
+  console.log(`Para Miguel, todas las de la tanda (${list.length}); se abren con una cuenta de admin:`)
+  for (const id of list) {
     const r = rows.find((x) => x.id === id)!
-    console.log(`  - ${r.name}${r.allergenDoubt ? ' · duda de alérgenos' : ''} → ${WEB}/recipes/${id}`)
+    console.log(`  - ${r.name}${r.allergenDoubt ? ' · duda de alérgenos' : ''}${verdict(r.reviewOk)} → ${WEB}/recipes/${id}`)
   }
-  console.log(`Cuando Miguel conteste: review --ok=<ids> --no=<ids>, y luego publish --batch=${batch}`)
+  console.log(`Cuando Miguel conteste: review --ok=<ids> --no=<ids>, y luego publish --batch=${batch} (solo salen las que dijo que sí)`)
 }
 
 async function runReview() {

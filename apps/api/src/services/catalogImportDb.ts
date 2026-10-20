@@ -139,10 +139,11 @@ async function patchSource(ids: readonly string[], patch: Partial<CatalogSourceI
   }
 }
 
-/** Mark the sample (replaces an earlier one, review verdicts cleared). */
-export async function saveSample(batch: string, ids: readonly string[], db: Db = defaultDb): Promise<void> {
-  const all = await loadBatch(batch, db)
-  await patchSource(all.map((r) => r.id), { sampled: false, reviewOk: undefined, reviewedAt: null }, db)
+/**
+ * Mark the drafts handed to Miguel for review (D-099: all of them). Verdicts
+ * already given are kept, so running `sample` again never undoes a review.
+ */
+export async function saveSample(ids: readonly string[], db: Db = defaultDb): Promise<void> {
   await patchSource(ids, { sampled: true }, db)
 }
 

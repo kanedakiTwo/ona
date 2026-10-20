@@ -216,8 +216,11 @@ router.post('/menu/generate', authMiddleware, requireActiveAccount({ skip: (req)
         .where(eq(userSettings.userId, userId))
         .limit(1)
       const tpl = normalizeMealTemplate(customTemplate ?? settings?.template) ?? defaultTemplate()
-      const days = tpl.map((dayTpl) => {
+      const days = tpl.map((dayTpl, i) => {
         const day: Record<string, { dishes: [] }> = {}
+        // A «sin cocinar» day stays without slots (PRO-115): emptying or
+        // healing the week must not bring its meals back as empty holes.
+        if (carrySkipped.has(i)) return day
         for (const meal of ['breakfast', 'lunch', 'dinner', 'snack'] as const) {
           if (dayTpl[meal]) day[meal] = { dishes: [] }
         }

@@ -125,6 +125,15 @@ export const env = {
    */
   METRICS_READ_TOKEN: process.env.METRICS_READ_TOKEN || '',
   /**
+   * Extra `?ref=` labels the read token may name in GET /admin/waitlist
+   * (`sources.bySource`), for campaign links that live outside the code:
+   * comma-separated exact values, each `^[a-z0-9-]{1,32}$`, at most 50
+   * (the rest are dropped; the boot log says how many, never which). Labels
+   * not in the code nor here come out as `otro` (services/agentView.ts,
+   * specs/waitlist.md).
+   */
+  METRICS_EXTRA_REF_SOURCES: process.env.METRICS_EXTRA_REF_SOURCES || '',
+  /**
    * PR 1B feature flag. When `true`, menu/shopping/favorites reads filter by
    * `household_id` so every member of a shared household sees the same
    * rows. When `false` (default in prod), reads stay user-scoped — same

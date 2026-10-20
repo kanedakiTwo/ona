@@ -2,7 +2,11 @@
  * PRO-154 — «deseos del catálogo», photos on demand and drafts hidden
  * (specs/catalog-import.md).
  */
+import express, { type RequestHandler } from 'express'
+import type { AddressInfo } from 'node:net'
+import type { Server } from 'node:http'
 import { afterEach, describe, expect, it } from 'vitest'
+import { createCatalogWishesRouter } from '../routes/catalogWishes.js'
 import {
   catalogCoversDish,
   dishKey,
@@ -130,5 +134,37 @@ describe('drafts are hidden', () => {
     expect(isHiddenDraft({ status: 'draft' }, false)).toBe(true)
     expect(isHiddenDraft({ status: 'draft' }, true)).toBe(false)
     expect(isHiddenDraft({ status: 'published' }, false)).toBe(false)
+  })
+})
+
+describe('GET /admin/catalog-wishes', () => {
+  const LONG = `Ana García es celíaca y vive en Calle Mayor 5, Pozuelo; llamadla al 612345678 para lo de las croquetas`
+  const row = { id: 'w1', dish: LONG, status: 'abierto', households: 2, sources: ['alta'], recipeId: null, createdAt: new Date(0), updatedAt: new Date(0) }
+  const pass: RequestHandler = (_req, _res, next) => next()
+
+  async function get(headers: Record<string, string>) {
+    const app = express()
+    app.use(createCatalogWishesRouter({ list: async () => [row], readAuth: pass }))
+    const server = await new Promise<Server>((resolve) => {
+      const s = app.listen(0, '127.0.0.1', () => resolve(s))
+    })
+    try {
+      const port = (server.address() as AddressInfo).port
+      return await (await fetch(`http://127.0.0.1:${port}/admin/catalog-wishes`, { headers })).json()
+    } finally {
+      server.closeAllConnections()
+      server.close()
+    }
+  }
+
+  it('the read token gets the dish cut to 80 characters (a dish name, typed by a registered user)', async () => {
+    const body = await get({ 'x-metrics-token': 'any' })
+    expect(body.items[0].dish).toBe(LONG.slice(0, 80))
+    expect(body.items[0]).toMatchObject({ households: 2, sources: ['alta'], status: 'abierto' })
+  })
+
+  it('the admin view (no token header) gets it whole', async () => {
+    const body = await get({})
+    expect(body.items[0].dish).toBe(LONG)
   })
 })

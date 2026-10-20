@@ -69,6 +69,10 @@ describe.skipIf(!reachable)('comparación a ciegas (PRO-256)', () => {
     expect(report.status).toBe(200)
     const total = report.body.households.reduce((n: number, r: any) => n + r.votes.planner + r.votes.generator + r.votes.tie, 0)
     expect(total).toBeGreaterThanOrEqual(1)
+    // The token gets no household id and no reasons, only how many.
+    expect(report.body.households.every((r: any) => r.householdId === undefined && r.reasons === undefined)).toBe(true)
+    expect(report.body.households.reduce((n: number, r: any) => n + r.reasonCounts.planner + r.reasonCounts.generator + r.reasonCounts.tie, 0)).toBeGreaterThanOrEqual(1)
+    expect(JSON.stringify(report.body)).not.toContain('Mejor la B')
 
     const other = await household('test.local')
     expect((await call('GET', `/menu/${other.menuId}/a-ciegas`, undefined, other.token)).status).toBe(404)

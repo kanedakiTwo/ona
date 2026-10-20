@@ -1,9 +1,10 @@
 import { Router } from 'express'
-import { metricsAuth } from '../middleware/metricsAuth.js'
+import { metricsAuth, viaMetricsToken } from '../middleware/metricsAuth.js'
 import { loadBusinessMetrics } from '../services/businessMetrics.js'
 import { loadUsageReport } from '../services/usageReport.js'
 import { loadAssistantFlags } from '../services/assistantFlags.js'
 import { loadBasketGaps } from '../services/basketExtension.js'
+import { flagsForAgents } from '../services/agentView.js'
 
 /**
  * Read-only aggregates for Miguel and the Mimoia HQ agents. Admin JWT or
@@ -15,7 +16,8 @@ import { loadBasketGaps } from '../services/basketExtension.js'
  *     funnel (specs/metrics.md "Usage events");
  *   - GET /admin/assistant-reviews/flags?days=7 — anonymised conversation flags
  *     (health talk, health claims, unverified "hecho", errors) plus the daily
- *     reviewer's findings (specs/whatsapp.md);
+ *     reviewer's findings (specs/whatsapp.md); with the token, categories and
+ *     severity only, no reply or note;
  *   - GET /admin/extension-gaps?days=7 — lo que la extensión del navegador no
  *     tenía en su tabla (búsqueda o fallo), sin usuarios (specs/shop-orders.md).
  *
@@ -54,7 +56,9 @@ router.get('/admin/usage', metricsAuth, async (req, res) => {
 router.get('/admin/assistant-reviews/flags', metricsAuth, async (req, res) => {
   try {
     const days = intParam(req.query.days, 7, 1, 31)
-    res.json(await loadAssistantFlags({ days }))
+    const report = await loadAssistantFlags({ days })
+    // The agents' read token: categories and severity, no reply or note.
+    res.json(viaMetricsToken(req) ? flagsForAgents(report) : report)
   } catch (err: any) {
     console.error('[assistant-flags] failed:', err?.message ?? err)
     res.status(500).json({ error: 'Internal server error' })

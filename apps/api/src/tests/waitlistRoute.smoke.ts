@@ -66,7 +66,7 @@ describe.skipIf(!reachable)('waitlist route smoke', () => {
   })
 
   it('attributes a referral and counts it on the owner page', async () => {
-    const mate = await call('POST', '/waitlist', body(`waitlist_${id}_mate@test.local`, { referredByCode: owner.code }))
+    const mate = await call('POST', '/waitlist', body(`waitlist_${id}_mate@test.local`, { referredByCode: owner.code, utmSource: `Smoke ${id} de Pozuelo`, utmCampaign: `llamadme ${id}` }))
     expect(mate.status).toBe(200)
     const status = await call('GET', `/waitlist/${owner.code}`)
     expect(status.status).toBe(200)
@@ -74,14 +74,21 @@ describe.skipIf(!reachable)('waitlist route smoke', () => {
     expect(JSON.stringify(status.body)).not.toContain('@')
   })
 
-  it('admin report (read token): aggregates and ids, never an email', async () => {
+  it('admin report (read token): aggregates only — no email, utm text, referral code or entry id', async () => {
     if (!METRICS_TOKEN) return
     const r = await call('GET', '/admin/waitlist?batchSize=500', undefined, { 'x-metrics-token': METRICS_TOKEN })
     expect(r.status).toBe(200)
     expect(r.body.totals.entries).toBeGreaterThanOrEqual(2)
-    expect(r.body.referrals.topReferrers.some((t: any) => t.code === owner.code)).toBe(true)
-    expect(Array.isArray(r.body.suggestedNextBatch.ids)).toBe(true)
-    expect(JSON.stringify(r.body)).not.toContain(ownerEmail)
+    expect(r.body.referrals.referredSignups).toBeGreaterThanOrEqual(1)
+    expect(r.body.referrals.topReferrers.every((t: any) => Object.keys(t).join() === 'count')).toBe(true)
+    expect(r.body.suggestedNextBatch.ids).toBeUndefined()
+    expect(r.body.suggestedNextBatch.counts.waiting).toBeGreaterThanOrEqual(1)
+    expect(r.body.sources.byUtm.find((u: any) => u.utmSource === 'otro')?.count).toBeGreaterThanOrEqual(1)
+    // The smoke's own `?ref=` label is not in the closed list: it is counted as «otro».
+    expect(r.body.sources.bySource.find((s: any) => s.source === 'smoke')).toBeUndefined()
+    expect(r.body.sources.bySource.find((s: any) => s.source === 'otro')?.count).toBeGreaterThanOrEqual(2)
+    const text = JSON.stringify(r.body)
+    for (const leak of [ownerEmail, owner.code, id]) expect(text).not.toContain(leak)
 
     const m = await call('GET', '/admin/metrics?weeks=1', undefined, { 'x-metrics-token': METRICS_TOKEN })
     expect(m.status).toBe(200)

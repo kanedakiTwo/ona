@@ -243,6 +243,34 @@ describe('GET /admin/waitlist', () => {
     await fetch(`${base}/admin/waitlist`, { headers: { 'x-metrics-token': 'waitlist-test-token' } })
     expect(load).toHaveBeenLastCalledWith({ days: 30, batchSize: 20 })
   })
+
+  const REPORT = {
+    totals: { entries: 2 },
+    sources: {
+      bySource: [{ source: 'directo', count: 2 }],
+      byUtm: [{ utmSource: 'Ana García de Pozuelo', utmMedium: 'llamadme', utmCampaign: 'x', count: 1 }, { utmSource: 'IG', utmMedium: 'story', utmCampaign: null, count: 1 }],
+    },
+    referrals: { referredSignups: 1, referrers: 1, topReferrers: [{ code: 'k3mzabqr', count: 1 }] },
+    suggestedNextBatch: { size: 20, ids: ['3f2a8c1e-0d4b-4c2a-9f1e-2b3c4d5e6f70'], counts: { waiting: 2 } },
+  }
+
+  it('with the read token: utm as counts by source, no referral codes, no entry ids', async () => {
+    load.mockResolvedValueOnce(REPORT as any)
+    const body = await (await fetch(`${base}/admin/waitlist`, { headers: { 'x-metrics-token': 'waitlist-test-token' } })).json()
+    expect(body.sources.byUtm).toEqual([{ utmSource: 'instagram', count: 1 }, { utmSource: 'otro', count: 1 }])
+    expect(body.referrals.topReferrers).toEqual([{ count: 1 }])
+    expect(body.suggestedNextBatch).toEqual({ size: 20, counts: { waiting: 2 } })
+    expect(JSON.stringify(body)).not.toMatch(/Pozuelo|llamadme|k3mzabqr|3f2a8c1e/)
+  })
+
+  it('the admin view (no token header) keeps utm, codes and ids', async () => {
+    const app = express()
+    const pass: RequestHandler = (_req, _res, next) => next()
+    app.use(createAdminWaitlistRouter({ readAuth: pass, load: (async () => REPORT) as any }))
+    const b = await serve(app)
+    const body = await (await fetch(`${b}/admin/waitlist`)).json()
+    expect(body).toEqual(REPORT)
+  })
 })
 
 describe('POST /admin/waitlist/invite', () => {

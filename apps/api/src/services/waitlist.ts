@@ -208,7 +208,7 @@ export const WAITLIST_DEFINITIONS = {
   referredSignups: 'Entradas activas que llegaron con el enlace de otra persona (?invita=).',
   newsletterOptIns: 'Entradas activas que han marcado, aparte, recibir el menú de la semana por email.',
   suggestedNextBatch:
-    'Solo entradas en espera. Orden: segmento objetivo; dentro, quien ha traído a alguien o cuya persona invitante ya está dentro; después, la más antigua. Cada persona elegida arrastra a quienes se apuntaron con su enlace (entran juntos), hasta llenar la tanda. Solo ids, sin datos personales.',
+    'Solo entradas en espera. Orden: segmento objetivo; dentro, quien ha traído a alguien o cuya persona invitante ya está dentro; después, la más antigua. Cada persona elegida arrastra a quienes se apuntaron con su enlace (entran juntos), hasta llenar la tanda. Con el JWT de admin, los ids en orden; con el token de lectura, solo el tamaño y los recuentos. Sin datos personales.',
 } as const
 
 function zeroCounts<K extends string>(keys: readonly K[]): Record<K, number> {

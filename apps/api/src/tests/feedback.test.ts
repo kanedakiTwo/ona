@@ -1,7 +1,7 @@
 /**
  * Beta feedback box (specs/feedback.md, 2026-10-15): the «Opinión» button
  * (POST /feedback), Mimo's leave_feedback (web chat and WhatsApp) and the
- * admin/agents read (GET /admin/feedback; the agents' token never sees who).
+ * admin/agents read (GET /admin/feedback; the agents' token gets counts only).
  */
 import express, { type RequestHandler } from 'express'
 import type { AddressInfo } from 'node:net'
@@ -79,7 +79,7 @@ describe('POST /feedback', () => {
 })
 
 describe('GET /admin/feedback', () => {
-  it('admin sees who wrote it; the agents token gets the text without identity', async () => {
+  it('admin sees the text and who wrote it; the agents token gets counts only', async () => {
     const { call } = await app()
     await call('POST', '/feedback', { 'x-user': 'u1' }, { text: 'Me encanta la lista', channel: 'whatsapp' })
     expect((await call('GET', '/admin/feedback')).status).toBe(401)
@@ -88,27 +88,18 @@ describe('GET /admin/feedback', () => {
     expect(admin.items[0]).toMatchObject({ text: 'Me encanta la lista', channel: 'whatsapp', username: 'user-u1', email: 'u1@example.com' })
 
     const agents = await (await call('GET', '/admin/feedback?days=1', { 'x-metrics-token': 'ok' })).json()
-    expect(agents).toMatchObject({ days: 1, count: 1 })
-    expect(agents.items[0]).toMatchObject({ text: 'Me encanta la lista', channel: 'whatsapp' })
-    expect(agents.items[0].username).toBeUndefined()
-    expect(agents.items[0].email).toBeUndefined()
+    expect(agents).toEqual({ days: 1, count: 1, byChannel: { whatsapp: 1 }, byPage: { none: 1 }, possibleAllergies: [] })
+    expect(JSON.stringify(agents)).not.toContain('Me encanta la lista')
   })
 
-  it('PRO-180: with the agents\' token, names, emails and phones in the text are masked; the admin sees it as written', async () => {
+  it('the agents token never gets the text, not even masked: a possible allergy is a date and a channel; the admin sees it as written', async () => {
     const { call, repo } = await app()
-    const raw = 'Soy Lucía, mi marido Antonio dice que la lista no carga. Llamadme al 612 345 678 o a lucia.perez@gmail.com'
+    const raw = 'Soy Lucía, mi hijo es celíaco y la lista no carga. Llamadme al 612 345 678 o a lucia.perez@gmail.com'
     repo.rows.push({ id: 'f2', userId: 'u2', channel: 'app', text: raw, page: '/compra', createdAt: NOW, username: 'lucia_perez', email: 'lucia.perez@gmail.com' })
-    repo.rows.push({ id: 'f3', userId: 'u3', channel: 'chat', text: 'Antonio quiere menos pescado', page: null, createdAt: NOW, username: 'otra', email: 'otra@example.com' })
 
     const agents = await (await call('GET', '/admin/feedback', { 'x-metrics-token': 'ok' })).json()
-    const text = agents.items.find((i: any) => i.id === 'f2').text as string
-    for (const leak of ['Lucía', 'Antonio', '612 345 678', 'lucia.perez@gmail.com']) expect(text).not.toContain(leak)
-    expect(text).toContain('[nombre]')
-    expect(text).toContain('[teléfono]')
-    expect(text).toContain('[email]')
-    expect(text).toContain('la lista no carga')
-    // A name revealed in one opinion is masked in the others of the batch too.
-    expect(agents.items.find((i: any) => i.id === 'f3').text).toBe('[nombre] quiere menos pescado')
+    expect(agents).toEqual({ days: 30, count: 1, byChannel: { app: 1 }, byPage: { '/compra': 1 }, possibleAllergies: [{ date: '2026-10-20', channel: 'app' }] })
+    expect(JSON.stringify(agents)).not.toMatch(/Lucía|lucia|celíaco|no carga|612|\[nombre\]|f2/)
 
     const admin = await (await call('GET', '/admin/feedback', { 'x-admin': '1' })).json()
     expect(admin.items.find((i: any) => i.id === 'f2').text).toBe(raw)

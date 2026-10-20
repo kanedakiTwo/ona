@@ -17,6 +17,7 @@ import { useAuth } from "@/lib/auth"
 import { usePatchShopOrder, usePrepareShopOrders, useShopOrders, useShops, type PrepareResult } from "@/hooks/useShopOrders"
 import type { ShopOrder } from "@ona/shared"
 import { OrderCard } from "@/components/compra/OrderCard"
+import { ClosedOrder } from "@/components/compra/ClosedOrder"
 import { haptic } from "@/lib/pwa/haptics"
 
 /** Same order as a walk through the neighbourhood: fresh first, súper last. */
@@ -148,10 +149,7 @@ export default function CompraPage() {
               <summary className="cursor-pointer text-eyebrow text-[#7A7066]">Pedidos cerrados · {closed.length}</summary>
               <ul className="mt-3 space-y-2">
                 {closed.map((o) => (
-                  <li key={o.id} className="flex justify-between rounded-xl border border-[#DDD6C5] bg-[#FFFEFA] px-3 py-2 text-[12px] text-[#1A1612]">
-                    <span>{o.shop.name} · {new Date(o.closedAt ?? o.createdAt).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}</span>
-                    <span className="text-[#7A7066]">{o.finalTotalEur != null ? `${String(o.finalTotalEur).replace(".", ",")} €` : "—"}</span>
-                  </li>
+                  <ClosedOrder key={o.id} order={o} />
                 ))}
               </ul>
             </details>

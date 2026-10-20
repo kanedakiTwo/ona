@@ -143,7 +143,7 @@ const manageShops: SkillDefinition = {
     }
     if (p.action === 'move') {
       const to = p.to === 'up' || p.to === 'down' ? p.to : 'first'
-      const next = await api(ctx)<Shop[]>('POST', `/shops/${hit.id}/move`, { to })
+      const next = await api(ctx)<Shop[]>('PATCH', `/shops/${hit.id}`, { move: to })
       const mine = next.filter((s) => s.kind === hit.kind)
       const label = SHOP_KIND_LABELS[hit.kind].toLowerCase()
       if (mine.length < 2) return toCompra(`${hit.name} es tu única tienda de tipo ${label}: ya recibe ese pedido.`)

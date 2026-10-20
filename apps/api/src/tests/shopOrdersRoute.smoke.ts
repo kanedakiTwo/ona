@@ -216,7 +216,7 @@ describe('ordering shops inside their kind (PRO-287)', () => {
     await api('POST', '/shops', { name: 'Frutería del barrio', kind: 'fruteria', channel: 'whatsapp', whatsapp: '34600000011', fulfilment: 'recoger' })
     const second = (await api('POST', '/shops', { name: 'Súper del centro', kind: 'supermercado', channel: 'whatsapp', whatsapp: '34600000012', fulfilment: 'recoger' })).body
 
-    const moved = await api('POST', `/shops/${second.id}/move`, { to: 'up' })
+    const moved = await api('PATCH', `/shops/${second.id}`, { move: 'up' })
     expect(moved.status).toBe(200)
     expect((moved.body as any[]).map((s) => s.name)).toEqual(['Súper del centro', 'Frutería del barrio', 'Súper de la esquina'])
     // Saved: a fresh read has the same order.
@@ -229,9 +229,9 @@ describe('ordering shops inside their kind (PRO-287)', () => {
     for (const o of superOrders) expect(o.shopId).toBe(second.id)
 
     // Edges and validation.
-    expect((await api('POST', `/shops/${second.id}/move`, { to: 'up' })).body[0].id).toBe(second.id)
-    expect((await api('POST', `/shops/${second.id}/move`, { to: 'sideways' })).status).toBe(400)
+    expect((await api('PATCH', `/shops/${second.id}`, { move: 'up' })).body[0].id).toBe(second.id)
+    expect((await api('PATCH', `/shops/${second.id}`, { move: 'sideways' })).status).toBe(400)
     const other = call(await register())
-    expect((await other('POST', `/shops/${second.id}/move`, { to: 'down' })).status).toBe(404)
+    expect((await other('PATCH', `/shops/${second.id}`, { move: 'down' })).status).toBe(404)
   }, 90_000)
 })

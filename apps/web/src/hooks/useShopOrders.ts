@@ -40,7 +40,7 @@ export function useDeleteShop() {
 export function useMoveShop() {
   const qc = useQueryClient()
   return useMutation<Shop[], Error, { id: string; to: "up" | "down" | "first" }>({
-    mutationFn: ({ id, to }) => api.post<Shop[]>(`/shops/${id}/move`, { to }),
+    mutationFn: ({ id, to }) => api.patch<Shop[]>(`/shops/${id}`, { move: to }),
     onSuccess: (shops) => {
       qc.setQueryData(["shops"], shops)
       qc.invalidateQueries({ queryKey: ["shops"] })

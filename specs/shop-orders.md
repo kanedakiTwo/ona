@@ -106,7 +106,7 @@ All auth'd and scoped to the caller's primary household unless noted.
 |---|---|---|
 | GET/POST | `/shops` | list / add (`shopInputSchema`) |
 | PATCH/DELETE | `/shops/:id` | full-form update / delete (+ its drafts) |
-| POST | `/shops/:id/move` | `{ to: up \| down \| first }` within its kind → all shops in their new order; positions rewritten 0…n-1; 400 bad `to`, 404 not the household's |
+| PATCH | `/shops/:id` `{ move }` | `{ move: up \| down \| first }` alone: reorder within its kind → all shops in their new order; positions rewritten 0…n-1; 400 bad `move`, 404 not the household's |
 | POST | `/shop-orders/prepare` | `{ days? = 7, listId? }` → `{ orders, unassigned, skipped, hasShops }` |
 | GET | `/shop-orders` | open orders (`?all=1` adds closed, last 30 days) |
 | GET/PATCH | `/shop-orders/:id` | PATCH drafts only: `{ lines: [{key, remove?, note?, quantity?, unit?, choice?, include?, moveToShopId?}], add: [{name, quantity?, unit?, note?}], fulfilment?, address?, capEur? }`; a `choice` is saved as household preference |

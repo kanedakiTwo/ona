@@ -196,19 +196,19 @@ describe('manage_shops move (PRO-287)', () => {
   const ECI: Shop = { ...SHOP, id: 's2', name: 'El Corte Inglés', kind: 'supermercado', channel: 'web', whatsapp: null, webUrl: 'https://www.elcorteingles.es', position: 1 }
   const MERCADONA: Shop = { ...SHOP, id: 's3', name: 'Mercadona', kind: 'supermercado', channel: 'web', whatsapp: null, webUrl: 'https://tienda.mercadona.es', position: 2 }
 
-  it('«pon Mercadona como primer súper» → POST /shops/:id/move with to: first, and says who gets the order', async () => {
-    const { api, calls } = fakeApi({ 'GET /shops': [SHOP, ECI, MERCADONA], 'POST /shops/s3/move': [SHOP, { ...MERCADONA, position: 1 }, { ...ECI, position: 2 }] })
+  it('«pon Mercadona como primer súper» → PATCH /shops/:id with move: first, and says who gets the order', async () => {
+    const { api, calls } = fakeApi({ 'GET /shops': [SHOP, ECI, MERCADONA], 'PATCH /shops/s3': [SHOP, { ...MERCADONA, position: 1 }, { ...ECI, position: 2 }] })
     const r = await get('manage_shops').handler({ action: 'move', name: 'mercadona', to: 'first' }, ctx(api))
-    expect(writes(calls)).toEqual([{ method: 'POST', path: '/shops/s3/move', body: { to: 'first' } }])
+    expect(writes(calls)).toEqual([{ method: 'PATCH', path: '/shops/s3', body: { move: 'first' } }])
     expect(r.summary).toMatch(/1\. Mercadona, 2\. El Corte Inglés/)
     expect(r.summary).toMatch(/va a Mercadona/)
   })
 
   it('up / down pass through; anything else means first', async () => {
-    const { api, calls } = fakeApi({ 'GET /shops': [SHOP, ECI, MERCADONA], 'POST /shops/*': [SHOP, ECI, MERCADONA] })
+    const { api, calls } = fakeApi({ 'GET /shops': [SHOP, ECI, MERCADONA], 'PATCH /shops/*': [SHOP, ECI, MERCADONA] })
     await get('manage_shops').handler({ action: 'move', name: 'corte ingles', to: 'down' }, ctx(api))
     await get('manage_shops').handler({ action: 'move', name: 'mercadona' }, ctx(api))
-    expect(writes(calls).map((c) => c.body)).toEqual([{ to: 'down' }, { to: 'first' }])
+    expect(writes(calls).map((c) => c.body)).toEqual([{ move: 'down' }, { move: 'first' }])
   })
 })
 

@@ -30,7 +30,7 @@ Weekly meal plan generation and management.
 - Users can share the week as text with a link (**Compartir** in the week sheet in both views; desktop: **Compartir semana**) via `menuShareText`
 - Users can view past menus via `/menu/history` (**Historial** in the week sheet): one paper card per saved menu ("Semana del 5 al 11 de octubre", creation date, up to four `RecipeCover` thumbnails of its recipes — photos first, "+N" when there are more; `lib/menuHistory.ts`), linking to `/menu?week=<weekStart>`. Thumbnails reuse the per-week menu query of `/menu` (one `GET /menu/:userId/:weekStart` per distinct week)
 - Users can tap a meal photo or title to open the recipe detail
-- Users can opt in to local meal-time notifications (breakfast / lunch / snack / dinner times configured in the profile's "Recordatorios" card) — the app fires a reminder at the chosen times — see [PWA](./pwa.md)
+- Mimo's alerts about the menu (morning menu, prep, start cooking) go by WhatsApp, or by the phone notification for prep alerts without WhatsApp — see [Notifications](./notifications.md). The old local «Es hora de comer» reminder is gone (PRO-234)
 
 ## Multi-dish slots
 

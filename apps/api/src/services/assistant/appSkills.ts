@@ -1,14 +1,20 @@
 import type { CookTodayResult } from '../cookToday.js'
 import {
   AISLES,
+  ALERT_KINDS,
+  ALERT_LABELS,
+  ALERT_OPT_IN_KINDS,
   HOUSEHOLD_INVITE_TTL_DAYS,
   capitalize,
   familyInviteShareText,
   formatQty,
   householdInvitePath,
   inviteHouseholdShareText,
+  isAlertKind,
   prettyName,
   whatsappShareHref,
+  type AlertKind,
+  type AlertsOverview,
   type ShoppingItem,
 } from '@ona/shared'
 import type { SkillContext, SkillDefinition, SkillResult } from './types.js'
@@ -17,9 +23,9 @@ import { madridParts, madridWeekStart } from '../madridTime.js'
 import { DAY_PROP, dateLabel, isMenuDayError, menuDayOf, resolveMenuDay, type MenuDay } from './menuDay.js'
 import { env } from '../../config/env.js'
 import { HEALTH_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY } from '../healthConsent.js'
-import { PROACTIVE_KINDS, PROACTIVE_LABELS, type ProactiveKind } from '../whatsapp/proactive.js'
 import { createDishRecipe, NEW_RECIPE_PROP, NOTE_THEN_RECIPE_HINT } from './dishRecipe.js'
 import { repeatNote } from './weekRepeats.js'
+import { PROACTIVE_KINDS, PROACTIVE_LABELS, type ProactiveKind } from '../whatsapp/proactive.js'
 
 /**
  * UI-parity skills: everything the web app can do, reachable from chat
@@ -1256,7 +1262,7 @@ const shareInviteLink: SkillDefinition = {
 const setWhatsappNotifications: SkillDefinition = {
   name: 'set_whatsapp_notifications',
   description:
-    'Activa o desactiva los avisos que Mimo manda por WhatsApp sin que el usuario escriba. kind: all (todos), daily_brief (resumen de la mañana con el menú del día: apagado salvo que lo pida, p. ej. "mándame el menú cada mañana"), weekly_nudge (propuesta de menu del domingo), prep_alerts (descongelar, remojo…), cooking_reminder (empezar a cocinar), dinner_checkin ("¿hiciste la cena?"), shopping_reminder (recordatorio de la compra). Ej: "no me mandes el resumen de la mañana".',
+    'Activa o desactiva los avisos que Mimo manda por WhatsApp sin que el usuario escriba. kind: all (todos), daily_brief (resumen de la mañana con el menú del día: apagado salvo que lo pida, p. ej. "mándame el menú cada mañana"), weekly_nudge (propuesta de menu del domingo), prep_alerts (descongelar, remojo…), cooking_reminder (empezar a cocinar), dinner_checkin ("¿hiciste la cena?"), shopping_reminder (recordatorio de la compra). Ej: "no me mandes el resumen de la mañana". Cambia lo mismo que Perfil → Avisos; para ver por donde llega cada aviso usa get_alerts.',
   parameters: {
     type: 'object',
     properties: {
@@ -1276,6 +1282,56 @@ const setWhatsappNotifications: SkillDefinition = {
     if (enabled) body.notify = true // turning one kind on implies the master switch
     await api(ctx)('PATCH', '/whatsapp/link', body)
     return text(`Hecho: ${PROACTIVE_LABELS[p.kind as ProactiveKind]} ${enabled ? 'activado' : 'desactivado'}.`)
+  },
+}
+
+/** The «Avisos» list as Mimo reads it (PRO-237): one line per kind. */
+export function describeAlerts(o: AlertsOverview): string {
+  const where: Record<string, string> = { whatsapp: 'por WhatsApp', push: 'como notificación del móvil', email: 'por correo', off: 'no llega' }
+  const lines = o.kinds.map((k) => {
+    if (!k.on) return `- ${k.title} (${k.kind}): apagado`
+    const tail = k.channel === 'off' ? `no llega${k.note ? ` (${k.note})` : ''}` : `${where[k.channel]}${k.fallback ? ' (si WhatsApp falla, notificación del móvil)' : ''}`
+    return `- ${k.title} (${k.kind}): encendido, ${tail}`
+  })
+  const wa = o.whatsapp.linked ? (o.whatsapp.notify ? 'WhatsApp conectado con avisos.' : 'WhatsApp conectado, avisos apagados.') : 'WhatsApp sin conectar.'
+  const push = o.push.subscribed ? 'Notificaciones del móvil activadas.' : 'Notificaciones del móvil sin activar.'
+  return `${wa} ${push}\n${lines.join('\n')}\nPor correo solo llega lo de la cuenta (bienvenida, contraseña, invitaciones, la prueba y el aviso antes del primer cobro) y, si lo pidió, el menú de los viernes. Todo esto se ve y se cambia en Perfil → Avisos.`
+}
+
+const getAlerts: SkillDefinition = {
+  name: 'get_alerts',
+  description:
+    'Lista los avisos de Mimo (menu del dia, empezar a cocinar, congelador/remojo, "¿hiciste la cena?", compra, domingo, repaso del congelador), si estan encendidos y por donde llegan (WhatsApp, notificacion del movil o no llegan). Usala cuando pregunte "¿que avisos tengo?", "¿por donde me avisas?".',
+  parameters: { type: 'object', properties: {}, required: [] },
+  async handler(_p, ctx) {
+    const o = await api(ctx)<AlertsOverview>('GET', '/notifications/prefs')
+    return text(describeAlerts(o), o as unknown as Record<string, unknown>)
+  },
+}
+
+const setAlerts: SkillDefinition = {
+  name: 'set_alerts',
+  description:
+    'Enciende o apaga avisos de Mimo, igual que el interruptor de Perfil → Avisos (en todos los canales). kind: all (todos), daily_brief (menu del dia por la mañana), weekly_nudge (propuesta de menu del domingo), prep_alerts (descongelar, remojo…), cooking_reminder (empezar a cocinar), dinner_checkin ("¿hiciste la cena?"), shopping_reminder (recordatorio de la compra), freezer_review (repaso del congelador, una vez al mes). El menu del dia esta apagado salvo que lo pida ("mandame el menu cada mañana"); kind=all encendido no lo enciende. Ej: "no me mandes el resumen de la mañana". Con kind=all y WhatsApp conectado tambien cambia "Avisos por WhatsApp".',
+  parameters: {
+    type: 'object',
+    properties: {
+      kind: { type: 'string', enum: ['all', ...ALERT_KINDS] },
+      enabled: { type: 'boolean' },
+    },
+    required: ['kind', 'enabled'],
+  },
+  async handler(p, ctx) {
+    const enabled = p.enabled !== false
+    if (p.kind !== 'all' && !isAlertKind(p.kind)) return text('Tipo de aviso desconocido.')
+    // PRO-215: «all on» never turns on the opt-in morning menu; it is asked for by name.
+    const kinds = p.kind === 'all' ? ALERT_KINDS.filter((k) => !enabled || !ALERT_OPT_IN_KINDS.has(k)) : [p.kind as AlertKind]
+    const o = await api(ctx)<AlertsOverview>('PATCH', '/notifications/prefs', { prefs: Object.fromEntries(kinds.map((k) => [k, enabled])) })
+    if (p.kind === 'all' && o.whatsapp.linked) await api(ctx)('PATCH', '/whatsapp/link', { notify: enabled })
+    const what = p.kind === 'all' ? 'todos los avisos' : ALERT_LABELS[p.kind as AlertKind].title
+    const row = o.kinds.find((k) => k.kind === kinds[0])
+    const caveat = enabled && row && row.channel === 'off' && row.note ? ` Ojo: ahora no te llegaria: ${row.note}` : ''
+    return text(`Hecho: ${what} ${enabled ? 'encendido' : 'apagado'}.${caveat} Se ve en Perfil → Avisos.`)
   },
 }
 
@@ -1366,6 +1422,8 @@ export const appSkills: SkillDefinition[] = [
   inviteToHousehold,
   shareInviteLink,
   setWhatsappNotifications,
+  getAlerts,
+  setAlerts,
   leaveFeedback,
   setCookToday,
 ]

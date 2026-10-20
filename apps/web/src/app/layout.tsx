@@ -11,7 +11,6 @@ import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
 import { recordVisit } from "@/lib/pwa/installPrompt"
 import { reportInstalledOpen } from "@/lib/pwa/installedOpen"
-import { scheduleMealReminders } from "@/lib/pwa/notifications"
 import { installChunkReload, installErrorReporter } from "@/lib/errorReporter"
 import { CF_BEACON_SRC, cfBeaconAttr } from "@/lib/cfBeacon"
 import "./globals.css"
@@ -80,7 +79,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     recordVisit()
     // PRO-83: count installed-app opens (aggregate only, once a day).
     reportInstalledOpen()
-    scheduleMealReminders()
   }, [])
 
   return (

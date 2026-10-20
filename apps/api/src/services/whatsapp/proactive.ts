@@ -522,19 +522,9 @@ export function templateParamFrom(messages: OutboundMessage[]): string {
   return text.replace(/\s+/g, ' ').trim().slice(0, 1000)
 }
 
-// ─── Scheduler status for prep alerts sent over two channels ─────
+// ─── Outcome of one channel (see notifications/channels.ts) ─────
 
 export interface ChannelOutcome {
   status: 'ok' | 'skipped' | 'error'
   error?: string
-}
-
-/** A queued alert counts as sent when any channel delivered it. */
-export function combineDelivery(push: ChannelOutcome, whatsapp: ChannelOutcome): {
-  status: 'sent' | 'failed'
-  errorMessage: string | null
-} {
-  if (push.status === 'ok' || whatsapp.status === 'ok') return { status: 'sent', errorMessage: null }
-  const errors = [push.error, whatsapp.status === 'error' ? `whatsapp: ${whatsapp.error}` : null].filter(Boolean)
-  return { status: 'failed', errorMessage: errors.join(' · ').slice(0, 500) || 'no-channel' }
 }

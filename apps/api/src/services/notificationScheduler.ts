@@ -13,8 +13,9 @@
  *     constraint — re-running after a swap_meal is safe.
  *
  *   - `tickScheduler()` — periodic poll (every 5 min) that picks up any
- *     `pending` row whose `fire_at` has elapsed, dispatches via
- *     `sendPushToUser`, and marks it sent / failed.
+ *     `pending` row whose `fire_at` has elapsed, sends it by ONE channel
+ *     (WhatsApp, or the phone notification without it or as its fallback;
+ *     PRO-234, `notifications/channels.ts`), and marks it sent / failed.
  *
  * The tick also sends the waitlist invitation reminder (PRO-97,
  * `sendWaitlistInviteRemindersIfDue`, once an hour).
@@ -35,17 +36,14 @@ import {
   userMemories,
 } from '../db/schema.js'
 import {
+  alertKindOn,
   PREP_METHOD_HOURS_BEFORE,
   THAW_CONDITIONAL_TEXT,
   thawIsConditional,
   type PrepMethod,
   type Meal,
 } from '@ona/shared'
-import {
-  sendPushToUser,
-  PushNotConfiguredError,
-} from './pushNotifier.js'
-import { deliverAlertOverWhatsApp, runProactiveTick } from './whatsapp/outbound.js'
+import { deliverAlertOverWhatsApp, runProactiveTick, whatsAppAlertState } from './whatsapp/outbound.js'
 import { runDailyReviewIfDue } from './whatsapp/reviewer.js'
 import { runProfileRefinerIfDue } from './profile/refiner.js'
 import { runWeeklyPlannerIfDue } from './menuPlannerWeekly.js'
@@ -59,10 +57,11 @@ import { cooksOfWeek } from './cookToday.js'
 import { sendTrialEndingEmailsIfDue } from './trialEmails.js'
 import { sendFounderOffersIfDue } from './founderOffer.js'
 import { sendChargeNoticesIfDue } from './chargeNotice.js'
-import { combineDelivery, type ChannelOutcome } from './whatsapp/proactive.js'
 import { logEntriesFor, planMoment, type DeliveryResult } from './notifications/budget.js'
 import { budgetKeyFor, loadFullBudgetState, recordNotices } from './notifications/budgetStore.js'
 import { awakeFireAt, isAwakeInstant } from './notifications/hours.js'
+import { loadUserAlertPrefs } from './notifications/alertPrefs.js'
+import { channelsFor, deliverInOrder, pushOutcome, type WhatsAppAlertState } from './notifications/channels.js'
 
 // ─── Habit → method matcher ─────────────────────────────────────
 //
@@ -561,7 +560,39 @@ export function mergeAlertPayloads(payloads: readonly AlertPayload[]): AlertPayl
   return { title, body, url: payloads[0].url, tag: payloads[0].tag }
 }
 
+/**
+ * Pure: what the budget log records for a moment that went out (or not) by
+ * one channel (PRO-215 + PRO-234). A phone notification sent as WhatsApp's
+ * fallback is the same message: `ok`, one unit at most (the plan decides).
+ */
+export function prepMomentDelivery(r: { status: 'sent' | 'failed'; errorMessage: string | null }): DeliveryResult {
+  if (r.status === 'sent') return 'ok'
+  return r.errorMessage?.includes('outside-24h-window') ? 'outside-window' : 'error'
+}
+
 async function deliverPrepMoment(userId: string, rows: Array<typeof notificationSchedule.$inferSelect>, now: Date): Promise<void> {
+  // PRO-234 (D-080): one channel. WhatsApp when linked with «avisos» on; the
+  // phone notification only as its fallback, or as the channel when there is
+  // no WhatsApp. PRO-237: switched off in «Avisos» → not sent anywhere.
+  let waState: WhatsAppAlertState = 'none'
+  try {
+    waState = await whatsAppAlertState(userId, 'prep_alerts')
+    if (!alertKindOn('prep_alerts', await loadUserAlertPrefs(userId))) waState = 'kind_off'
+  } catch (err) {
+    console.warn('[notificationScheduler] whatsapp state failed (trying push):', err)
+  }
+  const channels = channelsFor('prep_alerts', waState)
+  if (channels.length === 0) {
+    // Nothing goes out, so nothing is a candidate for the weekly budget.
+    for (const row of rows) {
+      await db
+        .update(notificationSchedule)
+        .set({ status: 'cancelled', errorMessage: 'cancelado al enviar: aviso apagado' })
+        .where(eq(notificationSchedule.id, row.id))
+    }
+    return
+  }
+
   const budgetKey = await budgetKeyFor(userId)
   const candidates = rows.map((row) => ({ kind: 'prep_alerts', row }))
   const plan = planMoment(candidates, await loadFullBudgetState(budgetKey, now, false))
@@ -572,37 +603,24 @@ async function deliverPrepMoment(userId: string, rows: Array<typeof notification
       .where(eq(notificationSchedule.id, c.row.id))
   }
   let delivery: DeliveryResult | null = null
-  let channel: 'push' | 'whatsapp' | 'both' | null = null
+  let channel: 'push' | 'whatsapp' | null = null
   if (plan.send.length > 0) {
+    // PRO-215: the moment is one merged message; PRO-234: it tries WhatsApp,
+    // then push only if WhatsApp failed. Either way it is ONE message and
+    // spends at most one unit (decided above by the plan, not per channel).
     const payload = mergeAlertPayloads(plan.send.map((c) => c.row.payload))
-    let push: ChannelOutcome
-    try {
-      // No subscription reached → not delivered (it must not spend the budget).
-      const r = await sendPushToUser(userId, payload)
-      push = r.sent > 0 ? { status: 'ok' } : { status: 'skipped', error: 'no-push-subscription' }
-    } catch (err: any) {
-      push = {
-        status: 'error',
-        error: err instanceof PushNotConfiguredError
-          ? 'push-not-configured'
-          : String(err?.message ?? err).slice(0, 500),
-      }
-    }
-    let whatsapp: ChannelOutcome
-    try {
-      whatsapp = await deliverAlertOverWhatsApp(userId, payload, now)
-    } catch (err: any) {
-      whatsapp = { status: 'error', error: String(err?.message ?? err).slice(0, 300) }
-    }
-    const { status, errorMessage } = combineDelivery(push, whatsapp)
+    const result = await deliverInOrder(channels, {
+      whatsapp: () => deliverAlertOverWhatsApp(userId, payload, now),
+      push: () => pushOutcome(userId, payload),
+    })
     for (const c of plan.send) {
       await db
         .update(notificationSchedule)
-        .set({ status, sentAt: new Date(), errorMessage })
+        .set({ status: result.status, sentAt: new Date(), errorMessage: result.errorMessage })
         .where(eq(notificationSchedule.id, c.row.id))
     }
-    delivery = status === 'sent' ? 'ok' : whatsapp.error === 'outside-24h-window' ? 'outside-window' : 'error'
-    channel = push.status === 'ok' && whatsapp.status === 'ok' ? 'both' : whatsapp.status === 'ok' ? 'whatsapp' : 'push'
+    delivery = prepMomentDelivery(result)
+    channel = result.channel
   }
   await recordNotices({ budgetKey, userId, entries: logEntriesFor(plan, delivery), channel, now })
 }
@@ -656,10 +674,9 @@ async function tickOnce(): Promise<true> {
       ),
     )
 
-  // Each due alert goes out over Web Push AND WhatsApp (when the user linked
-  // a phone and opted into "Avisos por WhatsApp"). Sent if either delivered.
   // PRO-215: the alerts due for one person in this tick are one moment: one
-  // merged message that spends at most one unit of the weekly budget.
+  // merged message, by one channel (PRO-234), that spends at most one unit of
+  // the weekly budget.
   const live = new Map<string, typeof due>()
   for (const row of due) {
     let stale: string | null = null

@@ -589,6 +589,13 @@
       "when": 1792455724997,
       "tag": "0086_menu_blind_votes",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1792455763114,
+      "tag": "0087_alert_prefs",
+      "breakpoints": true
     }
   ]
 }

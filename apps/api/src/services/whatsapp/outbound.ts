@@ -49,6 +49,8 @@ import { listPantryForUser } from '../pantryStore.js'
 import { freezerItemsDue } from '@ona/shared'
 import { quietAfterSignUp } from './signUpQuiet.js'
 import { isShoppingReminderWindow } from './proactive.js'
+import { loadUserAlertPrefs, mergeAlertPrefs } from '../notifications/alertPrefs.js'
+import { fallbackKindsToday, pushFallbackForProactive, type WhatsAppAlertState } from '../notifications/channels.js'
 
 /** Per-kind templates (WHATSAPP_TEMPLATES), parsed once. */
 const TEMPLATES = parseTemplateMap(env.WHATSAPP_TEMPLATES)
@@ -121,7 +123,17 @@ export async function sendInsideServiceWindow(userId: string, text: string, kind
   return sendProactive(link, [{ type: 'text', text }], kind, now)
 }
 
-/** Prep alert from `notification_schedule` → WhatsApp (in addition to Web Push). */
+/**
+ * Can WhatsApp carry this person's alerts of `kind` (PRO-234)? `kind_off`
+ * when they switched that kind off: then it goes out nowhere.
+ */
+export async function whatsAppAlertState(userId: string, kind: ProactiveKind): Promise<WhatsAppAlertState> {
+  const link = await notifiableLink(userId)
+  if (!link) return 'none'
+  return kindEnabled(link.prefs, kind) ? 'ready' : 'kind_off'
+}
+
+/** Prep alert from `notification_schedule` → WhatsApp (its only channel when linked; PRO-234). */
 export async function deliverAlertOverWhatsApp(
   userId: string,
   payload: { title: string; body: string; url?: string },
@@ -263,11 +275,12 @@ export function writeGuided(link: Pick<LinkWithUser, 'userId' | 'phone'>, spec: 
  * message (each written from its guide, then merged) that spends at most
  * one unit; every candidate is logged with its outcome.
  */
-async function sendMoment(link: LinkWithUser, planned: PlannedMessage[], now: Date): Promise<void> {
+async function sendMoment(link: LinkWithUser, planned: PlannedMessage[], isoDate: string, now: Date): Promise<void> {
   const budgetKey = await budgetKeyFor(link.userId)
   const needReserve = !planned.some((p) => countsAgainstBudget(p.kind) && noticePriority(p.kind) === 1)
   const plan = planMoment(planned, await loadFullBudgetState(budgetKey, now, needReserve))
   let delivery: DeliveryResult | null = null
+  let channel: 'whatsapp' | 'push' | null = null
   if (plan.send.length > 0) {
     const written: OutboundMessage[][] = []
     let meta: ReturnType<typeof guidedMeta> | undefined
@@ -281,10 +294,32 @@ async function sendMoment(link: LinkWithUser, planned: PlannedMessage[], now: Da
       written.push(withText(p.messages, w.text))
       meta ??= guidedMeta(w)
     }
-    const outcome = await sendProactive(link, mergeMessages(written), plan.send[0].kind, now, { meta })
-    delivery = outcome.status === 'ok' ? 'ok' : outcome.error === 'outside-24h-window' ? 'outside-window' : 'error'
+    const merged = mergeMessages(written)
+    const outcome = await sendProactive(link, merged, plan.send[0].kind, now, { meta })
+    // PRO-234 (D-080): WhatsApp couldn't (outside the 24 h window without a
+    // template, or a Meta error) → the same merged message as a phone
+    // notification, once a day per kind. Still ONE message: one unit at most.
+    const fallback =
+      outcome.status === 'ok'
+        ? null
+        : await pushFallbackForProactive(link.userId, plan.send[0].kind, merged.map((m) => m.text).join('\n'), isoDate, now)
+    ;({ delivery, channel } = momentDelivery(outcome, fallback))
   }
-  await recordNotices({ budgetKey, userId: link.userId, entries: logEntriesFor(plan, delivery), channel: 'whatsapp', now })
+  await recordNotices({ budgetKey, userId: link.userId, entries: logEntriesFor(plan, delivery), channel, now })
+}
+
+/**
+ * Pure: how one moment went out (PRO-215 + PRO-234). WhatsApp first; the
+ * phone notification only as its fallback. Either way it is the same single
+ * message, so the budget log gets one `enviado` (one unit) at most.
+ */
+export function momentDelivery(
+  whatsapp: ChannelOutcome,
+  fallback: ChannelOutcome | null,
+): { delivery: DeliveryResult; channel: 'whatsapp' | 'push' | null } {
+  if (whatsapp.status === 'ok') return { delivery: 'ok', channel: 'whatsapp' }
+  if (fallback?.status === 'ok') return { delivery: 'ok', channel: 'push' }
+  return { delivery: whatsapp.error === 'outside-24h-window' ? 'outside-window' : 'error', channel: null }
 }
 
 /**
@@ -359,13 +394,21 @@ export async function runProactiveTick(now: Date = new Date()): Promise<void> {
       // Only touch the DB for cooldowns inside a window that could fire.
       if (!anyProactiveWindow(parts, times.breakfast, times.dinner)) continue
       const since = new Date(now.getTime() - WEEKLY_NUDGE_COOLDOWN_MS)
-      const [recent, noticed] = await Promise.all([store.recentOutboundKinds(link.phone, since), recentNoticeKinds(link.userId, since)])
+      const [recent, noticed, fellBack, userPrefs] = await Promise.all([
+        store.recentOutboundKinds(link.phone, since),
+        recentNoticeKinds(link.userId, since),
+        // PRO-234: a kind that already went out today as a phone notification
+        // (WhatsApp couldn't) counts as sent too.
+        fallbackKindsToday(link.userId, parts.isoDate),
+        // PRO-237: the «Avisos» switches (users.alert_prefs).
+        loadUserAlertPrefs(link.userId),
+      ])
       const sentRecently: Partial<Record<ProactiveKind, boolean>> = {}
       for (const k of PROACTIVE_KINDS) {
         // PRO-215: an aviso merged into another message or dropped by the
         // weekly budget is in its cooldown too (logged in notice_candidates).
         const at = [recent.get(k), noticed.get(k)].filter((d): d is Date => Boolean(d)).sort((a, b) => b.getTime() - a.getTime())[0]
-        sentRecently[k] = Boolean(at && now.getTime() - at.getTime() < COOLDOWN_MS[k])
+        sentRecently[k] = Boolean(at && now.getTime() - at.getTime() < COOLDOWN_MS[k]) || fellBack.has(k)
       }
       // PRO-244: no shopping reminder in the first hours after the sign-up.
       if (isShoppingReminderWindow(parts) && !sentRecently.shopping_reminder) {
@@ -377,7 +420,9 @@ export async function runProactiveTick(now: Date = new Date()): Promise<void> {
         parts,
         breakfastTime: times.breakfast,
         dinnerTime: times.dinner,
-        prefs: { ...(link.prefs ?? {}), ...household.offFor(link.userId) },
+        // A kind is off if WhatsApp's prefs, «Avisos» (PRO-237) or the household
+        // recipient rule (PRO-236: shopping/Sunday to one person) say so.
+        prefs: mergeAlertPrefs(link.prefs, userPrefs, household.offFor(link.userId)),
         sentRecently,
         todayDay: () => loadTodayDay(link.userId, parts),
         todayDinner: () => (dinnerCache ??= loadTodayDinner(link.userId, parts)),
@@ -398,7 +443,7 @@ export async function runProactiveTick(now: Date = new Date()): Promise<void> {
         webUrl: env.WEB_PUBLIC_URL,
       })
       if (planned.length === 0) continue
-      await sendMoment(link, planned, now)
+      await sendMoment(link, planned, parts.isoDate, now)
     } catch (err: any) {
       console.error(`[whatsapp] proactive tick failed for ${link.userId}:`, err?.message ?? err)
     }

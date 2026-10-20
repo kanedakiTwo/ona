@@ -13,7 +13,6 @@ import {
   templateParamFrom,
   formatDailyBrief,
   planProactive,
-  combineDelivery,
   WEEKLY_NUDGE_TEXT,
   type MadridParts,
 } from '../services/whatsapp/proactive.js'
@@ -212,22 +211,6 @@ describe('planProactive', () => {
     expect(kindEnabled({}, 'daily_brief')).toBe(false)
     expect(kindEnabled({ daily_brief: true }, 'daily_brief')).toBe(true)
     expect(kindEnabled({ daily_brief: false }, 'daily_brief')).toBe(false)
-  })
-})
-
-describe('combineDelivery (prep alerts over push + WhatsApp)', () => {
-  it('is sent when either channel delivered', () => {
-    expect(combineDelivery({ status: 'ok' }, { status: 'skipped' })).toEqual({ status: 'sent', errorMessage: null })
-    expect(combineDelivery({ status: 'error', error: 'push-not-configured' }, { status: 'ok' })).toEqual({ status: 'sent', errorMessage: null })
-  })
-  it('keeps the legacy failure when push is not configured and WhatsApp is not linked', () => {
-    expect(combineDelivery({ status: 'error', error: 'push-not-configured' }, { status: 'skipped' })).toEqual({
-      status: 'failed',
-      errorMessage: 'push-not-configured',
-    })
-  })
-  it('reports both errors', () => {
-    expect(combineDelivery({ status: 'error', error: 'boom' }, { status: 'error', error: 'graph 500' }).errorMessage).toBe('boom · whatsapp: graph 500')
   })
 })
 

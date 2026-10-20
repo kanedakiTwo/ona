@@ -85,6 +85,12 @@ export const users = pgTable('users', {
   newsletterConsentAt: timestamp('newsletter_consent_at', { withTimezone: true }),
   newsletterConsentVersion: text('newsletter_consent_version'),
   /**
+   * The «Avisos» screen's switches per alert kind (PRO-237, D-080;
+   * specs/notifications.md): `{ prep_alerts: false }` = off on every channel.
+   * Missing key = on. Kept in sync with `whatsapp_links.prefs` on every write.
+   */
+  alertPrefs: jsonb('alert_prefs').notNull().default({}).$type<Record<string, boolean>>(),
+  /**
    * Explicit consent for health data (RGPD art. 9, PRO-21): when it was given,
    * which text version, and when it was withdrawn. Both dates stay as the
    * record; it is in force when consent_at is later than withdrawn_at.

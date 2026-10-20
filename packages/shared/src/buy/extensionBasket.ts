@@ -5,7 +5,7 @@
  */
 import type { BuyableUnit } from '../types/shopping.js'
 import type { ShopOrderLine } from '../types/shopOrders.js'
-import type { BasketLine } from '../types/basketExtension.js'
+import type { BasketLine, BasketLineOrigin, BasketSnapshotLine } from '../types/basketExtension.js'
 import { buyRuleByKey, normalizeBuyName, orderQtyInGrams, pieceCount, toOrderQty } from './convert.js'
 import { shoppingGroupOf } from './listGroup.js'
 
@@ -211,6 +211,34 @@ export function buildExtensionBasket(lines: ShopOrderLine[]): BasketLine[] {
     else out.push(basketLine(line))
   }
   return out
+}
+
+/**
+ * De dónde viene una línea del pedido, para la foto `cesta`: `regla` si la escribió una regla de
+ * compra (con su `ruleKey`); `catalogo` si viene de un ingrediente del catálogo sin regla; si no,
+ * `tecleado`. Un grupo de una línea fusionada (`l3.2`) lleva el nombre de un artículo de la lista,
+ * que pudo teclearse: sin regla, nunca cuenta como de catálogo.
+ */
+export function basketLineOrigin(
+  line: Pick<ShopOrderLine, 'ruleKey' | 'ingredientId'> | null | undefined,
+  group = false,
+): { origen: BasketLineOrigin; ruleKey: string | null } {
+  const ruleKey = line?.ruleKey ?? null
+  if (ruleKey) return { origen: 'regla', ruleKey }
+  if (!group && line?.ingredientId) return { origen: 'catalogo', ruleKey: null }
+  return { origen: 'tecleado', ruleKey: null }
+}
+
+/**
+ * La foto de la cesta que se guarda con cada resultado: clave, nombre y elección de cada línea de
+ * `buildExtensionBasket(lines)`, con el origen de su línea del pedido (`basketLineOrigin`).
+ */
+export function basketSnapshot(lines: ShopOrderLine[]): BasketSnapshotLine[] {
+  const byKey = new Map(lines.map((l) => [l.key, l]))
+  return buildExtensionBasket(lines).map((b) => {
+    const [lineKey, member] = b.key.split('.')
+    return { key: b.key, name: b.name, choice: b.choice, ...basketLineOrigin(byKey.get(lineKey), member !== undefined) }
+  })
 }
 
 /**

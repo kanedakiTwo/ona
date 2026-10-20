@@ -89,6 +89,23 @@ export type BasketUndoResult =
   | { ok: true; restadas: number }
   | { ok: false; error: 'nada_que_deshacer' | 'sin_sesion' | 'contrato' | 'red' }
 
+/** De dónde viene una línea de la cesta: una regla de compra, el catálogo (un ingrediente de receta) o lo que tecleó el hogar. */
+export const BASKET_LINE_ORIGINS = ['regla', 'catalogo', 'tecleado'] as const
+export type BasketLineOrigin = (typeof BASKET_LINE_ORIGINS)[number]
+
+/**
+ * Una línea de la foto `cesta`: clave, nombre y elección, y de dónde viene (`origen`, con la
+ * `ruleKey` de su regla). `origen` y `ruleKey` faltan en las fotos guardadas antes de existir:
+ * esas líneas cuentan como `tecleado`.
+ */
+export interface BasketSnapshotLine {
+  key: string
+  name: string
+  choice: string | null
+  origen?: BasketLineOrigin
+  ruleKey?: string | null
+}
+
 /** Lo que guarda la API en `shop_orders.extension_result`. */
 export interface StoredBasketResult extends BasketSendResult {
   recibidoAt: string
@@ -97,9 +114,9 @@ export interface StoredBasketResult extends BasketSendResult {
   /** envioId de los envíos de este pedido que se deshicieron. */
   deshechos: string[]
   /**
-   * La cesta tal como se mandó (clave, nombre y elección de cada línea), para
-   * saber qué era cada clave aunque las líneas del pedido cambien después.
+   * La cesta tal como se mandó (clave, nombre, elección y origen de cada línea),
+   * para saber qué era cada clave aunque las líneas del pedido cambien después.
    * Falta en los resultados guardados antes de existir.
    */
-  cesta?: Array<{ key: string; name: string; choice: string | null }>
+  cesta?: BasketSnapshotLine[]
 }

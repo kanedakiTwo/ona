@@ -16,6 +16,7 @@ import { AdminAccountDeletionError, deleteAccount } from '../services/accountDel
 import { cancelSubscriptionsPaidBy } from '../services/billing.js'
 import { onboardingStatus, saveOnboarding } from '../services/onboarding.js'
 import { analyzeOnboardingIntoMemory, trackOnboardingAnalysis } from '../services/onboardingMemoryAnalysis.js'
+import { refineHouseholdSoon } from '../services/profile/refiner.js'
 import {
   getHealthConsent,
   grantHealthConsent,
@@ -233,12 +234,16 @@ router.post('/user/:id/onboarding', validate(onboardingSchema), async (req: Auth
     // memory and, since PRO-242, the weekly template's diners, in the
     // background. The first POST /menu/generate waits for it at most 15 s.
     const userId = req.params.id
-    void trackOnboardingAnalysis(
+    const analysis = trackOnboardingAnalysis(
       userId,
       analyzeOnboardingIntoMemory(userId, {
         adults, kidsCount, cookingFreq, favoriteDishes, priority, weekdayCooking, cookingNote,
       }),
-    ).catch((err) => console.warn('[onboarding-analysis] failed:', err?.message ?? err))
+    )
+    analysis.catch((err) => console.warn('[onboarding-analysis] failed:', err?.message ?? err))
+    // PRO-320: then a pass of the ficha's refiner at the moment (not at night),
+    // registered the same way so the first menu waits for it too (≤ 15 s).
+    void trackOnboardingAnalysis(userId, refineHouseholdSoon(userId, 'onboarding', analysis))
 
     res.json(updated)
   } catch (err) {

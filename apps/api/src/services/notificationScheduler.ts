@@ -722,11 +722,13 @@ async function tickOnce(): Promise<true> {
     console.error('[notificationScheduler] conversation review failed:', err)
   }
 
-  // Household ficha (PRO-152, in the shadow): after 03:00 Madrid send the
-  // nightly refiner's batch for yesterday (once); collect ended batches.
+  // Household ficha (PRO-152): after 03:00 Madrid send the nightly refiner's
+  // batch for yesterday (once); on Mondays from 04:00 the weekly pass
+  // (PRO-320); collect ended batches.
   try {
     const r = await runProfileRefinerIfDue(now)
     if (r?.submit) console.log(`[refiner] ${r.submit.day}: ${r.submit.status}, ${r.submit.requested} hogares, omitidos ${JSON.stringify(r.submit.skipped)}`)
+    if (r?.weekly) console.log(`[refiner] repaso semanal ${r.weekly.day}: ${r.weekly.status}, ${r.weekly.requested} hogares, omitidos ${JSON.stringify(r.weekly.skipped)}`)
     if (r?.collected) console.log(`[refiner] ${r.collected} fichas refinadas`)
   } catch (err) {
     console.error('[notificationScheduler] profile refiner failed:', err)

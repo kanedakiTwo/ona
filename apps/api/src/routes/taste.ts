@@ -30,8 +30,11 @@ import {
   getTasteState,
   recipeExists,
   saveVerdict,
+  tasteRoundEnded,
   tasteStatus,
+  verdictCount,
 } from '../services/tasteStore.js'
+import { refineHouseholdSoon } from '../services/profile/refiner.js'
 import { getMemoryForUser } from '../services/userMemoryStore.js'
 
 const router = Router()
@@ -145,6 +148,11 @@ router.post('/taste', authMiddleware, validate(tasteVerdictSchema), async (req: 
       facts = []
     }
     res.json({ ok: true, facts })
+    // PRO-320: a round of 10 just ended → a pass of the ficha's refiner at the moment (background).
+    void Promise.resolve()
+      .then(() => verdictCount(userId))
+      .then((n) => (tasteRoundEnded(n, TASTE_BATCH_SIZE) ? refineHouseholdSoon(userId, 'afina') : undefined))
+      .catch(() => undefined)
   } catch (err) {
     console.error('[taste] save error:', err)
     res.status(500).json({ error: 'Internal server error' })

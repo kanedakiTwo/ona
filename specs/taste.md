@@ -34,7 +34,7 @@ Before PRO-197 the cards ignored allergies and diets. Miguel (2026-10-18): an au
 ## API
 
 - `GET /taste/next?limit=10&exclude=<ids>&avoid=carne,pescado` → `{ cards: TasteCard[], source: 'starter'|'ai'|'variety', rated, total }`. `exclude` = cards already in the user's hands; `avoid` = groups dropped this session
-- `POST /taste` `{ recipeId, verdict: 'love'|'like'|'nope'|'skip', reason?: { kind: 'ingredient'|'dish'|'long'|'other'|'none', text? } }` → upsert, idempotent per recipe (the last verdict wins; a reason is kept only on «nope»). Catalogue recipes only (404 otherwise). Returns the memory facts written
+- `POST /taste` `{ recipeId, verdict: 'love'|'like'|'nope'|'skip', reason?: { kind: 'ingredient'|'dish'|'long'|'other'|'none', text? } }` → upsert, idempotent per recipe (the last verdict wins; a reason is kept only on «nope»). Catalogue recipes only (404 otherwise). Returns the memory facts written. When the user's verdict count reaches a multiple of 10 (a round ended, `tasteRoundEnded`), a pass of the ficha's refiner at the moment runs in the background (PRO-320, at most one every 20 minutes per household; see [Ficha del hogar → At the moment and every week](./household-profile.md))
 - `DELETE /taste/:recipeId` · `GET /taste/verdicts` (name, photo, verdict, reason) · `GET /taste/status` (`rated`, `total`, `showIntro`, `showCard`, `offeredInOnboarding`, `flags`) · `POST /taste/offers { event: 'intro_start'|'intro_later'|'card_dismiss'|'onboarding' }` · `POST /taste/flags { group }`
 - All per-route auth (`routes/taste.ts`)
 

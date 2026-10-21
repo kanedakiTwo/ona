@@ -1013,6 +1013,8 @@ const completeOnboarding: SkillDefinition = {
     }
     // No restrictions or consent here: health data never goes through WhatsApp.
     await saveOnboarding(userId, { adults, kidsCount, cookingFreq: cookingFreq!, favoriteDishes, priority }, db)
+    // PRO-320: a pass of the ficha's refiner at the moment (in the background).
+    void import('../profile/refiner.js').then((m) => m.refineHouseholdSoon(userId, 'onboarding')).catch(() => undefined)
     // Same first menu as the web sign-up (PRO-65, PRO-244): it starts today
     // (days already gone are not generated) and, Friday to Sunday, next week
     // comes too. The reply (and the WhatsApp picture) shows this week from

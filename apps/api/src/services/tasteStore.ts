@@ -172,6 +172,17 @@ export async function saveVerdict(
     })
 }
 
+/** How many verdicts the user has (skips included: a card answered is a card seen). */
+export async function verdictCount(userId: string, db: Db = defaultDb): Promise<number> {
+  const [r] = await db.select({ n: sql<number>`count(*)::int` }).from(recipeVerdicts).where(eq(recipeVerdicts.userId, userId))
+  return Number(r?.n ?? 0)
+}
+
+/** Pure: a round of «Afina tu menú» (`TASTE_BATCH_SIZE` cards) has just ended (PRO-320). */
+export function tasteRoundEnded(count: number, batchSize: number): boolean {
+  return count > 0 && count % batchSize === 0
+}
+
 export async function deleteVerdict(userId: string, recipeId: string, db: Db = defaultDb): Promise<void> {
   await db.delete(recipeVerdicts).where(and(eq(recipeVerdicts.userId, userId), eq(recipeVerdicts.recipeId, recipeId)))
 }

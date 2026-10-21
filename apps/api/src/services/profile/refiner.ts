@@ -90,6 +90,29 @@ export const REFINER_FEATURE = 'ficha'
  * the discount is applied here, on the recorded cost.
  */
 export const BATCH_PRICE_FACTOR = 0.5
+/**
+ * The three passes (PRO-320): every night over the day that ended; **at the
+ * moment** for one household, when the sign-up or a round of «Afina tu menú»
+ * ends; and a **weekly** batch over the last 4 weeks for the slow patterns.
+ * Each writes with its own origin.
+ */
+export type RefinerKind = 'nightly' | 'realtime' | 'weekly'
+export const REFINER_ORIGIN: Record<RefinerKind, 'ai_nightly' | 'ai_realtime' | 'ai_weekly'> = {
+  nightly: 'ai_nightly',
+  realtime: 'ai_realtime',
+  weekly: 'ai_weekly',
+}
+/** What triggers a pass at the moment. */
+export type RealtimeTrigger = 'onboarding' | 'afina'
+/** A household gets at most one pass at the moment every this many minutes (several rounds of «Afina» in a row). */
+export const REALTIME_COOLDOWN_MINUTES = 20
+/** The weekly pass: Mondays from 04:00 Madrid (after the nightly batch), over the 28 days that ended on Sunday. */
+export const WEEKLY_REFINER_WEEKDAY = 0
+export const WEEKLY_REFINER_HOUR = 4
+export const WEEKLY_REFINER_DAYS = 28
+/** Each day of the weekly pass is cut at this size, and the four weeks at the total (oldest days go first). */
+export const WEEKLY_DAY_MAX_CHARS = 3_000
+export const WEEKLY_SIGNALS_MAX_CHARS = 40_000
 /** Statuses of a household's subscription that let the refiner run after the beta. */
 export const REFINER_SUBSCRIPTION_STATUSES = ['trialing', 'active'] as const
 
@@ -300,13 +323,25 @@ export function formatFicha(ctx: RefinerContext): string {
   return lines.join('\n')
 }
 
+/** Pure: what this pass is for, before the ficha (the system prompt is the same, and cached, for the three). */
+export function refinerPassNote(kind: RefinerKind, trigger?: RealtimeTrigger): string {
+  if (kind === 'realtime') {
+    const what = trigger === 'afina' ? 'una tanda de «Afina tu menú» (lo que le apetece y lo que no, con el porqué)' : 'el alta (sus respuestas)'
+    return `Pasada al momento: este hogar acaba de terminar ${what}. Apunta ya lo que hoy está claro, para que su próximo menú salga de la ficha; lo dudoso déjalo para la noche.`
+  }
+  if (kind === 'weekly') {
+    return `Repaso semanal: <senales> son las últimas ${WEEKLY_REFINER_DAYS / 7} semanas, día a día. Busca solo los patrones lentos que una noche no ve: cada cuánto vuelve un plato (dish_frequency, «cada 15 días pide ceviche»), platos fijos de un día (fixed_dish), comidas que se saltan (skipped_meal), gustos que se repiten (affinity). Necesita al menos dos o tres veces para ser un patrón; no repitas lo que la ficha ya dice.`
+  }
+  return 'Pasada nocturna: <senales> es lo que pasó ese día.'
+}
+
 /** Pure: the user message. Ficha and signals go between marks, as data. */
-export function buildRefinerUserText(ctx: RefinerContext, signalsText: string): string {
-  return `Día: ${ctx.day}\n\n<ficha>\n${formatFicha(ctx)}\n</ficha>\n\n<senales>\n${signalsText}\n</senales>\n\nDevuelve solo los cambios, en el formato pedido.`
+export function buildRefinerUserText(ctx: RefinerContext, signalsText: string, kind: RefinerKind = 'nightly', trigger?: RealtimeTrigger): string {
+  return `Día: ${ctx.day}\n${refinerPassNote(kind, trigger)}\n\n<ficha>\n${formatFicha(ctx)}\n</ficha>\n\n<senales>\n${signalsText}\n</senales>\n\nDevuelve solo los cambios, en el formato pedido.`
 }
 
 /** Pure: one Message Batches request (Sonnet 5.5, adaptive thinking, structured output). */
-export function buildRefinerRequest(ctx: RefinerContext, signalsText: string): { custom_id: string; params: Anthropic.MessageCreateParamsNonStreaming } {
+export function buildRefinerRequest(ctx: RefinerContext, signalsText: string, kind: RefinerKind = 'nightly', trigger?: RealtimeTrigger): { custom_id: string; params: Anthropic.MessageCreateParamsNonStreaming } {
   return {
     custom_id: ctx.householdId,
     params: {
@@ -314,7 +349,7 @@ export function buildRefinerRequest(ctx: RefinerContext, signalsText: string): {
       max_tokens: REFINER_MAX_TOKENS,
       thinking: { type: 'adaptive' },
       system: [{ type: 'text', text: REFINER_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
-      messages: [{ role: 'user', content: buildRefinerUserText(ctx, signalsText) }],
+      messages: [{ role: 'user', content: buildRefinerUserText(ctx, signalsText, kind, trigger) }],
       output_config: { effort: REFINER_EFFORT, format: { type: 'json_schema', schema: REFINER_OUTPUT_SCHEMA as any } },
     } as Anthropic.MessageCreateParamsNonStreaming,
   }
@@ -388,8 +423,9 @@ const defaultQuestion = (type: string) => `¿Sigue siendo así lo que nos contas
  * applied (health, user facts, own ficha only, 10 changes). Facts are read
  * from `ctx` (the ficha now) through `refs` (what the model saw).
  */
-export function planRefinement(ctx: RefinerContext, refs: RefinerRefs, output: RefinerOutput, opts: { maxChanges?: number } = {}): RefinerPlan {
+export function planRefinement(ctx: RefinerContext, refs: RefinerRefs, output: RefinerOutput, opts: { maxChanges?: number; origin?: 'ai_nightly' | 'ai_realtime' | 'ai_weekly' } = {}): RefinerPlan {
   const max = opts.maxChanges ?? REFINER_MAX_CHANGES
+  const origin = opts.origin ?? 'ai_nightly'
   const ops: PlannedOp[] = []
   const discarded: Discarded[] = []
   const factsById = new Map(ctx.facts.map((f) => [f.id, f]))
@@ -473,7 +509,7 @@ export function planRefinement(ctx: RefinerContext, refs: RefinerRefs, output: R
       subject: subject.userId ? { kind: 'user', userId: subject.userId } : subject.personId ? { kind: 'person', personId: subject.personId } : { kind: 'household' },
       type: factType,
       value,
-      origin: 'ai_nightly',
+      origin,
       confidence: c.confidence,
       evidence,
     })
@@ -514,7 +550,7 @@ export function planRefinement(ctx: RefinerContext, refs: RefinerRefs, output: R
       discarded.push({ reason: 'health', op: 'question', type: factType })
       continue
     }
-    pushQuestion(subject, q.question, factType, 'Pregunta del refinador nocturno', 'question')
+    pushQuestion(subject, q.question, factType, origin === 'ai_weekly' ? 'Pregunta del repaso semanal' : origin === 'ai_realtime' ? 'Pregunta de la pasada al momento' : 'Pregunta del refinador nocturno', 'question')
   }
 
   // At most N changes a night, in the model's order of importance.
@@ -673,42 +709,43 @@ async function loadContextForRefs(householdId: string, day: string, refs: Refine
 const subjectCols = (s: Subject) => ({ subjectUserId: s.userId, subjectPersonId: s.personId })
 
 /** Write a plan: facts, questions, portrait and one history row per change. Returns the changes written. */
-export async function applyRefinerPlan(householdId: string, plan: RefinerPlan, opts: { db?: Db; model?: string; now?: Date } = {}): Promise<number> {
+export async function applyRefinerPlan(householdId: string, plan: RefinerPlan, opts: { db?: Db; model?: string; now?: Date; origin?: 'ai_nightly' | 'ai_realtime' | 'ai_weekly' } = {}): Promise<number> {
   const db = opts.db ?? defaultDb
   const now = opts.now ?? new Date()
   const model = opts.model ?? REFINER_MODEL
+  const origin = opts.origin ?? 'ai_nightly'
   if (!plan.ops.length) return 0
   await db.transaction(async (tx) => {
     for (const op of plan.ops) {
       if (op.kind === 'add') {
         const [row] = await tx.insert(profileFacts).values({
-          householdId, ...subjectCols(op.subject), type: op.type, value: op.value as any, origin: 'ai_nightly',
+          householdId, ...subjectCols(op.subject), type: op.type, value: op.value as any, origin,
           confidence: op.confidence, evidence: op.evidence, validUntil: op.validUntil,
         }).returning({ id: profileFacts.id })
         await tx.insert(profileChanges).values({
           householdId, factId: row.id, action: 'fact_added', factType: op.type, before: null,
-          after: { value: op.value, confidence: op.confidence, validUntil: op.validUntil?.toISOString() ?? null }, reason: op.reason, origin: 'ai_nightly',
+          after: { value: op.value, confidence: op.confidence, validUntil: op.validUntil?.toISOString() ?? null }, reason: op.reason, origin,
         })
       } else if (op.kind === 'update') {
         await tx.update(profileFacts).set({
-          value: op.value as any, confidence: op.confidence, evidence: op.evidence, validUntil: op.validUntil, origin: 'ai_nightly', updatedAt: now,
+          value: op.value as any, confidence: op.confidence, evidence: op.evidence, validUntil: op.validUntil, origin, updatedAt: now,
         }).where(and(eq(profileFacts.id, op.fact.id), eq(profileFacts.householdId, householdId)))
         await tx.insert(profileChanges).values({
           householdId, factId: op.fact.id, action: 'fact_updated', factType: op.fact.type,
           before: { value: op.fact.value, confidence: op.fact.confidence, origin: op.fact.origin },
-          after: { value: op.value, confidence: op.confidence, validUntil: op.validUntil?.toISOString() ?? null }, reason: op.reason, origin: 'ai_nightly',
+          after: { value: op.value, confidence: op.confidence, validUntil: op.validUntil?.toISOString() ?? null }, reason: op.reason, origin,
         })
       } else if (op.kind === 'retire') {
         await tx.update(profileFacts).set({ status: 'retired', updatedAt: now })
           .where(and(eq(profileFacts.id, op.fact.id), eq(profileFacts.householdId, householdId)))
         await tx.insert(profileChanges).values({
           householdId, factId: op.fact.id, action: 'fact_retired', factType: op.fact.type,
-          before: { value: op.fact.value, confidence: op.fact.confidence, origin: op.fact.origin }, after: null, reason: op.reason, origin: 'ai_nightly',
+          before: { value: op.fact.value, confidence: op.fact.confidence, origin: op.fact.origin }, after: null, reason: op.reason, origin,
         })
       } else if (op.kind === 'question') {
-        await tx.insert(profileQuestions).values({ householdId, ...subjectCols(op.subject), question: op.question, factType: op.factType, origin: 'ai_nightly' })
+        await tx.insert(profileQuestions).values({ householdId, ...subjectCols(op.subject), question: op.question, factType: op.factType, origin })
         await tx.insert(profileChanges).values({
-          householdId, action: 'question_added', factType: op.factType, before: null, after: { question: op.question }, reason: op.reason, origin: 'ai_nightly',
+          householdId, action: 'question_added', factType: op.factType, before: null, after: { question: op.question }, reason: op.reason, origin,
         })
       } else {
         const [prev] = await tx.select().from(householdProfiles).where(eq(householdProfiles.householdId, householdId)).limit(1)
@@ -720,7 +757,7 @@ export async function applyRefinerPlan(householdId: string, plan: RefinerPlan, o
         }
         await tx.insert(profileChanges).values({
           householdId, action: 'portrait_updated', before: prev ? { portrait: prev.portrait, version: prev.version } : null,
-          after: { portrait: op.text, version: (prev?.version ?? 0) + 1 }, reason: 'Retrato del refinador nocturno', origin: 'ai_nightly',
+          after: { portrait: op.text, version: (prev?.version ?? 0) + 1 }, reason: origin === 'ai_weekly' ? 'Retrato del repaso semanal' : origin === 'ai_realtime' ? 'Retrato de la pasada al momento' : 'Retrato del refinador nocturno', origin,
         })
       }
     }
@@ -737,6 +774,8 @@ export interface RefinerDeps {
   /** Has this owner used up this month's AI allowance? */
   capExceeded: (userId: string, now: Date) => Promise<boolean>
   collectSignals: (householdId: string, day: string) => Promise<HouseholdDaySignals>
+  /** The weekly pass's signals: the 28 days that ended the day before `day` (PRO-320). */
+  collectWeekSignals?: (householdId: string, day: string) => Promise<HouseholdDaySignals>
   loadContext: (householdId: string, day: string, members: SignalMember[]) => Promise<RefinerContext>
 }
 
@@ -747,6 +786,7 @@ export function defaultRefinerDeps(db: Db = defaultDb): RefinerDeps {
     listCandidates: () => listRefinerCandidates(db),
     capExceeded: async (userId, now) => (await spendCapStatus(userId, { now, db })).exceeded,
     collectSignals: (householdId, day) => collectHouseholdDaySignals(householdId, day, { db }),
+    collectWeekSignals: (householdId, day) => collectHouseholdWeeksSignals(householdId, day, { db }),
     loadContext: (householdId, day, members) => loadRefinerContext(householdId, day, members, db),
   }
 }
@@ -789,22 +829,38 @@ export interface SubmitResult {
 
 /** Send the night's batch for `day` (once: a run row per day). */
 export async function submitNightlyRefinement(day: string, now: Date, deps: RefinerDeps): Promise<SubmitResult> {
+  return submitRefinementBatch('nightly', day, now, deps)
+}
+
+/**
+ * The weekly pass (PRO-320): one batch on Monday `day` over the 28 days that
+ * ended on Sunday, for the slow patterns; origin `ai_weekly`. Same choice of
+ * households (plan, pause, cap, activity in those weeks), same rules, same
+ * batch price.
+ */
+export async function submitWeeklyRefinement(day: string, now: Date, deps: RefinerDeps): Promise<SubmitResult> {
+  const week = deps.collectWeekSignals ?? ((h: string, d: string) => collectHouseholdWeeksSignals(h, d, { db: deps.db }))
+  return submitRefinementBatch('weekly', day, now, { ...deps, collectSignals: week })
+}
+
+/** Send a batch of `kind` for `day` (once: a run row per day and kind). */
+async function submitRefinementBatch(kind: 'nightly' | 'weekly', day: string, now: Date, deps: RefinerDeps): Promise<SubmitResult> {
   const [existing] = await deps.db.select({ id: profileRefinerRuns.id }).from(profileRefinerRuns)
-    .where(and(eq(profileRefinerRuns.day, day), eq(profileRefinerRuns.kind, 'nightly'))).limit(1)
+    .where(and(eq(profileRefinerRuns.day, day), eq(profileRefinerRuns.kind, kind))).limit(1)
   if (existing) return { day, status: 'already', requested: 0, skipped: {} }
 
   const { selected, skipped } = await selectHouseholdsToRefine(day, now, deps)
   if (!selected.length) {
-    await deps.db.insert(profileRefinerRuns).values({ day, kind: 'nightly', status: 'empty', model: REFINER_MODEL, skipped, endedAt: now }).onConflictDoNothing()
+    await deps.db.insert(profileRefinerRuns).values({ day, kind, status: 'empty', model: REFINER_MODEL, skipped, endedAt: now }).onConflictDoNothing()
     return { day, status: 'empty', requested: 0, skipped }
   }
   // Claim the day before calling Anthropic, so two ticks never send it twice.
   const [run] = await deps.db.insert(profileRefinerRuns)
-    .values({ day, kind: 'nightly', status: 'submitted', model: REFINER_MODEL, requested: selected.length, skipped })
+    .values({ day, kind, status: 'submitted', model: REFINER_MODEL, requested: selected.length, skipped })
     .onConflictDoNothing().returning({ id: profileRefinerRuns.id })
   if (!run) return { day, status: 'already', requested: 0, skipped: {} }
   try {
-    const batch = await deps.batch.create(selected.map((s) => buildRefinerRequest(s.ctx, s.signals.text)))
+    const batch = await deps.batch.create(selected.map((s) => buildRefinerRequest(s.ctx, s.signals.text, kind)))
     await deps.db.update(profileRefinerRuns).set({ batchId: batch.id }).where(eq(profileRefinerRuns.id, run.id))
     await deps.db.insert(profileRefinements).values(selected.map((s) => ({
       runId: run.id, householdId: s.candidate.householdId, billedUserId: s.candidate.ownerId, refs: refsOf(s.ctx),
@@ -815,6 +871,47 @@ export async function submitNightlyRefinement(day: string, now: Date, deps: Refi
     await deps.db.update(profileRefinerRuns).set({ status: 'failed', errorMessage: error, endedAt: now }).where(eq(profileRefinerRuns.id, run.id))
     return { day, status: 'failed', requested: selected.length, skipped, error }
   }
+}
+
+// ─── Weekly signals (PRO-320) ──────────────────────────────────
+
+/**
+ * Pure: several days of one household as one text for the weekly pass — the
+ * days with activity, oldest first, each with its own header; when they
+ * don't fit, the oldest days go first and a line says how many.
+ */
+export function combineDaySignals(householdId: string, endDay: string, days: readonly HouseholdDaySignals[], maxChars = WEEKLY_SIGNALS_MAX_CHARS): HouseholdDaySignals {
+  const active = [...days].filter((d) => d.signals.length).sort((a, b) => a.day.localeCompare(b.day))
+  const members = [...days].sort((a, b) => b.day.localeCompare(a.day)).find((d) => d.members.length)?.members ?? []
+  if (!active.length) return { householdId, day: endDay, members, signals: [], text: 'Sin actividad en estas semanas.', omitted: 0 }
+  const kept = [...active]
+  const join = (list: HouseholdDaySignals[], dropped: number) =>
+    [dropped ? `(No caben ${dropped === 1 ? 'el día más antiguo' : `los ${dropped} días más antiguos`} con actividad)` : '', ...list.map((d) => d.text)].filter(Boolean).join('\n\n')
+  let dropped = 0
+  while (kept.length > 1 && join(kept, dropped).length > maxChars) {
+    kept.shift()
+    dropped++
+  }
+  let text = join(kept, dropped)
+  if (text.length > maxChars) text = `${text.slice(0, maxChars - 1)}…`
+  return {
+    householdId,
+    day: endDay,
+    members,
+    signals: kept.flatMap((d) => d.signals),
+    text,
+    omitted: dropped + kept.reduce((n, d) => n + d.omitted, 0),
+  }
+}
+
+/** The 28 days before `day` (Monday), each cut at `WEEKLY_DAY_MAX_CHARS`, as one text. */
+export async function collectHouseholdWeeksSignals(householdId: string, day: string, opts: { db?: Db; days?: number } = {}): Promise<HouseholdDaySignals> {
+  const n = opts.days ?? WEEKLY_REFINER_DAYS
+  const out: HouseholdDaySignals[] = []
+  for (let i = n; i >= 1; i--) {
+    out.push(await collectHouseholdDaySignals(householdId, addDays(day, -i), { db: opts.db, maxChars: WEEKLY_DAY_MAX_CHARS }))
+  }
+  return combineDaySignals(householdId, addDays(day, -1), out)
 }
 
 // ─── Following ticks: collect and apply ────────────────────────
@@ -845,9 +942,18 @@ export async function handleRefinerResult(
   row: { householdId: string; billedUserId: string | null; refs: RefinerRefs },
   day: string,
   result: BatchResultLike['result'],
-  opts: { db?: Db; now?: Date; loadContext?: (householdId: string, day: string, refs: RefinerRefs) => Promise<RefinerContext>; apply?: typeof applyRefinerPlan } = {},
+  opts: {
+    db?: Db
+    now?: Date
+    loadContext?: (householdId: string, day: string, refs: RefinerRefs) => Promise<RefinerContext>
+    apply?: typeof applyRefinerPlan
+    /** Which pass: its origin on what it writes; at the moment there is no batch discount (PRO-320). */
+    kind?: RefinerKind
+  } = {},
 ): Promise<RefinementOutcome> {
   const db = opts.db ?? defaultDb
+  const kind = opts.kind ?? 'nightly'
+  const origin = REFINER_ORIGIN[kind]
   if (result.type !== 'succeeded') {
     return { status: 'failed', applied: 0, discarded: [], error: `Resultado del lote: ${result.type}${result.error?.error?.type ? ` (${result.error.error.type})` : ''}` }
   }
@@ -859,14 +965,14 @@ export async function handleRefinerResult(
       units: anthropicUnits(result.message.usage),
       userId: row.billedUserId,
       householdId: row.householdId,
-      priceFactor: BATCH_PRICE_FACTOR,
+      priceFactor: kind === 'realtime' ? 1 : BATCH_PRICE_FACTOR,
     })
   }
   try {
     const output = parseRefinerMessage(result.message)
     const ctx = await (opts.loadContext ?? ((h, d, r) => loadContextForRefs(h, d, r, db)))(row.householdId, day, row.refs)
-    const plan = planRefinement(ctx, row.refs, output)
-    const applied = await (opts.apply ?? applyRefinerPlan)(row.householdId, plan, { db, now: opts.now })
+    const plan = planRefinement(ctx, row.refs, output, { origin })
+    const applied = await (opts.apply ?? applyRefinerPlan)(row.householdId, plan, { db, now: opts.now, origin })
     for (const d of plan.discarded.filter((x) => x.reason === 'health')) {
       console.warn(`[refiner] ${row.householdId} ${day}: descartado un dato de salud deducido (${d.op}, ${d.type ?? 'retrato'})`)
     }
@@ -892,7 +998,7 @@ export async function collectRefinerResults(now: Date, deps: Pick<RefinerDeps, '
       byHousehold.delete(res.custom_id)
       const out = await handleRefinerResult(
         { householdId: row.householdId, billedUserId: row.billedUserId, refs: row.refs as RefinerRefs },
-        run.day, res.result, { db: deps.db, now },
+        run.day, res.result, { db: deps.db, now, kind: run.kind === 'weekly' ? 'weekly' : 'nightly' },
       )
       await deps.db.update(profileRefinements).set({
         status: out.status, applied: out.applied, discarded: out.discarded, errorMessage: out.error ?? null, completedAt: now,
@@ -912,11 +1018,152 @@ export async function collectRefinerResults(now: Date, deps: Pick<RefinerDeps, '
  * Called from the scheduler tick: after 03:00 Madrid, send the batch for the
  * day that just ended (once); on every tick, collect the batches that ended.
  */
-export async function runProfileRefinerIfDue(now: Date = new Date(), deps?: RefinerDeps): Promise<{ submit: SubmitResult | null; collected: number } | null> {
+export async function runProfileRefinerIfDue(now: Date = new Date(), deps?: RefinerDeps): Promise<{ submit: SubmitResult | null; weekly: SubmitResult | null; collected: number } | null> {
   if (!deps && !env.ANTHROPIC_API_KEY) return null
   const d = deps ?? defaultRefinerDeps()
   const p = madridParts(now)
   const submit = p.hour >= REFINER_HOUR ? await submitNightlyRefinement(addDays(p.isoDate, -1), now, d) : null
+  // PRO-320: on Mondays from 04:00, the weekly pass over the four weeks that ended on Sunday.
+  const weekly = p.weekday === WEEKLY_REFINER_WEEKDAY && p.hour >= WEEKLY_REFINER_HOUR ? await submitWeeklyRefinement(p.isoDate, now, d) : null
   const collected = await collectRefinerResults(now, d)
-  return { submit: submit?.status === 'already' ? null : submit, collected }
+  return { submit: submit?.status === 'already' ? null : submit, weekly: weekly?.status === 'already' ? null : weekly, collected }
+}
+
+// ─── At the moment (PRO-320) ───────────────────────────────────
+
+/** One request, not a batch: the slice of `client.messages` the pass at the moment uses (a fake in tests). */
+export type RefinerMessageClient = (params: Anthropic.MessageCreateParamsNonStreaming) => Promise<{ content: Array<{ type: string; text?: string }>; stop_reason: string | null; usage: any }>
+
+export const anthropicMessageClient: RefinerMessageClient = async (params) =>
+  (await client().messages.create(params)) as unknown as { content: Array<{ type: string; text?: string }>; stop_reason: string | null; usage: any }
+
+export interface RealtimeDeps {
+  db: Db
+  create: RefinerMessageClient
+  /** The household with its owner and plan; null when it doesn't exist. */
+  candidate: (householdId: string) => Promise<RefinerCandidate | null>
+  capExceeded: (userId: string, now: Date) => Promise<boolean>
+  collectSignals: (householdId: string, day: string) => Promise<HouseholdDaySignals>
+  loadContext: (householdId: string, day: string, members: SignalMember[]) => Promise<RefinerContext>
+  /** Claims the pass for the household (false = one ran in the last minutes, or one is running). */
+  claim: (householdId: string, day: string, now: Date, ownerId: string) => Promise<string | null>
+  finish: (rowId: string, out: RefinementOutcome, refs: RefinerRefs, now: Date) => Promise<void>
+  /** Writes the plan (tests capture it). */
+  apply?: typeof applyRefinerPlan
+}
+
+export type RealtimeOutcome =
+  | { status: 'skipped'; reason: SkipReason | 'cooldown' | 'no_key' | 'no_household' }
+  | (RefinementOutcome & { status: 'applied' | 'failed' })
+
+/** The household's candidate row (owner, suspension, latest plan). */
+export async function loadRefinerCandidate(householdId: string, db: Db = defaultDb): Promise<RefinerCandidate | null> {
+  const rows = rowsOf(await db.execute(sql`
+    SELECT h.id AS household_id, h.owner_id, (u.suspended_at IS NOT NULL) AS owner_suspended,
+           (SELECT s.status FROM subscriptions s WHERE s.household_id = h.id ORDER BY s.created_at DESC LIMIT 1) AS subscription_status
+      FROM households h JOIN users u ON u.id = h.owner_id
+     WHERE h.id = ${householdId}::uuid
+  `))
+  const r = rows[0]
+  if (!r) return null
+  return { householdId: String(r.household_id), ownerId: String(r.owner_id), ownerSuspended: r.owner_suspended === true || r.owner_suspended === 't', subscriptionStatus: r.subscription_status ?? null }
+}
+
+/**
+ * The claim of a pass at the moment: one run row per Madrid day (`kind`
+ * realtime) and one row per household in it, re-used through the day. A row
+ * still `pending` (running) or finished less than `REALTIME_COOLDOWN_MINUTES`
+ * ago means no.
+ */
+async function claimRealtime(db: Db, householdId: string, day: string, now: Date, ownerId: string): Promise<string | null> {
+  await db.insert(profileRefinerRuns).values({ day, kind: 'realtime', status: 'ended', model: REFINER_MODEL, requested: 0, skipped: {}, endedAt: now }).onConflictDoNothing()
+  const [run] = await db.select({ id: profileRefinerRuns.id }).from(profileRefinerRuns)
+    .where(and(eq(profileRefinerRuns.day, day), eq(profileRefinerRuns.kind, 'realtime'))).limit(1)
+  if (!run) return null
+  const since = new Date(now.getTime() - REALTIME_COOLDOWN_MINUTES * 60_000)
+  const fresh = await db.insert(profileRefinements).values({ runId: run.id, householdId, billedUserId: ownerId, refs: {}, status: 'pending' })
+    .onConflictDoUpdate({
+      target: [profileRefinements.runId, profileRefinements.householdId],
+      set: { status: 'pending', billedUserId: ownerId, applied: 0, discarded: [], errorMessage: null, completedAt: null },
+      setWhere: sql`${profileRefinements.status} <> 'pending' AND (${profileRefinements.completedAt} IS NULL OR ${profileRefinements.completedAt} < ${since})`,
+    })
+    .returning({ id: profileRefinements.id })
+  if (!fresh.length) return null
+  await db.update(profileRefinerRuns).set({ requested: sql`${profileRefinerRuns.requested} + 1` }).where(eq(profileRefinerRuns.id, run.id))
+  return fresh[0].id
+}
+
+export function defaultRealtimeDeps(db: Db = defaultDb): RealtimeDeps {
+  return {
+    db,
+    create: anthropicMessageClient,
+    candidate: (householdId) => loadRefinerCandidate(householdId, db),
+    capExceeded: async (userId, now) => (await spendCapStatus(userId, { now, db })).exceeded,
+    collectSignals: (householdId, day) => collectHouseholdDaySignals(householdId, day, { db }),
+    loadContext: (householdId, day, members) => loadRefinerContext(householdId, day, members, db),
+    claim: (householdId, day, now, ownerId) => claimRealtime(db, householdId, day, now, ownerId),
+    finish: async (rowId, out, refs, now) => {
+      await db.update(profileRefinements).set({
+        status: out.status, applied: out.applied, discarded: out.discarded, errorMessage: out.error ?? null, refs, completedAt: now,
+      }).where(eq(profileRefinements.id, rowId))
+    },
+  }
+}
+
+/**
+ * A pass of the refiner **at the moment** for one household (PRO-320): when
+ * the sign-up or a round of «Afina tu menú» ends, so the next menu already
+ * comes from the ficha. Today's signals, the same rules (`planRefinement`: no
+ * health, the user's word wins, at most 10 changes, the pause), origin
+ * `ai_realtime`; one request (not a batch: full price) to the refiner's model,
+ * its cost in `cost_events` (feature `ficha`, the household and its owner),
+ * and only under the owner's monthly cap and with a plan (or in the beta).
+ */
+export async function refineHouseholdNow(householdId: string, trigger: RealtimeTrigger, now: Date = new Date(), deps?: RealtimeDeps): Promise<RealtimeOutcome> {
+  if (!deps && !env.ANTHROPIC_API_KEY) return { status: 'skipped', reason: 'no_key' }
+  const d = deps ?? defaultRealtimeDeps()
+  const c = await d.candidate(householdId)
+  if (!c) return { status: 'skipped', reason: 'no_household' }
+  const ok = refinerEligibility({ now, subscriptionStatus: c.subscriptionStatus, ownerSuspended: c.ownerSuspended })
+  if (!ok.ok) return { status: 'skipped', reason: ok.reason }
+  if (await d.capExceeded(c.ownerId, now)) return { status: 'skipped', reason: 'spend_cap' }
+  const day = madridParts(now).isoDate
+  const signals = await d.collectSignals(householdId, day)
+  if (!signals.signals.length) return { status: 'skipped', reason: 'no_activity' }
+  if (!signals.members.length) return { status: 'skipped', reason: 'no_members' }
+  const rowId = await d.claim(householdId, day, now, c.ownerId)
+  if (!rowId) return { status: 'skipped', reason: 'cooldown' }
+  const ctx = await d.loadContext(householdId, day, signals.members)
+  const refs = refsOf(ctx)
+  let out: RefinementOutcome
+  try {
+    const message = await d.create(buildRefinerRequest(ctx, signals.text, 'realtime', trigger).params)
+    out = await handleRefinerResult({ householdId, billedUserId: c.ownerId, refs }, day, { type: 'succeeded', message }, {
+      db: d.db, now, kind: 'realtime', loadContext: async () => ctx, apply: d.apply,
+    })
+  } catch (err: any) {
+    out = { status: 'failed', applied: 0, discarded: [], error: String(err?.message ?? err).slice(0, 500) }
+  }
+  await d.finish(rowId, out, refs, now)
+  return out
+}
+
+/**
+ * From the sign-up and «Afina tu menú»: the pass at the moment for the
+ * user's household, after `after` settles (the sign-up's own analysis writes
+ * the memory, and so the ficha, first). Resolves when done; never rejects.
+ * Nothing without `ANTHROPIC_API_KEY` or in tests. The sign-up registers it
+ * like its analysis, so the first menu waits for it (at most `FIRST_MENU_WAIT_MS`).
+ */
+export async function refineHouseholdSoon(userId: string, trigger: RealtimeTrigger, after?: Promise<unknown>): Promise<void> {
+  if (!env.ANTHROPIC_API_KEY || process.env.VITEST) return
+  try {
+    await after?.catch(() => undefined)
+    const [u] = await defaultDb.select({ householdId: users.primaryHouseholdId }).from(users).where(eq(users.id, userId)).limit(1)
+    if (!u?.householdId) return
+    const out = await refineHouseholdNow(u.householdId, trigger)
+    if (out.status !== 'skipped') console.log(`[refiner] al momento (${trigger}) ${u.householdId}: ${out.status}, ${out.applied} cambios`)
+  } catch (err: any) {
+    console.warn(`[refiner] al momento (${trigger}) falló:`, err?.message ?? err)
+  }
 }

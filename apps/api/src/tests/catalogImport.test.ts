@@ -3,7 +3,7 @@
  * Three invented «pages» go through the whole pipeline with fake AI and
  * database: drafts for 4, the book's sentences never reach what is saved,
  * duplicates are caught, and the publish rule (Miguel's sources vs Cocina's
- * one-in-ten sample). No text from any real book here: every sentence is made up.
+ * review of every Cocina recipe, D-099). No text from any real book here: every sentence is made up.
  */
 import { describe, expect, it } from 'vitest'
 import {
@@ -14,7 +14,7 @@ import {
   findDuplicate,
   importCatalogBatch,
   markCookingMediumLines,
-  pickReviewSample,
+  listForReview,
   planBatchPublish,
   scaleToHouseServings,
   type BatchRecipe,
@@ -234,15 +234,14 @@ describe('pure helpers', () => {
 describe('publishing (rule of Miguel, 2026-10-16)', () => {
   const rec = (id: string, over: Partial<BatchRecipe> = {}): BatchRecipe => ({ id, name: id, status: 'draft', origin: 'cocina', auditIssues: [], allergenDoubt: false, ...over })
 
-  it('the sample is one in ten (rounded up) plus every allergen doubt', () => {
+  it('sample lists every draft of the batch (D-099), allergen doubts first', () => {
     const rows = Array.from({ length: 23 }, (_, i) => rec(`c${i}`, { allergenDoubt: i === 5 || i === 17 }))
-    let seed = 1
-    const random = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646
-    const sample = pickReviewSample(rows, random)
-    expect(sample).toEqual(expect.arrayContaining(['c5', 'c17']))
-    expect(sample.length).toBeGreaterThanOrEqual(3)
-    expect(sample.length).toBeLessThanOrEqual(5)
-    expect(pickReviewSample([rec('a')])).toEqual(['a'])
+    rows.push(rec('pub', { status: 'published' }))
+    const list = listForReview(rows)
+    expect(list).toHaveLength(23)
+    expect(list.slice(0, 2)).toEqual(['c5', 'c17'])
+    expect(list).not.toContain('pub')
+    expect(listForReview([rec('a', { reviewOk: true }), rec('b')])).toEqual(['a', 'b'])
   })
 
   it("Miguel's sources go out when they pass the audit, without him", () => {
@@ -251,14 +250,33 @@ describe('publishing (rule of Miguel, 2026-10-16)', () => {
     expect(plan.hold).toEqual([{ id: 'm2', name: 'm2', reason: 'auditoria' }])
   })
 
-  it("Cocina's wait for the sample, then for Miguel's verdict; a «no» holds the batch", () => {
-    expect(planBatchPublish([rec('a'), rec('b')]).hold.map((h) => h.reason)).toEqual(['falta_muestra', 'falta_muestra'])
-    expect(planBatchPublish([rec('a', { sampled: true }), rec('b')]).publish).toEqual([])
-    expect(planBatchPublish([rec('a', { sampled: true }), rec('b')]).hold[0].reason).toBe('muestra_sin_revisar')
-    expect(planBatchPublish([rec('a', { sampled: true, reviewOk: true }), rec('b')]).publish).toEqual(['a', 'b'])
-    const no = planBatchPublish([rec('a', { sampled: true, reviewOk: false }), rec('b')])
-    expect(no.publish).toEqual([])
-    expect(no.hold).toEqual([{ id: 'a', name: 'a', reason: 'rechazada' }, { id: 'b', name: 'b', reason: 'muestra_con_rechazos' }])
+  it("Cocina's go out one by one, only with Miguel's OK (PRO-290)", () => {
+    expect(planBatchPublish([rec('a'), rec('b')]).hold.map((h) => h.reason)).toEqual(['sin_revisar', 'sin_revisar'])
+    // A batch half reviewed: only the OKs go out, the rest wait, a «no» holds only itself.
+    const half = planBatchPublish([
+      rec('ok1', { sampled: true, reviewOk: true }),
+      rec('ok2', { sampled: true, reviewOk: true }),
+      rec('seen-no', { sampled: true, reviewOk: false }),
+      rec('unseen1', { sampled: true }),
+      rec('unseen2'),
+      rec('ok-but-audit', { reviewOk: true, auditIssues: ['sin_pasos'] }),
+      rec('done', { status: 'published', reviewOk: true }),
+    ])
+    expect(half.publish).toEqual(['ok1', 'ok2'])
+    expect(half.hold).toEqual([
+      { id: 'seen-no', name: 'seen-no', reason: 'rechazada' },
+      { id: 'unseen1', name: 'unseen1', reason: 'sin_revisar' },
+      { id: 'unseen2', name: 'unseen2', reason: 'sin_revisar' },
+      { id: 'ok-but-audit', name: 'ok-but-audit', reason: 'auditoria' },
+    ])
+    // The old rule published the whole batch once the sample was OK: no more.
+    expect(planBatchPublish([rec('a', { sampled: true, reviewOk: true }), rec('b')]).publish).toEqual(['a'])
+  })
+
+  it("a mixed batch: Miguel's out on audit, Cocina's only with his OK", () => {
+    const plan = planBatchPublish([rec('m', { origin: 'miguel' }), rec('c')])
+    expect(plan.publish).toEqual(['m'])
+    expect(plan.hold).toEqual([{ id: 'c', name: 'c', reason: 'sin_revisar' }])
   })
 })
 

@@ -7,10 +7,11 @@ import { ServiceWorkerRegistration } from "@/components/pwa/ServiceWorkerRegistr
 import { RootShell } from "@/components/shared/RootShell"
 import { isRecipeSegment } from "@/lib/recipeShell"
 import { isBareRoute } from "@/lib/routeAccess"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { usePathname } from "next/navigation"
 import { recordVisit } from "@/lib/pwa/installPrompt"
 import { reportInstalledOpen } from "@/lib/pwa/installedOpen"
+import { installPushOpenedReporter, reportPathView } from "@/lib/usageEvents"
 import { installChunkReload, installErrorReporter } from "@/lib/errorReporter"
 import { CF_BEACON_SRC, cfBeaconAttr } from "@/lib/cfBeacon"
 import "./globals.css"
@@ -79,7 +80,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     recordVisit()
     // PRO-83: count installed-app opens (aggregate only, once a day).
     reportInstalledOpen()
+    // PRO-120: a tapped notification (aggregate only).
+    return installPushOpenedReporter()
   }, [])
+
+  // PRO-120: screens seen (the API keeps one per person, screen and day) and recipes opened.
+  const prevPath = useRef<string | null>(null)
+  useEffect(() => {
+    reportPathView(pathname, prevPath.current)
+    prevPath.current = pathname
+  }, [pathname])
 
   return (
     <html

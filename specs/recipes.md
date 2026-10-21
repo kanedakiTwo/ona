@@ -41,7 +41,7 @@ Each recipe has:
 - `servings` — required, positive integer; the canonical number of diners the listed quantities cover
 - `yield` — optional human-readable string (e.g. "12 albóndigas", "1 L de salsa")
 - `prepTime`, `cookTime`, `activeTime` — minutes (integer, optional, editable). `activeTime` is the hands-on time («de trabajo»); the menu's time limits use it (else `prepTime`) and `totalTime` (else prep + cook). System recipes get the empty ones filled on boot (PRO-138, see [Menus](./menus.md) → Time to cook)
-- `totalTime` — minutes, derived by the API: sum of `step.durationMin` if all steps have it, else `prepTime + cookTime`
+- `totalTime` — minutes, derived by the API on save: sum of `step.durationMin` if all steps have it, else `prepTime + cookTime`. **System recipes (PRO-284, 2026-10-21):** on every boot the total follows the overlap rule — prep + cook − the prep that can be done while a step goes by itself (oven, low heat, pressure cooker, boiling with minutes, resting; up to half the prep, never more than those steps' minutes) — never below the cook time or those steps' minutes, never above the total it had; `cookTime` is never touched. Their prep was also made realistic once (× 0.8, for someone who cooks at home with ease; internal tag `tiempos-pro284`) and the hands-on time drops by the same amount, never above the total. Example: a 40-min oven with 20 of prep → prep 16, total 48. See [Menus](./menus.md) → Time to cook
 - `difficulty` — enum `easy | medium | hard`
 - `meals` — array of `breakfast | lunch | dinner | snack`
 - `seasons` — array of `spring | summer | autumn | winter` (empty = all seasons)
@@ -52,7 +52,7 @@ Each recipe has:
 - `nutritionPerServing` — cached object: `{ kcal, proteinG, carbsG, fatG, fiberG, saltG }`. Computed when the recipe is saved
 - `nutritionIncomplete` — boolean (`recipes.nutrition_incomplete`, migration 0066, PRO-176): an ingredient that matters couldn't be counted (see [Nutrition](./nutrition.md) → Incomplete nutrition). Set on save and recomputed on every boot. The ficha then shows **no figures**: no «kcal por ración» in the desktop meta, and the Nutrición tab/block reads «Aún no podemos calcular la nutrición de esta receta.» (`NutritionUnavailable`). Test: `e2e/recipe-nutrition-incomplete.spec.ts` (390×844)
 - `tags` — public-facing string array, normalized (no internal labels, no `meal`/`difficulty` duplicates)
-- `internalTags` — string array hidden from public UI (e.g. `compartida`, `auto-extracted`, `from-url`)
+- `internalTags` — string array hidden from public UI (e.g. `compartida`, `auto-extracted`, `from-url`, `tiempos-pro284`). A `PUT /recipes/:id` without the field keeps the recipe's (PRO-284; until 2026-10-21 every save from the edit form wiped them)
 - `sourceUrl` — origin URL when imported from an article / YouTube video (null otherwise)
 - `sourceType` — provenance enum: `manual | image | article | youtube` (null for legacy seeded rows)
 - `sourceCredit` — read-only, detail payload only: where a catalogue recipe comes from, as the ficha shows it (D-067; `null` when there is nothing to credit)

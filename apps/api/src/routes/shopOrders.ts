@@ -5,6 +5,7 @@
  *   POST   /shops                       — add a shop
  *   PATCH  /shops/:id                   — edit a shop
  *   DELETE /shops/:id                   — delete a shop (and its drafts)
+ *   PATCH  /shops/:id { move }          — { move: up | down | first } alone: reorder within its kind → the shops in their new order
  *
  *   POST   /shop-orders/prepare         — draft one order per shop from the list for the next `days` (default 7)
  *   GET    /shop-orders                 — open orders (?all=1 adds closed ones, last 30 days)
@@ -42,6 +43,7 @@ import {
   listOrders,
   listShops,
   markSent,
+  moveShop,
   patchOrder,
   patchShop,
   prepareOrders,
@@ -54,6 +56,7 @@ import {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+const moveSchema = z.object({ move: z.enum(['up', 'down', 'first']) }).strict()
 const quoteSchema = z.object({ text: z.string().trim().min(2).max(4000) })
 const closeSchema = z.object({ finalTotalEur: z.number().nonnegative().max(5000).nullable().optional() })
 const prepareSchema = z.object({
@@ -115,6 +118,18 @@ router.post('/shops', async (req: AuthRequest, res) => {
 
 router.patch('/shops/:id', async (req: AuthRequest, res) => {
   if (!UUID_RE.test(String(req.params.id))) return void res.status(404).json({ error: 'Tienda no encontrada.' })
+  // { move: up | down | first } alone reorders the shop within its kind (PRO-287) → all shops.
+  if (req.body && typeof req.body === 'object' && 'move' in req.body) {
+    const move = moveSchema.safeParse(req.body)
+    if (!move.success) return badRequest(res, move.error.issues)
+    try {
+      const shops = await moveShop(req.userId!, String(req.params.id), move.data.move)
+      if (!shops) return void res.status(404).json({ error: 'Tienda no encontrada.' })
+      return void res.json(shops)
+    } catch (err) {
+      return fail(res, err, 'PATCH /shops/:id (move)')
+    }
+  }
   // Full-form PATCH: the web sends the whole shop, so validate it whole.
   const parsed = shopInputSchema.safeParse(req.body)
   if (!parsed.success) return badRequest(res, parsed.error.issues)

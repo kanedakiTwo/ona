@@ -1299,8 +1299,10 @@ describe('skill export coverage', () => {
     // (PRO-228, pantryFreezer.test.ts), 77 with set_cook_today (PRO-230,
     // cookToday.test.ts) and 79 with get_alerts + set_alerts (the «Avisos»
     // screen, PRO-237, alertPrefs.test.ts; set_whatsapp_notifications stays)
-    // and 80 with change_shopping_item_amount (PRO-175).
-    expect(skills.length).toBe(80)
+    // and 80 with change_shopping_item_amount (PRO-175), and 81 with
+    // change_shopping_item_unit (PRO-292, shoppingLineSkills.test.ts), and 82
+    // with set_shopping_habitual (PRO-293, same test file).
+    expect(skills.length).toBe(82)
   })
 
   it('every skill has a unique name', () => {

@@ -14,7 +14,14 @@ import { isoWeekLabel, weekOfDay } from './businessMetrics.js'
 import { buildReferralReport, loadInvitedSignups } from './referralRewards.js'
 import { loadProactiveReport } from './proactiveReport.js'
 import { optInDeclinedSql } from './whatsapp/optInOffer.js'
-import { PASSIVE_USAGE_EVENTS, USAGE_CHANNELS, USAGE_EVENTS, type UsageEventName } from './usageEvents.js'
+import {
+  ONBOARDING_STEPS,
+  PASSIVE_USAGE_EVENTS,
+  USAGE_CHANNELS,
+  USAGE_EVENTS,
+  USAGE_SCREENS,
+  type UsageEventName,
+} from './usageEvents.js'
 
 type Db = typeof defaultDb
 
@@ -336,6 +343,69 @@ export function buildFamilyInviteReport(invites: readonly FamilyInviteRow[], goa
   }
 }
 
+// ─── PRO-120: sign-up steps, screens and the props of the new events ─────
+
+export interface OnboardingStepRow {
+  step: string
+  action: string
+  /** Distinct people. */
+  people: number
+}
+
+/**
+ * Pure (PRO-120): the web sign-up step by step, in the order it's shown —
+ * how many people saw each step and how many got past it, in the window.
+ */
+export function buildOnboardingSteps(rows: readonly OnboardingStepRow[]) {
+  return ONBOARDING_STEPS.map((step) => ({
+    step,
+    seen: rows.find((r) => r.step === step && r.action === 'visto')?.people ?? 0,
+    done: rows.find((r) => r.step === step && r.action === 'hecho')?.people ?? 0,
+  }))
+}
+
+export interface ScreenDayRow {
+  day: string
+  screen: string
+  /** Rows that day: already one per person and screen (the server's daily cap). */
+  count: number
+}
+
+/** Pure (PRO-120): people-days per screen and ISO week, most viewed first. */
+export function buildScreensWeekly(days: readonly string[], rows: readonly ScreenDayRow[]) {
+  const weeks = [...new Set(days.map(weekOfDay))]
+  return weeks.map((week) => {
+    const counts: Record<string, number> = Object.fromEntries(USAGE_SCREENS.map((k) => [k, 0]))
+    for (const r of rows) if (weekOfDay(r.day) === week && r.screen in counts) counts[r.screen] += r.count
+    const top = Object.entries(counts)
+      .filter(([, n]) => n > 0)
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([screen, views]) => ({ screen, views }))
+    return { week, isoWeek: isoWeekLabel(week), screens: counts, top }
+  })
+}
+
+export interface EventPropRow {
+  name: string
+  key: string
+  value: string
+  count: number
+}
+
+/** Pure (PRO-120): event → prop → value → count, for the new events (counts only). */
+export function buildPropBreakdown(rows: readonly EventPropRow[]) {
+  const out: Record<string, Record<string, Record<string, number>>> = {}
+  for (const r of rows) {
+    const byKey = (out[r.name] ??= {})
+    const byValue = (byKey[r.key] ??= {})
+    byValue[r.value] = (byValue[r.value] ?? 0) + r.count
+  }
+  return out
+}
+
+/** The PRO-120 events whose props are broken down in `breakdown` (`cards` is a number, summed apart). */
+export const BREAKDOWN_EVENTS = ['recipe_viewed', 'taste_tuning', 'push_opened', 'alerts_changed', 'feedback_left'] as const
+
 export const USAGE_DEFINITIONS = {
   activeHouseholds: 'Distinct households with at least one usage event that day / ISO week (Europe/Madrid), not counting app_opened_installed (opening the installed app is not using it). Events without a household (deleted accounts) are counted in events but not here.',
   funnel: 'Signup-week cohorts (signup_completed). firstMenu → shoppingListViewed → cooked are nested steps within the first 7 days (signup day … +6): menu_generated, then shopping_list_viewed, then cook_mode_started or meal_cooked. activeWeek2 is not nested: signups with any event on days 7–13, over week2Eligible (signups whose day 7 has arrived).',
@@ -347,6 +417,9 @@ export const USAGE_DEFINITIONS = {
   onboardingWhatsappChosen: 'Event onboarding_whatsapp_chosen: «Por WhatsApp» tapped on the first onboarding screen (POST /whatsapp/link-code with from=onboarding); see householdsByEvent for distinct households.',
   proactive: 'WhatsApp messages Mimo sends by itself (PRO-156), by ISO week of the window: sent = delivered daily_brief, cooking_reminder, dinner_checkin, shopping_reminder, weekly_nudge and alert; replied = followed by any message from the same number within replyWindowHours; replyRate = replied / sent; guided / fallback = written from the guide vs. the fixed text (rows before PRO-156 count in neither); optouts = BAJA from a linked account. byKind splits the same counts. Counts only.',
   familyInvites: 'Invitations to join the same household (PRO-263, D-088), all time, not the window, by where they were prepared: casa (Perfil → Mi casa, and every invite before 2026-10-20), alta (sign-up), compra (first visit to the shopping list), mimo (web chat or WhatsApp). prepared = created; sent = «Enviar por WhatsApp» / «Copiar» tapped, Mimo gave the link, or accepted; accepted = someone joined with it. Invites made by admin or suspended accounts only with includeInternal=1. goal = of the households with 2 adults or more (largest users.adults among counted members), how many have 2 or more counted accounts; share = that ratio (target 0.3 by 2026-11-23). Counts only.',
+  onboardingSteps: 'PRO-120: the web sign-up («Primeros pasos») in the order it is shown: afina («Afina tu menú», only the first time), canal (WhatsApp or the web, only when WhatsApp is available), hogar, frecuencia, cocina, tiempo, dieta, prioridad. seen / done = distinct people in the window with onboarding_step visto / hecho for that step (the server keeps one per person, step and Madrid day). The WhatsApp sign-up is one conversation: see onboarding_whatsapp_chosen, whatsapp_linked and onboarding_completed by channel.',
+  screens: 'PRO-120: screen_viewed per ISO week; each row is one person and screen and Madrid day (capped on the server), so views = people-days. top = the screens with views, most viewed first.',
+  breakdown: 'PRO-120: for recipe_viewed (from), taste_tuning (action, where), push_opened (kind), alerts_changed (kind, on) and feedback_left (channel: boton, mimo, whatsapp), how many events in the window had each value. tasteCards = cards answered, summed by action. Counts only, never text.',
   referrals: 'By ISO week (inviteShared: of the tap; the rest: of the invited sign-up), all time, not the window. signupsWithInviter = accounts that signed up with someone else’s «Invitar a otro hogar» code (not into the inviter’s own household); week3Resolved = of those, households with a menu generated and the shopping list opened on days 14–20 after signing up; inviters = distinct codes. Counts only.',
 }
 
@@ -411,7 +484,35 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
       WHERE e.name = 'invite_shared' AND ${counted}
       GROUP BY 1
   `)
+  // PRO-120: sign-up steps (distinct people), screens by day, and the new events' props. Counts only leave.
+  const onboardingStepsQ = db.execute(sql`
+    SELECT e.props->>'step' AS step, e.props->>'action' AS action, COUNT(DISTINCT e.user_id)::int AS people
+      FROM usage_events e LEFT JOIN users u ON u.id = e.user_id
+      WHERE e.name = 'onboarding_step' AND e.created_at >= ${from} AND ${counted}
+      GROUP BY 1, 2
+  `)
+  const screensQ = db.execute(sql`
+    SELECT ${dayOf} AS day, e.props->>'screen' AS screen, COUNT(*)::int AS count
+      FROM usage_events e LEFT JOIN users u ON u.id = e.user_id
+      WHERE e.name = 'screen_viewed' AND e.created_at >= ${from} AND ${counted}
+      GROUP BY 1, 2
+  `)
+  const breakdownNames = sql.join(BREAKDOWN_EVENTS.map((n) => sql`${n}`), sql`, `)
+  const breakdownQ = db.execute(sql`
+    SELECT e.name, kv.key, kv.value, COUNT(*)::int AS count
+      FROM usage_events e LEFT JOIN users u ON u.id = e.user_id
+      CROSS JOIN LATERAL jsonb_each_text(COALESCE(e.props, '{}'::jsonb)) AS kv(key, value)
+      WHERE e.name IN (${breakdownNames}) AND kv.key <> 'cards' AND e.created_at >= ${from} AND ${counted}
+      GROUP BY 1, 2, 3
+  `)
+  const tasteCardsQ = db.execute(sql`
+    SELECT e.props->>'action' AS action, COALESCE(SUM((e.props->>'cards')::numeric), 0)::int AS cards
+      FROM usage_events e LEFT JOIN users u ON u.id = e.user_id
+      WHERE e.name = 'taste_tuning' AND e.created_at >= ${from} AND ${counted}
+      GROUP BY 1
+  `)
   const days = dayRange(fromDay, today)
+  const [onboardingStepRows, screenRows, breakdownRows, tasteCardRows] = await Promise.all([onboardingStepsQ, screensQ, breakdownQ, tasteCardsQ])
   const [counts, householdDays, since, householdState, invited, inviteShared, proactive, familyInvites] = await Promise.all([
     countsQ,
     householdDaysQ,
@@ -461,6 +562,17 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
       (householdState.rows as any[]).map((r) => ({ adults: Number(r.adults), members: Number(r.members) })),
     ),
     proactive,
+    onboardingSteps: buildOnboardingSteps(
+      (onboardingStepRows.rows as any[]).map((r) => ({ step: String(r.step), action: String(r.action), people: Number(r.people) })),
+    ),
+    screens: buildScreensWeekly(
+      days,
+      (screenRows.rows as any[]).map((r) => ({ day: r.day, screen: String(r.screen), count: Number(r.count) })),
+    ),
+    breakdown: buildPropBreakdown(
+      (breakdownRows.rows as any[]).map((r) => ({ name: r.name, key: r.key, value: String(r.value), count: Number(r.count) })),
+    ),
+    tasteCards: Object.fromEntries((tasteCardRows.rows as any[]).map((r) => [String(r.action), Number(r.cards)])),
     referrals: buildReferralReport(invited, (inviteShared.rows as any[]).map((r) => ({ day: r.day, count: Number(r.count) }))),
     definitions: USAGE_DEFINITIONS,
     dataSince: sinceRaw ? new Date(sinceRaw).toISOString() : null,

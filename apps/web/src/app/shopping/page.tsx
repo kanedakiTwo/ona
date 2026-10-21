@@ -34,14 +34,16 @@ import { haptic } from '@/lib/pwa/haptics'
 import { share } from '@/lib/pwa/share'
 import { InviteHouseholdButton } from '@/components/referrals/InviteHouseholdButton'
 import { AISLE_LABELS, AISLE_ORDER, aisleLabel } from '@/lib/labels'
-import { activeQuickRange, quickRanges, shiftIso, totalTitle } from '@/lib/shoppingRange'
+import { activeQuickRange, quickRanges, shiftIso, spansWeeks, totalTitle, type QuickRangeKey } from '@/lib/shoppingRange'
+import { LineWeek, LineWeekContext } from '@/components/shopping/LineWeek'
 import { FamilyInviteOffer, useFamilyOfferOnce } from '@/components/household/FamilyInviteOffer'
 import {
   ListTotalBanner,
   AddManualItemForm,
   ItemPriceField,
-  ItemDeleteButton,
 } from '@/components/shopping/ShoppingExtensions'
+import { AddToListField, LineAmount, RemoveLineButton, UNIT_LABEL, useRemoveWithUndo } from '@/components/shopping/LineControls'
+import { HabitualStar, HabitualSwitch, HabitualTag, isHabitual } from '@/components/shopping/HabitualToggle'
 import { MenuSheet, SheetAction } from '@/components/menu/MenuSheet'
 import { ingredientDisplayName, missingQuantity, parseShoppingAmount, shoppingProgress, withOnaFooter } from '@ona/shared'
 
@@ -78,16 +80,20 @@ export default function ShoppingPage() {
   const { user, isLoading: authLoading } = useAuth()
 
   // Rolling date range. Default: today → end of next week. The user can
-  // narrow it in the dates sheet; "Esta + sig" resets to the default.
+  // narrow it in the dates sheet; «Dos semanas» resets to the default.
   const today = useMemo(() => todayIso(), [])
   const defaultTo = useMemo(() => shiftIso(mondayOfTodayIso(), 13), [])
   const [from, setFrom] = useState<string>(today)
   const [to, setTo] = useState<string>(defaultTo)
   const range = useMemo(() => ({ from, to }), [from, to])
   const rangeLabel = formatRangeLabel(from, to)
-  // «Hoy» · «Mañana» · «Esta semana» (PRO-33): one tap instead of the dates sheet.
-  const shortcuts = useMemo(() => quickRanges(today, defaultTo), [today, defaultTo])
-  const activeShortcut = activeQuickRange(shortcuts, from, to)
+  // «Hoy» · «Mañana» · «Esta semana» · «La que viene» · «Dos semanas» (PRO-33,
+  // PRO-269): one tap instead of the dates sheet; the chip says what it shows.
+  const shortcuts = useMemo(() => quickRanges(today), [today])
+  const [tappedShortcut, setTappedShortcut] = useState<QuickRangeKey | null>('dos')
+  const activeShortcut = activeQuickRange(shortcuts, from, to, tappedShortcut)
+  // PRO-269: with more than one week on screen, each line says its week.
+  const lineWeek = useMemo(() => ({ show: spansWeeks(from, to), today }), [from, to, today])
   // PRO-69: slide the pressed shortcut fully into view once the row has
   // re-rendered with the new range (the date chip changes width, so doing it
   // in the click handler left «Esta semana» half cut on a phone).
@@ -200,6 +206,7 @@ export default function ShoppingPage() {
   }
 
   return (
+    <LineWeekContext.Provider value={lineWeek}>
     <div className="min-h-screen bg-cream">
       <div className="mx-auto w-full max-w-[1180px] pb-12 lg:px-12 lg:pt-8">
         {/* Compact header: range eyebrow + title + "···" */}
@@ -278,6 +285,7 @@ export default function ShoppingPage() {
               onClick={() => {
                 haptic.light()
                 shortcutTapped.current = true
+                setTappedShortcut(r.key)
                 setFrom(r.from)
                 setTo(r.to)
               }}
@@ -454,12 +462,13 @@ export default function ShoppingPage() {
           type="button"
           onClick={() => {
             haptic.light()
+            setTappedShortcut('dos')
             setFrom(today)
             setTo(defaultTo)
           }}
           className="mt-4 inline-flex min-h-[44px] items-center rounded-full border border-border bg-paper px-5 text-[14px] font-medium text-ink transition-colors hover:border-ink"
         >
-          Esta + sig
+          Dos semanas
         </button>
       </MenuSheet>
 
@@ -468,6 +477,7 @@ export default function ShoppingPage() {
         {shoppingList && <AddManualItemForm listId={shoppingList.id} embedded onClose={() => setSheet(null)} />}
       </MenuSheet>
     </div>
+    </LineWeekContext.Provider>
   )
 }
 
@@ -607,6 +617,9 @@ function BuyList({
   const editLine = useEditMenuLine()
   // The line whose sheet is open (PRO-175): change the amount or leave it out.
   const [editing, setEditing] = useState<any | null>(null)
+  // PRO-292: «Quitar» on the line itself, with «Deshacer»; «Añadir a la lista» on top.
+  const undoable = useRemoveWithUndo(listId)
+  const addField = <AddToListField listId={listId} disabled={busy} />
 
   const buyable = items.filter((i) => !i.inStock)
   const grouped = groupByAisle(buyable)
@@ -618,9 +631,11 @@ function BuyList({
   if (buyable.length === 0) {
     return (
       <>
+        {addField}
         <EmptyCard title="Nada que comprar." />
         <SkippedLines items={skippedHere} busy={busy || editLine.isPending} onRestore={(it) => editLine.mutate({ listId, itemId: it.id, skipped: false })} />
         {sheet}
+        {undoable.toast}
       </>
     )
   }
@@ -628,6 +643,7 @@ function BuyList({
   let runningIndex = 0
   return (
     <>
+    {addField}
     <AisleGrid>
       {AISLE_ORDER.filter((a) => !aisle || a === aisle).flatMap((a) => {
         const rows = grouped[a]
@@ -648,6 +664,7 @@ function BuyList({
                   onCheck={() => checkItem.mutate({ listId, itemId: item.id, checked: !item.checked })}
                   onStock={() => stockItem.mutate({ listId, itemId: item.id, inStock: true })}
                   onEdit={() => setEditing(item)}
+                  onRemove={() => undoable.remove(item)}
                 />
               )
             })}
@@ -657,6 +674,7 @@ function BuyList({
     </AisleGrid>
     <SkippedLines items={skippedHere} busy={busy || editLine.isPending} onRestore={(it) => editLine.mutate({ listId, itemId: it.id, skipped: false })} />
     {sheet}
+    {undoable.toast}
     </>
   )
 }
@@ -737,7 +755,9 @@ function LineSheet({ item, listId, onClose }: { item: any | null; listId: string
     <MenuSheet open={!!item} onClose={onClose} eyebrow="Lista de la compra" title={item ? ingredientDisplayName(item.name) : ''}>
       {item && isStaple ? (
         <div className="space-y-3">
-          <p className="text-[15px] text-ink-soft">Es uno de tus básicos: su cantidad o pausarlo se cambia en Mis básicos.</p>
+          <p className="text-[15px] text-ink-soft">Es uno de tus básicos: su cantidad se cambia en Mis básicos.</p>
+          {/* PRO-293: pause it from here. */}
+          <HabitualSwitch key={item.id} item={item} listId={listId} />
           <Link href="/profile/staples" className="inline-flex min-h-[44px] items-center rounded-full bg-ink px-5 text-[14px] font-semibold text-cream">
             Ir a Mis básicos
           </Link>
@@ -760,11 +780,11 @@ function LineSheet({ item, listId, onClose }: { item: any | null; listId: string
           </label>
           {!isManual && item.menuQuantity != null && (
             <p className="text-[13px] text-ink-muted">
-              El menú pide {formatAmount(item.menuQuantity)} {item.unit}.{' '}
+              El menú pide {formatAmount(item.menuQuantity)} {item.menuUnit ?? item.unit}.{' '}
               <button
                 type="button"
                 disabled={pending}
-                onClick={() => editLine.mutate({ listId, itemId: item.id, quantity: null }, done)}
+                onClick={() => editLine.mutate({ listId, itemId: item.id, ...(item.menuUnit ? { unit: item.menuUnit } : { quantity: null }) }, done)}
                 className="underline underline-offset-2 hover:text-ink"
               >
                 Volver a lo del menú
@@ -818,6 +838,8 @@ function LineSheet({ item, listId, onClose }: { item: any | null; listId: string
               </button>
             </div>
           )}
+          {/* PRO-293: «Habitual» — comes back by itself on every new list. */}
+          <HabitualSwitch key={item.id} item={item} listId={listId} />
         </form>
       ) : null}
     </MenuSheet>
@@ -882,6 +904,7 @@ function ItemRow({
   onCheck,
   onStock,
   onEdit,
+  onRemove,
   busy,
 }: {
   item: any
@@ -892,16 +915,21 @@ function ItemRow({
   onStock: () => void
   /** Opens the line's sheet: amount, «No lo compro esta semana» (PRO-175). */
   onEdit?: () => void
+  /** «Quitar» with «Deshacer» (PRO-292). */
+  onRemove?: () => void
   busy?: boolean
 }) {
   const isManual = item.kind === 'manual'
+  const buy = variant === 'buy'
   return (
     <motion.li
       initial={{ opacity: 0, x: -8 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: Math.min(index, 20) * 0.03, duration: 0.4 }}
-      className="flex items-center gap-2 border-b border-dashed border-border py-1.5 last:border-b-0"
+      className="border-b border-dashed border-border py-1.5 last:border-b-0"
+      data-testid="shopping-line"
     >
+      <div className="flex items-center gap-2">
       {variant === 'buy' ? (
         <button
           type="button"
@@ -944,7 +972,7 @@ function ItemRow({
               Te faltan {formatAmount(missingQuantity(item))} {item.unit}
               <span className="font-sans text-[12px]"> · ya tienes {formatAmount(item.haveQuantity)}</span>
             </span>
-          ) : item.amountText ? (
+          ) : buy ? null : item.amountText ? (
             <span className="font-sans">{item.amountText}</span>
           ) : (
             <>
@@ -952,20 +980,22 @@ function ItemRow({
             </>
           )}
           {item.menuQuantity != null && (
-            // The household's own amount (PRO-175).
-            <span className="font-sans text-[12px]" data-testid="shopping-changed"> · cambiada (menú: {formatAmount(item.menuQuantity)})</span>
+            // The household's own amount or unit (PRO-175, PRO-292).
+            <span className="font-sans text-[12px]" data-testid="shopping-changed">
+              {buy && !(item.haveQuantity > 0) ? '' : ' · '}cambiada (menú: {formatAmount(item.menuQuantity)} {UNIT_LABEL[item.menuUnit ?? item.unit] ?? item.unit})
+            </span>
           )}
-          {isManual && (
+          {!isManual && <LineWeek weeks={item.weeks} />}
+          {isManual && !isHabitual(item) && (
             <span className="ml-2 font-sans text-[11px] font-semibold uppercase tracking-[0.12em] text-terracotta-deep">
               Manual
             </span>
           )}
+          {buy && isHabitual(item) && <HabitualTag />}
         </span>
       </button>
 
-      {variant === 'buy' && <ItemPriceField listId={listId} item={item} />}
-      {variant === 'buy' && isManual && <ItemDeleteButton listId={listId} itemId={item.id} />}
-
+      {buy && <HabitualStar item={item} listId={listId} busy={busy} />}
       <button
         type="button"
         onClick={onStock}
@@ -979,6 +1009,16 @@ function ItemRow({
       >
         {variant === 'stock' ? 'Quitar' : 'En casa'}
       </button>
+      </div>
+      {buy && (
+        // PRO-292: amount, unit, price and «Quitar», on the line itself.
+        <div className="flex items-center gap-1.5 pb-1 pl-[44px]">
+          <LineAmount item={item} listId={listId} busy={busy} />
+          <span className="flex-1" />
+          <ItemPriceField listId={listId} item={item} />
+          {onRemove && <RemoveLineButton item={item} onRemove={onRemove} busy={busy} />}
+        </div>
+      )}
     </motion.li>
   )
 }

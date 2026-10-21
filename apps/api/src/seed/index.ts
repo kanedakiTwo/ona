@@ -35,6 +35,7 @@ import { eq, sql } from 'drizzle-orm'
 import { CATALOG_RENAMES } from '../services/recipeRenames.js'
 import { applyCatalogSourceLinks } from '../services/catalogSourceLinks.js'
 import { applyCatalogRecipeTimes } from '../services/catalogRecipeTimes.js'
+import { applyCatalogTimeTrim } from '../services/recipeTimeTrim.js'
 import { applyCatalogRecipeFixes } from '../services/catalogRecipeFixes.js'
 import type { Meal, Season, Unit } from '@ona/shared'
 import { UNITS } from '@ona/shared'
@@ -195,6 +196,8 @@ async function seed(): Promise<void> {
   await applyCatalogRecipeFixes(db)
   // PRO-138: total and hands-on times for every catalogue recipe.
   await applyCatalogRecipeTimes(db)
+  // PRO-284: realistic totals (same fix as on boot).
+  await applyCatalogTimeTrim(db)
   console.log('Seed complete!')
   await pool.end()
 }

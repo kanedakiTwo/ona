@@ -26,6 +26,16 @@ A "household" is the shared unit that owns menus, shopping lists, favourites and
   - Rejects with 410 `InviteExpiredError` if the token is already consumed or past its `expires_at`. The consume is atomic (`UPDATE … WHERE consumed_at IS NULL`, before the membership insert), so two people opening the same link at once can't both join.
 - **Menú del cole** (PRO-224, see [Menus](./menus.md) → Menú del comedor escolar): when the household has a child (a «Niñ@» member, or a member who counted children 2–10 at sign-up), `/profile/casa` shows a discreet «Menú del cole» row to `/profile/casa/cole`, where the school's monthly menu is uploaded (photo or PDF), checked and saved per household (`school_lunches`). Without a child the row isn't shown; Mimo still takes it
 
+## Alergias y dieta al entrar en una casa (PRO-271, Seguridad)
+
+Test households, 2026-10-19/20: whoever joined by invitation was never asked (the sign-up is skipped for a member of someone else's household, `needsOnboarding`), and their first menu brought shrimp to someone allergic to shellfish and dairy to someone lactose intolerant.
+
+- **After accepting** (`/invites/[token]` → «Aceptar invitación»), the person lands on **«Tus alergias y tu dieta»** (`/profile/casa/alergias?next=/menu`) before the menu: «Antes de ver el menú de la casa: ¿tienes alguna alergia o intolerancia, o sigues alguna dieta (vegetariana, sin cerdo…)? El menú de la casa las tendrá en cuenta para todos.» Same picker as the sign-up (`RestrictionsPicker`: the separate unticked health-data box, then the `RESTRICTION_PRESETS` chips and free text). The button says what it does: box unticked → «Ahora no» (nothing stored; «Si no nos lo dices, el menú no sabrá lo que no puedes comer.»); ticked with nothing chosen → «No tengo ninguna, ver el menú» (the consent records the answer); ticked with something → «Guardar y ver el menú». Saving = `POST /user/:id/health-consent` + `PUT /user/:id { restrictions }`, as «Tu menú está listo». An existing account sees its saved restrictions ticked. If something was added and the household's current week already has dishes: «El menú de esta semana ya estaba hecho y puede llevar algo de lo que no tomas. ¿Lo rehacemos? Los platos fijados se quedan.» → «Rehacer el menú de esta semana» (`POST /menu/generate`, from today) or «Ver el menú tal cual».
+- **The menu is everyone's:** the weekly generation reads the restrictions of every member, whoever generates (see [Menus](./menus.md) → Restrictions & allergies).
+- **«Generar mi menú» warns** (`HouseholdAllergiesNotice`, mounted at the top of «Antes de generar», `WeekPlanQuestions`, so only on a blank, non-past week; never blocks the button). `GET /households/me/allergies` → `{ meAnswered, pending: [username], anyAnswered }`. **Answered** = restrictions saved (profile or memory) **or** health consent in force (consent with nothing saved = «contestó que ninguna»); nothing saved and no consent = «no ha contestado». Caller not answered → «No sabemos tus alergias ni tu dieta.» (or «Nadie en casa nos ha dicho sus alergias ni su dieta.» when no one has) · «El menú no puede evitar lo que no sabe. Dínoslo antes de generarlo; si no tienes ninguna, dínoslo también.» + «Tampoco nos lo ha dicho <nombre>.» + **«Decir mis alergias»** (→ the screen above, back to `/menu`). Caller answered, others not → «<nombre> aún no nos ha dicho sus alergias ni su dieta, así que el menú no las tiene en cuenta. Solo puede decirlo cada persona, desde su perfil.» Everyone answered → nothing.
+- Limits: health data is per person (art. 9 consent), so nobody can say another member's allergies; a child account answers for itself. The single-slot menu paths still read only the caller's restrictions.
+- Tests: `householdAllergies.test.ts` (answered vs not, the union), `householdAllergiesRoute.smoke.ts` (the endpoint; the owner's week without the member's shrimp recipe), e2e `household-invite-allergies.spec.ts` at 390×844 (invitation → questions → a week without shellfish; the warning until «ninguna»).
+
 ## Invitar al hogar por WhatsApp (PRO-260, D-088)
 
 «Familia en el mismo hogar»: the couple or the family in the same account, so both see the menu and the list.
@@ -54,7 +64,8 @@ The invitation is offered in three moments, **once each and never again** (like 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
 | GET | `/invites/:token` | public | Preview — household name, inviter username, role |
-| POST | `/invites/:token/accept` | required | Atomically joins; updates primary household |
+| POST | `/invites/:token/accept` | required | Atomically joins; updates primary household; the web then opens «Tus alergias y tu dieta» (PRO-271) |
+| GET | `/households/me/allergies` | required | Who has said their allergies and diet: `{ meAnswered, pending, anyAnswered }` (PRO-271) |
 | GET | `/households/me` | required | Returns `HouseholdDetails` with members + pendingInvites |
 | PATCH | `/households/me` | owner | Body: `{ name: string }` |
 | POST | `/households/me/invites` | owner | Body: `{ role: 'member' \| 'child', email?: string }` |
@@ -83,7 +94,7 @@ The 0011 migration includes an **idempotent backfill** (NOT EXISTS guards) so ev
 ## Frontend
 
 - `/profile/casa` — each pending invite: role, «Caduca <fecha>», the link, «Enviar por WhatsApp» and «Copiar» (PRO-260; the old icon that copied only the link is gone). On phones the members/invites column is `grid-cols-1` (`minmax(0,1fr)`) so the long `/invites/<token>` URL truncates instead of widening the cards past the screen edge (fixed 2026-10-14, pinned by `e2e/household-casa.spec.ts`). Owner sees full management UI (rename, invite, revoke, remove). Members see the member list and can leave. Since PRO-40 (2026-10-10) the secondary actions live in "···" sheets: the header one ("Cambiar nombre" — owner; tapping the name still renames — and "Salir del hogar"), one per member ("Quitar del hogar") and one per pending invite ("Revocar invitación"). "Invitar a alguien" → role → "Crear invitación" and "Copiar enlace" stay inline.
-- `/invites/[token]` — public preview page; if the visitor isn't authed, the accept button routes through `/register?next=/invites/:token`, and registration returns them to the invite (`next` honoured since 2026-10, see [Auth](./auth.md)).
+- `/invites/[token]` — public preview page; if the visitor isn't authed, the accept button routes through `/register?next=/invites/:token`, and registration returns them to the invite (`next` honoured since 2026-10, see [Auth](./auth.md)). Accepting goes to `/profile/casa/alergias?next=/menu` (PRO-271; until then, `/profile/casa`).
 - `/profile` links to `/profile/casa` from the "Memoria del asistente" section's button row.
 
 ## PR 1B — household-scoped reads (feature-flagged)
@@ -136,6 +147,10 @@ Edge cases:
 - `apps/api/src/index.ts` — mount order (`publicHouseholdRouter` before `userRoutes`)
 - `apps/web/src/app/profile/casa/page.tsx` — household management UI
 - `apps/web/src/app/invites/[token]/page.tsx` — public preview + accept page
+- `apps/web/src/app/profile/casa/alergias/page.tsx` — «Tus alergias y tu dieta» after accepting (PRO-271)
+- `apps/web/src/components/menu/HouseholdAllergiesNotice.tsx` — the warning above «Generar mi menú» (PRO-271)
+- `apps/api/src/services/householdAllergies.ts` — who has answered, every member's restrictions for the menu (PRO-271)
+- `apps/web/e2e/household-invite-allergies.spec.ts` — invitation → questions → menu without shellfish, 390×844
 - `apps/web/e2e/household-casa.spec.ts` — Playwright regression for the happy path and «Enviar por WhatsApp» at 390 px (PRO-260)
 - `packages/shared/src/types/familyInvite.ts` — TTL, sources, `familyInviteShareText` (tests `apps/api/src/tests/familyInvite.test.ts`)
 - `apps/web/src/components/household/FamilyInviteShare.tsx` — «Enviar por WhatsApp» + «Copiar»

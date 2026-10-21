@@ -16,13 +16,18 @@ test('profile → Suscripción: beta on Plus, payments not open yet', async ({ p
   await page.goto('/profile')
   const link = page.getByRole('link', { name: /Suscripción/ })
   await expect(link).toContainText('Beta: Plus gratis', { timeout: 10_000 })
-  await link.click()
-
-  await expect(page).toHaveURL(/\/profile\/suscripcion/)
+  // A tap that lands while the page is still hydrating can be lost (it failed
+  // now and then on master, PRO-304): tap again until the route changes.
+  await expect(async () => {
+    if (!/\/profile\/suscripcion/.test(page.url())) await link.click({ timeout: 2_000 }).catch(() => {})
+    await expect(page).toHaveURL(/\/profile\/suscripcion/, { timeout: 3_000 })
+  }).toPass({ timeout: 20_000 })
   await expect(page.getByText(/tienes Plus gratis hasta el 15 de diciembre/)).toBeVisible()
   await expect(page.getByText(/Muy pronto podrás dejar tu plan pagado/)).toBeVisible()
-  await page.getByRole('link', { name: 'Precios' }).click()
-  await expect(page).toHaveURL(/\/precios/)
+  await expect(async () => {
+    if (!/\/precios/.test(page.url())) await page.getByRole('link', { name: 'Precios' }).click({ timeout: 2_000 }).catch(() => {})
+    await expect(page).toHaveURL(/\/precios/, { timeout: 3_000 })
+  }).toPass({ timeout: 20_000 })
   // Logged in without payments: the button says it's coming.
   await expect(page.getByTestId('cta-esencial')).toHaveText('Muy pronto podrás pagarlo aquí')
 })

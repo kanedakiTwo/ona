@@ -9,6 +9,7 @@ import { db as defaultDb } from '../db/connection.js'
 import { ingredients, recipes, type CatalogSourceInfo } from '../db/schema.js'
 import { matchIngredients } from './recipeExtractor.js'
 import { persistRecipe } from './recipePersistence.js'
+import { applyCatalogTimeTrim } from './recipeTimeTrim.js'
 import { markWishesCovered } from './catalogWishes.js'
 import { DRAFT, PUBLISHED } from './recipeVisibility.js'
 import { catalogSourceRecord, type BatchRecipe, type CatalogImportDeps, type CatalogRewrite, type CatalogDraftInput, type DraftIngredient, type MatchedIngredient, type PersistDraftInput } from './catalogImport.js'
@@ -84,6 +85,10 @@ export async function persistCatalogDraft(input: PersistDraftInput, db: Db = def
       await db.delete(recipes).where(eq(recipes.id, row.id))
       return { ok: false, errors: res.errors.map((e) => e.message) }
     }
+    // PRO-284: the same total rule as the boot fix (prep done while the
+    // oven or the pot go by themselves); the rewriter's prep is already
+    // realistic, so it is not cut again.
+    await applyCatalogTimeTrim(db, console.log, { ids: [row.id], trimPrep: false })
     return { ok: true, recipeId: row.id }
   } catch (err) {
     await db.delete(recipes).where(eq(recipes.id, row.id))
@@ -134,10 +139,11 @@ async function patchSource(ids: readonly string[], patch: Partial<CatalogSourceI
   }
 }
 
-/** Mark the sample (replaces an earlier one, review verdicts cleared). */
-export async function saveSample(batch: string, ids: readonly string[], db: Db = defaultDb): Promise<void> {
-  const all = await loadBatch(batch, db)
-  await patchSource(all.map((r) => r.id), { sampled: false, reviewOk: undefined, reviewedAt: null }, db)
+/**
+ * Mark the drafts handed to Miguel for review (D-099: all of them). Verdicts
+ * already given are kept, so running `sample` again never undoes a review.
+ */
+export async function saveSample(ids: readonly string[], db: Db = defaultDb): Promise<void> {
   await patchSource(ids, { sampled: true }, db)
 }
 

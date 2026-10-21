@@ -202,7 +202,8 @@ describe('replay: five mornings in a row for the same household', () => {
     const previous = prompt.split('<mensajes_anteriores_de_este_tipo>')[1]?.split('</mensajes_anteriores_de_este_tipo>')[0] ?? ''
     const opening = OPENINGS.find((o) => !previous.includes(o))!
     const closing = CLOSINGS.find((c) => !previous.includes(c))!
-    const facts = prompt.split('<datos>\n')[1].split('\n</datos>')[0].split('\n')
+    // PRO-274: the agreement lines are for the writer, not for the message.
+    const facts = prompt.split('<datos>\n')[1].split('\n</datos>')[0].split('\n').filter((f) => !/^«.+» es (?:femenino|masculino) /.test(f))
     const body = facts.filter((f) => !f.startsWith('Enlace «Ver menú»')).map((f) => f.replace(/^\s+enlace de [^:]+: /, '→ ')).join('\n')
     const menu = facts.find((f) => f.startsWith('Enlace «Ver menú»'))!.replace('Enlace «Ver menú»: ', '')
     return { text: `${opening}:\n${body}\n\n${closing}\n\n${menu}`, usage: null }

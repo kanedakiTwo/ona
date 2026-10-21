@@ -6,6 +6,7 @@
  * The preview is public (the recipient may not have an account yet). The
  * accept call requires auth — if the user isn't logged in, we send them to
  * /register?next=/invites/<token>, and `useAuth` brings them back here.
+ * Accepting goes to «Tus alergias y tu dieta» (PRO-271) and then to /menu.
  */
 
 import { useCallback, useEffect, useState } from 'react'
@@ -65,7 +66,8 @@ export default function InviteAcceptPage() {
     setError(null)
     try {
       await api.post(`/invites/${token}/accept`)
-      router.push('/profile/casa')
+      // PRO-271: their allergies and diet first, then the household's menu.
+      router.push('/profile/casa/alergias?next=/menu')
     } catch (e: any) {
       setError(e?.message ?? 'No se pudo aceptar la invitación.')
       setAccepting(false)

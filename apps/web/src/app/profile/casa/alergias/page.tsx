@@ -1,0 +1,186 @@
+"use client"
+
+/**
+ * /profile/casa/alergias — «Tus alergias y tu dieta» (PRO-271, Seguridad).
+ *
+ * Right after accepting an invitation to a household (`/invites/[token]`)
+ * and before the menu: the person who joins says their allergies and diet,
+ * with the separate health-data box (RGPD art. 9, PRO-21) right here. Same
+ * picker as the sign-up (`RestrictionsPicker`) and the same API as «Tu menú
+ * está listo» (`POST /user/:id/health-consent` + `PUT /user/:id`).
+ *
+ *   - box ticked + something chosen → saved; every member's restrictions go
+ *     into the household's menu (menuGenerator, PRO-271);
+ *   - box ticked + nothing chosen → «No tengo ninguna»: the consent records
+ *     the answer, so /menu stops asking (≠ never answered);
+ *   - box unticked → «Ahora no»: nothing stored, /menu keeps warning.
+ *
+ * If the household's current week already has dishes and something was
+ * added, it offers to remake the week (locked meals stay) before the menu.
+ * Also opened from the warning above «Generar mi menú» (`?next=/menu`).
+ */
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import { useQueryClient } from "@tanstack/react-query"
+import { firstMenuWeeks, unionRestrictions, type HealthConsentState } from "@ona/shared"
+import { api } from "@/lib/api"
+import { useAuth } from "@/lib/auth"
+import { safeNext } from "@/lib/safeNext"
+import { RestrictionsPicker } from "@/components/onboarding/RestrictionsPicker"
+import { Accent, PILL_INK, PILL_OUTLINE, SubPage } from "@/components/profile/SubPage"
+
+type WeekDays = Array<Record<string, { dishes?: Array<{ kind?: string }> } | undefined>>
+
+function weekHasDishes(days: WeekDays | undefined): boolean {
+  return (days ?? []).some((d) => Object.values(d ?? {}).some((slot) => (slot?.dishes ?? []).length > 0))
+}
+
+export default function HouseholdAllergiesPage() {
+  const { user, updateUser } = useAuth()
+  const router = useRouter()
+  const queryClient = useQueryClient()
+  const [householdName, setHouseholdName] = useState<string | null>(null)
+  const [consent, setConsent] = useState(false)
+  const [restrictions, setRestrictions] = useState<string[]>([])
+  const [loaded, setLoaded] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState("")
+  /** Saved with something new and this week already had dishes. */
+  const [offerRemake, setOfferRemake] = useState(false)
+
+  const next = (() => {
+    if (typeof window === "undefined") return "/menu"
+    return safeNext(new URLSearchParams(window.location.search).get("next")) ?? "/menu"
+  })()
+
+  // Prefill with what the account already has (an existing user who joins).
+  useEffect(() => {
+    if (!user?.id) return
+    let cancelled = false
+    Promise.all([
+      api.get<{ name: string }>("/households/me").catch(() => null),
+      api.get<HealthConsentState>(`/user/${user.id}/health-consent`).catch(() => null),
+      api.get<{ restrictions?: string[] }>(`/user/${user.id}`).catch(() => null),
+    ]).then(([h, c, u]) => {
+      if (cancelled) return
+      setHouseholdName(h?.name ?? null)
+      if (c?.active) {
+        setConsent(true)
+        setRestrictions(unionRestrictions(u?.restrictions))
+      }
+      setLoaded(true)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id])
+
+  async function save() {
+    if (!user) return
+    if (!consent) {
+      router.push(next)
+      return
+    }
+    setSaving(true)
+    setError("")
+    try {
+      await api.post(`/user/${user.id}/health-consent`, { consent: true })
+      const updated = await api.put<{ restrictions?: string[] }>(`/user/${user.id}`, { restrictions })
+      updateUser({ restrictions: updated.restrictions ?? restrictions })
+      await queryClient.invalidateQueries({ queryKey: ["household-allergies"] })
+      if (restrictions.length > 0) {
+        const { weeks } = firstMenuWeeks()
+        const week = await api.get<{ days?: WeekDays }>(`/menu/${user.id}/${weeks[0]}`).catch(() => null)
+        if (weekHasDishes(week?.days)) {
+          setSaving(false)
+          setOfferRemake(true)
+          return
+        }
+      }
+    } catch {
+      setSaving(false)
+      setError("No hemos podido guardarlo. Inténtalo otra vez o añádelo luego en tu perfil.")
+      return
+    }
+    router.push(next)
+  }
+
+  async function remakeWeek() {
+    if (!user) return
+    setSaving(true)
+    setError("")
+    try {
+      const { weeks, today } = firstMenuWeeks()
+      await api.post("/menu/generate", { userId: user.id, weekStart: weeks[0], fromDate: today })
+      await queryClient.invalidateQueries({ queryKey: ["menu"] })
+    } catch {
+      setSaving(false)
+      setError("No hemos podido rehacer el menú. Puedes cambiar los platos desde el menú o pedírselo a Mimo.")
+      return
+    }
+    router.push(next)
+  }
+
+  const primaryLabel = !consent
+    ? "Ahora no"
+    : restrictions.length > 0
+      ? "Guardar y ver el menú"
+      : "No tengo ninguna, ver el menú"
+
+  return (
+    <SubPage
+      eyebrow={householdName ?? "Mi casa"}
+      title={
+        <>
+          Tus alergias y tu <Accent>dieta</Accent>
+        </>
+      }
+      intro="Antes de ver el menú de la casa: ¿tienes alguna alergia o intolerancia, o sigues alguna dieta (vegetariana, sin cerdo…)? El menú de la casa las tendrá en cuenta para todos."
+    >
+      <div data-testid="household-allergies" className="max-w-xl">
+        {error && (
+          <div role="alert" className="mt-4 rounded-2xl bg-warn-bg p-3 text-[14px] text-terracotta-deep">
+            {error}
+          </div>
+        )}
+
+        {offerRemake ? (
+          <div data-testid="household-allergies-remake" className="mt-6 rounded-[20px] border border-border-soft bg-paper p-4">
+            <p className="font-serif-text text-[18px] font-[650] text-ink">Guardado.</p>
+            <p className="mt-1 text-[14px] leading-relaxed text-ink-mid">
+              El menú de esta semana ya estaba hecho y puede llevar algo de lo que no tomas. ¿Lo rehacemos? Los platos
+              fijados se quedan.
+            </p>
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+              <button type="button" onClick={() => void remakeWeek()} disabled={saving} className={PILL_INK}>
+                {saving ? "Rehaciendo el menú…" : "Rehacer el menú de esta semana"}
+              </button>
+              <button type="button" onClick={() => router.push(next)} disabled={saving} className={PILL_OUTLINE}>
+                Ver el menú tal cual
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <RestrictionsPicker
+              consent={consent}
+              onConsentChange={setConsent}
+              restrictions={restrictions}
+              onChange={setRestrictions}
+            />
+            <div className="mt-8 flex flex-col gap-2">
+              <button type="button" onClick={() => void save()} disabled={saving || !loaded} className={PILL_INK}>
+                {saving ? "Guardando…" : primaryLabel}
+              </button>
+              {!consent && (
+                <p className="text-center text-[13px] text-ink-muted">
+                  Si no nos lo dices, el menú no sabrá lo que no puedes comer.
+                </p>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </SubPage>
+  )
+}

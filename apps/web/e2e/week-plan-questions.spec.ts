@@ -3,7 +3,8 @@
  * «Generar mi menú». Skipped, the week is generated as always; answered
  * («Jue · Cena fuera», «Mar: somos 6»), that week has no Thursday dinner and
  * 6 diners on Tuesday, and the saved plantilla is untouched. PRO-229: what's
- * left in the fridge goes in the same step and lands in the despensa (nevera).
+ * left in the fridge goes in the same step and lands in the despensa (nevera),
+ * read into foods (PRO-295); an allergy in it asks before generating.
  */
 import { test, expect, type Page } from '@playwright/test'
 import { completeOnboarding, registerFreshUser } from './_helpers'
@@ -77,7 +78,7 @@ test('answering them: no Thursday dinner, 6 on Tuesday, plantilla untouched', as
   expect(res.request().postDataJSON().weekPlan).toEqual({
     mealsOut: [{ day: 3, meal: 'dinner' }],
     guests: [{ day: 1, diners: 6 }],
-    fridge: ['medio calabacín', 'nata'],
+    fridgeText: 'medio calabacín, nata',
   })
   expect(res.status()).toBe(201)
   const menu = await res.json()
@@ -86,8 +87,39 @@ test('answering them: no Thursday dinner, 6 on Tuesday, plantilla untouched', as
   expect(menu.days[1].dinner?.servings).toBe(6)
 
   const fridge = await (await page.request.get(`${API}/pantry?location=nevera`, { headers })).json()
-  expect(fridge.map((r: { name: string }) => r.name).sort()).toEqual(['medio calabacín', 'nata'])
+  // PRO-295: read into foods linked to the catalogue (by Claude, or by the
+  // catalogue alone when there's no model), not the words as typed.
+  const names = fridge.map((r: { name: string }) => r.name.toLowerCase()).join(' | ')
+  expect(names).toMatch(/calabac/)
+  expect(fridge.find((r: { name: string }) => /calabac/i.test(r.name))?.ingredientId).toBeTruthy()
 
   const settingsAfter = await (await page.request.get(`${API}/user/${userId}/settings`, { headers })).text()
   expect(settingsAfter).toBe(settingsBefore)
+})
+
+test('PRO-295: an intolerance in the fridge asks before generating', async ({ page }) => {
+  test.setTimeout(90_000)
+  await registerFreshUser(page)
+  await completeOnboarding(page)
+  const weekStart = mondayIn(3)
+  await openBlankWeek(page, weekStart)
+
+  await page.getByRole('button', { name: '¿Qué te queda en la nevera?' }).click()
+  await page.getByLabel('Lo que queda en la nevera').fill('Pues mira, dos yogures (ojo: no tomo nada de lactosa, me sienta fatal)')
+  const [first] = await Promise.all([
+    page.waitForResponse((r) => r.url().endsWith('/menu/generate') && r.request().method() === 'POST' && !!r.request().postDataJSON()?.weekPlan),
+    page.getByRole('button', { name: 'Generar mi menú' }).click(),
+  ])
+  expect(first.status()).toBe(409)
+  const question = page.getByTestId('fridge-health-question')
+  await expect(question).toContainText('sin lactosa')
+  await expect(page.getByRole('button', { name: 'Generar mi menú' })).toHaveCount(0)
+
+  const [second] = await Promise.all([
+    page.waitForResponse((r) => r.url().endsWith('/menu/generate') && r.request().method() === 'POST' && !!r.request().postDataJSON()?.weekPlan?.fridgeAnswer),
+    page.getByRole('button', { name: 'No, generar sin guardarla' }).click(),
+  ])
+  expect(second.request().postDataJSON().weekPlan.fridgeAnswer).toEqual({ decision: 'skip' })
+  expect(second.status()).toBe(201)
+  await expect(question).toHaveCount(0, { timeout: 30_000 })
 })

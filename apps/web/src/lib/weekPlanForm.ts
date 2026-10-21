@@ -1,4 +1,4 @@
-import { splitFridgeAnswer, type WeekPlan } from "@ona/shared"
+import type { WeekPlan } from "@ona/shared"
 
 /**
  * PRO-225 · «Antes de planificar» on /menu: what the two optional questions
@@ -19,13 +19,15 @@ export function buildWeekPlan(out: Iterable<string>, guests: Record<number, numb
     .map(([d, n]) => ({ day: Number(d), diners: Math.round(n) }))
     .filter((g) => Number.isInteger(g.day) && g.day >= 0 && g.day <= 6 && g.diners >= 1 && g.diners <= 24)
     .sort((a, b) => a.day - b.day)
-  // PRO-229: «¿Qué te queda en la nevera?» → one entry per thing said.
-  const fridge = splitFridgeAnswer(fridgeText)
-  if (mealsOut.length === 0 && guestList.length === 0 && fridge.length === 0) return undefined
+  // PRO-295: «¿Qué te queda en la nevera?» goes whole; the API reads it
+  // (Claude) into foods for the despensa. «Nada» is no answer.
+  const fridge = fridgeText.trim().slice(0, 600)
+  const fridgeSaid = /^(nada|ninguna|poca cosa)\.?$/i.test(fridge) ? "" : fridge
+  if (mealsOut.length === 0 && guestList.length === 0 && !fridgeSaid) return undefined
   return {
     ...(mealsOut.length ? { mealsOut } : {}),
     ...(guestList.length ? { guests: guestList } : {}),
-    ...(fridge.length ? { fridge } : {}),
+    ...(fridgeSaid ? { fridgeText: fridgeSaid } : {}),
   }
 }
 

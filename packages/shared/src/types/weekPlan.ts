@@ -31,7 +31,51 @@ export interface WeekPlan {
    * week's menu gives more weight to recipes that use it.
    */
   fridge?: string[]
+  /**
+   * PRO-295 · the fridge answer as written, whole («Pues mira, me queda
+   * medio pollo asado, cuatro huevos…»). The API reads it with Claude into
+   * foods with quantity linked to the catalogue; `fridge` (one entry per
+   * thing) is the older shape and is read the same way, joined.
+   */
+  fridgeText?: string
+  /**
+   * PRO-295 · the answer to «¿Lo guardo como restricción?» when the fridge
+   * text talks about an allergy or intolerance. Until it comes, the week is
+   * not generated. `consent`: the health-data box ticked right there (web).
+   * `restrictions`: what to save, when the person corrected it.
+   */
+  fridgeAnswer?: FridgeHealthAnswer
+  /** Server only: what the fridge text was read into (never sent by a client). */
+  fridgeItems?: FridgeItem[]
 }
+
+/** PRO-295 · one food read from the fridge answer. */
+export interface FridgeItem {
+  /** How it goes into the despensa: «pollo asado», «huevos». */
+  name: string
+  quantity: number
+  unit: 'g' | 'ml' | 'u'
+  /** Catalogue ingredient, when it links to one. */
+  ingredientId: string | null
+}
+
+export interface FridgeHealthAnswer {
+  decision: 'save' | 'skip'
+  consent?: boolean
+  restrictions?: string[]
+}
+
+/** PRO-295 · body of the 409 `FRIDGE_HEALTH_QUESTION` of `POST /menu/generate`. */
+export interface FridgeHealthQuestion {
+  /** What would be saved («sin lactosa»); empty when it's not clear which. */
+  restrictions: string[]
+  /** The words where it was said, to show them back. */
+  quote: string | null
+  /** True when the account has no health consent yet: the box must be ticked to save. */
+  needsConsent: boolean
+}
+
+export const FRIDGE_HEALTH_QUESTION_CODE = 'FRIDGE_HEALTH_QUESTION'
 
 const day = z.number().int().min(0).max(6)
 export const weekPlanSchema = z.object({
@@ -41,10 +85,25 @@ export const weekPlanSchema = z.object({
     .max(28)
     .optional(),
   fridge: z.array(z.string().trim().min(1).max(80)).max(20).optional(),
+  fridgeText: z.string().trim().max(600).optional(),
+  fridgeAnswer: z
+    .object({
+      decision: z.enum(['save', 'skip']),
+      consent: z.boolean().optional(),
+      restrictions: z.array(z.string().trim().min(1).max(40)).max(8).optional(),
+    })
+    .optional(),
 })
 
+/** PRO-295 · the fridge answer as one text (`fridgeText`, else the older `fridge` list joined). */
+export function fridgeTextOf(plan: WeekPlan | null | undefined): string {
+  const text = plan?.fridgeText?.trim()
+  if (text) return text
+  return (plan?.fridge ?? []).map((f) => f.trim()).filter(Boolean).join(', ')
+}
+
 export function weekPlanIsEmpty(plan: WeekPlan | null | undefined): boolean {
-  return !plan || ((plan.mealsOut?.length ?? 0) === 0 && (plan.guests?.length ?? 0) === 0 && (plan.fridge?.length ?? 0) === 0)
+  return !plan || ((plan.mealsOut?.length ?? 0) === 0 && (plan.guests?.length ?? 0) === 0 && (plan.fridge?.length ?? 0) === 0 && !plan.fridgeText?.trim())
 }
 
 /**

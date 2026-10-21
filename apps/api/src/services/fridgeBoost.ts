@@ -1,8 +1,8 @@
-import { fridgeTerm, type DayMenu, type LockedSlots, type RecipeDish } from '@ona/shared'
+import { fridgeTerm, type DayMenu, type FridgeItem, type LockedSlots, type RecipeDish } from '@ona/shared'
 import { normalizeText } from './dietaryRestrictions.js'
 import { nameHasTerm } from './nutrition/allergens.js'
 import { isBasicIngredient, singularTerm } from './withWhatIHave.js'
-import { addPantryForUser, listPantryForUser, NoHouseholdError } from './pantryStore.js'
+import { addPantryForUser, listPantryForUser, NoHouseholdError, patchPantryForUser } from './pantryStore.js'
 
 /**
  * PRO-229 · «¿Qué te queda en la nevera?» before planning. What the household
@@ -78,18 +78,34 @@ export function ensureFridgeRecipe(
   return { days, placed: null }
 }
 
-/** What the household said is left: into the despensa as «nevera» (best effort, never blocks the menu). */
-export async function rememberFridge(userId: string, said: readonly string[] | undefined, db?: any): Promise<void> {
-  if (!said?.length) return
+/**
+ * What the household said is left: into the despensa as «nevera» (best
+ * effort, never blocks the menu). PRO-295: `items` come read by Claude
+ * (`fridgeReader.ts`), linked to the catalogue when they can be. A linked
+ * item already in the despensa gets the quantity said now (it's what is
+ * left, not more of it) and moves to the fridge; an unlinked one is added
+ * once by name.
+ */
+export async function rememberFridge(userId: string, items: readonly FridgeItem[] | undefined, db?: any): Promise<void> {
+  if (!items?.length) return
   const existing = await listPantryForUser(userId, db).catch(() => [])
-  for (const name of said) {
-    const n = normalizeText(name)
-    const hit = existing.find((r) => normalizeText(r.name) === n)
-    if (hit && hit.location === 'nevera') continue
+  for (const item of items) {
     try {
-      await addPantryForUser(userId, { name: name.trim().slice(0, 80), location: 'nevera' }, db)
+      const sameIngredient = item.ingredientId ? existing.find((r) => r.ingredientId === item.ingredientId) : undefined
+      if (sameIngredient) {
+        await patchPantryForUser(userId, sameIngredient.id, { quantity: item.quantity, unit: item.unit, location: 'nevera' }, db)
+        continue
+      }
+      const n = normalizeText(item.name)
+      const hit = existing.find((r) => normalizeText(r.name) === n)
+      if (hit && hit.location === 'nevera') continue
+      await addPantryForUser(
+        userId,
+        { name: item.name.trim().slice(0, 80), quantity: item.quantity, unit: item.unit, ingredientId: item.ingredientId, location: 'nevera' },
+        db,
+      )
     } catch (err) {
-      if (!(err instanceof NoHouseholdError)) console.warn('[fridge] could not save', name, err)
+      if (!(err instanceof NoHouseholdError)) console.warn('[fridge] could not save', item.name, err)
       return
     }
   }

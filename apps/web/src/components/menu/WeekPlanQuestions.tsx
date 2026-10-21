@@ -100,14 +100,14 @@ export function WeekPlanQuestions({
         <div className="mt-3 rounded-[18px] border border-border bg-cream px-3 py-3">
           <label className="block">
             <span className="mb-2 block text-[13px] text-ink-soft">
-              Lo apunto en tu despensa y tiro de ello en el menú. Sepáralo con comas.
+              Cuéntamelo como quieras: apunto la comida en tu despensa y tiro de ello en el menú.
             </span>
             <textarea
               value={fridge}
               onChange={(e) => setFridge(e.target.value)}
               rows={2}
-              maxLength={400}
-              placeholder="Medio calabacín, nata, dos yogures…"
+              maxLength={600}
+              placeholder="Medio calabacín, cuatro huevos, un poco de pollo asado…"
               aria-label="Lo que queda en la nevera"
               className="w-full rounded-xl border border-border-soft bg-paper px-3 py-2 text-[15px] text-ink outline-none focus:border-ink"
             />

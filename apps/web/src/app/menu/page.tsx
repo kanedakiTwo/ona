@@ -64,7 +64,9 @@ import { ConfirmSheet } from "@/components/menu/MenuSheet"
 import { MenuDesktop } from "@/components/menu/MenuDesktop"
 import { WeekPlanQuestions } from "@/components/menu/WeekPlanQuestions"
 import { mealsByDay } from "@/lib/weekPlanForm"
-import type { WeekPlan } from "@ona/shared"
+import { FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthAnswer, type FridgeHealthQuestion as FridgeQuestion, type WeekPlan } from "@ona/shared"
+import { FridgeHealthQuestion } from "@/components/menu/FridgeHealthQuestion"
+import { ApiError } from "@/lib/api"
 import { DayFooter, DayMeals, SkippedDay, type SlotPropsFn } from "@/components/menu/DayMeals"
 import type { SlotHandlers } from "@/components/menu/MealOptions"
 
@@ -261,6 +263,23 @@ export default function MenuPage() {
     // Only the blank week asks the questions; «Regenerar semana» sends none.
     const plan = !menu || blankWeek ? weekPlan : undefined
     generateMenu.mutate({ userId: user.id, weekStart, ...(plan ? { weekPlan: plan } : {}) })
+  }
+
+  // PRO-295: the fridge text talks about an allergy → the API asks first.
+  const genError = generateMenu.error
+  const fridgeQuestion =
+    genError instanceof ApiError && genError.code === FRIDGE_HEALTH_QUESTION_CODE
+      ? ((genError.body?.question as FridgeQuestion | undefined) ?? null)
+      : null
+  // A changed fridge text is a new answer: drop the old question.
+  useEffect(() => {
+    if (generateMenu.error) generateMenu.reset()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekPlan?.fridgeText])
+  function answerFridge(answer: FridgeHealthAnswer) {
+    if (!user || !weekPlan) return
+    haptic.medium()
+    generateMenu.mutate({ userId: user.id, weekStart, weekPlan: { ...weekPlan, fridgeAnswer: answer } })
   }
 
   /**
@@ -594,7 +613,10 @@ export default function MenuPage() {
           onChange={setWeekPlan}
         />
       )}
-      {!isPastWeek && (
+      {!isPastWeek && fridgeQuestion && (
+        <FridgeHealthQuestion question={fridgeQuestion} busy={generateMenu.isPending} onAnswer={answerFridge} />
+      )}
+      {!isPastWeek && !fridgeQuestion && (
         <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
           <button
             type="button"

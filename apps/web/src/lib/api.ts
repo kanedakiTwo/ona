@@ -32,11 +32,14 @@ export interface LintIssuePayload {
 export class ApiError extends Error {
   status: number
   code?: string
-  constructor(message: string, status: number, code?: string) {
+  /** The error body as the API sent it (e.g. `question` of FRIDGE_HEALTH_QUESTION, PRO-295). */
+  body?: Record<string, unknown>
+  constructor(message: string, status: number, code?: string, body?: Record<string, unknown>) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.code = code
+    this.body = body
   }
 }
 
@@ -127,6 +130,7 @@ export async function apiFetch<T = unknown>(
       error.error ?? error.message ?? error.detail ?? `Request failed: ${response.status}`,
       response.status,
       typeof error?.code === 'string' ? error.code : undefined,
+      error && typeof error === 'object' ? (error as Record<string, unknown>) : undefined,
     )
   }
 

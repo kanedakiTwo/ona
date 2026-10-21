@@ -16,7 +16,7 @@
  */
 import Anthropic from '@anthropic-ai/sdk'
 import { and, desc, eq, gte, inArray, lt } from 'drizzle-orm'
-import { buildMemoryDigestText, detectSeason, isTaperDish, type DayMenu, type LockedSlots } from '@ona/shared'
+import { buildMemoryDigestText, detectSeason, isTaperDish, type DayMenu, type DayTimeBudget, type LockedSlots } from '@ona/shared'
 import { env } from '../config/env.js'
 import { db as defaultDb } from '../db/connection.js'
 import { menuEdits, menuPlans, menus, pantryItems, userFavorites, users, userSettings } from '../db/schema.js'
@@ -315,8 +315,15 @@ export function buildPlannerRequest(prompt: string): Anthropic.MessageCreatePara
   } as Anthropic.MessageCreateParamsNonStreaming
 }
 
-const scoreOf = (days: DayMenu[], recipes: PlannerRecipe[], ctx: Pick<ShadowContext, 'season' | 'lightDinners'>) =>
-  scoreWeek(days, new Map(recipes.map((r) => [r.id, r as WeekRecipe])), { season: ctx.season, lightDinners: ctx.lightDinners })
+/** The household's time per day as the slots carry it (PRO-138), for the rule «lo largo, los días con tiempo» (PRO-280). */
+const slotTimeBudgets = (slots: ShadowContext['slots']) => {
+  const out: Record<number, DayTimeBudget | null> = {}
+  for (const s of slots ?? []) out[s.dayIndex] ??= s.timeBudget ?? null
+  return out
+}
+
+const scoreOf = (days: DayMenu[], recipes: PlannerRecipe[], ctx: Pick<ShadowContext, 'season' | 'lightDinners' | 'slots'>) =>
+  scoreWeek(days, new Map(recipes.map((r) => [r.id, r as WeekRecipe])), { season: ctx.season, lightDinners: ctx.lightDinners, timeBudgetByDay: slotTimeBudgets(ctx.slots) })
 
 /** What the checker needs of a context (a live one, or one rebuilt after a batch, PRO-258). */
 export type CheckableContext = Pick<ShadowContext, 'householdId' | 'recipes' | 'candidates' | 'slots' | 'restrictions' | 'dislikes' | 'availableEquipment' | 'unavailableEquipment' | 'fixedRecipeIds' | 'season' | 'lightDinners'>

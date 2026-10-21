@@ -57,7 +57,15 @@ export interface RecipeWithIngredients {
     allergenTags?: string[] | null
     /** What a compound ingredient contains (ingredients.contains_tags, PRO-198). */
     containsTags?: string[] | null
+    /** For the week rules' grams per serving (PRO-280): catalogue conversions, the line's note and the aisle. */
+    unitWeight?: number | null
+    density?: number | null
+    edibleFraction?: number | null
+    note?: string | null
+    aisle?: string | null
   }>
+  /** Servings the quantities are for (recipes.servings), for the week rules (PRO-280). */
+  servings?: number | null
 }
 
 export interface MatcherOptions {

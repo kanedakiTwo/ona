@@ -1301,8 +1301,9 @@ describe('skill export coverage', () => {
     // screen, PRO-237, alertPrefs.test.ts; set_whatsapp_notifications stays)
     // and 80 with change_shopping_item_amount (PRO-175), and 81 with
     // change_shopping_item_unit (PRO-292, shoppingLineSkills.test.ts), and 82
-    // with set_shopping_habitual (PRO-293, same test file).
-    expect(skills.length).toBe(82)
+    // with set_shopping_habitual (PRO-293, same test file), and 84 with
+    // list_taste_verdicts + forget_taste_verdicts (PRO-297, mimoAfina.test.ts).
+    expect(skills.length).toBe(84)
   })
 
   it('every skill has a unique name', () => {

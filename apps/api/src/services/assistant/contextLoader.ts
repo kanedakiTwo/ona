@@ -8,6 +8,7 @@ import { madridParts, mondayOf } from '../madridTime.js'
 import { mealLinesForDay } from '../menuText.js'
 import { resolveScope, scopeWhere } from '../scopeResolver.js'
 import { getCookingStyle } from '../profile/cookingStyle.js'
+import { householdNoticesForUser, noticesContextBlock } from '../afinaNotice.js'
 
 const DAY_NAMES_LONG = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo']
 const hhmm = (h: number, m: number) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
@@ -171,6 +172,17 @@ export async function loadUserContext(userId: string, db: any): Promise<string> 
   // web and on WhatsApp (both go through this loader).
   const fichaDigest = buildFichaDigest(await loadHouseholdFicha(userId, { db }).catch(() => null), userId)
   if (fichaDigest) parts.push(fichaDigest)
+
+  // ── Notices the app sent the household (PRO-297) ──────────
+  // «Desde aquí no veo ese aviso» (Marta y Jorge, 2026-10-20): the PRO-205
+  // notice said «díselo a Mimo» and Mimo didn't know about it. Type, date and
+  // channel of each one in the last 14 days, and what it said.
+  try {
+    const notices = noticesContextBlock(await householdNoticesForUser(userId, db), new Date())
+    if (notices) parts.push(notices)
+  } catch {
+    // The context never fails for this block.
+  }
 
   return parts.join('\n')
 }

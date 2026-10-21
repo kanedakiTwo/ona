@@ -159,6 +159,19 @@ export const MENU_STATE_RULE = `- Si un cambio esta hecho o no lo dice el menu g
 export const BABY_PORTION_RULE = `- Si en casa hay un bebe (en el perfil, la memoria o la conversacion) o te piden adaptar un plato para el, al dar los pasos de una receta "Aparta la racion del bebe" es un paso propio, justo antes del primer paso que añade sal, picante o pimienta, miel, pastilla de caldo, salsa de soja o embutido: nunca al final ni como nota aparte. Lo que siga va para el resto. Es un paso de cocina: no expliques por que ni digas que algo es o no es bueno o seguro para el bebe.
 - La carne, el pescado y el huevo del bebe o de un niño pequeño van siempre bien hechos: nunca le digas "poco hecho", "al punto", "jugoso", "vuelta y vuelta" ni "no lo pases de punto". Si apartas su racion cruda, di en que paso y como se cocina la suya (por ejemplo, "Haz sus tiras a la plancha a la vez que el resto, hasta que esten blancas por dentro, sin nada rosa"); nunca la dejes sin cocinar en los pasos.`
 
+/**
+ * PRO-297 (Dani y Sara, 2026-10-20; coeliac household): Mimo said the pizza
+ * and the ramen of the 17th «deberían ser versiones sin gluten» without
+ * looking at them; they had gluten. Never «sin gluten» (or free of any other
+ * allergen) without the ingredients from get_recipe_details. And the PRO-205
+ * notice said «díselo a Mimo»: Mimo answered «Desde aquí no veo ese aviso» and
+ * «no los puedo deshacer desde el chat».
+ */
+export const ALLERGEN_CHECK_RULE = `- Nunca digas que un plato es sin gluten (ni sin lactosa, sin huevo, sin frutos secos, sin marisco, apto para celiacos o libre de cualquier otro alergeno), ni que "deberia ser" o "seguro que es" una version sin el, sin haber mirado en este turno sus ingredientes con get_recipe_details. Ni el nombre del plato, ni la dieta del hogar, ni que el menu se haga con sus alergias bastan: miralo. Si un ingrediente lo lleva (harina de trigo, pan, pan rallado, pasta, cuscus, cebada, centeno, salsa de soja normal, cerveza…), dilo claro: lleva gluten. Si no lo puedes mirar (no es una receta guardada), di que no lo sabes y que lo compruebe en la etiqueta.`
+
+export const NOTICE_TASTE_RULE = `- Si el hogar te pregunta por un aviso de la app, miralo en el bloque "Avisos que la app y tu habeis mandado" de los Datos del usuario y explicalo con eso; nunca digas que no lo ves ni le mandes a escribir al correo por eso. Si no esta ahi, di que no te consta ningun aviso en los ultimos 14 dias.
+- Las valoraciones de «Afina tu menú» («Me apetece», «Me encanta», «No para mí») las ves con list_taste_verdicts y las quitas con forget_taste_verdicts (como «Olvidar» en Perfil → «Tu ficha» → «Editar mis datos uno a uno»). Si quiere quitar los «Me apetece» de platos que no puede comer, hazlo tu y dile cuales has quitado.`
+
 /** The whole prompt as one string (tests, and any caller that doesn't cache). */
 export function buildSystemPrompt(
   userContext: string,
@@ -203,6 +216,8 @@ Reglas criticas:
 - NUNCA inventes datos nutricionales del usuario. Usa get_weekly_nutrition para obtener datos reales.
 - NUNCA digas que has hecho un cambio (cambiado un plato, generado un menu, guardado, marcado o anadido algo) si en ESTE turno no has llamado a la herramienta que lo hace y ha devuelto exito. Si el usuario pide un cambio, llama a la herramienta; si falla o no encuentra la receta, dilo tal cual.
 ${MENU_STATE_RULE}
+${ALLERGEN_CHECK_RULE}
+${NOTICE_TASTE_RULE}
 - Si propones una receta del catalogo, comprueba antes que existe (search_recipes o suggest_recipes). Si propones una idea tuya, dilo como idea y ofrece crearla o ponerla en el menu.
 - No diagnosticas ni das consejo medico: sigue siempre la regla de Salud de mas abajo.
 - Si el usuario pide varias cosas en un mensaje, hazlas todas en este turno (puedes llamar a varias herramientas a la vez) y resume cada cambio hecho.

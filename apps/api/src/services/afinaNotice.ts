@@ -28,6 +28,7 @@ import { db as defaultDb } from '../db/connection.js'
 import { householdNotices, users } from '../db/schema.js'
 import type { ChannelOutcome } from './whatsapp/proactive.js'
 import { isDeployedRuntime } from '../config/jwtSecret.js'
+import { madridParts } from './madridTime.js'
 
 type Db = typeof defaultDb
 
@@ -35,9 +36,19 @@ export const AFINA_NOTICE_KEY = 'afina_restricciones_2026_10'
 export const AFINA_NOTICE_WHATSAPP_DAYS = 3
 const DAY = 86_400_000
 
-/** Legal's text (2026-10-18). Not to be changed without Legal. */
+/**
+ * Legal's text (2026-10-18). Not to be changed without Legal. PRO-297
+ * (Miguel, `/ona-dia` 2026-10-21) changed only where to remove a «Me
+ * apetece»: «Lo que recuerdo de ti» is no longer a screen in Perfil (PRO-318
+ * folded it into «Tu ficha»), so the path is the one the web shows today
+ * (`app/profile/page.tsx` → `FichaHubCard` «Tu ficha» → `app/profile/ficha`
+ * «Editar mis datos uno a uno» → `/profile/memoria`, section «Afina tu menú»
+ * of `TasteMemorySection`, with «Olvidar»).
+ */
+export const AFINA_NOTICE_SCREEN = 'Perfil → «Tu ficha» → «Editar mis datos uno a uno», en el apartado «Afina tu menú»'
+
 export const AFINA_NOTICE_TEXT =
-  '¡Hola! Un aviso rápido: si usaste «Afina tu menú» estos días, puede que te enseñara algún plato que no encaja con lo que nos dijiste (alergias o cosas que no coméis en casa). Era un fallo de esa pantalla y ya está arreglado. El menú de la semana se hace con las alergias y la dieta que tienes en tu perfil: échales un vistazo en Perfil para comprobar que está todo. Si le diste «Me apetece» a algo que no podéis comer, díselo a Mimo o quítalo en Perfil → «Lo que recuerdo de ti» (o dímelo y te ayudo). Perdona el lío, y gracias por estar en la prueba: para esto sirve.'
+  '¡Hola! Un aviso rápido: si usaste «Afina tu menú» estos días, puede que te enseñara algún plato que no encaja con lo que nos dijiste (alergias o cosas que no coméis en casa). Era un fallo de esa pantalla y ya está arreglado. El menú de la semana se hace con las alergias y la dieta que tienes en tu perfil: échales un vistazo en Perfil para comprobar que está todo. Si le diste «Me apetece» a algo que no podéis comer, díselo a Mimo o quítalo en ' + AFINA_NOTICE_SCREEN + ' (o dímelo y te ayudo). Perdona el lío, y gracias por estar en la prueba: para esto sirve.'
 
 export interface NoticeRow {
   id: string
@@ -196,6 +207,62 @@ export async function noticeForUser(userId: string, now: Date = new Date(), key 
     .where(and(eq(householdNotices.key, key), eq(householdNotices.householdId, u.householdId)))
     .limit(1)
   return row ? { row: row as NoticeRow, show: noticeVisibleInApp(row as NoticeRow, now) } : null
+}
+
+/**
+ * PRO-297: what each notice is about, for Mimo's context (by key). A key not
+ * listed here still shows, with its key as the type.
+ */
+export const NOTICE_TOPICS: Record<string, { label: string; text: string }> = {
+  [AFINA_NOTICE_KEY]: {
+    label: 'fallo de «Afina tu menú» con alergias y dietas (ya arreglado)',
+    text: AFINA_NOTICE_TEXT,
+  },
+}
+export const NOTICE_CONTEXT_DAYS = 14
+
+/** Pure: when a notice reached the household, by channel (null = not yet). */
+export function noticeDeliveries(row: Pick<NoticeRow, 'userId' | 'createdAt' | 'whatsappSentAt' | 'appSince' | 'dismissedAt'>, now: Date) {
+  const appAt =
+    row.appSince ??
+    (!row.userId
+      ? row.createdAt
+      : !row.whatsappSentAt && now.getTime() - row.createdAt.getTime() >= AFINA_NOTICE_WHATSAPP_DAYS * DAY
+        ? new Date(row.createdAt.getTime() + AFINA_NOTICE_WHATSAPP_DAYS * DAY)
+        : null)
+  return { whatsappAt: row.whatsappSentAt, appAt, dismissedAt: row.dismissedAt }
+}
+
+/**
+ * Pure: the «Avisos» block of Mimo's context (contextLoader.ts) — the notices
+ * that reached this household in the last 14 days, with type, date (Madrid)
+ * and channel, and what they said. Empty string when there is none.
+ */
+export function noticesContextBlock(rows: Array<Pick<NoticeRow, 'userId' | 'createdAt' | 'whatsappSentAt' | 'appSince' | 'dismissedAt'> & { key: string }>, now: Date): string {
+  const since = now.getTime() - NOTICE_CONTEXT_DAYS * DAY
+  const day = (d: Date) => madridParts(d).isoDate
+  const lines: string[] = []
+  for (const r of rows) {
+    const d = noticeDeliveries(r, now)
+    const sent = [d.whatsappAt, d.appAt].filter((x): x is Date => !!x && x.getTime() <= now.getTime())
+    if (!sent.length || !sent.some((x) => x.getTime() >= since)) continue
+    const topic = NOTICE_TOPICS[r.key]
+    const how = [
+      d.whatsappAt ? `por WhatsApp (de tu parte) el ${day(d.whatsappAt)}` : null,
+      d.appAt && d.appAt.getTime() <= now.getTime() ? `en la app (tarjeta encima del menu) desde el ${day(d.appAt)}` : null,
+      d.dismissedAt ? `cerrado en la app el ${day(d.dismissedAt)}` : null,
+    ].filter(Boolean)
+    lines.push(`- ${topic?.label ?? r.key}: ${how.join('; ')}.${topic ? ` Decia: «${topic.text}»` : ''}`)
+  }
+  if (!lines.length) return ''
+  return `Avisos que la app y tu habeis mandado a este hogar (ultimos ${NOTICE_CONTEXT_DAYS} dias):\n${lines.join('\n')}`
+}
+
+/** The caller's household notices, every key (Mimo's context, PRO-297). */
+export async function householdNoticesForUser(userId: string, db: Db = defaultDb) {
+  const [u] = await db.select({ householdId: users.primaryHouseholdId }).from(users).where(eq(users.id, userId)).limit(1)
+  if (!u?.householdId) return []
+  return (await db.select().from(householdNotices).where(eq(householdNotices.householdId, u.householdId))) as Array<NoticeRow & { key: string }>
 }
 
 /** «Entendido»: closed for the whole household. */

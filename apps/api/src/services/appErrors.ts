@@ -82,7 +82,11 @@ export function normalizeMessage(message: string): string {
     .replace(UUID_RE, '<uuid>')
     .replace(/\b0x[0-9a-f]+\b/gi, '<hex>')
     .replace(/(?<![A-Za-z0-9_])(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{8,}(?![A-Za-z0-9_])/gi, '<hex>')
-    .replace(/(?<![A-Za-z_\d])\d+(?:\.\d+)?/g, '<n>')
+    // React's public error code stays (`Minified React error #418`, PRO-306): it says which
+    // error it is (hydration or not) and carries no data. Every other number is <n>.
+    .replace(/(?<![A-Za-z_\d])\d+(?:\.\d+)?/g, (n, at: number, all: string) =>
+      /Minified React error #$/.test(all.slice(Math.max(0, at - 22), at)) && /^\d{1,4}$/.test(n) ? n : '<n>',
+    )
     .replace(/\s+/g, ' ')
     .trim()
   return out ? out.slice(0, APP_ERROR_LIMITS.messageChars) : '(sin mensaje)'

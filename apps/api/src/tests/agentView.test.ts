@@ -22,6 +22,7 @@ import {
   REVIEWER_SEVERITY_LIST,
   comparisonForAgents,
   errorType,
+  MESSAGE_ERROR_TYPES,
   errorsForAgents,
   feedbackForAgents,
   flagsForAgents,
@@ -146,6 +147,44 @@ describe('errorType', () => {
     expect(errorType('algo raro con ana@example.com')).toBe('other')
     expect(errorType(null)).toBe('other')
     for (const c of KNOWN_ERROR_CLASSES) expect(c.length).toBeLessThanOrEqual(32)
+  })
+
+  it('PRO-306: the kinds a plain Error says by its message — chunk after a publish, hydration, network…', () => {
+    // As the web sends them (a plain Error goes without its name) and as they are stored.
+    const stored = (m: string) => errorType(normalizeMessage(m))
+    expect(stored('Loading chunk 812 failed.\n(error: https://mimoia.com/_next/static/chunks/812-3f2a9c1e7b.js)')).toBe('ChunkLoadError')
+    expect(stored('Failed to load chunk /_next/static/chunks/app_menu_page_3f2a9c1e7b.js')).toBe('ChunkLoadError')
+    expect(stored('TypeError: Failed to fetch dynamically imported module: https://mimoia.com/_next/x.js')).toBe('ChunkLoadError')
+    expect(stored('ChunkLoadError: Loading chunk 12 failed')).toBe('ChunkLoadError')
+    expect(stored('Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.')).toBe('HydrationError')
+    expect(stored('Minified React error #423; visit https://react.dev/errors/423 for the full message')).toBe('HydrationError')
+    expect(stored("Hydration failed because the server rendered HTML didn't match the client.")).toBe('HydrationError')
+    expect(stored('Minified React error #310; visit https://react.dev/errors/310 for the full message')).toBe('React #310')
+    // A row stored before the code was kept: React, number unknown.
+    expect(errorType('Minified React error #<n>; visit https://react.dev/errors/<n> for the full message')).toBe('React #<n>')
+    expect(stored('TypeError: Failed to fetch')).toBe('NetworkError')
+    expect(stored('TypeError: Load failed')).toBe('NetworkError')
+    expect(stored('TypeError: NetworkError when attempting to fetch resource.')).toBe('NetworkError')
+    expect(stored('Connection closed.')).toBe('NetworkError')
+    expect(stored('TypeError: Failed to fetch (api.mimoia.com)')).toBe('NetworkError')
+    expect(stored('Unhandled rejection: An error occurred in the Server Components render. The specific message is omitted in production builds to avoid leaking sensitive details.')).toBe('ServerComponentsError')
+    expect(stored('{"isTrusted":true}')).toBe('EventRejection')
+    expect(stored('Object Not Found Matching Id:3, MethodName:update, ParamCount:4')).toBe('ObjectNotFoundMatchingId')
+    expect(stored('Error sin mensaje')).toBe('NoMessage')
+    // What stays as before.
+    expect(stored("TypeError: Cannot read properties of undefined (reading 'map')")).toBe('TypeError')
+    expect(stored("NotFoundError: Failed to execute 'removeChild' on 'Node'")).toBe('NotFoundError')
+    expect(stored('algo raro con ana@example.com')).toBe('other')
+    // Never the rest of the message: a fixed word, or React's number.
+    expect(stored('Failed to fetch de Ana García, calle Mayor 5')).toBe('other')
+    expect(stored('Minified React error #31; visit https://react.dev/errors/31?args[]=Ana for the full message')).toBe('React #31')
+    for (const t of MESSAGE_ERROR_TYPES) expect(t).toMatch(/^[A-Za-z]{1,32}$/)
+  })
+
+  it('PRO-306: the stored message keeps React’s error code, and only that number', () => {
+    expect(normalizeMessage('Minified React error #418; visit https://react.dev/errors/418?args[]=HTML')).toBe('Minified React error #418; visit https://react.dev/errors/<n>')
+    expect(normalizeMessage('Minified React error #12345 at 612345678')).toBe('Minified React error #<n> at <phone>')
+    expect(normalizeMessage('Loading chunk 812 failed')).toBe('Loading chunk <n> failed')
   })
 
   it("rebuilds the web's report of a failed API call from closed parts", () => {

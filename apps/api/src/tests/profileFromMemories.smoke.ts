@@ -65,8 +65,9 @@ describe.skipIf(!reachable)('user_memories → ficha del hogar (PRO-150, PRO-316
     expect(dislikes.confidence).toBeCloseTo(0.8)
     expect((dislikes.evidence as any[]).at(-1)).toMatchObject({ signal: 'whatsapp' })
 
-    // The boot copy has nothing to copy…
-    expect((await applyProfileFromMemories(db, () => {})).copied).toBe(0)
+    // The boot copy has nothing to copy for this user (the smoke DB is shared: count only ours)…
+    await applyProfileFromMemories(db, () => {})
+    expect(await db.select({ id: profileFacts.id }).from(profileFacts).where(inArray(profileFacts.sourceMemoryId, memIds))).toHaveLength(3)
     // …but puts back in step a copy whose memory changed behind its back (a write from before PRO-316).
     await db.update(userMemories).set({ value: ['ajo'], updatedAt: new Date(Date.now() + 60_000) })
       .where(and(eq(userMemories.userId, userId), eq(userMemories.key, 'dislikes')))

@@ -35,7 +35,7 @@ async function fromDatabase(): Promise<AuditableRecipe[]> {
   const { count, eq, inArray, isNull } = await import('drizzle-orm')
   try {
     const rows = await db
-      .select({ id: recipes.id, name: recipes.name, servings: recipes.servings })
+      .select({ id: recipes.id, name: recipes.name, servings: recipes.servings, course: recipes.course, meals: recipes.meals })
       .from(recipes)
       .where(isNull(recipes.authorId))
     const ids = rows.map((r) => r.id)
@@ -72,6 +72,9 @@ async function fromDatabase(): Promise<AuditableRecipe[]> {
     return rows.map((r) => ({
       name: r.name,
       servings: r.servings,
+      // Desserts and breakfast/snack-only recipes skip the quantity ranges, as in the menu generator.
+      course: r.course ?? null,
+      meals: r.meals ?? [],
       stepCount: stepCount.get(r.id) ?? 0,
       ingredients: lines.filter((l) => l.recipeId === r.id),
     }))

@@ -8,6 +8,7 @@ import { madridParts, mondayOf } from '../madridTime.js'
 import { mealLinesForDay } from '../menuText.js'
 import { resolveScope, scopeWhere } from '../scopeResolver.js'
 import { getCookingStyle } from '../profile/cookingStyle.js'
+import { fillRecipeNames } from '../menuNames.js'
 
 const DAY_NAMES_LONG = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo']
 const hhmm = (h: number, m: number) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
@@ -34,6 +35,23 @@ export function clockNote(now: Date): string {
  * Load lightweight user context for the assistant system prompt.
  * Includes: profile, current menu summary, and macro balance.
  */
+/**
+ * The «Menu de esta semana» block of Mimo's context, or null when no day has
+ * anything. PRO-296: a táper or an added dish saved without its name (before
+ * PRO-240) takes its recipe's, as on the web, instead of «receta sin nombre».
+ */
+export async function weekMenuContext(weekStart: string, rawDays: unknown, db: any): Promise<string | null> {
+  const days = (await fillRecipeNames(rawDays, db)) as any[]
+  if (!Array.isArray(days)) return null
+  const dayNames = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom']
+  const menuLines: string[] = []
+  for (let i = 0; i < days.length; i++) {
+    const lines = mealLinesForDay(days[i])
+    if (lines.length > 0) menuLines.push(`  ${dayNames[i] ?? `D${i + 1}`} (dayIndex ${i}): ${lines.join('; ')}`)
+  }
+  return menuLines.length > 0 ? `Menu de esta semana (${weekStart}):\n${menuLines.join('\n')}` : null
+}
+
 export async function loadUserContext(userId: string, db: any): Promise<string> {
   const parts: string[] = []
 
@@ -128,16 +146,8 @@ export async function loadUserContext(userId: string, db: any): Promise<string> 
     .limit(1)
 
   if (currentMenu?.days) {
-    const days = currentMenu.days as any[]
-    const dayNames = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom']
-    const menuLines: string[] = []
-    for (let i = 0; i < days.length; i++) {
-      const lines = mealLinesForDay(days[i])
-      if (lines.length > 0) menuLines.push(`  ${dayNames[i] ?? `D${i + 1}`} (dayIndex ${i}): ${lines.join('; ')}`)
-    }
-    if (menuLines.length > 0) {
-      parts.push(`Menu de esta semana (${weekStart}):\n${menuLines.join('\n')}`)
-    }
+    const block = await weekMenuContext(weekStart, currentMenu.days, db)
+    if (block) parts.push(block)
   } else {
     parts.push(`No hay menu para esta semana (${weekStart}).`)
   }

@@ -359,9 +359,9 @@ export default function MenuPage() {
           },
           reorderDish: (from, to) => patchDish.mutate({ ...base, position: from, patch: { newPosition: to } }),
           editNote: (position, text) => patchDish.mutate({ ...base, position, patch: { text } }),
-          setFreezer: (position, on) => {
+          setCooked: (position, on) => {
             haptic.light()
-            patchDish.mutate({ ...base, position, patch: { variant: on ? "freezer" : "planned" } })
+            patchDish.mutate({ ...base, position, patch: { variant: on ? "cooked" : "planned" } })
           },
           // PRO-74: «Usar "<lo escrito>" como plato» swaps the dish for the
           // text (before, a note was only added next to it). Keeps «Solo hoy».

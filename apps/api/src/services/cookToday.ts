@@ -9,7 +9,8 @@
  * WhatsApp, Mimo says so and gives a link to forward it.
  */
 import { and, desc, eq, inArray, like, sql } from 'drizzle-orm'
-import type { DayMenu, Meal } from '@ona/shared'
+import type { DayMenu, Dish, Meal } from '@ona/shared'
+import { isTaperDish } from '@ona/shared'
 import { env } from '../config/env.js'
 import { db } from '../db/connection.js'
 import { cookOfDay, menus, notificationSchedule } from '../db/schema.js'
@@ -96,7 +97,7 @@ export interface CookTodayDeps {
 
 const recipeIdsOf = (day: DayMenu | undefined, meal: Meal): string[] =>
   ((day?.[meal]?.dishes ?? []) as Array<{ kind: string; recipeId?: string; variant?: string }>)
-    .filter((d) => d.kind === 'recipe' && d.recipeId && d.variant !== 'leftover' && d.variant !== 'freezer')
+    .filter((d) => d.kind === 'recipe' && d.recipeId && d.variant !== 'leftover' && !isTaperDish(d as Dish))
     .map((d) => d.recipeId!)
 
 export async function assignCookToday(

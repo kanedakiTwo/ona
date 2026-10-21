@@ -16,7 +16,7 @@
  */
 import Anthropic from '@anthropic-ai/sdk'
 import { and, desc, eq, gte, inArray, lt } from 'drizzle-orm'
-import { buildMemoryDigestText, detectSeason, type DayMenu, type LockedSlots } from '@ona/shared'
+import { buildMemoryDigestText, detectSeason, isTaperDish, type DayMenu, type LockedSlots } from '@ona/shared'
 import { env } from '../config/env.js'
 import { db as defaultDb } from '../db/connection.js'
 import { menuEdits, menuPlans, menus, pantryItems, userFavorites, users, userSettings } from '../db/schema.js'
@@ -242,7 +242,7 @@ export async function loadShadowContext(input: ShadowPlanInput, db: Db): Promise
   input.days.forEach((day, d) => {
     for (const meal of Object.keys(day ?? {})) {
       if (planned.has(`${d}|${meal}`)) continue
-      for (const x of day[meal]?.dishes ?? []) if (x.kind === 'recipe' && x.variant !== 'leftover' && x.variant !== 'freezer') fixedRecipeIds.add(x.recipeId)
+      for (const x of day[meal]?.dishes ?? []) if (x.kind === 'recipe' && x.variant !== 'leftover' && !isTaperDish(x)) fixedRecipeIds.add(x.recipeId)
     }
   })
 

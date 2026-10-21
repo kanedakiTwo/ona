@@ -89,3 +89,24 @@ describe('(3) the list after the tápers', () => {
     expect(sumDinersByRecipe(withLeftoverBatches(d), 2).get('len')).toBe(2)
   })
 })
+
+// Miguel, 2026-10-20: «"Es del congelador" habría que reformularlo a "Son
+// sobras de otro día", para que englobe la nevera, el congelador y otros».
+describe('(4) «Sobras de otro día» (`variant: \'cooked\'`)', () => {
+  const cooked = { kind: 'recipe' as const, recipeId: 'len', recipeName: 'Lentejas', variant: 'cooked' as const }
+
+  it('is a táper: already cooked, nothing to buy', () => {
+    expect(isTaperDish(cooked)).toBe(true)
+    const d = empty()
+    d[0] = { lunch: { dishes: [cooked] } }
+    expect(sumDinersByRecipe(withLeftoverBatches(d), 2).get('len')).toBeUndefined()
+  })
+
+  it('reads «(sobras de otro día)» on WhatsApp, text and picture', () => {
+    expect(dishLabel(cooked)).toBe('Lentejas (sobras de otro día)')
+    const days = empty()
+    days[1] = { dinner: { dishes: [cooked] } }
+    const m = buildWeekImageModel({ weekStart: '2026-10-19', days }, { today: '2026-10-19' })!
+    expect(m.rows.find((r) => r.dayIndex === 1)!.cells[0].dishes[0].name).toBe('Lentejas (sobras de otro día)')
+  })
+})

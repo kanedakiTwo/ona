@@ -24,7 +24,7 @@
  * `WEEK_RULES_CONFIG` para cambiarlos sin tocar la lógica.
  */
 import type { DayMenu, Meal, Season } from '@ona/shared'
-import { isInSeason } from '@ona/shared'
+import { isInSeason, isTaperDish } from '@ona/shared'
 import { normalizeText } from './dietaryRestrictions.js'
 
 export const WEEK_RULE_IDS = [
@@ -241,7 +241,7 @@ function plannedDishes(days: readonly DayMenu[], recipes: ReadonlyMap<string, We
         if (dish.kind !== 'recipe') continue
         const recipe = recipes.get(dish.recipeId)
         if (!recipe) continue
-        out.push({ dayIndex, meal, recipe, reuse: dish.variant === 'leftover' || dish.variant === 'freezer' })
+        out.push({ dayIndex, meal, recipe, reuse: dish.variant === 'leftover' || isTaperDish(dish) })
       }
     }
   })

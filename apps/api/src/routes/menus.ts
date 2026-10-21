@@ -1495,7 +1495,8 @@ const patchDishSchema = z.object({
   pinnedType: z.string().nullable().optional(),
   newPosition: z.number().int().nonnegative().optional(),
   course: courseSchema.optional(),
-  variant: z.enum(['planned', 'freezer']).optional(),
+  // `cooked` = «Son sobras de otro día»; `freezer` kept for the sheet shipped before it.
+  variant: z.enum(['planned', 'freezer', 'cooked']).optional(),
 })
 
 // B.3: PATCH /menu/:menuId/day/:day/meal/:meal/dish/:position — patch or reorder a dish.
@@ -1528,14 +1529,14 @@ router.patch('/menu/:menuId/day/:day/meal/:meal/dish/:position', async (req: Aut
       next = reorderDish(slot.dishes, position, body.newPosition)
     } else {
       if (body.variant !== undefined) {
-        // «Es del congelador» on a dish already in the menu (Miguel, 2026-10-20):
+        // «Son sobras de otro día» on a dish already in the menu (Miguel, 2026-10-20):
         // only a recipe cooked here; never a leftover, and never the batch other
         // days eat as leftovers — a táper can't be their source (PRO-82).
         const target = slot.dishes[position]
         if (target.kind !== 'recipe' || target.variant === 'leftover') {
           res.status(400).json({ error: 'Only a recipe dish can come from the freezer' }); return
         }
-        if (body.variant === 'freezer' && isLeftoverSource(days, day, meal, position)) {
+        if (body.variant !== 'planned' && isLeftoverSource(days, day, meal, position)) {
           res.status(409).json({ error: 'This dish feeds planned leftovers' }); return
         }
       }
@@ -1543,7 +1544,7 @@ router.patch('/menu/:menuId/day/:day/meal/:meal/dish/:position', async (req: Aut
     }
     days[day][meal] = { ...slot, dishes: next }
     await db.update(menus).set({ days: days as any }).where(eq(menus.id, menuId))
-    if (body.variant === 'freezer') {
+    if (body.variant === 'freezer' || body.variant === 'cooked') {
       const frozen = dishRecipe(next[position])
       if (frozen) await recordMenuEdits(req, menu, [{ action: 'freezer', day, meal, after: frozen }])
     }

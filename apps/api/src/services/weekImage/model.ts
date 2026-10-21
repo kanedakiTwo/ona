@@ -93,7 +93,9 @@ function imageDish(d: Dish | null | undefined): WeekImageDish | null {
       ? `${base} (del congelador)`
       : d.variant === 'fridge'
         ? `${base} (táper de la nevera)`
-        : d.variant === 'leftover' ? `${base} (sobras)` : base
+        : d.variant === 'cooked'
+          ? `${base} (sobras de otro día)`
+          : d.variant === 'leftover' ? `${base} (sobras)` : base
     return { name, recipeId: d.recipeId || null }
   }
   return null

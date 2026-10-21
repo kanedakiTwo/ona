@@ -23,6 +23,7 @@ import {
 import { db as defaultDb } from '../db/connection.js'
 import { recipeIngredients, recipes, shopOrders, users } from '../db/schema.js'
 import { env } from '../config/env.js'
+import { madridParts } from './madridTime.js'
 
 type Db = typeof defaultDb
 
@@ -327,4 +328,62 @@ export async function loadBasketGaps(days: number, db: Db = defaultDb): Promise<
 
 export async function loadBasketSends(days: number, db: Db = defaultDb): Promise<BasketSendForAgents[]> {
   return basketSendsForAgents(await loadExtensionResults(days, db))
+}
+
+// ─── Lo que ve el token de métricas (PRO-322, norma 12.3) ────────
+
+/** Producto de la tienda que puede llegar al token: hasta 80 caracteres y 12 palabras. */
+export const TOKEN_PRODUCT_MAX_CHARS = 80
+export const TOKEN_PRODUCT_MAX_WORDS = 12
+
+/**
+ * El producto de la tienda para el token de métricas: el de `agentSafeText` (ya pasó la lista
+ * blanca), y además como mucho 80 caracteres y 12 palabras; si no, null y `filtrado` (un texto
+ * largo con letras y signos puede llevar instrucciones). Sin producto, null sin contarlo.
+ */
+export function tokenProducto(raw: string | null): { producto: string | null; filtrado: boolean } {
+  if (raw == null) return { producto: null, filtrado: false }
+  const words = raw.trim().split(/\s+/).filter(Boolean).length
+  const ok = raw.length <= TOKEN_PRODUCT_MAX_CHARS && words <= TOKEN_PRODUCT_MAX_WORDS
+  return ok ? { producto: raw, filtrado: false } : { producto: null, filtrado: true }
+}
+
+/** Fecha ISO → día en Europe/Madrid (`AAAA-MM-DD`); lo que no es una fecha, null. */
+export function tokenDay(iso: string): string | null {
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? null : madridParts(d).isoDate
+}
+
+export interface BasketSendForToken extends Omit<BasketSendForAgents, 'fecha'> {
+  /** Día del envío en Europe/Madrid, sin hora. */
+  fecha: string | null
+}
+
+/**
+ * GET /admin/extension-sends con el token de métricas (no con la sesión de admin): la fecha solo
+ * por día y el producto acotado (`tokenProducto`), con cuántos se quitaron (`productosFiltrados`).
+ */
+export function basketSendsForToken(sends: BasketSendForAgents[]): { sends: BasketSendForToken[]; productosFiltrados: number } {
+  let productosFiltrados = 0
+  const out = sends.map((s) => ({
+    ...s,
+    fecha: tokenDay(s.fecha),
+    lineas: s.lineas.map((l) => {
+      const p = tokenProducto(l.producto)
+      if (p.filtrado) productosFiltrados++
+      return { ...l, producto: p.producto }
+    }),
+  }))
+  return { sends: out, productosFiltrados }
+}
+
+/** GET /admin/extension-gaps con el token de métricas: el producto acotado igual que en los envíos. */
+export function basketGapsForToken(gaps: BasketGap[]): { gaps: BasketGap[]; productosFiltrados: number } {
+  let productosFiltrados = 0
+  const out = gaps.map((g) => {
+    const p = tokenProducto(g.producto)
+    if (p.filtrado) productosFiltrados++
+    return { ...g, producto: p.producto }
+  })
+  return { gaps: out, productosFiltrados }
 }

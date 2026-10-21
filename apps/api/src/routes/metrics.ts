@@ -3,7 +3,7 @@ import { metricsAuth, viaMetricsToken } from '../middleware/metricsAuth.js'
 import { loadBusinessMetrics } from '../services/businessMetrics.js'
 import { loadUsageReport } from '../services/usageReport.js'
 import { loadAssistantFlags } from '../services/assistantFlags.js'
-import { loadBasketGaps, loadBasketSends } from '../services/basketExtension.js'
+import { basketGapsForToken, basketSendsForToken, loadBasketGaps, loadBasketSends } from '../services/basketExtension.js'
 import { flagsForAgents } from '../services/agentView.js'
 
 /**
@@ -23,6 +23,8 @@ import { flagsForAgents } from '../services/agentView.js'
  *   - GET /admin/extension-sends?days=1 — un registro por envío a la extensión
  *     guardado esos días, sin hogar, usuario, envioId ni texto tecleado
  *     (specs/shop-orders.md). Las dos, con el nombre recortado (`publicLineName`).
+ *     Con el token (PRO-322): la fecha solo por día y el producto de la tienda
+ *     de 80 caracteres y 12 palabras como mucho (si no, null y `productosFiltrados`).
  *
  * Own router, mounted in index.ts BEFORE the routers that `router.use(authMiddleware)`
  * as a catch-all — otherwise a token-only request would be 401'd before it
@@ -71,7 +73,9 @@ router.get('/admin/assistant-reviews/flags', metricsAuth, async (req, res) => {
 router.get('/admin/extension-gaps', metricsAuth, async (req, res) => {
   try {
     const days = intParam(req.query.days, 7, 1, 90)
-    res.json({ days, gaps: await loadBasketGaps(days) })
+    const gaps = await loadBasketGaps(days)
+    // El token de métricas: producto acotado (PRO-322); el admin con sesión, completo.
+    res.json(viaMetricsToken(req) ? { days, ...basketGapsForToken(gaps) } : { days, gaps })
   } catch (err: any) {
     console.error('[extension-gaps] failed:', err?.message ?? err)
     res.status(500).json({ error: 'Internal server error' })
@@ -81,7 +85,9 @@ router.get('/admin/extension-gaps', metricsAuth, async (req, res) => {
 router.get('/admin/extension-sends', metricsAuth, async (req, res) => {
   try {
     const days = intParam(req.query.days, 1, 1, 90)
-    res.json({ days, sends: await loadBasketSends(days) })
+    const sends = await loadBasketSends(days)
+    // El token de métricas: fecha por día y producto acotado (PRO-322); el admin con sesión, completo.
+    res.json(viaMetricsToken(req) ? { days, ...basketSendsForToken(sends) } : { days, sends })
   } catch (err: any) {
     console.error('[extension-sends] failed:', err?.message ?? err)
     res.status(500).json({ error: 'Internal server error' })

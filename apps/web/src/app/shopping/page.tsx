@@ -174,7 +174,7 @@ export default function ShoppingPage() {
   if (!menuId) {
     return (
       <div className="min-h-screen bg-cream">
-        <div className="mx-auto w-full max-w-[1180px] px-5 pt-3 pb-12 lg:px-12 lg:pt-8">
+        <div className="mx-auto w-full max-w-[var(--page-max)] px-5 pt-3 pb-12 lg:px-12 lg:pt-8">
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-muted lg:text-[12px]">
             La logística
           </p>
@@ -208,7 +208,7 @@ export default function ShoppingPage() {
   return (
     <LineWeekContext.Provider value={lineWeek}>
     <div className="min-h-screen bg-cream">
-      <div className="mx-auto w-full max-w-[1180px] pb-12 lg:px-12 lg:pt-8">
+      <div className="mx-auto w-full max-w-[var(--page-max)] pb-12 lg:px-12 lg:pt-8">
         {/* Compact header: range eyebrow + title + "···" */}
         <header className="flex items-start justify-between gap-2 px-5 pt-3 lg:items-end lg:px-0 lg:pt-0">
           <div className="flex min-w-0 flex-col gap-0.5">

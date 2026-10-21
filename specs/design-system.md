@@ -179,15 +179,17 @@ Mimoia supports a desktop layout at `md+` (≥768 px) and bespoke multi-column p
 | `< md` (≤767 px) | Bottom-nav fixed at viewport bottom, content in `max-w-[430px] mx-auto` column. |
 | `md` (768–1023 px) | `<DesktopSidebar />` appears (200 px wide), bottom-nav hidden, `<main>` shifted right via `md:ml-[calc(var(--sidebar-width)+var(--sidebar-gap))]`. Pages still cap at `max-w-[430px]` inside `<main>` at this breakpoint — the bespoke per-page widening kicks in at `lg+`. |
 | `lg+` (≥1024 px) | Per-page bespoke layouts (filter rows, split views, multi-col grids). Each page documents its desktop layout in its own spec. |
+| Big screens (≥1680 px) | Miguel 2026-10-21 («con pantallas muy grandes no aprovecha bien el espacio»): every app page's container is `max-w-[var(--page-max)]`, which grows with the monitor — 1180 px up to 1679 px, **1440 px** from 1680, **1680 px** from 2100, **1920 px** from 2400 (`:root` media queries in `globals.css`); the recipe detail is `--page-max` + 100 px; the recipe catalogue goes to 5 columns from 1680 px and 6 from 2100 px. Print sheets (`/menu/imprimir`), cook mode and the auth / onboarding shells keep their own widths. |
 
 ### Tokens (globals.css `@theme`)
 
 - `--public-max: 1200px;` · `--public-gutter: 24px;` · `--public-gutter-md: 40px;` — the public grid, used through `@utility public-container` (see Layout)
+- `--page-max` (`:root`, not `@theme`: it changes with media queries) — the app page width, see the table above
 - `--sidebar-width: 200px;` · `--sidebar-gap: 8px;` · `--container-max: 1400px;` · `--mimo-panel-width` (`0px`, or `400px` while the Mimo panel is open; set at runtime by `MimoProvider`, read by `<main>` at `lg+`)
 
 ### Components
 
-- `<DesktopSidebar />` at `apps/web/src/components/shared/DesktopSidebar.tsx` — persistent left nav at `md+`; its `MimoiaLogo` (`app-wordmark`) links to `/menu` (2026-10-18; before it led nowhere). Items: Menú, Compra, Recetas, Perfil (Mimo is the floating button). Admins also get an «Admin» block below a hairline: Catálogo, Recetas pendientes, Usuarios, Invitaciones, Lista de espera, Opiniones, Auditoría (`lib/adminNav.ts`, see [Admin Dashboard](./admin-dashboard.md)). Hides on `/recipes/[id]/cook` routes.
+- `<DesktopSidebar />` at `apps/web/src/components/shared/DesktopSidebar.tsx` — persistent left nav at `md+`; its `MimoiaLogo` (`app-wordmark`) links to `/menu` (2026-10-18; before it led nowhere); **«Salir»** at its bottom left (`sidebar-logout`, Miguel 2026-10-21: «que no esté tan rebuscado en el perfil»), same `logout` as Perfil's, which stays for mobile; the sidebar scrolls if an admin's menu is long. Items: Menú, Compra, Recetas, Perfil (Mimo is the floating button). Admins also get an «Admin» block below a hairline: Catálogo, Recetas pendientes, Usuarios, Invitaciones, Lista de espera, Opiniones, Auditoría (`lib/adminNav.ts`, see [Admin Dashboard](./admin-dashboard.md)). Hides on `/recipes/[id]/cook` routes.
 - `<Navbar />` (mobile bottom-nav) carries `md:hidden` on its outer `<nav>`.
 
 ### Exceptions (no responsive treatment)

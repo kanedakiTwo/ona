@@ -215,7 +215,7 @@ export default function AdminPage() {
     (ingredientGaps.isLoading || recipeGaps.isLoading || regen.isLoading)
 
   return (
-    <div className="bg-cream min-h-screen pb-24 lg:mx-auto lg:max-w-[1180px]">
+    <div className="bg-cream min-h-screen pb-24 lg:mx-auto lg:max-w-[var(--page-max)]">
       <header className="px-5 pt-8 pb-6">
         <div className="text-eyebrow mb-2">Admin</div>
         <h1 className={`${DISPLAY_UI} text-[2.4rem] leading-[0.95] text-ink`}>

@@ -65,7 +65,7 @@ export default function CatalogGrid({ recipes, isLoading, emptyState, hiddenAtLg
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-5" aria-hidden="true">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-5 min-[1680px]:grid-cols-5 min-[2100px]:grid-cols-6" aria-hidden="true">
         {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="space-y-2">
             <div className={`rounded-[16px] bg-bone animate-pulse lg:aspect-auto lg:h-[220px] ${i % 2 ? "aspect-[4/3]" : "aspect-[7/8]"}`} />
@@ -80,7 +80,7 @@ export default function CatalogGrid({ recipes, isLoading, emptyState, hiddenAtLg
   if (isLg) {
     const visible = hiddenAtLg ? recipes.filter((r) => !hiddenAtLg.has(r.id)) : recipes
     return (
-      <ul className="grid grid-cols-4 gap-x-5 gap-y-6" data-testid="catalog-grid">
+      <ul className="grid grid-cols-4 gap-x-5 gap-y-6 min-[1680px]:grid-cols-5 min-[2100px]:grid-cols-6" data-testid="catalog-grid">
         {visible.map((r, i) => (
           <Item key={r.id} recipe={r} index={i} shape="tall" renderAction={renderAction} />
         ))}

@@ -86,6 +86,15 @@
   --public-gutter-md: 40px;
 }
 
+/* App page width (Miguel 2026-10-21: «con pantallas muy grandes no aprovecha
+   el espacio»). Every app page's container is max-w-[var(--page-max)]: 1180 px
+   on a laptop, wider on big monitors (the sidebar takes 200 px). Print sheets
+   and cooking mode keep their own widths. */
+:root { --page-max: 1180px; }
+@media (min-width: 1680px) { :root { --page-max: 1440px; } }
+@media (min-width: 2100px) { :root { --page-max: 1680px; } }
+@media (min-width: 2400px) { :root { --page-max: 1920px; } }
+
 /* One horizontal grid for the public site: navbar, footer, page titles and
    section content all start on the same x. Full-bleed bands put their
    background on the <section> and this container inside it. Reading pages

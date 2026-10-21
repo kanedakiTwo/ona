@@ -404,7 +404,7 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-cream pb-12">
-      <div className="mx-auto w-full max-w-[1180px] lg:px-12 lg:pt-8">
+      <div className="mx-auto w-full max-w-[var(--page-max)] lg:px-12 lg:pt-8">
         <ProfileHeader
           username={user.username}
           email={user.email}

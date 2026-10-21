@@ -216,7 +216,7 @@ export default function RecipesPage() {
     <div className={signedOut ? "bg-cream pb-20 md:pb-28" : "min-h-screen bg-cream"}>
       <div
         className={
-          signedOut ? "public-container" : "mx-auto w-full max-w-[1180px] pb-12 lg:px-12 lg:pb-10 lg:pt-8"
+          signedOut ? "public-container" : "mx-auto w-full max-w-[var(--page-max)] pb-12 lg:px-12 lg:pb-10 lg:pt-8"
         }
       >
         {signedOut ? (

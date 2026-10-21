@@ -51,7 +51,7 @@ export function FichaShell({
 }) {
   return (
     <div className="min-h-screen bg-cream">
-      <div className="mx-auto w-full max-w-[1180px] px-4 pb-14 pt-2 md:px-8 lg:px-12 lg:pt-6">
+      <div className="mx-auto w-full max-w-[var(--page-max)] px-4 pb-14 pt-2 md:px-8 lg:px-12 lg:pt-6">
         <div className="flex flex-col gap-7 lg:max-w-[720px]">
           <header className="flex flex-col gap-3.5">
             <Link

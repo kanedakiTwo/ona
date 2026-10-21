@@ -16,6 +16,7 @@ User registration, login, and session management for Mimoia.
 - Existing users with completed onboarding go directly to `/menu` after login
 - Registering with an email that is on the pre-launch [waitlist](./waitlist.md) (waiting or invited) marks that entry `joined` — fire-and-forget, it never blocks or fails the registration
 - `/login` and `/register` honour `?next=<path>`: after success the user lands on `next` instead of `/menu` / `/onboarding`. Only same-origin relative paths are accepted (`safeNext`: must start with `/`, not `//` or `/\`, no newlines), so it can't become an open redirect. The "Crear cuenta" / "Inicia sesión" cross-links carry `next` along. Used by `/whatsapp/conectar`, `/invites/[token]`, the private-recipe notice and the signed-out redirect of every protected page (see "Public vs Protected Routes").
+- Sign out: «Salir» at the bottom left of the desktop sidebar (`md+`, Miguel 2026-10-21) and in Perfil → «Tu cuenta» (mobile). Both clear the session and this device's cached data and go back to the landing (`logout` in `lib/auth.tsx`)
 
 ## Closed beta (PRO-27)
 

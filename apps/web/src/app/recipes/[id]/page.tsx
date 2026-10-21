@@ -203,7 +203,7 @@ export default function RecipeDetailPage() {
       )
     }
     return (
-      <div className={`min-h-screen bg-[#FAF6EE] lg:mx-auto lg:grid lg:max-w-[1280px] lg:grid-cols-2 lg:gap-10 lg:px-8 lg:pr-12 ${publicChrome ? "pt-20 lg:pt-[104px]" : "lg:pt-7"}`}>
+      <div className={`min-h-screen bg-[#FAF6EE] lg:mx-auto lg:grid lg:max-w-[calc(var(--page-max)+100px)] lg:grid-cols-2 lg:gap-10 lg:px-8 lg:pr-12 ${publicChrome ? "pt-20 lg:pt-[104px]" : "lg:pt-7"}`}>
         <div className="h-[390px] w-full animate-pulse bg-[#EFE8D8] lg:h-[calc(100dvh-56px)] lg:rounded-[24px]" />
         <div className="space-y-4 px-5 pt-6 lg:px-0 lg:pt-2">
           <div className="h-3 w-1/3 animate-pulse rounded bg-[#EFE8D8]" />
@@ -468,7 +468,7 @@ export default function RecipeDetailPage() {
       <div
         // Signed out the columns sit on the public grid (same x as the PublicNavbar logo).
         className={`grid min-h-screen grid-cols-2 items-start gap-10 bg-[#FAF6EE] pb-10 ${
-          publicChrome ? "public-container pt-[104px]" : "mx-auto max-w-[1280px] pl-8 pr-12 pt-7"
+          publicChrome ? "public-container pt-[104px]" : "mx-auto max-w-[calc(var(--page-max)+100px)] pl-8 pr-12 pt-7"
         }`}
       >
         <div

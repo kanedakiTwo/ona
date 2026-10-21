@@ -34,7 +34,7 @@ const THUMBS = 4
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-cream">
-      <div className="mx-auto w-full max-w-[1180px] px-5 pt-4 pb-12 lg:px-12 lg:pt-8 lg:pb-10">{children}</div>
+      <div className="mx-auto w-full max-w-[var(--page-max)] px-5 pt-4 pb-12 lg:px-12 lg:pt-8 lg:pb-10">{children}</div>
     </div>
   )
 }

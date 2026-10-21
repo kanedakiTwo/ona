@@ -43,6 +43,8 @@ export const PROFILE_CHANGE_ACTIONS = [
   'person_removed',
   'question_added',
   'question_resolved',
+  /** Mimo asked the pending question in a conversation (PRO-319): one a week per person. */
+  'question_asked',
 ] as const
 export type ProfileChangeAction = (typeof PROFILE_CHANGE_ACTIONS)[number]
 

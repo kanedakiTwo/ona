@@ -45,6 +45,7 @@ import { visibleAuthorIds, visibleRecipeWhere } from '../recipeVisibility.js'
 import { loadMatchableRecipes } from '../matchableRecipes.js'
 import { generationSkips, loadPreviousWeek } from '../menuWeek.js'
 import { loadUserRestrictions, findRecipesWithWhatIHave } from '../withWhatIHave.js'
+import { withHouseholdRestrictions } from '../householdAllergies.js'
 import { isBrandDependentGlutenCharcuterie, isCoeliacHousehold, recipeDietNotices } from '../glutenFreeCharcuterie.js'
 import { compileRestrictions, nameHasTerm, normalizeText, violatesRestrictions, type RestrictableRecipe } from '../dietaryRestrictions.js'
 import { addPantryForUser, deletePantryForUser, listPantryForUser, NoHouseholdError, patchPantryForUser } from '../pantryStore.js'
@@ -1216,8 +1217,11 @@ const swapMeal: SkillDefinition = {
       }
     }
 
-    // Allergies / diet (profile + memory) and dislikes — same filter as the generator.
-    const { restrictions, dislikes } = await restrictionsFor(ctx)
+    // Allergies / diet (profile + memory) and dislikes — same filter as the
+    // generator, with every member's allergies and diet (PRO-305).
+    const own = await restrictionsFor(ctx)
+    const dislikes = own.dislikes
+    const restrictions = await withHouseholdRestrictions(own.restrictions, userId, db)
 
     // Fetch favorites
     const favRows = await db

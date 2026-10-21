@@ -4,6 +4,7 @@ import { visibleAuthorIds, visibleRecipeWhere } from '../services/recipeVisibili
 import { loadMatchableRecipes } from '../services/matchableRecipes.js'
 import { requestCatalogPhotos } from '../services/catalogImageOnDemand.js'
 import { mergeRestrictions } from '../services/dietaryRestrictions.js'
+import { withHouseholdRestrictions } from '../services/householdAllergies.js'
 import { generationSkips, keepLockedSlots, loadPreviousWeek, menuHasDishes } from '../services/menuWeek.js'
 import { eq, and, asc, desc, inArray } from 'drizzle-orm'
 import { db } from '../db/connection.js'
@@ -581,7 +582,8 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       .where(eq(users.id, menu.userId))
       .limit(1)
     const memory = await getMemoryForUser(menu.userId).catch(() => null)
-    const restrictions = mergeRestrictions(user?.restrictions, memory)
+    // PRO-305: every member's allergies and diet, like the weekly menu.
+    const restrictions = await withHouseholdRestrictions(mergeRestrictions(user?.restrictions, memory), menu.userId)
     const dislikesValue = memory?.dislikes?.value
     const equipmentValue = memory?.equipment?.value
     // The household's ficha on top (PRO-253): dislikes of every member, equipment missing right now.
@@ -744,7 +746,8 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
         .where(eq(users.id, menu.userId))
         .limit(1)
       const memory2 = await getMemoryForUser(menu.userId).catch(() => null)
-      const restrictions = mergeRestrictions(user?.restrictions, memory2)
+      // PRO-305: every member's allergies and diet, like the weekly menu.
+      const restrictions = await withHouseholdRestrictions(mergeRestrictions(user?.restrictions, memory2), menu.userId)
       const dislikesValue2 = memory2?.dislikes?.value
       const equipmentValue2 = memory2?.equipment?.value
       // The household's ficha on top (PRO-253): dislikes of every member, equipment missing right now.
@@ -1595,7 +1598,8 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
       .where(eq(users.id, menu.userId))
       .limit(1)
     const memRegen = await getMemoryForUser(menu.userId).catch(() => null)
-    const restrictions = mergeRestrictions(user?.restrictions, memRegen)
+    // PRO-305: every member's allergies and diet, like the weekly menu.
+    const restrictions = await withHouseholdRestrictions(mergeRestrictions(user?.restrictions, memRegen), menu.userId)
     const dislikesValRegen = memRegen?.dislikes?.value
     const equipValRegen = memRegen?.equipment?.value
     // The household's ficha on top (PRO-253): dislikes of every member, equipment missing right now.
@@ -1687,7 +1691,8 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/random', async (req: AuthReq
       .where(eq(users.id, menu.userId))
       .limit(1)
     const memR = await getMemoryForUser(menu.userId).catch(() => null)
-    const restrictions = mergeRestrictions(user?.restrictions, memR)
+    // PRO-305: every member's allergies and diet, like the weekly menu.
+    const restrictions = await withHouseholdRestrictions(mergeRestrictions(user?.restrictions, memR), menu.userId)
     const dislikesValR = memR?.dislikes?.value
     const equipValR = memR?.equipment?.value
     // The household's ficha on top (PRO-253): dislikes of every member, equipment missing right now.

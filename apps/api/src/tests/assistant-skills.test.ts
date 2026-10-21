@@ -57,6 +57,11 @@ vi.mock('../services/notificationScheduler.js', () => ({
 vi.mock('../services/userMemoryStore.js', () => ({
   getMemoryForUser: vi.fn(async () => ({})),
 }))
+// PRO-305: the household's restrictions (its own DB reads are tested in householdAllergies.test.ts).
+vi.mock('../services/householdAllergies.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../services/householdAllergies.js')>()),
+  withHouseholdRestrictions: vi.fn(async (own: readonly string[]) => [...own]),
+}))
 // PRO-155: the menu evaluator is a Haiku call — off by default here, one test turns it on.
 vi.mock('../services/menuFit.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../services/menuFit.js')>()),
@@ -516,6 +521,31 @@ describe('swap_meal', () => {
     )
     const r = await skill.handler({ dayIndex: 0, meal: 'lunch' }, ctx(db))
     expect(r.summary).toContain('Cambiado')
+  })
+
+  // PRO-305 (Seguridad): the auto-pick reads every member's allergies, not only the caller's.
+  it('auto-picks with the restrictions of everyone in the household', async () => {
+    const { withHouseholdRestrictions } = await import('../services/householdAllergies.js')
+    const { findRecipeForSlot } = await import('../services/recipeMatcher.js')
+    vi.mocked(withHouseholdRestrictions).mockImplementationOnce(async (own) => [...own, 'marisco'])
+    const menu = {
+      id: 'm-1',
+      days: Array.from({ length: 7 }, () => ({ dinner: { dishes: [{ kind: 'recipe', recipeId: 'r-old', recipeName: 'Antiguo' }] } })),
+    }
+    const db = makeDb(
+      [menu],
+      [{ restrictions: ['sin gluten'] }],
+      [],
+      [{ id: 'r-1', name: 'Plato', authorId: 'u-1', meals: ['dinner'], seasons: [], tags: [] }],
+      [],
+      [],
+      [],
+      [{ ...menu, days: [...menu.days] }],
+    )
+    vi.mocked(findRecipeForSlot).mockClear()
+    await skill.handler({ dayIndex: 0, meal: 'dinner' }, ctx(db))
+    expect(vi.mocked(withHouseholdRestrictions).mock.calls.at(-1)?.[0]).toEqual(['sin gluten'])
+    expect(vi.mocked(findRecipeForSlot).mock.calls.at(-1)?.[1].restrictions).toEqual(['sin gluten', 'marisco'])
   })
 
   // PRO-238 (Familia Ruiz, 2026-10-18): «pollo empanado» on Tuesday 20 while

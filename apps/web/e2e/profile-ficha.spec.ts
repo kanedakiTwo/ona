@@ -259,7 +259,7 @@ function view(viewerId: string) {
       fact('f4', `u:${viewerId}`, 'salud', 'Edad: 42 años', { type: 'physical.age', health: true, origin: 'tu', originLabel: 'Lo dijiste tú' }),
     ],
     question: { id: 'q1', question: '¿Seguís sin horno?', subjectKey: 'casa', factId: null },
-    recent: [{ id: 'c1', at: ago(DAY / 2), action: 'added', verb: 'He apuntado', sentence: 'Los jueves cenáis algo rápido', byMimo: true, canUndo: true }],
+    recent: [{ id: 'c1', factId: 'f1', at: ago(DAY / 2), action: 'added', verb: 'He apuntado', sentence: 'Los jueves cenáis algo rápido', byMimo: true, canUndo: true }],
     learningPaused: false,
     readOnly: false,
   }
@@ -296,7 +296,7 @@ test('portrait, the question, what Mimo deduced, another member and the reader�
     }
     if (path.startsWith('/household/profile/changes') && req.method() === 'GET') {
       return json(route, [
-        { id: 'c9', at: changeAt, action: 'added', verb: 'He apuntado', sentence: 'Los jueves cenáis algo rápido', byMimo: true, canUndo: true },
+        { id: 'c9', factId: 'f1', at: changeAt, action: 'added', verb: 'He apuntado', sentence: 'Los jueves cenáis algo rápido', byMimo: true, canUndo: true },
       ])
     }
     return json(route, { ok: true })
@@ -421,7 +421,7 @@ test.describe('lib/ficha', () => {
     expect(visibleQuestion(q('u:me'))).not.toBeNull()
     expect(visibleQuestion(q('p:x'))).not.toBeNull()
     expect(visibleQuestion(q('u:other'))).toBeNull() // the API answers 403 to it
-    const c = (id: string, at: string) => ({ id, at, action: 'added', verb: '', sentence: '', byMimo: true, canUndo: true }) as never
+    const c = (id: string, at: string) => ({ id, factId: null, at, action: 'added', verb: '', sentence: '', byMimo: true, canUndo: true }) as never
     expect(groupChangesByDay([c('a', '2026-10-21T03:10:00+02:00'), c('b', '2026-10-21T02:00:00+02:00'), c('c', '2026-10-18T10:00:00+02:00')], now)
       .map((g) => [g.label, g.changes.length])).toEqual([['Anoche', 2], ['Hace 3 días', 1]])
   })

@@ -1065,11 +1065,12 @@ const logCooked: SkillDefinition = {
 const updateRecipeNotes: SkillDefinition = {
   name: 'update_recipe_notes',
   description:
-    'Valora o anota una receta para el hogar: rating 1-5 estrellas, notas ("le va bien un toque de comino"), sustituciones, etiquetas propias, y minServings: "las lentejas siempre las hago para 6 y congelo" → minServings 6 (la compra comprara al menos para 6 cada vez; 0 lo quita). Las notas se añaden a las existentes salvo notesMode=replace.',
+    'Valora o anota una receta para el hogar: rating 1-5 estrellas, notas ("le va bien un toque de comino"), sustituciones, etiquetas propias, y minServings: "las lentejas siempre las hago para 6 y congelo" → minServings 6 (la compra comprara al menos para 6 cada vez; 0 lo quita). Las notas se añaden a las existentes salvo notesMode=replace. Si el hogar tiene su propia copia de la receta, la nota va a su copia. Si hay dos recetas con el mismo nombre, no guarda nada y te da las dos: pregunta cual y vuelve a llamar con recipeId.',
   parameters: {
     type: 'object',
     properties: {
       recipeName: { type: 'string' },
+      recipeId: { type: 'string', description: 'Solo cuando esta herramienta te ha dado varias recetas con el mismo nombre y la persona ha elegido una.' },
       rating: { type: 'number', description: '1 a 5' },
       notes: { type: 'string' },
       notesMode: { type: 'string', enum: ['append', 'replace'] },
@@ -1080,8 +1081,13 @@ const updateRecipeNotes: SkillDefinition = {
     required: ['recipeName'],
   },
   async handler(p, ctx) {
-    const recipe = await findRecipe(ctx, p.recipeName, { menuFirst: true })
-    if (!recipe) return text(`No encontre "${p.recipeName}"; no he anotado nada.`)
+    const target = await recipeForNotes(ctx, p.recipeName, typeof p.recipeId === 'string' ? p.recipeId : undefined)
+    if (target.kind === 'none') return text(`No encontre "${p.recipeName}"; no he anotado nada.`)
+    if (target.kind === 'ambiguous') {
+      const list = target.candidates.map((c) => `"${c.name}" (${c.label}, recipeId ${c.id})`).join('; ')
+      return text(`No he guardado nada: hay ${target.candidates.length} recetas que se llaman asi: ${list}. Preguntale en cual la guarda y vuelve a llamar con su recipeId.`, { candidates: target.candidates })
+    }
+    const recipe = target.recipe
     const current = await api(ctx)<{ notes?: string | null; customTags?: string[] | null } | null>('GET', `/recipes/${recipe.id}/notes`).catch(() => null)
     const body: Record<string, unknown> = {}
     if (typeof p.rating === 'number') body.rating = Math.max(1, Math.min(5, Math.round(p.rating)))
@@ -1098,8 +1104,77 @@ const updateRecipeNotes: SkillDefinition = {
       p.tags?.length ? `etiquetas ${p.tags.join(', ')}` : null,
       'minServings' in body ? (body.minServings ? `siempre para al menos ${body.minServings}` : 'sin minimo de raciones') : null,
     ].filter(Boolean)
-    return { data: { recipeId: recipe.id }, summary: `Hecho: "${recipe.name}" — ${what.join(', ')}.`, uiHint: 'recipe' }
+    // PRO-299: say exactly where it went (the prompt makes Mimo repeat it).
+    return {
+      data: { recipeId: recipe.id, recipeName: recipe.name, owner: recipe.owner },
+      summary: `Hecho: guardado en "${recipe.name}" (${recipe.label}) — ${what.join(', ')}. Al confirmarlo nombra esta receta tal cual, "${recipe.name}" (${recipe.label}).`,
+      uiHint: 'recipe',
+    }
   },
+}
+
+type NotesOwner = 'household' | 'catalog' | 'other'
+const OWNER_LABEL: Record<NotesOwner, string> = { household: 'su receta', catalog: 'receta del catalogo de Mimoia', other: 'receta de otra persona' }
+interface NotesRecipe { id: string; name: string; owner: NotesOwner; label: string }
+
+/**
+ * PRO-299 · where a note goes. Carmen y Antonio have their own copy of
+ * «Lentejas guisadas»; the catalogue's lentils were in the menu and won
+ * (`findRecipe(..., { menuFirst: true })`), so the note landed on the
+ * catalogue recipe while Mimo said «tus lentejas». Now:
+ *   1. their own recipe with that name wins (a copy, or one they wrote);
+ *   2. else the menu/catalogue match — and if they have a copy of it, the copy;
+ *   3. two different recipes with the same name, none theirs → ask.
+ */
+export async function recipeForNotes(
+  ctx: SkillContext,
+  name: string,
+  recipeId?: string,
+): Promise<{ kind: 'one'; recipe: NotesRecipe } | { kind: 'ambiguous'; candidates: NotesRecipe[] } | { kind: 'none' }> {
+  const own = (await api(ctx)<{ own?: Array<{ id: string; name: string; copiedFromRecipeId?: string | null }> }>('GET', `/user/${ctx.userId}/recipes`).catch(() => null))?.own ?? []
+  const mine = (r: { id: string; name: string }): NotesRecipe => ({ id: r.id, name: r.name, owner: 'household', label: OWNER_LABEL.household })
+  const classify = async (r: { id: string; name: string; authorId?: string | null }): Promise<NotesRecipe> => {
+    const ownHit = own.find((o) => o.id === r.id)
+    if (ownHit) return mine(ownHit)
+    let authorId = r.authorId
+    if (authorId === undefined) {
+      const detail = await api(ctx)<{ authorId?: string | null } | null>('GET', `/recipes/${r.id}`).catch(() => null)
+      authorId = detail?.authorId ?? null
+    }
+    const owner: NotesOwner = authorId ? 'other' : 'catalog'
+    return { id: r.id, name: r.name, owner, label: OWNER_LABEL[owner] }
+  }
+
+  if (recipeId) {
+    const ownHit = own.find((o) => o.id === recipeId)
+    if (ownHit) return { kind: 'one', recipe: mine(ownHit) }
+    const detail = await api(ctx)<{ id?: string; name?: string; authorId?: string | null } | null>('GET', `/recipes/${recipeId}`).catch(() => null)
+    if (detail?.id && detail.name) return { kind: 'one', recipe: await classify({ id: detail.id, name: detail.name, authorId: detail.authorId ?? null }) }
+    return { kind: 'none' }
+  }
+
+  const ownHit = bestMatch(own, name, (r) => r.name)
+  if (ownHit) return { kind: 'one', recipe: mine(ownHit) }
+
+  const found = await findRecipe(ctx, name, { menuFirst: true })
+  if (!found) return { kind: 'none' }
+  const copy = own.find((o) => o.copiedFromRecipeId === found.id)
+  if (copy) return { kind: 'one', recipe: mine(copy) }
+
+  // Same name, different recipes (in the menu or the catalogue)?
+  const same = new Map<string, { id: string; name: string; authorId?: string | null }>([[found.id, { id: found.id, name: found.name }]])
+  const menu = await loadMenu(ctx).catch(() => null)
+  for (const d of (menu?.days ?? []).flatMap((day) => Object.values(day ?? {})).flatMap((sl) => sl?.dishes ?? [])) {
+    if (d.kind === 'recipe' && d.recipeId && d.recipeName && normalize(d.recipeName) === normalize(found.name) && !same.has(d.recipeId)) {
+      same.set(d.recipeId, { id: d.recipeId, name: d.recipeName })
+    }
+  }
+  const cards = await api(ctx)<Array<{ id: string; name: string; authorId?: string | null }>>('GET', `/recipes?search=${encodeURIComponent(found.name)}&perPage=30`).catch(() => [])
+  for (const c of Array.isArray(cards) ? cards : []) {
+    if (c?.id && c.name && normalize(c.name) === normalize(found.name)) same.set(c.id, { ...same.get(c.id), ...c })
+  }
+  if (same.size > 1) return { kind: 'ambiguous', candidates: await Promise.all([...same.values()].map(classify)) }
+  return { kind: 'one', recipe: await classify(same.get(found.id)!) }
 }
 
 const myRecipes = async (ctx: SkillContext) =>

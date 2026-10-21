@@ -179,6 +179,8 @@ interface RecipeRow {
   internalTags: string[] | null
   sourceUrl: string | null
   sourceType: string | null
+  /** PRO-299: the catalogue recipe a copy was made from. */
+  copiedFromRecipeId?: string | null
   /** PRO-154 batch-import source (book, page, batch, audit…). Internal: only its credit line goes out. */
   catalogSource?: CatalogSourceInfo | null
   createdAt: Date | null
@@ -443,6 +445,10 @@ router.get('/recipes', optionalAuthMiddleware, async (req: AuthRequest, res) => 
     // override a dislike, never an allergy). Used by the menu's «Elegir otra
     // receta» picker. Anonymous callers: ignored.
     const fitsMe = req.query.fitsMe === '1' || req.query.fitsMe === 'true'
+    // ?mine=1 (PRO-299): only the caller's own recipes («Mis recetas»). The
+    // web used to filter the first page of the whole catalogue, where the
+    // newest copies come last, so one could be missing. Anonymous: nothing.
+    const mine = req.query.mine === '1' || req.query.mine === 'true'
     const offset = (page - 1) * perPage
 
     const conditions = []
@@ -467,6 +473,7 @@ router.get('/recipes', optionalAuthMiddleware, async (req: AuthRequest, res) => 
           AND copy.copied_from_recipe_id = ${recipes.id}
       )`)
     }
+    if (mine) conditions.push(req.userId ? eq(recipes.authorId, req.userId) : sql`FALSE`)
     if (meal) conditions.push(arrayContains(recipes.meals, [meal]))
     if (season) conditions.push(arrayContains(recipes.seasons, [season]))
     if (search) conditions.push(sql`lower(${recipes.name}) like ${`%${search.toLowerCase()}%`}`)
@@ -1409,7 +1416,8 @@ router.get('/user/:id/recipes', authMiddleware, async (req: AuthRequest, res) =>
       ))) as RecipeRow[]
 
     res.json({
-      own: ownRows.map(toCard),
+      // PRO-299: which catalogue recipe a copy comes from (Mimo's notes go to the copy).
+      own: ownRows.map((r) => ({ ...toCard(r), copiedFromRecipeId: r.copiedFromRecipeId ?? null })),
       favorites: favRows.map(toCard),
     })
   } catch (err) {

@@ -100,6 +100,8 @@ export default function RecipesPage() {
     meal: selectedMeal || undefined,
     customTags: selectedTags.length > 0 ? selectedTags : undefined,
     perPage: 100,
+    // PRO-299: «Mis recetas» asks the API for them, so none is cut off.
+    ...(scope === "mine" ? { mine: true } : {}),
   })
   const pickedIds = useMemo(() => picked.map((p) => p.id), [picked])
   const { data: withWhatIHaveRecipes, isLoading: withWhatIHaveLoading } = useRecipesWithWhatIHave(

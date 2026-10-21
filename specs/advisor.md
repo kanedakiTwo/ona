@@ -86,7 +86,7 @@ The assistant can call back-end skills (function calling). Each skill has a name
 - **Pantry:** `update_pantry` (add/set/remove with quantities and expiry). Reading the pantry is `get_pantry_stock`; the old `list_pantry` duplicate was removed (62 skills).
 - **Recipes:**
   - `log_cooked` (cook log + pantry decrement). Answering the WhatsApp check-in with «Sí, ¡a repetir!» / «Sí, estuvo bien» → also `update_recipe_notes` rating 5 / 3 (PRO-235, prompt rule).
-  - `update_recipe_notes`: rating, notes appended, substitutions, tags, `minServings` ("siempre la hago para 6"; 0 clears).
+  - `update_recipe_notes`: rating, notes appended, substitutions, tags, `minServings` ("siempre la hago para 6"; 0 clears). **Which recipe (PRO-299, `recipeForNotes`):** the household's own recipe with that name wins (a copy or one they wrote); else the menu/catalogue match, and if they have a copy of it (`copiedFromRecipeId`, carried in `GET /user/:id/recipes` `own`), the copy; two different recipes with the same name and none theirs → nothing saved, the summary lists them with their `recipeId` and Mimo asks, then calls again with `recipeId`. The summary says where it went («guardado en "Lentejas guisadas" (su receta)» / «(receta del catalogo de Mimoia)» / «(receta de otra persona)») and the prompt makes Mimo say «guardada» only on that confirmation and repeat that name (before, the catalogue's lentils in the menu won and Mimo said «tus lentejas»).
   - `delete_recipe`: own recipes only; the prompt asks for confirmation first.
   - `manage_cookbook`, `regenerate_recipe_image`.
 - **Profile:**

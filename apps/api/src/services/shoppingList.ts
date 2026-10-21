@@ -13,7 +13,7 @@ import type {
   ShoppingItem,
   Unit,
 } from '@ona/shared'
-import { isNotBought, isTaperDish, recipeDishesOf, resolveBuyRule, shoppingGroupOf } from '@ona/shared'
+import { isNotBought, isTaperDish, leftoverShares, recipeDishesOf, resolveBuyRule, shoppingGroupOf, slotServingsOverride } from '@ona/shared'
 import { randomUUID } from 'crypto'
 
 /**
@@ -200,48 +200,89 @@ export interface ScaledRow {
   note?: string | null
 }
 
-function hasServingsOverride(slot: { servings?: number | null } | undefined): boolean {
-  return typeof slot?.servings === 'number' && slot.servings > 0
-}
-
 /**
- * PRO-75 — a planned leftover ("táper") is part of its source's batch, not
- * another cooking. Rule (option A, 2026-10-13): when the source meal carries
- * «Solo hoy: N» (`servings` override), N is what gets cooked, táper included,
- * so the leftover dish is dropped from the copy this returns and adds nothing
- * to the list. Otherwise the leftover stays and adds its own diners (the
- * household's, since leftovers no longer copy the source's `servings`).
+ * PRO-75 / PRO-298 — a planned leftover ("táper") is part of its source's
+ * batch, not another cooking. The batch is `leftoverShares` (`@ona/shared`),
+ * the same rule as the menu page's «N raciones» and Mimo: the source's own
+ * diners plus what each leftover adds. When the source's «Solo hoy: N» is
+ * only who eats that meal (N ≤ the household, e.g. the template's diners the
+ * generator puts on every slot), each leftover adds its own diners: Dani y
+ * Sara's bowl, Monday for 2 + leftovers Tuesday to Thursday → 8, not 2.
+ * When N is above the household it already pays for tápers (Laura alone,
+ * lasaña «Solo hoy: 2» + sobras → 2), and a leftover adds only what N doesn't
+ * cover. A leftover that adds nothing is dropped from the copy this returns;
+ * one that adds part carries it as `listDiners`, which `sumDinersByRecipe`
+ * counts instead of the slot's diners. A táper for tomorrow (PRO-223, slot
+ * with `taper`) always adds its own rations. A leftover whose source turned
+ * into a táper of the same recipe (PRO-240) adds nothing.
  *
  * Takes ONE menu's 7 days (indices = `leftoverOf.day`), so call it before
  * slicing/re-indexing days for a date range. Pure; never mutates its input.
  * A leftover whose source slot no longer holds that recipe is left alone.
  */
-export function withLeftoverBatches(weekDays: DayMenu[]): DayMenu[] {
-  return weekDays.map((day) => {
+export function withLeftoverBatches(weekDays: DayMenu[], householdDiners: number): DayMenu[] {
+  type Ref = { day: number; meal: keyof DayMenu; pos: number; diners: number | null }
+  // Planned (non-táper) leftovers of each source batch, in week order.
+  const groups = new Map<string, Ref[]>()
+  const drop = new Set<string>()
+  const key = (day: number, meal: string | number, pos: number) => `${day}|${meal}|${pos}`
+  weekDays.forEach((day, dayIndex) => {
+    if (!day) return
+    for (const meal of Object.keys(day) as (keyof DayMenu)[]) {
+      const slot = day[meal]
+      if (!slot?.dishes?.length) continue
+      slot.dishes.forEach((dish, pos) => {
+        if (dish.kind !== 'recipe' || dish.variant !== 'leftover' || !dish.leftoverOf) return
+        const source = weekDays[dish.leftoverOf.day]?.[dish.leftoverOf.meal as keyof DayMenu]
+        // PRO-240: the source became a táper (already cooked, in the fridge
+        // or freezer): its leftovers came out of that same batch — nothing
+        // to buy for them either.
+        if ((source?.dishes ?? []).some((d) => isTaperDish(d) && d.kind === 'recipe' && d.recipeId === dish.recipeId)) {
+          drop.add(key(dayIndex, meal, pos))
+          return
+        }
+        // PRO-223: a táper is one ration more on top of «Solo hoy», never covered by it.
+        if (slot.taper) return
+        const sourceCooksIt = (source?.dishes ?? []).some(
+          (d) => d.kind === 'recipe' && d.variant !== 'leftover' && d.recipeId === dish.recipeId,
+        )
+        if (!sourceCooksIt) return
+        const g = `${dish.leftoverOf.day}|${dish.leftoverOf.meal}|${dish.recipeId}`
+        const list = groups.get(g) ?? []
+        list.push({ day: dayIndex, meal, pos, diners: slotServingsOverride(slot) })
+        groups.set(g, list)
+      })
+    }
+  })
+  const listDiners = new Map<string, number>()
+  for (const [g, refs] of groups) {
+    const [srcDay, srcMeal] = g.split('|')
+    const source = weekDays[Number(srcDay)]?.[srcMeal as keyof DayMenu]
+    const shares = leftoverShares(slotServingsOverride(source), householdDiners, refs.map((r) => r.diners))
+    refs.forEach((r, i) => {
+      const own = r.diners ?? householdDiners
+      if (shares[i] <= 0) drop.add(key(r.day, r.meal, r.pos))
+      else if (shares[i] !== own) listDiners.set(key(r.day, r.meal, r.pos), shares[i])
+    })
+  }
+  if (drop.size === 0 && listDiners.size === 0) return weekDays
+  return weekDays.map((day, dayIndex) => {
     if (!day) return day
     let changed = false
     const next: DayMenu = { ...day }
     for (const meal of Object.keys(day) as (keyof DayMenu)[]) {
       const slot = day[meal]
       if (!slot?.dishes?.length) continue
-      const kept = slot.dishes.filter((dish) => {
-        if (dish.kind !== 'recipe' || dish.variant !== 'leftover' || !dish.leftoverOf) return true
-        const source = weekDays[dish.leftoverOf.day]?.[dish.leftoverOf.meal as keyof DayMenu]
-        // PRO-240: the source became a táper (already cooked, in the fridge
-        // or freezer): its leftovers came out of that same batch — nothing
-        // to buy for them either.
-        if ((source?.dishes ?? []).some((d) => isTaperDish(d) && d.kind === 'recipe' && d.recipeId === dish.recipeId)) return false
-        const sourceCooksIt = (source?.dishes ?? []).some(
-          (d) => d.kind === 'recipe' && d.variant !== 'leftover' && d.recipeId === dish.recipeId,
-        )
-        // PRO-223: a táper is one ration more on top of «Solo hoy», never covered by it.
-        if (slot.taper) return true
-        return !(sourceCooksIt && hasServingsOverride(source))
+      const touched = slot.dishes.some((_, pos) => drop.has(key(dayIndex, meal, pos)) || listDiners.has(key(dayIndex, meal, pos)))
+      if (!touched) continue
+      changed = true
+      const dishes = slot.dishes.flatMap((dish, pos) => {
+        const k = key(dayIndex, meal, pos)
+        if (drop.has(k)) return []
+        const n = listDiners.get(k)
+        return n != null ? [{ ...dish, listDiners: n } as unknown as typeof dish] : [dish]
       })
-      if (kept.length !== slot.dishes.length) {
-        changed = true
-        next[meal] = { ...slot, dishes: kept }
-      }
+      next[meal] = { ...slot, dishes }
     }
     return changed ? next : day
   })
@@ -252,7 +293,7 @@ export function withLeftoverBatches(weekDays: DayMenu[]): DayMenu[] {
  * Per-slot `servings` overrides win over the household-level fallback; a
  * recipe scheduled in two slots accumulates both diner counts (a leftover
  * slot is the same batch cooked bigger, so it adds its diners too — unless
- * `withLeftoverBatches` already dropped it because its source has «Solo hoy»,
+ * `withLeftoverBatches` dropped it or cut it because its source's «Solo hoy» covers it,
  * PRO-75). Pure
  * (no DB) so it's the unit-test entry point for shopping-list scaling.
  *
@@ -281,7 +322,10 @@ export function sumDinersByRecipe(
         // A táper from the freezer (PRO-82) or the fridge (PRO-240) was
         // bought and cooked some other time: no ingredients, not a cooking.
         if (isTaperDish(dish)) continue
-        out.set(dish.recipeId, (out.get(dish.recipeId) ?? 0) + diners)
+        // PRO-298: a leftover only partly covered by its source's «Solo hoy»
+        // adds what `withLeftoverBatches` worked out, not its whole slot.
+        const listDiners = (dish as { listDiners?: number }).listDiners
+        out.set(dish.recipeId, (out.get(dish.recipeId) ?? 0) + (typeof listDiners === 'number' ? listDiners : diners))
         if (dish.variant !== 'leftover') timesCooked.set(dish.recipeId, (timesCooked.get(dish.recipeId) ?? 0) + 1)
       }
     }

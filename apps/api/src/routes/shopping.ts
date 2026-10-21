@@ -298,7 +298,7 @@ router.get('/shopping-list', async (req: AuthRequest, res) => {
       const dowIndex = daysBetween(wk, date) // 0..6
       // Leftovers resolve against their own week before re-indexing (PRO-75).
       let weekDays = batchedWeeks.get(wk)
-      if (!weekDays) batchedWeeks.set(wk, (weekDays = withLeftoverBatches(menu.days as DayMenu[])))
+      if (!weekDays) batchedWeeks.set(wk, (weekDays = withLeftoverBatches(menu.days as DayMenu[], multiplier)))
       const day = weekDays[dowIndex] ?? {}
       aggregatedDays.push(date === todayMadrid ? filterPastTodayMeals(day, hourMadrid) : day)
     }
@@ -456,7 +456,7 @@ router.get('/shopping-list/:menuId', async (req: AuthRequest, res) => {
     // Generate the shopping list — pass the household id so the aggregator
     // applies `recipe_notes.ingredient_overrides` (remove / modify / add)
     // before scaling.
-    const menuItems = await generateShoppingList(withLeftoverBatches(days), multiplier, db, householdId)
+    const menuItems = await generateShoppingList(withLeftoverBatches(days, multiplier), multiplier, db, householdId)
     const staples = householdId ? await listActiveStaplesForHousehold(householdId) : []
     const coeliac = isCoeliacHousehold((await loadUserRestrictions(menu.userId, db)).restrictions)
     const items = withGlutenFreeCharcuterieNames(mergeStaplesIntoItems(menuItems, staples), coeliac)
@@ -793,7 +793,7 @@ router.post('/shopping-list/:listId/regenerate', async (req: AuthRequest, res) =
     const householdId = list.householdId ?? menu.householdId ?? null
 
     const menuItems = await generateShoppingList(
-      withLeftoverBatches(menu.days as DayMenu[]),
+      withLeftoverBatches(menu.days as DayMenu[], multiplier),
       multiplier,
       db,
       householdId,

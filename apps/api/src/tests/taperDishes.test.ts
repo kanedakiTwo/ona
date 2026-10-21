@@ -69,7 +69,7 @@ describe('(3) the list after the tápers', () => {
   }
 
   it('before: both cookings and their leftovers add to the list', () => {
-    const sums = sumDinersByRecipe(withLeftoverBatches(planned()), 2)
+    const sums = sumDinersByRecipe(withLeftoverBatches(planned(), 2), 2)
     expect(sums.get('len')).toBe(4)
     expect(sums.get('ter')).toBe(4)
   })
@@ -78,7 +78,7 @@ describe('(3) the list after the tápers', () => {
     const d = planned()
     d[0] = { lunch: { dishes: [{ kind: 'recipe', recipeId: 'len', variant: 'fridge' }] } }
     d[2] = { lunch: { dishes: [{ kind: 'recipe', recipeId: 'ter', variant: 'freezer' }] } }
-    const sums = sumDinersByRecipe(withLeftoverBatches(d), 2)
+    const sums = sumDinersByRecipe(withLeftoverBatches(d, 2), 2)
     expect(sums.get('len')).toBeUndefined()
     expect(sums.get('ter')).toBeUndefined()
   })
@@ -86,7 +86,7 @@ describe('(3) the list after the tápers', () => {
   it('a leftover of a different recipe than the táper still counts', () => {
     const d = planned()
     d[0] = { lunch: { dishes: [{ kind: 'recipe', recipeId: 'otra', variant: 'fridge' }] } }
-    expect(sumDinersByRecipe(withLeftoverBatches(d), 2).get('len')).toBe(2)
+    expect(sumDinersByRecipe(withLeftoverBatches(d, 2), 2).get('len')).toBe(2)
   })
 })
 
@@ -99,7 +99,7 @@ describe('(4) «Sobras de otro día» (`variant: \'cooked\'`)', () => {
     expect(isTaperDish(cooked)).toBe(true)
     const d = empty()
     d[0] = { lunch: { dishes: [cooked] } }
-    expect(sumDinersByRecipe(withLeftoverBatches(d), 2).get('len')).toBeUndefined()
+    expect(sumDinersByRecipe(withLeftoverBatches(d, 2), 2).get('len')).toBeUndefined()
   })
 
   it('reads «(sobras de otro día)» on WhatsApp, text and picture', () => {

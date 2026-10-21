@@ -178,8 +178,8 @@ describe('moveSlotInWeek', () => {
     const out = moveSlotInWeek(days, { day: 0, meal: 'dinner' }, { day: 3, meal: 'dinner' })
     // Monday's «Solo hoy: 2» already covers Saturday's táper: before and
     // after the move, the leftover adds nothing to the list.
-    expect(withLeftoverBatches(days)[5].lunch!.dishes).toEqual([])
-    expect(withLeftoverBatches(out)[5].lunch!.dishes).toEqual([])
-    expect(withLeftoverBatches(out)[3].dinner).toEqual({ servings: 2, dishes: [curry] })
+    expect(withLeftoverBatches(days, 1)[5].lunch!.dishes).toEqual([])
+    expect(withLeftoverBatches(out, 1)[5].lunch!.dishes).toEqual([])
+    expect(withLeftoverBatches(out, 1)[3].dinner).toEqual({ servings: 2, dishes: [curry] })
   })
 })

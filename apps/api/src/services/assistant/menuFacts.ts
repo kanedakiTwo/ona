@@ -1,5 +1,5 @@
 import type { DayMenu, Dish } from '@ona/shared'
-import { isTaperDish } from '@ona/shared'
+import { batchServingsOf, isTaperDish } from '@ona/shared'
 import { dishLabel, mealEntriesForDay, MEAL_LABEL_ES } from '../menuText.js'
 
 /**
@@ -29,32 +29,14 @@ function override(slot: Slot): number | null {
   return typeof slot?.servings === 'number' && slot.servings > 0 ? slot.servings : null
 }
 
-function firstRecipe(slot: Slot) {
-  return slot?.dishes?.find((d) => d.kind === 'recipe') as Extract<Dish, { kind: 'recipe' }> | undefined
-}
-
 /**
  * Servings the menu page shows for a meal («Comida · 28 min · 3 raciones»):
- * mirror of `batchServings` in `apps/web/src/lib/menuDay.ts` (PRO-75) — the
- * slot's «Solo hoy: N», or the household's diners plus every planned
- * leftover of that dish (the táper is cooked in the same batch); a leftover
- * slot counts only its own diners.
+ * the same `batchServingsOf` (`@ona/shared`) as `batchServings` on the menu
+ * page and the shopping list — the whole batch, every planned leftover and
+ * táper included (PRO-75, PRO-298); a leftover slot counts only its own diners.
  */
 export function mealServings(days: readonly (DayMenu | null | undefined)[], dayIndex: number, meal: string, defaultDiners: number): number {
-  const slot = days[dayIndex]?.[meal as keyof DayMenu] as Slot
-  const own = override(slot) ?? defaultDiners
-  const first = firstRecipe(slot)
-  if (!first || first.variant === 'leftover' || override(slot) != null) return own
-  let total = own
-  for (const d of days) {
-    for (const s of Object.values(d ?? {}) as Slot[]) {
-      const dish = firstRecipe(s)
-      if (dish?.variant === 'leftover' && dish.recipeId === first.recipeId && dish.leftoverOf?.day === dayIndex && dish.leftoverOf?.meal === meal) {
-        total += override(s) ?? defaultDiners
-      }
-    }
-  }
-  return total
+  return batchServingsOf(days, dayIndex, meal, defaultDiners)
 }
 
 /** "25 min en total, 10 de trabajo" / "25 min" / null — total is `totalTime ?? prepTime`, as the menu page. */

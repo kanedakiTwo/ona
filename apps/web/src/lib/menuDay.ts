@@ -6,6 +6,7 @@
  * so keep it dependency-free apart from `@ona/shared` types.
  */
 import type { DayMenu, Dish, MealSlot, RecipeDish } from "@ona/shared"
+import { batchServingsOf } from "@ona/shared"
 
 export type MealKey = "breakfast" | "lunch" | "snack" | "dinner"
 
@@ -186,18 +187,13 @@ export function weekHasDishes(days: (DayMenu | undefined | null)[] | undefined |
   )
 }
 
-function slotOverride(slot: MealSlot | undefined | null): number | null {
-  return typeof slot?.servings === "number" && slot.servings > 0 ? slot.servings : null
-}
-
 /**
  * Servings to open a menu dish's recipe and cook mode with (PRO-75): the
- * whole batch, táper included. Mirrors the shopping list's rule
- * (`withLeftoverBatches` in apps/api/src/services/shoppingList.ts):
- *   - source with «Solo hoy: N» → N;
- *   - source without it → the household's diners + each planned leftover's
- *     diners (its own «Solo hoy» or the household's);
- *   - a leftover slot → its own diners (it isn't cooked again).
+ * whole batch, leftovers and tápers included. Same rule as the shopping list
+ * (`withLeftoverBatches` in apps/api/src/services/shoppingList.ts) and Mimo
+ * (`mealServings`): `batchServingsOf` in `@ona/shared` (PRO-298: a «Solo hoy»
+ * that is only who eats that meal no longer hides the other days' leftovers).
+ * A leftover slot opens at its own diners (it isn't cooked again).
  */
 export function batchServings(
   days: (DayMenu | undefined | null)[],
@@ -205,36 +201,7 @@ export function batchServings(
   meal: string,
   defaultDiners: number,
 ): number {
-  const slot = days[day]?.[meal as MealKey]
-  const own = slotOverride(slot) ?? defaultDiners
-  const first = firstRecipeDish(slot)
-  if (!first || first.variant === "leftover") return own
-  // PRO-223: a táper is one ration more even on top of «Solo hoy».
-  if (slotOverride(slot) != null) {
-    let tapers = 0
-    for (const d of days) {
-      for (const s of Object.values(d ?? {}) as (MealSlot | undefined)[]) {
-        const dish = firstRecipeDish(s)
-        if (s?.taper && dish?.recipeId === first.recipeId && dish.leftoverOf?.day === day && dish.leftoverOf?.meal === meal) tapers += s.taper
-      }
-    }
-    return own + tapers
-  }
-  let total = own
-  for (const d of days) {
-    for (const s of Object.values(d ?? {}) as (MealSlot | undefined)[]) {
-      const dish = firstRecipeDish(s)
-      if (
-        dish?.variant === "leftover" &&
-        dish.recipeId === first.recipeId &&
-        dish.leftoverOf?.day === day &&
-        dish.leftoverOf?.meal === meal
-      ) {
-        total += slotOverride(s) ?? defaultDiners
-      }
-    }
-  }
-  return total
+  return batchServingsOf(days, day, meal, defaultDiners)
 }
 
 /**

@@ -50,6 +50,31 @@ export interface BasketPing {
   etiqueta: string
 }
 
+/**
+ * Los ids de extensión de la build: `NEXT_PUBLIC_BASKET_EXTENSION_ID` admite varios, separados por comas
+ * (una extensión por cadena). Sin espacios, vacíos ni repetidos, en su orden. Vacía o ausente: ninguno.
+ */
+export function parseExtensionIds(raw: string | null | undefined): string[] {
+  const ids: string[] = []
+  for (const parte of (raw ?? '').split(',')) {
+    const id = parte.trim()
+    if (id && !ids.includes(id)) ids.push(id)
+  }
+  return ids
+}
+
+/**
+ * De las extensiones que contestaron al `ping` (en el orden de la build), la primera que sabe llenar la web
+ * de ese host; null si ninguna o sin host.
+ */
+export function extensionForHost<T extends { hosts: string[] }>(
+  pings: ReadonlyArray<{ id: string; ping: T }>,
+  host: string | null | undefined,
+): { id: string; ping: T } | null {
+  if (!host) return null
+  return pings.find((p) => p.ping.hosts.includes(host)) ?? null
+}
+
 export const BASKET_LINE_STATES = ['tabla', 'busqueda', 'fallida', 'no_verificada'] as const
 export type BasketLineState = (typeof BASKET_LINE_STATES)[number]
 export const BASKET_SEND_ERRORS = ['sin_zona', 'sin_sesion', 'contrato', 'verificacion', 'red'] as const

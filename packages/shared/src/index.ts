@@ -596,3 +596,36 @@ export type {
   FichaWhyView,
 } from './types/fichaView.js'
 export { FICHA_PATH, FICHA_TOPICS, FICHA_TOPIC_LABELS, fichaConfidenceWord } from './types/fichaView.js'
+
+// Catalogue import from the admin page «Recetas pendientes» (specs/catalog-import.md)
+export {
+  CATALOG_ORIGINS,
+  CATALOG_BATCH_ID_RE,
+  CATALOG_IMPORT_MAX_RECIPES,
+  CATALOG_IMPORT_MAX_CHARS,
+  CATALOG_DRAFT_DECISION_LABELS,
+  CATALOG_IMPORT_JOB_STATUS_LABELS,
+  CATALOG_IMPORT_REJECT_LABELS,
+  cocinaRecipeSchema,
+  cocinaBatchFileSchema,
+  catalogImportRequestSchema,
+  cocinaBatchProblems,
+  checkCocinaBatch,
+  checkCocinaBatchText,
+  suggestCatalogBatchId,
+  buildCatalogImportPayload,
+} from './types/catalogImport.js'
+export type {
+  CatalogOriginName,
+  CocinaBatchFile,
+  CatalogImportRequest,
+  CocinaBatchCheck,
+  CatalogDraftDecision,
+  CatalogDraftView,
+  CatalogDraftBatchView,
+  CatalogDraftsView,
+  CatalogImportJobStatus,
+  CatalogImportOutcomeView,
+  CatalogImportJobView,
+  CatalogImportCheckView,
+} from './types/catalogImport.js'

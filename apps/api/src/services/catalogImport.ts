@@ -144,6 +144,12 @@ export interface CatalogImportDeps {
   matchIngredients: (recipeName: string, ings: DraftIngredient[]) => Promise<MatchedIngredient[]>
   persistDraft: (input: PersistDraftInput) => Promise<{ ok: true; recipeId: string } | { ok: false; errors: string[] }>
   log?: (line: string) => void
+  /**
+   * After each recipe, with how many are done of how many: the admin page's
+   * background import saves its progress here. A failure in it is logged and
+   * never stops the batch.
+   */
+  onOutcome?: (outcome: ImportOutcome, done: number, total: number) => void | Promise<void>
 }
 
 export type ImportOutcome =
@@ -464,8 +470,29 @@ export async function importCatalogBatch(drafts: readonly CatalogDraftInput[], b
     if (r.status === 'draft') known.push(r.name)
     deps.log?.(`${r.status === 'draft' ? '✓' : r.status === 'duplicate' ? '=' : '✗'} ${r.name}${r.status === 'duplicate' ? ` (ya está: ${r.duplicateOf})` : r.status === 'rejected' ? ` (${r.reason}${r.detail ? `: ${r.detail}` : ''})` : r.auditIssues.length ? ` (auditoría: ${r.auditIssues.join(', ')})` : ''}`)
     out.push(r)
+    if (deps.onOutcome) {
+      try {
+        await deps.onOutcome(r, out.length, drafts.length)
+      } catch (err) {
+        deps.log?.(`  (no he podido apuntar el progreso: ${(err as Error)?.message ?? String(err)})`)
+      }
+    }
   }
   return out
+}
+
+/**
+ * Pure: what an import of these names would skip as repeated — against the
+ * catalogue (published and drafts) and the earlier recipes of the same file,
+ * the same check `importCatalogBatch` makes, before paying for any AI.
+ */
+export function previewDuplicates(names: readonly string[], catalog: readonly string[]): Array<{ name: string; duplicateOf: string | null }> {
+  const known = [...catalog]
+  return names.map((name) => {
+    const duplicateOf = findDuplicate(name, known)
+    if (!duplicateOf) known.push(name)
+    return { name, duplicateOf }
+  })
 }
 
 // ─── Cocina JSON ────────────────────────────────────────────────
@@ -553,10 +580,21 @@ export function planBatchPublish(rows: readonly BatchRecipe[]): { publish: strin
   const publish: string[] = []
   const hold: Array<{ id: string; name: string; reason: HoldReason }> = []
   for (const r of rows.filter((x) => x.status === 'draft')) {
-    if (r.reviewOk === false) hold.push({ id: r.id, name: r.name, reason: 'rechazada' })
-    else if (r.auditIssues.length > 0) hold.push({ id: r.id, name: r.name, reason: 'auditoria' })
-    else if (r.origin === 'cocina' && r.reviewOk !== true) hold.push({ id: r.id, name: r.name, reason: 'sin_revisar' })
-    else publish.push(r.id)
+    const decision = reviewDecision(r)
+    if (decision === 'publicable') publish.push(r.id)
+    else hold.push({ id: r.id, name: r.name, reason: decision })
   }
   return { publish, hold }
+}
+
+/**
+ * Pure: the same rule for one draft — «publicable», or why it waits. A «no»
+ * from Miguel first, then the audit (whatever the source), then a Cocina
+ * recipe without his OK.
+ */
+export function reviewDecision(r: Pick<BatchRecipe, 'origin' | 'auditIssues' | 'reviewOk'>): 'publicable' | HoldReason {
+  if (r.reviewOk === false) return 'rechazada'
+  if (r.auditIssues.length > 0) return 'auditoria'
+  if (r.origin === 'cocina' && r.reviewOk !== true) return 'sin_revisar'
+  return 'publicable'
 }

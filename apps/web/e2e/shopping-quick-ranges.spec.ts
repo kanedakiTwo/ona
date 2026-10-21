@@ -1,7 +1,7 @@
 /**
- * PRO-33 — «Hoy», «Mañana» and «Esta semana» on /shopping: one tap narrows
- * the list to today's dishes (or tomorrow's) and «Esta semana» brings back
- * the default range. Mobile, 390×844.
+ * PRO-33 — «Hoy», «Mañana» and «Dos semanas» on /shopping: one tap narrows
+ * the list to today's dishes (or tomorrow's) and «Dos semanas» brings back
+ * the default range (it was «Esta semana» until PRO-269). Mobile, 390×844.
  * PRO-69 — the chip row fits or slides with a visible end margin, «Esta
  * semana» can be seen whole after sliding, and the € total card's title
  * follows the shortcut («Total de hoy estimado»…).
@@ -40,7 +40,7 @@ async function listCount(page: Page, headers: Record<string, string>, from: stri
   return (body.items ?? []).length as number
 }
 
-test('/shopping: «Hoy» shows only today, «Esta semana» restores the default range', async ({ page }) => {
+test('/shopping: «Hoy» shows only today, «Dos semanas» restores the default range', async ({ page }) => {
   test.setTimeout(60_000)
   await registerFreshUser(page)
   if (page.url().includes('/onboarding')) await completeOnboarding(page)
@@ -65,8 +65,8 @@ test('/shopping: «Hoy» shows only today, «Esta semana» restores the default 
 
   const hoy = page.getByRole('button', { name: 'Hoy', exact: true })
   const manana = page.getByRole('button', { name: 'Mañana', exact: true })
-  const semana = page.getByRole('button', { name: 'Esta semana', exact: true })
-  // The default range is «Esta semana».
+  const semana = page.getByRole('button', { name: 'Dos semanas', exact: true })
+  // The default range is «Dos semanas».
   await expect(semana).toHaveAttribute('aria-pressed', 'true')
   await expect(hoy).toHaveAttribute('aria-pressed', 'false')
 
@@ -85,7 +85,7 @@ test('/shopping: «Hoy» shows only today, «Esta semana» restores the default 
     return el.getBoundingClientRect().right - last.getBoundingClientRect().right
   })
   expect(endGap).toBeGreaterThanOrEqual(12)
-  // «Esta semana» whole on screen once slid to it.
+  // «Dos semanas» whole on screen once slid to it.
   await semana.scrollIntoViewIfNeeded()
   await expect(semana).toBeInViewport({ ratio: 1 })
   const semanaBox = (await semana.boundingBox())!
@@ -94,7 +94,7 @@ test('/shopping: «Hoy» shows only today, «Esta semana» restores the default 
 
   // The € total card (shown once the list has rows) says «semanal» by default.
   const totalTitle = page.getByTestId('shopping-total-title')
-  if (defaultCount > 0) await expect(totalTitle).toHaveText('Total semanal estimado', { timeout: 15_000 })
+  if (defaultCount > 0) await expect(totalTitle).toHaveText('Total de las dos semanas estimado', { timeout: 15_000 })
 
   // «Hoy»: a one-day range and only today's dishes.
   await hoy.click()
@@ -119,7 +119,7 @@ test('/shopping: «Hoy» shows only today, «Esta semana» restores the default 
     await expect(totalTitle).toHaveText('Total de mañana estimado', { timeout: 15_000 })
   }
 
-  // «Esta semana»: back to the default range and list.
+  // «Dos semanas»: back to the default range and list.
   await semana.click()
   await expect(semana).toHaveAttribute('aria-pressed', 'true')
   // PRO-69: the tapped shortcut slides fully into view by itself, after the
@@ -133,10 +133,10 @@ test('/shopping: «Hoy» shows only today, «Esta semana» restores the default 
     .toBe(true)
   await expect(range).toHaveText(defaultLabel)
   await expect(total).toHaveText(String(defaultCount), { timeout: 15_000 })
-  if (defaultCount > 0) await expect(totalTitle).toHaveText('Total semanal estimado')
+  if (defaultCount > 0) await expect(totalTitle).toHaveText('Total de las dos semanas estimado')
 
   // The arrows still move the range; no shortcut matches it then.
   await page.getByRole('button', { name: 'Semana siguiente' }).click()
   await expect(range).not.toHaveText(defaultLabel)
-  await expect(page.locator('[aria-pressed="true"]').filter({ hasText: /^(Hoy|Mañana|Esta semana)$/ })).toHaveCount(0)
+  await expect(page.locator('[aria-pressed="true"]').filter({ hasText: /^(Hoy|Mañana|Esta semana|La que viene|Dos semanas)$/ })).toHaveCount(0)
 })

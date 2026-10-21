@@ -1,5 +1,5 @@
 /**
- * PRO-01 (and D-023, Mimo's floating button): the floating mic used to sit right on top of the
+ * The heart works and remembers (feedback 2026-10-21), and PRO-01 (and D-023, Mimo's floating button): the floating mic used to sit right on top of the
  * favourite button in the recipe detail's mobile hero (both fixed/absolute at
  * the top-right). The favourite must stay tappable — no floating button over
  * it — at 390×844 and on desktop.
@@ -46,12 +46,19 @@ for (const viewport of [
     if (await bar.isVisible()) expect(overlaps(fabBox, (await bar.boundingBox())!)).toBe(false)
 
     // A real click (no force): Playwright refuses if another element would get
-    // it. The detail doesn't echo favourite state back yet (recipes.md known
-    // limitation), so "it changed" = the toggle reached the API.
+    // it. The heart turns at once and stays after a reload (feedback
+    // 2026-10-21: «no funciona o no cambia de color» — the detail never sent
+    // `is_favorite`, so the saved heart looked dead).
     const toggled = page.waitForResponse(
       (r) => /\/recipes\/[^/]+\/favorite$/.test(r.url()) && r.request().method() === 'POST',
     )
     await fav.click()
     expect((await toggled).ok()).toBe(true)
+    const unfav = page.getByRole('button', { name: 'Quitar de favoritos' })
+    await expect(unfav).toBeVisible()
+    await page.reload()
+    await expect(unfav).toBeVisible({ timeout: 15_000 })
+    await unfav.click()
+    await expect(page.getByRole('button', { name: 'Añadir a favoritos' })).toBeVisible()
   })
 }

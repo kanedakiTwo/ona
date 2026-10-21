@@ -116,7 +116,7 @@ The brand is **Mimoia** and its assistant is **Mimo** (`BRAND_NAME` / `ASSISTANT
 ## Common pitfalls
 
 - The `inStock` field is camelCase end-to-end (frontend, API, DB JSONB). Never use `in_stock`.
-- The `GET /recipes` endpoint does not currently return `is_favorite`; favorite state on cards is not persisted across reloads (known limitation, see [recipes.md](./specs/recipes.md)).
+- `GET /recipes` and `GET /recipes/:id` return the signed-in reader's own `is_favorite` (since 2026-10-21; anonymous callers get no field). The heart is optimistic in `useToggleFavorite` (see [recipes.md](./specs/recipes.md)).
 - `POST /menu/generate` **requires auth** and the body `userId` must match the token (was previously open — that IDOR is now closed; see [menus.md](./specs/menus.md) "Access control"). All `/menu/:menuId/...` and `/menu/:userId/...` routes are scoped to the caller.
 - Recipe images: **two sources** in production. Seed/system recipes are committed JPGs under `apps/web/public/images/recipes/<slug>.jpg` and served by Next.js (DB stores relative URL `/images/recipes/<slug>.jpg`). User-regenerated images live on the `ona-api-volume` Railway volume mounted at `/data` and are served by the API (DB stores absolute URL `${IMAGE_PUBLIC_URL_BASE}/<recipeId>.jpg`). The frontend renders `<img src=image_url>` and treats both transparently.
 - The bottom tab bar (`Navbar`) is fixed, full width, with visible labels; the app `<main>` in `app/layout.tsx` reserves `pb-[calc(5rem+var(--safe-bottom))]` for it, so pages don't add their own bottom padding for the bar. It's hidden on `HIDDEN_ON` routes (cook mode, recipe detail — which has its own sticky action bar).

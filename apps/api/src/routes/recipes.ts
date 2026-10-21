@@ -208,6 +208,16 @@ interface RecipeCard {
   /** Only `kcal` is exposed on the card (per spec). */
   nutritionPerServing: { kcal: number } | null
   allergens: string[]
+  /** The signed-in reader marked it (their own heart); absent for anonymous callers. */
+  is_favorite?: boolean
+}
+
+/** The recipes among `recipeIds` the user has hearted (their own `user_favorites` rows). */
+async function favoriteIdsOf(userId: string | undefined, recipeIds: string[]): Promise<Set<string>> {
+  if (!userId || recipeIds.length === 0) return new Set()
+  const rows = await db.select({ recipeId: userFavorites.recipeId }).from(userFavorites)
+    .where(and(eq(userFavorites.userId, userId), inArray(userFavorites.recipeId, recipeIds)))
+  return new Set(rows.map((r) => r.recipeId))
 }
 
 function toCard(row: RecipeRow): RecipeCard {
@@ -521,7 +531,9 @@ router.get('/recipes', optionalAuthMiddleware, async (req: AuthRequest, res) => 
     const byId = new Map(pageRows.map((r) => [r.id, r]))
     const rows = pageIds.map((id) => byId.get(id)).filter((r): r is RecipeRow => r != null)
 
-    const cards = rows.map(toCard)
+    // The reader's own hearts, so a card shows its favourite after a reload.
+    const favs = await favoriteIdsOf(req.userId, rows.map((r) => r.id))
+    const cards = rows.map((r) => (req.userId ? { ...toCard(r), is_favorite: favs.has(r.id) } : toCard(r)))
 
     res.set('X-Total-Count', String(total))
     res.json(cards)
@@ -609,6 +621,9 @@ router.get('/recipes/:id', requireRecipeId(), optionalAuthMiddleware, async (req
     ])
 
     const recipe = toDetailRecipe(row, ings, steps)
+    // The reader's heart (it was never sent, so the button looked dead: it
+    // saved the favourite and the refetch said «not favourite» again).
+    if (req.userId) recipe.is_favorite = (await favoriteIdsOf(req.userId, [id])).has(id)
     // "¿Se puede comprar?" — for whoever can fix the recipe.
     if (req.userId && (row.authorId === req.userId || req.user?.role === 'admin')) {
       recipe.shoppingIssues = recipeShoppingIssues(

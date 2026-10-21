@@ -160,6 +160,15 @@ export function useIngredients() {
 
 export function useToggleFavorite() {
   const queryClient = useQueryClient()
+  /** Flip `is_favorite` for this recipe in every cached list and detail (the heart answers at once). */
+  const flip = (recipeId: string) => {
+    queryClient.setQueriesData<Recipe[] | undefined>({ queryKey: ["recipes"] }, (old) =>
+      Array.isArray(old) ? old.map((r) => (r.id === recipeId ? { ...r, is_favorite: !r.is_favorite } : r)) : old,
+    )
+    queryClient.setQueriesData<Recipe | undefined>({ queryKey: ["recipe", recipeId] }, (old) =>
+      old && !Array.isArray(old) ? { ...old, is_favorite: !old.is_favorite } : old,
+    )
+  }
 
   return useMutation({
     mutationFn: async (params: { userId: string; recipeId: string }) => {
@@ -173,17 +182,7 @@ export function useToggleFavorite() {
           timestamp: Date.now(),
           resourceId: params.recipeId,
         })
-        // Optimistic update: flip is_favorite for this recipe in any cached list/detail
-        queryClient.setQueriesData<Recipe[] | undefined>({ queryKey: ["recipes"] }, (old) => {
-          if (!old) return old
-          return old.map((r) =>
-            r.id === params.recipeId ? { ...r, is_favorite: !r.is_favorite } : r
-          )
-        })
-        queryClient.setQueriesData<Recipe | undefined>({ queryKey: ["recipe", params.recipeId] }, (old) => {
-          if (!old) return old
-          return { ...old, is_favorite: !old.is_favorite }
-        })
+        // (The heart already flipped in onMutate.)
         if (typeof window !== "undefined") {
           window.dispatchEvent(new CustomEvent("ona-queue-changed"))
         }
@@ -192,9 +191,14 @@ export function useToggleFavorite() {
 
       return api.post(url)
     },
-    onSuccess: () => {
+    // Optimistic, online or offline: the heart flips at once; a failed call flips it back.
+    onMutate: (params) => flip(params.recipeId),
+    onError: (_err, params) => flip(params.recipeId),
+    onSuccess: (out) => {
+      if (out && typeof out === "object" && "offline" in out) return
       queryClient.invalidateQueries({ queryKey: ["recipes"] })
       queryClient.invalidateQueries({ queryKey: ["recipe"] })
+      queryClient.invalidateQueries({ queryKey: ["user-recipes"] })
     },
   })
 }

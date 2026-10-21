@@ -603,6 +603,13 @@
       "when": 1792565211005,
       "tag": "0088_strict_protein_minimum",
       "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1792570320465,
+      "tag": "0089_drop_strict_protein_minimum",
+      "breakpoints": true
     }
   ]
 }

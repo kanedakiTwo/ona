@@ -91,12 +91,6 @@ export const users = pgTable('users', {
    */
   alertPrefs: jsonb('alert_prefs').notNull().default({}).$type<Record<string, boolean>>(),
   /**
-   * Keep the catalogue audit's 80 g protein minimum for starters and for
-   * rice/legume dishes in this user's menus (Miguel, 2026-10-21: for
-   * everyone else those dishes no longer need it). Set by hand, no UI.
-   */
-  strictProteinMinimum: boolean('strict_protein_minimum').notNull().default(false),
-  /**
    * Explicit consent for health data (RGPD art. 9, PRO-21): when it was given,
    * which text version, and when it was withdrawn. Both dates stay as the
    * record; it is in force when consent_at is later than withdrawn_at.

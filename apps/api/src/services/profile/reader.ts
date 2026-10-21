@@ -11,7 +11,8 @@
  *   con su consentimiento) ni repite lo que ya dice la memoria de quien lee.
  * - `fichaMenuConstraints(ficha)`: lo que el menú respeta como filtro fijo —
  *   equipo que no hay («sin horno hasta nuevo aviso»), disgustos de todo el
- *   hogar y afinidades muy negativas con un ingrediente.
+ *   hogar, afinidades muy negativas con un ingrediente y si alguien quiere
+ *   proteína en cada plato (`protein_minimum`).
  *
  * `user_memories` sigue siendo lo que Mimo escribe; la ficha se suma a lo
  * que lee. Ver specs/household-profile.md → «Quién lee la ficha».
@@ -121,6 +122,7 @@ export function describeFact(f: Pick<ReadableFact, 'type' | 'value' | 'validUnti
     case 'notes': text = list(f.value) ? `Notas: ${list(f.value)}` : null; break
     case 'prep_habits': text = list(f.value) ? `Hábitos: ${list(f.value)}` : null; break
     case 'nutrition_principles': text = list(f.value) ? `Principios propios: ${list(f.value)}` : null; break
+    case 'protein_minimum': text = 'Proteína en cada plato: al menos 80 g de carne, pescado o huevo por ración, también en los entrantes y en los platos de arroz o legumbre'; break
     case 'cooking_skill': text = `Nivel de cocina: ${({ easy: 'fácil', medium: 'medio', advanced: 'avanzado' } as Record<string, string>)[String(f.value)] ?? String(f.value)}`; break
     case 'weekly_budget_eur': text = `Presupuesto semanal: ${f.value} €`; break
     case 'household.adults': text = `Adultos en casa: ${f.value}`; break
@@ -177,6 +179,12 @@ export interface FichaMenuConstraints {
   equipment: string[] | null
   /** Ingredients nobody should get: dislikes of every member + affinity ≤ −2. */
   dislikes: string[]
+  /**
+   * Someone in the household wants protein in every dish (`protein_minimum`):
+   * the catalogue audit keeps its 80 g minimum for starters and rice/legume
+   * dishes too (the menu is the household's, so one person is enough).
+   */
+  strictProteinMinimum: boolean
 }
 
 /** Every equipment word a temporary situation can mention, with its canonical name. */
@@ -209,7 +217,7 @@ export function equipmentMissingIn(text: string): string[] {
 
 /** Pure: the menu's fixed filters from the ficha (health types are never read here: restrictions keep their own path). */
 export function fichaMenuConstraints(ficha: HouseholdFicha | null): FichaMenuConstraints {
-  const out: FichaMenuConstraints = { unavailableEquipment: [], equipment: null, dislikes: [] }
+  const out: FichaMenuConstraints = { unavailableEquipment: [], equipment: null, dislikes: [], strictProteinMinimum: false }
   if (!ficha) return out
   const addDislike = (s: string) => {
     const t = s.trim().toLowerCase()
@@ -223,6 +231,8 @@ export function fichaMenuConstraints(ficha: HouseholdFicha | null): FichaMenuCon
       out.equipment = (f.value as unknown[]).map((x) => normaliseEquipment(String(x))).filter(Boolean)
     } else if (f.type === 'dislikes' && Array.isArray(f.value)) {
       for (const x of f.value as unknown[]) addDislike(String(x))
+    } else if (f.type === 'protein_minimum') {
+      if ((f.value as { scope?: string })?.scope === 'every_dish') out.strictProteinMinimum = true
     } else if (f.type === 'affinity') {
       const v = f.value as { kind?: string; target?: string; score?: number }
       if (v?.kind === 'ingredient' && typeof v.target === 'string' && Number(v.score) <= -2) addDislike(v.target)

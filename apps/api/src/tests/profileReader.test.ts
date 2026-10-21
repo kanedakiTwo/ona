@@ -11,6 +11,7 @@ import {
   buildFichaDigest,
   equipmentMissingIn,
   factsInForce,
+  describeFact,
   fichaMenuConstraints,
   withFichaFilters,
   type HouseholdFicha,
@@ -141,6 +142,14 @@ describe('the menu respects the ficha', () => {
     const filters = withFichaFilters({ dislikes: ['hígado'], availableEquipment: undefined }, c)
     expect(filters.dislikes).toEqual(['hígado', 'cilantro', 'garbanzos'])
     expect(matchRecipes([oven, stew, salad], { ...base, ...filters }).map((r) => r.id)).toEqual(['rx'])
+  })
+
+  it('«proteína en cada plato» of any member makes the protein minimum strict for the household (Miguel, 2026-10-21)', () => {
+    const protein = fact({ type: 'protein_minimum', subjectUserId: OTHER, value: { scope: 'every_dish' } })
+    expect(fichaMenuConstraints(ficha([protein])).strictProteinMinimum).toBe(true)
+    expect(fichaMenuConstraints(ficha([SIN_HORNO])).strictProteinMinimum).toBe(false)
+    expect(fichaMenuConstraints(null).strictProteinMinimum).toBe(false)
+    expect(describeFact(protein)).toMatch(/^Proteína en cada plato: al menos 80 g/)
   })
 
   it('without a ficha nothing changes', () => {

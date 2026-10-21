@@ -73,6 +73,7 @@ export const NEW_PROFILE_FACT_TYPES = [
   'batch_cooking',
   'novelty',
   'cooking_style',
+  'protein_minimum',
 ] as const
 
 export const PROFILE_FACT_TYPES = [...MEMORY_KEYS, ...NEW_PROFILE_FACT_TYPES] as const
@@ -135,6 +136,16 @@ export const NEW_PROFILE_FACT_VALUE_SCHEMAS = {
   }).strict(),
   /** How the household cooks (PRO-217): «Cocino cada día», batch cooking… About the household. */
   cooking_style: cookingStyleFactValueSchema,
+  /**
+   * «Proteína en cada plato» (Miguel, 2026-10-21): this person wants the
+   * catalogue audit's 80 g of meat, fish or egg per serving in every dish of
+   * the household's menu, also starters and rice/legume dishes (which no
+   * longer need it for everyone). About a person. Only the user says it: the
+   * nightly refiner doesn't list the type.
+   */
+  protein_minimum: z.object({
+    scope: z.enum(['every_dish']),
+  }).strict(),
 } satisfies Record<(typeof NEW_PROFILE_FACT_TYPES)[number], z.ZodTypeAny>
 
 export const PROFILE_FACT_VALUE_SCHEMAS: Record<ProfileFactType, z.ZodTypeAny> = {

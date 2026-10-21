@@ -1,11 +1,12 @@
 import { count, eq, inArray } from 'drizzle-orm'
 import type { Course } from '@ona/shared'
 import { db as defaultDb } from '../db/connection.js'
-import { recipes, recipeIngredients, recipeSteps, ingredients, users } from '../db/schema.js'
+import { recipes, recipeIngredients, recipeSteps, ingredients } from '../db/schema.js'
 import { visibleAuthorIds, visibleRecipeWhere } from './recipeVisibility.js'
 import type { RecipeWithIngredients } from './recipeMatcher.js'
 import { catalogAuditIssuesFor } from './catalogRecipeAudit.js'
 import { isRetiredRecipe } from './recipeCatalogOrder.js'
+import { loadFichaMenuConstraints } from './profile/reader.js'
 
 export type RecipeWithCourse = RecipeWithIngredients & { course: Course | null }
 
@@ -14,9 +15,9 @@ export type RecipeWithCourse = RecipeWithIngredients & { course: Course | null }
  * generator, single-slot regenerations (menus.ts) and the assistant's swap
  * all load through here, so they apply the same filters (fit maps,
  * frequency, equipment, prep time, allergens).
- * The catalogue audit (PRO-73) runs with the menu owner's options: a user
- * with `strict_protein_minimum` keeps the 80 g minimum for starters and
- * rice/legume dishes too.
+ * The catalogue audit (PRO-73) runs with the household ficha's options: a
+ * household where someone wants protein in every dish (`protein_minimum`)
+ * keeps the 80 g minimum for starters and rice/legume dishes too.
  *
  * Visibility: catalogue + the user's and their household's own recipes —
  * never other users' private recipes (specs/recipes.md).
@@ -32,10 +33,11 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
   const recipeIds = allRecipes.map((r: any) => r.id)
   if (recipeIds.length === 0) return []
 
-  // Whose menu it is decides how strict the audit's protein minimum is
-  // (`users.strict_protein_minimum`, Miguel 2026-10-21).
-  const [owner] = await db.select({ strict: users.strictProteinMinimum }).from(users).where(eq(users.id, userId)).limit(1)
-  const auditOptions = { strictProteinMinimum: owner?.strict === true }
+  // The household's ficha decides how strict the audit's protein minimum is:
+  // someone with «proteína en cada plato» (`protein_minimum`, Miguel
+  // 2026-10-21) keeps it for starters and rice/legume dishes too.
+  const ficha = await loadFichaMenuConstraints(userId, { db })
+  const auditOptions = { strictProteinMinimum: ficha.strictProteinMinimum }
 
   const riRows = await db
     .select({

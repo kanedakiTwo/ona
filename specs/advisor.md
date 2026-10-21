@@ -23,6 +23,7 @@ AI assistant for nutrition guidance, menu queries, and recipe management via nat
 - **The conversation survives navigation** within the tab (sessionStorage), so users can open Mimo on the menu, go to a recipe and keep talking.
 - **Pages refresh after Mimo acts.** When a reply changed something (`actionTaken`), every react-query query is invalidated, so the menu, list or recipe behind the panel shows the change.
 - **Old links:** `/advisor` is a client redirect to `/menu?mimo=1`; `?mimo=1` on any page opens the panel.
+- **A message started for you** (PRO-318): a page can open Mimo with the first words already in the box (`useMimo().open({ draft })`): «Tu ficha» uses it for «Añadir algo que deba saber» («Recuerda que en casa »), «Cuéntale a Mimo cómo coméis» and «¿Algo no cuadra? Dímelo». Nothing is sent until the person finishes it and taps send; the input gets the focus with the cursor at the end.
 - There is no «Asesor» tab any more: the bottom tab bar and the desktop sidebar have 4 entries (see [Design System](./design-system.md)).
 
 ## Assistant Skills
@@ -243,7 +244,7 @@ The advisor's weekly nutrient/calorie aggregators iterate `slot.dishes` and proc
 - [apps/api/src/services/providers/](../apps/api/src/services/providers/) — LLM integration
 - [apps/api/src/services/assistant/pageContext.ts](../apps/api/src/services/assistant/pageContext.ts) — path → hidden «Pantalla actual» note; tests in `apps/api/src/tests/pageContext.test.ts`
 - [apps/api/src/routes/stt.ts](../apps/api/src/routes/stt.ts) + [services/stt.ts](../apps/api/src/services/stt.ts) — `POST /stt`
-- [apps/web/src/components/mimo/MimoProvider.tsx](../apps/web/src/components/mimo/MimoProvider.tsx) — state, turns, voice loop, cooking dispatch, `?mimo=1`, `mimoHiddenOn`
+- [apps/web/src/components/mimo/MimoProvider.tsx](../apps/web/src/components/mimo/MimoProvider.tsx) — state, turns, voice loop, cooking dispatch, `?mimo=1`, `mimoHiddenOn`, `open({ draft })` (taken by `MimoPanel`)
 - [apps/web/src/components/mimo/MimoPanel.tsx](../apps/web/src/components/mimo/MimoPanel.tsx) — bottom sheet / desktop column, per-page suggestions, recipe links
 - [apps/web/src/lib/mimoRecipeLinks.ts](../apps/web/src/lib/mimoRecipeLinks.ts) — `recipeRefsFrom` + `linkRecipeNames` (PRO-85); tests in `apps/api/src/tests/mimoRecipeLinks.test.ts`, e2e in `apps/web/e2e/mimo-recipe-links.spec.ts`
 - [apps/web/src/components/mimo/MimoButton.tsx](../apps/web/src/components/mimo/MimoButton.tsx) — floating button and its position per page; e2e in `apps/web/e2e/mimo-companion.spec.ts`, `chat-voice.spec.ts`

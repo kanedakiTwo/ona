@@ -247,6 +247,8 @@ export const WEB_PAGE_TEMPLATES: readonly string[] = [
   '/profile/casa/cole',
   '/profile/cookbooks',
   '/profile/creencias',
+  '/profile/ficha',
+  '/profile/ficha/historial',
   '/profile/memoria',
   '/profile/pantry',
   '/profile/staples',

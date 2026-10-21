@@ -14,10 +14,19 @@ const FILES = [
   'apps/web/src/app/profile/cookbooks',
   'apps/web/src/components/profile/MemoryFactEditor.tsx',
   'apps/web/src/components/profile/SubPage.tsx',
+  // «Tu ficha» (PRO-318)
+  'apps/web/src/app/profile/ficha',
+  'apps/web/src/components/ficha',
 ]
+
+/**
+ * The one green allowed: «Aprender de lo que hago» is forest when on, as in
+ * the «Tu ficha» design Miguel approved on 2026-10-21 (PRO-318).
+ */
+const ALLOWED = [/^apps\/web\/src\/components\/ficha\/LearningSwitch\.tsx:\d+: bg-forest$/]
 
 describe('Rediseño D · subpáginas del perfil (PRO-40)', () => {
   it('no usan la paleta verde antigua', () => {
-    expect(legacyPaletteHits(FILES)).toEqual([])
+    expect(legacyPaletteHits(FILES).filter((hit) => !ALLOWED.some((re) => re.test(hit)))).toEqual([])
   })
 })

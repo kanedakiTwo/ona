@@ -45,6 +45,22 @@ export default function MimoPanel() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [mimo.messages, mimo.status])
 
+  // `open({ draft })` (e.g. «Añadir algo que deba saber» in Tu ficha): the
+  // message starts written; the cursor waits at its end for the rest.
+  const { draft, clearDraft } = mimo
+  useEffect(() => {
+    if (!draft) return
+    setInput(draft.text)
+    clearDraft()
+    // Not cleaned up on purpose: clearing the draft re-runs this effect.
+    setTimeout(() => {
+      const el = inputRef.current
+      if (!el) return
+      el.focus()
+      el.setSelectionRange(el.value.length, el.value.length)
+    }, 60)
+  }, [draft, clearDraft])
+
   // Esc closes.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && mimo.close()

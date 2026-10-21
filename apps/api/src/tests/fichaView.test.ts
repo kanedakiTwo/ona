@@ -142,6 +142,9 @@ describe('factView, peopleView, changeView', () => {
       .toMatchObject({ verb: 'He apuntado', sentence: 'Pizza los viernes', byMimo: true, canUndo: true })
     expect(changeView({ id: 'c2', factId: 'f1', action: 'fact_retired', factType: 'fixed_dish', before: { value: { dish: 'pizza' } }, after: null, origin: 'user', actorUserId: 'me', createdAt: at }, row(), 'me'))
       .toMatchObject({ verb: 'Olvidaste', sentence: 'Pizza', byMimo: false, canUndo: false })
+    // Once the fact moved on (the reader forgot it), Mimo's «He apuntado» can no longer be undone.
+    expect(changeView({ id: 'c4', factId: 'f1', action: 'fact_added', factType: 'fixed_dish', before: null, after: { value: { dish: 'pizza' } }, origin: 'ai_nightly', actorUserId: null, createdAt: at }, row({ status: 'retired' }), 'me'))
+      .toMatchObject({ factId: 'f1', canUndo: false })
     expect(changeView({ id: 'c3', factId: null, action: 'portrait_updated', factType: null, before: { portrait: 'Antes' }, after: { portrait: 'Ahora' }, origin: 'ai_nightly', actorUserId: null, createdAt: at }, undefined, 'me'))
       .toMatchObject({ action: 'portrait', verb: 'He reescrito', canUndo: true })
   })

@@ -86,13 +86,16 @@ export type FichaChangeAction = 'added' | 'updated' | 'retired' | 'portrait'
 
 export interface FichaChangeView {
   id: string
+  /** The fact it changed (null for the portrait). */
+  factId: string | null
   at: string
   action: FichaChangeAction
   /** «He apuntado» · «He cambiado» · «He dejado de pensar» · «Corregiste» · «Olvidaste» · «He reescrito». */
   verb: string
   sentence: string
-  /** Mimo did it (it can be undone); the reader did it. */
+  /** Mimo did it; the reader did it. */
   byMimo: boolean
+  /** Mimo did it and the fact (or the portrait) is still as it left it. */
   canUndo: boolean
 }
 

@@ -21,6 +21,7 @@ import {
 } from '@ona/shared'
 import { madridParts } from '../madridTime.js'
 import { equipmentMissingIn } from './reader.js'
+import { sameFactValue } from './writer.js'
 
 /** Who a sentence is about, from the reader's side. */
 export type Who = 'tu' | 'casa' | 'otra'
@@ -292,10 +293,12 @@ export interface ChangeRow {
 const AI_ORIGINS = new Set(['ai_realtime', 'ai_nightly', 'ai_weekly'])
 
 /** Pure: one history row as the reader sees it, or null when it isn't for them. */
-export function changeView(c: ChangeRow, fact: FactRow | undefined, viewerId: string): FichaChangeView | null {
+export function changeView(c: ChangeRow, fact: FactRow | undefined, viewerId: string, currentPortrait: string | null = null): FichaChangeView | null {
   const byMimo = AI_ORIGINS.has(c.origin)
   if (c.action === 'portrait_updated') {
-    return { id: c.id, at: c.createdAt.toISOString(), action: 'portrait', verb: 'He reescrito', sentence: 'El retrato de tu casa', byMimo: true, canUndo: !!(c.before as any)?.portrait }
+    const after = (c.after as { portrait?: string } | null)?.portrait
+    const canUndo = byMimo && !!(c.before as any)?.portrait && (currentPortrait === null || after === currentPortrait)
+    return { id: c.id, factId: null, at: c.createdAt.toISOString(), action: 'portrait', verb: 'He reescrito', sentence: 'El retrato de tu casa', byMimo, canUndo }
   }
   if (!c.factType || !fact) return null
   const who: Who = fact.subjectUserId === viewerId ? 'tu' : fact.subjectUserId || fact.subjectPersonId ? 'otra' : 'casa'
@@ -305,13 +308,17 @@ export function changeView(c: ChangeRow, fact: FactRow | undefined, viewerId: st
   if (!sentence) return null
   const action = c.action === 'fact_added' ? 'added' : c.action === 'fact_retired' ? 'retired' : c.action === 'fact_updated' ? 'updated' : null
   if (!action) return null
+  // Undo only while the fact is still as Mimo left it (else the API answers 409).
+  const stillThere = action === 'added' ? fact.status === 'active'
+    : action === 'retired' ? fact.status !== 'active'
+      : fact.status === 'active' && sameFactValue(fact.value, valueOf(c.after))
   const mine = !byMimo && (c.actorUserId === viewerId || c.actorUserId === null)
   const verb = byMimo
     ? { added: 'He apuntado', updated: 'He cambiado', retired: 'He dejado de pensar' }[action]
     : mine
       ? { added: 'Lo dijiste tú', updated: 'Corregiste', retired: 'Olvidaste' }[action]
       : { added: 'Lo apuntó alguien de casa', updated: 'Lo cambió alguien de casa', retired: 'Lo olvidó alguien de casa' }[action]
-  return { id: c.id, at: c.createdAt.toISOString(), action, verb, sentence, byMimo, canUndo: byMimo }
+  return { id: c.id, factId: fact.id, at: c.createdAt.toISOString(), action, verb, sentence, byMimo, canUndo: byMimo && stillThere }
 }
 
 /** Pure: the confidence word, only for what Mimo deduced. */

@@ -94,10 +94,15 @@ function factRow(f: typeof profileFacts.$inferSelect): FactRow {
   }
 }
 
-/** The pending question the reader sees: one at a time, not one they put off in the last 7 days. */
-function pickQuestion(questions: Array<typeof profileQuestions.$inferSelect>, now: Date) {
+/**
+ * The pending question the reader sees: one at a time, about them, the
+ * household or a person without an account (never about another member,
+ * who answers it themselves), not one they put off in the last 7 days.
+ */
+function pickQuestion(questions: Array<typeof profileQuestions.$inferSelect>, now: Date, readerId: string) {
   const week = 7 * 24 * 3600 * 1000
-  return questions.find((q) => q.status === 'pending' && (!q.askedAt || now.getTime() - q.askedAt.getTime() > week)) ?? null
+  return questions.find((q) => q.status === 'pending' && (!q.subjectUserId || q.subjectUserId === readerId)
+    && (!q.askedAt || now.getTime() - q.askedAt.getTime() > week)) ?? null
 }
 
 /** «Tu ficha» for its reader (`FichaView`). A `child` member gets 403. */
@@ -121,7 +126,7 @@ export async function loadFichaView(userId: string, opts: { db?: Db; now?: Date 
   const factViews = visible
     .map((f) => factView(factRow(f), { viewerId: userId, viewerRole: reader.role, actorUserId: actors.get(f.id) ?? null, names }))
     .filter((f): f is FichaFactView => !!f)
-  const q = pickQuestion(questions, now)
+  const q = pickQuestion(questions, now, userId)
   const factForQuestion = q ? visible.find((f) => f.type === q.factType && f.subjectUserId === q.subjectUserId && f.subjectPersonId === q.subjectPersonId) : undefined
   const recent = (await loadFichaChanges(userId, { db, now, days: 14, reader })).slice(0, 5)
   const portrait = portraitRows[0]
@@ -154,9 +159,10 @@ export async function loadFichaChanges(userId: string, opts: { db?: Db; now?: Da
   const facts = factIds.length ? await db.select().from(profileFacts).where(inArray(profileFacts.id, factIds)) : []
   const byId = new Map(facts.map((f) => [f.id, factRow(f)]))
   const viewer = viewerOf(reader)
+  const [portrait] = await db.select({ text: householdProfiles.portrait }).from(householdProfiles).where(eq(householdProfiles.householdId, reader.householdId)).limit(1)
   return changes
     .filter((c) => !c.factId || (byId.has(c.factId) && canSeeProfileFact(byId.get(c.factId)!, viewer)))
-    .map((c) => changeView(c as ChangeRow, c.factId ? byId.get(c.factId) : undefined, userId))
+    .map((c) => changeView(c as ChangeRow, c.factId ? byId.get(c.factId) : undefined, userId, portrait?.text ?? null))
     .filter((c): c is FichaChangeView => !!c)
 }
 

@@ -2,8 +2,9 @@
 
 /**
  * /profile — "D · Luz y foto" (PRO-39): compact header with the household's
- * name, paper cards per section (Casa, Memoria, Creencias, Despensa, Fijos,
- * Recetarios, Voz, WhatsApp) with an icon and a status line, then the menu
+ * name, «Tu ficha» first and full width (PRO-318), then paper cards per
+ * section (Casa, Afina tu menú, Creencias, Despensa, Fijos, Recetarios,
+ * Suscripción, Voz, WhatsApp) with an icon and a status line, then the menu
  * settings the generator reads (one "Guardar cambios") and the account card.
  * Secondary actions sit behind "···" sheets (`MenuSheet`). 2–3 columns at lg+.
  */
@@ -16,7 +17,6 @@ import {
   Bell,
   BellOff,
   BookOpen,
-  Brain,
   CalendarDays,
   ChefHat,
   ChevronRight,
@@ -48,6 +48,7 @@ import { useCookbooks } from '@/hooks/useCookbooks'
 import { useBilling } from '@/hooks/useBilling'
 import { useTasteStatus } from '@/hooks/useTaste'
 import { FoundingBadge } from '@/components/profile/FoundingBadge'
+import { FichaHubCard } from '@/components/ficha/FichaHubCard'
 import { GroupLabel, MoreButton, ProfileCard, ProfileHubLink, Switch } from './sections/ProfileCards'
 import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
@@ -137,6 +138,14 @@ export default function ProfilePage() {
   const { user, logout, isLoading: authLoading } = useAuth()
   const whatsapp = useWhatsAppStatus()
   const mimo = useMimo()
+
+  // «Datos físicos, en Perfil» from Tu ficha (`/profile#datos-fisicos`): the
+  // cards only render once the session is read, after Next's own hash scroll.
+  const userReady = !!user
+  useEffect(() => {
+    if (!userReady || !window.location.hash) return
+    document.getElementById(decodeURIComponent(window.location.hash.slice(1)))?.scrollIntoView({ block: 'start' })
+  }, [userReady])
 
   const [physical, setPhysical] = useState<PhysicalData>({
     sex: '', age: '', weight: '', height: '', activity_level: 'moderate',
@@ -479,6 +488,7 @@ export default function ProfilePage() {
           <div className="grid gap-3 lg:gap-4">
             {/* Datos físicos (RGPD art. 9: only with the health-data consent) */}
             <ProfileCard
+              id="datos-fisicos"
               icon={Ruler}
               title="Datos físicos"
               status={
@@ -971,7 +981,11 @@ function plural(n: number, one: string, many: string) {
   return `${n} ${n === 1 ? one : many}`
 }
 
-/** The six sub-page cards, each with a one-line status from its own data. */
+/**
+ * «Tu ficha» first and full width (PRO-318: it took the place of «Memoria»,
+ * whose page lives on behind «Editar mis datos uno a uno»), then the
+ * sub-page cards, each with a one-line status from its own data.
+ */
 function ProfileHub() {
   const household = useQuery<{ members: unknown[]; pendingInvites?: unknown[] }>({
     queryKey: ['household', 'me'],
@@ -984,71 +998,70 @@ function ProfileHub() {
   const billing = useBilling()
   const taste = useTasteStatus()
 
-  const memoryCount = memory.data
-    ? Object.keys(memory.data).filter((k) => k !== 'nutrition_principles').length
-    : null
   const principles = memory.data?.nutrition_principles?.value
   const principlesCount = Array.isArray(principles) ? principles.length : memory.data ? 0 : null
 
   const loading = '…'
   const members = household.data?.members.length
   return (
-    <div className="mt-3 grid grid-cols-2 gap-3 lg:mt-4 lg:grid-cols-3 lg:gap-4">
-      <ProfileHubLink
-        href="/profile/casa"
-        icon={Home}
-        title="Casa"
-        status={members == null ? (household.isError ? 'Tu hogar' : loading) : members === 1 ? 'Solo tú' : plural(members, 'persona', 'personas')}
-      />
-      <ProfileHubLink
-        href="/afinar"
-        icon={Heart}
-        title="Afina tu menú"
-        status={taste.data == null ? loading : `${taste.data.rated} de ${taste.data.total} valoradas`}
-      />
-      <ProfileHubLink
-        href="/profile/memoria"
-        icon={Brain}
-        title="Memoria"
-        status={memoryCount == null ? loading : memoryCount === 0 ? 'Aún vacía' : plural(memoryCount, 'cosa que recuerda', 'cosas que recuerda')}
-      />
-      <ProfileHubLink
-        href="/profile/creencias"
-        icon={Compass}
-        title="Creencias"
-        status={principlesCount == null ? loading : principlesCount === 0 ? 'Ninguna todavía' : plural(principlesCount, 'principio', 'principios')}
-      />
-      <ProfileHubLink
-        href="/profile/pantry"
-        icon={Archive}
-        title="Despensa"
-        status={pantry.data == null ? loading : pantry.data.length === 0 ? 'Vacía' : plural(pantry.data.length, 'producto', 'productos')}
-      />
-      <ProfileHubLink
-        href="/profile/staples"
-        icon={Repeat}
-        title="Fijos"
-        status={staples.data == null ? loading : staples.data.length === 0 ? 'Ningún básico todavía' : plural(staples.data.length, 'básico', 'básicos')}
-      />
-      <ProfileHubLink
-        href="/profile/cookbooks"
-        icon={BookOpen}
-        title="Recetarios"
-        status={cookbooks.data == null ? loading : cookbooks.data.length === 0 ? 'Ninguno todavía' : plural(cookbooks.data.length, 'recetario', 'recetarios')}
-      />
-      <ProfileHubLink
-        href="/profile/suscripcion"
-        icon={CreditCard}
-        title="Suscripción"
-        status={
-          billing.data == null
-            ? billing.isError ? 'Tu plan' : loading
-            : billing.data.subscription
-              ? subscriptionSummary(billing.data.subscription).hub
-              : billing.data.beta ? 'Beta: Plus gratis' : 'Sin plan'
-        }
-      />
-    </div>
+    <>
+      <div className="mt-3 lg:mt-4">
+        <FichaHubCard />
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-3 lg:mt-4 lg:grid-cols-3 lg:gap-4">
+        <ProfileHubLink
+          href="/profile/casa"
+          icon={Home}
+          title="Casa"
+          status={members == null ? (household.isError ? 'Tu hogar' : loading) : members === 1 ? 'Solo tú' : plural(members, 'persona', 'personas')}
+        />
+        <ProfileHubLink
+          href="/afinar"
+          icon={Heart}
+          title="Afina tu menú"
+          status={taste.data == null ? loading : `${taste.data.rated} de ${taste.data.total} valoradas`}
+        />
+        <ProfileHubLink
+          href="/profile/creencias"
+          icon={Compass}
+          title="Creencias"
+          status={principlesCount == null ? loading : principlesCount === 0 ? 'Ninguna todavía' : plural(principlesCount, 'principio', 'principios')}
+        />
+        <ProfileHubLink
+          href="/profile/pantry"
+          icon={Archive}
+          title="Despensa"
+          status={pantry.data == null ? loading : pantry.data.length === 0 ? 'Vacía' : plural(pantry.data.length, 'producto', 'productos')}
+        />
+        <ProfileHubLink
+          href="/profile/staples"
+          icon={Repeat}
+          title="Fijos"
+          status={staples.data == null ? loading : staples.data.length === 0 ? 'Ningún básico todavía' : plural(staples.data.length, 'básico', 'básicos')}
+        />
+        <ProfileHubLink
+          href="/profile/cookbooks"
+          icon={BookOpen}
+          title="Recetarios"
+          status={cookbooks.data == null ? loading : cookbooks.data.length === 0 ? 'Ninguno todavía' : plural(cookbooks.data.length, 'recetario', 'recetarios')}
+        />
+        <ProfileHubLink
+          href="/profile/suscripcion"
+          icon={CreditCard}
+          title="Suscripción"
+          status={
+            billing.data == null
+              ? billing.isError ? 'Tu plan' : loading
+              : billing.data.subscription
+                ? subscriptionSummary(billing.data.subscription).hub
+                : billing.data.beta ? 'Beta: Plus gratis' : 'Sin plan'
+          }
+        />
+      </div>
+      <p className="mt-3 text-[13.5px] leading-[1.5] text-ink-muted lg:mt-4">
+        «Lo que recuerdo de ti» pasa a ser parte de tu ficha: lo mismo, más lo que aprendo cada noche, con el porqué de cada cosa.
+      </p>
+    </>
   )
 }
 

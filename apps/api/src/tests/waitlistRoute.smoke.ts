@@ -84,6 +84,11 @@ describe.skipIf(!reachable)('waitlist route smoke', () => {
     expect(r.body.suggestedNextBatch.ids).toBeUndefined()
     expect(r.body.suggestedNextBatch.counts.waiting).toBeGreaterThanOrEqual(1)
     expect(r.body.sources.byUtm.find((u: any) => u.utmSource === 'otro')?.count).toBeGreaterThanOrEqual(1)
+    // PRO-189: every attribution row carries how many are in the target segment.
+    for (const list of [r.body.sources.bySource, r.body.sources.byUtm, r.body.sources.byCampaign]) {
+      expect(Array.isArray(list)).toBe(true)
+      for (const x of list) expect(x.inTarget).toBeLessThanOrEqual(x.count)
+    }
     // The smoke's own `?ref=` label is not in the closed list: it is counted as «otro».
     expect(r.body.sources.bySource.find((s: any) => s.source === 'smoke')).toBeUndefined()
     expect(r.body.sources.bySource.find((s: any) => s.source === 'otro')?.count).toBeGreaterThanOrEqual(2)

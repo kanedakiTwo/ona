@@ -238,12 +238,42 @@ describe('buildWaitlistReport', () => {
     expect(r.segments.householdSize).toEqual({ '1': 1, '2': 2, '3-4': 0, '5+': 0 })
     expect(r.segments.platform).toEqual({ ios: 1, android: 2, otro: 0 })
     expect(r.segments.cross[0]).toEqual({ householdSize: '2', plannerRole: 'yo', currentMethod: 'lista', count: 2, target: true })
-    expect(r.sources.bySource).toEqual([{ source: 'menu', count: 2 }, { source: 'directo', count: 1 }])
+    expect(r.sources.bySource).toEqual([{ source: 'menu', count: 2, inTarget: 2 }, { source: 'directo', count: 1, inTarget: 0 }])
     expect(r.sources.byUtm).toEqual([
-      { utmSource: 'ig', utmMedium: null, utmCampaign: 'otono', count: 2 },
-      { utmSource: null, utmMedium: null, utmCampaign: null, count: 1 },
+      { utmSource: 'ig', utmMedium: null, utmCampaign: 'otono', count: 2, inTarget: 2 },
+      { utmSource: null, utmMedium: null, utmCampaign: null, count: 1, inTarget: 0 },
+    ])
+    expect(r.sources.byCampaign).toEqual([
+      { utmCampaign: 'otono', count: 2, inTarget: 2 },
+      { utmCampaign: null, count: 1, inTarget: 0 },
     ])
     expect(r.totals.inTargetSegment).toBe(2)
+  })
+
+  it('PRO-189: per campaign and per source, how many active signups are in the target segment', () => {
+    const target = { householdSize: '3-4', plannerRole: 'yo', currentMethod: 'lista' } as const
+    const notTarget = { householdSize: '1', plannerRole: 'yo', currentMethod: 'lista' } as const
+    const rows = [
+      row({ ...target, source: 'peluqueria', utmSource: 'whatsapp', utmCampaign: 'peluqueria' }),
+      row({ ...target, source: 'peluqueria', utmSource: 'whatsapp', utmCampaign: 'peluqueria' }),
+      row({ ...notTarget, source: 'peluqueria', utmSource: 'whatsapp', utmCampaign: 'peluqueria' }),
+      // Same campaign, another utm_source: byCampaign adds them up.
+      row({ ...target, source: 'telegram', utmSource: 'telegram', utmCampaign: 'peluqueria' }),
+      row({ ...notTarget, source: 'telegram', utmSource: 'telegram', utmCampaign: null }),
+      // Unsubscribed: counted nowhere.
+      row({ ...target, source: 'peluqueria', utmCampaign: 'peluqueria', status: 'unsubscribed' }),
+    ]
+    const r = buildWaitlistReport(rows, { now, days: 30, batchSize: 20 })
+    expect(r.sources.byCampaign).toEqual([
+      { utmCampaign: 'peluqueria', count: 4, inTarget: 3 },
+      { utmCampaign: null, count: 1, inTarget: 0 },
+    ])
+    expect(r.sources.bySource).toEqual([
+      { source: 'peluqueria', count: 3, inTarget: 2 },
+      { source: 'telegram', count: 2, inTarget: 1 },
+    ])
+    const inTarget = (xs: Array<{ inTarget: number }>) => xs.reduce((n, x) => n + x.inTarget, 0)
+    for (const list of [r.sources.byCampaign, r.sources.bySource, r.sources.byUtm]) expect(inTarget(list)).toBe(r.totals.inTargetSegment)
   })
 
   it('referral stats by code only, top referrers first', () => {

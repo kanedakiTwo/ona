@@ -248,7 +248,8 @@ describe('GET /admin/waitlist', () => {
     totals: { entries: 2 },
     sources: {
       bySource: [{ source: 'directo', count: 2 }],
-      byUtm: [{ utmSource: 'Ana García de Pozuelo', utmMedium: 'llamadme', utmCampaign: 'x', count: 1 }, { utmSource: 'IG', utmMedium: 'story', utmCampaign: null, count: 1 }],
+      byUtm: [{ utmSource: 'Ana García de Pozuelo', utmMedium: 'llamadme', utmCampaign: 'x', count: 1, inTarget: 1 }, { utmSource: 'IG', utmMedium: 'story', utmCampaign: null, count: 1, inTarget: 0 }],
+      byCampaign: [{ utmCampaign: 'Ana García de Pozuelo', count: 1, inTarget: 1 }, { utmCampaign: null, count: 1, inTarget: 0 }],
     },
     referrals: { referredSignups: 1, referrers: 1, topReferrers: [{ code: 'k3mzabqr', count: 1 }] },
     suggestedNextBatch: { size: 20, ids: ['3f2a8c1e-0d4b-4c2a-9f1e-2b3c4d5e6f70'], counts: { waiting: 2 } },
@@ -257,7 +258,9 @@ describe('GET /admin/waitlist', () => {
   it('with the read token: utm as counts by source, no referral codes, no entry ids', async () => {
     load.mockResolvedValueOnce(REPORT as any)
     const body = await (await fetch(`${base}/admin/waitlist`, { headers: { 'x-metrics-token': 'waitlist-test-token' } })).json()
-    expect(body.sources.byUtm).toEqual([{ utmSource: 'instagram', count: 1 }, { utmSource: 'otro', count: 1 }])
+    expect(body.sources.byUtm).toEqual([{ utmSource: 'instagram', count: 1, inTarget: 0 }, { utmSource: 'otro', count: 1, inTarget: 1 }])
+    // PRO-189: target segment per campaign, campaign under the closed list.
+    expect(body.sources.byCampaign).toEqual([{ utmCampaign: 'ninguna', count: 1, inTarget: 0 }, { utmCampaign: 'otro', count: 1, inTarget: 1 }])
     expect(body.referrals.topReferrers).toEqual([{ count: 1 }])
     expect(body.suggestedNextBatch).toEqual({ size: 20, counts: { waiting: 2 } })
     expect(JSON.stringify(body)).not.toMatch(/Pozuelo|llamadme|k3mzabqr|3f2a8c1e/)

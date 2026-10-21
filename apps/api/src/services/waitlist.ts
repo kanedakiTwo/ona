@@ -205,6 +205,8 @@ export const WAITLIST_DEFINITIONS = {
   segments: 'Respuestas de las entradas activas.',
   targetSegment:
     'Hogar de 2 o más, la persona planifica (sola o compartido) y cocina en casa (no ha respondido «casi no cocino»).',
+  sources:
+    'Entradas activas por `?ref=` (bySource), por utm (byUtm) y por utm_campaign (byCampaign); en cada fila, `count` y cuántas están en el segmento objetivo (`inTarget`).',
   referredSignups: 'Entradas activas que llegaron con el enlace de otra persona (?invita=).',
   newsletterOptIns: 'Entradas activas que han marcado, aparte, recibir el menú de la semana por email.',
   suggestedNextBatch:
@@ -272,16 +274,28 @@ export function buildWaitlistReport(
     }))
     .sort(byCountDesc)
 
-  const bySource = [...countBy(active, (r) => r.source).values()]
-    .map(({ sample, count }) => ({ source: sample.source, count }))
+  // Every attribution row also says how many of its signups are in the target segment (PRO-189).
+  const inTargetBy = (key: (r: WaitlistReportRow) => string) => countBy(active.filter(isTargetSegment), key)
+  const sourceKey = (r: WaitlistReportRow) => r.source
+  const utmKey = (r: WaitlistReportRow) => JSON.stringify([r.utmSource, r.utmMedium, r.utmCampaign])
+  const campaignKey = (r: WaitlistReportRow) => JSON.stringify(r.utmCampaign ?? null)
+  const targetBySource = inTargetBy(sourceKey)
+  const targetByUtm = inTargetBy(utmKey)
+  const targetByCampaign = inTargetBy(campaignKey)
+  const bySource = [...countBy(active, sourceKey).entries()]
+    .map(([k, { sample, count }]) => ({ source: sample.source, count, inTarget: targetBySource.get(k)?.count ?? 0 }))
     .sort(byCountDesc)
-  const byUtm = [...countBy(active, (r) => JSON.stringify([r.utmSource, r.utmMedium, r.utmCampaign])).values()]
-    .map(({ sample, count }) => ({
+  const byUtm = [...countBy(active, utmKey).entries()]
+    .map(([k, { sample, count }]) => ({
       utmSource: sample.utmSource,
       utmMedium: sample.utmMedium,
       utmCampaign: sample.utmCampaign,
       count,
+      inTarget: targetByUtm.get(k)?.count ?? 0,
     }))
+    .sort(byCountDesc)
+  const byCampaign = [...countBy(active, campaignKey).entries()]
+    .map(([k, { sample, count }]) => ({ utmCampaign: sample.utmCampaign, count, inTarget: targetByCampaign.get(k)?.count ?? 0 }))
     .sort(byCountDesc)
 
   const referred = active.filter((r) => r.referredByCode)
@@ -317,7 +331,7 @@ export function buildWaitlistReport(
     status,
     byDay,
     segments: { householdSize, plannerRole, currentMethod, platform, cross },
-    sources: { bySource, byUtm },
+    sources: { bySource, byUtm, byCampaign },
     referrals: {
       referredSignups: referred.length,
       referrers: topReferrers.length,

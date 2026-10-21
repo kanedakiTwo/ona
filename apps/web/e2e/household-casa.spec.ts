@@ -96,7 +96,7 @@ test.describe('390 px', () => {
     expect((await shared).status()).toBe(204)
 
     // The link expires in 30 days (shown as «Caduca <día mes>»).
-    const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })
+    const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', timeZone: 'Europe/Madrid' })
     await expect(page.getByText(`Caduca ${expires}`).first()).toBeVisible()
   })
 })

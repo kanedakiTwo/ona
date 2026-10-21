@@ -34,7 +34,7 @@ import {
   Replace,
   RotateCcw,
   Shuffle,
-  Snowflake,
+  History,
   Tag,
   Trash2,
   Unlock,
@@ -58,7 +58,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { MEAL_TYPE_TAGS, MEAL_TYPE_TAG_LABELS, type Dish, type MealSlot, type RecipeDish } from "@ona/shared"
+import { MEAL_TYPE_TAGS, MEAL_TYPE_TAG_LABELS, isTaperDish, type Dish, type MealSlot, type RecipeDish } from "@ona/shared"
 import { mealLabel } from "@/lib/labels"
 import { useRecipeCookStats, useRecordCook } from "@/hooks/useCookLogs"
 import { useSetSlotEaten } from "@/hooks/useMenu"
@@ -89,8 +89,8 @@ export interface SlotHandlers {
   editNote: (position: number, text: string) => void
   /** PRO-74: the slot's dishes become this written dish (a note). */
   replaceWithNote: (text: string) => void
-  /** «Es del congelador» / «No es del congelador» on the recipe dish at `position` (2026-10-20). */
-  setFreezer: (position: number, on: boolean) => void
+  /** «Son sobras de otro día» / «No son sobras de otro día» on the recipe dish at `position` (2026-10-20). */
+  setCooked: (position: number, on: boolean) => void
   /** PRO-223: mark / unmark this meal as the táper of the dinner before. */
   setTaper?: (on: boolean) => void
 }
@@ -180,12 +180,14 @@ export function MealOptionsSheets({
   const isSingleRecipe = dishes.length === 1 && dishes[0].kind === "recipe"
   const isLeftover = first?.variant === "leftover"
   // A táper (freezer PRO-82, fridge PRO-240) is a given dish: no Elegir / Cambiar / Tipo / Vetar.
-  const fromFreezer = first?.variant === "freezer" || first?.variant === "fridge"
+  const fromFreezer = isTaperDish(first)
   const canReshape = isSingleRecipe && !isLeftover && !fromFreezer
   // A dish already in the menu can be a freezer táper you have (Miguel, 2026-10-20), unless it's
   // the batch of planned leftovers (a táper for tomorrow included) or already a fridge táper.
-  const isFreezer = first?.variant === "freezer"
-  const canFreeze = isSingleRecipe && !isLeftover && first?.variant !== "fridge" && (isFreezer || !ctx.feedsLeftovers)
+  // «Son sobras de otro día» (Miguel, 2026-10-20): any dish already cooked — fridge, freezer or
+  // anywhere — unless it's the batch of planned leftovers (a táper for tomorrow included). On a táper
+  // of any kind, «No son sobras de otro día» brings it back to the list.
+  const canMarkCooked = isSingleRecipe && !isLeftover && (fromFreezer || !ctx.feedsLeftovers)
   const pinnedType = first?.pinnedType ?? null
   const label = mealLabel(ctx.meal)
   const locked = ctx.isLocked
@@ -240,14 +242,14 @@ export function MealOptionsSheets({
               />
             </>
           )}
-          {canFreeze && (
+          {canMarkCooked && (
             <SheetAction
-              icon={Snowflake}
-              label={isFreezer ? "No es del congelador" : "Es del congelador"}
-              hint={lockedHint ?? (isFreezer ? "Vuelve a sumar a la compra" : "Un táper que ya tienes: no suma a la compra")}
+              icon={History}
+              label={fromFreezer ? "No son sobras de otro día" : "Son sobras de otro día"}
+              hint={lockedHint ?? (fromFreezer ? "Vuelve a sumar a la compra" : "Ya está hecho (nevera, congelador…): no suma a la compra")}
               disabled={locked}
               onClick={() => {
-                handlers.setFreezer(0, !isFreezer)
+                handlers.setCooked(0, !fromFreezer)
                 close()
               }}
             />

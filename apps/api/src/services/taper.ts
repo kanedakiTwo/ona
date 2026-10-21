@@ -1,4 +1,5 @@
 import type { DayMenu, LockedSlots, MealSlot, RecipeDish } from '@ona/shared'
+import { isTaperDish } from '@ona/shared'
 
 /**
  * PRO-223 · «El táper de mañana» (D-069). «Mañana como fuera: haz ración y
@@ -34,7 +35,7 @@ export function applyTaper(days: DayMenu[], day: number, meal: string, count = 1
   const src = days[source.day]?.dinner
   const planned: RecipeDish[] = []
   ;(src?.dishes ?? []).forEach((d, pos) => {
-    if (d.kind === 'recipe' && d.variant !== 'leftover' && d.variant !== 'freezer') {
+    if (d.kind === 'recipe' && d.variant !== 'leftover' && !isTaperDish(d)) {
       planned.push({ ...d, variant: 'leftover', leftoverOf: { day: source.day, meal: 'dinner', dishPosition: pos } })
     }
   })

@@ -1,4 +1,5 @@
 import type { DayMenu, Dish } from '@ona/shared'
+import { isTaperDish } from '@ona/shared'
 import { dishLabel, mealEntriesForDay, MEAL_LABEL_ES } from '../menuText.js'
 
 /**
@@ -70,7 +71,7 @@ export function cookedRecipeIds(days: readonly (DayMenu | null | undefined)[]): 
   for (const day of days) {
     for (const slot of Object.values(day ?? {}) as Slot[]) {
       for (const d of slot?.dishes ?? []) {
-        if (d.kind === 'recipe' && d.recipeId && d.variant !== 'leftover' && d.variant !== 'freezer') ids.add(d.recipeId)
+        if (d.kind === 'recipe' && d.recipeId && d.variant !== 'leftover' && !isTaperDish(d)) ids.add(d.recipeId)
       }
     }
   }
@@ -100,7 +101,7 @@ export function mealLinesWithFacts(
       .map((d) => {
         const label = dishLabel(d)
         if (!label) return null
-        if (d.kind !== 'recipe' || d.variant === 'leftover' || d.variant === 'freezer') return label
+        if (d.kind !== 'recipe' || d.variant === 'leftover' || isTaperDish(d)) return label
         const t = timesLabel(times.get(d.recipeId))
         return t ? `${label} (${t})` : label
       })

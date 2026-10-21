@@ -85,6 +85,11 @@ describe('patchDish', () => {
     expect((frozen[0] as RecipeDish).variant).toBe('freezer')
     expect((patchDish(frozen, 0, { variant: 'planned' })[0] as RecipeDish).variant).toBe('planned')
   })
+  it('marks a recipe dish as «sobras de otro día» and back', () => {
+    const cooked = patchDish([r('a')], 0, { variant: 'cooked' })
+    expect((cooked[0] as RecipeDish).variant).toBe('cooked')
+    expect((patchDish(cooked, 0, { variant: 'planned' })[0] as RecipeDish).variant).toBe('planned')
+  })
   it('never turns a leftover or a note into a freezer táper', () => {
     const leftover: Dish = { ...r('a'), variant: 'leftover', leftoverOf: { day: 0, meal: 'lunch', dishPosition: 0 } }
     expect(patchDish([leftover], 0, { variant: 'freezer' })[0]).toEqual(leftover)

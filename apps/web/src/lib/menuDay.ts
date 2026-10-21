@@ -249,7 +249,10 @@ export function taperSourceOf(
 ): { dayLabel: string; recipeName: string } | null {
   if (day < 1 || meal === "dinner") return null
   const dinner = days[day - 1]?.dinner
-  const dish = (dinner?.dishes ?? []).find((d) => d.kind === "recipe" && d.variant !== "leftover" && d.variant !== "freezer")
+  // Not a táper (freezer, fridge, «sobras de otro día»): it isn't cooked that evening.
+  const dish = (dinner?.dishes ?? []).find(
+    (d) => d.kind === "recipe" && d.variant !== "leftover" && d.variant !== "freezer" && d.variant !== "fridge" && d.variant !== "cooked",
+  )
   if (!dish || dish.kind !== "recipe") return null
   return { dayLabel: dayName(day - 1), recipeName: dish.recipeName ?? "la cena" }
 }

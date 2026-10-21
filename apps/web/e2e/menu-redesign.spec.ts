@@ -632,8 +632,10 @@ test('Vista día: a day without the week\'s lunch says «El lunes no hay comida�
 })
 
 // Miguel, 2026-10-20: «se puede añadir una receta como del congelador, pero
-// no se puede poner una receta ya añadida al menú como del congelador».
-test('a dish already in the menu can be marked «del congelador» and back', async ({ page }) => {
+// no se puede poner una receta ya añadida al menú como del congelador», and
+// then «"Es del congelador" habría que reformularlo a "Son sobras de otro día"»
+// (fridge, freezer or anywhere).
+test('a dish already in the menu can be marked «son sobras de otro día» and back', async ({ page }) => {
   test.setTimeout(90_000)
   const { menu } = await userWithMenu(page)
   test.skip(!featuredRecipeId(menu.days[today()]), 'no recipe today')
@@ -644,16 +646,18 @@ test('a dish already in the menu can be marked «del congelador» and back', asy
 
   await hero.getByRole('button', { name: /más opciones/i }).click()
   let patched = page.waitForResponse((r) => r.request().method() === 'PATCH' && /\/dish\/0$/.test(r.url()))
-  await page.getByRole('dialog').getByRole('button', { name: /^es del congelador/i }).click()
+  await page.getByRole('dialog').getByRole('button', { name: /^son sobras de otro día/i }).click()
   let res = await patched
-  expect(res.ok(), `freezer: ${res.status()}`).toBeTruthy()
-  expect(JSON.parse(res.request().postData() ?? '{}')).toEqual({ variant: 'freezer' })
-  await expect(hero.getByText('Del congelador · no suma a la compra')).toBeVisible({ timeout: 10_000 })
+  expect(res.ok(), `cooked: ${res.status()}`).toBeTruthy()
+  expect(JSON.parse(res.request().postData() ?? '{}')).toEqual({ variant: 'cooked' })
+  await expect(hero.getByText('Sobras de otro día · no suma a la compra')).toBeVisible({ timeout: 10_000 })
+  // Already cooked: nothing to start cooking.
+  await expect(hero.getByRole('link', { name: /empezar a cocinar/i })).toHaveCount(0)
 
   await hero.getByRole('button', { name: /más opciones/i }).click()
   patched = page.waitForResponse((r) => r.request().method() === 'PATCH' && /\/dish\/0$/.test(r.url()))
-  await page.getByRole('dialog').getByRole('button', { name: /^no es del congelador/i }).click()
+  await page.getByRole('dialog').getByRole('button', { name: /^no son sobras de otro día/i }).click()
   res = await patched
   expect(res.ok(), `planned: ${res.status()}`).toBeTruthy()
-  await expect(hero.getByText('Del congelador · no suma a la compra')).toHaveCount(0, { timeout: 10_000 })
+  await expect(hero.getByText('Sobras de otro día · no suma a la compra')).toHaveCount(0, { timeout: 10_000 })
 })

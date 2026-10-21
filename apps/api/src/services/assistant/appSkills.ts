@@ -553,6 +553,7 @@ async function replaceBannedDishes(
       if (dish.kind !== 'recipe' || dish.recipeId !== recipeId || dish.variant === 'leftover') continue
       if (dish.variant === 'freezer') { kept.push(`${label(d, meal)} (es un taper del congelador)`); continue }
       if (dish.variant === 'fridge') { kept.push(`${label(d, meal)} (es un taper de la nevera)`); continue }
+      if (dish.variant === 'cooked') { kept.push(`${label(d, meal)} (son sobras de otro dia)`); continue }
       if (locked[String(d)]?.[meal]) { kept.push(`${label(d, meal)} (esta fijada)`); continue }
       const name = await regenerate(d, meal, pos)
       if (!name) { kept.push(`${label(d, meal)} (no hay otra receta que encaje)`); continue }

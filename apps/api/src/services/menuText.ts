@@ -21,6 +21,7 @@ export function dishLabel(d: Dish): string | null {
     const name = d.recipeName?.trim() || 'receta sin nombre'
     if (d.variant === 'freezer') return `${name} (del congelador)`
     if (d.variant === 'fridge') return `${name} (táper de la nevera)`
+    if (d.variant === 'cooked') return `${name} (sobras de otro día)`
     return d.variant === 'leftover' ? `${name} (sobras)` : name
   }
   return null

@@ -1,4 +1,4 @@
-import { freezerItemsDue } from '@ona/shared'
+import { freezerItemsDue, isTaperVariant } from '@ona/shared'
 import { appApiFor, AppApiError, type AppApi } from './appApi.js'
 import { bestMatch, normalize } from './appSkills.js'
 import { findRecipesWithWhatIHave } from '../withWhatIHave.js'
@@ -52,7 +52,7 @@ export function freeMealOf(menu: MenuDoc, dayIndex: number): string | null {
     const slot = menu.days?.[dayIndex]?.[meal]
     if (!slot) continue
     if (menu.locked?.[String(dayIndex)]?.[meal]) continue
-    if ((slot.dishes ?? []).some((d) => d.variant === 'leftover' || d.variant === 'freezer' || (d as any).leftoverOf)) continue
+    if ((slot.dishes ?? []).some((d) => d.variant === 'leftover' || isTaperVariant(d.variant) || (d as any).leftoverOf)) continue
     return meal
   }
   return null

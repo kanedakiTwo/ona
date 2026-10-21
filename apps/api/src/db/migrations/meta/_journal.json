@@ -610,6 +610,13 @@
       "when": 1792570320465,
       "tag": "0089_drop_strict_protein_minimum",
       "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1792574332507,
+      "tag": "0090_catalog_import_jobs",
+      "breakpoints": true
     }
   ]
 }

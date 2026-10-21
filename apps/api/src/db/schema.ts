@@ -1812,6 +1812,46 @@ export const catalogWishVotes = pgTable('catalog_wish_votes', {
   check('catalog_wish_votes_source_check', sql.raw("source IN ('alta','me_encanta','mimo','evaluador')")),
 ])
 
+// ─── catalog_import_jobs (admin «Recetas pendientes») ────────
+// One row per import of a Cocina batch file launched from the admin page
+// (specs/catalog-import.md). The import runs in the background of the API
+// process; this row is its progress: how many recipes are done and what
+// happened to each (in draft, repeated, rejected and why). Never the file's
+// text. A job still `running` when the API boots is marked `interrupted`.
+export const catalogImportJobs = pgTable('catalog_import_jobs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  /** `recipes.import_batch` of the drafts it creates. */
+  batch: text('batch').notNull(),
+  /** 'cocina' | 'miguel' — the file's `source.origin` (default cocina). */
+  origin: text('origin').notNull(),
+  fileName: text('file_name'),
+  /** 'running' | 'done' | 'failed' | 'interrupted'. */
+  status: text('status').notNull().default('running'),
+  total: integer('total').notNull(),
+  done: integer('done').notNull().default(0),
+  /** Per recipe: `{ name, status, recipeId?, duplicateOf?, reason?, detail?, allergenDoubt?, auditIssues? }`. */
+  outcomes: jsonb('outcomes').notNull().default([]).$type<CatalogImportOutcomeRecord[]>(),
+  error: text('error'),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  finishedAt: timestamp('finished_at', { withTimezone: true }),
+}, (t) => [
+  index('idx_catalog_import_jobs_created').on(t.createdAt),
+  check('catalog_import_jobs_status_check', sql.raw("status IN ('running','done','failed','interrupted')")),
+])
+
+/** One recipe's result in `catalog_import_jobs.outcomes`. */
+export interface CatalogImportOutcomeRecord {
+  name: string
+  status: 'draft' | 'duplicate' | 'rejected'
+  recipeId?: string
+  duplicateOf?: string
+  reason?: string
+  detail?: string
+  allergenDoubt?: boolean
+  auditIssues?: string[]
+}
+
 // ─── household_notices (PRO-205) ────────────────────────────
 // One-off notices to a household, once per (key, household): the apology for
 // «Afina tu menú» showing dishes that broke allergies or diets (PRO-197).

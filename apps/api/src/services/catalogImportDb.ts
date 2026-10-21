@@ -12,9 +12,11 @@ import { persistRecipe } from './recipePersistence.js'
 import { applyCatalogTimeTrim } from './recipeTimeTrim.js'
 import { markWishesCovered } from './catalogWishes.js'
 import { DRAFT, PUBLISHED } from './recipeVisibility.js'
-import { catalogSourceRecord, type BatchRecipe, type CatalogImportDeps, type CatalogRewrite, type CatalogDraftInput, type DraftIngredient, type MatchedIngredient, type PersistDraftInput } from './catalogImport.js'
+import { catalogSourceRecord, planBatchPublish, type BatchRecipe, type CatalogImportDeps, type CatalogRewrite, type CatalogDraftInput, type DraftIngredient, type MatchedIngredient, type PersistDraftInput } from './catalogImport.js'
 
 type Db = typeof defaultDb
+/** The database or a transaction on it (the admin page publishes and audits in one). */
+type DbOrTx = Pick<Db, 'select' | 'update'>
 
 /** Every catalogue name, drafts included (a draft is already «in» for duplicates). */
 export async function allCatalogNames(db: Db = defaultDb): Promise<string[]> {
@@ -111,7 +113,7 @@ export function createDbCatalogImportDeps(
 
 // ─── Batch commands ─────────────────────────────────────────────
 
-export async function loadBatch(batch: string, db: Db = defaultDb): Promise<BatchRecipe[]> {
+export async function loadBatch(batch: string, db: Pick<Db, 'select'> = defaultDb): Promise<BatchRecipe[]> {
   const rows = await db
     .select({ id: recipes.id, name: recipes.name, status: recipes.status, catalogSource: recipes.catalogSource })
     .from(recipes)
@@ -131,7 +133,7 @@ export async function loadBatch(batch: string, db: Db = defaultDb): Promise<Batc
   })
 }
 
-async function patchSource(ids: readonly string[], patch: Partial<CatalogSourceInfo>, db: Db): Promise<void> {
+async function patchSource(ids: readonly string[], patch: Partial<CatalogSourceInfo>, db: DbOrTx): Promise<void> {
   if (ids.length === 0) return
   const rows = await db.select({ id: recipes.id, catalogSource: recipes.catalogSource }).from(recipes).where(inArray(recipes.id, [...ids]))
   for (const r of rows) {
@@ -143,16 +145,16 @@ async function patchSource(ids: readonly string[], patch: Partial<CatalogSourceI
  * Mark the drafts handed to Miguel for review (D-099: all of them). Verdicts
  * already given are kept, so running `sample` again never undoes a review.
  */
-export async function saveSample(ids: readonly string[], db: Db = defaultDb): Promise<void> {
+export async function saveSample(ids: readonly string[], db: DbOrTx = defaultDb): Promise<void> {
   await patchSource(ids, { sampled: true }, db)
 }
 
-export async function saveReview(ids: readonly string[], ok: boolean, db: Db = defaultDb): Promise<void> {
+export async function saveReview(ids: readonly string[], ok: boolean, db: DbOrTx = defaultDb): Promise<void> {
   await patchSource(ids, { reviewOk: ok, reviewedAt: new Date().toISOString() }, db)
 }
 
 /** Publish these drafts and close the wishes they now cover. */
-export async function publishRecipes(ids: readonly string[], db: Db = defaultDb): Promise<{ published: number; wishesCovered: number }> {
+export async function publishRecipes(ids: readonly string[], db: DbOrTx = defaultDb): Promise<{ published: number; wishesCovered: number }> {
   if (ids.length === 0) return { published: 0, wishesCovered: 0 }
   const done = await db
     .update(recipes)
@@ -161,4 +163,18 @@ export async function publishRecipes(ids: readonly string[], db: Db = defaultDb)
     .returning({ id: recipes.id, name: recipes.name })
   const wishesCovered = await markWishesCovered(done, db)
   return { published: done.length, wishesCovered }
+}
+
+/**
+ * `publish --batch=…` and the admin page's «Publicar las aprobadas»: what the
+ * rule allows (`planBatchPublish`) goes out; the rest waits, with its reason.
+ */
+export async function publishBatch(
+  batch: string,
+  opts: { dryRun?: boolean } = {},
+  db: DbOrTx = defaultDb,
+): Promise<{ plan: ReturnType<typeof planBatchPublish>; published: number; wishesCovered: number }> {
+  const plan = planBatchPublish(await loadBatch(batch, db))
+  if (opts.dryRun) return { plan, published: 0, wishesCovered: 0 }
+  return { plan, ...(await publishRecipes(plan.publish, db)) }
 }

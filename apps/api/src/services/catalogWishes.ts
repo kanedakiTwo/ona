@@ -231,7 +231,7 @@ export async function listCatalogWishes(
  */
 export async function markWishesCovered(
   published: ReadonlyArray<{ id: string; name: string }>,
-  db: Db = defaultDb,
+  db: Pick<Db, 'select' | 'update'> = defaultDb,
 ): Promise<number> {
   if (published.length === 0) return 0
   const open = await db.select({ id: catalogWishes.id, dish: catalogWishes.dish }).from(catalogWishes).where(eq(catalogWishes.status, 'abierto'))

@@ -17,6 +17,9 @@
  *  10. Deseos del catálogo — dishes households want that we lack (PRO-154)
  *  11. Lista de espera — suggested batch with names, «Invitar a estas N
  *      personas» (one-time link by email), per-batch results (PRO-97)
+ *  12. Recetas pendientes — catalogue drafts by batch, «Publicar» /
+ *      «Descartar» each one, and the import of a Cocina batch file
+ *      (specs/catalog-import.md)
  *
  * Each row offers an inline edit (PATCH) or a "Re-mapear a USDA" modal.
  * Access is gated to `user.role === 'admin'`. The full server check is
@@ -54,6 +57,7 @@ import { InvitationsSection } from "../sections/InvitationsSection"
 import { FeedbackSection } from "../sections/FeedbackSection"
 import { CatalogWishesSection } from "../sections/CatalogWishesSection"
 import { WaitlistAdminSection } from "../sections/WaitlistAdminSection"
+import { PendingRecipesSection } from "../sections/PendingRecipesSection"
 import { DISPLAY_UI } from "@/components/recipes/RecipeCard"
 
 type SectionKey =
@@ -71,6 +75,7 @@ type SectionKey =
   | "invites"
   | "waitlist"
   | "feedback"
+  | "drafts"
 
 const SECTIONS: Array<{ key: SectionKey; label: string }> = [
   { key: "fdc", label: "Ingredientes sin USDA" },
@@ -81,6 +86,7 @@ const SECTIONS: Array<{ key: SectionKey; label: string }> = [
   { key: "recipes", label: "Recetas con kcal=0" },
   { key: "regen", label: "Output de regen" },
   { key: "wishes", label: "Deseos del catálogo" },
+  { key: "drafts", label: "Recetas pendientes" },
   { key: "users", label: "Usuarios" },
   { key: "audit", label: "Auditoría" },
   { key: "voice", label: "Voz" },
@@ -90,6 +96,7 @@ const SECTIONS: Array<{ key: SectionKey; label: string }> = [
 ]
 
 const AREA_SECTION: Record<Exclude<AdminArea, "catalogo">, SectionKey> = {
+  recetas: "drafts",
   usuarios: "users",
   invitaciones: "invites",
   "lista-espera": "waitlist",
@@ -100,6 +107,7 @@ const AREA_SECTION: Record<Exclude<AdminArea, "catalogo">, SectionKey> = {
 /** Each admin area has its own heading; the catalogue's counts only show there. */
 const AREA_HEADER: Record<AdminArea, { title: string; intro: string }> = {
   catalogo: { title: "Catálogo", intro: "Huecos del catálogo: ingredientes sin datos, alérgenos y recetas por revisar." },
+  recetas: { title: "Recetas pendientes", intro: "Los borradores del catálogo, por tanda: ábrelos y publica o descarta cada uno. Nada sale sin tu clic." },
   usuarios: { title: "Usuarios", intro: "Busca cuentas, suspéndelas o genera un enlace para cambiar la contraseña." },
   invitaciones: { title: "Invitaciones", intro: "Enlaces de invitación por campaña para entrar en la beta cerrada, con sus altas y su uso." },
   "lista-espera": { title: "Lista de espera", intro: "Quién se ha apuntado, de qué canal viene y la siguiente tanda para invitar por correo." },
@@ -109,6 +117,7 @@ const AREA_HEADER: Record<AdminArea, { title: string; intro: string }> = {
 }
 
 const SECTION_AREA_HREF: Partial<Record<SectionKey, string>> = {
+  drafts: "/admin/recetas",
   users: "/admin/usuarios",
   invites: "/admin/invitaciones",
   waitlist: "/admin/lista-espera",
@@ -189,6 +198,7 @@ export default function AdminPage() {
     invites: 0,
     waitlist: 0,
     feedback: 0,
+    drafts: 0,
   }
 
   const isCatalogTab =
@@ -270,7 +280,7 @@ export default function AdminPage() {
               }`}
             >
               {s.label}
-              {s.key !== "users" && s.key !== "audit" && s.key !== "voice" && s.key !== "waitlist" && s.key !== "wishes" && (
+              {s.key !== "users" && s.key !== "audit" && s.key !== "voice" && s.key !== "waitlist" && s.key !== "wishes" && s.key !== "drafts" && (
                 <span className="ml-1.5 text-[10px] opacity-60">
                   {counts[s.key]}
                 </span>
@@ -316,6 +326,7 @@ export default function AdminPage() {
         {active === "waitlist" && <WaitlistAdminSection />}
         {active === "feedback" && <FeedbackSection />}
         {active === "wishes" && <CatalogWishesSection />}
+        {active === "drafts" && <PendingRecipesSection />}
       </main>
 
       {remapTarget && (

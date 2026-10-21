@@ -596,6 +596,13 @@
       "when": 1792455763114,
       "tag": "0087_alert_prefs",
       "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1792565211005,
+      "tag": "0088_strict_protein_minimum",
+      "breakpoints": true
     }
   ]
 }

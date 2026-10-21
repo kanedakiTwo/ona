@@ -80,7 +80,8 @@ function basketNames(order: ShopOrder, basket = buildExtensionBasket(order.lines
   return new Map(all.map((b) => [b.key, capitalize(prettyName(b.name))]))
 }
 
-export function ExtensionSendPanel({ order, etiqueta }: { order: ShopOrder; etiqueta: string }) {
+/** `extensionId`: la extensión que llena la web de esta tienda (useBasketExtension). */
+export function ExtensionSendPanel({ order, etiqueta, extensionId }: { order: ShopOrder; etiqueta: string; extensionId: string | null }) {
   const send = useSendToExtension()
   const basket = buildExtensionBasket(order.lines)
   // Nada que mandar (p. ej. todo «probablemente lo tienes» sin marcar): sin botón.
@@ -132,7 +133,7 @@ export function ExtensionSendPanel({ order, etiqueta }: { order: ShopOrder; etiq
         disabled={send.isPending}
         onClick={() => {
           haptic.light()
-          send.mutate({ order })
+          send.mutate({ order, extensionId })
         }}
       >
         <ShoppingCart size={14} /> {send.isPending ? `Enviando a ${etiqueta}…` : `Enviar a ${etiqueta}`}
@@ -152,14 +153,19 @@ export function ExtensionSendPanel({ order, etiqueta }: { order: ShopOrder; etiq
  */
 type ManualReason = "nada" | "contrato"
 
-/** `onBusyChange`: la tarjeta desactiva «Cancelar pedido» mientras se deshace o se cierra. */
+/**
+ * `onBusyChange`: la tarjeta desactiva «Cancelar pedido» mientras se deshace o se cierra.
+ * `extensionId`: la que llena la web de esta tienda, si se sabe; si no (null), deshacer pregunta a todas.
+ */
 export function ExtensionSentBody({
   order,
   etiqueta,
+  extensionId,
   onBusyChange,
 }: {
   order: ShopOrder
   etiqueta: string
+  extensionId: string | null
   onBusyChange?: (busy: boolean) => void
 }) {
   const undo = useUndoExtensionSend()
@@ -254,7 +260,7 @@ export function ExtensionSentBody({
               // Un intento nuevo: lo que dijo el anterior («Ya lo he quitado yo») ya no vale.
               setManual(null)
               undo.mutate(
-                { order },
+                { order, extensionId },
                 {
                   onSuccess: (x) => setManual(x.manualNeeded ? "nada" : null),
                   // La web de la cadena ha cambiado: se puede quitar a mano.

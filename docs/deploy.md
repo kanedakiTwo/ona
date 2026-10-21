@@ -137,7 +137,7 @@ Both are configured in the Railway dashboard, not committed.
 | `NEXT_PUBLIC_ERROR_REPORTING` | Optional. `false` switches the browser error reporter off (it is on in production builds by default); `true` turns it on under `next dev`. See `specs/errors.md` |
 | `NEXT_PUBLIC_RELEASE` | Optional build label sent with client error reports. Unset → `RAILWAY_GIT_COMMIT_SHA` or `RAILWAY_DEPLOYMENT_ID` if Railway exposes them at build time, else none |
 | `NEXT_PUBLIC_CF_BEACON_TOKEN` | Optional. Cloudflare Web Analytics site token (cookieless, aggregated visits; `specs/privacy.md`). Baked at build time: set it, then redeploy ona-web. Unset → no beacon |
-| `NEXT_PUBLIC_BASKET_EXTENSION_ID` | Opcional. Id de la extensión del navegador a la que la web manda la cesta del súper (`specs/shop-orders.md`). Se mete en la build: ponla **antes** de desplegar ona-web (cambiarla = volver a desplegar). Vacía = la web no habla con ninguna extensión y no sale el botón. Va con `BASKET_EXTENSION_EMAILS` en ona-api |
+| `NEXT_PUBLIC_BASKET_EXTENSION_ID` | Opcional. Id de la extensión del navegador a la que la web manda la cesta del súper (`specs/shop-orders.md`); con una extensión por cadena, sus ids separados por comas (la web usa la que sabe llenar la web de la tienda). Se mete en la build: ponla **antes** de desplegar ona-web (cambiarla = volver a desplegar). Vacía = la web no habla con ninguna extensión y no sale el botón. Va con `BASKET_EXTENSION_EMAILS` en ona-api |
 | `PORT` | `3000` |
 
 ## Schema migrations

@@ -194,9 +194,11 @@ describe('the real catalogue (staging, copy of production, 2026-10-15)', () => {
     expect(FEW_INGREDIENTS.filter((n) => !flagged.has(n))).toEqual([])
   })
 
-  it('flags 32 of the 78 recipes (the list Cocina reviews)', () => {
+  it('flags 28 of the 78 recipes (32 with the protein minimum everywhere, as Miguel\'s own menus keep it)', () => {
     expect(fixture.length).toBe(78)
-    expect(flagged.size).toBe(32)
+    expect(flagged.size).toBe(28)
+    const strict = fixture.filter((r) => auditCatalogRecipe(r as AuditableRecipe, { strictProteinMinimum: true }).issues.length > 0)
+    expect(strict.length).toBe(32)
   })
 
   it('generated weeks never serve a flagged recipe', () => {
@@ -296,5 +298,44 @@ describe('auditCatalogRecipe — desserts and breakfasts skip the quantity range
     expect(skipsQuantityRanges({ course: null, meals: ['snack'] })).toBe(true)
     expect(skipsQuantityRanges({ course: 'main', meals: ['lunch', 'dinner'] })).toBe(false)
     expect(skipsQuantityRanges({ course: null, meals: [] })).toBe(false)
+  })
+})
+
+describe('auditCatalogRecipe — the protein minimum (Miguel, 2026-10-21)', () => {
+  // Real cases of the books and Yaya batches. For everyone, the 80 g minimum
+  // is gone for starters and for dishes with rice or legumes as their base;
+  // the 300 g maximum stays. Miguel's own menus keep the minimum everywhere.
+  const pate = { ...recipe(4, [g('bacalao', 125), g('bacalao ahumado', 75), g('pan de barra', 120), g('aceite de girasol', 100, 'ml')]), course: 'starter' }
+  const garbanzos = { ...recipe(4, [g('garbanzos cocidos', 667), { ...g('huevo', 6, 'u'), unitWeight: 50 }, g('espinacas', 133)]), course: 'main' }
+  const arrozAlHorno = { ...recipe(4, [g('arroz', 300), g('costillas de cerdo', 280), g('panceta', 150), g('patata', 250)]), course: 'main' }
+  const strict = { strictProteinMinimum: true }
+
+  it('a starter is not held to the minimum (Paté de bacalao, 50 g)', () => {
+    expect(auditCatalogRecipe(pate).issues).toEqual([])
+    expect(auditCatalogRecipe(pate, strict).issues).toEqual(['proteina_fuera_de_rango'])
+  })
+
+  it('nor is a dish with legumes or rice as its base (garbanzos with 75 g of egg, arroz al horno with 70 g of ribs)', () => {
+    expect(auditCatalogRecipe(garbanzos).issues).toEqual([])
+    expect(auditCatalogRecipe(arrozAlHorno).issues).toEqual([])
+    expect(auditCatalogRecipe(garbanzos, strict).issues).toEqual(['proteina_fuera_de_rango'])
+    expect(auditCatalogRecipe(arrozAlHorno, strict).issues).toEqual(['proteina_fuera_de_rango'])
+  })
+
+  it('the 300 g maximum still applies to starters and legume dishes', () => {
+    const huge = { ...recipe(2, [g('lentejas cocidas', 400), g('chorizo', 100), g('ternera', 800)]), course: 'starter' }
+    expect(auditCatalogRecipe(huge).issues).toEqual(['proteina_fuera_de_rango'])
+  })
+
+  it('a main with no rice or legume base keeps the minimum; green beans and chickpea flour are not a base', () => {
+    expect(auditCatalogRecipe({ ...recipe(2, [g('huevo', 60), g('patata', 250), g('cebolla', 100)]), course: 'main' }).issues).toEqual(['proteina_fuera_de_rango'])
+    expect(auditCatalogRecipe({ ...recipe(4, [g('judías verdes', 400), g('pollo', 200), g('cebolla', 100)]), course: 'main' }).issues).toEqual(['proteina_fuera_de_rango'])
+    expect(auditCatalogRecipe({ ...recipe(4, [g('harina de garbanzo', 200), g('pollo', 200), g('cebolla', 100)]), course: 'main' }).issues).toEqual(['proteina_fuera_de_rango'])
+  })
+
+  it('the menu matcher gets the same option (catalogAuditIssuesFor)', () => {
+    expect(catalogAuditIssuesFor(null, garbanzos)).toEqual([])
+    expect(catalogAuditIssuesFor(null, garbanzos, strict)).toEqual(['proteina_fuera_de_rango'])
+    expect(catalogAuditIssuesFor('user-1', garbanzos, strict)).toEqual([])
   })
 })

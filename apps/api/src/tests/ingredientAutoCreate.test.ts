@@ -13,6 +13,7 @@
 
 import { describe, it, expect } from 'vitest'
 import {
+  pickNutritionCandidate,
   suggestIngredient,
   levenshtein,
   normalizeForDedupe,
@@ -186,5 +187,27 @@ describe('levenshtein + dedupe normalize', () => {
   it('handles diacritics + case via normalizeForDedupe', () => {
     expect(normalizeForDedupe('Salmón')).toBe(normalizeForDedupe('salmon'))
     expect(normalizeForDedupe('  ALCAPARRAS  ')).toBe('alcaparras')
+  })
+})
+
+describe('pickNutritionCandidate — the nutrition a new ingredient takes', () => {
+  const c = (dataType: string, kcal: number) => ({
+    fdcId: dataType === 'BEDCA' ? null : 1, bedcaId: dataType === 'BEDCA' ? 'b1' : null,
+    description: dataType, descriptionEs: null, dataType,
+    per100g: { kcal, proteinG: 0, carbsG: 0, fatG: 0, fiberG: 0, saltG: 0 },
+  })
+
+  it('prefers Foundation or SR Legacy over a survey entry listed first', () => {
+    expect(pickNutritionCandidate([c('Survey (FNDDS)', 1), c('SR Legacy', 2)])?.per100g.kcal).toBe(2)
+  })
+
+  it('skips an entry with no nutrients at all when another one has them (a Foundation sample with every value missing)', () => {
+    expect(pickNutritionCandidate([c('Foundation', 0), c('SR Legacy', 321)])?.per100g.kcal).toBe(321)
+    expect(pickNutritionCandidate([c('SR Legacy', 0)])?.per100g.kcal).toBe(0) // water: zero is its value
+  })
+
+  it('falls back to the first candidate (BEDCA) and to null when there is none', () => {
+    expect(pickNutritionCandidate([c('BEDCA', 3)])?.dataType).toBe('BEDCA')
+    expect(pickNutritionCandidate([])).toBeNull()
   })
 })

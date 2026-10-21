@@ -13,14 +13,18 @@
  *   --json=…    Cocina's batch file (hand-authored shape, see draftsFromCocinaJson)
  *   --origin=…  miguel (Miguel's books, his mother's recipe book) | cocina (found or written by Cocina)
  *   --book=…    source title, saved with the recipe (never its text)
+ *   --credit=…  the line the recipe page shows under the title, as it must read
+ *               («Receta de la Yaya», «Inspirada en una receta de <autor>, «<libro>»»).
+ *               Without it, Miguel's sources read «Inspirada en <book>»; Cocina's, nothing.
+ *               In a --json file, `source.credit` (file or recipe; the recipe's wins) beats it.
  *   --batch=…   batch id (default: today's date + origin)
  *   --dry-run   read and rewrite, but save nothing
  *
  * Review and publish:
  *   … status  --batch=…              what's in the batch and what publish would do
- *   … sample  --batch=…              Cocina batches: pick Miguel's one in ten (+ allergen doubts) and list the links
- *   … review  --ok=id,id --no=id     Miguel's verdict on the sample
- *   … publish --batch=… [--dry-run]  publish what the rule allows (Miguel's: audit OK; Cocina's: sample seen and OK)
+ *   … sample  --batch=…              Cocina batches: list the links of every draft for Miguel (D-099), allergen doubts first
+ *   … review  --ok=id,id --no=id     Miguel's verdict, recipe by recipe
+ *   … publish --batch=… [--dry-run]  publish what the rule allows (Miguel's: audit OK; Cocina's: only those Miguel said OK to)
  */
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
@@ -74,13 +78,14 @@ async function runImport() {
   const origin = flag('origin') === 'miguel' ? 'miguel' : flag('origin') === 'cocina' ? 'cocina' : null
   if (!origin) throw new Error('Falta --origin=miguel|cocina')
   const book = flag('book') ?? null
+  const credit = flag('credit') ?? null
   const batch = flag('batch') ?? `${new Date().toISOString().slice(0, 10)}-${origin}`
   const dryRun = has('dry-run')
 
   type Draft = Parameters<typeof importCatalogBatch>[0][number]
   const drafts: Draft[] = []
   if (flag('json')) {
-    drafts.push(...draftsFromCocinaJson(JSON.parse(readFileSync(flag('json')!, 'utf8')), { origin, book, file: path.basename(flag('json')!) }))
+    drafts.push(...draftsFromCocinaJson(JSON.parse(readFileSync(flag('json')!, 'utf8')), { origin, book, credit, file: path.basename(flag('json')!) }))
   } else if (flag('dir')) {
     const { AnthropicProvider } = await import('../src/services/providers/anthropic.js')
     const vision = new AnthropicProvider()
@@ -98,7 +103,7 @@ async function runImport() {
           tags: [],
           ingredients: raw.ingredients.map((i) => (i.quantity > 0 ? { name: i.name, quantity: i.quantity, unit: i.unit } : { name: i.name, quantity: 1, unit: 'al_gusto' })),
           sourceSteps: raw.steps,
-          source: { origin, book, page: p.page, file: p.file },
+          source: { origin, book, credit, page: p.page, file: p.file },
         })
         console.log(`· leída ${p.file}: ${raw.name}`)
       } catch (err) {
@@ -132,19 +137,20 @@ async function runStatus() {
 }
 
 async function runSample() {
-  const { pickReviewSample } = await import('../src/services/catalogImport.js')
+  const { listForReview } = await import('../src/services/catalogImport.js')
   const { loadBatch, saveSample } = await import('../src/services/catalogImportDb.js')
   const batch = flag('batch')
   if (!batch) throw new Error('Falta --batch=')
   const rows = (await loadBatch(batch)).filter((r) => r.origin === 'cocina')
-  const sample = pickReviewSample(rows)
-  await saveSample(batch, sample)
-  console.log(`Muestra para Miguel (${sample.length} de ${rows.filter((r) => r.status === 'draft').length}); se abren con una cuenta de admin:`)
-  for (const id of sample) {
+  const list = listForReview(rows)
+  await saveSample(list)
+  const verdict = (ok: boolean | undefined) => (ok === true ? ' · ya dijo que sí' : ok === false ? ' · ya dijo que no' : '')
+  console.log(`Para Miguel, todas las de la tanda (${list.length}); se abren con una cuenta de admin:`)
+  for (const id of list) {
     const r = rows.find((x) => x.id === id)!
-    console.log(`  - ${r.name}${r.allergenDoubt ? ' · duda de alérgenos' : ''} → ${WEB}/recipes/${id}`)
+    console.log(`  - ${r.name}${r.allergenDoubt ? ' · duda de alérgenos' : ''}${verdict(r.reviewOk)} → ${WEB}/recipes/${id}`)
   }
-  console.log(`Cuando Miguel conteste: review --ok=<ids> --no=<ids>, y luego publish --batch=${batch}`)
+  console.log(`Cuando Miguel conteste: review --ok=<ids> --no=<ids>, y luego publish --batch=${batch} (solo salen las que dijo que sí)`)
 }
 
 async function runReview() {

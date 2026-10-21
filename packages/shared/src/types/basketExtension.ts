@@ -4,6 +4,7 @@
  * extensión del navegador»). La extensión no importa este fichero: solo sigue
  * la forma de estos mensajes (devuelve objetos planos). Cualquier cambio en la
  * forma de los mensajes sube `BASKET_EXTENSION_PROTOCOL`.
+ * Un campo opcional que las versiones viejas pueden no mandar (como `duracionMs`) no lo sube.
  */
 import { z } from 'zod'
 import { basketMayBeInCart } from '../buy/extensionBasket.js'
@@ -49,10 +50,38 @@ export interface BasketPing {
   etiqueta: string
 }
 
+/**
+ * Los ids de extensión de la build: `NEXT_PUBLIC_BASKET_EXTENSION_ID` admite varios, separados por comas
+ * (una extensión por cadena). Sin espacios, vacíos ni repetidos, en su orden. Vacía o ausente: ninguno.
+ */
+export function parseExtensionIds(raw: string | null | undefined): string[] {
+  const ids: string[] = []
+  for (const parte of (raw ?? '').split(',')) {
+    const id = parte.trim()
+    if (id && !ids.includes(id)) ids.push(id)
+  }
+  return ids
+}
+
+/**
+ * De las extensiones que contestaron al `ping` (en el orden de la build), la primera que sabe llenar la web
+ * de ese host; null si ninguna o sin host.
+ */
+export function extensionForHost<T extends { hosts: string[] }>(
+  pings: ReadonlyArray<{ id: string; ping: T }>,
+  host: string | null | undefined,
+): { id: string; ping: T } | null {
+  if (!host) return null
+  return pings.find((p) => p.ping.hosts.includes(host)) ?? null
+}
+
 export const BASKET_LINE_STATES = ['tabla', 'busqueda', 'fallida', 'no_verificada'] as const
 export type BasketLineState = (typeof BASKET_LINE_STATES)[number]
 export const BASKET_SEND_ERRORS = ['sin_zona', 'sin_sesion', 'contrato', 'verificacion', 'red'] as const
 export type BasketSendError = (typeof BASKET_SEND_ERRORS)[number]
+
+/** Lo más que puede valer `duracionMs` (1 h): la extensión recorta a esto lo que mide. */
+export const BASKET_SEND_MAX_DURATION_MS = 3_600_000
 
 export const basketSendResultSchema = z
   .object({
@@ -77,6 +106,8 @@ export const basketSendResultSchema = z
     bajoMinimo: z.boolean(),
     version: z.string().max(32),
     contrato: z.string().max(64),
+    /** Lo que tardó la extensión desde que recibió «enviar» hasta que respondió. Falta en las versiones viejas. */
+    duracionMs: z.number().int().min(0).max(BASKET_SEND_MAX_DURATION_MS).optional(),
   })
   // Si puede haber algo en el carro, el envío necesita su id: con él se reconoce un reintento y se deshace.
   .refine((r) => r.envioId !== '' || !basketMayBeInCart(r), {
@@ -89,6 +120,26 @@ export type BasketUndoResult =
   | { ok: true; restadas: number }
   | { ok: false; error: 'nada_que_deshacer' | 'sin_sesion' | 'contrato' | 'red' }
 
+/**
+ * De dónde viene una línea de la cesta: una regla de compra, el catálogo (un ingrediente que sale en
+ * alguna receta del sistema) o lo que tecleó el hogar (también un ingrediente que creó un usuario).
+ */
+export const BASKET_LINE_ORIGINS = ['regla', 'catalogo', 'tecleado'] as const
+export type BasketLineOrigin = (typeof BASKET_LINE_ORIGINS)[number]
+
+/**
+ * Una línea de la foto `cesta`: clave, nombre y elección, y de dónde viene (`origen`, con la
+ * `ruleKey` de su regla). `origen` y `ruleKey` faltan en las fotos guardadas antes de existir:
+ * esas líneas cuentan como `tecleado`.
+ */
+export interface BasketSnapshotLine {
+  key: string
+  name: string
+  choice: string | null
+  origen?: BasketLineOrigin
+  ruleKey?: string | null
+}
+
 /** Lo que guarda la API en `shop_orders.extension_result`. */
 export interface StoredBasketResult extends BasketSendResult {
   recibidoAt: string
@@ -97,9 +148,9 @@ export interface StoredBasketResult extends BasketSendResult {
   /** envioId de los envíos de este pedido que se deshicieron. */
   deshechos: string[]
   /**
-   * La cesta tal como se mandó (clave, nombre y elección de cada línea), para
-   * saber qué era cada clave aunque las líneas del pedido cambien después.
+   * La cesta tal como se mandó (clave, nombre, elección y origen de cada línea),
+   * para saber qué era cada clave aunque las líneas del pedido cambien después.
    * Falta en los resultados guardados antes de existir.
    */
-  cesta?: Array<{ key: string; name: string; choice: string | null }>
+  cesta?: BasketSnapshotLine[]
 }

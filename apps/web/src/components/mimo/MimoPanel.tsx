@@ -9,6 +9,7 @@ import { useMimo, type MimoStatus } from './MimoProvider'
 import { isCookPath, isRecipeDetailPath } from './MimoButton'
 import { MimoAvatar } from '@/components/brand/Mimoia'
 import { linkRecipeNames } from '@/lib/mimoRecipeLinks'
+import { markRecipeFromMimo } from '@/lib/usageEvents'
 import { useBilling } from '@/hooks/useBilling'
 import { AccountAccessNotice, isPaused } from '@/components/billing/AccountAccessNotice'
 
@@ -171,7 +172,10 @@ export default function MimoPanel() {
                         <Link
                           key={i}
                           href={seg.href}
-                          onClick={mimo.close}
+                          onClick={() => {
+                            markRecipeFromMimo()
+                            mimo.close()
+                          }}
                           data-testid="mimo-recipe-link"
                           className="font-medium text-[#C65D38] underline decoration-[#C65D38]/40 underline-offset-2"
                         >

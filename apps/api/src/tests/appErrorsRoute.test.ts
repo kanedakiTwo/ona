@@ -178,6 +178,24 @@ describe('GET /admin/errors', () => {
     await fetch(`${base}/admin/errors?kind=bogus`, { headers: { 'x-metrics-token': 'errors-test-token' } })
     expect(load).toHaveBeenCalledWith({ days: 7, includeResolved: false, kind: undefined, limit: 100 })
   })
+
+  const GROUP = { id: 'g1', kind: 'client', message: 'AnaGarciaError: ana@example.com', path: '/lista/AnaGarcia', release: 'Ana_Garcia', userAgentFamily: null, lastUserId: 'u-1', count: 1, firstSeen: 'a', lastSeen: 'b', resolvedAt: null, sampleStack: 'at x' }
+
+  it('with the read token, groups carry no message, user id, stack or free text', async () => {
+    load.mockResolvedValueOnce({ totals: { groups: 1 }, groups: [GROUP] } as any)
+    const body = await (await fetch(`${base}/admin/errors`, { headers: { 'x-metrics-token': 'errors-test-token' } })).json()
+    expect(body.groups[0]).toEqual({ id: 'g1', kind: 'client', type: 'Error', path: '/lista/:x', release: null, userAgentFamily: null, count: 1, firstSeen: 'a', lastSeen: 'b', resolvedAt: null })
+    expect(JSON.stringify(body)).not.toMatch(/ana|u-1|at x/i)
+  })
+
+  it('the admin view (no token header) still gets the message, the user and the stack', async () => {
+    const app = express()
+    const pass: RequestHandler = (_req, _res, next) => next()
+    app.use(createAdminErrorsRouter({ readAuth: pass, load: (async () => ({ totals: { groups: 1 }, groups: [GROUP] })) as any }))
+    const b = await serve(app)
+    const body = await (await fetch(`${b}/admin/errors`)).json()
+    expect(body.groups[0]).toMatchObject({ message: 'AnaGarciaError: ana@example.com', path: '/lista/AnaGarcia', release: 'Ana_Garcia', lastUserId: 'u-1', sampleStack: 'at x' })
+  })
 })
 
 describe('POST /admin/errors/:id/resolve', () => {

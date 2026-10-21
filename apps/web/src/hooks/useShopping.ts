@@ -24,6 +24,14 @@ export interface ShoppingItem {
   menuQuantity?: number
   /** Manual line: amount in the household's words, «2 paquetes» (PRO-175). */
   amountText?: string
+  /** Menu line switched to another unit: the menu's unit (PRO-292). */
+  menuUnit?: BuyableUnit
+  /** Menu line: the units it can be bought in, the menu's first (PRO-292). */
+  unitOptions?: BuyableUnit[]
+  /** Line whose name is one of the household's active staples («Habitual», PRO-293). */
+  habitual?: boolean
+  /** Manual line typed with no amount (stored as 1 u). */
+  quantitySource?: 'user' | 'default'
 }
 
 export interface ShoppingList {
@@ -202,16 +210,35 @@ export function useDeleteShoppingItem() {
 /**
  * Change a line that comes from the menu (PRO-175): `skipped` = «No lo compro
  * esta semana» (false puts it back), `quantity` = the household's amount in
- * the line's unit (null = back to the menu's). Kept across rebuilds.
+ * the line's unit (null = back to the menu's), `unit` = buy it in another
+ * unit (PRO-292; the menu's unit alone goes back to the menu's amount).
+ * Kept across rebuilds.
  */
 export function useEditMenuLine() {
   const qc = useQueryClient()
-  return useMutation<ShoppingList, Error, { listId: string; itemId: string; skipped?: boolean; quantity?: number | null }>({
+  return useMutation<ShoppingList, Error, { listId: string; itemId: string; skipped?: boolean; quantity?: number | null; unit?: BuyableUnit }>({
     mutationFn: ({ listId, itemId, ...body }) =>
       api.put(`/shopping-list/${listId}/item/${encodeURIComponent(itemId)}/edit`, body),
     onSuccess: (data, vars) => {
       if (data && typeof data === "object" && "items" in data) putList(qc, data)
       qc.invalidateQueries({ queryKey: ["shopping-list", vars.listId, "totals"] })
+    },
+  })
+}
+
+/**
+ * «Habitual» (PRO-293): `on` creates or switches on the household's staple
+ * for this line, so it comes back on every new list; off pauses it.
+ */
+export function useHabitualLine() {
+  const qc = useQueryClient()
+  return useMutation<ShoppingList, Error, { listId: string; itemId: string; on: boolean }>({
+    mutationFn: ({ listId, itemId, on }) =>
+      api.put(`/shopping-list/${listId}/item/${encodeURIComponent(itemId)}/edit`, { habitual: on }),
+    onSuccess: (data, vars) => {
+      if (data && typeof data === "object" && "items" in data) putList(qc, data)
+      qc.invalidateQueries({ queryKey: ["shopping-list", vars.listId, "totals"] })
+      qc.invalidateQueries({ queryKey: ["staples"] })
     },
   })
 }

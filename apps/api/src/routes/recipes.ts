@@ -25,6 +25,7 @@ import {
   userFavorites,
   users,
   recipeNotes,
+  type CatalogSourceInfo,
 } from '../db/schema.js'
 import { env } from '../config/env.js'
 import {
@@ -93,6 +94,7 @@ import { isCoeliacHousehold, recipeDietNotices } from '../services/glutenFreeCha
 import { effectiveAllergens } from '../services/nutrition/allergens.js'
 import { canViewRecipe, isHiddenDraft, PUBLISHED } from '../services/recipeVisibility.js'
 import { requestCatalogPhotos } from '../services/catalogImageOnDemand.js'
+import { catalogSourceCredit } from '../services/catalogImport.js'
 import { z } from 'zod'
 import { requireSpendCapacity } from '../middleware/spendCap.js'
 import { requireRecipeId } from '../middleware/recipeId.js'
@@ -177,6 +179,8 @@ interface RecipeRow {
   internalTags: string[] | null
   sourceUrl: string | null
   sourceType: string | null
+  /** PRO-154 batch-import source (book, page, batch, audit…). Internal: only its credit line goes out. */
+  catalogSource?: CatalogSourceInfo | null
   createdAt: Date | null
   updatedAt: Date | null
 }
@@ -337,6 +341,10 @@ function toDetailRecipe(
   if (row.totalTime != null) detail.totalTime = row.totalTime
   if (row.sourceUrl != null) detail.sourceUrl = row.sourceUrl
   if (row.sourceType != null) detail.sourceType = row.sourceType as SourceType
+  // D-067: where a catalogue recipe comes from («Receta de la Yaya»,
+  // «Inspirada en…»). Only this line — never the rest of catalog_source
+  // (file, batch, audit notes).
+  detail.sourceCredit = catalogSourceCredit(row.catalogSource)
   if (row.advancePrep?.length) detail.advancePrep = row.advancePrep
   // notes/tips/substitutions/storage are intentionally NOT exposed on the
   // public detail payload — see spec "Tag Visibility" / "Display Constraints".
@@ -855,6 +863,17 @@ router.post(
 )
 
 // PUT /recipes/:id — update (auth required, author only, lint-validated).
+/**
+ * The edit form never sends `internalTags` (the public payload strips them),
+ * so a save used to wipe them: `compartida`, `retirada`, `tiempos-pro284`
+ * (PRO-284: without it the next boot would cut the prep a second time).
+ * Kept unless the body sends its own.
+ */
+export function withKeptInternalTags<T extends { internalTags?: string[] | null }>(body: T, existing: string[] | null | undefined): T {
+  if (body.internalTags !== undefined) return body
+  return { ...body, internalTags: existing ?? [] }
+}
+
 router.put(
   '/recipes/:id',
   requireRecipeId(),
@@ -865,7 +884,7 @@ router.put(
       const recipeId = String(req.params.id)
 
       const [existing] = await db
-        .select({ authorId: recipes.authorId })
+        .select({ authorId: recipes.authorId, internalTags: recipes.internalTags })
         .from(recipes)
         .where(eq(recipes.id, recipeId))
         .limit(1)
@@ -913,7 +932,7 @@ router.put(
       const force =
         req.query.force === '1' ||
         (req.body && (req.body as { force?: unknown }).force === true)
-      const result = await persistRecipe(body as RecipeWriteInput, {
+      const result = await persistRecipe(withKeptInternalTags(body, existing.internalTags) as RecipeWriteInput, {
         authorId: existing.authorId,
         recipeId,
         softLint: force,

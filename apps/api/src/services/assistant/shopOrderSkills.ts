@@ -4,6 +4,7 @@ import type { SkillContext, SkillDefinition, SkillResult } from './types.js'
 import { appApiFor, AppApiError, type AppApi } from './appApi.js'
 import { bestMatch, toBuyable } from './appSkills.js'
 import { classifyShopKind, kindForBuyShop } from '../shopOrders/classify.js'
+import { shoppingLineSkills } from './shoppingLineSkills.js'
 
 /**
  * "Compra en mis tiendas" from chat (specs/shop-orders.md). Same REST calls
@@ -92,11 +93,12 @@ function lineStatus(l: ShopOrderLine): string {
 const manageShops: SkillDefinition = {
   name: 'manage_shops',
   description:
-    'Gestiona las tiendas del hogar a las que Mimoia prepara pedidos (fruteria, carniceria, pescaderia, supermercado). action: list, add, update, remove. Para add hace falta name, kind y al menos un contacto (whatsapp, email, web o phone). customerName = como le conoce la tienda. delivery: recoger | domicilio (con address).',
+    'Gestiona las tiendas del hogar a las que Mimoia prepara pedidos (fruteria, carniceria, pescaderia, supermercado). action: list, add, update, remove, move. Para add hace falta name, kind y al menos un contacto (whatsapp, email, web o phone). customerName = como le conoce la tienda. delivery: recoger | domicilio (con address). move ordena una tienda dentro de su tipo con to: first | up | down (el pedido de cada tipo va a la primera: «pon Mercadona como primer súper» = move, to first).',
   parameters: {
     type: 'object',
     properties: {
-      action: { type: 'string', enum: ['list', 'add', 'update', 'remove'] },
+      action: { type: 'string', enum: ['list', 'add', 'update', 'remove', 'move'] },
+      to: { type: 'string', enum: ['first', 'up', 'down'], description: 'Solo para move: primera de su tipo, subir o bajar un puesto.' },
       name: { type: 'string', description: 'Nombre de la tienda (para update/remove, el nombre actual).' },
       newName: { type: 'string' },
       kind: { type: 'string', enum: KINDS },
@@ -139,6 +141,14 @@ const manageShops: SkillDefinition = {
     if (p.action === 'remove') {
       await api(ctx)('DELETE', `/shops/${hit.id}`)
       return toCompra(`Hecho: ${hit.name} borrada de tus tiendas.`)
+    }
+    if (p.action === 'move') {
+      const to = p.to === 'up' || p.to === 'down' ? p.to : 'first'
+      const next = await api(ctx)<Shop[]>('PATCH', `/shops/${hit.id}`, { move: to })
+      const mine = next.filter((s) => s.kind === hit.kind)
+      const label = SHOP_KIND_LABELS[hit.kind].toLowerCase()
+      if (mine.length < 2) return toCompra(`${hit.name} es tu única tienda de tipo ${label}: ya recibe ese pedido.`)
+      return toCompra(`Hecho: orden de ${label}: ${mine.map((s, i) => `${i + 1}. ${s.name}`).join(', ')}. El pedido de ${label} va a ${mine[0].name}.`)
     }
     try {
       await api(ctx)('PATCH', `/shops/${hit.id}`, payloadFrom(p, hit))
@@ -399,4 +409,15 @@ const getShopOrders: SkillDefinition = {
   },
 }
 
-export const shopOrderSkills: SkillDefinition[] = [manageShops, prepareShopOrders, editShopOrder, registerShopReply, approveShopOrder, closeShopOrder, getShopOrders]
+// The list's own lines (PRO-292, shoppingLineSkills.ts) ride along here so
+// they reach the registry (skills.ts) without another entry there.
+export const shopOrderSkills: SkillDefinition[] = [
+  manageShops,
+  prepareShopOrders,
+  editShopOrder,
+  registerShopReply,
+  approveShopOrder,
+  closeShopOrder,
+  getShopOrders,
+  ...shoppingLineSkills,
+]

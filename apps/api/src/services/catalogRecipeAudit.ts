@@ -16,6 +16,14 @@
  *     80 g or over 300 g;
  *   - its pasta, rice or dry pulses per serving (added up) are under 50 g or
  *     over 150 g.
+ * The two quantity ranges are for a lunch or dinner main: a dessert (course
+ * `dessert`) or a recipe only for breakfast or a snack (crêpes, a flan, rice
+ * pudding) is not held to them — its eggs or rice are not «the main».
+ * The 80 g protein minimum doesn't apply either to a starter or to a dish
+ * whose base is rice or legumes (garbanzos with eggs, arroz al horno): there
+ * the meat, fish or egg goes with the dish (Miguel, 2026-10-21). The 300 g
+ * maximum still does. A user who asked for it (`users.strict_protein_minimum`,
+ * today only Miguel) keeps the minimum everywhere in their own menus.
  * Quantity checks only run when every counted ingredient converts to grams
  * (g, ml, or units with a known weight); an unknown weight never flags.
  *
@@ -48,6 +56,24 @@ export interface AuditableRecipe {
   servings: number
   stepCount: number
   ingredients: readonly AuditIngredient[]
+  /** starter | main | dessert (null = unknown). */
+  course?: string | null
+  /** breakfast | lunch | dinner | snack. */
+  meals?: readonly string[] | null
+}
+
+const SWEET_MEALS = new Set(['breakfast', 'snack'])
+
+export interface AuditOptions {
+  /** Keep the 80 g protein minimum for starters and rice/legume dishes too (`users.strict_protein_minimum`). */
+  strictProteinMinimum?: boolean
+}
+
+/** Desserts and breakfast/snack-only recipes skip the protein and starch ranges. */
+export function skipsQuantityRanges(recipe: Pick<AuditableRecipe, 'course' | 'meals'>): boolean {
+  if (recipe.course === 'dessert') return true
+  const meals = recipe.meals ?? []
+  return meals.length > 0 && meals.every((m) => SWEET_MEALS.has(m))
 }
 
 export interface CatalogAuditResult {
@@ -118,6 +144,26 @@ export function isStarchBase(name: string): boolean {
   return STARCH_TERMS.some((t) => hasWord(n, t))
 }
 
+/** Rice and legumes, dry or cooked: «arroz», «garbanzos cocidos», «alubias de bote», «lentejas». */
+const RICE_OR_LEGUME_TERMS = ['arroz', 'lenteja', 'garbanzo', 'alubia', 'judia', 'judion', 'frijol', 'fabe', 'azuki', 'soja texturizada']
+/** …but not their flours, drinks, vinegars or rice paper, nor green beans. */
+const NOT_A_RICE_OR_LEGUME_BASE = ['harina', 'vinagre', 'leche de', 'bebida de', 'papel de', 'judia verde', 'judias verdes', 'salsa']
+
+/** Does the dish have rice or legumes as (part of) its base? Then its protein goes with it. */
+export function hasRiceOrLegumeBase(recipe: Pick<AuditableRecipe, 'ingredients'>): boolean {
+  return recipe.ingredients.some((i) => {
+    const n = normalizeText(i.name)
+    if (NOT_A_RICE_OR_LEGUME_BASE.some((x) => n.includes(x))) return false
+    return RICE_OR_LEGUME_TERMS.some((t) => hasWord(n, t))
+  })
+}
+
+/** Whether the 80 g protein minimum applies (the maximum always does, within the ranges). */
+export function proteinMinimumApplies(recipe: AuditableRecipe, opts: AuditOptions = {}): boolean {
+  if (opts.strictProteinMinimum) return true
+  return recipe.course !== 'starter' && !hasRiceOrLegumeBase(recipe)
+}
+
 /** Typical weights when the catalogue has none (only what the catalogue lists by units). */
 const FALLBACK_UNIT_WEIGHT_G: Array<[string, number]> = [['huevo', 55]]
 
@@ -158,7 +204,7 @@ function perServing(ings: readonly AuditIngredient[], servings: number): number 
 }
 
 /** Pure: the issues of one catalogue recipe (empty = fine). */
-export function auditCatalogRecipe(recipe: AuditableRecipe): CatalogAuditResult {
+export function auditCatalogRecipe(recipe: AuditableRecipe, opts: AuditOptions = {}): CatalogAuditResult {
   const issues: CatalogAuditIssue[] = []
   if (recipe.stepCount <= 0) issues.push('sin_pasos')
   if (recipe.ingredients.length <= 2) issues.push('pocos_ingredientes')
@@ -166,10 +212,13 @@ export function auditCatalogRecipe(recipe: AuditableRecipe): CatalogAuditResult 
   const servings = recipe.servings > 0 ? recipe.servings : 1
   const proteinPerServingG = perServing(recipe.ingredients.filter((i) => isMainProtein(i.name)), servings)
   const starchPerServingG = perServing(recipe.ingredients.filter((i) => isStarchBase(i.name)), servings)
-  if (proteinPerServingG != null && (proteinPerServingG < MAIN_PROTEIN_RANGE_G.min || proteinPerServingG > MAIN_PROTEIN_RANGE_G.max)) {
+  const ranges = !skipsQuantityRanges(recipe)
+  const tooLittle = proteinPerServingG != null && proteinPerServingG < MAIN_PROTEIN_RANGE_G.min && proteinMinimumApplies(recipe, opts)
+  const tooMuch = proteinPerServingG != null && proteinPerServingG > MAIN_PROTEIN_RANGE_G.max
+  if (ranges && (tooLittle || tooMuch)) {
     issues.push('proteina_fuera_de_rango')
   }
-  if (starchPerServingG != null && (starchPerServingG < STARCH_RANGE_G.min || starchPerServingG > STARCH_RANGE_G.max)) {
+  if (ranges && starchPerServingG != null && (starchPerServingG < STARCH_RANGE_G.min || starchPerServingG > STARCH_RANGE_G.max)) {
     issues.push('base_fuera_de_rango')
   }
   return { issues, proteinPerServingG, starchPerServingG }
@@ -178,9 +227,14 @@ export function auditCatalogRecipe(recipe: AuditableRecipe): CatalogAuditResult 
 /**
  * What the menu matcher sees (`RecipeWithIngredients.catalogAuditIssues`):
  * the audit's issues for a system recipe, nothing for a user's own recipe.
+ * `opts` carries the menu owner's `strict_protein_minimum`.
  */
-export function catalogAuditIssuesFor(authorId: string | null | undefined, recipe: AuditableRecipe): CatalogAuditIssue[] {
-  return authorId == null ? auditCatalogRecipe(recipe).issues : []
+export function catalogAuditIssuesFor(
+  authorId: string | null | undefined,
+  recipe: AuditableRecipe,
+  opts: AuditOptions = {},
+): CatalogAuditIssue[] {
+  return authorId == null ? auditCatalogRecipe(recipe, opts).issues : []
 }
 
 export const AUDIT_ISSUE_LABEL: Record<CatalogAuditIssue, string> = {

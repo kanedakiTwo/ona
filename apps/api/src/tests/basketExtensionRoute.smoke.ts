@@ -7,6 +7,8 @@
  *   pnpm --filter @ona/api smoke     # levanta Postgres + API y pasa todos los *.smoke.ts
  */
 import { describe, it, expect, beforeAll } from 'vitest'
+import { basketBaseName, isNotBought, resolveBuyRule } from '@ona/shared'
+import { isPantryBasic } from '../services/shopOrders/draft.js'
 import { API_URL, reachable } from './smokeEnv.js'
 
 const METRICS = process.env.METRICS_READ_TOKEN
@@ -18,8 +20,8 @@ async function session(prefix: string, domain = 'test.local') {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username: `${prefix}_${id}`, email: `${prefix}_${id}@${domain}`, password: 'smokepass123', ageConfirmed: true }),
   })
-  const { token } = (await r.json()) as { token: string }
-  return async (method: string, path: string, data?: unknown) => {
+  const { token, user } = (await r.json()) as { token: string; user: { id: string } }
+  const api = async (method: string, path: string, data?: unknown) => {
     const res = await fetch(`${API_URL}${path}`, {
       method,
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -28,8 +30,18 @@ async function session(prefix: string, domain = 'test.local') {
     const text = await res.text()
     return { status: res.status, body: text ? JSON.parse(text) : null }
   }
+  return Object.assign(api, { userId: user.id })
 }
 type Api = Awaited<ReturnType<typeof session>>
+
+/** Fechas YYYY-MM-DD en la hora de Madrid, como la API. */
+const madridToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date())
+function addDaysIso(iso: string, n: number): string {
+  const d = new Date(`${iso}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+const mondayOf = (iso: string) => addDaysIso(iso, -((new Date(`${iso}T12:00:00Z`).getUTCDay() + 6) % 7))
 
 async function superOrder(api: Api, items: Array<{ name: string; quantity: number; unit: string }>) {
   await api('POST', '/shops', { name: 'Súper de prueba', kind: 'supermercado', channel: 'web', webUrl: 'https://tienda.example/', customerName: 'Ana' })
@@ -151,14 +163,93 @@ describe.skipIf(!reachable)('extensión del navegador · rutas', () => {
     expect((await api('GET', '/admin/extension-gaps?days=1')).status).toBe(403)
   })
 
-  it.skipIf(!METRICS)('huecos con el token de métricas (sin sesión), con estado y motivo', async () => {
+  it.skipIf(!METRICS)('huecos con el token de métricas (sin sesión): nombre recortado, sin búsqueda, con estado y motivo', async () => {
     const r = await fetch(`${API_URL}/admin/extension-gaps?days=1`, { headers: { 'x-metrics-token': METRICS! } })
     expect(r.status).toBe(200)
     const { gaps } = await r.json()
     expect(Array.isArray(gaps)).toBe(true)
-    const name = lineNameWith((await api('GET', `/shop-orders/${orderId}`)).body, 'fallida')
-    expect(gaps).toContainEqual(expect.objectContaining({ name, estado: 'fallida', motivo: 'no_encontrado' }))
+    const order = (await api('GET', `/shop-orders/${orderId}`)).body
+    const key = order.extensionResult.lineas.find((l: { estado: string }) => l.estado === 'fallida').key
+    const line = order.lines.find((l: { key: string }) => l.key === key)
+    // Lo tecleado sin regla no llega: solo su categoría; con regla, la clave de la regla.
+    const esperado = line.ruleKey ? { name: line.ruleKey, origen: 'regla' } : { name: null, origen: 'tecleado' }
+    expect(gaps).toContainEqual(expect.objectContaining({ ...esperado, estado: 'fallida', motivo: 'no_encontrado' }))
+    for (const g of gaps) expect(g).not.toHaveProperty('search')
   })
+
+  it.skipIf(!METRICS)('envíos con el token: uno por resultado, nombres recortados, sin envioId ni texto tecleado', async () => {
+    const otro = await session('exts')
+    const order = await superOrder(otro, [
+      { name: 'arroz', quantity: 1000, unit: 'g' },
+      { name: 'servilletas', quantity: 1, unit: 'u' },
+    ])
+    // Una duración única para encontrar este envío entre los de las demás pruebas.
+    const duracionMs = 1000 + Math.floor(Math.random() * 1_000_000)
+    const lineas = order.lines.map((l: { key: string }, i: number) => ({ key: l.key, estado: 'busqueda', productoId: String(i + 1), producto: `Producto ${i + 1}`, unidades: 1 }))
+    const saved = await otro('POST', `/shop-orders/${order.id}/extension-result`, result({ envioId: `smoke-${duracionMs}`, duracionMs, lineas, anadidas: lineas.length }))
+    expect(saved.status).toBe(200)
+    const r = await fetch(`${API_URL}/admin/extension-sends?days=1`, { headers: { 'x-metrics-token': METRICS! } })
+    expect(r.status).toBe(200)
+    const body = await r.json()
+    expect(body.days).toBe(1)
+    const send = body.sends.find((s: { duracionMs: number | null }) => s.duracionMs === duracionMs)
+    expect(Object.keys(send).sort()).toEqual(['anadidas', 'deshecho', 'duracionMs', 'error', 'fecha', 'lineas', 'ok'])
+    for (const l of send.lineas) expect(Object.keys(l).sort()).toEqual(['choice', 'estado', 'motivo', 'name', 'origen', 'producto', 'unidades'])
+    const esperado = order.lines.map((l: { ruleKey?: string | null }) => (l.ruleKey ? { name: l.ruleKey, origen: 'regla' } : { name: null, origen: 'tecleado' }))
+    expect(send.lineas.map((l: { name: string | null; origen: string }) => ({ name: l.name, origen: l.origen }))).toEqual(esperado)
+    expect(JSON.stringify(body)).not.toMatch(/servilletas|smoke-\d/)
+  }, 30_000)
+
+  it.skipIf(!METRICS)('una línea de una receta del sistema sale como catálogo con su nombre: la consulta de recetas del sistema, contra la base sembrada', async () => {
+    const hogar = await session('extc')
+    // Esta semana y la siguiente: así siempre hay una comida entre mañana y dentro de 6 días, lo que entra en el pedido.
+    const hoy = madridToday()
+    const menus: Array<{ id: string; weekStart: string; days: Array<Record<string, unknown>> }> = []
+    for (const weekStart of [mondayOf(hoy), addDaysIso(mondayOf(hoy), 7)]) {
+      const m = await hogar('POST', '/menu/generate', { userId: hogar.userId, weekStart })
+      expect(m.status).toBeLessThan(300)
+      menus.push(m.body)
+    }
+    const hueco = menus
+      .flatMap((m) => m.days.flatMap((d, day) => ['lunch', 'dinner'].filter((meal) => d[meal]).map((meal) => ({ menuId: m.id, day, meal, date: addDaysIso(m.weekStart, day) }))))
+      .find((h) => h.date > hoy && h.date <= addDaysIso(hoy, 6))
+    expect(hueco, 'tiene que haber una comida entre mañana y dentro de 6 días').toBeTruthy()
+    // Una receta del sistema con un ingrediente sin regla de compra que sí se compra (ni de despensa
+    // ni de los que no se compran, que el pedido deja fuera); en la semilla, «Arroz al caldero».
+    type Ingrediente = { ingredientId: string; ingredientName: string; quantity: number; unit: string }
+    type Receta = { id: string; authorId: string | null; ingredients: Ingrediente[] }
+    const comprable = (i: Ingrediente) =>
+      !resolveBuyRule(i.ingredientName) && !isNotBought(i.ingredientName) && !isPantryBasic({ name: i.ingredientName, unit: i.unit as never, quantity: i.quantity, kind: 'menu' })
+    let receta: Receta | undefined
+    let ingrediente: Ingrediente | undefined
+    for (const { id } of (await hogar('GET', '/recipes')).body as Array<{ id: string }>) {
+      const r = (await hogar('GET', `/recipes/${id}`)).body as Receta
+      ingrediente = r.authorId == null ? r.ingredients.find(comprable) : undefined
+      if (ingrediente) {
+        receta = r
+        break
+      }
+    }
+    expect(receta, 'la semilla tiene que traer una receta del sistema con un ingrediente sin regla que se compre').toBeTruthy()
+    expect((await hogar('PUT', `/menu/${hueco!.menuId}/day/${hueco!.day}/meal/${hueco!.meal}`, { recipeId: receta!.id })).status).toBe(200)
+    const order = await superOrder(hogar, [{ name: 'servilletas', quantity: 1, unit: 'u' }])
+    type Line = { key: string; name: string; ingredientId?: string | null; ruleKey?: string | null; included?: boolean; members?: unknown[] }
+    const enCesta = (order.lines as Line[]).filter((l) => l.included !== false)
+    const catalogo = enCesta.find((l) => l.ingredientId === ingrediente!.ingredientId)
+    const tecleada = enCesta.find((l) => l.name === 'servilletas')
+    expect(catalogo, `el pedido tiene que traer ${ingrediente!.ingredientName}`).toBeTruthy()
+    expect(catalogo!.ruleKey ?? null).toBeNull()
+    expect(tecleada).toBeTruthy()
+    const duracionMs = 1000 + Math.floor(Math.random() * 1_000_000)
+    const lineas = enCesta.map((l, i) => ({ key: l.key, estado: 'busqueda', productoId: String(i + 1), producto: `Producto ${i + 1}`, unidades: 1 }))
+    const saved = await hogar('POST', `/shop-orders/${order.id}/extension-result`, result({ envioId: `smoke-${duracionMs}`, duracionMs, lineas, anadidas: lineas.length }))
+    expect(saved.status).toBe(200)
+    const r = await fetch(`${API_URL}/admin/extension-sends?days=1`, { headers: { 'x-metrics-token': METRICS! } })
+    const send = (await r.json()).sends.find((s: { duracionMs: number | null }) => s.duracionMs === duracionMs)
+    const linea = (key: string) => send.lineas[lineas.findIndex((l) => l.key === key)]
+    expect(linea(catalogo!.key)).toMatchObject({ origen: 'catalogo', name: basketBaseName(catalogo!.name) })
+    expect(linea(tecleada!.key)).toMatchObject({ origen: 'tecleado', name: null })
+  }, 60_000)
 
   it('sin permiso: status false y 403 al guardar un resultado', async () => {
     const fuera = await session('noext', 'otro.example')

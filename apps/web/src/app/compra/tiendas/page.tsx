@@ -8,10 +8,10 @@
  */
 import { useState } from "react"
 import Link from "next/link"
-import { ChevronLeft, MessageCircle, Mail, Globe, Phone, Pencil, Plus, Trash2 } from "lucide-react"
+import { ArrowDown, ArrowUp, ChevronLeft, MessageCircle, Mail, Globe, Phone, Pencil, Plus, Trash2 } from "lucide-react"
 import { SHOP_KIND_LABELS, type Shop } from "@ona/shared"
 import { useAuth } from "@/lib/auth"
-import { useDeleteShop, useShops } from "@/hooks/useShopOrders"
+import { useDeleteShop, useMoveShop, useShops } from "@/hooks/useShopOrders"
 import { ShopForm } from "@/components/compra/ShopForm"
 
 function contactOf(s: Shop): { icon: React.ReactNode; text: string } {
@@ -31,9 +31,15 @@ export default function ShopsPage() {
   const { user } = useAuth()
   const { data: shops, isLoading } = useShops()
   const del = useDeleteShop()
+  const move = useMoveShop()
   const [editing, setEditing] = useState<Shop | "new" | null>(null)
 
   if (!user) return null
+
+  // Order inside each kind (PRO-287): the first súper gets the súper order.
+  const list = shops ?? []
+  const sameKind = (s: Shop) => list.filter((o) => o.kind === s.kind)
+  const rank = (s: Shop) => sameKind(s).findIndex((o) => o.id === s.id)
 
   return (
     <div className="bg-[#FAF6EE] min-h-screen pb-24 lg:mx-auto lg:max-w-[900px]">
@@ -47,7 +53,8 @@ export default function ShopsPage() {
         </h1>
         <p className="mt-3 max-w-md text-[12px] text-[#7A7066]">
           Mimoia reparte tu lista entre ellas: fruta y verdura a la frutería, carne a la carnicería, pescado a la pescadería y
-          el resto al súper. Si falta una, lo suyo va al súper.
+          el resto al súper. Si falta una, lo suyo va al súper. Si tienes dos del mismo tipo, el pedido va a la primera: ordénalas
+          con las flechas.
         </p>
       </header>
 
@@ -56,7 +63,7 @@ export default function ShopsPage() {
           <div className="py-10 text-center font-italic italic text-[#7A7066]">Cargando…</div>
         ) : (
           <ul className="space-y-3">
-            {(shops ?? []).map((s) =>
+            {list.map((s) =>
               editing !== "new" && editing?.id === s.id ? (
                 <li key={s.id}>
                   <ShopForm shop={s} onDone={() => setEditing(null)} />
@@ -64,7 +71,14 @@ export default function ShopsPage() {
               ) : (
                 <li key={s.id} className="flex items-start justify-between gap-3 rounded-2xl border border-[#DDD6C5] bg-[#FFFEFA] px-4 py-3">
                   <div className="min-w-0">
-                    <div className="text-[10px] uppercase tracking-[0.14em] text-[#C65D38]">{SHOP_KIND_LABELS[s.kind]}</div>
+                    <div className="text-[10px] uppercase tracking-[0.14em] text-[#C65D38]">
+                      {SHOP_KIND_LABELS[s.kind]}
+                      {sameKind(s).length > 1 ? (
+                        <span className="ml-1.5 normal-case tracking-normal text-[#7A7066]">
+                          · {rank(s) === 0 ? "la primera: recibe el pedido" : `${rank(s) + 1}.ª`}
+                        </span>
+                      ) : null}
+                    </div>
                     <div className="font-display text-[18px] leading-tight text-[#1A1612]">{s.name}</div>
                     <div className="mt-1 flex items-center gap-1.5 text-[12px] text-[#7A7066]">
                       {contactOf(s).icon}
@@ -76,6 +90,26 @@ export default function ShopsPage() {
                     </div>
                   </div>
                   <div className="flex shrink-0 gap-1">
+                    {sameKind(s).length > 1 ? (
+                      <>
+                        <button
+                          aria-label={`Subir ${s.name}`}
+                          disabled={rank(s) === 0 || move.isPending}
+                          onClick={() => move.mutate({ id: s.id, to: "up" })}
+                          className="rounded-full p-2 text-[#7A7066] hover:bg-[#F2EDE0] hover:text-[#1A1612] disabled:opacity-30 disabled:hover:bg-transparent"
+                        >
+                          <ArrowUp size={14} />
+                        </button>
+                        <button
+                          aria-label={`Bajar ${s.name}`}
+                          disabled={rank(s) === sameKind(s).length - 1 || move.isPending}
+                          onClick={() => move.mutate({ id: s.id, to: "down" })}
+                          className="rounded-full p-2 text-[#7A7066] hover:bg-[#F2EDE0] hover:text-[#1A1612] disabled:opacity-30 disabled:hover:bg-transparent"
+                        >
+                          <ArrowDown size={14} />
+                        </button>
+                      </>
+                    ) : null}
                     <button aria-label={`Editar ${s.name}`} onClick={() => setEditing(s)} className="rounded-full p-2 text-[#7A7066] hover:bg-[#F2EDE0] hover:text-[#1A1612]">
                       <Pencil size={14} />
                     </button>

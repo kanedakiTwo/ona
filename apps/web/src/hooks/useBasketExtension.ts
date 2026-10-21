@@ -5,14 +5,18 @@ import {
   BASKET_EXTENSION_PROTOCOL,
   basketSendResultSchema,
   buildExtensionBasket,
+  extensionForHost,
   type BasketSendResult,
   type BasketUndoResult,
   type ShopOrder,
 } from "@ona/shared"
 import { api, apiFetch, ApiError } from "@/lib/api"
-import { askExtension, BASKET_EXTENSION_ID, hostOf, messageExtension, pingExtension, SEND_TIMEOUT_MS } from "@/lib/basketExtension"
+import { askExtension, BASKET_EXTENSION_IDS, hostOf, messageExtension, pingExtensions, SEND_TIMEOUT_MS, type ExtensionReply } from "@/lib/basketExtension"
 
-/** ¿Sale «Enviar a <etiqueta>» para la web de esta tienda? */
+/**
+ * ¿Sale «Enviar a <etiqueta>» para la web de esta tienda? Con varias extensiones (una por cadena), la que
+ * sabe llenar su host: su `extensionId` es al que van el envío y el deshacer.
+ */
 export function useBasketExtension(shopWebUrl: string | null) {
   const host = hostOf(shopWebUrl)
   const status = useQuery<{ enabled: boolean }>({
@@ -20,20 +24,22 @@ export function useBasketExtension(shopWebUrl: string | null) {
     queryFn: () => api.get<{ enabled: boolean }>("/shop-extension/status"),
     // Sin id de extensión en la build no hay a quién hablar: ni se pregunta (y los enlaces de Carrefour no esperan).
     // TODO(test): sin test; la web no tiene tests unitarios y los e2e se construyen con id.
-    enabled: !!host && !!BASKET_EXTENSION_ID,
+    enabled: !!host && BASKET_EXTENSION_IDS.length > 0,
     staleTime: 5 * 60_000,
   })
   const ping = useQuery({
-    queryKey: ["basket-extension-ping"],
-    queryFn: pingExtension,
+    queryKey: ["basket-extension-pings"],
+    queryFn: pingExtensions,
     enabled: !!status.data?.enabled,
     staleTime: 60_000,
     retry: false,
   })
-  const p = ping.data ?? null
+  const ext = extensionForHost(ping.data ?? [], host)
   return {
-    available: !!(status.data?.enabled && p && host && p.hosts.includes(host)),
-    etiqueta: p?.etiqueta ?? null,
+    available: !!(status.data?.enabled && ext),
+    etiqueta: ext?.ping.etiqueta ?? null,
+    /** La extensión que llena esta web (null si no hay). */
+    extensionId: ext?.id ?? null,
     /** Se está comprobando (el estado o el ping): mientras tanto no se pinta nada de la extensión. */
     checking: status.isLoading || ping.isLoading,
   }
@@ -97,10 +103,11 @@ async function postWithRetries<T>(path: string, body: unknown): Promise<T> {
  * resultado de envío válido; si no (sin respuesta, o p. ej. `{ ok: false, error: 'red' }`
  * cuando la extensión falla por dentro), null: no va a la API y se trata como sin respuesta.
  */
-async function sendToExtension(order: ShopOrder): Promise<BasketSendResult | null> {
+async function sendToExtension(order: ShopOrder, extensionId?: string | null): Promise<BasketSendResult | null> {
   const resp = await askExtension<unknown>(
     { protocolo: BASKET_EXTENSION_PROTOCOL, tipo: "enviar", pedidoId: order.id, lineas: buildExtensionBasket(order.lines) },
     SEND_TIMEOUT_MS,
+    extensionId,
   )
   const parsed = basketSendResultSchema.safeParse(resp)
   return parsed.success ? parsed.data : null
@@ -112,15 +119,15 @@ function postResult(orderId: string, result: BasketSendResult): Promise<Saved> {
 
 export function useSendToExtension() {
   const qc = useQueryClient()
-  return useMutation<Saved, Error, { order: ShopOrder }>({
-    mutationFn: async ({ order }) => {
-      let result = await sendToExtension(order)
+  return useMutation<Saved, Error, { order: ShopOrder; extensionId?: string | null }>({
+    mutationFn: async ({ order, extensionId }) => {
+      let result = await sendToExtension(order, extensionId)
       if (!result) throw new ExtensionNoAnswer()
       let saved = await postResult(order.id, result)
       if (saved.deshecho) {
         // El envío que recordaba la extensión ya se deshizo («Ya lo he quitado yo»): se olvida y va uno nuevo.
-        await askExtension({ protocolo: BASKET_EXTENSION_PROTOCOL, tipo: "olvidar", pedidoId: order.id }, 5_000)
-        result = await sendToExtension(order)
+        await askExtension({ protocolo: BASKET_EXTENSION_PROTOCOL, tipo: "olvidar", pedidoId: order.id }, 5_000, extensionId)
+        result = await sendToExtension(order, extensionId)
         if (!result) throw new ExtensionNoAnswer()
         saved = await postResult(order.id, result)
         // Sigue llegando el envío deshecho (la extensión no lo olvidó): no se queda en silencio.
@@ -142,16 +149,36 @@ function alreadyUndone(err: unknown): boolean {
   return err instanceof ApiError && err.status === 409 && (err.code === "NO_EXTENSION_SEND" || err.code === "BAD_STATUS")
 }
 
+/**
+ * `deshacer` a la extensión que envió. Si no se sabe cuál (otro navegador, o el interruptor apagado y sin
+ * `ping`: deshacer no lo mira), se pregunta a todas en el orden de la build y vale la primera que tenga ese
+ * envío; las demás contestan `nada_que_deshacer`. Con un solo id, es preguntar a esa.
+ */
+// TODO(test): el e2e se construye con un solo id; falta un e2e con dos (una extensión que sabe el host y otra no),
+// para el `ping` a todas, la elección por host y este deshacer en orden. La lógica pura tiene test
+// (apps/api/src/tests/basketExtensionIds.test.ts).
+async function undoInExtension(order: ShopOrder, extensionId: string | null | undefined) {
+  const msg = { protocolo: BASKET_EXTENSION_PROTOCOL, tipo: "deshacer", pedidoId: order.id } as const
+  if (extensionId) return messageExtension<BasketUndoResult>(msg, SEND_TIMEOUT_MS, extensionId)
+  let reply: ExtensionReply<BasketUndoResult> = { kind: "none" }
+  for (const id of BASKET_EXTENSION_IDS) {
+    const r = await messageExtension<BasketUndoResult>(msg, SEND_TIMEOUT_MS, id)
+    if (r.kind === "timeout") return r
+    if (r.kind === "answer") {
+      reply = r
+      if (r.value.ok || r.value.error !== "nada_que_deshacer") return r
+    }
+  }
+  return reply
+}
+
 /** `isPending` sirve para desactivar los botones mientras espera. */
 export function useUndoExtensionSend() {
   const qc = useQueryClient()
-  return useMutation<{ manualNeeded: boolean }, Error, { order: ShopOrder; manual?: boolean }>({
-    mutationFn: async ({ order, manual }) => {
+  return useMutation<{ manualNeeded: boolean }, Error, { order: ShopOrder; manual?: boolean; extensionId?: string | null }>({
+    mutationFn: async ({ order, manual, extensionId }) => {
       if (!manual) {
-        const reply = await messageExtension<BasketUndoResult>(
-          { protocolo: BASKET_EXTENSION_PROTOCOL, tipo: "deshacer", pedidoId: order.id },
-          SEND_TIMEOUT_MS,
-        )
+        const reply = await undoInExtension(order, extensionId)
         // Sin extensión en este navegador (otro miembro del hogar, el móvil): se ofrece «Ya lo he quitado yo».
         if (reply.kind === "none") return { manualNeeded: true }
         // Tarda demasiado: puede que siga restando. No es «sin extensión».

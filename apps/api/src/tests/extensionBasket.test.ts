@@ -8,7 +8,9 @@
  */
 import { describe, it, expect } from 'vitest'
 import {
+  basketLineOrigin,
   basketMayBeInCart,
+  basketSnapshot,
   buildExtensionBasket,
   buyRuleByKey,
   isLiveBasketSend,
@@ -423,6 +425,57 @@ describe('buildExtensionBasket', () => {
     ])
     expect(rojas).toMatchObject({ key: 'l1.1', grams: 400, piezas: null })
     expect(blancas).toMatchObject({ key: 'l1.2', grams: 2 * perUnit('alubias'), piezas: null })
+  })
+})
+
+describe('basketSnapshot', () => {
+  it('cada línea de la cesta con su origen: regla (con su clave), catálogo (ingrediente de una receta del sistema, sin regla) o tecleado', () => {
+    const delSistema = (id: string) => id === 'ing-kombu'
+    expect(
+      basketSnapshot(
+        [
+          line({ key: 'l1', name: 'Jamón serrano', quantity: 50, unit: 'g', ruleKey: 'jamon', grams: 100, choice: 'serrano', ingredientId: 'ing-jamon' }),
+          line({ key: 'l2', name: 'Kombu · varias presentaciones', quantity: 10, unit: 'g', ingredientId: 'ing-kombu' }),
+          line({ key: 'l3', name: 'galletas de Lucía' }),
+          // Un ingrediente que creó un usuario (auto-create, importador de recetas): no está en ninguna receta del sistema.
+          line({ key: 'l4', name: 'Tarta de la abuela Carmen', ingredientId: 'ing-usuario' }),
+        ],
+        delSistema,
+      ),
+    ).toEqual([
+      { key: 'l1', name: 'Jamón serrano', choice: 'serrano', origen: 'regla', ruleKey: 'jamon' },
+      { key: 'l2', name: 'Kombu', choice: null, origen: 'catalogo', ruleKey: null },
+      { key: 'l3', name: 'galletas de Lucía', choice: null, origen: 'tecleado', ruleKey: null },
+      { key: 'l4', name: 'Tarta de la abuela Carmen', choice: null, origen: 'tecleado', ruleKey: null },
+    ])
+  })
+  it('sin saber qué ingredientes son de recetas del sistema, ninguno es de catálogo (falla cerrado); la regla sí cuenta', () => {
+    const lines = [line({ key: 'l1', name: 'Kombu', ingredientId: 'ing-kombu' }), line({ key: 'l2', name: 'arroz', ruleKey: 'arroz', grams: 1000, ingredientId: 'ing-arroz' })]
+    expect(basketSnapshot(lines).map(({ key, origen, ruleKey }) => ({ key, origen, ruleKey }))).toEqual([
+      { key: 'l1', origen: 'tecleado', ruleKey: null },
+      { key: 'l2', origen: 'regla', ruleKey: 'arroz' },
+    ])
+    expect(basketLineOrigin({ ruleKey: null, ingredientId: 'ing-kombu' })).toEqual({ origen: 'tecleado', ruleKey: null })
+    expect(basketLineOrigin({ ruleKey: null, ingredientId: 'ing-kombu' }, false, () => true)).toEqual({ origen: 'catalogo', ruleKey: null })
+    expect(basketLineOrigin({ ruleKey: null, ingredientId: 'ing-kombu' }, false, () => false)).toEqual({ origen: 'tecleado', ruleKey: null })
+  })
+  it('los grupos de una línea fusionada llevan la regla de su línea; sin regla, un grupo nunca es de catálogo', () => {
+    const members = [
+      { name: 'alubias blancas', quantity: 400, unit: 'g' as const, sourceItemIds: ['a'] },
+      { name: 'alubias rojas', quantity: 400, unit: 'g' as const, sourceItemIds: ['b'] },
+    ]
+    const fotos = basketSnapshot([line({ key: 'l3', name: 'alubias blancas', quantity: 800, unit: 'g', ruleKey: 'alubias', grams: 1000, ingredientId: 'ing-1', members })])
+    expect(fotos.map(({ key, origen, ruleKey }) => ({ key, origen, ruleKey }))).toEqual([
+      { key: 'l3.1', origen: 'regla', ruleKey: 'alubias' },
+      { key: 'l3.2', origen: 'regla', ruleKey: 'alubias' },
+    ])
+    expect(basketLineOrigin({ ruleKey: null, ingredientId: 'ing-1' }, true, () => true)).toEqual({ origen: 'tecleado', ruleKey: null })
+    expect(basketLineOrigin(undefined)).toEqual({ origen: 'tecleado', ruleKey: null })
+  })
+  it('las mismas claves que la cesta: deja fuera «probablemente lo tienes» sin marcar', () => {
+    const lines = [line({ key: 'l1', name: 'mantequilla', ruleKey: 'mantequilla', grams: 250, included: false }), line({ key: 'l2', name: 'sal' })]
+    expect(basketSnapshot(lines).map((b) => b.key)).toEqual(buildExtensionBasket(lines).map((b) => b.key))
+    expect(basketSnapshot(lines).map((b) => b.key)).toEqual(['l2'])
   })
 })
 

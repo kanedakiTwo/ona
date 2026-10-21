@@ -23,6 +23,14 @@ export interface ItemState {
    */
   quantity?: number
   /**
+   * A bought mark (PRO-270): how much of `quantity` was for each week's
+   * dishes, `{ <Monday>: amount }` in the key's unit. It covers only those
+   * weeks: merluza bought for Saturday 17 doesn't tick the merluza of
+   * Monday 26. Missing on bought marks saved before 2026-10-21: they count
+   * as bought for the current week.
+   */
+  weeks?: Record<string, number>
+  /**
    * What the household changed on a menu line (PRO-175): «No lo compro esta
    * semana» (`skipped`) and / or their own amount (`quantity`, in the key's
    * unit). It applies to lists that end on or before `until` (the end of the
@@ -34,6 +42,11 @@ export interface ItemState {
 export interface LineEdit {
   skipped?: boolean
   quantity?: number
+  /**
+   * The unit the household buys it in when it isn't the menu's (PRO-292):
+   * `quantity` is then in this unit. Stored under the menu's key.
+   */
+  unit?: BuyableUnit
   /** ISO `YYYY-MM-DD`: last day of the list it was set on. */
   until: string
 }
@@ -43,6 +56,32 @@ export type ItemStateMap = Record<string, ItemState>
 export const ITEM_STATE_MAX = 400
 
 export const itemStateKey = (it: Pick<ShoppingItem, 'ingredientId' | 'unit'>) => `${it.ingredientId}|${it.unit}`
+
+/** Key of a menu line's edit: the unit the menu asked in, even after the household switched it (PRO-292). */
+export const menuLineKey = (it: Pick<ShoppingItem, 'ingredientId' | 'unit' | 'menuUnit'>) => `${it.ingredientId}|${it.menuUnit ?? it.unit}`
+
+/** A line can't be switched to that unit: the ingredient has no density / unit weight for it (PRO-292). */
+export class UnitChangeError extends Error {
+  constructor(public unit: BuyableUnit) {
+    super(`No se puede pasar a ${unit}`)
+    this.name = 'UnitChangeError'
+  }
+}
+
+/**
+ * An amount converted to another unit, rounded up to what a shop sells
+ * (whole units, 25 / 50 / 100 g steps, half spoons): 700 g of onion at
+ * 150 g each → 5 u, never 4,7.
+ */
+export function roundUpForUnit(q: number, unit: BuyableUnit): number {
+  if (!(q > 0)) return 0
+  if (unit === 'u') return Math.max(1, Math.ceil(q - 0.05))
+  if (unit === 'g' || unit === 'ml') {
+    const step = q < 250 ? 25 : q < 1000 ? 50 : 100
+    return Math.ceil(q / step - 1e-9) * step
+  }
+  return Math.max(0.5, Math.ceil(q * 2 - 1e-9) / 2)
+}
 
 /** Converts an amount of one ingredient between buyable units; null when there is no known conversion. */
 export type ConvertQty = (ingredientId: string, quantity: number, from: BuyableUnit, to: BuyableUnit) => number | null
@@ -64,9 +103,13 @@ export function carryItemState(
   prevItems: ShoppingItem[],
   prevState: ItemStateMap | null | undefined,
   convert?: ConvertQty,
-  /** `today` drops edits past their day; `rangeTo` (the list's last day) decides which apply (PRO-175). */
+  /**
+   * `today` drops edits past their day and bought weeks already gone;
+   * `rangeTo` (the list's last day) decides which edits apply (PRO-175).
+   */
   range: { today?: string; rangeTo?: string } = {},
 ): { items: ShoppingItem[]; state: ItemStateMap } {
+  const thisWeek = range.today ? mondayOfIso(range.today) : undefined
   const state = new Map<string, ItemState>(Object.entries(prevState ?? {}))
   for (const [k, s] of state) {
     if (s.edit && range.today && s.edit.until < range.today) {
@@ -91,13 +134,56 @@ export function carryItemState(
     // («nos quedan 4 huevos», PRO-182); otherwise it gathers its parts' marks.
     const own = fresh.has(itemStateKey(it)) ? state.get(itemStateKey(it)) : undefined
     if ((it.mergedIngredientIds ?? []).length > 0 && !(own && (own.checked || own.inStock))) {
-      const s = mergedStateFor(it, state)
+      const s = mergedStateFor(it, state, thisWeek)
       return s ? { ...it, checked: s.checked, inStock: s.inStock, pricePerUnit: s.pricePerUnit } : it
     }
-    return applyState(it, state, fresh, convert)
+    return applyState(it, state, fresh, convert, thisWeek)
   })
-  const kept = [...state.entries()].filter(([, s]) => s.checked || s.inStock || s.pricePerUnit != null || s.edit)
+  const kept = [...state.entries()]
+    .map(([k, s]) => [k, withoutPastWeeks(s, thisWeek)] as const)
+    .filter(([, s]) => s.checked || s.inStock || s.pricePerUnit != null || s.edit)
   return { items, state: Object.fromEntries(kept.slice(-ITEM_STATE_MAX)) }
+}
+
+/** Monday (ISO `YYYY-MM-DD`) of the week of an ISO date. */
+export function mondayOfIso(iso: string): string {
+  const d = new Date(`${iso}T12:00:00Z`)
+  const back = (d.getUTCDay() + 6) % 7
+  d.setUTCDate(d.getUTCDate() - back)
+  return d.toISOString().slice(0, 10)
+}
+
+/** A bought mark forgets the weeks already gone; with none left, the mark goes. */
+function withoutPastWeeks(s: ItemState, thisWeek: string | undefined): ItemState {
+  if (!s.weeks || !thisWeek) return s
+  const weeks = Object.fromEntries(Object.entries(s.weeks).filter(([w, q]) => w >= thisWeek && q > 0))
+  if (Object.keys(weeks).length === Object.keys(s.weeks).length) return s
+  if (Object.keys(weeks).length > 0) return { ...s, weeks, quantity: sum(weeks) }
+  const { weeks: _gone, quantity: _q, ...rest } = s
+  return { ...rest, checked: false }
+}
+
+const sum = (weeks: Record<string, number>) => Object.values(weeks).reduce((a, b) => a + b, 0)
+
+/**
+ * Ticking a line on or off (the check route and Mimo, PRO-270). On: what
+ * this line asks is bought, for its weeks, on top of what was bought for
+ * other weeks (ticked on «La que viene», then again on «Esta semana»). Off:
+ * nothing of it is bought. Either way the partial «ya tienes» goes. Pure:
+ * mutates and returns the row.
+ */
+export function toggleChecked(item: ShoppingItem): ShoppingItem {
+  item.checked = !item.checked
+  const prev = item.mark
+  delete item.haveQuantity
+  delete item.haveSource
+  delete item.mark
+  if (item.checked && !item.inStock && item.weeks && prev?.source === 'checked' && prev.weeks) {
+    const weeks: Record<string, number> = { ...prev.weeks }
+    for (const [w, q] of Object.entries(item.weeks)) weeks[w] = Math.max(weeks[w] ?? 0, q)
+    item.mark = { source: 'checked', quantity: sum(weeks), weeks, covered: true }
+  }
+  return item
 }
 
 const UNITS: ShoppingItem['unit'][] = ['g', 'ml', 'u', 'cda', 'cdita']
@@ -110,7 +196,11 @@ const UNITS: ShoppingItem['unit'][] = ['g', 'ml', 'u', 'cda', 'cdita']
 export function applyEdit(it: ShoppingItem, edit: LineEdit | undefined, rangeTo: string | undefined): ShoppingItem {
   if (!edit || (rangeTo && rangeTo > edit.until)) return it
   let out = it
-  if (edit.quantity != null && edit.quantity >= 0) out = { ...out, quantity: edit.quantity, menuQuantity: it.quantity }
+  if (edit.quantity != null && edit.quantity >= 0) {
+    // In another unit (PRO-292): the row now reads in the household's unit.
+    if (edit.unit && edit.unit !== it.unit) out = { ...out, quantity: edit.quantity, unit: edit.unit, menuQuantity: it.quantity, menuUnit: it.unit }
+    else out = { ...out, quantity: edit.quantity, menuQuantity: it.quantity }
+  }
   if (edit.skipped) out = { ...out, skipped: true }
   return out
 }
@@ -120,14 +210,23 @@ export function applyEdit(it: ShoppingItem, edit: LineEdit | undefined, rangeTo:
  * into the remembered state, so it survives the rebuild on the next GET.
  * `skipped: false` / `quantity: null` undo it. Pure: mutates the given row
  * and returns the new state map.
+ *
+ * `unit` (PRO-292) switches the line to another unit: without `quantity`
+ * the amount on screen is converted (`convert`, rounded up to what a shop
+ * sells); with it, `quantity` is in that unit. Going back to the menu's unit
+ * without `quantity` goes back to the menu's amount. The edit stays under
+ * the menu's key; bought / «en casa» stay on the row and follow its unit on
+ * the next rebuild. Throws `UnitChangeError` when the ingredient can't be
+ * converted to that unit.
  */
 export function editMenuLine(
   item: ShoppingItem,
   state: ItemStateMap | null | undefined,
-  change: { skipped?: boolean; quantity?: number | null },
+  change: { skipped?: boolean; quantity?: number | null; unit?: BuyableUnit },
   until: string,
+  convert?: ConvertQty,
 ): ItemStateMap {
-  const key = itemStateKey(item)
+  const key = menuLineKey(item)
   const next: ItemStateMap = { ...(state ?? {}) }
   const prev = next[key] ?? { checked: !!item.checked, inStock: !!item.inStock, pricePerUnit: item.pricePerUnit ?? null }
   const edit: Partial<LineEdit> = { ...(prev.edit ?? {}) }
@@ -140,16 +239,55 @@ export function editMenuLine(
       delete item.skipped
     }
   }
-  if (change.quantity !== undefined) {
+  if (change.quantity !== undefined || change.unit !== undefined) {
+    const menuUnit = item.menuUnit ?? item.unit
     const menuQty = item.menuQuantity ?? item.quantity
-    if (change.quantity == null || Math.abs(change.quantity - menuQty) < 1e-9) {
-      delete edit.quantity
-      item.quantity = menuQty
-      delete item.menuQuantity
+    const target = change.unit ?? item.unit
+    const before = { quantity: item.quantity, unit: item.unit }
+    if (target === menuUnit) {
+      // Back in the menu's unit: «g» alone goes back to the menu's amount.
+      const q = change.quantity === undefined ? null : change.quantity
+      delete edit.unit
+      delete item.menuUnit
+      item.unit = menuUnit
+      if (q == null || Math.abs(q - menuQty) < 1e-9) {
+        delete edit.quantity
+        item.quantity = menuQty
+        delete item.menuQuantity
+      } else {
+        edit.quantity = q
+        item.menuQuantity = menuQty
+        item.quantity = q
+      }
     } else {
-      edit.quantity = change.quantity
+      const id = item.ingredientId ?? ''
+      if (convert?.(id, 1, menuUnit, target) == null) throw new UnitChangeError(target)
+      let q = change.quantity ?? null
+      if (q == null) {
+        const c = convert!(id, item.quantity, item.unit, target)
+        if (c == null) throw new UnitChangeError(target)
+        q = roundUpForUnit(c, target)
+      }
+      edit.unit = target
+      edit.quantity = q
+      item.unit = target
+      item.quantity = q
+      item.menuUnit = menuUnit
       item.menuQuantity = menuQty
-      item.quantity = change.quantity
+    }
+    // A price is € per unit: in another unit, keep what the line costs.
+    if (item.unit !== before.unit && item.pricePerUnit != null) {
+      item.pricePerUnit = item.quantity > 0 ? (item.pricePerUnit * before.quantity) / item.quantity : null
+    }
+    // The carried mark and the weeks (PRO-270) are amounts in the row's unit:
+    // in another unit they scale with the line, or g → u → g loses «comprado».
+    if (item.unit !== before.unit && before.quantity > 0) {
+      const k = item.quantity / before.quantity
+      const scale = (w: Record<string, number>) => Object.fromEntries(Object.entries(w).map(([d, q]) => [d, q * k]))
+      if (item.weeks) item.weeks = scale(item.weeks)
+      if (item.mark) {
+        item.mark = { ...item.mark, quantity: item.mark.quantity * k, ...(item.mark.weeks ? { weeks: scale(item.mark.weeks) } : {}) }
+      }
     }
     // The amount changed: the partial «ya tienes» no longer adds up.
     delete item.haveQuantity
@@ -157,7 +295,16 @@ export function editMenuLine(
   }
   const has = edit.skipped || edit.quantity != null
   const { edit: _old, ...rest } = prev
-  if (has) next[key] = { ...rest, edit: { ...(edit.skipped ? { skipped: true } : {}), ...(edit.quantity != null ? { quantity: edit.quantity } : {}), until } }
+  if (has)
+    next[key] = {
+      ...rest,
+      edit: {
+        ...(edit.skipped ? { skipped: true } : {}),
+        ...(edit.quantity != null ? { quantity: edit.quantity } : {}),
+        ...(edit.quantity != null && edit.unit ? { unit: edit.unit } : {}),
+        until,
+      },
+    }
   else if (rest.checked || rest.inStock || rest.pricePerUnit != null) next[key] = rest
   else delete next[key]
   return next
@@ -166,7 +313,32 @@ export function editMenuLine(
 /** What a row of the previous list says: its marks and the amount they cover. */
 function stateOfRow(it: ShoppingItem): ItemState {
   const pricePerUnit = it.pricePerUnit ?? null
-  if (it.checked || it.inStock) return { checked: !!it.checked, inStock: !!it.inStock, pricePerUnit, quantity: it.quantity }
+  // A mark carried from memory stays whole until the household touches the
+  // line (PRO-270): 15 eggs at home shown on a «Hoy» that asks for 2 are
+  // still 15 when the next two weeks come back (Familia Ruiz, 2026-10-20).
+  // Only while the row still shows that mark: a flag changed by a path that
+  // doesn't know about `mark` (an old client, Mimo's «en casa») wins.
+  const m = it.mark
+  const carried =
+    m &&
+    (it.haveQuantity
+      ? !it.checked && !it.inStock && it.haveSource === m.source
+      : it.checked || it.inStock
+        ? !!m.covered && (m.source === 'inStock' ? !!it.inStock : !!it.checked && !it.inStock)
+        : !m.covered && m.source === 'checked' && !!m.weeks)
+  if (m && carried) {
+    return {
+      checked: m.source === 'checked',
+      inStock: m.source === 'inStock',
+      pricePerUnit,
+      quantity: m.quantity,
+      ...(m.source === 'checked' && m.weeks ? { weeks: m.weeks } : {}),
+    }
+  }
+  if (it.checked || it.inStock) {
+    const weeks = it.checked && !it.inStock && it.weeks ? { weeks: it.weeks } : {}
+    return { checked: !!it.checked, inStock: !!it.inStock, pricePerUnit, quantity: it.quantity, ...weeks }
+  }
   // A line left pending for the rest still remembers what the household had.
   if (it.haveQuantity && it.haveQuantity > 0 && it.haveSource) {
     return { checked: it.haveSource === 'checked', inStock: it.haveSource === 'inStock', pricePerUnit, quantity: it.haveQuantity }
@@ -180,7 +352,13 @@ function stateOfRow(it: ShoppingItem): ItemState {
  * same ingredient in another unit. Entries from the previous rows win over
  * the older memory.
  */
-function applyState(it: ShoppingItem, state: Map<string, ItemState>, fresh: Set<string>, convert?: ConvertQty): ShoppingItem {
+function applyState(
+  it: ShoppingItem,
+  state: Map<string, ItemState>,
+  fresh: Set<string>,
+  convert?: ConvertQty,
+  thisWeek?: string,
+): ShoppingItem {
   const id = it.ingredientId!
   const keyOf = (u: BuyableUnit) => `${id}|${u}`
   const inFresh = UNITS.some((u) => fresh.has(keyOf(u)))
@@ -202,17 +380,38 @@ function applyState(it: ShoppingItem, state: Map<string, ItemState>, fresh: Set<
   const pricePerUnit = unit === it.unit ? s.pricePerUnit : (it.pricePerUnit ?? null)
   const base = { ...it, checked: s.checked, inStock: s.inStock, pricePerUnit }
   if (!(s.checked || s.inStock) || s.quantity == null) return base
-  const have = unit === it.unit ? s.quantity : (convert?.(id, s.quantity, unit, it.unit) ?? null)
-  if (have == null) return base // can't compare: stays marked
+  const conv = (q: number) => (unit === it.unit ? q : (convert?.(id, q, unit!, it.unit) ?? null))
+  const total = conv(s.quantity)
+  if (total == null) return base // can't compare: stays marked
+  // A bought mark covers the weeks it was bought for (PRO-270, Familia Ruiz
+  // 2026-10-19: merluza bought for Saturday 17 ticked the merluza of Monday
+  // 26). «En casa» is what's in the pantry: it covers any week.
+  const byWeek = !s.inStock && it.weeks && (s.weeks || thisWeek)
+  let have = total
+  let weeks: Record<string, number> | undefined
+  if (byWeek) {
+    weeks = {}
+    for (const [w, q] of Object.entries(s.weeks ?? { [thisWeek!]: s.quantity })) {
+      const c = conv(q)
+      if (c != null && c > 0) weeks[w] = c
+    }
+    // Each week's amount is rounded on its own, so the weeks don't add up to
+    // the line exactly: every week covered is the whole line; never more.
+    const lineWeeks = Object.entries(it.weeks!).filter(([, need]) => need > 0)
+    const allCovered = lineWeeks.length > 0 && lineWeeks.every(([w, need]) => (weeks![w] ?? 0) >= need - 1e-6)
+    have = allCovered ? it.quantity : Math.min(it.quantity, lineWeeks.reduce((acc, [w, need]) => acc + Math.min(weeks![w] ?? 0, need), 0))
+  }
+  const mark: ShoppingItem['mark'] = { source: s.inStock ? 'inStock' : 'checked', quantity: total, ...(weeks ? { weeks } : {}) }
   const missing = roundMissing(it.quantity - have, it.unit)
-  if (missing <= 0) return base
+  if (missing <= 0) return { ...base, mark: { ...mark, covered: true } }
+  const covered = it.quantity - missing
   return {
     ...it,
     checked: false,
     inStock: false,
     pricePerUnit,
-    haveQuantity: it.quantity - missing,
-    haveSource: s.inStock ? 'inStock' : 'checked',
+    ...(covered > 0 ? { haveQuantity: covered, haveSource: s.inStock ? ('inStock' as const) : ('checked' as const) } : {}),
+    mark,
   }
 }
 
@@ -227,6 +426,7 @@ function applyState(it: ShoppingItem, state: Map<string, ItemState>, fresh: Set<
 export function setHaveAtHome(item: ShoppingItem, have: number): ShoppingItem {
   delete item.haveQuantity
   delete item.haveSource
+  delete item.mark
   item.checked = false
   if (!(have > 0)) {
     item.inStock = false
@@ -235,6 +435,8 @@ export function setHaveAtHome(item: ShoppingItem, have: number): ShoppingItem {
   const missing = roundMissing(item.quantity - have, item.unit)
   if (missing <= 0) {
     item.inStock = true
+    // «Tengo una docena» on a line of 4: the 12 are remembered (PRO-270).
+    if (have > item.quantity) item.mark = { source: 'inStock', quantity: have, covered: true }
     return item
   }
   item.inStock = false
@@ -266,20 +468,27 @@ function splitKey(key: string): [string, string] {
  * join keeps «huevos 10 u» ticked); the price comes from the first one in the
  * same unit that has it.
  */
-function mergedStateFor(it: ShoppingItem, state: Map<string, ItemState>): ItemState | undefined {
+function mergedStateFor(it: ShoppingItem, state: Map<string, ItemState>, thisWeek?: string): ItemState | undefined {
   const merged = it.mergedIngredientIds ?? []
   const found: ItemState[] = []
   // A price is € per unit: only one remembered in this line's unit applies.
   const priced: ItemState[] = []
+  // A bought mark only counts for the weeks it was bought for (PRO-270).
+  const otherWeeks = (s: ItemState) => {
+    if (s.inStock || !s.checked || !it.weeks) return false
+    const weeks = s.weeks ? Object.keys(s.weeks) : thisWeek ? [thisWeek] : null
+    return weeks != null && !weeks.some((w) => (it.weeks![w] ?? 0) > 0)
+  }
   for (const id of [it.ingredientId, ...merged]) {
-    const same = state.get(`${id}|${it.unit}`)
+    const raw = state.get(`${id}|${it.unit}`)
+    const same = raw && otherWeeks(raw) ? { ...raw, checked: false } : raw
     if (same) {
       found.push(same)
       priced.push(same)
       continue
     }
     const other = UNITS.map((u) => state.get(`${id}|${u}`)).find(Boolean)
-    if (other) found.push(other)
+    if (other) found.push(otherWeeks(other) ? { ...other, checked: false } : other)
   }
   if (found.length === 0) return undefined
   return {

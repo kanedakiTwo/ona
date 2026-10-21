@@ -9,9 +9,10 @@ import { db as defaultDb } from '../db/connection.js'
 import { ingredients, recipes, type CatalogSourceInfo } from '../db/schema.js'
 import { matchIngredients } from './recipeExtractor.js'
 import { persistRecipe } from './recipePersistence.js'
+import { applyCatalogTimeTrim } from './recipeTimeTrim.js'
 import { markWishesCovered } from './catalogWishes.js'
 import { DRAFT, PUBLISHED } from './recipeVisibility.js'
-import type { BatchRecipe, CatalogImportDeps, CatalogRewrite, CatalogDraftInput, DraftIngredient, MatchedIngredient, PersistDraftInput } from './catalogImport.js'
+import { catalogSourceRecord, type BatchRecipe, type CatalogImportDeps, type CatalogRewrite, type CatalogDraftInput, type DraftIngredient, type MatchedIngredient, type PersistDraftInput } from './catalogImport.js'
 
 type Db = typeof defaultDb
 
@@ -54,15 +55,7 @@ export async function matchDraftIngredients(recipeName: string, ings: DraftIngre
  * for a moment. Reviewer (lint) errors → the empty row is removed.
  */
 export async function persistCatalogDraft(input: PersistDraftInput, db: Db = defaultDb): Promise<{ ok: true; recipeId: string } | { ok: false; errors: string[] }> {
-  const catalogSource: CatalogSourceInfo = {
-    origin: input.catalogSource.origin,
-    book: input.catalogSource.book ?? null,
-    page: input.catalogSource.page ?? null,
-    file: input.catalogSource.file ?? null,
-    batch: input.catalogSource.batch,
-    auditIssues: input.catalogSource.auditIssues,
-    allergenDoubt: input.catalogSource.allergenDoubt,
-  }
+  const catalogSource = catalogSourceRecord(input.catalogSource)
   const [row] = await db
     .insert(recipes)
     .values({ name: input.name, servings: input.servings, authorId: null, status: DRAFT, importBatch: input.catalogSource.batch, catalogSource })
@@ -92,6 +85,10 @@ export async function persistCatalogDraft(input: PersistDraftInput, db: Db = def
       await db.delete(recipes).where(eq(recipes.id, row.id))
       return { ok: false, errors: res.errors.map((e) => e.message) }
     }
+    // PRO-284: the same total rule as the boot fix (prep done while the
+    // oven or the pot go by themselves); the rewriter's prep is already
+    // realistic, so it is not cut again.
+    await applyCatalogTimeTrim(db, console.log, { ids: [row.id], trimPrep: false })
     return { ok: true, recipeId: row.id }
   } catch (err) {
     await db.delete(recipes).where(eq(recipes.id, row.id))
@@ -142,10 +139,11 @@ async function patchSource(ids: readonly string[], patch: Partial<CatalogSourceI
   }
 }
 
-/** Mark the sample (replaces an earlier one, review verdicts cleared). */
-export async function saveSample(batch: string, ids: readonly string[], db: Db = defaultDb): Promise<void> {
-  const all = await loadBatch(batch, db)
-  await patchSource(all.map((r) => r.id), { sampled: false, reviewOk: undefined, reviewedAt: null }, db)
+/**
+ * Mark the drafts handed to Miguel for review (D-099: all of them). Verdicts
+ * already given are kept, so running `sample` again never undoes a review.
+ */
+export async function saveSample(ids: readonly string[], db: Db = defaultDb): Promise<void> {
   await patchSource(ids, { sampled: true }, db)
 }
 

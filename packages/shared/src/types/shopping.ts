@@ -50,6 +50,23 @@ export interface ShoppingItem {
   /** What `haveQuantity` came from: marked bought or marked at home. */
   haveSource?: 'checked' | 'inStock'
   /**
+   * Menu items: how much of the line each week's dishes ask for (PRO-270),
+   * `{ <Monday YYYY-MM-DD>: amount }` in `unit`, each as that week's own list
+   * asks (rounded on its own, so they can add up to a bit more than
+   * `quantity`). Set by the rolling list. A tick covers the weeks it was made
+   * for, not others.
+   */
+  weeks?: Record<string, number>
+  /**
+   * Menu items: what the household marked, carried from the list's memory
+   * into this line's unit (PRO-270). It can be more than the line asks (a
+   * shorter range, «tengo una docena») and is kept as it is until the
+   * household touches the line, so looking at «Hoy» doesn't shrink it. A
+   * bought mark lists the weeks it was bought for; `covered` says whether
+   * it covered the whole line when the list was built. Internal: not shown.
+   */
+  mark?: { source: 'checked' | 'inStock'; quantity: number; weeks?: Record<string, number>; covered?: boolean }
+  /**
    * Menu items: the household won't buy it for this list («No lo compro esta
    * semana», PRO-175). The line stays (so it can be put back) but counts as
    * nothing: not to buy, not in the total, not in shop orders.
@@ -60,6 +77,26 @@ export interface ShoppingItem {
    * amount (PRO-175); `quantity` is then their amount.
    */
   menuQuantity?: number
+  /**
+   * Menu items: the unit the menu asked in, when the household switched the
+   * line to another one (PRO-292: «Cebolla · 700 g» → «3 u»). `unit` and
+   * `quantity` are then theirs; `menuQuantity` is in this unit. What was
+   * marked follows the line's current unit.
+   */
+  menuUnit?: BuyableUnit
+  /**
+   * Menu items: the units this line can be bought in (PRO-292), the menu's
+   * own first: the ones the ingredient converts to (density g↔ml, unit
+   * weight or the shop's piece weight g↔u). Just the line's own unit when
+   * nothing converts. Filled by `GET /shopping-list`.
+   */
+  unitOptions?: BuyableUnit[]
+  /**
+   * Menu or manual line whose name is one of the household's active staples
+   * («Habitual», PRO-293): it comes back by itself on every new list. Staple
+   * lines (`kind: 'staple'`) are habitual by kind. Filled by `GET /shopping-list`.
+   */
+  habitual?: boolean
   /**
    * Manual items: an amount in the household's own words («2 paquetes», «1
    * bote») when it isn't g / ml / u / cda / cdita (PRO-175). Shown instead of

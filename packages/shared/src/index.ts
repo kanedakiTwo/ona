@@ -125,17 +125,23 @@ export {
 } from './types/shopOrders.js'
 export {
   BASKET_EXTENSION_PROTOCOL,
+  BASKET_LINE_ORIGINS,
   BASKET_LINE_STATES,
   BASKET_SEND_ERRORS,
+  BASKET_SEND_MAX_DURATION_MS,
   basketSendResultSchema,
+  extensionForHost,
+  parseExtensionIds,
 } from './types/basketExtension.js'
 export type {
   BasketLine,
+  BasketLineOrigin,
   BasketMessage,
   BasketPing,
   BasketLineState,
   BasketSendError,
   BasketSendResult,
+  BasketSnapshotLine,
   BasketUndoResult,
   StoredBasketResult,
 } from './types/basketExtension.js'
@@ -257,7 +263,7 @@ export type { CarrefourLineInput } from './buy/carrefour.js'
 export { buyableUnitFor, unitAfterQuantity, quantityHintFor, RECIPE_UNIT_LABELS } from './buy/recipeUnits.js'
 export { shoppingGroupOf, isNotBought, catalogAisleFix } from './buy/listGroup.js'
 export type { ShoppingGroup } from './buy/listGroup.js'
-export { basketBaseName, basketMayBeInCart, basketSearch, extensionKey, isLiveBasketSend, orderMembers, buildExtensionBasket, sourceItemsForBasketKey } from './buy/extensionBasket.js'
+export { basketBaseName, basketLineOrigin, basketMayBeInCart, basketSearch, basketSnapshot, extensionKey, isLiveBasketSend, orderMembers, buildExtensionBasket, sourceItemsForBasketKey } from './buy/extensionBasket.js'
 export type { OrderMember, OrderMemberInput } from './buy/extensionBasket.js'
 
 export { buildRecipePayload } from './recipeFormPayload.js'

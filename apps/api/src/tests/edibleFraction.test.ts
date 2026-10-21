@@ -22,6 +22,22 @@ describe('edibleFractionForName (PRO-194)', () => {
   })
 })
 
+describe('edibleFractionForName — piezas de las tandas libros-01 y yaya-01 (2026-10-21)', () => {
+  it('la codorniz en singular, la perdiz, el cuello de cordero y el «ossobuco» con doble s llevan hueso', () => {
+    expect(edibleFractionForName('codorniz')).toBe(0.65)
+    expect(edibleFractionForName('codornices')).toBe(0.65)
+    expect(edibleFractionForName('perdiz')).toBe(0.65)
+    expect(edibleFractionForName('perdices')).toBe(0.65)
+    expect(edibleFractionForName('cuello de cordero')).toBe(0.6)
+    expect(edibleFractionForName('ossobuco de ternera')).toBe(0.8)
+  })
+
+  it('sin hueso, nada', () => {
+    expect(edibleFractionForName('pechuga de perdiz')).toBeNull()
+    expect(edibleFractionForName('magret')).toBeNull()
+  })
+})
+
 describe('catalogue audit with a bone-in cut (PRO-194)', () => {
   it('counts the edible grams, so a stew with a whole chicken is no longer «proteína fuera de rango»', () => {
     const base = {

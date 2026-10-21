@@ -163,6 +163,12 @@ export interface Recipe {
   sourceUrl?: string | null
   /** Provenance hint: how this recipe entered the catalog. */
   sourceType?: SourceType | null
+  /**
+   * D-067: where a catalogue recipe comes from, as the ficha shows it under
+   * the title — «Receta de la Yaya», «Inspirada en una receta de <autor>,
+   * «<libro>»». Sent by GET /recipes/:id; null when there is nothing to credit.
+   */
+  sourceCredit?: string | null
 
   ingredients: RecipeIngredient[]
   steps: RecipeStep[]

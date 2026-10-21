@@ -24,7 +24,7 @@
 import type { NextFunction, Request, Response } from 'express'
 import { sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { carrefourLinks, type BasketSendResult, type CarrefourLineInput } from '@ona/shared'
+import { ALERT_KINDS, carrefourLinks, type BasketSendResult, type CarrefourLineInput } from '@ona/shared'
 import { detectSocialPlatform } from './sources/social.js'
 import { detectSourceType } from './sources/sourceType.js'
 
@@ -51,6 +51,15 @@ export const USAGE_EVENTS = [
   'basket_extension_sent',
   'basket_extension_undo',
   'notifications_off',
+  // PRO-120 (Legal: own events, no text; the daily cap lives on the server, never in the browser).
+  'onboarding_step',
+  'screen_viewed',
+  'recipe_viewed',
+  'taste_tuning',
+  'push_opened',
+  'alerts_changed',
+  'whatsapp_unlinked',
+  'feedback_left',
 ] as const
 export type UsageEventName = (typeof USAGE_EVENTS)[number]
 
@@ -58,7 +67,15 @@ export type UsageEventName = (typeof USAGE_EVENTS)[number]
  * Passive signals: counted as events, but they don't make a household
  * "active" in GET /admin/usage (opening the app is not using it).
  */
-export const PASSIVE_USAGE_EVENTS: ReadonlySet<string> = new Set<UsageEventName>(['app_opened_installed', 'notifications_off'])
+export const PASSIVE_USAGE_EVENTS: ReadonlySet<string> = new Set<UsageEventName>([
+  'app_opened_installed',
+  'notifications_off',
+  // PRO-120: looking at a screen, tapping a notification or changing a switch is not using Mimoia.
+  'screen_viewed',
+  'push_opened',
+  'alerts_changed',
+  'whatsapp_unlinked',
+])
 
 export const USAGE_CHANNELS = ['web', 'whatsapp', 'voice'] as const
 export type UsageChannel = (typeof USAGE_CHANNELS)[number]
@@ -221,6 +238,9 @@ const ROUTE_EVENTS: RouteEvent[] = [
     event: (req) => ({ name: 'mimo_message', channel: channelOfMode(req.body?.mode) }),
   },
   { method: 'POST', re: /^\/shop-orders\/prepare\/?$/, event: () => ({ name: 'shop_order_prepared' }) },
+  // PRO-120: an opinion left with the «Opinión» button (Mimo's own calls carry the internal header; see skillUsageEvents).
+  { method: 'POST', re: /^\/feedback\/?$/, event: () => ({ name: 'feedback_left', props: { channel: 'boton' } }) },
+  { method: 'DELETE', re: /^\/whatsapp\/link\/?$/, event: () => ({ name: 'whatsapp_unlinked' }) },
 ]
 
 /** Pure: the usage event a finished web request represents, or null. */
@@ -294,6 +314,9 @@ export function skillUsageEvents(
       return Array.isArray(result.data?.orderIds) && result.data.orderIds.length > 0
         ? [{ name: 'shop_order_prepared', props: { orders: result.data.orderIds.length } }]
         : []
+    // PRO-120: an opinion told to Mimo, in the web chat or on WhatsApp. Never the text.
+    case 'leave_feedback':
+      return [{ name: 'feedback_left', props: { channel: channel === 'whatsapp' ? 'whatsapp' : 'mimo' } }]
     default:
       return []
   }
@@ -314,6 +337,110 @@ export function recordSkillUsage(
   } catch (err: any) {
     console.warn('[usage] skill record failed (ignored):', err?.message ?? err)
   }
+}
+
+// ─── Events the web sends itself (PRO-120) ─────────────────────────
+
+/** «Primeros pasos» on the web, in the order they're shown (the WhatsApp sign-up is one conversation: see specs/metrics.md). */
+export const ONBOARDING_STEPS = ['afina', 'canal', 'hogar', 'frecuencia', 'cocina', 'tiempo', 'dieta', 'prioridad'] as const
+export const ONBOARDING_STEP_ACTIONS = ['visto', 'hecho'] as const
+export const USAGE_SCREENS = ['menu', 'lista', 'compra', 'receta', 'recetas', 'perfil', 'despensa', 'avisos', 'casa'] as const
+export const RECIPE_VIEW_FROM = ['menu', 'catalogo', 'mimo', 'lista', 'otro'] as const
+export const TASTE_TUNING_ACTIONS = ['empezado', 'terminado', 'abandonado'] as const
+/** A tapped notification: its alert kind (the prep reminders are `prep_alerts`) or `otro`. */
+export const PUSH_OPENED_KINDS = [...ALERT_KINDS, 'otro'] as const
+
+/** What `POST /usage/event` accepts; the rest are recorded by the API itself. */
+export const CLIENT_USAGE_EVENTS = ['onboarding_step', 'screen_viewed', 'recipe_viewed', 'taste_tuning', 'push_opened'] as const
+export type ClientUsageEvent = (typeof CLIENT_USAGE_EVENTS)[number]
+
+const oneOf = <T extends string>(list: readonly T[], v: unknown): T | null =>
+  typeof v === 'string' && (list as readonly string[]).includes(v) ? (v as T) : null
+
+/**
+ * Pure: the props a client event may carry, from closed lists only (never
+ * free text); null = not a valid event, nothing is stored.
+ */
+export function clientEventProps(name: unknown, raw: unknown): { name: ClientUsageEvent; props: UsageProps } | null {
+  const ev = oneOf(CLIENT_USAGE_EVENTS, name)
+  if (!ev) return null
+  const p = (raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>
+  switch (ev) {
+    case 'onboarding_step': {
+      const step = oneOf(ONBOARDING_STEPS, p.step)
+      const action = oneOf(ONBOARDING_STEP_ACTIONS, p.action)
+      if (!step || !action) return null
+      const via = step === 'canal' && action === 'hecho' ? oneOf(['web', 'whatsapp'] as const, p.via) : null
+      return { name: ev, props: via ? { step, action, via } : { step, action } }
+    }
+    case 'screen_viewed': {
+      const screen = oneOf(USAGE_SCREENS, p.screen)
+      return screen ? { name: ev, props: { screen } } : null
+    }
+    case 'recipe_viewed':
+      return { name: ev, props: { from: oneOf(RECIPE_VIEW_FROM, p.from) ?? 'otro' } }
+    case 'taste_tuning': {
+      const action = oneOf(TASTE_TUNING_ACTIONS, p.action)
+      if (!action) return null
+      const cards = typeof p.cards === 'number' && Number.isFinite(p.cards) ? Math.min(1000, Math.max(0, Math.round(p.cards))) : 0
+      return { name: ev, props: { action, cards, where: oneOf(['alta', 'pagina'] as const, p.where) ?? 'pagina' } }
+    }
+    case 'push_opened':
+      return { name: ev, props: { kind: oneOf(PUSH_OPENED_KINDS, p.kind) ?? 'otro' } }
+  }
+}
+
+/**
+ * Pure: the props that make a client event "the same one" for the cap of
+ * once per person and Madrid day (Legal, PRO-120: on the server, nothing kept
+ * in the browser). null = not capped (every recipe opened, every tap counts).
+ */
+export function dailyCapKey(ev: { name: string; props: UsageProps }): UsageProps | null {
+  if (ev.name === 'screen_viewed') return { screen: ev.props.screen }
+  if (ev.name === 'onboarding_step') return { step: ev.props.step, action: ev.props.action }
+  return null
+}
+
+/**
+ * Record an event the web sent (POST /usage/event). Capped ones are inserted
+ * only if this person has none with the same key today (Europe/Madrid).
+ * Resolves to whether a row was written; never throws.
+ */
+export async function recordClientEvent(userId: string, ev: { name: ClientUsageEvent; props: UsageProps }): Promise<boolean> {
+  if (process.env.VITEST) return false
+  try {
+    const cap = dailyCapKey(ev)
+    const res: any = await db.execute(sql`
+      INSERT INTO usage_events (user_id, household_id, name, channel, props)
+      SELECT u.id, u.primary_household_id, ${ev.name}, 'web', ${JSON.stringify(ev.props)}::jsonb
+        FROM users u
+       WHERE u.id = ${userId}::uuid
+         AND (${cap === null}::boolean OR NOT EXISTS (
+           SELECT 1 FROM usage_events e
+            WHERE e.user_id = u.id
+              AND e.name = ${ev.name}
+              AND e.props @> ${JSON.stringify(cap ?? {})}::jsonb
+              AND (e.created_at AT TIME ZONE 'Europe/Madrid')::date = (now() AT TIME ZONE 'Europe/Madrid')::date
+         ))
+    `)
+    return Number(res?.rowCount ?? 0) > 0
+  } catch (err: any) {
+    console.warn('[usage] client event failed (ignored):', err?.message ?? err)
+    return false
+  }
+}
+
+/**
+ * Pure (PRO-120): `alerts_changed` events for the switches that changed,
+ * from the on/off state before and after (kind → on). `all` is WhatsApp's
+ * master switch.
+ */
+export function alertChanges(before: Record<string, boolean>, after: Record<string, boolean>): UsageProps[] {
+  const out: UsageProps[] = []
+  for (const [kind, on] of Object.entries(after)) {
+    if (kind in before && before[kind] !== on) out.push({ kind, on })
+  }
+  return out
 }
 
 // ─── Retention ─────────────────────────────────────────────────────

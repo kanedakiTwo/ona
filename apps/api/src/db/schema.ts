@@ -91,6 +91,12 @@ export const users = pgTable('users', {
    */
   alertPrefs: jsonb('alert_prefs').notNull().default({}).$type<Record<string, boolean>>(),
   /**
+   * Keep the catalogue audit's 80 g protein minimum for starters and for
+   * rice/legume dishes in this user's menus (Miguel, 2026-10-21: for
+   * everyone else those dishes no longer need it). Set by hand, no UI.
+   */
+  strictProteinMinimum: boolean('strict_protein_minimum').notNull().default(false),
+  /**
    * Explicit consent for health data (RGPD art. 9, PRO-21): when it was given,
    * which text version, and when it was withdrawn. Both dates stay as the
    * record; it is in force when consent_at is later than withdrawn_at.
@@ -345,8 +351,9 @@ export const recipes = pgTable('recipes', {
   status: text('status').notNull().default('published'),
   /**
    * Where a batch-imported catalogue recipe comes from (book and page, never
-   * its text), whose source it is (`miguel` | `cocina`), the batch, and the
-   * review state: `{ origin, book?, page?, file?, batch, auditIssues[],
+   * its text), whose source it is (`miguel` | `cocina`), the credit line the
+   * recipe page shows, the batch, and the review state:
+   * `{ origin, book?, page?, file?, credit?, batch, auditIssues[],
    * allergenDoubt, sampled?, reviewedAt? }`. Null for every other recipe.
    */
   catalogSource: jsonb('catalog_source').$type<CatalogSourceInfo>(),
@@ -366,6 +373,12 @@ export interface CatalogSourceInfo {
   book?: string | null
   page?: string | null
   file?: string | null
+  /**
+   * D-067: the line the recipe page shows under the title («Receta de la
+   * Yaya», «Inspirada en una receta de <autor>, «<libro>»»). Only this —
+   * through `catalogSourceCredit` — ever leaves the API; the rest stays inside.
+   */
+  credit?: string | null
   batch: string
   auditIssues: string[]
   allergenDoubt: boolean
@@ -1430,7 +1443,8 @@ export const newsletterClicks = pgTable('newsletter_clicks', {
 /**
  * PRO-191: one row per newsletter opt-out done from an issue's link (counts
  * only: the issue, whether it was an account or a waitlist entry, and when).
- * `issue_id` is null when the link carried no issue (older emails).
+ * `issue_id` is null when the link carried no issue (older emails) or named
+ * an issue that wasn't sent to that address (the issue comes in the link).
  */
 export const newsletterUnsubscribes = pgTable('newsletter_unsubscribes', {
   id: uuid('id').primaryKey().defaultRandom(),

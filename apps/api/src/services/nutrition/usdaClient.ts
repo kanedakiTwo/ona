@@ -73,6 +73,9 @@ const FDC_BASE = 'https://api.nal.usda.gov/fdc/v1'
  */
 const NUTRIENT_IDS = {
   energyKcal: 1008,
+  // Foundation entries report energy only as Atwater factors.
+  energyAtwaterGeneral: 2047,
+  energyAtwaterSpecific: 2048,
   proteinG: 1003,
   carbsG: 1005,
   fatG: 1004,
@@ -103,6 +106,16 @@ async function readCache(cacheDir: string, fdcId: number): Promise<UsdaNutrientP
     const raw = await fs.readFile(file, 'utf8')
     const parsed = JSON.parse(raw) as CacheFile
     if (parsed && parsed.profile && typeof parsed.profile.fdcId === 'number') {
+      // Re-parse the stored response, so a parser fix (Atwater energy,
+      // 2026-10-21) reaches entries cached before it.
+      const raw = parsed.profile.raw
+      if (raw && typeof raw === 'object') {
+        try {
+          return parseProfile(raw as Record<string, unknown>, parsed.profile.fdcId)
+        } catch {
+          return parsed.profile
+        }
+      }
       return parsed.profile
     }
     return null
@@ -142,7 +155,7 @@ function findNutrient(food: { foodNutrients?: FoodNutrient[] }, id: number): num
   return undefined
 }
 
-function parseProfile(food: Record<string, unknown>, fdcId: number): UsdaNutrientProfile {
+export function parseProfile(food: Record<string, unknown>, fdcId: number): UsdaNutrientProfile {
   const dataType = String(food.dataType ?? '')
   if (dataType === 'Branded') {
     throw new UsdaError(
@@ -158,7 +171,10 @@ function parseProfile(food: Record<string, unknown>, fdcId: number): UsdaNutrien
     console.warn(`[usda] missing nutrient ${label} for fdc=${fdcId}`)
   }
 
-  const kcalRaw = findNutrient(foodLike, NUTRIENT_IDS.energyKcal)
+  const kcalRaw =
+    findNutrient(foodLike, NUTRIENT_IDS.energyKcal) ??
+    findNutrient(foodLike, NUTRIENT_IDS.energyAtwaterGeneral) ??
+    findNutrient(foodLike, NUTRIENT_IDS.energyAtwaterSpecific)
   if (kcalRaw === undefined) warnMissing('Energy(kcal)')
   const proteinRaw = findNutrient(foodLike, NUTRIENT_IDS.proteinG)
   if (proteinRaw === undefined) warnMissing('Protein')
@@ -172,14 +188,18 @@ function parseProfile(food: Record<string, unknown>, fdcId: number): UsdaNutrien
   if (sodiumMg === undefined) warnMissing('Sodium')
 
   const saltG = sodiumMg !== undefined ? (sodiumMg * 2.5) / 1000 : 0
+  // Carbs «by difference» can come out slightly negative (wings: -0.46).
+  const carbsG = Math.max(0, carbsRaw ?? 0)
+  // No energy reported at all: 4 kcal/g protein and carbs, 9 kcal/g fat.
+  const kcal = kcalRaw ?? Math.round((proteinRaw ?? 0) * 4 + carbsG * 4 + (fatRaw ?? 0) * 9)
 
   return {
     fdcId,
     description,
     per100g: {
-      kcal: kcalRaw ?? 0,
+      kcal,
       proteinG: proteinRaw ?? 0,
-      carbsG: carbsRaw ?? 0,
+      carbsG,
       fatG: fatRaw ?? 0,
       fiberG: fiberRaw ?? 0,
       saltG,
@@ -288,35 +308,45 @@ export function createUsdaClient(opts?: { apiKey?: string; cacheDir?: string }):
     ): Promise<UsdaSearchResult[]> {
       const apiKey = resolveKey()
       const limit = Math.max(1, Math.min(50, opts?.limit ?? 10))
-      const params = new URLSearchParams({
-        query,
-        pageSize: String(limit),
-        api_key: apiKey,
-      })
-      if (opts?.preferDataTypes && opts.preferDataTypes.length > 0) {
+      const types = opts?.preferDataTypes ?? []
+      // USDA answers 400 to about half the searches that name «Survey
+      // (FNDDS)» (2026-10-21; the same URL alternates 400/200). Try twice,
+      // then without the types with parentheses, so auto-create doesn't
+      // save an ingredient with no nutrition because of it.
+      const plain = types.filter((t) => !t.includes('('))
+      const attempts = plain.length < types.length ? [types, types, plain] : [types]
+
+      let res: Response | null = null
+      let lastMsg = ''
+      for (const dataTypes of attempts) {
+        const params = new URLSearchParams({
+          query,
+          pageSize: String(limit),
+          api_key: apiKey,
+        })
         // USDA allows repeated dataType params.
-        for (const dt of opts.preferDataTypes) params.append('dataType', dt)
-      }
-
-      const url = `${FDC_BASE}/foods/search?${params.toString()}`
-      let res: Response
-      try {
-        res = await fetch(url)
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        throw new UsdaError(`USDA search network error: ${truncate(msg)}`)
-      }
-
-      if (!res.ok) {
+        for (const dt of dataTypes) params.append('dataType', dt)
+        const url = `${FDC_BASE}/foods/search?${params.toString()}`
+        try {
+          res = await fetch(url)
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          throw new UsdaError(`USDA search network error: ${truncate(msg)}`)
+        }
+        if (res.ok) break
         let body = ''
         try {
           body = await res.text()
         } catch {
           /* ignore */
         }
-        const msg = `USDA search failed status=${res.status} body=${truncate(body)}`
-        console.error(`[usda] ${msg}`)
-        throw new UsdaError(msg, undefined, res.status)
+        lastMsg = `USDA search failed status=${res.status} body=${truncate(body)}`
+        if (res.status !== 400) break
+      }
+
+      if (!res || !res.ok) {
+        console.error(`[usda] ${lastMsg}`)
+        throw new UsdaError(lastMsg, undefined, res?.status)
       }
 
       const json = (await res.json()) as { foods?: Array<Record<string, unknown>> }

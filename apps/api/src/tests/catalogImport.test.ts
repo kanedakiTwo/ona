@@ -3,16 +3,18 @@
  * Three invented «pages» go through the whole pipeline with fake AI and
  * database: drafts for 4, the book's sentences never reach what is saved,
  * duplicates are caught, and the publish rule (Miguel's sources vs Cocina's
- * one-in-ten sample). No text from any real book here: every sentence is made up.
+ * review of every Cocina recipe, D-099). No text from any real book here: every sentence is made up.
  */
 import { describe, expect, it } from 'vitest'
 import {
+  catalogSourceCredit,
+  catalogSourceRecord,
   copiedPhrases,
   draftsFromCocinaJson,
   findDuplicate,
   importCatalogBatch,
   markCookingMediumLines,
-  pickReviewSample,
+  listForReview,
   planBatchPublish,
   scaleToHouseServings,
   type BatchRecipe,
@@ -232,15 +234,14 @@ describe('pure helpers', () => {
 describe('publishing (rule of Miguel, 2026-10-16)', () => {
   const rec = (id: string, over: Partial<BatchRecipe> = {}): BatchRecipe => ({ id, name: id, status: 'draft', origin: 'cocina', auditIssues: [], allergenDoubt: false, ...over })
 
-  it('the sample is one in ten (rounded up) plus every allergen doubt', () => {
+  it('sample lists every draft of the batch (D-099), allergen doubts first', () => {
     const rows = Array.from({ length: 23 }, (_, i) => rec(`c${i}`, { allergenDoubt: i === 5 || i === 17 }))
-    let seed = 1
-    const random = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646
-    const sample = pickReviewSample(rows, random)
-    expect(sample).toEqual(expect.arrayContaining(['c5', 'c17']))
-    expect(sample.length).toBeGreaterThanOrEqual(3)
-    expect(sample.length).toBeLessThanOrEqual(5)
-    expect(pickReviewSample([rec('a')])).toEqual(['a'])
+    rows.push(rec('pub', { status: 'published' }))
+    const list = listForReview(rows)
+    expect(list).toHaveLength(23)
+    expect(list.slice(0, 2)).toEqual(['c5', 'c17'])
+    expect(list).not.toContain('pub')
+    expect(listForReview([rec('a', { reviewOk: true }), rec('b')])).toEqual(['a', 'b'])
   })
 
   it("Miguel's sources go out when they pass the audit, without him", () => {
@@ -249,14 +250,33 @@ describe('publishing (rule of Miguel, 2026-10-16)', () => {
     expect(plan.hold).toEqual([{ id: 'm2', name: 'm2', reason: 'auditoria' }])
   })
 
-  it("Cocina's wait for the sample, then for Miguel's verdict; a «no» holds the batch", () => {
-    expect(planBatchPublish([rec('a'), rec('b')]).hold.map((h) => h.reason)).toEqual(['falta_muestra', 'falta_muestra'])
-    expect(planBatchPublish([rec('a', { sampled: true }), rec('b')]).publish).toEqual([])
-    expect(planBatchPublish([rec('a', { sampled: true }), rec('b')]).hold[0].reason).toBe('muestra_sin_revisar')
-    expect(planBatchPublish([rec('a', { sampled: true, reviewOk: true }), rec('b')]).publish).toEqual(['a', 'b'])
-    const no = planBatchPublish([rec('a', { sampled: true, reviewOk: false }), rec('b')])
-    expect(no.publish).toEqual([])
-    expect(no.hold).toEqual([{ id: 'a', name: 'a', reason: 'rechazada' }, { id: 'b', name: 'b', reason: 'muestra_con_rechazos' }])
+  it("Cocina's go out one by one, only with Miguel's OK (PRO-290)", () => {
+    expect(planBatchPublish([rec('a'), rec('b')]).hold.map((h) => h.reason)).toEqual(['sin_revisar', 'sin_revisar'])
+    // A batch half reviewed: only the OKs go out, the rest wait, a «no» holds only itself.
+    const half = planBatchPublish([
+      rec('ok1', { sampled: true, reviewOk: true }),
+      rec('ok2', { sampled: true, reviewOk: true }),
+      rec('seen-no', { sampled: true, reviewOk: false }),
+      rec('unseen1', { sampled: true }),
+      rec('unseen2'),
+      rec('ok-but-audit', { reviewOk: true, auditIssues: ['sin_pasos'] }),
+      rec('done', { status: 'published', reviewOk: true }),
+    ])
+    expect(half.publish).toEqual(['ok1', 'ok2'])
+    expect(half.hold).toEqual([
+      { id: 'seen-no', name: 'seen-no', reason: 'rechazada' },
+      { id: 'unseen1', name: 'unseen1', reason: 'sin_revisar' },
+      { id: 'unseen2', name: 'unseen2', reason: 'sin_revisar' },
+      { id: 'ok-but-audit', name: 'ok-but-audit', reason: 'auditoria' },
+    ])
+    // The old rule published the whole batch once the sample was OK: no more.
+    expect(planBatchPublish([rec('a', { sampled: true, reviewOk: true }), rec('b')]).publish).toEqual(['a'])
+  })
+
+  it("a mixed batch: Miguel's out on audit, Cocina's only with his OK", () => {
+    const plan = planBatchPublish([rec('m', { origin: 'miguel' }), rec('c')])
+    expect(plan.publish).toEqual(['m'])
+    expect(plan.hold).toEqual([{ id: 'c', name: 'c', reason: 'sin_revisar' }])
   })
 })
 
@@ -318,5 +338,71 @@ describe('frying / confit oil in batch imports (PRO-195)', () => {
     })
     // 600 g berenjena = 150 kcal; 500 ml × 0.92 × 15 % = 69 g oil = 610 kcal → 760 / 4
     expect(agg.perServing.kcal).toBe(190)
+  })
+})
+
+// D-067: the ficha says where a catalogue recipe comes from. Invented names
+// and phrases only — never a real book's text.
+describe('where the recipe comes from (D-067)', () => {
+  const CREDIT = 'Inspirada en una receta de Autora Inventada, «Cuaderno de pruebas»'
+
+  it('catalogSourceCredit: the credit as written; else Miguel\'s book; Cocina\'s and the rest, nothing', () => {
+    expect(catalogSourceCredit({ origin: 'miguel', book: 'Cuaderno azul', credit: 'Receta de la tía Prueba' })).toBe('Receta de la tía Prueba')
+    expect(catalogSourceCredit({ origin: 'cocina', book: 'Recogidas en la red', credit: `  ${CREDIT}  ` })).toBe(CREDIT)
+    expect(catalogSourceCredit({ origin: 'miguel', book: 'Cuaderno azul' })).toBe('Inspirada en Cuaderno azul')
+    expect(catalogSourceCredit({ origin: 'miguel', book: 'Cuaderno azul', credit: '   ' })).toBe('Inspirada en Cuaderno azul')
+    expect(catalogSourceCredit({ origin: 'miguel', book: 'Cuaderno azul', credit: null })).toBe('Inspirada en Cuaderno azul')
+    expect(catalogSourceCredit({ origin: 'cocina', book: 'Recogidas en la red' })).toBeNull()
+    expect(catalogSourceCredit({ origin: 'miguel', book: '  ' })).toBeNull()
+    expect(catalogSourceCredit({ origin: 'miguel' })).toBeNull()
+    expect(catalogSourceCredit({ origin: 'miguel', book: 42, credit: 7 })).toBeNull()
+    expect(catalogSourceCredit(null)).toBeNull()
+    expect(catalogSourceCredit(undefined)).toBeNull()
+  })
+
+  it('draftsFromCocinaJson keeps the credit: the file\'s, the recipe\'s when it has one', () => {
+    const drafts = draftsFromCocinaJson(
+      {
+        source: { origin: 'miguel', book: 'Cuaderno de pruebas', credit: CREDIT },
+        recipes: [
+          { name: 'Sopa de ajo inventada', ingredients: [{ name: 'ajo', qty: 4, unit: 'u' }], steps: ['Paso inventado.'] },
+          { name: 'Tortilla de la tía Prueba', source: { credit: ' Receta de la tía Prueba ', page: 3 }, ingredients: [{ name: 'huevo', qty: 4, unit: 'u' }], steps: ['Paso inventado.'] },
+          { name: 'Caldo sin crédito', source: { credit: '' }, ingredients: [{ name: 'agua', qty: 1, unit: 'l' }], steps: ['Paso inventado.'] },
+        ],
+      },
+      { origin: 'cocina', credit: 'Crédito de la línea de comandos' },
+    )
+    expect(drafts[0].source).toMatchObject({ origin: 'miguel', book: 'Cuaderno de pruebas', credit: CREDIT })
+    expect(drafts[1].source).toMatchObject({ origin: 'miguel', book: 'Cuaderno de pruebas', page: '3', credit: 'Receta de la tía Prueba' })
+    expect(drafts[2].source.credit).toBeNull()
+    // No `source.credit` anywhere in the file → the command's --credit.
+    const [plain] = draftsFromCocinaJson([{ name: 'Puré inventado', ingredients: [{ name: 'patata', qty: 500, unit: 'g' }] }], { origin: 'miguel', credit: 'Receta de la Yaya inventada' })
+    expect(plain.source.credit).toBe('Receta de la Yaya inventada')
+  })
+
+  it('the credit reaches recipes.catalog_source, with the book and page and no text of the source', async () => {
+    const { deps, saved } = fakeDeps()
+    const page = { ...PAGES[0], source: { ...PAGES[0].source, credit: 'Receta de la tía Prueba' } }
+    const [out] = await importCatalogBatch([page], 'tia-01', deps)
+    expect(out.status).toBe('draft')
+    expect(saved[0].catalogSource).toMatchObject({ origin: 'miguel', book: 'Cuaderno azul', page: '12', credit: 'Receta de la tía Prueba', batch: 'tia-01' })
+
+    // What persistCatalogDraft writes to the column.
+    const row = catalogSourceRecord(saved[0].catalogSource)
+    expect(row).toEqual({
+      origin: 'miguel',
+      book: 'Cuaderno azul',
+      page: '12',
+      file: null,
+      credit: 'Receta de la tía Prueba',
+      batch: 'tia-01',
+      auditIssues: [],
+      allergenDoubt: false,
+    })
+    expect(catalogSourceCredit(row)).toBe('Receta de la tía Prueba')
+    // A draft without credit stores null, and Miguel's book stands in.
+    const bare = catalogSourceRecord({ ...saved[0].catalogSource, credit: undefined })
+    expect(bare.credit).toBeNull()
+    expect(catalogSourceCredit(bare)).toBe('Inspirada en Cuaderno azul')
   })
 })

@@ -3,6 +3,7 @@ import { loadHouseholdRatingSets, withHouseholdRatings } from './householdRating
 import { visibleAuthorIds, visibleRecipeWhere } from './recipeVisibility.js'
 import { loadMatchableRecipes, type RecipeWithCourse } from './matchableRecipes.js'
 import { mergeRestrictions } from './dietaryRestrictions.js'
+import { loadHouseholdRestrictions } from './householdAllergies.js'
 import { recipesMatchingDishes, weekTimeBudgets } from './onboardingPreferences.js'
 import { holidayTimeBudgets, regionFromMemory } from './menuHolidays.js'
 import { menuMetabolicQuality, recipeMetabolicProfile, type MetabolicProfile } from './metabolicScore.js'
@@ -591,7 +592,13 @@ export async function generateMenu(
 
   // 4. Restrictions + dislikes + equipment + time-budget from long-term memory
   const memory = await getMemoryForUser(userId).catch(() => null)
-  const restrictions = mergeRestrictions(user.restrictions, memory)
+  // PRO-271: and every other member's allergies and diets — the owner's
+  // «Generar mi menú» must respect what the person who joined by invitation
+  // said (a read error keeps the generating user's own).
+  const restrictions = mergeRestrictions([
+    ...mergeRestrictions(user.restrictions, memory),
+    ...(await loadHouseholdRestrictions(userId, db).catch(() => [] as string[])),
+  ])
   const dislikesValue = memory?.dislikes?.value
   const equipmentValue = memory?.equipment?.value
   // The household's ficha on top (PRO-253): every member's dislikes and

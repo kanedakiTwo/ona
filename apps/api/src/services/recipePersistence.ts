@@ -214,15 +214,32 @@ interface BuiltCatalog {
   lint: CatalogIngredient[]
   nutrition: Map<string, IngredientCatalogEntry>
   allergens: Map<string, { allergenTags?: string[] | null }>
+  ids: Set<string>
   loadedAt: number
 }
 
 let cached: BuiltCatalog | null = null
 const CATALOG_TTL_MS = 60_000 // 1 minute — short enough to pick up seed changes
 
-async function loadCatalog(): Promise<BuiltCatalog> {
+/**
+ * Pure: whether the cached catalogue can serve a recipe that uses these
+ * ingredient ids. An ingredient created after the cache was loaded (the
+ * extractor and the catalogue import create missing ones right before
+ * saving) forces a reload: with a stale cache the reviewer didn't know its
+ * words and the recipe's allergens and nutrition left it out.
+ */
+export function catalogCacheIsUsable(
+  cache: { loadedAt: number; ids: ReadonlySet<string> } | null,
+  now: number,
+  requiredIds: readonly string[],
+): boolean {
+  if (!cache || now - cache.loadedAt >= CATALOG_TTL_MS) return false
+  return requiredIds.every((id) => cache.ids.has(id))
+}
+
+async function loadCatalog(requiredIds: readonly string[] = []): Promise<BuiltCatalog> {
   const now = Date.now()
-  if (cached && now - cached.loadedAt < CATALOG_TTL_MS) return cached
+  if (cached && catalogCacheIsUsable(cached, now, requiredIds)) return cached
 
   const rows = await db
     .select({
@@ -289,7 +306,7 @@ async function loadCatalog(): Promise<BuiltCatalog> {
     allergens.set(c.id, { allergenTags: c.allergenTags ?? [] })
   }
 
-  cached = { full, lint, nutrition, allergens, loadedAt: now }
+  cached = { full, lint, nutrition, allergens, ids: new Set(full.map((c) => c.id)), loadedAt: now }
   return cached
 }
 
@@ -412,7 +429,7 @@ export async function persistRecipe(
   }
 
   // Load catalog + lint.
-  const catalog = await loadCatalog()
+  const catalog = await loadCatalog(input.ingredients.map((ing) => ing.ingredientId))
   const lintInput: LintInput = {
     name: input.name,
     servings: input.servings,

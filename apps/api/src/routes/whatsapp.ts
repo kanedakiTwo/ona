@@ -13,8 +13,8 @@ import { buildInboundDeps, initialInboundBody } from '../services/whatsapp/wirin
 import * as store from '../services/whatsapp/store.js'
 import { setAlertPrefs } from '../services/notifications/alertPrefs.js'
 import { buildWaLink, linkMessageText, maskPhone } from '../services/whatsapp/linking.js'
-import { PROACTIVE_KINDS, kindsSwitchedOff } from '../services/whatsapp/proactive.js'
-import { trackEvent } from '../services/usageEvents.js'
+import { PROACTIVE_KINDS, kindEnabled, kindsSwitchedOff } from '../services/whatsapp/proactive.js'
+import { alertChanges, trackEvent } from '../services/usageEvents.js'
 import { runWithCostUser } from '../services/costLedger.js'
 import { loadNudgeState, markNudgeShown, shouldShowWhatsAppNudge } from '../services/whatsapp/nudge.js'
 
@@ -185,6 +185,14 @@ router.patch('/whatsapp/link', authMiddleware, async (req: AuthRequest, res) => 
     // PRO-216: households that switch avisos off, for the weekly review.
     for (const kind of kindsSwitchedOff(link, parsed.data)) trackEvent('notifications_off', { userId: req.userId!, props: { kind } })
     const after = await store.getLinkByUser(req.userId!)
+    // PRO-120: every WhatsApp switch that changed (`all` = the master switch).
+    if (after) {
+      const onMap = (l: { notify: boolean; prefs: Record<string, boolean> | null | undefined }) => ({
+        all: l.notify,
+        ...Object.fromEntries(PROACTIVE_KINDS.map((k) => [k, kindEnabled(l.prefs, k)])),
+      })
+      for (const props of alertChanges(onMap(link), onMap(after))) trackEvent('alerts_changed', { userId: req.userId!, props })
+    }
     res.json({ notify: after?.notify ?? parsed.data.notify ?? link.notify, prefs: after?.prefs ?? {} })
   } catch (err: any) {
     console.error('[whatsapp] patch link error:', err?.message ?? err)

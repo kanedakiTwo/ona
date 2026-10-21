@@ -51,12 +51,14 @@ export const EDIBLE_FRACTION_RULES: ReadonlyArray<readonly [RegExp, number]> = [
   [/^chuletas?\b/, 0.8], // bone-in chops ≈20 %
   [/^(manitas?|pies?|patas?) de cerdo\b/, 0.5], // ≈ trotters: half bone
   [/^rabo de (toro|vaca|ternera|buey)\b|^rabo\b/, 0.5], // ≈ oxtail
-  [/^osobucos?\b/, 0.8], // ≈ shank slice with marrow bone
+  [/^oss?obucos?\b/, 0.8], // ≈ shank slice with marrow bone («osobuco», «ossobuco»)
   [/^codillos?\b/, 0.7], // ≈ pork knuckle
   [/^paletilla\b|^pierna de cordero\b|^pierna de cabrito\b/, 0.75], // ≈ bone-in lamb shoulder / leg
+  [/^cuellos? de (cordero|cabrito|cerdo|ternera)\b/, 0.6], // ≈ neck: many small bones
   // Rabbit: only when the name says it is whole
   [/^conejo entero\b/, 0.73], // ≈ USDA rabbit composite refuse 27 %
-  [/^codornices?\b/, 0.65], // ≈
+  [/^codorni(z|ces)\b/, 0.65], // ≈ whole quail
+  [/^perdi(z|ces)\b/, 0.65], // ≈ whole partridge
 ]
 
 /** Never bone-in, whatever the rest of the name says. */

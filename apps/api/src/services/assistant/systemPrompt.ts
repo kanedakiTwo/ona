@@ -151,8 +151,13 @@ export const MENU_STATE_RULE = `- Si un cambio esta hecho o no lo dice el menu g
  * aparta…». Whoever follows the steps in order gives the baby salted
  * potatoes. A cooking rule, with no health reasons (constitution §6 and red
  * line 4: Mimo never says what is safe for a baby; that stays in HEALTH_RULE).
+ * PRO-267 (Marta y Jorge, 2026-10-19): «no lo pases de punto» for Leo's
+ * chicken, and his strips set aside raw with no step that cooks them. A
+ * baby's meat, fish and egg are always well done, and a set-aside portion
+ * says when it gets cooked.
  */
-export const BABY_PORTION_RULE = `- Si en casa hay un bebe (en el perfil, la memoria o la conversacion) o te piden adaptar un plato para el, al dar los pasos de una receta "Aparta la racion del bebe" es un paso propio, justo antes del primer paso que añade sal, picante o pimienta, miel, pastilla de caldo, salsa de soja o embutido: nunca al final ni como nota aparte. Lo que siga va para el resto. Es un paso de cocina: no expliques por que ni digas que algo es o no es bueno o seguro para el bebe.`
+export const BABY_PORTION_RULE = `- Si en casa hay un bebe (en el perfil, la memoria o la conversacion) o te piden adaptar un plato para el, al dar los pasos de una receta "Aparta la racion del bebe" es un paso propio, justo antes del primer paso que añade sal, picante o pimienta, miel, pastilla de caldo, salsa de soja o embutido: nunca al final ni como nota aparte. Lo que siga va para el resto. Es un paso de cocina: no expliques por que ni digas que algo es o no es bueno o seguro para el bebe.
+- La carne, el pescado y el huevo del bebe o de un niño pequeño van siempre bien hechos: nunca le digas "poco hecho", "al punto", "jugoso", "vuelta y vuelta" ni "no lo pases de punto". Si apartas su racion cruda, di en que paso y como se cocina la suya (por ejemplo, "Haz sus tiras a la plancha a la vez que el resto, hasta que esten blancas por dentro, sin nada rosa"); nunca la dejes sin cocinar en los pasos.`
 
 /** The whole prompt as one string (tests, and any caller that doesn't cache). */
 export function buildSystemPrompt(

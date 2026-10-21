@@ -1,19 +1,19 @@
 import { Router, type RequestHandler } from 'express'
-import { anonymise, discoverNames, nameTokens } from '../services/anonymise.js'
 import { desc, eq, gte } from 'drizzle-orm'
 import { z } from 'zod'
 import { db } from '../db/connection.js'
 import { userFeedback, users } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
-import { metricsAuth } from '../middleware/metricsAuth.js'
+import { metricsAuth, viaMetricsToken } from '../middleware/metricsAuth.js'
+import { feedbackForAgents } from '../services/agentView.js'
 
 /**
  * Beta feedback (specs/feedback.md).
  *
  *   POST /feedback          auth: { text, page?, channel? } → saved verbatim
  *   GET  /admin/feedback    admin JWT (with who sent it) or x-metrics-token
- *                           (agents: anonymised text, channel, page and date only,
- *                           no identity; PRO-180)
+ *                           (agents: counts by channel and page and possible
+ *                           allergies; no text, no identity)
  *
  * Per-route auth (no catch-all): mounted before the `router.use(authMiddleware)` routers.
  */
@@ -68,21 +68,6 @@ export function createDbFeedbackRepo(): FeedbackRepo {
   }
 }
 
-/**
- * Pure (PRO-180): what the agents' read token gets — no identity, and the
- * text with what could identify someone masked. Known names are every
- * username and email handle in the batch plus the names any text reveals
- * through a cue («mi hija Lucía»), so a name masked in one place is masked
- * everywhere in the batch.
- */
-export function anonymiseFeedback(rows: FeedbackRow[]): Array<Omit<FeedbackRow, 'username' | 'email'>> {
-  const known = nameTokens([
-    ...rows.flatMap((r) => [r.username, r.email]),
-    ...rows.flatMap((r) => discoverNames(r.text)),
-  ])
-  return rows.map(({ username: _u, email: _e, ...r }) => ({ ...r, text: anonymise(r.text, known) }))
-}
-
 export function createFeedbackRouter(
   overrides: Partial<{ repo: FeedbackRepo; auth: RequestHandler; readAuth: RequestHandler; now: () => Date }> = {},
 ): Router {
@@ -110,15 +95,12 @@ export function createFeedbackRouter(
     const days = Math.min(Math.max(Number(req.query.days) || 30, 1), 365)
     const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 1000)
     const rows = await d.repo.list(new Date(d.now().getTime() - days * 86_400_000), limit)
-    // The agents' read token never sees who wrote it, and the text goes
-    // through the same anonymiser as the Mimo reviewer (PRO-180): names,
-    // emails, phones, addresses → [nombre], [email], [teléfono]…
-    const anonymous = !!req.get('x-metrics-token')
-    res.json({
-      days,
-      count: rows.length,
-      items: anonymous ? anonymiseFeedback(rows) : rows,
-    })
+    // The agents' read token gets counts only: no text, no identity (specs/feedback.md).
+    if (viaMetricsToken(req)) {
+      res.json(feedbackForAgents(days, rows))
+      return
+    }
+    res.json({ days, count: rows.length, items: rows })
   })
 
   return router

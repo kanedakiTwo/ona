@@ -19,8 +19,8 @@
  *     → saved as a `draft` with its source (book + page, no text).
  *
  * Publishing is a separate step (`planBatchPublish`): Miguel's sources go out
- * when they pass the audit; Cocina's need Miguel's OK on one in ten (random)
- * plus every recipe with an allergen doubt.
+ * when they pass the audit; Cocina's go out one by one, only those Miguel
+ * has seen and said OK to (D-099: he sees all of them, PRO-290).
  *
  * Everything that talks to the AI or the database is injected (`CatalogImportDeps`)
  * so the orchestration is tested without either.
@@ -31,6 +31,7 @@ import { auditCatalogRecipe, type CatalogAuditIssue } from './catalogRecipeAudit
 import { dishKey } from './catalogWishes.js'
 import { levenshtein, normalize } from './recipeLint.js'
 import { isCookingMediumNote, isFatName } from './nutrition/cookingMedium.js'
+import type { CatalogSourceInfo } from '../db/schema.js'
 
 export type CatalogOrigin = 'miguel' | 'cocina'
 
@@ -42,6 +43,12 @@ export interface CatalogSourceRef {
   page?: string | null
   /** File the recipe came from, relative to the batch folder. */
   file?: string | null
+  /**
+   * The line the recipe page shows under the title, as it must read (D-067):
+   * «Receta de la Yaya», «Inspirada en una receta de <autor>, «<libro>»».
+   * Without it, `catalogSourceCredit` falls back to the book for Miguel's sources.
+   */
+  credit?: string | null
 }
 
 export interface DraftIngredient {
@@ -323,6 +330,43 @@ export function timesFrom(r: CatalogRewrite, draft: CatalogDraftInput): { prepTi
   return { prepTime: active, cookTime: total - active || null }
 }
 
+// ─── Where the recipe comes from (D-067) ────────────────────────
+
+function cleanText(v: unknown): string | null {
+  if (typeof v !== 'string') return null
+  const s = v.replace(/\s+/g, ' ').trim()
+  return s || null
+}
+
+/**
+ * Pure (D-067): the line the recipe page shows under the title, from
+ * `recipes.catalog_source`. The `credit` as written («Receta de la Yaya»,
+ * «Inspirada en una receta de <autor>, «<libro>»»); without one, a book of
+ * Miguel's (`origin: 'miguel'`) reads «Inspirada en <libro>». Cocina's
+ * recipes (found or written by Cocina) and every other recipe: null.
+ */
+export function catalogSourceCredit(source: { origin?: unknown; book?: unknown; credit?: unknown } | null | undefined): string | null {
+  if (!source || typeof source !== 'object') return null
+  const credit = cleanText(source.credit)
+  if (credit) return credit
+  const book = cleanText(source.book)
+  return book && source.origin === 'miguel' ? `Inspirada en ${book}` : null
+}
+
+/** Pure: what is kept in `recipes.catalog_source` — the reference (never the text), the batch and the audit. */
+export function catalogSourceRecord(src: PersistDraftInput['catalogSource']): CatalogSourceInfo {
+  return {
+    origin: src.origin,
+    book: src.book ?? null,
+    page: src.page ?? null,
+    file: src.file ?? null,
+    credit: cleanText(src.credit),
+    batch: src.batch,
+    auditIssues: src.auditIssues,
+    allergenDoubt: src.allergenDoubt,
+  }
+}
+
 // ─── Orchestration ──────────────────────────────────────────────
 
 export async function importCatalogRecipe(
@@ -356,8 +400,11 @@ export async function importCatalogRecipe(
   const missing = matched.filter((m) => !m.ingredientId).map((m) => m.name)
   if (missing.length > 0) return { ...base, status: 'rejected', reason: 'ingredientes', detail: `sin ingrediente en el catálogo: ${missing.join(', ')}` }
 
+  const course = rewrite.course && (COURSES as readonly string[]).includes(rewrite.course) ? rewrite.course : null
   const audit = auditCatalogRecipe({
     name: draft.name,
+    course,
+    meals: rewrite.meals?.length ? rewrite.meals : draft.meals ?? [],
     servings: HOUSE_SERVINGS,
     stepCount: rewrite.steps.length,
     ingredients: matched.map((m) => ({ name: m.name, quantity: m.quantity, unit: m.unit, unitWeight: m.unitWeight ?? null, density: m.density ?? null, edibleFraction: m.edibleFraction ?? null })),
@@ -365,7 +412,6 @@ export async function importCatalogRecipe(
   const { tags, internalTags } = catalogTags(rewrite, draft.tags ?? [])
   const { prepTime, cookTime } = timesFrom(rewrite, draft)
   const n = ingredients.length
-  const course = rewrite.course && (COURSES as readonly string[]).includes(rewrite.course) ? rewrite.course : null
   const difficulty = ((DIFFICULTIES as readonly string[]).includes(rewrite.difficulty ?? '') ? rewrite.difficulty : (DIFFICULTIES as readonly string[]).includes(draft.difficulty ?? '') ? draft.difficulty : 'medium') as Difficulty
 
   const saved = await deps.persistDraft({
@@ -427,7 +473,8 @@ export async function importCatalogBatch(drafts: readonly CatalogDraftInput[], b
 /**
  * Cocina's batch file: an array of recipes in the hand-authored shape
  * (`scripts/handAuthoredRecipes.ts`: ingredients by name with `qty`/`unit`,
- * steps as `{ text }` or strings) plus `source` per recipe or for the file.
+ * steps as `{ text }` or strings) plus `source` per recipe or for the file
+ * (the recipe's wins, key by key — `credit` included).
  */
 export function draftsFromCocinaJson(json: unknown, fallback: CatalogSourceRef): CatalogDraftInput[] {
   const root = json as { source?: Partial<CatalogSourceRef>; recipes?: unknown[] } | unknown[]
@@ -455,7 +502,13 @@ export function draftsFromCocinaJson(json: unknown, fallback: CatalogSourceRef):
         section: i.section ?? null,
       })),
       sourceSteps: (r.steps ?? []).map((s: any) => (typeof s === 'string' ? s : String(s?.text ?? ''))).filter(Boolean),
-      source: { origin: src.origin === 'miguel' ? 'miguel' : 'cocina', book: src.book ?? null, page: src.page != null ? String(src.page) : null, file: src.file ?? null },
+      source: {
+        origin: src.origin === 'miguel' ? 'miguel' : 'cocina',
+        book: src.book ?? null,
+        page: src.page != null ? String(src.page) : null,
+        file: src.file ?? null,
+        credit: cleanText(src.credit),
+      },
     }
   })
 }
@@ -475,49 +528,34 @@ export interface BatchRecipe {
 }
 
 /**
- * Pure: Miguel's sample for a Cocina batch — one in ten (rounded up, at
- * least one) at random, plus every recipe with an allergen doubt.
- * `random` returns [0, 1) (Math.random in the command, seeded in tests).
+ * Pure: what Miguel has to look at in a Cocina batch — every draft (D-099:
+ * he sees all of Cocina's recipes, not a sample), the ones with an allergen
+ * doubt first, then in batch order. Already-reviewed drafts stay on the
+ * list (with their verdict), so `sample` can be run again at any time.
  */
-export function pickReviewSample(rows: readonly BatchRecipe[], random: () => number = Math.random): string[] {
+export function listForReview(rows: readonly BatchRecipe[]): string[] {
   const drafts = rows.filter((r) => r.status === 'draft')
-  if (drafts.length === 0) return []
-  const n = Math.max(1, Math.ceil(drafts.length / 10))
-  const pool = [...drafts]
-  for (let i = pool.length - 1; i > 0; i--) {
-    const j = Math.floor(random() * (i + 1))
-    ;[pool[i], pool[j]] = [pool[j], pool[i]]
-  }
-  const chosen = new Set(pool.slice(0, n).map((r) => r.id))
-  for (const r of drafts) if (r.allergenDoubt) chosen.add(r.id)
-  return drafts.filter((r) => chosen.has(r.id)).map((r) => r.id)
+  return [...drafts.filter((r) => r.allergenDoubt), ...drafts.filter((r) => !r.allergenDoubt)].map((r) => r.id)
 }
 
-export type HoldReason = 'auditoria' | 'falta_muestra' | 'muestra_sin_revisar' | 'muestra_con_rechazos' | 'rechazada'
+export type HoldReason = 'auditoria' | 'sin_revisar' | 'rechazada'
 
 /**
- * Pure: what `publish` may do with a batch (rule of Miguel, 2026-10-16).
+ * Pure: what `publish` may do with a batch (rule of Miguel, 2026-10-16;
+ * D-099, PRO-290).
  *   - Miguel's sources (his books, his mother's recipe book): out if the audit passes.
- *   - Cocina's: only once Miguel has seen the whole sample; if he turned
- *     one down, the whole batch waits (the sample says the batch is off).
+ *   - Cocina's: one by one, only the ones Miguel said OK to (`reviewOk: true`);
+ *     the rest wait as «sin_revisar» (not seen yet) or «rechazada» (his «no»).
+ *     A «no» holds only that recipe.
  *   - Audit issues always wait, whatever the source.
  */
 export function planBatchPublish(rows: readonly BatchRecipe[]): { publish: string[]; hold: Array<{ id: string; name: string; reason: HoldReason }> } {
   const publish: string[] = []
   const hold: Array<{ id: string; name: string; reason: HoldReason }> = []
-  const drafts = rows.filter((r) => r.status === 'draft')
-  const cocina = drafts.filter((r) => r.origin === 'cocina')
-  const sample = cocina.filter((r) => r.sampled)
-  const cocinaBlock: HoldReason | null =
-    cocina.length === 0 ? null
-      : sample.length === 0 ? 'falta_muestra'
-        : sample.some((r) => r.reviewOk === undefined) ? 'muestra_sin_revisar'
-          : sample.some((r) => r.reviewOk === false) ? 'muestra_con_rechazos'
-            : null
-  for (const r of drafts) {
+  for (const r of rows.filter((x) => x.status === 'draft')) {
     if (r.reviewOk === false) hold.push({ id: r.id, name: r.name, reason: 'rechazada' })
     else if (r.auditIssues.length > 0) hold.push({ id: r.id, name: r.name, reason: 'auditoria' })
-    else if (r.origin === 'cocina' && cocinaBlock) hold.push({ id: r.id, name: r.name, reason: cocinaBlock })
+    else if (r.origin === 'cocina' && r.reviewOk !== true) hold.push({ id: r.id, name: r.name, reason: 'sin_revisar' })
     else publish.push(r.id)
   }
   return { publish, hold }

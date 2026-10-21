@@ -64,6 +64,26 @@ test('/privacidad: Resend is a US company, no third-party advertising, the new n
   await expect(main).not.toContainText('envía desde la Unión Europea')
 })
 
+// PRO-278 (Legal, 2026-10-20): AiKit forwards the recipe text to OpenAI (US), in Legal's exact words.
+test('/privacidad: AiKit says its images are made with OpenAI models', async ({ page }) => {
+  await page.goto('/privacidad')
+  await expect(page.getByTestId('privacy-processor-aikit')).toHaveText(
+    'AiKit: generación de imágenes de recetas (solo recibe el nombre y los ingredientes de la receta). Para hacerlas usa modelos de OpenAI (EE. UU.), que reciben ese mismo texto.',
+  )
+  const main = page.getByTestId('reading-column')
+  await expect(main).not.toContainText('cuando lo pides')
+  await expect(main).toContainText('Última actualización: 21 de octubre de 2026')
+})
+
+// PRO-120 (Legal, 2026-10-20): the app's own usage events, screens included, in Legal's exact words.
+test('/privacidad: the app counts functions and screens, never what you write', async ({ page }) => {
+  await page.goto('/privacidad')
+  await expect(page.getByTestId('privacy-app-usage')).toHaveText(
+    'Dentro de la app apuntamos qué funciones y pantallas usas (por ejemplo, que has generado un menú o abierto la lista de la compra), nunca lo que escribes. Lo usamos solo en recuentos, para saber qué mejorar, y se borra a los 180 días.',
+  )
+  await expect(page.getByTestId('reading-column')).not.toContainText('qué funciones se usan')
+})
+
 // PRO-171 (LEG-17): the waitlist's retention date, in Legal's exact words.
 test('/privacidad: the waitlist is kept until 16 May 2027', async ({ page }) => {
   await page.goto('/privacidad')

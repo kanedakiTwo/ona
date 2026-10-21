@@ -1,7 +1,7 @@
 import express, { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express'
 import { CLIENT_ERROR_LIMITS, clientErrorReportSchema, type ClientErrorReport } from '@ona/shared'
 import { authMiddleware, optionalAuthMiddleware, requireAdmin, type AuthRequest } from '../middleware/auth.js'
-import { metricsAuth } from '../middleware/metricsAuth.js'
+import { metricsAuth, viaMetricsToken } from '../middleware/metricsAuth.js'
 import { FixedWindowCounter, isRateLimitDisabled } from '../middleware/rateLimit.js'
 import {
   APP_ERROR_LIMITS,
@@ -10,12 +10,14 @@ import {
   resolveAppError,
   type AppErrorKind,
 } from '../services/appErrors.js'
+import { errorsForAgents } from '../services/agentView.js'
 
 /**
  * In-house error tracker (specs/errors.md).
  *
  *   POST /client-errors                public; the web app's error reports
- *   GET  /admin/errors                 admin JWT or `x-metrics-token` (read-only agents)
+ *   GET  /admin/errors                 admin JWT or `x-metrics-token` (read-only agents:
+ *                                      error class and route, no message, user id or stack)
  *   POST /admin/errors/:id/resolve     admin JWT only
  */
 
@@ -156,14 +158,14 @@ export function createAdminErrorsRouter(overrides: Partial<AdminErrorsDeps> = {}
   router.get('/admin/errors', deps.readAuth, async (req, res) => {
     try {
       const kind = req.query.kind === 'client' || req.query.kind === 'server' ? (req.query.kind as AppErrorKind) : undefined
-      res.json(
-        await deps.load({
-          days: intParam(req.query.days, 7, 1, 90),
-          includeResolved: req.query.includeResolved === '1' || req.query.includeResolved === 'true',
-          kind,
-          limit: intParam(req.query.limit, 100, 1, 500),
-        }),
-      )
+      const report = await deps.load({
+        days: intParam(req.query.days, 7, 1, 90),
+        includeResolved: req.query.includeResolved === '1' || req.query.includeResolved === 'true',
+        kind,
+        limit: intParam(req.query.limit, 100, 1, 500),
+      })
+      // The agents' read token: error class and route, no message, user id or stack.
+      res.json(viaMetricsToken(req) ? errorsForAgents(report) : report)
     } catch (err: any) {
       console.error('[admin/errors] failed:', err?.message ?? err)
       res.status(500).json({ error: 'Internal server error' })

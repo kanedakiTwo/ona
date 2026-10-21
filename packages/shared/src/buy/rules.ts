@@ -266,6 +266,7 @@ const CHARCUTERIA: BuyRule[] = [
     prep: ['loncheado fino', 'loncheado fino'],
   }),
   weight('jamon cocido', 'charcuteria', ['jamon york', 'jamon de york', 'jamon cocido', 'york', 'jamon cocido extra'], 'jamón cocido extra', {
+    ug: 15, // a recipe "u" is a slice (PRO-286)
     min: 150,
     step: 50,
     prep: ['en lonchas', 'en lonchas'],
@@ -311,6 +312,19 @@ const PESCADERIA: BuyRule[] = [
   piece('pulpo', ['pulpo'], ['pulpo', 'pulpos'], 1500, { shop: 'pescaderia', prep: ['cocido', 'cocidos'], volatile: true }),
 ]
 
+/*
+ * A recipe "u" of a pack rule (PRO-286): when it means something smaller
+ * than the pack (a slice of bread, a cheese slice, a can of a 3-can pack, a
+ * surimi stick, a gherkin, a prune, a bay leaf), the rule has `ug` = grams
+ * of that piece, so "8 rebanadas" is 200 g → 1 paquete, not 8. Typical
+ * retail weights [E]: rebanada de molde 25 g (450 g ≈ 18 rebanadas), loncha
+ * de queso 20 g (200 g = 10 lonchas), lata de un pack de 3 ≈ 67 g, palito de
+ * surimi 16 g (250 g ≈ 15), pepinillo 10 g, ciruela pasa 8 g, hoja de laurel
+ * or a pinch of spice ≈ 1 g (one bote). Rules used with "u" in recipes that
+ * keep no `ug`, on purpose (guard: apps/api/src/tests/buyRulesUnits.test.ts):
+ * huevos (a "u" is an egg: `g` is per egg and the egg branch counts them by
+ * half-dozen) and levadura (a "u" is a sobre, the sale unit).
+ */
 const SUPER: BuyRule[] = [
   pack('huevos', ['huevo', 'huevos', 'yema de huevo', 'yemas de huevo', 'yema', 'yemas', 'clara de huevo', 'claras de huevo', 'clara', 'claras'], 'huevos', ['docena', 'docenas'], '', 50, { tier: 'nevera', eci: 'huevos', aisle: 'lacteos' }),
   pack('mantequilla', ['mantequilla'], 'mantequilla', ['tarrina', 'tarrinas'], '250 g', 250, { tier: 'nevera', eci: 'mantequilla 250 g' }),
@@ -323,7 +337,7 @@ const SUPER: BuyRule[] = [
     eci: 'queso {c}',
   }),
   pack('queso rallado', ['queso rallado'], 'queso rallado', ['bolsa', 'bolsas'], '200 g', 200, { tier: 'nevera', eci: 'queso rallado' }),
-  pack('queso en lonchas', ['queso sandwich', 'queso en lonchas', 'queso de sandwich', 'queso gouda', 'queso cheddar'], 'queso en lonchas', ['paquete', 'paquetes'], '200 g', 200, { eci: 'queso en lonchas' }),
+  pack('queso en lonchas', ['queso sandwich', 'queso en lonchas', 'queso de sandwich', 'queso gouda', 'queso cheddar'], 'queso en lonchas', ['paquete', 'paquetes'], '200 g', 200, { ug: 20, eci: 'queso en lonchas' }),
   pack('parmesano', ['queso parmesano', 'parmesano', 'parmesano rallado'], 'parmesano rallado', ['bolsa', 'bolsas'], '60 g', 60, { tier: 'nevera', eci: 'parmesano rallado' }),
   pack('feta', ['feta', 'queso feta'], 'queso feta', ['paquete', 'paquetes'], '150 g', 150, { tier: 'especial', eci: 'queso feta' }),
   pack('mozzarella', ['mozzarella', 'queso mozzarella'], 'mozzarella', ['bola', 'bolas'], '125 g', 125, { eci: 'mozzarella fresca' }),
@@ -342,7 +356,7 @@ const SUPER: BuyRule[] = [
     choice: { question: '¿Qué pan?', options: ['de molde', 'de hogaza', 'en barra'], def: null },
     eci: 'pan {c}',
   },
-  pack('pan de molde', ['pan de molde', 'pan integral', 'pan de molde integral'], 'pan de molde', ['paquete', 'paquetes'], '450 g', 450, { eci: 'pan de molde' }),
+  pack('pan de molde', ['pan de molde', 'pan integral', 'pan de molde integral'], 'pan de molde', ['paquete', 'paquetes'], '450 g', 450, { ug: 25, eci: 'pan de molde' }),
   pack('pan de hamburguesa', ['pan de hamburguesa', 'panes de hamburguesa'], '', ['paquete de 4 panes de hamburguesa', 'paquetes de 4 panes de hamburguesa'], '', 4, { ug: 1, eci: 'pan de hamburguesa' }),
   pack('harina de fuerza', ['harina de fuerza'], 'harina de fuerza', ['paquete', 'paquetes'], '1 kg', 1000, { tier: 'especial', eci: 'harina de fuerza' }),
   pack('arroz', ['arroz', 'arroz de grano largo', 'arroz redondo', 'arroz bomba'], 'arroz', ['paquete', 'paquetes'], '1 kg', 1000, { eci: 'arroz' }),
@@ -361,10 +375,10 @@ const SUPER: BuyRule[] = [
   pack('aceitunas negras', ['aceitunas negras', 'aceituna negra'], 'aceitunas negras sin hueso', ['lata', 'latas'], '150 g', 150, { ug: 4, eci: 'aceitunas negras sin hueso' }),
   pack('aceitunas verdes', ['aceitunas verdes', 'aceitunas', 'aceituna'], 'aceitunas verdes', ['lata', 'latas'], '150 g', 150, { ug: 4, eci: 'aceitunas verdes' }),
   pack('alcaparras', ['alcaparras', 'alcaparra'], 'alcaparras', ['frasco', 'frascos'], '80 g', 80, { tier: 'especial', eci: 'alcaparras' }),
-  pack('pepinillos', ['pepinillo', 'pepinillos'], 'pepinillos', ['frasco', 'frascos'], '', 300, { eci: 'pepinillos' }),
-  pack('atun', ['atun', 'atun en lata', 'atun en aceite'], 'atún en aceite de oliva', ['pack de 3 latas', 'packs de 3 latas'], '', 200, { eci: 'atun aceite de oliva pack 3' }),
+  pack('pepinillos', ['pepinillo', 'pepinillos'], 'pepinillos', ['frasco', 'frascos'], '', 300, { ug: 10, eci: 'pepinillos' }),
+  pack('atun', ['atun', 'atun en lata', 'atun en aceite'], 'atún en aceite de oliva', ['pack de 3 latas', 'packs de 3 latas'], '', 200, { ug: 67, eci: 'atun aceite de oliva pack 3' }),
   pack('guisantes', ['guisantes', 'guisante', 'guisantes congelados'], 'guisantes congelados', ['bolsa', 'bolsas'], '400 g', 400, { eci: 'guisantes congelados' }),
-  pack('surimi', ['surimi', 'palitos de cangrejo', 'palitos de cangrejo (surimi)'], 'palitos de surimi', ['paquete', 'paquetes'], '250 g', 250, { eci: 'palitos de surimi' }),
+  pack('surimi', ['surimi', 'palitos de cangrejo', 'palitos de cangrejo (surimi)'], 'palitos de surimi', ['paquete', 'paquetes'], '250 g', 250, { ug: 16, eci: 'palitos de surimi' }),
   pack('tofu', ['tofu', 'tofu firme', 'tofu sedoso', 'tofu ahumado'], 'tofu', ['paquete', 'paquetes'], '250 g', 250, { eci: 'tofu', aisle: 'lacteos' }),
   pack('avena', ['avena', 'copos de avena'], 'copos de avena', ['paquete', 'paquetes'], '500 g', 500, { eci: 'copos de avena' }),
   pack('quinoa', ['quinoa'], 'quinoa', ['paquete', 'paquetes'], '500 g', 500, { eci: 'quinoa' }),
@@ -372,7 +386,7 @@ const SUPER: BuyRule[] = [
   pack('almendras', ['almendras', 'almendra'], 'almendras', ['bolsa', 'bolsas'], '200 g', 200, { eci: 'almendras' }),
   pack('nueces', ['nueces', 'nuez'], 'nueces peladas', ['bolsa', 'bolsas'], '200 g', 200, { eci: 'nueces peladas' }),
   pack('pinones', ['pinones', 'pinon'], 'piñones', ['bolsa', 'bolsas'], '100 g', 100, { tier: 'especial', eci: 'piñones' }),
-  pack('pasas', ['pasas', 'uvas pasas', 'ciruela pasa', 'ciruelas pasas'], 'pasas', ['bolsa', 'bolsas'], '200 g', 200, { eci: 'pasas' }),
+  pack('pasas', ['pasas', 'uvas pasas', 'ciruela pasa', 'ciruelas pasas'], 'pasas', ['bolsa', 'bolsas'], '200 g', 200, { ug: 8, eci: 'pasas' }),
   pack('sesamo', ['sesamo', 'semillas de sesamo'], 'semillas de sésamo', ['bolsa', 'bolsas'], '100 g', 100, { eci: 'semillas de sesamo' }),
   pack('miel', ['miel'], 'miel', ['bote', 'botes'], '500 g', 500, { eci: 'miel' }),
   pack('mostaza', ['mostaza'], 'mostaza', ['bote', 'botes'], '', 200, { eci: 'mostaza' }),
@@ -393,7 +407,7 @@ const DESPENSA: BuyRule[] = [
   pantry('azucar', ['azucar', 'azucar blanco', 'azucar moreno'], 'azúcar', ['paquete', 'paquetes'], '1 kg', 1000, { eci: 'azucar blanco' }),
   pantry('harina', ['harina', 'harina de trigo'], 'harina de trigo', ['paquete', 'paquetes'], '1 kg', 1000, { eci: 'harina de trigo' }),
   pantry('salsa de soja', ['salsa de soja', 'soja'], 'salsa de soja', ['botella', 'botellas'], '250 ml', 250, { eci: 'salsa de soja' }),
-  pantry('especias', ['oregano', 'comino', 'canela', 'curcuma', 'pimenton', 'pimenton dulce', 'pimenton picante', 'laurel', 'nuez moscada', 'tomillo seco', 'romero seco', 'azafran', 'clavo', 'jengibre molido', 'curry', 'hierbas provenzales'], '{name}', ['bote', 'botes'], '', 40, { eci: '{name}' }),
+  pantry('especias', ['oregano', 'comino', 'canela', 'curcuma', 'pimenton', 'pimenton dulce', 'pimenton picante', 'laurel', 'nuez moscada', 'tomillo seco', 'romero seco', 'azafran', 'clavo', 'jengibre molido', 'curry', 'hierbas provenzales'], '{name}', ['bote', 'botes'], '', 40, { ug: 1, eci: '{name}' }),
   pantry('levadura', ['levadura', 'levadura quimica', 'levadura de panaderia', 'bicarbonato'], 'levadura', ['sobre', 'sobres'], '', 15, { eci: 'levadura' }),
   pantry('agua', ['agua', 'agua del grifo', 'agua caliente', 'agua fria', 'agua tibia', 'agua templada', 'agua hirviendo'], 'agua', ['botella', 'botellas'], '', 1500, { notBought: true }),
   pantry('salsas', ['salsa worcestershire', 'salsa sriracha', 'vino de jerez', 'sirope de arce', 'pasta de tomate', 'tomate concentrado'], '{name}', ['bote', 'botes'], '', 150, { eci: '{name}', shop: 'supermercado', tier: 'normal' }),

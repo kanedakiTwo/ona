@@ -26,6 +26,7 @@ import { INGREDIENT_RANGES, globalCeiling, type QuantityRange } from './recipeLi
 import { shoppabilityIssues } from './recipeShoppability.js'
 import { cookingMediumFactor } from './nutrition/cookingMedium.js'
 import { noteStartsWithNumber } from '@ona/shared'
+import { DIET_CATEGORY_LABEL, nameHasTerm, unlistedDietMentions } from './stepDietMentions.js'
 
 // ─── Public types ────────────────────────────────────────────────
 
@@ -206,6 +207,8 @@ interface IndexedCatalogRow {
   normName: string
   nameTokens: string[]
   nameStems: string[]
+  /** Every word of the name, single letters and stop words included (strict check). */
+  words: string[]
 }
 
 interface CatalogIndex {
@@ -229,6 +232,7 @@ function buildCatalogIndex(catalog: CatalogIngredient[]): CatalogIndex {
       normName,
       nameTokens: tokens,
       nameStems: tokens.map(stem),
+      words: words(normName),
     }
     indexedById.set(row.id, indexed)
     rows.push(indexed)
@@ -237,34 +241,24 @@ function buildCatalogIndex(catalog: CatalogIngredient[]): CatalogIndex {
 }
 
 /**
- * Does the step text mention this catalog ingredient?
+ * Does the step mention this recipe's OWN ingredient? (ORPHAN_INGREDIENT)
  *
- * Order of preference:
- *   1. Full normalized name appears as a substring of the normalized text
- *   2. Single-token name fuzzy-matches some token (or its stem) in the text
- *   3. Two-token name fuzzy-matches some bigram in the text
- */
-/**
- * Two flavours of step→ingredient matching, because the two checks that use
- * this function have opposite intentions:
+ * Deliberately loose — a false "mentioned" only spares an orphan error:
+ *   1. the full name appears at word boundaries;
+ *   2. a single-word name matches a word or its stem (plural, gender) or a
+ *      typo at Levenshtein ≤ 1;
+ *   3. a multi-word name matches on its head noun ("añade el aceite" →
+ *      "aceite de oliva virgen": Spanish puts the head first and recipe
+ *      writers drop the qualifiers) or, for two words, on the bigram.
  *
- *   - `lenient` ("does the recipe's own ingredient get mentioned somewhere?")
- *     accepts a head-noun match for multi-word names. The user wrote
- *     "aceite" in step 2; that's enough to consider "aceite de oliva virgen"
- *     (in the recipe) non-orphan.
- *
- *   - `strict` ("does the step also mention catalog ingredients absent from
- *     the recipe?") refuses head-only matches. Otherwise writing "aceite"
- *     would simultaneously implicate "aceite de girasol", "aceite de coco",
- *     etc. as missing ingredients, even though the user clearly meant their
- *     own aceite.
+ * The opposite check — does the step name an ingredient the recipe doesn't
+ * list? — is {@link mentionsUnlistedIngredient}, which is strict.
  */
 function stepMentionsIngredient(
   textTokens: string[],
   textStems: string[],
   fullNormalizedText: string,
   cat: CatalogIndex['rows'][number],
-  mode: 'lenient' | 'strict' = 'lenient'
 ): boolean {
   if (cat.normName.length === 0) return false
   // Full-name substring at word boundaries (cheap and precise; avoids "sal"
@@ -281,19 +275,12 @@ function stepMentionsIngredient(
     return false
   }
 
-  // Multi-token names ("aceite de oliva virgen", "pan integral", "salsa de
-  // soja"…) in LENIENT mode: also accept a match on the head noun. Spanish
-  // noun phrases put the head first, and recipe writers typically drop the
-  // qualifiers in running prose ("añade el aceite" → "aceite de oliva virgen").
-  // Without this, every multi-word ingredient ended up flagged as ORPHAN.
-  if (mode === 'lenient') {
-    const head = cat.nameTokens[0]
-    const headStem = cat.nameStems[0]
-    if (isContentToken(head)) {
-      for (let i = 0; i < textTokens.length; i++) {
-        if (isFuzzyMatch(textTokens[i], head)) return true
-        if (isFuzzyMatch(textStems[i], headStem)) return true
-      }
+  const head = cat.nameTokens[0]
+  const headStem = cat.nameStems[0]
+  if (isContentToken(head)) {
+    for (let i = 0; i < textTokens.length; i++) {
+      if (isFuzzyMatch(textTokens[i], head)) return true
+      if (isFuzzyMatch(textStems[i], headStem)) return true
     }
   }
 
@@ -302,12 +289,202 @@ function stepMentionsIngredient(
     for (let i = 0; i < textTokens.length - 1; i++) {
       if (isFuzzyMatch(textTokens[i], a) && isFuzzyMatch(textTokens[i + 1], b)) return true
     }
-    return false
   }
-
-  // Names with 3+ tokens: rely on whole-phrase substring (already checked above)
-  // OR the head-token match above in lenient mode.
   return false
+}
+
+// ─── Strict check: ingredients named in a step but not listed (PRO-289) ──
+//
+// The 2026-10-20 batch (cocina-01) was rejected 26 times out of 32, almost
+// always wrongly: stems and typo-tolerance read «pulpa» as «pulpo», «pero» as
+// «pera», «pardinas» as «sardinas», «pechuga» as «lechuga»; «hasta que esté
+// dorada» as the fish; «lo pasas por harina» as raisins; a batter («una pasta
+// espesa») as pasta; «pollo» as missing when the list says «muslos de pollo»;
+// and every «agua» as an ingredient to buy. So this check matches whole words
+// only (singular/plural, never gender, never typos), reads a few homographs in
+// context, and accepts a word of the recipe's own ingredient names.
+
+/** Words of a text, normalized: [a-z0-9] runs, single letters kept («a», «y» matter for context). */
+function words(text: string): string[] {
+  const out = normalize(text).replace(/[^a-z0-9]+/g, ' ').trim()
+  return out ? out.split(' ') : []
+}
+
+/**
+ * Same word up to Spanish number only: «pollo»/«pollos», «limón»/«limones»,
+ * «pasa»/«pasas». Never across gender («pulpo» ≠ «pulpa», «pera» ≠ «pero»,
+ * «dorada» ≠ «dorado») and never typos («sardinas» ≠ «pardinas»).
+ */
+export function sameWord(a: string, b: string): boolean {
+  if (a === b) return true
+  const [short, long] = a.length < b.length ? [a, b] : [b, a]
+  return long === short + 's' || long === short + 'es'
+}
+
+/** Is `word`, up to number, in `set`? */
+function hasSameWord(set: ReadonlySet<string>, word: string): boolean {
+  if (set.has(word) || set.has(word + 's') || set.has(word + 'es')) return true
+  if (word.endsWith('es') && set.has(word.slice(0, -2))) return true
+  return word.endsWith('s') && set.has(word.slice(0, -1))
+}
+
+/** Water and salt are never bought, so a step may use them unlisted. */
+const FREE_STAPLE_HEADS = new Set(['agua', 'sal'])
+const FREE_STAPLE_QUALIFIERS = new Set([
+  'de', 'del', 'la', 'en', 'fina', 'fino', 'gruesa', 'grueso', 'marina', 'escamas', 'mesa', 'grifo', 'mineral',
+  'caliente', 'fria', 'templada', 'tibia', 'hirviendo', 'yodada', 'maldon', 'kosher',
+])
+function isFreeStaple(nameWords: string[]): boolean {
+  return FREE_STAPLE_HEADS.has(nameWords[0]) && nameWords.slice(1).every(w => FREE_STAPLE_QUALIFIERS.has(w))
+}
+
+/** Collective words a step uses for things already listed («saltea las verduras»). */
+const COLLECTIVE_NAMES = new Set([
+  'verdura', 'verduras', 'hortaliza', 'hortalizas', 'fruta', 'frutas', 'especia', 'especias', 'hierbas',
+  'hierbas aromaticas', 'legumbre', 'legumbres', 'marisco', 'mariscos',
+])
+
+/** A generic name is covered by any listed member: «cuece la pasta» with «espaguetis» listed. */
+const FAMILY_MEMBERS: Record<string, string[]> = {
+  pasta: [
+    'espagueti', 'espaguetis', 'spaghetti', 'macarron', 'macarrones', 'tallarin', 'tallarines', 'fideo', 'fideos',
+    'lasana', 'canelon', 'canelones', 'penne', 'fusilli', 'tagliatelle', 'linguine', 'fettuccine', 'rigatoni',
+    'farfalle', 'raviolis', 'ravioli', 'tortellini', 'noquis', 'gnocchi', 'plumas', 'helices', 'coditos', 'orzo',
+  ],
+  pescado: [
+    'merluza', 'bacalao', 'salmon', 'dorada', 'lubina', 'caballa', 'sardina', 'boqueron', 'atun', 'bonito',
+    'rape', 'rodaballo', 'lenguado', 'corvina', 'besugo', 'pescadilla', 'trucha', 'emperador', 'mero', 'gallo',
+    'abadejo', 'panga', 'palometa', 'perca', 'jurel',
+  ],
+}
+FAMILY_MEMBERS['pescado blanco'] = FAMILY_MEMBERS.pescado
+FAMILY_MEMBERS.cebolla = ['cebolleta', 'chalota'] // «la cebolla» with «cebolleta» listed
+
+/**
+ * «zumo de limón», «dientes de ajo», «la salsa de tomate» (made in a step
+ * before): a part of something listed, or made from it, is listed.
+ */
+const PART_WORDS = new Set([
+  'zumo', 'jugo', 'ralladura', 'piel', 'cascara', 'diente', 'dientes', 'hoja', 'hojas', 'rama', 'ramas',
+  'ramita', 'ramitas', 'gajo', 'gajos', 'pulpa', 'carne', 'yema', 'yemas', 'clara', 'claras', 'corazon', 'corazones',
+  'salsa',
+])
+
+/**
+ * Words before a noun (article, number, «de», «con»): «la dorada», «dos
+ * doradas», «lomos de dorada». No «este/esta»: without accents they are
+ * «esté/está» («hasta que esté dorada»).
+ */
+const NOUN_CUES = new Set([
+  'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas', 'cada', 'ese', 'esa', 'esos', 'esas', 'su', 'sus', 'de',
+  'del', 'con', 'al', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'ocho', 'media', 'medio',
+])
+/** Adjective or participle shape: «dorada(s)», «picado», «rallada», «cocido». */
+const PARTICIPLE_RE = /(ad|id)(o|a|os|as)$/
+/** After the verb «pasar»: «lo pasas por harina», «pasa a una fuente». */
+const AFTER_PASAR = new Set([
+  'por', 'a', 'al', 'el', 'la', 'los', 'las', 'lo', 'un', 'una', 'unos', 'unas', 'todo', 'toda', 'todos', 'todas',
+  'bien', 'enseguida', 'luego', 'despues',
+])
+/** «una pasta espesa», «la pasta resultante»: a paste or a batter, not noodles. */
+const PASTE_WORDS = new Set([
+  'homogenea', 'fina', 'espesa', 'lisa', 'suave', 'densa', 'untable', 'cremosa', 'compacta', 'resultante',
+  'uniforme', 'gruesa', 'ligera', 'pegajosa', 'blanda', 'ligada',
+])
+/** «pasta de trigo / de lentejas» is still pasta; «pasta de la masa / de sésamo» is a paste. */
+const PASTA_OF = new Set(['trigo', 'semola', 'espelta', 'lentejas', 'lenteja', 'garbanzos', 'garbanzo', 'arroz', 'maiz', 'guisantes', 'huevo'])
+/** Cooking noodles: «cuece la pasta», «escúrrela», «al dente». («cocina» is not a cue: batters are cooked too.) */
+const NOODLE_COOKING_RE = /^(cuec|cuez|cocer|hierv|herv|escurr)/
+const UTENSILS = new Set(['sarten', 'cazo', 'cazuela', 'olla', 'cuchillo', 'cuchara', 'paleta', 'espatula', 'rallador'])
+/** «las tazas de café», «una cucharilla de café»: a cup or a spoon, not coffee. */
+const COFFEE_CUPS = new Set(['taza', 'tazas', 'tacita', 'tacitas', 'cucharilla', 'cucharillas', 'cucharita', 'cucharitas'])
+
+/**
+ * The step word at `i` matched a single-word catalog name: is it that
+ * ingredient here, or a homograph? Participles/adjectives («hasta que esté
+ * dorada», «la carne picada») count only after an article, a number or «de»;
+ * «pasas» only as a noun, not the verb; «pasta» only when the step cooks
+ * noodles and it isn't a paste or a batter; «mango» not as a pan's handle;
+ * «café» not in «las tazas de café».
+ */
+function readsAsIngredient(name: string, w: string[], i: number): boolean {
+  const word = w[i]
+  const prev = w[i - 1] ?? ''
+  const next = w[i + 1] ?? ''
+  if (sameWord(name, 'pasas')) {
+    if (word !== 'pasas') return false // «pasa a una fuente»
+    if (!NOUN_CUES.has(prev) && prev !== 'y' && prev !== 'e') return false // «lo pasas»
+    return !AFTER_PASAR.has(next) // «las pasas por harina»
+  }
+  if (sameWord(name, 'pasta')) {
+    if (prev === 'una' || prev === 'unas' || PASTE_WORDS.has(next)) return false
+    if (next === 'de' && !PASTA_OF.has(w[i + 2] ?? '')) return false
+    return w.some(x => NOODLE_COOKING_RE.test(x) || x === 'dente')
+  }
+  if (sameWord(name, 'cafe') && prev === 'de' && COFFEE_CUPS.has(w[i - 2] ?? '')) return false // «las tazas de café»
+  if (sameWord(name, 'mango')) {
+    if (next === 'de' && (UTENSILS.has(w[i + 2] ?? '') || UTENSILS.has(w[i + 3] ?? ''))) return false
+    if (prev === 'el' && w[i - 2] === 'por') return false // «sujétala por el mango»
+  }
+  if (PARTICIPLE_RE.test(word)) return NOUN_CUES.has(prev) || /^\d+$/.test(prev)
+  return true
+}
+
+/**
+ * «magret de pato» with «magret» listed, «vinagre de vino blanco» with
+ * «vinagre de vino»: the words after «de» qualify one of the recipe's own
+ * ingredients (its line matched a broader catalogue row), so they don't name
+ * another one. «lomos de dorada» with no lomo listed still counts.
+ */
+function qualifiesListedIngredient(w: string[], i: number, lex: RecipeLexicon): boolean {
+  const prep = w[i - 1]
+  return i >= 2 && (prep === 'de' || prep === 'del') && hasSameWord(lex.heads, w[i - 2])
+}
+
+/** Does the step (its words) name this catalog ingredient, read strictly? */
+function mentionsUnlistedIngredient(w: string[], cat: IndexedCatalogRow, lex: RecipeLexicon): boolean {
+  const n = cat.words
+  if (n.length === 0 || isFreeStaple(n) || COLLECTIVE_NAMES.has(cat.normName)) return false
+  outer: for (let i = 0; i + n.length <= w.length; i++) {
+    for (let k = 0; k < n.length; k++) {
+      if (!sameWord(w[i + k], n[k])) continue outer
+    }
+    if (qualifiesListedIngredient(w, i, lex)) continue
+    if (n.length > 1 || readsAsIngredient(n[0], w, i)) return true
+  }
+  return false
+}
+
+/** The recipe's own ingredient names, as words. */
+interface RecipeLexicon {
+  /** Head nouns («aceite» of «aceite de oliva virgen»). */
+  heads: Set<string>
+  /** Every significant word («muslos», «pollo» of «muslos de pollo»). */
+  words: Set<string>
+}
+
+/**
+ * A catalog ingredient the step names but the recipe doesn't list is still
+ * fine when the recipe's own names account for it:
+ *   - same head noun (2026-05-16): «aceite de girasol» when «aceite de oliva»
+ *     is listed — the writer meant their own aceite;
+ *   - every significant word of it is in the recipe's names: «pollo» with
+ *     «muslos de pollo», «cerdo» with «lomo de cerdo», «pollo» with «caldo de
+ *     pollo» (PRO-289);
+ *   - a part of something listed, or made from it: «zumo de limón»,
+ *     «dientes de ajo», «salsa de tomate»;
+ *   - a generic name covered by a listed member: «pasta» with «espaguetis».
+ */
+function explainedByRecipe(cat: IndexedCatalogRow, lex: RecipeLexicon): boolean {
+  const content = cat.words.filter(isContentToken)
+  if (content.length === 0) return false
+  if (hasSameWord(lex.heads, cat.words[0])) return true
+  if (content.every(x => hasSameWord(lex.words, x))) return true
+  if (PART_WORDS.has(cat.words[0]) && content.length > 1 && content.slice(1).every(x => hasSameWord(lex.words, x))) {
+    return true
+  }
+  const members = FAMILY_MEMBERS[cat.normName]
+  return !!members && members.some(m => hasSameWord(lex.words, m))
 }
 
 /** Spanish stop words / articles / prepositions that can't be a head noun. */
@@ -397,30 +574,24 @@ export function lintRecipe(recipe: RecipeInput, opts: LintOptions): LintResult {
     const fullNorm = normalize(step.text ?? '')
     const tokens = tokenize(fullNorm)
     const stems = tokens.map(stem)
-    return { step, fullNorm, tokens, stems }
+    return { step, fullNorm, tokens, stems, words: words(fullNorm) }
   })
 
   // Set of catalog ingredient ids attached to this recipe.
   const recipeIngredientIds = new Set(ingredients.map(i => i.ingredientId))
 
-  // Set of head nouns covered by the recipe's own ingredients. We use this
-  // to suppress STEP_INGREDIENT_NOT_LISTED for catalog siblings: if the
-  // recipe already has SOME ingredient whose head is "aceite", then a step
-  // mention of "aceite de girasol" (or any other "aceite *" not in the
-  // recipe) was clearly meant to refer to the user's own aceite. Flagging
-  // every other catalog sibling would be noise.
-  //
-  // This is the formal version of the user's rule on 2026-05-16:
-  //   "if recipe has aceite and step mentions aceite de oliva → no error;
-  //    if recipe has aceite de oliva and step mentions aceite → no error."
-  // Both reduce to: the recipe's head-noun set covers the catalog row's
-  // head, so the user's intent is unambiguous.
-  const recipeHeads = new Set<string>()
+  // The recipe's own names, as words, to tell when a catalog ingredient the
+  // step names is really one of the recipe's (see explainedByRecipe). Heads
+  // are the user's rule of 2026-05-16: "if recipe has aceite and step
+  // mentions aceite de oliva → no error; if recipe has aceite de oliva and
+  // step mentions aceite → no error".
+  const lexicon: RecipeLexicon = { heads: new Set(), words: new Set() }
   for (const ing of ingredients) {
     const indexed = catalog.indexedById.get(ing.ingredientId)
     if (!indexed) continue
     const head = indexed.nameTokens[0]
-    if (head && isContentToken(head)) recipeHeads.add(head)
+    if (head && isContentToken(head)) lexicon.heads.add(head)
+    for (const w of indexed.words) if (isContentToken(w)) lexicon.words.add(w)
   }
 
   // Map recipe-ingredient row id → its catalog ingredient id (for ingredientRefs lookup).
@@ -430,9 +601,11 @@ export function lintRecipe(recipe: RecipeInput, opts: LintOptions): LintResult {
   }
 
   // 5. STEP_INGREDIENT_NOT_LISTED
-  // For each step, detect catalog ingredients mentioned in the text. If any
-  // mentioned ingredient is not in this recipe (by ingredientId) AND not in
-  // step.ingredientRefs (resolved through the row id → catalog id map), error.
+  // For each step, detect catalog ingredients named in the text (whole words,
+  // homographs read in context — never a head-only match, or "aceite" would
+  // pull in every "aceite de X"). Error when one is not in this recipe (by
+  // ingredientId), not in step.ingredientRefs (row id → catalog id) and not
+  // accounted for by the recipe's own names.
   steps.forEach((step, i) => {
     const data = stepData[i]
     if (!data) return
@@ -442,17 +615,10 @@ export function lintRecipe(recipe: RecipeInput, opts: LintOptions): LintResult {
       if (catId) refsCatalogIds.add(catId)
     }
     for (const cat of catalog.rows) {
-      // STRICT mode: don't fire on head-only matches. "aceite" in the step
-      // would otherwise pull in every "aceite de X" sibling that the recipe
-      // happens not to list, even when the user clearly meant their own.
-      if (!stepMentionsIngredient(data.tokens, data.stems, data.fullNorm, cat, 'strict')) continue
       if (recipeIngredientIds.has(cat.row.id)) continue
       if (refsCatalogIds.has(cat.row.id)) continue
-      // Suppress siblings: the recipe already covers this head, so the
-      // user's intent for any mention of this head is one of their own
-      // ingredients, not this catalog row.
-      const catHead = cat.nameTokens[0]
-      if (catHead && recipeHeads.has(catHead)) continue
+      if (!mentionsUnlistedIngredient(data.words, cat, lexicon)) continue
+      if (explainedByRecipe(cat, lexicon)) continue
       errors.push({
         code: 'STEP_INGREDIENT_NOT_LISTED',
         message: `El paso ${i + 1} menciona "${cat.row.name}" pero no aparece en los ingredientes ni está vinculado.`,
@@ -460,6 +626,29 @@ export function lintRecipe(recipe: RecipeInput, opts: LintOptions): LintResult {
       })
     }
   })
+
+  // 5b. STEP_DIET_INGREDIENT_NOT_LISTED (PRO-268) — meat, fish, shellfish or
+  // an allergen a step names and the ingredients don't account for, read
+  // from a word list of its own (stepDietMentions.ts), so it works whatever
+  // the catalogue has («huesos», a chorizo in a fresh catalogue). A name the
+  // catalogue check above already flagged in that step isn't repeated.
+  {
+    const listedNames = ingredients
+      .map(ing => catalog.byId.get(ing.ingredientId)?.name)
+      .filter((n): n is string => !!n)
+    for (const m of unlistedDietMentions(steps.map(s => s.text ?? ''), listedNames)) {
+      const path = `steps[${m.step}].text`
+      const already = errors.some(e =>
+        e.code === 'STEP_INGREDIENT_NOT_LISTED' && e.path === path &&
+        nameHasTerm(/menciona "([^"]+)"/.exec(e.message)?.[1] ?? '', m.term))
+      if (already) continue
+      errors.push({
+        code: 'STEP_DIET_INGREDIENT_NOT_LISTED',
+        message: `El paso ${m.step + 1} menciona "${m.term}" (${DIET_CATEGORY_LABEL[m.category]}) pero no está en los ingredientes: añádelo o quítalo del paso, que cambia la dieta y los alérgenos.`,
+        path,
+      })
+    }
+  }
 
   // 6. ORPHAN_INGREDIENT
   // For each non-optional ingredient: must be mentioned by name in some step

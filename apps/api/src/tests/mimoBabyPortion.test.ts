@@ -41,7 +41,8 @@ describe('battery: merluza al horno with a baby at home', () => {
 
   it('the reply Mimo gave fails: it sets Leo\'s portion aside after salting', () => {
     expect(babyPortionOrder(c.badReply)).toEqual({ setAside: 4, firstSeasoning: 2 })
-    expect(mimoReplyProblems(c.badReply, c)).toEqual(['aparta-tarde'])
+    // Leo is 10 months: the closing «su pediatra» (PRO-104) is due too.
+    expect(mimoReplyProblems(c.badReply, c)).toEqual(['aparta-tarde', 'sin-pediatra-final'])
   })
 
   it('a reply that sets it aside in the step before the salt passes', () => {
@@ -49,16 +50,17 @@ describe('battery: merluza al horno with a baby at home', () => {
       'Unos 40-45 minutos.',
       '1. Precalienta el horno a 200 °C. Pela las patatas y córtalas en rodajas finas.',
       '2. Ponlas en una fuente con un chorro de aceite y hornéalas 20 minutos.',
-      '3. Aparta la ración de Leo: un trozo de lomo y unas patatas, en otra fuente pequeña.',
-      '4. Al resto échale sal y pimienta, pon encima los lomos y hornea 12-15 minutos.',
+      '3. Aparta la ración de Leo: un trozo de lomo y unas patatas, en otra fuente pequeña que va al horno a la vez.',
+      '4. Al resto échale sal y pimienta, pon encima los lomos y hornea 12-15 minutos, hasta que la merluza esté bien hecha.',
+      'Para dudas de su alimentación, su pediatra.',
     ].join('\n')
     expect(mimoReplyProblems(good, c)).toEqual([])
   })
 
   it('flags a reply that never sets it aside, or that gives health reasons', () => {
-    expect(mimoReplyProblems('1. Patatas con sal y aceite al horno.\n2. Merluza encima 12 minutos.', c)).toEqual(['sin-apartar'])
+    expect(mimoReplyProblems('1. Patatas con sal y aceite al horno.\n2. Merluza encima 12 minutos.', c)).toContain('sin-apartar')
     expect(
       mimoReplyProblems('1. Aparta la ración de Leo, que la sal no es buena para sus riñones.\n2. Al resto, sal y pimienta.', c),
-    ).toEqual(['razones-salud'])
+    ).toContain('razones-salud')
   })
 })

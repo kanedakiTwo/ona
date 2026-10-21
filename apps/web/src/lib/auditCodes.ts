@@ -21,6 +21,11 @@ export const ACTION_LABELS: Record<string, string> = {
   'invite_campaign.create': 'Enlace de invitación creado',
   'invite_campaign.delete': 'Enlace de invitación eliminado',
   'newsletter.send': 'Newsletter enviada',
+  'catalog_draft.publish': 'Receta del catálogo publicada',
+  'catalog_draft.discard': 'Borrador del catálogo descartado',
+  'catalog_draft.restore': 'Borrador del catálogo recuperado',
+  'catalog_batch.publish': 'Tanda del catálogo publicada',
+  'catalog_import.start': 'Importación de una tanda lanzada',
 }
 
 export function actionLabel(code: string): string {

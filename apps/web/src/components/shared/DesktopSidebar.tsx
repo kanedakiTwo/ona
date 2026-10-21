@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation"
 import { useAuth } from "@/lib/auth"
 import { haptic } from "@/lib/pwa/haptics"
 import { TransitionLink } from "@/components/pwa/TransitionLink"
-import { CalendarDays, ShoppingCart, BookOpen, User, Database, Users, Ticket, ScrollText, Mic, MailPlus, MessageSquareHeart } from "lucide-react"
+import { CalendarDays, ShoppingCart, BookOpen, User, Database, Users, Ticket, ScrollText, Mic, MailPlus, MessageSquareHeart, ClipboardCheck, LogOut } from "lucide-react"
 import { ADMIN_MENU, adminAreaFromPath, type AdminArea } from "@/lib/adminNav"
 import { MimoiaLogo } from "@/components/brand/Mimoia"
 
@@ -17,6 +17,7 @@ const NAV_ITEMS = [
 
 const ADMIN_ICONS: Record<AdminArea, typeof User> = {
   catalogo: Database,
+  recetas: ClipboardCheck,
   usuarios: Users,
   invitaciones: Ticket,
   "lista-espera": MailPlus,
@@ -31,7 +32,7 @@ const itemClass = (isActive: boolean) =>
   }`
 
 export default function DesktopSidebar() {
-  const { user } = useAuth()
+  const { user, logout } = useAuth()
   const pathname = usePathname()
 
   if (!user) return null
@@ -40,7 +41,7 @@ export default function DesktopSidebar() {
 
   return (
     <aside
-      className="fixed inset-y-0 left-0 z-40 hidden w-[var(--sidebar-width)] flex-col border-r border-[#DDD6C5] bg-[#FFFEFA]/95 px-3 py-6 backdrop-blur-md md:flex"
+      className="fixed inset-y-0 left-0 z-40 hidden w-[var(--sidebar-width)] flex-col overflow-y-auto border-r border-[#DDD6C5] bg-[#FFFEFA]/95 px-3 py-6 backdrop-blur-md md:flex"
       aria-label="Navegación principal"
     >
       <div className="mb-8 px-3">
@@ -88,6 +89,13 @@ export default function DesktopSidebar() {
           })}
         </nav>
       )}
+      {/* «Salir» at hand, bottom left (Miguel 2026-10-21: no hidden in Perfil). Perfil keeps its own for mobile. */}
+      <div className="mt-auto border-t border-[#DDD6C5] pt-4">
+        <button type="button" onClick={logout} className={`${itemClass(false)} w-full`} data-testid="sidebar-logout">
+          <LogOut size={16} strokeWidth={1.6} aria-hidden="true" />
+          <span>Salir</span>
+        </button>
+      </div>
     </aside>
   )
 }

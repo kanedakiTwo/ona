@@ -383,7 +383,7 @@ function NewRecipePageInner() {
 
   return (
     <div className="min-h-screen bg-cream">
-      <div className="mx-auto max-w-[1180px] px-4 pb-10 pt-4 sm:px-5 lg:px-8 lg:pt-8">
+      <div className="mx-auto max-w-[var(--page-max)] px-4 pb-10 pt-4 sm:px-5 lg:px-8 lg:pt-8">
         <FormHeader
           backHref="/recipes"
           backLabel="Volver al catalogo"

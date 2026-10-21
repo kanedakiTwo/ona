@@ -12,7 +12,7 @@ import { MimoiaLogo } from "@/components/brand/Mimoia"
 export default function OfflinePage() {
   return (
     <div className="flex min-h-screen flex-col bg-cream pb-10">
-      <header className="mx-auto flex w-full max-w-[1180px] items-center px-5 pt-4 lg:px-8 lg:pt-8">
+      <header className="mx-auto flex w-full max-w-[var(--page-max)] items-center px-5 pt-4 lg:px-8 lg:pt-8">
         <MimoiaLogo size={20} />
       </header>
 

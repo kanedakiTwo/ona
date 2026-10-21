@@ -33,6 +33,8 @@ export function useUpdateMemory() {
     mutationFn: (body) => api.patch("/memory", body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["memory"] })
+      // PRO-316: every memory write lands in the household's ficha too («Tu ficha»).
+      queryClient.invalidateQueries({ queryKey: ["ficha"] })
     },
   })
 }
@@ -44,6 +46,8 @@ export function useDeleteMemoryFact() {
     mutationFn: (params) => api.delete(`/memory/${params.key}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["memory"] })
+      // PRO-316: every memory write lands in the household's ficha too («Tu ficha»).
+      queryClient.invalidateQueries({ queryKey: ["ficha"] })
     },
   })
 }

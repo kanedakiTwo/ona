@@ -92,7 +92,7 @@ export default function CookbookDetailPage() {
 
   return (
     <div className="min-h-screen bg-cream">
-      <div className="mx-auto w-full max-w-[1180px] pb-24 lg:px-12 lg:pt-8 lg:pb-10">
+      <div className="mx-auto w-full max-w-[var(--page-max)] pb-24 lg:px-12 lg:pt-8 lg:pb-10">
         <header className="px-5 pt-3 pb-5 lg:px-0 lg:pb-8">
           <Link
             href="/profile/cookbooks"

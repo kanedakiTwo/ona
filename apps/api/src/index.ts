@@ -49,7 +49,10 @@ import tasteRoutes from './routes/taste.js'
 import noticesRoutes from './routes/notices.js'
 import { startAfinaNotice } from './services/afinaNotice.js'
 import catalogWishesRoutes from './routes/catalogWishes.js'
+import catalogReviewRoutes from './routes/catalogReview.js'
+import { interruptStaleCatalogImports } from './services/catalogImportJobs.js'
 import householdHabitsRoutes from './routes/householdHabits.js'
+import householdProfileRoutes from './routes/householdProfile.js'
 import schoolMenuRoutes from './routes/schoolMenu.js'
 import blindComparisonRoutes from './routes/blindComparison.js'
 import { trackShoppingActivity } from './services/activityEvents.js'
@@ -87,6 +90,10 @@ app.use(billingWebhookRouter)
 // POST /client-errors reads its own body with a hard 8 KB cap (any content
 // type — the browser beacon sends text/plain), so it goes before express.json().
 app.use(clientErrorsRouter)
+// Admin «Recetas pendientes» (specs/catalog-import.md): a batch file can pass
+// the global 100 KB body limit, so its import routes read their own body (2 MB)
+// after the admin check. Per-route auth, no catch-all.
+app.use(catalogReviewRoutes)
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 // Logs shopping-list item mutations (2xx) for the business metrics'
@@ -151,6 +158,8 @@ app.use(noticesRoutes)
 app.use(catalogWishesRoutes)
 // How the household cooks (PRO-217): per-route auth.
 app.use(householdHabitsRoutes)
+// «Tu ficha» (PRO-317): per-route auth.
+app.use(householdProfileRoutes)
 // Menú del cole (PRO-224): per-route auth.
 app.use(schoolMenuRoutes)
 // Menú inteligente: comparación a ciegas en los hogares de prueba (PRO-256).
@@ -209,6 +218,8 @@ app.listen(env.PORT, () => {
   startScheduler()
   // PRO-205: the one-off «Afina tu menú» notice (once per database and household).
   startAfinaNotice()
+  // A catalogue import left «running» died with the previous process (a deploy).
+  void interruptStaleCatalogImports()
 })
 
 export default app

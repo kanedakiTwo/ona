@@ -45,6 +45,7 @@ export const SIGNAL_SOURCES = [
   'pantry',
   'recipe',
   'feedback',
+  'ficha',
 ] as const
 export type SignalSource = (typeof SIGNAL_SOURCES)[number]
 
@@ -81,6 +82,7 @@ const SOURCE_LABEL: Record<SignalSource, string> = {
   pantry: 'Despensa',
   recipe: 'Recetas',
   feedback: 'Opinión',
+  ficha: 'Tu ficha',
 }
 
 const DAY_NAMES = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
@@ -603,6 +605,30 @@ export async function collectHouseholdDaySignals(householdId: string, day: strin
      WHERE user_id ${inMembers} AND created_at >= ${from} AND created_at < ${to}
   `))) {
     push(feedbackSignal({ at: toDate(r.created_at), who: labelOf(r.user_id), channel: r.channel, text: r.text }))
+  }
+
+  // «Tu ficha» (PRO-317): answers to the pending question and what people corrected or forgot.
+  for (const r of rowsOf(await db.execute(sql`
+    SELECT answered_by_user_id, question, answer, resolved_at FROM profile_questions
+     WHERE household_id = ${hh} AND status = 'answered' AND resolved_at >= ${from} AND resolved_at < ${to}
+  `))) {
+    signals.push({ at: toDate(r.resolved_at), source: 'ficha', who: labelOf(r.answered_by_user_id), text: `Contestó «${r.answer === 'yes' ? 'Sí' : 'No'}» a ${quote(String(r.question ?? ''), 280)}` })
+  }
+  for (const r of rowsOf(await db.execute(sql`
+    SELECT actor_user_id, action, reason, created_at FROM profile_changes
+     WHERE household_id = ${hh} AND origin = 'user' AND action IN ('fact_updated', 'fact_retired', 'person_added', 'person_updated', 'person_removed')
+       AND reason LIKE 'Lo %' AND created_at >= ${from} AND created_at < ${to}
+  `))) {
+    signals.push({ at: toDate(r.created_at), source: 'ficha', who: labelOf(r.actor_user_id), text: clip(String(r.reason ?? ''), MESSAGE_MAX_CHARS) })
+  }
+
+  // «Aprender de lo que hago» paused (PRO-317): that person's signals stay out.
+  const pausedRows = rowsOf(await db.execute(sql`SELECT id FROM users WHERE id ${inMembers} AND profile_learning_paused_at IS NOT NULL`))
+  const pausedLabels = new Set(pausedRows.map((r) => labelOf(r.id)).filter(Boolean) as string[])
+  if (pausedLabels.size) {
+    const kept = signals.filter((s) => !s.who || !pausedLabels.has(s.who))
+    signals.length = 0
+    signals.push(...kept)
   }
 
   signals.sort((a, b) => a.at.getTime() - b.at.getTime())

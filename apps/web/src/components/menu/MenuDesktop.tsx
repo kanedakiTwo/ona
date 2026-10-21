@@ -172,7 +172,7 @@ export function MenuDesktop(p: Props) {
     })
 
   return (
-    <div ref={rootRef} className="mx-auto flex max-w-[1180px] scroll-mt-4 flex-col gap-7 px-12 pt-8 pb-10">
+    <div ref={rootRef} className="mx-auto flex max-w-[var(--page-max)] scroll-mt-4 flex-col gap-7 px-12 pt-8 pb-10">
       {p.header}
 
       <DndContext

@@ -46,7 +46,7 @@ export default function WhatsAppConnectPage() {
 
   return (
     <div className="min-h-screen bg-cream pb-10">
-      <header className="mx-auto flex max-w-[1180px] items-center px-5 pt-4 lg:px-8 lg:pt-8">
+      <header className="mx-auto flex max-w-[var(--page-max)] items-center px-5 pt-4 lg:px-8 lg:pt-8">
         <MimoiaLogo size={20} />
       </header>
       {authLoading ? (
@@ -76,7 +76,7 @@ function Layout({
   return (
     <div
       className={`grid gap-6 pt-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,480px)] lg:items-center lg:gap-16 lg:pt-20 ${
-        publicGrid ? "public-container" : "mx-auto max-w-[1180px] px-5 lg:px-8"
+        publicGrid ? "public-container" : "mx-auto max-w-[var(--page-max)] px-5 lg:px-8"
       }`}
     >
       <div className="flex flex-col gap-2">
@@ -93,7 +93,7 @@ function Layout({
 
 function Loading({ text }: { text: string }) {
   return (
-    <div className="mx-auto max-w-[1180px] px-5 pt-10 lg:px-8" role="status">
+    <div className="mx-auto max-w-[var(--page-max)] px-5 pt-10 lg:px-8" role="status">
       <p className={BODY}>{text}</p>
     </div>
   )

@@ -38,6 +38,8 @@ ROUTES=(
   /profile/casa
   /profile/casa/alergias
   /profile/memoria
+  /profile/ficha
+  /profile/ficha/historial
   /afinar
   /whatsapp/conectar
   /advisor

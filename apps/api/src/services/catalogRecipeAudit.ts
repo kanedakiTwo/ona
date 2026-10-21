@@ -22,8 +22,8 @@
  * The 80 g protein minimum doesn't apply either to a starter or to a dish
  * whose base is rice or legumes (garbanzos with eggs, arroz al horno): there
  * the meat, fish or egg goes with the dish (Miguel, 2026-10-21). The 300 g
- * maximum still does. A user who asked for it (`users.strict_protein_minimum`,
- * today only Miguel) keeps the minimum everywhere in their own menus.
+ * maximum still does. A household where someone asked for it (ficha fact
+ * `protein_minimum`, today only Miguel) keeps the minimum everywhere.
  * Quantity checks only run when every counted ingredient converts to grams
  * (g, ml, or units with a known weight); an unknown weight never flags.
  *
@@ -65,7 +65,7 @@ export interface AuditableRecipe {
 const SWEET_MEALS = new Set(['breakfast', 'snack'])
 
 export interface AuditOptions {
-  /** Keep the 80 g protein minimum for starters and rice/legume dishes too (`users.strict_protein_minimum`). */
+  /** Keep the 80 g protein minimum for starters and rice/legume dishes too (ficha fact `protein_minimum`). */
   strictProteinMinimum?: boolean
 }
 
@@ -227,7 +227,7 @@ export function auditCatalogRecipe(recipe: AuditableRecipe, opts: AuditOptions =
 /**
  * What the menu matcher sees (`RecipeWithIngredients.catalogAuditIssues`):
  * the audit's issues for a system recipe, nothing for a user's own recipe.
- * `opts` carries the menu owner's `strict_protein_minimum`.
+ * `opts` carries the household ficha's `protein_minimum`.
  */
 export function catalogAuditIssuesFor(
   authorId: string | null | undefined,

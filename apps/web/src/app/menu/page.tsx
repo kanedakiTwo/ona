@@ -713,7 +713,7 @@ export default function MenuPage() {
             footer={extras}
           />
         ) : (
-          <div className="mx-auto flex max-w-[1180px] flex-col gap-4 px-12 pt-8 pb-10">
+          <div className="mx-auto flex max-w-[var(--page-max)] flex-col gap-4 px-12 pt-8 pb-10">
             {header}
             <AccountAccessNotice />
             <NoHealthDataNotice />

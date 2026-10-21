@@ -25,7 +25,7 @@ function IconDot({ icon: Icon }: { icon: Icon }) {
   )
 }
 
-/** Whole-card link to a profile sub-page (Casa, Memoria, Despensa…). */
+/** Whole-card link to a profile sub-page (Casa, Creencias, Despensa…). */
 export function ProfileHubLink({
   href,
   icon,
@@ -68,8 +68,11 @@ export function ProfileCard({
   moreLabel,
   children,
   className = "",
+  id,
   ...rest
 }: {
+  /** Anchor (e.g. `datos-fisicos`, linked from «Tu ficha»). */
+  id?: string
   icon: Icon
   title: ReactNode
   status?: ReactNode
@@ -80,7 +83,7 @@ export function ProfileCard({
   "data-testid"?: string
 }) {
   return (
-    <section className={`${CARD} p-4 lg:p-5 ${className}`} data-testid={rest["data-testid"]}>
+    <section id={id} className={`${CARD} scroll-mt-4 p-4 lg:p-5 ${className}`} data-testid={rest["data-testid"]}>
       <div className="flex items-center gap-3">
         <IconDot icon={icon} />
         <div className="min-w-0 flex-1">

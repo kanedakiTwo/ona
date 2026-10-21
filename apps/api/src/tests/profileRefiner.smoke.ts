@@ -63,13 +63,15 @@ describe.skipIf(!reachable)('refinador nocturno de la ficha (PRO-152)', () => {
       async create(requests) { sent.push(...requests); return { id: 'msgbatch_smoke' } },
       async status() { return 'ended' },
       async results() {
+        // The user's equipment fact by its reference in the prompt (the sign-up's own facts come first since PRO-316).
+        const equipmentRef = /(F\d+) · hogar · equipment/.exec(sent[0].params.messages[0].content)?.[1] ?? 'F1'
         const answer = JSON.stringify({
           facts: [
             { op: 'add', fact: '', subject: 'hogar', type: 'temporary_situation', valueJson: JSON.stringify({ description: 'Sin horno' }), confidence: 0.9,
               evidence: [{ signal: 'chat', date: day, summary: 'Dijo en el chat que están sin horno' }], validUntil: '', reason: 'Lo dijo en el chat', question: '' },
             { op: 'add', fact: '', subject: 'P1', type: 'notes', valueJson: JSON.stringify(['Es diabético']), confidence: 0.6,
               evidence: [{ signal: 'chat', date: day, summary: 'Deducido' }], validUntil: '', reason: 'Deducido', question: '' },
-            { op: 'update', fact: 'F1', subject: 'hogar', type: 'equipment', valueJson: JSON.stringify(['microondas']), confidence: 0.8,
+            { op: 'update', fact: equipmentRef, subject: 'hogar', type: 'equipment', valueJson: JSON.stringify(['microondas']), confidence: 0.8,
               evidence: [{ signal: 'chat', date: day, summary: 'Sin horno' }], validUntil: '', reason: 'Sin horno', question: '¿Seguís sin horno?' },
           ],
           portrait: 'Cocináis rápido entre semana y ahora os apañáis sin horno.',
@@ -94,7 +96,8 @@ describe.skipIf(!reachable)('refinador nocturno de la ficha (PRO-152)', () => {
     expect(sent).toHaveLength(1)
     expect(sent[0].custom_id).toBe(householdId)
     expect(sent[0].params.messages[0].content).toContain('«Esta semana estamos sin horno, se nos ha roto»')
-    expect(sent[0].params.messages[0].content).toMatch(/F1 · hogar · equipment · \["horno","microondas"\] · lo dijo el usuario/)
+    // (The sign-up's «tiempo para cocinar» is in the ficha too since PRO-316, so the user's fact may not be F1.)
+    expect(sent[0].params.messages[0].content).toMatch(/F\d+ · hogar · equipment · \["horno","microondas"\] · lo dijo el usuario/)
     // A second tick never sends the day again.
     expect((await submitNightlyRefinement(day, now, deps)).status).toBe('already')
 
@@ -110,7 +113,8 @@ describe.skipIf(!reachable)('refinador nocturno de la ficha (PRO-152)', () => {
     const questions = await db.select().from(profileQuestions).where(eq(profileQuestions.householdId, householdId))
     expect(questions.map((q) => [q.question, q.status, q.origin])).toEqual([['¿Seguís sin horno?', 'pending', 'ai_nightly']])
 
-    const changes = await db.select().from(profileChanges).where(eq(profileChanges.householdId, householdId))
+    // What the refiner wrote (the sign-up's own facts have their rows too since PRO-316).
+    const changes = await db.select().from(profileChanges).where(and(eq(profileChanges.householdId, householdId), eq(profileChanges.origin, 'ai_nightly')))
     expect(changes.map((c) => c.action).sort()).toEqual(['fact_added', 'portrait_updated', 'question_added'])
 
     const [ref] = await db.select().from(profileRefinements).where(eq(profileRefinements.householdId, householdId))

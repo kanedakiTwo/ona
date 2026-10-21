@@ -9,15 +9,17 @@
  * copied fact leaves a `profile_changes` row («fact_added»).
  *
  * Idempotent: `profile_facts.source_memory_id` is unique, so a row already
- * copied is skipped (`ON CONFLICT DO NOTHING`). Memories written later are
- * copied on the next boot; a memory that changes after its copy is not
- * re-copied (until Mimo reads the ficha, PRO-153, `user_memories` stays the
- * source Mimo reads).
+ * copied is skipped (`ON CONFLICT DO NOTHING`). Since PRO-316 every memory
+ * write also writes the ficha (services/profile/writer.ts); this copy only
+ * catches rows written before that, or by a user who had no household yet,
+ * and puts back in step a copy whose memory changed after it was copied
+ * (`refreshed`, with its history row).
  *
  * Runs by itself after `db:migrate` (every API boot), like the PRO-57 and
  * PRO-78 data fixes.
  */
 import { sql } from 'drizzle-orm'
+import { STALE_MEMORY_COPIES_SQL, upsertProfileFact, madridDate as madridDay } from './profile/writer.js'
 import {
   MEMORY_SOURCE_TO_ORIGIN,
   memoryKeyIsHouseholdLevel,
@@ -86,6 +88,8 @@ export interface ProfileFromMemoriesResult {
   copied: number
   alreadyCopied: number
   withoutHousehold: number
+  /** Copies put back in step with a memory that changed after the copy (PRO-316). */
+  refreshed: number
 }
 
 type Db = typeof import('../db/connection.js').db
@@ -115,7 +119,7 @@ export async function applyProfileFromMemories(
     householdId: r.household_id ?? null,
   }))
 
-  const result: ProfileFromMemoriesResult = { memories: rows.length, copied: 0, alreadyCopied: 0, withoutHousehold: 0 }
+  const result: ProfileFromMemoriesResult = { memories: rows.length, copied: 0, alreadyCopied: 0, withoutHousehold: 0, refreshed: 0 }
   for (const row of rows) {
     const fact = memoryRowToProfileFact(row)
     if (!fact) {
@@ -143,8 +147,31 @@ export async function applyProfileFromMemories(
       result.copied++
     })
   }
-  if (result.memories > 0) {
-    log(`[profile-from-memories] ${result.copied} hechos copiados a la ficha, ${result.alreadyCopied} ya estaban, ${result.withoutHousehold} sin hogar`)
+  // PRO-316: copies whose memory changed after the copy go back in step.
+  const stale = await db.execute(STALE_MEMORY_COPIES_SQL)
+  for (const r of stale.rows as any[]) {
+    const source = (r.source in MEMORY_SOURCE_TO_ORIGIN ? r.source : 'manual') as MemorySource
+    const now = new Date()
+    await db.transaction(async (tx) => {
+      const out = await upsertProfileFact(tx, {
+        householdId: r.household_id,
+        subjectUserId: memoryKeyIsHouseholdLevel(r.key) ? null : r.user_id,
+        subjectPersonId: null,
+        type: r.key,
+        value: r.memory_value,
+        origin: MEMORY_SOURCE_TO_ORIGIN[source],
+        confidence: Math.min(1, Math.max(0, Number(r.confidence))),
+        evidence: { signal: 'user_memories', date: madridDay(new Date(r.updated_at)), summary: `Puesto al día con la memoria de Mimo (${SOURCE_LABEL[source]})` },
+        sourceMemoryId: r.memory_id,
+        reason: 'La memoria de Mimo cambió después de copiarla a la ficha',
+        actorUserId: null,
+        now,
+      })
+      if (out.action !== 'unchanged') result.refreshed++
+    })
+  }
+  if (result.memories > 0 || result.refreshed > 0) {
+    log(`[profile-from-memories] ${result.copied} hechos copiados a la ficha, ${result.alreadyCopied} ya estaban, ${result.withoutHousehold} sin hogar, ${result.refreshed} puestos al día`)
   }
   return result
 }

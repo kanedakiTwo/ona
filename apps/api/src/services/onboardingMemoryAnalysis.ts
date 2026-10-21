@@ -331,7 +331,7 @@ export async function analyzeOnboardingIntoMemory(
   }
   const store = deps.readMemory && deps.writeMemory ? null : await import('./userMemoryStore.js')
   const readMemory = deps.readMemory ?? store!.getMemoryForUser
-  const writeMemory = deps.writeMemory ?? ((id: string, facts: Array<{ key: string; value: unknown; confidence: number }>) => store!.setMemoryBatch(id, facts, 'inferred'))
+  const writeMemory = deps.writeMemory ?? ((id: string, facts: Array<{ key: string; value: unknown; confidence: number }>) => store!.setMemoryBatch(id, facts, 'inferred', { signal: 'onboarding' }))
 
   let response
   try {

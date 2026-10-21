@@ -1,0 +1,39 @@
+{
+  "source": { "origin": "cocina", "book": "Cuaderno de pruebas", "credit": "Receta de la tía Inventada" },
+  "recipes": [
+    {
+      "name": "Guiso de prueba con garbanzos",
+      "servings": 4,
+      "prepTime": 10,
+      "cookTime": 30,
+      "difficulty": "easy",
+      "meals": ["lunch", "dinner"],
+      "seasons": ["autumn", "winter"],
+      "tags": ["cuchara"],
+      "equipment": ["olla"],
+      "ingredients": [
+        { "name": "garbanzos cocidos", "qty": 500, "unit": "g" },
+        { "name": "cebolla", "qty": 1, "unit": "u", "note": "picada" },
+        { "name": "pimentón dulce", "qty": 1, "unit": "cdita" },
+        { "name": "sal", "qty": 1, "unit": "al_gusto" }
+      ],
+      "steps": [
+        "Rehogar la cebolla inventada con calma hasta que esté blanda.",
+        { "text": "Añadir los garbanzos y el pimentón y dejar que se junten unos minutos." }
+      ]
+    },
+    {
+      "name": "Bizcocho de prueba de los lunes",
+      "servings": 8,
+      "difficulty": "medium",
+      "meals": ["breakfast", "snack"],
+      "ingredients": [
+        { "name": "harina", "qty": 250, "unit": "g" },
+        { "name": "huevo", "qty": 3, "unit": "u" },
+        { "name": "azúcar", "qty": 150, "unit": "g", "optional": false }
+      ],
+      "steps": ["Batir todo inventando el orden y hornear hasta que suba."],
+      "source": { "credit": "Receta del primo Ficticio" }
+    }
+  ]
+}

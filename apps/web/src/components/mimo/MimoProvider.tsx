@@ -49,9 +49,19 @@ interface AssistantResponse {
 
 export type MimoStatus = 'idle' | 'listening' | 'transcribing' | 'thinking' | 'speaking'
 
+/** Text left in Mimo's box by `open({ draft })`; `n` tells two equal drafts apart. */
+export interface MimoDraft {
+  text: string
+  n: number
+}
+
 interface MimoContextValue {
   isOpen: boolean
-  open: (opts?: { listen?: boolean; handsFree?: boolean }) => void
+  /** `draft`: start the message for the person («Recuerda que en casa …», «Tu ficha»); they finish it and send. */
+  open: (opts?: { listen?: boolean; handsFree?: boolean; draft?: string }) => void
+  /** The draft the panel should put in its box, until it takes it (`clearDraft`). */
+  draft: MimoDraft | null
+  clearDraft: () => void
   close: () => void
   messages: MimoMessage[]
   clear: () => void
@@ -123,6 +133,7 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null)
   const [handsFree, setHandsFreeState] = useState(false)
   const [speakReplies, setSpeakRepliesState] = useState(false)
+  const [draft, setDraft] = useState<MimoDraft | null>(null)
 
   const messagesRef = useRef<MimoMessage[]>([])
   messagesRef.current = messages
@@ -330,13 +341,15 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
 
   // ── Open / close ──
   const open = useCallback(
-    (opts: { listen?: boolean; handsFree?: boolean } = {}) => {
+    (opts: { listen?: boolean; handsFree?: boolean; draft?: string } = {}) => {
       setIsOpen(true)
+      if (opts.draft) setDraft((prev) => ({ text: opts.draft!, n: (prev?.n ?? 0) + 1 }))
       if (opts.handsFree) setHandsFree(true)
       if (opts.listen) pendingListen.schedule(() => listenRef.current(), 150)
     },
     [setHandsFree, pendingListen],
   )
+  const clearDraft = useCallback(() => setDraft(null), [])
   const close = useCallback(() => {
     pendingListen.cancel()
     setIsOpen(false)
@@ -352,6 +365,8 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
       isOpen,
       open,
       close,
+      draft,
+      clearDraft,
       messages,
       clear: () => setMessages([]),
       status,
@@ -377,7 +392,7 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
         void voice.speak('Hola, soy Mimo. Así sueno con esta voz. ¿Qué cocinamos hoy?', key)
       },
     }),
-    [isOpen, open, close, messages, status, error, send, toggleListening, recorder.level, canListen, handsFree, setHandsFree, speakReplies, setSpeakReplies, voice, pendingListen],
+    [isOpen, open, close, draft, clearDraft, messages, status, error, send, toggleListening, recorder.level, canListen, handsFree, setHandsFree, speakReplies, setSpeakReplies, voice, pendingListen],
   )
 
   // PRO-122: also out of the way while a sheet is open or the keyboard is up.

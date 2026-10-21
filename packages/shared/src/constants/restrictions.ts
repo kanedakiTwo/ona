@@ -9,6 +9,9 @@
 export const RESTRICTION_PRESETS = [
   'sin gluten',
   'sin lactosa',
+  // PRO-312: allergy to milk protein (APLV) is not lactose intolerance —
+  // no dairy at all, lactose-free products included.
+  'leche (alergia)',
   'huevo',
   'frutos secos',
   'cacahuetes',

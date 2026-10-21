@@ -1105,6 +1105,25 @@ describe('suggest_substitution', () => {
     )
     expect(r.summary).toContain('"mantequilla"')
   })
+
+  // PRO-312 (Seguridad): a milk allergy anywhere in the household → no lactose-free dairy, butter or ghee.
+  it('with a milk allergy in the household, never lactose-free dairy, butter or ghee', async () => {
+    const { withHouseholdRestrictions } = await import('../services/householdAllergies.js')
+    const { MILK_ALLERGY_SUBSTITUTION } = await import('../services/assistant/skills.js')
+    vi.mocked(withHouseholdRestrictions).mockImplementationOnce(async (own) => [...own, 'leche (alergia)'])
+    const r = await skill.handler({ ingredient: 'nata' }, ctx(makeDb([{ restrictions: [] }])))
+    expect(r.summary).toContain(MILK_ALLERGY_SUBSTITUTION)
+    expect(r.summary).toContain('tampoco sin lactosa')
+    expect(r.summary).not.toContain('Si propon AOVE, ghee, mantequilla')
+  })
+
+  it('«alergia a la leche» named in the call counts too; «sin lactosa» alone keeps the usual swaps', async () => {
+    const { MILK_ALLERGY_SUBSTITUTION } = await import('../services/assistant/skills.js')
+    const allergy = await skill.handler({ ingredient: 'mantequilla', restriction: 'alergia a la leche' }, ctx(makeDb()))
+    expect(allergy.summary).toContain(MILK_ALLERGY_SUBSTITUTION)
+    const intolerance = await skill.handler({ ingredient: 'mantequilla', restriction: 'sin lactosa' }, ctx(makeDb()))
+    expect(intolerance.summary).not.toContain(MILK_ALLERGY_SUBSTITUTION)
+  })
 })
 
 // ─── 22. get_variety_score ────────────────────────────────────────────────

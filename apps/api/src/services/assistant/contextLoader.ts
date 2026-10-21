@@ -8,6 +8,9 @@ import { madridParts, mondayOf } from '../madridTime.js'
 import { mealLinesForDay } from '../menuText.js'
 import { resolveScope, scopeWhere } from '../scopeResolver.js'
 import { getCookingStyle } from '../profile/cookingStyle.js'
+import { hasMilkAllergy } from '../dietaryRestrictions.js'
+import { withHouseholdRestrictions } from '../householdAllergies.js'
+import { MILK_ALLERGY_CONTEXT } from './healthGuard.js'
 
 const DAY_NAMES_LONG = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo']
 const hhmm = (h: number, m: number) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
@@ -67,6 +70,13 @@ export async function loadUserContext(userId: string, db: any): Promise<string> 
 
   if (user.restrictions && user.restrictions.length > 0) {
     parts.push(`Restricciones: ${user.restrictions.join(', ')}`)
+  }
+  // PRO-312: allergy to milk in the household (anyone's, never who) — Mimo
+  // must not offer lactose-free dairy as a swap.
+  try {
+    if (hasMilkAllergy(await withHouseholdRestrictions(user.restrictions ?? [], userId, db))) parts.push(MILK_ALLERGY_CONTEXT)
+  } catch {
+    // The context never fails for this line.
   }
 
   const cookingLabels: Record<string, string> = {

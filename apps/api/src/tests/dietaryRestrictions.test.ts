@@ -7,6 +7,8 @@ import { describe, expect, it } from 'vitest'
 import { RESTRICTION_PRESETS } from '@ona/shared'
 import {
   compileRestrictions,
+  hasMilkAllergy,
+  mergeRestrictions,
   nameHasAlcohol,
   nameHasTerm,
   restrictionKey,
@@ -190,5 +192,56 @@ describe('PRO-144 — «sin alcohol»', () => {
     expect(blocks(['halal'], recipe(['vino blanco']))).toBe(true)
     expect(blocks(['halal'], recipe(['panceta']))).toBe(true)
     expect(blocks(['halal'], recipe(['vinagre de vino']))).toBe(false)
+  })
+})
+
+/**
+ * PRO-312 (Seguridad, Legal 2026-10-21): allergy to milk is not «sin
+ * lactosa». The EU allergen is «leche y sus derivados (incluida la lactosa)»:
+ * lactose-free dairy still carries milk protein.
+ */
+describe('PRO-312 — leche (alergia) vs sin lactosa', () => {
+  it('the chip «leche (alergia)» is offered next to «sin lactosa»', () => {
+    expect(RESTRICTION_PRESETS).toContain('sin lactosa')
+    expect(RESTRICTION_PRESETS).toContain('leche (alergia)')
+  })
+
+  it.each(['leche (alergia)', 'aplv', 'APLV', 'leche', 'proteína de leche', 'proteína de la leche de vaca', 'alergia a la leche', 'soy alérgica a la leche', 'sin lácteos'])(
+    '«%s» is the milk allergy',
+    (r) => expect(hasMilkAllergy([r])).toBe(true),
+  )
+
+  it.each(['sin lactosa', 'intolerancia a la lactosa', 'lactosa', 'leche de avena', 'vegano'])('«%s» is not the milk allergy', (r) => {
+    expect(hasMilkAllergy([r])).toBe(false)
+  })
+
+  it('the menu filter takes out every dairy for the milk allergy, lactose-free ones included', () => {
+    for (const dairy of [
+      'leche entera', 'leche sin lactosa', 'nata sin lactosa', 'queso rallado sin lactosa', 'yogur natural sin lactosa',
+      'mantequilla', 'kéfir', 'ghee', 'queso gouda', 'gouda', 'burrata', 'Emmental rallado', 'bechamel', 'caseinato cálcico',
+    ]) {
+      expect(blocks(['leche (alergia)'], recipe([dairy])), dairy).toBe(true)
+      expect(blocks(['aplv'], recipe([dairy])), dairy).toBe(true)
+    }
+    // A lactose-free product tagged without «lactosa» in the catalogue still goes.
+    expect(blocks(['leche (alergia)'], recipe(['leche sin lactosa'], [], { 'leche sin lactosa': [] }))).toBe(true)
+  })
+
+  it('plant drinks and dairy-free swaps stay for the milk allergy', () => {
+    for (const ok of ['bebida de avena', 'leche de coco', 'leche de soja', 'aceite de oliva virgen extra', 'calabaza', 'pisto manchego']) {
+      expect(blocks(['leche (alergia)'], recipe([ok])), ok).toBe(false)
+    }
+  })
+
+  it('«sin lactosa» still takes out ordinary dairy (unchanged)', () => {
+    expect(blocks(['sin lactosa'], recipe(['leche entera']))).toBe(true)
+    expect(blocks(['sin lactosa'], recipe(['queso manchego curado']))).toBe(true)
+  })
+
+  it('«(alergia)» after any allergen is the allergen; both chips coexist when merged', () => {
+    expect(restrictionKey('leche (alergia)')).toBe('leche')
+    expect(restrictionKey('Marisco (alergia)')).toBe('marisco')
+    expect(compileRestrictions(['marisco (alergia)']).allergens.has('crustaceos')).toBe(true)
+    expect(mergeRestrictions(['sin lactosa', 'leche (alergia)'])).toEqual(['sin lactosa', 'leche (alergia)'])
   })
 })

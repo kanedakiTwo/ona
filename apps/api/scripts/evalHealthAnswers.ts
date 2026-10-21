@@ -45,10 +45,10 @@ const simulated = (results: Record<string, string> = {}): SkillDefinition[] =>
 
 const out: unknown[] = []
 let failed = 0
-type EvalCase = { id: string; context: string; history: { role: 'user' | 'assistant'; content: string }[]; message: string; grade: (reply: string, tools: string[]) => string[]; toolResults?: Record<string, string> }
+type EvalCase = { id: string; context: string; history: { role: 'user' | 'assistant'; content: string }[]; message: string; grade: (reply: string, tools: string[], trace: { name: string; input: string }[]) => string[]; toolResults?: Record<string, string> }
 const cases: EvalCase[] = [
   ...HEALTH_EVAL_CASES.map((c) => ({ ...c, grade: (reply: string) => healthReplyProblems(reply, c) })),
-  ...MIMO_EVAL_CASES.map((c) => ({ ...c, grade: (reply: string, tools: string[]) => mimoReplyProblems(reply, c, tools) })),
+  ...MIMO_EVAL_CASES.map((c) => ({ ...c, grade: (reply: string, tools: string[], trace: { name: string; input: string }[]) => mimoReplyProblems(reply, c, tools, trace) })),
 ]
 for (const c of cases.filter((x) => !only || x.id === only)) {
   const { instructions, context } = buildSystemParts(c.context, mode)
@@ -61,7 +61,7 @@ for (const c of cases.filter((x) => !only || x.id === only)) {
       messages: [...c.history, { role: 'user' as const, content: c.message }],
       ctx: { userId: 'eval-health', db: null, channel: mode },
     })
-    const problems = c.grade(r.message, r.toolsUsed ?? [])
+    const problems = c.grade(r.message, r.toolsUsed ?? [], r.toolTrace ?? [])
     if (problems.length) failed += 1
     out.push({ case: c.id, run: i, mode, user: c.message, reply: r.message, tools: r.toolsUsed, flags: r.corrections, problems })
     console.log(`\n### ${c.id} (${i}/${runs}) ${problems.length ? `FALLA: ${problems.join(', ')}` : 'ok'}`)

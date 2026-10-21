@@ -75,3 +75,34 @@ describe('battery: a change from an earlier turn is not taken back', () => {
     expect(mimoReplyProblems('Sí, tenéis lentejas de lunes a jueves.', nextWeek, [])).toEqual(['no-mira-menu'])
   })
 })
+
+/** PRO-275: «hazme el menú para dos» in a household of 4. */
+describe('battery: the diners said for the week are applied (PRO-275)', () => {
+  const c = MIMO_EVAL_CASES.find((x) => x.id === 'menu-para-dos-hogar-de-4')!
+
+  it('the prompt asks «¿Solo esta semana o siempre?» and says what each answer does', () => {
+    const { instructions } = buildSystemParts('ctx', 'whatsapp')
+    expect(instructions).toContain('«¿Solo esta semana o siempre?» con [[opciones: Solo esta semana | Siempre]]')
+    expect(instructions).toMatch(/«Solo esta semana» → generate_weekly_menu con diners/)
+    expect(instructions).toMatch(/«Siempre» → update_weekly_template/)
+  })
+
+  it('the case is a household of 4 asking for two', () => {
+    expect(c.check).toBe('menu-comensales')
+    expect(c.context).toContain('Hogar: 2 adultos + 2 niños')
+    expect(c.diners).toBe(2)
+  })
+
+  it('generating with the usual diners fails; asking, or passing diners: 2, passes', () => {
+    expect(mimoReplyProblems(c.badReply, c)).toEqual(['comensales-de-siempre'])
+    expect(mimoReplyProblems('Hecho:\n- Menú listo', c, ['generate_weekly_menu'], [{ name: 'generate_weekly_menu', input: '{"nextWeek":true}' }])).toEqual(['comensales-de-siempre'])
+    expect(mimoReplyProblems('¿Solo esta semana o siempre?\n[[opciones: Solo esta semana | Siempre]]', c, [], [])).toEqual([])
+    expect(mimoReplyProblems('Hecho:\n- Menú para 2 listo', c, ['generate_weekly_menu'], [{ name: 'generate_weekly_menu', input: '{"nextWeek":true,"diners":2}' }])).toEqual([])
+    expect(
+      mimoReplyProblems('Hecho:\n- Plantilla: 2 comensales\n- Menú listo', c, ['update_weekly_template', 'generate_weekly_menu'], [
+        { name: 'update_weekly_template', input: '{"meal":"lunch","diners":2}' },
+        { name: 'generate_weekly_menu', input: '{"nextWeek":true}' },
+      ]),
+    ).toEqual([])
+  })
+})

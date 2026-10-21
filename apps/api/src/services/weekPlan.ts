@@ -6,7 +6,9 @@ import type { DayTemplate, Meal, WeekPlan } from '@ona/shared'
  *   - a meal out drops that slot from this week's template (the whole day
  *     when no meal is given);
  *   - guests set the slot's diners (`servings`, «Solo hoy: N»), so the list
- *     and the recipe scale to them.
+ *     and the recipe scale to them;
+ *   - `diners` (PRO-275, «esta semana somos dos») sets the diners of every
+ *     meal of the week; per-day guests win over it.
  * Pure: returns copies, the saved plantilla (`user_settings.template`) is
  * never touched, so next week follows the usual preferences.
  * Guests on a meal that the template doesn't have add that slot (they come
@@ -22,6 +24,12 @@ export function applyWeekPlan(
   const tpl = template.map((d) => ({ ...d }))
   const diners = Array.from({ length: tpl.length }, (_, i) => ({ ...(mealDiners[i] ?? {}) }) as Record<Meal, number>)
   if (!plan) return { template: tpl, mealDiners: diners }
+
+  if (typeof plan.diners === 'number' && plan.diners > 0) {
+    tpl.forEach((day, i) => {
+      for (const m of Object.keys(day) as Meal[]) if (day[m]) diners[i][m] = plan.diners!
+    })
+  }
 
   for (const g of plan.guests ?? []) {
     const day = tpl[g.day]
@@ -51,6 +59,7 @@ const MEAL_NAMES: Record<Meal, string> = { breakfast: 'desayuno', lunch: 'comida
 /** «sin la cena del jueves; sábado: 6 comensales» — for Mimo's summary. */
 export function describeWeekPlan(plan: WeekPlan | null | undefined): string {
   const parts: string[] = []
+  if (plan?.diners) parts.push(`toda la semana: ${plan.diners} ${plan.diners === 1 ? 'comensal' : 'comensales'}`)
   for (const o of plan?.mealsOut ?? []) {
     parts.push(o.meal ? `sin la ${MEAL_NAMES[o.meal]} del ${DAY_NAMES[o.day]}` : `sin cocinar el ${DAY_NAMES[o.day]}`)
   }

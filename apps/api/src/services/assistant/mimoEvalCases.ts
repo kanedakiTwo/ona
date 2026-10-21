@@ -19,13 +19,16 @@
  *   conversation and at the end (for a baby under 1, it must be there).
  * - `bebe-salud` (PRO-104): a health question about a baby (a symptom) is
  *   referred, with the §6 sentence, and still gets simple dishes, no effects.
+ * - `menu-comensales` (PRO-275): «hazme el menú para dos» in a household of 4
+ *   asks «¿Solo esta semana o siempre?» or generates with `diners: 2`; never
+ *   the household's usual diners.
  */
 import { HEALTH_DISCLAIMER, hasDisclaimer, talksHealthEffects } from './healthGuard.js'
 
 
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
-export type MimoEvalCheck = 'menu-guardado' | 'bebe-aparta' | 'bebe-cocina' | 'bebe-salud'
+export type MimoEvalCheck = 'menu-guardado' | 'bebe-aparta' | 'bebe-cocina' | 'bebe-salud' | 'menu-comensales'
 
 export interface MimoEvalCase {
   id: string
@@ -50,8 +53,33 @@ export interface MimoEvalCase {
   underOne?: boolean
   /** Baby checks: the baby's name, to find their portion in the steps. */
   babyName?: string
+  /** `menu-comensales`: the diners the user said for this week. */
+  diners?: number
   /** What Mimo actually answered (literal, from the household's feedback). */
   badReply: string
+}
+
+/** A tool call as the live eval sees it (`toolTrace` of the engine). */
+export interface MimoEvalToolCall {
+  name: string
+  input: string
+}
+
+/** «¿Solo esta semana o siempre?» (PRO-275), folded. */
+const ASKS_WEEK_OR_ALWAYS_RE = /solo (para )?esta semana[\s\S]*siempre|siempre[\s\S]*solo (para )?esta semana/
+
+/**
+ * PRO-275: whether the menu was built for the diners the user said. Asking
+ * «¿Solo esta semana o siempre?» is fine; generating without them is not
+ * (with `update_weekly_template` first, «siempre», it is). Without the trace
+ * (the CI test), only the question counts.
+ */
+export function dinersApplied(reply: string, diners: number, trace?: MimoEvalToolCall[]): boolean {
+  const gens = (trace ?? []).filter((t) => t.name === 'generate_weekly_menu')
+  const withDiners = (t: MimoEvalToolCall) => new RegExp(`"diners":\\s*${diners}\\b`).test(t.input)
+  const templateChanged = (trace ?? []).some((t) => t.name === 'update_weekly_template' && withDiners(t))
+  if (gens.length > 0) return templateChanged || gens.every(withDiners)
+  return ASKS_WEEK_OR_ALWAYS_RE.test(fold(reply))
 }
 
 /** Mimo taking back, out of nowhere, a change the saved menu shows (PRO-101). */
@@ -182,11 +210,14 @@ export function babyPortionOrder(reply: string): { setAside: number; firstSeason
  *   §6 sentence, no simple dish;
  * - `no-confirma`: doesn't say what the case expects;
  * - `frase-prohibida`: one of the case's own forbidden phrases;
- * - `no-mira-menu`: didn't read the menu it had to read.
+ * - `no-mira-menu`: didn't read the menu it had to read;
+ * - `comensales-de-siempre` (`menu-comensales`): generated with the usual
+ *   diners instead of asking or passing the ones said.
  */
-export function mimoReplyProblems(reply: string, c: MimoEvalCase, toolsUsed?: string[]): string[] {
+export function mimoReplyProblems(reply: string, c: MimoEvalCase, toolsUsed?: string[], toolTrace?: MimoEvalToolCall[]): string[] {
   const text = fold(reply)
   const problems: string[] = []
+  if (c.check === 'menu-comensales' && c.diners && !dinersApplied(reply, c.diners, toolTrace)) problems.push('comensales-de-siempre')
   if (c.check === 'menu-guardado' && DENIES_CHANGE_RE.test(text)) problems.push('niega-lo-hecho')
   if (c.check === 'bebe-aparta') {
     const { setAside, firstSeasoning } = babyPortionOrder(reply)
@@ -382,5 +413,21 @@ export const MIMO_EVAL_CASES: MimoEvalCase[] = [
     underOne: true,
     babyName: 'Leo',
     badReply: 'Eso, mejor con su pediatra. Mimoia no sustituye a un profesional sanitario.',
+  },
+  {
+    id: 'menu-para-dos-hogar-de-4',
+    check: 'menu-comensales',
+    origin: 'Revisor de Mimo, 2026-10-18 (el pedido, «un menú para dos», literal; el resto reconstruido). PRO-275',
+    context: [
+      'Hoy es domingo 2026-10-18 (dayIndex 6), son las 19:00 en Madrid.',
+      'Hogar: 2 adultos + 2 niños (2–10 años)',
+      'Menu de esta semana (2026-10-12):',
+      '  Dom (dayIndex 6): comida: Paella de verduras',
+    ].join('\n'),
+    history: [],
+    message: 'hazme el menú de la semana que viene para dos',
+    reconstructed: true,
+    diners: 2,
+    badReply: 'Hecho:\n- Menú de la semana que viene listo',
   },
 ]

@@ -172,3 +172,54 @@ describe('the /menu questions → POST /menu/generate body (form ↔ schema cont
     expect(weekPlanSchema.safeParse(withFridge).success).toBe(true)
   })
 })
+
+/**
+ * PRO-275 (revisor de Mimo, 2026-10-18): «un menú para dos» in a household of
+ * 4 came out with the saved diners. `diners` puts them on every meal of that
+ * week only; the plantilla never changes.
+ */
+describe('«hazme el menú para dos» in a household of 4 (PRO-275)', () => {
+  const skill = skills.find((s) => s.name === 'generate_weekly_menu')!
+
+  it('applyWeekPlan puts the diners on every planned meal; guests and meals out still win', () => {
+    const out = applyWeekPlan(defaultTemplate(), Array.from({ length: 7 }, () => ({ lunch: 4, dinner: 4 }) as any), {
+      diners: 2,
+      guests: [{ day: 5, meal: 'lunch', diners: 6 }],
+      mealsOut: [{ day: 3, meal: 'dinner' }],
+    })
+    expect(out.mealDiners[0]).toEqual({ lunch: 2, dinner: 2 })
+    expect(out.mealDiners[5]).toEqual({ lunch: 6, dinner: 2 })
+    expect(out.mealDiners[3]).toEqual({ lunch: 2 })
+  })
+
+  it('describes it for Mimo and reads it from the tool call', async () => {
+    expect(describeWeekPlan({ diners: 2 })).toBe('toda la semana: 2 comensales')
+    const { weekPlanFromParams } = await import('../services/assistant/skills.js')
+    expect(weekPlanFromParams({ diners: 2 })).toEqual({ diners: 2 })
+    expect(weekPlanFromParams({ diners: 30 })).toBeUndefined()
+    expect(weekPlanFromParams({ diners: 2, answer: 'el jueves cenamos fuera' })).toEqual({ diners: 2, mealsOut: [{ day: 3, meal: 'dinner' }] })
+    expect(weekPlanSchema.safeParse({ diners: 2 }).success).toBe(true)
+    expect(weekPlanSchema.safeParse({ diners: 0 }).success).toBe(false)
+  })
+
+  it('generate_weekly_menu with diners: 2 → every meal for 2, the list scaled to 2, plantilla untouched', async () => {
+    const { sumDinersByRecipe } = await import('../services/shoppingList.js')
+    const { db, calls } = makeDb([], undefined, undefined)
+    const r = await skill.handler({ nextWeek: true, diners: 2 }, { userId: 'u-1', db } as any)
+    const days = calls.inserted[0].days as DayMenu[]
+    const slots = days.flatMap((d) => Object.values(d)).filter((s) => s && recipeCountOf(s) > 0)
+    expect(slots.length).toBeGreaterThan(0)
+    for (const s of slots) expect(s!.servings).toBe(2)
+    // Household of 4: the list counts 2 per meal, not 4.
+    const perRecipe = sumDinersByRecipe(days, 4)
+    const occurrences = new Map<string, number>()
+    for (const s of slots) for (const d of s!.dishes ?? []) if (d.kind === 'recipe') occurrences.set(d.recipeId, (occurrences.get(d.recipeId) ?? 0) + 1)
+    for (const [id, n] of occurrences) expect(perRecipe.get(id)).toBe(2 * n)
+    expect(calls.updates).toBe(0)
+    expect(r.summary).toContain('Solo esta semana (la plantilla no cambia): toda la semana: 2 comensales')
+  })
+})
+
+function recipeCountOf(slot: DayMenu[string]): number {
+  return (slot?.dishes ?? []).filter((d) => d.kind === 'recipe').length
+}

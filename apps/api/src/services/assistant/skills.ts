@@ -773,15 +773,18 @@ export function weekHasDishes(days: DayMenu[] | undefined): boolean {
  * alguien?». Structured fields from the model win; the user's raw text is
  * read as a fallback. Out-of-range entries are dropped. Undefined when empty.
  */
-export function weekPlanFromParams(params: { mealsOut?: unknown; guests?: unknown; fridge?: unknown; answer?: unknown } | undefined): WeekPlan | undefined {
+export function weekPlanFromParams(params: { diners?: unknown; mealsOut?: unknown; guests?: unknown; fridge?: unknown; answer?: unknown } | undefined): WeekPlan | undefined {
+  // PRO-275: «esta semana somos dos» → the whole week; out of range is dropped.
+  const diners = typeof params?.diners === 'number' && Number.isInteger(params.diners) && params.diners >= 1 && params.diners <= 24 ? params.diners : undefined
   const structured = weekPlanSchema.safeParse({
+    diners,
     mealsOut: Array.isArray(params?.mealsOut) ? params!.mealsOut : undefined,
     guests: Array.isArray(params?.guests) ? params!.guests : undefined,
     fridge: Array.isArray(params?.fridge) ? (params!.fridge as unknown[]).filter((f) => typeof f === 'string' && f.trim()).slice(0, 20) : undefined,
   })
   let plan: WeekPlan | undefined = structured.success ? structured.data : undefined
   if ((plan?.mealsOut?.length ?? 0) === 0 && (plan?.guests?.length ?? 0) === 0 && typeof params?.answer === 'string' && params.answer.trim()) {
-    plan = { ...parseWeekPlanAnswer(params.answer), ...(plan?.fridge?.length ? { fridge: plan.fridge } : {}) }
+    plan = { ...(diners ? { diners } : {}), ...parseWeekPlanAnswer(params.answer), ...(plan?.fridge?.length ? { fridge: plan.fridge } : {}) }
   }
   return weekPlanIsEmpty(plan) ? undefined : plan
 }
@@ -794,6 +797,7 @@ const generateWeeklyMenu: SkillDefinition = {
     properties: {
       nextWeek: { type: 'boolean', description: 'true para generar el menu de la semana que viene en lugar de la actual.' },
       replaceExisting: { type: 'boolean', description: 'true solo si el usuario ha confirmado que quiere rehacer entera una semana que ya tiene platos.' },
+      diners: { type: 'integer', minimum: 1, maximum: 24, description: 'Cuantos comen en casa toda esa semana, cuando el usuario dice que solo esta semana son otro numero («esta semana somos dos»). Pone esos comensales en todas las comidas de esa semana; la plantilla no cambia. Si es para siempre, usa antes update_weekly_template. Los dias con guests mandan sobre esto.' },
       mealsOut: {
         type: 'array',
         description: 'Comidas que esa semana se hacen fuera de casa (respuesta a «¿Alguna comida fuera de casa esta semana?»). Se quitan solo de esa semana; la plantilla no cambia. Sin meal = el dia entero.',
@@ -829,7 +833,7 @@ const generateWeeklyMenu: SkillDefinition = {
     required: [],
   },
   async handler(
-    params: { nextWeek?: boolean; replaceExisting?: boolean; mealsOut?: WeekPlan['mealsOut']; guests?: WeekPlan['guests']; fridge?: string[]; answer?: string },
+    params: { nextWeek?: boolean; replaceExisting?: boolean; diners?: number; mealsOut?: WeekPlan['mealsOut']; guests?: WeekPlan['guests']; fridge?: string[]; answer?: string },
     ctx: SkillContext,
   ): Promise<SkillResult> {
     const { userId, db } = ctx

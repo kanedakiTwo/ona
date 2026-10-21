@@ -23,6 +23,11 @@ export interface WeekPlanGuests {
 }
 
 export interface WeekPlan {
+  /**
+   * PRO-275 · «esta semana somos dos»: how many eat every meal of this week
+   * (1–24). Per-day `guests` still win over it. Only this week.
+   */
+  diners?: number
   mealsOut?: WeekPlanMealOut[]
   guests?: WeekPlanGuests[]
   /**
@@ -35,6 +40,7 @@ export interface WeekPlan {
 
 const day = z.number().int().min(0).max(6)
 export const weekPlanSchema = z.object({
+  diners: z.number().int().min(1).max(24).optional(),
   mealsOut: z.array(z.object({ day, meal: z.enum(MEALS).optional() })).max(28).optional(),
   guests: z
     .array(z.object({ day, meal: z.enum(MEALS).optional(), diners: z.number().int().min(1).max(24) }))
@@ -44,7 +50,7 @@ export const weekPlanSchema = z.object({
 })
 
 export function weekPlanIsEmpty(plan: WeekPlan | null | undefined): boolean {
-  return !plan || ((plan.mealsOut?.length ?? 0) === 0 && (plan.guests?.length ?? 0) === 0 && (plan.fridge?.length ?? 0) === 0)
+  return !plan || (plan.diners === undefined && (plan.mealsOut?.length ?? 0) === 0 && (plan.guests?.length ?? 0) === 0 && (plan.fridge?.length ?? 0) === 0)
 }
 
 /**

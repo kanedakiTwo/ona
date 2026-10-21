@@ -84,13 +84,13 @@ test('a menu line: its own amount survives a reload', async ({ page }) => {
   const input = page.getByLabel('Cantidad a comprar')
   await input.fill('777')
   await page.getByRole('button', { name: 'Guardar cantidad' }).click()
-  await expect(row).toContainText('777')
+  // PRO-292: the amount is the field on the line itself.
+  await expect(page.getByLabel(`Cantidad de ${name}`, { exact: true })).toHaveValue('777')
   await expect(row).toContainText('cambiada (menú:')
 
   await page.reload()
-  const again = page.getByRole('button', { name: `Cambiar ${name}`, exact: true })
-  await expect(again).toContainText('777', { timeout: 15_000 })
-  await expect(again).toContainText('cambiada (menú:')
+  await expect(page.getByLabel(`Cantidad de ${name}`, { exact: true })).toHaveValue('777', { timeout: 15_000 })
+  await expect(page.getByRole('button', { name: `Cambiar ${name}`, exact: true })).toContainText('cambiada (menú:')
 })
 
 test('a manual line is deleted and does not come back after a reload', async ({ page }) => {
@@ -104,11 +104,14 @@ test('a manual line is deleted and does not come back after a reload', async ({ 
   await page.getByRole('button', { name: 'Cerrar' }).first().click()
 
   const row = page.getByRole('button', { name: 'Cambiar Pañales talla 4', exact: true })
-  await expect(row).toContainText('2 paquetes')
+  await expect(row).toBeVisible()
+  await expect(page.getByLabel('Cantidad de Pañales talla 4', { exact: true })).toHaveValue('2')
+  await expect(page.getByTestId('shopping-line').filter({ has: row })).toContainText('paquetes')
 
-  page.once('dialog', (d) => d.accept())
-  await page.getByRole('button', { name: 'Eliminar item manual' }).click()
+  // PRO-292: «Quitar» on the line, with «Deshacer» instead of a confirm.
+  await page.getByRole('button', { name: 'Quitar Pañales talla 4', exact: true }).click()
   await expect(row).toHaveCount(0)
+  await expect(page.getByTestId('shopping-undo')).toContainText('Pañales talla 4')
   await page.reload()
   await firstLine(page)
   await expect(page.getByText('Pañales talla 4')).toHaveCount(0)
@@ -122,7 +125,7 @@ test('a menu line: what is left at home is subtracted, also after a reload (PRO-
   await row.click()
   await page.getByLabel('Cantidad a comprar').fill('500')
   await page.getByRole('button', { name: 'Guardar cantidad' }).click()
-  await expect(row).toContainText('500')
+  await expect(page.getByLabel(`Cantidad de ${name}`, { exact: true })).toHaveValue('500')
 
   await row.click()
   await page.getByLabel('Cuánto queda en casa').fill('100')

@@ -23,6 +23,7 @@ export function FichaHubCard() {
   return (
     <Link
       href="/profile/ficha"
+      draggable={false}
       data-testid="profile-ficha"
       className={`${CARD} flex flex-col gap-3 p-[18px] transition-colors hover:border-border hover:bg-cream-deep/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink lg:p-5`}
     >

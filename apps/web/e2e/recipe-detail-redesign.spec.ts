@@ -6,21 +6,18 @@
  */
 
 import { test, expect, type Page } from '@playwright/test'
-import { completeOnboarding, registerFreshUser } from './_helpers'
+import { completeOnboarding, registerFreshUser, touchSwipe } from './_helpers'
 
 const apiUrl = process.env.API_URL ?? 'http://localhost:8765'
 
 /**
- * Right-to-left horizontal drag at height `y` with real pointer events (what
- * SwipeNavigator's motion `onPan` listens to), long enough to clear its 30 %
+ * Right-to-left finger swipe at height `y` (touch pointer events, what
+ * SwipeNavigator's motion `onPan` answers to), long enough to clear its 30 %
  * threshold. On a swipeable section it moves to the next bottom-tab route.
  */
 async function swipeLeft(page: Page, y: number): Promise<void> {
   const w = page.viewportSize()!.width
-  await page.mouse.move(w - 30, y)
-  await page.mouse.down()
-  for (let i = 1; i <= 12; i++) await page.mouse.move(w - 30 - (i * (w - 60)) / 12, y, { steps: 2 })
-  await page.mouse.up()
+  await touchSwipe(page, { x: w - 30, y }, { x: 30, y }, 24)
 }
 
 /** First catalogue recipe that has steps (so the Pasos tab has content). */
@@ -44,9 +41,7 @@ test('recipe detail: tabs, sticky cook bar, no tab bar, min-servings under Notas
   await expect(tabBar.first()).toBeVisible({ timeout: 10_000 })
   // …and there a horizontal swipe moves to the next section (proves the
   // gesture below is a real swipe, so "stays put" on the detail means something).
-  // Start the drag on plain text (the "N recetas" count): a mouse drag that
-  // starts on a link or image (the "+" button, a card) begins the browser's
-  // native link drag instead of a pan, on any page.
+  // Start the swipe on plain text (the "N recetas" count), clear of the cards.
   const count = await page.getByText(/^\d+ recetas?$/).first().boundingBox()
   await swipeLeft(page, count!.y + count!.height / 2)
   // Recetas → Perfil: Mimo is no longer a tab (D-023).

@@ -298,7 +298,9 @@ Talking to Mimo in the app (D-023, 2026-10-09): the same Claude assistant for ty
 
 Native-feeling Progressive Web App: installable (Android + iOS), offline-capable (app shell + viewed recipes via next-pwa runtime caching), IndexedDB mutation queue replayed on the `online` event, install prompt bottom sheet (3-visit / second-`/menu`-visit gate, 30/365-day dismissal windows), haptic feedback (Vibration API), Web Share (recipe + shopping export), Wake Lock cooking mode, local meal-time Notifications scheduled via `setTimeout`, View Transitions API + motion/react page transitions, global loading state = delayed 2 px terracotta top bar (`app/loading.tsx`, no animated splash, no full-screen loader), SwipeNavigator pan-gesture between bottom tabs, manifest, service worker (next-pwa / Workbox), apple-touch-icon, 8 splash screens, status bar tinting, safe-area-inset CSS variables, dynamic theme-color per section (cream app / ink public), maskable icons, monochrome adaptive icon, iOS Safari quirks, "sin conexión" banner.
 
-**Source**: `apps/web/public/manifest.webmanifest`, `apps/web/public/icons/`, `apps/web/src/lib/pwa/`, `apps/web/src/components/pwa/`, `apps/web/next.config.ts`
+Installed app on a desktop / app instalada en Windows (2026-10-21): service worker update — reload once on `controllerchange`, `registration.update()` on `visibilitychange`; swipe between tabs only with touch/pen (not the mouse); app links not draggable (`-webkit-user-drag`, `draggable={false}`) so a slipping click navigates; every full-screen page has its own way back (`lib/navHistory.ts`, «‹ Perfil» in «Afina tu menú»).
+
+**Source**: `apps/web/public/manifest.webmanifest`, `apps/web/public/icons/`, `apps/web/src/lib/pwa/`, `apps/web/src/components/pwa/`, `apps/web/next.config.ts`, `apps/web/src/lib/navHistory.ts`
 
 ---
 

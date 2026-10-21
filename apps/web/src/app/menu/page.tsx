@@ -47,6 +47,7 @@ import {
   useAddRandomDish,
   useSetTaper,
 } from "@/hooks/useMenu"
+import { useQueryLoad } from "@/components/profile/SubLoadError"
 import { useUser } from "@/hooks/useUser"
 import { useOnboardingGate } from "@/hooks/useOnboardingGate"
 import { haptic } from "@/lib/pwa/haptics"
@@ -163,13 +164,17 @@ export default function MenuPage() {
   const isCurrentWeek = delta === 0
   const todayIndex = useMemo(() => todayIndexIn(weekStart), [weekStart])
 
-  const {
-    data: menu,
-    isLoading: menuLoading,
-    isError: menuFailed,
-    refetch: refetchMenu,
-    isFetching: menuFetching,
-  } = useMenu(onboardingGate === "ok" ? user?.id : undefined, weekStart)
+  const menuUserId = onboardingGate === "ok" ? user?.id : undefined
+  const menuQuery = useMenu(menuUserId, weekStart)
+  const { data: menu, isLoading: menuLoading, isError: menuFailed, isFetching: menuFetching } = menuQuery
+  // A week that hasn't answered after 8 s (API_SLOW_MS) shows «Reintentar»
+  // instead of «Cargando...» for good (the installed app on Windows sat on an
+  // empty cream page after its first menu, 2026-10-21); retrying cancels the
+  // hung request. The clock only runs while the request is really asked.
+  const menuLoad = useQueryLoad([
+    ["menu", menuUserId, weekStart],
+    { ...menuQuery, isPending: menuQuery.isPending && Boolean(menuUserId) },
+  ])
   const generateMenu = useGenerateMenu()
   const regenerateMeal = useRegenerateMeal()
   const lockMeal = useLockMeal()
@@ -539,14 +544,10 @@ export default function MenuPage() {
   )
 
   /* ── States without a usable menu ─────────────────────────── */
-  const loadFailed = menuFailed && !menu
+  const loadFailed = (menuFailed && !menu) || menuLoad.failed
   // While a week loads (first visit or week navigation) the header, strip
   // and week sheet stay mounted; only the content area waits.
-  const statusCard = menuLoading ? (
-    <div className="mx-4 mt-10 text-center text-eyebrow" role="status">
-      Cargando...
-    </div>
-  ) : loadFailed ? (
+  const statusCard = loadFailed ? (
     <div role="alert" className="mx-4 mt-6 rounded-[22px] border border-border bg-paper px-6 py-10 text-center">
       <p className="font-serif-text font-[650] text-xl text-ink">
         No hemos podido <span className="italic">cargar tu menú</span>.
@@ -556,12 +557,16 @@ export default function MenuPage() {
       </p>
       <button
         type="button"
-        onClick={() => refetchMenu()}
-        disabled={menuFetching}
-        className="mt-6 inline-flex min-h-[44px] items-center gap-2 rounded-full bg-ink px-5 text-[14px] font-medium text-cream transition-colors hover:bg-forest disabled:opacity-50"
+        onClick={menuLoad.retry}
+        disabled={menuLoad.retrying || (menuFetching && !menuLoad.failed)}
+        className="mt-6 inline-flex min-h-[44px] items-center gap-2 rounded-full bg-ink px-5 text-[14px] font-medium text-cream transition-colors hover:bg-ink-mid disabled:opacity-50"
       >
-        {menuFetching ? "Cargando..." : "Reintentar"}
+        {menuLoad.retrying ? "Cargando..." : "Reintentar"}
       </button>
+    </div>
+  ) : menuLoading ? (
+    <div className="mx-4 mt-10 text-center text-eyebrow" role="status">
+      Cargando...
     </div>
   ) : !menu || blankWeek ? (
     <div className="mx-4 mt-5 rounded-[22px] border border-dashed border-border bg-paper px-6 py-8 text-center">

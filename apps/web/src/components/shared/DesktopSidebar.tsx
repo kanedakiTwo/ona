@@ -41,6 +41,7 @@ export default function DesktopSidebar() {
 
   return (
     <aside
+      data-app-shell
       className="fixed inset-y-0 left-0 z-40 hidden w-[var(--sidebar-width)] flex-col overflow-y-auto border-r border-[#DDD6C5] bg-[#FFFEFA]/95 px-3 py-6 backdrop-blur-md md:flex"
       aria-label="Navegación principal"
     >

@@ -6,6 +6,17 @@ import { motion, useMotionValue, animate, type PanInfo } from "motion/react"
 
 const NAV_ORDER = ["/menu", "/shopping", "/recipes", "/profile"]
 
+/**
+ * The swipe between tabs is a finger gesture. With a mouse (or a touchpad,
+ * which the browser reports as a mouse) a press-and-drag means selecting text
+ * or a slip while clicking: on a Windows desktop it slid the whole page
+ * sideways and, past 30 % of the window, jumped to another section (Miguel's
+ * friend, 2026-10-21: «desde el ordenador el menú Perfil no funciona»).
+ */
+export function swipesWith(pointerType: string | undefined): boolean {
+  return pointerType === "touch" || pointerType === "pen"
+}
+
 interface Props {
   children: ReactNode
 }
@@ -48,8 +59,9 @@ export function SwipeNavigator({ children }: Props) {
     animate(x, 0, { duration: 0 })
   }, [pathname, x])
 
-  function handlePan(_e: PointerEvent, info: PanInfo) {
+  function handlePan(e: PointerEvent, info: PanInfo) {
     if (currentIndex < 0) return
+    if (!swipesWith(e.pointerType)) return
     if (dndActiveRef.current) return
     const dx = info.offset.x
     const dy = info.offset.y
@@ -70,8 +82,12 @@ export function SwipeNavigator({ children }: Props) {
     }
   }
 
-  function handlePanEnd(_e: PointerEvent, info: PanInfo) {
+  function handlePanEnd(e: PointerEvent, info: PanInfo) {
     if (currentIndex < 0) return
+    if (!swipesWith(e.pointerType)) {
+      x.set(0)
+      return
+    }
     if (dndActiveRef.current) {
       animate(x, 0, { duration: 0 })
       return

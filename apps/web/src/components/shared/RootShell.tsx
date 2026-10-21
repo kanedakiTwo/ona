@@ -15,6 +15,7 @@ import { PageTransition } from "@/components/pwa/PageTransition"
 import { SwipeNavigator } from "@/components/pwa/SwipeNavigator"
 import MimoProvider from "@/components/mimo/MimoProvider"
 import { FeedbackButton } from "@/components/feedback/FeedbackButton"
+import { rememberPath } from "@/lib/navHistory"
 
 /** Empty cream page while the session resolves or a redirect is on its way: never the wrong page for a frame. */
 function Blank() {
@@ -51,6 +52,10 @@ function ToLogin() {
  */
 export function RootShell({ pathname, children }: { pathname: string; children: ReactNode }) {
   const { user, isLoading } = useAuth()
+  // Full-screen pages («Afina tu menú») go back to the page they came from without the browser's back button (lib/navHistory.ts).
+  useEffect(() => {
+    rememberPath(pathname)
+  }, [pathname])
   const privatePage = needsAccount(pathname)
   const openChrome = signedOutChrome(pathname)
 
@@ -93,7 +98,7 @@ export function RootShell({ pathname, children }: { pathname: string; children: 
     <MimoProvider>
       <OfflineBanner />
       <DesktopSidebar />
-      <main className="standalone-pt mx-auto max-w-[430px] pb-[calc(9.5rem+var(--safe-bottom))] md:ml-[calc(var(--sidebar-width)+var(--sidebar-gap))] md:max-w-none md:mr-0 md:pb-0 lg:pr-[var(--mimo-panel-width,0px)] lg:transition-[padding] lg:duration-300">
+      <main data-app-shell className="standalone-pt mx-auto max-w-[430px] pb-[calc(9.5rem+var(--safe-bottom))] md:ml-[calc(var(--sidebar-width)+var(--sidebar-gap))] md:max-w-none md:mr-0 md:pb-0 lg:pr-[var(--mimo-panel-width,0px)] lg:transition-[padding] lg:duration-300">
         <SwipeNavigator>
           <PageTransition>{children}</PageTransition>
         </SwipeNavigator>

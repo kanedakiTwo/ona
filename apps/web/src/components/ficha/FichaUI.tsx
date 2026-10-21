@@ -56,6 +56,7 @@ export function FichaShell({
           <header className="flex flex-col gap-3.5">
             <Link
               href={back.href}
+              draggable={false}
               className="-ml-2 inline-flex min-h-[44px] items-center gap-1.5 self-start rounded-full px-2 text-[14px] text-ink-mid transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-ink"
             >
               <ChevronLeft size={16} strokeWidth={1.8} aria-hidden="true" />

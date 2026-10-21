@@ -33,6 +33,7 @@ import {
 import { fetchTasteNext, postTasteFlag, postTasteVerdict } from "@/hooks/useTaste"
 import { dislikeChipText, nextStreak } from "@/lib/tasteText"
 import { useQueryClient } from "@tanstack/react-query"
+import { CookingPot } from "lucide-react"
 import { trackUsage } from "@/lib/usageEvents"
 
 type Screen = "intro" | "loading" | "cards" | "why" | "done"
@@ -68,10 +69,34 @@ function IconHeart({ size = 18 }: { size?: number }) {
   )
 }
 
-/** The «Dime qué te apetece.» screen (also reused by the sign-up step). */
-export function TasteIntro({ onStart, onSkip, startLabel = "Empezar" }: { onStart: () => void; onSkip?: () => void; startLabel?: string }) {
+/**
+ * A card's photo or, for a catalogue recipe still without one (or a photo
+ * that doesn't load), a calm bone page with the pot — never an empty box
+ * (2026-10-21: «Gazpacho» showed a bare rectangle). The name is already on
+ * the caption below, so it isn't repeated.
+ */
+function CardPhoto({ card }: { card: TasteCard }) {
+  const [failed, setFailed] = useState(false)
+  if (card.imageUrl && !failed) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={card.imageUrl} alt={card.name} draggable={false} onError={() => setFailed(true)} className="pointer-events-none block h-full w-full object-cover" />
+    )
+  }
   return (
-    <div className="flex flex-1 flex-col gap-6 px-6 pt-14 pb-8">
+    <div role="img" aria-label={card.name} data-testid="taste-card-placeholder" className="relative flex h-full w-full items-center justify-center bg-bone pb-24">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_90%_at_30%_20%,rgba(255,254,250,0.75),transparent_60%)]" />
+      <span aria-hidden="true" className="relative flex h-24 w-24 items-center justify-center rounded-full bg-paper/70">
+        <CookingPot size={44} strokeWidth={1.3} className="text-clay" />
+      </span>
+    </div>
+  )
+}
+
+/** The «Dime qué te apetece.» screen (also reused by the sign-up step). `compact`: a back link sits above it (/afinar). */
+export function TasteIntro({ onStart, onSkip, startLabel = "Empezar", compact = false }: { onStart: () => void; onSkip?: () => void; startLabel?: string; compact?: boolean }) {
+  return (
+    <div className={`flex flex-1 flex-col gap-6 px-6 pb-8 ${compact ? "pt-6" : "pt-14"}`}>
       <p className={EYEBROW}>Afina tu menú</p>
       <h1 className="m-0 font-display text-[44px] font-normal leading-[0.98] tracking-[-0.025em] text-ink">
         Dime qué te <span className="font-italic italic text-terracotta">apetece.</span>
@@ -111,8 +136,11 @@ export function TasteSwiper({
   onDone,
   onViewMenu,
   startAtCards = false,
+  compactTop = false,
 }: {
   mode: "page" | "onboarding"
+  /** /afinar: the page puts its «‹ Perfil» link on top, so the screens start higher. */
+  compactTop?: boolean
   /** Onboarding: after the 10 cards or «Saltar». */
   onDone?: () => void
   /** Page: «Ver mi menú». */
@@ -356,7 +384,7 @@ export function TasteSwiper({
     return (
       <>
         {error && <p role="alert" className="mx-6 mt-6 rounded-2xl bg-warn-bg p-3 text-[14px] text-terracotta-deep">{error}</p>}
-        <TasteIntro onStart={() => void begin()} onSkip={mode === "onboarding" ? onDone : undefined} />
+        <TasteIntro compact={compactTop} onStart={() => void begin()} onSkip={mode === "onboarding" ? onDone : undefined} />
       </>
     )
   }
@@ -438,7 +466,7 @@ export function TasteSwiper({
       ...(notes.length ? [{ title: "Lo que me has contado", items: notes, sep: " · " }] : []),
     ].filter((r) => r.items.length > 0)
     return (
-      <div className="flex flex-1 flex-col gap-5 px-6 pt-14 pb-8">
+      <div className={`flex flex-1 flex-col gap-5 px-6 pb-8 ${compactTop ? "pt-6" : "pt-14"}`}>
         <p className={EYEBROW}>Apuntado</p>
         <h1 className="m-0 font-display text-[40px] font-normal leading-none tracking-[-0.025em] text-ink">
           Tu menú ya te <span className="font-italic italic text-terracotta">conoce</span> un poco más.
@@ -529,12 +557,7 @@ export function TasteSwiper({
             transition: drag.active ? "none" : "transform 180ms ease-out",
           }}
         >
-          {card.imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={card.imageUrl} alt={card.name} draggable={false} className="pointer-events-none block h-full w-full object-cover" />
-          ) : (
-            <div className="h-full w-full bg-bone" />
-          )}
+          <CardPhoto key={card.recipeId} card={card} />
           <div aria-hidden="true" className="absolute top-5 left-[18px] -rotate-[8deg] rounded-[10px] border-2 border-forest bg-paper px-3 py-1.5 text-[14px] font-semibold tracking-[0.08em] text-forest" style={{ opacity: likeOp }}>
             ME APETECE
           </div>

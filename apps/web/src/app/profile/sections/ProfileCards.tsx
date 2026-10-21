@@ -40,6 +40,7 @@ export function ProfileHubLink({
   return (
     <Link
       href={href}
+      draggable={false}
       className={`${CARD} group flex min-h-[44px] flex-col gap-3 p-4 transition-colors hover:border-border hover:bg-cream-deep/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink lg:flex-row lg:items-center lg:gap-3.5 lg:p-5`}
     >
       <div className="flex items-start justify-between gap-2 lg:contents">

@@ -38,6 +38,7 @@ export default function Navbar() {
 
   return (
     <nav
+      data-app-shell
       aria-label="Navegación principal"
       className="fixed inset-x-0 bottom-0 z-50 border-t border-border-soft bg-paper pb-[var(--safe-bottom)] md:hidden"
     >

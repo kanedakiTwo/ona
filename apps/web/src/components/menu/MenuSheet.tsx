@@ -155,7 +155,7 @@ export function SheetAction({
   )
   if (href && !disabled) {
     return (
-      <Link href={href} className={cls} {...a11y}>
+      <Link href={href} draggable={false} className={cls} {...a11y}>
         {body}
       </Link>
     )

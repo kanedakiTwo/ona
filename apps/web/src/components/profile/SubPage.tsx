@@ -49,6 +49,7 @@ export function SubPage({
       <div className="mx-auto w-full max-w-[var(--page-max)] px-4 pb-12 pt-3 md:px-8 lg:px-12 lg:pt-6">
         <Link
           href="/profile"
+          draggable={false}
           className="-ml-2 inline-flex min-h-[44px] items-center gap-1.5 rounded-full px-2 text-[14px] font-medium text-ink-mid transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-ink"
         >
           <ArrowLeft size={18} strokeWidth={2} aria-hidden="true" />

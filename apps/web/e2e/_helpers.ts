@@ -222,3 +222,26 @@ export async function addMealWithRecipe(
     .find((d) => d.kind === 'recipe')?.recipeId
   return page.request.post(url, { headers, data: { recipeId } })
 }
+
+/**
+ * A finger swipe from `from` to `to` (CDP touch events, so the page sees
+ * pointerType "touch"). The section swipe (SwipeNavigator) answers only to
+ * touch and pen since 2026-10-21: a mouse drag is a text selection or a slip,
+ * not a swipe. Chromium only.
+ */
+export async function touchSwipe(
+  page: Page,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  steps = 12,
+): Promise<void> {
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: from.x, y: from.y }] })
+  for (let i = 1; i <= steps; i++) {
+    const x = from.x + ((to.x - from.x) * i) / steps
+    const y = from.y + ((to.y - from.y) * i) / steps
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y }] })
+  }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+  await cdp.detach()
+}

@@ -7,13 +7,17 @@
  * the server decides (`GET /user/:id` → `onboardingRequired`): finished on
  * another device or by WhatsApp → the page shows; a member who joined
  * someone else's household by invitation → the page shows; still pending →
- * `/onboarding`. A failed check never blocks the menu.
+ * `/onboarding`. A failed check never blocks the menu, and neither does one
+ * still unanswered after API_SLOW_MS (8 s): it used to leave /menu on a
+ * near-empty «Cargando...» for good (Windows app, 2026-10-21). If the late
+ * answer says the sign-up is pending, it still goes to `/onboarding`.
  */
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
+import { useSlowLoad } from "@/components/profile/SubLoadError"
 
 interface OnboardingStatus {
   onboardingDone?: boolean | null
@@ -33,6 +37,7 @@ export function useOnboardingGate(): "ok" | "checking" {
   })
 
   const required = status.data?.onboardingRequired === true
+  const { slow } = useSlowLoad(Boolean(user) && !knownDone && status.isPending)
   useEffect(() => {
     if (!status.data) return
     if (status.data.onboardingRequired) router.replace("/onboarding")
@@ -41,6 +46,7 @@ export function useOnboardingGate(): "ok" | "checking" {
 
   if (isLoading || !user) return "checking"
   if (knownDone || status.isError) return "ok"
+  if (slow && !required) return "ok"
   if (!status.data || required) return "checking"
   return "ok"
 }

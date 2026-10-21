@@ -95,6 +95,16 @@
 @media (min-width: 2100px) { :root { --page-max: 1680px; } }
 @media (min-width: 2400px) { :root { --page-max: 1920px; } }
 
+/* Inside the app nothing is dragged as a link or an image. On a desktop
+   (Windows, 2026-10-21) a click whose pointer slipped a few pixels — a
+   touchpad press, a mouse — started the browser's native link drag on the
+   whole-card links of Perfil and the click never happened. Firefox ignores
+   this property: the card links also carry draggable={false}. */
+[data-app-shell] a,
+[data-app-shell] img {
+  -webkit-user-drag: none;
+}
+
 /* One horizontal grid for the public site: navbar, footer, page titles and
    section content all start on the same x. Full-bleed bands put their
    background on the <section> and this container inside it. Reading pages

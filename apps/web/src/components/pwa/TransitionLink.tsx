@@ -29,7 +29,9 @@ export function TransitionLink({ href, onClick, children, ...rest }: Props) {
   }
 
   return (
-    <Link href={href} {...rest} onClick={handleClick}>
+    // Not draggable: a click whose pointer slips a few pixels (a Windows
+    // touchpad, a mouse) would start dragging the link and never navigate.
+    <Link href={href} draggable={false} {...rest} onClick={handleClick}>
       {children}
     </Link>
   )

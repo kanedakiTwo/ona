@@ -32,6 +32,7 @@ import {
 } from "@/components/recipes/detail/RecipeTabs"
 import { RecipeActionBar } from "@/components/recipes/detail/RecipeActionBar"
 import { AddToMenuSheet } from "@/components/recipes/detail/AddToMenuSheet"
+import { RecipeHeroPhoto } from "@/components/recipes/detail/RecipeHeroPhoto"
 import { haptic } from "@/lib/pwa/haptics"
 import { share } from "@/lib/pwa/share"
 import {
@@ -148,6 +149,9 @@ export default function RecipeDetailPage() {
   // so a reload or a shared link reopens the same section. ───
   const [tab, setTab] = useState<TabKey>("ingredientes")
   const [addToMenuOpen, setAddToMenuOpen] = useState(false)
+  // The hero URL that failed to load (deleted file, dead third-party link):
+  // the photo slot then shows the placeholder instead of a broken image.
+  const [heroFailedSrc, setHeroFailedSrc] = useState<string | null>(null)
   const tabsAnchorRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
     const fromHash = window.location.hash.slice(1) as TabKey
@@ -214,8 +218,6 @@ export default function RecipeDetailPage() {
     )
   }
 
-  const fallbackImg =
-    "https://images.unsplash.com/photo-1490645935967-10de6ba17061?w=1200&q=85&auto=format&fit=crop"
   // Append `?v=<updatedAt>` ONLY for images we serve ourselves (the Railway
   // volume under `IMAGE_PUBLIC_URL_BASE`). Adding a query to third-party
   // hosts like `i.ytimg.com` makes them serve a generic placeholder instead
@@ -228,7 +230,10 @@ export default function RecipeDetailPage() {
       ? `${recipe.imageUrl}${recipe.imageUrl.includes("?") ? "&" : "?"}v=${new Date(recipe.updatedAt).getTime()}`
       : recipe.imageUrl
     : null
-  const img = cacheBust ?? fallbackImg
+  // No photo → the slot shows a neutral placeholder (RecipeHeroPhoto), never a
+  // stock photo of another dish: it read as this recipe's photo.
+  const heroSrc = cacheBust && cacheBust !== heroFailedSrc ? cacheBust : null
+  const onHeroError = () => setHeroFailedSrc(cacheBust)
 
   // The live scaler value when seeded, falling back to the recipe's own value.
   const displayServings = servings ?? recipe.servings
@@ -476,15 +481,10 @@ export default function RecipeDetailPage() {
             publicChrome ? "top-[104px] h-[calc(100dvh-132px)]" : "top-7 h-[calc(100dvh-56px)]"
           }`}
         >
-          <motion.img
-            initial={{ scale: 1.04 }}
-            animate={{ scale: 1 }}
-            transition={{ duration: 1.2, ease: [0.19, 1, 0.22, 1] }}
-            src={img}
-            alt={recipe.name}
-            className="h-full w-full object-cover"
-          />
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#1A1612]/40 to-transparent" />
+          <RecipeHeroPhoto src={heroSrc} alt={recipe.name} initialScale={1.04} onError={onHeroError} />
+          {heroSrc && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#1A1612]/40 to-transparent" />
+          )}
           <Link
             href="/recipes"
             className="absolute left-4 top-4 flex h-11 items-center gap-1 rounded-full bg-[#FFFEFA] pl-2.5 pr-4 text-[14px] font-semibold text-[#1A1612] shadow-sm transition-transform active:scale-95"
@@ -493,7 +493,11 @@ export default function RecipeDetailPage() {
             Recetas
           </Link>
           {heroEdit && <div className="absolute right-4 top-4">{heroEdit}</div>}
-          <div className="pointer-events-none absolute bottom-5 left-5 text-[10px] uppercase tracking-[0.25em] text-[#FAF6EE]/85">
+          <div
+            className={`pointer-events-none absolute bottom-5 left-5 text-[10px] uppercase tracking-[0.25em] ${
+              heroSrc ? "text-[#FAF6EE]/85" : "text-ink-muted"
+            }`}
+          >
             Mimoia · Receta
           </div>
         </div>
@@ -590,15 +594,10 @@ export default function RecipeDetailPage() {
     >
       {/* Hero photo */}
       <div className="relative h-[390px] overflow-hidden bg-[#EFE8D8]">
-        <motion.img
-          initial={{ scale: 1.05 }}
-          animate={{ scale: 1 }}
-          transition={{ duration: 1.2, ease: [0.19, 1, 0.22, 1] }}
-          src={img}
-          alt={recipe.name}
-          className="h-full w-full object-cover"
-        />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-[#1A1612]/45 to-transparent" />
+        <RecipeHeroPhoto src={heroSrc} alt={recipe.name} initialScale={1.05} onError={onHeroError} />
+        {heroSrc && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-[#1A1612]/45 to-transparent" />
+        )}
 
         <div className="absolute inset-x-0 top-0 flex items-center justify-between px-4 pt-4">
           <BackButton fallbackHref="/recipes" />
@@ -625,7 +624,11 @@ export default function RecipeDetailPage() {
 
         {heroEdit && <div className="absolute bottom-[40px] right-4">{heroEdit}</div>}
 
-        <div className="pointer-events-none absolute bottom-[44px] left-5 text-[10px] uppercase tracking-[0.25em] text-[#FAF6EE]/85">
+        <div
+          className={`pointer-events-none absolute bottom-[44px] left-5 text-[10px] uppercase tracking-[0.25em] ${
+            heroSrc ? "text-[#FAF6EE]/85" : "text-ink-muted"
+          }`}
+        >
           Mimoia · Receta
         </div>
       </div>

@@ -124,13 +124,13 @@ describe.skipIf(!reachable)('allergies when joining a household (smoke)', () => 
     const ing = await api('POST', '/ingredients/auto-create', { name: 'langostinos cocidos' })
     expect(ing.status).toBeLessThan(300)
     const rec = await api('POST', '/recipes', {
-      name: 'Tosta de langostinos (smoke)',
+      name: 'Langostinos cocidos (smoke)',
       servings: 2,
       meals: ['breakfast', 'lunch', 'snack', 'dinner'],
-      equipment: [],
+      equipment: ['sartén'],
       seasons: ['spring', 'summer', 'autumn', 'winter'],
       ingredients: [{ ingredientId: ing.json.ingredient.id, quantity: 150, unit: 'g' }],
-      steps: [{ index: 0, text: 'Pon los langostinos cocidos sobre el pan tostado.' }],
+      steps: [{ index: 0, text: 'Saltea los langostinos cocidos un minuto a fuego vivo.' }],
       force: true,
     })
     expect(rec.status, JSON.stringify(rec.json)).toBe(201)

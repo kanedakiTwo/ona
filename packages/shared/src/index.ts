@@ -130,6 +130,8 @@ export {
   BASKET_SEND_ERRORS,
   BASKET_SEND_MAX_DURATION_MS,
   basketSendResultSchema,
+  extensionForHost,
+  parseExtensionIds,
 } from './types/basketExtension.js'
 export type {
   BasketLine,

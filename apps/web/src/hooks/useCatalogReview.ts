@@ -24,6 +24,8 @@ export interface DraftActionAnswer {
   name: string
   batch: string
   wishesCovered?: number
+  /** «Publicar» on a draft without its photo yet: it goes out by itself once the photo is made. */
+  waitingPhoto?: boolean
 }
 
 /** «Publicar», «Descartar» or «Recuperar» one draft. */

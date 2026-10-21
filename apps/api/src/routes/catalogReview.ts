@@ -4,7 +4,8 @@
  * token opens none of them. Every change lands in `admin_audit_log`.
  *
  *   GET  /admin/catalog-drafts                  catalogue drafts by batch (what `sample`/`status` show)
- *   POST /admin/catalog-drafts/:id/publish      Miguel's OK + this recipe out (409 if the audit holds it)
+ *   POST /admin/catalog-drafts/:id/publish      Miguel's OK + this recipe out (409 if the audit holds it;
+ *                                               `waitingPhoto: true` when it goes out once its photo is made)
  *   POST /admin/catalog-drafts/:id/discard      Miguel's «no»: it never goes out
  *   POST /admin/catalog-drafts/:id/restore      the verdict taken back
  *   POST /admin/catalog-batches/:batch/publish  what the rule allows in the batch (`publish --batch=…`)
@@ -43,6 +44,7 @@ import {
   type DraftActionResult,
 } from '../services/catalogReview.js'
 import { createAnthropicRewriter } from '../services/catalogRewriter.js'
+import { wakeCatalogPhotos } from '../services/catalogPhotos.js'
 
 export interface CatalogReviewDeps {
   adminAuth: RequestHandler[]
@@ -70,7 +72,14 @@ function defaultRunner(): CatalogImportRunner {
     runImport: async (drafts, batch, onOutcome) => {
       const log = (line: string) => console.log(`[catalog-import ${batch}] ${line}`)
       const deps = createDbCatalogImportDeps(createAnthropicRewriter(), log)
-      return importCatalogBatch(drafts, batch, { ...deps, onOutcome })
+      return importCatalogBatch(drafts, batch, {
+        ...deps,
+        onOutcome: async (outcome, done, total) => {
+          await onOutcome(outcome, done, total)
+          // Its photo starts now, so it's there by the time Miguel publishes.
+          if (outcome.status === 'draft') wakeCatalogPhotos()
+        },
+      })
     },
   })
   return runner
@@ -150,7 +159,7 @@ export function createCatalogReviewRouter(overrides: Partial<CatalogReviewDeps> 
     if (!uuid.safeParse(req.params.id).success) return void res.status(404).json(NOT_FOUND)
     try {
       const r = await d.publishDraft(String(req.params.id), req.userId!)
-      if (r.ok) return void res.json({ published: true, id: r.id, name: r.name, batch: r.batch, wishesCovered: r.wishesCovered ?? 0 })
+      if (r.ok) return void res.json({ published: !r.waitingPhoto, waitingPhoto: !!r.waitingPhoto, id: r.id, name: r.name, batch: r.batch, wishesCovered: r.wishesCovered ?? 0 })
       if (r.code === 'AUDIT_HOLD') {
         const what = r.issues.map((i) => `«${i.label}»`).join(', ')
         return void res.status(409).json({

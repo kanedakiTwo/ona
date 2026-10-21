@@ -388,6 +388,11 @@ export interface CatalogSourceInfo {
   reviewOk?: boolean
   /** When Miguel gave it. */
   reviewedAt?: string | null
+  /**
+   * Publishing was asked for while the photo wasn't made yet: catalogPhotos.ts
+   * publishes it as soon as the photo is saved (if the rule still allows it).
+   */
+  publishWhenPhoto?: boolean
 }
 
 // ─── 5. recipe_ingredients (M:N join) ───────────────────────

@@ -51,6 +51,7 @@ import { startAfinaNotice } from './services/afinaNotice.js'
 import catalogWishesRoutes from './routes/catalogWishes.js'
 import catalogReviewRoutes from './routes/catalogReview.js'
 import { interruptStaleCatalogImports } from './services/catalogImportJobs.js'
+import { startCatalogPhotos } from './services/catalogPhotos.js'
 import householdHabitsRoutes from './routes/householdHabits.js'
 import householdProfileRoutes from './routes/householdProfile.js'
 import schoolMenuRoutes from './routes/schoolMenu.js'
@@ -220,6 +221,8 @@ app.listen(env.PORT, () => {
   startAfinaNotice()
   // A catalogue import left «running» died with the previous process (a deploy).
   void interruptStaleCatalogImports()
+  // Catalogue photos are made before a recipe goes out (and for any published without one).
+  startCatalogPhotos()
 })
 
 export default app

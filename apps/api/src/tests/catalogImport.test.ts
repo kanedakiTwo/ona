@@ -16,6 +16,7 @@ import {
   markCookingMediumLines,
   listForReview,
   planBatchPublish,
+  reviewDecision,
   scaleToHouseServings,
   type BatchRecipe,
   type CatalogDraftInput,
@@ -271,6 +272,24 @@ describe('publishing (rule of Miguel, 2026-10-16)', () => {
     ])
     // The old rule published the whole batch once the sample was OK: no more.
     expect(planBatchPublish([rec('a', { sampled: true, reviewOk: true }), rec('b')]).publish).toEqual(['a'])
+  })
+
+  it('nothing goes out without its photo (Miguel, 2026-10-21): it waits as «sin_foto», after every other reason', () => {
+    const plan = planBatchPublish([
+      rec('m', { origin: 'miguel', hasPhoto: false }),
+      rec('m-photo', { origin: 'miguel', hasPhoto: true }),
+      rec('c-ok', { reviewOk: true, hasPhoto: false }),
+      rec('c-unseen', { hasPhoto: false }),
+      rec('m-audit', { origin: 'miguel', hasPhoto: false, auditIssues: ['sin_pasos'] }),
+    ])
+    expect(plan.publish).toEqual(['m-photo'])
+    expect(plan.hold.map((h) => [h.id, h.reason])).toEqual([
+      ['m', 'sin_foto'],
+      ['c-ok', 'sin_foto'],
+      ['c-unseen', 'sin_revisar'],
+      ['m-audit', 'auditoria'],
+    ])
+    expect(reviewDecision({ origin: 'miguel', auditIssues: [], hasPhoto: false })).toBe('sin_foto')
   })
 
   it("a mixed batch: Miguel's out on audit, Cocina's only with his OK", () => {

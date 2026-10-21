@@ -16,6 +16,7 @@ import { record } from './auditLog.js'
 import { AUDIT_ISSUE_LABEL, type CatalogAuditIssue } from './catalogRecipeAudit.js'
 import { catalogSourceCredit, previewDuplicates, reviewDecision, type HoldReason } from './catalogImport.js'
 import { allCatalogNames, publishBatch } from './catalogImportDb.js'
+import { wakeCatalogPhotos } from './catalogPhotos.js'
 import { markWishesCovered } from './catalogWishes.js'
 import { DRAFT, PUBLISHED } from './recipeVisibility.js'
 
@@ -80,7 +81,8 @@ export function draftView(r: DraftRow): CatalogDraftView {
     auditIssues: auditLabels(auditIssues),
     verdict: reviewOk === true ? 'ok' : reviewOk === false ? 'no' : null,
     reviewedAt: text(s.reviewedAt),
-    decision: reviewDecision({ origin, auditIssues, reviewOk }),
+    decision: reviewDecision({ origin, auditIssues, reviewOk, hasPhoto: !!r.imageUrl }),
+    waitingPhoto: !r.imageUrl && !!s.publishWhenPhoto,
     createdAt: r.createdAt ? r.createdAt.toISOString() : null,
   }
 }
@@ -107,7 +109,8 @@ export function buildDraftsView(rows: readonly DraftRow[], publishedByBatch: Rea
       pending,
       discarded: ordered.filter((v) => v.verdict === 'no'),
       publishedCount: publishedByBatch[batch] ?? 0,
-      publishable: pending.filter((v) => v.decision === 'publicable').length,
+      // What «Publicar las aprobadas» would send: out now, or once its photo is made.
+      publishable: pending.filter((v) => v.decision === 'publicable' || (v.decision === 'sin_foto' && !v.waitingPhoto)).length,
       lastImportedAt: ordered.reduce<string | null>((max, v) => (v.createdAt && (!max || v.createdAt > max) ? v.createdAt : max), null),
     }
   })
@@ -180,13 +183,13 @@ export async function loadCatalogDrafts(db: Db = defaultDb): Promise<CatalogDraf
 // ─── Miguel's verdict, recipe by recipe ─────────────────────────
 
 export type DraftActionResult =
-  | { ok: true; id: string; name: string; batch: string; wishesCovered?: number }
+  | { ok: true; id: string; name: string; batch: string; wishesCovered?: number; waitingPhoto?: boolean }
   | { ok: false; code: 'NOT_FOUND' }
   | { ok: false; code: 'AUDIT_HOLD'; issues: Array<{ code: string; label: string }> }
 
 async function lockDraft(tx: Tx, id: string) {
   const [row] = await tx
-    .select({ id: recipes.id, name: recipes.name, importBatch: recipes.importBatch, catalogSource: recipes.catalogSource })
+    .select({ id: recipes.id, name: recipes.name, importBatch: recipes.importBatch, catalogSource: recipes.catalogSource, imageUrl: recipes.imageUrl })
     .from(recipes)
     .where(and(eq(recipes.id, id), isNull(recipes.authorId), eq(recipes.status, DRAFT)))
     .for('update')
@@ -198,15 +201,24 @@ async function lockDraft(tx: Tx, id: string) {
 /**
  * «Publicar»: Miguel's OK (`review --ok`) and this recipe out, in one go —
  * unless the audit holds it (the rule holds audit issues whatever the source).
- * Closes the catalogue wishes it covers.
+ * Closes the catalogue wishes it covers. Without its photo yet, the OK is
+ * kept and the recipe goes out by itself once the photo is made
+ * (`waitingPhoto`, catalogPhotos.ts).
  */
-export async function publishCatalogDraft(id: string, adminId: string, db: Db = defaultDb): Promise<DraftActionResult> {
-  return db.transaction(async (tx) => {
+export async function publishCatalogDraft(id: string, adminId: string, db: Db = defaultDb, wake: () => void = wakeCatalogPhotos): Promise<DraftActionResult> {
+  const result = await db.transaction(async (tx) => {
     const row = await lockDraft(tx, id)
     if (!row) return { ok: false, code: 'NOT_FOUND' } as const
     const issues = auditOf(row.source)
-    if (reviewDecision({ origin: originOf(row.source), auditIssues: issues, reviewOk: true }) === 'auditoria') {
+    const decision = reviewDecision({ origin: originOf(row.source), auditIssues: issues, reviewOk: true, hasPhoto: !!row.imageUrl })
+    if (decision === 'auditoria') {
       return { ok: false, code: 'AUDIT_HOLD', issues: auditLabels(issues) } as const
+    }
+    if (decision === 'sin_foto') {
+      const catalogSource = { ...row.source, reviewOk: true, reviewedAt: new Date().toISOString(), publishWhenPhoto: true } as CatalogSourceInfo
+      await tx.update(recipes).set({ catalogSource }).where(eq(recipes.id, id))
+      await record({ adminId, action: 'catalog_draft.publish', targetType: 'recipe', targetId: id, payload: { name: row.name, batch: row.batch, origin: originOf(row.source), waitingPhoto: true } }, tx)
+      return { ok: true, id, name: row.name, batch: row.batch, waitingPhoto: true } as const
     }
     const catalogSource = { ...row.source, reviewOk: true, reviewedAt: new Date().toISOString() } as CatalogSourceInfo
     await tx.update(recipes).set({ status: PUBLISHED, catalogSource, updatedAt: new Date() }).where(eq(recipes.id, id))
@@ -214,6 +226,8 @@ export async function publishCatalogDraft(id: string, adminId: string, db: Db = 
     await record({ adminId, action: 'catalog_draft.publish', targetType: 'recipe', targetId: id, payload: { name: row.name, batch: row.batch, origin: originOf(row.source), wishesCovered } }, tx)
     return { ok: true, id, name: row.name, batch: row.batch, wishesCovered } as const
   })
+  if (result.ok && result.waitingPhoto) wake()
+  return result
 }
 
 /** «Descartar»: Miguel's «no» (`review --no`). The draft stays hidden, so a re-import skips it. */
@@ -246,16 +260,23 @@ export interface BatchPublishResult {
   held: Array<{ id: string; name: string; reason: HoldReason }>
 }
 
-/** «Publicar las aprobadas»: what the rule allows in this batch goes out (same as `publish --batch=…`). */
-export async function publishApprovedInBatch(batch: string, adminId: string, db: Db = defaultDb): Promise<BatchPublishResult> {
-  return db.transaction(async (tx) => {
+/**
+ * «Publicar las aprobadas»: what the rule allows in this batch goes out (same
+ * as `publish --batch=…`); the ones still waiting for their photo go out by
+ * themselves once it's made.
+ */
+export async function publishApprovedInBatch(batch: string, adminId: string, db: Db = defaultDb, wake: () => void = wakeCatalogPhotos): Promise<BatchPublishResult> {
+  const result = await db.transaction(async (tx) => {
     const res = await publishBatch(batch, {}, tx)
-    if (res.published > 0) {
+    const waiting = res.plan.hold.some((h) => h.reason === 'sin_foto')
+    if (res.published > 0 || waiting) {
       const heldBy = res.plan.hold.reduce<Record<string, number>>((acc, h) => ({ ...acc, [h.reason]: (acc[h.reason] ?? 0) + 1 }), {})
       await record({ adminId, action: 'catalog_batch.publish', targetType: 'catalog_batch', targetId: batch, payload: { published: res.published, ids: res.plan.publish, wishesCovered: res.wishesCovered, held: heldBy } }, tx)
     }
     return { published: res.published, wishesCovered: res.wishesCovered, held: res.plan.hold }
   })
+  if (result.held.some((h) => h.reason === 'sin_foto')) wake()
+  return result
 }
 
 /** Before importing: which recipes of the file the catalogue already has, and how many the batch already holds. */

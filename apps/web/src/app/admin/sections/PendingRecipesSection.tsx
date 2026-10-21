@@ -177,7 +177,13 @@ function BatchChapter({
     publishBatch.mutate(batch.batch, {
       onSuccess: (r) => {
         setConfirming(false)
-        onNotice({ tone: "ok", text: `Tanda ${batch.batch}: ${plural(r.published, "receta publicada", "recetas publicadas")}.` })
+        const waiting = r.held.filter((h) => h.reason === "sin_foto").length
+        onNotice({
+          tone: "ok",
+          text:
+            `Tanda ${batch.batch}: ${plural(r.published, "receta publicada", "recetas publicadas")}.` +
+            (waiting ? ` ${plural(waiting, "espera su foto y saldrá sola", "esperan su foto y saldrán solas")}.` : ""),
+        })
       },
       onError: (err) => onNotice({ tone: "error", text: (err as Error).message }),
     })
@@ -299,6 +305,7 @@ function DraftLine({ draft: d, onNotice }: { draft: CatalogDraftView; onNotice: 
             </Chip>
           ))}
           {d.verdict === "ok" && <Chip tone="ink">Ya dijiste que sí</Chip>}
+          {!d.imageUrl && <Chip tone="ink">{d.waitingPhoto ? "Sale en cuanto tenga su foto" : "Haciendo su foto"}</Chip>}
           <button
             type="button"
             aria-expanded={open}
@@ -323,7 +330,11 @@ function DraftLine({ draft: d, onNotice }: { draft: CatalogDraftView; onNotice: 
             aria-label={`Publicar ${d.name}`}
             onClick={() =>
               publish.mutate(d.id, {
-                onSuccess: (r) => onNotice({ tone: "ok", text: `«${r.name}» publicada.` }),
+                onSuccess: (r) =>
+                  onNotice({
+                    tone: "ok",
+                    text: r.waitingPhoto ? `«${r.name}» saldrá en cuanto tenga su foto (unos minutos).` : `«${r.name}» publicada.`,
+                  }),
                 onError: fail,
               })
             }

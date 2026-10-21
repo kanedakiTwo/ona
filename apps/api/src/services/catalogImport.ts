@@ -552,6 +552,8 @@ export interface BatchRecipe {
   sampled?: boolean
   /** Miguel's verdict on a sampled recipe: true OK, false not OK, undefined not seen yet. */
   reviewOk?: boolean
+  /** False while the house photo isn't made yet (catalogPhotos.ts makes it in the API). */
+  hasPhoto?: boolean
 }
 
 /**
@@ -565,7 +567,7 @@ export function listForReview(rows: readonly BatchRecipe[]): string[] {
   return [...drafts.filter((r) => r.allergenDoubt), ...drafts.filter((r) => !r.allergenDoubt)].map((r) => r.id)
 }
 
-export type HoldReason = 'auditoria' | 'sin_revisar' | 'rechazada'
+export type HoldReason = 'auditoria' | 'sin_revisar' | 'rechazada' | 'sin_foto'
 
 /**
  * Pure: what `publish` may do with a batch (rule of Miguel, 2026-10-16;
@@ -575,6 +577,9 @@ export type HoldReason = 'auditoria' | 'sin_revisar' | 'rechazada'
  *     the rest wait as «sin_revisar» (not seen yet) or «rechazada» (his «no»).
  *     A «no» holds only that recipe.
  *   - Audit issues always wait, whatever the source.
+ *   - Nothing goes out without its photo (Miguel, 2026-10-21): a recipe the
+ *     rule allows but whose photo isn't made yet waits as «sin_foto» and is
+ *     published by catalogPhotos.ts as soon as it has one.
  */
 export function planBatchPublish(rows: readonly BatchRecipe[]): { publish: string[]; hold: Array<{ id: string; name: string; reason: HoldReason }> } {
   const publish: string[] = []
@@ -590,11 +595,12 @@ export function planBatchPublish(rows: readonly BatchRecipe[]): { publish: strin
 /**
  * Pure: the same rule for one draft — «publicable», or why it waits. A «no»
  * from Miguel first, then the audit (whatever the source), then a Cocina
- * recipe without his OK.
+ * recipe without his OK, and last the photo (it comes by itself).
  */
-export function reviewDecision(r: Pick<BatchRecipe, 'origin' | 'auditIssues' | 'reviewOk'>): 'publicable' | HoldReason {
+export function reviewDecision(r: Pick<BatchRecipe, 'origin' | 'auditIssues' | 'reviewOk' | 'hasPhoto'>): 'publicable' | HoldReason {
   if (r.reviewOk === false) return 'rechazada'
   if (r.auditIssues.length > 0) return 'auditoria'
   if (r.origin === 'cocina' && r.reviewOk !== true) return 'sin_revisar'
+  if (r.hasPhoto === false) return 'sin_foto'
   return 'publicable'
 }

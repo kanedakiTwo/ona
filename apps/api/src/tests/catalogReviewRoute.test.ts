@@ -162,6 +162,15 @@ describe('drafts', () => {
     expect((await post(base, '/admin/catalog-drafts/no-es-un-id/publish')).status).toBe(404)
   })
 
+  it('publish without its photo yet: 200, not published, it goes out by itself once the photo is made', async () => {
+    const { base } = await app({
+      publishDraft: vi.fn(async (id: string) => ({ ok: true, id, name: 'Guiso', batch: 'cocina-01', waitingPhoto: true }) as const),
+    })
+    const r = await post(base, `/admin/catalog-drafts/${ID}/publish`)
+    expect(r.status).toBe(200)
+    expect(await r.json()).toMatchObject({ published: false, waitingPhoto: true, name: 'Guiso' })
+  })
+
   it('discard and restore', async () => {
     const { base, deps } = await app()
     const d = await post(base, `/admin/catalog-drafts/${ID}/discard`)

@@ -176,6 +176,8 @@ async function runPublish() {
     return
   }
   console.log(`Publicadas ${res.published}; deseos del catálogo cubiertos: ${res.wishesCovered}.`)
+  const waiting = res.plan.hold.filter((h) => h.reason === 'sin_foto').length
+  if (waiting) console.log(`${waiting} esperan su foto: el API la hace y salen solas en cuanto la tienen.`)
 }
 
 const COMMANDS: Record<string, () => Promise<void>> = { import: runImport, status: runStatus, sample: runSample, review: runReview, publish: runPublish }

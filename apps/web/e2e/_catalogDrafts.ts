@@ -54,6 +54,8 @@ export interface SeedDraft {
   allergenDoubt?: boolean
   auditIssues?: string[]
   credit?: string
+  /** As an import leaves it before its photo is made (default: with the source's photo). */
+  noPhoto?: boolean
 }
 
 /** Drafts in `batch`, in this order; returns their ids. */
@@ -72,9 +74,10 @@ export async function seedCatalogDrafts(batch: string, drafts: SeedDraft[]): Pro
     for (const d of drafts) {
       const source = { origin: 'cocina', book: 'Cuaderno de pruebas', batch, auditIssues: d.auditIssues ?? [], allergenDoubt: !!d.allergenDoubt, ...(d.credit ? { credit: d.credit } : {}) }
       const { rows } = await c.query<{ id: string }>(
-        `INSERT INTO recipes (name, status, import_batch, catalog_source, ${recipeCols})
-         SELECT $1, 'draft', $2, $3::jsonb, ${recipeCols} FROM recipes WHERE id = $4 RETURNING id`,
-        [d.name, batch, JSON.stringify(source), src[0].id],
+        `INSERT INTO recipes (name, status, import_batch, catalog_source, image_url, ${recipeCols})
+         SELECT $1, 'draft', $2, $3::jsonb, CASE WHEN $5::boolean THEN NULL ELSE COALESCE(image_url, '/images/recipes/prueba.jpg') END, ${recipeCols}
+         FROM recipes WHERE id = $4 RETURNING id`,
+        [d.name, batch, JSON.stringify(source), src[0].id, !!d.noPhoto],
       )
       const id = rows[0].id
       await c.query(`INSERT INTO recipe_ingredients (recipe_id, ${ingCols}) SELECT $1, ${ingCols} FROM recipe_ingredients WHERE recipe_id = $2`, [id, src[0].id])

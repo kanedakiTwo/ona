@@ -337,13 +337,14 @@ export function buildCatalogImportPayload(input: { text: string; fileName?: stri
 // ─── What the admin page reads ──────────────────────────────────
 
 /** Where a draft stands under the publish rule (rule of Miguel 2026-10-16, D-099). */
-export type CatalogDraftDecision = 'publicable' | 'auditoria' | 'sin_revisar' | 'rechazada'
+export type CatalogDraftDecision = 'publicable' | 'auditoria' | 'sin_revisar' | 'rechazada' | 'sin_foto'
 
 export const CATALOG_DRAFT_DECISION_LABELS: Record<CatalogDraftDecision, string> = {
   publicable: 'Lista para publicar',
   auditoria: 'Espera por la auditoría',
   sin_revisar: 'Sin revisar',
   rechazada: 'Descartada',
+  sin_foto: 'Esperando su foto',
 }
 
 export interface CatalogDraftView {
@@ -371,6 +372,8 @@ export interface CatalogDraftView {
   verdict: 'ok' | 'no' | null
   reviewedAt: string | null
   decision: CatalogDraftDecision
+  /** Publishing was asked for: it goes out by itself once its photo is made. */
+  waitingPhoto: boolean
   createdAt: string | null
 }
 
@@ -382,7 +385,7 @@ export interface CatalogDraftBatchView {
   /** Drafts Miguel turned down: never published, kept so a re-import skips them. */
   discarded: CatalogDraftView[]
   publishedCount: number
-  /** How many «Publicar las aprobadas» would publish now. */
+  /** How many «Publicar las aprobadas» would publish: now, or once their photo is made. */
   publishable: number
   lastImportedAt: string | null
 }

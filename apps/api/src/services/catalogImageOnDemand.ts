@@ -1,15 +1,18 @@
 /**
- * Photos on demand for the catalogue (PRO-154, specs/catalog-import.md):
- * a batch-imported recipe is saved without a photo (1.000 photos up front
- * ≈ 64 €). Its house photo is made the first time it shows up in a menu or
- * someone opens it — through the usual background generator
+ * Safety net for catalogue photos (PRO-154, specs/catalog-import.md). Since
+ * 2026-10-21 a catalogue recipe gets its photo as a draft and isn't
+ * published without it (catalogPhotos.ts). If one is still published
+ * without a photo (a photo the checker turned down, the API down while it
+ * was imported), its house photo is asked for the moment it shows up in a
+ * menu or someone opens it — through the usual background generator
  * (`scheduleHouseImage`, recipeHouseImage.ts), whose cost lands on Mimoia
  * (system recipe: no author).
  *
  * Only catalogue recipes with no image at all; user recipes already get
- * theirs at import time. One request per recipe per process, so a recipe
- * that sits in 50 menus at once asks once (and a rejected photo isn't
- * retried on every page view; a restart lets it try again).
+ * theirs at import time. A recipe is asked for once every 6 hours at most
+ * (`claimCatalogPhoto`, shared with catalogPhotos.ts), so a recipe that sits
+ * in 50 menus at once asks once, a rejected photo isn't retried on every
+ * page view, and the two paths never pay twice for the same photo.
  */
 import { scheduleHouseImage } from './recipeHouseImage.js'
 
@@ -22,7 +25,26 @@ export interface ImageCandidate {
 
 type Scheduler = (recipeId: string, authorId: string | null) => void
 
-const requested = new Set<string>()
+const CLAIM_MS = 6 * 60 * 60_000
+/** Recipe id → when its photo was last asked for (this process). */
+const claims = new Map<string, number>()
+
+/** True when nobody asked for this photo in the last 6 hours (and marks it asked). */
+export function claimCatalogPhoto(id: string, now: number = Date.now()): boolean {
+  const at = claims.get(id)
+  if (at != null && now - at < CLAIM_MS) return false
+  claims.set(id, now)
+  return true
+}
+
+/** The ask failed before trying (network): let the next pass try again. */
+export function releaseCatalogPhoto(id: string): void {
+  claims.delete(id)
+}
+
+function recentlyClaimed(now: number = Date.now()): Set<string> {
+  return new Set([...claims].filter(([, at]) => now - at < CLAIM_MS).map(([id]) => id))
+}
 
 /** Pure: the recipes that need a photo now (catalogue, published, no image, not asked yet). */
 export function recipesNeedingPhoto(rows: readonly ImageCandidate[], alreadyRequested: ReadonlySet<string>): string[] {
@@ -43,9 +65,9 @@ export function recipesNeedingPhoto(rows: readonly ImageCandidate[], alreadyRequ
  */
 export function requestCatalogPhotos(rows: readonly ImageCandidate[], schedule: Scheduler = scheduleHouseImage): string[] {
   try {
-    const ids = recipesNeedingPhoto(rows, requested)
+    const ids = recipesNeedingPhoto(rows, recentlyClaimed())
     for (const id of ids) {
-      requested.add(id)
+      claimCatalogPhoto(id)
       schedule(id, null)
     }
     return ids
@@ -57,5 +79,5 @@ export function requestCatalogPhotos(rows: readonly ImageCandidate[], schedule: 
 
 /** Tests only. */
 export function _resetRequestedPhotos(): void {
-  requested.clear()
+  claims.clear()
 }

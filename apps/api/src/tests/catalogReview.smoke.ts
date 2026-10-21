@@ -17,7 +17,7 @@ import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import { API_URL, reachable, TOKEN, USER_ID } from './smokeEnv.js'
 import { db } from '../db/connection.js'
 import { adminAuditLog, catalogImportJobs, recipeIngredients, recipes, recipeSteps, type CatalogSourceInfo } from '../db/schema.js'
-import { saveReview } from '../services/catalogImportDb.js'
+import { publishIfWaitingForPhoto, saveReview } from '../services/catalogImportDb.js'
 import { createDbImportJobStore } from '../services/catalogImportJobs.js'
 import {
   discardCatalogDraft,
@@ -32,13 +32,20 @@ const tag = `revision${Date.now().toString(36)}`
 const created: string[] = []
 const jobIds: string[] = []
 
-/** A draft copy of a published catalogue recipe (with its ingredients and steps). */
-async function insertDraft(name: string, source: Partial<CatalogSourceInfo> = {}): Promise<string> {
+/** A draft copy of a published catalogue recipe (with its ingredients and steps), with a photo unless `noPhoto`. */
+async function insertDraft(name: string, source: Partial<CatalogSourceInfo> = {}, opts: { noPhoto?: boolean } = {}): Promise<string> {
   const [src] = await db.select().from(recipes).where(and(isNull(recipes.authorId), eq(recipes.status, 'published'))).orderBy(asc(recipes.name)).limit(1)
   const { id: _id, createdAt: _c, updatedAt: _u, ...rest } = src
   const [row] = await db
     .insert(recipes)
-    .values({ ...rest, name, status: 'draft', importBatch: tag, catalogSource: { origin: 'cocina', book: 'Cuaderno de pruebas', batch: tag, auditIssues: [], allergenDoubt: false, ...source } })
+    .values({
+      ...rest,
+      name,
+      status: 'draft',
+      importBatch: tag,
+      imageUrl: opts.noPhoto ? null : '/images/recipes/prueba.jpg',
+      catalogSource: { origin: 'cocina', book: 'Cuaderno de pruebas', batch: tag, auditIssues: [], allergenDoubt: false, ...source },
+    })
     .returning({ id: recipes.id })
   const ings = await db.select().from(recipeIngredients).where(eq(recipeIngredients.recipeId, src.id))
   if (ings.length) await db.insert(recipeIngredients).values(ings.map(({ id: _i, ...i }) => ({ ...i, recipeId: row.id })))
@@ -131,6 +138,41 @@ describe.skipIf(!reachable)('admin «Recetas pendientes» against Postgres', () 
     again = (await loadCatalogDrafts()).batches.find((x) => x.batch === tag)!
     expect(again.pending.map((d) => d.id).sort()).toEqual([b, held].sort())
     expect(again.publishedCount).toBe(2)
+  }, 60_000)
+
+  it('nothing goes out without its photo: the publish waits and goes out by itself once the photo lands', async () => {
+    const one = await insertDraft(`Pisto de prueba ${tag}`, {}, { noPhoto: true })
+    const two = await insertDraft(`Sopa de prueba ${tag}`, { origin: 'miguel' }, { noPhoto: true })
+    const said = await insertDraft(`Pisto sin foto descartado ${tag}`, {}, { noPhoto: true })
+
+    // «Publicar» on one: Miguel's OK is kept, it stays a draft, waiting for its photo.
+    const woke: string[] = []
+    expect(await publishCatalogDraft(one, USER_ID, db, () => woke.push('one'))).toMatchObject({ ok: true, waitingPhoto: true })
+    expect(woke).toEqual(['one'])
+    expect((await sourceOf(one)).status).toBe('draft')
+    expect((await sourceOf(one)).catalogSource).toMatchObject({ reviewOk: true, publishWhenPhoto: true })
+    expect((await auditFor(one)).map((r) => [r.action, (r.payload as any)?.waitingPhoto])).toEqual([['catalog_draft.publish', true]])
+
+    // «Publicar las aprobadas»: Miguel's own source waits for its photo too.
+    const res = await publishApprovedInBatch(tag, USER_ID, db, () => woke.push('batch'))
+    expect(res.published).toBe(0)
+    expect(res.held.filter((h) => h.reason === 'sin_foto').map((h) => h.id).sort()).toEqual([one, two].sort())
+    expect((await sourceOf(two)).catalogSource).toMatchObject({ publishWhenPhoto: true })
+
+    // No photo yet: nothing happens.
+    expect(await publishIfWaitingForPhoto(one)).toBe(false)
+    // The photo lands → out; the flag is gone.
+    await db.update(recipes).set({ imageUrl: '/images/recipes/prueba.jpg' }).where(inArray(recipes.id, [one, two, said]))
+    expect(await publishIfWaitingForPhoto(one)).toBe(true)
+    expect((await sourceOf(one)).status).toBe('published')
+    expect((await sourceOf(one)).catalogSource).not.toHaveProperty('publishWhenPhoto')
+    // Miguel said «no» while the photo was being made: it doesn't go out.
+    await saveReview([two], false)
+    expect(await publishIfWaitingForPhoto(two)).toBe(false)
+    expect((await sourceOf(two)).status).toBe('draft')
+    // Never asked to publish: the photo alone publishes nothing.
+    expect(await publishIfWaitingForPhoto(said)).toBe(false)
+    expect((await sourceOf(said)).status).toBe('draft')
   }, 60_000)
 
   it('the import job store: outcomes in order, finish, and a boot interrupts what was running', async () => {

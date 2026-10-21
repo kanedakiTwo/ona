@@ -32,6 +32,30 @@ async function loginAsAdmin(page: Page): Promise<string> {
 test.describe('mobile', () => {
   test.use({ viewport: { width: 390, height: 844 } })
 
+  test('a draft without its photo: «Publicar» keeps the OK and it goes out once the photo is made, not before', async ({ page }) => {
+    test.skip(!testDatabaseUrl(), 'needs DATABASE_URL (the API test database) to seed drafts')
+    const tag = uniqueId().toLowerCase()
+    const batch = `e2e-${tag}`.replace(/[^a-z0-9-]/g, '-').slice(0, 60)
+    const pisto = `Pisto sin foto ${tag}`
+    const ids = await seedCatalogDrafts(batch, [{ name: pisto, noPhoto: true }])
+    try {
+      await loginAsAdmin(page)
+      await page.goto('/admin/recetas')
+      const chapter = page.getByTestId('catalog-batch').filter({ has: page.getByRole('heading', { name: batch }) })
+      const row = chapter.getByTestId('draft-row').filter({ hasText: pisto })
+      await expect(row).toBeVisible({ timeout: 20_000 })
+      await expect(row.getByText('Haciendo su foto')).toBeVisible()
+
+      await row.getByRole('button', { name: `Publicar ${pisto}` }).click()
+      await expect(page.getByRole('status').filter({ hasText: `«${pisto}» saldrá en cuanto tenga su foto` })).toBeVisible({ timeout: 10_000 })
+      // Still a draft: on the list, waiting, and nobody opens it yet.
+      await expect(row.getByText('Sale en cuanto tenga su foto')).toBeVisible()
+      expect((await page.request.get(`${API_URL}/recipes/${ids[0]}`)).status()).toBe(404)
+    } finally {
+      await removeCatalogDrafts(ids, batch)
+    }
+  })
+
   test('publish one draft, discard another, and a broken batch file is explained', async ({ page }) => {
     test.skip(!testDatabaseUrl(), 'needs DATABASE_URL (the API test database) to seed drafts')
     test.setTimeout(90_000)

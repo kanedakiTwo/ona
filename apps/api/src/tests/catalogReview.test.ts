@@ -131,7 +131,7 @@ const row = (id: string, over: Partial<DraftRow> = {}): DraftRow => ({
   name: `Receta ${id}`,
   importBatch: 'cocina-01',
   catalogSource: { origin: 'cocina', book: 'Cuaderno de pruebas', page: null, batch: 'cocina-01', auditIssues: [], allergenDoubt: false },
-  imageUrl: null,
+  imageUrl: `/images/recipes/${id}.jpg`,
   servings: 4,
   totalTime: 30,
   difficulty: 'easy',
@@ -175,6 +175,26 @@ describe('buildDraftsView', () => {
     const mama = view.batches[0]
     expect(mama.pending[0]).toMatchObject({ origin: 'miguel', book: 'Recetario de mamá', page: '12', credit: 'Inspirada en Recetario de mamá', decision: 'publicable' })
     expect(mama.publishable).toBe(1)
+  })
+
+  it('without its photo a draft waits («sin_foto»); «Publicar las aprobadas» still counts it, unless its publish is already waiting', () => {
+    const ok = { origin: 'cocina' as const, batch: 'cocina-01', auditIssues: [], allergenDoubt: false, reviewOk: true }
+    const view = buildDraftsView(
+      [
+        row('photo', { catalogSource: ok }),
+        row('making', { imageUrl: null, catalogSource: ok }),
+        row('queued', { imageUrl: null, catalogSource: { ...ok, publishWhenPhoto: true } }),
+        row('unseen', { imageUrl: null }),
+      ],
+      {},
+    )
+    const byId = Object.fromEntries(view.batches[0].pending.map((d) => [d.id, d]))
+    expect(byId.photo).toMatchObject({ decision: 'publicable', waitingPhoto: false })
+    expect(byId.making).toMatchObject({ decision: 'sin_foto', waitingPhoto: false })
+    expect(byId.queued).toMatchObject({ decision: 'sin_foto', waitingPhoto: true })
+    // Miguel's OK comes first: the photo makes itself, his look doesn't.
+    expect(byId.unseen).toMatchObject({ decision: 'sin_revisar' })
+    expect(view.batches[0].publishable).toBe(2)
   })
 
   it('never hands out the source text, only the reference', () => {

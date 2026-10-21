@@ -12,7 +12,7 @@ import { persistRecipe } from './recipePersistence.js'
 import { applyCatalogTimeTrim } from './recipeTimeTrim.js'
 import { markWishesCovered } from './catalogWishes.js'
 import { DRAFT, PUBLISHED } from './recipeVisibility.js'
-import { catalogSourceRecord, planBatchPublish, type BatchRecipe, type CatalogImportDeps, type CatalogRewrite, type CatalogDraftInput, type DraftIngredient, type MatchedIngredient, type PersistDraftInput } from './catalogImport.js'
+import { catalogSourceRecord, planBatchPublish, reviewDecision, type BatchRecipe, type CatalogImportDeps, type CatalogRewrite, type CatalogDraftInput, type DraftIngredient, type MatchedIngredient, type PersistDraftInput } from './catalogImport.js'
 
 type Db = typeof defaultDb
 /** The database or a transaction on it (the admin page publishes and audits in one). */
@@ -115,7 +115,7 @@ export function createDbCatalogImportDeps(
 
 export async function loadBatch(batch: string, db: Pick<Db, 'select'> = defaultDb): Promise<BatchRecipe[]> {
   const rows = await db
-    .select({ id: recipes.id, name: recipes.name, status: recipes.status, catalogSource: recipes.catalogSource })
+    .select({ id: recipes.id, name: recipes.name, status: recipes.status, catalogSource: recipes.catalogSource, imageUrl: recipes.imageUrl })
     .from(recipes)
     .where(and(eq(recipes.importBatch, batch), isNull(recipes.authorId)))
   return rows.map((r) => {
@@ -129,6 +129,7 @@ export async function loadBatch(batch: string, db: Pick<Db, 'select'> = defaultD
       allergenDoubt: !!s.allergenDoubt,
       sampled: !!s.sampled,
       reviewOk: typeof s.reviewOk === 'boolean' ? s.reviewOk : undefined,
+      hasPhoto: !!r.imageUrl,
     }
   })
 }
@@ -166,8 +167,46 @@ export async function publishRecipes(ids: readonly string[], db: DbOrTx = defaul
 }
 
 /**
+ * Called by catalogPhotos.ts once a draft has its photo: if its publish was
+ * waiting for it (`publishWhenPhoto`), it goes out now — when the rule still
+ * allows it (Miguel may have said «no» or the audit may hold it since). The
+ * flag is cleared either way once the photo is there. True when published.
+ */
+export async function publishIfWaitingForPhoto(id: string, db: Db = defaultDb): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .select({ status: recipes.status, imageUrl: recipes.imageUrl, catalogSource: recipes.catalogSource })
+      .from(recipes)
+      .where(and(eq(recipes.id, id), isNull(recipes.authorId)))
+      .for('update')
+    if (!row || row.status !== DRAFT || !row.imageUrl) return false
+    const s = (row.catalogSource ?? {}) as Partial<CatalogSourceInfo>
+    if (!s.publishWhenPhoto) return false
+    const { publishWhenPhoto: _waiting, ...rest } = s
+    await tx.update(recipes).set({ catalogSource: rest as CatalogSourceInfo }).where(eq(recipes.id, id))
+    const decision = reviewDecision({
+      origin: s.origin === 'miguel' ? 'miguel' : 'cocina',
+      auditIssues: s.auditIssues ?? [],
+      reviewOk: typeof s.reviewOk === 'boolean' ? s.reviewOk : undefined,
+      hasPhoto: true,
+    })
+    if (decision !== 'publicable') return false
+    return (await publishRecipes([id], tx)).published > 0
+  })
+}
+
+/**
+ * Publishing was asked for, but the photo isn't made yet: catalogPhotos.ts
+ * publishes these as soon as it saves their photo.
+ */
+export async function markPublishWhenPhoto(ids: readonly string[], db: DbOrTx = defaultDb): Promise<void> {
+  await patchSource(ids, { publishWhenPhoto: true }, db)
+}
+
+/**
  * `publish --batch=…` and the admin page's «Publicar las aprobadas»: what the
  * rule allows (`planBatchPublish`) goes out; the rest waits, with its reason.
+ * The ones waiting only for their photo go out by themselves when it lands.
  */
 export async function publishBatch(
   batch: string,
@@ -176,5 +215,6 @@ export async function publishBatch(
 ): Promise<{ plan: ReturnType<typeof planBatchPublish>; published: number; wishesCovered: number }> {
   const plan = planBatchPublish(await loadBatch(batch, db))
   if (opts.dryRun) return { plan, published: 0, wishesCovered: 0 }
+  await markPublishWhenPhoto(plan.hold.filter((h) => h.reason === 'sin_foto').map((h) => h.id), db)
   return { plan, ...(await publishRecipes(plan.publish, db)) }
 }

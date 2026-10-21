@@ -31,6 +31,22 @@ export function deviceFromUserAgent(ua: string | null | undefined): Device {
   return 'desktop'
 }
 
+/**
+ * Pure (PRO-307): the system of the browser a person came in with, for the households by system in
+ * GET /admin/usage — android | ios | desktop, or null with no browser string (counted as
+ * `unknown`). Only that word is stored (`props.device` of `screen_viewed`), never the browser string.
+ * iPadOS Safari says «Macintosh» and comes out as desktop.
+ */
+export function systemFromUserAgent(ua: string | null | undefined): Device | null {
+  return String(ua ?? '').trim() ? deviceFromUserAgent(ua) : null
+}
+
+/** Pure (PRO-307): a `screen_viewed` from the web gets `device` from its browser; any other event, as it came. */
+export function withScreenDevice<E extends { name: string; props: Record<string, string | number | boolean> }>(ev: E, ua: string | null | undefined): E {
+  const device = ev.name === 'screen_viewed' ? systemFromUserAgent(ua) : null
+  return device ? { ...ev, props: { ...ev.props, device } } : ev
+}
+
 /** `day` = Europe/Madrid calendar date (YYYY-MM-DD) of the open / subscription. */
 export interface HouseholdDeviceDay { householdId: string; day: string; device: Device }
 

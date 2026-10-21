@@ -403,6 +403,27 @@ export function buildPropBreakdown(rows: readonly EventPropRow[]) {
   return out
 }
 
+/** Households by the system of the last browser they came in with (PRO-307). */
+export interface HouseholdSystems { android: number; ios: number; desktop: number; unknown: number; total: number }
+export interface HouseholdLastDevice { householdId: string; device: string | null }
+
+/**
+ * Pure (PRO-307): the active households of the window by the system (`props.device`) of the most
+ * recent usage event that carries one — any time in the 180 days kept, not only the window; with
+ * none, `unknown` (WhatsApp only, or not seen in the web since this shipped). Counts only.
+ */
+export function buildHouseholdSystems(active: Iterable<string>, last: readonly HouseholdLastDevice[]): HouseholdSystems {
+  const deviceOf = new Map(last.map((l) => [l.householdId, l.device]))
+  const out: HouseholdSystems = { android: 0, ios: 0, desktop: 0, unknown: 0, total: 0 }
+  for (const h of new Set(active)) {
+    const d = deviceOf.get(h)
+    const key = d === 'android' || d === 'ios' || d === 'desktop' ? d : 'unknown'
+    out[key]++
+    out.total++
+  }
+  return out
+}
+
 /** The PRO-120 events whose props are broken down in `breakdown` (`cards` is a number, summed apart). */
 export const BREAKDOWN_EVENTS = ['recipe_viewed', 'taste_tuning', 'push_opened', 'alerts_changed', 'feedback_left'] as const
 
@@ -419,6 +440,8 @@ export const USAGE_DEFINITIONS = {
   familyInvites: 'Invitations to join the same household (PRO-263, D-088), all time, not the window, by where they were prepared: casa (Perfil → Mi casa, and every invite before 2026-10-20), alta (sign-up), compra (first visit to the shopping list), mimo (web chat or WhatsApp). prepared = created; sent = «Enviar por WhatsApp» / «Copiar» tapped, Mimo gave the link, or accepted; accepted = someone joined with it. Invites made by admin or suspended accounts only with includeInternal=1. goal = of the households with 2 adults or more (largest users.adults among counted members), how many have 2 or more counted accounts; share = that ratio (target 0.3 by 2026-11-23). Counts only.',
   onboardingSteps: 'PRO-120: the web sign-up («Primeros pasos») in the order it is shown: afina («Afina tu menú», only the first time), canal (WhatsApp or the web, only when WhatsApp is available), hogar, frecuencia, cocina, tiempo, dieta, prioridad. seen / done = distinct people in the window with onboarding_step visto / hecho for that step (the server keeps one per person, step and Madrid day). The WhatsApp sign-up is one conversation: see onboarding_whatsapp_chosen, whatsapp_linked and onboarding_completed by channel.',
   screens: 'PRO-120: screen_viewed per ISO week; each row is one person and screen and Madrid day (capped on the server), so views = people-days. top = the screens with views, most viewed first.',
+  householdsBySystem:
+    'PRO-307: active households of the window (see activeHouseholds) by the system of the last browser they came in with: the most recent usage event with a device (screen_viewed, from the day this shipped, 2026-10-22; or app_opened_installed) — android, ios (iPhone; iPadOS Safari says it is a Mac and counts as desktop), desktop, unknown (no such event: WhatsApp only, or no web visit since). Only that word is stored, never the browser string. Counts only.',
   breakdown: 'PRO-120: for recipe_viewed (from), taste_tuning (action, where), push_opened (kind), alerts_changed (kind, on) and feedback_left (channel: boton, mimo, whatsapp), how many events in the window had each value. tasteCards = cards answered, summed by action. Counts only, never text.',
   referrals: 'By ISO week (inviteShared: of the tap; the rest: of the invited sign-up), all time, not the window. signupsWithInviter = accounts that signed up with someone else’s «Invitar a otro hogar» code (not into the inviter’s own household); week3Resolved = of those, households with a menu generated and the shopping list opened on days 14–20 after signing up; inviters = distinct codes. Counts only.',
 }
@@ -511,9 +534,16 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
       WHERE e.name = 'taste_tuning' AND e.created_at >= ${from} AND ${counted}
       GROUP BY 1
   `)
+  // PRO-307: the last device seen per household (any time kept). Ids stay in this process: only counts leave.
+  const lastDeviceQ = db.execute(sql`
+    SELECT DISTINCT ON (e.household_id) e.household_id::text AS household_id, e.props->>'device' AS device
+      FROM usage_events e LEFT JOIN users u ON u.id = e.user_id
+      WHERE e.household_id IS NOT NULL AND e.props ? 'device' AND ${counted}
+      ORDER BY e.household_id, e.created_at DESC
+  `)
   const days = dayRange(fromDay, today)
   const [onboardingStepRows, screenRows, breakdownRows, tasteCardRows] = await Promise.all([onboardingStepsQ, screensQ, breakdownQ, tasteCardsQ])
-  const [counts, householdDays, since, householdState, invited, inviteShared, proactive, familyInvites] = await Promise.all([
+  const [counts, householdDays, since, householdState, invited, inviteShared, proactive, familyInvites, lastDevice] = await Promise.all([
     countsQ,
     householdDaysQ,
     sinceQ,
@@ -522,6 +552,7 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
     inviteSharedQ,
     loadProactiveReport(days, from, inc, db),
     familyInvitesQ,
+    lastDeviceQ,
   ])
 
   const input: UsageInput = {
@@ -547,6 +578,10 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
     funnel: buildFunnel(input),
     totals: buildTotals(input),
     channelSplit: buildChannelSplit(input),
+    householdsBySystem: buildHouseholdSystems(
+      input.householdDays.map((h) => h.householdId),
+      (lastDevice.rows as any[]).map((r) => ({ householdId: r.household_id, device: r.device ?? null })),
+    ),
     households: buildHouseholdSnapshot(
       (householdState.rows as any[]).map((r) => ({
         householdId: r.household_id,

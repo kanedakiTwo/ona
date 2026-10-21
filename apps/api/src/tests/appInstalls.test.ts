@@ -8,9 +8,12 @@ import {
   buildPushEnabled,
   deviceCountsFor,
   deviceFromUserAgent,
+  systemFromUserAgent,
+  withScreenDevice,
   type HouseholdDeviceDay,
 } from '../services/appInstalls.js'
-import { PASSIVE_USAGE_EVENTS, USAGE_EVENTS, sanitizeProps } from '../services/usageEvents.js'
+import { PASSIVE_USAGE_EVENTS, USAGE_EVENTS, clientEventProps, sanitizeProps } from '../services/usageEvents.js'
+import { buildHouseholdSystems } from '../services/usageReport.js'
 
 const ANDROID_CHROME =
   'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Mobile Safari/537.36'
@@ -33,6 +36,38 @@ describe('deviceFromUserAgent', () => {
     expect(sanitizeProps({ device: deviceFromUserAgent(IPHONE_SAFARI) })).toEqual({ device: 'ios' })
     // The whole browser string would never pass the props filter anyway.
     expect(sanitizeProps({ device: IPHONE_SAFARI })).toBeNull()
+  })
+})
+
+describe('households by system (PRO-307)', () => {
+  it('systemFromUserAgent: android / ios / desktop, null with no browser string (never the string itself)', () => {
+    expect(systemFromUserAgent(ANDROID_CHROME)).toBe('android')
+    expect(systemFromUserAgent(IPHONE_SAFARI)).toBe('ios')
+    expect(systemFromUserAgent(MAC_CHROME)).toBe('desktop')
+    expect(systemFromUserAgent(undefined)).toBeNull()
+    expect(systemFromUserAgent('  ')).toBeNull()
+  })
+  it('a screen view from the web carries only the device word; other events stay as they came', () => {
+    const screen = clientEventProps('screen_viewed', { screen: 'menu' })!
+    expect(withScreenDevice(screen, ANDROID_CHROME)).toEqual({ name: 'screen_viewed', props: { screen: 'menu', device: 'android' } })
+    expect(withScreenDevice(screen, undefined)).toEqual({ name: 'screen_viewed', props: { screen: 'menu' } })
+    const recipe = clientEventProps('recipe_viewed', { from: 'menu' })!
+    expect(withScreenDevice(recipe, IPHONE_SAFARI)).toEqual(recipe)
+    expect(JSON.stringify(withScreenDevice(screen, IPHONE_SAFARI))).not.toMatch(/Mozilla|iPhone OS/)
+    expect(sanitizeProps(withScreenDevice(screen, IPHONE_SAFARI).props)).toEqual({ screen: 'menu', device: 'ios' })
+  })
+  it('active households by the last device seen; none → unknown; each household once', () => {
+    const active = ['h1', 'h2', 'h3', 'h4', 'h5', 'h1']
+    const last = [
+      { householdId: 'h1', device: 'android' },
+      { householdId: 'h2', device: 'ios' },
+      { householdId: 'h3', device: 'desktop' },
+      { householdId: 'h4', device: 'algo-raro' },
+      // Not active in the window: not counted.
+      { householdId: 'h9', device: 'android' },
+    ]
+    expect(buildHouseholdSystems(active, last)).toEqual({ android: 1, ios: 1, desktop: 1, unknown: 2, total: 5 })
+    expect(buildHouseholdSystems([], last)).toEqual({ android: 0, ios: 0, desktop: 0, unknown: 0, total: 0 })
   })
 })
 

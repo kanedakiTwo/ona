@@ -38,8 +38,23 @@ export type AdminAction =
   | 'invite_campaign.create'
   | 'invite_campaign.delete'
   | 'newsletter.send'
+  // Admin «Recetas pendientes» (specs/catalog-import.md)
+  | 'catalog_draft.publish'
+  | 'catalog_draft.discard'
+  | 'catalog_draft.restore'
+  | 'catalog_batch.publish'
+  | 'catalog_import.start'
 
-export type AuditTargetType = 'ingredient' | 'recipe' | 'user' | 'app_error' | 'waitlist_entry' | 'invite_campaign' | 'newsletter_issue'
+export type AuditTargetType =
+  | 'ingredient'
+  | 'recipe'
+  | 'user'
+  | 'app_error'
+  | 'waitlist_entry'
+  | 'invite_campaign'
+  | 'newsletter_issue'
+  | 'catalog_batch'
+  | 'catalog_import'
 
 export interface AuditRecord {
   adminId: string

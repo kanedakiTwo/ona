@@ -20,6 +20,10 @@
  *   --batch=…   batch id (default: today's date + origin)
  *   --dry-run   read and rewrite, but save nothing
  *
+ * The same, from the web: Admin → «Recetas pendientes» (/admin/recetas) lists
+ * the drafts by batch, publishes or discards each one and imports a --json
+ * batch file in the background (routes/catalogReview.ts).
+ *
  * Review and publish:
  *   … status  --batch=…              what's in the batch and what publish would do
  *   … sample  --batch=…              Cocina batches: list the links of every draft for Miguel (D-099), allergen doubts first
@@ -161,17 +165,16 @@ async function runReview() {
 }
 
 async function runPublish() {
-  const { planBatchPublish } = await import('../src/services/catalogImport.js')
-  const { loadBatch, publishRecipes } = await import('../src/services/catalogImportDb.js')
+  // Same helper as the admin page's «Publicar las aprobadas» (catalogImportDb.publishBatch).
+  const { publishBatch } = await import('../src/services/catalogImportDb.js')
   const batch = flag('batch')
   if (!batch) throw new Error('Falta --batch=')
-  const plan = planBatchPublish(await loadBatch(batch))
-  for (const h of plan.hold) console.log(`  espera · ${h.name} (${h.reason})`)
+  const res = await publishBatch(batch, { dryRun: has('dry-run') })
+  for (const h of res.plan.hold) console.log(`  espera · ${h.name} (${h.reason})`)
   if (has('dry-run')) {
-    console.log(`Prueba: se publicarían ${plan.publish.length}.`)
+    console.log(`Prueba: se publicarían ${res.plan.publish.length}.`)
     return
   }
-  const res = await publishRecipes(plan.publish)
   console.log(`Publicadas ${res.published}; deseos del catálogo cubiertos: ${res.wishesCovered}.`)
 }
 

@@ -7,6 +7,7 @@
  *   POST   /households/me/invites    { role, email?, source?, shared? } — owner generates a token (30 days, one use)
  *   POST   /households/me/invites/:inviteId/revoke   — owner revokes a pending invite
  *   POST   /households/me/invites/:inviteId/shared   — owner tapped «Enviar por WhatsApp» / «Copiar» (PRO-260)
+ *   GET    /households/me/allergies                    — who has told us their allergies and diet (PRO-271)
  *   GET    /households/me/family-offer                — show the invitation offer in the sign-up / list? (PRO-261)
  *   POST   /households/me/family-offer { moment }     — the offer was shown: never again (PRO-261)
  *   POST   /households/me/members/:userId/remove     — owner kicks a member
@@ -19,6 +20,7 @@ import { z } from 'zod'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { assignCookToday, dbCookTodayDeps } from '../services/cookToday.js'
 import { isHouseholdInviteSource } from '@ona/shared'
+import { loadHouseholdAllergiesStatus } from '../services/householdAllergies.js'
 import { familyOfferDue, familyOfferEligible, loadFamilyOfferInput, stampFamilyOffer } from '../services/familyInviteOffers.js'
 import {
   loadHouseholdForUser,
@@ -94,6 +96,17 @@ router.get('/households/me', async (req: AuthRequest, res) => {
     res.json(h)
   } catch (err) {
     console.error('GET /households/me error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// PRO-271: «Generar mi menú» warns when someone in the household hasn't
+// said their allergies and diet («no ha contestado» ≠ «ninguna»).
+router.get('/households/me/allergies', async (req: AuthRequest, res) => {
+  try {
+    res.json(await loadHouseholdAllergiesStatus(req.userId!))
+  } catch (err) {
+    console.error('GET /households/me/allergies error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

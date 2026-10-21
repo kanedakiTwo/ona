@@ -22,13 +22,16 @@
  * - `menu-comensales` (PRO-275): «hazme el menú para dos» in a household of 4
  *   asks «¿Solo esta semana o siempre?» or generates with `diners: 2`; never
  *   the household's usual diners.
+ * - `menu-un-mensaje` (PRO-277): generating the menu by WhatsApp, Mimo's
+ *   part is short (it goes in the picture's caption, one message), doesn't
+ *   repeat the week day by day and answers what else was asked.
  */
 import { HEALTH_DISCLAIMER, hasDisclaimer, talksHealthEffects } from './healthGuard.js'
 
 
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
-export type MimoEvalCheck = 'menu-guardado' | 'bebe-aparta' | 'bebe-cocina' | 'bebe-salud' | 'menu-comensales'
+export type MimoEvalCheck = 'menu-guardado' | 'bebe-aparta' | 'bebe-cocina' | 'bebe-salud' | 'menu-comensales' | 'menu-un-mensaje'
 
 export interface MimoEvalCase {
   id: string
@@ -64,6 +67,11 @@ export interface MimoEvalToolCall {
   name: string
   input: string
 }
+
+/** PRO-277: how long Mimo's part may be when it goes in the menu picture's caption (≈600, some slack). */
+export const MENU_REPLY_MAX = 700
+/** A line of a day-by-day list: «- Lunes 19: …», «*Martes*», «miercoles: …». */
+const WEEKDAY_LINE_RE = /^[\s\-•*_]*(lunes|martes|miercoles|jueves|viernes|sabado|domingo)\b/
 
 /** «¿Solo esta semana o siempre?» (PRO-275), folded. */
 const ASKS_WEEK_OR_ALWAYS_RE = /solo (para )?esta semana[\s\S]*siempre|siempre[\s\S]*solo (para )?esta semana/
@@ -212,12 +220,19 @@ export function babyPortionOrder(reply: string): { setAside: number; firstSeason
  * - `frase-prohibida`: one of the case's own forbidden phrases;
  * - `no-mira-menu`: didn't read the menu it had to read;
  * - `comensales-de-siempre` (`menu-comensales`): generated with the usual
- *   diners instead of asking or passing the ones said.
+ *   diners instead of asking or passing the ones said;
+ * - `respuesta-larga` / `repite-semana` (`menu-un-mensaje`): too long for the
+ *   picture's caption, or writes the week day by day.
  */
 export function mimoReplyProblems(reply: string, c: MimoEvalCase, toolsUsed?: string[], toolTrace?: MimoEvalToolCall[]): string[] {
   const text = fold(reply)
   const problems: string[] = []
   if (c.check === 'menu-comensales' && c.diners && !dinersApplied(reply, c.diners, toolTrace)) problems.push('comensales-de-siempre')
+  if (c.check === 'menu-un-mensaje') {
+    if (reply.trim().length > MENU_REPLY_MAX) problems.push('respuesta-larga')
+    // The week day by day is the picture's job: four or more lines starting with a day.
+    if (text.split('\n').filter((l) => WEEKDAY_LINE_RE.test(l)).length >= 4) problems.push('repite-semana')
+  }
   if (c.check === 'menu-guardado' && DENIES_CHANGE_RE.test(text)) problems.push('niega-lo-hecho')
   if (c.check === 'bebe-aparta') {
     const { setAside, firstSeasoning } = babyPortionOrder(reply)
@@ -429,5 +444,34 @@ export const MIMO_EVAL_CASES: MimoEvalCase[] = [
     reconstructed: true,
     diners: 2,
     badReply: 'Hecho:\n- Menú de la semana que viene listo',
+  },
+  {
+    id: 'menu-y-que-dejo-hecho-domingo',
+    check: 'menu-un-mensaje',
+    origin: 'Revisor de Mimo, 2026-10-18 (el pedido y los platos, del informe; la respuesta, reconstruida: un «Hecho:» largo con la semana y sin contestar a lo del domingo). PRO-277',
+    context: [
+      'Hoy es domingo 2026-10-18 (dayIndex 6), son las 12:00 en Madrid.',
+      'Hogar: 2 adultos',
+    ].join('\n'),
+    history: [],
+    message: 'hazme el menú de la semana que viene y dime qué dejo hecho el domingo por la tarde',
+    reconstructed: true,
+    toolResults: {
+      generate_weekly_menu:
+        'Menu generado para la semana del 2026-10-19. lunes: lunch: Lentejas estofadas, dinner: Crema de calabacin; martes: lunch: Arroz con bacalao, dinner: Hummus con crudites; miercoles: lunch: Lentejas estofadas (sobras), dinner: Tortilla de patatas; jueves: lunch: Pollo al horno, dinner: Hummus con crudites (sobras); viernes: lunch: Arroz con bacalao (sobras), dinner: Pizza casera',
+    },
+    /** Answers the Sunday question with something to leave done. */
+    expect: /(domingo|deja|dejar|adelant|prepar)[\s\S]*(lentejas|hummus|garbanzo|sofrito|bacalao|arroz)|(lentejas|hummus|garbanzo|sofrito|bacalao|arroz)[\s\S]*(domingo|deja|dejar|adelant|prepar)/,
+    mustCallOneOf: ['generate_weekly_menu'],
+    badReply: [
+      'Hecho:',
+      '- Menú de la semana que viene listo',
+      '- Lunes 19: lentejas estofadas y crema de calabacín',
+      '- Martes 20: arroz con bacalao y hummus con crudités',
+      '- Miércoles 21: lentejas (sobras) y tortilla de patatas',
+      '- Jueves 22: pollo al horno y hummus (sobras)',
+      '- Viernes 23: arroz con bacalao (sobras) y pizza casera',
+      'Tienes la lista de la compra en la app.',
+    ].join('\n'),
   },
 ]

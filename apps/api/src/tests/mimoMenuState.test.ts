@@ -106,3 +106,28 @@ describe('battery: the diners said for the week are applied (PRO-275)', () => {
     ).toEqual([])
   })
 })
+
+/** PRO-277: generating the menu by WhatsApp is one message that also answers what else was asked. */
+describe('battery: one message when generating the menu (PRO-277)', () => {
+  const c = MIMO_EVAL_CASES.find((x) => x.id === 'menu-y-que-dejo-hecho-domingo')!
+
+  it('the WhatsApp prompt keeps Mimo\'s part short, without the week, answering the rest', () => {
+    const { instructions } = buildSystemParts('ctx', 'whatsapp')
+    expect(instructions).toMatch(/Un solo mensaje al generar el menu \(PRO-277\)/)
+    expect(instructions).toMatch(/como mucho unos 600 caracteres/)
+    expect(instructions).toMatch(/que dejar hecho el domingo/)
+    expect(buildSystemParts('ctx', 'text').instructions).not.toMatch(/PRO-277/)
+  })
+
+  it('the long «Hecho:» with the week and no answer fails', () => {
+    expect(c.check).toBe('menu-un-mensaje')
+    expect(mimoReplyProblems(c.badReply, c)).toEqual(expect.arrayContaining(['repite-semana', 'no-confirma']))
+  })
+
+  it('a short reply that answers the Sunday question passes; one that never generated fails live', () => {
+    const good = 'Hecho:\n- Menú de la semana que viene listo\n\nEl domingo por la tarde deja hecho:\n- Las lentejas del lunes (te sirven para el miércoles)\n- El hummus de las cenas del martes y el jueves\n- El sofrito del arroz con bacalao'
+    expect(mimoReplyProblems(good, c, ['generate_weekly_menu'])).toEqual([])
+    expect(mimoReplyProblems(good, c, [])).toEqual(['no-mira-menu'])
+    expect(mimoReplyProblems(`${good}\n${'x'.repeat(700)}`, c, ['generate_weekly_menu'])).toContain('respuesta-larga')
+  })
+})

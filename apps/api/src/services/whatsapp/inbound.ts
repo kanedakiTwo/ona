@@ -9,7 +9,7 @@ import { connectUrl, extractLinkCodeCandidates, isLinkAttempt } from './linking.
 import { dropRepeatedButtons, lastSentButtons, outboundBody, renderAssistantReply, renderPlainText, WA_CAPTION_MAX, type OutboundMessage } from './render.js'
 import { extractOptions, toWhatsAppMarkup } from './format.js'
 import { isShoppingItemList, shoppingListDigest } from '../shoppingText.js'
-import type { WeekView } from '../menuText.js'
+import { captionVariants, type WeekView } from '../menuText.js'
 import { AI_DISCLOSURE_FIRST_PERSON, BRAND_SUPPORT_EMAIL, NotASchoolMenuError, schoolLunchLines, type SchoolLunch } from '@ona/shared'
 import { guidedMeta, type GuideSpec, type GuidedResult } from './guided.js'
 import { controlCommand, OPT_IN_NO, OPT_IN_YES } from './commands.js'
@@ -266,8 +266,9 @@ export const WEEK_IMAGE_ALT = 'el menú de la semana, día a día'
  * words, as before.
  *
  * When the model's words carry buttons (or a shopping list came in the same
- * turn, or it all doesn't fit in a caption), they go after the picture as
- * usual, so the buttons stay last.
+ * turn, or it all doesn't fit in a caption even without the caption's invite
+ * and link lines, PRO-277), they go after the picture as usual, so the
+ * buttons stay last.
  */
 export async function replyMessages(
   response: AssistantResponse,
@@ -304,8 +305,13 @@ export async function replyMessages(
   const shopping = shoppingDigestOf(response)
   const { text: restText, options } = extractOptions(rest)
   if (!shopping && options.length === 0) {
-    const caption = [toWhatsAppMarkup(restText).trim(), image.caption].filter(Boolean).join('\n\n')
-    if (caption.length <= WA_CAPTION_MAX) return [picture(caption, textVersion)]
+    // PRO-277: one message. If Mimo's words and the caption don't fit,
+    // the caption's fixed lines (invite, then link) go before splitting.
+    const words = toWhatsAppMarkup(restText).trim()
+    for (const fixed of captionVariants(image.caption)) {
+      const caption = [words, fixed].filter(Boolean).join('\n\n')
+      if (caption.length <= WA_CAPTION_MAX) return [picture(caption, textVersion)]
+    }
   }
   // The model's words (and buttons) after the picture. The caption already
   // links the menu page, so no "Ver menú" line again.

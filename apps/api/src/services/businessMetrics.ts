@@ -34,6 +34,12 @@ export interface CostRow {
   unpriced: number
   /** Spent by an excluded account (admin / suspended). */
   internal: boolean
+  /**
+   * No user behind it (`cost_events.user_id` NULL: catalogue import, ingredient matching, the
+   * daily reviewer…). Reported as `systemCostEur`, never in `costEur` nor in the cost per
+   * household (PRO-309, D-108). Absent = false.
+   */
+  system?: boolean
 }
 
 export interface MetricsInput {
@@ -74,9 +80,13 @@ export interface WeeklyMetrics {
   newHouseholds: number
   costEur: CostBreakdown
   internalCostEur: number
+  /** Cost with no user behind it, by provider and feature (PRO-309); not in costEur. */
+  systemCostEur: CostBreakdown
   costPerActiveHouseholdEur: number | null
   /** cost_events rows (paid calls) by feature, same accounts as costEur (PRO-247). */
   eventsByFeature: Record<string, number>
+  /** cost_events rows by feature with no user behind them (PRO-309). */
+  systemEventsByFeature: Record<string, number>
 }
 
 export interface CohortMetrics {
@@ -152,6 +162,11 @@ function eventsByFeature(rows: CostRow[]): Record<string, number> {
   return out
 }
 
+/** Who a cost row belongs to: a counted household, an excluded account, or nobody (the system). */
+const isSystem = (c: CostRow) => c.system === true
+const isCounted = (c: CostRow) => !c.internal && !isSystem(c)
+const isInternal = (c: CostRow) => c.internal && !isSystem(c)
+
 const signupWeeks = (signups: HouseholdDay[]): HouseholdWeek[] =>
   signups.map((s) => ({ householdId: s.householdId, week: weekOfDay(s.day) }))
 
@@ -175,9 +190,10 @@ export function buildWeekly(input: MetricsInput): WeeklyMetrics[] {
         .map((m) => m.householdId),
     )
     const weekCosts = input.costs.filter((c) => c.week === week)
-    const counted = weekCosts.filter((c) => !c.internal)
+    const counted = weekCosts.filter(isCounted)
+    const system = weekCosts.filter(isSystem)
     const costEur = costBreakdown(counted)
-    const internalMicros = weekCosts.filter((c) => c.internal).reduce((s, c) => s + c.micros, 0)
+    const internalMicros = weekCosts.filter(isInternal).reduce((s, c) => s + c.micros, 0)
     return {
       week,
       isoWeek: isoWeekLabel(week),
@@ -189,8 +205,10 @@ export function buildWeekly(input: MetricsInput): WeeklyMetrics[] {
       newHouseholds: signups.get(week)?.size ?? 0,
       costEur,
       internalCostEur: eur(internalMicros),
+      systemCostEur: costBreakdown(system),
       costPerActiveHouseholdEur: activeHouseholds > 0 ? Math.round((costEur.total / activeHouseholds) * 10_000) / 10_000 : null,
       eventsByFeature: eventsByFeature(counted),
+      systemEventsByFeature: eventsByFeature(system),
     }
   })
 }
@@ -269,7 +287,8 @@ export function buildTotals(input: MetricsInput, weekly: WeeklyMetrics[]) {
   const activeHouseholds = new Set(input.activity.filter((a) => inWindow.has(a.week)).map((a) => a.householdId)).size
   const activeHouseholdWeeks = weekly.reduce((s, w) => s + w.activeHouseholds, 0)
   const windowCosts = input.costs.filter((c) => inWindow.has(c.week))
-  const counted = windowCosts.filter((c) => !c.internal)
+  const counted = windowCosts.filter(isCounted)
+  const system = windowCosts.filter(isSystem)
   const costEur = costBreakdown(counted)
   return {
     activeHouseholds,
@@ -277,10 +296,12 @@ export function buildTotals(input: MetricsInput, weekly: WeeklyMetrics[]) {
     newHouseholds: weekly.reduce((s, w) => s + w.newHouseholds, 0),
     resolvedHouseholdWeeks: weekly.reduce((s, w) => s + w.resolvedWeekHouseholds, 0),
     costEur,
-    internalCostEur: eur(windowCosts.filter((c) => c.internal).reduce((s, c) => s + c.micros, 0)),
+    internalCostEur: eur(windowCosts.filter(isInternal).reduce((s, c) => s + c.micros, 0)),
+    systemCostEur: costBreakdown(system),
     costPerActiveHouseholdWeekEur:
       activeHouseholdWeeks > 0 ? Math.round((costEur.total / activeHouseholdWeeks) * 10_000) / 10_000 : null,
     eventsByFeature: eventsByFeature(counted),
+    systemEventsByFeature: eventsByFeature(system),
     costEvents: windowCosts.reduce((s, c) => s + c.events, 0),
     unpricedCostEvents: windowCosts.reduce((s, c) => s + c.unpriced, 0),
   }
@@ -302,10 +323,12 @@ export const DEFINITIONS = {
     "Of menuHouseholds, those whose first menu for that week was created before 00:00 of that Monday, Europe/Madrid: they prepared the week before it started. A later regenerate doesn't move the first creation time.",
   newHouseholds: 'Households created (at registration) that week and still primary for a counted user.',
   costEur:
-    'Estimated provider cost (EUR) from the cost ledger for counted users plus system jobs (userId null, e.g. the daily conversation reviewer), split by provider and feature. Prices in config/pricing.ts; USD converted with ADVISOR_EUR_PER_USD. WhatsApp service messages sent by Mimo are recorded one row each (feature whatsapp_service): 0 € for the first 1,000 of the month, €0.0166 from the 1,001st.',
+    'Estimated provider cost (EUR) from the cost ledger for counted users, split by provider and feature. Calls with no user behind them (userId null: catalogue import, ingredient matching, the daily conversation reviewer…) are not here but in systemCostEur (PRO-309, D-108). Prices in config/pricing.ts; USD converted with ADVISOR_EUR_PER_USD. WhatsApp service messages sent by Mimo are recorded one row each (feature whatsapp_service): 0 € for the first 1,000 of the month, €0.0166 from the 1,001st.',
   eventsByFeature:
     'Number of cost-ledger rows (cost_events) by feature, for the same accounts as costEur (internal accounts out): one row per paid call, so costEur.byFeature[f] / eventsByFeature[f] is the average cost of one call of that feature. What one call of each feature is: featureDefinitions. Counts only, no user data.',
-  costPerActiveHouseholdEur: 'costEur.total / activeHouseholds for the week (null when no household was active).',
+  systemCostEur:
+    'Estimated provider cost (EUR) of the calls with no user behind them (cost_events.user_id null): importing and rewriting catalogue recipes, matching ingredients, the daily conversation reviewer and other system jobs, by provider and feature. Not part of costEur nor of the cost per household, so it does not trigger the per-household cost alert (D-048, D-108). systemEventsByFeature counts its calls.',
+  costPerActiveHouseholdEur: 'costEur.total / activeHouseholds for the week (null when no household was active). System cost (systemCostEur) is not included.',
   costPerActiveHouseholdWeekEur: 'Window total costEur / sum of weekly activeHouseholds.',
   cohorts: 'Households grouped by signup week; retention.wK = share of the cohort active in week signup+K (null until that week starts; the current week is partial).',
   dataSince: 'First row in the cost ledger / activity log. Weeks before these dates under-report cost and resolved weeks.',
@@ -449,12 +472,13 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
            ce.provider,
            ce.feature,
            NOT (ce.user_id IS NULL OR u.id IS NULL OR ${counted}) AS internal,
+           (ce.user_id IS NULL) AS system,
            COALESCE(SUM(ce.cost_micros), 0)::bigint AS micros,
            COUNT(*)::int AS events,
            COUNT(*) FILTER (WHERE ce.cost_micros IS NULL)::int AS unpriced
       FROM cost_events ce LEFT JOIN users u ON u.id = ce.user_id
       WHERE ce.created_at >= ${from}
-      GROUP BY 1, 2, 3, 4
+      GROUP BY 1, 2, 3, 4, 5
   `)
 
   const sinceQ = db.execute(sql`
@@ -484,6 +508,7 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
       provider: r.provider,
       feature: r.feature,
       internal: Boolean(r.internal),
+      system: Boolean(r.system),
       micros: Number(r.micros),
       events: Number(r.events),
       unpriced: Number(r.unpriced),

@@ -147,6 +147,40 @@ describe('buildWeekly', () => {
     expect(w.costPerActiveHouseholdEur).toBeCloseTo(0.02, 6)
   })
 
+  it('PRO-309: cost with no user behind it goes to systemCostEur, never to costEur nor the cost per household', () => {
+    const inp = input({
+      activity: [
+        { householdId: 'h1', week: '2026-10-05' },
+        { householdId: 'h2', week: '2026-10-05' },
+      ],
+      costs: [
+        { week: '2026-10-05', provider: 'anthropic', feature: 'assistant_chat', micros: 40_000, events: 4, unpriced: 0, internal: false },
+        // Catalogue import and ingredient matching: no user (cost_events.user_id NULL).
+        { week: '2026-10-05', provider: 'anthropic', feature: 'catalog_import_rewrite', micros: 11_370_000, events: 120, unpriced: 0, internal: false, system: true },
+        { week: '2026-10-05', provider: 'anthropic', feature: 'ingredient_match', micros: 8_970_000, events: 300, unpriced: 1, internal: false, system: true },
+        { week: '2026-10-05', provider: 'anthropic', feature: 'assistant_chat', micros: 500_000, events: 9, unpriced: 0, internal: true },
+      ],
+    })
+    const w = buildWeekly(inp)[2]
+    expect(w.costEur.total).toBeCloseTo(0.04, 6)
+    expect(w.costEur.byFeature).toEqual({ assistant_chat: 0.04 })
+    expect(w.costPerActiveHouseholdEur).toBeCloseTo(0.02, 6)
+    expect(w.systemCostEur.total).toBeCloseTo(20.34, 6)
+    expect(w.systemCostEur.byFeature).toEqual({ catalog_import_rewrite: 11.37, ingredient_match: 8.97 })
+    expect(w.systemEventsByFeature).toEqual({ catalog_import_rewrite: 120, ingredient_match: 300 })
+    expect(w.eventsByFeature).toEqual({ assistant_chat: 4 })
+    expect(w.internalCostEur).toBeCloseTo(0.5, 6)
+
+    const totals = buildTotals(inp, buildWeekly(inp))
+    expect(totals.costEur.total).toBeCloseTo(0.04, 6)
+    expect(totals.systemCostEur.byFeature).toEqual({ catalog_import_rewrite: 11.37, ingredient_match: 8.97 })
+    expect(totals.costPerActiveHouseholdWeekEur).toBeCloseTo(0.02, 6)
+    expect(totals.internalCostEur).toBeCloseTo(0.5, 6)
+    // Calls and unpriced calls still count every row.
+    expect(totals.costEvents).toBe(433)
+    expect(totals.unpricedCostEvents).toBe(1)
+  })
+
   it('cost per active household is null (not Infinity) in a week with no activity', () => {
     const weekly = buildWeekly(
       input({ costs: [{ week: '2026-09-21', provider: 'anthropic', feature: 'whatsapp_review', micros: 1000, events: 1, unpriced: 0, internal: false }] }),

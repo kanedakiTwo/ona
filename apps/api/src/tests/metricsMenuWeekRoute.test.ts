@@ -34,6 +34,8 @@ vi.mock('../db/connection.js', () => {
         rows: [
           { week: monday, provider: 'anthropic', feature: 'whatsapp_guided', internal: false, micros: '36000', events: 17, unpriced: 0 },
           { week: monday, provider: 'anthropic', feature: 'assistant_chat', internal: true, micros: '900000', events: 40, unpriced: 0 },
+          // PRO-309: no user behind it (catalogue import) → systemCostEur, not costEur.
+          { week: monday, provider: 'anthropic', feature: 'catalog_import_rewrite', internal: false, system: true, micros: '2000000', events: 3, unpriced: 0 },
         ],
       }
     }
@@ -86,6 +88,10 @@ describe('GET /admin/metrics — menus of the week and calls by feature', () => 
     expect(body.weekly[0].eventsByFeature).toEqual({ whatsapp_guided: 17 })
     expect(body.totals.eventsByFeature).toEqual({ whatsapp_guided: 17 })
     expect(body.weekly[0].costEur.byFeature.whatsapp_guided).toBeCloseTo(0.036, 6)
+    expect(body.weekly[0].costEur.byFeature.catalog_import_rewrite).toBeUndefined()
+    expect(body.weekly[0].systemCostEur.byFeature).toEqual({ catalog_import_rewrite: 2 })
+    expect(body.totals.systemEventsByFeature).toEqual({ catalog_import_rewrite: 3 })
+    expect(body.definitions.systemCostEur).toBeTruthy()
     expect(body.definitions.eventsByFeature).toBeTruthy()
     expect(body.definitions.featureDefinitions.whatsapp_guided).toBeTruthy()
   })

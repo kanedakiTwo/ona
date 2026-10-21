@@ -91,6 +91,12 @@ export const users = pgTable('users', {
    */
   alertPrefs: jsonb('alert_prefs').notNull().default({}).$type<Record<string, boolean>>(),
   /**
+   * «Aprender de lo que hago» off (PRO-317, D-110; RGPD art. 21): since when
+   * the nightly refiner leaves this person's signals out and deduces nothing
+   * new about them. What the ficha already knows stays. Null = on.
+   */
+  profileLearningPausedAt: timestamp('profile_learning_paused_at', { withTimezone: true }),
+  /**
    * Explicit consent for health data (RGPD art. 9, PRO-21): when it was given,
    * which text version, and when it was withdrawn. Both dates stay as the
    * record; it is in force when consent_at is later than withdrawn_at.
@@ -1652,6 +1658,10 @@ export const profileQuestions = pgTable('profile_questions', {
   status: text('status').notNull().default('pending'),
   askedAt: timestamp('asked_at', { withTimezone: true }),
   resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  /** What the person answered in «Tu ficha» (PRO-317): 'yes' | 'no'; the next night's signals carry it. */
+  answer: text('answer'),
+  /** Who answered. */
+  answeredByUserId: uuid('answered_by_user_id').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_profile_questions_household_status').on(t.householdId, t.status),

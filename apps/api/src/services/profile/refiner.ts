@@ -58,11 +58,14 @@ import {
   profileQuestions,
   profileRefinements,
   profileRefinerRuns,
+  users,
 } from '../../db/schema.js'
 import { isBeta } from '../billing.js'
 import { recordCost, anthropicUnits } from '../costLedger.js'
 import { addDays, madridMidnightUtc, madridParts } from '../madridTime.js'
 import { spendCapStatus } from '../spendCap.js'
+import { factSentence } from './view.js'
+import { sameFactValue } from './writer.js'
 import { mentionsHealth } from './healthText.js'
 import { collectHouseholdDaySignals, type HouseholdDaySignals, type SignalMember } from './signals.js'
 import { CLAUDE_MODEL } from '../../config/models.js'
@@ -201,6 +204,10 @@ export interface RefinerContext {
   facts: FichaFact[]
   portrait: { text: string; version: number } | null
   pendingQuestions: string[]
+  /** Members who paused «Aprender de lo que hago» (PRO-317): nothing new is deduced about them. */
+  pausedUserIds?: string[]
+  /** What the household forgot in «Tu ficha» in the last 90 days (and didn't take back): it comes back only as a question. */
+  forgotten?: Array<{ subjectUserId: string | null; subjectPersonId: string | null; type: string; value: unknown }>
 }
 
 /** What the model saw: reference → id. Stored with the household's row of the run. */
@@ -323,6 +330,7 @@ export type DiscardReason =
   | 'no_change'
   | 'duplicate_question'
   | 'over_limit'
+  | 'paused'
 
 /** What a rule threw away: reason and type, never the content. */
 export interface Discarded {
@@ -415,6 +423,12 @@ export function planRefinement(ctx: RefinerContext, refs: RefinerRefs, output: R
       type = fact.type
     }
 
+    // «Aprender de lo que hago» paused (PRO-317): nothing new about that person.
+    if (subject!.userId && ctx.pausedUserIds?.includes(subject!.userId)) {
+      discarded.push({ reason: 'paused', op, type })
+      continue
+    }
+
     // Health is never deduced, touched or hinted at — in any field.
     const text = [c.valueJson, c.reason, c.question, ...c.evidence.map((e) => e.summary)].join(' . ')
     if (isHealthProfileFactType(type) || mentionsHealth(text)) {
@@ -465,6 +479,12 @@ export function planRefinement(ctx: RefinerContext, refs: RefinerRefs, output: R
     })
     if (!checked.success || validUntil === undefined || (op === 'add' && evidence.length === 0)) {
       discarded.push({ reason: 'invalid', op, type })
+      continue
+    }
+
+    // What the household forgot in «Tu ficha» comes back only as a question (PRO-317).
+    if (ctx.forgotten?.some((f) => f.type === factType && f.subjectUserId === subject!.userId && f.subjectPersonId === subject!.personId && sameFactValue(f.value, value))) {
+      pushQuestion(subject, `Me ha parecido ver otra vez algo que olvidaste: «${factSentence(factType, value, 'casa') ?? factType}». ¿Lo apunto?`, factType, reason, op)
       continue
     }
 
@@ -595,6 +615,23 @@ export async function loadRefinerContext(householdId: string, day: string, membe
   const [portrait] = await db.select().from(householdProfiles).where(eq(householdProfiles.householdId, householdId)).limit(1)
   const questions = await db.select({ question: profileQuestions.question }).from(profileQuestions)
     .where(and(eq(profileQuestions.householdId, householdId), inArray(profileQuestions.status, ['pending', 'asked'])))
+  // «Tu ficha» (PRO-317): who paused the learning, and what was forgotten in the last 90 days
+  // unless a later «Sí» to a question about it took it back.
+  const memberIds = members.map((m) => m.userId)
+  const paused = memberIds.length
+    ? await db.select({ id: users.id }).from(users).where(and(inArray(users.id, memberIds), sql`${users.profileLearningPausedAt} IS NOT NULL`))
+    : []
+  const since = new Date(Date.now() - 90 * 24 * 3600 * 1000)
+  const forgottenRows = await db.select({
+    type: profileChanges.factType, before: profileChanges.before, at: profileChanges.createdAt,
+    subjectUserId: profileFacts.subjectUserId, subjectPersonId: profileFacts.subjectPersonId,
+  }).from(profileChanges).innerJoin(profileFacts, eq(profileFacts.id, profileChanges.factId))
+    .where(and(eq(profileChanges.householdId, householdId), eq(profileChanges.action, 'fact_retired'), eq(profileChanges.origin, 'user'), sql`${profileChanges.createdAt} >= ${since}`))
+  const yes = await db.select({ type: profileQuestions.factType, subjectUserId: profileQuestions.subjectUserId, subjectPersonId: profileQuestions.subjectPersonId, at: profileQuestions.resolvedAt })
+    .from(profileQuestions).where(and(eq(profileQuestions.householdId, householdId), eq(profileQuestions.answer, 'yes')))
+  const forgotten = forgottenRows
+    .filter((r) => r.type && !yes.some((y) => y.type === r.type && y.subjectUserId === r.subjectUserId && y.subjectPersonId === r.subjectPersonId && y.at && y.at > r.at))
+    .map((r) => ({ subjectUserId: r.subjectUserId, subjectPersonId: r.subjectPersonId, type: r.type!, value: (r.before as { value?: unknown } | null)?.value }))
   return {
     householdId,
     day,
@@ -614,6 +651,8 @@ export async function loadRefinerContext(householdId: string, day: string, membe
     })),
     portrait: portrait ? { text: portrait.portrait, version: portrait.version } : null,
     pendingQuestions: questions.map((q) => q.question),
+    pausedUserIds: paused.map((p) => p.id),
+    forgotten,
   }
 }
 

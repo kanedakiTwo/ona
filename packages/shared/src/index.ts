@@ -582,3 +582,17 @@ export {
   type AlertRow,
   type AlertsOverview,
 } from './types/alerts.js'
+export type {
+  FichaTopic,
+  FichaOrigin,
+  FichaSubject,
+  FichaPersonKey,
+  FichaFactView,
+  FichaPersonView,
+  FichaQuestionView,
+  FichaChangeAction,
+  FichaChangeView,
+  FichaView,
+  FichaWhyView,
+} from './types/fichaView.js'
+export { FICHA_PATH, FICHA_TOPICS, FICHA_TOPIC_LABELS, fichaConfidenceWord } from './types/fichaView.js'

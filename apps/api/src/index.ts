@@ -50,6 +50,7 @@ import noticesRoutes from './routes/notices.js'
 import { startAfinaNotice } from './services/afinaNotice.js'
 import catalogWishesRoutes from './routes/catalogWishes.js'
 import householdHabitsRoutes from './routes/householdHabits.js'
+import householdProfileRoutes from './routes/householdProfile.js'
 import schoolMenuRoutes from './routes/schoolMenu.js'
 import blindComparisonRoutes from './routes/blindComparison.js'
 import { trackShoppingActivity } from './services/activityEvents.js'
@@ -151,6 +152,8 @@ app.use(noticesRoutes)
 app.use(catalogWishesRoutes)
 // How the household cooks (PRO-217): per-route auth.
 app.use(householdHabitsRoutes)
+// «Tu ficha» (PRO-317): per-route auth.
+app.use(householdProfileRoutes)
 // Menú del cole (PRO-224): per-route auth.
 app.use(schoolMenuRoutes)
 // Menú inteligente: comparación a ciegas en los hogares de prueba (PRO-256).

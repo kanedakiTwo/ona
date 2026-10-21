@@ -226,3 +226,26 @@ describe('qué hogares se procesan', () => {
     expect(refinerEligibility({ now: AFTER_LAUNCH, subscriptionStatus: 'active', ownerSuspended: false })).toEqual({ ok: true })
   })
 })
+
+describe('planRefinement — «Tu ficha» (PRO-317): the pause and what the reader forgot', () => {
+  it('nothing new about a person who paused «Aprender de lo que hago»', () => {
+    const plan = planRefinement(ctx({ pausedUserIds: [U1] }), refsOf(ctx()), out({ facts: [
+      fact({ subject: 'P1', type: 'affinity', valueJson: JSON.stringify({ kind: 'style', target: 'la cuchara', score: 2 }) }),
+      fact({ op: 'update', fact: 'F2', type: 'dislikes', valueJson: JSON.stringify(['cilantro', 'ajo']) }),
+      fact({ subject: 'P2', type: 'affinity', valueJson: JSON.stringify({ kind: 'style', target: 'los guisos', score: 2 }) }),
+    ] }))
+    expect(plan.discarded.filter((d) => d.reason === 'paused')).toHaveLength(2)
+    expect(plan.ops.map((o) => o.kind)).toEqual(['add'])
+  })
+
+  it('what the reader forgot comes back as a question, not as a fact', () => {
+    const forgotten = [{ subjectUserId: null, subjectPersonId: null, type: 'fixed_dish' as const, value: { dish: 'pizza', days: ['viernes'], meal: 'dinner' } }]
+    const plan = planRefinement(ctx({ forgotten }), refsOf(ctx()), out({ facts: [
+      fact({ type: 'fixed_dish', valueJson: JSON.stringify({ meal: 'dinner', dish: 'pizza', days: ['viernes'] }) }),
+      fact({ type: 'fixed_dish', valueJson: JSON.stringify({ dish: 'paella', days: ['domingo'] }) }),
+    ] }))
+    const q = plan.ops.find((o) => o.kind === 'question')
+    expect(q && q.kind === 'question' ? q.question : '').toBe('Me ha parecido ver otra vez algo que olvidaste: «Pizza los viernes en la cena». ¿Lo apunto?')
+    expect(plan.ops.filter((o) => o.kind === 'add')).toHaveLength(1)
+  })
+})

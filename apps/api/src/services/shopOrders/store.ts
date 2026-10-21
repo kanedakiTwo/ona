@@ -149,6 +149,46 @@ export async function patchShop(userId: string, id: string, input: Partial<ShopI
   return row ? toShop(row) : null
 }
 
+export type ShopMove = 'up' | 'down' | 'first'
+
+/**
+ * The household's shop ids after moving `id` within its kind (PRO-287): the
+ * first súper gets the súper order, the first frutería the frutería's, so
+ * «Subir» swaps it with the previous shop of the same kind, «Bajar» with the
+ * next one and «first» puts it before every other of its kind. Other kinds
+ * keep their slots. null = no such shop; same order = nothing to move.
+ */
+export function reorderShopIds<T extends { id: string; kind: string }>(shops: T[], id: string, to: ShopMove): string[] | null {
+  const ids = shops.map((s) => s.id)
+  const at = ids.indexOf(id)
+  if (at < 0) return null
+  const kind = shops[at].kind
+  const slots = shops.flatMap((s, i) => (s.kind === kind ? [i] : []))
+  const mine = slots.map((i) => ids[i])
+  const k = mine.indexOf(id)
+  const next = [...mine]
+  if (to === 'up' && k > 0) [next[k - 1], next[k]] = [next[k], next[k - 1]]
+  else if (to === 'down' && k < next.length - 1) [next[k + 1], next[k]] = [next[k], next[k + 1]]
+  else if (to === 'first' && k > 0) next.unshift(...next.splice(k, 1))
+  slots.forEach((slot, j) => (ids[slot] = next[j]))
+  return ids
+}
+
+/** Move a shop up/down (or to the front) among the household's shops of its kind; positions are rewritten 0…n-1. */
+export async function moveShop(userId: string, id: string, to: ShopMove, db: Db = defaultDb): Promise<Shop[] | null> {
+  const hh = await householdOf(userId, db)
+  const rows = await shopRows(hh, db)
+  const ids = reorderShopIds(rows, id, to)
+  if (!ids) return null
+  const now = new Date()
+  for (const [position, shopId] of ids.entries()) {
+    const row = rows.find((r) => r.id === shopId)!
+    if (row.position === position) continue
+    await db.update(householdShops).set({ position, updatedAt: now }).where(and(eq(householdShops.id, shopId), eq(householdShops.householdId, hh)))
+  }
+  return (await shopRows(hh, db)).map(toShop)
+}
+
 export async function deleteShop(userId: string, id: string, db: Db = defaultDb): Promise<boolean> {
   const hh = await householdOf(userId, db)
   // Drafts for that shop go with it; sent/closed orders keep their snapshot.

@@ -2,7 +2,7 @@
 
 Typed long-term storage of everything the assistant has learned (or the user has told it) about the user. Read on every advisor skill call as a Spanish-language digest; written manually via `/profile/memoria` or inferred by the assistant via the `update_memory` skill.
 
-> **Ficha del hogar (PRO-150):** these facts are copied, with their origin, into the household's ficha — see [Ficha del hogar](./household-profile.md). `user_memories` is still what Mimo writes; since PRO-253 Mimo reads the household's ficha too, after this digest (see [Ficha del hogar → Who reads the ficha](./household-profile.md)).
+> **Ficha del hogar (PRO-150, PRO-316):** the ficha is the one source of what we know about a person (D-064, D-110). Every write and delete here also writes the household's ficha, in the same transaction, with its origin, where it was said and its history row — see [Ficha del hogar](./household-profile.md). `user_memories` stays as the ficha's mirror while the menu generator reads it; since PRO-253 Mimo reads the household's ficha too, after this digest (see [Ficha del hogar → Who reads the ficha](./household-profile.md)).
 
 ## User Capabilities
 

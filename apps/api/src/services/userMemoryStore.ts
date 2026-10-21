@@ -2,6 +2,12 @@
  * User-memory store — thin wrapper around the `user_memories` table that
  * validates every write against the per-key Zod schema in @ona/shared.
  *
+ * PRO-316 (D-064, D-110): the ficha del hogar is the one source of what we
+ * know about a person. Every write and every delete here also writes the
+ * ficha, in the same transaction (`mirrorMemoryWrite` / `mirrorMemoryDelete`,
+ * services/profile/writer.ts), with its history row; `user_memories` stays as
+ * a mirror while the menu generator still reads it.
+ *
  * Reads are cheap (one indexed lookup per user); the advisor caches the
  * digest per session so we don't fetch on every skill invocation.
  */
@@ -9,6 +15,7 @@ import { eq, and, inArray } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { userMemories } from '../db/schema.js'
 import { HealthConsentRequiredError, hasHealthConsent } from './healthConsent.js'
+import { mirrorMemoryDelete, mirrorMemoryWrite, type FactSignal } from './profile/writer.js'
 import {
   isHealthMemoryKey,
   validateMemoryFactValue,
@@ -59,11 +66,21 @@ export async function getMemoryForUser(userId: string): Promise<UserMemory> {
 
 export { HealthConsentRequiredError }
 
-/** Health keys (physical.*, restrictions) need the art. 9 consent (PRO-21). */
-async function assertHealthConsentFor(userId: string, keys: string[]): Promise<void> {
-  if (keys.some(isHealthMemoryKey) && !(await hasHealthConsent(userId))) {
-    throw new HealthConsentRequiredError()
-  }
+/** Health keys (physical.*, restrictions) need the art. 9 consent (PRO-21). Returns whether the user has it. */
+async function assertHealthConsentFor(userId: string, keys: string[]): Promise<boolean> {
+  if (!keys.some(isHealthMemoryKey)) return false
+  if (!(await hasHealthConsent(userId))) throw new HealthConsentRequiredError()
+  return true
+}
+
+/** Where a memory write comes from (the ficha's evidence). Without one, from the source. */
+export interface MemoryWriteOptions {
+  signal?: FactSignal
+}
+
+function signalFor(source: MemorySource, opts?: MemoryWriteOptions): FactSignal {
+  if (opts?.signal) return opts.signal
+  return source === 'onboarding' ? 'onboarding' : source === 'inferred' ? 'chat' : 'profile'
 }
 
 /**
@@ -76,33 +93,38 @@ export async function setMemoryFact(
   value: unknown,
   source: MemorySource = 'manual',
   confidence: number = 1,
+  opts?: MemoryWriteOptions,
 ): Promise<MemoryFact> {
   const v = validateMemoryFactValue(key, value)
   if (!v.ok) {
     if (v.reason.startsWith('unknown')) throw new UnknownMemoryKeyError(key)
     throw new MemoryValueValidationError(key, v.reason)
   }
-  await assertHealthConsentFor(userId, [v.key])
-  const [row] = await db
-    .insert(userMemories)
-    .values({
-      userId,
-      key: v.key,
-      value: v.value as object,
-      source,
-      confidence,
-    })
-    .onConflictDoUpdate({
-      target: [userMemories.userId, userMemories.key],
-      set: {
+  const consent = await assertHealthConsentFor(userId, [v.key])
+  const signal = signalFor(source, opts)
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(userMemories)
+      .values({
+        userId,
+        key: v.key,
         value: v.value as object,
         source,
         confidence,
-        updatedAt: new Date(),
-      },
-    })
-    .returning()
-  return rowToFact(row)
+      })
+      .onConflictDoUpdate({
+        target: [userMemories.userId, userMemories.key],
+        set: {
+          value: v.value as object,
+          source,
+          confidence,
+          updatedAt: new Date(),
+        },
+      })
+      .returning()
+    await mirrorMemoryWrite(tx, { userId, memoryId: row.id, key: v.key, value: v.value, source, confidence, signal, hasHealthConsent: consent })
+    return rowToFact(row)
+  })
 }
 
 /**
@@ -115,6 +137,7 @@ export async function setMemoryBatch(
   userId: string,
   facts: Array<{ key: string; value: unknown; confidence?: number }>,
   source: MemorySource = 'manual',
+  opts?: MemoryWriteOptions,
 ): Promise<UserMemory> {
   // Validate everything first — fail fast outside the transaction so the
   // 400 includes the offending key.
@@ -127,10 +150,11 @@ export async function setMemoryBatch(
     }
     validated.push({ key: v.key, value: v.value, confidence: f.confidence ?? 1 })
   }
-  await assertHealthConsentFor(userId, validated.map((f) => f.key))
+  const consent = await assertHealthConsentFor(userId, validated.map((f) => f.key))
+  const signal = signalFor(source, opts)
   await db.transaction(async (tx) => {
     for (const f of validated) {
-      await tx
+      const [row] = await tx
         .insert(userMemories)
         .values({
           userId,
@@ -148,15 +172,20 @@ export async function setMemoryBatch(
             updatedAt: new Date(),
           },
         })
+        .returning({ id: userMemories.id })
+      await mirrorMemoryWrite(tx, { userId, memoryId: row.id, key: f.key, value: f.value, source, confidence: f.confidence, signal, hasHealthConsent: consent })
     }
   })
   return await getMemoryForUser(userId)
 }
 
-export async function deleteMemoryFact(userId: string, key: string): Promise<void> {
-  await db
-    .delete(userMemories)
-    .where(and(eq(userMemories.userId, userId), eq(userMemories.key, key)))
+export async function deleteMemoryFact(userId: string, key: string, opts?: MemoryWriteOptions): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(userMemories)
+      .where(and(eq(userMemories.userId, userId), eq(userMemories.key, key)))
+    await mirrorMemoryDelete(tx, { userId, key, signal: opts?.signal ?? 'profile' })
+  })
 }
 
 /**

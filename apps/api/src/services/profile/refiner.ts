@@ -39,6 +39,7 @@ import { z } from 'zod'
 import {
   HEALTH_PROFILE_FACT_TYPES,
   MEMORY_KEYS,
+  MULTI_VALUED_PROFILE_FACT_TYPES,
   PORTRAIT_MAX_WORDS,
   PROFILE_FACT_TYPES,
   countPortraitWords,
@@ -347,12 +348,8 @@ export interface RefinerPlan {
   discarded: Discarded[]
 }
 
-/**
- * Fact types a subject has once (an update, not a second fact): every
- * memory key and the household-wide habits. The rest (affinity, fixed dish,
- * temporary situation…) can have several.
- */
-const MULTI_VALUE_TYPES = new Set(['fixed_dish', 'skipped_meal', 'dish_frequency', 'affinity', 'effort', 'temporary_situation'])
+/** Fact types a subject has several of (`@ona/shared`); the rest are updated, not added twice. */
+const MULTI_VALUE_TYPES = new Set<string>(MULTI_VALUED_PROFILE_FACT_TYPES)
 
 const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9ñ ]/g, '').replace(/\s+/g, ' ').trim()
 

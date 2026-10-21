@@ -153,6 +153,19 @@ export const PROFILE_FACT_VALUE_SCHEMAS: Record<ProfileFactType, z.ZodTypeAny> =
   ...NEW_PROFILE_FACT_VALUE_SCHEMAS,
 }
 
+/**
+ * Fact types a subject can have several of (two fixed dishes, three
+ * affinities). Every other type — every memory key and the household-wide
+ * habits — is single-valued: a second write updates the first.
+ */
+export const MULTI_VALUED_PROFILE_FACT_TYPES: readonly ProfileFactType[] = [
+  'fixed_dish', 'skipped_meal', 'dish_frequency', 'affinity', 'effort', 'temporary_situation',
+]
+
+export function isMultiValuedProfileFactType(type: string): boolean {
+  return (MULTI_VALUED_PROFILE_FACT_TYPES as readonly string[]).includes(type)
+}
+
 /** Fact types that are health data (same keys as the memory's, PRO-21). */
 export const HEALTH_PROFILE_FACT_TYPES: readonly ProfileFactType[] = HEALTH_MEMORY_KEYS
 

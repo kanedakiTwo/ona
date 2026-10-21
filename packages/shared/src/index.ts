@@ -500,6 +500,8 @@ export {
   PROFILE_FACT_VALUE_SCHEMAS,
   HEALTH_PROFILE_FACT_TYPES,
   isHealthProfileFactType,
+  MULTI_VALUED_PROFILE_FACT_TYPES,
+  isMultiValuedProfileFactType,
   MINOR_ALIASES,
   isAllowedMinorAlias,
   householdPersonSchema,

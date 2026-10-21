@@ -293,7 +293,7 @@ export async function applyTasteFacts(userId: string, facts: readonly TasteMemor
     const value = mergeTasteFact(current?.value, f)
     if (value.length === 0 && !current) continue
     const source = current?.source === 'manual' ? 'manual' : 'inferred'
-    const fact = await setMemoryFact(userId, f.key, value, source, 1)
+    const fact = await setMemoryFact(userId, f.key, value, source, 1, { signal: 'afina' })
     memory[f.key] = fact
   }
 }

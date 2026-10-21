@@ -2744,7 +2744,9 @@ const updateMemory: SkillDefinition = {
     try {
       // The skill writes source='inferred'; mergeMemoryFacts keeps what the
       // user set by hand unless they asked for the change (confidence 1).
-      await setMemoryBatch(userId, merged, 'inferred')
+      // PRO-316: the ficha gets it too, with where it was said.
+      const signal = ctx.channel === 'whatsapp' ? 'whatsapp' : ctx.channel === 'voice' ? 'voice' : ctx.channel === 'onboarding' ? 'onboarding' : 'chat'
+      await setMemoryBatch(userId, merged, 'inferred', { signal })
     } catch (err) {
       if (err instanceof HealthConsentRequiredError) {
         return {

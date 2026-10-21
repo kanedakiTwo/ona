@@ -19,13 +19,16 @@
  *   conversation and at the end (for a baby under 1, it must be there).
  * - `bebe-salud` (PRO-104): a health question about a baby (a symptom) is
  *   referred, with the §6 sentence, and still gets simple dishes, no effects.
+ * - `plato-hecho` (PRO-276): a dish the household already has made goes on
+ *   the menu with add_freezer_dish (place «hecho»), never as a catalogue
+ *   recipe with more things in it whose ingredients reach the list.
  */
 import { HEALTH_DISCLAIMER, hasDisclaimer, talksHealthEffects } from './healthGuard.js'
 
 
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
-export type MimoEvalCheck = 'menu-guardado' | 'bebe-aparta' | 'bebe-cocina' | 'bebe-salud'
+export type MimoEvalCheck = 'menu-guardado' | 'bebe-aparta' | 'bebe-cocina' | 'bebe-salud' | 'plato-hecho'
 
 export interface MimoEvalCase {
   id: string
@@ -46,6 +49,8 @@ export interface MimoEvalCase {
   forbidden?: RegExp[]
   /** Live eval only: at least one of these tools must be called. */
   mustCallOneOf?: string[]
+  /** Live eval only: none of these tools may be called (`plato-hecho`: the ones that buy). */
+  mustNotCall?: string[]
   /** Baby checks: the baby is under 1 (the closing «su pediatra» is due). */
   underOne?: boolean
   /** Baby checks: the baby's name, to find their portion in the steps. */
@@ -182,7 +187,8 @@ export function babyPortionOrder(reply: string): { setAside: number; firstSeason
  *   §6 sentence, no simple dish;
  * - `no-confirma`: doesn't say what the case expects;
  * - `frase-prohibida`: one of the case's own forbidden phrases;
- * - `no-mira-menu`: didn't read the menu it had to read.
+ * - `no-mira-menu`: didn't call the tool it had to (read the menu, add the dish already made);
+ * - `compra-lo-hecho`: put a dish already made with a tool that buys its ingredients.
  */
 export function mimoReplyProblems(reply: string, c: MimoEvalCase, toolsUsed?: string[]): string[] {
   const text = fold(reply)
@@ -212,6 +218,7 @@ export function mimoReplyProblems(reply: string, c: MimoEvalCase, toolsUsed?: st
   if (c.expect && !c.expect.test(text)) problems.push('no-confirma')
   if ((c.forbidden ?? []).some((re) => re.test(text))) problems.push('frase-prohibida')
   if (toolsUsed && c.mustCallOneOf?.length && !c.mustCallOneOf.some((t) => toolsUsed.includes(t))) problems.push('no-mira-menu')
+  if (toolsUsed && c.mustNotCall?.some((t) => toolsUsed.includes(t))) problems.push('compra-lo-hecho')
   return problems
 }
 
@@ -382,5 +389,28 @@ export const MIMO_EVAL_CASES: MimoEvalCase[] = [
     underOne: true,
     babyName: 'Leo',
     badReply: 'Eso, mejor con su pediatra. Mimoia no sustituye a un profesional sanitario.',
+  },
+  {
+    id: 'crema-puerros-hecha',
+    check: 'plato-hecho',
+    origin: 'revisor de Mimo, 2026-10-18 (PRO-276; la pregunta y la respuesta son reconstruidas)',
+    context: [
+      'Hoy es miercoles 2026-10-21 (dayIndex 2), son las 19:00 en Madrid.',
+      'Hogar: 2 adultos',
+      'Menu de esta semana (2026-10-19):',
+      '  Jue (dayIndex 3): comida: Lentejas estofadas; cena: Tortilla de patatas',
+    ].join('\n'),
+    history: [],
+    message: 'tengo crema de puerros hecha, ponla el jueves para cenar',
+    reconstructed: true,
+    toolResults: {
+      add_freezer_dish:
+        'Hecho: la cena del jueves 22 de octubre queda como "Hecho en casa: Crema de puerros" (he quitado lo que había); no suma nada a la compra. No hay una receta que se llame igual, asi que va como nota.',
+    },
+    expect: /crema de puerros/,
+    forbidden: [/con jamon/, /(salen|van|estan|añadido|anadido)\b[^.]*\blista/, /ingredientes ya/],
+    mustCallOneOf: ['add_freezer_dish'],
+    mustNotCall: ['swap_meal', 'add_dish'],
+    badReply: 'Hecho:\n- Jueves 22, cena: Crema de puerros con jamón. Sus ingredientes ya salen en la lista de la compra.',
   },
 ]

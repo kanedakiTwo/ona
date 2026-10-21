@@ -9,7 +9,10 @@ import { describe, it, expect, vi } from 'vitest'
 vi.mock('../services/recipeImport.js', () => ({
   createRecipeFromParts: vi.fn(async (parts: { name: string }) => ({ recipeId: 'r-created', name: parts.name, warnings: [] })),
 }))
-import { appSkills, bestMatch, toBuyable, applyTemplateChange, normalize, findSameProduct } from '../services/assistant/appSkills.js'
+import { appSkills, bestMatch, toBuyable, applyTemplateChange, normalize, findSameProduct, namesSameDish } from '../services/assistant/appSkills.js'
+import { sumDinersByRecipe, withLeftoverBatches } from '../services/shoppingList.js'
+import { MIMO_EVAL_CASES, mimoReplyProblems } from '../services/assistant/mimoEvalCases.js'
+import type { DayMenu, Dish } from '@ona/shared'
 import { AppApiError, type AppApi } from '../services/assistant/appApi.js'
 import { madridWeekStart } from '../services/madridTime.js'
 import { buildSystemParts } from '../services/assistant/systemPrompt.js'
@@ -592,6 +595,78 @@ describe('recipes, profile, household', () => {
       'Yo uso Mimoia para el menú de la semana: le escribes por WhatsApp y te lo hace, con la lista de la compra. Pruébalo con mi enlace: https://mimoia.com/?invita=abcd2345',
     )
     expect(writes(f.calls)).toEqual([{ method: 'POST', path: '/usage/invite-shared', body: { channel: 'web' } }])
+  })
+})
+
+// PRO-276 (revisor de Mimo, 2026-10-18): «tengo crema de puerros hecha,
+// ponla el jueves» put «Crema de puerros con jamón» from the catalogue and the
+// list asked for puerros, patata and jamón.
+describe('add_freezer_dish with place «hecho» (PRO-276)', () => {
+  const jamon = { id: 'r-cpj', name: 'Crema de puerros con jamón' }
+  /** The week after the tool's writes: the dish it posted on the given day and meal. */
+  const weekWith = (day: number, meal: string, dish: Dish): DayMenu[] => {
+    const days: DayMenu[] = Array.from({ length: 7 }, () => ({}))
+    days[day] = { [meal]: { dishes: [dish] } }
+    return days
+  }
+
+  it('«tengo crema de puerros hecha, ponla el jueves»: a «Hecho en casa» note, never the one with jamón, and nothing on the list', async () => {
+    const f = fakeApi({ 'GET /recipes': [jamon] })
+    const r = await get('add_freezer_dish').handler({ day: 'jueves', meal: 'dinner', recipeName: 'crema de puerros', place: 'hecho' }, ctx(f.api))
+    const posted = writes(f.calls).at(-1)!
+    expect(posted).toMatchObject({ method: 'POST', body: { kind: 'note', text: 'Hecho en casa: Crema de puerros' } })
+    expect(posted.path).toMatch(/\/day\/3\/meal\/dinner\/dish$/)
+    expect(writes(f.calls).some((c) => (c as any).body?.recipeId === 'r-cpj')).toBe(false)
+    expect(r.summary).toContain('Hecho en casa: Crema de puerros')
+    expect(r.summary).toContain('no suma nada a la compra')
+    // The list: a note asks for nothing (no puerro, patata or jamón).
+    expect(sumDinersByRecipe(withLeftoverBatches(weekWith(3, 'dinner', (posted as any).body)), 2).size).toBe(0)
+  })
+
+  it('a recipe with the same name is linked as «Sobras de otro día» (cooked), which buys nothing', async () => {
+    const f = fakeApi({ 'GET /recipes': [jamon, { id: 'r-cp', name: 'Crema de puerros' }] })
+    const r = await get('add_freezer_dish').handler({ day: 'jueves', meal: 'dinner', recipeName: 'crema de puerros', place: 'hecho' }, ctx(f.api))
+    const posted = writes(f.calls).at(-1)!
+    expect(posted.body).toEqual({ kind: 'recipe', recipeId: 'r-cp', variant: 'cooked' })
+    expect(r.summary).toContain('"Crema de puerros", ya hecho')
+    expect(sumDinersByRecipe(withLeftoverBatches(weekWith(3, 'dinner', { ...posted.body, recipeName: 'Crema de puerros' })), 2).get('r-cp')).toBeUndefined()
+  })
+
+  it('a recipe id the model passes counts only when its name is the same dish', async () => {
+    const f = fakeApi({ 'GET /recipes/r-cpj': jamon, 'GET /recipes': [jamon] })
+    await get('add_freezer_dish').handler({ dayIndex: 3, meal: 'dinner', recipeName: 'crema de puerros', recipeId: 'r-cpj', place: 'hecho' }, ctx(f.api))
+    expect(writes(f.calls).at(-1)!.body).toEqual({ kind: 'note', text: 'Hecho en casa: Crema de puerros' })
+  })
+
+  it('«crema de puerros hecha» is searched and noted as «crema de puerros»', async () => {
+    const f = fakeApi({ 'GET /recipes': [jamon] })
+    await get('add_freezer_dish').handler({ dayIndex: 3, meal: 'dinner', recipeName: 'crema de puerros hecha', place: 'hecho' }, ctx(f.api))
+    expect(f.calls.find((c) => c.path.startsWith('/recipes?'))!.path).toContain(encodeURIComponent('crema de puerros') + '&')
+    expect(writes(f.calls).at(-1)!.body).toEqual({ kind: 'note', text: 'Hecho en casa: Crema de puerros' })
+  })
+
+  it('namesSameDish: no words of more in the recipe', () => {
+    expect(namesSameDish('crema de puerros', 'Crema de puerros')).toBe(true)
+    expect(namesSameDish('crema de puerros', 'Crema de puerros con jamón')).toBe(false)
+    expect(namesSameDish('las lentejas', 'Lentejas')).toBe(true)
+    expect(namesSameDish('lentejas', 'Lentejas estofadas')).toBe(false)
+    expect(namesSameDish('albóndigas en salsa de tomate', 'Albondigas en salsa')).toBe(true)
+    expect(namesSameDish('croqueta', 'Croquetas')).toBe(true)
+    expect(namesSameDish('', 'Crema')).toBe(false)
+  })
+
+  it('the prompt sends «lo tengo hecho» / «me sobró» to add_freezer_dish with place «hecho»', () => {
+    const { instructions } = buildSystemParts('ctx', 'whatsapp')
+    expect(instructions).toMatch(/ya lo tiene hecho o que le sobro[^\n]*add_freezer_dish con place "hecho"/)
+    expect(get('add_freezer_dish').parameters.properties.place.enum).toContain('hecho')
+  })
+
+  it('eval case: the reply that bought the jamón fails; the one with the note passes', () => {
+    const c = MIMO_EVAL_CASES.find((x) => x.id === 'crema-puerros-hecha')!
+    expect(c.check).toBe('plato-hecho')
+    expect(mimoReplyProblems(c.badReply, c)).toEqual(expect.arrayContaining(['frase-prohibida']))
+    expect(mimoReplyProblems('Hecho:\n- Jueves 22, cena: crema de puerros hecha en casa; no suma nada a la compra.', c, ['add_freezer_dish'])).toEqual([])
+    expect(mimoReplyProblems('Hecho:\n- Jueves 22, cena: crema de puerros.', c, ['swap_meal'])).toEqual(['no-mira-menu', 'compra-lo-hecho'])
   })
 })
 

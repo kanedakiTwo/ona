@@ -1414,8 +1414,8 @@ const addDishSchema = z.union([
     recipeId: z.string().uuid(),
     course: courseSchema.optional(),
     pinnedType: z.string().nullable().optional(),
-    /** PRO-82: «Del congelador» — never adds to the shopping list. */
-    variant: z.enum(['planned', 'freezer', 'fridge']).optional(),
+    /** PRO-82: «Del congelador» — never adds to the shopping list. PRO-276: `cooked`, «lo tengo hecho», from Mimo. */
+    variant: z.enum(['planned', 'freezer', 'fridge', 'cooked']).optional(),
   }),
   z.object({
     kind: z.literal('note'),
@@ -1454,7 +1454,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish', async (req: AuthRequest, r
     await db.update(menus).set({ days: days as any }).where(eq(menus.id, menuId))
     const added = dishRecipe(next[next.length - 1])
     if (added) {
-      const freezer = parsed.data.kind === 'recipe' && (parsed.data.variant === 'freezer' || parsed.data.variant === 'fridge')
+      const freezer = parsed.data.kind === 'recipe' && (parsed.data.variant === 'freezer' || parsed.data.variant === 'fridge' || parsed.data.variant === 'cooked')
       await recordMenuEdits(req, menu, [{ action: freezer ? 'freezer' : 'add', day, meal, after: added }])
     }
     refreshPrepAlerts(menuId)

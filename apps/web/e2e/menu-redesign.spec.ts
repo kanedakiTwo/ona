@@ -620,6 +620,10 @@ test('Vista día: a day without the week\'s lunch says «El lunes no hay comida�
   test.setTimeout(90_000)
   const { menu, headers } = await userWithMenu(page)
   const other = today() === 0 ? 1 : 0
+  // The notice needs lunch on at least half the week, and the small CI
+  // catalogue can leave lunches out (2026-10-21: only Monday–Thursday had one,
+  // so deleting Monday's left three): put one on every other day first.
+  for (let d = 0; d < 7; d++) if (d !== other) await fillSlot(page, headers, menu, d, 'lunch')
   const del = await page.request.delete(`${API}/menu/${menu.id}/day/${other}/meal/lunch`, { headers })
   expect(del.ok(), `delete lunch: ${del.status()}`).toBeTruthy()
 

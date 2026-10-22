@@ -377,17 +377,34 @@ export function refSourceForAgents(raw: unknown, known: ReadonlySet<string> = kn
   return typeof raw === 'string' && known.has(raw) ? raw : 'otro'
 }
 
-/** Rows `{ <key>, count }` re-counted under a closed label. */
+/**
+ * Rows `{ <key>, count, inTarget }` re-counted under a closed label: `count` and how many of them
+ * are in the target segment (`inTarget`, PRO-189) are summed per label.
+ */
 function recount(rows: unknown, key: string, label: (raw: unknown) => string): Array<Record<string, string | number>> {
-  const by = new Map<string, number>()
+  const by = new Map<string, { count: number; inTarget: number }>()
   for (const raw of Array.isArray(rows) ? rows : []) {
     const r = asLoose(raw)
     const k = label(r[key])
-    by.set(k, (by.get(k) ?? 0) + (num(r.count) ?? 0))
+    const cur = by.get(k) ?? { count: 0, inTarget: 0 }
+    cur.count += num(r.count) ?? 0
+    cur.inTarget += num(r.inTarget) ?? 0
+    by.set(k, cur)
   }
   return [...by.entries()]
-    .map(([k, count]) => ({ [key]: k, count }))
+    .map(([k, { count, inTarget }]) => ({ [key]: k, count, inTarget }))
     .sort((a, b) => (b.count as number) - (a.count as number) || String(a[key]).localeCompare(String(b[key])))
+}
+
+/**
+ * utm_campaign for the token (PRO-189): written by whoever builds the link, so it goes through the
+ * same closed list as the `?ref=` labels (`knownRefSources`: the code's labels plus
+ * `METRICS_EXTRA_REF_SOURCES`), lowercased; empty → 'ninguna'; anything else → 'otro'.
+ */
+export function utmCampaignForAgents(raw: unknown, known: ReadonlySet<string> = knownRefSources()): string {
+  if (typeof raw !== 'string' || !raw.trim()) return 'ninguna'
+  const c = raw.trim().toLowerCase()
+  return known.has(c) ? c : 'otro'
 }
 
 const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : [])
@@ -401,7 +418,7 @@ function pickStrings(o: unknown, keys: readonly string[]): Record<string, string
 
 const WAITLIST_TOTALS = ['entries', 'active', 'last7Days', 'wantsWhatsapp', 'newsletterOptIns', 'inTargetSegment', 'referredSignups'] as const
 const BATCH_COUNTS = ['waiting', 'waitingInTarget', 'selected', 'selectedInTarget', 'selectedReferrers', 'pulledInByReferrer'] as const
-const WAITLIST_DEFINITION_KEYS = ['active', 'last7Days', 'byDay', 'segments', 'targetSegment', 'referredSignups', 'newsletterOptIns', 'suggestedNextBatch'] as const
+const WAITLIST_DEFINITION_KEYS = ['active', 'last7Days', 'byDay', 'segments', 'sources', 'targetSegment', 'referredSignups', 'newsletterOptIns', 'suggestedNextBatch'] as const
 
 function pricingForAgents(raw: unknown) {
   const p = asLoose(raw)
@@ -436,8 +453,8 @@ function pricingForAgents(raw: unknown) {
 
 /**
  * GET /admin/waitlist for the token: what the report counts, every object an explicit list of
- * fields with values from their enums; the `?ref=` labels and the utm values (set by whoever signs
- * up) as counts under closed lists; no referral codes or entry ids (they point at people).
+ * fields with values from their enums; the `?ref=` labels, utm_source and utm_campaign (set by
+ * whoever signs up) as counts — total and in the target segment — under closed lists; no referral codes or entry ids (they point at people).
  */
 export function waitlistForAgents(report: object) {
   const r = asLoose(report)
@@ -471,7 +488,13 @@ export function waitlistForAgents(report: object) {
           }),
         }
       : undefined,
-    sources: present('sources') ? { bySource: recount(sources.bySource, 'source', (raw) => refSourceForAgents(raw, refs)), byUtm: recount(sources.byUtm, 'utmSource', utmSourceForAgents) } : undefined,
+    sources: present('sources')
+      ? {
+          bySource: recount(sources.bySource, 'source', (raw) => refSourceForAgents(raw, refs)),
+          byUtm: recount(sources.byUtm, 'utmSource', utmSourceForAgents),
+          byCampaign: recount(sources.byCampaign, 'utmCampaign', (raw) => utmCampaignForAgents(raw, refs)),
+        }
+      : undefined,
     referrals: present('referrals')
       ? {
           referredSignups: num(referrals.referredSignups) ?? undefined,

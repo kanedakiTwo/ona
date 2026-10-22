@@ -343,7 +343,7 @@ describe('waitlistForAgents', () => {
       expect(refSourceForAgents('campana-uno-bis')).toBe('otro')
       expect(refSourceForAgents('Mala_Etiqueta')).toBe('otro')
       const v = waitlistForAgents({ sources: { bySource: [{ source: 'campana-uno', count: 2 }, { source: 'ana-garcia', count: 1 }], byUtm: [] } })
-      expect(v.sources?.bySource).toEqual([{ source: 'campana-uno', count: 2 }, { source: 'otro', count: 1 }])
+      expect(v.sources?.bySource).toEqual([{ source: 'campana-uno', count: 2, inTarget: 0 }, { source: 'otro', count: 1, inTarget: 0 }])
     } finally {
       env.METRICS_EXTRA_REF_SOURCES = before
     }
@@ -373,7 +373,8 @@ describe('waitlistForAgents', () => {
       { now: new Date('2026-10-20T12:00:00Z'), days: 30, batchSize: 20 },
     )
     const v = waitlistForAgents(report)
-    expect(v.sources?.bySource).toEqual([{ source: 'otro', count: 1 }])
+    expect(v.sources?.bySource).toEqual([{ source: 'otro', count: 1, inTarget: 1 }])
+    expect(v.sources?.byCampaign).toEqual([{ utmCampaign: 'ninguna', count: 1, inTarget: 1 }])
     expect(JSON.stringify(v)).not.toMatch(/\bana\b|garcia|celiaca|calle|k3mzabqr|"e1"/i)
     expect(v.definitions?.suggestedNextBatch).toBe(WAITLIST_DEFINITIONS.suggestedNextBatch)
     expect(WAITLIST_DEFINITIONS.suggestedNextBatch).not.toMatch(/Solo ids/)
@@ -403,17 +404,56 @@ describe('waitlistForAgents', () => {
       definitions: { active: 'x' },
     } as any)
     expect(v.sources).toEqual({
-      bySource: [{ source: 'directo', count: 3 }, { source: 'receta', count: 1 }],
+      bySource: [{ source: 'directo', count: 3, inTarget: 0 }, { source: 'receta', count: 1, inTarget: 0 }],
       byUtm: [
-        { utmSource: 'instagram', count: 2 },
-        { utmSource: 'ninguna', count: 1 },
-        { utmSource: 'otro', count: 1 },
+        { utmSource: 'instagram', count: 2, inTarget: 0 },
+        { utmSource: 'ninguna', count: 1, inTarget: 0 },
+        { utmSource: 'otro', count: 1, inTarget: 0 },
       ],
+      byCampaign: [],
     })
     expect(v.referrals).toEqual({ referredSignups: 1, referrers: 1, topReferrers: [{ count: 1 }] })
     expect(v.suggestedNextBatch).toEqual({ size: 20, counts: { waiting: 4, selected: 1 } })
     expect(v).toMatchObject({ totals: { entries: 4 }, status: { waiting: 4 }, batches: [{ batch: 1, size: 2 }], pricing: { answeredPriceQuestions: 0 } })
     expect(JSON.stringify(v)).not.toMatch(/k3mzabqr|3f2a9c1e|Pozuelo|612|semana-2026|post|story/)
+  })
+
+  it('PRO-189: target segment per campaign and per source, under the same closed labels', () => {
+    const before = env.METRICS_EXTRA_REF_SOURCES
+    try {
+      env.METRICS_EXTRA_REF_SOURCES = 'peluqueria,creadoras'
+      const v = waitlistForAgents({
+        sources: {
+          bySource: [
+            { source: 'peluqueria', count: 3, inTarget: 2 },
+            { source: 'Ana-Garcia-celiaca', count: 2, inTarget: 1 },
+            { source: 'pepe-612345678', count: 1, inTarget: 1 },
+          ],
+          byUtm: [{ utmSource: 'ig', utmMedium: 'story', utmCampaign: 'creadoras', count: 2, inTarget: 2, who: 'Ana' }],
+          byCampaign: [
+            { utmCampaign: 'Peluqueria', count: 3, inTarget: 2 },
+            { utmCampaign: 'creadoras', count: 2, inTarget: 2 },
+            { utmCampaign: 'llamadme 612345678', count: 1, inTarget: 0 },
+            { utmCampaign: 'Ana García', count: 1, inTarget: 1 },
+            { utmCampaign: null, count: 4, inTarget: 1 },
+            { utmCampaign: 'creadoras', count: 'x', inTarget: 'Ana' },
+          ],
+        },
+      } as any)
+      expect(v.sources).toEqual({
+        bySource: [{ source: 'otro', count: 3, inTarget: 2 }, { source: 'peluqueria', count: 3, inTarget: 2 }],
+        byUtm: [{ utmSource: 'instagram', count: 2, inTarget: 2 }],
+        byCampaign: [
+          { utmCampaign: 'ninguna', count: 4, inTarget: 1 },
+          { utmCampaign: 'peluqueria', count: 3, inTarget: 2 },
+          { utmCampaign: 'creadoras', count: 2, inTarget: 2 },
+          { utmCampaign: 'otro', count: 2, inTarget: 1 },
+        ],
+      })
+      expect(JSON.stringify(v)).not.toMatch(/Ana|612|story|llamadme/)
+    } finally {
+      env.METRICS_EXTRA_REF_SOURCES = before
+    }
   })
 
   it('every nested object is an explicit list of fields, values from their enums', () => {

@@ -79,21 +79,31 @@ export interface TasteVerdictRow {
 /**
  * The first ten cards anyone sees («mazo de arranque»): chosen to learn the
  * most with few cards — one per row below, in this order. Each entry lists
- * catalogue names (accents and case ignored); the first one found wins, so
- * production, staging and the seeded CI catalogue all get a full deck. A row
- * with no match is filled by the variety order. Change the deck here.
+ * catalogue names (accents and case ignored); the first one found wins (a
+ * recipe already taken by an earlier row is skipped), so production, staging
+ * and the seeded CI catalogue all get a full deck. A row with no match is
+ * filled by the variety order. Change the deck here.
+ *
+ * PRO-283 (Cocina, COC-10, 2026-10-20): only names of the published
+ * catalogue (`scripts/checkTasteDeck.ts` checks them against an API); «largo»
+ * is not the cocido while it is incomplete (COC-15), so carrilleras and fabada
+ * go first; the last name of each row is vegetarian, so a vegetarian
+ * household (whose catalogue loses meat and fish) still gets a card in every
+ * row; «Macarrones de casa» and «Pollo empanado» before the fajitas. Names
+ * that come back with Cocina's next batch (`cocina-01`: «Huevos al plato…»,
+ * «Lubina a la plancha…») go in when they're published.
  */
 export const TASTE_STARTER_DECK: ReadonlyArray<{ covers: string; names: readonly string[] }> = [
   { covers: 'cuchara', names: ['Lentejas estofadas', 'Lentejas guisadas'] },
-  { covers: 'pescado', names: ['Bacalao con tomate', 'Dorada a la marsellesa', 'Lubina'] },
-  { covers: 'carne', names: ['Carrilleras de ternera con vino tinto', 'Costillas a la riojana', 'Ternera a la jardinera'] },
-  { covers: 'verdura protagonista', names: ['Coliflor gratinada', 'Tian de verduras', 'Judías verdes rehogadas'] },
-  { covers: 'horno', names: ['Salmón al horno con patatas', 'Salmon al horno con brocoli', 'Arroz al horno'] },
-  { covers: 'rápido', names: ['Huevos al plato', 'Pollo a la plancha con brócoli', 'Revuelto de espinacas y atún'] },
-  { covers: 'frito', names: ['Boquerones fritos', 'Alitas de pollo', 'Migas', 'Albóndigas en salsa española'] },
-  { covers: 'largo', names: ['Cocido madrileño', 'Cocido N'] },
-  { covers: 'algo de fuera', names: ['Ramen casero', 'Ramen', 'Ceviche', 'Curry de berenjena'] },
-  { covers: 'algo de niños', names: ['Pizza de colores con verduras', 'Pizza', 'Fajitas de pollo'] },
+  { covers: 'pescado', names: ['Bacalao con tomate', 'Dorada a la marsellesa', 'Tortilla de patatas'] },
+  { covers: 'carne', names: ['Carrilleras de ternera con vino tinto', 'Costillas a la riojana', 'Ternera a la jardinera', 'Berenjenas con queso'] },
+  { covers: 'verdura protagonista', names: ['Coliflor gratinada', 'Judías verdes rehogadas'] },
+  { covers: 'horno', names: ['Salmón al horno con patatas', 'Arroz al horno', 'Lasaña de verduras'] },
+  { covers: 'rápido', names: ['Pollo a la plancha con brócoli', 'Revuelto de espinacas y atún', 'Revuelto de calabacín'] },
+  { covers: 'frito', names: ['Boquerones fritos', 'Migas', 'Albóndigas en salsa española', 'Falafel'] },
+  { covers: 'largo', names: ['Carrilleras de ternera con vino tinto', 'Fabada asturiana', 'Cocido madrileño', 'Garbanzos con espinacas'] },
+  { covers: 'algo de fuera', names: ['Ramen casero', 'Ceviche', 'Curry de berenjena'] },
+  { covers: 'algo de niños', names: ['Pizza de colores con verduras', 'Macarrones de casa', 'Pollo empanado', 'Fajitas de pollo'] },
 ]
 
 /** Cards per batch; the next batch is requested in the background at card 5. */

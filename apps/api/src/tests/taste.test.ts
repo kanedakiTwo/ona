@@ -5,6 +5,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import catalog from './fixtures/catalog-2026-10-12.json'
+import catalog1022 from './fixtures/catalog-2026-10-22.json'
 import { TASTE_STARTER_DECK } from '@ona/shared'
 import {
   cardMeta,
@@ -28,6 +29,9 @@ import {
 import { DEFAULT_KITCHEN_EQUIPMENT, mergeTasteFact, tasteOffers, verdictSets } from '../services/tasteStore.js'
 import { householdRatingSets, withHouseholdRatings, withVerdicts } from '../services/householdRatings.js'
 import { nextBatch } from '../routes/taste.js'
+import { breaksTasteRules } from '../services/tasteStore.js'
+import { compileRestrictions } from '../services/dietaryRestrictions.js'
+import { checkStarterDeck, formatDeckCheck } from '../services/tasteDeckCheck.js'
 import { buildRandomMenu, defaultTemplate } from '../services/menuGenerator.js'
 import type { RecipeWithCourse } from '../services/matchableRecipes.js'
 import { setCostSinkForTests, type CostRow } from '../services/costLedger.js'
@@ -85,6 +89,100 @@ describe('cards', () => {
     expect(proteinGroup({ name: 'Carrilleras de ternera con vino tinto', ingredients: [] })).toBe('carne')
     expect(proteinGroup({ name: 'Bacalao con tomate', ingredients: [] })).toBe('pescado')
     expect(proteinGroup({ name: 'Coliflor gratinada', ingredients: [{ ingredientName: 'coliflor', quantity: 1, unit: 'u' }] })).toBe(null)
+  })
+})
+
+/**
+ * PRO-283 (Cocina, COC-10): the deck against the published catalogue of
+ * 2026-10-22 (`fixtures/catalog-2026-10-22.json`: name, allergens and
+ * ingredient names of the 243 catalogue recipes of the public API).
+ */
+const published: TasteRecipe[] = (catalog1022 as Array<{ name: string; allergens: string[]; ingredients: string[] }>).map((r, i) => ({
+  id: `00000000-0000-4000-9000-${String(i).padStart(12, '0')}`,
+  name: r.name,
+  imageUrl: null,
+  prepTime: 30,
+  totalTime: null,
+  tags: [],
+  equipment: [],
+  course: null,
+  allergens: r.allergens,
+  ingredients: r.ingredients.map((n) => ({ ingredientName: n, quantity: 100, unit: 'g' })),
+}))
+const VEGETARIAN = compileRestrictions(['vegetariano'])
+const rowOf = (name: string) => TASTE_STARTER_DECK.findIndex((row) => row.names.includes(name))
+
+describe('the starter deck (PRO-283)', () => {
+  it('every name of the deck exists in the published catalogue', () => {
+    const r = checkStarterDeck(published.map((x) => ({ name: x.name, ingredients: x.ingredients, allergens: (x as any).allergens })))
+    const missing = r.rows.flatMap((row) => row.names.filter((n) => !n.exists).map((n) => `${row.covers}: ${n.name}`))
+    expect(missing).toEqual([])
+    expect(r.ok).toBe(true)
+  })
+
+  it('the names Cocina listed as missing are gone', () => {
+    const names = TASTE_STARTER_DECK.flatMap((row) => row.names)
+    for (const gone of ['Lubina', 'Tian de verduras', 'Salmon al horno con brocoli', 'Huevos al plato', 'Cocido N', 'Ramen', 'Pizza']) {
+      expect(names, gone).not.toContain(gone)
+    }
+  })
+
+  it('«largo» is not the cocido while it is incomplete: carrilleras and fabada first', () => {
+    const largo = TASTE_STARTER_DECK.find((row) => row.covers === 'largo')!.names
+    expect(largo.slice(0, 2)).toEqual(['Carrilleras de ternera con vino tinto', 'Fabada asturiana'])
+    expect(largo.indexOf('Cocido madrileño')).toBeGreaterThan(1)
+    const deck = starterDeck(published)
+    expect(deck).toHaveLength(TASTE_STARTER_DECK.length)
+    expect(deck.map((r) => r.name)).not.toContain('Cocido madrileño')
+    // The carrilleras go to «carne» (an earlier row), so «largo» is the fabada.
+    expect(deck[TASTE_STARTER_DECK.findIndex((row) => row.covers === 'largo')].name).toBe('Fabada asturiana')
+    const check = checkStarterDeck(published.map((x) => ({ name: x.name, ingredients: x.ingredients })))
+    expect(check.rows.find((row) => row.covers === 'largo')!.card).toBe('Fabada asturiana')
+  })
+
+  it('«algo de niños»: «Macarrones de casa» and «Pollo empanado» before the fajitas', () => {
+    const kids = TASTE_STARTER_DECK.find((row) => row.covers === 'algo de niños')!.names
+    expect(kids).toContain('Macarrones de casa')
+    expect(kids).toContain('Pollo empanado')
+    expect(kids.indexOf('Macarrones de casa')).toBeLessThan(kids.indexOf('Fajitas de pollo'))
+    expect(kids.indexOf('Pollo empanado')).toBeLessThan(kids.indexOf('Fajitas de pollo'))
+  })
+
+  it('a vegetarian household (catalogue with only vegetarian recipes) gets a card in every row', () => {
+    const vegetarian = published.filter((r) => !breaksTasteRules({ ...r, allergens: (r as any).allergens }, VEGETARIAN))
+    expect(vegetarian.length).toBeLessThan(published.length)
+    expect(vegetarian.some((r) => r.name === 'Bacalao con tomate')).toBe(false)
+    const deck = starterDeck(vegetarian)
+    expect(deck).toHaveLength(TASTE_STARTER_DECK.length)
+    // One per row, in row order, each from its own row.
+    deck.forEach((r, i) => expect(TASTE_STARTER_DECK[i].names).toContain(r.name))
+    expect(deck.map((r) => r.name)).toEqual([
+      'Lentejas estofadas',
+      'Tortilla de patatas',
+      'Berenjenas con queso',
+      'Coliflor gratinada',
+      'Lasaña de verduras',
+      'Revuelto de calabacín',
+      'Falafel',
+      'Garbanzos con espinacas',
+      'Curry de berenjena',
+      'Pizza de colores con verduras',
+    ])
+    expect(checkStarterDeck(published.map((x) => ({ name: x.name, ingredients: x.ingredients, allergens: (x as any).allergens }))).vegetarianOk).toBe(true)
+  })
+
+  it('the check fails when a row has no name that exists, and says which', () => {
+    const r = checkStarterDeck([{ name: 'Lentejas estofadas', ingredients: [{ ingredientName: 'lentejas' }] }], [
+      { covers: 'cuchara', names: ['Lentejas estofadas'] },
+      { covers: 'pescado', names: ['Lubina', 'Ramen'] },
+    ])
+    expect(r.ok).toBe(false)
+    expect(r.rows[0]).toMatchObject({ card: 'Lentejas estofadas', vegetarianCard: 'Lentejas estofadas' })
+    const text = formatDeckCheck(r, 'prueba')
+    expect(text).toContain('NO existe Lubina')
+    expect(text).toContain('← FALLA: ningún nombre existe')
+    expect(text).toContain('FALLA: hay filas sin ningún nombre que exista.')
+    expect(rowOf('Falafel')).toBe(TASTE_STARTER_DECK.findIndex((row) => row.covers === 'frito'))
   })
 })
 

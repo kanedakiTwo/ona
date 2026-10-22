@@ -1387,7 +1387,8 @@ describe('skill export coverage', () => {
     // change_shopping_item_unit (PRO-292, shoppingLineSkills.test.ts), and 82
     // with set_shopping_habitual (PRO-293, same test file), and 89 with the
     // seven ficha tools (PRO-319, fichaMimo.test.ts).
-    expect(skills.length).toBe(89)
+    // and 91 with list_taste_verdicts + forget_taste_verdicts (PRO-297, mimoAfina.test.ts).
+    expect(skills.length).toBe(91)
   })
 
   it('every skill has a unique name', () => {

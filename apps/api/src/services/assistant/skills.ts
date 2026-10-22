@@ -39,6 +39,7 @@ import { createDishRecipe, NEW_RECIPE_PROP, NOTE_THEN_RECIPE_HINT, type NewRecip
 import { shopOrderSkills } from './shopOrderSkills.js'
 import { householdHabitsSkills } from './householdHabitsSkills.js'
 import { fichaSkills } from './fichaSkills.js'
+import { tasteSkills } from './tasteSkills.js'
 import { fixedMealSkills } from './fixedMealSkills.js'
 import { taperSkills } from './taperSkills.js'
 import { schoolMenuSkills } from './schoolMenuSkills.js'
@@ -2970,6 +2971,8 @@ export const skills: SkillDefinition[] = [
   ...householdHabitsSkills,
   // Mimo habla de la ficha (PRO-319, specs/household-profile.md) — fichaSkills.ts:
   ...fichaSkills,
+  // «Afina tu menú»: ver y quitar valoraciones (PRO-297) — tasteSkills.ts:
+  ...tasteSkills,
   // Comidas fijas (PRO-218, specs/menus.md):
   ...fixedMealSkills,
   // PRO-223: «mañana me llevo táper».

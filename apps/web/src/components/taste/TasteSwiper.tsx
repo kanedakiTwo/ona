@@ -486,7 +486,7 @@ export function TasteSwiper({
           </p>
         )}
         <p className="m-0 text-[14px] leading-[1.45] text-ink-mid">
-          Lo tienes todo en Perfil → Lo que recuerdo de ti, y lo puedes cambiar cuando quieras.
+          Lo tienes todo en Perfil → Tu ficha → Editar mis datos uno a uno, y lo puedes cambiar cuando quieras (o pídeselo a Mimo).
         </p>
         <div className="flex-1" />
         <button type="button" onClick={onViewMenu} className={PILL}>Ver mi menú</button>

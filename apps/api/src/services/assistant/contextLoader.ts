@@ -13,6 +13,7 @@ import { fichaQuestionHint } from '../profile/fichaStore.js'
 import { hasMilkAllergy } from '../dietaryRestrictions.js'
 import { withHouseholdRestrictions } from '../householdAllergies.js'
 import { MILK_ALLERGY_CONTEXT } from './healthGuard.js'
+import { householdNoticesForUser, noticesContextBlock } from '../afinaNotice.js'
 
 const DAY_NAMES_LONG = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo']
 const hhmm = (h: number, m: number) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
@@ -196,6 +197,17 @@ export async function loadUserContext(userId: string, db: any): Promise<string> 
   // week (Mimo then asks it at a natural moment with get_ficha_question).
   const questionHint = await fichaQuestionHint(userId, { db }).catch(() => '')
   if (typeof questionHint === 'string' && questionHint) parts.push(questionHint)
+
+  // ── Notices the app sent the household (PRO-297) ──────────
+  // «Desde aquí no veo ese aviso» (Marta y Jorge, 2026-10-20): the PRO-205
+  // notice said «díselo a Mimo» and Mimo didn't know about it. Type, date and
+  // channel of each one in the last 14 days, and what it said.
+  try {
+    const notices = noticesContextBlock(await householdNoticesForUser(userId, db), new Date())
+    if (notices) parts.push(notices)
+  } catch {
+    // The context never fails for this block.
+  }
 
   return parts.join('\n')
 }

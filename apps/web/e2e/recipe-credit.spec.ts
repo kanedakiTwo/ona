@@ -15,6 +15,12 @@ const CREDIT = 'Inspirada en una receta de Autora Inventada, «Cuaderno de prueb
 
 test.use({ viewport: { width: 390, height: 844 } })
 
+// The ficha refetches the recipe (e.g. `?servings=4`): a request still in the
+// route handler when the test ends must not fail it (PRO-330, CI 2026-10-22).
+test.afterEach(async ({ page }) => {
+  await page.unrouteAll({ behavior: 'ignoreErrors' })
+})
+
 async function openWithCredit(page: Page, credit: string | null) {
   const list: Array<{ id: string; name: string }> = await (await page.request.get(`${API_URL}/recipes`)).json()
   expect(list.length, 'the seed has catalogue recipes').toBeGreaterThan(0)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { edibleFractionForName } from '../services/nutrition/edibleFraction.js'
+import { edibleFractionForName, isSupersededRuleValue } from '../services/nutrition/edibleFraction.js'
 import { auditCatalogRecipe, lineGrams } from '../services/catalogRecipeAudit.js'
 
 describe('edibleFractionForName (PRO-194)', () => {
@@ -65,12 +65,15 @@ describe('catalogue audit with a bone-in cut (PRO-194)', () => {
 
 describe('edibleFractionForName — pescado entero y marisco con concha (PRO-281)', () => {
   it('da su merma al pescado entero y al marisco con su concha o cáscara', () => {
-    expect(edibleFractionForName('mejillones')).toBe(0.28)
-    expect(edibleFractionForName('Mejillón')).toBe(0.28)
-    expect(edibleFractionForName('mejillones con concha')).toBe(0.28)
-    for (const n of ['almejas', 'berberechos', 'chirlas', 'almejas con concha']) expect(edibleFractionForName(n), n).toBe(0.18)
+    expect(edibleFractionForName('mejillones')).toBe(0.25)
+    expect(edibleFractionForName('Mejillón')).toBe(0.25)
+    expect(edibleFractionForName('mejillones con concha')).toBe(0.25)
+    for (const n of ['almejas', 'berberechos', 'chirlas', 'almejas con concha']) expect(edibleFractionForName(n), n).toBe(0.15)
     for (const n of ['gambas', 'langostinos', 'cigalas', 'gambas enteras', 'langostinos con cáscara']) expect(edibleFractionForName(n), n).toBe(0.48)
-    for (const n of ['dorada', 'lubina', 'besugo', 'doradas', 'pescado entero', 'pescado blanco entero']) expect(edibleFractionForName(n), n).toBe(0.5)
+    // PRO-337: the Ministerio de Agricultura sheets for dorada (55 %) and lubina (67 %).
+    for (const n of ['dorada', 'doradas', 'dorada de ración']) expect(edibleFractionForName(n), n).toBe(0.55)
+    for (const n of ['lubina', 'lubinas']) expect(edibleFractionForName(n), n).toBe(0.67)
+    for (const n of ['besugo', 'pescado entero', 'pescado blanco entero']) expect(edibleFractionForName(n), n).toBe(0.5)
   })
 
   it('nunca cuando el nombre dice que ya es la parte comestible', () => {
@@ -94,5 +97,18 @@ describe('edibleFractionForName — huesos para caldo (PRO-282)', () => {
     expect(edibleFractionForName('caldo de huesos')).toBeNull()
     expect(edibleFractionForName('fondo de huesos')).toBeNull()
     expect(edibleFractionForName('jamón serrano')).toBeNull()
+  })
+})
+
+describe('isSupersededRuleValue — the first PRO-281 factors move to the Ministerio values (PRO-337)', () => {
+  it('a value the boot step wrote before is replaced; one set by hand is not', () => {
+    expect(isSupersededRuleValue('mejillones', 0.28)).toBe(true)
+    expect(isSupersededRuleValue('almejas', 0.18)).toBe(true)
+    expect(isSupersededRuleValue('berberechos', 0.18)).toBe(true)
+    expect(isSupersededRuleValue('dorada', 0.5)).toBe(true)
+    expect(isSupersededRuleValue('lubina', 0.5)).toBe(true)
+    expect(isSupersededRuleValue('besugo', 0.5)).toBe(false)
+    expect(isSupersededRuleValue('mejillones', 0.3)).toBe(false)
+    expect(isSupersededRuleValue('gambas', 0.48)).toBe(false)
   })
 })

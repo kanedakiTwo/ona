@@ -33,7 +33,7 @@ vi.mock('../middleware/auth.js', () => ({
 const h = vi.hoisted(() => ({
   enabled: vi.fn(async (_userId: string) => true),
   gaps: vi.fn(async (days: number) => [{ days }]),
-  sends: vi.fn(async (days: number) => [{ days }]),
+  sends: vi.fn(async (days: number) => [{ days, fecha: '2026-10-19T10:00:00.000Z', lineas: [] as unknown[] }]),
   save: vi.fn(),
   undo: vi.fn(),
   track: vi.fn(),
@@ -210,7 +210,7 @@ describe('GET /admin/extension-gaps', () => {
     expect((await call('GET', '/admin/extension-gaps')).status).toBe(403)
     expect((await call('GET', '/admin/extension-gaps', undefined, { 'x-test-user': 'a', 'x-test-role': 'admin' })).status).toBe(200)
     expect((await call('GET', '/admin/extension-gaps', undefined, { 'x-metrics-token': 'malo' })).status).toBe(401)
-    expect(await call('GET', '/admin/extension-gaps', undefined, TOKEN)).toEqual({ status: 200, body: { days: 7, gaps: [{ days: 7 }] } })
+    expect(await call('GET', '/admin/extension-gaps', undefined, TOKEN)).toEqual({ status: 200, body: { days: 7, gaps: [{ days: 7, producto: null }], productosFiltrados: 0 } })
   })
   it('`days` llega a la consulta entero y entre 1 y 90 (make_interval solo acepta enteros)', async () => {
     const days = async (q: string) => (await call('GET', `/admin/extension-gaps?days=${q}`, undefined, TOKEN)).body.days
@@ -227,7 +227,22 @@ describe('GET /admin/extension-sends', () => {
     expect((await call('GET', '/admin/extension-sends')).status).toBe(403)
     expect((await call('GET', '/admin/extension-sends', undefined, { 'x-test-user': 'a', 'x-test-role': 'admin' })).status).toBe(200)
     expect((await call('GET', '/admin/extension-sends', undefined, { 'x-metrics-token': 'malo' })).status).toBe(401)
-    expect(await call('GET', '/admin/extension-sends', undefined, TOKEN)).toEqual({ status: 200, body: { days: 1, sends: [{ days: 1 }] } })
+    expect(await call('GET', '/admin/extension-sends', undefined, TOKEN)).toEqual({ status: 200, body: { days: 1, sends: [{ days: 1, fecha: '2026-10-19', lineas: [] }], productosFiltrados: 0 } })
+  })
+  it('PRO-322: con el token, fecha por día y producto acotado; el admin con sesión lo ve entero', async () => {
+    const largo = 'Galletas de mantequilla con trocitos de chocolate negro y avellanas tostadas, paquete familiar de 500 gramos'
+    const envio = { fecha: '2026-10-19T10:41:07.123Z', ok: true, error: null, anadidas: 1, deshecho: false, duracionMs: 1000, lineas: [
+      { name: 'arroz', choice: null, origen: 'regla', estado: 'tabla', motivo: null, producto: 'Arroz redondo', unidades: 1 },
+      { name: null, choice: null, origen: 'tecleado', estado: 'busqueda', motivo: null, producto: largo, unidades: 1 },
+    ] }
+    h.sends.mockResolvedValueOnce([envio] as any)
+    const token = await call('GET', '/admin/extension-sends', undefined, TOKEN)
+    expect(token.body.productosFiltrados).toBe(1)
+    expect(token.body.sends[0].fecha).toBe('2026-10-19')
+    expect(token.body.sends[0].lineas.map((l: any) => l.producto)).toEqual(['Arroz redondo', null])
+    h.sends.mockResolvedValueOnce([envio] as any)
+    const admin = await call('GET', '/admin/extension-sends', undefined, { 'x-test-user': 'a', 'x-test-role': 'admin' })
+    expect(admin.body).toEqual({ days: 1, sends: [envio] })
   })
   it('`days` llega a la consulta entero y entre 1 y 90; 1 por defecto', async () => {
     const days = async (q: string) => (await call('GET', `/admin/extension-sends?days=${q}`, undefined, TOKEN)).body.days

@@ -50,6 +50,17 @@ export interface RecipePromptInput {
 }
 
 /** Compose the editorial prompt sent to the image model. Pure. */
+/**
+ * Spanish dish words that the image models read as an English word their content policy blocks
+ * («Rape alangostado» came back 422 from AiKit on 2026-10-22: «rape» is monkfish). Swapped for a
+ * synonym in the prompt only; the recipe keeps its name.
+ */
+const PROMPT_SYNONYMS: Array<[RegExp, string]> = [[/(?<![\p{L}])rape(?![\p{L}])/giu, 'pejesapo']]
+
+export function promptSafe(text: string): string {
+  return PROMPT_SYNONYMS.reduce((t, [re, to]) => t.replace(re, (m) => (m[0] === m[0].toUpperCase() ? to[0].toUpperCase() + to.slice(1) : to)), text)
+}
+
 export function buildRecipePrompt(input: RecipePromptInput): string {
   const ingredientsLine = input.description
     ? input.description.replace(/\.?\s*$/, '.')
@@ -61,9 +72,11 @@ export function buildRecipePrompt(input: RecipePromptInput): string {
     : input.meals.includes('snack')
       ? 'Tamaño de ración pequeña, tipo snack.'
       : ''
-  return [`${input.name}.`, ingredientsLine, mealHint, STYLE_SUFFIX]
-    .filter((s) => s.length > 0)
-    .join(' ')
+  return promptSafe(
+    [`${input.name}.`, ingredientsLine, mealHint, STYLE_SUFFIX]
+      .filter((s) => s.length > 0)
+      .join(' '),
+  )
 }
 
 /** Thrown when the image provider rejects the request (auth, quota, model error, etc). */

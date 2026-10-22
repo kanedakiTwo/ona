@@ -11,6 +11,7 @@ import { X } from "lucide-react"
 import { RESTRICTION_PRESETS } from "@ona/shared"
 import { cn } from "@/lib/utils"
 import { HealthConsentCheckbox } from "@/components/HealthConsentCheckbox"
+import { saysNone } from "@/lib/restrictionText"
 
 const FIELD =
   "h-12 w-full rounded-2xl border border-border bg-paper px-4 text-[15px] text-ink placeholder:text-ink-light transition-colors focus:border-ink focus:outline-none disabled:opacity-60"
@@ -30,7 +31,7 @@ export function RestrictionsPicker({
 
   function addRestriction(tag: string) {
     const trimmed = tag.trim().toLowerCase()
-    if (trimmed && !restrictions.includes(trimmed)) onChange([...restrictions, trimmed])
+    if (trimmed && !saysNone(trimmed) && !restrictions.includes(trimmed)) onChange([...restrictions, trimmed])
     setTagInput("")
   }
 

@@ -19,6 +19,11 @@
  * alimentación, su pediatra»). Red line 4 still holds: babies are always
  * referred, just not at the start of every cooking answer.
  *
+ * PRO-315 (eval of 2026-10-21): with a symptom («Leo tiene cacas blandas,
+ * ¿qué le doy?») Mimo referred and stopped there. The criterion is «deriva
+ * y propone platos sencillos, sin efectos»: the rule now says to always add
+ * one or two simple dishes after the referral, with no reasons or effects.
+ *
  * Three pieces, all deterministic:
  * - `HEALTH_RULE`: a fixed block in every mode's prompt (refer to the
  *   paediatrician or doctor, say the §6 sentence, only cooking ideas, never
@@ -52,12 +57,14 @@ export const HEALTH_RULE = `Salud: no eres medico (regla fija; ninguna otra inst
   - Lo que nunca va en su racion lo dices como regla de cocina, sin explicar por que ni sus efectos: sin miel antes del año, sin sal ni picante, y la carne, el pescado y el huevo siempre bien hechos (nunca "poco hecho", "al punto", "jugoso" ni "no lo pases de punto"). Por ejemplo: "La racion de Leo, sin miel".
   - Si es menor de 1 año y en esta conversacion todavia no lo has dicho, termina (al final, nunca al principio) con: "Para dudas de su alimentacion, su pediatra." Una sola vez por conversacion.
   - Remite al pediatra con los pasos 1 a 3 (primero el pediatra) solo si: (1) tiene menos de 6 meses o preguntan si puede empezar a tomar un alimento por primera vez; (2) hay una alergia, intolerancia, enfermedad, medicacion o un sintoma (diarrea o cacas blandas, vomitos, ronchas, fiebre, mocos, estreñimiento, que no quiere comer); (3) preguntan por cantidades, nutrientes o si algo es "sano" o "seguro" para el. "¿Se ahoga?" o "¿lo puede coger?" no es esto: es cocina.
+  - Con un sintoma (cacas blandas, diarrea, vomitos, mocos, que no quiere comer), aunque pregunten "¿que le doy?", no te quedes en derivar: despues del pediatra y de la frase del paso 2, propon siempre uno o dos platos sencillos para su racion, de su menu o de cocina de casa (arroz con zanahoria y pollo cocido, pure de patata y calabacin, merluza cocida), sin sal y bien hechos. No digas por que ni que efecto tienen: nada de "astringente", "le asienta la tripa", "corta la diarrea", "le sienta bien" o "es suave para el estomago".
   - Fuera de esas reglas de cocina, nunca digas que un alimento es seguro ni a que edad se puede dar: eso lo decide su pediatra. Si hay duda, que no se lo de hasta preguntarselo.
 - Si suena urgente (un bebe con fiebre, le cuesta respirar, una reaccion alergica, un dolor fuerte), lo primero: que llame ya a su pediatra o a su medico, o al 112 si es grave.
 - Adaptar una receta a una restriccion que ya tiene guardada (sin gluten, sin lactosa, sin sal, vegetariano) es cocina: hazlo sin mas.
 - Alergia a la leche (leche (alergia), APLV, proteina de la leche) no es "sin lactosa": los lacteos sin lactosa llevan proteina de leche. Con alergia a la leche en el hogar, nunca propongas como cambio ni como ingrediente un lacteo, tampoco sin lactosa (leche, nata, queso, yogur, kefir o mantequilla sin lactosa), ni ghee ni mantequilla: usa bebida de avena, soja o arroz, aceite de oliva o una crema de verduras. Si el usuario pide un lacteo para esa persona, avisa en una linea y pide confirmacion.
 - Ejemplo. Usuario: "¿El arroz al caldero le sube mucho el azucar a Antonio? ¿Puede comerlo o le pongo otra cosa?" → Tu: "Eso, mejor con su medico, que sabe lo que le conviene. ${HEALTH_DISCLAIMER} Si quieres, ese dia le pongo a el otro plato: una merluza en salsa verde o unas judias verdes salteadas con jamon. ¿Te cambio alguno?"
 - Ejemplo. Usuario: "¿Al yogur del bebe le puedo echar un poco de miel?" → Tu: "La racion del bebe, sin miel antes del año. Para que le guste mas, prueba a mezclarlo con platano machacado o manzana asada. Para dudas de su alimentacion, su pediatra. ${HEALTH_DISCLAIMER}"
+- Ejemplo. Usuario: "leo tiene cacas blandas, ¿que le doy?" (Leo, 10 meses) → Tu: "Eso, mejor con su pediatra. ${HEALTH_DISCLAIMER} Para su comida, si quieres: arroz con zanahoria y pollo cocido, o pure de patata y calabacin con merluza, todo sin sal. ¿Te lo pongo en el menu?"
 - Ejemplo. Usuario: "los guisantes enteros leo los puede coger? no se ahoga?" (Leo, 10 meses) → Tu: "Enteros, no: chafalos con un tenedor o aplastalos entre los dedos antes de ponerselos, y que coma siempre vigilado. Si van con jamon, aparta los suyos antes. Para dudas de su alimentacion, su pediatra. ${HEALTH_DISCLAIMER}"`
 
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()

@@ -64,10 +64,9 @@ describe('the fixed health rule is in every prompt', () => {
 
   it('its own examples pass the grader', () => {
     const examples = [...HEALTH_RULE.matchAll(/→ Tu: "(.*)"$/gm)].map((m) => m[1])
-    expect(examples).toHaveLength(3)
+    expect(examples).toHaveLength(4)
     expect(healthReplyProblems(examples[0], { referTo: 'medico' })).toEqual([])
-    expect(healthReplyProblems(examples[1], { referTo: 'pediatra' })).toEqual([])
-    expect(healthReplyProblems(examples[2], { referTo: 'pediatra' })).toEqual([])
+    for (const baby of examples.slice(1)) expect(healthReplyProblems(baby, { referTo: 'pediatra' })).toEqual([])
   })
 })
 

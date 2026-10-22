@@ -15,6 +15,8 @@
  * same first-menu generation before landing on /menu.
  */
 import { useEffect, useState, type ReactNode } from "react"
+import { useQueryClient } from "@tanstack/react-query"
+import { markOnboardedInCache } from "@/hooks/useOnboardingGate"
 import { useAuth } from "@/lib/auth"
 import { api } from "@/lib/api"
 import { useRouter } from "next/navigation"
@@ -177,6 +179,7 @@ export function onboardingDraftPayload(step: number, data: OnboardingData): Onbo
 export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDraft | null } = {}) {
   const { user, updateUser } = useAuth()
   const router = useRouter()
+  const queryClient = useQueryClient()
   const [step, setStep] = useState(() => resumeStep(draft))
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [preparingMenu, setPreparingMenu] = useState(false)
@@ -293,6 +296,7 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
       // "already onboarded" redirect reach /menu first; /menu then found no
       // week (404) and auto-created an empty one on top of the real menu.
       updateUser(result)
+      markOnboardedInCache(queryClient, user.id)
       router.push(weeks.length > 1 ? `/menu?week=${open}` : "/menu")
     } catch (err: any) {
       setError(err.message || "Error al guardar")

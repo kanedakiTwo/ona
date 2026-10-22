@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useState } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { MessageCircle, Monitor } from "lucide-react"
 import { useAuth } from "@/lib/auth"
 import { api } from "@/lib/api"
@@ -19,6 +19,7 @@ import { useWhatsAppStatus, type useWhatsAppLinkCode } from "@/hooks/useWhatsApp
 import { Accent, OnboardingHeader } from "./OnboardingShell"
 import { WhatsAppQr } from "@/components/whatsapp/WhatsAppQr"
 import { OnboardingMenuReady } from "./OnboardingMenuReady"
+import { markOnboardedInCache } from "@/hooks/useOnboardingGate"
 
 const PILL =
   "flex h-[52px] w-full items-center justify-center gap-2 rounded-full bg-ink px-6 text-[16px] font-semibold text-cream transition-colors hover:bg-ink-mid active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
@@ -86,6 +87,7 @@ export function OnboardingWhatsAppLink({
   linkCode: ReturnType<typeof useWhatsAppLinkCode>
 }) {
   const { user, updateUser } = useAuth()
+  const queryClient = useQueryClient()
   const status = useWhatsAppStatus({ pollWhilePending: true })
   const linked = Boolean(status.data?.linked)
 
@@ -102,9 +104,10 @@ export function OnboardingWhatsAppLink({
   useEffect(() => {
     if (account.data?.onboardingDone && !menuReady) {
       updateUser(account.data)
+      if (user?.id) markOnboardedInCache(queryClient, user.id)
       setMenuReady(true)
     }
-  }, [account.data, updateUser, menuReady])
+  }, [account.data, updateUser, menuReady, queryClient, user?.id])
 
   if (menuReady) return <OnboardingMenuReady />
 

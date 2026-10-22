@@ -52,6 +52,7 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
       unitWeight: ingredients.unitWeight,
       density: ingredients.density,
       edibleFraction: ingredients.edibleFraction,
+      aisle: ingredients.aisle,
     })
     .from(recipeIngredients)
     .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
@@ -79,6 +80,12 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
       unit: row.unit ?? 'g',
       allergenTags: row.allergenTags ?? [],
       containsTags: row.containsTags ?? [],
+      // Grams per serving for the week rules (PRO-280).
+      unitWeight: row.unitWeight ?? null,
+      density: row.density ?? null,
+      edibleFraction: row.edibleFraction ?? null,
+      note: row.note ?? null,
+      aisle: row.aisle ?? null,
     })
     ingredientsByRecipe.set(row.recipeId, list)
   }
@@ -107,6 +114,7 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
     // for the week rules and the planner (PRO-254/255).
     internalTags: r.internalTags ?? [],
     nutritionPerServing: r.nutritionPerServing ?? null,
+    servings: r.servings ?? null,
     ingredients: ingredientsByRecipe.get(r.id) ?? [],
     // PRO-73: catalogue recipes with no steps, too few ingredients or
     // quantities out of range are skipped by the matcher. Computed here, on

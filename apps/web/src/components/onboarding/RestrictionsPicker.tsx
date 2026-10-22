@@ -11,7 +11,7 @@ import { X } from "lucide-react"
 import { RESTRICTION_PRESETS } from "@ona/shared"
 import { cn } from "@/lib/utils"
 import { HealthConsentCheckbox } from "@/components/HealthConsentCheckbox"
-import { saysNone } from "@/lib/restrictionText"
+import { withTyped } from "@/lib/restrictionText"
 
 const FIELD =
   "h-12 w-full rounded-2xl border border-border bg-paper px-4 text-[15px] text-ink placeholder:text-ink-light transition-colors focus:border-ink focus:outline-none disabled:opacity-60"
@@ -21,17 +21,24 @@ export function RestrictionsPicker({
   onConsentChange,
   restrictions,
   onChange,
+  onTypingChange,
 }: {
   consent: boolean
   onConsentChange: (consent: boolean) => void
   restrictions: string[]
   onChange: (restrictions: string[]) => void
+  /** What is typed and not added yet, so the page can count it («Guardar», not «No tengo ninguna»). */
+  onTypingChange?: (text: string) => void
 }) {
-  const [tagInput, setTagInput] = useState("")
+  const [tagInput, setTagInputState] = useState("")
+  function setTagInput(text: string) {
+    setTagInputState(text)
+    onTypingChange?.(text)
+  }
 
   function addRestriction(tag: string) {
-    const trimmed = tag.trim().toLowerCase()
-    if (trimmed && !saysNone(trimmed) && !restrictions.includes(trimmed)) onChange([...restrictions, trimmed])
+    const next = withTyped(restrictions, tag)
+    if (next.length > restrictions.length) onChange(next)
     setTagInput("")
   }
 

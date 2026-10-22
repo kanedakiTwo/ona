@@ -38,11 +38,14 @@ test('kids Mimo noted show in the profile; «Alergias e intolerancias» takes «
   await expect(page.getByText(/1 adulto · 2 niños/)).toBeVisible({ timeout: 15_000 })
 
   await page.getByRole('link', { name: /alergias e intolerancias/i }).click()
-  await expect(page).toHaveURL(/\/profile\/casa\/alergias/)
+  await expect(page).toHaveURL(/\/profile\/casa\/alergias/, { timeout: 15_000 })
   await page.getByRole('checkbox', { name: /datos de salud/i }).check()
+  await expect(page.getByRole('button', { name: /^no tengo ninguna$/i })).toBeVisible()
+  // Typed, no Enter: the button already says «Guardar» and saves it.
   await page.getByPlaceholder(/p\. ej\. pimiento/i).fill('Pimiento')
   await page.getByRole('button', { name: /^guardar$/i }).click()
-  await expect(page).toHaveURL(/\/profile$/, { timeout: 15_000 })
+  // Back on /profile itself (the alergias URL ends in «?next=/profile» too).
+  await page.waitForURL((u) => u.pathname === '/profile', { timeout: 15_000 })
 
   const account = await (await page.request.get(`${API_URL}/user/${s.userId}`, { headers: s.auth })).json()
   expect(account.restrictions).toEqual(['pimiento'])

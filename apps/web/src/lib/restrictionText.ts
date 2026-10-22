@@ -13,3 +13,10 @@ export function saysNone(text: string): boolean {
   if (/^nada de\b/.test(t)) return false
   return /^(nada|ningun[ao]?s?)\b/.test(t) || /^no( tengo( ningun[ao]?)?)?[.!]*$/.test(t)
 }
+
+/** The list plus what is typed in the box and not added yet («Guardar» without Enter). */
+export function withTyped(restrictions: readonly string[], typed: string): string[] {
+  const t = typed.trim().toLowerCase()
+  if (!t || saysNone(t) || restrictions.includes(t)) return [...restrictions]
+  return [...restrictions, t]
+}

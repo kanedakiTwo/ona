@@ -76,7 +76,7 @@ export function allergenUnion(
 /**
  * Strip diacritics and lowercase: "Salmón" → "salmon", "ALMENDRA" → "almendra".
  */
-function normalize(s: string): string {
+export function normalize(s: string): string {
   return s
     .normalize('NFD')
     .replace(/\p{Diacritic}+/gu, '')
@@ -219,6 +219,49 @@ function hasGluten(n: string): boolean {
   return false
 }
 
+/**
+ * PRO-332: cheeses called only by their name, and other dairy that doesn't
+ * say «leche» («mantequilla clarificada» is already «mantequill*»). Exported
+ * so the boot step (`allergenBackfill.ts`) only revisits the names these words
+ * catch.
+ */
+export const PRO332_MILK_TERMS = [
+  'gouda',
+  'emmental',
+  'emmenthal',
+  'emental',
+  'gruyere',
+  'brie',
+  'camembert',
+  'cheddar',
+  'edam',
+  'gorgonzola',
+  'roquefort',
+  'cabrales',
+  'ricotta',
+  'burrata',
+  'provolone',
+  'pecorino',
+  'grana padano',
+  'parmigiano',
+  'manchego',
+  'idiazabal',
+  'halloumi',
+  'scamorza',
+  'stracciatella',
+  'paneer',
+  'quark',
+  'skyr',
+  'labneh',
+  'kefir',
+  'ghee',
+  'suero lacteo',
+  'lactosuero',
+  'caseina',
+  'caseinato',
+  'bechamel',
+] as const
+
 const LACTOSE_KEYWORDS = [
   'leche',
   'ques*',
@@ -233,6 +276,7 @@ const LACTOSE_KEYWORDS = [
   'mozzarella',
   'feta',
   'cuajada',
+  ...PRO332_MILK_TERMS,
 ]
 
 /** Plant drinks called «leche de …» (PRO-193). */
@@ -243,6 +287,9 @@ const NOT_MILK_PHRASES = [
   'leche de avena',
   'leche de soja',
   'leche de arroz',
+  // PRO-332: water kefir is not dairy; «pisto manchego» is a vegetable stew.
+  'kefir de agua',
+  'pisto manchego',
 ]
 
 const EGG_KEYWORDS = ['huevo', 'clara', 'yema', 'mayonesa']

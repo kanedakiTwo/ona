@@ -72,7 +72,9 @@ export const HEALTH_WORDS: RegExp[] = [
 
 /** Allergen words → the restriction preset they mean (only inside a health clause). */
 const KEYWORD_RESTRICTIONS: Array<[RegExp, string]> = [
-  [/\b(?:lactosa|lacteos?|leche|nata|queso|quesos|yogur\w*|mantequilla)\b/, 'sin lactosa'],
+  // PRO-333: «no tomo lácteos» is no dairy at all, the milk allergy.
+  [/\blacteos?\b/, 'leche (alergia)'],
+  [/\b(?:lactosa|leche|nata|queso|quesos|yogur\w*|mantequilla)\b/, 'sin lactosa'],
   [/\b(?:gluten|celiac\w*|celiaqu\w*|trigo)\b/, 'sin gluten'],
   [/\bhuevos?\b/, 'huevo'],
   [/\b(?:frutos secos|nueces|almendras|avellanas|pistachos|anacardos)\b/, 'frutos secos'],
@@ -119,7 +121,7 @@ export function cleanRestrictions(raw: unknown): string[] {
     if (!n || n.length > 40) continue
     const preset =
       RESTRICTION_PRESETS.find((p) => normalizeText(p) === n) ??
-      (/\b(lactosa|lacteos?|leche)\b/.test(n) ? 'sin lactosa' : /\b(gluten|celiac\w*|celiaqu\w*)\b/.test(n) ? 'sin gluten' : null)
+      (/\blacteos?\b/.test(n) ? 'leche (alergia)' : /\b(lactosa|leche)\b/.test(n) ? 'sin lactosa' : /\b(gluten|celiac\w*|celiaqu\w*)\b/.test(n) ? 'sin gluten' : null)
     const value = preset ?? n
     if (!out.includes(value)) out.push(value)
   }

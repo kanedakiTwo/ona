@@ -211,7 +211,7 @@ describe('PRO-312 — leche (alergia) vs sin lactosa', () => {
     (r) => expect(hasMilkAllergy([r])).toBe(true),
   )
 
-  it.each(['sin lactosa', 'intolerancia a la lactosa', 'lactosa', 'sin lácteos', 'leche de avena', 'vegano'])('«%s» is not the milk allergy', (r) => {
+  it.each(['sin lactosa', 'intolerancia a la lactosa', 'lactosa', 'leche de avena', 'vegano'])('«%s» is not the milk allergy', (r) => {
     expect(hasMilkAllergy([r])).toBe(false)
   })
 
@@ -243,5 +243,34 @@ describe('PRO-312 — leche (alergia) vs sin lactosa', () => {
     expect(restrictionKey('Marisco (alergia)')).toBe('marisco')
     expect(compileRestrictions(['marisco (alergia)']).allergens.has('crustaceos')).toBe(true)
     expect(mergeRestrictions(['sin lactosa', 'leche (alergia)'])).toEqual(['sin lactosa', 'leche (alergia)'])
+  })
+})
+
+/**
+ * PRO-333 (Miguel, 2026-10-22, A): «sin lácteos», «lácteos» and «no tomo
+ * lácteos» are no dairy at all — the milk allergy — without migrating data.
+ */
+describe('PRO-333 — «sin lácteos» is the milk allergy', () => {
+  it.each(['sin lácteos', 'lácteos', 'no tomo lácteos', 'Sin lacteos', 'nada de lácteos', 'sin productos lácteos', 'lácteos (alergia)'])(
+    '«%s» is the milk allergy',
+    (r) => expect(hasMilkAllergy([r])).toBe(true),
+  )
+
+  it('compiles like «leche (alergia)»', () => {
+    const a = compileRestrictions(['sin lácteos'])
+    const b = compileRestrictions(['leche (alergia)'])
+    expect([...a.allergens]).toEqual([...b.allergens])
+    expect(a.terms).toEqual(b.terms)
+  })
+
+  it('the menu filter takes out every dairy, lactose-free ones included', () => {
+    for (const dairy of ['yogur natural sin lactosa', 'leche sin lactosa', 'nata sin lactosa', 'kéfir', 'ghee', 'queso gouda', 'mantequilla']) {
+      for (const r of ['sin lácteos', 'lácteos', 'no tomo lácteos']) expect(blocks([r], recipe([dairy])), `${r} / ${dairy}`).toBe(true)
+    }
+    expect(blocks(['sin lácteos'], recipe(['leche sin lactosa'], [], { 'leche sin lactosa': [] }))).toBe(true)
+  })
+
+  it('plant drinks still go', () => {
+    for (const ok of ['bebida de avena', 'leche de coco', 'calabaza']) expect(blocks(['sin lácteos'], recipe([ok])), ok).toBe(false)
   })
 })

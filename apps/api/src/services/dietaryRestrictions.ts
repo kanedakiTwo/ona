@@ -37,10 +37,6 @@ const ALLERGEN_ALIASES: Record<string, AllergenTag[]> = {
   celiaquia: ['gluten'],
   trigo: ['gluten'],
   lactosa: ['lactosa'],
-  // «sin lácteos»: same rule as «sin lactosa» for now (whether it is the
-  // milk allergy is Miguel's call, PRO-312).
-  lacteos: ['lactosa'],
-  lacteo: ['lactosa'],
   huevo: ['huevo'],
   huevos: ['huevo'],
   'frutos secos': ['frutos_secos', 'cacahuetes'],
@@ -77,6 +73,10 @@ const ALLERGEN_ALIASES: Record<string, AllergenTag[]> = {
  * `lactosa` allergen tag (every dairy by name — «leche sin lactosa» included —
  * and by catalogue tag) **plus** MILK_TERMS, dairy whose name doesn't say
  * so. «sin lactosa» / «intolerancia a la lactosa» stays the intolerance.
+ *
+ * PRO-333 (Miguel, 2026-10-22, A): «sin lácteos», «lácteos», «no tomo
+ * lácteos» mean no dairy at all, so they are the milk allergy too. Nothing
+ * stored is rewritten: only how it is read changes.
  */
 const MILK_ALLERGY_KEYS = new Set([
   'leche',
@@ -87,6 +87,12 @@ const MILK_ALLERGY_KEYS = new Set([
   'proteina de leche de vaca',
   'proteina de la leche de vaca',
   'aplv',
+  'lacteos',
+  'lacteo',
+  'productos lacteos',
+  'derivados lacteos',
+  'leche y derivados',
+  'leche y lacteos',
 ])
 
 /** Dairy the `lactosa` name inference misses: named cheeses, kefir, ghee, milk proteins… */

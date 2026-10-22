@@ -44,6 +44,7 @@ vi.mock('../services/pantryStore.js', () => ({
 import {
   clearFridgeReadingCache,
   healthMentionByKeywords,
+  cleanRestrictions,
   prepareFridgeForMenu,
   readFridgeText,
   FRIDGE_READER_MODEL,
@@ -228,5 +229,16 @@ describe('the /menu box and Mimo send the whole text', () => {
       expect(r.summary).toContain('fridge_health')
       expect(db.insert).not.toHaveBeenCalled()
     }
+  })
+})
+
+describe('PRO-333 — «no tomo lácteos» in the fridge text is the milk allergy', () => {
+  it('the keyword rule proposes «leche (alergia)», not «sin lactosa»', () => {
+    expect(healthMentionByKeywords('Tengo yogures y huevos. No tomo lácteos.')?.restrictions).toEqual(['leche (alergia)'])
+    expect(healthMentionByKeywords('no tomo nada de lactosa, me sienta fatal')?.restrictions).toEqual(['sin lactosa'])
+  })
+  it('a restriction the model gives as «sin lácteos» is stored as «leche (alergia)»', () => {
+    expect(cleanRestrictions(['sin lácteos', 'lácteos'])).toEqual(['leche (alergia)'])
+    expect(cleanRestrictions(['sin lactosa'])).toEqual(['sin lactosa'])
   })
 })

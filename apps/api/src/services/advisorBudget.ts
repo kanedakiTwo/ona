@@ -154,14 +154,19 @@ export async function checkAdvisorBudget(
  * zero (e.g. a fully cache-read turn on a tiny prompt).
  *
  * Also appends the turn to the cost ledger (`cost_events`, fire-and-forget)
- * under `feature` — `whatsapp_chat` inside a WhatsApp turn, `assistant_chat`
- * otherwise — so business metrics see the same spend the budget meters.
+ * under `feature` — `whatsapp_chat` inside a WhatsApp turn, `telegram_chat`
+ * inside a Telegram one (PRO-313), `assistant_chat` otherwise — so business metrics see the same spend the budget meters.
  */
+/** The cost-ledger feature of one Mimo turn, by the channel it ran in. */
+export function chatFeatureFor(channel: string | null): 'assistant_chat' | 'whatsapp_chat' | 'telegram_chat' {
+  return channel === 'whatsapp' ? 'whatsapp_chat' : channel === 'telegram' ? 'telegram_chat' : 'assistant_chat'
+}
+
 export async function recordAdvisorUsage(
   userId: string,
   usage: TokenUsage,
   db: Db = defaultDb,
-  feature: 'assistant_chat' | 'whatsapp_chat' = currentCostChannel() === 'whatsapp' ? 'whatsapp_chat' : 'assistant_chat',
+  feature: 'assistant_chat' | 'whatsapp_chat' | 'telegram_chat' = chatFeatureFor(currentCostChannel()),
 ): Promise<void> {
   recordCost({ feature, provider: 'anthropic', model: ADVISOR_PRICE_MODEL, units: { ...usage }, userId })
   const micros = usageCostMicros(usage, env.ADVISOR_EUR_PER_USD)

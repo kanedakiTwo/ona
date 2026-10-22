@@ -176,7 +176,7 @@ export const NOTICE_TASTE_RULE = `- Si el hogar te pregunta por un aviso de la a
 export function buildSystemPrompt(
   userContext: string,
   mode: AssistantMode = 'text',
-  opts: { onboarding?: boolean } = {},
+  opts: { onboarding?: boolean; surface?: ChatSurface } = {},
 ): string {
   const { instructions, context } = buildSystemParts(userContext, mode, opts)
   return `${instructions}\n\n${context}`
@@ -190,7 +190,7 @@ export function buildSystemPrompt(
 export function buildSystemParts(
   userContext: string,
   mode: AssistantMode = 'text',
-  opts: { onboarding?: boolean } = {},
+  opts: { onboarding?: boolean; surface?: ChatSurface } = {},
 ): { instructions: string; context: string } {
   let prompt = `Eres ${ASSISTANT_NAME}, el asistente de ${BRAND_NAME}, una app de planificacion de menus semanales saludables.
 
@@ -385,5 +385,36 @@ Concisión obligatoria en voz:
 - Confirmaciones: una palabra cuando baste ("Hecho.", "Listo.", "Vale.").`
   }
 
+  if (mode === 'whatsapp' && opts.surface === 'telegram') prompt = forTelegram(prompt)
   return { instructions: prompt, context: `Datos del usuario:\n${userContext}` }
+}
+
+/**
+ * Where a chat-app turn really happens (PRO-313). Telegram runs the engine in
+ * `whatsapp` mode on purpose: same tools, same prompt and, above all, the same
+ * health rule (every `channel === 'whatsapp'` check in skills, the app API
+ * header and the ficha applies unchanged: nothing about health is stored from
+ * Telegram either). Only the wording of the channel changes.
+ */
+export type ChatSurface = 'whatsapp' | 'telegram'
+
+/** Fixed lines of the Telegram block, appended to the WhatsApp channel block. */
+export const TELEGRAM_CHANNEL_NOTE = `Canal real: Telegram (instrucciones obligatorias).
+- Esta conversacion es por Telegram, no por WhatsApp. Todas las reglas del canal de arriba valen igual aqui, empezando por la de salud: por Telegram nunca guardas datos de salud. Si una herramienta te dice algo "por WhatsApp" (por ejemplo, que no guarda datos de salud), vale igual para Telegram: diselo al usuario como "por aqui" o "por Telegram", nunca "por WhatsApp".
+- Por Telegram, de momento, solo te llegan mensajes de texto: ni notas de voz ni fotos.
+- Por Telegram no se escribe BAJA ni ALTA: los avisos se cambian en su perfil de la web.`
+
+/**
+ * The WhatsApp channel block, reworded for Telegram: the channel's name where
+ * it means "this conversation". Mentions that really are WhatsApp (the shop
+ * order links open the user's WhatsApp, a shop's WhatsApp number) stay.
+ */
+export function forTelegram(prompt: string): string {
+  const out = prompt
+    .replace('- Escribes por WhatsApp:', '- Escribes por Telegram:')
+    .replace('Canal WhatsApp (instrucciones obligatorias).', 'Canal Telegram (instrucciones obligatorias).')
+    .replace('- Por WhatsApp nunca guardas datos de salud', '- Por Telegram nunca guardas datos de salud')
+    .replace('Formato de la respuesta (WhatsApp):', 'Formato de la respuesta (Telegram):')
+    .replace(' si quiere dejar de recibir avisos, que escriba BAJA (y ALTA para volver).', ' si quiere cambiar sus avisos, se cambian en su perfil de la web.')
+  return `${out}\n\n${TELEGRAM_CHANNEL_NOTE}`
 }

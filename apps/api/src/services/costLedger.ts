@@ -25,7 +25,7 @@ import { madridMidnightUtc, madridParts } from './madridTime.js'
 type Db = typeof defaultDb
 
 /** Where the paid work was requested from. */
-export type CostChannel = 'web' | 'whatsapp'
+export type CostChannel = 'web' | 'whatsapp' | 'telegram'
 
 interface CostContext {
   userId: string | null

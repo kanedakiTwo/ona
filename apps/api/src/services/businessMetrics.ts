@@ -353,6 +353,7 @@ export const DEFINITIONS = {
 export const FEATURE_DEFINITIONS: Record<string, string> = {
   assistant_chat: 'One turn with Mimo in the app (typed or spoken), all its model calls and tools summed into one row.',
   whatsapp_chat: 'One turn with Mimo on WhatsApp (the user wrote; Mimo answered), all its model calls summed.',
+  telegram_chat: 'One turn with Mimo on Telegram (PRO-313; the user wrote; Mimo answered), all its model calls summed.',
   whatsapp_guided:
     'One call to the writer of a message Mimo sends by itself (PRO-156): morning brief, cooking reminder, dinner check-in, shopping reminder, weekly nudge, first steps (end of onboarding). Billed even when its text is rejected and the fixed text goes out. Not counted: messages sent with the fixed text without calling the writer (no model, over the monthly cap).',
   whatsapp_service: 'One free-form WhatsApp message sent by Mimo (reply or proactive inside the 24 h window); 0 € for the first 1,000 of the month.',

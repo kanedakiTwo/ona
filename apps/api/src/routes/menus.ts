@@ -11,9 +11,10 @@ import { menus, menuEdits, menuLogs, users, userSettings } from '../db/schema.js
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { requireActiveAccount } from '../services/accountAccess.js'
 import { validate } from '../middleware/validate.js'
-import { generateMenuSchema, isTaperDish, lockMealSchema, MEALS, MEAL_TYPE_TAGS, courseSchema } from '@ona/shared'
+import { fridgeTextOf, FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthQuestion, type WeekPlan, generateMenuSchema, isTaperDish, lockMealSchema, MEALS, MEAL_TYPE_TAGS, courseSchema } from '@ona/shared'
 import type { DayMenu, Dish, LockedSlots, Meal, MealSlot, RecipeDish } from '@ona/shared'
 import { applyTaper, removeTaper } from '../services/taper.js'
+import { prepareFridgeForMenu } from '../services/fridgeReader.js'
 import { defaultTemplate, generateMenu, extractMealDishCounts, normalizeMealTemplate } from '../services/menuGenerator.js'
 import { evaluateAndSaveMenuFit } from '../services/menuFit.js'
 import { calculateMenuCaloriesFromDB } from '../services/calorieCalculator.js'
@@ -247,6 +248,30 @@ router.post('/menu/generate', authMiddleware, requireActiveAccount({ skip: (req)
       return
     }
 
+    // PRO-295 · «¿Qué te queda en la nevera?»: Claude reads the text into
+    // foods for the despensa; if it talks about an allergy or intolerance,
+    // the week waits until the person says whether to save it (409 with the
+    // question; the page asks and sends `weekPlan.fridgeAnswer`).
+    let plan: WeekPlan | undefined = weekPlan
+    const fridgeText = fridgeTextOf(weekPlan)
+    if (fridgeText) {
+      const gate = await prepareFridgeForMenu(userId, fridgeText, weekPlan?.fridgeAnswer, 'web')
+      if (gate.status !== 'ready') {
+        const question: FridgeHealthQuestion = {
+          restrictions: gate.restrictions,
+          quote: gate.quote,
+          needsConsent: gate.status === 'needs_consent' || (gate.status === 'ask' && gate.needsConsent),
+        }
+        res.status(409).json({
+          error: 'En la nevera hablas de una alergia o intolerancia: dime si la guardo antes de generar el menú.',
+          code: FRIDGE_HEALTH_QUESTION_CODE,
+          question,
+        })
+        return
+      }
+      plan = { ...weekPlan, fridgeItems: gate.items }
+    }
+
     // Generate the menu. PRO-244: the first menu starts on the sign-up day —
     // days before `fromDate` are left out of generation (no dishes, nothing
     // on the list); they are not stored as "sin cocinar".
@@ -259,7 +284,7 @@ router.post('/menu/generate', authMiddleware, requireActiveAccount({ skip: (req)
       previous.days,
       carryBanned,
       generationSkips(carrySkipped, weekStart, fromDate),
-      weekPlan,
+      plan,
     )
 
     // Save to menus table — carry the lists forward so the matcher honours

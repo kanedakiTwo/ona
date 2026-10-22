@@ -58,6 +58,8 @@ export function describeWeekPlan(plan: WeekPlan | null | undefined): string {
     parts.push(`${g.meal ? `${MEAL_NAMES[g.meal]} del ` : ''}${DAY_NAMES[g.day]}: ${g.diners} comensales`)
   }
   // PRO-229: what's left in the fridge (saved in the despensa, weighs in the menu).
-  if (plan?.fridge?.length) parts.push(`en la nevera: ${plan.fridge.join(', ')}`)
+  // PRO-295: the foods read from the text, else what was said.
+  const fridge = plan?.fridgeItems?.length ? plan.fridgeItems.map((i) => i.name) : (plan?.fridge ?? [])
+  if (fridge.length) parts.push(`en la nevera: ${fridge.join(', ')}`)
   return parts.join('; ')
 }

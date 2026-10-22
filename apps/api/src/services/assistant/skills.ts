@@ -14,7 +14,7 @@ import {
 } from '../../db/schema.js'
 import { nutrientsToPercentages, TARGET_MACROS, detectSeason, recipeDishesOf, isPantryLocation, firstMenuWeeks, pastDayIndexes } from '@ona/shared'
 import type { DayMenu, Meal, NutrientBalance, WeekPlan } from '@ona/shared'
-import { parseWeekPlanAnswer, weekPlanIsEmpty, weekPlanSchema } from '@ona/shared'
+import { fridgeTextOf, parseWeekPlanAnswer, weekPlanIsEmpty, weekPlanSchema } from '@ona/shared'
 import { describeWeekPlan } from '../weekPlan.js'
 import { householdMultiplier } from '@ona/shared'
 import { generateMenu } from '../menuGenerator.js'
@@ -777,17 +777,65 @@ export function weekHasDishes(days: DayMenu[] | undefined): boolean {
  * alguien?». Structured fields from the model win; the user's raw text is
  * read as a fallback. Out-of-range entries are dropped. Undefined when empty.
  */
-export function weekPlanFromParams(params: { mealsOut?: unknown; guests?: unknown; fridge?: unknown; answer?: unknown } | undefined): WeekPlan | undefined {
+export function weekPlanFromParams(
+  params: { mealsOut?: unknown; guests?: unknown; fridge?: unknown; fridge_text?: unknown; fridge_health?: unknown; fridge_restrictions?: unknown; answer?: unknown } | undefined,
+): WeekPlan | undefined {
+  const fridgeHealth = params?.fridge_health === 'save' || params?.fridge_health === 'skip' ? params.fridge_health : undefined
   const structured = weekPlanSchema.safeParse({
     mealsOut: Array.isArray(params?.mealsOut) ? params!.mealsOut : undefined,
     guests: Array.isArray(params?.guests) ? params!.guests : undefined,
     fridge: Array.isArray(params?.fridge) ? (params!.fridge as unknown[]).filter((f) => typeof f === 'string' && f.trim()).slice(0, 20) : undefined,
+    // PRO-295: the fridge answer as the person said it, read by Claude.
+    fridgeText: typeof params?.fridge_text === 'string' && params.fridge_text.trim() ? params.fridge_text.slice(0, 600) : undefined,
+    fridgeAnswer: fridgeHealth
+      ? {
+          decision: fridgeHealth,
+          ...(Array.isArray(params?.fridge_restrictions)
+            ? { restrictions: (params!.fridge_restrictions as unknown[]).filter((r): r is string => typeof r === 'string' && r.trim().length > 0 && r.length <= 40).slice(0, 8) }
+            : {}),
+        }
+      : undefined,
   })
   let plan: WeekPlan | undefined = structured.success ? structured.data : undefined
   if ((plan?.mealsOut?.length ?? 0) === 0 && (plan?.guests?.length ?? 0) === 0 && typeof params?.answer === 'string' && params.answer.trim()) {
-    plan = { ...parseWeekPlanAnswer(params.answer), ...(plan?.fridge?.length ? { fridge: plan.fridge } : {}) }
+    const { mealsOut: _m, guests: _g, ...fridgePart } = plan ?? {}
+    plan = { ...parseWeekPlanAnswer(params.answer), ...fridgePart }
   }
+  if (plan && !plan.fridge?.length) delete plan.fridge
+  if (plan && !plan.fridgeText) delete plan.fridgeText
+  if (plan && !plan.fridgeAnswer) delete plan.fridgeAnswer
+  if (plan && !plan.mealsOut?.length) delete plan.mealsOut
+  if (plan && !plan.guests?.length) delete plan.guests
   return weekPlanIsEmpty(plan) ? undefined : plan
+}
+
+/**
+ * PRO-295: the fridge gate in Mimo's words. Null = generate (with
+ * `weekPlan.fridgeItems` filled); otherwise what Mimo must ask or say first.
+ */
+export async function fridgeGateForSkill(ctx: SkillContext, weekPlan: WeekPlan | undefined): Promise<{ plan: WeekPlan | undefined; stop: string | null; saved?: string }> {
+  const text = fridgeTextOf(weekPlan)
+  if (!text) return { plan: weekPlan, stop: null }
+  const channel = ctx.channel === 'whatsapp' ? 'whatsapp' : 'chat'
+  const { prepareFridgeForMenu } = await import('../fridgeReader.js')
+  const gate = await prepareFridgeForMenu(ctx.userId, text, weekPlan?.fridgeAnswer, channel)
+  if (gate.status === 'ready') {
+    const saved = gate.savedRestrictions.length ? ` Guardada como restriccion de su dieta: ${gate.savedRestrictions.join(', ')}.` : ''
+    return { plan: { ...weekPlan, fridgeItems: gate.items }, stop: null, ...(saved ? { saved } : {}) }
+  }
+  const what = gate.restrictions.length ? gate.restrictions.join(', ') : 'una alergia o intolerancia (no se cual exactamente)'
+  const quote = gate.quote ? ` (dijo: «${untrustedText(gate.quote, 160)}»)` : ''
+  const again = 'Vuelve a llamar a generate_weekly_menu con el mismo fridge_text y fridge_health: "save" (guardarla) o "skip" (no guardarla)'
+  if (gate.status === 'ask') {
+    return {
+      plan: weekPlan,
+      stop: `Menu NO generado todavia. En lo de la nevera habla de ${what}${quote}. Preguntale, en una frase corta, si quieres que lo guardes como restriccion de su dieta para todos los menus.${gate.restrictions.length ? '' : ' Si dice que si, pregunta cual es y pasala en fridge_restrictions.'} ${again}.${ctx.channel === 'whatsapp' ? ' Por WhatsApp no guardas datos de salud: si quiere guardarla, tendra que añadirla en su perfil de la web.' : ''}`,
+    }
+  }
+  if (gate.status === 'whatsapp_no_health') {
+    return { plan: weekPlan, stop: `Menu NO generado. ${WHATSAPP_HEALTH_DATA_REPLY} Dile esto y preguntale si genera ya el menu sin guardarlo (fridge_health: "skip") o prefiere añadirlo antes en su perfil.` }
+  }
+  return { plan: weekPlan, stop: `Menu NO generado. ${HEALTH_CONSENT_SKILL_REPLY} Dile esto y preguntale si genera ya el menu sin guardarlo (fridge_health: "skip") o prefiere dar antes su consentimiento en el perfil.` }
 }
 
 const generateWeeklyMenu: SkillDefinition = {
@@ -823,17 +871,31 @@ const generateWeeklyMenu: SkillDefinition = {
           required: ['day', 'diners'],
         },
       },
+      fridge_text: {
+        type: 'string',
+        description: 'Lo que le queda en la nevera (respuesta a «¿Qué te queda en la nevera?»), el texto entero tal como lo dice, o lo que ves en su foto en una frase. El sistema lo lee: apunta en la despensa solo la comida, con cantidad, y si habla de una alergia o intolerancia no genera hasta que contestes con fridge_health.',
+      },
+      fridge_health: {
+        type: 'string',
+        enum: ['save', 'skip'],
+        description: 'Solo cuando la herramienta te ha pedido preguntar por una alergia o intolerancia de la nevera: "save" si quiere guardarla como restriccion de su dieta, "skip" si no.',
+      },
+      fridge_restrictions: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Con fridge_health "save", si la persona aclara que guardar: ["sin lactosa"].',
+      },
       fridge: {
         type: 'array',
         items: { type: 'string' },
-        description: 'Lo que le queda en la nevera (respuesta a «¿Qué te queda en la nevera?», por texto o leyendo su foto), una cosa por elemento tal como lo dice: ["medio calabacin", "nata"]. Se apunta en la despensa (nevera) y el menu da mas peso a las recetas que lo usan.',
+        description: 'Obsoleto: usa fridge_text.',
       },
       answer: { type: 'string', description: 'El texto tal cual del usuario cuando contesta a las preguntas de antes de planificar (p. ej. «el jueves cenamos fuera y el sabado somos 6»). Se usa solo si no pasas mealsOut ni guests.' },
     },
     required: [],
   },
   async handler(
-    params: { nextWeek?: boolean; replaceExisting?: boolean; mealsOut?: WeekPlan['mealsOut']; guests?: WeekPlan['guests']; fridge?: string[]; answer?: string },
+    params: { nextWeek?: boolean; replaceExisting?: boolean; mealsOut?: WeekPlan['mealsOut']; guests?: WeekPlan['guests']; fridge?: string[]; fridge_text?: string; fridge_health?: 'save' | 'skip'; fridge_restrictions?: string[]; answer?: string },
     ctx: SkillContext,
   ): Promise<SkillResult> {
     const { userId, db } = ctx
@@ -854,7 +916,12 @@ const generateWeeklyMenu: SkillDefinition = {
         uiHint: 'text',
       }
     }
-    return generateAndSaveWeek(ctx, weekStart, previous, undefined, weekPlan)
+    // PRO-295: the fridge text, read by Claude; an allergy in it stops here
+    // until the person says whether to save it.
+    const fridge = await fridgeGateForSkill(ctx, weekPlan)
+    if (fridge.stop) return { data: { weekStart, replaced: false }, summary: fridge.stop, uiHint: 'text' }
+    const result = await generateAndSaveWeek(ctx, weekStart, previous, undefined, fridge.plan)
+    return fridge.saved ? { ...result, summary: `${result.summary}\n${fridge.saved.trim()}` } : result
   },
 }
 

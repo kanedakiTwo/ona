@@ -552,7 +552,8 @@ export async function generateMenu(
 
   // PRO-229 · «¿Qué te queda en la nevera?»: what was said goes into the
   // despensa (nevera); recipes that use what's in the fridge weigh more.
-  await rememberFridge(userId, weekPlan?.fridge, db).catch(() => {})
+  // PRO-295: as read by Claude before generating (`prepareFridgeForMenu`).
+  await rememberFridge(userId, weekPlan?.fridgeItems, db).catch(() => {})
   const fridgeRecipeIds = recipesUsingFridge(allRecipes, await loadFridgeTerms(userId, db).catch(() => []))
 
   // Identify recipes whose nutritionPerServing isn't cached yet — they get a

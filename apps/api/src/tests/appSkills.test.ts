@@ -512,6 +512,61 @@ describe('recipes, profile, household', () => {
     expect(writes(g.calls)).toEqual([{ method: 'PUT', path: '/recipes/r-lent/notes', body: { minServings: null } }])
   })
 
+  // PRO-299 · Carmen y Antonio: «guardada en sus Lentejas guisadas» and it
+  // landed on the catalogue's lentils (the ones in the menu).
+  it('update_recipe_notes: the household copy wins over the catalogue recipe in the menu, and the summary names it', async () => {
+    const f = fakeApi({
+      'GET /user/u1/recipes': { own: [{ id: 'mine-lent', name: 'Lentejas guisadas', copiedFromRecipeId: 'r-lent' }], favorites: [] },
+      'GET /recipes/mine-lent/notes': null,
+    })
+    const r = await get('update_recipe_notes').handler({ recipeName: 'las lentejas', notes: 'Sin chorizo, con más zanahoria' }, ctx(f.api))
+    expect(writes(f.calls)).toEqual([{ method: 'PUT', path: '/recipes/mine-lent/notes', body: { notes: 'Sin chorizo, con más zanahoria' } }])
+    expect(r.summary).toContain('guardado en "Lentejas guisadas" (su receta)')
+    expect(r.data).toMatchObject({ recipeId: 'mine-lent', recipeName: 'Lentejas guisadas', owner: 'household' })
+  })
+
+  it('update_recipe_notes: named like the catalogue recipe, the note still goes to their copy of it', async () => {
+    const f = fakeApi({
+      'GET /user/u1/recipes': { own: [{ id: 'mine-x', name: 'Potaje de la abuela', copiedFromRecipeId: 'r-lent' }], favorites: [] },
+      'GET /recipes/mine-x/notes': null,
+    })
+    await get('update_recipe_notes').handler({ recipeName: 'lentejas estofadas', rating: 4 }, ctx(f.api))
+    expect(writes(f.calls)).toEqual([{ method: 'PUT', path: '/recipes/mine-x/notes', body: { rating: 4 } }])
+  })
+
+  it('update_recipe_notes: two recipes with the same name, none theirs → asks, saves nothing; then saves where chosen', async () => {
+    const routes = {
+      'GET /user/u1/recipes': { own: [], favorites: [] },
+      'GET /recipes': [
+        { id: 'r-lent', name: 'Lentejas estofadas', authorId: null },
+        { id: 'r-lent2', name: 'Lentejas Estofadas', authorId: 'u2' },
+      ],
+      'GET /recipes/r-lent2': { id: 'r-lent2', name: 'Lentejas Estofadas', authorId: 'u2' },
+      'GET /recipes/r-lent2/notes': null,
+    }
+    const f = fakeApi(routes)
+    const ask = await get('update_recipe_notes').handler({ recipeName: 'lentejas estofadas', notes: 'Con comino' }, ctx(f.api))
+    expect(writes(f.calls)).toEqual([])
+    expect(ask.summary).toMatch(/No he guardado nada: hay 2 recetas/)
+    expect(ask.summary).toContain('recipeId r-lent2')
+    expect(ask.summary).toContain('receta del catalogo de Mimoia')
+
+    const g = fakeApi(routes)
+    const r = await get('update_recipe_notes').handler({ recipeName: 'lentejas estofadas', recipeId: 'r-lent2', notes: 'Con comino' }, ctx(g.api))
+    expect(writes(g.calls)).toEqual([{ method: 'PUT', path: '/recipes/r-lent2/notes', body: { notes: 'Con comino' } }])
+    expect(r.summary).toContain('"Lentejas Estofadas" (receta de otra persona)')
+  })
+
+  it('update_recipe_notes: a catalogue recipe is said to be the catalogue’s, and the prompt makes Mimo repeat that name', async () => {
+    const f = fakeApi({ 'GET /recipes': [{ id: 'r-curry', name: 'Curry de berenjena y lentejas' }], 'GET /recipes/r-lent/notes': null })
+    const r = await get('update_recipe_notes').handler({ recipeName: 'las lentejas', rating: 5 }, ctx(f.api))
+    expect(r.summary).toContain('guardado en "Lentejas estofadas" (receta del catalogo de Mimoia)')
+    const { buildSystemPrompt } = await import('../services/assistant/systemPrompt.js')
+    for (const mode of ['text', 'whatsapp'] as const) {
+      expect(buildSystemPrompt('', mode)).toContain('nombra la receta exactamente como la devuelve la herramienta')
+    }
+  })
+
   it('delete_recipe only touches recipes the user owns', async () => {
     const f = fakeApi({ 'GET /user/u1/recipes': { own: [{ id: 'mine1', name: 'Fabada de mi madre' }], favorites: [] } })
     expect((await get('delete_recipe').handler({ recipeName: 'paella' }, ctx(f.api))).summary).toMatch(/no he borrado nada/)
@@ -706,5 +761,13 @@ describe('itemLabel with a line partly bought (PRO-199)', () => {
   it('says only what is missing', async () => {
     const { itemLabel } = await import('../services/assistant/appSkills.js')
     expect(itemLabel({ id: 'a', name: 'ajo', quantity: 40, unit: 'g', haveQuantity: 25 })).toBe('ajo (faltan 15 g; ya tienes 25 g)')
+  })
+})
+
+describe('«Mis recetas» lists every own recipe (PRO-299)', () => {
+  it('the page asks the API for them (?mine=1) instead of filtering the first 100 catalogue cards', async () => {
+    const { buildQueryString } = await import('../../../web/src/lib/recipeQuery')
+    expect(buildQueryString({ perPage: 100, mine: true })).toBe('?perPage=100&mine=1')
+    expect(buildQueryString({ perPage: 100 })).toBe('?perPage=100')
   })
 })

@@ -73,8 +73,10 @@ describe('what was said', () => {
 
   it('goes into the despensa as «nevera», once', async () => {
     pantry.length = 0
-    await rememberFridge('u-1', splitFridgeAnswer(ANSWER))
-    await rememberFridge('u-1', ['Nata'])
+    // PRO-295: items come read by Claude (fridgeReader.ts); unlinked ones go once by name.
+    const item = (name: string) => ({ name, quantity: 1, unit: 'u' as const, ingredientId: null })
+    await rememberFridge('u-1', splitFridgeAnswer(ANSWER).map(item))
+    await rememberFridge('u-1', [item('Nata')])
     expect(pantry.map((r) => [r.name, r.location])).toEqual([
       ['medio calabacín', 'nevera'],
       ['nata', 'nevera'],

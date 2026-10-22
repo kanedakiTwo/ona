@@ -166,9 +166,9 @@ describe('the /menu questions → POST /menu/generate body (form ↔ schema cont
     expect(buildWeekPlan(['9:dinner', 'x:lunch'], { 2: 0, 4: 30 })).toBeUndefined()
     expect(mealsByDay([{ dinner: {}, lunch: {} }, {}])[0]).toEqual(['lunch', 'dinner'])
     expect(mealsByDay(undefined)[6]).toEqual(['lunch', 'dinner'])
-    // PRO-229: «¿Qué te queda en la nevera?» travels in the same body.
+    // PRO-229: «¿Qué te queda en la nevera?» travels in the same body (PRO-295: whole).
     const withFridge = buildWeekPlan([], {}, 'medio calabacín, nata')
-    expect(withFridge).toEqual({ fridge: ['medio calabacín', 'nata'] })
+    expect(withFridge).toEqual({ fridgeText: 'medio calabacín, nata' })
     expect(weekPlanSchema.safeParse(withFridge).success).toBe(true)
   })
 })

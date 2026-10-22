@@ -626,17 +626,44 @@ const setLeftovers: SkillDefinition = {
 // adds to the shopping list (`variant: 'freezer'`), whatever week it was
 // cooked in. PRO-240: the same in the fridge (`variant: 'fridge'`,
 // «Táper de la nevera»); Mimo picks by what the household says.
+// PRO-276: «lo tengo hecho» / «me sobró» (`place: 'hecho'`) is `variant:
+// 'cooked'` («Sobras de otro día»), linked only to a recipe whose name says
+// nothing the household didn't: «crema de puerros» never becomes «Crema de
+// puerros con jamón» (the reviewer, 2026-10-18). Otherwise a note «Hecho en
+// casa: …», which buys nothing either.
+
+/**
+ * Whether a recipe called `recipeName` is the dish the household named, with
+ * no words of more: every significant word of the recipe is in what they said
+ * (articles and prepositions aside, singular = plural, no accents). Pure.
+ * «crema de puerros» → «Crema de puerros» yes, «Crema de puerros con jamón» no.
+ */
+export function namesSameDish(said: string, recipeName: string): boolean {
+  const words = (s: string) => normalize(s).replace(/[^a-z0-9ñ ]/g, ' ').split(' ').filter((w) => w && !STOPWORDS.has(w))
+  const saidWords = words(said)
+  const recipeWords = words(recipeName)
+  if (saidWords.length === 0 || recipeWords.length === 0) return false
+  return recipeWords.every((w) => saidWords.some((x) => sameWord(x, w)))
+}
+
+/** «crema de puerros hecha» → «crema de puerros»: the dish, without saying it's made. */
+export const cookedDishName = (name: unknown): string =>
+  String(name ?? '').replace(/\b(ya\s+)?(hech[oa]s?|preparad[oa]s?|que (me|nos) sobr[oó])\b/gi, ' ').replace(/\s+/g, ' ').trim()
+
+const PLACE_VARIANT = { congelador: 'freezer', nevera: 'fridge', hecho: 'cooked' } as const
+const PLACE_LABEL = { freezer: 'del congelador', fridge: 'taper de la nevera', cooked: 'ya hecho (sobras de otro dia)' } as const
+
 const addFreezerDish: SkillDefinition = {
   name: 'add_freezer_dish',
   description:
-    'Pone en una comida un taper ya cocinado ("esta noche comemos taper de lentejas", "el jueves tiramos de las albondigas congeladas", "hemos hecho batch y lo tenemos en tapers"). Queda enlazado a su receta con su nombre, sin "Empezar a cocinar", y NO suma nada a la lista de la compra (tampoco las sobras que salgan del mismo plato). place: "nevera" si el hogar dice que lo guarda en la nevera (o es para estos dias), "congelador" si esta congelado; si no lo dice, congelador. Por defecto sustituye lo que hubiera en esa comida. Para sobras de otra comida de la misma semana usa set_leftovers.',
+    'Pone en una comida un plato que el hogar YA TIENE COCINADO: un taper ("esta noche comemos taper de lentejas", "el jueves tiramos de las albondigas congeladas", "hemos hecho batch y lo tenemos en tapers") o algo que ya tiene hecho o le sobro ("tengo crema de puerros hecha, ponla el jueves", "me sobro cocido", "lo tengo hecho"). NO suma nada a la lista de la compra (tampoco las sobras que salgan del mismo plato) y no ofrece "Empezar a cocinar". place: "nevera" si dice que lo guarda en la nevera (o es para estos dias), "congelador" si esta congelado, "hecho" si dice que lo tiene hecho, preparado o que le sobro sin decir donde; si no dice nada, congelador. Con "hecho" solo se enlaza a una receta que se llame igual, sin palabras de mas; si no, queda como nota "Hecho en casa: ...". Pasa recipeName con sus palabras. Por defecto sustituye lo que hubiera en esa comida. Para sobras de otra comida de la misma semana usa set_leftovers; para algo que hay que cocinar, add_dish o swap_meal.',
   parameters: {
     type: 'object',
     properties: {
       ...dayMealProps,
-      recipeName: { type: 'string', description: 'El plato del taper, sin "taper de" (ej. "lentejas")' },
+      recipeName: { type: 'string', description: 'El plato, con las palabras del hogar, sin "taper de" ni "hecho" (ej. "lentejas", "crema de puerros")' },
       recipeId: { type: 'string' },
-      place: { type: 'string', enum: ['congelador', 'nevera'], description: 'Donde esta el taper. Por defecto congelador.' },
+      place: { type: 'string', enum: ['congelador', 'nevera', 'hecho'], description: 'Donde esta o "hecho" (ya lo tiene hecho). Por defecto congelador.' },
       keepDishes: { type: 'boolean', description: 'true para añadirlo sin quitar los platos de esa comida' },
     },
     required: ['meal', 'recipeName'],
@@ -650,24 +677,45 @@ const addFreezerDish: SkillDefinition = {
     if (!menu) return NO_MENU(t.weekStart)
     const path = slotPath(menu.id, t.dayIndex, p.meal)
     const had = (menu.days[t.dayIndex]?.[p.meal]?.dishes ?? []).length > 0
-    const recipe = p.recipeId ? { id: p.recipeId, name: p.recipeName ?? 'la receta' } : await findRecipe(ctx, p.recipeName)
+    const cooked = p.place === 'hecho'
+    let recipe: { id: string; name: string; approximate?: boolean } | null
+    if (cooked) {
+      // Only the same dish: a recipe id from the model counts when its name matches too.
+      const said = cookedDishName(p.recipeName)
+      const byId = p.recipeId ? await api(ctx)<{ id?: string; name?: string } | null>('GET', `/recipes/${encodeURIComponent(p.recipeId)}`).catch(() => null) : null
+      if (byId?.id && byId.name) {
+        recipe = namesSameDish(said, byId.name) ? { id: byId.id, name: byId.name } : null
+      } else {
+        // Of their recipes and the catalogue, the one named the most like what they said.
+        const cards = said.trim() ? await api(ctx)<Array<{ id: string; name: string }>>('GET', `/recipes?search=${encodeURIComponent(said)}&perPage=30`) : []
+        const same = (cards ?? []).filter((c) => namesSameDish(said, c.name))
+        same.sort((a, b) => normalize(b.name).length - normalize(a.name).length)
+        recipe = same[0] ? { id: same[0].id, name: same[0].name } : null
+      }
+    } else {
+      recipe = p.recipeId ? { id: p.recipeId, name: p.recipeName ?? 'la receta' } : await findRecipe(ctx, p.recipeName)
+    }
     if (!p.keepDishes && had) await api(ctx)('DELETE', path)
     const removed = !p.keepDishes && had ? ' (he quitado lo que había)' : ''
     if (!recipe) {
-      // Not in their recipes nor the catalogue: a note, which never buys anything.
-      const note = `Táper: ${dishNoteText(p.recipeName)}`.slice(0, 120)
+      // Not in their recipes nor the catalogue (or, already made, not the same
+      // dish): a note, which never buys anything.
+      const note = `${cooked ? 'Hecho en casa' : 'Táper'}: ${dishNoteText(cooked ? cookedDishName(p.recipeName) || p.recipeName : p.recipeName)}`.slice(0, 120)
       await api(ctx)('POST', `${path}/dish`, { kind: 'note', text: note })
+      const why = cooked
+        ? 'No hay una receta que se llame igual, asi que va como nota.'
+        : 'No esta en sus recetas ni en el catalogo, asi que va como nota.'
       return menuDone(
-        `Hecho: ${where(t, p.meal)} queda como "${note}"${removed}; no suma nada a la compra. No esta en sus recetas ni en el catalogo, asi que va como nota.`,
+        `Hecho: ${where(t, p.meal)} queda como "${note}"${removed}; no suma nada a la compra. ${why}`,
         changed(t, p.meal, { menuId: menu.id, note }),
       )
     }
-    const fridge = p.place === 'nevera'
-    const variant = fridge ? 'fridge' : 'freezer'
+    const place = (['congelador', 'nevera', 'hecho'] as const).includes(p.place) ? (p.place as keyof typeof PLACE_VARIANT) : 'congelador'
+    const variant = PLACE_VARIANT[place]
     await api(ctx)('POST', `${path}/dish`, { kind: 'recipe', recipeId: recipe.id, variant })
     const approx = 'approximate' in recipe && recipe.approximate ? ` Es la receta mas parecida a "${p.recipeName}" que hay.` : ''
     return menuDone(
-      `Hecho: ${where(t, p.meal)} es "${recipe.name}", ${fridge ? 'taper de la nevera' : 'del congelador'}${removed}; no suma nada a la lista de la compra.${approx}`,
+      `Hecho: ${where(t, p.meal)} es "${recipe.name}", ${PLACE_LABEL[variant]}${removed}; no suma nada a la lista de la compra.${approx}`,
       changed(t, p.meal, { menuId: menu.id, recipeId: recipe.id, recipeName: recipe.name, variant }),
     )
   },

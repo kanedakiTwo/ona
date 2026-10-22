@@ -25,13 +25,15 @@
  * - `menu-un-mensaje` (PRO-277): generating the menu by WhatsApp, Mimo's
  *   part is short (it goes in the picture's caption, one message), doesn't
  *   repeat the week day by day and answers what else was asked.
+ * - `receta-minutos` (PRO-308): a recipe Mimo creates carries its minutes
+ *   (`prepTime` and `cookTime` in create_recipe; the reply says the time).
  */
 import { HEALTH_DISCLAIMER, hasDisclaimer, talksHealthEffects } from './healthGuard.js'
 
 
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
-export type MimoEvalCheck = 'menu-guardado' | 'bebe-aparta' | 'bebe-cocina' | 'bebe-salud' | 'menu-comensales' | 'menu-un-mensaje'
+export type MimoEvalCheck = 'menu-guardado' | 'bebe-aparta' | 'bebe-cocina' | 'bebe-salud' | 'menu-comensales' | 'menu-un-mensaje' | 'receta-minutos'
 
 export interface MimoEvalCase {
   id: string
@@ -222,12 +224,19 @@ export function babyPortionOrder(reply: string): { setAside: number; firstSeason
  * - `comensales-de-siempre` (`menu-comensales`): generated with the usual
  *   diners instead of asking or passing the ones said;
  * - `respuesta-larga` / `repite-semana` (`menu-un-mensaje`): too long for the
- *   picture's caption, or writes the week day by day.
+ *   picture's caption, or writes the week day by day;
+ * - `sin-minutos` (`receta-minutos`): created the recipe without its minutes
+ *   (live) or doesn't say its time (CI).
  */
 export function mimoReplyProblems(reply: string, c: MimoEvalCase, toolsUsed?: string[], toolTrace?: MimoEvalToolCall[]): string[] {
   const text = fold(reply)
   const problems: string[] = []
   if (c.check === 'menu-comensales' && c.diners && !dinersApplied(reply, c.diners, toolTrace)) problems.push('comensales-de-siempre')
+  if (c.check === 'receta-minutos') {
+    const creates = (toolTrace ?? []).filter((t) => t.name === 'create_recipe')
+    const withMinutes = (t: MimoEvalToolCall) => /"prepTime":\s*\d/.test(t.input) && /"cookTime":\s*\d/.test(t.input)
+    if (toolTrace ? creates.length === 0 || !creates.every(withMinutes) : !/\b\d+\s*(min|minutos)\b/.test(text)) problems.push('sin-minutos')
+  }
   if (c.check === 'menu-un-mensaje') {
     if (reply.trim().length > MENU_REPLY_MAX) problems.push('respuesta-larga')
     // The week day by day is the picture's job: four or more lines starting with a day.
@@ -473,5 +482,16 @@ export const MIMO_EVAL_CASES: MimoEvalCase[] = [
       '- Viernes 23: arroz con bacalao (sobras) y pizza casera',
       'Tienes la lista de la compra en la app.',
     ].join('\n'),
+  },
+  {
+    id: 'receta-merluza-sin-minutos',
+    check: 'receta-minutos',
+    origin: 'Marta y Jorge, 2026-10-20 (la merluza y el salmón que creó Mimo salieron sin tiempo; el pedido y la respuesta, reconstruidos). PRO-308',
+    context: ['Hoy es martes 2026-10-20 (dayIndex 1), son las 18:00 en Madrid.', 'Hogar: 2 adultos'].join('\n'),
+    history: [],
+    message: 'créame una receta de merluza al horno con limón para una cena de 15 minutos y guárdala',
+    reconstructed: true,
+    mustCallOneOf: ['create_recipe'],
+    badReply: 'Hecho:\n- Receta «Merluza al horno con limón» guardada en tus recetas',
   },
 ]

@@ -149,6 +149,49 @@ function activeTimeWith(
   return minutes
 }
 
+/** PRO-308: a hands-on step that says no minutes counts this much. */
+export const DEFAULT_ACTIVE_STEP_MINUTES = 5
+/** PRO-308: a step that goes by itself (oven, simmering, resting…) without minutes. */
+export const DEFAULT_PASSIVE_STEP_MINUTES = 15
+
+export interface EstimatedTimes {
+  prepTime: number | null
+  cookTime: number | null
+  activeTime: number | null
+  totalTime: number | null
+}
+
+/**
+ * PRO-308 · a recipe Mimo writes (create_recipe, a dish it makes up for the
+ * menu) always gets its minutes. The times it gave win; what's missing comes
+ * from the steps with the catalogue's rule: each step's minutes (or the ones
+ * in its text); a step without them counts `DEFAULT_ACTIVE_STEP_MINUTES` if
+ * it needs you, `DEFAULT_PASSIVE_STEP_MINUTES` if it goes by itself. The
+ * hands-on time is the sum of the hands-on steps (`computeActiveTime`),
+ * never more than the total. With no times given, preparación = hands-on
+ * and cocción = the rest. All null only with no times and no steps.
+ */
+export function estimateRecipeTimes(
+  given: { prepTime?: number | null; cookTime?: number | null },
+  stepTexts: readonly string[],
+): EstimatedTimes {
+  const ok = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n > 0
+  const prep = ok(given.prepTime) ? Math.round(given.prepTime) : null
+  const cook = ok(given.cookTime) ? Math.round(given.cookTime) : null
+  const steps: StepForTime[] = stepTexts.filter((t) => t.trim()).map((text) => ({ text }))
+  const estimated = steps.map((s) => ({
+    ...s,
+    durationMin: stepMinutes(s) ?? (isPassiveStep(s) ? DEFAULT_PASSIVE_STEP_MINUTES : DEFAULT_ACTIVE_STEP_MINUTES),
+  }))
+  const fromSteps = estimated.reduce((a, s) => a + s.durationMin, 0)
+  const total = prep != null || cook != null ? (prep ?? 0) + (cook ?? 0) : fromSteps > 0 ? fromSteps : null
+  if (total == null) return { prepTime: null, cookTime: null, activeTime: null, totalTime: null }
+  let active = computeActiveTime(estimated, prep, total)
+  if (active == null) active = Math.min(DEFAULT_ACTIVE_STEP_MINUTES, total)
+  if (prep == null && cook == null) return { prepTime: active, cookTime: total - active, activeTime: active, totalTime: total }
+  return { prepTime: prep, cookTime: cook, activeTime: active, totalTime: total }
+}
+
 export interface RecipeTimeRow {
   name: string
   prepTime: number | null

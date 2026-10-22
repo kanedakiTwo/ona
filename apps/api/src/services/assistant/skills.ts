@@ -25,6 +25,7 @@ import { updateBalance } from '../nutrientBalance.js'
 import { getSummary } from '../advisor.js'
 import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../scopeResolver.js'
 import { importRecipeFromUrl, createRecipeFromParts, type RecipeParts } from '../recipeImport.js'
+import { estimateRecipeTimes } from '../catalogRecipeTimes.js'
 import { mealLinesForDay } from '../menuText.js'
 import { cookedRecipeIds, householdDiners, mealLinesWithFacts, timesLabel, type RecipeTimes } from './menuFacts.js'
 import { repeatNote } from './weekRepeats.js'
@@ -1400,21 +1401,27 @@ const createRecipe: SkillDefinition = {
         description: 'Lista de ingredientes con cantidades',
       },
       steps: { type: 'array', items: { type: 'string' }, description: 'Pasos de preparacion' },
-      prepTime: { type: 'number', description: 'Tiempo de preparacion en minutos' },
-      cookTime: { type: 'number', description: 'Tiempo de coccion en minutos' },
+      prepTime: { type: 'number', description: 'Minutos de preparacion (lo que hay que estar: cortar, sofreir, montar). Siempre: si no te lo dice, estimalo tu. Sin minutos el menu no puede respetar el tiempo que tiene para cocinar.' },
+      cookTime: { type: 'number', description: 'Minutos de coccion (horno, guiso, reposo…; 0 si no hay). Siempre: si no te lo dice, estimalo tu.' },
       meals: { type: 'array', items: { type: 'string' }, description: 'breakfast, lunch, dinner, snack' },
       seasons: { type: 'array', items: { type: 'string' }, description: 'spring, summer, autumn, winter' },
     },
-    required: ['name', 'ingredients', 'steps'],
+    required: ['name', 'ingredients', 'steps', 'prepTime', 'cookTime'],
   },
   async handler(params: RecipeParts, ctx: SkillContext): Promise<SkillResult> {
     const saved = await createRecipeFromParts(params, ctx.userId)
     const review = saved.warnings.some((w) => /no encontrado/.test(w))
       ? ' Algun ingrediente no se reconocio del todo; se puede revisar en la app.'
       : ''
+    // PRO-308: the minutes it was saved with (given, or estimated from the steps).
+    const t = estimateRecipeTimes(params, params.steps ?? [])
+    const given = typeof params.prepTime === 'number' && params.prepTime > 0 || typeof params.cookTime === 'number' && params.cookTime > 0
+    const times = t.totalTime
+      ? ` Tiempo: ${t.totalTime} min en total, ${t.activeTime} de trabajo${given ? '' : ' (estimado de los pasos)'}.`
+      : ''
     return {
       data: { recipeId: saved.recipeId, name: saved.name },
-      summary: `Receta "${saved.name}" creada en las recetas del usuario (id ${saved.recipeId}).${review}`,
+      summary: `Receta "${saved.name}" creada en las recetas del usuario (id ${saved.recipeId}).${times}${review}`,
       uiHint: 'recipe',
     }
   },
@@ -1458,14 +1465,24 @@ const recipeVariation: SkillDefinition = {
       .where(eq(recipeIngredients.recipeId, recipe.id))
 
     const ingredientList = riRows.map((r: any) => `${r.ingredientName} (${r.quantity}${r.unit ?? 'g'})`)
+    // PRO-308: a variation saved with create_recipe keeps its minutes.
+    const total = recipe.totalTime ?? ((recipe.prepTime ?? 0) + (recipe.cookTime ?? 0) || null)
+    const timeLine = total
+      ? ` Tiempo: ${recipe.prepTime ?? '?'} min de preparacion, ${recipe.cookTime ?? '?'} de coccion (${total} en total${recipe.activeTime ? `, ${recipe.activeTime} de trabajo` : ''}).`
+      : ' No tiene tiempo guardado.'
+    const saveHint = ' Si guardas la variacion con create_recipe, pasa siempre prepTime y cookTime (los de la original, ajustados si la sustitucion cambia el tiempo).'
 
     return {
       data: {
         recipeName: recipe.name,
         ingredients: riRows,
         ingredientToReplace: params.ingredientToReplace,
+        prepTime: recipe.prepTime ?? null,
+        cookTime: recipe.cookTime ?? null,
+        activeTime: recipe.activeTime ?? null,
+        totalTime: total,
       },
-      summary: `Receta ${recipe.name}. Ingredientes: ${ingredientList.join(', ')}. El usuario quiere sustituir: ${params.ingredientToReplace}.`,
+      summary: `Receta ${recipe.name}. Ingredientes: ${ingredientList.join(', ')}.${timeLine} El usuario quiere sustituir: ${params.ingredientToReplace}.${saveHint}`,
       uiHint: 'recipe',
     }
   },

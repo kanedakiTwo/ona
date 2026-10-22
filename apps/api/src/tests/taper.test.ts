@@ -23,7 +23,7 @@ const week = (mondayDinnerServings?: number): DayMenu[] => [
   { lunch: cooked('pasta'), dinner: cooked('merluza') },
   {}, {}, {}, {}, {},
 ]
-const diners = (days: DayMenu[], household: number) => sumDinersByRecipe(withLeftoverBatches(days), household)
+const diners = (days: DayMenu[], household: number) => sumDinersByRecipe(withLeftoverBatches(days, household), household)
 
 describe('marking Tuesday’s lunch as táper', () => {
   it('becomes the leftovers of Monday’s dinner, one ration, and the plantilla-free week is otherwise untouched', () => {

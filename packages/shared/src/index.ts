@@ -630,3 +630,4 @@ export type {
   CatalogImportJobView,
   CatalogImportCheckView,
 } from './types/catalogImport.js'
+export { leftoverShares, slotServingsOverride, batchServingsOf } from './utils/leftoverBatch.js'

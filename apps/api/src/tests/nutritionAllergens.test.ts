@@ -12,6 +12,7 @@ import {
   effectiveAllergens,
   inferAllergenTagsFromName,
 } from '../services/nutrition/allergens.js'
+import { missingNameAllergens } from '../services/nutrition/allergenBackfill.js'
 
 // ─── allergenUnion ─────────────────────────────────────────────
 
@@ -357,5 +358,45 @@ describe('Tandas libros-01 y yaya-01 (2026-10-21) — ingredientes nuevos que sa
   it('no confunde la carne de buey ni otras palabras', () => {
     expect(inferAllergenTagsFromName('carne de buey')).toEqual([])
     expect(inferAllergenTagsFromName('caracolas de hojaldre')).not.toContain('moluscos')
+  })
+})
+
+// ─── PRO-332: cheeses by their own name, kéfir, ghee ────────────
+
+describe('inferAllergenTagsFromName — milk without saying «leche» (PRO-332)', () => {
+  it('cheeses called only by their name, kéfir, ghee and clarified butter are milk', () => {
+    for (const n of [
+      'emmental', 'Queso gouda', 'gouda', 'brie', 'camembert', 'cheddar', 'edam', 'gorgonzola', 'roquefort',
+      'ricotta', 'burrata', 'provolone', 'pecorino', 'grana padano', 'manchego', 'Kéfir', 'kéfir natural',
+      'ghee', 'mantequilla clarificada', 'suero de leche', 'caseína', 'bechamel', 'salsa bechamel', 'Emmental rallado',
+    ]) {
+      expect(inferAllergenTagsFromName(n), n).toContain('lactosa')
+    }
+  })
+
+  it('«crema de calabaza» and «leche de coco» stay as they were; water kéfir and «pisto manchego» are not milk', () => {
+    expect(inferAllergenTagsFromName('crema de calabaza')).toContain('lactosa') // «crema» already counted (prudent)
+    expect(inferAllergenTagsFromName('leche de coco')).not.toContain('lactosa')
+    expect(inferAllergenTagsFromName('kéfir de agua')).not.toContain('lactosa')
+    expect(inferAllergenTagsFromName('pisto manchego')).not.toContain('lactosa')
+    expect(inferAllergenTagsFromName('cebolla roja')).not.toContain('lactosa')
+  })
+
+  it('the recipe ficha shows «leche» for a recipe with emmental even if the stored union lacks it', () => {
+    expect(effectiveAllergens([], ['emmental', 'jamón cocido', 'pan de molde'])).toContain('lactosa')
+  })
+})
+
+describe('missingNameAllergens — the boot step only adds milk to the PRO-332 names (PRO-332)', () => {
+  it('adds «lactosa» to a PRO-332 name that lacks it, nothing else', () => {
+    expect(missingNameAllergens('emmental', [])).toEqual(['lactosa'])
+    expect(missingNameAllergens('Queso gouda', null)).toEqual(['lactosa'])
+    expect(missingNameAllergens('ghee', ['sulfitos'])).toEqual(['lactosa'])
+    expect(missingNameAllergens('emmental', ['lactosa'])).toEqual([])
+    expect(missingNameAllergens('kéfir de agua', [])).toEqual([])
+    expect(missingNameAllergens('pisto manchego', [])).toEqual([])
+    // Not a PRO-332 word: left as stored, even if another rule would tag it.
+    expect(missingNameAllergens('crema de calabaza', [])).toEqual([])
+    expect(missingNameAllergens('harina de trigo', [])).toEqual([])
   })
 })

@@ -9,6 +9,7 @@ import { applyCatalogIngredientAisles } from '../services/catalogIngredientAisle
 import { applyNutritionCompleteness } from '../services/nutritionCompleteness.js'
 import { applyEdibleFractions } from '../services/nutrition/edibleFraction.js'
 import { applyCompoundIngredientTags } from '../services/compoundIngredients.js'
+import { applyNameAllergenTags } from '../services/nutrition/allergenBackfill.js'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -73,6 +74,13 @@ async function main() {
     await applyCompoundIngredientTags(db)
   } catch (err) {
     console.error('[compound-tags] failed:', err)
+  }
+  // Idempotent, additive (PRO-332): cheeses called by their name, kéfir,
+  // ghee… get the milk tag, in the ingredient and in the recipes that use it.
+  try {
+    await applyNameAllergenTags(db)
+  } catch (err) {
+    console.error('[allergen-milk-names] failed:', err)
   }
   // Idempotent (PRO-176): recompute only the «nutrición incompleta» mark of
   // every recipe; the cached figures are left as they are.

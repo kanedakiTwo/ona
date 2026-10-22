@@ -31,7 +31,7 @@ import {
   prettyName,
 } from "@ona/shared"
 import { fetchTasteNext, postTasteFlag, postTasteVerdict } from "@/hooks/useTaste"
-import { dislikeChipText, nextStreak } from "@/lib/tasteText"
+import { dislikeChipText, nextStreak, swipeStamps, swipeVerdict } from "@/lib/tasteText"
 import { useQueryClient } from "@tanstack/react-query"
 import { CookingPot } from "lucide-react"
 import { trackUsage } from "@/lib/usageEvents"
@@ -365,16 +365,17 @@ export function TasteSwiper({
   const onPointerUp = () => {
     if (!start.current) return
     start.current = null
-    const { dx, dy } = drag
-    if (dx > 100) return void decide("like")
-    if (dx < -100) return void decide("nope")
-    if (dy < -110 && Math.abs(dx) < 60) return void decide("love")
+    const verdict = swipeVerdict(drag.dx, drag.dy)
+    if (verdict) return void decide(verdict)
+    setDrag({ dx: 0, dy: 0, active: false })
+  }
+  // A gesture the system took away (a scroll, a notification) decides nothing.
+  const onPointerCancel = () => {
+    start.current = null
     setDrag({ dx: 0, dy: 0, active: false })
   }
 
-  const likeOp = Math.max(0, Math.min(1, drag.dx / 100))
-  const nopeOp = Math.max(0, Math.min(1, -drag.dx / 100))
-  const loveOp = Math.max(0, Math.min(1, -drag.dy / 100)) * (Math.abs(drag.dx) < 60 ? 1 : 0)
+  const { like: likeOp, nope: nopeOp, love: loveOp } = swipeStamps(drag.dx, drag.dy)
   // The counter counts the batch: «3 de 10» (PRO-200; before, «1 de 101» over the catalogue).
   const shownTotal = TASTE_BATCH_SIZE
   const position = Math.min(shownTotal, answers.length - (mode === "page" ? batchFrom : 0) + 1)
@@ -550,7 +551,7 @@ export function TasteSwiper({
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
+          onPointerCancel={onPointerCancel}
           className="absolute inset-0 cursor-grab touch-none select-none overflow-hidden rounded-[18px] border border-border-soft bg-paper"
           style={{
             transform: `translate(${drag.dx}px, ${drag.dy}px) rotate(${drag.dx / 18}deg)`,

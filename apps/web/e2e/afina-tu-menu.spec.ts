@@ -201,6 +201,30 @@ test('/afinar: dragging the card to the right is «Me apetece»', async ({ page 
   expect(verdicts).toEqual([expect.objectContaining({ name: first, verdict: 'like' })])
 })
 
+test('/afinar: swiping up with a thumb that drifts left is «Me encanta», not «No para mí» (2026-10-22)', async ({ page }) => {
+  test.setTimeout(60_000)
+  await registerFreshUser(page)
+  await completeOnboarding(page)
+  await page.goto('/afinar')
+  await page.getByRole('button', { name: 'Empezar' }).click()
+  const card = page.getByTestId('taste-card')
+  await expect(card).toBeVisible({ timeout: 15_000 })
+  const first = (await card.getByRole('heading').textContent())!.trim()
+  const box = (await card.boundingBox())!
+  const cx = box.x + box.width / 2
+  const cy = box.y + box.height / 2
+  await page.mouse.move(cx, cy)
+  await page.mouse.down()
+  await page.mouse.move(cx - 70, cy - 120, { steps: 5 })
+  await expect(card.getByText('NO PARA MÍ')).toHaveCSS('opacity', '0')
+  await page.mouse.move(cx - 130, cy - 210, { steps: 5 })
+  await page.mouse.up()
+  await expect(card.getByRole('heading')).not.toHaveText(first, { timeout: 10_000 })
+
+  const verdicts = (await (await page.request.get(`${API_URL}/taste/verdicts`, { headers: await auth(page) })).json()).verdicts
+  expect(verdicts).toEqual([expect.objectContaining({ name: first, verdict: 'love' })])
+})
+
 test('/afinar: «3 de 10», buttons with words, and the summary after 10 (PRO-200)', async ({ page }) => {
   test.setTimeout(90_000)
   await registerFreshUser(page)

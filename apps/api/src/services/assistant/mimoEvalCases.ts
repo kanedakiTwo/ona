@@ -30,13 +30,21 @@
  * - `aviso-afina` (PRO-297): Mimo knows the «Afina tu menú» notice it has in
  *   its context and removes the «Me apetece» itself, never «no veo ese aviso»
  *   or «no los puedo deshacer desde el chat».
+ * - `menu-comensales` (PRO-275): «hazme el menú para dos» in a household of 4
+ *   asks «¿Solo esta semana o siempre?» or generates with `diners: 2`; never
+ *   the household's usual diners.
+ * - `menu-un-mensaje` (PRO-277): generating the menu by WhatsApp, Mimo's
+ *   part is short (it goes in the picture's caption, one message), doesn't
+ *   repeat the week day by day and answers what else was asked.
+ * - `receta-minutos` (PRO-308): a recipe Mimo creates carries its minutes
+ *   (`prepTime` and `cookTime` in create_recipe; the reply says the time).
  */
 import { HEALTH_DISCLAIMER, hasDisclaimer, MILK_ALLERGY_CONTEXT, talksHealthEffects } from './healthGuard.js'
 
 
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
-export type MimoEvalCheck = 'menu-guardado' | 'bebe-aparta' | 'bebe-cocina' | 'bebe-salud' | 'plato-hecho' | 'leche-alergia' | 'alergeno-sin-mirar' | 'aviso-afina'
+export type MimoEvalCheck = 'menu-guardado' | 'bebe-aparta' | 'bebe-cocina' | 'bebe-salud' | 'plato-hecho' | 'leche-alergia' | 'alergeno-sin-mirar' | 'aviso-afina' | 'menu-comensales' | 'menu-un-mensaje' | 'receta-minutos'
 
 export interface MimoEvalCase {
   id: string
@@ -63,8 +71,38 @@ export interface MimoEvalCase {
   underOne?: boolean
   /** Baby checks: the baby's name, to find their portion in the steps. */
   babyName?: string
+  /** `menu-comensales`: the diners the user said for this week. */
+  diners?: number
   /** What Mimo actually answered (literal, from the household's feedback). */
   badReply: string
+}
+
+/** A tool call as the live eval sees it (`toolTrace` of the engine). */
+export interface MimoEvalToolCall {
+  name: string
+  input: string
+}
+
+/** PRO-277: how long Mimo's part may be when it goes in the menu picture's caption (≈600, some slack). */
+export const MENU_REPLY_MAX = 700
+/** A line of a day-by-day list: «- Lunes 19: …», «*Martes*», «miercoles: …». */
+const WEEKDAY_LINE_RE = /^[\s\-•*_]*(lunes|martes|miercoles|jueves|viernes|sabado|domingo)\b/
+
+/** «¿Solo esta semana o siempre?» (PRO-275), folded. */
+const ASKS_WEEK_OR_ALWAYS_RE = /solo (para )?esta semana[\s\S]*siempre|siempre[\s\S]*solo (para )?esta semana/
+
+/**
+ * PRO-275: whether the menu was built for the diners the user said. Asking
+ * «¿Solo esta semana o siempre?» is fine; generating without them is not
+ * (with `update_weekly_template` first, «siempre», it is). Without the trace
+ * (the CI test), only the question counts.
+ */
+export function dinersApplied(reply: string, diners: number, trace?: MimoEvalToolCall[]): boolean {
+  const gens = (trace ?? []).filter((t) => t.name === 'generate_weekly_menu')
+  const withDiners = (t: MimoEvalToolCall) => new RegExp(`"diners":\\s*${diners}\\b`).test(t.input)
+  const templateChanged = (trace ?? []).some((t) => t.name === 'update_weekly_template' && withDiners(t))
+  if (gens.length > 0) return templateChanged || gens.every(withDiners)
+  return ASKS_WEEK_OR_ALWAYS_RE.test(fold(reply))
 }
 
 /** Mimo taking back, out of nowhere, a change the saved menu shows (PRO-101). */
@@ -238,10 +276,27 @@ export function milkAllergyProblems(reply: string): string[] {
  *   dish is free of an allergen, or didn't read its ingredients;
  * - `no-ve-aviso` / `no-quita` (`aviso-afina`): says it can't see the notice
  *   or undo the verdicts (or sends them to the email), or never removed them.
+ * - `comensales-de-siempre` (`menu-comensales`): generated with the usual
+ *   diners instead of asking or passing the ones said;
+ * - `respuesta-larga` / `repite-semana` (`menu-un-mensaje`): too long for the
+ *   picture's caption, or writes the week day by day;
+ * - `sin-minutos` (`receta-minutos`): created the recipe without its minutes
+ *   (live) or doesn't say its time (CI).
  */
-export function mimoReplyProblems(reply: string, c: MimoEvalCase, toolsUsed?: string[]): string[] {
+export function mimoReplyProblems(reply: string, c: MimoEvalCase, toolsUsed?: string[], toolTrace?: MimoEvalToolCall[]): string[] {
   const text = fold(reply)
   const problems: string[] = []
+  if (c.check === 'menu-comensales' && c.diners && !dinersApplied(reply, c.diners, toolTrace)) problems.push('comensales-de-siempre')
+  if (c.check === 'receta-minutos') {
+    const creates = (toolTrace ?? []).filter((t) => t.name === 'create_recipe')
+    const withMinutes = (t: MimoEvalToolCall) => /"prepTime":\s*\d/.test(t.input) && /"cookTime":\s*\d/.test(t.input)
+    if (toolTrace ? creates.length === 0 || !creates.every(withMinutes) : !/\b\d+\s*(min|minutos)\b/.test(text)) problems.push('sin-minutos')
+  }
+  if (c.check === 'menu-un-mensaje') {
+    if (reply.trim().length > MENU_REPLY_MAX) problems.push('respuesta-larga')
+    // The week day by day is the picture's job: four or more lines starting with a day.
+    if (text.split('\n').filter((l) => WEEKDAY_LINE_RE.test(l)).length >= 4) problems.push('repite-semana')
+  }
   if (c.check === 'menu-guardado' && DENIES_CHANGE_RE.test(text)) problems.push('niega-lo-hecho')
   if (c.check === 'bebe-aparta') {
     const { setAside, firstSeasoning } = babyPortionOrder(reply)
@@ -530,5 +585,61 @@ export const MIMO_EVAL_CASES: MimoEvalCase[] = [
     expect: /pizza[\s\S]*ramen|ramen[\s\S]*pizza/,
     mustCallOneOf: ['forget_taste_verdicts'],
     badReply: 'Desde aquí no veo ese aviso, así que no te puedo decir qué fallo es. Esos «Me apetece» no los puedo deshacer desde el chat: escribid a hola@mimoia.com.',
+  },
+  {
+    id: 'menu-para-dos-hogar-de-4',
+    check: 'menu-comensales',
+    origin: 'Revisor de Mimo, 2026-10-18 (el pedido, «un menú para dos», literal; el resto reconstruido). PRO-275',
+    context: [
+      'Hoy es domingo 2026-10-18 (dayIndex 6), son las 19:00 en Madrid.',
+      'Hogar: 2 adultos + 2 niños (2–10 años)',
+      'Menu de esta semana (2026-10-12):',
+      '  Dom (dayIndex 6): comida: Paella de verduras',
+    ].join('\n'),
+    history: [],
+    message: 'hazme el menú de la semana que viene para dos',
+    reconstructed: true,
+    diners: 2,
+    badReply: 'Hecho:\n- Menú de la semana que viene listo',
+  },
+  {
+    id: 'menu-y-que-dejo-hecho-domingo',
+    check: 'menu-un-mensaje',
+    origin: 'Revisor de Mimo, 2026-10-18 (el pedido y los platos, del informe; la respuesta, reconstruida: un «Hecho:» largo con la semana y sin contestar a lo del domingo). PRO-277',
+    context: [
+      'Hoy es domingo 2026-10-18 (dayIndex 6), son las 12:00 en Madrid.',
+      'Hogar: 2 adultos',
+    ].join('\n'),
+    history: [],
+    message: 'hazme el menú de la semana que viene y dime qué dejo hecho el domingo por la tarde',
+    reconstructed: true,
+    toolResults: {
+      generate_weekly_menu:
+        'Menu generado para la semana del 2026-10-19. lunes: lunch: Lentejas estofadas, dinner: Crema de calabacin; martes: lunch: Arroz con bacalao, dinner: Hummus con crudites; miercoles: lunch: Lentejas estofadas (sobras), dinner: Tortilla de patatas; jueves: lunch: Pollo al horno, dinner: Hummus con crudites (sobras); viernes: lunch: Arroz con bacalao (sobras), dinner: Pizza casera',
+    },
+    /** Answers the Sunday question with something to leave done. */
+    expect: /(domingo|deja|dejar|adelant|prepar)[\s\S]*(lentejas|hummus|garbanzo|sofrito|bacalao|arroz)|(lentejas|hummus|garbanzo|sofrito|bacalao|arroz)[\s\S]*(domingo|deja|dejar|adelant|prepar)/,
+    mustCallOneOf: ['generate_weekly_menu'],
+    badReply: [
+      'Hecho:',
+      '- Menú de la semana que viene listo',
+      '- Lunes 19: lentejas estofadas y crema de calabacín',
+      '- Martes 20: arroz con bacalao y hummus con crudités',
+      '- Miércoles 21: lentejas (sobras) y tortilla de patatas',
+      '- Jueves 22: pollo al horno y hummus (sobras)',
+      '- Viernes 23: arroz con bacalao (sobras) y pizza casera',
+      'Tienes la lista de la compra en la app.',
+    ].join('\n'),
+  },
+  {
+    id: 'receta-merluza-sin-minutos',
+    check: 'receta-minutos',
+    origin: 'Marta y Jorge, 2026-10-20 (la merluza y el salmón que creó Mimo salieron sin tiempo; el pedido y la respuesta, reconstruidos). PRO-308',
+    context: ['Hoy es martes 2026-10-20 (dayIndex 1), son las 18:00 en Madrid.', 'Hogar: 2 adultos'].join('\n'),
+    history: [],
+    message: 'créame una receta de merluza al horno con limón para una cena de 15 minutos y guárdala',
+    reconstructed: true,
+    mustCallOneOf: ['create_recipe'],
+    badReply: 'Hecho:\n- Receta «Merluza al horno con limón» guardada en tus recetas',
   },
 ]

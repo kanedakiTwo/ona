@@ -8,6 +8,7 @@ import { detectSourceType } from './sources/sourceType.js'
 import { db } from '../db/connection.js'
 import { recipes } from '../db/schema.js'
 import { and, eq } from 'drizzle-orm'
+import { estimateRecipeTimes } from './catalogRecipeTimes.js'
 
 /**
  * One persist path for every "import a recipe" entry point: the
@@ -39,6 +40,7 @@ export function extractedToWriteInput(
     servings: extracted.servings,
     prepTime: extracted.prepTime ?? null,
     cookTime: extracted.cookTime ?? null,
+    activeTime: extracted.activeTime ?? null,
     difficulty: (extracted.difficulty ?? 'medium') as Difficulty,
     meals: extracted.meals,
     seasons: extracted.seasons,
@@ -168,12 +170,15 @@ export function normalizeRecipeParts(parts: RecipeParts) {
   const meals = (parts.meals ?? []).filter((m): m is Meal => MEALS_OK.includes(m as Meal))
   const seasons = (parts.seasons ?? []).filter((x): x is Season => SEASONS_OK.includes(x as Season))
   const servings = Number.isInteger(parts.servings) && (parts.servings as number) > 0 ? Math.min(parts.servings as number, 12) : null
+  const steps = (parts.steps ?? []).map((x) => String(x).trim()).filter(Boolean)
   return {
+    // PRO-308: always with minutes — the ones given, else from the steps.
+    ...estimateRecipeTimes(parts, steps),
     meals: meals.length ? meals : (['lunch', 'dinner'] as Meal[]),
     seasons: seasons.length ? seasons : SEASONS_OK,
     servings: servings ?? 2,
     servingsConfidence: (servings ? 'explicit' : 'estimated') as 'explicit' | 'estimated',
-    steps: (parts.steps ?? []).map((x) => String(x).trim()).filter(Boolean),
+    steps,
     ingredients: (parts.ingredients ?? [])
       .filter((i) => i?.name)
       .map((i) => ({ name: i.name, quantity: Number(i.quantity) > 0 ? Number(i.quantity) : 1, unit: i.unit || 'u' })),
@@ -200,8 +205,9 @@ export async function createRecipeFromParts(
     imageUrl: null,
     servings: n.servings,
     servingsConfidence: opts.estimated ? 'estimated' : n.servingsConfidence,
-    prepTime: parts.prepTime ?? null,
-    cookTime: parts.cookTime ?? null,
+    prepTime: n.prepTime,
+    cookTime: n.cookTime,
+    activeTime: n.activeTime,
     meals: n.meals,
     seasons: n.seasons,
     difficulty: null,

@@ -25,6 +25,7 @@ import { updateBalance } from '../nutrientBalance.js'
 import { getSummary } from '../advisor.js'
 import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../scopeResolver.js'
 import { importRecipeFromUrl, createRecipeFromParts, type RecipeParts } from '../recipeImport.js'
+import { estimateRecipeTimes } from '../catalogRecipeTimes.js'
 import { mealLinesForDay } from '../menuText.js'
 import { fillRecipeNames } from '../menuNames.js'
 import { cookedRecipeIds, householdDiners, mealLinesWithFacts, timesLabel, type RecipeTimes } from './menuFacts.js'
@@ -781,10 +782,13 @@ export function weekHasDishes(days: DayMenu[] | undefined): boolean {
  * read as a fallback. Out-of-range entries are dropped. Undefined when empty.
  */
 export function weekPlanFromParams(
-  params: { mealsOut?: unknown; guests?: unknown; fridge?: unknown; fridge_text?: unknown; fridge_health?: unknown; fridge_restrictions?: unknown; answer?: unknown } | undefined,
+  params: { diners?: unknown; mealsOut?: unknown; guests?: unknown; fridge?: unknown; fridge_text?: unknown; fridge_health?: unknown; fridge_restrictions?: unknown; answer?: unknown } | undefined,
 ): WeekPlan | undefined {
   const fridgeHealth = params?.fridge_health === 'save' || params?.fridge_health === 'skip' ? params.fridge_health : undefined
+  // PRO-275: «esta semana somos dos» → the whole week; out of range is dropped.
+  const diners = typeof params?.diners === 'number' && Number.isInteger(params.diners) && params.diners >= 1 && params.diners <= 24 ? params.diners : undefined
   const structured = weekPlanSchema.safeParse({
+    diners,
     mealsOut: Array.isArray(params?.mealsOut) ? params!.mealsOut : undefined,
     guests: Array.isArray(params?.guests) ? params!.guests : undefined,
     fridge: Array.isArray(params?.fridge) ? (params!.fridge as unknown[]).filter((f) => typeof f === 'string' && f.trim()).slice(0, 20) : undefined,
@@ -802,7 +806,7 @@ export function weekPlanFromParams(
   let plan: WeekPlan | undefined = structured.success ? structured.data : undefined
   if ((plan?.mealsOut?.length ?? 0) === 0 && (plan?.guests?.length ?? 0) === 0 && typeof params?.answer === 'string' && params.answer.trim()) {
     const { mealsOut: _m, guests: _g, ...fridgePart } = plan ?? {}
-    plan = { ...parseWeekPlanAnswer(params.answer), ...fridgePart }
+    plan = { ...(diners ? { diners } : {}), ...parseWeekPlanAnswer(params.answer), ...fridgePart }
   }
   if (plan && !plan.fridge?.length) delete plan.fridge
   if (plan && !plan.fridgeText) delete plan.fridgeText
@@ -849,6 +853,7 @@ const generateWeeklyMenu: SkillDefinition = {
     properties: {
       nextWeek: { type: 'boolean', description: 'true para generar el menu de la semana que viene en lugar de la actual.' },
       replaceExisting: { type: 'boolean', description: 'true solo si el usuario ha confirmado que quiere rehacer entera una semana que ya tiene platos.' },
+      diners: { type: 'integer', minimum: 1, maximum: 24, description: 'Cuantos comen en casa toda esa semana, cuando el usuario dice que solo esta semana son otro numero («esta semana somos dos»). Pone esos comensales en todas las comidas de esa semana; la plantilla no cambia. Si es para siempre, usa antes update_weekly_template. Los dias con guests mandan sobre esto.' },
       mealsOut: {
         type: 'array',
         description: 'Comidas que esa semana se hacen fuera de casa (respuesta a «¿Alguna comida fuera de casa esta semana?»). Se quitan solo de esa semana; la plantilla no cambia. Sin meal = el dia entero.',
@@ -898,7 +903,7 @@ const generateWeeklyMenu: SkillDefinition = {
     required: [],
   },
   async handler(
-    params: { nextWeek?: boolean; replaceExisting?: boolean; mealsOut?: WeekPlan['mealsOut']; guests?: WeekPlan['guests']; fridge?: string[]; fridge_text?: string; fridge_health?: 'save' | 'skip'; fridge_restrictions?: string[]; answer?: string },
+    params: { nextWeek?: boolean; replaceExisting?: boolean; diners?: number; mealsOut?: WeekPlan['mealsOut']; guests?: WeekPlan['guests']; fridge?: string[]; fridge_text?: string; fridge_health?: 'save' | 'skip'; fridge_restrictions?: string[]; answer?: string },
     ctx: SkillContext,
   ): Promise<SkillResult> {
     const { userId, db } = ctx
@@ -1475,21 +1480,27 @@ const createRecipe: SkillDefinition = {
         description: 'Lista de ingredientes con cantidades',
       },
       steps: { type: 'array', items: { type: 'string' }, description: 'Pasos de preparacion' },
-      prepTime: { type: 'number', description: 'Tiempo de preparacion en minutos' },
-      cookTime: { type: 'number', description: 'Tiempo de coccion en minutos' },
+      prepTime: { type: 'number', description: 'Minutos de preparacion (lo que hay que estar: cortar, sofreir, montar). Siempre: si no te lo dice, estimalo tu. Sin minutos el menu no puede respetar el tiempo que tiene para cocinar.' },
+      cookTime: { type: 'number', description: 'Minutos de coccion (horno, guiso, reposo…; 0 si no hay). Siempre: si no te lo dice, estimalo tu.' },
       meals: { type: 'array', items: { type: 'string' }, description: 'breakfast, lunch, dinner, snack' },
       seasons: { type: 'array', items: { type: 'string' }, description: 'spring, summer, autumn, winter' },
     },
-    required: ['name', 'ingredients', 'steps'],
+    required: ['name', 'ingredients', 'steps', 'prepTime', 'cookTime'],
   },
   async handler(params: RecipeParts, ctx: SkillContext): Promise<SkillResult> {
     const saved = await createRecipeFromParts(params, ctx.userId)
     const review = saved.warnings.some((w) => /no encontrado/.test(w))
       ? ' Algun ingrediente no se reconocio del todo; se puede revisar en la app.'
       : ''
+    // PRO-308: the minutes it was saved with (given, or estimated from the steps).
+    const t = estimateRecipeTimes(params, params.steps ?? [])
+    const given = typeof params.prepTime === 'number' && params.prepTime > 0 || typeof params.cookTime === 'number' && params.cookTime > 0
+    const times = t.totalTime
+      ? ` Tiempo: ${t.totalTime} min en total, ${t.activeTime} de trabajo${given ? '' : ' (estimado de los pasos)'}.`
+      : ''
     return {
       data: { recipeId: saved.recipeId, name: saved.name },
-      summary: `Receta "${saved.name}" creada en las recetas del usuario (id ${saved.recipeId}).${review}`,
+      summary: `Receta "${saved.name}" creada en las recetas del usuario (id ${saved.recipeId}).${times}${review}`,
       uiHint: 'recipe',
     }
   },
@@ -1533,14 +1544,24 @@ const recipeVariation: SkillDefinition = {
       .where(eq(recipeIngredients.recipeId, recipe.id))
 
     const ingredientList = riRows.map((r: any) => `${r.ingredientName} (${r.quantity}${r.unit ?? 'g'})`)
+    // PRO-308: a variation saved with create_recipe keeps its minutes.
+    const total = recipe.totalTime ?? ((recipe.prepTime ?? 0) + (recipe.cookTime ?? 0) || null)
+    const timeLine = total
+      ? ` Tiempo: ${recipe.prepTime ?? '?'} min de preparacion, ${recipe.cookTime ?? '?'} de coccion (${total} en total${recipe.activeTime ? `, ${recipe.activeTime} de trabajo` : ''}).`
+      : ' No tiene tiempo guardado.'
+    const saveHint = ' Si guardas la variacion con create_recipe, pasa siempre prepTime y cookTime (los de la original, ajustados si la sustitucion cambia el tiempo).'
 
     return {
       data: {
         recipeName: recipe.name,
         ingredients: riRows,
         ingredientToReplace: params.ingredientToReplace,
+        prepTime: recipe.prepTime ?? null,
+        cookTime: recipe.cookTime ?? null,
+        activeTime: recipe.activeTime ?? null,
+        totalTime: total,
       },
-      summary: `Receta ${recipe.name}. Ingredientes: ${ingredientList.join(', ')}. El usuario quiere sustituir: ${params.ingredientToReplace}.`,
+      summary: `Receta ${recipe.name}. Ingredientes: ${ingredientList.join(', ')}.${timeLine} El usuario quiere sustituir: ${params.ingredientToReplace}.${saveHint}`,
       uiHint: 'recipe',
     }
   },

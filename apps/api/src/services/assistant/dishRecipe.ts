@@ -17,6 +17,9 @@ function dishName(name: unknown): string {
 
 export interface NewRecipeParam {
   servings?: number
+  /** PRO-308: minutes; missing → estimated from the steps when saved. */
+  prepTime?: number
+  cookTime?: number
   ingredients?: Array<{ name: string; quantity?: number; unit?: string }>
   steps?: string[]
 }
@@ -41,6 +44,8 @@ export const NEW_RECIPE_PROP = {
       },
     },
     steps: { type: 'array', items: { type: 'string' } },
+    prepTime: { type: 'number', description: 'Minutos de preparacion (lo que hay que estar). Estimalo tu.' },
+    cookTime: { type: 'number', description: 'Minutos de coccion (horno, guiso…; 0 si no hay). Estimalo tu.' },
   },
   required: ['ingredients'],
 } as const
@@ -59,6 +64,8 @@ export async function createDishRecipe(
       {
         name: dishName(name),
         servings: newRecipe?.servings ?? null,
+        prepTime: newRecipe?.prepTime ?? null,
+        cookTime: newRecipe?.cookTime ?? null,
         ingredients,
         steps: steps.length ? steps : ['Prepáralo como lo haces en casa.'],
       },

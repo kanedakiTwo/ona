@@ -251,3 +251,66 @@ describe('web chat: the snowball line above Mimo\'s reply after generating', () 
     expect(withSnowballLine('', 1)).toBe(SNOWBALL_LINE)
   })
 })
+
+/**
+ * PRO-277 (revisor de Mimo, 2026-10-18): generating the menu by WhatsApp sent
+ * two messages (the picture and a long «Hecho:»). Mimo's short answer — also
+ * to what else was asked, «qué dejo hecho el domingo» — goes in the picture's
+ * caption; the caption's fixed lines are dropped before splitting.
+ */
+describe('replyMessages — generating the menu is ONE message (PRO-277)', () => {
+  const caption = weekMenuCaption(NEXT_WEEK, { today: THU, webUrl: WEB, view: 'generated', generatedWeeks: 1 })
+  const generated = (message: string): AssistantResponse => ({
+    message,
+    actionTaken: true,
+    uiHint: 'menu',
+    data: { id: 'm-2', days: [] },
+    toolsUsed: ['generate_weekly_menu'],
+  })
+  const deps = () => ({
+    webUrl: WEB,
+    menuDigest: vi.fn<NonNullable<InboundDeps['menuDigest']>>(async () => 'digest'),
+    menuImage: vi.fn<NonNullable<InboundDeps['menuImage']>>(async () => ({ jpeg: JPEG, caption })),
+  })
+  const words = (n: number) => {
+    const base = 'El domingo por la tarde deja hechas las lentejas del lunes, el hummus para las cenas y el sofrito del arroz con bacalao. '
+    return base.repeat(Math.ceil(n / base.length)).slice(0, n).trim()
+  }
+
+  it('a 600-character answer without buttons: exactly one message, the picture with everything in its caption', async () => {
+    const answer = words(600)
+    expect(answer.length).toBeGreaterThanOrEqual(595)
+    const out = await replyMessages(generated(answer), 'user-1', deps(), null)
+    expect(out).toHaveLength(1)
+    expect(out[0]).toMatchObject({ type: 'image', image: JPEG })
+    expect(out[0].text).toBe(`${answer}\n\n${caption}`)
+    expect(out[0].text.length).toBeLessThanOrEqual(1024)
+  })
+
+  it('too long with the whole caption: the invite, then the link, go before splitting', async () => {
+    const lines = caption.split('\n')
+    const invite = lines.find((l) => l.startsWith('¿Cambio algo?'))!
+    const link = lines.find((l) => l.startsWith('📖 '))!
+    // Fits only without the invite.
+    const a = words(1024 - caption.length - 2 + invite.length - 5)
+    const outA = await replyMessages(generated(a), 'user-1', deps(), null)
+    expect(outA).toHaveLength(1)
+    expect(outA[0].text).toContain(link)
+    expect(outA[0].text).not.toContain(invite)
+    expect(outA[0].text).toContain('Listo: tu menú de la semana del 19 al 25 de octubre')
+    expect(outA[0].text).toContain(SNOWBALL_LINE)
+    // Fits only without the invite and the link.
+    const b = words(1024 - caption.length - 2 + invite.length + link.length - 5)
+    const outB = await replyMessages(generated(b), 'user-1', deps(), null)
+    expect(outB).toHaveLength(1)
+    expect(outB[0].text).not.toContain(link)
+    expect(outB[0].text).toContain('Listo: tu menú')
+    expect(outB[0].text.length).toBeLessThanOrEqual(1024)
+  })
+
+  it('buttons still go in a message of their own after the picture', async () => {
+    const out = await replyMessages(generated('¿Te preparo la lista de la compra?\n[[opciones: Sí | No]]'), 'user-1', deps(), null)
+    expect(out).toHaveLength(2)
+    expect(out[0].text).toBe(caption)
+  })
+})

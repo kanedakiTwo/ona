@@ -404,6 +404,8 @@ export interface ExtractedRecipe {
   servingsConfidence: 'explicit' | 'estimated'
   prepTime: number | null
   cookTime: number | null
+  /** Hands-on minutes, when known (PRO-308: recipes Mimo writes). */
+  activeTime?: number | null
   meals: Meal[]
   seasons: Season[]
   difficulty: Difficulty | null

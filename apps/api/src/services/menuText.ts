@@ -318,7 +318,7 @@ function weekDigestParts(menu: WeekMenuInput, opts: WeekReplyOptions) {
   const holiday = (opts.view ?? 'generated') === 'generated'
     ? holidayLine(weekStart, shown.filter((d) => !d.skipped).map((d) => d.i), opts)
     : null
-  const link = opts.webUrl ? `📖 Recetas y lista de la compra: ${shortWebLink(opts.webUrl, '/menu')}` : null
+  const link = opts.webUrl ? `${MENU_LINK_PREFIX}Recetas y lista de la compra: ${shortWebLink(opts.webUrl, '/menu')}` : null
   const invite = menuDigestInvite(shown.filter((d) => !d.skipped && d.date !== today).map((d) => d.i))
   return { snowball, opener, holiday, shown, link, invite, today, tomorrow }
 }
@@ -329,8 +329,26 @@ function weekDigestParts(menu: WeekMenuInput, opts: WeekReplyOptions) {
  * day when there are several, the only one otherwise, "hoy" when today is all
  * that's left.
  */
+/** How the caption's link line starts (`📖 Recetas y lista de la compra: …`). */
+export const MENU_LINK_PREFIX = '📖 '
+/** How the caption's invite line starts (`¿Cambio algo? Dímelo, …`). */
+export const MENU_INVITE_PREFIX = '¿Cambio algo?'
+
+/**
+ * PRO-277: the week's caption from longest to shortest — as is, without the
+ * invite, then without the link too. The opener («Listo: …»), the snowball
+ * and the holiday lines always stay. When Mimo's words don't fit with the
+ * whole caption, a shorter one keeps everything in ONE message.
+ */
+export function captionVariants(caption: string): string[] {
+  const without = (prefixes: string[]) =>
+    caption.split('\n').filter((l) => !prefixes.some((p) => l.startsWith(p))).join('\n')
+  const out = [caption, without([MENU_INVITE_PREFIX]), without([MENU_INVITE_PREFIX, MENU_LINK_PREFIX])]
+  return out.filter((c, i) => out.indexOf(c) === i)
+}
+
 export function menuDigestInvite(upcomingDayIndexes: number[]): string {
   const i = upcomingDayIndexes[Math.min(1, upcomingDayIndexes.length - 1)]
   const when = i === undefined ? 'hoy' : `el ${DAY_NAME_ES[i]}`
-  return `¿Cambio algo? Dímelo, p. ej. «${when}, pescado».`
+  return `${MENU_INVITE_PREFIX} Dímelo, p. ej. «${when}, pescado».`
 }

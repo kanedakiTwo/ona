@@ -134,15 +134,51 @@ function apiProblemType(text: string): string | null {
 }
 
 /**
- * What kind of error, never what it said: a known class ('TypeError', 'ZodError'…), the web's
- * report of a failed API call rebuilt from closed parts ('API GET /menu/:x/:x → HTTP <n>', or
- * 'API GET otra → …' when the route matches no template),
- * 'Error' for any other class and 'other' when the message names none.
+ * Kinds of error recognised by what the message says, not by its class (PRO-306): the web sends a
+ * plain `Error` without its name, so React, Next.js and fetch failures used to come out as 'other'.
+ * Checked in this order, on the stored (normalised) message, after «Unhandled rejection: » /
+ * «Uncaught » and a leading class name. Each value is fixed text (≤ 32 characters).
+ */
+const MESSAGE_KINDS: ReadonlyArray<readonly [type: string, test: RegExp]> = [
+  // A tab older than the last publish asks for a JS/CSS chunk the new build no longer serves
+  // (webpack, turbopack and native dynamic import wordings; isChunkLoadError in @ona/shared).
+  ['ChunkLoadError', /Loading (?:CSS )?chunk \S+ failed|Failed to load chunk|Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module/i],
+  // Server HTML and the browser's first render disagree (React 19 #418, #419, #422, #423, #425,
+  // or the development wording). Often a browser translation or an extension rewriting the page.
+  ['HydrationError', /Minified React error #(?:418|419|422|423|425)\b|Hydration failed|error while hydrating|hydration mismatch|did not match\. Server|server rendered (?:HTML|text) didn't match/i],
+  // The browser could not reach the server (Chrome, Firefox, Safari wordings; React Flight's
+  // «Connection closed.» when the page stream is cut).
+  ['NetworkError', /^(?:(?:Failed to fetch|Load failed|NetworkError when attempting to fetch resource|Network request failed|The network connection was lost|The Internet connection appears to be offline|Connection closed)\.?(?: \([^()]{0,80}\))?$|net::ERR_[A-Z_]+$)/i],
+  ['ServerComponentsError', /An error occurred in the Server Components render/i],
+  // A promise rejected with a DOM Event, not an Error (an image or a script that failed to load).
+  ['EventRejection', /^\{"isTrusted":(?:true|false)\}$/],
+  // A known crawler / link-scanner script, not our code.
+  ['ObjectNotFoundMatchingId', /^Object Not Found Matching Id:/],
+  ['NoMessage', /^(?:Error sin mensaje|\(sin mensaje\))$/],
+]
+
+/** Every fixed type `errorType` can give by the message (PRO-306); `React #<n>` aside. */
+export const MESSAGE_ERROR_TYPES: readonly string[] = MESSAGE_KINDS.map(([t]) => t)
+
+const LEADING_CLASS = /^(?:[A-Za-z_$][\w$]*\.)?(?:[A-Za-z_$][\w$]*)?(?:Error|Exception):\s*/
+/** Any other minified React error: its number only (a public code, react.dev/errors/<n>). */
+const REACT_CODE = /^Minified React error #(\d{1,4}|<n>)(?=$|[\s;.,])/
+
+/**
+ * What kind of error, never what it said: the web's report of a failed API call rebuilt from closed
+ * parts ('API GET /menu/:x/:x → HTTP <n>', or 'API GET otra → …' when the route matches no
+ * template); a kind recognised by the message (`MESSAGE_ERROR_TYPES`: 'ChunkLoadError',
+ * 'HydrationError', 'NetworkError'…; 'React #<n>' for another minified React error); else a known
+ * class ('TypeError', 'ZodError'…), 'Error' for any other class and 'other' when the message names none.
  */
 export function errorType(message: unknown): string {
   const text = String(message ?? '').trim().replace(ERROR_PREFIX, '')
   const api = apiProblemType(text)
   if (api) return api
+  const body = text.replace(LEADING_CLASS, '')
+  for (const [type, test] of MESSAGE_KINDS) if (test.test(body)) return type
+  const react = REACT_CODE.exec(body)
+  if (react) return `React #${react[1]}`
   const m = ERROR_LIKE.exec(text)
   if (!m) return 'other'
   return KNOWN_ERROR_CLASSES.has(m[1]) ? m[1] : 'Error'

@@ -9,6 +9,7 @@ import {
   waitlistUnsubscribePath,
 } from '@ona/shared'
 import { env } from '../config/env.js'
+import { madridParts } from './madridTime.js'
 import { db as defaultDb } from '../db/connection.js'
 import { newsletterSends, users, waitlistEntries } from '../db/schema.js'
 import { maskEmail, sendEmail, sendEmailBatch, type EmailMessage, type EmailResult } from './email.js'
@@ -164,8 +165,21 @@ function sectionBlock(s: NonNullable<NewsletterContent['sections']>[number]): st
   return row(`<div style="border-top:1px solid ${BORDER};padding-top:26px;">${label}${title}${quote}${body}</div>`, '0 28px 18px')
 }
 
-/** Footer call for waitlist recipients (PRO-130). Until the 16-nov opening; PRO-167 changes it. */
-export const NEWSLETTER_INVITE_LINE = 'Invita a tu hogar y entráis antes:'
+/**
+ * Footer call for waitlist recipients (PRO-130). «Entráis antes» is true
+ * only while people get in by batches; from the day the registration opens
+ * (16-nov, D-057, Madrid time) it would promise an advantage that no longer
+ * exists (PRO-311, Legal 2026-10-21), so the line just invites.
+ */
+export const NEWSLETTER_INVITE_LINE_BEFORE_OPENING = 'Invita a tu hogar y entráis antes:'
+export const NEWSLETTER_INVITE_LINE_OPEN = `Invita a tu hogar a ${BRAND_NAME}:`
+/** First Madrid day of the open registration (D-057). */
+export const NEWSLETTER_OPEN_REGISTRATION_DAY = '2026-11-16'
+
+/** The invite line a newsletter sent at `now` carries. */
+export function newsletterInviteLine(now: Date = new Date()): string {
+  return madridParts(now).isoDate >= NEWSLETTER_OPEN_REGISTRATION_DAY ? NEWSLETTER_INVITE_LINE_OPEN : NEWSLETTER_INVITE_LINE_BEFORE_OPENING
+}
 
 /**
  * The visual newsletter, on the shared brand shell (emailBrand.ts): masthead
@@ -175,9 +189,10 @@ export const NEWSLETTER_INVITE_LINE = 'Invita a tu hogar y entráis antes:'
  */
 export function renderNewsletterEmail(
   input: Pick<NewsletterSendInput, 'subject' | 'preheader' | 'content'>,
-  links: { unsubscribeUrl: string; leaveListUrl?: string; inviteUrl?: string } & BrandAssets,
+  links: { unsubscribeUrl: string; leaveListUrl?: string; inviteUrl?: string; now?: Date } & BrandAssets,
 ): { html: string; text: string } {
   const c = input.content
+  const inviteLine = newsletterInviteLine(links.now)
   const brand = esc(BRAND_NAME)
   const preface = c.preface ? row(paragraphs(c.preface, `${BODY}font-size:17px;line-height:1.65;`, 16), '24px 28px 0') : ''
   const intro = c.intro ? row(paragraphs(c.intro, `${BODY}font-size:17px;line-height:1.65;`, 16), '24px 28px 14px') : ''
@@ -205,7 +220,7 @@ ${button(c.cta.label, c.cta.url, '6px 28px 38px')}`
       footerBand(links, [
         ...(links.inviteUrl
           ? [
-              `<span style="color:${INK};">${esc(NEWSLETTER_INVITE_LINE)}</span> <a href="${esc(links.inviteUrl)}" style="color:${TERRACOTTA_DEEP};font-weight:600;">${esc(links.inviteUrl.replace(/^https?:\/\//, ''))}</a>`,
+              `<span style="color:${INK};">${esc(inviteLine)}</span> <a href="${esc(links.inviteUrl)}" style="color:${TERRACOTTA_DEEP};font-weight:600;">${esc(links.inviteUrl.replace(/^https?:\/\//, ''))}</a>`,
             ]
           : []),
         ...(c.note ? [esc(c.note)] : []),
@@ -241,7 +256,7 @@ ${button(c.cta.label, c.cta.url, '6px 28px 38px')}`
     ...(c.signoff ? [c.signoff] : []),
     ...(c.from ? [c.from.name, ...(c.from.role ? [c.from.role] : [])] : []),
     ...(c.signoff || c.from ? [''] : []),
-    ...(links.inviteUrl ? [`${NEWSLETTER_INVITE_LINE} ${links.inviteUrl}`, ''] : []),
+    ...(links.inviteUrl ? [`${inviteLine} ${links.inviteUrl}`, ''] : []),
     ...(c.note ? [c.note, ''] : []),
     `Te llega porque pediste el menú de los viernes de ${BRAND_NAME}.`,
     `No quiero recibir más el menú de los viernes: ${links.unsubscribeUrl}`,

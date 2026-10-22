@@ -51,6 +51,7 @@ import { quietAfterSignUp } from './signUpQuiet.js'
 import { isShoppingReminderWindow } from './proactive.js'
 import { loadUserAlertPrefs, mergeAlertPrefs } from '../notifications/alertPrefs.js'
 import { fallbackKindsToday, pushFallbackForProactive, type WhatsAppAlertState } from '../notifications/channels.js'
+import { fillRecipeNames } from '../menuNames.js'
 
 /** Per-kind templates (WHATSAPP_TEMPLATES), parsed once. */
 const TEMPLATES = parseTemplateMap(env.WHATSAPP_TEMPLATES)
@@ -165,7 +166,8 @@ async function latestMenuForWeek(userId: string, weekStart: string) {
     .where(and(scopeWhere(menus.userId, menus.householdId, await resolveScope(userId)), eq(menus.weekStart, weekStart)))
     .orderBy(desc(menus.createdAt))
     .limit(1)
-  return menu ?? null
+  // PRO-296: a dish saved without its name reads with its recipe's.
+  return menu ? { ...menu, days: await fillRecipeNames(menu.days, db) } : null
 }
 
 async function loadTodayDay(userId: string, parts: MadridParts): Promise<DayMenu | null> {

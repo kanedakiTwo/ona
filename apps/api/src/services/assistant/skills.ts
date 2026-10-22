@@ -26,6 +26,7 @@ import { getSummary } from '../advisor.js'
 import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../scopeResolver.js'
 import { importRecipeFromUrl, createRecipeFromParts, type RecipeParts } from '../recipeImport.js'
 import { mealLinesForDay } from '../menuText.js'
+import { fillRecipeNames } from '../menuNames.js'
 import { cookedRecipeIds, householdDiners, mealLinesWithFacts, timesLabel, type RecipeTimes } from './menuFacts.js'
 import { repeatNote } from './weekRepeats.js'
 import { slotWithDishes } from '../menuDishes.js'
@@ -94,7 +95,10 @@ async function menuOfWeek(ctx: SkillContext, weekStart: string) {
     .where(and(scopeWhere(menus.userId, menus.householdId, await resolveScope(ctx.userId, ctx.db)), eq(menus.weekStart, weekStart)))
     .orderBy(desc(menus.createdAt))
     .limit(1)
-  return menu ?? null
+  if (!menu) return null
+  // PRO-296: tápers and added dishes saved without a name (before PRO-240)
+  // read with their recipe's, like the card on the web.
+  return { ...menu, days: await fillRecipeNames(menu.days, ctx.db) }
 }
 
 const noMenuFor = (weekStart: string): SkillResult => ({

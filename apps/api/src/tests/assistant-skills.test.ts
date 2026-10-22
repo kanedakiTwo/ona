@@ -226,6 +226,41 @@ describe('menu tools cite the app\'s servings and minutes (PRO-183)', () => {
   })
 })
 
+// ─── 1a'. PRO-296: tápers and added dishes read with their name ──────────
+
+describe('menu tools name the tápers and added dishes saved without a name (PRO-296)', () => {
+  // Monday: «+ Huevo duro» added by Mimo and a freezer táper, both nameless.
+  const days = [
+    {
+      lunch: { dishes: [{ kind: 'recipe', recipeId: 'alb', recipeName: 'Albóndigas en salsa' }, { kind: 'recipe', recipeId: 'huevo' }] },
+      dinner: { dishes: [{ kind: 'recipe', recipeId: 'lent', variant: 'freezer' }] },
+    },
+    {}, {}, {}, {}, {}, {},
+  ]
+  const names = [{ id: 'huevo', name: 'Huevo duro' }, { id: 'lent', name: 'Lentejas estofadas' }]
+  const at = <T,>(fn: () => Promise<T>) => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-19T10:00:00Z')) // Monday
+    return fn().finally(() => vi.useRealTimers())
+  }
+
+  it('get_todays_menu says the same names as the card', async () => {
+    const db = makeDb([{ id: 'm-1', days }], names, [{ adults: 2, kidsCount: 0 }], [])
+    const r = await at(() => get('get_todays_menu').handler({ day: 'hoy' }, ctx(db)))
+    expect(r.summary).toContain('Albóndigas en salsa + Huevo duro')
+    expect(r.summary).toContain('Lentejas estofadas (del congelador)')
+    expect(r.summary).not.toContain('sin nombre')
+  })
+
+  it('get_weekly_menu too, and its days (the WhatsApp picture) carry the names', async () => {
+    const db = makeDb([{ id: 'm-1', days, skippedDays: [] }], names, [{ adults: 2, kidsCount: 0 }], [])
+    const r = await at(() => get('get_weekly_menu').handler({}, ctx(db)))
+    expect(r.summary).toContain('Lentejas estofadas (del congelador)')
+    expect(r.summary).not.toContain('sin nombre')
+    expect((r.data as any).days[0].dinner.dishes[0].recipeName).toBe('Lentejas estofadas')
+  })
+})
+
 // ─── 1b. get_weekly_menu (the whole week, 2026-10-15) ─────────────────────
 
 describe('get_weekly_menu', () => {
@@ -1098,8 +1133,8 @@ describe('get_variety_score', () => {
     const menu = {
       id: 'm',
       days: [
-        { lunch: { dishes: [{ kind: 'recipe', recipeId: 'r-1' }] } },
-        { dinner: { dishes: [{ kind: 'recipe', recipeId: 'r-2' }] } },
+        { lunch: { dishes: [{ kind: 'recipe', recipeId: 'r-1', recipeName: 'Uno' }] } },
+        { dinner: { dishes: [{ kind: 'recipe', recipeId: 'r-2', recipeName: 'Dos' }] } },
       ],
     }
     const ingRows = [

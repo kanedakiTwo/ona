@@ -17,7 +17,7 @@
  * /menu before finishing the sign-up (logging in lands there) kept «pending»
  * in the cache, and after finishing it /menu sent it back to /onboarding,
  * which sent it to /menu, for good. Finishing the sign-up also writes the new
- * state into the cache (`markOnboardedInCache`).
+ * state into the gate's cache (`markOnboardedInCache`).
  */
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
@@ -60,8 +60,10 @@ export function useOnboardingGate(): "ok" | "checking" {
   return "ok"
 }
 
-/** The sign-up just finished: what the gate and /onboarding read from the cache says so. */
+/**
+ * The sign-up just finished: the gate's cached answer says so. Only the gate's: /onboarding
+ * still shows what comes after (the WhatsApp sign-up's «Tu menú está listo») and leaves by itself.
+ */
 export function markOnboardedInCache(queryClient: QueryClient, userId: string): void {
   queryClient.setQueryData(["onboarding-gate", userId], (prev: object | undefined) => ({ ...(prev ?? {}), onboardingDone: true, onboardingRequired: false }))
-  queryClient.setQueryData(["onboarding-status", userId], (prev: object | undefined) => ({ ...(prev ?? {}), onboardingDone: true, onboardingDraft: null }))
 }

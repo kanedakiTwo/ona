@@ -146,12 +146,23 @@ export function isStarchBase(name: string): boolean {
   return STARCH_TERMS.some((t) => hasWord(n, t))
 }
 
-/** Rice and legumes, dry or cooked: «arroz», «garbanzos cocidos», «alubias de bote», «lentejas». */
-const RICE_OR_LEGUME_TERMS = ['arroz', 'lenteja', 'garbanzo', 'alubia', 'judia', 'judion', 'frijol', 'fabe', 'azuki', 'soja texturizada']
-/** …but not their flours, drinks, vinegars or rice paper, nor green beans. */
-const NOT_A_RICE_OR_LEGUME_BASE = ['harina', 'vinagre', 'leche de', 'bebida de', 'papel de', 'judia verde', 'judias verdes', 'salsa']
+/**
+ * Rice and legumes, dry or cooked: «arroz», «garbanzos cocidos», «alubias de bote», «lentejas».
+ * Also pasta and noodles (PRO-338, D-110 extended): in «Fideos caldosos con mejillones» or
+ * «Espaguetis con almejas» the seafood goes with the dish, as in rice with cod.
+ */
+const RICE_OR_LEGUME_TERMS = [
+  'arroz', 'lenteja', 'garbanzo', 'alubia', 'judia', 'judion', 'frijol', 'fabe', 'azuki', 'soja texturizada',
+  'pasta', 'espagueti', 'spaghetti', 'macarron', 'tallarin', 'fideo', 'fideua', 'lasana', 'canelon',
+  'noodle', 'penne', 'linguine', 'tagliatelle', 'ravioli', 'tortellini', 'gnocchi', 'nyoqui', 'fetuccini',
+]
+/** …but not their flours, drinks, vinegars or rice paper, nor green beans, nor pastes and pastry doughs. */
+const NOT_A_RICE_OR_LEGUME_BASE = [
+  'harina', 'vinagre', 'leche de', 'bebida de', 'papel de', 'judia verde', 'judias verdes', 'salsa',
+  'pasta de', 'pasta brisa', 'pasta quebrada', 'pasta filo', 'pasta wonton', 'pasta wantun',
+]
 
-/** Does the dish have rice or legumes as (part of) its base? Then its protein goes with it. */
+/** Does the dish have rice, legumes or pasta as (part of) its base? Then its protein goes with it. */
 export function hasRiceOrLegumeBase(recipe: Pick<AuditableRecipe, 'ingredients'>): boolean {
   return recipe.ingredients.some((i) => {
     const n = normalizeText(i.name)

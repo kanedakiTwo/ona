@@ -102,7 +102,7 @@ export function factSentence(type: string, value: unknown, who: Who, validUntil:
     case 'cooking_style':
       return isCookingStyle(v.style) ? COOKING_STYLE_LABELS[v.style as keyof typeof COOKING_STYLE_LABELS] : null
     case 'protein_minimum':
-      return 'Proteína en cada plato: al menos 80 g de carne, pescado o huevo por ración, también en los entrantes y en los platos de arroz o legumbre'
+      return 'Proteína en cada plato: al menos 80 g de carne, pescado o huevo por ración, también en los entrantes y en los platos de arroz, legumbre o pasta'
     case 'dislikes':
       return list(value).length ? cap(`no ${V.gusta[who]} ${joinEs(list(value))}`) : null
     case 'equipment':
@@ -193,7 +193,7 @@ export function howIUse(type: string, value: unknown): string {
         : 'Mimo lo tiene en cuenta mientras dure.'
     }
     case 'protein_minimum':
-      return 'El menú de tu casa pide esos 80 g también en los entrantes y en los platos de arroz o legumbre.'
+      return 'El menú de tu casa pide esos 80 g también en los entrantes y en los platos de arroz, legumbre o pasta.'
     case 'time_available':
       return 'El menú no te propone recetas que necesiten más tiempo del que tienes ese día.'
     case 'household.adults':

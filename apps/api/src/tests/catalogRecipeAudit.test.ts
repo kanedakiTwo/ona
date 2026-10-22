@@ -17,6 +17,7 @@ import {
   catalogAuditIssuesFor,
   isMainProtein,
   isStarchBase,
+  hasRiceOrLegumeBase,
   skipsQuantityRanges,
   lineGrams,
   type AuditableRecipe,
@@ -73,9 +74,12 @@ describe('auditCatalogRecipe — the hogares de prueba examples', () => {
   it('edges: exactly 80 / 300 g and 50 / 150 g are fine', () => {
     expect(auditCatalogRecipe(recipe(1, [g('pollo', 80), g('pasta', 50), g('tomate', 100)])).issues).toEqual([])
     expect(auditCatalogRecipe(recipe(1, [g('pollo', 300), g('pasta', 150), g('tomate', 100)])).issues).toEqual([])
+    // With pasta as its base the 80 g minimum doesn't apply (PRO-338): only the base is off.
     expect(auditCatalogRecipe(recipe(1, [g('pollo', 79), g('pasta', 151), g('tomate', 100)])).issues).toEqual([
-      'proteina_fuera_de_rango',
       'base_fuera_de_rango',
+    ])
+    expect(auditCatalogRecipe(recipe(1, [g('pollo', 79), g('patata', 200), g('tomate', 100)])).issues).toEqual([
+      'proteina_fuera_de_rango',
     ])
   })
 })
@@ -331,6 +335,30 @@ describe('auditCatalogRecipe — the protein minimum (Miguel, 2026-10-21)', () =
     expect(auditCatalogRecipe({ ...recipe(2, [g('huevo', 60), g('patata', 250), g('cebolla', 100)]), course: 'main' }).issues).toEqual(['proteina_fuera_de_rango'])
     expect(auditCatalogRecipe({ ...recipe(4, [g('judías verdes', 400), g('pollo', 200), g('cebolla', 100)]), course: 'main' }).issues).toEqual(['proteina_fuera_de_rango'])
     expect(auditCatalogRecipe({ ...recipe(4, [g('harina de garbanzo', 200), g('pollo', 200), g('cebolla', 100)]), course: 'main' }).issues).toEqual(['proteina_fuera_de_rango'])
+  })
+
+  it('nor is a pasta or noodle dish (PRO-338): fideos caldosos with 28 g of mussels, espaguetis with 45 g of clams', () => {
+    const fideos = { ...recipe(4, [g('fideos', 320), { ...g('mejillones', 450), edibleFraction: 0.25 }, g('tomate', 200)]), course: 'main' }
+    const espaguetis = { ...recipe(4, [g('espaguetis', 320), { ...g('almejas', 1200), edibleFraction: 0.15 }, g('ajo', 10)]), course: 'main' }
+    expect(auditCatalogRecipe(fideos).proteinPerServingG).toBe(28)
+    expect(auditCatalogRecipe(espaguetis).proteinPerServingG).toBe(45)
+    expect(auditCatalogRecipe(fideos).issues).toEqual([])
+    expect(auditCatalogRecipe(espaguetis).issues).toEqual([])
+    // A ficha with `protein_minimum` keeps the minimum for pasta too.
+    expect(auditCatalogRecipe(fideos, strict).issues).toEqual(['proteina_fuera_de_rango'])
+    expect(auditCatalogRecipe(espaguetis, strict).issues).toEqual(['proteina_fuera_de_rango'])
+    expect(catalogAuditIssuesFor(null, espaguetis, strict)).toEqual(['proteina_fuera_de_rango'])
+    for (const base of ['macarrones', 'tallarines', 'lasaña', 'canelones', 'pasta fresca']) {
+      expect(hasRiceOrLegumeBase({ ingredients: [g(base, 300)] }), base).toBe(true)
+    }
+  })
+
+  it('pastes and pastry doughs are not a pasta base; the 300 g maximum still applies to pasta', () => {
+    for (const notBase of ['pasta de curry', 'pasta brisa', 'pasta filo', 'pasta quebrada', 'pasta de hojaldre']) {
+      expect(hasRiceOrLegumeBase({ ingredients: [g(notBase, 200)] }), notBase).toBe(false)
+    }
+    const huge = { ...recipe(2, [g('espaguetis', 200), g('ternera', 800), g('tomate', 200)]), course: 'main' }
+    expect(auditCatalogRecipe(huge).issues).toEqual(['proteina_fuera_de_rango'])
   })
 
   it('the menu matcher gets the same option (catalogAuditIssuesFor)', () => {

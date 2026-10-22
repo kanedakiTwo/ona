@@ -206,12 +206,12 @@ describe('PRO-312 — leche (alergia) vs sin lactosa', () => {
     expect(RESTRICTION_PRESETS).toContain('leche (alergia)')
   })
 
-  it.each(['leche (alergia)', 'aplv', 'APLV', 'leche', 'proteína de leche', 'proteína de la leche de vaca', 'alergia a la leche', 'soy alérgica a la leche', 'sin lácteos'])(
+  it.each(['leche (alergia)', 'aplv', 'APLV', 'leche', 'proteína de leche', 'proteína de la leche de vaca', 'alergia a la leche', 'soy alérgica a la leche'])(
     '«%s» is the milk allergy',
     (r) => expect(hasMilkAllergy([r])).toBe(true),
   )
 
-  it.each(['sin lactosa', 'intolerancia a la lactosa', 'lactosa', 'leche de avena', 'vegano'])('«%s» is not the milk allergy', (r) => {
+  it.each(['sin lactosa', 'intolerancia a la lactosa', 'lactosa', 'sin lácteos', 'leche de avena', 'vegano'])('«%s» is not the milk allergy', (r) => {
     expect(hasMilkAllergy([r])).toBe(false)
   })
 

@@ -16,6 +16,8 @@
  *   PATCH  /household/profile/persons/:id           { alias, ageBand }
  *   DELETE /household/profile/persons/:id
  *   GET    /household/profile/export                «Descargar mi ficha»
+ *   POST   /household/profile/facts                 { type, value, about, personId?, validUntil? } «Apunta que…» (Mimo, PRO-319)
+ *   POST   /household/profile/question/ask          Mimo asks the pending question (one a week; WhatsApp in its 24 h window)
  *
  * Per-route auth, mounted before the catch-all routers. Mimo's tools reach the
  * same actions over loopback (PRO-319, D-051).
@@ -24,11 +26,13 @@ import { Router, type Response } from 'express'
 import { z } from 'zod'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
+import { CHANNEL_HEADER } from '../services/menuEdits.js'
 import { interpretCorrection } from '../services/profile/correction.js'
 import {
   FichaError,
   addPerson,
   answerQuestion,
+  askPendingQuestion,
   confirmFact,
   correctFact,
   correctFactWithNote,
@@ -42,6 +46,7 @@ import {
   setLearningPaused,
   undoChange,
   updatePerson,
+  writeProfileFact,
 } from '../services/profile/fichaStore.js'
 
 const router = Router()
@@ -61,6 +66,13 @@ const correctSchema = z.object({
 })
 const answerSchema = z.object({ answer: z.enum(['yes', 'no', 'later']) })
 const learningSchema = z.object({ paused: z.boolean() })
+const writeFactSchema = z.object({
+  type: z.string().trim().min(1).max(60),
+  value: z.unknown(),
+  about: z.enum(['me', 'household', 'person']).default('me'),
+  personId: z.string().uuid().nullable().optional(),
+  validUntil: z.string().datetime({ offset: true }).nullable().optional(),
+})
 const personSchema = z.object({ alias: z.string().trim().min(1).max(40), ageBand: z.string() })
 
 router.get('/household/profile', authMiddleware, async (req: AuthRequest, res) => {
@@ -169,6 +181,27 @@ router.delete('/household/profile/persons/:id', authMiddleware, async (req: Auth
     res.status(204).end()
   } catch (err) {
     fail(res, err, 'remove person')
+  }
+})
+
+/** The conversation's channel (Mimo calls over loopback with `x-mimoia-channel`); anything else is the web. */
+const channelOf = (req: AuthRequest): 'web' | 'whatsapp' => (req.get(CHANNEL_HEADER) === 'whatsapp' ? 'whatsapp' : 'web')
+
+router.post('/household/profile/facts', authMiddleware, validate(writeFactSchema), async (req: AuthRequest, res) => {
+  try {
+    const validUntil = req.body.validUntil === undefined ? undefined : req.body.validUntil ? new Date(req.body.validUntil) : null
+    const out = await writeProfileFact(req.userId!, { type: req.body.type, value: req.body.value, about: req.body.about, personId: req.body.personId ?? null, validUntil, channel: channelOf(req) })
+    res.status(out.action === 'added' ? 201 : 200).json(out)
+  } catch (err) {
+    fail(res, err, 'write fact')
+  }
+})
+
+router.post('/household/profile/question/ask', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    res.json(await askPendingQuestion(req.userId!, { channel: channelOf(req) }))
+  } catch (err) {
+    fail(res, err, 'ask question')
   }
 })
 

@@ -9,6 +9,7 @@ import { mealLinesForDay } from '../menuText.js'
 import { resolveScope, scopeWhere } from '../scopeResolver.js'
 import { getCookingStyle } from '../profile/cookingStyle.js'
 import { fillRecipeNames } from '../menuNames.js'
+import { fichaQuestionHint } from '../profile/fichaStore.js'
 
 const DAY_NAMES_LONG = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo']
 const hhmm = (h: number, m: number) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
@@ -181,6 +182,10 @@ export async function loadUserContext(userId: string, db: any): Promise<string> 
   // web and on WhatsApp (both go through this loader).
   const fichaDigest = buildFichaDigest(await loadHouseholdFicha(userId, { db }).catch(() => null), userId)
   if (fichaDigest) parts.push(fichaDigest)
+  // PRO-319: one line when a pending question is due for this person this
+  // week (Mimo then asks it at a natural moment with get_ficha_question).
+  const questionHint = await fichaQuestionHint(userId, { db }).catch(() => '')
+  if (typeof questionHint === 'string' && questionHint) parts.push(questionHint)
 
   return parts.join('\n')
 }

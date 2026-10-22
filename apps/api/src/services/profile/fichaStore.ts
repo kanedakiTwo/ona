@@ -9,11 +9,14 @@
 import { and, asc, desc, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm'
 import {
   MEMORY_KEYS,
+  FICHA_QUESTION_EVERY_DAYS,
   PROFILE_FACT_VALUE_SCHEMAS,
   canSeeProfileFact,
+  canWriteProfileFact,
   householdPersonSchema,
   isHealthProfileFactType,
   memoryKeyIsHouseholdLevel,
+  type FichaAskView,
   type FichaChangeView,
   type FichaFactView,
   type FichaView,
@@ -30,10 +33,13 @@ import {
   profileQuestions,
   userMemories,
   users,
+  whatsappLinks,
 } from '../../db/schema.js'
 import { hasHealthConsent } from '../healthConsent.js'
 import { factsInForce } from './reader.js'
-import { changeView, confidenceFor, factView, howIUse, peopleView, type ChangeRow, type FactRow } from './view.js'
+import { SERVICE_WINDOW_MS } from '../whatsapp/proactive.js'
+import { mentionsHealth } from './healthText.js'
+import { changeView, confidenceFor, factSentence, factView, howIUse, peopleView, type ChangeRow, type FactRow } from './view.js'
 import { madridDate, retireProfileFacts, signalEvidence, upsertProfileFact } from './writer.js'
 
 type Db = typeof defaultDb
@@ -501,4 +507,193 @@ export async function factForCorrection(userId: string, factId: string, opts: { 
   assertCanEdit(reader, f)
   const view = factView(factRow(f), { viewerId: userId, viewerRole: reader.role, actorUserId: null, names: {} })
   return { type: f.type, value: f.value, sentence: view?.sentence ?? f.type }
+}
+
+// ─── Mimo speaks about the ficha (PRO-319, D-051, D-064, D-110) ──────────
+
+/** Whom «apunta que…» is about: the reader, the household, or a person without an account. */
+export type FichaAbout = 'me' | 'household' | 'person'
+
+/** Pure: two lists joined without repeats (case and accents as written; the same text twice is one). */
+export function mergeListValues(current: unknown, next: unknown): unknown {
+  if (!Array.isArray(current) || !Array.isArray(next)) return next
+  const seen = new Set<string>()
+  const out: unknown[] = []
+  for (const x of [...current, ...next]) {
+    const k = typeof x === 'string' ? x.trim().toLowerCase() : JSON.stringify(x)
+    if (seen.has(k)) continue
+    seen.add(k)
+    out.push(x)
+  }
+  return out
+}
+
+/**
+ * Pure: the subject of a fact Mimo writes. Health is always about a person;
+ * «proteína en cada plato» is about whoever says it (or a person without an
+ * account), never the whole household.
+ */
+export function fichaSubjectFor(
+  type: string,
+  about: FichaAbout,
+  readerId: string,
+  personId: string | null,
+): { subjectUserId: string | null; subjectPersonId: string | null } {
+  if (about === 'person' && personId) return { subjectUserId: null, subjectPersonId: personId }
+  if (about === 'household' && (isHealthProfileFactType(type) || type === 'protein_minimum')) return { subjectUserId: readerId, subjectPersonId: null }
+  if (about === 'household') return { subjectUserId: null, subjectPersonId: null }
+  return { subjectUserId: readerId, subjectPersonId: null }
+}
+
+/**
+ * «Apunta que…» (Mimo, web chat and WhatsApp): the reader says something
+ * about themselves, the household or a person without an account. Origin
+ * `user`, confidence 1, evidence «Se lo dijiste a Mimo…». Never health from
+ * WhatsApp (`canWriteProfileFact`), health on the web only with the consent.
+ * A list (dislikes, notes…) adds to what is there instead of replacing it.
+ */
+export async function writeProfileFact(
+  userId: string,
+  input: { type: string; value: unknown; about: FichaAbout; personId?: string | null; validUntil?: Date | null; channel: 'web' | 'whatsapp' },
+  opts: { db?: Db; now?: Date } = {},
+): Promise<{ factId: string; action: 'added' | 'updated' | 'unchanged'; sentence: string | null }> {
+  const db = opts.db ?? defaultDb
+  const now = opts.now ?? new Date()
+  const reader = await fichaReader(userId, db)
+  if (!reader) throw new FichaError(404, 'NO_HOUSEHOLD', 'Sin hogar')
+  if (reader.role === 'child') throw new FichaError(403, 'CHILD', 'La ficha la cambian los adultos de la casa')
+  const schema = PROFILE_FACT_VALUE_SCHEMAS[input.type as keyof typeof PROFILE_FACT_VALUE_SCHEMAS]
+  if (!schema) throw new FichaError(422, 'UNKNOWN_TYPE', `No conozco el tipo «${input.type}»`)
+  const allowed = canWriteProfileFact({ type: input.type, channel: input.channel, hasHealthConsent: await hasHealthConsent(userId) })
+  if (!allowed.ok) {
+    throw allowed.reason === 'health_from_whatsapp'
+      ? new FichaError(403, 'HEALTH_FROM_WHATSAPP', 'Por WhatsApp no guardo datos de salud: se cambian en Tu ficha, en la web')
+      : new FichaError(403, 'HEALTH_CONSENT_REQUIRED', 'Para guardar datos de salud necesitas dar tu consentimiento en Perfil')
+  }
+  // Over WhatsApp not even a note that talks about health (LEG-03): «apunta que soy celíaca» stays out.
+  if (input.channel === 'whatsapp' && mentionsHealth(JSON.stringify(input.value ?? ''))) {
+    throw new FichaError(403, 'HEALTH_FROM_WHATSAPP', 'Por WhatsApp no guardo datos de salud: se cambian en Tu ficha, en la web')
+  }
+  let personId: string | null = null
+  if (input.about === 'person') {
+    const [p] = input.personId
+      ? await db.select({ id: householdPersons.id }).from(householdPersons)
+        .where(and(eq(householdPersons.id, input.personId), eq(householdPersons.householdId, reader.householdId))).limit(1)
+      : []
+    if (!p) throw new FichaError(404, 'NO_PERSON', 'Esa persona no está en tu casa')
+    personId = p.id
+  }
+  const subject = fichaSubjectFor(input.type, input.about, userId, personId)
+  const signal = input.channel === 'whatsapp' ? 'whatsapp' : 'chat'
+  return db.transaction(async (tx) => {
+    const [current] = await tx.select().from(profileFacts).where(and(
+      eq(profileFacts.householdId, reader.householdId), eq(profileFacts.type, input.type), eq(profileFacts.status, 'active'),
+      subject.subjectUserId ? eq(profileFacts.subjectUserId, subject.subjectUserId) : isNull(profileFacts.subjectUserId),
+      subject.subjectPersonId ? eq(profileFacts.subjectPersonId, subject.subjectPersonId) : isNull(profileFacts.subjectPersonId),
+    )).orderBy(desc(profileFacts.updatedAt)).limit(1)
+    const merged = current ? mergeListValues(current.value, input.value) : input.value
+    const parsed = schema.safeParse(merged)
+    if (!parsed.success) {
+      throw new FichaError(422, 'INVALID_VALUE', `No he sabido apuntarlo así: ${parsed.error.issues.map((i) => `${i.path.join('.') || 'valor'} ${i.message}`).join('; ')}`)
+    }
+    const out = await upsertProfileFact(tx, {
+      householdId: reader.householdId, ...subject, type: input.type, value: parsed.data,
+      origin: 'user', confidence: 1, evidence: signalEvidence(signal, input.type, parsed.data, now),
+      validUntil: input.validUntil, reason: signal === 'whatsapp' ? 'Se lo dijo a Mimo por WhatsApp' : 'Se lo dijo a Mimo en la web',
+      actorUserId: userId, now,
+    })
+    await mirrorToMemory(tx, await memoryOwners(tx, reader, { type: input.type, ...subject }), input.type, parsed.data)
+    const who = subject.subjectUserId ? 'tu' : subject.subjectPersonId ? 'otra' : 'casa'
+    return { ...out, sentence: factSentence(input.type, parsed.data, who, input.validUntil ?? null) }
+  })
+}
+
+/**
+ * Pure: may Mimo ask the pending question now? At most one a week to each
+ * person, and on WhatsApp only inside the 24 h window (Meta: free text only
+ * within 24 h of the person's last message).
+ */
+export function mimoMayAskQuestion(input: {
+  lastAskedAt: Date | null
+  channel: 'web' | 'whatsapp'
+  lastInboundAt: Date | null
+  now: Date
+}): { ok: true } | { ok: false; reason: 'weekly_cap' | 'outside_window' } {
+  const { now } = input
+  if (input.channel === 'whatsapp' && (!input.lastInboundAt || now.getTime() - input.lastInboundAt.getTime() >= SERVICE_WINDOW_MS)) {
+    return { ok: false, reason: 'outside_window' }
+  }
+  if (input.lastAskedAt && now.getTime() - input.lastAskedAt.getTime() < FICHA_QUESTION_EVERY_DAYS * 24 * 3600 * 1000) {
+    return { ok: false, reason: 'weekly_cap' }
+  }
+  return { ok: true }
+}
+
+/** When Mimo last asked this person a pending question (a `question_asked` history row). */
+async function lastMimoQuestionAt(householdId: string, userId: string, db: Db): Promise<Date | null> {
+  const [row] = await db.select({ at: profileChanges.createdAt }).from(profileChanges)
+    .where(and(eq(profileChanges.householdId, householdId), eq(profileChanges.action, 'question_asked'), eq(profileChanges.actorUserId, userId)))
+    .orderBy(desc(profileChanges.createdAt)).limit(1)
+  return row?.at ?? null
+}
+
+/** The question Mimo may ask this reader (pending, theirs or the household's, none of health on WhatsApp). */
+async function questionForMimo(reader: FichaReader, channel: 'web' | 'whatsapp', now: Date, db: Db) {
+  const questions = await db.select().from(profileQuestions)
+    .where(and(eq(profileQuestions.householdId, reader.householdId), eq(profileQuestions.status, 'pending')))
+    .orderBy(asc(profileQuestions.createdAt))
+  const fit = questions.filter((q) => !(channel === 'whatsapp' && (mentionsHealth(q.question) || (q.factType && isHealthProfileFactType(q.factType)))))
+  return pickQuestion(fit, now, reader.userId)
+}
+
+/**
+ * Mimo asks the pending question (PRO-319): the question, when one is due,
+ * recorded as asked (`question_asked`, so the next one waits a week); or why
+ * not. The reader answers with «Sí» / «No» / «Ahora no», as on the screen.
+ */
+export async function askPendingQuestion(userId: string, input: { channel: 'web' | 'whatsapp' }, opts: { db?: Db; now?: Date } = {}): Promise<FichaAskView> {
+  const db = opts.db ?? defaultDb
+  const now = opts.now ?? new Date()
+  const reader = await fichaReader(userId, db)
+  if (!reader) throw new FichaError(404, 'NO_HOUSEHOLD', 'Sin hogar')
+  if (reader.role === 'child') return { question: null, reason: 'none' }
+  const [link] = input.channel === 'whatsapp'
+    ? await db.select({ at: whatsappLinks.lastInboundAt }).from(whatsappLinks).where(eq(whatsappLinks.userId, userId)).limit(1)
+    : []
+  const may = mimoMayAskQuestion({ lastAskedAt: await lastMimoQuestionAt(reader.householdId, userId, db), channel: input.channel, lastInboundAt: link?.at ?? null, now })
+  if (!may.ok) return { question: null, reason: may.reason }
+  const q = await questionForMimo(reader, input.channel, now, db)
+  if (!q) return { question: null, reason: 'none' }
+  const [fact] = q.factType
+    ? await db.select({ id: profileFacts.id }).from(profileFacts).where(and(
+      eq(profileFacts.householdId, reader.householdId), eq(profileFacts.type, q.factType), eq(profileFacts.status, 'active'),
+      q.subjectUserId ? eq(profileFacts.subjectUserId, q.subjectUserId) : isNull(profileFacts.subjectUserId),
+      q.subjectPersonId ? eq(profileFacts.subjectPersonId, q.subjectPersonId) : isNull(profileFacts.subjectPersonId),
+    )).orderBy(desc(profileFacts.updatedAt)).limit(1)
+    : []
+  await db.insert(profileChanges).values({
+    householdId: reader.householdId, action: 'question_asked', factType: q.factType, before: null,
+    after: { questionId: q.id, channel: input.channel }, reason: input.channel === 'whatsapp' ? 'Mimo lo preguntó por WhatsApp' : 'Mimo lo preguntó en la web',
+    origin: 'ai_realtime', actorUserId: userId,
+  })
+  return {
+    question: { id: q.id, question: q.question, subjectKey: q.subjectUserId ? `u:${q.subjectUserId}` : q.subjectPersonId ? `p:${q.subjectPersonId}` : 'casa', factId: fact?.id ?? null },
+    reason: 'asked',
+  }
+}
+
+/**
+ * For Mimo's context: one line when a pending question is due for this
+ * person this week (the tool then checks the WhatsApp window). Empty otherwise.
+ */
+export async function fichaQuestionHint(userId: string, opts: { db?: Db; now?: Date } = {}): Promise<string> {
+  const db = opts.db ?? defaultDb
+  const now = opts.now ?? new Date()
+  const reader = await fichaReader(userId, db)
+  if (!reader || reader.role === 'child') return ''
+  const may = mimoMayAskQuestion({ lastAskedAt: await lastMimoQuestionAt(reader.householdId, userId, db), channel: 'web', lastInboundAt: null, now })
+  if (!may.ok) return ''
+  const q = await questionForMimo(reader, 'web', now, db)
+  if (!q) return ''
+  return 'Ficha: tienes una pregunta pendiente para esta persona esta semana. Hazla solo en un momento natural (al ensenar el menu, al cerrar algo que pidio), nunca en medio de otra tarea ni junto a otra pregunta: llama a get_ficha_question y, si te la da, preguntala con tus palabras con [[opciones: Sí | No | Ahora no]].'
 }

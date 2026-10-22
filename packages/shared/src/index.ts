@@ -594,8 +594,9 @@ export type {
   FichaChangeView,
   FichaView,
   FichaWhyView,
+  FichaAskView,
 } from './types/fichaView.js'
-export { FICHA_PATH, FICHA_TOPICS, FICHA_TOPIC_LABELS, fichaConfidenceWord } from './types/fichaView.js'
+export { FICHA_PATH, FICHA_FACTS_PATH, FICHA_QUESTION_ASK_PATH, FICHA_QUESTION_EVERY_DAYS, FICHA_TOPICS, FICHA_TOPIC_LABELS, fichaConfidenceWord } from './types/fichaView.js'
 
 // Catalogue import from the admin page «Recetas pendientes» (specs/catalog-import.md)
 export {

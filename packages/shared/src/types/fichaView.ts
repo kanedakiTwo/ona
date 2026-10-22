@@ -8,6 +8,22 @@
 
 export const FICHA_PATH = '/household/profile'
 
+/** «Apunta que…» from Mimo (PRO-319): `POST { type, value, about, personId?, validUntil? }`. */
+export const FICHA_FACTS_PATH = '/household/profile/facts'
+
+/** Mimo asks the pending question (PRO-319): `POST` → `FichaAskView`. */
+export const FICHA_QUESTION_ASK_PATH = '/household/profile/question/ask'
+
+/** Mimo asks at most one pending question a week to each person (PRO-319). */
+export const FICHA_QUESTION_EVERY_DAYS = 7
+
+/** What `POST …/question/ask` answers: the question to ask now, or why not. */
+export interface FichaAskView {
+  question: FichaQuestionView | null
+  /** Why there is none: nothing pending, already asked this week, or WhatsApp outside its 24 h window. */
+  reason: 'asked' | 'none' | 'weekly_cap' | 'outside_window'
+}
+
 /** Topics the facts are grouped in, in screen order. */
 export const FICHA_TOPICS = [
   'como_comeis',

@@ -121,6 +121,31 @@ describe.skipIf(!reachable || !METRICS_TOKEN)('usage events + conversation flags
     )
   }, 30_000)
 
+  it('counts active households by the system of their last browser, only the word (PRO-307)', async () => {
+    const t = `${tag}s`
+    const iphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1'
+    const before = await call('GET', '/admin/usage?days=1', undefined, metrics)
+    expect(before.body.householdsBySystem).toEqual(
+      expect.objectContaining({ android: expect.any(Number), ios: expect.any(Number), desktop: expect.any(Number), unknown: expect.any(Number), total: expect.any(Number) }),
+    )
+    const reg = await call('POST', '/register', { username: t, email: `${t}@test.local`, password: 'e2epass123', ageConfirmed: true })
+    expect(reg.status).toBe(201)
+    const auth = { Authorization: `Bearer ${reg.body.token}`, 'User-Agent': iphone }
+    // screen_viewed is passive: the shopping list makes the household active, the screen view gives its system.
+    expect((await call('GET', '/shopping-list', undefined, auth)).status).toBe(200)
+    expect((await call('POST', '/usage/event', { name: 'screen_viewed', props: { screen: 'menu' } }, auth)).body).toEqual({ counted: true })
+    let after: any = null
+    for (let i = 0; i < 20; i++) {
+      after = await call('GET', '/admin/usage?days=1', undefined, metrics)
+      if (after.body.householdsBySystem.ios > before.body.householdsBySystem.ios) break
+      await new Promise((r) => setTimeout(r, 250))
+    }
+    expect(after.body.householdsBySystem.ios - before.body.householdsBySystem.ios).toBe(1)
+    const s = after.body.householdsBySystem
+    expect(s.android + s.ios + s.desktop + s.unknown).toBe(s.total)
+    expect(JSON.stringify(after.body)).not.toMatch(/iPhone OS|Mozilla/)
+  }, 30_000)
+
   it('serves the conversation flags to the token: categories and severity, no reply or note', async () => {
     const r = await call('GET', '/admin/assistant-reviews/flags?days=3', undefined, metrics)
     expect(r.status).toBe(200)

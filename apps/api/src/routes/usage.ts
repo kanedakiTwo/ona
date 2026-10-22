@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
-import { deviceFromUserAgent, recordInstalledOpen } from '../services/appInstalls.js'
+import { deviceFromUserAgent, recordInstalledOpen, withScreenDevice } from '../services/appInstalls.js'
 import { clientEventProps, recordClientEvent, trackEvent } from '../services/usageEvents.js'
 
 /**
@@ -23,7 +23,9 @@ import { clientEventProps, recordClientEvent, trackEvent } from '../services/usa
  *   closed lists only (`clientEventProps`; anything else is dropped). The
  *   once-per-day cap of screens and sign-up steps is applied here, per person
  *   and Madrid day: the browser keeps nothing. 200 `{ counted }` always
- *   (false = invalid or already counted today).
+ *   (false = invalid or already counted today). `screen_viewed` also stores
+ *   the system of the browser (`device`: android / ios / desktop, PRO-307),
+ *   deduced here from the request, never the browser string.
  */
 const router = Router()
 
@@ -42,7 +44,9 @@ router.post('/usage/invite-shared', authMiddleware, (req: AuthRequest, res) => {
 })
 
 router.post('/usage/event', authMiddleware, async (req: AuthRequest, res) => {
-  const ev = clientEventProps(req.body?.name, req.body?.props)
+  const parsed = clientEventProps(req.body?.name, req.body?.props)
+  // PRO-307: the screen views carry the system of the browser (android / ios / desktop), only that word.
+  const ev = parsed && withScreenDevice(parsed, req.get('user-agent'))
   res.json({ counted: ev ? await recordClientEvent(req.userId!, ev) : false })
 })
 

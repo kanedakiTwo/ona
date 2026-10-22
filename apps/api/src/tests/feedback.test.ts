@@ -88,7 +88,7 @@ describe('GET /admin/feedback', () => {
     expect(admin.items[0]).toMatchObject({ text: 'Me encanta la lista', channel: 'whatsapp', username: 'user-u1', email: 'u1@example.com' })
 
     const agents = await (await call('GET', '/admin/feedback?days=1', { 'x-metrics-token': 'ok' })).json()
-    expect(agents).toEqual({ days: 1, count: 1, byChannel: { whatsapp: 1 }, byPage: { none: 1 }, possibleAllergies: [] })
+    expect(agents).toEqual({ days: 1, count: 1, byChannel: { whatsapp: 1 }, byPage: { none: 1 }, byTag: {}, possibleAllergies: [] })
     expect(JSON.stringify(agents)).not.toContain('Me encanta la lista')
   })
 
@@ -98,7 +98,7 @@ describe('GET /admin/feedback', () => {
     repo.rows.push({ id: 'f2', userId: 'u2', channel: 'app', text: raw, page: '/compra', createdAt: NOW, username: 'lucia_perez', email: 'lucia.perez@gmail.com' })
 
     const agents = await (await call('GET', '/admin/feedback', { 'x-metrics-token': 'ok' })).json()
-    expect(agents).toEqual({ days: 30, count: 1, byChannel: { app: 1 }, byPage: { '/compra': 1 }, possibleAllergies: [{ date: '2026-10-20', channel: 'app' }] })
+    expect(agents).toEqual({ days: 30, count: 1, byChannel: { app: 1 }, byPage: { '/compra': 1 }, byTag: {}, possibleAllergies: [{ date: '2026-10-20', channel: 'app' }] })
     expect(JSON.stringify(agents)).not.toMatch(/Lucía|lucia|celíaco|no carga|612|\[nombre\]|f2/)
 
     const admin = await (await call('GET', '/admin/feedback', { 'x-admin': '1' })).json()

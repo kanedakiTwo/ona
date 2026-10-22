@@ -624,6 +624,13 @@
       "when": 1792579202270,
       "tag": "0091_ficha_learning_pause_and_answers",
       "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1792629780028,
+      "tag": "0092_leftovers_question",
+      "breakpoints": true
     }
   ]
 }

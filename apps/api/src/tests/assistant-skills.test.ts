@@ -57,6 +57,11 @@ vi.mock('../services/notificationScheduler.js', () => ({
 vi.mock('../services/userMemoryStore.js', () => ({
   getMemoryForUser: vi.fn(async () => ({})),
 }))
+// PRO-305: the household's restrictions (its own DB reads are tested in householdAllergies.test.ts).
+vi.mock('../services/householdAllergies.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../services/householdAllergies.js')>()),
+  withHouseholdRestrictions: vi.fn(async (own: readonly string[]) => [...own]),
+}))
 // PRO-155: the menu evaluator is a Haiku call — off by default here, one test turns it on.
 vi.mock('../services/menuFit.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../services/menuFit.js')>()),
@@ -551,6 +556,31 @@ describe('swap_meal', () => {
     )
     const r = await skill.handler({ dayIndex: 0, meal: 'lunch' }, ctx(db))
     expect(r.summary).toContain('Cambiado')
+  })
+
+  // PRO-305 (Seguridad): the auto-pick reads every member's allergies, not only the caller's.
+  it('auto-picks with the restrictions of everyone in the household', async () => {
+    const { withHouseholdRestrictions } = await import('../services/householdAllergies.js')
+    const { findRecipeForSlot } = await import('../services/recipeMatcher.js')
+    vi.mocked(withHouseholdRestrictions).mockImplementationOnce(async (own) => [...own, 'marisco'])
+    const menu = {
+      id: 'm-1',
+      days: Array.from({ length: 7 }, () => ({ dinner: { dishes: [{ kind: 'recipe', recipeId: 'r-old', recipeName: 'Antiguo' }] } })),
+    }
+    const db = makeDb(
+      [menu],
+      [{ restrictions: ['sin gluten'] }],
+      [],
+      [{ id: 'r-1', name: 'Plato', authorId: 'u-1', meals: ['dinner'], seasons: [], tags: [] }],
+      [],
+      [],
+      [],
+      [{ ...menu, days: [...menu.days] }],
+    )
+    vi.mocked(findRecipeForSlot).mockClear()
+    await skill.handler({ dayIndex: 0, meal: 'dinner' }, ctx(db))
+    expect(vi.mocked(withHouseholdRestrictions).mock.calls.at(-1)?.[0]).toEqual(['sin gluten'])
+    expect(vi.mocked(findRecipeForSlot).mock.calls.at(-1)?.[1].restrictions).toEqual(['sin gluten', 'marisco'])
   })
 
   // PRO-238 (Familia Ruiz, 2026-10-18): «pollo empanado» on Tuesday 20 while
@@ -1109,6 +1139,25 @@ describe('suggest_substitution', () => {
       ctx(db),
     )
     expect(r.summary).toContain('"mantequilla"')
+  })
+
+  // PRO-312 (Seguridad): a milk allergy anywhere in the household → no lactose-free dairy, butter or ghee.
+  it('with a milk allergy in the household, never lactose-free dairy, butter or ghee', async () => {
+    const { withHouseholdRestrictions } = await import('../services/householdAllergies.js')
+    const { MILK_ALLERGY_SUBSTITUTION } = await import('../services/assistant/skills.js')
+    vi.mocked(withHouseholdRestrictions).mockImplementationOnce(async (own) => [...own, 'leche (alergia)'])
+    const r = await skill.handler({ ingredient: 'nata' }, ctx(makeDb([{ restrictions: [] }])))
+    expect(r.summary).toContain(MILK_ALLERGY_SUBSTITUTION)
+    expect(r.summary).toContain('tampoco sin lactosa')
+    expect(r.summary).not.toContain('Si propon AOVE, ghee, mantequilla')
+  })
+
+  it('«alergia a la leche» named in the call counts too; «sin lactosa» alone keeps the usual swaps', async () => {
+    const { MILK_ALLERGY_SUBSTITUTION } = await import('../services/assistant/skills.js')
+    const allergy = await skill.handler({ ingredient: 'mantequilla', restriction: 'alergia a la leche' }, ctx(makeDb()))
+    expect(allergy.summary).toContain(MILK_ALLERGY_SUBSTITUTION)
+    const intolerance = await skill.handler({ ingredient: 'mantequilla', restriction: 'sin lactosa' }, ctx(makeDb()))
+    expect(intolerance.summary).not.toContain(MILK_ALLERGY_SUBSTITUTION)
   })
 })
 

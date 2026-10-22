@@ -47,8 +47,9 @@ import { visibleAuthorIds, visibleRecipeWhere } from '../recipeVisibility.js'
 import { loadMatchableRecipes } from '../matchableRecipes.js'
 import { generationSkips, loadPreviousWeek } from '../menuWeek.js'
 import { loadUserRestrictions, findRecipesWithWhatIHave } from '../withWhatIHave.js'
+import { withHouseholdRestrictions } from '../householdAllergies.js'
 import { isBrandDependentGlutenCharcuterie, isCoeliacHousehold, recipeDietNotices } from '../glutenFreeCharcuterie.js'
-import { compileRestrictions, nameHasTerm, normalizeText, violatesRestrictions, type RestrictableRecipe } from '../dietaryRestrictions.js'
+import { compileRestrictions, hasMilkAllergy, nameHasTerm, normalizeText, violatesRestrictions, type RestrictableRecipe } from '../dietaryRestrictions.js'
 import { addPantryForUser, deletePantryForUser, listPantryForUser, NoHouseholdError, patchPantryForUser } from '../pantryStore.js'
 import { enqueuePrepAlertsForMenu } from '../notificationScheduler.js'
 import { NotARecipeError, SocialCaptionUnavailableError } from '../recipeUrlExtractor.js'
@@ -1290,8 +1291,11 @@ const swapMeal: SkillDefinition = {
       }
     }
 
-    // Allergies / diet (profile + memory) and dislikes — same filter as the generator.
-    const { restrictions, dislikes } = await restrictionsFor(ctx)
+    // Allergies / diet (profile + memory) and dislikes — same filter as the
+    // generator, with every member's allergies and diet (PRO-305).
+    const own = await restrictionsFor(ctx)
+    const dislikes = own.dislikes
+    const restrictions = await withHouseholdRestrictions(own.restrictions, userId, db)
 
     // Fetch favorites
     const favRows = await db
@@ -1954,6 +1958,9 @@ const evaluateFoodHealth: SkillDefinition = {
 }
 
 // 8. ── suggest_substitution ────────────────────────────────
+/** PRO-312: what suggest_substitution tells the model when the household has a milk allergy. */
+export const MILK_ALLERGY_SUBSTITUTION =
+  'ALERGIA A LA LECHE en este hogar: nunca propongas ningun lacteo, tampoco sin lactosa (leche, nata, queso, yogur, kefir o mantequilla sin lactosa), ni ghee ni mantequilla. Propon AOVE, bebida de avena, soja o arroz, crema de verduras o de patata, frutos secos o semillas (si no hay alergia a ellos), harinas integrales, caldo casero.'
 const suggestSubstitution: SkillDefinition = {
   name: 'suggest_substitution',
   description: 'Cuando al usuario le falta un ingrediente o quiere cambiarlo (ej. "no tengo nata, que uso", "como sustituyo el azucar"), llama a esta skill. Tu (Claude) propondras alternativas alineadas con los principios de Mimoia.',
@@ -1983,9 +1990,15 @@ const suggestSubstitution: SkillDefinition = {
         recipeContext = ` Receta: ${(recipe as any).name}${allergens.length > 0 ? ` (alergenos detectados: ${allergens.join(', ')})` : ''}.`
       }
     }
+    // PRO-312 (Seguridad): with a milk allergy anywhere in the household (or
+    // named in this call), lactose-free dairy, butter and ghee are not swaps.
+    const household = await restrictionsFor(ctx)
+      .then((own) => withHouseholdRestrictions(own.restrictions, ctx.userId, db))
+      .catch(() => [] as string[])
+    const milkAllergy = hasMilkAllergy([...household, ...(params.restriction ? [params.restriction] : [])])
     return {
       data: params,
-      summary: `El usuario quiere sustituir "${params.ingredient}"${params.restriction ? ` (restriccion: ${params.restriction})` : ''}.${recipeContext} Sugiere 1-2 alternativas concretas alineadas con los principios de Mimoia. Importante: NUNCA propongas margarina, aceites vegetales refinados (girasol, soja, maiz, colza), edulcorantes artificiales ni sirope de maiz. Si propon AOVE, ghee, mantequilla, fermentados, frutos secos, semillas, harinas integrales, hueso/caldo casero, fruta entera en lugar de zumo.`,
+      summary: `El usuario quiere sustituir "${params.ingredient}"${params.restriction ? ` (restriccion: ${params.restriction})` : ''}.${recipeContext} Sugiere 1-2 alternativas concretas alineadas con los principios de Mimoia. Importante: NUNCA propongas margarina, aceites vegetales refinados (girasol, soja, maiz, colza), edulcorantes artificiales ni sirope de maiz. ${milkAllergy ? MILK_ALLERGY_SUBSTITUTION : 'Si propon AOVE, ghee, mantequilla, fermentados, frutos secos, semillas, harinas integrales, hueso/caldo casero, fruta entera en lugar de zumo.'}`,
       uiHint: 'recipe',
     }
   },

@@ -37,12 +37,10 @@ const ALLERGEN_ALIASES: Record<string, AllergenTag[]> = {
   celiaquia: ['gluten'],
   trigo: ['gluten'],
   lactosa: ['lactosa'],
+  // «sin lácteos»: same rule as «sin lactosa» for now (whether it is the
+  // milk allergy is Miguel's call, PRO-312).
   lacteos: ['lactosa'],
   lacteo: ['lactosa'],
-  leche: ['lactosa'],
-  'proteina de leche': ['lactosa'],
-  'proteina de la leche': ['lactosa'],
-  aplv: ['lactosa'],
   huevo: ['huevo'],
   huevos: ['huevo'],
   'frutos secos': ['frutos_secos', 'cacahuetes'],
@@ -69,6 +67,39 @@ const ALLERGEN_ALIASES: Record<string, AllergenTag[]> = {
   altramuces: ['altramuces'],
   altramuz: ['altramuces'],
   sulfitos: ['sulfitos'],
+}
+
+/**
+ * PRO-312 (Seguridad): allergy to milk (APLV, «leche (alergia)»,
+ * «proteína de leche»…) is not «sin lactosa». The EU allergen is «leche y sus
+ * derivados (incluida la lactosa)» (Reg. 1169/2011, annex II): lactose-free
+ * milk, cheese or yoghurt still carry milk protein. These keys compile to the
+ * `lactosa` allergen tag (every dairy by name — «leche sin lactosa» included —
+ * and by catalogue tag) **plus** MILK_TERMS, dairy whose name doesn't say
+ * so. «sin lactosa» / «intolerancia a la lactosa» stays the intolerance.
+ */
+const MILK_ALLERGY_KEYS = new Set([
+  'leche',
+  'leche de vaca',
+  'proteina de leche',
+  'proteina de la leche',
+  'proteinas de la leche',
+  'proteina de leche de vaca',
+  'proteina de la leche de vaca',
+  'aplv',
+])
+
+/** Dairy the `lactosa` name inference misses: named cheeses, kefir, ghee, milk proteins… */
+export const MILK_TERMS = [
+  'kefir', 'ghee', 'caseina', 'caseinato', 'lactosuero', 'suero lacteo', 'lactoalbumina', 'lactoglobulina',
+  'burrata', 'ricotta', 'provolone', 'gouda', 'emmental', 'brie', 'camembert', 'cheddar', 'gorgonzola',
+  'roquefort', 'pecorino', 'grana padano', 'idiazabal', 'cabrales', 'torta del casar', 'halloumi', 'paneer',
+  'quark', 'skyr', 'labneh', 'bechamel', 'besamel', 'helado', 'flan',
+]
+
+/** True when one of the restrictions is the milk allergy (PRO-312), not just «sin lactosa». */
+export function hasMilkAllergy(restrictions: readonly string[] | null | undefined): boolean {
+  return (restrictions ?? []).some((r) => typeof r === 'string' && MILK_ALLERGY_KEYS.has(restrictionKey(r)))
 }
 
 const PORK_TERMS = [
@@ -177,6 +208,8 @@ const PREFIXES = [
   /^dieta /,
   // PRO-197: «soy celíaco», «soy vegetariana» (as told to Mimo) → the diet itself.
   /^(soy|somos|es) /,
+  // PRO-312: the chip «leche (alergia)», or «marisco (alergia)» typed by hand.
+  /\s*\((alergia|alergica|alergico|intolerancia)\)$/,
 ]
 
 /** "Sin gluten" → "gluten", "alergia a los frutos secos" → "frutos secos". */
@@ -235,6 +268,11 @@ export function compileRestrictions(restrictions: readonly string[], dislikes: r
       diet.allergens.forEach((a) => allergens.add(a))
       diet.terms.forEach((t) => terms.add(t))
       if (diet.alcohol) alcohol = true
+      continue
+    }
+    if (MILK_ALLERGY_KEYS.has(key)) {
+      allergens.add('lactosa')
+      MILK_TERMS.forEach((t) => terms.add(t))
       continue
     }
     const tags = ALLERGEN_ALIASES[key] ?? ((ALLERGEN_TAGS as readonly string[]).includes(key) ? [key as AllergenTag] : null)

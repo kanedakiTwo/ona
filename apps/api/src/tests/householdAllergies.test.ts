@@ -5,7 +5,10 @@
  * member's restrictions, not only the generating user's.
  */
 import { describe, expect, it } from 'vitest'
-import { allergiesAnswered, householdAllergiesStatus, unionMemberRestrictions, type AllergyMember } from '../services/householdAllergies.js'
+import { readFileSync } from 'node:fs'
+import { allergiesAnswered, householdAllergiesStatus, unionMemberRestrictions, withHouseholdRestrictions, type AllergyMember } from '../services/householdAllergies.js'
+import { findRecipeForSlot, type RecipeWithIngredients } from '../services/recipeMatcher.js'
+import { findForCourse } from '../services/courseAwareMatcher.js'
 import { compileRestrictions } from '../services/dietaryRestrictions.js'
 
 const member = (over: Partial<AllergyMember>): AllergyMember => ({
@@ -66,5 +69,52 @@ describe('unionMemberRestrictions', () => {
   it('«marisco» from a member compiles to the crustacean allergen for the whole menu', () => {
     const rules = compileRestrictions(unionMemberRestrictions([{ restrictions: [] }, { restrictions: ['marisco'] }]), [])
     expect(rules.allergens.has('crustaceos')).toBe(true)
+  })
+})
+
+/**
+ * PRO-305 (Seguridad): changing one dish («Cambiar al azar», adding a meal,
+ * regenerating a dish, Mimo's swap_meal) reads every member's allergies,
+ * like the weekly menu — not only those of whoever asks.
+ */
+describe('withHouseholdRestrictions (PRO-305)', () => {
+  const db = {} as never
+  const guestSaysMarisco = async () => ['marisco']
+  const shrimp: RecipeWithIngredients = {
+    id: 'r-gambas', name: 'Gambas al ajillo', meals: ['dinner'], seasons: [], tags: [], allergens: ['crustaceos'],
+    ingredients: [{ ingredientId: 'i1', ingredientName: 'gambas peladas', quantity: 200, unit: 'g', allergenTags: ['crustaceos'] }],
+  }
+  const tortilla: RecipeWithIngredients = {
+    id: 'r-tortilla', name: 'Tortilla de patatas', meals: ['dinner'], seasons: [], tags: [], allergens: ['huevo'],
+    ingredients: [{ ingredientId: 'i2', ingredientName: 'patata', quantity: 400, unit: 'g' }],
+  }
+
+  it('adds the other members’ restrictions to the owner’s, owner first, deduped', async () => {
+    expect(await withHouseholdRestrictions(['sin gluten'], 'owner', db, async () => ['Sin gluten', 'marisco'])).toEqual(['sin gluten', 'marisco'])
+  })
+
+  it('a read error keeps the owner’s own (never fails the pick)', async () => {
+    expect(await withHouseholdRestrictions(['vegetariano'], 'owner', db, async () => { throw new Error('db down') })).toEqual(['vegetariano'])
+  })
+
+  it('the owner (no allergies) changes a dinner: a shellfish recipe never comes out for the guest allergic to marisco', async () => {
+    const restrictions = await withHouseholdRestrictions([], 'owner', db, guestSaysMarisco)
+    const options = { meal: 'dinner' as const, season: 'autumn' as const, usedRecipeIds: new Set<string>(), restrictions, favoriteRecipeIds: new Set(['r-gambas']) }
+    for (let i = 0; i < 50; i++) {
+      expect(findRecipeForSlot([shrimp, tortilla], options)?.id).toBe('r-tortilla')
+      expect(findForCourse([shrimp, tortilla], null, options)?.id).toBe('r-tortilla')
+    }
+    // Only the shrimp left: nothing, rather than the shrimp.
+    expect(findRecipeForSlot([shrimp], options)).toBeUndefined()
+  })
+
+  it('every pick in routes/menus.ts and Mimo’s swap_meal reads the household’s restrictions', () => {
+    const read = (rel: string) => readFileSync(new URL(`../${rel}`, import.meta.url), 'utf8')
+    const menus = read('routes/menus.ts')
+    // PUT meal (Cambiar al azar), POST meal (añadir una comida), regenerate dish, random dish.
+    expect(menus.match(/const restrictions = await withHouseholdRestrictions\(/g)?.length).toBe(4)
+    expect(menus).not.toMatch(/const restrictions = mergeRestrictions\(/)
+    expect(read('services/menuGenerator.ts')).toContain('withHouseholdRestrictions(')
+    expect(read('services/assistant/skills.ts')).toContain('const restrictions = await withHouseholdRestrictions(own.restrictions, userId, db)')
   })
 })

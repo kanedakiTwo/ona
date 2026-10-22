@@ -112,3 +112,19 @@ export function unionMemberRestrictions(members: readonly Pick<AllergyMember, 'r
 export async function loadHouseholdRestrictions(userId: string, db: typeof defaultDb = defaultDb): Promise<string[]> {
   return unionMemberRestrictions(await loadMembers(userId, db))
 }
+
+/**
+ * PRO-305 (Seguridad): `own` (the menu owner's profile + memory restrictions)
+ * plus every other member's, for every path that picks a recipe for the
+ * household's menu — the weekly generator, «Cambiar al azar», adding a meal,
+ * regenerating one dish and Mimo's `swap_meal`. A read error of the household
+ * keeps the owner's own (never fails the pick).
+ */
+export async function withHouseholdRestrictions(
+  own: readonly string[],
+  userId: string,
+  db: typeof defaultDb = defaultDb,
+  load: (userId: string, db: typeof defaultDb) => Promise<string[]> = loadHouseholdRestrictions,
+): Promise<string[]> {
+  return mergeRestrictions([...own, ...(await load(userId, db).catch(() => [] as string[]))])
+}

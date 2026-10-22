@@ -2,7 +2,9 @@
  * PRO-271 (Seguridad) against a running API + Postgres: someone who joins a
  * household by invitation and says «marisco» is taken into account
  *   - by `GET /households/me/allergies` («no ha contestado» vs «ninguna»), and
- *   - by the owner's «Generar mi menú» (every member's restrictions).
+ *   - by the owner's «Generar mi menú» (every member's restrictions), and
+ *   - by the owner changing one dish: «Cambiar al azar», adding a meal,
+ *     regenerating a dish, adding a random dish (PRO-305).
  * Registers its own throwaway users. Skips when the API isn't reachable.
  */
 import { describe, it, expect, beforeAll } from 'vitest'
@@ -41,6 +43,8 @@ const onboarding = { adults: 2, kidsCount: 0, cookingFreq: 'daily', restrictions
 describe.skipIf(!reachable)('allergies when joining a household (smoke)', () => {
   let owner: Session
   let guest: Session
+  let menuId = ''
+  let shrimpIds: string[] = []
   beforeAll(async () => {
     owner = await register('casa')
     guest = await register('invit')
@@ -92,6 +96,8 @@ describe.skipIf(!reachable)('allergies when joining a household (smoke)', () => 
     expect(rec.status, JSON.stringify(rec.json)).toBe(201)
     const gen = await call(owner)('POST', '/menu/generate', { userId: owner.userId, weekStart })
     expect(gen.status).toBe(201)
+    menuId = gen.json.id
+    shrimpIds = [rec.json.id]
     const ids = new Set<string>()
     for (const day of gen.json.days ?? []) {
       for (const slot of Object.values(day ?? {}) as Array<{ dishes?: Array<{ kind: string; recipeId?: string }> }>) {
@@ -109,4 +115,53 @@ describe.skipIf(!reachable)('allergies when joining a household (smoke)', () => 
     expect(ids.has(rec.json.id)).toBe(false)
     expect([...ids].filter((id) => !ok.has(id))).toEqual([])
   }, 90_000)
+
+  it('PRO-305: the owner changes one dish and no shellfish comes out for the guest', async () => {
+    expect(menuId).not.toBe('')
+    const api = call(owner)
+    // A shellfish recipe for every meal, starred by the owner so the
+    // matcher would prefer it if it only read the owner's restrictions.
+    const ing = await api('POST', '/ingredients/auto-create', { name: 'langostinos cocidos' })
+    expect(ing.status).toBeLessThan(300)
+    const rec = await api('POST', '/recipes', {
+      name: 'Langostinos cocidos (smoke)',
+      servings: 2,
+      meals: ['breakfast', 'lunch', 'snack', 'dinner'],
+      equipment: ['sartén'],
+      seasons: ['spring', 'summer', 'autumn', 'winter'],
+      ingredients: [{ ingredientId: ing.json.ingredient.id, quantity: 150, unit: 'g' }],
+      steps: [{ index: 0, text: 'Saltea los langostinos cocidos un minuto a fuego vivo.' }],
+      force: true,
+    })
+    expect(rec.status, JSON.stringify(rec.json)).toBe(201)
+    shrimpIds.push(rec.json.id)
+    for (const id of shrimpIds) expect((await api('POST', `/user/${owner.userId}/recipes/${id}/favorite`)).json.favorited).toBe(true)
+
+    const recipeIdsOf = (slot: { dishes?: Array<{ kind: string; recipeId?: string }> } | null | undefined) =>
+      (slot?.dishes ?? []).filter((d) => d.kind === 'recipe').map((d) => d.recipeId!)
+    const noShrimp = (ids: string[]) => expect(ids.filter((id) => shrimpIds.includes(id))).toEqual([])
+
+    for (let day = 0; day < 7; day++) {
+      // «Cambiar al azar» (regenerate the whole slot).
+      const put = await api('PUT', `/menu/${menuId}/day/${day}/meal/dinner`)
+      if (put.status !== 404) {
+        expect(put.status).toBe(200)
+        noShrimp(recipeIdsOf(put.json.days[day].dinner))
+      }
+      // Regenerate one dish.
+      const regen = await api('POST', `/menu/${menuId}/day/${day}/meal/dinner/dish/0/regenerate`)
+      if (regen.status === 200) noShrimp([regen.json.dish.recipeId])
+      else expect([400, 404, 409]).toContain(regen.status)
+      // Add a random dish.
+      const random = await api('POST', `/menu/${menuId}/day/${day}/meal/lunch/dish/random`)
+      if (random.status === 200) noShrimp([random.json.dish.recipeId])
+      else expect(random.status).toBe(409)
+      // Add a meal the day doesn't have (409 when it already exists).
+      for (const meal of ['breakfast', 'snack']) {
+        const add = await api('POST', `/menu/${menuId}/day/${day}/meal/${meal}`)
+        if (add.status === 201) noShrimp(recipeIdsOf(add.json.days[day][meal]))
+        else expect([409, 404]).toContain(add.status)
+      }
+    }
+  }, 120_000)
 })

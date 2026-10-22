@@ -222,10 +222,15 @@ describe('ordering shops inside their kind (PRO-287)', () => {
     // Saved: a fresh read has the same order.
     expect(((await api('GET', '/shops')).body as any[]).map((s) => s.id)).toEqual([second.id, (moved.body as any[])[1].id, first.id])
 
+    // The random menu can bring only fruit and veg (all to the frutería, ~1 run
+    // in 5): a pantry line typed by hand always goes to the súper.
+    const list = await api('GET', '/shopping-list')
+    expect((await api('POST', `/shopping-list/${list.body.id}/items`, { name: 'Arroz redondo', quantity: 1, unit: 'u' })).status).toBe(201)
+
     const r = await api('POST', '/shop-orders/prepare', {})
     expect(r.status).toBe(200)
     const superOrders = (r.body.orders as any[]).filter((o) => o.shop.kind === 'supermercado')
-    if ((r.body.orders as any[]).length) expect(superOrders.length).toBeGreaterThan(0)
+    expect(superOrders.length).toBeGreaterThan(0)
     for (const o of superOrders) expect(o.shopId).toBe(second.id)
 
     // Edges and validation.

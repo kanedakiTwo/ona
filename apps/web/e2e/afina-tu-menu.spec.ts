@@ -49,7 +49,17 @@ test('sign-up: 10 cards with buttons, then the questions; the first menu has no 
   })
 
   await page.goto('/onboarding')
+  // Allergies first (a beta tester, 2026-10-22): asked and saved before the 10 dishes, so they
+  // already leave out what the household doesn't eat.
+  const allergies = page.getByTestId('onboarding-allergies-first')
+  await expect(allergies.getByRole('heading', { name: /antes de nada, ¿hay algo que no comáis/i })).toBeVisible({ timeout: 20_000 })
+  await allergies.getByRole('checkbox', { name: /datos de salud/i }).check()
+  await allergies.getByRole('button', { name: /sin gluten/i }).click()
+  await allergies.getByRole('button', { name: 'Siguiente' }).click()
   await expect(page.getByRole('heading', { name: /dime qué te apetece/i })).toBeVisible({ timeout: 20_000 })
+  const me = JSON.parse((await page.evaluate(() => localStorage.getItem('ona_user')))!) as { id: string }
+  const saved = await (await page.request.get(`${API_URL}/user/${me.id}`, { headers: await auth(page) })).json()
+  expect(JSON.stringify(saved.restrictions).toLowerCase()).toContain('gluten')
   await expect(page.getByText(/Son 10 platos: dime si te apetecen/)).toBeVisible()
   await expect(page.getByRole('button', { name: 'Saltar' })).toBeVisible()
   await page.getByRole('button', { name: 'Empezar' }).click()
@@ -90,7 +100,8 @@ test('sign-up: 10 cards with buttons, then the questions; the first menu has no 
   await expect(web.or(firstQuestion)).toBeVisible({ timeout: 15_000 })
   if (await web.isVisible()) await web.click()
   await expect(firstQuestion).toBeVisible()
-  await expect(page.getByText('Primeros pasos · 1 de 6')).toBeVisible()
+  // Allergies already answered: five questions, not six.
+  await expect(page.getByText('Primeros pasos · 1 de 5')).toBeVisible()
 
   const headers = await auth(page)
   const memory = await (await page.request.get(`${API_URL}/memory`, { headers })).json()
@@ -115,7 +126,9 @@ test('sign-up: 10 cards with buttons, then the questions; the first menu has no 
   await next.click()
   await page.getByRole('button', { name: /sin prisa/i }).click() // PRO-138
   await next.click()
-  await next.click() // no restrictions
+  // No «¿Hay algo que no comas?» again: straight to the last question.
+  await expect(page.getByRole('heading', { name: /hay algo que no comas/i })).toHaveCount(0)
+  await expect(page.getByText('Primeros pasos · 5 de 5')).toBeVisible()
   await page.getByRole('button', { name: /salud/i }).click()
   await page.getByRole('button', { name: /empezar/i }).click()
   await expect(page).toHaveURL(/\/menu/, { timeout: 45_000 })
@@ -130,6 +143,8 @@ test('«Saltar» in the sign-up goes straight on to the questions', async ({ pag
   test.setTimeout(60_000)
   await registerFreshUser(page, { keepTaste: true })
   await page.goto('/onboarding')
+  // Allergies first; nothing to say → on to the dishes.
+  await page.getByTestId('onboarding-allergies-first').getByRole('button', { name: 'Siguiente' }).click({ timeout: 20_000 })
   await expect(page.getByRole('heading', { name: /dime qué te apetece/i })).toBeVisible({ timeout: 20_000 })
   await page.getByRole('button', { name: 'Saltar', exact: true }).click()
   const web = page.getByRole('button', { name: /prefiero la web/i })

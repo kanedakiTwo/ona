@@ -122,7 +122,7 @@ export function describeFact(f: Pick<ReadableFact, 'type' | 'value' | 'validUnti
     case 'notes': text = list(f.value) ? `Notas: ${list(f.value)}` : null; break
     case 'prep_habits': text = list(f.value) ? `Hábitos: ${list(f.value)}` : null; break
     case 'nutrition_principles': text = list(f.value) ? `Principios propios: ${list(f.value)}` : null; break
-    case 'protein_minimum': text = 'Proteína en cada plato: al menos 80 g de carne, pescado o huevo por ración, también en los entrantes y en los platos de arroz o legumbre'; break
+    case 'protein_minimum': text = 'Proteína en cada plato: al menos 80 g de carne, pescado o huevo por ración, también en los entrantes y en los platos de arroz, legumbre o pasta'; break
     case 'cooking_skill': text = `Nivel de cocina: ${({ easy: 'fácil', medium: 'medio', advanced: 'avanzado' } as Record<string, string>)[String(f.value)] ?? String(f.value)}`; break
     case 'weekly_budget_eur': text = `Presupuesto semanal: ${f.value} €`; break
     case 'household.adults': text = `Adultos en casa: ${f.value}`; break

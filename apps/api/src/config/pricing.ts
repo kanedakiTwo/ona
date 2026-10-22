@@ -107,6 +107,14 @@ export const PRICES: PriceTable = {
   // gpt-image-2 through AiKit's inference API (PRO-265): 0.0044 € per photo,
   // what AiKit charges — read off the key's spend counter (2026-10-19, D-090).
   'aikit/gpt-image-2': { currency: 'EUR', perImage: 0.0044 },
+  // D-117 (2026-10-22): the same model in high quality. UNVERIFIED: AiKit doesn't return the price of
+  // a call; until the key's spend counter is read, the default-quality price.
+  'aikit/gpt-image-2-high': { currency: 'EUR', perImage: 0.0044 },
+  // The second try when the vision check turns the first photo down (D-117), and the other models
+  // compared on 2026-10-19 (D-090): what AiKit charged per photo then.
+  'aikit/nano-banana-pro': { currency: 'EUR', perImage: 0.133 },
+  'aikit/gemini-25-flash': { currency: 'EUR', perImage: 0.035 },
+  'aikit/flux-2-pro': { currency: 'EUR', perImage: 0.027 },
   // Historical: the old Imagen-fal route (403 to keys since 2026-10-08); kept so old rows keep their price.
   'aikit/imagen-fal': { currency: 'USD', perImage: 0.04 }, // UNVERIFIED (fal Imagen list price; AiKit's own markup unknown)
   // gpt-image-1, quality medium, 1536×1024: ~1,570 output image tokens at $40/MTok (measured 2026-10-08).

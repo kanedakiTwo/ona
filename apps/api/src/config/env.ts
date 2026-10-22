@@ -61,6 +61,12 @@ export const env = {
   RECIPE_IMAGE_PROVIDER: (process.env.RECIPE_IMAGE_PROVIDER || 'auto') as 'auto' | 'aikit' | 'openai',
   // Model asked of AiKit's images endpoint. Not the `imagen-4` family (500s there).
   AIKIT_IMAGE_MODEL: process.env.AIKIT_IMAGE_MODEL || 'gpt-image-2',
+  // Quality asked of the first model ('low' | 'medium' | 'high'; empty: AiKit's default).
+  // D-117 (Miguel, 2026-10-22): gpt-image-2 in high quality first…
+  AIKIT_IMAGE_QUALITY: process.env.AIKIT_IMAGE_QUALITY ?? 'high',
+  // …and, when the vision check turns that photo down, the second try with this model
+  // (target: about 1 photo in 5). Empty: the second try repeats the first model.
+  AIKIT_IMAGE_RETRY_MODEL: process.env.AIKIT_IMAGE_RETRY_MODEL ?? 'nano-banana-pro',
   OPENAI_IMAGE_MODEL: process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1',
   /**
    * Where generated recipe images are written.

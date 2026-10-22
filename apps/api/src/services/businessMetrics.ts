@@ -341,7 +341,7 @@ export const FEATURE_DEFINITIONS: Record<string, string> = {
   voice_realtime: 'Historical: one OpenAI Realtime voice session (retired 2026-10-09).',
   recipe_extract_photo: 'One recipe read from a photo (web or WhatsApp).',
   recipe_extract_url: 'One recipe read from a link (web or Mimo).',
-  recipe_image: 'One photo generated (AiKit gpt-image-2 or OpenAI as reserve); a retry after a failed check is another row.',
+  recipe_image: 'One photo generated (AiKit gpt-image-2 in high quality; nano-banana-pro on a retry after a failed check, D-117; OpenAI as reserve); each try is a row.',
   recipe_image_describe: 'One description of the plated dish written before generating its photo.',
   recipe_image_check: 'One check of a generated photo (right dish, house style).',
   ingredient_match: 'One disambiguation of the ingredients of an extracted recipe.',

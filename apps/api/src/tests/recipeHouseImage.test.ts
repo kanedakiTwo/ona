@@ -53,6 +53,12 @@ describe('makeHouseImage', () => {
     expect(out.png?.toString()).toBe('img1')
   })
 
+  it('the second attempt is a different call: the retry model (D-117)', async () => {
+    const d = deps([v(false, true), v(true, true)])
+    await makeHouseImage(dish, d)
+    expect((d.generate as any).mock.calls.map((c: unknown[]) => c[1])).toEqual([1, 2])
+  })
+
   it('prompts with the visual description of the plated dish', async () => {
     const d = deps([v(true, true)])
     await makeHouseImage(dish, d)

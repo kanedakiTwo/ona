@@ -35,6 +35,7 @@ import {
   type WeekdayCookingChoice,
 } from "@ona/shared"
 import { RestrictionsPicker } from "./RestrictionsPicker"
+import { withTyped } from "@/lib/restrictionText"
 import { Accent, OnboardingHeader, OnboardingShell } from "./OnboardingShell"
 import { OnboardingChannelChoice, OnboardingWhatsAppLink } from "./OnboardingWhatsApp"
 import { useWhatsAppLinkCode, useWhatsAppStatus } from "@/hooks/useWhatsApp"
@@ -208,6 +209,9 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
   const [allergiesFirst, setAllergiesFirst] = useState<"ask" | "done">("ask")
   const [allergiesAnswered, setAllergiesAnswered] = useState(false)
   const [savingAllergies, setSavingAllergies] = useState(false)
+  /** Typed in the allergies box and not added yet: it counts as added (2026-10-22). */
+  const [typedRestriction, setTypedRestriction] = useState("")
+  const restrictionsWithTyped = withTyped(data.restrictions, typedRestriction)
   const order = allergiesAnswered ? [1, 2, 3, 4, 6] : [1, 2, 3, 4, RESTRICTIONS_STEP, 6]
   const position = (s: number) => order.indexOf(s) + 1
   const visibleTotal = order.length
@@ -257,16 +261,27 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
     if (key) trackUsage("onboarding_step", { step: key, action: "hecho", ...(via ? { via } : {}) })
   }
 
+  /** Leaving the allergies step: what is typed and not added yet goes in (2026-10-22). */
+  function keepTyped(): OnboardingData {
+    if (step !== RESTRICTIONS_STEP || !typedRestriction.trim()) return data
+    const kept = { ...data, restrictions: restrictionsWithTyped }
+    setData(kept)
+    setTypedRestriction("")
+    return kept
+  }
+
   function next() {
     const i = order.indexOf(step)
     if (i < 0 || i >= order.length - 1) return
+    const current = keepTyped()
     stepDone(onboardingStepKey(step))
     setStep(order[i + 1])
     // PRO-178: the next visit (any device) resumes here with these answers.
-    if (user) api.put(`/user/${user.id}/onboarding-draft`, onboardingDraftPayload(order[i + 1], data)).catch(() => {})
+    if (user) api.put(`/user/${user.id}/onboarding-draft`, onboardingDraftPayload(order[i + 1], current)).catch(() => {})
   }
 
   function prev() {
+    keepTyped()
     const i = order.indexOf(step)
     if (i > 0) setStep(order[i - 1])
     else if (canBackToChannel) setChannel("choose")
@@ -275,12 +290,14 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
   async function answerAllergiesFirst() {
     if (!user) return
     setError("")
-    if (healthConsent && data.restrictions.length > 0) {
+    if (healthConsent && restrictionsWithTyped.length > 0) {
       setSavingAllergies(true)
       try {
         await api.post(`/user/${user.id}/health-consent`, { consent: true })
-        const updated = await api.put<{ restrictions?: string[] }>(`/user/${user.id}`, { restrictions: data.restrictions })
-        updateUser({ restrictions: updated.restrictions ?? data.restrictions })
+        const updated = await api.put<{ restrictions?: string[] }>(`/user/${user.id}`, { restrictions: restrictionsWithTyped })
+        updateUser({ restrictions: updated.restrictions ?? restrictionsWithTyped })
+        setData((d) => ({ ...d, restrictions: restrictionsWithTyped }))
+        setTypedRestriction("")
       } catch {
         setSavingAllergies(false)
         setError("No hemos podido guardarlo. Inténtalo otra vez.")
@@ -304,7 +321,7 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
         adults: data.adults,
         kidsCount: data.kidsCount,
         cookingFreq: data.cookingFreq,
-        restrictions: healthConsent ? data.restrictions : [],
+        restrictions: healthConsent ? restrictionsWithTyped : [],
         priority: data.priority,
         healthConsent,
         weekdayCooking: data.weekdayCooking ?? undefined,
@@ -382,6 +399,7 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
                 onConsentChange={setHealthConsent}
                 restrictions={data.restrictions}
                 onChange={(restrictions) => setData({ ...data, restrictions })}
+                onTypingChange={setTypedRestriction}
               />
             </div>
             <div className="sticky bottom-0 z-10 -mx-4 border-t border-border-soft bg-cream/95 px-4 pt-3 pb-[calc(var(--safe-bottom)+12px)] backdrop-blur-sm lg:mx-0 lg:border-t-0 lg:px-0 lg:pb-4">
@@ -641,6 +659,7 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
                   onConsentChange={setHealthConsent}
                   restrictions={data.restrictions}
                   onChange={(restrictions) => setData({ ...data, restrictions })}
+                  onTypingChange={setTypedRestriction}
                 />
               </section>
             )}

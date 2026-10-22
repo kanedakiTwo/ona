@@ -27,7 +27,11 @@ export function RestrictionsPicker({
   onConsentChange: (consent: boolean) => void
   restrictions: string[]
   onChange: (restrictions: string[]) => void
-  /** What is typed and not added yet, so the page can count it («Guardar», not «No tengo ninguna»). */
+  /**
+   * What is typed and not added yet: the screen counts and saves it
+   * (`withTyped`), so «Guardar» without Enter keeps «pimiento» (2026-10-22).
+   * Not added on blur: the new chip moved the button under the finger.
+   */
   onTypingChange?: (text: string) => void
 }) {
   const [tagInput, setTagInputState] = useState("")
@@ -97,8 +101,6 @@ export function RestrictionsPicker({
             value={tagInput}
             onChange={(e) => setTagInput(e.target.value)}
             onKeyDown={handleTagKeyDown}
-            // Typed and then «Guardar» without Enter used to be lost (2026-10-22).
-            onBlur={() => addRestriction(tagInput)}
             disabled={!consent}
             placeholder="Otra: escríbela (p. ej. pimiento)"
             className={FIELD}

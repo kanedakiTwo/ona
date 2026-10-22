@@ -83,14 +83,19 @@ export const STOCK_BONE_RULES: ReadonlyArray<readonly [RegExp, number]> = [
  * PRO-281 — whole fish and shellfish in their shell, as bought. A plain
  * «mejillones» or «dorada» is taken as bought whole (that is how the catalogue
  * writes them); the name never gets a value when it says it is already the
- * edible part (`SHELLED`, plus everything in `BONELESS`). Values are Cocina's
- * [I]; BEDCA (porción comestible) next to each.
+ * edible part (`SHELLED`, plus everything in `BONELESS`). Mejillón, almeja,
+ * chirla, berberecho, dorada and lubina come from the Ministerio de Agricultura
+ * product sheets (Moreiras et al. tables, 2013; PRO-337, Cocina 2026-10-22) [V];
+ * the rest are Cocina's [I], with BEDCA (porción comestible) next to them.
  */
 export const SEAFOOD_EDIBLE_FRACTION_RULES: ReadonlyArray<readonly [RegExp, number]> = [
-  [/^mejillon(es)?\b/, 0.28], // BEDCA mejillón 0.25 (Cocina 0.28)
-  [/^(almejas?|berberechos?|chirlas?)\b/, 0.18], // BEDCA almeja y chirla 0.56, berberecho 0.80 — muy por encima; Cocina decide (0.18)
-  [/^(gambas?|langostinos?|cigalas?)\b/, 0.48], // BEDCA gamba roja, langostino y cigala 0.47
-  [/^(doradas?|lubinas?|besugos?)\b/, 0.5], // BEDCA besugo 0.55, lubina 0.67, dorada 0.70 (Cocina 0.5)
+  [/^mejillon(es)?\b/, 0.25], // MAPA mejillón 25 %: https://servicio.mapa.gob.es/ca/ministerio/servicios/informacion/mejillon_tcm34-102425.pdf
+  [/^(almejas?|chirlas?)\b/, 0.15], // MAPA almeja 15 %: https://servicio.mapama.gob.es/fr/ministerio/servicios/informacion/almeja_tcm36-102764.pdf
+  [/^berberechos?\b/, 0.15], // MAPA berberecho 15 %: https://servicio.mapa.gob.es/ca/ministerio/servicios/informacion/berberecho_tcm34-102470.pdf
+  [/^(gambas?|langostinos?|cigalas?)\b/, 0.48], // BEDCA gamba roja, langostino y cigala 0.47 (Cocina 0.48)
+  [/^doradas?\b/, 0.55], // MAPA dorada 55 %: https://servicio.mapama.gob.es/en/ministerio/servicios/informacion/dorada_tcm38-102448.pdf
+  [/^lubinas?\b/, 0.67], // MAPA lubina 67 %: https://servicio.mapama.gob.es/ca/ministerio/servicios/informacion/lubina_tcm34-102841.pdf
+  [/^besugos?\b/, 0.5], // BEDCA besugo 0.55 (Cocina 0.5)
   [/^pescados?( [a-z]+)? enter[oa]s?\b/, 0.5], // «pescado entero», «pescado blanco entero»
 ]
 
@@ -121,12 +126,30 @@ export interface EdibleFractionResult {
 }
 
 /**
+ * Values the rules gave before PRO-337 (PRO-281's first factors). A row still
+ * holding one of them was set by this boot step, not by hand, so it moves to
+ * the Ministerio's value.
+ */
+const SUPERSEDED_RULE_VALUES: ReadonlyArray<readonly [RegExp, number]> = [
+  [/^mejillon(es)?\b/, 0.28],
+  [/^(almejas?|berberechos?|chirlas?)\b/, 0.18],
+  [/^(doradas?|lubinas?)\b/, 0.5],
+]
+
+/** Is `current` a value an earlier version of the rules wrote for this name? */
+export function isSupersededRuleValue(name: string, current: number): boolean {
+  const n = normalize(name)
+  return SUPERSEDED_RULE_VALUES.some(([re, v]) => re.test(n) && Math.abs(current - v) < 1e-4)
+}
+
+/**
  * Boot step (after `db:migrate`): give the bone-in cuts still at the default
  * 1 the fraction the rules say, then recompute the cached nutrition (and the
  * «incompleta» mark) of every recipe that uses one of them — the
  * `recomputeRecipeNutrition --scope=all --execute` the task asks for, limited
  * to the recipes the change touches. A value someone set by hand (≠ 1) is
- * never changed. Idempotent: once set, the next boot finds nothing to do.
+ * never changed; a value an earlier version of the rules wrote is
+ * (`isSupersededRuleValue`, PRO-337). Idempotent: once set, the next boot finds nothing to do.
  */
 export async function applyEdibleFractions(
   db: Db,
@@ -135,11 +158,13 @@ export async function applyEdibleFractions(
   const rows = await db
     .select({ id: ingredients.id, name: ingredients.name, edibleFraction: ingredients.edibleFraction })
     .from(ingredients)
-  const changes: Array<{ id: string; name: string; fraction: number }> = []
+  const changes: Array<{ id: string; name: string; fraction: number; from: number }> = []
   for (const r of rows) {
-    if (r.edibleFraction !== 1) continue
+    if (r.edibleFraction !== 1 && !isSupersededRuleValue(r.name, r.edibleFraction)) continue
     const f = edibleFractionForName(r.name)
-    if (f != null) changes.push({ id: r.id, name: r.name, fraction: f })
+    if (f != null && Math.abs(f - r.edibleFraction) >= 1e-4) {
+      changes.push({ id: r.id, name: r.name, fraction: f, from: r.edibleFraction })
+    }
   }
   if (changes.length === 0) {
     log('[edible-fraction] nada que cambiar')
@@ -149,7 +174,10 @@ export async function applyEdibleFractions(
     await db
       .update(ingredients)
       .set({ edibleFraction: c.fraction })
-      .where(and(eq(ingredients.id, c.id), eq(ingredients.edibleFraction, 1)))
+      .where(
+        // A float4 read back never equals the JS number exactly: only the default 1 is pinned.
+        c.from === 1 ? and(eq(ingredients.id, c.id), eq(ingredients.edibleFraction, 1)) : eq(ingredients.id, c.id),
+      )
   }
   const recomputed = await recomputeRecipesUsing(db, changes.map((c) => c.id))
   log(

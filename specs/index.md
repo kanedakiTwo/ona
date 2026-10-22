@@ -318,6 +318,12 @@ WhatsApp channel for the assistant via Meta WhatsApp Cloud API: webhook (`GET` v
 
 **Source**: `apps/api/src/routes/whatsapp.ts`, `apps/api/src/services/whatsapp/`, `apps/api/src/services/assistantFlags.ts`, `apps/api/src/services/anonymise.ts`, `apps/api/src/db/migrations/0030_whatsapp.sql`, `apps/api/src/services/assistant/systemPrompt.ts`, `apps/api/src/services/stt.ts`, `apps/api/src/services/recipeImport.ts`, `apps/web/src/components/profile/WhatsAppCard.tsx`, `apps/web/src/hooks/useWhatsApp.ts`
 
+## [Telegram](./telegram.md)
+
+Mimo on Telegram / canal de Telegram (PRO-313, piece 1): **switched off and offered to nobody** until `TELEGRAM_BOT_TOKEN` + `TELEGRAM_WEBHOOK_SECRET` + `TELEGRAM_BOT_USERNAME` are set; no profile button until Legal's OK (LEG-35); avisos only by the main channel (piece 3). Telegram Bot API webhook `POST /telegram/webhook` guarded by `X-Telegram-Bot-Api-Secret-Token` (constant-time compare), private chats only, update_id dedupe, linking with a one-time 10-minute code through `t.me/<bot>?start=<code>` (`/start <code>`, `POST /telegram/link-code` → 404 `TELEGRAM_DISABLED` while off, `DELETE /telegram/link`), `telegram_links` (chat ↔ user, 12 h jsonb history) / `telegram_link_codes` (migration 0093), same engine as WhatsApp (`mode: 'whatsapp'`, `surface: 'telegram'`: same tools and the same no-health-data rule, prompt reworded «Canal Telegram»), reply keyboard for `[[opciones]]`, HTML bold, text only, approved first message and «sin cuenta» text, cost feature `telegram_chat`.
+
+**Source**: `apps/api/src/routes/telegram.ts`, `apps/api/src/services/telegram/`, `apps/api/src/db/migrations/0093_telegram_channel.sql`, `apps/api/src/services/assistant/systemPrompt.ts`
+
 ---
 
 ## [Design System](./design-system.md)

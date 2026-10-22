@@ -266,6 +266,18 @@ export const env = {
   /** Overridable so local E2E can point the client at a mock Graph server. */
   WHATSAPP_GRAPH_BASE_URL: (process.env.WHATSAPP_GRAPH_BASE_URL || 'https://graph.facebook.com').replace(/\/+$/, ''),
   /**
+   * Mimo on Telegram (PRO-313, piece 1; specs/telegram.md). Optional: the
+   * channel is off — webhook and `POST /telegram/link-code` answer 404 —
+   * unless all three are set. Nothing in the web offers it yet.
+   *   - BOT_TOKEN: the bot's token from @BotFather.
+   *   - WEBHOOK_SECRET: 1–256 chars [A-Za-z0-9_-], passed as `secret_token`
+   *     to setWebhook; Telegram sends it back in X-Telegram-Bot-Api-Secret-Token.
+   *   - BOT_USERNAME: the bot's username (without @), for t.me/<bot>?start=<code>.
+   */
+  TELEGRAM_BOT_TOKEN: (process.env.TELEGRAM_BOT_TOKEN || '').trim(),
+  TELEGRAM_WEBHOOK_SECRET: (process.env.TELEGRAM_WEBHOOK_SECRET || '').trim(),
+  TELEGRAM_BOT_USERNAME: (process.env.TELEGRAM_BOT_USERNAME || '').trim().replace(/^@/, ''),
+  /**
    * OpenAI speech-to-text model for WhatsApp voice notes. Full gpt-4o-transcribe
    * (≈$0.006/min): the mini model mis-heard short Spanish notes as Galician.
    */

@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { env } from '../../config/env.js'
 import { clockNote, loadUserContext } from './contextLoader.js'
-import { buildSystemParts, type AssistantMode } from './systemPrompt.js'
+import { buildSystemParts, type AssistantMode, type ChatSurface } from './systemPrompt.js'
 import { skills, getToolDefinitions } from './skills.js'
 import type { AssistantResponse, ChatMessage, SkillContext, SkillDefinition, SkillResult, ToolTrace } from './types.js'
 import { recordSkillActivity } from '../activityEvents.js'
@@ -47,6 +47,13 @@ export interface ChatOptions {
   onboarding?: boolean
   /** Photos sent with the message (WhatsApp): Mimo sees them and answers about them. */
   images?: { mediaType: string; data: string }[]
+  /**
+   * PRO-313: the chat app the `whatsapp` mode really runs in. Telegram keeps
+   * the WhatsApp mode (same tools, same health rule: `ctx.channel` stays
+   * 'whatsapp') and only rewords the channel in the prompt; the offers at the
+   * end of a reply (family, other household, leftovers) are WhatsApp-only.
+   */
+  surface?: ChatSurface
 }
 
 /**
@@ -74,7 +81,7 @@ export async function chat(
   // 2026-10-16 the time was still in the context block, which re-wrote the
   // context and the history on every message. The clock now rides on the
   // newest message (buildTurnMessages).
-  const { instructions, context } = buildSystemParts(userContext, mode, { onboarding: opts.onboarding === true })
+  const { instructions, context } = buildSystemParts(userContext, mode, { onboarding: opts.onboarding === true, surface: opts.surface })
   const system = [
     { type: 'text' as const, text: instructions, cache_control: { type: 'ephemeral' as const } },
     { type: 'text' as const, text: context },
@@ -92,13 +99,15 @@ export async function chat(
   )
 
   // PRO-164: a «no» right after Mimo's offer to invite another household turns it off for good.
-  const offerApplies = (mode === 'text' || mode === 'whatsapp') && opts.onboarding !== true
+  // PRO-313: none of the reply offers on Telegram (their texts and budgets are WhatsApp's).
+  const offersOn = opts.onboarding !== true && opts.surface !== 'telegram'
+  const offerApplies = (mode === 'text' || mode === 'whatsapp') && offersOn
   if (offerApplies) await recordInviteOfferAnswer(userId, message, history)
   // PRO-262: a «no» right after Mimo's offer to invite the family turns it off for good.
-  const familyOfferMode = (mode === 'text' || mode === 'whatsapp') && opts.onboarding !== true ? mode : null
+  const familyOfferMode = (mode === 'text' || mode === 'whatsapp') && offersOn ? mode : null
   if (familyOfferMode) await recordFamilyInviteAnswer(userId, message, history)
   // PRO-285: the message right after Mimo's leftovers question is its answer (tagged `sobras`).
-  if (mode === 'whatsapp' && opts.onboarding !== true) await recordLeftoversAnswer(userId, message, history)
+  if (mode === 'whatsapp' && offersOn) await recordLeftoversAnswer(userId, message, history)
 
   // 5. Model ↔ tools loop (see runToolLoop).
   const result = await runToolLoop({

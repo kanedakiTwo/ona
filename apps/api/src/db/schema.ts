@@ -1051,6 +1051,44 @@ export const whatsappLinkCodes = pgTable('whatsapp_link_codes', {
 ])
 
 /**
+ * Mimo on Telegram (PRO-313, piece 1; specs/telegram.md): one Telegram
+ * private chat per account. Off unless `TELEGRAM_BOT_TOKEN` (and the webhook
+ * secret and bot username) are set. `history` keeps only the last 12 h of
+ * the conversation (the same window WhatsApp reads back), as the rows
+ * `whatsapp/history.ts` takes, so the same history builder serves both
+ * channels; unlinking deletes it with the row.
+ */
+export const telegramLinks = pgTable('telegram_links', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().unique().references(() => users.id, { onDelete: 'cascade' }),
+  /** Telegram chat id of the private chat with the bot (as text: it can exceed 32 bits). */
+  chatId: text('chat_id').notNull().unique(),
+  linkedAt: timestamp('linked_at', { withTimezone: true }).notNull().defaultNow(),
+  lastInboundAt: timestamp('last_inbound_at', { withTimezone: true }),
+  /** Highest `update_id` handled: a repeated or older update is dropped. */
+  lastUpdateId: bigint('last_update_id', { mode: 'number' }),
+  history: jsonb('history').notNull().default([]).$type<Array<{
+    direction: 'in' | 'out'
+    kind: string
+    body: string
+    status: string
+    createdAt: string
+    meta?: { toolTrace?: Array<{ name: string; input?: string; summary?: string; error?: boolean }> }
+  }>>(),
+})
+
+/** One-time codes for `t.me/<bot>?start=<code>` (10 minutes, like WhatsApp's). */
+export const telegramLinkCodes = pgTable('telegram_link_codes', {
+  code: text('code').primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_tg_link_codes_user').on(t.userId),
+])
+
+/**
  * Every inbound + outbound WhatsApp message. Serves three jobs: dedupe Meta's
  * webhook retries (unique `wamid`), server-side chat history (the web keeps
  * history in the client; WhatsApp has no client), and an audit trail.

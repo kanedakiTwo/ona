@@ -34,6 +34,7 @@ import pantryRoutes from './routes/pantry.js'
 import cookbooksRoutes from './routes/cookbooks.js'
 import recipePhotosRoutes from './routes/recipePhotos.js'
 import whatsappRoutes, { whatsappWebhookRouter } from './routes/whatsapp.js'
+import telegramRoutes from './routes/telegram.js'
 import metricsRoutes from './routes/metrics.js'
 import shopOrdersRoutes, { publicShopOrdersRouter } from './routes/shopOrders.js'
 import appErrorsRoutes, { clientErrorsRouter } from './routes/appErrors.js'
@@ -177,6 +178,8 @@ app.use(usageRoutes)
 // Per-route authMiddleware (no catch-all) — kept next to pushRoutes for the
 // same mount-order reason.
 app.use(whatsappRoutes)
+// Mimo on Telegram (PRO-313): public webhook (secret header) + per-route auth; 404 while off.
+app.use(telegramRoutes)
 // GET /admin/metrics accepts `x-metrics-token` instead of a JWT, so it must
 // be mounted before the catch-all `router.use(authMiddleware)` routers below.
 app.use(metricsRoutes)

@@ -62,3 +62,37 @@ describe('catalogue audit with a bone-in cut (PRO-194)', () => {
     expect(lineGrams({ name: 'ternera', quantity: 200, unit: 'g' })).toBe(200)
   })
 })
+
+describe('edibleFractionForName — pescado entero y marisco con concha (PRO-281)', () => {
+  it('da su merma al pescado entero y al marisco con su concha o cáscara', () => {
+    expect(edibleFractionForName('mejillones')).toBe(0.28)
+    expect(edibleFractionForName('Mejillón')).toBe(0.28)
+    expect(edibleFractionForName('mejillones con concha')).toBe(0.28)
+    for (const n of ['almejas', 'berberechos', 'chirlas', 'almejas con concha']) expect(edibleFractionForName(n), n).toBe(0.18)
+    for (const n of ['gambas', 'langostinos', 'cigalas', 'gambas enteras', 'langostinos con cáscara']) expect(edibleFractionForName(n), n).toBe(0.48)
+    for (const n of ['dorada', 'lubina', 'besugo', 'doradas', 'pescado entero', 'pescado blanco entero']) expect(edibleFractionForName(n), n).toBe(0.5)
+  })
+
+  it('nunca cuando el nombre dice que ya es la parte comestible', () => {
+    for (const n of [
+      'gambas peladas', 'langostinos congelados pelados', 'mejillones sin concha', 'carne de mejillón',
+      'mejillones en escabeche', 'almejas en conserva', 'almejas al natural', 'berberechos en lata',
+      'lomos de lubina', 'filetes de dorada', 'dorada limpia', 'gambas sin cáscara', 'pescado blanco',
+      'caldo de pescado', 'fumet de marisco',
+    ])
+      expect(edibleFractionForName(n), n).toBeNull()
+  })
+})
+
+describe('edibleFractionForName — huesos para caldo (PRO-282)', () => {
+  it('los huesos que solo dan sabor al caldo cuentan 0, aunque el nombre diga «caldo»', () => {
+    for (const n of ['huesos para caldo', 'hueso de jamón', 'hueso de rodilla', 'hueso de caña o morcillo', 'espinazo de cerdo', 'carcasa de pollo', 'carcasas de gallina', 'cartílago de ternera', 'espinas de pescado'])
+      expect(edibleFractionForName(n), n).toBe(0)
+  })
+
+  it('el caldo hecho con huesos no es un hueso', () => {
+    expect(edibleFractionForName('caldo de huesos')).toBeNull()
+    expect(edibleFractionForName('fondo de huesos')).toBeNull()
+    expect(edibleFractionForName('jamón serrano')).toBeNull()
+  })
+})

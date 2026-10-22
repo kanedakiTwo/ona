@@ -16,6 +16,13 @@
  * anything «deshuesado», «sin hueso», «fileteado», «picado», «carne de…»
  * or a stock is never touched.
  *
+ * PRO-281 adds whole fish and shellfish in their shell, and PRO-282 the
+ * stock bones (0: nothing of them is eaten). USDA SR Legacy gives these raw
+ * entries as edible portion with 0 % refuse (`FOOD_DES.Refuse`, sr28asc, read
+ * 2026-10-22), so the reference for them is the Spanish BEDCA «porción
+ * comestible» (bedca.net, read 2026-10-22); where it differs from Cocina's
+ * value the comment says so and the value stays Cocina's, for Cocina to decide.
+ *
  * Spec: ../../../../../specs/nutrition.md ("Edible weight")
  */
 import { and, eq, inArray } from 'drizzle-orm'
@@ -61,14 +68,46 @@ export const EDIBLE_FRACTION_RULES: ReadonlyArray<readonly [RegExp, number]> = [
   [/^perdi(z|ces)\b/, 0.65], // ≈ whole partridge
 ]
 
+/**
+ * PRO-282 — bones that only flavour a stock: nothing of them is eaten (0).
+ * Checked before `BONELESS`, whose «caldo» would hide «huesos para caldo».
+ * Anchored at the start, so «caldo de huesos» (the stock itself) never matches.
+ * What the stock draws from the bone is not counted (a little low, on purpose).
+ */
+export const STOCK_BONE_RULES: ReadonlyArray<readonly [RegExp, number]> = [
+  [/^(huesos?|espinazos?|carcasas?|cartilagos?|raspas?)\b/, 0], // «huesos para caldo», «hueso de jamón», «hueso de rodilla», «carcasa de pollo»
+  [/^espinas de pescado\b/, 0],
+]
+
+/**
+ * PRO-281 — whole fish and shellfish in their shell, as bought. A plain
+ * «mejillones» or «dorada» is taken as bought whole (that is how the catalogue
+ * writes them); the name never gets a value when it says it is already the
+ * edible part (`SHELLED`, plus everything in `BONELESS`). Values are Cocina's
+ * [I]; BEDCA (porción comestible) next to each.
+ */
+export const SEAFOOD_EDIBLE_FRACTION_RULES: ReadonlyArray<readonly [RegExp, number]> = [
+  [/^mejillon(es)?\b/, 0.28], // BEDCA mejillón 0.25 (Cocina 0.28)
+  [/^(almejas?|berberechos?|chirlas?)\b/, 0.18], // BEDCA almeja y chirla 0.56, berberecho 0.80 — muy por encima; Cocina decide (0.18)
+  [/^(gambas?|langostinos?|cigalas?)\b/, 0.48], // BEDCA gamba roja, langostino y cigala 0.47
+  [/^(doradas?|lubinas?|besugos?)\b/, 0.5], // BEDCA besugo 0.55, lubina 0.67, dorada 0.70 (Cocina 0.5)
+  [/^pescados?( [a-z]+)? enter[oa]s?\b/, 0.5], // «pescado entero», «pescado blanco entero»
+]
+
 /** Never bone-in, whatever the rest of the name says. */
 const BONELESS = /deshuesad|sin hueso|filete|fileteado|picad|carne de|caldo|fondo|pechuga|lata|conserva/
+
+/** Seafood that is already the edible part (peeled, cleaned, loins, tins). */
+const SHELLED = /limpi|lomo|pelad|sin concha|sin cascara|sin cabeza|escabeche|al natural/
 
 /** The edible fraction the rules give a catalogue name, or null when none applies. */
 export function edibleFractionForName(name: string): number | null {
   const n = normalize(name)
+  for (const [re, f] of STOCK_BONE_RULES) if (re.test(n)) return f
   if (BONELESS.test(n)) return null
   for (const [re, f] of EDIBLE_FRACTION_RULES) if (re.test(n)) return f
+  if (SHELLED.test(n)) return null
+  for (const [re, f] of SEAFOOD_EDIBLE_FRACTION_RULES) if (re.test(n)) return f
   return null
 }
 

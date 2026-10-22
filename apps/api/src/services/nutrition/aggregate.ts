@@ -143,7 +143,24 @@ function toGrams(
 
 /** Edible share (PRO-194): 1 when unset or out of range. */
 export function edibleShare(fraction: number | null | undefined): number {
-  return fraction != null && Number.isFinite(fraction) && fraction > 0 && fraction <= 1 ? fraction : 1
+  // 0 is a real value since PRO-282 (stock bones: nothing is eaten).
+  return fraction != null && Number.isFinite(fraction) && fraction >= 0 && fraction <= 1 ? fraction : 1
+}
+
+/**
+ * A line whose note says it is already the edible part («peladas», «sin
+ * concha», «en lomos», «filetes sin piel ni espinas») counts whole, even when
+ * its ingredient has a fraction (PRO-281: the catalogue's «gambas» are whole,
+ * but «Arroz tres delicias» asks for them «peladas»). «limpios» does not: a
+ * cleaned mussel or a gutted sea bream still has its shell or its bones.
+ */
+const ALREADY_EDIBLE_NOTE = /pelad|sin (concha|cascara|caparazon|espinas|huesos?)|deshuesad|\blomos?\b|\bfiletes?\b|solo la carne/
+
+export function lineEdibleShare(fraction: number | null | undefined, note?: string | null): number {
+  const share = edibleShare(fraction)
+  if (share === 1 || !note) return share
+  const n = note.normalize('NFD').replace(/\p{Diacritic}+/gu, '').toLowerCase()
+  return ALREADY_EDIBLE_NOTE.test(n) ? 1 : share
 }
 
 /** Round to 1 decimal — kcal is rounded to integer separately. */
@@ -208,7 +225,7 @@ export function aggregateNutrition(input: AggregateInput): AggregateResult {
 
     // Per-100g → grams eaten (frying/confit fat: only what the food absorbs;
     // bone-in cuts: only the edible part, PRO-194).
-    const factor = (conv.grams * cookingMediumFactor(ing.note, entry) * edibleShare(entry.edibleFraction)) / 100
+    const factor = (conv.grams * cookingMediumFactor(ing.note, entry) * lineEdibleShare(entry.edibleFraction, ing.note)) / 100
     totalKcal += entry.calories * factor
     totalProtein += entry.protein * factor
     totalCarbs += entry.carbs * factor

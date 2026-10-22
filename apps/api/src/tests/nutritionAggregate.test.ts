@@ -9,6 +9,8 @@ import { describe, it, expect } from 'vitest'
 import type { RecipeIngredient, Unit } from '@ona/shared'
 import {
   aggregateNutrition,
+  edibleShare,
+  lineEdibleShare,
   type IngredientCatalogEntry,
 } from '../services/nutrition/aggregate.js'
 
@@ -605,10 +607,58 @@ describe('aggregateNutrition — edible fraction (PRO-194)', () => {
   })
 
   it('treats a missing or out-of-range fraction as 1', () => {
-    for (const edibleFraction of [undefined, null, 0, 1.5, Number.NaN]) {
+    for (const edibleFraction of [undefined, null, -0.2, 1.5, Number.NaN]) {
       const e = makeEntry({ id: 'x', name: 'ternera', protein: 20, edibleFraction })
       const r = aggregateNutrition({ servings: 1, ingredients: [makeIngredient({ ingredientId: 'x', quantity: 100, unit: 'g' })] as any, catalog: catalogOf([e]) })
       expect(r.perServing.proteinG).toBe(20)
     }
+  })
+})
+
+describe('aggregateNutrition — huesos de caldo y marisco con concha (PRO-281, PRO-282)', () => {
+  it('edibleShare(0) es 0: lo que no se come no suma', () => {
+    expect(edibleShare(0)).toBe(0)
+  })
+
+  it('«huesos para caldo 8 u» suma 0 kcal', () => {
+    const huesos = makeEntry({ id: 'huesos', name: 'huesos para caldo', calories: 50, protein: 5, fat: 3, unitWeight: 250, edibleFraction: 0 })
+    const r = aggregateNutrition({
+      servings: 12,
+      ingredients: [makeIngredient({ ingredientId: 'huesos', quantity: 8, unit: 'u', note: 'carcasas de gallina, espinazo de cerdo' })] as any,
+      catalog: catalogOf([huesos]),
+    })
+    expect(r.perServing.kcal).toBe(0)
+    expect(r.perServing.proteinG).toBe(0)
+    expect(r.incomplete).toBe(false)
+  })
+
+  it('«mejillones 1.500 g» cuenta unos 420 g comestibles', () => {
+    // 100 kcal y 10 g de proteína por 100 g: lo que salga ×100/10 son los gramos comestibles
+    const mejillones = makeEntry({ id: 'mej', name: 'mejillones', calories: 100, protein: 10, edibleFraction: 0.28 })
+    const r = aggregateNutrition({
+      servings: 1,
+      ingredients: [makeIngredient({ ingredientId: 'mej', quantity: 1500, unit: 'g', note: 'limpios' })] as any,
+      catalog: catalogOf([mejillones]),
+    })
+    expect(r.perServing.kcal).toBe(420)
+    expect(r.perServing.proteinG).toBe(42)
+  })
+
+  it('una línea que dice «peladas», «sin concha» o «en lomos» cuenta entera aunque el ingrediente tenga merma', () => {
+    const gambas = makeEntry({ id: 'gambas', name: 'gambas', calories: 100, protein: 20, edibleFraction: 0.48 })
+    const run = (note?: string) =>
+      aggregateNutrition({
+        servings: 1,
+        ingredients: [makeIngredient({ ingredientId: 'gambas', quantity: 250, unit: 'g', note })] as any,
+        catalog: catalogOf([gambas]),
+      }).perServing.kcal
+    expect(run('peladas; guarda cabezas y cáscaras')).toBe(250)
+    expect(run('crudas y enteras')).toBe(120)
+    expect(run()).toBe(120)
+    expect(lineEdibleShare(0.28, 'sin concha')).toBe(1)
+    expect(lineEdibleShare(0.5, 'en lomos, limpios')).toBe(1)
+    expect(lineEdibleShare(0.5, 'de ración, limpias para el horno')).toBe(0.5)
+    expect(lineEdibleShare(0.5, 'fileteadas en trozos; guarda cabezas y raspas')).toBe(0.5)
+    expect(lineEdibleShare(1, 'peladas')).toBe(1)
   })
 })

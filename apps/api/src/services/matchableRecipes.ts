@@ -45,6 +45,7 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
       ingredientId: recipeIngredients.ingredientId,
       quantity: recipeIngredients.quantity,
       unit: recipeIngredients.unit,
+      note: recipeIngredients.note,
       ingredientName: ingredients.name,
       allergenTags: ingredients.allergenTags,
       containsTags: ingredients.containsTags,
@@ -64,11 +65,11 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
     .groupBy(recipeSteps.recipeId)
   const stepCountByRecipe = new Map<string, number>(stepRows.map((r: any) => [r.recipeId, Number(r.n)]))
 
-  const auditLinesByRecipe = new Map<string, Array<{ name: string; quantity: number; unit: string; unitWeight: number | null; density: number | null; edibleFraction: number | null }>>()
+  const auditLinesByRecipe = new Map<string, Array<{ name: string; quantity: number; unit: string; unitWeight: number | null; density: number | null; edibleFraction: number | null; note: string | null }>>()
   const ingredientsByRecipe = new Map<string, RecipeWithIngredients['ingredients']>()
   for (const row of riRows) {
     const lines = auditLinesByRecipe.get(row.recipeId) ?? []
-    lines.push({ name: row.ingredientName, quantity: row.quantity, unit: row.unit ?? 'g', unitWeight: row.unitWeight ?? null, density: row.density ?? null, edibleFraction: row.edibleFraction ?? null })
+    lines.push({ name: row.ingredientName, quantity: row.quantity, unit: row.unit ?? 'g', unitWeight: row.unitWeight ?? null, density: row.density ?? null, edibleFraction: row.edibleFraction ?? null, note: row.note ?? null })
     auditLinesByRecipe.set(row.recipeId, lines)
     const list = ingredientsByRecipe.get(row.recipeId) ?? []
     list.push({

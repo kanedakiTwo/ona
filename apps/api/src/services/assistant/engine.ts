@@ -10,6 +10,7 @@ import { claimsAction, toolMadeChange } from './claims.js'
 import { ensureHealthDisclaimer, talksHealthEffects } from './healthGuard.js'
 import { maybeAppendInviteOffer, recordInviteOfferAnswer } from '../inviteOffer.js'
 import { maybeAppendFamilyInviteOffer, recordFamilyInviteAnswer } from '../familyInviteMimo.js'
+import { maybeAppendLeftoversQuestion, recordLeftoversAnswer } from '../leftoversQuestion.js'
 import {
   EMPTY_USAGE,
   addAnthropicUsage,
@@ -96,6 +97,8 @@ export async function chat(
   // PRO-262: a «no» right after Mimo's offer to invite the family turns it off for good.
   const familyOfferMode = (mode === 'text' || mode === 'whatsapp') && opts.onboarding !== true ? mode : null
   if (familyOfferMode) await recordFamilyInviteAnswer(userId, message, history)
+  // PRO-285: the message right after Mimo's leftovers question is its answer (tagged `sobras`).
+  if (mode === 'whatsapp' && opts.onboarding !== true) await recordLeftoversAnswer(userId, message, history)
 
   // 5. Model ↔ tools loop (see runToolLoop).
   const result = await runToolLoop({
@@ -113,12 +116,42 @@ export async function chat(
   // family offer (PRO-262, inside the weekly aviso budget) goes first; the
   // other-household offer (PRO-164) only when this reply didn't carry it.
   if (familyOfferMode && result.message) {
-    const before = result.message
-    result.message = await maybeAppendFamilyInviteOffer(userId, result.message, familyOfferMode)
-    if (offerApplies && result.message === before) result.message = await maybeAppendInviteOffer(userId, result.message)
-    if (result.message !== before) result.offerAdded = true
+    const done = await appendReplyOffers(userId, result.message, { mode: familyOfferMode, invite: offerApplies })
+    result.message = done.message
+    if (done.offerAdded) result.offerAdded = true
   }
   return result
+}
+
+export interface ReplyOfferSteps {
+  family: (userId: string, reply: string, channel: 'text' | 'whatsapp') => Promise<string>
+  invite: (userId: string, reply: string) => Promise<string>
+  leftovers: typeof maybeAppendLeftoversQuestion
+}
+
+const REPLY_OFFER_STEPS: ReplyOfferSteps = {
+  family: (userId, reply, channel) => maybeAppendFamilyInviteOffer(userId, reply, channel),
+  invite: (userId, reply) => maybeAppendInviteOffer(userId, reply),
+  leftovers: maybeAppendLeftoversQuestion,
+}
+
+/**
+ * At most ONE line at the end of a reply (never two offers together): the
+ * family offer (PRO-262) first; the other-household offer (PRO-164) only
+ * when that one didn't go; Mimo's leftovers question (PRO-285, WhatsApp only)
+ * only when neither did. `offerAdded` then holds back the avisos re-offer
+ * (PRO-248) for this turn.
+ */
+export async function appendReplyOffers(
+  userId: string,
+  reply: string,
+  opts: { mode: 'text' | 'whatsapp'; invite: boolean },
+  steps: ReplyOfferSteps = REPLY_OFFER_STEPS,
+): Promise<{ message: string; offerAdded: boolean }> {
+  let message = await steps.family(userId, reply, opts.mode)
+  if (opts.invite && message === reply) message = await steps.invite(userId, message)
+  if (message === reply) message = await steps.leftovers(userId, message, { mode: opts.mode, otherOffer: false })
+  return { message, offerAdded: message !== reply }
 }
 
 /**

@@ -51,7 +51,7 @@ export interface AssistantResponse {
   corrections?: string[]
   /** What each tool got and returned this turn (history + daily review). */
   toolTrace?: ToolTrace[]
-  /** An invite offer (PRO-262 / PRO-164) went at the end of this reply: no other offer line this turn (PRO-248). */
+  /** An offer line went at the end of this reply (PRO-262 / PRO-164 invites, PRO-285 leftovers question): no other offer line this turn (PRO-248). */
   offerAdded?: boolean
 }
 

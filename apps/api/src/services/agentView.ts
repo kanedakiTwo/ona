@@ -229,9 +229,24 @@ export interface FeedbackLike {
   page: string | null
   text: string
   createdAt: Date
+  /** What it answers ('sobras', PRO-285), or null. */
+  tag?: string | null
 }
 
 const FEEDBACK_CHANNELS = ['app', 'chat', 'whatsapp'] as const
+/** Tags the counts may name (anything else counts as 'otra'). */
+export const FEEDBACK_TAGS = ['sobras'] as const
+
+/** Counts by tag (PRO-285: the answers to Mimo's leftovers question); untagged rows aren't counted. */
+export function feedbackTagCounts(rows: ReadonlyArray<Pick<FeedbackLike, 'tag'>>): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const r of rows) {
+    if (!r.tag) continue
+    const tag = oneOf(r.tag, FEEDBACK_TAGS) ?? 'otra'
+    out[tag] = (out[tag] ?? 0) + 1
+  }
+  return out
+}
 
 export function feedbackForAgents(days: number, rows: ReadonlyArray<FeedbackLike>) {
   const byChannel: Record<string, number> = {}
@@ -244,7 +259,7 @@ export function feedbackForAgents(days: number, rows: ReadonlyArray<FeedbackLike
     byPage[page] = (byPage[page] ?? 0) + 1
     if (possibleAllergy(r.text)) possibleAllergies.push({ date: madridParts(r.createdAt).isoDate, channel })
   }
-  return { days, count: rows.length, byChannel, byPage, possibleAllergies }
+  return { days, count: rows.length, byChannel, byPage, byTag: feedbackTagCounts(rows), possibleAllergies }
 }
 
 // ─── Mimo's conversation flags ───────────────────────────────────

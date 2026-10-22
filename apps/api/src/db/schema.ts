@@ -70,6 +70,11 @@ export const users = pgTable('users', {
    * shown, so it never repeats (PRO-261 sign-up and list, PRO-262 Mimo).
    */
   familyInviteOffers: jsonb('family_invite_offers').notNull().default(sql`'{}'::jsonb`),
+  /**
+   * Mimo's one question about leftovers (PRO-285, WhatsApp beta until
+   * 2026-11-07): stamped when it goes at the end of a reply, so it never repeats.
+   */
+  leftoversQuestionAt: timestamp('leftovers_question_at', { withTimezone: true }),
   // Authorization
   role: text('role').notNull().default('user'),
   // Suspension (admin gate). NULL = active.
@@ -1558,6 +1563,8 @@ export const userFeedback = pgTable('user_feedback', {
   text: text('text').notNull(),
   /** The page the button was pressed on (app only). */
   page: text('page'),
+  /** What it answers, when it answers one of Mimo's questions: 'sobras' (PRO-285). */
+  tag: text('tag'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_user_feedback_created').on(t.createdAt),

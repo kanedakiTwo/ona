@@ -16,9 +16,15 @@ interface FeedbackItem {
   channel: "app" | "chat" | "whatsapp"
   text: string
   page: string | null
+  /** What it answers: 'sobras' = Mimo's leftovers question (PRO-285). */
+  tag?: string | null
   createdAt: string
   username?: string
   email?: string
+}
+
+const TAG_LABEL: Record<string, string> = {
+  sobras: "Pregunta de las sobras",
 }
 
 const CHANNEL_LABEL: Record<FeedbackItem["channel"], string> = {
@@ -31,7 +37,7 @@ export function FeedbackSection() {
   const [days, setDays] = useState(30)
   const q = useQuery({
     queryKey: ["admin", "feedback", days],
-    queryFn: () => api.get<{ count: number; items: FeedbackItem[] }>(`/admin/feedback?days=${days}`),
+    queryFn: () => api.get<{ count: number; byTag?: Record<string, number>; items: FeedbackItem[] }>(`/admin/feedback?days=${days}`),
   })
   return (
     <section data-testid="feedback-section" className="space-y-4">
@@ -48,6 +54,11 @@ export function FeedbackSection() {
           </button>
         ))}
         {q.data && <span className="ml-1">{q.data.count} opiniones</span>}
+        {q.data?.byTag?.sobras ? (
+          <span className="ml-1" data-testid="feedback-tag-sobras">
+            · {q.data.byTag.sobras} {q.data.byTag.sobras === 1 ? "respuesta" : "respuestas"} a la pregunta de las sobras
+          </span>
+        ) : null}
       </div>
       {q.isLoading && <p className="text-eyebrow">Cargando…</p>}
       {q.data?.count === 0 && <p className="text-[14px] text-ink-muted">Aún no ha llegado ninguna opinión en este periodo.</p>}
@@ -58,7 +69,8 @@ export function FeedbackSection() {
             <p className="mt-2 text-[12px] text-ink-muted">
               {f.username ?? "—"}
               {f.email ? ` · ${f.email}` : ""} · {CHANNEL_LABEL[f.channel]}
-              {f.page ? ` · ${f.page}` : ""} · {new Date(f.createdAt).toLocaleString("es-ES", { dateStyle: "medium", timeStyle: "short" })}
+              {f.page ? ` · ${f.page}` : ""}
+              {f.tag ? ` · ${TAG_LABEL[f.tag] ?? f.tag}` : ""} · {new Date(f.createdAt).toLocaleString("es-ES", { dateStyle: "medium", timeStyle: "short" })}
             </p>
           </li>
         ))}

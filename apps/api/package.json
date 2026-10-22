@@ -24,7 +24,8 @@
     "prep-requirements:populate": "tsx scripts/populatePrepRequirements.ts",
     "prep-requirements:apply": "tsx scripts/populatePrepRequirements.ts --apply",
     "course:populate": "tsx scripts/populateRecipeCourses.ts",
-    "course:apply": "tsx scripts/populateRecipeCourses.ts --apply"
+    "course:apply": "tsx scripts/populateRecipeCourses.ts --apply",
+    "taste:deck-check": "tsx scripts/checkTasteDeck.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.82.0",

@@ -15,6 +15,7 @@ import bcrypt from 'bcryptjs'
 import { AdminAccountDeletionError, deleteAccount } from '../services/accountDeletion.js'
 import { cancelSubscriptionsPaidBy } from '../services/billing.js'
 import { onboardingStatus, saveOnboarding } from '../services/onboarding.js'
+import { alignHouseholdMemory } from '../services/userMemoryStore.js'
 import { analyzeOnboardingIntoMemory, trackOnboardingAnalysis } from '../services/onboardingMemoryAnalysis.js'
 import {
   getHealthConsent,
@@ -180,6 +181,9 @@ router.put('/user/:id', validate(updateProfileSchema), async (req: AuthRequest, 
     if (!updated) {
       res.status(404).json({ error: 'User not found' })
       return
+    }
+    if ('adults' in body || 'kidsCount' in body) {
+      await alignHouseholdMemory(updated.id, updated).catch((err) => console.error('Align household memory error:', err))
     }
 
     res.json(updated)

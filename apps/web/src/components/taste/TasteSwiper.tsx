@@ -5,7 +5,7 @@
  * 2026-10-16, artboard «Afina tu menú · prototipo»): intro «Dime qué te
  * apetece.», one card at a time (drag right «Me apetece», left «No para mí»,
  * up «Me encanta», with stamps while dragging — and buttons for the same,
- * plus «No la conozco · saltar»), «¿Qué es lo que no?» with the first «No
+ * plus «Si sale, vale» and «No la conozco», both «skip»), «¿Qué es lo que no?» with the first «No
  * para mí» and then every 2, and the summary «Tu menú ya te conoce un poco
  * más».
  *
@@ -596,9 +596,17 @@ export function TasteSwiper({
           <span aria-hidden="true" className="text-[13px] font-medium text-ink">Me apetece</span>
         </button>
       </div>
-      <button type="button" onClick={() => void decide("skip")} className="min-h-[44px] text-[14px] text-ink-muted underline underline-offset-[3px]">
-        No la conozco · saltar
-      </button>
+      {/* 2026-10-22 (a tester): she missed «no me encanta, pero que salga», and
+          «No la conozco · saltar» read as leaving the questionnaire. Both are
+          «skip»: the dish keeps its normal chance in the menu; on to the next card. */}
+      <div className="flex items-center justify-center gap-6">
+        <button type="button" onClick={() => void decide("skip")} className="min-h-[44px] text-[14px] text-ink-mid underline underline-offset-[3px]">
+          Si sale, vale
+        </button>
+        <button type="button" onClick={() => void decide("skip")} className="min-h-[44px] text-[14px] text-ink-muted underline underline-offset-[3px]">
+          No la conozco
+        </button>
+      </div>
     </div>
   )
 }

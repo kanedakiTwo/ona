@@ -240,7 +240,7 @@ test('/afinar: swiping up with a thumb that drifts left is «Me encanta», not �
   expect(verdicts).toEqual([expect.objectContaining({ name: first, verdict: 'love' })])
 })
 
-test('/afinar: «3 de 10», buttons with words, and the summary after 10 (PRO-200)', async ({ page }) => {
+test('/afinar: «3 de 10», buttons with words, «Si sale, vale» goes on, and the summary after 10 (PRO-200)', async ({ page }) => {
   test.setTimeout(90_000)
   await registerFreshUser(page)
   await completeOnboarding(page)
@@ -256,8 +256,12 @@ test('/afinar: «3 de 10», buttons with words, and the summary after 10 (PRO-20
     await expect(counter).toHaveText(`${i} de 10`, { timeout: 15_000 })
     const name = (await card.getByRole('heading').textContent())!.trim()
     if (i % 2) liked.push(name)
-    await page.getByRole('button', { name: i % 2 ? 'Me apetece' : 'No la conozco · saltar' }).click()
+    // «Si sale, vale» and «No la conozco» go on to the next card, never out
+    // of the questionnaire (2026-10-22: «saltar» read as leaving it).
+    await page.getByRole('button', { name: i % 2 ? 'Me apetece' : i % 4 === 0 ? 'Si sale, vale' : 'No la conozco' }).click()
   }
+  const answered = (await (await page.request.get(`${API_URL}/taste/verdicts`, { headers: await auth(page) })).json()).verdicts as Array<{ verdict: string }>
+  expect(answered.filter((v) => v.verdict === 'skip')).toHaveLength(5)
   // The batch ends in the summary, with what was rated in this session.
   await expect(page.getByRole('heading', { name: /tu menú ya te conoce un poco más/i })).toBeVisible({ timeout: 15_000 })
   const summary = page.getByTestId('taste-summary')

@@ -89,8 +89,10 @@ export function RestrictionsPicker({
             value={tagInput}
             onChange={(e) => setTagInput(e.target.value)}
             onKeyDown={handleTagKeyDown}
+            // Typed and then «Guardar» without Enter used to be lost (2026-10-22).
+            onBlur={() => addRestriction(tagInput)}
             disabled={!consent}
-            placeholder="Escribe y pulsa Enter para añadir..."
+            placeholder="Otra: escríbela (p. ej. pimiento)"
             className={FIELD}
           />
         </div>

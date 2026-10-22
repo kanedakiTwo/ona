@@ -33,6 +33,7 @@ import {
   Ruler,
   Send,
   Shield,
+  ShieldAlert,
   SlidersHorizontal,
   UserRound,
   Wrench,
@@ -51,6 +52,8 @@ import { FoundingBadge } from '@/components/profile/FoundingBadge'
 import { FichaHubCard } from '@/components/ficha/FichaHubCard'
 import { GroupLabel, MoreButton, ProfileCard, ProfileHubLink, Switch } from './sections/ProfileCards'
 import { useAuth } from '@/lib/auth'
+import { allergiesStatus } from '@/lib/profileStatus'
+import { useUser } from '@/hooks/useUser'
 import { api } from '@/lib/api'
 import { useWebPush } from '@/hooks/useWebPush'
 import { useMimo } from '@/components/mimo/MimoProvider'
@@ -135,7 +138,7 @@ const ACTIVITY_MULTIPLIERS: Record<string, number> = {
 }
 
 export default function ProfilePage() {
-  const { user, logout, isLoading: authLoading } = useAuth()
+  const { user, logout, updateUser, isLoading: authLoading } = useAuth()
   const whatsapp = useWhatsAppStatus()
   const mimo = useMimo()
 
@@ -203,8 +206,13 @@ export default function ProfilePage() {
     // blob. Show the union so nothing picked in onboarding looks lost (PRO-64).
     Promise.all([
       api.get<any>(`/user/${user.id}/settings`).catch(() => null),
-      api.get<{ restrictions?: string[] }>(`/user/${user.id}`).catch(() => null),
+      api.get<{ restrictions?: string[]; adults?: number; kidsCount?: number }>(`/user/${user.id}`).catch(() => null),
     ]).then(([data, account]) => {
+      // The account, not the copy kept in this browser: Mimo may have noted
+      // the kids since (2026-10-22: a tester's profile said 0 niños).
+      if (typeof account?.adults === 'number' && account.adults > 0) {
+        setHousehold({ adults: account.adults, kidsCount: account.kidsCount ?? 0 })
+      }
       const blob = data?.template && !Array.isArray(data.template) ? data.template : data
       if (blob?.physical) setPhysical(blob.physical)
       const restrictions = unionRestrictions(account?.restrictions, blob?.preferences?.restrictions)
@@ -376,7 +384,12 @@ export default function ProfilePage() {
 
       const calls: Promise<unknown>[] = []
       if (Object.keys(userPayload).length > 0) {
-        calls.push(api.put(`/user/${user.id}`, userPayload))
+        // Keep this browser's copy in step, or the next visit starts from the old counts.
+        calls.push(api.put<{ adults?: number; kidsCount?: number }>(`/user/${user.id}`, userPayload).then((saved) => {
+          if (saved.adults !== user.adults || saved.kidsCount !== user.kidsCount) {
+            updateUser({ adults: saved.adults, kidsCount: saved.kidsCount })
+          }
+        }))
       }
       calls.push(api.put(`/user/${user.id}/settings`, {
         template: healthActive
@@ -388,7 +401,7 @@ export default function ProfilePage() {
       setTimeout(() => setSaved(false), 2500)
     } catch (e) { console.error(e) }
     finally { setSaving(false) }
-  }, [user, physical, preferences, household, mealTemplate, mealDishCounts, fixedMeals, taperDays, healthActive])
+  }, [user, updateUser, physical, preferences, household, mealTemplate, mealDishCounts, fixedMeals, taperDays, healthActive])
 
 
   if (authLoading || !user) {
@@ -640,7 +653,7 @@ export default function ProfilePage() {
                 </div>
 
                 <fieldset disabled={!healthActive} className={healthActive ? '' : 'opacity-40'}>
-                  <Label>Restricciones</Label>
+                  <Label>Alergias, intolerancias y dieta</Label>
                   {preferences.restrictions.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {preferences.restrictions.map((r) => (
@@ -684,7 +697,7 @@ export default function ProfilePage() {
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') { e.preventDefault(); addRestriction(restrictionInput) }
                       }}
-                      placeholder="Otra restriccion..."
+                      placeholder="Otra, p. ej. pimiento"
                       className="input-line flex-1"
                     />
                     <button
@@ -987,6 +1000,8 @@ function plural(n: number, one: string, many: string) {
  * sub-page cards, each with a one-line status from its own data.
  */
 function ProfileHub() {
+  const { user } = useAuth()
+  const account = useUser(user?.id)
   const household = useQuery<{ members: unknown[]; pendingInvites?: unknown[] }>({
     queryKey: ['household', 'me'],
     queryFn: () => api.get('/households/me'),
@@ -1014,6 +1029,13 @@ function ProfileHub() {
           icon={Home}
           title="Casa"
           status={members == null ? (household.isError ? 'Tu hogar' : loading) : members === 1 ? 'Solo tú' : plural(members, 'persona', 'personas')}
+        />
+        {/* 2026-10-22: a tester couldn't find where to add «intolerancia al pimiento» after the sign-up. */}
+        <ProfileHubLink
+          href="/profile/casa/alergias?next=/profile"
+          icon={ShieldAlert}
+          title="Alergias e intolerancias"
+          status={allergiesStatus(account.data?.restrictions, account.isError)}
         />
         <ProfileHubLink
           href="/afinar"

@@ -88,6 +88,8 @@ export default function HouseholdAllergiesPage() {
       const updated = await api.put<{ restrictions?: string[] }>(`/user/${user.id}`, { restrictions })
       updateUser({ restrictions: updated.restrictions ?? restrictions })
       await queryClient.invalidateQueries({ queryKey: ["household-allergies"] })
+      // The «Alergias e intolerancias» card on /profile reads it.
+      await queryClient.invalidateQueries({ queryKey: ["user", user.id] })
       if (restrictions.length > 0) {
         const { weeks } = firstMenuWeeks()
         const week = await api.get<{ days?: WeekDays }>(`/menu/${user.id}/${weeks[0]}`).catch(() => null)
@@ -121,11 +123,13 @@ export default function HouseholdAllergiesPage() {
     router.push(next)
   }
 
+  // From «Alergias e intolerancias» on /profile (2026-10-22), not on the way to the menu.
+  const fromProfile = next.startsWith("/profile")
   const primaryLabel = !consent
-    ? "Ahora no"
+    ? fromProfile ? "Volver" : "Ahora no"
     : restrictions.length > 0
-      ? "Guardar y ver el menú"
-      : "No tengo ninguna, ver el menú"
+      ? fromProfile ? "Guardar" : "Guardar y ver el menú"
+      : fromProfile ? "No tengo ninguna" : "No tengo ninguna, ver el menú"
 
   return (
     <SubPage
@@ -135,7 +139,11 @@ export default function HouseholdAllergiesPage() {
           Tus alergias y tu <Accent>dieta</Accent>
         </>
       }
-      intro="Antes de ver el menú de la casa: ¿tienes alguna alergia o intolerancia, o sigues alguna dieta (vegetariana, sin cerdo…)? El menú de la casa las tendrá en cuenta para todos."
+      intro={
+        fromProfile
+          ? "¿Tienes alguna alergia o intolerancia, o sigues alguna dieta (vegetariana, sin cerdo…)? Si no está en la lista, escríbela. El menú de la casa las tendrá en cuenta para todos."
+          : "Antes de ver el menú de la casa: ¿tienes alguna alergia o intolerancia, o sigues alguna dieta (vegetariana, sin cerdo…)? El menú de la casa las tendrá en cuenta para todos."
+      }
     >
       <div data-testid="household-allergies" className="max-w-xl">
         {error && (
@@ -156,7 +164,7 @@ export default function HouseholdAllergiesPage() {
                 {saving ? "Rehaciendo el menú…" : "Rehacer el menú de esta semana"}
               </button>
               <button type="button" onClick={() => router.push(next)} disabled={saving} className={PILL_OUTLINE}>
-                Ver el menú tal cual
+                {fromProfile ? "Dejar el menú tal cual" : "Ver el menú tal cual"}
               </button>
             </div>
           </div>

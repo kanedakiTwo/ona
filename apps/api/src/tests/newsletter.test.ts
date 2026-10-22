@@ -19,6 +19,7 @@ import {
   parseNewsletterToken,
   recipientHash,
   renderNewsletterEmail,
+  newsletterInviteLine,
   selectNewsletterRecipients,
   sendNewsletter,
   type NewsletterCandidate,
@@ -348,9 +349,9 @@ describe('sendNewsletter', () => {
         expect(m.text).not.toContain(code)
       }
       if (own) {
-        expect(m.html).toContain('Invita a tu hogar y entráis antes:')
+        expect(m.html).toContain(newsletterInviteLine())
         expect(m.html).toContain(`href="https://mimoia.com/?invita=${own}"`)
-        expect(m.text).toContain(`Invita a tu hogar y entráis antes: https://mimoia.com/?invita=${own}`)
+        expect(m.text).toContain(`${newsletterInviteLine()} https://mimoia.com/?invita=${own}`)
       } else {
         expect(m.html).not.toContain('Invita a tu hogar')
         expect(m.text).not.toContain('Invita a tu hogar')
@@ -398,6 +399,32 @@ describe('sendNewsletter', () => {
     expect(r).toMatchObject({ recipients: 2, bySource: { waitlist: 1, user: 1 }, includes: true })
     const no = await sendNewsletter({ ...ISSUE, dryRun: true, includes: 'zoe@example.com' }, deps(repo, okBatch()))
     expect(no).toMatchObject({ includes: false })
+  })
+})
+
+describe('the invite line stops promising «entráis antes» when the registration opens (PRO-311)', () => {
+  const invite = { unsubscribeUrl: 'https://mimoia.com/x', inviteUrl: 'https://mimoia.com/?invita=anacode1' }
+
+  it('until 15-nov (Madrid) it says «y entráis antes»; from 16-nov 00:00 Madrid, «a Mimoia»', () => {
+    // 2026-11-16 00:00 in Madrid is 2026-11-15 23:00 UTC (winter time, UTC+1).
+    expect(newsletterInviteLine(new Date('2026-11-15T22:59:59Z'))).toBe('Invita a tu hogar y entráis antes:')
+    expect(newsletterInviteLine(new Date('2026-11-15T23:00:00Z'))).toBe('Invita a tu hogar a Mimoia:')
+    expect(newsletterInviteLine(new Date('2026-10-23T08:00:00Z'))).toBe('Invita a tu hogar y entráis antes:')
+  })
+
+  it('the newsletter of Friday 13-nov carries «entráis antes»; the one of 20-nov does not', () => {
+    const before = renderNewsletterEmail(ISSUE, { ...invite, now: new Date('2026-11-13T07:00:00Z') })
+    expect(before.html).toContain('Invita a tu hogar y entráis antes:')
+    expect(before.text).toContain('Invita a tu hogar y entráis antes: https://mimoia.com/?invita=anacode1')
+
+    const after = renderNewsletterEmail(ISSUE, { ...invite, now: new Date('2026-11-20T07:00:00Z') })
+    for (const out of [after.html, after.text]) {
+      expect(out).not.toContain('entráis antes')
+      expect(out).not.toContain('entrais antes')
+    }
+    expect(after.html).toContain('Invita a tu hogar a Mimoia:')
+    expect(after.html).toContain('href="https://mimoia.com/?invita=anacode1"')
+    expect(after.text).toContain('Invita a tu hogar a Mimoia: https://mimoia.com/?invita=anacode1')
   })
 })
 

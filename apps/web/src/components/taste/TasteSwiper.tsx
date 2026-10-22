@@ -5,7 +5,7 @@
  * 2026-10-16, artboard «Afina tu menú · prototipo»): intro «Dime qué te
  * apetece.», one card at a time (drag right «Me apetece», left «No para mí»,
  * up «Me encanta», with stamps while dragging — and buttons for the same,
- * plus «No la conozco · saltar»), «¿Qué es lo que no?» with the first «No
+ * plus «Si sale, vale» and «No la conozco», both «skip»), «¿Qué es lo que no?» with the first «No
  * para mí» and then every 2, and the summary «Tu menú ya te conoce un poco
  * más».
  *
@@ -31,7 +31,7 @@ import {
   prettyName,
 } from "@ona/shared"
 import { fetchTasteNext, postTasteFlag, postTasteVerdict } from "@/hooks/useTaste"
-import { dislikeChipText, nextStreak } from "@/lib/tasteText"
+import { dislikeChipText, nextStreak, swipeStamps, swipeVerdict } from "@/lib/tasteText"
 import { useQueryClient } from "@tanstack/react-query"
 import { CookingPot } from "lucide-react"
 import { trackUsage } from "@/lib/usageEvents"
@@ -365,16 +365,17 @@ export function TasteSwiper({
   const onPointerUp = () => {
     if (!start.current) return
     start.current = null
-    const { dx, dy } = drag
-    if (dx > 100) return void decide("like")
-    if (dx < -100) return void decide("nope")
-    if (dy < -110 && Math.abs(dx) < 60) return void decide("love")
+    const verdict = swipeVerdict(drag.dx, drag.dy)
+    if (verdict) return void decide(verdict)
+    setDrag({ dx: 0, dy: 0, active: false })
+  }
+  // A gesture the system took away (a scroll, a notification) decides nothing.
+  const onPointerCancel = () => {
+    start.current = null
     setDrag({ dx: 0, dy: 0, active: false })
   }
 
-  const likeOp = Math.max(0, Math.min(1, drag.dx / 100))
-  const nopeOp = Math.max(0, Math.min(1, -drag.dx / 100))
-  const loveOp = Math.max(0, Math.min(1, -drag.dy / 100)) * (Math.abs(drag.dx) < 60 ? 1 : 0)
+  const { like: likeOp, nope: nopeOp, love: loveOp } = swipeStamps(drag.dx, drag.dy)
   // The counter counts the batch: «3 de 10» (PRO-200; before, «1 de 101» over the catalogue).
   const shownTotal = TASTE_BATCH_SIZE
   const position = Math.min(shownTotal, answers.length - (mode === "page" ? batchFrom : 0) + 1)
@@ -550,7 +551,7 @@ export function TasteSwiper({
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
+          onPointerCancel={onPointerCancel}
           className="absolute inset-0 cursor-grab touch-none select-none overflow-hidden rounded-[18px] border border-border-soft bg-paper"
           style={{
             transform: `translate(${drag.dx}px, ${drag.dy}px) rotate(${drag.dx / 18}deg)`,
@@ -595,9 +596,17 @@ export function TasteSwiper({
           <span aria-hidden="true" className="text-[13px] font-medium text-ink">Me apetece</span>
         </button>
       </div>
-      <button type="button" onClick={() => void decide("skip")} className="min-h-[44px] text-[14px] text-ink-muted underline underline-offset-[3px]">
-        No la conozco · saltar
-      </button>
+      {/* 2026-10-22 (a tester): she missed «no me encanta, pero que salga», and
+          «No la conozco · saltar» read as leaving the questionnaire. Both are
+          «skip»: the dish keeps its normal chance in the menu; on to the next card. */}
+      <div className="flex items-center justify-center gap-6">
+        <button type="button" onClick={() => void decide("skip")} className="min-h-[44px] text-[14px] text-ink-mid underline underline-offset-[3px]">
+          Si sale, vale
+        </button>
+        <button type="button" onClick={() => void decide("skip")} className="min-h-[44px] text-[14px] text-ink-muted underline underline-offset-[3px]">
+          No la conozco
+        </button>
+      </div>
     </div>
   )
 }

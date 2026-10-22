@@ -13,7 +13,7 @@
  */
 import { eq, and, inArray } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { userMemories } from '../db/schema.js'
+import { userMemories, users } from '../db/schema.js'
 import { HealthConsentRequiredError, hasHealthConsent } from './healthConsent.js'
 import { mirrorMemoryDelete, mirrorMemoryWrite, type FactSignal } from './profile/writer.js'
 import {
@@ -84,6 +84,41 @@ function signalFor(source: MemorySource, opts?: MemoryWriteOptions): FactSignal 
 }
 
 /**
+ * `household.adults` / `household.kids_2_to_10` are also the account's counts
+ * (`users.adults` / `users.kidsCount`), the ones the profile, the shopping
+ * list and the menu read: what Mimo notes («tenemos dos niños») lands there
+ * too (2026-10-22: a tester's kids were in WhatsApp but not in her profile).
+ */
+export function householdCountsPatch(key: string, value: unknown): { adults: number } | { kidsCount: number } | null {
+  if (typeof value !== 'number' || !Number.isInteger(value)) return null
+  if (key === 'household.adults') return value >= 1 ? { adults: value } : null
+  if (key === 'household.kids_2_to_10') return value >= 0 ? { kidsCount: value } : null
+  return null
+}
+
+/** Same transaction as the memory write. Also used by the ficha when it edits these keys. */
+export async function syncHouseholdCounts(tx: any, userId: string, facts: ReadonlyArray<{ key: string; value: unknown }>): Promise<void> {
+  const patch = Object.assign({}, ...facts.map((f) => householdCountsPatch(f.key, f.value) ?? {}))
+  if (Object.keys(patch).length === 0) return
+  await tx.update(users).set(patch).where(eq(users.id, userId))
+}
+
+/**
+ * The other way round: counts changed in the profile (or with
+ * `update_household`) refresh the memory copies, when there are any, so Mimo
+ * doesn't keep reading the old ones.
+ */
+export async function alignHouseholdMemory(userId: string, counts: { adults?: number | null; kidsCount?: number | null }): Promise<void> {
+  const memory = await getMemoryForUser(userId)
+  const facts: Array<{ key: string; value: number }> = []
+  const adults = memory['household.adults']
+  const kids = memory['household.kids_2_to_10']
+  if (typeof counts.adults === 'number' && adults && adults.value !== counts.adults) facts.push({ key: 'household.adults', value: counts.adults })
+  if (typeof counts.kidsCount === 'number' && kids && kids.value !== counts.kidsCount) facts.push({ key: 'household.kids_2_to_10', value: counts.kidsCount })
+  if (facts.length > 0) await setMemoryBatch(userId, facts, 'manual', { signal: 'profile' })
+}
+
+/**
  * Upsert one fact. Throws if the key is unknown or the value fails its
  * schema. Returns the resulting fact (for the route's response).
  */
@@ -123,6 +158,7 @@ export async function setMemoryFact(
       })
       .returning()
     await mirrorMemoryWrite(tx, { userId, memoryId: row.id, key: v.key, value: v.value, source, confidence, signal, hasHealthConsent: consent })
+    await syncHouseholdCounts(tx, userId, [v])
     return rowToFact(row)
   })
 }
@@ -175,6 +211,7 @@ export async function setMemoryBatch(
         .returning({ id: userMemories.id })
       await mirrorMemoryWrite(tx, { userId, memoryId: row.id, key: f.key, value: f.value, source, confidence: f.confidence, signal, hasHealthConsent: consent })
     }
+    await syncHouseholdCounts(tx, userId, validated)
   })
   return await getMemoryForUser(userId)
 }

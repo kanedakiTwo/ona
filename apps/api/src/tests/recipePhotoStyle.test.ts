@@ -6,7 +6,7 @@
  * same style.
  */
 import { describe, it, expect } from 'vitest'
-import { buildRecipePrompt, STYLE_SUFFIX } from '../services/recipeImageGenerator.js'
+import { buildRecipePrompt, promptSafe, STYLE_SUFFIX } from '../services/recipeImageGenerator.js'
 import * as generator from '../services/recipeImageGenerator.js'
 
 /** The style text as it was before PRO-59 (git show bb38070^:apps/api/src/services/recipeImageGenerator.ts). */
@@ -32,5 +32,21 @@ describe('buildRecipePrompt — one house style', () => {
     expect(Object.keys(generator)).not.toContain('STYLE_BASE')
     const prompt = buildRecipePrompt({ name: 'Albóndigas en salsa', topIngredients: [], meals: ['dinner'] })
     expect(prompt).not.toMatch(/gres|mantel de cuadros|lateral bajo|piedra/)
+  })
+})
+
+describe('the prompt never carries a word the image models block (2026-10-22, «Rape alangostado» → 422)', () => {
+  it('«rape» (monkfish) goes as «pejesapo» in the prompt, in the name and in the description; other words stay', () => {
+    const prompt = buildRecipePrompt({
+      name: 'Rape alangostado',
+      topIngredients: ['rape', 'pimentón'],
+      meals: ['dinner'],
+      description: 'Lomos de rape envueltos y pintados con pimentón, cortados en medallones',
+    })
+    expect(prompt).not.toMatch(/\brape\b/i)
+    expect(prompt).toContain('Pejesapo alangostado.')
+    expect(prompt).toContain('Lomos de pejesapo envueltos')
+    expect(promptSafe('Raperos y uvas rapé')).toBe('Raperos y uvas rapé')
+    expect(promptSafe('RAPE')).toBe('Pejesapo')
   })
 })

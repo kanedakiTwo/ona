@@ -49,7 +49,17 @@ test('sign-up: 10 cards with buttons, then the questions; the first menu has no 
   })
 
   await page.goto('/onboarding')
+  // Allergies first (a beta tester, 2026-10-22): asked and saved before the 10 dishes, so they
+  // already leave out what the household doesn't eat.
+  const allergies = page.getByTestId('onboarding-allergies-first')
+  await expect(allergies.getByRole('heading', { name: /antes de nada, ¿hay algo que no comáis/i })).toBeVisible({ timeout: 20_000 })
+  await allergies.getByRole('checkbox', { name: /datos de salud/i }).check()
+  await allergies.getByRole('button', { name: /sin gluten/i }).click()
+  await allergies.getByRole('button', { name: 'Siguiente' }).click()
   await expect(page.getByRole('heading', { name: /dime qué te apetece/i })).toBeVisible({ timeout: 20_000 })
+  const me = JSON.parse((await page.evaluate(() => localStorage.getItem('ona_user')))!) as { id: string }
+  const saved = await (await page.request.get(`${API_URL}/user/${me.id}`, { headers: await auth(page) })).json()
+  expect(JSON.stringify(saved.restrictions).toLowerCase()).toContain('gluten')
   await expect(page.getByText(/Son 10 platos: dime si te apetecen/)).toBeVisible()
   await expect(page.getByRole('button', { name: 'Saltar' })).toBeVisible()
   await page.getByRole('button', { name: 'Empezar' }).click()
@@ -90,7 +100,8 @@ test('sign-up: 10 cards with buttons, then the questions; the first menu has no 
   await expect(web.or(firstQuestion)).toBeVisible({ timeout: 15_000 })
   if (await web.isVisible()) await web.click()
   await expect(firstQuestion).toBeVisible()
-  await expect(page.getByText('Primeros pasos · 1 de 6')).toBeVisible()
+  // Allergies already answered: five questions, not six.
+  await expect(page.getByText('Primeros pasos · 1 de 5')).toBeVisible()
 
   const headers = await auth(page)
   const memory = await (await page.request.get(`${API_URL}/memory`, { headers })).json()
@@ -115,7 +126,9 @@ test('sign-up: 10 cards with buttons, then the questions; the first menu has no 
   await next.click()
   await page.getByRole('button', { name: /sin prisa/i }).click() // PRO-138
   await next.click()
-  await next.click() // no restrictions
+  // No «¿Hay algo que no comas?» again: straight to the last question.
+  await expect(page.getByRole('heading', { name: /hay algo que no comas/i })).toHaveCount(0)
+  await expect(page.getByText('Primeros pasos · 5 de 5')).toBeVisible()
   await page.getByRole('button', { name: /salud/i }).click()
   await page.getByRole('button', { name: /empezar/i }).click()
   await expect(page).toHaveURL(/\/menu/, { timeout: 45_000 })
@@ -130,6 +143,8 @@ test('«Saltar» in the sign-up goes straight on to the questions', async ({ pag
   test.setTimeout(60_000)
   await registerFreshUser(page, { keepTaste: true })
   await page.goto('/onboarding')
+  // Allergies first; nothing to say → on to the dishes.
+  await page.getByTestId('onboarding-allergies-first').getByRole('button', { name: 'Siguiente' }).click({ timeout: 20_000 })
   await expect(page.getByRole('heading', { name: /dime qué te apetece/i })).toBeVisible({ timeout: 20_000 })
   await page.getByRole('button', { name: 'Saltar', exact: true }).click()
   const web = page.getByRole('button', { name: /prefiero la web/i })
@@ -201,7 +216,31 @@ test('/afinar: dragging the card to the right is «Me apetece»', async ({ page 
   expect(verdicts).toEqual([expect.objectContaining({ name: first, verdict: 'like' })])
 })
 
-test('/afinar: «3 de 10», buttons with words, and the summary after 10 (PRO-200)', async ({ page }) => {
+test('/afinar: swiping up with a thumb that drifts left is «Me encanta», not «No para mí» (2026-10-22)', async ({ page }) => {
+  test.setTimeout(60_000)
+  await registerFreshUser(page)
+  await completeOnboarding(page)
+  await page.goto('/afinar')
+  await page.getByRole('button', { name: 'Empezar' }).click()
+  const card = page.getByTestId('taste-card')
+  await expect(card).toBeVisible({ timeout: 15_000 })
+  const first = (await card.getByRole('heading').textContent())!.trim()
+  const box = (await card.boundingBox())!
+  const cx = box.x + box.width / 2
+  const cy = box.y + box.height / 2
+  await page.mouse.move(cx, cy)
+  await page.mouse.down()
+  await page.mouse.move(cx - 70, cy - 120, { steps: 5 })
+  await expect(card.getByText('NO PARA MÍ')).toHaveCSS('opacity', '0')
+  await page.mouse.move(cx - 130, cy - 210, { steps: 5 })
+  await page.mouse.up()
+  await expect(card.getByRole('heading')).not.toHaveText(first, { timeout: 10_000 })
+
+  const verdicts = (await (await page.request.get(`${API_URL}/taste/verdicts`, { headers: await auth(page) })).json()).verdicts
+  expect(verdicts).toEqual([expect.objectContaining({ name: first, verdict: 'love' })])
+})
+
+test('/afinar: «3 de 10», buttons with words, «Si sale, vale» goes on, and the summary after 10 (PRO-200)', async ({ page }) => {
   test.setTimeout(90_000)
   await registerFreshUser(page)
   await completeOnboarding(page)
@@ -217,8 +256,12 @@ test('/afinar: «3 de 10», buttons with words, and the summary after 10 (PRO-20
     await expect(counter).toHaveText(`${i} de 10`, { timeout: 15_000 })
     const name = (await card.getByRole('heading').textContent())!.trim()
     if (i % 2) liked.push(name)
-    await page.getByRole('button', { name: i % 2 ? 'Me apetece' : 'No la conozco · saltar' }).click()
+    // «Si sale, vale» and «No la conozco» go on to the next card, never out
+    // of the questionnaire (2026-10-22: «saltar» read as leaving it).
+    await page.getByRole('button', { name: i % 2 ? 'Me apetece' : i % 4 === 0 ? 'Si sale, vale' : 'No la conozco' }).click()
   }
+  const answered = (await (await page.request.get(`${API_URL}/taste/verdicts`, { headers: await auth(page) })).json()).verdicts as Array<{ verdict: string }>
+  expect(answered.filter((v) => v.verdict === 'skip')).toHaveLength(5)
   // The batch ends in the summary, with what was rated in this session.
   await expect(page.getByRole('heading', { name: /tu menú ya te conoce un poco más/i })).toBeVisible({ timeout: 15_000 })
   const summary = page.getByTestId('taste-summary')

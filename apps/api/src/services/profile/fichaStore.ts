@@ -36,6 +36,7 @@ import {
   whatsappLinks,
 } from '../../db/schema.js'
 import { hasHealthConsent } from '../healthConsent.js'
+import { syncHouseholdCounts } from '../userMemoryStore.js'
 import { factsInForce } from './reader.js'
 import { SERVICE_WINDOW_MS } from '../whatsapp/proactive.js'
 import { mentionsHealth } from './healthText.js'
@@ -220,6 +221,7 @@ async function mirrorToMemory(tx: any, owners: string[], key: string, value: unk
     } else {
       await tx.insert(userMemories).values({ userId, key, value: value as object, source: 'manual', confidence: 1 })
         .onConflictDoUpdate({ target: [userMemories.userId, userMemories.key], set: { value: value as object, source: 'manual', confidence: 1, updatedAt: new Date() } })
+      await syncHouseholdCounts(tx, userId, [{ key, value }])
     }
   }
 }

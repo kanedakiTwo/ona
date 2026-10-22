@@ -14,7 +14,7 @@ const recordCost = vi.fn()
 vi.mock('../services/costLedger.js', () => ({ recordCost: (...a: unknown[]) => recordCost(...a) }))
 
 import { env } from '../config/env.js'
-import { generateRecipeImage, AIKIT_IMAGES_URL, AIKIT_SIZE } from '../services/recipeImageGenerator.js'
+import { generateRecipeImage, imageChoiceForAttempt, AIKIT_IMAGES_URL, AIKIT_SIZE } from '../services/recipeImageGenerator.js'
 import { PRICES, computeCostMicros } from '../config/pricing.js'
 
 async function pngB64(width: number, height: number): Promise<string> {
@@ -31,6 +31,8 @@ const saved = {
   OPENAI_API_KEY: env.OPENAI_API_KEY,
   RECIPE_IMAGE_PROVIDER: env.RECIPE_IMAGE_PROVIDER,
   AIKIT_IMAGE_MODEL: env.AIKIT_IMAGE_MODEL,
+  AIKIT_IMAGE_QUALITY: env.AIKIT_IMAGE_QUALITY,
+  AIKIT_IMAGE_RETRY_MODEL: env.AIKIT_IMAGE_RETRY_MODEL,
 }
 
 let fetchMock: ReturnType<typeof vi.fn>
@@ -40,6 +42,8 @@ beforeEach(() => {
   env.OPENAI_API_KEY = 'openai-test-key'
   env.RECIPE_IMAGE_PROVIDER = 'auto'
   env.AIKIT_IMAGE_MODEL = 'gpt-image-2'
+  env.AIKIT_IMAGE_QUALITY = ''
+  env.AIKIT_IMAGE_RETRY_MODEL = 'nano-banana-pro'
   recordCost.mockReset()
   fetchMock = vi.fn()
   vi.stubGlobal('fetch', fetchMock)
@@ -157,3 +161,42 @@ describe('price of an AiKit gpt-image-2 photo', () => {
     expect(computeCostMicros('aikit', 'gpt-image-2', { images: 1 }, { eurPerUsd: 0.9, table: PRICES })).toBe(4400)
   })
 })
+
+describe('D-117: gpt-image-2 in high quality first, nano-banana-pro when the check turns it down', () => {
+  it('the first attempt asks for high quality and is priced as «gpt-image-2-high»', async () => {
+    env.AIKIT_IMAGE_QUALITY = 'high'
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { model: 'gpt-image-2', data: [{ b64_json: await pngB64(1024, 768) }] }))
+    await generateRecipeImage('Alubias con huevo.', '4:3', imageChoiceForAttempt(1))
+    expect(JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string)).toMatchObject({ model: 'gpt-image-2', quality: 'high' })
+    expect(recordCost).toHaveBeenCalledWith({ feature: 'recipe_image', provider: 'aikit', model: 'gpt-image-2-high', units: { images: 1 } })
+  })
+
+  it('the second attempt asks for nano-banana-pro, without a quality', async () => {
+    env.AIKIT_IMAGE_QUALITY = 'high'
+    expect(imageChoiceForAttempt(2)).toEqual({ model: 'nano-banana-pro' })
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { model: 'nano-banana-pro', data: [{ b64_json: await pngB64(1024, 768) }] }))
+    await generateRecipeImage('Alubias con huevo.', '4:3', imageChoiceForAttempt(2))
+    const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string)
+    expect(body.model).toBe('nano-banana-pro')
+    expect(body).not.toHaveProperty('quality')
+    expect(recordCost).toHaveBeenCalledWith({ feature: 'recipe_image', provider: 'aikit', model: 'nano-banana-pro', units: { images: 1 } })
+  })
+
+  it('without a retry model, the second attempt repeats the first', () => {
+    env.AIKIT_IMAGE_QUALITY = 'high'
+    env.AIKIT_IMAGE_RETRY_MODEL = ''
+    expect(imageChoiceForAttempt(2)).toEqual({ model: 'gpt-image-2', quality: 'high' })
+  })
+
+  it('AiKit serving another model than asked is logged and priced as what it served', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { model: 'gpt-image-2', data: [{ b64_json: await pngB64(1024, 768) }] }))
+    await generateRecipeImage('x', '4:3', { model: 'modelo-que-no-existe' })
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('asked AiKit for modelo-que-no-existe, it served gpt-image-2'))
+    expect(recordCost).toHaveBeenCalledWith({ feature: 'recipe_image', provider: 'aikit', model: 'gpt-image-2', units: { images: 1 } })
+  })
+
+  it('every model the chain can use has a price', () => {
+    for (const m of ['gpt-image-2', 'gpt-image-2-high', 'nano-banana-pro']) expect(computeCostMicros('aikit', m, { images: 1 }), m).toBeGreaterThan(0)
+  })
+})
+

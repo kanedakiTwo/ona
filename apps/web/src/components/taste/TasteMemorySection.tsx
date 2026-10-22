@@ -14,12 +14,12 @@ const VERDICT_LABEL: Record<TasteVerdict, string> = {
   love: "Me encanta",
   like: "Me apetece",
   nope: "No para mí",
-  skip: "No la conozco",
+  skip: "Si sale, vale / no la conozco",
 }
 
 const FLAG_TEXT: Record<string, string> = {
-  carne: "Dijiste «No para mí» a varios platos de carne seguidos. ¿No coméis carne? Si es así, añádelo en Restricciones o cuéntaselo a Mimo.",
-  pescado: "Dijiste «No para mí» a varios platos de pescado seguidos. ¿No coméis pescado? Si es así, añádelo en Restricciones o cuéntaselo a Mimo.",
+  carne: "Dijiste «No para mí» a varios platos de carne seguidos. ¿No coméis carne? Si es así, añádelo en Perfil → Alergias e intolerancias o cuéntaselo a Mimo.",
+  pescado: "Dijiste «No para mí» a varios platos de pescado seguidos. ¿No coméis pescado? Si es así, añádelo en Perfil → Alergias e intolerancias o cuéntaselo a Mimo.",
 }
 
 export function TasteMemorySection() {

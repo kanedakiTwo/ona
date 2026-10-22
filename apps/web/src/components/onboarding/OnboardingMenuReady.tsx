@@ -15,6 +15,7 @@ import { api } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { Accent, OnboardingHeader } from "./OnboardingShell"
 import { RestrictionsPicker } from "./RestrictionsPicker"
+import { withTyped } from "@/lib/restrictionText"
 
 const PILL =
   "flex h-[52px] w-full items-center justify-center rounded-full bg-ink px-6 text-[16px] font-semibold text-cream transition-colors hover:bg-ink-mid active:scale-[0.98] disabled:opacity-40 disabled:active:scale-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
@@ -25,18 +26,20 @@ export function OnboardingMenuReady() {
   const queryClient = useQueryClient()
   const [consent, setConsent] = useState(false)
   const [restrictions, setRestrictions] = useState<string[]>([])
+  const [typed, setTyped] = useState("")
+  const toSave = withTyped(restrictions, typed)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
 
   async function seeMenu() {
     if (!user) return
-    if (consent && restrictions.length > 0) {
+    if (consent && toSave.length > 0) {
       setSaving(true)
       setError("")
       try {
         await api.post(`/user/${user.id}/health-consent`, { consent: true })
-        const updated = await api.put<{ restrictions?: string[] }>(`/user/${user.id}`, { restrictions })
-        updateUser({ restrictions: updated.restrictions ?? restrictions })
+        const updated = await api.put<{ restrictions?: string[] }>(`/user/${user.id}`, { restrictions: toSave })
+        updateUser({ restrictions: updated.restrictions ?? toSave })
         // The weeks Mimo built in the chat (next week too, Friday to Sunday),
         // again, now without what they don't eat — from today on (PRO-244).
         const { weeks, today } = firstMenuWeeks()
@@ -73,6 +76,7 @@ export function OnboardingMenuReady() {
           onConsentChange={setConsent}
           restrictions={restrictions}
           onChange={setRestrictions}
+          onTypingChange={setTyped}
         />
       </div>
       <div className="sticky bottom-0 z-10 -mx-4 mt-8 border-t border-border-soft bg-cream/95 px-4 pt-3 pb-[calc(var(--safe-bottom)+12px)] backdrop-blur-sm lg:mx-0 lg:border-t-0 lg:px-0 lg:pb-4">

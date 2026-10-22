@@ -62,6 +62,16 @@ describe.skipIf(!reachable)('menú del cole smoke', () => {
     expect((await call('GET', '/school-menu')).status).toBe(401)
   })
 
+  it('also visible with a child in «Tu ficha» (2026-10-22: only reachable by its URL before)', async () => {
+    const home = await freshUser(0)
+    expect((await call('GET', '/school-menu', undefined, home.auth)).body.visible).toBe(false)
+    // An adult without an account doesn't count; a child does.
+    expect((await call('POST', '/household/profile/persons', { alias: 'La abuela', ageBand: 'adulto' }, home.auth)).status).toBeLessThan(300)
+    expect((await call('GET', '/school-menu', undefined, home.auth)).body.visible).toBe(false)
+    expect((await call('POST', '/household/profile/persons', { alias: 'La pequeña', ageBand: '6-12' }, home.auth)).status).toBeLessThan(300)
+    expect((await call('GET', '/school-menu', undefined, home.auth)).body.visible).toBe(true)
+  })
+
   it('save, replace, clear, and the Monday dinner avoids the school group', async () => {
     const { auth, userId } = await freshUser(1)
     const monday = nextMonday()

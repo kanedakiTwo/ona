@@ -11,7 +11,8 @@
  */
 
 import { useEffect, useState } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useRouter } from "next/navigation"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { MessageCircle, Monitor } from "lucide-react"
 import { useAuth } from "@/lib/auth"
 import { api } from "@/lib/api"
@@ -19,6 +20,7 @@ import { useWhatsAppStatus, type useWhatsAppLinkCode } from "@/hooks/useWhatsApp
 import { Accent, OnboardingHeader } from "./OnboardingShell"
 import { WhatsAppQr } from "@/components/whatsapp/WhatsAppQr"
 import { OnboardingMenuReady } from "./OnboardingMenuReady"
+import { markOnboardedInCache } from "@/hooks/useOnboardingGate"
 
 const PILL =
   "flex h-[52px] w-full items-center justify-center gap-2 rounded-full bg-ink px-6 text-[16px] font-semibold text-cream transition-colors hover:bg-ink-mid active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
@@ -81,11 +83,16 @@ export function OnboardingChannelChoice({ onWhatsApp, onWeb }: { onWhatsApp: () 
 export function OnboardingWhatsAppLink({
   onWeb,
   linkCode,
+  allergiesAsked = false,
 }: {
   onWeb: () => void
   linkCode: ReturnType<typeof useWhatsAppLinkCode>
+  /** Asked at the start of the sign-up (allergies first, 2026-10-22): «Tu menú está listo» doesn't ask again. */
+  allergiesAsked?: boolean
 }) {
   const { user, updateUser } = useAuth()
+  const router = useRouter()
+  const queryClient = useQueryClient()
   const status = useWhatsAppStatus({ pollWhilePending: true })
   const linked = Boolean(status.data?.linked)
 
@@ -102,10 +109,16 @@ export function OnboardingWhatsAppLink({
   useEffect(() => {
     if (account.data?.onboardingDone && !menuReady) {
       updateUser(account.data)
+      if (user?.id) markOnboardedInCache(queryClient, user.id)
       setMenuReady(true)
     }
-  }, [account.data, updateUser, menuReady])
+  }, [account.data, updateUser, menuReady, queryClient, user?.id])
 
+  useEffect(() => {
+    if (menuReady && allergiesAsked) router.push("/menu")
+  }, [menuReady, allergiesAsked, router])
+
+  if (menuReady && allergiesAsked) return <p role="status" className="text-[14px] text-ink-muted">Tu menú está listo. Abriéndolo…</p>
   if (menuReady) return <OnboardingMenuReady />
 
   if (linked) {

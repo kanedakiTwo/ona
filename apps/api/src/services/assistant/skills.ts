@@ -2593,6 +2593,8 @@ const updateHousehold: SkillDefinition = {
       .update(users)
       .set({ adults, kidsCount, householdSize: null })
       .where(eq(users.id, userId))
+    const { alignHouseholdMemory } = await import('../userMemoryStore.js')
+    await alignHouseholdMemory(userId, { adults, kidsCount }).catch((err) => console.error('[update_household] memory', err))
 
     const multiplier = householdMultiplier(adults, kidsCount)
     const adultsLabel = adults === 1 ? '1 adulto' : `${adults} adultos`

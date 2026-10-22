@@ -44,7 +44,9 @@ export default function OnboardingPage() {
   }, [user, isLoading, router, status.data, updateUser])
 
   const statusPending = Boolean(user) && !user?.onboardingDone && status.isPending
-  if (isLoading || !user || statusPending || status.data?.onboardingDone) {
+  // Onboarded on arrival: on its way to /menu, so no questions flash meanwhile.
+  const leaving = Boolean(user?.onboardingDone) && onboardedOnArrival.current !== false
+  if (isLoading || !user || statusPending || status.data?.onboardingDone || leaving) {
     return (
       <div className="flex min-h-[100dvh] items-center justify-center bg-cream">
         <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-muted" role="status">Cargando...</p>

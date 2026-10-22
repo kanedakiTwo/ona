@@ -11,10 +11,17 @@
  * still unanswered after API_SLOW_MS (8 s): it used to leave /menu on a
  * near-empty «Cargando...» for good (Windows app, 2026-10-21). If the late
  * answer says the sign-up is pending, it still goes to `/onboarding`.
+ *
+ * Only the answer fetched for this visit counts (2026-10-22). A disabled query
+ * still hands back what an earlier visit cached: an account that reached
+ * /menu before finishing the sign-up (logging in lands there) kept «pending»
+ * in the cache, and after finishing it /menu sent it back to /onboarding,
+ * which sent it to /menu, for good. Finishing the sign-up also writes the new
+ * state into the gate's cache (`markOnboardedInCache`).
  */
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, type QueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { useSlowLoad } from "@/components/profile/SubLoadError"
@@ -36,17 +43,27 @@ export function useOnboardingGate(): "ok" | "checking" {
     refetchOnWindowFocus: false,
   })
 
-  const required = status.data?.onboardingRequired === true
-  const { slow } = useSlowLoad(Boolean(user) && !knownDone && status.isPending)
+  // What the server said for this visit; never an earlier visit's cached answer.
+  const fresh = !knownDone && status.isFetchedAfterMount ? status.data : undefined
+  const required = fresh?.onboardingRequired === true
+  const { slow } = useSlowLoad(Boolean(user) && !knownDone && !fresh && !status.isError)
   useEffect(() => {
-    if (!status.data) return
-    if (status.data.onboardingRequired) router.replace("/onboarding")
-    else if (status.data.onboardingDone) updateUser({ onboardingDone: true })
-  }, [status.data, router, updateUser])
+    if (!fresh) return
+    if (fresh.onboardingRequired) router.replace("/onboarding")
+    else if (fresh.onboardingDone) updateUser({ onboardingDone: true })
+  }, [fresh, router, updateUser])
 
   if (isLoading || !user) return "checking"
   if (knownDone || status.isError) return "ok"
   if (slow && !required) return "ok"
-  if (!status.data || required) return "checking"
+  if (!fresh || required) return "checking"
   return "ok"
+}
+
+/**
+ * The sign-up just finished: the gate's cached answer says so. Only the gate's: /onboarding
+ * still shows what comes after (the WhatsApp sign-up's «Tu menú está listo») and leaves by itself.
+ */
+export function markOnboardedInCache(queryClient: QueryClient, userId: string): void {
+  queryClient.setQueryData(["onboarding-gate", userId], (prev: object | undefined) => ({ ...(prev ?? {}), onboardingDone: true, onboardingRequired: false }))
 }

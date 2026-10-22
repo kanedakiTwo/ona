@@ -16,7 +16,7 @@ import { env } from '../config/env.js'
 import { db } from '../db/connection.js'
 import { ingredients, recipeIngredients, recipes, recipeSteps } from '../db/schema.js'
 import { currentCostChannel, runWithCostUser } from './costLedger.js'
-import { buildRecipePrompt, generateRecipeImage, imageGenerationConfigured, writeRecipeImage } from './recipeImageGenerator.js'
+import { buildRecipePrompt, generateRecipeImage, imageChoiceForAttempt, imageGenerationConfigured, writeRecipeImage } from './recipeImageGenerator.js'
 import { checkRecipeImage, describeDish, verdictOk, type DishInput, type ImageVerdict } from './recipeImageCheck.js'
 import { spendCapStatus } from './spendCap.js'
 
@@ -26,13 +26,14 @@ export interface Dish extends DishInput {
 
 export interface HouseImageDeps {
   describe: (dish: DishInput) => Promise<string | null>
-  generate: (prompt: string) => Promise<Buffer>
+  /** `attempt` 1 is the first model; 2, the retry model (D-117: gpt-image-2 high, then nano-banana-pro). */
+  generate: (prompt: string, attempt: number) => Promise<Buffer>
   check: (dish: DishInput, image: Buffer) => Promise<ImageVerdict | null>
 }
 
 const realDeps: HouseImageDeps = {
   describe: (dish) => describeDish(dish),
-  generate: (prompt) => generateRecipeImage(prompt, '4:3'),
+  generate: (prompt, attempt) => generateRecipeImage(prompt, '4:3', imageChoiceForAttempt(attempt)),
   check: (dish, image) => checkRecipeImage({ ...dish, image, mimeType: 'image/png' }),
 }
 
@@ -48,6 +49,8 @@ export interface HouseImageResult {
  * Pure orchestration (deps injected): up to `maxAttempts` generations.
  * Keeps the first that passes the check; otherwise the first that at least
  * shows the right dish. A missing checker (no API key) accepts the first.
+ * The vision check is the threshold (D-117): the second attempt goes to the
+ * retry model only when the first photo didn't pass it.
  */
 export async function makeHouseImage(dish: Dish, deps: HouseImageDeps = realDeps, maxAttempts = 2): Promise<HouseImageResult> {
   const description = await deps.describe(dish)
@@ -55,7 +58,7 @@ export async function makeHouseImage(dish: Dish, deps: HouseImageDeps = realDeps
   let fallback: { png: Buffer; verdict: ImageVerdict } | null = null
   let last: ImageVerdict | null = null
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const png = await deps.generate(prompt)
+    const png = await deps.generate(prompt, attempt)
     const verdict = await deps.check(dish, png)
     if (!verdict || verdictOk(verdict)) return { png, verdict, attempts: attempt, description }
     last = verdict

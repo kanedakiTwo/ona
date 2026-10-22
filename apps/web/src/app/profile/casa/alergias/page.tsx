@@ -27,6 +27,7 @@ import { api } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { safeNext } from "@/lib/safeNext"
 import { RestrictionsPicker } from "@/components/onboarding/RestrictionsPicker"
+import { withTyped } from "@/lib/restrictionText"
 import { Accent, PILL_INK, PILL_OUTLINE, SubPage } from "@/components/profile/SubPage"
 
 type WeekDays = Array<Record<string, { dishes?: Array<{ kind?: string }> } | undefined>>
@@ -42,6 +43,9 @@ export default function HouseholdAllergiesPage() {
   const [householdName, setHouseholdName] = useState<string | null>(null)
   const [consent, setConsent] = useState(false)
   const [restrictions, setRestrictions] = useState<string[]>([])
+  /** Typed in the free-text box and not added yet: it counts and is saved too. */
+  const [typed, setTyped] = useState("")
+  const toSave = withTyped(restrictions, typed)
   const [loaded, setLoaded] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
@@ -85,10 +89,12 @@ export default function HouseholdAllergiesPage() {
     setError("")
     try {
       await api.post(`/user/${user.id}/health-consent`, { consent: true })
-      const updated = await api.put<{ restrictions?: string[] }>(`/user/${user.id}`, { restrictions })
-      updateUser({ restrictions: updated.restrictions ?? restrictions })
+      const updated = await api.put<{ restrictions?: string[] }>(`/user/${user.id}`, { restrictions: toSave })
+      updateUser({ restrictions: updated.restrictions ?? toSave })
       await queryClient.invalidateQueries({ queryKey: ["household-allergies"] })
-      if (restrictions.length > 0) {
+      // The «Alergias e intolerancias» card on /profile reads it.
+      await queryClient.invalidateQueries({ queryKey: ["user", user.id] })
+      if (toSave.length > 0) {
         const { weeks } = firstMenuWeeks()
         const week = await api.get<{ days?: WeekDays }>(`/menu/${user.id}/${weeks[0]}`).catch(() => null)
         if (weekHasDishes(week?.days)) {
@@ -121,11 +127,13 @@ export default function HouseholdAllergiesPage() {
     router.push(next)
   }
 
+  // From «Alergias e intolerancias» on /profile (2026-10-22), not on the way to the menu.
+  const fromProfile = next.startsWith("/profile")
   const primaryLabel = !consent
-    ? "Ahora no"
-    : restrictions.length > 0
-      ? "Guardar y ver el menú"
-      : "No tengo ninguna, ver el menú"
+    ? fromProfile ? "Volver" : "Ahora no"
+    : toSave.length > 0
+      ? fromProfile ? "Guardar" : "Guardar y ver el menú"
+      : fromProfile ? "No tengo ninguna" : "No tengo ninguna, ver el menú"
 
   return (
     <SubPage
@@ -135,7 +143,11 @@ export default function HouseholdAllergiesPage() {
           Tus alergias y tu <Accent>dieta</Accent>
         </>
       }
-      intro="Antes de ver el menú de la casa: ¿tienes alguna alergia o intolerancia, o sigues alguna dieta (vegetariana, sin cerdo…)? El menú de la casa las tendrá en cuenta para todos."
+      intro={
+        fromProfile
+          ? "¿Tienes alguna alergia o intolerancia, o sigues alguna dieta (vegetariana, sin cerdo…)? Si no está en la lista, escríbela. El menú de la casa las tendrá en cuenta para todos."
+          : "Antes de ver el menú de la casa: ¿tienes alguna alergia o intolerancia, o sigues alguna dieta (vegetariana, sin cerdo…)? El menú de la casa las tendrá en cuenta para todos."
+      }
     >
       <div data-testid="household-allergies" className="max-w-xl">
         {error && (
@@ -156,7 +168,7 @@ export default function HouseholdAllergiesPage() {
                 {saving ? "Rehaciendo el menú…" : "Rehacer el menú de esta semana"}
               </button>
               <button type="button" onClick={() => router.push(next)} disabled={saving} className={PILL_OUTLINE}>
-                Ver el menú tal cual
+                {fromProfile ? "Dejar el menú tal cual" : "Ver el menú tal cual"}
               </button>
             </div>
           </div>
@@ -167,6 +179,7 @@ export default function HouseholdAllergiesPage() {
               onConsentChange={setConsent}
               restrictions={restrictions}
               onChange={setRestrictions}
+              onTypingChange={setTyped}
             />
             <div className="mt-8 flex flex-col gap-2">
               <button type="button" onClick={() => void save()} disabled={saving || !loaded} className={PILL_INK}>

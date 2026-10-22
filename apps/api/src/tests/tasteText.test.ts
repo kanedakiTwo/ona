@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { TASTE_PROTEIN_STREAK } from '@ona/shared'
-import { dislikeChipText, nextStreak } from '../../../web/src/lib/tasteText'
+import { dislikeChipText, nextStreak, swipeStamps, swipeVerdict } from '../../../web/src/lib/tasteText'
 import { withArticle } from '../services/tasteDeck.js'
 
 describe('«¿Qué es lo que no?» chips', () => {
@@ -37,3 +37,24 @@ describe('meat/fish streak', () => {
     expect(nextStreak(2, 'love')).toBe(0)
   })
 })
+
+describe('the swipe on a card: the main direction wins (a beta tester, 2026-10-22)', () => {
+  it('up with a thumb that drifts to a side is «Me encanta», not «No para mí»', () => {
+    expect(swipeVerdict(-120, -200)).toBe('love')
+    expect(swipeVerdict(130, -180)).toBe('love')
+    expect(swipeVerdict(0, -120)).toBe('love')
+  })
+  it('mostly to a side is «Me apetece» or «No para mí»; too short is nothing', () => {
+    expect(swipeVerdict(180, -40)).toBe('like')
+    expect(swipeVerdict(-180, -60)).toBe('nope')
+    expect(swipeVerdict(60, -50)).toBeNull()
+    expect(swipeVerdict(-90, 20)).toBeNull()
+    expect(swipeVerdict(0, 150)).toBeNull()
+  })
+  it('while dragging, only the main direction\'s stamp shows', () => {
+    expect(swipeStamps(-120, -200)).toEqual({ like: 0, nope: 0, love: 1 })
+    expect(swipeStamps(-150, -60)).toEqual({ like: 0, nope: 1, love: 0 })
+    expect(swipeStamps(50, -10).like).toBeCloseTo(0.5)
+  })
+})
+

@@ -77,9 +77,9 @@ function textOf(response: Pick<Anthropic.Message, 'content'>): string | null {
   return block && block.type === 'text' ? block.text : null
 }
 
-const VERDICT_LABEL: Record<string, string> = { love: 'ME ENCANTA', like: 'me apetece', nope: 'NO para mí', skip: 'no la conoce' }
+const VERDICT_LABEL: Record<string, string> = { love: 'ME ENCANTA', like: 'me apetece', nope: 'NO para mí', skip: 'no la conoce o le da igual' }
 
-const PICK_SYSTEM = `Ayudas a Mimoia, un planificador de menús semanales para hogares en España, a conocer los gustos de un usuario. El usuario va diciendo de cada receta si le encanta, le apetece, no es para él o no la conoce.
+const PICK_SYSTEM = `Ayudas a Mimoia, un planificador de menús semanales para hogares en España, a conocer los gustos de un usuario. El usuario va diciendo de cada receta si le encanta, le apetece, no es para él, le da igual o no la conoce.
 
 Te paso lo que ha respondido y una lista de recetas candidatas numeradas. Elige las que más información nos darán ahora:
 - busca lo que aún no sabemos o es dudoso (p. ej. si dijo sí a un pescado al horno y no a un pescado frito: ¿es el pescado o la fritura?; ¿la cuchara le gusta siempre o solo algunas?);

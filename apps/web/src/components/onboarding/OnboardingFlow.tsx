@@ -15,6 +15,8 @@
  * same first-menu generation before landing on /menu.
  */
 import { useEffect, useState, type ReactNode } from "react"
+import { useQueryClient } from "@tanstack/react-query"
+import { markOnboardedInCache } from "@/hooks/useOnboardingGate"
 import { useAuth } from "@/lib/auth"
 import { api } from "@/lib/api"
 import { useRouter } from "next/navigation"
@@ -33,6 +35,7 @@ import {
   type WeekdayCookingChoice,
 } from "@ona/shared"
 import { RestrictionsPicker } from "./RestrictionsPicker"
+import { withTyped } from "@/lib/restrictionText"
 import { Accent, OnboardingHeader, OnboardingShell } from "./OnboardingShell"
 import { OnboardingChannelChoice, OnboardingWhatsAppLink } from "./OnboardingWhatsApp"
 import { useWhatsAppLinkCode, useWhatsAppStatus } from "@/hooks/useWhatsApp"
@@ -177,6 +180,7 @@ export function onboardingDraftPayload(step: number, data: OnboardingData): Onbo
 export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDraft | null } = {}) {
   const { user, updateUser } = useAuth()
   const router = useRouter()
+  const queryClient = useQueryClient()
   const [step, setStep] = useState(() => resumeStep(draft))
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [preparingMenu, setPreparingMenu] = useState(false)
@@ -196,6 +200,21 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
 
   // RGPD art. 9 (PRO-21): restrictions are health data, only with this box.
   const [healthConsent, setHealthConsent] = useState(false)
+
+  // Allergies first (a beta tester, 2026-10-22: «estaría bien marcar las intolerancias
+  // antes incluso que la sugerencia de recetas»): when «Dime qué te apetece» is coming,
+  // «¿Hay algo que no comáis?» goes before it and is saved at once (with the consent),
+  // so those 10 dishes already leave out what they don't eat. Then the web questions
+  // skip it and the WhatsApp sign-up doesn't ask it again.
+  const [allergiesFirst, setAllergiesFirst] = useState<"ask" | "done">("ask")
+  const [allergiesAnswered, setAllergiesAnswered] = useState(false)
+  const [savingAllergies, setSavingAllergies] = useState(false)
+  /** Typed in the allergies box and not added yet: it counts as added (2026-10-22). */
+  const [typedRestriction, setTypedRestriction] = useState("")
+  const restrictionsWithTyped = withTyped(data.restrictions, typedRestriction)
+  const order = allergiesAnswered ? [1, 2, 3, 4, 6] : [1, 2, 3, 4, RESTRICTIONS_STEP, 6]
+  const position = (s: number) => order.indexOf(s) + 1
+  const visibleTotal = order.length
 
   const totalSteps = 6
 
@@ -234,7 +253,7 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
 
   // PRO-120: each step seen and passed, for the sign-up funnel (the API keeps one per person, step and day).
   const shownStep: OnboardingStep | null =
-    tasteStep === "show" ? "afina" : tasteStep !== "done" ? null : channel === "choose" ? "canal" : channel === "web" ? onboardingStepKey(step) : null
+    tasteStep === "show" ? (allergiesFirst === "ask" ? "dieta" : "afina") : tasteStep !== "done" ? null : channel === "choose" ? "canal" : channel === "web" ? onboardingStepKey(step) : null
   useEffect(() => {
     if (shownStep) trackUsage("onboarding_step", { step: shownStep, action: "visto" })
   }, [shownStep])
@@ -242,17 +261,53 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
     if (key) trackUsage("onboarding_step", { step: key, action: "hecho", ...(via ? { via } : {}) })
   }
 
+  /** Leaving the allergies step: what is typed and not added yet goes in (2026-10-22). */
+  function keepTyped(): OnboardingData {
+    if (step !== RESTRICTIONS_STEP || !typedRestriction.trim()) return data
+    const kept = { ...data, restrictions: restrictionsWithTyped }
+    setData(kept)
+    setTypedRestriction("")
+    return kept
+  }
+
   function next() {
-    if (step >= totalSteps) return
+    const i = order.indexOf(step)
+    if (i < 0 || i >= order.length - 1) return
+    const current = keepTyped()
     stepDone(onboardingStepKey(step))
-    setStep(step + 1)
+    setStep(order[i + 1])
     // PRO-178: the next visit (any device) resumes here with these answers.
-    if (user) api.put(`/user/${user.id}/onboarding-draft`, onboardingDraftPayload(step + 1, data)).catch(() => {})
+    if (user) api.put(`/user/${user.id}/onboarding-draft`, onboardingDraftPayload(order[i + 1], current)).catch(() => {})
   }
 
   function prev() {
-    if (step > 1) setStep(step - 1)
+    keepTyped()
+    const i = order.indexOf(step)
+    if (i > 0) setStep(order[i - 1])
     else if (canBackToChannel) setChannel("choose")
+  }
+
+  async function answerAllergiesFirst() {
+    if (!user) return
+    setError("")
+    if (healthConsent && restrictionsWithTyped.length > 0) {
+      setSavingAllergies(true)
+      try {
+        await api.post(`/user/${user.id}/health-consent`, { consent: true })
+        const updated = await api.put<{ restrictions?: string[] }>(`/user/${user.id}`, { restrictions: restrictionsWithTyped })
+        updateUser({ restrictions: updated.restrictions ?? restrictionsWithTyped })
+        setData((d) => ({ ...d, restrictions: restrictionsWithTyped }))
+        setTypedRestriction("")
+      } catch {
+        setSavingAllergies(false)
+        setError("No hemos podido guardarlo. Inténtalo otra vez.")
+        return
+      }
+      setSavingAllergies(false)
+    }
+    stepDone("dieta")
+    setAllergiesAnswered(true)
+    setAllergiesFirst("done")
   }
 
   async function handleComplete() {
@@ -266,7 +321,7 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
         adults: data.adults,
         kidsCount: data.kidsCount,
         cookingFreq: data.cookingFreq,
-        restrictions: healthConsent ? data.restrictions : [],
+        restrictions: healthConsent ? restrictionsWithTyped : [],
         priority: data.priority,
         healthConsent,
         weekdayCooking: data.weekdayCooking ?? undefined,
@@ -293,6 +348,7 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
       // "already onboarded" redirect reach /menu first; /menu then found no
       // week (404) and auto-created an empty one on top of the real menu.
       updateUser(result)
+      markOnboardedInCache(queryClient, user.id)
       router.push(weeks.length > 1 ? `/menu?week=${open}` : "/menu")
     } catch (err: any) {
       setError(err.message || "Error al guardar")
@@ -322,6 +378,40 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
 
   const pill =
     "flex h-[52px] w-full items-center justify-center rounded-full bg-ink px-6 text-[16px] font-semibold text-cream transition-colors hover:bg-ink-mid active:scale-[0.98] disabled:opacity-40 disabled:active:scale-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+
+  if (tasteStep === "show" && allergiesFirst === "ask") {
+    return (
+      <div className="min-h-[100dvh] bg-cream lg:py-8">
+        <OnboardingShell photo={PHOTO}>
+          <div data-testid="onboarding-allergies-first" className="flex min-h-[100dvh] flex-col px-4 pt-[calc(var(--safe-top)+12px)] lg:min-h-[calc(100dvh-4rem)] lg:px-0 lg:pt-0">
+            <div className="flex-1 pb-8 pt-6 lg:pt-10">
+              {error && (
+                <div role="alert" className="mb-4 rounded-2xl bg-warn-bg p-3 text-[14px] text-terracotta-deep">
+                  {error}
+                </div>
+              )}
+              <OnboardingHeader eyebrow="Primeros pasos">
+                Antes de nada, ¿hay algo que <Accent>no comáis</Accent>?
+              </OnboardingHeader>
+              <Lead>Alergias, intolerancias o cosas que no os gustan. Así, desde el primer plato, no te propongo nada que no podáis comer.</Lead>
+              <RestrictionsPicker
+                consent={healthConsent}
+                onConsentChange={setHealthConsent}
+                restrictions={data.restrictions}
+                onChange={(restrictions) => setData({ ...data, restrictions })}
+                onTypingChange={setTypedRestriction}
+              />
+            </div>
+            <div className="sticky bottom-0 z-10 -mx-4 border-t border-border-soft bg-cream/95 px-4 pt-3 pb-[calc(var(--safe-bottom)+12px)] backdrop-blur-sm lg:mx-0 lg:border-t-0 lg:px-0 lg:pb-4">
+              <button type="button" onClick={() => void answerAllergiesFirst()} disabled={savingAllergies} className={pill}>
+                {savingAllergies ? "Guardando..." : "Siguiente"}
+              </button>
+            </div>
+          </div>
+        </OnboardingShell>
+      </div>
+    )
+  }
 
   if (tasteStep !== "done") {
     return (
@@ -370,7 +460,7 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
                   }}
                 />
               ) : (
-                <OnboardingWhatsAppLink linkCode={linkCode} onWeb={() => setChannel("web")} />
+                <OnboardingWhatsAppLink linkCode={linkCode} onWeb={() => setChannel("web")} allergiesAsked={allergiesAnswered} />
               )}
             </div>
           </div>
@@ -399,13 +489,13 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
               role="progressbar"
               aria-label="Progreso"
               aria-valuemin={1}
-              aria-valuemax={totalSteps}
-              aria-valuenow={step}
+              aria-valuemax={visibleTotal}
+              aria-valuenow={position(step)}
             >
-              {Array.from({ length: totalSteps }, (_, i) => (
+              {Array.from({ length: visibleTotal }, (_, i) => (
                 <div
                   key={i}
-                  className={cn("h-1 flex-1 rounded-full transition-colors", i < step ? "bg-ink" : "bg-border")}
+                  className={cn("h-1 flex-1 rounded-full transition-colors", i < position(step) ? "bg-ink" : "bg-border")}
                 />
               ))}
             </div>
@@ -421,7 +511,7 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
             {/* Step 1: Household size */}
             {step === 1 && (
               <section>
-                <OnboardingHeader eyebrow={`Primeros pasos · 1 de ${totalSteps}`}>
+                <OnboardingHeader eyebrow={`Primeros pasos · ${position(1)} de ${visibleTotal}`}>
                   ¿Para <Accent>cuántos</Accent> cocinas?
                 </OnboardingHeader>
                 <Lead>Adultos cuenta a partir de 11 años. Niños son los de 2 a 10. Los menores de 2 no cuentan.</Lead>
@@ -453,7 +543,7 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
             {/* Step 2: Cooking frequency */}
             {step === 2 && (
               <section>
-                <OnboardingHeader eyebrow={`Primeros pasos · 2 de ${totalSteps}`}>
+                <OnboardingHeader eyebrow={`Primeros pasos · ${position(2)} de ${visibleTotal}`}>
                   ¿Cuántas veces a la semana cocinas <Accent>de verdad</Accent>?
                 </OnboardingHeader>
                 <Lead>No cuenta calentar sobras.</Lead>
@@ -478,7 +568,7 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
             {/* Step 3: How the household cooks (PRO-217) */}
             {step === 3 && (
               <section data-testid="onboarding-cooking-style">
-                <OnboardingHeader eyebrow={`Primeros pasos · 3 de ${totalSteps}`}>
+                <OnboardingHeader eyebrow={`Primeros pasos · ${position(3)} de ${visibleTotal}`}>
                   ¿Cómo cocináis <Accent>en casa</Accent>?
                 </OnboardingHeader>
                 <Lead>Cada casa se organiza a su manera.</Lead>
@@ -526,7 +616,7 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
             {/* Step 4: Time to cook on weekdays (PRO-138) */}
             {step === 4 && (
               <section>
-                <OnboardingHeader eyebrow={`Primeros pasos · 4 de ${totalSteps}`}>
+                <OnboardingHeader eyebrow={`Primeros pasos · ${position(4)} de ${visibleTotal}`}>
                   Entre semana, ¿cómo te gusta <Accent>cocinar</Accent>?
                 </OnboardingHeader>
                 <Lead>El fin de semana, sin prisa.</Lead>
@@ -560,7 +650,7 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
             {/* Step 5: Restrictions */}
             {step === RESTRICTIONS_STEP && (
               <section>
-                <OnboardingHeader eyebrow={`Primeros pasos · ${RESTRICTIONS_STEP} de ${totalSteps}`}>
+                <OnboardingHeader eyebrow={`Primeros pasos · ${position(RESTRICTIONS_STEP)} de ${visibleTotal}`}>
                   ¿Hay algo que <Accent>no comas</Accent>?
                 </OnboardingHeader>
                 <Lead>Alergias, intolerancias o preferencias.</Lead>
@@ -569,6 +659,7 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
                   onConsentChange={setHealthConsent}
                   restrictions={data.restrictions}
                   onChange={(restrictions) => setData({ ...data, restrictions })}
+                  onTypingChange={setTypedRestriction}
                 />
               </section>
             )}
@@ -576,7 +667,7 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
             {/* Step 6: Priority */}
             {step === 6 && (
               <section>
-                <OnboardingHeader eyebrow={`Primeros pasos · 6 de ${totalSteps}`}>
+                <OnboardingHeader eyebrow={`Primeros pasos · ${position(6)} de ${visibleTotal}`}>
                   ¿Qué quieres que Mimoia <Accent>priorice</Accent>?
                 </OnboardingHeader>
                 <Lead>Elegimos el enfoque de tus menús.</Lead>

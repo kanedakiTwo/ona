@@ -11,6 +11,7 @@ import { X } from "lucide-react"
 import { RESTRICTION_PRESETS } from "@ona/shared"
 import { cn } from "@/lib/utils"
 import { HealthConsentCheckbox } from "@/components/HealthConsentCheckbox"
+import { withTyped } from "@/lib/restrictionText"
 
 const FIELD =
   "h-12 w-full rounded-2xl border border-border bg-paper px-4 text-[15px] text-ink placeholder:text-ink-light transition-colors focus:border-ink focus:outline-none disabled:opacity-60"
@@ -20,17 +21,28 @@ export function RestrictionsPicker({
   onConsentChange,
   restrictions,
   onChange,
+  onTypingChange,
 }: {
   consent: boolean
   onConsentChange: (consent: boolean) => void
   restrictions: string[]
   onChange: (restrictions: string[]) => void
+  /**
+   * What is typed and not added yet: the screen counts and saves it
+   * (`withTyped`), so «Guardar» without Enter keeps «pimiento» (2026-10-22).
+   * Not added on blur: the new chip moved the button under the finger.
+   */
+  onTypingChange?: (text: string) => void
 }) {
-  const [tagInput, setTagInput] = useState("")
+  const [tagInput, setTagInputState] = useState("")
+  function setTagInput(text: string) {
+    setTagInputState(text)
+    onTypingChange?.(text)
+  }
 
   function addRestriction(tag: string) {
-    const trimmed = tag.trim().toLowerCase()
-    if (trimmed && !restrictions.includes(trimmed)) onChange([...restrictions, trimmed])
+    const next = withTyped(restrictions, tag)
+    if (next.length > restrictions.length) onChange(next)
     setTagInput("")
   }
 
@@ -90,7 +102,7 @@ export function RestrictionsPicker({
             onChange={(e) => setTagInput(e.target.value)}
             onKeyDown={handleTagKeyDown}
             disabled={!consent}
-            placeholder="Escribe y pulsa Enter para añadir..."
+            placeholder="Otra: escríbela (p. ej. pimiento)"
             className={FIELD}
           />
         </div>

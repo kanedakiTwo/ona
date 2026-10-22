@@ -50,6 +50,17 @@ export interface RecipePromptInput {
 }
 
 /** Compose the editorial prompt sent to the image model. Pure. */
+/**
+ * Spanish dish words that the image models read as an English word their content policy blocks
+ * («Rape alangostado» came back 422 from AiKit on 2026-10-22: «rape» is monkfish). Swapped for a
+ * synonym in the prompt only; the recipe keeps its name.
+ */
+const PROMPT_SYNONYMS: Array<[RegExp, string]> = [[/(?<![\p{L}])rape(?![\p{L}])/giu, 'pejesapo']]
+
+export function promptSafe(text: string): string {
+  return PROMPT_SYNONYMS.reduce((t, [re, to]) => t.replace(re, (m) => (m[0] === m[0].toUpperCase() ? to[0].toUpperCase() + to.slice(1) : to)), text)
+}
+
 export function buildRecipePrompt(input: RecipePromptInput): string {
   const ingredientsLine = input.description
     ? input.description.replace(/\.?\s*$/, '.')
@@ -61,9 +72,11 @@ export function buildRecipePrompt(input: RecipePromptInput): string {
     : input.meals.includes('snack')
       ? 'Tamaño de ración pequeña, tipo snack.'
       : ''
-  return [`${input.name}.`, ingredientsLine, mealHint, STYLE_SUFFIX]
-    .filter((s) => s.length > 0)
-    .join(' ')
+  return promptSafe(
+    [`${input.name}.`, ingredientsLine, mealHint, STYLE_SUFFIX]
+      .filter((s) => s.length > 0)
+      .join(' '),
+  )
 }
 
 /** Thrown when the image provider rejects the request (auth, quota, model error, etc). */
@@ -85,6 +98,27 @@ export class AikitNotConfiguredError extends Error {
 }
 
 type Provider = 'aikit' | 'openai'
+
+/** What AiKit is asked for: a model and, optionally, a quality. */
+export interface ImageChoice {
+  model: string
+  quality?: string
+}
+
+/**
+ * D-117 (Miguel, 2026-10-22): the first photo with gpt-image-2 in high quality; when the vision
+ * check turns it down, the second try with nano-banana-pro (about 1 in 5 should get there).
+ */
+export function imageChoiceForAttempt(attempt: number): ImageChoice {
+  const primary: ImageChoice = { model: env.AIKIT_IMAGE_MODEL, ...(env.AIKIT_IMAGE_QUALITY ? { quality: env.AIKIT_IMAGE_QUALITY } : {}) }
+  if (attempt <= 1 || !env.AIKIT_IMAGE_RETRY_MODEL) return primary
+  return { model: env.AIKIT_IMAGE_RETRY_MODEL }
+}
+
+/** The price-table name of what AiKit served: «gpt-image-2-high» for the high quality. */
+export function aikitCostModel(served: string, quality?: string): string {
+  return quality && quality !== 'low' && served === 'gpt-image-2' ? `${served}-${quality}` : served
+}
 
 /** Providers to try, in order, for the configured mode. */
 export function imageProviders(
@@ -109,13 +143,14 @@ export function imageGenerationConfigured(): boolean {
 export async function generateRecipeImage(
   prompt: string,
   aspectRatio: AspectRatio = '4:3',
+  choice: ImageChoice = imageChoiceForAttempt(1),
 ): Promise<Buffer> {
   const providers = imageProviders()
   if (providers.length === 0) throw new AikitNotConfiguredError()
   let lastErr: unknown = null
   for (const p of providers) {
     try {
-      return p === 'aikit' ? await generateWithAikit(prompt, aspectRatio) : await generateWithOpenAI(prompt, aspectRatio)
+      return p === 'aikit' ? await generateWithAikit(prompt, aspectRatio, choice) : await generateWithOpenAI(prompt, aspectRatio)
     } catch (err) {
       lastErr = err
       if (providers.length > 1) console.warn(`[recipeImage] ${p} failed, trying next:`, (err as Error)?.message ?? err)
@@ -129,24 +164,27 @@ export const AIKIT_SIZE: Record<AspectRatio, string> = { '4:3': '1536x1024', '1:
 const OPENAI_SIZE: Record<AspectRatio, string> = { '4:3': '1536x1024', '1:1': '1024x1024', '3:4': '1024x1536' }
 const RATIO: Record<AspectRatio, number> = { '4:3': 4 / 3, '1:1': 1, '3:4': 3 / 4 }
 
-async function generateWithAikit(prompt: string, aspectRatio: AspectRatio): Promise<Buffer> {
-  const model = env.AIKIT_IMAGE_MODEL
+async function generateWithAikit(prompt: string, aspectRatio: AspectRatio, choice: ImageChoice): Promise<Buffer> {
+  const { model, quality } = choice
   const res = await fetch(AIKIT_IMAGES_URL, {
     method: 'POST',
     headers: { Authorization: `Bearer ${env.AIKIT_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model, prompt, n: 1, size: AIKIT_SIZE[aspectRatio] }),
+    body: JSON.stringify({ model, prompt, n: 1, size: AIKIT_SIZE[aspectRatio], ...(quality ? { quality } : {}) }),
   })
   if (!res.ok) {
     let detail = ''
     try { detail = (await res.text()).slice(0, 300) } catch {}
     throw new AikitGenerationError(res.status, `AiKit images ${res.status}: ${detail}`)
   }
-  const body = (await res.json()) as { data?: Array<{ b64_json?: string }> }
+  const body = (await res.json()) as { model?: string; data?: Array<{ b64_json?: string }> }
   const b64 = body.data?.[0]?.b64_json
   if (!b64) throw new AikitGenerationError(502, 'AiKit images: empty response')
+  // AiKit answers an unknown model with gpt-image-2 without saying so: what it served is what we pay.
+  const served = body.model || model
+  if (served !== model) console.warn(`[recipeImage] asked AiKit for ${model}, it served ${served}`)
   // Billed to the requesting user (route context); the bulk seed script has
   // no context and lands as a system cost.
-  recordCost({ feature: 'recipe_image', provider: 'aikit', model, units: { images: 1 } })
+  recordCost({ feature: 'recipe_image', provider: 'aikit', model: aikitCostModel(served, served === model ? quality : undefined), units: { images: 1 } })
   return cropToRatio(Buffer.from(b64, 'base64'), aspectRatio)
 }
 

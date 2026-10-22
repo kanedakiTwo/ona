@@ -21,7 +21,7 @@ import {
 import { NotASchoolMenuError, schoolLunchLines } from '@ona/shared'
 import { env } from '../config/env.js'
 import { db as defaultDb } from '../db/connection.js'
-import { householdMembers, schoolLunches, users } from '../db/schema.js'
+import { householdMembers, householdPersons, profileFacts, schoolLunches, users } from '../db/schema.js'
 import { recordAnthropicCost } from './costLedger.js'
 
 type Db = typeof defaultDb
@@ -181,20 +181,37 @@ export async function loadSchoolDinnerAvoidGroups(householdId: string | null, we
   }
 }
 
+/** Ages of a person without an account («Tu ficha») that go to school. */
+export const SCHOOL_AGE_BANDS = ['0-2', '3-5', '6-12', '13-17'] as const
+
 /**
- * Does the app show «Menú del cole»? Only with a child in the household: a
- * member with the «niño» role, or a member who counted children 2–10 at sign-up.
+ * Does the app show «Menú del cole»? Only with a child in the household (D-069: discreet),
+ * known by any of: a member with the «niño» role; a member who counted children 2–10 in the
+ * web sign-up; a person without an account in «Tu ficha» under 18; or children 2–10 in the
+ * household's ficha (the WhatsApp sign-up and Mimo write it there). The last two since
+ * 2026-10-22: Miguel and a beta tester with children only reached it by its URL.
  * (Mimo works either way.)
  */
 export async function householdShowsSchoolMenu(householdId: string | null, db: Db = defaultDb): Promise<boolean> {
   if (!householdId) return false
-  const rows = await db
+  const [member] = await db
     .select({ role: householdMembers.role })
     .from(householdMembers)
     .innerJoin(users, eq(users.id, householdMembers.userId))
     .where(and(eq(householdMembers.householdId, householdId), or(eq(householdMembers.role, 'child'), gt(users.kidsCount, 0))))
     .limit(1)
-  return rows.length > 0
+  if (member) return true
+  const [person] = await db
+    .select({ id: householdPersons.id })
+    .from(householdPersons)
+    .where(and(eq(householdPersons.householdId, householdId), inArray(householdPersons.ageBand, [...SCHOOL_AGE_BANDS])))
+    .limit(1)
+  if (person) return true
+  const kids = await db
+    .select({ value: profileFacts.value })
+    .from(profileFacts)
+    .where(and(eq(profileFacts.householdId, householdId), eq(profileFacts.type, 'household.kids_2_to_10'), eq(profileFacts.status, 'active')))
+  return kids.some((f) => Number(f.value) > 0)
 }
 
 // ─── The dinner rule ────────────────────────────────────────────

@@ -18,6 +18,8 @@ Mimoia on Android as an app from the home screen or, later, from Google Play. It
 - **Two flavours, two packages**: `pruebas` adds `.pruebas` to the package and points name, start URL, declared site and link host at staging; `tienda` points them at `mimoia.com`. The package name can't change after the first upload to Google Play
 - **Not compiled in CI** (no Android SDK there): `androidApp.test.ts` reads the files and pins the contract — package, permissions, `allowBackup`, each flavour's name, start URL, link host and declared site
 - Built on an Apple Silicon Mac: `sdk.sh` downloads the Android SDK and Gradle into `~/.cache/mimoia` (checksums verified, idempotent, no Android Studio)
+- **Signing**: `construir.sh` signs both flavours with one **upload key** (RSA 3072, PKCS#12) kept outside any repo, in `~/.config/mimoia/firmas/`; it creates the key the first time with a random password it never prints. The internal build installs as signed; the store app is re-signed by Google (**Play App Signing**), so a lost upload key is replaced through Play Console («Integridad de la app» → «Solicitar restablecimiento»), not the end of the app
+- `versionCode` = minutes since 2026-01-01 (`versionName` `1.<versionCode>`): it always grows, which Google Play requires on every upload, without depending on git
 
 ## Known limitations
 
@@ -35,4 +37,5 @@ Mimoia on Android as an app from the home screen or, later, from Google Play. It
 
 - `apps/android/` — the TWA: `settings.gradle.kts`, `build.gradle.kts`, `gradle.properties`, `app/build.gradle.kts` (flavours `pruebas` / `tienda`, upload signing from the environment), `app/src/main/AndroidManifest.xml` (link host `${host}` from the flavour), `app/src/main/res/` (cream colour, launcher icon, notification spoon)
 - `apps/android/sdk.sh` — Android SDK and Gradle in `~/.cache/mimoia`
+- `apps/android/construir.sh` — builds and signs into `apps/android/dist/` (git-ignored): `mimoia-pruebas-<versionCode>.apk` + `mimoia-pruebas.json` (`{versionCode, apk, sha256}`, what the download page reads), `mimoia-tienda-<versionCode>.aab` (for Google Play) and `huella-subida.txt` (the upload key's SHA-256 fingerprint, public)
 - `apps/api/src/tests/androidApp.test.ts` — the app's contract

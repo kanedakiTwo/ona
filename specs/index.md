@@ -308,7 +308,7 @@ Installed app on a desktop / app instalada en Windows (2026-10-21): service work
 
 Android app (TWA): Trusted Web Activity, android-browser-helper, sabores pruebas/tienda (flavours), com.mimoia.app, com.mimoia.app.pruebas «Mimoia (pruebas)» on staging, `/menu?app=android`, assetlinks.json, Digital Asset Links, autoVerify, Google Play, prueba cerrada, build interna, sdk.sh (Android SDK + Gradle in `~/.cache/mimoia`), construir.sh, firma de subida (upload key), Play App Signing, permissions INTERNET + POST_NOTIFICATIONS only, Web Push under the app's name (DelegationService), Custom Tab fallback with address bar, no iPhone app.
 
-**Source**: `apps/android/`, `apps/api/src/tests/androidApp.test.ts`
+**Source**: `apps/android/`, `apps/web/public/.well-known/assetlinks.json`, `apps/api/src/tests/androidApp.test.ts`, `apps/web/e2e/assetlinks.spec.ts`
 
 ---
 

@@ -8,13 +8,14 @@ Mimoia on Android as an app from the home screen or, later, from Google Play. It
 - **«Mimoia»** (`com.mimoia.app`) is the Google Play app: same app, opens **`https://mimoia.com`** on `/menu`
 - Both start on `/menu?app=android`. Signed out, the web sends the person to `/login?next=…` as it always does ([Auth](./auth.md)); today the web ignores `app=android`
 - Notifications are the web's Web Push ([Notifications](./notifications.md)), shown under the app's name with the white spoon as small icon; on Android 13+ the app asks for the notification permission the first time the web asks for it
-- A link to the app's host (a recipe shared on WhatsApp, a menu link) opens in the app once the web declares the app (Digital Asset Links, `autoVerify`)
+- The web declares both apps (**Digital Asset Links**, `/.well-known/assetlinks.json`), so each opens full screen with no address bar on its own host, and a link to that host (a recipe shared on WhatsApp, a menu link) opens in the app (`autoVerify`)
 - Portrait only; the status and navigation bars are cream `#FAF6EE`; the icon is the web's `icon-192.png` (cream spoon on terracotta)
 
 ## Constraints
 
 - **It is a TWA**: the phone needs Chrome (or another browser that supports TWAs). If the host doesn't serve a valid `/.well-known/assetlinks.json` declaring the app with the fingerprint of the key that signed it, the app still opens, but as a Custom Tab with an address bar on top
 - **Permissions: only `INTERNET` and `POST_NOTIFICATIONS`**, `allowBackup="false"`, no code of its own: `LauncherActivity`, `DelegationService` and `NotificationPermissionRequestActivity` from `android-browser-helper` 2.7.4. minSdk 26, target/compile SDK 36, JDK 17, Android Gradle Plugin 8.13.2, Gradle 8.14.6
+- **The declaration** is a static file, `apps/web/public/.well-known/assetlinks.json`, served by the web itself (200, `application/json`, no redirect; `www.mimoia.com` redirects to the apex like every path, the app uses the apex). The **same file on every environment** declares `com.mimoia.app.pruebas` and `com.mimoia.app` with the upload key's SHA-256 fingerprint; staging declaring the store app, or production the internal one, opens nothing, because each app trusts only its own host. It works only once the file is live on the host the app opens. The store app will also need Google's Play App Signing fingerprint next to the upload one (known only once the app exists in Play Console); without it the store app opens with an address bar
 - **Two flavours, two packages**: `pruebas` adds `.pruebas` to the package and points name, start URL, declared site and link host at staging; `tienda` points them at `mimoia.com`. The package name can't change after the first upload to Google Play
 - **Not compiled in CI** (no Android SDK there): `androidApp.test.ts` reads the files and pins the contract — package, permissions, `allowBackup`, each flavour's name, start URL, link host and declared site
 - Built on an Apple Silicon Mac: `sdk.sh` downloads the Android SDK and Gradle into `~/.cache/mimoia` (checksums verified, idempotent, no Android Studio)
@@ -38,4 +39,5 @@ Mimoia on Android as an app from the home screen or, later, from Google Play. It
 - `apps/android/` — the TWA: `settings.gradle.kts`, `build.gradle.kts`, `gradle.properties`, `app/build.gradle.kts` (flavours `pruebas` / `tienda`, upload signing from the environment), `app/src/main/AndroidManifest.xml` (link host `${host}` from the flavour), `app/src/main/res/` (cream colour, launcher icon, notification spoon)
 - `apps/android/sdk.sh` — Android SDK and Gradle in `~/.cache/mimoia`
 - `apps/android/construir.sh` — builds and signs into `apps/android/dist/` (git-ignored): `mimoia-pruebas-<versionCode>.apk` + `mimoia-pruebas.json` (`{versionCode, apk, sha256}`, what the download page reads), `mimoia-tienda-<versionCode>.aab` (for Google Play) and `huella-subida.txt` (the upload key's SHA-256 fingerprint, public)
-- `apps/api/src/tests/androidApp.test.ts` — the app's contract
+- `apps/web/public/.well-known/assetlinks.json` — the declaration of both apps; `apps/web/e2e/assetlinks.spec.ts` checks it is served as JSON with both packages
+- `apps/api/src/tests/androidApp.test.ts` — the app's contract (and the declaration's fingerprints)

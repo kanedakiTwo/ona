@@ -1,0 +1,18 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.mimoia.app.pruebas",
+      "sha256_cert_fingerprints": ["BE:DE:23:30:5E:94:C5:54:C0:91:BD:BB:26:BC:52:FE:26:F4:B1:AD:02:D9:4C:B0:1C:CC:19:A5:FB:09:FC:05"]
+    }
+  },
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.mimoia.app",
+      "sha256_cert_fingerprints": ["BE:DE:23:30:5E:94:C5:54:C0:91:BD:BB:26:BC:52:FE:26:F4:B1:AD:02:D9:4C:B0:1C:CC:19:A5:FB:09:FC:05"]
+    }
+  }
+]

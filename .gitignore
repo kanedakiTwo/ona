@@ -39,3 +39,6 @@ apps/web/.last-run.json
 # API on-disk caches (USDA, BEDCA, translations)
 apps/api/.cache/
 .superpowers/
+
+# The deploy writes the commit it ships here (PRO-OF-2: GET /version, /version.json)
+VERSION_SHA

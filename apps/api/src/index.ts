@@ -4,6 +4,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { env } from './config/env.js'
 import { errorHandler } from './middleware/errorHandler.js'
+import { versionSha } from './version.js'
 import {
   captureServerErrors,
   installConsoleErrorCapture,
@@ -127,6 +128,13 @@ app.use(
 // when the server is ready. Public, no auth, no DB read.
 app.get('/health', (_req, res) => {
   res.json({ ok: true, ts: new Date().toISOString() })
+})
+
+// PRO-OF-2: which commit this deploy serves (the VERSION_SHA the deploy
+// wrote; null without it). Checked after each publish. Public, no cache, no DB.
+app.get('/version', (_req, res) => {
+  res.set('Cache-Control', 'no-store')
+  res.json({ sha: versionSha() })
 })
 
 // Routes

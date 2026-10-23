@@ -38,6 +38,18 @@ describe('Android app (TWA)', () => {
     expect(manifiesto).toMatch(/android:name="android\.support\.customtabs\.trusted\.MANAGE_SPACE_URL"\s+android:value="@string\/url_inicio"/)
   })
 
+  it('the small notification icon is a PNG per density (with a vector Chrome shows its own icon)', () => {
+    expect(manifiesto).toMatch(/android:name="android\.support\.customtabs\.trusted\.SMALL_ICON"\s+android:resource="@drawable\/ic_aviso"/)
+    expect(existsSync(fileURLToPath(new URL('../../../android/app/src/main/res/drawable/ic_aviso.xml', import.meta.url)))).toBe(false)
+    const densidades = { mdpi: 24, hdpi: 36, xhdpi: 48, xxhdpi: 72, xxxhdpi: 96 }
+    for (const [d, lado] of Object.entries(densidades)) {
+      const png = readFileSync(fileURLToPath(new URL(`../../../android/app/src/main/res/drawable-${d}/ic_aviso.png`, import.meta.url)))
+      expect(png.subarray(1, 4).toString('latin1'), d).toBe('PNG')
+      expect([png.readUInt32BE(16), png.readUInt32BE(20)], d).toEqual([lado, lado])
+      expect(png[25], `${d}: RGBA (run node apps/android/icono-aviso.mjs)`).toBe(6)
+    }
+  })
+
   it('«pruebas» opens staging and «tienda» opens mimoia.com, both on /menu inside the app', () => {
     expect(sabor('pruebas')).toEqual({ sufijo: '.pruebas', host: 'ona-web-staging.up.railway.app', nombre: 'Mimoia (pruebas)',
       inicio: 'https://ona-web-staging.up.railway.app/menu?app=android', sitio: 'https://ona-web-staging.up.railway.app' })

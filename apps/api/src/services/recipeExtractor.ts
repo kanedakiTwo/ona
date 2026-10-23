@@ -14,6 +14,7 @@ import type {
   Unit,
 } from '@ona/shared'
 import { UNITS } from '@ona/shared'
+import { fitImageForClaude } from './visionImage.js'
 
 // ─── Provider interface (swap implementation to change AI backend) ───
 export interface RawExtractedRecipe {
@@ -315,9 +316,9 @@ export async function extractRecipeFromImage(
   imageBuffer: Buffer,
   mimeType: string,
 ): Promise<ExtractedRecipe> {
-  const imageBase64 = imageBuffer.toString('base64')
-
-  const raw = await provider.extractRecipe(imageBase64, mimeType)
+  // A phone photo can be over Claude's 5 MB per image (visionImage.ts).
+  const fitted = await fitImageForClaude(imageBuffer, mimeType)
+  const raw = await provider.extractRecipe(fitted.data.toString('base64'), fitted.mimeType)
 
   const { matched: matchedIngredients, warnings: matchWarnings } =
     await matchIngredients(raw.ingredients)

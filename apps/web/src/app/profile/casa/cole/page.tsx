@@ -12,6 +12,7 @@ import { useState } from "react"
 import { Trash2, Upload } from "lucide-react"
 import { FOOD_GROUPS, FOOD_GROUP_LABELS, isFoodGroup, type SchoolLunch } from "@ona/shared"
 import { useReadSchoolMenu, useSaveSchoolMenu, useSchoolMenu } from "@/hooks/useSchoolMenu"
+import { ApiError } from "@/lib/api"
 import { Accent, SUB_EYEBROW, SUB_INPUT, SUB_LIST, SubPage } from "@/components/profile/SubPage"
 
 const DAYS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"]
@@ -22,6 +23,13 @@ function schoolDayLabel(date: string): string {
   const d = new Date(`${date}T00:00:00Z`)
   const day = DAYS[d.getUTCDay()]
   return `${day.charAt(0).toUpperCase()}${day.slice(1)} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`
+}
+
+/** The API's own words for a 4xx; never a bare «Internal server error» (2026-10-23). */
+function schoolMenuReadError(e: unknown): string {
+  if (e instanceof ApiError && e.status < 500) return e.message
+  if (e instanceof ApiError && e.status === 503 && e.message) return e.message
+  return "No he podido leer el menú ahora. Prueba otra vez en un momento o mándamelo por WhatsApp con «menú del cole»."
 }
 
 export default function SchoolMenuPage() {
@@ -36,7 +44,7 @@ export default function SchoolMenuPage() {
     setError(null)
     read.mutate(file, {
       onSuccess: (r) => setDraft(r.days),
-      onError: (e) => setError(e instanceof Error ? e.message : "No he podido leer el menú."),
+      onError: (e) => setError(schoolMenuReadError(e)),
     })
   }
 

@@ -204,7 +204,7 @@ export const api = {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: response.statusText }))
-      throw new Error(error.error ?? error.message ?? `Request failed: ${response.status}`)
+      throw new ApiError(error.error ?? error.message ?? `Request failed: ${response.status}`, response.status, error.code)
     }
 
     return response.json() as Promise<T>

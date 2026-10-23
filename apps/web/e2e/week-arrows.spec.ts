@@ -43,6 +43,10 @@ test('/shopping: ‹ › move the dates a week; progress counts each row once', 
   const range = page.getByTestId('shopping-range')
   await expect(range).toBeVisible({ timeout: 15_000 })
   const thisWeek = (await range.textContent()) ?? ''
+  // The first list is in (its rows enabled) before the arrows: a › tapped
+  // while it still loads made the API rebuild the next range's list after
+  // this one, and the rows kept a list id with other items (404 on «Marcar»).
+  await expect(page.getByRole('button', { name: 'Marcar como comprado' }).first()).toBeEnabled({ timeout: 15_000 })
 
   // The range starts today: nothing before it.
   await expect(page.getByRole('button', { name: 'Semana anterior' })).toBeDisabled()

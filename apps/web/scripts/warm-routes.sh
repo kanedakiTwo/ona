@@ -37,6 +37,7 @@ ROUTES=(
   /profile
   /profile/casa
   /profile/casa/alergias
+  /profile/casa/cole
   /profile/memoria
   /profile/ficha
   /profile/ficha/historial

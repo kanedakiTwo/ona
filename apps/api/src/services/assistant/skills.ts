@@ -2488,20 +2488,25 @@ const updateHousehold: SkillDefinition = {
     await alignHouseholdMemory(userId, { adults, kidsCount }).catch((err) => console.error('[update_household] memory', err))
 
     const multiplier = householdMultiplier(adults, kidsCount)
-    const adultsLabel = adults === 1 ? '1 adulto' : `${adults} adultos`
-    const kidsLabel =
-      kidsCount === 0
-        ? 'sin niños'
-        : kidsCount === 1
-          ? '1 niño (2-10 años)'
-          : `${kidsCount} niños (2-10 años)`
-
     return {
       data: { adults, kidsCount, multiplier },
-      summary: `Hogar actualizado: ${adultsLabel} ${kidsCount > 0 ? `+ ${kidsLabel}` : `(${kidsLabel})`}. Las próximas listas de la compra escalarán a ${multiplier} raciones.`,
+      summary: householdUpdatedSummary(adults, kidsCount),
       uiHint: 'confirmation',
     }
   },
+}
+
+/**
+ * What Mimo says after `update_household`: people, never «5 raciones» for a
+ * family of seven (2026-10-22, a tester with a large family: «creo que el
+ * concepto de familia numerosa no le entra en la cabeza»).
+ */
+export function householdUpdatedSummary(adults: number, kidsCount: number): string {
+  const adultsLabel = adults === 1 ? '1 adulto' : `${adults} adultos`
+  const people = adults + kidsCount
+  if (kidsCount === 0) return `Hogar actualizado: ${adultsLabel}. La compra sale para ${people === 1 ? '1 persona' : `${people} personas`}.`
+  const kidsLabel = kidsCount === 1 ? '1 niño de 2 a 10 años' : `${kidsCount} niños de 2 a 10 años`
+  return `Hogar actualizado: ${adultsLabel} y ${kidsLabel}, ${people} personas. La compra sale para las ${people} (cada niño de 2 a 10 años cuenta como media ración de adulto).`
 }
 
 /**

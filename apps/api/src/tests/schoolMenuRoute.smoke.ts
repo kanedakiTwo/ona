@@ -50,7 +50,31 @@ const plus = (iso: string, n: number) => {
   return d.toISOString().slice(0, 10)
 }
 
+async function uploadMenu(auth: Record<string, string>, bytes: Uint8Array, type: string, name: string) {
+  const form = new FormData()
+  form.append('file', new Blob([bytes], { type }), name)
+  const r = await fetch(`${API_URL}/school-menu/read`, { method: 'POST', headers: auth, body: form })
+  return { status: r.status, body: await r.json().catch(() => null) }
+}
+
+/** A tiny valid PNG (1×1). */
+const PNG_1PX = Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==', 'base64'))
+
 describe.skipIf(!reachable)('menú del cole smoke', () => {
+  it('reading never answers a bare 500 (2026-10-23: «Internal server error» from an iPhone)', async () => {
+    const home = await freshUser(1)
+    const heic = await uploadMenu(home.auth, Uint8Array.from([0, 0, 0, 24, 102, 116, 121, 112]), 'image/heic', 'menu.heic')
+    expect(heic.status).toBe(400)
+    expect(heic.body.error).toMatch(/foto|PDF/)
+    const huge = await uploadMenu(home.auth, new Uint8Array(26 * 1024 * 1024), 'application/pdf', 'menu.pdf')
+    expect(huge.status).toBe(413)
+    expect(huge.body.error).toMatch(/demasiado grande/)
+    // With no model key (CI) the reading fails: a Spanish 503, not a 500.
+    const read = await uploadMenu(home.auth, PNG_1PX, 'image/png', 'menu.png')
+    expect(read.status).not.toBe(500)
+    if (read.status === 503) expect(read.body.error).toMatch(/No he podido leer el menú ahora/)
+  })
+
   it('visible only with children', async () => {
     const without = await freshUser(0)
     const r0 = await call('GET', '/school-menu', undefined, without.auth)

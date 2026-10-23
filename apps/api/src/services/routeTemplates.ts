@@ -209,6 +209,7 @@ export const API_ROUTE_TEMPLATES: readonly string[] = [
   '/user/:x/recipes-curator/gaps',
   '/user/:x/recipes/:x/favorite',
   '/user/:x/settings',
+  '/version',
   '/waitlist',
   '/waitlist/:x',
   '/waitlist/invite/:x',
@@ -276,5 +277,6 @@ export const WEB_PAGE_TEMPLATES: readonly string[] = [
   '/reset',
   '/shopping',
   '/terminos',
+  '/version.json',
   '/whatsapp/conectar',
 ]

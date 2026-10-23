@@ -8,6 +8,13 @@ on:
   schedule:
     - cron: '0 17 * * *'
     - cron: '45 22 * * *'
+  # The HQ office launches it on demand, holding the staging lock (before its
+  # test households and before staging the Taller's branch): its executor has
+  # no GitHub token, only ona's deploy key, so it pushes master's tip to a
+  # claude/hq-catalogo/<action id> branch and deletes it when the run ends.
+  # ci.yml skips those branches.
+  push:
+    branches: ['claude/hq-catalogo/**']
   workflow_dispatch:
     inputs:
       dry_run:

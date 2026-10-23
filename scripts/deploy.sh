@@ -17,7 +17,9 @@
 #      squash merge of an up-to-date PR, master has the same code, so there's
 #      no need to wait for master's own run (2026-10-15). --skip-ci-check to
 #      override (emergencies);
-#   4. it prints the commit being deployed, then runs the same manual commands
+#   4. staging only: the HQ office's staging lock must be free or Miguel's
+#      (scripts/staging-lock.sh; exit 3 while the office holds it);
+#   5. it prints the commit being deployed, then runs the same manual commands
 #      documented in docs/deploy.md (api first, then web).
 #
 # Usage:
@@ -61,7 +63,7 @@ for arg in "$@"; do
     --staging-branch) STAGING_BRANCH=1 ;;
     --wait) WAIT=1 ;;
     --skip-ci-check) SKIP_CI=1 ;;
-    -h|--help) sed -n '2,36p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,38p' "$0"; exit 0 ;;
     *) echo "Unknown argument: $arg (see --help)" >&2; exit 2 ;;
   esac
 done
@@ -124,6 +126,14 @@ if [ "$env_name" = "production" ] && [ "$SKIP_CI" -ne 1 ]; then
   fi
   if [ "$green" = "$head_sha" ]; then echo "✓ CI green for $(git rev-parse --short HEAD)"
   else echo "✓ CI green for $(git rev-parse --short "$green"), same code as HEAD (only docs differ, or none)"; fi
+fi
+
+# 4) Staging is shared with the HQ office: respect its staging lock (PRO-OF-4,
+#    scripts/staging-lock.sh). Held by the office → exit 3; no answer → warn.
+if [ "$env_name" = "staging" ]; then
+  lock=0
+  bash "$ROOT/scripts/staging-lock.sh" || lock=$?
+  [ "$lock" -eq 0 ] || exit "$lock"
 fi
 
 case "$TARGET" in

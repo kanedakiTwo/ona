@@ -39,3 +39,9 @@ apps/web/.last-run.json
 # API on-disk caches (USDA, BEDCA, translations)
 apps/api/.cache/
 .superpowers/
+
+# Android app (apps/android, specs/android-app.md): construir.sh's output and Gradle's build dirs
+apps/android/dist/
+apps/android/.gradle/
+apps/android/build/
+apps/android/app/build/

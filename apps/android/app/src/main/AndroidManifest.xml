@@ -14,6 +14,7 @@
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/nombre"
+        android:manageSpaceActivity="com.google.androidbrowserhelper.trusted.ManageDataLauncherActivity"
         android:supportsRtl="false"
         android:theme="@android:style/Theme.Translucent.NoTitleBar">
 
@@ -66,5 +67,15 @@
         <activity
             android:name="com.google.androidbrowserhelper.trusted.NotificationPermissionRequestActivity"
             android:exported="false" />
+
+        <!-- LauncherActivity asks Android for the «Site settings» shortcut with this activity: without it the app crashes on
+             launch (IllegalArgumentException). It is also Android's «Manage space» for the app. -->
+        <activity
+            android:name="com.google.androidbrowserhelper.trusted.ManageDataLauncherActivity"
+            android:exported="false">
+            <meta-data
+                android:name="android.support.customtabs.trusted.MANAGE_SPACE_URL"
+                android:value="@string/url_inicio" />
+        </activity>
     </application>
 </manifest>

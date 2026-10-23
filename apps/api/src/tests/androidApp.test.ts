@@ -30,6 +30,14 @@ describe('Android app (TWA)', () => {
     expect(manifiesto).toContain('android:host="${host}"')
   })
 
+  it('declares every activity LauncherActivity opens on its own (without ManageDataLauncherActivity the app crashes on launch)', () => {
+    for (const a of ['LauncherActivity', 'ManageDataLauncherActivity', 'NotificationPermissionRequestActivity', 'DelegationService']) {
+      expect(manifiesto, a).toMatch(new RegExp(`android:name="com\\.google\\.androidbrowserhelper\\.trusted\\.${a}"`))
+    }
+    expect(manifiesto).toMatch(/android:manageSpaceActivity="com\.google\.androidbrowserhelper\.trusted\.ManageDataLauncherActivity"/)
+    expect(manifiesto).toMatch(/android:name="android\.support\.customtabs\.trusted\.MANAGE_SPACE_URL"\s+android:value="@string\/url_inicio"/)
+  })
+
   it('«pruebas» opens staging and «tienda» opens mimoia.com, both on /menu inside the app', () => {
     expect(sabor('pruebas')).toEqual({ sufijo: '.pruebas', host: 'ona-web-staging.up.railway.app', nombre: 'Mimoia (pruebas)',
       inicio: 'https://ona-web-staging.up.railway.app/menu?app=android', sitio: 'https://ona-web-staging.up.railway.app' })

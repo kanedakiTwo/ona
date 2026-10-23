@@ -11,8 +11,9 @@ on:
   push:
     # claude/** = branches the Mimoia HQ agents prepare (Producto, L2): every
     # code approval reaches /ona-dia with its CI result. Production smoke
-    # stays master-only (see post-deploy-smoke).
-    branches: [master, 'claude/**']
+    # stays master-only (see post-deploy-smoke). claude/hq-catalogo/** only
+    # launches sync-staging-catalog.yml (it is master's tip, already tested).
+    branches: [master, 'claude/**', '!claude/hq-catalogo/**']
     paths-ignore: ['specs/**', 'docs/**', 'CLAUDE.md', '**/README.md', 'plans/**', 'reports/**']
 
 # On branches a newer push cancels the older run; on master runs queue

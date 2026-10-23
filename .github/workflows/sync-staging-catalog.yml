@@ -2,13 +2,11 @@ name: Sync staging catalogue
 
 # Staging gets production's recipe catalogue (ingredients, catalogue recipes,
 # their ingredients and steps; never users) — scripts/sync-staging-catalog.sh.
-# Twice a day: before the evening test households (ona-hq D-037, 17:30 UTC)
-# and before the nightly Taller (23:00 UTC), so both test what users see.
+# Before the evening test households (ona-hq D-037) and before the Taller
+# stages its branch, so both test what users see.
 on:
-  schedule:
-    - cron: '0 17 * * *'
-    - cron: '45 22 * * *'
-  # The HQ office launches it on demand, holding the staging lock (before its
+  # No schedule: the HQ office runs the test households and the Taller, and
+  # launches the copy itself, holding the staging lock (before its
   # test households and before staging the Taller's branch): its executor has
   # no GitHub token, only ona's deploy key, so it pushes master's tip to a
   # claude/hq-catalogo/<action id> branch and deletes it when the run ends.

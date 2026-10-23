@@ -3,6 +3,7 @@
  */
 
 import { expect, type Locator, type Page } from '@playwright/test'
+import { pinnedDay } from './_clock'
 
 /** Unique-per-run identifier — keeps DB state from colliding between specs. */
 export function uniqueId(): string {
@@ -221,6 +222,52 @@ export async function addMealWithRecipe(
     .flatMap((s) => s?.dishes ?? [])
     .find((d) => d.kind === 'recipe')?.recipeId
   return page.request.post(url, { headers, data: { recipeId } })
+}
+
+/**
+ * Generate the pinned week's menu (`pinnedDay()`) so that the shopping list
+ * from the pinned day has rows at any hour: a recipe on the pinned day and,
+ * at dinner, one on the day after.
+ *
+ * Why two days: `pinClock` pins the browser, not the API, and
+ * `GET /shopping-list` drops the meals of the API's real «today» that are
+ * already past (lunch from 16:00, dinner from 23:00 Madrid). On a real
+ * Friday evening — Friday is the default pinned day — a list whose only dish
+ * was Friday's lunch came back empty and the /shopping specs failed (CI red
+ * from 16:00 Madrid on 2026-10-23). The API trims one date only, so with
+ * dishes on two days of the range one always survives. With
+ * `E2E_WEEKDAY=6` (Sunday) there is no day after in the week, so the dinner
+ * goes on the pinned day itself.
+ */
+export async function generateWeekWithListRows(page: Page) {
+  const apiUrl = process.env.API_URL ?? 'http://localhost:8765'
+  const token = await page.evaluate(() => localStorage.getItem('ona_token'))
+  const user = JSON.parse((await page.evaluate(() => localStorage.getItem('ona_user'))) ?? '{}')
+  const day = pinnedDay()
+  const { weekStart, dayIdx } = day
+  const headers = { Authorization: `Bearer ${token}` }
+  const res = await page.request.post(`${apiUrl}/menu/generate`, { headers, data: { userId: user.id, weekStart } })
+  expect(res.ok(), `menu/generate ${res.status()}`).toBeTruthy()
+
+  const getMenu = async () => (await (await page.request.get(`${apiUrl}/menu/${user.id}/${weekStart}`, { headers })).json()) as WeekMenu
+  const hasRecipe = (menu: WeekMenu, d: number, meal?: string) =>
+    Object.entries(menu.days?.[d] ?? {}).some(
+      ([key, slot]) => (!meal || key === meal) && !!slot?.dishes?.some((dish) => dish.kind === 'recipe'),
+    )
+  const ensure = async (menu: WeekMenu, d: number, meal: string) => {
+    if (menu.days?.[d]?.[meal]) await page.request.delete(`${apiUrl}/menu/${menu.id}/day/${d}/meal/${meal}`, { headers })
+    const add = await addMealWithRecipe(page, headers, menu, d, meal)
+    expect(add.ok(), `add ${meal} on day ${d}: ${add.status()}`).toBeTruthy()
+  }
+
+  let menu = await getMenu()
+  if (!hasRecipe(menu, dayIdx)) {
+    await ensure(menu, dayIdx, 'lunch')
+    menu = await getMenu()
+  }
+  const next = dayIdx < 6 ? dayIdx + 1 : dayIdx
+  if (!hasRecipe(menu, next, 'dinner')) await ensure(menu, next, 'dinner')
+  return day
 }
 
 /**

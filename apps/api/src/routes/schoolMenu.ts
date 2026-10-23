@@ -6,7 +6,7 @@
  *   POST   /school-menu/read        photo / PDF → the days read (not saved)
  *   PUT    /school-menu             save days (replace those dates) / clear dates
  */
-import { Router } from 'express'
+import { Router, type RequestHandler } from 'express'
 import multer from 'multer'
 import { schoolMenuSaveSchema } from '@ona/shared'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
@@ -34,9 +34,25 @@ export function setSchoolMenuReaderForTests(r: SchoolMenuReader | undefined): vo
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 15 * 1024 * 1024 },
+  // Photos are made smaller before reading (visionImage.ts); a 48 MP camera JPEG fits.
+  limits: { fileSize: 25 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => cb(null, isSchoolMenuMimeType(file.mimetype)),
 })
+
+/** Said to the household instead of «Internal server error» (2026-10-23). */
+export const SCHOOL_MENU_READ_FAILED = 'No he podido leer el menú ahora. Prueba otra vez en un momento o mándamelo por WhatsApp con «menú del cole».'
+
+/** multer's own errors (too big…) answer in Spanish, not as a 500. */
+const uploadFile: RequestHandler = (req, res, next) => {
+  upload.single('file')(req, res, (err: unknown) => {
+    if (!err) return next()
+    if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+      res.status(413).json({ error: 'El archivo es demasiado grande (máximo 25 MB). Prueba con una foto o un PDF más pequeño.' })
+      return
+    }
+    next(err)
+  })
+}
 
 const router = Router()
 
@@ -55,7 +71,7 @@ router.get('/school-menu', authMiddleware, async (req: AuthRequest, res, next) =
   }
 })
 
-router.post('/school-menu/read', authMiddleware, requireSpendCapacity(), upload.single('file'), async (req: AuthRequest, res, next) => {
+router.post('/school-menu/read', authMiddleware, requireSpendCapacity(), uploadFile, async (req: AuthRequest, res) => {
   try {
     const file = req.file
     if (!file || !isSchoolMenuMimeType(file.mimetype)) {
@@ -72,7 +88,9 @@ router.post('/school-menu/read', authMiddleware, requireSpendCapacity(), upload.
       res.status(422).json({ error: err.message })
       return
     }
-    next(err)
+    // Logged, so the error registry keeps the cause (errorCapture.ts).
+    console.error('School menu read error:', err)
+    res.status(503).json({ error: SCHOOL_MENU_READ_FAILED })
   }
 })
 

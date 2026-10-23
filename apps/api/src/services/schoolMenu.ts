@@ -23,6 +23,7 @@ import { env } from '../config/env.js'
 import { db as defaultDb } from '../db/connection.js'
 import { householdMembers, householdPersons, profileFacts, schoolLunches, users } from '../db/schema.js'
 import { recordAnthropicCost } from './costLedger.js'
+import { fitImageForClaude } from './visionImage.js'
 
 type Db = typeof defaultDb
 
@@ -115,7 +116,8 @@ export async function readSchoolMenu(
   userId: string | null,
   reader: SchoolMenuReader = anthropicSchoolMenuReader,
 ): Promise<SchoolLunch[]> {
-  return parseSchoolMenuAnswer(await reader(file, today, userId))
+  const fitted = file.mimeType === 'application/pdf' ? file : await fitImageForClaude(file.data, file.mimeType)
+  return parseSchoolMenuAnswer(await reader(fitted, today, userId))
 }
 
 // ─── Storage ─────────────────────────────────────────────────────

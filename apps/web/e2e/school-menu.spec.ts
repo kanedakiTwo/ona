@@ -38,7 +38,8 @@ test('«Menú del cole» appears in Mi casa only with a child member', async ({ 
   const link = page.getByTestId('school-menu-link')
   await expect(link).toBeVisible({ timeout: 10_000 })
   await link.click()
-  await expect(page).toHaveURL(/\/profile\/casa\/cole/)
+  // `next dev` may compile the route on this first visit (CI warms it first).
+  await expect(page).toHaveURL(/\/profile\/casa\/cole/, { timeout: 15_000 })
   await expect(page.getByRole('heading', { name: /Menú del cole/ })).toBeVisible()
   await expect(page.getByText('Aún no hay menú del cole guardado.')).toBeVisible()
 })

@@ -26,6 +26,9 @@ export const ACTION_LABELS: Record<string, string> = {
   'catalog_draft.restore': 'Borrador del catálogo recuperado',
   'catalog_batch.publish': 'Tanda del catálogo publicada',
   'catalog_import.start': 'Importación de una tanda lanzada',
+  'network_shop.create': 'Tienda de Mimoia dada de alta',
+  'network_shop.update': 'Tienda de Mimoia editada',
+  'network_shop.status': 'Tienda de Mimoia: cambio de estado',
 }
 
 export function actionLabel(code: string): string {

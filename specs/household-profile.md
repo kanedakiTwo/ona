@@ -30,6 +30,7 @@ One ficha per **household** (the menu is the household's), with facts about the 
 | `batch_cooking` | `{ batches, days?, lunchboxes? }` | cocina por tandas el domingo, con táperes |
 | `novelty` | `{ score −2..+2 }` | prefiere la rutina (−2) |
 | `cooking_style` | `{ style: daily\|cook_and_reuse\|batch\|improvise }` | «Batch cooking: cocino una o dos veces y dejo hecha la semana» (PRO-217) |
+| `postal_code` | `{ code }` (5 digits, province 01–52) | «¿En qué código postal vivís?», asked once by «Tiendas de Mimoia» (PRO-358, [Shop orders](./shop-orders.md#tiendas-de-mimoia)) or told to Mimo (`find_network_shops`); about the household, origin `user`, topic «La casa»; the refiner doesn't list it |
 | `protein_minimum` | `{ scope: every_dish }` | «Proteína en cada plato»: 80 g de carne, pescado o huevo por ración también en entrantes y platos de arroz, legumbre o pasta (about a person; Miguel, 2026-10-21) |
 
   Days are `lunes`…`domingo`; meals `breakfast` · `lunch` · `snack` · `dinner`.

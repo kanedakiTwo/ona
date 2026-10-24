@@ -44,6 +44,10 @@ export type AdminAction =
   | 'catalog_draft.restore'
   | 'catalog_batch.publish'
   | 'catalog_import.start'
+  // Admin «Tiendas de Mimoia» (PRO-358, specs/shop-orders.md)
+  | 'network_shop.create'
+  | 'network_shop.update'
+  | 'network_shop.status'
 
 export type AuditTargetType =
   | 'ingredient'
@@ -55,6 +59,7 @@ export type AuditTargetType =
   | 'newsletter_issue'
   | 'catalog_batch'
   | 'catalog_import'
+  | 'network_shop'
 
 export interface AuditRecord {
   adminId: string

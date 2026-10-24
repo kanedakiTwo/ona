@@ -211,6 +211,10 @@ export interface Shop {
   deliveryMinEur: number | null
   deliveryFeeEur: number | null
   position: number
+  /** `red` = chosen from «Tiendas de Mimoia» and new to the household (it counts); `propia` otherwise (PRO-358). */
+  origin: 'propia' | 'red'
+  /** The shop of the Red it comes from, if any (also when the household already bought there). */
+  networkShopId: string | null
   createdAt: string
 }
 

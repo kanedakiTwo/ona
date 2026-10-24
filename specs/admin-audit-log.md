@@ -37,6 +37,7 @@ Every admin endpoint that mutates state. Concretely:
 - `catalog_draft.publish` / `catalog_draft.discard` / `catalog_draft.restore` — Admin → «Recetas pendientes»: a catalogue draft published (Miguel's OK + out), turned down, or its verdict taken back (`POST /admin/catalog-drafts/:id/publish|discard|restore`, target type `recipe`; payload: name, batch, origin, and `wishesCovered` on publish). Written in the same transaction as the change — see [catalog-import.md](./catalog-import.md)
 - `catalog_batch.publish` — «Publicar las aprobadas» of a batch (`POST /admin/catalog-batches/:batch/publish`, target type `catalog_batch`, target id = the batch; payload: published, ids, wishesCovered, held by reason). Not written when nothing was published
 - `catalog_import.start` — a Cocina batch file imported as drafts from the web (`POST /admin/catalog-import/jobs`, target type `catalog_import`, target id = the job; payload: batch, origin, fileName, recipes). Written before the background import starts; if it can't be written the import never runs
+- `network_shop.create` · `network_shop.update` · `network_shop.status` — «Tiendas de Mimoia» (PRO-358, `POST`/`PATCH /admin/shop-network`, target type `network_shop`): payload `{ created: { name, kind } }` on alta, `{ <field>: { before, after } }` for what changed; written in the same transaction as the change
 
 Admin **read** operations do not write to the log. Failed mutations (validation errors, 4xx responses) do not write either — only successful state changes.
 

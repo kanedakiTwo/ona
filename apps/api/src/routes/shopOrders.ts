@@ -33,6 +33,7 @@ import { appApiFor } from '../services/assistant/appApi.js'
 import { addDays, madridParts } from '../services/madridTime.js'
 import { basketSentProps, carrefourClickProps, trackEvent } from '../services/usageEvents.js'
 import { basketExtensionEnabledFor } from '../services/basketExtension.js'
+import shopNetworkRoutes from './shopNetwork.js'
 import {
   addShop,
   approveOrder,
@@ -259,6 +260,9 @@ router.post('/shop-orders/:id/extension-result', withOrder(async (req, res) => {
   if (guardado) trackEvent('basket_extension_sent', { userId: req.userId!, channel: 'web', props: basketSentProps(parsed.data) })
   res.json(saved)
 }, 'POST /shop-orders/:id/extension-result'))
+
+// «Tiendas de Mimoia» (PRO-358): /shop-network, /household/postal-code and /admin/shop-network.
+router.use(shopNetworkRoutes)
 
 // Deshacer no mira el interruptor: si se apaga el experimento, lo ya enviado se tiene que poder deshacer.
 router.post('/shop-orders/:id/extension-undo', withOrder(async (req, res) => {

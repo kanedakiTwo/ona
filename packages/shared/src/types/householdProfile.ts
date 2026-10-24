@@ -19,6 +19,7 @@ import { HEALTH_MEMORY_KEYS } from '../constants/healthConsent.js'
 import { MEALS } from '../constants/enums.js'
 import { MEMORY_KEYS, MEMORY_VALUE_SCHEMAS, type MemorySource } from './userMemory.js'
 import { cookingStyleFactValueSchema } from './cookingStyle.js'
+import { postalCodeFactValueSchema } from './shopNetwork.js'
 
 // ─── Enums ──────────────────────────────────────────────────────
 
@@ -76,6 +77,7 @@ export const NEW_PROFILE_FACT_TYPES = [
   'novelty',
   'cooking_style',
   'protein_minimum',
+  'postal_code',
 ] as const
 
 export const PROFILE_FACT_TYPES = [...MEMORY_KEYS, ...NEW_PROFILE_FACT_TYPES] as const
@@ -148,6 +150,12 @@ export const NEW_PROFILE_FACT_VALUE_SCHEMAS = {
   protein_minimum: z.object({
     scope: z.enum(['every_dish']),
   }).strict(),
+  /**
+   * The household's postal code (PRO-358): asked once, the first time
+   * «Tiendas de Mimoia» is shown («¿En qué código postal vivís?»). About the
+   * household. Only the household says it: the nightly refiner doesn't list it.
+   */
+  postal_code: postalCodeFactValueSchema,
 } satisfies Record<(typeof NEW_PROFILE_FACT_TYPES)[number], z.ZodTypeAny>
 
 export const PROFILE_FACT_VALUE_SCHEMAS: Record<ProfileFactType, z.ZodTypeAny> = {

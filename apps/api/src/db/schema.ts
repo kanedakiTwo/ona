@@ -1260,6 +1260,40 @@ export const usageEvents = pgTable('usage_events', {
 // a shop itself: the user sends Mimoia's ready-made message from their own
 // WhatsApp / mail (wa.me / mailto), pastes or forwards the shop's reply,
 // approves, and pays the shop directly.
+/**
+ * «Tiendas de Mimoia» (PRO-358, D-123): the Red of shops Miguel keeps from
+ * /admin. A household that picks one gets a copy in `household_shops`
+ * (`network_shop_id`, origin `red` when it's new to them). No column says
+ * what a shop pays: the order never depends on it (constitución §7).
+ */
+export const networkShops = pgTable('network_shops', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  /** fruteria | carniceria | pescaderia | otra */
+  kind: text('kind').notNull(),
+  /** bajo | medio | alto (€, €€, €€€) */
+  tier: text('tier').notNull(),
+  /** { nationwide, areas: [{ label, postalCodes }] } — codes are 5 digits or a 2–4 digit prefix. */
+  coverage: jsonb('coverage').notNull(),
+  /** whatsapp | email | web | telefono, like household_shops. */
+  channel: text('channel').notNull(),
+  whatsapp: text('whatsapp'),
+  email: text('email'),
+  webUrl: text('web_url'),
+  phone: text('phone'),
+  /** Non-empty subset of recogida | reparto | envio. */
+  fulfilment: jsonb('fulfilment').notNull(),
+  deliveryMinEur: real('delivery_min_eur'),
+  deliveryFeeEur: real('delivery_fee_eur'),
+  freeDeliveryFromEur: real('free_delivery_from_eur'),
+  /** For the household: hours and the rest. */
+  notes: text('notes'),
+  /** activa | sin_nuevos | baja */
+  status: text('status').notNull().default('activa'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
 export const householdShops = pgTable('household_shops', {
   id: uuid('id').primaryKey().defaultRandom(),
   householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
@@ -1285,10 +1319,15 @@ export const householdShops = pgTable('household_shops', {
   deliveryMinEur: real('delivery_min_eur'),
   deliveryFeeEur: real('delivery_fee_eur'),
   position: integer('position').notNull().default(0),
+  /** The shop of the Red it was chosen from (PRO-358); null = added by hand. */
+  networkShopId: uuid('network_shop_id').references(() => networkShops.id, { onDelete: 'set null' }),
+  /** propia | red — `red` only when chosen from the Red and new to the household: those count. */
+  origin: text('origin').notNull().default('propia'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_household_shops_household').on(t.householdId),
+  index('idx_household_shops_network').on(t.networkShopId),
 ])
 
 export const shopOrders = pgTable('shop_orders', {

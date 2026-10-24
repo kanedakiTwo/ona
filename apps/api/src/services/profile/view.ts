@@ -103,6 +103,8 @@ export function factSentence(type: string, value: unknown, who: Who, validUntil:
       return isCookingStyle(v.style) ? COOKING_STYLE_LABELS[v.style as keyof typeof COOKING_STYLE_LABELS] : null
     case 'protein_minimum':
       return 'Proteína en cada plato: al menos 80 g de carne, pescado o huevo por ración, también en los entrantes y en los platos de arroz, legumbre o pasta'
+    case 'postal_code':
+      return v.code ? `Código postal: ${v.code}` : null
     case 'dislikes':
       return list(value).length ? cap(`no ${V.gusta[who]} ${joinEs(list(value))}`) : null
     case 'equipment':
@@ -160,7 +162,7 @@ const TOPIC_OF: Record<string, FichaTopic> = {
   time_available: 'tiempo_y_compra', effort: 'tiempo_y_compra', shopping: 'tiempo_y_compra', weekly_budget_eur: 'tiempo_y_compra',
   affinity: 'gustos', dislikes: 'gustos', novelty: 'gustos', cuisine_bias: 'gustos',
   protein_minimum: 'como_comes', nutrition_principles: 'como_comes',
-  'household.adults': 'la_casa', 'household.kids_2_to_10': 'la_casa', region: 'la_casa',
+  'household.adults': 'la_casa', 'household.kids_2_to_10': 'la_casa', region: 'la_casa', postal_code: 'la_casa',
   notes: 'notas',
 }
 
@@ -201,6 +203,8 @@ export function howIUse(type: string, value: unknown): string {
       return 'Con esto calculo las raciones y la lista de la compra.'
     case 'region':
       return 'Los festivos de tu comunidad cuentan como fin de semana en el menú.'
+    case 'postal_code':
+      return 'En «Tiendas de Mimoia» te enseño las tiendas que llegan a tu zona, las más cercanas antes.'
     default:
       return 'Mimo lo tiene en cuenta cuando habla contigo y cuando te propone cambios.'
   }

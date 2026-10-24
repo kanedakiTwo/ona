@@ -638,6 +638,13 @@
       "when": 1792710539520,
       "tag": "0093_telegram_channel",
       "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1792796151385,
+      "tag": "0094_shop_network",
+      "breakpoints": true
     }
   ]
 }

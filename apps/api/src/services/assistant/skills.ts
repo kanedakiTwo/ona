@@ -39,6 +39,7 @@ import { convert as convertUnits } from '../shoppingList.js'
 import { createDishRecipe, NEW_RECIPE_PROP, NOTE_THEN_RECIPE_HINT, type NewRecipeParam } from './dishRecipe.js'
 import { shopOrderSkills } from './shopOrderSkills.js'
 import { householdHabitsSkills } from './householdHabitsSkills.js'
+import { shopNetworkSkills } from './shopNetworkSkills.js'
 import { fichaSkills } from './fichaSkills.js'
 import { tasteSkills } from './tasteSkills.js'
 import { fixedMealSkills } from './fixedMealSkills.js'
@@ -2997,6 +2998,8 @@ export const skills: SkillDefinition[] = [
   ...shopOrderSkills,
   // Cómo cocina el hogar (PRO-217) — householdHabitsSkills.ts:
   ...householdHabitsSkills,
+  // Tiendas de Mimoia (PRO-358, specs/shop-orders.md) — shopNetworkSkills.ts:
+  ...shopNetworkSkills,
   // Mimo habla de la ficha (PRO-319, specs/household-profile.md) — fichaSkills.ts:
   ...fichaSkills,
   // «Afina tu menú»: ver y quitar valoraciones (PRO-297) — tasteSkills.ts:

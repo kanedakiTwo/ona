@@ -4,7 +4,8 @@
  * /compra/tiendas — the household's shops (specs/shop-orders.md). Mimoia
  * routes each shopping-list line to one of these: fruta y verdura → la
  * frutería, carne → la carnicería, pescado → la pescadería, el resto → el
- * súper.
+ * súper. Below them, «Tiendas de Mimoia» (PRO-358): the shops of the Red
+ * that cover the household, for what it lacks.
  */
 import { useState } from "react"
 import Link from "next/link"
@@ -13,6 +14,7 @@ import { SHOP_KIND_LABELS, type Shop } from "@ona/shared"
 import { useAuth } from "@/lib/auth"
 import { useDeleteShop, useMoveShop, useShops } from "@/hooks/useShopOrders"
 import { ShopForm } from "@/components/compra/ShopForm"
+import { ShopNetworkSection } from "@/components/compra/ShopNetworkSection"
 
 function contactOf(s: Shop): { icon: React.ReactNode; text: string } {
   switch (s.channel) {
@@ -88,6 +90,7 @@ export default function ShopsPage() {
                       {s.fulfilment === "domicilio" ? `A domicilio · ${s.address}` : "Recoges en tienda"}
                       {s.customerName ? ` · te conocen como ${s.customerName}` : ""}
                     </div>
+                    {s.networkShopId ? <div className="mt-0.5 text-[11px] text-[#A39A8E]">De Tiendas de Mimoia</div> : null}
                   </div>
                   <div className="flex shrink-0 gap-1">
                     {sameKind(s).length > 1 ? (
@@ -140,6 +143,8 @@ export default function ShopsPage() {
           </button>
         )}
       </section>
+
+      <ShopNetworkSection />
     </div>
   )
 }

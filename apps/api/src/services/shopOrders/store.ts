@@ -97,6 +97,8 @@ function toShop(r: ShopRow): Shop {
     deliveryMinEur: r.deliveryMinEur ?? null,
     deliveryFeeEur: r.deliveryFeeEur ?? null,
     position: r.position,
+    origin: r.origin === 'red' ? 'red' : 'propia',
+    networkShopId: r.networkShopId ?? null,
     createdAt: r.createdAt.toISOString(),
   }
 }

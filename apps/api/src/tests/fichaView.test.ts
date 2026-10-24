@@ -21,6 +21,7 @@ const EXAMPLES: Record<string, unknown> = {
   novelty: { score: 1 },
   cooking_style: { style: 'batch' },
   protein_minimum: { scope: 'every_dish' },
+  postal_code: { code: '28660' },
   dislikes: ['cilantro', 'hígado'],
   equipment: ['horno', 'olla exprés'],
   notes: ['Cenamos tarde'],

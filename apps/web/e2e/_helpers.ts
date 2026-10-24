@@ -3,6 +3,7 @@
  */
 
 import { expect, type Locator, type Page } from '@playwright/test'
+import { listSafeDay, pinnedDay } from './_clock'
 
 /** Unique-per-run identifier — keeps DB state from colliding between specs. */
 export function uniqueId(): string {
@@ -221,6 +222,72 @@ export async function addMealWithRecipe(
     .flatMap((s) => s?.dishes ?? [])
     .find((d) => d.kind === 'recipe')?.recipeId
   return page.request.post(url, { headers, data: { recipeId } })
+}
+
+/**
+ * The menu of `weekStart` with a recipe on each `[day, meal]` of `slots`
+ * (0 = Monday), as `GET /menu` returns it afterwards.
+ *
+ * `POST /menu/generate` fills the week from Monday on, and with the small CI
+ * catalogue it runs out of recipes before the end of the week: Friday's
+ * dinner and the weekend usually come back empty (PRO-186). A spec that reads
+ * a given day puts its dishes there itself instead of trusting the generator
+ * (or skipping): the slots that already have a recipe are left as they are.
+ */
+export async function menuWithRecipesOn(
+  page: Page,
+  headers: Record<string, string>,
+  userId: string,
+  weekStart: string,
+  slots: Array<[day: number, meal: string]>,
+) {
+  const apiUrl = process.env.API_URL ?? 'http://localhost:8765'
+  // The specs read it as plain JSON (recipeName, servings, …).
+  const getMenu = async (): Promise<any> => (await page.request.get(`${apiUrl}/menu/${userId}/${weekStart}`, { headers })).json()
+  const menu = (await getMenu()) as WeekMenu
+  let changed = false
+  for (const [day, meal] of slots) {
+    if (menu.days?.[day]?.[meal]?.dishes?.some((d) => d.kind === 'recipe')) continue
+    if (menu.days?.[day]?.[meal]) {
+      const del = await page.request.delete(`${apiUrl}/menu/${menu.id}/day/${day}/meal/${meal}`, { headers })
+      expect(del.ok(), `empty ${meal} on day ${day}: ${del.status()}`).toBeTruthy()
+    }
+    const add = await addMealWithRecipe(page, headers, menu, day, meal)
+    expect(add.ok(), `add ${meal} on day ${day}: ${add.status()}`).toBeTruthy()
+    changed = true
+  }
+  return changed ? getMenu() : menu
+}
+
+/**
+ * Generate the pinned week's menu (`pinnedDay()`) so that the shopping list
+ * from the pinned day has rows at any hour: a recipe on the pinned day and
+ * one at dinner on `listSafeDay()` (the day after, or the pinned day when the
+ * day after is the real «today»).
+ *
+ * Why: `pinClock` pins the browser, not the API, and `GET /shopping-list`
+ * drops the meals of the API's real «today» that are already past (lunch
+ * from 16:00, dinner from 23:00 Madrid). On a real Friday evening — Friday is
+ * the default pinned day — a list whose only dish was Friday's lunch came
+ * back empty and the /shopping specs failed (CI red from 16:00 Madrid on
+ * 2026-10-23).
+ */
+export async function generateWeekWithListRows(page: Page) {
+  const apiUrl = process.env.API_URL ?? 'http://localhost:8765'
+  const token = await page.evaluate(() => localStorage.getItem('ona_token'))
+  const user = JSON.parse((await page.evaluate(() => localStorage.getItem('ona_user'))) ?? '{}')
+  const day = pinnedDay()
+  const { weekStart, dayIdx } = day
+  const headers = { Authorization: `Bearer ${token}` }
+  const res = await page.request.post(`${apiUrl}/menu/generate`, { headers, data: { userId: user.id, weekStart } })
+  expect(res.ok(), `menu/generate ${res.status()}`).toBeTruthy()
+
+  const menu = (await (await page.request.get(`${apiUrl}/menu/${user.id}/${weekStart}`, { headers })).json()) as WeekMenu
+  const pinnedHasRecipe = Object.values(menu.days?.[dayIdx] ?? {}).some((slot) => slot?.dishes?.some((d) => d.kind === 'recipe'))
+  const slots: Array<[number, string]> = pinnedHasRecipe ? [] : [[dayIdx, 'lunch']]
+  slots.push([listSafeDay(dayIdx), 'dinner'])
+  await menuWithRecipesOn(page, headers, user.id, weekStart, slots)
+  return day
 }
 
 /**

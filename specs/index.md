@@ -304,6 +304,14 @@ Installed app on a desktop / app instalada en Windows (2026-10-21): service work
 
 ---
 
+## [Android app (TWA)](./android-app.md)
+
+Android app (TWA): Trusted Web Activity, android-browser-helper, sabores pruebas/tienda (flavours), com.mimoia.app, com.mimoia.app.pruebas «Mimoia (pruebas)» on staging, `/menu?app=android`, assetlinks.json, Digital Asset Links, autoVerify, Google Play, prueba cerrada, build interna, sdk.sh (Android SDK + Gradle in `~/.cache/mimoia`), construir.sh, firma de subida (upload key), Play App Signing, permissions INTERNET + POST_NOTIFICATIONS only, Web Push under the app's name (DelegationService), notification small icon PNG per density (icono-aviso.mjs), ManageDataLauncherActivity («Site settings» shortcut, crash on launch without it), installed before assetlinks.json → domain unverified (1024, reinstall or `pm verify-app-links --re-verify`), Custom Tab fallback with address bar, no iPhone app.
+
+**Source**: `apps/android/`, `apps/web/public/.well-known/assetlinks.json`, `apps/api/src/tests/androidApp.test.ts`, `apps/web/e2e/assetlinks.spec.ts`
+
+---
+
 ## [Notifications](./notifications.md)
 
 Server-side Web Push (VAPID keys, `push_subscriptions` table, `web-push` lib) so the assistant can reach the user even with the tab closed — foundation for prep alerts ("saca el pescado del congelador 24h antes"), menu reminders, future heartbeat events. Subscribe / unsubscribe / test endpoints under `/push/*`; service worker handles `push` + `notificationclick`. Dead endpoints (404/410 Gone) auto-reap on next dispatch. Prep alerts are checked against the current menu right before sending (regenerated week, skipped day, dish gone → `cancelled`). Profile card opt-in. One alert, one channel (PRO-234, D-080): WhatsApp when linked, Web Push without it or as fallback, `channelsFor`/`deliverInOrder`; «Es hora de comer» removed. «Avisos» screen `/profile/avisos` (PRO-237): every kind, where it arrives, switch; `users.alert_prefs`; `GET/PATCH /notifications/prefs`; Mimo's `get_alerts` / `set_alerts`. Degrades to "Push no configurado" when VAPID env vars are missing.

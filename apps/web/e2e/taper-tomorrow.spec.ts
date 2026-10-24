@@ -5,15 +5,13 @@
  * it. The list arithmetic is unit-tested in apps/api/src/tests/taper.test.ts.
  */
 import { test, expect, type Page } from '@playwright/test'
-import { completeOnboarding, registerFreshUser } from './_helpers'
+import { completeOnboarding, menuWithRecipesOn, registerFreshUser } from './_helpers'
+import { madridMondayIn } from './_clock'
 
 const API = process.env.API_URL ?? 'http://localhost:8765'
 
-function mondayIn(weeks: number): string {
-  const d = new Date()
-  d.setDate(d.getDate() + (d.getDay() === 0 ? -6 : 1 - d.getDay()) + 7 * weeks)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
+/** Monday `weeks` weeks from now, in Madrid (the runner is UTC on CI). */
+const mondayIn = (weeks: number) => madridMondayIn(weeks)
 
 async function session(page: Page) {
   const token = await page.evaluate(() => localStorage.getItem('ona_token'))
@@ -29,8 +27,8 @@ test('Tuesday lunch as táper of Monday dinner, and back', async ({ page }) => {
   const weekStart = mondayIn(1)
   const gen = await page.request.post(`${API}/menu/generate`, { headers, data: { userId, weekStart, force: true } })
   expect(gen.ok(), `generate: ${gen.status()}`).toBeTruthy()
-  const menu = await gen.json()
-  test.skip(!menu.days[0]?.dinner?.dishes?.length || !menu.days[1]?.lunch?.dishes?.length, 'the generator left Monday dinner or Tuesday lunch empty')
+  // Monday's dinner and Tuesday's lunch with a recipe, whatever the generator left.
+  const menu = await menuWithRecipesOn(page, headers, userId, weekStart, [[0, 'dinner'], [1, 'lunch']])
   const dinnerName = menu.days[0].dinner.dishes.find((d: { kind: string }) => d.kind === 'recipe').recipeName as string
 
   await page.goto(`/menu?week=${weekStart}`)

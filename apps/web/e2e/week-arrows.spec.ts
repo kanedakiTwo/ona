@@ -4,43 +4,23 @@
  * Plus the /shopping progress regression of the same day: a row bought and
  * then marked "en casa" counts once (it showed "72/56 · 129 % listo").
  */
-import { test, expect, type Page } from '@playwright/test'
-import { addMealWithRecipe, registerFreshUser, completeOnboarding } from './_helpers'
-import { pinClock, pinnedDay } from './_clock'
+import { test, expect } from '@playwright/test'
+import { registerFreshUser, completeOnboarding, generateWeekWithListRows } from './_helpers'
+import { pinClock } from './_clock'
 
 // Pinned to one weekday of the current week (Friday by default,
 // `E2E_WEEKDAY`): on a real Saturday the list from «today» was empty because
-// the generator leaves the weekend without dishes (PRO-186).
+// the generator leaves the weekend without dishes (PRO-186). The API's clock
+// is the real one: `generateWeekWithListRows` puts dishes on two days so its
+// «meals already past today» cut never empties the list (Friday evenings).
 test.use({ timezoneId: 'Europe/Madrid' })
-
-const apiUrl = process.env.API_URL ?? 'http://localhost:8765'
-
-async function generateThisWeek(page: Page) {
-  const token = await page.evaluate(() => localStorage.getItem('ona_token'))
-  const user = JSON.parse((await page.evaluate(() => localStorage.getItem('ona_user'))) ?? '{}')
-  const { weekStart, dayIdx } = pinnedDay()
-  const headers = { Authorization: `Bearer ${token}` }
-  const res = await page.request.post(`${apiUrl}/menu/generate`, { headers, data: { userId: user.id, weekStart } })
-  expect(res.ok(), `menu/generate ${res.status()}`).toBeTruthy()
-  // The API generates with the server's real date: make sure «today» has a
-  // dish so the shopping list from today has rows.
-  const menu = await (await page.request.get(`${apiUrl}/menu/${user.id}/${weekStart}`, { headers })).json()
-  const hasRecipe = Object.values(menu.days?.[dayIdx] ?? {}).some((slot: any) =>
-    slot?.dishes?.some((d: { kind: string }) => d.kind === 'recipe'),
-  )
-  if (!hasRecipe) {
-    if (menu.days?.[dayIdx]?.lunch) await page.request.delete(`${apiUrl}/menu/${menu.id}/day/${dayIdx}/meal/lunch`, { headers })
-    const add = await addMealWithRecipe(page, headers, menu, dayIdx, 'lunch')
-    expect(add.ok(), `add lunch ${add.status()}`).toBeTruthy()
-  }
-}
 
 test.beforeEach(async ({ page }) => {
   test.setTimeout(60_000)
   await pinClock(page)
   await registerFreshUser(page)
   if (page.url().includes('/onboarding')) await completeOnboarding(page)
-  await generateThisWeek(page)
+  await generateWeekWithListRows(page)
 })
 
 test('/menu: ‹ › change the week from the header', async ({ page }) => {
@@ -63,6 +43,10 @@ test('/shopping: ‹ › move the dates a week; progress counts each row once', 
   const range = page.getByTestId('shopping-range')
   await expect(range).toBeVisible({ timeout: 15_000 })
   const thisWeek = (await range.textContent()) ?? ''
+  // The first list is in (its rows enabled) before the arrows: a › tapped
+  // while it still loads made the API rebuild the next range's list after
+  // this one, and the rows kept a list id with other items (404 on «Marcar»).
+  await expect(page.getByRole('button', { name: 'Marcar como comprado' }).first()).toBeEnabled({ timeout: 15_000 })
 
   // The range starts today: nothing before it.
   await expect(page.getByRole('button', { name: 'Semana anterior' })).toBeDisabled()

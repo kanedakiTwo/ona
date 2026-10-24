@@ -1,0 +1,72 @@
+/**
+ * The Android app's contract (a Trusted Web Activity of the web): what each flavour opens, what it asks for and
+ * what the web declares about it. Reads the files; doesn't compile (CI has no Android SDK). Spec: specs/android-app.md.
+ */
+import { describe, expect, it } from 'vitest'
+import { existsSync, readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
+const R = (p: string) => readFileSync(fileURLToPath(new URL(p, import.meta.url)), 'utf8')
+const gradle = R('../../../android/app/build.gradle.kts')
+const manifiesto = R('../../../android/app/src/main/AndroidManifest.xml')
+const sabor = (nombre: string) => {
+  const bloque = new RegExp(`create\\("${nombre}"\\) \\{([\\s\\S]*?)\\n        \\}`).exec(gradle)?.[1] ?? ''
+  const res = (k: string) => new RegExp(`resValue\\("string", "${k}", (?:"([^"]*)"|declaracion\\("([^"]*)"\\))\\)`).exec(bloque)
+  return {
+    sufijo: /applicationIdSuffix = "([^"]+)"/.exec(bloque)?.[1] ?? '',
+    host: /manifestPlaceholders\["host"\] = "([^"]+)"/.exec(bloque)?.[1],
+    nombre: res('nombre')?.[1],
+    inicio: res('url_inicio')?.[1],
+    sitio: res('asset_statements')?.[2],
+  }
+}
+
+describe('Android app (TWA)', () => {
+  it('is com.mimoia.app and only asks for internet and notifications', () => {
+    expect(/applicationId = "([^"]+)"/.exec(gradle)?.[1]).toBe('com.mimoia.app')
+    const permisos = [...manifiesto.matchAll(/uses-permission android:name="([^"]+)"/g)].map((m) => m[1]).sort()
+    expect(permisos).toEqual(['android.permission.INTERNET', 'android.permission.POST_NOTIFICATIONS'])
+    expect(manifiesto).toContain('android:allowBackup="false"')
+    expect(manifiesto).toContain('android:host="${host}"')
+  })
+
+  it('declares every activity LauncherActivity opens on its own (without ManageDataLauncherActivity the app crashes on launch)', () => {
+    for (const a of ['LauncherActivity', 'ManageDataLauncherActivity', 'NotificationPermissionRequestActivity', 'DelegationService']) {
+      expect(manifiesto, a).toMatch(new RegExp(`android:name="com\\.google\\.androidbrowserhelper\\.trusted\\.${a}"`))
+    }
+    expect(manifiesto).toMatch(/android:manageSpaceActivity="com\.google\.androidbrowserhelper\.trusted\.ManageDataLauncherActivity"/)
+    expect(manifiesto).toMatch(/android:name="android\.support\.customtabs\.trusted\.MANAGE_SPACE_URL"\s+android:value="@string\/url_inicio"/)
+  })
+
+  it('the small notification icon is a PNG per density (with a vector Chrome shows its own icon)', () => {
+    expect(manifiesto).toMatch(/android:name="android\.support\.customtabs\.trusted\.SMALL_ICON"\s+android:resource="@drawable\/ic_aviso"/)
+    expect(existsSync(fileURLToPath(new URL('../../../android/app/src/main/res/drawable/ic_aviso.xml', import.meta.url)))).toBe(false)
+    const densidades = { mdpi: 24, hdpi: 36, xhdpi: 48, xxhdpi: 72, xxxhdpi: 96 }
+    for (const [d, lado] of Object.entries(densidades)) {
+      const png = readFileSync(fileURLToPath(new URL(`../../../android/app/src/main/res/drawable-${d}/ic_aviso.png`, import.meta.url)))
+      expect(png.subarray(1, 4).toString('latin1'), d).toBe('PNG')
+      expect([png.readUInt32BE(16), png.readUInt32BE(20)], d).toEqual([lado, lado])
+      expect(png[25], `${d}: RGBA (run node apps/android/icono-aviso.mjs)`).toBe(6)
+    }
+  })
+
+  it('«pruebas» opens staging and «tienda» opens mimoia.com, both on /menu inside the app', () => {
+    expect(sabor('pruebas')).toEqual({ sufijo: '.pruebas', host: 'ona-web-staging.up.railway.app', nombre: 'Mimoia (pruebas)',
+      inicio: 'https://ona-web-staging.up.railway.app/menu?app=android', sitio: 'https://ona-web-staging.up.railway.app' })
+    expect(sabor('tienda')).toEqual({ sufijo: '', host: 'mimoia.com', nombre: 'Mimoia',
+      inicio: 'https://mimoia.com/menu?app=android', sitio: 'https://mimoia.com' })
+  })
+
+  it('the web declares both apps with SHA-256 fingerprints (once it serves assetlinks.json)', () => {
+    const f = fileURLToPath(new URL('../../../web/public/.well-known/assetlinks.json', import.meta.url))
+    if (!existsSync(f)) return
+    const decl = JSON.parse(readFileSync(f, 'utf8')) as Array<{ relation: string[]; target: { namespace: string; package_name: string; sha256_cert_fingerprints: string[] } }>
+    expect(decl.map((d) => d.target.package_name).sort()).toEqual(['com.mimoia.app', 'com.mimoia.app.pruebas'])
+    for (const d of decl) {
+      expect(d.relation).toEqual(['delegate_permission/common.handle_all_urls'])
+      expect(d.target.namespace).toBe('android_app')
+      expect(d.target.sha256_cert_fingerprints.length).toBeGreaterThan(0)
+      for (const h of d.target.sha256_cert_fingerprints) expect(h).toMatch(/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/)
+    }
+  })
+})

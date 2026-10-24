@@ -42,3 +42,9 @@ apps/api/.cache/
 
 # The deploy writes the commit it ships here (PRO-OF-2: GET /version, /version.json)
 VERSION_SHA
+
+# Android app (apps/android, specs/android-app.md): construir.sh's output and Gradle's build dirs
+apps/android/dist/
+apps/android/.gradle/
+apps/android/build/
+apps/android/app/build/

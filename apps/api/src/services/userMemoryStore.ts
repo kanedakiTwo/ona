@@ -137,7 +137,7 @@ export async function setMemoryFact(
   }
   const consent = await assertHealthConsentFor(userId, [v.key])
   const signal = signalFor(source, opts)
-  return db.transaction(async (tx) => {
+  const fact = await db.transaction(async (tx) => {
     const [row] = await tx
       .insert(userMemories)
       .values({
@@ -161,6 +161,8 @@ export async function setMemoryFact(
     await syncHouseholdCounts(tx, userId, [v])
     return rowToFact(row)
   })
+  if (v.key === 'restrictions') await reviewMenusAfterRestrictions(userId)
+  return fact
 }
 
 /**
@@ -213,7 +215,18 @@ export async function setMemoryBatch(
     }
     await syncHouseholdCounts(tx, userId, validated)
   })
+  if (validated.some((f) => f.key === 'restrictions')) await reviewMenusAfterRestrictions(userId)
   return await getMemoryForUser(userId)
+}
+
+/**
+ * PRO-364: `restrictions` saved (Mimo, `/memory`, the fridge question) → the
+ * household's saved menus from today on drop what no longer fits. Imported
+ * lazily: the review reads the memory through this module.
+ */
+async function reviewMenusAfterRestrictions(userId: string): Promise<void> {
+  const { reviewHouseholdMenusSafely } = await import('./menuRestrictionsReview.js')
+  await reviewHouseholdMenusSafely(userId)
 }
 
 export async function deleteMemoryFact(userId: string, key: string, opts?: MemoryWriteOptions): Promise<void> {

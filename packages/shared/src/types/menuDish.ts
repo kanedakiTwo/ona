@@ -26,6 +26,13 @@ export interface RecipeDish {
    * (menú inteligente, specs/smart-menu.md); today's generator never sets it.
    */
   why?: string | null
+  /**
+   * PRO-364: someone in the household saved an allergy or diet this dish
+   * breaks, and there was no other recipe to put instead (or the slot is
+   * «Fijada», or it's a táper already cooked). The day's card warns; any
+   * change of the dish drops it.
+   */
+  restrictionConflict?: boolean
   /** Hydrated from `recipes.image_url` on every menu response; NOT persisted in JSONB. */
   imageUrl?: string | null
   /** Hydrated alongside `imageUrl`. */

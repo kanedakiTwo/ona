@@ -228,6 +228,15 @@ user could read/modify any menu by id.
 - Limits: the verdict is about the week **as generated**; later swaps don't update it (the next generation does). Only the generating user's favourites and «Me encanta» count (not the rest of the household, not the ficha yet). The menu matcher still weighs favourites by shared words (`recipesMatchingDishes`): the smart menu is PRO-139.
 - Tests: `menuFit.test.ts` (the real case of 2026-10-16, reasons, wishes, cost, fallbacks), `assistant-skills.test.ts` (reaches Mimo), `e2e/menu-fit.spec.ts` (the line, and none without a verdict).
 
+## Cuando cambia una receta (PRO-345)
+
+A saved menu holds recipe ids; the recipe behind one can change or be deleted later (2026-10-22: «Fajitas de pollo» got «Tortillas de trigo» and stayed in a gluten-free Thursday; a deleted «Crema de calabaza» showed «Esta receta ya no está» and its ingredients left the list). `services/menuRecipeRecheck.ts` re-checks the saved menus:
+- **What**: from today on (Madrid) and only meals not eaten, a dish whose recipe was **deleted**, or whose recipe **changed after it entered the slot** (`recipes.updated_at` later than the menu's creation and the last hand edit in `menu_edits` that put it there) and now breaks the allergies or diet of **anyone in the household** (owner's profile + Mimo's memory + every member, as in generation). A recipe the household picked by hand knowing it breaks a rule stays: only a later change makes it stale, and picking it again after the swap writes a newer edit. Locked slots are changed too (safety first). A retired recipe (PRO-140) still exists: only the diet check applies.
+- **Replacement**: the matcher picks one of the same course for that day and meal, with the household's restrictions and the week's vetoes, not repeating the week. The dish keeps `replaced: { recipeName, reason: 'diet' | 'removed' }` and the day card shows «En lugar de «Fajitas de pollo», que ha cambiado y ya no encaja con vuestra dieta» / «…, que ya no está en el catálogo» (`replacedDishLine`, `data-testid="dish-replaced"`) until the dish is changed by hand. A leftover of a replaced dish follows it. Nothing fits → a note ««X» ya no encaja con vuestra dieta: elegid otro plato» (or «ya no está en el catálogo»). A táper or leftover already cooked stays on a diet change and becomes the note «Táper de «X»» when its recipe is deleted.
+- **The list** is rebuilt from the menus on every read, so it follows by itself; prep alerts are re-enqueued. The swap is not a `menu_edits` row (nobody in the household made it); the server log says `[menu-recheck]`.
+- **When**: right after `PUT /recipes/:id` and `DELETE /recipes/:id` (that recipe only, without making the response wait), and a full pass a minute after boot and every hour (`startMenuRecipeRecheck`), which catches the catalogue fixes of a deploy (`catalogRecipeFixes.ts`) and scripts. A menu changed meanwhile is not overwritten (the next pass retries).
+- Tests: `menuRecipeRecheck.test.ts` (fajitas edited to carry gluten in a gluten-free household, the deleted crema, hand picks, tápers, notes), `menuRecipeRecheck.smoke.ts` (real Postgres), `dietCatalog.test.ts` (the fajitas of 2026-10-22).
+
 ## Constraints
 
 - All menu routes require auth (including `POST /menu/generate`, which also
@@ -260,6 +269,7 @@ user could read/modify any menu by id.
 - [apps/api/src/services/menuGenerator.ts](../apps/api/src/services/menuGenerator.ts) — core algorithm
 - [apps/api/src/services/metabolicScore.ts](../apps/api/src/services/metabolicScore.ts) — per-recipe metabolic profile + weekly quality/variety for the fitness
 - [apps/api/src/services/menuEdits.ts](../apps/api/src/services/menuEdits.ts) — registro de cambios del menú (PRO-149)
+- [apps/api/src/services/menuRecipeRecheck.ts](../apps/api/src/services/menuRecipeRecheck.ts) — saved menus re-checked when a recipe changes or is deleted (PRO-345)
 - [apps/api/src/services/taper.ts](../apps/api/src/services/taper.ts) — «el táper de mañana» (PRO-223) · [apps/api/src/services/assistant/taperSkills.ts](../apps/api/src/services/assistant/taperSkills.ts)
 - [apps/api/src/services/fridgeBoost.ts](../apps/api/src/services/fridgeBoost.ts) — «¿qué te queda en la nevera?» in the menu (PRO-229)
 - [apps/api/src/services/fridgeReader.ts](../apps/api/src/services/fridgeReader.ts) — the fridge text read by Claude, the allergy rule and the question before generating (PRO-295)

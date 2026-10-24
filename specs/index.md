@@ -258,6 +258,8 @@ Weekly meal planning, menu generation algorithm using cached `nutritionPerServin
 
 Registro de cambios del menú / menu edits / `menu_edits` (swap, add, remove, ban, skip_day, move, leftover, freezer; quién user/mimo; canal web/whatsapp; `GET /menu/:menuId/edits`; señal de la ficha viva, PRO-149) → `apps/api/src/services/menuEdits.ts`.
 
+Cuando cambia una receta / receta editada o borrada en un menú guardado / alérgenos nuevos / «Esta receta ya no está» (re-check of saved menus from today on against the household's allergies and diet, replaced dish with «En lugar de …», `replaced`, PRO-345) → `apps/api/src/services/menuRecipeRecheck.ts`.
+
 **Source**: `apps/api/src/routes/menus.ts`, `apps/api/src/services/menuGenerator.ts`, `apps/api/src/services/recipeMatcher.ts`, `apps/api/src/services/catalogRecipeAudit.ts`, `apps/api/scripts/auditCatalogRecipes.ts`, `apps/web/src/app/menu/`, `apps/web/src/components/menu/`, `apps/web/src/hooks/useMenu.ts`
 
 ---

@@ -2,7 +2,9 @@ import { expect, test } from '@playwright/test'
 
 // PRO-365 (specs/version.md): the web and the API say the deployed commit (null without VERSION_SHA).
 test('the web and the API say the same commit', async ({ request }) => {
-  const web = await request.get('/version.json', { maxRedirects: 0 })
+  // `next dev` compiles the route on its first hit (slow on a cold runner).
+  test.setTimeout(90_000)
+  const web = await request.get('/version.json', { maxRedirects: 0, timeout: 80_000 })
   expect(web.status()).toBe(200)
   expect(web.headers()['content-type']).toContain('application/json')
   const webBody = (await web.json()) as { sha: string | null }

@@ -103,7 +103,7 @@ describe.skipIf(!reachable || !inBeta)('4 weeks free with a creator link (PRO-35
 
   it('joined the waitlist with `cr-prueba`, came in from the invitation without a ref in the URL: 28 days', async () => {
     const email = testEmail('wl')
-    expect((await joinWaitlist(email, 'cr-prueba')).status).toBe(201)
+    expect((await joinWaitlist(email, 'cr-prueba')).status).toBe(200)
     const waitlistToken = await inviteFromWaitlist(email)
     const u = await register({ waitlistToken }, email)
     const [stored] = await db.select({ a: users.signupAttribution }).from(users).where(eq(users.id, u.id))
@@ -112,7 +112,7 @@ describe.skipIf(!reachable || !inBeta)('4 weeks free with a creator link (PRO-35
 
     // A waitlist row with another ref: nothing.
     const other = testEmail('wl2')
-    expect((await joinWaitlist(other, 'crema')).status).toBe(201)
+    expect((await joinWaitlist(other, 'crema')).status).toBe(200)
     const plain = await register({ waitlistToken: await inviteFromWaitlist(other) }, other)
     expect((await trial(plain.token)).trialDays).toBe(14)
   })

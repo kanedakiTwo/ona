@@ -1,6 +1,6 @@
 import express, { Router, type RequestHandler } from 'express'
 import { eq } from 'drizzle-orm'
-import { checkoutRequestSchema, founderPriceIfSubscribing } from '@ona/shared'
+import { checkoutRequestSchema, founderPriceIfSubscribing, trialDaysFor } from '@ona/shared'
 import { env } from '../config/env.js'
 import { db } from '../db/connection.js'
 import { households, users } from '../db/schema.js'
@@ -17,6 +17,7 @@ import {
   type BillingGateway,
   type SubscriptionRepo,
 } from '../services/billing.js'
+import { creatorRefsSql } from '../services/creatorTrial.js'
 
 /**
  * Subscriptions (specs/billing.md).
@@ -35,6 +36,8 @@ export interface Payer {
   createdAt: Date | null
   /** The household's creation: its 14-day trial counts from it (PRO-135). */
   householdCreatedAt?: Date | null
+  /** The household's trial length: 28 days with a creator's link (PRO-353). */
+  trialDays?: number
 }
 
 export interface BillingDeps {
@@ -56,7 +59,7 @@ async function loadPayer(userId: string): Promise<Payer | null> {
     .limit(1)
   if (!u?.householdId) return null
   const [h] = await db
-    .select({ ownerId: households.ownerId, createdAt: households.createdAt })
+    .select({ ownerId: households.ownerId, createdAt: households.createdAt, creatorRefs: creatorRefsSql('households') })
     .from(households)
     .where(eq(households.id, u.householdId))
     .limit(1)
@@ -66,6 +69,7 @@ async function loadPayer(userId: string): Promise<Payer | null> {
     isOwner: h?.ownerId === userId,
     createdAt: u.createdAt ?? null,
     householdCreatedAt: h?.createdAt ?? null,
+    trialDays: trialDaysFor(h?.creatorRefs),
   }
 }
 
@@ -92,7 +96,16 @@ export function createBillingRouter(overrides: Partial<BillingDeps> = {}): Route
   router.get('/billing', d.auth, async (req: AuthRequest, res) => {
     const payer = await d.payer(req.userId!)
     const row = payer ? await d.repo.latestForHousehold(payer.householdId) : null
-    res.json(billingStateFor(row, { enabled: d.enabled(), canManage: !!payer?.isOwner, now: d.now(), userCreatedAt: payer?.createdAt ?? null, householdCreatedAt: payer?.householdCreatedAt ?? null }))
+    res.json(
+      billingStateFor(row, {
+        enabled: d.enabled(),
+        canManage: !!payer?.isOwner,
+        now: d.now(),
+        userCreatedAt: payer?.createdAt ?? null,
+        householdCreatedAt: payer?.householdCreatedAt ?? null,
+        trialDays: payer?.trialDays,
+      }),
+    )
   })
 
   router.post('/billing/checkout', d.auth, async (req: AuthRequest, res) => {
@@ -126,8 +139,8 @@ export function createBillingRouter(overrides: Partial<BillingDeps> = {}): Route
           userId: req.userId!,
           householdId: payer.householdId,
           // The Stripe trial ends at max(end of the household's trial, today + 15 days) (PRO-136).
-          firstCharge: firstChargeInstant({ userCreatedAt: payer.householdCreatedAt ?? payer.createdAt, now }),
-          founderPrice: founderPriceIfSubscribing(payer.householdCreatedAt ?? payer.createdAt, now),
+          firstCharge: firstChargeInstant({ userCreatedAt: payer.householdCreatedAt ?? payer.createdAt, now, trialDays: payer.trialDays }),
+          founderPrice: founderPriceIfSubscribing(payer.householdCreatedAt ?? payer.createdAt, now, undefined, payer.trialDays),
           webUrl: d.webUrl,
           customerId: latest?.stripeCustomerId ?? null,
         }),

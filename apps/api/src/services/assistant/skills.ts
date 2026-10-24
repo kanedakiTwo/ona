@@ -47,7 +47,12 @@ import { schoolMenuSkills } from './schoolMenuSkills.js'
 import { freezerSkills } from './freezerSkills.js'
 import { visibleAuthorIds, visibleRecipeWhere } from '../recipeVisibility.js'
 import { loadMatchableRecipes } from '../matchableRecipes.js'
+<<<<<<< 37d52dcdc1df26f66c288eb9d1b056c3124ef3dd
 import { generationSkips, loadPreviousWeek, unskipDay } from '../menuWeek.js'
+=======
+import { unlistedDietMentions } from '../stepDietMentions.js'
+import { generationSkips, loadPreviousWeek } from '../menuWeek.js'
+>>>>>>> c50269297e07e77ec6b5083db1cb9b8d8d4a51e6
 import { loadUserRestrictions, findRecipesWithWhatIHave } from '../withWhatIHave.js'
 import { withHouseholdRestrictions } from '../householdAllergies.js'
 import { isBrandDependentGlutenCharcuterie, isCoeliacHousehold, recipeDietNotices } from '../glutenFreeCharcuterie.js'
@@ -185,7 +190,18 @@ async function restrictionConflicts(ctx: SkillContext, recipeId: string): Promis
     .from(recipeIngredients)
     .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
     .where(eq(recipeIngredients.recipeId, recipeId))
-  const recipe = { allergens: row?.allergens ?? [], ingredients: (ings ?? []) as RestrictableRecipe['ingredients'] }
+  // PRO-346: what the steps name and the ingredients don't counts too.
+  const steps = await ctx.db
+    .select({ index: recipeSteps.index, text: recipeSteps.text })
+    .from(recipeSteps)
+    .where(eq(recipeSteps.recipeId, recipeId))
+  const stepTexts = [...(steps ?? [])].sort((a: any, b: any) => a.index - b.index).map((s: any) => s.text ?? '')
+  const ingredientRows = (ings ?? []) as RestrictableRecipe['ingredients']
+  const recipe: RestrictableRecipe = {
+    allergens: row?.allergens ?? [],
+    ingredients: ingredientRows,
+    stepMentions: unlistedDietMentions(stepTexts, ingredientRows.map((i) => i.ingredientName)),
+  }
   return restrictions.filter((r) => violatesRestrictions(recipe, compileRestrictions([r])))
 }
 

@@ -110,6 +110,12 @@ export const users = pgTable('users', {
   healthConsentVersion: text('health_consent_version'),
   healthConsentWithdrawnAt: timestamp('health_consent_withdrawn_at', { withTimezone: true }),
   /**
+   * «No tengo ninguna» on «Tus alergias y tu dieta» (PRO-347): the person
+   * said they have no allergy nor diet. Not health data, so it needs no
+   * consent; cleared when restrictions are saved or the consent withdrawn.
+   */
+  allergiesNoneAt: timestamp('allergies_none_at', { withTimezone: true }),
+  /**
    * Personal invitation code (PRO-162): `<web>/?invita=<code>`, same format
    * as the waitlist's. Reuses the person's waitlist code when they came from
    * the list; assigned on sign-up or the first time it's asked for.

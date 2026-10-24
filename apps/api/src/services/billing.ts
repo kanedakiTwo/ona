@@ -67,12 +67,13 @@ function noonOf(day: string): Date {
  * Rounded to noon in Madrid on or after that moment, so Stripe's checkout,
  * portal and emails (which print UTC dates) all say the right day: at 00:00
  * Madrid the portal read «finaliza el 11 ene» (staging, 2026-10-15).
- * A beta household paying before 14 December: 29 December.
+ * A beta household paying before 14 December: 29 December. With a creator's
+ * link (PRO-353, `trialDays` = 28): 12 January 2027.
  */
-export function firstChargeInstant(opts: { userCreatedAt: Date | null; now: Date; launchDate?: string }): Date {
+export function firstChargeInstant(opts: { userCreatedAt: Date | null; now: Date; launchDate?: string; trialDays?: number }): Date {
   const launch = launchInstant(opts.launchDate)
   const start = Math.max(opts.userCreatedAt?.getTime() ?? opts.now.getTime(), launch.getTime())
-  const earliest = Math.max(start + TRIAL_DAYS * DAY_MS, opts.now.getTime() + MIN_DAYS_CARD_TO_CHARGE * DAY_MS)
+  const earliest = Math.max(start + (opts.trialDays ?? TRIAL_DAYS) * DAY_MS, opts.now.getTime() + MIN_DAYS_CARD_TO_CHARGE * DAY_MS)
   const noon = noonOf(madridDay(new Date(earliest)))
   return noon.getTime() >= earliest ? noon : new Date(noon.getTime() + DAY_MS)
 }
@@ -226,23 +227,24 @@ export function chargeAmount(plan: PlanKey, period: BillingPeriod): string {
 /** What `GET /billing` answers, from the household's latest subscription. */
 export function billingStateFor(
   row: SubscriptionRow | null,
-  opts: { enabled: boolean; canManage: boolean; now: Date; userCreatedAt?: Date | null; householdCreatedAt?: Date | null },
+  opts: { enabled: boolean; canManage: boolean; now: Date; userCreatedAt?: Date | null; householdCreatedAt?: Date | null; trialDays?: number },
 ): BillingState {
   const live = row && LIVE_STATUSES.includes(row.status) ? row : null
   const paid = !!row && PAID_ACCESS_STATUSES.includes(row.status)
   const householdCreatedAt = opts.householdCreatedAt ?? opts.userCreatedAt ?? null
-  const access = accountAccess({ householdCreatedAt, paid, now: opts.now })
+  const trialDays = opts.trialDays
+  const access = accountAccess({ householdCreatedAt, paid, now: opts.now, trialDays })
   const nextCharge = live && !live.cancelAtPeriodEnd ? (live.status === 'trialing' ? live.trialEnd : live.currentPeriodEnd) : null
   return {
     enabled: opts.enabled,
     beta: isBeta(opts.now),
     launchDate: LAUNCH_DATE,
     canManage: opts.canManage,
-    firstChargeAt: firstChargeInstant({ userCreatedAt: householdCreatedAt, now: opts.now }).toISOString(),
+    firstChargeAt: firstChargeInstant({ userCreatedAt: householdCreatedAt, now: opts.now, trialDays }).toISOString(),
     access,
     founder: {
       household: householdCreatedAt != null && isFoundingHousehold(householdCreatedAt),
-      priceIfSubscribing: founderPriceIfSubscribing(householdCreatedAt, opts.now),
+      priceIfSubscribing: founderPriceIfSubscribing(householdCreatedAt, opts.now, undefined, trialDays),
       offer: !live && founderOfferStands(access),
     },
     subscription: live

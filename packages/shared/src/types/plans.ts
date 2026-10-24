@@ -32,6 +32,27 @@ export const BETA_FIRST_CHARGE_DATE = '2026-12-29'
 export const BETA_FIRST_CHARGE_LABEL = '29 de diciembre'
 export const MIN_DAYS_CARD_TO_CHARGE = 15
 
+/**
+ * A creator's link (PRO-353, D-130): the household created by someone who
+ * came with any creator's ref, `cr-<alias>` (on their account or on their waitlist row) has
+ * 4 weeks free in all, instead of the 14-day trial. Beta households too,
+ * counted from launch day: first charge on 12 January 2027.
+ */
+export const CREATOR_TRIAL_DAYS = 28
+export const CREATOR_BETA_FIRST_CHARGE_DATE = '2027-01-12'
+export const CREATOR_BETA_FIRST_CHARGE_LABEL = '12 de enero'
+const CREATOR_REF_RE = /^cr-[a-z0-9_-]{1,29}$/
+
+/** `cr-<alias>`, as `normalizeSource` keeps it. `cr`, `cr-` or `crema` aren't. */
+export function isCreatorRef(ref: unknown): boolean {
+  return typeof ref === 'string' && CREATOR_REF_RE.test(ref.trim().toLowerCase())
+}
+
+/** The household's trial length from the refs its creator came with (account and waitlist). */
+export function trialDaysFor(refs: readonly (string | null | undefined)[] | null | undefined): number {
+  return refs?.some(isCreatorRef) ? CREATOR_TRIAL_DAYS : TRIAL_DAYS
+}
+
 export interface PlanPrice {
   /** Amount charged, VAT included, in euro cents. */
   cents: number
@@ -196,6 +217,8 @@ export type AccessState = 'beta' | 'trial' | 'paused' | 'subscribed'
 
 export interface AccountAccess {
   state: AccessState
+  /** Length of the household's trial: `TRIAL_DAYS`, or `CREATOR_TRIAL_DAYS` with a creator's link (PRO-353). */
+  trialDays: number
   /** When the household's trial ends (ISO): midnight in Madrid after its last day, whatever the state. */
   trialEndsAt: string
   /** Last day of the trial, `YYYY-MM-DD` in Madrid (included). */
@@ -247,17 +270,19 @@ function daysBetween(from: string, to: string): number {
 }
 
 /**
- * The household's trial: from max(created, launch day), 14 days, to the end
- * of that day in Madrid. A beta household: 15 → 28 December, both included.
+ * The household's trial: from max(created, launch day), 14 days (28 with a
+ * creator's link), to the end of that day in Madrid. A beta household:
+ * 15 → 28 December, both included (with a creator's link, → 11 January).
  */
 export function trialEndsAt(
   householdCreatedAt: Date | string | null,
   launchDate: string = LAUNCH_DATE,
+  trialDays: number = TRIAL_DAYS,
 ): { endsAt: Date; lastDay: string; firstDay: string } {
   const created = householdCreatedAt == null ? NaN : typeof householdCreatedAt === 'string' ? Date.parse(householdCreatedAt) : householdCreatedAt.getTime()
   const start = Math.max(Number.isFinite(created) ? created : 0, launchStart(launchDate))
-  // The last instant of the 14 days, then the end of that Madrid day.
-  const lastDay = madridIsoDate(start + TRIAL_DAYS * ACCESS_DAY_MS - 1)
+  // The last instant of the trial, then the end of that Madrid day.
+  const lastDay = madridIsoDate(start + trialDays * ACCESS_DAY_MS - 1)
   return { endsAt: new Date(madridMidnight(nextDay(lastDay))), lastDay, firstDay: madridIsoDate(start) }
 }
 
@@ -267,10 +292,13 @@ export function accountAccess(i: {
   paid: boolean
   now: Date
   launchDate?: string
+  /** `trialDaysFor(…)` of the household; `TRIAL_DAYS` when left out. */
+  trialDays?: number
 }): AccountAccess {
   const launchDate = i.launchDate ?? LAUNCH_DATE
-  const { endsAt, lastDay, firstDay } = trialEndsAt(i.householdCreatedAt, launchDate)
-  const base = { trialEndsAt: endsAt.toISOString(), trialLastDay: lastDay, daysLeft: null, trialDay: null }
+  const trialDays = i.trialDays ?? TRIAL_DAYS
+  const { endsAt, lastDay, firstDay } = trialEndsAt(i.householdCreatedAt, launchDate, trialDays)
+  const base = { trialDays, trialEndsAt: endsAt.toISOString(), trialLastDay: lastDay, daysLeft: null, trialDay: null }
   const now = i.now.getTime()
   if (now < launchStart(launchDate)) return { state: 'beta', ...base }
   if (i.paid) return { state: 'subscribed', ...base }
@@ -351,9 +379,14 @@ export function isFoundingHousehold(createdAt: Date | string, launchDate: string
  * a founding household always; from launch day, anyone who leaves the card
  * before their trial ends. A paused household subscribing doesn't.
  */
-export function founderPriceIfSubscribing(householdCreatedAt: Date | string | null, now: Date, launchDate: string = LAUNCH_DATE): boolean {
+export function founderPriceIfSubscribing(
+  householdCreatedAt: Date | string | null,
+  now: Date,
+  launchDate: string = LAUNCH_DATE,
+  trialDays: number = TRIAL_DAYS,
+): boolean {
   if (householdCreatedAt != null && isFoundingHousehold(householdCreatedAt, launchDate)) return true
-  const s = accountAccess({ householdCreatedAt, paid: false, now, launchDate }).state
+  const s = accountAccess({ householdCreatedAt, paid: false, now, launchDate, trialDays }).state
   return s === 'beta' || s === 'trial'
 }
 

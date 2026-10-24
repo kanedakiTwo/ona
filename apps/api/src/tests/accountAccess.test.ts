@@ -7,7 +7,18 @@ import express from 'express'
 import type { AddressInfo } from 'node:net'
 import type { Server } from 'node:http'
 import { afterAll, describe, expect, it, vi } from 'vitest'
-import { ACCOUNT_PAUSED_MESSAGE, accountAccess, trialDaysLeftLabel, trialEndsAt, trialLastDayLabel } from '@ona/shared'
+import {
+  ACCOUNT_PAUSED_MESSAGE,
+  CREATOR_TRIAL_DAYS,
+  TRIAL_DAYS,
+  accountAccess,
+  founderPriceIfSubscribing,
+  isCreatorRef,
+  trialDaysFor,
+  trialDaysLeftLabel,
+  trialEndsAt,
+  trialLastDayLabel,
+} from '@ona/shared'
 import { accessForUser, isAccountPaused, requireActiveAccount, type AccessFacts } from '../services/accountAccess.js'
 import {
   isSendingHour,
@@ -67,6 +78,46 @@ describe('accountAccess (pure rule)', () => {
   })
 })
 
+describe('creator link: 4 weeks free in all (PRO-353, D-130)', () => {
+  it('only `cr-<alias>` counts: `cr`, `cr-`, `crema` or another ref give nothing', () => {
+    expect(isCreatorRef('cr-prueba')).toBe(true)
+    expect(isCreatorRef('cr-ana_cocina-2')).toBe(true)
+    for (const ref of ['crema', 'cr', 'cr-', 'circulo-miguel', 'menu', '', null, undefined, 42]) expect(isCreatorRef(ref)).toBe(false)
+    expect(trialDaysFor(['cr-prueba'])).toBe(CREATOR_TRIAL_DAYS)
+    expect(trialDaysFor([null, 'menu', 'cr-prueba'])).toBe(28)
+    expect(trialDaysFor(['crema'])).toBe(TRIAL_DAYS)
+    expect(trialDaysFor(['cr'])).toBe(14)
+    expect(trialDaysFor([])).toBe(14)
+    expect(trialDaysFor(null)).toBe(14)
+  })
+
+  it('a household after launch: 28 days with the link, 14 without', () => {
+    const at = (n: number, trialDays?: number) => accountAccess({ householdCreatedAt: NEW_HOUSEHOLD, paid: false, now: day(n, NEW_HOUSEHOLD), trialDays })
+    expect(at(0, 28)).toMatchObject({ state: 'trial', trialDays: 28, daysLeft: 28, trialLastDay: '2027-02-07' })
+    expect(at(15, 28)).toMatchObject({ state: 'trial', daysLeft: 13 })
+    expect(at(26, 28)).toMatchObject({ state: 'trial', daysLeft: 2, trialDay: 26 })
+    expect(at(29, 28)).toMatchObject({ state: 'paused' })
+    expect(at(0)).toMatchObject({ state: 'trial', trialDays: 14, trialLastDay: '2027-01-24' })
+    expect(at(15)).toMatchObject({ state: 'paused' })
+    expect(trialEndsAt(NEW_HOUSEHOLD, undefined, 28)).toMatchObject({ endsAt: new Date('2027-02-07T23:00:00Z'), lastDay: '2027-02-07' })
+  })
+
+  it('a beta household with the link: 4 weeks from launch day (15 December → 11 January); without it, 28 December', () => {
+    expect(trialEndsAt(BETA_HOUSEHOLD, undefined, 28)).toMatchObject({ endsAt: new Date('2027-01-11T23:00:00Z'), lastDay: '2027-01-11' })
+    expect(trialEndsAt(BETA_HOUSEHOLD)).toMatchObject({ lastDay: '2026-12-28' })
+    const at = (iso: string, trialDays?: number) => accountAccess({ householdCreatedAt: BETA_HOUSEHOLD, paid: false, now: new Date(iso), trialDays })
+    expect(at('2026-11-01T10:00:00Z', 28)).toMatchObject({ state: 'beta', trialDays: 28, trialLastDay: '2027-01-11' })
+    expect(at('2026-12-30T10:00:00Z', 28)).toMatchObject({ state: 'trial', daysLeft: 12 })
+    expect(at('2026-12-30T10:00:00Z')).toMatchObject({ state: 'paused' })
+    expect(at('2027-01-11T23:00:00Z', 28)).toMatchObject({ state: 'paused' })
+  })
+
+  it('the founder price while the longer trial lasts', () => {
+    expect(founderPriceIfSubscribing(NEW_HOUSEHOLD, day(20, NEW_HOUSEHOLD), undefined, 28)).toBe(true)
+    expect(founderPriceIfSubscribing(NEW_HOUSEHOLD, day(20, NEW_HOUSEHOLD))).toBe(false)
+  })
+})
+
 describe('isAccountPaused / accessForUser (DB facts behind a loader)', () => {
   const facts = (f: Partial<AccessFacts>) => async () => ({ householdCreatedAt: NEW_HOUSEHOLD, latestStatus: null, ...f })
 
@@ -87,6 +138,12 @@ describe('isAccountPaused / accessForUser (DB facts behind a loader)', () => {
     expect(await isAccountPaused('u1', now, facts({ latestStatus: 'canceled' }))).toBe(true)
     expect(await isAccountPaused('u1', now, facts({ latestStatus: 'unpaid' }))).toBe(true)
     expect(await isAccountPaused('u1', day(13, NEW_HOUSEHOLD), facts({}))).toBe(false)
+  })
+
+  it('a household from a creator link is not paused until its 4 weeks end (PRO-353)', async () => {
+    expect(await isAccountPaused('u1', day(20, NEW_HOUSEHOLD), facts({ trialDays: 28 }))).toBe(false)
+    expect(await isAccountPaused('u1', day(29, NEW_HOUSEHOLD), facts({ trialDays: 28 }))).toBe(true)
+    expect(await accessForUser('u1', day(20, NEW_HOUSEHOLD), facts({ trialDays: 28 }))).toMatchObject({ state: 'trial', trialDays: 28, daysLeft: 8 })
   })
 
   it('a failed read never pauses anyone', async () => {
@@ -206,5 +263,19 @@ describe('«te quedan 2 días» email (day 12)', () => {
     const skip = async (): Promise<EmailResult> => ({ status: 'skipped', reason: 'not_configured' })
     expect(await sendTrialEndingEmails(dayAt11(12), { repo: skipRepo, sendEmail: skip, publicUrl: '' })).toMatchObject({ skipped: 1 })
     expect(skipRepo.marked.size).toBe(0)
+  })
+
+  it('with a creator link (PRO-353): on day 26 of 28, saying 28 days and its own last day', async () => {
+    expect(isTrialEndingEmailDue(NEW_HOUSEHOLD, dayAt11(12), 28)).toBeNull()
+    expect(isTrialEndingEmailDue(NEW_HOUSEHOLD, dayAt11(26), 28)).toMatchObject({ daysLeft: 2, trialLastDay: '2027-02-07' })
+    const sent: EmailMessage[] = []
+    const send = async (m: EmailMessage): Promise<EmailResult> => {
+      sent.push(m)
+      return { status: 'sent', id: 'x' }
+    }
+    const repo = memoryRepo([{ ...candidate, trialDays: 28 }])
+    expect(await sendTrialEndingEmails(dayAt11(12), { repo, sendEmail: send, publicUrl: 'https://mimoia.com' })).toMatchObject({ sent: 0 })
+    expect(await sendTrialEndingEmails(dayAt11(26), { repo, sendEmail: send, publicUrl: 'https://mimoia.com' })).toMatchObject({ sent: 1 })
+    expect(sent[0].text).toContain('Tu prueba de 28 días en Mimoia dura hasta el 7 de febrero, incluido')
   })
 })

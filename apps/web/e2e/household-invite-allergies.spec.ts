@@ -155,3 +155,38 @@ test('«Generar mi menú» warns until the person answers, also «ninguna»', as
   await expect(page.getByTestId('week-plan-questions')).toBeVisible()
   await expect(page.getByTestId('household-allergies-notice')).toHaveCount(0)
 })
+
+test('«No tengo ninguna» sin el consentimiento; el texto con erratas se entiende o se pregunta (PRO-347)', async ({ page }) => {
+  test.setTimeout(90_000)
+  await registerFreshUser(page)
+  await completeOnboarding(page)
+  const { headers, userId } = await session(page)
+
+  // Without ticking the box: «No tengo ninguna» is there and /menu stops asking.
+  await page.goto('/profile/casa/alergias?next=/menu')
+  const screen = page.getByTestId('household-allergies')
+  await expect(screen.getByRole('button', { name: 'Ahora no' })).toBeVisible()
+  await screen.getByRole('button', { name: 'No tengo ninguna, ver el menú' }).click()
+  await page.waitForURL((u) => u.pathname === '/menu', { timeout: 15_000 })
+  const status = await (await page.request.get(`${API}/households/me/allergies`, { headers })).json()
+  expect(status.meAnswered).toBe(true)
+  const consent = await (await page.request.get(`${API}/user/${userId}/health-consent`, { headers })).json()
+  expect(consent.active).toBe(false)
+
+  // From the profile, with the box: gibberish is asked, not saved…
+  await page.goto('/profile/casa/alergias?next=/profile')
+  await screen.getByRole('checkbox', { name: 'Consiento que Mimoia trate mis datos de salud' }).check()
+  const box = screen.getByPlaceholder('Otra: escríbela (p. ej. pimiento)')
+  await box.fill('lo de siempre xd')
+  await screen.getByRole('button', { name: 'Guardar' }).click()
+  await expect(page.getByTestId('household-allergies-unclear')).toContainText('No hemos entendido «lo de siempre xd»')
+  await expect(box).toHaveValue('')
+  await expect(page).toHaveURL(/\/profile\/casa\/alergias/)
+
+  // …and typos are read: «sin glutn» is saved as «sin gluten».
+  await box.fill('sin glutn')
+  await screen.getByRole('button', { name: 'Guardar' }).click()
+  await page.waitForURL((u) => u.pathname === '/profile', { timeout: 15_000 })
+  const me = await (await page.request.get(`${API}/user/${userId}`, { headers })).json()
+  expect(me.restrictions).toEqual(['sin gluten'])
+})

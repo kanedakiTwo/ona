@@ -1,7 +1,8 @@
 /**
  * The 14-day trial and the paused account (PRO-135, specs/billing.md).
  *
- * From launch day (`LAUNCH_DATE`, 2026-12-15) a household has 14 days with
+ * From launch day (`LAUNCH_DATE`, 2026-12-15) a household has 14 days (28
+ * with a creator's link, PRO-353: `services/creatorTrial.ts`) with
  * everything from when it was created (beta households: from launch day).
  * After that, without a paid plan, the account is **paused**: it still sees
  * its menu, recipes and list, but can't generate new menus or use Mimo, and
@@ -19,22 +20,31 @@ import {
   PAID_ACCESS_STATUSES,
   accountAccess,
   type AccountAccess,
+  trialDaysFor,
   type SubscriptionStatus,
 } from '@ona/shared'
 import { db as defaultDb } from '../db/connection.js'
 import { households, subscriptions, users } from '../db/schema.js'
 import type { AuthRequest } from '../middleware/auth.js'
 import { isBeta } from './billing.js'
+import { creatorRefsSql } from './creatorTrial.js'
 
 export interface AccessFacts {
   householdCreatedAt: Date | null
   latestStatus: SubscriptionStatus | null
+  /** `TRIAL_DAYS`, or `CREATOR_TRIAL_DAYS` when its creator came with a creator's link (PRO-353). */
+  trialDays?: number
 }
 
-/** The user's primary household's creation and its latest subscription's status. */
+/** The user's primary household's creation, its trial length and its latest subscription's status. */
 export async function loadAccessFacts(userId: string, db: typeof defaultDb = defaultDb): Promise<AccessFacts | null> {
   const [u] = await db
-    .select({ householdId: users.primaryHouseholdId, userCreatedAt: users.createdAt, householdCreatedAt: households.createdAt })
+    .select({
+      householdId: users.primaryHouseholdId,
+      userCreatedAt: users.createdAt,
+      householdCreatedAt: households.createdAt,
+      creatorRefs: creatorRefsSql('households'),
+    })
     .from(users)
     .leftJoin(households, eq(households.id, users.primaryHouseholdId))
     .where(eq(users.id, userId))
@@ -50,7 +60,7 @@ export async function loadAccessFacts(userId: string, db: typeof defaultDb = def
       .limit(1)
     latestStatus = (s?.status as SubscriptionStatus | undefined) ?? null
   }
-  return { householdCreatedAt: u.householdCreatedAt ?? u.userCreatedAt ?? null, latestStatus }
+  return { householdCreatedAt: u.householdCreatedAt ?? u.userCreatedAt ?? null, latestStatus, trialDays: trialDaysFor(u.creatorRefs) }
 }
 
 export async function accessForUser(
@@ -65,6 +75,7 @@ export async function accessForUser(
     householdCreatedAt: facts?.householdCreatedAt ?? null,
     paid: !!facts?.latestStatus && PAID_ACCESS_STATUSES.includes(facts.latestStatus),
     now,
+    trialDays: facts?.trialDays,
   })
 }
 

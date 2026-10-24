@@ -4,6 +4,8 @@ dist/
 .turbo/
 .env
 *.local
+# Deployed commit, written by the deploy (specs/version.md)
+/VERSION_SHA
 .DS_Store
 
 # Git worktrees (isolated workspaces)

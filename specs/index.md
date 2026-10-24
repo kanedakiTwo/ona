@@ -12,6 +12,14 @@ Registration, login, logout, JWT tokens, session management, onboarding flow, pa
 
 ---
 
+## [Version (deployed commit)](./version.md)
+
+Which commit is deployed: a `VERSION_SHA` file the deploy leaves at the top of the tree (gitignored); the API answers it on `/version` (public, no-store), the web on `/version.json` (baked during `next build`); `null` without the file. PRO-365.
+
+**Source**: the `version` route of the API, the web's `version.json` route handler and its `versionSha` helper
+
+---
+
 ## [Privacy & account deletion](./privacy.md)
 
 "Borrar mi cuenta" (GDPR art. 17, right to erasure), `DELETE /user/:id` with password, own recipes deleted (never fall into the catalogue), household ownership hand-over, menus/shopping reassigned, WhatsApp messages purged, volume images removed, admin accounts refused (409 ADMIN_ACCOUNT), `/privacidad` privacy policy (processors Anthropic/OpenAI/Meta/Railway/AiKit/Cloudflare/Resend, Cloudflare Web Analytics cookieless beacon only when NEXT_PUBLIC_CF_BEACON_TOKEN is set, own usage events kept 180 days, health data consent art. 9, international transfers, AEPD, no cookies), NEXT_PUBLIC_SUPPORT_EMAIL, support phone NEXT_PUBLIC_SUPPORT_PHONE / SUPPORT_PHONE (aviso legal, términos, Mimo).

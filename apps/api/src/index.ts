@@ -12,6 +12,7 @@ import {
 } from './middleware/errorCapture.js'
 import authRoutes from './routes/auth.js'
 import publicConfigRoutes from './routes/publicConfig.js'
+import versionRoutes from './routes/version.js'
 import userRoutes from './routes/users.js'
 import recipeRoutes from './routes/recipes.js'
 import ingredientRoutes from './routes/ingredients.js'
@@ -128,6 +129,8 @@ app.use(
 app.get('/health', (_req, res) => {
   res.json({ ok: true, ts: new Date().toISOString() })
 })
+// The deployed commit (PRO-365): public, no cache, no DB read.
+app.use(versionRoutes)
 
 // Routes
 // Order matters: routers that call `router.use(authMiddleware)` at the top

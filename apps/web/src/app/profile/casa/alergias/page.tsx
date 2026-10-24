@@ -13,7 +13,13 @@
  *     into the household's menu (menuGenerator, PRO-271);
  *   - box ticked + nothing chosen → «No tengo ninguna»: the consent records
  *     the answer, so /menu stops asking (≠ never answered);
- *   - box unticked → «Ahora no»: nothing stored, /menu keeps warning.
+ *   - box unticked → «No tengo ninguna» (PRO-347: the answer, no health
+ *     data; `POST /user/:id/allergies-none`) or «Ahora no»: nothing stored,
+ *     /menu keeps warning.
+ *
+ * What is written by hand is read as Mimo reads it before saving
+ * (`POST /user/:id/restrictions/read`, PRO-347): «sin glutn» is saved as «sin
+ * gluten», «nada» as nothing, and what isn't understood is asked.
  *
  * If the household's current week already has dishes and something was
  * added, it offers to remake the week (locked meals stay) before the menu.
@@ -22,7 +28,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useQueryClient } from "@tanstack/react-query"
-import { firstMenuWeeks, unionRestrictions, type HealthConsentState } from "@ona/shared"
+import { firstMenuWeeks, RESTRICTION_PRESETS, unionRestrictions, type HealthConsentState } from "@ona/shared"
 import { api } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { safeNext } from "@/lib/safeNext"
@@ -30,7 +36,15 @@ import { RestrictionsPicker } from "@/components/onboarding/RestrictionsPicker"
 import { withTyped } from "@/lib/restrictionText"
 import { Accent, PILL_INK, PILL_OUTLINE, SubPage } from "@/components/profile/SubPage"
 
-type WeekDays = Array<Record<string, { dishes?: Array<{ kind?: string }> } | undefined>>
+/** Mirrors `RestrictionReading` in apps/api/src/services/restrictionReader.ts. */
+interface RestrictionReading {
+  text: string
+  none: boolean
+  restrictions: string[]
+  understood: boolean
+}
+
+type WeekDays =Array<Record<string, { dishes?: Array<{ kind?: string }> } | undefined>>
 
 function weekHasDishes(days: WeekDays | undefined): boolean {
   return (days ?? []).some((d) => Object.values(d ?? {}).some((slot) => (slot?.dishes ?? []).length > 0))
@@ -51,6 +65,8 @@ export default function HouseholdAllergiesPage() {
   const [error, setError] = useState("")
   /** Saved with something new and this week already had dishes. */
   const [offerRemake, setOfferRemake] = useState(false)
+  /** Written by hand and not understood (PRO-347): asked, not saved. */
+  const [unclear, setUnclear] = useState<string[]>([])
 
   const next = (() => {
     if (typeof window === "undefined") return "/menu"
@@ -79,6 +95,22 @@ export default function HouseholdAllergiesPage() {
     }
   }, [user?.id])
 
+  /** «No tengo ninguna» without the box: no health data, only the answer (PRO-347). */
+  async function sayNone() {
+    if (!user) return
+    setSaving(true)
+    setError("")
+    try {
+      await api.post(`/user/${user.id}/allergies-none`)
+      await queryClient.invalidateQueries({ queryKey: ["household-allergies"] })
+    } catch {
+      setSaving(false)
+      setError("No hemos podido guardarlo. Inténtalo otra vez.")
+      return
+    }
+    router.push(next)
+  }
+
   async function save() {
     if (!user) return
     if (!consent) {
@@ -87,14 +119,35 @@ export default function HouseholdAllergiesPage() {
     }
     setSaving(true)
     setError("")
+    setUnclear([])
     try {
       await api.post(`/user/${user.id}/health-consent`, { consent: true })
-      const updated = await api.put<{ restrictions?: string[] }>(`/user/${user.id}`, { restrictions: toSave })
-      updateUser({ restrictions: updated.restrictions ?? toSave })
+      // PRO-347: what was written by hand is read as Mimo reads it («sin
+      // glutn» → «sin gluten»); what isn't understood is asked, not saved.
+      let final = toSave
+      const free = toSave.filter((r) => !(RESTRICTION_PRESETS as readonly string[]).includes(r))
+      if (free.length > 0) {
+        const { readings } = await api.post<{ readings: RestrictionReading[] }>(`/user/${user.id}/restrictions/read`, { texts: free })
+        final = unionRestrictions(
+          toSave.filter((r) => !free.includes(r)),
+          readings.flatMap((r) => r.restrictions),
+        )
+        const notUnderstood = readings.filter((r) => !r.understood).map((r) => r.text)
+        if (notUnderstood.length > 0) {
+          setRestrictions(final)
+          setTyped("")
+          setUnclear(notUnderstood)
+          setSaving(false)
+          return
+        }
+      }
+      const updated = await api.put<{ restrictions?: string[] }>(`/user/${user.id}`, { restrictions: final })
+      updateUser({ restrictions: updated.restrictions ?? final })
+      if (final.length === 0) await api.post(`/user/${user.id}/allergies-none`)
       await queryClient.invalidateQueries({ queryKey: ["household-allergies"] })
       // The «Alergias e intolerancias» card on /profile reads it.
       await queryClient.invalidateQueries({ queryKey: ["user", user.id] })
-      if (toSave.length > 0) {
+      if (final.length > 0) {
         const { weeks } = firstMenuWeeks()
         const week = await api.get<{ days?: WeekDays }>(`/menu/${user.id}/${weeks[0]}`).catch(() => null)
         if (weekHasDishes(week?.days)) {
@@ -129,11 +182,9 @@ export default function HouseholdAllergiesPage() {
 
   // From «Alergias e intolerancias» on /profile (2026-10-22), not on the way to the menu.
   const fromProfile = next.startsWith("/profile")
-  const primaryLabel = !consent
-    ? fromProfile ? "Volver" : "Ahora no"
-    : toSave.length > 0
-      ? fromProfile ? "Guardar" : "Guardar y ver el menú"
-      : fromProfile ? "No tengo ninguna" : "No tengo ninguna, ver el menú"
+  const noneLabel = fromProfile ? "No tengo ninguna" : "No tengo ninguna, ver el menú"
+  // PRO-347: «No tengo ninguna» also without the box — it stores no health data.
+  const primaryLabel = consent && toSave.length > 0 ? (fromProfile ? "Guardar" : "Guardar y ver el menú") : noneLabel
 
   return (
     <SubPage
@@ -179,16 +230,40 @@ export default function HouseholdAllergiesPage() {
               onConsentChange={setConsent}
               restrictions={restrictions}
               onChange={setRestrictions}
-              onTypingChange={setTyped}
+              onTypingChange={(text) => {
+                setTyped(text)
+                if (text) setUnclear([])
+              }}
+              typed={typed}
             />
+            {unclear.length > 0 && (
+              <div
+                role="alert"
+                data-testid="household-allergies-unclear"
+                className="mt-4 rounded-2xl bg-warn-bg p-3 text-[14px] leading-relaxed text-ink"
+              >
+                No hemos entendido {unclear.map((t) => `«${t}»`).join(", ")}. ¿Qué es lo que no puedes comer? Elígelo en
+                la lista o escríbelo con otras palabras (p. ej. «sin gluten», «marisco», «pimiento»).
+              </div>
+            )}
             <div className="mt-8 flex flex-col gap-2">
-              <button type="button" onClick={() => void save()} disabled={saving || !loaded} className={PILL_INK}>
+              <button
+                type="button"
+                onClick={() => void (consent ? save() : sayNone())}
+                disabled={saving || !loaded}
+                className={PILL_INK}
+              >
                 {saving ? "Guardando…" : primaryLabel}
               </button>
               {!consent && (
-                <p className="text-center text-[13px] text-ink-muted">
-                  Si no nos lo dices, el menú no sabrá lo que no puedes comer.
-                </p>
+                <>
+                  <button type="button" onClick={() => router.push(next)} disabled={saving} className={PILL_OUTLINE}>
+                    {fromProfile ? "Volver" : "Ahora no"}
+                  </button>
+                  <p className="text-center text-[13px] text-ink-muted">
+                    Si tienes alguna y no nos la dices, el menú no sabrá lo que no puedes comer.
+                  </p>
+                </>
               )}
             </div>
           </>

@@ -17,9 +17,11 @@ import { optInDeclinedSql } from './whatsapp/optInOffer.js'
 import {
   ONBOARDING_STEPS,
   PASSIVE_USAGE_EVENTS,
+  SKILL_CANALES,
   USAGE_CHANNELS,
   USAGE_EVENTS,
   USAGE_SCREENS,
+  type SkillCanal,
   type UsageEventName,
 } from './usageEvents.js'
 
@@ -403,6 +405,30 @@ export function buildPropBreakdown(rows: readonly EventPropRow[]) {
   return out
 }
 
+export interface MimoSkillRow {
+  skill: string
+  canal: string | null
+  count: number
+}
+
+/**
+ * Pure (PRO-1022): `mimo_skill_used` per tool in the window, most used first,
+ * split by where the conversation was (web, whatsapp, telegram, voice). Counts only.
+ */
+export function buildMimoSkills(rows: readonly MimoSkillRow[]) {
+  const bySkill = new Map<string, Record<SkillCanal, number> & { total: number }>()
+  for (const r of rows) {
+    const cur = bySkill.get(r.skill) ?? { total: 0, web: 0, whatsapp: 0, telegram: 0, voice: 0 }
+    cur.total += r.count
+    const canal = SKILL_CANALES.find((c) => c === r.canal)
+    if (canal) cur[canal] += r.count
+    bySkill.set(r.skill, cur)
+  }
+  return [...bySkill.entries()]
+    .map(([skill, counts]) => ({ skill, ...counts }))
+    .sort((a, b) => b.total - a.total || a.skill.localeCompare(b.skill))
+}
+
 /** Households by the system of the last browser they came in with (PRO-307). */
 export interface HouseholdSystems { android: number; ios: number; desktop: number; unknown: number; total: number }
 export interface HouseholdLastDevice { householdId: string; device: string | null }
@@ -443,6 +469,7 @@ export const USAGE_DEFINITIONS = {
   householdsBySystem:
     'PRO-307: active households of the window (see activeHouseholds) by the system of the last browser they came in with: the most recent usage event with a device (screen_viewed, from the day this shipped, 2026-10-22; or app_opened_installed) — android, ios (iPhone; iPadOS Safari says it is a Mac and counts as desktop), desktop, unknown (no such event: WhatsApp only, or no web visit since). Only that word is stored, never the browser string. Counts only.',
   breakdown: 'PRO-120: for recipe_viewed (from), taste_tuning (action, where), push_opened (kind), alerts_changed (kind, on) and feedback_left (channel: boton, mimo, whatsapp), how many events in the window had each value. tasteCards = cards answered, summed by action. Counts only, never text.',
+  mimoSkills: 'PRO-1022: mimo_skill_used in the window, one row per Mimo tool (skill = the tool name) that returned data, most used first: total and by where the conversation was — web (chat in the app), whatsapp, telegram, voice. A tool that failed or found nothing (data null) leaves none. Counts only, never text.',
   referrals: 'By ISO week (inviteShared: of the tap; the rest: of the invited sign-up), all time, not the window. signupsWithInviter = accounts that signed up with someone else’s «Invitar a otro hogar» code (not into the inviter’s own household); week3Resolved = of those, households with a menu generated and the shopping list opened on days 14–20 after signing up; inviters = distinct codes. Counts only.',
 }
 
@@ -534,6 +561,13 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
       WHERE e.name = 'taste_tuning' AND e.created_at >= ${from} AND ${counted}
       GROUP BY 1
   `)
+  // PRO-1022: Mimo's tools by name and canal. Counts only leave.
+  const mimoSkillsQ = db.execute(sql`
+    SELECT e.props->>'skill' AS skill, e.props->>'canal' AS canal, COUNT(*)::int AS count
+      FROM usage_events e LEFT JOIN users u ON u.id = e.user_id
+      WHERE e.name = 'mimo_skill_used' AND e.props ? 'skill' AND e.created_at >= ${from} AND ${counted}
+      GROUP BY 1, 2
+  `)
   // PRO-307: the last device seen per household (any time kept). Ids stay in this process: only counts leave.
   const lastDeviceQ = db.execute(sql`
     SELECT DISTINCT ON (e.household_id) e.household_id::text AS household_id, e.props->>'device' AS device
@@ -542,7 +576,13 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
       ORDER BY e.household_id, e.created_at DESC
   `)
   const days = dayRange(fromDay, today)
-  const [onboardingStepRows, screenRows, breakdownRows, tasteCardRows] = await Promise.all([onboardingStepsQ, screensQ, breakdownQ, tasteCardsQ])
+  const [onboardingStepRows, screenRows, breakdownRows, tasteCardRows, mimoSkillRows] = await Promise.all([
+    onboardingStepsQ,
+    screensQ,
+    breakdownQ,
+    tasteCardsQ,
+    mimoSkillsQ,
+  ])
   const [counts, householdDays, since, householdState, invited, inviteShared, proactive, familyInvites, lastDevice] = await Promise.all([
     countsQ,
     householdDaysQ,
@@ -608,6 +648,9 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
       (breakdownRows.rows as any[]).map((r) => ({ name: r.name, key: r.key, value: String(r.value), count: Number(r.count) })),
     ),
     tasteCards: Object.fromEntries((tasteCardRows.rows as any[]).map((r) => [String(r.action), Number(r.cards)])),
+    mimoSkills: buildMimoSkills(
+      (mimoSkillRows.rows as any[]).map((r) => ({ skill: String(r.skill), canal: r.canal ?? null, count: Number(r.count) })),
+    ),
     referrals: buildReferralReport(invited, (inviteShared.rows as any[]).map((r) => ({ day: r.day, count: Number(r.count) }))),
     definitions: USAGE_DEFINITIONS,
     dataSince: sinceRaw ? new Date(sinceRaw).toISOString() : null,

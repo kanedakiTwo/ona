@@ -116,7 +116,7 @@ export async function chat(
     tools,
     messages,
     skills,
-    ctx: { userId, db, channel: mode },
+    ctx: { userId, db, channel: mode, surface: opts.surface },
     onToolStart: opts.onToolStart,
   })
 

@@ -6,7 +6,7 @@
  */
 
 import { test, expect, type Page } from '@playwright/test'
-import { completeOnboarding, registerFreshUser } from './_helpers'
+import { completeOnboarding, menuWithRecipesOn, registerFreshUser } from './_helpers'
 import { madridTodayIdx, pinClock } from './_clock'
 
 const API = process.env.API_URL ?? 'http://localhost:8765'
@@ -29,9 +29,10 @@ test('«Elegir otra receta» → «Usar "<lo escrito>" como plato» replaces the
   const { weekStart, dayIdx: today } = day
   const gen = await page.request.post(`${API}/menu/generate`, { headers, data: { userId, weekStart, force: true } })
   expect(gen.ok(), `generate: ${gen.status()}`).toBeTruthy()
-  const menu = await (await page.request.get(`${API}/menu/${userId}/${weekStart}`, { headers })).json()
+  // Today gets a lunch if the generator left it without recipes (weekends, PRO-186).
+  const menu = await menuWithRecipesOn(page, headers, userId, weekStart, [[today, 'lunch']])
   const meal = MEAL_ORDER.find((m) => menu.days[today]?.[m]?.dishes?.some((d: { kind: string }) => d.kind === 'recipe'))
-  test.skip(!meal, 'the generator left today without recipes')
+  expect(meal, 'a recipe on today').toBeTruthy()
 
   await page.goto('/menu')
   const hero = page.getByTestId('menu-hero')

@@ -6,7 +6,7 @@
  */
 import { test, expect, type Page } from '@playwright/test'
 import { registerFreshUser, completeOnboarding } from './_helpers'
-import { pinClock, pinnedDay } from './_clock'
+import { listSafeDay, pinClock, pinnedDay } from './_clock'
 
 test.use({ timezoneId: 'Europe/Madrid', viewport: { width: 390, height: 844 } })
 
@@ -26,8 +26,9 @@ async function weekWithOnion(page: Page) {
   const list = Array.isArray(found) ? found : (found.recipes ?? found.items ?? found.data ?? [])
   const recipeId = list.find((r: { name: string }) => /alb[oó]ndigas/i.test(r.name))?.id
   expect(recipeId, 'the seed has «Albóndigas en salsa española»').toBeTruthy()
-  // The day after the pinned one (still in the list's range), at dinner.
-  const day = dayIdx < 6 ? dayIdx + 1 : dayIdx
+  // At dinner on a day of the list's range that the API never trims by the
+  // hour: the day after the pinned one, unless that is the real «today».
+  const day = listSafeDay(dayIdx)
   if (menu.days?.[day]?.dinner) await page.request.delete(`${apiUrl}/menu/${menu.id}/day/${day}/meal/dinner`, { headers })
   const add = await page.request.post(`${apiUrl}/menu/${menu.id}/day/${day}/meal/dinner`, { headers, data: { recipeId } })
   expect(add.ok(), `add dinner ${add.status()}`).toBeTruthy()

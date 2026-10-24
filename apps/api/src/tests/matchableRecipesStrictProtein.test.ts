@@ -38,7 +38,7 @@ const lines = [
   { recipeId: 'r-g', ingredientId: 'i2', quantity: 6, unit: 'u', ingredientName: 'huevo', allergenTags: ['huevo'], containsTags: [], unitWeight: 50, density: null, edibleFraction: 1 },
   { recipeId: 'r-g', ingredientId: 'i3', quantity: 133, unit: 'g', ingredientName: 'espinacas', allergenTags: [], containsTags: [], unitWeight: null, density: null, edibleFraction: 1 },
 ]
-const steps = [{ recipeId: 'r-g', n: 6 }]
+const steps = [1, 2, 3, 4, 5, 6].map((index) => ({ recipeId: 'r-g', index, text: `Paso ${index}` }))
 
 const fact = (over: Record<string, unknown> = {}) => ({
   id: 'f1', householdId: 'h1', subjectUserId: 'u-miguel', subjectPersonId: null, type: 'protein_minimum',

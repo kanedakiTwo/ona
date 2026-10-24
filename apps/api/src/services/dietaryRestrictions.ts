@@ -16,6 +16,7 @@
  * Spec: specs/menus.md ("Restrictions & allergies").
  */
 import { ALLERGEN_TAGS, inferAllergenTagsFromName, nameHasTerm, type AllergenTag } from './nutrition/allergens.js'
+import type { DietCategory, DietMention } from './stepDietMentions.js'
 
 export function normalizeText(s: string): string {
   return s
@@ -316,6 +317,38 @@ export interface RestrictableRecipe {
      */
     containsTags?: readonly string[] | null
   }>
+  /**
+   * PRO-346: meat, fish, shellfish or allergens the steps name and the
+   * ingredients don't list (`unlistedDietMentions`, PRO-268's list for
+   * Cocina). Until Cocina fixes the recipe, each one counts as an ingredient.
+   */
+  stepMentions?: ReadonlyArray<Pick<DietMention, 'term' | 'category'>> | null
+}
+
+/** What a step mention's category means for the filter: allergen tags and a word of the name. */
+const STEP_CATEGORY: Record<DietCategory, { allergens: AllergenTag[]; word?: string }> = {
+  carne: { allergens: [], word: 'carne' },
+  pescado: { allergens: ['pescado'], word: 'pescado' },
+  marisco: { allergens: SEAFOOD, word: 'marisco' },
+  gluten: { allergens: ['gluten'] },
+  lacteos: { allergens: ['lactosa'] },
+  huevo: { allergens: ['huevo'], word: 'huevo' },
+  frutos_secos: { allergens: ['frutos_secos'] },
+  cacahuete: { allergens: ['cacahuetes'] },
+  soja: { allergens: ['soja'] },
+  sesamo: { allergens: ['sesamo'] },
+  mostaza: { allergens: ['mostaza'] },
+  apio: { allergens: ['apio'] },
+  sulfitos: { allergens: ['sulfitos'] },
+  altramuz: { allergens: ['altramuces'] },
+}
+
+/** A step mention as an ingredient: «huesos» (carne) → «hueso carne», no allergen tags. */
+function stepMentionIngredients(recipe: RestrictableRecipe): RestrictableRecipe['ingredients'] {
+  return (recipe.stepMentions ?? []).map((m) => {
+    const cat = STEP_CATEGORY[m.category]
+    return { ingredientName: cat?.word ? `${m.term} ${cat.word}` : m.term, allergenTags: cat?.allergens ?? [] }
+  })
 }
 
 /** True when the recipe contains something the compiled restrictions exclude. */
@@ -325,7 +358,8 @@ export function violatesRestrictions(recipe: RestrictableRecipe, rules: Compiled
   if (rules.allergens.size > 0) {
     if ((recipe.allergens ?? []).some((a) => rules.allergens.has(a as AllergenTag))) return true
   }
-  for (const ing of recipe.ingredients) {
+  const ingredients = recipe.stepMentions?.length ? [...recipe.ingredients, ...stepMentionIngredients(recipe)] : recipe.ingredients
+  for (const ing of ingredients) {
     if (rules.allergens.size > 0) {
       if ((ing.allergenTags ?? []).some((a) => rules.allergens.has(a as AllergenTag))) return true
       if (inferAllergenTagsFromName(ing.ingredientName).some((a) => rules.allergens.has(a))) return true

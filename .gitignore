@@ -1,6 +1,9 @@
 node_modules/
 dist/
 .next/
+# next build regenerates these on every build (PRO-366)
+apps/web/next-env.d.ts
+apps/web/tsconfig.tsbuildinfo
 .turbo/
 .env
 *.local

@@ -53,6 +53,7 @@ import catalogWishesRoutes from './routes/catalogWishes.js'
 import catalogReviewRoutes from './routes/catalogReview.js'
 import { interruptStaleCatalogImports } from './services/catalogImportJobs.js'
 import { startCatalogPhotos } from './services/catalogPhotos.js'
+import { startMenuRecipeRecheck } from './services/menuRecipeRecheck.js'
 import householdHabitsRoutes from './routes/householdHabits.js'
 import householdProfileRoutes from './routes/householdProfile.js'
 import schoolMenuRoutes from './routes/schoolMenu.js'
@@ -226,6 +227,8 @@ app.listen(env.PORT, () => {
   void interruptStaleCatalogImports()
   // Catalogue photos are made before a recipe goes out (and for any published without one).
   startCatalogPhotos()
+  // PRO-345: saved menus whose recipe changed (catalogue fixes on deploy, scripts) or was deleted.
+  startMenuRecipeRecheck()
 })
 
 export default app

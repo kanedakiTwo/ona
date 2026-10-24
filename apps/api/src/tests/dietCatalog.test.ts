@@ -14,6 +14,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import catalog from './fixtures/catalog-2026-10-12.json'
+import catalog1022 from './fixtures/catalog-2026-10-22.json'
 import { buildRandomMenu, defaultTemplate } from '../services/menuGenerator.js'
 import { compileRestrictions, recipeIdsBreakingRestrictions, violatesRestrictions } from '../services/dietaryRestrictions.js'
 import { effectiveAllergens } from '../services/nutrition/allergens.js'
@@ -86,6 +87,10 @@ const HAS_GLUTEN = [
   'Yogur con avena y manzana',
 ]
 
+/**
+ * As of 2026-10-12. «Fajitas de pollo» got «Tortillas de trigo» on
+ * 2026-10-20 (PRO-345): see the 2026-10-22 test below.
+ */
 const GLUTEN_FREE = [
   'Acelgas rehogadas', 'Arroz con pollo', 'Ceviche', 'Crema de calabacin', 'Curry de berenjena',
   'Fajitas de pollo', 'Hummus casero', 'Lentejas guisadas', 'Tortilla de patatas',
@@ -163,6 +168,14 @@ describe('«sin gluten» over the whole catalogue', () => {
 
   it('keeps gluten-free ones', () => {
     expect(GLUTEN_FREE.filter((n) => violatesRestrictions(byName.get(n)!, rules))).toEqual([])
+  })
+
+  it('PRO-345: «Fajitas de pollo» has carried wheat tortillas since 2026-10-20 (catalogue of 2026-10-22)', () => {
+    const now = (catalog1022 as Array<{ name: string; allergens: string[]; ingredients: string[] }>).find((r) => r.name === 'Fajitas de pollo')!
+    const recipe = { name: now.name, allergens: now.allergens, ingredients: now.ingredients.map((n) => ({ ingredientName: n })) }
+    expect(violatesRestrictions(recipe, rules)).toBe(true)
+    // Even without the stored tag, the ingredient name gives it away.
+    expect(violatesRestrictions({ ...recipe, allergens: [] }, rules)).toBe(true)
   })
 
   it('generated weeks never contain gluten', () => {

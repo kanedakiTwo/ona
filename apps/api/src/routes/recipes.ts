@@ -95,6 +95,7 @@ import { effectiveAllergens } from '../services/nutrition/allergens.js'
 import { canViewRecipe, isHiddenDraft, PUBLISHED } from '../services/recipeVisibility.js'
 import { requestCatalogPhotos } from '../services/catalogImageOnDemand.js'
 import { catalogSourceCredit } from '../services/catalogImport.js'
+import { recheckMenusForRecipe } from '../services/menuRecipeRecheck.js'
 import { z } from 'zod'
 import { requireSpendCapacity } from '../middleware/spendCap.js'
 import { requireRecipeId } from '../middleware/recipeId.js'
@@ -969,6 +970,8 @@ router.put(
         res.status(422).json({ errors: result.errors, warnings: result.warnings })
         return
       }
+      // PRO-345: the saved menus with this recipe from today on, against each household's allergies and diet.
+      recheckMenusForRecipe(recipeId)
 
       const newRow = await fetchRecipeById(recipeId)
       if (!newRow) {
@@ -1158,6 +1161,8 @@ router.delete('/recipes/:id', requireRecipeId(), authMiddleware, async (req: Aut
     }
 
     await db.delete(recipes).where(eq(recipes.id, recipeId))
+    // PRO-345: no menu keeps a recipe that no longer exists.
+    recheckMenusForRecipe(recipeId)
 
     res.status(204).send()
   } catch (err) {

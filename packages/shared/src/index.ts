@@ -23,8 +23,8 @@ export type {
 } from './types/recipe.js'
 export type { Menu, DayMenu, MealSlot, LockedSlots, MealDishCounts, MenuFit, MenuFitLevel, MenuFitMissReason, RecipeAddMethod } from './types/menu.js'
 export { menuFitLevel } from './types/menu.js'
-export type { Dish, RecipeDish, NoteDish } from './types/menuDish.js'
-export { isRecipeDish, isNoteDish, isTaperDish, isTaperVariant, recipeDishesOf } from './types/menuDish.js'
+export type { Dish, RecipeDish, NoteDish, DishReplacedReason } from './types/menuDish.js'
+export { isRecipeDish, isNoteDish, isTaperDish, isTaperVariant, recipeDishesOf, replacedDishLine } from './types/menuDish.js'
 export type {
   MemoryKey,
   MemorySource,

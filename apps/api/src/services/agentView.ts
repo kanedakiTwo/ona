@@ -154,6 +154,14 @@ const MESSAGE_KINDS: ReadonlyArray<readonly [type: string, test: RegExp]> = [
   ['EventRejection', /^\{"isTrusted":(?:true|false)\}$/],
   // A known crawler / link-scanner script, not our code.
   ['ObjectNotFoundMatchingId', /^Object Not Found Matching Id:/],
+  // Scripts an app's built-in browser injects into the page (PRO-354): Instagram and Facebook
+  // on iPhone (their autofill and «pcm» bridges), Chrome and Edge/Bing on iOS, WeChat. They show
+  // up as a TypeError or a ReferenceError of «Safari · iOS», where our links get opened.
+  ['InAppBrowserError', /_AutofillCallbackHandler|_pcmBridgeCallbackHandler|webkit\.messageHandlers|__gCrWeb|instantSearchSDKJSBridge|WeixinJSBridge/],
+  // The browser gives the page no storage (PRO-354): IndexedDB missing or blocked (some in-app
+  // browsers, storage turned off, Safari's «Connection to Indexed Database server lost»), or
+  // localStorage / sessionStorage refused.
+  ['StorageUnavailable', /\bindexedDB\b|Indexed ?Database|\b(?:local|session)Storage\b/i],
   ['NoMessage', /^(?:Error sin mensaje|\(sin mensaje\))$/],
 ]
 

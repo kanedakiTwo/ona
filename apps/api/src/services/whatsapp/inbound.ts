@@ -10,7 +10,7 @@ import { dropRepeatedButtons, lastSentButtons, outboundBody, renderAssistantRepl
 import { extractOptions, toWhatsAppMarkup } from './format.js'
 import { isShoppingItemList, shoppingListDigest } from '../shoppingText.js'
 import { captionVariants, type WeekView } from '../menuText.js'
-import { AI_DISCLOSURE_FIRST_PERSON, BRAND_SUPPORT_EMAIL, NotASchoolMenuError, schoolLunchLines, type SchoolLunch } from '@ona/shared'
+import { AI_DISCLOSURE_FIRST_PERSON, BRAND_SUPPORT_EMAIL, NotASchoolMenuError, SchoolMenuFileError, schoolLunchLines, type SchoolLunch } from '@ona/shared'
 import { guidedMeta, type GuideSpec, type GuidedResult } from './guided.js'
 import { controlCommand, OPT_IN_NO, OPT_IN_YES } from './commands.js'
 import { trackEvent } from '../usageEvents.js'
@@ -483,6 +483,9 @@ export const COPY = {
   ackSchoolMenu: 'Recibido. Voy a leer el menú del cole, dame unos segundos…',
   schoolMenuNotFound: 'No he encontrado el menú del cole en ese archivo. Prueba con una foto más nítida o con el PDF del cole.',
   schoolMenuFailed: 'No he podido leer el menú del cole. Inténtalo de nuevo en un momento.',
+  /** PRO-355: a file the reader can't take, and what to send instead. */
+  schoolMenuHeic: 'Esa foto está en HEIC, el formato del iPhone, y no la puedo leer. Mándamela como foto (no como documento) o haz una captura de pantalla y mándame la captura.',
+  schoolMenuTooBig: 'Ese archivo es demasiado grande para leerlo. Mándame solo la página del menú del mes, o una foto de esa página.',
 }
 
 /** Slow skills get an immediate, specific "on it" instead of waiting for the timer. */
@@ -994,10 +997,13 @@ async function handleSchoolMenu(
     })
     await out('reply', renderPlainText(schoolMenuReply(days)))
   } catch (err: any) {
-    const notMenu = err instanceof NotASchoolMenuError
+    const fileProblem = err instanceof SchoolMenuFileError ? err.reason : null
+    const notMenu = err instanceof NotASchoolMenuError || fileProblem !== null
     if (!notMenu) console.error('[whatsapp] school menu read failed:', err?.message ?? err)
     await store.updateInbound(msg.wamid, { status: notMenu ? 'processed' : 'failed', userId, errorMessage: notMenu ? undefined : String(err?.message ?? err).slice(0, 500) })
-    await out('system', renderPlainText(notMenu ? COPY.schoolMenuNotFound : COPY.schoolMenuFailed))
+    const copy =
+      fileProblem === 'heic' ? COPY.schoolMenuHeic : fileProblem === 'too_big' ? COPY.schoolMenuTooBig : notMenu ? COPY.schoolMenuNotFound : COPY.schoolMenuFailed
+    await out('system', renderPlainText(copy))
   }
   return true
 }

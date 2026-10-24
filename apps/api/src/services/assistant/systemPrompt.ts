@@ -8,6 +8,7 @@ import {
   FOUNDER_FOOTER,
   FOUNDER_FOOTER_BETA,
   BETA_FIRST_CHARGE_LABEL,
+  CREATOR_BETA_FIRST_CHARGE_LABEL,
   LAUNCH_DATE_LABEL,
   PLANS,
   PLAN_CAPS_NOTE,
@@ -68,7 +69,7 @@ export function pricingBlock(): string {
     .map((f) => `- ${f.label}: Esencial ${v(f.esencial)}; Plus ${v(f.plus)}`)
     .join('\n')
   const payNow = isBillingConfigured()
-    ? `Quien gestiona el hogar puede dejarlo pagado ya en Perfil → Suscripcion: guarda la tarjeta y, si esta en la beta, el primer cobro es el ${BETA_FIRST_CHARGE_LABEL} (14 dias despues de la salida del ${LAUNCH_DATE_LABEL}, como todos); si cancela antes no paga nada.`
+    ? `Quien gestiona el hogar puede dejarlo pagado ya en Perfil → Suscripcion: guarda la tarjeta y, si esta en la beta, el primer cobro es el ${BETA_FIRST_CHARGE_LABEL} (14 dias despues de la salida del ${LAUNCH_DATE_LABEL}, como todos; con el enlace de una creadora, 4 semanas: el ${CREATOR_BETA_FIRST_CHARGE_LABEL}); si cancela antes no paga nada.`
     : `Muy pronto podra dejarlo pagado desde Perfil → Suscripcion (en la beta, el primer cobro seria el ${BETA_FIRST_CHARGE_LABEL}); de momento aun no se puede pagar.`
   return `Planes y precios (por hogar, IVA incluido; todo esta en mimoia.com/precios):
 ${plans}

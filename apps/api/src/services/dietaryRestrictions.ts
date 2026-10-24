@@ -136,6 +136,8 @@ const MEAT_TERMS = [
   'pularda', 'pichon', 'faisan', 'liebre', 'oca', 'ganso', 'embutido', 'fiambre', 'steak tartar',
   // Dishes made of meat.
   '^cocido', 'del cocido', 'de cocido', 'ropa vieja', 'pringa',
+  // PRO-363: «caldo de ave». Whole word, so «avena» stays vegetarian.
+  'ave',
 ]
 
 const FISH_TERMS = [

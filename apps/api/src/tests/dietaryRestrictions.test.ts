@@ -92,6 +92,17 @@ describe('diets', () => {
   it('does not trip on look-alike words', () => {
     expect(blocks(['vegetariano'], recipe(['pico de gallo', 'patatas', 'zapallo']))).toBe(false)
   })
+
+  it('PRO-363: «caldo de ave» is meat for a vegetarian; «avena» is not', () => {
+    for (const meat of ['caldo de ave', 'Caldo de aves', 'fondo de ave']) {
+      expect(blocks(['vegetariano'], recipe([meat])), meat).toBe(true)
+      expect(blocks(['vegano'], recipe([meat])), meat).toBe(true)
+      expect(blocks(['sin carne'], recipe([meat])), meat).toBe(true)
+    }
+    for (const ok of ['avena', 'copos de avena', 'bebida de avena', 'caldo de verduras']) {
+      expect(blocks(['vegetariano'], recipe([ok])), ok).toBe(false)
+    }
+  })
 })
 
 describe('free text and dislikes', () => {

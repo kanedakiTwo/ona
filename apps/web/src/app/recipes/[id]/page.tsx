@@ -103,8 +103,10 @@ export default function RecipeDetailPage() {
   const referral = useReferralLink(!!user)
   const [invitedBy, setInvitedBy] = useState<string | null>(null)
   useEffect(() => {
-    rememberSignupAttribution()
-    setInvitedBy(normalizeReferralCode(new URLSearchParams(window.location.search).get("invita")))
+    const code = normalizeReferralCode(new URLSearchParams(window.location.search).get("invita"))
+    // Only a household's share is remembered: a plain visit keeps attribution as before.
+    if (code) rememberSignupAttribution()
+    setInvitedBy(code)
   }, [])
 
   const [servings, setServings] = useState<number | null>(null)

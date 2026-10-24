@@ -8,16 +8,11 @@
  */
 
 import { test, expect, type Page } from '@playwright/test'
-import { completeOnboarding, registerFreshUser } from './_helpers'
+import { completeOnboarding, menuWithRecipesOn, registerFreshUser } from './_helpers'
+import { madridTodayIdx, pinClock } from './_clock'
 
 const API = process.env.API_URL ?? 'http://localhost:8765'
 const MEAL_ORDER = ['breakfast', 'lunch', 'snack', 'dinner']
-
-function thisMonday(): string {
-  const d = new Date()
-  d.setDate(d.getDate() + (d.getDay() === 0 ? -6 : 1 - d.getDay()))
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
 
 async function session(page: Page) {
   const token = await page.evaluate(() => localStorage.getItem('ona_token'))
@@ -27,17 +22,19 @@ async function session(page: Page) {
 
 test('the source of a táper opens its recipe for the whole batch; the táper says it is already in the list', async ({ page }) => {
   test.setTimeout(120_000)
+  // Madrid's today at midday, the same day the spec reads (PRO-273): the
+  // runner's own clock is UTC on CI.
+  const { weekStart, dayIdx: today } = await pinClock(page, madridTodayIdx())
   await registerFreshUser(page)
   await completeOnboarding(page) // household of 1
   const { headers, userId } = await session(page)
-  const weekStart = thisMonday()
   const gen = await page.request.post(`${API}/menu/generate`, { headers, data: { userId, weekStart, force: true } })
   expect(gen.ok(), `generate: ${gen.status()}`).toBeTruthy()
-  const menu = await (await page.request.get(`${API}/menu/${userId}/${weekStart}`, { headers })).json()
+  // Today gets a lunch if the generator left it without recipes (weekends, PRO-186).
+  const menu = await menuWithRecipesOn(page, headers, userId, weekStart, [[today, 'lunch']])
 
-  const today = (new Date().getDay() + 6) % 7
   const meal = MEAL_ORDER.find((m) => menu.days[today]?.[m]?.dishes?.some((d: { kind: string }) => d.kind === 'recipe'))
-  test.skip(!meal, 'the generator left today without recipes')
+  expect(meal, 'a recipe on today').toBeTruthy()
   const name = menu.days[today][meal!].dishes.find((d: { kind: string }) => d.kind === 'recipe').recipeName as string
 
   // «Solo hoy: 2» on today's featured meal…

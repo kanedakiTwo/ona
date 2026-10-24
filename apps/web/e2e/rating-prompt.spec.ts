@@ -6,7 +6,7 @@
  * in apps/api/src/tests/ratingPrompt.test.ts).
  */
 import { test, expect, type Page } from '@playwright/test'
-import { completeOnboarding, registerFreshUser } from './_helpers'
+import { completeOnboarding, menuWithRecipesOn, registerFreshUser } from './_helpers'
 import { madridTodayIdx, madridWeekStart, pinClock } from './_clock'
 
 const API = process.env.API_URL ?? 'http://localhost:8765'
@@ -33,10 +33,11 @@ test('menu: «Marcar como cocinada» asks «¿Qué tal?»; «Repetir a menudo» 
   const { headers, userId } = await session(page)
   const gen = await page.request.post(`${API}/menu/generate`, { headers, data: { userId, weekStart: madridWeekStart(), force: true } })
   expect(gen.ok()).toBeTruthy()
-  const menu = await (await page.request.get(`${API}/menu/${userId}/${madridWeekStart()}`, { headers })).json()
+  // Today gets a lunch if the generator left it without recipes (weekends, PRO-186).
+  const menu = await menuWithRecipesOn(page, headers, userId, madridWeekStart(), [[madridTodayIdx(), 'lunch']])
   const today = menu.days[madridTodayIdx()] ?? {}
   const recipeId: string | undefined = MEALS.map((m) => today[m]?.dishes?.find((d: any) => d.kind === 'recipe')?.recipeId).find(Boolean)
-  test.skip(!recipeId, 'the generator left today without recipes')
+  expect(recipeId, 'a recipe on today').toBeTruthy()
 
   await page.goto('/menu')
   const hero = page.getByTestId('menu-hero')

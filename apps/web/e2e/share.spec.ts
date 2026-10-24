@@ -6,6 +6,7 @@
 
 import { test, expect } from '@playwright/test'
 import { completeOnboarding, registerFreshUser } from './_helpers'
+import { madridWeekStart } from './_clock'
 
 test.use({ permissions: ['clipboard-read', 'clipboard-write'] })
 
@@ -17,9 +18,8 @@ test('menu and catalogue recipe shares carry a link that works without an accoun
   const apiUrl = process.env.API_URL ?? 'http://localhost:8765'
   const token = await page.evaluate(() => localStorage.getItem('ona_token'))
   const userId = await page.evaluate(() => JSON.parse(localStorage.getItem('ona_user') ?? '{}').id as string)
-  const d = new Date()
-  d.setDate(d.getDate() + (d.getDay() === 0 ? -6 : 1 - d.getDay()))
-  const weekStart = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  // This week's Monday in Madrid, as the app reads it (the runner is UTC on CI).
+  const weekStart = madridWeekStart()
   await page.request.post(`${apiUrl}/menu/generate`, { headers: { Authorization: `Bearer ${token}` }, data: { userId, weekStart } })
 
   await page.goto('/menu')

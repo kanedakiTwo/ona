@@ -6,7 +6,7 @@
  */
 
 import { test, expect, type Page } from '@playwright/test'
-import { completeOnboarding, registerFreshUser } from './_helpers'
+import { completeOnboarding, menuWithRecipesOn, registerFreshUser } from './_helpers'
 import { madridTodayIdx, pinClock } from './_clock'
 
 const API = process.env.API_URL ?? 'http://localhost:8765'
@@ -28,7 +28,9 @@ async function todayMenu(page: Page) {
   const { weekStart, dayIdx: today } = day
   const gen = await page.request.post(`${API}/menu/generate`, { headers, data: { userId, weekStart, force: true } })
   expect(gen.ok(), `generate: ${gen.status()}`).toBeTruthy()
-  const menu = await (await page.request.get(`${API}/menu/${userId}/${weekStart}`, { headers })).json()
+  // Today with lunch and dinner whatever the generator left (the weekend
+  // and Friday's dinner are usually empty with the CI catalogue, PRO-186).
+  const menu = await menuWithRecipesOn(page, headers, userId, weekStart, [[today, 'lunch'], [today, 'dinner']])
   const withRecipe = MEAL_ORDER.filter((m) => menu.days[today]?.[m]?.dishes?.some((d: { kind: string }) => d.kind === 'recipe'))
   return { headers, userId, weekStart, menu, today, withRecipe }
 }
@@ -39,7 +41,7 @@ test('a meal marked eaten shows «✓ Comido», not «Empezar a cocinar»; «Des
   test.setTimeout(150_000)
   const { headers, userId, weekStart, menu, today, withRecipe } = await todayMenu(page)
   const featured = withRecipe[0]
-  test.skip(!featured, 'the generator left today without recipes')
+  expect(featured, 'a recipe on today').toBeTruthy()
 
   // What Mimo's `mark_meal_eaten` leaves on the slot (here through the same PATCH the web uses).
   const patch = await page.request.patch(`${API}/menu/${menu.id}/day/${today}/meal/${featured}`, { headers, data: { eaten: true } })
@@ -75,7 +77,7 @@ test('a written dish («Cenamos fuera») shows once on its row', async ({ page }
   test.setTimeout(150_000)
   const { headers, menu, today, withRecipe } = await todayMenu(page)
   const other = MEAL_ORDER.find((m) => m !== withRecipe[0] && menu.days[today]?.[m])
-  test.skip(!withRecipe[0] || !other, 'today has no second meal')
+  expect(withRecipe[0] && other, 'today has two meals').toBeTruthy()
 
   const base = `${API}/menu/${menu.id}/day/${today}/meal/${other}`
   expect((await page.request.delete(base, { headers })).ok()).toBeTruthy()

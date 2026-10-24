@@ -1,6 +1,7 @@
 import type { DayTimeBudget, FitLevel, Meal, RecipeFrequency, Season } from '@ona/shared'
 import { FIT_WEIGHT, FREQUENCY_WEIGHT, fitsTimeBudget, isInSeason } from '@ona/shared'
 import { compileRestrictions, violatesRestrictions } from './dietaryRestrictions.js'
+import type { DietCategory } from './stepDietMentions.js'
 
 export interface RecipeWithIngredients {
   id: string
@@ -44,6 +45,12 @@ export interface RecipeWithIngredients {
    * skips it. Absent / empty for users' own recipes.
    */
   catalogAuditIssues?: readonly string[]
+  /**
+   * PRO-346: meat, fish or allergens the steps name and the ingredients
+   * don't. Computed by `loadMatchableRecipes`; the restriction filter counts
+   * them as ingredients.
+   */
+  stepMentions?: ReadonlyArray<{ term: string; category: DietCategory }>
   /** Internal tags (`tipo:<slug>`, `proteina:<slug>`), for the week rules (PRO-254). */
   internalTags?: string[] | null
   /** Cached per-serving nutrition; only `kcal` is read here (the planner's day floor). */

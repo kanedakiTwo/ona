@@ -37,25 +37,30 @@ test('the shared list and the shared recipe carry the household’s «Hecho con 
   const code = await myCode(page)
   const host = new URL(page.url()).host
 
-  // «Compartir lo que queda»: the foot is this household's invitation.
-  const referral = page.waitForResponse((r) => r.url().endsWith('/referrals/me') && r.ok())
+  // «Compartir lo que queda»: the foot is this household's invitation. Tapped
+  // again until the code has loaded (before that the share is the generic one).
   await page.goto('/shopping')
-  await referral
   await expect(page.getByRole('button', { name: /^Cambiar / }).first()).toBeVisible({ timeout: 20_000 })
-  await page.getByRole('button', { name: 'Opciones de la compra' }).click()
-  await page.getByRole('button', { name: /compartir lo que queda/i }).click()
-  await expect.poll(() => clipboard(page)).toContain('Lista de compra · Mimoia')
+  await expect(async () => {
+    await page.evaluate(() => navigator.clipboard.writeText(''))
+    await page.getByRole('button', { name: 'Opciones de la compra' }).click()
+    await page.getByRole('button', { name: /compartir lo que queda/i }).click()
+    await expect.poll(() => clipboard(page), { timeout: 3_000 }).toContain(`/i/${code}`)
+  }).toPass({ timeout: 30_000 })
   const list = await clipboard(page)
+  expect(list).toContain('Lista de compra · Mimoia')
   expect(list.trimEnd().split('\n').pop()).toBe(`Hecho con Mimo · ${host}/i/${code}`)
   expect(list).not.toContain('?ref=lista')
 
   // A catalogue recipe: the code rides in the link (no text glued to it).
   const [recipe] = await (await page.request.get(`${API}/recipes?perPage=1`)).json()
-  const again = page.waitForResponse((r) => r.url().endsWith('/referrals/me') && r.ok())
   await page.goto(`/recipes/${recipe.id}`)
-  await again
-  await page.getByRole('button', { name: /compartir receta/i }).first().click()
-  await expect.poll(() => clipboard(page)).toContain(`/recipes/${recipe.id}?ref=receta&invita=${code}`)
+  await expect(page.getByRole('heading', { level: 1, name: recipe.name })).toBeVisible({ timeout: 20_000 })
+  await expect(async () => {
+    await page.evaluate(() => navigator.clipboard.writeText(''))
+    await page.getByRole('button', { name: /compartir receta/i }).first().click()
+    await expect.poll(() => clipboard(page), { timeout: 3_000 }).toContain(`/recipes/${recipe.id}?ref=receta&invita=${code}`)
+  }).toPass({ timeout: 30_000 })
 
   // Whoever opens it, signed out, sees the foot and keeps the code on the way in.
   const shared = new URL((await clipboard(page)).trim().split('\n').pop()!)
@@ -63,9 +68,7 @@ test('the shared list and the shared recipe carry the household’s «Hecho con 
   const other = await visitor.newPage()
   await other.goto(shared.pathname + shared.search)
   await expect(other.getByRole('heading', { level: 1, name: recipe.name })).toBeVisible({ timeout: 20_000 })
-  const foot = other.getByTestId('recipe-made-with').first()
-  await foot.scrollIntoViewIfNeeded()
-  await expect(foot).toHaveText(`Hecho con Mimo · ${host}/i/${code}`)
+  await expect(other.getByTestId('recipe-made-with').first()).toHaveText(`Hecho con Mimo · ${host}/i/${code}`, { timeout: 15_000 })
   await expect(other.getByTestId('recipe-signup-cta-link').first()).toHaveAttribute('href', new RegExp(`invita=${code}`))
   await other.waitForFunction(() => !!localStorage.getItem('ona.signupAttribution'), null, { timeout: 15_000 })
   expect(JSON.parse((await other.evaluate(() => localStorage.getItem('ona.signupAttribution')))!).invitedBy).toBe(code)
@@ -84,8 +87,11 @@ test('/i/<household code> → landing with ?invita → the sign-up is stored wit
   const me = await (await ctx.request.get(`${API}/referrals/me`, { headers: { Authorization: `Bearer ${token}` } })).json()
 
   const page = await ctx.newPage()
+  const hop = await page.request.get(`/i/${me.code}`, { maxRedirects: 0 })
+  expect(hop.status()).toBe(302)
+  expect(hop.headers()['location']).toBe(`/?invita=${me.code}`)
   await page.goto(`/i/${me.code}`)
-  await expect(page).toHaveURL(new RegExp(`/\\?invita=${me.code}$`))
+  await expect(page).toHaveURL(new RegExp(`invita=${me.code}`))
   await page.waitForFunction(() => !!localStorage.getItem('ona.signupAttribution'), null, { timeout: 15_000 })
 
   await page.goto('/register')
@@ -119,6 +125,7 @@ test('/i/<household code> → landing with ?invita → the sign-up is stored wit
 })
 
 test('/i/<campaign code> still opens /register with the campaign', async ({ page }) => {
-  await page.goto('/i/nocampaign1')
-  await expect(page).toHaveURL(/\/register\?campana=nocampaign1$/)
+  const hop = await page.request.get('/i/nocampaign1', { maxRedirects: 0 })
+  expect(hop.status()).toBe(302)
+  expect(hop.headers()['location']).toBe('/register?campana=nocampaign1')
 })

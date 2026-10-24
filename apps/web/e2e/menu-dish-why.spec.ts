@@ -8,19 +8,17 @@
  * What Mimo says when asked is `menuDishWhy.test.ts` (its menu lines).
  */
 import { test, expect } from '@playwright/test'
-import { registerFreshUser, skipFirstSteps } from './_helpers'
+import { menuWithRecipesOn, registerFreshUser, skipFirstSteps } from './_helpers'
+import { pinClock } from './_clock'
 
 const API = process.env.API_URL ?? 'http://localhost:8765'
 const WHY = 'Lentejas porque os gustan los guisos y hoy tenéis tiempo'
 
-function thisMonday(): string {
-  const d = new Date()
-  d.setDate(d.getDate() + (d.getDay() === 0 ? -6 : 1 - d.getDay()))
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
 test('the dish sheet shows the why only when the dish carries one', async ({ page }) => {
   test.setTimeout(120_000)
+  // «Today» is a fixed weekday of this week (Friday by default) with a lunch:
+  // on a weekend the generated menu has nothing on today (PRO-186).
+  const { weekStart, dayIdx } = await pinClock(page)
   await registerFreshUser(page)
   const token = await page.evaluate(() => localStorage.getItem('ona_token'))
   const userId = await page.evaluate(() => JSON.parse(localStorage.getItem('ona_user') ?? '{}').id as string)
@@ -36,9 +34,9 @@ test('the dish sheet shows the why only when the dish carries one', async ({ pag
     u.onboardingDone = true
     localStorage.setItem('ona_user', JSON.stringify(u))
   })
-  const weekStart = thisMonday()
   const gen = await page.request.post(`${API}/menu/generate`, { headers, data: { userId, weekStart, force: true } })
   expect(gen.ok(), `generate: ${gen.status()}`).toBeTruthy()
+  await menuWithRecipesOn(page, headers, userId, weekStart, [[dayIdx, 'lunch']])
 
   const openFirstDishSheet = async () => {
     await expect(page.getByRole('navigation', { name: 'Días de la semana' })).toBeVisible({ timeout: 20_000 })

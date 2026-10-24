@@ -10,14 +10,12 @@
  */
 import { test, expect } from '@playwright/test'
 import { registerFreshUser, skipFirstSteps } from './_helpers'
+import { madridWeekStart } from './_clock'
 
 const API = process.env.API_URL ?? 'http://localhost:8765'
 
-function thisMonday(): string {
-  const d = new Date()
-  d.setDate(d.getDate() + (d.getDay() === 0 ? -6 : 1 - d.getDay()))
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
+/** This week's Monday in Madrid (the runner is UTC on CI, a week behind on Monday 00:00–02:00). */
+const thisMonday = () => madridWeekStart()
 
 const FAVOURITES = ['cremas y sopas', 'carbonara', 'pastel de carne con puré', 'rodaballo al horno', 'croquetas de cocido', 'buñuelos de bacalao', 'chuletón']
 

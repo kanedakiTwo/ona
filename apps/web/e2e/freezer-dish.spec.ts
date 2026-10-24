@@ -7,7 +7,7 @@
  */
 
 import { test, expect, type Page } from '@playwright/test'
-import { completeOnboarding, registerFreshUser } from './_helpers'
+import { completeOnboarding, menuWithRecipesOn, registerFreshUser } from './_helpers'
 import { madridToday, madridTodayIdx, pinClock } from './_clock'
 
 const API = process.env.API_URL ?? 'http://localhost:8765'
@@ -92,8 +92,10 @@ test('«Táper de la nevera» (PRO-240): its own label, its name, no «Empezar a
   const weekStart = day.weekStart
   const gen = await page.request.post(`${API}/menu/generate`, { headers, data: { userId, weekStart, force: true } })
   expect(gen.ok(), `generate: ${gen.status()}`).toBeTruthy()
-  const menu = await (await page.request.get(`${API}/menu/${userId}/${weekStart}`, { headers })).json()
   const today = day.dayIdx
+  // The generator leaves the end of the week empty with the CI catalogue
+  // (Saturday and Sunday, PRO-186): today gets a lunch if it has no recipe.
+  const menu = await menuWithRecipesOn(page, headers, userId, weekStart, [[today, 'lunch']])
   // Every meal of today becomes a táper of the nevera, saved without a name
   // (as Mimo saved them): the hero is one of them, whichever it is.
   const meals = Object.keys(menu.days[today] ?? {})

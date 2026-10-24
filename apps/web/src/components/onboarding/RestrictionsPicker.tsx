@@ -22,6 +22,7 @@ export function RestrictionsPicker({
   restrictions,
   onChange,
   onTypingChange,
+  typed,
 }: {
   consent: boolean
   onConsentChange: (consent: boolean) => void
@@ -33,8 +34,11 @@ export function RestrictionsPicker({
    * Not added on blur: the new chip moved the button under the finger.
    */
   onTypingChange?: (text: string) => void
+  /** The box's text when the screen holds it (it empties it after reading it, PRO-347). */
+  typed?: string
 }) {
-  const [tagInput, setTagInputState] = useState("")
+  const [ownInput, setTagInputState] = useState("")
+  const tagInput = typed ?? ownInput
   function setTagInput(text: string) {
     setTagInputState(text)
     onTypingChange?.(text)

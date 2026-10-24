@@ -104,6 +104,8 @@ export async function withdrawHealthConsent(userId: string): Promise<void> {
       .update(users)
       .set({
         healthConsentWithdrawnAt: new Date(),
+        // A «No tengo ninguna» from before no longer stands for what was saved since.
+        allergiesNoneAt: null,
         sex: null,
         age: null,
         weight: null,

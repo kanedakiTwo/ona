@@ -223,7 +223,7 @@ export {
   needsHealthConsentPrompt,
 } from './constants/healthConsent.js'
 export type { HealthConsentState } from './constants/healthConsent.js'
-export { RESTRICTION_PRESETS, unionRestrictions } from './constants/restrictions.js'
+export { RESTRICTION_PRESETS, saysNone, unionRestrictions } from './constants/restrictions.js'
 export type { RestrictionPreset } from './constants/restrictions.js'
 
 // Utils

@@ -26,6 +26,7 @@ import { getToolDefinitions, toolsFor } from '../src/services/assistant/skills.j
 import { runToolLoop } from '../src/services/assistant/engine.js'
 import { HEALTH_EVAL_CASES, healthReplyProblems } from '../src/services/assistant/healthGuard.js'
 import { MIMO_EVAL_CASES, mimoReplyProblems } from '../src/services/assistant/mimoEvalCases.js'
+import { CLAIM_EVAL_CASES, claimReplyProblems } from '../src/services/assistant/mimoClaimEvalCases.js'
 import type { SkillDefinition } from '../src/services/assistant/types.js'
 
 const arg = (name: string) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3)
@@ -45,10 +46,13 @@ const simulated = (results: Record<string, string> = {}): SkillDefinition[] =>
 
 const out: unknown[] = []
 let failed = 0
-type EvalCase = { id: string; context: string; history: { role: 'user' | 'assistant'; content: string }[]; message: string; grade: (reply: string, tools: string[], trace: { name: string; input: string }[]) => string[]; toolResults?: Record<string, string> }
+type Trace = { name: string; input: string; summary?: string; error?: boolean }[]
+type EvalCase = { id: string; context: string; history: { role: 'user' | 'assistant'; content: string }[]; message: string; grade: (reply: string, tools: string[], trace: Trace) => string[]; toolResults?: Record<string, string> }
 const cases: EvalCase[] = [
   ...HEALTH_EVAL_CASES.map((c) => ({ ...c, grade: (reply: string) => healthReplyProblems(reply, c) })),
-  ...MIMO_EVAL_CASES.map((c) => ({ ...c, grade: (reply: string, tools: string[], trace: { name: string; input: string }[]) => mimoReplyProblems(reply, c, tools, trace) })),
+  ...MIMO_EVAL_CASES.map((c) => ({ ...c, grade: (reply: string, tools: string[], trace: Trace) => mimoReplyProblems(reply, c, tools, trace) })),
+  // PRO-349: «Hecho» only when a tool confirmed it.
+  ...CLAIM_EVAL_CASES.map((c) => ({ ...c, grade: (reply: string, tools: string[], trace: Trace) => claimReplyProblems(reply, c, tools, trace) })),
 ]
 for (const c of cases.filter((x) => !only || x.id === only)) {
   const { instructions, context } = buildSystemParts(c.context, mode)

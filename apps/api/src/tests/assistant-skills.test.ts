@@ -118,6 +118,19 @@ function makeDb(...responses: any[]) {
 
 const ctx = (db: any, userId = 'u-1') => ({ userId, db })
 
+/** makeDb that also keeps what each `.set(…)` wrote (PRO-349: `skippedDays` next to `days`). */
+function recordingDb(sets: any[], ...responses: any[]) {
+  const inner = makeDb(...responses)
+  const node: any = new Proxy({}, {
+    get(_, prop) {
+      if (prop === 'then') return inner.then
+      if (prop === 'set') return (values: any) => { sets.push(values); return node }
+      return () => node
+    },
+  })
+  return node
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
 })
@@ -219,13 +232,13 @@ describe('menu tools cite the app\'s servings and minutes (PRO-183)', () => {
       { ingredientName: 'pechuga de pollo', quantity: 300, unit: 'g' },
       { ingredientName: 'limón', quantity: 1, unit: 'u' },
     ]
-    const r = await get('get_recipe_details').handler({ recipeName: 'pollo a la plancha', servings: 4 }, ctx(makeDb([recipe], ings, [])))
+    const r = await get('get_recipe_details').handler({ recipeName: 'pollo a la plancha', servings: 4 }, ctx(makeDb(/* menu */ [], [recipe], ings, [])))
     expect(r.summary).toContain('Pollo a la plancha (25 min en total, 10 de trabajo; cantidades para 4 raciones, la receta base es para 2)')
     expect(r.summary).toContain('pechuga de pollo: 600g')
     expect(r.summary).toContain('limón: 2u')
     expect(r.data).toMatchObject({ servings: 4, baseServings: 2, totalTime: 25 })
     // Without servings: the recipe's own amounts.
-    const base = await get('get_recipe_details').handler({ recipeName: 'pollo a la plancha' }, ctx(makeDb([recipe], ings, [])))
+    const base = await get('get_recipe_details').handler({ recipeName: 'pollo a la plancha' }, ctx(makeDb(/* menu */ [], [recipe], ings, [])))
     expect(base.summary).toContain('Pollo a la plancha (25 min en total, 10 de trabajo, 2 raciones)')
     expect(base.summary).toContain('pechuga de pollo: 300g')
   })
@@ -314,7 +327,7 @@ describe('get_recipe_details', () => {
   const skill = get('get_recipe_details')
 
   it('returns "no encontrado" when no match', async () => {
-    const db = makeDb(/* exact match */ [], /* word-by-word */ [])
+    const db = makeDb(/* menu */ [], /* exact match */ [], /* word-by-word */ [])
     const r = await skill.handler({ recipeName: 'cochinillo segoviano' }, ctx(db))
     expect(r.summary).toContain('No he encontrado')
   })
@@ -329,7 +342,7 @@ describe('get_recipe_details', () => {
       { index: 0, text: 'Sofríe la cebolla.', durationMin: 5 },
       { index: 1, text: 'Añade las lentejas y cubre de agua.', durationMin: 25 },
     ]
-    const db = makeDb([{ ...recipe, servings: 4, tips: 'Mejor de un día para otro.', sourceUrl: 'https://youtu.be/abc' }], ingredients, steps)
+    const db = makeDb(/* menu */ [], [{ ...recipe, servings: 4, tips: 'Mejor de un día para otro.', sourceUrl: 'https://youtu.be/abc' }], ingredients, steps)
     const r = await skill.handler({ recipeName: 'lentejas' }, ctx(db))
     expect(r.uiHint).toBe('recipe')
     expect(r.summary).toContain('Lentejas con verduras')
@@ -351,18 +364,77 @@ describe('get_recipe_details', () => {
       { ingredientName: 'lentejas', quantity: 300, unit: 'g' },
       { ingredientName: 'chorizo oreado', quantity: 150, unit: 'g' },
     ]
-    const coeliac = await skill.handler({ recipeName: 'lentejas con chorizo' }, ctx(makeDb([recipe], ings, [], [{ restrictions: ['Sin gluten'] }])))
+    const coeliac = await skill.handler({ recipeName: 'lentejas con chorizo' }, ctx(makeDb(/* menu */ [], [recipe], ings, [], [{ restrictions: ['Sin gluten'] }])))
     expect(coeliac.summary).toContain('Elige embutido sin gluten')
     expect(coeliac.data?.dietNotices).toEqual(['Elige embutido sin gluten'])
-    const other = await skill.handler({ recipeName: 'lentejas con chorizo' }, ctx(makeDb([recipe], ings, [], [{ restrictions: ['vegetariano'] }])))
+    const other = await skill.handler({ recipeName: 'lentejas con chorizo' }, ctx(makeDb(/* menu */ [], [recipe], ings, [], [{ restrictions: ['vegetariano'] }])))
     expect(other.summary).not.toContain('sin gluten')
     expect(other.data?.dietNotices).toEqual([])
   })
 
   it('says so when a recipe has no saved steps', async () => {
-    const db = makeDb([{ id: 'r-2', name: 'Ensalada', prepTime: 10 }], [], [])
+    const db = makeDb(/* menu */ [], [{ id: 'r-2', name: 'Ensalada', prepTime: 10 }], [], [])
     const r = await skill.handler({ recipeName: 'ensalada' }, ctx(db))
     expect(r.summary).toContain('no tiene pasos guardados')
+  })
+
+  // PRO-349 (Carmen y Antonio, 2026-10-22): «¿la receta de hoy lleva pan?»
+  // was answered from «Garbanzos con espinacas y huevo», not the menu's.
+  describe('«la receta de hoy» is the one on the menu (PRO-349)', () => {
+    const at = <T,>(fn: () => Promise<T>) => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date('2026-10-22T10:00:00Z')) // Thursday
+      return fn().finally(() => vi.useRealTimers())
+    }
+    const days: any[] = Array.from({ length: 7 }, () => ({}))
+    days[3] = { lunch: { dishes: [{ kind: 'recipe', recipeId: 'r-menu', recipeName: 'Espinacas con garbanzos a la sevillana' }] } }
+    const menuRecipe = { id: 'r-menu', name: 'Espinacas con garbanzos a la sevillana', prepTime: 40, servings: 4 }
+    const ings = [
+      { ingredientName: 'garbanzos cocidos', quantity: 400, unit: 'g' },
+      { ingredientName: 'pan del día anterior', quantity: 60, unit: 'g' },
+    ]
+
+    it('with day and meal it reads the recipe on the menu that day', async () => {
+      const r = await at(() => skill.handler({ day: 'hoy', meal: 'lunch' }, ctx(makeDb([{ id: 'm-1', days }], [menuRecipe], ings, []))))
+      expect(r.summary).toContain('Es la receta del menu (comida del jueves 22 de octubre).')
+      expect(r.summary).toContain('pan del día anterior')
+      expect(r.data).toMatchObject({ id: 'r-menu' })
+    })
+
+    it('by a similar name, the menu recipe wins over another one in the catalogue', async () => {
+      const r = await at(() => skill.handler({ recipeName: 'garbanzos con espinacas' }, ctx(makeDb([{ id: 'm-1', days }], [menuRecipe], ings, []))))
+      expect(r.data).toMatchObject({ id: 'r-menu', name: 'Espinacas con garbanzos a la sevillana' })
+      expect(r.summary).toContain('Es la receta del menu (comida del jueves 22 de octubre).')
+    })
+
+    it('a meal with no recipe on the menu: says so and reads no other one', async () => {
+      const r = await at(() => skill.handler({ day: 'hoy', meal: 'dinner' }, ctx(makeDb([{ id: 'm-1', days }]))))
+      expect(r.data).toBeNull()
+      expect(r.summary).toBe('En el menu, la cena del jueves 22 de octubre no tiene ninguna receta; no he mirado otra. Si pregunta por una receta concreta, preguntale cual.')
+    })
+  })
+})
+
+// ─── 2b. edit_recipe (PRO-349) ────────────────────────────────────────────
+
+describe('edit_recipe', () => {
+  const skill = get('edit_recipe')
+
+  // Laura, 2026-10-22: «quita el cilantro del butter chicken» (a catalogue
+  // recipe on her menu) got «Hecho» while the recipe stayed as it was.
+  it('a catalogue recipe on the menu: found, and says it changed nothing', async () => {
+    const days: any[] = Array.from({ length: 7 }, () => ({}))
+    days[3] = { dinner: { dishes: [{ kind: 'recipe', recipeId: 'r-bc', recipeName: 'Butter chicken' }] } }
+    const db = makeDb([{ id: 'r-bc', name: 'Butter chicken', authorId: null }], [{ id: 'm-1', days }])
+    const r = await skill.handler({ recipeName: 'butter chicken', notes: 'sin cilantro' }, ctx(db))
+    expect(r.summary).toMatch(/^No he cambiado nada: "Butter chicken" es una receta del catálogo/)
+    const { toolMadeChange } = await import('../services/assistant/claims.js')
+    expect(toolMadeChange('edit_recipe', r.summary, false)).toBe(false)
+  })
+
+  it('nothing with that name: «no he cambiado nada», never «no es tuya»', async () => {
+    const r = await skill.handler({ recipeName: 'cochinillo' }, ctx(makeDb([], [])))
+    expect(r.summary).toBe('No he encontrado ninguna receta que se llame "cochinillo"; no he cambiado nada.')
   })
 })
 
@@ -604,6 +676,31 @@ describe('swap_meal', () => {
     const r = await skill.handler({ dayIndex: 1, meal: 'dinner', recipeName: 'pollo empanado' }, ctx(db))
     expect(r.summary).toContain('He puesto "Pollo empanado"')
     expect(r.summary).not.toContain('Ojo')
+  })
+
+  // PRO-349 (Dani y Sara, 2026-10-22): «arroz de limpieza» on a skipped
+  // Saturday: the list counted it and the day still said «sin cocinar».
+  it('a dish on a «sin cocinar» day reactivates it, and the summary says so', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-19T10:00:00Z')) // Monday
+    const days: any[] = Array.from({ length: 7 }, () => ({}))
+    const menu = { id: 'm-1', days, skippedDays: [3, 5] }
+    const sets: any[] = []
+    const db = recordingDb(sets, [menu], [{ id: 'r-ar', name: 'Arroz de limpieza', authorId: 'u-1' }], [{ restrictions: [] }], [{ ...menu, days: [...days] }])
+    const r = await skill.handler({ day: 'el sábado', meal: 'lunch', recipeName: 'arroz de limpieza' }, ctx(db)).finally(() => vi.useRealTimers())
+    expect(sets.at(-1)).toMatchObject({ skippedDays: [3] })
+    expect(r.summary).toContain('He puesto "Arroz de limpieza" en la comida del sábado 24 de octubre.')
+    expect(r.summary).toContain('El sábado 24 de octubre estaba marcado sin cocinar: ya vuelve a estar activo.')
+  })
+
+  it('a day that was not skipped: skippedDays stays as it was and nothing is said', async () => {
+    const days: any[] = Array.from({ length: 7 }, () => ({}))
+    const menu = { id: 'm-1', days, skippedDays: [3] }
+    const sets: any[] = []
+    const db = recordingDb(sets, [menu], [{ id: 'r-ar', name: 'Arroz de limpieza', authorId: 'u-1' }], [{ restrictions: [] }], [{ ...menu, days: [...days] }])
+    const r = await skill.handler({ dayIndex: 1, meal: 'lunch', recipeName: 'arroz de limpieza' }, ctx(db))
+    expect(sets.at(-1)).toMatchObject({ skippedDays: [3] })
+    expect(r.summary).not.toContain('sin cocinar')
   })
 
   // PRO-102 (Familia Ruiz, 2026-10-14): «4 RACIONES · Solo hoy: 4» became

@@ -5,7 +5,7 @@ import { loadMatchableRecipes } from '../services/matchableRecipes.js'
 import { requestCatalogPhotos } from '../services/catalogImageOnDemand.js'
 import { mergeRestrictions } from '../services/dietaryRestrictions.js'
 import { withHouseholdRestrictions } from '../services/householdAllergies.js'
-import { generationSkips, keepLockedSlots, loadPreviousWeek, menuHasDishes } from '../services/menuWeek.js'
+import { generationSkips, keepLockedSlots, loadPreviousWeek, menuHasDishes, unskipDay } from '../services/menuWeek.js'
 import { eq, and, asc, desc, inArray } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { menus, menuEdits, menuLogs, users, userSettings } from '../db/schema.js'
@@ -568,7 +568,7 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       days[dayIndex][meal] = { ...slot, dishes: newDishes }
       const [updated] = await db
         .update(menus)
-        .set({ days })
+        .set({ days, skippedDays: unskipDay(menu.skippedDays, dayIndex) })
         .where(eq(menus.id, menuId))
         .returning()
       await recordMenuEdits(req, menu, slotDiff(dayIndex, meal, slot.dishes, newDishes))
@@ -830,7 +830,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
       course: chosenCourse as any,
     }
     days[dayIndex][meal] = { dishes: [initialDish] }
-    const [updated] = await db.update(menus).set({ days }).where(eq(menus.id, menuId)).returning()
+    const [updated] = await db.update(menus).set({ days, skippedDays: unskipDay(menu.skippedDays, dayIndex) }).where(eq(menus.id, menuId)).returning()
     await recordMenuEdits(req, menu, [{ action: 'add', day: dayIndex, meal, after: { id: chosenId, name: chosenName } }])
     res.status(201).json(await hydrateMenuImages(updated))
   } catch (err) {
@@ -963,7 +963,7 @@ router.post('/menu/:menuId/move-slot', async (req: AuthRequest, res) => {
 
     const [updated] = await db
       .update(menus)
-      .set({ days: movedDays })
+      .set({ days: movedDays, skippedDays: unskipDay(menu.skippedDays, toDay) })
       .where(eq(menus.id, menuId))
       .returning()
     await recordMenuEdits(req, menu, moved)
@@ -1253,7 +1253,7 @@ router.post('/menu/:menuId/day/:day/leftover', async (req: AuthRequest, res) => 
 
     const [updated] = await db
       .update(menus)
-      .set({ days })
+      .set({ days, skippedDays: unskipDay(menu.skippedDays, targetDay) })
       .where(eq(menus.id, menuId))
       .returning()
     await recordMenuEdits(
@@ -1301,7 +1301,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/taper', async (req: AuthRequest, 
       res.status(r.status).json({ error: r.error })
       return
     }
-    const [updated] = await db.update(menus).set({ days: r.days }).where(eq(menus.id, menuId)).returning()
+    const [updated] = await db.update(menus).set({ days: r.days, skippedDays: unskipDay(menu.skippedDays, day) }).where(eq(menus.id, menuId)).returning()
     const slot = r.days[day][meal]!
     await recordMenuEdits(req, menu, [
       ...slotRecipes(before).map((b) => ({ action: 'remove' as const, day, meal, before: b })),
@@ -1479,7 +1479,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish', async (req: AuthRequest, r
     const next = addDish(slot.dishes, named)
     if (!days[day]) days[day] = {}
     days[day][meal] = { ...slot, dishes: next }
-    await db.update(menus).set({ days: days as any }).where(eq(menus.id, menuId))
+    await db.update(menus).set({ days: days as any, skippedDays: unskipDay(menu.skippedDays, day) }).where(eq(menus.id, menuId))
     const added = dishRecipe(next[next.length - 1])
     if (added) {
       const freezer = parsed.data.kind === 'recipe' && (parsed.data.variant === 'freezer' || parsed.data.variant === 'fridge' || parsed.data.variant === 'cooked')
@@ -1836,7 +1836,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/random', async (req: AuthReq
     }]
     if (!days[day]) days[day] = {}
     days[day][meal] = { ...slot, dishes: next }
-    await db.update(menus).set({ days: days as any }).where(eq(menus.id, menuId))
+    await db.update(menus).set({ days: days as any, skippedDays: unskipDay(menu.skippedDays, day) }).where(eq(menus.id, menuId))
     await recordMenuEdits(req, menu, [{ action: 'add', day, meal, after: { id: picked.id, name: picked.name } }])
     refreshPrepAlerts(menuId)
     res.json({ position: next.length - 1, dish: next[next.length - 1] })

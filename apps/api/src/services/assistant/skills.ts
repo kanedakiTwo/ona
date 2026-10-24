@@ -47,12 +47,12 @@ import { schoolMenuSkills } from './schoolMenuSkills.js'
 import { freezerSkills } from './freezerSkills.js'
 import { visibleAuthorIds, visibleRecipeWhere } from '../recipeVisibility.js'
 import { loadMatchableRecipes } from '../matchableRecipes.js'
-import { generationSkips, loadPreviousWeek } from '../menuWeek.js'
+import { generationSkips, loadPreviousWeek, unskipDay } from '../menuWeek.js'
 import { loadUserRestrictions, findRecipesWithWhatIHave } from '../withWhatIHave.js'
 import { withHouseholdRestrictions } from '../householdAllergies.js'
 import { isBrandDependentGlutenCharcuterie, isCoeliacHousehold, recipeDietNotices } from '../glutenFreeCharcuterie.js'
 import { compileRestrictions, hasMilkAllergy, nameHasTerm, normalizeText, violatesRestrictions, type RestrictableRecipe } from '../dietaryRestrictions.js'
-import { addPantryForUser, deletePantryForUser, listPantryForUser, NoHouseholdError, patchPantryForUser } from '../pantryStore.js'
+import { addPantryForUser, deletePantryForUser, listPantryForUser, NoHouseholdError, patchPantryForUser, type AddPantryInput } from '../pantryStore.js'
 import { enqueuePrepAlertsForMenu } from '../notificationScheduler.js'
 import { NotARecipeError, SocialCaptionUnavailableError } from '../recipeUrlExtractor.js'
 import { NoExtractableContentError } from '../sources/youtube.js'
@@ -103,6 +103,26 @@ async function menuOfWeek(ctx: SkillContext, weekStart: string) {
   // PRO-296: tápers and added dishes saved without a name (before PRO-240)
   // read with their recipe's, like the card on the web.
   return { ...menu, days: await fillRecipeNames(menu.days, ctx.db) }
+}
+
+/**
+ * The recipe dishes of a menu with their day and meal, in week order from
+ * `firstDay` on (then the days before it): «las lentejas» or «la receta de
+ * hoy» is the menu's recipe before any other with a similar name (PRO-349).
+ */
+export function menuRecipeDishes(
+  menu: { days?: unknown } | null | undefined,
+  firstDay = 0,
+): Array<{ recipeId: string; recipeName: string; dayIndex: number; meal: string }> {
+  const days = (Array.isArray(menu?.days) ? menu.days : []) as DayMenu[]
+  const order = days.map((_, i) => i).sort((a, b) => ((a - firstDay + 7) % 7) - ((b - firstDay + 7) % 7))
+  return order.flatMap((dayIndex) =>
+    Object.keys(days[dayIndex] ?? {})
+      .sort((a, b) => MEAL_KEYS.indexOf(a) - MEAL_KEYS.indexOf(b))
+      .flatMap((meal) =>
+        recipeDishesOf(days[dayIndex]?.[meal]?.dishes ?? []).map((d) => ({ recipeId: d.recipeId, recipeName: d.recipeName ?? '', dayIndex, meal })),
+      ),
+  )
 }
 
 const noMenuFor = (weekStart: string): SkillResult => ({
@@ -389,51 +409,100 @@ export function mergeMemoryFacts(
   return { facts: out, keptManual }
 }
 
+/**
+ * PRO-349 · which recipe get_recipe_details reads. With day/meal, the one in
+ * that meal of the menu; by name, this week's menu first (from today on),
+ * then their recipes and the catalogue. Carmen asked whether «la receta de
+ * hoy» had bread and Mimo read «Garbanzos con espinacas y huevo», another
+ * recipe with a similar name, not the menu's (2026-10-22).
+ */
+async function recipeForDetails(
+  params: { recipeName?: string; day?: string; meal?: string },
+  ctx: SkillContext,
+): Promise<{ recipe: any; menuSlot: string | null } | { summary: string }> {
+  const { db } = ctx
+  const byId = async (id: string) =>
+    (await db.select().from(recipes).where(and(await visibleWhere(ctx), eq(recipes.id, id))).limit(1))[0] ?? null
+  const slotOf = (d: { meal: string }, t: MenuDay) => `${MEAL_LABEL[d.meal] ?? d.meal} del ${t.label}`
+  const name = String(params.recipeName ?? '').trim()
+
+  if (params.day != null || params.meal) {
+    const t = menuDayParam({ day: params.day ?? 'hoy' })
+    if (isMenuDayError(t)) return { summary: t.error }
+    const meal = params.meal && MEAL_KEYS.includes(params.meal) ? params.meal : undefined
+    const where = meal ? `la ${MEAL_LABEL[meal]} del ${t.label}` : `el ${t.label}`
+    const dishes = menuRecipeDishes(await menuOfWeek(ctx, t.weekStart)).filter((d) => d.dayIndex === t.dayIndex && (!meal || d.meal === meal))
+    if (dishes.length === 0) {
+      return { summary: `En el menu, ${where} no tiene ninguna receta; no he mirado otra. Si pregunta por una receta concreta, preguntale cual.` }
+    }
+    const pick = dishes.length === 1 ? dishes[0] : name ? bestMatch(dishes, name, (d) => d.recipeName) : null
+    if (!pick) {
+      const list = dishes.map((d) => `${d.recipeName} (${MEAL_LABEL[d.meal] ?? d.meal})`).join('; ')
+      return { summary: `En el menu, ${where} tiene varias recetas: ${list}. Vuelve a llamar con meal o recipeName para leer la que pregunta.` }
+    }
+    const recipe = await byId(pick.recipeId)
+    if (!recipe) return { summary: `No he podido leer la receta de ${where} ("${pick.recipeName}").` }
+    return { recipe, menuSlot: slotOf(pick, t) }
+  }
+
+  if (!name) return { summary: 'Dime que receta quieres ver, o la comida del menu (day y meal).' }
+  const today = menuDayParam({ day: 'hoy' })
+  if (!isMenuDayError(today)) {
+    const hit = bestMatch(menuRecipeDishes(await menuOfWeek(ctx, today.weekStart), today.dayIndex), name, (d) => d.recipeName)
+    const recipe = hit ? await byId(hit.recipeId) : null
+    if (hit && recipe) return { recipe, menuSlot: slotOf(hit, menuDayOf(today.weekStart, hit.dayIndex)) }
+  }
+
+  // First try exact match
+  let results = await db
+    .select()
+    .from(recipes)
+    .where(and(await visibleWhere(ctx), ilike(recipes.name, `%${name}%`)))
+    .limit(1)
+
+  // If no exact match, try word-by-word
+  if (results.length === 0) {
+    const words = name.split(/\s+/).filter((w) => w.length >= 3)
+    if (words.length > 0) {
+      results = await db
+        .select()
+        .from(recipes)
+        .where(and(await visibleWhere(ctx), or(...words.map((w: string) => ilike(recipes.name, `%${w}%`)))))
+        .limit(5)
+    }
+  }
+
+  if (results.length === 0) return { summary: `No he encontrado ninguna receta con el nombre "${name}".` }
+
+  // Pick the best match: prefer name that contains the most query words
+  const queryWords = name.toLowerCase().split(/\s+/).filter((w) => w.length >= 3)
+  const recipe = results.reduce((best: any, r: any) => {
+    const nameWords = r.name.toLowerCase()
+    const score = queryWords.filter((w) => nameWords.includes(w)).length
+    const bestScore = queryWords.filter((w) => best.name.toLowerCase().includes(w)).length
+    return score > bestScore ? r : best
+  }, results[0])
+  return { recipe, menuSlot: null }
+}
+
 const getRecipeDetails: SkillDefinition = {
   name: 'get_recipe_details',
-  description: 'Busca una receta (del catalogo o del usuario) por nombre y devuelve sus detalles: ingredientes con cantidades, pasos numerados, raciones, minutos en total y de trabajo, trucos y el enlace a la receta original (video o web) si lo tiene. Usala para explicar como se hace, guiar paso a paso o dar el enlace. Si el plato esta en el menu, pasa servings con las raciones que da get_todays_menu o get_weekly_menu para esa comida: las cantidades vuelven ya calculadas para esas raciones.',
+  description: 'Busca una receta (del catalogo o del usuario) y devuelve sus detalles: ingredientes con cantidades, pasos numerados, raciones, minutos en total y de trabajo, trucos y el enlace a la receta original (video o web) si lo tiene. Usala para explicar como se hace, guiar paso a paso, dar el enlace o contestar que lleva. Si pregunta por un plato del menu ("la receta de hoy", "la cena del jueves", "¿lo de hoy lleva pan?"), pasa day y meal (no el nombre): lee la receta que esta en el menu ese dia, nunca otra que se llame parecido. Por nombre, mira primero las recetas del menu de esta semana. Si el plato esta en el menu, pasa servings con las raciones que da get_todays_menu o get_weekly_menu para esa comida: las cantidades vuelven ya calculadas para esas raciones.',
   parameters: {
     type: 'object',
     properties: {
-      recipeName: { type: 'string', description: 'Nombre de la receta a buscar' },
+      recipeName: { type: 'string', description: 'Nombre de la receta a buscar. Con day/meal, solo para elegir entre varios platos de esa comida.' },
+      day: DAY_PROP,
+      meal: { type: 'string', enum: [...MEAL_KEYS], description: 'Con day: la comida del menu cuya receta quiere (breakfast, lunch, snack, dinner)' },
       servings: { type: 'number', description: 'Raciones de esa comida en el menu (las que da get_todays_menu / get_weekly_menu). Sin el, las cantidades son las de la receta.' },
     },
-    required: ['recipeName'],
+    required: [],
   },
-  async handler(params: { recipeName: string; servings?: number }, ctx: SkillContext): Promise<SkillResult> {
+  async handler(params: { recipeName?: string; day?: string; meal?: string; servings?: number }, ctx: SkillContext): Promise<SkillResult> {
     const { db } = ctx
-
-    // First try exact match
-    let results = await db
-      .select()
-      .from(recipes)
-      .where(and(await visibleWhere(ctx), ilike(recipes.name, `%${params.recipeName}%`)))
-      .limit(1)
-
-    // If no exact match, try word-by-word
-    if (results.length === 0) {
-      const words = params.recipeName.split(/\s+/).filter(w => w.length >= 3)
-      if (words.length > 0) {
-        results = await db
-          .select()
-          .from(recipes)
-          .where(and(await visibleWhere(ctx), or(...words.map((w: string) => ilike(recipes.name, `%${w}%`)))))
-          .limit(5)
-      }
-    }
-
-    if (results.length === 0) {
-      return { data: null, summary: `No he encontrado ninguna receta con el nombre "${params.recipeName}".`, uiHint: 'text' }
-    }
-
-    // Pick the best match: prefer name that contains the most query words
-    const queryWords = params.recipeName.toLowerCase().split(/\s+/).filter(w => w.length >= 3)
-    const recipe = results.reduce((best: any, r: any) => {
-      const nameWords = r.name.toLowerCase()
-      const score = queryWords.filter(w => nameWords.includes(w)).length
-      const bestScore = queryWords.filter(w => best.name.toLowerCase().includes(w)).length
-      return score > bestScore ? r : best
-    }, results[0])
+    const found = await recipeForDetails(params, ctx)
+    if ('summary' in found) return { data: null, summary: found.summary, uiHint: 'text' }
+    const { recipe, menuSlot } = found
 
     // Get ingredients
     const riRows = await db
@@ -483,7 +552,9 @@ const getRecipeDetails: SkillDefinition = {
       tips: recipe.tips,
       sourceUrl: recipe.sourceUrl,
     })
-    const summary = dietNotices.length > 0 ? `${details}\nAviso para este hogar: ${dietNotices.join('. ')}.` : details
+    const withNotices = dietNotices.length > 0 ? `${details}\nAviso para este hogar: ${dietNotices.join('. ')}.` : details
+    // PRO-349: which recipe this is, so «la receta de hoy» is never answered from another one.
+    const summary = menuSlot ? `Es la receta del menu (${menuSlot}).\n${withNotices}` : withNotices
 
     return {
       data: {
@@ -711,7 +782,7 @@ async function pickWhatIHaveRecipe(
   if (menu) {
     const days = menu.days as DayMenu[]
     days[t.dayIndex] = { ...(days[t.dayIndex] ?? {}), [meal]: slotWithDishes(days[t.dayIndex]?.[meal], [dish]) }
-    ;[saved] = await db.update(menus).set({ days }).where(eq(menus.id, menu.id)).returning()
+    ;[saved] = await db.update(menus).set({ days, skippedDays: unskipDay(menu.skippedDays, t.dayIndex) }).where(eq(menus.id, menu.id)).returning()
   } else {
     // No menu this week: one with only this dish (the rest stays empty).
     const days: DayMenu[] = Array.from({ length: 7 }, () => ({}))
@@ -725,7 +796,7 @@ async function pickWhatIHaveRecipe(
   if (dishNow(saved, t.dayIndex, meal) !== recipe.name) return notSaved(slotLabel)
   return {
     data: { ...(saved as object), change: changeOf(t, meal, recipe.name), recipeId: recipe.id },
-    summary: `Hecho: "${recipe.name}" en la ${slotLabel}. Sus ingredientes ya salen en la lista de la compra.${repeatNote(saved?.days as DayMenu[] ?? [], t.weekStart, t.dayIndex, meal, { recipeId: recipe.id, name: recipe.name })}`,
+    summary: `Hecho: "${recipe.name}" en la ${slotLabel}. Sus ingredientes ya salen en la lista de la compra.${reactivatedLine(menu, t)}${repeatNote(saved?.days as DayMenu[] ?? [], t.weekStart, t.dayIndex, meal, { recipeId: recipe.id, name: recipe.name })}`,
     uiHint: 'menu',
   }
 }
@@ -1120,6 +1191,11 @@ const notSaved = (slotLabel: string): SkillResult => ({
   uiHint: 'text',
 })
 
+/** PRO-349: a dish on a «sin cocinar» day reactivates it (`unskipDay` in the save); the summary says so. */
+function reactivatedLine(menu: { skippedDays?: number[] | null } | null | undefined, t: { dayIndex: number; label: string }): string {
+  return menu?.skippedDays?.includes(t.dayIndex) ? ` El ${t.label} estaba marcado sin cocinar: ya vuelve a estar activo.` : ''
+}
+
 const swapMeal: SkillDefinition = {
   name: 'swap_meal',
   description:
@@ -1230,11 +1306,11 @@ const swapMeal: SkillDefinition = {
         const created = await createDishRecipe(userId, params.recipeName, params.newRecipe)
         if (created) {
           days[dayIndex][meal] = slotWithDishes(days[dayIndex][meal], [{ kind: 'recipe', recipeId: created.id, recipeName: created.name }])
-          const [updatedNew] = await db.update(menus).set({ days }).where(eq(menus.id, menu.id)).returning()
+          const [updatedNew] = await db.update(menus).set({ days, skippedDays: unskipDay(menu.skippedDays, dayIndex) }).where(eq(menus.id, menu.id)).returning()
           if (dishNow(updatedNew, dayIndex, meal) !== created.name) return notSaved(slotLabel)
           return {
             data: { ...updatedNew, change: changeOf(t, meal, created.name), recipeId: created.id },
-            summary: `Hecho. "${untrustedText(created.name, 80)}" no estaba en sus recetas ni en el catalogo: la he creado como receta del hogar (raciones e ingredientes estimados; se puede revisar en la app) y la he puesto en la ${slotLabel}. Sus ingredientes ya salen en la lista de la compra.${repeatNote(days, t.weekStart, dayIndex, meal, { recipeId: created.id, name: created.name })}`,
+            summary: `Hecho. "${untrustedText(created.name, 80)}" no estaba en sus recetas ni en el catalogo: la he creado como receta del hogar (raciones e ingredientes estimados; se puede revisar en la app) y la he puesto en la ${slotLabel}. Sus ingredientes ya salen en la lista de la compra.${reactivatedLine(menu, t)}${repeatNote(days, t.weekStart, dayIndex, meal, { recipeId: created.id, name: created.name })}`,
             uiHint: 'menu',
           }
         }
@@ -1242,14 +1318,14 @@ const swapMeal: SkillDefinition = {
         days[dayIndex][meal] = slotWithDishes(days[dayIndex][meal], [{ kind: 'note', text: note }])
         const [updatedNote] = await db
           .update(menus)
-          .set({ days })
+          .set({ days, skippedDays: unskipDay(menu.skippedDays, dayIndex) })
           .where(eq(menus.id, menu.id))
           .returning()
         const closest = chosen ? ` Lo mas parecido que si hay es "${chosen.name}".` : ''
         if (dishNow(updatedNote, dayIndex, meal) !== note) return notSaved(slotLabel)
         return {
           data: { ...updatedNote, change: changeOf(t, meal, note) },
-          summary: `Hecho. "${untrustedText(note, 80)}" no esta en sus recetas ni en el catalogo, asi que lo he puesto como nota en la ${slotLabel}.${repeatNote(days, t.weekStart, dayIndex, meal, { name: note })}${closest} ${NOTE_THEN_RECIPE_HINT}${chosen ? ` Si prefiere "${chosen.name}", ofrecele cambiar la nota por esa receta.` : ''}`,
+          summary: `Hecho. "${untrustedText(note, 80)}" no esta en sus recetas ni en el catalogo, asi que lo he puesto como nota en la ${slotLabel}.${reactivatedLine(menu, t)}${repeatNote(days, t.weekStart, dayIndex, meal, { name: note })}${closest} ${NOTE_THEN_RECIPE_HINT}${chosen ? ` Si prefiere "${chosen.name}", ofrecele cambiar la nota por esa receta.` : ''}`,
           uiHint: 'menu',
         }
       }
@@ -1273,13 +1349,13 @@ const swapMeal: SkillDefinition = {
       days[dayIndex][meal] = slotWithDishes(days[dayIndex][meal], [{ kind: 'recipe', recipeId: chosen.id, recipeName: chosen.name }])
       const [updatedManual] = await db
         .update(menus)
-        .set({ days })
+        .set({ days, skippedDays: unskipDay(menu.skippedDays, dayIndex) })
         .where(eq(menus.id, menu.id))
         .returning()
       if (dishNow(updatedManual, dayIndex, meal) !== chosen.name) return notSaved(slotLabel)
       return {
         data: { ...updatedManual, change: changeOf(t, meal, chosen.name) },
-        summary: `Hecho. He puesto "${chosen.name}" en la ${slotLabel}.${repeatNote(days, t.weekStart, dayIndex, meal, { recipeId: chosen.id, name: chosen.name })}`,
+        summary: `Hecho. He puesto "${chosen.name}" en la ${slotLabel}.${reactivatedLine(menu, t)}${repeatNote(days, t.weekStart, dayIndex, meal, { recipeId: chosen.id, name: chosen.name })}`,
         uiHint: 'menu',
       }
     }
@@ -1334,14 +1410,14 @@ const swapMeal: SkillDefinition = {
 
     const [updated] = await db
       .update(menus)
-      .set({ days })
+      .set({ days, skippedDays: unskipDay(menu.skippedDays, dayIndex) })
       .where(eq(menus.id, menu.id))
       .returning()
 
     if (dishNow(updated, dayIndex, meal) !== newRecipe.name) return notSaved(slotLabel)
     return {
       data: { ...updated, change: changeOf(t, meal, newRecipe.name) },
-      summary: `Cambiado: la ${slotLabel} ahora es "${newRecipe.name}".${repeatNote(days, t.weekStart, dayIndex, meal, { recipeId: newRecipe.id, name: newRecipe.name })}`,
+      summary: `Cambiado: la ${slotLabel} ahora es "${newRecipe.name}".${reactivatedLine(menu, t)}${repeatNote(days, t.weekStart, dayIndex, meal, { recipeId: newRecipe.id, name: newRecipe.name })}`,
       uiHint: 'menu',
     }
   },
@@ -1709,6 +1785,35 @@ function findPantryRow<T extends { name: string }>(rows: T[], query: string): T 
   )
 }
 
+/**
+ * PRO-349: «nos quedan 4 huevos y medio brócoli» leaves that amount in the
+ * pantry too (a row's amount is set, not added: it's what's left). Before,
+ * an amount only reached the list, or the pantry got «huevos 1 u», while Mimo
+ * said both were in the pantry (Dani y Sara, 2026-10-22). Returns what the pantry holds now, e.g. «Huevos: 4 u».
+ */
+async function storePantryAmount(
+  ctx: SkillContext,
+  pantryHit: { id: string } | null,
+  name: string,
+  amount: { quantity?: number; unit?: string },
+  location: AddPantryInput['location'],
+): Promise<string | null> {
+  const b = toBuyable(amount.quantity, amount.unit)
+  if (b.quantity == null || !b.unit) return null
+  const unit = b.unit as AddPantryInput['unit']
+  let row: { name: string; quantity: number; unit: string } | null = null
+  if (pantryHit) {
+    row = await patchPantryForUser(ctx.userId, pantryHit.id, { quantity: b.quantity, unit, ...(location ? { location } : {}) }, ctx.db)
+  } else {
+    try {
+      row = await addPantryForUser(ctx.userId, { name: String(b.suffix ? `${name} (${b.suffix})` : name).trim().slice(0, 80), quantity: b.quantity, unit, location }, ctx.db)
+    } catch (err) {
+      if (!(err instanceof NoHouseholdError)) throw err
+    }
+  }
+  return row ? `${row.name}: ${Math.round(row.quantity * 100) / 100} ${row.unit}` : null
+}
+
 const markInStock: SkillDefinition = {
   name: 'mark_in_stock',
   description:
@@ -1757,11 +1862,14 @@ const markInStock: SkillDefinition = {
       await db.update(shoppingLists).set({ items }).where(eq(shoppingLists.id, list.id))
       const left = item.inStock ? 0 : Math.max(0, item.quantity - (item.haveQuantity ?? 0))
       const fmt = (n: number) => `${Math.round(n * 10) / 10} ${item.unit}`
+      const where = isPantryLocation(params.location) ? params.location : undefined
+      const stored = params.quantity > 0 ? await storePantryAmount(ctx, pantryHit, String(item.name), params, where) : null
+      const pantryLine = stored ? ` En la despensa queda apuntado: ${stored}.` : ''
       return {
-        data: { name: item.name, inStock: item.inStock, haveQuantity: item.haveQuantity ?? null, toBuy: left },
+        data: { name: item.name, inStock: item.inStock, haveQuantity: item.haveQuantity ?? null, toBuy: left, pantry: stored },
         summary: item.inStock
-          ? `${item.name}: con lo que tenéis llega; marcado como en casa.`
-          : `${item.name}: apuntado lo que os queda; en la lista quedan ${fmt(left)} por comprar (el menú pide ${fmt(item.quantity)}).`,
+          ? `${item.name}: con lo que tenéis llega; marcado como en casa.${pantryLine}`
+          : `${item.name}: apuntado lo que os queda; en la lista quedan ${fmt(left)} por comprar (el menú pide ${fmt(item.quantity)}).${pantryLine}`,
         uiHint: 'confirmation',
       }
     }
@@ -1773,11 +1881,16 @@ const markInStock: SkillDefinition = {
       touched = true
     }
     const location = isPantryLocation(params.location) ? params.location : undefined
-    if (next && pantryHit && location && (pantryHit as { location?: string }).location !== location) {
+    // With an amount («tengo 4 huevos»), the pantry keeps that amount (PRO-349).
+    const stored = next && params.quantity != null && params.quantity > 0
+      ? await storePantryAmount(ctx, pantryHit, String(item?.name ?? params.ingredient), params, location)
+      : null
+    if (stored) touched = true
+    if (!stored && next && pantryHit && location && (pantryHit as { location?: string }).location !== location) {
       await patchPantryForUser(userId, pantryHit.id, { location }, db)
       touched = true
     }
-    if (next && !pantryHit) {
+    if (!stored && next && !pantryHit) {
       try {
         await addPantryForUser(userId, { name: String(item?.name ?? params.ingredient).trim().slice(0, 80), location }, db)
         touched = true
@@ -1800,8 +1913,10 @@ const markInStock: SkillDefinition = {
     }
     const name = item?.name ?? pantryHit?.name ?? params.ingredient
     return {
-      data: { name, inStock: next },
-      summary: next ? `${name} marcado como en casa${location && location !== 'despensa' ? ` (${location})` : ''}.` : `${name} eliminado de la despensa.`,
+      data: { name, inStock: next, ...(stored ? { pantry: stored } : {}) },
+      summary: next
+        ? `${name} marcado como en casa${location && location !== 'despensa' ? ` (${location})` : ''}.${stored ? ` En la despensa queda apuntado: ${stored}.` : ''}`
+        : `${name} eliminado de la despensa.`,
       uiHint: 'confirmation',
     }
   },
@@ -2473,29 +2588,37 @@ const editRecipe: SkillDefinition = {
         .limit(1)
       target = row ?? null
     } else if (params.recipeName) {
-      // Look in user's own recipes first.
+      // Their own recipe first; else the one of this week's menu, else the
+      // catalogue's — so a recipe they can't edit gets «es del catálogo»,
+      // never «no la encuentro» (PRO-349: Laura's butter chicken was on her
+      // menu and Mimo said it couldn't find it).
       const candidates = await db
         .select({ id: recipes.id, name: recipes.name, authorId: recipes.authorId })
         .from(recipes)
-        .where(ilike(recipes.name, `%${params.recipeName}%`))
+        .where(and(await visibleWhere(ctx), ilike(recipes.name, `%${params.recipeName}%`)))
         .limit(10)
-      target = candidates.find((c: { authorId: string | null }) => c.authorId === userId) ?? null
+      const menuIds = new Set(menuRecipeDishes(await menuOfWeek(ctx, getWeekStart())).map((d) => d.recipeId))
+      target =
+        candidates.find((c: { authorId: string | null }) => c.authorId === userId) ??
+        candidates.find((c: { id: string }) => menuIds.has(c.id)) ??
+        candidates[0] ??
+        null
     }
 
     if (!target) {
       return {
         data: null,
         summary: params.recipeName
-          ? `No he encontrado una receta tuya que se llame "${params.recipeName}". Sólo puedes editar las recetas que tú has creado.`
-          : 'Necesito el nombre o el id de la receta que quieres editar.',
+          ? `No he encontrado ninguna receta que se llame "${params.recipeName}"; no he cambiado nada.`
+          : 'Necesito el nombre o el id de la receta que quieres editar; no he cambiado nada.',
         uiHint: 'text',
       }
     }
 
     if (target.authorId !== userId) {
       return {
-        data: null,
-        summary: `"${target.name}" es una receta del catálogo de Mimoia, no tuya. Para hacer cambios, primero añádela a tus recetas y edita la copia.`,
+        data: { recipeId: target.id, recipeName: target.name },
+        summary: `No he cambiado nada: "${target.name}" es una receta del catálogo de Mimoia, no tuya. Para hacer cambios, primero añádela a sus recetas (add_recipe_to_mine) y edita la copia; para quitar o cambiar un ingrediente, en la copia se abre el editor.`,
         uiHint: 'text',
       }
     }
@@ -2543,7 +2666,7 @@ const editRecipe: SkillDefinition = {
     if (changedFields.length === 0) {
       return {
         data: { recipeId: target.id },
-        summary: `Para editar "${target.name}" dime qué quieres cambiar (nombre, tiempo, dificultad, notas, trucos) o pídeme abrir el editor completo.`,
+        summary: `No he cambiado nada. Para editar "${target.name}" dime qué quieres cambiar (nombre, tiempo, dificultad, notas, trucos) o pídeme abrir el editor completo.`,
         uiHint: 'text',
       }
     }

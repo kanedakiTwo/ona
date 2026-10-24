@@ -549,8 +549,10 @@ export {
   dishFoodGroup,
   recipeFoodGroup,
   NotASchoolMenuError,
+  SchoolMenuFileError,
   schoolLunchLines,
 } from './types/schoolMenu.js'
+export type { SchoolMenuFileProblem } from './types/schoolMenu.js'
 export type { SpanishRegion, PublicHoliday } from './constants/holidays.js'
 export {
   SPANISH_REGIONS,

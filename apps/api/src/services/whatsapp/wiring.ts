@@ -8,7 +8,7 @@ import { weekMenuCaption, weekMenuDigest, type WeekMenuInput, type WeekReplyOpti
 import { weekMenuImage } from '../weekImage/index.js'
 import { madridParts } from '../madridTime.js'
 import { generatedWeeksOf } from '../menuWeek.js'
-import { isSchoolMenuMimeType, readSchoolMenu, saveSchoolLunches } from '../schoolMenu.js'
+import { SchoolMenuFileError, isHeicUpload, isSchoolMenuMimeType, readSchoolMenu, saveSchoolLunches } from '../schoolMenu.js'
 import { getPrimaryHouseholdId } from '../scopeResolver.js'
 import { runWithCostUser } from '../costLedger.js'
 import type { SchoolLunch } from '@ona/shared'
@@ -64,6 +64,8 @@ async function weekReplyOptions(userId: string, view: WeekView): Promise<WeekRep
 
 /** PRO-224: read a school menu file, save it for the household and return the days. */
 async function readAndSaveSchoolMenu(file: Buffer, mimeType: string, userId: string): Promise<SchoolLunch[]> {
+  // A HEIC sent as a document can't be read (PRO-355): Mimo says what to do.
+  if (isHeicUpload(mimeType)) throw new SchoolMenuFileError('heic')
   const mime = isSchoolMenuMimeType(mimeType) ? mimeType : 'image/jpeg'
   const today = madridParts(new Date()).isoDate
   const days = await runWithCostUser(userId, () => readSchoolMenu({ data: file, mimeType: mime }, today, userId))

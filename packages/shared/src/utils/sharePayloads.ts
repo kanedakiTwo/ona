@@ -22,16 +22,38 @@ interface ShareableRecipe {
 
 const strip = (origin: string) => origin.replace(/\/+$/, '')
 
-export function recipeSharePayload(recipe: ShareableRecipe, origin: string): SharePayload {
+/**
+ * The household's personal link in its short form (PRO-1016, D-132):
+ * `https://www.mimoia.com` + code → `mimoia.com/i/<code>` (no scheme or
+ * `www.`; WhatsApp and the share sheets still make it a link). `/i/<code>`
+ * takes a household's code to the landing with `?invita=` (PRO-162).
+ */
+export function shortInviteLink(origin: string, code: string): string {
+  return `${strip(origin).replace(/^https?:\/\//, '').replace(/^www\./, '')}/i/${code}`
+}
+
+/** The foot of what people forward (D-132): «Hecho con Mimo · mimoia.com/i/<code>». */
+export function madeWithMimoLine(origin: string, code: string): string {
+  return `Hecho con Mimo · ${shortInviteLink(origin, code)}`
+}
+
+/**
+ * `inviteCode` is the sharing household's code (`GET /referrals/me`): with
+ * it the share carries their invitation (D-132); without it (signed out, or
+ * the code hasn't loaded yet) the share is as before.
+ */
+export function recipeSharePayload(recipe: ShareableRecipe, origin: string, inviteCode?: string | null): SharePayload {
   const base = strip(origin)
   if (recipe.authorId == null) {
     // The recipe page itself (it opens without an account). Title + link
     // only: the link's preview (app/recipes/[id]/layout.tsx) says what Mimoia
     // is, and a `text` next to the `url` gets glued into the link by some
-    // receiving apps (`…?ref=receta%20Pollo%20a%20la%20plancha…`).
+    // receiving apps (`…?ref=receta%20Pollo%20a%20la%20plancha…`). So the
+    // invitation rides in the link (`&invita=`): the page shows the foot and
+    // a sign-up from it counts for the household.
     return {
       title: recipe.name,
-      url: `${base}/recipes/${recipe.id}?ref=receta`,
+      url: `${base}/recipes/${recipe.id}?ref=receta${inviteCode ? `&invita=${inviteCode}` : ''}`,
     }
   }
   // Private recipes have no public page: share the recipe itself as text.
@@ -45,11 +67,15 @@ export function recipeSharePayload(recipe: ShareableRecipe, origin: string): Sha
     .filter((l): l is string => !!l)
   return {
     title: recipe.name,
-    text: `${recipe.name}${lines.length ? `\n\nIngredientes:\n${lines.join('\n')}` : ''}\n\nLa organizo con ${BRAND_NAME}, mi menú semanal: ${base}/?ref=receta`,
+    text: `${recipe.name}${lines.length ? `\n\nIngredientes:\n${lines.join('\n')}` : ''}\n\n${
+      inviteCode ? madeWithMimoLine(origin, inviteCode) : `La organizo con ${BRAND_NAME}, mi menú semanal: ${base}/?ref=receta`
+    }`,
   }
 }
 
-export function withOnaFooter(text: string, origin: string, ref: string): string {
+/** With the household's `inviteCode` the foot is its invitation (D-132); without it, the generic Mimoia link. */
+export function withOnaFooter(text: string, origin: string, ref: string, inviteCode?: string | null): string {
+  if (inviteCode) return `${text.trimEnd()}\n\n${madeWithMimoLine(origin, inviteCode)}`
   return `${text.trimEnd()}\n\n— Hecho con ${BRAND_NAME}, el menú semanal que hace la lista de la compra: ${strip(origin)}/?ref=${ref}`
 }
 

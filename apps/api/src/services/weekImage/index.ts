@@ -16,12 +16,14 @@ export async function weekMenuImage(
   opts: {
     today: string
     webUrl: string
+    /** PRO-1016: «Hecho con Mimo · mimoia.com/i/<code>» at the foot (null → none). */
+    madeWith?: string | null
     /** recipe id → its `image_url` (absolute or `/images/recipes/…`). */
     photoUrls: (recipeIds: string[]) => Promise<Map<string, string | null>>
     fetchImpl?: typeof fetch
   },
 ): Promise<Buffer | null> {
-  const model = buildWeekImageModel(menu, { today: opts.today })
+  const model = buildWeekImageModel(menu, { today: opts.today, madeWith: opts.madeWith })
   if (!model) return null
   const ids = photoRecipeIds(model)
   let photos = new Map<string, Buffer>()

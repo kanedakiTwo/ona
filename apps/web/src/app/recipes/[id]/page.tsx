@@ -59,10 +59,12 @@ import {
   timelineString,
 } from "@/lib/recipeView"
 import { DIFFICULTY_LABELS, SEASON_LABELS } from "@/lib/labels"
-import { BRAND_NAME, recipeSharePayload } from "@ona/shared"
+import { BRAND_NAME, normalizeReferralCode, recipeSharePayload } from "@ona/shared"
 import { ApiError } from "@/lib/api"
 import { loginHrefFor } from "@/lib/routeAccess"
 import { RecipeWaitlistCta } from "@/components/recipes/RecipeWaitlistCta"
+import { useReferralLink } from "@/components/referrals/InviteHouseholdButton"
+import { rememberSignupAttribution } from "@/lib/signupAttribution"
 
 /**
  * Recipe detail — "D · Luz y foto" (2026-10-08).
@@ -95,6 +97,15 @@ export default function RecipeDetailPage() {
   // PublicNavbar on top, so the photo, sticky tabs and sticky hero start
   // below it, and a waitlist block closes the page (specs/recipes.md).
   const publicChrome = !authLoading && !user
+  // PRO-1016 (D-132): a share carries the household's invitation. Signed in,
+  // our own code goes into the shared link; signed out, a link that came with
+  // `?invita=<code>` is remembered for the sign-up and shown at the foot.
+  const referral = useReferralLink(!!user)
+  const [invitedBy, setInvitedBy] = useState<string | null>(null)
+  useEffect(() => {
+    rememberSignupAttribution()
+    setInvitedBy(normalizeReferralCode(new URLSearchParams(window.location.search).get("invita")))
+  }, [])
 
   const [servings, setServings] = useState<number | null>(null)
   // Once we know the recipe's authored servings, the scaler "seeds" itself.
@@ -247,8 +258,8 @@ export default function RecipeDetailPage() {
     haptic.light()
     // "Pásalo": catalogue recipes share this very page's link (it opens
     // without an account, with the waitlist block); private ones go as text
-    // + a link to Mimoia.
-    await share(recipeSharePayload(recipe, typeof window !== "undefined" ? window.location.origin : ""))
+    // + a link to Mimoia. Either way with this household's invitation.
+    await share(recipeSharePayload(recipe, typeof window !== "undefined" ? window.location.origin : "", referral.data?.code))
   }
 
   const stepCount = recipe.steps?.length ?? 0
@@ -562,7 +573,7 @@ export default function RecipeDetailPage() {
 
           <DesktopSection title="Notas">{notesBlock}</DesktopSection>
 
-          {publicChrome && <RecipeWaitlistCta recipeName={recipe.name} className="mt-6" />}
+          {publicChrome && <RecipeWaitlistCta recipeName={recipe.name} inviteCode={invitedBy} className="mt-6" />}
         </motion.div>
       </div>
     )
@@ -667,7 +678,7 @@ export default function RecipeDetailPage() {
         {hasNutrition && panel("nutricion", "Nutrición", nutritionBlock)}
         {panel("notas", "Notas", notesBlock)}
 
-        {publicChrome && <RecipeWaitlistCta recipeName={recipe.name} className="mt-12" />}
+        {publicChrome && <RecipeWaitlistCta recipeName={recipe.name} inviteCode={invitedBy} className="mt-12" />}
       </motion.div>
 
       <RecipeActionBar

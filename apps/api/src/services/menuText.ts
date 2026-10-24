@@ -1,4 +1,4 @@
-import { timeBudgetsByDay, type DayMenu, type Dish, type SpanishRegion } from '@ona/shared'
+import { madeWithMimoLine, timeBudgetsByDay, type DayMenu, type Dish, type SpanishRegion } from '@ona/shared'
 import { holidayRelaxedDay, holidayTimeBudgets } from './menuHolidays.js'
 
 /**
@@ -167,7 +167,7 @@ const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
  * household's first `SNOWBALL_WEEKS` starts with `SNOWBALL_LINE`.
  */
 export function weekMenuDigest(menu: WeekMenuInput, opts: WeekReplyOptions): string {
-  const { snowball, opener, holiday, shown, link, invite, today, tomorrow } = weekDigestParts(menu, opts)
+  const { snowball, opener, holiday, shown, link, invite, madeWith, today, tomorrow } = weekDigestParts(menu, opts)
   const blocks = shown.map((d) => {
     const when = d.date === today ? ' · hoy' : d.date === tomorrow ? ' · mañana' : ''
     const title = `*${capitalize(DAY_NAME_ES[d.i])} ${Number(d.date.slice(8, 10))}${when}*`
@@ -178,7 +178,14 @@ export function weekMenuDigest(menu: WeekMenuInput, opts: WeekReplyOptions): str
     })
     return [title, ...lines].join('\n')
   })
-  return [...(snowball ? [snowball] : []), opener, ...(holiday ? [holiday] : []), ...blocks, ...(link ? [link] : []), invite].join('\n\n')
+  return [
+    ...(snowball ? [snowball] : []),
+    opener,
+    ...(holiday ? [holiday] : []),
+    ...blocks,
+    ...(link ? [link] : []),
+    madeWith ? `${invite}\n${madeWith}` : invite,
+  ].join('\n\n')
 }
 
 /**
@@ -189,8 +196,8 @@ export function weekMenuDigest(menu: WeekMenuInput, opts: WeekReplyOptions): str
  * things.
  */
 export function weekMenuCaption(menu: WeekMenuInput, opts: WeekReplyOptions): string {
-  const { snowball, opener, holiday, link, invite } = weekDigestParts(menu, opts)
-  const caption = [opener, ...(holiday ? [holiday] : []), ...(link ? [link] : []), invite].join('\n')
+  const { snowball, opener, holiday, link, invite, madeWith } = weekDigestParts(menu, opts)
+  const caption = [opener, ...(holiday ? [holiday] : []), ...(link ? [link] : []), invite, ...(madeWith ? [madeWith] : [])].join('\n')
   return snowball ? `${snowball}\n\n${caption}` : caption
 }
 
@@ -221,6 +228,12 @@ export interface WeekReplyOptions {
    */
   region?: SpanishRegion | null
   timeAvailable?: unknown
+  /**
+   * The household's own invitation code (`users.referral_code`, PRO-162):
+   * the week ends with «Hecho con Mimo · mimoia.com/i/<code>» (D-132), so a
+   * forwarded week brings another household. Absent → no such line.
+   */
+  inviteCode?: string | null
 }
 
 /**
@@ -320,7 +333,8 @@ function weekDigestParts(menu: WeekMenuInput, opts: WeekReplyOptions) {
     : null
   const link = opts.webUrl ? `${MENU_LINK_PREFIX}Recetas y lista de la compra: ${shortWebLink(opts.webUrl, '/menu')}` : null
   const invite = menuDigestInvite(shown.filter((d) => !d.skipped && d.date !== today).map((d) => d.i))
-  return { snowball, opener, holiday, shown, link, invite, today, tomorrow }
+  const madeWith = opts.inviteCode && opts.webUrl ? madeWithMimoLine(opts.webUrl, opts.inviteCode) : null
+  return { snowball, opener, holiday, shown, link, invite, madeWith, today, tomorrow }
 }
 
 /**
@@ -333,9 +347,12 @@ function weekDigestParts(menu: WeekMenuInput, opts: WeekReplyOptions) {
 export const MENU_LINK_PREFIX = '📖 '
 /** How the caption's invite line starts (`¿Cambio algo? Dímelo, …`). */
 export const MENU_INVITE_PREFIX = '¿Cambio algo?'
+/** How the household's invitation foot starts (`Hecho con Mimo · mimoia.com/i/<code>`). */
+export const MADE_WITH_PREFIX = 'Hecho con Mimo ·'
 
 /**
  * PRO-277: the week's caption from longest to shortest — as is, without the
+ * «Hecho con Mimo» foot (the picture carries it too, PRO-1016), without the
  * invite, then without the link too. The opener («Listo: …»), the snowball
  * and the holiday lines always stay. When Mimo's words don't fit with the
  * whole caption, a shorter one keeps everything in ONE message.
@@ -343,7 +360,12 @@ export const MENU_INVITE_PREFIX = '¿Cambio algo?'
 export function captionVariants(caption: string): string[] {
   const without = (prefixes: string[]) =>
     caption.split('\n').filter((l) => !prefixes.some((p) => l.startsWith(p))).join('\n')
-  const out = [caption, without([MENU_INVITE_PREFIX]), without([MENU_INVITE_PREFIX, MENU_LINK_PREFIX])]
+  const out = [
+    caption,
+    without([MADE_WITH_PREFIX]),
+    without([MADE_WITH_PREFIX, MENU_INVITE_PREFIX]),
+    without([MADE_WITH_PREFIX, MENU_INVITE_PREFIX, MENU_LINK_PREFIX]),
+  ]
   return out.filter((c, i) => out.indexOf(c) === i)
 }
 

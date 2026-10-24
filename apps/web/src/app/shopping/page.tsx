@@ -32,7 +32,7 @@ import {
 import { useMenu } from '@/hooks/useMenu'
 import { haptic } from '@/lib/pwa/haptics'
 import { share } from '@/lib/pwa/share'
-import { InviteHouseholdButton } from '@/components/referrals/InviteHouseholdButton'
+import { InviteHouseholdButton, useReferralLink } from '@/components/referrals/InviteHouseholdButton'
 import { AISLE_LABELS, AISLE_ORDER, aisleLabel } from '@/lib/labels'
 import { activeQuickRange, quickRanges, shiftIso, spansWeeks, totalTitle, type QuickRangeKey } from '@/lib/shoppingRange'
 import { LineWeek, LineWeekContext } from '@/components/shopping/LineWeek'
@@ -133,6 +133,8 @@ export default function ShoppingPage() {
 
   // «Familia en el mismo hogar» (PRO-261): once, the first time the list is on screen.
   const familyOffer = useFamilyOfferOnce('compra', !!user && !authLoading && !menuLoading && !!menuId && !!shoppingList)
+  // PRO-1016 (D-132): the shared list ends with this household's invitation.
+  const referral = useReferralLink(!!user)
 
   async function handleExport() {
     haptic.light()
@@ -151,6 +153,7 @@ export default function ShoppingPage() {
       `Lista de compra · Mimoia\nSemana del ${weekStart}\n\n${sections.join('\n')}`,
       window.location.origin,
       'lista',
+      referral.data?.code,
     )
     await share({ title: 'Lista de compra · Mimoia', text })
   }

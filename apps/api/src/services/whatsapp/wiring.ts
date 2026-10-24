@@ -11,7 +11,8 @@ import { generatedWeeksOf } from '../menuWeek.js'
 import { isSchoolMenuMimeType, readSchoolMenu, saveSchoolLunches } from '../schoolMenu.js'
 import { getPrimaryHouseholdId } from '../scopeResolver.js'
 import { runWithCostUser } from '../costLedger.js'
-import type { SchoolLunch } from '@ona/shared'
+import { madeWithMimoLine, type SchoolLunch } from '@ona/shared'
+import { ensureReferralCode } from '../accountReferrals.js'
 import { getMemoryForUser } from '../userMemoryStore.js'
 import { regionFromMemory } from '../menuHolidays.js'
 import { spendCapStatus } from '../spendCap.js'
@@ -47,7 +48,13 @@ async function loadWeekMenu(userId: string, menuId: string | null): Promise<Week
 
 /** Options for the week text and caption: the view, and for a generated week its rank. */
 async function weekReplyOptions(userId: string, view: WeekView): Promise<WeekReplyOptions> {
-  const opts: WeekReplyOptions = { today: madridParts(new Date()).isoDate, webUrl: env.WEB_PUBLIC_URL, view }
+  // PRO-1016 (D-132): the week ends with the household's invitation, so a
+  // forwarded week brings another home. No code → the week goes out without it.
+  const inviteCode = await ensureReferralCode(userId, db).catch((err) => {
+    console.warn('[whatsapp] referral code unavailable (no «Hecho con Mimo» line):', err?.message ?? err)
+    return null
+  })
+  const opts: WeekReplyOptions = { today: madridParts(new Date()).isoDate, webUrl: env.WEB_PUBLIC_URL, view, inviteCode }
   if (view !== 'generated') return opts
   try {
     // PRO-226: the holiday line needs the household's region and time limits.
@@ -119,7 +126,8 @@ export function buildInboundDeps(): InboundDeps {
       if (!menu) return null
       const opts = await weekReplyOptions(userId, view)
       const t0 = Date.now()
-      const jpeg = await weekMenuImage(menu, { today: opts.today, webUrl: env.WEB_PUBLIC_URL, photoUrls: recipePhotoUrls })
+      const madeWith = opts.inviteCode ? madeWithMimoLine(env.WEB_PUBLIC_URL, opts.inviteCode) : null
+      const jpeg = await weekMenuImage(menu, { today: opts.today, webUrl: env.WEB_PUBLIC_URL, madeWith, photoUrls: recipePhotoUrls })
       if (!jpeg) return null
       console.log(`[whatsapp] week image drawn in ${Date.now() - t0} ms (${Math.round(jpeg.length / 1024)} KB)`)
       return { jpeg, caption: weekMenuCaption(menu, opts) }

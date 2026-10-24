@@ -3,7 +3,7 @@
  * link that opens without an account and says what Mimoia is.
  */
 import { describe, expect, it } from 'vitest'
-import { menuShareText, recipeSharePayload, withOnaFooter } from '@ona/shared'
+import { madeWithMimoLine, menuShareText, recipeSharePayload, shortInviteLink, withOnaFooter } from '@ona/shared'
 
 const ORIGIN = 'https://ona.example/'
 
@@ -59,5 +59,33 @@ describe('menuShareText', () => {
 
   it('withOnaFooter appends the link once', () => {
     expect(withOnaFooter('Lista\n\n', ORIGIN, 'lista')).toMatch(/^Lista\n\n— Hecho con Mimoia,.*\/\?ref=lista$/)
+  })
+})
+
+describe('the household’s invitation at the foot (PRO-1016, D-132)', () => {
+  it('short link: no scheme, no www, /i/<code>', () => {
+    expect(shortInviteLink('https://www.mimoia.com/', 'abcd2345')).toBe('mimoia.com/i/abcd2345')
+    expect(madeWithMimoLine('https://mimoia.com', 'abcd2345')).toBe('Hecho con Mimo · mimoia.com/i/abcd2345')
+  })
+
+  it('the shared list ends with «Hecho con Mimo · …/i/<code>» of the household that shares it', () => {
+    const text = withOnaFooter('Lista de compra · Mimoia\n\n## Frutas\n- Cebolla: 300 g\n', 'https://mimoia.com', 'lista', 'abcd2345')
+    expect(text).toBe('Lista de compra · Mimoia\n\n## Frutas\n- Cebolla: 300 g\n\nHecho con Mimo · mimoia.com/i/abcd2345')
+    expect(text).not.toContain('?ref=lista')
+  })
+
+  it('a catalogue recipe carries the code in its link (no text next to the url)', () => {
+    const p = recipeSharePayload({ id: 'r1', name: 'Lentejas', authorId: null }, ORIGIN, 'abcd2345')
+    expect(p).toEqual({ title: 'Lentejas', url: 'https://ona.example/recipes/r1?ref=receta&invita=abcd2345' })
+  })
+
+  it('a private recipe ends with the household’s «Hecho con Mimo» line', () => {
+    const p = recipeSharePayload({ id: 'r2', name: 'Fabada', authorId: 'u1', ingredients: [{ ingredientName: 'alubias', quantity: 500, unit: 'g' }] }, 'https://mimoia.com', 'abcd2345')
+    expect(p.text).toBe('Fabada\n\nIngredientes:\n- alubias (500 g)\n\nHecho con Mimo · mimoia.com/i/abcd2345')
+  })
+
+  it('without a code (signed out, not loaded yet) the share is as before', () => {
+    expect(recipeSharePayload({ id: 'r1', name: 'Lentejas', authorId: null }, ORIGIN, null).url).toBe('https://ona.example/recipes/r1?ref=receta')
+    expect(withOnaFooter('Lista', ORIGIN, 'lista', undefined)).toContain('/?ref=lista')
   })
 })

@@ -269,6 +269,15 @@ function footer(): Node {
   )
 }
 
+/** PRO-1016: the household's invitation, small and faint under everything (never over a dish). */
+function madeWithLine(line: string): Node {
+  return el(
+    'div',
+    { justifyContent: 'center', marginTop: 18, paddingTop: 14, borderTop: `1px solid ${C.hairline}` },
+    text({ fontFamily: 'Inter', fontSize: 20, color: C.faint, whiteSpace: 'pre' }, line),
+  )
+}
+
 /** The page as satori elements (exported for tests that only check structure). */
 export function weekImageTree(model: WeekImageModel, photoFor: PhotoFor): Node {
   const L = layoutFor(model)
@@ -284,6 +293,7 @@ export function weekImageTree(model: WeekImageModel, photoFor: PhotoFor): Node {
       ...(model.columns.length > 0 ? [columnHeaders(model, L)] : []),
       ...model.rows.map((r) => row(model, r, L, photoFor)),
       footer(),
+      ...(model.madeWith ? [madeWithLine(model.madeWith)] : []),
     ),
   )
 }

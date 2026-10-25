@@ -148,7 +148,7 @@ The model responds with either a plain text message or tool calls. `runToolLoop`
 
 ## Voice (one brain)
 
-Typed and spoken turns go to the same Claude assistant; there is no separate voice model. The mic records with silence detection → `POST /stt` (OpenAI transcription) → the text is sent with `mode: 'voice'` (short spoken replies) → the reply is read aloud by `POST /tts` (ElevenLabs, browser voice as fallback). Spoken turns are always read aloud; typed turns only when «Leer las respuestas en voz alta» is on. «Manos libres» listens again after each reply. Full detail (recorder timings, TTS limits, fallbacks) in [Voice (Mimo)](./voice-mode.md).
+Typed and spoken turns go to the same Claude assistant; there is no separate voice model. The mic records with silence detection → `POST /stt` (transcription: Groq, then AiKit, then OpenAI) → the text is sent with `mode: 'voice'` (short spoken replies) → the reply is read aloud by `POST /tts` (ElevenLabs, browser voice as fallback). Spoken turns are always read aloud; typed turns only when «Leer las respuestas en voz alta» is on. «Manos libres» listens again after each reply. Full detail (recorder timings, TTS limits, fallbacks) in [Voice (Mimo)](./voice-mode.md).
 
 ## Page context
 
@@ -163,7 +163,7 @@ Typed and spoken turns go to the same Claude assistant; there is no separate voi
   - Response: `{ message, skillUsed?, uiHint?, data?, actionTaken? }`
   - `:userId` must match the authenticated user, else **403** (the chat loads that user's context and bills their budget)
   - Returns **429** `code: 'ADVISOR_BUDGET_EXCEEDED'` once the user has spent their monthly euro budget (see Cost guardrail)
-- `POST /stt` (auth, 60/min, spend cap): multipart `audio` ≤ 10 MB → `{ text }`; 503 `STT_DISABLED` without `OPENAI_API_KEY`, 502 `STT_FAILED` on a transcription error. Cost feature `mimo_voice_transcription`.
+- `POST /stt` (auth, 60/min, spend cap): multipart `audio` ≤ 10 MB → `{ text }`; 503 `STT_DISABLED` with no transcription provider (`GROQ_API_KEY`, `AIKIT_API_KEY`, `OPENAI_API_KEY`), 502 `STT_FAILED` when every configured provider fails (chain in [Voice (Mimo)](./voice-mode.md)). Cost feature `mimo_voice_transcription`.
 - `GET /tts/voices`, `POST /tts { text, voice }`: read-aloud (see Voice).
 
 ## Channels
@@ -191,7 +191,7 @@ The advisor's weekly nutrient/calorie aggregators iterate `slot.dishes` and proc
 - One turn at a time: while Mimo is thinking, a new message is ignored
 - All assistant responses are in Spanish by design
 - **AI disclosure (EU AI Act art. 50, in force since 2026-08-02):** the panel always shows a caption under the composer ("Mimo es un asistente de inteligencia artificial (IA): puede equivocarse y no sustituye a un profesional sanitario.", `data-testid="ai-disclosure"`), and the empty state introduces Mimo. The wording lives in `AI_DISCLOSURE*` in `packages/shared/src/constants/aiDisclosure.ts`, shared with WhatsApp; pinned by `apps/web/e2e/ai-disclosure.spec.ts`.
-- Without `OPENAI_API_KEY`, `POST /stt` answers 503 and only typing works (plus the Web Speech fallback in browsers without MediaRecorder)
+- With no transcription provider configured (`GROQ_API_KEY`, `AIKIT_API_KEY`, `OPENAI_API_KEY`), `POST /stt` answers 503 and only typing works (plus the Web Speech fallback in browsers without MediaRecorder)
 - The model used (Claude family) is configured via the LLM provider in `services/providers/`
 - The advisor has read-write access to the user's data via skills (it can generate menus, swap meals, create recipes, etc.) — destructive intents are confirmed in copy (see Decisiveness)
 - The health rule (PRO-62) is a prompt instruction: the model can still slip. The CI pins the rule, the grader and the engine net, not the model's answers; `scripts/evalHealthAnswers.ts` checks those against the live model and has to be run by hand. The engine only appends the §6 sentence and flags `health_talk`: it doesn't remove body-effect talk from a reply

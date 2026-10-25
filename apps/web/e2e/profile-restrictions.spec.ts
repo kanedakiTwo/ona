@@ -119,6 +119,8 @@ test('halal (2026-10-25) is a chip in onboarding and in the profile, and it is s
   await expect(page.getByRole('button', { name: 'Quitar sin gluten' })).toBeVisible({ timeout: 15_000 })
   await page.getByRole('button', { name: /^halal$/i }).click()
   await expect(page.getByRole('button', { name: 'Quitar halal' })).toBeVisible()
+  // Legal (E-19): Mimoia leaves pork and alcohol out; it doesn't certify anything.
+  await expect(page.getByTestId('religion-consent')).toContainText('Sin cerdo ni alcohol. La carne y los productos, búscalos con sello halal.')
   await page.getByRole('button', { name: /guardar/i }).click()
   await expect(page.getByText(/guardado/i).first()).toBeVisible({ timeout: 10_000 })
 

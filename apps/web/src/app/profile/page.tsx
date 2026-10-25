@@ -67,9 +67,10 @@ import { DeleteAccountCard } from '@/components/profile/DeleteAccountCard'
 import { NewsletterToggle } from '@/components/profile/NewsletterToggle'
 import { useWhatsAppStatus } from '@/hooks/useWhatsApp'
 import type { Meal } from '@ona/shared'
-import { RESTRICTION_PRESETS, subscriptionSummary, unionRestrictions } from '@ona/shared'
+import { consentCoversReligiousDiet, isReligiousDiet, RESTRICTION_PRESETS, subscriptionSummary, unionRestrictions } from '@ona/shared'
 import type { HealthConsentState } from '@ona/shared'
 import { HealthConsentCheckbox } from '@/components/HealthConsentCheckbox'
+import { ReligionConsentNote } from '@/components/ReligionConsentNote'
 
 interface PhysicalData {
   sex: 'male' | 'female' | ''
@@ -175,6 +176,9 @@ export default function ProfilePage() {
   const [healthConsent, setHealthConsent] = useState<HealthConsentState | null>(null)
   const [consentBusy, setConsentBusy] = useState(false)
   const healthActive = healthConsent?.active === true
+  // Halal under a v1 consent: the current text first (Legal, E-19).
+  const needsReligion = healthActive && !consentCoversReligiousDiet(healthConsent?.version)
+  const [religionDropped, setReligionDropped] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
@@ -195,6 +199,16 @@ export default function ProfilePage() {
         setPhysical({ sex: '', age: '', weight: '', height: '', activity_level: 'moderate' })
         setPreferences((p) => ({ ...p, restrictions: [] }))
       }
+    } catch (e) { console.error(e) }
+    finally { setConsentBusy(false) }
+  }
+
+  async function handleReligionConsent(next: boolean) {
+    if (!user || !next || consentBusy) return
+    setConsentBusy(true)
+    try {
+      setHealthConsent(await api.post<HealthConsentState>(`/user/${user.id}/health-consent`, { consent: true }))
+      setReligionDropped(false)
     } catch (e) { console.error(e) }
     finally { setConsentBusy(false) }
   }
@@ -348,6 +362,9 @@ export default function ProfilePage() {
   const handleSave = useCallback(async () => {
     if (!user) return
     setSaving(true); setSaved(false)
+    // Without the current text a v1 consent doesn't cover halal: the rest is saved, halal isn't.
+    const restrictionsToSave = needsReligion ? preferences.restrictions.filter((r) => !isReligiousDiet(r)) : preferences.restrictions
+    setReligionDropped(restrictionsToSave.length < preferences.restrictions.length)
     try {
       const ACTIVITY_MAP: Record<string, 'none' | 'light' | 'moderate' | 'high'> = {
         sedentary: 'none',
@@ -365,7 +382,7 @@ export default function ProfilePage() {
       if (physical.activity_level) userPayload.activityLevel = ACTIVITY_MAP[physical.activity_level] ?? 'moderate'
       // Same list to the account and to the settings blob (PRO-64): the
       // screen shows the union of both, so this never drops either side.
-      userPayload.restrictions = preferences.restrictions
+      userPayload.restrictions = restrictionsToSave
       }
       const PRIORITY_MAP: Record<string, 'quick' | 'varied' | 'healthy' | 'cheap'> = {
         balanced: 'varied',
@@ -393,7 +410,7 @@ export default function ProfilePage() {
       }
       calls.push(api.put(`/user/${user.id}/settings`, {
         template: healthActive
-          ? { physical, preferences, mealTemplate, mealDishCounts, fixedMeals, taperDays }
+          ? { physical, preferences: { ...preferences, restrictions: restrictionsToSave }, mealTemplate, mealDishCounts, fixedMeals, taperDays }
           : { preferences: { ...preferences, restrictions: [] }, mealTemplate, mealDishCounts, fixedMeals, taperDays },
       }))
       await Promise.all(calls)
@@ -401,7 +418,7 @@ export default function ProfilePage() {
       setTimeout(() => setSaved(false), 2500)
     } catch (e) { console.error(e) }
     finally { setSaving(false) }
-  }, [user, updateUser, physical, preferences, household, mealTemplate, mealDishCounts, fixedMeals, taperDays, healthActive])
+  }, [user, updateUser, physical, preferences, household, mealTemplate, mealDishCounts, fixedMeals, taperDays, healthActive, needsReligion])
 
 
   if (authLoading || !user) {
@@ -709,6 +726,18 @@ export default function ProfilePage() {
                       Añadir
                     </button>
                   </div>
+                  <ReligionConsentNote
+                    restrictions={preferences.restrictions}
+                    needsConsent={needsReligion}
+                    checked={false}
+                    onChange={handleReligionConsent}
+                    disabled={consentBusy}
+                  />
+                  {religionDropped && needsReligion && (
+                    <p role="alert" className="mt-2 text-[13px] text-terracotta-deep">
+                      No hemos guardado «halal»: marca la casilla del texto nuevo para guardarlo.
+                    </p>
+                  )}
                 </fieldset>
               </div>
             </ProfileCard>

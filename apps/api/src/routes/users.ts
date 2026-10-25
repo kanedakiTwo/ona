@@ -22,8 +22,12 @@ import { readRestrictionTexts } from '../services/restrictionReader.js'
 import {
   getHealthConsent,
   grantHealthConsent,
+  assertReligionConsent,
   hasHealthConsent,
+  healthConsentCoversReligion,
+  ReligionConsentRequiredError,
   stripHealthFromTemplate,
+  withoutUncoveredReligiousDiets,
   stripHealthProfileFields,
   withdrawHealthConsent,
 } from '../services/healthConsent.js'
@@ -153,6 +157,14 @@ router.put('/user/:id', validate(updateProfileSchema), async (req: AuthRequest, 
         error: 'Para guardar datos de salud necesitas dar tu consentimiento en tu perfil.',
         code: 'HEALTH_CONSENT_REQUIRED',
       })
+      return
+    }
+    // «halal» under a v1 consent: the current text first (Legal, E-19).
+    try {
+      await assertReligionConsent(req.userId!, body.restrictions)
+    } catch (e) {
+      if (!(e instanceof ReligionConsentRequiredError)) throw e
+      res.status(403).json({ error: e.message, code: e.code })
       return
     }
 
@@ -407,7 +419,7 @@ router.put('/user/:id/settings', async (req: AuthRequest, res) => {
     }
 
     const template = (await hasHealthConsent(req.params.id))
-      ? req.body.template
+      ? withoutUncoveredReligiousDiets(req.body.template, await healthConsentCoversReligion(req.params.id))
       : stripHealthFromTemplate(req.body.template)
     // Comidas fijas (PRO-218): keep only well-formed ones.
     if (template && typeof template === 'object' && !Array.isArray(template) && 'fixedMeals' in template) {

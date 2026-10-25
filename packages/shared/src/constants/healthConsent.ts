@@ -13,6 +13,30 @@ export const HEALTH_CONSENT_VERSION = 'salud-v2-2026-10'
 export const HEALTH_CONSENT_TEXT =
   'Consiento que Mimoia trate mis datos de salud (alergias, intolerancias, restricciones, edad, sexo, peso, altura y nivel de actividad) y, si la indico, mi dieta por motivos religiosos (como halal), para adaptar mis menús y avisos. Puedo retirarlo cuando quiera desde mi perfil; si lo retiro, se borran esos datos. Más información en la política de privacidad.'
 
+/**
+ * v1 of the text didn't name a diet for religious reasons. Whoever consented
+ * under it is asked for the current text the moment they mark one, and until
+ * then it isn't saved; their v1 still stands for the rest (Legal, E-19,
+ * 2026-10-25).
+ */
+const VERSIONS_WITHOUT_RELIGION = new Set(['salud-v1-2026-10'])
+
+export function consentCoversReligiousDiet(version: string | null | undefined): boolean {
+  return !!version && !VERSIONS_WITHOUT_RELIGION.has(version)
+}
+
+/** A restriction that reveals a religion: «halal», «soy musulmán», «comida kosher». */
+export function isReligiousDiet(restriction: string): boolean {
+  const n = restriction.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  return /\b(halal|kosher)\b|\bmusulman/.test(n)
+}
+
+/** Under the «halal» chip (Legal, E-19): Mimoia leaves things out, it doesn't certify them. */
+export const HALAL_HINT = 'Sin cerdo ni alcohol. La carne y los productos, búscalos con sello halal.'
+
+/** Above the box that asks a v1 consent for the current text. */
+export const RELIGION_CONSENT_NOTE = 'Para guardar «halal» necesitamos tu permiso con el texto nuevo, que nombra la dieta por motivos religiosos:'
+
 /** Shown once on /menu to users without the consent. */
 export const NO_HEALTH_DATA_NOTICE = 'No tenemos tus alergias: revisa los ingredientes de cada receta'
 

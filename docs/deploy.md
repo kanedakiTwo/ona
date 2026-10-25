@@ -82,6 +82,8 @@ curl -s "https://ona-api-production.up.railway.app/whatsapp/webhook?hub.mode=sub
 
 The API runs `pnpm --filter @ona/api db:migrate` on boot (set in `RAILPACK_START_CMD`), so committed Drizzle migrations apply automatically on the next deploy. Right after them it runs the idempotent catalogue backfill `applyCatalogSourceLinks` (Notion «Ver fuente» links for system recipes without one; log line `[catalog-source-links] …`; see `specs/recipe-import.md`). Each deploy takes 2–4 minutes.
 
+**Deployed commit (PRO-365, see specs/version.md).** Before uploading, the deploy should write the full hash of `HEAD` plus a newline into a `VERSION_SHA` file at the top of the tree. Git ignores that file, and so may the Railway CLI when uploading: make sure it still travels (for instance with `--no-gitignore`). Both services then report that hash; with no file they report null.
+
 ## Staging
 
 Since 2026-10-08 the `ona-app` project has a second Railway environment, **`staging`**, duplicated from production: its own `ona-api`, `ona-web` and Postgres, at https://ona-api-staging.up.railway.app and https://ona-web-staging.up.railway.app. Differences from production:

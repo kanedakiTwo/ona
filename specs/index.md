@@ -204,6 +204,14 @@ User-scoped recipe curator inside `/profile` ("Mis recetas" tab). Lists recipes 
 
 ---
 
+## [Uso de cada función por hogar](./feature-usage.md)
+
+PRO-1023 (D-122, punto 4): catálogo de funciones en código, una entrada por truco (`FEATURE_CATALOG`: id, nombre, `accion` | `ajuste`, por hogar o persona, qué `usage_events` cuentan), y tabla `household_feature_usage` (primera vez, última vez, `uses_30d`, `uses_total` y `counted_until` por hogar o persona y función) que rellena cada noche, desde la 01:00 de Madrid, una pasada del planificador sobre los eventos de ayer. Una acción suma un uso por evento; un ajuste, una vez por semana en que actuó. `uses_total` sigue después de la purga de 180 días de los eventos. Solo cifras y fechas; CASCADE con el hogar y con la cuenta.
+
+**Source**: `packages/shared/src/constants/featureCatalog.ts`, `apps/api/src/services/featureUsage.ts`, `apps/api/src/services/notificationScheduler.ts`, `apps/api/src/db/schema.ts` (`householdFeatureUsage`), `apps/api/src/db/migrations/0094_household_feature_usage.sql`, `apps/api/src/tests/featureUsage.test.ts`, `apps/api/src/tests/featureUsage.smoke.ts`
+
+---
+
 ## [Error Tracking (in-house)](./errors.md)
 
 Own error tracker, Sentry alternative with no third party: `app_errors` grouped table (fingerprint = kind + normalised message + top stack frame; count, first/last seen, sample stack/path, release, browser family, last user, resolved), client errors from the web (`window.onerror`, `unhandledrejection`, `error.tsx` / `global-error.tsx` boundaries "Algo se ha torcido", `navigator.sendBeacon` / keepalive fetch to public `POST /client-errors`, 8 KB cap, per-IP 30/min, dedupe per page load, ≤ 10 reports per page, off in dev unless `NEXT_PUBLIC_ERROR_REPORTING`), API 5xx capture (route pattern, console.error capture via AsyncLocalStorage, error middleware, `unhandledRejection`), scrubbing (emails, phones, IPs, JWT, Bearer, query strings, SQL params, tokens), write throttle / coalescing, `GET /admin/errors` for Mimoia HQ agents (admin JWT or `x-metrics-token`), `POST /admin/errors/:id/resolve` (audited), `errors` block in `/admin/metrics`, migration 0036.

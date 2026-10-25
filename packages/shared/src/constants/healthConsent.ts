@@ -2,14 +2,16 @@
  * Explicit consent for health data (RGPD art. 9.2.a, PRO-21). Allergies,
  * intolerances, restrictions and the physical profile are special-category
  * data: Mimoia only stores them after the user ticks a separate, unticked
- * box. Withdrawing the consent deletes them.
+ * box. Withdrawing the consent deletes them. A religion-based diet (halal,
+ * 2026-10-25) is special-category data too (art. 9.1) and goes with them:
+ * v2 of the text names it.
  */
 
 /** Bump when the consent text changes; stored with every consent. */
-export const HEALTH_CONSENT_VERSION = 'salud-v1-2026-10'
+export const HEALTH_CONSENT_VERSION = 'salud-v2-2026-10'
 
 export const HEALTH_CONSENT_TEXT =
-  'Consiento que Mimoia trate mis datos de salud (alergias, intolerancias, restricciones, edad, sexo, peso, altura y nivel de actividad) para adaptar mis menús y avisos. Puedo retirarlo cuando quiera desde mi perfil; si lo retiro, se borran esos datos. Más información en la política de privacidad.'
+  'Consiento que Mimoia trate mis datos de salud (alergias, intolerancias, restricciones, edad, sexo, peso, altura y nivel de actividad) y, si la indico, mi dieta por motivos religiosos (como halal), para adaptar mis menús y avisos. Puedo retirarlo cuando quiera desde mi perfil; si lo retiro, se borran esos datos. Más información en la política de privacidad.'
 
 /** Shown once on /menu to users without the consent. */
 export const NO_HEALTH_DATA_NOTICE = 'No tenemos tus alergias: revisa los ingredientes de cada receta'

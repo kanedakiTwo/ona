@@ -27,7 +27,7 @@ export default function PrivacidadPage() {
         <h1 className="font-display text-4xl text-[#1A1612] md:text-5xl">Política de privacidad</h1>
 
         <div className="mt-8 space-y-5 text-[15px] leading-relaxed text-[#4A4239]">
-          <p className="text-sm text-[#7A7066]">Última actualización: 21 de octubre de 2026</p>
+          <p className="text-sm text-[#7A7066]">Última actualización: 25 de octubre de 2026</p>
 
           <H2>1. Quién trata tus datos</H2>
           <p data-testid="privacy-controller">
@@ -43,8 +43,9 @@ export default function PrivacidadPage() {
               <strong>Datos de salud y alimentación:</strong> sexo, edad, peso, altura y nivel de actividad
               (para calcular tus calorías), alergias, intolerancias y restricciones (para que Mimoia no te
               proponga lo que no puedes comer), gustos y lo que cocinas. Las alergias y los datos físicos son
-              datos de salud: solo los tratamos porque tú nos los das, con tu consentimiento explícito, y
-              puedes borrarlos cuando quieras desde tu perfil.
+              datos de salud, y una dieta por motivos religiosos (como halal) revela tus creencias: solo los
+              tratamos porque tú nos los das, con tu consentimiento explícito, y puedes borrarlos cuando quieras
+              desde tu perfil.
             </li>
             <li><strong>Tu uso de Mimoia:</strong> menús, lista de la compra, despensa, recetas propias y fotos que subas.</li>
             <li data-testid="privacy-signup-shopping">

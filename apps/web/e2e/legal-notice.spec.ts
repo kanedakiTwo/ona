@@ -72,7 +72,15 @@ test('/privacidad: AiKit says its images are made with OpenAI models', async ({ 
   )
   const main = page.getByTestId('reading-column')
   await expect(main).not.toContainText('cuando lo pides')
-  await expect(main).toContainText('Última actualización: 21 de octubre de 2026')
+  await expect(main).toContainText('Última actualización: 25 de octubre de 2026')
+})
+
+// Halal (2026-10-25): a religion-based diet is special-category data, under the same consent.
+test('/privacidad: a diet for religious reasons goes with the health data', async ({ page }) => {
+  await page.goto('/privacidad')
+  await expect(page.getByTestId('reading-column')).toContainText(
+    'Las alergias y los datos físicos son datos de salud, y una dieta por motivos religiosos (como halal) revela tus creencias: solo los tratamos porque tú nos los das, con tu consentimiento explícito',
+  )
 })
 
 // PRO-120 (Legal, 2026-10-20): the app's own usage events, screens included, in Legal's exact words.

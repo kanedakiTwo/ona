@@ -14,7 +14,7 @@ import { stripHealthFromTemplate, stripHealthProfileFields } from '../services/h
 
 describe('health consent rules', () => {
   it('pins the consent text version', () => {
-    expect(HEALTH_CONSENT_VERSION).toBe('salud-v1-2026-10')
+    expect(HEALTH_CONSENT_VERSION).toBe('salud-v2-2026-10')
   })
 
   it('is active only when given and not withdrawn afterwards', () => {

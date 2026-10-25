@@ -196,8 +196,8 @@ export default function HouseholdAllergiesPage() {
       }
       intro={
         fromProfile
-          ? "¿Tienes alguna alergia o intolerancia, o sigues alguna dieta (vegetariana, sin cerdo…)? Si no está en la lista, escríbela. El menú de la casa las tendrá en cuenta para todos."
-          : "Antes de ver el menú de la casa: ¿tienes alguna alergia o intolerancia, o sigues alguna dieta (vegetariana, sin cerdo…)? El menú de la casa las tendrá en cuenta para todos."
+          ? "¿Tienes alguna alergia o intolerancia, o sigues alguna dieta (vegetariana, halal, sin cerdo…)? Si no está en la lista, escríbela. El menú de la casa las tendrá en cuenta para todos."
+          : "Antes de ver el menú de la casa: ¿tienes alguna alergia o intolerancia, o sigues alguna dieta (vegetariana, halal, sin cerdo…)? El menú de la casa las tendrá en cuenta para todos."
       }
     >
       <div data-testid="household-allergies" className="max-w-xl">

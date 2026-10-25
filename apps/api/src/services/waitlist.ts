@@ -44,6 +44,7 @@ import { record as recordAudit } from './auditLog.js'
 import { MADRID_TZ, addDays, madridParts } from './madridTime.js'
 import { hashInviteToken, waitlistEntryUrl, waitlistInviteToken } from './waitlistInvites.js'
 import { forgetNewsletterSends } from './newsletter.js'
+import { invitationOrigin, loadCircleCodes } from './circleInvitations.js'
 
 type Db = typeof defaultDb
 
@@ -208,6 +209,8 @@ export const WAITLIST_DEFINITIONS = {
   sources:
     'Entradas activas por `?ref=` (bySource), por utm (byUtm) y por utm_campaign (byCampaign); en cada fila, `count` y cuántas están en el segmento objetivo (`inTarget`).',
   referredSignups: 'Entradas activas que llegaron con el enlace de otra persona (?invita=).',
+  invitations:
+    'Entradas activas que llegaron con el enlace personal de un hogar (?invita=), en dos grupos: `desconocidoPorInvitacion`, el enlace de un hogar del círculo de Miguel (entró por circulo-*, beta-privada-* o colegio-estudio; no conocen a Miguel y cuentan para la señal del 13-nov, D-132), e `invita`, el de cualquier otro hogar o persona de la lista. En cada uno, `count` e `inTarget`.',
   newsletterOptIns: 'Entradas activas que han marcado, aparte, recibir el menú de la semana por email.',
   suggestedNextBatch:
     'Solo entradas en espera. Orden: segmento objetivo; dentro, quien ha traído a alguien o cuya persona invitante ya está dentro; después, la más antigua. Cada persona elegida arrastra a quienes se apuntaron con su enlace (entran juntos), hasta llenar la tanda. Con el JWT de admin, los ids en orden; con el token de lectura, solo el tamaño y los recuentos. Sin datos personales.',
@@ -232,7 +235,15 @@ const byCountDesc = <T extends { count: number }>(a: T, b: T) => b.count - a.cou
 
 export function buildWaitlistReport(
   rows: WaitlistReportRow[],
-  opts: { now: Date; days: number; batchSize: number; topReferrers?: number; accountCodes?: ReadonlySet<string> },
+  opts: {
+    now: Date
+    days: number
+    batchSize: number
+    topReferrers?: number
+    accountCodes?: ReadonlySet<string>
+    /** Personal codes of the circle's households (PRO-1017, `loadCircleCodes`). */
+    circleCodes?: ReadonlySet<string>
+  },
 ) {
   const active = rows.filter((r) => r.status !== 'unsubscribed')
   const weekAgo = opts.now.getTime() - 7 * 86_400_000
@@ -303,6 +314,15 @@ export function buildWaitlistReport(
     .map(([code, { count }]) => ({ code, count }))
     .sort((a, b) => b.count - a.count || a.code.localeCompare(b.code))
 
+  // PRO-1017: the personal link of a circle household brings strangers to Miguel (D-132).
+  const invitations = { invita: { count: 0, inTarget: 0 }, desconocidoPorInvitacion: { count: 0, inTarget: 0 } }
+  for (const r of referred) {
+    const origin = invitationOrigin(r.referredByCode, opts.circleCodes ?? new Set())
+    const bucket = origin === 'desconocido-por-invitacion' ? invitations.desconocidoPorInvitacion : invitations.invita
+    bucket.count += 1
+    if (isTargetSegment(r)) bucket.inTarget += 1
+  }
+
   const batches = [...countBy(rows.filter((r) => r.batch != null), (r) => String(r.batch)).keys()]
     .map(Number)
     .sort((a, b) => a - b)
@@ -337,6 +357,7 @@ export function buildWaitlistReport(
       referrers: topReferrers.length,
       topReferrers: topReferrers.slice(0, opts.topReferrers ?? 10),
     },
+    invitations,
     batches,
     suggestedNextBatch: suggestNextBatch(rows, opts.batchSize, opts.accountCodes),
     definitions: WAITLIST_DEFINITIONS,
@@ -574,6 +595,7 @@ export async function loadWaitlistReport(
       days: opts.days,
       batchSize: opts.batchSize,
       accountCodes: await loadAccountReferralCodes(db),
+      circleCodes: await loadCircleCodes(db),
     }),
     // Founder pricing signal (PRO-26): price distributions + reservations, aggregates only.
     pricing: buildPricingReport(rows.filter((r) => r.status !== 'unsubscribed')),

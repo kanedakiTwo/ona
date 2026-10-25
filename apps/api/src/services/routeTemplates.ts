@@ -251,6 +251,7 @@ export const WEB_PAGE_TEMPLATES: readonly string[] = [
   '/menu/imprimir',
   '/n/:x/:x',
   '/newsletter/baja',
+  '/newsletter/comparte',
   '/offline',
   '/onboarding',
   '/onboarding/voz',

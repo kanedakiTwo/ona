@@ -46,6 +46,44 @@ export function trackedUrl(publicUrl: string, issueId: string, index: number, pr
   return `${publicUrl.replace(/\/+$/, '')}/n/${encodeURIComponent(issueId)}/${index}${proof ? '?prueba=1' : ''}`
 }
 
+// ─── Slots: per-recipient links (PRO-1019) ───────────────────────
+
+/**
+ * A slot is a place in the email whose destination is different for each
+ * recipient (their own invite link), so it can't be saved at send like a
+ * content link. Its rows in `newsletter_clicks` take a fixed index (above
+ * any content link, which are at most 4) and a descriptor as destination;
+ * the click carries the recipient's code (`?c=<code>&k=lista|hogar`) and
+ * the API builds the destination from it (`slotDestination`): always
+ * wa.me or our own page, never a URL from the request.
+ */
+export const NEWSLETTER_SLOT_LINKS = [
+  { index: 41, slot: 'corre_la_voz', button: 'whatsapp' },
+  { index: 42, slot: 'corre_la_voz', button: 'copiar' },
+] as const
+export type NewsletterSlotLink = (typeof NEWSLETTER_SLOT_LINKS)[number]
+export type InviteKind = 'lista' | 'hogar'
+
+const slotDescriptor = (l: NewsletterSlotLink) => `hueco:${l.slot}:${l.button}`
+
+export function slotLinkAt(index: number): NewsletterSlotLink | null {
+  return NEWSLETTER_SLOT_LINKS.find((l) => l.index === index) ?? null
+}
+
+export function slotLinkFor(slot: NewsletterSlotLink['slot'], button: NewsletterSlotLink['button']): NewsletterSlotLink {
+  return NEWSLETTER_SLOT_LINKS.find((l) => l.slot === slot && l.button === button)!
+}
+
+/** The slot rows saved with the issue's links. */
+export function slotLinks(): TrackedLink[] {
+  return NEWSLETTER_SLOT_LINKS.map((l) => ({ index: l.index, destination: slotDescriptor(l) }))
+}
+
+/** `<web>/n/<issueId>/<index>?c=<code>&k=<kind>` (+ `&prueba=1` on a proof). */
+export function trackedSlotUrl(publicUrl: string, issueId: string, link: NewsletterSlotLink, code: string, kind: InviteKind, proof = false): string {
+  return `${trackedUrl(publicUrl, issueId, link.index)}?c=${encodeURIComponent(code)}&k=${kind}${proof ? '&prueba=1' : ''}`
+}
+
 /** Pure: the content with each link replaced by its tracked URL. */
 export function withTrackedLinks(
   content: NewsletterContent,
@@ -86,7 +124,13 @@ export interface IssueStats {
   issueId: string
   firstSentAt: string | null
   sent: { total: number; user: number; waitlist: number }
-  clicks: { total: number; links: Array<{ index: number; destination: string; clicks: number }> }
+  clicks: {
+    /** Content links and slots together. */
+    total: number
+    links: Array<{ index: number; destination: string; clicks: number }>
+    /** Per-recipient slots (PRO-1019), e.g. `corre_la_voz` → whatsapp and copiar. */
+    slots: Record<string, { total: number; buttons: Record<string, number> }>
+  }
   unsubscribes: { total: number; user: number; waitlist: number }
 }
 
@@ -207,7 +251,16 @@ function issueRows(
   const ids = new Set<string>([...sends.map((s) => s.issueId), ...clicks.map((c) => c.issueId)])
   const out: IssueStats[] = [...ids].map((issueId) => {
     const s = sends.find((x) => x.issueId === issueId)
-    const links = clicks.filter((c) => c.issueId === issueId).sort((a, b) => a.index - b.index)
+    const all = clicks.filter((c) => c.issueId === issueId).sort((a, b) => a.index - b.index)
+    const links = all.filter((c) => !slotLinkAt(c.index))
+    const slots: IssueStats['clicks']['slots'] = {}
+    for (const c of all) {
+      const s = slotLinkAt(c.index)
+      if (!s) continue
+      const row = (slots[s.slot] ??= { total: 0, buttons: {} })
+      row.total += c.clicks
+      row.buttons[s.button] = (row.buttons[s.button] ?? 0) + c.clicks
+    }
     const un = unsubs.filter((u) => u.issueId === issueId)
     const user = un.filter((u) => u.source === 'user').reduce((a, u) => a + u.n, 0)
     const waitlist = un.filter((u) => u.source === 'waitlist').reduce((a, u) => a + u.n, 0)
@@ -216,8 +269,9 @@ function issueRows(
       firstSentAt: s?.firstSentAt ?? null,
       sent: { total: s?.total ?? 0, user: s?.user ?? 0, waitlist: s?.waitlist ?? 0 },
       clicks: {
-        total: links.reduce((a, l) => a + l.clicks, 0),
+        total: all.reduce((a, l) => a + l.clicks, 0),
         links: links.map(({ index, destination, clicks: n }) => ({ index, destination, clicks: n })),
+        slots,
       },
       unsubscribes: { total: user + waitlist, user, waitlist },
     }
@@ -228,7 +282,7 @@ function issueRows(
 export const NEWSLETTER_STATS_DEFINITIONS = {
   sent: 'Emails that went out for the issue (newsletter_sends with status sent), by source: user (accounts) and waitlist.',
   clicks:
-    'Our own counter (PRO-191): times each link of the content was opened through <web>/n/<issue>/<index>. Clicks, not people: one person can click twice and nobody is identified. HEAD requests, proofs (?prueba=1) and known mail scanners or link previewers (by user-agent) do not count. Resend tracking stays off.',
+    'Our own counter (PRO-191): times each link of the content was opened through <web>/n/<issue>/<index>. Clicks, not people: one person can click twice and nobody is identified. HEAD requests, proofs (?prueba=1) and known mail scanners or link previewers (by user-agent) do not count. Resend tracking stays off. links: the content links; slots: the per-recipient places (PRO-1019: corre_la_voz → whatsapp and copiar, the «Corre la voz» buttons), counted without knowing whose link it was; total: both.',
   unsubscribes:
     'Newsletter-only opt-outs done from that issue’s link (since PRO-191), by source, counted under the issue only when it was sent to that address. Opt-outs whose link has no issue (earlier emails), or names an issue not sent to that address, count under unsubscribesWithoutIssue.',
 }

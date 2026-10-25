@@ -9,9 +9,11 @@ import type { RequestHandler } from 'express'
 import type { AddressInfo } from 'node:net'
 import type { Server } from 'node:http'
 import { afterAll, describe, expect, it, vi } from 'vitest'
+import { inviteHouseholdShareText, waitlistShareText } from '@ona/shared'
 import { createNewsletterRouter } from '../routes/newsletter.js'
 import {
   buildNewsletterMessage,
+  correLaVozLinks,
   forgetNewsletterSends,
   newsletterSendSchema,
   newsletterTokenForUser,
@@ -99,8 +101,12 @@ function cand(email: string | null, extra: CandInput = {}): NewsletterCandidate 
 const USER_ID = '22222222-2222-4222-8222-222222222222'
 
 function userCand(email: string, extra: Partial<NewsletterCandidate> = {}): NewsletterCandidate {
-  return { source: 'user', email, status: 'active', newsletterOptIn: true, token: newsletterTokenForUser(USER_ID), ...extra }
+  return { source: 'user', email, status: 'active', newsletterOptIn: true, token: newsletterTokenForUser(USER_ID), userId: USER_ID, ...extra }
 }
+
+/** The code `ensureAccountCode` gives an account (or an admin, by email) in the memory repo. */
+const ACCOUNT_CODE = 'hgar2345'
+const ADMIN_CODE = 'adm4n567'
 
 const ISSUE: NewsletterSendInput = newsletterSendSchema.parse({
   issueId: '2026-10-16',
@@ -234,6 +240,10 @@ function memoryRepo(candidates: NewsletterCandidate[], admins: string[] = []) {
     async isAdminEmail(email) {
       return admins.includes(email)
     },
+    async ensureAccountCode(ref) {
+      if ('userId' in ref) return ref.userId === USER_ID ? ACCOUNT_CODE : null
+      return admins.includes(ref.email) ? ADMIN_CODE : null
+    },
     async unsubscribe(token) {
       if (!parseNewsletterToken(token)) return { outcome: 'not_found', recipientHash: null }
       const e = entries.find((x) => x.token === token)
@@ -330,10 +340,11 @@ describe('sendNewsletter', () => {
     await expect(sendNewsletter({ ...ISSUE, testTo: 'ana@example.com' }, d)).rejects.toThrow()
   })
 
-  it('each waitlist recipient gets their own invite link, never someone else\'s; accounts get none (PRO-130)', async () => {
-    const codes: Record<string, string> = { 'ana@example.com': 'anacode1', 'bea@example.com': 'beacode2' }
+  it('«Corre la voz»: an account gets its household code, a waitlist person their `invita`, never someone else\'s (PRO-1019, PRO-130)', async () => {
+    const codes: Record<string, string> = { 'cuenta@example.com': ACCOUNT_CODE, 'ana@example.com': 'anacode1', 'bea@example.com': 'beacode2' }
     const { repo } = memoryRepo([
-      userCand('cuenta@example.com'),
+      // No code yet: `ensureAccountCode` assigns it at send.
+      userCand('cuenta@example.com', { referralCode: null }),
       cand('ana@example.com', { unsubscribeToken: TOKEN_A, referralCode: codes['ana@example.com'] }),
       cand('bea@example.com', { unsubscribeToken: TOKEN_B, referralCode: codes['bea@example.com'] }),
     ])
@@ -348,24 +359,37 @@ describe('sendNewsletter', () => {
         expect(m.html).not.toContain(code)
         expect(m.text).not.toContain(code)
       }
-      if (own) {
-        expect(m.html).toContain(newsletterInviteLine())
+      expect(m.html).toContain('Corre la voz')
+      expect(m.html).toContain('Compartir por WhatsApp')
+      expect(m.html).toContain('Copiar el enlace')
+      expect(m.text).toContain('CORRE LA VOZ:')
+      if (m.to === 'cuenta@example.com') {
+        expect(m.html).toContain(`href="https://mimoia.com/i/${own}"`)
+        expect(m.text).toContain(`Mándale tu enlace para que pruebe Mimoia: https://mimoia.com/i/${own}`)
+        expect(m.html).not.toContain('?invita=')
+        // WhatsApp opens with the app's message and the household link (no stats repo: straight to wa.me).
+        expect(m.html).toContain(`https://wa.me/?text=${encodeURIComponent(inviteHouseholdShareText(`https://mimoia.com/i/${own}`))}`)
+        expect(m.html).toContain(`https://mimoia.com/newsletter/comparte?c=${own}&amp;k=hogar`)
+      } else {
+        expect(m.html).toContain(newsletterInviteLine().replace(/:$/, ''))
         expect(m.html).toContain(`href="https://mimoia.com/?invita=${own}"`)
         expect(m.text).toContain(`${newsletterInviteLine()} https://mimoia.com/?invita=${own}`)
-      } else {
-        expect(m.html).not.toContain('Invita a tu hogar')
-        expect(m.text).not.toContain('Invita a tu hogar')
-        expect(m.html).not.toContain('?invita=')
+        expect(m.html).toContain(`https://mimoia.com/newsletter/comparte?c=${own}&amp;k=lista`)
       }
     }
   })
 
-  it('the admin proof carries no invite link (PRO-130)', async () => {
+  it('the admin proof carries the block with the admin\'s own household link, never a recipient\'s (PRO-1019)', async () => {
     const { repo } = memoryRepo([cand('ana@example.com', { referralCode: 'anacode1' })], ['miguel@mimoia.com'])
     const d = deps(repo, okBatch())
     await sendNewsletter({ ...ISSUE, testTo: 'miguel@mimoia.com' }, d)
     const msg = (d.sendOne as any).mock.calls[0][0] as EmailMessage
     expect(msg.html).not.toContain('?invita=')
+    expect(msg.html).not.toContain('anacode1')
+    expect(msg.html).toContain('Corre la voz')
+    expect(msg.html).toContain('Compartir por WhatsApp')
+    expect(msg.html).toContain('Copiar el enlace')
+    expect(msg.html).toContain(`href="https://mimoia.com/i/${ADMIN_CODE}"`)
   })
 
   it('the newsletter opt-out leaves the entry on the list; a second click says already', async () => {
@@ -403,7 +427,7 @@ describe('sendNewsletter', () => {
 })
 
 describe('the invite line stops promising «entráis antes» when the registration opens (PRO-311)', () => {
-  const invite = { unsubscribeUrl: 'https://mimoia.com/x', inviteUrl: 'https://mimoia.com/?invita=anacode1' }
+  const invite = { unsubscribeUrl: 'https://mimoia.com/x', share: correLaVozLinks('https://mimoia.com', 'anacode1', 'lista') }
 
   it('until 15-nov (Madrid) it says «y entráis antes»; from 16-nov 00:00 Madrid, «a Mimoia»', () => {
     // 2026-11-16 00:00 in Madrid is 2026-11-15 23:00 UTC (winter time, UTC+1).
@@ -414,7 +438,8 @@ describe('the invite line stops promising «entráis antes» when the registrati
 
   it('the newsletter of Friday 13-nov carries «entráis antes»; the one of 20-nov does not', () => {
     const before = renderNewsletterEmail(ISSUE, { ...invite, now: new Date('2026-11-13T07:00:00Z') })
-    expect(before.html).toContain('Invita a tu hogar y entráis antes:')
+    // The «Corre la voz» title (PRO-1019) is the line without its colon.
+    expect(before.html).toContain('Invita a tu hogar y entráis antes</p>')
     expect(before.text).toContain('Invita a tu hogar y entráis antes: https://mimoia.com/?invita=anacode1')
 
     const after = renderNewsletterEmail(ISSUE, { ...invite, now: new Date('2026-11-20T07:00:00Z') })
@@ -422,7 +447,7 @@ describe('the invite line stops promising «entráis antes» when the registrati
       expect(out).not.toContain('entráis antes')
       expect(out).not.toContain('entrais antes')
     }
-    expect(after.html).toContain('Invita a tu hogar a Mimoia:')
+    expect(after.html).toContain('Invita a tu hogar a Mimoia</p>')
     expect(after.html).toContain('href="https://mimoia.com/?invita=anacode1"')
     expect(after.text).toContain('Invita a tu hogar a Mimoia: https://mimoia.com/?invita=anacode1')
   })
@@ -790,6 +815,74 @@ describe('newsletter clicks, counted by us (PRO-191)', () => {
     expect(report.definitions.clicks).toMatch(/not people/)
   })
 
+  it('«Corre la voz»: each button goes through our counter with the recipient\'s code and counts in the slot corre_la_voz (PRO-1019)', async () => {
+    const { repo } = memoryRepo([cand('ana@example.com', { unsubscribeToken: TOKEN_A, referralCode: 'ana23456' }), userCand('bea@example.com', { referralCode: null })])
+    const { stats } = memoryStats(() => [{ issueId: 'n3', source: 'waitlist' }])
+    const sendBatch = okBatch()
+    const asAdmin: RequestHandler = (req, _res, next) => {
+      ;(req as any).userId = '11111111-1111-4111-8111-111111111111'
+      next()
+    }
+    const app = express()
+      .use(express.json())
+      .use(
+        createNewsletterRouter({
+          repo,
+          stats,
+          adminAuth: [asAdmin],
+          statsAuth: asAdmin,
+          unsubscribeLimiter: noLimit,
+          audit: (async () => 'a1') as any,
+          makeDeps: (urls) => ({ ...deps(repo, sendBatch), ...urls, stats }),
+          publicUrl: () => 'https://mimoia.com',
+        }),
+      )
+    const b = await serve(app)
+    const sent = await fetch(`${b}/admin/newsletter/send`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ...ISSUE, issueId: 'n3' }),
+    })
+    expect(await sent.json()).toMatchObject({ mode: 'send', sent: 2 })
+    const [toAna, toBea] = sendBatch.mock.calls[0][0]
+    expect(toAna.html).toContain('https://mimoia.com/n/n3/41?c=ana23456&amp;k=lista')
+    expect(toAna.html).toContain('https://mimoia.com/n/n3/42?c=ana23456&amp;k=lista')
+    expect(toAna.html).not.toContain('wa.me')
+    expect(toBea.html).toContain(`https://mimoia.com/n/n3/41?c=${ACCOUNT_CODE}&amp;k=hogar`)
+    expect(toBea.text).toContain(`Compartir por WhatsApp: https://mimoia.com/n/n3/41?c=${ACCOUNT_CODE}&k=hogar`)
+
+    const click = (path: string, ua = BROWSER) => fetch(`${b}${path}`, { headers: { 'user-agent': ua } })
+    const wa = await (await click('/newsletter/click/n3/41?c=ana23456&k=lista')).json()
+    expect(wa.url).toBe(`https://wa.me/?text=${encodeURIComponent(waitlistShareText('https://mimoia.com/?invita=ana23456'))}`)
+    const waHogar = await (await click(`/newsletter/click/n3/41?c=${ACCOUNT_CODE}&k=hogar`)).json()
+    expect(waHogar.url).toBe(`https://wa.me/?text=${encodeURIComponent(inviteHouseholdShareText(`https://mimoia.com/i/${ACCOUNT_CODE}`))}`)
+    const copy = await (await click(`/newsletter/click/n3/42?c=${ACCOUNT_CODE}&k=hogar`)).json()
+    expect(copy.url).toBe(`https://mimoia.com/newsletter/comparte?c=${ACCOUNT_CODE}&k=hogar`)
+    // Not clicks: a proof, a scanner. Not links: no code, a bad code, a bad kind, a URL instead of a code.
+    await click('/newsletter/click/n3/41?c=ana23456&k=lista&prueba=1')
+    await click('/newsletter/click/n3/42?c=ana23456&k=lista', 'Mozilla/5.0 (compatible; Mimecast)')
+    for (const p of [
+      '/newsletter/click/n3/41',
+      '/newsletter/click/n3/41?c=ANA!&k=lista',
+      '/newsletter/click/n3/41?c=ana23456&k=otro',
+      `/newsletter/click/n3/41?c=${encodeURIComponent('https://malo.example')}&k=lista`,
+      '/newsletter/click/no-existe/41?c=ana23456&k=lista',
+    ]) {
+      const r = await click(p)
+      expect(r.status, p).toBe(404)
+      expect(await r.json()).not.toHaveProperty('url')
+    }
+
+    const report = await (await fetch(`${b}/admin/newsletter/stats`)).json()
+    const row = report.issues.find((i: any) => i.issueId === 'n3')
+    expect(row.clicks.slots).toEqual({ corre_la_voz: { total: 3, buttons: { whatsapp: 2, copiar: 1 } } })
+    expect(row.clicks.links.map((l: any) => l.index)).toEqual([1, 2])
+    expect(row.clicks.total).toBe(3)
+    // Counts only: no code is kept anywhere in the report.
+    expect(JSON.stringify(report)).not.toContain('ana23456')
+    expect(JSON.stringify(report)).not.toContain(ACCOUNT_CODE)
+  })
+
   it('a proof (testTo) uses the same links with ?prueba=1, which never count', async () => {
     const { repo } = memoryRepo([cand('ana@example.com')], ['admin@mimoia.com'])
     const { stats, links } = memoryStats()
@@ -797,7 +890,10 @@ describe('newsletter clicks, counted by us (PRO-191)', () => {
     await sendNewsletter({ ...ISSUE, issueId: 'n2', testTo: 'admin@mimoia.com' }, { ...deps(repo, okBatch()), sendOne, stats })
     const html = (sendOne.mock.calls[0] as any)[0].html as string
     expect(html).toContain('https://mimoia.com/n/n2/1?prueba=1')
-    expect(links.size).toBe(2)
+    // The «Corre la voz» buttons too (PRO-1019), with the admin's code.
+    expect(html).toContain(`https://mimoia.com/n/n2/41?c=${ADMIN_CODE}&amp;k=hogar&amp;prueba=1`)
+    expect(html).toContain(`https://mimoia.com/n/n2/42?c=${ADMIN_CODE}&amp;k=hogar&amp;prueba=1`)
+    expect(links.size).toBe(4)
     expect(countsAsClick({ method: 'GET', userAgent: BROWSER, proof: true })).toBe(false)
   })
 

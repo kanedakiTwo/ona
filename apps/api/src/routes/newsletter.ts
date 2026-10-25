@@ -18,8 +18,10 @@ import {
   NEWSLETTER_STATS_DEFINITIONS,
   countsAsClick,
   createDbNewsletterStatsRepo,
+  slotLinkAt,
   type NewsletterStatsRepo,
 } from '../services/newsletterStats.js'
+import { parseSlotParams, slotDestination } from '../services/newsletterShare.js'
 import { metricsAuth } from '../middleware/metricsAuth.js'
 
 /**
@@ -34,6 +36,9 @@ import { metricsAuth } from '../middleware/metricsAuth.js'
  *   GET  /newsletter/click/:issueId/:n  public, for the web's /n/<issue>/<n> (PRO-191):
  *                                  `{ url }` = the destination saved at send (+1 click
  *                                  unless HEAD, a proof or a scanner); unknown → 404.
+ *                                  The «Corre la voz» slot (41 WhatsApp, 42 copy, PRO-1019)
+ *                                  takes `?c=<code>&k=lista|hogar` and answers wa.me or our
+ *                                  copy page with that code; a bad code → 404.
  *   GET  /admin/newsletter/stats   admin JWT or x-metrics-token: per issue sent, clicks
  *                                  per link and opt-outs. Counts only.
  */
@@ -205,7 +210,16 @@ export function createNewsletterRouter(overrides: Partial<NewsletterRouterDeps> 
       // The web route passes a HEAD on as `x-newsletter-head` (its fetch is a GET).
       const method = req.get('x-newsletter-head') === '1' ? 'HEAD' : req.method
       const count = countsAsClick({ method, userAgent: req.get('user-agent'), proof: req.query.prueba === '1' })
-      const url = await deps.stats.click(issueId, n, count)
+      // A «Corre la voz» button (PRO-1019): its destination is built from the
+      // recipient's code in the link, so a bad code is a 404 and counts nothing.
+      const slot = slotLinkAt(n)
+      const params = slot ? parseSlotParams(req.query.c, req.query.k) : null
+      if (slot && !params) {
+        res.status(404).json({ error: 'Este enlace no existe.', code: 'NEWSLETTER_LINK_NOT_FOUND' })
+        return
+      }
+      const saved = await deps.stats.click(issueId, n, count)
+      const url = saved && slot && params ? slotDestination(slot, deps.publicUrl(), params.code, params.kind) : saved
       if (!url) {
         res.status(404).json({ error: 'Este enlace no existe.', code: 'NEWSLETTER_LINK_NOT_FOUND' })
         return

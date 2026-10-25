@@ -5,7 +5,6 @@ import {
   ASSISTANT_NAME,
   BRAND_NAME,
   WAITLIST_NEWSLETTER_CONSENT_VERSION,
-  waitlistReferralUrl,
   waitlistUnsubscribePath,
 } from '@ona/shared'
 import { env } from '../config/env.js'
@@ -13,12 +12,24 @@ import { madridParts } from './madridTime.js'
 import { db as defaultDb } from '../db/connection.js'
 import { newsletterSends, users, waitlistEntries } from '../db/schema.js'
 import { maskEmail, sendEmail, sendEmailBatch, type EmailMessage, type EmailResult } from './email.js'
-import { contentLinks, createDbNewsletterStatsRepo, withTrackedLinks, type NewsletterStatsRepo } from './newsletterStats.js'
+import {
+  contentLinks,
+  createDbNewsletterStatsRepo,
+  slotLinkFor,
+  slotLinks,
+  trackedSlotUrl,
+  withTrackedLinks,
+  type InviteKind,
+  type NewsletterStatsRepo,
+} from './newsletterStats.js'
+import { correLaVozCopyUrl, correLaVozWhatsappHref, personalInviteUrl } from './newsletterShare.js'
+import { ensureReferralCode } from './accountReferrals.js'
 import {
   ACCENT,
   BODY,
   BORDER,
   BORDER_SOFT,
+  CREAM,
   CREAM_DEEP,
   EYEBROW,
   INK,
@@ -54,8 +65,10 @@ import {
  *     unconfigured send releases the claim so a re-run retries only those.
  *   - One-click opt-out that turns off ONLY the newsletter (the place on the
  *     list stays): `/newsletter/baja?t=<token>` + `List-Unsubscribe(-Post)`.
- *   - Waitlist recipients get their own invite link in the footer (PRO-130):
- *     «Invita a tu hogar y entráis antes: <web>/?invita=<their code>».
+ *   - Every recipient gets a «Corre la voz» block (PRO-1019) with their own
+ *     invite link (the household's `/i/<code>`, or the list's `?invita=`,
+ *     PRO-130) and two buttons, WhatsApp and copy, counted in the slot
+ *     «corre_la_voz» (`newsletterStats.ts`).
  */
 
 // ─── Content ─────────────────────────────────────────────────────
@@ -166,7 +179,7 @@ function sectionBlock(s: NonNullable<NewsletterContent['sections']>[number]): st
 }
 
 /**
- * Footer call for waitlist recipients (PRO-130). «Entráis antes» is true
+ * «Corre la voz» call for waitlist recipients (PRO-130, PRO-1019). «Entráis antes» is true
  * only while people get in by batches; from the day the registration opens
  * (16-nov, D-057, Madrid time) it would promise an advantage that no longer
  * exists (PRO-311, Legal 2026-10-21), so the line just invites.
@@ -181,18 +194,54 @@ export function newsletterInviteLine(now: Date = new Date()): string {
   return madridParts(now).isoDate >= NEWSLETTER_OPEN_REGISTRATION_DAY ? NEWSLETTER_INVITE_LINE_OPEN : NEWSLETTER_INVITE_LINE_BEFORE_OPENING
 }
 
+export const CORRE_LA_VOZ_LABEL = 'Corre la voz'
+export const CORRE_LA_VOZ_HOGAR_TITLE = '¿Conoces otra casa a la que le vendría bien?'
+export const CORRE_LA_VOZ_HOGAR_LINE = `Mándale tu enlace para que pruebe ${BRAND_NAME}:`
+export const CORRE_LA_VOZ_LISTA_LINE = 'Este es tu enlace:'
+export const CORRE_LA_VOZ_WHATSAPP = 'Compartir por WhatsApp'
+export const CORRE_LA_VOZ_COPY = 'Copiar el enlace'
+
+/** The recipient's «Corre la voz» links (PRO-1019): their invite link and the two buttons. */
+export interface CorreLaVoz {
+  kind: InviteKind
+  inviteUrl: string
+  whatsappUrl: string
+  copyUrl: string
+}
+
+function correLaVozTitle(share: CorreLaVoz, inviteLine: string): string {
+  return share.kind === 'hogar' ? CORRE_LA_VOZ_HOGAR_TITLE : inviteLine.replace(/:$/, '')
+}
+
+/** The «Corre la voz» block: the person's link and two pills, WhatsApp (ink) and copy (outlined), as in the app. */
+function correLaVozBlock(share: CorreLaVoz, inviteLine: string): string {
+  const line = share.kind === 'hogar' ? CORRE_LA_VOZ_HOGAR_LINE : CORRE_LA_VOZ_LISTA_LINE
+  const pill = (label: string, url: string, filled: boolean) =>
+    `<td style="padding:0 8px 8px 0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="${filled ? `background:${INK};` : `border:1px solid ${INK};`}border-radius:999px;"><a href="${esc(url)}" style="display:inline-block;padding:12px 22px;font-family:${SANS};font-size:15px;font-weight:600;color:${filled ? CREAM : INK};text-decoration:none;">${esc(label)}</a></td></tr></table></td>`
+  return row(
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${PAPER};border:1px solid ${BORDER_SOFT};border-radius:16px;"><tr><td style="padding:22px 22px 14px;">
+<p style="${EYEBROW}color:${TERRACOTTA_DEEP};">${esc(CORRE_LA_VOZ_LABEL)}</p>
+<p style="margin:0 0 10px;font-family:${SERIF};font-size:22px;line-height:1.2;font-weight:650;letter-spacing:-0.01em;color:${INK};">${esc(correLaVozTitle(share, inviteLine))}</p>
+<p style="margin:0 0 16px;font-family:${SANS};font-size:15px;line-height:1.55;color:${INK};">${esc(line)} <a href="${esc(share.inviteUrl)}" style="color:${TERRACOTTA_DEEP};font-weight:600;">${esc(share.inviteUrl.replace(/^https?:\/\//, ''))}</a></p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>${pill(CORRE_LA_VOZ_WHATSAPP, share.whatsappUrl, true)}${pill(CORRE_LA_VOZ_COPY, share.copyUrl, false)}</tr></table>
+</td></tr></table>`,
+    '0 28px 28px',
+  )
+}
+
 /**
  * The visual newsletter, on the shared brand shell (emailBrand.ts): masthead
  * with the logo → greeting (optional) → headline → letter → the star recipe's photo full width →
- * sections → cards → signature → footer band. Absolute image URLs with `alt`.
- * `unsubscribeUrl`, `leaveListUrl` and `inviteUrl` are per recipient.
+ * sections → cards → «Corre la voz» → signature → footer band. Absolute image URLs with `alt`.
+ * `unsubscribeUrl`, `leaveListUrl` and `share` are per recipient.
  */
 export function renderNewsletterEmail(
   input: Pick<NewsletterSendInput, 'subject' | 'preheader' | 'content'>,
-  links: { unsubscribeUrl: string; leaveListUrl?: string; inviteUrl?: string; now?: Date } & BrandAssets,
+  links: { unsubscribeUrl: string; leaveListUrl?: string; share?: CorreLaVoz; now?: Date } & BrandAssets,
 ): { html: string; text: string } {
   const c = input.content
   const inviteLine = newsletterInviteLine(links.now)
+  const share = links.share
   const brand = esc(BRAND_NAME)
   const preface = c.preface ? row(paragraphs(c.preface, `${BODY}font-size:17px;line-height:1.65;`, 16), '24px 28px 0') : ''
   const intro = c.intro ? row(paragraphs(c.intro, `${BODY}font-size:17px;line-height:1.65;`, 16), '24px 28px 14px') : ''
@@ -216,13 +265,9 @@ ${button(c.cta.label, c.cta.url, '6px 28px 38px')}`
       ...(c.sections ?? []).map(sectionBlock),
       c.news ? sideBlock(`Novedad en ${BRAND_NAME}`, c.news) : '',
       c.tip ? sideBlock(`Un truco con ${ASSISTANT_NAME}`, c.tip) : '',
+      share ? correLaVozBlock(share, inviteLine) : '',
       signature(c.signoff, c.from),
       footerBand(links, [
-        ...(links.inviteUrl
-          ? [
-              `<span style="color:${INK};">${esc(inviteLine)}</span> <a href="${esc(links.inviteUrl)}" style="color:${TERRACOTTA_DEEP};font-weight:600;">${esc(links.inviteUrl.replace(/^https?:\/\//, ''))}</a>`,
-            ]
-          : []),
         ...(c.note ? [esc(c.note)] : []),
         `Te llega porque pediste el menú de los viernes de ${brand}.`,
         `<a href="${esc(links.unsubscribeUrl)}" style="color:${MUTED};">No quiero recibir más el menú de los viernes</a>${links.leaveListUrl ? ` · <a href="${esc(links.leaveListUrl)}" style="color:${MUTED};">Salir de la lista de espera</a>` : ''}`,
@@ -253,10 +298,18 @@ ${button(c.cta.label, c.cta.url, '6px 28px 38px')}`
     ]),
     ...block(`Novedad en ${BRAND_NAME}`, c.news),
     ...block(`Un truco con ${ASSISTANT_NAME}`, c.tip),
+    ...(share
+      ? [
+          `${CORRE_LA_VOZ_LABEL.toUpperCase()}: ${correLaVozTitle(share, inviteLine)}`,
+          `${share.kind === 'hogar' ? CORRE_LA_VOZ_HOGAR_LINE : inviteLine} ${share.inviteUrl}`,
+          `${CORRE_LA_VOZ_WHATSAPP}: ${share.whatsappUrl}`,
+          `${CORRE_LA_VOZ_COPY}: ${share.copyUrl}`,
+          '',
+        ]
+      : []),
     ...(c.signoff ? [c.signoff] : []),
     ...(c.from ? [c.from.name, ...(c.from.role ? [c.from.role] : [])] : []),
     ...(c.signoff || c.from ? [''] : []),
-    ...(links.inviteUrl ? [`${inviteLine} ${links.inviteUrl}`, ''] : []),
     ...(c.note ? [c.note, ''] : []),
     `Te llega porque pediste el menú de los viernes de ${BRAND_NAME}.`,
     `No quiero recibir más el menú de los viernes: ${links.unsubscribeUrl}`,
@@ -333,8 +386,14 @@ export interface NewsletterCandidate {
   token: string
   /** Full waitlist opt-out token (for «Salir de la lista de espera»); waitlist only. */
   leaveToken?: string
-  /** The entry's public invite code (`/?invita=<code>`, PRO-130); waitlist only. */
-  referralCode?: string
+  /**
+   * The public invite code: the entry's (`/?invita=<code>`, PRO-130) or the
+   * account's (`/i/<code>`, PRO-162; null until first asked for, then
+   * `ensureAccountCode` assigns it at send).
+   */
+  referralCode?: string | null
+  /** The account's id; user only. */
+  userId?: string
 }
 
 export interface NewsletterRecipient {
@@ -344,6 +403,7 @@ export interface NewsletterRecipient {
   token: string
   leaveToken?: string
   referralCode?: string
+  userId?: string
 }
 
 /**
@@ -367,7 +427,8 @@ export function selectNewsletterRecipients(
       hash,
       token: c.token,
       ...(c.leaveToken ? { leaveToken: c.leaveToken } : {}),
-      ...(c.source === 'waitlist' && c.referralCode ? { referralCode: c.referralCode } : {}),
+      ...(c.referralCode ? { referralCode: c.referralCode } : {}),
+      ...(c.source === 'user' && c.userId ? { userId: c.userId } : {}),
     })
   }
   return out
@@ -391,6 +452,12 @@ export interface NewsletterRepo {
   release(issueId: string, hashes: string[]): Promise<void>
   isAdminEmail(email: string): Promise<boolean>
   /**
+   * The account's invite code (PRO-162), assigned the first time it's needed
+   * (PRO-1019: «Corre la voz» carries it). By id, or by email for the admin
+   * proof; null when there is no such account.
+   */
+  ensureAccountCode?(ref: { userId: string } | { email: string }): Promise<string | null>
+  /**
    * Newsletter off for the token's address, in the waitlist AND the account
    * with that email (one person, one switch). The place on the list stays.
    * `recipientHash` is that address's hash (as in `newsletter_sends`), null
@@ -408,7 +475,7 @@ export function createDbNewsletterRepo(db: Db = defaultDb): NewsletterRepo {
   return {
     async candidates() {
       const people = await db
-        .select({ id: users.id, email: users.email, suspendedAt: users.suspendedAt })
+        .select({ id: users.id, email: users.email, suspendedAt: users.suspendedAt, referralCode: users.referralCode })
         .from(users)
         .where(eq(users.newsletterOptIn, true))
       const rows = await db
@@ -427,6 +494,8 @@ export function createDbNewsletterRepo(db: Db = defaultDb): NewsletterRepo {
           status: u.suspendedAt ? 'suspended' : 'active',
           newsletterOptIn: true,
           token: newsletterTokenForUser(u.id),
+          userId: u.id,
+          referralCode: u.referralCode,
         })),
         ...rows.map((r) => ({
           source: 'waitlist' as const,
@@ -486,6 +555,15 @@ export function createDbNewsletterRepo(db: Db = defaultDb): NewsletterRepo {
         .where(and(sql`lower(${users.email}) = ${email.trim().toLowerCase()}`, eq(users.role, 'admin')))
         .limit(1)
       return !!row
+    },
+    async ensureAccountCode(ref) {
+      let userId = 'userId' in ref ? ref.userId : null
+      if (!userId) {
+        const email = (ref as { email: string }).email.trim().toLowerCase()
+        const [u] = await db.select({ id: users.id }).from(users).where(sql`lower(${users.email}) = ${email}`).limit(1)
+        userId = u?.id ?? null
+      }
+      return userId ? ensureReferralCode(userId, db) : null
     },
     async unsubscribe(token) {
       const notFound = { outcome: 'not_found', recipientHash: null } as const
@@ -573,20 +651,45 @@ export function defaultNewsletterDeps(urls: { publicUrl: string; apiUrl: string 
   }
 }
 
+/**
+ * The recipient's «Corre la voz» links (PRO-1019). With `track` (a stats
+ * repo saved the issue's slot rows) the two buttons go through our counter,
+ * `<web>/n/<issue>/<41|42>?c=<code>&k=<kind>`; without it, straight to
+ * WhatsApp and the copy page.
+ */
+export function correLaVozLinks(
+  publicUrl: string,
+  code: string,
+  kind: InviteKind,
+  track?: { issueId: string; proof: boolean },
+): CorreLaVoz {
+  const whatsapp = slotLinkFor('corre_la_voz', 'whatsapp')
+  const copy = slotLinkFor('corre_la_voz', 'copiar')
+  return {
+    kind,
+    inviteUrl: personalInviteUrl(publicUrl, code, kind),
+    whatsappUrl: track
+      ? trackedSlotUrl(publicUrl, track.issueId, whatsapp, code, kind, track.proof)
+      : correLaVozWhatsappHref(publicUrl, code, kind),
+    copyUrl: track ? trackedSlotUrl(publicUrl, track.issueId, copy, code, kind, track.proof) : correLaVozCopyUrl(publicUrl, code, kind),
+  }
+}
+
 export function buildNewsletterMessage(
   input: Pick<NewsletterSendInput, 'subject' | 'preheader' | 'content'>,
   to: string,
-  tokens: { token: string; leaveToken?: string; referralCode?: string },
+  tokens: { token: string; leaveToken?: string; referralCode?: string; inviteKind?: InviteKind },
   urls: { publicUrl: string; apiUrl: string },
   issueId?: string,
+  track?: { issueId: string; proof: boolean },
 ): EmailMessage {
   const web = urls.publicUrl.replace(/\/+$/, '')
   const api = urls.apiUrl.replace(/\/+$/, '')
   const unsubscribeUrl = `${web}${newsletterUnsubscribePath(tokens.token, issueId)}`
   const leaveListUrl = tokens.leaveToken ? `${web}${waitlistUnsubscribePath(tokens.leaveToken)}` : undefined
-  const inviteUrl = tokens.referralCode ? waitlistReferralUrl(web, tokens.referralCode) : undefined
+  const share = tokens.referralCode ? correLaVozLinks(web, tokens.referralCode, tokens.inviteKind ?? 'lista', track) : undefined
   const oneClick = `${api}/newsletter/unsubscribe?t=${encodeURIComponent(tokens.token)}${issueId ? `&i=${encodeURIComponent(issueId)}` : ''}`
-  const { html, text } = renderNewsletterEmail(input, { unsubscribeUrl, leaveListUrl, inviteUrl, ...brandAssets(web) })
+  const { html, text } = renderNewsletterEmail(input, { unsubscribeUrl, leaveListUrl, share, ...brandAssets(web) })
   return {
     to,
     subject: input.subject,
@@ -620,20 +723,45 @@ export class NewsletterTestAddressError extends Error {}
 async function trackContent(input: NewsletterSendInput, deps: NewsletterDeps, proof: boolean): Promise<NewsletterSendInput> {
   if (!deps.stats) return input
   const links = contentLinks(input.content)
-  await deps.stats.registerLinks(input.issueId, links)
+  // The «Corre la voz» slot rows (PRO-1019) go with them.
+  await deps.stats.registerLinks(input.issueId, [...links, ...slotLinks()])
   return { ...input, content: withTrackedLinks(input.content, links, deps.publicUrl, input.issueId, proof) }
 }
+
+/** Accounts without an invite code yet get one now (PRO-162); a failure only leaves out their block. */
+async function withAccountCodes(recipients: NewsletterRecipient[], repo: NewsletterRepo): Promise<NewsletterRecipient[]> {
+  if (!repo.ensureAccountCode) return recipients
+  const out: NewsletterRecipient[] = []
+  for (const r of recipients) {
+    if (r.source !== 'user' || r.referralCode || !r.userId) {
+      out.push(r)
+      continue
+    }
+    const code = await repo.ensureAccountCode({ userId: r.userId }).catch((err) => {
+      console.warn('[newsletter] no invite code for an account (block left out):', err?.message ?? err)
+      return null
+    })
+    out.push(code ? { ...r, referralCode: code } : r)
+  }
+  return out
+}
+
+const inviteKindOf = (r: Pick<NewsletterRecipient, 'source'>): InviteKind => (r.source === 'user' ? 'hogar' : 'lista')
 
 export async function sendNewsletter(input: NewsletterSendInput, deps: NewsletterDeps): Promise<NewsletterOutcome> {
   const urls = { publicUrl: deps.publicUrl, apiUrl: deps.apiUrl }
   if (input.testTo) {
     if (!(await deps.repo.isAdminEmail(input.testTo))) throw new NewsletterTestAddressError(input.testTo)
     const tracked = await trackContent(input, deps, true)
+    // The proof carries the admin's own «Corre la voz» (their household's link), never anyone else's.
+    const adminCode = deps.repo.ensureAccountCode ? await deps.repo.ensureAccountCode({ email: input.testTo }).catch(() => null) : null
     const msg = buildNewsletterMessage(
       { ...tracked, subject: `[Prueba] ${input.subject}` },
       input.testTo,
-      { token: 'w.prueba-no-da-de-baja-a-nadie' },
+      { token: 'w.prueba-no-da-de-baja-a-nadie', ...(adminCode ? { referralCode: adminCode, inviteKind: 'hogar' as const } : {}) },
       urls,
+      undefined,
+      deps.stats ? { issueId: input.issueId, proof: true } : undefined,
     )
     const r = await deps.sendOne(msg)
     return { mode: 'test', issueId: input.issueId, to: maskEmail(input.testTo), status: r.status }
@@ -658,10 +786,21 @@ export async function sendNewsletter(input: NewsletterSendInput, deps: Newslette
   // Links saved before claiming anyone: a failure here sends nothing and leaves no claim behind.
   const tracked = recipients.length > 0 ? await trackContent(input, deps, false) : input
   const claimed = await deps.repo.claim(input.issueId, recipients)
-  const mine = recipients.filter((r) => claimed.has(r.hash))
+  const mine = await withAccountCodes(
+    recipients.filter((r) => claimed.has(r.hash)),
+    deps.repo,
+  )
+  const track = deps.stats && recipients.length > 0 ? { issueId: input.issueId, proof: false } : undefined
   const results = await deps.sendBatch(
     mine.map((r) =>
-      buildNewsletterMessage(tracked, r.email, { token: r.token, leaveToken: r.leaveToken, referralCode: r.referralCode }, urls, input.issueId),
+      buildNewsletterMessage(
+        tracked,
+        r.email,
+        { token: r.token, leaveToken: r.leaveToken, referralCode: r.referralCode, inviteKind: inviteKindOf(r) },
+        urls,
+        input.issueId,
+        track,
+      ),
     ),
   )
   const sent: { hash: string; providerId: string | null }[] = []
